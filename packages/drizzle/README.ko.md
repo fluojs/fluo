@@ -94,7 +94,13 @@ export class UserRepository {
   async create(data: any) {
     // facade 타입은 표준 Drizzle 메서드를 노출합니다.
     // @Transaction() 내부에서 호출되면 자동으로 활성 트랜잭션에 참여합니다.
-    return this.db.insert(users).values(data);
+    const [user] = await this.db.insert(users).values(data).returning();
+
+    if (!user) {
+      throw new Error('User insert did not return a row.');
+    }
+
+    return user;
   }
 
   async initProfile(userId: string) {

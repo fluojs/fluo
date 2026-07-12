@@ -31,6 +31,8 @@ describe('Drizzle concurrent transaction boundaries', () => {
     const secondRelease = createDeferred();
     const rollbackPending = createDeferred();
     const rollbackRelease = createDeferred();
+    const disposeStarted = createDeferred();
+    const disposeRelease = createDeferred();
     const firstTransactionDatabase = { id: 'first' as const };
     const secondTransactionDatabase = { id: 'second' as const };
     type TransactionDatabase = typeof firstTransactionDatabase | typeof secondTransactionDatabase;
@@ -47,10 +49,12 @@ describe('Drizzle concurrent transaction boundaries', () => {
           events.push(`${transactionDatabase.id}:commit`);
           return result;
         } catch (error) {
-          events.push(`${transactionDatabase.id}:rollback:pending`);
-          rollbackPending.resolve();
-          await rollbackRelease.promise;
-          events.push(`${transactionDatabase.id}:rollback:done`);
+          if (transactionDatabase === secondTransactionDatabase) {
+            events.push('second:rollback:pending');
+            rollbackPending.resolve();
+            await rollbackRelease.promise;
+            events.push('second:rollback:done');
+          }
           throw error;
         } finally {
           events.push(`${transactionDatabase.id}:end`);
@@ -59,34 +63,40 @@ describe('Drizzle concurrent transaction boundaries', () => {
     };
     const drizzle = new DrizzleDatabase<typeof database, TransactionDatabase>(
       database,
-      () => {
-        events.push('dispose');
+      async () => {
+        events.push('dispose:start');
+        disposeStarted.resolve();
+        await disposeRelease.promise;
+        events.push('dispose:done');
       },
     );
 
     // When two request transactions overlap, the first settles, and shutdown aborts the second.
     const firstTransaction = drizzle.requestTransaction(async () => {
-      expect(drizzle.current()).toBe(firstTransactionDatabase);
       firstEntered.resolve();
+      expect(drizzle.current()).toBe(firstTransactionDatabase);
       await firstRelease.promise;
       expect(drizzle.current()).toBe(firstTransactionDatabase);
       return 'first-complete';
     });
-    await firstEntered.promise;
 
     const secondTransaction = drizzle.requestTransaction(async () => {
-      expect(drizzle.current()).toBe(secondTransactionDatabase);
       secondEntered.resolve();
-      await inspectSecond.promise;
-      expect(drizzle.current()).toBe(secondTransactionDatabase);
-      secondInspected.resolve();
+      try {
+        expect(drizzle.current()).toBe(secondTransactionDatabase);
+        await inspectSecond.promise;
+        expect(drizzle.current()).toBe(secondTransactionDatabase);
+      } finally {
+        secondInspected.resolve();
+      }
       await secondRelease.promise;
       return 'second-complete';
     });
-    await secondEntered.promise;
     let shutdown: Promise<void> | undefined;
 
     try {
+      await Promise.all([firstEntered.promise, secondEntered.promise]);
+
       // Then each ALS continuation keeps its own handle and status moves from 2 to 1.
       expect(drizzle.current()).toBe(database);
       expect(drizzle.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(2);
@@ -100,16 +110,22 @@ describe('Drizzle concurrent transaction boundaries', () => {
 
       shutdown = drizzle.onApplicationShutdown();
       await rollbackPending.promise;
-      expect(events).not.toContain('dispose');
+      expect(drizzle.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(1);
+      expect(events).not.toContain('dispose:start');
 
       rollbackRelease.resolve();
       await expect(secondTransaction).rejects.toThrow(
         'Application shutdown interrupted an open request transaction.',
       );
-      await shutdown;
+      await disposeStarted.promise;
 
       // And the final status is 0 only after rollback settles, before disposal completes.
       expect(drizzle.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(0);
+      expect(events).not.toContain('dispose:done');
+
+      disposeRelease.resolve();
+      await shutdown;
+
       expect(transactionCalls).toBe(2);
       expect(events).toEqual([
         'first:start',
@@ -119,13 +135,17 @@ describe('Drizzle concurrent transaction boundaries', () => {
         'second:rollback:pending',
         'second:rollback:done',
         'second:end',
-        'dispose',
+        'dispose:start',
+        'dispose:done',
       ]);
     } finally {
+      firstEntered.resolve();
+      secondEntered.resolve();
       firstRelease.resolve();
       inspectSecond.resolve();
       secondRelease.resolve();
       rollbackRelease.resolve();
+      disposeRelease.resolve();
       await Promise.allSettled([
         firstTransaction,
         secondTransaction,

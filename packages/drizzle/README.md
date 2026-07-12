@@ -94,7 +94,13 @@ export class UserRepository {
   async create(data: any) {
     // The facade type exposes standard Drizzle methods.
     // When called inside @Transaction(), they automatically participate in the ambient transaction.
-    return this.db.insert(users).values(data);
+    const [user] = await this.db.insert(users).values(data).returning();
+
+    if (!user) {
+      throw new Error('User insert did not return a row.');
+    }
+
+    return user;
   }
 
   async initProfile(userId: string) {
