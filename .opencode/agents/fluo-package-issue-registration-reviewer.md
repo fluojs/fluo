@@ -23,6 +23,35 @@ permission:
     'exit *': allow
     'printf *': allow
     'command -v *': allow
+    'gh api *': allow
+    'rmdir *': allow
+    'bun run *': allow
+    'python -c *': allow
+    'git fetch *': allow
+    'git show-ref *': allow
+    'print *': allow
+    'git worktree *': allow
+    'python3 *': allow
+    'nohup *': allow
+    'jobs *': allow
+    'ps *': allow
+    'node *': allow
+    'pnpm --version *': allow
+    'command *': allow
+    'file *': allow
+    'readlink *': allow
+    'pnpm verify:release-readiness *': allow
+    'pgrep *': allow
+    'sleep *': allow
+    'env *': allow
+    'npx *': allow
+    'git ls-remote *': allow
+    'gh pr view *': allow
+    'realpath *': allow
+    'pnpm vitest *': allow
+    'perl *': allow
+    'pnpm exec biome *': allow
+    'kill *': allow
     'pnpm *': allow
     'base64 *': allow
     'nl *': allow
