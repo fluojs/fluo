@@ -22,7 +22,7 @@ This chapter covers how to integrate FluoShop's document-oriented data model int
 
 Mongoose is a widely used modeling layer for working with MongoDB in the Node.js ecosystem. The root `@fluojs/mongoose` integration uses Node.js `node:async_hooks` for ambient transaction context and supports Node.js 20 or newer. Using the fluo-specific integration package gives you these benefits.
 
-- **Lifecycle Management**: It registers the provided connection in the application lifecycle and, when you supply `dispose(connection)`, runs that cleanup only after request-scoped transactions have drained during shutdown.
+- **Lifecycle Management**: It registers the provided connection in the application lifecycle and, when you supply `dispose(connection)`, runs that cleanup only after started request callbacks and request-scoped transactions have drained during shutdown.
 - **Session Awareness**: The `MongooseConnection` service tracks MongoDB sessions across the call stack.
 - **Ambient Sessions (v1)**: fluo automatically attaches the active transaction session to supported Mongoose model operations (create, find, findOne, aggregate, bulkWrite).
 - **Application-owned connections**: fluo observes the concrete Mongoose connection that your application provides; it does not create, compile models for, or close that connection unless you supply `dispose(connection)`.
@@ -81,7 +81,7 @@ export class ProductRepository {
 }
 ```
 
-The `MongooseConnection` service acts as a context-aware proxy. When you call `this.conn.model('Product')`, it returns a version of the model that automatically participates in the ambient transaction if one is active.
+The `MongooseConnection` service acts as a context-aware proxy. When you call `this.conn.model('Product')`, its exported `MongooseModelFacade` return type keeps the supported methods callable and returns a version of the model that automatically participates in the ambient transaction if one is active.
 
 ### Ambient Session Support (v1)
 In version 1, fluo's Mongoose integration supports automatic session injection for the following model methods:
@@ -91,7 +91,7 @@ In version 1, fluo's Mongoose integration supports automatic session injection f
 - `aggregate`
 - `bulkWrite`
 
-When these methods are called inside a `@Transaction()`, `transaction()`, or `requestTransaction()` boundary through `MongooseConnection.model(...)`, fluo attaches the ambient session to the options. The raw model returned by `conn.current().model(...)` is not wrapped, and `doc.save()` is currently NOT supported for automatic session injection; both paths require manual session passing if used inside a transaction.
+When these methods are called inside a `@Transaction()`, `transaction()`, or `requestTransaction()` boundary through `MongooseConnection.model(...)`, fluo attaches the ambient session to the options. For `create(...)`, operation options are recognized only in the array overload `create([docs], options)`, so positional documents with option-like fields remain documents. The raw model returned by `conn.current().model(...)` is not wrapped, and `doc.save()` is currently NOT supported for automatic session injection; both paths require manual session passing if used inside a transaction.
 
 If you explicitly provide a `session` in the options while a transaction is active, fluo will throw a conflict error if the provided session does not match the ambient transaction session. This prevents accidental cross-transaction leaks.
 
@@ -100,7 +100,7 @@ If you explicitly provide a `session` in the options while a transaction is acti
 
 MongoDB transactions require an active **session**. Fluo reduces the caller's burden by grouping session creation, execution, and cleanup into one transaction wrapper.
 
-When the provided Mongoose connection exposes `connection.transaction(...)`, fluo delegates the transaction boundary to that API so Mongoose's own ambient-session scope and cleanup semantics remain intact. Otherwise it falls back to `startSession()`, `startTransaction()`, `commitTransaction()` / `abortTransaction()`, and `endSession()` directly. If the connection exposes neither `connection.transaction(...)` nor `startSession()` and `strictTransactions` is `false`, fluo enters fail-open mode by running the callback directly without rollback atomicity; use this only for local fakes or staged migrations. Set `strictTransactions: true` for production paths that require MongoDB transaction guarantees so missing support fails readiness and transaction helpers. Request-scoped transactions observe the request `AbortSignal` during session acquisition and delegated transaction startup, so cancelled requests can stop before repository work runs. In real transaction modes, `dispose(connection)` waits until active request transactions and session cleanup settle during application shutdown, and new manual or request-scoped transaction boundaries are rejected once shutdown begins.
+When the provided Mongoose connection exposes `connection.transaction(...)`, fluo delegates the transaction boundary to that API so Mongoose's own ambient-session scope and cleanup semantics remain intact. Otherwise it falls back to `startSession()`, `startTransaction()`, `commitTransaction()` / `abortTransaction()`, and `endSession()` directly. If the connection exposes neither `connection.transaction(...)` nor `startSession()` and `strictTransactions` is `false`, fluo enters fail-open mode by running the callback directly without rollback atomicity; use this only for local fakes or staged migrations. Set `strictTransactions: true` for production paths that require MongoDB transaction guarantees so missing support fails readiness and transaction helpers. Request-scoped transactions observe the request `AbortSignal` during session acquisition and delegated transaction startup, so cancelled requests can stop before repository work runs. If cancellation happens after callback work starts, fluo preserves the abort result but waits for that original callback before transaction cleanup and connection disposal. In real transaction modes, `dispose(connection)` waits until active request transactions and session cleanup settle during application shutdown, and new manual or request-scoped transaction boundaries are rejected once shutdown begins.
 
 Within any `@Transaction()`, `transaction(...)`, or `requestTransaction(...)` boundary, `conn.model(...)` returns a facade that auto-binds the ambient session for `create`, `find`, `findOne`, `aggregate`, and `bulkWrite`. Unsupported model methods and `doc.save()` still require explicit `conn.currentSession()` plumbing. A nested `requestTransaction(...)` opened inside an existing manual `transaction(...)` reuses the ambient session, remains tracked as an active request boundary, and is aborted during shutdown so the outer manual transaction can roll back before connection disposal.
 
