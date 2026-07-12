@@ -61,7 +61,7 @@ Following these standards from day one helps other developers understand your AP
 
 ### Semantic URLs and Hierarchy
 
-Good routing is not only about technical correctness. Semantic clarity matters too. A URL like `/posts/1/comments` clearly communicates that you are accessing comments that belong to a specific post. fluo's nested Controller feature, which we will cover in the intermediate volume, helps enforce this kind of logical hierarchy. For now, focus on keeping top-level paths descriptive and simple.
+Good routing is not only about technical correctness. Semantic clarity matters too. A URL like `/posts/1/comments` clearly communicates that you are accessing comments that belong to a specific post. fluo does not provide a parent/child Controller nesting API. Express the hierarchy directly in one route path, for example with `@Controller('/posts')` and `@Get('/:postId/comments')`, or give a separate comments Controller the full base path `@Controller('/posts/:postId/comments')`. Modules can group those Controllers, but they do not prepend another route path.
 
 For FluoBlog, the posts API is a very natural first feature. Readers can understand it quickly, and it gives later chapters room to add validation, serialization, exceptions, Guards, and OpenAPI step by step.
 
