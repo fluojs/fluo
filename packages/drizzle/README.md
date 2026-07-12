@@ -80,23 +80,14 @@ export class AppModule {}
 The `@Transaction()` decorator is the recommended way to define transaction boundaries in your service layer. It ensures that all repository calls made within the decorated method share the same Drizzle transaction.
 
 ```ts
+import { Inject } from '@fluojs/core';
 import { Transaction, DrizzleDatabase, type DrizzleDatabaseFacade } from '@fluojs/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { users, profiles } from './schema';
 
 type AppDatabase = ReturnType<typeof drizzle>;
 
-export class UserService {
-  constructor(private readonly repo: UserRepository) {}
-
-  @Transaction()
-  async onboardUser(dto: any) {
-    const user = await this.repo.create(dto);
-    await this.repo.initProfile(user.id);
-    return user;
-  }
-}
-
+@Inject(DrizzleDatabase)
 export class UserRepository {
   constructor(private readonly db: DrizzleDatabaseFacade<AppDatabase>) {}
 
@@ -108,6 +99,18 @@ export class UserRepository {
 
   async initProfile(userId: string) {
     return this.db.insert(profiles).values({ userId });
+  }
+}
+
+@Inject(UserRepository)
+export class UserService {
+  constructor(private readonly repo: UserRepository) {}
+
+  @Transaction()
+  async onboardUser(dto: any) {
+    const user = await this.repo.create(dto);
+    await this.repo.initProfile(user.id);
+    return user;
   }
 }
 ```

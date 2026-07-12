@@ -80,23 +80,14 @@ export class AppModule {}
 `@Transaction()` 데코레이터는 서비스 레이어에서 트랜잭션 경계를 정의하는 권장 방법입니다. 이 데코레이터가 적용된 메서드 내부에서 발생하는 모든 리포지토리 호출은 동일한 Drizzle 트랜잭션을 공유합니다.
 
 ```ts
+import { Inject } from '@fluojs/core';
 import { Transaction, DrizzleDatabase, type DrizzleDatabaseFacade } from '@fluojs/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { users, profiles } from './schema';
 
 type AppDatabase = ReturnType<typeof drizzle>;
 
-export class UserService {
-  constructor(private readonly repo: UserRepository) {}
-
-  @Transaction()
-  async onboardUser(dto: any) {
-    const user = await this.repo.create(dto);
-    await this.repo.initProfile(user.id);
-    return user;
-  }
-}
-
+@Inject(DrizzleDatabase)
 export class UserRepository {
   constructor(private readonly db: DrizzleDatabaseFacade<AppDatabase>) {}
 
@@ -108,6 +99,18 @@ export class UserRepository {
 
   async initProfile(userId: string) {
     return this.db.insert(profiles).values({ userId });
+  }
+}
+
+@Inject(UserRepository)
+export class UserService {
+  constructor(private readonly repo: UserRepository) {}
+
+  @Transaction()
+  async onboardUser(dto: any) {
+    const user = await this.repo.create(dto);
+    await this.repo.initProfile(user.id);
+    return user;
   }
 }
 ```
