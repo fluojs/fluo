@@ -42,6 +42,35 @@ permission:
     'exit *': allow
     'printf *': allow
     'command -v *': allow
+    'gh api *': allow
+    'rmdir *': allow
+    'bun run *': allow
+    'python -c *': allow
+    'git fetch *': allow
+    'git show-ref *': allow
+    'print *': allow
+    'git worktree *': allow
+    'python3 *': allow
+    'nohup *': allow
+    'jobs *': allow
+    'ps *': allow
+    'node *': allow
+    'pnpm --version *': allow
+    'command *': allow
+    'file *': allow
+    'readlink *': allow
+    'pnpm verify:release-readiness *': allow
+    'pgrep *': allow
+    'sleep *': allow
+    'env *': allow
+    'npx *': allow
+    'git ls-remote *': allow
+    'gh pr view *': allow
+    'realpath *': allow
+    'pnpm vitest *': allow
+    'perl *': allow
+    'pnpm exec biome *': allow
+    'kill *': allow
     'pnpm *': allow
     'pnpm publish*': deny
     'base64 *': allow
@@ -186,6 +215,35 @@ permission:
     'exit *': allow
     'printf *': allow
     'command -v *': allow
+    'gh api *': allow
+    'rmdir *': allow
+    'bun run *': allow
+    'python -c *': allow
+    'git fetch *': allow
+    'git show-ref *': allow
+    'print *': allow
+    'git worktree *': allow
+    'python3 *': allow
+    'nohup *': allow
+    'jobs *': allow
+    'ps *': allow
+    'node *': allow
+    'pnpm --version *': allow
+    'command *': allow
+    'file *': allow
+    'readlink *': allow
+    'pnpm verify:release-readiness *': allow
+    'pgrep *': allow
+    'sleep *': allow
+    'env *': allow
+    'npx *': allow
+    'git ls-remote *': allow
+    'gh pr view *': allow
+    'realpath *': allow
+    'pnpm vitest *': allow
+    'perl *': allow
+    'pnpm exec biome *': allow
+    'kill *': allow
     'pnpm *': allow
     'base64 *': allow
     'nl *': allow
@@ -206,8 +264,6 @@ permission:
     # OpenCode applies the last matching rule, so broad allows must stay before specific denies.
     'git *': allow
     'GIT_MASTER=1 git *': allow
-    'git merge*': deny
-    'git rebase*': deny
     'git reset': deny
     'git reset *': deny
     'git clean*': deny
