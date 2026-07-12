@@ -100,6 +100,8 @@ await app.listen();
 
 `packages/platform-nodejs/src/index.test.ts` and `packages/platform-nodejs/src/lifecycle.test.ts` are the package-local regression targets for the documented Node.js contract. The adapter portability suite runs the shared `createHttpAdapterPortabilityHarness(...)` checks for malformed cookie preservation, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body exclusion, multipart total-size defaults, SSE framing, response stream drain settlement, host and HTTPS startup logging, and shutdown signal listener cleanup.
 
+This package exposes an `HttpApplicationAdapter`; it is not a runtime-managed `PlatformComponent` registered under `platform.components`. Therefore the generic `createPlatformConformanceHarness(...)` component lifecycle checks are outside this package's supported contract, while `createHttpAdapterPortabilityHarness(...)` is the applicable shared harness.
+
 The same regression targets also cover the package-specific public surface, type aliases, adapter-first startup, lifecycle option validation, observed listen retries, active-request bounded drain, normal and failed signal-driven shutdown, `process.env.PORT` isolation, zero and default `maxBodySize` boundaries, idle keep-alive shutdown, mixed-case JSON and multipart content-type parsing, `x-correlation-id` request ID fallback, and server-backed realtime capability exposure. Keep README example pointers aligned with those test files and the Node.js chapter examples below when changing startup behavior.
 
 ## Public API Overview
