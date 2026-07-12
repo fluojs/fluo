@@ -391,14 +391,90 @@ describe('@fluojs/mongoose', () => {
     ]);
   });
 
+  it('waits for the original request callback before aborting its session and disposing the connection', async () => {
+    const events: string[] = [];
+    let releaseWork!: () => void;
+    let resolveWorkStarted!: () => void;
+    const workReleased = new Promise<void>((resolve) => {
+      releaseWork = resolve;
+    });
+    const workStarted = new Promise<void>((resolve) => {
+      resolveWorkStarted = resolve;
+    });
+    const session = createFakeSession(events);
+    const connection: MongooseConnectionLike = {
+      async startSession() {
+        events.push('connection:startSession');
+        return session;
+      },
+    };
+    const mongooseModule = MongooseModule.forRoot<typeof connection>({
+      connection,
+      dispose() {
+        events.push('dispose');
+      },
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, { imports: [mongooseModule] });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const mongoose = await app.container.resolve(MongooseConnection<typeof connection>);
+    const controller = new AbortController();
+    const requestTransaction = mongoose.requestTransaction(async () => {
+      events.push('request:work:start');
+      resolveWorkStarted();
+      await workReleased;
+      events.push('request:work:end');
+      return 'late-result';
+    }, controller.signal);
+    const requestTransactionResult = expect(requestTransaction).rejects.toThrow('request aborted during work');
+
+    await workStarted;
+    controller.abort(new Error('request aborted during work'));
+    const closePromise = app.close();
+
+    try {
+      await vi.waitFor(() => {
+        expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+          details: {
+            activeRequestTransactions: 1,
+            activeSessions: 1,
+            lifecycleState: 'shutting-down',
+          },
+        });
+      });
+      expect(events).toEqual(['connection:startSession', 'transaction:start', 'request:work:start']);
+    } finally {
+      releaseWork();
+      await Promise.allSettled([requestTransaction, closePromise]);
+    }
+
+    await requestTransactionResult;
+    expect(events).toEqual([
+      'connection:startSession',
+      'transaction:start',
+      'request:work:start',
+      'request:work:end',
+      'transaction:abort',
+      'session:end',
+      'dispose',
+    ]);
+  });
+
   it('reports lifecycle status while shutdown drains request transaction sessions', async () => {
     const events: string[] = [];
     let resolveRequestStarted!: () => void;
+    let releaseRequestWork!: () => void;
     let resolveEndSessionStarted!: () => void;
     let resolveEndSession!: () => void;
 
     const requestStarted = new Promise<void>((resolve) => {
       resolveRequestStarted = resolve;
+    });
+    const requestWorkReleased = new Promise<void>((resolve) => {
+      releaseRequestWork = resolve;
     });
     const endSessionStarted = new Promise<void>((resolve) => {
       resolveEndSessionStarted = resolve;
@@ -451,8 +527,13 @@ describe('@fluojs/mongoose', () => {
     const openTransaction = mongoose.requestTransaction(async () => {
       events.push('request:open');
       resolveRequestStarted();
-      return new Promise<never>(() => undefined);
+      await requestWorkReleased;
+      events.push('request:done');
+      return 'late-result';
     });
+    const openTransactionResult = expect(openTransaction).rejects.toThrow(
+      'Application shutdown interrupted an open request transaction.',
+    );
 
     await requestStarted;
 
@@ -466,6 +547,18 @@ describe('@fluojs/mongoose', () => {
     });
 
     const closePromise = app.close();
+    await vi.waitFor(() => {
+      expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+        details: {
+          activeRequestTransactions: 1,
+          activeSessions: 1,
+          lifecycleState: 'shutting-down',
+        },
+      });
+    });
+    expect(events).toEqual(['connection:startSession', 'transaction:start', 'request:open']);
+
+    releaseRequestWork();
     await endSessionStarted;
 
     expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
@@ -480,7 +573,7 @@ describe('@fluojs/mongoose', () => {
     resolveEndSession();
 
     await closePromise;
-    await expect(openTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+    await openTransactionResult;
 
     expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
       details: {
@@ -494,6 +587,7 @@ describe('@fluojs/mongoose', () => {
       'connection:startSession',
       'transaction:start',
       'request:open',
+      'request:done',
       'transaction:abort',
       'session:end:start',
       'session:end:done',
@@ -734,8 +828,12 @@ describe('@fluojs/mongoose', () => {
   it('tracks nested request transactions inside manual transactions through shutdown abort', async () => {
     const events: string[] = [];
     let resolveRequestStarted!: () => void;
+    let releaseRequestWork!: () => void;
     const requestStarted = new Promise<void>((resolve) => {
       resolveRequestStarted = resolve;
+    });
+    const requestWorkReleased = new Promise<void>((resolve) => {
+      releaseRequestWork = resolve;
     });
     const session = createFakeSession(events);
 
@@ -766,8 +864,13 @@ describe('@fluojs/mongoose', () => {
       mongoose.requestTransaction(async () => {
         events.push('request:open');
         resolveRequestStarted();
-        return new Promise<never>(() => undefined);
+        await requestWorkReleased;
+        events.push('request:done');
+        return 'late-result';
       }),
+    );
+    const openTransactionResult = expect(openTransaction).rejects.toThrow(
+      'Application shutdown interrupted an open request transaction.',
     );
 
     await requestStarted;
@@ -781,8 +884,21 @@ describe('@fluojs/mongoose', () => {
     });
 
     const closePromise = app.close();
+    await vi.waitFor(() => {
+      expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+        details: {
+          activeRequestTransactions: 1,
+          activeSessions: 1,
+          lifecycleState: 'shutting-down',
+        },
+      });
+    });
+    expect(events).not.toContain('transaction:abort');
+    expect(events).not.toContain('dispose');
 
-    await expect(openTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+    releaseRequestWork();
+
+    await openTransactionResult;
     await closePromise;
 
     expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
@@ -796,6 +912,7 @@ describe('@fluojs/mongoose', () => {
       'connection:startSession',
       'transaction:start',
       'request:open',
+      'request:done',
       'transaction:abort',
       'session:end',
       'dispose',
@@ -1084,6 +1201,61 @@ describe('@fluojs/mongoose', () => {
     });
   });
 
+  it('tracks delegated startup before same-turn shutdown snapshots lifecycle work', async () => {
+    const events: string[] = [];
+    let releaseTransactionStartup!: () => void;
+    const transactionStartupReleased = new Promise<void>((resolve) => {
+      releaseTransactionStartup = resolve;
+    });
+    const session = createFakeSession(events);
+
+    const connection: MongooseConnectionLike = {
+      async transaction(fn) {
+        events.push('connection:transaction:start');
+        await transactionStartupReleased;
+
+        try {
+          return await fn(session);
+        } finally {
+          await session.endSession();
+          events.push('connection:transaction:cleanup');
+        }
+      },
+    };
+
+    const mongoose = new MongooseConnection<typeof connection>(connection, () => {
+      events.push('dispose');
+    });
+    const requestTransaction = mongoose.requestTransaction(async () => {
+      events.push('request:work');
+      return 'late-result';
+    });
+    const shutdownPromise = mongoose.onApplicationShutdown();
+
+    try {
+      await expect(requestTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+      await Promise.resolve();
+
+      expect(events).toEqual(['connection:transaction:start']);
+      expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+        details: {
+          activeSessions: 1,
+          lifecycleState: 'shutting-down',
+        },
+      });
+    } finally {
+      releaseTransactionStartup();
+      await Promise.allSettled([requestTransaction, shutdownPromise]);
+    }
+
+    expect(events).toEqual([
+      'connection:transaction:start',
+      'session:end',
+      'connection:transaction:cleanup',
+      'dispose',
+    ]);
+  });
+
   it('rejects new manual and request transactions after shutdown begins', async () => {
     const events: string[] = [];
     let resolveDisposeStarted!: () => void;
@@ -1217,8 +1389,16 @@ describe('@fluojs/mongoose', () => {
 
   it('waits for connection.transaction request session cleanup before dispose on shutdown', async () => {
     const events: string[] = [];
+    let releaseRequestWork!: () => void;
+    let resolveRequestStarted!: () => void;
     let resolveEndSessionStarted!: () => void;
     let resolveEndSession!: () => void;
+    const requestWorkReleased = new Promise<void>((resolve) => {
+      releaseRequestWork = resolve;
+    });
+    const requestStarted = new Promise<void>((resolve) => {
+      resolveRequestStarted = resolve;
+    });
     const endSessionStarted = new Promise<void>((resolve) => {
       resolveEndSessionStarted = resolve;
     });
@@ -1277,17 +1457,36 @@ describe('@fluojs/mongoose', () => {
     const app = await bootstrapApplication({ rootModule: AppModule });
     const mongoose = await app.container.resolve(MongooseConnection<typeof connection>);
 
-    const openTransaction = mongoose.requestTransaction(async () => new Promise<never>(() => undefined));
+    const openTransaction = mongoose.requestTransaction(async () => {
+      events.push('request:work:start');
+      resolveRequestStarted();
+      await requestWorkReleased;
+      events.push('request:work:end');
+      return 'late-result';
+    });
     const openTransactionResult = expect(openTransaction).rejects.toThrow(
       'Application shutdown interrupted an open request transaction.',
     );
+    await requestStarted;
     const closePromise = app.close();
 
+    await vi.waitFor(() => {
+      expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+        details: {
+          activeRequestTransactions: 1,
+          activeSessions: 1,
+          lifecycleState: 'shutting-down',
+        },
+      });
+    });
+    expect(events).toEqual(['connection:transaction:start', 'transaction:start', 'request:work:start']);
+
+    releaseRequestWork();
     await endSessionStarted;
 
     expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
       details: {
-        activeRequestTransactions: 0,
+        activeRequestTransactions: 1,
         activeSessions: 1,
         lifecycleState: 'shutting-down',
       },
@@ -1295,6 +1494,8 @@ describe('@fluojs/mongoose', () => {
     expect(events).toEqual([
       'connection:transaction:start',
       'transaction:start',
+      'request:work:start',
+      'request:work:end',
       'transaction:abort',
       'session:end:start',
     ]);
@@ -1304,9 +1505,19 @@ describe('@fluojs/mongoose', () => {
     await closePromise;
     await openTransactionResult;
 
+    expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        activeRequestTransactions: 0,
+        activeSessions: 0,
+        lifecycleState: 'stopped',
+      },
+    });
+
     expect(events).toEqual([
       'connection:transaction:start',
       'transaction:start',
+      'request:work:start',
+      'request:work:end',
       'transaction:abort',
       'session:end:start',
       'session:end:done',

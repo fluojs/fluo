@@ -363,16 +363,46 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
-  it('accepts OpenAPI package-surface guidance when context and package regression tests change together', async () => {
+  it('accepts OpenAPI contract guidance when bilingual surfaces and regression enforcement change together', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 
     expect(() =>
       enforceContractCompanionUpdates([
+        'packages/openapi/README.md',
+        'packages/openapi/README.ko.md',
+        'docs/architecture/openapi.md',
+        'docs/architecture/openapi.ko.md',
+        'docs/contracts/nestjs-parity-gaps.md',
+        'docs/contracts/nestjs-parity-gaps.ko.md',
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
         'docs/reference/package-surface.md',
         'docs/reference/package-surface.ko.md',
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
+        'book/beginner/ch10-openapi.md',
+        'book/beginner/ch10-openapi.ko.md',
         'packages/openapi/src/openapi-module.test.ts',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('accepts GraphQL contract guidance when bilingual surfaces and regression enforcement change together', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'packages/graphql/README.md',
+        'packages/graphql/README.ko.md',
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'book/intermediate/ch18-graphql.md',
+        'book/intermediate/ch18-graphql.ko.md',
+        'packages/graphql/src/pipeline/input-pipeline.test.ts',
+        'packages/graphql/src/schema/schema.test.ts',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();

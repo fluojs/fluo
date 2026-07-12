@@ -1759,6 +1759,92 @@ describe('@fluojs/platform-bun', () => {
     await closePromise;
   });
 
+  it('drains accepted requests while an asynchronous realtime binding resolves a response', async () => {
+    const mockBun = installMockBun();
+    const adapter = new BunHttpApplicationAdapter();
+    const bindingStarted = createDeferred<void>();
+    const bindingRelease = createDeferred<void>();
+    let closeSettled = false;
+
+    adapter.configureRealtimeBinding({
+      fetch: async () => {
+        bindingStarted.resolve();
+        await bindingRelease.promise;
+        return new Response('handled by realtime binding', { status: 202 });
+      },
+      websocket: {},
+    });
+
+    await adapter.listen({
+      dispatch: vi.fn(async () => undefined),
+    });
+
+    const responsePromise = mockBun.lastServer?.fetch(new Request('http://127.0.0.1:3000/realtime'));
+    await bindingStarted.promise;
+
+    const closePromise = adapter.close().then(() => {
+      closeSettled = true;
+    });
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect(closeSettled).toBe(false);
+
+    bindingRelease.resolve();
+
+    await expect(responsePromise).resolves.toMatchObject({ status: 202 });
+    await closePromise;
+    expect(closeSettled).toBe(true);
+  });
+
+  it('preserves HTTP fallback when close begins during asynchronous realtime binding work', async () => {
+    const mockBun = installMockBun();
+    const adapter = new BunHttpApplicationAdapter();
+    const bindingStarted = createDeferred<void>();
+    const bindingRelease = createDeferred<void>();
+    const dispatcher = {
+      dispatch: vi.fn(async (_request: FrameworkRequest, response: FrameworkResponse) => {
+        response.setStatus(200);
+        await response.send({ fallback: 'http' });
+      }),
+    };
+    let closeSettled = false;
+
+    adapter.configureRealtimeBinding({
+      fetch: async () => {
+        bindingStarted.resolve();
+        await bindingRelease.promise;
+        return undefined;
+      },
+      websocket: {},
+    });
+
+    await adapter.listen(dispatcher);
+
+    const responsePromise = mockBun.lastServer?.fetch(new Request('http://127.0.0.1:3000/fallback'));
+    await bindingStarted.promise;
+
+    const closePromise = adapter.close().then(() => {
+      closeSettled = true;
+    });
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect(closeSettled).toBe(false);
+
+    bindingRelease.resolve();
+
+    await expect(responsePromise).resolves.toBeInstanceOf(Response);
+    const response = await responsePromise;
+    expect(response?.status).toBe(200);
+    await expect(response?.json()).resolves.toEqual({ fallback: 'http' });
+    expect(dispatcher.dispatch).toHaveBeenCalledTimes(1);
+    await closePromise;
+    expect(closeSettled).toBe(true);
+  });
+
   it('falls back to HTTP dispatch when a websocket binding does not upgrade the request', async () => {
     const mockBun = installMockBun();
     const adapter = new BunHttpApplicationAdapter();

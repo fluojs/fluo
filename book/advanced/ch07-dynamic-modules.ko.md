@@ -143,11 +143,11 @@ export class ConfigReloadModule {
 
 문법을 걷어 내고 보면 `forRoot(...)` helper는 보통 두 가지 일을 합니다. 옵션으로부터 안정적인 provider definition을 계산하고, 그 definition을 새로운 module type에 묶습니다.
 
-`PrismaModule.forRoot()`는 아주 좋은 참고 구현입니다. `path:packages/prisma/src/module.ts:141-168`는 새로운 class를 만들고, `defineModule(...)`을 호출해 의도된 public provider set을 export하며, 정규화된 옵션 value provider를 내부 normalized-options token 아래에 등록합니다. 나머지 runtime provider(예: 데이터베이스 클라이언트 자체)는 팩토리에 하드코딩되지 않고 모두 이 내부 options token으로부터 DI를 통해 파생됩니다.
+`PrismaModule.forRoot()`는 아주 좋은 참고 구현입니다. `path:packages/prisma/src/module.ts:161-195`는 새로운 class를 만들고, `defineModule(...)`을 호출해 의도된 public provider set을 export하며, 정규화된 옵션 value provider를 내부 normalized-options token 아래에 등록합니다. 나머지 runtime provider(예: 데이터베이스 클라이언트 자체)는 이 내부 options token으로부터 DI를 통해 파생됩니다.
 
 정적 helper의 핵심 형태는 `buildPrismaModule()`에서 바로 보입니다.
 
-`path:packages/prisma/src/module.ts:141-168`
+`path:packages/prisma/src/module.ts:161-195`
 ```typescript
 function buildPrismaModule<
   TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
@@ -159,13 +159,25 @@ function buildPrismaModule<
   class PrismaRootModuleDefinition {}
   const normalizedOptions = normalizePrismaModuleOptions(options);
 
+  if (normalizedOptions.name !== undefined && normalizedOptions.global) {
+    throw new Error('Named Prisma registrations are scoped and cannot be registered globally.');
+  }
+
   return defineModule(PrismaRootModuleDefinition, {
     exports: normalizedOptions.name === undefined
+      ? [
+        PrismaService,
+        PrismaTransactionInterceptor,
+        getPrismaServiceToken(),
+        getPrismaClientToken(),
+        getPrismaOptionsToken(),
+      ]
       : [
         getPrismaServiceToken(normalizedOptions.name),
         getPrismaClientToken(normalizedOptions.name),
         getPrismaOptionsToken(normalizedOptions.name),
       ],
+    global: normalizedOptions.name === undefined ? normalizedOptions.global : false,
     providers: createPrismaRuntimeProviders<TClient, TTransactionClient, TTransactionOptions>({
       provide: getPrismaNormalizedOptionsToken(normalizedOptions.name),
       useValue: normalizedOptions,
@@ -174,7 +186,7 @@ function buildPrismaModule<
 }
 ```
 
-이 코드는 `forRoot()`가 실질적으로 options provider를 먼저 만들고, 그 provider를 포함한 runtime provider 배열을 새 module class에 묶는 함수임을 보여 줍니다. public export 목록도 같은 자리에서 고정되므로, helper 호출 하나가 등록 표면 전체를 설명합니다.
+이 코드는 `forRoot()`가 실질적으로 options provider를 먼저 만들고, 그 provider를 포함한 runtime provider 배열을 새 module class에 묶는 함수임을 보여 줍니다. 이름 없는 등록은 `PrismaService`, deprecated 호환성 interceptor, default token을 export하고, named registration은 대응되는 token만 export하면서 scoped로 유지됩니다. 따라서 helper 호출 하나가 등록 표면 전체를 설명합니다.
 
 이 "옵션 생산"과 "서비스 생산"의 분리는 Fluo의 중요한 설계 특징입니다. 정규화된 옵션을 실제 provider로 등록하면, 모듈 구성이 패키지 내부 provider factory에서 관찰 가능한 값이 됩니다. 소비자 코드는 `PrismaService`, `PRISMA_CLIENT`, `PRISMA_OPTIONS`, 이름 있는 token helper처럼 `@fluojs/prisma`가 export하는 공개 facade token만 주입해야 합니다. normalized-options token은 내부 등록 identity와 visibility metadata도 담기 때문에 의도적으로 구현 세부사항으로 남습니다.
 
