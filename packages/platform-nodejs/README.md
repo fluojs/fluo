@@ -98,9 +98,9 @@ await app.listen();
 
 ## Conformance Coverage
 
-`packages/platform-nodejs/src/index.test.ts` is the package-local regression target for the documented Node.js contract. It runs the shared `createHttpAdapterPortabilityHarness(...)` checks for malformed cookie preservation, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body exclusion, multipart total-size defaults, SSE framing, response stream drain settlement, host and HTTPS startup logging, and shutdown signal listener cleanup.
+`packages/platform-nodejs/src/index.test.ts`, `packages/platform-nodejs/src/platform-conformance.test.ts`, and `packages/platform-nodejs/src/lifecycle.test.ts` are the package-local regression targets for the documented Node.js contract. They run the shared `createPlatformConformanceHarness(...)` and `createHttpAdapterPortabilityHarness(...)` checks for lifecycle determinism, diagnostics and snapshot safety, malformed cookie preservation, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body exclusion, multipart total-size defaults, SSE framing, response stream drain settlement, host and HTTPS startup logging, and shutdown signal listener cleanup.
 
-The same file also covers the package-specific public surface, type aliases, adapter-first startup, lifecycle option validation, listen retry behavior, idle keep-alive shutdown, `maxBodySize` failures, mixed-case JSON and multipart content-type parsing, `x-correlation-id` request ID fallback, and server-backed realtime capability exposure. Keep README example pointers aligned with that test file and the Node.js chapter examples below when changing startup behavior.
+The same regression targets also cover the package-specific public surface, type aliases, adapter-first startup, lifecycle option validation, observed listen retries, active-request bounded drain, normal and failed signal-driven shutdown, `process.env.PORT` isolation, zero and default `maxBodySize` boundaries, idle keep-alive shutdown, mixed-case JSON and multipart content-type parsing, `x-correlation-id` request ID fallback, and server-backed realtime capability exposure. Keep README example pointers aligned with those test files and the Node.js chapter examples below when changing startup behavior.
 
 ## Public API Overview
 
@@ -122,4 +122,6 @@ The same file also covers the package-specific public surface, type aliases, ada
 ## Example Sources
 
 - `packages/platform-nodejs/src/index.test.ts`
+- `packages/platform-nodejs/src/platform-conformance.test.ts`
+- `packages/platform-nodejs/src/lifecycle.test.ts`
 - `book/intermediate/ch21-express-node.md`

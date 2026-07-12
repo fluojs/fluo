@@ -9,6 +9,10 @@ export default createFluoVitestWorkspaceConfig(new URL('../../', import.meta.url
         find: '@fluojs/testing/http-adapter-portability',
         replacement: fileURLToPath(new URL('../../packages/testing/src/portability/http-adapter-portability.ts', import.meta.url)),
       },
+      {
+        find: '@fluojs/testing/platform-conformance',
+        replacement: fileURLToPath(new URL('../../packages/testing/src/conformance/platform-conformance.ts', import.meta.url)),
+      },
     ],
   },
   test: {
