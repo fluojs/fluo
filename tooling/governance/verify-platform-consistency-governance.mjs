@@ -602,7 +602,9 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // the root package's non-goals for Vite assets, client navigation, RSC,
   // server functions, and React-owned route-table models, plus OpenAPI's
   // explicit descriptor adoption, response metadata, Swagger UI asset, and
-  // path/method collision-precedence boundaries.
+  // path/method collision-precedence boundaries, plus GraphQL's explicit
+  // resolver/provider wiring, root-only operations, output type declarations,
+  // and server-backed WebSocket migration boundaries.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
