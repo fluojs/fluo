@@ -32,7 +32,7 @@ Decorator-based OpenAPI integration exists to reduce this kind of drift. In fluo
 - DTOs already define the request shape.
 - Response types and security hints are already part of the business logic.
 
-With the `@fluojs/openapi` package, you can attach only the needed information as "tags" to those existing structures. When a DTO changes, the OpenAPI spec updates automatically. When you add a new route, it appears in the documentation right away. When documentation stays close to the implementation, literally on the line above the code, the chance of missing an update drops sharply.
+With the `@fluojs/openapi` package, you can attach only the needed information as "tags" to those existing structures. When an explicitly registered request DTO changes, its generated schema updates with it. A new route appears only after its controller is listed in `sources` or its handler mapping is passed in `descriptors`. When documentation stays close to the implementation, literally on the line above the code, the chance of missing an update drops sharply.
 
 ### What OpenAPI Gives You
 
@@ -77,7 +77,7 @@ The `OpenApiModule.forRoot()` method is the main entrypoint. It receives a confi
 - `title`: The human-friendly name of the API.
 - `version`: The semantic version of the API, for example `1.0.0`.
 - `sources`: The most important part. fluo values explicitness. You directly define the Controllers the OpenAPI builder should inspect as `HandlerSource[]` entries, such as `{ controllerToken: PostsController }`.
-- `ui: true`: This setting makes fluo serve a polished Swagger UI at a specific endpoint.
+- `ui: true`: This opt-in makes fluo serve Swagger UI at `/docs`. Without it, `/openapi.json` remains available but `/docs` returns not found.
 - `descriptors`: For advanced composition, pass prebuilt `HandlerDescriptor[]` values separately from `sources` when you need to bypass controller discovery or merge explicit handler mappings.
 - The module also accepts `securitySchemes`, `extraModels`, `defaultErrorResponsesPolicy`, and `documentTransform`.
 
@@ -94,6 +94,8 @@ Unlike some other frameworks, `OpenApiModule` does not automatically find and do
 You must provide them explicitly through `sources` or `descriptors` in the `forRoot()` configuration. This may look like one extra step, but it gives you complete control over what becomes public. For example, if you have an internal Controller that you do not want to expose externally, leave it out of the `sources` list.
 
 This explicitness matches the rest of the framework's philosophy. **Important things should not be discovered by magic without a visible contract.**
+
+If a descriptor discovered from `sources` and an explicit entry in `descriptors` resolve to the same OpenAPI path and HTTP method, the later descriptor wins. `OpenApiModule` composes discovered sources first and explicit descriptors second, so the explicit descriptor is the intentional override point for a collision.
 
 ## 10.3 Adding Documentation Decorators to FluoBlog
 
@@ -167,7 +169,7 @@ Thanks to this reuse, FluoBlog can now automatically express the following. The 
 
 - **Request Body structure**: Reads fields, types, and constraints directly from `CreatePostDto`, such as "minimum 5 characters."
 - **Path and Query Parameter**: Accurately identifies dynamic URL segments such as `/posts/:id`.
-- **Response expectations**: Even if you do not explicitly write `@ApiResponse`, fluo can infer a default `200` or `201` response shape.
+- **Response expectations**: Without `@ApiResponse`, fluo emits a method-derived default success status (`201` for `POST`, otherwise `200`) and the description `OK`. It does not infer a response body schema from the handler's return value or TypeScript return type.
 - **Security requirements**: Protected routes appear in Swagger UI with a "lock" icon.
 
 When DTOs use validation Decorators such as `@IsString()`, `@IsEmail()`, or `@MinLength(10)`, `OpenApiModule` automatically converts them into OpenAPI constraints. For example, combine `@IsString()` with `@MinLength(10)` to emit a string schema with `minLength: 10` in the generated JSON. This logic is thoroughly tested in `packages/openapi/src/schema-builder.test.ts`.
@@ -250,7 +252,7 @@ Early on, it is better to keep the "one Controller, one tag" pattern. This keeps
 
 ### Advanced UI Customization
 
-`ui: true` provides a good default experience and serves the built-in Swagger UI at `/docs`. For beginner projects, that default is the important part to remember. The main customization hooks in the current package focus on the generated document itself through options such as `documentTransform`, `securitySchemes`, and `extraModels`.
+`ui: true` serves the built-in Swagger UI at `/docs`; UI serving is disabled unless you opt in. The default page uses pinned `swagger-ui-dist` CSS and JavaScript URLs. For offline or CSP-controlled deployments, replace them with `swaggerUiAssets.cssUrl` and `swaggerUiAssets.jsBundleUrl`. Document-level customization remains available through options such as `documentTransform`, `securitySchemes`, and `extraModels`.
 
 ## 10.5 Versioning and Deterministic Docs Output
 
@@ -296,8 +298,9 @@ Following this pattern gives users a clean and organized documentation experienc
 ## Summary
 
 - `OpenApiModule` converts Controller and DTO metadata into a standard OpenAPI 3.1.0 spec.
+- Documented handlers must be registered explicitly through `sources`, `descriptors`, or both; explicit descriptors override colliding source operations.
 - Documentation Decorators such as `@ApiTag` and `@ApiOperation` provide human context that code alone cannot convey.
-- FluoBlog now exposes machine-readable `/openapi.json` and a human-readable `/docs` interactive UI.
+- FluoBlog now exposes machine-readable `/openapi.json` and, because it opts into `ui: true`, a human-readable `/docs` interactive UI.
 - Metadata reuse keeps validation rules and DTO shapes synchronized automatically with the documentation.
 - Deterministic documentation output helps the API "contract" stay stable and professional.
 - Part 1 is now complete. You have an HTTP API with routing, validation, serialization, protection, and documentation.

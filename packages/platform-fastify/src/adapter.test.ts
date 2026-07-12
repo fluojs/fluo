@@ -1922,14 +1922,16 @@ describe('@fluojs/platform-fastify', () => {
   });
 
   it('waits for an in-flight close before resolving listen with a ready listener', async () => {
-    const port = await findAvailablePort();
-    const requestStarted = createDeferred<void>();
-    const releaseRequest = createDeferred<void>();
-    const adapter = createFastifyAdapter({ port }) as FastifyHttpApplicationAdapter;
+    const closeStarted = createDeferred<void>();
+    const releaseClose = createDeferred<void>();
+    const adapter = createFastifyAdapter({ port: 0 }) as FastifyHttpApplicationAdapter;
+    const app: FastifyInstance = Reflect.get(adapter, 'app');
+    app.addHook('preClose', async () => {
+      closeStarted.resolve();
+      await releaseClose.promise;
+    });
     const firstDispatcher: Dispatcher = {
       async dispatch(_request, response) {
-        requestStarted.resolve();
-        await releaseRequest.promise;
         await response.send({ dispatcher: 'first' });
       },
     };
@@ -1940,9 +1942,9 @@ describe('@fluojs/platform-fastify', () => {
     };
 
     await adapter.listen(firstDispatcher);
-    const activeRequest = requestHttp({ method: 'GET', path: '/', port });
-    await requestStarted.promise;
+    const firstResponse = await requestHttp({ method: 'GET', path: '/', port: getBoundPort(adapter.getServer()) });
     const closePromise = adapter.close();
+    await closeStarted.promise;
     const relistenPromise = adapter.listen(secondDispatcher);
     let relistenSettled = false;
     const observedRelisten = relistenPromise.finally(() => {
@@ -1953,20 +1955,18 @@ describe('@fluojs/platform-fastify', () => {
       await Promise.resolve();
       expect(relistenSettled).toBe(false);
 
-      releaseRequest.resolve();
-      const firstResponse = await activeRequest;
-      await closePromise;
-      await observedRelisten;
+      releaseClose.resolve();
+      await Promise.all([closePromise, observedRelisten]);
 
       expect(firstResponse.statusCode).toBe(200);
       expect(JSON.parse(firstResponse.body)).toEqual({ dispatcher: 'first' });
 
-      const secondResponse = await requestHttp({ method: 'GET', path: '/', port });
+      const secondResponse = await requestHttp({ method: 'GET', path: '/', port: getBoundPort(adapter.getServer()) });
       expect(secondResponse.statusCode).toBe(200);
       expect(JSON.parse(secondResponse.body)).toEqual({ dispatcher: 'second' });
     } finally {
-      releaseRequest.resolve();
-      await Promise.allSettled([activeRequest, closePromise, observedRelisten]);
+      releaseClose.resolve();
+      await Promise.allSettled([closePromise, observedRelisten]);
       await adapter.close();
     }
   });

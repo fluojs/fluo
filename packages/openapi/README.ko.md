@@ -2,7 +2,7 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-fluo를 위한 데코레이터 기반 OpenAPI 3.1.0 문서 생성 패키지입니다. 별도의 수동 동기화 없이 API 문서를 자동으로 생성하고 제공하며, 선택적으로 Swagger UI를 지원합니다.
+fluo를 위한 descriptor-driven OpenAPI 3.1.0 문서 생성 패키지입니다. 명시적 문서 metadata를 위한 standard decorator와 선택적 Swagger UI를 지원합니다.
 
 ## 목차
 
@@ -25,7 +25,7 @@ pnpm add @fluojs/openapi
 - **Swagger UI**를 사용하여 REST API에 대한 대화형 문서를 제공하고 싶을 때.
 - 클라이언트 생성 또는 테스트를 위해 기계 읽기 가능한 **OpenAPI 3.1.0** 명세가 필요할 때.
 - 표준 데코레이터를 사용하여 API 문서와 코드를 동기화된 상태로 유지하고 싶을 때.
-- DTO 및 검증 메타데이터를 사용하여 복잡한 요청/응답 모델을 문서화해야 할 때.
+- DTO binding/validation metadata에서 request model을 파생하고 response model을 명시적으로 선언해야 할 때.
 
 ## 빠른 시작
 
@@ -74,7 +74,7 @@ await app.listen(3000);
 ## 핵심 기능
 
 ### 자동 명세 생성
-fluo는 컨트롤러와 메서드를 조사하여 전체 OpenAPI 3.1.0 문서를 작성합니다. 여기에는 경로, 메서드, 파라미터 및 요청 바디가 포함됩니다.
+fluo는 `sources`와 `descriptors`로 전달된 controller 및 handler descriptor만 조사하여 OpenAPI 3.1.0 문서를 작성합니다. 이 명시적 입력 집합의 경로, 메서드, 파라미터, 요청 바디가 포함되며, controller를 application module에 import하는 것만으로는 자동 추가되지 않습니다.
 
 ### 응답 미디어 타입
 HTTP 핸들러가 `@fluojs/http`의 `@Produces(...)`를 선언하면, 생성된 OpenAPI 응답은 해당 미디어 타입을 response `content` 키로 사용합니다. 예를 들어 `@ApiResponse(...)` 스키마가 있는 핸들러에 `@Produces('application/json', 'application/problem+json')`를 붙이면, `application/json`만으로 되돌아가지 않고 두 미디어 타입 모두 같은 응답 스키마로 방출합니다.
@@ -82,8 +82,11 @@ HTTP 핸들러가 `@fluojs/http`의 `@Produces(...)`를 선언하면, 생성된 
 ### 기본 성공 응답
 핸들러가 `@ApiResponse(...)` 또는 `@HttpCode(...)`를 선언하지 않으면 OpenAPI builder는 메서드만 기준으로 한 암묵적 기본값을 적용합니다. `POST` 핸들러는 기본적으로 `201`, 그 밖의 메서드는 `200`을 사용합니다. `DELETE`와 `OPTIONS`처럼 본문이 없거나 런타임 결과에 따라 달라질 수 있는 경우에는 `@HttpCode(...)` 또는 `@ApiResponse(...)`로 의도한 성공 상태를 명시하세요.
 
+### 응답 문서화 경계
+Builder는 handler 반환값이나 TypeScript 반환 타입을 검사해 response content를 추론하지 않습니다. 기본 success response에는 status와 `OK` description만 포함됩니다. OpenAPI 문서에 response body를 설명해야 하면 `@ApiResponse(...)`에 `schema` 또는 `type`을 추가하세요. 둘 중 어느 것도 없으면 명시적 response도 status와 description만 포함합니다.
+
 ### 통합 DTO 스키마
-`@fluojs/validation`과 원활하게 작동합니다. DTO 클래스는 자동으로 OpenAPI 컴포넌트로 변환되어 적절한 오퍼레이션에서 참조됩니다.
+`@fluojs/validation`과 함께 DTO binding 및 validation metadata에서 request schema를 파생합니다. Response DTO는 `@ApiResponse(..., { type: ResponseDto })` 또는 `extraModels`처럼 명시적으로 참조할 때만 OpenAPI component가 됩니다.
 
 ### 버전 관리 지원
 `@fluojs/http`의 URI 기반 버전 관리를 자동으로 처리합니다. OpenAPI 경로에 해결된 버전 경로가 올바르게 반영됩니다.
