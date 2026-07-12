@@ -82,15 +82,18 @@ Request cancellation 또는 shutdown이 callback 시작 후 boundary를 abort하
 `@Transaction()` 데코레이터는 서비스 레이어에서 트랜잭션 경계를 정의하는 권장 방법입니다. 이 데코레이터가 적용된 메서드 내부에서 발생하는 모든 리포지토리 호출은 동일한 MongoDB 세션을 공유합니다.
 
 ```ts
-import { Transaction } from '@fluojs/mongoose';
-import { UserRepository } from './user.repository';
+import { MongooseConnection, Transaction, type MongooseModelFacade } from '@fluojs/mongoose';
+
+type UserDocument = { readonly _id: string; readonly name: string };
+type UserCreateModel = MongooseModelFacade<Promise<readonly [UserDocument]>>;
+type ProfileCreateModel = MongooseModelFacade<Promise<readonly { readonly userId: string }[]>>;
 
 export class UserService {
   constructor(private readonly repo: UserRepository) {}
 
   @Transaction()
   async onboardUser(dto: CreateUserDto) {
-    const user = await this.repo.create(dto);
+    const [user] = await this.repo.create(dto);
     await this.repo.initProfile(user._id);
     return user;
   }
@@ -99,15 +102,15 @@ export class UserService {
 export class UserRepository {
   constructor(private readonly conn: MongooseConnection) {}
 
-  async create(data: any) {
+  async create(data: CreateUserDto) {
     // @Transaction() 내부에서 conn.model()은 세션 인지형 facade를 반환합니다.
     // create, find, findOne, aggregate, bulkWrite 등의 작업은
     // 자동으로 활성 트랜잭션에 참여합니다.
-    return this.conn.model('User').create(data);
+    return this.conn.model<UserCreateModel>('User').create([data]);
   }
 
-  async initProfile(userId: any) {
-    return this.conn.model('Profile').create({ userId });
+  async initProfile(userId: string) {
+    return this.conn.model<ProfileCreateModel>('Profile').create([{ userId }]);
   }
 }
 ```
@@ -165,14 +168,14 @@ await this.conn.transaction(async () => {
 
 래핑된 연결이 `connection.transaction(...)`을 구현하고 있다면 fluo는 이를 엄격한 트랜잭션 경계로 취급합니다. 그렇지 않고 `startSession()`이 없는 경우 트랜잭션은 기본값(`strictTransactions: false`)에서 callback 직접 실행으로 fail-open합니다. 이 모드는 local fake나 staged migration에는 유용하지만 rollback 원자성은 제공하지 않습니다. 열린 fail-open 수동 `transaction(...)` callback도 종료 중에 drain되므로 `dispose(connection)`은 해당 callback이 settle된 뒤 실행됩니다. MongoDB transaction 보장이 필요한 production 흐름에서는 `strictTransactions: true`를 설정하세요. 그러면 transaction 지원 누락이 readiness `not-ready`와 helper 예외로 드러납니다.
 
-지원되는 facade 메서드에서 fluo는 기존 Mongoose 작업 옵션을 보존하고 올바른 options 인자에 ambient `{ session }`만 병합합니다. `create(...)`는 Mongoose의 array overload인 `create([docs], options)`에서만 operation options를 인식합니다. 따라서 positional `create(docA, docB)`의 마지막 문서에 `timestamps` 같은 option-like field가 있어도 해당 인자는 문서로 유지됩니다. 활성 트랜잭션 내부에서 명시적으로 `{ session: null }`을 전달하거나 다른 세션 객체를 사용하면, `findOne(filter, projection, options)`의 세 번째 options 인자를 포함해 의도치 않은 트랜잭션 탈출을 방지하는 세션 충돌 에러를 발생시킵니다.
+지원되는 facade 메서드에서 fluo는 기존 Mongoose 작업 옵션을 보존하고 올바른 options 인자에 ambient `{ session }`만 병합합니다. `create(...)`는 Mongoose의 array overload인 `create([docs], options?)`를 통해서만 session을 주입합니다. Positional `create(docA, docB)` 인자는 마지막 문서에 `timestamps` 같은 option-like field가 있어도 그대로 전달되며 자동 session 주입을 받지 않습니다. 트랜잭션 참여가 필요하면 array overload를 사용하세요. 활성 트랜잭션 내부에서 명시적으로 `{ session: null }`을 전달하거나 다른 세션 객체를 사용하면, `findOne(filter, projection, options)`의 세 번째 options 인자를 포함해 의도치 않은 트랜잭션 탈출을 방지하는 세션 충돌 에러를 발생시킵니다. Repository code에서 typed operation result가 필요하면 result-specialized `MongooseModelFacade`를 `model<TModel>(...)` 타입 인자로 전달하세요.
 
 ## 공개 API
 
 - `MongooseModule.forRoot(options)` / `MongooseModule.forRootAsync(options)`
 - `MongooseConnection`
 - `MongooseConnection.createPlatformStatusSnapshot()` — platform observability surface를 위해 health/readiness, resource ownership, 활성 request/session drain 수, strict transaction 지원 진단을 보고합니다.
-- `MongooseConnection.model(name, ...args)` — 트랜잭션 밖에서는 callable `MongooseModelFacade`를 반환하고, 활성 트랜잭션 안에서는 underlying Mongoose connection을 변형하지 않으면서 `create`, `find`, `findOne`, `aggregate`, `bulkWrite`에 세션을 주입하는 버전을 반환합니다.
+- `MongooseConnection.model<TModel>(name, ...args)` — 트랜잭션 밖에서는 callable하고 result-specializable한 `MongooseModelFacade`를 반환하고, 활성 트랜잭션 안에서는 underlying Mongoose connection을 변형하지 않으면서 `create`, `find`, `findOne`, `aggregate`, `bulkWrite`에 세션을 주입하는 버전을 반환합니다.
 - `Transaction`
 - `MongooseTransactionInterceptor` — deprecated request-wide 호환성 interceptor입니다. 새 코드에서는 서비스 `@Transaction()` 또는 명시적 `requestTransaction(...)`을 우선 사용하세요.
 - `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, `MONGOOSE_OPTIONS`

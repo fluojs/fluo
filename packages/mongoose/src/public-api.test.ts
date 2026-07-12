@@ -1,6 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 
-import * as mongoosePublicApi from './index.js';
 import type {
   MongooseAsyncModuleOptions,
   MongooseConnectionLike,
@@ -8,6 +7,24 @@ import type {
   MongooseModelFacade,
   MongoosePlatformStatusSnapshotInput,
 } from './index.js';
+import * as mongoosePublicApi from './index.js';
+
+type UserRecord = {
+  readonly id: string;
+  readonly name: string;
+};
+
+type UserModelFacade = MongooseModelFacade<
+  Promise<readonly UserRecord[]>,
+  Promise<readonly UserRecord[]>,
+  Promise<UserRecord | null>,
+  Promise<readonly { readonly count: number }[]>,
+  Promise<{ readonly acknowledged: boolean }>
+>;
+
+function resolveTypedUserModel(handle: MongooseHandleProvider): UserModelFacade {
+  return handle.model<UserModelFacade>('User');
+}
 
 describe('@fluojs/mongoose public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
@@ -41,5 +58,15 @@ describe('@fluojs/mongoose public API surface', () => {
     expectTypeOf<MongooseModelFacade['findOne']>().toBeFunction();
     expectTypeOf<MongooseModelFacade['aggregate']>().toBeFunction();
     expectTypeOf<MongooseModelFacade['bulkWrite']>().toBeFunction();
+    expectTypeOf<ReturnType<UserModelFacade['create']>>().toEqualTypeOf<Promise<readonly UserRecord[]>>();
+    expectTypeOf<ReturnType<UserModelFacade['find']>>().toEqualTypeOf<Promise<readonly UserRecord[]>>();
+    expectTypeOf<ReturnType<UserModelFacade['findOne']>>().toEqualTypeOf<Promise<UserRecord | null>>();
+    expectTypeOf<ReturnType<UserModelFacade['aggregate']>>().toEqualTypeOf<
+      Promise<readonly { readonly count: number }[]>
+    >();
+    expectTypeOf<ReturnType<UserModelFacade['bulkWrite']>>().toEqualTypeOf<
+      Promise<{ readonly acknowledged: boolean }>
+    >();
+    expectTypeOf<ReturnType<typeof resolveTypedUserModel>>().toEqualTypeOf<UserModelFacade>();
   });
 });

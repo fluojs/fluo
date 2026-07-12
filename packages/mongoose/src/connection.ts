@@ -65,15 +65,15 @@ function isObjectLike(value: unknown): value is object {
   return (typeof value === 'object' && value !== null) || typeof value === 'function';
 }
 
-function resolveCreateOptionsIndex(operationArgs: unknown[]): number {
-  if (operationArgs.length === 2 && Array.isArray(operationArgs[0])) {
+function resolveCreateOptionsIndex(operationArgs: unknown[]): number | undefined {
+  if (Array.isArray(operationArgs[0])) {
     return 1;
   }
 
-  return operationArgs.length;
+  return undefined;
 }
 
-function resolveOptionsIndex(operation: PropertyKey, operationArgs: unknown[]): number {
+function resolveOptionsIndex(operation: PropertyKey, operationArgs: unknown[]): number | undefined {
   if (operation === 'create') {
     return resolveCreateOptionsIndex(operationArgs);
   }
@@ -119,6 +119,11 @@ function createAmbientSessionModelFacade<TModel extends MongooseModelFacade>(mod
       return (...args: unknown[]) => {
         const operationArgs = [...args];
         const optionsIndex = resolveOptionsIndex(prop, operationArgs);
+
+        if (optionsIndex === undefined) {
+          return value.apply(target, operationArgs);
+        }
+
         operationArgs[optionsIndex] = resolveSessionOptions(operationArgs[optionsIndex], ambient);
 
         return value.apply(target, operationArgs);
@@ -127,7 +132,11 @@ function createAmbientSessionModelFacade<TModel extends MongooseModelFacade>(mod
   });
 }
 
-async function raceWithAbortAndDrainCallback<T>(fn: () => Promise<T>, signal: AbortSignal): Promise<T> {
+async function raceWithAbortAndDrainCallback<T>(
+  fn: () => Promise<T>,
+  signal: AbortSignal,
+  shouldDrainAfterAbort: () => boolean = () => true,
+): Promise<T> {
   let callback: Promise<T> | undefined;
 
   try {
@@ -136,7 +145,7 @@ async function raceWithAbortAndDrainCallback<T>(fn: () => Promise<T>, signal: Ab
       return callback;
     }, signal);
   } catch (error) {
-    if (signal.aborted && callback) {
+    if (signal.aborted && callback && shouldDrainAfterAbort()) {
       await callback.then(
         () => undefined,
         () => undefined,
@@ -226,10 +235,12 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
   /**
    * Returns a model from the root connection, injecting the ambient transaction session into conservative operations.
    *
+   * @typeParam TModel Consumer-defined facade result contract for the wrapped model.
    * @param name Model name passed to the underlying Mongoose connection.
    * @param args Additional model resolver arguments forwarded unchanged.
    * @returns The real model outside transactions, or a model facade inside an active transaction boundary.
    */
+  model<TModel extends MongooseModelFacade = MongooseModelFacade>(name: string, ...args: unknown[]): TModel;
   model(name: string, ...args: unknown[]): MongooseModelFacade {
     const modelFactory = resolveModelFactory(this.connection);
 
@@ -357,9 +368,16 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
 
     try {
       if (typeof this.connection.transaction === 'function') {
-        return await raceWithAbort(
-          () => this.runConnectionTransaction(() => raceWithAbortAndDrainCallback(fn, abortContext.signal)),
+        let delegatedCallbackStarted = false;
+
+        return await raceWithAbortAndDrainCallback(
+          () =>
+            this.runConnectionTransaction(() => {
+              delegatedCallbackStarted = true;
+              return raceWithAbortAndDrainCallback(fn, abortContext.signal);
+            }),
           abortContext.signal,
+          () => delegatedCallbackStarted,
         );
       }
 

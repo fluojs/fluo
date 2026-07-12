@@ -79,15 +79,18 @@ Nested `requestTransaction(...)` calls opened inside an existing manual `transac
 The `@Transaction()` decorator is the recommended way to define transaction boundaries in your service layer. It ensures that all repository calls made within the decorated method share the same MongoDB session.
 
 ```ts
-import { Transaction } from '@fluojs/mongoose';
-import { UserRepository } from './user.repository';
+import { MongooseConnection, Transaction, type MongooseModelFacade } from '@fluojs/mongoose';
+
+type UserDocument = { readonly _id: string; readonly name: string };
+type UserCreateModel = MongooseModelFacade<Promise<readonly [UserDocument]>>;
+type ProfileCreateModel = MongooseModelFacade<Promise<readonly { readonly userId: string }[]>>;
 
 export class UserService {
   constructor(private readonly repo: UserRepository) {}
 
   @Transaction()
   async onboardUser(dto: CreateUserDto) {
-    const user = await this.repo.create(dto);
+    const [user] = await this.repo.create(dto);
     await this.repo.initProfile(user._id);
     return user;
   }
@@ -96,15 +99,15 @@ export class UserService {
 export class UserRepository {
   constructor(private readonly conn: MongooseConnection) {}
 
-  async create(data: any) {
+  async create(data: CreateUserDto) {
     // model() returns a session-aware facade inside @Transaction().
     // Operations like create, find, findOne, aggregate, and bulkWrite
     // automatically participate in the ambient transaction.
-    return this.conn.model('User').create(data);
+    return this.conn.model<UserCreateModel>('User').create([data]);
   }
 
-  async initProfile(userId: any) {
-    return this.conn.model('Profile').create({ userId });
+  async initProfile(userId: string) {
+    return this.conn.model<ProfileCreateModel>('Profile').create([{ userId }]);
   }
 }
 ```
@@ -162,14 +165,14 @@ await this.conn.transaction(async () => {
 
 If the wrapped connection implements `connection.transaction(...)`, fluo treats that as the strict transaction boundary. Otherwise, when the connection does not implement `startSession()`, transactions use fail-open direct callback execution by default (`strictTransactions: false`), which is useful for local fakes and staged migrations but provides no rollback atomicity. Open fail-open manual `transaction(...)` callbacks still drain during shutdown before `dispose(connection)` runs. Set `strictTransactions: true` for production flows that require MongoDB transaction guarantees; missing transaction support then makes readiness `not-ready` and causes transaction helpers to throw.
 
-For supported facade methods, fluo preserves existing Mongoose operation options and only merges the ambient `{ session }` into the correct options argument. `create(...)` recognizes operation options only in Mongoose's array overload, `create([docs], options)`; positional `create(docA, docB)` arguments remain documents even when the last document contains option-like fields such as `timestamps`. If a model call passes an explicit `{ session: null }` or a different session object inside an ambient transaction, including the third options argument of `findOne(filter, projection, options)`, fluo throws a session conflict error to prevent accidental transaction escapes.
+For supported facade methods, fluo preserves existing Mongoose operation options and only merges the ambient `{ session }` into the correct options argument. `create(...)` injects the session only through Mongoose's array overload, `create([docs], options?)`. Positional `create(docA, docB)` arguments are forwarded unchanged—even when the last document contains option-like fields such as `timestamps`—and therefore do not receive automatic session injection. Use the array overload for transaction participation. If a model call passes an explicit `{ session: null }` or a different session object inside an ambient transaction, including the third options argument of `findOne(filter, projection, options)`, fluo throws a session conflict error to prevent accidental transaction escapes. Pass a result-specialized `MongooseModelFacade` as the `model<TModel>(...)` type argument when repository code needs typed operation results.
 
 ## Public API
 
 - `MongooseModule.forRoot(options)` / `MongooseModule.forRootAsync(options)`
 - `MongooseConnection`
 - `MongooseConnection.createPlatformStatusSnapshot()` — reports health/readiness, resource ownership, active request/session drain counts, and strict transaction support diagnostics for platform observability surfaces.
-- `MongooseConnection.model(name, ...args)` — returns the callable `MongooseModelFacade` outside transactions or a session-aware version for `create`, `find`, `findOne`, `aggregate`, and `bulkWrite` inside an active transaction without mutating the underlying Mongoose connection.
+- `MongooseConnection.model<TModel>(name, ...args)` — returns the callable, result-specializable `MongooseModelFacade` outside transactions or a session-aware version for `create`, `find`, `findOne`, `aggregate`, and `bulkWrite` inside an active transaction without mutating the underlying Mongoose connection.
 - `Transaction`
 - `MongooseTransactionInterceptor` — deprecated request-wide compatibility interceptor; prefer service `@Transaction()` or explicit `requestTransaction(...)` in new code.
 - `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, `MONGOOSE_OPTIONS`

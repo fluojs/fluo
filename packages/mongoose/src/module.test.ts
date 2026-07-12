@@ -1418,7 +1418,7 @@ describe('@fluojs/mongoose', () => {
     await vi.waitFor(() => {
       expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
         details: {
-          activeRequestTransactions: 0,
+          activeRequestTransactions: 1,
           activeSessions: 1,
           lifecycleState: 'shutting-down',
         },
@@ -1431,7 +1431,7 @@ describe('@fluojs/mongoose', () => {
 
     expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
       details: {
-        activeRequestTransactions: 0,
+        activeRequestTransactions: 1,
         activeSessions: 1,
         lifecycleState: 'shutting-down',
       },
@@ -1449,6 +1449,14 @@ describe('@fluojs/mongoose', () => {
 
     await closePromise;
     await openTransactionResult;
+
+    expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        activeRequestTransactions: 0,
+        activeSessions: 0,
+        lifecycleState: 'stopped',
+      },
+    });
 
     expect(events).toEqual([
       'connection:transaction:start',

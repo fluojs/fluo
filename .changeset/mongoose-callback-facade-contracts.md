@@ -2,4 +2,4 @@
 "@fluojs/mongoose": patch
 ---
 
-Keep aborted request callbacks tracked through session and connection cleanup, preserve positional `create()` documents with option-like fields, and expose callable model facade method types.
+Keep aborted request callbacks tracked through session and connection cleanup, forward positional `create()` documents without appending session options, and expose consumer-specializable model facade result types.

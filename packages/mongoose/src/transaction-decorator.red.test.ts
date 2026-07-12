@@ -56,13 +56,12 @@ function createFakeConnection(
     model(name: string) {
       return {
         async create(...args: unknown[]) {
-          const maybeOptions = args.at(-1);
-          const opts =
-            maybeOptions && typeof maybeOptions === 'object' && 'session' in maybeOptions
-              ? (maybeOptions as TestMongooseOperationOptions)
-              : undefined;
-          const docs = opts ? args.slice(0, -1) : args;
-          const createdDocs = docs.length === 1 && Array.isArray(docs[0]) ? docs[0] : docs;
+          const hasArrayOptions = args.length === 2 && Array.isArray(args[0]);
+          const maybeOptions = hasArrayOptions ? args[1] : undefined;
+          const opts = maybeOptions && typeof maybeOptions === 'object'
+            ? (maybeOptions as TestMongooseOperationOptions)
+            : undefined;
+          const createdDocs: unknown[] = hasArrayOptions && Array.isArray(args[0]) ? args[0] : args;
 
           events.push(`model:${name}:create:session=${opts?.session != null ? 'set' : 'unset'}`);
           events.push(`model:${name}:create:docs=${createdDocs.length}`);
@@ -313,7 +312,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       }
     });
 
-    it('model.create(docA, docB) preserves multiple document arguments while adding ambient session', async () => {
+    it('model.create(docA, docB) preserves positional documents without appending ambient session options', async () => {
       const mongoosePackage = await import('./index.js');
       const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
 
@@ -355,7 +354,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
 
       try {
         await expect(service.createMany()).resolves.toEqual([{ name: 'Ada' }, { name: 'Grace' }]);
-        expect(events).toContain('model:User:create:session=set');
+        expect(events).toContain('model:User:create:session=unset');
         expect(events).toContain('model:User:create:docs=2');
       } finally {
         await app.close();
@@ -407,7 +406,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
           { name: 'Ada' },
           { name: 'Grace', session: 'domain-field' },
         ]);
-        expect(events).toContain('model:User:create:session=set');
+        expect(events).toContain('model:User:create:session=unset');
         expect(events).toContain('model:User:create:docs=2');
       } finally {
         await app.close();
@@ -459,7 +458,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
           { name: 'Ada' },
           { name: 'Grace', session: null },
         ]);
-        expect(events).toContain('model:User:create:session=set');
+        expect(events).toContain('model:User:create:session=unset');
         expect(events).toContain('model:User:create:docs=2');
       } finally {
         await app.close();
@@ -512,7 +511,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
           { name: 'Ada' },
           { name: 'Grace', session: domainSession },
         ]);
-        expect(events).toContain('model:User:create:session=set');
+        expect(events).toContain('model:User:create:session=unset');
         expect(events).toContain('model:User:create:docs=2');
       } finally {
         await app.close();
@@ -532,6 +531,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         }),
       ).resolves.toEqual([{ name: 'Ada' }, { name: 'Grace', timestamps: false }]);
 
+      expect(events).toContain('model:User:create:session=unset');
       expect(events).toContain('model:User:create:docs=2');
     });
 

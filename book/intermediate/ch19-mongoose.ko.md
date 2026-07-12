@@ -66,8 +66,18 @@ export class PersistenceModule {}
 Fluo에서는 일반적으로 리포지토리를 통해 MongoDB와 상호작용합니다. 전역 `mongoose` 객체에 의존하지 않고 `MongooseConnection` 서비스를 주입받아 현재 연결과 세션 경계를 따릅니다.
 
 ```typescript
-import { MongooseConnection } from '@fluojs/mongoose';
+import { MongooseConnection, type MongooseModelFacade } from '@fluojs/mongoose';
 import { Inject } from '@fluojs/core';
+
+type ProductDocument = { readonly _id: string; readonly name: string; readonly price: number };
+type ProductLookupModel = MongooseModelFacade<unknown, unknown, Promise<ProductDocument | null>>;
+type InventoryWriteModel = MongooseModelFacade<
+  unknown,
+  unknown,
+  unknown,
+  unknown,
+  Promise<{ readonly acknowledged: boolean }>
+>;
 
 @Inject(MongooseConnection)
 export class ProductRepository {
@@ -75,13 +85,13 @@ export class ProductRepository {
 
   async findOneById(id: string) {
     // 기본 흐름: 지원되는 facade 메서드를 사용합니다.
-    const Product = this.conn.model('Product');
+    const Product = this.conn.model<ProductLookupModel>('Product');
     return Product.findOne({ _id: id });
   }
 }
 ```
 
-`MongooseConnection` 서비스는 컨텍스트 인지 프록시 역할을 합니다. `this.conn.model('Product')`를 호출하면 export된 `MongooseModelFacade` 반환 타입이 지원 메서드를 callable하게 유지하며, 활성 트랜잭션이 있을 때 자동으로 그 트랜잭션에 참여하는 버전의 모델을 반환합니다.
+`MongooseConnection` 서비스는 컨텍스트 인지 프록시 역할을 합니다. `this.conn.model<ProductLookupModel>('Product')`를 호출하면 export된 generic `MongooseModelFacade`가 지원 메서드를 consumer-defined result type으로 callable하게 유지하며, 활성 트랜잭션이 있을 때 자동으로 그 트랜잭션에 참여하는 버전의 모델을 반환합니다.
 
 ### 앰비언트 세션 지원 (v1)
 버전 1에서 fluo의 Mongoose 통합은 다음 모델 메서드에 대해 자동 세션 주입을 지원합니다:
@@ -91,7 +101,7 @@ export class ProductRepository {
 - `aggregate`
 - `bulkWrite`
 
-`MongooseConnection.model(...)`을 통해 `@Transaction()`, `transaction()`, `requestTransaction()` 경계 내부에서 이 메서드들이 호출되면, fluo는 앰비언트 세션을 옵션에 자동으로 붙여줍니다. `create(...)`의 operation options는 array overload인 `create([docs], options)`에서만 인식되므로 option-like field를 가진 positional document도 문서로 유지됩니다. `conn.current().model(...)`이 반환한 raw model은 wrapper가 아니며, `doc.save()`도 현재 자동 세션 주입이 지원되지 않습니다. 두 경로 모두 트랜잭션 안에서 사용할 때는 수동으로 세션을 전달해야 합니다.
+`MongooseConnection.model(...)`을 통해 `@Transaction()`, `transaction()`, `requestTransaction()` 경계 내부에서 이 메서드들이 호출되면, fluo는 앰비언트 세션을 옵션에 자동으로 붙여줍니다. `create(...)`의 session 주입은 array overload인 `create([docs], options?)`에서만 사용할 수 있습니다. Positional `create(docA, docB)` 호출은 변경 없이 전달되며 자동 session을 받지 않습니다. `conn.current().model(...)`이 반환한 raw model은 wrapper가 아니며, `doc.save()`도 현재 자동 세션 주입이 지원되지 않습니다. 두 경로 모두 트랜잭션 안에서 사용할 때는 수동으로 세션을 전달해야 합니다.
 
 트랜잭션이 활성화된 상태에서 옵션에 `session`을 명시적으로 제공했는데, 해당 세션이 앰비언트 트랜잭션 세션과 일치하지 않는 경우 fluo는 충돌 에러를 던집니다. 이는 의도치 않은 트랜잭션 간 데이터 유출을 방지하기 위함입니다.
 
@@ -109,8 +119,8 @@ fluo에서 권장되는 트랜잭션 처리 방식은 서비스 메서드에 `@T
 
 ```typescript
 await this.conn.transaction(async () => {
-  const Product = this.conn.model('Product');
-  const Inventory = this.conn.model('Inventory');
+  const Product = this.conn.model<ProductLookupModel>('Product');
+  const Inventory = this.conn.model<InventoryWriteModel>('Inventory');
 
   // 지원되는 facade 호출에는 세션이 자동으로 주입됩니다.
   const product = await Product.findOne({ _id: pid });
@@ -130,7 +140,7 @@ FluoShop에서는 제품 유형에 따라 속성이 크게 달라질 수 있는 
 
 ```typescript
 const productSchema = new mongoose.Schema({ name: String, price: Number }, { discriminatorKey: 'type' });
-const Product = conn.model('Product', productSchema);
+const Product = conn.current().model('Product', productSchema);
 
 const Electronics = Product.discriminator('Electronics', new mongoose.Schema({ warranty: Number }));
 const Apparel = Product.discriminator('Apparel', new mongoose.Schema({ size: String, material: String }));

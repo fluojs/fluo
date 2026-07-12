@@ -66,8 +66,18 @@ export class PersistenceModule {}
 In Fluo, you usually interact with MongoDB through repositories. Instead of depending on the global `mongoose` object, inject the `MongooseConnection` service so the code follows the current connection and session boundary.
 
 ```typescript
-import { MongooseConnection } from '@fluojs/mongoose';
+import { MongooseConnection, type MongooseModelFacade } from '@fluojs/mongoose';
 import { Inject } from '@fluojs/core';
+
+type ProductDocument = { readonly _id: string; readonly name: string; readonly price: number };
+type ProductLookupModel = MongooseModelFacade<unknown, unknown, Promise<ProductDocument | null>>;
+type InventoryWriteModel = MongooseModelFacade<
+  unknown,
+  unknown,
+  unknown,
+  unknown,
+  Promise<{ readonly acknowledged: boolean }>
+>;
 
 @Inject(MongooseConnection)
 export class ProductRepository {
@@ -75,13 +85,13 @@ export class ProductRepository {
 
   async findOneById(id: string) {
     // Primary flow: use a supported facade method.
-    const Product = this.conn.model('Product');
+    const Product = this.conn.model<ProductLookupModel>('Product');
     return Product.findOne({ _id: id });
   }
 }
 ```
 
-The `MongooseConnection` service acts as a context-aware proxy. When you call `this.conn.model('Product')`, its exported `MongooseModelFacade` return type keeps the supported methods callable and returns a version of the model that automatically participates in the ambient transaction if one is active.
+The `MongooseConnection` service acts as a context-aware proxy. When you call `this.conn.model<ProductLookupModel>('Product')`, the exported generic `MongooseModelFacade` keeps the supported methods callable with consumer-defined result types and returns a version of the model that automatically participates in the ambient transaction if one is active.
 
 ### Ambient Session Support (v1)
 In version 1, fluo's Mongoose integration supports automatic session injection for the following model methods:
@@ -91,7 +101,7 @@ In version 1, fluo's Mongoose integration supports automatic session injection f
 - `aggregate`
 - `bulkWrite`
 
-When these methods are called inside a `@Transaction()`, `transaction()`, or `requestTransaction()` boundary through `MongooseConnection.model(...)`, fluo attaches the ambient session to the options. For `create(...)`, operation options are recognized only in the array overload `create([docs], options)`, so positional documents with option-like fields remain documents. The raw model returned by `conn.current().model(...)` is not wrapped, and `doc.save()` is currently NOT supported for automatic session injection; both paths require manual session passing if used inside a transaction.
+When these methods are called inside a `@Transaction()`, `transaction()`, or `requestTransaction()` boundary through `MongooseConnection.model(...)`, fluo attaches the ambient session to the options. For `create(...)`, session injection is available only through the array overload `create([docs], options?)`; positional `create(docA, docB)` calls are forwarded unchanged and do not receive an automatic session. The raw model returned by `conn.current().model(...)` is not wrapped, and `doc.save()` is currently NOT supported for automatic session injection; both paths require manual session passing if used inside a transaction.
 
 If you explicitly provide a `session` in the options while a transaction is active, fluo will throw a conflict error if the provided session does not match the ambient transaction session. This prevents accidental cross-transaction leaks.
 
@@ -109,8 +119,8 @@ In fluo, the recommended way to handle transactions is using the `@Transaction()
 
 ```typescript
 await this.conn.transaction(async () => {
-  const Product = this.conn.model('Product');
-  const Inventory = this.conn.model('Inventory');
+  const Product = this.conn.model<ProductLookupModel>('Product');
+  const Inventory = this.conn.model<InventoryWriteModel>('Inventory');
 
   // Sessions are automatically injected into supported facade calls.
   const product = await Product.findOne({ _id: pid });
@@ -130,7 +140,7 @@ After defining a base schema, you can use Mongoose **Discriminators** to store d
 
 ```typescript
 const productSchema = new mongoose.Schema({ name: String, price: Number }, { discriminatorKey: 'type' });
-const Product = conn.model('Product', productSchema);
+const Product = conn.current().model('Product', productSchema);
 
 const Electronics = Product.discriminator('Electronics', new mongoose.Schema({ warranty: Number }));
 const Apparel = Product.discriminator('Apparel', new mongoose.Schema({ size: String, material: String }));
