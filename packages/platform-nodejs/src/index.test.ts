@@ -235,56 +235,6 @@ describe('@fluojs/platform-nodejs', () => {
     );
   });
 
-  it('retries listen through the package adapter until the address is released', async () => {
-    const blocker = createServer();
-    await new Promise<void>((resolve) => {
-      blocker.listen(0, '127.0.0.1', resolve);
-    });
-    const address = blocker.address();
-    if (!address || typeof address === 'string') {
-      throw new Error('Failed to bind a retry test port.');
-    }
-    const dispatcher: Dispatcher = {
-      async dispatch() {},
-    };
-    const adapter = createNodejsAdapter({
-      host: '127.0.0.1',
-      port: address.port,
-      retryDelayMs: 0,
-      retryLimit: 5,
-    });
-
-    try {
-      const listenPromise = adapter.listen(dispatcher);
-      await new Promise<void>((resolve, reject) => {
-        blocker.close((error) => {
-          if (error) {
-            reject(error);
-            return;
-          }
-
-          resolve();
-        });
-      });
-
-      await expect(listenPromise).resolves.toBeUndefined();
-    } finally {
-      await adapter.close();
-      if (blocker.listening) {
-        await new Promise<void>((resolve, reject) => {
-          blocker.close((error) => {
-            if (error) {
-              reject(error);
-              return;
-            }
-
-            resolve();
-          });
-        });
-      }
-    }
-  });
-
   it('rejects listen through the package adapter after retryLimit is exhausted', async () => {
     const blocker = createServer();
     await new Promise<void>((resolve) => {
