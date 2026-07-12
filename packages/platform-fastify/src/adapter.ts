@@ -259,36 +259,39 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
     return listenInFlight;
   }
 
-  async close(): Promise<void> {
-    if (this.closeInFlight) {
-      await waitForCloseWithTimeout(this.closeInFlight, this.shutdownTimeoutMs);
-      return;
+  close(): Promise<void> {
+    if (!this.closeInFlight) {
+      const closeInFlight = this.closeApplication().finally(() => {
+        if (this.closeInFlight === closeInFlight) {
+          this.closeInFlight = undefined;
+        }
+
+        this.listenState = 'idle';
+        this.dispatcher = undefined;
+        this.nativeRouteDescriptors.clear();
+      });
+      this.closeInFlight = closeInFlight;
+      void closeInFlight.catch(() => {});
     }
 
+    return waitForCloseWithTimeout(this.closeInFlight, this.shutdownTimeoutMs);
+  }
+
+  private async closeApplication(): Promise<void> {
     if (this.listenInFlight) {
       this.listenAbortController?.abort();
-      await waitForCloseWithTimeout(ignoreCancelledListen(this.listenInFlight), this.shutdownTimeoutMs);
+      await ignoreCancelledListen(this.listenInFlight);
     }
 
     if (!this.app.server.listening) {
-      this.listenState = 'idle';
-      this.dispatcher = undefined;
-      this.nativeRouteDescriptors.clear();
       return;
     }
 
-    const closePromise = this.app.close();
-    const closeInFlight = closePromise.finally(() => {
+    try {
+      await this.app.close();
+    } finally {
       this.appClosed = true;
-      this.closeInFlight = undefined;
-      this.listenState = 'idle';
-      this.dispatcher = undefined;
-      this.nativeRouteDescriptors.clear();
-    });
-    this.closeInFlight = closeInFlight;
-    void closeInFlight.catch(() => {});
-
-    await waitForCloseWithTimeout(closeInFlight, this.shutdownTimeoutMs);
+    }
   }
 
   private async registerPluginsAndRoutes(dispatcher: Dispatcher): Promise<void> {

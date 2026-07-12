@@ -32,7 +32,7 @@ import {
 } from '@fluojs/http';
 import { type Application, createHealthModule, defineModule, FluoFactory, fluoFactory } from '@fluojs/runtime';
 import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
-import type { FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -1967,6 +1967,61 @@ describe('@fluojs/platform-fastify', () => {
     } finally {
       releaseRequest.resolve();
       await Promise.allSettled([activeRequest, closePromise, observedRelisten]);
+      await adapter.close();
+    }
+  });
+
+  it('starts a fresh listen after close cancels a startup that has not finished binding', async () => {
+    const port = await findAvailablePort();
+    const firstBindStarted = createDeferred<void>();
+    const releaseFirstBind = createDeferred<void>();
+    const adapter = createFastifyAdapter({ port }) as FastifyHttpApplicationAdapter;
+    const app: FastifyInstance = Reflect.get(adapter, 'app');
+    const originalListen = app.listen.bind(app);
+    const listenSpy = vi.spyOn(app, 'listen').mockImplementationOnce(async (options) => {
+      firstBindStarted.resolve();
+      await releaseFirstBind.promise;
+      return await originalListen(options);
+    });
+    const firstDispatcher: Dispatcher = {
+      async dispatch(_request, response) {
+        await response.send({ dispatcher: 'first' });
+      },
+    };
+    const secondDispatcher: Dispatcher = {
+      async dispatch(_request, response) {
+        await response.send({ dispatcher: 'second' });
+      },
+    };
+
+    const firstListen = adapter.listen(firstDispatcher);
+    const firstListenResult = firstListen.then(
+      () => 'listened' as const,
+      (error: unknown) => error,
+    );
+    await firstBindStarted.promise;
+
+    const closePromise = adapter.close();
+    const secondListen = adapter.listen(secondDispatcher);
+
+    try {
+      expect(secondListen).not.toBe(firstListen);
+
+      releaseFirstBind.resolve();
+      await closePromise;
+      await secondListen;
+
+      const firstResult = await firstListenResult;
+      expect(firstResult).toBeInstanceOf(Error);
+      expect(String(firstResult instanceof Error ? firstResult.message : firstResult)).toContain('startup was cancelled');
+
+      const secondResponse = await requestHttp({ method: 'GET', path: '/', port });
+      expect(secondResponse.statusCode).toBe(200);
+      expect(JSON.parse(secondResponse.body)).toEqual({ dispatcher: 'second' });
+    } finally {
+      releaseFirstBind.resolve();
+      await Promise.allSettled([firstListenResult, closePromise, secondListen]);
+      listenSpy.mockRestore();
       await adapter.close();
     }
   });
