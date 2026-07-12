@@ -1547,6 +1547,18 @@ describe('Queue lifecycle and migration discoverability', () => {
       expect(queueRegion).toMatch(/drain|re-enqueue|다시 enqueue|별도 queue/u);
     }
 
+    for (const queueRegion of englishQueueMigrationRegions) {
+      expect(queueRegion).toMatch(/reachab/u);
+      expect(queueRegion).toContain('Redis');
+      expect(queueRegion).toMatch(/does not (?:read|consume|interpret)[^.]*NestJS[^.]*metadata|cannot[^.]*metadata compatible/u);
+    }
+
+    for (const queueRegion of koreanQueueMigrationRegions) {
+      expect(queueRegion).toMatch(/reachab|도달/u);
+      expect(queueRegion).toContain('Redis');
+      expect(queueRegion).toMatch(/NestJS[^.]*metadata[^.]*(?:읽|소비|해석)[^.]*않|metadata[^.]*보존할 수 없/u);
+    }
+
     expect(governanceSource).toContain('Queue migration from NestJS/Bull processor metadata');
   });
 });
