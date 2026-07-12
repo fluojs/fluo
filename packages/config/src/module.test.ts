@@ -120,6 +120,25 @@ function moduleProviders(moduleType: Constructor): Provider[] {
   return metadata.providers as Provider[];
 }
 
+describe('ConfigModule registration', () => {
+  it('applies the registration-time runtime overrides snapshot above lower-precedence sources', async () => {
+    const runtimeOverrides = { PORT: '4100' };
+    const moduleRef = ConfigModule.forRoot({
+      defaults: { PORT: '3000' },
+      processEnv: { PORT: '4000' },
+      runtimeOverrides,
+    });
+    const container = new Container();
+
+    runtimeOverrides.PORT = '4200';
+    container.register(...moduleProviders(moduleRef));
+
+    const service = await container.resolve(ConfigService);
+
+    expect(service.get('PORT')).toBe('4100');
+  });
+});
+
 describe('ConfigModule watch mode', () => {
   it('activates watch reloads from ConfigModule.forRoot without replacing ConfigService identity', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-module-watch-'));

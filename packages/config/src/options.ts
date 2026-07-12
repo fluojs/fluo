@@ -54,6 +54,7 @@ export function snapshotConfigModuleOptions(options?: ConfigModuleOptions): Conf
     ...options,
     defaults: snapshotConfigDictionary(options.defaults),
     processEnv: snapshotProcessEnv(options.processEnv),
+    runtimeOverrides: snapshotConfigDictionary(options.runtimeOverrides),
     schema: snapshotConfigSchema(options.schema),
   });
 }
