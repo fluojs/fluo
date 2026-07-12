@@ -47,9 +47,23 @@ const transport = new RedisPubSubMicroserviceTransport({
 export class NotificationModule {}
 
 export async function closeNotificationTransport(): Promise<void> {
-  await transport.close();
-  await subscriber.quit();
-  await publisher.quit();
+  const shutdownErrors: unknown[] = [];
+
+  for (const shutdown of [
+    () => transport.close(),
+    () => subscriber.quit(),
+    () => publisher.quit(),
+  ]) {
+    try {
+      await shutdown();
+    } catch (error) {
+      shutdownErrors.push(error);
+    }
+  }
+
+  if (shutdownErrors.length > 0) {
+    throw new AggregateError(shutdownErrors, 'Failed to close Redis notification transport.');
+  }
 }
 ```
 
@@ -57,7 +71,7 @@ Redis requires a dedicated connection for subscribe mode. For that reason, subsc
 
 If the same app also registers `@fluojs/redis`, keep that package's shared `REDIS_CLIENT` for ordinary commands such as cache reads, pipelines, Lua scripts, and queue helpers. Do not reuse it as the Pub/Sub subscriber connection: a subscribed Redis connection enters subscribe mode and can no longer safely serve normal command traffic. Give the Pub/Sub transport a dedicated subscriber via `duplicate()` or a separate named Redis registration, and let `@fluojs/redis` own connect/quit timeouts for the clients it creates.
 
-The ownership boundary depends on how you create the subscriber. A `publisher.duplicate()` subscriber is not automatically tracked by `RedisModule`; the application that created the raw publisher and subscriber must connect them, pass them to the transport, and invoke `closeNotificationTransport()` from its shutdown path. Closing the transport only unsubscribes the subscriber; the application must also close both raw clients. If you want fluo's Redis lifecycle options to cover both the command client and the subscriber, register a named client and inject it with `getRedisClientToken(name)`:
+The ownership boundary depends on how you create the subscriber. A `publisher.duplicate()` subscriber is not automatically tracked by `RedisModule`; the application that created the raw publisher and subscriber must connect them, pass them to the transport, and invoke `closeNotificationTransport()` from its shutdown path. The cleanup loop preserves shutdown order while attempting every cleanup step, then throws an `AggregateError` if any step failed. Closing the transport only unsubscribes the subscriber; the application must also close both raw clients. If you want fluo's Redis lifecycle options to cover both the command client and the subscriber, register a named client and inject it with `getRedisClientToken(name)`:
 
 ```typescript
 import { Inject, Module } from '@fluojs/core';
