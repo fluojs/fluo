@@ -245,6 +245,11 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
       return;
     }
 
+    if (this.listenInFlight) {
+      await this.listenInFlight;
+      return;
+    }
+
     this.dispatcher = dispatcher;
     this.registerNativeRoutes(dispatcher);
 
