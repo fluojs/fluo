@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expandPublicPackageDependencyImpact } from './dependency-impact.mjs';
+import { packageChangelogContractViolation } from './package-changelog.mjs';
 import { buildGitHubReleaseNotes } from './prepare-github-release.mjs';
 import { requiresReleaseIntentRecords, validateReleaseIntentRecords } from './release-intents.mjs';
 
@@ -218,6 +219,27 @@ function collectPackageChangelogBaselineViolations(packageNames, dependencies = 
     return changelog.includes('## [Unreleased]')
       ? []
       : [`${changelogRelativePath} must keep an \`## [Unreleased]\` section.`];
+  });
+}
+
+function collectExactPackageChangelogBaselineViolations(packageNames, dependencies = {}) {
+  const { existsSync: pathExists = existsSync, read: readText = read } = dependencies;
+
+  return packageNames.flatMap((packageName) => {
+    const packagePath = packageRelativePath(packageName);
+
+    if (!packagePath) {
+      return [`${packageName} does not map to a packages/* changelog path.`];
+    }
+
+    const changelogRelativePath = `${packagePath}/CHANGELOG.md`;
+
+    if (!pathExists(join(repoRoot, changelogRelativePath))) {
+      return [`${changelogRelativePath} is missing.`];
+    }
+
+    const contractViolation = packageChangelogContractViolation(readText(changelogRelativePath));
+    return contractViolation ? [`${changelogRelativePath}: ${contractViolation}`] : [];
   });
 }
 
@@ -864,7 +886,7 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
     governancePackageList.filter((packageName) => toolingReleaseMetadataPackages.includes(packageName)),
     { existsSync: pathExists, read: readText },
   );
-  const persistenceChangelogBaselineViolations = collectPackageChangelogBaselineViolations(
+  const persistenceChangelogBaselineViolations = collectExactPackageChangelogBaselineViolations(
     governancePackageList.filter((packageName) => persistenceReleaseMetadataPackages.includes(packageName)),
     { existsSync: pathExists, read: readText },
   );

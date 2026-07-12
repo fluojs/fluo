@@ -104,6 +104,42 @@ function createDependencies() {
   };
 }
 
+function createPersistenceChangelogDependencies(changelog: string) {
+  const dependencies = createDependencies();
+  const baseRead = dependencies.read;
+  const baseManifests = dependencies.workspacePackageManifests();
+
+  dependencies.read = vi.fn((relativePath) => {
+    if (relativePath === 'docs/contracts/release-governance.md') {
+      return '## intended publish surface\n- `@fluojs/cli`\n- `@fluojs/core`\n- `@fluojs/prisma`\n\npnpm verify:release-readiness\npnpm verify:platform-consistency-governance';
+    }
+
+    if (relativePath === 'docs/reference/package-surface.md') {
+      return '## public package families\n| Core | `@fluojs/cli` `@fluojs/core` `@fluojs/prisma` |';
+    }
+
+    if (relativePath === 'packages/prisma/CHANGELOG.md') {
+      return changelog;
+    }
+
+    return baseRead(relativePath);
+  });
+  dependencies.workspacePackageNames = vi.fn(() => ['@fluojs/cli', '@fluojs/core', '@fluojs/prisma']);
+  dependencies.workspacePackageManifests = vi.fn(() => [
+    ...baseManifests,
+    {
+      manifest: {
+        name: '@fluojs/prisma',
+        private: false,
+        publishConfig: { access: 'public' },
+      },
+      packageJsonPath: '/repo/packages/prisma/package.json',
+    },
+  ]);
+
+  return dependencies;
+}
+
 function createReleaseIntentRecord(
   version: string,
   packages: Array<{
@@ -345,41 +381,25 @@ describe('runReleaseReadinessVerification', () => {
     );
   });
 
-  it('fails when a persistence package changelog drops the Unreleased placeholder', () => {
-    const dependencies = createDependencies();
-    const baseRead = dependencies.read;
-    const baseManifests = dependencies.workspacePackageManifests();
-
-    dependencies.read = vi.fn((relativePath) => {
-      if (relativePath === 'docs/contracts/release-governance.md') {
-        return '## intended publish surface\n- `@fluojs/cli`\n- `@fluojs/core`\n- `@fluojs/prisma`\n\npnpm verify:release-readiness\npnpm verify:platform-consistency-governance';
-      }
-
-      if (relativePath === 'docs/reference/package-surface.md') {
-        return '## public package families\n| Core | `@fluojs/cli` `@fluojs/core` `@fluojs/prisma` |';
-      }
-
-      if (relativePath === 'packages/prisma/CHANGELOG.md') {
-        return '# @fluojs/prisma\n\n## 1.0.0\n';
-      }
-
-      return baseRead(relativePath);
-    });
-    dependencies.workspacePackageNames = vi.fn(() => ['@fluojs/cli', '@fluojs/core', '@fluojs/prisma']);
-    dependencies.workspacePackageManifests = vi.fn(() => [
-      ...baseManifests,
-      {
-        manifest: {
-          name: '@fluojs/prisma',
-          private: false,
-          publishConfig: { access: 'public' },
-        },
-        packageJsonPath: '/repo/packages/prisma/package.json',
-      },
-    ]);
+  it.each([
+    ['suffix text', '# @fluojs/cli\n\n## [Unreleased] draft\n\n## 1.0.0\n'],
+    ['a fenced-only occurrence', '# @fluojs/cli\n\n```md\n## [Unreleased]\n```\n\n## 1.0.0\n'],
+    ['duplicate headings', '# @fluojs/cli\n\n## [Unreleased]\n\n## [Unreleased]\n\n## 1.0.0\n'],
+    ['a misplaced heading', '# @fluojs/cli\n\n## 1.0.0\n\n## [Unreleased]\n'],
+    ['the wrong heading level', '# @fluojs/cli\n\n### [Unreleased]\n\n## 1.0.0\n'],
+  ])('fails when a persistence changelog uses %s for Unreleased', (_caseName, changelog) => {
+    const dependencies = createPersistenceChangelogDependencies(changelog.replace('@fluojs/cli', '@fluojs/prisma'));
 
     expect(() => runReleaseReadinessVerification({}, dependencies)).toThrowError(
-      /Persistence package changelog baseline.*packages\/prisma\/CHANGELOG\.md must keep an `## \[Unreleased\]` section/u,
+      /Persistence package changelog baseline.*packages\/prisma\/CHANGELOG\.md/u,
+    );
+  });
+
+  it('fails when a persistence package changelog drops the Unreleased placeholder', () => {
+    const dependencies = createPersistenceChangelogDependencies('# @fluojs/prisma\n\n## 1.0.0\n');
+
+    expect(() => runReleaseReadinessVerification({}, dependencies)).toThrowError(
+      /Persistence package changelog baseline.*packages\/prisma\/CHANGELOG\.md: Package CHANGELOG\.md must contain exactly one standalone `## \[Unreleased\]` section/u,
     );
   });
 
