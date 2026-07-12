@@ -445,6 +445,30 @@ describe('dispatcher runtime', () => {
     expect(root.requestScopeDisposeCount).toBe(2);
   });
 
+  it('disposes a request scope exactly once when the handler throws', async () => {
+    @ScopeDecorator('request')
+    @Controller('/request-controller-error')
+    class FailingRequestController {
+      @Get('/')
+      fail() {
+        throw new Error('handler failed');
+      }
+    }
+
+    const root = new CountingContainer().register(FailingRequestController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: FailingRequestController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/request-controller-error', 'GET'), response);
+
+    expect(response.statusCode).toBe(500);
+    expect(root.requestScopeCreateCount).toBe(1);
+    expect(root.requestScopeDisposeCount).toBe(1);
+  });
+
   it('uses request scope for custom binders before they resolve request-scoped providers', async () => {
     let created = 0;
 
@@ -2135,7 +2159,7 @@ describe('dispatcher runtime', () => {
     const events: string[] = [];
     const observer = {
       onRequestError(_context: RequestObservationContext, error: unknown) {
-        events.push(error instanceof Error ? error.message : 'unknown');
+        events.push(`observer:${error instanceof Error ? error.message : 'unknown'}`);
       },
     };
 
@@ -2155,12 +2179,17 @@ describe('dispatcher runtime', () => {
       rootContainer: root,
     });
     const response = createStreamingResponse();
+    const close = response.stream.close.bind(response.stream);
+    response.stream.close = () => {
+      events.push('stream:close');
+      close();
+    };
 
     await dispatcher.dispatch(createRequest('/managed-error', 'GET'), response);
 
     expect(response.stream.writes).toEqual(['data: first\n\n']);
     expect(response.stream.closeCalls).toBe(1);
-    expect(events).toEqual(['source failed']);
+    expect(events).toEqual(['stream:close', 'observer:source failed']);
     expect(response.body).toBeUndefined();
   });
 
