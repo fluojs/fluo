@@ -109,9 +109,10 @@ Behavioral contract notes:
 - `DiscordModule.forRoot(...)` and `DiscordModule.forRootAsync(...)` export `DiscordService`, `DiscordChannel`, `DISCORD`, and `DISCORD_CHANNEL` globally by default. Use the fluo `global?: boolean` option and set `global: false` only when migrated code must keep Discord providers local to importing modules; NestJS `isGlobal` is not supported.
 - `DiscordService.send(...)` resolves `defaultThreadId` before delivery.
 - `DiscordService.sendMany(...)` is a direct `DiscordMessage[]` batch API that sends messages sequentially and supports `continueOnError`; it is not a multi-recipient `@fluojs/notifications` dispatch shortcut.
-- The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown, including any in-flight factory-created transport before shutdown began.
+- The service initializes the configured transport during module bootstrap and closes factory-owned resources exactly once across bootstrap verification failure and application shutdown, including any in-flight factory-created transport before shutdown began. A rejected factory creation remains an initialization failure instead of being reclassified as a shutdown cleanup failure.
 - Sends are accepted only after bootstrap marks the transport `ready`; attempts before bootstrap, during startup, after failed bootstrap, while shutting down, or after shutdown are rejected before delivery.
 - Sends attempted while the service is shutting down or already stopped are rejected before reusing the cached transport.
+- `DiscordService.sendNotification(...)` checks lifecycle readiness before invoking a configured renderer and passes the caller's `AbortSignal` to both `DiscordTemplateRenderInput.signal` and transport delivery.
 - `DiscordService.createPlatformStatusSnapshot()` exposes the same status contract as `createDiscordPlatformStatusSnapshot(...)`: lifecycle/readiness, health, transport kind and ownership, default thread configuration, bootstrap verification state, distinct bootstrap initialization versus shutdown cleanup failure diagnostics, and notifications channel dependency details, so callers can observe Discord wiring without reaching into internal options.
 - Blank `defaultThreadId` and `notifications.channel` values are trimmed and ignored; the notifications channel defaults to `discord`.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
@@ -131,7 +132,7 @@ Behavioral contract notes:
 
 - `verifyOnModuleInit` is optional and defaults to `false`.
 - Verification is capability-based: only transports that expose `verify()` are called, so webhook-only or app-owned transports do not have to add a no-op verifier.
-- If `transport.verify()` rejects, bootstrap fails with the initialization failure, the service lifecycle moves to `failed`, and readiness/status snapshots report the provider as not ready.
+- If `transport.verify()` rejects, bootstrap fails with the initialization failure, the service lifecycle moves to `failed`, and readiness/status snapshots report the provider as not ready. Factory-owned transports are closed exactly once; directly supplied app-owned transports are preserved.
 - `DiscordService.createPlatformStatusSnapshot()` includes `verifiedOnModuleInit` and bootstrap verification state so health/readiness tooling can tell whether bootstrap verification was requested without reaching into internal options.
 
 ### Integration with `@fluojs/notifications`
@@ -177,6 +178,7 @@ Behavioral contract notes:
 - One notification dispatch maps to exactly one Discord thread route. Use `payload.threadId` or a single entry in `recipients`.
 - If `payload.threadId` is omitted, `DiscordService.sendNotification(...)` uses the first `recipients` entry or falls back to `defaultThreadId`.
 - Notification metadata is merged from payload metadata, dispatch metadata, and template/subject markers. On duplicate keys, dispatch metadata overrides payload metadata, and final `subject` / `template` markers override both. `template` is rendered only when a renderer is configured.
+- Template rendering starts only while the service is ready. The render input includes `signal`, so renderers can stop caller-cancelled work before transport delivery.
 - If a notification workflow needs fan-out across multiple Discord threads, create one concrete Discord message per thread with `DiscordService.sendMany(...)` or issue separate notification dispatches; a single notification dispatch never expands multi-recipient fan-out implicitly.
 
 ### Webhook-first delivery with explicit fetch injection
@@ -200,6 +202,7 @@ For richer API integrations such as bot-backed REST delivery, implement the expo
 Behavioral contract notes:
 
 - The built-in webhook transport retries transient `408`, `429`, and `5xx` responses, and also retries transport-level exceptions, using bounded exponential backoff before surfacing an error. Permanent upstream responses are not retried.
+- Retry backoff observes `DiscordSendOptions.signal`; an already-aborted signal rejects immediately instead of waiting for the next backoff timer.
 - Successful webhook responses are exposed through `DiscordSendResult.response`; caller-visible `DiscordTransportError` messages still omit raw upstream response bodies by default, including after rate-limit retries fail.
 - Malformed or non-absolute `webhookUrl` values are rejected immediately as `DiscordConfigurationError` instead of being retried as delivery failures.
 

@@ -112,6 +112,8 @@ export class AppModule {}
 
 Discord registration도 기본적으로 global입니다. `DiscordModule.forRoot(...)`와 `DiscordModule.forRootAsync(...)`는 `global: options.global ?? true`로 `DiscordService`, `DiscordChannel`, `DISCORD`, `DISCORD_CHANNEL`을 export합니다. fluo 옵션은 NestJS `isGlobal`이 아니라 `global?: boolean`이며, migrated module이 Discord provider를 명시적으로 import한 module 안에만 유지해야 할 때만 `global: false`를 설정합니다. Async registration은 fluo injected factory 형태인 `DiscordModule.forRootAsync({ inject, useFactory, global? })`만 지원합니다. NestJS `imports`, `useClass`, `useExisting` 패턴은 최종 Discord option을 반환하기 전에 app-owned provider로 옮기고, `createDiscordProviders(...)`, `DISCORD_OPTIONS`, `NormalizedDiscordModuleOptions` 같은 private provider helper를 import하지 말고 module facade를 감싸세요.
 
+`verifyOnModuleInit`을 사용하면 verification 실패와 shutdown이 동시에 시작되어도 factory-owned transport를 정확히 한 번 닫고, 직접 전달한 app-owned transport는 caller ownership으로 유지합니다. Notification rendering은 lifecycle gate 뒤에서 실행되며 transport delivery와 같은 `AbortSignal`을 받으므로, stopped service는 renderer 작업 전에 요청을 거부하고 renderer는 cancellation에 협력할 수 있습니다.
+
 ## 17.3 Standalone Usage: SlackService & DiscordService
 
 운영 로그 기록이나 맞춤 알림처럼 오케스트레이션이 과한 경우에는 서비스를 직접 사용할 수 있습니다.
@@ -305,6 +307,7 @@ async alertOps(event: OrderPlacedEvent) {
 내장 웹훅 트랜스포트는 운영 환경의 실패 양상을 기준으로 설계되어 있습니다. 네트워크 오류, 만료된 웹훅 URL, 플랫폼 rate limit처럼 채팅 연동에서 자주 만나는 문제를 같은 전송 경계에서 다룰 수 있습니다.
 
 - **자동 재시도**: 일시적인 `408`, `429`, `5xx` 오류에는 지수 백오프(exponential backoff)를 적용해 다시 시도합니다.
+- **취소 인식 backoff**: Discord retry wait는 signal이 이미 abort된 경우 전체 delay를 기다리지 않고 즉시 reject합니다.
 - **명시적 에러**: 영구적인 실패(404, 403 등)는 `SlackTransportError` 또는 `DiscordTransportError`로 드러내 애플리케이션 레벨에서 처리하게 합니다.
 
 ## 17.8 Status Snapshots

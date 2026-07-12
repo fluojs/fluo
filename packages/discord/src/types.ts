@@ -151,6 +151,8 @@ export interface DiscordTemplateRenderInput<TPayload extends DiscordNotification
   locale?: string;
   metadata?: Record<string, unknown>;
   payload: TPayload;
+  /** Caller cancellation signal shared with rendering and transport delivery. */
+  signal?: AbortSignal;
   subject?: string;
   template: string;
 }
@@ -168,7 +170,7 @@ export interface DiscordTemplateRenderer {
    * Renders one notification template into Discord content and/or embed fragments.
    *
    * @typeParam TPayload Payload shape carried by the notification request.
-   * @param input Template render input including the template key and opaque payload.
+   * @param input Template render input including the template key, opaque payload, and caller cancellation signal.
    * @returns Rendered content or embed fragments that are merged with explicit payload overrides.
    */
   render<TPayload extends DiscordNotificationPayload = DiscordNotificationPayload>(
