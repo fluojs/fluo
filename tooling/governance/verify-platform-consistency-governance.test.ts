@@ -474,6 +474,57 @@ describe('enforceContractCompanionUpdates', () => {
     }
   });
 
+  it('keeps HTTP request lifecycle limitations aligned across the advanced book and context docs', () => {
+    const englishChapter = readFileSync(join(repoRoot, 'book/advanced/ch11-request-pipeline.md'), 'utf8');
+    const koreanChapter = readFileSync(join(repoRoot, 'book/advanced/ch11-request-pipeline.ko.md'), 'utf8');
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+
+    for (const chapter of [englishChapter, koreanChapter]) {
+      expect(chapter).toContain('synchronous-only fallback');
+      expect(chapter).toContain('FrameworkRequest.isAborted()');
+      expect(chapter).toContain('application-owned');
+      expect(chapter).toContain('request scope');
+    }
+    expect(englishContext).toContain('book/advanced/ch11-request-pipeline.md');
+    expect(koreanContext).toContain('book/advanced/ch11-request-pipeline.ko.md');
+  });
+
+  it('keeps custom adapter examples on the complete request and response contracts', () => {
+    const englishChapter = readFileSync(join(repoRoot, 'book/advanced/ch13-custom-adapter.md'), 'utf8');
+    const koreanChapter = readFileSync(join(repoRoot, 'book/advanced/ch13-custom-adapter.ko.md'), 'utf8');
+
+    for (const chapter of [englishChapter, koreanChapter]) {
+      expect(chapter).toContain('path: url.pathname');
+      expect(chapter).toContain('cookies: {}');
+      expect(chapter).toContain('raw: req');
+      expect(chapter).toContain('statusSet: false');
+      expect(chapter).toContain('setStatus(code)');
+      expect(chapter).toContain('redirect(status, location)');
+      expect(chapter).not.toContain('status(code) {');
+    }
+  });
+
+  it('keeps route hierarchy and NestJS parameter migration limits explicit in both locales', () => {
+    const englishRouting = readFileSync(join(repoRoot, 'book/beginner/ch05-routing-controllers.md'), 'utf8');
+    const koreanRouting = readFileSync(join(repoRoot, 'book/beginner/ch05-routing-controllers.ko.md'), 'utf8');
+    const englishMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
+    const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
+
+    expect(englishRouting).toContain("@Controller('/posts/:postId/comments')");
+    expect(englishRouting).toContain('does not provide a parent/child Controller nesting API');
+    expect(koreanRouting).toContain("@Controller('/posts/:postId/comments')");
+    expect(koreanRouting).toContain('부모/자식 Controller를 중첩하는 API를 제공하지 않습니다');
+    for (const migration of [englishMigration, koreanMigration]) {
+      expect(migration).toContain('@Param()');
+      expect(migration).toContain('@Query()');
+      expect(migration).toContain('@Body()');
+      expect(migration).toContain('@Req()');
+      expect(migration).toContain('@Res()');
+      expect(migration).toContain('RequestContext');
+    }
+  });
+
   it('accepts Email async-registration migration guidance when context, package, and governance tests change together', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 
@@ -1229,7 +1280,9 @@ describe('package surface CQRS responsibility discoverability', () => {
 
     for (const markdown of [englishArchitecture, koreanArchitecture]) {
       expect(markdown).not.toContain('AsyncLocalStorage');
-      expect(markdown).toContain('branded');
+      expect(markdown).toContain('frozen fieldless');
+      expect(markdown).toContain('private state');
+      expect(markdown).toContain('provider token');
     }
   });
 });

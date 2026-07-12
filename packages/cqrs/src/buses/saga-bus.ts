@@ -3,35 +3,19 @@ import type { OnApplicationBootstrap, OnApplicationShutdown, RuntimeCleanupRegis
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { CqrsBusBase } from '../discovery.js';
-import {
-  createInternalCqrsDispatchContext,
-  type InternalCqrsDispatchContext,
-  isInternalCqrsDispatchContext,
-} from '../dispatch-context.js';
-import { SagaExecutionError, SagaTopologyError } from '../errors.js';
+import { SagaExecutionError } from '../errors.js';
 import { createIsolatedEvent } from '../event-clone.js';
-import { getSagaMetadata } from '../metadata.js';
 import type { CqrsModuleOptions } from '../module.js';
 import { CQRS_MODULE_OPTIONS } from '../tokens.js';
 import type { CqrsDispatchContext, CqrsEventType, IEvent, ISaga, SagaDescriptor } from '../types.js';
+import { discoverSagaDescriptors } from './saga-discovery.js';
+import { drainPendingSagaDispatches } from './saga-drain.js';
+import { enterSagaTopology } from './saga-topology.js';
 
-const MAX_NESTED_SAGA_DEPTH = 32;
 const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 5000;
 
-interface SagaDispatchOptions {
-  readonly allowDuringShutdown?: boolean;
-}
-
-interface CqrsDispatchRoute {
-  readonly eventType: CqrsEventType;
-  readonly token: Token;
-}
-
-interface CqrsDispatchContextState extends InternalCqrsDispatchContext {
-  readonly activeRoutes: readonly CqrsDispatchRoute[];
-  readonly depth: number;
-  readonly path: readonly string[];
-}
+/** Private capability authorizing saga dispatch from an already active publish drain. */
+export const CQRS_SAGA_DRAIN_AUTHORIZATION: unique symbol = Symbol('fluo.cqrs.sagaDrainAuthorization');
 
 function isSaga(value: unknown): value is ISaga<IEvent> {
   if (typeof value !== 'object' || value === null) {
@@ -47,16 +31,6 @@ function toErrorMessage(error: unknown): string {
   }
 
   return String(error);
-}
-
-function isCqrsDispatchContextState(context: CqrsDispatchContext | undefined): context is CqrsDispatchContextState {
-  if (!isInternalCqrsDispatchContext(context)) {
-    return false;
-  }
-
-  const state = context as Partial<CqrsDispatchContextState>;
-
-  return Array.isArray(state.activeRoutes) && typeof state.depth === 'number' && Array.isArray(state.path);
 }
 
 /**
@@ -144,8 +118,12 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
    * @param event Event instance that may trigger one or more sagas.
    * @returns A promise that resolves once all matching saga chains for the event complete.
    */
-  async dispatch<TEvent extends IEvent>(event: TEvent, context?: CqrsDispatchContext, options: SagaDispatchOptions = {}): Promise<void> {
-    this.assertAcceptingNewWork(options);
+  async dispatch<TEvent extends IEvent>(
+    event: TEvent,
+    context?: CqrsDispatchContext,
+    drainAuthorization?: typeof CQRS_SAGA_DRAIN_AUTHORIZATION,
+  ): Promise<void> {
+    this.assertAcceptingNewWork(drainAuthorization);
     await this.ensureDiscovered();
 
     const descriptors = this.matchSagaDescriptors(event);
@@ -157,12 +135,11 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     await Promise.all(descriptors.map((descriptor) => this.dispatchWithOrdering(descriptor, event, context)));
   }
 
-  private assertAcceptingNewWork(options: SagaDispatchOptions): void {
-    if (options.allowDuringShutdown) {
-      return;
-    }
-
-    if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
+  private assertAcceptingNewWork(drainAuthorization: symbol | undefined): void {
+    if (
+      (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped')
+      && drainAuthorization !== CQRS_SAGA_DRAIN_AUTHORIZATION
+    ) {
       throw new InvariantError('CQRS saga bus cannot dispatch after shutdown has started.');
     }
   }
@@ -186,36 +163,16 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   }
 
   private async dispatchWithOrdering<TEvent extends IEvent>(descriptor: SagaDescriptor, event: TEvent, activeContext?: CqrsDispatchContext): Promise<void> {
-    const internalContext = isInternalCqrsDispatchContext(activeContext) ? activeContext : undefined;
-    const activeState = isCqrsDispatchContextState(activeContext) ? activeContext : undefined;
-    const routeLabel = `${descriptor.targetType.name}(${descriptor.eventType.name})`;
-    const isActiveRoute = activeState?.activeRoutes.some(
-      (route) => route.token === descriptor.token && route.eventType === descriptor.eventType,
-    );
-    const isActiveToken = activeState?.activeRoutes.some((route) => route.token === descriptor.token) ?? false;
+    const topology = enterSagaTopology(activeContext, descriptor);
 
-    if (isActiveRoute) {
-      throw new SagaTopologyError(
-        `Saga ${descriptor.targetType.name} re-entered an unsafe cycle while handling ${descriptor.eventType.name}. `
-          + `Active saga path: ${[...(activeState?.path ?? []), routeLabel].join(' -> ')}.`,
-      );
-    }
-
-    if ((activeState?.depth ?? 0) >= MAX_NESTED_SAGA_DEPTH) {
-      throw new SagaTopologyError(
-        `Saga ${descriptor.targetType.name} exceeded the maximum nested saga depth of ${MAX_NESTED_SAGA_DEPTH} while handling ${descriptor.eventType.name}. `
-          + 'Keep in-process saga graphs acyclic and externally bounded.',
-      );
-    }
-
-    if (isActiveToken) {
-      await this.invokeSaga(descriptor, event, this.createDispatchContext(internalContext, activeState, descriptor, routeLabel));
+    if (topology.reentrantToken) {
+      await this.invokeSaga(descriptor, event, topology.context);
       return;
     }
 
     const previous = this.executionChains.get(descriptor.token) ?? Promise.resolve();
     const current = previous.then(async () => {
-      await this.invokeSaga(descriptor, event, this.createDispatchContext(internalContext, activeState, descriptor, routeLabel));
+      await this.invokeSaga(descriptor, event, topology.context);
     });
 
     this.executionChains.set(descriptor.token, current.catch(() => undefined));
@@ -230,23 +187,11 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
 
   private async drainActiveSagaWork(): Promise<void> {
     const timeoutMs = this.resolveShutdownDrainTimeoutMs();
-    const deadline = Date.now() + timeoutMs;
+    const activeWorkCount = this.pendingDispatches.size;
+    const drained = await drainPendingSagaDispatches(this.pendingDispatches, timeoutMs);
 
-    while (this.pendingDispatches.size > 0) {
-      const activeWork = [...this.pendingDispatches];
-      const remainingTimeoutMs = deadline - Date.now();
-
-      if (remainingTimeoutMs <= 0) {
-        this.reportShutdownDrainTimeout(timeoutMs, activeWork.length);
-        return;
-      }
-
-      const drained = await this.awaitShutdownDrain(activeWork, remainingTimeoutMs);
-
-      if (!drained) {
-        this.reportShutdownDrainTimeout(timeoutMs, activeWork.length);
-        return;
-      }
+    if (!drained) {
+      this.reportShutdownDrainTimeout(timeoutMs, activeWorkCount);
     }
   }
 
@@ -256,23 +201,6 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
       `CQRS saga shutdown drain exceeded ${String(timeoutMs)}ms with ${String(activeWorkCount)} active saga task(s); continuing shutdown.`,
       'CqrsSagaLifecycleService',
     );
-  }
-
-  private async awaitShutdownDrain(activeWork: Promise<void>[], timeoutMs: number): Promise<boolean> {
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<false>((resolve) => {
-      timeoutId = setTimeout(() => resolve(false), timeoutMs);
-    });
-
-    const drain = Promise.allSettled(activeWork).then(() => true);
-
-    try {
-      return await Promise.race([drain, timeout]);
-    } finally {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-    }
   }
 
   private resolveShutdownDrainTimeoutMs(): number {
@@ -285,21 +213,7 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     return Math.floor(timeoutMs);
   }
 
-  private createDispatchContext(
-    internalContext: InternalCqrsDispatchContext | undefined,
-    activeContext: CqrsDispatchContextState | undefined,
-    descriptor: SagaDescriptor,
-    routeLabel: string,
-  ): CqrsDispatchContextState {
-    return createInternalCqrsDispatchContext({
-      ...internalContext,
-      activeRoutes: [...(activeContext?.activeRoutes ?? []), { eventType: descriptor.eventType, token: descriptor.token }],
-      depth: (activeContext?.depth ?? 0) + 1,
-      path: [...(activeContext?.path ?? []), routeLabel],
-    });
-  }
-
-  private async invokeSaga<TEvent extends IEvent>(descriptor: SagaDescriptor, event: TEvent, context: CqrsDispatchContextState): Promise<void> {
+  private async invokeSaga<TEvent extends IEvent>(descriptor: SagaDescriptor, event: TEvent, context: CqrsDispatchContext): Promise<void> {
     const instance = await this.resolveHandlerInstance(descriptor.token);
 
     if (!isSaga(instance)) {
@@ -351,50 +265,6 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   }
 
   private discoverSagaDescriptors(): Map<CqrsEventType, SagaDescriptor[]> {
-    const descriptorsByEvent = new Map<CqrsEventType, SagaDescriptor[]>();
-    const seenByTarget = new WeakMap<Function, Set<CqrsEventType>>();
-
-    for (const candidate of this.discoveryCandidates()) {
-      const metadata = getSagaMetadata(candidate.targetType);
-
-      if (!metadata) {
-        continue;
-      }
-
-      if (candidate.scope !== 'singleton') {
-        this.logger.warn(
-          `${candidate.targetType.name} in module ${candidate.moduleName} declares @Saga() but is registered with ${candidate.scope} scope. Sagas are registered only for singleton providers.`,
-          'CqrsSagaLifecycleService',
-        );
-        continue;
-      }
-
-      const seenEventTypes = seenByTarget.get(candidate.targetType) ?? new Set<CqrsEventType>();
-
-      for (const eventType of metadata.eventTypes) {
-        if (seenEventTypes.has(eventType)) {
-          continue;
-        }
-
-        seenEventTypes.add(eventType);
-
-        const descriptors = descriptorsByEvent.get(eventType) ?? [];
-
-        if (!descriptors.some((descriptor) => descriptor.targetType === candidate.targetType)) {
-          descriptors.push({
-            eventType,
-            moduleName: candidate.moduleName,
-            targetType: candidate.targetType,
-            token: candidate.token,
-          });
-
-          descriptorsByEvent.set(eventType, descriptors);
-        }
-      }
-
-      seenByTarget.set(candidate.targetType, seenEventTypes);
-    }
-
-    return descriptorsByEvent;
+    return discoverSagaDescriptors(this.discoveryCandidates(), this.logger);
   }
 }

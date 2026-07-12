@@ -108,7 +108,7 @@ export class CheckoutService {
 }
 ```
 
-This keeps the write path explicit. The service still owns the state change, while side effects are delegated.
+This keeps the write path explicit. The service still owns the state change, while side effects are delegated. Because `waitForHandlers` defaults to `true`, this awaited publish completes only after matching local handlers and configured transport publishes settle within their bounds. Use `waitForHandlers: false` only for deliberately background reactions; those tasks still participate in shutdown drain tracking.
 
 ### 9.3.2 Why this is better than chained service calls
 
@@ -120,7 +120,7 @@ An event bus is intentionally one-to-many. This is the opposite of command routi
 
 ### 9.4.1 Notification reaction
 
-Notification Service listens for `OrderPlacedEvent` and sends a receipt. The checkout flow does not need to wait for email delivery directly, so order recording and customer communication stay loosely connected.
+Notification Service listens for `OrderPlacedEvent` and sends a receipt. With the default awaited publish shown above, Checkout waits for this handler to finish even though it does not call the email service directly. Keep the handler bounded, or hand slow and retryable delivery to Queue so the event reaction records only the durable handoff.
 
 ```typescript
 import { OnEvent } from '@fluojs/event-bus';

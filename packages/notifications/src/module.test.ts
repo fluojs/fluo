@@ -5,7 +5,11 @@ import { FluoFactory } from '@fluojs/runtime';
 import { createTestingModule } from '@fluojs/testing';
 import { describe, expect, it } from 'vitest';
 
-import { NotificationChannelNotFoundError, NotificationQueueNotConfiguredError } from './errors.js';
+import {
+  NotificationChannelNotFoundError,
+  NotificationQueueNotConfiguredError,
+  NotificationsConfigurationError,
+} from './errors.js';
 import { NotificationsModule } from './module.js';
 import { NotificationsService } from './service.js';
 import { NOTIFICATION_CHANNELS, NOTIFICATIONS } from './tokens.js';
@@ -435,6 +439,27 @@ describe('NotificationsModule', () => {
         recipients: ['user@example.com'],
       },
     ]);
+  });
+
+  it('rejects duplicate static channel registrations before creating a provider graph', () => {
+    const duplicateEmailChannels: readonly NotificationChannel[] = [
+      {
+        channel: 'email',
+        async send() {
+          return { externalId: 'first-email-provider' };
+        },
+      },
+      {
+        channel: 'email',
+        async send() {
+          return { externalId: 'second-email-provider' };
+        },
+      },
+    ];
+
+    expect(() => NotificationsModule.forRoot({ channels: duplicateEmailChannels })).toThrowError(
+      new NotificationsConfigurationError('Duplicate notification channel registration detected for "email".'),
+    );
   });
 
   it('supports documented class-level service injection for application services', async () => {
@@ -1101,6 +1126,44 @@ describe('NotificationsModule', () => {
       'notification.dispatch.requested',
       'notification.dispatch.delivered',
     ]);
+  });
+
+  it('rejects duplicate async channel registrations before creating dependent providers', async () => {
+    let dependentProviderConstructions = 0;
+
+    @Inject(NotificationsService)
+    class NotificationsDependentProvider {
+      constructor(readonly notifications: NotificationsService) {
+        dependentProviderConstructions += 1;
+      }
+    }
+
+    const container = new Container();
+    const moduleType = NotificationsModule.forRootAsync({
+      useFactory: async () => ({
+        channels: [
+          {
+            channel: 'email',
+            async send() {
+              return { externalId: 'first-email-provider' };
+            },
+          },
+          {
+            channel: 'email',
+            async send() {
+              return { externalId: 'second-email-provider' };
+            },
+          },
+        ],
+      }),
+    });
+
+    container.register(...moduleProviders(moduleType), NotificationsDependentProvider);
+
+    await expect(container.resolve(NotificationsDependentProvider)).rejects.toThrowError(
+      new NotificationsConfigurationError('Duplicate notification channel registration detected for "email".'),
+    );
+    expect(dependentProviderConstructions).toBe(0);
   });
 
   it('exposes configured service status diagnostics under details only', async () => {
