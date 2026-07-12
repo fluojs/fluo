@@ -77,12 +77,30 @@ coercion.
 applies DTO binding metadata, and recursively hydrates `@ValidateNested(...)`
 fields. It preserves the request-pipeline contract that transports or binders own
 source selection and scalar conversion before validation runs.
+Safe extra own enumerable properties are retained; only dangerous keys such as
+`__proto__`, `constructor`, and `prototype`, plus inherited or non-enumerable
+properties, are excluded. This is not a `ValidationPipe`-style whitelist or
+`forbidNonWhitelisted` boundary. Shape or reject extra input explicitly before
+materialization when an application requires that policy.
 Existing nested values that are already instances of the declared nested DTO are
 preserved; plain nested values are hydrated only for the affected nested field or
 collection entry.
 The root value passed to `materialize()` must already be a plain object or an
 instance of the target DTO; malformed roots such as strings, arrays, and `null`
 are rejected before the target DTO constructor or field initializers run.
+
+### Missing values and validation groups
+
+Ordinary field validators skip both `null` and `undefined`. Add `@IsDefined()`
+when either value must fail as a missing required field. `@IsOptional()` remains
+useful when the optional contract should be explicit and should short-circuit the
+other validators on that field.
+
+Validation groups are not a supported execution surface. Decorator options do
+not include class-validator-style `groups` or `always`, and `validate()` /
+`materialize()` do not accept a group selection. Model different workflows with
+separate DTOs, mapped DTO helpers, `@ValidateIf(...)`, or explicit class-level
+validation instead of assuming group-based execution.
 
 ### DTO inheritance
 

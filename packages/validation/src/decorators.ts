@@ -24,7 +24,7 @@ function resolveClassValidator(validate: ValidateClassInput): CustomClassValidat
 /**
  * Validates that the decorated field is a string value.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a string validation rule.
  */
 export function IsString(options?: ValidationDecoratorOptions): FieldDecoratorFn {
@@ -34,7 +34,7 @@ export function IsString(options?: ValidationDecoratorOptions): FieldDecoratorFn
 /**
  * Validates that the decorated field is a number value.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a number validation rule.
  */
 export function IsNumber(options?: ValidationDecoratorOptions & { allowNaN?: boolean }): FieldDecoratorFn {
@@ -44,7 +44,7 @@ export function IsNumber(options?: ValidationDecoratorOptions & { allowNaN?: boo
 /**
  * Validates that the decorated field is a boolean value.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a boolean validation rule.
  */
 export function IsBoolean(options?: ValidationDecoratorOptions): FieldDecoratorFn {
@@ -55,7 +55,7 @@ export function IsBoolean(options?: ValidationDecoratorOptions): FieldDecoratorF
  * Applies subsequent validators only when the condition returns `true`.
  *
  * @param validateIf Predicate that decides whether subsequent validators should run.
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that adds conditional validation execution.
  */
 export const ValidateIf = (
@@ -66,14 +66,14 @@ export const ValidateIf = (
 /**
  * Validates that the decorated field is neither `null` nor `undefined`.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a required-value rule.
  */
 export const IsDefined = createFlagValidationDecorator((options) => ({ kind: 'defined', ...options }));
 /**
  * Skips subsequent validators when the decorated field is `null` or `undefined`.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers optional-value semantics.
  */
 export const IsOptional = createFlagValidationDecorator((options) => ({ kind: 'optional', ...options }));
@@ -81,7 +81,7 @@ export const IsOptional = createFlagValidationDecorator((options) => ({ kind: 'o
  * Validates that the decorated field strictly equals the expected value.
  *
  * @param value Expected value to compare against the field value.
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers an equality rule.
  */
 export const Equals = createValidationOptionsWithConfigDecorator<unknown>((value, options) => ({ kind: 'equals', value, ...options }));
@@ -89,21 +89,21 @@ export const Equals = createValidationOptionsWithConfigDecorator<unknown>((value
  * Validates that the decorated field does not strictly equal the forbidden value.
  *
  * @param value Forbidden value to compare against the field value.
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers an inequality rule.
  */
 export const NotEquals = createValidationOptionsWithConfigDecorator<unknown>((value, options) => ({ kind: 'notEquals', value, ...options }));
 /**
  * Validates that the decorated field is empty.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers an empty-value rule.
  */
 export const IsEmpty = createFlagValidationDecorator((options) => ({ kind: 'empty', ...options }));
 /**
  * Validates that the decorated field is not empty.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a non-empty-value rule.
  */
 export const IsNotEmpty = createFlagValidationDecorator((options) => ({ kind: 'notEmpty', ...options }));
@@ -111,7 +111,7 @@ export const IsNotEmpty = createFlagValidationDecorator((options) => ({ kind: 'n
  * Validates that the decorated field is included in the accepted values.
  *
  * @param values Accepted values for the field.
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers an inclusion rule.
  */
 export const IsIn = createArrayValidationDecorator<unknown>((values, options) => ({ kind: 'in', values, ...options }));
@@ -119,49 +119,49 @@ export const IsIn = createArrayValidationDecorator<unknown>((values, options) =>
  * Validates that the decorated field is not included in the rejected values.
  *
  * @param values Rejected values for the field.
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers an exclusion rule.
  */
 export const IsNotIn = createArrayValidationDecorator<unknown>((values, options) => ({ kind: 'notIn', values, ...options }));
 /**
  * Validates that the decorated field is a `Date` value.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a date validation rule.
  */
 export const IsDate = createFlagValidationDecorator((options) => ({ kind: 'date', ...options }));
 /**
  * Validates that the decorated field is an array.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers an array validation rule.
  */
 export const IsArray = createFlagValidationDecorator((options) => ({ kind: 'array', ...options }));
 /**
  * Validates that the decorated field is an object value.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers an object validation rule.
  */
 export const IsObject = createFlagValidationDecorator((options) => ({ kind: 'object', ...options }));
 /**
  * Validates that the decorated field is an integer.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers an integer validation rule.
  */
 export const IsInt = createFlagValidationDecorator((options) => ({ kind: 'int', ...options }));
 /**
  * Validates that the decorated field is a positive number.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a positive-number rule.
  */
 export const IsPositive = createFlagValidationDecorator((options) => ({ kind: 'positive', ...options }));
 /**
  * Validates that the decorated field is a negative number.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a negative-number rule.
  */
 export const IsNegative = createFlagValidationDecorator((options) => ({ kind: 'negative', ...options }));
@@ -170,7 +170,7 @@ export const IsNegative = createFlagValidationDecorator((options) => ({ kind: 'n
  * Validates that the field value is included in the given enum-like set.
  *
  * @param values Enum object or literal value list that defines the accepted set.
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers an enum-membership rule.
  */
 export function IsEnum(values: Record<string, unknown> | readonly unknown[], options?: ValidationDecoratorOptions): FieldDecoratorFn {
@@ -182,7 +182,7 @@ export function IsEnum(values: Record<string, unknown> | readonly unknown[], opt
  * Validates that the decorated field is divisible by the given divisor.
  *
  * @param value Divisor used for the numeric divisibility check.
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a divisibility rule.
  */
 export const IsDivisibleBy = createValidationOptionsWithConfigDecorator<number>((value, options) => ({ kind: 'divisibleBy', value, ...options }));
@@ -190,7 +190,7 @@ export const IsDivisibleBy = createValidationOptionsWithConfigDecorator<number>(
  * Validates that the decorated field is greater than or equal to the minimum.
  *
  * @param value Inclusive minimum allowed numeric value.
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a minimum-value rule.
  */
 export const Min = createValidationOptionsWithConfigDecorator<number>((value, options) => ({ kind: 'min', value, ...options }));
@@ -198,7 +198,7 @@ export const Min = createValidationOptionsWithConfigDecorator<number>((value, op
  * Validates that the decorated field is less than or equal to the maximum.
  *
  * @param value Inclusive maximum allowed numeric value.
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a maximum-value rule.
  */
 export const Max = createValidationOptionsWithConfigDecorator<number>((value, options) => ({ kind: 'max', value, ...options }));
@@ -206,7 +206,7 @@ export const Max = createValidationOptionsWithConfigDecorator<number>((value, op
  * Validates that the decorated field is on or after the minimum date.
  *
  * @param value Inclusive minimum allowed date.
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a minimum-date rule.
  */
 export const MinDate = createValidationOptionsWithConfigDecorator<Date>((value, options) => ({ kind: 'minDate', value, ...options }));
@@ -214,7 +214,7 @@ export const MinDate = createValidationOptionsWithConfigDecorator<Date>((value, 
  * Validates that the decorated field is on or before the maximum date.
  *
  * @param value Inclusive maximum allowed date.
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a maximum-date rule.
  */
 export const MaxDate = createValidationOptionsWithConfigDecorator<Date>((value, options) => ({ kind: 'maxDate', value, ...options }));
@@ -222,7 +222,7 @@ export const MaxDate = createValidationOptionsWithConfigDecorator<Date>((value, 
  * Validates that the decorated field contains the required substring.
  *
  * @param value Required substring.
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a substring-presence rule.
  */
 export const Contains = createValidationOptionsWithConfigDecorator<string>((value, options) => ({ kind: 'contains', value, ...options }));
@@ -230,7 +230,7 @@ export const Contains = createValidationOptionsWithConfigDecorator<string>((valu
  * Validates that the decorated field does not contain the forbidden substring.
  *
  * @param value Forbidden substring.
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a substring-exclusion rule.
  */
 export const NotContains = createValidationOptionsWithConfigDecorator<string>((value, options) => ({ kind: 'notContains', value, ...options }));
@@ -240,7 +240,7 @@ export const NotContains = createValidationOptionsWithConfigDecorator<string>((v
  *
  * @param min Minimum inclusive length.
  * @param max Optional maximum inclusive length.
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a bounded-length rule.
  */
 export function Length(min: number, max?: number, options?: ValidationDecoratorOptions): FieldDecoratorFn {
@@ -251,7 +251,7 @@ export function Length(min: number, max?: number, options?: ValidationDecoratorO
  * Validates a nested DTO instance using the provided constructor.
  *
  * @param dto DTO constructor (or lazy constructor factory) used for nested validation/materialization.
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers recursive nested DTO validation.
  */
 export function ValidateNested(dto: Constructor | (() => Constructor), options?: ValidationDecoratorOptions): FieldDecoratorFn {
@@ -266,7 +266,7 @@ export function ValidateNested(dto: Constructor | (() => Constructor), options?:
  * Validates that the decorated field has at least the given length.
  *
  * @param value Inclusive minimum string length.
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a minimum-length rule.
  */
 export const MinLength = createValidationOptionsWithConfigDecorator<number>((value, options) => ({ kind: 'minLength', value, ...options }));
@@ -274,7 +274,7 @@ export const MinLength = createValidationOptionsWithConfigDecorator<number>((val
  * Validates that the decorated field has at most the given length.
  *
  * @param value Inclusive maximum string length.
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a maximum-length rule.
  */
 export const MaxLength = createValidationOptionsWithConfigDecorator<number>((value, options) => ({ kind: 'maxLength', value, ...options }));
@@ -314,196 +314,196 @@ export function Matches(
 /**
  * Validates that the decorated field contains only alphabetic characters.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers an alphabetic string rule.
  */
 export const IsAlpha = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('alpha')(undefined, options);
 /**
  * Validates that the decorated field contains only alphanumeric characters.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers an alphanumeric string rule.
  */
 export const IsAlphanumeric = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('alphanumeric')(undefined, options);
 /**
  * Validates that the decorated field contains only ASCII characters.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers an ASCII string rule.
  */
 export const IsAscii = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('ascii')(undefined, options);
 /**
  * Validates that the decorated field is a Base64 string.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a Base64 string rule.
  */
 export const IsBase64 = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('base64')(undefined, options);
 /**
  * Validates that the decorated field is a boolean-like string.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a boolean-string rule.
  */
 export const IsBooleanString = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('booleanString')(undefined, options);
 /**
  * Validates that the decorated field is a data URI string.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a data URI rule.
  */
 export const IsDataURI = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('dataURI')(undefined, options);
 /**
  * Validates that the decorated field is a date string.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a date-string rule.
  */
 export const IsDateString = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('dateString')(undefined, options);
 /**
  * Validates that the decorated field is a decimal string.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a decimal-string rule.
  */
 export const IsDecimal = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('decimal')(undefined, options);
 /**
  * Validates that the decorated field is an email address.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers an email-address rule.
  */
 export const IsEmail = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('email')(undefined, options);
 /**
  * Validates that the decorated field is a fully qualified domain name.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers an FQDN rule.
  */
 export const IsFQDN = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('fqdn')(undefined, options);
 /**
  * Validates that the decorated field is a hexadecimal color string.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a hex-color rule.
  */
 export const IsHexColor = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('hexColor')(undefined, options);
 /**
  * Validates that the decorated field is a hexadecimal string.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a hexadecimal string rule.
  */
 export const IsHexadecimal = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('hexadecimal')(undefined, options);
 /**
  * Validates that the decorated field is a JSON string.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a JSON-string rule.
  */
 export const IsJSON = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('json')(undefined, options);
 /**
  * Validates that the decorated field is a JSON Web Token string.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a JWT-string rule.
  */
 export const IsJWT = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('jwt')(undefined, options);
 /**
  * Validates that the decorated field is a locale identifier.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a locale-string rule.
  */
 export const IsLocale = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('locale')(undefined, options);
 /**
  * Validates that the decorated field is lowercase.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a lowercase-string rule.
  */
 export const IsLowercase = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('lowercase')(undefined, options);
 /**
  * Validates that the decorated field is a magnet URI string.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a magnet URI rule.
  */
 export const IsMagnetURI = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('magnetURI')(undefined, options);
 /**
  * Validates that the decorated field is a MIME type string.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a MIME type rule.
  */
 export const IsMimeType = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('mimeType')(undefined, options);
 /**
  * Validates that the decorated field is a MongoDB object ID string.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a MongoDB object ID rule.
  */
 export const IsMongoId = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('mongoId')(undefined, options);
 /**
  * Validates that the decorated field is a numeric string.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a numeric-string rule.
  */
 export const IsNumberString = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('numberString')(undefined, options);
 /**
  * Validates that the decorated field is a network port string.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a port-string rule.
  */
 export const IsPort = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('port')(undefined, options);
 /**
  * Validates that the decorated field is an RFC 3339 date-time string.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers an RFC 3339 string rule.
  */
 export const IsRFC3339 = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('rfc3339')(undefined, options);
 /**
  * Validates that the decorated field is a semantic version string.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a semantic-version rule.
  */
 export const IsSemVer = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('semVer')(undefined, options);
 /**
  * Validates that the decorated field is uppercase.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers an uppercase-string rule.
  */
 export const IsUppercase = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('uppercase')(undefined, options);
 /**
  * Validates that the decorated field is an ISO 8601 date-time string.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers an ISO 8601 string rule.
  */
 export const IsISO8601 = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('iso8601')(undefined, options);
 /**
  * Validates that the decorated field is a latitude value.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a latitude rule.
  */
 export const IsLatitude = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('latitude')(undefined, options);
 /**
  * Validates that the decorated field is a longitude value.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a longitude rule.
  */
 export const IsLongitude = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('longitude')(undefined, options);
 /**
  * Validates that the decorated field is a latitude/longitude coordinate string.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a latitude/longitude rule.
  */
 export const IsLatLong = (options?: ValidationDecoratorOptions) => createValidatorJsDecorator('latLong')(undefined, options);
@@ -516,7 +516,7 @@ export const IsLatLong = (options?: ValidationDecoratorOptions) => createValidat
  * version only.
  *
  * @param version Optional IP version filter (`'4'`, `'6'`, or `'4_or_6'`).
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers an IP-address rule.
  */
 export function IsIP(version?: '4' | '6' | '4_or_6', options?: ValidationDecoratorOptions): FieldDecoratorFn {
@@ -612,7 +612,7 @@ export function IsCurrency(options?: ValidationDecoratorOptions): FieldDecorator
  * Validates that the decorated array contains all required values.
  *
  * @param values Required values that must be present in the array.
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers an array-contains rule.
  */
 export const ArrayContains = createArrayValidationDecorator<unknown>((values, options) => ({ kind: 'arrayContains', values, ...options }));
@@ -620,14 +620,14 @@ export const ArrayContains = createArrayValidationDecorator<unknown>((values, op
  * Validates that the decorated array excludes all forbidden values.
  *
  * @param values Forbidden values that must not be present in the array.
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers an array-exclusion rule.
  */
 export const ArrayNotContains = createArrayValidationDecorator<unknown>((values, options) => ({ kind: 'arrayNotContains', values, ...options }));
 /**
  * Validates that the decorated array is not empty.
  *
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a non-empty-array rule.
  */
 export const ArrayNotEmpty = createFlagValidationDecorator((options) => ({ kind: 'arrayNotEmpty', ...options }));
@@ -635,7 +635,7 @@ export const ArrayNotEmpty = createFlagValidationDecorator((options) => ({ kind:
  * Validates that the decorated array has at least the given size.
  *
  * @param value Inclusive minimum array length.
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a minimum-array-size rule.
  */
 export const ArrayMinSize = createValidationOptionsWithConfigDecorator<number>((value, options) => ({ kind: 'arrayMinSize', value, ...options }));
@@ -643,7 +643,7 @@ export const ArrayMinSize = createValidationOptionsWithConfigDecorator<number>((
  * Validates that the decorated array has at most the given size.
  *
  * @param value Inclusive maximum array length.
- * @param options Optional validation behavior (`message`, `groups`, `always`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers a maximum-array-size rule.
  */
 export const ArrayMaxSize = createValidationOptionsWithConfigDecorator<number>((value, options) => ({ kind: 'arrayMaxSize', value, ...options }));
