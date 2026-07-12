@@ -13,7 +13,7 @@ Use this guide when you need durable records, shared Redis state, HTTP/applicati
 | --- | --- | --- |
 | Prisma ORM | `@fluojs/prisma` | `PrismaModule`, `PrismaService.current()`, request transactions |
 | Drizzle ORM | `@fluojs/drizzle` | `DrizzleModule`, `DrizzleDatabase.current()`, optional dispose hook |
-| Mongoose ODM | `@fluojs/mongoose` | `MongooseModule`, `MongooseConnection`, explicit sessions |
+| Mongoose ODM | `@fluojs/mongoose` | `MongooseModule`, `MongooseConnection.model(...)` session facade, explicit raw-model sessions |
 | Shared Redis clients | `@fluojs/redis` | `RedisModule`, `RedisService`, named clients |
 | HTTP and app caching | `@fluojs/cache-manager` | `CacheModule`, `CacheInterceptor`, `CacheService` |
 | Background jobs | `@fluojs/queue` | `QueueModule`, `QueueLifecycleService`, `@QueueWorker()` |
@@ -72,7 +72,7 @@ await this.prisma.transaction(async () => {
 });
 ```
 
-For request-scoped transactions on the default unnamed client, apply `PrismaTransactionInterceptor`.
+`PrismaTransactionInterceptor` remains available as a deprecated 1.x compatibility bridge for request-scoped transactions on the default unnamed client. Prefer service `@Transaction()` or an explicit `requestTransaction(...)` boundary in new code.
 
 ```ts
 import { Post, UseInterceptors } from '@fluojs/http';
@@ -136,7 +136,7 @@ export class UserRepository {
 }
 ```
 
-`DrizzleTransactionInterceptor` wraps HTTP requests with `DrizzleDatabase.requestTransaction(...)`. During shutdown, active request transactions are aborted and settled before the configured `dispose(database)` hook runs. Nested `requestTransaction(...)` calls inside existing manual transaction boundaries participate in the same shutdown tracking without opening another Drizzle transaction.
+`@fluojs/drizzle` does not export `DrizzleTransactionInterceptor`. Use an explicit `DrizzleDatabase.requestTransaction(...)` request boundary when the whole request must share one transaction. During shutdown, active request transactions are aborted and settled before the configured `dispose(database)` hook runs. Nested `requestTransaction(...)` calls inside existing manual transaction boundaries participate in the same shutdown tracking without opening another Drizzle transaction.
 
 ## Mongoose
 
@@ -160,7 +160,9 @@ const connection = mongoose.createConnection('mongodb://localhost:27017/test');
 class AppModule {}
 ```
 
-Use `MongooseConnection.current()` to access the connection and `currentSession()` inside transactions.
+Use `MongooseConnection.model(...)` for supported operations. Inside `transaction(...)` or `@Transaction()`, its facade automatically binds the ambient session to `create`, `find`, `findOne`, `aggregate`, and `bulkWrite` while preserving existing operation options. `MongooseConnection.current()` returns the raw connection; calls through `current().model(...)`, unsupported model methods, and document operations such as `doc.save()` require explicit session handling through `currentSession()`.
+
+`MongooseTransactionInterceptor` is likewise a deprecated 1.x compatibility bridge for existing request-wide interceptor imports. Prefer service `@Transaction()` or an explicit `MongooseConnection.requestTransaction(...)` boundary for new code.
 
 ```ts
 import { MongooseConnection } from '@fluojs/mongoose';
@@ -175,7 +177,7 @@ export class UserRepository {
 }
 ```
 
-Mongoose transactions still require explicit session options on model calls.
+The following example intentionally uses the raw `current().model(...)` path, so it passes the ambient session explicitly:
 
 ```ts
 await this.conn.transaction(async () => {
@@ -186,7 +188,7 @@ await this.conn.transaction(async () => {
 });
 ```
 
-fluo never rewrites Mongoose operation options. If a model call omits `{ session }`, repositories should not assume fluo will attach one automatically.
+fluo merges the ambient session only through the supported `MongooseConnection.model(...)` facade methods. It does not rewrite operation options on raw models returned by `current().model(...)`; those calls must pass `currentSession()` explicitly when they participate in the transaction.
 
 ## Redis
 
@@ -332,7 +334,7 @@ Queue jobs must be JSON-serializable plain objects. Queue serializes the payload
 | Topic | Rule |
 | --- | --- |
 | Repository access | Use the package's `current()` seam (`PrismaService.current()`, `DrizzleDatabase.current()`, `MongooseConnection.current()`). |
-| Request transactions | Use interceptors for default HTTP request boundaries; named/multiple clients often need explicit transaction calls. |
+| Request transactions | Keep restored Prisma and Mongoose interceptors only for 1.x compatibility; prefer service `@Transaction()` or explicit request transaction calls, especially for named/multiple clients. |
 | Nested transactions | Active boundaries are reused; nested options that would be ignored are rejected. |
 | Shutdown | Packages drain or abort active request transactions before disposing underlying resources. |
 | Strict transactions | Enable strict mode when direct execution fallback would hide a missing driver capability. |
@@ -344,9 +346,9 @@ Queue jobs must be JSON-serializable plain objects. Queue serializes the payload
 
 | Package | Public API |
 | --- | --- |
-| `@fluojs/prisma` | `PrismaModule`, `PrismaService`, `PrismaTransactionInterceptor`, `PRISMA_CLIENT`, `PRISMA_OPTIONS`, named token helpers, status snapshot helper |
-| `@fluojs/drizzle` | `DrizzleModule`, `DrizzleDatabase`, `DrizzleTransactionInterceptor`, `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, status snapshot helper |
-| `@fluojs/mongoose` | `MongooseModule`, `MongooseConnection`, `MongooseTransactionInterceptor`, `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, status snapshot helper |
+| `@fluojs/prisma` | `PrismaModule`, `PrismaService`, deprecated `PrismaTransactionInterceptor` compatibility export, `PRISMA_CLIENT`, `PRISMA_OPTIONS`, named token helpers, status snapshot helper |
+| `@fluojs/drizzle` | `DrizzleModule`, `DrizzleDatabase`, `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, explicit `requestTransaction(...)`, status snapshot helper |
+| `@fluojs/mongoose` | `MongooseModule`, `MongooseConnection`, deprecated `MongooseTransactionInterceptor` compatibility export, `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, status snapshot helper |
 | `@fluojs/redis` | `RedisModule`, `RedisService`, `REDIS_CLIENT`, named client/service token helpers, status snapshot helper |
 | `@fluojs/cache-manager` | `CacheModule`, `CacheService`, `CacheInterceptor`, `CacheTTL`, `CacheKey`, `CacheEvict`, memory/Redis stores, diagnostics helpers |
 | `@fluojs/queue` | `QueueModule`, `QueueLifecycleService`, `QueueWorker`, `QUEUE`, queue options, status snapshot helper |
@@ -356,7 +358,7 @@ Queue jobs must be JSON-serializable plain objects. Queue serializes the payload
 | Mistake | Better approach |
 | --- | --- |
 | Passing `tx` objects through every service manually | Put repository access behind `current()` and open explicit transaction boundaries. |
-| Assuming Mongoose sessions are attached automatically | Pass `currentSession()` into Mongoose operations that participate in a transaction. |
+| Treating facade and raw Mongoose model calls as having the same session behavior | Use `MongooseConnection.model(...)` for automatic ambient-session binding on supported operations; pass `currentSession()` explicitly to raw `current().model(...)` calls and unsupported operations. |
 | Using memory cache or in-memory throttling as shared production state | Use Redis-backed storage for multi-instance deployments. |
 | Caching non-JSON values in Redis | Normalize values before caching. |
 | Sharing Redis cache prefixes with application data | Use a dedicated `keyPrefix`, for example `myapp:cache:`. |

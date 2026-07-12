@@ -12,6 +12,7 @@ Mongoose integration for fluo with session-aware transaction handling and lifecy
 - [Lifecycle and Shutdown](#lifecycle-and-shutdown)
 - [Common Patterns](#common-patterns)
   - [Service Transaction Boundary (@Transaction)](#service-transaction-boundary-transaction)
+  - [Request Transaction Interceptor Compatibility](#request-transaction-interceptor-compatibility)
   - [Manual Transactions and currentSession()](#manual-transactions-and-currentsession)
 - [Public API](#public-api)
 - [Related Packages](#related-packages)
@@ -108,6 +109,26 @@ export class UserRepository {
 
 Calls to `@Transaction()` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying MongoDB session. Note that `doc.save()` is not automatically session-aware in v1; use the supported facade operations (`model.create()`, `model.find()`, `model.findOne()`, `model.aggregate()`, or `model.bulkWrite()`) for automatic transaction participation.
 
+### Request Transaction Interceptor Compatibility
+
+`MongooseTransactionInterceptor` is restored as a deprecated 1.x compatibility export for existing request-wide `@UseInterceptors(...)` boundaries. `MongooseModule.forRoot(...)` and `forRootAsync(...)` provide and export it. It delegates to `MongooseConnection.requestTransaction(...)` and forwards the request `AbortSignal`.
+
+```ts
+import { Controller, Post, UseInterceptors } from '@fluojs/http';
+import { MongooseTransactionInterceptor } from '@fluojs/mongoose';
+
+@Controller('/orders')
+export class OrdersController {
+  @Post('/')
+  @UseInterceptors(MongooseTransactionInterceptor)
+  createOrder() {
+    return this.orders.create();
+  }
+}
+```
+
+Prefer service-layer `@Transaction()` for new business operations. Keep this interceptor only while migrating existing request-wide boundaries, or replace it with an explicit `requestTransaction(...)` call when request orchestration must make the boundary visible.
+
 ### Manual Transactions and currentSession()
 
 The `MongooseConnection` provides `currentSession()` to access the ambient MongoDB session and `current()` to access the root connection handle. Use these as escape hatches when you need to pass sessions to external utilities or perform advanced manual plumbing.
@@ -148,6 +169,7 @@ For supported facade methods, fluo preserves existing Mongoose operation options
 - `MongooseConnection.createPlatformStatusSnapshot()` — reports health/readiness, resource ownership, active request/session drain counts, and strict transaction support diagnostics for platform observability surfaces.
 - `MongooseConnection.model(name, ...args)` — returns the raw model outside transactions or a session-aware facade for `create`, `find`, `findOne`, `aggregate`, and `bulkWrite` inside an active transaction without mutating the underlying Mongoose connection.
 - `Transaction`
+- `MongooseTransactionInterceptor` — deprecated request-wide compatibility interceptor; prefer service `@Transaction()` or explicit `requestTransaction(...)` in new code.
 - `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, `MONGOOSE_OPTIONS`
 - `createMongooseProviders(options)` — compatibility/manual composition helper; prefer `MongooseModule.forRoot(...)` or `MongooseModule.forRootAsync(...)` for application-facing registration so module exports and provider visibility stay aligned.
 - `createMongoosePlatformStatusSnapshot(...)`
