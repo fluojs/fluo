@@ -143,11 +143,11 @@ Developers coming from other ecosystems should especially notice that this class
 
 Once you strip away the syntax, a `forRoot(...)` helper usually does two things. It computes stable Provider definitions from options, then binds those definitions to a new Module type.
 
-`PrismaModule.forRoot()` is a very good reference implementation. `path:packages/prisma/src/module.ts:141-168` creates a new class, calls `defineModule(...)`, exports the intended public Provider set, and registers a normalized option value Provider under an internal normalized-options Token. The remaining runtime Providers, such as the database client itself, are not hard-coded into the factory. They are derived through DI from that internal options Token.
+`PrismaModule.forRoot()` is a very good reference implementation. `path:packages/prisma/src/module.ts:161-195` creates a new class, calls `defineModule(...)`, exports the intended public Provider set, and registers a normalized option value Provider under an internal normalized-options Token. The remaining runtime Providers, such as the database client itself, are derived through DI from that internal options Token.
 
 The core shape of the static helper is visible directly in `buildPrismaModule()`.
 
-`path:packages/prisma/src/module.ts:141-168`
+`path:packages/prisma/src/module.ts:161-195`
 ```typescript
 function buildPrismaModule<
   TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
@@ -159,13 +159,25 @@ function buildPrismaModule<
   class PrismaRootModuleDefinition {}
   const normalizedOptions = normalizePrismaModuleOptions(options);
 
+  if (normalizedOptions.name !== undefined && normalizedOptions.global) {
+    throw new Error('Named Prisma registrations are scoped and cannot be registered globally.');
+  }
+
   return defineModule(PrismaRootModuleDefinition, {
     exports: normalizedOptions.name === undefined
+      ? [
+        PrismaService,
+        PrismaTransactionInterceptor,
+        getPrismaServiceToken(),
+        getPrismaClientToken(),
+        getPrismaOptionsToken(),
+      ]
       : [
         getPrismaServiceToken(normalizedOptions.name),
         getPrismaClientToken(normalizedOptions.name),
         getPrismaOptionsToken(normalizedOptions.name),
       ],
+    global: normalizedOptions.name === undefined ? normalizedOptions.global : false,
     providers: createPrismaRuntimeProviders<TClient, TTransactionClient, TTransactionOptions>({
       provide: getPrismaNormalizedOptionsToken(normalizedOptions.name),
       useValue: normalizedOptions,
@@ -174,7 +186,7 @@ function buildPrismaModule<
 }
 ```
 
-This code shows that `forRoot()` is effectively a function that first creates an options Provider, then binds the runtime Provider array containing that Provider to a new Module class. The public export list is fixed in the same place, so one helper call describes the whole registration surface.
+This code shows that `forRoot()` is effectively a function that first creates an options Provider, then binds the runtime Provider array containing that Provider to a new Module class. The unnamed registration exports `PrismaService`, the deprecated compatibility interceptor, and default tokens, while named registrations export only their matching tokens and remain scoped. One helper call therefore describes the whole registration surface.
 
 This separation between "option production" and "service production" is an important Fluo design trait. When normalized options are registered as an actual Provider, Module configuration becomes observable to the package's own Provider factories. Consumer code should inject only the public facade Tokens exported by `@fluojs/prisma`, such as `PrismaService`, `PRISMA_CLIENT`, `PRISMA_OPTIONS`, or the named-token helpers. The normalized-options Token also carries internal registration identity and visibility metadata, so it intentionally remains an implementation detail.
 

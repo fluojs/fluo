@@ -1376,20 +1376,24 @@ describe('PrismaModule.forRootAsync', () => {
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
-    const prisma = await app.container.resolve(PrismaService);
-    const rawClient = await app.container.resolve(PRISMA_CLIENT);
-    const moduleOptions = await app.container.resolve(PRISMA_OPTIONS);
 
-    expect(factory).toHaveBeenCalledOnce();
-    expect(factory.mock.calls[0][0]).toBeInstanceOf(ConfigService);
-    expect(rawClient).toBe(client);
-    expect(moduleOptions).toEqual({ strictTransactions: false });
-    expect(events).toEqual(['connect']);
+    try {
+      const prisma = await app.container.resolve(PrismaService);
+      const rawClient = await app.container.resolve(PRISMA_CLIENT);
+      const moduleOptions = await app.container.resolve(PRISMA_OPTIONS);
 
-    await app.close();
+      expect(factory).toHaveBeenCalledOnce();
+      expect(factory.mock.calls[0][0]).toBeInstanceOf(ConfigService);
+      expect(rawClient).toBe(client);
+      expect(moduleOptions).toEqual({ strictTransactions: false });
+      expect(events).toEqual(['connect']);
+
+      void prisma;
+    } finally {
+      await app.close();
+    }
+
     expect(events).toEqual(['connect', 'disconnect']);
-
-    void prisma;
   });
 
   it('resolves async options independently for each application container', async () => {
@@ -1441,6 +1445,80 @@ describe('PrismaModule.forRootAsync', () => {
       'disconnect:client-1',
       'disconnect:client-2',
     ]);
+  });
+
+  it('isolates concurrent transaction contexts across application containers', async () => {
+    const transactionClients: Array<{ readonly id: string }> = [];
+    let factoryCalls = 0;
+    const prismaModule = PrismaModule.forRootAsync({
+      useFactory: () => {
+        factoryCalls += 1;
+        const transactionClient = { id: `transaction-${factoryCalls}` };
+        transactionClients.push(transactionClient);
+
+        const client = {
+          async $connect() {},
+          async $disconnect() {},
+          async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+            return callback(transactionClient);
+          },
+        };
+
+        return { client };
+      },
+    });
+
+    class FirstAppModule {}
+    class SecondAppModule {}
+
+    defineModule(FirstAppModule, { imports: [prismaModule] });
+    defineModule(SecondAppModule, { imports: [prismaModule] });
+
+    const firstApp = await bootstrapApplication({ rootModule: FirstAppModule });
+
+    try {
+      const secondApp = await bootstrapApplication({ rootModule: SecondAppModule });
+
+      try {
+        const firstPrisma = await firstApp.container.resolve(PrismaService);
+        const secondPrisma = await secondApp.container.resolve(PrismaService);
+        let releaseTransactions: () => void = () => undefined;
+        const transactionBarrier = new Promise<void>((resolve) => {
+          releaseTransactions = resolve;
+        });
+        let markFirstStarted: () => void = () => undefined;
+        const firstStarted = new Promise<void>((resolve) => {
+          markFirstStarted = resolve;
+        });
+        let markSecondStarted: () => void = () => undefined;
+        const secondStarted = new Promise<void>((resolve) => {
+          markSecondStarted = resolve;
+        });
+
+        const firstTransaction = firstPrisma.transaction(async () => {
+          markFirstStarted();
+          await transactionBarrier;
+          return firstPrisma.current();
+        });
+        const secondTransaction = secondPrisma.transaction(async () => {
+          markSecondStarted();
+          await transactionBarrier;
+          return secondPrisma.current();
+        });
+
+        await Promise.all([firstStarted, secondStarted]);
+        releaseTransactions();
+
+        const [firstCurrent, secondCurrent] = await Promise.all([firstTransaction, secondTransaction]);
+
+        expect([firstCurrent, secondCurrent]).toEqual(transactionClients);
+        expect(firstCurrent).not.toBe(secondCurrent);
+      } finally {
+        await secondApp.close();
+      }
+    } finally {
+      await firstApp.close();
+    }
   });
 
   it('factory returning a promise resolves the client correctly', async () => {

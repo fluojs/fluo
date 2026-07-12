@@ -184,7 +184,7 @@ You still use `forRoot` for the default application-wide Prisma client in `AppMo
 
 ## 12.6 Using PrismaService
 
-After registration, you need to decide how application code will talk to the database. The `@fluojs/prisma` package provides `PrismaService`, which wraps the generated Prisma Client, and `PrismaServiceFacade<TClient>` for repositories that call generated delegates directly.
+After registration, you need to decide how application code will talk to the database. The `@fluojs/prisma` package provides two related injection shapes. `PrismaService<TClient>` is the lifecycle and transaction wrapper for `current()`, `transaction(...)`, and `requestTransaction(...)`. `PrismaServiceFacade<TClient>` is the repository-facing proxy that also forwards generated Prisma Client delegates to the current root or transaction client.
 
 ### Data Access Object (DAO) Pattern
 It is best to separate database logic from business logic. Let's create `PostsRepository`.
@@ -214,9 +214,9 @@ export class PostsRepository {
 This example assumes that `PostsRepository` is registered in the `providers` array of its Module.
 
 ### Transaction Awareness
-In fluo, `PrismaService` is context-aware. This means when you call `this.prisma.post.create()`, the service automatically determines whether it is running inside an active transaction (which we will cover in the next chapter) or as a standalone operation.
+In fluo, the injected `PrismaServiceFacade` is context-aware. This means when you call `this.prisma.post.create()`, the facade automatically determines whether it is running inside an active transaction (which we will cover in the next chapter) or as a standalone operation.
 
-By calling the models directly on `PrismaService`, the Repository can focus on the query itself without caring about the execution context. This greatly improves reuse and testability. Even when multiple write operations are grouped together in a service-level transaction, you can keep using the same Repository code.
+By calling generated model delegates directly on `PrismaServiceFacade`, the Repository can focus on the query itself without caring about the execution context. Providers that only open or inspect transaction boundaries should inject `PrismaService<TClient>` instead. Even when multiple write operations are grouped together in a service-level transaction, you can keep using the same Repository code.
 
 This pattern is a core part of fluo's "Transaction Agnostic" repository design. It ensures your data access layer stays clean, type-safe, and performs well under various transactional boundaries.
 
