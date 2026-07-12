@@ -110,53 +110,57 @@ function normalizeProvider(provider: Provider): NormalizedProvider {
 
 class provider는 `getClassDiMetadata()`를 통해 명시적으로 기록된 inject와 scope를 읽습니다. value provider는 이미 값이 있으므로 inject 배열을 비우고 singleton 기본 scope를 붙입니다.
 
-정규화 로직은 `inject` 배열도 정리합니다. `path:packages/di/src/container.ts:68-76`에서 알고리즘은 유효하지 않은 토큰을 걸러 내고, 각 엔트리가 유효한 토큰이거나 `optional()` 같은 명시적 래퍼인지 확인합니다. 이 조기 검증 덕분에 잘못된 주입 배열이 나중에 흐릿한 런타임 에러로 바뀌지 않습니다. 입력이 이 지점에서 표준화되므로, 하위 리졸버는 의존성 목록이 이미 실행 가능한 형태라고 가정할 수 있습니다.
+정규화 로직은 `path:packages/di/src/provider-normalization.ts`에서 `inject` 경계도 검증합니다. 값 자체가 배열이어야 하며, 각 엔트리는 문자열, symbol, class token 또는 올바른 `forwardRef()` / `optional()` wrapper여야 합니다. 이 조기 검증 덕분에 잘못된 입력이 나중에 raw `TypeError`나 흐릿한 resolution 실패로 바뀌지 않습니다. 입력이 이 지점에서 표준화되므로, 하위 리졸버는 의존성 목록이 이미 실행 가능한 형태라고 가정할 수 있습니다.
 
 조기 검증 자체는 작은 helper 하나로 고정되어 있습니다.
 
-`path:packages/di/src/container.ts:46-52`
+`path:packages/di/src/provider-normalization.ts`
 ```typescript
-function normalizeInjectToken(token: Token | ForwardRefFn | OptionalToken): Token | ForwardRefFn | OptionalToken {
-  if (token == null) {
-    throw new InvalidProviderError('Inject token must not be null or undefined. Check that all tokens in @Inject(...) are defined at the point of decoration (forward-reference cycles require forwardRef()).');
+function normalizeInject(inject: unknown, providerToken: Token): readonly NormalizedInjectToken[] {
+  if (inject === undefined) {
+    return [];
   }
 
-  return token;
+  if (!Array.isArray(inject)) {
+    throw new InvalidProviderError('Provider inject must be an array.', { token: providerToken });
+  }
+
+  return inject.map((token, index) => normalizeInjectToken(token, providerToken, index));
 }
 ```
 
-`null`과 `undefined`만 이 단계에서 즉시 차단하고, 일반 token, `forwardRef`, `optional` wrapper는 그대로 다음 단계로 넘깁니다. 따라서 정규화는 dependency entry를 평가하지 않고, 실행 가능한 모양인지 먼저 보장합니다.
+일반 token은 평가하지 않고 그대로 통과합니다. wrapper 객체는 필수 callable 또는 내부 token을 검증한 뒤 frozen record로 snapshot합니다. 특히 `forwardRef()`는 계속 lazy하게 동작합니다. 정규화는 wrapper의 함수를 검증하지만 호출하지 않습니다.
 
-또한 정규화는 Fluo의 "지연된 기본값(lazy defaults)"이 적용되는 지점입니다. 프로바이더가 스코프를 지정하지 않으면 `normalizeProvider`는 필드를 비워 두지 않습니다. `path:packages/di/src/container.ts:102-114`처럼 클래스 메타데이터를 읽고 `Scope.DEFAULT`라는 프레임워크 기본값을 채웁니다. 따라서 provider가 등록될 때는 동작 계약이 이미 명시된 상태입니다. 이 명시성 때문에 정규화 레코드가 provider 구성에 대한 컨테이너의 최종 기준이 됩니다.
+또한 정규화는 Fluo의 "지연된 기본값(lazy defaults)"이 적용되는 지점입니다. 프로바이더가 스코프를 지정하지 않으면 `normalizeProvider`는 필드를 비워 두지 않습니다. 클래스 메타데이터를 읽고 `Scope.DEFAULT`라는 프레임워크 기본값을 채웁니다. scope가 존재하면 `normalizeProviderScope()`는 `singleton`, `request`, `transient`만 허용하고 다른 값은 `InvalidProviderError`로 변환합니다. 따라서 provider가 등록될 때는 동작 계약이 이미 명시된 상태입니다. 이 명시성 때문에 정규화 레코드가 provider 구성에 대한 컨테이너의 최종 기준이 됩니다.
 
 factory와 `{ provide, useClass }` 분기는 scope 우선순위와 inject 우선순위를 더 분명히 드러냅니다.
 
-`path:packages/di/src/container.ts:78-101`
+`path:packages/di/src/provider-normalization.ts`
 ```typescript
-  if (isFactoryProvider(provider)) {
-    const metadata = provider.resolverClass ? getClassDiMetadata(provider.resolverClass) : undefined;
+  if ('useFactory' in objectProvider) {
+    const metadata = objectProvider.resolverClass ? getClassDiMetadata(objectProvider.resolverClass) : undefined;
 
-    return {
-      inject: (provider.inject ?? []).map(normalizeInjectToken),
-      multi: provider.multi,
-      provide: provider.provide,
-      scope: provider.scope ?? metadata?.scope ?? Scope.DEFAULT,
+    return freezeNormalizedProvider({
+      inject: normalizeInject(objectProvider.inject, objectProvider.provide),
+      multi: objectProvider.multi,
+      provide: objectProvider.provide,
+      scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? Scope.DEFAULT,
       type: 'factory',
-      useFactory: provider.useFactory,
-    };
+      useFactory: objectProvider.useFactory,
+    });
   }
 
-  if (isClassProvider(provider)) {
-    const metadata = getClassDiMetadata(provider.useClass);
+  if ('useClass' in objectProvider) {
+    const metadata = getClassDiMetadata(objectProvider.useClass);
 
-    return {
-      inject: (provider.inject ?? metadata?.inject ?? []).map(normalizeInjectToken),
-      multi: provider.multi,
-      provide: provider.provide,
-      scope: provider.scope ?? metadata?.scope ?? Scope.DEFAULT,
+    return freezeNormalizedProvider({
+      inject: normalizeInject(objectProvider.inject ?? metadata?.inject, objectProvider.provide),
+      multi: objectProvider.multi,
+      provide: objectProvider.provide,
+      scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? Scope.DEFAULT,
       type: 'class',
-      useClass: provider.useClass,
-    };
+      useClass: objectProvider.useClass,
+    });
   }
 ```
 
@@ -166,7 +170,7 @@ factory provider는 명시적 `provider.scope`를 먼저 보고, 없으면 `reso
 
 현재 컨테이너 구현은 의존성마다 별도 source tag를 저장하지 않습니다. 대신 `path:packages/di/src/container.ts:120-130`의 local registration map, multi registration map, request cache, singleton cache가 계층 조회와 수명 주기 분리를 위한 상태를 나눕니다. 뒤의 해결 단계는 이 저장소와 parent lookup을 조합해 어느 컨테이너 계층을 조회할지 판단합니다.
 
-`normalizeProvider`의 또 다른 세부 사항은 `forwardRef`와 `optional` wrapper를 평가하지 않고 `inject` 배열에 보존한다는 점입니다. 의존성 토큰이 `forwardRef` 팩토리로 감싸져 있으면, 정규화 단계는 wrapper 자체를 남기고 실제 token 평가는 `resolveDepToken()`까지 늦춥니다. 표준 의존성 조회의 단순성을 유지하면서 정의 순서 문제를 다루기 위한 장치입니다. `path:packages/di/src/container.ts:46-52`와 `path:packages/di/src/container.ts:558-579`가 이 handoff를 보여 줍니다.
+`normalizeProvider`의 또 다른 세부 사항은 `forwardRef`와 `optional` wrapper를 평가하지 않고 `inject` 배열에 보존한다는 점입니다. 의존성 토큰이 `forwardRef` 팩토리로 감싸져 있으면, 정규화 단계는 wrapper 자체를 남기고 실제 token 평가는 `resolveForwardRefToken()`까지 늦춥니다. 표준 의존성 조회의 단순성을 유지하면서 정의 순서 문제를 다루기 위한 장치입니다. `path:packages/di/src/provider-normalization.ts`와 `path:packages/di/src/container.ts`가 이 handoff를 보여 줍니다.
 
 마지막으로 정규화는 최종 검증을 수행합니다. `provide` 같은 필수 필드가 있는지, 값 프로바이더와 팩토리를 동시에 지정하는 식의 명백한 모순이 없는지 확인합니다. 이 방어선 덕분에 DI 컨테이너의 내부 상태는 유효한 레코드만 다루게 됩니다. `normalizeProvider`를 통과한 provider는 Fluo 엔진이 실행 가능한 구성 조각으로 취급할 수 있습니다.
 
@@ -178,7 +182,7 @@ factory provider는 조금 더 미묘합니다. 컨테이너는 우선 `provider
 
 두 개의 helper wrapper도 이 정규화 단계와 연결됩니다. 겉으로는 dependency 문법처럼 보이지만 실제로는 나중 resolution을 위한 표시자입니다. `forwardRef()`와 `optional()`은 `path:packages/di/src/types.ts:137-168`에 선언되어 있습니다. 이 함수들은 직접 resolve를 수행하지 않습니다. 후속 단계가 특별 취급할 수 있도록 token을 감쌀 뿐입니다.
 
-`inject` 배열에 `null`이나 `undefined`가 들어오면 초기에 바로 거절됩니다. `path:packages/di/src/container.ts:46-52`의 `normalizeInjectToken()`은 forward-reference 힌트와 함께 `InvalidProviderError`를 던집니다. 이것은 중요한 선택입니다. Fluo는 작성 오류를 등록/정규화 단계에서 드러내고 싶어 합니다. 그래프가 절반쯤 활성화된 뒤 생성 시점에 뒤늦게 터뜨리려 하지 않습니다.
+배열이 아닌 `inject`, 유효하지 않은 엔트리, 잘못된 wrapper, 지원하지 않는 `scope`가 provider 정규화에 들어오면 `path:packages/di/src/provider-normalization.ts`는 provider context와 작성 힌트를 담은 `InvalidProviderError`를 던집니다. 이것은 중요한 선택입니다. Fluo는 작성 오류를 등록/정규화 단계에서 드러내고 싶어 합니다. 그래프가 절반쯤 활성화된 뒤 생성 시점에 뒤늦게 터뜨리려 하지 않습니다.
 
 정규화 알고리즘은 다음처럼 요약할 수 있습니다.
 

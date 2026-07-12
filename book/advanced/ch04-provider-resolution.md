@@ -110,53 +110,57 @@ function normalizeProvider(provider: Provider): NormalizedProvider {
 
 A class Provider reads explicitly recorded `inject` and `scope` values through `getClassDiMetadata()`. A value Provider already has its value, so it uses an empty `inject` array and receives the default singleton Scope.
 
-Normalization also cleans the `inject` array. In `path:packages/di/src/container.ts:68-76`, the algorithm rejects invalid Tokens and confirms that every entry is a valid Token or an explicit wrapper such as `optional()`. This early validation keeps a malformed injection list from turning into a vague runtime error later. Because the input is standardized here, downstream resolvers can assume the dependency list already has an executable shape.
+Normalization also validates the `inject` boundary in `path:packages/di/src/provider-normalization.ts`. The value itself must be an array, and every entry must be a string, symbol, class Token, or a well-formed `forwardRef()` / `optional()` wrapper. This early validation keeps malformed input from turning into a raw `TypeError` or a vague resolution failure later. Because the input is standardized here, downstream resolvers can assume the dependency list already has an executable shape.
 
 The early validation itself is fixed in one small helper.
 
-`path:packages/di/src/container.ts:46-52`
+`path:packages/di/src/provider-normalization.ts`
 ```typescript
-function normalizeInjectToken(token: Token | ForwardRefFn | OptionalToken): Token | ForwardRefFn | OptionalToken {
-  if (token == null) {
-    throw new InvalidProviderError('Inject token must not be null or undefined. Check that all tokens in @Inject(...) are defined at the point of decoration (forward-reference cycles require forwardRef()).');
+function normalizeInject(inject: unknown, providerToken: Token): readonly NormalizedInjectToken[] {
+  if (inject === undefined) {
+    return [];
   }
 
-  return token;
+  if (!Array.isArray(inject)) {
+    throw new InvalidProviderError('Provider inject must be an array.', { token: providerToken });
+  }
+
+  return inject.map((token, index) => normalizeInjectToken(token, providerToken, index));
 }
 ```
 
-Only `null` and `undefined` are blocked immediately at this step. Ordinary Tokens, `forwardRef`, and `optional` wrappers are passed to the next step as they are. Normalization doesn't evaluate dependency entries. It first guarantees that they have an executable shape.
+Ordinary Tokens pass through without being evaluated. Wrapper objects are checked for their required callable or nested Token and then snapshotted as frozen records. In particular, `forwardRef()` remains lazy: normalization validates the wrapper's function but does not call it.
 
-Normalization is also where Fluo applies lazy defaults. If a Provider doesn't specify a Scope, `normalizeProvider` doesn't leave the field empty. It reads class metadata and fills in the framework default, `Scope.DEFAULT`, as shown in `path:packages/di/src/container.ts:102-114`. By the time a Provider is registered, its behavior contract is already explicit. This explicitness makes the normalized record the container's final source of truth for Provider configuration.
+Normalization is also where Fluo applies lazy defaults. If a Provider doesn't specify a Scope, `normalizeProvider` doesn't leave the field empty. It reads class metadata and fills in the framework default, `Scope.DEFAULT`. If a Scope is present, `normalizeProviderScope()` accepts only `singleton`, `request`, or `transient`; every other value becomes `InvalidProviderError`. By the time a Provider is registered, its behavior contract is already explicit. This explicitness makes the normalized record the container's final source of truth for Provider configuration.
 
 The factory and `{ provide, useClass }` branches make Scope precedence and inject precedence clearer.
 
-`path:packages/di/src/container.ts:78-101`
+`path:packages/di/src/provider-normalization.ts`
 ```typescript
-  if (isFactoryProvider(provider)) {
-    const metadata = provider.resolverClass ? getClassDiMetadata(provider.resolverClass) : undefined;
+  if ('useFactory' in objectProvider) {
+    const metadata = objectProvider.resolverClass ? getClassDiMetadata(objectProvider.resolverClass) : undefined;
 
-    return {
-      inject: (provider.inject ?? []).map(normalizeInjectToken),
-      multi: provider.multi,
-      provide: provider.provide,
-      scope: provider.scope ?? metadata?.scope ?? Scope.DEFAULT,
+    return freezeNormalizedProvider({
+      inject: normalizeInject(objectProvider.inject, objectProvider.provide),
+      multi: objectProvider.multi,
+      provide: objectProvider.provide,
+      scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? Scope.DEFAULT,
       type: 'factory',
-      useFactory: provider.useFactory,
-    };
+      useFactory: objectProvider.useFactory,
+    });
   }
 
-  if (isClassProvider(provider)) {
-    const metadata = getClassDiMetadata(provider.useClass);
+  if ('useClass' in objectProvider) {
+    const metadata = getClassDiMetadata(objectProvider.useClass);
 
-    return {
-      inject: (provider.inject ?? metadata?.inject ?? []).map(normalizeInjectToken),
-      multi: provider.multi,
-      provide: provider.provide,
-      scope: provider.scope ?? metadata?.scope ?? Scope.DEFAULT,
+    return freezeNormalizedProvider({
+      inject: normalizeInject(objectProvider.inject ?? metadata?.inject, objectProvider.provide),
+      multi: objectProvider.multi,
+      provide: objectProvider.provide,
+      scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? Scope.DEFAULT,
       type: 'class',
-      useClass: provider.useClass,
-    };
+      useClass: objectProvider.useClass,
+    });
   }
 ```
 
@@ -166,7 +170,7 @@ This function also handles recursive normalization of dependencies. If a factory
 
 The current container implementation doesn't store a separate source tag for each dependency. Instead, the local registration map, multi registration map, request cache, and singleton cache in `path:packages/di/src/container.ts:120-130` split state for hierarchical lookup and lifecycle separation. The later resolution step combines these stores with parent lookup to decide which container layer should handle a lookup.
 
-Another detail in `normalizeProvider` is that it preserves `forwardRef` and `optional` wrappers in the `inject` array instead of evaluating them. When a dependency Token is wrapped in a `forwardRef` factory, normalization leaves the wrapper itself in place and delays evaluation of the actual Token until `resolveDepToken()`. This handles definition order issues while keeping standard dependency lookup simple. `path:packages/di/src/container.ts:46-52` and `path:packages/di/src/container.ts:558-579` show that handoff.
+Another detail in `normalizeProvider` is that it preserves `forwardRef` and `optional` wrappers in the `inject` array instead of evaluating them. When a dependency Token is wrapped in a `forwardRef` factory, normalization leaves the wrapper itself in place and delays evaluation of the actual Token until `resolveForwardRefToken()`. This handles definition order issues while keeping standard dependency lookup simple. `path:packages/di/src/provider-normalization.ts` and `path:packages/di/src/container.ts` show that handoff.
 
 Finally, normalization performs final validation. It checks whether required fields such as `provide` exist and whether there are obvious contradictions such as specifying a value Provider and a factory at the same time. This defensive layer means the DI container's internal state only handles valid records. A Provider that passes through `normalizeProvider` can be treated as an executable configuration piece by the Fluo engine.
 
@@ -178,7 +182,7 @@ A factory Provider is a little more subtle. The container first respects `provid
 
 Two helper wrappers are also connected to this normalization step. They look like dependency syntax from the outside, but they are really markers for later resolution. `forwardRef()` and `optional()` are declared in `path:packages/di/src/types.ts:137-168`. These functions don't resolve anything themselves. They only wrap Tokens so later steps can treat them specially.
 
-If `null` or `undefined` enters the `inject` array, it is rejected immediately. `normalizeInjectToken()` in `path:packages/di/src/container.ts:46-52` throws an `InvalidProviderError` with a forward-reference hint. This is an important choice. Fluo wants authoring errors to appear during registration and normalization, not much later during creation when the graph is already half active.
+If a non-array `inject`, an invalid entry, a malformed wrapper, or an unsupported `scope` enters provider normalization, `path:packages/di/src/provider-normalization.ts` throws an `InvalidProviderError` with provider context and an authoring hint. This is an important choice. Fluo wants authoring errors to appear during registration and normalization, not much later during creation when the graph is already half active.
 
 The normalization algorithm can be summarized like this.
 

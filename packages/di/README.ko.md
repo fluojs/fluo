@@ -91,7 +91,7 @@ const scopedService = await requestContainer.resolve(RequestScopedService);
 
 request scope 컨테이너는 부모 체인의 provider를 해석할 수 있지만, request가 소유하는 등록은 새 singleton provider를 만들 수 없습니다. singleton provider는 request scope를 만들기 전에 루트 컨테이너에 등록하세요. request scope에 로컬 provider를 추가해야 한다면 `scope: 'request'`/`Scope.REQUEST`를 명시하거나 `override()`로 의도적인 request-local 교체를 표현하세요. multi provider에도 같은 규칙이 적용됩니다. 기본 scope의 multi provider는 루트 컨테이너에 등록하고, request-local multi provider는 request scope를 명시하거나 `override()`로 교체해야 합니다.
 
-provider 객체는 등록 시점에 검증됩니다. 모든 객체 provider는 null이 아닌 `provide` 토큰과 정확히 하나의 전략(`useClass`, `useValue`, `useFactory`, `useExisting`)을 포함해야 합니다. 잘못된 provider 형태는 컨테이너 그래프에 영향을 주기 전에 `InvalidProviderError`를 발생시킵니다.
+provider 객체는 등록 시점에 검증됩니다. 모든 객체 provider는 null이 아닌 `provide` 토큰과 정확히 하나의 전략(`useClass`, `useValue`, `useFactory`, `useExisting`)을 포함해야 합니다. 명시적인 `inject` 값은 유효한 token 또는 올바른 `forwardRef(...)` / `optional(...)` wrapper로 구성된 배열이어야 하며, 명시적인 `scope` 값은 `singleton`, `request`, `transient` 중 하나여야 합니다. 잘못된 provider 형태는 컨테이너 그래프에 영향을 주기 전에 `InvalidProviderError`를 발생시킵니다.
 
 ## 순환 의존성 처리
 
