@@ -68,7 +68,7 @@ export function ensureMetadataSymbol(): symbol {
 
 심볼은 고유성이 보장되기 때문에 메타데이터 키에 적합합니다. 동일한 런타임에 여러 버전의 Fluo나 여러 프레임워크가 공존하더라도, 각자 고유한 비공개 심볼을 사용하는 한 메타데이터는 충돌하지 않습니다. 이러한 "위생적인 메타데이터(hygienic metadata)" 패턴은 Fluo 설계의 핵심 원칙입니다. 프레임워크의 내부 관리 정보가 사용자의 영역으로 유출되지 않도록 보장합니다. 동일한 라이브러리의 여러 버전이 번들링될 수 있는 복잡한 마이크로 프론트엔드 아키텍처나 모노레포에서, 이러한 심볼 기반 격리는 문자열 기반 키에서 불가피했을 교차 오염을 방지하는 중요한 안전 장벽 역할을 합니다.
 
-심볼의 고유성은 또한 "설계상 비공개(private-by-design)"인 메타데이터 형태를 가능하게 합니다. 이러한 심볼들은 핵심 내부 모듈에서 내보내지지 않으므로, 사용자 코드가 실수로(또는 의도적으로) 프레임워크 수준의 레코드를 덮어쓸 수 없습니다. 이는 프레임워크의 내부 제어 평면과 사용자의 애플리케이션 로직 사이에 명확한 경계를 만들어, 프레임워크의 상태가 외부 간섭으로부터 보호되는 더 견고하고 유지보수 가능한 시스템을 이끌어냅니다.
+Application-facing API와 Fluo의 더 넓은 metadata primitive를 구분하는 것은 symbol secrecy가 아니라 export boundary입니다. `path:packages/core/src/metadata.ts:1-29`는 `metadataKeys`, `metadataSymbol` 같은 helper와 symbol을 export하고, `path:packages/core/src/internal.ts:1-2`는 그 surface를 package-integration subpath인 `@fluojs/core/internal`을 통해 다시 export합니다. Root `@fluojs/core` entrypoint는 문서화된 application-facing subset만 노출합니다. 이 boundary는 Fluo package와 tooling에 의도된 사용 범위를 전달하지만, internal subpath를 의도적으로 import하는 코드가 internal symbol에 접근하지 못하게 만들지는 않습니다.
 
 이러한 격리는 또한 악성 코드가 표준 객체 속성 조작을 통해 프레임워크의 내부 구성을 변조하는 것을 방지하므로 보안 측면에서도 유익합니다. 예를 들어, 공격자가 런타임에 클래스의 특정 속성을 조작하여 권한 부여 가드를 우회하려 하더라도, 실제 권한 정보가 보호된 심볼 뒤에 숨겨진 `WeakMap`에 저장되어 있다면 그러한 시도는 무위로 돌아가게 됩니다. 이는 보안이 "추가적인 레이어"가 아니라 아키텍처의 "기본적인 구성 요소"로 작동함을 의미합니다.
 
@@ -368,7 +368,7 @@ Resolution 중에는 `path:packages/core/src/metadata/class-di.ts:95-123`의 `ge
 
 Module이 compile될 때 Fluo runtime은 `@Module` metadata에 정의된 `providers` list를 순회합니다. 각 class Provider에 대해 `getInheritedClassDiMetadata()`가 반환한 effective `ClassDiMetadata`가 dependency와 lifecycle Scope를 설명합니다. DI container는 이 정보를 사용해 필요한 순서로 Provider와 그 dependency를 instantiate합니다.
 
-해결 계획은 단순히 '무엇을 만들 것인가'를 넘어 '어떤 순서로 만들 것인가'에 대한 최적화된 경로를 포함합니다. 컨테이너는 이 계획을 바탕으로 의존성 그래프를 위상 정렬(topological sort)하여, 부모 서비스가 생성되기 전에 모든 자식 서비스가 준비되도록 보장합니다. 메타데이터로부터 추출된 이 정적인 정보가 런타임의 동적인 실행 흐름으로 변환되는 이 과정이야말로 Fluo DI 아키텍처의 정수라고 할 수 있습니다.
+Container는 dependency graph를 미리 계산하거나 위상 정렬(topological sort)하지 않습니다. Class 또는 factory Provider를 instantiate할 때 `path:packages/di/src/container.ts:1538-1546`의 `resolveProviderDeps()`가 `provider.inject` entry를 선언 순서대로 순회하며 각 dependency를 await합니다. `resolveDepToken()`은 해당 Token에 대해 재귀적으로 `resolveWithChain()`으로 돌아가므로, `path:packages/di/src/container.ts:1362-1389`에서 Provider constructor 또는 factory가 실행되기 전에 각 dependency가 resolve 또는 instantiate됩니다. 이 recursive resolution이 진행되는 동안 active Token chain은 circular construction도 감지합니다.
 
 ## 2.10 Handling Edge Cases: Dynamic Metadata
 일부 고급 시나리오에서는 런타임에 동적으로 메타데이터를 부착하거나 수정해야 할 수도 있습니다. Fluo는 선언적이고 데코레이터 기반인 구성을 우선시하지만, 우리의 메타데이터 시스템은 이러한 경우를 위한 명령적 API도 지원합니다. `defineModuleMetadata`나 `defineClassDiMetadata` 헬퍼를 사용하여 프로그래밍 방식으로 클래스와 모듈을 구성할 수 있으며, 이는 특히 동적 플러그인이나 특수 테스트 환경을 구축할 때 유용합니다.
