@@ -149,6 +149,8 @@ type FastifyMultipartLikeError = Error & {
   statusCode?: unknown;
 };
 
+type FastifyListenState = 'idle' | 'starting' | 'listening';
+
 /**
  * Fastify-backed `HttpApplicationAdapter` implementation used by the runtime.
  *
@@ -161,6 +163,7 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
   private appClosed = false;
   private listenAbortController?: AbortController;
   private listenInFlight?: Promise<void>;
+  private listenState: FastifyListenState = 'idle';
   private readonly nativeRouteDescriptors = new Map<string, HandlerDescriptor>();
   private pluginsReady = false;
   private app: ReturnType<typeof fastify>;
@@ -206,7 +209,15 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
     return resolveListenTarget(this.app.server.address() ?? null, this.port, this.host, this.httpsOptions !== undefined);
   }
 
-  async listen(dispatcher: Dispatcher): Promise<void> {
+  listen(dispatcher: Dispatcher): Promise<void> {
+    if (this.listenState === 'listening') {
+      return Promise.resolve();
+    }
+
+    if (this.listenInFlight) {
+      return this.listenInFlight;
+    }
+
     if (this.appClosed) {
       this.app = createFastifyApp(this.httpsOptions, this.maxBodySize);
       this.appClosed = false;
@@ -215,22 +226,33 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
 
     this.dispatcher = dispatcher;
     this.configureNativeRouteDescriptors(dispatcher);
-    await this.registerPluginsAndRoutes(dispatcher);
 
     const abortController = new AbortController();
     this.listenAbortController = abortController;
-    const listenInFlight = this.listenWithRetry(abortController.signal).finally(() => {
-      if (this.listenInFlight === listenInFlight) {
-        this.listenInFlight = undefined;
-      }
+    this.listenState = 'starting';
+    const listenInFlight = this.registerPluginsAndRoutes(dispatcher)
+      .then(() => this.listenWithRetry(abortController.signal))
+      .then(
+        () => {
+          this.listenState = 'listening';
+        },
+        (error: unknown) => {
+          this.listenState = 'idle';
+          throw error;
+        },
+      )
+      .finally(() => {
+        if (this.listenInFlight === listenInFlight) {
+          this.listenInFlight = undefined;
+        }
 
-      if (this.listenAbortController === abortController) {
-        this.listenAbortController = undefined;
-      }
-    });
+        if (this.listenAbortController === abortController) {
+          this.listenAbortController = undefined;
+        }
+      });
     this.listenInFlight = listenInFlight;
 
-    await listenInFlight;
+    return listenInFlight;
   }
 
   async close(): Promise<void> {
@@ -245,6 +267,7 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
     }
 
     if (!this.app.server.listening) {
+      this.listenState = 'idle';
       this.dispatcher = undefined;
       this.nativeRouteDescriptors.clear();
       return;
@@ -254,6 +277,7 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
     const closeInFlight = closePromise.finally(() => {
       this.appClosed = true;
       this.closeInFlight = undefined;
+      this.listenState = 'idle';
       this.dispatcher = undefined;
       this.nativeRouteDescriptors.clear();
     });

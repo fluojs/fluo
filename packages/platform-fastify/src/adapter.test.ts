@@ -1854,6 +1854,73 @@ describe('@fluojs/platform-fastify', () => {
     }
   });
 
+  it('shares one startup promise and preserves the first dispatcher across concurrent listen calls', async () => {
+    const port = await findAvailablePort();
+    const adapter = createFastifyAdapter({ port }) as FastifyHttpApplicationAdapter;
+    const firstDispatcher: Dispatcher = {
+      async dispatch(_request, response) {
+        await response.send({ dispatcher: 'first' });
+      },
+    };
+    const secondDispatcher: Dispatcher = {
+      async dispatch(_request, response) {
+        await response.send({ dispatcher: 'second' });
+      },
+    };
+
+    const firstListen = adapter.listen(firstDispatcher);
+    const secondListen = adapter.listen(secondDispatcher);
+
+    try {
+      expect(secondListen).toBe(firstListen);
+      await firstListen;
+
+      const response = await requestHttp({
+        method: 'GET',
+        path: '/',
+        port,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ dispatcher: 'first' });
+    } finally {
+      await Promise.allSettled([firstListen, secondListen]);
+      await adapter.close();
+    }
+  });
+
+  it('keeps the live dispatcher and listener on repeated listen calls after startup', async () => {
+    const port = await findAvailablePort();
+    const adapter = createFastifyAdapter({ port }) as FastifyHttpApplicationAdapter;
+    const firstDispatcher: Dispatcher = {
+      async dispatch(_request, response) {
+        await response.send({ dispatcher: 'first' });
+      },
+    };
+    const secondDispatcher: Dispatcher = {
+      async dispatch(_request, response) {
+        await response.send({ dispatcher: 'second' });
+      },
+    };
+
+    await adapter.listen(firstDispatcher);
+
+    try {
+      await adapter.listen(secondDispatcher);
+
+      const response = await requestHttp({
+        method: 'GET',
+        path: '/',
+        port,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ dispatcher: 'first' });
+    } finally {
+      await adapter.close();
+    }
+  });
+
   it('refreshes native route descriptors when the adapter is reused after close', async () => {
     @Controller('/reuse')
     class FirstController {
