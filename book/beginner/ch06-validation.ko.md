@@ -220,7 +220,10 @@ export class PublicCreateDto extends OmitType(CreatePostDto, ['published']) {}
 만약 쿼리 파라미터에서 꼭 숫자를 받아야 한다면, DTO에 먼저 바인딩한 뒤 변환을 코드에서 명시적으로 드러내면 됩니다.
 
 ```typescript
+import { FromQuery, Get, RequestDto } from '@fluojs/http';
+
 class ListPostsQueryDto {
+  @FromQuery('page')
   page = '1';
 }
 
@@ -232,7 +235,7 @@ findAll(input: ListPostsQueryDto) {
 }
 ```
 
-이렇게 하면 변환 과정이 명시적이고 가시적이게 됩니다. 먼저 DTO 입력 계약을 고정하고, 그 다음 필요한 변환을 코드에서 드러내는 방식입니다.
+이렇게 하면 요청 소스와 변환 과정이 모두 명시적이고 가시적이게 됩니다. 먼저 `@FromQuery('page')`가 `page` 쿼리 필드를 DTO에 바인딩하고, 그 다음 핸들러가 필요한 변환을 코드에서 드러냅니다.
 
 ## 6.6 What FluoBlog Looks Like After Validation
 
