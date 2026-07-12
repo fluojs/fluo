@@ -25,7 +25,7 @@ npm install @fluojs/platform-express express
 
 Use this package when you want to run a fluo application using Express as the underlying HTTP engine. This is useful when existing Express operational assets, hosting conventions, or server integrations need to stay near the platform boundary while controllers, providers, guards, interceptors, and middleware keep using fluo's runtime contracts.
 
-Express compatibility does not mean that native Express/Connect `(req, res, next)` middleware can be passed directly to fluo's application-level `middleware` option. That option accepts fluo middleware (`handle(context, next)`) or route-scoped fluo middleware providers. Keep native Express/Connect middleware in an Express-owned integration layer, or wrap the behavior behind the fluo `Middleware` contract so it remains portable to Fastify, raw Node.js, Bun, Deno, and Workers adapters.
+Express compatibility does not mean that native Express/Connect `(req, res, next)` middleware can be passed directly to fluo's application-level `middleware` option. That option accepts fluo middleware (`handle(context, next)`) or route-scoped fluo middleware providers. Register migration-only native handlers through the adapter's explicit `nativeMiddleware` option, or wrap the behavior behind the fluo `Middleware` contract so it remains portable to Fastify, raw Node.js, Bun, Deno, and Workers adapters.
 
 ## Quick Start
 
@@ -95,7 +95,25 @@ const app = await fluoFactory.create(AppModule, {
 });
 ```
 
-Do not pass an Express/Connect function such as `compression()` directly as fluo middleware. If a migration needs native Express middleware, isolate it in platform-specific bootstrap code and keep route behavior, request context mutation, and cross-platform concerns in fluo middleware, guards, or interceptors.
+Do not pass an Express/Connect function such as `compression()` directly as fluo middleware. If a migration must retain a native handler, register it explicitly before adapter construction completes:
+
+```typescript
+import type { RequestHandler } from 'express';
+
+const legacyRequestTag: RequestHandler = (_request, response, next) => {
+  response.setHeader('x-migration-host', 'express');
+  next();
+};
+
+const adapter = createExpressAdapter({
+  nativeMiddleware: [legacyRequestTag],
+  port: 3000,
+});
+```
+
+`nativeMiddleware` is mounted in array order before the adapter's Express Router and catch-all fluo dispatch. Calling `next()` continues into fluo middleware, guards, interceptors, and handlers. Ending the native response stops there without entering fluo dispatch. Thrown/rejected errors and `next(error)` remain in the Express error chain, so place any native Express error handler after the middleware it handles in the same array; fluo error filters and envelopes do not translate failures that occur before dispatch.
+
+The native stack is fixed when the adapter is created. The adapter owns its Node HTTP/S listener and connections, but it does not discover or dispose timers, clients, or other resources captured by native middleware; application bootstrap code must release those resources. Keep route behavior, request-context mutation, and cross-platform concerns in fluo middleware, guards, or interceptors.
 
 ### Native Route Registration with Safe Fallback
 The adapter pre-registers semantically safe Express Router handlers for explicit `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and `HEAD` routes and still dispatches those requests through the shared fluo dispatcher.
@@ -112,7 +130,8 @@ To avoid changing documented fluo semantics, overlapping same-shape param routes
 ## Adapter Contract
 
 - **Shared dispatcher ownership**: Native Express Router matches still hand off to the shared fluo dispatcher, so middleware, guards, interceptors, observers, params, and error envelopes remain framework-defined.
-- **Host engine boundary**: Express is the host/platform HTTP engine, but fluo does not reinterpret native Express/Connect middleware as fluo middleware; application-level middleware must implement the shared `Middleware` contract.
+- **Host engine boundary**: Express is the host/platform HTTP engine, but fluo does not reinterpret native Express/Connect middleware as fluo middleware; application-level middleware must implement the shared `Middleware` contract, while the platform-specific `nativeMiddleware` option mounts native handlers before routing.
+- **Native middleware ownership**: Native handlers run in declared order and retain Express continuation, response termination, and error-chain semantics. Adapter shutdown closes the listener and connections but does not dispose resources owned by those handlers.
 - **Safe fallback scope**: `@All(...)` handlers and overlapping same-shape param routes intentionally stay on the catch-all fallback path instead of being force-registered through Express Router.
 - **OPTIONS ownership parity**: The adapter prevents Express Router from auto-answering `OPTIONS` for native routes, so unsupported methods still fall through to fluo dispatcher semantics and `@All(...)` handlers can continue to own `OPTIONS` when defined.
 - **Path normalization parity**: Requests that Express Router does not normalize the same way as fluo, such as duplicate-slash variants, still resolve through fallback dispatch so fluo's normalized route contract is preserved.
@@ -128,9 +147,9 @@ To avoid changing documented fluo semantics, overlapping same-shape param routes
 - `runExpressApplication(module, options)`: Compatibility helper for quick startup with signal wiring. On timeout/failure it reports the condition through logging and `process.exitCode`, while leaving final process termination to the surrounding host.
 - `isExpressMultipartTooLargeError(error)`: Normalizes multipart limit detection across adapter error shapes.
 - `ExpressHttpApplicationAdapter`: The core adapter implementation class. `getServer()` exposes the underlying Node HTTP/HTTPS server for narrow platform integrations, `getListenTarget()` reports the resolved bind target and public URL after startup, and `getRealtimeCapability()` returns the server-backed capability used by realtime packages. Keep these helpers at infrastructure boundaries instead of threading native server objects through ordinary application code.
-- Option types: `ExpressAdapterOptions`, `BootstrapExpressApplicationOptions`, `RunExpressApplicationOptions`, `CorsInput`, `ExpressApplicationSignal`.
+- Option types: `ExpressAdapterOptions`, `BootstrapExpressApplicationOptions`, `RunExpressApplicationOptions`, `ExpressNativeMiddleware`, `CorsInput`, `ExpressApplicationSignal`.
 
-`createExpressAdapter(options, multipartOptions?)` supports `host`, `https`, `maxBodySize`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs`. Direct `ExpressHttpApplicationAdapter` construction applies the same numeric validation as the factory. `bootstrapExpressApplication(...)` and `runExpressApplication(...)` also accept `cors`, `globalPrefix`, `globalPrefixExclude`, `middleware`, `multipart`, `securityHeaders`, `forceExitTimeoutMs`, `shutdownSignals`, and `logger`; they use the framework console logger by default for startup and shutdown diagnostics and honor an injected `ApplicationLogger` when provided.
+`createExpressAdapter(options, multipartOptions?)` supports `host`, `https`, `maxBodySize`, `nativeMiddleware`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs`. Direct `ExpressHttpApplicationAdapter` construction applies the same numeric validation as the factory. `bootstrapExpressApplication(...)` and `runExpressApplication(...)` also accept `cors`, `globalPrefix`, `globalPrefixExclude`, `middleware`, `multipart`, `nativeMiddleware`, `securityHeaders`, `forceExitTimeoutMs`, `shutdownSignals`, and `logger`; they use the framework console logger by default for startup and shutdown diagnostics and honor an injected `ApplicationLogger` when provided.
 
 ## Related Packages
 
@@ -141,4 +160,4 @@ To avoid changing documented fluo semantics, overlapping same-shape param routes
 ## Example Sources
 
 - `packages/platform-express/src/adapter.test.ts`
-- This package does not currently ship a dedicated `examples/platform-express` app. Use the Quick Start in this README for Express bootstrap shape and `packages/platform-express/src/adapter.test.ts` for executable Express adapter coverage, including SSE framing, native-route fallback parity, duplicate listen idempotency, retry exhaustion, startup retry cancellation during shutdown, idle keep-alive drain, and forced shutdown. `examples/minimal/src/main.ts` is Fastify-based and should not be treated as an Express example source.
+- This package does not currently ship a dedicated `examples/platform-express` app. Use the Quick Start and native middleware scenario in this README for Express bootstrap shape and `packages/platform-express/src/adapter.test.ts` for executable Express adapter coverage, including native middleware ordering/termination/error propagation, SSE framing, native-route fallback parity, duplicate listen idempotency, retry exhaustion, startup retry cancellation during shutdown, idle keep-alive drain, and forced shutdown. `examples/minimal/src/main.ts` is Fastify-based and should not be treated as an Express example source.

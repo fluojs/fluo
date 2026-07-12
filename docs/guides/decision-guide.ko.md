@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | 기본 Node.js HTTP 애플리케이션 | 권장 고성능 Node.js 어댑터를 선택 | `@fluojs/platform-fastify` |
 | Node.js 애플리케이션에서 HTTP 리스너를 직접 제어해야 함 | 로우 Node 어댑터를 선택 | `@fluojs/platform-nodejs` |
-| Node.js 애플리케이션이 Express를 host/platform HTTP engine으로 사용하되 application middleware는 fluo `Middleware` 계약에 남겨야 함 | Express 어댑터를 선택 | `@fluojs/platform-express` |
+| Node.js 애플리케이션이 Express를 host/platform HTTP engine으로 사용하되 application middleware는 fluo `Middleware` 계약에 남기고 migration 전용 native handler는 명시적 pre-router seam을 사용해야 함 | Express adapter를 선택하고 platform boundary에서만 `nativeMiddleware` 옵션을 사용 | `@fluojs/platform-express` |
 | Bun 네이티브 fetch 스타일 런타임 대상 | Bun 어댑터를 선택 | `@fluojs/platform-bun` |
 | Deno `serve()` 런타임 대상 | Deno 어댑터를 선택 | `@fluojs/platform-deno` |
 | Cloudflare Workers isolate 대상 | Workers 어댑터를 선택 | `@fluojs/platform-cloudflare-workers` |
