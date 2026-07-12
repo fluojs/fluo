@@ -12,7 +12,7 @@ This chapter covers how to extend FluoShop's notification system into team commu
 - Implement chat channel connections through `@fluojs/notifications`.
 - Build structured messages with Block Kit and Embed.
 - Configure Slack bootstrap verification when a transport exposes a readiness check.
-- Render Slack notification templates and reason about payload-versus-rendered merge precedence.
+- Render Slack and Discord notification templates and reason about payload-versus-rendered merge precedence.
 - Operate chat integrations around retry policies and status snapshots.
 
 ## Prerequisites
@@ -111,6 +111,8 @@ export class AppModule {}
 ```
 
 Discord registration is also global by default: `DiscordModule.forRoot(...)` and `DiscordModule.forRootAsync(...)` export `DiscordService`, `DiscordChannel`, `DISCORD`, and `DISCORD_CHANNEL` with `global: options.global ?? true`. Use the fluo option `global?: boolean`—not NestJS `isGlobal`—and set `global: false` only when the migrated module must keep Discord providers local to modules that explicitly import it. Async registration supports the fluo injected factory shape only: `DiscordModule.forRootAsync({ inject, useFactory, global? })`. Move NestJS `imports`, `useClass`, or `useExisting` patterns into app-owned providers before returning final Discord options, and wrap the module facade instead of importing private provider helpers such as `createDiscordProviders(...)`, `DISCORD_OPTIONS`, or `NormalizedDiscordModuleOptions`.
+
+When `verifyOnModuleInit` is enabled, failed verification closes a factory-owned transport exactly once even if shutdown starts concurrently; directly supplied app-owned transports remain caller-owned. Notification rendering is lifecycle-gated and receives the same `AbortSignal` as transport delivery, so stopped services reject before renderer work begins and renderers can cooperate with cancellation.
 
 ## 17.3 Standalone Usage: SlackService & DiscordService
 
@@ -235,6 +237,50 @@ await this.notifications.dispatch({
 
 `sendNotification(...)` only calls the renderer when both `notification.template` and `renderer` are present. Explicit payload fields win over rendered fields for `attachments` and `blocks`, while non-blank payload text wins over rendered text; empty or whitespace-only text is treated as unspecified, so text falls back to non-blank rendered text and then to a non-blank `subject`. Metadata is merged from payload metadata, dispatch metadata, a subject marker, and a template marker in that order, so the final Slack message preserves the operational routing context.
 
+### Discord Template Rendering
+Discord uses the same registration pattern with its own public `DiscordTemplateRenderer` contract. A renderer can return `content`, `embeds`, or `components`, while the webhook transport remains explicit in `DiscordModule.forRoot(...)`.
+
+```typescript
+import type { DiscordTemplateRenderer } from '@fluojs/discord';
+
+const discordRenderer: DiscordTemplateRenderer = {
+  render(input) {
+    return {
+      content: `Order ${String(input.payload.orderId)} was received.`,
+      embeds: [
+        {
+          description: input.subject,
+          title: 'New order',
+        },
+      ],
+    };
+  },
+};
+
+DiscordModule.forRoot({
+  defaultThreadId: 'community-orders',
+  renderer: discordRenderer,
+  transport: createDiscordWebhookTransport({
+    fetch: runtime.fetch,
+    webhookUrl: config.discordWebhookUrl,
+  }),
+});
+
+await this.notifications.dispatch({
+  channel: 'discord',
+  locale: 'en',
+  metadata: { source: 'orders' },
+  payload: {
+    content: 'Order #123 is ready for review.',
+    orderId: '123',
+  },
+  subject: 'New order received',
+  template: 'orders.received',
+});
+```
+
+Discord rendering runs only when both `template` and `renderer` are present. The renderer receives `{ template, payload, subject, locale, metadata, signal }`. Explicit `payload.content`, `payload.embeds`, and `payload.components` values take precedence over rendered values; if `payload.content` is `undefined`, content falls back to rendered content and then to `subject`. In this example the dispatched `content` overrides the renderer's content, while the rendered embed is preserved.
+
 ## 17.5 Rich Formatting: Blocks and Embeds
 
 The strength of chat platforms is that they can structure messages in a form people can read and act on immediately. Structured blocks and embeds make information such as order IDs, status, and owners easier to scan than a plain string.
@@ -307,6 +353,7 @@ async alertOps(event: OrderPlacedEvent) {
 The built-in webhook transports are designed around failure patterns seen in production environments.
 
 - **Automatic retry**: Transient `408`, `429`, and `5xx` errors are retried with exponential backoff.
+- **Cancellation-aware backoff**: Discord retry waits reject immediately when their signal is already aborted instead of sleeping through the full delay.
 - **Explicit errors**: Permanent failures, such as 404 or 403, are surfaced as `SlackTransportError` or `DiscordTransportError` so the application level can handle them.
 
 ## 17.8 Status Snapshots

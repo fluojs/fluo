@@ -108,7 +108,7 @@ export class CheckoutService {
 }
 ```
 
-이렇게 하면 write path가 명시적으로 유지됩니다. 서비스는 상태 변화를 계속 소유하고, side effect는 위임됩니다.
+이렇게 하면 write path가 명시적으로 유지됩니다. 서비스는 상태 변화를 계속 소유하고, side effect는 위임됩니다. `waitForHandlers`의 기본값이 `true`이므로 위 코드처럼 await한 publish는 일치하는 local handler와 구성된 transport publish가 각 bound 안에서 settle된 뒤에 완료됩니다. 의도적으로 background reaction이 필요할 때만 `waitForHandlers: false`를 사용하세요. 이 작업들도 shutdown drain 추적에는 계속 포함됩니다.
 
 ### 9.3.2 Why this is better than chained service calls
 
@@ -120,7 +120,7 @@ export class CheckoutService {
 
 ### 9.4.1 Notification reaction
 
-Notification Service는 `OrderPlacedEvent`를 듣고 영수증을 보냅니다. Checkout 흐름이 이메일 전송을 직접 기다리지 않아도 되기 때문에, 주문 기록과 고객 커뮤니케이션은 느슨하게 연결된 상태로 남습니다.
+Notification Service는 `OrderPlacedEvent`를 듣고 영수증을 보냅니다. 위 예제의 기본 awaited publish를 사용하면 Checkout가 email service를 직접 호출하지 않더라도 이 handler가 끝날 때까지 기다립니다. Handler를 bounded하게 유지하고, 느리거나 retry 가능한 delivery는 Queue로 넘겨 event reaction이 durable handoff만 기록하도록 하세요.
 
 ```typescript
 import { OnEvent } from '@fluojs/event-bus';

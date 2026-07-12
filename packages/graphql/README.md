@@ -77,11 +77,48 @@ fluo uses standard decorators to define your GraphQL schema. Use `@Resolver`, `@
 
 `@fluojs/graphql` currently supports root operation resolvers only. Object field-resolver patterns such as `author(book, context)` remain design-only and are documented in `packages/graphql/field-resolver-rfc.md`, not in the runtime contract.
 
+Resolver return types are not inferred from TypeScript metadata. An operation without `outputType` uses GraphQL `String`; object results must provide a GraphQL output type, and array results must wrap their item type with `listOf(...)`.
+
+```typescript
+import { GraphQLObjectType, GraphQLString } from 'graphql';
+import { listOf, Query, Resolver } from '@fluojs/graphql';
+
+const UserType = new GraphQLObjectType({
+  name: 'User',
+  fields: {
+    id: { type: GraphQLString },
+    name: { type: GraphQLString },
+  },
+});
+
+@Resolver()
+class UserResolver {
+  @Query({ outputType: UserType })
+  async user() {
+    return userService.findCurrent();
+  }
+
+  @Query({ outputType: listOf(UserType) })
+  async users() {
+    return userService.findAll();
+  }
+}
+```
+
 ### Request-Scoped DataLoaders
 Efficiently solve the N+1 problem with built-in DataLoader integration. Loaders are automatically isolated per GraphQL operation.
 
 ```typescript
-import { createDataLoader, type GraphQLContext } from '@fluojs/graphql';
+import { GraphQLObjectType, GraphQLString } from 'graphql';
+import { createDataLoader, type GraphQLContext, Query, Resolver } from '@fluojs/graphql';
+
+const UserType = new GraphQLObjectType({
+  name: 'User',
+  fields: {
+    id: { type: GraphQLString },
+    name: { type: GraphQLString },
+  },
+});
 
 const userLoader = createDataLoader(async (ids: string[]) => {
   const users = await userService.findByIds(ids);
@@ -95,7 +132,7 @@ class UserInput {
 
 @Resolver()
 class UserResolver {
-  @Query({ input: UserInput })
+  @Query({ input: UserInput, outputType: UserType })
   async user(input: UserInput, context: GraphQLContext) {
     return userLoader(context).load(input.id);
   }

@@ -169,6 +169,27 @@ describe('createRateLimitMiddleware', () => {
     expect(secondContext.response.statusCode).toBe(200);
   });
 
+  it('uses X-Real-IP client buckets when trustProxyHeaders is enabled', async () => {
+    const middleware = createRateLimitMiddleware({ limit: 1, trustProxyHeaders: true, windowMs: 1_000 });
+    const next = vi.fn(async () => {});
+    const firstContext = createContext({
+      headers: { 'x-real-ip': '198.51.100.10' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+    const secondContext = createContext({
+      headers: { 'x-real-ip': '198.51.100.11' },
+      raw: { socket: { remoteAddress: '10.0.0.1' } },
+    });
+
+    await middleware.handle(firstContext, next);
+    await middleware.handle(secondContext, next);
+    await middleware.handle(firstContext, next);
+
+    expect(next).toHaveBeenCalledTimes(2);
+    expect(firstContext.response.statusCode).toBe(429);
+    expect(secondContext.response.statusCode).toBe(200);
+  });
+
   it('normalizes ipv4 forwarded identities that include client ports when trustProxyHeaders is enabled', async () => {
     const middleware = createRateLimitMiddleware({ limit: 1, trustProxyHeaders: true, windowMs: 1_000 });
     const next = vi.fn(async () => {});

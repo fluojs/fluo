@@ -43,6 +43,13 @@ interface CachedResolutionPlan<T> {
   readonly value: T;
 }
 
+interface StaleDisposalTask {
+  error: unknown;
+  errorConsumed: boolean;
+  failed: boolean;
+  promise: Promise<void>;
+}
+
 /**
  * Controlled cache adoption seam for framework-owned testing and tooling that
  * need synchronous helpers to preserve container-owned singleton disposal.
@@ -337,8 +344,7 @@ export class Container {
   private requestCache: Map<Token, Promise<unknown>> | undefined;
   private multiRequestCache: Map<NormalizedProvider, Promise<unknown>> | undefined;
   private readonly multiSingletonCache = new Map<NormalizedProvider, Promise<unknown>>();
-  private readonly staleDisposalTasks = new Set<Promise<void>>();
-  private readonly staleDisposalErrors: unknown[] = [];
+  private readonly staleDisposalTasks = new Set<StaleDisposalTask>();
   private readonly singletonCache: Map<Token, Promise<unknown>>;
   private readonly forwardRefTokenCache = new WeakMap<ForwardRefFn, Token>();
   private readonly factoryResolutionKinds = new WeakMap<NormalizedProvider, FactoryResolutionKind>();
@@ -1170,12 +1176,17 @@ export class Container {
   }
 
   private async disposeCache(entries: Array<[NormalizedProvider | Token, Promise<unknown>]>): Promise<void> {
-    await this.waitForStaleDisposalTasks();
+    const errors: unknown[] = [];
 
-    const { disposables, errors } = await this.collectDisposableInstances(entries);
+    try {
+      await this.assertStaleDisposalsSettled();
+    } catch (error) {
+      this.collectDisposalError(error, errors);
+    }
 
-    errors.push(...this.staleDisposalErrors.splice(0, this.staleDisposalErrors.length));
+    const { disposables, errors: resolutionErrors } = await this.collectDisposableInstances(entries);
 
+    errors.push(...resolutionErrors);
     errors.push(...(await this.disposeInstancesInReverseOrder(disposables)));
 
     this.clearDisposalCaches();
@@ -1272,23 +1283,36 @@ export class Container {
     this.effectiveProviderPlanCache.clear();
   }
 
-  private async waitForStaleDisposalTasks(): Promise<void> {
-    while (this.staleDisposalTasks.size > 0) {
-      await Promise.all(Array.from(this.staleDisposalTasks));
-    }
-  }
-
   private async assertStaleDisposalsSettled(): Promise<void> {
-    await this.waitForStaleDisposalTasks();
+    const errors: unknown[] = [];
 
-    const errors = this.staleDisposalErrors.splice(0, this.staleDisposalErrors.length);
+    while (this.staleDisposalTasks.size > 0) {
+      const tasks = Array.from(this.staleDisposalTasks);
+      await Promise.all(tasks.map((task) => task.promise));
+
+      for (const task of tasks) {
+        this.staleDisposalTasks.delete(task);
+
+        if (task.failed && !task.errorConsumed) {
+          task.errorConsumed = true;
+          errors.push(task.error);
+        }
+      }
+    }
+
     this.throwDisposalErrors(errors);
   }
 
-  private scheduleStaleDisposal(instancePromise: Promise<unknown>): void {
-    let task: Promise<void>;
+  private scheduleStaleDisposal(instancePromise: Promise<unknown>, staleDisposalOwner: Container): void {
+    const observers = staleDisposalOwner === this ? [this] : [this, staleDisposalOwner];
+    const task: StaleDisposalTask = {
+      error: undefined,
+      errorConsumed: false,
+      failed: false,
+      promise: Promise.resolve(),
+    };
 
-    task = (async () => {
+    task.promise = (async () => {
       try {
         const instance = await instancePromise;
 
@@ -1296,13 +1320,20 @@ export class Container {
           await instance.onDestroy();
         }
       } catch (error) {
-        this.staleDisposalErrors.push(error);
+        task.error = error;
+        task.failed = true;
       }
     })().finally(() => {
-      this.staleDisposalTasks.delete(task);
+      if (!task.failed) {
+        for (const observer of observers) {
+          observer.staleDisposalTasks.delete(task);
+        }
+      }
     });
 
-    this.staleDisposalTasks.add(task);
+    for (const observer of observers) {
+      observer.staleDisposalTasks.add(task);
+    }
   }
 
   private throwDisposalErrors(errors: unknown[]): void {
@@ -1514,21 +1545,21 @@ export class Container {
     return deps;
   }
 
-  private invalidateAffectedCachedEntriesInHierarchy(token: Token): void {
-    this.invalidateAffectedCachedEntries(token);
+  private invalidateAffectedCachedEntriesInHierarchy(token: Token, staleDisposalOwner: Container = this): void {
+    this.invalidateAffectedCachedEntries(token, staleDisposalOwner);
 
     for (const childScope of this.childScopes ?? []) {
-      childScope.invalidateAffectedCachedEntriesInHierarchy(token);
+      childScope.invalidateAffectedCachedEntriesInHierarchy(token, staleDisposalOwner);
     }
   }
 
-  private invalidateAffectedCachedEntries(token: Token): void {
+  private invalidateAffectedCachedEntries(token: Token, staleDisposalOwner: Container): void {
     for (const [cachedToken, cached] of this.requestCache?.entries() ?? []) {
       if (!this.shouldInvalidateCachedToken(cachedToken, token)) {
         continue;
       }
 
-      this.scheduleStaleDisposal(cached);
+      this.scheduleStaleDisposal(cached, staleDisposalOwner);
       this.requestCache?.delete(cachedToken);
     }
 
@@ -1538,7 +1569,7 @@ export class Container {
           continue;
         }
 
-        this.scheduleStaleDisposal(cached);
+        this.scheduleStaleDisposal(cached, staleDisposalOwner);
         this.singletonCache.delete(cachedToken);
       }
     }
@@ -1549,7 +1580,7 @@ export class Container {
           continue;
         }
 
-        this.scheduleStaleDisposal(cached);
+        this.scheduleStaleDisposal(cached, staleDisposalOwner);
         this.multiSingletonCache.delete(provider);
       }
     }
@@ -1565,7 +1596,7 @@ export class Container {
         continue;
       }
 
-      this.scheduleStaleDisposal(cached);
+      this.scheduleStaleDisposal(cached, staleDisposalOwner);
       multiRequestCache.delete(provider);
     }
   }

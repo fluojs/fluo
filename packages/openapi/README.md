@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Decorator-based OpenAPI 3.1.0 document generation for fluo. Automatically generate and serve your API documentation with zero manual synchronization and optional Swagger UI support.
+Descriptor-driven OpenAPI 3.1.0 document generation for fluo, with standard decorators for explicit documentation metadata and optional Swagger UI support.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@ pnpm add @fluojs/openapi
 - When you want to provide interactive documentation for your REST API using **Swagger UI**.
 - When you need a machine-readable **OpenAPI 3.1.0** specification for client generation or testing.
 - When you want to keep your API documentation in sync with your code using standard decorators.
-- When you need to document complex request/response models using DTOs and validation metadata.
+- When you need to derive request models from DTO binding/validation metadata and declare response models explicitly.
 
 ## Quick Start
 
@@ -74,7 +74,7 @@ When a prebuilt descriptor and a discovered source resolve to the same OpenAPI p
 ## Core Capabilities
 
 ### Automated Specification Generation
-fluo inspects your controllers and methods to build a complete OpenAPI 3.1.0 document. This includes paths, methods, parameters, and request bodies.
+fluo inspects only the controllers and handler descriptors supplied through `sources` and `descriptors` to build an OpenAPI 3.1.0 document. This includes paths, methods, parameters, and request bodies for that explicit input set; importing a controller into an application module does not add it automatically.
 
 ### Response Media Types
 When an HTTP handler declares `@Produces(...)` from `@fluojs/http`, generated OpenAPI responses use those media types as the response `content` keys. For example, `@Produces('application/json', 'application/problem+json')` on a handler with an `@ApiResponse(...)` schema emits both media types with the same response schema instead of silently falling back to only `application/json`.
@@ -82,8 +82,11 @@ When an HTTP handler declares `@Produces(...)` from `@fluojs/http`, generated Op
 ### Default Success Responses
 When a handler does not declare `@ApiResponse(...)` or `@HttpCode(...)`, the OpenAPI builder applies method-only implicit defaults: `POST` handlers default to `201`, and other methods default to `200`. Bodyless or runtime-dependent cases such as `DELETE` and `OPTIONS` should declare the intended success status explicitly with `@HttpCode(...)` or `@ApiResponse(...)`.
 
+### Response Documentation Boundary
+The builder does not inspect handler return values or TypeScript return types to infer response content. A default success response contains only its status and the description `OK`. Add `@ApiResponse(...)` with `schema` or `type` when the OpenAPI document must describe a response body; without either field, an explicit response still contains status and description only.
+
 ### Integrated DTO Schemas
-Works seamlessly with `@fluojs/validation`. Your DTO classes are automatically converted to OpenAPI components and referenced in the appropriate operations.
+Works with `@fluojs/validation` to derive request schemas from DTO binding and validation metadata. Response DTOs become OpenAPI components only when they are referenced explicitly, such as with `@ApiResponse(..., { type: ResponseDto })` or `extraModels`.
 
 ### Versioning Support
 Handles URI-based versioning from `@fluojs/http` automatically. Your OpenAPI paths will correctly reflect the resolved versioned routes.

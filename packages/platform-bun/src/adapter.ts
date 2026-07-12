@@ -335,15 +335,26 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
         return createShutdownResponse();
       }
 
-      if (realtimeBinding) {
-        const realtimeResult = await dispatchRealtimeBindingRequest(realtimeBinding, request, server);
+      const release = this.trackInFlightRequest();
 
-        if (realtimeResult.handled !== undefined || realtimeResult.upgraded) {
-          return realtimeResult.handled;
+      try {
+        if (realtimeBinding) {
+          const realtimeResult = await dispatchRealtimeBindingRequest(realtimeBinding, request, server);
+
+          if (realtimeResult.handled !== undefined || realtimeResult.upgraded) {
+            return realtimeResult.handled;
+          }
         }
-      }
 
-      return await this.dispatchHttpRequest(request);
+        return await dispatchWebRequest({
+          dispatcher: this.dispatcher,
+          dispatcherNotReadyMessage: DEFAULT_DISPATCHER_NOT_READY_MESSAGE,
+          factory: this.webRequestResponseFactory,
+          request,
+        });
+      } finally {
+        release();
+      }
     };
     const nativeRoutes = createBunNativeRoutes(dispatcher, handleRequest, bun);
     const serveOptions: BunServeOptionsWithoutRoutes = {
@@ -391,25 +402,6 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
     void closeInFlight.catch(() => {});
 
     await waitForCloseWithTimeout(closeInFlight, this.shutdownTimeoutMs);
-  }
-
-  private async dispatchHttpRequest(request: Request): Promise<Response> {
-    if (this.closeInFlight) {
-      return createShutdownResponse();
-    }
-
-    const release = this.trackInFlightRequest();
-
-    try {
-      return await dispatchWebRequest({
-        dispatcher: this.dispatcher,
-        dispatcherNotReadyMessage: DEFAULT_DISPATCHER_NOT_READY_MESSAGE,
-        factory: this.webRequestResponseFactory,
-        request,
-      });
-    } finally {
-      release();
-    }
   }
 
   private trackInFlightRequest(): () => void {

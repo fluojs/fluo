@@ -44,9 +44,18 @@ Fluo uses a **code-first** approach where TypeScript classes become the basis fo
 ### Defining the Resolver
 
 ```typescript
-import { Resolver, Query, Mutation, Arg } from '@fluojs/graphql';
+import { GraphQLObjectType, GraphQLString } from 'graphql';
+import { Resolver, Query, Arg, listOf } from '@fluojs/graphql';
 import { Inject } from '@fluojs/core';
 import { ProductService } from './product.service';
+
+const ProductType = new GraphQLObjectType({
+  name: 'Product',
+  fields: {
+    id: { type: GraphQLString },
+    name: { type: GraphQLString },
+  },
+});
 
 class ProductInput {
   @Arg('id')
@@ -58,12 +67,12 @@ class ProductInput {
 export class ProductResolver {
   constructor(private readonly productService: ProductService) {}
 
-  @Query({ input: ProductInput })
+  @Query({ input: ProductInput, outputType: ProductType })
   async product(input: ProductInput) {
     return this.productService.findById(input.id);
   }
 
-  @Query()
+  @Query({ outputType: listOf(ProductType) })
   async products() {
     return this.productService.findAll();
   }
@@ -71,6 +80,8 @@ export class ProductResolver {
 ```
 
 `@Arg(...)` is a field decorator for resolver input DTOs. Mark the DTO fields you want to expose as GraphQL arguments, then pass that DTO class through the operation's `input` option.
+
+fluo does not infer GraphQL output types from TypeScript return types or emitted metadata. Operations without `outputType` use GraphQL `String`, so object results must declare a GraphQL output type and arrays must use `listOf(itemType)` as shown above.
 
 Resolver methods can also receive `context: GraphQLContext`. That context carries the underlying fluo request, any authenticated `principal` set by HTTP middleware or guards, custom fields returned from `GraphqlModule.forRoot({ context })`, and websocket `connectionParams`/`socket` values when the operation arrives through the optional websocket transport.
 
@@ -112,6 +123,26 @@ const authorLoader = createDataLoader(async (ids: string[]) => {
 ### Using the Loader in a Supported Root Resolver
 
 ```typescript
+import { GraphQLObjectType, GraphQLString } from 'graphql';
+import { Arg, type GraphQLContext, Query, Resolver } from '@fluojs/graphql';
+
+const AuthorType = new GraphQLObjectType({
+  name: 'Author',
+  fields: {
+    id: { type: GraphQLString },
+    name: { type: GraphQLString },
+  },
+});
+
+const BookType = new GraphQLObjectType({
+  name: 'Book',
+  fields: {
+    id: { type: GraphQLString },
+    title: { type: GraphQLString },
+    author: { type: AuthorType },
+  },
+});
+
 class BookInput {
   @Arg('id')
   id = '';
@@ -119,7 +150,7 @@ class BookInput {
 
 @Resolver()
 export class BookResolver {
-  @Query({ input: BookInput })
+  @Query({ input: BookInput, outputType: BookType })
   async book(input: BookInput, context: GraphQLContext) {
     const book = await bookService.findById(input.id);
     const author = await authorLoader(context).load(book.authorId);
@@ -200,7 +231,7 @@ class CatalogSearchInput {
 
 @Resolver()
 export class CatalogResolver {
-  @Query({ input: CatalogSearchInput })
+  @Query({ input: CatalogSearchInput, outputType: listOf(ProductType) })
   async search(input: CatalogSearchInput) {
     // Module-level GraphqlModule limits bound this query's shape and cost.
     return this.catalogService.search(input.query);

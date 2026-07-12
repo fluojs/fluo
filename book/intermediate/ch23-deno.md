@@ -65,25 +65,24 @@ If a flag is missing, Deno prompts at runtime or exits with a clear error. It is
 
 ## 23.3 Web Standards and Request Dispatching
 
-Deno is built on Web standards, so it fits naturally with fluo's internal Dispatcher. The framework handles native `Request` and `Response` objects throughout the lifecycle, and you can also manually process requests with the adapter's `handle()` method. This approach is useful when configuring tests or serverless-style execution.
+Deno is built on Web standards, so it fits naturally with fluo's internal Dispatcher. When FluoShop must share a host-owned `Deno.serve(...)` process with custom routing or other fetch handlers, bootstrap the application without `app.listen()` and create a handler from the public dispatcher.
 
 ```typescript
-import { createDenoAdapter } from '@fluojs/platform-deno';
+import { createDenoAdapter, createDenoFetchHandler } from '@fluojs/platform-deno';
 import { fluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module.ts';
 
-const adapter = createDenoAdapter({ port: 3000 });
+const adapter = createDenoAdapter();
 const app = await fluoFactory.create(AppModule, { adapter });
+const handler = createDenoFetchHandler({
+  dispatcher: app.dispatcher,
+  rawBody: true,
+});
 
-await app.listen();
-
-// Manually dispatch a request for testing or custom logic
-const request = new Request('http://localhost:3000/api/v1/products');
-const response = await adapter.handle(request);
-console.log(await response.json());
+Deno.serve({ port: 3000 }, handler);
 ```
 
-Alignment with Web standards makes the runtime boundary of fluo apps running on Deno easier to read.
+`createDenoFetchHandler(...)` does not call `Deno.serve(...)`. It preserves the shared cookie/query, raw-body, multipart, and SSE behavior, while the surrounding host owns server shutdown, process signals, and websocket upgrades. Use `runDenoApplication(...)` or `app.listen()` instead when fluo should own the Deno server lifecycle.
 
 ## 23.4 Native Deno WebSockets
 
