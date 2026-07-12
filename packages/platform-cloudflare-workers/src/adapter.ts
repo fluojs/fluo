@@ -32,6 +32,7 @@ declare module '@fluojs/http' {
 const WORKER_DISPATCHER_NOT_READY_MESSAGE =
   'Cloudflare Workers adapter received a request before dispatcher binding completed.';
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+const WEBSOCKET_CLOSED_READY_STATE = 3;
 const ADAPTER_CLOSE_SETTLED = Symbol('CloudflareWorkerAdapterCloseSettled');
 const WEBSOCKET_BINDING_RECONFIGURATION_MESSAGE =
   'Cloudflare Workers websocket binding must be configured before listen() starts accepting Worker requests.';
@@ -211,15 +212,23 @@ export class CloudflareWorkerHttpApplicationAdapter
     const dispatcher = this.dispatcher;
 
     if (dispatcher && this.websocketBinding && isWebSocketUpgradeRequest(request)) {
+      const socketLifecycles: Promise<void>[] = [];
+
       try {
         const response = await this.websocketBinding.fetch(request, {
-          upgrade: (upgradeRequest) => this.upgradeWebSocket(upgradeRequest),
+          upgrade: (upgradeRequest) => {
+            const upgrade = this.upgradeWebSocket(upgradeRequest);
+            socketLifecycles.push(createWebSocketCloseLifecycle(upgrade.serverSocket));
+            return upgrade;
+          },
         });
 
-        executionContext?.waitUntil(Promise.resolve());
         return response;
       } finally {
-        release();
+        const lifecycle = Promise.all(socketLifecycles)
+          .then(() => undefined)
+          .finally(release);
+        executionContext?.waitUntil(lifecycle);
       }
     }
 
@@ -513,6 +522,21 @@ function isWebSocketUpgradeRequest(request: Request): boolean {
   return request.headers.get('upgrade')?.toLowerCase() === 'websocket';
 }
 
+function createWebSocketCloseLifecycle(socket: CloudflareWorkerWebSocket): Promise<void> {
+  if (socket.readyState === WEBSOCKET_CLOSED_READY_STATE) {
+    return Promise.resolve();
+  }
+
+  const lifecycle = createDeferred<void>();
+  socket.addEventListener('close', () => lifecycle.resolve(), { once: true });
+
+  if (socket.readyState === WEBSOCKET_CLOSED_READY_STATE) {
+    lifecycle.resolve();
+  }
+
+  return lifecycle.promise;
+}
+
 function createDeferred<T>(): Deferred<T> {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -590,39 +614,44 @@ function createLifecycleTrackedResponse(
     return { lifecycle: Promise.resolve(), response };
   }
 
-  const reader = responseBody.getReader();
-  const trackedBody = new ReadableStream<Uint8Array>({
-    async cancel(reason) {
-      try {
-        await reader.cancel(reason);
-        lifecycle.resolve();
-      } catch (error) {
-        lifecycle.reject(error);
-        throw error;
-      }
-    },
-    async pull(controller) {
-      try {
-        const result = await reader.read();
-
-        if (result.done) {
-          controller.close();
+  try {
+    const reader = responseBody.getReader();
+    const trackedBody = new ReadableStream<Uint8Array>({
+      async cancel(reason) {
+        try {
+          await reader.cancel(reason);
           lifecycle.resolve();
-          return;
+        } catch (error) {
+          lifecycle.reject(error);
+          throw error;
         }
+      },
+      async pull(controller) {
+        try {
+          const result = await reader.read();
 
-        controller.enqueue(result.value);
-      } catch (error) {
-        controller.error(error);
-        lifecycle.reject(error);
-      }
-    },
-  });
+          if (result.done) {
+            controller.close();
+            lifecycle.resolve();
+            return;
+          }
 
-  return {
-    lifecycle: lifecycle.promise.finally(release),
-    response: new Response(trackedBody, response),
-  };
+          controller.enqueue(result.value);
+        } catch (error) {
+          controller.error(error);
+          lifecycle.reject(error);
+        }
+      },
+    });
+
+    return {
+      lifecycle: lifecycle.promise.finally(release),
+      response: new Response(trackedBody, response),
+    };
+  } catch (error) {
+    release();
+    throw error;
+  }
 }
 
 function isLifecycleTrackedStreamingResponse(response: Response): boolean {
