@@ -1,10 +1,30 @@
 import { describe, expect, it } from 'vitest';
 
+import { getModuleMetadata, Inject, Module } from './index.js';
+import { getClassDiMetadata, metadataKeys } from './internal.js';
 import * as coreRequestPipelineApi from './request-pipeline.js';
 
 type SymbolConstructorWithMetadata = typeof Symbol & { metadata?: symbol };
 
 describe('@fluojs/core/request-pipeline public API behavior', () => {
+  it('keeps Fluo-owned module and class DI records outside the standard metadata bag', () => {
+    class Dependency {}
+
+    @Inject(Dependency)
+    class Provider {}
+
+    @Module({ providers: [Provider] })
+    class AppModule {}
+
+    const moduleBag = coreRequestPipelineApi.getOwnConstructorRequestPipelineMetadataBag(AppModule);
+    const providerBag = coreRequestPipelineApi.getOwnConstructorRequestPipelineMetadataBag(Provider);
+
+    expect(moduleBag?.[metadataKeys.module]).toBeUndefined();
+    expect(providerBag?.[metadataKeys.classDi]).toBeUndefined();
+    expect(getModuleMetadata(AppModule)?.providers).toEqual([Provider]);
+    expect(getClassDiMetadata(Provider)?.inject).toEqual([Dependency]);
+  });
+
   it('keeps metadata bag helpers executable for first-party integrations', () => {
     const originalDescriptor = Object.getOwnPropertyDescriptor(Symbol, 'metadata');
     const metadataSymbol = coreRequestPipelineApi.ensureRequestPipelineMetadataSymbol();
