@@ -178,6 +178,7 @@ type ExpressMultipartLikeError = Error & {
  * Represents the express http application adapter.
  */
 export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
+  private closing = false;
   private closeInFlight?: Promise<void>;
   private dispatcher?: Dispatcher;
   private listenAbortController?: AbortController;
@@ -241,6 +242,10 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
   }
 
   async listen(dispatcher: Dispatcher): Promise<void> {
+    if (this.closing) {
+      throw new Error('Express adapter is closing. Wait for close() to complete before listen().');
+    }
+
     if (this.server.listening) {
       return;
     }
@@ -275,18 +280,19 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
       return;
     }
 
-    if (this.listenInFlight) {
-      this.listenAbortController?.abort();
-      await waitForCloseWithTimeout(ignoreCancelledListen(this.listenInFlight), this.shutdownTimeoutMs);
-    }
+    this.closing = true;
+    const closePromise = (async () => {
+      if (this.listenInFlight) {
+        this.listenAbortController?.abort();
+        await waitForCloseWithTimeout(ignoreCancelledListen(this.listenInFlight), this.shutdownTimeoutMs);
+      }
 
-    if (!this.server.listening) {
-      this.dispatcher = undefined;
-      return;
-    }
-
-    const closePromise = closeServerWithDrain(this.server, this.sockets, this.shutdownTimeoutMs);
+      if (this.server.listening) {
+        await closeServerWithDrain(this.server, this.sockets, this.shutdownTimeoutMs);
+      }
+    })();
     const closeInFlight = closePromise.finally(() => {
+      this.closing = false;
       this.closeInFlight = undefined;
       this.dispatcher = undefined;
     });

@@ -2,4 +2,4 @@
 '@fluojs/platform-express': patch
 ---
 
-Reuse one in-flight Express listen lifecycle so concurrent startup callers cannot leave a delayed retry alive after shutdown.
+Reuse one in-flight Express listen lifecycle and reject startup during close so delayed retries cannot outlive shutdown.
