@@ -77,44 +77,52 @@ export interface NormalizedProvider<T = unknown> {
 
 The important difference is that public Providers are open across several syntaxes, but the normalized record closes them into a combination of `type` and implementation fields. `NormalizedProvider` remains root-exported as a compatibility-only public type for consumers that already referenced this record shape; application code should still author providers with `Provider` or the specific provider interfaces, while the container owns normalized record construction.
 
-The actual normalization entry point is `normalizeProvider()` in `path:packages/di/src/container.ts:54-115`. This function is the first core algorithm in the chapter. It converts every input Provider into a `NormalizedProvider` with `type`, `provide`, `inject`, `scope`, and implementation fields.
+The actual normalization entry point is `normalizeProvider()` in `path:packages/di/src/provider-normalization.ts:168-249`. This function is the first core algorithm in the chapter. It converts every input Provider into a `NormalizedProvider` with `type`, `provide`, `inject`, `scope`, and implementation fields.
 
 Class constructors and value Providers are the two simplest normalization branches.
 
-`path:packages/di/src/container.ts:54-76`
+`path:packages/di/src/provider-normalization.ts:168-198`
 ```typescript
-function normalizeProvider(provider: Provider): NormalizedProvider {
+export function normalizeProvider(provider: Provider): NormalizedProvider {
   if (isClassConstructor(provider)) {
     const metadata = getClassDiMetadata(provider);
 
-    return {
-      inject: (metadata?.inject ?? []).map(normalizeInjectToken),
+    return freezeNormalizedProvider({
+      inject: normalizeInject(metadata?.inject, provider),
       provide: provider,
-      scope: metadata?.scope ?? Scope.DEFAULT,
+      scope: normalizeProviderScope(metadata?.scope, provider) ?? Scope.DEFAULT,
       type: 'class',
       useClass: provider,
-    };
+    });
   }
 
-  if (isValueProvider(provider)) {
-    return {
+  if (!isProviderObject(provider)) {
+    throw new InvalidProviderError('Unsupported provider type.');
+  }
+
+  const objectProvider: ProviderObjectInput = provider;
+  assertObjectProvider(objectProvider);
+  const explicitScope = normalizeProviderScope(objectProvider.scope, objectProvider.provide);
+
+  if ('useValue' in objectProvider) {
+    return freezeNormalizedProvider({
       inject: [],
-      multi: provider.multi,
-      provide: provider.provide,
+      multi: objectProvider.multi,
+      provide: objectProvider.provide,
       scope: Scope.DEFAULT,
       type: 'value',
-      useValue: provider.useValue,
-    };
+      useValue: objectProvider.useValue,
+    });
   }
 ```
 
 A class Provider reads explicitly recorded `inject` and `scope` values through `getClassDiMetadata()`. A value Provider already has its value, so it uses an empty `inject` array and receives the default singleton Scope.
 
-Normalization also validates the `inject` boundary in `path:packages/di/src/provider-normalization.ts`. The value itself must be an array, and every entry must be a string, symbol, class Token, or a well-formed `forwardRef()` / `optional()` wrapper. This early validation keeps malformed input from turning into a raw `TypeError` or a vague resolution failure later. Because the input is standardized here, downstream resolvers can assume the dependency list already has an executable shape.
+Normalization also validates the `inject` boundary in `path:packages/di/src/provider-normalization.ts:103-153`. The value itself must be an array, and every entry must be a string, symbol, constructable class Token, or a well-formed `forwardRef()` / `optional()` wrapper. This early validation keeps malformed input from turning into a raw `TypeError` or a vague resolution failure later. Because the input is standardized here, downstream resolvers can assume the dependency list already has an executable shape.
 
 The early validation itself is fixed in one small helper.
 
-`path:packages/di/src/provider-normalization.ts`
+`path:packages/di/src/provider-normalization.ts:140-153`
 ```typescript
 function normalizeInject(inject: unknown, providerToken: Token): readonly NormalizedInjectToken[] {
   if (inject === undefined) {
@@ -129,15 +137,45 @@ function normalizeInject(inject: unknown, providerToken: Token): readonly Normal
 }
 ```
 
-Ordinary Tokens pass through without being evaluated. Wrapper objects are checked for their required callable or nested Token and then snapshotted as frozen records. In particular, `forwardRef()` remains lazy: normalization validates the wrapper's function but does not call it.
+Function-shaped Tokens are checked against the public `Constructor` contract before they can enter the normalized graph.
+
+`path:packages/di/src/provider-normalization.ts:43-62`
+```typescript
+function isConstructableFunction(value: unknown): value is ClassType {
+  if (typeof value !== 'function') {
+    return false;
+  }
+
+  try {
+    Reflect.construct(Object, [], value);
+    return true;
+  } catch (error) {
+    if (error instanceof TypeError) {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
+function isToken(value: unknown): value is Token {
+  return typeof value === 'string' || typeof value === 'symbol' || isConstructableFunction(value);
+}
+```
+
+String, symbol, and constructable class Tokens pass through without being evaluated. Non-constructable functions such as arrow functions are rejected during registration. Wrapper objects are checked for their required callable or nested Token and then snapshotted as frozen records. In particular, `forwardRef()` remains lazy: normalization validates the wrapper's function but does not call it.
 
 Normalization is also where Fluo applies lazy defaults. If a Provider doesn't specify a Scope, `normalizeProvider` doesn't leave the field empty. It reads class metadata and fills in the framework default, `Scope.DEFAULT`. If a Scope is present, `normalizeProviderScope()` accepts only `singleton`, `request`, or `transient`; every other value becomes `InvalidProviderError`. By the time a Provider is registered, its behavior contract is already explicit. This explicitness makes the normalized record the container's final source of truth for Provider configuration.
 
 The factory and `{ provide, useClass }` branches make Scope precedence and inject precedence clearer.
 
-`path:packages/di/src/provider-normalization.ts`
+`path:packages/di/src/provider-normalization.ts:200-232`
 ```typescript
   if ('useFactory' in objectProvider) {
+    if (!isFactoryFunction(objectProvider.useFactory)) {
+      throw new InvalidProviderError('Factory provider useFactory must be a function.', { token: objectProvider.provide });
+    }
+
     const metadata = objectProvider.resolverClass ? getClassDiMetadata(objectProvider.resolverClass) : undefined;
 
     return freezeNormalizedProvider({
@@ -151,10 +189,14 @@ The factory and `{ provide, useClass }` branches make Scope precedence and injec
   }
 
   if ('useClass' in objectProvider) {
+    if (!isClassType(objectProvider.useClass)) {
+      throw new InvalidProviderError('Class provider useClass must be a constructor.', { token: objectProvider.provide });
+    }
+
     const metadata = getClassDiMetadata(objectProvider.useClass);
 
     return freezeNormalizedProvider({
-      inject: normalizeInject(objectProvider.inject ?? metadata?.inject, objectProvider.provide),
+      inject: normalizeInject('inject' in objectProvider ? objectProvider.inject : metadata?.inject, objectProvider.provide),
       multi: objectProvider.multi,
       provide: objectProvider.provide,
       scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? Scope.DEFAULT,
@@ -164,7 +206,7 @@ The factory and `{ provide, useClass }` branches make Scope precedence and injec
   }
 ```
 
-A factory Provider checks explicit `provider.scope` first, then `resolverClass` metadata, then falls back to the singleton default. A class Provider object also prioritizes explicit `inject` and `scope`, using implementation class metadata only when the object didn't provide those fields.
+A factory Provider checks explicit `provider.scope` first, then `resolverClass` metadata, then falls back to the singleton default. A class Provider object also prioritizes explicit `inject` and `scope`, using implementation class metadata only when the object does not own those fields. The own-property check is intentional: an explicit `inject: null` reaches `normalizeInject()` and is rejected instead of silently falling back to class metadata.
 
 This function also handles recursive normalization of dependencies. If a factory Provider's `inject` list mixes in composite definitions, `normalizeProvider` passes them through `normalizeInjectToken` and turns them into stable internal Tokens. Once every expression has a single shape, the DI container can build a more consistent dependency graph during module compilation.
 
@@ -174,11 +216,11 @@ Another detail in `normalizeProvider` is that it preserves `forwardRef` and `opt
 
 Finally, normalization performs final validation. It checks whether required fields such as `provide` exist and whether there are obvious contradictions such as specifying a value Provider and a factory at the same time. This defensive layer means the DI container's internal state only handles valid records. A Provider that passes through `normalizeProvider` can be treated as an executable configuration piece by the Fluo engine.
 
-For plain class registration, the container reads constructor metadata through `getClassDiMetadata()` and uses `Scope.DEFAULT` when no explicit Scope exists. This flow appears in `path:packages/di/src/container.ts:55-65`. In other words, class syntax is sugar for a normalized class Provider whose Token is the class itself.
+For plain class registration, the container reads constructor metadata through `getClassDiMetadata()` and uses `Scope.DEFAULT` when no explicit Scope exists. This flow appears in `path:packages/di/src/provider-normalization.ts:168-179`. In other words, class syntax is sugar for a normalized class Provider whose Token is the class itself.
 
-A factory Provider is a little more subtle. The container first respects `provider.scope`, then reads Scope metadata from `resolverClass` if present, and finally uses the singleton default. This precedence appears in `path:packages/di/src/container.ts:78-89`. So async or computed Providers participate in the same Scope language as class Providers.
+A factory Provider is a little more subtle. The container first respects `provider.scope`, then reads Scope metadata from `resolverClass` if present, and finally uses the singleton default. This precedence appears in `path:packages/di/src/provider-normalization.ts:200-215`. So async or computed Providers participate in the same Scope language as class Providers.
 
-`{ provide, useClass }` follows the same inheritance pattern. `path:packages/di/src/container.ts:91-102` shows the container reading metadata from `provider.useClass`, but only using it when the Provider object hasn't already specified `inject` or `scope`. The Provider object keeps final authority, while the class decorator can provide a default contract.
+`{ provide, useClass }` follows the same inheritance pattern. `path:packages/di/src/provider-normalization.ts:217-232` shows the container reading metadata from `objectProvider.useClass`, but only using inject metadata when the Provider object does not own an `inject` property. The Provider object keeps final authority, while the class decorator can provide a default contract.
 
 Two helper wrappers are also connected to this normalization step. They look like dependency syntax from the outside, but they are really markers for later resolution. `forwardRef()` and `optional()` are declared in `path:packages/di/src/types.ts:137-168`. These functions don't resolve anything themselves. They only wrap Tokens so later steps can treat them specially.
 
@@ -687,20 +729,24 @@ Even during recursion allowed by a forward reference, seeing an active Token aga
 
 So `forwardRef` only delays Token lookup at declaration time. It isn't an escape hatch that allows a Token already being created to be created again.
 
-Aliases are a Provider-level feature rather than a dependency-entry-level feature. A `useExisting` Provider is normalized in `path:packages/di/src/container.ts:104-111`, then `resolveAliasTarget()` in `path:packages/di/src/container.ts:451-455` redirects to the actual target Token. The alias Token is another name for the resolved value of the target Token.
+Aliases are a Provider-level feature rather than a dependency-entry-level feature. A `useExisting` Provider is normalized in `path:packages/di/src/provider-normalization.ts:234-246`, then `resolveAliasTarget()` in `path:packages/di/src/container.ts:451-455` redirects to the actual target Token. The alias Token is another name for the resolved value of the target Token.
 
 At normalization time, an alias Provider closes into an `existing` record without dependencies.
 
-`path:packages/di/src/container.ts:104-111`
+`path:packages/di/src/provider-normalization.ts:234-246`
 ```typescript
-  if (isExistingProvider(provider)) {
-    return {
+  if ('useExisting' in objectProvider) {
+    if (objectProvider.useExisting == null) {
+      throw new InvalidProviderError('Alias provider useExisting must be a non-null token.', { token: objectProvider.provide });
+    }
+
+    return freezeNormalizedProvider({
       inject: [],
-      provide: provider.provide,
+      provide: objectProvider.provide,
       scope: Scope.DEFAULT,
       type: 'existing',
-      useExisting: provider.useExisting,
-    };
+      useExisting: objectProvider.useExisting,
+    });
   }
 ```
 
@@ -894,7 +940,7 @@ This check inspects the dependency edge before a singleton Provider is made. Bec
 
 `CircularDependencyError` is intentionally explicit. Its constructor in `path:packages/di/src/errors.ts:106-125` includes the full chain and a first-party hint recommending shared-logic extraction or `forwardRef()` use. That recovery advice is rooted in the standard resolution model.
 
-Closing the advanced analysis loop requires matching the chapter's claims against the actual behavior contracts in the source. `path:packages/di/src/container.ts:54-115` confirms that `normalizeProvider` is truly the base entry point for all Provider shapes. `path:packages/di/src/container.ts:389-402` proves that `resolveWithChain` handles cycle detection as the first operational branch. `path:packages/di/src/container.ts:796-825` shows `instantiate` enforcing singleton Scope hygiene before any constructor runs. `path:packages/di/src/container.ts:558-579` shows that optional, forwardRef, and standard Tokens share one unified resolution helper. The empirical evidence in `path:packages/di/src/container.test.ts:414-431` and `path:packages/di/src/container.test.ts:638-679` proves that the container enforces multi-Provider and registration-conflict policies exactly as described.
+Closing the advanced analysis loop requires matching the chapter's claims against the actual behavior contracts in the source. `path:packages/di/src/provider-normalization.ts:168-249` confirms that `normalizeProvider` is truly the base entry point for all Provider shapes. `path:packages/di/src/container.ts:389-402` proves that `resolveWithChain` handles cycle detection as the first operational branch. `path:packages/di/src/container.ts:796-825` shows `instantiate` enforcing singleton Scope hygiene before any constructor runs. `path:packages/di/src/container.ts:558-579` shows that optional, forwardRef, and standard Tokens share one unified resolution helper. The empirical evidence in `path:packages/di/src/container.test.ts:414-431` and `path:packages/di/src/container.test.ts:638-679` proves that the container enforces multi-Provider and registration-conflict policies exactly as described.
 
 This standard-first architecture keeps the DI container as a predictable state machine even when the Module Graph becomes complex. Complexity moves into normalization, and registration enforces Scope and topology rules. `forwardRef()` support in `path:packages/di/src/types.ts:137-168` also fits this model. It provides a lookup-deferral marker without creating proxy objects.
 
