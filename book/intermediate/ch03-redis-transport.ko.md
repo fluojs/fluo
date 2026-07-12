@@ -30,26 +30,48 @@ import { Module } from '@fluojs/core';
 import { MicroservicesModule, RedisPubSubMicroserviceTransport } from '@fluojs/microservices';
 import Redis from 'ioredis';
 
-const redisClient = new Redis({ host: 'localhost', port: 6379 });
+const publisher = new Redis({ host: 'localhost', port: 6379 });
+const subscriber = publisher.duplicate();
+const transport = new RedisPubSubMicroserviceTransport({
+  publishClient: publisher,
+  subscribeClient: subscriber,
+});
 
 @Module({
   imports: [
     MicroservicesModule.forRoot({
-      transport: new RedisPubSubMicroserviceTransport({
-        publishClient: redisClient,
-        subscribeClient: redisClient.duplicate(),
-      }),
+      transport,
     }),
   ],
 })
 export class NotificationModule {}
+
+export async function closeNotificationTransport(): Promise<void> {
+  const shutdownErrors: unknown[] = [];
+
+  for (const shutdown of [
+    () => transport.close(),
+    () => subscriber.quit(),
+    () => publisher.quit(),
+  ]) {
+    try {
+      await shutdown();
+    } catch (error) {
+      shutdownErrors.push(error);
+    }
+  }
+
+  if (shutdownErrors.length > 0) {
+    throw new AggregateError(shutdownErrors, 'Failed to close Redis notification transport.');
+  }
+}
 ```
 
 Redis는 구독 모드에 전용 연결이 필요합니다. 그래서 구독자는 발행 클라이언트를 그대로 공유하기보다 보통 `duplicate()`로 분리합니다. Redis Pub/Sub은 확인 응답이나 응답 메시지를 지원하지 않기 때문에, 이 트랜스포트는 사실상 `emit()` 중심 워크플로에 적합합니다. 이 제약은 오히려 의미론적 경계를 분명하게 보여 줍니다. 내구성 있는 요청-응답 계약이 필요하다면 Pub/Sub이 그 역할을 대신할 수 있다고 가정하면 안 됩니다.
 
 같은 앱이 `@fluojs/redis`도 등록한다면, 해당 패키지의 공유 `REDIS_CLIENT`는 cache read, pipeline, Lua script, queue helper 같은 일반 명령에 남겨 두세요. Pub/Sub subscriber 연결로 재사용하면 안 됩니다. Redis는 구독한 연결을 subscribe mode로 전환하고, 그 연결은 더 이상 일반 command traffic을 안전하게 처리할 수 없습니다. Pub/Sub transport에는 `duplicate()` 또는 별도 named Redis registration으로 전용 subscriber를 제공하고, `@fluojs/redis`가 생성한 클라이언트의 connect/quit timeout은 그 패키지가 소유하게 하세요.
 
-Subscriber를 어떻게 만드는지에 따라 소유권 경계가 달라집니다. `redisClient.duplicate()`로 만든 subscriber는 `RedisModule`이 자동으로 추적하지 않습니다. Duplicate를 만든 애플리케이션이 직접 연결하고, transport에 전달하고, shutdown 중에 닫아야 합니다. Command client와 subscriber 모두에 fluo의 Redis lifecycle 옵션을 적용하고 싶다면 named client를 등록하고 `getRedisClientToken(name)`으로 주입하세요:
+Subscriber를 어떻게 만드는지에 따라 소유권 경계가 달라집니다. `publisher.duplicate()`로 만든 subscriber는 `RedisModule`이 자동으로 추적하지 않습니다. Raw publisher와 subscriber를 만든 애플리케이션이 직접 연결하고 transport에 전달하며 shutdown 경로에서 `closeNotificationTransport()`를 호출해야 합니다. Cleanup loop는 종료 순서를 지키면서 모든 정리 단계를 시도하고, 하나라도 실패하면 `AggregateError`를 던집니다. Transport를 닫아도 subscriber 구독만 해제되므로 애플리케이션이 두 raw client도 닫아야 합니다. Command client와 subscriber 모두에 fluo의 Redis lifecycle option을 적용하고 싶다면 named client를 등록하고 `getRedisClientToken(name)`으로 주입하세요:
 
 ```typescript
 import { Inject, Module } from '@fluojs/core';

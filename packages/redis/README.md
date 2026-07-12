@@ -32,7 +32,7 @@ npm install @fluojs/redis ioredis
 
 Use `RedisModule.forRoot(options)` to register the default Redis client and `RedisService` facade.
 
-`RedisModule.forRoot(...)` is intentionally synchronous. When migrating from NestJS async dynamic modules such as `forRootAsync(...)`, resolve secrets, environment-specific hosts, or externally constructed clients at the application boundary first, then pass the final Redis options into `forRoot(...)`. fluo does not defer Redis module wiring to an async factory hidden inside the module graph.
+`RedisModule.forRoot(...)` is intentionally synchronous and always creates a new `ioredis` client from Redis constructor options; it does not adopt an externally constructed client. When migrating from NestJS async dynamic modules such as `forRootAsync(...)`, resolve secrets, environment-specific hosts, and TLS options at the application boundary first, then pass the final Redis options into `forRoot(...)`. Keep externally constructed clients outside this module and close them from the application lifecycle. fluo does not defer Redis module wiring to an async factory hidden inside the module graph.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -77,7 +77,7 @@ export class CacheRepository {
 
 ### Lifecycle Ownership
 
-`@fluojs/redis` owns the lifecycle of every client it creates, including named clients registered through `RedisModule.forRoot({ name, ... })`.
+Every `RedisModule.forRoot(...)` registration creates a new client that `@fluojs/redis` owns, including named clients registered through `RedisModule.forRoot({ name, ... })`. The module never adopts an existing client instance.
 
 - Fluo always forces `lazyConnect: true`, even if callers cast options manually, so sockets open during application bootstrap instead of import time.
 - During bootstrap, the lifecycle service only calls `connect()` while the client is still in ioredis `wait` state.

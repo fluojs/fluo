@@ -32,7 +32,7 @@ npm install @fluojs/redis ioredis
 
 `RedisModule.forRoot(options)`는 기본 Redis 클라이언트와 `RedisService` 파사드를 등록하는 지원되는 root entrypoint입니다.
 
-`RedisModule.forRoot(...)`는 의도적으로 동기 방식입니다. NestJS의 `forRootAsync(...)` 같은 async dynamic module에서 마이그레이션할 때는 secret, 환경별 host, 외부에서 만든 client를 애플리케이션 경계에서 먼저 해석한 뒤 최종 Redis 옵션을 `forRoot(...)`에 전달하세요. fluo는 Redis module wiring을 module graph 안의 숨겨진 async factory로 미루지 않습니다.
+`RedisModule.forRoot(...)`는 의도적으로 동기 방식이며 Redis constructor option으로 항상 새 `ioredis` client를 생성합니다. 외부에서 만든 client를 채택하지 않습니다. NestJS의 `forRootAsync(...)` 같은 async dynamic module에서 마이그레이션할 때는 secret, 환경별 host, TLS option을 애플리케이션 경계에서 먼저 해석한 뒤 최종 Redis option을 `forRoot(...)`에 전달하세요. 외부에서 만든 client는 이 module 밖에 두고 애플리케이션 lifecycle에서 닫아야 합니다. fluo는 Redis module wiring을 module graph 안의 숨겨진 async factory로 미루지 않습니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -77,7 +77,7 @@ export class CacheRepository {
 
 ### 수명 주기 소유권
 
-`@fluojs/redis`는 `RedisModule.forRoot({ name, ... })`로 등록한 이름 있는 연결을 포함해, 자신이 생성한 모든 Redis 클라이언트의 수명 주기를 직접 관리합니다.
+`RedisModule.forRoot(...)` 등록은 각각 새 client를 생성하며, `@fluojs/redis`는 `RedisModule.forRoot({ name, ... })`로 등록한 이름 있는 연결을 포함해 그 client의 lifecycle을 직접 관리합니다. 이 module은 기존 client instance를 채택하지 않습니다.
 
 - 호출자가 옵션을 강제로 캐스팅하더라도 Fluo는 항상 `lazyConnect: true`를 강제하므로, 소켓은 import 시점이 아니라 애플리케이션 bootstrap 중에 열립니다.
 - bootstrap 단계에서는 클라이언트가 ioredis `wait` 상태일 때만 lifecycle service가 `connect()`를 호출합니다.
