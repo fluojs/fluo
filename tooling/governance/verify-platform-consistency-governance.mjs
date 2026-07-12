@@ -926,10 +926,16 @@ function enforceCanonicalRuntimeMatrixReferences() {
   assert(
     expressReadme.includes('Express compatibility does not mean that native Express/Connect') &&
       expressReadme.includes('Do not pass an Express/Connect function') &&
+      expressReadme.includes('`nativeMiddleware` is mounted in array order before') &&
       packageSurface.includes('native Express/Connect `(req, res, next)` functions are not portable fluo middleware') &&
+      packageSurface.includes('pre-router `nativeMiddleware` option') &&
       packageChooser.includes('Use fluo `Middleware` for the application pipeline') &&
+      packageChooser.includes('pre-router `nativeMiddleware` option') &&
       migrateFromNestjs.includes('Native Express/Connect `(req, res, next)` middleware') &&
+      migrateFromNestjs.includes('explicit `nativeMiddleware` option') &&
       docsContext.includes('Express host compatibility boundary') &&
+      docsContext.includes('Express native middleware seam') &&
+      docsContext.includes('`nativeMiddleware` adapter option') &&
       docsContext.includes('getServer()') &&
       docsContext.includes('getRealtimeCapability()'),
     'Express platform docs must keep host compatibility, native middleware limits, and infrastructure helper boundaries discoverable together.',
@@ -937,13 +943,19 @@ function enforceCanonicalRuntimeMatrixReferences() {
   assert(
     expressReadmeKo.includes('Express 호환성은 native Express/Connect') &&
       expressReadmeKo.includes('Express/Connect function을 fluo middleware로 직접 전달하지 마세요') &&
+      expressReadmeKo.includes('`nativeMiddleware`는 배열 순서대로 adapter의 Express Router') &&
       packageSurfaceKo.includes('native Express/Connect `(req, res, next)` function은 portable fluo middleware가 아닙니다') &&
+      packageSurfaceKo.includes('pre-router `nativeMiddleware` 옵션') &&
       packageChooserKo.includes('Application pipeline에는 fluo `Middleware`를 사용') &&
+      packageChooserKo.includes('pre-router `nativeMiddleware` 옵션') &&
       migrateFromNestjsKo.includes('native Express/Connect `(req, res, next)` middleware') &&
+      migrateFromNestjsKo.includes('명시적 `nativeMiddleware` 옵션') &&
       docsContextKo.includes('Express host compatibility boundary') &&
+      docsContextKo.includes('Express native middleware seam') &&
+      docsContextKo.includes('`nativeMiddleware` adapter 옵션') &&
       docsContextKo.includes('getServer()') &&
       docsContextKo.includes('getRealtimeCapability()'),
-    'Korean Express platform docs must keep host compatibility, native middleware limits, and infrastructure helper boundaries discoverable together.',
+    'Korean Express platform docs must keep host compatibility, native middleware limits, explicit registration, and infrastructure helper boundaries discoverable together.',
   );
   assert(
     fastifyReadme.includes('engines.node >=20.0.0') &&
