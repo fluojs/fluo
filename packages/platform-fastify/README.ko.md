@@ -172,7 +172,7 @@ fluo 라우트 메타데이터를 Fastify 경로로 그대로 옮길 수 있는 
 
 어댑터는 매칭되지 않은 경로와 이식성에 민감한 경우, 그리고 공유 body/materialization 경로를 보존해야 하는 multipart request를 위해 와일드카드 fallback 라우트를 계속 유지하며, Fastify의 trailing slash / duplicate slash 정규화를 켜서 네이티브 선택 경로도 fluo의 문서화된 route path 계약과 맞추어 동작하도록 합니다. CORS 처리는 Fastify 플러그인이 아니라 fluo의 공유 middleware 경로가 계속 소유하고, `OPTIONS` 같은 미지원 메서드는 fluo route가 명시적으로 소유하지 않는 한 fallback dispatcher 경로로 흐릅니다.
 
-동시에 호출된 `listen()`은 하나의 startup promise를 공유하고 첫 번째 호출의 dispatcher를 유지합니다. Startup 이후 반복되는 `listen()` 호출은 live listener와 dispatcher를 변경하지 않는 no-op입니다. 바쁜 port 때문에 startup retry 중인 상태에서 `close()`를 호출하면 retry loop를 취소하고 해당 작업이 settle될 때까지 기다린 뒤 shutdown 완료를 보고하므로, caller가 shutdown이 끝났다고 믿은 뒤 닫힌 adapter가 나중에 bind되는 일이 없습니다. Adapter instance를 close 이후 다시 listen하면 native route handler가 traffic을 처리하기 전에 dispatcher descriptor를 새로 반영하므로 request handoff metadata가 이전 application graph를 가리키지 않습니다.
+동시에 호출된 `listen()`은 하나의 startup promise를 공유하고 첫 번째 호출의 dispatcher를 유지합니다. Startup 이후 반복되는 `listen()` 호출은 live listener와 dispatcher를 변경하지 않는 no-op입니다. `close()`가 진행 중일 때 호출된 `listen()`은 shutdown이 settle될 때까지 기다린 뒤 새 listener를 시작하며, 해당 listener가 준비된 후에만 resolve됩니다. 바쁜 port 때문에 startup retry 중인 상태에서 `close()`를 호출하면 retry loop를 취소하고 해당 작업이 settle될 때까지 기다린 뒤 shutdown 완료를 보고하므로, caller가 shutdown이 끝났다고 믿은 뒤 닫힌 adapter가 나중에 bind되는 일이 없습니다. Adapter instance를 close 이후 다시 listen하면 native route handler가 traffic을 처리하기 전에 dispatcher descriptor를 새로 반영하므로 request handoff metadata가 이전 application graph를 가리키지 않습니다.
 
 ## 성능
 

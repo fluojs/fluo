@@ -1921,6 +1921,56 @@ describe('@fluojs/platform-fastify', () => {
     }
   });
 
+  it('waits for an in-flight close before resolving listen with a ready listener', async () => {
+    const port = await findAvailablePort();
+    const requestStarted = createDeferred<void>();
+    const releaseRequest = createDeferred<void>();
+    const adapter = createFastifyAdapter({ port }) as FastifyHttpApplicationAdapter;
+    const firstDispatcher: Dispatcher = {
+      async dispatch(_request, response) {
+        requestStarted.resolve();
+        await releaseRequest.promise;
+        await response.send({ dispatcher: 'first' });
+      },
+    };
+    const secondDispatcher: Dispatcher = {
+      async dispatch(_request, response) {
+        await response.send({ dispatcher: 'second' });
+      },
+    };
+
+    await adapter.listen(firstDispatcher);
+    const activeRequest = requestHttp({ method: 'GET', path: '/', port });
+    await requestStarted.promise;
+    const closePromise = adapter.close();
+    const relistenPromise = adapter.listen(secondDispatcher);
+    let relistenSettled = false;
+    const observedRelisten = relistenPromise.finally(() => {
+      relistenSettled = true;
+    });
+
+    try {
+      await Promise.resolve();
+      expect(relistenSettled).toBe(false);
+
+      releaseRequest.resolve();
+      const firstResponse = await activeRequest;
+      await closePromise;
+      await observedRelisten;
+
+      expect(firstResponse.statusCode).toBe(200);
+      expect(JSON.parse(firstResponse.body)).toEqual({ dispatcher: 'first' });
+
+      const secondResponse = await requestHttp({ method: 'GET', path: '/', port });
+      expect(secondResponse.statusCode).toBe(200);
+      expect(JSON.parse(secondResponse.body)).toEqual({ dispatcher: 'second' });
+    } finally {
+      releaseRequest.resolve();
+      await Promise.allSettled([activeRequest, closePromise, observedRelisten]);
+      await adapter.close();
+    }
+  });
+
   it('refreshes native route descriptors when the adapter is reused after close', async () => {
     @Controller('/reuse')
     class FirstController {

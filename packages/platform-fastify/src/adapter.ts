@@ -210,6 +210,10 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
   }
 
   listen(dispatcher: Dispatcher): Promise<void> {
+    if (this.closeInFlight) {
+      return this.closeInFlight.then(() => this.listen(dispatcher));
+    }
+
     if (this.listenState === 'listening') {
       return Promise.resolve();
     }
