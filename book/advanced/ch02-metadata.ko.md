@@ -21,9 +21,9 @@
 ## 2.1 The role of Reflect API
 표준 JavaScript의 세계에서 `Reflect` API는 객체에 대한 저수준 연산을 수행하고 가로채기 위한 정적 메서드들의 집합입니다. `Reflect.get`, `Reflect.set`, `Reflect.apply`와 같은 메서드를 제공하지만, 데코레이터 맥락에서 가장 중요한 역할은 메타데이터를 관리하는 표준화된 방법을 제공하는 것입니다. Fluo에서 `Reflect`는 기존 프레임워크에서 볼 수 있는 무거운 "마법 같은" 리플렉션이 아니라, 클래스 수준의 메타데이터 가방 및 내부 저장 메커니즘과 상호작용하기 위한 정밀한 도구로 사용됩니다.
 
-`Reflect` API는 내부 언어 시맨틱을 따르는 속성 접근 및 할당을 가능하게 하는 `Reflect.get` 및 `Reflect.set` 메서드를 제공하기 때문에 기본적입니다. Fluo의 메타데이터 시스템에서 이는 특히 `Symbol.metadata`와 상호작용할 때 중요한데, 메타데이터 접근이 일관되게 이루어지고 대상 객체에서 의도하지 않은 게터(getter) 실행과 같은 부수 효과를 일으키지 않도록 보장하기 때문입니다.
+`Reflect` API는 `Reflect.get`, `Reflect.set` 같은 일반 언어 연산의 명시적인 형태를 제공합니다. Fluo는 `path:packages/core/src/metadata/shared.ts:46-57`에서 own `Symbol.metadata` bag을 읽을 때 `Object.hasOwn`으로 확인한 다음 `Reflect.get`을 사용하므로, 의도한 lookup 경계가 구현에 드러납니다.
 
-전통적인 `target[prop]` 형태의 접근은 런타임에 의도치 않은 프록시 트랩(Proxy Trap)을 자극하거나 사용자 정의 게터(getter)를 실행시킬 위험이 있습니다. 반면 `Reflect.get`은 명세에 정의된 '기본 속성 접근 동작'을 보장하여 프레임워크가 메타데이터를 읽을 때 대상 객체의 복잡한 상태를 건드리지 않도록 합니다. 이러한 명세 준수(Spec-compliant) 접근 방식은 Fluo가 왜 그토록 안정적이고 예측 가능한 런타임 동작을 보여주는지를 잘 설명해 줍니다.
+`Reflect.get`은 부수 효과를 차단하는 장치가 아닙니다. `target[prop]`과 마찬가지로 JavaScript의 `[[Get]]` 연산을 따르므로 accessor 또는 Proxy `get` trap을 실행할 수 있습니다. 앞선 own-property 검사는 일반적인 prototype lookup이 metadata bag을 제공하는 것을 막지만, Proxy는 여전히 관련 연산을 관찰할 수 있습니다. 일반 class constructor의 표준 decorator metadata는 data property일 것으로 기대되지만, 이 관례를 임의의 proxied target도 부수 효과 없이 검사할 수 있다는 보장으로 확대하면 안 됩니다.
 
 기존의 `reflect-metadata` 폴리필에서 사용되는 전역 `Reflect.defineMetadata`와 달리, Fluo는 지역화된 메타데이터 저장소를 우선시합니다. 우리는 `Reflect`를 주로 대상 객체 자체와 상호작용하기 위한 표준화된 인터페이스로 사용합니다. 이는 전역 레지스트리의 부담 없이 객체의 구조와 상태를 들여다보기 위해 API를 사용하는 "인트로스펙션으로서의 Reflect(Reflect-as-Introspection)" 패턴과 일치합니다.
 
@@ -33,7 +33,7 @@
 
 특히 `Reflect.construct`는 가변 인자를 다룰 때 `new` 키워드보다 훨씬 강력한 인터페이스를 제공합니다. DI 컨테이너가 의존성들을 해결한 뒤 생성자에 배열 형태로 주입할 때, `Reflect.construct(target, argumentsList)`는 매우 직관적이고 표준적인 생성 패턴을 만들어냅니다. 이는 동적인 의존성 그래프를 인스턴스라는 정적인 결과물로 변환하는 데 있어 없어서는 안 될 핵심 기능입니다.
 
-또한, `Reflect.getOwnPropertyDescriptor`는 모듈 그래프의 탐색 단계에서 자주 사용됩니다. 이를 통해 Fluo는 프로토타입에 정의되어 있을 수 있는 게터 로직이나 부수 효과를 트리거하지 않고도 특정 데코레이터에 대한 클래스 멤버를 검사할 수 있습니다. 이러한 수준의 정밀한 인트로스펙션은 Fluo의 "부수 효과 제로" 탐색 아키텍처의 특징이며, 단순히 데코레이터를 스캔하는 행위가 애플리케이션 상태를 변경하거나 고비용 자원을 조기에 초기화하지 않도록 보장합니다.
+`Reflect.getOwnPropertyDescriptor`는 더 좁은 inspection 연산을 보여 줍니다. 일반 객체에서는 descriptor에 저장된 accessor function을 호출하지 않고 descriptor 자체를 반환하므로, 코드는 값을 읽을지 결정하기 전에 getter와 data property를 구분할 수 있습니다. 하지만 Proxy는 여전히 `getOwnPropertyDescriptor` trap을 실행할 수 있으므로 descriptor inspection 역시 보편적인 "부수 효과 제로" 보장은 아닙니다.
 
 만약 우리가 단순히 `target[prop]`으로 접근했다면, 해당 속성이 게터(getter)인 경우 그 안의 복잡한 로직이 실행되어 버립니다. 하지만 `getOwnPropertyDescriptor`를 사용하면 '그 속성이 무엇인지'에 대한 정보(Descriptor)만 읽어올 뿐 '그 속성을 실행'하지는 않습니다. 이 미묘한 차이가 부팅 시 수천 개의 클래스를 스캔해야 하는 프레임워크 런타임의 안정성을 결정짓는 결정적인 요소가 됩니다.
 
@@ -137,7 +137,7 @@ export function createClonedWeakMapStore<TKey extends object, TValue>(
 
 이는 특히 서버리스 환경이나 핫 리로딩이 빈번하게 일어나는 개발 환경에서 강력한 이점을 제공합니다. 불필요한 메타데이터가 메모리에 쌓이는 것을 방지함으로써 시스템의 전체적인 예측 가능성을 높이고, 개발자가 수동으로 메모리를 관리해야 하는 부담을 덜어줍니다. Fluo는 이처럼 언어의 로우레벨 기능을 영리하게 활용하여 개발자에게는 편의성을, 런타임에는 안정성을 제공합니다.
 
-타입 안전성은 TypeScript 제네릭, frozen read contract, 런타임 검증의 조합을 통해 달성됩니다. Fluo의 모든 메타데이터 저장소는 특정 타입과 연결되어 있으며, 우리의 내부 헬퍼(`path:packages/core/src/metadata/module.ts:123-125`의 `getModuleMetadata` 등)는 프레임워크의 나머지 부분에 강력한 타입의 API를 제공하기 위해 이러한 타입을 사용합니다. 이를 통해 DI 컨테이너나 HTTP 런타임이 메타데이터를 읽을 때 어떤 형태를 기대해야 할지 정확히 알 수 있어, 방어적인 널 체크나 타입 캐스팅의 필요성이 줄어듭니다.
+타입 안전성은 TypeScript 제네릭과 frozen read contract를 통해 달성됩니다. Fluo의 모든 메타데이터 저장소는 특정 타입과 연결되어 있으며, `path:packages/core/src/metadata/module.ts:123-125`의 `getModuleMetadata` 같은 헬퍼는 프레임워크의 나머지 부분에 강한 타입의 API를 제공하기 위해 이러한 타입을 사용합니다. 따라서 typed consumer는 메타데이터를 읽을 때 기대할 형태를 알 수 있지만, 이는 compile-time contract이지 모든 metadata write가 runtime schema validation을 받는다는 약속은 아닙니다.
 
 모듈 메타데이터 헬퍼도 같은 저장소 계약 위에 올라갑니다.
 
@@ -164,7 +164,7 @@ export function getModuleMetadata(target: Function): ModuleMetadata | undefined 
 
 `defineModuleMetadata`는 부분 데코레이터 패스가 기존 필드를 지우지 않도록 `existing` 값을 보존합니다. 그런 다음 들어온 payload를 clone하고, 결과 module metadata snapshot을 freeze하여 저장한 뒤 write version을 올립니다. `getModuleMetadata`는 저장된 frozen snapshot을 직접 반환합니다. 따라서 module graph가 읽는 값은 타입이 정해져 있고 immutable이며 allocation에 유리합니다. 이는 mutable copy가 아닙니다. 호출자에게 보이는 규칙은 반환된 metadata를 read-only로 취급하고, snapshot을 직접 수정하는 대신 metadata write 이후 새 값을 다시 요청하는 것입니다.
 
-고급 시나리오에서는 메타데이터가 저장되기 전에 Zod와 유사한 내부 검증기를 통해 메타데이터의 형태를 확인하는 "스키마 기반" 메타데이터 검증도 사용합니다. 이는 잘못된 구성이 부팅 초기 단계에서 모듈 그래프를 오염시키는 것을 방지하며, 잘못 설정된 데코레이터를 직접 가리키는 명확한 에러 메시지를 제공합니다. 이러한 스키마 검증은 런타임 오버헤드를 최소화하기 위해 개발 모드에서만 선택적으로 활성화되거나, 빌드 타임 사전 컴파일 단계에서 미리 수행되도록 설계되어 성능과 안전성 사이의 최적의 균형점을 찾습니다.
+Module metadata write 경로는 저장 전에 Zod와 유사한 validator, development-only validator, build-time schema validator를 실행하지 않습니다. `Module()`은 typed definition을 `defineModuleMetadata()`에 전달하고, 이 함수는 기존 필드를 보존하고 지원되는 mutable value를 clone한 다음 snapshot을 freeze하여 저장합니다. Typed caller의 호환되지 않는 형태는 TypeScript가 거부하지만, JavaScript caller에는 일반적인 pre-storage schema-validation 보장이 제공되지 않습니다. Runtime normalization 또는 validation은 metadata store에서 추론하지 말고 이를 실제로 구현하는 특정 consumer의 문서에서 확인해야 합니다.
 
 또한, Fluo의 타입 안전 저장소는 TypeScript의 `as const` 및 리터럴 타입과 원활하게 통합됩니다. 개발자가 커스텀 메타데이터 키를 정의할 때 특정 인터페이스에 매핑된 고유 심볼을 사용하도록 권장됩니다. 이는 IDE가 하위 수준의 프레임워크 API와 상호작용할 때도 완전한 자동 완성 및 타입 체크 지원을 제공할 수 있는 자기 문서화된 메타데이터 계층을 만듭니다. 이는 런타임 리플렉션의 "타입 없는" 성격과 현대적인 엔터프라이즈 개발의 "강력한 타입" 요구 사항 사이의 간극을 메워줍니다.
 
@@ -311,9 +311,18 @@ export function getInjectionSchema(target: object): InjectionSchemaEntry[] {
 ## 2.7 Debugging Metadata in Fluo
 메타데이터 이슈를 디버깅하는 것은 어려울 수 있지만 Fluo는 이를 돕기 위한 여러 도구를 제공합니다. 애플리케이션 코드는 먼저 `@fluojs/core` 루트의 `getModuleMetadata()` 같은 공개 헬퍼를 사용해야 합니다. DTO 바인딩, 검증, 표준 메타데이터 가방 접근이 필요한 first-party 요청 파이프라인 패키지는 문서화된 `@fluojs/core/request-pipeline` seam을 사용합니다. 더 넓은 `@fluojs/core/internal` 서브패스는 클래스 DI 메타데이터 같은 프레임워크 내부 레코드를 읽거나 써야 하는 fluo 소유 패키지와 프레임워크 테스트를 위해 예약되어 있습니다.
 
-또한 런타임에 메타데이터 심볼이 준비된 뒤에는 모든 클래스에서 표준 TC39 메타데이터 가방을 수동으로 검사할 수 있습니다. 네이티브 데코레이터 메타데이터가 있는 환경에서는 `Reflect.get(MyClass, Symbol.metadata)`로 그 가방에 직접 접근할 수 있습니다. Fluo의 fallback 심볼이 필요한 런타임에서는 커스텀 표준 데코레이터가 평가되기 전 테스트 또는 부트스트랩 경계에서 `ensureMetadataSymbol()`을 호출한 뒤, 반환된 심볼로 검사하십시오. 이는 `@fluojs/core`를 import하는 것만으로 전역 polyfill이 설치된다고 가정하지 않으면서 Fluo 데코레이터가 기록한 데이터에 직접 접근해 구성이 런타임에 올바르게 해석되고 있는지 확인하게 해줍니다.
+런타임에 metadata symbol이 준비된 뒤에는 표준 TC39 metadata bag을 수동으로 검사할 수 있습니다. 네이티브 decorator metadata가 있는 환경에서는 `Reflect.get(MyClass, Symbol.metadata)`로 그 bag을 읽습니다. `@fluojs/core` import는 전역 polyfill을 설치하지 않습니다. Fluo의 fallback symbol이 필요한 런타임에서는 커스텀 표준 decorator가 평가되기 전 테스트 또는 bootstrap 경계에서 `ensureMetadataSymbol()`을 호출한 뒤 반환된 symbol로 검사하십시오. 이는 standard-decorator integration key를 통해 기록된 metadata를 확인할 때 유용합니다. 모든 Fluo 소유 metadata store를 보여 주는 창은 아니며, 일반 `Reflect.get`의 accessor 및 Proxy 주의사항도 그대로 적용됩니다.
 
-실제로 디버깅 중에 특정 클래스가 왜 DI에 등록되지 않는지 궁금하다면, 이 심볼을 통해 해당 클래스의 메타데이터 가방을 열어 `metadataKeys.classDi` 심볼 아래에 어떤 값이 들어있는지 바로 확인할 수 있습니다. 만약 이 값이 `undefined`라면 데코레이터가 정상적으로 실행되지 않았거나, 빌드 도구 설정 문제로 인해 메타데이터 기록이 누락되었을 가능성이 큽니다. 이러한 로우레벨 접근법은 블랙박스 형태의 프레임워크에서는 불가능했던 정밀한 문제 해결을 가능하게 합니다. 예를 들어 `@Module` 데코레이터에서 사용되는 특정 심볼을 검사하여 클래스가 모듈로 올바르게 등록되었는지 확인할 수 있습니다. 이러한 수동 검사는 프로바이더가 주입되지 않거나 라우트가 예상대로 등록되지 않는 이유를 해결할 때 종종 첫 번째 단계가 됩니다. 이는 하위 수준이지만 프레임워크의 내부 상태를 명확히 하는 데 매우 효과적인 기술입니다.
+Module 진단은 standard bag에서 internal store key를 읽으려 하지 말고 공개 root helper를 사용해야 합니다.
+
+```typescript
+import { getModuleMetadata } from '@fluojs/core';
+
+const metadata = getModuleMetadata(MyModule);
+console.log(metadata?.providers);
+```
+
+`metadataKeys.module`과 `metadataKeys.classDi`는 `path:packages/core/src/metadata/shared.ts:137-203`의 process-global `WeakMap` store를 식별합니다. 이들은 `@Module` 또는 `@Inject`가 `MyClass[Symbol.metadata]`에 쓰는 property가 아닙니다. 따라서 application code는 read-only module inspection에 `getModuleMetadata()`를 사용하고, application 또는 container test를 통해 DI wiring을 실행해 검증하며, DTO binding, validation, standard-bag integration contract가 필요할 때만 문서화된 `@fluojs/core/request-pipeline` seam을 사용해야 합니다. `@fluojs/core/internal`의 더 넓은 class-DI reader는 fluo 소유 package와 framework test를 위해 예약되어 있습니다.
 
 수동 검사를 넘어 복잡한 애플리케이션의 경우 자동화된 "메타데이터 무결성 테스트"를 설정하는 것을 권장합니다. 이는 공개 루트 헬퍼, 패키지 소유 리더, 또는 요청 파이프라인 통합 seam을 사용하여 특정 클래스에 예상되는 데코레이터와 구성이 있는지 단언(assert)하는 단순한 유닛 테스트입니다. Fluo 내부 리더는 fluo 소유 패키지 테스트에는 적절하지만, 애플리케이션 테스트는 예약된 internal 서브패스에 의존하지 않아야 합니다. 이러한 테스트는 프로덕션에 도달하기 전에 잘못 설정된 데코레이터를 잡을 수 있는 (테스트 수준에서의) 일종의 "컴파일 타임" 체크 역할을 합니다. 메타데이터 검증을 CI/CD 파이프라인에 통합함으로써 코드베이스가 성장하고 진화함에 따라 애플리케이션의 구조적 무결성이 유지되도록 보장할 수 있습니다.
 
