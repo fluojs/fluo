@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { assert, describe, expect, it } from 'vitest';
 
 import { getModuleMetadata, Inject, Module } from './index.js';
 import { getClassDiMetadata, metadataKeys } from './internal.js';
@@ -8,21 +8,34 @@ type SymbolConstructorWithMetadata = typeof Symbol & { metadata?: symbol };
 
 describe('@fluojs/core/request-pipeline public API behavior', () => {
   it('keeps Fluo-owned module and class DI records outside the standard metadata bag', () => {
-    class Dependency {}
+    const originalDescriptor = Object.getOwnPropertyDescriptor(Symbol, 'metadata');
+    coreRequestPipelineApi.ensureRequestPipelineMetadataSymbol();
 
-    @Inject(Dependency)
-    class Provider {}
+    try {
+      class Dependency {}
 
-    @Module({ providers: [Provider] })
-    class AppModule {}
+      @Inject(Dependency)
+      class Provider {}
 
-    const moduleBag = coreRequestPipelineApi.getOwnConstructorRequestPipelineMetadataBag(AppModule);
-    const providerBag = coreRequestPipelineApi.getOwnConstructorRequestPipelineMetadataBag(Provider);
+      @Module({ providers: [Provider] })
+      class AppModule {}
 
-    expect(moduleBag?.[metadataKeys.module]).toBeUndefined();
-    expect(providerBag?.[metadataKeys.classDi]).toBeUndefined();
-    expect(getModuleMetadata(AppModule)?.providers).toEqual([Provider]);
-    expect(getClassDiMetadata(Provider)?.inject).toEqual([Dependency]);
+      const moduleBag = coreRequestPipelineApi.getOwnConstructorRequestPipelineMetadataBag(AppModule);
+      const providerBag = coreRequestPipelineApi.getOwnConstructorRequestPipelineMetadataBag(Provider);
+
+      assert(moduleBag, 'Expected the decorated module to own a standard metadata bag.');
+      assert(providerBag, 'Expected the decorated provider to own a standard metadata bag.');
+      expect(moduleBag[metadataKeys.module]).toBeUndefined();
+      expect(providerBag[metadataKeys.classDi]).toBeUndefined();
+      expect(getModuleMetadata(AppModule)?.providers).toEqual([Provider]);
+      expect(getClassDiMetadata(Provider)?.inject).toEqual([Dependency]);
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(Symbol, 'metadata', originalDescriptor);
+      } else {
+        delete (Symbol as SymbolConstructorWithMetadata).metadata;
+      }
+    }
   });
 
   it('keeps metadata bag helpers executable for first-party integrations', () => {
