@@ -66,7 +66,7 @@ The `ensureMetadataSymbol` function handles the `Symbol.metadata` polyfill. By u
 
 This polyfill logic adapts flexibly to the runtime environment. If the environment already supports native `Symbol.metadata`, it uses that symbol without extra work. Only environments that lack support define a new metadata symbol on the global `Symbol` object. This "environment detection and progressive enhancement" strategy is a core technique that lets Fluo aim for modern specifications while maintaining broad compatibility.
 
-Symbols are well suited to metadata keys because uniqueness is guaranteed. Even if multiple versions of Fluo or multiple frameworks coexist in the same runtime, their metadata will not collide as long as each uses its own unique private symbol. This "hygienic metadata" pattern is a core principle of Fluo's design. It ensures framework-internal management information does not leak into user space. In complex micro-frontend architectures or monorepos where several versions of the same library may be bundled, this symbol-based isolation serves as an important safety barrier that prevents the cross-contamination that string-based keys would make unavoidable.
+Fluo deliberately uses canonical `Symbol.for(...)` keys rather than per-package-copy private symbols. Within the same JavaScript realm, duplicate Fluo package instances therefore resolve the same metadata keys and the same `metadataRegistryKey` in `path:packages/core/src/metadata/shared.ts:128-204`. `getGlobalMetadataRegistry()` stores one registry on `globalThis`, and `getGlobalMetadataWeakMap()` returns the shared `WeakMap` selected by each canonical key. Metadata written through one package instance is consequently visible through another instance in that realm, as verified by `path:packages/core/src/metadata.test.ts:48-137`. This design provides duplicate-package interoperability, not cross-version isolation; separate realms retain separate global registries.
 
 The export boundary, rather than symbol secrecy, separates application-facing APIs from Fluo's broader metadata primitives. `path:packages/core/src/metadata.ts:1-29` exports helpers and symbols such as `metadataKeys` and `metadataSymbol`, and `path:packages/core/src/internal.ts:1-2` re-exports that surface through the package-integration subpath `@fluojs/core/internal`. The root `@fluojs/core` entrypoint exposes only its documented application-facing subset. This boundary communicates intended use to Fluo packages and tooling; it does not make the internal symbols inaccessible to code that deliberately imports the internal subpath.
 
@@ -461,7 +461,7 @@ One challenge of a standard-first approach is that metadata is hidden behind sym
 
 Before moving on to custom Decorators, let's summarize the core principles of Fluo's metadata system.
 1. **Standard-First**: Use TC39 Stage 3 Decorators and `Symbol.metadata`.
-2. **Hygienic**: Use private symbols to prevent collisions and leaks.
+2. **Shared**: Use canonical `Symbol.for(...)` keys and the process-global `WeakMap` registry so duplicate package instances in one realm observe the same metadata.
 3. **Memory-Safe**: Use `WeakMap` to avoid memory leaks in dynamically loaded Modules.
 4. **Immutable**: Use defensive cloning to ensure metadata resolution is thread-safe and trustworthy.
 5. **Type-Safe**: Use strong types and generics for every metadata record.
