@@ -297,7 +297,7 @@ for each incoming provider:
 
 ancestor helper인 `path:packages/di/src/container.ts:564-582`를 보면 정확한 정책이 드러납니다. single provider는 같은 token이 visible 범위 어딘가에서 multi로 존재하면 추가할 수 없습니다. multi provider도 visible 범위 어딘가에서 single로 존재하면 추가할 수 없습니다. 이 규칙 덕분에 `container.resolve(token)`의 의미가 어느 계층에서 호출하느냐에 따라 바뀌지 않습니다.
 
-테스트도 이 동작을 고정합니다. `path:packages/di/src/container.test.ts:414-431`은 두 방향의 금지된 교차 등록을 모두 검증합니다. token이 single로 시작했다면 intentional override 없이는 계속 single입니다. multi로 시작했다면 이후 등록도 multi를 유지하거나 override 의미를 사용해야 합니다.
+테스트도 이 동작을 고정합니다. `path:packages/di/src/container.test.ts:737-755`는 두 방향의 금지된 교차 등록을 모두 검증합니다. token이 single로 시작했다면 intentional override 없이는 계속 single입니다. multi로 시작했다면 이후 등록도 multi를 유지하거나 override 의미를 사용해야 합니다.
 
 multi-provider 등록 자체는 additive입니다. `path:packages/di/src/container.ts:242-251`은 normalized provider를 token별 배열에 push합니다. 나중에 `collectMultiProviders()`가 바로 이 자료구조를 사용합니다. 반면 single provider는 `registrations.set()`으로 `path:packages/di/src/container.ts:251-254`에서 한 번만 local slot을 차지합니다.
 
@@ -397,7 +397,7 @@ single과 multi의 충돌 금지는 local map뿐 아니라 ancestor까지 확인
 
 이 발췌는 같은 token이 계층 어디선가 single로 보이면 multi 추가가 막히고, multi로 보이면 single 추가가 막히는 정책을 보여 줍니다. ancestor helper의 세부 재귀는 같은 정책의 반복이므로 여기서는 이 핵심 분기로 통합합니다.
 
-이 설계는 테스트와 교체 전략에 유리합니다. override는 하나의 token에 대해 새 진실을 만드는 연산입니다. 컨테이너는 multi cluster 내부 개별 entry의 안정적인 identity를 만들 필요가 없습니다. `path:packages/di/src/container.test.ts:494-573`은 single 교체, 전체 multi 교체, 모호한 mixed replacement 거부를 확인합니다.
+이 설계는 테스트와 교체 전략에 유리합니다. override는 하나의 token에 대해 새 진실을 만드는 연산입니다. 컨테이너는 multi cluster 내부 개별 entry의 안정적인 identity를 만들 필요가 없습니다. `path:packages/di/src/container.test.ts:494-503`은 single 교체를, `path:packages/di/src/container.test.ts:708-724`는 전체 multi set 교체를, `path:packages/di/src/container.test.ts:725-735`는 모호한 mixed replacement 거부를 확인합니다.
 
 등록 알고리즘은 다음과 같이 정리할 수 있습니다.
 
@@ -694,7 +694,7 @@ resolveFromRegisteredProviders(token, chain, active):
     resolve through scope-aware cache
 ```
 
-`path:packages/di/src/container.test.ts:10-40`과 `path:packages/di/src/container.test.ts:638-679`는 바깥에서 보이는 의도를 고정합니다. singleton은 같은 인스턴스를 재사용하고, factory provider는 주입받은 dependency를 인자로 받으며, multi provider는 등록 순서를 보존한 배열을 반환합니다.
+`path:packages/di/src/container.test.ts:10-20`, `path:packages/di/src/container.test.ts:21-40`, `path:packages/di/src/container.test.ts:1223-1255`는 바깥에서 보이는 의도를 고정합니다. singleton은 같은 인스턴스를 재사용하고, factory provider는 주입받은 dependency를 인자로 받으며, multi provider는 등록 순서를 보존한 배열을 반환합니다.
 
 고급 독자에게 중요한 결론은 이것입니다. Fluo의 resolver는 재귀적이지만 결코 마법적이지 않습니다. 모든 재귀 단계는 `container.ts`에 그대로 드러나 있고, 모든 분기는 runtime reflection이 아니라 normalized provider 데이터로부터 결정됩니다.
 
@@ -732,11 +732,11 @@ special dependency entry는 모두 이 helper에서 해석됩니다.
 
 optional은 먼저 등록 여부를 보고 없으면 `undefined`를 반환합니다. `forwardRef`는 컨테이너의 `forwardRefTokenCache`를 통해 factory 결과 token을 얻은 뒤, `allowForwardRef` 플래그를 켠 상태로 같은 resolver에 들어갑니다.
 
-optional injection은 가장 작은 분기입니다. dependency entry가 `OptionalToken`이면 컨테이너는 먼저 `has(innerToken)`을 검사합니다. token이 없으면 에러 없이 `undefined`를 반환합니다. 있으면 평범하게 resolve합니다. 정확한 코드는 `path:packages/di/src/container.ts:862-870`에 있고, 테스트는 `path:packages/di/src/container.test.ts:494-532`에 있습니다.
+optional injection은 가장 작은 분기입니다. dependency entry가 `OptionalToken`이면 컨테이너는 먼저 `has(innerToken)`을 검사합니다. token이 없으면 에러 없이 `undefined`를 반환합니다. 있으면 평범하게 resolve합니다. 정확한 코드는 `path:packages/di/src/container.ts:862-870`에 있고, 두 결과는 `path:packages/di/src/container.test.ts:972-1009`에서 검증합니다.
 
 forward reference도 의도적으로 단순합니다. `isForwardRef(depEntry)`가 참이면 wrapper는 `resolveForwardRefToken()`을 통해 lazy evaluation 되고 결과가 cache되며, 그 token을 `resolveWithChain(..., allowForwardRef=true)`에 넘깁니다. 이는 `path:packages/di/src/container.ts:872-876`과 `path:packages/di/src/container.ts:1367-1375`에 보입니다. 이 wrapper는 token lookup 시점을 늦출 뿐입니다. proxy 인스턴스나 lazy object를 만들어 주지 않습니다.
 
-이 구분이 중요합니다. 실제 constructor cycle이 남아 있으면 `resolveForwardRefCircularDependency()`는 여전히 예외를 던집니다. 다만 이번에는 `forwardRef only defers token lookup and does not resolve true circular construction`라는 detail string을 함께 붙입니다. 근거는 `path:packages/di/src/container.ts:744-762`와 `path:packages/di/src/container.test.ts:320-336`입니다.
+이 구분이 중요합니다. 실제 constructor cycle이 남아 있으면 `resolveForwardRefCircularDependency()`는 여전히 예외를 던집니다. 다만 이번에는 `forwardRef only defers token lookup and does not resolve true circular construction`라는 detail string을 함께 붙입니다. 근거는 `path:packages/di/src/container.ts:744-762`와 `path:packages/di/src/container.test.ts:439-455`입니다.
 
 forward reference가 허용된 재귀에서도 active token이 다시 보이면 cycle로 처리됩니다.
 
@@ -788,7 +788,7 @@ alias는 dependency-entry 수준이 아니라 provider 수준 기능입니다. `
 
 이 레코드는 값을 복사하지 않습니다. `useExisting` target을 보관했다가 resolution 단계에서 같은 체인 추적으로 다시 조회하게 만듭니다.
 
-그래서 alias chain도 허용됩니다. `path:packages/di/src/container.test.ts:552-568`은 여러 단계를 거친 alias chain이 결국 원래 인스턴스를 반환함을 보여 줍니다. 하지만 alias cycle은 허용되지 않습니다. `path:packages/di/src/container.ts:1308-1353`의 `resolveEffectiveProvider()`는 request-scope mismatch를 확인하기 위해 alias chain을 따라가다가, token이 반복되면 `CircularDependencyError`를 던집니다. 회귀 테스트는 `path:packages/di/src/container.test.ts:570-585`입니다.
+그래서 alias chain도 허용됩니다. `path:packages/di/src/container.test.ts:1058-1074`는 여러 단계를 거친 alias chain이 결국 원래 인스턴스를 반환함을 보여 줍니다. 하지만 alias cycle은 허용되지 않습니다. `path:packages/di/src/container.ts:1308-1353`의 `resolveEffectiveProvider()`는 request-scope mismatch를 확인하기 위해 alias chain을 따라가다가, token이 반복되면 `CircularDependencyError`를 던집니다. 회귀 테스트는 `path:packages/di/src/container.test.ts:1076-1091`입니다.
 
 alias target 조회는 체인을 유지한 채 target token으로 redirect합니다.
 
@@ -845,7 +845,7 @@ multi provider collection은 parent entries 뒤에 local entries를 붙입니다
 
 override marker가 있으면 parent collection은 끊깁니다. 그렇지 않으면 parent 배열이 먼저 오고 local 배열이 뒤에 오므로 등록 순서가 계층 전체에서도 예측 가능합니다.
 
-동작은 정밀합니다. `path:packages/di/src/container.test.ts:657-679`는 child registration이 parent multi set 뒤에 append됨을 증명합니다. `path:packages/di/src/container.test.ts:669-691`는 `override()`가 해당 token에 대한 parent collection을 끊는다는 점을 증명합니다. replacement가 여전히 multi든 single로 바뀌든 동일합니다.
+동작은 정밀합니다. `path:packages/di/src/container.test.ts:1257-1267`은 request-scoped child registration이 parent multi set 뒤에 append됨을 증명합니다. `path:packages/di/src/container.test.ts:1269-1279`는 child multi `override()`가 parent collection을 끊음을, `path:packages/di/src/container.test.ts:1281-1291`은 child single override도 같은 cutoff를 적용함을 증명합니다.
 
 multi entry의 resolution은 single resolution과 다릅니다. `path:packages/di/src/container.ts:778-804`의 `resolveMultiProviderInstance()`는 token이 아니라 normalized provider object를 key로 cache합니다. 그래서 동일 token 아래 여러 entry가 있더라도, 각 entry는 자기 자신의 singleton/request identity를 유지할 수 있습니다.
 
@@ -982,7 +982,7 @@ singleton dependency scope 검사는 provider 생성 전에 실행됩니다.
 
 `CircularDependencyError`는 의도적으로 매우 노골적입니다. `path:packages/di/src/errors.ts:106-125`의 constructor는 full chain과 함께, shared logic 분리 또는 `forwardRef()` 사용을 권장하는 first-party hint를 넣습니다. 그 복구 조언은 표준 해결 모델에 뿌리를 두고 있습니다.
 
-고급 분석 루프를 마무리하려면 장의 주장을 소스의 실제 행동 계약과 일치시켜야 합니다. `path:packages/di/src/provider-normalization.ts:168-249`는 `normalizeProvider`가 실제로 모든 프로바이더 형태의 기본 진입점임을 확인합니다. `path:packages/di/src/container.ts:670-683`은 `resolveWithChain`이 운영의 첫 번째 분기로 사이클 감지를 처리함을 증명합니다. `path:packages/di/src/container.ts:1201-1232`는 `instantiate`가 생성자가 실행되기 전에 싱글톤 스코프 위생을 강제함을 보여줍니다. `path:packages/di/src/container.ts:857-879`는 optional, forwardRef, 표준 토큰이 통합된 해결 헬퍼를 공유함을 보여줍니다. `path:packages/di/src/container.test.ts:414-431` 및 `path:packages/di/src/container.test.ts:638-679`의 실증적 증거는 컨테이너의 멀티 프로바이더 및 등록 충돌 정책이 설명된 대로 정확하게 시행된다는 것을 증명합니다.
+고급 분석 루프를 마무리하려면 장의 주장을 소스의 실제 행동 계약과 일치시켜야 합니다. `path:packages/di/src/provider-normalization.ts:168-249`는 `normalizeProvider`가 실제로 모든 프로바이더 형태의 기본 진입점임을 확인합니다. `path:packages/di/src/container.ts:670-683`은 `resolveWithChain`이 운영의 첫 번째 분기로 사이클 감지를 처리함을 증명합니다. `path:packages/di/src/container.ts:1201-1232`는 `instantiate`가 생성자가 실행되기 전에 싱글톤 스코프 위생을 강제함을 보여줍니다. `path:packages/di/src/container.ts:857-879`는 optional, forwardRef, 표준 토큰이 통합된 해결 헬퍼를 공유함을 보여줍니다. `path:packages/di/src/container.test.ts:1223-1255`와 `path:packages/di/src/container.test.ts:737-755`의 테스트는 대표적인 multi-provider 집계·순서 보존과 registration-conflict 동작을 보여 줍니다.
 
 이 표준 우선 아키텍처는 모듈 그래프가 복잡해져도 DI 컨테이너를 예측 가능한 상태 머신으로 유지합니다. 복잡성은 정규화 단계로 옮기고, 등록 중에는 스코프와 토폴로지 규칙을 강제합니다. `path:packages/di/src/types.ts:137-168`의 `forwardRef()` 지원도 이 모델 안에 들어 있으며, 프록시 객체를 만들지 않고 조회 지연 marker만 제공합니다.
 

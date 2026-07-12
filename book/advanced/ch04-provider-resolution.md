@@ -297,7 +297,7 @@ Duplicate checks split into single-Provider and multi-Provider paths. `assertNoR
 
 The ancestor helpers in `path:packages/di/src/container.ts:564-582` reveal the exact policy. A single Provider can't be added if the same Token is visible anywhere as multi. A multi Provider can't be added if the same Token is visible anywhere as single. This rule keeps `container.resolve(token)` from changing meaning based on the hierarchy layer where it is called.
 
-Tests lock this behavior down. `path:packages/di/src/container.test.ts:414-431` verifies both forbidden crossover directions. If a Token starts as single, it stays single unless an intentional override is used. If it starts as multi, later registrations must remain multi or use override semantics.
+Tests lock this behavior down. `path:packages/di/src/container.test.ts:737-755` verifies both forbidden crossover directions. If a Token starts as single, it stays single unless an intentional override is used. If it starts as multi, later registrations must remain multi or use override semantics.
 
 Multi-Provider registration itself is additive. `path:packages/di/src/container.ts:242-251` pushes the normalized Provider into an array by Token. Later, `collectMultiProviders()` uses exactly this structure. By contrast, a single Provider takes one local slot with `registrations.set()` in `path:packages/di/src/container.ts:251-254`.
 
@@ -397,7 +397,7 @@ The ban on conflicts between single and multi checks ancestors as well as the lo
 
 This excerpt shows the policy. If the same Token appears as single anywhere in the hierarchy, adding multi is blocked. If it appears as multi, adding single is blocked. The recursive details of the ancestor helpers repeat the same policy, so this core branch is the important part.
 
-This design helps tests and replacement strategies. Override is an operation that creates a new truth for one Token. The container doesn't need to create stable identities for individual entries inside a multi cluster. `path:packages/di/src/container.test.ts:494-573` checks single replacement, full multi replacement, and rejection of ambiguous mixed replacement.
+This design helps tests and replacement strategies. Override is an operation that creates a new truth for one Token. The container doesn't need to create stable identities for individual entries inside a multi cluster. `path:packages/di/src/container.test.ts:494-503` checks single replacement, `path:packages/di/src/container.test.ts:708-724` checks full multi-set replacement, and `path:packages/di/src/container.test.ts:725-735` checks rejection of ambiguous mixed replacement.
 
 The registration algorithm can be summarized as follows.
 
@@ -694,7 +694,7 @@ resolveFromRegisteredProviders(token, chain, active):
     resolve through scope-aware cache
 ```
 
-`path:packages/di/src/container.test.ts:10-40` and `path:packages/di/src/container.test.ts:638-679` lock the visible intent. Singletons reuse the same instance, factory Providers receive injected dependencies as arguments, and multi Providers return arrays while preserving registration order.
+`path:packages/di/src/container.test.ts:10-20`, `path:packages/di/src/container.test.ts:21-40`, and `path:packages/di/src/container.test.ts:1223-1255` lock the visible intent. Singletons reuse the same instance, factory Providers receive injected dependencies as arguments, and multi Providers return arrays while preserving registration order.
 
 The key conclusion for advanced readers is this. Fluo's resolver is recursive, but it isn't magical. Every recursive step is visible in `container.ts`, and every branch is decided from normalized Provider data rather than runtime reflection.
 
@@ -732,11 +732,11 @@ Every special dependency entry is interpreted in this helper.
 
 Optional first checks registration and returns `undefined` if the Token is absent. `forwardRef` resolves the factory through the container's `forwardRefTokenCache`, then enters the same resolver with the `allowForwardRef` flag enabled.
 
-Optional injection is the smallest branch. If the dependency entry is an `OptionalToken`, the container first checks `has(innerToken)`. If the Token is absent, it returns `undefined` without an error. If the Token exists, it resolves normally. The exact code is in `path:packages/di/src/container.ts:862-870`, and the tests are in `path:packages/di/src/container.test.ts:494-532`.
+Optional injection is the smallest branch. If the dependency entry is an `OptionalToken`, the container first checks `has(innerToken)`. If the Token is absent, it returns `undefined` without an error. If the Token exists, it resolves normally. The exact code is in `path:packages/di/src/container.ts:862-870`, and both outcomes are tested in `path:packages/di/src/container.test.ts:972-1009`.
 
 Forward references are intentionally simple too. If `isForwardRef(depEntry)` is true, the wrapper is lazily evaluated and cached through `resolveForwardRefToken()`, and the resulting Token is passed to `resolveWithChain(..., allowForwardRef=true)`. This appears in `path:packages/di/src/container.ts:872-876` and `path:packages/di/src/container.ts:1367-1375`. The wrapper only delays Token lookup. It doesn't create a proxy instance or lazy object.
 
-This distinction matters. If a real constructor cycle remains, `resolveForwardRefCircularDependency()` still throws. This time, it adds the detail string `forwardRef only defers token lookup and does not resolve true circular construction`. The basis is `path:packages/di/src/container.ts:744-762` and `path:packages/di/src/container.test.ts:320-336`.
+This distinction matters. If a real constructor cycle remains, `resolveForwardRefCircularDependency()` still throws. This time, it adds the detail string `forwardRef only defers token lookup and does not resolve true circular construction`. The basis is `path:packages/di/src/container.ts:744-762` and `path:packages/di/src/container.test.ts:439-455`.
 
 Even during recursion allowed by a forward reference, seeing an active Token again is treated as a cycle.
 
@@ -788,7 +788,7 @@ At normalization time, an alias Provider closes into an `existing` record withou
 
 This record doesn't copy a value. It stores the `useExisting` target and causes the resolution step to look it up again under the same chain tracking.
 
-Alias chains are therefore allowed. `path:packages/di/src/container.test.ts:552-568` shows a multi-hop alias chain returning the original instance. Alias cycles are not allowed. `resolveEffectiveProvider()` in `path:packages/di/src/container.ts:1308-1353` follows alias chains to check request-Scope mismatch and throws `CircularDependencyError` when a Token repeats. The regression test is `path:packages/di/src/container.test.ts:570-585`.
+Alias chains are therefore allowed. `path:packages/di/src/container.test.ts:1058-1074` shows a multi-hop alias chain returning the original instance. Alias cycles are not allowed. `resolveEffectiveProvider()` in `path:packages/di/src/container.ts:1308-1353` follows alias chains to check request-Scope mismatch and throws `CircularDependencyError` when a Token repeats. The regression test is `path:packages/di/src/container.test.ts:1076-1091`.
 
 Alias target lookup redirects to the target Token while preserving the chain.
 
@@ -845,7 +845,7 @@ Multi Provider collection appends local entries after parent entries.
 
 If the override marker exists, parent collection is cut off. Otherwise, parent entries come first and local entries follow, which keeps registration order predictable across the hierarchy.
 
-The behavior is precise. `path:packages/di/src/container.test.ts:657-679` proves that child registration appends after the parent multi set. `path:packages/di/src/container.test.ts:669-691` proves that `override()` cuts off parent collection for that Token. The same rule applies whether the replacement remains multi or becomes single.
+The behavior is precise. `path:packages/di/src/container.test.ts:1257-1267` proves that request-scoped child registration appends after the parent multi set. `path:packages/di/src/container.test.ts:1269-1279` proves that a child multi `override()` cuts off parent collection, and `path:packages/di/src/container.test.ts:1281-1291` proves the same cutoff for a child single override.
 
 Resolution of a multi entry differs from single resolution. `resolveMultiProviderInstance()` in `path:packages/di/src/container.ts:778-804` caches by normalized Provider object, not by Token. So even if several entries live under the same Token, each entry can keep its own singleton or request identity.
 
@@ -982,7 +982,7 @@ This check inspects the dependency graph before a singleton Provider is made. Th
 
 `CircularDependencyError` is intentionally explicit. Its constructor in `path:packages/di/src/errors.ts:106-125` includes the full chain and a first-party hint recommending shared-logic extraction or `forwardRef()` use. That recovery advice is rooted in the standard resolution model.
 
-Closing the advanced analysis loop requires matching the chapter's claims against the actual behavior contracts in the source. `path:packages/di/src/provider-normalization.ts:168-249` confirms that `normalizeProvider` is truly the base entry point for all Provider shapes. `path:packages/di/src/container.ts:670-683` proves that `resolveWithChain` handles cycle detection as the first operational branch. `path:packages/di/src/container.ts:1201-1232` shows `instantiate` enforcing singleton Scope hygiene before any constructor runs. `path:packages/di/src/container.ts:857-879` shows that optional, forwardRef, and standard Tokens share one unified resolution helper. The empirical evidence in `path:packages/di/src/container.test.ts:414-431` and `path:packages/di/src/container.test.ts:638-679` proves that the container enforces multi-Provider and registration-conflict policies exactly as described.
+Closing the advanced analysis loop requires matching the chapter's claims against the actual behavior contracts in the source. `path:packages/di/src/provider-normalization.ts:168-249` confirms that `normalizeProvider` is truly the base entry point for all Provider shapes. `path:packages/di/src/container.ts:670-683` proves that `resolveWithChain` handles cycle detection as the first operational branch. `path:packages/di/src/container.ts:1201-1232` shows `instantiate` enforcing singleton Scope hygiene before any constructor runs. `path:packages/di/src/container.ts:857-879` shows that optional, forwardRef, and standard Tokens share one unified resolution helper. The tests in `path:packages/di/src/container.test.ts:1223-1255` and `path:packages/di/src/container.test.ts:737-755` demonstrate representative multi-Provider aggregation/order and registration-conflict behavior.
 
 This standard-first architecture keeps the DI container as a predictable state machine even when the Module Graph becomes complex. Complexity moves into normalization, and registration enforces Scope and topology rules. `forwardRef()` support in `path:packages/di/src/types.ts:137-168` also fits this model. It provides a lookup-deferral marker without creating proxy objects.
 
