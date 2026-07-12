@@ -99,6 +99,7 @@ function docsFor(publicPackageNames: string[], changelog = packageScopedChangelo
     ],
     ['packages/cli/README.md', 'canonical CLI'],
     ['packages/cli/CHANGELOG.md', '# @fluojs/cli\n\n## [Unreleased]\n\n## 1.0.0\n'],
+    ['packages/runtime/CHANGELOG.md', '# @fluojs/runtime\n\n## [Unreleased]\n\n## 1.0.0\n'],
     ['packages/studio/CHANGELOG.md', '# @fluojs/studio\n\n## [Unreleased]\n\n## 1.0.0\n'],
     ['packages/testing/CHANGELOG.md', '# @fluojs/testing\n\n## [Unreleased]\n\n## 1.0.0\n'],
     ['packages/vite/CHANGELOG.md', '# @fluojs/vite\n\n## [Unreleased]\n\n## 1.0.0\n'],

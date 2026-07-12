@@ -1032,6 +1032,7 @@ describe('repository governance contracts', () => {
 
   it('keeps Changesets release automation bound to main pushes and token-backed npm publish', () => {
     const releaseWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/release.yml'), 'utf8');
+    const rootPackage = JSON.parse(readFileSync(resolve(repoRoot, 'package.json'), 'utf8'));
 
     expect(releaseWorkflow).toContain('name: Changesets Release');
     expect(releaseWorkflow).toContain('push:');
@@ -1043,6 +1044,7 @@ describe('repository governance contracts', () => {
     expect(releaseWorkflow).toMatch(/uses: actions\/setup-node@[0-9a-f]{40} # v5/u);
     expect(releaseWorkflow).toMatch(/uses: changesets\/action@[0-9a-f]{40} # v1/u);
     expect(releaseWorkflow).toContain('version: pnpm version-packages');
+    expect(rootPackage.scripts['version-packages']).toBe('node tooling/release/version-packages.mjs');
     expect(releaseWorkflow).toContain('publish: pnpm publish-packages');
     expect(releaseWorkflow).toContain('createGithubReleases: true');
     expect(releaseWorkflow).toContain('NPM_CONFIG_PROVENANCE: true');

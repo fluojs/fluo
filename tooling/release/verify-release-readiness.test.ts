@@ -52,6 +52,7 @@ function createDependencies() {
     ['docs/reference/toolchain-contract-matrix.md', '## generated app baseline\n## CLI & scaffolding contracts\n## naming conventions (CLI output)\nfluo new\nfluo inspect'],
     ['packages/cli/README.md', 'canonical CLI'],
     ['packages/cli/CHANGELOG.md', '# @fluojs/cli\n\n## [Unreleased]\n\n## 1.0.0\n'],
+    ['packages/core/CHANGELOG.md', '# @fluojs/core\n\n## [Unreleased]\n\n## 1.0.0\n'],
     ['packages/studio/CHANGELOG.md', '# @fluojs/studio\n\n## [Unreleased]\n\n## 1.0.0\n'],
     ['packages/testing/CHANGELOG.md', '# @fluojs/testing\n\n## [Unreleased]\n\n## 1.0.0\n'],
     ['packages/vite/CHANGELOG.md', '# @fluojs/vite\n\n## [Unreleased]\n\n## 1.0.0\n'],
@@ -342,6 +343,23 @@ describe('runReleaseReadinessVerification', () => {
 
     expect(() => runReleaseReadinessVerification({}, dependencies)).toThrowError(
       /Tooling package changelog baseline.*packages\/cli\/CHANGELOG\.md must keep an `## \[Unreleased\]` section/u,
+    );
+  });
+
+  it('fails when a foundation package changelog drops the Unreleased placeholder', () => {
+    const dependencies = createDependencies();
+    const baseRead = dependencies.read;
+
+    dependencies.read = vi.fn((relativePath) => {
+      if (relativePath === 'packages/core/CHANGELOG.md') {
+        return '# @fluojs/core\n\n## 1.0.0\n';
+      }
+
+      return baseRead(relativePath);
+    });
+
+    expect(() => runReleaseReadinessVerification({}, dependencies)).toThrowError(
+      /Foundation package changelog baseline.*packages\/core\/CHANGELOG\.md must keep an `## \[Unreleased\]` section/u,
     );
   });
 
