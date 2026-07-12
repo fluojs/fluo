@@ -27,9 +27,11 @@ Decorators let you make declarations like these.
 - This class is a Controller.
 - This class is injectable.
 - This method handles a GET route.
-- This property should receive a specific dependency.
+- This class declares the Tokens for its constructor dependencies.
 
 This declarative style is one reason frameworks like fluo feel expressive.
+
+In fluo, that last declaration uses class-level `@Inject(...)` metadata whose Token order matches the constructor parameters. `@Inject(...)` is not a property-injection Decorator.
 
 ### Meta-Programming Made Easy
 

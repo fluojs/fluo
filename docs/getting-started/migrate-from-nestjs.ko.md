@@ -11,12 +11,14 @@
 | NestJS 구성 요소 | fluo 구성 요소 | 메모 |
 | --- | --- | --- |
 | `@Module({ imports, controllers, providers, exports })` | `@fluojs/core`의 `@Module({ imports, controllers, providers, exports })` | 모듈 경계와 명시적 export는 그대로 주요 구성 단위다. |
+| 모듈 `imports` 배열의 `forwardRef(() => OtherModule)` | 직접 대응 없음; 공유 프로바이더를 세 번째 모듈 또는 패키지로 추출 | fluo는 모듈 그래프 컴파일 중 순환 모듈 import를 거부한다. `forwardRef(...)`는 클래스 수준 `@Inject(...)` 목록과 프로바이더 `inject` 배열에서만 쓰는 의존성 토큰 wrapper이며, 모듈 순환이나 실제 생성자 순환을 해석 가능하게 만들지 않는다. |
 | `@Controller('/users')` | `@fluojs/http`의 `@Controller('/users')` | 컨트롤러 데코레이터는 코어 패키지가 아니라 HTTP 패키지에 속한다. |
 | `@Get()`, `@Post()` 등 라우트 데코레이터 | `@fluojs/http`의 `@Get()`, `@Post()` 등 | HTTP 라우트 선언은 계속 메서드 기반 데코레이터를 사용한다. |
 | `@Sse()` | `@fluojs/http`의 `@Sse()`와 수동 stream용 `SseResponse` 또는 managed stream용 `AsyncIterable` | fluo는 `@Sse()`를 `text/event-stream` metadata를 가진 `GET` 라우트로 매핑한다. `AsyncIterable` 값은 SSE frame으로 변환할 수 있지만, NestJS `Observable` 반환값은 여전히 `SseResponse` 또는 async iterable로 재작성해야 한다. |
 | `NestFactory.create(AppModule)` | `@fluojs/runtime`의 `FluoFactory.create(AppModule, { adapter })` | 부트스트랩 시 `createFastifyAdapter()` 같은 명시적 플랫폼 어댑터가 필요하다. |
 | `@Injectable()` 프로바이더 마커 | `@Module(...).providers`에 등록된 프로바이더 클래스 또는 provider definition | fluo는 필수 프로바이더 등록 단계로 `@Injectable()`을 사용하지 않는다. |
 | `emitDecoratorMetadata`를 통한 생성자 타입 리플렉션 | `@fluojs/core`의 `@Inject(TokenA, TokenB)` | 생성자 의존성은 데코레이터 인자 순서대로 명시한다. |
+| `@Inject(TOKEN) private value` 같은 속성 주입 | 클래스 수준 `@Inject(TOKEN)`과 이에 대응하는 생성자 매개변수 | fluo의 `@Inject(...)`는 생성자 토큰을 매개변수 순서대로 선언하는 표준 클래스 데코레이터다. 속성 또는 생성자 매개변수 데코레이터가 아니다. |
 | `class-validator` / 데코레이터 중심 DTO 검증 | Zod와 Valibot을 포함한 Standard Schema를 지원하는 `@fluojs/validation` | 이는 class-validator 호환 계층이 아니라 fluo 고유 검증 surface다. 일반 validator는 `null` / `undefined`를 건너뛰고, 필수값에는 `@IsDefined()`를 사용하며, plain 객체 materialization은 안전한 own enumerable 추가 속성을 유지하고 validation group은 지원되지 않는다. |
 | `SwaggerModule.createDocument(...)`와 `SwaggerModule.setup(...)` | `@fluojs/openapi`의 `OpenApiModule.forRoot({ title, version, sources, descriptors, ui, swaggerUiAssets })` | OpenAPI 도입은 명시적이다. 문서화할 모든 controller를 `sources`에 나열하거나, 미리 만든 HTTP handler mapping을 `descriptors`에 전달하거나, 둘 다 사용한다. fluo는 application module graph에서 controller를 scan하지 않는다. `/openapi.json`은 UI와 독립적으로 계속 제공되며, Swagger UI는 `ui: true`일 때만 `/docs`에서 제공된다. `swaggerUiAssets`로 기본 CSS와 JavaScript URL을 교체할 수 있다. |
 | `@nestjs/graphql` resolver discovery, reflected return type, `forRootAsync(...)` | `@fluojs/graphql`의 `GraphqlModule.forRoot(...)`, module provider/controller, `@Resolver`, `@Query`, `@Mutation`, `@Subscription`, `listOf(...)` | Resolver class를 compiled module의 provider 또는 controller로 등록한다. `resolvers` option은 discovery 가능한 class에 적용하는 선택적 allowlist/filter다. 이를 생략하거나 빈 list를 전달하면 등록된 decorated candidate를 모두 허용한다. fluo는 metadata에서 provider나 GraphQL output type을 추론하지 않는다. Object 결과에는 `outputType`, array에는 `outputType: listOf(ItemType)`이 필요하며 생략한 output type은 GraphQL `String`을 사용한다. `forRootAsync(...)`, object field resolver, `@Subscription({ topics })` 계약은 없다. 선택적 WebSocket subscription에는 server-backed Node HTTP/S adapter가 필요하다. |
@@ -44,6 +46,8 @@
 
 - 데코레이터는 반드시 TC39 표준 모델을 따라야 한다. NestJS의 레거시 데코레이터 가정은 그대로 유지되지 않는다.
 - 의존성 주입은 생성자 타입에서 절대 추론되지 않는다. fluo는 생성자 의존성에 대해 명시적 `@Inject(...)` 선언을 요구한다.
+- NestJS 속성 주입은 반드시 생성자 주입으로 바꾼다. 클래스에 `@Inject(TokenA, TokenB)`를 붙이고 토큰 순서를 생성자 매개변수와 맞추며, 속성이나 매개변수에는 `@Inject(...)`를 붙이지 않는다.
+- NestJS 모듈 `forwardRef(...)`에 직접 대응하는 fluo 기능은 없다. 공유 프로바이더를 별도 모듈이나 패키지로 추출해 모듈 import 순환을 끊는다. fluo의 `forwardRef(...)`는 클래스 수준 `@Inject(...)` 또는 프로바이더 `inject`에서 의존성 토큰 하나의 조회만 지연하며, 모듈 순환이나 실제 생성자 순환을 해결하지 않는다.
 - 부트스트랩은 adapter-first 방식이다. `FluoFactory.create(...)`는 HTTP 플랫폼을 암묵적으로 고르는 대신 `adapter` 옵션을 반드시 받아야 한다.
 - 검증은 `class-validator` 우선 계약을 유지하지 않고 Standard Schema 방향으로 반드시 옮겨야 한다.
 - NestJS controller parameter decorator, Pipe, `ValidationPipe` migration은 parameter-for-parameter 치환이 아니다. `@Param()`, `@Query()`, `@Body()`, `@Headers()`, `@Req()`, `@Res()` 가정은 하나의 `@RequestDto(...)`, field-level source decorator, `@Convert(...)`, 그리고 low-level 접근이 필요할 때의 명시적 `RequestContext` handler parameter로 바꾼다. 검증은 public controller-parameter Pipe stage가 아니라 DTO materialization 이후에 실행된다.
