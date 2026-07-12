@@ -12,7 +12,7 @@
 - `@fluojs/notifications`에 채팅 채널을 연결하는 방식을 구현합니다.
 - Block Kit과 Embed로 구조화된 메시지를 구성합니다.
 - transport가 readiness check를 노출할 때 Slack bootstrap 검증을 설정합니다.
-- Slack notification template을 렌더링하고 payload와 rendered 결과의 merge precedence를 판단합니다.
+- Slack과 Discord notification template을 렌더링하고 payload와 rendered 결과의 merge precedence를 판단합니다.
 - 재시도 정책과 상태 스냅샷을 기준으로 채팅 연동을 운영합니다.
 
 ## Prerequisites
@@ -236,6 +236,50 @@ await this.notifications.dispatch({
 ```
 
 `sendNotification(...)`은 `notification.template`과 `renderer`가 모두 있을 때에만 renderer를 호출합니다. 명시적인 payload 필드는 `attachments`, `blocks`에서 rendered 필드보다 우선하고, 비공백 payload text는 rendered text보다 우선합니다. 빈 문자열 또는 공백 전용 text는 미지정으로 취급하므로 text는 비공백 rendered text, 그리고 비공백 `subject` 순서로 fallback합니다. Metadata는 payload metadata, dispatch metadata, subject marker, template marker 순서로 merge되므로 최종 Slack 메시지는 운영 routing context를 보존합니다.
+
+### Discord Template Rendering
+Discord도 자체 public `DiscordTemplateRenderer` 계약을 사용해 같은 registration pattern을 따릅니다. Renderer는 `content`, `embeds`, `components`를 반환할 수 있고, webhook transport는 계속 `DiscordModule.forRoot(...)`에 명시적으로 설정합니다.
+
+```typescript
+import type { DiscordTemplateRenderer } from '@fluojs/discord';
+
+const discordRenderer: DiscordTemplateRenderer = {
+  render(input) {
+    return {
+      content: `Order ${String(input.payload.orderId)} was received.`,
+      embeds: [
+        {
+          description: input.subject,
+          title: 'New order',
+        },
+      ],
+    };
+  },
+};
+
+DiscordModule.forRoot({
+  defaultThreadId: 'community-orders',
+  renderer: discordRenderer,
+  transport: createDiscordWebhookTransport({
+    fetch: runtime.fetch,
+    webhookUrl: config.discordWebhookUrl,
+  }),
+});
+
+await this.notifications.dispatch({
+  channel: 'discord',
+  locale: 'en',
+  metadata: { source: 'orders' },
+  payload: {
+    content: 'Order #123 is ready for review.',
+    orderId: '123',
+  },
+  subject: 'New order received',
+  template: 'orders.received',
+});
+```
+
+Discord rendering은 `template`과 `renderer`가 모두 있을 때만 실행됩니다. Renderer는 `{ template, payload, subject, locale, metadata, signal }`을 받습니다. 명시적인 `payload.content`, `payload.embeds`, `payload.components` 값은 rendered 값보다 우선합니다. `payload.content`가 `undefined`이면 rendered content, `subject` 순서로 fallback합니다. 이 예제에서는 dispatch한 `content`가 renderer의 content를 override하고, rendered embed는 유지됩니다.
 
 ## 17.5 Rich Formatting: Blocks and Embeds
 
