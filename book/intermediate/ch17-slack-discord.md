@@ -112,6 +112,8 @@ export class AppModule {}
 
 Discord registration is also global by default: `DiscordModule.forRoot(...)` and `DiscordModule.forRootAsync(...)` export `DiscordService`, `DiscordChannel`, `DISCORD`, and `DISCORD_CHANNEL` with `global: options.global ?? true`. Use the fluo option `global?: boolean`—not NestJS `isGlobal`—and set `global: false` only when the migrated module must keep Discord providers local to modules that explicitly import it. Async registration supports the fluo injected factory shape only: `DiscordModule.forRootAsync({ inject, useFactory, global? })`. Move NestJS `imports`, `useClass`, or `useExisting` patterns into app-owned providers before returning final Discord options, and wrap the module facade instead of importing private provider helpers such as `createDiscordProviders(...)`, `DISCORD_OPTIONS`, or `NormalizedDiscordModuleOptions`.
 
+When `verifyOnModuleInit` is enabled, failed verification closes a factory-owned transport exactly once even if shutdown starts concurrently; directly supplied app-owned transports remain caller-owned. Notification rendering is lifecycle-gated and receives the same `AbortSignal` as transport delivery, so stopped services reject before renderer work begins and renderers can cooperate with cancellation.
+
 ## 17.3 Standalone Usage: SlackService & DiscordService
 
 When orchestration would be too much, such as operational log records or custom alerts, you can use the services directly.
@@ -307,6 +309,7 @@ async alertOps(event: OrderPlacedEvent) {
 The built-in webhook transports are designed around failure patterns seen in production environments.
 
 - **Automatic retry**: Transient `408`, `429`, and `5xx` errors are retried with exponential backoff.
+- **Cancellation-aware backoff**: Discord retry waits reject immediately when their signal is already aborted instead of sleeping through the full delay.
 - **Explicit errors**: Permanent failures, such as 404 or 403, are surfaced as `SlackTransportError` or `DiscordTransportError` so the application level can handle them.
 
 ## 17.8 Status Snapshots

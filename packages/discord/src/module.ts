@@ -126,7 +126,7 @@ export class DiscordModule {
    * Registers Discord providers using static options.
    *
    * @param options Static Discord module options including transport wiring and optional template rendering behavior.
-   * @returns A global module definition that exports {@link DiscordService}, {@link DiscordChannel}, and compatibility tokens.
+   * @returns A module definition that exports {@link DiscordService}, {@link DiscordChannel}, and compatibility tokens, globally by default unless `global` is `false`.
    *
    * @example
    * ```ts
@@ -143,7 +143,7 @@ export class DiscordModule {
    * Registers Discord providers from an async DI factory.
    *
    * @param options Async module options that resolve Discord transport and renderer configuration through DI.
-   * @returns A global module definition that memoizes async option resolution per module instance.
+   * @returns A module definition that memoizes async option resolution per module instance and is global by default unless `global` is `false`.
    *
    * @example
    * ```ts
