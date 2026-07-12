@@ -16,6 +16,7 @@ fluo를 위한 webhook-first, transport-agnostic Discord 전달 코어 패키지
   - [`DiscordService`를 이용한 standalone 전달](#discordservice를-이용한-standalone-전달)
   - [`verifyOnModuleInit` bootstrap verification](#verifyonmoduleinit-bootstrap-verification)
   - [`@fluojs/notifications`와의 통합](#fluojs-notifications와의-통합)
+  - [payload override를 사용하는 template rendering](#payload-override를-사용하는-template-rendering)
   - [명시적 fetch 주입을 사용하는 webhook-first 전달](#명시적-fetch-주입을-사용하는-webhook-first-전달)
   - [의도적인 제한 사항](#의도적인-제한-사항)
 - [공개 API 개요](#공개-api-개요)
@@ -180,6 +181,50 @@ Behavioral contract 메모:
 - notification metadata는 payload metadata, dispatch metadata, template/subject marker를 합쳐 구성됩니다. 중복 key에서는 dispatch metadata가 payload metadata를 덮어쓰고, 최종 `subject` / `template` marker가 둘 모두를 덮어씁니다. `template`은 renderer가 구성된 경우에만 렌더링됩니다.
 - Template rendering은 서비스가 ready일 때만 시작합니다. Render input에는 `signal`이 포함되므로 renderer는 transport delivery 전에 caller-cancelled 작업을 중단할 수 있습니다.
 - 여러 Discord thread로 fan-out이 필요한 notification workflow라면 thread별 concrete Discord message를 만들어 `DiscordService.sendMany(...)`로 보내거나 별도 notification dispatch를 실행해야 합니다. 하나의 notification dispatch는 multi-recipient fan-out을 암묵적으로 확장하지 않습니다.
+
+### payload override를 사용하는 template rendering
+
+Notification template에서 재사용 가능한 Discord content, embed, component를 생성하려면 `DiscordTemplateRenderer`를 등록합니다. 같은 module registration에 transport를 설정하고 `@fluojs/notifications`를 통해 `template` key를 dispatch하세요.
+
+```typescript
+import type { DiscordTemplateRenderer } from '@fluojs/discord';
+
+const renderer: DiscordTemplateRenderer = {
+  render(input) {
+    return {
+      content: `Order ${String(input.payload.orderId)} was received.`,
+      embeds: [
+        {
+          description: input.subject,
+          title: 'New order',
+        },
+      ],
+    };
+  },
+};
+
+DiscordModule.forRoot({
+  renderer,
+  transport: createDiscordWebhookTransport({
+    fetch: runtime.fetch,
+    webhookUrl: config.discordWebhookUrl,
+  }),
+});
+
+await notifications.dispatch({
+  channel: 'discord',
+  locale: 'en',
+  metadata: { source: 'orders' },
+  payload: {
+    content: 'Order #123 is ready for review.',
+    orderId: '123',
+  },
+  subject: 'New order received',
+  template: 'orders.received',
+});
+```
+
+`DiscordService.sendNotification(...)`은 `template`과 `renderer`가 모두 있을 때만 renderer를 호출합니다. Renderer는 `{ template, payload, subject, locale, metadata, signal }`을 받습니다. 명시적인 `payload.content`, `payload.embeds`, `payload.components` 값은 대응하는 rendered 값보다 우선합니다. `payload.content`가 `undefined`이면 rendered content, `subject` 순서로 fallback합니다. 따라서 renderer나 transport 설정을 교체하지 않고도 호출자가 template 결과의 일부를 override할 수 있습니다.
 
 ### 명시적 fetch 주입을 사용하는 webhook-first 전달
 

@@ -16,6 +16,7 @@ Migration boundary: the module API is intentionally Nest-like but not a NestJS d
   - [Standalone delivery with `DiscordService`](#standalone-delivery-with-discordservice)
   - [Bootstrap verification with `verifyOnModuleInit`](#bootstrap-verification-with-verifyonmoduleinit)
   - [Integration with `@fluojs/notifications`](#integration-with-fluojs-notifications)
+  - [Template rendering with payload overrides](#template-rendering-with-payload-overrides)
   - [Webhook-first delivery with explicit fetch injection](#webhook-first-delivery-with-explicit-fetch-injection)
   - [Intentional limitations](#intentional-limitations)
 - [Public API Overview](#public-api-overview)
@@ -180,6 +181,50 @@ Behavioral contract notes:
 - Notification metadata is merged from payload metadata, dispatch metadata, and template/subject markers. On duplicate keys, dispatch metadata overrides payload metadata, and final `subject` / `template` markers override both. `template` is rendered only when a renderer is configured.
 - Template rendering starts only while the service is ready. The render input includes `signal`, so renderers can stop caller-cancelled work before transport delivery.
 - If a notification workflow needs fan-out across multiple Discord threads, create one concrete Discord message per thread with `DiscordService.sendMany(...)` or issue separate notification dispatches; a single notification dispatch never expands multi-recipient fan-out implicitly.
+
+### Template rendering with payload overrides
+
+Register a `DiscordTemplateRenderer` when notification templates should produce reusable Discord content, embeds, or components. Keep transport setup in the same module registration and dispatch a `template` key through `@fluojs/notifications`.
+
+```typescript
+import type { DiscordTemplateRenderer } from '@fluojs/discord';
+
+const renderer: DiscordTemplateRenderer = {
+  render(input) {
+    return {
+      content: `Order ${String(input.payload.orderId)} was received.`,
+      embeds: [
+        {
+          description: input.subject,
+          title: 'New order',
+        },
+      ],
+    };
+  },
+};
+
+DiscordModule.forRoot({
+  renderer,
+  transport: createDiscordWebhookTransport({
+    fetch: runtime.fetch,
+    webhookUrl: config.discordWebhookUrl,
+  }),
+});
+
+await notifications.dispatch({
+  channel: 'discord',
+  locale: 'en',
+  metadata: { source: 'orders' },
+  payload: {
+    content: 'Order #123 is ready for review.',
+    orderId: '123',
+  },
+  subject: 'New order received',
+  template: 'orders.received',
+});
+```
+
+`DiscordService.sendNotification(...)` calls the renderer only when both `template` and `renderer` are present. The renderer receives `{ template, payload, subject, locale, metadata, signal }`. Explicit `payload.content`, `payload.embeds`, and `payload.components` values take precedence over the corresponding rendered values; when `payload.content` is `undefined`, content falls back to rendered content and then to `subject`. This lets callers override one template result without replacing the renderer or transport configuration.
 
 ### Webhook-first delivery with explicit fetch injection
 
