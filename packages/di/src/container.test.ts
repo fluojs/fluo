@@ -2122,6 +2122,72 @@ describe('Container', () => {
       ]);
     });
 
+    it('waits for descendant stale disposal before resolving a root replacement', async () => {
+      const events: string[] = [];
+      const CONFIG = Symbol('RootReplacementConfig');
+      let releaseStaleDisposal!: () => void;
+      const staleDisposal = new Promise<void>((resolve) => {
+        releaseStaleDisposal = resolve;
+      });
+
+      class RequestConsumer {
+        constructor(readonly config: string) {}
+
+        async onDestroy() {
+          events.push(`destroy:start:${this.config}`);
+          await staleDisposal;
+          events.push(`destroy:end:${this.config}`);
+        }
+      }
+
+      const root = new Container().register(
+        { provide: CONFIG, useValue: 'before-override' },
+        { provide: RequestConsumer, scope: Scope.REQUEST, useClass: RequestConsumer, inject: [CONFIG] },
+      );
+      const requestScope = root.createRequestScope();
+
+      await requestScope.resolve(RequestConsumer);
+      root.override({ provide: CONFIG, useValue: 'after-override' });
+
+      const replacement = root.resolve<string>(CONFIG).then((config) => events.push(`resolved:${config}`));
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      expect(events).toEqual(['destroy:start:before-override']);
+
+      releaseStaleDisposal();
+      await replacement;
+      await root.dispose();
+
+      expect(events).toEqual([
+        'destroy:start:before-override',
+        'destroy:end:before-override',
+        'resolved:after-override',
+      ]);
+    });
+
+    it('surfaces descendant stale disposal failures before resolving a root replacement', async () => {
+      const CONFIG = Symbol('FailingDescendantConfig');
+
+      class RequestConsumer {
+        onDestroy() {
+          throw new Error('descendant stale failed');
+        }
+      }
+
+      const root = new Container().register(
+        { provide: CONFIG, useValue: 'before-override' },
+        { provide: RequestConsumer, scope: Scope.REQUEST, useClass: RequestConsumer, inject: [CONFIG] },
+      );
+      const requestScope = root.createRequestScope();
+
+      await requestScope.resolve(RequestConsumer);
+      root.override({ provide: CONFIG, useValue: 'after-override' });
+
+      await expect(root.resolve(CONFIG)).rejects.toThrow('descendant stale failed');
+      await expect(root.resolve(CONFIG)).resolves.toBe('after-override');
+      await root.dispose();
+    });
+
     it('disposes stale overridden multi singleton instances immediately and exactly once', async () => {
       const events: string[] = [];
       const token = Symbol('multi-rotating-disposable-token');

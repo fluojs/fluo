@@ -1279,10 +1279,20 @@ export class Container {
   }
 
   private async assertStaleDisposalsSettled(): Promise<void> {
+    const errors: unknown[] = [];
+
+    await this.collectStaleDisposalErrorsInHierarchy(errors);
+    this.throwDisposalErrors(errors);
+  }
+
+  private async collectStaleDisposalErrorsInHierarchy(errors: unknown[]): Promise<void> {
     await this.waitForStaleDisposalTasks();
 
-    const errors = this.staleDisposalErrors.splice(0, this.staleDisposalErrors.length);
-    this.throwDisposalErrors(errors);
+    errors.push(...this.staleDisposalErrors.splice(0, this.staleDisposalErrors.length));
+
+    for (const childScope of this.childScopes ?? []) {
+      await childScope.collectStaleDisposalErrorsInHierarchy(errors);
+    }
   }
 
   private scheduleStaleDisposal(instancePromise: Promise<unknown>): void {
