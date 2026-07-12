@@ -821,7 +821,7 @@ async function parseMultipartRequest(
   options: MultipartOptions = {},
 ): Promise<{ fields: Record<string, string | string[]>; files: UploadedFile[] }> {
   try {
-    return await parseMultipart(
+    const result = await parseMultipart(
       {
         body: Readable.toWeb(request),
         headers: normalizeHeaders(request.headers),
@@ -830,6 +830,11 @@ async function parseMultipartRequest(
       },
       options,
     );
+
+    return {
+      fields: result.fields,
+      files: result.files.map((file) => ({ ...file, buffer: Buffer.from(file.buffer) })),
+    };
   } catch (error: unknown) {
     if (isExpressMultipartTooLargeError(error)) {
       if (error instanceof PayloadTooLargeException) {
