@@ -15,7 +15,7 @@ const releaseReadinessVitestProjects = ['packages', 'apps', 'examples', 'tooling
 const releaseReadinessVerificationCommands = [
   '`pnpm build`',
   '`pnpm typecheck`',
-  ...releaseReadinessVitestProjects.map((projectName) => `\`pnpm vitest run --project ${projectName}\``),
+  ...releaseReadinessVitestProjects.map((projectName) => `\`pnpm vitest run --project ${projectName} --maxWorkers=1\``),
   '`pnpm --dir packages/cli sandbox:matrix`',
   '`pnpm verify:platform-consistency-governance`',
   '`pnpm verify:release-readiness`',
@@ -169,7 +169,7 @@ function runCanonicalReleaseReadinessVerificationCommands(runCommand) {
   runCommand('pnpm', ['typecheck']);
 
   for (const projectName of releaseReadinessVitestProjects) {
-    runCommand('pnpm', ['vitest', 'run', '--project', projectName]);
+    runCommand('pnpm', ['vitest', 'run', '--project', projectName, '--maxWorkers=1']);
   }
 
   runCommand('pnpm', ['--dir', 'packages/cli', 'sandbox:matrix']);

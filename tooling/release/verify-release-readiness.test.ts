@@ -198,10 +198,10 @@ describe('runReleaseReadinessVerification', () => {
     expect(dependencies.run.mock.calls).toEqual([
       ['pnpm', ['build']],
       ['pnpm', ['typecheck']],
-      ['pnpm', ['vitest', 'run', '--project', 'packages']],
-      ['pnpm', ['vitest', 'run', '--project', 'apps']],
-      ['pnpm', ['vitest', 'run', '--project', 'examples']],
-      ['pnpm', ['vitest', 'run', '--project', 'tooling']],
+      ['pnpm', ['vitest', 'run', '--project', 'packages', '--maxWorkers=1']],
+      ['pnpm', ['vitest', 'run', '--project', 'apps', '--maxWorkers=1']],
+      ['pnpm', ['vitest', 'run', '--project', 'examples', '--maxWorkers=1']],
+      ['pnpm', ['vitest', 'run', '--project', 'tooling', '--maxWorkers=1']],
       ['pnpm', ['--dir', 'packages/cli', 'sandbox:matrix']],
     ]);
     expect(dependencies.writeFileSync).not.toHaveBeenCalled();
@@ -293,10 +293,10 @@ describe('runReleaseReadinessVerification', () => {
 
     const summaryContents = dependencies.writeFileSync.mock.calls.map(([, content]) => String(content)).join('\n');
 
-    expect(summaryContents).toContain('`pnpm vitest run --project packages`');
-    expect(summaryContents).toContain('`pnpm vitest run --project apps`');
-    expect(summaryContents).toContain('`pnpm vitest run --project examples`');
-    expect(summaryContents).toContain('`pnpm vitest run --project tooling`');
+    expect(summaryContents).toContain('`pnpm vitest run --project packages --maxWorkers=1`');
+    expect(summaryContents).toContain('`pnpm vitest run --project apps --maxWorkers=1`');
+    expect(summaryContents).toContain('`pnpm vitest run --project examples --maxWorkers=1`');
+    expect(summaryContents).toContain('`pnpm vitest run --project tooling --maxWorkers=1`');
     expect(summaryContents).not.toContain('`pnpm test`');
   });
 

@@ -14,5 +14,5 @@
 - [x] Public package surface docs are synchronized — release-governance and package-surface docs declare the same @fluojs public package list.
 - [x] Documented public packages exist in workspace — Every documented public package maps to an existing workspace package manifest.
 
-- Commands executed: `pnpm build`, `pnpm typecheck`, `pnpm vitest run --project packages`, `pnpm vitest run --project apps`, `pnpm vitest run --project examples`, `pnpm vitest run --project tooling`, `pnpm --dir packages/cli sandbox:matrix`, `pnpm verify:platform-consistency-governance`, `pnpm verify:release-readiness`
+- Commands executed: `pnpm build`, `pnpm typecheck`, `pnpm vitest run --project packages --maxWorkers=1`, `pnpm vitest run --project apps --maxWorkers=1`, `pnpm vitest run --project examples --maxWorkers=1`, `pnpm vitest run --project tooling --maxWorkers=1`, `pnpm --dir packages/cli sandbox:matrix`, `pnpm verify:platform-consistency-governance`, `pnpm verify:release-readiness`
 - Side effects: `CHANGELOG.md` draft release-readiness section updated
