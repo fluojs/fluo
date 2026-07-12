@@ -109,8 +109,11 @@ Drizzle transaction management can be handled through fluo's integration interfa
 Use service-level `@Transaction()` as the primary boundary:
 
 ```typescript
+import { Inject } from '@fluojs/core';
 import { Transaction } from '@fluojs/drizzle';
+import { OrderRepository } from './order.repository';
 
+@Inject(OrderRepository)
 export class CheckoutService {
   constructor(private readonly orders: OrderRepository) {}
 
