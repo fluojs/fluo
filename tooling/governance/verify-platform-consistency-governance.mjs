@@ -1388,6 +1388,43 @@ function enforceViteToolingDiscoverability() {
   }
 }
 
+export function enforcePersistenceTransactionInterceptorCompatibility() {
+  const compatibilityExports = [
+    ['PrismaTransactionInterceptor', 'packages/prisma/src/module.ts', 'packages/prisma/src/transaction.ts'],
+    ['MongooseTransactionInterceptor', 'packages/mongoose/src/module.ts', 'packages/mongoose/src/transaction.ts'],
+  ];
+  const contractPaths = [
+    'apps/docs/content/docs/guides/persistence.mdx',
+    'apps/docs/content/docs/guides/persistence.ko.mdx',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'docs/architecture/transactions.md',
+    'docs/architecture/transactions.ko.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'docs/reference/package-surface.md',
+    'docs/reference/package-surface.ko.md',
+  ];
+
+  for (const [interceptor, modulePath, sourcePath] of compatibilityExports) {
+    const moduleSource = readFileSync(resolve(repoRoot, modulePath), 'utf8');
+    const source = readFileSync(resolve(repoRoot, sourcePath), 'utf8');
+
+    assert(
+      source.includes(`export class ${interceptor}`) && source.includes('@deprecated'),
+      `${sourcePath} must keep ${interceptor} exported and deprecated for 1.x compatibility.`,
+    );
+    assert(moduleSource.includes(interceptor), `${modulePath} must register ${interceptor}.`);
+
+    for (const contractPath of contractPaths) {
+      assert(
+        readFileSync(resolve(repoRoot, contractPath), 'utf8').includes(interceptor),
+        `${contractPath} must keep ${interceptor} compatibility discoverable.`,
+      );
+    }
+  }
+}
+
 export function main() {
   const changedFiles = changedFilesFromGit();
 
@@ -1401,6 +1438,7 @@ export function main() {
   enforceNoDirectProcessEnvInOrdinaryPackageSource();
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices();
   enforceViteToolingDiscoverability();
+  enforcePersistenceTransactionInterceptorCompatibility();
   enforceAdvancedBookCoreBoundaryCompanions(changedFiles);
   enforceContractCompanionUpdates(changedFiles);
   enforceAlignmentClaimsBackedByHarness(changedFiles);

@@ -12,6 +12,7 @@
 - [라이프사이클과 종료](#라이프사이클과-종료)
 - [공통 패턴](#공통-패턴)
   - [서비스 트랜잭션 경계 (@Transaction)](#서비스-트랜잭션-경계-transaction)
+  - [요청 트랜잭션 인터셉터 호환성](#요청-트랜잭션-인터셉터-호환성)
   - [수동 트랜잭션과 currentSession()](#수동-트랜잭션과-currentsession)
 - [공개 API](#공개-api)
 - [관련 패키지](#관련-패키지)
@@ -111,6 +112,26 @@ export class UserRepository {
 
 `@Transaction()` 메서드 호출은 재진입(reentrant)이 가능합니다. 데코레이터가 적용된 메서드가 다른 데코레이터 적용 메서드를 호출하더라도 하나의 동일한 MongoDB 세션 안에서 실행됩니다. 참고로 v1에서 `doc.save()`는 자동으로 세션을 주입하지 않으므로, 자동 트랜잭션 참여가 필요하다면 지원되는 facade 작업(`model.create()`, `model.find()`, `model.findOne()`, `model.aggregate()`, `model.bulkWrite()`)을 사용하세요.
 
+### 요청 트랜잭션 인터셉터 호환성
+
+`MongooseTransactionInterceptor`는 기존 request-wide `@UseInterceptors(...)` boundary를 위한 deprecated 1.x 호환성 export로 복원되었습니다. `MongooseModule.forRoot(...)`와 `forRootAsync(...)`가 이 interceptor를 provider 및 export로 제공하며, `MongooseConnection.requestTransaction(...)`에 위임하고 request `AbortSignal`을 전달합니다.
+
+```ts
+import { Controller, Post, UseInterceptors } from '@fluojs/http';
+import { MongooseTransactionInterceptor } from '@fluojs/mongoose';
+
+@Controller('/orders')
+export class OrdersController {
+  @Post('/')
+  @UseInterceptors(MongooseTransactionInterceptor)
+  createOrder() {
+    return this.orders.create();
+  }
+}
+```
+
+새 비즈니스 작업에는 서비스 계층 `@Transaction()`을 우선 사용하세요. 기존 request-wide boundary를 migration하는 동안에만 이 interceptor를 유지하고, request orchestration에서 경계를 명시해야 한다면 `requestTransaction(...)` 직접 호출로 교체하세요.
+
 ### 수동 트랜잭션과 currentSession()
 
 `MongooseConnection`은 활성 MongoDB 세션에 접근하기 위한 `currentSession()`과 루트 연결 handle에 접근하기 위한 `current()` 메서드를 제공합니다. 외부 유틸리티에 세션을 전달하거나 복잡한 수동 처리가 필요한 경우 escape hatch로 사용하세요.
@@ -151,6 +172,7 @@ await this.conn.transaction(async () => {
 - `MongooseConnection.createPlatformStatusSnapshot()` — platform observability surface를 위해 health/readiness, resource ownership, 활성 request/session drain 수, strict transaction 지원 진단을 보고합니다.
 - `MongooseConnection.model(name, ...args)` — 트랜잭션 밖에서는 raw model을 반환하고, 활성 트랜잭션 안에서는 underlying Mongoose connection을 변형하지 않으면서 `create`, `find`, `findOne`, `aggregate`, `bulkWrite`에 세션을 주입하는 facade를 반환합니다.
 - `Transaction`
+- `MongooseTransactionInterceptor` — deprecated request-wide 호환성 interceptor입니다. 새 코드에서는 서비스 `@Transaction()` 또는 명시적 `requestTransaction(...)`을 우선 사용하세요.
 - `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, `MONGOOSE_OPTIONS`
 - `createMongooseProviders(options)` — 호환성/수동 composition helper입니다. 애플리케이션-facing 등록에서는 module export와 provider visibility가 문서화된 namespace facade와 맞도록 `MongooseModule.forRoot(...)` 또는 `MongooseModule.forRootAsync(...)`를 우선 사용하세요.
 - `createMongoosePlatformStatusSnapshot(...)`

@@ -12,6 +12,7 @@ describe('@fluojs/mongoose public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
     expect(mongoosePublicApi).toHaveProperty('MongooseConnection');
     expect(mongoosePublicApi).toHaveProperty('MongooseModule');
+    expect(mongoosePublicApi).toHaveProperty('MongooseTransactionInterceptor');
     expect(mongoosePublicApi).toHaveProperty('createMongooseProviders');
     expect(mongoosePublicApi).toHaveProperty('Transaction');
     expect(mongoosePublicApi).toHaveProperty('createMongoosePlatformStatusSnapshot');
