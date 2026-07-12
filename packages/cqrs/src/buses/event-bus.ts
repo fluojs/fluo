@@ -6,22 +6,22 @@ import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CLEANUP_REGISTRATION, RUN
 import { CqrsBusBase } from '../discovery.js';
 import {
   createInternalCqrsDispatchContext,
-  type InternalCqrsDispatchContext,
-  isInternalCqrsDispatchContext,
+  getInternalCqrsDispatchContextState,
 } from '../dispatch-context.js';
 import { createIsolatedEvent } from '../event-clone.js';
-import { getEventHandlerMetadata } from '../metadata.js';
 import type { CqrsModuleOptions } from '../module.js';
 import { createCqrsPlatformStatusSnapshot } from '../status.js';
 import { CQRS_MODULE_OPTIONS } from '../tokens.js';
 import type { CqrsDispatchContext, CqrsEventBus, CqrsEventType, EventHandlerDescriptor, IEvent, IEventHandler } from '../types.js';
-import { CqrsSagaLifecycleService } from './saga-bus.js';
+import { discoverEventHandlerDescriptors } from './event-handler-discovery.js';
+import { CqrsPublishDrainTracker } from './publish-drain-tracker.js';
+import { CQRS_SAGA_DRAIN_AUTHORIZATION, CqrsSagaLifecycleService } from './saga-bus.js';
 
 const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 5000;
-const cqrsPublishDrainContextToken: unique symbol = Symbol('fluo.cqrs.publishDrainContextToken');
 
-interface CqrsPublishDrainContext extends InternalCqrsDispatchContext {
-  readonly [cqrsPublishDrainContextToken]: symbol;
+interface CqrsPublishContext {
+  readonly context: CqrsDispatchContext;
+  readonly drainToken: symbol;
 }
 
 function isEventHandler(value: unknown): value is IEventHandler<IEvent> {
@@ -51,9 +51,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
   private descriptors: EventHandlerDescriptor[] = [];
   private discoveryPromise: Promise<void> | undefined;
   private discovered = false;
-  private readonly activePublishPipelines = new Set<Promise<void>>();
-  private readonly activePublishDrainContexts = new Map<symbol, number>();
-  private shutdownDrainTimeouts = 0;
+  private readonly publishDrainTracker: CqrsPublishDrainTracker;
   private lifecycleState: 'created' | 'discovering' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
   private unregisterShutdownStartCleanup: (() => void) | undefined;
 
@@ -67,6 +65,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     registerRuntimeCleanup: RuntimeCleanupRegistration = () => () => undefined,
   ) {
     super(runtimeContainer, compiledModules, logger);
+    this.publishDrainTracker = new CqrsPublishDrainTracker(logger);
 
     this.unregisterShutdownStartCleanup = registerRuntimeCleanup(() => {
       this.markApplicationShutdownStarted();
@@ -90,8 +89,8 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     this.unregisterShutdownStartCleanup?.();
     this.unregisterShutdownStartCleanup = undefined;
 
-    if (this.activePublishPipelines.size > 0) {
-      await this.drainActivePublishPipelines();
+    if (this.publishDrainTracker.hasActivePipelines) {
+      await this.publishDrainTracker.drain(this.resolveShutdownDrainTimeoutMs());
     }
 
     this.lifecycleState = 'stopped';
@@ -113,7 +112,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
       sagaShutdownDrainTimeouts: sagaSnapshot.shutdownDrainTimeouts,
       sagasDiscovered: sagaSnapshot.sagasDiscovered,
       shutdownDrainTimeoutMs: this.resolveShutdownDrainTimeoutMs(),
-      shutdownDrainTimeouts: this.shutdownDrainTimeouts,
+      shutdownDrainTimeouts: this.publishDrainTracker.shutdownDrainTimeouts,
     });
   }
 
@@ -129,7 +128,10 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
   async publish<TEvent extends IEvent>(event: TEvent, context?: CqrsDispatchContext): Promise<void> {
     this.assertAcceptingNewWork('publish', context);
     const publishContext = this.createPublishContext(context);
-    await this.trackPublishPipeline(this.runPublishPipeline(event, publishContext), publishContext);
+    await this.publishDrainTracker.track(
+      this.runPublishPipeline(event, publishContext.context),
+      publishContext.drainToken,
+    );
   }
 
   /**
@@ -142,10 +144,13 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
   async publishAll<TEvent extends IEvent>(events: readonly TEvent[], context?: CqrsDispatchContext): Promise<void> {
     this.assertAcceptingNewWork('publishAll', context);
     const publishContext = this.createPublishContext(context);
-    await this.trackPublishPipeline(this.runPublishAllPipeline(events, publishContext), publishContext);
+    await this.publishDrainTracker.track(
+      this.runPublishAllPipeline(events, publishContext.context),
+      publishContext.drainToken,
+    );
   }
 
-  private async runPublishPipeline<TEvent extends IEvent>(event: TEvent, context: InternalCqrsDispatchContext): Promise<void> {
+  private async runPublishPipeline<TEvent extends IEvent>(event: TEvent, context: CqrsDispatchContext): Promise<void> {
     await this.ensureDiscovered();
 
     for (const descriptor of this.matchEventDescriptors(event)) {
@@ -158,11 +163,11 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
       await instance.handle(createIsolatedEvent(descriptor.eventType as CqrsEventType<TEvent>, event), context);
     }
 
-    await this.sagaService.dispatch(event, context, { allowDuringShutdown: true });
+    await this.sagaService.dispatch(event, context, CQRS_SAGA_DRAIN_AUTHORIZATION);
     await this.eventBus.publish(event);
   }
 
-  private async runPublishAllPipeline<TEvent extends IEvent>(events: readonly TEvent[], context: InternalCqrsDispatchContext): Promise<void> {
+  private async runPublishAllPipeline<TEvent extends IEvent>(events: readonly TEvent[], context: CqrsDispatchContext): Promise<void> {
     for (const event of events) {
       await this.runPublishPipeline(event, context);
     }
@@ -173,8 +178,12 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
       throw new InvariantError(`CQRS event bus cannot ${operation} after shutdown has started.`);
     }
 
-    if (this.lifecycleState === 'stopping' && !this.isActivePublishDrainContext(context)) {
-      throw new InvariantError(`CQRS event bus cannot ${operation} after shutdown has started.`);
+    if (this.lifecycleState === 'stopping') {
+      const drainToken = getInternalCqrsDispatchContextState(context)?.publishDrainToken;
+
+      if (!drainToken || !this.publishDrainTracker.isActive(drainToken)) {
+        throw new InvariantError(`CQRS event bus cannot ${operation} after shutdown has started.`);
+      }
     }
   }
 
@@ -184,93 +193,21 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     }
   }
 
-  private createPublishContext(context: CqrsDispatchContext | undefined): CqrsPublishDrainContext {
-    if (this.isPublishDrainContext(context)) {
-      return context;
+  private createPublishContext(context: CqrsDispatchContext | undefined): CqrsPublishContext {
+    const internalState = getInternalCqrsDispatchContextState(context);
+    const drainToken = internalState?.publishDrainToken ?? Symbol('fluo.cqrs.activePublishDrain');
+
+    if (context && internalState?.publishDrainToken) {
+      return { context, drainToken };
     }
 
-    if (isInternalCqrsDispatchContext(context)) {
-      return createInternalCqrsDispatchContext({
-        ...context,
-        [cqrsPublishDrainContextToken]: Symbol('fluo.cqrs.activePublishDrain'),
-      });
-    }
-
-    return createInternalCqrsDispatchContext({
-      [cqrsPublishDrainContextToken]: Symbol('fluo.cqrs.activePublishDrain'),
-    });
-  }
-
-  private isActivePublishDrainContext(context: CqrsDispatchContext | undefined): boolean {
-    if (!this.isPublishDrainContext(context)) {
-      return false;
-    }
-
-    return (this.activePublishDrainContexts.get(context[cqrsPublishDrainContextToken]) ?? 0) > 0;
-  }
-
-  private isPublishDrainContext(context: CqrsDispatchContext | undefined): context is CqrsPublishDrainContext {
-    if (!isInternalCqrsDispatchContext(context)) {
-      return false;
-    }
-
-    return typeof (context as { readonly [cqrsPublishDrainContextToken]?: unknown })[cqrsPublishDrainContextToken] === 'symbol';
-  }
-
-  private async trackPublishPipeline(pipeline: Promise<void>, context: CqrsPublishDrainContext): Promise<void> {
-    const contextToken = context[cqrsPublishDrainContextToken];
-
-    this.activePublishPipelines.add(pipeline);
-    this.activePublishDrainContexts.set(contextToken, (this.activePublishDrainContexts.get(contextToken) ?? 0) + 1);
-
-    try {
-      await pipeline;
-    } finally {
-      this.activePublishPipelines.delete(pipeline);
-      const activeCount = this.activePublishDrainContexts.get(contextToken) ?? 0;
-
-      if (activeCount <= 1) {
-        this.activePublishDrainContexts.delete(contextToken);
-      } else {
-        this.activePublishDrainContexts.set(contextToken, activeCount - 1);
-      }
-    }
-  }
-
-  private async drainActivePublishPipelines(): Promise<void> {
-    const timeoutMs = this.resolveShutdownDrainTimeoutMs();
-    const drained = await this.awaitShutdownDrain(timeoutMs);
-
-    if (!drained) {
-      this.shutdownDrainTimeouts += 1;
-      this.logger.warn(
-        `CQRS event shutdown drain exceeded ${String(timeoutMs)}ms with ${String(this.activePublishPipelines.size)} active publish pipeline(s); continuing shutdown.`,
-        'CqrsEventBusService',
-      );
-    }
-  }
-
-  private async awaitShutdownDrain(timeoutMs: number): Promise<boolean> {
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<false>((resolve) => {
-      timeoutId = setTimeout(() => resolve(false), timeoutMs);
-    });
-
-    const drain = this.waitForPublishQuiescence().then(() => true);
-
-    try {
-      return await Promise.race([drain, timeout]);
-    } finally {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-    }
-  }
-
-  private async waitForPublishQuiescence(): Promise<void> {
-    while (this.activePublishPipelines.size > 0) {
-      await Promise.allSettled(Array.from(this.activePublishPipelines));
-    }
+    return {
+      context: createInternalCqrsDispatchContext({
+        publishDrainToken: drainToken,
+        sagaTopology: internalState?.sagaTopology,
+      }),
+      drainToken,
+    };
   }
 
   private resolveShutdownDrainTimeoutMs(): number {
@@ -317,47 +254,6 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
   }
 
   private discoverEventDescriptors(): EventHandlerDescriptor[] {
-    const descriptors: EventHandlerDescriptor[] = [];
-    const seenByTarget = new WeakMap<Function, Set<CqrsEventType>>();
-
-    for (const candidate of this.discoveryCandidates()) {
-      const metadata = getEventHandlerMetadata(candidate.targetType);
-
-      if (!metadata) {
-        continue;
-      }
-
-      if (candidate.scope !== 'singleton') {
-        this.logger.warn(
-          `${candidate.targetType.name} in module ${candidate.moduleName} declares @EventHandler() but is registered with ${candidate.scope} scope. Event handlers are registered only for singleton providers.`,
-          'CqrsEventBusService',
-        );
-        continue;
-      }
-
-      const seenEventTypes = seenByTarget.get(candidate.targetType) ?? new Set<CqrsEventType>();
-
-      if (seenEventTypes.has(metadata.eventType)) {
-        continue;
-      }
-
-      seenEventTypes.add(metadata.eventType);
-      seenByTarget.set(candidate.targetType, seenEventTypes);
-
-      const alreadyRegistered = descriptors.some(
-        (descriptor) => descriptor.eventType === metadata.eventType && descriptor.targetType === candidate.targetType,
-      );
-
-      if (!alreadyRegistered) {
-        descriptors.push({
-          eventType: metadata.eventType,
-          moduleName: candidate.moduleName,
-          targetType: candidate.targetType,
-          token: candidate.token,
-        });
-      }
-    }
-
-    return descriptors;
+    return discoverEventHandlerDescriptors(this.discoveryCandidates(), this.logger);
   }
 }

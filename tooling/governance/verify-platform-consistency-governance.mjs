@@ -592,6 +592,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // bootstrap-ready/bounded-shutdown ownership, notifications queue opt-in, status
   // details, and generated identity diagnostics contracts, plus Slack singleton
   // provider discoverability and owned transport cleanup serialization docs/tests,
+  // plus CQRS provider-token fan-out, private immutable dispatch topology state,
+  // full handler/saga/delegated pipeline ordering, and shutdown authorization,
   // plus React Router/Path facade-over-HTTP metadata, ReactModule.forRoot
   // registration contract discoverability, stable SSR phase boundaries, and
   // the root package's non-goals for Vite assets, client navigation, RSC,

@@ -41,7 +41,7 @@ fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터
 | UI | React 통합 | `@fluojs/react` |
 | Tooling | CLI, 진단 도구, Vite 빌드 통합 | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing`, `@fluojs/vite` |
 
-CQRS dispatch context discoverability는 `packages/cqrs/README.ko.md`, [`docs/architecture/cqrs.ko.md`](./architecture/cqrs.ko.md), [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)로 나뉜다. `CqrsDispatchContext`는 nested handler/saga dispatch에 그대로 전달하는 opaque runtime-agnostic 값이고, CQRS는 내부에서 branded 처리한 topology state만 신뢰하며, 애플리케이션 등록은 low-level provider assembly helper가 아니라 `CqrsModule.forRoot(...)` facade에 머문다.
+CQRS dispatch context discoverability는 `packages/cqrs/README.ko.md`, [`docs/architecture/cqrs.ko.md`](./architecture/cqrs.ko.md), [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)로 나뉜다. `CqrsDispatchContext`는 신뢰하는 topology와 shutdown-drain state를 비공개로 유지하는 opaque, frozen fieldless runtime-agnostic pass-through 값이고, event handler와 saga fan-out identity는 singleton provider token을 따르며, 애플리케이션 등록은 low-level provider assembly helper가 아니라 `CqrsModule.forRoot(...)` facade에 머문다. CQRS local handler는 saga와 위임 `@fluojs/event-bus` 발행보다 먼저 완료되고, `publishAll(...)`은 각 event마다 이 전체 pipeline을 기다린다.
 
 Core request-pipeline metadata seam discoverability는 `packages/core/README.ko.md`와 [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)로 나뉜다. `@fluojs/core/request-pipeline`은 `@fluojs/validation`, `@fluojs/serialization`, `@fluojs/openapi` 같은 first-party request-pipeline 패키지가 `@fluojs/core/internal`을 직접 import하지 않고 DTO validation, binding, 표준 데코레이터 metadata bag 접근을 공유하기 위한 문서화된 package-integration seam이다. 애플리케이션 코드는 package-integration 계약이 명시적으로 적용되는 경우가 아니라면 계속 root `@fluojs/core` 데코레이터와 공개 helper를 사용해야 한다.
 
