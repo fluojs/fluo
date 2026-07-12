@@ -115,6 +115,35 @@ export class OrdersController {
 
 Prefer service-layer `@Transaction()` for new business operations. Use explicit `requestTransaction(...)` when a complete request truly needs one transaction or named/multiple Prisma registrations must select a specific service; the compatibility interceptor targets only the unnamed default registration.
 
+When request-wide atomicity is genuinely required, make the boundary and cancellation input visible in application code:
+
+```typescript
+import { Inject } from '@fluojs/core';
+import { Controller, Post, type RequestContext } from '@fluojs/http';
+import { PrismaService } from '@fluojs/prisma';
+import { PrismaClient } from '@prisma/client';
+
+@Inject(PrismaService, OrdersService)
+@Controller('/orders')
+export class OrdersController {
+  constructor(
+    private readonly prisma: PrismaService<PrismaClient>,
+    private readonly orders: OrdersService,
+  ) {}
+
+  @Post('/checkout')
+  checkout(input: CheckoutInput, context: RequestContext) {
+    const { request } = context;
+    return this.prisma.requestTransaction(
+      () => this.orders.checkout(input),
+      request.signal,
+    );
+  }
+}
+```
+
+This is a narrow compatibility pattern, not a replacement for service `@Transaction()`. A request-wide transaction can hold database locks for the entire HTTP operation, so keep the boundary short and explicit.
+
 ### Named Registrations for Multiple Clients
 
 When one application container needs more than one Prisma client, register each client with an explicit `name` and inject the matching token with `getPrismaServiceToken(name)`. For named clients, pass an accessor to `@Transaction()` to target the correct service. Default `@Transaction()` resolution only selects Prisma service/facade-shaped properties; transaction-like objects from other persistence integrations are ignored so ambiguous hosts must use an explicit accessor.

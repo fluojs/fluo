@@ -23,7 +23,7 @@
 | `@Param()`, `@Query()`, `@Body()`, `@Headers()`, `@Req()`, `@Res()` 같은 controller parameter decorator와 `Pipe` / `ValidationPipe` transformation | `@fluojs/http`의 `@RequestDto(...)`와 field-level `@FromPath(...)`, `@FromQuery(...)`, `@FromBody(...)`, `@FromHeader(...)`, `@FromCookie(...)`, `@Convert(...)`; 고급 request/response 접근을 위한 `RequestContext` handler parameter | fluo는 NestJS-style controller parameter decorator나 public parameter Pipe 단계를 노출하지 않는다. 하나의 request DTO를 바인딩하고, 각 field source를 선언하며, number/boolean/date/domain conversion에는 `@Convert(...)`를 사용한 뒤 materialized DTO를 validation package로 검증한다. |
 | `createApplicationContext()` 단독 부트스트랩 | `FluoFactory.createApplicationContext(AppModule)` | `@fluojs/runtime`에 standalone application context가 존재한다. |
 | `Test.createTestingModule({ imports: [...] }).overrideModule(...)` | `@fluojs/testing`의 `createTestingModule({ rootModule }).overrideModule(...)` | fluo testing은 명시적 `rootModule`과 replacement compile seam을 사용하므로 전역 module metadata를 mutate하지 않고 authored module identity를 보존한다. |
-| NestJS 요청 transaction interceptor | 영속성 패키지의 서비스 `@Transaction()` 또는 controller/request 경계의 명시적 `requestTransaction(...)` | `PrismaTransactionInterceptor`와 `MongooseTransactionInterceptor`는 기존 import를 위한 deprecated 1.x 호환성 bridge로 유지된다. 새 코드는 비즈니스 transaction을 서비스에 두고, 전체 요청이 하나의 경계를 공유해야 할 때만 명시적 `requestTransaction(...)`을 사용한다. Drizzle은 호환성 interceptor export를 제공하지 않는다. |
+| NestJS 요청 transaction interceptor | 영속성 패키지의 서비스 `@Transaction()` 또는 controller/request 경계의 명시적 `requestTransaction(...)` | `PrismaTransactionInterceptor`와 `MongooseTransactionInterceptor`는 기존 import를 위한 deprecated 1.x 호환성 bridge로 유지된다. 새 코드는 비즈니스 transaction을 서비스에 두고, 전체 요청이 하나의 경계를 공유해야 할 때만 명시적 `requestTransaction(...)`을 사용하며 가능한 경우 `RequestContext.request.signal`을 전달한다. Drizzle은 호환성 interceptor export를 제공하지 않는다. |
 | `HealthCheckService.check([...])`를 호출하는 `@HealthCheck()` 컨트롤러 메서드 | `@fluojs/terminus`의 `TerminusModule.forRoot({ indicators, indicatorProviders, readinessChecks })` | Module-level registration이 기본 API이므로 runtime `/health`와 `/ready` route가 indicator 및 platform diagnostics를 일관되게 포함한다. |
 | NestJS Terminus memory/disk 또는 Redis check | `@fluojs/terminus/node`와 `@fluojs/terminus/redis` | Node.js memory/disk helper와 Redis helper는 전용 subpath에 있다. Root package는 Redis peer나 Node filesystem access를 기본 import 경계에 포함하지 않는다. |
 | `@nestjs/throttler` 전역 throttler 설정 | `@fluojs/throttler` / `@fluojs/http`의 `ThrottlerModule.forRoot(...)`와 명시적 `@UseGuards(ThrottlerGuard)` | Module registration은 정책과 guard provider를 제공한다. Route enforcement는 guard를 붙인 위치에서만 시작된다. |
@@ -92,6 +92,32 @@
 - `NotificationsModule`은 기본적으로 `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS`에 대해 global이다. Migrated code에 module-local visibility가 필요할 때는 `global: false`를 사용한다.
 - Slack migration은 NestJS async dynamic-module 또는 package-level multi-client registry clone이 아니다. `SlackModule.forRootAsync(...)`는 `inject`와 `useFactory`를 받으며, `imports`, `useClass`, `useExisting`은 소비하지 않는다. 필요한 의존성은 application module graph에 등록한 뒤 token을 `inject`에 나열하고, `useFactory`에서 최종 Slack option을 반환한다. `@fluojs/slack`은 singleton compatibility token인 `SLACK`과 `SLACK_CHANNEL`을 노출하고 `createSlackProviders(...)`로 같은 singleton wiring을 재사용하며, NestJS `isGlobal` 대신 기본 global visibility를 가진 `global?: boolean`을 사용한다.
 - Discord migration은 NestJS async dynamic-module 또는 custom-provider clone이 아니다. `DiscordModule.forRootAsync(...)`는 `inject`와 `useFactory`를 받으며, `imports`, `useClass`, `useExisting`는 소비하지 않는다. `@fluojs/discord`는 singleton compatibility token인 `DISCORD`와 `DISCORD_CHANNEL`을 노출하고, NestJS `isGlobal` 대신 기본 global visibility를 가진 `global?: boolean`을 사용하며, `createDiscordProviders(...)`, `DISCORD_OPTIONS`, `NormalizedDiscordModuleOptions` 같은 내부 provider helper는 private으로 유지한다.
+
+### Prisma Request-Wide Transaction Migration
+
+일반적인 비즈니스 원자성은 서비스 `@Transaction()` 메서드에 두세요. 하나의 서비스 boundary로 표현할 수 없는 작업 전체를 migrated controller에서 정말 하나의 transaction으로 묶어야 한다면 wrapper `PrismaService<TClient>`를 주입하고 `requestTransaction(...)`을 명시적으로 호출하며 request cancellation signal을 전달하세요.
+
+```typescript
+@Inject(PrismaService, CheckoutService)
+@Controller('/checkout')
+export class CheckoutController {
+  constructor(
+    private readonly prisma: PrismaService<PrismaClient>,
+    private readonly checkoutService: CheckoutService,
+  ) {}
+
+  @Post('/')
+  checkout(input: CheckoutInput, context: RequestContext) {
+    const { request } = context;
+    return this.prisma.requestTransaction(
+      () => this.checkoutService.checkout(input),
+      request.signal,
+    );
+  }
+}
+```
+
+모든 NestJS interceptor를 이 형태로 옮기지 마세요. Request-wide transaction은 관련 없는 controller 작업 동안에도 lock을 유지할 수 있으므로, 실제 비즈니스 작업 단위를 나타낼 수 있다면 집중된 서비스 `@Transaction()`을 우선 사용하세요.
 
 ### GraphQL Resolver Migration
 

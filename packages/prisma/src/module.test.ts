@@ -1376,20 +1376,24 @@ describe('PrismaModule.forRootAsync', () => {
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
-    const prisma = await app.container.resolve(PrismaService);
-    const rawClient = await app.container.resolve(PRISMA_CLIENT);
-    const moduleOptions = await app.container.resolve(PRISMA_OPTIONS);
 
-    expect(factory).toHaveBeenCalledOnce();
-    expect(factory.mock.calls[0][0]).toBeInstanceOf(ConfigService);
-    expect(rawClient).toBe(client);
-    expect(moduleOptions).toEqual({ strictTransactions: false });
-    expect(events).toEqual(['connect']);
+    try {
+      const prisma = await app.container.resolve(PrismaService);
+      const rawClient = await app.container.resolve(PRISMA_CLIENT);
+      const moduleOptions = await app.container.resolve(PRISMA_OPTIONS);
 
-    await app.close();
+      expect(factory).toHaveBeenCalledOnce();
+      expect(factory.mock.calls[0][0]).toBeInstanceOf(ConfigService);
+      expect(rawClient).toBe(client);
+      expect(moduleOptions).toEqual({ strictTransactions: false });
+      expect(events).toEqual(['connect']);
+
+      void prisma;
+    } finally {
+      await app.close();
+    }
+
     expect(events).toEqual(['connect', 'disconnect']);
-
-    void prisma;
   });
 
   it('resolves async options independently for each application container', async () => {
@@ -1441,6 +1445,73 @@ describe('PrismaModule.forRootAsync', () => {
       'disconnect:client-1',
       'disconnect:client-2',
     ]);
+  });
+
+  it('keeps nested cross-container transaction contexts isolated in one async branch', async () => {
+    let factoryCalls = 0;
+    const prismaModule = PrismaModule.forRootAsync({
+      useFactory: () => {
+        factoryCalls += 1;
+        const transactionClient = { id: `transaction-${factoryCalls}` };
+
+        const client = {
+          id: `root-${factoryCalls}`,
+          async $connect() {},
+          async $disconnect() {},
+          async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+            return callback(transactionClient);
+          },
+        };
+
+        return { client };
+      },
+    });
+
+    class FirstAppModule {}
+    class SecondAppModule {}
+
+    defineModule(FirstAppModule, { imports: [prismaModule] });
+    defineModule(SecondAppModule, { imports: [prismaModule] });
+
+    const firstApp = await bootstrapApplication({ rootModule: FirstAppModule });
+
+    try {
+      const secondApp = await bootstrapApplication({ rootModule: SecondAppModule });
+
+      try {
+        const firstPrisma = await firstApp.container.resolve(PrismaService);
+        const secondPrisma = await secondApp.container.resolve(PrismaService);
+        const firstRootClient = firstPrisma.current();
+        const secondRootClient = secondPrisma.current();
+
+        expect(firstRootClient).not.toBe(secondRootClient);
+
+        await firstPrisma.transaction(async () => {
+          const firstTransactionClient = firstPrisma.current();
+
+          expect(firstTransactionClient).not.toBe(firstRootClient);
+          expect(secondPrisma.current()).toBe(secondRootClient);
+
+          await secondPrisma.transaction(async () => {
+            const secondTransactionClient = secondPrisma.current();
+
+            expect(secondTransactionClient).not.toBe(secondRootClient);
+            expect(secondTransactionClient).not.toBe(firstTransactionClient);
+            expect(firstPrisma.current()).toBe(firstTransactionClient);
+          });
+
+          expect(firstPrisma.current()).toBe(firstTransactionClient);
+          expect(secondPrisma.current()).toBe(secondRootClient);
+        });
+
+        expect(firstPrisma.current()).toBe(firstRootClient);
+        expect(secondPrisma.current()).toBe(secondRootClient);
+      } finally {
+        await secondApp.close();
+      }
+    } finally {
+      await firstApp.close();
+    }
   });
 
   it('factory returning a promise resolves the client correctly', async () => {
