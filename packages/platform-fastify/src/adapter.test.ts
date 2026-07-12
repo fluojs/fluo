@@ -1499,15 +1499,17 @@ describe('@fluojs/platform-fastify', () => {
 
     const port = await listenOnEphemeralPort(app);
 
-    const response = await fetch(`http://127.0.0.1:${String(port)}/ping`, {
-      headers: { origin: 'https://my-frontend.com' },
-    });
+    try {
+      const response = await fetch(`http://127.0.0.1:${String(port)}/ping`, {
+        headers: { origin: 'https://my-frontend.com' },
+      });
 
-    expect(response.headers.get('access-control-allow-origin')).toBe('https://my-frontend.com');
-    expect(response.headers.get('access-control-allow-headers')).toContain('Authorization');
-    expect(response.headers.get('access-control-expose-headers')).toContain('X-Request-Id');
-
-    await app.close();
+      expect(response.headers.get('access-control-allow-origin')).toBe('https://my-frontend.com');
+      expect(response.headers.get('access-control-allow-headers')).toContain('Authorization');
+      expect(response.headers.get('access-control-expose-headers')).toContain('X-Request-Id');
+    } finally {
+      await app.close();
+    }
   });
 
   it('does not add CORS headers or preflight handling when cors is false', async () => {
