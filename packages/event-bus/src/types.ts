@@ -32,7 +32,8 @@ export interface EventPublishOptions {
 export interface EventBusTransport {
   /**
    * Publish an event payload to the external transport under the given channel name.
-   * Called by the event bus on every local `publish()` invocation when a transport is configured.
+   * Called for each selected transport channel when a transport is configured; one local
+   * `publish()` invocation can fan out to multiple inherited event channels.
    */
   publish(channel: string, payload: unknown): Promise<void>;
 

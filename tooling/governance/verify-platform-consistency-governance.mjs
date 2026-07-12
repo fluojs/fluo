@@ -577,6 +577,7 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // stale-series ownership docs, and email
   // transport-agnostic status snapshots plus caller-owned shutdown boundaries,
   // validation mapped-type/nested-materialization contract discoverability,
+  // missing-value, safe-extra-property, and unsupported-group migration rules,
   // serialization class options plus request-boundary interceptor coverage, CLI
   // public runtime type boundaries plus the documented Node.js runtime floor,
   // and Studio live helper contracts such as deterministic Mermaid rendering,
@@ -594,10 +595,16 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // provider discoverability and owned transport cleanup serialization docs/tests,
   // plus CQRS provider-token fan-out, private immutable dispatch topology state,
   // full handler/saga/delegated pipeline ordering, and shutdown authorization,
+  // plus event-bus background handler/transport shutdown drain, inbound timeout,
+  // stable eventKey migration, and CQRS responsibility-boundary docs/tests,
   // plus React Router/Path facade-over-HTTP metadata, ReactModule.forRoot
   // registration contract discoverability, stable SSR phase boundaries, and
   // the root package's non-goals for Vite assets, client navigation, RSC,
-  // server functions, and React-owned route-table models.
+  // server functions, and React-owned route-table models, plus OpenAPI's
+  // explicit descriptor adoption, response metadata, Swagger UI asset, and
+  // path/method collision-precedence boundaries, plus GraphQL's explicit
+  // resolver/provider wiring, root-only operations, output type declarations,
+  // and server-backed WebSocket migration boundaries.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
@@ -1385,6 +1392,43 @@ function enforceViteToolingDiscoverability() {
   }
 }
 
+export function enforcePersistenceTransactionInterceptorCompatibility() {
+  const compatibilityExports = [
+    ['PrismaTransactionInterceptor', 'packages/prisma/src/module.ts', 'packages/prisma/src/transaction.ts'],
+    ['MongooseTransactionInterceptor', 'packages/mongoose/src/module.ts', 'packages/mongoose/src/transaction.ts'],
+  ];
+  const contractPaths = [
+    'apps/docs/content/docs/guides/persistence.mdx',
+    'apps/docs/content/docs/guides/persistence.ko.mdx',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'docs/architecture/transactions.md',
+    'docs/architecture/transactions.ko.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'docs/reference/package-surface.md',
+    'docs/reference/package-surface.ko.md',
+  ];
+
+  for (const [interceptor, modulePath, sourcePath] of compatibilityExports) {
+    const moduleSource = readFileSync(resolve(repoRoot, modulePath), 'utf8');
+    const source = readFileSync(resolve(repoRoot, sourcePath), 'utf8');
+
+    assert(
+      source.includes(`export class ${interceptor}`) && source.includes('@deprecated'),
+      `${sourcePath} must keep ${interceptor} exported and deprecated for 1.x compatibility.`,
+    );
+    assert(moduleSource.includes(interceptor), `${modulePath} must register ${interceptor}.`);
+
+    for (const contractPath of contractPaths) {
+      assert(
+        readFileSync(resolve(repoRoot, contractPath), 'utf8').includes(interceptor),
+        `${contractPath} must keep ${interceptor} compatibility discoverable.`,
+      );
+    }
+  }
+}
+
 export function main() {
   const changedFiles = changedFilesFromGit();
 
@@ -1398,6 +1442,7 @@ export function main() {
   enforceNoDirectProcessEnvInOrdinaryPackageSource();
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices();
   enforceViteToolingDiscoverability();
+  enforcePersistenceTransactionInterceptorCompatibility();
   enforceAdvancedBookCoreBoundaryCompanions(changedFiles);
   enforceContractCompanionUpdates(changedFiles);
   enforceAlignmentClaimsBackedByHarness(changedFiles);

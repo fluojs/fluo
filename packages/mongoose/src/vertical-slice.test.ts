@@ -12,7 +12,7 @@ import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { MongooseConnection, MongooseModule, Transaction } from './index.js';
-import type { MongooseSessionLike } from './types.js';
+import type { MongooseModelFacade, MongooseSessionLike } from './types.js';
 
 function createResponse(events?: string[]): FrameworkResponse & { body?: unknown } {
   return {
@@ -68,6 +68,7 @@ describe('@fluojs/mongoose service boundary primary flow', () => {
       id: string;
       name: string;
     };
+    type UserCreateModel = MongooseModelFacade<Promise<readonly [UserRecord]>>;
 
     const users = new Map<string, UserRecord>();
     const events: string[] = [];
@@ -93,12 +94,16 @@ describe('@fluojs/mongoose service boundary primary flow', () => {
     }
 
     const UserModel = {
-      async create(input: { email: string; name: string }, options?: { session?: MongooseSessionLike }) {
+      async create(
+        inputs: readonly [{ email: string; name: string }],
+        options?: { session?: MongooseSessionLike },
+      ) {
+        const [input] = inputs;
         events.push(`model:create:${input.email}`);
         createSessions.push(options?.session);
         const record = { ...input, id: `user-${++sequence}` };
         users.set(record.id, record);
-        return record;
+        return [record] as const;
       },
     };
 
@@ -128,10 +133,14 @@ describe('@fluojs/mongoose service boundary primary flow', () => {
       constructor(private readonly conn: MongooseConnection<typeof connection>) {}
 
       async create(input: CreateUserRequest) {
-        return (this.conn.model('User') as typeof UserModel).create({
-          email: input.email,
-          name: input.name,
-        });
+        const [record] = await this.conn.model<UserCreateModel>('User').create([
+          {
+            email: input.email,
+            name: input.name,
+          },
+        ]);
+
+        return record;
       }
     }
 
@@ -192,6 +201,9 @@ describe('@fluojs/mongoose service boundary primary flow', () => {
   });
 
   it('keeps controller-level method decoration as a compatibility path only', async () => {
+    type UserRecord = { email: string; id: string; name: string };
+    type UserCreateModel = MongooseModelFacade<Promise<readonly [UserRecord]>>;
+
     const events: string[] = [];
     const createSessions: Array<MongooseSessionLike | undefined> = [];
     const startedSessions: MongooseSessionLike[] = [];
@@ -214,10 +226,11 @@ describe('@fluojs/mongoose service boundary primary flow', () => {
     }
 
     const UserModel = {
-      async create(input: { email: string; name: string }, options?: { session?: MongooseSessionLike }) {
+      async create(inputs: readonly [CreateUserRequest], options?: { session?: MongooseSessionLike }) {
+        const [input] = inputs;
         events.push(`model:create:${input.email}`);
         createSessions.push(options?.session);
-        return { ...input, id: 'controller-tx-user' };
+        return [{ email: input.email, id: 'controller-tx-user', name: input.name }] as const;
       },
     };
 
@@ -247,7 +260,9 @@ describe('@fluojs/mongoose service boundary primary flow', () => {
       constructor(private readonly conn: MongooseConnection<typeof connection>) {}
 
       async create(input: CreateUserRequest) {
-        return (this.conn.model('User') as typeof UserModel).create(input);
+        const [record] = await this.conn.model<UserCreateModel>('User').create([input]);
+
+        return record;
       }
     }
 

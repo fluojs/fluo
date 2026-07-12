@@ -82,24 +82,20 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
 9.  **Interceptors (After)**: 핸들러가 반환한 결과(또는 에러)를 가공합니다. `interceptors.ts`의 역순 체인이 완성되며, 응답 객체를 최종적으로 정형화(normalization)합니다.
 10. **Response Writing**: 최종 결과를 HTTP 응답으로 직렬화하여 클라이언트에 전송합니다. `dispatcher.ts:L188`에서 `writeSuccessResponse`가 호출됩니다. 이때 `Content-Type` 협상이 마무리됩니다.
 
-## 11.3 RequestContext와 비동기 격리
+## 11.3 RequestContext와 런타임 의존 비동기 격리
 
-fluo는 `AsyncLocalStorage`를 사용해 요청의 전역 상태를 관리합니다. 이를 통해 서비스 레이어나 리포지토리 레이어처럼 깊은 호출 지점에서도 인자로 `req` 객체를 계속 넘기지 않고 현재 요청 정보(`requestId`, `user`, `traceId` 등)에 접근할 수 있습니다.
+fluo는 `runWithRequestContext(...)`와 `getCurrentRequestContext()`를 노출하므로 서비스나 리포지토리처럼 깊은 호출 지점에서도 요청 객체를 모든 함수 인자로 전달하지 않고 현재 요청을 읽을 수 있습니다. 다만 격리 보장은 호스트의 async-context 역량에 따라 달라지며, 모든 런타임에 `AsyncLocalStorage`가 있다는 보편적 약속은 아닙니다.
 
-`packages/http/src/context/request-context.ts` 시스템은 디스패처가 `runWithRequestContext`를 호출하는 순간 활성화됩니다. `packages/http/src/context/request-context.test.ts:L50-L148`의 테스트 코드는 여러 요청이 동시에 병렬로 들어왔을 때 각자의 컨텍스트가 섞이지 않고 엄격히 격리되는지를 검증합니다.
+루트 `@fluojs/http` import는 Node async hooks를 즉시 로드하지 않습니다. Request-context helper는 처음 사용할 때 이미 존재하는 `globalThis.AsyncLocalStorage`를 우선 사용하고, 지원되는 Node.js 호스트에서는 `node:async_hooks`를 lazy하게 해석할 수 있습니다. 어느 storage를 사용하든 context는 awaited continuation을 따라가며 겹치는 요청을 격리합니다.
 
 ```typescript
-// packages/http/src/context/request-context.ts:L45-L60
-export function getCurrentRequestContext(): RequestContext | undefined {
-  return requestContextStorage.getStore();
-}
-
-export function runWithRequestContext<T>(context: RequestContext, fn: () => T): T {
-  return requestContextStorage.run(context, fn);
-}
+runWithRequestContext(context, () => {
+  const active = getCurrentRequestContext();
+  // 이 callback 안에서는 active === context
+});
 ```
 
-이 메커니즘은 대규모 분산 시스템에서의 분산 트레이싱(Distributed Tracing) 구현을 단순하게 만듭니다. 로그 출력 시 컨텍스트를 수동으로 주입하지 않아도, 로거가 내부적으로 `getCurrentRequestContext()`를 호출해 현재 로그가 어떤 요청에 속하는지 표시할 수 있기 때문입니다.
+호스트에 async-context primitive가 없으면 fluo는 동기 stack fallback을 사용합니다. Context는 callback의 동기 frame이 실행되는 동안에만 존재하고 awaited continuation이 재개되기 전에 제거됩니다. 이는 요청 간 context 누출을 피하기 위해 `await` 이후의 context 가용성을 의도적으로 포기하는 동작입니다. 이런 호스트까지 이식 가능한 코드가 필요하면 `RequestContext`를 명시적으로 전달하세요.
 
 ## 11.4 옵저버(Observer) 패턴을 통한 모니터링
 
@@ -129,18 +125,16 @@ async function notifyObservers(
 
 ## 11.5 요청 중단(Aborted) 처리의 정교함
 
-클라이언트가 응답을 받기 전에 연결을 끊는 경우(예: 브라우저 새로고침, 모바일 네트워크 단절), 서버 리소스를 낭비하지 않으려면 진행 중인 데이터베이스 쿼리나 비즈니스 로직을 중단해야 합니다. 디스패처는 표준 `AbortSignal`을 감시하며 파이프라인 각 단계에서 이를 확인합니다.
+클라이언트가 응답을 받기 전에 연결을 끊는 경우(예: 브라우저 새로고침, 모바일 네트워크 단절), 어댑터는 그 상태를 `FrameworkRequest.signal`로 노출해야 합니다. Signal 할당이 실용적이지 않다면 `FrameworkRequest.isAborted()`를 제공할 수 있습니다.
 
 ```typescript
-// packages/http/src/dispatch/dispatcher.ts:L103-L107
-function ensureRequestNotAborted(request: FrameworkRequest): void {
-  if (request.signal?.aborted) {
-    throw new RequestAbortedError();
-  }
+// packages/http/src/dispatch/dispatcher.ts (simplified)
+function isRequestAborted(request: FrameworkRequest): boolean {
+  return request.isAborted?.() ?? request.signal?.aborted === true;
 }
 ```
 
-디스패처는 미들웨어 실행 전, 가드 실행 후, 그리고 응답을 쓰기 직전에 `ensureRequestNotAborted`를 호출해 불필요한 연산을 피합니다. `packages/http/src/dispatch/dispatcher.test.ts:L622-L735`에서는 요청이 도중에 중단되었을 때 `finally` 블록의 리소스 정리 로직이 빠짐없이 실행되는지 테스트합니다. 이는 파일 업로드나 대용량 데이터 처리처럼 리소스를 많이 쓰는 요청에서 서버 가용성을 유지하는 데 필요한 기능입니다.
+일반 dispatch pipeline은 진입 시 이 상태를 확인하고, handler가 general path로 실행되면 handler/interceptor 작업 뒤 response를 쓰기 전에 다시 확인합니다. Native fast-path dispatch는 진입 시 확인합니다. 이것은 모든 middleware, database query, 임의의 business operation을 자동으로 취소하는 기능이 아니라 경계 검사입니다. 오래 실행되는 application code는 `RequestContext.request.signal`을 받아 cancellation을 지원하는 API로 직접 전파해야 합니다. Managed SSE는 request signal과 response-stream close notification에도 반응합니다.
 
 ## 11.6 파이프라인 시각화 다이어그램
 
@@ -228,20 +222,18 @@ interface DispatchPhaseContext {
 
 요청 처리가 끝나면 승격된 request-scoped container를 반드시 dispose해야 합니다. 이는 해당 요청 기간 동안 생성된 싱글톤이 아닌 객체(Request-scoped providers)의 `onDispose` 훅을 실행하고 메모리를 해제하여 누수를 막습니다. 요청이 singleton-only로 유지되어 승격이 일어나지 않았다면 cleanup 경로는 root container를 그대로 둡니다.
 
-`packages/http/src/dispatch/dispatcher.ts:L240-L255`
+`packages/http/src/dispatch/dispatcher.ts` (simplified)
 ```typescript
-async function finalizeRequest(phaseContext: DispatchPhaseContext): Promise<void> {
-  try {
-    await notifyObservers(phaseContext.observers, phaseContext.requestContext, (o, ctx) => o.onRequestFinish?.(ctx));
-  } catch (error) {
-    phaseContext.options.logger?.error('Observer onRequestFinish threw an error', error);
-  } finally {
+try {
+  await runDispatchPipeline(phaseContext);
+} finally {
+  await notifyRequestFinish(phaseContext);
+
+  if (phaseContext.dispatchScope.requestScoped) {
     try {
-      if (phaseContext.dispatchScope.requestScoped) {
-        await phaseContext.dispatchScope.container.dispose();
-      }
+      await phaseContext.dispatchScope.container.dispose();
     } catch (error) {
-      phaseContext.options.logger?.error('Request-scoped container dispose threw an error', error);
+      logger?.error('Request-scoped container dispose threw an error.', error);
     }
   }
 }
@@ -249,14 +241,14 @@ async function finalizeRequest(phaseContext: DispatchPhaseContext): Promise<void
 
 이 과정은 `finally` 블록 안에서 수행되어 요청의 성공/실패 여부와 관계없이 항상 cleanup 여부를 확인합니다. `packages/http/src/dispatch/dispatcher.test.ts`는 singleton-only route가 request-scope 생성을 건너뛰는 경우와, request-scoped controller, 활성 middleware, observer, custom binder, DTO converter, 수동 container resolution이 isolated scope를 사용한 뒤 dispatch 후 dispose되는 경우를 모두 검증합니다.
 
-또한 `RequestContext` 내부에 저장된 임시 파일 참조나 열려 있는 스트림도 이 단계에서 닫힙니다. Fluo의 HTTP 디스패처는 누수 방지 중심 설계를 통해 많은 요청이 흐르는 프로덕션 환경에서도 메모리 점유율을 안정적으로 유지하도록 돕습니다.
+디스패처는 `RequestContext`를 검사해 임의의 임시 파일, database handle, application-owned stream을 자동으로 닫지 않습니다. 이런 resource는 `onDispose`가 있는 request-scoped provider 뒤에 두거나 application `finally` 블록에서 해제하거나 request abort signal에 cleanup을 연결해야 합니다. Managed `SseResponse`/`AsyncIterable` 처리는 문서화된 response-stream lifecycle만 소유하며, 그 밖의 native resource는 adapter와 application code가 계속 소유합니다.
 
 ## 요약
 - **범용 디스패처**: 특정 프레임워크에 묶이지 않고 표준화된 요청 처리 파이프라인을 제공합니다.
 - **10단계 파이프라인**: 전역 미들웨어부터 응답 쓰기까지 명확히 정의된 단계별 실행을 보장합니다.
-- **비동기 격리**: `AsyncLocalStorage` 기반의 `RequestContext`로 요청 간 데이터를 격리합니다.
+- **런타임 의존 비동기 격리**: 호스트가 async-context storage를 제공하면 awaited work까지 context를 보존하고, 그렇지 않으면 synchronous-only fallback을 사용합니다.
 - **관찰성 계층**: 옵저버 패턴을 통해 비즈니스 로직 수정 없이 전 구간 모니터링이 가능합니다.
-- **신뢰할 수 있는 정리**: `AbortSignal` 감시와 isolated request scope로 승격된 dispatch의 request-scope disposal로 리소스 낭비를 줄입니다.
+- **명시적 정리**: 문서화된 경계에서 adapter-provided abort state를 확인하고 디스패처가 만든 request scope를 dispose합니다. Application-owned resource에는 여전히 명시적인 owner가 필요합니다.
 
 ## 다음 챕터 예고
 다음 챕터에서는 가드, 인터셉터, 미들웨어가 어떻게 "체인"을 형성하고 서로의 실행을 제어하는지 더 깊게 살펴봅니다. `reduceRight`를 활용한 체인 구성이 어떤 실행 순서를 만드는지도 함께 다룹니다.

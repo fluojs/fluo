@@ -45,6 +45,8 @@ export interface ConfigModuleOptions {
   processEnv?: NodeJS.ProcessEnv;
   schema?: ConfigSchema;
   defaults?: ConfigDictionary;
+  /** Highest-precedence values applied after defaults, env files, and `processEnv`. */
+  runtimeOverrides?: ConfigDictionary;
   /** Supply a custom file parser (e.g. for YAML or TOML). Receives raw file content,
    *  returns a flat key-value record. Defaults to dotenv parsing. */
   parse?: (content: string) => Record<string, string>;
@@ -60,7 +62,6 @@ export interface ConfigModuleOptions {
  */
 export interface ConfigLoadOptions extends ConfigModuleOptions {
   cwd?: string;
-  runtimeOverrides?: ConfigDictionary;
 }
 
 /**

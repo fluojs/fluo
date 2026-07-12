@@ -1,3 +1,9 @@
+import { Inject } from '@fluojs/core';
+import type { CallHandler, Interceptor, InterceptorContext } from '@fluojs/http';
+
+import { MongooseConnection } from './connection.js';
+import type { MongooseConnectionLike } from './types.js';
+
 type TransactionConnection = {
   transaction<T>(fn: () => Promise<T>): Promise<T>;
 };
@@ -95,4 +101,29 @@ export function Transaction<THost>(
       return connection.transaction(() => value.apply(this, args));
     };
   };
+}
+
+/**
+ * Compatibility HTTP interceptor that opens a Mongoose request transaction around a routed handler.
+ *
+ * @remarks
+ * This deprecated 1.x bridge forwards the request `AbortSignal` to `MongooseConnection.requestTransaction(...)`.
+ * Prefer service-layer `@Transaction()` or an explicit request boundary for new code.
+ *
+ * @deprecated Prefer service-layer `@Transaction()` or explicit `MongooseConnection.requestTransaction(...)`.
+ */
+@Inject(MongooseConnection)
+export class MongooseTransactionInterceptor implements Interceptor {
+  constructor(private readonly connection: MongooseConnection<MongooseConnectionLike>) {}
+
+  /**
+   * Runs the downstream handler inside the compatibility request transaction.
+   *
+   * @param context Interceptor context containing the request cancellation signal.
+   * @param next Downstream handler chain.
+   * @returns The downstream result after the request transaction settles.
+   */
+  async intercept(context: InterceptorContext, next: CallHandler): Promise<unknown> {
+    return this.connection.requestTransaction(() => next.handle(), context.requestContext.request.signal);
+  }
 }

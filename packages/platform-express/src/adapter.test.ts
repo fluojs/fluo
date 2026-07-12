@@ -2193,6 +2193,121 @@ describe('@fluojs/platform-express', () => {
     }
   });
 
+  it('reuses one retrying listen lifecycle for concurrent callers', async () => {
+    const blocker = createHttpServer();
+    const port = await findAvailablePort();
+
+    await new Promise<void>((resolve, reject) => {
+      blocker.once('error', reject);
+      blocker.listen({ host: '127.0.0.1', port }, () => {
+        blocker.removeListener('error', reject);
+        resolve();
+      });
+    });
+
+    const closeBlocker = async (): Promise<void> => {
+      if (!blocker.listening) {
+        return;
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        blocker.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    };
+    const firstDispatcher = {
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        await response.send({ dispatcher: 'first' });
+      },
+    };
+    const secondDispatcher = {
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        await response.send({ dispatcher: 'second' });
+      },
+    };
+    const adapter = new ExpressHttpApplicationAdapter(port, '127.0.0.1', 20, 20, undefined, undefined, 1024, false, 500);
+
+    try {
+      const firstListen = adapter.listen(firstDispatcher);
+      const secondListen = adapter.listen(secondDispatcher);
+
+      await closeBlocker();
+      await Promise.all([firstListen, secondListen]);
+
+      const response = await fetch(`http://127.0.0.1:${String(port)}/single-flight`);
+
+      await expect(response.json()).resolves.toEqual({ dispatcher: 'first' });
+    } finally {
+      await adapter.close();
+      await closeBlocker();
+    }
+  });
+
+  it('rejects relisten after cancellation settles while close is still joining startup', async () => {
+    const blocker = createHttpServer();
+    const port = await findAvailablePort();
+
+    await new Promise<void>((resolve, reject) => {
+      blocker.once('error', reject);
+      blocker.listen({ host: '127.0.0.1', port }, () => {
+        blocker.removeListener('error', reject);
+        resolve();
+      });
+    });
+
+    const closeBlocker = async (): Promise<void> => {
+      if (!blocker.listening) {
+        return;
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        blocker.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    };
+    const adapter = new ExpressHttpApplicationAdapter(port, '127.0.0.1', 20, 20, undefined, undefined, 1024, false, 500);
+    const dispatcher = { async dispatch() {} };
+    const firstListenResult = adapter.listen(dispatcher).then(
+      () => 'listened' as const,
+      (error: unknown) => error,
+    );
+    const activeListen = Reflect.get(adapter, 'listenInFlight') as Promise<void>;
+    const relistenResult = activeListen.then(
+      () => 'settled-without-cancellation' as const,
+      () => adapter.listen(dispatcher).then(
+        () => 'listened' as const,
+        (error: unknown) => error,
+      ),
+    );
+
+    try {
+      await expect(adapter.close()).resolves.toBeUndefined();
+      await closeBlocker();
+
+      const firstResult = await firstListenResult;
+      const secondResult = await relistenResult;
+
+      expect(firstResult).toBeInstanceOf(Error);
+      expect(secondResult).toBeInstanceOf(Error);
+      expect(String(secondResult instanceof Error ? secondResult.message : secondResult)).toContain('close() to complete');
+    } finally {
+      await adapter.close();
+      await closeBlocker();
+    }
+  });
+
   it('cancels retrying startup during close before a later Express bind can occur', async () => {
     const blocker = createHttpServer((_request, response) => {
       response.statusCode = 200;
@@ -2229,7 +2344,11 @@ describe('@fluojs/platform-express', () => {
     const dispatcher = {
       async dispatch() {},
     };
-    const listenResult = adapter.listen(dispatcher).then(
+    const firstListenResult = adapter.listen(dispatcher).then(
+      () => 'listened' as const,
+      (error: unknown) => error,
+    );
+    const secondListenResult = adapter.listen(dispatcher).then(
       () => 'listened' as const,
       (error: unknown) => error,
     );
@@ -2241,9 +2360,12 @@ describe('@fluojs/platform-express', () => {
       await expect(adapter.close()).resolves.toBeUndefined();
       await closeBlocker();
 
-      const result = await listenResult;
-      expect(result).toBeInstanceOf(Error);
-      expect(String(result instanceof Error ? result.message : result)).toContain('startup was cancelled');
+      const results = await Promise.all([firstListenResult, secondListenResult]);
+
+      for (const result of results) {
+        expect(result).toBeInstanceOf(Error);
+        expect(String(result instanceof Error ? result.message : result)).toContain('startup was cancelled');
+      }
 
       await new Promise((resolve) => {
         setTimeout(resolve, 60);
