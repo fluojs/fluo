@@ -23,7 +23,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 | Controller parameter decorators such as `@Param()`, `@Query()`, `@Body()`, `@Headers()`, `@Req()`, and `@Res()`, plus `Pipe` / `ValidationPipe` transformation | `@RequestDto(...)` with field-level `@FromPath(...)`, `@FromQuery(...)`, `@FromBody(...)`, `@FromHeader(...)`, `@FromCookie(...)`, and `@Convert(...)` from `@fluojs/http`; a `RequestContext` handler parameter for advanced request/response access | fluo does not expose NestJS-style controller parameter decorators or a public parameter Pipe stage. Bind one request DTO, declare each field source, use `@Convert(...)` for number/boolean/date/domain conversion, then validate the materialized DTO with the validation package. |
 | `createApplicationContext()` standalone bootstrap | `FluoFactory.createApplicationContext(AppModule)` | Standalone application context exists in `@fluojs/runtime`. |
 | `Test.createTestingModule({ imports: [...] }).overrideModule(...)` | `createTestingModule({ rootModule }).overrideModule(...)` from `@fluojs/testing` | fluo testing uses an explicit `rootModule` and replacement compile seam so tests preserve authored module identity without mutating module metadata globally. |
-| NestJS request transaction interceptor | Service `@Transaction()` from the persistence package, or explicit `requestTransaction(...)` at the controller/request boundary | `PrismaTransactionInterceptor` and `MongooseTransactionInterceptor` remain deprecated 1.x compatibility bridges for existing imports. New code should keep business transactions on services and use explicit `requestTransaction(...)` only when the entire request must share one boundary. Drizzle has no compatibility interceptor export. |
+| NestJS request transaction interceptor | Service `@Transaction()` from the persistence package, or explicit `requestTransaction(...)` at the controller/request boundary | `PrismaTransactionInterceptor` and `MongooseTransactionInterceptor` remain deprecated 1.x compatibility bridges for existing imports. New code should keep business transactions on services and use explicit `requestTransaction(...)` only when the entire request must share one boundary, forwarding `RequestContext.request.signal` when available. Drizzle has no compatibility interceptor export. |
 | `@HealthCheck()` controller method with `HealthCheckService.check([...])` | `TerminusModule.forRoot({ indicators, indicatorProviders, readinessChecks })` from `@fluojs/terminus` | Module-level registration is the primary API so runtime `/health` and `/ready` routes include indicator and platform diagnostics consistently. |
 | NestJS Terminus memory/disk or Redis checks | `@fluojs/terminus/node` and `@fluojs/terminus/redis` | Node.js memory/disk helpers and Redis helpers live on dedicated subpaths. The root package does not make Redis peers or Node filesystem access part of the default import boundary. |
 | `@nestjs/throttler` global throttler setup | `ThrottlerModule.forRoot(...)` plus explicit `@UseGuards(ThrottlerGuard)` from `@fluojs/throttler` / `@fluojs/http` | Module registration provides the policy and guard provider; route enforcement starts only where the guard is attached. |
@@ -92,6 +92,32 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - `NotificationsModule` is global by default for `NotificationsService`, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS`; use `global: false` when migrated code requires module-local visibility.
 - Slack migration is not a NestJS async dynamic-module or package-level multi-client registry clone. `SlackModule.forRootAsync(...)` accepts `inject` plus `useFactory`; it does not consume `imports`, `useClass`, or `useExisting`. Register dependencies in the application module graph before listing their tokens in `inject`, then return final Slack options from `useFactory`. `@fluojs/slack` exposes singleton compatibility tokens `SLACK` and `SLACK_CHANNEL`, mirrors that singleton wiring through `createSlackProviders(...)`, and uses `global?: boolean` with default global visibility instead of NestJS `isGlobal`.
 - Discord migration is not a NestJS async dynamic-module or custom-provider clone. `DiscordModule.forRootAsync(...)` accepts `inject` plus `useFactory`; it does not consume `imports`, `useClass`, or `useExisting`. `@fluojs/discord` exposes singleton compatibility tokens `DISCORD` and `DISCORD_CHANNEL`, uses `global?: boolean` with default global visibility instead of NestJS `isGlobal`, and keeps internal provider helpers such as `createDiscordProviders(...)`, `DISCORD_OPTIONS`, and `NormalizedDiscordModuleOptions` private.
+
+### Prisma Request-Wide Transaction Migration
+
+Keep ordinary business atomicity on service `@Transaction()` methods. If a migrated controller genuinely needs one transaction around work that cannot be expressed as a single service boundary, inject the wrapper `PrismaService<TClient>`, call `requestTransaction(...)` explicitly, and forward the request cancellation signal:
+
+```typescript
+@Inject(PrismaService, CheckoutService)
+@Controller('/checkout')
+export class CheckoutController {
+  constructor(
+    private readonly prisma: PrismaService<PrismaClient>,
+    private readonly checkoutService: CheckoutService,
+  ) {}
+
+  @Post('/')
+  checkout(input: CheckoutInput, context: RequestContext) {
+    const { request } = context;
+    return this.prisma.requestTransaction(
+      () => this.checkoutService.checkout(input),
+      request.signal,
+    );
+  }
+}
+```
+
+Do not migrate every NestJS interceptor into this shape. Request-wide transactions can keep locks open through unrelated controller work; prefer a focused service `@Transaction()` whenever it represents the actual business unit of work.
 
 ### GraphQL Resolver Migration
 

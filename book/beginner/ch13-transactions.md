@@ -63,7 +63,7 @@ export class UsersService {
 }
 ```
 
-By applying `@Transaction()`, you tell fluo that the entire method should run within a single database transaction. If the method returns successfully, the transaction commits. If it throws an error, fluo automatically rolls back every change made inside that method.
+By applying `@Transaction()`, you tell fluo that the entire method should run within a single database transaction. When the registered client supports Prisma interactive transactions, a successful method commits and a thrown error delegates rollback to Prisma. If the client does not expose `$transaction(...)` and `strictTransactions` remains `false`, fluo runs the method directly without rollback atomicity; set `strictTransactions: true` for production flows that require this guarantee.
 
 This approach keeps your service methods clean. You don't need to manually open or close transactions; the decorator handles the lifecycle for you, allowing you to focus purely on business logic.
 
@@ -122,6 +122,32 @@ The block pattern is useful when you want to catch errors from specific steps or
 Fluo handles "nested" transactions by reusing the already-active transaction client. If `Service A` has a `@Transaction()` method that calls `Service B`'s `@Transaction()` method, they both share the same outer transaction. Everything is treated as part of one cohesive unit of work.
 
 ## 13.4 Advanced Patterns and Internals
+
+### Explicit Request-Wide Boundaries
+
+Service `@Transaction()` remains the primary boundary because it keeps database atomicity aligned with one business operation. In the rarer case where controller-level orchestration must keep the entire request in one transaction, call `requestTransaction(...)` explicitly and forward the request `AbortSignal`:
+
+```typescript
+@Inject(PrismaService, AuthService)
+@Controller('/users')
+export class UsersController {
+  constructor(
+    private readonly prisma: PrismaService<PrismaClient>,
+    private readonly authService: AuthService,
+  ) {}
+
+  @Post('/signup')
+  signup(dto: CreateUserDto, context: RequestContext) {
+    const { request } = context;
+    return this.prisma.requestTransaction(
+      () => this.authService.register(dto),
+      request.signal,
+    );
+  }
+}
+```
+
+Do not make every request transactional. A request-wide boundary can keep database locks open while unrelated controller work runs, so reserve it for cases that cannot be represented by one focused service method.
 
 ### How it Works: AsyncLocalStorage (ALS)
 In many frameworks, you must pass a "transaction object" (`tx`) through every function call. This pollutes business logic and makes refactoring difficult.
@@ -249,9 +275,9 @@ When you move from a monolithic Fluo application to a microservices architecture
 The way you handle data defines the character of your application. When you choose explicit transactions over hidden magic, and transaction-agnostic repositories over tightly coupled repositories, you move toward a codebase that stays pleasant to maintain for a long time. Part 2 was the journey through the application's "Ground Truth." Now that you have a solid foundation, let's protect it safely.
 
 ### Monitoring Transaction Health
-To maintain a high-performance system, you need to monitor transaction health in real time. Use Fluo's built-in metrics to track transaction duration, commit-to-rollback ratios, and lock contention indicators. If rollbacks spike, suspect a bug in business logic or a database connection problem. If lock contention is high, it may mean transactions are too long or touch the same database rows too often, which is a sign that you may need an architecture change or better caching.
+To maintain a high-performance system, you need to monitor transaction health in real time. `PrismaService.createPlatformStatusSnapshot()` reports lifecycle, readiness, transaction capability, transaction-context availability, and active request-boundary state; it does not publish built-in duration, commit-to-rollback, or lock-contention metrics. Add application or database instrumentation for those signals when you need them.
 
-In addition to metrics, structured logging is essential. Every transaction should log a unique ID, the identifier provided by ALS, so you can trace exactly what happened when a request fails. This correlation between HTTP requests and database transactions makes Fluo applications much easier to debug under high-pressure production conditions. When you treat transactions as first-class citizens in your observability stack, the data layer never remains a "black box."
+In addition to metrics, structured logging is essential. Prisma transaction ALS stores the current client, not a public transaction ID. Reuse an application-owned request or correlation ID and propagate it through your logging context instead of assuming `@fluojs/prisma` creates one. Correlating HTTP and database work this way makes failures easier to trace without depending on an unsupported package contract.
 
 ### Scaling Your Transactional Logic
 As your team grows, keeping transaction patterns consistent becomes a people problem too. Document transaction rules clearly, and use linting or architecture tests to confirm that every new Repository follows the transaction-aware direct call pattern.

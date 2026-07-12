@@ -115,6 +115,35 @@ export class OrdersController {
 
 새 비즈니스 작업에는 서비스 계층 `@Transaction()`을 우선 사용하세요. 전체 요청에 하나의 트랜잭션이 정말 필요하거나 이름 있는/여러 Prisma 등록에서 특정 서비스를 선택해야 한다면 명시적 `requestTransaction(...)`을 사용하세요. 호환성 interceptor는 이름 없는 기본 등록만 대상으로 합니다.
 
+요청 전체 원자성이 정말 필요한 경우에는 application code에서 boundary와 cancellation input을 명시적으로 드러내세요.
+
+```typescript
+import { Inject } from '@fluojs/core';
+import { Controller, Post, type RequestContext } from '@fluojs/http';
+import { PrismaService } from '@fluojs/prisma';
+import { PrismaClient } from '@prisma/client';
+
+@Inject(PrismaService, OrdersService)
+@Controller('/orders')
+export class OrdersController {
+  constructor(
+    private readonly prisma: PrismaService<PrismaClient>,
+    private readonly orders: OrdersService,
+  ) {}
+
+  @Post('/checkout')
+  checkout(input: CheckoutInput, context: RequestContext) {
+    const { request } = context;
+    return this.prisma.requestTransaction(
+      () => this.orders.checkout(input),
+      request.signal,
+    );
+  }
+}
+```
+
+이는 서비스 `@Transaction()`을 대체하는 방식이 아니라 좁은 호환성 패턴입니다. 요청 전체 트랜잭션은 HTTP 작업 전체에서 데이터베이스 lock을 유지할 수 있으므로 boundary를 짧고 명시적으로 유지하세요.
+
 ### 여러 클라이언트를 위한 이름 있는 등록
 
 하나의 애플리케이션 컨테이너 안에서 여러 Prisma Client가 필요하다면 각 등록에 명시적인 `name`을 부여하고 `getPrismaServiceToken(name)`으로 대응되는 토큰을 주입하세요. 이름 있는 클라이언트를 사용할 때는 `@Transaction()`에 해당 서비스로 접근할 수 있는 accessor를 전달하세요. 기본 `@Transaction()` 해석은 Prisma service/facade 형태의 속성만 선택합니다. 다른 persistence 통합의 transaction-like 객체는 무시되므로 모호한 host에서는 명시적 accessor를 사용해야 합니다.
