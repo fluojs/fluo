@@ -77,7 +77,23 @@ const app = await fluoFactory.create(AppModule, {
 });
 ```
 
-장기 이식성을 생각한다면 fluo 계약으로 작성한 미들웨어를 사용하거나 fluo 모듈 시스템 안에서 등록하는 편이 낫습니다. Migration 중 native Express middleware를 유지해야 한다면 platform-specific bootstrap code에 격리하고 request context mutation, auth, route behavior는 fluo middleware, guard, interceptor에 두세요. 그래야 다른 런타임으로 옮길 때 플랫폼 전용 코드의 위치가 명확해집니다.
+장기 이식성을 생각한다면 fluo 계약으로 작성한 미들웨어를 사용하거나 fluo 모듈 시스템 안에서 등록하는 편이 낫습니다. Migration 중 native Express/Connect handler를 유지해야 한다면 adapter의 명시적 pre-router seam에 두세요.
+
+```typescript
+import type { RequestHandler } from 'express';
+
+const legacyHeaders: RequestHandler = (_request, response, next) => {
+  response.setHeader('x-legacy-host', 'express');
+  next();
+};
+
+const adapter = createExpressAdapter({
+  nativeMiddleware: [legacyHeaders],
+  port: 3000,
+});
+```
+
+`nativeMiddleware` handler는 배열 순서대로 Express Router와 catch-all fluo dispatcher보다 먼저 실행됩니다. `next()`를 호출하면 일반 fluo pipeline에 들어가고, response를 끝내면 fluo dispatch를 건너뜁니다. Native throw, rejected promise, `next(error)`는 Express error chain에 남으므로 필요하면 처리 대상 middleware 뒤에 native error handler를 두세요. Adapter는 Node listener와 connection을 닫지만 native handler가 캡처한 resource는 애플리케이션 소유이므로 명시적으로 정리해야 합니다. Request-context mutation, auth, route behavior는 fluo middleware, guard, interceptor에 두어 다른 런타임으로 옮길 때 platform-specific boundary가 명확하게 유지되도록 하세요.
 
 ## 21.2 The Raw Node.js Adapter
 
@@ -242,7 +258,7 @@ await runExpressApplication(AppModule, {
 | :--- | :--- | :--- | :--- |
 | **Performance** | Good | Excellent | High |
 | **Ecosystem** | Massive | Standard Lib | Large |
-| **Middleware** | Express host 위의 fluo contract | Custom | Fastify host 위의 fluo contract |
+| **Middleware** | fluo contract와 opt-in pre-router native seam | Custom | Fastify host 위의 fluo contract |
 | **Footprint** | Moderate | Minimal | Moderate |
 | **Best For** | Legacy Migrations | Micro-services | Standard Apps |
 
@@ -250,6 +266,7 @@ await runExpressApplication(AppModule, {
 
 - fluo는 **어댑터(Adapters)**를 사용하여 다양한 HTTP 엔진과 인터페이스합니다.
 - `@fluojs/platform-express`를 사용하면 기존 Express 생태계와 운영 자산을 이어서 사용할 수 있습니다.
+- `nativeMiddleware`는 native continuation, termination, error, resource ownership semantics를 유지하는 migration 전용 Express boundary이며 portable fluo middleware가 아닙니다.
 - `@fluojs/platform-nodejs`는 최소한의 프레임워크 없는 HTTP 레이어를 제공합니다.
 - 대부분의 fluo 코드(컨트롤러, 프로바이더, 모듈)는 어떤 어댑터가 실행 중인지 전혀 알 필요가 없습니다.
 - 플랫폼 전용 기능이 필요한 경우에만 `getServer?.()`로 하부 Node server에 접근하거나 `getRealtimeCapability()`를 확인하세요.

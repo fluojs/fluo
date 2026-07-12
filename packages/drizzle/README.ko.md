@@ -80,12 +80,35 @@ export class AppModule {}
 `@Transaction()` 데코레이터는 서비스 레이어에서 트랜잭션 경계를 정의하는 권장 방법입니다. 이 데코레이터가 적용된 메서드 내부에서 발생하는 모든 리포지토리 호출은 동일한 Drizzle 트랜잭션을 공유합니다.
 
 ```ts
+import { Inject } from '@fluojs/core';
 import { Transaction, DrizzleDatabase, type DrizzleDatabaseFacade } from '@fluojs/drizzle';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { users, profiles } from './schema';
 
 type AppDatabase = ReturnType<typeof drizzle>;
 
+@Inject(DrizzleDatabase)
+export class UserRepository {
+  constructor(private readonly db: DrizzleDatabaseFacade<AppDatabase>) {}
+
+  async create(data: any) {
+    // facade 타입은 표준 Drizzle 메서드를 노출합니다.
+    // @Transaction() 내부에서 호출되면 자동으로 활성 트랜잭션에 참여합니다.
+    const [user] = await this.db.insert(users).values(data).returning();
+
+    if (!user) {
+      throw new Error('User insert did not return a row.');
+    }
+
+    return user;
+  }
+
+  async initProfile(userId: string) {
+    return this.db.insert(profiles).values({ userId });
+  }
+}
+
+@Inject(UserRepository)
 export class UserService {
   constructor(private readonly repo: UserRepository) {}
 
@@ -94,20 +117,6 @@ export class UserService {
     const user = await this.repo.create(dto);
     await this.repo.initProfile(user.id);
     return user;
-  }
-}
-
-export class UserRepository {
-  constructor(private readonly db: DrizzleDatabaseFacade<AppDatabase>) {}
-
-  async create(data: any) {
-    // facade 타입은 표준 Drizzle 메서드를 노출합니다.
-    // @Transaction() 내부에서 호출되면 자동으로 활성 트랜잭션에 참여합니다.
-    return this.db.insert(users).values(data);
-  }
-
-  async initProfile(userId: string) {
-    return this.db.insert(profiles).values({ userId });
   }
 }
 ```

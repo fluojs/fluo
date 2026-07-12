@@ -77,7 +77,23 @@ const app = await fluoFactory.create(AppModule, {
 });
 ```
 
-For long-term portability, prefer middleware written to the fluo contract or registered through the fluo Module system. If you must keep native Express middleware during a migration, isolate it in platform-specific bootstrap code and keep request context mutation, auth, and route behavior in fluo middleware, guards, or interceptors. That keeps the location of platform-specific code clear when you move to another runtime.
+For long-term portability, prefer middleware written to the fluo contract or registered through the fluo Module system. If a migration must keep a native Express/Connect handler, put it on the adapter's explicit pre-router seam:
+
+```typescript
+import type { RequestHandler } from 'express';
+
+const legacyHeaders: RequestHandler = (_request, response, next) => {
+  response.setHeader('x-legacy-host', 'express');
+  next();
+};
+
+const adapter = createExpressAdapter({
+  nativeMiddleware: [legacyHeaders],
+  port: 3000,
+});
+```
+
+Handlers in `nativeMiddleware` run in array order before Express Router and the catch-all fluo dispatcher. Calling `next()` enters the ordinary fluo pipeline; ending the response skips fluo dispatch. Native throws, rejected promises, and `next(error)` stay in the Express error chain, so put a native error handler after the middleware it handles when needed. The adapter closes its Node listener and connections, but resources captured by native handlers remain application-owned and need explicit cleanup. Keep request-context mutation, auth, and route behavior in fluo middleware, guards, or interceptors so the platform-specific boundary remains clear when moving to another runtime.
 
 ## 21.2 The Raw Node.js Adapter
 
@@ -242,7 +258,7 @@ This helper wires process signals to the standard fluo shutdown lifecycle and he
 | :--- | :--- | :--- | :--- |
 | **Performance** | Good | Excellent | High |
 | **Ecosystem** | Massive | Standard Lib | Large |
-| **Middleware** | fluo contract over Express host | Custom | fluo contract over Fastify host |
+| **Middleware** | fluo contract plus opt-in pre-router native seam | Custom | fluo contract over Fastify host |
 | **Footprint** | Moderate | Minimal | Moderate |
 | **Best For** | Legacy Migrations | Micro-services | Standard Apps |
 
@@ -250,6 +266,7 @@ This helper wires process signals to the standard fluo shutdown lifecycle and he
 
 - fluo uses **Adapters** to interface with different HTTP engines.
 - `@fluojs/platform-express` lets you continue using the existing Express ecosystem and operational assets.
+- `nativeMiddleware` is a migration-only Express boundary with native continuation, termination, error, and resource-ownership semantics; it is not portable fluo middleware.
 - `@fluojs/platform-nodejs` provides a minimal HTTP layer without a framework.
 - Most fluo code (Controllers, Providers, Modules) does not need to know which adapter is running at all.
 - Access the underlying Node server with `getServer?.()` or inspect `getRealtimeCapability()` only when you need platform-specific features.
