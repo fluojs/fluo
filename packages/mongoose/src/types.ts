@@ -23,6 +23,27 @@ export interface MongooseSessionLike {
 }
 
 /**
+ * Callable model facade returned by `MongooseConnection.model(...)`.
+ *
+ * @remarks
+ * The listed operations receive the ambient transaction session automatically when called inside a transaction boundary.
+ * Other model properties remain available as `unknown` because fluo does not own application schema or plugin typing.
+ */
+export interface MongooseModelFacade {
+  /** Runs a Mongoose aggregate operation with ambient session options. */
+  aggregate(...args: unknown[]): unknown;
+  /** Runs a Mongoose bulk-write operation with ambient session options. */
+  bulkWrite(...args: unknown[]): unknown;
+  /** Runs a Mongoose create operation with ambient session options. */
+  create(...args: unknown[]): unknown;
+  /** Runs a Mongoose find operation with ambient session options. */
+  find(...args: unknown[]): unknown;
+  /** Runs a Mongoose find-one operation with ambient session options. */
+  findOne(...args: unknown[]): unknown;
+  readonly [key: PropertyKey]: unknown;
+}
+
+/**
  * Module options for registering a Mongoose connection and optional shutdown disposal hook.
  *
  * @typeParam TConnection Root Mongoose connection shape registered in the module.
@@ -61,7 +82,7 @@ export interface MongooseHandleProvider<TConnection extends MongooseConnectionLi
    * @param args Additional model resolver arguments forwarded unchanged.
    * @returns The root model outside transactions, or a model facade inside an active transaction boundary.
    */
-  model(name: string, ...args: unknown[]): Record<PropertyKey, unknown>;
+  model(name: string, ...args: unknown[]): MongooseModelFacade;
   /**
    * Opens a Mongoose session transaction boundary around `fn`.
    *

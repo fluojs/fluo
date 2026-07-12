@@ -5,6 +5,7 @@ import type {
   MongooseAsyncModuleOptions,
   MongooseConnectionLike,
   MongooseHandleProvider,
+  MongooseModelFacade,
   MongoosePlatformStatusSnapshotInput,
 } from './index.js';
 
@@ -35,5 +36,10 @@ describe('@fluojs/mongoose public API surface', () => {
     expectTypeOf<MongoosePlatformStatusSnapshotInput>().toHaveProperty('lifecycleState');
     expectTypeOf<MongoosePlatformStatusSnapshotInput>().toHaveProperty('supportsStartSession');
     expectTypeOf<MongooseHandleProvider<MongooseConnectionLike>>().toHaveProperty('model');
+    expectTypeOf<MongooseModelFacade['create']>().toBeFunction();
+    expectTypeOf<MongooseModelFacade['find']>().toBeFunction();
+    expectTypeOf<MongooseModelFacade['findOne']>().toBeFunction();
+    expectTypeOf<MongooseModelFacade['aggregate']>().toBeFunction();
+    expectTypeOf<MongooseModelFacade['bulkWrite']>().toBeFunction();
   });
 });

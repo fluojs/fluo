@@ -62,13 +62,14 @@ function createFakeConnection(
               ? (maybeOptions as TestMongooseOperationOptions)
               : undefined;
           const docs = opts ? args.slice(0, -1) : args;
+          const createdDocs = docs.length === 1 && Array.isArray(docs[0]) ? docs[0] : docs;
 
           events.push(`model:${name}:create:session=${opts?.session != null ? 'set' : 'unset'}`);
-          events.push(`model:${name}:create:docs=${docs.length}`);
+          events.push(`model:${name}:create:docs=${createdDocs.length}`);
           if (opts && 'timestamps' in opts) {
             events.push(`model:${name}:create:timestamps=${String(opts.timestamps)}`);
           }
-          return docs;
+          return createdDocs;
         },
         async find(_filter?: unknown, projection?: unknown, opts?: TestMongooseOperationOptions) {
           if (projection && typeof projection === 'object' && 'session' in projection) {
@@ -158,6 +159,55 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
         expect(events).toContain('service:createUser:session=set');
         expect(events).toContain('transaction:commit');
         expect(events).toContain('session:end');
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('preserves delegated connection.transaction ambient and facade sessions for @Transaction()', async () => {
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const modelConnection = createFakeConnection(events, session);
+      const connection = {
+        model: modelConnection.model,
+        async transaction<T>(fn: (currentSession: MongooseSessionLike) => Promise<T>): Promise<T> {
+          events.push('connection:transaction:start');
+          const result = await fn(session);
+          events.push('connection:transaction:end');
+          return result;
+        },
+      };
+
+      @Inject(MongooseConnection)
+      class UserService {
+        constructor(private readonly conn: MongooseConnection<typeof connection>) {}
+
+        @Transaction()
+        async createUser(name: string) {
+          events.push(`service:session=${this.conn.currentSession() === session ? 'set' : 'unset'}`);
+          return this.conn.model('User').create([{ name }]);
+        }
+      }
+
+      class AppModule {}
+
+      defineModule(AppModule, {
+        imports: [MongooseModule.forRoot({ connection })],
+        providers: [UserService],
+      });
+
+      const app = await bootstrapApplication({ rootModule: AppModule });
+      const service = await app.container.resolve(UserService);
+
+      try {
+        await expect(service.createUser('Ada')).resolves.toEqual([{ name: 'Ada' }]);
+        expect(events).toEqual([
+          'connection:transaction:start',
+          'service:session=set',
+          'model:User:create:session=set',
+          'model:User:create:docs=1',
+          'connection:transaction:end',
+        ]);
       } finally {
         await app.close();
       }
@@ -255,11 +305,12 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       const app = await bootstrapApplication({ rootModule: AppModule });
       const service = await app.container.resolve(UserService);
 
-      await service.create('Ada');
-
-      expect(events).toContain('model:User:create:session=set');
-
-      await app.close();
+      try {
+        await service.create('Ada');
+        expect(events).toContain('model:User:create:session=set');
+      } finally {
+        await app.close();
+      }
     });
 
     it('model.create(docA, docB) preserves multiple document arguments while adding ambient session', async () => {
@@ -302,11 +353,13 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       const app = await bootstrapApplication({ rootModule: AppModule });
       const service = await app.container.resolve(UserService);
 
-      await expect(service.createMany()).resolves.toEqual([{ name: 'Ada' }, { name: 'Grace' }]);
-      expect(events).toContain('model:User:create:session=set');
-      expect(events).toContain('model:User:create:docs=2');
-
-      await app.close();
+      try {
+        await expect(service.createMany()).resolves.toEqual([{ name: 'Ada' }, { name: 'Grace' }]);
+        expect(events).toContain('model:User:create:session=set');
+        expect(events).toContain('model:User:create:docs=2');
+      } finally {
+        await app.close();
+      }
     });
 
     it('model.create(docA, docB) treats a document session field as data, not operation options', async () => {
@@ -466,7 +519,23 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       }
     });
 
-    it('model.create(doc, options) merges the ambient session into existing single-document options', async () => {
+    it('model.create(docA, docB) treats an option-like timestamps field on the last document as data', async () => {
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const connection = createFakeConnection(events, session);
+      const mongoose = new MongooseConnection<typeof connection>(connection);
+
+      await expect(
+        mongoose.transaction(async () => {
+          const User = mongoose.model('User') as ReturnType<typeof connection.model>;
+          return User.create({ name: 'Ada' }, { name: 'Grace', timestamps: false });
+        }),
+      ).resolves.toEqual([{ name: 'Ada' }, { name: 'Grace', timestamps: false }]);
+
+      expect(events).toContain('model:User:create:docs=2');
+    });
+
+    it('model.create([doc], options) merges the ambient session into array-form create options', async () => {
       const mongoosePackage = await import('./index.js');
       const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
 
@@ -482,7 +551,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
 
         async createOne() {
           const User = this.conn.model('User') as ReturnType<typeof connection.model>;
-          return User.create({ name: 'Ada' }, { timestamps: false });
+          return User.create([{ name: 'Ada' }], { timestamps: false });
         }
       }
 
@@ -516,7 +585,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       }
     });
 
-    it('model.create(doc, {}) treats an empty second argument as single-document options', async () => {
+    it('model.create([doc], {}) treats an empty second argument as array-form create options', async () => {
       const mongoosePackage = await import('./index.js');
       const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
 
@@ -532,7 +601,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
 
         async createOne() {
           const User = this.conn.model('User') as ReturnType<typeof connection.model>;
-          return User.create({ name: 'Ada' }, {});
+          return User.create([{ name: 'Ada' }], {});
         }
       }
 
@@ -556,11 +625,13 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       const app = await bootstrapApplication({ rootModule: AppModule });
       const service = await app.container.resolve(UserService);
 
-      await expect(service.createOne()).resolves.toEqual([{ name: 'Ada' }]);
-      expect(events).toContain('model:User:create:session=set');
-      expect(events).toContain('model:User:create:docs=1');
-
-      await app.close();
+      try {
+        await expect(service.createOne()).resolves.toEqual([{ name: 'Ada' }]);
+        expect(events).toContain('model:User:create:session=set');
+        expect(events).toContain('model:User:create:docs=1');
+      } finally {
+        await app.close();
+      }
     });
 
     it('model.find() receives the ambient session inside @Transaction()', async () => {
@@ -1022,7 +1093,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       }
     });
 
-    it('throws when model.create(doc, { session: null }) uses session-only single-document options', async () => {
+    it('throws when model.create([doc], { session: null }) uses array-form create options', async () => {
       const mongoosePackage = await import('./index.js');
       const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
 
@@ -1038,7 +1109,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
 
         async create(name: string) {
           const User = this.conn.model('User') as ReturnType<typeof connection.model>;
-          return User.create({ name }, { session: null });
+          return User.create([{ name }], { session: null });
         }
       }
 
@@ -1120,6 +1191,39 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       } finally {
         await app.close();
       }
+    });
+
+    it('throws when model.findOne() receives { session: null } as the third options argument', async () => {
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const connection = createFakeConnection(events, session);
+      const mongoose = new MongooseConnection<typeof connection>(connection);
+
+      await expect(
+        mongoose.transaction(async () => {
+          const User = mongoose.model('User') as ReturnType<typeof connection.model>;
+          return User.findOne({ _id: 'user-1' }, { name: 1 }, { session: null });
+        }),
+      ).rejects.toThrow('Explicit session: null conflicts with ambient transaction session');
+
+      expect(events).not.toContain('model:User:findOne:session=set');
+    });
+
+    it('throws when model.findOne() receives a different session as the third options argument', async () => {
+      const events: string[] = [];
+      const session = createFakeSession(events);
+      const differentSession = createFakeSession([]);
+      const connection = createFakeConnection(events, session);
+      const mongoose = new MongooseConnection<typeof connection>(connection);
+
+      await expect(
+        mongoose.transaction(async () => {
+          const User = mongoose.model('User') as ReturnType<typeof connection.model>;
+          return User.findOne({ _id: 'user-1' }, { name: 1 }, { session: differentSession });
+        }),
+      ).rejects.toThrow('Explicit session conflicts with ambient transaction session');
+
+      expect(events).not.toContain('model:User:findOne:session=set');
     });
 
     it('throws when model.aggregate() receives { session: null } as operation options', async () => {
@@ -1347,7 +1451,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
           // Passing a different session object is a session conflict
           const User = this.conn.model('User') as ReturnType<typeof connection.model>;
           return User.create([{ name }], {
-            session: differentSession as unknown as MongooseSessionLike,
+            session: differentSession,
           });
         }
       }
@@ -1372,12 +1476,14 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       const app = await bootstrapApplication({ rootModule: AppModule });
       const service = await app.container.resolve(UserService);
 
-      await expect(service.create('Ada')).rejects.toThrow('Explicit session conflicts with ambient transaction session');
-
-      await app.close();
+      try {
+        await expect(service.create('Ada')).rejects.toThrow('Explicit session conflicts with ambient transaction session');
+      } finally {
+        await app.close();
+      }
     });
 
-    it('throws when model.create(doc, { session }) uses different session-only single-document options', async () => {
+    it('throws when model.create([doc], { session }) uses different array-form create options', async () => {
       const mongoosePackage = await import('./index.js');
       const ExportedTransaction = (mongoosePackage as { Transaction?: unknown }).Transaction;
 
@@ -1394,7 +1500,7 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
 
         async create(name: string) {
           const User = this.conn.model('User') as ReturnType<typeof connection.model>;
-          return User.create({ name }, { session: differentSession });
+          return User.create([{ name }], { session: differentSession });
         }
       }
 
@@ -1470,10 +1576,12 @@ describe('@fluojs/mongoose Transaction decorator contract (RED - pending Task 9 
       const app = await bootstrapApplication({ rootModule: AppModule });
       const service = await app.container.resolve(UserService);
 
-    await expect(service.create('Ada')).resolves.toBeDefined();
-
-    await app.close();
-  });
+      try {
+        await expect(service.create('Ada')).resolves.toBeDefined();
+      } finally {
+        await app.close();
+      }
+    });
   });
 });
 
@@ -1584,13 +1692,15 @@ describe('@fluojs/mongoose Transaction decorator — named/accessor contract', (
     const app = await bootstrapApplication({ rootModule: AppModule });
     const service = await app.container.resolve(DualConnectionService);
 
-    await service.analyticsWork();
-    await service.primaryWork();
+    try {
+      await service.analyticsWork();
+      await service.primaryWork();
 
-    expect(analyticsEvents).toContain('analytics:transaction:start');
-    expect(primaryEvents).not.toContain('connection:startSession');
-    expect(primaryEvents).toContain('service:primaryWork');
-
-    await app.close();
+      expect(analyticsEvents).toContain('analytics:transaction:start');
+      expect(primaryEvents).not.toContain('connection:startSession');
+      expect(primaryEvents).toContain('service:primaryWork');
+    } finally {
+      await app.close();
+    }
   });
 });
