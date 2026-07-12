@@ -98,7 +98,7 @@ await app.listen();
 
 ## Conformance 커버리지
 
-`packages/platform-nodejs/src/index.test.ts`, `packages/platform-nodejs/src/platform-conformance.test.ts`, `packages/platform-nodejs/src/lifecycle.test.ts`는 문서화된 Node.js 계약을 위한 package-local regression target입니다. 이 파일들은 공유 `createPlatformConformanceHarness(...)`와 `createHttpAdapterPortabilityHarness(...)` 검사를 실행하여 lifecycle determinism, diagnostics 및 snapshot safety, malformed cookie 보존, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body 제외, multipart 전체 크기 기본값, SSE framing, response stream drain settlement, host 및 HTTPS startup logging, shutdown signal listener cleanup을 검증합니다.
+`packages/platform-nodejs/src/index.test.ts`와 `packages/platform-nodejs/src/lifecycle.test.ts`는 문서화된 Node.js 계약을 위한 package-local regression target입니다. Adapter portability suite는 공유 `createHttpAdapterPortabilityHarness(...)` 검사를 실행하여 malformed cookie 보존, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body 제외, multipart 전체 크기 기본값, SSE framing, response stream drain settlement, host 및 HTTPS startup logging, shutdown signal listener cleanup을 검증합니다.
 
 같은 regression target들은 package-specific public surface, type alias, adapter-first startup, lifecycle option validation, 실제로 관찰되는 listen retry, active-request bounded drain, 정상 및 실패 signal-driven shutdown, `process.env.PORT` isolation, zero/default `maxBodySize` boundary, idle keep-alive shutdown, 대소문자가 섞인 JSON 및 multipart content-type parsing, `x-correlation-id` request ID fallback, server-backed realtime capability 노출도 함께 다룹니다. Startup behavior를 바꿀 때는 README 예제 포인터를 아래 테스트 파일 및 Node.js 챕터 예제와 맞춰 유지하세요.
 
@@ -122,6 +122,5 @@ await app.listen();
 ## 예제 소스
 
 - `packages/platform-nodejs/src/index.test.ts`
-- `packages/platform-nodejs/src/platform-conformance.test.ts`
 - `packages/platform-nodejs/src/lifecycle.test.ts`
 - `book/intermediate/ch21-express-node.ko.md`
