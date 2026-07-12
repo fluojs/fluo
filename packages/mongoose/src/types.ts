@@ -23,6 +23,39 @@ export interface MongooseSessionLike {
 }
 
 /**
+ * Callable model facade returned by `MongooseConnection.model(...)`.
+ *
+ * @remarks
+ * The listed operations receive the ambient transaction session automatically when called inside a transaction boundary.
+ * Other model properties remain available as `unknown` because fluo does not own application schema or plugin typing.
+ *
+ * @typeParam TCreateResult Result returned by `create(...)`.
+ * @typeParam TFindResult Result returned by `find(...)`.
+ * @typeParam TFindOneResult Result returned by `findOne(...)`.
+ * @typeParam TAggregateResult Result returned by `aggregate(...)`.
+ * @typeParam TBulkWriteResult Result returned by `bulkWrite(...)`.
+ */
+export interface MongooseModelFacade<
+  TCreateResult = unknown,
+  TFindResult = unknown,
+  TFindOneResult = unknown,
+  TAggregateResult = unknown,
+  TBulkWriteResult = unknown,
+> {
+  /** Runs a Mongoose aggregate operation with ambient session options. */
+  aggregate(...args: unknown[]): TAggregateResult;
+  /** Runs a Mongoose bulk-write operation with ambient session options. */
+  bulkWrite(...args: unknown[]): TBulkWriteResult;
+  /** Runs a Mongoose create operation with ambient session options. */
+  create(...args: unknown[]): TCreateResult;
+  /** Runs a Mongoose find operation with ambient session options. */
+  find(...args: unknown[]): TFindResult;
+  /** Runs a Mongoose find-one operation with ambient session options. */
+  findOne(...args: unknown[]): TFindOneResult;
+  readonly [key: PropertyKey]: unknown;
+}
+
+/**
  * Module options for registering a Mongoose connection and optional shutdown disposal hook.
  *
  * @typeParam TConnection Root Mongoose connection shape registered in the module.
@@ -61,7 +94,7 @@ export interface MongooseHandleProvider<TConnection extends MongooseConnectionLi
    * @param args Additional model resolver arguments forwarded unchanged.
    * @returns The root model outside transactions, or a model facade inside an active transaction boundary.
    */
-  model(name: string, ...args: unknown[]): Record<PropertyKey, unknown>;
+  model<TModel extends MongooseModelFacade = MongooseModelFacade>(name: string, ...args: unknown[]): TModel;
   /**
    * Opens a Mongoose session transaction boundary around `fn`.
    *

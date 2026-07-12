@@ -22,7 +22,7 @@
 
 Mongoose는 Node.js 생태계에서 MongoDB를 다룰 때 널리 쓰이는 모델링 계층입니다. Root `@fluojs/mongoose` 통합은 ambient transaction context에 Node.js `node:async_hooks`를 사용하며 Node.js 20 이상을 지원합니다. fluo 전용 통합 패키지를 사용하면 다음과 같은 이점을 얻을 수 있습니다.
 
-- **수명 주기 관리**: 제공된 연결을 애플리케이션 라이프사이클에 등록하고, `dispose(connection)`을 제공한 경우 종료 중 요청 단위 트랜잭션이 drain된 뒤에만 정리를 실행합니다.
+- **수명 주기 관리**: 제공된 연결을 애플리케이션 라이프사이클에 등록하고, `dispose(connection)`을 제공한 경우 종료 중 시작된 request callback과 요청 단위 트랜잭션이 drain된 뒤에만 정리를 실행합니다.
 - **세션 인지(Session Awareness)**: `MongooseConnection` 서비스가 콜 스택 전체에서 MongoDB 세션을 추적합니다.
 - **앰비언트 세션 (v1)**: fluo는 지원되는 Mongoose 모델 작업(create, find, findOne, aggregate, bulkWrite)에 활성 트랜잭션 세션을 자동으로 연결합니다.
 - **애플리케이션 소유 연결**: fluo는 애플리케이션이 제공한 concrete Mongoose connection을 관측합니다. `dispose(connection)`을 제공하지 않는 한 연결을 생성하거나, model을 compile하거나, 닫지 않습니다.
@@ -66,8 +66,18 @@ export class PersistenceModule {}
 Fluo에서는 일반적으로 리포지토리를 통해 MongoDB와 상호작용합니다. 전역 `mongoose` 객체에 의존하지 않고 `MongooseConnection` 서비스를 주입받아 현재 연결과 세션 경계를 따릅니다.
 
 ```typescript
-import { MongooseConnection } from '@fluojs/mongoose';
+import { MongooseConnection, type MongooseModelFacade } from '@fluojs/mongoose';
 import { Inject } from '@fluojs/core';
+
+type ProductDocument = { readonly _id: string; readonly name: string; readonly price: number };
+type ProductLookupModel = MongooseModelFacade<unknown, unknown, Promise<ProductDocument | null>>;
+type InventoryWriteModel = MongooseModelFacade<
+  unknown,
+  unknown,
+  unknown,
+  unknown,
+  Promise<{ readonly acknowledged: boolean }>
+>;
 
 @Inject(MongooseConnection)
 export class ProductRepository {
@@ -75,13 +85,13 @@ export class ProductRepository {
 
   async findOneById(id: string) {
     // 기본 흐름: 지원되는 facade 메서드를 사용합니다.
-    const Product = this.conn.model('Product');
+    const Product = this.conn.model<ProductLookupModel>('Product');
     return Product.findOne({ _id: id });
   }
 }
 ```
 
-`MongooseConnection` 서비스는 컨텍스트 인지 프록시 역할을 합니다. `this.conn.model('Product')`를 호출하면, 활성 트랜잭션이 있을 때 자동으로 그 트랜잭션에 참여하는 버전의 모델을 반환합니다.
+`MongooseConnection` 서비스는 컨텍스트 인지 프록시 역할을 합니다. `this.conn.model<ProductLookupModel>('Product')`를 호출하면 export된 generic `MongooseModelFacade`가 지원 메서드를 consumer-defined result type으로 callable하게 유지하며, 활성 트랜잭션이 있을 때 자동으로 그 트랜잭션에 참여하는 버전의 모델을 반환합니다.
 
 ### 앰비언트 세션 지원 (v1)
 버전 1에서 fluo의 Mongoose 통합은 다음 모델 메서드에 대해 자동 세션 주입을 지원합니다:
@@ -91,7 +101,7 @@ export class ProductRepository {
 - `aggregate`
 - `bulkWrite`
 
-`MongooseConnection.model(...)`을 통해 `@Transaction()`, `transaction()`, `requestTransaction()` 경계 내부에서 이 메서드들이 호출되면, fluo는 앰비언트 세션을 옵션에 자동으로 붙여줍니다. `conn.current().model(...)`이 반환한 raw model은 wrapper가 아니며, `doc.save()`도 현재 자동 세션 주입이 지원되지 않습니다. 두 경로 모두 트랜잭션 안에서 사용할 때는 수동으로 세션을 전달해야 합니다.
+`MongooseConnection.model(...)`을 통해 `@Transaction()`, `transaction()`, `requestTransaction()` 경계 내부에서 이 메서드들이 호출되면, fluo는 앰비언트 세션을 옵션에 자동으로 붙여줍니다. `create(...)`의 session 주입은 array overload인 `create([docs], options?)`에서만 사용할 수 있습니다. Positional `create(docA, docB)` 호출은 변경 없이 전달되며 자동 session을 받지 않습니다. `conn.current().model(...)`이 반환한 raw model은 wrapper가 아니며, `doc.save()`도 현재 자동 세션 주입이 지원되지 않습니다. 두 경로 모두 트랜잭션 안에서 사용할 때는 수동으로 세션을 전달해야 합니다.
 
 트랜잭션이 활성화된 상태에서 옵션에 `session`을 명시적으로 제공했는데, 해당 세션이 앰비언트 트랜잭션 세션과 일치하지 않는 경우 fluo는 충돌 에러를 던집니다. 이는 의도치 않은 트랜잭션 간 데이터 유출을 방지하기 위함입니다.
 
@@ -100,7 +110,7 @@ export class ProductRepository {
 
 MongoDB 트랜잭션은 활성화된 **세션(Session)**을 필요로 합니다. Fluo는 세션 생성, 실행, 정리를 하나의 트랜잭션 래퍼로 묶어 호출부의 부담을 줄입니다.
 
-제공된 Mongoose connection이 `connection.transaction(...)`을 노출하면 fluo는 Mongoose 자체 ambient-session scope와 cleanup semantics가 유지되도록 트랜잭션 경계를 해당 API에 위임합니다. 그렇지 않으면 `startSession()`, `startTransaction()`, `commitTransaction()` / `abortTransaction()`, `endSession()`을 직접 사용합니다. connection에 `connection.transaction(...)`과 `startSession()`이 모두 없고 `strictTransactions`가 `false`이면 fluo는 rollback 원자성 없이 callback을 직접 실행하는 fail-open mode로 동작합니다. 이 모드는 local fake나 staged migration에만 사용하세요. MongoDB transaction 보장이 필요한 production 경로에서는 `strictTransactions: true`를 설정해 지원 누락이 readiness와 transaction helper 실패로 드러나게 하세요. 요청 단위 트랜잭션은 session acquisition과 delegated transaction startup 중 request `AbortSignal`을 관찰하므로, 취소된 request는 repository work가 실행되기 전에 멈출 수 있습니다. 실제 transaction mode에서는 application shutdown 중 active request transaction과 session cleanup이 settled될 때까지 `dispose(connection)` 실행을 기다리며, shutdown이 시작된 뒤에는 새로운 수동 또는 요청 단위 transaction boundary가 거부됩니다.
+제공된 Mongoose connection이 `connection.transaction(...)`을 노출하면 fluo는 Mongoose 자체 ambient-session scope와 cleanup semantics가 유지되도록 트랜잭션 경계를 해당 API에 위임합니다. 그렇지 않으면 `startSession()`, `startTransaction()`, `commitTransaction()` / `abortTransaction()`, `endSession()`을 직접 사용합니다. connection에 `connection.transaction(...)`과 `startSession()`이 모두 없고 `strictTransactions`가 `false`이면 fluo는 rollback 원자성 없이 callback을 직접 실행하는 fail-open mode로 동작합니다. 이 모드는 local fake나 staged migration에만 사용하세요. MongoDB transaction 보장이 필요한 production 경로에서는 `strictTransactions: true`를 설정해 지원 누락이 readiness와 transaction helper 실패로 드러나게 하세요. 요청 단위 트랜잭션은 session acquisition과 delegated transaction startup 중 request `AbortSignal`을 관찰하므로, 취소된 request는 repository work가 실행되기 전에 멈출 수 있습니다. Callback work가 시작된 뒤 cancellation이 발생하면 fluo는 abort 결과를 보존하되 transaction cleanup과 connection disposal 전에 원본 callback이 settle될 때까지 기다립니다. 실제 transaction mode에서는 application shutdown 중 active request transaction과 session cleanup이 settled될 때까지 `dispose(connection)` 실행을 기다리며, shutdown이 시작된 뒤에는 새로운 수동 또는 요청 단위 transaction boundary가 거부됩니다.
 
 `@Transaction()`, `transaction(...)`, `requestTransaction(...)` 경계 안에서 `conn.model(...)`은 `create`, `find`, `findOne`, `aggregate`, `bulkWrite`에 ambient session을 자동으로 바인딩하는 facade를 반환합니다. 지원되지 않는 model 메서드와 `doc.save()`에는 여전히 `conn.currentSession()`을 명시적으로 전달해야 합니다. 기존 수동 `transaction(...)` 안에서 열린 중첩 `requestTransaction(...)`은 ambient session을 재사용하고 활성 request boundary로 추적되며, 종료 중에는 abort되어 바깥 수동 transaction이 connection disposal 전에 rollback할 수 있습니다.
 
@@ -109,8 +119,8 @@ fluo에서 권장되는 트랜잭션 처리 방식은 서비스 메서드에 `@T
 
 ```typescript
 await this.conn.transaction(async () => {
-  const Product = this.conn.model('Product');
-  const Inventory = this.conn.model('Inventory');
+  const Product = this.conn.model<ProductLookupModel>('Product');
+  const Inventory = this.conn.model<InventoryWriteModel>('Inventory');
 
   // 지원되는 facade 호출에는 세션이 자동으로 주입됩니다.
   const product = await Product.findOne({ _id: pid });
@@ -130,7 +140,7 @@ FluoShop에서는 제품 유형에 따라 속성이 크게 달라질 수 있는 
 
 ```typescript
 const productSchema = new mongoose.Schema({ name: String, price: Number }, { discriminatorKey: 'type' });
-const Product = conn.model('Product', productSchema);
+const Product = conn.current().model('Product', productSchema);
 
 const Electronics = Product.discriminator('Electronics', new mongoose.Schema({ warranty: Number }));
 const Apparel = Product.discriminator('Apparel', new mongoose.Schema({ size: String, material: String }));
