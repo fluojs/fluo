@@ -78,6 +78,7 @@
   },
   "devDependencies": {
     "@fluojs/queue": "workspace:^",
+    "@fluojs/testing": "workspace:^",
     "@types/nodemailer": "^8.0.0",
     "vitest": "^3.2.4"
   }

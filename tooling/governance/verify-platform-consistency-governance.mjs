@@ -586,7 +586,10 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // bounded shutdown lock-release I/O, timeout ownership retention, dynamic
   // blank-name rejection, immutable registry descriptor snapshots, and
   // microservices facade shutdown signal forwarding plus transport-owned
-  // cancellation cleanup docs/tests, notifications queue opt-in, status
+  // cancellation cleanup docs/tests, Queue's package-level Node.js runtime
+  // floor discoverability and Queue migration from NestJS/Bull processor metadata
+  // to explicit singleton worker registration, jobName/payload cutover, and
+  // bootstrap-ready/bounded-shutdown ownership, notifications queue opt-in, status
   // details, and generated identity diagnostics contracts, plus Slack singleton
   // provider discoverability and owned transport cleanup serialization docs/tests,
   // plus CQRS provider-token fan-out, private immutable dispatch topology state,

@@ -72,7 +72,21 @@ export class ReservationExpiryService {
 
 이는 비즈니스 규칙에 연결된 time-based maintenance입니다. schedule은 behavior contract의 일부입니다. 몇 분마다 실행되는지는 단순한 운영 설정이 아니라 재고가 얼마나 오래 묶일 수 있는지를 정하는 정책이기도 합니다.
 
-### 12.3.2 Startup timeout and periodic polling
+### 12.3.2 Migrating NestJS cron options
+
+NestJS cron option object를 그대로 옮길 수는 없습니다. `timeZone`은 소문자 fluo option인 `timezone`으로 바꾸고 `waitForCompletion`은 제거하세요:
+
+```typescript
+// NestJS
+@Cron('0 9 * * *', { timeZone: 'Asia/Seoul', waitForCompletion: true })
+
+// fluo
+@Cron('0 9 * * *', { timezone: 'Asia/Seoul' })
+```
+
+fluo에는 `waitForCompletion`이나 overlap-enable option이 없습니다. 항상 scheduler에 no-overlap protection을 전달하고 in-process running guard도 유지합니다. 같은 task instance가 active한 동안 도착한 tick은 queue되지 않고 건너뛰므로, NestJS에서 `waitForCompletion: true`였던 task에는 대체 flag가 필요하지 않습니다. 기존 코드가 `waitForCompletion: false` 또는 NestJS 기본값으로 의도적인 overlapping execution에 의존했다면 지원되지 않는 option을 만들지 말고 concurrent work를 application-owned queue나 worker 뒤로 옮기세요. Local guard는 한 task instance만 보호하므로 application instance 사이에서 같은 task를 조정하려면 여전히 Section 12.4의 distributed lock이 필요합니다.
+
+### 12.3.3 Startup timeout and periodic polling
 
 어떤 작업은 boot 직후 일정 시간이 지난 뒤 실행되어야 합니다. 예를 들어 FluoShop은 startup 5초 뒤에 초기 cache warm-up이나 configuration sync를 수행할 수 있습니다. 다른 작업은 15초마다 partner API를 polling할 수 있습니다. 이런 흐름은 자연스럽게 `@Timeout`과 `@Interval`에 매핑됩니다. 중요한 점은 fluo가 이를 bootstrap code 곳곳에 흩어진 즉흥적인 `setTimeout`, `setInterval` 호출이 아니라 first-class scheduling concept로 취급한다는 점입니다.
 
@@ -146,7 +160,7 @@ export class CampaignWindowService {
 }
 ```
 
-이 기능은 강력한 만큼 신중하게 써야 합니다. Dynamic schedule은 비즈니스 타이밍이 실제로 runtime에 바뀔 때 가장 적합합니다. 평범한 static maintenance task를 registry call 뒤에 숨기라는 뜻은 아닙니다. Dynamic `options.name` override는 decorator name과 같은 non-empty name 규칙을 따르며, scheduler 또는 registry state를 남기기 전에 거부됩니다. Registry는 descriptor 기반입니다. `get()`과 `getAll()`은 live scheduler handle이나 mutable internal state를 반환하지 않고 immutable `SchedulingTaskDescriptor` snapshot으로 task를 설명합니다. `updateCronExpression()`은 cron timing을 바꾸고, `updateIntervalMs()`는 같은 rollback-safe reschedule contract로 fixed-interval cadence를 바꿉니다. Scheduler가 새 cadence를 거부하면 이전 descriptor와 scheduled handle이 계속 active 상태로 남습니다. 이를 통해 runtime control은 명시적으로 유지하면서 애플리케이션 코드가 scheduler engine 내부에 의존하지 않게 합니다.
+이 기능은 강력한 만큼 신중하게 써야 합니다. Dynamic schedule은 비즈니스 타이밍이 실제로 runtime에 바뀔 때 가장 적합합니다. 평범한 static maintenance task를 registry call 뒤에 숨기라는 뜻은 아닙니다. Dynamic `options.name` override는 decorator name과 같은 non-empty name 규칙을 따르며, scheduler 또는 registry state를 남기기 전에 거부됩니다. Registry는 descriptor 기반입니다. `get()`과 `getAll()`은 live scheduler handle이나 mutable internal state를 반환하지 않고 immutable `SchedulingTaskDescriptor` snapshot으로 task를 설명합니다. `updateCronExpression()`은 cron timing을 바꾸고, `updateIntervalMs()`는 같은 rollback-safe reschedule contract로 fixed-interval cadence를 바꿉니다. fluo는 이전 handle의 stop이 성공한 뒤에만 replacement를 commit합니다. Scheduler가 새 cadence를 거부하거나 이전 handle을 stop할 수 없으면 provisional replacement를 정리하고 이전 descriptor와 handle을 복원한 뒤 failure를 다시 throw합니다. 이를 통해 runtime control은 명시적으로 유지하면서 애플리케이션 코드가 scheduler engine 내부에 의존하거나 실패한 update 뒤에 duplicate schedule을 남기지 않게 합니다.
 
 ## 12.7 Bounded shutdown
 
@@ -180,6 +194,7 @@ v2.1.0에서 reservation expiry path는 이제 다음과 같습니다.
 ## 12.11 Summary
 
 - `@fluojs/cron`은 decorator-based scheduling을 통해 FluoShop에 cron expression, interval, timeout을 제공합니다.
+- NestJS cron option은 `timeZone`을 `timezone`으로 바꿔야 합니다. fluo는 같은 task instance의 overlapping tick을 항상 건너뛰고 overlap opt-out을 노출하지 않으므로 `waitForCompletion`은 생략합니다.
 - Redis-backed distributed locking은 multi-instance deployment에서 scheduled task를 한 인스턴스만 실행하도록 보장합니다.
 - `distributed.lockTtlMs`와 optional named Redis client는 신뢰성을 좌우하는 운영 설정이며, enabled TTL은 Redis I/O 전에 검증됩니다.
 - `SCHEDULING_REGISTRY`를 통한 dynamic scheduling은 비즈니스가 실제로 runtime-created task를 필요로 할 때 지원됩니다.

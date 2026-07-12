@@ -61,6 +61,8 @@ export class AppModule {}
 
 Slack registration은 기본적으로 global입니다. `SlackModule.forRoot(...)`와 `SlackModule.forRootAsync(...)`는 `global: options.global ?? true`로 `SlackService`, `SlackChannel`, `SLACK`, `SLACK_CHANNEL`을 export합니다. fluo 옵션은 NestJS `isGlobal`이 아니라 `global?: boolean`이며, migrated module이 Slack provider를 명시적으로 import한 module 안에만 유지해야 할 때만 `global: false`를 설정합니다. 이 패키지는 singleton compatibility token만 노출하고, `createSlackProviders(...)`는 수동 module composition에서도 같은 singleton provider wiring을 재사용합니다. FluoShop에 여러 Slack client가 필요해지면 package-level multi-client registry를 기대하지 말고, 별도 transport를 감싸는 app-owned module/provider나 facade를 조합하세요.
 
+Async registration은 fluo injected factory 형태인 `SlackModule.forRootAsync({ inject, useFactory, global? })`만 지원합니다. `inject`와 `useFactory`만 소비하며 NestJS `imports`, `useClass`, `useExisting`은 소비하지 않습니다. 필요한 의존성은 FluoShop의 application module graph에 먼저 등록하고 token을 `inject`에 나열한 뒤, `useFactory`에서 최종 Slack option을 반환하세요.
+
 Slack은 애플리케이션이 traffic을 받기 전에 readiness를 증명할 수 있는 transport를 위한 bootstrap 검증도 지원합니다. 해석된 `SlackTransport`가 `verify()`를 노출할 때 `verifyOnModuleInit: true`를 설정하면 `SlackService.onModuleInit()`이 그 optional method를 기다리고, 초기화 실패를 `SlackLifecycleError`로 보고합니다. `verify()`를 구현하지 않는 transport도 유효하며, 이 capability-based check만 건너뜁니다.
 
 ```typescript
@@ -88,7 +90,7 @@ SlackModule.forRoot({
 });
 ```
 
-상태 스냅샷은 `verifiedOnModuleInit`을 포함하므로 readiness dashboard에서 이 startup gate가 요청되었는지 확인할 수 있습니다. `verify()`가 실패하면 Slack lifecycle은 `failed`로 이동하고 readiness는 not ready로 남아, 첫 운영 알림이 실패한 뒤에야 문제를 발견하는 상황을 줄입니다.
+상태 스냅샷은 `verifiedOnModuleInit`을 포함하므로 readiness dashboard에서 이 startup gate가 요청되었는지 확인할 수 있습니다. `verify()`가 실패하면 Slack lifecycle은 `failed`로 이동하고 readiness는 not ready로 남아, 첫 운영 알림이 실패한 뒤에야 문제를 발견하는 상황을 줄입니다. shutdown 중에는 Slack이 새 전달을 거부하고 활성 전달이 settle될 때까지 기다린 뒤에만 factory-owned transport를 닫습니다.
 
 ### Discord Registration
 ```typescript
@@ -231,7 +233,7 @@ await this.notifications.dispatch({
 });
 ```
 
-`sendNotification(...)`은 `notification.template`과 `renderer`가 모두 있을 때에만 renderer를 호출합니다. 명시적인 payload 필드는 `attachments`, `blocks`, `text`에서 rendered 필드보다 우선하며, text는 payload text에서 rendered text, 그리고 `subject` 순서로 fallback합니다. Metadata는 payload metadata, dispatch metadata, subject marker, template marker 순서로 merge되므로 최종 Slack 메시지는 운영 routing context를 보존합니다.
+`sendNotification(...)`은 `notification.template`과 `renderer`가 모두 있을 때에만 renderer를 호출합니다. 명시적인 payload 필드는 `attachments`, `blocks`에서 rendered 필드보다 우선하고, 비공백 payload text는 rendered text보다 우선합니다. 빈 문자열 또는 공백 전용 text는 미지정으로 취급하므로 text는 비공백 rendered text, 그리고 비공백 `subject` 순서로 fallback합니다. Metadata는 payload metadata, dispatch metadata, subject marker, template marker 순서로 merge되므로 최종 Slack 메시지는 운영 routing context를 보존합니다.
 
 ## 17.5 Rich Formatting: Blocks and Embeds
 

@@ -10,6 +10,7 @@ Decorator-based scheduling for fluo applications with lifecycle-managed startup/
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+  - [Migrating NestJS Cron Options](#migrating-nestjs-cron-options)
   - [Distributed Locking](#distributed-locking)
   - [Dynamic Scheduling](#dynamic-scheduling)
   - [Bounded Shutdown](#bounded-shutdown)
@@ -20,10 +21,10 @@ Decorator-based scheduling for fluo applications with lifecycle-managed startup/
 ## Installation
 
 ```bash
-npm install @fluojs/cron croner
+npm install @fluojs/cron
 ```
 
-`croner` is the scheduler engine used by `@fluojs/cron`. Install it alongside the package so lockfiles make the runtime scheduler dependency explicit for applications and deployment audits.
+`@fluojs/cron` owns `croner` as a runtime dependency, so consumers do not need to install the scheduler engine directly.
 
 `@fluojs/redis` is needed only when Redis distributed locking is enabled. Non-distributed scheduling paths do not load the Redis integration during package import, module registration, bootstrap, or status snapshot creation.
 
@@ -73,6 +74,22 @@ class AppModule {}
 
 ## Common Patterns
 
+### Migrating NestJS Cron Options
+
+NestJS `@Cron()` options are not a drop-in `CronTaskOptions` object. Rename NestJS `timeZone` to fluo `timezone`:
+
+```typescript
+// NestJS
+@Cron('0 9 * * *', { timeZone: 'Asia/Seoul', waitForCompletion: true })
+
+// fluo
+@Cron('0 9 * * *', { timezone: 'Asia/Seoul' })
+```
+
+Do not copy `waitForCompletion` or invent an overlap flag. fluo does not expose either option: every cron task uses scheduler-level no-overlap protection plus an in-process running guard. If another tick arrives while the same task instance is still running, fluo skips that tick instead of queueing another run. A NestJS task with `waitForCompletion: true` therefore omits the option when migrated. If the NestJS task left `waitForCompletion` unset or set it to `false` and intentionally depended on overlapping runs, redesign that work behind an application-owned queue or worker rather than expecting fluo to enable overlap.
+
+This guard covers one task instance in one application process. Use [Distributed Locking](#distributed-locking) when multiple application instances must not run the same task concurrently.
+
 ### Distributed Locking
 
 To prevent scheduled tasks from running concurrently across multiple server instances, enable distributed mode. This requires `@fluojs/redis`; the Redis peer is loaded and resolved only when `distributed.enabled` is `true`.
@@ -99,7 +116,7 @@ class AppModule {}
 
 Leave `distributed.clientName` unset to keep using the default Redis registration above. To use a non-default Redis connection for distributed locks, set `distributed.clientName` to the name registered through `RedisModule.forRoot({ name, ... })`. fluo trims the configured client name during module option normalization and rejects blank values before lifecycle or status reporting uses the Redis dependency name.
 
-`distributed.lockTtlMs` must stay at or above `1_000ms`. When distributed locking is enabled, fluo validates that module-level TTL during option normalization before loading, resolving, or probing Redis. Disabled distributed mode keeps Redis unloaded and does not fail solely because an inactive TTL is below that distributed minimum. fluo renews the Redis lock before the active TTL expires, including the minimum supported `1_000ms` boundary.
+`distributed.lockTtlMs` must stay at or above `1_000ms`. When distributed locking is enabled, fluo validates that module-level TTL during option normalization before loading, resolving, or probing Redis. Task-level `lockTtlMs` overrides are validated only when module distributed mode and that task's distributed locking are both enabled. Disabled module or task locking does not fail solely because an inactive TTL is below the distributed minimum. fluo renews the Redis lock before the active TTL expires, including the minimum supported `1_000ms` boundary.
 
 Each scheduler instance uses a platform-neutral default `distributed.ownerId`; set `distributed.ownerId` explicitly only when your deployment has a stronger stable-owner convention. Lock release runs in a `finally` path after task execution. If bootstrap later fails while a distributed tick is already running, startup rollback keeps the Redis lock client available until that active task can drain and release its lock. If Redis release fails, fluo keeps local ownership in status snapshots and retries during shutdown; if Redis reports that another owner holds the key, local ownership is cleared because fencing has already moved elsewhere. Redis TTL and renewal timing are still drift-sensitive coordination primitives rather than hard fencing tokens, so long-running jobs should remain idempotent and use application-level fencing when stale work would be unsafe.
 
@@ -151,13 +168,13 @@ class TaskManager {
 
 The registry exposes `addCron`, `addInterval`, `addTimeout`, `remove`, `enable`, `disable`, `get`, `getAll`, `updateCronExpression`, and `updateIntervalMs`. The first `name` argument is the default registry key; passing `options.name` overrides the actual registry key, scheduler metadata name, and default distributed lock key for dynamic tasks so dynamic registration matches decorator naming semantics. Registry, decorator, and dynamic `options.name` task names must be non-empty strings; blank dynamic override names are rejected before scheduler or registry state is retained. `get` and `getAll` return immutable `SchedulingTaskDescriptor` snapshots, not live `CronJob` handles or mutable registry state. Timeout tasks run once, then disable themselves while remaining in the registry so they can be re-enabled deliberately.
 
-Dynamic cron registration is atomic with scheduler startup: if the scheduler rejects a new cron job, the registry does not retain a half-registered task. Updating a running cron expression or interval cadence is also rollback-safe. If rescheduling fails, the previous expression or interval milliseconds and scheduled handle remain active. Cron tasks use both scheduler-level no-overlap protection and fluo's in-process running guard, so the same task instance will not run overlapping ticks.
+Dynamic cron registration is atomic with scheduler startup: if the scheduler rejects a new cron job, the registry does not retain a half-registered task. Updating a running cron expression or interval cadence is also rollback-safe. A replacement is committed only after the previous scheduled handle stops successfully. If replacement scheduling fails or the previous handle cannot be stopped, fluo stops the provisional replacement, restores the previous expression or interval milliseconds and handle, and rethrows the failure instead of silently retaining duplicate schedules. Cron tasks use both scheduler-level no-overlap protection and fluo's in-process running guard, so the same task instance will not run overlapping ticks.
 
 ### Bounded Shutdown
 
 `CronModule` drains active task executions during application shutdown with a bounded timeout so one hung task cannot block process termination forever.
 
-By default the shutdown drain waits up to `10_000ms`. If that timeout expires, the scheduler logs a warning and continues shutdown without waiting for the hung task to settle. The same `shutdown.timeoutMs` boundary also applies to Redis owned-lock release I/O during shutdown, so a stuck Redis release cannot block process termination indefinitely. When distributed locking is enabled, locks held by still-running tasks are not eagerly released on timeout; they remain owned by that task until it settles normally, or until Redis expires the lock after the process exits. If release I/O itself times out, fluo preserves local owned-lock visibility/status and does not clear ownership until Redis confirms release or reports that another owner holds the key. This prevents another node from starting the same job while the original task is still running.
+By default the shutdown drain waits up to `10_000ms`. If that timeout expires, the scheduler logs a warning and continues shutdown without waiting for the hung task to settle. The same `shutdown.timeoutMs` boundary also applies to Redis owned-lock release I/O during shutdown, so a stuck Redis release cannot block process termination indefinitely. When distributed locking is enabled, locks held by still-running tasks are not eagerly released on timeout; they remain owned by that task until it settles normally, or until Redis expires the lock after the process exits. fluo calls `unref()` on lock renewal timers so they continue renewing while other work keeps the Node.js event loop active without retaining the process by themselves, and it clears them when the task settles. If release I/O itself times out, fluo preserves local owned-lock visibility/status and does not clear ownership until Redis confirms release or reports that another owner holds the key. This prevents another node from starting the same job while the original task is still running.
 
 ```typescript
 @Module({

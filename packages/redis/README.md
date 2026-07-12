@@ -32,7 +32,7 @@ npm install @fluojs/redis ioredis
 
 Use `RedisModule.forRoot(options)` to register the default Redis client and `RedisService` facade.
 
-`RedisModule.forRoot(...)` is intentionally synchronous. When migrating from NestJS async dynamic modules such as `forRootAsync(...)`, resolve secrets, environment-specific hosts, or externally constructed clients at the application boundary first, then pass the final Redis options into `forRoot(...)`. fluo does not defer Redis module wiring to an async factory hidden inside the module graph.
+`RedisModule.forRoot(...)` is intentionally synchronous and always creates a new `ioredis` client from Redis constructor options; it does not adopt an externally constructed client. When migrating from NestJS async dynamic modules such as `forRootAsync(...)`, resolve secrets, environment-specific hosts, and TLS options at the application boundary first, then pass the final Redis options into `forRoot(...)`. Keep externally constructed clients outside this module and close them from the application lifecycle. fluo does not defer Redis module wiring to an async factory hidden inside the module graph.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -53,7 +53,7 @@ export class AppModule {}
 
 Inject `RedisService` for high-level operations or `REDIS_CLIENT` for the raw `ioredis` instance.
 
-`RedisService.get()` attempts JSON parsing and falls back to the raw string; missing keys return `null`. `RedisService.set()` serializes values with `JSON.stringify()` and uses `EX` only for positive TTL values.
+`RedisService.get()` attempts JSON parsing and falls back to the raw string; missing keys return `null`. `RedisService.set()` serializes values with `JSON.stringify()`: finite positive integer TTLs use Redis `EX`, while finite positive fractional TTLs use `PX` with milliseconds rounded up. Omit the TTL or pass a non-positive or non-finite value for a persistent key.
 
 ```typescript
 import { Inject } from '@fluojs/core';
@@ -77,12 +77,12 @@ export class CacheRepository {
 
 ### Lifecycle Ownership
 
-`@fluojs/redis` owns the lifecycle of every client it creates, including named clients registered through `RedisModule.forRoot({ name, ... })`.
+Every `RedisModule.forRoot(...)` registration creates a new client that `@fluojs/redis` owns, including named clients registered through `RedisModule.forRoot({ name, ... })`. The module never adopts an existing client instance.
 
 - Fluo always forces `lazyConnect: true`, even if callers cast options manually, so sockets open during application bootstrap instead of import time.
 - During bootstrap, the lifecycle service only calls `connect()` while the client is still in ioredis `wait` state.
 - Lifecycle-owned `connect()` and `quit()` calls are bounded by package timeouts (`10_000` ms by default) so bootstrap and shutdown do not wait forever on a stalled Redis command. Override them with `lifecycle.connectTimeoutMs` and `lifecycle.quitTimeoutMs`; pass `0` only when the host process intentionally owns an unbounded wait.
-- During shutdown, ready/connecting clients attempt `quit()` first for graceful teardown, while wait/closed-transition states use `disconnect()` directly.
+- During shutdown, ready/connecting clients attempt `quit()` first for graceful teardown, while monitoring, wait, and closed-transition states use `disconnect()` directly.
 - If `quit()` fails, Fluo falls back to `disconnect()` and only rethrows when the client still remains open afterward.
 
 ### Named Clients
@@ -91,6 +91,7 @@ Use `RedisModule.forRoot({ name, ...options })` when one application needs more 
 
 - Omit `name` when you want the default aliases: `REDIS_CLIENT` / `RedisService`.
 - Pass `name` when you want the named helpers: `getRedisClientToken(name)` / `getRedisServiceToken(name)`.
+- `name` identifies the Fluo registration only. For an ioredis Sentinel master name, pass `sentinelName`; Fluo forwards it to ioredis as its constructor `name` option without changing the registration tokens.
 - Named clients follow the same bootstrap/shutdown contract as the default client; only the default registration exports the `REDIS_CLIENT` / `RedisService` aliases.
 - Names are trimmed, and blank or whitespace-only names are rejected by token/component helpers.
 
@@ -111,6 +112,7 @@ const ANALYTICS_REDIS_CLIENT = getRedisClientToken('analytics');
   imports: [
     RedisModule.forRoot({ host: 'localhost', port: 6379 }),
     RedisModule.forRoot({ name: 'analytics', host: 'localhost', port: 6380 }),
+    RedisModule.forRoot({ name: 'sentinel-cache', sentinelName: 'mymaster', sentinels: [{ host: 'localhost', port: 26379 }] }),
   ],
 })
 export class AppModule {}
@@ -200,7 +202,7 @@ export class PubSubTransportFactory {
 ### Types
 - `DefaultRedisModuleOptions`: Options accepted by the unnamed default Redis registration, including optional global alias visibility and lifecycle timeout controls.
 - `NamedRedisModuleOptions`: Options accepted by additional named Redis registrations, including required `name` and scoped lifecycle timeout controls.
-- `RedisModuleOptions`: Configuration options passed to the `ioredis` constructor after Fluo removes module-only `name`, `global`, and `lifecycle` fields.
+- `RedisModuleOptions`: Configuration options passed to the `ioredis` constructor after Fluo removes module-only `name`, `global`, `lifecycle`, and `sentinelName` fields. `sentinelName` is forwarded as the ioredis Sentinel master `name`, while `name` remains the Fluo registration identifier.
 - `RedisClientOptions`: Redis constructor options after Fluo removes module-only fields and before it forces `lazyConnect: true` internally.
 - `RedisLifecycleOptions`: Optional timeout controls for Fluo-owned `connect()` and `quit()` lifecycle commands.
 - `PersistencePlatformStatusSnapshot`, `RedisStatusAdapterInput`: Status snapshot input/output types.

@@ -15,6 +15,7 @@ This chapter explains how to place a queue boundary on top of FluoShop's event-d
 
 ## Prerequisites
 - Completed Chapter 1, Chapter 2, Chapter 3, Chapter 4, Chapter 5, Chapter 6, Chapter 7, Chapter 8, Chapter 9, and Chapter 10.
+- A Node.js `>=20.0.0` application runtime, matching the `@fluojs/queue` package manifest.
 - Basic understanding of Redis-based transport and background processing concepts.
 - Basic intuition for retryable asynchronous work and operational failure response.
 
@@ -34,6 +35,8 @@ These tasks can be slow, may depend on unstable remote systems, and may need sev
 
 The README documents `QueueModule.forRoot(...)` as the supported root entrypoint. The Queue package depends on Redis for persistence and coordination. So FluoShop first connects `@fluojs/redis`, then registers queue support.
 
+`@fluojs/queue` is a Node.js 20+ package and declares `engines.node >=20.0.0`. The Queue path in this chapter therefore keeps that package-specific runtime requirement even though other fluo APIs may be portable across runtimes.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { RedisModule } from '@fluojs/redis';
@@ -44,7 +47,7 @@ import { QueueModule } from '@fluojs/queue';
     RedisModule.forRoot({ host: 'localhost', port: 6379 }),
     QueueModule.forRoot(),
   ],
-  providers: [InvoiceWorker, EmailWorker, CatalogSyncWorker],
+  providers: [InvoiceService, InvoiceWorker, EmailWorker, CatalogSyncWorker],
 })
 export class BackgroundJobsModule {}
 ```
@@ -60,7 +63,9 @@ A job is a serialized unit of work. A worker owns how that job is processed. Thi
 Invoice PDF generation is a typical queue task. It takes too long to run inside the checkout confirmation path. It may also fail for temporary reasons such as file storage or rendering outages.
 
 ```typescript
+import { Inject } from '@fluojs/core';
 import { QueueWorker } from '@fluojs/queue';
+import { InvoiceService } from './invoice.service.js';
 
 export class GenerateInvoiceJob {
   constructor(public readonly orderId: string) {}
@@ -70,8 +75,11 @@ export class GenerateInvoiceJob {
   attempts: 5,
   backoff: { type: 'exponential', delayMs: 1_000 },
 })
+@Inject(InvoiceService)
 export class InvoiceWorker {
-  async handle(job: GenerateInvoiceJob) {
+  constructor(private readonly invoices: InvoiceService) {}
+
+  async handle(job: GenerateInvoiceJob): Promise<void> {
     await this.invoices.renderAndStore(job.orderId);
   }
 }
@@ -99,6 +107,18 @@ export class BillingProjectionHandler {
 
 The domain flow remains explicit, and only the slow work moves out of band.
 
+### 11.3.3 Migration checkpoint: replace NestJS worker discovery
+
+A NestJS/Bull worker does not become a fluo worker merely because its class is imported. Apply this checklist when moving an existing processor into FluoShop:
+
+1. Register `RedisModule.forRoot(...)` and `QueueModule.forRoot(...)` in the owning module graph.
+2. Replace `@Processor(...)`, `@Process(...)`, and emitted provider metadata with the TC39 standard `@QueueWorker(GenerateInvoiceJob, options)` class decorator and a `handle(job)` method.
+3. Put the worker in `@Module({ providers: [...] })` with singleton scope and declare constructor dependencies with `@Inject(...)`. Queue scans compiled singleton provider/controller registrations; request/transient workers and classes that are only imported are not registered.
+4. Keep the worker and Redis provider reachable from the queue registration. This is especially important for `QueueModule.forRoot({ global: false })`, whose discovery stays inside the authored imports/exports graph that can reach that registration.
+5. Remove processor start/stop hooks that would compete with Queue lifecycle ownership. Queue starts processors after the application bootstrap-ready handoff and bounds shutdown with `workerShutdownTimeoutMs` before asking BullMQ to force-close a stuck worker.
+
+Existing persisted Bull/BullMQ data needs an application-owned cutover plan. NestJS integrations can place multiple named job values under one `queueName`; fluo creates one queue/worker pair per job type and uses `jobName` as both its BullMQ queue name and named job. Setting `jobName` alone therefore cannot preserve a legacy shared-queue topology, and fluo does not consume NestJS metadata or transform the serialized payload automatically. Drain the legacy queue before switching producers, transform and re-enqueue compatible payloads into fluo's per-job queues, or use separate queue names while old workers drain. Then validate payload class shape and retry policy, register the singleton `@QueueWorker(JobClass)` through the same `QueueModule.forRoot(...)` graph (including worker/Redis reachability with `global: false`), and account for the bootstrap-ready start plus `workerShutdownTimeoutMs` shutdown bound.
+
 ## 11.4 Retry and backoff strategy
 
 The queue README highlights distributed retry and backoff as first-class features. That maps directly to real operational needs. FluoShop cannot assume every remote dependency is stable. Email providers fail temporarily, storage systems have short outages, and Marketplace APIs may throttle without warning. Retry gives the system room to recover automatically under those conditions, while backoff prevents an outage from turning immediately into a retry storm.
@@ -114,6 +134,14 @@ Some jobs still fail after every retry attempt. Those failures must not disappea
 ### 11.5.1 What FluoShop stores in dead letters
 
 In v2.0.0, dead letters matter most for integration-heavy work. Failed invoice renders, failed marketplace syncs, and failed bulk notification exports are representative examples. Operators need enough job payload context to diagnose failures safely. At the same time, job bodies must not contain secrets or unnecessary personal data. A dead letter is operational evidence. It should be useful, but its scope should stay limited.
+
+Operators can use the read-only public inspection surface instead of depending on Queue's Redis key format:
+
+```typescript
+const inspection = await queue.inspectDeadLetters('GenerateInvoiceJob', { limit: 50 });
+```
+
+`inspection.records` is newest-first and bounded to at most `1_000` stored entries per call. Malformed stored values are omitted and reported through `malformedRecordCount`; payloads remain `unknown` until FluoShop narrows them to its own job shape. Inspection never deletes or replays a job, so recovery stays an explicit application or operator workflow.
 
 ## 11.6 Named Redis clients and workload isolation
 
@@ -142,9 +170,9 @@ This boundary is operationally better than generating the PDF inline. The custom
 
 ### 11.7.1 Bootstrap readiness and bounded shutdown
 
-Queue lifecycle behavior is part of the operational contract. During application bootstrap, Queue can create the BullMQ queues, workers, and Redis duplicate connections it owns, but worker processors are started only after Queue reaches its bootstrap-ready handoff. That prevents background processors from racing ahead of providers that are still running `onApplicationBootstrap()`.
+Queue lifecycle behavior is part of the operational contract. During application bootstrap, Queue can create the BullMQ queues, workers, and Redis duplicate connections it owns, but worker processors are started only after Queue reaches its bootstrap-ready handoff. That prevents background processors from racing ahead of providers that are still running `onApplicationBootstrap()`. Once Queue is `started` and all discovered processors are ready, pending dead-letter writes do not make readiness fail: readiness stays `ready`, while health is `degraded` until those writes leave the pending set.
 
-Shutdown follows the opposite rule. Once shutdown begins, Queue reports `stopping`, rejects new enqueue attempts, closes queue-owned resources, and drains pending dead-letter writes. `workerShutdownTimeoutMs` bounds how long Queue waits for active processors before it logs the timeout and force-closes the BullMQ worker. This keeps a stuck background job from blocking the whole application shutdown forever.
+Shutdown follows the opposite rule. Once shutdown begins, Queue reports `stopping`, so readiness is `not-ready` and health is `degraded`; it rejects new enqueue attempts, closes queue-owned resources, and then attempts to drain pending dead-letter writes. Each pending write gets at most `5_000ms` to settle. On timeout, Queue logs the failure, stops counting that write as pending, and continues shutdown without guaranteeing that the dead-letter record reached Redis. `workerShutdownTimeoutMs` separately bounds how long Queue waits for active processors before it logs the timeout and force-closes the BullMQ worker. These two bounded waits keep a stuck processor or Redis write from blocking application shutdown forever.
 
 ## 11.8 Queue workers are not a second hidden application
 
@@ -161,10 +189,11 @@ As FluoShop moves to v2.0.0, it no longer stops at being event-aware. It recogni
 ## 11.11 Summary
 
 - `@fluojs/queue` gives FluoShop Redis-backed background job processing with worker discovery and lifecycle-managed enqueueing.
+- NestJS migration requires an explicit singleton `@QueueWorker(JobClass)` provider with `handle(job)`, module-graph reachability, and an application-verified `jobName`/payload cutover; legacy processor metadata is not a compatibility surface.
 - A job is a durable handoff for slow or failure-prone work such as invoice generation, email batches, and catalog syncs.
 - Retry attempts and backoff strategies should be chosen per workload rather than copied uncritically.
-- The dead-letter list preserves repeatedly failed jobs under a bounded retention policy so operators can inspect them.
-- Queue starts processors after the bootstrap-ready handoff and uses `workerShutdownTimeoutMs` to bound shutdown waiting for stuck processors.
+- The dead-letter list preserves repeatedly failed jobs under a bounded retention policy, and the read-only inspection API returns newest-first typed metadata without exposing Queue's Redis key format.
+- Queue starts processors after the bootstrap-ready handoff. Only while Queue is `started` and all discovered processors are ready do pending dead-letter writes leave readiness `ready` while health is `degraded`; `stopping` is not-ready/degraded and `stopped` is not-ready/unhealthy. Shutdown is bounded by a `5_000ms` per-write drain plus `workerShutdownTimeoutMs` for stuck processors.
 - FluoShop v2.0.0 now moves expensive post-order work behind a queue boundary instead of extending the customer request path.
 
 The practical standard is clear. If work is slow, retryable, and operationally distinct, a queue is likely a better fit than another synchronous callback in the main flow.

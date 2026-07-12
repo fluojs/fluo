@@ -9,6 +9,7 @@ Redis-backed distributed job processing for fluo. It features decorator-based wo
 - [Installation](#installation)
 - [When to use](#when-to-use)
 - [Quick Start](#quick-start)
+- [Migrating from NestJS Queue Workers](#migrating-from-nestjs-queue-workers)
 - [Common Patterns](#common-patterns)
 - [Public API](#public-api)
 - [Related Packages](#related-packages)
@@ -19,6 +20,8 @@ Redis-backed distributed job processing for fluo. It features decorator-based wo
 ```bash
 npm install @fluojs/queue @fluojs/redis
 ```
+
+`@fluojs/queue` requires Node.js `>=20.0.0`, as declared by `engines.node` in the package manifest. This package-level requirement still applies when the rest of a fluo application uses runtime-portable APIs.
 
 ## When to Use
 
@@ -78,6 +81,20 @@ export class OrderService {
 export class AppModule {}
 ```
 
+## Migrating from NestJS Queue Workers
+
+Consumers moving from NestJS queue integrations must replace metadata-driven processor discovery with fluo's explicit module and worker contract. This is a source migration, not a compatibility mode:
+
+1. Register the backing Redis client with `RedisModule.forRoot(...)`, then import `QueueModule.forRoot(...)` from the module graph that owns the queue. Do not copy NestJS async-module shapes or expect Queue to read environment configuration implicitly.
+2. Replace `@Processor(...)`, `@Process(...)`, or other NestJS/Bull provider metadata with the TC39 standard class decorator `@QueueWorker(JobClass, options?)`. Each worker must expose a callable `handle(job)` method.
+3. Add the decorated worker class to `@Module({ providers: [...] })` as a singleton. Queue scans compiled provider/controller registrations; it does not scan `@Injectable()` metadata, emitted constructor types, or arbitrary imported classes. Declare constructor dependencies explicitly with `@Inject(...)`.
+4. Keep the worker reachable from the queue registration. The default global `QueueModule.forRoot()` can discover singleton workers across the compiled application graph. With `global: false`, discovery is limited to modules that can reach that specific registration through their authored imports/exports, and the matching Redis provider must be reachable from the same module tree.
+5. Remove worker-owned start/stop hooks that duplicate Queue lifecycle ownership. Queue creates resources during application bootstrap, starts BullMQ processors only after the application bootstrap-ready handoff, rejects new enqueue calls after shutdown starts, and bounds active processor shutdown with `workerShutdownTimeoutMs` before requesting a force-close.
+
+Before cutover, account for the persistence identity mismatch. NestJS Bull/BullMQ can persist multiple named job values under one `queueName`. fluo instead uses the worker's `jobName` as both the BullMQ queue name and the named job when it creates one queue/worker pair for each job type. Setting `jobName` alone therefore cannot preserve a legacy topology in which multiple named jobs share one `queueName`, and `@fluojs/queue` does not interpret NestJS decorator metadata or transform an existing serialized payload.
+
+Choose an application-owned persisted-job cutover: drain the legacy queue with the old workers before switching producers; transform and re-enqueue compatible payloads into fluo's per-job queues; or use separate queue names for fluo while legacy workers drain old work. In every path, verify the payload class shape, retry/backoff settings, and shutdown budget, then deploy producers and singleton `@QueueWorker(JobClass)` providers through the same `QueueModule.forRoot(...)` graph. For `global: false`, preserve worker and Redis reachability, and remember that processing starts only after the bootstrap-ready handoff and shutdown is bounded by `workerShutdownTimeoutMs`.
+
 ## Common Patterns
 
 ### Named Redis Client
@@ -121,7 +138,7 @@ Omit `scope` only when the application has a single default queue registration a
 
 Queue discovers workers and creates queue-owned BullMQ resources during application bootstrap, but BullMQ worker processors are started only after the runtime marks the full application bootstrap/readiness sequence complete. Jobs enqueued by other `onApplicationBootstrap()` hooks can be accepted once the Queue service is initialized, and their processors run after the bootstrap-ready handoff instead of racing ahead of later async bootstrap hooks or application readiness. Queue status reports degraded readiness until those BullMQ processors have actually started; if a processor fails to start, the lifecycle moves to `failed` and status snapshots expose the failure instead of reporting the workers as ready.
 
-Application shutdown marks Queue as `stopping`, rejects new enqueue attempts, closes queue-owned workers/queues/connections, and drains pending dead-letter writes. Worker shutdown is bounded by `workerShutdownTimeoutMs` so an active processor that never settles cannot block application shutdown indefinitely. When the timeout elapses, Queue logs the timeout and asks BullMQ to force-close the worker before continuing resource cleanup.
+Application shutdown marks Queue as `stopping`, rejects new enqueue attempts, closes queue-owned workers/queues/connections, and then attempts to drain pending dead-letter writes. Queue waits at most `5_000ms` for each pending dead-letter write. If that wait times out, Queue logs the timeout, stops counting the write as pending, and continues shutdown without guaranteeing that the record reached Redis. Worker shutdown is separately bounded by `workerShutdownTimeoutMs` so an active processor that never settles cannot block application shutdown indefinitely. When that timeout elapses, Queue logs the timeout and asks BullMQ to force-close the worker before continuing resource cleanup.
 
 ### Distributed Retries
 
@@ -140,6 +157,18 @@ When a worker exhausts its retry attempts, Queue appends a dead-letter record to
 
 `QueueModule.forRoot()` keeps the most recent `1_000` dead-letter entries per job by default. Set `defaultDeadLetterMaxEntries: false` to opt out, or provide a smaller positive number when operators need a tighter retention budget.
 
+Use `QueueLifecycleService.inspectDeadLetters(jobName, { limit })` or the same method on an injected `Queue` facade to inspect records without reading Queue's Redis keys directly:
+
+```typescript
+const inspection = await queue.inspectDeadLetters('ProcessOrderJob', { limit: 25 });
+
+for (const record of inspection.records) {
+  console.log(record.jobId, record.failedAt, record.errorMessage);
+}
+```
+
+Inspection is read-only and returns valid records in newest-first order. It reads Redis without lifecycle-gating the operation, so inspection does not start workers and remains usable while Queue is `idle` or after worker startup reaches `failed`, as long as the backing Redis client is reachable. Queue does not own the shared Redis client; after `RedisModule` shuts that client down, inspection propagates the backing Redis operation error instead of promising post-shutdown availability. The limit defaults to `100` stored entries and is capped at `1_000`; invalid limits fall back to the default. Malformed stored values are omitted and counted in `malformedRecordCount` for the inspected window, and `payload` remains `unknown` so application code must narrow its own job data. Inspection does not delete, replay, or mutate jobs or dead-letter records.
+
 Jobs must be JSON-serializable plain objects. Queue serializes the job payload before enqueueing and rehydrates the job prototype on the worker side.
 
 Treat low-level provider assembly as an internal implementation detail: low-level provider helpers are not part of the documented root-barrel contract.
@@ -149,7 +178,7 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 ### Core
 - `QueueModule`: Main entry point for queue registration.
 - `QueueModule.forRoot(options)`: Registers queue support for an application module.
-- `QueueLifecycleService`: Primary service for enqueuing jobs and creating lifecycle/status snapshots (`enqueue(job)`, `createPlatformStatusSnapshot()`).
+- `QueueLifecycleService`: Primary service for enqueuing jobs, read-only dead-letter inspection, and lifecycle/status snapshots (`enqueue(job)`, `inspectDeadLetters(jobName, options?)`, `createPlatformStatusSnapshot()`).
 - `@QueueWorker(JobClass, options?)`: Decorator to mark a class as a job handler.
 - `QUEUE`: Compatibility injection token for the queue facade.
 - `getQueueToken(scope?)`: Queue facade token helper. Omitting `scope` returns the default `QUEUE` token; a non-empty scope returns that scoped registration's facade token.
@@ -158,7 +187,10 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 
 
 ### Types
-- `Queue`: Compatibility facade with `enqueue(job)` for application code and the `QUEUE` token.
+- `Queue`: Application facade with `enqueue(job)` and read-only `inspectDeadLetters(jobName, options?)` for application code and the `QUEUE` token.
+- `QueueDeadLetterInspectionOptions`: Bounded dead-letter inspection settings (`limit`).
+- `QueueDeadLetterInspectionResult`: Newest-first valid records plus `malformedRecordCount` for the inspected window.
+- `QueueDeadLetterRecord`: Typed dead-letter metadata with an `unknown` application payload.
 - `QueueJobType`: Constructor type used to identify and rehydrate a job payload class.
 - `QueueModuleOptions`: Global queue settings (`global`, clientName, default attempts, `defaultBackoff`, concurrency, rate limiting, dead-letter retention).
 - `QueueWorkerOptions`: Per-job settings (attempts, backoff, concurrency, jobName, rate limiting).
@@ -178,7 +210,7 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 - `workerShutdownTimeoutMs`: maximum time to wait for active worker processors during shutdown before force-closing the BullMQ worker. Defaults to `30_000`.
 - `defaultDeadLetterMaxEntries`: maximum retained dead-letter records per job, or `false` to disable trimming. Defaults to `1_000`.
 
-`QueueLifecycleService.createPlatformStatusSnapshot()` uses the same public snapshot contract as `createQueuePlatformStatusSnapshot(...)`. It reports readiness as `ready` only after Queue reaches `started` and every discovered BullMQ worker processor has started. `started` resources with pending processors report degraded readiness, `starting` reports degraded readiness, `stopping`/`stopped` report not-ready, and worker-start failures report not-ready/unhealthy with `workerStartFailures` and `lastWorkerStartFailure` details. Snapshot details include the Redis dependency id, lifecycle state, ready/discovered worker counts, pending dead-letter writes, the dead-letter drain timeout, and `workerShutdownTimeoutMs`.
+`QueueLifecycleService.createPlatformStatusSnapshot()` uses the same public snapshot contract as `createQueuePlatformStatusSnapshot(...)`. It reports readiness as `ready` only after Queue reaches `started` and every discovered BullMQ worker processor has started. While those conditions remain true, pending dead-letter writes keep readiness `ready` but degrade health until the pending count returns to zero. `started` resources with pending processors report degraded readiness, `starting` reports degraded readiness, `stopping` reports not-ready/degraded, `stopped` reports not-ready/unhealthy, and worker-start failures report not-ready/unhealthy with `workerStartFailures` and `lastWorkerStartFailure` details. Snapshot details include the Redis dependency id, lifecycle state, ready/discovered worker counts, pending dead-letter writes, the `5_000ms` dead-letter drain timeout, and `workerShutdownTimeoutMs`.
 
 Only singleton `@QueueWorker()` providers/controllers are registered. Request/transient workers are skipped during discovery.
 

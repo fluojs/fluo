@@ -1208,6 +1208,33 @@ describe('EmailModule', () => {
     expect(transportState.sent).toHaveLength(1);
   });
 
+  it('shares one shutdown promise and closes owned transports exactly once across repeated calls', async () => {
+    const transport = new DelayedLifecycleTransport();
+    const container = new Container();
+    const moduleType = EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: {
+        create: async () => transport,
+        ownsResources: true,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(EmailService);
+    await service.send({ subject: 'Idempotent shutdown', text: 'hello', to: ['user@example.com'] });
+
+    const firstShutdown = service.onApplicationShutdown();
+    const concurrentShutdown = service.onApplicationShutdown();
+
+    expect(concurrentShutdown).toBe(firstShutdown);
+    await firstShutdown;
+
+    const repeatedShutdown = service.onApplicationShutdown();
+    expect(repeatedShutdown).toBe(firstShutdown);
+    await repeatedShutdown;
+    expect(transport.closeCalls).toBe(1);
+  });
+
   it('normalizes lazy transport factory rejections and clears rejected state before shutdown', async () => {
     const create = vi.fn(async (): Promise<EmailTransport> => {
       throw new Error('provider create failed');

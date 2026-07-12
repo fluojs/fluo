@@ -61,6 +61,8 @@ export class AppModule {}
 
 Slack registration is global by default: `SlackModule.forRoot(...)` and `SlackModule.forRootAsync(...)` export `SlackService`, `SlackChannel`, `SLACK`, and `SLACK_CHANNEL` with `global: options.global ?? true`. Use the fluo option `global?: boolean`—not NestJS `isGlobal`—and set `global: false` only when the migrated module must keep Slack providers local to modules that explicitly import it. The package exposes singleton compatibility tokens only, and `createSlackProviders(...)` mirrors that same singleton provider wiring for manual module composition. If FluoShop grows multiple Slack clients, compose app-owned modules/providers or facades around separate transports instead of expecting a package-level multi-client registry.
 
+Async registration supports the fluo injected factory shape only: `SlackModule.forRootAsync({ inject, useFactory, global? })`. It consumes `inject` and `useFactory`, not NestJS `imports`, `useClass`, or `useExisting`. Register each dependency in FluoShop's application module graph first, list its token in `inject`, and return the final Slack options from `useFactory`.
+
 Slack also supports bootstrap verification for transports that can prove readiness before the application starts serving traffic. Set `verifyOnModuleInit: true` when the resolved `SlackTransport` exposes `verify()`; `SlackService.onModuleInit()` awaits that optional method and reports initialization failures as `SlackLifecycleError`. A transport that does not implement `verify()` is still valid and simply skips this capability-based check.
 
 ```typescript
@@ -88,7 +90,7 @@ SlackModule.forRoot({
 });
 ```
 
-Status snapshots include `verifiedOnModuleInit` so your readiness dashboard can show whether this startup gate was requested. If `verify()` fails, the Slack lifecycle moves to `failed` and readiness remains not ready instead of deferring discovery to the first production alert.
+Status snapshots include `verifiedOnModuleInit` so your readiness dashboard can show whether this startup gate was requested. If `verify()` fails, the Slack lifecycle moves to `failed` and readiness remains not ready instead of deferring discovery to the first production alert. During shutdown, Slack rejects new deliveries, waits for active deliveries to settle, and only then closes factory-owned transports.
 
 ### Discord Registration
 ```typescript
@@ -231,7 +233,7 @@ await this.notifications.dispatch({
 });
 ```
 
-`sendNotification(...)` only calls the renderer when both `notification.template` and `renderer` are present. Explicit payload fields win over rendered fields for `attachments`, `blocks`, and `text`; text falls back from payload text to rendered text and then to `subject`. Metadata is merged from payload metadata, dispatch metadata, a subject marker, and a template marker in that order, so the final Slack message preserves the operational routing context.
+`sendNotification(...)` only calls the renderer when both `notification.template` and `renderer` are present. Explicit payload fields win over rendered fields for `attachments` and `blocks`, while non-blank payload text wins over rendered text; empty or whitespace-only text is treated as unspecified, so text falls back to non-blank rendered text and then to a non-blank `subject`. Metadata is merged from payload metadata, dispatch metadata, a subject marker, and a template marker in that order, so the final Slack message preserves the operational routing context.
 
 ## 17.5 Rich Formatting: Blocks and Embeds
 

@@ -378,6 +378,26 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('accepts Queue dead-letter inspection guidance with bilingual docs and package regression coverage', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'packages/queue/README.md',
+        'packages/queue/README.ko.md',
+        'docs/reference/package-surface.md',
+        'docs/reference/package-surface.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'book/intermediate/ch11-queue.md',
+        'book/intermediate/ch11-queue.ko.md',
+        'packages/queue/src/dead-letter-manager.test.ts',
+        'packages/queue/src/module.test.ts',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('accepts JWT package-surface guidance when context and governance tests change together', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 
@@ -527,6 +547,48 @@ describe('enforceContractCompanionUpdates', () => {
     }
   });
 
+  it('keeps Slack injected-factory migration limits discoverable across package, migration, context, and book docs', () => {
+    const slackReadme = readFileSync(join(repoRoot, 'packages/slack/README.md'), 'utf8');
+    const slackReadmeKo = readFileSync(join(repoRoot, 'packages/slack/README.ko.md'), 'utf8');
+    const nestjsMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
+    const nestjsMigrationKo = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
+    const docsContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const docsContextKo = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const slackBookChapter = readFileSync(join(repoRoot, 'book/intermediate/ch17-slack-discord.md'), 'utf8');
+    const slackBookChapterKo = readFileSync(join(repoRoot, 'book/intermediate/ch17-slack-discord.ko.md'), 'utf8');
+
+    const asyncRegistrationParagraphs = [
+      slackReadme.split('\n\n').find((paragraph) => paragraph.startsWith('Async registration supports')) ?? '',
+      slackReadmeKo.split('\n\n').find((paragraph) => paragraph.startsWith('Async registration은')) ?? '',
+      slackBookChapter.split('\n\n').find((paragraph) => paragraph.startsWith('Async registration supports')) ?? '',
+      slackBookChapterKo.split('\n\n').find((paragraph) => paragraph.startsWith('Async registration은')) ?? '',
+    ];
+    const migrationRows = [
+      nestjsMigration.split('\n').find((line) => line.includes('NestJS Slack modules')) ?? '',
+      nestjsMigrationKo.split('\n').find((line) => line.includes('NestJS Slack module')) ?? '',
+    ];
+    const contextParagraphs = [
+      docsContext.split('\n\n').find((paragraph) => paragraph.startsWith('Slack discoverability')) ?? '',
+      docsContextKo.split('\n\n').find((paragraph) => paragraph.startsWith('Slack discoverability')) ?? '',
+    ];
+
+    for (const section of [...asyncRegistrationParagraphs, ...migrationRows]) {
+      expect(section).toContain('SlackModule.forRootAsync({ inject, useFactory, global? })');
+      expect(section).toContain('imports');
+      expect(section).toContain('useClass');
+      expect(section).toContain('useExisting');
+    }
+
+    for (const section of contextParagraphs) {
+      expect(section).toContain('SlackModule.forRoot(...)` / `forRootAsync(...)');
+      expect(section).toContain('inject');
+      expect(section).toContain('useFactory');
+      expect(section).toContain('imports');
+      expect(section).toContain('useClass');
+      expect(section).toContain('useExisting');
+    }
+  });
+
   it('accepts Cron lifecycle and NestJS migration guidance when context and governance tests change together', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 
@@ -540,6 +602,24 @@ describe('enforceContractCompanionUpdates', () => {
         'docs/contracts/nestjs-parity-gaps.ko.md',
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('accepts Cron NestJS option migration guidance when bilingual docs and governance tests change together', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'packages/cron/README.md',
+        'packages/cron/README.ko.md',
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'book/intermediate/ch12-cron.md',
+        'book/intermediate/ch12-cron.ko.md',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();
@@ -1359,17 +1439,129 @@ describe('Terminus chooser discoverability', () => {
   });
 });
 
-describe('Queue lifecycle discoverability', () => {
+describe('Queue lifecycle and migration discoverability', () => {
+  function extractNodeEngineRange(manifest: string): string {
+    const range = /"engines"\s*:\s*\{\s*"node"\s*:\s*"([^"]+)"/u.exec(manifest)?.[1];
+    if (range === undefined) {
+      throw new TypeError('Expected the Queue package manifest to declare engines.node.');
+    }
+
+    return range;
+  }
+
+  function extractMarkdownLine(markdown: string, marker: string): string {
+    const line = markdown.split('\n').find((candidate) => candidate.includes(marker));
+    if (line === undefined) {
+      throw new TypeError(`Expected Queue documentation line containing "${marker}".`);
+    }
+
+    return line;
+  }
+
+  function extractMarkdownSection(markdown: string, heading: string): string {
+    const sectionStart = markdown.indexOf(`${heading}\n`);
+    const headingLevel = /^#+/u.exec(heading)?.[0].length;
+    if (sectionStart === -1 || headingLevel === undefined) {
+      throw new TypeError(`Expected Queue documentation section "${heading}".`);
+    }
+
+    const sectionBodyStart = sectionStart + heading.length + 1;
+    const remainingMarkdown = markdown.slice(sectionBodyStart);
+    const nextHeading = new RegExp(`^#{1,${headingLevel}}\\s`, 'mu').exec(remainingMarkdown);
+    const sectionBodyEnd = sectionBodyStart + (nextHeading?.index ?? remainingMarkdown.length);
+
+    return markdown.slice(sectionStart, sectionBodyEnd);
+  }
+
+  function extractMarkdownLines(markdown: string, markers: readonly string[]): string {
+    return markers.map((marker) => extractMarkdownLine(markdown, marker)).join('\n');
+  }
+
   const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
   const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+  const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+  const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
   const englishReadme = readFileSync(join(repoRoot, 'packages/queue/README.md'), 'utf8');
   const koreanReadme = readFileSync(join(repoRoot, 'packages/queue/README.ko.md'), 'utf8');
+  const englishChapter = readFileSync(join(repoRoot, 'book/intermediate/ch11-queue.md'), 'utf8');
+  const koreanChapter = readFileSync(join(repoRoot, 'book/intermediate/ch11-queue.ko.md'), 'utf8');
+  const englishMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
+  const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
+  const governanceSource = readFileSync(
+    join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'),
+    'utf8',
+  );
+  const packageManifest = readFileSync(join(repoRoot, 'packages/queue/package.json'), 'utf8');
+
+  it('keeps the package manifest Node.js runtime floor discoverable across governed Queue docs', () => {
+    const nodeEngineRange = extractNodeEngineRange(packageManifest);
+
+    for (const queueRuntimeEntry of [
+      extractMarkdownLine(englishContext, 'Queue lifecycle'),
+      extractMarkdownLine(koreanContext, 'Queue lifecycle'),
+      extractMarkdownLine(englishSurface, '- **`@fluojs/queue`**:'),
+      extractMarkdownLine(koreanSurface, '- **`@fluojs/queue`**:'),
+      extractMarkdownLine(englishReadme, '`@fluojs/queue` requires Node.js'),
+      extractMarkdownLine(koreanReadme, '`@fluojs/queue`는 package manifest'),
+      extractMarkdownLine(englishChapter, '`@fluojs/queue` is a Node.js'),
+      extractMarkdownLine(koreanChapter, '`@fluojs/queue`는 `engines.node'),
+    ]) {
+      expect(queueRuntimeEntry).toContain('Node.js');
+      expect(queueRuntimeEntry).toContain(nodeEngineRange);
+    }
+  });
 
   it('keeps bootstrap-ready and bounded-shutdown lifecycle docs discoverable from the context hub', () => {
     for (const content of [englishContext, koreanContext, englishReadme, koreanReadme]) {
       expect(content).toContain('bootstrap-ready');
       expect(content).toContain('workerShutdownTimeoutMs');
     }
+  });
+
+  it('keeps explicit NestJS worker migration and persisted-job cutover limits in Queue-specific regions', () => {
+    const englishQueueMigrationRegions = [
+      extractMarkdownLine(englishContext, 'Queue lifecycle'),
+      extractMarkdownSection(englishReadme, '## Migrating from NestJS Queue Workers'),
+      extractMarkdownSection(englishChapter, '### 11.3.3 Migration checkpoint: replace NestJS worker discovery'),
+      extractMarkdownLines(englishMigration, ['| `@nestjs/bull`', '- Queue migration', '- Queue owns processor lifecycle']),
+    ];
+    const koreanQueueMigrationRegions = [
+      extractMarkdownLine(koreanContext, 'Queue lifecycle'),
+      extractMarkdownSection(koreanReadme, '## NestJS Queue Worker에서 마이그레이션'),
+      extractMarkdownSection(koreanChapter, '### 11.3.3 Migration checkpoint: NestJS worker discovery 교체'),
+      extractMarkdownLines(koreanMigration, ['| `@Processor(...)`', '- Queue migration', '- Queue는 processor lifecycle']),
+    ];
+
+    for (const queueRegion of [...englishQueueMigrationRegions, ...koreanQueueMigrationRegions]) {
+      expect(queueRegion).toContain('QueueModule.forRoot');
+      expect(queueRegion).toContain('@QueueWorker(JobClass');
+      expect(queueRegion).toContain('singleton');
+      expect(queueRegion).toContain('global: false');
+      expect(queueRegion).toContain('bootstrap-ready');
+      expect(queueRegion).toContain('workerShutdownTimeoutMs');
+      expect(queueRegion).toContain('queueName');
+      expect(queueRegion).toContain('jobName');
+      expect(queueRegion).toContain('named job');
+      expect(queueRegion).toContain('payload');
+      expect(queueRegion).toContain('metadata');
+      expect(queueRegion).toMatch(/Bull(?:MQ)?/u);
+      expect(queueRegion).toMatch(/persisted|영속/u);
+      expect(queueRegion).toMatch(/drain|re-enqueue|다시 enqueue|별도 queue/u);
+    }
+
+    for (const queueRegion of englishQueueMigrationRegions) {
+      expect(queueRegion).toMatch(/reachab/u);
+      expect(queueRegion).toContain('Redis');
+      expect(queueRegion).toMatch(/does not (?:read|consume|interpret)[^.]*NestJS[^.]*metadata|cannot[^.]*metadata compatible/u);
+    }
+
+    for (const queueRegion of koreanQueueMigrationRegions) {
+      expect(queueRegion).toMatch(/reachab|도달/u);
+      expect(queueRegion).toContain('Redis');
+      expect(queueRegion).toMatch(/NestJS[^.]*metadata[^.]*(?:읽|소비|해석)[^.]*않|metadata[^.]*보존할 수 없/u);
+    }
+
+    expect(governanceSource).toContain('Queue migration from NestJS/Bull processor metadata');
   });
 });
 
@@ -1425,12 +1617,40 @@ describe('Notifications discoverability', () => {
 });
 
 describe('Cron scheduling discoverability', () => {
+  function extractMarkdownSection(markdown: string, heading: string): string {
+    const sectionStart = markdown.indexOf(`${heading}\n`);
+    const headingLevel = /^#+/u.exec(heading)?.[0].length;
+    if (sectionStart === -1 || headingLevel === undefined) {
+      throw new TypeError(`Expected Cron documentation section "${heading}".`);
+    }
+
+    const sectionBodyStart = sectionStart + heading.length + 1;
+    const remainingMarkdown = markdown.slice(sectionBodyStart);
+    const nextHeading = new RegExp(`^#{1,${headingLevel}}\\s`, 'mu').exec(remainingMarkdown);
+    const sectionBodyEnd = sectionBodyStart + (nextHeading?.index ?? remainingMarkdown.length);
+
+    return markdown.slice(sectionStart, sectionBodyEnd);
+  }
+
+  function extractMarkdownLines(markdown: string, markers: readonly string[]): string {
+    return markers.map((marker) => {
+      const line = markdown.split('\n').find((candidate) => candidate.includes(marker));
+      if (line === undefined) {
+        throw new TypeError(`Expected Cron documentation line containing "${marker}".`);
+      }
+
+      return line;
+    }).join('\n');
+  }
+
   const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
   const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
   const englishPackageSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
   const koreanPackageSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
   const englishReadme = readFileSync(join(repoRoot, 'packages/cron/README.md'), 'utf8');
   const koreanReadme = readFileSync(join(repoRoot, 'packages/cron/README.ko.md'), 'utf8');
+  const englishMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
+  const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
   const englishChapter = readFileSync(join(repoRoot, 'book/intermediate/ch12-cron.md'), 'utf8');
   const koreanChapter = readFileSync(join(repoRoot, 'book/intermediate/ch12-cron.ko.md'), 'utf8');
 
@@ -1469,6 +1689,55 @@ describe('Cron scheduling discoverability', () => {
     for (const content of [englishChapter, koreanChapter]) {
       expect(content).toContain('Redis peer');
       expect(content).toContain('distributed-lock');
+    }
+  });
+
+  it('keeps Cron NestJS option and overlap migration boundaries discoverable across bilingual surfaces', () => {
+    const englishCronRegions = [
+      extractMarkdownSection(englishContext, '## Cron Migration Option Boundary'),
+      [
+        extractMarkdownSection(englishReadme, '### Migrating NestJS Cron Options'),
+        extractMarkdownSection(englishReadme, '### Distributed Locking'),
+      ].join('\n'),
+      extractMarkdownLines(englishMigration, ['| `@nestjs/schedule`', '- NestJS cron options']),
+      [
+        extractMarkdownSection(englishChapter, '### 12.3.2 Migrating NestJS cron options'),
+        extractMarkdownSection(englishChapter, '## 12.4 Distributed locking across multiple instances'),
+      ].join('\n'),
+    ];
+    const koreanCronRegions = [
+      extractMarkdownSection(koreanContext, '## Cron Migration Option Boundary'),
+      [
+        extractMarkdownSection(koreanReadme, '### NestJS Cron 옵션 마이그레이션'),
+        extractMarkdownSection(koreanReadme, '### 분산 락 사용하기'),
+      ].join('\n'),
+      extractMarkdownLines(koreanMigration, ['| `@nestjs/schedule`', '- NestJS cron option']),
+      [
+        extractMarkdownSection(koreanChapter, '### 12.3.2 Migrating NestJS cron options'),
+        extractMarkdownSection(koreanChapter, '## 12.4 Distributed locking across multiple instances'),
+      ].join('\n'),
+    ];
+
+    for (const cronRegion of englishCronRegions) {
+      expect(cronRegion).toContain('timeZone');
+      expect(cronRegion).toContain('timezone');
+      expect(cronRegion).toContain('waitForCompletion');
+      expect(cronRegion).toMatch(/does not expose|has no .*option|no direct fluo option/u);
+      expect(cronRegion).toMatch(/skip(?:s|ped)?[^.]*?(?:not queued|rather than queue(?:d|ing)|instead of queueing)/u);
+      expect(cronRegion).toMatch(/application-owned queue|application-owned.*worker/u);
+      expect(cronRegion).toContain('Redis');
+      expect(cronRegion).toMatch(/distributed lock/u);
+    }
+
+    for (const cronRegion of koreanCronRegions) {
+      expect(cronRegion).toContain('timeZone');
+      expect(cronRegion).toContain('timezone');
+      expect(cronRegion).toContain('waitForCompletion');
+      expect(cronRegion).toMatch(/옵션이 없|option이 없|옵션을 .*노출하지 않/u);
+      expect(cronRegion).toMatch(/(?:queue하지 않고|queue되지 않고).*건너/u);
+      expect(cronRegion).toMatch(/application-owned queue|application-owned.*worker/u);
+      expect(cronRegion).toContain('Redis');
+      expect(cronRegion).toMatch(/distributed lock/u);
     }
   });
 });

@@ -82,6 +82,30 @@ export interface QueueWorkerDescriptor {
   workerName: string;
 }
 
+/** Options for one read-only dead-letter inspection. */
+export interface QueueDeadLetterInspectionOptions {
+  /** Maximum number of stored entries to inspect. Defaults to `100` and is capped at `1_000`. */
+  readonly limit?: number;
+}
+
+/** Parsed operator-facing view of one dead-letter record. */
+export interface QueueDeadLetterRecord {
+  readonly attemptsMade: number;
+  readonly errorMessage: string;
+  readonly failedAt: string;
+  readonly jobId: string;
+  readonly jobName: string;
+  readonly payload: unknown;
+}
+
+/** Result of a bounded dead-letter inspection. */
+export interface QueueDeadLetterInspectionResult {
+  /** Number of malformed stored values omitted from the inspected window. */
+  readonly malformedRecordCount: number;
+  /** Valid records in newest-first order. */
+  readonly records: readonly QueueDeadLetterRecord[];
+}
+
 /** Queue facade exposed to application code and compatibility tokens. */
 export interface Queue {
   /**
@@ -91,4 +115,16 @@ export interface Queue {
    * @returns The BullMQ job id generated for the enqueued payload.
    */
   enqueue<TJob extends object>(job: TJob): Promise<string>;
+
+  /**
+   * Reads a bounded snapshot of dead-letter records for one queue job name.
+   *
+   * @param jobName Queue worker job name whose dead letters should be inspected.
+   * @param options Optional bounded inspection settings.
+   * @returns Valid records in newest-first order plus the malformed count for the inspected window.
+   */
+  inspectDeadLetters(
+    jobName: string,
+    options?: QueueDeadLetterInspectionOptions,
+  ): Promise<QueueDeadLetterInspectionResult>;
 }

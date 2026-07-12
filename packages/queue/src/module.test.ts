@@ -348,6 +348,14 @@ class MockRedisClient {
     return 'OK';
   }
 
+  async lrange(key: string, start: number, stop: number): Promise<string[]> {
+    const entries = this.deadLetters.get(key) ?? [];
+    const startIndex = start < 0 ? Math.max(entries.length + start, 0) : start;
+    const stopIndex = stop < 0 ? entries.length + stop : stop;
+
+    return entries.slice(startIndex, stopIndex + 1);
+  }
+
   async quit(): Promise<'OK'> {
     this.quitCalls.push('shared');
     return 'OK';
@@ -1131,6 +1139,47 @@ describe('@fluojs/queue', () => {
         payload: { target: 'invoice-1' },
       });
       expect(loggerEvents.some((event) => event.includes('Failed to append dead-letter record'))).toBe(false);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('inspects dead letters through the public queue facade without mutating stored records', async () => {
+    // Given
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot()],
+    });
+
+    const redis = new MockRedisClient();
+    const key = 'fluo:queue:dead-letter:invoice';
+    const storedRecords = [
+      '{invalid-json',
+      JSON.stringify({
+        attemptsMade: 1,
+        errorMessage: 'invoice render failed',
+        failedAt: '2026-07-10T00:00:00.000Z',
+        jobId: 'job-1',
+        jobName: 'invoice',
+        payload: { invoiceId: 'invoice-1' },
+      }),
+    ];
+    redis.deadLetters.set(key, storedRecords);
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+
+    try {
+      const queue = await app.container.resolve<Queue>(QUEUE);
+
+      // When
+      const result = await queue.inspectDeadLetters('invoice', { limit: 2 });
+
+      // Then
+      expect(result.records.map((record) => record.jobId)).toEqual(['job-1']);
+      expect(result.malformedRecordCount).toBe(1);
+      expect(redis.deadLetters.get(key)).toEqual(storedRecords);
     } finally {
       await app.close();
     }
@@ -2260,10 +2309,17 @@ describe('@fluojs/queue', () => {
 
     await expect(
       bootstrapApplication({
-        providers: [{ provide: REDIS_CLIENT, useValue: { ltrim: async () => 'OK', rpush: async () => 1 } }],
+        providers: [
+          {
+            provide: REDIS_CLIENT,
+            useValue: { lrange: async () => [], ltrim: async () => 'OK', rpush: async () => 1 },
+          },
+        ],
         rootModule: AppModule,
       }),
-    ).rejects.toThrow('@fluojs/queue requires a Redis client with duplicate(), rpush(), and ltrim() methods.');
+    ).rejects.toThrow(
+      '@fluojs/queue requires a Redis client with duplicate(), lrange(), rpush(), and ltrim() methods.',
+    );
   });
 
   it('passes rate limiter options from @QueueWorker() to Bull worker configuration', async () => {

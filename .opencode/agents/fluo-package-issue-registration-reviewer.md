@@ -17,6 +17,13 @@ permission:
     '*': ask
     'find *': deny
     'xargs *': deny
+    'ls *': allow
+    'test *': allow
+    'true *': allow
+    'exit *': allow
+    'printf *': allow
+    'command -v *': allow
+    'pnpm *': allow
     'base64 *': allow
     'nl *': allow
     'sed *': allow
@@ -82,6 +89,9 @@ permission:
     'GIT_MASTER=1 git branch --delete *': deny
     'GIT_MASTER=1 git worktree remove*': deny
     'sort*': allow
+    'gh search issues *': allow
+    'gh repo view *': allow
+    'gh release view *': allow
     'gh issue *': allow
     'gh label *': allow
     'gh issue create*': deny

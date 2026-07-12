@@ -32,7 +32,7 @@ npm install @fluojs/redis ioredis
 
 `RedisModule.forRoot(options)`는 기본 Redis 클라이언트와 `RedisService` 파사드를 등록하는 지원되는 root entrypoint입니다.
 
-`RedisModule.forRoot(...)`는 의도적으로 동기 방식입니다. NestJS의 `forRootAsync(...)` 같은 async dynamic module에서 마이그레이션할 때는 secret, 환경별 host, 외부에서 만든 client를 애플리케이션 경계에서 먼저 해석한 뒤 최종 Redis 옵션을 `forRoot(...)`에 전달하세요. fluo는 Redis module wiring을 module graph 안의 숨겨진 async factory로 미루지 않습니다.
+`RedisModule.forRoot(...)`는 의도적으로 동기 방식이며 Redis constructor option으로 항상 새 `ioredis` client를 생성합니다. 외부에서 만든 client를 채택하지 않습니다. NestJS의 `forRootAsync(...)` 같은 async dynamic module에서 마이그레이션할 때는 secret, 환경별 host, TLS option을 애플리케이션 경계에서 먼저 해석한 뒤 최종 Redis option을 `forRoot(...)`에 전달하세요. 외부에서 만든 client는 이 module 밖에 두고 애플리케이션 lifecycle에서 닫아야 합니다. fluo는 Redis module wiring을 module graph 안의 숨겨진 async factory로 미루지 않습니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -53,7 +53,7 @@ export class AppModule {}
 
 `RedisService`를 주입받아 고수준 작업을 수행하거나, `REDIS_CLIENT`를 통해 원시 `ioredis` 인스턴스를 직접 사용할 수 있습니다.
 
-`RedisService.get()`은 JSON parse를 시도하고 실패하면 raw string을 반환합니다. 누락된 key는 `null`을 반환합니다. `RedisService.set()`은 값을 `JSON.stringify()`로 직렬화하고 양수 TTL에만 `EX`를 사용합니다.
+`RedisService.get()`은 JSON parse를 시도하고 실패하면 raw string을 반환합니다. 누락된 key는 `null`을 반환합니다. `RedisService.set()`은 값을 `JSON.stringify()`로 직렬화하며, 유한한 양의 정수 TTL에는 Redis `EX`를 사용하고 유한한 양의 소수 TTL에는 올림한 밀리초 값으로 `PX`를 사용합니다. TTL을 생략하거나 0 이하 또는 유한하지 않은 값을 전달하면 persistent key를 저장합니다.
 
 ```typescript
 import { Inject } from '@fluojs/core';
@@ -77,12 +77,12 @@ export class CacheRepository {
 
 ### 수명 주기 소유권
 
-`@fluojs/redis`는 `RedisModule.forRoot({ name, ... })`로 등록한 이름 있는 연결을 포함해, 자신이 생성한 모든 Redis 클라이언트의 수명 주기를 직접 관리합니다.
+`RedisModule.forRoot(...)` 등록은 각각 새 client를 생성하며, `@fluojs/redis`는 `RedisModule.forRoot({ name, ... })`로 등록한 이름 있는 연결을 포함해 그 client의 lifecycle을 직접 관리합니다. 이 module은 기존 client instance를 채택하지 않습니다.
 
 - 호출자가 옵션을 강제로 캐스팅하더라도 Fluo는 항상 `lazyConnect: true`를 강제하므로, 소켓은 import 시점이 아니라 애플리케이션 bootstrap 중에 열립니다.
 - bootstrap 단계에서는 클라이언트가 ioredis `wait` 상태일 때만 lifecycle service가 `connect()`를 호출합니다.
 - lifecycle이 소유한 `connect()`와 `quit()` 호출은 package timeout(기본 `10_000` ms)으로 제한되어, Redis 명령이 멈춰도 bootstrap/shutdown이 무기한 대기하지 않습니다. `lifecycle.connectTimeoutMs`와 `lifecycle.quitTimeoutMs`로 재정의할 수 있으며, host process가 의도적으로 무제한 대기를 소유하는 경우에만 `0`을 전달하세요.
-- shutdown 단계에서는 ready/connecting 계열 상태에 `quit()`를 우선 시도해 정상 종료를 노리고, wait/종료 전이 상태에서는 `disconnect()`를 직접 사용합니다.
+- shutdown 단계에서는 ready/connecting 계열 상태에 `quit()`를 우선 시도해 정상 종료를 노리고, monitoring, wait/종료 전이 상태에서는 `disconnect()`를 직접 사용합니다.
 - `quit()`가 실패하면 Fluo는 `disconnect()`로 fallback하고, 그 뒤에도 클라이언트가 닫히지 않은 경우에만 에러를 다시 던집니다.
 
 ### 이름 있는 클라이언트
@@ -91,6 +91,7 @@ export class CacheRepository {
 
 - `name`을 생략하면 기본 별칭인 `REDIS_CLIENT` / `RedisService`를 사용합니다.
 - `name`을 지정하면 `getRedisClientToken(name)` / `getRedisServiceToken(name)`으로 이름 있는 바인딩을 가져옵니다.
+- `name`은 Fluo 등록만 식별합니다. ioredis Sentinel master name은 `sentinelName`으로 전달하세요. Fluo는 등록 토큰을 바꾸지 않고 이를 ioredis 생성자 `name` 옵션으로 전달합니다.
 - 이름 있는 클라이언트도 기본 클라이언트와 동일한 bootstrap/shutdown 계약을 따르며, `REDIS_CLIENT` / `RedisService` 별칭은 기본 등록에서만 export됩니다.
 - 이름은 trim되며, blank 또는 whitespace-only name은 token/component helper에서 거부됩니다.
 
@@ -111,6 +112,7 @@ const ANALYTICS_REDIS_CLIENT = getRedisClientToken('analytics');
   imports: [
     RedisModule.forRoot({ host: 'localhost', port: 6379 }),
     RedisModule.forRoot({ name: 'analytics', host: 'localhost', port: 6380 }),
+    RedisModule.forRoot({ name: 'sentinel-cache', sentinelName: 'mymaster', sentinels: [{ host: 'localhost', port: 26379 }] }),
   ],
 })
 export class AppModule {}
@@ -200,7 +202,7 @@ export class PubSubTransportFactory {
 ### 타입
 - `DefaultRedisModuleOptions`: 이름 없는 기본 Redis 등록이 받는 옵션입니다. 선택적 global alias visibility와 lifecycle timeout control을 포함합니다.
 - `NamedRedisModuleOptions`: 추가 이름 있는 Redis 등록이 받는 옵션입니다. 필수 `name`과 scoped lifecycle timeout control을 포함합니다.
-- `RedisModuleOptions`: Fluo가 module-only `name`, `global`, `lifecycle` 필드를 제거한 뒤 `ioredis` 생성자에 전달하는 설정 옵션입니다.
+- `RedisModuleOptions`: Fluo가 module-only `name`, `global`, `lifecycle`, `sentinelName` 필드를 제거한 뒤 `ioredis` 생성자에 전달하는 설정 옵션입니다. `sentinelName`은 ioredis Sentinel master `name`으로 전달되고, `name`은 Fluo 등록 식별자로 유지됩니다.
 - `RedisClientOptions`: Fluo가 module-only field를 제거하고 내부에서 `lazyConnect: true`를 강제하기 전의 Redis constructor option입니다.
 - `RedisLifecycleOptions`: Fluo가 소유한 `connect()`와 `quit()` lifecycle command의 timeout을 조정하는 선택적 옵션입니다.
 - `PersistencePlatformStatusSnapshot`, `RedisStatusAdapterInput`: status snapshot input/output type입니다.
