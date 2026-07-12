@@ -45,6 +45,20 @@ describe('provider input validation', () => {
     expect(error).toHaveProperty('message', expect.stringContaining('inject must be an array'));
   });
 
+  it('normalizes a non-constructable function inject token to InvalidProviderError', () => {
+    const provider = {
+      provide: Symbol('consumer-with-arrow-token'),
+      useFactory: () => undefined,
+      inject: [() => undefined],
+    };
+
+    const error = captureRegistrationError(provider);
+
+    expect(error).toBeInstanceOf(InvalidProviderError);
+    expect(error).toMatchObject({ code: 'INVALID_PROVIDER' });
+    expect(error).toHaveProperty('message', expect.stringContaining('inject'));
+  });
+
   it.each([
     ['null token', null],
     ['undefined token', undefined],

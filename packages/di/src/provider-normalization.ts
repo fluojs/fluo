@@ -21,7 +21,7 @@ type ValidatedProviderObject = ProviderObjectInput & { readonly provide: Token }
 type NormalizedInjectToken = Token | ForwardRefFn | OptionalToken;
 
 function isClassConstructor(value: Provider): value is ClassType {
-  return typeof value === 'function';
+  return isConstructableFunction(value);
 }
 
 function isProviderObject(value: unknown): value is ProviderObjectInput {
@@ -29,7 +29,7 @@ function isProviderObject(value: unknown): value is ProviderObjectInput {
 }
 
 function isClassType(value: unknown): value is ClassType {
-  return typeof value === 'function';
+  return isConstructableFunction(value);
 }
 
 function isFactoryFunction(value: unknown): value is (...deps: unknown[]) => unknown {
@@ -40,8 +40,25 @@ function isTokenResolver(value: unknown): value is () => Token {
   return typeof value === 'function';
 }
 
+function isConstructableFunction(value: unknown): value is ClassType {
+  if (typeof value !== 'function') {
+    return false;
+  }
+
+  try {
+    Reflect.construct(Object, [], value);
+    return true;
+  } catch (error) {
+    if (error instanceof TypeError) {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
 function isToken(value: unknown): value is Token {
-  return typeof value === 'string' || typeof value === 'symbol' || typeof value === 'function';
+  return typeof value === 'string' || typeof value === 'symbol' || isConstructableFunction(value);
 }
 
 function isScope(value: unknown): value is Scope {
