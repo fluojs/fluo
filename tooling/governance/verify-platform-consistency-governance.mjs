@@ -567,7 +567,10 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // the contract-governing documentation surface, including package-surface
   // transaction boundary and observability ownership updates that must stay
   // paired with runtime tests, such as Prisma branded transaction target
-  // resolution and ALS host lookup fail-closed coverage, Drizzle shutdown-drain
+  // resolution, ALS host lookup fail-closed coverage, service-decorator shutdown
+  // drain, concurrent multi-container context isolation, explicit request signal
+  // forwarding, facade/wrapper responsibility, fail-open rollback limits, and
+  // non-contract replica routing/transaction telemetry claims, Drizzle shutdown-drain
   // coverage for fail-open manual transactions, Drizzle decorated-instance
   // transaction target fallback discoverability, Mongoose ALS session/request
   // tracking, fail-open manual transaction drain, plus runtime-boundary docs,

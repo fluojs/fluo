@@ -184,7 +184,7 @@ export class AppModule {}
 
 ## 12.6 Using PrismaService
 
-등록이 끝난 뒤에는 애플리케이션 코드가 데이터베이스와 어떻게 대화할지 정해야 합니다. `@fluojs/prisma` 패키지는 생성된 Prisma Client를 감싸는 `PrismaService`와, 생성된 delegate를 직접 호출하는 repository를 위한 `PrismaServiceFacade<TClient>`를 제공합니다.
+등록이 끝난 뒤에는 애플리케이션 코드가 데이터베이스와 어떻게 대화할지 정해야 합니다. `@fluojs/prisma` 패키지는 서로 연관된 두 가지 주입 형태를 제공합니다. `PrismaService<TClient>`는 `current()`, `transaction(...)`, `requestTransaction(...)`을 제공하는 lifecycle/transaction wrapper이고, `PrismaServiceFacade<TClient>`는 생성된 Prisma Client delegate 호출까지 현재 root 또는 transaction client로 전달하는 repository-facing proxy입니다.
 
 ### Data Access Object (DAO) Pattern
 데이터베이스 로직을 비즈니스 로직과 분리하는 것이 좋습니다. `PostsRepository`를 만들어 보겠습니다.
@@ -214,9 +214,9 @@ export class PostsRepository {
 이 예시는 `PostsRepository`가 해당 모듈의 `providers` 배열에 등록되어 있다고 가정합니다.
 
 ### 트랜잭션 인지 (Transaction Awareness)
-fluo에서 `PrismaService`는 컨텍스트를 인지합니다. 즉, `this.prisma.post.create()`를 호출할 때 서비스는 현재 활성 트랜잭션(다음 장에서 다룰 내용) 내부에서 실행 중인지 아니면 단독 작업으로 실행 중인지를 자동으로 결정합니다.
+fluo에서 주입된 `PrismaServiceFacade`는 컨텍스트를 인지합니다. 즉, `this.prisma.post.create()`를 호출할 때 facade는 현재 활성 트랜잭션(다음 장에서 다룰 내용) 내부에서 실행 중인지 아니면 단독 작업으로 실행 중인지를 자동으로 결정합니다.
 
-`PrismaService`의 모델을 직접 호출함으로써 리포지토리는 실행 컨텍스트에 신경 쓰지 않고 쿼리 자체에만 집중할 수 있습니다. 이는 재사용성과 테스트 용이성을 크게 높여줍니다. 서비스 레벨 트랜잭션에서 여러 쓰기 작업을 하나로 묶더라도 동일한 리포지토리 코드를 계속 사용할 수 있습니다.
+`PrismaServiceFacade`의 생성된 모델 delegate를 직접 호출함으로써 리포지토리는 실행 컨텍스트에 신경 쓰지 않고 쿼리 자체에만 집중할 수 있습니다. Transaction boundary를 열거나 확인하기만 하는 provider는 대신 `PrismaService<TClient>`를 주입해야 합니다. 서비스 레벨 트랜잭션에서 여러 쓰기 작업을 하나로 묶더라도 동일한 리포지토리 코드를 계속 사용할 수 있습니다.
 
 이 패턴은 fluo의 "트랜잭션 중립적(Transaction Agnostic)" 리포지토리 설계의 핵심입니다. 이를 통해 데이터 접근 계층을 깔끔하고 타입 안전하게 유지하면서 다양한 트랜잭션 경계에서도 성능을 보장할 수 있습니다.
 
