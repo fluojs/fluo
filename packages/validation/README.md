@@ -84,6 +84,13 @@ The root value passed to `materialize()` must already be a plain object or an
 instance of the target DTO; malformed roots such as strings, arrays, and `null`
 are rejected before the target DTO constructor or field initializers run.
 
+### DTO inheritance
+
+Derived DTOs inherit field-level and class-level validation rules from their base
+DTO. Adding validation decorators to the derived DTO creates derived-owned
+metadata and does not change how the base DTO validates. The same isolation holds
+when extending a class returned by a mapped DTO helper.
+
 ### Validation issue shape
 
 `DtoValidationError.issues` is a stable DTO for request-pipeline error details:

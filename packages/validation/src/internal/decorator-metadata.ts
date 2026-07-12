@@ -21,11 +21,16 @@ function getStandardDtoValidationMap(metadata: unknown): Map<MetadataPropertyKey
   const bag = getStandardMetadataBag(metadata);
   const current = bag[standardDtoValidationMetadataKey] as Map<MetadataPropertyKey, DtoFieldValidationRule[]> | undefined;
 
-  if (current) {
+  if (current && Object.hasOwn(bag, standardDtoValidationMetadataKey)) {
     return current;
   }
 
   const created = new Map<MetadataPropertyKey, DtoFieldValidationRule[]>();
+
+  for (const [propertyKey, rules] of current ?? []) {
+    created.set(propertyKey, [...rules]);
+  }
+
   bag[standardDtoValidationMetadataKey] = created;
   return created;
 }
@@ -34,11 +39,11 @@ function getStandardClassValidationList(metadata: unknown): ClassValidationRule[
   const bag = getStandardMetadataBag(metadata);
   const current = bag[standardClassValidationMetadataKey] as ClassValidationRule[] | undefined;
 
-  if (current) {
+  if (current && Object.hasOwn(bag, standardClassValidationMetadataKey)) {
     return current;
   }
 
-  const created: ClassValidationRule[] = [];
+  const created: ClassValidationRule[] = [...(current ?? [])];
   bag[standardClassValidationMetadataKey] = created;
   return created;
 }
