@@ -220,7 +220,10 @@ Do not assume the network sends the exact type you want. Describe the type you e
 If you really need to accept a number from a query parameter, bind it to a DTO first, then make the conversion explicit in code.
 
 ```typescript
+import { FromQuery, Get, RequestDto } from '@fluojs/http';
+
 class ListPostsQueryDto {
+  @FromQuery('page')
   page = '1';
 }
 
@@ -232,7 +235,7 @@ findAll(input: ListPostsQueryDto) {
 }
 ```
 
-This makes the conversion process explicit and visible. First you fix the DTO input contract, then you show the required conversion in code.
+This makes both the request source and the conversion process explicit and visible. First `@FromQuery('page')` binds the `page` query field to the DTO, then the handler shows the required conversion in code.
 
 ## 6.6 What FluoBlog Looks Like After Validation
 

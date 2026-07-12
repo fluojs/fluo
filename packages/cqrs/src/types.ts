@@ -65,7 +65,7 @@ export interface ISaga<TEvent extends IEvent = IEvent> {
  * CQRS passes this value to command handlers, query handlers, event handlers, and sagas when a
  * nested dispatch chain is active. Application code should pass the value through unchanged to
  * nested `execute(...)`, `publish(...)`, or `publishAll(...)` calls. The context intentionally
- * exposes no public topology fields and should not be inspected or constructed by callers.
+ * exposes no public topology fields, and caller-shaped objects cannot supply trusted runtime state.
  */
 export interface CqrsDispatchContext {}
 
