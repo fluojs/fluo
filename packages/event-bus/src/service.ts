@@ -312,7 +312,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
 
   private runInvocationTasksInBackground(invocationTasks: Promise<void>[]): void {
     for (const task of invocationTasks) {
-      void task;
+      void this.trackActiveDispatchWork(task);
     }
   }
 
