@@ -107,6 +107,18 @@ export class BillingProjectionHandler {
 
 The domain flow remains explicit, and only the slow work moves out of band.
 
+### 11.3.3 Migration checkpoint: replace NestJS worker discovery
+
+A NestJS/Bull worker does not become a fluo worker merely because its class is imported. Apply this checklist when moving an existing processor into FluoShop:
+
+1. Register `RedisModule.forRoot(...)` and `QueueModule.forRoot(...)` in the owning module graph.
+2. Replace `@Processor(...)`, `@Process(...)`, and emitted provider metadata with the TC39 standard `@QueueWorker(GenerateInvoiceJob, options)` class decorator and a `handle(job)` method.
+3. Put the worker in `@Module({ providers: [...] })` with singleton scope and declare constructor dependencies with `@Inject(...)`. Queue scans compiled singleton provider/controller registrations; request/transient workers and classes that are only imported are not registered.
+4. Keep the worker and Redis provider reachable from the queue registration. This is especially important for `QueueModule.forRoot({ global: false })`, whose discovery stays inside the authored imports/exports graph that can reach that registration.
+5. Remove processor start/stop hooks that would compete with Queue lifecycle ownership. Queue starts processors after the application bootstrap-ready handoff and bounds shutdown with `workerShutdownTimeoutMs` before asking BullMQ to force-close a stuck worker.
+
+Existing persisted Bull/BullMQ data needs an application-owned cutover plan. NestJS integrations can place multiple named job values under one `queueName`; fluo creates one queue/worker pair per job type and uses `jobName` as both its BullMQ queue name and named job. Setting `jobName` alone therefore cannot preserve a legacy shared-queue topology, and fluo does not consume NestJS metadata or transform the serialized payload automatically. Drain the legacy queue before switching producers, transform and re-enqueue compatible payloads into fluo's per-job queues, or use separate queue names while old workers drain. Then validate payload class shape and retry policy, register the singleton `@QueueWorker(JobClass)` through the same `QueueModule.forRoot(...)` graph (including worker/Redis reachability with `global: false`), and account for the bootstrap-ready start plus `workerShutdownTimeoutMs` shutdown bound.
+
 ## 11.4 Retry and backoff strategy
 
 The queue README highlights distributed retry and backoff as first-class features. That maps directly to real operational needs. FluoShop cannot assume every remote dependency is stable. Email providers fail temporarily, storage systems have short outages, and Marketplace APIs may throttle without warning. Retry gives the system room to recover automatically under those conditions, while backoff prevents an outage from turning immediately into a retry storm.
@@ -177,6 +189,7 @@ As FluoShop moves to v2.0.0, it no longer stops at being event-aware. It recogni
 ## 11.11 Summary
 
 - `@fluojs/queue` gives FluoShop Redis-backed background job processing with worker discovery and lifecycle-managed enqueueing.
+- NestJS migration requires an explicit singleton `@QueueWorker(JobClass)` provider with `handle(job)`, module-graph reachability, and an application-verified `jobName`/payload cutover; legacy processor metadata is not a compatibility surface.
 - A job is a durable handoff for slow or failure-prone work such as invoice generation, email batches, and catalog syncs.
 - Retry attempts and backoff strategies should be chosen per workload rather than copied uncritically.
 - The dead-letter list preserves repeatedly failed jobs under a bounded retention policy, and the read-only inspection API returns newest-first typed metadata without exposing Queue's Redis key format.

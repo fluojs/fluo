@@ -1437,7 +1437,7 @@ describe('Terminus chooser discoverability', () => {
   });
 });
 
-describe('Queue lifecycle discoverability', () => {
+describe('Queue lifecycle and migration discoverability', () => {
   function extractNodeEngineRange(manifest: string): string {
     const range = /"engines"\s*:\s*\{\s*"node"\s*:\s*"([^"]+)"/u.exec(manifest)?.[1];
     if (range === undefined) {
@@ -1456,6 +1456,25 @@ describe('Queue lifecycle discoverability', () => {
     return line;
   }
 
+  function extractMarkdownSection(markdown: string, heading: string): string {
+    const sectionStart = markdown.indexOf(`${heading}\n`);
+    const headingLevel = /^#+/u.exec(heading)?.[0].length;
+    if (sectionStart === -1 || headingLevel === undefined) {
+      throw new TypeError(`Expected Queue documentation section "${heading}".`);
+    }
+
+    const sectionBodyStart = sectionStart + heading.length + 1;
+    const remainingMarkdown = markdown.slice(sectionBodyStart);
+    const nextHeading = new RegExp(`^#{1,${headingLevel}}\\s`, 'mu').exec(remainingMarkdown);
+    const sectionBodyEnd = sectionBodyStart + (nextHeading?.index ?? remainingMarkdown.length);
+
+    return markdown.slice(sectionStart, sectionBodyEnd);
+  }
+
+  function extractMarkdownLines(markdown: string, markers: readonly string[]): string {
+    return markers.map((marker) => extractMarkdownLine(markdown, marker)).join('\n');
+  }
+
   const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
   const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
   const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
@@ -1464,14 +1483,20 @@ describe('Queue lifecycle discoverability', () => {
   const koreanReadme = readFileSync(join(repoRoot, 'packages/queue/README.ko.md'), 'utf8');
   const englishChapter = readFileSync(join(repoRoot, 'book/intermediate/ch11-queue.md'), 'utf8');
   const koreanChapter = readFileSync(join(repoRoot, 'book/intermediate/ch11-queue.ko.md'), 'utf8');
+  const englishMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
+  const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
+  const governanceSource = readFileSync(
+    join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'),
+    'utf8',
+  );
   const packageManifest = readFileSync(join(repoRoot, 'packages/queue/package.json'), 'utf8');
 
   it('keeps the package manifest Node.js runtime floor discoverable across governed Queue docs', () => {
     const nodeEngineRange = extractNodeEngineRange(packageManifest);
 
     for (const queueRuntimeEntry of [
-      extractMarkdownLine(englishContext, 'Queue lifecycle discoverability'),
-      extractMarkdownLine(koreanContext, 'Queue lifecycle discoverability'),
+      extractMarkdownLine(englishContext, 'Queue lifecycle'),
+      extractMarkdownLine(koreanContext, 'Queue lifecycle'),
       extractMarkdownLine(englishSurface, '- **`@fluojs/queue`**:'),
       extractMarkdownLine(koreanSurface, '- **`@fluojs/queue`**:'),
       extractMarkdownLine(englishReadme, '`@fluojs/queue` requires Node.js'),
@@ -1489,6 +1514,52 @@ describe('Queue lifecycle discoverability', () => {
       expect(content).toContain('bootstrap-ready');
       expect(content).toContain('workerShutdownTimeoutMs');
     }
+  });
+
+  it('keeps explicit NestJS worker migration and persisted-job cutover limits in Queue-specific regions', () => {
+    const englishQueueMigrationRegions = [
+      extractMarkdownLine(englishContext, 'Queue lifecycle'),
+      extractMarkdownSection(englishReadme, '## Migrating from NestJS Queue Workers'),
+      extractMarkdownSection(englishChapter, '### 11.3.3 Migration checkpoint: replace NestJS worker discovery'),
+      extractMarkdownLines(englishMigration, ['| `@nestjs/bull`', '- Queue migration', '- Queue owns processor lifecycle']),
+    ];
+    const koreanQueueMigrationRegions = [
+      extractMarkdownLine(koreanContext, 'Queue lifecycle'),
+      extractMarkdownSection(koreanReadme, '## NestJS Queue Worker에서 마이그레이션'),
+      extractMarkdownSection(koreanChapter, '### 11.3.3 Migration checkpoint: NestJS worker discovery 교체'),
+      extractMarkdownLines(koreanMigration, ['| `@Processor(...)`', '- Queue migration', '- Queue는 processor lifecycle']),
+    ];
+
+    for (const queueRegion of [...englishQueueMigrationRegions, ...koreanQueueMigrationRegions]) {
+      expect(queueRegion).toContain('QueueModule.forRoot');
+      expect(queueRegion).toContain('@QueueWorker(JobClass');
+      expect(queueRegion).toContain('singleton');
+      expect(queueRegion).toContain('global: false');
+      expect(queueRegion).toContain('bootstrap-ready');
+      expect(queueRegion).toContain('workerShutdownTimeoutMs');
+      expect(queueRegion).toContain('queueName');
+      expect(queueRegion).toContain('jobName');
+      expect(queueRegion).toContain('named job');
+      expect(queueRegion).toContain('payload');
+      expect(queueRegion).toContain('metadata');
+      expect(queueRegion).toMatch(/Bull(?:MQ)?/u);
+      expect(queueRegion).toMatch(/persisted|영속/u);
+      expect(queueRegion).toMatch(/drain|re-enqueue|다시 enqueue|별도 queue/u);
+    }
+
+    for (const queueRegion of englishQueueMigrationRegions) {
+      expect(queueRegion).toMatch(/reachab/u);
+      expect(queueRegion).toContain('Redis');
+      expect(queueRegion).toMatch(/does not (?:read|consume|interpret)[^.]*NestJS[^.]*metadata|cannot[^.]*metadata compatible/u);
+    }
+
+    for (const queueRegion of koreanQueueMigrationRegions) {
+      expect(queueRegion).toMatch(/reachab|도달/u);
+      expect(queueRegion).toContain('Redis');
+      expect(queueRegion).toMatch(/NestJS[^.]*metadata[^.]*(?:읽|소비|해석)[^.]*않|metadata[^.]*보존할 수 없/u);
+    }
+
+    expect(governanceSource).toContain('Queue migration from NestJS/Bull processor metadata');
   });
 });
 
