@@ -34,7 +34,7 @@ export function IsString(options?: ValidationDecoratorOptions): FieldDecoratorFn
 /**
  * Validates that the decorated field is a number value.
  *
- * @param options Optional validation behavior (`message`, `code`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`, `allowNaN`).
  * @returns A field decorator that registers a number validation rule.
  */
 export function IsNumber(options?: ValidationDecoratorOptions & { allowNaN?: boolean }): FieldDecoratorFn {

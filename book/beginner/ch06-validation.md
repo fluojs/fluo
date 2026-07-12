@@ -110,7 +110,7 @@ not make a field required by itself. Add `@IsDefined()` when either missing valu
 must fail. Use `@IsOptional()` when that skip should be an explicit part of the
 DTO contract.
 
-Materialization also retains safe own enumerable properties that the input object
+Materializing a plain input object also retains its safe own enumerable properties
 contains beyond the declared DTO fields. It excludes dangerous prototype keys,
 inherited properties, and non-enumerable properties, but it is not a whitelist or
 forbid-extra-fields mode. Shape or reject extra input explicitly when your API

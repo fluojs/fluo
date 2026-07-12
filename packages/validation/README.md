@@ -77,7 +77,7 @@ coercion.
 applies DTO binding metadata, and recursively hydrates `@ValidateNested(...)`
 fields. It preserves the request-pipeline contract that transports or binders own
 source selection and scalar conversion before validation runs.
-Safe extra own enumerable properties are retained; only dangerous keys such as
+When materializing a plain input object, safe extra own enumerable properties are retained; only dangerous keys such as
 `__proto__`, `constructor`, and `prototype`, plus inherited or non-enumerable
 properties, are excluded. This is not a `ValidationPipe`-style whitelist or
 `forbidNonWhitelisted` boundary. Shape or reject extra input explicitly before
