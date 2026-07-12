@@ -1447,16 +1447,15 @@ describe('PrismaModule.forRootAsync', () => {
     ]);
   });
 
-  it('isolates concurrent transaction contexts across application containers', async () => {
-    const transactionClients: Array<{ readonly id: string }> = [];
+  it('keeps nested cross-container transaction contexts isolated in one async branch', async () => {
     let factoryCalls = 0;
     const prismaModule = PrismaModule.forRootAsync({
       useFactory: () => {
         factoryCalls += 1;
         const transactionClient = { id: `transaction-${factoryCalls}` };
-        transactionClients.push(transactionClient);
 
         const client = {
+          id: `root-${factoryCalls}`,
           async $connect() {},
           async $disconnect() {},
           async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
@@ -1482,37 +1481,31 @@ describe('PrismaModule.forRootAsync', () => {
       try {
         const firstPrisma = await firstApp.container.resolve(PrismaService);
         const secondPrisma = await secondApp.container.resolve(PrismaService);
-        let releaseTransactions: () => void = () => undefined;
-        const transactionBarrier = new Promise<void>((resolve) => {
-          releaseTransactions = resolve;
-        });
-        let markFirstStarted: () => void = () => undefined;
-        const firstStarted = new Promise<void>((resolve) => {
-          markFirstStarted = resolve;
-        });
-        let markSecondStarted: () => void = () => undefined;
-        const secondStarted = new Promise<void>((resolve) => {
-          markSecondStarted = resolve;
+        const firstRootClient = firstPrisma.current();
+        const secondRootClient = secondPrisma.current();
+
+        expect(firstRootClient).not.toBe(secondRootClient);
+
+        await firstPrisma.transaction(async () => {
+          const firstTransactionClient = firstPrisma.current();
+
+          expect(firstTransactionClient).not.toBe(firstRootClient);
+          expect(secondPrisma.current()).toBe(secondRootClient);
+
+          await secondPrisma.transaction(async () => {
+            const secondTransactionClient = secondPrisma.current();
+
+            expect(secondTransactionClient).not.toBe(secondRootClient);
+            expect(secondTransactionClient).not.toBe(firstTransactionClient);
+            expect(firstPrisma.current()).toBe(firstTransactionClient);
+          });
+
+          expect(firstPrisma.current()).toBe(firstTransactionClient);
+          expect(secondPrisma.current()).toBe(secondRootClient);
         });
 
-        const firstTransaction = firstPrisma.transaction(async () => {
-          markFirstStarted();
-          await transactionBarrier;
-          return firstPrisma.current();
-        });
-        const secondTransaction = secondPrisma.transaction(async () => {
-          markSecondStarted();
-          await transactionBarrier;
-          return secondPrisma.current();
-        });
-
-        await Promise.all([firstStarted, secondStarted]);
-        releaseTransactions();
-
-        const [firstCurrent, secondCurrent] = await Promise.all([firstTransaction, secondTransaction]);
-
-        expect([firstCurrent, secondCurrent]).toEqual(transactionClients);
-        expect(firstCurrent).not.toBe(secondCurrent);
+        expect(firstPrisma.current()).toBe(firstRootClient);
+        expect(secondPrisma.current()).toBe(secondRootClient);
       } finally {
         await secondApp.close();
       }
