@@ -40,11 +40,12 @@ If we simply accessed `target[prop]`, and that property was a getter, the comple
 ## 2.2 Symbolic metadata: The modern approach
 The modern approach to metadata avoids string-based keys that can collide by name. Fluo uses `Symbol.metadata`, the proposed standard for attaching a metadata bag directly to a class constructor. This bag is a plain object keyed by framework-owned symbols. This isolates Fluo metadata from other libraries and user code. When `Symbol.metadata` is not natively supported, Fluo provides a polyfill to keep the API consistent in every environment.
 
-`path:packages/core/src/metadata/shared.ts:13-34`
+`path:packages/core/src/metadata/shared.ts:9-34`
 ```typescript
 const symbolWithMetadata = Symbol as typeof Symbol & { metadata?: symbol };
+const fallbackMetadataSymbol = Symbol.for('fluo.symbol.metadata');
 
-export let metadataSymbol = symbolWithMetadata.metadata ?? Symbol.for('fluo.symbol.metadata');
+export let metadataSymbol = symbolWithMetadata.metadata ?? fallbackMetadataSymbol;
 
 export function ensureMetadataSymbol(): symbol {
   if (symbolWithMetadata.metadata) {
@@ -107,13 +108,12 @@ This separation keeps standard metadata interoperability explicit while giving F
 ## 2.3 Type-safe metadata storage
 Metadata is useful only when retrieval is trustworthy. Fluo guarantees type safety by defining strict interfaces for every metadata record, such as `ModuleMetadata`, `ClassDiMetadata`, and `RouteMetadata`. Many metadata records are stored in `WeakMap`-based stores, which allow them to be garbage collected along with the class or object they describe and prevent memory leaks. Depending on the hot path, Fluo uses either defensive cloning at store boundaries or frozen snapshots that callers must treat as immutable. Both strategies remove an entire class of runtime errors common in reflection-heavy systems.
 
-`path:packages/core/src/metadata/store.ts:16-33`
+`path:packages/core/src/metadata/store.ts:16-32`
 ```typescript
 export function createClonedWeakMapStore<TKey extends object, TValue>(
   cloneValue: (value: TValue) => TValue,
+  store: WeakMap<TKey, TValue> = new WeakMap<TKey, TValue>(),
 ): ClonedWeakMapStore<TKey, TValue> {
-  const store = new WeakMap<TKey, TValue>();
-
   return {
     read(target: TKey): TValue | undefined {
       const value = store.get(target);
@@ -141,7 +141,7 @@ Type safety is achieved through TypeScript generics and frozen read contracts. E
 
 Module metadata helpers also sit on the same storage contract.
 
-`path:packages/core/src/metadata/module.ts:103-125`
+`path:packages/core/src/metadata/module.ts:104-125`
 ```typescript
 export function defineModuleMetadata(target: Function, metadata: ModuleMetadata): void {
   const existing = moduleMetadataStore.get(target);
@@ -154,7 +154,7 @@ export function defineModuleMetadata(target: Function, metadata: ModuleMetadata)
     middleware: metadata.middleware ?? existing?.middleware,
     providers: metadata.providers ?? existing?.providers,
   })));
-  moduleMetadataVersion += 1;
+  moduleMetadataVersion.value += 1;
 }
 
 export function getModuleMetadata(target: Function): ModuleMetadata | undefined {
@@ -170,19 +170,28 @@ Fluo's type-safe storage also integrates cleanly with TypeScript's `as const` an
 
 ## 2.4 Reflect API examples in Fluo
 Fluo uses `Reflect` methods to interact with objects in a way that respects the language's internal mechanisms. A primary example is retrieving the metadata bag from a target class.
-`path:packages/core/src/metadata/shared.ts:151-159`
+`path:packages/core/src/metadata/shared.ts:311-328`
 ```typescript
 export function getStandardMetadataBag(target: object): StandardMetadataBag | undefined {
-  const metadata = Reflect.get(target, metadataSymbol);
+  const activeMetadataSymbol = getActiveMetadataSymbol();
+  const ownActiveMetadata = getOwnStandardMetadataBagFromSymbol(target, activeMetadataSymbol);
 
-  if (typeof metadata !== 'object' || metadata === null) {
-    return undefined;
+  if (ownActiveMetadata) {
+    return overlayStandardMetadataBag(ownActiveMetadata, getInheritedStandardMetadataBag(target, activeMetadataSymbol));
   }
 
-  return metadata as StandardMetadataBag;
+  if (activeMetadataSymbol !== fallbackMetadataSymbol) {
+    const ownFallbackMetadata = getOwnStandardMetadataBagFromSymbol(target, fallbackMetadataSymbol);
+
+    if (ownFallbackMetadata) {
+      return overlayStandardMetadataBag(ownFallbackMetadata, getInheritedStandardMetadataBag(target, activeMetadataSymbol));
+    }
+  }
+
+  return getInheritedStandardMetadataBag(target, activeMetadataSymbol);
 }
 ```
-This pattern lets Fluo read metadata attached through Standard Decorators. By using `Reflect.get(target, metadataSymbol)`, Fluo explicitly targets the metadata bag defined by the TC39 proposal. This method is used widely in the core package to bridge declarative Decorator syntax and imperative runtime initialization logic.
+This helper resolves the active metadata symbol, prefers the target's own current/native bag, falls back to the target's own fallback-era bag, and then reads inherited bags. When own and inherited bags coexist, `overlayStandardMetadataBag(...)` preserves own-key precedence while leaving inherited records visible. The lower-level own-bag reader performs the `Object.hasOwn` and `Reflect.get` operations described earlier.
 
 Another example of `Reflect` use in Fluo appears inside the `applyDecorators` utility, which manually applies a sequence of Decorators to a target. Here, `Reflect` methods are used to ensure property descriptors and class definitions are processed according to the specification, preserving the integrity of decorated elements. This is especially important when composing Decorators that may modify a method's return value or a property's descriptor.
 
@@ -195,35 +204,46 @@ The DI container uses `Reflect.construct` to instantiate Providers. This is pref
 ## 2.5 Metadata inheritance patterns
 One of the most complex challenges in metadata management is handling class inheritance. Should a child class inherit its parent's DI Token? What about route Guards or validation rules? Fluo implements a sophisticated lineage walk to resolve metadata. Starting from the base class and moving down to the leaf class, it merges metadata records so child classes can selectively override or extend parent configuration without damaging the original definitions.
 
-`path:packages/core/src/metadata/class-di.ts:51-73`
+`path:packages/core/src/metadata/class-di.ts:95-123`
 ```typescript
 export function getInheritedClassDiMetadata(target: Function): ClassDiMetadata | undefined {
+  const cached = inheritedClassDiMetadataCache.get(target);
+
+  if (cached?.version === classDiMetadataVersion.value) {
+    return cached.metadata ?? undefined;
+  }
+
   let effective: ClassDiMetadata | undefined;
 
   for (const constructor of getClassMetadataLineage(target)) {
-    const metadata = classDiMetadataStore.read(constructor);
+    const metadata = classDiMetadataStore.get(constructor);
 
     if (!metadata) {
       continue;
     }
 
-    effective = {
+    effective = freezeClassDiMetadata({
       inject: metadata.inject ?? effective?.inject,
       scope: metadata.scope ?? effective?.scope,
-    };
+    });
   }
 
-  return effective ? cloneClassDiMetadata(effective) : undefined;
+  inheritedClassDiMetadataCache.set(target, {
+    metadata: effective ?? null,
+    version: classDiMetadataVersion.value,
+  });
+
+  return effective;
 }
 ```
 
 The `getInheritedClassDiMetadata` function shows this logic especially for dependency injection metadata. It uses `Object.getPrototypeOf` to walk the prototype chain and collect metadata from each constructor in the lineage. This lets the DI container see the complete picture of a class's requirements, including Tokens defined on abstract base classes or generic service templates.
 
-During this process, Fluo reliably supports multi-level inheritance. It does not simply check a single parent class. It recursively explores the full chain until it reaches the `null` prototype. This core algorithm lets the framework understand deep inheritance structures in service layers and capture every dependency needed by the lowest concrete class.
+During this process, Fluo reliably supports multi-level inheritance. It does not simply check a single parent class. It iteratively follows constructor prototypes until `Function.prototype`. This core algorithm lets the framework understand deep inheritance structures in service layers and capture every dependency needed by the lowest concrete class.
 
 The lineage itself is collected from the leaf, then reversed so the base class applies first.
 
-`path:packages/core/src/metadata/class-di.ts:13-25`
+`path:packages/core/src/metadata/class-di.ts:49-61`
 ```typescript
 function getClassMetadataLineage(target: Function): Function[] {
   const lineage: Function[] = [];
@@ -248,7 +268,7 @@ To handle these different merge strategies, Fluo uses internal utilities such as
 
 Finally, Fluo's inheritance logic is designed to be lazy. It does not precompute inherited metadata for every class at startup. Instead, it resolves lineage on demand when metadata is first requested. This keeps initial Bootstrap fast and ensures the framework does only the work needed for actual application execution paths. Lazy resolution also enables more dynamic patterns, such as complex test scenarios or certain kinds of dynamic plugins where classes may be created or modified at runtime.
 
-To optimize later lookups, Fluo uses a memoization strategy for resolved lineages. Once the metadata chain for a specific class hierarchy has been calculated, it is stored in a private cache. This ensures the overhead of traversing the prototype chain is paid only once per class. This balance between lazy initialization and efficient caching lets Fluo scale to applications with thousands of classes without sacrificing startup speed or runtime performance. The memoization cache itself is backed by `WeakMap`, ensuring it does not prevent classes from being garbage collected when they are no longer needed.
+To optimize later lookups, Fluo stores the effective result in a process-global `WeakMap` cache keyed by the target constructor. Each cache entry carries the class-DI metadata write version, so `defineClassDiMetadata(...)` invalidates stale results by incrementing that version. The weak key does not prevent a class from being garbage collected when it is no longer referenced.
 
 ## 2.6 Advanced Metadata Examples: Custom Providers
 Let's look at how Fluo uses the metadata system to support complex Provider configuration. In a common scenario, a Provider may need to resolve differently depending on the context where it is injected. By using custom metadata, Fluo can record these requirements and then use them during DI resolution to provide the correct instance.
@@ -275,7 +295,7 @@ Custom Providers also enable contextual injection, where the DI container uses i
 
 Injection metadata reads both the WeakMap store and the standard metadata bag, then combines them into one schema.
 
-`path:packages/core/src/metadata/injection.ts:19-43`
+`path:packages/core/src/metadata/injection.ts:39-62`
 ```typescript
 export function getInjectionSchema(target: object): InjectionSchemaEntry[] {
   const stored = injectionMetadataStore.get(target) ?? new Map<MetadataPropertyKey, InjectionMetadata>();
@@ -342,11 +362,11 @@ Understanding this lifecycle is the key to reading Fluo's internal architecture.
 This lifecycle goes beyond simply managing object creation. It is a core cycle that determines the application's runtime performance. For example, in the Cleanup stage, automatic garbage collection through `WeakMap` greatly reduces the risk of memory leaks in long-running servers. Developers do not need to explicitly call `unregister()`. The moment references to a class disappear, related metadata is quietly collected by the engine. This is where Fluo's philosophy of Safety by Design is put into practice.
 
 ## 2.9 Deeper Dive: The Metadata Provider Registry
-Fluo's dependency injection container uses a specialized Provider registry built entirely on top of the metadata system we have discussed. This registry maintains mappings between Tokens and Provider descriptors that include class constructors, factory functions, and required injection Tokens. By using `Symbol.metadata` as the default key for class-based Providers, Fluo ensures the registry is very efficient and avoids performance bottlenecks common in older DI implementations.
+Fluo's dependency injection container keeps its Provider registry separate from class-DI metadata. The registry maps Tokens to Provider descriptors such as class constructors, factory functions, and values. Constructor injection Tokens and lifecycle Scope for class Providers are stored in the process-global `WeakMap` selected by `metadataKeys.classDi` in `path:packages/core/src/metadata/class-di.ts:5-10`; they are not keyed through `Symbol.metadata`.
 
-The registry manages Token Resolution and Instantiation separately. First, it quickly looks up metadata for registered Providers through `Symbol.metadata` to create a resolution plan. Then, at the point where actual injection is needed, it creates objects according to that plan. This structural separation lets the container handle complex Circular Dependency and lazy injection scenarios far more clearly and efficiently.
+During resolution, `getInheritedClassDiMetadata()` in `path:packages/core/src/metadata/class-di.ts:95-123` walks the Provider constructor lineage from base to leaf, merges explicit `inject` and `scope` fields, freezes the effective snapshot, and caches it against the current class-DI write version. The container uses that effective class-DI record while resolving and instantiating the registered Provider.
 
-When a Module is compiled, Fluo's runtime scans the `providers` list defined in `@Module` metadata. For each Provider, it reads the relevant `ClassDiMetadata`, using `getInheritedClassDiMetadata`, to understand dependencies and lifecycle Scope. This information is used to create a resolution plan that the DI container can execute to instantiate Providers and their dependencies in the correct order.
+When a Module is compiled, Fluo's runtime scans the `providers` list defined in `@Module` metadata. For each class Provider, the effective `ClassDiMetadata` from `getInheritedClassDiMetadata()` describes its dependencies and lifecycle Scope. This information guides the DI container as it instantiates Providers and their dependencies in the required order.
 
 A resolution plan includes not only what to create, but also an optimized path for the order of creation. Based on this plan, the container topologically sorts the dependency graph, ensuring every child service is ready before the parent service is created. This process, where static information extracted from metadata becomes the dynamic execution flow at runtime, is the essence of Fluo's DI architecture.
 
@@ -375,19 +395,19 @@ A deep understanding of the metadata engine lets you not only use Fluo effective
 
 The practical lesson for advanced readers is that Fluo does **not** have a single metadata mechanism. It intentionally has a layered model, and each layer performs a different role.
 
-- `path:packages/core/src/metadata/shared.ts:13-34` resolves the global symbol hook.
+- `path:packages/core/src/metadata/shared.ts:9-34` resolves the global symbol hook.
 - `path:packages/core/src/metadata/shared.ts:125-149` defines the canonical standard-bag keys and Fluo-owned store identifiers.
-- `path:packages/core/src/metadata/shared.ts:103-115` allocates target-specific maps.
-- `path:packages/core/src/metadata/store.ts:16-33` isolates record mutation by cloning on reads and writes.
-- `path:packages/core/src/metadata/class-di.ts:56-72` calculates inherited effective DI state.
+- `path:packages/core/src/metadata/shared.ts:242-254` allocates target-specific maps.
+- `path:packages/core/src/metadata/store.ts:16-32` isolates record mutation by cloning on reads and writes.
+- `path:packages/core/src/metadata/class-di.ts:95-123` calculates and caches inherited effective DI state.
 
 This split matters because different metadata problems have different failure modes. The `Symbol.metadata` bag is ideal for Standard Decorator interoperability. A `WeakMap` store is better for framework-owned records that need defensive cloning. A lineage walker is needed only when inheritance semantics become part of the story. Fluo avoids collapsing these three concerns into one magical registry.
 
-This separation of concerns directly reflects the project's engineering culture. We believe metadata engines are easier to reason about for performance and security when they stay modular. Each layer has its own unit test suite under `path:packages/core/src/metadata/` to verify specific behavioral contracts. For example, `store.test.ts` checks that defensive cloning works correctly for nested objects, and `class-di.test.ts` verifies that base-to-leaf lineage traversal handles multiple inheritance levels without corruption. These fine-grained tests give us confidence that the whole framework can rely on these primitives for configuration.
+This separation of concerns directly reflects the project's engineering culture. We believe metadata engines are easier to reason about for performance and security when they stay modular. Executable contract coverage is centralized in `path:packages/core/src/metadata.test.ts`: it verifies defensive cloning for nested metadata and base-to-leaf class-DI inheritance, frozen snapshots, cache reuse, and write-version invalidation. These focused tests give us confidence that the whole framework can rely on these primitives for configuration.
 
 This layered approach also provides easier extensibility. When a new metadata requirement appears that does not fit the existing three layers, a fourth specialized layer can be added without rewriting the whole system. You can see this in the way request-scoped metadata uses a completely different storage strategy from class-level DI metadata. By keeping clear boundaries between these systems, Fluo remains flexible and adaptable to changing backend development needs.
 
-Look at how `ensureMetadataSymbol` in `path:packages/core/src/metadata/shared.ts:20-31` is written.
+Look at how `ensureMetadataSymbol` in `path:packages/core/src/metadata/shared.ts:22-33` is written.
 It prefers native `Symbol.metadata` first, then defines it on `Symbol` only once when needed. This implementation is small, but it expresses a major design rule. It polyfills the standard surface rather than creating a proprietary API. This is the exact opposite of older reflection libraries that required the whole ecosystem to depend forever on new `Reflect.*Metadata` verbs.
 
 The next layer is naming discipline.
@@ -395,18 +415,18 @@ In `path:packages/core/src/metadata/shared.ts:125-149`, Fluo separates `standard
 This distinction is subtle but important. The former represents property keys for standard metadata bags, while the latter represents identifiers used to select Fluo-owned process-global `WeakMap` stores through `path:packages/core/src/metadata/shared.ts:155-203`. If you miss this difference, you might think all metadata lives in the same container, but the source code shows that Fluo intentionally distinguishes interoperability data from framework-only management information.
 
 Creation helpers reinforce this separation.
-`path:packages/core/src/metadata/shared.ts:103-115` exposes `getOrCreatePropertyMap`, which allocates a per-target `Map` only when needed. That means classes without route-level or property-level metadata do not pay for eagerly allocated structures. In applications with large fan-out, this kind of lazy handling matters much more than abstract claims about metadata performance because it directly reduces allocation pressure during Bootstrap.
+`path:packages/core/src/metadata/shared.ts:242-254` exposes `getOrCreatePropertyMap`, which allocates a per-target `Map` only when needed. That means classes without route-level or property-level metadata do not pay for eagerly allocated structures. In applications with large fan-out, this kind of lazy handling matters much more than abstract claims about metadata performance because it directly reduces allocation pressure during Bootstrap.
 
 Deduplication is also handled explicitly.
-`path:packages/core/src/metadata/shared.ts:127-143` implements `mergeUnique` using insertion order and reference identity. This may look ordinary, but it encodes framework semantics. Guards and Interceptors must preserve declared order, duplicate references must not explode the chain, and Fluo must not attempt deep structural equality on arbitrary user objects. Therefore, metadata helpers are also policy boundaries.
+`path:packages/core/src/metadata/shared.ts:256-282` implements `mergeUnique` using insertion order and reference identity. This may look ordinary, but it encodes framework semantics. Guards and Interceptors must preserve declared order, duplicate references must not explode the chain, and Fluo must not attempt deep structural equality on arbitrary user objects. Therefore, metadata helpers are also policy boundaries.
 
-The cloned store in `path:packages/core/src/metadata/store.ts:16-33` is one of the clearest examples of source-level rigor. `read()` clones on the way out, `write()` clones on the way in, and `update()` clones after applying the updater. This three-sided cloning discipline prevents shared mutable references from turning the metadata layer into ambient state. In framework code, this is far more valuable than simple convenience because it makes metadata contention dramatically easier to debug.
+The cloned store in `path:packages/core/src/metadata/store.ts:16-32` is one of the clearest examples of source-level rigor. `read()` clones on the way out, `write()` clones on the way in, and `update()` clones after applying the updater. This three-sided cloning discipline prevents shared mutable references from turning the metadata layer into ambient state. In framework code, this is far more valuable than simple convenience because it makes metadata contention dramatically easier to debug.
 
-`class-di.ts` shows how these lower-level pieces become runtime behavior. `path:packages/core/src/metadata/class-di.ts:13-25` calculates constructor lineage and reverses it, then `path:packages/core/src/metadata/class-di.ts:56-72` folds metadata from base to leaf. This reversal is not aesthetic. It ensures inherited defaults are seen first and child definitions have the final decision. In a reflection-heavy system, that rule would be opaque, but when the metadata engine stays small and explicit, inheritance behavior remains a readable algorithm.
+`class-di.ts` shows how these lower-level pieces become runtime behavior. `path:packages/core/src/metadata/class-di.ts:49-61` calculates constructor lineage and reverses it, then `path:packages/core/src/metadata/class-di.ts:95-123` folds metadata from base to leaf and caches the effective snapshot. This reversal is not aesthetic. It ensures inherited defaults are seen first and child definitions have the final decision. In a reflection-heavy system, that rule would be opaque, but when the metadata engine stays small and explicit, inheritance behavior remains a readable algorithm.
 
-There is another hidden advanced point in `shared.ts`. `path:packages/core/src/metadata/shared.ts:151-193` provides `getStandardMetadataBag`, `getStandardConstructorMetadataBag`, and record/map readers for constructor metadata. This means Fluo carefully decides where to read metadata from. Some information lives on the object itself, some information lives on the constructor, and the helpers keep this choice visible rather than hiding it behind one giant "get everything" API.
+There is another hidden advanced point in `shared.ts`. `path:packages/core/src/metadata/shared.ts:284-367` provides `getOwnStandardConstructorMetadataBag`, `getStandardMetadataBag`, `getStandardConstructorMetadataBag`, and record/map readers for constructor metadata. This means Fluo carefully decides where to read metadata from. Some information lives on the object itself, some information lives on the constructor, and the helpers keep this choice visible rather than hiding it behind one giant "get everything" API.
 
-The key merge routine continues the same theme. `path:packages/core/src/metadata/shared.ts:202-223` merges stored keys and standard keys while preserving first-seen order. This behavior follows the same merge rule already shown in the earlier `mergeMetadataPropertyKeys(stored, standard)` call from `path:packages/core/src/metadata/injection.ts:19-43`. Instead of pretending the two worlds are identical, Fluo defines reconciliation rules explicitly, and that predictability lets the framework combine Standard Decorators with internal runtime stores without devolving into nondeterministic behavior.
+The key merge routine continues the same theme. `path:packages/core/src/metadata/shared.ts:369-397` merges stored keys and standard keys while preserving first-seen order. This behavior follows the same merge rule already shown in the earlier `mergeMetadataPropertyKeys(stored, standard)` call from `path:packages/core/src/metadata/injection.ts:39-62`. Instead of pretending the two worlds are identical, Fluo defines reconciliation rules explicitly, and that predictability lets the framework combine Standard Decorators with internal runtime stores without devolving into nondeterministic behavior.
 
 If we step back, a consistent set of design heuristics appears.
 
@@ -431,7 +451,7 @@ If you can answer these questions clearly, you are already thinking with the sam
 
 Ultimately, metadata is not just a data store. It is a way to converse with the framework. Decorators communicate intent, the metadata engine refines that intent, and finally the DI container or HTTP runtime turns that intent into execution. Once you control this flow, it becomes clear how data moves and where it stays. At that moment, the parts that looked like framework magic become clear language semantics and storage rules.
 
-Fluo's metadata model is built on the principle of immutability. When resolving metadata for a class, we do not simply return a reference to a live object. We return a carefully constructed view of the metadata at that point in time. This prevents a common class of bugs where metadata is accidentally modified by downstream consumers. This immutability is achieved with the `createClonedWeakMapStore` utility in `path:packages/core/src/metadata/store.ts:16-33`. This store ensures every read and write operation includes defensive cloning, preserving the integrity of the original metadata record.
+Fluo's metadata model is built on the principle of immutability. When resolving metadata for a class, we do not simply return a reference to a live object. We return a carefully constructed view of the metadata at that point in time. This prevents a common class of bugs where metadata is accidentally modified by downstream consumers. Metadata families that use `createClonedWeakMapStore` in `path:packages/core/src/metadata/store.ts:16-32` clone on reads and writes; hot-path module and class-DI stores use the frozen snapshot contracts described earlier.
 
 This immutability matters even more in concurrent environments where a single Fastify instance handles many requests. It ensures metadata resolution is thread-safe and prevents race conditions when different parts of the framework access the same metadata at the same time.
 
