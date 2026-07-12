@@ -210,9 +210,9 @@ A factory Provider checks explicit `provider.scope` first, then `resolverClass` 
 
 This function also handles recursive normalization of dependencies. If a factory Provider's `inject` list mixes in composite definitions, `normalizeProvider` passes them through `normalizeInjectToken` and turns them into stable internal Tokens. Once every expression has a single shape, the DI container can build a more consistent dependency graph during module compilation.
 
-The current container implementation doesn't store a separate source tag for each dependency. Instead, the local registration map, multi registration map, request cache, and singleton cache in `path:packages/di/src/container.ts:120-130` split state for hierarchical lookup and lifecycle separation. The later resolution step combines these stores with parent lookup to decide which container layer should handle a lookup.
+The current container implementation doesn't store a separate source tag for each dependency. Instead, the local registration map, multi registration map, request cache, and singleton cache in `path:packages/di/src/container.ts:179-193` split state for hierarchical lookup and lifecycle separation. The later resolution step combines these stores with parent lookup to decide which container layer should handle a lookup.
 
-Another detail in `normalizeProvider` is that it preserves `forwardRef` and `optional` wrappers in the `inject` array instead of evaluating them. When a dependency Token is wrapped in a `forwardRef` factory, normalization leaves the wrapper itself in place and delays evaluation of the actual Token until `resolveForwardRefToken()`. This handles definition order issues while keeping standard dependency lookup simple. `path:packages/di/src/provider-normalization.ts` and `path:packages/di/src/container.ts` show that handoff.
+Another detail in `normalizeProvider` is that it preserves `forwardRef` and `optional` wrappers in the `inject` array instead of evaluating them. When a dependency Token is wrapped in a `forwardRef` factory, normalization leaves the wrapper itself in place and delays evaluation of the actual Token until `resolveForwardRefToken()`. This handles definition order issues while keeping standard dependency lookup simple. `path:packages/di/src/provider-normalization.ts:103-153` and `path:packages/di/src/container.ts:1367-1375` show that handoff.
 
 Finally, normalization performs final validation. It checks whether required fields such as `provide` exist and whether there are obvious contradictions such as specifying a value Provider and a factory at the same time. This defensive layer means the DI container's internal state only handles valid records. A Provider that passes through `normalizeProvider` can be treated as an executable configuration piece by the Fluo engine.
 
@@ -256,18 +256,18 @@ There is another hidden rule, inheritance. `getClassDiMetadata()` in `path:packa
 Operationally, the meaning of 4.1 is clear. Fluo's DI container looks simple at runtime because most complexity is digested early in normalization. By the time `resolve()` begins, the Provider has already been arranged into one validated shape.
 
 ## 4.2 Registration semantics, duplicate checks, and scope guardrails
-After normalization, `register()` applies policy. The implementation is in `path:packages/di/src/container.ts:152-191`. This method doesn't simply append to a map. It enforces graph rules so later resolution stays predictable.
+After normalization, `register()` applies policy. The implementation is in `path:packages/di/src/container.ts:218-260`. This method doesn't simply append to a map. It enforces graph rules so later resolution stays predictable.
 
-The first rule is disposal safety. If the container is already closed, registration stops with `ContainerResolutionError`. You can see this in `path:packages/di/src/container.ts:153-158`. This guard prevents a new Provider with stale cache assumptions from being placed on top of an already disposed graph.
+The first rule is disposal safety. If the container or any ancestor is already closed, registration stops with `ContainerResolutionError`. You can see this in `path:packages/di/src/container.ts:218-224`. This guard prevents a new Provider with stale cache assumptions from being placed on top of an already disposed graph.
 
-The second rule is request Scope hygiene. If a default-Scope non-multi Provider is registered directly on a child container where `requestScopeEnabled` is true, `ScopeMismatchError` is thrown. The code is in `path:packages/di/src/container.ts:163-172`. This guard prevents accidental request-local singleton creation.
+The second rule is request Scope hygiene. If a default-Scope Provider is registered directly on a child container where `requestScopeEnabled` is true, `ScopeMismatchError` is thrown. The code is in `path:packages/di/src/container.ts:226-238`. This guard prevents accidental request-local singleton creation for both single and multi Providers.
 
 The early part of registration combines disposal state, normalization, and the request Scope guard in one flow.
 
-`path:packages/di/src/container.ts:152-174`
+`path:packages/di/src/container.ts:218-238`
 ```typescript
   register(...providers: Provider[]): this {
-    if (this.disposed) {
+    if (this.isDisposedInHierarchy()) {
       throw new ContainerResolutionError(
         'Container has been disposed and can no longer register providers.',
         { hint: 'Ensure providers are registered before calling container.dispose().' },
@@ -277,7 +277,7 @@ The early part of registration combines disposal state, normalization, and the r
     for (const provider of providers) {
       const normalized = normalizeProvider(provider);
 
-      if (this.requestScopeEnabled && normalized.scope === Scope.DEFAULT && normalized.multi !== true) {
+      if (this.requestScopeEnabled && normalized.scope === Scope.DEFAULT) {
         throw new ScopeMismatchError(
           `Singleton provider ${String(normalized.provide)} cannot be registered on a request-scope container.`,
           {
@@ -291,19 +291,19 @@ The early part of registration combines disposal state, normalization, and the r
 
 This code checks graph state and Scope position before the Provider enters a map. Invalid registration never reaches the cache or instance creation layer.
 
-Why does this matter? Because the container already has a documented footgun in `cacheFor()`. `path:packages/di/src/container.ts:613-645` explains that if a locally registered singleton enters a request Scope, it is stored in the request cache rather than the root singleton cache, so it behaves like request-scoped. Fluo blocks the most common mistake during registration instead of allowing it silently.
+Why does this matter? Because the container already has a documented footgun in `cacheFor()`. `path:packages/di/src/container.ts:938-970` explains that if a locally overridden singleton enters a request Scope, it is stored in the request cache rather than the root singleton cache, so it behaves like request-scoped. Fluo blocks the most common mistake during registration instead of allowing it silently.
 
-Duplicate checks split into single-Provider and multi-Provider paths. `assertNoRegistrationConflict()` in `path:packages/di/src/container.ts:331-351` checks whether the Token already exists locally or in an ancestor in an incompatible form. This is much stronger than a plain `Map.has()`. Conflicts across parent and child layers are treated as real conflicts.
+Duplicate checks split into single-Provider and multi-Provider paths. `assertNoRegistrationConflict()` in `path:packages/di/src/container.ts:542-562` checks whether the Token already exists locally or in an ancestor in an incompatible form. This is much stronger than a plain `Map.has()`. Conflicts across parent and child layers are treated as real conflicts.
 
-The ancestor helpers in `path:packages/di/src/container.ts:353-371` reveal the exact policy. A single Provider can't be added if the same Token is visible anywhere as multi. A multi Provider can't be added if the same Token is visible anywhere as single. This rule keeps `container.resolve(token)` from changing meaning based on the hierarchy layer where it is called.
+The ancestor helpers in `path:packages/di/src/container.ts:564-582` reveal the exact policy. A single Provider can't be added if the same Token is visible anywhere as multi. A multi Provider can't be added if the same Token is visible anywhere as single. This rule keeps `container.resolve(token)` from changing meaning based on the hierarchy layer where it is called.
 
 Tests lock this behavior down. `path:packages/di/src/container.test.ts:414-431` verifies both forbidden crossover directions. If a Token starts as single, it stays single unless an intentional override is used. If it starts as multi, later registrations must remain multi or use override semantics.
 
-Multi-Provider registration itself is additive. `path:packages/di/src/container.ts:176-185` pushes the normalized Provider into an array by Token. Later, `collectMultiProviders()` uses exactly this structure. By contrast, a single Provider takes one local slot with `registrations.set()` in `path:packages/di/src/container.ts:185-187`.
+Multi-Provider registration itself is additive. `path:packages/di/src/container.ts:242-251` pushes the normalized Provider into an array by Token. Later, `collectMultiProviders()` uses exactly this structure. By contrast, a single Provider takes one local slot with `registrations.set()` in `path:packages/di/src/container.ts:251-254`.
 
 After the conflict check passes, multi and single entries split into different stores.
 
-`path:packages/di/src/container.ts:174-187`
+`path:packages/di/src/container.ts:240-256`
 ```typescript
       this.assertNoRegistrationConflict(normalized.provide, normalized.multi === true);
 
@@ -312,6 +312,7 @@ After the conflict check passes, multi and single entries split into different s
 
         if (existing) {
           existing.push(normalized);
+          this.advanceGraphRevision();
           continue;
         }
 
@@ -319,39 +320,57 @@ After the conflict check passes, multi and single entries split into different s
       } else {
         this.registrations.set(normalized.provide, normalized);
       }
+
+      this.advanceGraphRevision();
 ```
 
 This split lets the resolver clearly decide whether a Token should be seen as a single value or collected as an array. It is also why the conflict check runs immediately before this point. The same Token must not mix both meanings.
 
-Override semantics are intentionally destructive. The comment in `path:packages/di/src/container.ts:249-257` says that a multi override replaces the entire existing set for that Token. The implementation first groups all incoming override Providers by Token, then deletes both single and multi registrations once per Token before inserting the replacement set. There is no API for partially replacing one entry inside a multi-Provider group.
+Override semantics are intentionally destructive. The comment in `path:packages/di/src/container.ts:262-269` says that a multi override replaces the entire existing set for that Token. The implementation first groups all incoming override Providers by Token, then deletes both single and multi registrations once per Token before inserting the replacement set. There is no API for partially replacing one entry inside a multi-Provider group.
 
 Override deletes the existing single slot and multi array, then makes either one single Provider or the full incoming multi-Provider replacement set authoritative.
 
-`path:packages/di/src/container.ts:271-309`
+`path:packages/di/src/container.ts:298-329`
 ```typescript
     for (const [token, normalizedProviders] of normalizedByToken) {
+      const firstProvider = normalizedProviders[0];
+
+      if (!firstProvider) {
+        continue;
+      }
+
       const containsMultiProvider = normalizedProviders.some((normalized) => normalized.multi === true);
 
+      if (containsMultiProvider && normalizedProviders.some((normalized) => normalized.multi !== true)) {
+        throw new DuplicateProviderError(token);
+      }
+
+      if (!containsMultiProvider && normalizedProviders.length > 1) {
+        throw new DuplicateProviderError(token);
+      }
+
+      this.invalidateAffectedCachedEntriesInHierarchy(token);
       this.registrations.delete(token);
       this.multiRegistrations.delete(token);
-      this.invalidateCachedEntry(token, existing?.scope ?? existingMultiProviders[0]?.scope ?? firstProvider.scope);
 
       if (containsMultiProvider) {
         this.multiRegistrations.set(token, normalizedProviders);
         this.multiOverriddenTokens.add(token);
+        this.advanceGraphRevision();
         continue;
       }
 
       this.multiOverriddenTokens.add(token);
       this.registrations.set(token, firstProvider);
+      this.advanceGraphRevision();
     }
 ```
 
-`multiOverriddenTokens` is recorded too, so a child Scope can preserve the meaning of cutting off parent multi collection. Cache invalidation happens at the same point, so an old instance doesn't remain after the new definition is installed. If more than one replacement is passed for the same Token, all entries must be `multi: true`; mixed single/multi replacement is rejected as ambiguous.
+`multiOverriddenTokens` is recorded too, so a child Scope can preserve the meaning of cutting off parent multi collection. Hierarchical cache invalidation is scheduled before the replacement is installed, so stale instances in the current scope and materialized descendants are disposed before replacement resolution proceeds. If more than one replacement is passed for the same Token, all entries must be `multi: true`; mixed single/multi replacement is rejected as ambiguous.
 
 The ban on conflicts between single and multi checks ancestors as well as the local map.
 
-`path:packages/di/src/container.ts:331-371`
+`path:packages/di/src/container.ts:542-562`
 ```typescript
   private assertNoRegistrationConflict(token: Token, multi: boolean): void {
     if (multi) {
@@ -398,31 +417,33 @@ on register(provider):
 The key implementation point is this. Fluo enforces Provider shape invariants before any instance exists. Errors appear as clear configuration-stage violations, not runtime mysteries. That is one major reason the resolution algorithm can stay compact.
 
 ## 4.3 The resolve pipeline: token lookup, chain tracking, and instantiation
-The public API is very small. `resolve()` in `path:packages/di/src/container.ts:275-284` checks disposal and delegates to `resolveWithChain(token, [], new Set())`. Everything interesting is below that.
+The public API is very small. `resolve()` in `path:packages/di/src/container.ts:459-470` checks hierarchical disposal, waits for scheduled stale disposals, and delegates to `resolveWithChain(token, [], new Set())`. Everything interesting is below that.
 
-`resolveWithChain()` in `path:packages/di/src/container.ts:389-402` is the traffic director. It first checks whether the current Token is already in the active chain through `resolveForwardRefCircularDependency()`. Only then does it descend into `resolveFromRegisteredProviders()`. Circular Dependency checking is therefore not a later add-on. It is the first branch of recursive resolution.
+`resolveWithChain()` in `path:packages/di/src/container.ts:670-683` is the traffic director. It first checks whether the current Token is already in the active chain through `resolveForwardRefCircularDependency()`. Only then does it descend into `resolveFromRegisteredProviders()`. Circular Dependency checking is therefore not a later add-on. It is the first branch of recursive resolution.
 
 The public API and internal entry point are intentionally small.
 
-`path:packages/di/src/container.ts:275-284`
+`path:packages/di/src/container.ts:459-470`
 ```typescript
   async resolve<T>(token: Token<T>): Promise<T> {
-    if (this.disposed) {
+    if (this.isDisposedInHierarchy()) {
       throw new ContainerResolutionError(
         'Container has been disposed and can no longer resolve providers.',
         { token, hint: 'Ensure all resolves complete before calling container.dispose().' },
       );
     }
 
+    await this.assertStaleDisposalsSettled();
+
     return this.resolveWithChain(token, [], new Set<Token>());
   }
 ```
 
-The user-visible `resolve()` only checks disposal, creates a dependency path and active set for this attempt, then passes control into the internal pipeline. Temporary state for one resolve attempt doesn't mix with the container's long-lived state.
+The user-visible `resolve()` checks disposal and settles pending stale-instance cleanup, then creates a dependency path and active set for this attempt before passing control into the internal pipeline. Temporary state for one resolve attempt doesn't mix with the container's long-lived state.
 
 The next step checks cycles and then moves into registration-based resolution.
 
-`path:packages/di/src/container.ts:389-402`
+`path:packages/di/src/container.ts:670-683`
 ```typescript
   private async resolveWithChain<T>(
     token: Token<T>,
@@ -442,15 +463,15 @@ The next step checks cycles and then moves into registration-based resolution.
 
 Because of this structure, the cycle detector is not an outside observer around recursion. It is the resolver's first branch. `allowForwardRef` also travels through the same argument flow, so it only matters for a specific dependency entry.
 
-Inside `resolveWithChain`, Fluo also passes the `allowForwardRef` flag. In `path:packages/di/src/container.ts:392-396`, that flag enters the cycle-check helper. The actual interpretation of a `forwardRef` wrapper happens later in `resolveDepToken()`. If a cycle remains, the same active set check fails.
+Inside `resolveWithChain`, Fluo also passes the `allowForwardRef` flag. In `path:packages/di/src/container.ts:670-680`, that flag enters the cycle-check helper. The actual interpretation of a `forwardRef` wrapper happens later in `resolveDepToken()`. If a cycle remains, the same active set check fails.
 
-Another key piece of the pipeline is alias redirect. In `path:packages/di/src/container.ts:451-525`, `resolveAliasTarget()` and `resolveExistingProviderTarget()` handle recursive lookup for `{ useExisting }` Providers. This is not a simple map lookup. It calls the resolver again with the target Token. The dependency chain is preserved, so errors retain the path from the original alias to the final failure point.
+Another key piece of the pipeline is alias redirect. `resolveAliasTarget()` in `path:packages/di/src/container.ts:738-742` and `resolveExistingProviderTarget()` in `path:packages/di/src/container.ts:806-812` handle recursive lookup for `{ useExisting }` Providers. This is not a simple map lookup. It calls the resolver again with the target Token. The dependency chain is preserved, so errors retain the path from the original alias to the final failure point.
 
-`resolveFromRegisteredProviders` in `path:packages/di/src/container.ts:404-432` also implements the Scope hierarchy. If a Token isn't in the local container, resolution doesn't fail immediately. It climbs the parent chain and applies the same rules. A request child can inherit root singletons while overriding selected services locally. This hierarchical resolution is the basis for module composition and request isolation.
+`resolveFromRegisteredProviders` in `path:packages/di/src/container.ts:685-720` also implements the Scope hierarchy. If a Token isn't in the local container, resolution doesn't fail immediately. It climbs the parent chain and applies the same rules. A request child can inherit root singletons while overriding selected services locally. This hierarchical resolution is the basis for module composition and request isolation.
 
 The actual Provider selection order is local single, collected multi, required visible single.
 
-`path:packages/di/src/container.ts:404-432`
+`path:packages/di/src/container.ts:685-705`
 ```typescript
   private async resolveFromRegisteredProviders<T>(token: Token<T>, chain: Token[], activeTokens: Set<Token>): Promise<T> {
     const localSingleProvider = this.registrations.get(token);
@@ -477,16 +498,16 @@ The actual Provider selection order is local single, collected multi, required v
 
 This excerpt shows that the resolver doesn't reinterpret Token meaning. Registration already prevented conflicts between single and multi, so the resolver can inspect in order and execute the matching path.
 
-Finally, the `cacheFor` helper in `path:packages/di/src/container.ts:613-645` makes sure a resolved instance lands in the cache that matches its Scope. This is where singleton and request lifetimes become actual cache selection. Instances are separated into different cache objects, preventing request contamination while preserving singleton identity under the hierarchy's rules.
+Finally, the `cacheFor` helper in `path:packages/di/src/container.ts:938-970` makes sure a resolved instance lands in the cache that matches its Scope. This is where singleton and request lifetimes become actual cache selection. Instances are separated into different cache objects, preventing request contamination while preserving singleton identity under the hierarchy's rules.
 
 Scope cache selection branches on Provider Scope and whether the current container is a request Scope.
 
-`path:packages/di/src/container.ts:624-645`
+`path:packages/di/src/container.ts:949-970`
 ```typescript
   private cacheFor(provider: NormalizedProvider): Map<Token, Promise<unknown>> {
     if (provider.scope === Scope.DEFAULT) {
       if (this.requestScopeEnabled && this.registrations.has(provider.provide)) {
-        return this.requestCache;
+        return this.requestCacheForWrite();
       }
 
       return this.root().singletonCache;
@@ -503,46 +524,52 @@ Scope cache selection branches on Provider Scope and whether the current contain
       );
     }
 
-    return this.requestCache;
+    return this.requestCacheForWrite();
   }
 ```
 
 A default singleton Provider usually uses the root cache, but a default-Scope Provider registered locally in a request container goes into the request cache. Resolving a request-scoped Provider from the root produces a clear Scope error.
 
-The resolver's Circular Dependency detection is not a simple stack-depth check. It uses the `activeSet` in `path:packages/di/src/container.ts:582-597` to identify the exact Token that forms the cycle, while the chain records the dependency path. That matters when debugging graphs that involve many Providers. The `withTokenInChain` helper keeps this set synchronized with the current resolution state and cleans it in `finally` even when an exception is thrown.
+The resolver's Circular Dependency detection is not a simple stack-depth check. `resolveForwardRefCircularDependency()` in `path:packages/di/src/container.ts:744-762` checks the `activeTokens` set for the exact Token that forms the cycle, while the chain records the dependency path. `withTokenInChain()` in `path:packages/di/src/container.ts:881-896` keeps this set synchronized with the current resolution state and cleans it in `finally` even when an exception is thrown.
 
-The resolution algorithm also reports missing Providers with structure. `requireProvider()` in `path:packages/di/src/container.ts:435-449` throws `ContainerResolutionError` with the Token and a hint when no Provider exists. That makes it possible to track which Token in the graph is missing.
+The resolution algorithm also reports missing Providers with structure. `requireProvider()` in `path:packages/di/src/container.ts:722-736` throws `ContainerResolutionError` with the Token and a hint when no Provider exists. That makes it possible to track which Token in the graph is missing.
 
-What appears in `path:packages/di/src/container.ts:412-425` is not a separate framework Token shortcut. It is the Provider branch that checks the alias target after multi results are returned. This chapter folds that range into the earlier `resolveFromRegisteredProviders()` excerpt. In the current source, the core rules are registration maps, multi collection, alias redirect, and Scope cache order.
+What appears in `path:packages/di/src/container.ts:700-705` is not a separate framework Token shortcut. It is the Provider branch that checks the alias target after multi results are returned. This chapter folds that range into the earlier `resolveFromRegisteredProviders()` excerpt. In the current source, the core rules are registration maps, multi collection, alias redirect, and Scope cache order.
 
 The resolution algorithm is arranged to avoid external side effects. During `resolveProviderDeps`, the container treats metadata lookup and reflection access as read-only. This principle keeps the DI system from changing the runtime behavior of the classes it manages. Observing or resolving a service shouldn't mutate the service's own state if the resolver is to remain trustworthy.
 
-The resolve pipeline also supports multi-Provider aggregation. When a Token is marked as a multi Provider, `resolveFromRegisteredProviders` in `path:packages/di/src/container.ts:418-430` gathers related registrations and resolves them into one array. Registration order is preserved, so middleware chains and plugin systems behave predictably. Each entry is resolved independently, so entries under the same Token may use different Scopes or implementation types.
+The resolve pipeline also supports multi-Provider aggregation. When a Token is marked as a multi Provider, `resolveFromRegisteredProviders` in `path:packages/di/src/container.ts:685-697` gathers related registrations and resolves them into one array. Registration order is preserved, so middleware chains and plugin systems behave predictably. Each entry is resolved independently, so entries under the same Token may use different Scopes or implementation types.
 
-There is no separate runtime instance validator at the end of resolution. `path:packages/di/src/container.ts:849-876` is a Scope-check helper that follows alias chains to find the effective Provider. In the current source, the final guardrail is closer to Provider graph validation, preventing a singleton from pointing at a request-scoped dependency, rather than return-value type checking.
+There is no separate runtime instance validator at the end of resolution. `path:packages/di/src/container.ts:1308-1353` is a Scope-check helper that follows alias chains to find the effective Provider. In the current source, the final guardrail is closer to Provider graph validation, preventing a singleton from pointing at a request-scoped dependency, rather than return-value type checking.
 
-The `instantiate` class branch in `path:packages/di/src/container.ts:815-820` is constructor execution, not lifecycle hook invocation. It resolves dependencies first, then creates the instance with `new provider.useClass(...deps)`. This chapter focuses on the fact that the creation path uses only the normalized Provider and the dependency loop.
+The `instantiate` class branch in `path:packages/di/src/container.ts:1220-1228` is constructor execution, not lifecycle hook invocation. It resolves dependencies first, then creates the instance with `new provider.useClass(...deps)`. This chapter focuses on the fact that the creation path uses only the normalized Provider and the dependency loop.
 
-The representative entry point for splitting container hierarchy is request Scope creation. `path:packages/di/src/container.ts:252-263` creates a child container that points at its parent and shares the root singleton cache. Dynamic Module Provider registration isn't a separate bootstrap algorithm in this file. It is absorbed into the normalization, conflict-check, and cache-invalidation rules of `register()` and `override()`.
+The representative entry point for splitting container hierarchy is request Scope creation. `path:packages/di/src/container.ts:438-447` creates a child container that points at its parent and shares the root singleton cache. Dynamic Module Provider registration isn't a separate bootstrap algorithm in this file. It is absorbed into the normalization, conflict-check, and cache-invalidation rules of `register()` and `override()`.
 
-Another detail is that the cache stores `Promise<unknown>`, not raw values. `resolveScopedOrSingletonInstance` in `path:packages/di/src/container.ts:535-548` inserts the creation promise into the cache and deletes that entry if creation fails. This prevents concurrent construction of the same singleton while still allowing a failed creation attempt to be retried by the next resolve.
+Another detail is that the cache stores `Promise<unknown>`, not raw values. `resolveScopedOrSingletonInstance` in `path:packages/di/src/container.ts:814-835` inserts the creation promise into the cache and deletes that entry if creation fails. This prevents concurrent construction of the same singleton while still allowing a failed creation attempt to be retried by the next resolve.
 
 Finally, the resolution algorithm is tied to the container's disposal lifecycle. Once `container.dispose()` is called, `resolve()` and `register()` reject new work through the disposal guard described earlier. Creating new instances during shutdown can produce memory leaks or dangling database connections, so disposal state is part of both registration and resolution contracts.
 
-`resolveFromRegisteredProviders()` in `path:packages/di/src/container.ts:404-432` is the real pipeline. Order matters. It first checks local single registration. If none exists, it checks collected multi Providers. If multi entries exist, it resolves an array. Only after that does it require a single Provider.
+`resolveFromRegisteredProviders()` in `path:packages/di/src/container.ts:685-720` is the real pipeline. Order matters. It first checks local single registration. If none exists, it checks collected multi Providers. If multi entries exist, it resolves an array. Only after that does it require a single Provider.
 
 This order explains Token meaning. If a direct single Provider exists, the Token is interpreted as single. If not, and the multi set is not empty, it is interpreted as multi. Registration conflict checks must be strict because the resolver assumes a Token's meaning is already unambiguous.
 
-Aliases are handled before Scope caching. `resolveExistingProviderTarget()` and `resolveAliasTarget()` in `path:packages/di/src/container.ts:451-525` redirect resolution to another Token while preserving chain tracking. `{ useExisting }` is not a copied instance. It is delegated lookup of an existing Token.
+Aliases are handled before Scope caching. The branch in `path:packages/di/src/container.ts:700-705` uses `resolveExistingProviderTarget()` from `path:packages/di/src/container.ts:806-812` and `resolveAliasTarget()` from `path:packages/di/src/container.ts:738-742` to redirect resolution while preserving chain tracking. `{ useExisting }` is not a copied instance. It is delegated lookup of an existing Token.
 
-Transient Providers are the only path that intentionally skips caches. `path:packages/di/src/container.ts:426-428` sends transient directly to `instantiate()` under `withTokenInChain()`. Every other non-alias Provider eventually goes to `resolveScopedOrSingletonInstance()` in `path:packages/di/src/container.ts:527-548`.
+Transient Providers are the only path that intentionally skips caches. `path:packages/di/src/container.ts:707-709` sends transient directly to `instantiate()` under `withTokenInChain()`. Every other non-alias Provider checks the cache and eventually goes to `resolveScopedOrSingletonInstance()` through `path:packages/di/src/container.ts:711-719` and `path:packages/di/src/container.ts:814-835`.
 
 After the alias branch, transient and cache-based Providers split.
 
-`path:packages/di/src/container.ts:426-432`
+`path:packages/di/src/container.ts:707-719`
 ```typescript
     if (provider.scope === 'transient') {
       return (await this.withTokenInChain(token, chain, activeTokens, async (c, at) => this.instantiate(provider, c, at))) as T;
+    }
+
+    const cachedInstance = this.getCachedScopedOrSingletonInstance(provider);
+
+    if (cachedInstance) {
+      return (await cachedInstance) as T;
     }
 
     return (await this.withTokenInChain(token, chain, activeTokens, async (c, at) =>
@@ -550,13 +577,13 @@ After the alias branch, transient and cache-based Providers split.
     )) as T;
 ```
 
-Transient is created immediately without checking a cache. Other Scopes move to Scope-aware cache selection under the same chain tracking, so cycle reporting and cache policy aren't separated.
+Transient is created immediately without checking a cache. Other Scopes reuse an existing singleton promise when available, then move to Scope-aware cache selection under the same chain tracking, so cycle reporting and cache policy aren't separated.
 
-`withTokenInChain()` in `path:packages/di/src/container.ts:582-597` is small but decisive. It pushes the current Token into the chain array and active set, then always removes it in `finally`. This gives Fluo two things at once. One is a human-readable dependency chain. The other is a cycle detector that uses O(1) membership checks.
+`withTokenInChain()` in `path:packages/di/src/container.ts:881-896` is small but decisive. It pushes the current Token into the chain array and active set, then always removes it in `finally`. This gives Fluo two things at once. One is a human-readable dependency chain. The other is a cycle detector that uses O(1) membership checks.
 
 The chain and active set are updated together in one helper and cleaned together even if an exception occurs.
 
-`path:packages/di/src/container.ts:582-597`
+`path:packages/di/src/container.ts:881-896`
 ```typescript
   private async withTokenInChain<T>(
     token: Token,
@@ -578,11 +605,11 @@ The chain and active set are updated together in one helper and cleaned together
 
 The array builds error-message paths, and the set quickly checks whether a Token is already in current recursion. Because `finally` is present, a failed creation attempt doesn't contaminate the next resolve.
 
-Actual object creation happens in `instantiate()` at `path:packages/di/src/container.ts:796-825`. This method first calls `assertSingletonDependencyScopes()`. Then it branches by Provider type. A value Provider returns the value as is. A factory Provider resolves dependencies and calls `useFactory`. A class Provider resolves dependencies and runs `new useClass(...deps)`.
+Actual object creation happens in `instantiate()` at `path:packages/di/src/container.ts:1201-1232`. This method first calls `assertSingletonDependencyScopes()`. Then it branches by Provider type. A value Provider returns the value as is. A factory Provider resolves dependencies, calls `useFactory`, and records whether the result is synchronous or promise-like. A class Provider resolves dependencies and runs `new useClass(...deps)`.
 
 The creation step runs only from the normalized Provider's `type`.
 
-`path:packages/di/src/container.ts:796-825`
+`path:packages/di/src/container.ts:1201-1232`
 ```typescript
   private async instantiate<T>(provider: NormalizedProvider<T>, chain: Token[], activeTokens: Set<Token>): Promise<T> {
     this.assertSingletonDependencyScopes(provider);
@@ -598,8 +625,10 @@ The creation step runs only from the normalized Provider's `type`.
         }
 
         const deps = await this.resolveProviderDeps(provider, chain, activeTokens);
+        const value = provider.useFactory(...deps);
+        this.root().factoryResolutionKinds.set(provider, isPromiseLike(value) ? 'async' : 'sync');
 
-        return provider.useFactory(...deps);
+        return value as T;
       }
       case 'class': {
         if (!provider.useClass) {
@@ -607,15 +636,22 @@ The creation step runs only from the normalized Provider's `type`.
         }
 
         const deps = await this.resolveProviderDeps(provider, chain, activeTokens);
+
+        return new provider.useClass(...deps) as T;
+      }
+      default:
+        throw new InvariantError('Unknown provider type.');
+    }
+  }
 ```
 
-This excerpt shows value, factory, and class branching inside the same creation function. The actual `new provider.useClass(...deps)` call in the `class` branch follows immediately after this excerpt, and it shares the same dependency resolution rules.
+This excerpt shows value, factory, and class branching inside the same creation function. Factory diagnostics and class construction share the same ordered dependency-resolution rules.
 
-Dependency resolution itself is an ordered loop. `resolveProviderDeps()` in `path:packages/di/src/container.ts:890-898` creates an array matching `provider.inject.length`, then resolves each Token in order. There is no speculative parallelism. That keeps chain ordering and error reporting stable.
+Dependency resolution itself is an ordered loop. `resolveProviderDeps()` in `path:packages/di/src/container.ts:1377-1385` creates an array matching `provider.inject.length`, then resolves each Token in order. There is no speculative parallelism. That keeps chain ordering and error reporting stable.
 
 The dependency array follows the Provider's `inject` order exactly.
 
-`path:packages/di/src/container.ts:890-898`
+`path:packages/di/src/container.ts:1377-1385`
 ```typescript
   private async resolveProviderDeps(provider: NormalizedProvider, chain: Token[], activeTokens: Set<Token>): Promise<unknown[]> {
     const deps = new Array<unknown>(provider.inject.length);
@@ -663,11 +699,11 @@ resolveFromRegisteredProviders(token, chain, active):
 The key conclusion for advanced readers is this. Fluo's resolver is recursive, but it isn't magical. Every recursive step is visible in `container.ts`, and every branch is decided from normalized Provider data rather than runtime reflection.
 
 ## 4.4 Optional tokens, forward references, aliases, and multi providers
-The elegant part of Fluo's design is that special cases gather in one place. They all flow into `resolveDepToken()` in `path:packages/di/src/container.ts:558-579`. This one helper interprets optional wrappers, forward references, and ordinary Tokens.
+The elegant part of Fluo's design is that special cases gather in one place. They all flow into `resolveDepToken()` in `path:packages/di/src/container.ts:857-879`. This one helper interprets optional wrappers, forward references, and ordinary Tokens.
 
 Every special dependency entry is interpreted in this helper.
 
-`path:packages/di/src/container.ts:558-579`
+`path:packages/di/src/container.ts:857-879`
 ```typescript
   private async resolveDepToken(
     depEntry: Token | ForwardRefFn | OptionalToken,
@@ -685,7 +721,7 @@ Every special dependency entry is interpreted in this helper.
     }
 
     if (isForwardRef(depEntry)) {
-      const resolvedToken = depEntry.forwardRef();
+      const resolvedToken = this.resolveForwardRefToken(depEntry);
 
       return this.resolveWithChain(resolvedToken, chain, activeTokens, /* allowForwardRef */ true);
     }
@@ -694,17 +730,17 @@ Every special dependency entry is interpreted in this helper.
   }
 ```
 
-Optional first checks registration and returns `undefined` if the Token is absent. `forwardRef` calls the factory to get the actual Token, then enters the same resolver with the `allowForwardRef` flag enabled.
+Optional first checks registration and returns `undefined` if the Token is absent. `forwardRef` resolves the factory through the container's `forwardRefTokenCache`, then enters the same resolver with the `allowForwardRef` flag enabled.
 
-Optional injection is the smallest branch. If the dependency entry is an `OptionalToken`, the container first checks `has(innerToken)`. If the Token is absent, it returns `undefined` without an error. If the Token exists, it resolves normally. The exact code is in `path:packages/di/src/container.ts:563-571`, and the tests are in `path:packages/di/src/container.test.ts:494-532`.
+Optional injection is the smallest branch. If the dependency entry is an `OptionalToken`, the container first checks `has(innerToken)`. If the Token is absent, it returns `undefined` without an error. If the Token exists, it resolves normally. The exact code is in `path:packages/di/src/container.ts:862-870`, and the tests are in `path:packages/di/src/container.test.ts:494-532`.
 
-Forward references are intentionally simple too. If `isForwardRef(depEntry)` is true, the wrapper is lazily evaluated with `depEntry.forwardRef()`, and the resulting Token is passed to `resolveWithChain(..., allowForwardRef=true)`. This appears in `path:packages/di/src/container.ts:573-577`. The wrapper only delays Token lookup. It doesn't create a proxy instance or lazy object.
+Forward references are intentionally simple too. If `isForwardRef(depEntry)` is true, the wrapper is lazily evaluated and cached through `resolveForwardRefToken()`, and the resulting Token is passed to `resolveWithChain(..., allowForwardRef=true)`. This appears in `path:packages/di/src/container.ts:872-876` and `path:packages/di/src/container.ts:1367-1375`. The wrapper only delays Token lookup. It doesn't create a proxy instance or lazy object.
 
-This distinction matters. If a real constructor cycle remains, `resolveForwardRefCircularDependency()` still throws. This time, it adds the detail string `forwardRef only defers token lookup and does not resolve true circular construction`. The basis is `path:packages/di/src/container.ts:457-475` and `path:packages/di/src/container.test.ts:320-336`.
+This distinction matters. If a real constructor cycle remains, `resolveForwardRefCircularDependency()` still throws. This time, it adds the detail string `forwardRef only defers token lookup and does not resolve true circular construction`. The basis is `path:packages/di/src/container.ts:744-762` and `path:packages/di/src/container.test.ts:320-336`.
 
 Even during recursion allowed by a forward reference, seeing an active Token again is treated as a cycle.
 
-`path:packages/di/src/container.ts:457-475`
+`path:packages/di/src/container.ts:744-762`
 ```typescript
   private resolveForwardRefCircularDependency(
     token: Token,
@@ -729,7 +765,7 @@ Even during recursion allowed by a forward reference, seeing an active Token aga
 
 So `forwardRef` only delays Token lookup at declaration time. It isn't an escape hatch that allows a Token already being created to be created again.
 
-Aliases are a Provider-level feature rather than a dependency-entry-level feature. A `useExisting` Provider is normalized in `path:packages/di/src/provider-normalization.ts:234-246`, then `resolveAliasTarget()` in `path:packages/di/src/container.ts:451-455` redirects to the actual target Token. The alias Token is another name for the resolved value of the target Token.
+Aliases are a Provider-level feature rather than a dependency-entry-level feature. A `useExisting` Provider is normalized in `path:packages/di/src/provider-normalization.ts:234-246`, then `resolveAliasTarget()` in `path:packages/di/src/container.ts:738-742` redirects to the actual target Token. The alias Token is another name for the resolved value of the target Token.
 
 At normalization time, an alias Provider closes into an `existing` record without dependencies.
 
@@ -752,18 +788,21 @@ At normalization time, an alias Provider closes into an `existing` record withou
 
 This record doesn't copy a value. It stores the `useExisting` target and causes the resolution step to look it up again under the same chain tracking.
 
-Alias chains are therefore allowed. `path:packages/di/src/container.test.ts:552-568` shows a multi-hop alias chain returning the original instance. Alias cycles are not allowed. `resolveEffectiveProvider()` in `path:packages/di/src/container.ts:849-876` follows alias chains to check request-Scope mismatch and throws `CircularDependencyError` when a Token repeats. The regression test is `path:packages/di/src/container.test.ts:570-585`.
+Alias chains are therefore allowed. `path:packages/di/src/container.test.ts:552-568` shows a multi-hop alias chain returning the original instance. Alias cycles are not allowed. `resolveEffectiveProvider()` in `path:packages/di/src/container.ts:1308-1353` follows alias chains to check request-Scope mismatch and throws `CircularDependencyError` when a Token repeats. The regression test is `path:packages/di/src/container.test.ts:570-585`.
 
 Alias target lookup redirects to the target Token while preserving the chain.
 
-`path:packages/di/src/container.ts:451-525`
+`path:packages/di/src/container.ts:738-742`
 ```typescript
   private async resolveAliasTarget<T>(existingTarget: Token<T>, token: Token, chain: Token[], activeTokens: Set<Token>): Promise<T> {
     return await this.withTokenInChain(token, chain, activeTokens, async (c, at) =>
       this.resolveWithChain(existingTarget, c, at),
     );
   }
+```
 
+`path:packages/di/src/container.ts:806-812`
+```typescript
   private resolveExistingProviderTarget(provider: NormalizedProvider): Token | undefined {
     if (provider.type !== 'existing') {
       return undefined;
@@ -775,26 +814,32 @@ Alias target lookup redirects to the target Token while preserving the chain.
 
 An alias doesn't create a separate instance. It resolves the target Token again. Because it passes through `withTokenInChain`, the alias Token remains visible in error paths and cycle detection.
 
-Multi Providers add another layer. `collectMultiProviders()` in `path:packages/di/src/container.ts:373-387` merges parent and local arrays unless the child Scope has an explicit override. A request child can inherit the root plugin list and add its own plugin.
+Multi Providers add another layer. `collectMultiProviders()` in `path:packages/di/src/container.ts:584-604` merges parent and local arrays unless the child Scope has an explicit override. A request child can inherit the root plugin list and add a request-scoped local plugin; a default-scope local replacement must use `override()` because ordinary request-scope registration rejects it.
 
 Multi Provider collection appends local entries after parent entries.
 
-`path:packages/di/src/container.ts:373-387`
+`path:packages/di/src/container.ts:584-604`
 ```typescript
   private collectMultiProviders(token: Token): NormalizedProvider[] {
+    const cached = this.readCachedPlan(this.multiProviderPlanCache, token);
+
+    if (cached) {
+      return [...cached.value];
+    }
+
     const local = this.multiRegistrations.get(token);
+    let providers: readonly NormalizedProvider[];
 
     if (this.multiOverriddenTokens.has(token)) {
-      return local ?? [];
+      providers = Object.freeze([...(local ?? [])]);
+    } else {
+      const fromParent = this.parent ? this.parent.collectMultiProviders(token) : [];
+
+      providers = Object.freeze(local ? [...fromParent, ...local] : [...fromParent]);
     }
 
-    const fromParent = this.parent ? this.parent.collectMultiProviders(token) : [];
-
-    if (local) {
-      return [...fromParent, ...local];
-    }
-
-    return fromParent;
+    this.writePlanCache(this.multiProviderPlanCache, token, providers);
+    return [...providers];
   }
 ```
 
@@ -802,11 +847,11 @@ If the override marker exists, parent collection is cut off. Otherwise, parent e
 
 The behavior is precise. `path:packages/di/src/container.test.ts:657-679` proves that child registration appends after the parent multi set. `path:packages/di/src/container.test.ts:669-691` proves that `override()` cuts off parent collection for that Token. The same rule applies whether the replacement remains multi or becomes single.
 
-Resolution of a multi entry differs from single resolution. `resolveMultiProviderInstance()` in `path:packages/di/src/container.ts:491-517` caches by normalized Provider object, not by Token. So even if several entries live under the same Token, each entry can keep its own singleton or request identity.
+Resolution of a multi entry differs from single resolution. `resolveMultiProviderInstance()` in `path:packages/di/src/container.ts:778-804` caches by normalized Provider object, not by Token. So even if several entries live under the same Token, each entry can keep its own singleton or request identity.
 
 A multi entry is cached by one Provider record, not by one Token.
 
-`path:packages/di/src/container.ts:491-517`
+`path:packages/di/src/container.ts:778-795`
 ```typescript
   private async resolveMultiProviderInstance(
     provider: NormalizedProvider,
@@ -859,7 +904,7 @@ collectMultiProviders(token):
 
 In practice, Fluo supports several advanced authoring patterns without widening the mental model too much. Special wrappers change Token lookup rules. Aliases change Token identity. Multi Providers change result cardinality. All of them still run on the same recursive resolver.
 
-This design also simplifies specialized containers used for testing. The core resolution logic in `path:packages/di/src/container.ts:389-432` is not locked to one specific registration map, so a test container can redefine individual Tokens without re-normalizing the entire graph. This surgical override helps integration tests stay fast and predictable. If a real database service is replaced by a mock service, the resolver follows the new definition under that Token.
+This design also simplifies specialized containers used for testing. The core resolution logic in `path:packages/di/src/container.ts:670-720` is not locked to one specific registration map, so a test container can redefine individual Tokens without re-normalizing the entire graph. This surgical override helps integration tests stay fast and predictable. If a real database service is replaced by a mock service, the resolver follows the new definition under that Token.
 
 The unified resolution path also makes every Provider follow the same framework rules regardless of implementation type. Class Providers, factory Providers, and value Providers all participate in the same dependency tracking and cycle detection. This consistency matters to Fluo's standard-first approach. Rather than adding separate rules for each type, Fluo keeps one resolution contract that applies to all Providers.
 
@@ -869,7 +914,7 @@ Another detail is how Fluo attaches Circular Dependency hints. When a cycle is d
 
 Finally, the resolve pipeline is built with hot-path performance in mind. It avoids unnecessary allocations and uses efficient data structures for chain tracking to reduce `resolve()` overhead. Resolving a service already in the singleton cache finishes in a few lookups. The design keeps bootstrap and runtime cost controlled even in complex dependency graphs.
 
-The resolution logic also respects the container's disposal lifecycle. If the container is disposed, resolve attempts stop so new instances can't be created. This is visible in the public `resolve()` guard in `path:packages/di/src/container.ts:275-284`. Creation and shutdown must share one state model so resource ownership stays stable across the whole application lifetime.
+The resolution logic also respects the container's disposal lifecycle. If the container or an ancestor is disposed, resolve attempts stop so new instances can't be created. This is visible in the public `resolve()` guard in `path:packages/di/src/container.ts:459-470`. Creation and shutdown must share one state model so resource ownership stays stable across the whole application lifetime.
 
 ## 4.5 Error contracts and why they are part of the algorithm
 In Fluo, error reporting is not packaging after the fact. The error classes in `path:packages/di/src/errors.ts:1-154` are part of the container contract. They define how operators trace broken Module Graphs and Provider declarations.
@@ -880,11 +925,11 @@ This message formatting is performed by formatters matched to each error type, a
 
 These guide messages do more than provide help text. At each failure point, they push the developer to inspect Provider configuration and Module boundaries. The throw site only needs to attach structured context, and one formatter turns it into readable output.
 
-`ContainerResolutionError` covers missing Providers, disposed-container operations, and other lifecycle failures. The missing-Provider branch is thrown in `requireProvider()` at `path:packages/di/src/container.ts:435-449`. Notice the hint there. It already leads the reader toward relationships among Module `providers`, `exports`, and `imports`.
+`ContainerResolutionError` covers missing Providers, disposed-container operations, and other lifecycle failures. The missing-Provider branch is thrown in `requireProvider()` at `path:packages/di/src/container.ts:722-736`. Notice the hint there. It already leads the reader toward relationships among Module `providers`, `exports`, and `imports`.
 
 The missing Provider error builds the Token and recovery hint in the same place.
 
-`path:packages/di/src/container.ts:435-449`
+`path:packages/di/src/container.ts:722-736`
 ```typescript
   private requireProvider(token: Token): NormalizedProvider {
     const provider = this.lookupProvider(token);
@@ -905,42 +950,39 @@ The missing Provider error builds the Token and recovery hint in the same place.
 
 This excerpt shows that a failed Token lookup doesn't end as a simple `undefined` return. The error also gives direction for checking registration location and Module import and export relationships.
 
-`RequestScopeResolutionError` is raised from `cacheFor()` and `multiCacheFor()` when a request-scoped Provider is resolved outside a request Scope. The basis is `path:packages/di/src/container.ts:633-645` and `path:packages/di/src/container.ts:656-668`. This is a runtime error, but it describes an architectural violation rather than a simple construction failure.
+`RequestScopeResolutionError` is raised from `cacheFor()` and `multiCacheFor()` when a request-scoped Provider is resolved outside a request Scope. The basis is `path:packages/di/src/container.ts:958-970` and `path:packages/di/src/container.ts:981-993`. This is a runtime error, but it describes an architectural violation rather than a simple construction failure.
 
-`ScopeMismatchError` is the next layer of validation. `assertSingletonDependencyScopes()` in `path:packages/di/src/container.ts:827-847` walks dependency Tokens before singleton creation and rejects an edge that points to a request-scoped Provider. Because it follows the effective Provider, the same rule applies through aliases.
+`ScopeMismatchError` is the next layer of validation. `assertSingletonDependencyScopes()` and its recursive helpers in `path:packages/di/src/container.ts:1234-1306` walk the dependency graph before singleton creation and reject a path that reaches a request-scoped Provider. Because the traversal follows effective Providers, wrappers, nested dependencies, and class metadata, the same rule applies through aliases and transitive edges.
 
 The singleton dependency Scope check runs before the Provider is created.
 
-`path:packages/di/src/container.ts:827-847`
+`path:packages/di/src/container.ts:1234-1251`
 ```typescript
   private assertSingletonDependencyScopes(provider: NormalizedProvider): void {
     if (provider.scope !== Scope.DEFAULT) {
       return;
     }
 
-    for (const depEntry of provider.inject) {
-      const depToken = this.resolveProviderDependencyToken(depEntry);
-      const effectiveProvider = this.resolveEffectiveProvider(depToken);
+    const requestScopedDependency = this.findRequestScopedDependency(provider.inject, new Set<Token>([provider.provide]));
 
-      if (effectiveProvider?.scope === 'request') {
-        throw new ScopeMismatchError(
-          `Singleton provider ${formatTokenName(provider.provide)} depends on request-scoped provider ${formatTokenName(depToken)}.`,
-          {
-            token: provider.provide,
-            scope: 'singleton',
-            hint: `Singleton providers cannot depend on request-scoped providers. Either change ${formatTokenName(depToken)} to singleton/transient scope, or change ${formatTokenName(provider.provide)} to request scope.`,
-          },
-        );
-      }
+    if (requestScopedDependency) {
+      throw new ScopeMismatchError(
+        `Singleton provider ${formatTokenName(provider.provide)} depends on request-scoped provider ${formatTokenName(requestScopedDependency)}.`,
+        {
+          token: provider.provide,
+          scope: 'singleton',
+          hint: `Singleton providers cannot depend on request-scoped providers. Either change ${formatTokenName(requestScopedDependency)} to singleton/transient scope, or change ${formatTokenName(provider.provide)} to request scope.`,
+        },
+      );
     }
   }
 ```
 
-This check inspects the dependency edge before a singleton Provider is made. Because it goes through `resolveEffectiveProvider()`, the actual request-scoped Provider behind an alias is caught by the same rule.
+This check inspects the dependency graph before a singleton Provider is made. The recursive helpers catch request-scoped Providers behind aliases, nested dependencies, wrappers, and unregistered class metadata.
 
 `CircularDependencyError` is intentionally explicit. Its constructor in `path:packages/di/src/errors.ts:106-125` includes the full chain and a first-party hint recommending shared-logic extraction or `forwardRef()` use. That recovery advice is rooted in the standard resolution model.
 
-Closing the advanced analysis loop requires matching the chapter's claims against the actual behavior contracts in the source. `path:packages/di/src/provider-normalization.ts:168-249` confirms that `normalizeProvider` is truly the base entry point for all Provider shapes. `path:packages/di/src/container.ts:389-402` proves that `resolveWithChain` handles cycle detection as the first operational branch. `path:packages/di/src/container.ts:796-825` shows `instantiate` enforcing singleton Scope hygiene before any constructor runs. `path:packages/di/src/container.ts:558-579` shows that optional, forwardRef, and standard Tokens share one unified resolution helper. The empirical evidence in `path:packages/di/src/container.test.ts:414-431` and `path:packages/di/src/container.test.ts:638-679` proves that the container enforces multi-Provider and registration-conflict policies exactly as described.
+Closing the advanced analysis loop requires matching the chapter's claims against the actual behavior contracts in the source. `path:packages/di/src/provider-normalization.ts:168-249` confirms that `normalizeProvider` is truly the base entry point for all Provider shapes. `path:packages/di/src/container.ts:670-683` proves that `resolveWithChain` handles cycle detection as the first operational branch. `path:packages/di/src/container.ts:1201-1232` shows `instantiate` enforcing singleton Scope hygiene before any constructor runs. `path:packages/di/src/container.ts:857-879` shows that optional, forwardRef, and standard Tokens share one unified resolution helper. The empirical evidence in `path:packages/di/src/container.test.ts:414-431` and `path:packages/di/src/container.test.ts:638-679` proves that the container enforces multi-Provider and registration-conflict policies exactly as described.
 
 This standard-first architecture keeps the DI container as a predictable state machine even when the Module Graph becomes complex. Complexity moves into normalization, and registration enforces Scope and topology rules. `forwardRef()` support in `path:packages/di/src/types.ts:137-168` also fits this model. It provides a lookup-deferral marker without creating proxy objects.
 
