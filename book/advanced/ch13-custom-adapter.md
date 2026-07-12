@@ -64,16 +64,19 @@ The adapter's most important job is mapping. Fluo runs every pipeline from the `
 // Example mapping performed inside an adapter
 const fluoRequest: FrameworkRequest = {
   method: rawRequest.method,
+  path: rawRequest.path,
   url: rawRequest.url,
   headers: rawRequest.headers,
-  body: rawRequest.body,
   query: rawRequest.query,
+  cookies: rawRequest.cookies,
   params: {}, // Filled by the dispatcher during route matching
+  body: rawRequest.body,
+  raw: rawRequest,
   signal: rawRequest.signal, // AbortSignal integration
 };
 ```
 
-The `signal` property must be connected to the platform's request abort signal, such as `req.on('close')` in Node.js. This connection is the key mechanism that stops the pipeline from continuing work that is no longer needed.
+When the platform exposes cancellation, connect `signal` to its request/response disconnect events; otherwise provide an `isAborted()` probe. The dispatcher checks this state at its documented boundaries. Application code must still pass the signal to cancellable database, network, or other long-running operations rather than assuming the dispatcher can interrupt arbitrary work.
 
 ## 13.4 In Practice: Analyzing the Core Fastify Adapter Logic
 
@@ -126,9 +129,24 @@ After the dispatcher finishes processing, it calls methods on the `FrameworkResp
 
 ```typescript
 const fluoResponse: FrameworkResponse = {
+  statusCode: reply.statusCode,
+  statusSet: false,
+  headers: {},
   get committed() { return reply.sent; },
-  setHeader(name, value) { reply.header(name, value); return this; },
-  status(code) { reply.status(code); return this; },
+  raw: reply,
+  setStatus(code) {
+    this.statusCode = code;
+    this.statusSet = true;
+    reply.status(code);
+  },
+  setHeader(name, value) {
+    this.headers[name] = value;
+    reply.header(name, value);
+  },
+  redirect(status, location) {
+    this.setStatus(status);
+    this.setHeader('location', location);
+  },
   send(body) { reply.send(body); },
 };
 ```
@@ -213,15 +231,21 @@ For learning purposes, let's write the simplest adapter structure that uses Node
 
 ```typescript
 import * as http from 'http';
-import { Dispatcher, FrameworkRequest, FrameworkResponse, HttpApplicationAdapter } from '@fluojs/http';
+import type { Dispatcher, FrameworkRequest, FrameworkResponse, HttpApplicationAdapter } from '@fluojs/http';
 
 export class TinyNodeAdapter implements HttpApplicationAdapter {
   private server = http.createServer();
 
   async listen(dispatcher: Dispatcher) {
     this.server.on('request', async (req, res) => {
+      const abortController = new AbortController();
+      req.once('aborted', () => abortController.abort());
+      res.once('close', () => {
+        if (!res.writableFinished) abortController.abort();
+      });
+
       // 1. Request mapping: convert Node.js IncomingMessage to FrameworkRequest
-      const frameworkReq = this.mapRequest(req);
+      const frameworkReq = this.mapRequest(req, abortController.signal);
       
       // 2. Response mapping: convert Node.js ServerResponse to FrameworkResponse
       const frameworkRes = this.mapResponse(res);
@@ -229,7 +253,7 @@ export class TinyNodeAdapter implements HttpApplicationAdapter {
       // 3. Dispatcher execution: start fluo's core pipeline
       try {
         await dispatcher.dispatch(frameworkReq, frameworkRes);
-      } catch (err) {
+      } catch {
         // Last line of defense: handle fatal errors not handled inside the dispatcher
         if (!res.headersSent) {
           res.statusCode = 500;
@@ -238,41 +262,70 @@ export class TinyNodeAdapter implements HttpApplicationAdapter {
       }
     });
     
-    return new Promise((resolve) => {
+    return new Promise<void>((resolve) => {
       this.server.listen(8080, () => resolve());
     });
   }
 
   async close() {
-    return new Promise((resolve) => {
+    return new Promise<void>((resolve) => {
       this.server.close(() => resolve());
     });
   }
 
-  private mapRequest(req: http.IncomingMessage): FrameworkRequest {
+  private mapRequest(req: http.IncomingMessage, signal: AbortSignal): FrameworkRequest {
+    const url = new URL(req.url ?? '/', 'http://localhost');
+    const query: Record<string, string | string[]> = {};
+
+    for (const [key, value] of url.searchParams) {
+      const previous = query[key];
+      query[key] = previous === undefined ? value : Array.isArray(previous) ? [...previous, value] : [previous, value];
+    }
+
     return {
-      method: req.method || 'GET',
-      url: req.url || '/',
-      headers: req.headers as Record<string, string>,
-      body: (req as any).body, // A real implementation needs body parsing logic
-      query: {}, // URL parsing required
+      method: req.method ?? 'GET',
+      path: url.pathname,
+      url: req.url ?? '/',
+      headers: req.headers,
+      query,
+      cookies: {}, // A real implementation must parse the Cookie header.
       params: {},
-      signal: new AbortController().signal, // In practice, wire this to req.on('close')
+      raw: req,
+      signal,
     };
   }
 
   private mapResponse(res: http.ServerResponse): FrameworkResponse {
     return {
+      statusCode: res.statusCode,
+      statusSet: false,
+      headers: {},
       get committed() { return res.headersSent; },
-      setHeader(name, value) { res.setHeader(name, value); return this; },
-      status(code) { res.statusCode = code; return this; },
-      send(body) { res.end(body); },
+      raw: res,
+      setStatus(code) {
+        this.statusCode = code;
+        this.statusSet = true;
+        res.statusCode = code;
+      },
+      setHeader(name, value) {
+        this.headers[name] = value;
+        res.setHeader(name, value);
+      },
+      redirect(status, location) {
+        this.setStatus(status);
+        this.setHeader('location', location);
+      },
+      send(body) {
+        if (body === undefined) return void res.end();
+        if (typeof body === 'string' || body instanceof Uint8Array) return void res.end(body);
+        res.end(JSON.stringify(body));
+      },
     };
   }
 }
 ```
 
-This skeleton is simple, but it includes every core mechanism of an adapter. A real production adapter, such as `FastifyAdapter`, adds more precise buffering, multipart handling, compression, and protocol optimization logic such as HTTP/2.
+This skeleton now satisfies the required request/response shape, but it is still intentionally incomplete: production code must parse request bodies and cookies, enforce size limits, preserve exact raw bytes when needed, normalize headers, remove native listeners, and implement streaming/backpressure and shutdown policy. A production adapter, such as `FastifyAdapter`, also adds multipart handling, compression, and protocol optimization logic such as HTTP/2.
 
 ## 13.13 Summary
 
