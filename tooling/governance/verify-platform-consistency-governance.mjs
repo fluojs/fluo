@@ -577,6 +577,7 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // stale-series ownership docs, and email
   // transport-agnostic status snapshots plus caller-owned shutdown boundaries,
   // validation mapped-type/nested-materialization contract discoverability,
+  // missing-value, safe-extra-property, and unsupported-group migration rules,
   // serialization class options plus request-boundary interceptor coverage, CLI
   // public runtime type boundaries plus the documented Node.js runtime floor,
   // and Studio live helper contracts such as deterministic Mermaid rendering,
