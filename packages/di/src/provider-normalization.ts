@@ -222,7 +222,7 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
     const metadata = getClassDiMetadata(objectProvider.useClass);
 
     return freezeNormalizedProvider({
-      inject: normalizeInject('inject' in objectProvider ? objectProvider.inject : metadata?.inject, objectProvider.provide),
+      inject: normalizeInject(objectProvider.inject === undefined ? metadata?.inject : objectProvider.inject, objectProvider.provide),
       multi: objectProvider.multi,
       provide: objectProvider.provide,
       scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? Scope.DEFAULT,

@@ -196,7 +196,7 @@ factory와 `{ provide, useClass }` 분기는 scope 우선순위와 inject 우선
     const metadata = getClassDiMetadata(objectProvider.useClass);
 
     return freezeNormalizedProvider({
-      inject: normalizeInject('inject' in objectProvider ? objectProvider.inject : metadata?.inject, objectProvider.provide),
+      inject: normalizeInject(objectProvider.inject === undefined ? metadata?.inject : objectProvider.inject, objectProvider.provide),
       multi: objectProvider.multi,
       provide: objectProvider.provide,
       scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? Scope.DEFAULT,
@@ -206,7 +206,7 @@ factory와 `{ provide, useClass }` 분기는 scope 우선순위와 inject 우선
   }
 ```
 
-factory provider는 명시적 `provider.scope`를 먼저 보고, 없으면 `resolverClass` 메타데이터를 본 뒤 기본 singleton으로 떨어집니다. class provider object도 명시적 `inject`와 `scope`를 우선하고, 해당 필드를 own property로 가지지 않을 때만 구현 클래스의 메타데이터를 사용합니다. own-property 검사는 의도적입니다. 명시적인 `inject: null`은 class metadata로 조용히 fallback하지 않고 `normalizeInject()`에 도달해 거부됩니다.
+factory provider는 명시적 `provider.scope`를 먼저 보고, 없으면 `resolverClass` 메타데이터를 본 뒤 기본 singleton으로 떨어집니다. class provider object는 `inject`가 생략됐거나 명시적으로 `undefined`일 때 구현 클래스 메타데이터를 사용하며, 그 밖의 명시적 값은 최종 권위를 갖습니다. 이 값 검사는 의도적입니다. `inject: undefined`는 decorator metadata fallback을 보존하지만, `inject: null`은 `normalizeInject()`에 도달해 거부됩니다.
 
 이 함수는 의존성의 재귀적 정규화도 맡습니다. 팩토리 프로바이더의 `inject` 리스트에 복합 정의가 섞여 있으면, `normalizeProvider`는 `normalizeInjectToken`을 통해 이를 안정적인 내부 토큰으로 바꿉니다. 표현이 한 가지로 모이면 DI 컨테이너는 모듈 컴파일 단계에서 의존성 그래프를 더 일관되게 만들 수 있습니다.
 
@@ -220,7 +220,7 @@ factory provider는 명시적 `provider.scope`를 먼저 보고, 없으면 `reso
 
 factory provider는 조금 더 미묘합니다. 컨테이너는 우선 `provider.scope`를 존중하지만, `resolverClass`가 있으면 그 클래스의 scope 메타데이터를 읽고, 마지막 fallback으로 singleton default를 사용합니다. 이 우선순위는 `path:packages/di/src/provider-normalization.ts:200-215`에 드러납니다. 즉 비동기 또는 계산형 provider도 class provider와 같은 scope 언어에 참여합니다.
 
-`{ provide, useClass }`도 같은 상속 패턴을 따릅니다. `path:packages/di/src/provider-normalization.ts:217-232`는 컨테이너가 `objectProvider.useClass`의 메타데이터를 읽되, provider object가 `inject` own property를 가지지 않을 때만 inject metadata를 사용하는 모습을 보여줍니다. 즉 provider object는 최종 권위를 가지면서도, class decorator는 기본 계약을 제공할 수 있습니다.
+`{ provide, useClass }`도 같은 상속 패턴을 따릅니다. `path:packages/di/src/provider-normalization.ts:217-232`는 `objectProvider.inject`가 `undefined`일 때 컨테이너가 `objectProvider.useClass`의 메타데이터를 사용하는 모습을 보여줍니다. undefined가 아닌 provider 값은 최종 권위를 가지며, class decorator는 fallback 계약을 제공합니다.
 
 두 개의 helper wrapper도 이 정규화 단계와 연결됩니다. 겉으로는 dependency 문법처럼 보이지만 실제로는 나중 resolution을 위한 표시자입니다. `forwardRef()`와 `optional()`은 `path:packages/di/src/types.ts:137-168`에 선언되어 있습니다. 이 함수들은 직접 resolve를 수행하지 않습니다. 후속 단계가 특별 취급할 수 있도록 token을 감쌀 뿐입니다.
 

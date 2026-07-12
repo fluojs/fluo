@@ -196,7 +196,7 @@ The factory and `{ provide, useClass }` branches make Scope precedence and injec
     const metadata = getClassDiMetadata(objectProvider.useClass);
 
     return freezeNormalizedProvider({
-      inject: normalizeInject('inject' in objectProvider ? objectProvider.inject : metadata?.inject, objectProvider.provide),
+      inject: normalizeInject(objectProvider.inject === undefined ? metadata?.inject : objectProvider.inject, objectProvider.provide),
       multi: objectProvider.multi,
       provide: objectProvider.provide,
       scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? Scope.DEFAULT,
@@ -206,7 +206,7 @@ The factory and `{ provide, useClass }` branches make Scope precedence and injec
   }
 ```
 
-A factory Provider checks explicit `provider.scope` first, then `resolverClass` metadata, then falls back to the singleton default. A class Provider object also prioritizes explicit `inject` and `scope`, using implementation class metadata only when the object does not own those fields. The own-property check is intentional: an explicit `inject: null` reaches `normalizeInject()` and is rejected instead of silently falling back to class metadata.
+A factory Provider checks explicit `provider.scope` first, then `resolverClass` metadata, then falls back to the singleton default. A class Provider object uses implementation class metadata when `inject` is omitted or explicitly `undefined`; any other explicit value has final authority. This value check is intentional: `inject: undefined` preserves decorator metadata fallback, while `inject: null` reaches `normalizeInject()` and is rejected.
 
 This function also handles recursive normalization of dependencies. If a factory Provider's `inject` list mixes in composite definitions, `normalizeProvider` passes them through `normalizeInjectToken` and turns them into stable internal Tokens. Once every expression has a single shape, the DI container can build a more consistent dependency graph during module compilation.
 
@@ -220,7 +220,7 @@ For plain class registration, the container reads constructor metadata through `
 
 A factory Provider is a little more subtle. The container first respects `provider.scope`, then reads Scope metadata from `resolverClass` if present, and finally uses the singleton default. This precedence appears in `path:packages/di/src/provider-normalization.ts:200-215`. So async or computed Providers participate in the same Scope language as class Providers.
 
-`{ provide, useClass }` follows the same inheritance pattern. `path:packages/di/src/provider-normalization.ts:217-232` shows the container reading metadata from `objectProvider.useClass`, but only using inject metadata when the Provider object does not own an `inject` property. The Provider object keeps final authority, while the class decorator can provide a default contract.
+`{ provide, useClass }` follows the same inheritance pattern. `path:packages/di/src/provider-normalization.ts:217-232` shows the container reading metadata from `objectProvider.useClass` whenever `objectProvider.inject` is `undefined`. A non-undefined Provider value keeps final authority, while the class decorator provides the fallback contract.
 
 Two helper wrappers are also connected to this normalization step. They look like dependency syntax from the outside, but they are really markers for later resolution. `forwardRef()` and `optional()` are declared in `path:packages/di/src/types.ts:137-168`. These functions don't resolve anything themselves. They only wrap Tokens so later steps can treat them specially.
 

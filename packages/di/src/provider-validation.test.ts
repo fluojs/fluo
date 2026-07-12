@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { Inject } from '@fluojs/core';
+
 import { Container } from './container.js';
 import { InvalidProviderError } from './errors.js';
 
@@ -43,6 +45,24 @@ describe('provider input validation', () => {
     expect(error).toBeInstanceOf(InvalidProviderError);
     expect(error).toMatchObject({ code: 'INVALID_PROVIDER' });
     expect(error).toHaveProperty('message', expect.stringContaining('inject must be an array'));
+  });
+
+  it('falls back to decorated useClass inject metadata when inject is explicitly undefined', async () => {
+    class Dependency {}
+
+    @Inject(Dependency)
+    class Service {
+      constructor(readonly dependency: Dependency) {}
+    }
+
+    const container = new Container().register(
+      Dependency,
+      { provide: Service, useClass: Service, inject: undefined },
+    );
+
+    const service = await container.resolve(Service);
+
+    expect(service.dependency).toBeInstanceOf(Dependency);
   });
 
   it('normalizes a non-constructable function inject token to InvalidProviderError', () => {
