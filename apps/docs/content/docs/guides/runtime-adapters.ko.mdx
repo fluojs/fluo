@@ -81,6 +81,23 @@ const adapter = createFastifyAdapter(
 
 Multipart request에서는 raw-body capture가 생략됩니다. `multipart.maxTotalSize`가 없으면 `maxBodySize`가 기본값이 되어 HTTP adapter 전반의 size limit이 portable하게 유지됩니다.
 
+### Fastify HTTPS/TLS
+
+Fastify process가 TLS를 직접 종료할 때는 Node.js `https.ServerOptions`를 `https` option으로 전달하세요. `createFastifyAdapter(...)`, `bootstrapFastifyApplication(...)`, `runFastifyApplication(...)`은 같은 HTTPS startup surface를 제공합니다.
+
+```ts
+const adapter = createFastifyAdapter({
+  host: '0.0.0.0',
+  https: {
+    cert: tlsCertificate,
+    key: tlsPrivateKey,
+  },
+  port: 3443,
+});
+```
+
+Adapter를 만들기 전에 application configuration 또는 secret-management boundary에서 certificate material을 로드하세요. Package가 certificate file이나 environment variable을 대신 읽지 않습니다. 신뢰된 load balancer, ingress, API gateway가 TLS를 종료한다면 `https`를 설정하지 말고 해당 infrastructure boundary 뒤에서 Fastify를 일반 HTTP로 실행하세요.
+
 ## Raw Node.js
 
 Express나 Fastify 없이 built-in `http`/`https` server primitive를 직접 사용하려면 raw Node.js adapter를 선택합니다.

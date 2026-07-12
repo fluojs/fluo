@@ -760,6 +760,8 @@ function enforceCanonicalRuntimeMatrixReferences() {
   const beginnerCliSetupKo = readFileSync(join(repoRoot, 'book/beginner/ch02-cli-setup.ko.md'), 'utf8');
   const beginnerProduction = readFileSync(join(repoRoot, 'book/beginner/ch21-production.md'), 'utf8');
   const beginnerProductionKo = readFileSync(join(repoRoot, 'book/beginner/ch21-production.ko.md'), 'utf8');
+  const customAdapter = readFileSync(join(repoRoot, 'book/advanced/ch13-custom-adapter.md'), 'utf8');
+  const customAdapterKo = readFileSync(join(repoRoot, 'book/advanced/ch13-custom-adapter.ko.md'), 'utf8');
   const bunChapter = readFileSync(join(repoRoot, 'book/intermediate/ch22-bun.md'), 'utf8');
   const bunChapterKo = readFileSync(join(repoRoot, 'book/intermediate/ch22-bun.ko.md'), 'utf8');
   const runtimeAdaptersGuide = readFileSync(join(repoRoot, 'apps/docs/content/docs/guides/runtime-adapters.mdx'), 'utf8');
@@ -970,11 +972,17 @@ function enforceCanonicalRuntimeMatrixReferences() {
       packageChooser.includes('Need Fastify-owned HTTPS/TLS startup') &&
       packageChooser.includes('plain HTTP behind that boundary') &&
       docsContext.includes('Fastify adapter discoverability') &&
+      docsContext.includes('apps/docs/content/docs/guides/runtime-adapters.mdx') &&
       docsContext.includes('engines.node >=20.0.0') &&
       beginnerIntro.includes('Node.js 20 or newer') &&
       beginnerCliSetup.includes('plain HTTP for local development') &&
-      beginnerProduction.includes('Fastify adapter `https` option'),
-    'Fastify README, package-surface, package-chooser, docs/CONTEXT.md, and beginner docs must keep the Node.js 20+ runtime floor and HTTPS/TLS startup boundary discoverable together.',
+      beginnerProduction.includes('Fastify adapter `https` option') &&
+      beginnerProduction.startsWith('<!-- packages: @fluojs/core, @fluojs/http, @fluojs/platform-fastify -->') &&
+      customAdapter.startsWith('<!-- packages: @fluojs/http, @fluojs/core, @fluojs/di, @fluojs/platform-fastify -->') &&
+      runtimeAdaptersGuide.includes('### Fastify HTTPS/TLS') &&
+      runtimeAdaptersGuide.includes('Node.js `https.ServerOptions`') &&
+      runtimeAdaptersGuide.includes('plain HTTP behind that infrastructure boundary'),
+    'Fastify README, package-surface, package-chooser, docs/CONTEXT.md, book metadata, and website guidance must keep the Node.js 20+ runtime floor and HTTPS/TLS startup boundary discoverable together.',
   );
   assert(
     fastifyReadmeKo.includes('engines.node >=20.0.0') &&
@@ -986,11 +994,17 @@ function enforceCanonicalRuntimeMatrixReferences() {
       packageChooserKo.includes('Fastify가 HTTPS/TLS 시작을 직접 소유해야 함') &&
       packageChooserKo.includes('일반 HTTP로 유지하세요') &&
       docsContextKo.includes('Fastify adapter discoverability') &&
+      docsContextKo.includes('apps/docs/content/docs/guides/runtime-adapters.ko.mdx') &&
       docsContextKo.includes('engines.node >=20.0.0') &&
       beginnerIntroKo.includes('Node.js 20 버전 이상') &&
       beginnerCliSetupKo.includes('일반 HTTP로 실행') &&
-      beginnerProductionKo.includes('Fastify adapter `https` option'),
-    'Korean Fastify README, package-surface, package-chooser, docs/CONTEXT.ko.md, and beginner docs must keep the Node.js 20+ runtime floor and HTTPS/TLS startup boundary discoverable together.',
+      beginnerProductionKo.includes('Fastify adapter `https` option') &&
+      beginnerProductionKo.startsWith('<!-- packages: @fluojs/core, @fluojs/http, @fluojs/platform-fastify -->') &&
+      customAdapterKo.startsWith('<!-- packages: @fluojs/http, @fluojs/core, @fluojs/di, @fluojs/platform-fastify -->') &&
+      runtimeAdaptersGuideKo.includes('### Fastify HTTPS/TLS') &&
+      runtimeAdaptersGuideKo.includes('Node.js `https.ServerOptions`') &&
+      runtimeAdaptersGuideKo.includes('infrastructure boundary 뒤에서 Fastify를 일반 HTTP로 실행'),
+    'Korean Fastify README, package-surface, package-chooser, docs/CONTEXT.ko.md, book metadata, and website guidance must keep the Node.js 20+ runtime floor and HTTPS/TLS startup boundary discoverable together.',
   );
   assert(
     platformBunReadme.includes('synchronously creates the fetch bridge') &&

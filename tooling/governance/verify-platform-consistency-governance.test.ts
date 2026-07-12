@@ -837,6 +837,10 @@ describe('repository governance contracts', () => {
     const beginnerCliSetupKo = readFileSync(resolve(repoRoot, 'book/beginner/ch02-cli-setup.ko.md'), 'utf8');
     const beginnerProduction = readFileSync(resolve(repoRoot, 'book/beginner/ch21-production.md'), 'utf8');
     const beginnerProductionKo = readFileSync(resolve(repoRoot, 'book/beginner/ch21-production.ko.md'), 'utf8');
+    const customAdapter = readFileSync(resolve(repoRoot, 'book/advanced/ch13-custom-adapter.md'), 'utf8');
+    const customAdapterKo = readFileSync(resolve(repoRoot, 'book/advanced/ch13-custom-adapter.ko.md'), 'utf8');
+    const runtimeAdaptersGuide = readFileSync(resolve(repoRoot, 'apps/docs/content/docs/guides/runtime-adapters.mdx'), 'utf8');
+    const runtimeAdaptersGuideKo = readFileSync(resolve(repoRoot, 'apps/docs/content/docs/guides/runtime-adapters.ko.mdx'), 'utf8');
     const fastifyReadme = readFileSync(resolve(repoRoot, 'packages/platform-fastify/README.md'), 'utf8');
     const fastifyReadmeKo = readFileSync(resolve(repoRoot, 'packages/platform-fastify/README.ko.md'), 'utf8');
 
@@ -865,6 +869,23 @@ describe('repository governance contracts', () => {
       expect(source).toContain('bootstrapFastifyApplication(...)');
       expect(source).toContain('runFastifyApplication(...)');
     }
+
+    for (const source of [beginnerProduction, beginnerProductionKo, customAdapter, customAdapterKo]) {
+      expect(source).toMatch(/^<!-- packages: .*@fluojs\/platform-fastify.* -->/u);
+    }
+
+    for (const source of [runtimeAdaptersGuide, runtimeAdaptersGuideKo]) {
+      expect(source).toContain('### Fastify HTTPS/TLS');
+      expect(source).toContain('Node.js `https.ServerOptions`');
+      expect(source).toContain('createFastifyAdapter(...)');
+      expect(source).toContain('bootstrapFastifyApplication(...)');
+      expect(source).toContain('runFastifyApplication(...)');
+    }
+
+    expect(runtimeAdaptersGuide).toContain('plain HTTP behind that infrastructure boundary');
+    expect(runtimeAdaptersGuideKo).toContain('infrastructure boundary 뒤에서 Fastify를 일반 HTTP로 실행');
+    expect(docsContext).toContain('apps/docs/content/docs/guides/runtime-adapters.mdx');
+    expect(docsContextKo).toContain('apps/docs/content/docs/guides/runtime-adapters.ko.mdx');
   });
 
   it('keeps Throttler guard activation and backing-store clock docs discoverable across governed docs', () => {

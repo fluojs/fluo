@@ -1,4 +1,4 @@
-<!-- packages: @fluojs/http, @fluojs/core, @fluojs/di -->
+<!-- packages: @fluojs/http, @fluojs/core, @fluojs/di, @fluojs/platform-fastify -->
 <!-- project-state: FluoBlog v0 -->
 
 # Chapter 13. Custom Adapter Implementation: Building Your Own Transport Layer
