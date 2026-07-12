@@ -4,6 +4,7 @@ import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { MongooseConnection } from './connection.js';
 import { MONGOOSE_CONNECTION, MONGOOSE_DISPOSE, MONGOOSE_OPTIONS } from './tokens.js';
+import { MongooseTransactionInterceptor } from './transaction.js';
 import type { MongooseConnectionLike, MongooseModuleOptions } from './types.js';
 
 type MongooseRuntimeOptions = {
@@ -29,7 +30,7 @@ export type MongooseAsyncModuleOptions<TConnection extends MongooseConnectionLik
 > & Pick<MongooseModuleOptions<TConnection>, 'global'>;
 
 const MONGOOSE_NORMALIZED_OPTIONS = Symbol('fluo.mongoose.normalized-options');
-const MONGOOSE_MODULE_EXPORTS = [MongooseConnection];
+const MONGOOSE_MODULE_EXPORTS = [MongooseConnection, MongooseTransactionInterceptor];
 
 function isObjectLike(value: unknown): value is object {
   return (typeof value === 'object' && value !== null) || typeof value === 'function';
@@ -76,6 +77,7 @@ function createMongooseRuntimeProviders<TConnection extends MongooseConnectionLi
         ),
     },
     MongooseConnection,
+    MongooseTransactionInterceptor,
   ];
 }
 
@@ -155,7 +157,7 @@ export class MongooseModule {
    * Registers Mongoose providers from static options.
    *
    * @param options Mongoose module options with connection handle, optional dispose hook, and strict transaction mode.
-   * @returns A module definition that exports `MongooseConnection`.
+   * @returns A module definition that exports `MongooseConnection` and its compatibility request interceptor.
    */
   static forRoot<TConnection extends MongooseConnectionLike>(options: MongooseModuleOptions<TConnection>): ModuleType {
     return buildMongooseModule<TConnection>(options);
