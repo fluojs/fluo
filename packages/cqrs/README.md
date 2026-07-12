@@ -219,7 +219,7 @@ class TokenInjectedService {
 ### Errors
 - `CommandHandlerNotFoundException`, `QueryHandlerNotFoundException`: Raised when a bus has no matching handler.
 - `DuplicateCommandHandlerError`, `DuplicateQueryHandlerError`: Raised when different singleton providers claim the same command or query type.
-- `DuplicateEventHandlerError`: Exported in the public error surface but not thrown by current event-handler discovery. Discovery silently deduplicates repeated registrations of the same provider token and event route; distinct singleton provider tokens remain valid fan-out routes in discovery order.
+- `DuplicateEventHandlerError`: Retained only as a compatibility export; event-handler discovery does not throw it or treat duplicate registrations as failures. Repeated discovery of the same provider token and event route is silently deduplicated, while distinct singleton provider tokens remain valid fan-out routes in discovery order.
 - `SagaExecutionError`: Wraps unexpected non-Fluo saga failures.
 - `SagaTopologyError`: Raised when saga orchestration detects a self-triggering, cyclic, or over-deep in-process saga graph.
 
