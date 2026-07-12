@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { IsEmail, IsString, ValidateClass } from './decorators.js';
+import { PartialType } from './mapped-types.js';
 import { DefaultValidator } from './validation.js';
 
 describe('validation decorator metadata inheritance', () => {
@@ -56,5 +57,31 @@ describe('validation decorator metadata inheritance', () => {
         { code: 'DERIVED_CLASS', message: 'derived class rule remains active' },
       ],
     });
+  });
+
+  it('isolates decorators added across mapped DTO subclass inheritance', async () => {
+    // Given
+    class CreateUserDto {
+      @IsString()
+      name = '';
+    }
+
+    class UpdateUserDto extends PartialType(CreateUserDto) {
+      @IsString()
+      contact = 'mapped-contact';
+    }
+
+    class EmailUpdateUserDto extends UpdateUserDto {
+      @IsEmail()
+      override contact = 'hello@example.com';
+    }
+
+    const validator = new DefaultValidator();
+
+    // When / Then
+    await expect(Promise.all([
+      validator.validate(new UpdateUserDto(), UpdateUserDto),
+      validator.validate(new EmailUpdateUserDto(), EmailUpdateUserDto),
+    ])).resolves.toEqual([undefined, undefined]);
   });
 });
