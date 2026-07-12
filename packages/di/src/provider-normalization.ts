@@ -142,6 +142,12 @@ function freezeNormalizedProvider<T>(provider: NormalizedProvider<T>): Normalize
   });
 }
 
+/**
+ * Validates and snapshots a public provider declaration for container registration.
+ *
+ * @param provider Provider declaration crossing the container registration boundary.
+ * @returns An immutable provider record with normalized injection and scope fields.
+ */
 export function normalizeProvider(provider: Provider): NormalizedProvider {
   if (isClassConstructor(provider)) {
     const metadata = getClassDiMetadata(provider);
@@ -199,7 +205,7 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
     const metadata = getClassDiMetadata(objectProvider.useClass);
 
     return freezeNormalizedProvider({
-      inject: normalizeInject(objectProvider.inject ?? metadata?.inject, objectProvider.provide),
+      inject: normalizeInject('inject' in objectProvider ? objectProvider.inject : metadata?.inject, objectProvider.provide),
       multi: objectProvider.multi,
       provide: objectProvider.provide,
       scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? Scope.DEFAULT,

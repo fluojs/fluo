@@ -31,6 +31,20 @@ describe('provider input validation', () => {
     expect(error).toHaveProperty('message', expect.stringContaining('inject must be an array'));
   });
 
+  it('normalizes an explicit null useClass provider inject value to InvalidProviderError', () => {
+    const provider = {
+      provide: Symbol('class-with-null-inject'),
+      useClass: class Service {},
+      inject: null,
+    };
+
+    const error = captureRegistrationError(provider);
+
+    expect(error).toBeInstanceOf(InvalidProviderError);
+    expect(error).toMatchObject({ code: 'INVALID_PROVIDER' });
+    expect(error).toHaveProperty('message', expect.stringContaining('inject must be an array'));
+  });
+
   it.each([
     ['null token', null],
     ['undefined token', undefined],
