@@ -77,6 +77,8 @@ export class AppModule {}
 
 `publish(event, options?)` supports `signal`, `timeoutMs`, and `waitForHandlers`. `waitForHandlers` defaults to `true`; awaited local handlers and awaited transport publishes share the same timeout and cancellation bounds. When those bounds settle the caller-facing publish promise before the underlying handler or transport work finishes, shutdown still tracks that underlying awaited work until it settles or the shutdown drain bound expires. When `waitForHandlers` is set to `false`, publishing returns immediately and skips timeout bounds, while the handler and transport work continue in the background and remain part of shutdown drain tracking. During shutdown, the event bus drains in-flight awaited and background publish work plus inbound transport handler work before closing the transport, ignores new publish calls after the lifecycle has started stopping, and ignores inbound transport callbacks that arrive after shutdown begins. Shutdown drain is bounded by `EventBusModule.forRoot({ shutdown: { drainTimeoutMs } })`, which defaults to 5000ms; if active dispatch work is still stuck after the bound, the bus records a degraded status diagnostic, logs a warning, and continues transport cleanup instead of hanging application close indefinitely.
 
+**Migration note:** applications that use `waitForHandlers: false` should now budget for `app.close()` to wait up to `shutdown.drainTimeoutMs` for background handler and transport work before transport cleanup continues. Keep that work bounded or configure a drain budget appropriate for the application.
+
 ## Common Patterns
 
 ### Distributed Fan-out (Redis)
