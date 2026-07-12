@@ -369,13 +369,13 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     try {
       if (typeof this.connection.transaction === 'function') {
         let delegatedCallbackStarted = false;
+        const delegatedTransaction = this.runConnectionTransaction(() => {
+          delegatedCallbackStarted = true;
+          return raceWithAbortAndDrainCallback(fn, abortContext.signal);
+        });
 
         return await raceWithAbortAndDrainCallback(
-          () =>
-            this.runConnectionTransaction(() => {
-              delegatedCallbackStarted = true;
-              return raceWithAbortAndDrainCallback(fn, abortContext.signal);
-            }),
+          () => delegatedTransaction,
           abortContext.signal,
           () => delegatedCallbackStarted,
         );
