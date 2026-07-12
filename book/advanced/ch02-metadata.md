@@ -73,11 +73,11 @@ This isolation is also useful from a security perspective because it prevents ma
 
 Fluo's metadata system is also designed to remain opaque to regular application code while staying discoverable to internal tooling. This is achieved by providing a limited set of internal introspection APIs intended only for Fluo Studio or monorepo build systems. This duality ensures developers get the best possible tooling support without damaging framework stability or exposing sensitive internal details on the public API surface. It is a pragmatic answer to the tension between extensibility and encapsulation.
 
-Symbolic metadata also enables efficient lookup. Because symbols are not strings, engines can optimize property access using internal slots. This avoids string parsing and hash map overhead associated with traditional property lookup. In Fluo, canonical symbol sets such as `metadataKeys.module` and `metadataKeys.classDi` in `path:packages/core/src/metadata/shared.ts:75-84` organize internal records, ensuring every lookup is as fast as standard property access.
+Fluo's two canonical symbol sets serve different lookup models. `standardMetadataKeys` contains property keys used inside standard decorator metadata bags. By contrast, `metadataKeys.module` and `metadataKeys.classDi` in `path:packages/core/src/metadata/shared.ts:137-149` are stable identifiers passed to `getGlobalMetadataWeakMap(...)`; they select process-global `WeakMap` stores rather than properties read from a class.
 
-Canonical keys separate keys for standard bags from keys for Fluo-owned storage.
+Canonical symbols separate standard-bag property keys from Fluo-owned store identifiers.
 
-`path:packages/core/src/metadata/shared.ts:63-84`
+`path:packages/core/src/metadata/shared.ts:125-149`
 ```typescript
 export const standardMetadataKeys = {
   classValidation: Symbol.for('fluo.standard.class-validation'),
@@ -100,9 +100,9 @@ export const metadataKeys = {
 } as const;
 ```
 
-In this excerpt, `standardMetadataKeys` is the path for reading the Standard Decorator metadata bag, while `metadataKeys` is the path for internal storage owned directly by Fluo. Because the two sets are separated, interoperability data and framework-internal management data do not mix even though both use symbolic access.
+In this excerpt, `standardMetadataKeys` supplies property keys for Standard Decorator metadata bags. `metadataKeys` instead supplies identifiers for the process-global registry in `path:packages/core/src/metadata/shared.ts:155-203`, where each identifier resolves to a target-keyed `WeakMap`. The two sets are symbolic, but they do not imply the same property-lookup mechanism.
 
-This performance optimization goes beyond simply being fast. It is a core driver that enables delay-free Bootstrap and immediate dependency resolution even in large monolithic architectures with thousands of classes and dependencies. By choosing the static stability and speed of symbols over the dynamic flexibility of string-based keys, Fluo becomes a strong foundation for backend systems that realize economies of scale.
+This separation keeps standard metadata interoperability explicit while giving Fluo-owned records `WeakMap` lifetime semantics. Standard-bag reads and internal-store reads follow their respective property and `WeakMap` lookup paths; the shared use of symbols provides stable, collision-resistant identities rather than a guarantee that both paths are ordinary property access.
 
 ## 2.3 Type-safe metadata storage
 Metadata is useful only when retrieval is trustworthy. Fluo guarantees type safety by defining strict interfaces for every metadata record, such as `ModuleMetadata`, `ClassDiMetadata`, and `RouteMetadata`. Many metadata records are stored in `WeakMap`-based stores, which allow them to be garbage collected along with the class or object they describe and prevent memory leaks. Depending on the hot path, Fluo uses either defensive cloning at store boundaries or frozen snapshots that callers must treat as immutable. Both strategies remove an entire class of runtime errors common in reflection-heavy systems.
@@ -376,7 +376,7 @@ A deep understanding of the metadata engine lets you not only use Fluo effective
 The practical lesson for advanced readers is that Fluo does **not** have a single metadata mechanism. It intentionally has a layered model, and each layer performs a different role.
 
 - `path:packages/core/src/metadata/shared.ts:13-34` resolves the global symbol hook.
-- `path:packages/core/src/metadata/shared.ts:63-84` defines canonical symbol keys.
+- `path:packages/core/src/metadata/shared.ts:125-149` defines the canonical standard-bag keys and Fluo-owned store identifiers.
 - `path:packages/core/src/metadata/shared.ts:103-115` allocates target-specific maps.
 - `path:packages/core/src/metadata/store.ts:16-33` isolates record mutation by cloning on reads and writes.
 - `path:packages/core/src/metadata/class-di.ts:56-72` calculates inherited effective DI state.
@@ -391,8 +391,8 @@ Look at how `ensureMetadataSymbol` in `path:packages/core/src/metadata/shared.ts
 It prefers native `Symbol.metadata` first, then defines it on `Symbol` only once when needed. This implementation is small, but it expresses a major design rule. It polyfills the standard surface rather than creating a proprietary API. This is the exact opposite of older reflection libraries that required the whole ecosystem to depend forever on new `Reflect.*Metadata` verbs.
 
 The next layer is naming discipline.
-In `path:packages/core/src/metadata/shared.ts:63-84`, Fluo separates `standardMetadataKeys` from `metadataKeys`.
-This distinction is subtle but important. The former represents keys for the standard metadata bag, while the latter represents storage keys owned by Fluo. If you miss this difference, you might think all metadata lives in the same container, but the source code shows that Fluo intentionally distinguishes interoperability data from framework-only management information.
+In `path:packages/core/src/metadata/shared.ts:125-149`, Fluo separates `standardMetadataKeys` from `metadataKeys`.
+This distinction is subtle but important. The former represents property keys for standard metadata bags, while the latter represents identifiers used to select Fluo-owned process-global `WeakMap` stores through `path:packages/core/src/metadata/shared.ts:155-203`. If you miss this difference, you might think all metadata lives in the same container, but the source code shows that Fluo intentionally distinguishes interoperability data from framework-only management information.
 
 Creation helpers reinforce this separation.
 `path:packages/core/src/metadata/shared.ts:103-115` exposes `getOrCreatePropertyMap`, which allocates a per-target `Map` only when needed. That means classes without route-level or property-level metadata do not pay for eagerly allocated structures. In applications with large fan-out, this kind of lazy handling matters much more than abstract claims about metadata performance because it directly reduces allocation pressure during Bootstrap.
