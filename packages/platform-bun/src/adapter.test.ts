@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { All, Controller, createDispatcher, createHandlerMapping, type FrameworkRequest, type FrameworkRequestFile, type FrameworkResponse, Get, Header, HttpCode, type Middleware, type MiddlewareContext, type Next, Post, Redirect, type RequestContext, SseResponse, Version, VersioningType } from '@fluojs/http';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
+import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
 import { createWebRuntimeHttpAdapterPortabilityHarness } from '@fluojs/testing/web-runtime-adapter-portability';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -144,6 +145,20 @@ function createMockDispatcherRoute(path: string, method: 'GET' | 'POST' | 'PUT' 
       path,
     },
   };
+}
+
+function createMultipartLimitProbeRequest(url: string): Request {
+  const boundary = 'fluo-boundary';
+  const body = `--${boundary}\r\ncontent-disposition: form-data; name="name"\r\n\r\nAda Lovelace\r\n--${boundary}--\r\n`;
+
+  return new Request(url, {
+    body,
+    headers: {
+      'content-length': String(Buffer.byteLength(body)),
+      'content-type': `multipart/form-data; boundary=${boundary}`,
+    },
+    method: 'POST',
+  });
 }
 
 async function dispatchMockBunNativeRoute(
@@ -479,6 +494,55 @@ describe('@fluojs/platform-bun', () => {
     }));
 
     expect(response.status).toBe(204);
+  });
+
+  it('enforces multipart.maxTotalSize for custom fetch handlers', async () => {
+    const dispatch = vi.fn(async () => undefined);
+    const fetch = createBunFetchHandler({
+      dispatcher: { dispatch },
+      maxBodySize: 1024,
+      multipart: { maxTotalSize: 10 },
+    });
+
+    const response = await fetch(createMultipartLimitProbeRequest('https://runtime.test/hooks/upload'));
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: 'PAYLOAD_TOO_LARGE',
+        status: 413,
+      },
+    });
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('enforces multipart.maxTotalSize for managed Bun servers', async () => {
+    const mockBun = installMockBun();
+    const dispatch = vi.fn(async () => undefined);
+    const adapter = new BunHttpApplicationAdapter({
+      maxBodySize: 1024,
+      multipart: { maxTotalSize: 10 },
+    });
+
+    await adapter.listen({ dispatch });
+
+    try {
+      const response = await dispatchMockBunRequest(
+        mockBun,
+        createMultipartLimitProbeRequest('https://runtime.test/hooks/upload'),
+      );
+
+      expect(response.status).toBe(413);
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          code: 'PAYLOAD_TOO_LARGE',
+          status: 413,
+        },
+      });
+      expect(dispatch).not.toHaveBeenCalled();
+    } finally {
+      await adapter.close();
+    }
   });
 
   it('preserves response parity for simple JSON and non-fast-path responses', async () => {
@@ -1550,6 +1614,41 @@ describe('@fluojs/platform-bun', () => {
     expect(adapter.getServer()).toBeUndefined();
   });
 
+  it('coalesces duplicate close() calls while an active Bun server drains', async () => {
+    const mockBun = installMockBun();
+    const adapter = new BunHttpApplicationAdapter();
+    const deferred = createDeferred<void>();
+
+    await adapter.listen({
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        await deferred.promise;
+        response.setStatus(204);
+      },
+    });
+    const responsePromise = dispatchMockBunRequest(
+      mockBun,
+      new Request('http://127.0.0.1:3000/drain'),
+    );
+
+    try {
+      await Promise.resolve();
+
+      const firstClosePromise = adapter.close();
+      const secondClosePromise = adapter.close();
+      await Promise.resolve();
+
+      expect(mockBun.lastServer?.stop).toHaveBeenCalledTimes(1);
+
+      deferred.resolve();
+      await responsePromise;
+      await Promise.all([firstClosePromise, secondClosePromise]);
+    } finally {
+      deferred.resolve();
+      await responsePromise;
+      await adapter.close();
+    }
+  });
+
   it('returns shutdown 503 for ordinary HTTP ingress during close', async () => {
     const mockBun = installMockBun();
     const adapter = createBunAdapter() as BunHttpApplicationAdapter;
@@ -1927,17 +2026,15 @@ describe('@fluojs/platform-bun', () => {
   });
 
   it('reports supported fetch-style websocket hosting for the official Bun binding seam', () => {
-    const adapter = createBunAdapter();
-
-    expect(adapter.getRealtimeCapability?.()).toEqual({
-      contract: 'raw-websocket-expansion',
-      kind: 'fetch-style',
-      mode: 'request-upgrade',
-      reason:
+    const harness = createFetchStyleWebSocketConformanceHarness({
+      createAdapter: () => createBunAdapter(),
+      expectedReason:
         'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/websockets/bun for the official raw websocket binding.',
-      support: 'supported',
-      version: 1,
+      expectedSupport: 'supported',
+      name: 'bun',
     });
+
+    expect(() => harness.assertExposesRawWebSocketExpansionContract()).not.toThrow();
   });
 
   it('delegates websocket upgrade requests through a configured Bun websocket binding before HTTP dispatch', async () => {
@@ -1965,22 +2062,26 @@ describe('@fluojs/platform-bun', () => {
 
     await adapter.listen(dispatcher);
 
-    expect(mockBun.lastOptions?.routes).toMatchObject({
-      '/chat': {
-        GET: expect.any(Function),
-      },
-    });
+    try {
+      expect(mockBun.lastOptions?.routes).toMatchObject({
+        '/chat': {
+          GET: expect.any(Function),
+        },
+      });
 
-    const upgradeResponse = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:3000/chat', {
-      headers: { upgrade: 'websocket' },
-    }));
-    const httpResponse = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:3000/chat'));
+      const upgradeResponse = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:3000/chat', {
+        headers: { upgrade: 'websocket' },
+      }));
+      const httpResponse = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:3000/chat'));
 
-    expect(mockBun.lastOptions?.websocket).toBeDefined();
-    expect(upgradeResponse).toBeUndefined();
-    expect(mockBun.lastServer?.upgrade).toHaveBeenCalledTimes(1);
-    expect(httpResponse?.status).toBe(200);
-    expect(bindingFetch).toHaveBeenCalledTimes(2);
-    expect(dispatcher.dispatch).toHaveBeenCalledTimes(1);
+      expect(mockBun.lastOptions?.websocket).toBeDefined();
+      expect(upgradeResponse).toBeUndefined();
+      expect(mockBun.lastServer?.upgrade).toHaveBeenCalledTimes(1);
+      expect(httpResponse?.status).toBe(200);
+      expect(bindingFetch).toHaveBeenCalledTimes(2);
+      expect(dispatcher.dispatch).toHaveBeenCalledTimes(1);
+    } finally {
+      await adapter.close();
+    }
   });
 });
