@@ -66,7 +66,7 @@ try {
 ```
 
 ### Direct Adapter Construction
-Application code should usually prefer `createDenoAdapter(options)`, `bootstrapDenoApplication(...)`, or `runDenoApplication(...)` so adapter setup stays explicit. Custom orchestration and tests may use `new DenoHttpApplicationAdapter(options)` directly; the constructor accepts the same public `DenoAdapterOptions` as the factory, applies the default port, preserves `hostname` over the portable `host` alias, and rejects invalid `port` or `maxBodySize` values during setup.
+Application code should usually prefer `createDenoAdapter(options)`, `bootstrapDenoApplication(...)`, or `runDenoApplication(...)` so adapter setup stays explicit. Custom orchestration and tests may use `new DenoHttpApplicationAdapter(options?)` directly; the constructor accepts the same optional public `DenoAdapterOptions` as the factory, applies the default port when options are omitted, preserves `hostname` over the portable `host` alias, and rejects invalid `port` or `maxBodySize` values during setup.
 
 ### Opt-in Deno WebSocket Binding
 The adapter supports Deno's native `Deno.upgradeWebSocket` after the application imports and configures the `@fluojs/websockets/deno` binding. Without that binding, websocket upgrade requests continue through normal HTTP dispatch instead of being upgraded implicitly.
@@ -112,7 +112,7 @@ Advanced options include injectable `serve` and `upgradeWebSocket` seams for tes
 
 ## Conformance Coverage
 
-`packages/platform-deno/src/adapter.test.ts` is the package-local regression target for the documented Deno contract. It covers shared Web dispatch delegation, direct `adapter.handle(...)` success-path dispatch after `listen(dispatcher)`, direct constructor/factory option normalization, HTTPS startup forwarding, `host` alias and `hostname` precedence for the `Deno.serve(...)` bind target and startup log, duplicate `listen(...)` no-op dispatcher preservation, default `SIGINT`/`SIGTERM` signal listener registration, `shutdownSignals: false`, listener rollback after partial signal-registration failure, websocket upgrade binding and no-binding HTTP fallback, websocket pre-listen bootstrap gating, global Deno serve/upgrade fallback seams, pre-listen `500` handling, shutdown `503` handling, in-flight request drain before serve-signal abort, and the bounded 10-second close timeout.
+`packages/platform-deno/src/adapter.test.ts` is the package-local regression target for the documented Deno contract. It covers shared Web dispatch delegation, direct `adapter.handle(...)` success-path dispatch after `listen(dispatcher)`, direct constructor/factory option normalization, HTTPS startup forwarding, `host` alias and `hostname` precedence for the `Deno.serve(...)` bind target and startup log, duplicate `listen(...)` no-op dispatcher preservation, default `SIGINT`/`SIGTERM` signal listener registration, `shutdownSignals: false`, listener rollback after partial signal-registration failure, websocket upgrade binding and no-binding HTTP fallback, websocket pre-listen bootstrap gating, global Deno serve/upgrade fallback seams, pre-listen `500` handling, shutdown `503` handling, in-flight request drain before serve-signal abort, and the bounded 10-second close timeout. `packages/platform-deno/src/declaration-surface.test.ts` rebuilds the package and verifies that the manifest-exported declarations preserve zero-argument adapter construction.
 
 The shared edge portability suite in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` exercises Deno beside Bun and Cloudflare Workers for malformed cookie preservation, query decoding, JSON/text raw-body capture, multipart raw-body exclusion, and SSE framing. The README parity assertion in the package test keeps these documented edge-runtime coverage claims synchronized with the Korean mirror.
 
@@ -121,7 +121,7 @@ The shared edge portability suite in `packages/testing/src/portability/web-runti
 - `createDenoAdapter(options)`: Factory for the Deno HTTP adapter; it shares validation and normalization with direct construction.
 - `bootstrapDenoApplication(module, options)`: Advanced bootstrap for custom orchestration.
 - `runDenoApplication(module, options)`: Recommended quick-start helper for Deno.
-- `DenoHttpApplicationAdapter(options)`: Core adapter implementation. Direct `new DenoHttpApplicationAdapter(options)` applies the same default port, `host` alias handling, `hostname` precedence, and numeric option validation as `createDenoAdapter(options)`.
+- `DenoHttpApplicationAdapter(options?)`: Core adapter implementation. Direct `new DenoHttpApplicationAdapter()` or `new DenoHttpApplicationAdapter(options)` applies the same default port, `host` alias handling, `hostname` precedence, and numeric option validation as `createDenoAdapter(options)`.
 - `listen(dispatcher)`: Binds the fluo HTTP dispatcher and starts `Deno.serve`; duplicate calls are no-ops while preserving the original dispatcher.
 - `close()`: Stops ingress, drains active requests for up to 10 seconds, and aborts the Deno serve signal if shutdown does not settle.
 - `handle(request)`: Manual `Request` to `Response` dispatcher. It succeeds after `listen(dispatcher)` binds the runtime dispatcher, returns JSON `500` before binding, and returns JSON `503` while shutdown is in progress.
