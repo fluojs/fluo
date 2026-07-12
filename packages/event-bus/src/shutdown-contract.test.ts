@@ -117,7 +117,7 @@ describe('EventBusLifecycleService shutdown contract', () => {
     expect(transport.closeCalls).toBe(1);
   });
 
-  it('drains transport publish work after an in-flight abort settles the caller', async () => {
+  it('drains non-blocking transport publish work after an in-flight abort', async () => {
     const publishGate = createDeferred();
     const publishStarted = createDeferred();
     const transport = {
@@ -142,11 +142,13 @@ describe('EventBusLifecycleService shutdown contract', () => {
     const controller = new AbortController();
     const publishPromise = eventBus.publish(new ShutdownEvent('aborted-transport'), {
       signal: controller.signal,
+      waitForHandlers: false,
     });
 
     await publishStarted.promise;
     controller.abort();
     await expect(publishPromise).resolves.toBeUndefined();
+    await flushAsyncWork();
 
     let closeResolved = false;
     const closePromise = app.close().then(() => {
