@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expandPublicPackageDependencyImpact } from './dependency-impact.mjs';
@@ -21,6 +21,7 @@ const releaseReadinessVerificationCommands = [
   '`pnpm verify:release-readiness`',
 ];
 const toolingReleaseMetadataPackages = ['@fluojs/cli', '@fluojs/studio', '@fluojs/testing', '@fluojs/vite'];
+const persistenceReleaseMetadataPackages = ['@fluojs/drizzle', '@fluojs/mongoose', '@fluojs/prisma'];
 
 function resolveSummaryOutputPaths(outputDirectory = scriptDirectory) {
   return {
@@ -863,6 +864,10 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
     governancePackageList.filter((packageName) => toolingReleaseMetadataPackages.includes(packageName)),
     { existsSync: pathExists, read: readText },
   );
+  const persistenceChangelogBaselineViolations = collectPackageChangelogBaselineViolations(
+    governancePackageList.filter((packageName) => persistenceReleaseMetadataPackages.includes(packageName)),
+    { existsSync: pathExists, read: readText },
+  );
 
   assertCheck(
     checks,
@@ -961,6 +966,14 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
     toolingChangelogBaselineViolations.length === 0
       ? '`@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing`, and `@fluojs/vite` package changelogs keep `## [Unreleased]` placeholders for release metadata review.'
       : toolingChangelogBaselineViolations.join('; '),
+  );
+  assertCheck(
+    checks,
+    'Persistence package changelog baseline',
+    persistenceChangelogBaselineViolations.length === 0,
+    persistenceChangelogBaselineViolations.length === 0
+      ? '`@fluojs/drizzle`, `@fluojs/mongoose`, and `@fluojs/prisma` package changelogs keep `## [Unreleased]` placeholders for release metadata review.'
+      : persistenceChangelogBaselineViolations.join('; '),
   );
   assertCheck(
     checks,

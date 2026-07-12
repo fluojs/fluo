@@ -345,6 +345,44 @@ describe('runReleaseReadinessVerification', () => {
     );
   });
 
+  it('fails when a persistence package changelog drops the Unreleased placeholder', () => {
+    const dependencies = createDependencies();
+    const baseRead = dependencies.read;
+    const baseManifests = dependencies.workspacePackageManifests();
+
+    dependencies.read = vi.fn((relativePath) => {
+      if (relativePath === 'docs/contracts/release-governance.md') {
+        return '## intended publish surface\n- `@fluojs/cli`\n- `@fluojs/core`\n- `@fluojs/prisma`\n\npnpm verify:release-readiness\npnpm verify:platform-consistency-governance';
+      }
+
+      if (relativePath === 'docs/reference/package-surface.md') {
+        return '## public package families\n| Core | `@fluojs/cli` `@fluojs/core` `@fluojs/prisma` |';
+      }
+
+      if (relativePath === 'packages/prisma/CHANGELOG.md') {
+        return '# @fluojs/prisma\n\n## 1.0.0\n';
+      }
+
+      return baseRead(relativePath);
+    });
+    dependencies.workspacePackageNames = vi.fn(() => ['@fluojs/cli', '@fluojs/core', '@fluojs/prisma']);
+    dependencies.workspacePackageManifests = vi.fn(() => [
+      ...baseManifests,
+      {
+        manifest: {
+          name: '@fluojs/prisma',
+          private: false,
+          publishConfig: { access: 'public' },
+        },
+        packageJsonPath: '/repo/packages/prisma/package.json',
+      },
+    ]);
+
+    expect(() => runReleaseReadinessVerification({}, dependencies)).toThrowError(
+      /Persistence package changelog baseline.*packages\/prisma\/CHANGELOG\.md must keep an `## \[Unreleased\]` section/u,
+    );
+  });
+
   it('accepts single-package publish preflight for a public prerelease target', () => {
     const dependencies = createDependencies();
 
