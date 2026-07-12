@@ -312,7 +312,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
 
   private runInvocationTasksInBackground(invocationTasks: Promise<void>[]): void {
     for (const task of invocationTasks) {
-      void task;
+      void this.trackActiveDispatchWork(task);
     }
   }
 
@@ -449,10 +449,8 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
 
       try {
         const publishWork = this.transport!.publish(channel, payload);
-        const boundedPublishWork = publishOptions.waitForHandlers
-          ? this.trackActiveDispatchWork(publishWork)
-          : publishWork;
-        await this.awaitInvocationBounds(boundedPublishWork, publishOptions);
+        const trackedPublishWork = this.trackActiveDispatchWork(publishWork);
+        await this.awaitInvocationBounds(trackedPublishWork, publishOptions);
       } catch (error) {
         this.transportPublishFailures += 1;
         this.logBoundedTransportPublishError(channel, error);

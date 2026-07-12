@@ -11,6 +11,7 @@ fluo 애플리케이션을 위한 Node.js 20+ Prisma lifecycle 및 ALS 기반 tr
 - [빠른 시작](#빠른-시작)
 - [공통 패턴](#공통-패턴)
   - [서비스 트랜잭션 경계 (@Transaction)](#서비스-트랜잭션-경계-transaction)
+  - [요청 트랜잭션 인터셉터 호환성](#요청-트랜잭션-인터셉터-호환성)
   - [여러 클라이언트를 위한 이름 있는 등록](#여러-클라이언트를-위한-이름-있는-등록)
   - [수동 트랜잭션과 current()](#수동-트랜잭션과-current)
   - [종료와 status 계약](#종료와-status-계약)
@@ -93,6 +94,55 @@ export class UserRepository {
 ```
 
 `@Transaction()` 메서드 호출은 재진입(reentrant)이 가능합니다. 데코레이터가 적용된 메서드가 다른 데코레이터 적용 메서드를 호출하더라도 하나의 동일한 Prisma 트랜잭션 안에서 실행됩니다.
+
+### 요청 트랜잭션 인터셉터 호환성
+
+`PrismaTransactionInterceptor`는 기존 `@UseInterceptors(...)` request-wide boundary를 위한 deprecated 1.x 호환성 export로 복원되었습니다. 이름 없는 `PrismaModule.forRoot(...)`와 `forRootAsync(...)` 등록이 이 interceptor를 provider 및 export로 제공하며, `PrismaService.requestTransaction(...)`에 위임하고 request `AbortSignal`을 전달합니다.
+
+```typescript
+import { Controller, Post, UseInterceptors } from '@fluojs/http';
+import { PrismaTransactionInterceptor } from '@fluojs/prisma';
+
+@Controller('/orders')
+export class OrdersController {
+  @Post('/')
+  @UseInterceptors(PrismaTransactionInterceptor)
+  createOrder() {
+    return this.orders.create();
+  }
+}
+```
+
+새 비즈니스 작업에는 서비스 계층 `@Transaction()`을 우선 사용하세요. 전체 요청에 하나의 트랜잭션이 정말 필요하거나 이름 있는/여러 Prisma 등록에서 특정 서비스를 선택해야 한다면 명시적 `requestTransaction(...)`을 사용하세요. 호환성 interceptor는 이름 없는 기본 등록만 대상으로 합니다.
+
+요청 전체 원자성이 정말 필요한 경우에는 application code에서 boundary와 cancellation input을 명시적으로 드러내세요.
+
+```typescript
+import { Inject } from '@fluojs/core';
+import { Controller, Post, type RequestContext } from '@fluojs/http';
+import { PrismaService } from '@fluojs/prisma';
+import { PrismaClient } from '@prisma/client';
+
+@Inject(PrismaService, OrdersService)
+@Controller('/orders')
+export class OrdersController {
+  constructor(
+    private readonly prisma: PrismaService<PrismaClient>,
+    private readonly orders: OrdersService,
+  ) {}
+
+  @Post('/checkout')
+  checkout(input: CheckoutInput, context: RequestContext) {
+    const { request } = context;
+    return this.prisma.requestTransaction(
+      () => this.orders.checkout(input),
+      request.signal,
+    );
+  }
+}
+```
+
+이는 서비스 `@Transaction()`을 대체하는 방식이 아니라 좁은 호환성 패턴입니다. 요청 전체 트랜잭션은 HTTP 작업 전체에서 데이터베이스 lock을 유지할 수 있으므로 boundary를 짧고 명시적으로 유지하세요.
 
 ### 여러 클라이언트를 위한 이름 있는 등록
 
@@ -234,6 +284,12 @@ Provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createP
 ### `Transaction`
 
 - 서비스 계층 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 기본적으로 Prisma service/facade 형태의 속성을 resolve하고, 이름 있는 client나 모호한 host에는 accessor를 받을 수 있으며, 외부 경계에는 Prisma transaction option을 전달할 수 있습니다.
+
+### `PrismaTransactionInterceptor` (deprecated 호환성)
+
+- 기존 1.x import를 위한 request-wide HTTP 호환성 interceptor입니다.
+- `PrismaService.requestTransaction(...)`에 위임하고 request cancellation을 전달합니다.
+- 새 코드에서는 서비스 `@Transaction()` 또는 명시적 request boundary를 우선 사용하세요.
 
 ### `PRISMA_CLIENT` (Token)
 

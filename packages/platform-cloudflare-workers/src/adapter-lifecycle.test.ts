@@ -23,12 +23,32 @@ function createExecutionContext(
 }
 
 function createMockWorkerWebSocket(): CloudflareWorkerWebSocket {
+  const eventTarget = new EventTarget();
+  let readyState = 1;
+
   return {
     accept() {},
-    addEventListener() {},
-    close() {},
-    readyState: 1,
-    removeEventListener() {},
+    addEventListener(
+      type: 'close' | 'error' | 'message',
+      listener: EventListenerOrEventListenerObject | null,
+      options?: boolean | AddEventListenerOptions,
+    ) {
+      eventTarget.addEventListener(type, listener, options);
+    },
+    close() {
+      readyState = 3;
+      eventTarget.dispatchEvent(new Event('close'));
+    },
+    get readyState() {
+      return readyState;
+    },
+    removeEventListener(
+      type: 'close' | 'error' | 'message',
+      listener: EventListenerOrEventListenerObject | null,
+      options?: boolean | EventListenerOptions,
+    ) {
+      eventTarget.removeEventListener(type, listener, options);
+    },
     send() {},
   };
 }
@@ -54,6 +74,7 @@ function createDeferred<T>() {
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('@fluojs/platform-cloudflare-workers lifecycle regressions', () => {
@@ -180,6 +201,71 @@ describe('@fluojs/platform-cloudflare-workers lifecycle regressions', () => {
     expect(closeSettled).toBe(true);
   });
 
+  it('releases the close drain when SSE reader acquisition fails synchronously', async () => {
+    vi.useFakeTimers();
+
+    const adapter = createCloudflareWorkerAdapter();
+    const streamingResponse = new Response(new ReadableStream<Uint8Array>(), {
+      headers: { 'content-type': 'text/event-stream' },
+    });
+    const responseBody = streamingResponse.body;
+
+    if (!responseBody) {
+      throw new Error('Expected an SSE response body.');
+    }
+
+    vi.spyOn(responseBody, 'getReader').mockImplementation(() => {
+      throw new Error('reader acquisition failed');
+    });
+    vi.spyOn(runtimeWeb, 'dispatchWebRequest').mockResolvedValue(streamingResponse);
+    await adapter.listen({
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        response.setStatus(200);
+      },
+    });
+
+    await expect(adapter.fetch(
+      new Request('https://worker.test/sse-reader-failure'),
+      {},
+      createExecutionContext(),
+    )).rejects.toThrow('reader acquisition failed');
+
+    const closeAssertion = expect(adapter.close()).resolves.toBeUndefined();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await closeAssertion;
+  });
+
+  it('releases the close drain when tracked SSE stream construction fails synchronously', async () => {
+    vi.useFakeTimers();
+
+    const adapter = createCloudflareWorkerAdapter();
+    const streamingResponse = new Response(new ReadableStream<Uint8Array>(), {
+      headers: { 'content-type': 'text/event-stream' },
+    });
+
+    vi.spyOn(runtimeWeb, 'dispatchWebRequest').mockResolvedValue(streamingResponse);
+    vi.stubGlobal('ReadableStream', class {
+      constructor() {
+        throw new Error('tracked stream construction failed');
+      }
+    });
+    await adapter.listen({
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        response.setStatus(200);
+      },
+    });
+
+    await expect(adapter.fetch(
+      new Request('https://worker.test/sse-stream-failure'),
+      {},
+      createExecutionContext(),
+    )).rejects.toThrow('tracked stream construction failed');
+
+    const closeAssertion = expect(adapter.close()).resolves.toBeUndefined();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await closeAssertion;
+  });
+
   it('clears fake shutdown timeout handles when the close drain settles before timeout', async () => {
     vi.useFakeTimers();
 
@@ -211,13 +297,16 @@ describe('@fluojs/platform-cloudflare-workers lifecycle regressions', () => {
     }
   });
 
-  it('keeps close draining for an in-flight websocket upgrade while concurrent upgrades get shutdown JSON', async () => {
+  it('keeps waitUntil and close draining until an upgraded server websocket closes', async () => {
     const createWebSocketPair = createWebSocketPairStub();
     const adapter = new CloudflareWorkerHttpApplicationAdapter({ createWebSocketPair });
     const upgradeDeferred = createDeferred<void>();
+    const waitUntilPromises: Array<Promise<unknown>> = [];
+    let serverSocket: CloudflareWorkerWebSocket | undefined;
     let closeSettled = false;
     const bindingFetch = vi.fn<CloudflareWorkerWebSocketBinding['fetch']>(async (request, host) => {
       const upgraded = host.upgrade(request);
+      serverSocket = upgraded.serverSocket;
       await upgradeDeferred.promise;
       return upgraded.response;
     });
@@ -232,7 +321,7 @@ describe('@fluojs/platform-cloudflare-workers lifecycle regressions', () => {
     const upgradePromise = adapter.fetch(
       new Request('https://worker.test/chat', { headers: { upgrade: 'websocket' } }),
       {},
-      createExecutionContext(),
+      createExecutionContext((promise) => { waitUntilPromises.push(promise); }),
     );
     await Promise.resolve();
 
@@ -255,7 +344,24 @@ describe('@fluojs/platform-cloudflare-workers lifecycle regressions', () => {
     upgradeDeferred.resolve();
 
     await expect(upgradePromise).resolves.toHaveProperty('status', 101);
+    let waitUntilSettled = false;
+    void waitUntilPromises[0]?.then(() => {
+      waitUntilSettled = true;
+    });
+    await Promise.resolve();
+
+    expect(waitUntilPromises).toHaveLength(1);
+    expect(waitUntilSettled).toBe(false);
+    expect(closeSettled).toBe(false);
+
+    if (!serverSocket) {
+      throw new Error('Expected an upgraded server websocket.');
+    }
+
+    serverSocket.close();
+    await waitUntilPromises[0];
     await closePromise;
+    expect(waitUntilSettled).toBe(true);
     expect(closeSettled).toBe(true);
   });
 });

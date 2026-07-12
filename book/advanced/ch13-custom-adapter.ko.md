@@ -64,16 +64,19 @@ export interface HttpApplicationAdapter {
 // 어댑터 내부에서 수행되는 매핑 예시
 const fluoRequest: FrameworkRequest = {
   method: rawRequest.method,
+  path: rawRequest.path,
   url: rawRequest.url,
   headers: rawRequest.headers,
-  body: rawRequest.body,
   query: rawRequest.query,
+  cookies: rawRequest.cookies,
   params: {}, // 디스패처가 라우트 매칭 시 채워줌
+  body: rawRequest.body,
+  raw: rawRequest,
   signal: rawRequest.signal, // AbortSignal 연동
 };
 ```
 
-특히 `signal` 속성을 플랫폼의 요청 중단 시그널(예: Node.js의 `req.on('close')`)과 연결해야 합니다. 이 연결은 파이프라인이 더 이상 필요하지 않은 작업을 계속 수행하지 않게 막는 핵심 장치입니다.
+플랫폼이 cancellation을 제공하면 `signal`을 request/response disconnect event에 연결하고, 그렇지 않으면 `isAborted()` probe를 제공하세요. Dispatcher는 문서화된 boundary에서 이 상태를 확인합니다. Dispatcher가 임의의 작업을 중단할 수 있다고 가정하지 말고, application code가 cancellable database, network, 기타 long-running operation에 signal을 직접 전달해야 합니다.
 
 ## 13.4 실전: Fastify 어댑터 핵심 로직 분석
 
@@ -126,9 +129,24 @@ Fastify는 networking, plugin execution, 그리고 명시적 route에 대한 안
 
 ```typescript
 const fluoResponse: FrameworkResponse = {
+  statusCode: reply.statusCode,
+  statusSet: false,
+  headers: {},
   get committed() { return reply.sent; },
-  setHeader(name, value) { reply.header(name, value); return this; },
-  status(code) { reply.status(code); return this; },
+  raw: reply,
+  setStatus(code) {
+    this.statusCode = code;
+    this.statusSet = true;
+    reply.status(code);
+  },
+  setHeader(name, value) {
+    this.headers[name] = value;
+    reply.header(name, value);
+  },
+  redirect(status, location) {
+    this.setStatus(status);
+    this.setHeader('location', location);
+  },
   send(body) { reply.send(body); },
 };
 ```
@@ -213,15 +231,21 @@ function readSourceValue(request: FrameworkRequest, source: MetadataSource) {
 
 ```typescript
 import * as http from 'http';
-import { Dispatcher, FrameworkRequest, FrameworkResponse, HttpApplicationAdapter } from '@fluojs/http';
+import type { Dispatcher, FrameworkRequest, FrameworkResponse, HttpApplicationAdapter } from '@fluojs/http';
 
 export class TinyNodeAdapter implements HttpApplicationAdapter {
   private server = http.createServer();
 
   async listen(dispatcher: Dispatcher) {
     this.server.on('request', async (req, res) => {
+      const abortController = new AbortController();
+      req.once('aborted', () => abortController.abort());
+      res.once('close', () => {
+        if (!res.writableFinished) abortController.abort();
+      });
+
       // 1. 요청 매핑: Node.js IncomingMessage를 FrameworkRequest로 변환
-      const frameworkReq = this.mapRequest(req);
+      const frameworkReq = this.mapRequest(req, abortController.signal);
       
       // 2. 응답 매핑: Node.js ServerResponse를 FrameworkResponse로 변환
       const frameworkRes = this.mapResponse(res);
@@ -229,7 +253,7 @@ export class TinyNodeAdapter implements HttpApplicationAdapter {
       // 3. 디스패처 실행: fluo의 핵심 파이프라인 가동
       try {
         await dispatcher.dispatch(frameworkReq, frameworkRes);
-      } catch (err) {
+      } catch {
         // 최후방 방어선: 디스패처 내부에서 처리되지 못한 치명적 에러 대응
         if (!res.headersSent) {
           res.statusCode = 500;
@@ -238,41 +262,70 @@ export class TinyNodeAdapter implements HttpApplicationAdapter {
       }
     });
     
-    return new Promise((resolve) => {
+    return new Promise<void>((resolve) => {
       this.server.listen(8080, () => resolve());
     });
   }
 
   async close() {
-    return new Promise((resolve) => {
+    return new Promise<void>((resolve) => {
       this.server.close(() => resolve());
     });
   }
 
-  private mapRequest(req: http.IncomingMessage): FrameworkRequest {
+  private mapRequest(req: http.IncomingMessage, signal: AbortSignal): FrameworkRequest {
+    const url = new URL(req.url ?? '/', 'http://localhost');
+    const query: Record<string, string | string[]> = {};
+
+    for (const [key, value] of url.searchParams) {
+      const previous = query[key];
+      query[key] = previous === undefined ? value : Array.isArray(previous) ? [...previous, value] : [previous, value];
+    }
+
     return {
-      method: req.method || 'GET',
-      url: req.url || '/',
-      headers: req.headers as Record<string, string>,
-      body: (req as any).body, // 실제 구현 시 바디 파싱 로직 필요
-      query: {}, // URL 파싱 필요
+      method: req.method ?? 'GET',
+      path: url.pathname,
+      url: req.url ?? '/',
+      headers: req.headers,
+      query,
+      cookies: {}, // 실제 구현에서는 Cookie header를 parse해야 합니다.
       params: {},
-      signal: new AbortController().signal, // 실제로는 req.on('close')와 연동 권장
+      raw: req,
+      signal,
     };
   }
 
   private mapResponse(res: http.ServerResponse): FrameworkResponse {
     return {
+      statusCode: res.statusCode,
+      statusSet: false,
+      headers: {},
       get committed() { return res.headersSent; },
-      setHeader(name, value) { res.setHeader(name, value); return this; },
-      status(code) { res.statusCode = code; return this; },
-      send(body) { res.end(body); },
+      raw: res,
+      setStatus(code) {
+        this.statusCode = code;
+        this.statusSet = true;
+        res.statusCode = code;
+      },
+      setHeader(name, value) {
+        this.headers[name] = value;
+        res.setHeader(name, value);
+      },
+      redirect(status, location) {
+        this.setStatus(status);
+        this.setHeader('location', location);
+      },
+      send(body) {
+        if (body === undefined) return void res.end();
+        if (typeof body === 'string' || body instanceof Uint8Array) return void res.end(body);
+        res.end(JSON.stringify(body));
+      },
     };
   }
 }
 ```
 
-이 스켈레톤은 단순하지만 어댑터의 핵심 메커니즘을 모두 포함합니다. 실제 상용 어댑터(예: FastifyAdapter)는 여기에 정교한 버퍼링, 멀티파트 처리, 압축, HTTP/2 같은 프로토콜 최적화 로직을 더합니다.
+이 스켈레톤은 이제 필수 request/response shape를 만족하지만 여전히 의도적으로 불완전합니다. Production code는 request body와 cookie parsing, size limit, 필요한 경우 정확한 raw byte 보존, header normalization, native listener 제거, streaming/backpressure, shutdown policy를 구현해야 합니다. 실제 상용 어댑터(예: FastifyAdapter)는 여기에 multipart 처리, compression, HTTP/2 같은 protocol optimization도 더합니다.
 
 ## 13.13 요약
 

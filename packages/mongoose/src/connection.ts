@@ -12,6 +12,7 @@ import { MONGOOSE_CONNECTION, MONGOOSE_DISPOSE, MONGOOSE_OPTIONS } from './token
 import type {
   MongooseConnectionLike,
   MongooseHandleProvider,
+  MongooseModelFacade,
   MongooseSessionLike,
 } from './types.js';
 
@@ -54,85 +55,25 @@ type MongooseRuntimeOptions = {
   strictTransactions: boolean;
 };
 
-type MongooseModelLike = Record<PropertyKey, unknown>;
-
 type MongooseModelFactoryConnection = MongooseConnectionLike & {
-  model?(name: string, ...args: unknown[]): MongooseModelLike;
+  model?(name: string, ...args: unknown[]): MongooseModelFacade;
 };
 
 const MODEL_OPERATIONS_WITH_OPTIONS = new Set<PropertyKey>(['aggregate', 'bulkWrite', 'create', 'find', 'findOne']);
 const MODEL_OPERATIONS_WITH_PROJECTION = new Set<PropertyKey>(['find', 'findOne']);
-const MONGOOSE_CREATE_OPTION_KEYS = new Set<PropertyKey>([
-  'aggregateErrors',
-  'checkKeys',
-  'j',
-  'ordered',
-  'populate',
-  'safe',
-  'session',
-  'timestamps',
-  'validateBeforeSave',
-  'validateModifiedOnly',
-  'w',
-  'writeConcern',
-  'wtimeout',
-]);
 function isObjectLike(value: unknown): value is object {
   return (typeof value === 'object' && value !== null) || typeof value === 'function';
 }
 
-function hasOnlyMongooseCreateOptionKeys(value: object): boolean {
-  const keys = Reflect.ownKeys(value);
-
-  return keys.length > 0 && keys.every((key) => MONGOOSE_CREATE_OPTION_KEYS.has(key));
-}
-
-function isMongooseCreateOptionsCandidate(value: unknown): boolean {
-  if (!isObjectLike(value)) {
-    return false;
-  }
-
-  if (
-    'session' in value &&
-    hasOnlyMongooseCreateOptionKeys(value) &&
-    (value.session === null || value.session === undefined || isObjectLike(value.session))
-  ) {
-    return true;
-  }
-
-  for (const key of MONGOOSE_CREATE_OPTION_KEYS) {
-    if (key !== 'session' && key in value) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function isEmptyCreateOptionsCandidate(value: unknown): boolean {
-  return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0;
-}
-
-function resolveCreateOptionsIndex(operationArgs: unknown[]): number {
-  if (operationArgs.length === 2 && Array.isArray(operationArgs[0])) {
+function resolveCreateOptionsIndex(operationArgs: unknown[]): number | undefined {
+  if (Array.isArray(operationArgs[0])) {
     return 1;
   }
 
-  if (operationArgs.length === 2 && isEmptyCreateOptionsCandidate(operationArgs[1])) {
-    return 1;
-  }
-
-  if (
-    operationArgs.length >= 2 &&
-    isMongooseCreateOptionsCandidate(operationArgs[operationArgs.length - 1])
-  ) {
-    return operationArgs.length - 1;
-  }
-
-  return operationArgs.length;
+  return undefined;
 }
 
-function resolveOptionsIndex(operation: PropertyKey, operationArgs: unknown[]): number {
+function resolveOptionsIndex(operation: PropertyKey, operationArgs: unknown[]): number | undefined {
   if (operation === 'create') {
     return resolveCreateOptionsIndex(operationArgs);
   }
@@ -166,7 +107,7 @@ function resolveSessionOptions(opts: unknown, ambient: MongooseSessionLike): Rec
   return { ...options, session: ambient };
 }
 
-function createAmbientSessionModelFacade<TModel extends MongooseModelLike>(model: TModel, ambient: MongooseSessionLike): TModel {
+function createAmbientSessionModelFacade<TModel extends MongooseModelFacade>(model: TModel, ambient: MongooseSessionLike): TModel {
   return new Proxy(model, {
     get(target, prop, receiver) {
       const value = Reflect.get(target, prop, receiver);
@@ -178,12 +119,41 @@ function createAmbientSessionModelFacade<TModel extends MongooseModelLike>(model
       return (...args: unknown[]) => {
         const operationArgs = [...args];
         const optionsIndex = resolveOptionsIndex(prop, operationArgs);
+
+        if (optionsIndex === undefined) {
+          return value.apply(target, operationArgs);
+        }
+
         operationArgs[optionsIndex] = resolveSessionOptions(operationArgs[optionsIndex], ambient);
 
         return value.apply(target, operationArgs);
       };
     },
   });
+}
+
+async function raceWithAbortAndDrainCallback<T>(
+  fn: () => Promise<T>,
+  signal: AbortSignal,
+  shouldDrainAfterAbort: () => boolean = () => true,
+): Promise<T> {
+  let callback: Promise<T> | undefined;
+
+  try {
+    return await raceWithAbort(() => {
+      callback = Promise.resolve().then(fn);
+      return callback;
+    }, signal);
+  } catch (error) {
+    if (signal.aborted && callback && shouldDrainAfterAbort()) {
+      await callback.then(
+        () => undefined,
+        () => undefined,
+      );
+    }
+
+    throw error;
+  }
 }
 
 function resolveModelFactory(connection: MongooseConnectionLike): MongooseModelFactoryConnection['model'] | undefined {
@@ -265,11 +235,13 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
   /**
    * Returns a model from the root connection, injecting the ambient transaction session into conservative operations.
    *
+   * @typeParam TModel Consumer-defined facade result contract for the wrapped model.
    * @param name Model name passed to the underlying Mongoose connection.
    * @param args Additional model resolver arguments forwarded unchanged.
    * @returns The real model outside transactions, or a model facade inside an active transaction boundary.
    */
-  model(name: string, ...args: unknown[]): MongooseModelLike {
+  model<TModel extends MongooseModelFacade = MongooseModelFacade>(name: string, ...args: unknown[]): TModel;
+  model(name: string, ...args: unknown[]): MongooseModelFacade {
     const modelFactory = resolveModelFactory(this.connection);
 
     if (typeof modelFactory !== 'function') {
@@ -381,7 +353,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
       const active = this.trackActiveRequestTransaction(abortContext.controller);
 
       try {
-        return await raceWithAbort(fn, abortContext.signal);
+        return await raceWithAbortAndDrainCallback(fn, abortContext.signal);
       } finally {
         abortContext.cleanup();
         currentScope.activeSession.retainRequestTransaction(active);
@@ -396,9 +368,16 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
 
     try {
       if (typeof this.connection.transaction === 'function') {
-        return await raceWithAbort(
-          () => this.runConnectionTransaction(() => raceWithAbort(fn, abortContext.signal)),
+        let delegatedCallbackStarted = false;
+        const delegatedTransaction = this.runConnectionTransaction(() => {
+          delegatedCallbackStarted = true;
+          return raceWithAbortAndDrainCallback(fn, abortContext.signal);
+        });
+
+        return await raceWithAbortAndDrainCallback(
+          () => delegatedTransaction,
           abortContext.signal,
+          () => delegatedCallbackStarted,
         );
       }
 
@@ -406,10 +385,12 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
         untrackActiveInFinally = false;
       });
       if (!resolvedSession) {
-        return await raceWithAbort(fn, abortContext.signal);
+        return await raceWithAbortAndDrainCallback(fn, abortContext.signal);
       }
 
-      return await this.runManualSessionTransaction(resolvedSession, () => raceWithAbort(fn, abortContext.signal));
+      return await this.runManualSessionTransaction(resolvedSession, () =>
+        raceWithAbortAndDrainCallback(fn, abortContext.signal),
+      );
     } finally {
       abortContext.cleanup();
 

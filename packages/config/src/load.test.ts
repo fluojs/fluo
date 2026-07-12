@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, watch, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, renameSync, watch, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { getModuleMetadata } from '@fluojs/core/internal';
@@ -932,6 +932,7 @@ describe('loadConfig', () => {
   it('watches the parent directory when the env file exists so atomic replacements trigger reloads', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-watch-existing-parent-'));
     const envPath = join(cwd, '.env.dev');
+    const replacementPath = join(cwd, '.env.dev.next');
 
     writeFileSync(envPath, 'PORT=4000\n');
 
@@ -957,7 +958,8 @@ describe('loadConfig', () => {
         }
       });
 
-      writeFileSync(envPath, 'PORT=4100\n');
+      writeFileSync(replacementPath, 'PORT=4100\n');
+      renameSync(replacementPath, envPath);
       emitWatchChange();
 
       await waitForCondition(() => updates.includes('4100'));
@@ -1063,7 +1065,7 @@ describe('loadConfig', () => {
     }
   });
 
-  it('drops queued reentrant reloads when the active notification rolls back', () => {
+  it('restores the previous snapshot, reports the error, and drops queued reloads when a watch listener fails', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-reload-serialized-rollback-'));
     const envPath = join(cwd, '.env.dev');
 
@@ -1073,22 +1075,33 @@ describe('loadConfig', () => {
       cwd,
       envFile: envPath,
       processEnv: {},
+      watch: true,
     });
 
     try {
-      reloader.subscribe((_snapshot, reason) => {
-        if (reason !== 'manual') {
+      const errors: string[] = [];
+      const updates: string[] = [];
+
+      reloader.subscribe((snapshot, reason) => {
+        if (reason !== 'watch') {
           return;
         }
 
+        updates.push(`${reason}:${String(snapshot['PORT'])}`);
         writeFileSync(envPath, 'PORT=4300\n');
         reloader.reload();
         throw new Error('listener failed after nested reload');
       });
+      reloader.subscribeError((error, reason) => {
+        const message = error instanceof Error ? error.message : String(error);
+        errors.push(`${reason}:${message}`);
+      });
 
       writeFileSync(envPath, 'PORT=4100\n');
+      emitWatchChange();
 
-      expect(() => reloader.reload()).toThrow('listener failed after nested reload');
+      expect(errors).toEqual(['watch:listener failed after nested reload']);
+      expect(updates).toEqual(['watch:4100']);
       expect(reloader.current()['PORT']).toBe('4000');
     } finally {
       reloader.close();

@@ -45,28 +45,33 @@ await runDenoApplication(AppModule, {
 
 ## Common Patterns
 
-### Manual Request Dispatching
-For testing or custom `Deno.serve` implementations, you can use the adapter's `handle` method to dispatch native web requests manually. Bind the dispatcher first via `app.listen()` (or `runDenoApplication(...)`), because `handle(...)` only works after the runtime has been bootstrapped.
+### Host-Owned Deno.serve
+If your application owns `Deno.serve(...)`, bootstrap the fluo application without calling `app.listen()` and create a request handler from its public dispatcher. `createDenoFetchHandler(...)` only translates and dispatches requests; it never starts a server or owns shutdown, signals, or websocket upgrades.
 
 ```typescript
-import { createDenoAdapter } from '@fluojs/platform-deno';
+import { createDenoAdapter, createDenoFetchHandler } from '@fluojs/platform-deno';
 import { fluoFactory } from '@fluojs/runtime';
 
-const adapter = createDenoAdapter({ port: 3000 });
+const adapter = createDenoAdapter();
 const app = await fluoFactory.create(AppModule, { adapter });
+const handler = createDenoFetchHandler({
+  dispatcher: app.dispatcher,
+  rawBody: true,
+});
 
-await app.listen();
+const server = Deno.serve({ port: 3000 }, handler);
 
 try {
-  const response = await adapter.handle(new Request('http://localhost:3000/health'));
-  console.log(await response.json());
+  await server.finished;
 } finally {
   await app.close();
 }
 ```
 
+The surrounding host must stop `server`, coordinate process signals, and decide whether websocket upgrades are handled separately. Use the managed `runDenoApplication(...)` or `app.listen()` path when fluo should own those lifecycle seams. `adapter.handle(...)` remains available only after the managed adapter's `listen(dispatcher)` binding has completed.
+
 ### Direct Adapter Construction
-Application code should usually prefer `createDenoAdapter(options)`, `bootstrapDenoApplication(...)`, or `runDenoApplication(...)` so adapter setup stays explicit. Custom orchestration and tests may use `new DenoHttpApplicationAdapter(options)` directly; the constructor accepts the same public `DenoAdapterOptions` as the factory, applies the default port, preserves `hostname` over the portable `host` alias, and rejects invalid `port` or `maxBodySize` values during setup.
+Application code should usually prefer `createDenoAdapter(options)`, `bootstrapDenoApplication(...)`, or `runDenoApplication(...)` so adapter setup stays explicit. Custom orchestration and tests may use `new DenoHttpApplicationAdapter(options?)` directly; the constructor accepts the same optional public `DenoAdapterOptions` as the factory, applies the default port when options are omitted, preserves `hostname` over the portable `host` alias, and rejects invalid `port` or `maxBodySize` values during setup.
 
 ### Opt-in Deno WebSocket Binding
 The adapter supports Deno's native `Deno.upgradeWebSocket` after the application imports and configures the `@fluojs/websockets/deno` binding. Without that binding, websocket upgrade requests continue through normal HTTP dispatch instead of being upgraded implicitly.
@@ -108,20 +113,21 @@ await runDenoApplication(AppModule, {
 
 `hostname` remains the Deno-native option name. The adapter also accepts `host` as a portability alias for shared HTTP adapter tests and cross-runtime configuration helpers; when both are provided, `hostname` wins for the `Deno.serve(...)` bind target and reported listen URL.
 
-Advanced options include injectable `serve` and `upgradeWebSocket` seams for tests or non-hosted runtimes, `rawBody`, `maxBodySize`, `multipart`, and `shutdownSignals`. When a seam is not injected, the adapter falls back to `globalThis.Deno.serve` and `globalThis.Deno.upgradeWebSocket` at listen/upgrade time. `runDenoApplication(...)` wires `SIGINT`/`SIGTERM` by default, `shutdownSignals: false` disables signal registration, and failed multi-signal registration rolls back listeners that were already attached. Duplicate `listen(...)` calls on an already-running adapter are no-ops that preserve the original dispatcher pipeline. Close waits up to 10 seconds for active requests to drain before aborting the Deno serve signal. `handle(...)` returns a JSON `500` before `listen()` binds the dispatcher, including websocket upgrade requests, and a JSON `503` while shutdown is in progress.
+Advanced options include injectable `serve` and `upgradeWebSocket` seams for tests or non-hosted runtimes, `rawBody`, `maxBodySize`, `multipart`, and `shutdownSignals`. `createDenoFetchHandler(...)` accepts the same request parsing options and preserves byte-exact JSON/text raw bodies while excluding `rawBody` for multipart requests. When a seam is not injected, the managed adapter falls back to `globalThis.Deno.serve` and `globalThis.Deno.upgradeWebSocket` at listen/upgrade time. `runDenoApplication(...)` wires `SIGINT`/`SIGTERM` by default, `shutdownSignals: false` disables signal registration, and failed multi-signal registration rolls back listeners that were already attached. Duplicate `listen(...)` calls on an already-running adapter are no-ops that preserve the original dispatcher pipeline. Close waits up to 10 seconds for active requests to drain before aborting the Deno serve signal. `handle(...)` returns a JSON `500` before `listen()` binds the dispatcher, including websocket upgrade requests, and a JSON `503` while shutdown is in progress.
 
 ## Conformance Coverage
 
-`packages/platform-deno/src/adapter.test.ts` is the package-local regression target for the documented Deno contract. It covers shared Web dispatch delegation, direct `adapter.handle(...)` success-path dispatch after `listen(dispatcher)`, direct constructor/factory option normalization, HTTPS startup forwarding, `host` alias and `hostname` precedence for the `Deno.serve(...)` bind target and startup log, duplicate `listen(...)` no-op dispatcher preservation, default `SIGINT`/`SIGTERM` signal listener registration, `shutdownSignals: false`, listener rollback after partial signal-registration failure, websocket upgrade binding and no-binding HTTP fallback, websocket pre-listen bootstrap gating, global Deno serve/upgrade fallback seams, pre-listen `500` handling, shutdown `503` handling, in-flight request drain before serve-signal abort, and the bounded 10-second close timeout.
+`packages/platform-deno/src/adapter.test.ts` is the package-local regression target for the managed Deno contract. It covers shared Web dispatch delegation, direct `adapter.handle(...)` success-path dispatch after `listen(dispatcher)`, direct constructor/factory option normalization, HTTPS startup forwarding, `host` alias and `hostname` precedence for the `Deno.serve(...)` bind target and startup log, duplicate `listen(...)` no-op dispatcher preservation, default `SIGINT`/`SIGTERM` signal listener registration, `shutdownSignals: false`, listener rollback after partial signal-registration failure, websocket upgrade binding and no-binding HTTP fallback, websocket pre-listen bootstrap gating, global Deno serve/upgrade fallback seams, pre-listen `500` handling, shutdown `503` handling, in-flight request drain before serve-signal abort, and the bounded 10-second close timeout. `packages/platform-deno/src/fetch-handler.test.ts` applies the shared web-runtime portability harness to the host-owned handler, covering cookies/query decoding, JSON/text and byte-exact raw bodies, multipart exclusion, SSE framing, and proof that dispatch does not call `Deno.serve(...)`. `packages/platform-deno/src/declaration-surface.test.ts` rebuilds the package and verifies the manifest-exported declarations.
 
 The shared edge portability suite in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` exercises Deno beside Bun and Cloudflare Workers for malformed cookie preservation, query decoding, JSON/text raw-body capture, multipart raw-body exclusion, and SSE framing. The README parity assertion in the package test keeps these documented edge-runtime coverage claims synchronized with the Korean mirror.
 
 ## Public API Overview
 
 - `createDenoAdapter(options)`: Factory for the Deno HTTP adapter; it shares validation and normalization with direct construction.
+- `createDenoFetchHandler(options)`: Synchronously creates a `Request` handler from an already bootstrapped `app.dispatcher` without starting or owning `Deno.serve(...)`.
 - `bootstrapDenoApplication(module, options)`: Advanced bootstrap for custom orchestration.
 - `runDenoApplication(module, options)`: Recommended quick-start helper for Deno.
-- `DenoHttpApplicationAdapter(options)`: Core adapter implementation. Direct `new DenoHttpApplicationAdapter(options)` applies the same default port, `host` alias handling, `hostname` precedence, and numeric option validation as `createDenoAdapter(options)`.
+- `DenoHttpApplicationAdapter(options?)`: Core adapter implementation. Direct `new DenoHttpApplicationAdapter()` or `new DenoHttpApplicationAdapter(options)` applies the same default port, `host` alias handling, `hostname` precedence, and numeric option validation as `createDenoAdapter(options)`.
 - `listen(dispatcher)`: Binds the fluo HTTP dispatcher and starts `Deno.serve`; duplicate calls are no-ops while preserving the original dispatcher.
 - `close()`: Stops ingress, drains active requests for up to 10 seconds, and aborts the Deno serve signal if shutdown does not settle.
 - `handle(request)`: Manual `Request` to `Response` dispatcher. It succeeds after `listen(dispatcher)` binds the runtime dispatcher, returns JSON `500` before binding, and returns JSON `503` while shutdown is in progress.
@@ -130,7 +136,7 @@ The shared edge portability suite in `packages/testing/src/portability/web-runti
 - `getServer()`: Returns the active `Deno.serve` controller while the adapter is listening.
 - `configureWebSocketBinding(...)`: Installs the `@fluojs/websockets/deno` binding before `listen(dispatcher)` starts the server.
 - `https: { cert, key }`: HTTPS startup options forwarded to `Deno.serve` and reflected in the reported listen URL.
-- Option and seam types: `DenoServeOptions`, `DenoServeController`, `DenoServerWebSocket`, websocket binding interfaces, bootstrap/run options, and listen-target helpers.
+- Option and seam types: `CreateDenoFetchHandlerOptions`, `DenoServeOptions`, `DenoServeController`, `DenoServerWebSocket`, websocket binding interfaces, bootstrap/run options, and listen-target helpers.
 
 ## Related Packages
 
@@ -141,4 +147,5 @@ The shared edge portability suite in `packages/testing/src/portability/web-runti
 ## Example Sources
 
 - `packages/platform-deno/src/adapter.test.ts`
+- `packages/platform-deno/src/fetch-handler.test.ts`
 - `packages/websockets/src/deno/deno.test.ts`

@@ -206,19 +206,23 @@ await runDenoApplication(AppModule, {
 });
 ```
 
-Manual request dispatch is available after the runtime has been bootstrapped.
+For a host-owned `Deno.serve(...)`, bootstrap without `app.listen()` and create a handler from the public dispatcher.
 
 ```ts
 import { fluoFactory } from '@fluojs/runtime';
-import { createDenoAdapter } from '@fluojs/platform-deno';
+import { createDenoAdapter, createDenoFetchHandler } from '@fluojs/platform-deno';
 
-const adapter = createDenoAdapter({ port: 3000 });
+const adapter = createDenoAdapter();
 const app = await fluoFactory.create(AppModule, { adapter });
+const handler = createDenoFetchHandler({
+  dispatcher: app.dispatcher,
+  rawBody: true,
+});
 
-await app.listen();
-
-const response = await adapter.handle(new Request('http://localhost:3000/health'));
+Deno.serve({ port: 3000 }, handler);
 ```
+
+`createDenoFetchHandler(...)` is synchronous and does not start a server. The surrounding host owns shutdown, signal handling, and websocket upgrades; the handler preserves shared cookie/query decoding, raw-body and multipart parsing, and SSE framing.
 
 Pass TLS material through `https` to start in HTTPS mode.
 
@@ -290,7 +294,7 @@ Worker requests register active work with `executionContext.waitUntil(...)`. Dur
 | `@fluojs/platform-nodejs` | `createNodejsAdapter`, `bootstrapNodejsApplication`, `runNodejsApplication`, Node adapter option types |
 | `@fluojs/platform-express` | `createExpressAdapter`, `bootstrapExpressApplication`, `runExpressApplication`, `ExpressHttpApplicationAdapter`, multipart helpers |
 | `@fluojs/platform-bun` | `createBunAdapter`, `createBunFetchHandler`, `bootstrapBunApplication`, `runBunApplication`, Bun realtime binding types |
-| `@fluojs/platform-deno` | `createDenoAdapter`, `bootstrapDenoApplication`, `runDenoApplication`, `DenoHttpApplicationAdapter`, manual `handle(request)` |
+| `@fluojs/platform-deno` | `createDenoAdapter`, `createDenoFetchHandler`, `bootstrapDenoApplication`, `runDenoApplication`, `DenoHttpApplicationAdapter`, manual `handle(request)` |
 | `@fluojs/platform-cloudflare-workers` | `createCloudflareWorkerAdapter`, `createCloudflareWorkerEntrypoint`, `bootstrapCloudflareWorkerApplication`, Worker adapter/entrypoint types |
 
 ## Common mistakes
