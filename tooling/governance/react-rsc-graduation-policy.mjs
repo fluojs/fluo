@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const reactPackageManifestPath = 'packages/react/package.json';
 const stableRscSubpath = './rsc';
+const stableRscEntrypointPath = 'packages/react/src/rsc.ts';
+const experimentalRscEntrypointPath = 'packages/react/src/experimental/rsc.ts';
 const requiredGraduationEvidencePaths = [
   'docs/contracts/react-rsc-graduation.md',
   'docs/contracts/react-rsc-graduation.ko.md',
@@ -18,8 +20,43 @@ const requiredGraduationEvidencePaths = [
   'docs/reference/package-surface.ko.md',
   'packages/react/README.md',
   'packages/react/README.ko.md',
+  stableRscEntrypointPath,
+  experimentalRscEntrypointPath,
+  'packages/react/src/rsc-dual-import.test.ts',
+  'packages/react/src/rsc-dual-import.types.test.ts',
+  'packages/react/src/rsc-hydration.test.ts',
+  'packages/react/src/rsc-data-safety.test.ts',
+  'packages/react/src/rsc-runtime-bundler-matrix.test.ts',
   'tooling/governance/react-rsc-discoverability.test.ts',
+  'tooling/governance/react-rsc-graduation-evidence.test.ts',
   'tooling/governance/react-rsc-graduation-policy.mjs',
+];
+const governedPolicyLinks = [
+  ['packages/react/README.md', '../../docs/contracts/react-rsc-graduation.md'],
+  ['packages/react/README.ko.md', '../../docs/contracts/react-rsc-graduation.ko.md'],
+  ['docs/CONTEXT.md', './contracts/react-rsc-graduation.md'],
+  ['docs/CONTEXT.ko.md', './contracts/react-rsc-graduation.ko.md'],
+  ['docs/reference/package-surface.md', '../contracts/react-rsc-graduation.md'],
+  ['docs/reference/package-surface.ko.md', '../contracts/react-rsc-graduation.ko.md'],
+  ['docs/reference/package-chooser.md', '../contracts/react-rsc-graduation.md'],
+  ['docs/reference/package-chooser.ko.md', '../contracts/react-rsc-graduation.ko.md'],
+  ['docs/README.md', './contracts/react-rsc-graduation.md'],
+  ['docs/README.ko.md', './contracts/react-rsc-graduation.ko.md'],
+];
+const maintainerApprovalTargetPattern =
+  /^https:\/\/github\.com\/fluojs\/fluo\/(?:issues\/\d+#issuecomment-\d+|pull\/\d+#pullrequestreview-\d+)$/u;
+const executableEvidenceTerms = [
+  [
+    'packages/react/src/rsc-dual-import.test.ts',
+    ['@fluojs/react/rsc', '@fluojs/react/experimental/rsc', 'expect'],
+  ],
+  [
+    'packages/react/src/rsc-dual-import.types.test.ts',
+    ['@fluojs/react/rsc', '@fluojs/react/experimental/rsc', 'expectTypeOf'],
+  ],
+  ['packages/react/src/rsc-hydration.test.ts', ['hydration mismatch', 'recovery']],
+  ['packages/react/src/rsc-data-safety.test.ts', ['safe transfer', 'private', 'no-store', 'cookie']],
+  ['packages/react/src/rsc-runtime-bundler-matrix.test.ts', ['runtime', 'bundler']],
 ];
 
 function read(relativePath) {
@@ -30,6 +67,21 @@ function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function markdownLinkTargets(markdown) {
+  const targets = [];
+  const inlineLinkPattern =
+    /\[[^\]\n]*\]\(\s*(?:<([^>\n]+)>|([^\s)\n]+))(?:\s+(?:"[^"\n]*"|'[^'\n]*'|\([^)]*\)))?\s*\)/gu;
+
+  for (const match of markdown.matchAll(inlineLinkPattern)) {
+    if (match.index > 0 && markdown[match.index - 1] === '!') {
+      continue;
+    }
+    targets.push(match[1] ?? match[2]);
+  }
+
+  return targets;
 }
 
 function exportKeyCanResolveSubpath(exportKey, subpath) {
@@ -75,10 +127,41 @@ export function enforceReactRscGraduationEvidenceUpdates(changedFiles, readText 
     return;
   }
 
+  const stableRscExport = packageManifest.exports?.[stableRscSubpath];
+  assert(
+    stableRscExport?.types === './dist/rsc.d.ts' && stableRscExport?.import === './dist/rsc.js',
+    'Stable React RSC graduation must expose ./rsc with ./dist/rsc.d.ts and ./dist/rsc.js targets.',
+  );
+
   for (const requiredPath of requiredGraduationEvidencePaths) {
     assert(
       changedFiles.includes(requiredPath),
       `A stable React RSC export-map change must include ${requiredPath} graduation evidence.`,
+    );
+  }
+  assert(
+    /\bexport\s/u.test(readText(stableRscEntrypointPath)),
+    'The stable RSC entrypoint must contain an implementation export.',
+  );
+  assert(
+    /export\s+(?:\*|\{[^}]*\})\s+from\s+['"]\.\.\/rsc\.js['"]/u.test(readText(experimentalRscEntrypointPath)),
+    'The experimental RSC entrypoint must directly re-export the stable entrypoint during the deprecation window.',
+  );
+  for (const [evidencePath, requiredTerms] of executableEvidenceTerms) {
+    const evidence = readText(evidencePath);
+    for (const requiredTerm of requiredTerms) {
+      assert(
+        evidence.includes(requiredTerm),
+        `${evidencePath} must contain executable graduation evidence for ${requiredTerm}.`,
+      );
+    }
+  }
+  for (const policyPath of ['docs/contracts/react-rsc-graduation.md', 'docs/contracts/react-rsc-graduation.ko.md']) {
+    const policy = readText(policyPath);
+    assert(policy.includes('Status: Graduation approved.'), `${policyPath} must record Status: Graduation approved.`);
+    assert(
+      markdownLinkTargets(policy).some((target) => maintainerApprovalTargetPattern.test(target)),
+      `${policyPath} must include an explicit maintainer approval link to a GitHub issue comment or pull-request review.`,
     );
   }
   assert(
@@ -129,28 +212,10 @@ export function enforceReactRscGraduationPolicy(readText = read) {
     `React package export-map key ${JSON.stringify(matchingStableRscExportKeys[0])} can resolve stable @fluojs/react/rsc while graduation is blocked.`,
   );
 
-  for (const relativePath of [
-    'packages/react/README.md',
-    'packages/react/README.ko.md',
-    'docs/CONTEXT.md',
-    'docs/CONTEXT.ko.md',
-    'docs/reference/package-surface.md',
-    'docs/reference/package-surface.ko.md',
-    'docs/reference/package-chooser.md',
-    'docs/reference/package-chooser.ko.md',
-  ]) {
+  for (const [relativePath, localizedTarget] of governedPolicyLinks) {
     assert(
-      readText(relativePath).includes('react-rsc-graduation'),
-      `${relativePath} must link the React RSC graduation policy.`,
-    );
-  }
-  for (const [relativePath, localizedTarget] of [
-    ['docs/README.md', './contracts/react-rsc-graduation.md'],
-    ['docs/README.ko.md', './contracts/react-rsc-graduation.ko.md'],
-  ]) {
-    assert(
-      readText(relativePath).includes(localizedTarget),
-      `${relativePath} must link the localized React RSC graduation policy target ${localizedTarget}.`,
+      markdownLinkTargets(readText(relativePath)).includes(localizedTarget),
+      `${relativePath} must contain a Markdown link to localized React RSC graduation policy target ${localizedTarget}.`,
     );
   }
 }

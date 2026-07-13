@@ -18,6 +18,27 @@ function readWithPackageExports(packageExports: Readonly<Record<string, unknown>
       : read(relativePath);
 }
 
+function readWithOverride(relativePath: string, source: string) {
+  return (requestedPath: string): string => (requestedPath === relativePath ? source : read(requestedPath));
+}
+
+const governedPolicyLinks = [
+  ['packages/react/README.md', '../../docs/contracts/react-rsc-graduation.md'],
+  ['packages/react/README.ko.md', '../../docs/contracts/react-rsc-graduation.ko.md'],
+  ['docs/CONTEXT.md', './contracts/react-rsc-graduation.md'],
+  ['docs/CONTEXT.ko.md', './contracts/react-rsc-graduation.ko.md'],
+  ['docs/reference/package-surface.md', '../contracts/react-rsc-graduation.md'],
+  ['docs/reference/package-surface.ko.md', '../contracts/react-rsc-graduation.ko.md'],
+  ['docs/reference/package-chooser.md', '../contracts/react-rsc-graduation.md'],
+  ['docs/reference/package-chooser.ko.md', '../contracts/react-rsc-graduation.ko.md'],
+  ['docs/README.md', './contracts/react-rsc-graduation.md'],
+  ['docs/README.ko.md', './contracts/react-rsc-graduation.ko.md'],
+] as const;
+
+function oppositeLocaleTarget(target: string): string {
+  return target.endsWith('.ko.md') ? target.replace(/\.ko\.md$/u, '.md') : target.replace(/\.md$/u, '.ko.md');
+}
+
 describe('experimental React RSC discoverability', () => {
   it('keeps the unstable version, manifest, HTTP dispatch, and root-isolation contracts aligned', () => {
     const englishDocs = [
@@ -52,29 +73,38 @@ describe('experimental React RSC discoverability', () => {
   it('keeps stable RSC blocked while publishing the bilingual graduation policy', () => {
     // Given: the package manifest and every governed React RSC policy surface.
     const packageManifest = read('packages/react/package.json');
-    const linkedDocs = [
-      read('packages/react/README.md'),
-      read('packages/react/README.ko.md'),
-      read('docs/CONTEXT.md'),
-      read('docs/CONTEXT.ko.md'),
-      read('docs/README.md'),
-      read('docs/reference/package-surface.md'),
-      read('docs/reference/package-surface.ko.md'),
-      read('docs/reference/package-chooser.md'),
-      read('docs/reference/package-chooser.ko.md'),
-    ];
 
     // When: the canonical graduation-policy governance is evaluated.
     graduationPolicy.enforceReactRscGraduationPolicy();
 
     // Then: stable RSC remains unavailable and the policy is discoverable from both locales.
     expect(packageManifest).not.toContain('"./rsc"');
-    for (const source of linkedDocs) {
-      expect(source).toContain('react-rsc-graduation');
-    }
-    expect(read('docs/README.md')).toContain('./contracts/react-rsc-graduation.md');
-    expect(read('docs/README.ko.md')).toContain('./contracts/react-rsc-graduation.ko.md');
   });
+
+  it.each(governedPolicyLinks)(
+    'rejects a wrong-locale graduation-policy link in %s',
+    (relativePath, localizedTarget) => {
+      // Given: a governed surface links the opposite locale instead of its own policy mirror.
+      const readText = readWithOverride(
+        relativePath,
+        `[React RSC graduation policy](${oppositeLocaleTarget(localizedTarget)})`,
+      );
+
+      // When/Then: localized link governance rejects the wrong target.
+      expect(() => graduationPolicy.enforceReactRscGraduationPolicy(readText)).toThrowError(relativePath);
+    },
+  );
+
+  it.each(governedPolicyLinks)(
+    'rejects a plain-text graduation-policy target in %s',
+    (relativePath, localizedTarget) => {
+      // Given: a governed surface names the exact localized target without a Markdown link.
+      const readText = readWithOverride(relativePath, `React RSC graduation policy: ${localizedTarget}`);
+
+      // When/Then: link governance does not mistake a substring for an actual Markdown link target.
+      expect(() => graduationPolicy.enforceReactRscGraduationPolicy(readText)).toThrowError(relativePath);
+    },
+  );
 
   it.each(['./rsc', './*', './r*', './*sc', './r*c', './rsc*'])(
     'rejects the export-map key %s while graduation is blocked',
@@ -95,70 +125,4 @@ describe('experimental React RSC discoverability', () => {
     },
   );
 
-  it('requires graduation evidence when the React package manifest can resolve stable RSC', () => {
-    // Given: a wildcard graduation attempt and progressively more companion files.
-    const readText = readWithPackageExports({
-      './experimental/rsc': {
-        import: './dist/experimental/rsc.js',
-        types: './dist/experimental/rsc.d.ts',
-      },
-      './*': './dist/*.js',
-    });
-    const documentation = [
-      'docs/CONTEXT.md',
-      'docs/CONTEXT.ko.md',
-      'docs/README.md',
-      'docs/README.ko.md',
-      'docs/contracts/react-rsc-graduation.md',
-      'docs/contracts/react-rsc-graduation.ko.md',
-      'docs/reference/package-chooser.md',
-      'docs/reference/package-chooser.ko.md',
-      'docs/reference/package-surface.md',
-      'docs/reference/package-surface.ko.md',
-      'packages/react/README.md',
-      'packages/react/README.ko.md',
-    ];
-    const executableEvidence = [
-      'tooling/governance/react-rsc-discoverability.test.ts',
-      'tooling/governance/react-rsc-graduation-policy.mjs',
-    ];
-
-    // When/Then: the manifest path alone cannot bypass docs, tests/tooling, or release evidence.
-    expect(() =>
-      graduationPolicy.enforceReactRscGraduationEvidenceUpdates(['packages/react/package.json'], readText),
-    ).toThrowError(/docs\/contracts\/react-rsc-graduation\.md/);
-    expect(() =>
-      graduationPolicy.enforceReactRscGraduationEvidenceUpdates(
-        ['packages/react/package.json', ...documentation],
-        readText,
-      ),
-    ).toThrowError(/react-rsc-discoverability\.test\.ts/);
-    expect(() =>
-      graduationPolicy.enforceReactRscGraduationEvidenceUpdates(
-        ['packages/react/package.json', ...documentation, ...executableEvidence],
-        readText,
-      ),
-    ).toThrowError(/\.changeset\/\*\.md/);
-    expect(() =>
-      graduationPolicy.enforceReactRscGraduationEvidenceUpdates(
-        ['packages/react/package.json', ...documentation, ...executableEvidence, '.changeset/react-rsc-stable.md'],
-        readText,
-      ),
-    ).not.toThrow();
-  });
-
-  it('does not require graduation companions for unrelated React manifest edits', () => {
-    // Given: the React manifest path changed without a literal or wildcard stable RSC export.
-    const readText = readWithPackageExports({
-      './experimental/rsc': {
-        import: './dist/experimental/rsc.js',
-        types: './dist/experimental/rsc.d.ts',
-      },
-    });
-
-    // When/Then: the path-sensitive gate leaves unrelated manifest maintenance alone.
-    expect(() =>
-      graduationPolicy.enforceReactRscGraduationEvidenceUpdates(['packages/react/package.json'], readText),
-    ).not.toThrow();
-  });
 });
