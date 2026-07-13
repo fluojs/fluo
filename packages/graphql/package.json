@@ -17,9 +17,6 @@
     "url": "https://github.com/fluojs/fluo.git",
     "directory": "packages/graphql"
   },
-  "engines": {
-    "node": ">=20.0.0"
-  },
   "publishConfig": {
     "access": "public"
   },
@@ -55,6 +52,9 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@fluojs/platform-bun": "workspace:^",
+    "@fluojs/platform-cloudflare-workers": "workspace:^",
+    "@fluojs/platform-deno": "workspace:^",
     "@types/ws": "^8.18.1",
     "vitest": "^3.2.4"
   }

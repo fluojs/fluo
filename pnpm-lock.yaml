@@ -521,6 +521,15 @@ importers:
         specifier: ^8.18.3
         version: 8.19.0
     devDependencies:
+      '@fluojs/platform-bun':
+        specifier: workspace:^
+        version: link:../platform-bun
+      '@fluojs/platform-cloudflare-workers':
+        specifier: workspace:^
+        version: link:../platform-cloudflare-workers
+      '@fluojs/platform-deno':
+        specifier: workspace:^
+        version: link:../platform-deno
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
