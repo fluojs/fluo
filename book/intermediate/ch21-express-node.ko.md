@@ -16,12 +16,15 @@
 
 ## Prerequisites
 - Chapter 18, Chapter 19, Chapter 20 완료.
+- `@fluojs/platform-express`와 `@fluojs/platform-nodejs` 모두 Node.js 20 이상.
 - Node.js HTTP 서버와 Express 미들웨어 기본 이해.
 - 애플리케이션 진입점과 런타임 어댑터 설정을 읽을 수 있는 TypeScript 감각.
 
 ## 21.1 The Express Adapter
 
 Express는 Node.js 생태계에서 여전히 가장 널리 쓰이는 프레임워크입니다. 기존 Express 인프라가 운영 경로에 들어 있거나 레거시 Express 앱을 fluo로 단계적으로 옮겨야 한다면, `@fluojs/platform-express`가 현실적인 진입점이 됩니다.
+
+Express adapter는 Node.js 20 이상을 대상으로 하며 package manifest는 `engines.node >=20.0.0`을 선언합니다.
 
 ### 21.1.1 Installation
 
@@ -33,7 +36,7 @@ npm install @fluojs/platform-express express
 
 ### 21.1.2 Bootstrapping with Express
 
-Express 전환은 애플리케이션 진입점의 어댑터 선택을 바꾸는 작업에서 시작합니다. 컨트롤러와 서비스는 그대로 두고 HTTP 엔진 경계만 교체하는 방식입니다. 이 덕분에 기존 비즈니스 로직을 다시 작성하지 않고도 Express를 호스트 엔진으로 사용할 수 있습니다.
+Express 전환은 애플리케이션 계층이 NestJS metadata semantics에서 벗어난 뒤에만 진행하세요. 진입점에서 HTTP adapter를 바꾸기 전에 controller와 provider가 TC39 표준 데코레이터, class-level `@Inject(...)`, 명시적 DI/module wiring을 사용해야 합니다. 이 migration을 완료한 뒤에는 business logic을 유지하면서 host engine boundary만 교체할 수 있지만, adapter 변경만으로 NestJS legacy decorator, reflection metadata, implicit dependency discovery가 보존되지는 않습니다.
 
 ```typescript
 import { createExpressAdapter } from '@fluojs/platform-express';
@@ -48,13 +51,16 @@ async function bootstrap() {
 
   const app = await fluoFactory.create(AppModule, { adapter });
   
-  // 절대적으로 필요한 경우 하부 Node server를 확인할 수 있습니다.
-  const nativeServer = adapter.getServer?.();
-  
   await app.listen();
+
+  // OS가 할당한 port까지 포함한 실제 target은 startup 뒤에 확인합니다.
+  const { bindTarget, url } = adapter.getListenTarget();
+  console.log(`Listening on ${url} (${bindTarget})`);
 }
 bootstrap();
 ```
+
+`getListenTarget()`은 startup 이후 해석된 bind target과 public URL을 보고합니다. 이 helper와 `getServer()`, `getRealtimeCapability()`는 startup logging, probe, realtime integration 같은 infrastructure boundary에만 두고, 일반 controller와 provider는 portable fluo 계약을 유지하세요.
 
 ### 21.1.3 Handling Middleware
 
@@ -207,7 +213,7 @@ async download(_input: undefined, ctx: RequestContext) {
 
 ## 21.5 FluoShop Integration: Moving to Express
 
-FluoShop을 Express로 옮길 때 핵심 변경 지점은 `main.ts`입니다. 컨트롤러와 서비스는 런타임 독립 계약을 유지하므로, HTTP 어댑터 교체가 애플리케이션 로직 변경으로 번지지 않아야 합니다.
+FluoShop을 Express로 옮길 때 핵심 host 변경 지점은 `main.ts`이지만, controller, provider, module이 standard decorator와 명시적 DI/module wiring으로 이미 이동한 뒤여야 합니다. 이러한 runtime-independent 계약을 갖추면 HTTP adapter 교체가 application logic 변경으로 번지지 않습니다.
 
 ```typescript
 // apps/fluoshop-api/src/main.ts
@@ -269,6 +275,6 @@ await runExpressApplication(AppModule, {
 - `nativeMiddleware`는 native continuation, termination, error, resource ownership semantics를 유지하는 migration 전용 Express boundary이며 portable fluo middleware가 아닙니다.
 - `@fluojs/platform-nodejs`는 최소한의 프레임워크 없는 HTTP 레이어를 제공합니다.
 - 대부분의 fluo 코드(컨트롤러, 프로바이더, 모듈)는 어떤 어댑터가 실행 중인지 전혀 알 필요가 없습니다.
-- 플랫폼 전용 기능이 필요한 경우에만 `getServer?.()`로 하부 Node server에 접근하거나 `getRealtimeCapability()`를 확인하세요.
+- Startup 뒤 해석된 bind target에는 `getListenTarget()`을 사용하고, platform-specific 기능이 필요한 infrastructure boundary에서만 `getServer()` 또는 `getRealtimeCapability()`를 사용하세요.
 - Runtime은 diagnostic snapshot과 issue 생산을 소유하고, Studio는 해당 artifact의 graph viewing 및 Mermaid rendering을 소유합니다.
 - 크로스 플랫폼 호환성을 유지하려면 fluo의 추상화(예: `MiddlewareConsumer`)를 먼저 검토하세요.

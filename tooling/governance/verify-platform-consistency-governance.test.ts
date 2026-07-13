@@ -7,6 +7,7 @@ import {
   collectDirectProcessEnvViolations,
   collectNodeGlobalBufferViolations,
   enforceCloudflareWorkersLifecycleDocsSync,
+  enforceExpressRuntimeMigrationDocsSync,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
   isGovernedPackageSourcePath,
@@ -208,6 +209,18 @@ describe('enforceCloudflareWorkersLifecycleDocsSync', () => {
     expect(() => enforceCloudflareWorkersLifecycleDocsSync(() => '')).toThrowError(
       /packages\/platform-cloudflare-workers\/README\.md/,
     );
+  });
+});
+
+describe('enforceExpressRuntimeMigrationDocsSync', () => {
+  it('reports the governed surface when Express runtime or migration guidance drifts', () => {
+    expect(() => enforceExpressRuntimeMigrationDocsSync(() => '')).toThrowError(
+      /packages\/platform-express\/README\.md/,
+    );
+  });
+
+  it('accepts the synchronized Express runtime and migration guidance', () => {
+    expect(() => enforceExpressRuntimeMigrationDocsSync()).not.toThrow();
   });
 });
 

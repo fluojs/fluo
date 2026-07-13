@@ -31,4 +31,7 @@ export function enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices(
 export function enforceCloudflareWorkersLifecycleDocsSync(
   readText?: (relativePath: string) => string,
 ): void;
+export function enforceExpressRuntimeMigrationDocsSync(
+  readText?: (relativePath: string) => string,
+): void;
 export function main(): void;

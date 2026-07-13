@@ -129,19 +129,24 @@ If shutdown times out or fails, the helper logs the condition and sets `process.
 
 ## Express
 
-Use the Express adapter when integrating with an existing Express-oriented environment.
+Use the Express adapter when integrating with an existing Express-oriented environment. `@fluojs/platform-express` requires Node.js 20 or newer and declares `engines.node >=20.0.0`.
+
+An Express host swap does not retain NestJS legacy decorator or reflection-metadata semantics. Migrate controllers and providers to TC39 standard decorators, class-level `@Inject(...)`, and explicit DI/module wiring before changing the HTTP host.
 
 ```ts
 import { createExpressAdapter } from '@fluojs/platform-express';
 import { fluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await fluoFactory.create(AppModule, {
-  adapter: createExpressAdapter({ port: 3000 }),
-});
+const adapter = createExpressAdapter({ port: 3000 });
+const app = await fluoFactory.create(AppModule, { adapter });
 
 await app.listen();
+const { bindTarget, url } = adapter.getListenTarget();
+console.log(`Listening on ${url} (${bindTarget})`);
 ```
+
+Resolve `getListenTarget()` after startup, and keep it, `getServer()`, and `getRealtimeCapability()` at infrastructure boundaries instead of passing native host details into application providers.
 
 Express supports the shared SSE and streaming response contract.
 
