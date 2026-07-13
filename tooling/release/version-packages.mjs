@@ -2,65 +2,17 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  normalizePackageChangelog,
+  PackageChangelogContractError,
+  packageChangelogContractViolation,
+} from './package-changelog.mjs';
 import { workspacePackageManifests } from './release-intents.mjs';
+
+export { normalizePackageChangelog } from './package-changelog.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDirectory, '..', '..');
-const unreleasedHeading = '## [Unreleased]';
-
-function trimBlankEdges(lines) {
-  let start = 0;
-  let end = lines.length;
-
-  while (start < end && lines[start].trim() === '') {
-    start += 1;
-  }
-
-  while (end > start && lines[end - 1].trim() === '') {
-    end -= 1;
-  }
-
-  return lines.slice(start, end);
-}
-
-export function normalizePackageChangelog(changelog) {
-  const lines = changelog.trimEnd().split('\n');
-  const titleIndex = lines.findIndex((line) => /^# (?!#)/u.test(line));
-
-  if (titleIndex < 0) {
-    throw new Error('Package CHANGELOG.md must start with a level-one package title.');
-  }
-
-  const unreleasedIndexes = lines.flatMap((line, index) => (line === unreleasedHeading ? [index] : []));
-
-  if (unreleasedIndexes.length > 1) {
-    throw new Error('Package CHANGELOG.md must contain at most one `## [Unreleased]` section.');
-  }
-
-  const unreleasedIndex = unreleasedIndexes[0];
-  let unreleasedBody = [];
-  let remainingLines = lines;
-
-  if (unreleasedIndex !== undefined) {
-    const nextSectionOffset = lines.slice(unreleasedIndex + 1).findIndex((line) => line.startsWith('## '));
-    const sectionEnd = nextSectionOffset < 0 ? lines.length : unreleasedIndex + 1 + nextSectionOffset;
-    unreleasedBody = trimBlankEdges(lines.slice(unreleasedIndex + 1, sectionEnd));
-    remainingLines = [...lines.slice(0, unreleasedIndex), ...lines.slice(sectionEnd)];
-  }
-
-  const title = remainingLines.slice(0, titleIndex + 1);
-  const releaseHistory = trimBlankEdges(remainingLines.slice(titleIndex + 1));
-
-  return [
-    ...title,
-    '',
-    unreleasedHeading,
-    ...(unreleasedBody.length > 0 ? ['', ...unreleasedBody] : []),
-    ...(releaseHistory.length > 0 ? ['', ...releaseHistory] : []),
-    '',
-  ].join('\n');
-}
-
 function publicPackageChangelogPaths(packageManifests) {
   return packageManifests
     .filter(
@@ -104,6 +56,7 @@ export function runVersionPackages(dependencies = {}) {
   runVersion();
 
   const normalizedChangelogPaths = [];
+  const pendingWrites = [];
 
   for (const changelogPath of changelogPaths) {
     if (!pathExists(changelogPath)) {
@@ -117,12 +70,21 @@ export function runVersionPackages(dependencies = {}) {
     }
 
     const normalizedChangelog = normalizePackageChangelog(changelog);
+    const contractViolation = packageChangelogContractViolation(normalizedChangelog);
+
+    if (contractViolation) {
+      throw new PackageChangelogContractError(`${changelogPath}: ${contractViolation}`);
+    }
 
     if (normalizedChangelog !== changelog) {
-      writeFile(changelogPath, normalizedChangelog, 'utf8');
+      pendingWrites.push({ changelogPath, normalizedChangelog });
     }
 
     normalizedChangelogPaths.push(changelogPath);
+  }
+
+  for (const { changelogPath, normalizedChangelog } of pendingWrites) {
+    writeFile(changelogPath, normalizedChangelog, 'utf8');
   }
 
   return { normalizedChangelogPaths };
