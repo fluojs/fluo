@@ -52,7 +52,7 @@ class InMemoryMqttClient {
   failSubscribeAtCall: number | undefined;
   failUnsubscribe: Error | undefined;
   subscribeCalls = 0;
-  unsubscribeCalls = 0;
+  readonly unsubscribedTopics: string[] = [];
 
   private readonly listeners = new Set<(topic: string, payload: Buffer, packet: { qos?: number; retain?: boolean }) => void>();
 
@@ -84,7 +84,7 @@ class InMemoryMqttClient {
   }
 
   unsubscribe(topic: string, callback?: (error?: Error) => void): void {
-    this.unsubscribeCalls += 1;
+    this.unsubscribedTopics.push(topic);
 
     if (this.failUnsubscribe) {
       callback?.(this.failUnsubscribe);
@@ -349,14 +349,14 @@ describe('MqttMicroserviceTransport', () => {
     await closing;
   });
 
-  it('unsubscribes already-subscribed topics when a later subscribe fails during listen()', async () => {
+  it('unsubscribes already-subscribed topics without ending a caller-owned client when a later subscribe fails during listen()', async () => {
     const broker = new InMemoryMqttBroker();
     const client = new InMemoryMqttClient(broker);
     client.failSubscribeAtCall = 2;
-    const transport = new MqttMicroserviceTransport({ client });
+    const transport = new MqttMicroserviceTransport({ client, eventTopic: 'cleanup.first' });
 
     await expect(transport.listen(async () => undefined)).rejects.toThrow('subscribe failed');
-    expect(client.unsubscribeCalls).toBe(1);
+    expect(client).toMatchObject({ endCalled: false, unsubscribedTopics: ['cleanup.first'] });
   });
 
   it('ends internally-created clients when subscribe setup fails during listen()', async () => {
@@ -374,7 +374,7 @@ describe('MqttMicroserviceTransport', () => {
 
     await expect(transport.listen(async () => undefined)).rejects.toThrow('subscribe failed');
 
-    expect(ownedClient.unsubscribeCalls).toBe(1);
+    expect(ownedClient.unsubscribedTopics).toEqual(['fluo.microservices.events']);
     expect(ownedClient.endCalled).toBe(true);
   });
 
@@ -413,7 +413,7 @@ describe('MqttMicroserviceTransport', () => {
 
     await expect(listening).rejects.toThrow('subscribe failed');
     await expect(closing).rejects.toThrow('subscribe failed');
-    expect(ownedClient.unsubscribeCalls).toBe(1);
+    expect(ownedClient.unsubscribedTopics).toEqual(['fluo.microservices.events']);
     expect(ownedClient.endCalled).toBe(true);
   });
 
