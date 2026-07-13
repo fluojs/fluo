@@ -94,7 +94,15 @@ function parsePackageChangelog(changelog) {
     );
   }
 
-  return { h2Indexes, lines, titleIndex, unreleasedIndex: unreleasedIndexes[0] };
+  const unreleasedIndex = unreleasedIndexes[0];
+
+  if (unreleasedIndex !== undefined && unreleasedIndex <= titleIndex) {
+    throw new PackageChangelogContractError(
+      'Package CHANGELOG.md must place `## [Unreleased]` immediately below the package title.',
+    );
+  }
+
+  return { h2Indexes, lines, titleIndex, unreleasedIndex };
 }
 
 export function packageChangelogContractViolation(changelog) {
