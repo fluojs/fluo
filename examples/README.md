@@ -12,6 +12,7 @@ These examples intentionally stay on the HTTP side of the published `fluo new` v
 - `./realworld-api/` — a more realistic multi-module HTTP API with config, DTO validation, explicit DI, and CRUD
 - `./auth-jwt-passport/` — bearer-token auth example with JWT issuance and protected routes via passport core
 - `./ops-metrics-terminus/` — operations example centered on `/metrics`, `/health`, and `/ready`
+- `./openapi-multiple-documents/` — two OpenAPI JSON documents and Swagger UI pages on distinct routes
 - `./react-stable-ssr/` — stable `@fluojs/react` SSR MVP example with HTTP-owned routes, DTO-bound
   params/search, lifecycle middleware, and explicit hydration assets
 - `./react-vite-ssr/` — Vite-backed React SSR example with manifest-fed assets, streamed Suspense,
@@ -25,10 +26,11 @@ If you are new to the repo, follow this order:
 2. `./realworld-api/README.md` — first real domain module and DTO boundary
 3. `./auth-jwt-passport/README.md` — auth, JWT issuance, and protected route path
 4. `./ops-metrics-terminus/README.md` — metrics and health/readiness path
-5. `./react-stable-ssr/README.md` — stable React SSR pages as HTTP-owned handlers
-6. `./react-vite-ssr/README.md` — Vite build manifest and hydration layered onto the SSR baseline
-7. `../book/beginner/ch02-cli-setup.md` — first local project setup through the CLI
-8. `../book/beginner/ch03-modules-providers.md` — first module/provider wiring and package mental model
+5. `./openapi-multiple-documents/README.md` — multiple OpenAPI JSON and Swagger UI routes
+6. `./react-stable-ssr/README.md` — stable React SSR pages as HTTP-owned handlers
+7. `./react-vite-ssr/README.md` — Vite build manifest and hydration layered onto the SSR baseline
+8. `../book/beginner/ch02-cli-setup.md` — first local project setup through the CLI
+9. `../book/beginner/ch03-modules-providers.md` — first module/provider wiring and package mental model
 
 ## how these examples fit the docs
 
@@ -36,6 +38,7 @@ If you are new to the repo, follow this order:
 - `realworld-api` proves the first practical module/DTO/test path beyond that HTTP starter baseline
 - `auth-jwt-passport` proves the current official bearer-token auth path
 - `ops-metrics-terminus` proves the current markdown-first observability/health path
+- `openapi-multiple-documents` proves that one app can serve independently configured OpenAPI JSON and Swagger UI routes
 - `react-stable-ssr` proves the stable `@fluojs/react` root contract: `@Router`/`@Path` are lexical
   facades over `@fluojs/http`, URL matching and route grammar stay HTTP-owned, DTO validation and
   the request lifecycle are preserved, hydration assets are explicit, and RSC/server functions stay
@@ -62,6 +65,7 @@ pnpm vitest run examples/minimal
 pnpm vitest run examples/realworld-api
 pnpm vitest run examples/auth-jwt-passport
 pnpm vitest run examples/ops-metrics-terminus
+pnpm vitest run examples/openapi-multiple-documents
 pnpm vitest run examples/react-stable-ssr
 pnpm vitest run examples/react-vite-ssr
 ```

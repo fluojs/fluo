@@ -78,10 +78,11 @@ The `OpenApiModule.forRoot()` method is the main entrypoint. It receives a confi
 - `version`: The semantic version of the API, for example `1.0.0`.
 - `sources`: The most important part. fluo values explicitness. You directly define the Controllers the OpenAPI builder should inspect as `HandlerSource[]` entries, such as `{ controllerToken: PostsController }`.
 - `ui: true`: This opt-in makes fluo serve Swagger UI at `/docs`. Without it, `/openapi.json` remains available but `/docs` returns not found.
+- `documentPath` and `uiPath`: Optional runtime routes for the JSON document and Swagger UI. They default to `/openapi.json` and `/docs`.
 - `descriptors`: For advanced composition, pass prebuilt `HandlerDescriptor[]` values separately from `sources` when you need to bypass controller discovery or merge explicit handler mappings.
 - The module also accepts `securitySchemes`, `extraModels`, `defaultErrorResponsesPolicy`, and `documentTransform`.
 
-The generated JSON document and UI are available at standardized paths. These two paths serve automation tools and human readers respectively.
+The generated JSON document and UI are available at these default paths. These two paths serve automation tools and human readers respectively.
 - `/openapi.json`: The machine-readable source document.
 - `/docs`: The interactive Swagger UI page.
 
@@ -293,6 +294,34 @@ Documentation automation is not a tool for avoiding thought. It is a way to move
 
 As an API evolves, you may need to maintain documentation for multiple versions. In fluo, you keep separate documentation surfaces by separating version-specific Controller sets or descriptors and explicitly splitting the input to `OpenApiModule.forRoot(...)`.
 
+Give each module instance distinct `documentPath` and `uiPath` values so both documents can be served by one application:
+
+```typescript
+@Module({
+  imports: [
+    OpenApiModule.forRoot({
+      documentPath: '/openapi/v1.json',
+      sources: [{ controllerToken: PostsV1Controller }],
+      title: 'FluoBlog API v1',
+      ui: true,
+      uiPath: '/docs/v1',
+      version: '1.0.0',
+    }),
+    OpenApiModule.forRoot({
+      documentPath: '/openapi/v2.json',
+      sources: [{ controllerToken: PostsV2Controller }],
+      title: 'FluoBlog API v2',
+      ui: true,
+      uiPath: '/docs/v2',
+      version: '2.0.0',
+    }),
+  ],
+})
+class AppModule {}
+```
+
+fluo normalizes these paths using the HTTP route rules. If two OpenAPI module routes—or another application `GET` route—normalize to the same path, bootstrap fails with `RouteConflictError` instead of choosing one document implicitly.
+
 Following this pattern gives users a clean and organized documentation experience even as the system grows more complex.
 
 ## Summary
@@ -300,7 +329,7 @@ Following this pattern gives users a clean and organized documentation experienc
 - `OpenApiModule` converts Controller and DTO metadata into a standard OpenAPI 3.1.0 spec.
 - Documented handlers must be registered explicitly through `sources`, `descriptors`, or both; explicit descriptors override colliding source operations.
 - Documentation Decorators such as `@ApiTag` and `@ApiOperation` provide human context that code alone cannot convey.
-- FluoBlog now exposes machine-readable `/openapi.json` and, because it opts into `ui: true`, a human-readable `/docs` interactive UI.
+- FluoBlog now exposes machine-readable `/openapi.json` and, because it opts into `ui: true`, a human-readable `/docs` interactive UI; `documentPath` and `uiPath` can separate multiple document instances.
 - Metadata reuse keeps validation rules and DTO shapes synchronized automatically with the documentation.
 - Deterministic documentation output helps the API "contract" stay stable and professional.
 - Part 1 is now complete. You have an HTTP API with routing, validation, serialization, protection, and documentation.

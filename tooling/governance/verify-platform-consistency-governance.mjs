@@ -620,8 +620,9 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // server-to-client module maps, HTTP-dispatched Flight responses, and the
   // root package's non-goals for RSC exports, client route tables, and caches,
   // plus OpenAPI's
-  // explicit descriptor adoption, response metadata, Swagger UI asset, and
-  // path/method collision-precedence boundaries, plus GraphQL's explicit
+  // explicit descriptor adoption, response metadata, configurable document/UI
+  // route defaults, normalized multi-instance route-collision failures, Swagger
+  // UI assets, and operation collision-precedence boundaries, plus GraphQL's explicit
   // resolver/provider wiring, root-only operations, output type declarations,
   // Node.js runtime-floor/dependency alignment, unsupported non-Node targets,
   // and server-backed WebSocket migration boundaries, plus JWT refresh-token
