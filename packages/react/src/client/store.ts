@@ -18,7 +18,7 @@ export type ClientNavigationEnvironment = {
   readonly currentHref: () => string;
   readonly reload: () => void;
   readonly replace: (href: string) => void;
-  readonly subscribe: (listener: () => void) => () => void;
+  readonly subscribe: (listener: (eventType: 'hashchange' | 'popstate') => void) => () => void;
 };
 
 /** Internal observable store shared by the provider, hooks, and progressive `Link`. */
@@ -158,10 +158,24 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
     },
     connect(nextEnvironment: ClientNavigationEnvironment): () => void {
       environment = nextEnvironment;
-      const unsubscribe = nextEnvironment.subscribe(() => {
+      const unsubscribe = nextEnvironment.subscribe((eventType) => {
         const currentHref = nextEnvironment.currentHref();
+        const currentUrl = toSnapshotUrl(currentHref);
+        const navigation = snapshot.navigation;
+        const routerNavigationType =
+          eventType === 'hashchange' &&
+          navigation.status === 'navigating' &&
+          navigation.destination === currentUrl &&
+          (navigation.type === 'push' || navigation.type === 'replace')
+            ? navigation.type
+            : null;
         publish(
-          createSnapshotForHref(currentHref, createNavigationSnapshot('complete', 'back')),
+          createSnapshotForHref(
+            currentHref,
+            routerNavigationType === null
+              ? createNavigationSnapshot('complete', 'back')
+              : createNavigationSnapshot('complete', routerNavigationType, currentUrl),
+          ),
         );
       });
       const currentHref = nextEnvironment.currentHref();

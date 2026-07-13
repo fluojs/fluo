@@ -19,7 +19,7 @@ test('hydrates streamed production HTML with generated Vite assets', async ({ pa
     }
   });
 
-  const response = await page.goto('/products/sku-42?preview=true', { waitUntil: 'networkidle' });
+  const response = await page.goto('/products/sku-42?preview=true#details', { waitUntil: 'networkidle' });
   if (response === null) {
     throw new TypeError('The production page did not return a navigation response.');
   }
@@ -36,6 +36,8 @@ test('hydrates streamed production HTML with generated Vite assets', async ({ pa
   expect(response.headers()['content-type']).toContain('text/html');
   expect(html).toContain('Loading recommendations');
   expect(html).toContain('Recommended for sku-42');
+  expect(html).toContain('Current URL: /products/sku-42?preview=true');
+  expect(html).not.toContain('Current URL: /products/sku-42?preview=true#details');
   expect(bootstrapPaths).toContain('/assets/entry-client.js');
   expect(stylesheetPaths).toHaveLength(1);
 
@@ -46,6 +48,8 @@ test('hydrates streamed production HTML with generated Vite assets', async ({ pa
   expect([...assetResponses.keys()].some((pathname) => pathname.includes('/recommendations-'))).toBe(true);
   await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
   await expect(page.getByText('Recommended for sku-42')).toBeVisible();
+  await expect(page.getByText('Current URL: /products/sku-42?preview=true#details')).toBeVisible();
+  await expect(page.getByText('Current hash: #details')).toBeVisible();
   await expect(page.locator('[data-react-identifier]')).toHaveAttribute('id', /fluo-react-vite-/u);
   await page.getByRole('button', { name: 'Count: 0' }).click();
   await expect(page.getByRole('button', { name: 'Count: 1' })).toBeVisible();

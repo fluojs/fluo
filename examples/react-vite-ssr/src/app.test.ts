@@ -53,6 +53,8 @@ describe('react-vite-ssr example', () => {
       expect(html).toContain('href="/assets/example.css"');
       expect(html).toContain('Current path: /products/sku-42');
       expect(html).toContain('Current preview: true');
+      expect(html).toContain('Current URL: /products/sku-42?preview=true');
+      expect(html).toContain('Current hash: unset');
       expect(html).toContain('href="/products/sku-84?preview=false"');
     } finally {
       await app.close();

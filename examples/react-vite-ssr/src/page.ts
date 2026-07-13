@@ -6,6 +6,7 @@ import {
   useParams,
   usePathname,
   useRouter,
+  useRouterState,
   useSearchParams,
 } from '@fluojs/react/client';
 import { Suspense, createElement, lazy, useId, useState } from 'react';
@@ -37,6 +38,7 @@ function ProductNavigation() {
   const params = useParams();
   const pathname = usePathname();
   const router = useRouter();
+  const routerState = useRouterState();
   const searchParams = useSearchParams();
 
   return createElement(
@@ -45,6 +47,8 @@ function ProductNavigation() {
     createElement('p', null, `Current path: ${pathname}`),
     createElement('p', null, `Current preview: ${searchParams.get('preview') ?? 'unset'}`),
     createElement('p', null, `Current route sku: ${params.sku ?? 'unset'}`),
+    createElement('p', null, `Current URL: ${routerState.url}`),
+    createElement('p', null, `Current hash: ${routerState.hash || 'unset'}`),
     createElement('p', null, `Navigation: ${navigation.status}`),
     createElement(Link, { href: '/products/sku-84?preview=false' }, 'Open sku-84'),
     createElement(

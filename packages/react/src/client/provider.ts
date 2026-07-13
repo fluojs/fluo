@@ -2,9 +2,9 @@ import { createContext, createElement, useContext, useEffect, useState } from 'r
 
 import { ReactClientRouterContextError } from './errors.js';
 import {
-  createClientNavigationStore,
   type ClientNavigationEnvironment,
   type ClientNavigationStore,
+  createClientNavigationStore,
 } from './store.js';
 import type { ReactClientRouterProviderProps } from './types.js';
 
@@ -18,11 +18,13 @@ function createBrowserEnvironment(browser: Window): ClientNavigationEnvironment 
     reload: () => browser.location.reload(),
     replace: (href) => browser.location.replace(href),
     subscribe(listener) {
-      browser.addEventListener('hashchange', listener);
-      browser.addEventListener('popstate', listener);
+      const handleHashChange = () => listener('hashchange');
+      const handlePopState = () => listener('popstate');
+      browser.addEventListener('hashchange', handleHashChange);
+      browser.addEventListener('popstate', handlePopState);
       return () => {
-        browser.removeEventListener('hashchange', listener);
-        browser.removeEventListener('popstate', listener);
+        browser.removeEventListener('hashchange', handleHashChange);
+        browser.removeEventListener('popstate', handlePopState);
       };
     },
   };

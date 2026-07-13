@@ -20,13 +20,24 @@ import {
 
 function createEnvironment(href = 'https://example.test/products/sku-42?preview=true') {
   let currentHref = href;
-  const listeners = new Set<() => void>();
-  const assign = vi.fn((nextHref: string) => {
+  const listeners = new Set<(eventType: 'hashchange' | 'popstate') => void>();
+  const updateHref = (nextHref: string): void => {
+    const previousUrl = new URL(currentHref);
+    const nextUrl = new URL(nextHref);
     currentHref = nextHref;
-  });
-  const replace = vi.fn((nextHref: string) => {
-    currentHref = nextHref;
-  });
+    if (
+      previousUrl.origin === nextUrl.origin &&
+      previousUrl.pathname === nextUrl.pathname &&
+      previousUrl.search === nextUrl.search &&
+      previousUrl.hash !== nextUrl.hash
+    ) {
+      for (const listener of listeners) {
+        listener('hashchange');
+      }
+    }
+  };
+  const assign = vi.fn(updateHref);
+  const replace = vi.fn(updateHref);
   const back = vi.fn();
   const reload = vi.fn();
   const environment: ClientNavigationEnvironment = {
@@ -46,9 +57,15 @@ function createEnvironment(href = 'https://example.test/products/sku-42?preview=
     back,
     environment,
     navigateFromHistory(nextHref: string) {
+      const previousHash = new URL(currentHref).hash;
       currentHref = nextHref;
       for (const listener of listeners) {
-        listener();
+        listener('popstate');
+      }
+      if (previousHash !== new URL(nextHref).hash) {
+        for (const listener of listeners) {
+          listener('hashchange');
+        }
       }
     },
     reload,
@@ -157,6 +174,57 @@ describe('@fluojs/react/client', () => {
     });
   });
 
+  it('completes router-owned fragment push with push lifecycle semantics', () => {
+    // Given: a connected store whose browser fake emits hashchange for fragment navigation.
+    const browser = createEnvironment();
+    const store = createClientNavigationStore(
+      createReactRouteSnapshot({ params: { sku: 'sku-42' }, url: '/products/sku-42?preview=true' }),
+    );
+    store.connect(browser.environment);
+
+    // When: router.push changes only the current document fragment.
+    store.router.push('#details');
+
+    // Then: the resulting hashchange completes the requested push lifecycle.
+    expect(browser.assign).toHaveBeenCalledWith('https://example.test/products/sku-42?preview=true#details');
+    expect(store.getSnapshot()).toMatchObject({
+      hash: '#details',
+      navigation: {
+        destination: '/products/sku-42?preview=true#details',
+        status: 'complete',
+        type: 'push',
+      },
+      url: '/products/sku-42?preview=true#details',
+    });
+  });
+
+  it('completes router-owned fragment replace with replace lifecycle semantics', () => {
+    // Given: a connected store at one fragment whose fake emits the next hashchange.
+    const browser = createEnvironment('https://example.test/products/sku-42?preview=true#details');
+    const store = createClientNavigationStore(
+      createReactRouteSnapshot({
+        params: { sku: 'sku-42' },
+        url: '/products/sku-42?preview=true#details',
+      }),
+    );
+    store.connect(browser.environment);
+
+    // When: router.replace changes only the current document fragment.
+    store.router.replace('#reviews');
+
+    // Then: the resulting hashchange completes the requested replace lifecycle.
+    expect(browser.replace).toHaveBeenCalledWith('https://example.test/products/sku-42?preview=true#reviews');
+    expect(store.getSnapshot()).toMatchObject({
+      hash: '#reviews',
+      navigation: {
+        destination: '/products/sku-42?preview=true#reviews',
+        status: 'complete',
+        type: 'replace',
+      },
+      url: '/products/sku-42?preview=true#reviews',
+    });
+  });
+
   it('delegates push and replace to full-document same-origin navigation', () => {
     // Given: a connected client store and browser navigation environment.
     const browser = createEnvironment();
@@ -225,7 +293,7 @@ describe('@fluojs/react/client', () => {
       createReactRouteSnapshot({ params: { sku: 'sku-42' }, url: '/products/sku-42?preview=true' }),
     );
     store.connect(browser.environment);
-    store.router.push('/products/sku-84?preview=false');
+    store.router.push('#details');
 
     // When: browser history traverses back to the previous route.
     browser.navigateFromHistory('https://example.test/products/sku-42?preview=true');

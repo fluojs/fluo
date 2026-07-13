@@ -14,7 +14,7 @@ hydrateRoot(
   createElement(ProductDocument, {
     preview: document.documentElement.dataset.preview === 'true',
     routeParams: { sku: document.documentElement.dataset.sku ?? '' },
-    routeUrl: `${window.location.pathname}${window.location.search}${window.location.hash}`,
+    routeUrl: `${window.location.pathname}${window.location.search}`,
     sku: document.documentElement.dataset.sku ?? '',
     stylesheets,
   }),
