@@ -15,6 +15,7 @@ Runtime-neutral React integration for fluo applications.
 - [Router and Path Decorators](#router-and-path-decorators)
 - [Web Streams SSR](#web-streams-ssr)
 - [Hydration Asset Contract](#hydration-asset-contract)
+- [Vite Asset Manifest Integration](#vite-asset-manifest-integration)
 - [Current Limitations](#current-limitations)
 - [Public API](#public-api)
 - [Related Packages](#related-packages)
@@ -72,9 +73,10 @@ React server entry is rendered.
 - **root `@fluojs/react`** — stable `0.1.0` SSR MVP contracts: `ReactModule.forRoot(...)`,
   `@Router(...)`, `@Path(...)`, metadata readers, `createReactServerEntry(...)`,
   `renderReactResponse(...)`, Web Streams SSR, and explicit hydration asset options.
-- **future `@fluojs/react/vite`** — build-time asset manifest discovery, stylesheet ordering, and
-  Vite integration. The root package accepts explicit asset options today but does not discover or
-  scan manifests.
+- **`@fluojs/react/vite`** — Vite build manifest parsing, React server/client entry selection,
+  deterministic stylesheet and JavaScript ordering, manifest diagnostics, and hydration option
+  creation. The root package still accepts explicit asset options without discovering or scanning
+  manifests.
 - **future `@fluojs/react/client`** — browser navigation and client hydration helpers. The root
   package does not generate client bundles or own client-side route transitions.
 - **future `@fluojs/react/experimental/rsc`** — React Server Components and Server Functions
@@ -239,24 +241,90 @@ return createReactServerEntry(<App assetMap={assetMap} />, {
 });
 ```
 
-CSS/JS ordering is caller-owned in this phase. Future Vite manifest integration should preserve
-manifest stylesheet order in the app-rendered document head before hydration scripts, then preserve
-the caller order of `bootstrapScripts` and `bootstrapModules` after duplicate removal. This package
-does not discover Vite manifests, scan the filesystem, generate client bundles, or serialize
-untrusted user data into inline scripts.
+CSS/JS ordering remains caller-owned when applications pass hydration options manually.
+`@fluojs/react/vite` preserves manifest stylesheet order for the app-rendered document head before
+hydration scripts, then preserves manifest JavaScript order plus the caller order of
+`bootstrapScripts` and `bootstrapModules` after duplicate removal. This package does not discover
+Vite manifests from the filesystem, generate client bundles, or serialize untrusted user data into
+inline scripts.
+
+## Vite Asset Manifest Integration
+
+Use `@fluojs/react/vite` when a Vite-built React application needs to turn a loaded Vite manifest
+into the stable hydration options accepted by `createReactServerEntry(...)`.
+
+```tsx
+import { createReactViteAssetManifest } from '@fluojs/react/vite';
+import { createReactServerEntry } from '@fluojs/react';
+
+const assets = createReactViteAssetManifest({
+  base: '/assets/',
+  entries: {
+    client: 'src/entry-client.tsx',
+    server: 'src/entry-server.tsx',
+  },
+  manifest: viteManifest,
+  nonce: cspNonce,
+});
+
+if (!assets.ok) {
+  throw new Error(assets.diagnostics.map((diagnostic) => diagnostic.message).join('\n'));
+}
+
+return createReactServerEntry(<App assetMap={assets.manifest.assetMap} />, {
+  ...assets.manifest.hydrationOptions,
+});
+```
+
+`createReactViteAssetManifest(...)` accepts an already-loaded manifest value. It does not read the
+filesystem, run Vite, create client bundles, or add a root dependency on Vite. The parsed manifest
+schema is compatible with Vite's client manifest shape:
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `file` | yes | JavaScript output file for a chunk. Selected server/client entries must resolve to `.js`, `.mjs`, or `.cjs`. |
+| `src` / `name` | no | Secondary lookup keys for the explicit `entries.server` and `entries.client` selectors. |
+| `isEntry` / `isDynamicEntry` | no | Vite entry markers retained for diagnostics and future compatibility. |
+| `imports` | no | Static imported chunk ids. Imported chunks are ordered before the client entry. |
+| `css` | no | Stylesheet files emitted for a chunk. The returned `manifest.css` keeps dependency order and removes duplicates. |
+| `assets` | no | Static asset files copied into the returned `assetMap`. |
+
+The successful result contains:
+
+- `manifest.hydrationOptions` — `assetMap`, `bootstrapModules`, `bootstrapScripts`, trusted
+  `bootstrapScriptContent`, `identifierPrefix`, and `nonce` shaped for `createReactServerEntry(...)`.
+- `manifest.css` — stylesheet URLs for the application-rendered document head before hydration
+  scripts.
+- `manifest.js.modules` and `manifest.js.scripts` — module scripts derived from the Vite client
+  import graph and caller-provided classic scripts.
+- `manifest.assetMap` — a defensive snapshot of manifest keys, source names, emitted files, CSS, and
+  static assets mapped to public URLs.
+- `manifest.serverEntry` and `manifest.clientEntry` — resolved React server/client entries.
+
+Expected manifest failures return diagnostics instead of throwing. Stable diagnostic codes are:
+
+- `react-vite-manifest-missing-server-entry`
+- `react-vite-manifest-missing-client-entry`
+- `react-vite-manifest-malformed`
+- `react-vite-manifest-unsupported-output-shape`
+
+`@fluojs/react/vite` is separate from `@fluojs/vite`. Use `@fluojs/vite` in `vite.config.ts` for the
+TC39 decorator transform used by fluo applications. Use `@fluojs/react/vite` in React SSR code to
+parse React build assets and feed the existing hydration contract. Neither package owns file routes,
+React-only route grammar, Next.js route segment conventions, RSC bundler behavior, or URL matching.
 
 ## Current Limitations
 
 This package currently does **not** provide:
 
-- `@fluojs/react/vite`
 - `@fluojs/react/client`
 - `@fluojs/react/experimental/rsc`
 - React Server Components or Server Functions integration
 - a Next.js App Router, TanStack route tree, Angular `Routes[]`, file-route scanner, or React-owned
   `routes: []` table
 - automatic client bundle generation
-- automatic Vite manifest discovery or filesystem scanning
+- filesystem scanning or automatic manifest file discovery; pass an already-loaded manifest value to
+  `@fluojs/react/vite`
 - automatic serialization of arbitrary data into `bootstrapScriptContent`
 - Node-only `react-dom/server` pipeable stream root APIs such as `renderToPipeableStream(...)`
 
@@ -283,6 +351,11 @@ This package currently does **not** provide:
 - `ReactScaffoldPhase` — type-only planning marker for the `0.1.0` scaffold surface.
 - `ReactRouterMetadata`, `ReactPathMetadata`, `ReactPathOptions` — type-only metadata contracts for
   diagnostics and future rendering integration.
+- `@fluojs/react/vite` subpath — `createReactViteAssetManifest(...)` plus
+  `ReactViteBuildManifest`, `ReactViteBuildManifestChunk`, `ReactViteManifestOptions`,
+  `ReactViteManifestDiagnostic`, `ReactViteAssetManifest`, `ReactViteHydrationOptions`,
+  `ReactViteJavaScriptAssets`, `ReactViteBootstrapData`, and `ReactViteResolvedEntry` for parsing
+  Vite manifests into the stable hydration asset contract without importing Vite from the root.
 
 ## Related Packages
 
@@ -291,10 +364,14 @@ This package currently does **not** provide:
   metadata pipeline reused by `@Router(...)` and `@Path(...)`.
 - `@fluojs/runtime`: Future React integration work is expected to compose with runtime bootstrap
   contracts without widening the root import boundary.
+- `@fluojs/vite`: Owns Vite's TC39 decorator transform boundary. It does not parse React hydration
+  manifests; use `@fluojs/react/vite` for React server/client asset mapping.
 
 ## Example Sources
 
 - `packages/react/src/index.ts`
+- `packages/react/src/vite.ts`
+- `packages/react/src/vite/create-asset-manifest.ts`
 - `packages/react/src/decorators.ts`
 - `packages/react/src/server-entry.ts`
 - `packages/react/src/render.ts`
@@ -302,6 +379,7 @@ This package currently does **not** provide:
 - `packages/react/src/render.test.ts`
 - `packages/react/src/dispatcher-ssr.test.ts`
 - `packages/react/src/hydration-assets.test.ts`
+- `packages/react/src/vite.test.ts`
 - `packages/react/src/lifecycle-pipeline.test.ts`
 - `packages/react/src/module.test.ts`
 - `packages/react/src/decorators.test.ts`
