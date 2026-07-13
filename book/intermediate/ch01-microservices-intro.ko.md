@@ -88,7 +88,7 @@ fluo의 마이크로서비스 모듈을 사용하면 다음과 같은 전략적 
 
 - **Developer Velocity**: 소켓 관리나 브로커 전용 API에 신경 쓰지 않고 비즈니스 로직에 집중할 수 있습니다.
 - **Operational Flexibility**: 개발 시에는 단순한 TCP로 시작하고, 운영 시에는 핸들러 수정 없이 지속성 있는 브로커로 업그레이드할 수 있습니다.
-- **Safety Defaults**: fluo는 거대 패킷 보호(1MiB TCP 제한), 안전한 리소스 정리, 전달 혼동 방지 등 즉흥적인 구현에서 흔히 발생하는 문제들에 대한 방어책을 포함하고 있습니다.
+- **Safety Defaults**: TCP는 1 MiB를 넘는 newline-delimited frame을 닫고, `port: 0`은 outbound `send()`/`emit()`을 OS가 할당한 listener로 라우팅합니다. `close()`가 시작된 뒤에는 새 `send()`/`emit()` 호출을 거부하고, gRPC는 unary call이 settle하거나 stream이 end/error/early return으로 끝날 때 각 `AbortSignal` abort listener를 제거합니다.
 - **Team Consistency**: 공통된 관례는 팀 간 조율 비용을 낮춥니다. 모든 서비스가 같은 핸들러 스타일을 사용하면 개발자는 도메인을 매끄럽게 오갈 수 있습니다.
 
 ## 1.4 Deep Dive into the Microservice Module

@@ -88,7 +88,7 @@ Using fluo's microservices Module gives you the following strategic advantages. 
 
 - **Developer Velocity**: You can focus on business logic without worrying about socket management or broker-specific APIs.
 - **Operational Flexibility**: You can start with simple TCP in development, then upgrade to a durable broker in production without changing handlers.
-- **Safety Defaults**: fluo includes defenses for problems common in ad hoc implementations, such as protection against oversized packets, the 1 MiB TCP limit, OS-assigned TCP test ports, guarded shutdown sends, gRPC stream abort-listener cleanup, and delivery confusion prevention.
+- **Safety Defaults**: TCP closes newline-delimited frames above 1 MiB, `port: 0` routes outbound `send()`/`emit()` through the OS-assigned listener, new `send()`/`emit()` calls are rejected after `close()` starts, and gRPC removes each `AbortSignal` abort listener after unary calls settle or streams end, error, or return early.
 - **Team Consistency**: Shared conventions reduce coordination costs across teams. When every service uses the same handler style, developers can move across domains smoothly.
 
 ## 1.4 Deep Dive into the Microservice Module
