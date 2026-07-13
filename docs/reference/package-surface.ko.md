@@ -26,7 +26,7 @@
 | **Node.js (Express)** | `@fluojs/platform-express` | 기존 Express hosting 또는 server integration을 platform boundary에 유지해야 할 때 사용합니다. Application-level middleware는 여전히 fluo `Middleware` 계약을 사용하며, native Express/Connect `(req, res, next)` function은 portable fluo middleware가 아닙니다. Migration 중 유지해야 한다면 adapter의 명시적 pre-router `nativeMiddleware` 옵션에 둡니다. |
 | **Bun** | `@fluojs/platform-bun` | 공식 Bun 네이티브 fetch-style 시작 경로. |
 | **Deno** | `@fluojs/platform-deno` | 공식 managed `Deno.serve()` 시작 경로와 fluo를 bootstrap하되 server startup, shutdown, signal, websocket upgrade를 직접 소유하는 host를 위한 `createDenoFetchHandler(...)`. |
-| **Cloudflare Workers** | `@fluojs/platform-cloudflare-workers` | fetch-style adapter seam 위에 구축된 stateless isolate lifecycle입니다. `listen()`은 socket을 열지 않고 dispatcher를 binding하며, Worker `fetch()`는 active work를 `executionContext.waitUntil(...)`에 등록합니다. SSE(`text/event-stream`) drain은 response body가 완료되거나 cancel될 때까지 유지되고, WebSocket upgrade는 첫 listen boundary 전에 frozen된 binding을 사용하며, shutdown은 bounded close window 동안 active work를 drain하면서 새 HTTP/WebSocket ingress에 JSON `503`을 반환합니다. |
+| **Cloudflare Workers** | `@fluojs/platform-cloudflare-workers` | fetch-style adapter seam 위에 구축된 stateless isolate lifecycle입니다. `listen()`은 socket을 열지 않고 dispatcher를 binding하며, Worker `fetch()`는 active work를 `executionContext.waitUntil(...)`에 등록합니다. SSE(`text/event-stream`) drain은 response body가 완료되거나 cancel될 때까지 유지되고, WebSocket upgrade는 첫 listen boundary 전에 frozen된 binding을 사용하며, shutdown은 bounded close window 동안 active work를 drain하면서 새 HTTP/WebSocket ingress에 JSON `503`을 반환합니다. Lazy entrypoint의 `close()`가 timeout되면 underlying drain이 settle될 때까지 shutdown gate를 유지한 뒤 임시 gate를 해제하므로, 이후 request가 새 application을 bootstrap할 수 있습니다. |
 
 ## 패키지 책임
 
