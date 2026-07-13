@@ -18,6 +18,7 @@ fluo 애플리케이션을 위한 런타임 중립 React 통합입니다.
 - [Vite Asset Manifest Integration](#vite-asset-manifest-integration)
 - [Client Navigation Runtime](#client-navigation-runtime)
 - [Experimental RSC Prototype](#experimental-rsc-prototype)
+- [Experimental Server Functions](#experimental-server-functions)
 - [현재 제한 사항](#현재-제한-사항)
 - [Public API](#public-api)
 - [관련 패키지](#관련-패키지)
@@ -81,8 +82,8 @@ resolve합니다.
   runtime-neutral root에서 계속 분리됩니다.
 - **`@fluojs/react/experimental/rsc`** — exact-version compatibility diagnostics,
   client-reference/server-module manifest seam, 일반 fluo HTTP handler를 통한 Flight payload response를
-  제공하는 명시적으로 불안정한 React Server Components prototype입니다. Stable root에서는 export하지
-  않으며 Server Functions를 포함하지 않습니다.
+  제공하고 일반 fluo HTTP handler 위에 signed Server Function transport를 추가하는 명시적으로 불안정한
+  React Server Components prototype입니다. Stable root나 `@fluojs/react/client`에서는 export하지 않습니다.
 
 ## ReactModule Registration
 
@@ -486,9 +487,115 @@ class RscController {
 }
 ```
 
-이 phase는 Flight encoder/decoder, Webpack 또는 Vite RSC plugin, automatic module graph discovery,
-client bundle generation, Server Functions, file route, route segment, React-owned URL matcher를 제공하지
-않습니다.
+RSC manifest와 Flight response helper 자체는 Flight encoder/decoder, Webpack 또는 Vite RSC plugin,
+automatic module graph discovery, client bundle generation, file route, route segment, React-owned URL
+matcher를 제공하지 않습니다. 아래 Server Function transport는 같은 불안정 subpath에 별도로 opt-in하는
+prototype입니다.
+
+## Experimental Server Functions
+
+`createReactServerFunctionRegistry(...)`는 server-only action을 정의하고 HMAC-SHA-256 reference를 발급하며
+호출을 검증합니다. Router를 직접 만들지는 않습니다. 명시적인 일반 fluo `@Post(...)` route에
+`registry.invoke(context)`를 mount해야 module middleware, route/controller guard, interceptor,
+request-scoped provider, request observer, error envelope, adapter response writing이 기존 HTTP lifecycle에
+남습니다.
+
+```ts
+import {
+  BadRequestException,
+  Controller,
+  Post,
+  type RequestContext,
+  UnauthorizedException,
+} from '@fluojs/http';
+import { createReactServerFunctionRegistry } from '@fluojs/react/experimental/rsc';
+
+const actions = createReactServerFunctionRegistry({
+  actions: {
+    updateProfile(args, context) {
+      const subject = context.principal?.subject;
+      if (subject === undefined) {
+        throw new UnauthorizedException();
+      }
+      const name = args[0];
+      if (typeof name !== 'string') {
+        throw new BadRequestException('Profile name must be a string.');
+      }
+      return { name, subject, updated: true };
+    },
+  },
+  allowedOrigins: ['https://app.example.com'],
+  crypto: globalThis.crypto,
+  secret: serverFunctionSecret,
+  maxBodyBytes: 64 * 1024,
+});
+
+export const updateProfileReference = await actions.createReference('updateProfile');
+
+@Controller('/_fluo')
+class ReactActionController {
+  @Post('/actions')
+  invoke(_input: undefined, context: RequestContext) {
+    return actions.invoke(context);
+  }
+}
+```
+
+Server action module을 client bundle에서 import하지 말고 발급한 reference를 신뢰할 수 있는 client
+bootstrap data로 전달하세요. 그다음 명시적인 endpoint와 application-owned fetch implementation으로
+callable을 만듭니다.
+
+```ts
+import { createReactServerFunctionClient } from '@fluojs/react/experimental/rsc';
+
+const updateProfile = createReactServerFunctionClient({
+  endpoint: '/_fluo/actions',
+  fetch: globalThis.fetch,
+  reference: bootstrap.serverFunctions.updateProfile,
+});
+
+await updateProfile('Ada');
+```
+
+모든 argument를 신뢰할 수 없는 값으로 취급하세요. Authorization은 각 action 내부 또는 명시적인 endpoint를
+감싸는 guard에서 수행해야 하며, 유효한 reference 자체는 authorization이 아닙니다. Action handler는 활성
+`RequestContext`를 받으므로 `context.container`에서 request-scoped provider를 resolve하고 request-local
+state를 격리할 수 있습니다. Server Functions는 mutation 지향 integration point이며 query loader, client
+data cache, DTO validation/guard/middleware/interceptor/request scope/observability 우회 수단이 아닙니다.
+
+Transport security contract는 의도적으로 명시적입니다.
+
+- Action id는 `[A-Za-z0-9_-]{1,128}`과 일치합니다. Reference는 id를 노출하지만 최소 32 byte의
+  application-owned secret을 사용한 HMAC-SHA-256으로 무결성을 보호합니다. Secret rotation은 기존
+  reference를 무효화하며 action name을 암호화하지는 않습니다.
+- Request는 `application/json`, `x-fluo-react-action: 1`, `allowedOrigins`에 포함된 정확한 HTTP(S)
+  `Origin`을 사용해야 합니다. Custom header는 browser cross-origin 호출을 non-simple request로 만들고,
+  origin allowlist가 CSRF policy를 제공합니다.
+- `maxBodyBytes` 기본값은 64 KiB입니다. Adapter가 `rawBody`를 노출하면 정확한 byte를 사용하고, 그렇지 않으면
+  normalized body를 측정합니다. Network body가 JSON parsing 전에 거부되도록 platform adapter의 pre-parse
+  body limit을 같거나 더 작은 값으로 설정하세요.
+- Argument와 result는 `null`, boolean, finite number, string, dense array, plain object만 허용합니다.
+  Circular value, sparse array, symbol/non-enumerable property, prototype-sensitive key, class instance,
+  `undefined`, `bigint`, non-finite number는 거부합니다. Nesting 기본값은 32이고 128보다 크게 설정할 수 없습니다.
+- Result serialized limit 기본값은 1 MiB이며 client response도 기본 1 MiB로 제한합니다.
+
+예상 가능한 실패는 기존 fluo HTTP error envelope와 stable code를 사용합니다.
+
+| Condition | Status | Code |
+| --- | ---: | --- |
+| malformed request shape | 400 | `REACT_SERVER_FUNCTION_INVALID_REQUEST` |
+| unsafe arguments | 400 | `REACT_SERVER_FUNCTION_ARGUMENT_SERIALIZATION_FAILED` |
+| missing/invalid request marker | 403 | `REACT_SERVER_FUNCTION_CSRF_REJECTED` |
+| missing/unapproved origin | 403 | `REACT_SERVER_FUNCTION_ORIGIN_REJECTED` |
+| invalid, tampered, retired action reference | 404 | `REACT_SERVER_FUNCTION_ACTION_NOT_FOUND` |
+| oversized request | 413 | `REACT_SERVER_FUNCTION_PAYLOAD_TOO_LARGE` |
+| non-JSON content type | 415 | `REACT_SERVER_FUNCTION_UNSUPPORTED_MEDIA_TYPE` |
+| unsafe action result | 500 | `REACT_SERVER_FUNCTION_RESULT_SERIALIZATION_FAILED` |
+| oversized action result | 500 | `REACT_SERVER_FUNCTION_RESULT_TOO_LARGE` |
+
+이 prototype은 `"use server"` scan, module transform, export discovery, reference 자동 생성, action id 암호화,
+database mutation convention을 제공하지 않습니다. Stable root와 `@fluojs/react/client`는 모든 Server
+Function code에서 계속 격리됩니다.
 
 ## 현재 제한 사항
 
@@ -496,7 +603,7 @@ client bundle generation, Server Functions, file route, route segment, React-own
 
 - stable RSC root 또는 `@fluojs/react/rsc` subpath. RSC는 명시적으로 불안정한
   `@fluojs/react/experimental/rsc` prototype에서만 제공합니다.
-- Server Functions 통합 또는 built-in Flight renderer/build plugin
+- 자동 `"use server"` transform/export discovery 또는 built-in Flight renderer/build plugin
 - SPA document swapping, client data/loader cache, navigation prefetching
 - Next.js App Router, TanStack route tree, Angular `Routes[]`, file-route scanner, React-owned
   `routes: []` table
@@ -539,7 +646,9 @@ client bundle generation, Server Functions, file route, route segment, React-own
   `useSearchParams()`, `useNavigation()`, `useRouterState()`를 제공합니다.
 - `@fluojs/react/experimental/rsc` subpath — root re-export 없이 `inspectReactRscEnvironment(...)`,
   `createReactRscManifest(...)`, `createReactFlightResponse(...)`, exact-version 및 Flight content type
-  constant, diagnostic, client-reference/server-module mapping type, Flight response type을 제공합니다.
+  constant, diagnostic, client-reference/server-module mapping type, signed
+  `createReactServerFunctionRegistry(...)`, 명시적인 `createReactServerFunctionClient(...)`, stable Server
+  Function error code와 관련 transport type을 제공하며 root나 stable-client에서 re-export하지 않습니다.
 
 ## 관련 패키지
 
@@ -564,6 +673,11 @@ client bundle generation, Server Functions, file route, route segment, React-own
 - `packages/react/src/experimental/rsc-diagnostics.test.ts`
 - `packages/react/src/experimental/rsc-flight.test.ts`
 - `packages/react/src/experimental/rsc-manifest.test.ts`
+- `packages/react/src/experimental/server-functions-server.ts`
+- `packages/react/src/experimental/server-functions-client.ts`
+- `packages/react/src/experimental/server-functions-dispatch.test.ts`
+- `packages/react/src/experimental/server-functions-security.test.ts`
+- `packages/react/src/experimental/server-functions-client.test.ts`
 - `packages/react/src/vite/create-asset-manifest.ts`
 - `packages/react/src/decorators.ts`
 - `packages/react/src/server-entry.ts`

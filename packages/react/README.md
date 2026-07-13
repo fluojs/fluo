@@ -18,6 +18,7 @@ Runtime-neutral React integration for fluo applications.
 - [Vite Asset Manifest Integration](#vite-asset-manifest-integration)
 - [Client Navigation Runtime](#client-navigation-runtime)
 - [Experimental RSC Prototype](#experimental-rsc-prototype)
+- [Experimental Server Functions](#experimental-server-functions)
 - [Current Limitations](#current-limitations)
 - [Public API](#public-api)
 - [Related Packages](#related-packages)
@@ -84,8 +85,8 @@ React server entry is rendered.
   the runtime-neutral root.
 - **`@fluojs/react/experimental/rsc`** — an explicitly unstable React Server Components prototype
   for exact-version compatibility diagnostics, client-reference/server-module manifest seams, and
-  Flight payload responses through ordinary fluo HTTP handlers. It does not export from the stable
-  root and does not include Server Functions.
+  Flight payload responses plus signed Server Function transport through ordinary fluo HTTP
+  handlers. It does not export from the stable root or `@fluojs/react/client`.
 
 ## ReactModule Registration
 
@@ -495,9 +496,117 @@ class RscController {
 }
 ```
 
-This phase does not provide a Flight encoder/decoder, a Webpack or Vite RSC plugin, automatic module
-graph discovery, client bundle generation, Server Functions, file routes, route segments, or a
-React-owned URL matcher.
+The RSC manifest and Flight response helpers do not provide a Flight encoder/decoder, a Webpack or
+Vite RSC plugin, automatic module graph discovery, client bundle generation, file routes, route
+segments, or a React-owned URL matcher. The Server Function transport below is a separate opt-in
+prototype on the same unstable subpath.
+
+## Experimental Server Functions
+
+`createReactServerFunctionRegistry(...)` defines server-only actions, issues HMAC-SHA-256 references,
+and validates calls. It deliberately does not create a router. Mount `registry.invoke(context)` on an
+explicit ordinary fluo `@Post(...)` route so module middleware, route/controller guards,
+interceptors, request-scoped providers, request observers, error envelopes, and adapter response
+writing remain in the existing HTTP lifecycle.
+
+```ts
+import {
+  BadRequestException,
+  Controller,
+  Post,
+  type RequestContext,
+  UnauthorizedException,
+} from '@fluojs/http';
+import { createReactServerFunctionRegistry } from '@fluojs/react/experimental/rsc';
+
+const actions = createReactServerFunctionRegistry({
+  actions: {
+    updateProfile(args, context) {
+      const subject = context.principal?.subject;
+      if (subject === undefined) {
+        throw new UnauthorizedException();
+      }
+      const name = args[0];
+      if (typeof name !== 'string') {
+        throw new BadRequestException('Profile name must be a string.');
+      }
+      return { name, subject, updated: true };
+    },
+  },
+  allowedOrigins: ['https://app.example.com'],
+  crypto: globalThis.crypto,
+  secret: serverFunctionSecret,
+  maxBodyBytes: 64 * 1024,
+});
+
+export const updateProfileReference = await actions.createReference('updateProfile');
+
+@Controller('/_fluo')
+class ReactActionController {
+  @Post('/actions')
+  invoke(_input: undefined, context: RequestContext) {
+    return actions.invoke(context);
+  }
+}
+```
+
+Transfer the issued reference to trusted client bootstrap data instead of importing the server
+action module into a client bundle. Then create the callable with an explicit endpoint and
+application-owned fetch implementation:
+
+```ts
+import { createReactServerFunctionClient } from '@fluojs/react/experimental/rsc';
+
+const updateProfile = createReactServerFunctionClient({
+  endpoint: '/_fluo/actions',
+  fetch: globalThis.fetch,
+  reference: bootstrap.serverFunctions.updateProfile,
+});
+
+await updateProfile('Ada');
+```
+
+Treat every argument as untrusted. Authorization belongs inside each action or in guards surrounding
+the explicit endpoint; a valid reference is not authorization. Action handlers receive the active
+`RequestContext`, so they may resolve request-scoped providers through `context.container` and keep
+request-local state isolated. Server Functions are mutation-oriented integration points, not query
+loaders, a client data cache, or a bypass around DTO validation, guards, middleware, interceptors,
+request scopes, or observability.
+
+The transport security contract is intentionally explicit:
+
+- Action ids match `[A-Za-z0-9_-]{1,128}`. References expose the id but protect its integrity with
+  HMAC-SHA-256 and an application-owned secret of at least 32 bytes. Rotating the secret invalidates
+  previously issued references; references do not encrypt action names.
+- Requests must use `application/json`, send `x-fluo-react-action: 1`, and include an exact HTTP(S)
+  `Origin` from `allowedOrigins`. The custom header makes browser cross-origin calls non-simple, while
+  the origin allowlist supplies the CSRF policy.
+- `maxBodyBytes` defaults to 64 KiB. The registry uses exact `rawBody` bytes when the adapter exposes
+  them and otherwise measures the normalized body. Configure the platform adapter's pre-parse body
+  limit to the same or lower value so oversized network bodies are rejected before JSON parsing.
+- Arguments and results allow only `null`, booleans, finite numbers, strings, dense arrays, and plain
+  objects. Circular values, sparse arrays, symbol/non-enumerable properties, prototype-sensitive
+  keys, class instances, `undefined`, `bigint`, and non-finite numbers are rejected. Nesting defaults
+  to 32 levels and cannot be configured above 128.
+- Results default to a 1 MiB serialized limit. Client responses also default to 1 MiB.
+
+Expected failures use the existing fluo HTTP error envelope with stable codes:
+
+| Condition | Status | Code |
+| --- | ---: | --- |
+| malformed request shape | 400 | `REACT_SERVER_FUNCTION_INVALID_REQUEST` |
+| unsafe arguments | 400 | `REACT_SERVER_FUNCTION_ARGUMENT_SERIALIZATION_FAILED` |
+| missing/invalid request marker | 403 | `REACT_SERVER_FUNCTION_CSRF_REJECTED` |
+| missing/unapproved origin | 403 | `REACT_SERVER_FUNCTION_ORIGIN_REJECTED` |
+| invalid, tampered, or retired action reference | 404 | `REACT_SERVER_FUNCTION_ACTION_NOT_FOUND` |
+| oversized request | 413 | `REACT_SERVER_FUNCTION_PAYLOAD_TOO_LARGE` |
+| non-JSON content type | 415 | `REACT_SERVER_FUNCTION_UNSUPPORTED_MEDIA_TYPE` |
+| unsafe action result | 500 | `REACT_SERVER_FUNCTION_RESULT_SERIALIZATION_FAILED` |
+| oversized action result | 500 | `REACT_SERVER_FUNCTION_RESULT_TOO_LARGE` |
+
+This prototype does not scan for `"use server"`, transform modules, discover exports, generate
+references automatically, encrypt action ids, or provide database mutation conventions. The stable
+root and `@fluojs/react/client` remain isolated from all Server Function code.
 
 ## Current Limitations
 
@@ -505,7 +614,7 @@ This package currently does **not** provide:
 
 - a stable RSC root or `@fluojs/react/rsc` subpath; RSC is available only from the explicitly unstable
   `@fluojs/react/experimental/rsc` prototype
-- Server Functions integration or a built-in Flight renderer/build plugin
+- automatic `"use server"` transforms/export discovery or a built-in Flight renderer/build plugin
 - SPA document swapping, a client data/loader cache, and navigation prefetching
 - a Next.js App Router, TanStack route tree, Angular `Routes[]`, file-route scanner, or React-owned
   `routes: []` table
@@ -549,8 +658,10 @@ This package currently does **not** provide:
   navigation without widening the root package or adding a client route grammar.
 - `@fluojs/react/experimental/rsc` subpath — `inspectReactRscEnvironment(...)`,
   `createReactRscManifest(...)`, `createReactFlightResponse(...)`, exact-version and Flight content
-  type constants, diagnostics, client-reference/server-module mapping types, and Flight response
-  types without any root re-export.
+  type constants, diagnostics, client-reference/server-module mapping types, signed
+  `createReactServerFunctionRegistry(...)`, explicit `createReactServerFunctionClient(...)`, stable
+  Server Function error codes, and related transport types without any root or stable-client
+  re-export.
 
 ## Related Packages
 
@@ -576,6 +687,11 @@ This package currently does **not** provide:
 - `packages/react/src/experimental/rsc-diagnostics.test.ts`
 - `packages/react/src/experimental/rsc-flight.test.ts`
 - `packages/react/src/experimental/rsc-manifest.test.ts`
+- `packages/react/src/experimental/server-functions-server.ts`
+- `packages/react/src/experimental/server-functions-client.ts`
+- `packages/react/src/experimental/server-functions-dispatch.test.ts`
+- `packages/react/src/experimental/server-functions-security.test.ts`
+- `packages/react/src/experimental/server-functions-client.test.ts`
 - `packages/react/src/vite/create-asset-manifest.ts`
 - `packages/react/src/decorators.ts`
 - `packages/react/src/server-entry.ts`

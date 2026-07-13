@@ -1806,6 +1806,89 @@ export function enforceReactClientSubpathContract() {
   );
 }
 
+export function enforceReactServerFunctionContract() {
+  const rscEntrypoint = read('packages/react/src/experimental/rsc.ts');
+  const rootEntrypoint = read('packages/react/src/index.ts');
+  const clientEntrypoint = read('packages/react/src/client.ts');
+  const serverSource = read('packages/react/src/experimental/server-functions-server.ts');
+  const referenceSource = read('packages/react/src/experimental/server-functions-reference.ts');
+  const securityTest = read('packages/react/src/experimental/server-functions-security.test.ts');
+  const dispatchTest = read('packages/react/src/experimental/server-functions-dispatch.test.ts');
+  const englishReadme = read('packages/react/README.md');
+  const koreanReadme = read('packages/react/README.ko.md');
+  const documentation = [
+    englishReadme,
+    koreanReadme,
+    read('docs/CONTEXT.md'),
+    read('docs/CONTEXT.ko.md'),
+    read('docs/reference/package-surface.md'),
+    read('docs/reference/package-surface.ko.md'),
+    read('docs/reference/package-chooser.md'),
+    read('docs/reference/package-chooser.ko.md'),
+  ];
+
+  for (const exportedSymbol of [
+    'createReactServerFunctionRegistry',
+    'createReactServerFunctionClient',
+    'REACT_SERVER_FUNCTION_ERROR_CODES',
+    'REACT_SERVER_FUNCTION_REQUEST_HEADER',
+  ]) {
+    assert(
+      rscEntrypoint.includes(exportedSymbol),
+      `packages/react/src/experimental/rsc.ts must export ${exportedSymbol} from the unstable subpath.`,
+    );
+  }
+
+  assert(
+    !rootEntrypoint.includes('server-function') && !clientEntrypoint.includes('server-function'),
+    'Stable @fluojs/react root and client entrypoints must keep experimental Server Function code isolated.',
+  );
+
+  for (const contract of [
+    'allowedOrigins',
+    'application/json',
+    'maxBodyBytes',
+    'maxResultBytes',
+    'REACT_SERVER_FUNCTION_REQUEST_HEADER',
+    'RequestContext',
+  ]) {
+    assert(serverSource.includes(contract), `Server Function server transport must enforce ${contract}.`);
+  }
+  assert(
+    referenceSource.includes('HMAC') && referenceSource.includes('SHA-256') && referenceSource.includes('secret.byteLength < 32'),
+    'Server Function references must keep HMAC-SHA-256 integrity and the 32-byte secret floor enforced.',
+  );
+
+  for (const markdown of documentation) {
+    assert(
+      markdown.includes('@fluojs/react/experimental/rsc') && markdown.includes('Server Function'),
+      'React Server Function docs must keep the unstable subpath discoverable across bilingual package and reference surfaces.',
+    );
+  }
+  for (const readme of [englishReadme, koreanReadme]) {
+    for (const contract of [
+      'REACT_SERVER_FUNCTION_ACTION_NOT_FOUND',
+      'REACT_SERVER_FUNCTION_ARGUMENT_SERIALIZATION_FAILED',
+      'x-fluo-react-action',
+      'pre-parse',
+    ]) {
+      assert(readme.includes(contract), `React package README mirrors must document ${contract}.`);
+    }
+  }
+
+  for (const evidence of [
+    'tampered',
+    'unsafe serialized arguments',
+    'body-size, origin, content-type, and CSRF marker',
+    'unsafe action result',
+  ]) {
+    assert(securityTest.includes(evidence), `Server Function security regressions must cover ${evidence}.`);
+  }
+  for (const evidence of ['middleware', 'guards', 'interceptors', 'isolated request scopes', 'unauthorized']) {
+    assert(dispatchTest.includes(evidence), `Server Function dispatch regressions must cover ${evidence}.`);
+  }
+}
+
 export function enforceHttpCatchAllRouteGrammarDecision() {
   const decisionPaths = [
     'docs/architecture/http-catch-all-route-grammar.md',
@@ -1952,6 +2035,7 @@ export function main() {
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices();
   enforceViteToolingDiscoverability();
   enforceReactClientSubpathContract();
+  enforceReactServerFunctionContract();
   enforceHttpCatchAllRouteGrammarDecision();
   enforceGraphqlRuntimeBoundaryDiscoverability();
   enforcePersistenceTransactionInterceptorCompatibility();
