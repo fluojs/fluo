@@ -1120,6 +1120,14 @@ describe('repository governance contracts', () => {
     expect(ciWorkflow).toMatch(/verify-platform-consistency-governance:[\s\S]*?- name: Checkout[\s\S]*?fetch-depth: 0/u);
   });
 
+  it('runs canonical docs verification for full PR verification scope', () => {
+    const ciWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/ci.yml'), 'utf8');
+
+    expect(ciWorkflow).toMatch(
+      /build-and-typecheck:[\s\S]*?- name: Verify docs \(full\)\n\s+if: github\.event_name != 'pull_request' \|\| needs\.resolve-pr-verification-scope\.outputs\.mode != 'scoped'\n\s+run: pnpm verify:docs[\s\S]*?\n {2}lint:/u,
+    );
+  });
+
   it('keeps Changesets release automation bound to main pushes and token-backed npm publish', () => {
     const releaseWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/release.yml'), 'utf8');
     const rootPackage = JSON.parse(readFileSync(resolve(repoRoot, 'package.json'), 'utf8'));
