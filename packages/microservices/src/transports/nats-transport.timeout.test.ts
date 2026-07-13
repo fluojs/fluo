@@ -69,10 +69,10 @@ describe('NatsMicroserviceTransport request timeout', () => {
     await Promise.resolve();
 
     // Then
-    await vi.runAllTimersAsync();
+    expect(nats.requestOptions).toEqual({ timeout: requestTimeoutMs });
+    await vi.advanceTimersByTimeAsync(requestTimeoutMs);
     await timeoutRejection;
     expect(vi.getTimerCount()).toBe(0);
     await expect(transport.close()).resolves.toBeUndefined();
-    expect(nats.requestOptions).toEqual({ timeout: requestTimeoutMs });
   });
 });
