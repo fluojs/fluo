@@ -138,6 +138,10 @@ CLI and Studio diagnostics discoverability is split across the CLI package, Stud
 
 The Cron NestJS migration surfaces record that NestJS `timeZone` becomes fluo `timezone`, while `waitForCompletion` has no direct fluo option because scheduler protection and the in-process running guard always skip overlapping ticks for the same task instance rather than queueing another run. Work that relied on NestJS overlap must move to an application-owned queue or worker, and cross-instance exclusion still requires Redis distributed locking.
 
+## HTTP Catch-All Decision
+
+[`docs/architecture/http-catch-all-route-grammar.md`](./architecture/http-catch-all-route-grammar.md) defers catch-all adoption. `@fluojs/http` continues to accept only literal and full-segment `:param` route segments, while `@fluojs/react/client` real anchors provide ordinary full-document fallback to explicit server routes without creating a client route grammar. Reconsideration requires an HTTP-owned syntax, `static > param > catch-all` ordering, string params, OpenAPI policy, adapter parity, native fast path decisions, and performance evidence.
+
 ## File Structure
 
 | Path | Role |
@@ -155,6 +159,7 @@ The Cron NestJS migration surfaces record that NestJS `timeZone` becomes fluo `t
 | --- | --- | --- |
 | Repository identity and non-negotiable rules | `docs/CONTEXT.md` | `docs/contracts/behavioral-contract-policy.md` |
 | Architecture model, request flow, and runtime boundaries | `docs/architecture/architecture-overview.md` | `docs/reference/glossary-and-mental-model.md` |
+| HTTP catch-all grammar decision and revisit gates | `docs/architecture/http-catch-all-route-grammar.md` | `packages/http/README.md` and `packages/react/README.md` for the active explicit-route contract |
 | Package family lookup or runtime coverage | `docs/reference/package-surface.md` | `docs/reference/package-chooser.md` when selection logic is needed |
 | i18n ecosystem bridge compatibility and migration boundaries | `docs/reference/i18n-ecosystem-bridges.md` | `docs/contracts/third-party-extension-contract.md` when authoring a third-party bridge |
 | Behavioral guarantees, Changesets release flow, and versioning policy | `docs/contracts/behavioral-contract-policy.md` | `docs/contracts/release-governance.md` |

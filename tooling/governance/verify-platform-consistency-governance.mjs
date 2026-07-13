@@ -14,6 +14,7 @@ const nodeGlobalBufferPattern = /\bBuffer\b/g;
 
 const ssotPairs = [
   ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'],
+  ['docs/architecture/http-catch-all-route-grammar.md', 'docs/architecture/http-catch-all-route-grammar.ko.md'],
   ['docs/architecture/platform-consistency-design.md', 'docs/architecture/platform-consistency-design.ko.md'],
   ['docs/contracts/behavioral-contract-policy.md', 'docs/contracts/behavioral-contract-policy.ko.md'],
   ['docs/contracts/public-export-tsdoc-baseline.md', 'docs/contracts/public-export-tsdoc-baseline.ko.md'],
@@ -24,6 +25,8 @@ const ssotPairs = [
 ];
 
 const contractGateTriggers = new Set([
+  'docs/architecture/http-catch-all-route-grammar.md',
+  'docs/architecture/http-catch-all-route-grammar.ko.md',
   'docs/architecture/platform-consistency-design.md',
   'docs/architecture/platform-consistency-design.ko.md',
   'docs/contracts/behavioral-contract-policy.md',
@@ -1641,6 +1644,57 @@ export function enforceReactClientSubpathContract() {
   );
 }
 
+export function enforceHttpCatchAllRouteGrammarDecision() {
+  const decisionPaths = [
+    'docs/architecture/http-catch-all-route-grammar.md',
+    'docs/architecture/http-catch-all-route-grammar.ko.md',
+  ];
+  const linkedSurfacePaths = [
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'docs/architecture/http-runtime.md',
+    'docs/architecture/http-runtime.ko.md',
+    'packages/http/README.md',
+    'packages/http/README.ko.md',
+    'packages/react/README.md',
+    'packages/react/README.ko.md',
+  ];
+
+  for (const decisionPath of decisionPaths) {
+    const decision = read(decisionPath);
+
+    for (const requiredContract of [
+      'Status: Deferred',
+      '/*path',
+      '/:path*',
+      'static > param > catch-all',
+      'Readonly<Record<string, string>>',
+      'OpenAPI',
+      'native fast path',
+      '@fluojs/react/client',
+    ]) {
+      assert(
+        decision.includes(requiredContract),
+        `${decisionPath} must keep the deferred catch-all decision and adoption gate ${requiredContract} explicit.`,
+      );
+    }
+  }
+
+  for (const surfacePath of linkedSurfacePaths) {
+    assert(
+      read(surfacePath).includes('http-catch-all-route-grammar'),
+      `${surfacePath} must link the HTTP catch-all route grammar decision.`,
+    );
+  }
+
+  const routePathSource = read('packages/http/src/route-path.ts');
+  assert(
+    routePathSource.includes('Only literal segments and full-segment ":param" placeholders are supported.') &&
+      !routePathSource.includes("kind: 'catch-all'"),
+    'packages/http/src/route-path.ts must keep catch-all grammar inactive while the decision status is Deferred.',
+  );
+}
+
 export function enforceGraphqlRuntimeBoundaryDiscoverability() {
   const expectedNodeEngine = '>=20.16.0';
   const graphqlPackageJson = JSON.parse(read('packages/graphql/package.json'));
@@ -1734,6 +1788,7 @@ export function main() {
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices();
   enforceViteToolingDiscoverability();
   enforceReactClientSubpathContract();
+  enforceHttpCatchAllRouteGrammarDecision();
   enforceGraphqlRuntimeBoundaryDiscoverability();
   enforcePersistenceTransactionInterceptorCompatibility();
   enforceAdvancedBookCoreBoundaryCompanions(changedFiles);
