@@ -28,7 +28,7 @@ const safetyGuidanceAnchors = [
 
 const localizedStreamingCleanupClaims = [
   [
-    'reader has started',
+    'before reader iteration starts',
     [
       'packages/microservices/README.md',
       'book/intermediate/ch01-microservices-intro.md',
@@ -37,7 +37,43 @@ const localizedStreamingCleanupClaims = [
     ],
   ],
   [
-    'reader가 시작된 뒤',
+    'reader iteration 시작 전',
+    [
+      'packages/microservices/README.ko.md',
+      'book/intermediate/ch01-microservices-intro.ko.md',
+      'docs/CONTEXT.ko.md',
+      'docs/reference/package-surface.ko.md',
+    ],
+  ],
+  [
+    'returns early',
+    [
+      'packages/microservices/README.md',
+      'book/intermediate/ch01-microservices-intro.md',
+      'docs/CONTEXT.md',
+      'docs/reference/package-surface.md',
+    ],
+  ],
+  [
+    'early return',
+    [
+      'packages/microservices/README.ko.md',
+      'book/intermediate/ch01-microservices-intro.ko.md',
+      'docs/CONTEXT.ko.md',
+      'docs/reference/package-surface.ko.md',
+    ],
+  ],
+  [
+    'only once',
+    [
+      'packages/microservices/README.md',
+      'book/intermediate/ch01-microservices-intro.md',
+      'docs/CONTEXT.md',
+      'docs/reference/package-surface.md',
+    ],
+  ],
+  [
+    '한 번만',
     [
       'packages/microservices/README.ko.md',
       'book/intermediate/ch01-microservices-intro.ko.md',
@@ -60,7 +96,9 @@ const runtimeEvidence = [
     'packages/microservices/src/transports/grpc-transport.ts',
     [
       'const cleanupAbortListeners = () =>',
-      'externalAbortCleanup?.()',
+      'cleanupExternalAbortListener = undefined',
+      'if (done) {',
+      'return grpcReadableToAsyncIterable(stream, {',
       "stream.on('end', () => {",
       "stream.on('error', (err: Error) => {",
       'return(): Promise<IteratorResult<unknown>> {',
@@ -82,9 +120,17 @@ const runtimeEvidence = [
       'removes unary AbortSignal listener when the response resolves',
       'serverStream() removes AbortSignal listener when the stream ends',
       'serverStream() removes AbortSignal listener when the stream errors',
+      'serverStream() removes AbortSignal listener when the stream ends before reader iteration starts',
+      'serverStream() removes AbortSignal listener when the stream errors before reader iteration starts',
+      'serverStream() removes AbortSignal listener when iterator return() runs before the first read',
       'serverStream() removes AbortSignal listener when iterator return() cancels the call',
       'clientStream() removes AbortSignal listener when the response resolves',
+      'clientStream() removes AbortSignal listener exactly once when the response errors',
       'bidiStream() removes AbortSignal listeners when the reader completes',
+      'bidiStream() removes AbortSignal listeners when the stream ends before reader iteration starts',
+      'bidiStream() removes AbortSignal listeners when the stream errors before reader iteration starts',
+      'bidiStream() removes AbortSignal listeners exactly once when the reader returns early',
+      'bidiStream() does not remove AbortSignal listeners twice when return() follows terminal end',
     ],
   ],
 ];
