@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## 1.1.0
+
+### Minor Changes
+
+- [#2299](https://github.com/fluojs/fluo/pull/2299) [`e8dd36e`](https://github.com/fluojs/fluo/commit/e8dd36e53e1be1bc96f69587cc7d3641ffdf3896) Thanks [@ayden94](https://github.com/ayden94)! - Add the documented `@fluojs/core/request-pipeline` metadata integration seam and migrate validation, serialization, and OpenAPI internals to it instead of importing `@fluojs/core/internal` directly.
+
+### Patch Changes
+
+- [#2295](https://github.com/fluojs/fluo/pull/2295) [`d7e3a98`](https://github.com/fluojs/fluo/commit/d7e3a981e9edd6ec098af1827b2081c49c5197e7) Thanks [@ayden94](https://github.com/ayden94)! - Freeze class DI wrapper-token snapshots so caller-owned `forwardRef(...)` and `optional(...)` wrapper mutations cannot rewrite stored injection metadata.
+
+- [#2648](https://github.com/fluojs/fluo/pull/2648) [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925) Thanks [@ayden94](https://github.com/ayden94)! - Restore the governed `Unreleased` changelog placeholder for foundation packages and preserve it when Changesets generates future package versions.
+
+- [#2401](https://github.com/fluojs/fluo/pull/2401) [`ea78a19`](https://github.com/fluojs/fluo/commit/ea78a1985114392a1658509bd7132987dd289942) Thanks [@ayden94](https://github.com/ayden94)! - Share explicit metadata stores across duplicate in-process package instances so decorators and runtime readers preserve module, controller, route, DI, and validation metadata in linked workspace benchmark runs.
+
 ## 1.0.3
 
 ### Patch Changes

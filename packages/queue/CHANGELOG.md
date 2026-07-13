@@ -1,5 +1,27 @@
 # @fluojs/queue
 
+## [Unreleased]
+
+## 2.0.0
+
+### Major Changes
+
+- [#2297](https://github.com/fluojs/fluo/pull/2297) [`471c923`](https://github.com/fluojs/fluo/commit/471c92379dcb55946b6ae6b2522f9544a14d9a52) Thanks [@ayden94](https://github.com/ayden94)! - Drain pending queue dead-letter writes during worker startup rollback before releasing Redis lifecycle state, and harden scoped queue registrations with explicit unique scopes, scoped public token helpers, and module-graph Redis visibility checks.
+
+- [#2476](https://github.com/fluojs/fluo/pull/2476) [`1f8896a`](https://github.com/fluojs/fluo/commit/1f8896a632932d968c988f77dbcdf6629adca81f) Thanks [@ayden94](https://github.com/ayden94)! - Harden scoped queue module discovery so non-global registrations stay isolated to the module tree that imported their `QueueModule.forRoot(...)` call, and require the Redis client provider to be reachable from that same graph.
+
+### Minor Changes
+
+- [#2610](https://github.com/fluojs/fluo/pull/2610) [`7045978`](https://github.com/fluojs/fluo/commit/7045978594af410de6e14a638205084d3a30b465) Thanks [@ayden94](https://github.com/ayden94)! - Add bounded, read-only dead-letter inspection with newest-first typed records and malformed-record reporting.
+
+### Patch Changes
+
+- Updated dependencies [[`3fafdff`](https://github.com/fluojs/fluo/commit/3fafdffe85fc15f542844b977d8ca40db5c58439), [`c3bc3d6`](https://github.com/fluojs/fluo/commit/c3bc3d6c45fd08d43dbd28eb0d87f780430d9caa), [`9d70d61`](https://github.com/fluojs/fluo/commit/9d70d610dc447ac088533bcb7428af0b92bd6a7d), [`1261d96`](https://github.com/fluojs/fluo/commit/1261d96ecae66576fe26fae0a39f03458307e6a4), [`2190cbf`](https://github.com/fluojs/fluo/commit/2190cbf926309e6d9c40d173fa8fe7a9a23685be), [`d7e3a98`](https://github.com/fluojs/fluo/commit/d7e3a981e9edd6ec098af1827b2081c49c5197e7), [`33fac0d`](https://github.com/fluojs/fluo/commit/33fac0de23de4e2585355c914bda0427c8eed100), [`6f75ef9`](https://github.com/fluojs/fluo/commit/6f75ef9636e136459952d273a9a189ef0b8a7b67), [`83e7a7d`](https://github.com/fluojs/fluo/commit/83e7a7ddf75812f88ab65ab280e4f5f94adea3ff), [`6602fe0`](https://github.com/fluojs/fluo/commit/6602fe03d35dd2ba56669977d4d3af9deec96b21), [`f31435d`](https://github.com/fluojs/fluo/commit/f31435d980dca14051b462d3ad1940b94c994d52), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925), [`ea78a19`](https://github.com/fluojs/fluo/commit/ea78a1985114392a1658509bd7132987dd289942), [`ccb11fa`](https://github.com/fluojs/fluo/commit/ccb11fab16cc3f8db4dd000ca609b0bf544b72c6), [`e8dd36e`](https://github.com/fluojs/fluo/commit/e8dd36e53e1be1bc96f69587cc7d3641ffdf3896)]:
+  - @fluojs/runtime@2.0.0
+  - @fluojs/di@2.0.0
+  - @fluojs/redis@1.1.0
+  - @fluojs/core@1.1.0
+
 ## 1.0.2
 
 ### Patch Changes

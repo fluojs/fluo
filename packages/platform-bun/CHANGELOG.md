@@ -1,5 +1,27 @@
 # @fluojs/platform-bun
 
+## [Unreleased]
+
+## 2.0.0
+
+### Major Changes
+
+- [#2676](https://github.com/fluojs/fluo/pull/2676) [`bd898a5`](https://github.com/fluojs/fluo/commit/bd898a5c99741970ffb02826e894d4da7240ef15) Thanks [@ayden94](https://github.com/ayden94)! - Regenerate the published Bun declarations from current source and verify declaration artifacts structurally before release. `BunWebSocketBinding.fetch(...)` now exposes the documented upgrade-only `BunWebSocketUpgradeHost`; move direct server `fetch(...)`, `stop(...)`, or lifecycle access into the surrounding `Bun.serve(...)` host.
+
+### Patch Changes
+
+- [#2650](https://github.com/fluojs/fluo/pull/2650) [`020706f`](https://github.com/fluojs/fluo/commit/020706f456bc78ed2282ecff257ab3ec9b516610) Thanks [@ayden94](https://github.com/ayden94)! - Keep accepted Bun requests in the shutdown drain while asynchronous realtime bindings resolve, including requests that subsequently fall back to HTTP dispatch.
+
+- [#2294](https://github.com/fluojs/fluo/pull/2294) [`d7cad9c`](https://github.com/fluojs/fluo/commit/d7cad9c9414c56a5eed0807feda01e5bba8cef05) Thanks [@ayden94](https://github.com/ayden94)! - Align Bun signal-driven shutdown drain handling with the configured `forceExitTimeoutMs` budget and cover shutdown/raw-body regression paths.
+
+- [#2398](https://github.com/fluojs/fluo/pull/2398) [`d114295`](https://github.com/fluojs/fluo/commit/d11429536bbc9e25ce1aad8965d6343eb4df1319) Thanks [@ayden94](https://github.com/ayden94)! - Tighten the Bun websocket binding boundary so raw websocket bindings receive only an upgrade-capable host instead of the adapter-owned Bun server lifecycle/fetch handle, and add Bun adapter regressions for shutdown failure reporting, stale native handoff rematching, custom fetch multipart parsing, and websocket response short-circuit behavior.
+
+  This remains a patch-level boundary tightening because the low-level Bun websocket binding seam has no known external consumers yet. New binding code should depend only on `BunWebSocketUpgradeHost.upgrade(...)`; keep direct `server.fetch(...)` or `server.stop()` usage in the Bun platform adapter lifecycle/fetch integration instead of the websocket binding seam.
+
+- Updated dependencies [[`3fafdff`](https://github.com/fluojs/fluo/commit/3fafdffe85fc15f542844b977d8ca40db5c58439), [`bfc2aeb`](https://github.com/fluojs/fluo/commit/bfc2aebb3a2dd03c2ce0509585bca4b5d78a5588), [`1261d96`](https://github.com/fluojs/fluo/commit/1261d96ecae66576fe26fae0a39f03458307e6a4), [`e6d0c70`](https://github.com/fluojs/fluo/commit/e6d0c70868a520dd2a4379789dc5ccbfb1e01351), [`6f75ef9`](https://github.com/fluojs/fluo/commit/6f75ef9636e136459952d273a9a189ef0b8a7b67), [`2854c36`](https://github.com/fluojs/fluo/commit/2854c366d99c191eae3416e375b9db577711aaff), [`83e7a7d`](https://github.com/fluojs/fluo/commit/83e7a7ddf75812f88ab65ab280e4f5f94adea3ff), [`a951bc1`](https://github.com/fluojs/fluo/commit/a951bc195261331810bc8791df1041ab51d14ebb), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925)]:
+  - @fluojs/runtime@2.0.0
+  - @fluojs/http@2.0.0
+
 ## 1.0.7
 
 ### Patch Changes
@@ -9,8 +31,6 @@
 - Updated dependencies [[`5d8fc23`](https://github.com/fluojs/fluo/commit/5d8fc23b199d4b617c6342f109c24e03970af9b4), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
   - @fluojs/http@1.1.2
   - @fluojs/runtime@1.1.8
-
-## [Unreleased]
 
 ## 1.0.6
 

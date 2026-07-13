@@ -1,5 +1,23 @@
 # @fluojs/platform-cloudflare-workers
 
+## [Unreleased]
+
+## 1.0.5
+
+### Patch Changes
+
+- [#2480](https://github.com/fluojs/fluo/pull/2480) [`aaabed1`](https://github.com/fluojs/fluo/commit/aaabed1ec13b1987a320fba535ad089371efe664) Thanks [@ayden94](https://github.com/ayden94)! - Align the Cloudflare Workers adapter public seam and lifecycle contract by keeping public Worker declarations on supported package barrels, freezing websocket binding ownership after the first listen boundary, and documenting shutdown/SSE/WebSocket drain behavior with regression coverage.
+
+- [#2651](https://github.com/fluojs/fluo/pull/2651) [`2fb6dad`](https://github.com/fluojs/fluo/commit/2fb6dad36d2833d50c7995b51c09b7734f08de06) Thanks [@ayden94](https://github.com/ayden94)! - Keep Cloudflare Workers shutdown and `executionContext.waitUntil(...)` tracking active until upgraded server WebSockets close, and release SSE lifecycle tracking when synchronous reader or stream setup fails.
+
+- [#2405](https://github.com/fluojs/fluo/pull/2405) [`8de6b9b`](https://github.com/fluojs/fluo/commit/8de6b9b1cf796c5a547e510d9dff4a30301d0d47) Thanks [@ayden94](https://github.com/ayden94)! - Stabilize Cloudflare Workers adapter lifecycle boundaries by rejecting live websocket binding mutation, preserving shutdown JSON responses for websocket upgrades during drains, and allowing lazy entrypoints to bootstrap again after a timed-out close eventually settles.
+
+- [#2671](https://github.com/fluojs/fluo/pull/2671) [`0d47c74`](https://github.com/fluojs/fluo/commit/0d47c744630e6b2179c2be610110c1fd647db361) Thanks [@ayden94](https://github.com/ayden94)! - Regenerate the published Cloudflare Workers runtime and declarations from current source so Worker request context, WebSocket binding freeze and close tracking, SSE draining, and shutdown timeout recovery reach package consumers.
+
+- Updated dependencies [[`3fafdff`](https://github.com/fluojs/fluo/commit/3fafdffe85fc15f542844b977d8ca40db5c58439), [`bfc2aeb`](https://github.com/fluojs/fluo/commit/bfc2aebb3a2dd03c2ce0509585bca4b5d78a5588), [`1261d96`](https://github.com/fluojs/fluo/commit/1261d96ecae66576fe26fae0a39f03458307e6a4), [`e6d0c70`](https://github.com/fluojs/fluo/commit/e6d0c70868a520dd2a4379789dc5ccbfb1e01351), [`6f75ef9`](https://github.com/fluojs/fluo/commit/6f75ef9636e136459952d273a9a189ef0b8a7b67), [`2854c36`](https://github.com/fluojs/fluo/commit/2854c366d99c191eae3416e375b9db577711aaff), [`83e7a7d`](https://github.com/fluojs/fluo/commit/83e7a7ddf75812f88ab65ab280e4f5f94adea3ff), [`a951bc1`](https://github.com/fluojs/fluo/commit/a951bc195261331810bc8791df1041ab51d14ebb), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925)]:
+  - @fluojs/runtime@2.0.0
+  - @fluojs/http@2.0.0
+
 ## 1.0.4
 
 ### Patch Changes
@@ -9,8 +27,6 @@
 - Updated dependencies [[`5d8fc23`](https://github.com/fluojs/fluo/commit/5d8fc23b199d4b617c6342f109c24e03970af9b4), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
   - @fluojs/http@1.1.2
   - @fluojs/runtime@1.1.8
-
-## [Unreleased]
 
 ## 1.0.3
 

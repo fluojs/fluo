@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## 1.0.6
+
+### Patch Changes
+
+- [#2389](https://github.com/fluojs/fluo/pull/2389) [`d38a228`](https://github.com/fluojs/fluo/commit/d38a228d2905233d7fde628ecb88a18025329798) Thanks [@ayden94](https://github.com/ayden94)! - Align the Node.js adapter helper declarations with the package-local `Nodejs*` public aliases and document the Node.js 20+ runtime floor alongside targeted regression coverage for retry exhaustion, correlation-id error responses, multipart size overrides, and signal shutdown port binding.
+
+- Updated dependencies [[`3fafdff`](https://github.com/fluojs/fluo/commit/3fafdffe85fc15f542844b977d8ca40db5c58439), [`bfc2aeb`](https://github.com/fluojs/fluo/commit/bfc2aebb3a2dd03c2ce0509585bca4b5d78a5588), [`1261d96`](https://github.com/fluojs/fluo/commit/1261d96ecae66576fe26fae0a39f03458307e6a4), [`e6d0c70`](https://github.com/fluojs/fluo/commit/e6d0c70868a520dd2a4379789dc5ccbfb1e01351), [`6f75ef9`](https://github.com/fluojs/fluo/commit/6f75ef9636e136459952d273a9a189ef0b8a7b67), [`2854c36`](https://github.com/fluojs/fluo/commit/2854c366d99c191eae3416e375b9db577711aaff), [`83e7a7d`](https://github.com/fluojs/fluo/commit/83e7a7ddf75812f88ab65ab280e4f5f94adea3ff), [`a951bc1`](https://github.com/fluojs/fluo/commit/a951bc195261331810bc8791df1041ab51d14ebb), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925)]:
+  - @fluojs/runtime@2.0.0
+  - @fluojs/http@2.0.0
+
 ## 1.0.5
 
 ### Patch Changes

@@ -1,5 +1,20 @@
 # @fluojs/validation
 
+## [Unreleased]
+
+## 1.0.6
+
+### Patch Changes
+
+- [#2727](https://github.com/fluojs/fluo/pull/2727) [`2c09f35`](https://github.com/fluojs/fluo/commit/2c09f3541a6ffb33a26e045f531fbecbabd5dfe7) Thanks [@ayden94](https://github.com/ayden94)! - Traverse array, Set, and Map members automatically with `ValidateNested`, matching the documented collection contract without requiring `each: true`.
+
+- [#2636](https://github.com/fluojs/fluo/pull/2636) [`94f6518`](https://github.com/fluojs/fluo/commit/94f6518bf26b6bb412759c48d043e05e153ce533) Thanks [@ayden94](https://github.com/ayden94)! - Prevent validation decorators declared on derived DTOs from mutating inherited field-level or class-level metadata on base DTOs.
+
+- [#2299](https://github.com/fluojs/fluo/pull/2299) [`e8dd36e`](https://github.com/fluojs/fluo/commit/e8dd36e53e1be1bc96f69587cc7d3641ffdf3896) Thanks [@ayden94](https://github.com/ayden94)! - Add the documented `@fluojs/core/request-pipeline` metadata integration seam and migrate validation, serialization, and OpenAPI internals to it instead of importing `@fluojs/core/internal` directly.
+
+- Updated dependencies [[`d7e3a98`](https://github.com/fluojs/fluo/commit/d7e3a981e9edd6ec098af1827b2081c49c5197e7), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925), [`ea78a19`](https://github.com/fluojs/fluo/commit/ea78a1985114392a1658509bd7132987dd289942), [`e8dd36e`](https://github.com/fluojs/fluo/commit/e8dd36e53e1be1bc96f69587cc7d3641ffdf3896)]:
+  - @fluojs/core@1.1.0
+
 ## 1.0.5
 
 ### Patch Changes

@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+## 2.0.0
+
+### Major Changes
+
+- [#2302](https://github.com/fluojs/fluo/pull/2302) [`ccb11fa`](https://github.com/fluojs/fluo/commit/ccb11fab16cc3f8db4dd000ca609b0bf544b72c6) Thanks [@ayden94](https://github.com/ayden94)! - Harden DI request-scope lifecycle and introspection ownership by recursively disposing nested request scopes from their owners, returning read-only introspection state, and keeping testing cache adoption on controlled container-owned APIs.
+
+  Migration note: callers that used `inspectResolutionState()` as a mutable escape hatch must stop mutating returned registration/cache maps or normalized provider records. Framework-owned tooling should use the returned `cacheOwner` helpers for controlled cache adoption instead of writing to the maps directly.
+
+### Patch Changes
+
+- [#2645](https://github.com/fluojs/fluo/pull/2645) [`c3bc3d6`](https://github.com/fluojs/fluo/commit/c3bc3d6c45fd08d43dbd28eb0d87f780430d9caa) Thanks [@ayden94](https://github.com/ayden94)! - Ensure provider replacement resolution waits for stale instance disposal across materialized descendant request scopes and propagates descendant disposal failures consistently.
+
+- [#2454](https://github.com/fluojs/fluo/pull/2454) [`33fac0d`](https://github.com/fluojs/fluo/commit/33fac0de23de4e2585355c914bda0427c8eed100) Thanks [@ayden94](https://github.com/ayden94)! - Harden DI introspection snapshots and override stale-instance disposal ordering so framework-owned state cannot be observed through live maps and replacement resolution waits for stale teardown failures. Update testing module sync cache adoption to consume the snapshot introspection contract.
+
+- [#2665](https://github.com/fluojs/fluo/pull/2665) [`83e7a7d`](https://github.com/fluojs/fluo/commit/83e7a7ddf75812f88ab65ab280e4f5f94adea3ff) Thanks [@ayden94](https://github.com/ayden94)! - Normalize malformed provider `inject` arrays, dependency wrappers, and `scope` values to structured `InvalidProviderError` failures during direct registration and module-graph compilation while preserving class `@Inject(...)` metadata fallback for omitted or `undefined` `inject` values.
+
+- [#2648](https://github.com/fluojs/fluo/pull/2648) [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925) Thanks [@ayden94](https://github.com/ayden94)! - Restore the governed `Unreleased` changelog placeholder for foundation packages and preserve it when Changesets generates future package versions.
+
+- Updated dependencies [[`d7e3a98`](https://github.com/fluojs/fluo/commit/d7e3a981e9edd6ec098af1827b2081c49c5197e7), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925), [`ea78a19`](https://github.com/fluojs/fluo/commit/ea78a1985114392a1658509bd7132987dd289942), [`e8dd36e`](https://github.com/fluojs/fluo/commit/e8dd36e53e1be1bc96f69587cc7d3641ffdf3896)]:
+  - @fluojs/core@1.1.0
+
 ## 1.1.0
 
 ### Minor Changes

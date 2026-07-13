@@ -1,5 +1,24 @@
 # @fluojs/cli
 
+## [Unreleased]
+
+## 2.0.0
+
+### Major Changes
+
+- [#2465](https://github.com/fluojs/fluo/pull/2465) [`5f29631`](https://github.com/fluojs/fluo/commit/5f296312efa63bbf98da01f1e0dc6b1004d05586) Thanks [@ayden94](https://github.com/ayden94)! - Remove monorepo-local starter dependency overrides from the documented `NewCommandRuntimeOptions` public type while keeping the sandbox harness behavior internal to the CLI implementation.
+
+### Patch Changes
+
+- [#2690](https://github.com/fluojs/fluo/pull/2690) [`36f9832`](https://github.com/fluojs/fluo/commit/36f983257be5ebc069077b05a09010468c599b7c) Thanks [@ayden94](https://github.com/ayden94)! - Ensure generated NATS, Kafka, and RabbitMQ starters release owned broker clients when shutdown or partial initialization fails.
+
+- [#2376](https://github.com/fluojs/fluo/pull/2376) [`139be9b`](https://github.com/fluojs/fluo/commit/139be9bc0ac3910279a5bdc7cb7a79529a065437) Thanks [@ayden94](https://github.com/ayden94)! - Harden generated broker transport lazy initialization so overlapping first lifecycle calls share one tracked setup, with Studio sidecar auth/privacy and generated test cleanup regressions covered.
+
+- [#2333](https://github.com/fluojs/fluo/pull/2333) [`49b8c17`](https://github.com/fluojs/fluo/commit/49b8c175fb555fc9391714667151c88b96f3ff43) Thanks [@ayden94](https://github.com/ayden94)! - Preserve the CLI root entrypoint lazy-loading boundary and avoid loading the optional Studio sidecar unless `fluo dev --studio` actually starts it.
+
+- Updated dependencies [[`3fafdff`](https://github.com/fluojs/fluo/commit/3fafdffe85fc15f542844b977d8ca40db5c58439), [`1261d96`](https://github.com/fluojs/fluo/commit/1261d96ecae66576fe26fae0a39f03458307e6a4), [`6f75ef9`](https://github.com/fluojs/fluo/commit/6f75ef9636e136459952d273a9a189ef0b8a7b67), [`83e7a7d`](https://github.com/fluojs/fluo/commit/83e7a7ddf75812f88ab65ab280e4f5f94adea3ff), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925)]:
+  - @fluojs/runtime@2.0.0
+
 ## 1.1.0
 
 ### Minor Changes
@@ -14,8 +33,6 @@
 
 - Updated dependencies [[`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
   - @fluojs/runtime@1.1.8
-
-## [Unreleased]
 
 ## 1.0.6
 

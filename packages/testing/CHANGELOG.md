@@ -1,5 +1,36 @@
 # @fluojs/testing
 
+## [Unreleased]
+
+## 2.0.0
+
+### Major Changes
+
+- [#2470](https://github.com/fluojs/fluo/pull/2470) [`ad586ec`](https://github.com/fluojs/fluo/commit/ad586ecf063083877282c1a77800ea4bf393ca2a) Thanks [@ayden94](https://github.com/ayden94)! - Narrow the root `@fluojs/testing` type surface to documented app/module testing contracts while keeping mock compatibility helpers available from `@fluojs/testing/types` and `@fluojs/testing/mock`.
+
+  Migration: import low-level mock compatibility helper types such as `TestingMockFunction`, `TestingMockContext`, `TestingMockResult`, and `TestingMockSettledResult` from `@fluojs/testing/types` instead of the root package.
+
+### Patch Changes
+
+- [#2464](https://github.com/fluojs/fluo/pull/2464) [`3fafdff`](https://github.com/fluojs/fluo/commit/3fafdffe85fc15f542844b977d8ca40db5c58439) Thanks [@ayden94](https://github.com/ayden94)! - Refresh runtime platform telemetry from the active registry collect path so advanced shared-registry scrapers observe fresh component readiness and health series.
+
+- [#2454](https://github.com/fluojs/fluo/pull/2454) [`33fac0d`](https://github.com/fluojs/fluo/commit/33fac0de23de4e2585355c914bda0427c8eed100) Thanks [@ayden94](https://github.com/ayden94)! - Harden DI introspection snapshots and override stale-instance disposal ordering so framework-owned state cannot be observed through live maps and replacement resolution waits for stale teardown failures. Update testing module sync cache adoption to consume the snapshot introspection contract.
+
+- [#2388](https://github.com/fluojs/fluo/pull/2388) [`64dec7f`](https://github.com/fluojs/fluo/commit/64dec7ff348544af6dfbe666b12f6f8d4d4f2195) Thanks [@ayden94](https://github.com/ayden94)! - Clarify `DeepMocked<T>` import surfaces and strengthen testing package regression coverage for createTestApp option forwarding, Vitest Babel config diagnostics, and portability cleanup failures.
+
+- [#2302](https://github.com/fluojs/fluo/pull/2302) [`ccb11fa`](https://github.com/fluojs/fluo/commit/ccb11fab16cc3f8db4dd000ca609b0bf544b72c6) Thanks [@ayden94](https://github.com/ayden94)! - Harden DI request-scope lifecycle and introspection ownership by recursively disposing nested request scopes from their owners, returning read-only introspection state, and keeping testing cache adoption on controlled container-owned APIs.
+
+  Migration note: callers that used `inspectResolutionState()` as a mutable escape hatch must stop mutating returned registration/cache maps or normalized provider records. Framework-owned tooling should use the returned `cacheOwner` helpers for controlled cache adoption instead of writing to the maps directly.
+
+- [#2332](https://github.com/fluojs/fluo/pull/2332) [`8e0e43f`](https://github.com/fluojs/fluo/commit/8e0e43f7fa355aa9b804a9fb2833d29e1542a5c6) Thanks [@ayden94](https://github.com/ayden94)! - Keep Vitest mock-only declaration imports on the `@fluojs/testing/mock` boundary while preserving backward-compatible root `DeepMocked<T>` type imports through a Vitest-free structural mock type.
+
+- Updated dependencies [[`3fafdff`](https://github.com/fluojs/fluo/commit/3fafdffe85fc15f542844b977d8ca40db5c58439), [`c3bc3d6`](https://github.com/fluojs/fluo/commit/c3bc3d6c45fd08d43dbd28eb0d87f780430d9caa), [`bfc2aeb`](https://github.com/fluojs/fluo/commit/bfc2aebb3a2dd03c2ce0509585bca4b5d78a5588), [`1261d96`](https://github.com/fluojs/fluo/commit/1261d96ecae66576fe26fae0a39f03458307e6a4), [`344cec0`](https://github.com/fluojs/fluo/commit/344cec07b828af4d405efea3767302840edde19e), [`ec8ffb6`](https://github.com/fluojs/fluo/commit/ec8ffb605cf4b128fb2f7786a2a606b613530164), [`d7e3a98`](https://github.com/fluojs/fluo/commit/d7e3a981e9edd6ec098af1827b2081c49c5197e7), [`33fac0d`](https://github.com/fluojs/fluo/commit/33fac0de23de4e2585355c914bda0427c8eed100), [`e6d0c70`](https://github.com/fluojs/fluo/commit/e6d0c70868a520dd2a4379789dc5ccbfb1e01351), [`6f75ef9`](https://github.com/fluojs/fluo/commit/6f75ef9636e136459952d273a9a189ef0b8a7b67), [`2854c36`](https://github.com/fluojs/fluo/commit/2854c366d99c191eae3416e375b9db577711aaff), [`83e7a7d`](https://github.com/fluojs/fluo/commit/83e7a7ddf75812f88ab65ab280e4f5f94adea3ff), [`a951bc1`](https://github.com/fluojs/fluo/commit/a951bc195261331810bc8791df1041ab51d14ebb), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925), [`ea78a19`](https://github.com/fluojs/fluo/commit/ea78a1985114392a1658509bd7132987dd289942), [`ccb11fa`](https://github.com/fluojs/fluo/commit/ccb11fab16cc3f8db4dd000ca609b0bf544b72c6), [`e8dd36e`](https://github.com/fluojs/fluo/commit/e8dd36e53e1be1bc96f69587cc7d3641ffdf3896)]:
+  - @fluojs/runtime@2.0.0
+  - @fluojs/di@2.0.0
+  - @fluojs/http@2.0.0
+  - @fluojs/config@1.0.4
+  - @fluojs/core@1.1.0
+
 ## 1.0.6
 
 ### Patch Changes
@@ -13,8 +44,6 @@
 - Updated dependencies [[`5d8fc23`](https://github.com/fluojs/fluo/commit/5d8fc23b199d4b617c6342f109c24e03970af9b4), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
   - @fluojs/http@1.1.2
   - @fluojs/runtime@1.1.8
-
-## [Unreleased]
 
 ## 1.0.5
 

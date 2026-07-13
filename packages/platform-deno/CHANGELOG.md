@@ -1,5 +1,25 @@
 # @fluojs/platform-deno
 
+## [Unreleased]
+
+## 1.1.0
+
+### Minor Changes
+
+- [#2656](https://github.com/fluojs/fluo/pull/2656) [`db90433`](https://github.com/fluojs/fluo/commit/db90433cfc46125c54d077c162689cf8194fdb09) Thanks [@ayden94](https://github.com/ayden94)! - Add `createDenoFetchHandler(...)` so applications can dispatch through an already bootstrapped fluo dispatcher while a surrounding host owns `Deno.serve(...)`, shutdown, signals, and websocket upgrades.
+
+### Patch Changes
+
+- [#2641](https://github.com/fluojs/fluo/pull/2641) [`ea2776c`](https://github.com/fluojs/fluo/commit/ea2776cfac76862dc3780a9abbcc7db7e44635a6) Thanks [@ayden94](https://github.com/ayden94)! - Republish the Deno adapter declarations with optional constructor options and verify the generated public type surface during package tests.
+
+- [#2404](https://github.com/fluojs/fluo/pull/2404) [`408ec40`](https://github.com/fluojs/fluo/commit/408ec409da290c710b9c361d9154307fb82ffa38) Thanks [@ayden94](https://github.com/ayden94)! - Preserve Deno adapter dispatcher readiness for websocket upgrades and make duplicate listen calls keep the original running dispatcher pipeline.
+
+- [#2479](https://github.com/fluojs/fluo/pull/2479) [`300f290`](https://github.com/fluojs/fluo/commit/300f290da33486977b6123f0cc19cb5e847aec97) Thanks [@ayden94](https://github.com/ayden94)! - Align direct Deno adapter construction with the public factory by sharing option normalization, host alias precedence, and numeric option validation, and document the lifecycle/API surface with matching regression coverage.
+
+- Updated dependencies [[`3fafdff`](https://github.com/fluojs/fluo/commit/3fafdffe85fc15f542844b977d8ca40db5c58439), [`bfc2aeb`](https://github.com/fluojs/fluo/commit/bfc2aebb3a2dd03c2ce0509585bca4b5d78a5588), [`1261d96`](https://github.com/fluojs/fluo/commit/1261d96ecae66576fe26fae0a39f03458307e6a4), [`e6d0c70`](https://github.com/fluojs/fluo/commit/e6d0c70868a520dd2a4379789dc5ccbfb1e01351), [`6f75ef9`](https://github.com/fluojs/fluo/commit/6f75ef9636e136459952d273a9a189ef0b8a7b67), [`2854c36`](https://github.com/fluojs/fluo/commit/2854c366d99c191eae3416e375b9db577711aaff), [`83e7a7d`](https://github.com/fluojs/fluo/commit/83e7a7ddf75812f88ab65ab280e4f5f94adea3ff), [`a951bc1`](https://github.com/fluojs/fluo/commit/a951bc195261331810bc8791df1041ab51d14ebb), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925)]:
+  - @fluojs/runtime@2.0.0
+  - @fluojs/http@2.0.0
+
 ## 1.0.8
 
 ### Patch Changes
@@ -9,8 +29,6 @@
 - Updated dependencies [[`5d8fc23`](https://github.com/fluojs/fluo/commit/5d8fc23b199d4b617c6342f109c24e03970af9b4), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
   - @fluojs/http@1.1.2
   - @fluojs/runtime@1.1.8
-
-## [Unreleased]
 
 ## 1.0.7
 

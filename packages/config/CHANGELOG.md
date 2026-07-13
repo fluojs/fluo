@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## 1.0.4
+
+### Patch Changes
+
+- [#2646](https://github.com/fluojs/fluo/pull/2646) [`344cec0`](https://github.com/fluojs/fluo/commit/344cec07b828af4d405efea3767302840edde19e) Thanks [@ayden94](https://github.com/ayden94)! - Expose the documented `runtimeOverrides` input on `ConfigModuleOptions` and preserve its registration-time snapshot.
+
+- [#2406](https://github.com/fluojs/fluo/pull/2406) [`ec8ffb6`](https://github.com/fluojs/fluo/commit/ec8ffb605cf4b128fb2f7786a2a606b613530164) Thanks [@ayden94](https://github.com/ayden94)! - Preserve config option schema snapshots so post-registration schema mutations cannot alter bootstrap or reload validation.
+
+- [#2648](https://github.com/fluojs/fluo/pull/2648) [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925) Thanks [@ayden94](https://github.com/ayden94)! - Restore the governed `Unreleased` changelog placeholder for foundation packages and preserve it when Changesets generates future package versions.
+
+- Updated dependencies [[`d7e3a98`](https://github.com/fluojs/fluo/commit/d7e3a981e9edd6ec098af1827b2081c49c5197e7), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925), [`ea78a19`](https://github.com/fluojs/fluo/commit/ea78a1985114392a1658509bd7132987dd289942), [`e8dd36e`](https://github.com/fluojs/fluo/commit/e8dd36e53e1be1bc96f69587cc7d3641ffdf3896)]:
+  - @fluojs/core@1.1.0
+
 ## 1.0.3
 
 ### Patch Changes

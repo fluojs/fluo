@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## 1.1.1
+
+### Patch Changes
+
+- [#2373](https://github.com/fluojs/fluo/pull/2373) [`f0bb1af`](https://github.com/fluojs/fluo/commit/f0bb1af6a46218762f40f76ec17b189e373ac34b) Thanks [@ayden94](https://github.com/ayden94)! - Harden default `@Transaction()` target resolution so it selects only branded Prisma service/facade handles, treats unavailable or throwing AsyncLocalStorage host lookups as a graceful unavailable transaction context, and documents the Node.js 20+ runtime boundary.
+
+- [#2460](https://github.com/fluojs/fluo/pull/2460) [`220bf05`](https://github.com/fluojs/fluo/commit/220bf054272d0edb8b411da08f7b66b5ccfe92b0) Thanks [@ayden94](https://github.com/ayden94)! - Reject new outer manual `transaction(...)` and service `@Transaction()` boundaries after Prisma shutdown starts while preserving the existing drain-before-disconnect contract for already-open boundaries.
+
+- [#2334](https://github.com/fluojs/fluo/pull/2334) [`39a38fc`](https://github.com/fluojs/fluo/commit/39a38fc064b149c176d81961ae5ee71d54fee2de) Thanks [@ayden94](https://github.com/ayden94)! - Preserve Prisma transaction boundaries during shutdown by draining active service/manual transactions before disconnect, and avoid binding `@Transaction()` to non-Prisma transaction-like host properties.
+
+- [#2674](https://github.com/fluojs/fluo/pull/2674) [`71d83f1`](https://github.com/fluojs/fluo/commit/71d83f13c4264ceeaaba05111eb9e3f33c5ce371) Thanks [@ayden94](https://github.com/ayden94)! - Restore the governed `Unreleased` changelog placeholder for persistence packages and preserve it when Changesets generates future package versions.
+
+- [#2659](https://github.com/fluojs/fluo/pull/2659) [`4781600`](https://github.com/fluojs/fluo/commit/47816000b85ac0c1c817ed2783736c5eed8387d2) Thanks [@ayden94](https://github.com/ayden94)! - Restore the deprecated Prisma and Mongoose transaction interceptor exports for 1.x compatibility while keeping service transactions and explicit request boundaries as the preferred migration path.
+
+- Updated dependencies [[`3fafdff`](https://github.com/fluojs/fluo/commit/3fafdffe85fc15f542844b977d8ca40db5c58439), [`c3bc3d6`](https://github.com/fluojs/fluo/commit/c3bc3d6c45fd08d43dbd28eb0d87f780430d9caa), [`bfc2aeb`](https://github.com/fluojs/fluo/commit/bfc2aebb3a2dd03c2ce0509585bca4b5d78a5588), [`1261d96`](https://github.com/fluojs/fluo/commit/1261d96ecae66576fe26fae0a39f03458307e6a4), [`d7e3a98`](https://github.com/fluojs/fluo/commit/d7e3a981e9edd6ec098af1827b2081c49c5197e7), [`33fac0d`](https://github.com/fluojs/fluo/commit/33fac0de23de4e2585355c914bda0427c8eed100), [`e6d0c70`](https://github.com/fluojs/fluo/commit/e6d0c70868a520dd2a4379789dc5ccbfb1e01351), [`6f75ef9`](https://github.com/fluojs/fluo/commit/6f75ef9636e136459952d273a9a189ef0b8a7b67), [`2854c36`](https://github.com/fluojs/fluo/commit/2854c366d99c191eae3416e375b9db577711aaff), [`83e7a7d`](https://github.com/fluojs/fluo/commit/83e7a7ddf75812f88ab65ab280e4f5f94adea3ff), [`a951bc1`](https://github.com/fluojs/fluo/commit/a951bc195261331810bc8791df1041ab51d14ebb), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925), [`ea78a19`](https://github.com/fluojs/fluo/commit/ea78a1985114392a1658509bd7132987dd289942), [`ccb11fa`](https://github.com/fluojs/fluo/commit/ccb11fab16cc3f8db4dd000ca609b0bf544b72c6), [`e8dd36e`](https://github.com/fluojs/fluo/commit/e8dd36e53e1be1bc96f69587cc7d3641ffdf3896)]:
+  - @fluojs/runtime@2.0.0
+  - @fluojs/di@2.0.0
+  - @fluojs/http@2.0.0
+  - @fluojs/core@1.1.0
+
 ## 1.1.0
 
 ### Minor Changes

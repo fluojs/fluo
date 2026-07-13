@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## 1.1.1
+
+### Patch Changes
+
+- [#2663](https://github.com/fluojs/fluo/pull/2663) [`f358fef`](https://github.com/fluojs/fluo/commit/f358feff29b9ca440b2d83e7b6b141bfd478265c) Thanks [@ayden94](https://github.com/ayden94)! - Keep aborted request callbacks tracked through session and connection cleanup, forward positional `create()` documents without appending session options, and expose consumer-specializable model facade result types.
+
+- [#2466](https://github.com/fluojs/fluo/pull/2466) [`388f4e7`](https://github.com/fluojs/fluo/commit/388f4e7a5d657364fe10c063c36d3e10dd962b71) Thanks [@ayden94](https://github.com/ayden94)! - Track fail-open manual `transaction(...)` callbacks during shutdown so `dispose(connection)` waits for direct execution to settle before closing application-owned resources.
+
+- [#2341](https://github.com/fluojs/fluo/pull/2341) [`c9af8cf`](https://github.com/fluojs/fluo/commit/c9af8cf63cb0a2a2e9897b39cc508ad81ee0a759) Thanks [@ayden94](https://github.com/ayden94)! - Preserve nested request transaction tracking for ambient manual Mongoose transactions and avoid false session-conflict errors for projection/document fields named `session`.
+
+- [#2674](https://github.com/fluojs/fluo/pull/2674) [`71d83f1`](https://github.com/fluojs/fluo/commit/71d83f13c4264ceeaaba05111eb9e3f33c5ce371) Thanks [@ayden94](https://github.com/ayden94)! - Restore the governed `Unreleased` changelog placeholder for persistence packages and preserve it when Changesets generates future package versions.
+
+- [#2659](https://github.com/fluojs/fluo/pull/2659) [`4781600`](https://github.com/fluojs/fluo/commit/47816000b85ac0c1c817ed2783736c5eed8387d2) Thanks [@ayden94](https://github.com/ayden94)! - Restore the deprecated Prisma and Mongoose transaction interceptor exports for 1.x compatibility while keeping service transactions and explicit request boundaries as the preferred migration path.
+
+- Updated dependencies [[`3fafdff`](https://github.com/fluojs/fluo/commit/3fafdffe85fc15f542844b977d8ca40db5c58439), [`c3bc3d6`](https://github.com/fluojs/fluo/commit/c3bc3d6c45fd08d43dbd28eb0d87f780430d9caa), [`bfc2aeb`](https://github.com/fluojs/fluo/commit/bfc2aebb3a2dd03c2ce0509585bca4b5d78a5588), [`1261d96`](https://github.com/fluojs/fluo/commit/1261d96ecae66576fe26fae0a39f03458307e6a4), [`d7e3a98`](https://github.com/fluojs/fluo/commit/d7e3a981e9edd6ec098af1827b2081c49c5197e7), [`33fac0d`](https://github.com/fluojs/fluo/commit/33fac0de23de4e2585355c914bda0427c8eed100), [`e6d0c70`](https://github.com/fluojs/fluo/commit/e6d0c70868a520dd2a4379789dc5ccbfb1e01351), [`6f75ef9`](https://github.com/fluojs/fluo/commit/6f75ef9636e136459952d273a9a189ef0b8a7b67), [`2854c36`](https://github.com/fluojs/fluo/commit/2854c366d99c191eae3416e375b9db577711aaff), [`83e7a7d`](https://github.com/fluojs/fluo/commit/83e7a7ddf75812f88ab65ab280e4f5f94adea3ff), [`a951bc1`](https://github.com/fluojs/fluo/commit/a951bc195261331810bc8791df1041ab51d14ebb), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925), [`ea78a19`](https://github.com/fluojs/fluo/commit/ea78a1985114392a1658509bd7132987dd289942), [`ccb11fa`](https://github.com/fluojs/fluo/commit/ccb11fab16cc3f8db4dd000ca609b0bf544b72c6), [`e8dd36e`](https://github.com/fluojs/fluo/commit/e8dd36e53e1be1bc96f69587cc7d3641ffdf3896)]:
+  - @fluojs/runtime@2.0.0
+  - @fluojs/di@2.0.0
+  - @fluojs/http@2.0.0
+  - @fluojs/core@1.1.0
+
 ## 1.1.0
 
 ### Minor Changes

@@ -1,5 +1,29 @@
 # @fluojs/terminus
 
+## [Unreleased]
+
+### Patch Changes
+
+- Harden health/readiness diagnostics so timed-out indicator probes do not overlap later checks for the same indicator instance, platform diagnostic keys preserve runtime payloads on user-key collisions, and Terminus docs/tests align with the runtime-owned endpoint contract.
+
+## 1.1.0
+
+### Minor Changes
+
+- [#2473](https://github.com/fluojs/fluo/pull/2473) [`6f75ef9`](https://github.com/fluojs/fluo/commit/6f75ef9636e136459952d273a9a189ef0b8a7b67) Thanks [@ayden94](https://github.com/ayden94)! - Expose the runtime health module readiness-registration contract and harden Terminus health/readiness optional-peer regression coverage for consumer-visible readiness composition seams.
+
+### Patch Changes
+
+- [#2340](https://github.com/fluojs/fluo/pull/2340) [`31d9a8e`](https://github.com/fluojs/fluo/commit/31d9a8ef71d78e0e6f6bb81216248ff1ded1220a) Thanks [@ayden94](https://github.com/ayden94)! - Harden Terminus health indicators by rejecting invalid indicator timeout budgets and cancelling HTTP probe response bodies after status checks.
+
+- [#2393](https://github.com/fluojs/fluo/pull/2393) [`1e87363`](https://github.com/fluojs/fluo/commit/1e873635cf4d8af4c831aa96e5efbc9992f5fddd) Thanks [@ayden94](https://github.com/ayden94)! - Export the documented Terminus indicator-provider token, make Prisma health provider resolution prefer lifecycle-aware default or named Prisma service seams while retaining raw-client fallback and root optional-peer safety, and scope in-flight indicator serialization to each Terminus service/container.
+
+- Updated dependencies [[`3fafdff`](https://github.com/fluojs/fluo/commit/3fafdffe85fc15f542844b977d8ca40db5c58439), [`c3bc3d6`](https://github.com/fluojs/fluo/commit/c3bc3d6c45fd08d43dbd28eb0d87f780430d9caa), [`bfc2aeb`](https://github.com/fluojs/fluo/commit/bfc2aebb3a2dd03c2ce0509585bca4b5d78a5588), [`1261d96`](https://github.com/fluojs/fluo/commit/1261d96ecae66576fe26fae0a39f03458307e6a4), [`d7e3a98`](https://github.com/fluojs/fluo/commit/d7e3a981e9edd6ec098af1827b2081c49c5197e7), [`33fac0d`](https://github.com/fluojs/fluo/commit/33fac0de23de4e2585355c914bda0427c8eed100), [`e6d0c70`](https://github.com/fluojs/fluo/commit/e6d0c70868a520dd2a4379789dc5ccbfb1e01351), [`6f75ef9`](https://github.com/fluojs/fluo/commit/6f75ef9636e136459952d273a9a189ef0b8a7b67), [`2854c36`](https://github.com/fluojs/fluo/commit/2854c366d99c191eae3416e375b9db577711aaff), [`83e7a7d`](https://github.com/fluojs/fluo/commit/83e7a7ddf75812f88ab65ab280e4f5f94adea3ff), [`a951bc1`](https://github.com/fluojs/fluo/commit/a951bc195261331810bc8791df1041ab51d14ebb), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925), [`ea78a19`](https://github.com/fluojs/fluo/commit/ea78a1985114392a1658509bd7132987dd289942), [`ccb11fa`](https://github.com/fluojs/fluo/commit/ccb11fab16cc3f8db4dd000ca609b0bf544b72c6), [`e8dd36e`](https://github.com/fluojs/fluo/commit/e8dd36e53e1be1bc96f69587cc7d3641ffdf3896)]:
+  - @fluojs/runtime@2.0.0
+  - @fluojs/di@2.0.0
+  - @fluojs/http@2.0.0
+  - @fluojs/core@1.1.0
+
 ## 1.0.5
 
 ### Patch Changes
@@ -9,12 +33,6 @@
 - Updated dependencies [[`5d8fc23`](https://github.com/fluojs/fluo/commit/5d8fc23b199d4b617c6342f109c24e03970af9b4), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
   - @fluojs/http@1.1.2
   - @fluojs/runtime@1.1.8
-
-## [Unreleased]
-
-### Patch Changes
-
-- Harden health/readiness diagnostics so timed-out indicator probes do not overlap later checks for the same indicator instance, platform diagnostic keys preserve runtime payloads on user-key collisions, and Terminus docs/tests align with the runtime-owned endpoint contract.
 
 ## 1.0.4
 
