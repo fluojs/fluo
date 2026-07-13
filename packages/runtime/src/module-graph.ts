@@ -1,5 +1,5 @@
 import type { Token } from '@fluojs/core';
-import type { Provider } from '@fluojs/di';
+import { type Provider, validateProviderInputs } from '@fluojs/di/internal';
 import type { MiddlewareLike } from '@fluojs/http';
 
 import {
@@ -160,7 +160,7 @@ function describeModuleReplacementsForCacheKey(moduleReplacements: ModuleReplace
  * @returns Process-local key that changes when metadata or runtime validation inputs change.
  */
 export function createModuleGraphCacheKey(rootModule: ModuleType, options: BootstrapModuleOptions = {}): string {
-  const runtimeProviders = (options.providers ?? []).map(describeProviderForCacheKey).join('|');
+  const runtimeProviders = validateProviderInputs(options.providers ?? []).map(describeProviderForCacheKey).join('|');
   const validationTokens = (options.validationTokens ?? []).map(describeTokenForCacheKey).join('|');
   const moduleReplacements = describeModuleReplacementsForCacheKey(options.moduleReplacements);
 
@@ -546,7 +546,7 @@ function normalizeModuleDefinition(rawDefinition: ReturnType<typeof getRuntimeMo
   return {
     global: rawDefinition.global ?? false,
     imports: (rawDefinition.imports as ModuleType[] | undefined) ?? [],
-    providers: (rawDefinition.providers as Provider[] | undefined) ?? [],
+    providers: validateProviderInputs((rawDefinition.providers as Provider[] | undefined) ?? []),
     controllers: (rawDefinition.controllers as ModuleType[] | undefined) ?? [],
     exports: (rawDefinition.exports as Token[] | undefined) ?? [],
     middleware: (rawDefinition.middleware as MiddlewareLike[] | undefined) ?? [],
@@ -844,7 +844,7 @@ export function compileModuleGraph(rootModule: ModuleType, options: BootstrapMod
   }
 
   const ordered: CompiledModule[] = [];
-  const runtimeProviders = options.providers ?? [];
+  const runtimeProviders = validateProviderInputs(options.providers ?? []);
   const runtimeProviderTokens = mergeRuntimeTokenSets(runtimeProviders, options.validationTokens ?? []);
   const moduleReplacements = options.moduleReplacements ?? EMPTY_MODULE_REPLACEMENTS;
 
