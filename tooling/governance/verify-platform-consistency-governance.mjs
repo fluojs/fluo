@@ -593,7 +593,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // transport-agnostic status snapshots plus caller-owned shutdown boundaries,
   // validation mapped-type/nested-materialization contract discoverability,
   // missing-value, safe-extra-property, and unsupported-group migration rules,
-  // serialization class options plus request-boundary interceptor coverage, CLI
+  // serialization class options, committed-response ownership bypass, and
+  // request-boundary interceptor coverage, CLI
   // public runtime type boundaries plus the documented Node.js runtime floor,
   // and Studio live helper contracts such as deterministic Mermaid rendering,
   // route-id graph correlation, viewer dependency classification, and Node.js
@@ -749,6 +750,141 @@ const cloudflareWorkersLifecycleDocRequirements = [
   ['docs/CONTEXT.md', ['packages/platform-cloudflare-workers/README.md', 'docs/getting-started/migrate-from-nestjs.md', 'website runtime/realtime guides']],
   ['docs/CONTEXT.ko.md', ['packages/platform-cloudflare-workers/README.ko.md', 'docs/getting-started/migrate-from-nestjs.ko.md', 'website runtime/realtime guide']],
 ];
+
+const serializerResponseOwnershipDocRequirements = [
+  [
+    'packages/serialization/README.md',
+    [
+      'Framework-managed response',
+      'Handler-owned response',
+      'returns the value it received from `next.handle()` unchanged',
+      'interceptors may still transform the chain result',
+      'skips a second success-response write',
+    ],
+  ],
+  [
+    'packages/serialization/README.ko.md',
+    [
+      'Framework-managed response',
+      'Handler-owned response',
+      '`next.handle()`에서 받은 값을 그대로 반환',
+      '다른 interceptor는 chain 결과를 계속 변환할 수 있',
+      '두 번째 success-response write를 건너',
+    ],
+  ],
+  [
+    'packages/runtime/README.md',
+    [
+      'Framework-Managed and Handler-Owned Responses',
+      'returns the value it received from `next.handle()` unchanged',
+      'interceptors may still transform the chain result',
+      'skips a second success-response write',
+    ],
+  ],
+  [
+    'packages/runtime/README.ko.md',
+    [
+      'Framework-managed response와 handler-owned response',
+      '`next.handle()`에서 받은 값을 그대로 반환',
+      '다른 interceptor는 chain 결과를 계속 변환할 수 있',
+      '두 번째 success-response write를 건너',
+    ],
+  ],
+  [
+    'book/beginner/ch07-serialization.md',
+    [
+      'Framework-Managed vs Handler-Owned Responses',
+      'returns the value it received from `next.handle()` unchanged',
+      'interceptors may still transform the chain result',
+      'skips a second success-response write',
+    ],
+  ],
+  [
+    'book/beginner/ch07-serialization.ko.md',
+    [
+      'Framework-managed response와 handler-owned response',
+      '`next.handle()`에서 받은 값을 그대로 반환',
+      '다른 interceptor는 chain 결과를 계속 변환할 수 있',
+      '두 번째 success-response write를 건너',
+    ],
+  ],
+  [
+    'docs/getting-started/migrate-from-nestjs.md',
+    [
+      '`ClassSerializerInterceptor`',
+      'returns the value it received from `next.handle()` unchanged',
+      'interceptors may still transform the chain result',
+      'skips a second success-response write',
+    ],
+  ],
+  [
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    [
+      '`ClassSerializerInterceptor`',
+      '`next.handle()`에서 받은 값을 그대로 반환',
+      '다른 interceptor는 chain 결과를 계속 변환할 수 있',
+      '두 번째 success-response write를 건너',
+    ],
+  ],
+  [
+    'docs/CONTEXT.md',
+    [
+      'Serialization response-ownership discoverability',
+      'returns the value it received from `next.handle()` unchanged',
+      'interceptors may still transform the chain result',
+      'skips a second success-response write',
+    ],
+  ],
+  [
+    'docs/CONTEXT.ko.md',
+    [
+      'Serialization response-ownership discoverability',
+      '`next.handle()`에서 받은 값을 그대로 반환',
+      '다른 interceptor는 chain 결과를 계속 변환할 수 있',
+      '두 번째 success-response write를 건너',
+    ],
+  ],
+  [
+    'docs/reference/package-surface.md',
+    [
+      'returns the value it received from `next.handle()` unchanged',
+      'interceptors may still transform the chain result',
+      'skips a second success-response write',
+    ],
+  ],
+  [
+    'docs/reference/package-surface.ko.md',
+    [
+      '`next.handle()`에서 받은 값을 그대로 반환',
+      '다른 interceptor는 chain 결과를 계속 변환할 수 있',
+      '두 번째 success-response write를 건너',
+    ],
+  ],
+];
+
+const serializerResponseOwnershipBroadChainClaims = [
+  /interceptor chain[^.\n]*(?:preserves?|keeps?)[^.\n]*handler(?:-owned)? (?:return )?values?[^.\n]*unchanged/iu,
+  /interceptor chain[^.\n]*handler(?:-owned)? 반환값[^.\n]*(?:변경하지 않고 보존|그대로 보존)/u,
+];
+
+export function enforceSerializerResponseOwnershipDocsSync(
+  readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
+) {
+  for (const [relativePath, requiredMarkers] of serializerResponseOwnershipDocRequirements) {
+    const content = readText(relativePath);
+    const missingMarkers = requiredMarkers.filter((marker) => !content.includes(marker));
+
+    assert(
+      missingMarkers.length === 0,
+      `${relativePath} must keep serializer response ownership guidance synchronized; missing: ${missingMarkers.join(', ')}.`,
+    );
+
+    assert(
+      serializerResponseOwnershipBroadChainClaims.every((pattern) => !pattern.test(content)),
+      `${relativePath} must not claim that the interceptor chain preserves handler return values; only SerializerInterceptor returns the value it receives unchanged, while other interceptors may transform it.`,
+    );
+  }
+}
 
 export function enforceCloudflareWorkersLifecycleDocsSync(
   readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
@@ -939,6 +1075,8 @@ function enforceCanonicalRuntimeMatrixReferences() {
   const beginnerCliSetupKo = readFileSync(join(repoRoot, 'book/beginner/ch02-cli-setup.ko.md'), 'utf8');
   const beginnerProduction = readFileSync(join(repoRoot, 'book/beginner/ch21-production.md'), 'utf8');
   const beginnerProductionKo = readFileSync(join(repoRoot, 'book/beginner/ch21-production.ko.md'), 'utf8');
+  const customAdapter = readFileSync(join(repoRoot, 'book/advanced/ch13-custom-adapter.md'), 'utf8');
+  const customAdapterKo = readFileSync(join(repoRoot, 'book/advanced/ch13-custom-adapter.ko.md'), 'utf8');
   const bunChapter = readFileSync(join(repoRoot, 'book/intermediate/ch22-bun.md'), 'utf8');
   const bunChapterKo = readFileSync(join(repoRoot, 'book/intermediate/ch22-bun.ko.md'), 'utf8');
   const runtimeAdaptersGuide = readFileSync(join(repoRoot, 'apps/docs/content/docs/guides/runtime-adapters.mdx'), 'utf8');
@@ -1149,11 +1287,17 @@ function enforceCanonicalRuntimeMatrixReferences() {
       packageChooser.includes('Need Fastify-owned HTTPS/TLS startup') &&
       packageChooser.includes('plain HTTP behind that boundary') &&
       docsContext.includes('Fastify adapter discoverability') &&
+      docsContext.includes('apps/docs/content/docs/guides/runtime-adapters.mdx') &&
       docsContext.includes('engines.node >=20.0.0') &&
       beginnerIntro.includes('Node.js 20 or newer') &&
       beginnerCliSetup.includes('plain HTTP for local development') &&
-      beginnerProduction.includes('Fastify adapter `https` option'),
-    'Fastify README, package-surface, package-chooser, docs/CONTEXT.md, and beginner docs must keep the Node.js 20+ runtime floor and HTTPS/TLS startup boundary discoverable together.',
+      beginnerProduction.includes('Fastify adapter `https` option') &&
+      beginnerProduction.startsWith('<!-- packages: @fluojs/core, @fluojs/http, @fluojs/platform-fastify -->') &&
+      customAdapter.startsWith('<!-- packages: @fluojs/http, @fluojs/core, @fluojs/di, @fluojs/platform-fastify -->') &&
+      runtimeAdaptersGuide.includes('### Fastify HTTPS/TLS') &&
+      runtimeAdaptersGuide.includes('Node.js `https.ServerOptions`') &&
+      runtimeAdaptersGuide.includes('plain HTTP behind that infrastructure boundary'),
+    'Fastify README, package-surface, package-chooser, docs/CONTEXT.md, book metadata, and website guidance must keep the Node.js 20+ runtime floor and HTTPS/TLS startup boundary discoverable together.',
   );
   assert(
     fastifyReadmeKo.includes('engines.node >=20.0.0') &&
@@ -1165,11 +1309,17 @@ function enforceCanonicalRuntimeMatrixReferences() {
       packageChooserKo.includes('Fastify가 HTTPS/TLS 시작을 직접 소유해야 함') &&
       packageChooserKo.includes('일반 HTTP로 유지하세요') &&
       docsContextKo.includes('Fastify adapter discoverability') &&
+      docsContextKo.includes('apps/docs/content/docs/guides/runtime-adapters.ko.mdx') &&
       docsContextKo.includes('engines.node >=20.0.0') &&
       beginnerIntroKo.includes('Node.js 20 버전 이상') &&
       beginnerCliSetupKo.includes('일반 HTTP로 실행') &&
-      beginnerProductionKo.includes('Fastify adapter `https` option'),
-    'Korean Fastify README, package-surface, package-chooser, docs/CONTEXT.ko.md, and beginner docs must keep the Node.js 20+ runtime floor and HTTPS/TLS startup boundary discoverable together.',
+      beginnerProductionKo.includes('Fastify adapter `https` option') &&
+      beginnerProductionKo.startsWith('<!-- packages: @fluojs/core, @fluojs/http, @fluojs/platform-fastify -->') &&
+      customAdapterKo.startsWith('<!-- packages: @fluojs/http, @fluojs/core, @fluojs/di, @fluojs/platform-fastify -->') &&
+      runtimeAdaptersGuideKo.includes('### Fastify HTTPS/TLS') &&
+      runtimeAdaptersGuideKo.includes('Node.js `https.ServerOptions`') &&
+      runtimeAdaptersGuideKo.includes('infrastructure boundary 뒤에서 Fastify를 일반 HTTP로 실행'),
+    'Korean Fastify README, package-surface, package-chooser, docs/CONTEXT.ko.md, book metadata, and website guidance must keep the Node.js 20+ runtime floor and HTTPS/TLS startup boundary discoverable together.',
   );
   assert(
     platformBunReadme.includes('synchronously creates the fetch bridge') &&
@@ -1789,6 +1939,7 @@ export function main() {
   enforceReleaseGovernancePublishSurfaceSync();
   enforceCanonicalPackageSurfaceSync();
   enforceDocsHubOfficialTransportLinks();
+  enforceSerializerResponseOwnershipDocsSync();
   enforceCloudflareWorkersLifecycleDocsSync();
   enforceConfigNestjsMigrationDocs();
   enforceExpressRuntimeMigrationDocsSync();

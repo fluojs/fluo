@@ -1,0 +1,47 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+
+import { enforceSerializerResponseOwnershipDocsSync } from './verify-platform-consistency-governance.mjs';
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+describe('serializer response ownership governance', () => {
+  it('keeps the bilingual package and governed documentation synchronized', () => {
+    expect(() => enforceSerializerResponseOwnershipDocsSync()).not.toThrow();
+  });
+
+  it('rejects missing runtime response ownership guidance', () => {
+    expect(() =>
+      enforceSerializerResponseOwnershipDocsSync((relativePath: string) => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === 'packages/runtime/README.md'
+          ? content.replace('Framework-Managed and Handler-Owned Responses', 'Response Ownership')
+          : content;
+      }),
+    ).toThrowError(/packages\/runtime\/README\.md must keep serializer response ownership guidance synchronized/);
+  });
+
+  it('rejects broad interceptor-chain return-value preservation claims', () => {
+    expect(() =>
+      enforceSerializerResponseOwnershipDocsSync((relativePath: string) => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === 'packages/runtime/README.md'
+          ? `${content}\nThe interceptor chain preserves the handler-owned return value unchanged.`
+          : content;
+      }),
+    ).toThrowError(/packages\/runtime\/README\.md must not claim that the interceptor chain preserves handler return values/);
+  });
+
+  it('rejects broad Korean interceptor-chain return-value preservation claims', () => {
+    expect(() =>
+      enforceSerializerResponseOwnershipDocsSync((relativePath: string) => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === 'packages/runtime/README.ko.md'
+          ? `${content}\ninterceptor chain은 handler-owned 반환값을 변경하지 않고 보존합니다.`
+          : content;
+      }),
+    ).toThrowError(/packages\/runtime\/README\.ko\.md must not claim that the interceptor chain preserves handler return values/);
+  });
+});

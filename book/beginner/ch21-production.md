@@ -1,4 +1,4 @@
-<!-- packages: @fluojs/core, @fluojs/http -->
+<!-- packages: @fluojs/core, @fluojs/http, @fluojs/platform-fastify -->
 <!-- project-state: FluoBlog v1.18 -->
 
 # Chapter 21. Production Readiness
