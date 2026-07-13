@@ -73,6 +73,12 @@ await microservice.listen();
 
 `@MessagePattern`은 요청-응답 흐름에, `@EventPattern`은 fire-and-forget 이벤트에 사용합니다. 문자열과 정규식 패턴 모두 지원합니다.
 
+### 핸들러 탐색과 데코레이터 모델
+
+`@MessagePattern`, `@EventPattern`, 스트리밍 패턴 데코레이터는 TC39 표준 메서드 데코레이터입니다. 표준 데코레이터 context를 통해 라우팅 데이터를 기록하며 `reflect-metadata`, `experimentalDecorators`, `emitDecoratorMetadata` 출력은 사용하지 않습니다.
+
+데코레이터가 붙은 메서드는 소유 클래스를 컴파일된 모듈의 `providers` 또는 `controllers`에 명시적으로 나열해야만 탐색 대상이 됩니다. 탐색 과정은 등록된 token을 인스턴스로 resolve한 뒤 데코레이터가 붙은 public instance method를 호출합니다. Private 또는 static target은 거부되며, 모듈 등록 없이 클래스를 import하거나 decorate하는 것만으로는 핸들러가 등록되지 않습니다.
+
 ### gRPC 스트리밍
 
 `@ServerStreamPattern`, `@ClientStreamPattern`, `@BidiStreamPattern`으로 unary 외의 스트리밍 패턴도 다룰 수 있습니다.

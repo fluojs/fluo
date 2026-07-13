@@ -20,6 +20,7 @@
     "@fluojs/platform-fastify": "workspace:*",
     "@fluojs/react": "workspace:*",
     "@fluojs/runtime": "workspace:*",
+    "@fluojs/validation": "workspace:*",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },

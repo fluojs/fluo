@@ -2,9 +2,9 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Minimal Vite-backed `@fluojs/react` application for the `0.2.0` example phase. It connects
+Minimal Vite-backed `@fluojs/react` application for the hydration and client-navigation phases. It connects
 HTTP-owned page routes, DTO-bound parameters, streamed React SSR, Vite manifest assets, and one
-hydrated browser interaction without introducing a second routing model.
+hydrated browser runtime without introducing a second routing model.
 
 ## what this example demonstrates
 
@@ -16,6 +16,8 @@ hydrated browser interaction without introducing a second routing model.
 - A Vite client build that writes `dist/client/.vite/manifest.json`, then
   `@fluojs/react/vite` turns that loaded manifest into ordered CSS and hydration module assets.
 - A server-rendered counter that becomes interactive through React DOM `hydrateRoot(...)`.
+- `@fluojs/react/client` route snapshots, URL-state hooks, progressive `Link`, and full-document
+  `push` navigation that still reaches the server-owned DTO validation boundary.
 - A production build served by the Fastify adapter, including the generated Vite client assets.
 
 ## run from the repo root
@@ -28,7 +30,9 @@ pnpm --filter @fluojs/example-react-vite-ssr start
 ```
 
 Open `http://127.0.0.1:3000/products/sku-42?preview=true`, then activate `Count: 0`. The label
-changes to `Count: 1` only after the Vite-generated client entry hydrates the server HTML.
+changes to `Count: 1` only after the Vite-generated client entry hydrates the server HTML. Use
+`Open sku-84` or `Push sku-126` to perform same-origin full-document navigation; each destination
+is matched, bound, and validated again by the fluo HTTP route.
 
 Run the repeatable SSR and hydration checks with:
 
@@ -39,7 +43,8 @@ pnpm --filter @fluojs/example-react-vite-ssr test:browser
 
 The browser command rebuilds workspace packages plus the example, starts the built server, and runs
 the production client entry in Chrome. It fails on missing or non-200 bootstrap/style assets,
-hydration warnings or errors, an identifier-prefix mismatch, or a counter that does not hydrate.
+hydration warnings or errors, an identifier-prefix mismatch, a counter that does not hydrate, or
+client navigation whose URL and server-rendered route state do not agree.
 
 ## phase boundaries and limitations
 
@@ -47,9 +52,12 @@ hydration warnings or errors, an identifier-prefix mismatch, or a counter that d
   that contract with the `@fluojs/react/vite` manifest parser added after the initial SSR example.
 - `src/entry-client.ts` is the browser-only boundary. Server modules do not access `window` or
   `document`, and the server loads the Vite manifest explicitly from the application boundary.
-- Before `@fluojs/react/client` navigation exists, links and forms perform ordinary browser document
-  navigation. This example does not promise SPA navigation, event replay, client route matching, or
-  navigation caches.
+- `ReactClientRouterProvider` receives the same request URL and HTTP-matched params during SSR and
+  hydration. `Link`, `router.push(...)`, and `router.replace(...)` use full-document navigation, so
+  redirects, not-found pages, DTO validation failures, guards, interceptors, and server errors remain
+  ordinary HTTP responses.
+- This example does not promise SPA document swapping, event replay, client route matching,
+  navigation caches, RSC-aware data, or prefetch behavior.
 - This is not a Next.js App Router, file-based router, TanStack route tree, RSC example, catch-all
   route example, or production starter-template change.
 - The asset controller is intentionally minimal and serves the flat filenames emitted by this

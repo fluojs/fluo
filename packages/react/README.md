@@ -16,6 +16,7 @@ Runtime-neutral React integration for fluo applications.
 - [Web Streams SSR](#web-streams-ssr)
 - [Hydration Asset Contract](#hydration-asset-contract)
 - [Vite Asset Manifest Integration](#vite-asset-manifest-integration)
+- [Client Navigation Runtime](#client-navigation-runtime)
 - [Current Limitations](#current-limitations)
 - [Public API](#public-api)
 - [Related Packages](#related-packages)
@@ -77,8 +78,9 @@ React server entry is rendered.
   deterministic stylesheet and JavaScript ordering, manifest diagnostics, and hydration option
   creation. The root package still accepts explicit asset options without discovering or scanning
   manifests.
-- **future `@fluojs/react/client`** — browser navigation and client hydration helpers. The root
-  package does not generate client bundles or own client-side route transitions.
+- **`@fluojs/react/client`** — progressive anchors, HTTP-first full-document navigation, and
+  hydration-safe URL, path-param, and navigation lifecycle hooks. Browser APIs remain isolated from
+  the runtime-neutral root.
 - **future `@fluojs/react/experimental/rsc`** — React Server Components and Server Functions
   experiments. RSC and Server Functions are outside the stable root contract and should not be
   documented as available from `@fluojs/react`.
@@ -313,15 +315,99 @@ TC39 decorator transform used by fluo applications. Use `@fluojs/react/vite` in 
 parse React build assets and feed the existing hydration contract. Neither package owns file routes,
 React-only route grammar, Next.js route segment conventions, RSC bundler behavior, or URL matching.
 The runnable `examples/react-vite-ssr/` application shows this boundary with generated assets,
-streamed Suspense content, and direct React DOM hydration while client navigation remains future work.
+streamed Suspense content, direct React DOM hydration, and the client navigation subpath.
+
+## Client Navigation Runtime
+
+Use `@fluojs/react/client` in hydrated React pages that need navigation controls and URL state without
+introducing a client-owned route table. Create the initial snapshot from the active fluo HTTP request,
+then pass that same snapshot to `ReactClientRouterProvider` during server rendering and hydration.
+This request-scoped snapshot prevents server/client URL state drift and carries path params produced by
+the existing HTTP route match; the client runtime never derives or validates route params itself.
+
+```tsx
+import {
+  Link,
+  ReactClientRouterProvider,
+  createReactRouteSnapshot,
+  useNavigation,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from '@fluojs/react/client';
+
+function DashboardNav() {
+  const navigation = useNavigation();
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  return (
+    <nav aria-label="Dashboard">
+      <Link href="/dashboard/42/edit?tab=profile">Edit</Link>
+      <button type="button" onClick={() => router.push('/dashboard/42/edit?tab=profile')}>
+        Open editor
+      </button>
+      <output>{pathname} · {searchParams.get('tab')} · {navigation.status}</output>
+    </nav>
+  );
+}
+
+const initialSnapshot = createReactRouteSnapshot({
+  url: requestContext.request.url,
+  params: requestContext.request.params,
+});
+
+const app = (
+  <ReactClientRouterProvider initialSnapshot={initialSnapshot}>
+    <DashboardNav />
+  </ReactClientRouterProvider>
+);
+```
+
+The navigation contract is deliberately HTTP-first:
+
+- `Link` always renders a real `<a href>` so pre-hydration clicks, disabled JavaScript, modified
+  clicks, downloads, explicit targets, and cross-origin destinations keep native browser behavior.
+  After hydration, an unmodified primary click to a same-origin HTTP(S) URL delegates to
+  `router.push(...)`.
+- `router.push(href)` uses `window.location.assign(...)`; `router.replace(href)` uses
+  `window.location.replace(...)`. A same-origin destination that changes the pathname or search
+  (query string) performs full-document navigation, so fluo HTTP route matching, `@RequestDto`
+  binding and validation, guards, interceptors, redirects, not-found responses, non-HTML responses,
+  and server failures remain authoritative.
+- A fragment-only destination that keeps the current pathname and search is a same-document
+  exception. The browser does not issue a new HTTP request; it emits `hashchange`, and a matching
+  event completes the requested `push` or `replace` lifecycle while updating the route snapshot URL
+  and hash. Because no server request occurs, fluo HTTP route matching, `@RequestDto` binding and
+  validation, guards, and interceptors do not run for that fragment change.
+- If the normalized destination is an identical URL to the current route snapshot, the router does
+  not call `window.location.assign(...)` or `window.location.replace(...)`. It exposes `skipped`
+  with the requested navigation type and destination instead.
+- `router.back()` delegates to `window.history.back()`. `router.refresh()` uses
+  `window.location.reload()` as the documented revalidation mechanism. It does not imply an RSC,
+  loader, or client-data cache.
+- `usePathname()`, `useSearchParams()`, `useParams()`, and `useRouterState()` read the provider's
+  immutable route snapshot. `popstate` and `hashchange` update URL-derived fields. If a history event
+  changes the pathname without a new server document, stale path params are cleared rather than
+  guessed from a client route grammar.
+- `useNavigation()` exposes `idle`, `navigating`, `refreshing`, `complete`, `error`, and `skipped`.
+  Full-document path/search transitions normally leave the current document while `navigating` or
+  `refreshing`, and the destination document starts from a new server-owned `idle` snapshot.
+  Fragment-only transitions complete in the current document after the matching `hashchange`.
+- Router methods reject cross-origin or non-HTTP(S) destinations with
+  `ReactClientNavigationError`. Use a normal anchor for those destinations.
+
+This phase intentionally omits `prefetch`: without an owned client data or render cache, prefetching
+would promise behavior the package cannot yet revalidate or consume consistently.
 
 ## Current Limitations
 
 This package currently does **not** provide:
 
-- `@fluojs/react/client`
 - `@fluojs/react/experimental/rsc`
 - React Server Components or Server Functions integration
+- SPA document swapping, a client data/loader cache, and navigation prefetching
 - a Next.js App Router, TanStack route tree, Angular `Routes[]`, file-route scanner, or React-owned
   `routes: []` table
 - automatic client bundle generation
@@ -358,6 +444,10 @@ This package currently does **not** provide:
   `ReactViteManifestDiagnostic`, `ReactViteAssetManifest`, `ReactViteHydrationOptions`,
   `ReactViteJavaScriptAssets`, `ReactViteBootstrapData`, and `ReactViteResolvedEntry` for parsing
   Vite manifests into the stable hydration asset contract without importing Vite from the root.
+- `@fluojs/react/client` subpath — `Link`, `ReactClientRouterProvider`,
+  `createReactRouteSnapshot(...)`, `useRouter()`, `usePathname()`, `useParams()`,
+  `useSearchParams()`, `useNavigation()`, and `useRouterState()` for progressive HTTP-first browser
+  navigation without widening the root package or adding a client route grammar.
 
 ## Related Packages
 
@@ -373,6 +463,8 @@ This package currently does **not** provide:
 
 - `packages/react/src/index.ts`
 - `packages/react/src/vite.ts`
+- `packages/react/src/client.ts`
+- `packages/react/src/client.test.ts`
 - `packages/react/src/vite/create-asset-manifest.ts`
 - `packages/react/src/decorators.ts`
 - `packages/react/src/server-entry.ts`

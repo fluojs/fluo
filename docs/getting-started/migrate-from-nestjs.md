@@ -36,6 +36,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 | `@nestjs/event-emitter` / `@OnEvent()` handlers | `EventBusModule.forRoot(...)`, `EventBusLifecycleService`, and `@OnEvent(EventClass)` from `@fluojs/event-bus` | Event routing is class-based, `static eventKey` stabilizes distributed transport channels, handlers are discovered only from singleton providers/controllers, and awaited or background publish work remains in shutdown drain tracking. |
 | `@nestjs/cqrs` command/query/event handlers and sagas | `CqrsModule.forRoot(...)`, standard `@CommandHandler(...)`, `@QueryHandler(...)`, `@EventHandler(...)`, and `@Saga(...)` from `@fluojs/cqrs` | CQRS discovery scans singleton providers only, not controllers or emitted design metadata. Commands and queries remain point-to-point; event handlers and sagas fan out by provider token before delegated `@fluojs/event-bus` publication. |
 | `ClientsModule.register(...)`, injected `ClientProxy`, and NestJS broker transport options | `MicroservicesModule.forRoot({ transport })`, `MICROSERVICE` typed as `Microservice`, and transport adapters from `@fluojs/microservices/<transport>` | Registration and the programmatic facade stay on root `@fluojs/microservices`; NATS, Kafka, and RabbitMQ collaborators remain application-owned, and `send()`, `emit()`, and `close()` have distinct completion boundaries described below. |
+| NestJS `@MessagePattern(...)` / `@EventPattern(...)` handler discovery and provider metadata | TC39 standard pattern decorators from `@fluojs/microservices` plus explicit module `providers` or `controllers` registration | fluo discovers decorated public instance methods only on classes registered in the compiled module graph. It does not scan NestJS metadata, `reflect-metadata`, or emitted design types. |
 | NestJS Redis async module registration or shared Redis Pub/Sub clients | `RedisModule.forRoot(...)`, named `RedisModule.forRoot({ name, ... })`, and `getRedisClientToken(name)` from `@fluojs/redis` | fluo Redis registration is synchronous and each `forRoot(...)` call creates a client from final options. Resolve environment-specific options before registration; do not pass or expect the module to adopt an externally created client. Keep Pub/Sub subscribers on a dedicated duplicate or named client instead of reusing the ordinary command client. |
 | `@nestjs/bull` / `@nestjs/bullmq` processor discovery through `@Processor(...)`, `@Process(...)`, or provider metadata | `RedisModule.forRoot(...)`, `QueueModule.forRoot(...)`, singleton `@QueueWorker(JobClass, options?)` providers, and explicit `@Inject(...)` from `@fluojs/queue`, `@fluojs/redis`, and `@fluojs/core` | fluo discovers only decorated singleton providers/controllers in the compiled module graph. Workers expose `handle(job)`; Queue does not read NestJS metadata or automatically preserve a legacy Bull/BullMQ `queueName`, named job, persisted payload, or their topology. |
 | `@nestjs/schedule` decorators, `SchedulerRegistry`, or `CronJob` handles | `CronModule.forRoot(...)`, public-method `@Cron` / `@Interval` / `@Timeout`, and `SCHEDULING_REGISTRY` from `@fluojs/cron` | Rename NestJS `timeZone` to fluo `timezone`. Do not carry `waitForCompletion`: fluo has no such option and always skips a tick when the same task instance is still running. fluo starts decorator-discovered tasks during application bootstrap, starts dynamic registry tasks when added to a started registry, and exposes read-only task descriptors instead of live scheduler handles. |
@@ -127,7 +128,7 @@ Do not migrate every NestJS interceptor into this shape. Request-wide transactio
 
 ### GraphQL Resolver Migration
 
-GraphQL migration keeps schema and discovery wiring explicit. Register each resolver class as a provider or controller in an authored module so it is discoverable from the compiled module graph. `GraphqlModule.forRoot({ resolvers: [...] })` does not register those classes; when supplied, `resolvers` filters discovery to that allowlist. Omit `resolvers` or pass an empty list to discover every decorated resolver class already registered as a provider or controller. Neither TypeScript return types nor NestJS design metadata register providers or build output types. The current runtime supports root operations only, exposes no `GraphqlModule.forRootAsync(...)`, rejects `@Subscription({ topics })`, and requires subscription methods to return an `AsyncIterable`. HTTP and SSE use the portable HTTP path, while optional WebSocket subscriptions require a server-backed Node HTTP/S adapter with upgrade listeners.
+GraphQL migration keeps schema and discovery wiring explicit. Register each resolver class as a provider or controller in an authored module so it is discoverable from the compiled module graph. `GraphqlModule.forRoot({ resolvers: [...] })` does not register those classes; when supplied, `resolvers` filters discovery to that allowlist. Omit `resolvers` or pass an empty list to discover every decorated resolver class already registered as a provider or controller. Neither TypeScript return types nor NestJS design metadata register providers or build output types. The current runtime supports root operations only, exposes no `GraphqlModule.forRootAsync(...)`, rejects `@Subscription({ topics })`, and requires subscription methods to return an `AsyncIterable`. `@fluojs/graphql` requires Node.js `>=20.16.0`, the effective floor of its mandatory first-party dependency graph through the `@fluojs/runtime` to `@fluojs/config` edge; HTTP and SSE use a Web-standard HTTP seam within that boundary, while optional WebSocket subscriptions additionally require a server-backed Node HTTP/S adapter with upgrade listeners. Do not treat that internal seam as Bun, Deno, or Cloudflare Workers package support without aligned dependency metadata and native runtime verification.
 
 Declare object and list outputs directly so they do not fall back to GraphQL `String`:
 
@@ -164,10 +165,13 @@ class ProductResolver {
 class AppModule {}
 ```
 
-### Microservices Transport Migration
+### Microservices Handler and Transport Migration
 
-Split NestJS `ClientProxy` migration into registration, facade, adapter, and infrastructure ownership instead of treating it as one opaque client object.
+Split handler discovery and NestJS `ClientProxy` migration into explicit handler registration, facade, adapter, and infrastructure ownership instead of carrying over one opaque reflection-driven system.
 
+- Import `@MessagePattern`, `@EventPattern`, and streaming pattern decorators from root `@fluojs/microservices`. They are TC39 standard method decorators and do not read `reflect-metadata`, `experimentalDecorators`, or `emitDecoratorMetadata` output.
+- Keep decorated handlers on public instance methods. Private and static decorator targets are invalid.
+- List each handler class explicitly in a compiled module's `providers` or `controllers`. Importing the class, decorating a method, or retaining NestJS provider metadata does not register the handler.
 - Register the selected adapter with root `MicroservicesModule.forRoot({ transport })`.
 - Inject root `MICROSERVICE` as `Microservice` for `listen()`, `send()`, `emit()`, and `close()`. The token resolves the lifecycle facade, not the raw adapter.
 - Import transport implementations from their explicit subpaths when possible: `@fluojs/microservices/nats`, `@fluojs/microservices/kafka`, and `@fluojs/microservices/rabbitmq`. `RedisStreamsMicroserviceTransport` remains the documented root-barrel-only exception.
@@ -175,12 +179,31 @@ Split NestJS `ClientProxy` migration into registration, facade, adapter, and inf
 - `await microservice.emit(...)` waits only for the outbound transport publish operation. It does not prove that a remote event handler ran; any broker acknowledgement is limited to what the caller-provided publish collaborator itself promises.
 - `await microservice.close()` waits for transport listener/subscription teardown and pending-request cleanup. NATS, Kafka, and RabbitMQ adapters detach from caller-provided collaborators but do not close or disconnect those clients, producers, consumers, publishers, channels, or connections.
 
+```typescript
+import { Module } from '@fluojs/core';
+import { MessagePattern, MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
+
+class OrdersHandler {
+  @MessagePattern('orders.find')
+  public findOrder(payload: { orderId: string }) {
+    return { id: payload.orderId };
+  }
+}
+
+@Module({
+  imports: [MicroservicesModule.forRoot({ transport: new TcpMicroserviceTransport({ port: 4000 }) })],
+  providers: [OrdersHandler],
+})
+class OrdersMicroserviceModule {}
+```
+
 Kafka and RabbitMQ keep inbound consumer callbacks pending until handler execution and any request response publication settle, so the broker adapter can choose acknowledgement or retry. That consumer-side boundary remains separate from the producer-side `emit()` promise. During shutdown, close the `Microservice` facade first, then close or drain caller-owned broker resources from the application bootstrap layer.
 
 ## Removed Concepts
 
 - `@Injectable()` as the default provider marker. Provider registration happens through the module `providers` array.
 - Reflection-driven constructor resolution through `reflect-metadata`.
+- Reflection-driven microservice handler discovery from NestJS provider or emitted design metadata.
 - Implicit DI based on emitted design-time types.
 - Legacy decorator compiler mode as a framework requirement.
 - Collapsing the generated `@fluojs/vite` application transform and `@fluojs/testing/vitest` test transform into one file boundary.
