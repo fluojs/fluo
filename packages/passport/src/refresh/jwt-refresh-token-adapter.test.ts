@@ -1,5 +1,12 @@
-import { DefaultJwtSigner, DefaultJwtVerifier, JwtConfigurationError, JwtInvalidTokenError, type RefreshTokenStore } from '@fluojs/jwt';
-import { describe, expect, it } from 'vitest';
+import {
+  DefaultJwtSigner,
+  DefaultJwtVerifier,
+  JwtConfigurationError,
+  JwtInvalidTokenError,
+  type RefreshTokenRecord,
+  type RefreshTokenStore,
+} from '@fluojs/jwt';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { JwtRefreshTokenAdapter } from './jwt-refresh-token-adapter.js';
 
@@ -17,7 +24,31 @@ function createVerifier(): DefaultJwtVerifier {
   } as unknown as DefaultJwtVerifier;
 }
 
+function createInMemoryStore(): RefreshTokenStore {
+  const adapter = new JwtRefreshTokenAdapter(createSigner(), createVerifier(), {
+    secret: 'refresh-secret',
+    store: 'memory',
+  });
+
+  return adapter['service']['options'].store;
+}
+
+function createRecord(id: string, expiresAt: Date): RefreshTokenRecord {
+  return {
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    expiresAt,
+    family: `family-${id}`,
+    id,
+    subject: 'user-1',
+    used: false,
+  };
+}
+
 describe('JwtRefreshTokenAdapter', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   function createRotationCapableStore(): RefreshTokenStore {
     return {
       async consume() {
@@ -48,6 +79,62 @@ describe('JwtRefreshTokenAdapter', () => {
         store: 'memory',
       }),
     ).not.toThrow();
+  });
+
+  it('evicts expired records before saving a new in-memory token', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    const store = createInMemoryStore();
+    await store.save(createRecord('expired', new Date('2026-01-01T00:00:01.000Z')));
+
+    vi.setSystemTime(new Date('2026-01-01T00:00:01.000Z'));
+    await store.save(createRecord('active', new Date('2026-01-01T00:00:02.000Z')));
+
+    await expect(store.find('expired')).resolves.toBeUndefined();
+    await expect(store.find('active')).resolves.toMatchObject({ id: 'active' });
+  });
+
+  it('evicts an expired record after returning it from an in-memory lookup', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    const store = createInMemoryStore();
+    await store.save(createRecord('expired', new Date('2026-01-01T00:00:01.000Z')));
+
+    vi.setSystemTime(new Date('2026-01-01T00:00:01.000Z'));
+
+    await expect(store.find('expired')).resolves.toMatchObject({ id: 'expired' });
+    await expect(store.find('expired')).resolves.toBeUndefined();
+  });
+
+  it('evicts expired records when the in-memory store consumes a token', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    const store = createInMemoryStore();
+    await store.save(createRecord('consumed', new Date('2026-01-01T00:00:01.000Z')));
+    await store.save(createRecord('unrelated', new Date('2026-01-01T00:00:01.000Z')));
+
+    vi.setSystemTime(new Date('2026-01-01T00:00:01.000Z'));
+    await expect(store.consume?.({
+      family: 'family-consumed',
+      now: new Date(),
+      subject: 'user-1',
+      tokenId: 'consumed',
+    })).resolves.toBe('expired');
+
+    await expect(store.find('consumed')).resolves.toBeUndefined();
+    await expect(store.find('unrelated')).resolves.toBeUndefined();
+  });
+
+  it('evicts expired records during an in-memory revocation operation', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    const store = createInMemoryStore();
+    await store.save(createRecord('expired', new Date('2026-01-01T00:00:01.000Z')));
+
+    vi.setSystemTime(new Date('2026-01-01T00:00:01.000Z'));
+    await store.revoke('missing');
+
+    await expect(store.find('expired')).resolves.toBeUndefined();
   });
 
   it('preserves rotation:false and reuses the same refresh token string', async () => {

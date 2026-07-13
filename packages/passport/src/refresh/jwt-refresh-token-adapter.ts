@@ -4,6 +4,7 @@ import {
   DefaultJwtVerifier,
   JwtConfigurationError,
   RefreshTokenService as JwtRefreshTokenService,
+  type RefreshTokenRecord,
   type RefreshTokenStore,
 } from '@fluojs/jwt';
 
@@ -35,36 +36,35 @@ function resolveSecret(options: RefreshTokenModuleOptions): string {
 }
 
 function createInMemoryStore(): RefreshTokenStore {
-  const records = new Map<string, {
-    id: string;
-    subject: string;
-    family: string;
-    expiresAt: Date;
-    used: boolean;
-    createdAt: Date;
-  }>();
+  const records = new Map<string, RefreshTokenRecord>();
+
+  const pruneExpired = (now: number): void => {
+    for (const [id, record] of records.entries()) {
+      if (record.expiresAt.getTime() <= now) {
+        records.delete(id);
+      }
+    }
+  };
 
   return {
-    async save(token: {
-      id: string;
-      subject: string;
-      family: string;
-      expiresAt: Date;
-      used: boolean;
-      createdAt: Date;
-    }): Promise<void> {
+    async save(token: RefreshTokenRecord): Promise<void> {
       records.set(token.id, token);
+      pruneExpired(Date.now());
     },
 
     async find(tokenId: string) {
-      return records.get(tokenId);
+      const record = records.get(tokenId);
+      pruneExpired(Date.now());
+      return record;
     },
 
     async revoke(tokenId: string): Promise<void> {
+      pruneExpired(Date.now());
       records.delete(tokenId);
     },
 
     async revokeBySubject(subject: string): Promise<void> {
+      pruneExpired(Date.now());
       for (const [id, record] of records.entries()) {
         if (record.subject === subject) {
           records.delete(id);
@@ -73,6 +73,7 @@ function createInMemoryStore(): RefreshTokenStore {
     },
 
     async revokeByFamily(family: string): Promise<void> {
+      pruneExpired(Date.now());
       for (const [id, record] of records.entries()) {
         if (record.family === family) {
           records.delete(id);
@@ -82,6 +83,7 @@ function createInMemoryStore(): RefreshTokenStore {
 
     async consume(input: { tokenId: string; subject: string; family: string; now: Date }) {
       const record = records.get(input.tokenId);
+      pruneExpired(input.now.getTime());
 
       if (!record) {
         return 'invalid';
