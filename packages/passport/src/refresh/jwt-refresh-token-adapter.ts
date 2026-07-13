@@ -72,6 +72,14 @@ function createInMemoryStore(): RefreshTokenStore {
       }
     },
 
+    async revokeByFamily(family: string): Promise<void> {
+      for (const [id, record] of records.entries()) {
+        if (record.family === family) {
+          records.delete(id);
+        }
+      }
+    },
+
     async consume(input: { tokenId: string; subject: string; family: string; now: Date }) {
       const record = records.get(input.tokenId);
 
