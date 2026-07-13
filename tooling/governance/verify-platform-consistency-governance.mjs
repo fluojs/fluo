@@ -755,6 +755,138 @@ export function enforceCloudflareWorkersLifecycleDocsSync(
   }
 }
 
+const expressRuntimeMigrationDocRequirements = [
+  [
+    'packages/platform-express/README.md',
+    ['Node.js 20 or newer', 'engines.node >=20.0.0', 'TC39 standard decorators', 'explicit module/provider registration'],
+  ],
+  [
+    'packages/platform-express/README.ko.md',
+    ['Node.js 20 이상', 'engines.node >=20.0.0', 'TC39 표준 데코레이터', '명시적 module/provider registration'],
+  ],
+  [
+    'docs/reference/package-surface.md',
+    ['Node.js 20+', 'engines.node >=20.0.0', 'TC39 standard decorator', 'explicit DI/module wiring'],
+  ],
+  [
+    'docs/reference/package-surface.ko.md',
+    ['Node.js 20+', 'engines.node >=20.0.0', 'TC39 표준 데코레이터', '명시적 DI/module wiring'],
+  ],
+  [
+    'docs/reference/package-chooser.md',
+    ['Node.js 20+', 'engines.node >=20.0.0', 'TC39 standard decorators', 'explicit DI/module wiring'],
+  ],
+  [
+    'docs/reference/package-chooser.ko.md',
+    ['Node.js 20+', 'engines.node >=20.0.0', 'TC39 표준 데코레이터', '명시적 DI/module wiring'],
+  ],
+  [
+    'docs/getting-started/migrate-from-nestjs.md',
+    ['Node.js 20+', 'TC39 standard decorators', 'class-level `@Inject(...)`', 'explicit module/provider registration'],
+  ],
+  [
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    ['Node.js 20+', 'TC39 표준 데코레이터', 'class-level `@Inject(...)`', '명시적 module/provider registration'],
+  ],
+  [
+    'book/intermediate/ch21-express-node.md',
+    ['Node.js 20 or newer', 'engines.node >=20.0.0', 'getListenTarget()', 'explicit DI/module wiring'],
+  ],
+  [
+    'book/intermediate/ch21-express-node.ko.md',
+    ['Node.js 20 이상', 'engines.node >=20.0.0', 'getListenTarget()', '명시적 DI/module wiring'],
+  ],
+  [
+    'apps/docs/content/docs/guides/runtime-adapters.mdx',
+    ['Node.js 20 or newer', 'engines.node >=20.0.0', 'getListenTarget()', 'explicit DI/module wiring'],
+  ],
+  [
+    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+    ['Node.js 20 이상', 'engines.node >=20.0.0', 'getListenTarget()', '명시적 DI/module wiring'],
+  ],
+  [
+    'docs/CONTEXT.md',
+    ['Node.js 20+', 'engines.node >=20.0.0', 'getListenTarget()', 'explicit DI/module wiring'],
+  ],
+  [
+    'docs/CONTEXT.ko.md',
+    ['Node.js 20+', 'engines.node >=20.0.0', 'getListenTarget()', '명시적 DI/module wiring'],
+  ],
+];
+
+const expressListenTargetExamplePaths = [
+  'book/intermediate/ch21-express-node.md',
+  'book/intermediate/ch21-express-node.ko.md',
+  'apps/docs/content/docs/guides/runtime-adapters.mdx',
+  'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+];
+
+function includesMarkersInOrder(content, markers) {
+  let offset = 0;
+
+  return markers.every((marker) => {
+    const index = content.indexOf(marker, offset);
+    if (index === -1) {
+      return false;
+    }
+
+    offset = index + marker.length;
+    return true;
+  });
+}
+
+function includesTypeCorrectExpressListenTargetExample(content) {
+  const typedCodeFence = /```(?:ts|typescript)\r?\n([\s\S]*?)```/g;
+
+  return Array.from(content.matchAll(typedCodeFence), (match) => match[1] ?? '').some((code) =>
+    includesMarkersInOrder(code, [
+      'createExpressAdapter,',
+      'ExpressHttpApplicationAdapter,',
+      'const adapter = createExpressAdapter(',
+      'adapter instanceof ExpressHttpApplicationAdapter',
+      'adapter.getListenTarget()',
+    ]),
+  );
+}
+
+export function enforceExpressRuntimeMigrationDocsSync(
+  readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
+) {
+  for (const [relativePath, requiredMarkers] of expressRuntimeMigrationDocRequirements) {
+    const content = readText(relativePath);
+    const missingMarkers = requiredMarkers.filter((marker) => !content.includes(marker));
+
+    assert(
+      missingMarkers.length === 0,
+      `${relativePath} must keep the Express Node.js runtime floor, infrastructure helpers, and NestJS migration boundary synchronized; missing: ${missingMarkers.join(', ')}.`,
+    );
+  }
+
+  const adapterSourcePath = 'packages/platform-express/src/adapter.ts';
+  const adapterSource = readText(adapterSourcePath);
+  const factoryStart = adapterSource.indexOf('export function createExpressAdapter(');
+  const nextExport = factoryStart === -1 ? -1 : adapterSource.indexOf('\nexport ', factoryStart + 1);
+  const factorySource =
+    factoryStart === -1 ? '' : adapterSource.slice(factoryStart, nextExport === -1 ? undefined : nextExport);
+  assert(
+    adapterSource.includes('export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {') &&
+      includesMarkersInOrder(factorySource, [
+        'export function createExpressAdapter(',
+        '): HttpApplicationAdapter {',
+        'return new ExpressHttpApplicationAdapter(',
+      ]),
+    `${adapterSourcePath} must keep createExpressAdapter() on the shared HttpApplicationAdapter public return type while constructing the exported ExpressHttpApplicationAdapter implementation.`,
+  );
+
+  for (const relativePath of expressListenTargetExamplePaths) {
+    const content = readText(relativePath);
+    assert(
+      includesTypeCorrectExpressListenTargetExample(content),
+      `${relativePath} must narrow createExpressAdapter() from its shared HttpApplicationAdapter return type to the public ExpressHttpApplicationAdapter implementation before calling getListenTarget().`,
+    );
+  }
+}
+
 function enforceCanonicalRuntimeMatrixReferences() {
   const packageSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
   const packageSurfaceKo = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
@@ -1649,6 +1781,7 @@ export function main() {
   enforceCanonicalPackageSurfaceSync();
   enforceDocsHubOfficialTransportLinks();
   enforceCloudflareWorkersLifecycleDocsSync();
+  enforceExpressRuntimeMigrationDocsSync();
   enforceCanonicalRuntimeMatrixReferences();
   enforceRemovedRuntimeFactoryNamesNotUsedInDocs();
   enforceNoDirectProcessEnvInOrdinaryPackageSource();

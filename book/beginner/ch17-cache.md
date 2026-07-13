@@ -85,15 +85,49 @@ In addition, a distributed cache lets you implement **session persistence** and 
 
 ```typescript
 // Example Redis configuration for production
-CacheModule.forRoot({
-  store: 'redis',
-  redis: { clientName: 'cache' },
-  ttl: 3600,
-});
+import { Module } from '@fluojs/core';
+import { CacheModule } from '@fluojs/cache-manager';
+import { RedisModule } from '@fluojs/redis';
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ name: 'cache', host: 'localhost', port: 6379 }),
+    CacheModule.forRoot({
+      store: 'redis',
+      redis: { clientName: 'cache' },
+      keyPrefix: 'fluoblog:cache:',
+      ttl: 3600,
+    }),
+  ],
+})
+export class AppModule {}
 ```
 
+The top-level `keyPrefix` is the Redis ownership boundary, not a nested `redis` connection option. It defaults to `fluo:cache:`, prefixes every cache entry, and limits `CacheService.reset()` to that namespace. Use an application-specific non-empty prefix when multiple applications share Redis. An empty prefix intentionally avoids scanning `*` and lets a store instance reset only the keys it wrote and still tracks, so it cannot provide cross-restart or cross-process reset ownership.
+
 ### 17.3.2 Synchronous Configuration and Secret Management: Best Practices
-In real applications, you should not hardcode cache credentials. In fluo, `CacheModule.forRoot(options)` is the synchronous module entrypoint: prepare Redis client registration explicitly first, then pass ordinary cache options that point to that registration, such as `store: 'redis'` and `redis.clientName`. This keeps the cache module's public surface simple while letting a separate configuration layer manage environment-specific connection details.
+In real applications, you should not hardcode cache credentials. In fluo, `CacheModule.forRoot(options)` is the synchronous module entrypoint. The lifecycle-managed path prepares a default or named raw client with `@fluojs/redis`, then passes ordinary cache options that point to that registration through `store: 'redis'` and optional `redis.clientName`. This keeps the cache module's public surface simple while letting a separate configuration layer manage environment-specific connection details.
+
+If the application already owns a compatible Redis client, pass it directly through `redis.client`. This path does not require `@fluojs/redis`: the object only needs the exported `RedisCompatibleClient` operations (`get`, `set`, `del`, and tuple-returning `scan`). A directly supplied client takes precedence over `redis.clientName`, and the application remains responsible for connecting and closing it.
+
+```typescript
+import Redis from 'ioredis';
+import { Module } from '@fluojs/core';
+import { CacheModule } from '@fluojs/cache-manager';
+
+const cacheClient = new Redis({ host: 'localhost', port: 6379 });
+
+@Module({
+  imports: [
+    CacheModule.forRoot({
+      store: 'redis',
+      keyPrefix: 'fluoblog:cache:',
+      redis: { client: cacheClient },
+    }),
+  ],
+})
+export class AppModule {}
+```
 
 This explicit setup still enables **environment-aware store selection**. Read the needed configuration at the application boundary, choose the cache options before module registration, then pass the final object to `CacheModule.forRoot(...)`. For example, production might select a high-performance Redis cluster, while a CI/CD pipeline can pass `store: 'memory'` to keep the build environment light and fast. The important boundary is that the current public API receives already-prepared options rather than an async factory.
 
@@ -199,7 +233,24 @@ In some scenarios, you may want to update only part of a cached object rather th
 
 When implementing partial updates, you can also use **bitfields or hashes** if the store provider, such as Redis, supports them. These features let you atomically modify a single field inside a complex object on the server side. This fine-grained control is essential in high-availability systems where multiple processes may update different parts of the same entity at the same time. By using native store-provider features, you can maintain high performance and data integrity without serializing the whole object on every update.
 
-Also consider using the **Decorator-based partial invalidation** pattern. You can create custom Decorators that mark specific service methods as "invalidators" for a cache group. When the method is called, Fluo can automatically delete related cache keys based on method arguments. This declarative approach keeps cache management logic separate from business logic, making the code easier to maintain and understand as the application grows more complex.
+For HTTP writes, the built-in declarative path is `@CacheEvict(...)` on a non-GET controller handler that runs through `CacheInterceptor`. The decorator stores route metadata; it does not intercept arbitrary service methods. Calls outside that HTTP boundary must inject `CacheService` and call `del(...)` explicitly.
+
+```typescript
+import { CacheEvict, CacheInterceptor } from '@fluojs/cache-manager';
+import { Controller, Post, UseInterceptors } from '@fluojs/http';
+
+@Controller('/posts')
+@UseInterceptors(CacheInterceptor)
+export class PostsController {
+  @Post('/refresh')
+  @CacheEvict(['/posts', '/posts/popular'])
+  refreshPosts() {
+    return this.postsService.refresh();
+  }
+}
+```
+
+On this supported route path, eviction runs after the non-GET handler succeeds and the HTTP response commits. Keeping `@CacheEvict(...)` at the controller boundary makes the interceptor responsible for response-aware timing, while service-layer invalidation stays explicit and testable through `CacheService`.
 
 By combining these advanced manual patterns with automatic response caching, you can create a highly efficient data layer that maximizes the performance and reliability of your Fluo backend. Always remember that the goal of caching is to give users the fastest possible response while reducing load on the primary data source. Every optimization you make in this layer contributes to a more scalable and resilient system overall.
 
