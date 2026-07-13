@@ -232,6 +232,7 @@ In many OAuth2 implementations, scopes limit what an application can do on behal
 // Inside a custom AuthStrategy
 return {
   subject: payload.sub,
+  claims: payload,
   roles: payload.roles || [],
   scopes: payload.scopes || [], // ['posts:write', 'profile:read']
 };
