@@ -21,9 +21,13 @@ Express-backed HTTP adapter for the fluo runtime.
 npm install @fluojs/platform-express express
 ```
 
+`@fluojs/platform-express` requires Node.js 20 or newer. Its package manifest declares `engines.node >=20.0.0`; choose a fetch-style adapter instead when the deployment host is Bun, Deno, or Cloudflare Workers.
+
 ## When to Use
 
 Use this package when you want to run a fluo application using Express as the underlying HTTP engine. This is useful when existing Express operational assets, hosting conventions, or server integrations need to stay near the platform boundary while controllers, providers, guards, interceptors, and middleware keep using fluo's runtime contracts.
+
+Keeping Express as the host does not preserve NestJS legacy decorator or reflection-metadata semantics. Before changing the HTTP host, migrate controllers and providers to TC39 standard decorators, declare constructor tokens with class-level `@Inject(...)`, and use explicit module/provider registration. Keep `experimentalDecorators` and `emitDecoratorMetadata` disabled; an Express adapter replacement is not a compatibility layer for NestJS dependency discovery.
 
 Express compatibility does not mean that native Express/Connect `(req, res, next)` middleware can be passed directly to fluo's application-level `middleware` option. That option accepts fluo middleware (`handle(context, next)`) or route-scoped fluo middleware providers. Register migration-only native handlers through the adapter's explicit `nativeMiddleware` option, or wrap the behavior behind the fluo `Middleware` contract so it remains portable to Fastify, raw Node.js, Bun, Deno, and Workers adapters.
 

@@ -17,6 +17,40 @@ function createReadyPrismaSnapshot() {
   };
 }
 
+const unavailablePrismaLifecycleStates = [
+  {
+    expectedMessage: 'Prisma integration has not connected yet.',
+    snapshot: {
+      details: {
+        lifecycleState: 'created',
+      },
+      health: {
+        status: 'healthy' as const,
+      },
+      readiness: {
+        reason: 'Prisma integration has not connected yet.',
+        status: 'not-ready' as const,
+      },
+    },
+  },
+  {
+    expectedMessage: 'Prisma integration is stopped.',
+    snapshot: {
+      details: {
+        lifecycleState: 'stopped',
+      },
+      health: {
+        reason: 'Prisma integration has been disconnected.',
+        status: 'unhealthy' as const,
+      },
+      readiness: {
+        reason: 'Prisma integration is stopped.',
+        status: 'not-ready' as const,
+      },
+    },
+  },
+] as const;
+
 describe('PrismaHealthIndicator', () => {
   it('marks indicator up when ping callback succeeds', async () => {
     const indicator = new PrismaHealthIndicator({
@@ -127,6 +161,37 @@ describe('PrismaHealthIndicator', () => {
     } satisfies Partial<HealthCheckError>);
     expect(query).not.toHaveBeenCalled();
   });
+
+  for (const state of unavailablePrismaLifecycleStates) {
+    it(`reports Prisma ${state.snapshot.details.lifecycleState} lifecycle state as down before probing`, async () => {
+      const query = vi.fn(async (_query: string) => undefined);
+      const indicator = createPrismaHealthIndicator({
+        service: {
+          createPlatformStatusSnapshot: () => state.snapshot,
+          current: () => ({
+            $queryRawUnsafe: query,
+          }),
+        },
+      });
+
+      await expect(indicator.check('prisma')).rejects.toMatchObject({
+        causes: {
+          prisma: {
+            details: {
+              lifecycleState: state.snapshot.details.lifecycleState,
+            },
+            healthStatus: state.snapshot.health.status,
+            message: state.expectedMessage,
+            readinessStatus: 'not-ready',
+            status: 'down',
+          },
+        },
+        message: 'Prisma health check failed.',
+        name: 'HealthCheckError',
+      } satisfies Partial<HealthCheckError>);
+      expect(query).not.toHaveBeenCalled();
+    });
+  }
 
   it('resolves explicit Prisma service tokens before fallback client tokens in provider helpers', () => {
     const serviceToken = Symbol('custom-prisma-service');

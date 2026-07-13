@@ -220,6 +220,52 @@ describe('ThrottlerModule.forRoot', () => {
       /not visible through a global module|ThrottlerGuard/,
     );
   });
+
+  it('captures caller options through module registration before app bootstrap', async () => {
+    const mutableOptions: ThrottlerModuleOptions = {
+      limit: 1,
+      trustProxyHeaders: true,
+      ttl: 60,
+    };
+    const registeredThrottlerModule = ThrottlerModule.forRoot(mutableOptions);
+
+    @Controller('/module-options-snapshot')
+    class ModuleOptionsSnapshotController {
+      @Get('/limited')
+      @UseGuards(ThrottlerGuard)
+      limited() {
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      controllers: [ModuleOptionsSnapshotController],
+      imports: [registeredThrottlerModule],
+    })
+    class ModuleOptionsSnapshotAppModule {}
+
+    mutableOptions.limit = 100;
+    mutableOptions.ttl = 1;
+
+    const app = await createTestApp({ rootModule: ModuleOptionsSnapshotAppModule });
+
+    try {
+      const firstResponse = await app
+        .request('GET', '/module-options-snapshot/limited')
+        .header('x-real-ip', '198.51.100.60')
+        .send();
+      const secondResponse = await app
+        .request('GET', '/module-options-snapshot/limited')
+        .header('x-real-ip', '198.51.100.60')
+        .send();
+
+      expect(firstResponse.status).toBe(200);
+      expect(secondResponse.status).toBe(429);
+      expect(secondResponse.headers['Retry-After']).toBe('60');
+    } finally {
+      await app.close();
+    }
+  });
 });
 
 describe('@fluojs/throttler decorators', () => {
@@ -260,6 +306,24 @@ describe('@fluojs/throttler decorators', () => {
     expect(() => {
       class AuthController {
         @Throttle({ limit: 1, ttl: Number.NaN })
+        login() {}
+      }
+
+      return AuthController;
+    }).toThrow(/ttl/i);
+
+    expect(() => {
+      class AuthController {
+        @Throttle({ limit: 1.5, ttl: 60 })
+        login() {}
+      }
+
+      return AuthController;
+    }).toThrow(/limit/i);
+
+    expect(() => {
+      class AuthController {
+        @Throttle({ limit: 1, ttl: 0.5 })
         login() {}
       }
 
@@ -351,6 +415,8 @@ describe('ThrottlerGuard — in-memory store', () => {
     expect(() => ThrottlerModule.forRoot({ limit: 0, ttl: 60 })).toThrow(/limit/i);
     expect(() => ThrottlerModule.forRoot({ limit: 1, ttl: -1 })).toThrow(/ttl/i);
     expect(() => ThrottlerModule.forRoot({ limit: Number.POSITIVE_INFINITY, ttl: 60 })).toThrow(/limit/i);
+    expect(() => ThrottlerModule.forRoot({ limit: 1.5, ttl: 60 })).toThrow(/limit/i);
+    expect(() => ThrottlerModule.forRoot({ limit: 1, ttl: 0.5 })).toThrow(/ttl/i);
   });
 
   it('rejects malformed keyGenerator and store.consume options before request handling starts', () => {

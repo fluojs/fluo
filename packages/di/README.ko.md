@@ -129,22 +129,42 @@ class ServiceWithOptionalLogger {
 
 ## 테스트 및 모킹
 
-`useValue`를 사용하면 단위 테스트 중에 컨테이너의 provider를 모의 객체(mock)나 스텁(stub)으로 쉽게 교체할 수 있습니다.
+먼저 전체 의존성 그래프를 등록한 다음, `override(...)`와 `useValue`를 사용해 기존 provider를 mock이나 stub으로 교체하세요. `register(...)`는 새 provider를 추가하며 중복 토큰을 거부하고, `override(...)`는 지원되는 교체 API입니다.
 
 ```typescript
+import { Inject } from '@fluojs/core';
 import { Container } from '@fluojs/di';
+import { expect, it, vi } from 'vitest';
 
-const container = new Container();
-const mockDb = { query: vi.fn() };
+class Database {
+  async query(): Promise<readonly string[]> {
+    return ['real row'];
+  }
+}
 
-// 실제 Database 클래스를 모의 객체 값으로 교체
-container.register({ 
-  provide: Database, 
-  useValue: mockDb 
+@Inject(Database)
+class DataService {
+  constructor(private readonly database: Database) {}
+
+  async load(): Promise<readonly string[]> {
+    return this.database.query();
+  }
+}
+
+it('uses a mock database', async () => {
+  const mockDb = { query: vi.fn().mockResolvedValue(['mock row']) };
+  const container = new Container().register(Database, DataService);
+
+  container.override({
+    provide: Database,
+    useValue: mockDb,
+  });
+
+  const service = await container.resolve(DataService);
+
+  await expect(service.load()).resolves.toEqual(['mock row']);
+  expect(mockDb.query).toHaveBeenCalledOnce();
 });
-
-const service = await container.resolve(DataService);
-// service는 실제 Database 인스턴스 대신 mockDb를 사용합니다.
 ```
 
 ## 문제 해결

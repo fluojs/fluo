@@ -26,13 +26,15 @@ General-purpose cache manager for fluo with pluggable memory, Redis, and custom 
 npm install @fluojs/cache-manager
 ```
 
-The root `@fluojs/cache-manager` import stays safe for memory-only installs. You only need Redis peers when you explicitly select the Redis-backed store path.
+The root `@fluojs/cache-manager` import stays safe for memory-only installs. You only need a Redis client when you explicitly select the Redis-backed store path.
 
-For Redis-backed caching:
+For Redis-backed caching with a lifecycle-managed `@fluojs/redis` client:
 
 ```bash
 npm install @fluojs/cache-manager @fluojs/redis ioredis
 ```
+
+You can instead pass an application-owned compatible client through `redis.client`. That path does not require `@fluojs/redis`; install whichever client package provides the required `get`, `set`, `del`, and tuple-returning `scan` operations, and close that client from the application lifecycle.
 
 ## When to Use
 
@@ -96,16 +98,30 @@ class UserService {
 
 ### Redis Storage
 
-To use Redis, ensure `@fluojs/redis` is configured and set the store to `'redis'`.
+Set `store: 'redis'`, then choose one of two supported client integration paths:
+
+1. Register a default or named raw client with `@fluojs/redis` and let the cache module resolve it through DI.
+2. Pass an application-owned `RedisCompatibleClient` directly through `redis.client`.
 
 Memory-only consumers can keep importing from `@fluojs/cache-manager` without installing `@fluojs/redis` or `ioredis`; those optional peers are resolved only when the Redis store path is selected.
 
 ```typescript
-CacheModule.forRoot({
-  store: 'redis',
-  ttl: 600,
-  keyPrefix: 'myapp:cache:',
+import { Module } from '@fluojs/core';
+import { CacheModule } from '@fluojs/cache-manager';
+import { RedisModule } from '@fluojs/redis';
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ name: 'cache', host: 'localhost', port: 6379 }),
+    CacheModule.forRoot({
+      store: 'redis',
+      ttl: 600,
+      keyPrefix: 'myapp:cache:',
+      redis: { clientName: 'cache' },
+    }),
+  ],
 })
+class AppModule {}
 ```
 
 If you registered multiple Redis clients, set `redis.clientName` to target a named `@fluojs/redis` connection.
@@ -119,7 +135,26 @@ CacheModule.forRoot({
 })
 ```
 
-`redis.client` remains the highest-precedence override. Use it only when you need to bypass DI-based client selection entirely.
+`redis.client` is the highest-precedence override and bypasses DI-based client selection entirely. It accepts any client that satisfies the exported `RedisCompatibleClient` contract; `@fluojs/redis` is not loaded or required on this path. The application owns connection startup and shutdown for a directly supplied client.
+
+```typescript
+import Redis from 'ioredis';
+import { Module } from '@fluojs/core';
+import { CacheModule } from '@fluojs/cache-manager';
+
+const cacheClient = new Redis({ host: 'localhost', port: 6379 });
+
+@Module({
+  imports: [
+    CacheModule.forRoot({
+      store: 'redis',
+      keyPrefix: 'myapp:cache:',
+      redis: { client: cacheClient },
+    }),
+  ],
+})
+class AppModule {}
+```
 
 The built-in `RedisStore` persists entries with `JSON.stringify(...)`. Cache values therefore need to be JSON-compatible: plain objects, arrays, strings, numbers, booleans, and `null` round-trip cleanly, while values such as `Date` come back as JSON output (for example ISO strings), functions/`undefined`/symbols do not survive, and non-serializable values like `bigint` or cyclic graphs should be normalized before caching.
 
@@ -211,7 +246,24 @@ The built-in memory store is designed for single-process, bounded caching:
 
 ### Deferred eviction timing
 
-For non-GET handlers decorated with `@CacheEvict(...)`, eviction is deferred until the response successfully commits. If `response.send(...)` rejects, the deferred eviction is cancelled so a failed commit does not drop the previous cached read result. If an adapter path never calls `response.send(...)`, the interceptor still runs a bounded fallback timer so successful writes do not leave stale entries behind indefinitely. Deferred eviction failures stay contained inside the interceptor, so cache-key factories or cache-store deletes cannot surface as post-response unhandled promise rejections.
+`@CacheEvict(...)` is HTTP route metadata, not a general service-method decorator. `CacheInterceptor` consumes it only when that interceptor runs around a non-GET controller handler. For service methods and other calls outside the HTTP interceptor pipeline, inject `CacheService` and call `del(...)` explicitly.
+
+```typescript
+import { CacheEvict, CacheInterceptor } from '@fluojs/cache-manager';
+import { Controller, Post, UseInterceptors } from '@fluojs/http';
+
+@Controller('/products')
+@UseInterceptors(CacheInterceptor)
+class ProductController {
+  @Post('/refresh')
+  @CacheEvict('/products')
+  refresh() {
+    return { refreshed: true };
+  }
+}
+```
+
+On that supported HTTP path, eviction is deferred until the response successfully commits. If `response.send(...)` rejects, the deferred eviction is cancelled so a failed commit does not drop the previous cached read result. If an adapter path never calls `response.send(...)`, the interceptor still runs a bounded fallback timer so successful writes do not leave stale entries behind indefinitely. Deferred eviction failures stay contained inside the interceptor, so cache-key factories or cache-store deletes cannot surface as post-response unhandled promise rejections.
 
 ## Public API Overview
 
@@ -229,11 +281,11 @@ For non-GET handlers decorated with `@CacheEvict(...)`, eviction is deferred unt
 ### Decorators
 - `@CacheTTL(seconds)`: Sets the TTL for a specific handler.
 - `@CacheKey(key)`: Sets a custom cache key or key factory for a specific handler.
-- `@CacheEvict(key)`: Clears one or more cache keys after a successful non-GET handler completes.
+- `@CacheEvict(key)`: Stores HTTP route metadata that `CacheInterceptor` consumes after a successful non-GET controller handler completes; it does not intercept arbitrary service calls.
 - `cacheRouteMetadataKey`, `getCacheKeyMetadata(...)`, `getCacheTtlMetadata(...)`, and `getCacheEvictMetadata(...)`: Low-level metadata helpers exported for first-party interceptor integration, diagnostics, and advanced tooling that needs to inspect cache decorator metadata without reimplementing the metadata keys.
 
 ### Interceptors
-- `CacheInterceptor`: Handles automatic GET response caching and eviction logic.
+- `CacheInterceptor`: Handles automatic GET response caching and consumes `@CacheEvict(...)` metadata for non-GET HTTP handlers.
 
 ### Stores and status helpers
 - `MemoryStore` and `RedisStore`: Built-in store implementations.
@@ -242,7 +294,7 @@ For non-GET handlers decorated with `@CacheEvict(...)`, eviction is deferred unt
 
 ## Related Packages
 
-- `@fluojs/redis`: Required for Redis storage.
+- `@fluojs/redis`: Optional lifecycle-managed Redis client integration. It is not required when `redis.client` supplies an application-owned `RedisCompatibleClient` directly.
 - `@fluojs/http`: Required for HTTP interceptors and decorators.
 
 ## Example Sources

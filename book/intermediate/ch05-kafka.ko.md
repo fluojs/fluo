@@ -5,6 +5,8 @@
 
 이 장에서는 FluoShop에 durable shared history를 추가하기 위해 Kafka를 도입하고, 작업 큐와 이벤트 로그가 어떤 지점에서 다른 선택지가 되는지 정리합니다. Chapter 4가 fulfillment 작업 소유권을 다뤘다면, 여기서는 replay와 다중 consumer group이 필요한 order timeline 설계로 초점을 옮깁니다.
 
+완료 경계와 caller-owned collaborator shutdown을 포함한 패키지 수준 Kafka transport 계약은 [`packages/microservices/README.ko.md`](../../packages/microservices/README.ko.md)에 정식으로 기록되어 있습니다.
+
 ## Learning Objectives
 - Kafka가 RabbitMQ와 다른 아키텍처적 선택인 이유를 이해합니다.
 - producer와 consumer collaborator를 명시적으로 연결해 Kafka 트랜스포트를 구성하는 방법을 익힙니다.
@@ -53,7 +55,8 @@ transport bootstrap은 다음과 같습니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { KafkaMicroserviceTransport, MicroservicesModule } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { KafkaMicroserviceTransport } from '@fluojs/microservices/kafka';
 
 const transport = new KafkaMicroserviceTransport({
   consumer: kafkaConsumer, // 부트스트랩의 kafkajs에서 제공
@@ -71,6 +74,14 @@ export class TimelineModule {}
 ```
 
 이전 장들과 마찬가지로 모듈은 작게 유지됩니다. 프레임워크가 핸들러 구조를 다시 설계하라고 요구하지 않습니다. 대신 트랜스포트 계약을 명시적으로 드러내라고 요구합니다.
+
+### 5.2.3 Facade completion and shutdown ownership
+
+`MicroservicesModule`, `MICROSERVICE`, `Microservice` 타입은 root `@fluojs/microservices`에 유지하고, 위 adapter import는 `@fluojs/microservices/kafka`를 사용합니다. `MICROSERVICE`는 raw `KafkaMicroserviceTransport`가 아니라 programmatic lifecycle facade로 resolve됩니다.
+
+- `await microservice.send(...)`는 상관관계가 유지된 응답이 도착한 뒤 settle합니다. 여기에는 원격 handler 실행과 response publication이 포함되며, 오류, abort, timeout, shutdown 시 reject합니다.
+- `await microservice.emit(...)`은 `producer.publish(...)`가 완료될 때 settle합니다. 원격 event handler를 기다리지는 않으며, broker acknowledgement는 caller-owned producer 계약의 범위로 제한됩니다. Consumer 쪽 Kafka callback은 handler와 request response publication이 settle할 때까지 pending 상태로 유지되어 broker adapter가 acknowledge 또는 retry를 결정할 수 있게 합니다.
+- `await microservice.close()`는 transport consumer를 detach하고 pending request를 reject하지만 caller-owned producer 또는 consumer를 disconnect하지 않습니다. Shutdown 시 facade를 먼저 닫은 뒤 application-owned collaborator를 bootstrap layer에서 disconnect하세요.
 
 ## 5.3 Request-reply on durable topics
 

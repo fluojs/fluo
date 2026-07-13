@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expandPublicPackageDependencyImpact } from './dependency-impact.mjs';
+import { packageChangelogContractViolation } from './package-changelog.mjs';
 import { buildGitHubReleaseNotes } from './prepare-github-release.mjs';
 import { requiresReleaseIntentRecords, validateReleaseIntentRecords } from './release-intents.mjs';
 
@@ -22,6 +23,7 @@ const releaseReadinessVerificationCommands = [
 ];
 const toolingReleaseMetadataPackages = ['@fluojs/cli', '@fluojs/studio', '@fluojs/testing', '@fluojs/vite'];
 const foundationReleaseMetadataPackages = ['@fluojs/config', '@fluojs/core', '@fluojs/di', '@fluojs/i18n', '@fluojs/runtime'];
+const persistenceReleaseMetadataPackages = ['@fluojs/drizzle', '@fluojs/mongoose', '@fluojs/prisma'];
 
 function resolveSummaryOutputPaths(outputDirectory = scriptDirectory) {
   return {
@@ -218,6 +220,27 @@ function collectPackageChangelogBaselineViolations(packageNames, dependencies = 
     return changelog.includes('## [Unreleased]')
       ? []
       : [`${changelogRelativePath} must keep an \`## [Unreleased]\` section.`];
+  });
+}
+
+function collectExactPackageChangelogBaselineViolations(packageNames, dependencies = {}) {
+  const { existsSync: pathExists = existsSync, read: readText = read } = dependencies;
+
+  return packageNames.flatMap((packageName) => {
+    const packagePath = packageRelativePath(packageName);
+
+    if (!packagePath) {
+      return [`${packageName} does not map to a packages/* changelog path.`];
+    }
+
+    const changelogRelativePath = `${packagePath}/CHANGELOG.md`;
+
+    if (!pathExists(join(repoRoot, changelogRelativePath))) {
+      return [`${changelogRelativePath} is missing.`];
+    }
+
+    const contractViolation = packageChangelogContractViolation(readText(changelogRelativePath));
+    return contractViolation ? [`${changelogRelativePath}: ${contractViolation}`] : [];
   });
 }
 
@@ -868,6 +891,10 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
     governancePackageList.filter((packageName) => foundationReleaseMetadataPackages.includes(packageName)),
     { existsSync: pathExists, read: readText },
   );
+  const persistenceChangelogBaselineViolations = collectExactPackageChangelogBaselineViolations(
+    governancePackageList.filter((packageName) => persistenceReleaseMetadataPackages.includes(packageName)),
+    { existsSync: pathExists, read: readText },
+  );
 
   assertCheck(
     checks,
@@ -974,6 +1001,14 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
     foundationChangelogBaselineViolations.length === 0
       ? '`@fluojs/config`, `@fluojs/core`, `@fluojs/di`, `@fluojs/i18n`, and `@fluojs/runtime` package changelogs keep `## [Unreleased]` placeholders for release metadata review.'
       : foundationChangelogBaselineViolations.join('; '),
+  );
+  assertCheck(
+    checks,
+    'Persistence package changelog baseline',
+    persistenceChangelogBaselineViolations.length === 0,
+    persistenceChangelogBaselineViolations.length === 0
+      ? '`@fluojs/drizzle`, `@fluojs/mongoose`, and `@fluojs/prisma` package changelogs keep `## [Unreleased]` placeholders for release metadata review.'
+      : persistenceChangelogBaselineViolations.join('; '),
   );
   assertCheck(
     checks,

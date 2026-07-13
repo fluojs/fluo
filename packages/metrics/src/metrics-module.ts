@@ -1,7 +1,13 @@
 import { Inject, type Token } from '@fluojs/core';
 import { ContainerResolutionError, type Container, type Provider } from '@fluojs/di';
 import { Controller, Get, forRoutes, type Middleware, type MiddlewareLike, type RequestContext } from '@fluojs/http';
-import { defineModule, type ModuleType, PLATFORM_SHELL, type PlatformShellSnapshot } from '@fluojs/runtime';
+import {
+  defineModule,
+  type ModuleType,
+  type OnModuleDestroy,
+  PLATFORM_SHELL,
+  type PlatformShellSnapshot,
+} from '@fluojs/runtime';
 import { RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import { collectDefaultMetrics, Gauge, Registry as PrometheusRegistry, type Registry } from 'prom-client';
 
@@ -231,7 +237,7 @@ type RuntimePlatformTelemetryRegistryState = {
   lastHealthStatuses: ComponentStatusMap<PlatformHealthStatus>;
   lastReadinessStatuses: ComponentStatusMap<PlatformReadinessStatus>;
   originalMetrics?: Registry['metrics'];
-  refresh?: () => Promise<void>;
+  registrations: RuntimePlatformTelemetry[];
   scrapeChain: Promise<unknown>;
 };
 type HttpInstrumentationRegistration = {
@@ -308,6 +314,7 @@ function getRuntimePlatformTelemetryRegistryState(registry: Registry): RuntimePl
   const state: RuntimePlatformTelemetryRegistryState = {
     lastHealthStatuses: new Map(),
     lastReadinessStatuses: new Map(),
+    registrations: [],
     scrapeChain: Promise.resolve(),
   };
   PLATFORM_TELEMETRY_REGISTRY_STATES.set(registry, state);
@@ -370,20 +377,19 @@ function assertGaugeLabelSchema(
   }
 }
 
-class RuntimePlatformTelemetry {
+class RuntimePlatformTelemetry implements OnModuleDestroy {
   private readonly readinessGauge: Gauge<string>;
   private readonly healthGauge: Gauge<string>;
   private readonly registryModeGauge: Gauge<string>;
   private readonly telemetryState: RuntimePlatformTelemetryRegistryState;
 
   constructor(
-    registry: Registry,
+    private readonly registry: Registry,
     private readonly container: Container,
     private readonly registryMode: RegistryMode,
     private readonly labels: MetricsModuleOptions['platformTelemetry'] = {},
   ) {
     this.telemetryState = getRuntimePlatformTelemetryRegistryState(registry);
-    this.installRegistryRefresh(registry);
     this.readinessGauge = getOrCreateGauge(registry, {
       help: 'Runtime platform component readiness from shared platform snapshot semantics.',
       labelNames: PLATFORM_COMPONENT_LABELS,
@@ -401,23 +407,44 @@ class RuntimePlatformTelemetry {
     });
 
     this.registryModeGauge.labels(this.registryMode).set(1);
+    this.installRegistryRefresh();
   }
 
   collectMetrics(registry: Registry): Promise<string> {
     return registry.metrics();
   }
 
-  private installRegistryRefresh(registry: Registry): void {
-    this.telemetryState.refresh = () => this.refresh();
+  onModuleDestroy(): void {
+    const registrationIndex = this.telemetryState.registrations.lastIndexOf(this);
+    if (registrationIndex >= 0) {
+      this.telemetryState.registrations.splice(registrationIndex, 1);
+    }
+
+    if (this.telemetryState.registrations.length > 0) {
+      return;
+    }
+
+    const originalMetrics = this.telemetryState.originalMetrics;
+    if (originalMetrics) {
+      this.registry.metrics = originalMetrics;
+      this.telemetryState.originalMetrics = undefined;
+    }
+  }
+
+  private installRegistryRefresh(): void {
+    this.telemetryState.registrations.push(this);
     if (this.telemetryState.originalMetrics) {
       return;
     }
 
-    const originalMetrics = registry.metrics.bind(registry);
-    this.telemetryState.originalMetrics = originalMetrics;
+    const registry = this.registry;
+    const telemetryState = this.telemetryState;
+    const originalMetrics = registry.metrics;
+    telemetryState.originalMetrics = originalMetrics;
     registry.metrics = async () => {
-      await this.telemetryState.refresh?.();
-      return await originalMetrics();
+      const activeRegistration = telemetryState.registrations.at(-1);
+      await activeRegistration?.refresh();
+      return await originalMetrics.call(registry);
     };
   }
 

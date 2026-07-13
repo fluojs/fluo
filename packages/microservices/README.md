@@ -73,26 +73,46 @@ Write your business logic once and deploy it across various transports. Supports
 ### Pattern-Based Routing
 Use `@MessagePattern` for request-response flows and `@EventPattern` for fire-and-forget event broadcasting. Patterns support string matching and regular expressions.
 
+### Handler Discovery and Decorator Model
+
+`@MessagePattern`, `@EventPattern`, and the streaming pattern decorators are TC39 standard method decorators. They write routing data through the standard decorator context; they do not consume `reflect-metadata`, `experimentalDecorators`, or `emitDecoratorMetadata` output.
+
+A decorated method becomes discoverable only when its owning class is explicitly listed in a compiled module's `providers` or `controllers`. Discovery resolves that registered token as an instance and invokes the decorated public instance method. Private and static targets are rejected, while importing or decorating a class without module registration does not register a handler.
+
 ### Advanced gRPC Streaming
 First-party support for all gRPC streaming modes: Server-side, Client-side, and Bidirectional streaming using `@ServerStreamPattern`, `@ClientStreamPattern`, and `@BidiStreamPattern`.
 
 ### Request-Scoped DI
 Microservice handlers fully support fluo's DI scopes. Request-scoped providers are isolated per message or per event, ensuring safe state management in concurrent processing.
 
+### Completion and Ownership Boundaries
+
+Keep application registration and programmatic calls on the root facade: register the adapter with `MicroservicesModule.forRoot({ transport })`, then inject `MICROSERVICE` as a `Microservice`. `MICROSERVICE` is not the raw transport. Transport-specific imports such as `@fluojs/microservices/nats`, `@fluojs/microservices/kafka`, and `@fluojs/microservices/rabbitmq` expose the adapters while leaving module and facade ownership on the root package.
+
+| Operation | Completion boundary |
+| --- | --- |
+| `await microservice.send(...)` | Settles when the transport returns the correlated remote response, or rejects for a remote error, abort, timeout, or shutdown. |
+| `await microservice.emit(...)` | Settles when the transport's publish operation accepts/completes the outbound event. It does not wait for remote event handlers or add delivery/redelivery guarantees beyond the collaborator's publish contract. |
+| `await microservice.close()` | Waits for transport-owned listener/subscription teardown and pending-request cleanup. For caller-owned NATS, Kafka, and RabbitMQ collaborators, it does not close or disconnect the supplied broker resources. |
+
+Kafka and RabbitMQ keep each inbound consumer callback pending until the matched handler and any request response publication settle. That consumer-side completion boundary lets a broker adapter decide whether to acknowledge or retry delivery, but it does not turn the producer-side `emit()` promise into an end-to-end handler completion signal. During application shutdown, close the `Microservice` facade first so it can detach transport callbacks, then close or drain caller-owned clients, producers, consumers, publishers, channels, and connections from the application bootstrap layer.
+
 ### Delivery Safety Defaults
 - TCP frames are bounded to 1 MiB per newline-delimited message by default; oversized frames close the socket instead of growing the request buffer without limit.
 - Redis Streams acknowledges request/event entries only after handler-side processing finishes. Failed events stay pending for broker-managed recovery instead of being acknowledged early.
+- Kafka and RabbitMQ keep consumer delivery completion pending until inbound event/request handling and response publication settle. Event-handler and response-publish failures reject the consumer callback so broker adapters can withhold acknowledgement or retry; request-handler errors still round-trip as error responses when that response can be published.
 - Redis Streams does not apply publish-time trimming to live request/event streams by default, so pending entries remain recoverable until `xack` or consumer-group recovery completes. Acked request/reply entries are cleaned up, each per-consumer response stream keeps bounded retention by default (`responseRetentionMaxLen: 1_000`), and each response stream is deleted during `close()`.
 - Redis Streams always deletes each per-consumer response stream during `close()`, but it retains the shared request consumer group conservatively once ownership cannot be proven across the active fleet. Lease-capable listeners clean up only their coordination metadata, and mixed or fallback listener fleets keep the shared request group in place so one peer cannot destroy a group that another live listener still needs.
 - `messageRetentionMaxLen` and `eventRetentionMaxLen` remain available as advanced opt-in knobs. Enabling them can trade away broker-managed recovery guarantees because Redis may trim pending live-stream entries before they are acknowledged.
 - RabbitMQ request/reply uses an instance-scoped response queue by default. Pass `responseQueue` explicitly only when you intentionally own and coordinate a shared reply topology.
 - Caller-owned broker collaborators stay caller-owned during shutdown. NATS, Kafka, and RabbitMQ transports detach their subscriptions/consumers and reject in-flight requests, but they do not close or disconnect the client, producer, consumer, publisher, or external connection objects supplied by the application.
+- If NATS subscription setup fails during `listen()`, the transport unsubscribes subscriptions created by that attempt in reverse setup order while leaving the caller-owned NATS client open.
 - Request-response transports that accept `AbortSignal` reject already-aborted sends before publishing, re-check cancellation immediately before deferred broker/RPC dispatch, and reject in-flight sends on later abort. Once `close()` starts, transports reject new `send()`/`emit()` calls instead of publishing work into a shutting-down lifecycle, and concurrent `listen()` calls cannot reset a shutdown that is still in progress.
 - The programmatic `Microservice` facade accepts `close(signal?: string)` so runtime shutdown hooks can report the signal that initiated shutdown. `MicroserviceLifecycleService.close(signal)` preserves that lifecycle-compatible facade contract while continuing to call the configured transport's current `close(): Promise<void>` contract; individual transports remain no-argument shutdown adapters unless their own documentation explicitly says they consume a shutdown signal.
 - Importing the root `@fluojs/microservices` barrel and constructing `TcpMicroserviceTransport` do not load `node:net`; TCP loads Node networking only when `listen()` starts a server or an outbound `send()`/`emit()` constructs a socket. If startup fails while `close()` is waiting on an in-flight listen attempt, microservice shutdown still attempts transport cleanup before surfacing the captured listen error.
 - TCP accepts `port: 0` for tests and ephemeral listeners, then routes outbound `send()`/`emit()` calls through the OS-assigned port while the transport is listening.
 - Platform status snapshots report transport resource ownership: TCP and internally-created gRPC servers report framework-owned listener/client resources, MQTT reports framework ownership only when it creates the client, caller-supplied gRPC servers report caller ownership, and caller-owned broker collaborator transports remain externally managed.
-- gRPC shutdown uses server-level `tryShutdown()` when the transport created the server, and falls back to `forceShutdown()` only for runtimes without graceful shutdown support. Caller-supplied `GrpcMicroserviceTransportOptions.server` instances remain caller-owned during `close()`; fluo closes cached outbound clients but does not shut down that server. AbortSignal cancellation for active unary or streaming calls uses the call-level `cancel()`/stream end path and removes abort listeners when streams end, error, or are returned early.
+- gRPC shutdown uses server-level `tryShutdown()` when the transport created the server, and falls back to `forceShutdown()` only for runtimes without graceful shutdown support. Caller-supplied `GrpcMicroserviceTransportOptions.server` instances remain caller-owned during `close()`; fluo closes cached outbound clients but does not shut down that server. AbortSignal cancellation for active unary or streaming calls uses the call-level `cancel()`/stream end path. fluo removes each `AbortSignal` abort listener after a unary call settles and when a streaming call ends or errors, including terminal events before reader iteration starts, or when its reader returns early. Cleanup runs only once when terminal, cancellation, and iterator-return paths overlap.
 - MQTT closes internally-created clients when subscription setup fails during `listen()` or when `close()` unwinds a failed in-flight listen attempt, while preserving the original startup error for callers. Caller-supplied MQTT clients remain caller-owned.
 - Event-handler failures that flow through the transport logger (`RedisPubSubMicroserviceTransport`, `RedisStreamsMicroserviceTransport`, `NatsMicroserviceTransport`, `MqttMicroserviceTransport`, and gRPC event emits) remain logger-driven. If you do not inject a transport logger, fluo does not mirror those failures through a raw `console.error` fallback.
 

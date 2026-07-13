@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from '../errors.js';
-import {
-  RefreshTokenService,
-  type RefreshTokenRecord,
-  type RefreshTokenRotateInput,
-  type RefreshTokenStore,
-} from './refresh-token.js';
 import { DefaultJwtSigner } from '../signing/signer.js';
 import { DefaultJwtVerifier } from '../signing/verifier.js';
+import {
+  type RefreshTokenRecord,
+  type RefreshTokenRotateInput,
+  RefreshTokenService,
+  type RefreshTokenStore,
+} from './refresh-token.js';
 
 class InMemoryRefreshTokenStore implements RefreshTokenStore {
   private readonly records = new Map<string, RefreshTokenRecord>();
@@ -31,6 +31,14 @@ class InMemoryRefreshTokenStore implements RefreshTokenStore {
   async revokeBySubject(subject: string): Promise<void> {
     for (const [id, record] of this.records.entries()) {
       if (record.subject === subject) {
+        this.records.delete(id);
+      }
+    }
+  }
+
+  async revokeByFamily(family: string): Promise<void> {
+    for (const [id, record] of this.records.entries()) {
+      if (record.family === family) {
         this.records.delete(id);
       }
     }
@@ -87,6 +95,18 @@ class InMemoryRefreshTokenStore implements RefreshTokenStore {
     return count;
   }
 
+  countByFamily(family: string): number {
+    let count = 0;
+
+    for (const record of this.records.values()) {
+      if (record.family === family) {
+        count += 1;
+      }
+    }
+
+    return count;
+  }
+
   markExpired(tokenId: string): void {
     const record = this.records.get(tokenId);
 
@@ -100,6 +120,16 @@ class InMemoryRefreshTokenStore implements RefreshTokenStore {
     });
   }
 
+}
+
+function createConsumeOnlyStore(store: InMemoryRefreshTokenStore): RefreshTokenStore {
+  return {
+    consume: (input) => store.consume(input),
+    find: (tokenId) => store.find(tokenId),
+    revoke: (tokenId) => store.revoke(tokenId),
+    revokeBySubject: (subject) => store.revokeBySubject(subject),
+    save: (token) => store.save(token),
+  };
 }
 
 function readTokenPayload(token: string): Record<string, unknown> {
@@ -228,6 +258,25 @@ describe('RefreshTokenService', () => {
     });
   });
 
+  it('rotates successfully through the legacy consume-only store contract', async () => {
+    const state = new InMemoryRefreshTokenStore();
+    const { service } = createService(createConsumeOnlyStore(state));
+    const firstToken = await service.issueRefreshToken('user-1');
+    const firstPayload = readTokenPayload(firstToken);
+
+    const rotated = await service.rotateRefreshToken(firstToken);
+    const replacementPayload = readTokenPayload(rotated.refreshToken);
+
+    await expect(state.find(firstPayload.jti as string)).resolves.toMatchObject({ used: true });
+    await expect(state.find(replacementPayload.jti as string)).resolves.toMatchObject({
+      family: firstPayload.family,
+      subject: 'user-1',
+      used: false,
+    });
+    expect(state.rotateCalls).toBe(0);
+    expect(state.saveCalls).toBe(2);
+  });
+
   it('does not consume the current token when replacement signing fails', async () => {
     const store = new InMemoryRefreshTokenStore();
     const refreshOptions = {
@@ -292,14 +341,32 @@ describe('RefreshTokenService', () => {
     expect(store.countBySubject('user-1')).toBe(1);
   });
 
-  it('detects refresh token reuse and revokes all tokens for the subject', async () => {
+  it('detects refresh token reuse and revokes only the compromised token family', async () => {
     const store = new InMemoryRefreshTokenStore();
     const { service } = createService(store);
-    const token = await service.issueRefreshToken('user-1');
+    const compromisedToken = await service.issueRefreshToken('user-1');
+    const independentToken = await service.issueRefreshToken('user-1');
+    const compromisedPayload = readTokenPayload(compromisedToken);
+    const independentPayload = readTokenPayload(independentToken);
 
-    await service.rotateRefreshToken(token);
-    await expect(service.rotateRefreshToken(token)).rejects.toBeInstanceOf(JwtInvalidTokenError);
-    expect(store.countBySubject('user-1')).toBe(0);
+    await service.rotateRefreshToken(compromisedToken);
+    await expect(service.rotateRefreshToken(compromisedToken)).rejects.toBeInstanceOf(JwtInvalidTokenError);
+
+    expect(store.countByFamily(compromisedPayload.family as string)).toBe(0);
+    expect(store.countByFamily(independentPayload.family as string)).toBe(1);
+    expect(store.countBySubject('user-1')).toBe(1);
+  });
+
+  it('falls back to subject revocation for stores without family revocation support', async () => {
+    const state = new InMemoryRefreshTokenStore();
+    const { service } = createService(createConsumeOnlyStore(state));
+    const compromisedToken = await service.issueRefreshToken('user-1');
+
+    await service.issueRefreshToken('user-1');
+    await service.rotateRefreshToken(compromisedToken);
+    await expect(service.rotateRefreshToken(compromisedToken)).rejects.toBeInstanceOf(JwtInvalidTokenError);
+
+    expect(state.countBySubject('user-1')).toBe(0);
   });
 
   it('revokeAllForSubject removes all subject tokens', async () => {

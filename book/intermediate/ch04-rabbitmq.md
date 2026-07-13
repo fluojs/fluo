@@ -61,7 +61,8 @@ In FluoShop, Fulfillment Service bootstraps RabbitMQ as a dedicated microservice
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { MicroservicesModule, RabbitMqMicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { RabbitMqMicroserviceTransport } from '@fluojs/microservices/rabbitmq';
 
 const transport = new RabbitMqMicroserviceTransport({
   consumer: rabbitConsumer, // Passed from the main bootstrap
@@ -83,6 +84,14 @@ export class FulfillmentModule {}
 ```
 
 This code should now look very familiar. The handler model stays the same. Only the transport bootstrap changes. That continuity is what makes the intermediate book cumulative learning rather than repetition. Whether you use the `TcpMicroserviceTransport` from Chapter 2 or this RabbitMQ transport, a `@MessagePattern` handler doesn't need a single code change to receive data.
+
+### 4.2.3 Facade completion and shutdown ownership
+
+Keep `MicroservicesModule`, `MICROSERVICE`, and the `Microservice` type on root `@fluojs/microservices`, while the adapter import above uses `@fluojs/microservices/rabbitmq`. `MICROSERVICE` resolves the programmatic lifecycle facade, not the raw `RabbitMqMicroserviceTransport`.
+
+- `await microservice.send(...)` settles after the correlated response arrives, which includes remote handler execution and response publication, or rejects for an error, abort, timeout, or shutdown.
+- `await microservice.emit(...)` settles when `publisher.publish(...)` completes. It does not wait for a remote event handler; any broker acknowledgement is limited to the caller-owned publisher's contract. On the consumer side, the RabbitMQ callback remains pending until the handler and any response publication settle, allowing the broker adapter to decide whether to acknowledge or retry.
+- `await microservice.close()` cancels the transport's queue consumers and rejects pending requests, but it does not close the caller-owned publisher, consumer, channel, or connection. During shutdown, close the facade first, then close those application-owned resources from the bootstrap layer.
 
 ## 4.3 Queue topology for request and event traffic
 

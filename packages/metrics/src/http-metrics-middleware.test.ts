@@ -187,6 +187,12 @@ describe('HttpMetricsMiddleware', () => {
     expect(metricsText).toContain('http_requests_total{method="GET",path="/status/unavailable",status="503"} 1');
     expect(metricsText).toContain('http_errors_total{method="GET",path="/status/not-found",status="404"} 1');
     expect(metricsText).toContain('http_errors_total{method="GET",path="/status/unavailable",status="503"} 1');
+    expect(metricsText).toContain(
+      'http_request_duration_seconds_count{method="GET",path="/status/not-found",status="404"} 1',
+    );
+    expect(metricsText).toContain(
+      'http_request_duration_seconds_count{method="GET",path="/status/unavailable",status="503"} 1',
+    );
   });
 
   it('does not reuse a param key when multiple params share the same value', async () => {

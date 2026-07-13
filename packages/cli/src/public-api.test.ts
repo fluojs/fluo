@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -26,6 +26,11 @@ const inspectFixtureModulePath = join(
   dirname(fileURLToPath(import.meta.url)),
   'fixtures',
   'inspect-app.module.mjs',
+);
+const inspectBootstrapFailureFixtureModulePath = join(
+  dirname(fileURLToPath(import.meta.url)),
+  'fixtures',
+  'inspect-bootstrap-failure.module.mjs',
 );
 
 function expectNoEagerCommandLink(source: string, commandName: 'generate' | 'inspect' | 'new'): void {
@@ -164,5 +169,34 @@ describe('public CLI package API', () => {
     expect(payload.diagnostics).toEqual([]);
     expect(payload.readiness.status).toBe('ready');
     expect(payload.health.status).toBe('healthy');
+  });
+
+  it('closes the inspect context exactly once when bootstrap fails through the public facade', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-public-api-'));
+    tempDirectories.push(workspaceDirectory);
+    const lifecycleLogPath = join(workspaceDirectory, 'close.log');
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+    const lifecycleFixture = await import(pathToFileURL(inspectBootstrapFailureFixtureModulePath).href) as {
+      configureInspectLifecycleLogPath(logPath: string): void;
+      resetInspectLifecycleLogPath(): void;
+    };
+    lifecycleFixture.configureInspectLifecycleLogPath(lifecycleLogPath);
+    let exitCode: number;
+
+    try {
+      exitCode = await runInspectCommand([inspectBootstrapFailureFixtureModulePath, '--json'], {
+        cwd: process.cwd(),
+        stderr: { write: (message) => stderrBuffer.push(message) },
+        stdout: { write: (message) => stdoutBuffer.push(message) },
+      });
+    } finally {
+      lifecycleFixture.resetInspectLifecycleLogPath();
+    }
+
+    expect(exitCode).toBe(1);
+    expect(stdoutBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).toContain('inspect bootstrap fixture failed');
+    expect(readFileSync(lifecycleLogPath, 'utf8')).toBe('close\n');
   });
 });

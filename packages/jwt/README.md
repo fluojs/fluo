@@ -160,7 +160,9 @@ For multi-tenant systems, prefer putting a tenant-specific `kid` in issued token
 
 ### Refresh tokens
 
-`RefreshTokenService` uses a dedicated HMAC refresh-token path. Configure `refreshToken.secret` separately from access-token signing keys. Rotation can use `RefreshTokenStore.rotate(...)` to atomically mark the current token as consumed and persist the replacement token in the same durable store operation, so a successful rotation never consumes the old token without a stored successor. Stores that only implement the older atomic `consume(...)` hook remain supported, but durable replacement persistence depends on the store-owned `rotate(...)` operation.
+`RefreshTokenService` uses a dedicated HMAC refresh-token path. Configure `refreshToken.secret` separately from access-token signing keys. Rotation can use `RefreshTokenStore.rotate(...)` to atomically mark the current token as consumed and persist the replacement token in the same durable store operation, so a successful rotation never consumes the old token without a stored successor. Stores that only implement the older atomic `consume(...)` hook remain supported: after a successful consume, the service saves the replacement through `save(...)`, but only store-owned `rotate(...)` makes those two writes atomic.
+
+When reuse is detected, stores that implement the optional `revokeByFamily(family)` capability revoke only the compromised token family. Existing stores remain source-compatible: if `revokeByFamily(...)` is absent, `RefreshTokenService` conservatively falls back to `revokeBySubject(subject)`, which also revokes the subject's independent refresh-token families. Implement `revokeByFamily(...)` in production stores when separate device or session families must remain active after another family is compromised.
 
 ## Configuration Guardrails
 
@@ -187,7 +189,7 @@ The root `@fluojs/jwt` import surface is safe to load before selecting a runtime
 - `JwtVerifierOptions`: Configuration for algorithms, keys, and validation policy.
 - `SignOptions` and `VerifyOptions`: Per-call signing and verification overrides.
 - `JwtClaims`, `JwtSigner`, `JwtVerifier`, `JwtKeyEntry`, `JwtAlgorithm`: Public signing and verification contracts.
-- `RefreshTokenOptions`, `RefreshTokenStore`, `RefreshTokenRecord`, `RefreshTokenConsumeInput`, `RefreshTokenRotateInput`, and `RefreshTokenConsumeResult`: Refresh-token storage, rotation, and replay-detection contracts.
+- `RefreshTokenOptions`, `RefreshTokenStore`, `RefreshTokenRecord`, `RefreshTokenConsumeInput`, `RefreshTokenRotateInput`, and `RefreshTokenConsumeResult`: Refresh-token storage, rotation, family-scoped revocation, and replay-detection contracts. `RefreshTokenStore.revokeByFamily(...)` is optional for compatibility with subject-revocation stores.
 - `JwtPlatformStatusSnapshot` and `JwtStatusAdapterInput`: Status snapshot and adapter input types exported with the platform diagnostic helpers.
 
 ### Errors and diagnostics

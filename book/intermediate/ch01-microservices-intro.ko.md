@@ -9,7 +9,7 @@
 - FluoShop을 구성하는 핵심 서비스 경계와 역할을 이해합니다.
 - fluo가 트랜스포트 독립적인 마이크로서비스 모델을 어떻게 제공하는지 배웁니다.
 - `@MessagePattern`과 `@EventPattern`이 요청과 이벤트 흐름을 어떻게 나누는지 살펴봅니다.
-- `MicroservicesModule`이 분산 애플리케이션의 기본 배선을 어떻게 구성하는지 확인합니다.
+- `MicroservicesModule`과 명시적 핸들러 등록이 분산 애플리케이션의 기본 배선을 어떻게 구성하는지 확인합니다.
 - 마이크로서비스가 주는 이점과 분산 시스템 비용을 함께 분석합니다.
 
 ## Prerequisites
@@ -88,7 +88,7 @@ fluo의 마이크로서비스 모듈을 사용하면 다음과 같은 전략적 
 
 - **Developer Velocity**: 소켓 관리나 브로커 전용 API에 신경 쓰지 않고 비즈니스 로직에 집중할 수 있습니다.
 - **Operational Flexibility**: 개발 시에는 단순한 TCP로 시작하고, 운영 시에는 핸들러 수정 없이 지속성 있는 브로커로 업그레이드할 수 있습니다.
-- **Safety Defaults**: fluo는 거대 패킷 보호(1MiB TCP 제한), 안전한 리소스 정리, 전달 혼동 방지 등 즉흥적인 구현에서 흔히 발생하는 문제들에 대한 방어책을 포함하고 있습니다.
+- **Safety Defaults**: TCP는 1 MiB를 넘는 newline-delimited frame을 닫고, `port: 0`은 outbound `send()`/`emit()`을 OS가 할당한 listener로 라우팅합니다. `close()`가 시작된 뒤에는 새 `send()`/`emit()` 호출을 거부합니다. gRPC는 unary call이 settle한 뒤, streaming call이 reader iteration 시작 전이라도 end/error로 끝난 뒤, 또는 reader가 early return한 뒤 각 `AbortSignal` abort listener를 제거하며, terminal 경로가 겹쳐도 cleanup은 한 번만 수행합니다.
 - **Team Consistency**: 공통된 관례는 팀 간 조율 비용을 낮춥니다. 모든 서비스가 같은 핸들러 스타일을 사용하면 개발자는 도메인을 매끄럽게 오갈 수 있습니다.
 
 ## 1.4 Deep Dive into the Microservice Module
@@ -104,12 +104,15 @@ import { MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microserv
     MicroservicesModule.forRoot({
       transport: new TcpMicroserviceTransport({ port: 4000 })
     })
-  ]
+  ],
+  providers: [OrderHandler]
 })
 export class AppModule {}
 ```
 
-이 구성은 앱을 트랜스포트에 바인딩합니다. fluo는 프로바이더에서 `@MessagePattern` 메서드를 찾아 트랜스포트 리스너에 연결합니다. 숨겨진 "리플렉션 마법"은 없습니다. 명시적인 프로바이더 조합을 통해 마이크로서비스도 fluo 생태계의 다른 요소와 같은 철학 위에 놓입니다.
+이 구성은 앱을 트랜스포트에 바인딩하고 `OrderHandler`를 탐색 대상으로 만듭니다. 데코레이터가 붙은 class는 컴파일된 Module의 `providers` 또는 `controllers`에 명시적으로 나열해야 하며, class를 import하거나 method를 decorate하는 것만으로는 handler가 등록되지 않습니다. fluo는 등록된 Token을 인스턴스로 resolve한 뒤 decorated public instance method를 호출합니다. Private 또는 static pattern target은 유효하지 않습니다.
+
+`@MessagePattern`, `@EventPattern`, streaming pattern decorator는 TC39 표준 decorator context를 사용합니다. Handler discovery는 NestJS provider metadata, `reflect-metadata`, `experimentalDecorators`, `emitDecoratorMetadata`를 사용하지 않습니다. 숨겨진 reflection이 아닌 명시적 Provider 조합을 통해 microservice도 fluo 생태계의 나머지 부분과 같은 standard-first 철학을 따릅니다.
 
 ## 1.5 The Philosophy of "No Magic"
 
@@ -126,7 +129,7 @@ export class AppModule {}
 - **Scalability**: 마이크로서비스는 독립적 확장을 가능하게 하지만 견고한 통신을 요구합니다.
 - **FluoShop**: 다섯 서비스 토폴로지는 고급 패턴을 위한 현실적인 실습 환경을 제공합니다.
 - **Abstraction**: fluo의 통일된 모델은 트랜스포트를 교체 가능한 드라이버로 다룹니다.
-- **Patterns**: 요청에는 `@MessagePattern`, 이벤트에는 `@EventPattern`을 사용합니다.
+- **Patterns**: 명시적으로 등록한 Provider 또는 Controller의 public instance method에 표준 `@MessagePattern`과 `@EventPattern` decorator를 사용합니다.
 - **Progression**: Part 1은 이 추상 아키텍처를 구체적이고 고성능인 트랜스포트 선택으로 바꿉니다.
 
 서비스 지도를 먼저 정의한 뒤 배관을 최적화하기 위해 경계와 통신 방식을 먼저 골랐습니다. 실무에서도 이 순서가 더 안전합니다. 어떤 브로커를 쓸지보다 어떤 책임을 분리할지가 먼저 정해져야 이후의 트랜스포트 선택도 흔들리지 않습니다.

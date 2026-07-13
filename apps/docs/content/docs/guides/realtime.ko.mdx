@@ -122,6 +122,29 @@ Root Node.js alias 대신 명시적인 runtime binding이 필요할 때 runtime 
 
 Bun에서는 runtime-specific module이 `@fluojs/platform-bun`에 pre-listen binding을 설치합니다. Adapter는 해당 binding에 `upgrade(...)` host만 노출하므로 adapter-owned shutdown과 raw fetch 제어는 realtime seam이 아니라 managed Bun adapter에 남습니다.
 
+### Cloudflare Workers binding
+
+Bootstrap 전에 Workers module과 gateway를 application graph에 등록하세요. Lifecycle service가 gateway를 발견하고 `listen()`이 WebSocket ownership을 freeze하기 전에 `@fluojs/platform-cloudflare-workers`를 구성합니다.
+
+```ts
+import { Module } from '@fluojs/core';
+import {
+  CloudflareWorkersWebSocketModule,
+  WebSocketGateway,
+} from '@fluojs/websockets/cloudflare-workers';
+
+@WebSocketGateway({ path: '/ws' })
+class EdgeGateway {}
+
+@Module({
+  imports: [CloudflareWorkersWebSocketModule.forRoot()],
+  providers: [EdgeGateway],
+})
+export class RealtimeModule {}
+```
+
+Workers upgrade는 adapter의 socketless `listen()` boundary와 `executionContext.waitUntil(...)` lifecycle tracking을 공유합니다. Listen 이후에는 binding을 교체하지 마세요. Shutdown 중 새 upgrade는 HTTP ingress와 같은 JSON `503` response를 받고, 이미 수락된 WebSocket은 server socket이 닫힐 때까지 bounded drain에 남습니다.
+
 ## Socket.IO gateways
 
 Room, namespace, broadcasting, Socket.IO client compatibility가 필요할 때 `@fluojs/socket.io`를 사용합니다.

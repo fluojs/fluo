@@ -986,7 +986,9 @@ describe('scaffoldBootstrapApp', () => {
     expect(appFile).toContain('class LazyKafkaTransport implements MicroserviceTransport');
     expect(appFile).toContain('private initializing: Promise<KafkaMicroserviceTransport> | undefined;');
     expect(appFile).toContain('this.initializing ??= this.createTransport();');
-    expect(appFile).toContain('await Promise.all([producer.connect(), consumer.connect()]);');
+    expect(appFile).toContain('this.producer = producer;');
+    expect(appFile).toContain('await producer.connect();');
+    expect(appFile).toContain('await consumer.connect();');
   });
 
   it('generates a runnable RabbitMQ microservice starter scaffold', async () => {

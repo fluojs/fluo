@@ -4,8 +4,17 @@ import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
+import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs.mjs';
+import {
+  enforceMicroservicesSafetyGuidanceParity,
+  enforceMicroservicesSafetyRuntimeEvidence,
+} from './microservices-safety-guidance.mjs';
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
+export {
+  enforceMicroservicesSafetyGuidanceParity,
+  enforceMicroservicesSafetyRuntimeEvidence,
+} from './microservices-safety-guidance.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDirectory, '..', '..');
@@ -14,6 +23,7 @@ const nodeGlobalBufferPattern = /\bBuffer\b/g;
 
 const ssotPairs = [
   ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'],
+  ['docs/architecture/http-catch-all-route-grammar.md', 'docs/architecture/http-catch-all-route-grammar.ko.md'],
   ['docs/architecture/platform-consistency-design.md', 'docs/architecture/platform-consistency-design.ko.md'],
   ['docs/contracts/behavioral-contract-policy.md', 'docs/contracts/behavioral-contract-policy.ko.md'],
   ['docs/contracts/public-export-tsdoc-baseline.md', 'docs/contracts/public-export-tsdoc-baseline.ko.md'],
@@ -24,6 +34,8 @@ const ssotPairs = [
 ];
 
 const contractGateTriggers = new Set([
+  'docs/architecture/http-catch-all-route-grammar.md',
+  'docs/architecture/http-catch-all-route-grammar.ko.md',
   'docs/architecture/platform-consistency-design.md',
   'docs/architecture/platform-consistency-design.ko.md',
   'docs/contracts/behavioral-contract-policy.md',
@@ -581,7 +593,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // transport-agnostic status snapshots plus caller-owned shutdown boundaries,
   // validation mapped-type/nested-materialization contract discoverability,
   // missing-value, safe-extra-property, and unsupported-group migration rules,
-  // serialization class options plus request-boundary interceptor coverage, CLI
+  // serialization class options, committed-response ownership bypass, and
+  // request-boundary interceptor coverage, CLI
   // public runtime type boundaries plus the documented Node.js runtime floor,
   // and Studio live helper contracts such as deterministic Mermaid rendering,
   // route-id graph correlation, viewer dependency classification, and Node.js
@@ -601,13 +614,17 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // plus event-bus background handler/transport shutdown drain, inbound timeout,
   // stable eventKey migration, and CQRS responsibility-boundary docs/tests,
   // plus React Router/Path facade-over-HTTP metadata, ReactModule.forRoot
-  // registration contract discoverability, stable SSR phase boundaries, and
-  // the root package's non-goals for Vite assets, client navigation, RSC,
-  // server functions, and React-owned route-table models, plus OpenAPI's
+  // registration contract discoverability, stable SSR phase boundaries,
+  // isolated Vite/client subpaths, HTTP-first full-document navigation, and
+  // the root package's non-goals for client route tables, caches, and RSC,
+  // plus OpenAPI's
   // explicit descriptor adoption, response metadata, Swagger UI asset, and
   // path/method collision-precedence boundaries, plus GraphQL's explicit
   // resolver/provider wiring, root-only operations, output type declarations,
-  // and server-backed WebSocket migration boundaries.
+  // Node.js runtime-floor/dependency alignment, unsupported non-Node targets,
+  // and server-backed WebSocket migration boundaries, plus JWT refresh-token
+  // family-scoped reuse revocation, subject-wide compatibility fallback, and
+  // consume-only rotation regression coverage.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
@@ -624,8 +641,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   );
 
   // Microservices transport ownership, root/subpath export exceptions, lazy-load,
-  // payload clone, and port:0 regression docs are also covered by this companion
-  // enforcement path when changed files touch `@fluojs/microservices` contracts.
+  // payload clone, TCP 1 MiB frames, port:0 routing, shutdown send guards, and
+  // gRPC abort-listener cleanup docs are also covered by this companion path.
 }
 
 function enforceAlignmentClaimsBackedByHarness(changedFiles) {
@@ -717,6 +734,304 @@ function enforceDocsHubOfficialTransportLinks() {
   }
 }
 
+const cloudflareWorkersLifecycleDocRequirements = [
+  ['packages/platform-cloudflare-workers/README.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'app.listen()', 'timed-out close']],
+  ['packages/platform-cloudflare-workers/README.ko.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'app.listen()', 'timed-out close']],
+  ['docs/reference/package-surface.md', ['executionContext.waitUntil(...)', 'underlying drain', 'bootstrap a fresh application']],
+  ['docs/reference/package-surface.ko.md', ['executionContext.waitUntil(...)', 'underlying drain', '새 application을 bootstrap']],
+  ['book/intermediate/ch24-cloudflare.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil()', 'underlying drain']],
+  ['book/intermediate/ch24-cloudflare.ko.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil()', 'underlying drain']],
+  ['docs/getting-started/migrate-from-nestjs.md', ['fetch(request, env, ctx)', 'CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil(...)', '@fluojs/config']],
+  ['docs/getting-started/migrate-from-nestjs.ko.md', ['fetch(request, env, ctx)', 'CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil(...)', '@fluojs/config']],
+  ['apps/docs/content/docs/guides/runtime-adapters.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'request.cloudflare.env', 'underlying drain']],
+  ['apps/docs/content/docs/guides/runtime-adapters.ko.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'request.cloudflare.env', 'underlying drain']],
+  ['apps/docs/content/docs/guides/realtime.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'JSON `503`']],
+  ['apps/docs/content/docs/guides/realtime.ko.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'JSON `503`']],
+  ['docs/CONTEXT.md', ['packages/platform-cloudflare-workers/README.md', 'docs/getting-started/migrate-from-nestjs.md', 'website runtime/realtime guides']],
+  ['docs/CONTEXT.ko.md', ['packages/platform-cloudflare-workers/README.ko.md', 'docs/getting-started/migrate-from-nestjs.ko.md', 'website runtime/realtime guide']],
+];
+
+const serializerResponseOwnershipDocRequirements = [
+  [
+    'packages/serialization/README.md',
+    [
+      'Framework-managed response',
+      'Handler-owned response',
+      'returns the value it received from `next.handle()` unchanged',
+      'interceptors may still transform the chain result',
+      'skips a second success-response write',
+    ],
+  ],
+  [
+    'packages/serialization/README.ko.md',
+    [
+      'Framework-managed response',
+      'Handler-owned response',
+      '`next.handle()`에서 받은 값을 그대로 반환',
+      '다른 interceptor는 chain 결과를 계속 변환할 수 있',
+      '두 번째 success-response write를 건너',
+    ],
+  ],
+  [
+    'packages/runtime/README.md',
+    [
+      'Framework-Managed and Handler-Owned Responses',
+      'returns the value it received from `next.handle()` unchanged',
+      'interceptors may still transform the chain result',
+      'skips a second success-response write',
+    ],
+  ],
+  [
+    'packages/runtime/README.ko.md',
+    [
+      'Framework-managed response와 handler-owned response',
+      '`next.handle()`에서 받은 값을 그대로 반환',
+      '다른 interceptor는 chain 결과를 계속 변환할 수 있',
+      '두 번째 success-response write를 건너',
+    ],
+  ],
+  [
+    'book/beginner/ch07-serialization.md',
+    [
+      'Framework-Managed vs Handler-Owned Responses',
+      'returns the value it received from `next.handle()` unchanged',
+      'interceptors may still transform the chain result',
+      'skips a second success-response write',
+    ],
+  ],
+  [
+    'book/beginner/ch07-serialization.ko.md',
+    [
+      'Framework-managed response와 handler-owned response',
+      '`next.handle()`에서 받은 값을 그대로 반환',
+      '다른 interceptor는 chain 결과를 계속 변환할 수 있',
+      '두 번째 success-response write를 건너',
+    ],
+  ],
+  [
+    'docs/getting-started/migrate-from-nestjs.md',
+    [
+      '`ClassSerializerInterceptor`',
+      'returns the value it received from `next.handle()` unchanged',
+      'interceptors may still transform the chain result',
+      'skips a second success-response write',
+    ],
+  ],
+  [
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    [
+      '`ClassSerializerInterceptor`',
+      '`next.handle()`에서 받은 값을 그대로 반환',
+      '다른 interceptor는 chain 결과를 계속 변환할 수 있',
+      '두 번째 success-response write를 건너',
+    ],
+  ],
+  [
+    'docs/CONTEXT.md',
+    [
+      'Serialization response-ownership discoverability',
+      'returns the value it received from `next.handle()` unchanged',
+      'interceptors may still transform the chain result',
+      'skips a second success-response write',
+    ],
+  ],
+  [
+    'docs/CONTEXT.ko.md',
+    [
+      'Serialization response-ownership discoverability',
+      '`next.handle()`에서 받은 값을 그대로 반환',
+      '다른 interceptor는 chain 결과를 계속 변환할 수 있',
+      '두 번째 success-response write를 건너',
+    ],
+  ],
+  [
+    'docs/reference/package-surface.md',
+    [
+      'returns the value it received from `next.handle()` unchanged',
+      'interceptors may still transform the chain result',
+      'skips a second success-response write',
+    ],
+  ],
+  [
+    'docs/reference/package-surface.ko.md',
+    [
+      '`next.handle()`에서 받은 값을 그대로 반환',
+      '다른 interceptor는 chain 결과를 계속 변환할 수 있',
+      '두 번째 success-response write를 건너',
+    ],
+  ],
+];
+
+const serializerResponseOwnershipBroadChainClaims = [
+  /interceptor chain[^.\n]*(?:preserves?|keeps?)[^.\n]*handler(?:-owned)? (?:return )?values?[^.\n]*unchanged/iu,
+  /interceptor chain[^.\n]*handler(?:-owned)? 반환값[^.\n]*(?:변경하지 않고 보존|그대로 보존)/u,
+];
+
+export function enforceSerializerResponseOwnershipDocsSync(
+  readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
+) {
+  for (const [relativePath, requiredMarkers] of serializerResponseOwnershipDocRequirements) {
+    const content = readText(relativePath);
+    const missingMarkers = requiredMarkers.filter((marker) => !content.includes(marker));
+
+    assert(
+      missingMarkers.length === 0,
+      `${relativePath} must keep serializer response ownership guidance synchronized; missing: ${missingMarkers.join(', ')}.`,
+    );
+
+    assert(
+      serializerResponseOwnershipBroadChainClaims.every((pattern) => !pattern.test(content)),
+      `${relativePath} must not claim that the interceptor chain preserves handler return values; only SerializerInterceptor returns the value it receives unchanged, while other interceptors may transform it.`,
+    );
+  }
+}
+
+export function enforceCloudflareWorkersLifecycleDocsSync(
+  readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
+) {
+  for (const [relativePath, requiredMarkers] of cloudflareWorkersLifecycleDocRequirements) {
+    const content = readText(relativePath);
+    const missingMarkers = requiredMarkers.filter((marker) => !content.includes(marker));
+
+    assert(
+      missingMarkers.length === 0,
+      `${relativePath} must keep Cloudflare Workers lifecycle and migration guidance synchronized; missing: ${missingMarkers.join(', ')}.`,
+    );
+  }
+}
+
+const expressRuntimeMigrationDocRequirements = [
+  [
+    'packages/platform-express/README.md',
+    ['Node.js 20 or newer', 'engines.node >=20.0.0', 'TC39 standard decorators', 'explicit module/provider registration'],
+  ],
+  [
+    'packages/platform-express/README.ko.md',
+    ['Node.js 20 이상', 'engines.node >=20.0.0', 'TC39 표준 데코레이터', '명시적 module/provider registration'],
+  ],
+  [
+    'docs/reference/package-surface.md',
+    ['Node.js 20+', 'engines.node >=20.0.0', 'TC39 standard decorator', 'explicit DI/module wiring'],
+  ],
+  [
+    'docs/reference/package-surface.ko.md',
+    ['Node.js 20+', 'engines.node >=20.0.0', 'TC39 표준 데코레이터', '명시적 DI/module wiring'],
+  ],
+  [
+    'docs/reference/package-chooser.md',
+    ['Node.js 20+', 'engines.node >=20.0.0', 'TC39 standard decorators', 'explicit DI/module wiring'],
+  ],
+  [
+    'docs/reference/package-chooser.ko.md',
+    ['Node.js 20+', 'engines.node >=20.0.0', 'TC39 표준 데코레이터', '명시적 DI/module wiring'],
+  ],
+  [
+    'docs/getting-started/migrate-from-nestjs.md',
+    ['Node.js 20+', 'TC39 standard decorators', 'class-level `@Inject(...)`', 'explicit module/provider registration'],
+  ],
+  [
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    ['Node.js 20+', 'TC39 표준 데코레이터', 'class-level `@Inject(...)`', '명시적 module/provider registration'],
+  ],
+  [
+    'book/intermediate/ch21-express-node.md',
+    ['Node.js 20 or newer', 'engines.node >=20.0.0', 'getListenTarget()', 'explicit DI/module wiring'],
+  ],
+  [
+    'book/intermediate/ch21-express-node.ko.md',
+    ['Node.js 20 이상', 'engines.node >=20.0.0', 'getListenTarget()', '명시적 DI/module wiring'],
+  ],
+  [
+    'apps/docs/content/docs/guides/runtime-adapters.mdx',
+    ['Node.js 20 or newer', 'engines.node >=20.0.0', 'getListenTarget()', 'explicit DI/module wiring'],
+  ],
+  [
+    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+    ['Node.js 20 이상', 'engines.node >=20.0.0', 'getListenTarget()', '명시적 DI/module wiring'],
+  ],
+  [
+    'docs/CONTEXT.md',
+    ['Node.js 20+', 'engines.node >=20.0.0', 'getListenTarget()', 'explicit DI/module wiring'],
+  ],
+  [
+    'docs/CONTEXT.ko.md',
+    ['Node.js 20+', 'engines.node >=20.0.0', 'getListenTarget()', '명시적 DI/module wiring'],
+  ],
+];
+
+const expressListenTargetExamplePaths = [
+  'book/intermediate/ch21-express-node.md',
+  'book/intermediate/ch21-express-node.ko.md',
+  'apps/docs/content/docs/guides/runtime-adapters.mdx',
+  'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+];
+
+function includesMarkersInOrder(content, markers) {
+  let offset = 0;
+
+  return markers.every((marker) => {
+    const index = content.indexOf(marker, offset);
+    if (index === -1) {
+      return false;
+    }
+
+    offset = index + marker.length;
+    return true;
+  });
+}
+
+function includesTypeCorrectExpressListenTargetExample(content) {
+  const typedCodeFence = /```(?:ts|typescript)\r?\n([\s\S]*?)```/g;
+
+  return Array.from(content.matchAll(typedCodeFence), (match) => match[1] ?? '').some((code) =>
+    includesMarkersInOrder(code, [
+      'createExpressAdapter,',
+      'ExpressHttpApplicationAdapter,',
+      'const adapter = createExpressAdapter(',
+      'adapter instanceof ExpressHttpApplicationAdapter',
+      'adapter.getListenTarget()',
+    ]),
+  );
+}
+
+export function enforceExpressRuntimeMigrationDocsSync(
+  readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
+) {
+  for (const [relativePath, requiredMarkers] of expressRuntimeMigrationDocRequirements) {
+    const content = readText(relativePath);
+    const missingMarkers = requiredMarkers.filter((marker) => !content.includes(marker));
+
+    assert(
+      missingMarkers.length === 0,
+      `${relativePath} must keep the Express Node.js runtime floor, infrastructure helpers, and NestJS migration boundary synchronized; missing: ${missingMarkers.join(', ')}.`,
+    );
+  }
+
+  const adapterSourcePath = 'packages/platform-express/src/adapter.ts';
+  const adapterSource = readText(adapterSourcePath);
+  const factoryStart = adapterSource.indexOf('export function createExpressAdapter(');
+  const nextExport = factoryStart === -1 ? -1 : adapterSource.indexOf('\nexport ', factoryStart + 1);
+  const factorySource =
+    factoryStart === -1 ? '' : adapterSource.slice(factoryStart, nextExport === -1 ? undefined : nextExport);
+  assert(
+    adapterSource.includes('export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {') &&
+      includesMarkersInOrder(factorySource, [
+        'export function createExpressAdapter(',
+        '): HttpApplicationAdapter {',
+        'return new ExpressHttpApplicationAdapter(',
+      ]),
+    `${adapterSourcePath} must keep createExpressAdapter() on the shared HttpApplicationAdapter public return type while constructing the exported ExpressHttpApplicationAdapter implementation.`,
+  );
+
+  for (const relativePath of expressListenTargetExamplePaths) {
+    const content = readText(relativePath);
+    assert(
+      includesTypeCorrectExpressListenTargetExample(content),
+      `${relativePath} must narrow createExpressAdapter() from its shared HttpApplicationAdapter return type to the public ExpressHttpApplicationAdapter implementation before calling getListenTarget().`,
+    );
+  }
+}
+
 function enforceCanonicalRuntimeMatrixReferences() {
   const packageSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
   const packageSurfaceKo = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
@@ -760,6 +1075,8 @@ function enforceCanonicalRuntimeMatrixReferences() {
   const beginnerCliSetupKo = readFileSync(join(repoRoot, 'book/beginner/ch02-cli-setup.ko.md'), 'utf8');
   const beginnerProduction = readFileSync(join(repoRoot, 'book/beginner/ch21-production.md'), 'utf8');
   const beginnerProductionKo = readFileSync(join(repoRoot, 'book/beginner/ch21-production.ko.md'), 'utf8');
+  const customAdapter = readFileSync(join(repoRoot, 'book/advanced/ch13-custom-adapter.md'), 'utf8');
+  const customAdapterKo = readFileSync(join(repoRoot, 'book/advanced/ch13-custom-adapter.ko.md'), 'utf8');
   const bunChapter = readFileSync(join(repoRoot, 'book/intermediate/ch22-bun.md'), 'utf8');
   const bunChapterKo = readFileSync(join(repoRoot, 'book/intermediate/ch22-bun.ko.md'), 'utf8');
   const runtimeAdaptersGuide = readFileSync(join(repoRoot, 'apps/docs/content/docs/guides/runtime-adapters.mdx'), 'utf8');
@@ -970,11 +1287,17 @@ function enforceCanonicalRuntimeMatrixReferences() {
       packageChooser.includes('Need Fastify-owned HTTPS/TLS startup') &&
       packageChooser.includes('plain HTTP behind that boundary') &&
       docsContext.includes('Fastify adapter discoverability') &&
+      docsContext.includes('apps/docs/content/docs/guides/runtime-adapters.mdx') &&
       docsContext.includes('engines.node >=20.0.0') &&
       beginnerIntro.includes('Node.js 20 or newer') &&
       beginnerCliSetup.includes('plain HTTP for local development') &&
-      beginnerProduction.includes('Fastify adapter `https` option'),
-    'Fastify README, package-surface, package-chooser, docs/CONTEXT.md, and beginner docs must keep the Node.js 20+ runtime floor and HTTPS/TLS startup boundary discoverable together.',
+      beginnerProduction.includes('Fastify adapter `https` option') &&
+      beginnerProduction.startsWith('<!-- packages: @fluojs/core, @fluojs/http, @fluojs/platform-fastify -->') &&
+      customAdapter.startsWith('<!-- packages: @fluojs/http, @fluojs/core, @fluojs/di, @fluojs/platform-fastify -->') &&
+      runtimeAdaptersGuide.includes('### Fastify HTTPS/TLS') &&
+      runtimeAdaptersGuide.includes('Node.js `https.ServerOptions`') &&
+      runtimeAdaptersGuide.includes('plain HTTP behind that infrastructure boundary'),
+    'Fastify README, package-surface, package-chooser, docs/CONTEXT.md, book metadata, and website guidance must keep the Node.js 20+ runtime floor and HTTPS/TLS startup boundary discoverable together.',
   );
   assert(
     fastifyReadmeKo.includes('engines.node >=20.0.0') &&
@@ -986,11 +1309,17 @@ function enforceCanonicalRuntimeMatrixReferences() {
       packageChooserKo.includes('Fastify가 HTTPS/TLS 시작을 직접 소유해야 함') &&
       packageChooserKo.includes('일반 HTTP로 유지하세요') &&
       docsContextKo.includes('Fastify adapter discoverability') &&
+      docsContextKo.includes('apps/docs/content/docs/guides/runtime-adapters.ko.mdx') &&
       docsContextKo.includes('engines.node >=20.0.0') &&
       beginnerIntroKo.includes('Node.js 20 버전 이상') &&
       beginnerCliSetupKo.includes('일반 HTTP로 실행') &&
-      beginnerProductionKo.includes('Fastify adapter `https` option'),
-    'Korean Fastify README, package-surface, package-chooser, docs/CONTEXT.ko.md, and beginner docs must keep the Node.js 20+ runtime floor and HTTPS/TLS startup boundary discoverable together.',
+      beginnerProductionKo.includes('Fastify adapter `https` option') &&
+      beginnerProductionKo.startsWith('<!-- packages: @fluojs/core, @fluojs/http, @fluojs/platform-fastify -->') &&
+      customAdapterKo.startsWith('<!-- packages: @fluojs/http, @fluojs/core, @fluojs/di, @fluojs/platform-fastify -->') &&
+      runtimeAdaptersGuideKo.includes('### Fastify HTTPS/TLS') &&
+      runtimeAdaptersGuideKo.includes('Node.js `https.ServerOptions`') &&
+      runtimeAdaptersGuideKo.includes('infrastructure boundary 뒤에서 Fastify를 일반 HTTP로 실행'),
+    'Korean Fastify README, package-surface, package-chooser, docs/CONTEXT.ko.md, book metadata, and website guidance must keep the Node.js 20+ runtime floor and HTTPS/TLS startup boundary discoverable together.',
   );
   assert(
     platformBunReadme.includes('synchronously creates the fetch bridge') &&
@@ -1407,6 +1736,164 @@ function enforceViteToolingDiscoverability() {
   }
 }
 
+export function enforceReactClientSubpathContract() {
+  const clientEntrypoint = read('packages/react/src/client.ts');
+  const englishReadme = read('packages/react/README.md');
+  const koreanReadme = read('packages/react/README.ko.md');
+  const packageJson = JSON.parse(read('packages/react/package.json'));
+  const rootEntrypoint = read('packages/react/src/index.ts');
+  const documentation = [
+    englishReadme,
+    koreanReadme,
+    read('docs/reference/package-surface.md'),
+    read('docs/reference/package-surface.ko.md'),
+    read('docs/reference/package-chooser.md'),
+    read('docs/reference/package-chooser.ko.md'),
+  ];
+
+  assert(
+    packageJson.exports?.['./client']?.types === './dist/client.d.ts' &&
+      packageJson.exports?.['./client']?.import === './dist/client.js',
+    'packages/react/package.json must publish the @fluojs/react/client types and import entrypoint.',
+  );
+  assert(
+    !rootEntrypoint.includes('./client.js'),
+    'packages/react/src/index.ts must keep browser navigation APIs out of the runtime-neutral root.',
+  );
+
+  for (const exportedSymbol of [
+    'Link',
+    'ReactClientRouterProvider',
+    'createReactRouteSnapshot',
+    'useNavigation',
+    'useParams',
+    'usePathname',
+    'useRouter',
+    'useRouterState',
+    'useSearchParams',
+  ]) {
+    assert(
+      clientEntrypoint.includes(exportedSymbol),
+      `packages/react/src/client.ts must export ${exportedSymbol} from the client subpath.`,
+    );
+  }
+
+  for (const markdown of documentation) {
+    assert(
+      markdown.includes('@fluojs/react/client') && markdown.includes('full-document'),
+      'React client contract docs must keep the isolated subpath and full-document navigation behavior discoverable.',
+    );
+  }
+
+  assert(
+    englishReadme.includes('pathname or search') &&
+      englishReadme.includes('fragment-only') &&
+      englishReadme.includes('does not issue a new HTTP request') &&
+      englishReadme.includes('identical URL') &&
+      englishReadme.includes('skipped'),
+    'packages/react/README.md must document path/search full-document navigation, fragment-only same-document behavior, and identical-URL skips.',
+  );
+  assert(
+    koreanReadme.includes('pathname 또는 search') &&
+      koreanReadme.includes('fragment-only') &&
+      koreanReadme.includes('새 HTTP request를 보내지') &&
+      koreanReadme.includes('identical URL') &&
+      koreanReadme.includes('skipped'),
+    'packages/react/README.ko.md must document path/search full-document navigation, fragment-only same-document behavior, and identical-URL skips.',
+  );
+}
+
+export function enforceHttpCatchAllRouteGrammarDecision() {
+  const decisionPaths = [
+    'docs/architecture/http-catch-all-route-grammar.md',
+    'docs/architecture/http-catch-all-route-grammar.ko.md',
+  ];
+  const linkedSurfacePaths = [
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'docs/architecture/http-runtime.md',
+    'docs/architecture/http-runtime.ko.md',
+    'packages/http/README.md',
+    'packages/http/README.ko.md',
+    'packages/react/README.md',
+    'packages/react/README.ko.md',
+  ];
+
+  for (const decisionPath of decisionPaths) {
+    const decision = read(decisionPath);
+
+    for (const requiredContract of [
+      'Status: Deferred',
+      '/*path',
+      '/:path*',
+      'static > param > catch-all',
+      'Readonly<Record<string, string>>',
+      'OpenAPI',
+      'native fast path',
+      '@fluojs/react/client',
+    ]) {
+      assert(
+        decision.includes(requiredContract),
+        `${decisionPath} must keep the deferred catch-all decision and adoption gate ${requiredContract} explicit.`,
+      );
+    }
+  }
+
+  for (const surfacePath of linkedSurfacePaths) {
+    assert(
+      read(surfacePath).includes('http-catch-all-route-grammar'),
+      `${surfacePath} must link the HTTP catch-all route grammar decision.`,
+    );
+  }
+
+  const routePathSource = read('packages/http/src/route-path.ts');
+  assert(
+    routePathSource.includes('Only literal segments and full-segment ":param" placeholders are supported.') &&
+      !routePathSource.includes("kind: 'catch-all'"),
+    'packages/http/src/route-path.ts must keep catch-all grammar inactive while the decision status is Deferred.',
+  );
+}
+
+export function enforceGraphqlRuntimeBoundaryDiscoverability() {
+  const expectedNodeEngine = '>=20.16.0';
+  const graphqlPackageJson = JSON.parse(read('packages/graphql/package.json'));
+  const runtimePackageJson = JSON.parse(read('packages/runtime/package.json'));
+  const configPackageJson = JSON.parse(read('packages/config/package.json'));
+
+  assert(
+    graphqlPackageJson.engines?.node === expectedNodeEngine,
+    `packages/graphql/package.json must cover the effective mandatory dependency floor with Node.js ${expectedNodeEngine}.`,
+  );
+  assert(
+    runtimePackageJson.dependencies?.['@fluojs/config'] === 'workspace:^',
+    'packages/runtime/package.json must keep the mandatory @fluojs/config dependency edge covered by the GraphQL runtime contract.',
+  );
+  assert(
+    configPackageJson.engines?.node === expectedNodeEngine,
+    `packages/config/package.json must keep the Node.js ${expectedNodeEngine} floor covered by the GraphQL runtime contract.`,
+  );
+
+  const contractPaths = [
+    'packages/graphql/README.md',
+    'packages/graphql/README.ko.md',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'book/intermediate/ch18-graphql.md',
+    'book/intermediate/ch18-graphql.ko.md',
+    'book/intermediate/ch25-final.md',
+    'book/intermediate/ch25-final.ko.md',
+  ];
+
+  for (const contractPath of contractPaths) {
+    assert(
+      read(contractPath).includes(`Node.js \`${expectedNodeEngine}\``),
+      `${contractPath} must keep the effective GraphQL Node.js ${expectedNodeEngine} floor discoverable.`,
+    );
+  }
+}
+
 export function enforcePersistenceTransactionInterceptorCompatibility() {
   const compatibilityExports = [
     ['PrismaTransactionInterceptor', 'packages/prisma/src/module.ts', 'packages/prisma/src/transaction.ts'],
@@ -1452,12 +1939,21 @@ export function main() {
   enforceReleaseGovernancePublishSurfaceSync();
   enforceCanonicalPackageSurfaceSync();
   enforceDocsHubOfficialTransportLinks();
+  enforceSerializerResponseOwnershipDocsSync();
+  enforceCloudflareWorkersLifecycleDocsSync();
+  enforceConfigNestjsMigrationDocs();
+  enforceExpressRuntimeMigrationDocsSync();
   enforceCanonicalRuntimeMatrixReferences();
   enforceRemovedRuntimeFactoryNamesNotUsedInDocs();
   enforceNoDirectProcessEnvInOrdinaryPackageSource();
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices();
   enforceViteToolingDiscoverability();
+  enforceReactClientSubpathContract();
+  enforceHttpCatchAllRouteGrammarDecision();
+  enforceGraphqlRuntimeBoundaryDiscoverability();
   enforcePersistenceTransactionInterceptorCompatibility();
+  enforceMicroservicesSafetyGuidanceParity();
+  enforceMicroservicesSafetyRuntimeEvidence();
   enforceAdvancedBookCoreBoundaryCompanions(changedFiles);
   enforceContractCompanionUpdates(changedFiles);
   enforceAlignmentClaimsBackedByHarness(changedFiles);

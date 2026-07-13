@@ -73,6 +73,12 @@ export class UserController {
 
 라우트 데코레이터는 `*`, `?`, `/(.*)`, `user-:id`, `:id.json` 같은 wildcard, regex 유사 문법, mixed segment를 지원하지 않습니다. 와일드카드 매칭은 계속 `forRoutes('/users/*')` 같은 미들웨어 설정에서만 지원됩니다.
 
+Catch-all route grammar는 의도적으로 도입이 유예된 상태입니다.
+[HTTP catch-all route grammar 결정](../../docs/architecture/http-catch-all-route-grammar.ko.md)은 검토한
+syntax, provisional precedence 및 params shape, OpenAPI 제한, adapter native fast-path 제약, 이 HTTP
+contract를 재검토하기 전에 필요한 evidence를 기록합니다. 해당 문서의 syntax는 현재 활성 route behavior가
+아닙니다.
+
 ## 주요 패턴
 
 ### 가드와 인터셉터

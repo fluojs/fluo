@@ -75,6 +75,12 @@ Trailing slashes and duplicate slashes are normalized during route mapping, so `
 
 Route decorators do **not** support wildcard, regex-like, or mixed-segment syntax such as `*`, `?`, `/(.*)`, `user-:id`, or `:id.json`. Wildcard matching remains middleware-only via `forRoutes('/users/*')`.
 
+Catch-all route grammar is intentionally deferred. The
+[HTTP catch-all route grammar decision](../../docs/architecture/http-catch-all-route-grammar.md)
+records the evaluated syntaxes, provisional precedence and params shape, OpenAPI limitations,
+adapter native fast-path constraints, and the evidence required before this HTTP contract can be
+revisited. No syntax described there is active route behavior.
+
 ## Common Patterns
 
 ### Guards and interceptors

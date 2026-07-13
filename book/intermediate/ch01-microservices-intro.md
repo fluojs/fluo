@@ -9,7 +9,7 @@ This chapter lays out the FluoShop architecture and fluo's microservices strateg
 - Understand the core service boundaries and responsibilities that make up FluoShop.
 - Learn how fluo provides a transport-independent microservice model.
 - See how `@MessagePattern` and `@EventPattern` separate request flows from event flows.
-- Confirm how `MicroservicesModule` configures the basic wiring for a distributed application.
+- Confirm how `MicroservicesModule` and explicit handler registration configure the basic wiring for a distributed application.
 - Analyze both the benefits of microservices and the costs of distributed systems.
 
 ## Prerequisites
@@ -88,7 +88,7 @@ Using fluo's microservices Module gives you the following strategic advantages. 
 
 - **Developer Velocity**: You can focus on business logic without worrying about socket management or broker-specific APIs.
 - **Operational Flexibility**: You can start with simple TCP in development, then upgrade to a durable broker in production without changing handlers.
-- **Safety Defaults**: fluo includes defenses for problems common in ad hoc implementations, such as protection against oversized packets, the 1 MiB TCP limit, OS-assigned TCP test ports, guarded shutdown sends, gRPC stream abort-listener cleanup, and delivery confusion prevention.
+- **Safety Defaults**: TCP closes newline-delimited frames above 1 MiB, `port: 0` routes outbound `send()`/`emit()` through the OS-assigned listener, and new `send()`/`emit()` calls are rejected after `close()` starts. gRPC removes each `AbortSignal` abort listener after a unary call settles, when a streaming call ends or errors even before reader iteration starts, or when its reader returns early; overlapping terminal paths clean up only once.
 - **Team Consistency**: Shared conventions reduce coordination costs across teams. When every service uses the same handler style, developers can move across domains smoothly.
 
 ## 1.4 Deep Dive into the Microservice Module
@@ -104,12 +104,15 @@ import { MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microserv
     MicroservicesModule.forRoot({
       transport: new TcpMicroserviceTransport({ port: 4000 })
     })
-  ]
+  ],
+  providers: [OrderHandler]
 })
 export class AppModule {}
 ```
 
-This configuration binds the app to a transport. fluo finds `@MessagePattern` methods on Providers and connects them to the transport listener. There is no hidden "reflection magic." Through explicit Provider composition, microservices sit on the same philosophy as every other part of the fluo ecosystem.
+This configuration binds the app to a transport and makes `OrderHandler` a discovery candidate. A decorated class must be listed explicitly in a compiled Module's `providers` or `controllers`; importing the class or decorating its methods alone does not register a handler. fluo resolves the registered Token as an instance and invokes decorated public instance methods. Private and static pattern targets are invalid.
+
+`@MessagePattern`, `@EventPattern`, and the streaming pattern decorators use the TC39 standard decorator context. Handler discovery does not consume NestJS provider metadata, `reflect-metadata`, `experimentalDecorators`, or `emitDecoratorMetadata`. Through explicit Provider composition rather than hidden reflection, microservices follow the same standard-first philosophy as the rest of the fluo ecosystem.
 
 ## 1.5 The Philosophy of "No Magic"
 
@@ -128,7 +131,7 @@ Operational tradeoffs such as idempotency, delivery semantics, and observability
 - **Scalability**: Microservices make independent scaling possible, but they require solid communication.
 - **FluoShop**: The five-service topology provides a realistic hands-on environment for advanced patterns.
 - **Abstraction**: fluo's unified model treats transports as replaceable drivers.
-- **Patterns**: Use `@MessagePattern` for requests and `@EventPattern` for events.
+- **Patterns**: Use standard `@MessagePattern` and `@EventPattern` decorators on public instance methods of explicitly registered Providers or Controllers.
 - **Progression**: Part 1 turns this abstract architecture into concrete, high-performance transport choices.
 
 We chose boundaries and communication methods first so we could define the service map before optimizing the plumbing. This order is safer in real work too. Which responsibility should be separated has to come before which broker to use, so later transport choices stay grounded.

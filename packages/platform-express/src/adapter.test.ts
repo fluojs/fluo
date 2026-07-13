@@ -899,7 +899,7 @@ describe('@fluojs/platform-express', () => {
     }
   });
 
-  it('does not preserve rawBody for multipart requests', async () => {
+  it('preserves Buffer file payloads without preserving rawBody for multipart requests', async () => {
     @Controller('/uploads')
     class UploadController {
       @Post('/')
@@ -907,6 +907,7 @@ describe('@fluojs/platform-express', () => {
         return {
           body: context.request.body,
           fileCount: context.request.files?.length ?? 0,
+          hasBufferFile: context.request.files?.every((file) => Buffer.isBuffer(file.buffer)) ?? false,
           hasRawBody: context.request.rawBody !== undefined,
         };
       }
@@ -940,6 +941,7 @@ describe('@fluojs/platform-express', () => {
       await expect(response.json()).resolves.toEqual({
         body: { name: 'Ada' },
         fileCount: 1,
+        hasBufferFile: true,
         hasRawBody: false,
       });
     } finally {

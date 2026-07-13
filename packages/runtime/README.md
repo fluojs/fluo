@@ -108,6 +108,12 @@ const app = await fluoFactory.create(AppModule, {
 });
 ```
 
+### Framework-Managed and Handler-Owned Responses
+
+The normal request path is framework-managed: a handler returns a value, interceptors may transform it, and the runtime response writer commits it. This is the path where `@fluojs/serialization` can apply `SerializerInterceptor` to a returned DTO.
+
+Advanced handlers can instead take response ownership by calling `RequestContext.response.send(...)`, `redirect(...)`, or a manual streaming helper. Once that response is committed, `SerializerInterceptor`, when present, bypasses serialization and returns the value it received from `next.handle()` unchanged. This does not freeze the chain result: other interceptors may still transform it. Independently, the dispatcher sees the committed response and skips a second success-response write, so it does not write the final interceptor-chain result. Direct response code must therefore produce the final safe payload before committing; a serializer cannot reshape it afterward.
+
 ### Module Composition
 
 fluo uses a strict module graph. Modules must explicitly `export` providers to make them available to `importing` modules.
@@ -145,8 +151,10 @@ class UsersModule {}
 - `FluoFactory.createMicroservice()` preserves the original bootstrap/runtime-resolution error when cleanup fails and logs cleanup failures separately.
 - Bootstrap resolves independent singleton lifecycle providers concurrently, then runs lifecycle hooks in deterministic provider order.
 - Multipart parsing rejects payloads when the cumulative body size exceeds the configured `multipart.maxTotalSize`; runtime adapters default that limit to `maxBodySize` unless you override it.
+- `@fluojs/runtime/web` multipart parsing uses Web-standard `TextEncoder` and `Uint8Array` primitives without requiring the Node.js `Buffer` global. Uploaded file `buffer` values are `Uint8Array`; Node-only consumers can convert them explicitly with `Buffer.from(file.buffer)` at their application boundary.
 - `createNodeHttpAdapter(...)`, `bootstrapNodeApplication(...)`, and `runNodeApplication(...)` accept `maxBodySize` only as a non-negative integer byte count and fail fast during adapter creation/bootstrap when the value is invalid.
 - Response stream backpressure helpers settle `waitForDrain()` on `drain`, `close`, or `error` so streaming writers do not hang on dead connections.
+- HTTP response writing is single-owner: framework-managed handler results may be transformed by interceptors before the runtime commits them. Once a handler or response helper commits `RequestContext.response`, the dispatcher skips a second success-response write. `SerializerInterceptor` bypasses serialization and returns the value it received from `next.handle()` unchanged, while other interceptors may still transform the chain result.
 - Runtime health modules report `/ready` as `starting` with HTTP 503 until bootstrap marks them ready, and they return to `starting` as soon as application/context shutdown begins, including failed shutdown attempts.
 - Runtime health module readiness checks receive the current `RequestContext`, allowing public integrations to resolve runtime-exposed status providers without importing internal runtime tokens.
 - Signal-driven shutdown helpers preserve bounded drain semantics, log timeout/failure conditions, and set `process.exitCode` when shutdown does not finish cleanly, but they leave final process termination ownership to the surrounding host runtime.
@@ -174,6 +182,7 @@ class UsersModule {}
 - `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: Runtime-owned diagnostics snapshot helpers for CLI/support tooling. They produce machine-readable data; Studio owns viewer parsing, graph presentation, and Mermaid rendering.
 - `PlatformShell`, `PlatformComponent`, `PlatformShellSnapshot`, `PlatformSnapshot`, `PlatformDiagnosticIssue`, and related platform report types: Public lifecycle diagnostics and resource-ownership contracts used by runtime-aware packages. `RuntimePlatformShell` preserves component-provided ownership and emits validation/readiness/health diagnostics without requiring consumers to import internal runtime tokens.
 - `createRequestAbortContext(...)`, `trackActiveRequestTransaction(...)`, `untrackActiveRequestTransaction(...)`: Request abort and active transaction helpers used by runtime-aware integrations.
+- `UploadedFile`: Runtime-neutral multipart file descriptor whose in-memory `buffer` payload is a Web-standard `Uint8Array`.
 
 ## Platform-Specific Subpaths
 
@@ -235,6 +244,7 @@ Lower-level Node compression internals stay behind the `@fluojs/runtime/internal
 - [@fluojs/core](../core): Core decorators and metadata system.
 - [@fluojs/di](../di): Dependency injection container implementation.
 - [@fluojs/http](../http): HTTP routing, controllers, and dispatcher.
+- [@fluojs/serialization](../serialization): Decorator-aware shaping for framework-managed, uncommitted HTTP handler results.
 - [@fluojs/platform-nodejs](../platform-nodejs): Official Node.js HTTP adapter.
 - [@fluojs/studio](../studio): Viewer, filtering, and rendering helpers for runtime-produced snapshots and diagnostic issues.
 
