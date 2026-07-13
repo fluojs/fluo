@@ -40,6 +40,44 @@ function isResponseRecord(value: unknown): value is Readonly<Record<string, unkn
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+async function readBoundedResponseText(response: Response, maxResponseBytes: number): Promise<string> {
+  const reader = response.body?.getReader();
+  if (reader === undefined) {
+    return '';
+  }
+
+  const decoder = new TextDecoder();
+  let byteLength = 0;
+  let text = '';
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) {
+        return text + decoder.decode();
+      }
+      byteLength += chunk.value.byteLength;
+      if (byteLength > maxResponseBytes) {
+        await Promise.allSettled([reader.cancel()]);
+        throw new ReactServerFunctionClientError(
+          'Server Function response exceeds the configured byte limit.',
+          response.status,
+        );
+      }
+      text += decoder.decode(chunk.value, { stream: true });
+    }
+  } catch (error) {
+    if (error instanceof ReactServerFunctionClientError) {
+      throw error;
+    }
+    throw new ReactServerFunctionClientError(
+      'Server Function response body could not be read.',
+      response.status,
+    );
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 /**
  * Creates a client callable that posts signed Server Function invocations to one explicit endpoint.
  *
@@ -83,20 +121,25 @@ export function createReactServerFunctionClient(
       );
     }
 
-    const response = await options.fetch(options.endpoint, {
-      body: JSON.stringify({ action: options.reference.value, args: parsedArgs.value }),
-      credentials: 'same-origin',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        [REACT_SERVER_FUNCTION_REQUEST_HEADER]: '1',
-      },
-      method: 'POST',
-    });
-    const responseText = await response.text();
-    if (new TextEncoder().encode(responseText).byteLength > maxResponseBytes) {
-      throw new ReactServerFunctionClientError('Server Function response exceeds the configured byte limit.', response.status);
+    let response: Response;
+    try {
+      response = await options.fetch(options.endpoint, {
+        body: JSON.stringify({ action: options.reference.value, args: parsedArgs.value }),
+        credentials: 'same-origin',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          [REACT_SERVER_FUNCTION_REQUEST_HEADER]: '1',
+        },
+        method: 'POST',
+      });
+    } catch {
+      throw new ReactServerFunctionClientError(
+        'Server Function request failed before receiving an HTTP response.',
+        0,
+      );
     }
+    const responseText = await readBoundedResponseText(response, maxResponseBytes);
     const responseBody = parseJson(responseText, response.status);
     if (!response.ok) {
       throw new ReactServerFunctionClientError('Server Function request failed.', response.status, responseBody);

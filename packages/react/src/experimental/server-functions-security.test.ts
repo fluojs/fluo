@@ -5,6 +5,7 @@ import {
   createReactServerFunctionRegistry,
   REACT_SERVER_FUNCTION_ERROR_CODES,
   REACT_SERVER_FUNCTION_REQUEST_HEADER,
+  ReactServerFunctionConfigurationError,
   type ReactServerFunctionReference,
 } from './rsc.js';
 
@@ -64,6 +65,26 @@ async function expectRejection(
 }
 
 describe('experimental React Server Function security boundary', () => {
+  it.each([
+    ['empty', ''],
+    ['invalid-character', 'invalid/action'],
+    ['over-128-character', 'a'.repeat(129)],
+  ])('rejects the %s action id deterministically', (_caseName, actionId) => {
+    // Given: a registry configuration containing one action id outside the documented grammar.
+    const createRegistry = () => createReactServerFunctionRegistry({
+      actions: { [actionId]: () => ({ ok: true }) },
+      allowedOrigins: ['https://app.example.com'],
+      crypto: globalThis.crypto,
+      secret,
+    });
+
+    // When/Then: registry construction rejects with the stable configuration error and message.
+    expect(createRegistry).toThrowError(ReactServerFunctionConfigurationError);
+    expect(createRegistry).toThrowError(
+      `Server Function action id "${actionId}" must match [A-Za-z0-9_-] and contain 1 to 128 characters.`,
+    );
+  });
+
   it('rejects a tampered action reference without revealing registry membership', async () => {
     // Given: one registered action and its signed reference.
     const registry = createReactServerFunctionRegistry({

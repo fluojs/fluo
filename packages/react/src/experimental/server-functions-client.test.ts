@@ -60,4 +60,83 @@ describe('experimental React Server Function client', () => {
     });
     await expect(invocation).rejects.toBeInstanceOf(ReactServerFunctionClientError);
   });
+
+  it('rejects and cancels a streamed response as soon as it exceeds maxResponseBytes', async () => {
+    // Given: a streamed response whose second chunk crosses the configured byte limit.
+    const encoder = new TextEncoder();
+    let cancelled = false;
+    let pullCount = 0;
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelled = true;
+      },
+      pull(controller) {
+        pullCount += 1;
+        if (pullCount <= 2) {
+          controller.enqueue(encoder.encode('12345'));
+          return;
+        }
+        controller.close();
+      },
+    }, { highWaterMark: 0 });
+    const call = createReactServerFunctionClient({
+      endpoint: '/_fluo/actions',
+      fetch: async () => new Response(body, { status: 200 }),
+      maxResponseBytes: 8,
+      reference,
+    });
+
+    // When: the response crosses the limit before its source closes.
+    const invocation = call();
+
+    // Then: the client rejects with its typed contract and cancels without reading to completion.
+    await expect(invocation).rejects.toMatchObject({
+      message: 'Server Function response exceeds the configured byte limit.',
+      name: 'ReactServerFunctionClientError',
+      status: 200,
+    });
+    expect(cancelled).toBe(true);
+    expect(pullCount).toBe(2);
+  });
+
+  it('normalizes fetch rejection before an HTTP response into a typed status-zero error', async () => {
+    // Given: an application-owned fetch transport that rejects before returning a response.
+    const call = createReactServerFunctionClient({
+      endpoint: '/_fluo/actions',
+      fetch: async () => {
+        throw new TypeError('network unavailable');
+      },
+      reference,
+    });
+
+    // When/Then: the transport failure does not escape as an untyped fetch error.
+    const invocation = call();
+    await expect(invocation).rejects.toMatchObject({
+      name: 'ReactServerFunctionClientError',
+      status: 0,
+    });
+    await expect(invocation).rejects.toBeInstanceOf(ReactServerFunctionClientError);
+  });
+
+  it('normalizes response body-read rejection into a typed client error', async () => {
+    // Given: a valid HTTP response whose streaming body reader fails.
+    const body = new ReadableStream<Uint8Array>({
+      pull() {
+        throw new TypeError('response stream failed');
+      },
+    }, { highWaterMark: 0 });
+    const call = createReactServerFunctionClient({
+      endpoint: '/_fluo/actions',
+      fetch: async () => new Response(body, { status: 200 }),
+      reference,
+    });
+
+    // When/Then: the body-read failure preserves the available HTTP status in the typed contract.
+    const invocation = call();
+    await expect(invocation).rejects.toMatchObject({
+      name: 'ReactServerFunctionClientError',
+      status: 200,
+    });
+    await expect(invocation).rejects.toBeInstanceOf(ReactServerFunctionClientError);
+  });
 });
