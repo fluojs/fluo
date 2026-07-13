@@ -3,9 +3,13 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  type ClientNavigationEnvironment,
+  createClientNavigationStore,
+} from './client/store.js';
+import {
+  createReactRouteSnapshot,
   Link,
   ReactClientRouterProvider,
-  createReactRouteSnapshot,
   useNavigation,
   useParams,
   usePathname,
@@ -13,10 +17,6 @@ import {
   useRouterState,
   useSearchParams,
 } from './client.js';
-import {
-  createClientNavigationStore,
-  type ClientNavigationEnvironment,
-} from './client/store.js';
 
 function createEnvironment(href = 'https://example.test/products/sku-42?preview=true') {
   let currentHref = href;
@@ -138,6 +138,25 @@ describe('@fluojs/react/client', () => {
     expect(html).toContain('>Open product</a>');
   });
 
+  it('reconciles a browser-only hash when the client store connects', () => {
+    // Given: SSR route state without a fragment and the hydrated browser location with one.
+    const browser = createEnvironment('https://example.test/products/sku-42?preview=true#details');
+    const store = createClientNavigationStore(
+      createReactRouteSnapshot({ params: { sku: 'sku-42' }, url: '/products/sku-42?preview=true' }),
+    );
+
+    // When: hydration connects the store to the current browser location.
+    store.connect(browser.environment);
+
+    // Then: URL-derived state reflects the browser while HTTP-matched params stay intact.
+    expect(store.getSnapshot()).toMatchObject({
+      hash: '#details',
+      navigation: { status: 'idle', type: null },
+      params: { sku: 'sku-42' },
+      url: '/products/sku-42?preview=true#details',
+    });
+  });
+
   it('delegates push and replace to full-document same-origin navigation', () => {
     // Given: a connected client store and browser navigation environment.
     const browser = createEnvironment();
@@ -197,5 +216,21 @@ describe('@fluojs/react/client', () => {
       url: '/products/sku-84?preview=false#details',
     });
     expect(store.getSnapshot().searchParams.get('preview')).toBe('false');
+  });
+
+  it('records back semantics when history traversal follows a prior push', () => {
+    // Given: a connected store whose latest lifecycle state came from router.push().
+    const browser = createEnvironment();
+    const store = createClientNavigationStore(
+      createReactRouteSnapshot({ params: { sku: 'sku-42' }, url: '/products/sku-42?preview=true' }),
+    );
+    store.connect(browser.environment);
+    store.router.push('/products/sku-84?preview=false');
+
+    // When: browser history traverses back to the previous route.
+    browser.navigateFromHistory('https://example.test/products/sku-42?preview=true');
+
+    // Then: the completed lifecycle reports back rather than reusing push.
+    expect(store.getSnapshot().navigation).toEqual({ status: 'complete', type: 'back' });
   });
 });

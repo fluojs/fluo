@@ -7,8 +7,8 @@ import {
 import type {
   ReactNavigationSnapshot,
   ReactNavigationType,
-  ReactRouteSnapshot,
   ReactRouter,
+  ReactRouteSnapshot,
 } from './types.js';
 
 /** Browser operations required by the HTTP-first navigation store. */
@@ -60,6 +60,15 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
     for (const listener of listeners) {
       listener();
     }
+  };
+
+  const createSnapshotForHref = (
+    href: string,
+    navigation: ReactNavigationSnapshot,
+  ): ReactRouteSnapshot => {
+    const pathname = new URL(href).pathname;
+    const params = pathname === snapshot.pathname ? snapshot.params : {};
+    return createSnapshotFromHref(href, params, navigation);
   };
 
   const requireEnvironment = (): ClientNavigationEnvironment => {
@@ -151,17 +160,14 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
       environment = nextEnvironment;
       const unsubscribe = nextEnvironment.subscribe(() => {
         const currentHref = nextEnvironment.currentHref();
-        const currentPathname = new URL(currentHref).pathname;
-        const params = currentPathname === snapshot.pathname ? snapshot.params : {};
-        const navigationType = snapshot.navigation.type ?? 'back';
         publish(
-          createSnapshotFromHref(
-            currentHref,
-            params,
-            createNavigationSnapshot('complete', navigationType),
-          ),
+          createSnapshotForHref(currentHref, createNavigationSnapshot('complete', 'back')),
         );
       });
+      const currentHref = nextEnvironment.currentHref();
+      if (toSnapshotUrl(currentHref) !== snapshot.url) {
+        publish(createSnapshotForHref(currentHref, snapshot.navigation));
+      }
 
       return () => {
         unsubscribe();
