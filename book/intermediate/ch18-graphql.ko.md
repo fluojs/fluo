@@ -27,6 +27,8 @@
 - **표준 데코레이터**: 레거시 `experimentalDecorators` 플래그에 의존하지 않습니다.
 - **성능**: 런타임 퍼사드(facade)와 직접 통합해 불필요한 오버헤드를 줄입니다.
 
+배포되는 `@fluojs/graphql` manifest는 HTTP/SSE 경로가 이 cross-runtime 계약을 유지하므로 의도적으로 `engines.node`를 생략합니다. `packages/graphql/src/runtime-portability.test.ts`는 Bun, Deno, Cloudflare Workers의 각 adapter 경로에서 HTTP query와 SSE subscription을 검증하며, 선택적 WebSocket은 위에서 설명한 server-backed Node HTTP/S 경계에 계속 머뭅니다.
+
 ## 18.2 Installation and Setup
 
 먼저 필요한 의존성을 설치합니다.

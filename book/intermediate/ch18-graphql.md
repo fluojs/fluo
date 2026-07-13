@@ -27,6 +27,8 @@ fluo's philosophy of **Explicit Over Implicit** fits well with GraphQL's typed s
 - **Standard Decorators**: It does not depend on the legacy `experimentalDecorators` flag.
 - **Performance**: Direct integration with the runtime facade reduces unnecessary overhead.
 
+The published `@fluojs/graphql` manifest intentionally omits `engines.node` because the HTTP and SSE paths retain that cross-runtime contract. `packages/graphql/src/runtime-portability.test.ts` verifies an HTTP query and an SSE subscription through each Bun, Deno, and Cloudflare Workers adapter path; optional WebSockets remain on the server-backed Node HTTP/S boundary described above.
+
 ## 18.2 Installation and Setup
 
 First, install the required dependencies.
