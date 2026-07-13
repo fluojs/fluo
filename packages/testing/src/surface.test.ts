@@ -1,5 +1,4 @@
 import { spawn } from 'node:child_process';
-import { once } from 'node:events';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,11 +8,12 @@ import { describe, expect, it } from 'vitest';
 import * as fetchStyleWebsocket from './conformance/fetch-style-websocket-conformance.js';
 import * as conformance from './conformance/platform-conformance.js';
 import * as http from './http.js';
+import type { DeepMocked as RootDeepMocked } from './index.js';
 import * as testing from './index.js';
+import type { DeepMocked as MockDeepMocked } from './mock.js';
 import * as mock from './mock.js';
 import * as portability from './portability/http-adapter-portability.js';
 import * as webPortability from './portability/web-runtime-adapter-portability.js';
-import type { DeepMocked as RootDeepMocked } from './index.js';
 import type { DeepMocked } from './types.js';
 import * as vitestTooling from './vitest/tooling.js';
 import * as vitestEntry from './vitest.js';
@@ -42,11 +42,15 @@ type _DeepMockedMockContextPreservesCallTuples = Assert<
 type _RootDeepMockedPreservesVitestMockCompatibility = Assert<
   IsAssignable<RootDeepMocked<LegacyDeepMockedConsumerService>['findById'], Mock<(id: string) => Promise<{ id: string }>>>
 >;
+type _MockDeepMockedPreservesVitestMockCompatibility = Assert<
+  IsAssignable<MockDeepMocked<LegacyDeepMockedConsumerService>['findById'], Mock<(id: string) => Promise<{ id: string }>>>
+>;
 
 const packageRoot = new URL('..', import.meta.url);
 const packageRootPath = fileURLToPath(packageRoot);
 const repoRootPath = fileURLToPath(new URL('../../..', import.meta.url));
 const packageJsonPath = new URL('../package.json', import.meta.url);
+const CHILD_PROCESS_TIMEOUT_MS = 240_000;
 const emittedHarnessSubpaths = [
   '.',
   './app',
@@ -62,41 +66,64 @@ const emittedHarnessSubpaths = [
   './vitest/tooling',
 ] as const;
 
-async function runBuild(): Promise<void> {
-  const scriptPath = fileURLToPath(new URL('../../../tooling/scripts/run-workspace-build-closure.mjs', import.meta.url));
-
-  await new Promise<void>((resolvePromise, reject) => {
-    const child = spawn(process.execPath, [scriptPath, '@fluojs/testing'], {
-      cwd: repoRootPath,
+function runNodeProcess(args: readonly string[], cwd: string): Promise<void> {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(process.execPath, [...args], {
+      cwd,
       env: process.env,
       stdio: 'pipe',
     });
-    const childEvents = child as unknown as NodeJS.EventEmitter;
-
     let stderr = '';
     let stdout = '';
 
-    child.stdout.on('data', (chunk) => {
+    const onStdout = (chunk: Buffer | string): void => {
       stdout += String(chunk);
-    });
-
-    child.stderr.on('data', (chunk) => {
+    };
+    const onStderr = (chunk: Buffer | string): void => {
       stderr += String(chunk);
-    });
-
-    void once(childEvents, 'error').then(([error]) => {
+    };
+    const cleanup = (): void => {
+      clearTimeout(timeout);
+      child.stdout.off('data', onStdout);
+      child.stderr.off('data', onStderr);
+      child.off('error', onError);
+      child.off('exit', onExit);
+    };
+    const rejectAndStop = (error: Error): void => {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill('SIGKILL');
+      }
+      cleanup();
       reject(error);
-    });
+    };
+    const onError = (error: Error): void => {
+      rejectAndStop(error);
+    };
+    const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
+      cleanup();
 
-    void once(childEvents, 'exit').then(([code, signal]) => {
-      if (code !== 0 || signal) {
+      if (code !== 0 || signal !== null) {
         reject(new Error([stdout, stderr, signal ? `signal: ${signal}` : ''].filter(Boolean).join('\n')));
         return;
       }
 
       resolvePromise();
-    });
+    };
+    const timeout = setTimeout(() => {
+      rejectAndStop(new Error(`Child process timed out after ${CHILD_PROCESS_TIMEOUT_MS}ms: ${args.join(' ')}`));
+    }, CHILD_PROCESS_TIMEOUT_MS);
+
+    child.stdout.on('data', onStdout);
+    child.stderr.on('data', onStderr);
+    child.once('error', onError);
+    child.once('exit', onExit);
   });
+}
+
+async function runBuild(): Promise<void> {
+  const scriptPath = fileURLToPath(new URL('../../../tooling/scripts/run-workspace-build-closure.mjs', import.meta.url));
+
+  await runNodeProcess([scriptPath, '@fluojs/testing'], repoRootPath);
 }
 
 describe('@fluojs/testing surface', () => {
@@ -233,38 +260,7 @@ describe('@fluojs/testing surface', () => {
       await Promise.all(subpaths.map((subpath) => import(subpath === '.' ? '@fluojs/testing' : '@fluojs/testing/' + subpath.slice(2))));
     `;
 
-    await new Promise<void>((resolvePromise, reject) => {
-      const child = spawn(process.execPath, ['--input-type=module', '--eval', importScript], {
-        cwd: packageRootPath,
-        env: process.env,
-        stdio: 'pipe',
-      });
-      const childEvents = child as unknown as NodeJS.EventEmitter;
-
-      let stderr = '';
-      let stdout = '';
-
-      child.stdout.on('data', (chunk) => {
-        stdout += String(chunk);
-      });
-
-      child.stderr.on('data', (chunk) => {
-        stderr += String(chunk);
-      });
-
-      void once(childEvents, 'error').then(([error]) => {
-        reject(error);
-      });
-
-      void once(childEvents, 'exit').then(([code, signal]) => {
-        if (code !== 0) {
-          reject(new Error([stdout, stderr, signal ? `signal: ${signal}` : ''].filter(Boolean).join('\n')));
-          return;
-        }
-
-        resolvePromise();
-      });
-    });
+    await runNodeProcess(['--input-type=module', '--eval', importScript], packageRootPath);
 
     const mockSubpath = '@fluojs/testing/mock' as string;
     await expect(import(mockSubpath)).resolves.toBeTypeOf('object');
