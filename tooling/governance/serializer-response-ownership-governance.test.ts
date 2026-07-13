@@ -33,4 +33,15 @@ describe('serializer response ownership governance', () => {
       }),
     ).toThrowError(/packages\/runtime\/README\.md must not claim that the interceptor chain preserves handler return values/);
   });
+
+  it('rejects broad Korean interceptor-chain return-value preservation claims', () => {
+    expect(() =>
+      enforceSerializerResponseOwnershipDocsSync((relativePath: string) => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === 'packages/runtime/README.ko.md'
+          ? `${content}\ninterceptor chain은 handler-owned 반환값을 변경하지 않고 보존합니다.`
+          : content;
+      }),
+    ).toThrowError(/packages\/runtime\/README\.ko\.md must not claim that the interceptor chain preserves handler return values/);
+  });
 });
