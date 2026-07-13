@@ -1047,6 +1047,100 @@ describe('GrpcMicroserviceTransport', () => {
     await transport.close();
   });
 
+  it('serverStream() removes AbortSignal listener when the stream ends before reader iteration starts', async () => {
+    const { transport } = createGrpcTransport();
+    let handlerStarted = false;
+
+    transport.listenServerStreaming(async (_pattern, _payload, writer) => {
+      handlerStarted = true;
+      writer.end();
+    });
+    await transport.listen(async () => undefined);
+
+    const controller = new AbortController();
+    const addEventListenerSpy = vi.spyOn(controller.signal, 'addEventListener');
+    const removeEventListenerSpy = vi.spyOn(controller.signal, 'removeEventListener');
+
+    transport.serverStream('MathService.StreamData', {}, controller.signal);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(handlerStarted).toBe(true);
+    expect(addEventListenerSpy).toHaveBeenCalledTimes(1);
+    expect(removeEventListenerSpy).toHaveBeenCalledTimes(1);
+
+    await transport.close();
+  });
+
+  it('serverStream() removes AbortSignal listener when the stream errors', async () => {
+    const { transport } = createGrpcTransport();
+    let releaseError: () => void = () => {
+      throw new Error('Expected the server-stream error gate to be initialized.');
+    };
+    const errorGate = new Promise<void>((resolve) => {
+      releaseError = resolve;
+    });
+
+    transport.listenServerStreaming(async (_pattern, _payload, writer) => {
+      await errorGate;
+      writer.error(new Error('server-stream cleanup failure'));
+    });
+    await transport.listen(async () => undefined);
+
+    const controller = new AbortController();
+    const removeEventListenerSpy = vi.spyOn(controller.signal, 'removeEventListener');
+    const iterator = transport.serverStream('MathService.StreamData', {}, controller.signal)[Symbol.asyncIterator]();
+    const pendingRead = iterator.next();
+
+    releaseError();
+
+    await expect(pendingRead).rejects.toThrow('server-stream cleanup failure');
+    expect(removeEventListenerSpy).toHaveBeenCalledWith('abort', expect.any(Function));
+
+    await transport.close();
+  });
+
+  it('serverStream() removes AbortSignal listener when the stream errors before reader iteration starts', async () => {
+    const { transport } = createGrpcTransport();
+    let handlerStarted = false;
+
+    transport.listenServerStreaming(async (_pattern, _payload, writer) => {
+      handlerStarted = true;
+      writer.error(new Error('server-stream pre-reader cleanup failure'));
+    });
+    await transport.listen(async () => undefined);
+
+    const controller = new AbortController();
+    const addEventListenerSpy = vi.spyOn(controller.signal, 'addEventListener');
+    const removeEventListenerSpy = vi.spyOn(controller.signal, 'removeEventListener');
+
+    transport.serverStream('MathService.StreamData', {}, controller.signal);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(handlerStarted).toBe(true);
+    expect(addEventListenerSpy).toHaveBeenCalledTimes(1);
+    expect(removeEventListenerSpy).toHaveBeenCalledTimes(1);
+
+    await transport.close();
+  });
+
+  it('serverStream() removes AbortSignal listener when iterator return() runs before the first read', async () => {
+    const { transport } = createGrpcTransport();
+
+    transport.listenServerStreaming(async () => undefined);
+    await transport.listen(async () => undefined);
+
+    const controller = new AbortController();
+    const removeEventListenerSpy = vi.spyOn(controller.signal, 'removeEventListener');
+    const iterator = transport.serverStream('MathService.StreamData', {}, controller.signal)[Symbol.asyncIterator]();
+
+    await expect(iterator.return?.()).resolves.toEqual({ value: undefined, done: true });
+    expect(removeEventListenerSpy).toHaveBeenCalledTimes(1);
+
+    await transport.close();
+  });
+
   it('serverStream() removes AbortSignal listener when iterator return() cancels the call', async () => {
     const { transport } = createGrpcTransport();
 
@@ -1207,6 +1301,26 @@ describe('GrpcMicroserviceTransport', () => {
     await transport.close();
   });
 
+  it('clientStream() removes AbortSignal listener exactly once when the response errors', async () => {
+    const { transport } = createGrpcTransport();
+
+    transport.listenClientStreaming(async () => {
+      throw new Error('client-stream cleanup failure');
+    });
+    await transport.listen(async () => undefined);
+
+    const controller = new AbortController();
+    const removeEventListenerSpy = vi.spyOn(controller.signal, 'removeEventListener');
+    const { writer, result } = transport.clientStream('MathService.StreamAll', controller.signal);
+
+    writer.end();
+
+    await expect(result).rejects.toThrow('client-stream cleanup failure');
+    expect(removeEventListenerSpy).toHaveBeenCalledTimes(1);
+
+    await transport.close();
+  });
+
   it('clientStream() throws when transport is not listening', () => {
     const { transport } = createGrpcTransport();
 
@@ -1327,6 +1441,111 @@ describe('GrpcMicroserviceTransport', () => {
 
     expect(results).toEqual([{ value: 1 }]);
     expect(removeEventListenerSpy).toHaveBeenCalledWith('abort', expect.any(Function));
+
+    await transport.close();
+  });
+
+  it('bidiStream() removes AbortSignal listeners when the stream ends before reader iteration starts', async () => {
+    const { transport } = createGrpcTransport();
+    let resolveHandlerCompleted: () => void = () => {
+      throw new Error('Expected the bidi handler completion gate to be initialized.');
+    };
+    const handlerCompleted = new Promise<void>((resolve) => {
+      resolveHandlerCompleted = resolve;
+    });
+
+    transport.listenBidiStreaming(async (_pattern, reader, writer) => {
+      for await (const item of reader) {
+        void item;
+      }
+
+      writer.end();
+      resolveHandlerCompleted();
+    });
+    await transport.listen(async () => undefined);
+
+    const controller = new AbortController();
+    const addEventListenerSpy = vi.spyOn(controller.signal, 'addEventListener');
+    const removeEventListenerSpy = vi.spyOn(controller.signal, 'removeEventListener');
+    const { writer } = transport.bidiStream('MathService.StreamBidi', controller.signal);
+
+    writer.end();
+    await handlerCompleted;
+
+    expect(addEventListenerSpy).toHaveBeenCalledTimes(2);
+    expect(removeEventListenerSpy).toHaveBeenCalledTimes(2);
+
+    await transport.close();
+  });
+
+  it('bidiStream() removes AbortSignal listeners when the stream errors before reader iteration starts', async () => {
+    const { transport } = createGrpcTransport();
+    let resolveErrorSent: () => void = () => {
+      throw new Error('Expected the bidi error gate to be initialized.');
+    };
+    const errorSent = new Promise<void>((resolve) => {
+      resolveErrorSent = resolve;
+    });
+
+    transport.listenBidiStreaming(async (_pattern, _reader, writer) => {
+      writer.error(new Error('bidi pre-reader cleanup failure'));
+      resolveErrorSent();
+    });
+    await transport.listen(async () => undefined);
+
+    const controller = new AbortController();
+    const addEventListenerSpy = vi.spyOn(controller.signal, 'addEventListener');
+    const removeEventListenerSpy = vi.spyOn(controller.signal, 'removeEventListener');
+
+    transport.bidiStream('MathService.StreamBidi', controller.signal);
+    await errorSent;
+
+    expect(addEventListenerSpy).toHaveBeenCalledTimes(2);
+    expect(removeEventListenerSpy).toHaveBeenCalledTimes(2);
+
+    await transport.close();
+  });
+
+  it('bidiStream() removes AbortSignal listeners exactly once when the reader returns early', async () => {
+    const { transport } = createGrpcTransport();
+
+    transport.listenBidiStreaming(async () => undefined);
+    await transport.listen(async () => undefined);
+
+    const controller = new AbortController();
+    const removeEventListenerSpy = vi.spyOn(controller.signal, 'removeEventListener');
+    const { reader } = transport.bidiStream('MathService.StreamBidi', controller.signal);
+    const iterator = reader[Symbol.asyncIterator]();
+
+    await expect(iterator.return?.()).resolves.toEqual({ value: undefined, done: true });
+    expect(removeEventListenerSpy).toHaveBeenCalledTimes(2);
+
+    await transport.close();
+  });
+
+  it('bidiStream() does not remove AbortSignal listeners twice when return() follows terminal end', async () => {
+    const { transport } = createGrpcTransport();
+
+    transport.listenBidiStreaming(async (_pattern, reader, writer) => {
+      for await (const item of reader) {
+        void item;
+      }
+
+      writer.end();
+    });
+    await transport.listen(async () => undefined);
+
+    const controller = new AbortController();
+    const removeEventListenerSpy = vi.spyOn(controller.signal, 'removeEventListener');
+    const { reader, writer } = transport.bidiStream('MathService.StreamBidi', controller.signal);
+    const iterator = reader[Symbol.asyncIterator]();
+    const terminalRead = iterator.next();
+
+    writer.end();
+
+    await expect(terminalRead).resolves.toEqual({ value: undefined, done: true });
+    await expect(iterator.return?.()).resolves.toEqual({ value: undefined, done: true });
+    expect(removeEventListenerSpy).toHaveBeenCalledTimes(2);
 
     await transport.close();
   });
