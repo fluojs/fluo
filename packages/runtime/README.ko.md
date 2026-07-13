@@ -112,7 +112,7 @@ const app = await fluoFactory.create(AppModule, {
 
 일반 request path는 framework-managed 방식입니다. Handler가 값을 반환하면 interceptor가 그 값을 변환할 수 있고, runtime response writer가 최종 결과를 commit합니다. `@fluojs/serialization`의 `SerializerInterceptor`가 반환 DTO에 적용되는 경로도 이 경로입니다.
 
-고급 handler는 `RequestContext.response.send(...)`, `redirect(...)`, 또는 수동 streaming helper를 호출해 response ownership을 직접 가질 수 있습니다. Response가 commit되면 interceptor chain은 handler-owned 반환값을 변경하지 않고 보존하며 runtime dispatcher는 일반 success-response write를 건너뜁니다. 따라서 직접 응답을 쓰는 코드는 commit 전에 안전한 최종 payload를 만들어야 하며 serializer가 이후에 형태를 바꿀 수 없습니다.
+고급 handler는 `RequestContext.response.send(...)`, `redirect(...)`, 또는 수동 streaming helper를 호출해 response ownership을 직접 가질 수 있습니다. Response가 commit되면 `SerializerInterceptor`는 등록된 경우 serialization을 우회하고 `next.handle()`에서 받은 값을 그대로 반환합니다. 이 동작이 chain 결과를 고정하지는 않으므로 다른 interceptor는 chain 결과를 계속 변환할 수 있습니다. 이와 별개로 dispatcher는 commit된 response를 확인하고 두 번째 success-response write를 건너뛰므로 최종 interceptor-chain 결과를 쓰지 않습니다. 따라서 직접 응답을 쓰는 코드는 commit 전에 안전한 최종 payload를 만들어야 하며 serializer가 이후에 형태를 바꿀 수 없습니다.
 
 ### 모듈 구성
 
@@ -153,7 +153,7 @@ class UsersModule {}
 - `@fluojs/runtime/web` 멀티파트 파싱은 Node.js `Buffer` global 없이 Web 표준 `TextEncoder`와 `Uint8Array` primitive만 사용합니다. 업로드 파일의 `buffer` 값은 `Uint8Array`이며, Node 전용 consumer는 애플리케이션 경계에서 `Buffer.from(file.buffer)`로 명시적으로 변환할 수 있습니다.
 - `createNodeHttpAdapter(...)`, `bootstrapNodeApplication(...)`, `runNodeApplication(...)`는 `maxBodySize`를 0 이상의 정수 바이트 수로만 받으며, 값이 잘못되면 어댑터 생성/부트스트랩 단계에서 즉시 실패합니다.
 - 응답 스트림 백프레셔 헬퍼는 `drain`, `close`, `error` 중 어느 경우에도 `waitForDrain()`을 완료시켜 끊어진 연결에서 스트리밍 작성기가 멈추지 않도록 합니다.
-- HTTP response writing은 단일 owner를 가집니다. Framework-managed handler 결과는 runtime이 commit하기 전에 interceptor가 변환할 수 있지만, handler나 response helper가 `RequestContext.response`를 commit한 뒤에는 runtime이 해당 handler-owned response를 보존하고 두 번째 success-response write를 건너뛰며 `SerializerInterceptor`도 serialization을 우회합니다.
+- HTTP response writing은 단일 owner를 가집니다. Framework-managed handler 결과는 runtime이 commit하기 전에 interceptor가 변환할 수 있습니다. Handler나 response helper가 `RequestContext.response`를 commit한 뒤에는 dispatcher가 두 번째 success-response write를 건너뜁니다. `SerializerInterceptor`는 serialization을 우회하고 `next.handle()`에서 받은 값을 그대로 반환하지만, 다른 interceptor는 chain 결과를 계속 변환할 수 있습니다.
 - 런타임 health 모듈은 bootstrap이 ready로 표시하기 전까지 `/ready`를 HTTP 503과 `starting`으로 보고하며, 애플리케이션/컨텍스트 종료가 시작되는 즉시, 종료 시도가 실패하더라도 다시 `starting`으로 내려갑니다.
 - 런타임 health module readiness check는 현재 `RequestContext`를 받으므로, public integration이 internal runtime token을 import하지 않고도 runtime-exposed status provider를 해석할 수 있습니다.
 - 시그널 기반 종료 헬퍼는 bounded drain semantics를 유지하면서 timeout/실패 상황을 로그와 `process.exitCode`로 보고하지만, 최종 프로세스 종료 소유권은 주변 호스트 런타임에 남겨 둡니다.

@@ -17,9 +17,20 @@ describe('serializer response ownership governance', () => {
       enforceSerializerResponseOwnershipDocsSync((relativePath: string) => {
         const content = readFileSync(join(repoRoot, relativePath), 'utf8');
         return relativePath === 'packages/runtime/README.md'
-          ? content.replace('skips its normal success-response write', 'writes the handler result again')
+          ? content.replace('Framework-Managed and Handler-Owned Responses', 'Response Ownership')
           : content;
       }),
     ).toThrowError(/packages\/runtime\/README\.md must keep serializer response ownership guidance synchronized/);
+  });
+
+  it('rejects broad interceptor-chain return-value preservation claims', () => {
+    expect(() =>
+      enforceSerializerResponseOwnershipDocsSync((relativePath: string) => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === 'packages/runtime/README.md'
+          ? `${content}\nThe interceptor chain preserves the handler-owned return value unchanged.`
+          : content;
+      }),
+    ).toThrowError(/packages\/runtime\/README\.md must not claim that the interceptor chain preserves handler return values/);
   });
 });

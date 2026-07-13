@@ -128,7 +128,7 @@ export class PostsController {
 }
 ```
 
-`send(...)`, `redirect(...)`, 또는 수동 streaming helper를 호출해 response를 commit하면 response ownership이 handler로 넘어갑니다. 그 시점부터 `SerializerInterceptor`는 `serialize(...)`를 건너뛰고 runtime은 handler 반환값을 두 번째로 보내지 않습니다. 직접 쓴 payload가 최종 결과이므로 민감한 field filtering과 필요한 encoding을 commit 전에 끝내야 합니다.
+`send(...)`, `redirect(...)`, 또는 수동 streaming helper를 호출하면 handler의 최종 response payload가 commit됩니다. 그 시점부터 `SerializerInterceptor`는 `serialize(...)`를 건너뛰고 `next.handle()`에서 받은 값을 그대로 반환합니다. 다른 interceptor는 chain 결과를 계속 변환할 수 있습니다. 이와 별개로 dispatcher는 commit된 response를 확인하고 두 번째 success-response write를 건너뛰므로 최종 chain 결과를 보내지 않습니다. 직접 쓸 payload의 민감한 field filtering과 필요한 encoding은 commit 전에 끝내야 합니다.
 
 ### Why an Interceptor Is a Good Fit
 

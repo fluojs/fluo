@@ -128,7 +128,7 @@ export class PostsController {
 }
 ```
 
-Calling `send(...)`, `redirect(...)`, or a manual streaming helper transfers response ownership to the handler once the response is committed. From that point, `SerializerInterceptor` bypasses `serialize(...)`, and the runtime does not send the handler return value a second time. The directly written payload is final, so filter sensitive fields and complete any encoding before committing it.
+Calling `send(...)`, `redirect(...)`, or a manual streaming helper commits the handler's final response payload. From that point, `SerializerInterceptor` bypasses `serialize(...)` and returns the value it received from `next.handle()` unchanged. Other interceptors may still transform the chain result. Independently, the dispatcher sees the committed response and skips a second success-response write, so it does not send the final chain result. Filter sensitive fields and complete any encoding before committing the directly written payload.
 
 ### Why an Interceptor Is a Good Fit
 

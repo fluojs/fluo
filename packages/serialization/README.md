@@ -110,7 +110,7 @@ class UsersController {
 The two routes use different response owners:
 
 - **Framework-managed response**: `findAll()` returns while `RequestContext.response` is still uncommitted. `SerializerInterceptor` serializes the returned DTOs, then the runtime response writer commits the result.
-- **Handler-owned response**: `exportCsv()` writes the final payload through `RequestContext.response.send(...)`. Once `send(...)`, `redirect(...)`, or a manual streaming helper commits the response, `SerializerInterceptor` bypasses `serialize(...)` and the runtime does not write the handler return value again.
+- **Handler-owned response**: `exportCsv()` writes the final payload through `RequestContext.response.send(...)`. Once `send(...)`, `redirect(...)`, or a manual streaming helper commits the response, `SerializerInterceptor` bypasses `serialize(...)` and returns the value it received from `next.handle()` unchanged. This guarantee is specific to `SerializerInterceptor`; other interceptors may still transform the chain result. Independently, the dispatcher sees the committed response and skips a second success-response write.
 
 Treat a directly written payload as final: apply any required field filtering or encoding before the commit. Serialization cannot post-process a response after handler/runtime response ownership has been committed.
 
@@ -138,7 +138,7 @@ Undecorated class instances are still traversed recursively, so decorated nested
 
 - **Decorators**: `Expose`, `Exclude`, `Transform`
 - **Engine**: `serialize(value)` recursively walks class instances, arrays, plain objects, and mixed graphs while preserving opaque built-ins and non-JSON leaf values unless you transform them
-- **HTTP integration**: `SerializerInterceptor` serializes uncommitted handler results and returns handler-owned values unchanged after the response has already been committed
+- **HTTP integration**: `SerializerInterceptor` serializes uncommitted handler results; after the response is committed, it returns the value it received from `next.handle()` unchanged, although other interceptors may still transform the chain result
 - **Types**: `ExposeClassOptions` is exported from the root entrypoint for class-level `Expose(...)` options, and `TransformFunction` is exported for callbacks passed to `Transform(...)`
 
 `Expose` can be applied to classes and fields. `Exclude` and `Transform` apply to fields.
