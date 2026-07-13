@@ -22,7 +22,7 @@
 
 완성된 FluoShop 시스템은 각 도메인의 요구에 맞는 런타임에서 실행되는 서비스들의 집합입니다. 중요한 기준은 유행하는 플랫폼을 고르는 것이 아니라, 서비스 책임과 운영 제약을 맞추는 것입니다.
 
-- **Core API Gateway**: 들어오는 HTTP/GraphQL 요청을 처리하고 적절한 서비스로 라우팅합니다. 사용자와 가까운 위치에서 응답해야 하므로 **Cloudflare Workers**에서 실행합니다.
+- **Core API Gateway**: **Cloudflare Workers**에서 edge HTTP ingress를 처리하고 GraphQL 요청을 Node.js `>=20.0.0` API service로 라우팅합니다. Worker 자체는 `@fluojs/graphql`을 호스팅하지 않습니다.
 - **Product Service**: MongoDB를 사용하여 카탈로그 데이터를 관리하고 WebSockets를 통해 실시간 업데이트를 제공합니다. 고성능 데이터 서빙과 네이티브 WebSocket 지원을 위해 **Bun**에서 실행됩니다.
 - **Order Service**: Drizzle과 PostgreSQL을 사용하여 트랜잭션과 영속성을 처리합니다. 데이터베이스 드라이버 호환성과 운영 예측 가능성을 위해 **Express와 함께 Node.js**에서 실행합니다.
 - **Notification Service**: 도메인 이벤트를 기반으로 이메일, Slack 알림, 푸시 알림을 오케스트레이션합니다.
