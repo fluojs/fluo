@@ -89,16 +89,25 @@ export class Kafka {
   producer() {
     return {
       async connect() { globalThis.__events.push('kafka.producer.connect'); },
-      async disconnect() { globalThis.__events.push('kafka.producer.disconnect'); },
+      async disconnect() {
+        globalThis.__events.push('kafka.producer.disconnect');
+        if (globalThis.__cleanupFails) throw new Error('producer cleanup failed');
+      },
     };
   }
   consumer() {
     return {
       async connect() {
         globalThis.__events.push('kafka.consumer.connect');
-        if (globalThis.__consumerConnectFails) throw new Error('consumer connect failed');
+        if (globalThis.__consumerConnectFails) {
+          globalThis.__startupError = new Error('consumer connect failed');
+          throw globalThis.__startupError;
+        }
       },
-      async disconnect() { globalThis.__events.push('kafka.consumer.disconnect'); },
+      async disconnect() {
+        globalThis.__events.push('kafka.consumer.disconnect');
+        if (globalThis.__cleanupFails) throw new Error('consumer cleanup failed');
+      },
     };
   }
 }
@@ -112,10 +121,16 @@ export class Kafka {
     'amqplib',
     `export async function connect() {
   return {
-    async close() { globalThis.__events.push('rabbitmq.connection.close'); },
+    async close() {
+      globalThis.__events.push('rabbitmq.connection.close');
+      if (globalThis.__cleanupFails) throw new Error('connection cleanup failed');
+    },
     async createConfirmChannel() {
       globalThis.__events.push('rabbitmq.channel.create');
-      if (globalThis.__channelCreateFails) throw new Error('channel creation failed');
+      if (globalThis.__channelCreateFails) {
+        globalThis.__startupError = new Error('channel creation failed');
+        throw globalThis.__startupError;
+      }
       return { async close() { globalThis.__events.push('rabbitmq.channel.close'); } };
     },
   };
@@ -181,17 +196,22 @@ for (const event of ${JSON.stringify(expectedEvents)}) {
     );
   });
 
-  it('disconnects both Kafka clients when one connect fails', async () => {
+  it('disconnects both Kafka clients and rethrows the original error when one connect fails', async () => {
     const projectDirectory = await generateBrokerStarter('kafka');
 
     runAssertionScript(
       projectDirectory,
-      `globalThis.__consumerConnectFails = true;
+      `globalThis.__cleanupFails = true;
+globalThis.__consumerConnectFails = true;
 await import(__MODULE_URL__);
 const transport = globalThis.__fluoGeneratedTransport;
 await transport.listen(() => undefined).then(
   () => { throw new Error('Expected consumer connect failure.'); },
-  () => undefined,
+  (error) => {
+    if (error !== globalThis.__startupError || error.message !== 'consumer connect failed') {
+      throw new Error('Kafka starter did not preserve the original connection error.');
+    }
+  },
 );
 for (const event of ['kafka.consumer.disconnect', 'kafka.producer.disconnect']) {
   if (!globalThis.__events.includes(event)) throw new Error('Missing cleanup event: ' + event);
@@ -200,17 +220,22 @@ for (const event of ['kafka.consumer.disconnect', 'kafka.producer.disconnect']) 
     );
   });
 
-  it('closes the RabbitMQ connection when channel creation fails', async () => {
+  it('closes the RabbitMQ connection and rethrows the original channel creation error', async () => {
     const projectDirectory = await generateBrokerStarter('rabbitmq');
 
     runAssertionScript(
       projectDirectory,
       `globalThis.__channelCreateFails = true;
+globalThis.__cleanupFails = true;
 await import(__MODULE_URL__);
 const transport = globalThis.__fluoGeneratedTransport;
 await transport.listen(() => undefined).then(
   () => { throw new Error('Expected channel creation failure.'); },
-  () => undefined,
+  (error) => {
+    if (error !== globalThis.__startupError || error.message !== 'channel creation failed') {
+      throw new Error('RabbitMQ starter did not preserve the original channel creation error.');
+    }
+  },
 );
 if (!globalThis.__events.includes('rabbitmq.connection.close')) {
   throw new Error('RabbitMQ connection was not closed.');
