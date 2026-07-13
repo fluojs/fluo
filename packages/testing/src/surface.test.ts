@@ -22,6 +22,14 @@ import * as vitestEntry from './vitest.js';
 
 type Assert<T extends true> = T;
 type IsAssignable<From, To> = [From] extends [To] ? true : false;
+type TaskkillCommand = (
+  file: string,
+  args: readonly string[],
+  options: { readonly timeout?: number; readonly windowsHide: boolean },
+) => Promise<void>;
+type DestroyableStdio = {
+  destroy(): unknown;
+};
 
 interface LegacyDeepMockedConsumerService {
   findById(id: string): Promise<{ id: string }>;
@@ -72,6 +80,10 @@ const emittedHarnessSubpaths = [
   './vitest/tooling',
 ] as const;
 
+const executeTaskkillCommand: TaskkillCommand = async (file, args, options) => {
+  await execFileAsync(file, [...args], options);
+};
+
 function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -99,6 +111,36 @@ async function waitForProcessExit(pid: number, timeoutMs: number): Promise<boole
   return !isProcessAlive(pid);
 }
 
+function destroyOwnedStdio(streams: readonly DestroyableStdio[], preservePrimaryError: boolean): void {
+  const cleanupErrors: unknown[] = [];
+
+  for (const stream of streams) {
+    try {
+      stream.destroy();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+  }
+
+  if (!preservePrimaryError && cleanupErrors.length > 0) {
+    throw new AggregateError(cleanupErrors, 'Failed to destroy one or more child process stdio handles.');
+  }
+}
+
+async function runWindowsTaskkill(pid: number, execute: TaskkillCommand = executeTaskkillCommand): Promise<void> {
+  try {
+    await execute('taskkill.exe', ['/pid', String(pid), '/t', '/f'], {
+      timeout: PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS,
+      windowsHide: true,
+    });
+  } catch (error) {
+    throw new Error(
+      `Unable to terminate Windows child process tree ${pid} within ${PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS}ms using taskkill.exe /T /F.`,
+      { cause: error },
+    );
+  }
+}
+
 async function terminateOwnedProcessTree(child: ChildProcessWithoutNullStreams): Promise<void> {
   const pid = child.pid;
 
@@ -108,10 +150,10 @@ async function terminateOwnedProcessTree(child: ChildProcessWithoutNullStreams):
 
   if (process.platform === 'win32') {
     try {
-      await execFileAsync('taskkill.exe', ['/pid', String(pid), '/t', '/f'], { windowsHide: true });
+      await runWindowsTaskkill(pid);
     } catch (error) {
       if (child.exitCode === null && child.signalCode === null) {
-        throw new Error(`Unable to terminate child process tree ${pid} with taskkill.exe.`, { cause: error });
+        throw error;
       }
     }
     return;
@@ -165,6 +207,7 @@ async function runNodeProcess(
   child.stdout.on('data', onStdout);
   child.stderr.on('data', onStderr);
   child.once('error', onError);
+  let hasPrimaryError = false;
 
   try {
     const outcome = await Promise.race([closePromise, timeoutPromise]);
@@ -204,6 +247,9 @@ async function runNodeProcess(
     if (outcome.code !== 0 || outcome.signal !== null) {
       throw new Error([stdout, stderr, outcome.signal ? `signal: ${outcome.signal}` : ''].filter(Boolean).join('\n'));
     }
+  } catch (error) {
+    hasPrimaryError = true;
+    throw error;
   } finally {
     if (timeout !== undefined) {
       clearTimeout(timeout);
@@ -212,6 +258,7 @@ async function runNodeProcess(
     child.stderr.off('data', onStderr);
     child.off('error', onError);
     child.off('close', onClose);
+    destroyOwnedStdio([child.stdin, child.stdout, child.stderr], hasPrimaryError);
   }
 }
 
@@ -319,6 +366,51 @@ describe('@fluojs/testing surface', () => {
     expect(koreanReadme).not.toContain('**HTTP 헬퍼**');
   });
 
+  it('bounds and reports taskkill failures without invoking Windows', async () => {
+    const taskkillFailure = new Error('taskkill stalled');
+    let observedTimeout: number | undefined;
+
+    await expect(
+      runWindowsTaskkill(42, async (_file, _args, options) => {
+        observedTimeout = options.timeout;
+        throw taskkillFailure;
+      }),
+    ).rejects.toMatchObject({
+      cause: taskkillFailure,
+      message: `Unable to terminate Windows child process tree 42 within ${PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS}ms using taskkill.exe /T /F.`,
+    });
+    expect(observedTimeout).toBe(PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS);
+  });
+
+  it('destroys every owned stdio handle without replacing a primary child failure', () => {
+    const destroyed: string[] = [];
+
+    expect(() =>
+      destroyOwnedStdio(
+        [
+          {
+            destroy() {
+              destroyed.push('stdin');
+              throw new Error('stdin cleanup failed');
+            },
+          },
+          {
+            destroy() {
+              destroyed.push('stdout');
+            },
+          },
+          {
+            destroy() {
+              destroyed.push('stderr');
+            },
+          },
+        ],
+        true,
+      ),
+    ).not.toThrow();
+    expect(destroyed).toEqual(['stdin', 'stdout', 'stderr']);
+  });
+
   it('terminates descendant processes before reporting a child timeout', async () => {
     const fixtureRoot = mkdtempSync(join(tmpdir(), 'fluo-testing-process-tree-'));
     const descendantPidFile = join(fixtureRoot, 'descendant.pid');
@@ -342,6 +434,12 @@ describe('@fluojs/testing surface', () => {
       descendantPid = Number(readFileSync(descendantPidFile, 'utf8'));
       expect(await waitForProcessExit(descendantPid, PROCESS_EXIT_TEST_TIMEOUT_MS)).toBe(true);
     } finally {
+      if (descendantPid === undefined && existsSync(descendantPidFile)) {
+        const discoveredPid = Number(readFileSync(descendantPidFile, 'utf8'));
+        if (Number.isSafeInteger(discoveredPid) && discoveredPid > 0) {
+          descendantPid = discoveredPid;
+        }
+      }
       if (descendantPid !== undefined && isProcessAlive(descendantPid)) {
         process.kill(descendantPid, 'SIGKILL');
       }
