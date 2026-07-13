@@ -88,7 +88,7 @@ When the same field is decorated in a base class and a derived class, transforms
 ### HTTP response shaping with an interceptor
 
 ```ts
-import { Controller, Get, UseInterceptors } from '@fluojs/http';
+import { Controller, Get, type RequestContext, UseInterceptors } from '@fluojs/http';
 import { SerializerInterceptor } from '@fluojs/serialization';
 
 @Controller('/users')
@@ -98,10 +98,21 @@ class UsersController {
   findAll() {
     return [new UserEntity()];
   }
+
+  @Get('/export.csv')
+  async exportCsv(_input: undefined, context: RequestContext) {
+    context.response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    await context.response.send('id,username\n1,fluo');
+  }
 }
 ```
 
-`SerializerInterceptor` only serializes values that still belong to the normal HTTP response writer. If a handler or response helper commits `RequestContext.response` directly, such as an SSE stream, the interceptor returns that handler-owned value unchanged so the request pipeline preserves response ownership.
+The two routes use different response owners:
+
+- **Framework-managed response**: `findAll()` returns while `RequestContext.response` is still uncommitted. `SerializerInterceptor` serializes the returned DTOs, then the runtime response writer commits the result.
+- **Handler-owned response**: `exportCsv()` writes the final payload through `RequestContext.response.send(...)`. Once `send(...)`, `redirect(...)`, or a manual streaming helper commits the response, `SerializerInterceptor` bypasses `serialize(...)` and the runtime does not write the handler return value again.
+
+Treat a directly written payload as final: apply any required field filtering or encoding before the commit. Serialization cannot post-process a response after handler/runtime response ownership has been committed.
 
 ### Cycle-safe serialization
 

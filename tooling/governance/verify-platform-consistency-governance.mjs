@@ -581,7 +581,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // transport-agnostic status snapshots plus caller-owned shutdown boundaries,
   // validation mapped-type/nested-materialization contract discoverability,
   // missing-value, safe-extra-property, and unsupported-group migration rules,
-  // serialization class options plus request-boundary interceptor coverage, CLI
+  // serialization class options, committed-response ownership bypass, and
+  // request-boundary interceptor coverage, CLI
   // public runtime type boundaries plus the documented Node.js runtime floor,
   // and Studio live helper contracts such as deterministic Mermaid rendering,
   // route-id graph correlation, viewer dependency classification, and Node.js
@@ -737,6 +738,71 @@ const cloudflareWorkersLifecycleDocRequirements = [
   ['docs/CONTEXT.md', ['packages/platform-cloudflare-workers/README.md', 'docs/getting-started/migrate-from-nestjs.md', 'website runtime/realtime guides']],
   ['docs/CONTEXT.ko.md', ['packages/platform-cloudflare-workers/README.ko.md', 'docs/getting-started/migrate-from-nestjs.ko.md', 'website runtime/realtime guide']],
 ];
+
+const serializerResponseOwnershipDocRequirements = [
+  [
+    'packages/serialization/README.md',
+    ['Framework-managed response', 'Handler-owned response', 'bypasses `serialize(...)`', 'runtime does not write the handler return value again'],
+  ],
+  [
+    'packages/serialization/README.ko.md',
+    ['Framework-managed response', 'Handler-owned response', '`serialize(...)`를 건너뛰고', 'runtime은 handler 반환값을 다시 쓰지 않습니다'],
+  ],
+  [
+    'packages/runtime/README.md',
+    ['Framework-Managed and Handler-Owned Responses', 'skips its normal success-response write', 'serializer cannot reshape it afterward'],
+  ],
+  [
+    'packages/runtime/README.ko.md',
+    ['Framework-managed response와 handler-owned response', 'success-response write를 건너뜁니다', 'serializer가 이후에 형태를 바꿀 수 없습니다'],
+  ],
+  [
+    'book/beginner/ch07-serialization.md',
+    ['Framework-Managed vs Handler-Owned Responses', 'bypasses `serialize(...)`', 'does not send the handler return value a second time'],
+  ],
+  [
+    'book/beginner/ch07-serialization.ko.md',
+    ['Framework-managed response와 handler-owned response', '`serialize(...)`를 건너뛰고', 'handler 반환값을 두 번째로 보내지 않습니다'],
+  ],
+  [
+    'docs/getting-started/migrate-from-nestjs.md',
+    ['`ClassSerializerInterceptor`', 'serialization is bypassed', 'skips both serialization and a second runtime write'],
+  ],
+  [
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    ['`ClassSerializerInterceptor`', 'serialization을 우회하고', 'serialization과 두 번째 runtime write를 모두 건너뛴다'],
+  ],
+  [
+    'docs/CONTEXT.md',
+    ['Serialization response-ownership discoverability', 'ownership is handler-side', 'runtime skips a second response write'],
+  ],
+  [
+    'docs/CONTEXT.ko.md',
+    ['Serialization response-ownership discoverability', 'ownership이 handler에 있다', 'runtime은 두 번째 response write를 건너뛴다'],
+  ],
+  [
+    'docs/reference/package-surface.md',
+    ['runtime preserves that handler-owned response', 'after handler/runtime response ownership is committed', 'bypasses serialization'],
+  ],
+  [
+    'docs/reference/package-surface.ko.md',
+    ['runtime이 해당 handler-owned response를 보존', 'Handler/runtime response ownership이 commit된 뒤', 'serialization을 우회'],
+  ],
+];
+
+export function enforceSerializerResponseOwnershipDocsSync(
+  readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
+) {
+  for (const [relativePath, requiredMarkers] of serializerResponseOwnershipDocRequirements) {
+    const content = readText(relativePath);
+    const missingMarkers = requiredMarkers.filter((marker) => !content.includes(marker));
+
+    assert(
+      missingMarkers.length === 0,
+      `${relativePath} must keep serializer response ownership guidance synchronized; missing: ${missingMarkers.join(', ')}.`,
+    );
+  }
+}
 
 export function enforceCloudflareWorkersLifecycleDocsSync(
   readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
@@ -1594,6 +1660,7 @@ export function main() {
   enforceReleaseGovernancePublishSurfaceSync();
   enforceCanonicalPackageSurfaceSync();
   enforceDocsHubOfficialTransportLinks();
+  enforceSerializerResponseOwnershipDocsSync();
   enforceCloudflareWorkersLifecycleDocsSync();
   enforceCanonicalRuntimeMatrixReferences();
   enforceRemovedRuntimeFactoryNamesNotUsedInDocs();

@@ -10,6 +10,7 @@ If Chapter 6 validated the input boundary, this chapter organizes the shape of r
 - Organize HTTP output shapes with `@Expose()`, `@Exclude()`, and `@Transform()`.
 - Check that internal fields do not leak from the FluoBlog API.
 - Learn how `SerializerInterceptor` applies response shaping automatically.
+- Distinguish framework-managed responses from handler-owned committed responses.
 - Recognize the difference between internal entities and transfer models.
 - Prepare the foundation for better exception handling and API documentation.
 
@@ -105,6 +106,29 @@ export class PostsController {
 Now the Controller can return DTO instances or data intended for serialization. The Interceptor automatically applies the response shaping step, which lets the Controller focus on coordination instead of formatting details. This flow also gathers response rules in one place and helps keep the API consistent.
 
 The flow usually looks like this: **internal record -> DTO -> Interceptor -> client**. `SerializerInterceptor` is defined in `packages/serialization/src/serializer-interceptor.ts`, and internally it uses the `serialize` function to transform values based on the decorators you provide.
+
+### Framework-Managed vs Handler-Owned Responses
+
+Automatic shaping applies only while the response is framework-managed. In the `findAll()` example, the handler returns a DTO value without committing `RequestContext.response`, so `SerializerInterceptor` can serialize it before the runtime writes the response.
+
+Some advanced routes need direct control over the response. For example, a CSV download can set headers and commit its final payload explicitly:
+
+```typescript
+import { Controller, Get, type RequestContext, UseInterceptors } from '@fluojs/http';
+import { SerializerInterceptor } from '@fluojs/serialization';
+
+@Controller('/posts')
+@UseInterceptors(SerializerInterceptor)
+export class PostsController {
+  @Get('/export.csv')
+  async exportCsv(_input: undefined, context: RequestContext) {
+    context.response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    await context.response.send('id,title\npost-1,Serialization Basics');
+  }
+}
+```
+
+Calling `send(...)`, `redirect(...)`, or a manual streaming helper transfers response ownership to the handler once the response is committed. From that point, `SerializerInterceptor` bypasses `serialize(...)`, and the runtime does not send the handler return value a second time. The directly written payload is final, so filter sensitive fields and complete any encoding before committing it.
 
 ### Why an Interceptor Is a Good Fit
 
@@ -250,12 +274,14 @@ Use this checklist.
 2. Are sensitive fields excluded by default?
 3. Is response shaping reusable across several endpoints?
 4. Do small display transformations happen at the boundary instead of inside the Controller?
+5. Does the framework still own the response, or has the handler already committed its final payload?
 
 Common mistakes include the following.
 
 - Using a request DTO as a response DTO without thinking.
 - Accidentally exposing internal implementation fields.
 - Putting response formatting logic directly inside every Controller method.
+- Expecting `SerializerInterceptor` to post-process a payload after `RequestContext.response` has already been committed.
 - Forgetting that the public contract should remain stable even when the storage model changes.
 
 ### What FluoBlog Gains Here
@@ -272,6 +298,7 @@ As the application grows, this separation of concerns becomes more valuable. Eve
 - Response DTOs protect clients from accidental field exposure.
 - `@Expose()`, `@Exclude()`, and `@Transform()` refine outgoing API data.
 - `SerializerInterceptor` is a natural HTTP integration point for automatic response shaping.
+- Serialization applies to framework-managed return values; committed handler-owned responses bypass it and are not written again by the runtime.
 - FluoBlog now distinguishes internal post records from public post responses.
 - Serialization is not just formatting. It is a boundary concern.
 - The project is now ready to design both successful and failed responses more deliberately.

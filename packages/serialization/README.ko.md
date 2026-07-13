@@ -88,7 +88,7 @@ class ProductDto {
 ### HTTP 인터셉터와 함께 사용
 
 ```ts
-import { Controller, Get, UseInterceptors } from '@fluojs/http';
+import { Controller, Get, type RequestContext, UseInterceptors } from '@fluojs/http';
 import { SerializerInterceptor } from '@fluojs/serialization';
 
 @Controller('/users')
@@ -98,10 +98,21 @@ class UsersController {
   findAll() {
     return [new UserEntity()];
   }
+
+  @Get('/export.csv')
+  async exportCsv(_input: undefined, context: RequestContext) {
+    context.response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    await context.response.send('id,username\n1,fluo');
+  }
 }
 ```
 
-`SerializerInterceptor`는 일반 HTTP 응답 writer가 아직 소유한 값만 직렬화합니다. 핸들러나 응답 헬퍼가 SSE 스트림처럼 `RequestContext.response`를 직접 커밋한 경우, 인터셉터는 해당 핸들러 소유 값을 그대로 반환하여 request pipeline의 응답 소유권을 보존합니다.
+두 route는 서로 다른 응답 소유자를 사용합니다.
+
+- **Framework-managed response**: `findAll()`은 `RequestContext.response`가 아직 commit되지 않은 상태에서 반환합니다. `SerializerInterceptor`가 반환된 DTO를 직렬화한 뒤 runtime response writer가 결과를 commit합니다.
+- **Handler-owned response**: `exportCsv()`는 최종 payload를 `RequestContext.response.send(...)`로 직접 씁니다. `send(...)`, `redirect(...)`, 또는 수동 streaming helper가 response를 commit하면 `SerializerInterceptor`는 `serialize(...)`를 건너뛰고 runtime은 handler 반환값을 다시 쓰지 않습니다.
+
+직접 쓰는 payload는 최종 결과로 취급하세요. 필요한 field filtering이나 encoding을 commit 전에 적용해야 합니다. Handler/runtime response ownership이 commit된 뒤에는 serialization이 응답을 후처리할 수 없습니다.
 
 ### 순환 참조 처리
 
