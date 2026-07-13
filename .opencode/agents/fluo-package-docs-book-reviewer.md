@@ -23,8 +23,16 @@ permission:
     'exit *': allow
     'printf *': allow
     'command -v *': allow
+    'jq *': allow
+    'actionlint': allow
+    'actionlint *': allow
+    'diff *': allow
+    'uname': allow
+    'uname *': allow
+    'lsof *': allow
     'gh api *': allow
     'rmdir *': allow
+    'bun --version': allow
     'bun run *': allow
     'python -c *': allow
     'git fetch *': allow
