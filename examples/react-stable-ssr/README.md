@@ -29,8 +29,9 @@ Additional phase boundaries remain outside this example:
 
 - `@fluojs/react/vite` — current parsing of already-loaded Vite build manifests into deterministic
   hydration assets. It does not discover manifests from the filesystem.
-- `@fluojs/react/client` — future browser navigation and client hydration helpers.
-- `@fluojs/react/experimental/rsc` — future RSC and Server Functions experiments.
+- `@fluojs/react/client` — HTTP-first browser navigation and client hydration helpers.
+- `@fluojs/react/experimental/rsc` — the unstable exact-version RSC manifest and HTTP Flight response
+  prototype. It remains outside this stable SSR example and does not include Server Functions.
 
 ## run from the repo root
 

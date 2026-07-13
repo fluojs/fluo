@@ -17,6 +17,7 @@ Runtime-neutral React integration for fluo applications.
 - [Hydration Asset Contract](#hydration-asset-contract)
 - [Vite Asset Manifest Integration](#vite-asset-manifest-integration)
 - [Client Navigation Runtime](#client-navigation-runtime)
+- [Experimental RSC Prototype](#experimental-rsc-prototype)
 - [Current Limitations](#current-limitations)
 - [Public API](#public-api)
 - [Related Packages](#related-packages)
@@ -81,9 +82,10 @@ React server entry is rendered.
 - **`@fluojs/react/client`** — progressive anchors, HTTP-first full-document navigation, and
   hydration-safe URL, path-param, and navigation lifecycle hooks. Browser APIs remain isolated from
   the runtime-neutral root.
-- **future `@fluojs/react/experimental/rsc`** — React Server Components and Server Functions
-  experiments. RSC and Server Functions are outside the stable root contract and should not be
-  documented as available from `@fluojs/react`.
+- **`@fluojs/react/experimental/rsc`** — an explicitly unstable React Server Components prototype
+  for exact-version compatibility diagnostics, client-reference/server-module manifest seams, and
+  Flight payload responses through ordinary fluo HTTP handlers. It does not export from the stable
+  root and does not include Server Functions.
 
 ## ReactModule Registration
 
@@ -411,12 +413,99 @@ matches an explicit `@Path(...)`/HTTP route or returns its normal not-found resp
 deployment-level document rewrite may be configured separately, but it does not create a React route
 grammar or change server DTO validation.
 
+## Experimental RSC Prototype
+
+> **Experimental contract:** `@fluojs/react/experimental/rsc` can change before an explicit
+> graduation issue makes any RSC API stable. Do not import these APIs from the root package or treat
+> them as semver-stable React framework internals.
+
+The prototype supports **exactly** `react@19.2.6`, `react-dom@19.2.6`, and a matching Flight renderer
+version. Version ranges and canary versions are not supported. If an application selects
+`react-server-dom-webpack`, pin it to the same exact version; this package does not install, import,
+or wrap that renderer. The stable root peer range remains broader for applications that do not use
+the experimental RSC subpath.
+
+Call `inspectReactRscEnvironment(...)` before enabling an RSC endpoint. It reports stable diagnostics
+when any React version differs, the runtime does not provide Web `ReadableStream`, or the
+application-owned build adapter does not provide both the client-reference manifest and explicit
+server-to-client module map.
+
+```ts
+import {
+  REACT_RSC_SUPPORTED_VERSION,
+  inspectReactRscEnvironment,
+} from '@fluojs/react/experimental/rsc';
+
+const support = inspectReactRscEnvironment({
+  reactVersion: '19.2.6',
+  reactDomVersion: '19.2.6',
+  flightRendererVersion: REACT_RSC_SUPPORTED_VERSION,
+  runtime: { name: 'node', webStreams: typeof ReadableStream !== 'undefined' },
+  build: {
+    name: 'application-rsc-build',
+    clientReferenceManifest: true,
+    serverClientModuleMap: true,
+  },
+});
+```
+
+`createReactRscManifest(...)` defines the initial bundler-neutral module graph seam. Client-reference
+keys resolve to `{ id, chunks, name, async? }` metadata. Each server module id maps export names back
+to those client-reference keys. The helper returns a defensive snapshot, rejects unknown mapping
+targets with diagnostics, and never scans files or generates bundles. Translating this seam into a
+specific React Flight renderer manifest remains the application build adapter's responsibility.
+
+```ts
+import { createReactRscManifest } from '@fluojs/react/experimental/rsc';
+
+const manifest = createReactRscManifest({
+  clientReferences: {
+    Counter: {
+      id: 'client:counter',
+      chunks: ['assets/counter.js'],
+      name: 'Counter',
+    },
+  },
+  serverClientModuleMap: {
+    'server:dashboard': {
+      Counter: 'Counter',
+    },
+  },
+});
+```
+
+The application also owns Flight encoding. Return `createReactFlightResponse(...)` from an ordinary
+fluo HTTP controller or React `@Path(...)` handler after the selected renderer has produced encoded
+text, bytes, or a Web `ReadableStream<Uint8Array>`. The existing dispatcher still owns route
+metadata, middleware, guards, interceptors, request scopes, errors, and adapter response writing;
+the helper adds the fixed `text/x-component; charset=utf-8` content type and does not create a
+parallel router.
+
+```ts
+import { Controller, Get } from '@fluojs/http';
+import { createReactFlightResponse } from '@fluojs/react/experimental/rsc';
+
+@Controller('/rsc')
+class RscController {
+  @Get('/dashboard')
+  dashboard() {
+    const payload = applicationFlightRenderer.render({ page: 'dashboard' });
+    return createReactFlightResponse(payload);
+  }
+}
+```
+
+This phase does not provide a Flight encoder/decoder, a Webpack or Vite RSC plugin, automatic module
+graph discovery, client bundle generation, Server Functions, file routes, route segments, or a
+React-owned URL matcher.
+
 ## Current Limitations
 
 This package currently does **not** provide:
 
-- `@fluojs/react/experimental/rsc`
-- React Server Components or Server Functions integration
+- a stable RSC root or `@fluojs/react/rsc` subpath; RSC is available only from the explicitly unstable
+  `@fluojs/react/experimental/rsc` prototype
+- Server Functions integration or a built-in Flight renderer/build plugin
 - SPA document swapping, a client data/loader cache, and navigation prefetching
 - a Next.js App Router, TanStack route tree, Angular `Routes[]`, file-route scanner, or React-owned
   `routes: []` table
@@ -458,6 +547,10 @@ This package currently does **not** provide:
   `createReactRouteSnapshot(...)`, `useRouter()`, `usePathname()`, `useParams()`,
   `useSearchParams()`, `useNavigation()`, and `useRouterState()` for progressive HTTP-first browser
   navigation without widening the root package or adding a client route grammar.
+- `@fluojs/react/experimental/rsc` subpath — `inspectReactRscEnvironment(...)`,
+  `createReactRscManifest(...)`, `createReactFlightResponse(...)`, exact-version and Flight content
+  type constants, diagnostics, client-reference/server-module mapping types, and Flight response
+  types without any root re-export.
 
 ## Related Packages
 
@@ -468,6 +561,9 @@ This package currently does **not** provide:
   contracts without widening the root import boundary.
 - `@fluojs/vite`: Owns Vite's TC39 decorator transform boundary. It does not parse React hydration
   manifests; use `@fluojs/react/vite` for React server/client asset mapping.
+- Application-selected Flight renderer: Encodes RSC payloads and consumes renderer-specific build
+  manifests. The experimental subpath models the compatibility, manifest, and HTTP response seams
+  without importing a renderer package.
 
 ## Example Sources
 
@@ -475,6 +571,11 @@ This package currently does **not** provide:
 - `packages/react/src/vite.ts`
 - `packages/react/src/client.ts`
 - `packages/react/src/client.test.ts`
+- `packages/react/src/experimental/rsc.ts`
+- `packages/react/src/experimental/rsc.test.ts`
+- `packages/react/src/experimental/rsc-diagnostics.test.ts`
+- `packages/react/src/experimental/rsc-flight.test.ts`
+- `packages/react/src/experimental/rsc-manifest.test.ts`
 - `packages/react/src/vite/create-asset-manifest.ts`
 - `packages/react/src/decorators.ts`
 - `packages/react/src/server-entry.ts`

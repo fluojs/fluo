@@ -615,8 +615,10 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // stable eventKey migration, and CQRS responsibility-boundary docs/tests,
   // plus React Router/Path facade-over-HTTP metadata, ReactModule.forRoot
   // registration contract discoverability, stable SSR phase boundaries,
-  // isolated Vite/client subpaths, HTTP-first full-document navigation, and
-  // the root package's non-goals for client route tables, caches, and RSC,
+  // isolated Vite/client/experimental-RSC subpaths, HTTP-first full-document
+  // navigation, exact RSC version diagnostics, explicit client-reference and
+  // server-to-client module maps, HTTP-dispatched Flight responses, and the
+  // root package's non-goals for RSC exports, client route tables, and caches,
   // plus OpenAPI's
   // explicit descriptor adoption, response metadata, Swagger UI asset, and
   // path/method collision-precedence boundaries, plus GraphQL's explicit

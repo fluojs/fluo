@@ -29,6 +29,10 @@
       "types": "./dist/client.d.ts",
       "import": "./dist/client.js"
     },
+    "./experimental/rsc": {
+      "types": "./dist/experimental/rsc.d.ts",
+      "import": "./dist/experimental/rsc.js"
+    },
     "./vite": {
       "types": "./dist/vite.d.ts",
       "import": "./dist/vite.js"

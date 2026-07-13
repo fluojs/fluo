@@ -17,6 +17,7 @@ fluo 애플리케이션을 위한 런타임 중립 React 통합입니다.
 - [Hydration Asset Contract](#hydration-asset-contract)
 - [Vite Asset Manifest Integration](#vite-asset-manifest-integration)
 - [Client Navigation Runtime](#client-navigation-runtime)
+- [Experimental RSC Prototype](#experimental-rsc-prototype)
 - [현재 제한 사항](#현재-제한-사항)
 - [Public API](#public-api)
 - [관련 패키지](#관련-패키지)
@@ -78,9 +79,10 @@ resolve합니다.
 - **`@fluojs/react/client`** — progressive anchor, HTTP-first full-document navigation,
   hydration-safe URL/path-param/navigation lifecycle hook을 위한 경계입니다. Browser API는
   runtime-neutral root에서 계속 분리됩니다.
-- **future `@fluojs/react/experimental/rsc`** — React Server Components 및 Server Functions 실험을 위한
-  경계입니다. RSC와 Server Functions는 stable root contract 밖이며 `@fluojs/react`에서 제공되는 것으로
-  문서화하면 안 됩니다.
+- **`@fluojs/react/experimental/rsc`** — exact-version compatibility diagnostics,
+  client-reference/server-module manifest seam, 일반 fluo HTTP handler를 통한 Flight payload response를
+  제공하는 명시적으로 불안정한 React Server Components prototype입니다. Stable root에서는 export하지
+  않으며 Server Functions를 포함하지 않습니다.
 
 ## ReactModule Registration
 
@@ -403,12 +405,98 @@ server는 명시적인 `@Path(...)`/HTTP route를 match하거나 정상적인 no
 의도적인 deployment-level document rewrite를 별도로 설정할 수 있지만, 이는 React route grammar를 만들거나
 server DTO validation을 변경하지 않습니다.
 
+## Experimental RSC Prototype
+
+> **Experimental contract:** `@fluojs/react/experimental/rsc`는 명시적인 graduation issue가 RSC API를
+> 안정화하기 전까지 변경될 수 있습니다. 이 API를 root package에서 import하거나 semver-stable React
+> framework internal로 간주하지 마세요.
+
+Prototype은 **정확히** `react@19.2.6`, `react-dom@19.2.6`, 그리고 같은 버전의 Flight renderer를
+지원합니다. Version range와 canary version은 지원하지 않습니다. 애플리케이션이
+`react-server-dom-webpack`을 선택한다면 같은 exact version으로 고정하세요. 이 package는 해당 renderer를
+설치하거나 import하거나 감싸지 않습니다. Experimental RSC subpath를 사용하지 않는 애플리케이션을 위한
+stable root peer range는 더 넓게 유지됩니다.
+
+RSC endpoint를 활성화하기 전에 `inspectReactRscEnvironment(...)`를 호출하세요. React version이 하나라도
+다르거나, runtime이 Web `ReadableStream`을 제공하지 않거나, application-owned build adapter가
+client-reference manifest와 명시적인 server-to-client module map을 모두 제공하지 않으면 stable diagnostic을
+반환합니다.
+
+```ts
+import {
+  REACT_RSC_SUPPORTED_VERSION,
+  inspectReactRscEnvironment,
+} from '@fluojs/react/experimental/rsc';
+
+const support = inspectReactRscEnvironment({
+  reactVersion: '19.2.6',
+  reactDomVersion: '19.2.6',
+  flightRendererVersion: REACT_RSC_SUPPORTED_VERSION,
+  runtime: { name: 'node', webStreams: typeof ReadableStream !== 'undefined' },
+  build: {
+    name: 'application-rsc-build',
+    clientReferenceManifest: true,
+    serverClientModuleMap: true,
+  },
+});
+```
+
+`createReactRscManifest(...)`는 초기 bundler-neutral module graph seam을 정의합니다. Client-reference key는
+`{ id, chunks, name, async? }` metadata를 가리키고, 각 server module id는 export name을 해당
+client-reference key에 매핑합니다. Helper는 defensive snapshot을 반환하고, 존재하지 않는 mapping target을
+diagnostic으로 거부하며, file scan이나 bundle 생성을 수행하지 않습니다. 이 seam을 특정 React Flight
+renderer manifest로 변환하는 일은 application build adapter의 책임입니다.
+
+```ts
+import { createReactRscManifest } from '@fluojs/react/experimental/rsc';
+
+const manifest = createReactRscManifest({
+  clientReferences: {
+    Counter: {
+      id: 'client:counter',
+      chunks: ['assets/counter.js'],
+      name: 'Counter',
+    },
+  },
+  serverClientModuleMap: {
+    'server:dashboard': {
+      Counter: 'Counter',
+    },
+  },
+});
+```
+
+Flight encoding도 애플리케이션이 소유합니다. 선택한 renderer가 encoded text, byte 또는 Web
+`ReadableStream<Uint8Array>`를 만든 뒤 일반 fluo HTTP controller나 React `@Path(...)` handler에서
+`createReactFlightResponse(...)`를 반환하세요. 기존 dispatcher가 route metadata, middleware, guard,
+interceptor, request scope, error, adapter response writing을 계속 소유합니다. Helper는 고정된
+`text/x-component; charset=utf-8` content type만 추가하며 별도 router를 만들지 않습니다.
+
+```ts
+import { Controller, Get } from '@fluojs/http';
+import { createReactFlightResponse } from '@fluojs/react/experimental/rsc';
+
+@Controller('/rsc')
+class RscController {
+  @Get('/dashboard')
+  dashboard() {
+    const payload = applicationFlightRenderer.render({ page: 'dashboard' });
+    return createReactFlightResponse(payload);
+  }
+}
+```
+
+이 phase는 Flight encoder/decoder, Webpack 또는 Vite RSC plugin, automatic module graph discovery,
+client bundle generation, Server Functions, file route, route segment, React-owned URL matcher를 제공하지
+않습니다.
+
 ## 현재 제한 사항
 
 현재 이 패키지가 제공하지 않는 것은 다음입니다.
 
-- `@fluojs/react/experimental/rsc`
-- React Server Components 또는 Server Functions 통합
+- stable RSC root 또는 `@fluojs/react/rsc` subpath. RSC는 명시적으로 불안정한
+  `@fluojs/react/experimental/rsc` prototype에서만 제공합니다.
+- Server Functions 통합 또는 built-in Flight renderer/build plugin
 - SPA document swapping, client data/loader cache, navigation prefetching
 - Next.js App Router, TanStack route tree, Angular `Routes[]`, file-route scanner, React-owned
   `routes: []` table
@@ -449,6 +537,9 @@ server DTO validation을 변경하지 않습니다.
   progressive HTTP-first browser navigation을 제공하는 `Link`, `ReactClientRouterProvider`,
   `createReactRouteSnapshot(...)`, `useRouter()`, `usePathname()`, `useParams()`,
   `useSearchParams()`, `useNavigation()`, `useRouterState()`를 제공합니다.
+- `@fluojs/react/experimental/rsc` subpath — root re-export 없이 `inspectReactRscEnvironment(...)`,
+  `createReactRscManifest(...)`, `createReactFlightResponse(...)`, exact-version 및 Flight content type
+  constant, diagnostic, client-reference/server-module mapping type, Flight response type을 제공합니다.
 
 ## 관련 패키지
 
@@ -458,6 +549,9 @@ server DTO validation을 변경하지 않습니다.
 - `@fluojs/runtime`: 향후 React 통합 작업은 root import boundary를 넓히지 않고 runtime bootstrap contract와 합성될 예정입니다.
 - `@fluojs/vite`: Vite TC39 decorator transform boundary를 소유합니다. React hydration manifest를 파싱하지
   않으므로 React server/client asset mapping에는 `@fluojs/react/vite`를 사용하세요.
+- Application-selected Flight renderer: RSC payload를 encode하고 renderer-specific build manifest를
+  소비합니다. Experimental subpath는 renderer package를 import하지 않고 compatibility, manifest, HTTP
+  response seam만 모델링합니다.
 
 ## 예제 소스
 
@@ -465,6 +559,11 @@ server DTO validation을 변경하지 않습니다.
 - `packages/react/src/vite.ts`
 - `packages/react/src/client.ts`
 - `packages/react/src/client.test.ts`
+- `packages/react/src/experimental/rsc.ts`
+- `packages/react/src/experimental/rsc.test.ts`
+- `packages/react/src/experimental/rsc-diagnostics.test.ts`
+- `packages/react/src/experimental/rsc-flight.test.ts`
+- `packages/react/src/experimental/rsc-manifest.test.ts`
 - `packages/react/src/vite/create-asset-manifest.ts`
 - `packages/react/src/decorators.ts`
 - `packages/react/src/server-entry.ts`
