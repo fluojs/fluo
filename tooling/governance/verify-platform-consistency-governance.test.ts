@@ -12,6 +12,7 @@ import {
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
   enforceReactClientSubpathContract,
+  enforceReactServerFunctionContract,
   isGovernedPackageSourcePath,
   parsePackageNamesFromFamilyTable,
 } from './verify-platform-consistency-governance.mjs';
@@ -120,6 +121,12 @@ describe('collectDirectProcessEnvViolations', () => {
 describe('enforceReactClientSubpathContract', () => {
   it('keeps client navigation isolated, exported, and documented', () => {
     expect(() => enforceReactClientSubpathContract()).not.toThrow();
+  });
+});
+
+describe('enforceReactServerFunctionContract', () => {
+  it('keeps signed action transport, HTTP lifecycle, security limits, and bilingual docs aligned', () => {
+    expect(() => enforceReactServerFunctionContract()).not.toThrow();
   });
 });
 

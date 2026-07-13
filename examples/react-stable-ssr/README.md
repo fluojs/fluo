@@ -31,7 +31,7 @@ Additional phase boundaries remain outside this example:
   hydration assets. It does not discover manifests from the filesystem.
 - `@fluojs/react/client` — HTTP-first browser navigation and client hydration helpers.
 - `@fluojs/react/experimental/rsc` — the unstable exact-version RSC manifest and HTTP Flight response
-  prototype. It remains outside this stable SSR example and does not include Server Functions.
+  prototype plus signed Server Function transport. Both remain outside this stable SSR example.
 
 ## run from the repo root
 
