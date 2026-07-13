@@ -4,8 +4,16 @@ import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
+import {
+  enforceMicroservicesSafetyGuidanceParity,
+  enforceMicroservicesSafetyRuntimeEvidence,
+} from './microservices-safety-guidance.mjs';
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
+export {
+  enforceMicroservicesSafetyGuidanceParity,
+  enforceMicroservicesSafetyRuntimeEvidence,
+} from './microservices-safety-guidance.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDirectory, '..', '..');
@@ -631,8 +639,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   );
 
   // Microservices transport ownership, root/subpath export exceptions, lazy-load,
-  // payload clone, and port:0 regression docs are also covered by this companion
-  // enforcement path when changed files touch `@fluojs/microservices` contracts.
+  // payload clone, TCP 1 MiB frames, port:0 routing, shutdown send guards, and
+  // gRPC abort-listener cleanup docs are also covered by this companion path.
 }
 
 function enforceAlignmentClaimsBackedByHarness(changedFiles) {
@@ -1791,6 +1799,8 @@ export function main() {
   enforceHttpCatchAllRouteGrammarDecision();
   enforceGraphqlRuntimeBoundaryDiscoverability();
   enforcePersistenceTransactionInterceptorCompatibility();
+  enforceMicroservicesSafetyGuidanceParity();
+  enforceMicroservicesSafetyRuntimeEvidence();
   enforceAdvancedBookCoreBoundaryCompanions(changedFiles);
   enforceContractCompanionUpdates(changedFiles);
   enforceAlignmentClaimsBackedByHarness(changedFiles);

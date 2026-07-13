@@ -1,0 +1,169 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+const safetyGuidancePaths = [
+  'packages/microservices/README.md',
+  'packages/microservices/README.ko.md',
+  'book/intermediate/ch01-microservices-intro.md',
+  'book/intermediate/ch01-microservices-intro.ko.md',
+  'docs/CONTEXT.md',
+  'docs/CONTEXT.ko.md',
+  'docs/reference/package-surface.md',
+  'docs/reference/package-surface.ko.md',
+];
+
+const safetyGuidanceAnchors = [
+  '1 MiB',
+  '`port: 0`',
+  '`close()`',
+  '`send()`',
+  '`emit()`',
+  '`AbortSignal`',
+  'abort listener',
+];
+
+const localizedStreamingCleanupClaims = [
+  [
+    'before reader iteration starts',
+    [
+      'packages/microservices/README.md',
+      'book/intermediate/ch01-microservices-intro.md',
+      'docs/CONTEXT.md',
+      'docs/reference/package-surface.md',
+    ],
+  ],
+  [
+    'reader iteration 시작 전',
+    [
+      'packages/microservices/README.ko.md',
+      'book/intermediate/ch01-microservices-intro.ko.md',
+      'docs/CONTEXT.ko.md',
+      'docs/reference/package-surface.ko.md',
+    ],
+  ],
+  [
+    'returns early',
+    [
+      'packages/microservices/README.md',
+      'book/intermediate/ch01-microservices-intro.md',
+      'docs/CONTEXT.md',
+      'docs/reference/package-surface.md',
+    ],
+  ],
+  [
+    'early return',
+    [
+      'packages/microservices/README.ko.md',
+      'book/intermediate/ch01-microservices-intro.ko.md',
+      'docs/CONTEXT.ko.md',
+      'docs/reference/package-surface.ko.md',
+    ],
+  ],
+  [
+    'only once',
+    [
+      'packages/microservices/README.md',
+      'book/intermediate/ch01-microservices-intro.md',
+      'docs/CONTEXT.md',
+      'docs/reference/package-surface.md',
+    ],
+  ],
+  [
+    '한 번만',
+    [
+      'packages/microservices/README.ko.md',
+      'book/intermediate/ch01-microservices-intro.ko.md',
+      'docs/CONTEXT.ko.md',
+      'docs/reference/package-surface.ko.md',
+    ],
+  ],
+];
+
+const runtimeEvidence = [
+  [
+    'packages/microservices/src/transports/tcp-transport.ts',
+    [
+      'DEFAULT_MAX_FRAME_BYTES = 1_048_576',
+      'this.boundPort = this.resolveBoundPort()',
+      "assertAcceptingOutbound(operation: 'emit' | 'send')",
+    ],
+  ],
+  [
+    'packages/microservices/src/transports/grpc-transport.ts',
+    [
+      'const cleanupAbortListeners = () =>',
+      'cleanupExternalAbortListener = undefined',
+      'if (done) {',
+      'return grpcReadableToAsyncIterable(stream, {',
+      "stream.on('end', () => {",
+      "stream.on('error', (err: Error) => {",
+      'return(): Promise<IteratorResult<unknown>> {',
+      "removeEventListener('abort'",
+    ],
+  ],
+  [
+    'packages/microservices/src/transports/tcp-transport.test.ts',
+    [
+      'closes sockets that exceed the inbound frame buffer cap',
+      'routes outbound send and emit through the OS-assigned port when configured with port 0',
+      'rejects send and emit after close() stops the listener',
+      'keeps the closing guard when listen() races with close()',
+    ],
+  ],
+  [
+    'packages/microservices/src/transports/grpc-transport.test.ts',
+    [
+      'removes unary AbortSignal listener when the response resolves',
+      'serverStream() removes AbortSignal listener when the stream ends',
+      'serverStream() removes AbortSignal listener when the stream errors',
+      'serverStream() removes AbortSignal listener when the stream ends before reader iteration starts',
+      'serverStream() removes AbortSignal listener when the stream errors before reader iteration starts',
+      'serverStream() removes AbortSignal listener when iterator return() runs before the first read',
+      'serverStream() removes AbortSignal listener when iterator return() cancels the call',
+      'clientStream() removes AbortSignal listener when the response resolves',
+      'clientStream() removes AbortSignal listener exactly once when the response errors',
+      'bidiStream() removes AbortSignal listeners when the reader completes',
+      'bidiStream() removes AbortSignal listeners when the stream ends before reader iteration starts',
+      'bidiStream() removes AbortSignal listeners when the stream errors before reader iteration starts',
+      'bidiStream() removes AbortSignal listeners exactly once when the reader returns early',
+      'bidiStream() does not remove AbortSignal listeners twice when return() follows terminal end',
+    ],
+  ],
+];
+
+function read(relativePath) {
+  return readFileSync(resolve(repoRoot, relativePath), 'utf8');
+}
+
+export function enforceMicroservicesSafetyGuidanceParity() {
+  for (const relativePath of safetyGuidancePaths) {
+    const markdown = read(relativePath);
+
+    for (const anchor of safetyGuidanceAnchors) {
+      assert(markdown.includes(anchor), `${relativePath} must keep the Microservices safety anchor ${anchor}.`);
+    }
+  }
+
+  for (const [requiredClaim, relativePaths] of localizedStreamingCleanupClaims) {
+    for (const relativePath of relativePaths) {
+      assert(
+        read(relativePath).includes(requiredClaim),
+        `${relativePath} must keep the bounded gRPC streaming cleanup claim ${requiredClaim}.`,
+      );
+    }
+  }
+}
+
+export function enforceMicroservicesSafetyRuntimeEvidence() {
+  for (const [relativePath, evidenceAnchors] of runtimeEvidence) {
+    const source = read(relativePath);
+
+    for (const anchor of evidenceAnchors) {
+      assert(source.includes(anchor), `${relativePath} must keep the Microservices safety evidence ${anchor}.`);
+    }
+  }
+}
