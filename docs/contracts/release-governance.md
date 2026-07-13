@@ -36,7 +36,7 @@ A package is ready for `1.0` and the Official tier only when all of the followin
 1. The package is an existing workspace package under `packages/*`, remains public, and keeps `publishConfig.access` set to `public`.
 2. The package appears in both `docs/reference/package-surface.md` and the `## intended publish surface` list in this document.
 3. Public exports satisfy the repository TSDoc baseline, and contract-governing docs keep English and Korean parity.
-4. Release verification passes the canonical repository commands: `pnpm build`, `pnpm typecheck`, `pnpm vitest run --project packages`, `pnpm vitest run --project apps`, `pnpm vitest run --project examples`, `pnpm vitest run --project tooling`, `pnpm --dir packages/cli sandbox:matrix`, `pnpm verify:platform-consistency-governance`, and `pnpm verify:release-readiness`.
+4. Release verification passes the canonical repository commands: `pnpm build`, `pnpm typecheck`, `pnpm vitest run --project packages --maxWorkers=1`, `pnpm vitest run --project apps --maxWorkers=1`, `pnpm vitest run --project examples --maxWorkers=1`, `pnpm vitest run --project tooling --maxWorkers=1`, `pnpm --dir packages/cli sandbox:matrix`, `pnpm verify:platform-consistency-governance`, and `pnpm verify:release-readiness`.
 5. `CHANGELOG.md` keeps the `## [Unreleased]` section, and every `0.x` breaking release documents the consumer-facing upgrade requirements before a stable `1.0+` contract is declared.
 
 ## Release Metadata Contract
@@ -113,10 +113,10 @@ Run these commands when versioning rules, release-governing docs, or intended pu
 ```bash
 pnpm build
 pnpm typecheck
-pnpm vitest run --project packages
-pnpm vitest run --project apps
-pnpm vitest run --project examples
-pnpm vitest run --project tooling
+pnpm vitest run --project packages --maxWorkers=1
+pnpm vitest run --project apps --maxWorkers=1
+pnpm vitest run --project examples --maxWorkers=1
+pnpm vitest run --project tooling --maxWorkers=1
 pnpm --dir packages/cli sandbox:matrix
 pnpm verify:public-export-tsdoc
 pnpm verify:platform-consistency-governance

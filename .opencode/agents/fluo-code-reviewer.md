@@ -62,6 +62,11 @@ permission:
     'grep *': allow
     'awk *': allow
     'wc *': allow
+    'tr *': allow
+    'dirname *': allow
+    'which *': allow
+    'ocr *': allow
+    'shasum *': allow
     'pwd *': allow
     'git status *': allow
     'git log *': allow
@@ -126,6 +131,10 @@ permission:
     'gh issue *': allow
     'gh label *': allow
     'gh run view*': allow
+    'gh --version *': allow
+    'gh auth status *': allow
+    'gh run list *': allow
+    'gh run watch *': allow
     'gh pr create*': deny
     'gh pr checkout*': deny
     'gh pr comment*': deny

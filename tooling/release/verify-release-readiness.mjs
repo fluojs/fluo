@@ -16,12 +16,13 @@ const releaseReadinessVitestProjects = ['packages', 'apps', 'examples', 'tooling
 const releaseReadinessVerificationCommands = [
   '`pnpm build`',
   '`pnpm typecheck`',
-  ...releaseReadinessVitestProjects.map((projectName) => `\`pnpm vitest run --project ${projectName}\``),
+  ...releaseReadinessVitestProjects.map((projectName) => `\`pnpm vitest run --project ${projectName} --maxWorkers=1\``),
   '`pnpm --dir packages/cli sandbox:matrix`',
   '`pnpm verify:platform-consistency-governance`',
   '`pnpm verify:release-readiness`',
 ];
 const toolingReleaseMetadataPackages = ['@fluojs/cli', '@fluojs/studio', '@fluojs/testing', '@fluojs/vite'];
+const foundationReleaseMetadataPackages = ['@fluojs/config', '@fluojs/core', '@fluojs/di', '@fluojs/i18n', '@fluojs/runtime'];
 const persistenceReleaseMetadataPackages = ['@fluojs/drizzle', '@fluojs/mongoose', '@fluojs/prisma'];
 
 function resolveSummaryOutputPaths(outputDirectory = scriptDirectory) {
@@ -170,7 +171,7 @@ function runCanonicalReleaseReadinessVerificationCommands(runCommand) {
   runCommand('pnpm', ['typecheck']);
 
   for (const projectName of releaseReadinessVitestProjects) {
-    runCommand('pnpm', ['vitest', 'run', '--project', projectName]);
+    runCommand('pnpm', ['vitest', 'run', '--project', projectName, '--maxWorkers=1']);
   }
 
   runCommand('pnpm', ['--dir', 'packages/cli', 'sandbox:matrix']);
@@ -886,6 +887,10 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
     governancePackageList.filter((packageName) => toolingReleaseMetadataPackages.includes(packageName)),
     { existsSync: pathExists, read: readText },
   );
+  const foundationChangelogBaselineViolations = collectPackageChangelogBaselineViolations(
+    governancePackageList.filter((packageName) => foundationReleaseMetadataPackages.includes(packageName)),
+    { existsSync: pathExists, read: readText },
+  );
   const persistenceChangelogBaselineViolations = collectExactPackageChangelogBaselineViolations(
     governancePackageList.filter((packageName) => persistenceReleaseMetadataPackages.includes(packageName)),
     { existsSync: pathExists, read: readText },
@@ -988,6 +993,14 @@ export function runReleaseReadinessVerification(options = {}, dependencies = {})
     toolingChangelogBaselineViolations.length === 0
       ? '`@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing`, and `@fluojs/vite` package changelogs keep `## [Unreleased]` placeholders for release metadata review.'
       : toolingChangelogBaselineViolations.join('; '),
+  );
+  assertCheck(
+    checks,
+    'Foundation package changelog baseline',
+    foundationChangelogBaselineViolations.length === 0,
+    foundationChangelogBaselineViolations.length === 0
+      ? '`@fluojs/config`, `@fluojs/core`, `@fluojs/di`, `@fluojs/i18n`, and `@fluojs/runtime` package changelogs keep `## [Unreleased]` placeholders for release metadata review.'
+      : foundationChangelogBaselineViolations.join('; '),
   );
   assertCheck(
     checks,

@@ -133,7 +133,7 @@ In addition to time-based limits, you can throttle based on HTTP method or other
 This fine-grained control also extends to the `@Throttle()` decorator, where you can specify a route-specific `{ ttl, limit }` policy. This lets you centralize the common default in the Module while keeping the flexibility to apply specialized rules where needed. It combines central governance with local adjustment.
 
 ### 16.3.4 The Throttler Decorator Structure
-When you use the `@Throttle()` decorator, you pass metadata that `ThrottlerGuard` references at runtime. This metadata overrides the Module-level defaults for that scope. Fluo's decorator system ensures that these overrides are type-safe and validated at startup, preventing common configuration errors such as negative limits or a zero-second TTL.
+When you use the `@Throttle()` decorator, you pass metadata that `ThrottlerGuard` references at runtime. This metadata overrides the Module-level defaults for that scope. Fluo's decorator system keeps these overrides type-safe and validates their options when the decorator is applied, preventing common configuration errors such as negative limits or a zero-second TTL before application startup.
 
 The decorator can be applied to both classes, meaning Controllers, and methods. When applied to a class, it affects every method in that class. This is useful when grouping related endpoints that should share a particular rate limiting policy. If a method also has an `@Throttle()` decorator, the method-level decorator takes priority over the class-level decorator. This hierarchical override model lets you configure traffic control with very high precision.
 

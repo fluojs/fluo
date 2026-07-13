@@ -1,5 +1,53 @@
 import { describe, expect, it } from 'vitest';
-import { runVersionPackages } from './version-packages.mjs';
+import { normalizePackageChangelog, runVersionPackages } from './version-packages.mjs';
+
+describe('normalizePackageChangelog', () => {
+  it('adds Unreleased below a foundation package title when the section is missing', () => {
+    const changelog = '# @fluojs/core\n\n## 1.0.3\n\n- Latest release.\n';
+
+    expect(normalizePackageChangelog(changelog)).toBe(
+      '# @fluojs/core\n\n## [Unreleased]\n\n## 1.0.3\n\n- Latest release.\n',
+    );
+  });
+
+  it('moves foundation Unreleased content above newly generated release history', () => {
+    const changelog = [
+      '# @fluojs/core',
+      '',
+      '## 1.0.4',
+      '',
+      '- Generated release.',
+      '',
+      '## [Unreleased]',
+      '',
+      '- Pending note.',
+      '',
+      '## 1.0.3',
+      '',
+      '- Previous release.',
+      '',
+    ].join('\n');
+
+    expect(normalizePackageChangelog(changelog)).toBe(
+      [
+        '# @fluojs/core',
+        '',
+        '## [Unreleased]',
+        '',
+        '- Pending note.',
+        '',
+        '## 1.0.4',
+        '',
+        '- Generated release.',
+        '',
+        '## 1.0.3',
+        '',
+        '- Previous release.',
+        '',
+      ].join('\n'),
+    );
+  });
+});
 
 describe('runVersionPackages', () => {
   it('normalizes only public package changelogs changed by Changesets', () => {

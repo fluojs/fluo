@@ -89,6 +89,14 @@ describe('fluoBabelDecoratorsPlugin', () => {
     },
   );
 
+  it('prefers the nearest Babel root config over an ancestor config', () => {
+    const { filePath, root } = createWorkspaceWithConfig('babel.config.cjs');
+    const nestedConfigFile = join(root, 'src', 'babel.config.json');
+    writeFileSync(nestedConfigFile, '{}');
+
+    expect(resolveNearestBabelConfigFile(filePath)).toBe(nestedConfigFile);
+  });
+
   it('fails clearly when no Babel root config can be found', async () => {
     mockedTransformAsync.mockClear();
     const root = mkdtempSync(join(tmpdir(), 'fluo-testing-babel-missing-'));

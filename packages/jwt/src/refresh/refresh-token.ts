@@ -1,7 +1,7 @@
 import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from '../errors.js';
 import type { DefaultJwtSigner } from '../signing/signer.js';
-import type { JwtClaims } from '../types.js';
 import type { DefaultJwtVerifier } from '../signing/verifier.js';
+import type { JwtClaims } from '../types.js';
 
 /**
  * Describes the refresh token store contract.
@@ -11,6 +11,7 @@ export interface RefreshTokenStore {
   find(tokenId: string): Promise<RefreshTokenRecord | undefined>;
   revoke(tokenId: string): Promise<void>;
   revokeBySubject(subject: string): Promise<void>;
+  revokeByFamily?(family: string): Promise<void>;
   consume?(input: RefreshTokenConsumeInput): Promise<RefreshTokenConsumeResult>;
   rotate?(input: RefreshTokenRotateInput): Promise<RefreshTokenConsumeResult>;
 }
@@ -165,7 +166,7 @@ export class RefreshTokenService {
       }
 
       if (consumeResult === 'already_used') {
-        await this.options.store.revokeBySubject(claims.sub);
+        await this.revokeCompromisedFamily(claims.sub, claims.family);
         throw new JwtInvalidTokenError('Refresh token reuse detected.');
       }
 
@@ -195,7 +196,7 @@ export class RefreshTokenService {
     }
 
     if (record.used) {
-      await this.options.store.revokeBySubject(record.subject);
+      await this.revokeCompromisedFamily(record.subject, record.family);
       throw new JwtInvalidTokenError('Refresh token reuse detected.');
     }
 
@@ -227,6 +228,15 @@ export class RefreshTokenService {
     }
 
     return this.options.store.consume(input);
+  }
+
+  private async revokeCompromisedFamily(subject: string, family: string): Promise<void> {
+    if (this.options.store.revokeByFamily) {
+      await this.options.store.revokeByFamily(family);
+      return;
+    }
+
+    await this.options.store.revokeBySubject(subject);
   }
 
   private async createRefreshTokenWithFamily(

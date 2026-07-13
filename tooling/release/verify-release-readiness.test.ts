@@ -52,6 +52,7 @@ function createDependencies() {
     ['docs/reference/toolchain-contract-matrix.md', '## generated app baseline\n## CLI & scaffolding contracts\n## naming conventions (CLI output)\nfluo new\nfluo inspect'],
     ['packages/cli/README.md', 'canonical CLI'],
     ['packages/cli/CHANGELOG.md', '# @fluojs/cli\n\n## [Unreleased]\n\n## 1.0.0\n'],
+    ['packages/core/CHANGELOG.md', '# @fluojs/core\n\n## [Unreleased]\n\n## 1.0.0\n'],
     ['packages/studio/CHANGELOG.md', '# @fluojs/studio\n\n## [Unreleased]\n\n## 1.0.0\n'],
     ['packages/testing/CHANGELOG.md', '# @fluojs/testing\n\n## [Unreleased]\n\n## 1.0.0\n'],
     ['packages/vite/CHANGELOG.md', '# @fluojs/vite\n\n## [Unreleased]\n\n## 1.0.0\n'],
@@ -233,10 +234,10 @@ describe('runReleaseReadinessVerification', () => {
     expect(dependencies.run.mock.calls).toEqual([
       ['pnpm', ['build']],
       ['pnpm', ['typecheck']],
-      ['pnpm', ['vitest', 'run', '--project', 'packages']],
-      ['pnpm', ['vitest', 'run', '--project', 'apps']],
-      ['pnpm', ['vitest', 'run', '--project', 'examples']],
-      ['pnpm', ['vitest', 'run', '--project', 'tooling']],
+      ['pnpm', ['vitest', 'run', '--project', 'packages', '--maxWorkers=1']],
+      ['pnpm', ['vitest', 'run', '--project', 'apps', '--maxWorkers=1']],
+      ['pnpm', ['vitest', 'run', '--project', 'examples', '--maxWorkers=1']],
+      ['pnpm', ['vitest', 'run', '--project', 'tooling', '--maxWorkers=1']],
       ['pnpm', ['--dir', 'packages/cli', 'sandbox:matrix']],
     ]);
     expect(dependencies.writeFileSync).not.toHaveBeenCalled();
@@ -328,10 +329,10 @@ describe('runReleaseReadinessVerification', () => {
 
     const summaryContents = dependencies.writeFileSync.mock.calls.map(([, content]) => String(content)).join('\n');
 
-    expect(summaryContents).toContain('`pnpm vitest run --project packages`');
-    expect(summaryContents).toContain('`pnpm vitest run --project apps`');
-    expect(summaryContents).toContain('`pnpm vitest run --project examples`');
-    expect(summaryContents).toContain('`pnpm vitest run --project tooling`');
+    expect(summaryContents).toContain('`pnpm vitest run --project packages --maxWorkers=1`');
+    expect(summaryContents).toContain('`pnpm vitest run --project apps --maxWorkers=1`');
+    expect(summaryContents).toContain('`pnpm vitest run --project examples --maxWorkers=1`');
+    expect(summaryContents).toContain('`pnpm vitest run --project tooling --maxWorkers=1`');
     expect(summaryContents).not.toContain('`pnpm test`');
   });
 
@@ -378,6 +379,23 @@ describe('runReleaseReadinessVerification', () => {
 
     expect(() => runReleaseReadinessVerification({}, dependencies)).toThrowError(
       /Tooling package changelog baseline.*packages\/cli\/CHANGELOG\.md must keep an `## \[Unreleased\]` section/u,
+    );
+  });
+
+  it('fails when a foundation package changelog drops the Unreleased placeholder', () => {
+    const dependencies = createDependencies();
+    const baseRead = dependencies.read;
+
+    dependencies.read = vi.fn((relativePath) => {
+      if (relativePath === 'packages/core/CHANGELOG.md') {
+        return '# @fluojs/core\n\n## 1.0.0\n';
+      }
+
+      return baseRead(relativePath);
+    });
+
+    expect(() => runReleaseReadinessVerification({}, dependencies)).toThrowError(
+      /Foundation package changelog baseline.*packages\/core\/CHANGELOG\.md must keep an `## \[Unreleased\]` section/u,
     );
   });
 

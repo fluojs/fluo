@@ -354,12 +354,14 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const response = createResponse();
-    await app.dispatch(createRequest('/metrics'), response);
+    try {
+      const response = createResponse();
+      await app.dispatch(createRequest('/metrics'), response);
 
-    expect(response.statusCode).toBe(404);
-
-    await app.close();
+      expect(response.statusCode).toBe(404);
+    } finally {
+      await app.close();
+    }
   });
 
   it('serves Prometheus text with Node/process metrics', async () => {
@@ -455,14 +457,16 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const response = createResponse();
-    await app.dispatch(createRequest('/metrics-b'), response);
+    try {
+      const response = createResponse();
+      await app.dispatch(createRequest('/metrics-b'), response);
 
-    expect(response.statusCode).toBe(200);
-    expect(String(response.body)).toContain('process_cpu_seconds_total');
-    expect(String(response.body)).toContain('fluo_metrics_registry_mode{mode="shared"} 1');
-
-    await app.close();
+      expect(response.statusCode).toBe(200);
+      expect(String(response.body)).toContain('process_cpu_seconds_total');
+      expect(String(response.body)).toContain('fluo_metrics_registry_mode{mode="shared"} 1');
+    } finally {
+      await app.close();
+    }
   });
 
   it('uses explicit platform telemetry labels when provided', async () => {
@@ -713,6 +717,44 @@ describe('MetricsModule', () => {
     await app.close();
   });
 
+  it('registers MetricsService gauges and histograms on the active scrape registry', async () => {
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false })],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    try {
+      const metricsService = (await app.container.resolve(MetricsService)) as MetricsService;
+      const gauge = metricsService.gauge({
+        help: 'Active worker count',
+        labelNames: ['queue'],
+        name: 'metrics_active_workers',
+      });
+      const histogram = metricsService.histogram({
+        buckets: [0.1, 1],
+        help: 'Worker task duration',
+        labelNames: ['queue'],
+        name: 'metrics_worker_task_duration_seconds',
+      });
+
+      gauge.set({ queue: 'email' }, 3);
+      histogram.observe({ queue: 'email' }, 0.5);
+
+      const metricsText = await metricsService.getRegistry().metrics();
+
+      expect(metricsText).toContain('metrics_active_workers{queue="email"} 3');
+      expect(metricsText).toContain('metrics_worker_task_duration_seconds_count{queue="email"} 1');
+      expect(metricsText).toContain('metrics_worker_task_duration_seconds_sum{queue="email"} 0.5');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('rejects unsupported providers at runtime', () => {
     expect(() => MetricsModule.forRoot({ provider: 'otel' as unknown as 'prometheus' })).toThrow(
       'MetricsModule provider "otel" is not supported. Use provider "prometheus".',
@@ -799,6 +841,93 @@ describe('MetricsModule', () => {
       expect(metricsText).toContain('fluo_component_health{component_id="queue.direct",component_kind="queue",operation="health",result="degraded"');
     } finally {
       await app.close();
+    }
+  });
+
+  it('restores a shared registry metrics function after the last telemetry registration closes', async () => {
+    const sharedRegistry = new Registry();
+    const originalMetrics = sharedRegistry.metrics;
+
+    class FirstAppModule {}
+    class SecondAppModule {}
+
+    defineModule(FirstAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+    defineModule(SecondAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+
+    const firstApp = await bootstrapApplication({
+      rootModule: FirstAppModule,
+    });
+
+    try {
+      const firstWrapper = sharedRegistry.metrics;
+      expect(firstWrapper).not.toBe(originalMetrics);
+
+      const secondApp = await bootstrapApplication({
+        rootModule: SecondAppModule,
+      });
+
+      try {
+        expect(sharedRegistry.metrics).toBe(firstWrapper);
+      } finally {
+        await secondApp.close();
+      }
+
+      expect(sharedRegistry.metrics).toBe(firstWrapper);
+    } finally {
+      await firstApp.close();
+    }
+
+    expect(sharedRegistry.metrics).toBe(originalMetrics);
+  });
+
+  it('refreshes shared registry telemetry from the remaining registration after the latest app closes', async () => {
+    const sharedRegistry = new Registry();
+    const firstComponent = createPlatformComponent({
+      id: 'queue.first',
+      kind: 'queue',
+    });
+    const secondComponent = createPlatformComponent({
+      id: 'cache.second',
+      kind: 'cache',
+    });
+
+    class FirstAppModule {}
+    class SecondAppModule {}
+
+    defineModule(FirstAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+    defineModule(SecondAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+
+    const firstApp = await bootstrapApplication({
+      platform: { components: [firstComponent] },
+      rootModule: FirstAppModule,
+    });
+
+    try {
+      const secondApp = await bootstrapApplication({
+        platform: { components: [secondComponent] },
+        rootModule: SecondAppModule,
+      });
+
+      try {
+        expect(await sharedRegistry.metrics()).toContain('component_id="cache.second"');
+      } finally {
+        await secondApp.close();
+      }
+
+      const metricsText = await sharedRegistry.metrics();
+
+      expect(metricsText).toContain('component_id="queue.first"');
+      expect(metricsText).not.toContain('component_id="cache.second"');
+    } finally {
+      await firstApp.close();
     }
   });
 
@@ -1531,18 +1660,20 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const metricsService = (await app.container.resolve(MetricsService)) as MetricsService;
-    const registry = metricsService.getRegistry();
+    try {
+      const metricsService = (await app.container.resolve(MetricsService)) as MetricsService;
+      const registry = metricsService.getRegistry();
 
-    metricsService.counter({
-      help: 'Isolated counter',
-      name: 'isolated_counter_total',
-    });
+      metricsService.counter({
+        help: 'Isolated counter',
+        name: 'isolated_counter_total',
+      });
 
-    const metrics = await registry.metrics();
-    expect(metrics).toContain('isolated_counter_total');
-
-    await app.close();
+      const metrics = await registry.metrics();
+      expect(metrics).toContain('isolated_counter_total');
+    } finally {
+      await app.close();
+    }
   });
 
   it('creates a fresh isolated registry for each bootstrap of a reused dynamic metrics module', async () => {
