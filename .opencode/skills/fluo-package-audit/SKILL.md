@@ -23,6 +23,7 @@ Audits should categorize packages into the following functional groups:
 - **protocol-adapters**: `websockets`, `socket.io`
 - **persistence**: `prisma`, `drizzle`, `mongoose`
 - **operations**: `metrics`, `terminus`, `throttler`
+- **ui**: `react`
 - **cli**: `cli`, `studio`, `testing`, `vite`
 
 For `/search-issue`, all-package expansion, batching, and package-level `route_plan` creation belong to the command harness. Do not treat any package as a representative sample.
@@ -55,6 +56,8 @@ Only the following labels should be used when drafting or creating issues:
 - **source**: `source:package-audit` (Required for all audit findings)
 
 `scope:nestjs-parity` is a legacy GitHub label name only. Audit reports must not imply NestJS compatibility or one-to-one parity; phrase the finding as a NestJS migration gap or an unsupported NestJS assumption, especially around standard decorators versus legacy decorator metadata.
+
+Package groups and GitHub `area:*` labels are not one-to-one. Map the `ui` package `react` to the existing `area:http-runtime` label because it owns HTTP-dispatched server rendering boundaries; do not create or assume an `area:ui` label.
 
 ## Finding Schema
 
