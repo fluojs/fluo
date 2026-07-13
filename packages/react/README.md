@@ -372,9 +372,18 @@ The navigation contract is deliberately HTTP-first:
   After hydration, an unmodified primary click to a same-origin HTTP(S) URL delegates to
   `router.push(...)`.
 - `router.push(href)` uses `window.location.assign(...)`; `router.replace(href)` uses
-  `window.location.replace(...)`. Both perform full-document same-origin navigation, so fluo HTTP
-  route matching, `@RequestDto` binding and validation, guards, interceptors, redirects, not-found
-  responses, non-HTML responses, and server failures remain authoritative.
+  `window.location.replace(...)`. A same-origin destination that changes the pathname or search
+  (query string) performs full-document navigation, so fluo HTTP route matching, `@RequestDto`
+  binding and validation, guards, interceptors, redirects, not-found responses, non-HTML responses,
+  and server failures remain authoritative.
+- A fragment-only destination that keeps the current pathname and search is a same-document
+  exception. The browser does not issue a new HTTP request; it emits `hashchange`, and a matching
+  event completes the requested `push` or `replace` lifecycle while updating the route snapshot URL
+  and hash. Because no server request occurs, fluo HTTP route matching, `@RequestDto` binding and
+  validation, guards, and interceptors do not run for that fragment change.
+- If the normalized destination is an identical URL to the current route snapshot, the router does
+  not call `window.location.assign(...)` or `window.location.replace(...)`. It exposes `skipped`
+  with the requested navigation type and destination instead.
 - `router.back()` delegates to `window.history.back()`. `router.refresh()` uses
   `window.location.reload()` as the documented revalidation mechanism. It does not imply an RSC,
   loader, or client-data cache.
@@ -383,8 +392,9 @@ The navigation contract is deliberately HTTP-first:
   changes the pathname without a new server document, stale path params are cleared rather than
   guessed from a client route grammar.
 - `useNavigation()` exposes `idle`, `navigating`, `refreshing`, `complete`, `error`, and `skipped`.
-  Full-document transitions normally leave the current document while `navigating` or `refreshing`;
-  the destination document starts from a new server-owned `idle` snapshot.
+  Full-document path/search transitions normally leave the current document while `navigating` or
+  `refreshing`, and the destination document starts from a new server-owned `idle` snapshot.
+  Fragment-only transitions complete in the current document after the matching `hashchange`.
 - Router methods reject cross-origin or non-HTTP(S) destinations with
   `ReactClientNavigationError`. Use a normal anchor for those destinations.
 

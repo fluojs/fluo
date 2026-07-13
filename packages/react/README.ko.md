@@ -366,17 +366,27 @@ Navigation contract는 의도적으로 HTTP-first입니다.
   유지합니다. Hydration 이후 same-origin HTTP(S) URL을 향한 unmodified primary click은
   `router.push(...)`로 위임됩니다.
 - `router.push(href)`는 `window.location.assign(...)`, `router.replace(href)`는
-  `window.location.replace(...)`를 사용합니다. 둘 다 same-origin full-document navigation이므로 fluo
-  HTTP route matching, `@RequestDto` binding/validation, guard, interceptor, redirect, not-found response,
-  non-HTML response, server failure가 계속 authoritative합니다.
+  `window.location.replace(...)`를 사용합니다. 현재 URL의 pathname 또는 search(query string)를
+  변경하는 same-origin destination은 full-document navigation을 수행하므로 fluo HTTP route matching,
+  `@RequestDto` binding/validation, guard, interceptor, redirect, not-found response, non-HTML response,
+  server failure가 계속 authoritative합니다.
+- 현재 pathname과 search를 유지하고 fragment만 바꾸는 fragment-only destination은 same-document
+  예외입니다. Browser는 새 HTTP request를 보내지 않고 `hashchange`를 발생시키며, 요청한 destination과
+  일치하는 event가 route snapshot URL/hash를 갱신하면서 `push` 또는 `replace` lifecycle을 완료합니다.
+  Server request가 없으므로 해당 fragment 변경에서는 fluo HTTP route matching, `@RequestDto`
+  binding/validation, guard, interceptor가 실행되지 않습니다.
+- 정규화된 destination이 현재 route snapshot과 같은 identical URL이면 router는
+  `window.location.assign(...)`이나 `window.location.replace(...)`를 호출하지 않습니다. 대신 요청한
+  navigation type과 destination을 포함한 `skipped` 상태를 노출합니다.
 - `router.back()`은 `window.history.back()`에 위임합니다. `router.refresh()`는 문서화된 revalidation
   mechanism으로 `window.location.reload()`를 사용하며 RSC, loader, client-data cache를 암시하지 않습니다.
 - `usePathname()`, `useSearchParams()`, `useParams()`, `useRouterState()`는 provider의 immutable route
   snapshot을 읽습니다. `popstate`와 `hashchange`는 URL-derived field를 갱신합니다. 새 server document 없이
   history event가 pathname을 바꾸면 client route grammar로 추측하지 않고 stale path param을 비웁니다.
 - `useNavigation()`은 `idle`, `navigating`, `refreshing`, `complete`, `error`, `skipped`를 노출합니다.
-  Full-document transition은 일반적으로 현재 document를 `navigating` 또는 `refreshing` 상태에서 떠나며,
-  destination document는 server-owned `idle` snapshot으로 시작합니다.
+  Full-document path/search transition은 일반적으로 현재 document를 `navigating` 또는 `refreshing`
+  상태에서 떠나며, destination document는 server-owned `idle` snapshot으로 시작합니다. Fragment-only
+  transition은 일치하는 `hashchange` 이후 현재 document에서 `complete`가 됩니다.
 - Router method는 cross-origin 또는 non-HTTP(S) destination을 `ReactClientNavigationError`로 거부합니다.
   이런 destination에는 일반 anchor를 사용하세요.
 

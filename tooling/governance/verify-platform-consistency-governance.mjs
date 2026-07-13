@@ -1443,11 +1443,13 @@ function enforceViteToolingDiscoverability() {
 
 export function enforceReactClientSubpathContract() {
   const clientEntrypoint = read('packages/react/src/client.ts');
+  const englishReadme = read('packages/react/README.md');
+  const koreanReadme = read('packages/react/README.ko.md');
   const packageJson = JSON.parse(read('packages/react/package.json'));
   const rootEntrypoint = read('packages/react/src/index.ts');
   const documentation = [
-    read('packages/react/README.md'),
-    read('packages/react/README.ko.md'),
+    englishReadme,
+    koreanReadme,
     read('docs/reference/package-surface.md'),
     read('docs/reference/package-surface.ko.md'),
     read('docs/reference/package-chooser.md'),
@@ -1487,6 +1489,23 @@ export function enforceReactClientSubpathContract() {
       'React client contract docs must keep the isolated subpath and full-document navigation behavior discoverable.',
     );
   }
+
+  assert(
+    englishReadme.includes('pathname or search') &&
+      englishReadme.includes('fragment-only') &&
+      englishReadme.includes('does not issue a new HTTP request') &&
+      englishReadme.includes('identical URL') &&
+      englishReadme.includes('skipped'),
+    'packages/react/README.md must document path/search full-document navigation, fragment-only same-document behavior, and identical-URL skips.',
+  );
+  assert(
+    koreanReadme.includes('pathname 또는 search') &&
+      koreanReadme.includes('fragment-only') &&
+      koreanReadme.includes('새 HTTP request를 보내지') &&
+      koreanReadme.includes('identical URL') &&
+      koreanReadme.includes('skipped'),
+    'packages/react/README.ko.md must document path/search full-document navigation, fragment-only same-document behavior, and identical-URL skips.',
+  );
 }
 
 export function enforcePersistenceTransactionInterceptorCompatibility() {
