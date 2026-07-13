@@ -21,7 +21,7 @@ The old procedural skill entrypoints were removed after validation because their
 The former `lane-supervisor` command was removed because it combined discovery, lane planning, execution, review, merge, cleanup, and resume behavior in one entrypoint. The current human-driven flow is:
 
 1. `/search-issue` — package issue discovery, purpose-based reviewer/R&D routing, issue drafts, registration triage, harness-authorized issue creation.
-2. `/create-lane <issue...|search-run-id|search-ledger-path> [base-branch]` — confirmed issue set, suggested additions gate, semantic lane planning, `.sisyphus/lanes/<lane-id>.json` creation.
+2. `/create-lane <issue...|search-run-id|search-ledger-path> [base-branch]` — confirmed issue set, suggested additions gate, semantic lane planning, `.omo/lanes/<lane-id>.json` creation.
 3. `/execute-lane <lane-id|lane-ledger-path> [resume|--full-auto] [base-branch]` — ledger-based implementation dispatch, PR review gate, bounded fix-back, gated merge/cleanup/root sync.
 
 `/search-issue` must not create lane ledgers. `/create-lane` must not implement or review PRs. `/execute-lane` must not discover/register new issues or rewrite lane scope.
@@ -69,7 +69,7 @@ Use the matching slash command instead.
 
 ### create-lane
 - **From**: Lane planning section inside `lane-supervisor`.
-- **To**: A planning-only command that writes `.sisyphus/lanes/<lane-id>.json` and hands off to `/execute-lane`.
+- **To**: A planning-only command that writes `.omo/lanes/<lane-id>.json` and hands off to `/execute-lane`.
 
 ### execute-lane
 - **From**: Worker dispatch, PR review, fix-back, merge, cleanup, and resume loop inside `lane-supervisor`.
