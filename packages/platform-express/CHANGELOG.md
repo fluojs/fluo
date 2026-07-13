@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+## 1.1.0
+
+### Minor Changes
+
+- [#2672](https://github.com/fluojs/fluo/pull/2672) [`6765ea3`](https://github.com/fluojs/fluo/commit/6765ea3ea4009aec1e4f91592e93f87676522aae) Thanks [@ayden94](https://github.com/ayden94)! - Add an explicit pre-router `nativeMiddleware` option for retaining Express/Connect handlers during platform-specific migrations, with documented ordering, response termination, error propagation, and resource ownership.
+
+### Patch Changes
+
+- [#2397](https://github.com/fluojs/fluo/pull/2397) [`c8cf2c3`](https://github.com/fluojs/fluo/commit/c8cf2c3875c09d2626158c4c8c15799f7f51e5af) Thanks [@ayden94](https://github.com/ayden94)! - Make duplicate Express adapter `listen()` calls idempotent while preserving the live dispatcher, and document the SSE and lifecycle contract alongside regression coverage for retry exhaustion, idle keep-alive drain, and native-route fallback parity.
+
+- [#2649](https://github.com/fluojs/fluo/pull/2649) [`1261d96`](https://github.com/fluojs/fluo/commit/1261d96ecae66576fe26fae0a39f03458307e6a4) Thanks [@ayden94](https://github.com/ayden94)! - Remove the Node.js `Buffer` dependency from Web multipart parsing and expose uploaded file payloads as runtime-neutral `Uint8Array` values.
+
+  Preserve Buffer-backed multipart file payloads at the Express Node adapter boundary.
+
+  Node-only consumers that use Buffer-specific methods must convert explicitly at their application boundary with `Buffer.from(file.buffer)`.
+
+- [#2467](https://github.com/fluojs/fluo/pull/2467) [`1915663`](https://github.com/fluojs/fluo/commit/191566313f6def73c9051471596448bfbd0ee577) Thanks [@ayden94](https://github.com/ayden94)! - Cancel and join in-flight Express adapter listen retry loops during `close()` so a busy-port startup cannot bind after shutdown has already resolved.
+
+- [#2643](https://github.com/fluojs/fluo/pull/2643) [`3fe2b56`](https://github.com/fluojs/fluo/commit/3fe2b563802f69be68bdb7079fc4bfc67720bb3b) Thanks [@ayden94](https://github.com/ayden94)! - Reuse one in-flight Express listen lifecycle and reject startup during close so delayed retries cannot outlive shutdown.
+
+- Updated dependencies [[`3fafdff`](https://github.com/fluojs/fluo/commit/3fafdffe85fc15f542844b977d8ca40db5c58439), [`bfc2aeb`](https://github.com/fluojs/fluo/commit/bfc2aebb3a2dd03c2ce0509585bca4b5d78a5588), [`1261d96`](https://github.com/fluojs/fluo/commit/1261d96ecae66576fe26fae0a39f03458307e6a4), [`e6d0c70`](https://github.com/fluojs/fluo/commit/e6d0c70868a520dd2a4379789dc5ccbfb1e01351), [`6f75ef9`](https://github.com/fluojs/fluo/commit/6f75ef9636e136459952d273a9a189ef0b8a7b67), [`2854c36`](https://github.com/fluojs/fluo/commit/2854c366d99c191eae3416e375b9db577711aaff), [`83e7a7d`](https://github.com/fluojs/fluo/commit/83e7a7ddf75812f88ab65ab280e4f5f94adea3ff), [`a951bc1`](https://github.com/fluojs/fluo/commit/a951bc195261331810bc8791df1041ab51d14ebb), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925)]:
+  - @fluojs/runtime@2.0.0
+  - @fluojs/http@2.0.0
+
 ## 1.0.6
 
 ### Patch Changes

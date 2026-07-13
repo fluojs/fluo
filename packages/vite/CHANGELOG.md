@@ -1,12 +1,20 @@
 # @fluojs/vite
 
+## [Unreleased]
+
+## 1.0.7
+
+### Patch Changes
+
+- [#2331](https://github.com/fluojs/fluo/pull/2331) [`1446f20`](https://github.com/fluojs/fluo/commit/1446f201163823673019adde09e2c698b82c9eea) Thanks [@ayden94](https://github.com/ayden94)! - Keep lazy Babel peer diagnostics file-specific after a failed import, document the Node.js/Vite/Babel runtime contract in the Vite package and reference docs, and add regression coverage for bare plugin creation, successful lazy-load reuse, and concurrent eligible transforms.
+
+- [#2474](https://github.com/fluojs/fluo/pull/2474) [`c787733`](https://github.com/fluojs/fluo/commit/c7877330563efe2ea756f71204957cfc0a8657b3) Thanks [@ayden94](https://github.com/ayden94)! - Keep the lazy Babel peer boundary covered by regression tests while removing the test-only Babel importer helper from emitted declarations.
+
 ## 1.0.6
 
 ### Patch Changes
 
 - [#2175](https://github.com/fluojs/fluo/pull/2175) [`2230091`](https://github.com/fluojs/fluo/commit/22300918e9141c20793d59b44187ec4d8bfc7486) Thanks [@ayden94](https://github.com/ayden94)! - Document the generated Vite/Vitest decorator transform boundary and add regression coverage for lazy Babel loading plus peer dependency diagnostics.
-
-## [Unreleased]
 
 ## 1.0.5
 

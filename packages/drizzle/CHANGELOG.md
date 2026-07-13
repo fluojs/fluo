@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+## 1.1.1
+
+### Patch Changes
+
+- [#2383](https://github.com/fluojs/fluo/pull/2383) [`ad46594`](https://github.com/fluojs/fluo/commit/ad46594d68ad1c25721d421e2c81fc6b17496b4a) Thanks [@ayden94](https://github.com/ayden94)! - Bind Drizzle facade lifecycle methods to the lifecycle owner so shutdown and status snapshots read the same live state, and align transaction target-resolution docs with the implemented fallback order.
+
+- [#2338](https://github.com/fluojs/fluo/pull/2338) [`98b53c5`](https://github.com/fluojs/fluo/commit/98b53c5bf73b9a36256a0932523950c02724f201) Thanks [@ayden94](https://github.com/ayden94)! - Track fail-open manual transaction callbacks during shutdown so `dispose(database)` waits for direct-execution fallbacks to settle before closing application-owned Drizzle resources.
+
+- [#2469](https://github.com/fluojs/fluo/pull/2469) [`a93c5c7`](https://github.com/fluojs/fluo/commit/a93c5c77f7ae9bc84f019c5a86d13299e80415c2) Thanks [@ayden94](https://github.com/ayden94)! - Align the public Drizzle handle provider type with its documented platform status snapshot contract and add regression coverage for Drizzle transaction target resolution and facade forwarding.
+
+- [#2674](https://github.com/fluojs/fluo/pull/2674) [`71d83f1`](https://github.com/fluojs/fluo/commit/71d83f13c4264ceeaaba05111eb9e3f33c5ce371) Thanks [@ayden94](https://github.com/ayden94)! - Restore the governed `Unreleased` changelog placeholder for persistence packages and preserve it when Changesets generates future package versions.
+
+- Updated dependencies [[`3fafdff`](https://github.com/fluojs/fluo/commit/3fafdffe85fc15f542844b977d8ca40db5c58439), [`c3bc3d6`](https://github.com/fluojs/fluo/commit/c3bc3d6c45fd08d43dbd28eb0d87f780430d9caa), [`1261d96`](https://github.com/fluojs/fluo/commit/1261d96ecae66576fe26fae0a39f03458307e6a4), [`d7e3a98`](https://github.com/fluojs/fluo/commit/d7e3a981e9edd6ec098af1827b2081c49c5197e7), [`33fac0d`](https://github.com/fluojs/fluo/commit/33fac0de23de4e2585355c914bda0427c8eed100), [`6f75ef9`](https://github.com/fluojs/fluo/commit/6f75ef9636e136459952d273a9a189ef0b8a7b67), [`83e7a7d`](https://github.com/fluojs/fluo/commit/83e7a7ddf75812f88ab65ab280e4f5f94adea3ff), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925), [`ea78a19`](https://github.com/fluojs/fluo/commit/ea78a1985114392a1658509bd7132987dd289942), [`ccb11fa`](https://github.com/fluojs/fluo/commit/ccb11fab16cc3f8db4dd000ca609b0bf544b72c6), [`e8dd36e`](https://github.com/fluojs/fluo/commit/e8dd36e53e1be1bc96f69587cc7d3641ffdf3896)]:
+  - @fluojs/runtime@2.0.0
+  - @fluojs/di@2.0.0
+  - @fluojs/core@1.1.0
+
 ## 1.1.0
 
 ### Minor Changes

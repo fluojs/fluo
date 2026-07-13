@@ -1,5 +1,24 @@
 # @fluojs/passport
 
+## [Unreleased]
+
+## 1.0.5
+
+### Patch Changes
+
+- [#2693](https://github.com/fluojs/fluo/pull/2693) [`7aa7da1`](https://github.com/fluojs/fluo/commit/7aa7da160663b840b321ffe4b19081e24e193e1d) Thanks [@ayden94](https://github.com/ayden94)! - Add optional family-scoped refresh-token revocation with a compatible subject-wide fallback, preserve consume-only rotation support, and align the Passport in-memory refresh store with the family contract.
+
+- [#2696](https://github.com/fluojs/fluo/pull/2696) [`f10da5f`](https://github.com/fluojs/fluo/commit/f10da5f85e36b8e371bee481c85713c5a10514bb) Thanks [@ayden94](https://github.com/ayden94)! - Evict expired records from the development-only in-memory refresh-token store during normal store operations.
+
+- [#2449](https://github.com/fluojs/fluo/pull/2449) [`fbdfea8`](https://github.com/fluojs/fluo/commit/fbdfea89ab9a0886fe26702892635a1f6e0326d6) Thanks [@ayden94](https://github.com/ayden94)! - Preserve the documented `AuthHandledResult` contract so every `handled:true` result remains terminal after the strategy commits a response, including results that also include a principal.
+
+- Updated dependencies [[`7aa7da1`](https://github.com/fluojs/fluo/commit/7aa7da160663b840b321ffe4b19081e24e193e1d), [`3fafdff`](https://github.com/fluojs/fluo/commit/3fafdffe85fc15f542844b977d8ca40db5c58439), [`c3bc3d6`](https://github.com/fluojs/fluo/commit/c3bc3d6c45fd08d43dbd28eb0d87f780430d9caa), [`bfc2aeb`](https://github.com/fluojs/fluo/commit/bfc2aebb3a2dd03c2ce0509585bca4b5d78a5588), [`1261d96`](https://github.com/fluojs/fluo/commit/1261d96ecae66576fe26fae0a39f03458307e6a4), [`d7e3a98`](https://github.com/fluojs/fluo/commit/d7e3a981e9edd6ec098af1827b2081c49c5197e7), [`33fac0d`](https://github.com/fluojs/fluo/commit/33fac0de23de4e2585355c914bda0427c8eed100), [`e6d0c70`](https://github.com/fluojs/fluo/commit/e6d0c70868a520dd2a4379789dc5ccbfb1e01351), [`6f75ef9`](https://github.com/fluojs/fluo/commit/6f75ef9636e136459952d273a9a189ef0b8a7b67), [`2854c36`](https://github.com/fluojs/fluo/commit/2854c366d99c191eae3416e375b9db577711aaff), [`5401916`](https://github.com/fluojs/fluo/commit/540191624ff5099cf042280261ef6c7ef7f6c722), [`5a04da1`](https://github.com/fluojs/fluo/commit/5a04da1cc272ff4a01df3649c5b820aa9ab6be78), [`83e7a7d`](https://github.com/fluojs/fluo/commit/83e7a7ddf75812f88ab65ab280e4f5f94adea3ff), [`a951bc1`](https://github.com/fluojs/fluo/commit/a951bc195261331810bc8791df1041ab51d14ebb), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925), [`ea78a19`](https://github.com/fluojs/fluo/commit/ea78a1985114392a1658509bd7132987dd289942), [`ccb11fa`](https://github.com/fluojs/fluo/commit/ccb11fab16cc3f8db4dd000ca609b0bf544b72c6), [`e8dd36e`](https://github.com/fluojs/fluo/commit/e8dd36e53e1be1bc96f69587cc7d3641ffdf3896)]:
+  - @fluojs/jwt@1.1.0
+  - @fluojs/runtime@2.0.0
+  - @fluojs/di@2.0.0
+  - @fluojs/http@2.0.0
+  - @fluojs/core@1.1.0
+
 ## 1.0.4
 
 ### Patch Changes

@@ -1,5 +1,39 @@
 # @fluojs/cron
 
+## [Unreleased]
+
+## 2.0.0
+
+### Major Changes
+
+- [#2399](https://github.com/fluojs/fluo/pull/2399) [`c646d44`](https://github.com/fluojs/fluo/commit/c646d44cbfe7f34aa77505ba8c6948fc1c9e1481) Thanks [@ayden94](https://github.com/ayden94)! - Reject blank decorator scheduling task names, normalize distributed Redis client names, and cover cron lifecycle/status regression paths.
+
+  Migration notes:
+
+  - Replace blank decorator `name` values with stable non-empty names, and move any scheduled static methods behind public instance methods.
+  - Remove leading or trailing whitespace from `distributed.clientName` and register the Redis client under that trimmed name, or omit `clientName` to keep using the default Redis registration.
+
+- [#2481](https://github.com/fluojs/fluo/pull/2481) [`32f3a60`](https://github.com/fluojs/fluo/commit/32f3a609a2bb061fb4aebfddbb6545ca8a342212) Thanks [@ayden94](https://github.com/ayden94)! - Preserve distributed lock lifecycle contracts by validating enabled lock TTLs before Redis I/O, bounding shutdown lock release attempts, retaining local ownership when release I/O times out, and returning immutable scheduling descriptor snapshots.
+
+  Migration notes:
+
+  - Configure every enabled module-level `distributed.lockTtlMs` and enabled task-level `lockTtlMs` as an integer of at least `1_000ms` before module registration.
+  - Treat values from `SchedulingRegistry.get()` and `getAll()` as immutable snapshots. Use `enable()`, `disable()`, `remove()`, `updateCronExpression()`, or `updateIntervalMs()` instead of mutating descriptors or scheduler handles.
+  - Review `shutdown.timeoutMs` against expected Redis latency. Owned-lock release I/O now stops waiting at that boundary and preserves local ownership visibility when the release cannot be confirmed in time.
+
+### Patch Changes
+
+- [#2304](https://github.com/fluojs/fluo/pull/2304) [`d4d2af3`](https://github.com/fluojs/fluo/commit/d4d2af3b3c99c63dbc8561ffdd5ba52d10914148) Thanks [@ayden94](https://github.com/ayden94)! - Preserve Redis distributed cron locks during startup rollback until active bootstrap-time ticks can drain and release ownership.
+
+- [#2622](https://github.com/fluojs/fluo/pull/2622) [`aa0fd73`](https://github.com/fluojs/fluo/commit/aa0fd737e36e116a566fbd8a1122e211cb62dbbd) Thanks [@ayden94](https://github.com/ayden94)! - Make dynamic cron expression and interval cadence replacements roll back when the previous scheduler handle cannot be stopped, cleaning up the provisional replacement before restoring the prior descriptor and handle.
+
+- [#2612](https://github.com/fluojs/fluo/pull/2612) [`26855dc`](https://github.com/fluojs/fluo/commit/26855dc3e19730bc4b5a9e4563d4e656e4efc00e) Thanks [@ayden94](https://github.com/ayden94)! - Ignore inactive task lock TTL overrides when distributed locking is disabled and call `unref()` on lock renewal timers so bounded shutdown can allow the Node.js process to exit.
+
+- Updated dependencies [[`3fafdff`](https://github.com/fluojs/fluo/commit/3fafdffe85fc15f542844b977d8ca40db5c58439), [`c3bc3d6`](https://github.com/fluojs/fluo/commit/c3bc3d6c45fd08d43dbd28eb0d87f780430d9caa), [`1261d96`](https://github.com/fluojs/fluo/commit/1261d96ecae66576fe26fae0a39f03458307e6a4), [`d7e3a98`](https://github.com/fluojs/fluo/commit/d7e3a981e9edd6ec098af1827b2081c49c5197e7), [`33fac0d`](https://github.com/fluojs/fluo/commit/33fac0de23de4e2585355c914bda0427c8eed100), [`6f75ef9`](https://github.com/fluojs/fluo/commit/6f75ef9636e136459952d273a9a189ef0b8a7b67), [`83e7a7d`](https://github.com/fluojs/fluo/commit/83e7a7ddf75812f88ab65ab280e4f5f94adea3ff), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925), [`ea78a19`](https://github.com/fluojs/fluo/commit/ea78a1985114392a1658509bd7132987dd289942), [`ccb11fa`](https://github.com/fluojs/fluo/commit/ccb11fab16cc3f8db4dd000ca609b0bf544b72c6), [`e8dd36e`](https://github.com/fluojs/fluo/commit/e8dd36e53e1be1bc96f69587cc7d3641ffdf3896)]:
+  - @fluojs/runtime@2.0.0
+  - @fluojs/di@2.0.0
+  - @fluojs/core@1.1.0
+
 ## 1.1.0
 
 ### Minor Changes

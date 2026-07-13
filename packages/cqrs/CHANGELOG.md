@@ -1,5 +1,31 @@
 # @fluojs/cqrs
 
+## [Unreleased]
+
+## 2.0.0
+
+### Major Changes
+
+- [#2471](https://github.com/fluojs/fluo/pull/2471) [`7d53a2a`](https://github.com/fluojs/fluo/commit/7d53a2aca3c2ea3cf610cb60d4585f67129c4f4e) Thanks [@ayden94](https://github.com/ayden94)! - Reject CQRS event publishes and direct saga dispatches as soon as runtime shutdown starts, drain late nested saga work until the saga queue is quiescent, and keep delegated event-bus providers module-local by default when `CqrsModule.forRoot({ global: false })` is used.
+
+  Migration note: applications that intentionally relied on delegated `@fluojs/event-bus` providers remaining globally visible while using `CqrsModule.forRoot({ global: false })` must now either pass `eventBus: { global: true }` explicitly or import the CQRS module into consumers that inject delegated event-bus tokens.
+
+### Patch Changes
+
+- [#2608](https://github.com/fluojs/fluo/pull/2608) [`be29f76`](https://github.com/fluojs/fluo/commit/be29f76660157a9cbd107421db5a3c6f1db17a5e) Thanks [@ayden94](https://github.com/ayden94)! - Preserve event-handler and saga fan-out for distinct singleton provider tokens, and keep nested CQRS topology and shutdown-drain state private and immutable.
+
+- [#2300](https://github.com/fluojs/fluo/pull/2300) [`4eee9ad`](https://github.com/fluojs/fluo/commit/4eee9ad2708c53803ede2123b1c1f9f6777fc9a0) Thanks [@ayden94](https://github.com/ayden94)! - Detect duplicate command and query handlers when the same handler class is registered under different singleton provider tokens.
+
+- [#2382](https://github.com/fluojs/fluo/pull/2382) [`3c9ebdd`](https://github.com/fluojs/fluo/commit/3c9ebddcff028e8a54a979da4f1e4dcf059c3f81) Thanks [@ayden94](https://github.com/ayden94)! - Tighten CQRS handler discovery to provider-only registrations and reject command/query dispatch after shutdown starts while clearing preloaded handler caches.
+
+- [#2315](https://github.com/fluojs/fluo/pull/2315) [`592320d`](https://github.com/fluojs/fluo/commit/592320de3bdb11d270aa9a222b51c50f4d3f11c9) Thanks [@ayden94](https://github.com/ayden94)! - Allow context-preserving nested CQRS event publishes to finish while shutdown drains active handler and saga pipelines.
+
+- Updated dependencies [[`3fafdff`](https://github.com/fluojs/fluo/commit/3fafdffe85fc15f542844b977d8ca40db5c58439), [`c3bc3d6`](https://github.com/fluojs/fluo/commit/c3bc3d6c45fd08d43dbd28eb0d87f780430d9caa), [`1261d96`](https://github.com/fluojs/fluo/commit/1261d96ecae66576fe26fae0a39f03458307e6a4), [`5764ff8`](https://github.com/fluojs/fluo/commit/5764ff80b460515f13e41c21c3ef6e2b743b2777), [`2df22b7`](https://github.com/fluojs/fluo/commit/2df22b7cd9fff354df1a3e1df3dd65de4de9f3ed), [`d7e3a98`](https://github.com/fluojs/fluo/commit/d7e3a981e9edd6ec098af1827b2081c49c5197e7), [`33fac0d`](https://github.com/fluojs/fluo/commit/33fac0de23de4e2585355c914bda0427c8eed100), [`6f75ef9`](https://github.com/fluojs/fluo/commit/6f75ef9636e136459952d273a9a189ef0b8a7b67), [`83e7a7d`](https://github.com/fluojs/fluo/commit/83e7a7ddf75812f88ab65ab280e4f5f94adea3ff), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925), [`ea78a19`](https://github.com/fluojs/fluo/commit/ea78a1985114392a1658509bd7132987dd289942), [`ccb11fa`](https://github.com/fluojs/fluo/commit/ccb11fab16cc3f8db4dd000ca609b0bf544b72c6), [`e8dd36e`](https://github.com/fluojs/fluo/commit/e8dd36e53e1be1bc96f69587cc7d3641ffdf3896), [`f521959`](https://github.com/fluojs/fluo/commit/f5219597ea109d383fe993cfa732bf7765417d88)]:
+  - @fluojs/runtime@2.0.0
+  - @fluojs/di@2.0.0
+  - @fluojs/event-bus@2.0.0
+  - @fluojs/core@1.1.0
+
 ## 1.1.2
 
 ### Patch Changes
@@ -11,8 +37,6 @@
 - Updated dependencies [[`7cb2070`](https://github.com/fluojs/fluo/commit/7cb2070549382319349e03a0309f527c70673b6e), [`f6bd63b`](https://github.com/fluojs/fluo/commit/f6bd63b94044260643704ad2ed4f5486a2db6e64), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
   - @fluojs/event-bus@1.0.1
   - @fluojs/runtime@1.1.8
-
-## [Unreleased]
 
 ## 1.1.1
 

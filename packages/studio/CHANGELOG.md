@@ -1,5 +1,18 @@
 # @fluojs/studio
 
+## [Unreleased]
+
+## 1.0.8
+
+### Patch Changes
+
+- [#2475](https://github.com/fluojs/fluo/pull/2475) [`a96c675`](https://github.com/fluojs/fluo/commit/a96c675542ba4549f07001cfeb4ae7e2158924d2) Thanks [@ayden94](https://github.com/ayden94)! - Harden Studio live helper contracts by making filtered Mermaid rendering deterministic across serialized snapshots, selecting live route graph nodes by stable route ids, and documenting the Node.js viewer/runtime dependency boundary.
+
+- [#2335](https://github.com/fluojs/fluo/pull/2335) [`ed5eb41`](https://github.com/fluojs/fluo/commit/ed5eb41b55601d47c9d81a8ac82535da20c0f228) Thanks [@ayden94](https://github.com/ayden94)! - Isolate static/report viewer state from stale live sidecar state and cover the packaged `@fluojs/studio/viewer` artifact resolution workflow.
+
+- Updated dependencies [[`3fafdff`](https://github.com/fluojs/fluo/commit/3fafdffe85fc15f542844b977d8ca40db5c58439), [`1261d96`](https://github.com/fluojs/fluo/commit/1261d96ecae66576fe26fae0a39f03458307e6a4), [`6f75ef9`](https://github.com/fluojs/fluo/commit/6f75ef9636e136459952d273a9a189ef0b8a7b67), [`83e7a7d`](https://github.com/fluojs/fluo/commit/83e7a7ddf75812f88ab65ab280e4f5f94adea3ff), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925)]:
+  - @fluojs/runtime@2.0.0
+
 ## 1.0.7
 
 ### Patch Changes
@@ -10,8 +23,6 @@
 
 - Updated dependencies [[`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
   - @fluojs/runtime@1.1.8
-
-## [Unreleased]
 
 ## 1.0.6
 

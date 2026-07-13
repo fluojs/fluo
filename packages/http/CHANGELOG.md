@@ -1,12 +1,31 @@
 # @fluojs/http
 
+## [Unreleased]
+
+## 2.0.0
+
+### Major Changes
+
+- [#2439](https://github.com/fluojs/fluo/pull/2439) [`2854c36`](https://github.com/fluojs/fluo/commit/2854c366d99c191eae3416e375b9db577711aaff) Thanks [@ayden94](https://github.com/ayden94)! - Change the public `ResponseFormatter.format(...)` return contract from Node-specific `Buffer` to runtime-neutral `Uint8Array` bytes, preserving the root HTTP API portability guarantee. Existing Node.js formatters that return `Buffer` still satisfy the interface because `Buffer` implements `Uint8Array`; callers should use `Uint8Array` byte APIs instead of Buffer-specific methods.
+
+### Patch Changes
+
+- [#2638](https://github.com/fluojs/fluo/pull/2638) [`bfc2aeb`](https://github.com/fluojs/fluo/commit/bfc2aebb3a2dd03c2ce0509585bca4b5d78a5588) Thanks [@ayden94](https://github.com/ayden94)! - Await managed SSE iterator cleanup before disposing request-scoped resources, and report cleanup failures without rewriting committed responses.
+
+- [#2381](https://github.com/fluojs/fluo/pull/2381) [`e6d0c70`](https://github.com/fluojs/fluo/commit/e6d0c70868a520dd2a4379789dc5ccbfb1e01351) Thanks [@ayden94](https://github.com/ayden94)! - Harden the Fastify adapter lifecycle so shutdown cancels retrying startup before later binds can occur, refresh native route descriptor handoffs across adapter reuse, let explicit OPTIONS routes run instead of being mistaken for CORS preflight requests, and remove the adapter-local runtime-specific FrameworkRequest file type augmentation.
+
+- [#2507](https://github.com/fluojs/fluo/pull/2507) [`a951bc1`](https://github.com/fluojs/fluo/commit/a951bc195261331810bc8791df1041ab51d14ebb) Thanks [@ayden94](https://github.com/ayden94)! - Add the React Web Streams SSR core so React page handlers can return `ReactServerEntry` values that preserve the existing HTTP pipeline before streamed HTML finalization.
+
+- Updated dependencies [[`c3bc3d6`](https://github.com/fluojs/fluo/commit/c3bc3d6c45fd08d43dbd28eb0d87f780430d9caa), [`2c09f35`](https://github.com/fluojs/fluo/commit/2c09f3541a6ffb33a26e045f531fbecbabd5dfe7), [`d7e3a98`](https://github.com/fluojs/fluo/commit/d7e3a981e9edd6ec098af1827b2081c49c5197e7), [`33fac0d`](https://github.com/fluojs/fluo/commit/33fac0de23de4e2585355c914bda0427c8eed100), [`94f6518`](https://github.com/fluojs/fluo/commit/94f6518bf26b6bb412759c48d043e05e153ce533), [`83e7a7d`](https://github.com/fluojs/fluo/commit/83e7a7ddf75812f88ab65ab280e4f5f94adea3ff), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925), [`ea78a19`](https://github.com/fluojs/fluo/commit/ea78a1985114392a1658509bd7132987dd289942), [`ccb11fa`](https://github.com/fluojs/fluo/commit/ccb11fab16cc3f8db4dd000ca609b0bf544b72c6), [`e8dd36e`](https://github.com/fluojs/fluo/commit/e8dd36e53e1be1bc96f69587cc7d3641ffdf3896)]:
+  - @fluojs/di@2.0.0
+  - @fluojs/validation@1.0.6
+  - @fluojs/core@1.1.0
+
 ## 1.1.2
 
 ### Patch Changes
 
 - [#2244](https://github.com/fluojs/fluo/pull/2244) [`5d8fc23`](https://github.com/fluojs/fluo/commit/5d8fc23b199d4b617c6342f109c24e03970af9b4) Thanks [@ayden94](https://github.com/ayden94)! - Preserve adapter `isAborted()` probes on dispatch request clones and keep lazy Node request context resolution isolated for overlapping promise-returning callbacks.
-
-## [Unreleased]
 
 ## 1.1.1
 

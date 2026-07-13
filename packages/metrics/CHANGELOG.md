@@ -1,5 +1,33 @@
 # @fluojs/metrics
 
+## [Unreleased]
+
+### Patch Changes
+
+- No pending runtime changes.
+
+## 2.0.0
+
+### Major Changes
+
+- [#2377](https://github.com/fluojs/fluo/pull/2377) [`8cb5ef0`](https://github.com/fluojs/fluo/commit/8cb5ef0c409abc6757593c3a6e00463ffb93cde2) Thanks [@ayden94](https://github.com/ayden94)! - Validate shared-registry HTTP collector path-label configuration before reuse and keep platform telemetry stale-series ownership scoped to the reused registry.
+
+  Migration note: applications that pass the same Prometheus registry to multiple `MetricsModule.forRoot(...)` calls must now use matching HTTP path-label configuration for framework-owned collectors. Align `pathLabelMode`, reuse the same `pathLabelNormalizer` function reference when a custom normalizer is configured, and keep `unknownPathLabel` consistent across module instances before sharing a registry. If different HTTP path-label policies are required, use separate registries for those module instances.
+
+### Patch Changes
+
+- [#2464](https://github.com/fluojs/fluo/pull/2464) [`3fafdff`](https://github.com/fluojs/fluo/commit/3fafdffe85fc15f542844b977d8ca40db5c58439) Thanks [@ayden94](https://github.com/ayden94)! - Refresh runtime platform telemetry from the active registry collect path so advanced shared-registry scrapers observe fresh component readiness and health series.
+
+- [#2337](https://github.com/fluojs/fluo/pull/2337) [`3dc00db`](https://github.com/fluojs/fluo/commit/3dc00db1b56554d153df5742a81ee67a5a73fc31) Thanks [@ayden94](https://github.com/ayden94)! - Harden platform telemetry scrapes so missing platform-shell registration uses container presence checks, registered shell resolution failures still surface, and component ids or kinds containing separator-like text keep distinct Prometheus series.
+
+- [#2691](https://github.com/fluojs/fluo/pull/2691) [`e43c3ac`](https://github.com/fluojs/fluo/commit/e43c3ac9c7682ab18a94631ea91b6ba799c525d2) Thanks [@ayden94](https://github.com/ayden94)! - Release shared Registry telemetry scrape wrappers on application shutdown and restore the original `metrics()` function after the last metrics module closes.
+
+- Updated dependencies [[`3fafdff`](https://github.com/fluojs/fluo/commit/3fafdffe85fc15f542844b977d8ca40db5c58439), [`c3bc3d6`](https://github.com/fluojs/fluo/commit/c3bc3d6c45fd08d43dbd28eb0d87f780430d9caa), [`bfc2aeb`](https://github.com/fluojs/fluo/commit/bfc2aebb3a2dd03c2ce0509585bca4b5d78a5588), [`1261d96`](https://github.com/fluojs/fluo/commit/1261d96ecae66576fe26fae0a39f03458307e6a4), [`d7e3a98`](https://github.com/fluojs/fluo/commit/d7e3a981e9edd6ec098af1827b2081c49c5197e7), [`33fac0d`](https://github.com/fluojs/fluo/commit/33fac0de23de4e2585355c914bda0427c8eed100), [`e6d0c70`](https://github.com/fluojs/fluo/commit/e6d0c70868a520dd2a4379789dc5ccbfb1e01351), [`6f75ef9`](https://github.com/fluojs/fluo/commit/6f75ef9636e136459952d273a9a189ef0b8a7b67), [`2854c36`](https://github.com/fluojs/fluo/commit/2854c366d99c191eae3416e375b9db577711aaff), [`83e7a7d`](https://github.com/fluojs/fluo/commit/83e7a7ddf75812f88ab65ab280e4f5f94adea3ff), [`a951bc1`](https://github.com/fluojs/fluo/commit/a951bc195261331810bc8791df1041ab51d14ebb), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925), [`ea78a19`](https://github.com/fluojs/fluo/commit/ea78a1985114392a1658509bd7132987dd289942), [`ccb11fa`](https://github.com/fluojs/fluo/commit/ccb11fab16cc3f8db4dd000ca609b0bf544b72c6), [`e8dd36e`](https://github.com/fluojs/fluo/commit/e8dd36e53e1be1bc96f69587cc7d3641ffdf3896)]:
+  - @fluojs/runtime@2.0.0
+  - @fluojs/di@2.0.0
+  - @fluojs/http@2.0.0
+  - @fluojs/core@1.1.0
+
 ## 1.0.4
 
 ### Patch Changes
@@ -11,12 +39,6 @@
 - Updated dependencies [[`5d8fc23`](https://github.com/fluojs/fluo/commit/5d8fc23b199d4b617c6342f109c24e03970af9b4), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
   - @fluojs/http@1.1.2
   - @fluojs/runtime@1.1.8
-
-## [Unreleased]
-
-### Patch Changes
-
-- No pending runtime changes.
 
 ## 1.0.3
 

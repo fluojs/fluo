@@ -1,5 +1,28 @@
 # @fluojs/graphql
 
+## [Unreleased]
+
+## 1.1.0
+
+### Minor Changes
+
+- [#2719](https://github.com/fluojs/fluo/pull/2719) [`40436a6`](https://github.com/fluojs/fluo/commit/40436a600fa0a8f40bcd53f07d58395610990877) Thanks [@ayden94](https://github.com/ayden94)! - Add code-first object field resolvers with `FieldResolver`, `Parent`, and `Context` standard method decorators.
+
+### Patch Changes
+
+- [#2702](https://github.com/fluojs/fluo/pull/2702) [`553fb51`](https://github.com/fluojs/fluo/commit/553fb516adf8c2fd2ecbd907b69fc191864f90f3) Thanks [@ayden94](https://github.com/ayden94)! - Align the documented GraphQL runtime boundary with the effective mandatory dependency floor by requiring Node.js 20.16.0 or newer and treating Bun, Deno, and Cloudflare Workers as unsupported until native runtime verification exists.
+
+- [#2318](https://github.com/fluojs/fluo/pull/2318) [`df0886f`](https://github.com/fluojs/fluo/commit/df0886f96cef6f7c87031630654db7c620cf112d) Thanks [@ayden94](https://github.com/ayden94)! - Dispose request-scoped websocket operation providers when GraphQL clients disconnect before subscription completion.
+
+- [#2308](https://github.com/fluojs/fluo/pull/2308) [`da020c2`](https://github.com/fluojs/fluo/commit/da020c2dc3ff2dfc0468ed7ddd5c552dc389dfb0) Thanks [@ayden94](https://github.com/ayden94)! - Keep GraphQL/Yoga HTTP and SSE loading on Web-standard request/response imports within the supported Node.js 20.16.0+ package boundary, while keeping the Node-only `graphql-ws`/`ws` upgrade transport behind the opt-in websocket subscription path.
+
+- Updated dependencies [[`3fafdff`](https://github.com/fluojs/fluo/commit/3fafdffe85fc15f542844b977d8ca40db5c58439), [`c3bc3d6`](https://github.com/fluojs/fluo/commit/c3bc3d6c45fd08d43dbd28eb0d87f780430d9caa), [`bfc2aeb`](https://github.com/fluojs/fluo/commit/bfc2aebb3a2dd03c2ce0509585bca4b5d78a5588), [`1261d96`](https://github.com/fluojs/fluo/commit/1261d96ecae66576fe26fae0a39f03458307e6a4), [`2c09f35`](https://github.com/fluojs/fluo/commit/2c09f3541a6ffb33a26e045f531fbecbabd5dfe7), [`d7e3a98`](https://github.com/fluojs/fluo/commit/d7e3a981e9edd6ec098af1827b2081c49c5197e7), [`33fac0d`](https://github.com/fluojs/fluo/commit/33fac0de23de4e2585355c914bda0427c8eed100), [`e6d0c70`](https://github.com/fluojs/fluo/commit/e6d0c70868a520dd2a4379789dc5ccbfb1e01351), [`6f75ef9`](https://github.com/fluojs/fluo/commit/6f75ef9636e136459952d273a9a189ef0b8a7b67), [`2854c36`](https://github.com/fluojs/fluo/commit/2854c366d99c191eae3416e375b9db577711aaff), [`94f6518`](https://github.com/fluojs/fluo/commit/94f6518bf26b6bb412759c48d043e05e153ce533), [`83e7a7d`](https://github.com/fluojs/fluo/commit/83e7a7ddf75812f88ab65ab280e4f5f94adea3ff), [`a951bc1`](https://github.com/fluojs/fluo/commit/a951bc195261331810bc8791df1041ab51d14ebb), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925), [`ea78a19`](https://github.com/fluojs/fluo/commit/ea78a1985114392a1658509bd7132987dd289942), [`ccb11fa`](https://github.com/fluojs/fluo/commit/ccb11fab16cc3f8db4dd000ca609b0bf544b72c6), [`e8dd36e`](https://github.com/fluojs/fluo/commit/e8dd36e53e1be1bc96f69587cc7d3641ffdf3896)]:
+  - @fluojs/runtime@2.0.0
+  - @fluojs/di@2.0.0
+  - @fluojs/http@2.0.0
+  - @fluojs/validation@1.0.6
+  - @fluojs/core@1.1.0
+
 ## 1.0.4
 
 ### Patch Changes

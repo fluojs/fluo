@@ -1,5 +1,30 @@
 # @fluojs/microservices
 
+## [Unreleased]
+
+## 1.0.5
+
+### Patch Changes
+
+- [#2703](https://github.com/fluojs/fluo/pull/2703) [`b829e8c`](https://github.com/fluojs/fluo/commit/b829e8c13444eb998938d9c9d70281c2d32948a5) Thanks [@ayden94](https://github.com/ayden94)! - Await Kafka and RabbitMQ inbound handlers and response publication from consumer callbacks so processing failures remain visible to broker acknowledgement and retry paths.
+
+- [#2706](https://github.com/fluojs/fluo/pull/2706) [`f0e004b`](https://github.com/fluojs/fluo/commit/f0e004b97e634f839027623058e69aa11c900267) Thanks [@ayden94](https://github.com/ayden94)! - Clean up NATS subscriptions created by a failed listen attempt without closing the caller-owned client.
+
+- [#2482](https://github.com/fluojs/fluo/pull/2482) [`34ca080`](https://github.com/fluojs/fluo/commit/34ca080549e2bf9fcf44fabf2b376665008b45d0) Thanks [@ayden94](https://github.com/ayden94)! - Align the public microservice facade shutdown contract with runtime lifecycle signal forwarding while preserving no-argument transport shutdown adapters.
+
+- [#2390](https://github.com/fluojs/fluo/pull/2390) [`efe09b4`](https://github.com/fluojs/fluo/commit/efe09b441a9515c431957d759df3a871529494ea) Thanks [@ayden94](https://github.com/ayden94)! - Close internally-created MQTT clients when subscription setup fails during startup or when shutdown unwinds a failed in-flight listen attempt.
+
+- [#2301](https://github.com/fluojs/fluo/pull/2301) [`5b0d418`](https://github.com/fluojs/fluo/commit/5b0d41820b20b59a6311e069daa35d741850424c) Thanks [@ayden94](https://github.com/ayden94)! - Close NATS, RabbitMQ, and Redis Streams microservice transports consistently when listen and close race, preserving shutdown guards and Redis Streams cleanup before surfacing startup failures.
+
+- [#2714](https://github.com/fluojs/fluo/pull/2714) [`62b073c`](https://github.com/fluojs/fluo/commit/62b073c39eb65849d18970a284be99782b2c67c0) Thanks [@ayden94](https://github.com/ayden94)! - Restore gRPC `AbortSignal` listener cleanup when server and bidirectional streams end or error before reader iteration, and keep client, server, and bidirectional cleanup one-shot across terminal and early-return races.
+
+  Migration: no API or configuration changes are required. Existing consumers can keep their current stream usage and rely on abort listeners being detached on every terminal or reader-return path.
+
+- Updated dependencies [[`3fafdff`](https://github.com/fluojs/fluo/commit/3fafdffe85fc15f542844b977d8ca40db5c58439), [`c3bc3d6`](https://github.com/fluojs/fluo/commit/c3bc3d6c45fd08d43dbd28eb0d87f780430d9caa), [`1261d96`](https://github.com/fluojs/fluo/commit/1261d96ecae66576fe26fae0a39f03458307e6a4), [`d7e3a98`](https://github.com/fluojs/fluo/commit/d7e3a981e9edd6ec098af1827b2081c49c5197e7), [`33fac0d`](https://github.com/fluojs/fluo/commit/33fac0de23de4e2585355c914bda0427c8eed100), [`6f75ef9`](https://github.com/fluojs/fluo/commit/6f75ef9636e136459952d273a9a189ef0b8a7b67), [`83e7a7d`](https://github.com/fluojs/fluo/commit/83e7a7ddf75812f88ab65ab280e4f5f94adea3ff), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925), [`ea78a19`](https://github.com/fluojs/fluo/commit/ea78a1985114392a1658509bd7132987dd289942), [`ccb11fa`](https://github.com/fluojs/fluo/commit/ccb11fab16cc3f8db4dd000ca609b0bf544b72c6), [`e8dd36e`](https://github.com/fluojs/fluo/commit/e8dd36e53e1be1bc96f69587cc7d3641ffdf3896)]:
+  - @fluojs/runtime@2.0.0
+  - @fluojs/di@2.0.0
+  - @fluojs/core@1.1.0
+
 ## 1.0.4
 
 ### Patch Changes

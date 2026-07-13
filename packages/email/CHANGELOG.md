@@ -1,5 +1,26 @@
 # @fluojs/email
 
+## [Unreleased]
+
+## 2.0.0
+
+### Patch Changes
+
+- [#2617](https://github.com/fluojs/fluo/pull/2617) [`5c9246c`](https://github.com/fluojs/fluo/commit/5c9246ca684137051d2ac43f92104e2a9cb9fce9) Thanks [@ayden94](https://github.com/ayden94)! - Make repeated and concurrent Email service shutdown calls share one cleanup operation so owned transports close at most once.
+
+- [#2402](https://github.com/fluojs/fluo/pull/2402) [`90f2a82`](https://github.com/fluojs/fluo/commit/90f2a820aadf6bdb5b4da59afee22d84ea86af23) Thanks [@ayden94](https://github.com/ayden94)! - Keep root email status snapshots transport-agnostic by omitting queue worker metadata unless callers provide it explicitly, and add regression coverage for caller-owned shutdown, notification payload forwarding, and lifecycle public exports.
+
+- [#2305](https://github.com/fluojs/fluo/pull/2305) [`df24a8f`](https://github.com/fluojs/fluo/commit/df24a8f2ef4c38bf8ff454e3ed899f181f3a89da) Thanks [@ayden94](https://github.com/ayden94)! - Normalize lazy email transport factory failures so send-triggered initialization rejects with `EmailLifecycleError` and clears rejected transport state before shutdown.
+
+- [#2614](https://github.com/fluojs/fluo/pull/2614) [`3fb32b8`](https://github.com/fluojs/fluo/commit/3fb32b87483f95d9d40203481ce5e967e13a4149) Thanks [@ayden94](https://github.com/ayden94)! - Reject queued notifications whose channel does not match the configured email channel before calling the email transport.
+
+- Updated dependencies [[`3fafdff`](https://github.com/fluojs/fluo/commit/3fafdffe85fc15f542844b977d8ca40db5c58439), [`c3bc3d6`](https://github.com/fluojs/fluo/commit/c3bc3d6c45fd08d43dbd28eb0d87f780430d9caa), [`471c923`](https://github.com/fluojs/fluo/commit/471c92379dcb55946b6ae6b2522f9544a14d9a52), [`1261d96`](https://github.com/fluojs/fluo/commit/1261d96ecae66576fe26fae0a39f03458307e6a4), [`7045978`](https://github.com/fluojs/fluo/commit/7045978594af410de6e14a638205084d3a30b465), [`d7e3a98`](https://github.com/fluojs/fluo/commit/d7e3a981e9edd6ec098af1827b2081c49c5197e7), [`33fac0d`](https://github.com/fluojs/fluo/commit/33fac0de23de4e2585355c914bda0427c8eed100), [`6f75ef9`](https://github.com/fluojs/fluo/commit/6f75ef9636e136459952d273a9a189ef0b8a7b67), [`83e7a7d`](https://github.com/fluojs/fluo/commit/83e7a7ddf75812f88ab65ab280e4f5f94adea3ff), [`a1dcd40`](https://github.com/fluojs/fluo/commit/a1dcd401e72c1a9b15400c0e55b578bb48a32d3b), [`1f8896a`](https://github.com/fluojs/fluo/commit/1f8896a632932d968c988f77dbcdf6629adca81f), [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925), [`ea78a19`](https://github.com/fluojs/fluo/commit/ea78a1985114392a1658509bd7132987dd289942), [`ccb11fa`](https://github.com/fluojs/fluo/commit/ccb11fab16cc3f8db4dd000ca609b0bf544b72c6), [`e8dd36e`](https://github.com/fluojs/fluo/commit/e8dd36e53e1be1bc96f69587cc7d3641ffdf3896)]:
+  - @fluojs/runtime@2.0.0
+  - @fluojs/di@2.0.0
+  - @fluojs/queue@2.0.0
+  - @fluojs/core@1.1.0
+  - @fluojs/notifications@1.0.3
+
 ## 1.0.2
 
 ### Patch Changes
@@ -9,8 +30,6 @@
 - Updated dependencies [[`78a7ade`](https://github.com/fluojs/fluo/commit/78a7adea4a6dc5e5996af6ca1244c789dab377af), [`2fa4902`](https://github.com/fluojs/fluo/commit/2fa490247c329d63d32e6ad8208de380490a0451), [`be3fb55`](https://github.com/fluojs/fluo/commit/be3fb55b02f9fcdae66db5efc29089e87ce409ed)]:
   - @fluojs/notifications@1.0.2
   - @fluojs/runtime@1.1.8
-
-## [Unreleased]
 
 ## 1.0.1
 
