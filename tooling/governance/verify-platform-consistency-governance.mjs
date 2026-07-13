@@ -9,14 +9,20 @@ import {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
 } from './microservices-safety-guidance.mjs';
-import { enforceReactRscGraduationPolicy } from './react-rsc-graduation-policy.mjs';
+import {
+  enforceReactRscGraduationEvidenceUpdates,
+  enforceReactRscGraduationPolicy,
+} from './react-rsc-graduation-policy.mjs';
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 export {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
 } from './microservices-safety-guidance.mjs';
-export { enforceReactRscGraduationPolicy } from './react-rsc-graduation-policy.mjs';
+export {
+  enforceReactRscGraduationEvidenceUpdates,
+  enforceReactRscGraduationPolicy,
+} from './react-rsc-graduation-policy.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDirectory, '..', '..');
@@ -2039,6 +2045,7 @@ export function main() {
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices();
   enforceViteToolingDiscoverability();
   enforceReactClientSubpathContract();
+  enforceReactRscGraduationEvidenceUpdates(changedFiles);
   enforceReactRscGraduationPolicy();
   enforceReactServerFunctionContract();
   enforceHttpCatchAllRouteGrammarDecision();
