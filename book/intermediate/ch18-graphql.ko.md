@@ -8,7 +8,7 @@
 ## Learning Objectives
 - fluo에서 GraphQL을 도입할 때 얻는 구조적 이점을 구분합니다.
 - `GraphqlModule` 설정과 코드 우선 리졸버 등록 방식을 정리합니다.
-- 요청 스코프 DataLoader로 N+1 문제를 줄이는 흐름을 구성합니다.
+- Request-scoped DataLoader로 N+1 문제를 줄이는 object field resolver 흐름을 구성합니다.
 - SSE 기본 구독과 선택적 WebSocket 구독 설정을 확인합니다.
 - 복잡도 제한과 인트로스펙션 제어 같은 운영 가드레일을 적용합니다.
 - FluoShop 제품 카탈로그에 GraphQL을 연결하는 기준을 정리합니다.
@@ -106,7 +106,7 @@ import { ProductResolver } from './product.resolver';
 export class AppModule {}
 ```
 
-## 18.4 Solving N+1 with DataLoaders
+## 18.4 Object Field Resolver와 DataLoader로 N+1 해결하기
 
 N+1 문제는 GraphQL에서 가장 흔하게 나타나는 성능 병목입니다. Fluo는 요청 스코프 **DataLoader** 지원을 제공해 같은 요청 안의 반복 조회를 배치로 묶을 수 있게 합니다.
 
@@ -122,11 +122,11 @@ const authorLoader = createDataLoader(async (ids: string[]) => {
 });
 ```
 
-### 지원되는 Root Resolver에서 Loader 사용하기
+### Object Field Resolver에서 Loader 사용하기
 
 ```typescript
 import { GraphQLObjectType, GraphQLString } from 'graphql';
-import { Arg, type GraphQLContext, Query, Resolver } from '@fluojs/graphql';
+import { Context, FieldResolver, Parent, type GraphQLContext, Query, Resolver } from '@fluojs/graphql';
 
 const AuthorType = new GraphQLObjectType({
   name: 'Author',
@@ -145,27 +145,28 @@ const BookType = new GraphQLObjectType({
   },
 });
 
-class BookInput {
-  @Arg('id')
-  id = '';
+@Resolver()
+export class BookQueryResolver {
+  @Query({ outputType: BookType })
+  async book() {
+    return bookService.findFeatured();
+  }
 }
 
-@Resolver()
-export class BookResolver {
-  @Query({ input: BookInput, outputType: BookType })
-  async book(input: BookInput, context: GraphQLContext) {
-    const book = await bookService.findById(input.id);
-    const author = await authorLoader(context).load(book.authorId);
-
-    return {
-      ...book,
-      author,
-    };
+@Resolver('Book')
+export class BookFieldResolver {
+  @FieldResolver('author')
+  @Parent()
+  @Context()
+  async author(book: { authorId: string }, context: GraphQLContext) {
+    return authorLoader(context).load(book.authorId);
   }
 }
 ```
 
-`authorLoader(context)`는 특정 GraphQL 실행 컨텍스트에 묶인 로더 인스턴스를 반환합니다. 따라서 배치와 캐시는 단일 요청 안에서만 공유됩니다. 이 범위를 지키면 한 사용자의 조회 결과가 다른 요청으로 새어 나가지 않으면서도 N+1 문제를 줄일 수 있습니다. 현재 `@fluojs/graphql`은 `context: GraphQLContext`를 명시적으로 받는 root operation 안에서 DataLoader를 사용하는 패턴만 문서화하며, 런타임 field resolver 부착은 지원하지 않습니다.
+`authorLoader(context)`는 특정 GraphQL 실행 컨텍스트에 묶인 로더 인스턴스를 반환합니다. 따라서 배치와 캐시는 단일 요청 안에서만 공유됩니다. 이 범위를 지키면 한 사용자의 조회 결과가 다른 요청으로 새어 나가지 않으면서도 N+1 문제를 줄일 수 있습니다. 두 resolver class를 모두 module provider로 등록하고 선택적 `resolvers` allowlist에도 둘 다 포함하세요.
+
+`@Parent()`와 `@Context()`는 legacy parameter decorator가 아니라 TC39 표준 method decorator입니다. 기본값은 parent/source object를 method parameter `0`에, `GraphQLContext`를 parameter `1`에 바인딩합니다. Method 순서가 다르면 zero-based index를 명시적으로 전달하세요. 위 `Book` object type은 `author`를 이미 선언하므로 `@FieldResolver('author')`가 기존 field type을 유지합니다. Object type에 없는 field를 추가할 때는 `@FieldResolver({ fieldName: 'author', type: AuthorType })`을 사용합니다.
 
 ## 18.5 Real-time with Subscriptions
 

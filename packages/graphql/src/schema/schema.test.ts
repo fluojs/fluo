@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import type { Container } from '@fluojs/di';
 import {
+  buildSchema,
   GraphQLBoolean,
   GraphQLError,
   GraphQLFloat,
@@ -10,14 +11,11 @@ import {
   GraphQLSchema,
   GraphQLString,
   GraphQLUnionType,
-  buildSchema,
 } from 'graphql';
-
-import type { Container } from '@fluojs/di';
-
-import { createCodeFirstSchema } from './schema.js';
-import { listOf } from '../types.js';
+import { describe, expect, it } from 'vitest';
 import type { ResolverDescriptor } from '../types.js';
+import { listOf } from '../types.js';
+import { createCodeFirstSchema } from './schema.js';
 
 const deps = {
   GraphQLBoolean,
@@ -55,6 +53,7 @@ function makeDescriptor(
         methodKey: 'resolve',
         methodName: 'resolve',
         outputType: options?.outputType,
+        parameterBindings: [],
         type: options?.type ?? 'query',
       },
     ],
@@ -82,11 +81,15 @@ describe('createCodeFirstSchema – duplicate fieldName detection', () => {
     const descriptors: ResolverDescriptor[] = [
       {
         ...makeDescriptor('MutationA', 'createUser'),
-        handlers: [{ argFields: [], fieldName: 'createUser', methodKey: 'exec', methodName: 'exec', type: 'mutation' }],
+        handlers: [
+          { argFields: [], fieldName: 'createUser', methodKey: 'exec', methodName: 'exec', parameterBindings: [], type: 'mutation' },
+        ],
       },
       {
         ...makeDescriptor('MutationB', 'createUser'),
-        handlers: [{ argFields: [], fieldName: 'createUser', methodKey: 'exec', methodName: 'exec', type: 'mutation' }],
+        handlers: [
+          { argFields: [], fieldName: 'createUser', methodKey: 'exec', methodName: 'exec', parameterBindings: [], type: 'mutation' },
+        ],
       },
     ];
 

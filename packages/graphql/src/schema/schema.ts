@@ -1,32 +1,33 @@
-import type { Container } from '@fluojs/di';
 import type { MetadataPropertyKey } from '@fluojs/core';
+import type { Container } from '@fluojs/di';
+import { DtoValidationError } from '@fluojs/validation';
 import type {
-  GraphQLFieldConfigMap,
-  GraphQLFieldConfig,
   GraphQLError as GraphQLErrorType,
+  GraphQLFieldConfig,
   GraphQLFieldConfigArgumentMap,
+  GraphQLFieldConfigMap,
   GraphQLInputType,
   GraphQLList as GraphQLListType,
   GraphQLObjectType as GraphQLObjectTypeType,
   GraphQLOutputType,
-  GraphQLSchema as GraphQLSchemaType,
   GraphQLScalarType,
+  GraphQLSchema as GraphQLSchemaType,
   GraphQLUnionType as GraphQLUnionTypeType,
 } from 'graphql';
-import { DtoValidationError } from '@fluojs/validation';
 
 import { createGraphqlInput, resolveArgType, resolveOutputType } from '../pipeline/input-pipeline.js';
 import {
   GRAPHQL_OPERATION_CONTAINER,
-  isGraphqlListTypeRef,
   type GraphQLContext,
   type GraphqlArgType,
   type GraphqlRootOutputNamedType,
   type GraphqlScalarTypeName,
+  isGraphqlListTypeRef,
   type ResolverDescriptor,
   type ResolverHandlerDescriptor,
   type ResolverHandlerType,
 } from '../types.js';
+import { ObjectFieldResolverRegistry } from './object-field-resolvers.js';
 
 type YogaGraphqlDeps = {
   GraphQLError: typeof GraphQLErrorType;
@@ -42,6 +43,19 @@ type YogaGraphqlDeps = {
   buildSchema: (source: string) => GraphQLSchemaType;
   createGraphQLError: (message: string, options: { extensions?: Record<string, unknown> }) => GraphQLErrorType;
 };
+
+type ObjectFieldTransformer = (
+  typeName: string,
+  fields: GraphQLFieldConfigMap<unknown, GraphQLContext>,
+) => GraphQLFieldConfigMap<unknown, GraphQLContext>;
+
+type ResolverInvoker = (
+  descriptor: ResolverDescriptor,
+  handler: ResolverHandlerDescriptor,
+  args: Record<string, unknown>,
+  contextValue: GraphQLContext,
+  source?: unknown,
+) => Promise<unknown>;
 
 function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
   return typeof value === 'object' && value !== null && Symbol.asyncIterator in value;
@@ -92,6 +106,7 @@ function normalizeObjectOutputType(
   deps: YogaGraphqlDeps,
   outputTypeCache: Map<string, GraphQLOutputType>,
   outputType: GraphQLObjectTypeType,
+  transformObjectFields: ObjectFieldTransformer,
 ): GraphQLOutputType {
   const outputTypeName = outputType.name;
   const cached = outputTypeCache.get(outputTypeName);
@@ -116,7 +131,7 @@ function normalizeObjectOutputType(
 
   const normalized = new deps.GraphQLObjectType({
     ...config,
-    fields: clonedFields,
+    fields: transformObjectFields(outputTypeName, clonedFields),
   });
   outputTypeCache.set(outputTypeName, normalized);
 
@@ -127,6 +142,7 @@ function normalizeUnionOutputType(
   deps: YogaGraphqlDeps,
   outputTypeCache: Map<string, GraphQLOutputType>,
   outputType: GraphQLUnionTypeType,
+  transformObjectFields: ObjectFieldTransformer,
 ): GraphQLOutputType {
   const outputTypeName = outputType.name;
   const cached = outputTypeCache.get(outputTypeName);
@@ -135,7 +151,9 @@ function normalizeUnionOutputType(
   }
 
   const config = outputType.toConfig();
-  const normalizedTypes = config.types.map((itemType) => normalizeObjectOutputType(deps, outputTypeCache, itemType));
+  const normalizedTypes = config.types.map((itemType) =>
+    normalizeObjectOutputType(deps, outputTypeCache, itemType, transformObjectFields),
+  );
   const normalizedTypeByName = new Set(
     normalizedTypes
       .map((itemType) => (itemType as { name?: unknown }).name)
@@ -186,6 +204,7 @@ function resolveNamedRootOutputType(
   outputTypeCache: Map<string, GraphQLOutputType>,
   markAllowedCrossRealmGraphqlObjects: (value: unknown) => void,
   outputRef: GraphqlRootOutputNamedType,
+  transformObjectFields: ObjectFieldTransformer,
 ): GraphQLOutputType {
   if (typeof outputRef === 'string') {
     return scalarByName(deps, outputRef as GraphqlScalarTypeName);
@@ -193,10 +212,10 @@ function resolveNamedRootOutputType(
 
   markAllowedCrossRealmGraphqlObjects(outputRef);
   if (isUnionOutputType(outputRef)) {
-    return normalizeUnionOutputType(deps, outputTypeCache, outputRef);
+    return normalizeUnionOutputType(deps, outputTypeCache, outputRef, transformObjectFields);
   }
 
-  return normalizeObjectOutputType(deps, outputTypeCache, outputRef);
+  return normalizeObjectOutputType(deps, outputTypeCache, outputRef, transformObjectFields);
 }
 
 function resolveRootOutputType(
@@ -204,6 +223,7 @@ function resolveRootOutputType(
   outputTypeCache: Map<string, GraphQLOutputType>,
   markAllowedCrossRealmGraphqlObjects: (value: unknown) => void,
   outputRef: ReturnType<typeof resolveOutputType>,
+  transformObjectFields: ObjectFieldTransformer,
 ): GraphQLOutputType {
   if (isGraphqlListTypeRef(outputRef)) {
     const listItemType = resolveNamedRootOutputType(
@@ -211,11 +231,18 @@ function resolveRootOutputType(
       outputTypeCache,
       markAllowedCrossRealmGraphqlObjects,
       outputRef.ofType as GraphqlRootOutputNamedType,
+      transformObjectFields,
     );
     return new deps.GraphQLList(listItemType);
   }
 
-  return resolveNamedRootOutputType(deps, outputTypeCache, markAllowedCrossRealmGraphqlObjects, outputRef);
+  return resolveNamedRootOutputType(
+    deps,
+    outputTypeCache,
+    markAllowedCrossRealmGraphqlObjects,
+    outputRef,
+    transformObjectFields,
+  );
 }
 
 function createFieldArgs(deps: YogaGraphqlDeps, handler: ResolverHandlerDescriptor) {
@@ -234,12 +261,7 @@ function createSubscriptionField(
   handler: ResolverHandlerDescriptor,
   args: GraphQLFieldConfigArgumentMap,
   outputType: GraphQLOutputType,
-  invokeResolver: (
-    descriptor: ResolverDescriptor,
-    handler: ResolverHandlerDescriptor,
-    args: Record<string, unknown>,
-    contextValue: GraphQLContext,
-  ) => Promise<unknown>,
+  invokeResolver: ResolverInvoker,
 ) {
   return {
     args,
@@ -268,12 +290,7 @@ function createOperationField(
   handler: ResolverHandlerDescriptor,
   args: GraphQLFieldConfigArgumentMap,
   outputType: GraphQLOutputType,
-  invokeResolver: (
-    descriptor: ResolverDescriptor,
-    handler: ResolverHandlerDescriptor,
-    args: Record<string, unknown>,
-    contextValue: GraphQLContext,
-  ) => Promise<unknown>,
+  invokeResolver: ResolverInvoker,
 ) {
   return {
     args,
@@ -292,12 +309,8 @@ function pickFieldsByType(
   handlerType: ResolverHandlerType,
   markAllowedCrossRealmGraphqlObjects: (value: unknown) => void,
   outputTypeCache: Map<string, GraphQLOutputType>,
-  invokeResolver: (
-    descriptor: ResolverDescriptor,
-    handler: ResolverHandlerDescriptor,
-    args: Record<string, unknown>,
-    contextValue: GraphQLContext,
-  ) => Promise<unknown>,
+  transformObjectFields: ObjectFieldTransformer,
+  invokeResolver: ResolverInvoker,
 ): GraphQLFieldConfigMap<unknown, GraphQLContext> {
   const fields: GraphQLFieldConfigMap<unknown, GraphQLContext> = {};
 
@@ -310,7 +323,13 @@ function pickFieldsByType(
       const args = createFieldArgs(deps, handler);
 
       const outputRef = resolveOutputType(handler);
-      const outputType = resolveRootOutputType(deps, outputTypeCache, markAllowedCrossRealmGraphqlObjects, outputRef);
+      const outputType = resolveRootOutputType(
+        deps,
+        outputTypeCache,
+        markAllowedCrossRealmGraphqlObjects,
+        outputRef,
+        transformObjectFields,
+      );
 
       if (Object.hasOwn(fields, handler.fieldName)) {
         throw new Error(
@@ -381,37 +400,37 @@ function resolveResolverMethod(
   instance: unknown,
   descriptor: ResolverDescriptor,
   handler: ResolverHandlerDescriptor,
-): (this: unknown, input: unknown, contextValue: GraphQLContext) => unknown {
+): (this: unknown, ...args: unknown[]) => unknown {
   const value = (instance as Record<MetadataPropertyKey, unknown>)[handler.methodKey];
 
   if (typeof value !== 'function') {
     throw new Error(`Resolver handler ${descriptor.targetName}.${handler.methodName} is not callable.`);
   }
 
-  return value as (this: unknown, input: unknown, contextValue: GraphQLContext) => unknown;
+  return value as (this: unknown, ...args: unknown[]) => unknown;
 }
 
 function createResolverInvoker(
   deps: YogaGraphqlDeps,
   runtimeContainer: Container,
   markAllowedCrossRealmGraphqlObjects: (value: unknown) => void,
-): (
-  descriptor: ResolverDescriptor,
-  handler: ResolverHandlerDescriptor,
-  args: Record<string, unknown>,
-  contextValue: GraphQLContext,
-) => Promise<unknown> {
+  objectFieldResolvers: ObjectFieldResolverRegistry,
+): ResolverInvoker {
   return async (
     descriptor: ResolverDescriptor,
     handler: ResolverHandlerDescriptor,
     args: Record<string, unknown>,
     contextValue: GraphQLContext,
+    source?: unknown,
   ): Promise<unknown> => {
     if (descriptor.scope === 'singleton') {
       const instance = await runtimeContainer.resolve(descriptor.token);
       const resolverMethod = resolveResolverMethod(instance, descriptor, handler);
-      const input = await createResolverInput(deps, handler, args, markAllowedCrossRealmGraphqlObjects);
-      return resolverMethod.call(instance, input, contextValue);
+      const methodArguments =
+        handler.type === 'field'
+          ? objectFieldResolvers.createMethodArguments(handler, source, contextValue)
+          : [await createResolverInput(deps, handler, args, markAllowedCrossRealmGraphqlObjects), contextValue];
+      return resolverMethod.call(instance, ...methodArguments);
     }
 
     const operationContainer = contextValue[GRAPHQL_OPERATION_CONTAINER] ?? runtimeContainer.createRequestScope();
@@ -420,8 +439,11 @@ function createResolverInvoker(
     try {
       const instance = await operationContainer.resolve(descriptor.token);
       const resolverMethod = resolveResolverMethod(instance, descriptor, handler);
-      const input = await createResolverInput(deps, handler, args, markAllowedCrossRealmGraphqlObjects);
-      return await resolverMethod.call(instance, input, contextValue);
+      const methodArguments =
+        handler.type === 'field'
+          ? objectFieldResolvers.createMethodArguments(handler, source, contextValue)
+          : [await createResolverInput(deps, handler, args, markAllowedCrossRealmGraphqlObjects), contextValue];
+      return await resolverMethod.call(instance, ...methodArguments);
     } finally {
       if (disposeOperationContainer) {
         await operationContainer.dispose();
@@ -513,8 +535,33 @@ export function createCodeFirstSchema(
     throw new Error('GraphQL module requires either schema or at least one resolver decorated with @Resolver().');
   }
 
-  const invokeResolver = createResolverInvoker(deps, runtimeContainer, markAllowedCrossRealmGraphqlObjects);
+  const objectFieldResolvers = new ObjectFieldResolverRegistry(resolverDescriptors);
+  const invokeResolver = createResolverInvoker(
+    deps,
+    runtimeContainer,
+    markAllowedCrossRealmGraphqlObjects,
+    objectFieldResolvers,
+  );
   const outputTypeCache = new Map<string, GraphQLOutputType>();
+
+  function attachObjectFieldResolvers(
+    typeName: string,
+    fields: GraphQLFieldConfigMap<unknown, GraphQLContext>,
+  ): GraphQLFieldConfigMap<unknown, GraphQLContext> {
+    return objectFieldResolvers.attach(
+      typeName,
+      fields,
+      (outputType) =>
+        resolveRootOutputType(
+          deps,
+          outputTypeCache,
+          markAllowedCrossRealmGraphqlObjects,
+          outputType,
+          attachObjectFieldResolvers,
+        ),
+      (descriptor, handler, source, contextValue) => invokeResolver(descriptor, handler, {}, contextValue, source),
+    );
+  }
 
   const queryFields = pickFieldsByType(
     deps,
@@ -522,6 +569,7 @@ export function createCodeFirstSchema(
     'query',
     markAllowedCrossRealmGraphqlObjects,
     outputTypeCache,
+    attachObjectFieldResolvers,
     invokeResolver,
   );
   const mutationFields = pickFieldsByType(
@@ -530,6 +578,7 @@ export function createCodeFirstSchema(
     'mutation',
     markAllowedCrossRealmGraphqlObjects,
     outputTypeCache,
+    attachObjectFieldResolvers,
     invokeResolver,
   );
   const subscriptionFields = pickFieldsByType(
@@ -538,8 +587,11 @@ export function createCodeFirstSchema(
     'subscription',
     markAllowedCrossRealmGraphqlObjects,
     outputTypeCache,
+    attachObjectFieldResolvers,
     invokeResolver,
   );
+
+  objectFieldResolvers.assertAllTargetsAttached();
 
   const queryType = createQueryRootType(deps, queryFields);
   const mutationType = createOptionalRootType(deps, 'Mutation', mutationFields);
