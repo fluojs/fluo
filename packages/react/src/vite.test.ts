@@ -121,6 +121,43 @@ describe('@fluojs/react/vite asset manifest integration', () => {
     });
   });
 
+  it('preserves relative manifest URLs when Vite base is explicitly empty', () => {
+    // Given: a Vite manifest from a relative-base deployment.
+    const result = createReactViteAssetManifest({
+      base: '',
+      entries: {
+        client: 'src/entry-client.tsx',
+        server: 'src/entry-server.tsx',
+      },
+      manifest: viteManifest,
+    });
+
+    // When: the manifest is accepted.
+    expect(result.ok).toBe(true);
+
+    if (!result.ok) {
+      return;
+    }
+
+    // Then: explicit empty base keeps relative files relative instead of root-relative.
+    expect(result.manifest.css).toEqual([
+      'assets/vendor.123.css',
+      'assets/theme.123.css',
+      'assets/client.123.css',
+    ]);
+    expect(result.manifest.js.modules).toEqual([
+      'assets/vendor.123.js',
+      'assets/theme.123.js',
+      'assets/client.123.js',
+    ]);
+    expect(result.manifest.assetMap['src/entry-client.tsx']).toBe('assets/client.123.js');
+    expect(result.manifest.hydrationOptions.bootstrapModules).toEqual([
+      'assets/vendor.123.js',
+      'assets/theme.123.js',
+      'assets/client.123.js',
+    ]);
+  });
+
   it('reports malformed manifests and unsupported output shapes', () => {
     // Given: malformed entry fields and a CSS-only client output shape.
     const malformedResult = createReactViteAssetManifest({

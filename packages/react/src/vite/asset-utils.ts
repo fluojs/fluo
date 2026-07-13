@@ -51,8 +51,12 @@ export function collectDependencyGraph(
 }
 
 function normalizeBase(base: string | undefined): string {
-  if (base === undefined || base === '') {
+  if (base === undefined) {
     return '/';
+  }
+
+  if (base === '') {
+    return '';
   }
 
   return base.endsWith('/') ? base : `${base}/`;
