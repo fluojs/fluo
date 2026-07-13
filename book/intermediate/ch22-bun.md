@@ -52,22 +52,26 @@ async function bootstrap() {
   const runtimeConfig = {
     development: false, // derive this from your application config boundary
   };
+  const hostname = '127.0.0.1';
+  const port = 3000;
 
   const adapter = createBunAdapter({ 
-    port: 3000,
+    port,
     // Bun-specific options
-    hostname: '0.0.0.0',
+    hostname,
     development: runtimeConfig.development
   });
 
   const app = await fluoFactory.create(AppModule, { adapter });
   
   await app.listen();
-  console.log(`FluoShop running on Bun at ${await app.getUrl()}`);
+  console.log(`FluoShop running on Bun at http://${hostname}:${port}`);
 }
 
 bootstrap();
 ```
+
+`Application` owns the framework lifecycle, not listener URL discovery. Because this example configures a fixed hostname and port, it can report that address directly. Infrastructure code that uses an OS-assigned port can instead retain a concrete `BunHttpApplicationAdapter` and read its documented `getListenTarget()` after `listen()` completes.
 
 For a terminal-style entrypoint, `runBunApplication(...)` combines bootstrap, `listen()`, startup logging, and optional `SIGINT`/`SIGTERM` wiring. Signal-driven shutdown reports timeout or close failures through the application logger and `process.exitCode`; the surrounding Bun host still owns final process termination.
 
