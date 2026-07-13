@@ -7,6 +7,7 @@ import {
   collectDirectProcessEnvViolations,
   collectNodeGlobalBufferViolations,
   enforceCloudflareWorkersLifecycleDocsSync,
+  enforceExpressRuntimeMigrationDocsSync,
   enforceGraphqlRuntimeBoundaryDiscoverability,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
@@ -216,6 +217,55 @@ describe('enforceCloudflareWorkersLifecycleDocsSync', () => {
     expect(() => enforceCloudflareWorkersLifecycleDocsSync(() => '')).toThrowError(
       /packages\/platform-cloudflare-workers\/README\.md/,
     );
+  });
+});
+
+describe('enforceExpressRuntimeMigrationDocsSync', () => {
+  it('reports the governed surface when Express runtime or migration guidance drifts', () => {
+    expect(() => enforceExpressRuntimeMigrationDocsSync(() => '')).toThrowError(
+      /packages\/platform-express\/README\.md/,
+    );
+  });
+
+  it('rejects drift between the Express factory public type and concrete adapter construction', () => {
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      if (relativePath !== 'packages/platform-express/src/adapter.ts') {
+        return content;
+      }
+
+      return content.replace(
+        '): HttpApplicationAdapter {\n  return new ExpressHttpApplicationAdapter(',
+        '): ExpressHttpApplicationAdapter {\n  return new ExpressHttpApplicationAdapter(',
+      );
+    };
+
+    expect(() => enforceExpressRuntimeMigrationDocsSync(readText)).toThrowError(
+      /packages\/platform-express\/src\/adapter\.ts/,
+    );
+  });
+
+  it('rejects getListenTarget examples without concrete Express adapter narrowing', () => {
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      if (relativePath !== 'book/intermediate/ch21-express-node.md') {
+        return content;
+      }
+
+      const invalidExample = content.replace('adapter instanceof ExpressHttpApplicationAdapter', 'adapter');
+
+      return `${invalidExample}\n<!-- adapter instanceof ExpressHttpApplicationAdapter; adapter.getListenTarget() -->\n`;
+    };
+
+    expect(() => enforceExpressRuntimeMigrationDocsSync(readText)).toThrowError(
+      /book\/intermediate\/ch21-express-node\.md/,
+    );
+  });
+
+  it('accepts the synchronized Express runtime and migration guidance', () => {
+    expect(() => enforceExpressRuntimeMigrationDocsSync()).not.toThrow();
   });
 });
 
