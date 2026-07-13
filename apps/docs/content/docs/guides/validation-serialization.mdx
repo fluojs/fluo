@@ -159,12 +159,12 @@ class CreateUserDto {
   @ValidateNested(() => AddressDto)
   address = new AddressDto();
 
-  @ValidateNested(() => AddressDto, { each: true })
+  @ValidateNested(() => AddressDto)
   previousAddresses: AddressDto[] = [];
 }
 ```
 
-Nested validation supports object fields, arrays, `Set`, and `Map`. Cycles are detected safely, and shared references are allowed.
+Nested validation supports object fields, arrays, `Set`, and `Map`. Collection members are traversed automatically without `each: true`. Cycles are detected safely, and shared references are allowed.
 
 ### No implicit scalar coercion
 
