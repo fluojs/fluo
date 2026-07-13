@@ -73,6 +73,12 @@ Write your business logic once and deploy it across various transports. Supports
 ### Pattern-Based Routing
 Use `@MessagePattern` for request-response flows and `@EventPattern` for fire-and-forget event broadcasting. Patterns support string matching and regular expressions.
 
+### Handler Discovery and Decorator Model
+
+`@MessagePattern`, `@EventPattern`, and the streaming pattern decorators are TC39 standard method decorators. They write routing data through the standard decorator context; they do not consume `reflect-metadata`, `experimentalDecorators`, or `emitDecoratorMetadata` output.
+
+A decorated method becomes discoverable only when its owning class is explicitly listed in a compiled module's `providers` or `controllers`. Discovery resolves that registered token as an instance and invokes the decorated public instance method. Private and static targets are rejected, while importing or decorating a class without module registration does not register a handler.
+
 ### Advanced gRPC Streaming
 First-party support for all gRPC streaming modes: Server-side, Client-side, and Bidirectional streaming using `@ServerStreamPattern`, `@ClientStreamPattern`, and `@BidiStreamPattern`.
 
