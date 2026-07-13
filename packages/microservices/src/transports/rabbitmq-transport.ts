@@ -94,9 +94,7 @@ export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
 
       try {
         for (const queue of queues) {
-          await this.options.consumer.consume(queue, (message) => {
-            void this.handleInboundMessage(message).catch(() => undefined);
-          });
+          await this.options.consumer.consume(queue, (message) => this.handleInboundMessage(message));
 
           this.subscribedQueues.add(queue);
         }
@@ -357,20 +355,15 @@ export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
       ? message.replyTo
       : this.responseQueue;
 
+    let payload: unknown;
+
     try {
-      const payload = await this.handler({
+      payload = await this.handler({
         kind: 'message',
         pattern: message.pattern,
         payload: message.payload,
         requestId: message.requestId,
       });
-
-      await this.options.publisher.publish(replyQueue, JSON.stringify({
-        kind: 'response',
-        pattern: message.pattern,
-        payload,
-        requestId: message.requestId,
-      } satisfies RabbitMqTransportMessage));
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unhandled microservice error';
 
@@ -380,7 +373,15 @@ export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
         pattern: message.pattern,
         requestId: message.requestId,
       } satisfies RabbitMqTransportMessage));
+      return;
     }
+
+    await this.options.publisher.publish(replyQueue, JSON.stringify({
+      kind: 'response',
+      pattern: message.pattern,
+      payload,
+      requestId: message.requestId,
+    } satisfies RabbitMqTransportMessage));
   }
 
   private handleResponse(message: RabbitMqTransportMessage): void {
