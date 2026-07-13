@@ -9,12 +9,18 @@ import {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
 } from './microservices-safety-guidance.mjs';
+import { enforceReactRscGraduationGovernance } from './react-rsc-graduation-policy.mjs';
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 export {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
 } from './microservices-safety-guidance.mjs';
+export {
+  enforceReactRscGraduationEvidenceUpdates,
+  enforceReactRscGraduationGovernance,
+  enforceReactRscGraduationPolicy,
+} from './react-rsc-graduation-policy.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDirectory, '..', '..');
@@ -27,6 +33,7 @@ const ssotPairs = [
   ['docs/architecture/platform-consistency-design.md', 'docs/architecture/platform-consistency-design.ko.md'],
   ['docs/contracts/behavioral-contract-policy.md', 'docs/contracts/behavioral-contract-policy.ko.md'],
   ['docs/contracts/public-export-tsdoc-baseline.md', 'docs/contracts/public-export-tsdoc-baseline.ko.md'],
+  ['docs/contracts/react-rsc-graduation.md', 'docs/contracts/react-rsc-graduation.ko.md'],
   ['docs/contracts/release-governance.md', 'docs/contracts/release-governance.ko.md'],
   ['docs/contracts/platform-conformance-authoring-checklist.md', 'docs/contracts/platform-conformance-authoring-checklist.ko.md'],
   ['docs/reference/package-folder-structure.md', 'docs/reference/package-folder-structure.ko.md'],
@@ -42,6 +49,8 @@ const contractGateTriggers = new Set([
   'docs/contracts/behavioral-contract-policy.ko.md',
   'docs/contracts/public-export-tsdoc-baseline.md',
   'docs/contracts/public-export-tsdoc-baseline.ko.md',
+  'docs/contracts/react-rsc-graduation.md',
+  'docs/contracts/react-rsc-graduation.ko.md',
   'docs/contracts/release-governance.md',
   'docs/contracts/release-governance.ko.md',
   'docs/contracts/platform-conformance-authoring-checklist.md',
@@ -2035,6 +2044,7 @@ export function main() {
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices();
   enforceViteToolingDiscoverability();
   enforceReactClientSubpathContract();
+  enforceReactRscGraduationGovernance(changedFiles);
   enforceReactServerFunctionContract();
   enforceHttpCatchAllRouteGrammarDecision();
   enforceGraphqlRuntimeBoundaryDiscoverability();

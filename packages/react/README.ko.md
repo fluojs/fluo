@@ -19,6 +19,7 @@ fluo 애플리케이션을 위한 런타임 중립 React 통합입니다.
 - [Client Navigation Runtime](#client-navigation-runtime)
 - [Experimental RSC Prototype](#experimental-rsc-prototype)
 - [Experimental Server Functions](#experimental-server-functions)
+- [RSC Graduation Policy](#rsc-graduation-policy)
 - [현재 제한 사항](#현재-제한-사항)
 - [Public API](#public-api)
 - [관련 패키지](#관련-패키지)
@@ -596,6 +597,21 @@ Transport security contract는 의도적으로 명시적입니다.
 이 prototype은 `"use server"` scan, module transform, export discovery, reference 자동 생성, action id 암호화,
 database mutation convention을 제공하지 않습니다. Stable root와 `@fluojs/react/client`는 모든 Server
 Function code에서 계속 격리됩니다.
+
+## RSC Graduation Policy
+
+`@fluojs/react/rsc`는 현재 export되지 않습니다. Canonical
+[React RSC graduation policy](../../docs/contracts/react-rsc-graduation.ko.md)는 experimental API를
+안정화하기 전에 필요한 evidence를 기록합니다. 여기에는 exact React/renderer compatibility, versioned
+manifest 및 Server Function transport contract, browser/server bundle separation, SSR/CSR/prerendering
+behavior, hydration mismatch 및 error recovery, private/auth/cookie-bearing data의 safe transfer rule,
+HTTP route ownership, #2506 navigation isolation, executable runtime/bundler coverage, bilingual docs,
+Changesets release evidence가 포함됩니다.
+
+모든 gate가 승인되면 `@fluojs/react/rsc`가 canonical implementation이 되고
+`@fluojs/react/experimental/rsc`는 문서화된 deprecation window 동안 테스트되는 re-export로 남습니다.
+Stable package root는 계속 RSC-free입니다. 현재 정책은 graduation을 blocked로 표시하므로 이 문서 변경은
+stable subpath를 추가하지 않고 deprecation window도 시작하지 않습니다.
 
 ## 현재 제한 사항
 

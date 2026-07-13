@@ -29,6 +29,15 @@ export function enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices(
   readSource?: (relativePath: string) => string,
 ): void;
 export function enforceReactClientSubpathContract(): void;
+export function enforceReactRscGraduationEvidenceUpdates(
+  changedFiles: readonly string[],
+  readText?: (relativePath: string) => string,
+): void;
+export function enforceReactRscGraduationGovernance(
+  changedFiles: readonly string[],
+  readText?: (relativePath: string) => string,
+): void;
+export function enforceReactRscGraduationPolicy(readText?: (relativePath: string) => string): void;
 export function enforceReactServerFunctionContract(): void;
 export function enforceHttpCatchAllRouteGrammarDecision(): void;
 export function enforceCloudflareWorkersLifecycleDocsSync(

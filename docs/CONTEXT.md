@@ -146,6 +146,16 @@ The Cron NestJS migration surfaces record that NestJS `timeZone` becomes fluo `t
 
 [`docs/architecture/http-catch-all-route-grammar.md`](./architecture/http-catch-all-route-grammar.md) defers catch-all adoption. `@fluojs/http` continues to accept only literal and full-segment `:param` route segments, while `@fluojs/react/client` real anchors provide ordinary full-document fallback to explicit server routes without creating a client route grammar. Reconsideration requires an HTTP-owned syntax, `static > param > catch-all` ordering, string params, OpenAPI policy, adapter parity, native fast path decisions, and performance evidence.
 
+## React RSC Graduation Gate
+
+The canonical [React RSC graduation policy](./contracts/react-rsc-graduation.md) keeps
+`@fluojs/react/rsc` unavailable until maintainer-approved evidence covers React/renderer stability,
+manifest and Server Function transport compatibility, browser/server separation,
+SSR/CSR/prerendering, hydration mismatch recovery, safe transfer rules, HTTP route and #2506
+navigation ownership, dual-import tests, bilingual docs, and Changesets intent. Graduation does not
+add a stable root RSC export. After approval, `@fluojs/react/experimental/rsc` remains a tested
+re-export for the documented deprecation window.
+
 ## File Structure
 
 | Path | Role |
