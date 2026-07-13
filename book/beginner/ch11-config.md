@@ -87,6 +87,10 @@ import { ConfigModule } from '@fluojs/config';
     ConfigModule.forRoot({
       // Environment file path
       envFile: '.env',
+      // Explicit application-boundary snapshot; ambient process.env is not scanned.
+      processEnv: {
+        PORT: process.env.PORT,
+      },
       // Reasonable defaults for local development
       defaults: {
         PORT: 3000,
@@ -141,23 +145,26 @@ The DI-based approach also prevents hidden dependencies. In legacy apps, `proces
 
 Once registration is complete, the Module handles configuration loading, while application code reads values through `ConfigService`. Separating these roles keeps business code from being pulled into configuration loading details, so it can focus only on using the values it needs.
 
-### Injecting the Service
-In the bootstrap logic, `main.ts`, you can use the service configuration to decide which port to listen on.
+### Adapter-First Bootstrap and Service Availability
+The HTTP adapter must exist before `FluoFactory.create(...)` can build the application container, so `ConfigService` cannot choose the adapter's port after creation. Parse that adapter input at the application entrypoint, pass the adapter explicitly, and call `listen()` without a port. Providers can resolve `ConfigService` after the application has been created.
 
 ```typescript
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
-import { ConfigService } from '@fluojs/config';
+import { z } from 'zod';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await FluoFactory.create(AppModule);
-  
-  const config = app.get(ConfigService);
-  const port = config.get('PORT');
-  
-  await app.listen(port);
+  const port = z.coerce.number().int().min(1).max(65_535).default(3000).parse(process.env.PORT);
+  const app = await FluoFactory.create(AppModule, {
+    adapter: createFastifyAdapter({ port }),
+  });
+
+  await app.listen();
 }
 ```
+
+This entrypoint read is an application-boundary operation, not permission for package or business code to read `process.env`. Keep `ConfigModule.forRoot({ processEnv, schema })` as the application configuration contract, and use the same validation rules for values that must be available before the container exists. Async secret stores or namespaced configuration factories must also finish at this boundary before module registration and adapter construction.
 
 Inside a service or Controller, use it like this.
 

@@ -4,6 +4,7 @@ import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
+import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs.mjs';
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 
@@ -1595,6 +1596,7 @@ export function main() {
   enforceCanonicalPackageSurfaceSync();
   enforceDocsHubOfficialTransportLinks();
   enforceCloudflareWorkersLifecycleDocsSync();
+  enforceConfigNestjsMigrationDocs();
   enforceCanonicalRuntimeMatrixReferences();
   enforceRemovedRuntimeFactoryNamesNotUsedInDocs();
   enforceNoDirectProcessEnvInOrdinaryPackageSource();

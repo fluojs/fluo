@@ -16,6 +16,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 | `@Get()`, `@Post()`, other route decorators | `@Get()`, `@Post()`, other route decorators from `@fluojs/http` | HTTP route decoration remains method-based. |
 | `@Sse()` | `@Sse()` from `@fluojs/http` with `SseResponse` for manual streams or `AsyncIterable` for managed streams | fluo maps `@Sse()` to a `GET` route with `text/event-stream` metadata. It can convert `AsyncIterable` values into SSE frames, while NestJS `Observable` return values must still be rewritten to `SseResponse` or an async iterable. |
 | `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` from `@fluojs/runtime` | Bootstrap requires an explicit platform adapter such as `createFastifyAdapter()`. |
+| `@nestjs/config` `ConfigModule.forRoot(...)`, `forRootAsync(...)`, `load`, `validate`, and `isGlobal` | `ConfigModule.forRoot({ processEnv, schema, global? })` from `@fluojs/config` | fluo registration is synchronous: pass an explicit `processEnv` snapshot, use a synchronous Standard Schema validator, and use `global?: boolean` (`true` by default) for visibility. Resolve async or namespaced inputs at the application bootstrap boundary before module registration, then construct the required HTTP adapter from already validated bootstrap inputs before calling `FluoFactory.create(AppModule, { adapter })`. |
 | NestJS HTTP server lifecycle hooks or late WebSocket server mutation when moving to Cloudflare Workers | `@fluojs/platform-cloudflare-workers` plus `CloudflareWorkersWebSocketModule.forRoot()` from `@fluojs/websockets/cloudflare-workers` | Workers expose a host-owned `fetch(request, env, ctx)` boundary rather than a server socket. `listen()` only binds the fluo dispatcher; register the Worker WebSocket module in the application graph so bootstrap configures its binding before that listen boundary. Each accepted request is tracked through `ctx.waitUntil(...)`, and Worker `env` bindings remain application-owned inputs that must be mapped into explicit providers or `@fluojs/config`. |
 | `@Injectable()` provider marker | provider class or provider definition listed in `@Module(...).providers` | fluo does not use `@Injectable()` as a required provider registration step. |
 | constructor type reflection via `emitDecoratorMetadata` | `@Inject(TokenA, TokenB)` from `@fluojs/core` | Constructor dependencies are declared explicitly in decorator argument order. |
@@ -53,6 +54,8 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - NestJS property injection MUST become constructor injection. Put `@Inject(TokenA, TokenB)` on the class and keep its Token order aligned with the constructor parameters; do not attach `@Inject(...)` to properties or parameters.
 - NestJS Module `forwardRef(...)` has no fluo equivalent. Break Module import cycles by extracting shared Providers into a separate Module or package. fluo's `forwardRef(...)` only defers lookup for one dependency Token in class-level `@Inject(...)` or Provider `inject`; it does not resolve Module cycles or true constructor cycles.
 - Bootstrap is adapter-first. `FluoFactory.create(...)` REQUIRES an `adapter` option instead of selecting the HTTP platform implicitly.
+- `@nestjs/config` migration is not an async Dynamic Module or namespace-loader clone. `@fluojs/config` exposes synchronous `ConfigModule.forRoot(...)`; pass ambient process values through the explicit `processEnv` option, validate the merged snapshot with a synchronous Standard Schema `schema`, and use `global?: boolean` with default global visibility instead of NestJS `isGlobal`. Fetch remote secrets and expand NestJS `load` namespaces at the application bootstrap boundary before module graph construction, then pass final flat values through `processEnv`, `defaults`, or `runtimeOverrides`.
+- Configuration registration does not remove the adapter-first bootstrap boundary. `FluoFactory.create(AppModule, { adapter })` needs an already constructed adapter before `ConfigService` is available, so parse and validate adapter inputs such as `port` at the application entrypoint. Do not create the app without an adapter and then expect `app.listen(port)` to choose the platform or port.
 - Validation MUST be migrated to the Standard Schema direction instead of keeping a `class-validator`-first contract.
 - NestJS controller parameter decorators, Pipe, and `ValidationPipe` migration are not parameter-for-parameter replacements. Replace `@Param()`, `@Query()`, `@Body()`, `@Headers()`, `@Req()`, and `@Res()` assumptions with one `@RequestDto(...)`, field-level source decorators, `@Convert(...)`, and an explicit `RequestContext` handler parameter when low-level access is necessary. Validation runs after DTO materialization instead of through a public controller-parameter Pipe stage.
 - Do not carry over `ValidationPipe` whitelist/forbid assumptions or class-validator group execution. Ordinary fluo validators skip `null` and `undefined`, so add `@IsDefined()` for required fields. When its input is a plain object, `materialize()` retains safe own enumerable extra properties rather than stripping or rejecting them; this filtering guarantee does not describe already-created DTO instances. Decorator options do not support `groups` or `always`. Use explicit input shaping and separate DTOs, mapped DTOs, `@ValidateIf(...)`, or class-level validators for workflow-specific rules.
@@ -101,6 +104,51 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - `NotificationsModule` is global by default for `NotificationsService`, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS`; use `global: false` when migrated code requires module-local visibility.
 - Slack migration is not a NestJS async dynamic-module or package-level multi-client registry clone. `SlackModule.forRootAsync(...)` accepts `inject` plus `useFactory`; it does not consume `imports`, `useClass`, or `useExisting`. Register dependencies in the application module graph before listing their tokens in `inject`, then return final Slack options from `useFactory`. `@fluojs/slack` exposes singleton compatibility tokens `SLACK` and `SLACK_CHANNEL`, mirrors that singleton wiring through `createSlackProviders(...)`, and uses `global?: boolean` with default global visibility instead of NestJS `isGlobal`.
 - Discord migration is not a NestJS async dynamic-module or custom-provider clone. `DiscordModule.forRootAsync(...)` accepts `inject` plus `useFactory`; it does not consume `imports`, `useClass`, or `useExisting`. `@fluojs/discord` exposes singleton compatibility tokens `DISCORD` and `DISCORD_CHANNEL`, uses `global?: boolean` with default global visibility instead of NestJS `isGlobal`, and keeps internal provider helpers such as `createDiscordProviders(...)`, `DISCORD_OPTIONS`, and `NormalizedDiscordModuleOptions` private.
+
+### NestJS Config Registration and Bootstrap Migration
+
+Keep one explicit environment snapshot at the application boundary. The same synchronous schema can validate the values registered with `ConfigModule.forRoot(...)` and the adapter inputs that must exist before the application container is available:
+
+```typescript
+import { ConfigModule } from '@fluojs/config';
+import { Module } from '@fluojs/core';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { z } from 'zod';
+
+const processEnv = {
+  DATABASE_URL: process.env.DATABASE_URL,
+  PORT: process.env.PORT,
+};
+
+const ConfigSchema = z.object({
+  DATABASE_URL: z.string().url(),
+  PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
+});
+
+const bootstrapConfig = ConfigSchema.parse(processEnv);
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      processEnv,
+      schema: ConfigSchema,
+      global: true,
+    }),
+  ],
+})
+class AppModule {}
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({ port: bootstrapConfig.PORT }),
+});
+
+await app.listen();
+```
+
+`ConfigModule.forRoot(...)` does not scan ambient `process.env`; the explicit snapshot participates in the documented precedence order. Its `schema` must return synchronously, and the validated value becomes the injected `ConfigService` snapshot. The module is global by default, while `global: false` opts into module-local visibility.
+
+NestJS `forRootAsync(...)` and `load` namespace factories have no direct registration equivalent. Await remote stores or secret managers and flatten namespaced results at the application-owned bootstrap boundary before defining the final module graph. Adapter options remain part of that pre-container boundary because `FluoFactory.create(AppModule, { adapter })` cannot resolve `ConfigService` until after the adapter has already been supplied.
 
 ### NestJS i18n Locale and Validation Migration
 

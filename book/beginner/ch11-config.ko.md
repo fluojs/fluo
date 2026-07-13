@@ -87,6 +87,10 @@ import { ConfigModule } from '@fluojs/config';
     ConfigModule.forRoot({
       // 환경 파일 경로
       envFile: '.env',
+      // 명시적인 application-boundary snapshot이며 ambient process.env는 scan하지 않습니다.
+      processEnv: {
+        PORT: process.env.PORT,
+      },
       // 로컬 개발을 위한 합리적인 기본값
       defaults: {
         PORT: 3000,
@@ -141,23 +145,26 @@ export class AppModule {}
 
 등록이 완료되면 설정 로딩 자체는 모듈이 맡고, 애플리케이션 코드는 `ConfigService`를 통해 값을 읽게 됩니다. 이렇게 역할을 나누면 실제 비즈니스 코드가 설정 로딩 방식에 끌려가지 않고, 필요한 값을 쓰는 데만 집중할 수 있습니다.
 
-### Injecting the Service
-부트스트랩 로직(`main.ts`)에서 서비스의 설정을 사용하여 어떤 포트로 리스닝할지 결정할 수 있습니다.
+### Adapter-First Bootstrap and Service Availability
+`FluoFactory.create(...)`가 application container를 만들기 전에 HTTP adapter가 존재해야 하므로, 생성 이후의 `ConfigService`가 adapter port를 선택할 수는 없습니다. Application entrypoint에서 해당 adapter input을 parse하고 adapter를 명시적으로 전달한 뒤 port 인자 없이 `listen()`을 호출합니다. Provider는 application 생성 이후 `ConfigService`를 resolve할 수 있습니다.
 
 ```typescript
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
-import { ConfigService } from '@fluojs/config';
+import { z } from 'zod';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await FluoFactory.create(AppModule);
-  
-  const config = app.get(ConfigService);
-  const port = config.get('PORT');
-  
-  await app.listen(port);
+  const port = z.coerce.number().int().min(1).max(65_535).default(3000).parse(process.env.PORT);
+  const app = await FluoFactory.create(AppModule, {
+    adapter: createFastifyAdapter({ port }),
+  });
+
+  await app.listen();
 }
 ```
+
+이 entrypoint read는 application-boundary 작업이며 package source나 business code에서 `process.env`를 읽어도 된다는 뜻이 아닙니다. `ConfigModule.forRoot({ processEnv, schema })`를 application configuration contract로 유지하고, container가 생기기 전에 필요한 값에도 같은 validation rule을 적용하세요. Async secret store 또는 namespaced configuration factory도 module registration과 adapter 구성 전에 이 boundary에서 완료해야 합니다.
 
 서비스나 컨트롤러 내부에서는 다음과 같이 사용합니다.
 

@@ -16,6 +16,7 @@
 | `@Get()`, `@Post()` 등 라우트 데코레이터 | `@fluojs/http`의 `@Get()`, `@Post()` 등 | HTTP 라우트 선언은 계속 메서드 기반 데코레이터를 사용한다. |
 | `@Sse()` | `@fluojs/http`의 `@Sse()`와 수동 stream용 `SseResponse` 또는 managed stream용 `AsyncIterable` | fluo는 `@Sse()`를 `text/event-stream` metadata를 가진 `GET` 라우트로 매핑한다. `AsyncIterable` 값은 SSE frame으로 변환할 수 있지만, NestJS `Observable` 반환값은 여전히 `SseResponse` 또는 async iterable로 재작성해야 한다. |
 | `NestFactory.create(AppModule)` | `@fluojs/runtime`의 `FluoFactory.create(AppModule, { adapter })` | 부트스트랩 시 `createFastifyAdapter()` 같은 명시적 플랫폼 어댑터가 필요하다. |
+| `@nestjs/config` `ConfigModule.forRoot(...)`, `forRootAsync(...)`, `load`, `validate`, `isGlobal` | `@fluojs/config`의 `ConfigModule.forRoot({ processEnv, schema, global? })` | fluo registration은 동기 방식이다. 명시적 `processEnv` snapshot을 전달하고 동기 Standard Schema validator를 사용하며 visibility에는 기본값이 `true`인 `global?: boolean`을 사용한다. Async 또는 namespaced input은 module registration 전에 application bootstrap boundary에서 해석하고, `FluoFactory.create(AppModule, { adapter })`를 호출하기 전에 이미 검증한 bootstrap input으로 필수 HTTP adapter를 구성한다. |
 | Cloudflare Workers로 이동할 때의 NestJS HTTP server lifecycle hook 또는 late WebSocket server mutation | `@fluojs/platform-cloudflare-workers`와 `@fluojs/websockets/cloudflare-workers`의 `CloudflareWorkersWebSocketModule.forRoot()` | Workers는 server socket 대신 host-owned `fetch(request, env, ctx)` boundary를 노출합니다. `listen()`은 fluo dispatcher만 binding합니다. Application graph에 Worker WebSocket module을 등록하여 bootstrap이 해당 listen boundary 전에 binding을 구성하도록 하세요. 수락된 각 request는 `ctx.waitUntil(...)`로 추적되며 Worker `env` binding은 application-owned input이므로 명시적 provider 또는 `@fluojs/config`로 매핑해야 합니다. |
 | `@Injectable()` 프로바이더 마커 | `@Module(...).providers`에 등록된 프로바이더 클래스 또는 provider definition | fluo는 필수 프로바이더 등록 단계로 `@Injectable()`을 사용하지 않는다. |
 | `emitDecoratorMetadata`를 통한 생성자 타입 리플렉션 | `@fluojs/core`의 `@Inject(TokenA, TokenB)` | 생성자 의존성은 데코레이터 인자 순서대로 명시한다. |
@@ -53,6 +54,8 @@
 - NestJS 속성 주입은 반드시 생성자 주입으로 바꾼다. 클래스에 `@Inject(TokenA, TokenB)`를 붙이고 토큰 순서를 생성자 매개변수와 맞추며, 속성이나 매개변수에는 `@Inject(...)`를 붙이지 않는다.
 - NestJS 모듈 `forwardRef(...)`에 직접 대응하는 fluo 기능은 없다. 공유 프로바이더를 별도 모듈이나 패키지로 추출해 모듈 import 순환을 끊는다. fluo의 `forwardRef(...)`는 클래스 수준 `@Inject(...)` 또는 프로바이더 `inject`에서 의존성 토큰 하나의 조회만 지연하며, 모듈 순환이나 실제 생성자 순환을 해결하지 않는다.
 - 부트스트랩은 adapter-first 방식이다. `FluoFactory.create(...)`는 HTTP 플랫폼을 암묵적으로 고르는 대신 `adapter` 옵션을 반드시 받아야 한다.
+- `@nestjs/config` migration은 async Dynamic Module 또는 namespace loader를 그대로 복제하지 않는다. `@fluojs/config`는 동기 `ConfigModule.forRoot(...)`를 제공한다. Ambient process value는 명시적 `processEnv` option으로 전달하고, 병합된 snapshot은 동기 Standard Schema `schema`로 검증하며, NestJS `isGlobal` 대신 기본 global visibility를 가진 `global?: boolean`을 사용한다. Remote secret fetch와 NestJS `load` namespace 확장은 module graph 구성 전에 application bootstrap boundary에서 완료하고, 최종 flat value를 `processEnv`, `defaults`, `runtimeOverrides`로 전달한다.
+- Configuration registration이 adapter-first bootstrap boundary를 없애지는 않는다. `FluoFactory.create(AppModule, { adapter })`는 `ConfigService`를 사용할 수 있기 전에 이미 구성한 adapter를 요구하므로, `port` 같은 adapter input은 application entrypoint에서 parse 및 validation해야 한다. Adapter 없이 app을 만든 뒤 `app.listen(port)`가 platform이나 port를 선택할 것으로 가정하면 안 된다.
 - 검증은 `class-validator` 우선 계약을 유지하지 않고 Standard Schema 방향으로 반드시 옮겨야 한다.
 - NestJS controller parameter decorator, Pipe, `ValidationPipe` migration은 parameter-for-parameter 치환이 아니다. `@Param()`, `@Query()`, `@Body()`, `@Headers()`, `@Req()`, `@Res()` 가정은 하나의 `@RequestDto(...)`, field-level source decorator, `@Convert(...)`, 그리고 low-level 접근이 필요할 때의 명시적 `RequestContext` handler parameter로 바꾼다. 검증은 public controller-parameter Pipe stage가 아니라 DTO materialization 이후에 실행된다.
 - `ValidationPipe`의 whitelist/forbid 가정이나 class-validator group 실행을 그대로 옮기지 않는다. 일반 fluo validator는 `null`과 `undefined`를 건너뛰므로 필수 field에는 `@IsDefined()`를 추가한다. 입력이 plain 객체일 때 `materialize()`는 안전한 own enumerable 추가 속성을 제거하거나 거부하지 않고 유지하며, 이 filtering 보장은 이미 생성된 DTO 인스턴스를 설명하지 않는다. Decorator option은 `groups`와 `always`를 지원하지 않는다. Workflow별 규칙에는 명시적 input shaping과 별도 DTO, mapped DTO, `@ValidateIf(...)`, class-level validator를 사용한다.
@@ -101,6 +104,51 @@
 - `NotificationsModule`은 기본적으로 `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS`에 대해 global이다. Migrated code에 module-local visibility가 필요할 때는 `global: false`를 사용한다.
 - Slack migration은 NestJS async dynamic-module 또는 package-level multi-client registry clone이 아니다. `SlackModule.forRootAsync(...)`는 `inject`와 `useFactory`를 받으며, `imports`, `useClass`, `useExisting`은 소비하지 않는다. 필요한 의존성은 application module graph에 등록한 뒤 token을 `inject`에 나열하고, `useFactory`에서 최종 Slack option을 반환한다. `@fluojs/slack`은 singleton compatibility token인 `SLACK`과 `SLACK_CHANNEL`을 노출하고 `createSlackProviders(...)`로 같은 singleton wiring을 재사용하며, NestJS `isGlobal` 대신 기본 global visibility를 가진 `global?: boolean`을 사용한다.
 - Discord migration은 NestJS async dynamic-module 또는 custom-provider clone이 아니다. `DiscordModule.forRootAsync(...)`는 `inject`와 `useFactory`를 받으며, `imports`, `useClass`, `useExisting`는 소비하지 않는다. `@fluojs/discord`는 singleton compatibility token인 `DISCORD`와 `DISCORD_CHANNEL`을 노출하고, NestJS `isGlobal` 대신 기본 global visibility를 가진 `global?: boolean`을 사용하며, `createDiscordProviders(...)`, `DISCORD_OPTIONS`, `NormalizedDiscordModuleOptions` 같은 내부 provider helper는 private으로 유지한다.
+
+### NestJS Config Registration 및 Bootstrap Migration
+
+Application boundary에서 하나의 명시적 environment snapshot을 유지한다. 같은 동기 schema로 `ConfigModule.forRoot(...)`에 등록할 값과 application container를 사용할 수 있기 전에 필요한 adapter input을 검증할 수 있다.
+
+```typescript
+import { ConfigModule } from '@fluojs/config';
+import { Module } from '@fluojs/core';
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
+import { z } from 'zod';
+
+const processEnv = {
+  DATABASE_URL: process.env.DATABASE_URL,
+  PORT: process.env.PORT,
+};
+
+const ConfigSchema = z.object({
+  DATABASE_URL: z.string().url(),
+  PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
+});
+
+const bootstrapConfig = ConfigSchema.parse(processEnv);
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      processEnv,
+      schema: ConfigSchema,
+      global: true,
+    }),
+  ],
+})
+class AppModule {}
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: createFastifyAdapter({ port: bootstrapConfig.PORT }),
+});
+
+await app.listen();
+```
+
+`ConfigModule.forRoot(...)`는 ambient `process.env`를 scan하지 않으며, 명시적 snapshot이 문서화된 precedence order에 참여한다. `schema`는 동기 결과를 반환해야 하고 검증된 값이 injected `ConfigService` snapshot이 된다. Module은 기본적으로 global이고 `global: false`로 module-local visibility를 선택한다.
+
+NestJS `forRootAsync(...)`와 `load` namespace factory에는 직접 대응하는 registration이 없다. Remote store나 secret manager를 await하고 namespaced result를 flatten하는 작업은 최종 module graph를 정의하기 전에 application-owned bootstrap boundary에서 완료한다. Adapter option은 같은 pre-container boundary에 남는다. `FluoFactory.create(AppModule, { adapter })`는 adapter를 이미 전달한 뒤에야 `ConfigService`를 resolve할 수 있기 때문이다.
 
 ### NestJS i18n Locale 및 Validation Migration
 
