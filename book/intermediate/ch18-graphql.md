@@ -8,7 +8,7 @@ This chapter covers how to add a query layer to FluoShop that differs from REST.
 ## Learning Objectives
 - Distinguish the structural benefits of introducing GraphQL in fluo.
 - Outline `GraphqlModule` configuration and code-first resolver registration.
-- Configure a flow that reduces the N+1 problem with request-scoped DataLoader.
+- Configure object field resolvers that reduce the N+1 problem with request-scoped DataLoader.
 - Review SSE-based default subscriptions and optional WebSocket subscription configuration.
 - Apply operational guardrails such as complexity limits and introspection control.
 - Define when to connect GraphQL to the FluoShop product catalog.
@@ -106,7 +106,7 @@ import { ProductResolver } from './product.resolver';
 export class AppModule {}
 ```
 
-## 18.4 Solving N+1 with DataLoaders
+## 18.4 Solving N+1 with Object Field Resolvers and DataLoaders
 
 The N+1 problem is the most common performance bottleneck in GraphQL. Fluo provides request-scoped **DataLoader** support so repeated lookups in the same request can be grouped into batches.
 
@@ -122,11 +122,11 @@ const authorLoader = createDataLoader(async (ids: string[]) => {
 });
 ```
 
-### Using the Loader in a Supported Root Resolver
+### Using the Loader in an Object Field Resolver
 
 ```typescript
 import { GraphQLObjectType, GraphQLString } from 'graphql';
-import { Arg, type GraphQLContext, Query, Resolver } from '@fluojs/graphql';
+import { Context, FieldResolver, Parent, type GraphQLContext, Query, Resolver } from '@fluojs/graphql';
 
 const AuthorType = new GraphQLObjectType({
   name: 'Author',
@@ -145,27 +145,28 @@ const BookType = new GraphQLObjectType({
   },
 });
 
-class BookInput {
-  @Arg('id')
-  id = '';
+@Resolver()
+export class BookQueryResolver {
+  @Query({ outputType: BookType })
+  async book() {
+    return bookService.findFeatured();
+  }
 }
 
-@Resolver()
-export class BookResolver {
-  @Query({ input: BookInput, outputType: BookType })
-  async book(input: BookInput, context: GraphQLContext) {
-    const book = await bookService.findById(input.id);
-    const author = await authorLoader(context).load(book.authorId);
-
-    return {
-      ...book,
-      author,
-    };
+@Resolver('Book')
+export class BookFieldResolver {
+  @FieldResolver('author')
+  @Parent()
+  @Context()
+  async author(book: { authorId: string }, context: GraphQLContext) {
+    return authorLoader(context).load(book.authorId);
   }
 }
 ```
 
-`authorLoader(context)` returns a loader instance bound to a specific GraphQL execution context. Therefore, batching and caching are shared only within a single request. Keeping this scope prevents one user's lookup results from leaking into another request while still reducing the N+1 problem. At the moment, `@fluojs/graphql` documents DataLoader usage through root operations that explicitly receive `context: GraphQLContext`, rather than runtime field-resolver attachment.
+`authorLoader(context)` returns a loader instance bound to a specific GraphQL execution context. Therefore, batching and caching are shared only within a single request. Keeping this scope prevents one user's lookup results from leaking into another request while still reducing the N+1 problem. Register both resolver classes as module providers and include both in the optional `resolvers` allowlist.
+
+`@Parent()` and `@Context()` are TC39 standard method decorators, not legacy parameter decorators. Their defaults bind the parent/source object to method parameter `0` and `GraphQLContext` to parameter `1`. Pass an explicit zero-based index when the method order differs. The `Book` object type above already declares `author`, so `@FieldResolver('author')` preserves that field type. When adding a field that is absent from the object type, use `@FieldResolver({ fieldName: 'author', type: AuthorType })`.
 
 ## 18.5 Real-time with Subscriptions
 

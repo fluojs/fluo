@@ -1,17 +1,27 @@
 import type { MetadataPropertyKey } from '@fluojs/core';
 import { ensureSymbolMetadataPolyfill, getStandardConstructorMetadataBag, getStandardMetadataBag } from '@fluojs/core/internal';
 
-import type { ArgFieldMetadata, ResolverHandlerMetadata, ResolverMetadata } from './types.js';
+import type {
+  ArgFieldMetadata,
+  FieldResolverParameterBindingMetadata,
+  ResolverHandlerMetadata,
+  ResolverMetadata,
+} from './types.js';
 
 void ensureSymbolMetadataPolyfill();
 
 const standardResolverMetadataKey = Symbol.for('fluo.graphql.standard.resolver');
 const standardHandlerMetadataKey = Symbol.for('fluo.graphql.standard.handler');
 const standardArgFieldMetadataKey = Symbol.for('fluo.graphql.standard.arg-field');
+const standardFieldResolverParameterMetadataKey = Symbol.for('fluo.graphql.standard.field-resolver-parameter');
 
 const resolverMetadataStore = new WeakMap<object, ResolverMetadata>();
 const handlerMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, ResolverHandlerMetadata>>();
 const argFieldMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, ArgFieldMetadata>>();
+const fieldResolverParameterMetadataStore = new WeakMap<
+  object,
+  Map<MetadataPropertyKey, Map<number, FieldResolverParameterBindingMetadata>>
+>();
 
 function cloneResolverMetadata(metadata: ResolverMetadata): ResolverMetadata {
   return {
@@ -24,8 +34,18 @@ function cloneHandlerMetadata(metadata: ResolverHandlerMetadata): ResolverHandle
     argTypes: metadata.argTypes,
     fieldName: metadata.fieldName,
     inputClass: metadata.inputClass,
+    nullable: metadata.nullable,
     outputType: metadata.outputType,
     type: metadata.type,
+  };
+}
+
+function cloneFieldResolverParameterMetadata(
+  metadata: FieldResolverParameterBindingMetadata,
+): FieldResolverParameterBindingMetadata {
+  return {
+    index: metadata.index,
+    kind: metadata.kind,
   };
 }
 
@@ -58,6 +78,14 @@ function getStandardArgFieldMap(target: object): Map<MetadataPropertyKey, ArgFie
     | undefined;
 }
 
+function getStandardFieldResolverParameterMap(
+  target: object,
+): Map<MetadataPropertyKey, Map<number, FieldResolverParameterBindingMetadata>> | undefined {
+  return getStandardConstructorMetadataBag(target)?.[standardFieldResolverParameterMetadataKey] as
+    | Map<MetadataPropertyKey, Map<number, FieldResolverParameterBindingMetadata>>
+    | undefined;
+}
+
 function getOrCreateHandlerMetadataMap(target: object): Map<MetadataPropertyKey, ResolverHandlerMetadata> {
   let map = handlerMetadataStore.get(target);
 
@@ -75,6 +103,19 @@ function getOrCreateArgFieldMetadataMap(target: object): Map<MetadataPropertyKey
   if (!map) {
     map = new Map<MetadataPropertyKey, ArgFieldMetadata>();
     argFieldMetadataStore.set(target, map);
+  }
+
+  return map;
+}
+
+function getOrCreateFieldResolverParameterMetadataMap(
+  target: object,
+): Map<MetadataPropertyKey, Map<number, FieldResolverParameterBindingMetadata>> {
+  let map = fieldResolverParameterMetadataStore.get(target);
+
+  if (!map) {
+    map = new Map<MetadataPropertyKey, Map<number, FieldResolverParameterBindingMetadata>>();
+    fieldResolverParameterMetadataStore.set(target, map);
   }
 
   return map;
@@ -120,12 +161,13 @@ export function defineResolverMetadata(target: object, metadata: ResolverMetadat
 export function getResolverMetadata(target: object): ResolverMetadata | undefined {
   const stored = resolverMetadataStore.get(target);
   const standard = getStandardResolverMetadata(target);
+  const metadata = stored ?? standard;
 
-  if (!stored && !standard) {
+  if (!metadata) {
     return undefined;
   }
 
-  return cloneResolverMetadata(stored ?? standard!);
+  return cloneResolverMetadata(metadata);
 }
 
 /**
@@ -156,12 +198,13 @@ export function getResolverHandlerMetadata(
 ): ResolverHandlerMetadata | undefined {
   const stored = handlerMetadataStore.get(target)?.get(propertyKey);
   const standard = getStandardHandlerMap(target)?.get(propertyKey);
+  const metadata = stored ?? standard;
 
-  if (!stored && !standard) {
+  if (!metadata) {
     return undefined;
   }
 
-  return cloneHandlerMetadata(stored ?? standard!);
+  return cloneHandlerMetadata(metadata);
 }
 
 /**
@@ -202,12 +245,13 @@ export function defineArgFieldMetadata(target: object, propertyKey: MetadataProp
 export function getArgFieldMetadata(target: object, propertyKey: MetadataPropertyKey): ArgFieldMetadata | undefined {
   const stored = argFieldMetadataStore.get(target)?.get(propertyKey);
   const standard = getStandardArgFieldMap(target)?.get(propertyKey);
+  const metadata = stored ?? standard;
 
-  if (!stored && !standard) {
+  if (!metadata) {
     return undefined;
   }
 
-  return cloneArgFieldMetadata(stored ?? standard!);
+  return cloneArgFieldMetadata(metadata);
 }
 
 /**
@@ -223,6 +267,50 @@ export function getArgFieldMetadataEntries(
 }
 
 /**
+ * Define one positional parameter binding for an object field resolver.
+ *
+ * @param target Resolver prototype that owns the decorated method.
+ * @param propertyKey Decorated method key.
+ * @param metadata Positional binding metadata to store.
+ */
+export function defineFieldResolverParameterMetadata(
+  target: object,
+  propertyKey: MetadataPropertyKey,
+  metadata: FieldResolverParameterBindingMetadata,
+): void {
+  const methods = getOrCreateFieldResolverParameterMetadataMap(target);
+  const bindings = methods.get(propertyKey) ?? new Map<number, FieldResolverParameterBindingMetadata>();
+  bindings.set(metadata.index, cloneFieldResolverParameterMetadata(metadata));
+  methods.set(propertyKey, bindings);
+}
+
+/**
+ * Get the positional parameter bindings declared for one resolver method.
+ *
+ * @param target Resolver prototype that owns the decorated method.
+ * @param propertyKey Decorated method key.
+ * @returns Parameter bindings ordered by their method parameter index.
+ */
+export function getFieldResolverParameterMetadataEntries(
+  target: object,
+  propertyKey: MetadataPropertyKey,
+): FieldResolverParameterBindingMetadata[] {
+  const stored = fieldResolverParameterMetadataStore.get(target)?.get(propertyKey);
+  const standard = getStandardFieldResolverParameterMap(target)?.get(propertyKey);
+  const merged = new Map<number, FieldResolverParameterBindingMetadata>();
+
+  for (const [index, metadata] of standard ?? []) {
+    merged.set(index, cloneFieldResolverParameterMetadata(metadata));
+  }
+
+  for (const [index, metadata] of stored ?? []) {
+    merged.set(index, cloneFieldResolverParameterMetadata(metadata));
+  }
+
+  return Array.from(merged.values()).sort((left, right) => left.index - right.index);
+}
+
+/**
  * Provides the resolver metadata symbol value.
  */
 export const resolverMetadataSymbol = standardResolverMetadataKey;
@@ -234,3 +322,7 @@ export const handlerMetadataSymbol = standardHandlerMetadataKey;
  * Provides the arg metadata symbol value.
  */
 export const argMetadataSymbol = standardArgFieldMetadataKey;
+/**
+ * Provides the object field-resolver parameter metadata symbol value.
+ */
+export const fieldResolverParameterMetadataSymbol = standardFieldResolverParameterMetadataKey;

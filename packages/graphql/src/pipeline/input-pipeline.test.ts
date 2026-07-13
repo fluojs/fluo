@@ -1,11 +1,10 @@
+import { IsBoolean, IsInt, MinLength } from '@fluojs/validation';
 import { describe, expect, it } from 'vitest';
 
-import { IsBoolean, IsInt, MinLength } from '@fluojs/validation';
-
 import { Arg } from '../decorators.js';
-import { createGraphqlInput, resolveArgScalarType, resolveArgType } from './input-pipeline.js';
-import { listOf } from '../types.js';
 import type { ResolverHandlerDescriptor } from '../types.js';
+import { listOf } from '../types.js';
+import { createGraphqlInput, resolveArgScalarType, resolveArgType } from './input-pipeline.js';
 
 class ScalarInput {
   @Arg('count')
@@ -34,6 +33,7 @@ function createHandlerDescriptor(inputClass: Function): ResolverHandlerDescripto
     inputClass,
     methodKey: 'noop',
     methodName: 'noop',
+    parameterBindings: [],
     type: 'query',
   };
 }

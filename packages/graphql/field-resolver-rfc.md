@@ -1,11 +1,10 @@
-# @FieldResolver RFC (Design-Only)
+# @FieldResolver RFC
 
 <p><strong><kbd>English</kbd></strong> <a href="./field-resolver-rfc.ko.md"><kbd>한국어</kbd></a></p>
 
-Status: Draft (Phase 4)
+Status: Implemented (RFC minimum)
 
-This RFC defines the API and integration plan for `@FieldResolver` in `@fluojs/graphql`.
-No runtime implementation is included in this phase.
+This RFC defines the implemented minimum API and integration contract for `@FieldResolver` in `@fluojs/graphql`.
 
 ## Goals
 
@@ -14,11 +13,12 @@ No runtime implementation is included in this phase.
 - Define discovery and registration rules for field resolvers.
 - Define schema attachment rules from object type to resolved fields.
 
-## Non-goals (this RFC phase)
+## Non-goals
 
-- Runtime execution implementation.
 - Automatic batching/cache policy framework.
 - Interface-level polymorphic resolver expansion.
+- Field argument DTO binding.
+- Schema-first resolver-map attachment.
 
 ## Proposed API Shape
 
@@ -26,7 +26,9 @@ No runtime implementation is included in this phase.
 @Resolver('User')
 class UserFieldResolver {
   @FieldResolver('displayName')
-  displayName(@Parent() user: UserEntity, @Context() ctx: GraphQLContext): string {
+  @Parent()
+  @Context()
+  displayName(user: UserEntity, ctx: GraphQLContext): string {
     return `${user.firstName} ${user.lastName}`;
   }
 }
@@ -39,9 +41,13 @@ class UserFieldResolver {
   - `type?: GraphqlRootOutputType` (scalar/object/union/list wrapper)
   - `nullable?: boolean` (future-compatible surface only)
 - `@Parent()`
-  - Binds parent object (`source`) for object field execution.
+  - Standard method decorator that binds parent object (`source`) to parameter index `0` by default.
+  - Accepts an explicit zero-based parameter index.
 - `@Context()`
-  - Binds GraphQL context (`GraphQLContext`) to method parameter.
+  - Standard method decorator that binds GraphQL context (`GraphQLContext`) to parameter index `1` by default.
+  - Accepts an explicit zero-based parameter index.
+
+TC39 standard decorators do not define parameter decorators. The implemented contract therefore keeps all three APIs as standard method decorators and records the positional binding index explicitly instead of using legacy parameter-decorator syntax.
 
 ## Discovery Rules
 
@@ -55,38 +61,39 @@ class UserFieldResolver {
 ## Schema Attachment Rules
 
 - Field resolver methods attach to the target object type declared by `@Resolver(typeName)`.
-- If the target object type is provided as a named GraphQL object type, the field config is extended with resolver functions.
+- The target object type must be reachable from a code-first root operation output.
+- If the target object type already declares the field, its field config is extended with the resolver function and its existing type is preserved unless `type` is provided.
+- If the target object type does not declare the field, `@FieldResolver({ type })` adds it.
 - Return type inference/override follows existing root operation type rules:
   - scalar literal, `GraphQLObjectType`, `GraphQLUnionType`, `listOf(...)`.
 
 ## Parent/Source Passing Contract
 
 - `@Parent()` maps to GraphQL `source` argument.
-- Resolver signature may include `(parent, input, context)` via decorators:
-  - `@Parent()` and `@Context()` are explicit parameter-binding decorators.
+- Resolver signatures receive parent and context at the indexes recorded by the `@Parent(...)` and `@Context(...)` method decorators.
 - DTO input binding (`@Arg`) stays for root operations; field-resolver argument binding remains a follow-up after runtime phase.
 
-## Integration Plan (Runtime Phase, not implemented here)
+## Implemented Integration
 
 1. Metadata layer
-   - Add field-resolver metadata symbols and parameter-binding metadata.
+   - Field-resolver metadata symbols and positional parameter-binding metadata.
 2. Discovery layer
-   - Emit `FieldResolverDescriptor` entries grouped by `typeName`.
+   - Field handlers are collected separately from root operations and grouped by `typeName`.
 3. Schema builder
-   - Merge field resolver configs into object types during code-first schema assembly.
+   - Field resolver configs are merged into matching object types during code-first schema assembly.
 4. Invocation pipeline
-   - Resolve provider instance by scope and invoke method with mapped `(parent, context)`.
+   - Provider instances follow existing singleton/request/transient scope semantics and receive mapped parent/context arguments.
 5. Validation and errors
-   - Reuse GraphQL error translation strategy from root operation pipeline.
+   - Duplicate `TypeName.fieldName`, unreachable target types, missing field types, invalid root-operation bindings, and duplicate parameter indexes fail explicitly.
 
 ## Compatibility and Migration
 
-- No breaking change in this phase.
+- The implementation is additive.
 - Existing root operation resolvers remain unchanged.
-- Future runtime implementation will be additive behind new decorators.
+- Parameter-decorator syntax from the original draft is replaced by TC39-standard method decorators with index defaults.
 
 ## Open Questions
 
-- Whether `nullable` should be activated in first runtime release or deferred.
-- Exact parameter decorator precedence if both implicit and explicit mappings are present.
-- Whether field-level argument DTO binding should land with first runtime release or in a follow-up slice.
+- Activate `nullable` beyond the reserved surface.
+- Add field-level argument DTO binding.
+- Decide whether schema-first resolver-map attachment belongs in this package.
