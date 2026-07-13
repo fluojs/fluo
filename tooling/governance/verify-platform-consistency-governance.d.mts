@@ -33,6 +33,9 @@ export function enforceHttpCatchAllRouteGrammarDecision(): void;
 export function enforceCloudflareWorkersLifecycleDocsSync(
   readText?: (relativePath: string) => string,
 ): void;
+export function enforceSerializerResponseOwnershipDocsSync(
+  readText?: (relativePath: string) => string,
+): void;
 export function enforceExpressRuntimeMigrationDocsSync(
   readText?: (relativePath: string) => string,
 ): void;

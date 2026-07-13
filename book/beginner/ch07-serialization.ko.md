@@ -10,6 +10,7 @@ Chapter 6이 입력 경계를 검증했다면, 이 장은 애플리케이션 밖
 - `@Expose()`, `@Exclude()`, `@Transform()`으로 HTTP 출력 형태를 정리합니다.
 - FluoBlog API에서 내부 필드가 새어 나가지 않도록 확인합니다.
 - `SerializerInterceptor`가 응답 shaping을 자동으로 적용하는 방식을 배웁니다.
+- Framework-managed response와 commit된 handler-owned response를 구분합니다.
 - 내부 엔티티와 전송용 모델의 차이를 인식합니다.
 - 더 나은 예외 처리와 API 문서화를 위한 기반을 준비합니다.
 
@@ -105,6 +106,29 @@ export class PostsController {
 이제 컨트롤러는 DTO 인스턴스나 직렬화를 의도한 데이터를 반환할 수 있습니다. 인터셉터가 응답 형태 조정 단계를 자동으로 적용하므로, 컨트롤러는 포맷팅 세부사항보다 조정 역할에 집중할 수 있습니다. 이 흐름은 응답 규칙을 한곳에 모아 API 전체의 일관성을 지키는 데도 도움이 됩니다.
 
 이 흐름은 보통 다음과 같이 진행됩니다: **내부 레코드 -> DTO -> 인터셉터 -> 클라이언트**. `SerializerInterceptor`는 `packages/serialization/src/serializer-interceptor.ts`에 정의되어 있으며, 내부적으로 `serialize` 함수를 사용해 여러분이 제공한 데코레이터 기반으로 변환을 수행합니다.
+
+### Framework-managed response와 handler-owned response
+
+자동 shaping은 response가 framework-managed 상태일 때만 적용됩니다. 위 `findAll()` 예제에서는 handler가 `RequestContext.response`를 commit하지 않고 DTO 값을 반환하므로, runtime이 응답을 쓰기 전에 `SerializerInterceptor`가 그 값을 직렬화할 수 있습니다.
+
+일부 고급 route는 response를 직접 제어해야 합니다. 예를 들어 CSV 다운로드는 header를 설정하고 최종 payload를 명시적으로 commit할 수 있습니다.
+
+```typescript
+import { Controller, Get, type RequestContext, UseInterceptors } from '@fluojs/http';
+import { SerializerInterceptor } from '@fluojs/serialization';
+
+@Controller('/posts')
+@UseInterceptors(SerializerInterceptor)
+export class PostsController {
+  @Get('/export.csv')
+  async exportCsv(_input: undefined, context: RequestContext) {
+    context.response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    await context.response.send('id,title\npost-1,Serialization Basics');
+  }
+}
+```
+
+`send(...)`, `redirect(...)`, 또는 수동 streaming helper를 호출하면 handler의 최종 response payload가 commit됩니다. 그 시점부터 `SerializerInterceptor`는 `serialize(...)`를 건너뛰고 `next.handle()`에서 받은 값을 그대로 반환합니다. 다른 interceptor는 chain 결과를 계속 변환할 수 있습니다. 이와 별개로 dispatcher는 commit된 response를 확인하고 두 번째 success-response write를 건너뛰므로 최종 chain 결과를 보내지 않습니다. 직접 쓸 payload의 민감한 field filtering과 필요한 encoding은 commit 전에 끝내야 합니다.
 
 ### Why an Interceptor Is a Good Fit
 
@@ -250,12 +274,14 @@ summary = '';
 2. 민감한 필드는 기본적으로 제외되는가?
 3. 응답 shaping은 여러 엔드포인트에서 재사용 가능한가?
 4. 작은 표시용 변환은 컨트롤러가 아니라 경계에서 일어나는가?
+5. Framework가 아직 response를 소유하는가, 아니면 handler가 최종 payload를 이미 commit했는가?
 
 흔한 실수는 다음과 같습니다.
 
 - 생각 없이 요청 DTO를 응답 DTO로도 사용하는 실수.
 - 내부 구현 필드를 우연히 노출하는 실수.
 - 응답 포맷팅 로직을 모든 컨트롤러 메서드 안에 직접 넣는 실수.
+- `RequestContext.response`를 이미 commit한 뒤에도 `SerializerInterceptor`가 payload를 후처리할 것이라고 기대하는 실수.
 - 저장 모델이 바뀌어도 공개 계약은 안정적으로 유지되어야 한다는 점을 잊는 실수.
 
 ### What FluoBlog Gains Here
@@ -272,6 +298,7 @@ summary = '';
 - 응답 DTO는 의도치 않은 필드 노출로부터 클라이언트를 보호합니다.
 - `@Expose()`, `@Exclude()`, `@Transform()`은 외부로 나가는 API 데이터를 다듬습니다.
 - `SerializerInterceptor`는 자동 응답 shaping을 위한 자연스러운 HTTP 통합 지점입니다.
+- Serialization은 framework-managed 반환값에 적용되며, commit된 handler-owned response는 이를 우회하고 runtime이 다시 쓰지 않습니다.
 - 이제 FluoBlog는 내부 게시글 레코드와 공개 게시글 응답을 구분합니다.
 - 직렬화는 단순 포맷팅이 아니라 경계 관심사입니다.
 - 이제 프로젝트는 성공과 실패 응답을 모두 더 의도적으로 설계할 준비가 되었습니다.

@@ -592,7 +592,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // transport-agnostic status snapshots plus caller-owned shutdown boundaries,
   // validation mapped-type/nested-materialization contract discoverability,
   // missing-value, safe-extra-property, and unsupported-group migration rules,
-  // serialization class options plus request-boundary interceptor coverage, CLI
+  // serialization class options, committed-response ownership bypass, and
+  // request-boundary interceptor coverage, CLI
   // public runtime type boundaries plus the documented Node.js runtime floor,
   // and Studio live helper contracts such as deterministic Mermaid rendering,
   // route-id graph correlation, viewer dependency classification, and Node.js
@@ -748,6 +749,141 @@ const cloudflareWorkersLifecycleDocRequirements = [
   ['docs/CONTEXT.md', ['packages/platform-cloudflare-workers/README.md', 'docs/getting-started/migrate-from-nestjs.md', 'website runtime/realtime guides']],
   ['docs/CONTEXT.ko.md', ['packages/platform-cloudflare-workers/README.ko.md', 'docs/getting-started/migrate-from-nestjs.ko.md', 'website runtime/realtime guide']],
 ];
+
+const serializerResponseOwnershipDocRequirements = [
+  [
+    'packages/serialization/README.md',
+    [
+      'Framework-managed response',
+      'Handler-owned response',
+      'returns the value it received from `next.handle()` unchanged',
+      'interceptors may still transform the chain result',
+      'skips a second success-response write',
+    ],
+  ],
+  [
+    'packages/serialization/README.ko.md',
+    [
+      'Framework-managed response',
+      'Handler-owned response',
+      '`next.handle()`에서 받은 값을 그대로 반환',
+      '다른 interceptor는 chain 결과를 계속 변환할 수 있',
+      '두 번째 success-response write를 건너',
+    ],
+  ],
+  [
+    'packages/runtime/README.md',
+    [
+      'Framework-Managed and Handler-Owned Responses',
+      'returns the value it received from `next.handle()` unchanged',
+      'interceptors may still transform the chain result',
+      'skips a second success-response write',
+    ],
+  ],
+  [
+    'packages/runtime/README.ko.md',
+    [
+      'Framework-managed response와 handler-owned response',
+      '`next.handle()`에서 받은 값을 그대로 반환',
+      '다른 interceptor는 chain 결과를 계속 변환할 수 있',
+      '두 번째 success-response write를 건너',
+    ],
+  ],
+  [
+    'book/beginner/ch07-serialization.md',
+    [
+      'Framework-Managed vs Handler-Owned Responses',
+      'returns the value it received from `next.handle()` unchanged',
+      'interceptors may still transform the chain result',
+      'skips a second success-response write',
+    ],
+  ],
+  [
+    'book/beginner/ch07-serialization.ko.md',
+    [
+      'Framework-managed response와 handler-owned response',
+      '`next.handle()`에서 받은 값을 그대로 반환',
+      '다른 interceptor는 chain 결과를 계속 변환할 수 있',
+      '두 번째 success-response write를 건너',
+    ],
+  ],
+  [
+    'docs/getting-started/migrate-from-nestjs.md',
+    [
+      '`ClassSerializerInterceptor`',
+      'returns the value it received from `next.handle()` unchanged',
+      'interceptors may still transform the chain result',
+      'skips a second success-response write',
+    ],
+  ],
+  [
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    [
+      '`ClassSerializerInterceptor`',
+      '`next.handle()`에서 받은 값을 그대로 반환',
+      '다른 interceptor는 chain 결과를 계속 변환할 수 있',
+      '두 번째 success-response write를 건너',
+    ],
+  ],
+  [
+    'docs/CONTEXT.md',
+    [
+      'Serialization response-ownership discoverability',
+      'returns the value it received from `next.handle()` unchanged',
+      'interceptors may still transform the chain result',
+      'skips a second success-response write',
+    ],
+  ],
+  [
+    'docs/CONTEXT.ko.md',
+    [
+      'Serialization response-ownership discoverability',
+      '`next.handle()`에서 받은 값을 그대로 반환',
+      '다른 interceptor는 chain 결과를 계속 변환할 수 있',
+      '두 번째 success-response write를 건너',
+    ],
+  ],
+  [
+    'docs/reference/package-surface.md',
+    [
+      'returns the value it received from `next.handle()` unchanged',
+      'interceptors may still transform the chain result',
+      'skips a second success-response write',
+    ],
+  ],
+  [
+    'docs/reference/package-surface.ko.md',
+    [
+      '`next.handle()`에서 받은 값을 그대로 반환',
+      '다른 interceptor는 chain 결과를 계속 변환할 수 있',
+      '두 번째 success-response write를 건너',
+    ],
+  ],
+];
+
+const serializerResponseOwnershipBroadChainClaims = [
+  /interceptor chain[^.\n]*(?:preserves?|keeps?)[^.\n]*handler(?:-owned)? (?:return )?values?[^.\n]*unchanged/iu,
+  /interceptor chain[^.\n]*handler(?:-owned)? 반환값[^.\n]*(?:변경하지 않고 보존|그대로 보존)/u,
+];
+
+export function enforceSerializerResponseOwnershipDocsSync(
+  readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
+) {
+  for (const [relativePath, requiredMarkers] of serializerResponseOwnershipDocRequirements) {
+    const content = readText(relativePath);
+    const missingMarkers = requiredMarkers.filter((marker) => !content.includes(marker));
+
+    assert(
+      missingMarkers.length === 0,
+      `${relativePath} must keep serializer response ownership guidance synchronized; missing: ${missingMarkers.join(', ')}.`,
+    );
+
+    assert(
+      serializerResponseOwnershipBroadChainClaims.every((pattern) => !pattern.test(content)),
+      `${relativePath} must not claim that the interceptor chain preserves handler return values; only SerializerInterceptor returns the value it receives unchanged, while other interceptors may transform it.`,
+    );
+  }
+}
 
 export function enforceCloudflareWorkersLifecycleDocsSync(
   readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
@@ -1802,6 +1938,7 @@ export function main() {
   enforceReleaseGovernancePublishSurfaceSync();
   enforceCanonicalPackageSurfaceSync();
   enforceDocsHubOfficialTransportLinks();
+  enforceSerializerResponseOwnershipDocsSync();
   enforceCloudflareWorkersLifecycleDocsSync();
   enforceExpressRuntimeMigrationDocsSync();
   enforceCanonicalRuntimeMatrixReferences();
