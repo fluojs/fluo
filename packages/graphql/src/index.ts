@@ -1,18 +1,16 @@
 export * from './dataloader.js';
 export * from './decorators.js';
 export { GraphqlModule } from './module.js';
-export {
-  isGraphqlListTypeRef,
-  listOf,
-} from './types.js';
 export type {
   ArgFieldMetadata,
+  FieldResolverParameterBindingMetadata,
+  FieldResolverParameterKind,
   GraphQLContext,
   GraphqlArgType,
   GraphqlListTypeRef,
   GraphqlModuleOptions,
-  GraphqlRequestLimitsOptions,
   GraphqlRequestContext,
+  GraphqlRequestLimitsOptions,
   GraphqlRootOutputNamedType,
   GraphqlRootOutputType,
   GraphqlScalarTypeName,
@@ -21,4 +19,8 @@ export type {
   ResolverHandlerMetadata,
   ResolverHandlerType,
   ResolverMetadata,
+} from './types.js';
+export {
+  isGraphqlListTypeRef,
+  listOf,
 } from './types.js';

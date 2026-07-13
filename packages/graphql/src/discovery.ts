@@ -1,9 +1,14 @@
-import { type MetadataPropertyKey, type Token } from '@fluojs/core';
+import type { MetadataPropertyKey, Token } from '@fluojs/core';
 import { getClassDiMetadata } from '@fluojs/core/internal';
 import type { FactoryProvider, Provider, ValueProvider } from '@fluojs/di';
 import type { CompiledModule } from '@fluojs/runtime';
 
-import { getArgFieldMetadataEntries, getResolverHandlerMetadataEntries, getResolverMetadata } from './metadata.js';
+import {
+  getArgFieldMetadataEntries,
+  getFieldResolverParameterMetadataEntries,
+  getResolverHandlerMetadataEntries,
+  getResolverMetadata,
+} from './metadata.js';
 import type { GraphqlModuleOptions, ResolverDescriptor } from './types.js';
 
 interface DiscoveryCandidate {
@@ -169,6 +174,14 @@ export function discoverResolverDescriptors(
       handlers: getResolverHandlerMetadataEntries(candidate.targetType.prototype).map((entry) => {
         const inputClass = entry.metadata.inputClass;
         const argFields = inputClass !== undefined ? getArgFieldMetadataEntries(inputClass.prototype).map((argField) => argField.metadata) : [];
+        const parameterBindings = getFieldResolverParameterMetadataEntries(candidate.targetType.prototype, entry.propertyKey);
+
+        if (entry.metadata.type !== 'field' && parameterBindings.length > 0) {
+          throw new Error(
+            `@Parent() and @Context() can only bind parameters on @FieldResolver() methods. ` +
+              `Invalid placement: ${candidate.targetType.name}.${methodKeyToName(entry.propertyKey)}.`,
+          );
+        }
 
         return {
           argFields,
@@ -177,7 +190,9 @@ export function discoverResolverDescriptors(
           inputClass,
           methodKey: entry.propertyKey,
           methodName: methodKeyToName(entry.propertyKey),
+          nullable: entry.metadata.nullable,
           outputType: entry.metadata.outputType,
+          parameterBindings,
           type: entry.metadata.type,
         };
       }),

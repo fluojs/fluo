@@ -109,9 +109,22 @@ export interface ResolverMetadata {
 }
 
 /**
- * Supported GraphQL operation handler categories.
+ * Supported GraphQL root-operation and object-field handler categories.
  */
-export type ResolverHandlerType = 'query' | 'mutation' | 'subscription';
+export type ResolverHandlerType = 'query' | 'mutation' | 'subscription' | 'field';
+
+/**
+ * Explicit source kinds that can be bound to object field-resolver parameters.
+ */
+export type FieldResolverParameterKind = 'parent' | 'context';
+
+/**
+ * Describes one positional parameter binding for an object field resolver.
+ */
+export interface FieldResolverParameterBindingMetadata {
+  index: number;
+  kind: FieldResolverParameterKind;
+}
 
 /**
  * Scalar names supported by the code-first schema helpers.
@@ -187,6 +200,7 @@ export interface ResolverHandlerMetadata {
   inputClass?: Function;
   argTypes?: Record<string, GraphqlArgType>;
   outputType?: GraphqlRootOutputType;
+  nullable?: boolean;
 }
 
 /**
@@ -209,6 +223,8 @@ export interface ResolverHandlerDescriptor {
   argFields: ArgFieldMetadata[];
   argTypes?: Record<string, GraphqlArgType>;
   outputType?: GraphqlRootOutputType;
+  nullable?: boolean;
+  parameterBindings: FieldResolverParameterBindingMetadata[];
 }
 
 /**

@@ -1,22 +1,23 @@
-import { Controller, Get, Post, type FrameworkRequest, type HttpApplicationAdapter, type Middleware, type MiddlewareContext, type Next } from '@fluojs/http';
 import { Inject } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
+import { Controller, type FrameworkRequest, Get, type HttpApplicationAdapter, type Middleware, type MiddlewareContext, type Next, Post } from '@fluojs/http';
 import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import type {
-  GraphQLError as GraphQLErrorType,
+  DocumentNode,
+  ExecutionArgs,
+  execute as executeGraphql,
   GraphQLBoolean as GraphQLBooleanType,
+  GraphQLError as GraphQLErrorType,
   GraphQLFloat as GraphQLFloatType,
   GraphQLID as GraphQLIDType,
   GraphQLInt as GraphQLIntType,
   GraphQLList as GraphQLListType,
+  GraphQLNonNull as GraphQLNonNullType,
   GraphQLObjectType as GraphQLObjectTypeType,
   GraphQLSchema as GraphQLSchemaType,
   GraphQLString as GraphQLStringType,
   GraphQLUnionType as GraphQLUnionTypeType,
-  DocumentNode,
-  ExecutionArgs,
-  execute as executeGraphql,
   subscribe as subscribeGraphql,
 } from 'graphql';
 
@@ -26,13 +27,13 @@ import { GRAPHQL_INTERNAL_MODULE_OPTIONS_TOKEN } from './internal-tokens.js';
 import type { GraphqlNodeWebSocketSubscribeRequest, GraphqlNodeWebSocketTransport } from './node/graphql-websocket-transport.js';
 import { createCodeFirstSchema, resolveSchema } from './schema/schema.js';
 import { isGraphqlPath, toFetchRequest, writeFetchResponse } from './transport/transport.js';
-import { GRAPHQL_OPERATION_CONTAINER } from './types.js';
 import type {
   GraphQLContext,
   GraphqlModuleOptions,
   GraphqlRequestContext,
   ResolverDescriptor,
 } from './types.js';
+import { GRAPHQL_OPERATION_CONTAINER } from './types.js';
 
 const GRAPHQL_CONTEXT_OVERRIDE = Symbol('fluo.graphql.context.override');
 
@@ -89,6 +90,7 @@ interface GraphqlDeps {
   GraphQLID: typeof GraphQLIDType;
   GraphQLInt: typeof GraphQLIntType;
   GraphQLList: typeof GraphQLListType;
+  GraphQLNonNull: typeof GraphQLNonNullType;
   GraphQLObjectType: typeof GraphQLObjectTypeType;
   GraphQLSchema: typeof GraphQLSchemaType;
   GraphQLString: typeof GraphQLStringType;
@@ -258,6 +260,7 @@ async function loadGraphqlDeps(): Promise<GraphqlDeps> {
     GraphQLID: graphqlMod.GraphQLID,
     GraphQLInt: graphqlMod.GraphQLInt,
     GraphQLList: graphqlMod.GraphQLList,
+    GraphQLNonNull: graphqlMod.GraphQLNonNull,
     GraphQLObjectType: graphqlMod.GraphQLObjectType,
     GraphQLSchema: graphqlMod.GraphQLSchema,
     GraphQLString: graphqlMod.GraphQLString,
