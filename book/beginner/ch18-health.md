@@ -48,7 +48,7 @@ Health checks are essential for every application, but they play different roles
 `fluo` provides `@fluojs/terminus`, a dedicated Module for health monitoring. It acts as a coordinator between infrastructure and different "health indicators." Health indicators are small classes that check the state of a specific resource, such as a Prisma database or Redis cache.
 
 ### Why Terminus?
-Terminus is designed to be extensible. It provides built in indicators for the most common dependencies while still letting you write application specific indicators for custom logic. It also aggregates runtime readiness state and indicator results on the `/health` and `/ready` routes, so infrastructure can read state through consistent JSON responses. Signal registration for shutdown and forced shutdown timing are more the responsibility of the host and runtime close path than Terminus itself. Terminus is closer to a tool that strengthens state decisions around that flow.
+Terminus is designed to be extensible. It provides built in indicators for the most common dependencies while still letting you write application specific indicators for custom logic. It aggregates runtime readiness state and indicator results on the `/health` and `/ready` routes and supplies the readiness signal that removes a shutting-down instance from rotation. It does not register shutdown signals, set forced-shutdown timing, or own cleanup order; those responsibilities belong to the host, adapter, and runtime close path.
 
 ### 18.2.1 The Standardized Health Response
 Terminus does not return only a simple "OK" string. Following industry standards, it provides a detailed JSON object that includes the status of every subcheck. This lets monitoring tools understand not only that something is wrong, but *exactly what* is wrong. For example, the response can clearly show that the database is healthy but the cache is down. This level of detail is invaluable when SRE teams diagnose complex production problems under pressure.
@@ -193,7 +193,7 @@ In some advanced scenarios, you may want to register health indicators dynamical
 This dynamic behavior lets health checks adapt to the specific context in which the application is running. Whether it is a minimal development mode or a fully featured production environment, the vital signs should reflect the actual active components serving users. This level of adaptability is one of the core advantages of Fluo's explicit dependency management without metadata.
 
 ## 18.6 Graceful Shutdowns
-Health is not only about being alive. It is also about going down gracefully. When you deploy a new version of FluoBlog, the previous version must shut down. In the current contract, shutdown signal registration is handled by the surrounding host or adapter helper, and the actual cleanup order is managed by the runtime close path. Terminus provides readiness and aggregated health decisions in this flow, helping ensure that an instance about to shut down no longer receives new traffic.
+Health is not only about being alive. It is also about going down gracefully. When you deploy a new version of FluoBlog, the previous version must shut down. In the current contract, shutdown signal registration is handled by the surrounding host or adapter helper, and the actual cleanup order is managed by the runtime close path. Terminus only aggregates health/readiness and exposes the runtime's shutdown-readiness signal so an instance about to shut down no longer receives new traffic; it does not initiate or own shutdown.
 
 Without graceful shutdown, a user uploading a large file or processing a complex transaction could have their connection suddenly cut, which can lead to data inconsistency. Fluo's commitment to reliability makes these transitions as smooth as possible, protecting user data integrity even during maintenance. This "zero downtime deployment" capability is essential for any application aiming for "five nines," or 99.999%, availability.
 
@@ -254,7 +254,7 @@ Automating failure data collection shortens the feedback loop between production
 ## 18.7 Summary
 Health checks are the application's "vital signs." When implemented correctly, they move operations away from reactive "firefighting" and toward proactive, automated reliability management.
 
-- **Terminus** provides a standardized way to monitor application health and manage shutdown.
+- **Terminus** aggregates application health/readiness and supplies shutdown-readiness signals; the host, adapter, and runtime own shutdown signals, timing, and cleanup.
 - **`GET /health` and `GET /ready`** routes enable intelligent routing and recovery in modern container environments.
 - **Health Indicators** let you track databases, caches, and custom internal state.
 - **Graceful Shutdown** protects users and data during server transitions and deployments.
