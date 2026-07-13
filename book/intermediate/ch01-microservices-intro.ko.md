@@ -82,6 +82,23 @@ export class OrderHandler {
 
 fluo의 가치는 비즈니스 핸들러, DTO, DI 구조를 일관되게 유지하면서 연결마다 적절한 트랜스포트를 고를 수 있게 해준다는 점에 있습니다. 애플리케이션을 다시 만들지 않고도 인프라를 최적화할 자유를 얻게 됩니다.
 
+### 1.2.3 Transport Capability Chooser
+
+첫 선택은 protocol 이름이 아니라 capability 경계를 기준으로 하세요. 아래의 `Streaming`은 fluo의 server/client/bidirectional streaming API를 뜻합니다. Redis Streams는 durable broker 자료구조이지만 해당 RPC streaming API를 노출하지 않습니다. 정식 package 계약과 source evidence index는 [package README matrix](../../packages/microservices/README.ko.md#트랜스포트-기능-매트릭스)에 있습니다.
+
+| 트랜스포트 | `send()` | `emit()` | Streaming | Durability | 리소스 소유권 |
+| --- | --- | --- | --- | --- | --- |
+| [TCP](./ch02-tcp.ko.md) | 지원 — 상관관계가 유지된 응답 | 지원 — frame write | 미지원 | 없음 — broker 저장이나 replay 없음 | fluo가 listener와 active socket을 소유 |
+| [Redis Pub/Sub](./ch03-redis-transport.ko.md) | **미지원 — 항상 reject하며 event-only** | 지원 — Redis publication | 미지원 | 없음 — 현재 연결된 subscriber만 수신하며 ACK/replay 없음 | Caller가 publish/subscribe client를 소유하고 adapter는 unsubscribe만 수행 |
+| [Redis Streams](./ch03-redis-transport.ko.md) | 지원 — 상관관계가 유지된 response stream | 지원 — `XADD` 완료 | 미지원 — RPC streaming이 아님 | 내장 — consumer group, late `XACK`, recoverable pending entry를 사용하며 opt-in trimming은 복구 보장을 약화할 수 있음 | Caller가 reader/writer client를 소유하고 adapter가 자신의 consumer artifact를 관리하며 소유권이 불확실한 공유 request group은 보수적으로 유지 |
+| [NATS](./ch06-nats.ko.md) | 지원 — NATS request/reply | 지원 — client publish | 미지원 | 이 adapter에는 없음 — JetStream persistence/replay 계약 없음 | Caller가 client와 codec을 소유하고 adapter는 unsubscribe만 수행 |
+| [Kafka](./ch05-kafka.ko.md) | 지원 — 상관관계가 유지된 response topic | 지원 — producer publish | 미지원 | Broker/config에 의존 — retention, producer ACK, offset, retry는 caller 정책 | Caller가 producer와 consumer를 소유하고 adapter는 unsubscribe만 수행 |
+| [RabbitMQ](./ch04-rabbitmq.ko.md) | 지원 — 상관관계가 유지된 response queue | 지원 — publisher publish | 미지원 | Topology/collaborator에 의존 — durable queue, confirm, ACK/retry, DLX는 caller 정책 | Caller가 publisher, consumer, channel, connection resource를 소유하고 adapter는 자신의 consumer를 cancel |
+| [MQTT](./ch07-mqtt.ko.md) | 지원 — 상관관계가 유지된 reply topic | 지원 — client publish callback | 미지원 | QoS/retain에 의존 — retained value는 history가 아니라 snapshot이며 fluo는 handler-completion 보장을 추가하지 않음 | URL로 생성한 client는 fluo가 닫고, 전달받은 client는 caller-owned로 유지 |
+| [gRPC](./ch08-grpc.ko.md) | 지원 — unary response | 지원 — 원격 unary acknowledgement | Server, client, bidirectional | 없음 — broker persistence/replay가 없는 point-to-point RPC | fluo가 cached outbound client와 직접 생성한 server를 닫고, 전달받은 server는 caller-owned로 유지 |
+
+실행 가능한 `fluo new` preset은 [package chooser](../../docs/reference/package-chooser.ko.md#마이크로서비스-스타터-만들기)에서 확인하세요. Redis Pub/Sub은 지원되는 수동 adapter이지만 event-only이며, 목록에 있는 generated transport preset에는 포함되지 않습니다.
+
 ## 1.3 Strategic Advantages
 
 fluo의 마이크로서비스 모듈을 사용하면 다음과 같은 전략적 이점을 얻을 수 있습니다. 이 장점들은 단순히 API가 편하다는 수준을 넘어서, 서비스 수가 늘어날 때 팀이 같은 규칙으로 설계하고 운영할 수 있게 해줍니다.

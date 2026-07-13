@@ -28,6 +28,8 @@ The testing chapter covers the canonical Node.js 20+ `@fluojs/testing` path: `@f
 
 This book develops **FluoShop** into a distributed application. It covers microservice architecture, TCP, Redis, RabbitMQ, Kafka, NATS, MQTT, gRPC, domain events, CQRS, sagas, queues, scheduling, distributed locks, WebSockets, Socket.IO, notifications, email, Slack and Discord integrations, GraphQL, Mongoose, Drizzle, and runtime portability across adapters.
 
+If you are choosing a microservices transport rather than reading every transport chapter in order, start with the [Chapter 1 capability chooser](./intermediate/ch01-microservices-intro.md#123-transport-capability-chooser), then confirm the package-level contract in the [`@fluojs/microservices` capability matrix](../packages/microservices/README.md#transport-capability-matrix).
+
 ### [fluo for Advanced Users](./advanced/toc.md)
 
 This book focuses on framework internals and extension. It covers decorator history and metadata, custom decorators, Provider resolution, Scopes, Circular Dependency handling, Dynamic Modules, Module Graph compilation, application context and adapter contracts, runtime branching, HTTP pipeline internals, custom adapters, portability testing, Studio, custom package authoring, and contributing to fluo.
