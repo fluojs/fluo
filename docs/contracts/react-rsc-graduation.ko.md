@@ -23,6 +23,11 @@ maintainer identity, nonzero 40-character evidence commit SHA가 필요합니다
 이 record와 일치해야 합니다. Policy prose와 GitHub-looking URL은 context일 뿐 approval을 성립시키지
 않으며, gate는 deterministic하게 유지되고 CI에서 network lookup을 수행하지 않습니다.
 
+Maintainer authority는 기존 `.github/CODEOWNERS`의 default-owner rule에서 가져오며 graduation change
+set은 해당 authority metadata를 수정할 수 없습니다. Gate는 local read-only Git object 및 ancestry
+check로 기록된 commit이 실제로 존재하고 ancestor of HEAD인지 검증합니다. Login 문자열이나 문법상
+유효한 SHA만으로 approval을 자체 선언할 수 없습니다.
+
 ## 현재 Evidence 상태
 
 | Gate | 현재 evidence | 상태 |
@@ -84,6 +89,11 @@ maintainer identity, nonzero 40-character evidence commit SHA가 필요합니다
   browser/server-only module을 export하거나 eager load하지 않는 negative test를 유지합니다.
 - Manifest, Flight response, action transport, route ownership, hydration mismatch, safe transfer, error
   recovery, 지원 runtime/bundler 조합을 executable test로 다룹니다.
+- Executable evidence는 import 존재가 아니라 semantic을 검증해야 합니다. Runtime dual-import evidence는
+  stable namespace와 experimental namespace를 직접 비교하고 declaration evidence는 exact type-equality
+  assertion을 사용하며 hydration/data-safety/runtime-bundler suite는 canonical input으로 stable runtime을
+  호출한 뒤 observable runtime result를 assertion해야 합니다. Module-existence check 또는 matcher
+  argument에만 binding을 언급하는 방식은 evidence로 인정하지 않습니다.
 - Package build, typecheck, test, docs parity, platform governance, 필요 시 public-export TSDoc,
   release-readiness verification을 통과합니다.
 
@@ -105,6 +115,10 @@ maintainer identity, nonzero 40-character evidence commit SHA가 필요합니다
 4. 두 import path의 runtime 및 declaration compatibility test를 추가합니다.
 5. Root `@fluojs/react`와 `@fluojs/react/client`의 isolation을 유지합니다.
 6. Pre-1.0에서는 일반적으로 `minor`인 backward-compatible feature changeset을 포함합니다.
+
+Package root export의 모든 conditional leaf는 각각 `./dist/index.js` 또는 `./dist/index.d.ts` canonical
+artifact를 유지해야 하고 legacy `main`/`types` field도 같은 target을 유지해야 합니다. `./rsc` 추가가
+root consumer를 RSC artifact로 redirect해서는 안 됩니다.
 
 해당 PR이 존재하기 전까지 governance는 `./rsc` export를 거부해야 합니다.
 

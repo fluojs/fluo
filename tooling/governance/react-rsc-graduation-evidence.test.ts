@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +9,10 @@ import * as graduationPolicy from './react-rsc-graduation-policy.mjs';
 const { enforceReactRscGraduationEvidenceUpdates } = graduationPolicy;
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const repositoryEvidenceCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+  cwd: repoRoot,
+  encoding: 'utf8',
+}).trim();
 const reactPackageManifestPath = 'packages/react/package.json';
 const englishPolicyPath = 'docs/contracts/react-rsc-graduation.md';
 const koreanPolicyPath = 'docs/contracts/react-rsc-graduation.ko.md';
@@ -38,6 +43,7 @@ const companionPaths = [
   'packages/react/README.ko.md',
   'tooling/governance/react-rsc-discoverability.test.ts',
   'tooling/governance/react-rsc-graduation-evidence.test.ts',
+  'tooling/governance/react-rsc-graduation-hardening.test.ts',
   'tooling/governance/react-rsc-graduation-policy.mjs',
   approvalRecordPath,
 ] as const;
@@ -56,19 +62,26 @@ function stableGraduationSources(overrides: Readonly<Record<string, string>> = {
   const sources: Readonly<Record<string, string>> = {
     [reactPackageManifestPath]: JSON.stringify({
       exports: {
+        '.': { import: './dist/index.js', types: './dist/index.d.ts' },
         './experimental/rsc': {
           import: './dist/experimental/rsc.js',
           types: './dist/experimental/rsc.d.ts',
         },
         './rsc': { import: './dist/rsc.js', types: './dist/rsc.d.ts' },
       },
+      main: './dist/index.js',
+      types: './dist/index.d.ts',
     }),
-    [englishPolicyPath]:
-      '**Status: Graduation approved.** The repository-owned approval record is authoritative. [Decision context](https://github.com/fluojs/fluo/issues/2502#issuecomment-1)',
-    [koreanPolicyPath]:
-      '**Status: Graduation approved.** 저장소 소유 approval record가 authoritative합니다. [Decision context](https://github.com/fluojs/fluo/issues/2502#issuecomment-1)',
+    [englishPolicyPath]: read(englishPolicyPath).replace(
+      'Status: Policy defined; graduation blocked.',
+      'Status: Graduation approved.',
+    ),
+    [koreanPolicyPath]: read(koreanPolicyPath).replace(
+      'Status: Policy defined; graduation blocked.',
+      'Status: Graduation approved.',
+    ),
     [approvalRecordPath]: JSON.stringify({
-      approval: { evidenceCommit: 'a'.repeat(40), maintainer: 'ayden94' },
+      approval: { evidenceCommit: repositoryEvidenceCommit, maintainer: 'ayden94' },
       issue: 2502,
       schemaVersion: 1,
       status: 'approved',
@@ -81,11 +94,11 @@ function stableGraduationSources(overrides: Readonly<Record<string, string>> = {
     'packages/react/src/rsc-dual-import.types.test.ts':
       "import { expectTypeOf, it } from 'vitest'; import * as stable from '@fluojs/react/rsc'; import * as experimental from '@fluojs/react/experimental/rsc'; it('matches declaration exports', () => { expectTypeOf(stable).toEqualTypeOf(experimental); });",
     'packages/react/src/rsc-hydration.test.ts':
-      "import { expect, it } from 'vitest'; import * as stable from '@fluojs/react/rsc'; it('covers hydration mismatch recovery', () => { expect(stable).toBeDefined(); });",
+      "import { expect, it } from 'vitest'; import * as stable from '@fluojs/react/rsc'; it('covers hydration mismatch recovery', () => { expect(stable.verifyHydrationContract('hydration mismatch', 'recovery')).toMatchObject({ recovered: true }); });",
     'packages/react/src/rsc-data-safety.test.ts':
-      "import { expect, it } from 'vitest'; import * as stable from '@fluojs/react/rsc'; it('covers safe transfer for private no-store cookie data', () => { expect(stable).toBeDefined(); });",
+      "import { expect, it } from 'vitest'; import * as stable from '@fluojs/react/rsc'; it('covers safe transfer for private no-store cookie data', () => { expect(stable.verifyDataSafety('private', 'no-store', 'cookie')).toEqual({ safe: true }); });",
     'packages/react/src/rsc-runtime-bundler-matrix.test.ts':
-      "import { expect, it } from 'vitest'; import * as stable from '@fluojs/react/rsc'; it('covers each supported runtime and bundler matrix entry', () => { expect(stable).toBeDefined(); });",
+      "import { expect, it } from 'vitest'; import * as stable from '@fluojs/react/rsc'; it('covers each supported runtime and bundler matrix entry', () => { expect(stable.verifyRuntimeBundler('node', 'vite')).toMatchObject({ supported: true }); });",
     ...overrides,
   };
 
@@ -190,7 +203,7 @@ describe('React RSC graduation evidence gate', () => {
     // Given: the machine-readable record names a login outside the repository's trusted maintainer contract.
     const readText = stableGraduationSources({
       [approvalRecordPath]: JSON.stringify({
-        approval: { evidenceCommit: 'b'.repeat(40), maintainer: 'untrusted-contributor' },
+        approval: { evidenceCommit: repositoryEvidenceCommit, maintainer: 'untrusted-contributor' },
         issue: 2502,
         schemaVersion: 1,
         status: 'approved',

@@ -4,7 +4,15 @@ import { fileURLToPath } from 'node:url';
 
 import { enforceReactRscExecutableEvidence } from './react-rsc-executable-evidence.mjs';
 import {
-  enforceReactRscStableSurfaceIsolation,
+  enforceReactRscAggregateMinorChangeset,
+  enforceReactRscApprovalProvenance,
+  enforceReactRscPolicyInvariants,
+  enforceReactRscPolicyStatus,
+  readReactRscGraduationRecord,
+  repositoryGitProbe,
+} from './react-rsc-graduation-metadata.mjs';
+import {
+  enforceReactPackageRootIsolation,
 } from './react-rsc-graduation-source-analysis.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -13,7 +21,6 @@ const stableRscSubpath = './rsc';
 const stableRscEntrypointPath = 'packages/react/src/rsc.ts';
 const experimentalRscEntrypointPath = 'packages/react/src/experimental/rsc.ts';
 const approvalRecordPath = 'tooling/governance/react-rsc-graduation-approval.json';
-const trustedMaintainers = new Set(['ayden94']);
 const requiredGraduationEvidencePaths = [
   'docs/contracts/react-rsc-graduation.md',
   'docs/contracts/react-rsc-graduation.ko.md',
@@ -36,6 +43,7 @@ const requiredGraduationEvidencePaths = [
   'packages/react/src/rsc-runtime-bundler-matrix.test.ts',
   'tooling/governance/react-rsc-discoverability.test.ts',
   'tooling/governance/react-rsc-graduation-evidence.test.ts',
+  'tooling/governance/react-rsc-graduation-hardening.test.ts',
   'tooling/governance/react-rsc-graduation-policy.mjs',
   approvalRecordPath,
 ];
@@ -110,60 +118,17 @@ function stableRscExportKeys(packageManifest) {
   return Object.keys(packageExports).filter((exportKey) => exportKeyCanResolveSubpath(exportKey, stableRscSubpath));
 }
 
-function readApprovalRecord(readText) {
-  const record = JSON.parse(readText(approvalRecordPath));
-  assert(record?.schemaVersion === 1, `${approvalRecordPath} must use schemaVersion 1.`);
-  assert(record.issue === 2502, `${approvalRecordPath} must govern issue #2502.`);
-  assert(record.status === 'blocked' || record.status === 'approved', `${approvalRecordPath} has an invalid status.`);
-
-  if (record.status === 'blocked') {
-    assert(record.approval === null, `${approvalRecordPath} must keep approval null while blocked.`);
-    return record;
-  }
-
-  assert(record.approval && typeof record.approval === 'object', `${approvalRecordPath} must include approval.`);
-  assert(trustedMaintainers.has(record.approval.maintainer), `${approvalRecordPath} approval must name a trusted maintainer.`);
+function enforceLiteralStableRscExport(packageManifest) {
+  const packageExports = packageManifest?.exports;
+  const hasLiteralStableExport = Object.hasOwn(packageExports ?? {}, stableRscSubpath);
+  const stableRscExport = hasLiteralStableExport ? packageExports[stableRscSubpath] : undefined;
+  const targetKeys = stableRscExport && typeof stableRscExport === 'object' ? Object.keys(stableRscExport).sort() : [];
   assert(
-    /^[0-9a-f]{40}$/u.test(record.approval.evidenceCommit) && !/^0{40}$/u.test(record.approval.evidenceCommit),
-    `${approvalRecordPath} approval must pin a nonzero evidence commit SHA.`,
-  );
-  return record;
-}
-
-function policyStatus(policy, policyPath) {
-  const statuses = [
-    ['blocked', 'Status: Policy defined; graduation blocked.'],
-    ['approved', 'Status: Graduation approved.'],
-  ].filter(([, marker]) => policy.includes(marker));
-  assert(statuses.length === 1, `${policyPath} must declare exactly one React RSC graduation status.`);
-  return statuses[0][0];
-}
-
-function enforcePolicyStatusMatches(status, readText) {
-  for (const policyPath of ['docs/contracts/react-rsc-graduation.md', 'docs/contracts/react-rsc-graduation.ko.md']) {
-    assert(
-      policyStatus(readText(policyPath), policyPath) === status,
-      `${policyPath} status must match the repository-owned React RSC approval record.`,
-    );
-  }
-}
-
-function enforceReactMinorChangeset(changedFiles, readText) {
-  const changesetPaths = changedFiles.filter(
-    (relativePath) => relativePath.startsWith('.changeset/') && relativePath.endsWith('.md'),
-  );
-  const intents = changesetPaths.flatMap((changesetPath) => {
-    const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u.exec(readText(changesetPath));
-    assert(match, `${changesetPath} must contain Changesets YAML frontmatter.`);
-    return match[1]
-      .split(/\r?\n/u)
-      .map((line) => /^['"]?([^'"]+)['"]?\s*:\s*['"]?(patch|minor|major)['"]?\s*$/u.exec(line.trim()))
-      .filter((intent) => intent !== null)
-      .map((intent) => ({ bump: intent[2], packageName: intent[1].trim() }));
-  });
-  assert(
-    intents.some((intent) => intent.packageName === '@fluojs/react' && intent.bump === 'minor'),
-    'Stable React RSC graduation must include a changed @fluojs/react: minor changeset.',
+    hasLiteralStableExport &&
+      targetKeys.join(',') === 'import,types' &&
+      stableRscExport.types === './dist/rsc.d.ts' &&
+      stableRscExport.import === './dist/rsc.js',
+    'Approved React RSC graduation requires a literal ./rsc export with exact types and import targets.',
   );
 }
 
@@ -176,7 +141,11 @@ function enforceGovernedPolicyLinks(readText) {
   }
 }
 
-export function enforceReactRscGraduationEvidenceUpdates(changedFiles, readText = read) {
+export function enforceReactRscGraduationEvidenceUpdates(
+  changedFiles,
+  readText = read,
+  gitProbe = repositoryGitProbe,
+) {
   if (!changedFiles.includes(reactPackageManifestPath)) {
     return;
   }
@@ -186,16 +155,13 @@ export function enforceReactRscGraduationEvidenceUpdates(changedFiles, readText 
     return;
   }
 
-  const approvalRecord = readApprovalRecord(readText);
+  const approvalRecord = readReactRscGraduationRecord(readText);
   assert(approvalRecord.status === 'approved', 'The React RSC graduation approval record must be approved.');
-  enforcePolicyStatusMatches('approved', readText);
-  enforceReactRscStableSurfaceIsolation(readText);
-
-  const stableRscExport = packageManifest.exports?.[stableRscSubpath];
-  assert(
-    stableRscExport?.types === './dist/rsc.d.ts' && stableRscExport?.import === './dist/rsc.js',
-    'Stable React RSC graduation must expose ./rsc with ./dist/rsc.d.ts and ./dist/rsc.js targets.',
-  );
+  enforceReactRscPolicyStatus('approved', readText);
+  enforceReactRscPolicyInvariants(readText);
+  enforceReactRscApprovalProvenance(approvalRecord, { changedFiles, gitProbe, readText });
+  enforceLiteralStableRscExport(packageManifest);
+  enforceReactPackageRootIsolation(packageManifest, readText);
 
   for (const requiredPath of requiredGraduationEvidencePaths) {
     assert(
@@ -212,44 +178,15 @@ export function enforceReactRscGraduationEvidenceUpdates(changedFiles, readText 
     'The experimental RSC entrypoint must directly re-export the stable entrypoint during the deprecation window.',
   );
   enforceReactRscExecutableEvidence(readText);
-  enforceReactMinorChangeset(changedFiles, readText);
+  enforceReactRscAggregateMinorChangeset(changedFiles, readText);
   enforceGovernedPolicyLinks(readText);
 }
 
 export function enforceReactRscGraduationPolicy(readText = read) {
-  const approvalRecord = readApprovalRecord(readText);
+  const approvalRecord = readReactRscGraduationRecord(readText);
   assert(approvalRecord.status === 'blocked', 'The React RSC graduation approval record must remain blocked.');
-  enforcePolicyStatusMatches('blocked', readText);
-  enforceReactRscStableSurfaceIsolation(readText);
-  const policies = [
-    readText('docs/contracts/react-rsc-graduation.md'),
-    readText('docs/contracts/react-rsc-graduation.ko.md'),
-  ];
-  const requiredTerms = [
-    'Status: Policy defined; graduation blocked',
-    '@fluojs/react/rsc',
-    '@fluojs/react/experimental/rsc',
-    'react@19.2.6',
-    'manifest',
-    'Server Function',
-    'SSR',
-    'CSR',
-    'prerendering',
-    'hydration mismatch',
-    'safe transfer',
-    'browser/server',
-    '#2506',
-    'deprecation window',
-    'Changesets',
-    'roadmap phase',
-    'no stable root RSC export',
-  ];
-
-  for (const policy of policies) {
-    for (const term of requiredTerms) {
-      assert(policy.includes(term), `React RSC graduation policy mirrors must document ${term}.`);
-    }
-  }
+  enforceReactRscPolicyStatus('blocked', readText);
+  enforceReactRscPolicyInvariants(readText);
 
   const packageManifest = JSON.parse(readText(reactPackageManifestPath));
   assert(
@@ -261,20 +198,26 @@ export function enforceReactRscGraduationPolicy(readText = read) {
     matchingStableRscExportKeys.length === 0,
     `React package export-map key ${JSON.stringify(matchingStableRscExportKeys[0])} can resolve stable @fluojs/react/rsc while graduation is blocked.`,
   );
+  enforceReactPackageRootIsolation(packageManifest, readText);
 
   enforceGovernedPolicyLinks(readText);
 }
 
-export function enforceReactRscGraduationGovernance(changedFiles, readText = read) {
-  const approvalRecord = readApprovalRecord(readText);
-  enforcePolicyStatusMatches(approvalRecord.status, readText);
+export function enforceReactRscGraduationGovernance(
+  changedFiles,
+  readText = read,
+  gitProbe = repositoryGitProbe,
+) {
+  const approvalRecord = readReactRscGraduationRecord(readText);
 
   if (approvalRecord.status === 'approved') {
     assert(
       changedFiles.includes(reactPackageManifestPath),
       `An approved React RSC graduation must include ${reactPackageManifestPath}.`,
     );
-    enforceReactRscGraduationEvidenceUpdates(changedFiles, readText);
+    const packageManifest = JSON.parse(readText(reactPackageManifestPath));
+    enforceLiteralStableRscExport(packageManifest);
+    enforceReactRscGraduationEvidenceUpdates(changedFiles, readText, gitProbe);
     return;
   }
 

@@ -7,6 +7,8 @@ const stableSurfaceEntrypoints = [
   ['stable client', 'packages/react/src/client.ts'],
 ];
 const rscExportNamePattern = /(?:Rsc|RSC|Flight|ServerFunction)/u;
+const canonicalRootRuntimeTarget = './dist/index.js';
+const canonicalRootTypesTarget = './dist/index.d.ts';
 
 function assert(condition, message) {
   if (!condition) {
@@ -121,6 +123,27 @@ function exportedNames(sourceFile) {
   return names;
 }
 
+function collectRootExportTargets(value, conditions = [], targets = []) {
+  if (typeof value === 'string') {
+    targets.push({ conditions, target: value });
+    return targets;
+  }
+  if (Array.isArray(value)) {
+    for (const [index, target] of value.entries()) {
+      collectRootExportTargets(target, [...conditions, String(index)], targets);
+    }
+    return targets;
+  }
+  if (!value || typeof value !== 'object') {
+    targets.push({ conditions, target: value });
+    return targets;
+  }
+  for (const [condition, target] of Object.entries(value)) {
+    collectRootExportTargets(target, [...conditions, condition], targets);
+  }
+  return targets;
+}
+
 export function enforceReactRscStableSurfaceIsolation(readText) {
   for (const [surfaceName, entrypointPath] of stableSurfaceEntrypoints) {
     const dependencyPath = findRscDependency(entrypointPath, readText);
@@ -133,4 +156,27 @@ export function enforceReactRscStableSurfaceIsolation(readText) {
     const rscExportName = names.find((name) => rscExportNamePattern.test(name));
     assert(rscExportName === undefined, `The React ${surfaceName} must not export RSC symbol ${rscExportName}.`);
   }
+}
+
+export function enforceReactPackageRootIsolation(packageManifest, readText) {
+  const rootTargets = collectRootExportTargets(packageManifest?.exports?.['.']);
+  assert(rootTargets.length > 0, 'React package exports["."] must declare canonical root targets.');
+  assert(
+    rootTargets.some(({ conditions }) => conditions.includes('types')),
+    'React package root export must declare a types target.',
+  );
+  assert(
+    rootTargets.some(({ conditions }) => !conditions.includes('types')),
+    'React package root export must declare a runtime target.',
+  );
+  for (const { conditions, target } of rootTargets) {
+    const expectedTarget = conditions.includes('types') ? canonicalRootTypesTarget : canonicalRootRuntimeTarget;
+    assert(
+      target === expectedTarget,
+      `React package root export target ${target} at ${conditions.join('.')} must use canonical ${expectedTarget}.`,
+    );
+  }
+  assert(packageManifest.main === canonicalRootRuntimeTarget, `React package main must remain ${canonicalRootRuntimeTarget}.`);
+  assert(packageManifest.types === canonicalRootTypesTarget, `React package types must remain ${canonicalRootTypesTarget}.`);
+  enforceReactRscStableSurfaceIsolation(readText);
 }

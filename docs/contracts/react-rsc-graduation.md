@@ -23,6 +23,11 @@ identity, and a nonzero 40-character evidence commit SHA. The status in both pol
 match that record. Policy prose and GitHub-looking URLs are context only and cannot establish
 approval; the gate remains deterministic and performs no network lookup in CI.
 
+Maintainer authority comes from the pre-existing default-owner rule in `.github/CODEOWNERS`; the
+graduation change set cannot modify that authority metadata. The gate verifies the recorded commit
+with local read-only Git object and ancestry checks: the object must exist and be an ancestor of HEAD.
+Neither a login string nor a syntactically valid SHA can self-assert approval.
+
 ## Current Evidence Status
 
 | Gate | Current evidence | Status |
@@ -85,6 +90,11 @@ approval; the gate remains deterministic and performs no network lookup in CI.
   load RSC, Server Function, renderer, build-tool, or browser/server-only modules.
 - Cover manifest, Flight response, action transport, route ownership, hydration mismatch, safe
   transfer, error recovery, and supported runtime/bundler combinations with executable tests.
+- Keep executable evidence semantic rather than import-only: runtime dual-import evidence compares
+  the stable namespace directly with the experimental namespace, declaration evidence uses an exact
+  type-equality assertion, and hydration/data-safety/runtime-bundler suites call the stable runtime
+  with their canonical inputs and assert an observable runtime result. Module-existence checks and
+  bindings mentioned only in matcher arguments do not count.
 - Pass package build, typecheck, tests, docs parity, platform governance, public-export TSDoc when
   applicable, and release-readiness verification.
 
@@ -106,6 +116,10 @@ After all gates are approved, the graduation PR must:
 4. add runtime and declaration compatibility tests for both import paths;
 5. keep root `@fluojs/react` and `@fluojs/react/client` isolated; and
 6. include a backward-compatible feature changeset, normally `minor` while the package is pre-1.0.
+
+Every conditional leaf of the package root export must remain on `./dist/index.js` or
+`./dist/index.d.ts` as appropriate, and legacy `main`/`types` fields must remain on those same
+canonical artifacts. Adding `./rsc` must never redirect root consumers to RSC artifacts.
 
 Until that PR exists, governance must reject a `./rsc` export.
 

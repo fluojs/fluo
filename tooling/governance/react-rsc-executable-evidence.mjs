@@ -3,28 +3,52 @@ import ts from 'typescript';
 const executableEvidenceContracts = [
   {
     assertion: 'expect',
-    imports: ['@fluojs/react/rsc', '@fluojs/react/experimental/rsc'],
+    expectedImport: '@fluojs/react/experimental/rsc',
+    kind: 'runtime-parity',
+    matcher: 'toEqual',
     path: 'packages/react/src/rsc-dual-import.test.ts',
+    stableImport: '@fluojs/react/rsc',
   },
   {
     assertion: 'expectTypeOf',
-    imports: ['@fluojs/react/rsc', '@fluojs/react/experimental/rsc'],
+    expectedImport: '@fluojs/react/experimental/rsc',
+    kind: 'type-parity',
+    matcher: 'toEqualTypeOf',
     path: 'packages/react/src/rsc-dual-import.types.test.ts',
+    stableImport: '@fluojs/react/rsc',
   },
   {
     assertion: 'expect',
-    imports: ['@fluojs/react/rsc'],
+    inputs: ['hydration mismatch', 'recovery'],
+    kind: 'runtime-result',
+    matcher: 'toMatchObject',
+    operation: 'verifyHydrationContract',
     path: 'packages/react/src/rsc-hydration.test.ts',
+    resultProperty: 'recovered',
+    stableImport: '@fluojs/react/rsc',
+    suite: 'hydration',
   },
   {
     assertion: 'expect',
-    imports: ['@fluojs/react/rsc'],
+    inputs: ['private', 'no-store', 'cookie'],
+    kind: 'runtime-result',
+    matcher: 'toEqual',
+    operation: 'verifyDataSafety',
     path: 'packages/react/src/rsc-data-safety.test.ts',
+    resultProperty: 'safe',
+    stableImport: '@fluojs/react/rsc',
+    suite: 'data-safety',
   },
   {
     assertion: 'expect',
-    imports: ['@fluojs/react/rsc'],
+    inputs: ['node', 'vite'],
+    kind: 'runtime-result',
+    matcher: 'toMatchObject',
+    operation: 'verifyRuntimeBundler',
     path: 'packages/react/src/rsc-runtime-bundler-matrix.test.ts',
+    resultProperty: 'supported',
+    stableImport: '@fluojs/react/rsc',
+    suite: 'runtime/bundler',
   },
 ];
 
@@ -40,76 +64,117 @@ function parseSource(relativePath, source) {
   return sourceFile;
 }
 
-function importBindingGroups(sourceFile, requiredImports) {
-  return requiredImports.map((requiredImport) => {
-    const bindings = new Set();
-    for (const statement of sourceFile.statements) {
-      if (
-        !ts.isImportDeclaration(statement) ||
-        !ts.isStringLiteral(statement.moduleSpecifier) ||
-        statement.moduleSpecifier.text !== requiredImport
-      ) {
-        continue;
-      }
-
-      const importClause = statement.importClause;
-      if (importClause?.name) {
-        bindings.add(importClause.name.text);
-      }
-      if (importClause?.namedBindings && ts.isNamespaceImport(importClause.namedBindings)) {
-        bindings.add(importClause.namedBindings.name.text);
-      }
-      if (importClause?.namedBindings && ts.isNamedImports(importClause.namedBindings)) {
-        for (const element of importClause.namedBindings.elements) {
-          bindings.add(element.name.text);
-        }
+function importBindings(sourceFile, requiredImport) {
+  const bindings = new Set();
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      statement.moduleSpecifier.text !== requiredImport
+    ) {
+      continue;
+    }
+    const importClause = statement.importClause;
+    if (importClause?.name) {
+      bindings.add(importClause.name.text);
+    }
+    if (importClause?.namedBindings && ts.isNamespaceImport(importClause.namedBindings)) {
+      bindings.add(importClause.namedBindings.name.text);
+    }
+    if (importClause?.namedBindings && ts.isNamedImports(importClause.namedBindings)) {
+      for (const element of importClause.namedBindings.elements) {
+        bindings.add(element.name.text);
       }
     }
-    assert(bindings.size > 0, `${sourceFile.fileName} must import ${requiredImport} as executable evidence.`);
-    return bindings;
-  });
+  }
+  assert(bindings.size > 0, `${sourceFile.fileName} must import ${requiredImport} as executable evidence.`);
+  return bindings;
 }
 
-function assertionRootName(expression) {
-  if (ts.isCallExpression(expression)) {
-    if (ts.isIdentifier(expression.expression)) {
-      return expression.expression.text;
-    }
-    return assertionRootName(expression.expression);
-  }
-  if (ts.isPropertyAccessExpression(expression)) {
-    return assertionRootName(expression.expression);
-  }
-  return undefined;
+function isBindingIdentifier(expression, bindings) {
+  return ts.isIdentifier(expression) && bindings.has(expression.text);
 }
 
-function referencedIdentifiers(node) {
-  const identifiers = new Set();
-  function visit(child) {
-    if (ts.isIdentifier(child)) {
-      identifiers.add(child.text);
-    }
-    ts.forEachChild(child, visit);
+function isContractRuntimeCall(expression, contract, stableBindings) {
+  if (!ts.isCallExpression(expression) || !ts.isPropertyAccessExpression(expression.expression)) {
+    return false;
   }
-  visit(node);
-  return identifiers;
+  return (
+    isBindingIdentifier(expression.expression.expression, stableBindings) &&
+    expression.expression.name.text === contract.operation &&
+    expression.arguments.length === contract.inputs.length &&
+    expression.arguments.every(
+      (argument, index) => ts.isStringLiteral(argument) && argument.text === contract.inputs[index],
+    )
+  );
 }
 
-function containsObservedAssertion(node, assertionName, bindingGroups) {
+function isExpectedRuntimeResult(expression, resultProperty) {
+  if (!ts.isObjectLiteralExpression(expression) || expression.properties.length !== 1) {
+    return false;
+  }
+  const property = expression.properties[0];
+  return (
+    ts.isPropertyAssignment(property) &&
+    (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) &&
+    property.name.text === resultProperty &&
+    property.initializer.kind === ts.SyntaxKind.TrueKeyword
+  );
+}
+
+function observedAssertion(call, assertionName) {
+  if (!ts.isPropertyAccessExpression(call.expression)) {
+    return undefined;
+  }
+  const assertionCall = call.expression.expression;
   if (
-    ts.isCallExpression(node) &&
-    ts.isPropertyAccessExpression(node.expression) &&
-    assertionRootName(node.expression.expression) === assertionName
+    !ts.isCallExpression(assertionCall) ||
+    !ts.isIdentifier(assertionCall.expression) ||
+    assertionCall.expression.text !== assertionName ||
+    assertionCall.arguments.length !== 1
   ) {
-    const identifiers = referencedIdentifiers(node);
-    if (bindingGroups.every((bindings) => [...bindings].some((binding) => identifiers.has(binding)))) {
+    return undefined;
+  }
+  return {
+    actual: assertionCall.arguments[0],
+    expected: call.arguments,
+    matcher: call.expression.name.text,
+  };
+}
+
+function assertionSatisfiesContract(assertion, contract, stableBindings, expectedBindings) {
+  switch (contract.kind) {
+    case 'runtime-parity':
+    case 'type-parity':
+      return (
+        assertion.matcher === contract.matcher &&
+        assertion.expected.length === 1 &&
+        isBindingIdentifier(assertion.actual, stableBindings) &&
+        isBindingIdentifier(assertion.expected[0], expectedBindings)
+      );
+    case 'runtime-result': {
+      return (
+        assertion.matcher === contract.matcher &&
+        assertion.expected.length === 1 &&
+        isContractRuntimeCall(assertion.actual, contract, stableBindings) &&
+        isExpectedRuntimeResult(assertion.expected[0], contract.resultProperty)
+      );
+    }
+    default:
+      throw new Error(`Unsupported React RSC executable evidence contract: ${contract.kind}`);
+  }
+}
+
+function containsSemanticAssertion(node, contract, stableBindings, expectedBindings) {
+  if (ts.isCallExpression(node)) {
+    const assertion = observedAssertion(node, contract.assertion);
+    if (assertion && assertionSatisfiesContract(assertion, contract, stableBindings, expectedBindings)) {
       return true;
     }
   }
-
   let found = false;
   ts.forEachChild(node, (child) => {
-    if (!found && containsObservedAssertion(child, assertionName, bindingGroups)) {
+    if (!found && containsSemanticAssertion(child, contract, stableBindings, expectedBindings)) {
       found = true;
     }
   });
@@ -145,9 +210,23 @@ function isDisabledTest(call) {
   );
 }
 
+function failureMessage(contract) {
+  switch (contract.kind) {
+    case 'runtime-parity':
+      return `${contract.path} must contain at least one executable discovered test with an assertion that observes every required RSC import and compare stable runtime exports with experimental runtime exports.`;
+    case 'type-parity':
+      return `${contract.path} must contain at least one executable discovered test that compares stable declaration exports with experimental declaration exports.`;
+    case 'runtime-result':
+      return `${contract.path} must contain at least one executable discovered test with an assertion over an observable ${contract.suite} runtime result.`;
+    default:
+      throw new Error(`Unsupported React RSC executable evidence contract: ${contract.kind}`);
+  }
+}
+
 function enforceExecutableEvidenceContract(contract, readText) {
   const sourceFile = parseSource(contract.path, readText(contract.path));
-  const bindingGroups = importBindingGroups(sourceFile, contract.imports);
+  const stableBindings = importBindings(sourceFile, contract.stableImport);
+  const expectedBindings = contract.expectedImport ? importBindings(sourceFile, contract.expectedImport) : new Set();
   let disabledTests = 0;
   let executableTests = 0;
 
@@ -157,7 +236,7 @@ function enforceExecutableEvidenceContract(contract, readText) {
         disabledTests += 1;
       }
       const callback = testCallback(node);
-      if (callback && containsObservedAssertion(callback, contract.assertion, bindingGroups)) {
+      if (callback && containsSemanticAssertion(callback, contract, stableBindings, expectedBindings)) {
         executableTests += 1;
       }
     }
@@ -166,10 +245,7 @@ function enforceExecutableEvidenceContract(contract, readText) {
   visit(sourceFile);
 
   assert(disabledTests === 0, `${contract.path} must not use skipped, todo, or focused graduation tests.`);
-  assert(
-    executableTests > 0,
-    `${contract.path} must contain at least one executable discovered test with an assertion that observes every required RSC import.`,
-  );
+  assert(executableTests > 0, failureMessage(contract));
 }
 
 export function enforceReactRscExecutableEvidence(readText) {
