@@ -72,9 +72,23 @@ export default {
 The adapter supports Cloudflare's native `WebSocketPair` for real-time communication via the `@fluojs/websockets/cloudflare-workers` binding. Upgrade handling is opt-in through that binding, and `createWebSocketPair` can be injected for non-hosted runtime tests. Configure the binding before `listen()` starts the Worker dispatch boundary; once `listen()` has run, the binding identity is frozen for that adapter instance. Replacing or clearing it is rejected even after `close()`, so upgrade ownership cannot change underneath an isolate that has already crossed the public listen boundary.
 
 ```typescript
+import { Module } from '@fluojs/core';
+import {
+  CloudflareWorkersWebSocketModule,
+  WebSocketGateway,
+} from '@fluojs/websockets/cloudflare-workers';
+
 @WebSocketGateway({ path: '/ws' })
-export class MyGateway {}
+export class EdgeGateway {}
+
+@Module({
+  imports: [CloudflareWorkersWebSocketModule.forRoot()],
+  providers: [EdgeGateway],
+})
+export class RealtimeModule {}
 ```
+
+Import `RealtimeModule` into the application module graph before bootstrap. During application bootstrap, `CloudflareWorkersWebSocketModule` discovers the gateway and configures the Worker adapter binding before `app.listen()` freezes it; do not add or replace the binding after the listen boundary.
 
 ### Edge-Native Middleware
 Standard fluo middleware (CORS, Global Prefix, etc.) is fully supported through Worker bootstrap helpers and optimized for the Cloudflare environment. `createCloudflareWorkerAdapter(...)` only accepts adapter-owned parsing and websocket-pair options; pass routing and middleware options to `bootstrapCloudflareWorkerApplication(...)` or `createCloudflareWorkerEntrypoint(...)` instead.

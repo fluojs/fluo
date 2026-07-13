@@ -122,6 +122,29 @@ Use runtime subpaths when you want an explicit runtime binding instead of the ro
 
 On Bun, the runtime-specific module installs a pre-listen binding on `@fluojs/platform-bun`. The adapter exposes only an `upgrade(...)` host to that binding, so adapter-owned shutdown and raw fetch control stay on the managed Bun adapter instead of the realtime seam.
 
+### Cloudflare Workers binding
+
+Register the Workers module and gateway in the application graph before bootstrap. Its lifecycle service discovers the gateway and configures `@fluojs/platform-cloudflare-workers` before `listen()` freezes WebSocket ownership.
+
+```ts
+import { Module } from '@fluojs/core';
+import {
+  CloudflareWorkersWebSocketModule,
+  WebSocketGateway,
+} from '@fluojs/websockets/cloudflare-workers';
+
+@WebSocketGateway({ path: '/ws' })
+class EdgeGateway {}
+
+@Module({
+  imports: [CloudflareWorkersWebSocketModule.forRoot()],
+  providers: [EdgeGateway],
+})
+export class RealtimeModule {}
+```
+
+Workers upgrades share the adapter's socketless `listen()` boundary and `executionContext.waitUntil(...)` lifecycle tracking. Do not replace the binding after listen; during shutdown, new upgrades receive the same JSON `503` response as HTTP ingress while accepted WebSockets remain in the bounded drain until their server socket closes.
+
 ## Socket.IO gateways
 
 Use `@fluojs/socket.io` when you need rooms, namespaces, broadcasting, or Socket.IO client compatibility.

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   collectDirectProcessEnvViolations,
   collectNodeGlobalBufferViolations,
+  enforceCloudflareWorkersLifecycleDocsSync,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
   isGovernedPackageSourcePath,
@@ -199,6 +200,14 @@ describe('enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices', () => {
         () => 'const encoded = new TextEncoder().encode(payload);\n',
       ),
     ).not.toThrow();
+  });
+});
+
+describe('enforceCloudflareWorkersLifecycleDocsSync', () => {
+  it('reports the governed surface when Workers lifecycle guidance drifts', () => {
+    expect(() => enforceCloudflareWorkersLifecycleDocsSync(() => '')).toThrowError(
+      /packages\/platform-cloudflare-workers\/README\.md/,
+    );
   });
 });
 
@@ -1109,6 +1118,14 @@ describe('repository governance contracts', () => {
     expect(ciWorkflow).toContain('verify-platform-consistency-governance');
     expect(ciWorkflow).toMatch(/resolve-pr-verification-scope:[\s\S]*?- name: Checkout[\s\S]*?fetch-depth: 0/u);
     expect(ciWorkflow).toMatch(/verify-platform-consistency-governance:[\s\S]*?- name: Checkout[\s\S]*?fetch-depth: 0/u);
+  });
+
+  it('runs canonical docs verification for full PR verification scope', () => {
+    const ciWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/ci.yml'), 'utf8');
+
+    expect(ciWorkflow).toMatch(
+      /build-and-typecheck:[\s\S]*?- name: Verify docs \(full\)\n\s+if: github\.event_name != 'pull_request' \|\| needs\.resolve-pr-verification-scope\.outputs\.mode != 'scoped'\n\s+run: pnpm verify:docs[\s\S]*?\n {2}lint:/u,
+    );
   });
 
   it('keeps Changesets release automation bound to main pushes and token-backed npm publish', () => {

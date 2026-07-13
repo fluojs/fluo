@@ -92,6 +92,10 @@ jobs:
         if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped'
         run: pnpm typecheck
 
+      - name: Verify docs (full)
+        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped'
+        run: pnpm verify:docs
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
