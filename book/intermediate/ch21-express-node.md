@@ -39,7 +39,10 @@ npm install @fluojs/platform-express express
 Switch to Express only after the application layer has moved off NestJS metadata semantics. Controllers and providers must use TC39 standard decorators, class-level `@Inject(...)`, and explicit DI/module wiring before the entrypoint changes its HTTP adapter. Once that migration is complete, business logic can stay unchanged while only the host engine boundary is replaced; changing the adapter alone does not preserve NestJS legacy decorators, reflection metadata, or implicit dependency discovery.
 
 ```typescript
-import { createExpressAdapter } from '@fluojs/platform-express';
+import {
+  createExpressAdapter,
+  ExpressHttpApplicationAdapter,
+} from '@fluojs/platform-express';
 import { fluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
@@ -53,6 +56,10 @@ async function bootstrap() {
   
   await app.listen();
 
+  if (!(adapter instanceof ExpressHttpApplicationAdapter)) {
+    throw new TypeError('Expected the Express adapter factory to return the Express implementation');
+  }
+
   // Resolve the actual target after startup, including an OS-assigned port.
   const { bindTarget, url } = adapter.getListenTarget();
   console.log(`Listening on ${url} (${bindTarget})`);
@@ -60,7 +67,7 @@ async function bootstrap() {
 bootstrap();
 ```
 
-`getListenTarget()` reports the resolved bind target and public URL after startup. Keep it, `getServer()`, and `getRealtimeCapability()` at infrastructure boundaries such as startup logging, probes, or realtime integration; ordinary controllers and providers should stay on portable fluo contracts.
+`createExpressAdapter()` intentionally exposes the shared `HttpApplicationAdapter` return type. Narrow it with the exported `ExpressHttpApplicationAdapter` class before accessing the Express-only `getListenTarget()` helper. The helper reports the resolved bind target and public URL after startup. Keep it, `getServer()`, and `getRealtimeCapability()` at infrastructure boundaries such as startup logging, probes, or realtime integration; ordinary controllers and providers should stay on portable fluo contracts.
 
 ### 21.1.3 Handling Middleware
 

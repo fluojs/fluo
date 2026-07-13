@@ -809,6 +809,41 @@ const expressRuntimeMigrationDocRequirements = [
   ],
 ];
 
+const expressListenTargetExamplePaths = [
+  'book/intermediate/ch21-express-node.md',
+  'book/intermediate/ch21-express-node.ko.md',
+  'apps/docs/content/docs/guides/runtime-adapters.mdx',
+  'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+];
+
+function includesMarkersInOrder(content, markers) {
+  let offset = 0;
+
+  return markers.every((marker) => {
+    const index = content.indexOf(marker, offset);
+    if (index === -1) {
+      return false;
+    }
+
+    offset = index + marker.length;
+    return true;
+  });
+}
+
+function includesTypeCorrectExpressListenTargetExample(content) {
+  const typedCodeFence = /```(?:ts|typescript)\r?\n([\s\S]*?)```/g;
+
+  return Array.from(content.matchAll(typedCodeFence), (match) => match[1] ?? '').some((code) =>
+    includesMarkersInOrder(code, [
+      'createExpressAdapter,',
+      'ExpressHttpApplicationAdapter,',
+      'const adapter = createExpressAdapter(',
+      'adapter instanceof ExpressHttpApplicationAdapter',
+      'adapter.getListenTarget()',
+    ]),
+  );
+}
+
 export function enforceExpressRuntimeMigrationDocsSync(
   readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
 ) {
@@ -819,6 +854,30 @@ export function enforceExpressRuntimeMigrationDocsSync(
     assert(
       missingMarkers.length === 0,
       `${relativePath} must keep the Express Node.js runtime floor, infrastructure helpers, and NestJS migration boundary synchronized; missing: ${missingMarkers.join(', ')}.`,
+    );
+  }
+
+  const adapterSourcePath = 'packages/platform-express/src/adapter.ts';
+  const adapterSource = readText(adapterSourcePath);
+  const factoryStart = adapterSource.indexOf('export function createExpressAdapter(');
+  const nextExport = factoryStart === -1 ? -1 : adapterSource.indexOf('\nexport ', factoryStart + 1);
+  const factorySource =
+    factoryStart === -1 ? '' : adapterSource.slice(factoryStart, nextExport === -1 ? undefined : nextExport);
+  assert(
+    adapterSource.includes('export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {') &&
+      includesMarkersInOrder(factorySource, [
+        'export function createExpressAdapter(',
+        '): HttpApplicationAdapter {',
+        'return new ExpressHttpApplicationAdapter(',
+      ]),
+    `${adapterSourcePath} must keep createExpressAdapter() on the shared HttpApplicationAdapter public return type while constructing the exported ExpressHttpApplicationAdapter implementation.`,
+  );
+
+  for (const relativePath of expressListenTargetExamplePaths) {
+    const content = readText(relativePath);
+    assert(
+      includesTypeCorrectExpressListenTargetExample(content),
+      `${relativePath} must narrow createExpressAdapter() from its shared HttpApplicationAdapter return type to the public ExpressHttpApplicationAdapter implementation before calling getListenTarget().`,
     );
   }
 }

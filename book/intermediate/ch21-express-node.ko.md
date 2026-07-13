@@ -39,7 +39,10 @@ npm install @fluojs/platform-express express
 Express 전환은 애플리케이션 계층이 NestJS metadata semantics에서 벗어난 뒤에만 진행하세요. 진입점에서 HTTP adapter를 바꾸기 전에 controller와 provider가 TC39 표준 데코레이터, class-level `@Inject(...)`, 명시적 DI/module wiring을 사용해야 합니다. 이 migration을 완료한 뒤에는 business logic을 유지하면서 host engine boundary만 교체할 수 있지만, adapter 변경만으로 NestJS legacy decorator, reflection metadata, implicit dependency discovery가 보존되지는 않습니다.
 
 ```typescript
-import { createExpressAdapter } from '@fluojs/platform-express';
+import {
+  createExpressAdapter,
+  ExpressHttpApplicationAdapter,
+} from '@fluojs/platform-express';
 import { fluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
@@ -53,6 +56,10 @@ async function bootstrap() {
   
   await app.listen();
 
+  if (!(adapter instanceof ExpressHttpApplicationAdapter)) {
+    throw new TypeError('Expected the Express adapter factory to return the Express implementation');
+  }
+
   // OS가 할당한 port까지 포함한 실제 target은 startup 뒤에 확인합니다.
   const { bindTarget, url } = adapter.getListenTarget();
   console.log(`Listening on ${url} (${bindTarget})`);
@@ -60,7 +67,7 @@ async function bootstrap() {
 bootstrap();
 ```
 
-`getListenTarget()`은 startup 이후 해석된 bind target과 public URL을 보고합니다. 이 helper와 `getServer()`, `getRealtimeCapability()`는 startup logging, probe, realtime integration 같은 infrastructure boundary에만 두고, 일반 controller와 provider는 portable fluo 계약을 유지하세요.
+`createExpressAdapter()`는 의도적으로 공유 `HttpApplicationAdapter` return type을 노출합니다. Express 전용 `getListenTarget()` helper에 접근하기 전에 export된 `ExpressHttpApplicationAdapter` class로 narrow하세요. 이 helper는 startup 이후 해석된 bind target과 public URL을 보고합니다. 이 helper와 `getServer()`, `getRealtimeCapability()`는 startup logging, probe, realtime integration 같은 infrastructure boundary에만 두고, 일반 controller와 provider는 portable fluo 계약을 유지하세요.
 
 ### 21.1.3 Handling Middleware
 

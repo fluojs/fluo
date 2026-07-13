@@ -134,7 +134,10 @@ Use the Express adapter when integrating with an existing Express-oriented envir
 An Express host swap does not retain NestJS legacy decorator or reflection-metadata semantics. Migrate controllers and providers to TC39 standard decorators, class-level `@Inject(...)`, and explicit DI/module wiring before changing the HTTP host.
 
 ```ts
-import { createExpressAdapter } from '@fluojs/platform-express';
+import {
+  createExpressAdapter,
+  ExpressHttpApplicationAdapter,
+} from '@fluojs/platform-express';
 import { fluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
@@ -142,11 +145,16 @@ const adapter = createExpressAdapter({ port: 3000 });
 const app = await fluoFactory.create(AppModule, { adapter });
 
 await app.listen();
+
+if (!(adapter instanceof ExpressHttpApplicationAdapter)) {
+  throw new TypeError('Expected the Express adapter factory to return the Express implementation');
+}
+
 const { bindTarget, url } = adapter.getListenTarget();
 console.log(`Listening on ${url} (${bindTarget})`);
 ```
 
-Resolve `getListenTarget()` after startup, and keep it, `getServer()`, and `getRealtimeCapability()` at infrastructure boundaries instead of passing native host details into application providers.
+`createExpressAdapter()` intentionally exposes the shared `HttpApplicationAdapter` return type. Narrow it with the exported `ExpressHttpApplicationAdapter` class before resolving the Express-only `getListenTarget()` helper after startup. Keep that helper, `getServer()`, and `getRealtimeCapability()` at infrastructure boundaries instead of passing native host details into application providers.
 
 Express supports the shared SSE and streaming response contract.
 
