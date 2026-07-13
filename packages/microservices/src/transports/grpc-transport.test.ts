@@ -1047,6 +1047,34 @@ describe('GrpcMicroserviceTransport', () => {
     await transport.close();
   });
 
+  it('serverStream() removes AbortSignal listener when the stream errors', async () => {
+    const { transport } = createGrpcTransport();
+    let releaseError: () => void = () => {
+      throw new Error('Expected the server-stream error gate to be initialized.');
+    };
+    const errorGate = new Promise<void>((resolve) => {
+      releaseError = resolve;
+    });
+
+    transport.listenServerStreaming(async (_pattern, _payload, writer) => {
+      await errorGate;
+      writer.error(new Error('server-stream cleanup failure'));
+    });
+    await transport.listen(async () => undefined);
+
+    const controller = new AbortController();
+    const removeEventListenerSpy = vi.spyOn(controller.signal, 'removeEventListener');
+    const iterator = transport.serverStream('MathService.StreamData', {}, controller.signal)[Symbol.asyncIterator]();
+    const pendingRead = iterator.next();
+
+    releaseError();
+
+    await expect(pendingRead).rejects.toThrow('server-stream cleanup failure');
+    expect(removeEventListenerSpy).toHaveBeenCalledWith('abort', expect.any(Function));
+
+    await transport.close();
+  });
+
   it('serverStream() removes AbortSignal listener when iterator return() cancels the call', async () => {
     const { transport } = createGrpcTransport();
 
