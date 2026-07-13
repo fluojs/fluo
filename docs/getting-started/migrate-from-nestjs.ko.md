@@ -34,6 +34,7 @@
 | `@nestjs/cache-manager` / `CacheModule.register(...)` | `@fluojs/cache-manager`의 `CacheModule.forRoot(...)`, `CacheService`, cache decorators | fluo cache registration은 동기 방식이다. Redis 또는 custom store는 module registration 전에 준비하고, manual cache operation에는 `CacheService`를 주입하며, request-aware response-cache key에는 `httpKeyStrategy` 또는 `@CacheKey(...)`를 사용한다. |
 | `@nestjs/event-emitter` / `@OnEvent()` handler | `@fluojs/event-bus`의 `EventBusModule.forRoot(...)`, `EventBusLifecycleService`, `@OnEvent(EventClass)` | Event routing은 class 기반이고, `static eventKey`는 distributed transport channel을 안정적으로 유지하며, handler는 singleton provider/controller에서만 discovery되고 awaited/background publish 작업은 shutdown drain tracking에 남는다. |
 | `@nestjs/cqrs` command/query/event handler와 saga | `@fluojs/cqrs`의 `CqrsModule.forRoot(...)`, 표준 `@CommandHandler(...)`, `@QueryHandler(...)`, `@EventHandler(...)`, `@Saga(...)` | CQRS discovery는 controller나 emitted design metadata가 아니라 singleton provider만 scan합니다. Command와 Query는 point-to-point이고, Event handler와 saga는 위임 `@fluojs/event-bus` 발행 전에 provider token 기준으로 fan-out됩니다. |
+| `ClientsModule.register(...)`, 주입된 `ClientProxy`, NestJS broker transport option | `MicroservicesModule.forRoot({ transport })`, `Microservice` 타입의 `MICROSERVICE`, `@fluojs/microservices/<transport>`의 transport adapter | Registration과 programmatic facade는 root `@fluojs/microservices`에 남습니다. NATS, Kafka, RabbitMQ collaborator는 application-owned 상태를 유지하며, `send()`, `emit()`, `close()`는 아래에 설명한 서로 다른 완료 경계를 가집니다. |
 | NestJS Redis async module registration 또는 shared Redis Pub/Sub client | `@fluojs/redis`의 `RedisModule.forRoot(...)`, named `RedisModule.forRoot({ name, ... })`, `getRedisClientToken(name)` | fluo Redis registration은 동기 방식이며 각 `forRoot(...)` 호출이 최종 option으로 client를 생성한다. 환경별 option은 registration 전에 해석하되 외부에서 만든 client를 전달하거나 module이 채택한다고 기대하면 안 된다. Pub/Sub subscriber는 일반 command client를 재사용하지 말고 전용 duplicate 또는 named client로 분리한다. |
 | `@Processor(...)`, `@Process(...)` 또는 provider metadata를 통한 `@nestjs/bull` / `@nestjs/bullmq` processor discovery | `@fluojs/queue`, `@fluojs/redis`, `@fluojs/core`의 `RedisModule.forRoot(...)`, `QueueModule.forRoot(...)`, singleton `@QueueWorker(JobClass, options?)` provider, 명시적 `@Inject(...)` | fluo는 compiled module graph의 decorated singleton provider/controller만 discovery한다. Worker는 `handle(job)`을 노출해야 하며, Queue는 NestJS metadata를 읽거나 legacy Bull/BullMQ `queueName`, named job, 영속 payload 또는 그 topology를 자동 보존하지 않는다. |
 | `@nestjs/schedule` decorator, `SchedulerRegistry`, 또는 `CronJob` handle | `@fluojs/cron`의 `CronModule.forRoot(...)`, public-method `@Cron` / `@Interval` / `@Timeout`, `SCHEDULING_REGISTRY` | NestJS `timeZone`을 fluo `timezone`으로 바꾼다. fluo에는 `waitForCompletion` 옵션이 없고 같은 task instance가 아직 실행 중이면 항상 해당 tick을 건너뛰므로 이 옵션을 옮기지 않는다. fluo는 decorator로 발견한 task를 application bootstrap 중 시작하고, 이미 시작된 registry에 dynamic task가 추가되면 즉시 시작하며, live scheduler handle 대신 read-only task descriptor를 노출한다. |
@@ -161,6 +162,19 @@ class ProductResolver {
 })
 class AppModule {}
 ```
+
+### Microservices Transport Migration
+
+NestJS `ClientProxy` migration을 하나의 opaque client object 치환으로 다루지 말고 registration, facade, adapter, infrastructure ownership으로 분리하세요.
+
+- 선택한 adapter를 root `MicroservicesModule.forRoot({ transport })`로 등록합니다.
+- `listen()`, `send()`, `emit()`, `close()`를 위해 root `MICROSERVICE`를 `Microservice`로 주입합니다. 이 token은 raw adapter가 아니라 lifecycle facade로 resolve됩니다.
+- 가능하면 transport 구현을 명시적인 subpath에서 import합니다: `@fluojs/microservices/nats`, `@fluojs/microservices/kafka`, `@fluojs/microservices/rabbitmq`. `RedisStreamsMicroserviceTransport`는 문서화된 root-barrel-only 예외로 남습니다.
+- `await microservice.send(...)`는 상관관계가 유지된 원격 응답을 기다리며, 원격 오류, abort, timeout, shutdown 시 reject합니다.
+- `await microservice.emit(...)`은 outbound transport publish 연산만 기다립니다. 원격 event handler가 실행되었다는 뜻은 아니며, broker acknowledgement는 caller-provided publish collaborator 자체가 약속하는 범위로 제한됩니다.
+- `await microservice.close()`는 transport listener/subscription teardown과 pending-request cleanup을 기다립니다. NATS, Kafka, RabbitMQ adapter는 caller-provided collaborator에서 detach하지만 해당 client, producer, consumer, publisher, channel, connection을 close/disconnect하지 않습니다.
+
+Kafka와 RabbitMQ는 handler 실행과 request response publication이 settle할 때까지 inbound consumer callback을 pending 상태로 유지하므로 broker adapter가 acknowledgement 또는 retry를 선택할 수 있습니다. 이 consumer-side boundary는 producer-side `emit()` promise와 분리되어 있습니다. Shutdown 시에는 먼저 `Microservice` facade를 닫고, caller-owned broker resource는 application bootstrap layer에서 close 또는 drain하세요.
 
 ## Removed Concepts
 

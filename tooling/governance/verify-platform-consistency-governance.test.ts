@@ -1284,6 +1284,63 @@ describe('package surface microservices transport discoverability', () => {
       expect(markdown).toContain('Redis Streams');
     }
   });
+
+  it('keeps facade completion and caller-owned shutdown boundaries aligned across governed docs and transport chapters', () => {
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+    const englishReadme = readFileSync(join(repoRoot, 'packages/microservices/README.md'), 'utf8');
+    const koreanReadme = readFileSync(join(repoRoot, 'packages/microservices/README.ko.md'), 'utf8');
+    const englishMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
+    const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
+    const transportChapters = [
+      ['book/intermediate/ch04-rabbitmq.md', '@fluojs/microservices/rabbitmq'],
+      ['book/intermediate/ch04-rabbitmq.ko.md', '@fluojs/microservices/rabbitmq'],
+      ['book/intermediate/ch05-kafka.md', '@fluojs/microservices/kafka'],
+      ['book/intermediate/ch05-kafka.ko.md', '@fluojs/microservices/kafka'],
+      ['book/intermediate/ch06-nats.md', '@fluojs/microservices/nats'],
+      ['book/intermediate/ch06-nats.ko.md', '@fluojs/microservices/nats'],
+    ] as const;
+
+    for (const markdown of [
+      englishContext,
+      koreanContext,
+      englishSurface,
+      koreanSurface,
+      englishReadme,
+      koreanReadme,
+      englishMigration,
+      koreanMigration,
+    ]) {
+      expect(markdown).toContain('MICROSERVICE');
+      expect(markdown).toContain('Microservice');
+      expect(markdown).toContain('send()');
+      expect(markdown).toContain('emit()');
+      expect(markdown).toContain('close()');
+      expect(markdown).toContain('caller-owned');
+    }
+
+    for (const markdown of [englishMigration, koreanMigration]) {
+      expect(markdown).toContain('MicroservicesModule.forRoot({ transport })');
+      expect(markdown).toContain('@fluojs/microservices/nats');
+      expect(markdown).toContain('@fluojs/microservices/kafka');
+      expect(markdown).toContain('@fluojs/microservices/rabbitmq');
+      expect(markdown).toContain('producer-side `emit()`');
+    }
+
+    for (const [chapterPath, transportSubpath] of transportChapters) {
+      const markdown = readFileSync(join(repoRoot, chapterPath), 'utf8');
+
+      expect(markdown).toContain("from '@fluojs/microservices'");
+      expect(markdown).toContain(`from '${transportSubpath}'`);
+      expect(markdown).toContain('MICROSERVICE');
+      expect(markdown).toContain('await microservice.send(...)');
+      expect(markdown).toContain('await microservice.emit(...)');
+      expect(markdown).toContain('await microservice.close()');
+      expect(markdown).toContain('caller-owned');
+    }
+  });
 });
 
 describe('package surface CQRS responsibility discoverability', () => {

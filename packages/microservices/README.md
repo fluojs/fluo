@@ -79,6 +79,18 @@ First-party support for all gRPC streaming modes: Server-side, Client-side, and 
 ### Request-Scoped DI
 Microservice handlers fully support fluo's DI scopes. Request-scoped providers are isolated per message or per event, ensuring safe state management in concurrent processing.
 
+### Completion and Ownership Boundaries
+
+Keep application registration and programmatic calls on the root facade: register the adapter with `MicroservicesModule.forRoot({ transport })`, then inject `MICROSERVICE` as a `Microservice`. `MICROSERVICE` is not the raw transport. Transport-specific imports such as `@fluojs/microservices/nats`, `@fluojs/microservices/kafka`, and `@fluojs/microservices/rabbitmq` expose the adapters while leaving module and facade ownership on the root package.
+
+| Operation | Completion boundary |
+| --- | --- |
+| `await microservice.send(...)` | Settles when the transport returns the correlated remote response, or rejects for a remote error, abort, timeout, or shutdown. |
+| `await microservice.emit(...)` | Settles when the transport's publish operation accepts/completes the outbound event. It does not wait for remote event handlers or add delivery/redelivery guarantees beyond the collaborator's publish contract. |
+| `await microservice.close()` | Waits for transport-owned listener/subscription teardown and pending-request cleanup. For caller-owned NATS, Kafka, and RabbitMQ collaborators, it does not close or disconnect the supplied broker resources. |
+
+Kafka and RabbitMQ keep each inbound consumer callback pending until the matched handler and any request response publication settle. That consumer-side completion boundary lets a broker adapter decide whether to acknowledge or retry delivery, but it does not turn the producer-side `emit()` promise into an end-to-end handler completion signal. During application shutdown, close the `Microservice` facade first so it can detach transport callbacks, then close or drain caller-owned clients, producers, consumers, publishers, channels, and connections from the application bootstrap layer.
+
 ### Delivery Safety Defaults
 - TCP frames are bounded to 1 MiB per newline-delimited message by default; oversized frames close the socket instead of growing the request buffer without limit.
 - Redis Streams acknowledges request/event entries only after handler-side processing finishes. Failed events stay pending for broker-managed recovery instead of being acknowledged early.
