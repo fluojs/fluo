@@ -72,9 +72,23 @@ export default {
 어댑터는 `@fluojs/websockets/cloudflare-workers` 바인딩을 통해 실시간 통신을 위한 Cloudflare의 네이티브 `WebSocketPair`를 지원합니다. Upgrade handling은 해당 binding을 통한 opt-in이며, non-hosted runtime test에서는 `createWebSocketPair`를 주입할 수 있습니다. Binding은 `listen()`이 Worker dispatch boundary를 시작하기 전에 설정하세요. `listen()`이 한 번 실행된 뒤에는 해당 adapter instance의 binding identity가 frozen됩니다. 이미 public listen boundary를 지난 isolate 아래에서 upgrade ownership이 바뀌지 않도록, `close()` 이후에도 binding을 교체하거나 해제하려는 시도는 reject됩니다.
 
 ```typescript
+import { Module } from '@fluojs/core';
+import {
+  CloudflareWorkersWebSocketModule,
+  WebSocketGateway,
+} from '@fluojs/websockets/cloudflare-workers';
+
 @WebSocketGateway({ path: '/ws' })
-export class MyGateway {}
+export class EdgeGateway {}
+
+@Module({
+  imports: [CloudflareWorkersWebSocketModule.forRoot()],
+  providers: [EdgeGateway],
+})
+export class RealtimeModule {}
 ```
+
+Bootstrap 전에 application module graph에 `RealtimeModule`을 import하세요. Application bootstrap 중 `CloudflareWorkersWebSocketModule`이 gateway를 발견하고 `app.listen()`이 binding을 freeze하기 전에 Worker adapter binding을 구성합니다. Listen boundary 이후에는 binding을 추가하거나 교체하지 마세요.
 
 ### 엣지 네이티브 미들웨어
 표준 fluo 미들웨어(CORS, Global Prefix 등)는 Worker bootstrap helper를 통해 완전히 지원되며 Cloudflare 환경에 최적화되어 있습니다. `createCloudflareWorkerAdapter(...)`는 adapter가 소유하는 parsing 및 websocket-pair 옵션만 받습니다. Routing 및 middleware 옵션은 `bootstrapCloudflareWorkerApplication(...)` 또는 `createCloudflareWorkerEntrypoint(...)`에 전달하세요.

@@ -134,6 +134,8 @@ export { APPLICATION_LOGGER, PLATFORM_SHELL } from './tokens.js';
 export * from './types.js';
 ```
 
+The shared `UploadedFile` contract keeps multipart payload bytes runtime-neutral as `Uint8Array`. Web adapters therefore do not need the Node.js `Buffer` global; Node-only application code that needs Buffer-specific APIs should convert explicitly with `Buffer.from(file.buffer)` at that boundary.
+
 This list contains no Node server helpers or Web dispatch helpers. A reader looking at the root API can already see that the shared Bootstrap contract and host-specific helpers have different boundaries.
 
 That omission is not accidental. `path:packages/runtime/src/exports.test.ts:13-29` verifies it directly. The root barrel must not contain `dispatchWebRequest`, `createWebRequestResponseFactory`, `createNodeShutdownSignalRegistration`, or `bootstrapHttpAdapterApplication`.

@@ -8,11 +8,13 @@
 
 | 표면 | 현재 계약 | 소스 기준 |
 | --- | --- | --- |
-| 모듈 진입점 | 애플리케이션은 `CacheModule.forRoot(...)`로 캐시 지원을 등록합니다. 공개 옵션에는 `store`, `ttl`, `httpKeyStrategy`, `principalScopeResolver`, `redis`, `global`이 포함됩니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
+| 모듈 진입점 | 애플리케이션은 `CacheModule.forRoot(...)`로 캐시 지원을 등록합니다. 공개 옵션에는 `store`, `ttl`, `httpKeyStrategy`, `principalScopeResolver`, top-level `keyPrefix`, `redis`, `global`이 포함됩니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
 | 캐시 서비스 | `CacheService`는 `get`, `set`, `remember`, `del`, `reset`을 제공하는 직접 애플리케이션 캐시 파사드입니다. | `packages/cache-manager/src/service.ts` |
-| HTTP 통합 | `CacheInterceptor`는 GET read-through 캐싱과 쓰기 후 eviction을 수행합니다. | `packages/cache-manager/src/interceptor.ts` |
+| HTTP 통합 | `CacheInterceptor`는 GET read-through 캐싱을 수행하고 non-GET controller handler 이후 `@CacheEvict(...)` metadata를 소비합니다. 이 decorator는 해당 HTTP pipeline 밖의 임의 service method를 intercept하지 않습니다. | `packages/cache-manager/src/decorators.ts`, `packages/cache-manager/src/interceptor.ts` |
 | 메모리 저장소 | `MemoryStore`는 캐시 엔트리를 프로세스 내부에 보관하고, 접근 시점에 만료를 지연 정리하며, 가장 오래된 키부터 제거하면서 라이브 엔트리를 `1,000`개로 제한합니다. | `packages/cache-manager/src/stores/memory-store.ts` |
 | Redis 저장소 | `RedisStore`는 JSON 직렬화된 엔트리를 prefix가 붙은 키 공간에 저장하고, 양수 TTL에는 `EX`를 사용하며, 설정된 prefix를 scan해서 reset을 수행합니다. | `packages/cache-manager/src/stores/redis-store.ts` |
+| Redis client 통합 | `redis.client`는 직접 전달한 `RedisCompatibleClient`를 받고 `@fluojs/redis`를 load하지 않은 채 가장 높은 우선순위를 가지며, 해당 client의 lifecycle은 애플리케이션이 소유합니다. 이 값이 없으면 cache module이 `@fluojs/redis`를 선택적으로 load하고 기본 또는 `redis.clientName` raw-client token을 해석합니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
+| Redis namespace 소유권 | Top-level `keyPrefix`는 기본값이 `fluo:cache:`이고 모든 Redis key와 `reset()` scan 범위를 제한합니다. 빈 prefix는 wildcard scan을 비활성화하고 reset을 현재 `RedisStore` 인스턴스가 추적한 key로 제한합니다. | `packages/cache-manager/src/module.ts`, `packages/cache-manager/src/stores/redis-store.ts` |
 
 ## 캐시 키 규칙
 
@@ -40,7 +42,7 @@
 
 | 규칙 | 현재 계약 | 소스 기준 |
 | --- | --- | --- |
-| 데코레이터 경로 | `@CacheEvict(...)`는 쓰기 후 eviction을 위한 단일 키, 키 목록, 또는 resolver 함수를 저장합니다. | `packages/cache-manager/src/decorators.ts` |
+| 데코레이터 경로 | `@CacheEvict(...)`는 단일 키, 키 목록, 또는 resolver 함수를 HTTP route metadata로 저장합니다. 이 metadata는 non-GET controller handler에서 `CacheInterceptor`만 소비하며, service method와 그 밖의 non-HTTP call path는 `CacheService.del(...)` 또는 다른 명시적 애플리케이션 경로로 무효화해야 합니다. | `packages/cache-manager/src/decorators.ts`, `packages/cache-manager/src/interceptor.ts` |
 | eviction 시점 | GET이 아닌 핸들러에서는 downstream 핸들러가 성공하고 HTTP 응답이 성공적으로 commit된 뒤에만 eviction이 실행됩니다. `response.send(...)`가 reject되면 지연 eviction은 취소되며, 어댑터가 `response.send(...)`를 호출하지 않는 경우에는 성공한 핸들러 결과 이후 bounded fallback timer가 eviction을 수행합니다. | `packages/cache-manager/src/interceptor.ts` |
 | 실패 격리 | `safeGet`, `safeSet`, `safeDel`은 저장소 오류를 삼킵니다. 캐시 실패가 다른 정상 핸들러를 실패시키지 않습니다. | `packages/cache-manager/src/interceptor.ts` |
 | 진행 중 로드 무효화 | `CacheService.del(...)`은 아직 로딩 중인 키를 표시하여, 같은 로드 주기 중 무효화된 키가 `remember(...)`에 의해 다시 채워지지 않도록 합니다. | `packages/cache-manager/src/service.ts` |
@@ -50,6 +52,7 @@
 ## 제약 사항
 
 - 기본 메모리 저장소는 프로세스 로컬이며 클러스터 안전하지 않습니다. 다중 인스턴스 배포는 Redis 저장소나 다른 공유 custom store가 필요합니다.
+- `redis.client`로 compatible client를 직접 전달하면 Redis 저장소에 `@fluojs/redis`가 필요하지 않습니다. 직접 전달한 client는 애플리케이션이 소유하며 애플리케이션이 시작하고 닫아야 합니다.
 - Redis 저장소 값은 `RedisStore`가 `JSON.stringify(...)`와 `JSON.parse(...)`를 사용하므로 JSON 호환 형태여야 합니다.
 - 캐시 무효화는 키 기반만 지원합니다. 기본 계약은 interceptor 계층에서 tag 기반이나 wildcard 무효화를 제공하지 않습니다.
 - 메모리 저장소의 TTL 강제는 타이머 기반이 아니라 접근 기반의 lazy 방식입니다.

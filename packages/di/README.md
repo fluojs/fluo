@@ -129,22 +129,42 @@ class ServiceWithOptionalLogger {
 
 ## Testing and Mocking
 
-You can easily override providers in the container to use mocks or stubs during unit testing by using `useValue`.
+Register the complete dependency graph first, then use `override(...)` with `useValue` to replace an existing provider with a mock or stub. `register(...)` adds new providers and rejects duplicate tokens; `override(...)` is the supported replacement API.
 
 ```typescript
+import { Inject } from '@fluojs/core';
 import { Container } from '@fluojs/di';
+import { expect, it, vi } from 'vitest';
 
-const container = new Container();
-const mockDb = { query: vi.fn() };
+class Database {
+  async query(): Promise<readonly string[]> {
+    return ['real row'];
+  }
+}
 
-// Override the real Database class with a mock value
-container.register({ 
-  provide: Database, 
-  useValue: mockDb 
+@Inject(Database)
+class DataService {
+  constructor(private readonly database: Database) {}
+
+  async load(): Promise<readonly string[]> {
+    return this.database.query();
+  }
+}
+
+it('uses a mock database', async () => {
+  const mockDb = { query: vi.fn().mockResolvedValue(['mock row']) };
+  const container = new Container().register(Database, DataService);
+
+  container.override({
+    provide: Database,
+    useValue: mockDb,
+  });
+
+  const service = await container.resolve(DataService);
+
+  await expect(service.load()).resolves.toEqual(['mock row']);
+  expect(mockDb.query).toHaveBeenCalledOnce();
 });
-
-const service = await container.resolve(DataService);
-// service uses mockDb instead of the real Database instance
 ```
 
 ## Troubleshooting

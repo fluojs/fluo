@@ -144,6 +144,7 @@ class UsersModule {}
 - `FluoFactory.createMicroservice()`는 cleanup이 실패해도 원래 bootstrap/runtime 해석 오류를 보존하고 cleanup 실패는 별도로 로그로 남깁니다.
 - Bootstrap은 독립적인 singleton lifecycle provider를 병렬로 해석한 뒤 lifecycle hook은 결정적인 provider 순서대로 실행합니다.
 - 멀티파트 파싱은 누적 바디 크기가 설정된 `multipart.maxTotalSize`를 넘으면 즉시 거부되며, 런타임 어댑터는 별도 재정의가 없으면 이 한도를 `maxBodySize`와 동일하게 맞춥니다.
+- `@fluojs/runtime/web` 멀티파트 파싱은 Node.js `Buffer` global 없이 Web 표준 `TextEncoder`와 `Uint8Array` primitive만 사용합니다. 업로드 파일의 `buffer` 값은 `Uint8Array`이며, Node 전용 consumer는 애플리케이션 경계에서 `Buffer.from(file.buffer)`로 명시적으로 변환할 수 있습니다.
 - `createNodeHttpAdapter(...)`, `bootstrapNodeApplication(...)`, `runNodeApplication(...)`는 `maxBodySize`를 0 이상의 정수 바이트 수로만 받으며, 값이 잘못되면 어댑터 생성/부트스트랩 단계에서 즉시 실패합니다.
 - 응답 스트림 백프레셔 헬퍼는 `drain`, `close`, `error` 중 어느 경우에도 `waitForDrain()`을 완료시켜 끊어진 연결에서 스트리밍 작성기가 멈추지 않도록 합니다.
 - 런타임 health 모듈은 bootstrap이 ready로 표시하기 전까지 `/ready`를 HTTP 503과 `starting`으로 보고하며, 애플리케이션/컨텍스트 종료가 시작되는 즉시, 종료 시도가 실패하더라도 다시 `starting`으로 내려갑니다.
@@ -173,6 +174,7 @@ class UsersModule {}
 - `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: CLI/support tooling을 위한 runtime 소유 diagnostics snapshot helper입니다. 이 helper들은 기계 읽기 가능한 데이터를 생산하며, Studio가 viewer parsing, graph presentation, Mermaid rendering을 소유합니다.
 - `PlatformShell`, `PlatformComponent`, `PlatformShellSnapshot`, `PlatformSnapshot`, `PlatformDiagnosticIssue` 및 관련 platform report 타입: runtime-aware package가 사용하는 공개 lifecycle diagnostics 및 resource-ownership 계약입니다. `RuntimePlatformShell`은 component가 제공한 ownership을 보존하고, consumer가 internal runtime token을 import하지 않아도 validation/readiness/health diagnostics를 내보냅니다.
 - `createRequestAbortContext(...)`, `trackActiveRequestTransaction(...)`, `untrackActiveRequestTransaction(...)`: runtime-aware integration이 사용하는 request abort 및 active transaction helper입니다.
+- `UploadedFile`: 메모리 내 `buffer` payload를 Web 표준 `Uint8Array`로 제공하는 runtime-neutral 멀티파트 파일 descriptor입니다.
 
 ## 플랫폼 전용 서브경로
 

@@ -73,6 +73,12 @@ await microservice.listen();
 
 `@MessagePattern`은 요청-응답 흐름에, `@EventPattern`은 fire-and-forget 이벤트에 사용합니다. 문자열과 정규식 패턴 모두 지원합니다.
 
+### 핸들러 탐색과 데코레이터 모델
+
+`@MessagePattern`, `@EventPattern`, 스트리밍 패턴 데코레이터는 TC39 표준 메서드 데코레이터입니다. 표준 데코레이터 context를 통해 라우팅 데이터를 기록하며 `reflect-metadata`, `experimentalDecorators`, `emitDecoratorMetadata` 출력은 사용하지 않습니다.
+
+데코레이터가 붙은 메서드는 소유 클래스를 컴파일된 모듈의 `providers` 또는 `controllers`에 명시적으로 나열해야만 탐색 대상이 됩니다. 탐색 과정은 등록된 token을 인스턴스로 resolve한 뒤 데코레이터가 붙은 public instance method를 호출합니다. Private 또는 static target은 거부되며, 모듈 등록 없이 클래스를 import하거나 decorate하는 것만으로는 핸들러가 등록되지 않습니다.
+
 ### gRPC 스트리밍
 
 `@ServerStreamPattern`, `@ClientStreamPattern`, `@BidiStreamPattern`으로 unary 외의 스트리밍 패턴도 다룰 수 있습니다.
@@ -81,15 +87,29 @@ await microservice.listen();
 
 마이크로서비스 핸들러도 fluo의 request/transient scope 모델을 그대로 따르므로, 메시지 또는 이벤트 단위로 격리된 상태를 안전하게 사용할 수 있습니다.
 
+### 완료 및 소유권 경계
+
+애플리케이션 등록과 programmatic 호출은 root facade에 유지하세요. `MicroservicesModule.forRoot({ transport })`로 adapter를 등록하고 `MICROSERVICE`를 `Microservice`로 주입합니다. `MICROSERVICE`는 raw transport가 아닙니다. `@fluojs/microservices/nats`, `@fluojs/microservices/kafka`, `@fluojs/microservices/rabbitmq` 같은 transport-specific import는 adapter를 노출하지만 module과 facade 소유권은 root package에 남깁니다.
+
+| 연산 | 완료 경계 |
+| --- | --- |
+| `await microservice.send(...)` | transport가 상관관계가 유지된 원격 응답을 반환할 때 settle하며, 원격 오류, abort, timeout, shutdown 시 reject합니다. |
+| `await microservice.emit(...)` | transport의 publish 연산이 outbound event를 accept/complete할 때 settle합니다. 원격 event handler를 기다리거나 collaborator의 publish 계약을 넘어선 delivery/redelivery 보장을 추가하지는 않습니다. |
+| `await microservice.close()` | transport-owned listener/subscription teardown과 pending-request cleanup을 기다립니다. Caller-owned NATS, Kafka, RabbitMQ collaborator의 경우 전달받은 broker resource를 close/disconnect하지 않습니다. |
+
+Kafka와 RabbitMQ는 일치한 handler와 request response publication이 settle할 때까지 각 inbound consumer callback을 pending 상태로 유지합니다. 이 consumer-side completion boundary를 통해 broker adapter가 delivery를 acknowledge할지 retry할지 결정할 수 있지만, producer-side `emit()` promise가 end-to-end handler completion signal로 바뀌는 것은 아닙니다. 애플리케이션 shutdown에서는 먼저 `Microservice` facade를 닫아 transport callback을 detach한 다음, caller-owned client, producer, consumer, publisher, channel, connection을 application bootstrap layer에서 close 또는 drain하세요.
+
 ### 전달 안전 기본값
 
 - TCP 프레임은 기본적으로 newline-delimited 메시지당 1 MiB로 제한되며, 한도를 넘는 프레임은 요청 버퍼를 무한히 키우는 대신 소켓을 종료합니다.
 - Redis Streams는 요청/이벤트 엔트리를 핸들러 처리가 끝난 뒤에만 ACK합니다. 실패한 이벤트는 조기 ACK로 유실하지 않고 broker 복구/재전달 경로에 남겨 둡니다.
+- Kafka와 RabbitMQ는 inbound event/request 처리와 response publish가 끝날 때까지 consumer delivery completion을 pending 상태로 유지합니다. Event-handler와 response-publish 실패는 consumer callback을 reject해 broker adapter가 ACK를 보류하거나 재시도할 수 있게 하며, request-handler 오류는 error response를 publish할 수 있으면 기존처럼 호출자에게 전달합니다.
 - Redis Streams는 기본적으로 live request/event stream에 publish-time trimming을 적용하지 않으므로, pending 엔트리가 `xack` 또는 consumer-group 복구 경로가 끝나기 전에 잘리지 않습니다. ACK가 끝난 request/reply 엔트리는 정리되고, 인스턴스별 response stream은 기본적으로 bounded retention(`responseRetentionMaxLen: 1_000`)을 유지한 뒤 `close()` 중 삭제됩니다.
 - Redis Streams는 `close()` 중 인스턴스별 response stream은 항상 삭제하지만, 활성 fleet 전체에서 ownership를 증명할 수 없으면 공유 request consumer group은 보수적으로 유지합니다. lease-capable listener는 coordination metadata만 정리하고, mixed/fallback fleet에서는 살아 있는 다른 listener가 여전히 필요로 할 수 있으므로 공유 request group을 제거하지 않습니다.
 - `messageRetentionMaxLen`과 `eventRetentionMaxLen`은 고급 opt-in 설정으로 남아 있습니다. 이를 켜면 Redis가 ACK 전 pending live-stream 엔트리를 먼저 trim할 수 있으므로 broker-managed recovery 보장을 일부 포기하는 운영 판단이 됩니다.
 - RabbitMQ 요청-응답은 기본적으로 인스턴스별 response queue를 사용합니다. 공유 reply topology를 의도적으로 운영할 때만 `responseQueue`를 명시적으로 지정하세요.
 - caller-owned broker collaborator는 shutdown 중에도 caller-owned로 유지됩니다. NATS, Kafka, RabbitMQ transport는 subscription/consumer를 분리하고 in-flight 요청을 reject하지만, 애플리케이션이 넘긴 client, producer, consumer, publisher, 외부 connection 객체를 close/disconnect하지 않습니다.
+- NATS subscription setup이 `listen()` 중 실패하면 transport는 해당 시도에서 이미 생성한 subscription을 setup의 역순으로 unsubscribe하고 caller-owned NATS client는 열어 둡니다.
 - `AbortSignal`을 받는 요청-응답 transport는 이미 abort된 send를 publish 전에 reject하고, deferred broker/RPC dispatch 직전 cancellation을 다시 확인하며, 나중에 abort된 in-flight send도 reject합니다. `close()`가 시작된 뒤에는 shutdown 중인 lifecycle에 새 작업을 publish하지 않고 `send()`/`emit()`을 reject하며, 동시 `listen()` 호출은 아직 진행 중인 shutdown 상태를 reset할 수 없습니다.
 - Programmatic `Microservice` facade는 런타임 shutdown hook이 종료를 시작한 signal을 전달할 수 있도록 `close(signal?: string)`을 받습니다. `MicroserviceLifecycleService.close(signal)`은 이 lifecycle-compatible facade 계약을 유지하면서도 현재 설정된 transport에는 기존 `close(): Promise<void>` 계약으로 호출합니다. 각 transport는 자체 문서가 signal-aware shutdown을 명시하지 않는 한 계속 인자를 받지 않는 shutdown adapter입니다.
 - Root `@fluojs/microservices` barrel import와 `TcpMicroserviceTransport` 생성은 `node:net`을 load하지 않습니다. TCP는 `listen()`이 server를 시작하거나 outbound `send()`/`emit()`이 socket을 생성하는 경로에서만 Node networking을 lazy-load합니다. `close()`가 in-flight listen 시도를 기다리는 중 startup이 실패해도 microservice shutdown은 캡처한 listen error를 다시 surface하기 전에 transport cleanup을 시도합니다.

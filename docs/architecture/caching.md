@@ -8,11 +8,13 @@ This document defines the current cache contract across `@fluojs/cache-manager`,
 
 | Surface | Current contract | Source anchor |
 | --- | --- | --- |
-| Module entrypoint | Applications register cache support through `CacheModule.forRoot(...)`. Public options include `store`, `ttl`, `httpKeyStrategy`, `principalScopeResolver`, `redis`, and `global`. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
+| Module entrypoint | Applications register cache support through `CacheModule.forRoot(...)`. Public options include `store`, `ttl`, `httpKeyStrategy`, `principalScopeResolver`, top-level `keyPrefix`, `redis`, and `global`. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
 | Cache service | `CacheService` is the direct application cache facade with `get`, `set`, `remember`, `del`, and `reset`. | `packages/cache-manager/src/service.ts` |
-| HTTP integration | `CacheInterceptor` performs GET read-through caching and post-write eviction. | `packages/cache-manager/src/interceptor.ts` |
+| HTTP integration | `CacheInterceptor` performs GET read-through caching and consumes `@CacheEvict(...)` metadata after non-GET controller handlers. The decorator does not intercept arbitrary service methods outside that HTTP pipeline. | `packages/cache-manager/src/decorators.ts`, `packages/cache-manager/src/interceptor.ts` |
 | Memory store | `MemoryStore` keeps cache entries in-process, sweeps expirations lazily on access, and caps live entries at `1,000` by evicting the oldest keys. | `packages/cache-manager/src/stores/memory-store.ts` |
 | Redis store | `RedisStore` stores JSON-serialized entries under a prefixed key space, uses `EX` for positive TTL values, and resets by scanning the configured prefix. | `packages/cache-manager/src/stores/redis-store.ts` |
+| Redis client integration | `redis.client` accepts a directly supplied `RedisCompatibleClient` and takes precedence without loading `@fluojs/redis`; the application owns that client's lifecycle. Otherwise the cache module optionally loads `@fluojs/redis` and resolves its default or `redis.clientName` raw-client token. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
+| Redis namespace ownership | Top-level `keyPrefix` defaults to `fluo:cache:` and scopes every Redis key plus `reset()` scanning. An empty prefix disables wildcard scanning and limits reset to keys tracked by the current `RedisStore` instance. | `packages/cache-manager/src/module.ts`, `packages/cache-manager/src/stores/redis-store.ts` |
 
 ## Cache Key Rules
 
@@ -40,7 +42,7 @@ This document defines the current cache contract across `@fluojs/cache-manager`,
 
 | Rule | Current contract | Source anchor |
 | --- | --- | --- |
-| Decorator path | `@CacheEvict(...)` stores one key, a key list, or a resolver function for post-write eviction. | `packages/cache-manager/src/decorators.ts` |
+| Decorator path | `@CacheEvict(...)` stores one key, a key list, or a resolver function as HTTP route metadata. Only `CacheInterceptor` consumes that metadata on non-GET controller handlers; service methods and other non-HTTP call paths must invalidate through `CacheService.del(...)` or another explicit application path. | `packages/cache-manager/src/decorators.ts`, `packages/cache-manager/src/interceptor.ts` |
 | Eviction timing | For non-GET handlers, eviction runs only after the downstream handler succeeds and the HTTP response successfully commits. If `response.send(...)` rejects, deferred eviction is cancelled; if the adapter never calls `response.send(...)`, a bounded fallback timer still evicts after a successful handler result. | `packages/cache-manager/src/interceptor.ts` |
 | Failure containment | `safeGet`, `safeSet`, and `safeDel` swallow store errors. Cache failures do not fail otherwise successful handlers. | `packages/cache-manager/src/interceptor.ts` |
 | In-flight invalidation | `CacheService.del(...)` marks keys that are still loading so `remember(...)` does not repopulate a key that was invalidated during the same load cycle. | `packages/cache-manager/src/service.ts` |
@@ -50,6 +52,7 @@ This document defines the current cache contract across `@fluojs/cache-manager`,
 ## Constraints
 
 - The built-in memory store is process-local and not cluster-safe. Multi-instance deployments require the Redis store or another shared custom store.
+- `@fluojs/redis` is optional for the Redis store when `redis.client` supplies a compatible client directly. Direct clients are application-owned and must be started and closed by the application.
 - Redis-backed values must be JSON-compatible because `RedisStore` persists entries with `JSON.stringify(...)` and reconstructs them with `JSON.parse(...)`.
 - Cache invalidation is key-based only. The built-in contract does not provide tag-based or wildcard invalidation at the interceptor layer.
 - Cache TTL enforcement in the memory store is lazy and access-driven, not timer-driven.

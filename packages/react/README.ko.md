@@ -15,6 +15,8 @@ fluo 애플리케이션을 위한 런타임 중립 React 통합입니다.
 - [Router 및 Path Decorators](#router-및-path-decorators)
 - [Web Streams SSR](#web-streams-ssr)
 - [Hydration Asset Contract](#hydration-asset-contract)
+- [Vite Asset Manifest Integration](#vite-asset-manifest-integration)
+- [Client Navigation Runtime](#client-navigation-runtime)
 - [현재 제한 사항](#현재-제한-사항)
 - [Public API](#public-api)
 - [관련 패키지](#관련-패키지)
@@ -70,11 +72,12 @@ resolve합니다.
 - **root `@fluojs/react`** — 안정 `0.1.0` SSR MVP 계약입니다. `ReactModule.forRoot(...)`,
   `@Router(...)`, `@Path(...)`, metadata reader, `createReactServerEntry(...)`,
   `renderReactResponse(...)`, Web Streams SSR, 명시적인 hydration asset option을 포함합니다.
-- **future `@fluojs/react/vite`** — build-time asset manifest discovery, stylesheet ordering, Vite
-  integration을 위한 경계입니다. 현재 root package는 명시적인 asset option을 받지만 manifest를 발견하거나
-  scan하지 않습니다.
-- **future `@fluojs/react/client`** — browser navigation 및 client hydration helper를 위한 경계입니다.
-  Root package는 client bundle을 생성하거나 client-side route transition을 소유하지 않습니다.
+- **`@fluojs/react/vite`** — Vite build manifest parsing, React server/client entry selection,
+  deterministic stylesheet 및 JavaScript ordering, manifest diagnostics, hydration option 생성을 위한
+  경계입니다. Root package는 여전히 manifest discovery나 scanning 없이 명시적인 asset option만 받습니다.
+- **`@fluojs/react/client`** — progressive anchor, HTTP-first full-document navigation,
+  hydration-safe URL/path-param/navigation lifecycle hook을 위한 경계입니다. Browser API는
+  runtime-neutral root에서 계속 분리됩니다.
 - **future `@fluojs/react/experimental/rsc`** — React Server Components 및 Server Functions 실험을 위한
   경계입니다. RSC와 Server Functions는 stable root contract 밖이며 `@fluojs/react`에서 제공되는 것으로
   문서화하면 안 됩니다.
@@ -161,6 +164,10 @@ segment와 full-segment `:param` placeholder뿐입니다. wildcard, catch-all ro
 regex-like token, `user-:id` 같은 mixed literal/parameter segment, `:id.json` 같은 suffix param은
 지원하지 않습니다.
 
+[HTTP catch-all route grammar 결정](../../docs/architecture/http-catch-all-route-grammar.ko.md)은
+wildcard 도입을 유예합니다. React는 자체 syntax를 추가하지 않습니다. Page handler는 명시적인 server
+route를 유지해야 하며, 향후 catch-all은 먼저 승인된 `@fluojs/http` contract가 되어야 합니다.
+
 ## Web Streams SSR
 
 React page handler에서 `createReactServerEntry(...)`를 반환하면 기존 fluo HTTP dispatcher를 통해 HTML을
@@ -236,24 +243,177 @@ return createReactServerEntry(<App assetMap={assetMap} />, {
 });
 ```
 
-이 phase에서 CSS/JS ordering은 caller가 소유합니다. 향후 Vite manifest integration은 manifest stylesheet
-순서를 app-rendered document head 안에서 hydration script보다 먼저 보존하고, 그 다음 `bootstrapScripts`와
-`bootstrapModules`의 caller order를 중복 제거 후 보존해야 합니다. 이 패키지는 Vite manifest를 발견하거나,
-filesystem을 scan하거나, client bundle을 생성하거나, 신뢰할 수 없는 user data를 inline script로 serialize하지
-않습니다.
+애플리케이션이 hydration option을 직접 넘기는 경우 CSS/JS ordering은 계속 caller가 소유합니다.
+`@fluojs/react/vite`는 manifest stylesheet 순서를 app-rendered document head 안에서 hydration script보다 먼저
+보존하고, 그 다음 manifest JavaScript order와 `bootstrapScripts` 및 `bootstrapModules`의 caller order를 중복
+제거 후 보존합니다. 이 패키지는 filesystem에서 Vite manifest를 발견하거나, client bundle을 생성하거나, 신뢰할 수
+없는 user data를 inline script로 serialize하지 않습니다.
+
+## Vite Asset Manifest Integration
+
+Vite로 빌드한 React 애플리케이션에서 이미 로드한 Vite manifest를 `createReactServerEntry(...)`가 받는 안정
+hydration option으로 바꿔야 할 때 `@fluojs/react/vite`를 사용합니다.
+
+```tsx
+import { createReactViteAssetManifest } from '@fluojs/react/vite';
+import { createReactServerEntry } from '@fluojs/react';
+
+const assets = createReactViteAssetManifest({
+  base: '/assets/',
+  entries: {
+    client: 'src/entry-client.tsx',
+    server: 'src/entry-server.tsx',
+  },
+  manifest: viteManifest,
+  nonce: cspNonce,
+});
+
+if (!assets.ok) {
+  throw new Error(assets.diagnostics.map((diagnostic) => diagnostic.message).join('\n'));
+}
+
+return createReactServerEntry(<App assetMap={assets.manifest.assetMap} />, {
+  ...assets.manifest.hydrationOptions,
+});
+```
+
+`createReactViteAssetManifest(...)`는 이미 로드된 manifest 값을 받습니다. Filesystem을 읽거나, Vite를
+실행하거나, client bundle을 만들거나, root package에 Vite dependency를 추가하지 않습니다. 파싱하는 manifest
+schema는 Vite client manifest 형태와 호환됩니다.
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `file` | yes | chunk의 JavaScript output file입니다. 선택된 server/client entry는 `.js`, `.mjs`, `.cjs`로 끝나야 합니다. |
+| `src` / `name` | no | 명시적인 `entries.server` 및 `entries.client` selector를 위한 secondary lookup key입니다. |
+| `isEntry` / `isDynamicEntry` | no | diagnostics 및 future compatibility를 위해 보존되는 Vite entry marker입니다. |
+| `imports` | no | static imported chunk id입니다. imported chunk는 client entry보다 먼저 정렬됩니다. |
+| `css` | no | chunk가 emit한 stylesheet file입니다. 반환되는 `manifest.css`는 dependency order를 유지하고 중복을 제거합니다. |
+| `assets` | no | 반환되는 `assetMap`에 복사되는 static asset file입니다. |
+
+성공 결과는 다음을 포함합니다.
+
+- `manifest.hydrationOptions` — `createReactServerEntry(...)`에 바로 넘길 수 있는 `assetMap`,
+  `bootstrapModules`, `bootstrapScripts`, trusted `bootstrapScriptContent`, `identifierPrefix`, `nonce`입니다.
+- `manifest.css` — hydration script보다 먼저 application-rendered document head에 넣을 stylesheet URL입니다.
+- `manifest.js.modules` 및 `manifest.js.scripts` — Vite client import graph에서 나온 module script와 caller가
+  제공한 classic script입니다.
+- `manifest.assetMap` — manifest key, source name, emitted file, CSS, static asset을 public URL에 매핑한
+  defensive snapshot입니다.
+- `manifest.serverEntry` 및 `manifest.clientEntry` — resolve된 React server/client entry입니다.
+
+예상 가능한 manifest failure는 throw하지 않고 diagnostics를 반환합니다. Stable diagnostic code는 다음입니다.
+
+- `react-vite-manifest-missing-server-entry`
+- `react-vite-manifest-missing-client-entry`
+- `react-vite-manifest-malformed`
+- `react-vite-manifest-unsupported-output-shape`
+
+`@fluojs/react/vite`는 `@fluojs/vite`와 분리됩니다. `vite.config.ts`에서 fluo 애플리케이션의 TC39 decorator
+transform이 필요하면 `@fluojs/vite`를 사용하세요. React SSR code에서 React build asset을 파싱해 기존 hydration
+contract에 공급해야 하면 `@fluojs/react/vite`를 사용하세요. 두 패키지 모두 file route, React-only route grammar,
+Next.js route segment convention, RSC bundler behavior, URL matching을 소유하지 않습니다.
+실행 가능한 `examples/react-vite-ssr/` 애플리케이션은 생성된 asset, streamed Suspense content,
+직접적인 React DOM hydration, client navigation subpath를 통해 이 경계를 보여줍니다.
+
+## Client Navigation Runtime
+
+Client-owned route table을 추가하지 않고 hydrated React page에서 navigation control과 URL state가
+필요하면 `@fluojs/react/client`를 사용합니다. 활성 fluo HTTP request에서 initial snapshot을 만들고,
+server rendering과 hydration에서 같은 snapshot을 `ReactClientRouterProvider`에 전달합니다. 이
+request-scoped snapshot은 server/client URL state drift를 막고 기존 HTTP route match가 만든 path
+param을 전달합니다. Client runtime은 route param을 직접 derive하거나 validate하지 않습니다.
+
+```tsx
+import {
+  Link,
+  ReactClientRouterProvider,
+  createReactRouteSnapshot,
+  useNavigation,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from '@fluojs/react/client';
+
+function DashboardNav() {
+  const navigation = useNavigation();
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  return (
+    <nav aria-label="Dashboard">
+      <Link href="/dashboard/42/edit?tab=profile">Edit</Link>
+      <button type="button" onClick={() => router.push('/dashboard/42/edit?tab=profile')}>
+        Open editor
+      </button>
+      <output>{pathname} · {searchParams.get('tab')} · {navigation.status}</output>
+    </nav>
+  );
+}
+
+const initialSnapshot = createReactRouteSnapshot({
+  url: requestContext.request.url,
+  params: requestContext.request.params,
+});
+
+const app = (
+  <ReactClientRouterProvider initialSnapshot={initialSnapshot}>
+    <DashboardNav />
+  </ReactClientRouterProvider>
+);
+```
+
+Navigation contract는 의도적으로 HTTP-first입니다.
+
+- `Link`는 항상 실제 `<a href>`를 렌더링하므로 pre-hydration click, JavaScript disabled 환경,
+  modified click, download, explicit target, cross-origin destination은 native browser behavior를
+  유지합니다. Hydration 이후 same-origin HTTP(S) URL을 향한 unmodified primary click은
+  `router.push(...)`로 위임됩니다.
+- `router.push(href)`는 `window.location.assign(...)`, `router.replace(href)`는
+  `window.location.replace(...)`를 사용합니다. 현재 URL의 pathname 또는 search(query string)를
+  변경하는 same-origin destination은 full-document navigation을 수행하므로 fluo HTTP route matching,
+  `@RequestDto` binding/validation, guard, interceptor, redirect, not-found response, non-HTML response,
+  server failure가 계속 authoritative합니다.
+- 현재 pathname과 search를 유지하고 fragment만 바꾸는 fragment-only destination은 same-document
+  예외입니다. Browser는 새 HTTP request를 보내지 않고 `hashchange`를 발생시키며, 요청한 destination과
+  일치하는 event가 route snapshot URL/hash를 갱신하면서 `push` 또는 `replace` lifecycle을 완료합니다.
+  Server request가 없으므로 해당 fragment 변경에서는 fluo HTTP route matching, `@RequestDto`
+  binding/validation, guard, interceptor가 실행되지 않습니다.
+- 정규화된 destination이 현재 route snapshot과 같은 identical URL이면 router는
+  `window.location.assign(...)`이나 `window.location.replace(...)`를 호출하지 않습니다. 대신 요청한
+  navigation type과 destination을 포함한 `skipped` 상태를 노출합니다.
+- `router.back()`은 `window.history.back()`에 위임합니다. `router.refresh()`는 문서화된 revalidation
+  mechanism으로 `window.location.reload()`를 사용하며 RSC, loader, client-data cache를 암시하지 않습니다.
+- `usePathname()`, `useSearchParams()`, `useParams()`, `useRouterState()`는 provider의 immutable route
+  snapshot을 읽습니다. `popstate`와 `hashchange`는 URL-derived field를 갱신합니다. 새 server document 없이
+  history event가 pathname을 바꾸면 client route grammar로 추측하지 않고 stale path param을 비웁니다.
+- `useNavigation()`은 `idle`, `navigating`, `refreshing`, `complete`, `error`, `skipped`를 노출합니다.
+  Full-document path/search transition은 일반적으로 현재 document를 `navigating` 또는 `refreshing`
+  상태에서 떠나며, destination document는 server-owned `idle` snapshot으로 시작합니다. Fragment-only
+  transition은 일치하는 `hashchange` 이후 현재 document에서 `complete`가 됩니다.
+- Router method는 cross-origin 또는 non-HTTP(S) destination을 `ReactClientNavigationError`로 거부합니다.
+  이런 destination에는 일반 anchor를 사용하세요.
+
+이 phase는 `prefetch`를 의도적으로 제공하지 않습니다. 소유한 client data/render cache가 없으므로
+prefetch를 제공하면 일관되게 revalidate하거나 consume할 수 없는 behavior를 약속하게 됩니다.
+
+Client navigation에는 catch-all route가 필요하지 않습니다. `Link`는 실제 anchor로 남으므로 hydration
+gap이나 JavaScript disabled 환경에서는 일반 full-document browser navigation으로 fallback합니다. 이후
+server는 명시적인 `@Path(...)`/HTTP route를 match하거나 정상적인 not-found response를 반환합니다.
+의도적인 deployment-level document rewrite를 별도로 설정할 수 있지만, 이는 React route grammar를 만들거나
+server DTO validation을 변경하지 않습니다.
 
 ## 현재 제한 사항
 
 현재 이 패키지가 제공하지 않는 것은 다음입니다.
 
-- `@fluojs/react/vite`
-- `@fluojs/react/client`
 - `@fluojs/react/experimental/rsc`
 - React Server Components 또는 Server Functions 통합
+- SPA document swapping, client data/loader cache, navigation prefetching
 - Next.js App Router, TanStack route tree, Angular `Routes[]`, file-route scanner, React-owned
   `routes: []` table
 - 자동 client bundle 생성
-- 자동 Vite manifest discovery 또는 filesystem scanning
+- filesystem scanning 또는 자동 manifest file discovery. 이미 로드한 manifest 값을 `@fluojs/react/vite`에 넘기세요.
 - `bootstrapScriptContent`로 임의 data를 자동 serialize하는 기능
 - `renderToPipeableStream(...)` 같은 Node 전용 `react-dom/server` pipeable stream root API
 
@@ -280,6 +440,15 @@ filesystem을 scan하거나, client bundle을 생성하거나, 신뢰할 수 없
 - `ReactScaffoldPhase` — `0.1.0` scaffold surface를 위한 type-only planning marker입니다.
 - `ReactRouterMetadata`, `ReactPathMetadata`, `ReactPathOptions` — diagnostics 및 향후 rendering
   integration을 위한 type-only metadata contract입니다.
+- `@fluojs/react/vite` subpath — Vite manifest를 root에서 Vite를 import하지 않고 안정 hydration asset contract로
+  파싱하는 `createReactViteAssetManifest(...)`, `ReactViteBuildManifest`, `ReactViteBuildManifestChunk`,
+  `ReactViteManifestOptions`, `ReactViteManifestDiagnostic`, `ReactViteAssetManifest`,
+  `ReactViteHydrationOptions`, `ReactViteJavaScriptAssets`, `ReactViteBootstrapData`,
+  `ReactViteResolvedEntry`를 제공합니다.
+- `@fluojs/react/client` subpath — root package를 넓히거나 client route grammar를 추가하지 않고
+  progressive HTTP-first browser navigation을 제공하는 `Link`, `ReactClientRouterProvider`,
+  `createReactRouteSnapshot(...)`, `useRouter()`, `usePathname()`, `useParams()`,
+  `useSearchParams()`, `useNavigation()`, `useRouterState()`를 제공합니다.
 
 ## 관련 패키지
 
@@ -287,10 +456,16 @@ filesystem을 scan하거나, client bundle을 생성하거나, 신뢰할 수 없
 - `@fluojs/http`: `@Router(...)`와 `@Path(...)`가 재사용하는 controller, route, DTO, guard,
   interceptor, header, version metadata pipeline을 제공합니다.
 - `@fluojs/runtime`: 향후 React 통합 작업은 root import boundary를 넓히지 않고 runtime bootstrap contract와 합성될 예정입니다.
+- `@fluojs/vite`: Vite TC39 decorator transform boundary를 소유합니다. React hydration manifest를 파싱하지
+  않으므로 React server/client asset mapping에는 `@fluojs/react/vite`를 사용하세요.
 
 ## 예제 소스
 
 - `packages/react/src/index.ts`
+- `packages/react/src/vite.ts`
+- `packages/react/src/client.ts`
+- `packages/react/src/client.test.ts`
+- `packages/react/src/vite/create-asset-manifest.ts`
 - `packages/react/src/decorators.ts`
 - `packages/react/src/server-entry.ts`
 - `packages/react/src/render.ts`
@@ -298,9 +473,14 @@ filesystem을 scan하거나, client bundle을 생성하거나, 신뢰할 수 없
 - `packages/react/src/render.test.ts`
 - `packages/react/src/dispatcher-ssr.test.ts`
 - `packages/react/src/hydration-assets.test.ts`
+- `packages/react/src/vite.test.ts`
 - `packages/react/src/lifecycle-pipeline.test.ts`
 - `packages/react/src/module.test.ts`
 - `packages/react/src/decorators.test.ts`
 - `packages/react/src/index.test.ts`
 - `examples/react-stable-ssr/README.ko.md`
 - `examples/react-stable-ssr/src/app.test.ts`
+- `examples/react-vite-ssr/README.ko.md`
+- `examples/react-vite-ssr/src/app.test.ts`
+- `examples/react-vite-ssr/src/hydration.test.ts`
+- `examples/react-vite-ssr/tests/production-hydration.spec.ts`

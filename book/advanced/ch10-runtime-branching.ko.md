@@ -134,6 +134,8 @@ export { APPLICATION_LOGGER, PLATFORM_SHELL } from './tokens.js';
 export * from './types.js';
 ```
 
+공유 `UploadedFile` 계약은 멀티파트 payload byte를 runtime-neutral `Uint8Array`로 유지합니다. 따라서 Web adapter는 Node.js `Buffer` global이 필요하지 않으며, Buffer 전용 API가 필요한 Node 애플리케이션 코드는 해당 경계에서 `Buffer.from(file.buffer)`로 명시적으로 변환해야 합니다.
+
 이 목록에는 Node server helper나 Web dispatch helper가 없습니다. root API를 보는 독자는 여기서부터 공통 bootstrap 계약과 host-specific helper의 경계가 다르다는 사실을 확인할 수 있습니다.
 
 이 omission은 우연이 아닙니다. `path:packages/runtime/src/exports.test.ts:13-29`가 직접 검증합니다. root barrel에는 `dispatchWebRequest`, `createWebRequestResponseFactory`, `createNodeShutdownSignalRegistration`, `bootstrapHttpAdapterApplication`이 있으면 안 됩니다.
@@ -484,7 +486,6 @@ host-specific factory
 따라서 10장의 마지막 결론은 import hygiene보다 넓습니다. Fluo의 runtime branching이 성립하는 이유는 framework가 대부분의 bootstrap을 host-agnostic하게 만든 뒤, 아주 늦은 시점의 좁은 transport seam에서만 분기하기 때문입니다. Node는 server lifecycle helper를 받고, Web/Edge host는 Request/Response normalization helper를 받습니다. 하지만 그 seam 위에서는 module graph, container, lifecycle hook, platform shell, dispatcher model이 동일합니다.
 
 이것이 내부 portability contract입니다. "호스트당 하나의 런타임"이 아니라, "가장자리에 명시적인 호스트 어댑터가 있는 하나의 공유 런타임 셸"입니다.
-
 
 
 

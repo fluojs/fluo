@@ -1,0 +1,40 @@
+{
+  "name": "@fluojs/example-react-vite-ssr",
+  "description": "Vite-backed @fluojs/react streamed SSR and hydration example.",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "vite build --config vite.client.config.ts && vite build --config vite.server.config.ts",
+    "start": "node dist/server/main.js",
+    "test": "vitest run src",
+    "test:browser": "pnpm --workspace-root build && pnpm build && playwright test --config playwright.config.ts",
+    "typecheck": "tsc -p ../tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fluojs/core": "workspace:*",
+    "@fluojs/http": "workspace:*",
+    "@fluojs/platform-fastify": "workspace:*",
+    "@fluojs/react": "workspace:*",
+    "@fluojs/runtime": "workspace:*",
+    "@fluojs/validation": "workspace:*",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.26.10",
+    "@babel/plugin-proposal-decorators": "^7.28.0",
+    "@babel/preset-typescript": "^7.27.1",
+    "@fluojs/testing": "workspace:*",
+    "@fluojs/vite": "workspace:*",
+    "@playwright/test": "^1.51.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "happy-dom": "^20.9.0",
+    "vite": "^6.2.1",
+    "vitest": "^3.0.8"
+  }
+}

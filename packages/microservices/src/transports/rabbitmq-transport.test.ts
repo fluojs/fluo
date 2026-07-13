@@ -624,7 +624,7 @@ describe('RabbitMqMicroserviceTransport', () => {
     );
   });
 
-  it('captures async event-handler failures without leaking them to emit()', async () => {
+  it('rejects the broker callback when an event handler fails', async () => {
     const bus = new InMemoryQueueBus();
     const transport = new RabbitMqMicroserviceTransport({
       consumer: {
@@ -650,7 +650,53 @@ describe('RabbitMqMicroserviceTransport', () => {
       return undefined;
     });
 
-    await expect(transport.emit('audit.logout', { value: 'bye' })).resolves.toBeUndefined();
+    await expect(transport.emit('audit.logout', { value: 'bye' })).rejects.toThrow('rabbit event handler failed');
+
+    await transport.close();
+  });
+
+  it('rejects the broker callback when response publication fails', async () => {
+    let requestCallback: ((message: string) => Promise<void> | void) | undefined;
+    let responsePublishAttempts = 0;
+    const responsePublishError = new Error('rabbit response publish failed');
+    const transport = new RabbitMqMicroserviceTransport({
+      consumer: {
+        cancel: async () => {},
+        consume: async (queue, handler) => {
+          if (queue === 'fluo.microservices.messages') {
+            requestCallback = handler;
+          }
+        },
+      },
+      publisher: {
+        publish: async (queue) => {
+          if (queue === 'test.responses') {
+            responsePublishAttempts++;
+
+            if (responsePublishAttempts === 1) {
+              throw responsePublishError;
+            }
+          }
+        },
+      },
+    });
+
+    await transport.listen(async () => 'ok');
+
+    if (!requestCallback) {
+      throw new Error('Expected RabbitMQ request callback to be registered.');
+    }
+
+    const delivery = requestCallback(JSON.stringify({
+      kind: 'message',
+      pattern: 'audit.logout',
+      payload: { value: 'bye' },
+      replyTo: 'test.responses',
+      requestId: 'request-1',
+    }));
+
+    await expect(Promise.resolve(delivery)).rejects.toBe(responsePublishError);
+    expect(responsePublishAttempts).toBe(1);
 
     await transport.close();
   });

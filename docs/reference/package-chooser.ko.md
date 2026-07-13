@@ -13,7 +13,7 @@
 | GraphQL 엔드포인트가 필요함 | `@fluojs/graphql` | HTTP 스택 위에 추가합니다. |
 | 기본 Node.js 어댑터가 필요함 | `@fluojs/platform-fastify` | 대부분의 Node.js 20+ 프로젝트에 권장되는 시작 경로이며, package는 `engines.node >=20.0.0`을 선언합니다. |
 | Fastify가 HTTPS/TLS 시작을 직접 소유해야 함 | `@fluojs/platform-fastify` | 프로세스가 TLS를 직접 소유할 때 adapter/bootstrap startup surface에 Node.js `https` server option을 전달하세요. Load balancer, ingress, gateway가 TLS를 종료한다면 해당 경계 뒤에서 adapter를 일반 HTTP로 유지하세요. |
-| Express host 호환이 필요함 | `@fluojs/platform-express` | Node.js에서 first-class `fluo new` 애플리케이션 스타터로도 제공됩니다. Application pipeline에는 fluo `Middleware`를 사용하고, migration 전용 Express/Connect handler는 adapter의 pre-router `nativeMiddleware` 옵션에 등록하거나 portable fluo 계약 뒤에 감싸세요. |
+| Express host 호환이 필요함 | `@fluojs/platform-express` | `engines.node >=20.0.0`을 선언하는 Node.js 20+ 패키지이며 first-class `fluo new` 애플리케이션 스타터로도 제공됩니다. Express host 교체는 NestJS legacy decorator 또는 reflection metadata 동작을 유지하지 않으므로 TC39 표준 데코레이터와 명시적 DI/module wiring으로 먼저 마이그레이션하세요. Application pipeline에는 fluo `Middleware`를 사용하고, migration 전용 Express/Connect handler는 adapter의 pre-router `nativeMiddleware` 옵션에 등록하거나 portable fluo 계약 뒤에 감싸세요. |
 | Node.js HTTP를 직접 제어해야 함 | `@fluojs/platform-nodejs` | Node.js에서 first-class `fluo new` 애플리케이션 스타터로도 제공됩니다. |
 | 요청 유효성 검사가 필요함 | `@fluojs/validation` | DTO 바인딩과 검증이 필요할 때 추가합니다. |
 | 응답 직렬화 또는 output DTO shaping이 필요함 | `@fluojs/serialization` | 응답 DTO의 제어된 field exposure, sensitive-field exclusion, synchronous value transform, HTTP interceptor 기반 response-boundary shaping이 필요할 때 추가합니다. |
@@ -25,7 +25,8 @@
 | 조건 | 패키지 선택 | 비고 |
 | --- | --- | --- |
 | HTTP가 소유하는 React page handler와 Web Streams SSR이 필요함 | `@fluojs/react` + `@fluojs/http` | Page를 기존 fluo module/controller pipeline에 유지해야 할 때 root `@fluojs/react` package를 사용합니다. `@Router(...)`와 `@Path(...)`는 HTTP metadata 위의 lexical React facade입니다. URL matching, route grammar, DTO-bound path/search param, validation, guard, interceptor, middleware, header, request lifecycle은 `@fluojs/http`가 계속 소유합니다. 이것은 Next.js App Router, TanStack route tree, Angular `Routes[]`, file routing, RSC, Server Functions, React-owned `routes: []` model이 아닙니다. |
-| Stable SSR용 hydration asset이 필요함 | `@fluojs/react` | `createReactServerEntry(...)`에 명시적인 `bootstrapScripts`, `bootstrapModules`, 신뢰된 `bootstrapScriptContent`, `nonce`, `identifierPrefix`, 신뢰된 `assetMap` snapshot을 전달합니다. Manifest discovery는 future `@fluojs/react/vite`, browser navigation은 future `@fluojs/react/client`, RSC와 Server Functions는 future `@fluojs/react/experimental/rsc`의 책임입니다. |
+| Stable SSR용 hydration asset이 필요함 | `@fluojs/react` 또는 `@fluojs/react/vite` | `createReactServerEntry(...)`에 명시적인 `bootstrapScripts`, `bootstrapModules`, 신뢰된 `bootstrapScriptContent`, `nonce`, `identifierPrefix`, 신뢰된 `assetMap` snapshot을 직접 전달하거나, `@fluojs/react/vite`로 이미 로드한 Vite manifest를 같은 hydration contract용 deterministic CSS, JavaScript bootstrap asset, asset map, trusted bootstrap data, diagnostics로 파싱합니다. RSC와 Server Functions는 future `@fluojs/react/experimental/rsc`의 책임입니다. |
+| Hydrated React page에 navigation과 URL state가 필요함 | `@fluojs/react/client` + `@fluojs/http` | Request-owned `createReactRouteSnapshot(...)`을 전달한 `ReactClientRouterProvider`로 shared document를 감싼 뒤 실제 anchor를 렌더링하는 `Link`, `useRouter()`, `usePathname()`, `useParams()`, `useSearchParams()`, `useNavigation()`, `useRouterState()`를 사용합니다. Navigation은 same-origin full-document 방식이므로 server HTTP matching, DTO validation, guard, redirect, failure가 계속 authoritative합니다. Client route table, SPA document swap, data cache, prefetch contract는 없습니다. |
 
 ## 엣지 / 모던 런타임에 배포
 

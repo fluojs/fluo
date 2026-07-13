@@ -5,6 +5,8 @@
 
 This chapter introduces NATS into FluoShop's fast internal coordination paths and clarifies the role of control-plane messaging, which differs from durable logs or work queues. Chapter 5 covered replayable shared history. Here, the focus moves to inventory and cache coordination, where low latency and subject-based routing matter.
 
+Package-level NATS transport contracts, including completion boundaries and caller-owned collaborator shutdown, are canonical in [`packages/microservices/README.md`](../../packages/microservices/README.md).
+
 ## Learning Objectives
 - Understand why NATS occupies a different architectural position from Kafka or RabbitMQ.
 - Learn how to configure the NATS transport around a caller-owned client and codec.
@@ -55,7 +57,8 @@ Subject names make intent easier to read when inspecting the broker. With a subj
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { MicroservicesModule, NatsMicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { NatsMicroserviceTransport } from '@fluojs/microservices/nats';
 import { JSONCodec, connect } from 'nats';
 
 // NATS connection logic stays in the bootstrap/main file.
@@ -85,6 +88,14 @@ export class InventoryCoordinationModule {}
 ```
 
 The exact codec wrapper implementation can vary by team. But the architectural point does not change. The application explicitly owns the NATS connection and codec choice.
+
+### 6.2.3 Facade completion and shutdown ownership
+
+Keep `MicroservicesModule`, `MICROSERVICE`, and the `Microservice` type on root `@fluojs/microservices`, while the adapter import above uses `@fluojs/microservices/nats`. `MICROSERVICE` resolves the programmatic lifecycle facade, not the raw `NatsMicroserviceTransport`.
+
+- `await microservice.send(...)` settles when NATS request-reply returns the correlated response, or rejects for an error, abort, timeout, or shutdown.
+- `await microservice.emit(...)` settles when the caller-provided client's publish operation accepts/completes the outbound frame. It does not wait for a remote event handler or add durability beyond that client contract.
+- `await microservice.close()` unsubscribes transport-created subscriptions and rejects pending requests, but it does not close or drain the caller-owned NATS client. During shutdown, close the facade first, then drain or close that client from the bootstrap layer.
 
 ## 6.3 Fast request-reply for inventory control
 

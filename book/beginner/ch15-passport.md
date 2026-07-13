@@ -49,7 +49,7 @@ Passport is widely used as Authentication middleware for Node.js because of its 
 This modularity fits Fluo's architecture well because it separates "how to authenticate" from "what to protect". The Passport community has already handled the details of thousands of identity providers, so you do not need to redesign cryptographic or protocol-level details every time you add a new Authentication method. Fluo adopts this industry standard while keeping application code inside explicit Provider and Guard boundaries.
 
 ### 15.2.2 The Principal Object
-In Passport terminology, an authenticated user is represented as a "user" object attached to the request. In Fluo, we call this a **Principal**. A Principal is a normalized object that contains the core identity information the rest of the application needs, such as user ID, roles, and permissions. By standardizing the Principal across every strategy, business logic stays decoupled from the specific Authentication method used. For example, `ProfileService` does not care whether the user signed in with JWT or Facebook. It only sees a `Principal` that contains a `userId`.
+In Passport terminology, an authenticated user is represented as a "user" object attached to the request. In Fluo, we call this a **Principal**. A JWT Principal is a normalized object with a required `subject` identifier, the verified `claims` bag, and optional `roles` and `scopes`. By standardizing the Principal across every strategy, business logic stays decoupled from the specific Authentication method used. For example, `ProfileService` does not care whether the user signed in with JWT or Facebook. It reads the user's canonical identifier from `principal.subject`.
 
 ## 15.3 Implementing the JWT AuthStrategy
 The most common strategy in FluoBlog is a custom `AuthStrategy` that reads a Bearer token and normalizes it into a `JwtPrincipal`. Following the "Standard-First" philosophy makes it easier to design the JWT implementation so it stays aligned with industry standards such as RFC 7519.
@@ -87,20 +87,50 @@ export class BearerJwtStrategy implements AuthStrategy {
 }
 ```
 
-### 15.3.2 Configuration Options
+### 15.3.2 Registering the JWT and Passport Modules
+Defining the provider is not enough to make `@UseAuth('jwt')` runnable. The application module must register both the JWT verifier and the named Passport strategy. This is the same wiring used by the canonical `packages/passport/README.md` quick start and the runnable `examples/auth-jwt-passport/src/auth/auth.module.ts` example.
+
+```typescript
+import { Module } from '@fluojs/core';
+import { JwtModule } from '@fluojs/jwt';
+import { PassportModule } from '@fluojs/passport';
+
+import { BearerJwtStrategy } from './bearer.strategy';
+
+@Module({
+  imports: [
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      audience: 'fluo-blog-clients',
+      issuer: 'fluo-blog',
+      secret: 'replace-with-an-application-secret',
+    }),
+    PassportModule.forRoot(
+      { defaultStrategy: 'jwt' },
+      [{ name: 'jwt', token: BearerJwtStrategy }],
+    ),
+  ],
+  providers: [BearerJwtStrategy],
+})
+export class AuthModule {}
+```
+
+`JwtModule.forRoot(...)` makes `DefaultJwtVerifier` available to `BearerJwtStrategy`. `PassportModule.forRoot(...)` registers that provider under the `jwt` name resolved by `@UseAuth('jwt')`; omitting it leaves the strategy unregistered. The literal values above are tutorial placeholders. Production applications should supply secrets and environment-specific options from the application configuration boundary.
+
+### 15.3.3 Configuration Options
 This strategy has three key configuration points.
 - Where to read the token from, such as the `Authorization` header input boundary
 - Which verifier to delegate verification to, such as `DefaultJwtVerifier`
 - Which principal to pass to the application after verification succeeds
 
-### 15.3.3 The Strategy Method: Your Security Gate
+### 15.3.4 The Strategy Method: Your Security Gate
 The `authenticate()` method is the core of every custom strategy. This is where you check the token format and can run additional checks on the principal returned by the verifier. For example, you may want to check whether the user account is suspended in the database or whether the password was recently changed.
 
 If you throw an error here, the request is rejected even if the JWT itself is technically valid. Keeping cryptographic verification and application logic checks together helps prevent revoked credentials from accessing the system before the token expires.
 
 In production, strategies often inject `UsersService` and perform a database lookup to confirm that the user still exists and is active. This "Verification Loop" is critical in systems that require immediate permission revocation, such as systems that handle sensitive financial or personal data. By checking the user against the database, you can move from "stateless but potentially stale" security to "hybrid" security that combines performance with real-time control.
 
-### 15.3.4 Token Revocation Strategies
+### 15.3.5 Token Revocation Strategies
 Standard JWTs are stateless, so they cannot be easily revoked before expiration. But you can implement revocation patterns inside the `authenticate()` method. One common approach is storing a "JWT version" or "last password change timestamp" in the database and comparing it with a token claim. If the token version is older than the database version, reject the request. This lets you immediately log users out of all devices or force password resets.
 
 Another revocation pattern is the **blacklist, or deny list, pattern**. Traditional JWTs are stateless, but you can maintain a distributed cache, such as Redis, of explicitly revoked `jti` (JWT ID) claims, for example when a user logs out. In the `authenticate()` method, check whether the current token ID exists in the blacklist. This lets you revoke specific tokens almost immediately without querying the primary database on every request, keeping performance costs low while adding the needed security control.
@@ -202,6 +232,7 @@ In many OAuth2 implementations, scopes limit what an application can do on behal
 // Inside a custom AuthStrategy
 return {
   subject: payload.sub,
+  claims: payload,
   roles: payload.roles || [],
   scopes: payload.scopes || [], // ['posts:write', 'profile:read']
 };

@@ -61,6 +61,34 @@ describe('DiskHealthIndicator', () => {
     });
   });
 
+  it('throws HealthCheckError when only the free-ratio threshold is breached', async () => {
+    diskState.stats = {
+      bavail: 50,
+      bfree: 50,
+      blocks: 1_000,
+      bsize: 4_096,
+      ffree: 0,
+      files: 0,
+      type: 0,
+    };
+    const indicator = createDiskHealthIndicator({
+      minFreeRatio: 0.1,
+      path: '/data',
+    });
+
+    await expect(indicator.check('disk')).rejects.toMatchObject({
+      causes: {
+        disk: {
+          freeRatio: 0.05,
+          message: 'Disk free ratio dropped below the configured threshold.',
+          status: 'down',
+        },
+      },
+      message: 'Disk health check failed.',
+      name: 'HealthCheckError',
+    } satisfies Partial<HealthCheckError>);
+  });
+
   it('throws HealthCheckError when thresholds are breached or statfs fails', async () => {
     diskState.stats = {
       bavail: 5,

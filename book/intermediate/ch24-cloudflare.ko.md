@@ -84,6 +84,8 @@ Cloudflare Workers는 장기 실행 server socket을 노출하지 않지만, `ap
 
 Shutdown 중에는 adapter가 새 ingress 수락을 중단하고 HTTP 및 WebSocket upgrade request 모두에 같은 JSON `503` shutdown response를 반환합니다. Active HTTP handler, in-flight WebSocket upgrade binding work, SSE(`text/event-stream`) response는 close drain이 진행되는 동안 `ctx.waitUntil()`에 등록된 상태로 유지됩니다. SSE의 경우 drain은 body가 끝나거나 client가 cancel할 때까지 body lifecycle을 따르므로, cancellation은 generic stream detail이 아니라 shutdown contract의 일부입니다. Active work가 끝나지 않으면 `close()`는 bounded 10초 window 이후 timeout되고, shutdown이 아직 drain 중인 동안 concurrent `listen()` call은 isolate를 다시 여는 대신 reject됩니다.
 
+Timeout된 lazy-entrypoint close가 isolate를 영구적으로 unusable하게 만들지는 않습니다. Entrypoint는 underlying drain이 unresolved인 동안 shutdown response를 계속 반환하고, drain이 settle된 뒤 임시 gate를 해제하여 이후 request가 새 application을 bootstrap할 수 있게 합니다.
+
 ## 24.4 Handling Edge Constraints
 
 Cloudflare Workers는 전통적인 Node.js 환경과 다른 제약을 갖습니다. fluo 애플리케이션도 이 제약을 런타임 계약으로 받아들여야 합니다.

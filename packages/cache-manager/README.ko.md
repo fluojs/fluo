@@ -26,13 +26,15 @@
 npm install @fluojs/cache-manager
 ```
 
-root `@fluojs/cache-manager` import는 memory-only 설치에서도 안전합니다. Redis peer는 Redis 저장소 경로를 명시적으로 선택할 때만 필요합니다.
+root `@fluojs/cache-manager` import는 memory-only 설치에서도 안전합니다. Redis client는 Redis 저장소 경로를 명시적으로 선택할 때만 필요합니다.
 
-Redis 기반 캐싱을 사용하는 경우:
+Lifecycle이 관리되는 `@fluojs/redis` client로 Redis 기반 캐싱을 사용하는 경우:
 
 ```bash
 npm install @fluojs/cache-manager @fluojs/redis ioredis
 ```
+
+대신 애플리케이션이 소유하는 compatible client를 `redis.client`로 직접 전달할 수 있습니다. 이 경로에는 `@fluojs/redis`가 필요하지 않습니다. 필수 `get`, `set`, `del`, tuple-returning `scan` operation을 제공하는 client package를 설치하고, 해당 client는 애플리케이션 lifecycle에서 닫으세요.
 
 ## 사용 시점
 
@@ -96,16 +98,30 @@ class UserService {
 
 ### Redis 저장소 사용
 
-Redis를 사용하려면 `@fluojs/redis`가 설정되어 있어야 하며, `store` 옵션을 `'redis'`로 설정합니다.
+`store: 'redis'`를 설정한 뒤 지원되는 두 client 통합 경로 중 하나를 선택합니다.
+
+1. 기본 또는 named raw client를 `@fluojs/redis`로 등록하고 cache module이 DI를 통해 해석하도록 합니다.
+2. 애플리케이션이 소유하는 `RedisCompatibleClient`를 `redis.client`로 직접 전달합니다.
 
 memory-only 소비자는 `@fluojs/redis`나 `ioredis`를 설치하지 않아도 `@fluojs/cache-manager`를 계속 import할 수 있습니다. 이 optional peer들은 Redis 저장소 경로를 선택할 때만 해석됩니다.
 
 ```typescript
-CacheModule.forRoot({
-  store: 'redis',
-  ttl: 600,
-  keyPrefix: 'myapp:cache:',
+import { Module } from '@fluojs/core';
+import { CacheModule } from '@fluojs/cache-manager';
+import { RedisModule } from '@fluojs/redis';
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ name: 'cache', host: 'localhost', port: 6379 }),
+    CacheModule.forRoot({
+      store: 'redis',
+      ttl: 600,
+      keyPrefix: 'myapp:cache:',
+      redis: { clientName: 'cache' },
+    }),
+  ],
 })
+class AppModule {}
 ```
 
 여러 Redis 클라이언트를 등록했다면 `redis.clientName`으로 사용할 `@fluojs/redis` 연결을 지정할 수 있습니다.
@@ -119,7 +135,26 @@ CacheModule.forRoot({
 })
 ```
 
-`redis.client`는 여전히 가장 높은 우선순위의 명시적 override입니다. DI 기반 선택을 완전히 우회해야 할 때만 사용하세요.
+`redis.client`는 가장 높은 우선순위의 override이며 DI 기반 client 선택을 완전히 우회합니다. Export된 `RedisCompatibleClient` 계약을 만족하는 모든 client를 받을 수 있고, 이 경로에서는 `@fluojs/redis`를 load하거나 요구하지 않습니다. 직접 전달한 client의 connection startup과 shutdown은 애플리케이션이 소유합니다.
+
+```typescript
+import Redis from 'ioredis';
+import { Module } from '@fluojs/core';
+import { CacheModule } from '@fluojs/cache-manager';
+
+const cacheClient = new Redis({ host: 'localhost', port: 6379 });
+
+@Module({
+  imports: [
+    CacheModule.forRoot({
+      store: 'redis',
+      keyPrefix: 'myapp:cache:',
+      redis: { client: cacheClient },
+    }),
+  ],
+})
+class AppModule {}
+```
 
 내장 `RedisStore`는 엔트리를 `JSON.stringify(...)`로 저장합니다. 따라서 캐시 값은 JSON 호환 형태여야 합니다. 일반 객체, 배열, 문자열, 숫자, 불리언, `null`은 안정적으로 round-trip 되지만, `Date`는 JSON 결과(예: ISO 문자열)로 돌아오고, 함수/`undefined`/`symbol`은 유지되지 않으며, `bigint`나 순환 그래프처럼 직렬화 불가능한 값은 캐싱 전에 정규화해야 합니다.
 
@@ -211,7 +246,24 @@ defineModule(ManualCacheModule, {
 
 ### 지연 삭제 시점
 
-`@CacheEvict(...)`가 붙은 non-GET 핸들러는 응답이 성공적으로 commit된 뒤에 캐시를 삭제합니다. `response.send(...)`가 reject되면 지연 eviction을 취소하여 실패한 commit이 이전 캐시된 읽기 결과를 삭제하지 않도록 합니다. 어댑터 경로가 `response.send(...)`를 호출하지 않더라도, 인터셉터는 bounded fallback timer를 통해 성공한 쓰기 이후 stale 엔트리가 무기한 남지 않도록 보장합니다. 또한 지연 eviction 실패는 인터셉터 내부에 containment되어 cache key factory나 cache store 삭제 오류가 응답 이후 unhandled promise rejection으로 노출되지 않습니다.
+`@CacheEvict(...)`는 범용 service-method decorator가 아니라 HTTP route metadata입니다. `CacheInterceptor`가 non-GET controller handler를 감싸 실행될 때만 이 metadata를 소비합니다. Service method나 HTTP interceptor pipeline 밖의 호출에서는 `CacheService`를 주입하고 `del(...)`을 명시적으로 호출하세요.
+
+```typescript
+import { CacheEvict, CacheInterceptor } from '@fluojs/cache-manager';
+import { Controller, Post, UseInterceptors } from '@fluojs/http';
+
+@Controller('/products')
+@UseInterceptors(CacheInterceptor)
+class ProductController {
+  @Post('/refresh')
+  @CacheEvict('/products')
+  refresh() {
+    return { refreshed: true };
+  }
+}
+```
+
+이렇게 지원되는 HTTP 경로에서는 응답이 성공적으로 commit된 뒤에 캐시를 삭제합니다. `response.send(...)`가 reject되면 지연 eviction을 취소하여 실패한 commit이 이전 캐시된 읽기 결과를 삭제하지 않도록 합니다. 어댑터 경로가 `response.send(...)`를 호출하지 않더라도, 인터셉터는 bounded fallback timer를 통해 성공한 쓰기 이후 stale 엔트리가 무기한 남지 않도록 보장합니다. 또한 지연 eviction 실패는 인터셉터 내부에 containment되어 cache key factory나 cache store 삭제 오류가 응답 이후 unhandled promise rejection으로 노출되지 않습니다.
 
 ## 공개 API 개요
 
@@ -229,11 +281,11 @@ defineModule(ManualCacheModule, {
 ### 데코레이터
 - `@CacheTTL(seconds)`: 특정 핸들러의 TTL을 설정합니다.
 - `@CacheKey(key)`: 특정 핸들러의 custom cache key 또는 key factory를 설정합니다.
-- `@CacheEvict(key)`: 성공적인 non-GET 핸들러가 완료된 뒤 하나 이상의 cache key를 삭제합니다.
+- `@CacheEvict(key)`: 성공적인 non-GET controller handler가 완료된 뒤 `CacheInterceptor`가 소비하는 HTTP route metadata를 저장합니다. 임의의 service call을 intercept하지 않습니다.
 - `cacheRouteMetadataKey`, `getCacheKeyMetadata(...)`, `getCacheTtlMetadata(...)`, `getCacheEvictMetadata(...)`: 캐시 데코레이터 metadata key를 다시 구현하지 않고 cache decorator metadata를 검사해야 하는 first-party interceptor 통합, 진단, 고급 tooling을 위해 공개된 low-level metadata helper입니다.
 
 ### 인터셉터
-- `CacheInterceptor`: 자동 GET 응답 캐싱 및 삭제 로직을 처리합니다.
+- `CacheInterceptor`: 자동 GET 응답 캐싱을 처리하고 non-GET HTTP handler에서 `@CacheEvict(...)` metadata를 소비합니다.
 
 ### 저장소와 status helper
 - `MemoryStore`, `RedisStore`: 내장 store 구현입니다.
@@ -242,7 +294,7 @@ defineModule(ManualCacheModule, {
 
 ## 관련 패키지
 
-- `@fluojs/redis`: Redis 저장소 사용 시 필요합니다.
+- `@fluojs/redis`: Lifecycle-managed Redis client를 위한 optional 통합입니다. `redis.client`로 애플리케이션 소유 `RedisCompatibleClient`를 직접 전달하면 필요하지 않습니다.
 - `@fluojs/http`: HTTP 인터셉터 및 데코레이터 사용 시 필요합니다.
 
 ## 예제 소스

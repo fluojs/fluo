@@ -1,25 +1,35 @@
-import { spawn } from 'node:child_process';
-import { once } from 'node:events';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { type ChildProcessWithoutNullStreams, execFile, spawn } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 
 import type { Mock } from 'vitest';
 import { describe, expect, it } from 'vitest';
 import * as fetchStyleWebsocket from './conformance/fetch-style-websocket-conformance.js';
 import * as conformance from './conformance/platform-conformance.js';
 import * as http from './http.js';
+import type { DeepMocked as RootDeepMocked } from './index.js';
 import * as testing from './index.js';
+import type { DeepMocked as MockDeepMocked } from './mock.js';
 import * as mock from './mock.js';
 import * as portability from './portability/http-adapter-portability.js';
 import * as webPortability from './portability/web-runtime-adapter-portability.js';
-import type { DeepMocked as RootDeepMocked } from './index.js';
 import type { DeepMocked } from './types.js';
 import * as vitestTooling from './vitest/tooling.js';
 import * as vitestEntry from './vitest.js';
 
 type Assert<T extends true> = T;
 type IsAssignable<From, To> = [From] extends [To] ? true : false;
+type TaskkillCommand = (
+  file: string,
+  args: readonly string[],
+  options: { readonly timeout?: number; readonly windowsHide: boolean },
+) => Promise<void>;
+type DestroyableStdio = {
+  destroy(): unknown;
+};
 
 interface LegacyDeepMockedConsumerService {
   findById(id: string): Promise<{ id: string }>;
@@ -42,11 +52,19 @@ type _DeepMockedMockContextPreservesCallTuples = Assert<
 type _RootDeepMockedPreservesVitestMockCompatibility = Assert<
   IsAssignable<RootDeepMocked<LegacyDeepMockedConsumerService>['findById'], Mock<(id: string) => Promise<{ id: string }>>>
 >;
+type _MockDeepMockedPreservesVitestMockCompatibility = Assert<
+  IsAssignable<MockDeepMocked<LegacyDeepMockedConsumerService>['findById'], Mock<(id: string) => Promise<{ id: string }>>>
+>;
 
 const packageRoot = new URL('..', import.meta.url);
 const packageRootPath = fileURLToPath(packageRoot);
 const repoRootPath = fileURLToPath(new URL('../../..', import.meta.url));
 const packageJsonPath = new URL('../package.json', import.meta.url);
+const execFileAsync = promisify(execFile);
+const CHILD_PROCESS_TIMEOUT_MS = 240_000;
+const PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS = 5_000;
+const PROCESS_EXIT_POLL_MS = 20;
+const PROCESS_EXIT_TEST_TIMEOUT_MS = 500;
 const emittedHarnessSubpaths = [
   '.',
   './app',
@@ -62,41 +80,192 @@ const emittedHarnessSubpaths = [
   './vitest/tooling',
 ] as const;
 
+const executeTaskkillCommand: TaskkillCommand = async (file, args, options) => {
+  await execFileAsync(file, [...args], options);
+};
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ESRCH') {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
+async function waitForProcessExit(pid: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (!isProcessAlive(pid)) {
+      return true;
+    }
+
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, PROCESS_EXIT_POLL_MS));
+  }
+
+  return !isProcessAlive(pid);
+}
+
+function destroyOwnedStdio(streams: readonly DestroyableStdio[], preservePrimaryError: boolean): void {
+  const cleanupErrors: unknown[] = [];
+
+  for (const stream of streams) {
+    try {
+      stream.destroy();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+  }
+
+  if (!preservePrimaryError && cleanupErrors.length > 0) {
+    throw new AggregateError(cleanupErrors, 'Failed to destroy one or more child process stdio handles.');
+  }
+}
+
+async function runWindowsTaskkill(pid: number, execute: TaskkillCommand = executeTaskkillCommand): Promise<void> {
+  try {
+    await execute('taskkill.exe', ['/pid', String(pid), '/t', '/f'], {
+      timeout: PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS,
+      windowsHide: true,
+    });
+  } catch (error) {
+    throw new Error(
+      `Unable to terminate Windows child process tree ${pid} within ${PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS}ms using taskkill.exe /T /F.`,
+      { cause: error },
+    );
+  }
+}
+
+async function terminateOwnedProcessTree(child: ChildProcessWithoutNullStreams): Promise<void> {
+  const pid = child.pid;
+
+  if (pid === undefined || child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+
+  if (process.platform === 'win32') {
+    try {
+      await runWindowsTaskkill(pid);
+    } catch (error) {
+      if (child.exitCode === null && child.signalCode === null) {
+        throw error;
+      }
+    }
+    return;
+  }
+
+  try {
+    process.kill(-pid, 'SIGKILL');
+  } catch (error) {
+    if (!(error instanceof Error && 'code' in error && error.code === 'ESRCH')) {
+      throw new Error(`Unable to terminate child process group ${pid}.`, { cause: error });
+    }
+  }
+}
+
+async function runNodeProcess(
+  args: readonly string[],
+  cwd: string,
+  timeoutMs: number = CHILD_PROCESS_TIMEOUT_MS,
+): Promise<void> {
+  const child = spawn(process.execPath, [...args], {
+    cwd,
+    detached: process.platform !== 'win32',
+    env: process.env,
+    stdio: 'pipe',
+  });
+  let spawnError: Error | undefined;
+  let stderr = '';
+  let stdout = '';
+
+  const onStdout = (chunk: Buffer | string): void => {
+    stdout += String(chunk);
+  };
+  const onStderr = (chunk: Buffer | string): void => {
+    stderr += String(chunk);
+  };
+  const onError = (error: Error): void => {
+    spawnError = error;
+  };
+  let onClose: (code: number | null, signal: NodeJS.Signals | null) => void = () => {};
+  const closePromise = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolvePromise) => {
+    onClose = (code, signal): void => {
+      resolvePromise({ code, signal });
+    };
+    child.once('close', onClose);
+  });
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<'timeout'>((resolvePromise) => {
+    timeout = setTimeout(() => resolvePromise('timeout'), timeoutMs);
+  });
+
+  child.stdout.on('data', onStdout);
+  child.stderr.on('data', onStderr);
+  child.once('error', onError);
+  let hasPrimaryError = false;
+
+  try {
+    const outcome = await Promise.race([closePromise, timeoutPromise]);
+
+    if (outcome === 'timeout') {
+      const timeoutError = new Error(`Child process timed out after ${timeoutMs}ms: ${args.join(' ')}`);
+      let confirmationTimeout: ReturnType<typeof setTimeout> | undefined;
+
+      try {
+        await terminateOwnedProcessTree(child);
+        await Promise.race([
+          closePromise,
+          new Promise<never>((_resolvePromise, reject) => {
+            confirmationTimeout = setTimeout(() => {
+              reject(new Error(`Child process ${String(child.pid)} did not close after process-tree termination.`));
+            }, PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS);
+          }),
+        ]);
+      } catch (error) {
+        throw new AggregateError(
+          [timeoutError, error],
+          'Child process timed out and owned process-tree termination could not be confirmed.',
+        );
+      } finally {
+        if (confirmationTimeout !== undefined) {
+          clearTimeout(confirmationTimeout);
+        }
+      }
+
+      throw timeoutError;
+    }
+
+    if (spawnError) {
+      throw spawnError;
+    }
+
+    if (outcome.code !== 0 || outcome.signal !== null) {
+      throw new Error([stdout, stderr, outcome.signal ? `signal: ${outcome.signal}` : ''].filter(Boolean).join('\n'));
+    }
+  } catch (error) {
+    hasPrimaryError = true;
+    throw error;
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+    child.stdout.off('data', onStdout);
+    child.stderr.off('data', onStderr);
+    child.off('error', onError);
+    child.off('close', onClose);
+    destroyOwnedStdio([child.stdin, child.stdout, child.stderr], hasPrimaryError);
+  }
+}
+
 async function runBuild(): Promise<void> {
   const scriptPath = fileURLToPath(new URL('../../../tooling/scripts/run-workspace-build-closure.mjs', import.meta.url));
 
-  await new Promise<void>((resolvePromise, reject) => {
-    const child = spawn(process.execPath, [scriptPath, '@fluojs/testing'], {
-      cwd: repoRootPath,
-      env: process.env,
-      stdio: 'pipe',
-    });
-    const childEvents = child as unknown as NodeJS.EventEmitter;
-
-    let stderr = '';
-    let stdout = '';
-
-    child.stdout.on('data', (chunk) => {
-      stdout += String(chunk);
-    });
-
-    child.stderr.on('data', (chunk) => {
-      stderr += String(chunk);
-    });
-
-    void once(childEvents, 'error').then(([error]) => {
-      reject(error);
-    });
-
-    void once(childEvents, 'exit').then(([code, signal]) => {
-      if (code !== 0 || signal) {
-        reject(new Error([stdout, stderr, signal ? `signal: ${signal}` : ''].filter(Boolean).join('\n')));
-        return;
-      }
-
-      resolvePromise();
-    });
-  });
+  await runNodeProcess([scriptPath, '@fluojs/testing'], repoRootPath);
 }
 
 describe('@fluojs/testing surface', () => {
@@ -197,6 +366,87 @@ describe('@fluojs/testing surface', () => {
     expect(koreanReadme).not.toContain('**HTTP 헬퍼**');
   });
 
+  it('bounds and reports taskkill failures without invoking Windows', async () => {
+    const taskkillFailure = new Error('taskkill stalled');
+    let observedTimeout: number | undefined;
+
+    await expect(
+      runWindowsTaskkill(42, async (_file, _args, options) => {
+        observedTimeout = options.timeout;
+        throw taskkillFailure;
+      }),
+    ).rejects.toMatchObject({
+      cause: taskkillFailure,
+      message: `Unable to terminate Windows child process tree 42 within ${PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS}ms using taskkill.exe /T /F.`,
+    });
+    expect(observedTimeout).toBe(PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS);
+  });
+
+  it('destroys every owned stdio handle without replacing a primary child failure', () => {
+    const destroyed: string[] = [];
+
+    expect(() =>
+      destroyOwnedStdio(
+        [
+          {
+            destroy() {
+              destroyed.push('stdin');
+              throw new Error('stdin cleanup failed');
+            },
+          },
+          {
+            destroy() {
+              destroyed.push('stdout');
+            },
+          },
+          {
+            destroy() {
+              destroyed.push('stderr');
+            },
+          },
+        ],
+        true,
+      ),
+    ).not.toThrow();
+    expect(destroyed).toEqual(['stdin', 'stdout', 'stderr']);
+  });
+
+  it('terminates descendant processes before reporting a child timeout', async () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'fluo-testing-process-tree-'));
+    const descendantPidFile = join(fixtureRoot, 'descendant.pid');
+    const descendantScript = 'setInterval(() => {}, 1_000);';
+    const parentScript = `
+      const { spawn } = await import('node:child_process');
+      const { writeFileSync } = await import('node:fs');
+      const descendant = spawn(process.execPath, ['--eval', ${JSON.stringify(descendantScript)}], {
+        stdio: ['ignore', 'inherit', 'inherit'],
+      });
+      writeFileSync(${JSON.stringify(descendantPidFile)}, String(descendant.pid));
+      setInterval(() => {}, 1_000);
+    `;
+    let descendantPid: number | undefined;
+
+    try {
+      await expect(
+        runNodeProcess(['--input-type=module', '--eval', parentScript], packageRootPath, 1_000),
+      ).rejects.toThrow('Child process timed out after 1000ms');
+
+      descendantPid = Number(readFileSync(descendantPidFile, 'utf8'));
+      expect(await waitForProcessExit(descendantPid, PROCESS_EXIT_TEST_TIMEOUT_MS)).toBe(true);
+    } finally {
+      if (descendantPid === undefined && existsSync(descendantPidFile)) {
+        const discoveredPid = Number(readFileSync(descendantPidFile, 'utf8'));
+        if (Number.isSafeInteger(discoveredPid) && discoveredPid > 0) {
+          descendantPid = discoveredPid;
+        }
+      }
+      if (descendantPid !== undefined && isProcessAlive(descendantPid)) {
+        process.kill(descendantPid, 'SIGKILL');
+      }
+      rmSync(fixtureRoot, { force: true, recursive: true });
+    }
+  }, 5_000);
+
   it('build emits the published harness subpath files without blocking the Vitest worker event loop', async () => {
     await runBuild();
 
@@ -233,38 +483,7 @@ describe('@fluojs/testing surface', () => {
       await Promise.all(subpaths.map((subpath) => import(subpath === '.' ? '@fluojs/testing' : '@fluojs/testing/' + subpath.slice(2))));
     `;
 
-    await new Promise<void>((resolvePromise, reject) => {
-      const child = spawn(process.execPath, ['--input-type=module', '--eval', importScript], {
-        cwd: packageRootPath,
-        env: process.env,
-        stdio: 'pipe',
-      });
-      const childEvents = child as unknown as NodeJS.EventEmitter;
-
-      let stderr = '';
-      let stdout = '';
-
-      child.stdout.on('data', (chunk) => {
-        stdout += String(chunk);
-      });
-
-      child.stderr.on('data', (chunk) => {
-        stderr += String(chunk);
-      });
-
-      void once(childEvents, 'error').then(([error]) => {
-        reject(error);
-      });
-
-      void once(childEvents, 'exit').then(([code, signal]) => {
-        if (code !== 0) {
-          reject(new Error([stdout, stderr, signal ? `signal: ${signal}` : ''].filter(Boolean).join('\n')));
-          return;
-        }
-
-        resolvePromise();
-      });
-    });
+    await runNodeProcess(['--input-type=module', '--eval', importScript], packageRootPath);
 
     const mockSubpath = '@fluojs/testing/mock' as string;
     await expect(import(mockSubpath)).resolves.toBeTypeOf('object');

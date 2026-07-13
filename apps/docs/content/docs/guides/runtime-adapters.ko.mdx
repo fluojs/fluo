@@ -146,19 +146,32 @@ Shutdown timeout이나 failure가 발생하면 helper는 log를 남기고 `proce
 
 ## Express
 
-기존 Express-oriented environment와 통합하려면 Express adapter를 사용합니다.
+기존 Express-oriented environment와 통합하려면 Express adapter를 사용합니다. `@fluojs/platform-express`는 Node.js 20 이상이 필요하며 `engines.node >=20.0.0`을 선언합니다.
+
+Express host 교체는 NestJS legacy decorator 또는 reflection metadata semantics를 유지하지 않습니다. HTTP host를 변경하기 전에 controller와 provider를 TC39 표준 데코레이터, class-level `@Inject(...)`, 명시적 DI/module wiring으로 마이그레이션하세요.
 
 ```ts
-import { createExpressAdapter } from '@fluojs/platform-express';
+import {
+  createExpressAdapter,
+  ExpressHttpApplicationAdapter,
+} from '@fluojs/platform-express';
 import { fluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await fluoFactory.create(AppModule, {
-  adapter: createExpressAdapter({ port: 3000 }),
-});
+const adapter = createExpressAdapter({ port: 3000 });
+const app = await fluoFactory.create(AppModule, { adapter });
 
 await app.listen();
+
+if (!(adapter instanceof ExpressHttpApplicationAdapter)) {
+  throw new TypeError('Expected the Express adapter factory to return the Express implementation');
+}
+
+const { bindTarget, url } = adapter.getListenTarget();
+console.log(`Listening on ${url} (${bindTarget})`);
 ```
+
+`createExpressAdapter()`는 의도적으로 공유 `HttpApplicationAdapter` return type을 노출합니다. startup 이후 Express 전용 `getListenTarget()` helper를 해석하기 전에 export된 `ExpressHttpApplicationAdapter` class로 narrow하세요. 이 helper와 `getServer()`, `getRealtimeCapability()`는 native host detail을 application provider에 전달하지 말고 infrastructure boundary에만 두세요.
 
 Express는 shared SSE/streaming response contract를 지원합니다.
 
@@ -288,7 +301,28 @@ export default {
 };
 ```
 
-Worker request는 active work를 `executionContext.waitUntil(...)`에 등록합니다. Shutdown 중 새 request는 JSON `503`을 받고, active dispatch에는 bounded 10-second drain window가 주어집니다. Worker `env` object는 fetch entrypoint boundary를 통과하며, package-level config resolution은 application-owned입니다.
+Workers는 server socket을 열지 않습니다. `listen()`은 `fetch(...)`가 application traffic을 받기 전에 fluo dispatcher를 binding합니다. WebSocket을 사용할 때는 bootstrap이 해당 listen boundary 전에 adapter binding을 구성하도록 runtime module을 application graph에 등록하세요.
+
+```ts
+import { Module } from '@fluojs/core';
+import {
+  CloudflareWorkersWebSocketModule,
+  WebSocketGateway,
+} from '@fluojs/websockets/cloudflare-workers';
+
+@WebSocketGateway({ path: '/ws' })
+class EdgeGateway {}
+
+@Module({
+  imports: [CloudflareWorkersWebSocketModule.forRoot()],
+  providers: [EdgeGateway],
+})
+export class RealtimeModule {}
+```
+
+Worker request는 active HTTP, SSE body, upgraded WebSocket work를 `executionContext.waitUntil(...)`에 등록합니다. Shutdown 중 새 HTTP 및 WebSocket ingress는 JSON `503`을 받고, active work에는 bounded 10-second drain window가 주어집니다. Lazy entrypoint의 `close()`가 timeout되면 underlying drain이 settle될 때까지 shutdown gate를 유지한 뒤, 이후 request가 새 application을 bootstrap할 수 있게 합니다.
+
+Worker `env` object는 request별로 `request.cloudflare.env`에서 사용할 수 있지만 package configuration이 자동으로 소비하지는 않습니다. 필요한 binding은 명시적 application provider 또는 `@fluojs/config`로 매핑하고, configuration ownership을 platform package code로 옮기지 마세요.
 
 ## Runtime behavior matrix
 

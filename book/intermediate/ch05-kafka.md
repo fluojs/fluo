@@ -5,6 +5,8 @@
 
 This chapter introduces Kafka to add durable shared history to FluoShop, then clarifies where a work queue and an event log become different choices. Chapter 4 covered ownership of fulfillment work. Here, the focus shifts to designing an order timeline that needs replay and multiple consumer groups.
 
+Package-level Kafka transport contracts, including completion boundaries and caller-owned collaborator shutdown, are canonical in [`packages/microservices/README.md`](../../packages/microservices/README.md).
+
 ## Learning Objectives
 - Understand why Kafka is a different architectural choice from RabbitMQ.
 - Learn how to configure the Kafka transport by explicitly wiring producer and consumer collaborators.
@@ -55,7 +57,8 @@ Transport bootstrap looks like this.
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { KafkaMicroserviceTransport, MicroservicesModule } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { KafkaMicroserviceTransport } from '@fluojs/microservices/kafka';
 
 const transport = new KafkaMicroserviceTransport({
   consumer: kafkaConsumer, // Provided by kafkajs during bootstrap
@@ -73,6 +76,14 @@ export class TimelineModule {}
 ```
 
 As in the previous chapters, the Module stays small. The framework doesn't require you to redesign the handler structure. Instead, it requires you to expose the transport contract explicitly.
+
+### 5.2.3 Facade completion and shutdown ownership
+
+Keep `MicroservicesModule`, `MICROSERVICE`, and the `Microservice` type on root `@fluojs/microservices`, while the adapter import above uses `@fluojs/microservices/kafka`. `MICROSERVICE` resolves the programmatic lifecycle facade, not the raw `KafkaMicroserviceTransport`.
+
+- `await microservice.send(...)` settles after the correlated response arrives, which includes remote handler execution and response publication, or rejects for an error, abort, timeout, or shutdown.
+- `await microservice.emit(...)` settles when `producer.publish(...)` completes. It does not wait for a remote event handler; any broker acknowledgement is limited to the caller-owned producer's contract. On the consumer side, the Kafka callback remains pending until the handler and any response publication settle, allowing the broker adapter to decide whether to acknowledge or retry.
+- `await microservice.close()` detaches the transport consumer and rejects pending requests, but it does not disconnect the caller-owned producer or consumer. During shutdown, close the facade first, then disconnect those application-owned collaborators from the bootstrap layer.
 
 ## 5.3 Request-reply on durable topics
 
