@@ -1,37 +1,22 @@
-import { InvariantError, formatTokenName, type Token } from '@fluojs/core';
+import { formatTokenName, InvariantError, type Token } from '@fluojs/core';
 import { getClassDiMetadata } from '@fluojs/core/internal';
 
 import {
   CircularDependencyError,
   ContainerResolutionError,
   DuplicateProviderError,
-  InvalidProviderError,
   RequestScopeResolutionError,
   ScopeMismatchError,
 } from './errors.js';
+import { normalizeProvider } from './provider-normalization.js';
 import type {
-  ClassType,
   Disposable,
   ForwardRefFn,
   NormalizedProvider,
   OptionalToken,
   Provider,
 } from './types.js';
-import { Scope, isForwardRef, isOptionalToken } from './types.js';
-
-type ProviderObjectInput = {
-  readonly inject?: readonly (Token | ForwardRefFn | OptionalToken)[];
-  readonly multi?: boolean;
-  readonly provide?: Token | null;
-  readonly resolverClass?: ClassType;
-  readonly scope?: Scope;
-  readonly useClass?: unknown;
-  readonly useExisting?: Token | null;
-  readonly useFactory?: unknown;
-  readonly useValue?: unknown;
-};
-
-type ValidatedProviderObject = ProviderObjectInput & { readonly provide: Token };
+import { isForwardRef, isOptionalToken, Scope } from './types.js';
 
 /**
  * Factory provider resolution mode recorded after a factory returns either synchronously or through a promise.
@@ -180,158 +165,12 @@ class ReadonlyMultiRegistrationMapView implements ReadonlyMap<Token, readonly No
   }
 }
 
-function isClassConstructor(value: Provider): value is ClassType {
-  return typeof value === 'function';
-}
-
-function isProviderObject(value: unknown): value is ProviderObjectInput {
-  return typeof value === 'object' && value !== null;
-}
-
-function isClassType(value: unknown): value is ClassType {
-  return typeof value === 'function';
-}
-
-function isFactoryFunction(value: unknown): value is (...deps: unknown[]) => unknown {
-  return typeof value === 'function';
-}
-
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   return (
     (typeof value === 'object' || typeof value === 'function') &&
     value !== null &&
     typeof (value as { then?: unknown }).then === 'function'
   );
-}
-
-function assertProviderToken(provider: ProviderObjectInput): asserts provider is ValidatedProviderObject {
-  if (!('provide' in provider) || provider.provide == null) {
-    throw new InvalidProviderError('Provider object must include a non-null provide token.');
-  }
-}
-
-function assertProviderStrategy(provider: ProviderObjectInput): void {
-  const strategyCount = Number('useValue' in provider) + Number('useFactory' in provider) + Number('useClass' in provider) + Number('useExisting' in provider);
-
-  if (strategyCount !== 1) {
-    throw new InvalidProviderError('Provider object must declare exactly one of useValue, useFactory, useClass, or useExisting.');
-  }
-}
-
-function assertObjectProvider(provider: ProviderObjectInput): asserts provider is ValidatedProviderObject {
-  assertProviderToken(provider);
-  assertProviderStrategy(provider);
-}
-
-function normalizeInjectToken(token: Token | ForwardRefFn | OptionalToken): Token | ForwardRefFn | OptionalToken {
-  if (token == null) {
-    throw new InvalidProviderError('Inject token must not be null or undefined. Check that all tokens in @Inject(...) are defined at the point of decoration (forward-reference cycles require forwardRef()).');
-  }
-
-  if (isForwardRef(token)) {
-    return Object.freeze<ForwardRefFn>({
-      __forwardRef__: true,
-      forwardRef: token.forwardRef,
-    });
-  }
-
-  if (isOptionalToken(token)) {
-    return Object.freeze<OptionalToken>({
-      __optional__: true,
-      token: token.token,
-    });
-  }
-
-  return token;
-}
-
-function freezeNormalizedProvider<T>(provider: NormalizedProvider<T>): NormalizedProvider<T> {
-  return Object.freeze({
-    ...provider,
-    inject: Object.freeze([...provider.inject]),
-  });
-}
-
-function normalizeProvider(provider: Provider): NormalizedProvider {
-  if (isClassConstructor(provider)) {
-    const metadata = getClassDiMetadata(provider);
-
-    return freezeNormalizedProvider({
-      inject: (metadata?.inject ?? []).map(normalizeInjectToken),
-      provide: provider,
-      scope: metadata?.scope ?? Scope.DEFAULT,
-      type: 'class',
-      useClass: provider,
-    });
-  }
-
-  if (!isProviderObject(provider)) {
-    throw new InvalidProviderError('Unsupported provider type.');
-  }
-
-  const objectProvider: ProviderObjectInput = provider;
-  assertObjectProvider(objectProvider);
-
-  if ('useValue' in objectProvider) {
-    return freezeNormalizedProvider({
-      inject: [],
-      multi: objectProvider.multi,
-      provide: objectProvider.provide,
-      scope: Scope.DEFAULT,
-      type: 'value',
-      useValue: objectProvider.useValue,
-    });
-  }
-
-  if ('useFactory' in objectProvider) {
-    if (!isFactoryFunction(objectProvider.useFactory)) {
-      throw new InvalidProviderError('Factory provider useFactory must be a function.', { token: objectProvider.provide });
-    }
-
-    const metadata = objectProvider.resolverClass ? getClassDiMetadata(objectProvider.resolverClass) : undefined;
-
-    return freezeNormalizedProvider({
-      inject: (objectProvider.inject ?? []).map(normalizeInjectToken),
-      multi: objectProvider.multi,
-      provide: objectProvider.provide,
-      scope: objectProvider.scope ?? metadata?.scope ?? Scope.DEFAULT,
-      type: 'factory',
-      useFactory: objectProvider.useFactory,
-    });
-  }
-
-  if ('useClass' in objectProvider) {
-    if (!isClassType(objectProvider.useClass)) {
-      throw new InvalidProviderError('Class provider useClass must be a constructor.', { token: objectProvider.provide });
-    }
-
-    const metadata = getClassDiMetadata(objectProvider.useClass);
-
-    return freezeNormalizedProvider({
-      inject: (objectProvider.inject ?? metadata?.inject ?? []).map(normalizeInjectToken),
-      multi: objectProvider.multi,
-      provide: objectProvider.provide,
-      scope: objectProvider.scope ?? metadata?.scope ?? Scope.DEFAULT,
-      type: 'class',
-      useClass: objectProvider.useClass,
-    });
-  }
-
-  if ('useExisting' in objectProvider) {
-    if (objectProvider.useExisting == null) {
-      throw new InvalidProviderError('Alias provider useExisting must be a non-null token.', { token: objectProvider.provide });
-    }
-
-    return freezeNormalizedProvider({
-      inject: [],
-      provide: objectProvider.provide,
-      scope: Scope.DEFAULT,
-      type: 'existing',
-      useExisting: objectProvider.useExisting,
-    });
-  }
-
-  throw new InvalidProviderError('Provider object must declare exactly one of useValue, useFactory, useClass, or useExisting.');
 }
 
 /**

@@ -91,7 +91,7 @@ const scopedService = await requestContainer.resolve(RequestScopedService);
 
 request scope 컨테이너는 부모 체인의 provider를 해석할 수 있지만, request가 소유하는 등록은 새 singleton provider를 만들 수 없습니다. singleton provider는 request scope를 만들기 전에 루트 컨테이너에 등록하세요. request scope에 로컬 provider를 추가해야 한다면 `scope: 'request'`/`Scope.REQUEST`를 명시하거나 `override()`로 의도적인 request-local 교체를 표현하세요. multi provider에도 같은 규칙이 적용됩니다. 기본 scope의 multi provider는 루트 컨테이너에 등록하고, request-local multi provider는 request scope를 명시하거나 `override()`로 교체해야 합니다.
 
-provider 객체는 등록 시점에 검증됩니다. 모든 객체 provider는 null이 아닌 `provide` 토큰과 정확히 하나의 전략(`useClass`, `useValue`, `useFactory`, `useExisting`)을 포함해야 합니다. 잘못된 provider 형태는 컨테이너 그래프에 영향을 주기 전에 `InvalidProviderError`를 발생시킵니다.
+provider 객체는 등록 시점에 검증됩니다. 모든 객체 provider는 null이 아닌 `provide` 토큰과 정확히 하나의 전략(`useClass`, `useValue`, `useFactory`, `useExisting`)을 포함해야 합니다. class provider에서 `inject`를 생략하거나 `undefined`로 지정하면 `useClass`의 `@Inject(...)` 메타데이터로 fallback하며, 그 밖의 명시적 `inject` 값은 유효한 token 또는 올바른 `forwardRef(...)` / `optional(...)` wrapper로 구성된 배열이어야 합니다. 명시적인 `scope` 값은 `singleton`, `request`, `transient` 중 하나여야 합니다. 잘못된 provider 형태는 컨테이너 그래프에 영향을 주기 전에 `InvalidProviderError`를 발생시킵니다.
 
 ## 순환 의존성 처리
 
@@ -198,6 +198,7 @@ it('uses a mock database', async () => {
 | Container helper types | `ClassType`, `Disposable`, `RequestScopeContainer`는 typed provider 선언, teardown hook, request-scope helper 경계를 지원합니다. |
 | Container introspection helper types | `ContainerResolutionState`, `ContainerResolutionCacheOwner`, `ContainerFactoryResolutionState`는 `inspectResolutionState()`가 반환하는 read-only graph/cache view와 controlled cache adoption helper를 설명합니다. |
 | `NormalizedProvider` | 컨테이너가 검증한 provider record shape를 위한 compatibility-only 공개 타입입니다. provider를 작성할 때는 `Provider`나 구체 provider interface를 우선 사용하세요. normalized record 생성은 컨테이너가 소유합니다. |
+| `@fluojs/di/internal` | sibling fluo package가 자체 순회 전에 컨테이너의 canonical provider validation을 적용할 수 있도록 `validateProviderInputs(...)`를 노출하는 package-integration seam입니다. 애플리케이션 코드는 계속 `Container`를 통해 provider를 등록해야 합니다. |
 | `DiErrorContext` | DI error에 붙는 구조화된 context입니다. 로그와 테스트가 token, scope, module, dependency chain, hint를 검사할 수 있게 합니다. |
 | 에러 클래스 | `InvalidProviderError`, `ContainerResolutionError`, `RequestScopeResolutionError`, `ScopeMismatchError`, `CircularDependencyError`, `DuplicateProviderError`. |
 

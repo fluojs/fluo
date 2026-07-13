@@ -34,7 +34,7 @@ base branch 기본값은 `main`이다.
 4. **Suggested additions gate** — 같이 처리하면 좋은 issue를 confirmed set과 분리해 제안하고, 명시 승인된 항목만 포함한다.
 5. **Merge/cleanup authority 계획** — 실제 merge/cleanup 권한을 행사하지 않지만, lane ledger에 후속 실행의 PR merge authority와 merge method를 고정하고 cleanup 권한은 별도로 기록한다.
 6. **semantic lane planning** — issue를 logical lane에 배치하고 dependency/order를 정한다.
-7. **lane ledger 생성** — `.sisyphus/lanes/<lane-id>.json`을 생성하고 다음 `/execute-lane <lane-id>` handoff를 출력한다.
+7. **lane ledger 생성** — `.omo/lanes/<lane-id>.json`을 생성하고 다음 `/execute-lane <lane-id>` handoff를 출력한다.
 
 이 커맨드가 소유하지 않는 것:
 
@@ -48,7 +48,7 @@ base branch 기본값은 `main`이다.
 
 1. 한 번에 하나의 lane run만 생성한다.
 2. 입력이 search run id이면 `.sisyphus/search-issue/<run-id>.json`을 우선 찾는다.
-3. 입력이 ledger path이면 `.sisyphus/search-issue/` 아래 search ledger 또는 `.sisyphus/lanes/` 아래 lane ledger인지 확인한다. 기존 lane ledger를 받으면 새 lane을 덮어쓰지 말고 `needs-human-check`로 멈춘다.
+3. 입력이 ledger path이면 `.sisyphus/search-issue/` 아래 search ledger 또는 `.omo/lanes/` 아래 lane ledger인지 확인한다. 기존 lane ledger를 받으면 새 lane을 덮어쓰지 말고 `needs-human-check`로 멈춘다.
 4. 입력이 issue 목록이면 각 issue를 read-only로 조회해 title, labels, package/surface hint, linked PR 여부를 요약한다.
 5. 입력이 비어 있거나 여러 종류가 섞여 해석이 불가능하면 side effect 없이 필요한 입력 형식을 한국어로 안내하고 멈춘다.
 
@@ -60,7 +60,7 @@ base branch 기본값은 `main`이다.
 2. **Suggested additions gate** — 같은 package/file/root-cause를 강하게 공유하는 issue만 별도 제안하고, 승인된 항목만 포함한다.
 3. **Lane plan review gate** — lane 이름, queue 순서, dependency graph, release handoff 후보, authority scope를 보여주고 ledger 생성을 승인받는다.
 
-`question` tool을 사용할 수 없는 런타임이면 `.sisyphus/lanes/` 파일을 만들지 말고 선택지를 한국어로 제시한 뒤 사용자 응답을 기다린다.
+`question` tool을 사용할 수 없는 런타임이면 `.omo/lanes/` 파일을 만들지 말고 선택지를 한국어로 제시한 뒤 사용자 응답을 기다린다.
 
 ## Merge authority and method
 
@@ -103,7 +103,7 @@ base branch 기본값은 `main`이다.
 생성 경로:
 
 ```
-.sisyphus/lanes/<lane-id>.json
+.omo/lanes/<lane-id>.json
 ```
 
 권장 schema:
@@ -170,7 +170,7 @@ base branch 기본값은 `main`이다.
 ```yaml
 result: lane ledger 생성 | 중단 | needs-human-check
 lane id: <lane-id>
-ledger: .sisyphus/lanes/<lane-id>.json
+ledger: .omo/lanes/<lane-id>.json
 base branch: <base-branch>
 source: <search-issue|existing-issues>
 merge policy: <policy>
@@ -194,5 +194,5 @@ next command: /execute-lane <lane-id> <base-branch>
 - `/issue-to-pr`, `/pr-to-merge`를 호출하지 않는다.
 - package publish, Version Packages PR merge, GitHub Actions workflow trigger/rerun을 수행하지 않는다.
 - branch/worktree 생성, 파일 수정, commit, push, PR 생성, merge, cleanup, root sync를 수행하지 않는다.
-- 기존 `.sisyphus/lanes/<lane-id>.json`을 덮어쓰지 않는다.
+- 기존 `.omo/lanes/<lane-id>.json`을 덮어쓰지 않는다.
 - 실행 중 새로 발견될 수 있는 작업을 현재 lane scope에 자동 추가하지 않는다.

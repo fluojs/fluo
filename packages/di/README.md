@@ -91,7 +91,7 @@ const scopedService = await requestContainer.resolve(RequestScopedService);
 
 Request-scope containers may resolve providers from their parent chain, but request-owned registrations must not introduce new singleton providers. Register singleton providers on the root container before creating request scopes. If a request scope needs local additions, declare them with `scope: 'request'`/`Scope.REQUEST` or use `override()` for an explicit request-local replacement. The same rule applies to multi providers: default-scope multi providers belong on the root container, while request-local multi providers must opt into request scope or be replaced through `override()`.
 
-Provider objects are validated at registration time: every object provider must include a non-null `provide` token and exactly one strategy (`useClass`, `useValue`, `useFactory`, or `useExisting`). Invalid provider shapes throw `InvalidProviderError` before they can affect the container graph.
+Provider objects are validated at registration time: every object provider must include a non-null `provide` token and exactly one strategy (`useClass`, `useValue`, `useFactory`, or `useExisting`). For class providers, an omitted or `undefined` `inject` value falls back to the `useClass` `@Inject(...)` metadata; any other explicit `inject` value must be an array containing valid tokens or well-formed `forwardRef(...)` / `optional(...)` wrappers. Explicit `scope` values must be `singleton`, `request`, or `transient`. Invalid provider shapes throw `InvalidProviderError` before they can affect the container graph.
 
 ## Circular Dependency Handling
 
@@ -198,6 +198,7 @@ Ensure all required providers are registered in the container. If you use `creat
 | Container helper types | `ClassType`, `Disposable`, and `RequestScopeContainer` support typed provider declarations, teardown hooks, and request-scope helper boundaries. |
 | Container introspection helper types | `ContainerResolutionState`, `ContainerResolutionCacheOwner`, and `ContainerFactoryResolutionState` describe the read-only graph/cache views and controlled cache adoption helpers returned by `inspectResolutionState()`. |
 | `NormalizedProvider` | Compatibility-only public type for the container's validated provider record shape. Prefer authoring providers with `Provider` or the specific provider interfaces; the container owns normalized record construction. |
+| `@fluojs/di/internal` | Package-integration seam exposing `validateProviderInputs(...)` so sibling fluo packages can apply the container's canonical provider validation before their own traversal. Application code should continue to register providers through `Container`. |
 | `DiErrorContext` | Structured context attached to DI errors so logs and tests can inspect tokens, scopes, modules, dependency chains, and hints. |
 | Error classes | `InvalidProviderError`, `ContainerResolutionError`, `RequestScopeResolutionError`, `ScopeMismatchError`, `CircularDependencyError`, `DuplicateProviderError`. |
 
