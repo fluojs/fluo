@@ -7,6 +7,7 @@ import {
   collectDirectProcessEnvViolations,
   collectNodeGlobalBufferViolations,
   enforceCloudflareWorkersLifecycleDocsSync,
+  enforceGraphqlRuntimeBoundaryDiscoverability,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
   isGovernedPackageSourcePath,
@@ -410,8 +411,10 @@ describe('enforceContractCompanionUpdates', () => {
         'docs/CONTEXT.ko.md',
         'book/intermediate/ch18-graphql.md',
         'book/intermediate/ch18-graphql.ko.md',
-        'packages/graphql/src/pipeline/input-pipeline.test.ts',
-        'packages/graphql/src/schema/schema.test.ts',
+        'book/intermediate/ch25-final.md',
+        'book/intermediate/ch25-final.ko.md',
+        'packages/graphql/package.json',
+        'packages/graphql/src/runtime-support.test.ts',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();
@@ -1593,6 +1596,39 @@ describe('Terminus chooser discoverability', () => {
       expect(markdown).toContain('@fluojs/terminus/redis');
       expect(markdown).toContain('execution.indicatorTimeoutMs');
     }
+  });
+});
+
+describe('GraphQL runtime boundary discoverability', () => {
+  it('keeps the GraphQL package engine aligned with the effective transitive dependency floor', () => {
+    expect(() => enforceGraphqlRuntimeBoundaryDiscoverability()).not.toThrow();
+  });
+
+  it('keeps unsupported non-Node GraphQL targets explicit across bilingual contract surfaces', () => {
+    const englishReadme = readFileSync(join(repoRoot, 'packages/graphql/README.md'), 'utf8');
+    const koreanReadme = readFileSync(join(repoRoot, 'packages/graphql/README.ko.md'), 'utf8');
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishChapter = readFileSync(join(repoRoot, 'book/intermediate/ch18-graphql.md'), 'utf8');
+    const koreanChapter = readFileSync(join(repoRoot, 'book/intermediate/ch18-graphql.ko.md'), 'utf8');
+    const englishFinalChapter = readFileSync(join(repoRoot, 'book/intermediate/ch25-final.md'), 'utf8');
+    const koreanFinalChapter = readFileSync(join(repoRoot, 'book/intermediate/ch25-final.ko.md'), 'utf8');
+
+    for (const content of [englishReadme, englishContext, englishChapter]) {
+      expect(content).toContain('Node.js `>=20.16.0`');
+      expect(content).toContain('Bun');
+      expect(content).toContain('Deno');
+    }
+    for (const content of [koreanReadme, koreanContext, koreanChapter]) {
+      expect(content).toContain('Node.js `>=20.16.0`');
+      expect(content).toContain('Bun');
+      expect(content).toContain('Deno');
+    }
+
+    expect(englishReadme).toContain('remain unsupported');
+    expect(koreanReadme).toContain('지원하지 않습니다');
+    expect(englishFinalChapter).toContain('does not host `@fluojs/graphql`');
+    expect(koreanFinalChapter).toContain('`@fluojs/graphql`을 호스팅하지 않습니다');
   });
 });
 

@@ -22,7 +22,7 @@ This chapter closes the FluoShop architecture we have expanded throughout the In
 
 The completed FluoShop system is a collection of services that run on runtimes matched to each domain's requirements. The important standard is not choosing the trendiest platform, but matching service responsibilities to operational constraints.
 
-- **Core API Gateway**: Handles incoming HTTP/GraphQL requests and routes them to the right service. It runs on **Cloudflare Workers** because it needs to respond close to users.
+- **Core API Gateway**: Handles edge HTTP ingress on **Cloudflare Workers** and routes GraphQL requests to a Node.js `>=20.16.0` API service. The Worker does not host `@fluojs/graphql` itself.
 - **Product Service**: Manages catalog data with MongoDB and provides realtime updates through WebSockets. It runs on **Bun** for high-performance data serving and native WebSocket support.
 - **Order Service**: Handles transactions and persistence with Drizzle and PostgreSQL. It runs on **Node.js with Express** for database driver compatibility and operational predictability.
 - **Notification Service**: Orchestrates email, Slack notifications, and push notifications based on domain events.
