@@ -1,6 +1,5 @@
-import { describe, expect, it } from 'vitest';
-
 import { DefaultJwtSigner, DefaultJwtVerifier, JwtConfigurationError, JwtInvalidTokenError, type RefreshTokenStore } from '@fluojs/jwt';
+import { describe, expect, it } from 'vitest';
 
 import { JwtRefreshTokenAdapter } from './jwt-refresh-token-adapter.js';
 
@@ -94,7 +93,7 @@ describe('JwtRefreshTokenAdapter', () => {
     expect(rotated.refreshToken).toBe(issued);
   });
 
-  it('detects refresh token reuse when rotation is enabled with the in-memory store', async () => {
+  it('keeps an independent token family rotatable after detecting reuse in the in-memory store', async () => {
     const store = createRotationCapableStore();
     const signer = new DefaultJwtSigner({
       algorithms: ['HS256'],
@@ -121,10 +120,14 @@ describe('JwtRefreshTokenAdapter', () => {
       store: 'memory',
     });
 
-    const issued = await adapter.issueRefreshToken('user-1');
-    const firstRotation = await adapter.rotateRefreshToken(issued);
+    const compromisedFamilyToken = await adapter.issueRefreshToken('user-1');
+    const independentFamilyToken = await adapter.issueRefreshToken('user-1');
+    const firstRotation = await adapter.rotateRefreshToken(compromisedFamilyToken);
 
-    expect(firstRotation.refreshToken).not.toBe(issued);
-    await expect(adapter.rotateRefreshToken(issued)).rejects.toThrow(JwtInvalidTokenError);
+    expect(firstRotation.refreshToken).not.toBe(compromisedFamilyToken);
+    await expect(adapter.rotateRefreshToken(compromisedFamilyToken)).rejects.toThrow(JwtInvalidTokenError);
+
+    const independentRotation = await adapter.rotateRefreshToken(independentFamilyToken);
+    expect(independentRotation.refreshToken).not.toBe(independentFamilyToken);
   });
 });
