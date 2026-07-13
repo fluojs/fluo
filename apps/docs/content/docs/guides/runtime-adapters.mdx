@@ -271,7 +271,28 @@ export default {
 };
 ```
 
-Worker requests register active work with `executionContext.waitUntil(...)`. During shutdown, new requests receive JSON `503`, and active dispatches get a bounded 10-second drain window. The Worker `env` object passes through the fetch entrypoint boundary; package-level config resolution remains application-owned.
+Workers do not open a server socket: `listen()` binds the fluo dispatcher before `fetch(...)` accepts application traffic. For WebSockets, register the runtime module in the application graph so bootstrap configures the adapter binding before that listen boundary.
+
+```ts
+import { Module } from '@fluojs/core';
+import {
+  CloudflareWorkersWebSocketModule,
+  WebSocketGateway,
+} from '@fluojs/websockets/cloudflare-workers';
+
+@WebSocketGateway({ path: '/ws' })
+class EdgeGateway {}
+
+@Module({
+  imports: [CloudflareWorkersWebSocketModule.forRoot()],
+  providers: [EdgeGateway],
+})
+export class RealtimeModule {}
+```
+
+Worker requests register active HTTP, SSE-body, and upgraded WebSocket work with `executionContext.waitUntil(...)`. During shutdown, new HTTP and WebSocket ingress receives JSON `503`, and active work gets a bounded 10-second drain window. A lazy entrypoint whose `close()` times out keeps that shutdown gate until the underlying drain settles, then permits a later request to bootstrap a fresh application.
+
+The Worker `env` object is available per request at `request.cloudflare.env`, but package configuration does not consume it automatically. Map required bindings into explicit application providers or `@fluojs/config`; do not move configuration ownership into platform package code.
 
 ## Runtime behavior matrix
 

@@ -29,4 +29,7 @@ export function enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices(
   readSource?: (relativePath: string) => string,
 ): void;
 export function enforceReactClientSubpathContract(): void;
+export function enforceCloudflareWorkersLifecycleDocsSync(
+  readText?: (relativePath: string) => string,
+): void;
 export function main(): void;

@@ -136,7 +136,7 @@ export function createDeferredFrameworkRequest(
         },
       );
       frameworkRequest.body = result.fields;
-      frameworkRequest.files = result.files;
+      frameworkRequest.files = result.files.map((file) => ({ ...file, buffer: Buffer.from(file.buffer) }));
       return;
     }
 
