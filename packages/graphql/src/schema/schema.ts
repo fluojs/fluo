@@ -2,12 +2,15 @@ import type { MetadataPropertyKey } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
 import { DtoValidationError } from '@fluojs/validation';
 import type {
+  GraphQLEnumType,
   GraphQLError as GraphQLErrorType,
   GraphQLFieldConfig,
   GraphQLFieldConfigArgumentMap,
   GraphQLFieldConfigMap,
   GraphQLInputType,
+  GraphQLInterfaceType,
   GraphQLList as GraphQLListType,
+  GraphQLNonNull as GraphQLNonNullType,
   GraphQLObjectType as GraphQLObjectTypeType,
   GraphQLOutputType,
   GraphQLScalarType,
@@ -36,6 +39,7 @@ type YogaGraphqlDeps = {
   GraphQLID: GraphQLScalarType;
   GraphQLInt: GraphQLScalarType;
   GraphQLList: typeof GraphQLListType;
+  GraphQLNonNull: typeof GraphQLNonNullType;
   GraphQLObjectType: typeof GraphQLObjectTypeType;
   GraphQLSchema: typeof GraphQLSchemaType;
   GraphQLString: GraphQLScalarType;
@@ -56,6 +60,15 @@ type ResolverInvoker = (
   contextValue: GraphQLContext,
   source?: unknown,
 ) => Promise<unknown>;
+
+type GraphQLNullableOutputType =
+  | GraphQLScalarType
+  | GraphQLObjectTypeType
+  | GraphQLInterfaceType
+  | GraphQLUnionTypeType
+  | GraphQLEnumType
+  | GraphQLListType<GraphQLOutputType>;
+type GraphQLNonNullOutputType = GraphQLNonNullType<GraphQLNullableOutputType>;
 
 function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
   return typeof value === 'object' && value !== null && Symbol.asyncIterator in value;
@@ -96,9 +109,23 @@ function builtinScalarByGraphqlName(deps: YogaGraphqlDeps, scalarName: string): 
 function normalizeFieldOutputType(
   deps: YogaGraphqlDeps,
   outputTypeCache: Map<string, GraphQLOutputType>,
+  type: GraphQLNullableOutputType,
+  transformObjectFields: ObjectFieldTransformer,
+): GraphQLNullableOutputType;
+function normalizeFieldOutputType(
+  deps: YogaGraphqlDeps,
+  outputTypeCache: Map<string, GraphQLOutputType>,
   type: GraphQLOutputType,
   transformObjectFields: ObjectFieldTransformer,
 ): GraphQLOutputType {
+  if (isListOutputType(type)) {
+    return new deps.GraphQLList(normalizeFieldOutputType(deps, outputTypeCache, type.ofType, transformObjectFields));
+  }
+
+  if (isNonNullOutputType(type)) {
+    return new deps.GraphQLNonNull(normalizeFieldOutputType(deps, outputTypeCache, type.ofType, transformObjectFields));
+  }
+
   const maybeScalarName = (type as { name?: unknown }).name;
   if (typeof maybeScalarName === 'string') {
     const builtinScalar = builtinScalarByGraphqlName(deps, maybeScalarName);
@@ -170,14 +197,7 @@ function normalizeUnionOutputType(
   }
 
   const config = outputType.toConfig();
-  const normalizedTypes = config.types.map((itemType) =>
-    normalizeObjectOutputType(deps, outputTypeCache, itemType, transformObjectFields),
-  );
-  const normalizedTypeByName = new Set(
-    normalizedTypes
-      .map((itemType) => (itemType as { name?: unknown }).name)
-      .filter((name): name is string => typeof name === 'string'),
-  );
+  const normalizedTypeByName = new Set(config.types.map((itemType) => itemType.name));
 
   const normalized = new deps.GraphQLUnionType({
     ...config,
@@ -199,9 +219,13 @@ function normalizeUnionOutputType(
 
       return undefined;
     },
-    types: normalizedTypes as GraphQLObjectTypeType[],
+    types: () =>
+      config.types.map((itemType) =>
+        normalizeObjectOutputType(deps, outputTypeCache, itemType, transformObjectFields),
+      ) as GraphQLObjectTypeType[],
   });
   outputTypeCache.set(outputTypeName, normalized);
+  normalized.getTypes();
 
   return normalized;
 }
@@ -212,6 +236,14 @@ function isUnionOutputType(value: GraphqlRootOutputNamedType | GraphQLOutputType
 
 function isObjectOutputType(value: GraphQLOutputType): value is GraphQLObjectTypeType {
   return value[Symbol.toStringTag] === 'GraphQLObjectType';
+}
+
+function isListOutputType(value: GraphQLOutputType): value is GraphQLListType<GraphQLOutputType> {
+  return value[Symbol.toStringTag] === 'GraphQLList';
+}
+
+function isNonNullOutputType(value: GraphQLOutputType): value is GraphQLNonNullOutputType {
+  return value[Symbol.toStringTag] === 'GraphQLNonNull';
 }
 
 function resolveArgGraphqlType(deps: YogaGraphqlDeps, argType: GraphqlArgType): GraphQLInputType {
