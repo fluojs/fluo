@@ -83,7 +83,35 @@ const localizedStreamingCleanupClaims = [
   ],
 ];
 
+const grpcStreamingWriterGuidance = [
+  [
+    'book/intermediate/ch08-grpc.md',
+    [
+      'writer: ServerStreamWriter,',
+      '`ServerStreamWriter.write()` returns `void`',
+      'does not expose a backpressure or drain contract',
+    ],
+  ],
+  [
+    'book/intermediate/ch08-grpc.ko.md',
+    [
+      'writer: ServerStreamWriter,',
+      '`ServerStreamWriter.write()`는 `void`를 반환',
+      'backpressure 또는 drain 계약을 노출하지 않습니다',
+    ],
+  ],
+];
+
 const runtimeEvidence = [
+  [
+    'packages/microservices/src/types.ts',
+    [
+      'export interface ServerStreamWriter',
+      'write(data: unknown): void;',
+      'end(): void;',
+      'error(err: Error): void;',
+    ],
+  ],
   [
     'packages/microservices/src/transports/tcp-transport.ts',
     [
@@ -103,6 +131,9 @@ const runtimeEvidence = [
       "stream.on('error', (err: Error) => {",
       'return(): Promise<IteratorResult<unknown>> {',
       "removeEventListener('abort'",
+      'const writer: ServerStreamWriter = {',
+      'write(data: unknown): void {',
+      'call.write(data);',
     ],
   ],
   [
@@ -131,6 +162,9 @@ const runtimeEvidence = [
       'bidiStream() removes AbortSignal listeners when the stream errors before reader iteration starts',
       'bidiStream() removes AbortSignal listeners exactly once when the reader returns early',
       'bidiStream() does not remove AbortSignal listeners twice when return() follows terminal end',
+      'server-streaming handler end signals completion to async iterator',
+      'server-stream writer.error() surfaces as an error on the client iterator',
+      'serverStream() supports abort via AbortSignal',
     ],
   ],
 ];
@@ -153,6 +187,22 @@ export function enforceMicroservicesSafetyGuidanceParity() {
       assert(
         read(relativePath).includes(requiredClaim),
         `${relativePath} must keep the bounded gRPC streaming cleanup claim ${requiredClaim}.`,
+      );
+    }
+  }
+
+  for (const [relativePath, requiredClaims] of grpcStreamingWriterGuidance) {
+    const markdown = read(relativePath);
+
+    assert(
+      !markdown.includes('ServerStreamWriter<'),
+      `${relativePath} must use the public non-generic ServerStreamWriter contract.`,
+    );
+
+    for (const requiredClaim of requiredClaims) {
+      assert(
+        markdown.includes(requiredClaim),
+        `${relativePath} must keep the source-backed gRPC streaming writer guidance ${requiredClaim}.`,
       );
     }
   }
