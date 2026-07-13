@@ -212,6 +212,7 @@ class FakeGrpcRuntime {
   };
 
   readonly createdServers: FakeGrpcServer[] = [];
+  createdServerBindError: Error | undefined;
   readonly Metadata = FakeGrpcMetadata;
   readonly Server: new () => FakeGrpcServer;
   shutdownGate: Promise<void> | undefined;
@@ -223,6 +224,7 @@ class FakeGrpcRuntime {
     this.Server = class extends FakeGrpcServer {
       constructor() {
         super(runtimeRef);
+        this.bindError = runtimeRef.createdServerBindError;
         runtimeRef.createdServers.push(this);
       }
     };
@@ -900,6 +902,17 @@ describe('GrpcMicroserviceTransport', () => {
     expect(server.shutdownCount).toBe(0);
   });
 
+  it('shuts down internally-created servers when bindAsync fails during listen()', async () => {
+    const { runtime, transport } = createGrpcTransport();
+    runtime.createdServerBindError = new Error('bind failed');
+
+    await expect(transport.listen(async () => undefined)).rejects.toThrow('bind failed');
+
+    expect(runtime.createdServers).toHaveLength(1);
+    expect(runtime.createdServers[0]?.shutdownCount).toBe(1);
+    expect(runtime.createdServers[0]?.forceShutdownCount).toBe(0);
+  });
+
   it('registers server-streaming handlers and streams data to client via serverStream()', async () => {
     const { transport } = createGrpcTransport();
 
@@ -1072,7 +1085,7 @@ describe('GrpcMicroserviceTransport', () => {
     await transport.close();
   });
 
-  it('serverStream() removes AbortSignal listener when the stream errors', async () => {
+  it('serverStream() removes its AbortSignal listener once after writer.error()', async () => {
     const { transport } = createGrpcTransport();
     let releaseError: () => void = () => {
       throw new Error('Expected the server-stream error gate to be initialized.');
@@ -1088,6 +1101,7 @@ describe('GrpcMicroserviceTransport', () => {
     await transport.listen(async () => undefined);
 
     const controller = new AbortController();
+    const addEventListenerSpy = vi.spyOn(controller.signal, 'addEventListener');
     const removeEventListenerSpy = vi.spyOn(controller.signal, 'removeEventListener');
     const iterator = transport.serverStream('MathService.StreamData', {}, controller.signal)[Symbol.asyncIterator]();
     const pendingRead = iterator.next();
@@ -1095,7 +1109,9 @@ describe('GrpcMicroserviceTransport', () => {
     releaseError();
 
     await expect(pendingRead).rejects.toThrow('server-stream cleanup failure');
-    expect(removeEventListenerSpy).toHaveBeenCalledWith('abort', expect.any(Function));
+    expect(addEventListenerSpy).toHaveBeenCalledTimes(1);
+    expect(removeEventListenerSpy).toHaveBeenCalledTimes(1);
+    expect(removeEventListenerSpy).toHaveBeenCalledWith('abort', addEventListenerSpy.mock.calls[0]?.[1]);
 
     await transport.close();
   });
