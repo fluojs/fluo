@@ -499,6 +499,24 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('accepts Microservices handler migration guidance when bilingual contract surfaces and governance tests change together', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'packages/microservices/README.md',
+        'packages/microservices/README.ko.md',
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'book/intermediate/ch01-microservices-intro.md',
+        'book/intermediate/ch01-microservices-intro.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('keeps HTTP DTO binding migration guidance present in governed docs', () => {
     const englishMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
     const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
@@ -1289,6 +1307,46 @@ describe('package surface throttler responsibility discoverability', () => {
 });
 
 describe('package surface microservices transport discoverability', () => {
+  it('keeps standard handler discovery and explicit registration guidance aligned across bilingual contract surfaces', () => {
+    const englishReadme = readFileSync(join(repoRoot, 'packages/microservices/README.md'), 'utf8');
+    const koreanReadme = readFileSync(join(repoRoot, 'packages/microservices/README.ko.md'), 'utf8');
+    const englishMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
+    const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishChapter = readFileSync(join(repoRoot, 'book/intermediate/ch01-microservices-intro.md'), 'utf8');
+    const koreanChapter = readFileSync(join(repoRoot, 'book/intermediate/ch01-microservices-intro.ko.md'), 'utf8');
+
+    for (const markdown of [
+      englishReadme,
+      koreanReadme,
+      englishMigration,
+      koreanMigration,
+      englishContext,
+      koreanContext,
+      englishChapter,
+      koreanChapter,
+    ]) {
+      expect(markdown).toContain('@MessagePattern');
+      expect(markdown).toContain('@EventPattern');
+      expect(markdown).toContain('TC39');
+      expect(markdown).toContain('providers');
+      expect(markdown).toContain('controllers');
+      expect(markdown).toContain('public instance');
+      expect(markdown).toContain('reflect-metadata');
+      expect(markdown).toContain('experimentalDecorators');
+      expect(markdown).toContain('emitDecoratorMetadata');
+    }
+
+    for (const chapter of [englishChapter, koreanChapter]) {
+      expect(chapter).toContain('providers: [OrderHandler]');
+    }
+
+    for (const migration of [englishMigration, koreanMigration]) {
+      expect(migration).toContain('providers: [OrdersHandler]');
+    }
+  });
+
   it('documents Redis Pub/Sub and Redis Streams in both package surface and AI context locales', () => {
     const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
     const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
