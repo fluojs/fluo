@@ -129,6 +129,25 @@ importers:
         specifier: workspace:*
         version: link:../../packages/testing
 
+  examples/openapi-multiple-documents:
+    dependencies:
+      '@fluojs/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@fluojs/openapi':
+        specifier: workspace:*
+        version: link:../../packages/openapi
+      '@fluojs/platform-fastify':
+        specifier: workspace:*
+        version: link:../../packages/platform-fastify
+      '@fluojs/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+    devDependencies:
+      '@fluojs/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+
   examples/ops-metrics-terminus:
     dependencies:
       '@fluojs/core':
