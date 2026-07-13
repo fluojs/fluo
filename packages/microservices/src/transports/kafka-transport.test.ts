@@ -406,7 +406,7 @@ describe('KafkaMicroserviceTransport', () => {
     );
   });
 
-  it('captures async callback rejections without leaking them to emit()', async () => {
+  it('rejects the broker callback when an event handler fails', async () => {
     const bus = new InMemoryTopicBus();
     const { transport } = createTransport(bus, {
       requestTimeoutMs: 1_000,
@@ -416,7 +416,53 @@ describe('KafkaMicroserviceTransport', () => {
       throw new Error('kafka handler failed');
     });
 
-    await expect(transport.emit('audit.login', { message: 'ok' })).resolves.toBeUndefined();
+    await expect(transport.emit('audit.login', { message: 'ok' })).rejects.toThrow('kafka handler failed');
+
+    await transport.close();
+  });
+
+  it('rejects the broker callback when response publication fails', async () => {
+    let requestCallback: ((message: string) => Promise<void> | void) | undefined;
+    let responsePublishAttempts = 0;
+    const responsePublishError = new Error('kafka response publish failed');
+    const transport = new KafkaMicroserviceTransport({
+      consumer: {
+        subscribe: async (topic, handler) => {
+          if (topic === 'fluo.microservices.messages') {
+            requestCallback = handler;
+          }
+        },
+        unsubscribe: async () => {},
+      },
+      producer: {
+        publish: async (topic) => {
+          if (topic === 'test.responses') {
+            responsePublishAttempts++;
+
+            if (responsePublishAttempts === 1) {
+              throw responsePublishError;
+            }
+          }
+        },
+      },
+    });
+
+    await transport.listen(async () => 'ok');
+
+    if (!requestCallback) {
+      throw new Error('Expected Kafka request callback to be registered.');
+    }
+
+    const delivery = requestCallback(JSON.stringify({
+      kind: 'message',
+      pattern: 'audit.login',
+      payload: { message: 'ok' },
+      replyTopic: 'test.responses',
+      requestId: 'request-1',
+    }));
+
+    await expect(Promise.resolve(delivery)).rejects.toBe(responsePublishError);
+    expect(responsePublishAttempts).toBe(1);
 
     await transport.close();
   });

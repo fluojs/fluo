@@ -52,22 +52,26 @@ async function bootstrap() {
   const runtimeConfig = {
     development: false, // 애플리케이션 config 경계에서 이 값을 도출하세요.
   };
+  const hostname = '127.0.0.1';
+  const port = 3000;
 
   const adapter = createBunAdapter({ 
-    port: 3000,
+    port,
     // Bun 전용 옵션
-    hostname: '0.0.0.0',
+    hostname,
     development: runtimeConfig.development
   });
 
   const app = await fluoFactory.create(AppModule, { adapter });
   
   await app.listen();
-  console.log(`FluoShop running on Bun at ${await app.getUrl()}`);
+  console.log(`FluoShop running on Bun at http://${hostname}:${port}`);
 }
 
 bootstrap();
 ```
+
+`Application`은 framework lifecycle을 소유하지만 listener URL 탐색은 소유하지 않습니다. 이 예제는 고정 hostname과 port를 설정하므로 해당 주소를 직접 출력할 수 있습니다. OS가 할당하는 port를 사용하는 infrastructure code라면 concrete `BunHttpApplicationAdapter`를 유지하고 `listen()`이 끝난 뒤 문서화된 `getListenTarget()`을 읽을 수 있습니다.
 
 터미널형 진입점에서는 `runBunApplication(...)`이 bootstrap, `listen()`, 시작 로그, 선택적 `SIGINT`/`SIGTERM` 연결을 함께 처리합니다. 시그널 기반 종료의 timeout 또는 close 실패는 application logger와 `process.exitCode`로 보고되며, 최종 프로세스 종료는 여전히 주변 Bun host가 소유합니다.
 

@@ -16,6 +16,7 @@
 | `@Get()`, `@Post()` 등 라우트 데코레이터 | `@fluojs/http`의 `@Get()`, `@Post()` 등 | HTTP 라우트 선언은 계속 메서드 기반 데코레이터를 사용한다. |
 | `@Sse()` | `@fluojs/http`의 `@Sse()`와 수동 stream용 `SseResponse` 또는 managed stream용 `AsyncIterable` | fluo는 `@Sse()`를 `text/event-stream` metadata를 가진 `GET` 라우트로 매핑한다. `AsyncIterable` 값은 SSE frame으로 변환할 수 있지만, NestJS `Observable` 반환값은 여전히 `SseResponse` 또는 async iterable로 재작성해야 한다. |
 | `NestFactory.create(AppModule)` | `@fluojs/runtime`의 `FluoFactory.create(AppModule, { adapter })` | 부트스트랩 시 `createFastifyAdapter()` 같은 명시적 플랫폼 어댑터가 필요하다. |
+| Cloudflare Workers로 이동할 때의 NestJS HTTP server lifecycle hook 또는 late WebSocket server mutation | `@fluojs/platform-cloudflare-workers`와 `@fluojs/websockets/cloudflare-workers`의 `CloudflareWorkersWebSocketModule.forRoot()` | Workers는 server socket 대신 host-owned `fetch(request, env, ctx)` boundary를 노출합니다. `listen()`은 fluo dispatcher만 binding합니다. Application graph에 Worker WebSocket module을 등록하여 bootstrap이 해당 listen boundary 전에 binding을 구성하도록 하세요. 수락된 각 request는 `ctx.waitUntil(...)`로 추적되며 Worker `env` binding은 application-owned input이므로 명시적 provider 또는 `@fluojs/config`로 매핑해야 합니다. |
 | `@Injectable()` 프로바이더 마커 | `@Module(...).providers`에 등록된 프로바이더 클래스 또는 provider definition | fluo는 필수 프로바이더 등록 단계로 `@Injectable()`을 사용하지 않는다. |
 | `emitDecoratorMetadata`를 통한 생성자 타입 리플렉션 | `@fluojs/core`의 `@Inject(TokenA, TokenB)` | 생성자 의존성은 데코레이터 인자 순서대로 명시한다. |
 | `@Inject(TOKEN) private value` 같은 속성 주입 | 클래스 수준 `@Inject(TOKEN)`과 이에 대응하는 생성자 매개변수 | fluo의 `@Inject(...)`는 생성자 토큰을 매개변수 순서대로 선언하는 표준 클래스 데코레이터다. 속성 또는 생성자 매개변수 데코레이터가 아니다. |
@@ -34,6 +35,7 @@
 | `@nestjs/cache-manager` / `CacheModule.register(...)` | `@fluojs/cache-manager`의 `CacheModule.forRoot(...)`, `CacheService`, cache decorators | fluo cache registration은 동기 방식이다. Redis 또는 custom store는 module registration 전에 준비하고, manual cache operation에는 `CacheService`를 주입하며, request-aware response-cache key에는 `httpKeyStrategy` 또는 `@CacheKey(...)`를 사용한다. |
 | `@nestjs/event-emitter` / `@OnEvent()` handler | `@fluojs/event-bus`의 `EventBusModule.forRoot(...)`, `EventBusLifecycleService`, `@OnEvent(EventClass)` | Event routing은 class 기반이고, `static eventKey`는 distributed transport channel을 안정적으로 유지하며, handler는 singleton provider/controller에서만 discovery되고 awaited/background publish 작업은 shutdown drain tracking에 남는다. |
 | `@nestjs/cqrs` command/query/event handler와 saga | `@fluojs/cqrs`의 `CqrsModule.forRoot(...)`, 표준 `@CommandHandler(...)`, `@QueryHandler(...)`, `@EventHandler(...)`, `@Saga(...)` | CQRS discovery는 controller나 emitted design metadata가 아니라 singleton provider만 scan합니다. Command와 Query는 point-to-point이고, Event handler와 saga는 위임 `@fluojs/event-bus` 발행 전에 provider token 기준으로 fan-out됩니다. |
+| `ClientsModule.register(...)`, 주입된 `ClientProxy`, NestJS broker transport option | `MicroservicesModule.forRoot({ transport })`, `Microservice` 타입의 `MICROSERVICE`, `@fluojs/microservices/<transport>`의 transport adapter | Registration과 programmatic facade는 root `@fluojs/microservices`에 남습니다. NATS, Kafka, RabbitMQ collaborator는 application-owned 상태를 유지하며, `send()`, `emit()`, `close()`는 아래에 설명한 서로 다른 완료 경계를 가집니다. |
 | NestJS Redis async module registration 또는 shared Redis Pub/Sub client | `@fluojs/redis`의 `RedisModule.forRoot(...)`, named `RedisModule.forRoot({ name, ... })`, `getRedisClientToken(name)` | fluo Redis registration은 동기 방식이며 각 `forRoot(...)` 호출이 최종 option으로 client를 생성한다. 환경별 option은 registration 전에 해석하되 외부에서 만든 client를 전달하거나 module이 채택한다고 기대하면 안 된다. Pub/Sub subscriber는 일반 command client를 재사용하지 말고 전용 duplicate 또는 named client로 분리한다. |
 | `@Processor(...)`, `@Process(...)` 또는 provider metadata를 통한 `@nestjs/bull` / `@nestjs/bullmq` processor discovery | `@fluojs/queue`, `@fluojs/redis`, `@fluojs/core`의 `RedisModule.forRoot(...)`, `QueueModule.forRoot(...)`, singleton `@QueueWorker(JobClass, options?)` provider, 명시적 `@Inject(...)` | fluo는 compiled module graph의 decorated singleton provider/controller만 discovery한다. Worker는 `handle(job)`을 노출해야 하며, Queue는 NestJS metadata를 읽거나 legacy Bull/BullMQ `queueName`, named job, 영속 payload 또는 그 topology를 자동 보존하지 않는다. |
 | `@nestjs/schedule` decorator, `SchedulerRegistry`, 또는 `CronJob` handle | `@fluojs/cron`의 `CronModule.forRoot(...)`, public-method `@Cron` / `@Interval` / `@Timeout`, `SCHEDULING_REGISTRY` | NestJS `timeZone`을 fluo `timezone`으로 바꾼다. fluo에는 `waitForCompletion` 옵션이 없고 같은 task instance가 아직 실행 중이면 항상 해당 tick을 건너뛰므로 이 옵션을 옮기지 않는다. fluo는 decorator로 발견한 task를 application bootstrap 중 시작하고, 이미 시작된 registry에 dynamic task가 추가되면 즉시 시작하며, live scheduler handle 대신 read-only task descriptor를 노출한다. |
@@ -162,6 +164,19 @@ class ProductResolver {
 class AppModule {}
 ```
 
+### Microservices Transport Migration
+
+NestJS `ClientProxy` migration을 하나의 opaque client object 치환으로 다루지 말고 registration, facade, adapter, infrastructure ownership으로 분리하세요.
+
+- 선택한 adapter를 root `MicroservicesModule.forRoot({ transport })`로 등록합니다.
+- `listen()`, `send()`, `emit()`, `close()`를 위해 root `MICROSERVICE`를 `Microservice`로 주입합니다. 이 token은 raw adapter가 아니라 lifecycle facade로 resolve됩니다.
+- 가능하면 transport 구현을 명시적인 subpath에서 import합니다: `@fluojs/microservices/nats`, `@fluojs/microservices/kafka`, `@fluojs/microservices/rabbitmq`. `RedisStreamsMicroserviceTransport`는 문서화된 root-barrel-only 예외로 남습니다.
+- `await microservice.send(...)`는 상관관계가 유지된 원격 응답을 기다리며, 원격 오류, abort, timeout, shutdown 시 reject합니다.
+- `await microservice.emit(...)`은 outbound transport publish 연산만 기다립니다. 원격 event handler가 실행되었다는 뜻은 아니며, broker acknowledgement는 caller-provided publish collaborator 자체가 약속하는 범위로 제한됩니다.
+- `await microservice.close()`는 transport listener/subscription teardown과 pending-request cleanup을 기다립니다. NATS, Kafka, RabbitMQ adapter는 caller-provided collaborator에서 detach하지만 해당 client, producer, consumer, publisher, channel, connection을 close/disconnect하지 않습니다.
+
+Kafka와 RabbitMQ는 handler 실행과 request response publication이 settle할 때까지 inbound consumer callback을 pending 상태로 유지하므로 broker adapter가 acknowledgement 또는 retry를 선택할 수 있습니다. 이 consumer-side boundary는 producer-side `emit()` promise와 분리되어 있습니다. Shutdown 시에는 먼저 `Microservice` facade를 닫고, caller-owned broker resource는 application bootstrap layer에서 close 또는 drain하세요.
+
 ## Removed Concepts
 
 - 기본 프로바이더 마커로서의 `@Injectable()`. 프로바이더 등록은 모듈의 `providers` 배열에서 수행된다.
@@ -181,6 +196,7 @@ class AppModule {}
 - NestJS/Bull processor decorator, emit된 metadata, request/transient worker scope, 기존 queue persistence compatibility가 그대로 유지된다고 가정하는 방식. fluo는 명시적인 singleton `@QueueWorker(JobClass)` 등록과 drain, payload 변환 후 다시 enqueue, 또는 별도 queue name 격리 중 하나를 택하는 애플리케이션 소유 `queueName`/named job/`jobName` cutover를 요구한다.
 - Raw Express/Connect middleware를 fluo application middleware에 직접 전달하는 방식. fluo middleware는 `MiddlewareContext`를 받으므로 native `(req, res, next)` function에는 명시적 wrapper나 platform-owned `createExpressAdapter({ nativeMiddleware })` boundary가 필요하다.
 - NestJS HTTP adapter lifecycle hook을 Bun에서 시작 후 live server mutation으로 옮길 수 있다고 가정하는 방식. `@fluojs/platform-bun`은 `listen()`이 시작되기 전에 dispatcher와 realtime seam을 바인딩하고, 중복 `listen()` 호출을 idempotent하게 유지하며, NestJS-style late host mutation 대신 외부 소유 `Bun.serve(...)` host를 위한 동기 `createBunFetchHandler(...)`를 노출한다. 이러한 manual host는 shutdown, websocket upgrade, native `routes` acceleration을 직접 소유한다.
+- NestJS HTTP 또는 WebSocket server ownership이 Cloudflare Workers에도 유지된다고 가정하는 방식. Worker `fetch(request, env, ctx)` entrypoint를 export하고, `listen()`을 socketless dispatcher-binding boundary로 다루며, WebSocket ownership이 listen 전에 frozen되도록 bootstrap 이전에 `CloudflareWorkersWebSocketModule.forRoot()`을 import하세요. Request `env` binding은 명시적 application provider 또는 `@fluojs/config`로 매핑해야 합니다. Adapter는 수락된 HTTP, SSE, WebSocket lifecycle work를 `ctx.waitUntil(...)`에 등록하며 post-listen mutation용 live server를 노출하지 않습니다.
 - NestJS `SchedulerRegistry`가 mutable `CronJob` handle을 반환하거나 private scheduled method가 유효한 decorator target이라고 가정하는 방식. fluo는 descriptor 기반 scheduling control을 노출하고 scheduled decorator는 public instance method에 요구한다.
 - `EmailModule.forRootAsync(...)`가 NestJS `imports`, `useClass`, `useExisting`를 받거나 email provider가 기본적으로 module-local이라고 가정하는 방식. fluo email은 injected factory registration을 사용하며, `global: false`가 설정되지 않으면 기본 global visibility를 사용한다.
 - Notification channel이 NestJS provider decorator/metadata에서 discovery되거나, queue/event-bus resource를 notifications module이 소유한다고 가정하는 방식. fluo는 명시적 `channels`와 애플리케이션 소유 queue adapter/event publisher lifecycle을 요구한다.

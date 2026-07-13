@@ -110,14 +110,28 @@ export class NatsMicroserviceTransport implements MicroserviceTransport {
       return;
     }
 
-    const eventSubscription = this.options.client.subscribe(this.eventSubject, (message) => {
-      this.handleEventMessageSafely(message);
-    });
-    const messageSubscription = this.options.client.subscribe(this.messageSubject, (message) => {
-      void this.handleRequestMessage(message);
-    });
+    try {
+      this.subscriptions.push(this.options.client.subscribe(this.eventSubject, (message) => {
+        this.handleEventMessageSafely(message);
+      }));
+      this.subscriptions.push(this.options.client.subscribe(this.messageSubject, (message) => {
+        void this.handleRequestMessage(message);
+      }));
+    } catch (error) {
+      for (const subscription of this.subscriptions.reverse()) {
+        try {
+          subscription.unsubscribe();
+        } catch {
+          // Preserve the original subscription failure; partial setup cleanup is best-effort.
+        }
+      }
 
-    this.subscriptions = [eventSubscription, messageSubscription];
+      this.subscriptions = [];
+      this.handler = undefined;
+      this.listening = false;
+      throw error;
+    }
+
     this.listening = true;
   }
 

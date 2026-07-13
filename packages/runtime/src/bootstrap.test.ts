@@ -1014,6 +1014,79 @@ describe('FluoFactory.createApplicationContext', () => {
     ]);
   });
 
+  it('preserves the original application bootstrap error when a runtime cleanup callback fails', async () => {
+    const bootstrapFailure = new Error('application bootstrap failed');
+    const cleanupFailure = new Error('application cleanup failed');
+    const logger = { debug: vi.fn(), error: vi.fn(), log: vi.fn(), warn: vi.fn() };
+
+    @Inject(RUNTIME_CLEANUP_REGISTRATION)
+    class CleanupRegistrant implements OnModuleInit {
+      constructor(private readonly registerCleanup: RuntimeCleanupRegistration) {}
+
+      onModuleInit() {
+        this.registerCleanup(() => {
+          throw cleanupFailure;
+        });
+      }
+    }
+
+    class FailingBootstrapHook {
+      onApplicationBootstrap() {
+        throw bootstrapFailure;
+      }
+    }
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [CleanupRegistrant, FailingBootstrapHook],
+    });
+
+    await expect(bootstrapApplication({ logger, rootModule: AppModule })).rejects.toBe(bootstrapFailure);
+    expect(logger.error).toHaveBeenCalledWith(
+      'Failed to clean up after application bootstrap failure.',
+      cleanupFailure,
+      'FluoFactory',
+    );
+  });
+
+  it('preserves the original application context bootstrap error when a runtime cleanup callback fails', async () => {
+    const bootstrapFailure = new Error('application context bootstrap failed');
+    const cleanupFailure = new Error('application context cleanup failed');
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    @Inject(RUNTIME_CLEANUP_REGISTRATION)
+    class CleanupRegistrant implements OnModuleInit {
+      constructor(private readonly registerCleanup: RuntimeCleanupRegistration) {}
+
+      onModuleInit() {
+        this.registerCleanup(() => {
+          throw cleanupFailure;
+        });
+      }
+    }
+
+    class FailingBootstrapHook {
+      onApplicationBootstrap() {
+        throw bootstrapFailure;
+      }
+    }
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [CleanupRegistrant, FailingBootstrapHook],
+    });
+
+    try {
+      await expect(FluoFactory.createApplicationContext(AppModule)).rejects.toBe(bootstrapFailure);
+      expect(errorLog).toHaveBeenCalledWith(
+        '[fluo] ERROR [FluoFactory] Failed to clean up after application context bootstrap failure.',
+      );
+      expect(errorLog).toHaveBeenCalledWith(cleanupFailure);
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+
   it('runs startup and shutdown lifecycle hooks around close()', async () => {
     const events: string[] = [];
 

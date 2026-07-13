@@ -46,8 +46,9 @@ function closesFence(line, fence) {
 
 function parsePackageChangelog(changelog) {
   const lines = changelog.trimEnd().split(/\r?\n/u);
+  const titleIndex = lines.findIndex((line) => /^# (?!#)/u.test(line));
 
-  if (!/^# (?!#)/u.test(lines[0] ?? '')) {
+  if (titleIndex < 0) {
     throw new PackageChangelogContractError('Package CHANGELOG.md must start with a level-one package title.');
   }
 
@@ -93,7 +94,7 @@ function parsePackageChangelog(changelog) {
     );
   }
 
-  return { h2Indexes, lines, unreleasedIndex: unreleasedIndexes[0] };
+  return { h2Indexes, lines, titleIndex, unreleasedIndex: unreleasedIndexes[0] };
 }
 
 export function packageChangelogContractViolation(changelog) {
@@ -112,7 +113,7 @@ export function packageChangelogContractViolation(changelog) {
     return 'Package CHANGELOG.md must contain exactly one standalone `## [Unreleased]` section.';
   }
 
-  const contentBeforeUnreleased = parsed.lines.slice(1, parsed.unreleasedIndex);
+  const contentBeforeUnreleased = parsed.lines.slice(parsed.titleIndex + 1, parsed.unreleasedIndex);
   if (contentBeforeUnreleased.some((line) => line.trim() !== '')) {
     return 'Package CHANGELOG.md must place `## [Unreleased]` immediately below the package title.';
   }
@@ -121,7 +122,7 @@ export function packageChangelogContractViolation(changelog) {
 }
 
 export function normalizePackageChangelog(changelog) {
-  const { h2Indexes, lines, unreleasedIndex } = parsePackageChangelog(changelog);
+  const { h2Indexes, lines, titleIndex, unreleasedIndex } = parsePackageChangelog(changelog);
   let unreleasedBody = [];
   let remainingLines = lines;
 
@@ -131,8 +132,8 @@ export function normalizePackageChangelog(changelog) {
     remainingLines = [...lines.slice(0, unreleasedIndex), ...lines.slice(sectionEnd)];
   }
 
-  const title = remainingLines.slice(0, 1);
-  const releaseHistory = trimBlankEdges(remainingLines.slice(1));
+  const title = remainingLines.slice(0, titleIndex + 1);
+  const releaseHistory = trimBlankEdges(remainingLines.slice(titleIndex + 1));
 
   return [
     ...title,

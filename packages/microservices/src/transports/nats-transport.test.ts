@@ -30,6 +30,10 @@ class InMemoryNatsClient {
     };
   }
 
+  subscriptionCount(subject: string): number {
+    return this.subscriptions.get(subject)?.size ?? 0;
+  }
+
   publish(subject: string, payload: Uint8Array): void {
     const handlers = this.subscriptions.get(subject);
 
@@ -349,6 +353,37 @@ describe('NatsMicroserviceTransport', () => {
 
     await transport.close();
 
+    expect(nats.closeCalled).toBe(false);
+  });
+
+  it('cleans up partial subscriptions without closing the caller-owned client when listen() fails', async () => {
+    // Given
+    const nats = new InMemoryNatsClient();
+    const codec = {
+      decode(data: Uint8Array) {
+        return new TextDecoder().decode(data);
+      },
+      encode(value: string) {
+        return new TextEncoder().encode(value);
+      },
+    };
+    const listenError = new Error('message subscription failed');
+    const subscribe = nats.subscribe.bind(nats);
+    vi.spyOn(nats, 'subscribe').mockImplementation((subject, handler) => {
+      if (subject === 'fluo.microservices.messages') {
+        throw listenError;
+      }
+
+      return subscribe(subject, handler);
+    });
+    const transport = new NatsMicroserviceTransport({ client: nats, codec });
+
+    // When
+    const listening = transport.listen(async () => undefined);
+
+    // Then
+    await expect(listening).rejects.toBe(listenError);
+    expect(nats.subscriptionCount('fluo.microservices.events')).toBe(0);
     expect(nats.closeCalled).toBe(false);
   });
 

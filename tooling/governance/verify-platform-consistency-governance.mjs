@@ -719,6 +719,37 @@ function enforceDocsHubOfficialTransportLinks() {
   }
 }
 
+const cloudflareWorkersLifecycleDocRequirements = [
+  ['packages/platform-cloudflare-workers/README.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'app.listen()', 'timed-out close']],
+  ['packages/platform-cloudflare-workers/README.ko.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'app.listen()', 'timed-out close']],
+  ['docs/reference/package-surface.md', ['executionContext.waitUntil(...)', 'underlying drain', 'bootstrap a fresh application']],
+  ['docs/reference/package-surface.ko.md', ['executionContext.waitUntil(...)', 'underlying drain', '새 application을 bootstrap']],
+  ['book/intermediate/ch24-cloudflare.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil()', 'underlying drain']],
+  ['book/intermediate/ch24-cloudflare.ko.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil()', 'underlying drain']],
+  ['docs/getting-started/migrate-from-nestjs.md', ['fetch(request, env, ctx)', 'CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil(...)', '@fluojs/config']],
+  ['docs/getting-started/migrate-from-nestjs.ko.md', ['fetch(request, env, ctx)', 'CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil(...)', '@fluojs/config']],
+  ['apps/docs/content/docs/guides/runtime-adapters.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'request.cloudflare.env', 'underlying drain']],
+  ['apps/docs/content/docs/guides/runtime-adapters.ko.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'request.cloudflare.env', 'underlying drain']],
+  ['apps/docs/content/docs/guides/realtime.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'JSON `503`']],
+  ['apps/docs/content/docs/guides/realtime.ko.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'JSON `503`']],
+  ['docs/CONTEXT.md', ['packages/platform-cloudflare-workers/README.md', 'docs/getting-started/migrate-from-nestjs.md', 'website runtime/realtime guides']],
+  ['docs/CONTEXT.ko.md', ['packages/platform-cloudflare-workers/README.ko.md', 'docs/getting-started/migrate-from-nestjs.ko.md', 'website runtime/realtime guide']],
+];
+
+export function enforceCloudflareWorkersLifecycleDocsSync(
+  readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
+) {
+  for (const [relativePath, requiredMarkers] of cloudflareWorkersLifecycleDocRequirements) {
+    const content = readText(relativePath);
+    const missingMarkers = requiredMarkers.filter((marker) => !content.includes(marker));
+
+    assert(
+      missingMarkers.length === 0,
+      `${relativePath} must keep Cloudflare Workers lifecycle and migration guidance synchronized; missing: ${missingMarkers.join(', ')}.`,
+    );
+  }
+}
+
 function enforceCanonicalRuntimeMatrixReferences() {
   const packageSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
   const packageSurfaceKo = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
@@ -1454,6 +1485,7 @@ export function main() {
   enforceReleaseGovernancePublishSurfaceSync();
   enforceCanonicalPackageSurfaceSync();
   enforceDocsHubOfficialTransportLinks();
+  enforceCloudflareWorkersLifecycleDocsSync();
   enforceCanonicalRuntimeMatrixReferences();
   enforceRemovedRuntimeFactoryNamesNotUsedInDocs();
   enforceNoDirectProcessEnvInOrdinaryPackageSource();

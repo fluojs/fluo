@@ -47,6 +47,14 @@ describe('normalizePackageChangelog', () => {
       ].join('\n'),
     );
   });
+
+  it('rejects duplicate Unreleased sections', () => {
+    const changelog = '# @fluojs/core\n\n## [Unreleased]\n\n## [Unreleased]\n';
+
+    expect(() => normalizePackageChangelog(changelog)).toThrowError(
+      'Package CHANGELOG.md must contain at most one `## [Unreleased]` section.',
+    );
+  });
 });
 
 describe('runVersionPackages', () => {
