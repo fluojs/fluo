@@ -1,6 +1,7 @@
 import { createElement } from 'react';
 import { hydrateRoot } from 'react-dom/client';
 
+import { REACT_IDENTIFIER_PREFIX } from './hydration';
 import { ProductDocument } from './page';
 import './styles.css';
 
@@ -15,4 +16,5 @@ hydrateRoot(
     sku: document.documentElement.dataset.sku ?? '',
     stylesheets,
   }),
+  { identifierPrefix: REACT_IDENTIFIER_PREFIX },
 );

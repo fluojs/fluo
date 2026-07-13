@@ -1,6 +1,9 @@
-import { Suspense, createElement, lazy, useState } from 'react';
+import { Suspense, createElement, lazy, useId, useState } from 'react';
+
+const RECOMMENDATIONS_DELAY_MS = 25;
 
 const LazyRecommendations = lazy(async () => {
+  await new Promise<void>((resolve) => setTimeout(resolve, RECOMMENDATIONS_DELAY_MS));
   const { Recommendations } = await import('./recommendations');
   return { default: Recommendations };
 });
@@ -18,6 +21,8 @@ export function HydratedCounter() {
 }
 
 export function ProductDocument({ preview, sku, stylesheets }: ProductDocumentProps) {
+  const identifier = useId();
+
   return createElement(
     'html',
     { 'data-preview': String(preview), 'data-sku': sku, lang: 'en' },
@@ -40,6 +45,7 @@ export function ProductDocument({ preview, sku, stylesheets }: ProductDocumentPr
         createElement('h1', null, `Catalog item ${sku}`),
         createElement('p', null, preview ? 'Preview mode' : 'Published mode'),
         createElement('p', null, `DTO-bound sku: ${sku}`),
+        createElement('p', { 'data-react-identifier': true, id: identifier }, 'Shared hydration identifier'),
         createElement(
           Suspense,
           { fallback: createElement('p', null, 'Loading recommendations') },

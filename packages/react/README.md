@@ -391,3 +391,4 @@ This package currently does **not** provide:
 - `examples/react-vite-ssr/README.md`
 - `examples/react-vite-ssr/src/app.test.ts`
 - `examples/react-vite-ssr/src/hydration.test.ts`
+- `examples/react-vite-ssr/tests/production-hydration.spec.ts`

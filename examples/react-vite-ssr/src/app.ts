@@ -15,6 +15,7 @@ import { Path, ReactModule, Router, createReactServerEntry } from '@fluojs/react
 import { createReactViteAssetManifest } from '@fluojs/react/vite';
 import { createElement } from 'react';
 
+import { REACT_IDENTIFIER_PREFIX } from './hydration';
 import { ProductDocument } from './page';
 
 const ASSET_FILE_PATTERN = /^[a-zA-Z0-9._-]+\.(?:css|js)$/u;
@@ -49,7 +50,7 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
       client: 'src/entry-client.ts',
       server: 'src/entry-server.ts',
     },
-    identifierPrefix: 'fluo-react-vite-',
+    identifierPrefix: REACT_IDENTIFIER_PREFIX,
     manifest: options.manifest,
   });
 

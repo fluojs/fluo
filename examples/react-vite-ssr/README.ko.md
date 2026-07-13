@@ -32,7 +32,12 @@ Vite-generated client entry가 server HTML을 hydrate한 뒤에만 label이 `Cou
 
 ```sh
 pnpm vitest run examples/react-vite-ssr
+pnpm --filter @fluojs/example-react-vite-ssr test:browser
 ```
+
+Browser 명령은 workspace package와 예제를 다시 build하고, build된 server를 시작한 뒤 production
+client entry를 Chrome에서 실행합니다. Bootstrap/style asset 누락 또는 non-200 response, hydration
+warning/error, identifier-prefix mismatch, hydrate되지 않는 counter가 있으면 실패합니다.
 
 ## phase 경계와 제한 사항
 
@@ -58,10 +63,14 @@ examples/react-vite-ssr/
 │   ├── app.test.ts         # DTO, streamed Suspense, manifest asset assertion
 │   ├── entry-client.ts     # Browser-only hydrateRoot(...) entry
 │   ├── entry-server.ts     # 명시적 Vite server-entry selector
+│   ├── hydration.ts        # server/client 공유 identifierPrefix
 │   ├── hydration.test.ts   # DOM-equivalent hydration interaction 및 warning 검증
 │   ├── main.ts             # 생성된 manifest를 로드하고 Fastify 시작
 │   ├── page.ts             # server/client 공유 document와 interactive counter
 │   └── recommendations.ts  # Lazy Suspense content
+├── tests/
+│   └── production-hydration.spec.ts # Built-server 및 production-client browser regression
+├── playwright.config.ts
 ├── vite.client.config.ts
 ├── vite.server.config.ts
 ├── README.md

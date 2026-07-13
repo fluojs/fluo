@@ -34,7 +34,12 @@ Run the repeatable SSR and hydration checks with:
 
 ```sh
 pnpm vitest run examples/react-vite-ssr
+pnpm --filter @fluojs/example-react-vite-ssr test:browser
 ```
+
+The browser command rebuilds workspace packages plus the example, starts the built server, and runs
+the production client entry in Chrome. It fails on missing or non-200 bootstrap/style assets,
+hydration warnings or errors, an identifier-prefix mismatch, or a counter that does not hydrate.
 
 ## phase boundaries and limitations
 
@@ -60,10 +65,14 @@ examples/react-vite-ssr/
 │   ├── app.test.ts         # DTO, streamed Suspense, and manifest asset assertions
 │   ├── entry-client.ts     # Browser-only hydrateRoot(...) entry
 │   ├── entry-server.ts     # Explicit Vite server-entry selector
+│   ├── hydration.ts        # Shared server/client identifierPrefix
 │   ├── hydration.test.ts   # DOM-equivalent hydration interaction and warning check
 │   ├── main.ts             # Loads the generated manifest and starts Fastify
 │   ├── page.ts             # Shared server/client document and interactive counter
 │   └── recommendations.ts  # Lazy Suspense content
+├── tests/
+│   └── production-hydration.spec.ts # Built-server and production-client browser regression
+├── playwright.config.ts
 ├── vite.client.config.ts
 ├── vite.server.config.ts
 ├── README.md

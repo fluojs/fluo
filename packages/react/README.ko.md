@@ -383,3 +383,4 @@ Next.js route segment convention, RSC bundler behavior, URL matching을 소유�
 - `examples/react-vite-ssr/README.ko.md`
 - `examples/react-vite-ssr/src/app.test.ts`
 - `examples/react-vite-ssr/src/hydration.test.ts`
+- `examples/react-vite-ssr/tests/production-hydration.spec.ts`
