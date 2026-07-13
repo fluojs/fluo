@@ -21,6 +21,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 | constructor type reflection via `emitDecoratorMetadata` | `@Inject(TokenA, TokenB)` from `@fluojs/core` | Constructor dependencies are declared explicitly in decorator argument order. |
 | property injection such as `@Inject(TOKEN) private value` | class-level `@Inject(TOKEN)` plus a matching constructor parameter | fluo's `@Inject(...)` is a standard class Decorator that declares constructor Tokens in parameter order. It is not a property or constructor-parameter Decorator. |
 | `class-validator` / decorator-driven DTO validation | `@fluojs/validation` with Standard Schema support, including Zod and Valibot | This is a fluo-native validation surface, not class-validator compatibility. Ordinary validators skip `null` / `undefined`, requiredness uses `@IsDefined()`, plain-object materialization retains safe own enumerable extra properties, and validation groups are unsupported. |
+| `nestjs-i18n` `I18nModule.forRoot(...)`, request locale resolvers, request-scoped `I18nContext`, and localized validation filters | `I18nModule.forRoot(...)` from `@fluojs/i18n`; `createAcceptLanguageLocaleResolver(...)`, `resolveHttpLocale(...)`, and `getHttpLocale(...)` from `@fluojs/i18n/http`; `localizeDtoValidationError(...)` from `@fluojs/i18n/validation` | Register catalogs in the application module, resolve and store the locale at an application-owned request boundary, then pass the selected locale explicitly to translation and validation localization. fluo does not discover NestJS resolver classes or expose an implicit request-locale global. |
 | `SwaggerModule.createDocument(...)` and `SwaggerModule.setup(...)` | `OpenApiModule.forRoot({ title, version, sources, descriptors, ui, swaggerUiAssets })` from `@fluojs/openapi` | OpenAPI adoption is explicit: list every documented controller in `sources`, pass prebuilt HTTP handler mappings in `descriptors`, or use both. fluo does not scan the application module graph for controllers. `/openapi.json` remains available independently, while Swagger UI serves at `/docs` only when `ui: true`; `swaggerUiAssets` can replace the default CSS and JavaScript URLs. |
 | `@nestjs/graphql` resolver discovery, reflected return types, and `forRootAsync(...)` | `GraphqlModule.forRoot(...)`, module providers/controllers, `@Resolver`, `@Query`, `@Mutation`, `@Subscription`, and `listOf(...)` from `@fluojs/graphql` | Register resolver classes as providers or controllers in compiled modules. The `resolvers` option is an optional allowlist/filter over those discoverable classes; omitting it or passing an empty list allows every decorated registered candidate. fluo does not infer providers or GraphQL output types from metadata. Object results require `outputType`, arrays require `outputType: listOf(ItemType)`, and omitted output types use GraphQL `String`. There is no `forRootAsync(...)`, object field resolver, or `@Subscription({ topics })` contract. Optional WebSocket subscriptions require a server-backed Node HTTP/S adapter. |
 | Controller parameter decorators such as `@Param()`, `@Query()`, `@Body()`, `@Headers()`, `@Req()`, and `@Res()`, plus `Pipe` / `ValidationPipe` transformation | `@RequestDto(...)` with field-level `@FromPath(...)`, `@FromQuery(...)`, `@FromBody(...)`, `@FromHeader(...)`, `@FromCookie(...)`, and `@Convert(...)` from `@fluojs/http`; a `RequestContext` handler parameter for advanced request/response access | fluo does not expose NestJS-style controller parameter decorators or a public parameter Pipe stage. Bind one request DTO, declare each field source, use `@Convert(...)` for number/boolean/date/domain conversion, then validate the materialized DTO with the validation package. |
@@ -55,6 +56,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - Validation MUST be migrated to the Standard Schema direction instead of keeping a `class-validator`-first contract.
 - NestJS controller parameter decorators, Pipe, and `ValidationPipe` migration are not parameter-for-parameter replacements. Replace `@Param()`, `@Query()`, `@Body()`, `@Headers()`, `@Req()`, and `@Res()` assumptions with one `@RequestDto(...)`, field-level source decorators, `@Convert(...)`, and an explicit `RequestContext` handler parameter when low-level access is necessary. Validation runs after DTO materialization instead of through a public controller-parameter Pipe stage.
 - Do not carry over `ValidationPipe` whitelist/forbid assumptions or class-validator group execution. Ordinary fluo validators skip `null` and `undefined`, so add `@IsDefined()` for required fields. When its input is a plain object, `materialize()` retains safe own enumerable extra properties rather than stripping or rejecting them; this filtering guarantee does not describe already-created DTO instances. Decorator options do not support `groups` or `always`. Use explicit input shaping and separate DTOs, mapped DTOs, `@ValidateIf(...)`, or class-level validators for workflow-specific rules.
+- NestJS i18n request-scoped context and resolver discovery do not carry over. Run `resolveHttpLocale(...)` with an ordered resolver list at an application-owned request boundary, read only the metadata stored on that `RequestContext` with `getHttpLocale(...)`, and pass its `locale` to each `I18nService` or `localizeDtoValidationError(...)` call. The validation helper does not read request state or a global locale implicitly.
 - OpenAPI migration is not a reflection-driven `SwaggerModule` replacement. `OpenApiModule` requires `title` and `version`, and documented operations must come from explicit `sources`, explicit `descriptors`, or both; application `controllers` are not inferred. Handler return values and TypeScript return types do not produce response schemas. Without `@ApiResponse(...)`, the generated success response contains only the method-derived or `@HttpCode(...)` status and an `OK` description; provide `schema` or `type` to `@ApiResponse(...)` for response content. Duplicate OpenAPI path/method operations use later-descriptor precedence, and module composition places explicit `descriptors` after discovered `sources`, so explicit descriptors win collisions.
 - Controller decorators MUST be imported from `@fluojs/http`, while structural decorators such as `@Module` come from `@fluojs/core`.
 - NestJS `@Sse()` handlers that return Observables MUST be rewritten to construct `SseResponse` or return an `AsyncIterable`. Manual `SseResponse` streams should call `send(...)` or `comment(...)` and close from request abort or application cleanup paths; managed async iterables are closed by the dispatcher when the request aborts or the response stream closes.
@@ -99,6 +101,60 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - `NotificationsModule` is global by default for `NotificationsService`, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS`; use `global: false` when migrated code requires module-local visibility.
 - Slack migration is not a NestJS async dynamic-module or package-level multi-client registry clone. `SlackModule.forRootAsync(...)` accepts `inject` plus `useFactory`; it does not consume `imports`, `useClass`, or `useExisting`. Register dependencies in the application module graph before listing their tokens in `inject`, then return final Slack options from `useFactory`. `@fluojs/slack` exposes singleton compatibility tokens `SLACK` and `SLACK_CHANNEL`, mirrors that singleton wiring through `createSlackProviders(...)`, and uses `global?: boolean` with default global visibility instead of NestJS `isGlobal`.
 - Discord migration is not a NestJS async dynamic-module or custom-provider clone. `DiscordModule.forRootAsync(...)` accepts `inject` plus `useFactory`; it does not consume `imports`, `useClass`, or `useExisting`. `@fluojs/discord` exposes singleton compatibility tokens `DISCORD` and `DISCORD_CHANNEL`, uses `global?: boolean` with default global visibility instead of NestJS `isGlobal`, and keeps internal provider helpers such as `createDiscordProviders(...)`, `DISCORD_OPTIONS`, and `NormalizedDiscordModuleOptions` private.
+
+### NestJS i18n Locale and Validation Migration
+
+Replace NestJS i18n's resolver discovery and request-scoped context with one explicit request-boundary handoff. Register catalogs through the root module, select the request locale with the HTTP subpath, and pass that locale into the validation subpath:
+
+```typescript
+import { Module } from '@fluojs/core';
+import { I18nModule, type I18nService } from '@fluojs/i18n';
+import {
+  createAcceptLanguageLocaleResolver,
+  getHttpLocale,
+  resolveHttpLocale,
+} from '@fluojs/i18n/http';
+import { localizeDtoValidationError } from '@fluojs/i18n/validation';
+import type { RequestContext } from '@fluojs/http';
+import type { DtoValidationError } from '@fluojs/validation';
+
+const acceptLanguage = createAcceptLanguageLocaleResolver();
+
+@Module({
+  imports: [
+    I18nModule.forRoot({
+      defaultLocale: 'en',
+      supportedLocales: ['en', 'ko'],
+      catalogs: {
+        en: { validation: { email: { EMAIL: '{{ field }} must be a valid email address.' } } },
+        ko: { validation: { email: { EMAIL: '{{ field }}에는 올바른 이메일 주소가 필요합니다.' } } },
+      },
+    }),
+  ],
+})
+class AppModule {}
+
+function bindRequestLocale(context: RequestContext) {
+  return resolveHttpLocale(context, {
+    defaultLocale: 'en',
+    supportedLocales: ['en', 'ko'],
+    resolvers: [acceptLanguage],
+  });
+}
+
+function localizeValidationFailure(
+  i18n: I18nService,
+  error: DtoValidationError,
+  context: RequestContext,
+): DtoValidationError {
+  const locale = getHttpLocale(context)?.locale ?? 'en';
+  return localizeDtoValidationError(i18n, error, { locale });
+}
+```
+
+Invoke `bindRequestLocale(...)` from application-owned middleware or another request hook before downstream translation or validation-error handling. `resolveHttpLocale(...)` runs resolvers in array order, ignores invalid or unsupported results, and stores the configured default with source `default` when none match. `getHttpLocale(...)` reads only that `RequestContext`; it does not consult global state.
+
+`localizeDtoValidationError(...)` returns a new error whose issue messages use the explicit locale. Its default namespace is `validation`, candidate keys run from `source.field.code` through `code`, and missing translations preserve the original issue message unless `fallbackToIssueMessage: false` is selected. The helper remains transport-agnostic: HTTP chooses the locale here, but validation localization never reads HTTP state itself.
 
 ### Prisma Request-Wide Transaction Migration
 
@@ -284,4 +340,5 @@ The codemod can rewrite imports, remove `@Injectable()`, map provider scopes, mi
 - [DI and Modules](../architecture/di-and-modules.md)
 - [Decorators and Metadata](../architecture/decorators-and-metadata.md)
 - [CQRS Contract](../architecture/cqrs.md)
+- [i18n Ecosystem Bridge Decision](../reference/i18n-ecosystem-bridges.md)
 - [fluo new Support Matrix](../reference/fluo-new-support-matrix.md)
