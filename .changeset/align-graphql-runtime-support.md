@@ -2,4 +2,4 @@
 "@fluojs/graphql": patch
 ---
 
-Align the package manifest with the documented portable GraphQL HTTP and SSE support across Node.js, Bun, Deno, and Cloudflare Workers, backed by adapter-path regression coverage.
+Align the documented GraphQL runtime boundary with the package and mandatory dependency metadata by requiring Node.js 20 or newer and treating Bun, Deno, and Cloudflare Workers as unsupported until native runtime verification exists.
