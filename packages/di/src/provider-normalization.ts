@@ -247,3 +247,18 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
 
   throw new InvalidProviderError('Provider object must declare exactly one of useValue, useFactory, useClass, or useExisting.');
 }
+
+/**
+ * Validates provider declarations through the same normalization path used by `Container` registration.
+ *
+ * @param providers Provider declarations crossing an internal framework integration boundary.
+ * @returns The original provider list after every declaration has passed canonical normalization.
+ * @internal
+ */
+export function validateProviderInputs(providers: Provider[]): Provider[] {
+  for (const provider of providers) {
+    normalizeProvider(provider);
+  }
+
+  return providers;
+}

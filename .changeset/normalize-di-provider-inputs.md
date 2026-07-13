@@ -1,5 +1,6 @@
 ---
 "@fluojs/di": patch
+"@fluojs/runtime": patch
 ---
 
-Normalize malformed provider `inject` arrays, dependency wrappers, and `scope` values to structured `InvalidProviderError` failures during registration while preserving class `@Inject(...)` metadata fallback for omitted or `undefined` `inject` values.
+Normalize malformed provider `inject` arrays, dependency wrappers, and `scope` values to structured `InvalidProviderError` failures during direct registration and module-graph compilation while preserving class `@Inject(...)` metadata fallback for omitted or `undefined` `inject` values.

@@ -178,6 +178,7 @@ const service = await container.resolve(DataService);
 | Container helper types | `ClassType`, `Disposable`, `RequestScopeContainer`는 typed provider 선언, teardown hook, request-scope helper 경계를 지원합니다. |
 | Container introspection helper types | `ContainerResolutionState`, `ContainerResolutionCacheOwner`, `ContainerFactoryResolutionState`는 `inspectResolutionState()`가 반환하는 read-only graph/cache view와 controlled cache adoption helper를 설명합니다. |
 | `NormalizedProvider` | 컨테이너가 검증한 provider record shape를 위한 compatibility-only 공개 타입입니다. provider를 작성할 때는 `Provider`나 구체 provider interface를 우선 사용하세요. normalized record 생성은 컨테이너가 소유합니다. |
+| `@fluojs/di/internal` | sibling fluo package가 자체 순회 전에 컨테이너의 canonical provider validation을 적용할 수 있도록 `validateProviderInputs(...)`를 노출하는 package-integration seam입니다. 애플리케이션 코드는 계속 `Container`를 통해 provider를 등록해야 합니다. |
 | `DiErrorContext` | DI error에 붙는 구조화된 context입니다. 로그와 테스트가 token, scope, module, dependency chain, hint를 검사할 수 있게 합니다. |
 | 에러 클래스 | `InvalidProviderError`, `ContainerResolutionError`, `RequestScopeResolutionError`, `ScopeMismatchError`, `CircularDependencyError`, `DuplicateProviderError`. |
 
