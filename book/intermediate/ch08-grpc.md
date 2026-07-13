@@ -112,7 +112,7 @@ Streaming is where gRPC clearly differs from the other transports in this part. 
 - `@ClientStreamPattern`
 - `@BidiStreamPattern`
 
-Regression coverage proves `end()` completion, `error()` propagation, outbound cancellation, and `AbortSignal` listener cleanup across the three streaming modes. `ServerStreamWriter.write()` returns `void`; `GrpcMicroserviceTransport` discards the underlying gRPC `write()` boolean and does not expose a backpressure or drain contract. Treat `write()` as a write attempt, not as delivery or flow-control acknowledgement.
+Regression coverage proves server-streaming `end()` completion, `ServerStreamWriter.error()` propagation, and server-stream outbound cancellation. Separate tests cover `AbortSignal` listener cleanup in server-, client-, and bidirectional streaming calls. `ServerStreamWriter.write()` returns `void`; `GrpcMicroserviceTransport` discards the underlying gRPC `write()` boolean and does not expose a backpressure or drain contract. Treat `write()` as a write attempt, not as delivery or flow-control acknowledgement.
 
 ### 8.4.1 Server-streaming order tracking
 

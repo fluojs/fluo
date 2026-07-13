@@ -88,6 +88,8 @@ const grpcStreamingWriterGuidance = [
     'book/intermediate/ch08-grpc.md',
     [
       'writer: ServerStreamWriter,',
+      'Regression coverage proves server-streaming `end()` completion, `ServerStreamWriter.error()` propagation, and server-stream outbound cancellation.',
+      'Separate tests cover `AbortSignal` listener cleanup in server-, client-, and bidirectional streaming calls.',
       '`ServerStreamWriter.write()` returns `void`',
       'does not expose a backpressure or drain contract',
     ],
@@ -96,9 +98,22 @@ const grpcStreamingWriterGuidance = [
     'book/intermediate/ch08-grpc.ko.md',
     [
       'writer: ServerStreamWriter,',
+      '회귀 테스트는 서버 스트리밍의 `end()` 완료, `ServerStreamWriter.error()` 전파, 서버 스트림 outbound 취소를 검증합니다.',
+      '별도 테스트는 서버, 클라이언트, 양방향 스트리밍 호출의 `AbortSignal` listener cleanup을 검증합니다.',
       '`ServerStreamWriter.write()`는 `void`를 반환',
       'backpressure 또는 drain 계약을 노출하지 않습니다',
     ],
+  ],
+];
+
+const overclaimedGrpcStreamingGuidance = [
+  [
+    'book/intermediate/ch08-grpc.md',
+    'Regression coverage proves `end()` completion, `error()` propagation, outbound cancellation, and `AbortSignal` listener cleanup across the three streaming modes.',
+  ],
+  [
+    'book/intermediate/ch08-grpc.ko.md',
+    '회귀 테스트는 세 스트리밍 모드에서 `end()` 완료, `error()` 전파, outbound 취소, `AbortSignal` listener cleanup을 검증합니다.',
   ],
 ];
 
@@ -205,6 +220,13 @@ export function enforceMicroservicesSafetyGuidanceParity() {
         `${relativePath} must keep the source-backed gRPC streaming writer guidance ${requiredClaim}.`,
       );
     }
+  }
+
+  for (const [relativePath, overclaimedGuidance] of overclaimedGrpcStreamingGuidance) {
+    assert(
+      !read(relativePath).includes(overclaimedGuidance),
+      `${relativePath} must not overclaim cross-mode gRPC streaming error propagation.`,
+    );
   }
 }
 
