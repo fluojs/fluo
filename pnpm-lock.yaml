@@ -205,6 +205,9 @@ importers:
       '@fluojs/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
+      '@fluojs/validation':
+        specifier: workspace:*
+        version: link:../../packages/validation
       react:
         specifier: ^19.2.6
         version: 19.2.6

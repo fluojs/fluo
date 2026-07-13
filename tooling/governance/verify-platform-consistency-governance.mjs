@@ -601,9 +601,10 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // plus event-bus background handler/transport shutdown drain, inbound timeout,
   // stable eventKey migration, and CQRS responsibility-boundary docs/tests,
   // plus React Router/Path facade-over-HTTP metadata, ReactModule.forRoot
-  // registration contract discoverability, stable SSR phase boundaries, and
-  // the root package's non-goals for Vite assets, client navigation, RSC,
-  // server functions, and React-owned route-table models, plus OpenAPI's
+  // registration contract discoverability, stable SSR phase boundaries,
+  // isolated Vite/client subpaths, HTTP-first full-document navigation, and
+  // the root package's non-goals for client route tables, caches, and RSC,
+  // plus OpenAPI's
   // explicit descriptor adoption, response metadata, Swagger UI asset, and
   // path/method collision-precedence boundaries, plus GraphQL's explicit
   // resolver/provider wiring, root-only operations, output type declarations,
@@ -1441,6 +1442,73 @@ function enforceViteToolingDiscoverability() {
   }
 }
 
+export function enforceReactClientSubpathContract() {
+  const clientEntrypoint = read('packages/react/src/client.ts');
+  const englishReadme = read('packages/react/README.md');
+  const koreanReadme = read('packages/react/README.ko.md');
+  const packageJson = JSON.parse(read('packages/react/package.json'));
+  const rootEntrypoint = read('packages/react/src/index.ts');
+  const documentation = [
+    englishReadme,
+    koreanReadme,
+    read('docs/reference/package-surface.md'),
+    read('docs/reference/package-surface.ko.md'),
+    read('docs/reference/package-chooser.md'),
+    read('docs/reference/package-chooser.ko.md'),
+  ];
+
+  assert(
+    packageJson.exports?.['./client']?.types === './dist/client.d.ts' &&
+      packageJson.exports?.['./client']?.import === './dist/client.js',
+    'packages/react/package.json must publish the @fluojs/react/client types and import entrypoint.',
+  );
+  assert(
+    !rootEntrypoint.includes('./client.js'),
+    'packages/react/src/index.ts must keep browser navigation APIs out of the runtime-neutral root.',
+  );
+
+  for (const exportedSymbol of [
+    'Link',
+    'ReactClientRouterProvider',
+    'createReactRouteSnapshot',
+    'useNavigation',
+    'useParams',
+    'usePathname',
+    'useRouter',
+    'useRouterState',
+    'useSearchParams',
+  ]) {
+    assert(
+      clientEntrypoint.includes(exportedSymbol),
+      `packages/react/src/client.ts must export ${exportedSymbol} from the client subpath.`,
+    );
+  }
+
+  for (const markdown of documentation) {
+    assert(
+      markdown.includes('@fluojs/react/client') && markdown.includes('full-document'),
+      'React client contract docs must keep the isolated subpath and full-document navigation behavior discoverable.',
+    );
+  }
+
+  assert(
+    englishReadme.includes('pathname or search') &&
+      englishReadme.includes('fragment-only') &&
+      englishReadme.includes('does not issue a new HTTP request') &&
+      englishReadme.includes('identical URL') &&
+      englishReadme.includes('skipped'),
+    'packages/react/README.md must document path/search full-document navigation, fragment-only same-document behavior, and identical-URL skips.',
+  );
+  assert(
+    koreanReadme.includes('pathname 또는 search') &&
+      koreanReadme.includes('fragment-only') &&
+      koreanReadme.includes('새 HTTP request를 보내지') &&
+      koreanReadme.includes('identical URL') &&
+      koreanReadme.includes('skipped'),
+    'packages/react/README.ko.md must document path/search full-document navigation, fragment-only same-document behavior, and identical-URL skips.',
+  );
+}
+
 export function enforceGraphqlRuntimeBoundaryDiscoverability() {
   const expectedNodeEngine = '>=20.16.0';
   const graphqlPackageJson = JSON.parse(read('packages/graphql/package.json'));
@@ -1532,6 +1600,7 @@ export function main() {
   enforceNoDirectProcessEnvInOrdinaryPackageSource();
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices();
   enforceViteToolingDiscoverability();
+  enforceReactClientSubpathContract();
   enforceGraphqlRuntimeBoundaryDiscoverability();
   enforcePersistenceTransactionInterceptorCompatibility();
   enforceAdvancedBookCoreBoundaryCompanions(changedFiles);

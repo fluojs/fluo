@@ -14,8 +14,8 @@
 - `./ops-metrics-terminus/` — `/metrics`, `/health`, `/ready`에 초점을 둔 운영 예제
 - `./react-stable-ssr/` — HTTP-owned route, DTO-bound params/search, lifecycle middleware, 명시적인
   hydration asset을 포함한 안정 `@fluojs/react` SSR MVP 예제
-- `./react-vite-ssr/` — manifest-fed asset, streamed Suspense, hydrated client interaction을 포함한
-  Vite-backed React SSR 예제
+- `./react-vite-ssr/` — manifest-fed asset, streamed Suspense, hydration, HTTP-first client
+  navigation을 포함한 Vite-backed React SSR 예제
 
 ## 권장 읽기 순서
 
@@ -40,9 +40,10 @@
   `@fluojs/http` 위의 lexical facade이고, URL matching과 route grammar는 HTTP-owned 상태로 남으며,
   DTO validation과 request lifecycle은 보존되고, hydration asset은 명시적이며, RSC/server functions는
   stable root 밖에 남습니다.
-- `react-vite-ssr`은 `0.2.0` example phase를 증명합니다. 같은 HTTP-owned route와 DTO contract가
-  streamed Suspense HTML을 만들고, 이미 로드한 Vite manifest가 hydration asset을 공급하며, browser
-  interaction이 SPA navigation이나 file-based routing을 약속하지 않고 hydrate됩니다.
+- `react-vite-ssr`은 Vite hydration과 `@fluojs/react/client` phase를 증명합니다. 같은 HTTP-owned
+  route와 DTO contract가 streamed Suspense HTML을 만들고, 이미 로드한 Vite manifest가 hydration
+  asset을 공급하며, full-document client navigation은 SPA document swapping이나 file-based routing을
+  약속하지 않고 server DTO validation을 authoritative하게 유지합니다.
 
 예제는 `../docs/contracts/testing-guide.ko.md`의 canonical fluo TDD ladder도 고정합니다. 빠른 unit 테스트는 `src/**` 가까이에 작성하고, DI wiring이나 provider override가 중요할 때는 `createTestingModule({ rootModule })` 기반 slice/module 테스트를 추가하며, app-level e2e 스타일 request-pipeline 점검에는 `createTestApp({ rootModule })`와 `app.request(...).send()`를 사용합니다. `minimal/src/app.test.ts`, `auth-jwt-passport/src/app.test.ts`, `ops-metrics-terminus/src/app.test.ts` 같은 기존 파일은 그 ladder의 app-level 끝단을 보여줍니다.
 
