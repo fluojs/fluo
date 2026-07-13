@@ -15,6 +15,7 @@ This directory contains governed repository documentation for fluo. The official
 - Package surface: [`reference/package-surface.md`](./reference/package-surface.md)
 - Package chooser: [`reference/package-chooser.md`](./reference/package-chooser.md)
 - Behavioral contracts: [`contracts/behavioral-contract-policy.md`](./contracts/behavioral-contract-policy.md)
+- React RSC graduation policy: [`contracts/react-rsc-graduation.md`](./contracts/react-rsc-graduation.md)
 - Testing guide: [`contracts/testing-guide.md`](./contracts/testing-guide.md)
 - Testing package contract: [`../packages/testing/README.md`](../packages/testing/README.md)
 - Testing learning path: [`../book/beginner/ch20-testing.md`](../book/beginner/ch20-testing.md)

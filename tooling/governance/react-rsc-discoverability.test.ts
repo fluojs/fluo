@@ -3,6 +3,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import { enforceReactRscGraduationPolicy } from './react-rsc-graduation-policy.mjs';
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 function read(relativePath: string): string {
@@ -38,5 +40,30 @@ describe('experimental React RSC discoverability', () => {
     expect(packageManifest).toContain('"./experimental/rsc"');
     expect(packageManifest).toContain('"./dist/experimental/rsc.js"');
     expect(rootEntrypoint).not.toContain('./experimental/rsc.js');
+  });
+
+  it('keeps stable RSC blocked while publishing the bilingual graduation policy', () => {
+    // Given: the package manifest and every governed React RSC policy surface.
+    const packageManifest = read('packages/react/package.json');
+    const linkedDocs = [
+      read('packages/react/README.md'),
+      read('packages/react/README.ko.md'),
+      read('docs/CONTEXT.md'),
+      read('docs/CONTEXT.ko.md'),
+      read('docs/README.md'),
+      read('docs/reference/package-surface.md'),
+      read('docs/reference/package-surface.ko.md'),
+      read('docs/reference/package-chooser.md'),
+      read('docs/reference/package-chooser.ko.md'),
+    ];
+
+    // When: the canonical graduation-policy governance is evaluated.
+    enforceReactRscGraduationPolicy();
+
+    // Then: stable RSC remains unavailable and the policy is discoverable from both locales.
+    expect(packageManifest).not.toContain('"./rsc"');
+    for (const source of linkedDocs) {
+      expect(source).toContain('react-rsc-graduation');
+    }
   });
 });

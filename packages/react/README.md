@@ -19,6 +19,7 @@ Runtime-neutral React integration for fluo applications.
 - [Client Navigation Runtime](#client-navigation-runtime)
 - [Experimental RSC Prototype](#experimental-rsc-prototype)
 - [Experimental Server Functions](#experimental-server-functions)
+- [RSC Graduation Policy](#rsc-graduation-policy)
 - [Current Limitations](#current-limitations)
 - [Public API](#public-api)
 - [Related Packages](#related-packages)
@@ -607,6 +608,21 @@ Expected failures use the existing fluo HTTP error envelope with stable codes:
 This prototype does not scan for `"use server"`, transform modules, discover exports, generate
 references automatically, encrypt action ids, or provide database mutation conventions. The stable
 root and `@fluojs/react/client` remain isolated from all Server Function code.
+
+## RSC Graduation Policy
+
+`@fluojs/react/rsc` is not currently exported. The canonical
+[React RSC graduation policy](../../docs/contracts/react-rsc-graduation.md) records the evidence that
+must exist before the experimental APIs can become stable: exact React/renderer compatibility,
+versioned manifest and Server Function transport contracts, browser/server bundle separation,
+SSR/CSR/prerendering behavior, hydration mismatch and error recovery, safe transfer rules for
+private/auth/cookie-bearing data, HTTP route ownership, #2506 navigation isolation, executable
+runtime/bundler coverage, bilingual docs, and Changesets release evidence.
+
+When every gate is approved, `@fluojs/react/rsc` becomes the canonical implementation while
+`@fluojs/react/experimental/rsc` remains a tested re-export for the documented deprecation window.
+The stable package root remains RSC-free. The policy currently marks graduation as blocked, so this
+documentation change neither adds the stable subpath nor starts the deprecation window.
 
 ## Current Limitations
 
