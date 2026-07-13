@@ -249,9 +249,10 @@ export function Length(min: number, max?: number, options?: ValidationDecoratorO
 
 /**
  * Validates a nested DTO instance using the provided constructor.
+ * Arrays, Sets, and Maps are traversed automatically without requiring `each`.
  *
  * @param dto DTO constructor (or lazy constructor factory) used for nested validation/materialization.
- * @param options Optional validation behavior (`message`, `code`, `each`).
+ * @param options Optional validation behavior (`message`, `code`, `each`); collection traversal is automatic.
  * @returns A field decorator that registers recursive nested DTO validation.
  */
 export function ValidateNested(dto: Constructor | (() => Constructor), options?: ValidationDecoratorOptions): FieldDecoratorFn {

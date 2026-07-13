@@ -159,12 +159,12 @@ class CreateUserDto {
   @ValidateNested(() => AddressDto)
   address = new AddressDto();
 
-  @ValidateNested(() => AddressDto, { each: true })
+  @ValidateNested(() => AddressDto)
   previousAddresses: AddressDto[] = [];
 }
 ```
 
-Nested validation은 object field, array, `Set`, `Map`을 지원합니다. Cycle은 안전하게 감지되고 shared reference는 허용됩니다.
+Nested validation은 object field, array, `Set`, `Map`을 지원합니다. Collection member는 `each: true` 없이 자동으로 순회됩니다. Cycle은 안전하게 감지되고 shared reference는 허용됩니다.
 
 ### 암묵적 scalar coercion은 없습니다
 

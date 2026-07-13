@@ -1,10 +1,10 @@
 import type { Constructor, MetadataPropertyKey } from '@fluojs/core';
 import {
+  type DtoFieldBindingMetadata,
+  type DtoFieldValidationRule,
   getClassValidationRules,
   getDtoBindingSchema,
   getDtoValidationSchema,
-  type DtoFieldBindingMetadata,
-  type DtoFieldValidationRule,
 } from '@fluojs/core/request-pipeline';
 
 function isClassConstructor(dto: Constructor | (() => Constructor)): dto is Constructor {
@@ -27,7 +27,6 @@ export interface CachedDtoMetadata {
   dtoValidationSchema: DtoValidationSchema;
   mergedPropertyKeys: Set<MetadataPropertyKey>;
   nestedDtoTransforms: readonly {
-    each: boolean;
     propertyKey: MetadataPropertyKey;
     target: Constructor;
   }[];
@@ -54,7 +53,6 @@ function collectNestedDtoTransforms(dtoValidationSchema: DtoValidationSchema): C
     }
 
     nestedEntries.push({
-      each: nestedRule.each === true,
       propertyKey: entry.propertyKey,
       target: resolveNestedDto(nestedRule.dto),
     });
