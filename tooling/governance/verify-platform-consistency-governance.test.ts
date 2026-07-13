@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   collectDirectProcessEnvViolations,
   collectNodeGlobalBufferViolations,
+  enforceCloudflareWorkersLifecycleDocsSync,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
   isGovernedPackageSourcePath,
@@ -199,6 +200,14 @@ describe('enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices', () => {
         () => 'const encoded = new TextEncoder().encode(payload);\n',
       ),
     ).not.toThrow();
+  });
+});
+
+describe('enforceCloudflareWorkersLifecycleDocsSync', () => {
+  it('reports the governed surface when Workers lifecycle guidance drifts', () => {
+    expect(() => enforceCloudflareWorkersLifecycleDocsSync(() => '')).toThrowError(
+      /packages\/platform-cloudflare-workers\/README\.md/,
+    );
   });
 });
 
