@@ -13,6 +13,7 @@ import {
 } from '@fluojs/http';
 import { Path, ReactModule, Router, createReactServerEntry } from '@fluojs/react';
 import { createReactViteAssetManifest } from '@fluojs/react/vite';
+import { IsIn, IsString, MinLength } from '@fluojs/validation';
 import { createElement } from 'react';
 
 import { REACT_IDENTIFIER_PREFIX } from './hydration';
@@ -30,9 +31,12 @@ class ReactViteExampleManifestError extends Error {
 }
 
 class ProductPageRequest {
+  @MinLength(3)
+  @IsString()
   @FromPath('sku')
   sku = '';
 
+  @IsIn(['true', 'false'])
   @Optional()
   @FromQuery('preview')
   preview?: string;
@@ -64,10 +68,12 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
   class ProductPageRouter {
     @Path('/:sku')
     @RequestDto(ProductPageRequest)
-    show(input: ProductPageRequest) {
+    show(input: ProductPageRequest, context: RequestContext) {
       return createReactServerEntry(
         createElement(ProductDocument, {
           preview: input.preview === 'true',
+          routeParams: context.request.params,
+          routeUrl: context.request.url,
           sku: input.sku,
           stylesheets: assets.css,
         }),

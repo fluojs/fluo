@@ -8,6 +8,7 @@ import {
   collectNodeGlobalBufferViolations,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
+  enforceReactClientSubpathContract,
   isGovernedPackageSourcePath,
   parsePackageNamesFromFamilyTable,
 } from './verify-platform-consistency-governance.mjs';
@@ -110,6 +111,12 @@ describe('collectDirectProcessEnvViolations', () => {
         path: 'packages/core/src/module.ts',
       },
     ]);
+  });
+});
+
+describe('enforceReactClientSubpathContract', () => {
+  it('keeps client navigation isolated, exported, and documented', () => {
+    expect(() => enforceReactClientSubpathContract()).not.toThrow();
   });
 });
 

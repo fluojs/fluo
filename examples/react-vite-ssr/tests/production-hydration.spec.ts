@@ -49,5 +49,16 @@ test('hydrates streamed production HTML with generated Vite assets', async ({ pa
   await expect(page.locator('[data-react-identifier]')).toHaveAttribute('id', /fluo-react-vite-/u);
   await page.getByRole('button', { name: 'Count: 0' }).click();
   await expect(page.getByRole('button', { name: 'Count: 1' })).toBeVisible();
+
+  await page.getByRole('link', { name: 'Open sku-84' }).click();
+  await expect(page).toHaveURL(/\/products\/sku-84\?preview=false$/u);
+  await expect(page.getByRole('heading', { name: 'Catalog item sku-84' })).toBeVisible();
+  await expect(page.getByText('Current path: /products/sku-84')).toBeVisible();
+  await expect(page.getByText('Current preview: false')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Push sku-126' }).click();
+  await expect(page).toHaveURL(/\/products\/sku-126\?preview=true$/u);
+  await expect(page.getByRole('heading', { name: 'Catalog item sku-126' })).toBeVisible();
+  await expect(page.getByText('Current path: /products/sku-126')).toBeVisible();
   expect(browserDiagnostics).toEqual([]);
 });

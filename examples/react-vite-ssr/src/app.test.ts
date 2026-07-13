@@ -51,6 +51,28 @@ describe('react-vite-ssr example', () => {
       expect(html).toContain('Recommended for sku-42');
       expect(html).toContain('src="/assets/entry-client.js"');
       expect(html).toContain('href="/assets/example.css"');
+      expect(html).toContain('Current path: /products/sku-42');
+      expect(html).toContain('Current preview: true');
+      expect(html).toContain('href="/products/sku-84?preview=false"');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps path and query validation on the server-owned DTO boundary', async () => {
+    // Given: a fluo React route whose path and query fields have validation rules.
+    const AppModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      manifest: VITE_MANIFEST,
+    });
+    const app = await createTestApp({ rootModule: AppModule });
+
+    try {
+      // When: navigation reaches the server with invalid path and query values.
+      const response = await app.request('GET', '/products/x').query('preview', 'maybe').send();
+
+      // Then: HTTP DTO validation rejects the request before React rendering.
+      expect(response.status).toBe(400);
     } finally {
       await app.close();
     }
