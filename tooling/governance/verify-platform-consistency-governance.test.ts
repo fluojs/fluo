@@ -8,8 +8,10 @@ import {
   collectNodeGlobalBufferViolations,
   enforceCloudflareWorkersLifecycleDocsSync,
   enforceExpressRuntimeMigrationDocsSync,
+  enforceGraphqlRuntimeBoundaryDiscoverability,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
+  enforceReactClientSubpathContract,
   isGovernedPackageSourcePath,
   parsePackageNamesFromFamilyTable,
 } from './verify-platform-consistency-governance.mjs';
@@ -112,6 +114,12 @@ describe('collectDirectProcessEnvViolations', () => {
         path: 'packages/core/src/module.ts',
       },
     ]);
+  });
+});
+
+describe('enforceReactClientSubpathContract', () => {
+  it('keeps client navigation isolated, exported, and documented', () => {
+    expect(() => enforceReactClientSubpathContract()).not.toThrow();
   });
 });
 
@@ -460,8 +468,10 @@ describe('enforceContractCompanionUpdates', () => {
         'docs/CONTEXT.ko.md',
         'book/intermediate/ch18-graphql.md',
         'book/intermediate/ch18-graphql.ko.md',
-        'packages/graphql/src/pipeline/input-pipeline.test.ts',
-        'packages/graphql/src/schema/schema.test.ts',
+        'book/intermediate/ch25-final.md',
+        'book/intermediate/ch25-final.ko.md',
+        'packages/graphql/package.json',
+        'packages/graphql/src/runtime-support.test.ts',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();
@@ -544,6 +554,24 @@ describe('enforceContractCompanionUpdates', () => {
         'docs/getting-started/migrate-from-nestjs.ko.md',
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('accepts Microservices handler migration guidance when bilingual contract surfaces and governance tests change together', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'packages/microservices/README.md',
+        'packages/microservices/README.ko.md',
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'book/intermediate/ch01-microservices-intro.md',
+        'book/intermediate/ch01-microservices-intro.ko.md',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();
@@ -1339,6 +1367,46 @@ describe('package surface throttler responsibility discoverability', () => {
 });
 
 describe('package surface microservices transport discoverability', () => {
+  it('keeps standard handler discovery and explicit registration guidance aligned across bilingual contract surfaces', () => {
+    const englishReadme = readFileSync(join(repoRoot, 'packages/microservices/README.md'), 'utf8');
+    const koreanReadme = readFileSync(join(repoRoot, 'packages/microservices/README.ko.md'), 'utf8');
+    const englishMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
+    const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishChapter = readFileSync(join(repoRoot, 'book/intermediate/ch01-microservices-intro.md'), 'utf8');
+    const koreanChapter = readFileSync(join(repoRoot, 'book/intermediate/ch01-microservices-intro.ko.md'), 'utf8');
+
+    for (const markdown of [
+      englishReadme,
+      koreanReadme,
+      englishMigration,
+      koreanMigration,
+      englishContext,
+      koreanContext,
+      englishChapter,
+      koreanChapter,
+    ]) {
+      expect(markdown).toContain('@MessagePattern');
+      expect(markdown).toContain('@EventPattern');
+      expect(markdown).toContain('TC39');
+      expect(markdown).toContain('providers');
+      expect(markdown).toContain('controllers');
+      expect(markdown).toContain('public instance');
+      expect(markdown).toContain('reflect-metadata');
+      expect(markdown).toContain('experimentalDecorators');
+      expect(markdown).toContain('emitDecoratorMetadata');
+    }
+
+    for (const chapter of [englishChapter, koreanChapter]) {
+      expect(chapter).toContain('providers: [OrderHandler]');
+    }
+
+    for (const migration of [englishMigration, koreanMigration]) {
+      expect(migration).toContain('providers: [OrdersHandler]');
+    }
+  });
+
   it('documents Redis Pub/Sub and Redis Streams in both package surface and AI context locales', () => {
     const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
     const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
@@ -1643,6 +1711,39 @@ describe('Terminus chooser discoverability', () => {
       expect(markdown).toContain('@fluojs/terminus/redis');
       expect(markdown).toContain('execution.indicatorTimeoutMs');
     }
+  });
+});
+
+describe('GraphQL runtime boundary discoverability', () => {
+  it('keeps the GraphQL package engine aligned with the effective transitive dependency floor', () => {
+    expect(() => enforceGraphqlRuntimeBoundaryDiscoverability()).not.toThrow();
+  });
+
+  it('keeps unsupported non-Node GraphQL targets explicit across bilingual contract surfaces', () => {
+    const englishReadme = readFileSync(join(repoRoot, 'packages/graphql/README.md'), 'utf8');
+    const koreanReadme = readFileSync(join(repoRoot, 'packages/graphql/README.ko.md'), 'utf8');
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishChapter = readFileSync(join(repoRoot, 'book/intermediate/ch18-graphql.md'), 'utf8');
+    const koreanChapter = readFileSync(join(repoRoot, 'book/intermediate/ch18-graphql.ko.md'), 'utf8');
+    const englishFinalChapter = readFileSync(join(repoRoot, 'book/intermediate/ch25-final.md'), 'utf8');
+    const koreanFinalChapter = readFileSync(join(repoRoot, 'book/intermediate/ch25-final.ko.md'), 'utf8');
+
+    for (const content of [englishReadme, englishContext, englishChapter]) {
+      expect(content).toContain('Node.js `>=20.16.0`');
+      expect(content).toContain('Bun');
+      expect(content).toContain('Deno');
+    }
+    for (const content of [koreanReadme, koreanContext, koreanChapter]) {
+      expect(content).toContain('Node.js `>=20.16.0`');
+      expect(content).toContain('Bun');
+      expect(content).toContain('Deno');
+    }
+
+    expect(englishReadme).toContain('remain unsupported');
+    expect(koreanReadme).toContain('지원하지 않습니다');
+    expect(englishFinalChapter).toContain('does not host `@fluojs/graphql`');
+    expect(koreanFinalChapter).toContain('`@fluojs/graphql`을 호스팅하지 않습니다');
   });
 });
 

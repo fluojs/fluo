@@ -12,8 +12,9 @@ const AppModule = createReactViteExampleModule({
   clientDirectory: new URL('../client/', import.meta.url),
   manifest,
 });
+const port = Number(process.env.REACT_VITE_EXAMPLE_PORT ?? '3000');
 const app = await FluoFactory.create(AppModule, {
-  adapter: createFastifyAdapter({ host: '127.0.0.1', port: 3000 }),
+  adapter: createFastifyAdapter({ host: '127.0.0.1', port }),
 });
 
 await app.listen();

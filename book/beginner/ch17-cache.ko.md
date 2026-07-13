@@ -85,15 +85,49 @@ export class AppModule {}
 
 ```typescript
 // 프로덕션용 Redis 설정 예시
-CacheModule.forRoot({
-  store: 'redis',
-  redis: { clientName: 'cache' },
-  ttl: 3600,
-});
+import { Module } from '@fluojs/core';
+import { CacheModule } from '@fluojs/cache-manager';
+import { RedisModule } from '@fluojs/redis';
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ name: 'cache', host: 'localhost', port: 6379 }),
+    CacheModule.forRoot({
+      store: 'redis',
+      redis: { clientName: 'cache' },
+      keyPrefix: 'fluoblog:cache:',
+      ttl: 3600,
+    }),
+  ],
+})
+export class AppModule {}
 ```
 
+Top-level `keyPrefix`는 nested `redis` connection option이 아니라 Redis 소유권 경계입니다. 기본값은 `fluo:cache:`이며, 모든 cache entry에 prefix를 붙이고 `CacheService.reset()`을 해당 namespace로 제한합니다. 여러 애플리케이션이 Redis를 공유한다면 비어 있지 않은 애플리케이션 전용 prefix를 사용하세요. 빈 prefix는 의도적으로 `*` scan을 피하고 store instance가 직접 쓰고 계속 추적하는 key만 reset하므로, 재시작이나 여러 process를 가로지르는 reset 소유권을 제공할 수 없습니다.
+
 ### 17.3.2 Synchronous Configuration and Secret Management: Best Practices
-실제 애플리케이션에서는 캐시 자격 증명을 하드코딩해서는 안 됩니다. fluo에서 `CacheModule.forRoot(options)`는 동기 모듈 진입점입니다. 먼저 Redis 클라이언트 등록을 명확하게 준비한 뒤, `store: 'redis'`와 `redis.clientName`처럼 그 등록을 가리키는 일반 캐시 옵션을 전달하세요. 이렇게 하면 캐시 모듈 쪽 공개 표면은 단순하게 유지하면서도 환경별 연결 정보는 별도의 설정 계층에서 관리할 수 있습니다.
+실제 애플리케이션에서는 캐시 자격 증명을 하드코딩해서는 안 됩니다. fluo에서 `CacheModule.forRoot(options)`는 동기 모듈 진입점입니다. Lifecycle-managed 경로에서는 기본 또는 named raw client를 `@fluojs/redis`로 준비한 뒤, `store: 'redis'`와 선택적 `redis.clientName`으로 해당 등록을 가리키는 일반 cache option을 전달합니다. 이렇게 하면 캐시 모듈 쪽 공개 표면은 단순하게 유지하면서도 환경별 연결 정보는 별도의 설정 계층에서 관리할 수 있습니다.
+
+애플리케이션이 compatible Redis client를 이미 소유한다면 `redis.client`로 직접 전달하세요. 이 경로에는 `@fluojs/redis`가 필요하지 않습니다. 객체는 export된 `RedisCompatibleClient` operation(`get`, `set`, `del`, tuple-returning `scan`)만 제공하면 됩니다. 직접 전달한 client는 `redis.clientName`보다 우선하며, connect와 close 책임은 애플리케이션에 남습니다.
+
+```typescript
+import Redis from 'ioredis';
+import { Module } from '@fluojs/core';
+import { CacheModule } from '@fluojs/cache-manager';
+
+const cacheClient = new Redis({ host: 'localhost', port: 6379 });
+
+@Module({
+  imports: [
+    CacheModule.forRoot({
+      store: 'redis',
+      keyPrefix: 'fluoblog:cache:',
+      redis: { client: cacheClient },
+    }),
+  ],
+})
+export class AppModule {}
+```
 
 이 명시적 설정 방식에서도 **환경 인식 저장소 선택(Environment-Aware Store Selection)**은 가능합니다. 애플리케이션 경계에서 필요한 설정을 읽고, 모듈 등록 전에 캐시 옵션을 선택한 뒤, 최종 객체를 `CacheModule.forRoot(...)`에 전달합니다. 예를 들어 프로덕션에서는 고성능 Redis 클러스터를 선택하고, CI/CD 파이프라인에서는 빌드 환경을 가볍고 빠르게 유지하기 위해 `store: 'memory'`를 전달할 수 있습니다. 중요한 경계는 현재 공개 API가 async factory가 아니라 이미 준비된 options 객체를 받는다는 점입니다.
 
@@ -199,7 +233,24 @@ export class WeatherService {
 
 부분 업데이트를 구현할 때 저장소 공급자(예: Redis)가 지원하는 경우 **비트필드(Bitfields)나 해시(Hashes)**를 사용할 수도 있습니다. 이를 통해 서버 측에서 원자적으로 복잡한 객체 내의 단일 필드만 수정할 수 있습니다. 이러한 세밀한 제어는 여러 프로세스가 동일한 엔터티의 서로 다른 부분을 동시에 업데이트할 수 있는 고가용성 시스템에서 필수적입니다. 저장소 공급자의 네이티브 기능을 활용함으로써 매 업데이트마다 전체 객체를 직렬화하는 오버헤드 없이 높은 성능과 데이터 무결성을 유지할 수 있습니다.
 
-또한 **데코레이터 기반 부분 무효화(Decorator-Based Partial Invalidation)** 패턴의 사용을 고려해 보십시오. 특정 서비스 메서드를 특정 캐시 그룹의 "무효화기(Invalidators)"로 표시하는 커스텀 데코레이터를 만들 수 있습니다. 메서드가 호출되면 Fluo는 메서드 인수를 기반으로 관련 캐시 키를 자동으로 삭제할 수 있습니다. 이러한 선언적 접근 방식은 캐시 관리 로직을 비즈니스 로직과 분리하여 유지함으로써, 애플리케이션의 복잡성이 증가하더라도 코드를 유지보수하고 이해하기 쉽게 만들어 줍니다.
+HTTP write에서 기본 제공되는 선언적 경로는 `CacheInterceptor`를 통과하는 non-GET controller handler에 `@CacheEvict(...)`를 두는 것입니다. 이 decorator는 route metadata를 저장할 뿐 임의의 service method를 intercept하지 않습니다. HTTP 경계 밖의 호출은 `CacheService`를 주입하고 `del(...)`을 명시적으로 호출해야 합니다.
+
+```typescript
+import { CacheEvict, CacheInterceptor } from '@fluojs/cache-manager';
+import { Controller, Post, UseInterceptors } from '@fluojs/http';
+
+@Controller('/posts')
+@UseInterceptors(CacheInterceptor)
+export class PostsController {
+  @Post('/refresh')
+  @CacheEvict(['/posts', '/posts/popular'])
+  refreshPosts() {
+    return this.postsService.refresh();
+  }
+}
+```
+
+지원되는 이 route 경로에서는 non-GET handler가 성공하고 HTTP response가 commit된 뒤 eviction이 실행됩니다. `@CacheEvict(...)`를 controller 경계에 두면 interceptor가 response-aware timing을 담당하고, service layer invalidation은 `CacheService`를 통해 명시적이고 테스트 가능한 형태로 유지됩니다.
 
 이러한 고급 수동 패턴을 자동 응답 캐싱과 결합하면 Fluo 백엔드의 성능과 신뢰성을 함께 높이는 효율적인 데이터 계층을 만들 수 있습니다. 캐싱의 목표는 사용자에게 가능한 가장 빠른 응답을 제공하는 동시에 기본 데이터 소스의 부하를 줄이는 것임을 항상 기억하십시오. 이 레이어에서 수행하는 모든 최적화는 전반적으로 더 확장 가능하고 복원력 있는 시스템을 만드는 데 기여합니다.
 

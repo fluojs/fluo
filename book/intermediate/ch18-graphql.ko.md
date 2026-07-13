@@ -23,9 +23,11 @@
 **명시성이 암시성보다 낫다(Explicit Over Implicit)**는 fluo의 철학은 GraphQL의 타입 스키마 모델과 잘 맞습니다. `@fluojs/graphql`을 사용하면 다음과 같은 이점을 얻을 수 있습니다.
 
 - **통합된 DI**: 리졸버는 fluo 컨테이너 안의 최상위 프로바이더로 취급됩니다.
-- **프로토콜 이식성**: HTTP query/mutation과 기본 SSE subscription 경로는 Node.js, Bun, Deno, Edge Workers 전반에서 fluo의 portable HTTP 추상화를 사용합니다. 선택적 WebSocket subscription은 Node HTTP/S upgrade listener를 노출하는 adapter가 필요합니다.
+- **HTTP transport seam**: 지원되는 Node.js `>=20.16.0` runtime에서 HTTP query/mutation과 기본 SSE subscription 경로는 fluo의 Web-standard HTTP 추상화를 사용합니다. 선택적 WebSocket subscription에는 Node HTTP/S upgrade listener를 노출하는 adapter도 필요합니다.
 - **표준 데코레이터**: 레거시 `experimentalDecorators` 플래그에 의존하지 않습니다.
 - **성능**: 런타임 퍼사드(facade)와 직접 통합해 불필요한 오버헤드를 줄입니다.
+
+배포되는 `@fluojs/graphql` manifest는 `engines.node >=20.16.0`을 선언합니다. `@fluojs/runtime`이 동일한 하한을 가진 `@fluojs/config`에 transitively 의존하므로 이 값은 필수 first-party dependency graph에서 가장 높은 하한을 충족합니다. HTTP/SSE 구현 내부의 Web-standard request/response primitive가 Bun, Deno, Edge Workers를 지원되는 GraphQL package runtime으로 만들지는 않습니다. 해당 target이 계약에 포함되려면 dependency metadata 정렬과 native runtime 검증이 먼저 필요합니다.
 
 ## 18.2 Installation and Setup
 

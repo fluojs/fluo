@@ -62,6 +62,7 @@ describe('@fluojs/react root package scaffold', () => {
     expect(renderEntrypoint).toContain("import('react-dom/server')");
     expect(renderEntrypoint).not.toContain("from 'react-dom/server'");
     expect(rootEntrypoint).not.toContain('./vite.js');
+    expect(rootEntrypoint).not.toContain('./client.js');
     expect(rootEntrypoint).not.toContain('./rsc.js');
   });
 });

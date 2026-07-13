@@ -15,7 +15,7 @@ These examples intentionally stay on the HTTP side of the published `fluo new` v
 - `./react-stable-ssr/` — stable `@fluojs/react` SSR MVP example with HTTP-owned routes, DTO-bound
   params/search, lifecycle middleware, and explicit hydration assets
 - `./react-vite-ssr/` — Vite-backed React SSR example with manifest-fed assets, streamed Suspense,
-  and a hydrated client interaction
+  hydration, and HTTP-first client navigation
 
 ## recommended reading order
 
@@ -40,9 +40,10 @@ If you are new to the repo, follow this order:
   facades over `@fluojs/http`, URL matching and route grammar stay HTTP-owned, DTO validation and
   the request lifecycle are preserved, hydration assets are explicit, and RSC/server functions stay
   outside the stable root
-- `react-vite-ssr` proves the `0.2.0` example phase: the same HTTP-owned route and DTO contracts feed
-  streamed Suspense HTML, an already-loaded Vite manifest supplies hydration assets, and a browser
-  interaction hydrates without claiming SPA navigation or file-based routing
+- `react-vite-ssr` proves the Vite hydration and `@fluojs/react/client` phases: the same HTTP-owned
+  route and DTO contracts feed streamed Suspense HTML, an already-loaded Vite manifest supplies
+  hydration assets, and full-document client navigation keeps server DTO validation authoritative
+  without claiming SPA document swapping or file-based routing
 
 The examples also anchor the canonical fluo TDD ladder from `../docs/contracts/testing-guide.md`: write fast unit tests near `src/**`, add slice/module tests with `createTestingModule({ rootModule })` when DI wiring or provider overrides matter, and use `createTestApp({ rootModule })` with `app.request(...).send()` for app-level e2e-style request-pipeline checks. Existing files such as `minimal/src/app.test.ts`, `auth-jwt-passport/src/app.test.ts`, and `ops-metrics-terminus/src/app.test.ts` show the app-level end of that ladder.
 
