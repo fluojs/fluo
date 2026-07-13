@@ -112,17 +112,20 @@ Streaming is where gRPC clearly differs from the other transports in this part. 
 - `@ClientStreamPattern`
 - `@BidiStreamPattern`
 
-The fluo repository tests cover all three modes and verify correct handling of stream error propagation, cancellation, and backpressure.
+Regression coverage proves server-streaming `end()` completion, `ServerStreamWriter.error()` propagation, and server-stream outbound cancellation. Separate tests cover `AbortSignal` listener cleanup in server-, client-, and bidirectional streaming calls. `ServerStreamWriter.write()` returns `void`; `GrpcMicroserviceTransport` discards the underlying gRPC `write()` boolean and does not expose a backpressure or drain contract. Treat `write()` as a write attempt, not as delivery or flow-control acknowledgement.
 
 ### 8.4.1 Server-streaming order tracking
 
 Server streaming fits when one request needs to open a stream of updates. In FluoShop, the customer support team can subscribe to realtime order checkpoints after an escalation begins.
 
 ```typescript
+import { ServerStreamPattern } from '@fluojs/microservices';
+import type { ServerStreamWriter } from '@fluojs/microservices';
+
 @ServerStreamPattern('TrackingService.StreamOrder')
 async streamOrder(
   input: { orderId: string },
-  writer: ServerStreamWriter<{ stage: string; occurredAt: string }>,
+  writer: ServerStreamWriter,
 ) {
   // GrpcMicroserviceTransport wraps the gRPC writable stream with ServerStreamWriter.
   for await (const checkpoint of this.trackingService.stream(input.orderId)) {
@@ -133,7 +136,7 @@ async streamOrder(
 }
 ```
 
-This model is more natural and lower latency than repeated HTTP polling or imitating a stream on top of a queue.
+`ServerStreamWriter` is intentionally non-generic, so protobuf or application response types remain responsible for payload typing. This model is more natural and lower latency than repeated HTTP polling or imitating a stream on top of a queue.
 
 ### 8.4.2 Client-streaming warehouse batch scans
 

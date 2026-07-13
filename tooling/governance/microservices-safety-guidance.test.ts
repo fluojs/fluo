@@ -20,6 +20,68 @@ describe('Microservices safety guidance governance', () => {
     expect(() => enforceMicroservicesSafetyRuntimeEvidence()).not.toThrow();
   });
 
+  it('keeps the gRPC streaming writer example aligned with the non-generic public contract', () => {
+    // Given
+    const writerContract = readFileSync(
+      resolve(repoRoot, 'packages/microservices/src/types.ts'),
+      'utf8',
+    );
+    const chapters = [
+      readFileSync(resolve(repoRoot, 'book/intermediate/ch08-grpc.md'), 'utf8'),
+      readFileSync(resolve(repoRoot, 'book/intermediate/ch08-grpc.ko.md'), 'utf8'),
+    ];
+
+    // When / Then
+    expect(writerContract).toContain('export interface ServerStreamWriter');
+    expect(writerContract).toContain('write(data: unknown): void;');
+
+    for (const chapter of chapters) {
+      expect(chapter).toContain('writer: ServerStreamWriter,');
+      expect(chapter).not.toContain('ServerStreamWriter<');
+    }
+  });
+
+  it('limits gRPC streaming guidance to source-backed server-stream outcomes and per-mode cleanup', () => {
+    // Given
+    const englishChapter = readFileSync(resolve(repoRoot, 'book/intermediate/ch08-grpc.md'), 'utf8');
+    const koreanChapter = readFileSync(resolve(repoRoot, 'book/intermediate/ch08-grpc.ko.md'), 'utf8');
+    const transportSource = readFileSync(
+      resolve(repoRoot, 'packages/microservices/src/transports/grpc-transport.ts'),
+      'utf8',
+    );
+    const transportTests = readFileSync(
+      resolve(repoRoot, 'packages/microservices/src/transports/grpc-transport.test.ts'),
+      'utf8',
+    );
+
+    // When / Then
+    expect(transportSource).toContain('write(data: unknown): void {');
+    expect(transportSource).toContain('call.write(data);');
+    expect(transportTests).toContain('server-streaming handler end signals completion to async iterator');
+    expect(transportTests).toContain('server-stream writer.error() surfaces as an error on the client iterator');
+    expect(transportTests).toContain('serverStream() supports abort via AbortSignal');
+    expect(englishChapter).toContain(
+      'Regression coverage proves server-streaming `end()` completion, `ServerStreamWriter.error()` propagation, and server-stream outbound cancellation.',
+    );
+    expect(englishChapter).toContain(
+      'Separate tests cover `AbortSignal` listener cleanup in server-, client-, and bidirectional streaming calls.',
+    );
+    expect(koreanChapter).toContain(
+      '회귀 테스트는 서버 스트리밍의 `end()` 완료, `ServerStreamWriter.error()` 전파, 서버 스트림 outbound 취소를 검증합니다.',
+    );
+    expect(koreanChapter).toContain(
+      '별도 테스트는 서버, 클라이언트, 양방향 스트리밍 호출의 `AbortSignal` listener cleanup을 검증합니다.',
+    );
+    expect(englishChapter).not.toContain(
+      'Regression coverage proves `end()` completion, `error()` propagation, outbound cancellation, and `AbortSignal` listener cleanup across the three streaming modes.',
+    );
+    expect(koreanChapter).not.toContain(
+      '회귀 테스트는 세 스트리밍 모드에서 `end()` 완료, `error()` 전파, outbound 취소, `AbortSignal` listener cleanup을 검증합니다.',
+    );
+    expect(englishChapter).toContain('does not expose a backpressure or drain contract');
+    expect(koreanChapter).toContain('backpressure 또는 drain 계약을 노출하지 않습니다');
+  });
+
   it('requires close-start race plus pre-reader and one-shot gRPC cleanup evidence', () => {
     const governanceSource = readFileSync(
       resolve(repoRoot, 'tooling/governance/microservices-safety-guidance.mjs'),
