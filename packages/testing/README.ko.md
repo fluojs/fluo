@@ -132,7 +132,7 @@ const repo = createMock<UserRepository>({ findById: vi.fn() });
 const mailer = createDeepMock(MailService);
 ```
 
-`asMock(value)`는 기존 값을 mock-friendly 타입으로 좁히고, `mockToken(token, value)`는 token 기반 dependency를 위한 provider override tuple을 만듭니다. `createMock(..., { strict: true })`는 지정하지 않은 member 접근을 거부합니다. `DeepMocked<T>`는 root `@fluojs/testing` 패키지, `@fluojs/testing/types`, `@fluojs/testing/mock`에서 모두 노출됩니다. 세 경로는 Vitest peer declaration을 non-mock runtime helper로 끌어들이지 않으면서 같은 Vitest-compatible mock type boundary를 공유합니다. Vitest를 사용하지 않는 소비자는 `@fluojs/testing/app`, `@fluojs/testing/module`, 또는 harness subpath에서 non-mock helper만 import하세요.
+`asMock(value)`는 기존 값을 mock-friendly 타입으로 좁히고, `mockToken(token, value)`는 token 기반 override를 위해 `{ provide: token, useValue: value }` 형태의 `ValueProvider` descriptor를 만듭니다. `createMock(..., { strict: true })`는 지정하지 않은 member 접근을 거부합니다. `DeepMocked<T>`는 root `@fluojs/testing` 패키지, `@fluojs/testing/types`, `@fluojs/testing/mock`에서 모두 노출됩니다. 세 경로는 Vitest peer declaration을 non-mock runtime helper로 끌어들이지 않으면서 같은 Vitest-compatible mock type boundary를 공유합니다. Vitest를 사용하지 않는 소비자는 `@fluojs/testing/app`, `@fluojs/testing/module`, 또는 harness subpath에서 non-mock helper만 import하세요.
 
 배포된 런타임 import가 안정적으로 해석되도록, mock 헬퍼를 사용할 워크스페이스에는 `vitest`를 함께 설치해야 합니다.
 
