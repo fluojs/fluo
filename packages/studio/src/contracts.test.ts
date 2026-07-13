@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { PlatformShellSnapshot } from '@fluojs/runtime';
+import type { Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapStudioApp } from './app/bootstrap.js';
 import { applyFilters, isStudioLiveEvent, parseStudioLiveEvent, parseStudioPayload, renderMermaid } from './contracts.js';
@@ -16,8 +17,11 @@ import { inspectComponentConnections, renderDiagnosticDocsUrl, renderDiagnostics
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageCommandTimeoutMs = 120_000;
 const packageCommandKillSignal: NodeJS.Signals = 'SIGTERM';
+let viewerRoot: Root | undefined;
 
 afterEach(() => {
+  viewerRoot?.unmount();
+  viewerRoot = undefined;
   delete (window as typeof window & { __FLUO_STUDIO__?: unknown }).__FLUO_STUDIO__;
   vi.unstubAllGlobals();
 });
@@ -125,11 +129,12 @@ const snapshotFixture: PlatformShellSnapshot = {
   },
 };
 
-async function loadStudioViewer(): Promise<void> {
+function loadStudioViewer(): Root {
   vi.resetModules();
   document.body.innerHTML = '<div id="app"></div>';
 
-  await import('./main.js');
+  viewerRoot = bootstrapStudioApp();
+  return viewerRoot;
 }
 
 function loadViewerFile(content: string, filename: string): void {
@@ -748,7 +753,7 @@ describe('parseStudioPayload', () => {
   });
 
   it('keeps viewer filter controls focused across search, readiness, and severity rerenders', async () => {
-    await loadStudioViewer();
+    loadStudioViewer();
     loadViewerFile(JSON.stringify(snapshotFixture), 'snapshot.json');
 
     await vi.waitFor(() => {
@@ -757,10 +762,13 @@ describe('parseStudioPayload', () => {
 
     const searchInput = document.querySelector<HTMLInputElement>('#search');
     expect(searchInput).not.toBeNull();
-    searchInput!.value = 'redis.default';
-    searchInput?.focus();
-    searchInput?.setSelectionRange(2, 7);
-    searchInput?.dispatchEvent(new Event('input', { bubbles: true }));
+    if (!searchInput) {
+      throw new Error('Expected the Studio search input to be rendered.');
+    }
+    searchInput.value = 'redis.default';
+    searchInput.focus();
+    searchInput.setSelectionRange(2, 7);
+    searchInput.dispatchEvent(new Event('input', { bubbles: true }));
 
     const restoredSearchInput = document.querySelector<HTMLInputElement>('#search');
     expect(document.activeElement).toBe(restoredSearchInput);
@@ -770,9 +778,12 @@ describe('parseStudioPayload', () => {
 
     const readinessInput = document.querySelector<HTMLInputElement>('#readiness-ready');
     expect(readinessInput).not.toBeNull();
-    readinessInput?.focus();
-    readinessInput!.checked = true;
-    readinessInput?.dispatchEvent(new Event('change', { bubbles: true }));
+    if (!readinessInput) {
+      throw new Error('Expected the Studio readiness filter to be rendered.');
+    }
+    readinessInput.focus();
+    readinessInput.checked = true;
+    readinessInput.dispatchEvent(new Event('change', { bubbles: true }));
 
     const restoredReadinessInput = document.querySelector<HTMLInputElement>('#readiness-ready');
     expect(document.activeElement).toBe(restoredReadinessInput);
@@ -780,9 +791,12 @@ describe('parseStudioPayload', () => {
 
     const severityInput = document.querySelector<HTMLInputElement>('#severity-warning');
     expect(severityInput).not.toBeNull();
-    severityInput?.focus();
-    severityInput!.checked = true;
-    severityInput?.dispatchEvent(new Event('change', { bubbles: true }));
+    if (!severityInput) {
+      throw new Error('Expected the Studio severity filter to be rendered.');
+    }
+    severityInput.focus();
+    severityInput.checked = true;
+    severityInput.dispatchEvent(new Event('change', { bubbles: true }));
 
     const restoredSeverityInput = document.querySelector<HTMLInputElement>('#severity-warning');
     expect(document.activeElement).toBe(restoredSeverityInput);
@@ -790,7 +804,7 @@ describe('parseStudioPayload', () => {
   });
 
   it('loads a dropped Studio JSON file into graph, summary, and diagnostics views', async () => {
-    await loadStudioViewer();
+    loadStudioViewer();
 
     const dropZone = document.querySelector<HTMLElement>('#drop-zone');
     expect(dropZone).not.toBeNull();
@@ -816,7 +830,7 @@ describe('parseStudioPayload', () => {
   });
 
   it('supports keyboard graph node selection without mouse interaction', async () => {
-    await loadStudioViewer();
+    loadStudioViewer();
     loadViewerFile(JSON.stringify(snapshotFixture), 'snapshot.json');
 
     await vi.waitFor(() => {
@@ -837,7 +851,7 @@ describe('parseStudioPayload', () => {
   });
 
   it('loads snapshot-plus-timing artifacts into static graph and timing views', async () => {
-    await loadStudioViewer();
+    loadStudioViewer();
     loadViewerFile(
       JSON.stringify({
         snapshot: snapshotFixture,
@@ -860,7 +874,7 @@ describe('parseStudioPayload', () => {
   });
 
   it('loads report artifacts into static graph, summary, diagnostics, and timing views', async () => {
-    await loadStudioViewer();
+    loadStudioViewer();
     loadViewerFile(
       JSON.stringify({
         generatedAt: snapshotFixture.generatedAt,
@@ -895,7 +909,7 @@ describe('parseStudioPayload', () => {
   });
 
   it('loads standalone timing diagnostics without requiring a static graph', async () => {
-    await loadStudioViewer();
+    loadStudioViewer();
     loadViewerFile(
       JSON.stringify({
         phases: [{ durationMs: 1.23, name: 'bootstrap_module' }],
@@ -993,7 +1007,22 @@ describe('applyFilters', () => {
 
     expect(filtered.components.map((component: { id: string }) => component.id)).toEqual(['redis.default', 'queue.default']);
     expect(filtered.diagnostics.map((issue: { code: string }) => issue.code)).toEqual(['QUEUE_DEPENDENCY_NOT_READY']);
-    expect(snapshotFixture.components).toHaveLength(2);
+  });
+
+  it('preserves deep input state and returns distinct snapshot collections', () => {
+    const source = structuredClone(snapshotFixture);
+    const original = structuredClone(source);
+
+    const filtered = applyFilters(source, {
+      query: 'redis.default',
+      readinessStatuses: [],
+      severities: [],
+    });
+
+    expect(source).toEqual(original);
+    expect(filtered).not.toBe(source);
+    expect(filtered.components).not.toBe(source.components);
+    expect(filtered.diagnostics).not.toBe(source.diagnostics);
   });
 
   it('applies query filters across diagnostic metadata and blockers', () => {
