@@ -93,10 +93,26 @@ function builtinScalarByGraphqlName(deps: YogaGraphqlDeps, scalarName: string): 
   }
 }
 
-function normalizeFieldOutputType(deps: YogaGraphqlDeps, type: GraphQLOutputType): GraphQLOutputType {
+function normalizeFieldOutputType(
+  deps: YogaGraphqlDeps,
+  outputTypeCache: Map<string, GraphQLOutputType>,
+  type: GraphQLOutputType,
+  transformObjectFields: ObjectFieldTransformer,
+): GraphQLOutputType {
   const maybeScalarName = (type as { name?: unknown }).name;
   if (typeof maybeScalarName === 'string') {
-    return builtinScalarByGraphqlName(deps, maybeScalarName) ?? type;
+    const builtinScalar = builtinScalarByGraphqlName(deps, maybeScalarName);
+    if (builtinScalar) {
+      return builtinScalar;
+    }
+  }
+
+  if (isUnionOutputType(type)) {
+    return normalizeUnionOutputType(deps, outputTypeCache, type, transformObjectFields);
+  }
+
+  if (isObjectOutputType(type)) {
+    return normalizeObjectOutputType(deps, outputTypeCache, type, transformObjectFields);
   }
 
   return type;
@@ -115,25 +131,28 @@ function normalizeObjectOutputType(
   }
 
   const config = outputType.toConfig();
-  const clonedFields = Object.fromEntries(
-    Object.entries(config.fields).map(([fieldName, fieldConfig]) => {
-      const field = fieldConfig as GraphQLFieldConfig<unknown, GraphQLContext>;
-
-      return [
-        fieldName,
-        {
-          ...field,
-          type: normalizeFieldOutputType(deps, field.type),
-        },
-      ];
-    }),
-  ) as GraphQLFieldConfigMap<unknown, GraphQLContext>;
-
   const normalized = new deps.GraphQLObjectType({
     ...config,
-    fields: transformObjectFields(outputTypeName, clonedFields),
+    fields: () => {
+      const clonedFields = Object.fromEntries(
+        Object.entries(config.fields).map(([fieldName, fieldConfig]) => {
+          const field = fieldConfig as GraphQLFieldConfig<unknown, GraphQLContext>;
+
+          return [
+            fieldName,
+            {
+              ...field,
+              type: normalizeFieldOutputType(deps, outputTypeCache, field.type, transformObjectFields),
+            },
+          ];
+        }),
+      ) as GraphQLFieldConfigMap<unknown, GraphQLContext>;
+
+      return transformObjectFields(outputTypeName, clonedFields);
+    },
   });
   outputTypeCache.set(outputTypeName, normalized);
+  normalized.getFields();
 
   return normalized;
 }
@@ -187,8 +206,12 @@ function normalizeUnionOutputType(
   return normalized;
 }
 
-function isUnionOutputType(value: GraphqlRootOutputNamedType): value is GraphQLUnionTypeType {
+function isUnionOutputType(value: GraphqlRootOutputNamedType | GraphQLOutputType): value is GraphQLUnionTypeType {
   return typeof value === 'object' && typeof (value as { getTypes?: unknown }).getTypes === 'function';
+}
+
+function isObjectOutputType(value: GraphQLOutputType): value is GraphQLObjectTypeType {
+  return value[Symbol.toStringTag] === 'GraphQLObjectType';
 }
 
 function resolveArgGraphqlType(deps: YogaGraphqlDeps, argType: GraphqlArgType): GraphQLInputType {
