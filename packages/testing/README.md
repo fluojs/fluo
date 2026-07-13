@@ -130,7 +130,7 @@ const repo = createMock<UserRepository>({ findById: vi.fn() });
 const mailer = createDeepMock(MailService);
 ```
 
-`asMock(value)` narrows an existing value to a mock-friendly type, and `mockToken(token, value)` creates a provider override tuple for token-based dependencies. `createMock(..., { strict: true })` rejects access to unspecified members. `DeepMocked<T>` is exposed from the root `@fluojs/testing` package, `@fluojs/testing/types`, and `@fluojs/testing/mock`; all three paths intentionally share the same Vitest-compatible mock type boundary without importing Vitest peer declarations through non-mock runtime helpers. Consumers that do not use Vitest should import only non-mock helpers from `@fluojs/testing/app`, `@fluojs/testing/module`, or the harness subpaths.
+`asMock(value)` narrows an existing value to a mock-friendly type, and `mockToken(token, value)` creates a `ValueProvider` descriptor shaped as `{ provide: token, useValue: value }` for token-based overrides. `createMock(..., { strict: true })` rejects access to unspecified members. `DeepMocked<T>` is exposed from the root `@fluojs/testing` package, `@fluojs/testing/types`, and `@fluojs/testing/mock`; all three paths intentionally share the same Vitest-compatible mock type boundary without importing Vitest peer declarations through non-mock runtime helpers. Consumers that do not use Vitest should import only non-mock helpers from `@fluojs/testing/app`, `@fluojs/testing/module`, or the harness subpaths.
 
 Install `vitest` in the consuming workspace before using the mock helpers so the published runtime import resolves consistently.
 
