@@ -93,19 +93,13 @@ export class KafkaMicroserviceTransport implements MicroserviceTransport {
       const subscribed: string[] = [];
 
       try {
-        await this.options.consumer.subscribe(this.eventTopic, (message) => {
-          void this.handleInboundEvent(message).catch(() => undefined);
-        });
+        await this.options.consumer.subscribe(this.eventTopic, (message) => this.handleInboundEvent(message));
         subscribed.push(this.eventTopic);
 
-        await this.options.consumer.subscribe(this.messageTopic, (message) => {
-          void this.handleInboundRequest(message).catch(() => undefined);
-        });
+        await this.options.consumer.subscribe(this.messageTopic, (message) => this.handleInboundRequest(message));
         subscribed.push(this.messageTopic);
 
-        await this.options.consumer.subscribe(this.responseTopic, (message) => {
-          void this.handleInboundResponse(message).catch(() => undefined);
-        });
+        await this.options.consumer.subscribe(this.responseTopic, (message) => this.handleInboundResponse(message));
         subscribed.push(this.responseTopic);
       } catch (error) {
         for (const topic of subscribed) {
@@ -323,20 +317,15 @@ export class KafkaMicroserviceTransport implements MicroserviceTransport {
       ? message.replyTopic
       : this.responseTopic;
 
+    let payload: unknown;
+
     try {
-      const payload = await this.handler({
+      payload = await this.handler({
         kind: 'message',
         pattern: message.pattern,
         payload: message.payload,
         requestId: message.requestId,
       });
-
-      await this.options.producer.publish(replyTopic, JSON.stringify({
-        kind: 'response',
-        pattern: message.pattern,
-        payload,
-        requestId: message.requestId,
-      } satisfies KafkaTransportMessage));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unhandled microservice error';
       await this.options.producer.publish(replyTopic, JSON.stringify({
@@ -345,7 +334,15 @@ export class KafkaMicroserviceTransport implements MicroserviceTransport {
         pattern: message.pattern,
         requestId: message.requestId,
       } satisfies KafkaTransportMessage));
+      return;
     }
+
+    await this.options.producer.publish(replyTopic, JSON.stringify({
+      kind: 'response',
+      pattern: message.pattern,
+      payload,
+      requestId: message.requestId,
+    } satisfies KafkaTransportMessage));
   }
 
   private async handleInboundResponse(rawMessage: string): Promise<void> {
