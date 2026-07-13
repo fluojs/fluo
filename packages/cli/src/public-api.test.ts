@@ -27,6 +27,11 @@ const inspectFixtureModulePath = join(
   'fixtures',
   'inspect-app.module.mjs',
 );
+const inspectBootstrapFailureFixtureModulePath = join(
+  dirname(fileURLToPath(import.meta.url)),
+  'fixtures',
+  'inspect-bootstrap-failure.module.mjs',
+);
 
 function expectNoEagerCommandLink(source: string, commandName: 'generate' | 'inspect' | 'new'): void {
   const eagerCommandLink = new RegExp(
@@ -164,5 +169,35 @@ describe('public CLI package API', () => {
     expect(payload.diagnostics).toEqual([]);
     expect(payload.readiness.status).toBe('ready');
     expect(payload.health.status).toBe('healthy');
+  });
+
+  it('closes the inspect context exactly once when bootstrap fails through the public facade', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-public-api-'));
+    tempDirectories.push(workspaceDirectory);
+    const lifecycleLogPath = join(workspaceDirectory, 'close.log');
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+    const previousLifecycleLogPath = process.env.FLUO_INSPECT_LIFECYCLE_LOG;
+    process.env.FLUO_INSPECT_LIFECYCLE_LOG = lifecycleLogPath;
+    let exitCode: number;
+
+    try {
+      exitCode = await runInspectCommand([inspectBootstrapFailureFixtureModulePath, '--json'], {
+        cwd: process.cwd(),
+        stderr: { write: (message) => stderrBuffer.push(message) },
+        stdout: { write: (message) => stdoutBuffer.push(message) },
+      });
+    } finally {
+      if (previousLifecycleLogPath === undefined) {
+        delete process.env.FLUO_INSPECT_LIFECYCLE_LOG;
+      } else {
+        process.env.FLUO_INSPECT_LIFECYCLE_LOG = previousLifecycleLogPath;
+      }
+    }
+
+    expect(exitCode).toBe(1);
+    expect(stdoutBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).toContain('inspect bootstrap fixture failed');
+    expect(readFileSync(lifecycleLogPath, 'utf8')).toBe('close\n');
   });
 });

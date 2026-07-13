@@ -2,8 +2,6 @@ import { appendFileSync } from 'node:fs';
 
 import { defineModule } from '@fluojs/runtime';
 
-class SharedService {}
-
 class InspectLifecycleRecorder {
   onModuleDestroy() {
     const lifecycleLogPath = process.env.FLUO_INSPECT_LIFECYCLE_LOG;
@@ -13,20 +11,16 @@ class InspectLifecycleRecorder {
   }
 }
 
-/**
- * Represents the shared module.
- */
-export class SharedModule {}
-defineModule(SharedModule, {
-  exports: [SharedService],
-  providers: [SharedService],
-});
+class FailingBootstrapService {
+  onApplicationBootstrap() {
+    throw new Error('inspect bootstrap fixture failed');
+  }
+}
 
 /**
- * Represents the app module.
+ * Represents an inspect fixture that fails after lifecycle resources are resolved.
  */
 export class AppModule {}
 defineModule(AppModule, {
-  imports: [SharedModule],
-  providers: [InspectLifecycleRecorder],
+  providers: [InspectLifecycleRecorder, FailingBootstrapService],
 });

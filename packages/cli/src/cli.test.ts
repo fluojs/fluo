@@ -1459,6 +1459,64 @@ void bootstrap();
     expect(appTestFile).toContain('InMemoryLoopbackTransport');
   });
 
+  it('refuses to scaffold into a non-empty target without --force', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const targetDirectory = join(workspaceDirectory, 'existing-app');
+    const existingFile = join(targetDirectory, 'keep.txt');
+    const stderrBuffer: string[] = [];
+    mkdirSync(targetDirectory, { recursive: true });
+    writeFileSync(existingFile, 'keep me\n');
+
+    const exitCode = await runCli([
+      'new',
+      'starter-app',
+      '--target-directory',
+      targetDirectory,
+      '--no-install',
+      '--no-git',
+    ], {
+      cwd: workspaceDirectory,
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain(`Target directory "${targetDirectory}" is not empty.`);
+    expect(stderrBuffer.join('')).toContain('use --force to overwrite');
+    expect(readFileSync(existingFile, 'utf8')).toBe('keep me\n');
+    expect(existsSync(join(targetDirectory, 'package.json'))).toBe(false);
+  });
+
+  it('overwrites generated scaffold files in a non-empty target with --force', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const targetDirectory = join(workspaceDirectory, 'existing-app');
+    const existingFile = join(targetDirectory, 'keep.txt');
+    mkdirSync(targetDirectory, { recursive: true });
+    writeFileSync(existingFile, 'keep me\n');
+    writeFileSync(join(targetDirectory, 'package.json'), '{"name":"stale-app"}\n');
+
+    const exitCode = await runCli([
+      'new',
+      'starter-app',
+      '--target-directory',
+      targetDirectory,
+      '--force',
+      '--no-install',
+      '--no-git',
+    ], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(readFileSync(join(targetDirectory, 'package.json'), 'utf8')).toContain('"name": "starter-app"');
+    expect(readFileSync(join(targetDirectory, 'package.json'), 'utf8')).not.toContain('stale-app');
+    expect(readFileSync(existingFile, 'utf8')).toBe('keep me\n');
+  });
+
   it('prints an application scaffold plan without writing files, installing dependencies, or initializing git', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
@@ -1501,6 +1559,36 @@ void bootstrap();
     expect(output).not.toContain('Skipping dependency installation.');
     expect(output).not.toContain('Done.');
     expect(existsSync(join(workspaceDirectory, 'starter-app'))).toBe(false);
+  });
+
+  it('keeps --print-plan side-effect free for a non-empty target even with --force', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const targetDirectory = join(workspaceDirectory, 'existing-app');
+    const packageJsonPath = join(targetDirectory, 'package.json');
+    const stdoutBuffer: string[] = [];
+    mkdirSync(targetDirectory, { recursive: true });
+    writeFileSync(packageJsonPath, '{"name":"existing-app"}\n');
+
+    const exitCode = await runCli([
+      'new',
+      'starter-app',
+      '--target-directory',
+      targetDirectory,
+      '--force',
+      '--print-plan',
+      '--no-install',
+      '--no-git',
+    ], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('Side effects: none.');
+    expect(readFileSync(packageJsonPath, 'utf8')).toBe('{"name":"existing-app"}\n');
+    expect(existsSync(join(targetDirectory, 'src'))).toBe(false);
   });
 
   it('prints a microservice scaffold plan with resolved defaults and no scaffold side effects', async () => {
@@ -2460,6 +2548,9 @@ void bootstrap();
     const injectedEpochs: Array<string | undefined> = [];
     const lifecycleEpochs: Array<string | undefined> = [];
     const watchListeners: Array<(event: string, filename: string | Buffer | null) => void> = [];
+    const restartScheduler = createManualRestartScheduler();
+    let watcherCloseCalls = 0;
+    let runPromise: Promise<number> | undefined;
 
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async (_input, init) => {
@@ -2473,8 +2564,7 @@ void bootstrap();
     };
 
     try {
-      const runPromise = runNodeRestartRunner({
-        debounceMs: 1,
+      runPromise = runNodeRestartRunner({
         env: {
           FLUO_STUDIO: '1',
           FLUO_STUDIO_APP_ID: 'test-app',
@@ -2484,6 +2574,7 @@ void bootstrap();
           FLUO_STUDIO_URL: 'http://127.0.0.1:49152',
         },
         projectDirectory: workspaceDirectory,
+        restartScheduler,
         signalTarget: signalTarget.target,
         spawnChild: (_command, args) => {
           const injectedSource = decodeURIComponent(String(args[2]).replace('data:text/javascript,', ''));
@@ -2495,7 +2586,9 @@ void bootstrap();
         },
         watchTarget: (_target, optionsOrListener, listener) => {
           watchListeners.push(typeof optionsOrListener === 'function' ? optionsOrListener : listener ?? (() => undefined));
-          return { close: () => undefined } as never;
+          return { close: () => {
+            watcherCloseCalls += 1;
+          } } as never;
         },
       });
 
@@ -2506,9 +2599,10 @@ void bootstrap();
         listener('change', 'main.ts');
       }
 
-      await waitForCondition(() => children[0]?.killed === true);
-      children[0]?.emit('close', 0);
-      await waitForCondition(() => children.length === 2);
+      restartScheduler.flush();
+      expect(children[0]?.killed).toBe(true);
+      await flushMicrotasks();
+      expect(children).toHaveLength(2);
 
       expect(injectedEpochs[1]).toBeDefined();
       expect(injectedEpochs[1]).not.toBe('epoch-1');
@@ -2516,8 +2610,17 @@ void bootstrap();
 
       children[1]?.emit('close', 0);
       await expect(runPromise).resolves.toBe(0);
+      expect(watcherCloseCalls).toBeGreaterThan(0);
     } finally {
       globalThis.fetch = originalFetch;
+      const childBeforeCleanup = children.at(-1);
+      childBeforeCleanup?.emit('close', 0);
+      await flushMicrotasks();
+      const childAfterCleanup = children.at(-1);
+      if (childAfterCleanup !== childBeforeCleanup) {
+        childAfterCleanup?.emit('close', 0);
+      }
+      await runPromise;
     }
   });
 
@@ -3848,14 +3951,29 @@ exit 7
     expect(stdoutBuffer.join('')).toContain('Docs: https://github.com/fluojs/fluo/tree/main/docs/getting-started/quick-start.md');
   });
 
-  it('emits platform snapshot JSON for inspect by default', async () => {
+  it('emits platform snapshot JSON and closes the inspect context exactly once on success', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-inspect-lifecycle-'));
+    createdDirectories.push(workspaceDirectory);
+    const lifecycleLogPath = join(workspaceDirectory, 'close.log');
     const stdoutBuffer: string[] = [];
     const stderrBuffer: string[] = [];
-    const exitCode = await runCli(['inspect', inspectFixtureModulePath], {
-      cwd: process.cwd(),
-      stderr: { write: (message) => stderrBuffer.push(message) },
-      stdout: { write: (message) => stdoutBuffer.push(message) },
-    });
+    const previousLifecycleLogPath = process.env.FLUO_INSPECT_LIFECYCLE_LOG;
+    process.env.FLUO_INSPECT_LIFECYCLE_LOG = lifecycleLogPath;
+    let exitCode: number;
+
+    try {
+      exitCode = await runCli(['inspect', inspectFixtureModulePath], {
+        cwd: process.cwd(),
+        stderr: { write: (message) => stderrBuffer.push(message) },
+        stdout: { write: (message) => stdoutBuffer.push(message) },
+      });
+    } finally {
+      if (previousLifecycleLogPath === undefined) {
+        delete process.env.FLUO_INSPECT_LIFECYCLE_LOG;
+      } else {
+        process.env.FLUO_INSPECT_LIFECYCLE_LOG = previousLifecycleLogPath;
+      }
+    }
 
     const payload = JSON.parse(stdoutBuffer.join('')) as {
       components: unknown[];
@@ -3876,6 +3994,7 @@ exit 7
     expect(payload.diagnostics).toEqual([]);
     expect(payload.readiness.status).toBe('ready');
     expect(payload.health.status).toBe('healthy');
+    expect(readFileSync(lifecycleLogPath, 'utf8')).toBe('close\n');
   });
 
   it('loads TypeScript source modules for inspect without narrowing native JavaScript module support', async () => {
