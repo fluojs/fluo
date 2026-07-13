@@ -9,10 +9,7 @@ import {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
 } from './microservices-safety-guidance.mjs';
-import {
-  enforceReactRscGraduationEvidenceUpdates,
-  enforceReactRscGraduationPolicy,
-} from './react-rsc-graduation-policy.mjs';
+import { enforceReactRscGraduationGovernance } from './react-rsc-graduation-policy.mjs';
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 export {
@@ -21,6 +18,7 @@ export {
 } from './microservices-safety-guidance.mjs';
 export {
   enforceReactRscGraduationEvidenceUpdates,
+  enforceReactRscGraduationGovernance,
   enforceReactRscGraduationPolicy,
 } from './react-rsc-graduation-policy.mjs';
 
@@ -2045,8 +2043,7 @@ export function main() {
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices();
   enforceViteToolingDiscoverability();
   enforceReactClientSubpathContract();
-  enforceReactRscGraduationEvidenceUpdates(changedFiles);
-  enforceReactRscGraduationPolicy();
+  enforceReactRscGraduationGovernance(changedFiles);
   enforceReactServerFunctionContract();
   enforceHttpCatchAllRouteGrammarDecision();
   enforceGraphqlRuntimeBoundaryDiscoverability();

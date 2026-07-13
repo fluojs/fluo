@@ -16,6 +16,13 @@ existing imports keep identical runtime and type behavior.
 The stable subpath may be added only in an explicit graduation PR that links evidence for every
 check below. Writing this policy does not satisfy those checks and does not approve package `1.0`.
 
+The authoritative graduation decision lives in the repository-owned
+`tooling/governance/react-rsc-graduation-approval.json` record. While graduation is blocked its
+`approval` field is `null`. Approval requires `status: "approved"`, issue `2502`, a trusted maintainer
+identity, and a nonzero 40-character evidence commit SHA. The status in both policy mirrors must
+match that record. Policy prose and GitHub-looking URLs are context only and cannot establish
+approval; the gate remains deterministic and performs no network lookup in CI.
+
 ## Current Evidence Status
 
 | Gate | Current evidence | Status |

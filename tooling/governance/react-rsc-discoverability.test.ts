@@ -22,6 +22,10 @@ function readWithOverride(relativePath: string, source: string) {
   return (requestedPath: string): string => (requestedPath === relativePath ? source : read(requestedPath));
 }
 
+function readWithOverrides(overrides: Readonly<Record<string, string>>) {
+  return (relativePath: string): string => overrides[relativePath] ?? read(relativePath);
+}
+
 const governedPolicyLinks = [
   ['packages/react/README.md', '../../docs/contracts/react-rsc-graduation.md'],
   ['packages/react/README.ko.md', '../../docs/contracts/react-rsc-graduation.ko.md'],
@@ -124,5 +128,30 @@ describe('experimental React RSC discoverability', () => {
       );
     },
   );
+
+  it('rejects a renamed RSC re-export from the stable root while graduation is blocked', () => {
+    // Given: the stable root aliases an experimental RSC symbol under a generic public name.
+    const readText = readWithOverrides({
+      'packages/react/src/index.ts':
+        "export { createReactFlightResponse as renderPayload } from './experimental/rsc.js';",
+    });
+
+    // When/Then: module-graph isolation catches the source module despite the public alias.
+    expect(() => graduationPolicy.enforceReactRscGraduationPolicy(readText)).toThrowError(
+      /stable root.*RSC implementation module/,
+    );
+  });
+
+  it('rejects a directly declared RSC symbol from the stable root', () => {
+    // Given: the stable root declares an RSC-named export without importing an RSC module.
+    const readText = readWithOverrides({
+      'packages/react/src/index.ts': 'export const ReactRscBridge = Object.freeze({});',
+    });
+
+    // When/Then: symbol isolation rejects declarations as well as module re-exports.
+    expect(() => graduationPolicy.enforceReactRscGraduationPolicy(readText)).toThrowError(
+      /stable root.*RSC symbol ReactRscBridge/,
+    );
+  });
 
 });
