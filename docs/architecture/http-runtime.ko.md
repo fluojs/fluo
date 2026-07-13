@@ -28,6 +28,7 @@
 | Path normalization | `normalizeRoutePath(...)`는 중복 슬래시와 trailing slash를 제거하므로, 동등한 경로 형식은 하나의 canonical path로 정규화된다. |
 | Supported segments | `parseRoutePath(...)`는 literal segment와 전체 segment를 차지하는 `:param` placeholder만 허용한다. |
 | Unsupported syntax | wildcard, regex-like token, inline modifier, `user-:id` 또는 `:id.json` 같은 mixed segment는 route validation에서 거부된다. |
+| Catch-all decision | Catch-all grammar 도입은 유예되어 있다. [HTTP catch-all route grammar 결정](./http-catch-all-route-grammar.ko.md)을 참고한다. Candidate syntax는 현재 활성화되지 않는다. |
 | Param naming | Route param 이름은 `/[a-zA-Z_][a-zA-Z0-9_]*/`를 만족해야 한다. |
 | Match shape | `matchRoutePath(...)`는 등록된 경로와 incoming 경로의 segment 개수가 같을 때만 매칭한다. |
 | Handler lookup | `HandlerMapping.match(request)`는 descriptor와 추출된 params를 담은 하나의 `HandlerMatch`를 반환하거나, 매칭이 없으면 `undefined`를 반환한다. |

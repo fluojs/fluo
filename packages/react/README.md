@@ -168,6 +168,10 @@ React page paths use the exact `@fluojs/http` route grammar: literal segments an
 mixed literal/parameter segments such as `user-:id`, and suffix params such as `:id.json` are not
 supported.
 
+The [HTTP catch-all route grammar decision](../../docs/architecture/http-catch-all-route-grammar.md)
+defers wildcard adoption. React does not add its own syntax: page handlers should keep explicit
+server routes, and any future catch-all must first become an approved `@fluojs/http` contract.
+
 ## Web Streams SSR
 
 Return `createReactServerEntry(...)` from a React page handler to stream HTML through the existing
@@ -400,6 +404,12 @@ The navigation contract is deliberately HTTP-first:
 
 This phase intentionally omits `prefetch`: without an owned client data or render cache, prefetching
 would promise behavior the package cannot yet revalidate or consume consistently.
+
+Client navigation does not require a catch-all route. `Link` remains a real anchor, so hydration
+gaps and disabled JavaScript fall back to ordinary full-document browser navigation. The server then
+matches an explicit `@Path(...)`/HTTP route or returns its normal not-found response. An intentional
+deployment-level document rewrite may be configured separately, but it does not create a React route
+grammar or change server DTO validation.
 
 ## Current Limitations
 
