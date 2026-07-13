@@ -28,8 +28,9 @@ page 지향 naming과 SSR rendering helper만 추가합니다.
 
 - `@fluojs/react/vite` — 이미 로드한 Vite build manifest를 deterministic hydration asset으로 파싱하는 현재
   subpath입니다. Filesystem에서 manifest를 발견하지 않습니다.
-- `@fluojs/react/client` — 향후 browser navigation 및 client hydration helper.
-- `@fluojs/react/experimental/rsc` — 향후 RSC 및 Server Functions 실험.
+- `@fluojs/react/client` — HTTP-first browser navigation 및 client hydration helper.
+- `@fluojs/react/experimental/rsc` — 불안정한 exact-version RSC manifest 및 HTTP Flight response
+  prototype입니다. 이 stable SSR 예제 밖에 남으며 Server Functions를 포함하지 않습니다.
 
 ## 레포 루트에서 실행하기
 
