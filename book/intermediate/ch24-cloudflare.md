@@ -84,6 +84,8 @@ Cloudflare Workers do not expose a long-running server socket, but `app.listen()
 
 During shutdown, the adapter stops accepting new ingress and returns the same JSON `503` shutdown response for both HTTP and WebSocket upgrade requests. Active HTTP handlers, in-flight WebSocket upgrade binding work, and SSE (`text/event-stream`) responses stay registered with `ctx.waitUntil()` while the close drain runs. For SSE, the drain follows the body lifecycle until the body finishes or the client cancels it, so cancellation is part of the shutdown contract rather than a generic stream detail. If active work never settles, `close()` times out after the bounded 10-second window, and a concurrent `listen()` call rejects instead of reopening the isolate while shutdown is still draining.
 
+A timed-out lazy-entrypoint close does not permanently poison the isolate. The entrypoint keeps returning shutdown responses while the underlying drain is unresolved, then clears that temporary gate after the drain settles so a later request can bootstrap a fresh application.
+
 ## 24.4 Handling Edge Constraints
 
 Cloudflare Workers have constraints that differ from traditional Node.js environments. fluo applications also need to accept these constraints as runtime contracts.

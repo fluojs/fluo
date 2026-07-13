@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   collectDirectProcessEnvViolations,
   collectNodeGlobalBufferViolations,
+  enforceCloudflareWorkersLifecycleDocsSync,
   enforceGraphqlRuntimeBoundaryDiscoverability,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
@@ -200,6 +201,14 @@ describe('enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices', () => {
         () => 'const encoded = new TextEncoder().encode(payload);\n',
       ),
     ).not.toThrow();
+  });
+});
+
+describe('enforceCloudflareWorkersLifecycleDocsSync', () => {
+  it('reports the governed surface when Workers lifecycle guidance drifts', () => {
+    expect(() => enforceCloudflareWorkersLifecycleDocsSync(() => '')).toThrowError(
+      /packages\/platform-cloudflare-workers\/README\.md/,
+    );
   });
 });
 
@@ -1114,6 +1123,14 @@ describe('repository governance contracts', () => {
     expect(ciWorkflow).toMatch(/verify-platform-consistency-governance:[\s\S]*?- name: Checkout[\s\S]*?fetch-depth: 0/u);
   });
 
+  it('runs canonical docs verification for full PR verification scope', () => {
+    const ciWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/ci.yml'), 'utf8');
+
+    expect(ciWorkflow).toMatch(
+      /build-and-typecheck:[\s\S]*?- name: Verify docs \(full\)\n\s+if: github\.event_name != 'pull_request' \|\| needs\.resolve-pr-verification-scope\.outputs\.mode != 'scoped'\n\s+run: pnpm verify:docs[\s\S]*?\n {2}lint:/u,
+    );
+  });
+
   it('keeps Changesets release automation bound to main pushes and token-backed npm publish', () => {
     const releaseWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/release.yml'), 'utf8');
     const rootPackage = JSON.parse(readFileSync(resolve(repoRoot, 'package.json'), 'utf8'));
@@ -1285,6 +1302,63 @@ describe('package surface microservices transport discoverability', () => {
       expect(markdown).toContain('@fluojs/microservices');
       expect(markdown).toContain('Redis Pub/Sub');
       expect(markdown).toContain('Redis Streams');
+    }
+  });
+
+  it('keeps facade completion and caller-owned shutdown boundaries aligned across governed docs and transport chapters', () => {
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+    const englishReadme = readFileSync(join(repoRoot, 'packages/microservices/README.md'), 'utf8');
+    const koreanReadme = readFileSync(join(repoRoot, 'packages/microservices/README.ko.md'), 'utf8');
+    const englishMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.md'), 'utf8');
+    const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
+    const transportChapters = [
+      ['book/intermediate/ch04-rabbitmq.md', '@fluojs/microservices/rabbitmq'],
+      ['book/intermediate/ch04-rabbitmq.ko.md', '@fluojs/microservices/rabbitmq'],
+      ['book/intermediate/ch05-kafka.md', '@fluojs/microservices/kafka'],
+      ['book/intermediate/ch05-kafka.ko.md', '@fluojs/microservices/kafka'],
+      ['book/intermediate/ch06-nats.md', '@fluojs/microservices/nats'],
+      ['book/intermediate/ch06-nats.ko.md', '@fluojs/microservices/nats'],
+    ] as const;
+
+    for (const markdown of [
+      englishContext,
+      koreanContext,
+      englishSurface,
+      koreanSurface,
+      englishReadme,
+      koreanReadme,
+      englishMigration,
+      koreanMigration,
+    ]) {
+      expect(markdown).toContain('MICROSERVICE');
+      expect(markdown).toContain('Microservice');
+      expect(markdown).toContain('send()');
+      expect(markdown).toContain('emit()');
+      expect(markdown).toContain('close()');
+      expect(markdown).toContain('caller-owned');
+    }
+
+    for (const markdown of [englishMigration, koreanMigration]) {
+      expect(markdown).toContain('MicroservicesModule.forRoot({ transport })');
+      expect(markdown).toContain('@fluojs/microservices/nats');
+      expect(markdown).toContain('@fluojs/microservices/kafka');
+      expect(markdown).toContain('@fluojs/microservices/rabbitmq');
+      expect(markdown).toContain('producer-side `emit()`');
+    }
+
+    for (const [chapterPath, transportSubpath] of transportChapters) {
+      const markdown = readFileSync(join(repoRoot, chapterPath), 'utf8');
+
+      expect(markdown).toContain("from '@fluojs/microservices'");
+      expect(markdown).toContain(`from '${transportSubpath}'`);
+      expect(markdown).toContain('MICROSERVICE');
+      expect(markdown).toContain('await microservice.send(...)');
+      expect(markdown).toContain('await microservice.emit(...)');
+      expect(markdown).toContain('await microservice.close()');
+      expect(markdown).toContain('caller-owned');
     }
   });
 });

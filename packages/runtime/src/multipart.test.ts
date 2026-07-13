@@ -1,10 +1,44 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { PayloadTooLargeException } from '@fluojs/http';
 
 import { parseMultipart } from './multipart.js';
 
 describe('parseMultipart', () => {
+  it('parses Web multipart fields and files without Node Buffer conversion APIs', async () => {
+    // Given
+    const form = new FormData();
+    form.append('name', '홍길동');
+    form.append('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
+    const request = new Request('http://localhost/uploads', {
+      body: form,
+      method: 'POST',
+    });
+    vi.spyOn(Buffer, 'byteLength').mockImplementation(() => {
+      throw new TypeError('Web multipart parsing must not call Buffer.byteLength().');
+    });
+
+    try {
+      // When
+      const result = await parseMultipart(request);
+
+      // Then
+      expect(result.fields).toEqual({ name: '홍길동' });
+      expect(result.files).toEqual([
+        {
+          buffer: new TextEncoder().encode('hello'),
+          fieldname: 'payload',
+          mimetype: 'text/plain',
+          originalname: 'payload.txt',
+          size: 5,
+        },
+      ]);
+      expect(Buffer.isBuffer(result.files[0]?.buffer)).toBe(false);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
   it('parses fields and uploaded files from a web Request', async () => {
     const form = new FormData();
     form.append('name', 'Ada');
@@ -24,7 +58,7 @@ describe('parseMultipart', () => {
       },
       files: [
         {
-          buffer: Buffer.from('hello'),
+          buffer: new TextEncoder().encode('hello'),
           fieldname: 'payload',
           mimetype: 'text/plain',
           originalname: 'payload.txt',
@@ -55,7 +89,7 @@ describe('parseMultipart', () => {
       fields: { name: 'Ada' },
       files: [
         {
-          buffer: Buffer.from('hello'),
+          buffer: new TextEncoder().encode('hello'),
           fieldname: 'payload',
           mimetype: 'text/plain',
           originalname: 'payload.txt',

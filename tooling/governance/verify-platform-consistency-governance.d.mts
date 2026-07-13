@@ -28,5 +28,8 @@ export function enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices(
   relativePaths?: readonly string[],
   readSource?: (relativePath: string) => string,
 ): void;
+export function enforceCloudflareWorkersLifecycleDocsSync(
+  readText?: (relativePath: string) => string,
+): void;
 export function enforceGraphqlRuntimeBoundaryDiscoverability(): void;
 export function main(): void;
