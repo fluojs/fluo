@@ -81,6 +81,18 @@ await microservice.listen();
 
 마이크로서비스 핸들러도 fluo의 request/transient scope 모델을 그대로 따르므로, 메시지 또는 이벤트 단위로 격리된 상태를 안전하게 사용할 수 있습니다.
 
+### 완료 및 소유권 경계
+
+애플리케이션 등록과 programmatic 호출은 root facade에 유지하세요. `MicroservicesModule.forRoot({ transport })`로 adapter를 등록하고 `MICROSERVICE`를 `Microservice`로 주입합니다. `MICROSERVICE`는 raw transport가 아닙니다. `@fluojs/microservices/nats`, `@fluojs/microservices/kafka`, `@fluojs/microservices/rabbitmq` 같은 transport-specific import는 adapter를 노출하지만 module과 facade 소유권은 root package에 남깁니다.
+
+| 연산 | 완료 경계 |
+| --- | --- |
+| `await microservice.send(...)` | transport가 상관관계가 유지된 원격 응답을 반환할 때 settle하며, 원격 오류, abort, timeout, shutdown 시 reject합니다. |
+| `await microservice.emit(...)` | transport의 publish 연산이 outbound event를 accept/complete할 때 settle합니다. 원격 event handler를 기다리거나 collaborator의 publish 계약을 넘어선 delivery/redelivery 보장을 추가하지는 않습니다. |
+| `await microservice.close()` | transport-owned listener/subscription teardown과 pending-request cleanup을 기다립니다. Caller-owned NATS, Kafka, RabbitMQ collaborator의 경우 전달받은 broker resource를 close/disconnect하지 않습니다. |
+
+Kafka와 RabbitMQ는 일치한 handler와 request response publication이 settle할 때까지 각 inbound consumer callback을 pending 상태로 유지합니다. 이 consumer-side completion boundary를 통해 broker adapter가 delivery를 acknowledge할지 retry할지 결정할 수 있지만, producer-side `emit()` promise가 end-to-end handler completion signal로 바뀌는 것은 아닙니다. 애플리케이션 shutdown에서는 먼저 `Microservice` facade를 닫아 transport callback을 detach한 다음, caller-owned client, producer, consumer, publisher, channel, connection을 application bootstrap layer에서 close 또는 drain하세요.
+
 ### 전달 안전 기본값
 
 - TCP 프레임은 기본적으로 newline-delimited 메시지당 1 MiB로 제한되며, 한도를 넘는 프레임은 요청 버퍼를 무한히 키우는 대신 소켓을 종료합니다.
