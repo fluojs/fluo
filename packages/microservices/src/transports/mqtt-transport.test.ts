@@ -349,14 +349,14 @@ describe('MqttMicroserviceTransport', () => {
     await closing;
   });
 
-  it('unsubscribes already-subscribed topics when a later subscribe fails during listen()', async () => {
+  it('unsubscribes already-subscribed topics without ending a caller-owned client when a later subscribe fails during listen()', async () => {
     const broker = new InMemoryMqttBroker();
     const client = new InMemoryMqttClient(broker);
     client.failSubscribeAtCall = 2;
     const transport = new MqttMicroserviceTransport({ client });
 
     await expect(transport.listen(async () => undefined)).rejects.toThrow('subscribe failed');
-    expect(client.unsubscribeCalls).toBe(1);
+    expect(client).toMatchObject({ endCalled: false, unsubscribeCalls: 1 });
   });
 
   it('ends internally-created clients when subscribe setup fails during listen()', async () => {
