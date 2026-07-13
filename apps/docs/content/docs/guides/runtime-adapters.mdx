@@ -81,6 +81,23 @@ const adapter = createFastifyAdapter(
 
 Raw-body capture is skipped for multipart requests. When `multipart.maxTotalSize` is omitted, it defaults to `maxBodySize` so size limits stay portable across HTTP adapters.
 
+### Fastify HTTPS/TLS
+
+When the Fastify process terminates TLS directly, pass Node.js `https.ServerOptions` through the `https` option. `createFastifyAdapter(...)`, `bootstrapFastifyApplication(...)`, and `runFastifyApplication(...)` expose the same HTTPS startup surface.
+
+```ts
+const adapter = createFastifyAdapter({
+  host: '0.0.0.0',
+  https: {
+    cert: tlsCertificate,
+    key: tlsPrivateKey,
+  },
+  port: 3443,
+});
+```
+
+Load certificate material at the application configuration or secret-management boundary before constructing the adapter. The package does not read certificate files or environment variables for you. If a trusted load balancer, ingress, or API gateway terminates TLS, leave `https` unset and run Fastify as plain HTTP behind that infrastructure boundary.
+
 ## Raw Node.js
 
 Use the raw Node.js adapter when you want the built-in `http` or `https` server primitives without Express or Fastify.

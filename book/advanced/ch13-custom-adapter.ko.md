@@ -1,4 +1,4 @@
-<!-- packages: @fluojs/http, @fluojs/core, @fluojs/di -->
+<!-- packages: @fluojs/http, @fluojs/core, @fluojs/di, @fluojs/platform-fastify -->
 <!-- project-state: FluoBlog v0 -->
 
 # Chapter 13. Custom Adapter Implementation — 독자적인 전송 계층 구축
