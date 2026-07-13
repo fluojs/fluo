@@ -22,6 +22,8 @@ Decorator-based GraphQL integration for fluo. Built on **GraphQL Yoga**, it prov
 pnpm add @fluojs/graphql graphql graphql-yoga
 ```
 
+The published manifest intentionally does not declare `engines.node`. GraphQL HTTP queries/mutations and the default SSE subscription path are supported through fluo's portable HTTP abstraction on Node.js, Bun, Deno, and Cloudflare Workers; the repository's Node.js 20+ requirement applies only to the maintainer build/test toolchain. Optional WebSocket subscriptions remain limited to adapters that expose a server-backed Node HTTP/S upgrade surface.
+
 ## When to Use
 
 - When building type-safe GraphQL APIs using TypeScript decorators (**Code-first**).
@@ -178,6 +180,8 @@ class RequestResolver {
 
 HTTP queries/mutations and the default SSE subscription path run through fluo's portable HTTP abstraction. The optional websocket transport is intentionally narrower: it requires a server-backed Node HTTP/S adapter surface, so Bun, Deno, and Cloudflare Workers deployments should keep the default SSE path unless their adapter exposes compatible upgrade listeners.
 
+`packages/graphql/src/runtime-portability.test.ts` executes both an HTTP query and an SSE subscription through the Bun, Deno, and Cloudflare Workers adapter paths so these retained runtime claims remain executable.
+
 ```typescript
 GraphqlModule.forRoot({
   subscriptions: {
@@ -251,4 +255,5 @@ Supported module options include `schema`, `context`, `plugins`, `graphiql`, `in
 ## Example Sources
 
 - `packages/graphql/src/module.test.ts`: Integration tests and usage examples for module registration, resolver execution, request-scoped containers, subscriptions, and guardrail defaults.
+- `packages/graphql/src/runtime-portability.test.ts`: GraphQL HTTP and SSE contract coverage through the Bun, Deno, and Cloudflare Workers adapter paths, including the runtime-neutral package manifest assertion.
 - `packages/graphql/field-resolver-rfc.md`: Design notes for field-resolver patterns that are not part of the current runtime contract.

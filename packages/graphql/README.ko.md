@@ -22,6 +22,8 @@ fluo를 위한 데코레이터 기반 GraphQL 통합 패키지입니다. **Graph
 pnpm add @fluojs/graphql graphql graphql-yoga
 ```
 
+배포되는 manifest는 의도적으로 `engines.node`를 선언하지 않습니다. GraphQL HTTP query/mutation과 기본 SSE subscription 경로는 fluo의 portable HTTP 추상화를 통해 Node.js, Bun, Deno, Cloudflare Workers에서 지원되며, 저장소의 Node.js 20+ 요구 사항은 maintainer build/test toolchain에만 적용됩니다. 선택적 WebSocket subscription은 server-backed Node HTTP/S upgrade 표면을 노출하는 adapter로 계속 제한됩니다.
+
 ## 사용 시점
 
 - TypeScript 데코레이터를 사용하여 타입 안전한 GraphQL API를 구축할 때 (**Code-first**).
@@ -178,6 +180,8 @@ class RequestResolver {
 
 HTTP query/mutation과 기본 SSE subscription 경로는 fluo의 portable HTTP 추상화를 통해 실행됩니다. 선택적 WebSocket transport는 의도적으로 더 좁은 범위를 가집니다. Server-backed Node HTTP/S adapter 표면이 필요하므로 Bun, Deno, Cloudflare Workers 배포에서는 adapter가 호환되는 upgrade listener를 노출하지 않는 한 기본 SSE 경로를 유지해야 합니다.
 
+`packages/graphql/src/runtime-portability.test.ts`는 Bun, Deno, Cloudflare Workers adapter 경로를 통해 HTTP query와 SSE subscription을 모두 실행하여 유지되는 runtime 지원 주장을 실행 가능한 계약으로 보존합니다.
+
 ```typescript
 GraphqlModule.forRoot({
   subscriptions: {
@@ -251,4 +255,5 @@ GraphqlModule.forRoot({
 ## 예제 소스
 
 - `packages/graphql/src/module.test.ts`: 모듈 등록, resolver 실행, request-scoped container, subscription, guardrail 기본값을 다루는 통합 테스트 및 사용 예제.
+- `packages/graphql/src/runtime-portability.test.ts`: Bun, Deno, Cloudflare Workers adapter 경로를 통한 GraphQL HTTP/SSE 계약과 runtime-neutral package manifest 검증.
 - `packages/graphql/field-resolver-rfc.md`: 현재 런타임 계약에 포함되지 않는 field-resolver 패턴의 설계 노트.
