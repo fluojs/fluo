@@ -82,6 +82,23 @@ This abstraction lets you switch from TCP to RabbitMQ, Kafka, NATS, MQTT, or gRP
 
 fluo's value is that it lets you choose the right transport for each connection while keeping business handlers, DTOs, and the DI structure consistent. You gain the freedom to optimize infrastructure without rebuilding the application.
 
+### 1.2.3 Transport Capability Chooser
+
+Use the capability boundary, not the protocol name, to make the first cut. `Streaming` below means fluo's server/client/bidirectional streaming APIs; Redis Streams is a durable broker data structure and does not expose those RPC streaming APIs. The [package README matrix](../../packages/microservices/README.md#transport-capability-matrix) remains the canonical package contract and source-evidence index.
+
+| Transport | `send()` | `emit()` | Streaming | Durability | Resource ownership |
+| --- | --- | --- | --- | --- | --- |
+| [TCP](./ch02-tcp.md) | Yes — correlated response | Yes — frame write | No | None — no broker storage or replay | fluo owns the listener and active sockets |
+| [Redis Pub/Sub](./ch03-redis-transport.md) | **No — always rejects; event-only** | Yes — Redis publication | No | None — live subscribers only; no ACK or replay | Caller owns the publish/subscribe clients; the adapter only unsubscribes |
+| [Redis Streams](./ch03-redis-transport.md) | Yes — correlated response stream | Yes — `XADD` completion | No — not RPC streaming | Built in — consumer groups, late `XACK`, and recoverable pending entries; opt-in trimming can weaken recovery | Caller owns reader/writer clients; the adapter manages its consumer artifacts and conservatively retains a shared request group when ownership is uncertain |
+| [NATS](./ch06-nats.md) | Yes — NATS request/reply | Yes — client publish | No | None in this adapter — no JetStream persistence or replay contract | Caller owns the client and codec; the adapter unsubscribes only |
+| [Kafka](./ch05-kafka.md) | Yes — correlated response topic | Yes — producer publish | No | Broker/config dependent — retention, producer ACKs, offsets, and retries remain caller policy | Caller owns the producer and consumer; the adapter unsubscribes only |
+| [RabbitMQ](./ch04-rabbitmq.md) | Yes — correlated response queue | Yes — publisher publish | No | Topology/collaborator dependent — durable queues, confirms, ACK/retry, and DLX remain caller policy | Caller owns publisher, consumer, channel, and connection resources; the adapter cancels its consumers |
+| [MQTT](./ch07-mqtt.md) | Yes — correlated reply topic | Yes — client publish callback | No | QoS/retain dependent — retained values are snapshots, not history, and fluo adds no handler-completion guarantee | fluo closes a URL-created client; a supplied client stays caller-owned |
+| [gRPC](./ch08-grpc.md) | Yes — unary response | Yes — remote unary acknowledgement | Server, client, and bidirectional | None — point-to-point RPC without broker persistence or replay | fluo closes cached outbound clients and a server it creates; a supplied server stays caller-owned |
+
+For runnable `fluo new` presets, continue to the [package chooser](../../docs/reference/package-chooser.md#build-a-microservice-starter). Redis Pub/Sub is a supported manual adapter but remains event-only and is not one of the listed generated transport presets.
+
 ## 1.3 Strategic Advantages
 
 Using fluo's microservices Module gives you the following strategic advantages. These benefits go beyond API convenience because they help teams design and operate with the same rules as the number of services grows.

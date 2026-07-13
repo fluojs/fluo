@@ -69,6 +69,25 @@ await microservice.listen();
 
 비즈니스 핸들러는 그대로 두고 TCP, Redis Pub/Sub, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC 같은 트랜스포트만 바꿔 배치할 수 있습니다.
 
+### 트랜스포트 기능 매트릭스
+
+스타터를 고르기 전에 동작부터 선택하세요. 아래 표는 fluo adapter 자체가 노출하는 보장을 설명합니다. 각 행에서 별도로 명시하지 않는 한 broker retention, acknowledgement, retry, topology는 caller 설정에 속합니다. `Streaming`은 이름에 “stream”이 들어간 broker 자료구조가 아니라 `serverStream()`, `clientStream()`, `bidiStream()` API를 뜻합니다.
+
+| 트랜스포트 | `send()` | `emit()` | Streaming | Durability | 리소스 소유권 | 상세 문서 |
+| --- | --- | --- | --- | --- | --- | --- |
+| TCP | 지원 — 상관관계가 유지된 응답 | 지원 — frame write | 미지원 | 없음 — broker 저장이나 replay 없음 | fluo가 listener와 active socket을 소유 | [TCP 장](../../book/intermediate/ch02-tcp.ko.md) |
+| Redis Pub/Sub | **미지원 — 항상 reject하며 event-only** | 지원 — Redis publication | 미지원 | 없음 — 현재 연결된 subscriber만 수신하며 ACK/replay 없음 | Caller가 publish/subscribe client를 소유하고 adapter는 unsubscribe만 수행 | [Redis 장](../../book/intermediate/ch03-redis-transport.ko.md) |
+| Redis Streams | 지원 — 상관관계가 유지된 response stream | 지원 — `XADD` 완료 | 미지원 — Redis Streams는 RPC streaming이 아님 | 내장 — consumer group, late `XACK`, recoverable pending entry를 사용하며 opt-in trimming은 복구 보장을 약화할 수 있음 | Caller가 reader/writer client를 소유하고 adapter가 자신이 만든 consumer-group/response-stream artifact를 관리하며 소유권이 불확실한 공유 request group은 보수적으로 유지 | [Redis 장](../../book/intermediate/ch03-redis-transport.ko.md) |
+| NATS | 지원 — NATS request/reply | 지원 — client publish | 미지원 | 이 adapter에는 없음 — JetStream persistence/replay 계약 없음 | Caller가 client와 codec을 소유하고 adapter는 unsubscribe만 수행 | [NATS 장](../../book/intermediate/ch06-nats.ko.md) |
+| Kafka | 지원 — 상관관계가 유지된 response topic | 지원 — producer publish | 미지원 | Broker/config에 의존 — topic retention, producer ACK, consumer offset, retry는 caller-owned collaborator 책임 | Caller가 producer와 consumer를 소유하고 adapter는 unsubscribe만 수행 | [Kafka 장](../../book/intermediate/ch05-kafka.ko.md) |
+| RabbitMQ | 지원 — 상관관계가 유지된 response queue | 지원 — publisher publish | 미지원 | Topology/collaborator에 의존 — durable queue, confirm, ACK/retry, DLX 정책은 application-owned | Caller가 publisher, consumer, channel, connection resource를 소유하고 adapter는 자신의 consumer를 cancel | [RabbitMQ 장](../../book/intermediate/ch04-rabbitmq.ko.md) |
+| MQTT | 지원 — 상관관계가 유지된 reply topic | 지원 — client publish callback | 미지원 | QoS/retain에 의존 — retained message는 history가 아니라 last-known value이며 fluo는 handler-completion 보장을 추가하지 않음 | URL로 생성한 client는 fluo가 닫고, 전달받은 client는 caller-owned로 유지 | [MQTT 장](../../book/intermediate/ch07-mqtt.ko.md) |
+| gRPC | 지원 — unary response | 지원 — 원격 unary acknowledgement | Server, client, bidirectional | 없음 — broker persistence/replay가 없는 point-to-point RPC | fluo가 cached outbound client와 직접 생성한 server를 닫고, 전달받은 server는 caller-owned로 유지 | [gRPC 장](../../book/intermediate/ch08-grpc.ko.md) |
+
+Redis Pub/Sub은 동일한 등록 경로를 사용하기 위해 공통 transport shape를 구현하지만 `send()`는 의도적으로 예외를 던집니다. 생성 가능한 starter는 [package chooser](../../docs/reference/package-chooser.ko.md#마이크로서비스-스타터-만들기)에서 확인하고, 학습 경로에 따른 선택은 [책의 transport chooser](../../book/intermediate/ch01-microservices-intro.ko.md#123-transport-capability-chooser)를 참고하세요.
+
+위 기능 주장은 공개 [transport type](./src/types.ts)과 [TCP](./src/transports/tcp-transport.ts), [Redis Pub/Sub](./src/transports/redis-transport.ts), [Redis Streams](./src/transports/redis-streams-transport.ts), [NATS](./src/transports/nats-transport.ts), [Kafka](./src/transports/kafka-transport.ts), [RabbitMQ](./src/transports/rabbitmq-transport.ts), [MQTT](./src/transports/mqtt-transport.ts), [gRPC](./src/transports/grpc-transport.ts) 구현을 근거로 합니다.
+
 ### 패턴 기반 라우팅
 
 `@MessagePattern`은 요청-응답 흐름에, `@EventPattern`은 fire-and-forget 이벤트에 사용합니다. 문자열과 정규식 패턴 모두 지원합니다.

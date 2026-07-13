@@ -70,6 +70,25 @@ await microservice.listen();
 ### Multi-Transport Support
 Write your business logic once and deploy it across various transports. Supports TCP, Redis (Pub/Sub and Streams), NATS, Kafka, RabbitMQ, MQTT, and gRPC.
 
+### Transport Capability Matrix
+
+Choose by behavior before choosing a starter. The table describes the guarantees that the fluo adapter itself exposes; broker retention, acknowledgements, retries, and topology remain caller configuration unless a row states otherwise. `Streaming` means the `serverStream()`, `clientStream()`, and `bidiStream()` APIs, not a broker data structure named “stream.”
+
+| Transport | `send()` | `emit()` | Streaming | Durability | Resource ownership | Detail |
+| --- | --- | --- | --- | --- | --- | --- |
+| TCP | Yes — correlated response | Yes — frame write | No | None — no broker storage or replay | fluo owns the listener and active sockets | [TCP chapter](../../book/intermediate/ch02-tcp.md) |
+| Redis Pub/Sub | **No — always rejects; event-only** | Yes — Redis publication | No | None — live subscribers only; no ACK or replay | Caller owns the publish/subscribe clients; the adapter only unsubscribes | [Redis chapter](../../book/intermediate/ch03-redis-transport.md) |
+| Redis Streams | Yes — correlated response stream | Yes — `XADD` completion | No — Redis Streams is not RPC streaming | Built in — consumer groups, late `XACK`, and recoverable pending entries; opt-in trimming can weaken recovery | Caller owns reader/writer clients; the adapter manages its consumer-group and response-stream artifacts and conservatively retains a shared request group when ownership is uncertain | [Redis chapter](../../book/intermediate/ch03-redis-transport.md) |
+| NATS | Yes — NATS request/reply | Yes — client publish | No | None in this adapter — no JetStream persistence or replay contract | Caller owns the client and codec; the adapter unsubscribes only | [NATS chapter](../../book/intermediate/ch06-nats.md) |
+| Kafka | Yes — correlated response topic | Yes — producer publish | No | Broker/config dependent — topic retention, producer ACKs, consumer offsets, and retries belong to the caller-owned collaborators | Caller owns the producer and consumer; the adapter unsubscribes only | [Kafka chapter](../../book/intermediate/ch05-kafka.md) |
+| RabbitMQ | Yes — correlated response queue | Yes — publisher publish | No | Topology/collaborator dependent — durable queues, confirms, ACK/retry, and DLX policy remain application-owned | Caller owns publisher, consumer, channel, and connection resources; the adapter cancels its consumers | [RabbitMQ chapter](../../book/intermediate/ch04-rabbitmq.md) |
+| MQTT | Yes — correlated reply topic | Yes — client publish callback | No | QoS/retain dependent — retained messages are last-known values, not history, and fluo adds no handler-completion guarantee | fluo closes a URL-created client; a supplied client stays caller-owned | [MQTT chapter](../../book/intermediate/ch07-mqtt.md) |
+| gRPC | Yes — unary response | Yes — remote unary acknowledgement | Server, client, and bidirectional | None — point-to-point RPC without broker persistence or replay | fluo closes cached outbound clients and a server it creates; a supplied server stays caller-owned | [gRPC chapter](../../book/intermediate/ch08-grpc.md) |
+
+Redis Pub/Sub implements the common transport shape so it can be registered uniformly, but its `send()` method intentionally throws. Use [the package chooser](../../docs/reference/package-chooser.md#build-a-microservice-starter) for generated starter availability or [the book transport chooser](../../book/intermediate/ch01-microservices-intro.md#123-transport-capability-chooser) for a learning-path decision.
+
+The capability claims above are grounded in the public [transport type](./src/types.ts) and the implementations for [TCP](./src/transports/tcp-transport.ts), [Redis Pub/Sub](./src/transports/redis-transport.ts), [Redis Streams](./src/transports/redis-streams-transport.ts), [NATS](./src/transports/nats-transport.ts), [Kafka](./src/transports/kafka-transport.ts), [RabbitMQ](./src/transports/rabbitmq-transport.ts), [MQTT](./src/transports/mqtt-transport.ts), and [gRPC](./src/transports/grpc-transport.ts).
+
 ### Pattern-Based Routing
 Use `@MessagePattern` for request-response flows and `@EventPattern` for fire-and-forget event broadcasting. Patterns support string matching and regular expressions.
 
