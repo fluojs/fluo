@@ -97,6 +97,7 @@ export type ReactServerEntry = {
 
 function cloneAssetMap(assetMap: ReactAssetMap | undefined): ReactAssetMap {
   const cloned: Record<string, string> = {};
+  Object.setPrototypeOf(cloned, null);
 
   for (const [name, url] of Object.entries(assetMap ?? {})) {
     cloned[name] = url;

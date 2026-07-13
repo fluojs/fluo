@@ -20,8 +20,12 @@ function isStringArray(value: unknown): value is readonly string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
+function readOwnValue<T>(record: Readonly<Record<string, T>>, key: string): T | undefined {
+  return Object.hasOwn(record, key) ? record[key] : undefined;
+}
+
 function readOptionalString(reader: ManifestEntryReader, field: string): string | undefined {
-  const value = reader.entry[field];
+  const value = readOwnValue(reader.entry, field);
 
   if (value === undefined) {
     return undefined;
@@ -41,7 +45,7 @@ function readOptionalString(reader: ManifestEntryReader, field: string): string 
 }
 
 function readOptionalBoolean(reader: ManifestEntryReader, field: string): boolean | undefined {
-  const value = reader.entry[field];
+  const value = readOwnValue(reader.entry, field);
 
   if (value === undefined) {
     return undefined;
@@ -61,7 +65,7 @@ function readOptionalBoolean(reader: ManifestEntryReader, field: string): boolea
 }
 
 function readOptionalStringArray(reader: ManifestEntryReader, field: string): readonly string[] {
-  const value = reader.entry[field];
+  const value = readOwnValue(reader.entry, field);
 
   if (value === undefined) {
     return [];
@@ -91,7 +95,7 @@ function parseManifestEntry(entryId: string, rawEntry: unknown): ManifestEntryPa
 
   const diagnostics: ReactViteManifestDiagnostic[] = [];
   const reader = { diagnostics, entry: rawEntry, entryId };
-  const fileValue = rawEntry['file'];
+  const fileValue = readOwnValue(rawEntry, 'file');
   const file = typeof fileValue === 'string' ? fileValue : '';
 
   if (typeof fileValue !== 'string') {
@@ -147,6 +151,7 @@ export function parseReactViteBuildManifest(value: unknown): ManifestParseResult
 
   const diagnostics: ReactViteManifestDiagnostic[] = [];
   const manifest: Record<string, ParsedManifestEntry> = {};
+  Object.setPrototypeOf(manifest, null);
 
   for (const [entryId, rawEntry] of Object.entries(value)) {
     const parsed = parseManifestEntry(entryId, rawEntry);
@@ -177,7 +182,7 @@ export function resolveManifestEntry(
   role: EntryRole,
   entryId: string,
 ): EntryResolveResult {
-  const exactEntry = manifest[entryId];
+  const exactEntry = readOwnValue(manifest, entryId);
 
   if (exactEntry !== undefined) {
     return { diagnostics: [], entry: exactEntry };

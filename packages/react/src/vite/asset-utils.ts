@@ -4,6 +4,10 @@ import { ABSOLUTE_URL_PATTERN, JAVASCRIPT_OUTPUT_EXTENSIONS } from './types.js';
 import { createMalformedDiagnostic } from './diagnostics.js';
 import type { DependencyGraph, ParsedManifest, ParsedManifestEntry } from './types.js';
 
+function readOwnEntry(manifest: ParsedManifest, entryId: string): ParsedManifestEntry | undefined {
+  return Object.hasOwn(manifest, entryId) ? manifest[entryId] : undefined;
+}
+
 /**
  * Collects the import graph for a client manifest entry with dependencies first.
  *
@@ -27,7 +31,7 @@ export function collectDependencyGraph(
     visited.add(entry.id);
 
     for (const importId of entry.imports) {
-      const importedEntry = manifest[importId];
+      const importedEntry = readOwnEntry(manifest, importId);
 
       if (importedEntry === undefined) {
         diagnostics.push(
@@ -202,6 +206,7 @@ export function collectModuleUrls(
  */
 export function createAssetMap(manifest: ParsedManifest, base: string | undefined): ReactAssetMap {
   const assetMap: Record<string, string> = {};
+  Object.setPrototypeOf(assetMap, null);
 
   for (const [entryId, entry] of Object.entries(manifest)) {
     const publicFile = createPublicUrl(entry.file, base);

@@ -12,9 +12,11 @@ const governedDocs = [
   'docs/reference/package-chooser.ko.md',
   'docs/reference/package-surface.md',
   'docs/reference/package-surface.ko.md',
+  'examples/react-stable-ssr/README.md',
+  'examples/react-stable-ssr/README.ko.md',
 ] as const;
 const staleReactViteSurfacePattern =
-  /future `@fluojs\/react\/vite`|Future `@fluojs\/react\/vite`|Manifest discovery belongs to future `@fluojs\/react\/vite`|`@fluojs\/react\/vite`, React Server Components|`@fluojs\/react\/vite`, React Server Components|Future `@fluojs\/react\/vite`/u;
+  /future `@fluojs\/react\/vite`|Future `@fluojs\/react\/vite`|Manifest discovery belongs to future `@fluojs\/react\/vite`|`@fluojs\/react\/vite`, React Server Components|`@fluojs\/react\/vite`, React Server Components|Future `@fluojs\/react\/vite`|향후 Vite\/manifest asset discovery/u;
 
 function readGovernedDoc(path: (typeof governedDocs)[number]): string {
   return readFileSync(resolve(repoRoot, path), 'utf8');
