@@ -22,7 +22,7 @@ fluo를 위한 데코레이터 기반 GraphQL 통합 패키지입니다. **Graph
 pnpm add @fluojs/graphql graphql graphql-yoga
 ```
 
-배포되는 manifest는 의도적으로 `engines.node`를 선언하지 않습니다. GraphQL HTTP query/mutation과 기본 SSE subscription 경로는 fluo의 portable HTTP 추상화를 통해 Node.js, Bun, Deno, Cloudflare Workers에서 지원되며, 저장소의 Node.js 20+ 요구 사항은 maintainer build/test toolchain에만 적용됩니다. 선택적 WebSocket subscription은 server-backed Node HTTP/S upgrade 표면을 노출하는 adapter로 계속 제한됩니다.
+`@fluojs/graphql`은 Node.js `>=20.0.0`을 지원하며, 배포 dependency graph의 모든 필수 `@fluojs/*` dependency와 동일하게 이 하한을 `engines.node`로 선언합니다. HTTP query/mutation과 기본 SSE subscription 경로는 내부적으로 Web-standard request/response primitive를 사용하지만, 이 구현 세부 사항이 Bun, Deno, Cloudflare Workers에 대한 package 지원을 의미하지는 않습니다. 전체 dependency metadata와 native runtime suite가 완전한 GraphQL 계약을 입증하기 전까지 해당 runtime은 지원하지 않습니다. 선택적 WebSocket subscription에는 server-backed Node HTTP/S upgrade 표면을 노출하는 adapter도 필요합니다.
 
 ## 사용 시점
 
@@ -178,9 +178,7 @@ class RequestResolver {
 - **SSE**: Server-Sent Events를 통한 구독(기본값).
 - **WebSockets**: 활성 adapter가 upgrade listener를 지원하는 Node HTTP/S 서버를 노출할 때(예: Node HTTP adapter) 사용할 수 있는 선택적 `graphql-ws` 실시간 구독 지원.
 
-HTTP query/mutation과 기본 SSE subscription 경로는 fluo의 portable HTTP 추상화를 통해 실행됩니다. 선택적 WebSocket transport는 의도적으로 더 좁은 범위를 가집니다. Server-backed Node HTTP/S adapter 표면이 필요하므로 Bun, Deno, Cloudflare Workers 배포에서는 adapter가 호환되는 upgrade listener를 노출하지 않는 한 기본 SSE 경로를 유지해야 합니다.
-
-`packages/graphql/src/runtime-portability.test.ts`는 Bun, Deno, Cloudflare Workers adapter 경로를 통해 HTTP query와 SSE subscription을 모두 실행하여 유지되는 runtime 지원 주장을 실행 가능한 계약으로 보존합니다.
+지원되는 Node.js `>=20.0.0` runtime에서 HTTP query/mutation과 기본 SSE subscription 경로는 fluo의 Web-standard HTTP 추상화를 통해 실행됩니다. 이 내부 transport seam은 Bun, Deno, Cloudflare Workers 지원 보장이 아닙니다. 선택적 WebSocket transport는 server-backed Node HTTP/S adapter 표면도 필요하므로 지원 범위가 더 좁습니다.
 
 ```typescript
 GraphqlModule.forRoot({
@@ -255,5 +253,5 @@ GraphqlModule.forRoot({
 ## 예제 소스
 
 - `packages/graphql/src/module.test.ts`: 모듈 등록, resolver 실행, request-scoped container, subscription, guardrail 기본값을 다루는 통합 테스트 및 사용 예제.
-- `packages/graphql/src/runtime-portability.test.ts`: Bun, Deno, Cloudflare Workers adapter 경로를 통한 GraphQL HTTP/SSE 계약과 runtime-neutral package manifest 검증.
+- `packages/graphql/src/runtime-support.test.ts`: Package의 Node.js engine 하한과 모든 필수 first-party dependency의 하한이 일치하는지 검증하는 회귀 테스트.
 - `packages/graphql/field-resolver-rfc.md`: 현재 런타임 계약에 포함되지 않는 field-resolver 패턴의 설계 노트.
