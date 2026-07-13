@@ -211,20 +211,20 @@ When moving FluoShop to Express, the key change point is `main.ts`. Controllers 
 
 ```typescript
 // apps/fluoshop-api/src/main.ts
-import { fluoFactory } from '@fluojs/runtime';
-import { createExpressAdapter } from '@fluojs/platform-express';
+import { bootstrapExpressApplication } from '@fluojs/platform-express';
 import { AppModule } from './app/app.module';
 
 async function bootstrap() {
-  const adapter = createExpressAdapter({
-    port: process.env.PORT ? parseInt(process.env.PORT) : 3000,
+  const host = '127.0.0.1';
+  const port = process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 3000;
+  const app = await bootstrapExpressApplication(AppModule, {
+    globalPrefix: 'v1',
+    host,
+    port,
   });
 
-  const app = await fluoFactory.create(AppModule, { adapter });
-  app.setGlobalPrefix('v1');
-
   await app.listen();
-  console.log(`FluoShop API is running on: ${await app.getUrl()}`);
+  console.log(`FluoShop API is running on: http://${host}:${port}/v1`);
 }
 
 bootstrap().catch(err => {
@@ -233,7 +233,7 @@ bootstrap().catch(err => {
 });
 ```
 
-The important point here is that binding Decorators such as `@FromBody()`, `@FromPath()`, and `@FromQuery()` work through the same contract whether Fastify or Express handles the request. fluo's internal Dispatcher handles translation between the adapter's native request format and the standard fluo context. DTO validation still follows the `@fluojs/validation` contract: the HTTP binder constructs DTO instances from the selected request sources, then the validation adapter applies `@fluojs/validation` rules through the configured validator before business logic sees a typed DTO, rather than installing a Nest-style global `ValidationPipe`.
+The route prefix belongs to the Express bootstrap configuration rather than mutable `Application` state. This example also reports the fixed host and port that it configured instead of asking `Application` to discover the listener URL. The important point here is that binding Decorators such as `@FromBody()`, `@FromPath()`, and `@FromQuery()` work through the same contract whether Fastify or Express handles the request. fluo's internal Dispatcher handles translation between the adapter's native request format and the standard fluo context. DTO validation still follows the `@fluojs/validation` contract: the HTTP binder constructs DTO instances from the selected request sources, then the validation adapter applies `@fluojs/validation` rules through the configured validator before business logic sees a typed DTO, rather than installing a Nest-style global `ValidationPipe`.
 
 ## 21.6 Advanced: The `run` Helpers
 
