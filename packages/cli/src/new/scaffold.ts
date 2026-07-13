@@ -1220,11 +1220,17 @@ class LazyNatsTransport implements MicroserviceTransport {
 
   async close() {
     const transport = this.initializing ? await this.initializing.catch(() => undefined) : this.transport;
-    await transport?.close();
-    await this.connection?.close();
-    this.initializing = undefined;
-    this.transport = undefined;
-    this.connection = undefined;
+    try {
+      await transport?.close();
+    } finally {
+      try {
+        await this.connection?.close();
+      } finally {
+        this.initializing = undefined;
+        this.transport = undefined;
+        this.connection = undefined;
+      }
+    }
   }
 
   async emit(pattern: string, payload: unknown) {
@@ -1336,15 +1342,18 @@ class LazyKafkaTransport implements MicroserviceTransport {
 
   async close() {
     const transport = this.initializing ? await this.initializing.catch(() => undefined) : this.transport;
-    await transport?.close();
-    await Promise.all([
-      this.consumer?.disconnect().catch(() => undefined),
-      this.producer?.disconnect().catch(() => undefined),
-    ]);
-    this.initializing = undefined;
-    this.consumer = undefined;
-    this.producer = undefined;
-    this.transport = undefined;
+    try {
+      await transport?.close();
+    } finally {
+      await Promise.all([
+        this.consumer?.disconnect().catch(() => undefined),
+        this.producer?.disconnect().catch(() => undefined),
+      ]);
+      this.initializing = undefined;
+      this.consumer = undefined;
+      this.producer = undefined;
+      this.transport = undefined;
+    }
   }
 
   async emit(pattern: string, payload: unknown) {
@@ -1384,13 +1393,24 @@ class LazyKafkaTransport implements MicroserviceTransport {
     });
     const producer = kafka.producer();
     const consumer = kafka.consumer({ groupId: consumerGroup });
-    await Promise.all([producer.connect(), consumer.connect()]);
+    this.producer = producer;
+    this.consumer = consumer;
+    try {
+      await producer.connect();
+      await consumer.connect();
+    } catch (error) {
+      await Promise.all([
+        consumer.disconnect().catch(() => undefined),
+        producer.disconnect().catch(() => undefined),
+      ]);
+      this.consumer = undefined;
+      this.producer = undefined;
+      throw error;
+    }
 
     const handlers = new Map<string, (message: string) => Promise<void> | void>();
     let consumerRunning = false;
 
-    this.producer = producer;
-    this.consumer = consumer;
     this.transport = new KafkaMicroserviceTransport({
       consumer: {
         async subscribe(topic: string, handler: (message: string) => Promise<void> | void) {
@@ -1479,13 +1499,16 @@ class LazyRabbitMqTransport implements MicroserviceTransport {
 
   async close() {
     const transport = this.initializing ? await this.initializing.catch(() => undefined) : this.transport;
-    await transport?.close();
-    await this.channel?.close().catch(() => undefined);
-    await this.connection?.close().catch(() => undefined);
-    this.initializing = undefined;
-    this.channel = undefined;
-    this.connection = undefined;
-    this.transport = undefined;
+    try {
+      await transport?.close();
+    } finally {
+      await this.channel?.close().catch(() => undefined);
+      await this.connection?.close().catch(() => undefined);
+      this.initializing = undefined;
+      this.channel = undefined;
+      this.connection = undefined;
+      this.transport = undefined;
+    }
   }
 
   async emit(pattern: string, payload: unknown) {
@@ -1519,10 +1542,17 @@ class LazyRabbitMqTransport implements MicroserviceTransport {
     }
 
     const connection = await connect(url);
-    const channel = await connection.createConfirmChannel();
+    this.connection = connection;
+    let channel: Awaited<ReturnType<typeof connection.createConfirmChannel>>;
+    try {
+      channel = await connection.createConfirmChannel();
+    } catch (error) {
+      await connection.close().catch(() => undefined);
+      this.connection = undefined;
+      throw error;
+    }
     const consumerTags = new Map<string, string>();
 
-    this.connection = connection;
     this.channel = channel;
     this.transport = new RabbitMqMicroserviceTransport({
       consumer: {
