@@ -65,6 +65,18 @@ describe('RedisHealthIndicator', () => {
     expect(ping).toHaveBeenCalledTimes(1);
   });
 
+  it('uses a custom ping callback without adding lifecycle metadata when client status is absent', async () => {
+    const ping = vi.fn(async () => 'PONG');
+    const indicator = createRedisHealthIndicator({ ping });
+
+    await expect(indicator.check('redis')).resolves.toEqual({
+      redis: {
+        status: 'up',
+      },
+    });
+    expect(ping).toHaveBeenCalledTimes(1);
+  });
+
   for (const state of unavailableRedisStates) {
     it(`maps Redis ${state.status} lifecycle readiness before pinging`, async () => {
       const ping = vi.fn(async () => 'PONG');

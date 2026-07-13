@@ -37,6 +37,22 @@ describe('@fluojs/terminus root import runtime safety', () => {
     }
   });
 
+  it('does not load the optional Drizzle peer from the root entrypoint', async () => {
+    vi.resetModules();
+    vi.doMock('@fluojs/drizzle', () => {
+      throw new Error('optional Drizzle peer should not load through @fluojs/terminus');
+    });
+
+    try {
+      const terminus = await import('./index.js');
+
+      expect(terminus).toHaveProperty('TerminusModule');
+      expect(terminus).toHaveProperty('DrizzleHealthIndicator');
+    } finally {
+      vi.doUnmock('@fluojs/drizzle');
+    }
+  });
+
   it('does not load Node filesystem modules until disk checks run', async () => {
     vi.resetModules();
     vi.doMock('node:fs/promises', () => {
