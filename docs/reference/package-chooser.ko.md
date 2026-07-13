@@ -13,7 +13,7 @@
 | GraphQL 엔드포인트가 필요함 | `@fluojs/graphql` | HTTP 스택 위에 추가합니다. |
 | 기본 Node.js 어댑터가 필요함 | `@fluojs/platform-fastify` | 대부분의 Node.js 20+ 프로젝트에 권장되는 시작 경로이며, package는 `engines.node >=20.0.0`을 선언합니다. |
 | Fastify가 HTTPS/TLS 시작을 직접 소유해야 함 | `@fluojs/platform-fastify` | 프로세스가 TLS를 직접 소유할 때 adapter/bootstrap startup surface에 Node.js `https` server option을 전달하세요. Load balancer, ingress, gateway가 TLS를 종료한다면 해당 경계 뒤에서 adapter를 일반 HTTP로 유지하세요. |
-| Express host 호환이 필요함 | `@fluojs/platform-express` | Node.js에서 first-class `fluo new` 애플리케이션 스타터로도 제공됩니다. Application pipeline에는 fluo `Middleware`를 사용하고, native Express/Connect middleware는 platform-specific integration code에 두거나 fluo 계약 뒤에 감싸세요. |
+| Express host 호환이 필요함 | `@fluojs/platform-express` | Node.js에서 first-class `fluo new` 애플리케이션 스타터로도 제공됩니다. Application pipeline에는 fluo `Middleware`를 사용하고, migration 전용 Express/Connect handler는 adapter의 pre-router `nativeMiddleware` 옵션에 등록하거나 portable fluo 계약 뒤에 감싸세요. |
 | Node.js HTTP를 직접 제어해야 함 | `@fluojs/platform-nodejs` | Node.js에서 first-class `fluo new` 애플리케이션 스타터로도 제공됩니다. |
 | 요청 유효성 검사가 필요함 | `@fluojs/validation` | DTO 바인딩과 검증이 필요할 때 추가합니다. |
 | 응답 직렬화 또는 output DTO shaping이 필요함 | `@fluojs/serialization` | 응답 DTO의 제어된 field exposure, sensitive-field exclusion, synchronous value transform, HTTP interceptor 기반 response-boundary shaping이 필요할 때 추가합니다. |
