@@ -37,4 +37,6 @@ export function enforceExpressRuntimeMigrationDocsSync(
   readText?: (relativePath: string) => string,
 ): void;
 export function enforceGraphqlRuntimeBoundaryDiscoverability(): void;
+export function enforceMicroservicesSafetyGuidanceParity(): void;
+export function enforceMicroservicesSafetyRuntimeEvidence(): void;
 export function main(): void;
