@@ -16,12 +16,15 @@ This chapter explains how to choose between the Express and raw Node.js adapters
 
 ## Prerequisites
 - Completion of Chapter 18, Chapter 19, and Chapter 20.
+- Node.js 20 or newer for both `@fluojs/platform-express` and `@fluojs/platform-nodejs`.
 - Basic understanding of Node.js HTTP servers and Express middleware.
 - TypeScript familiarity with reading application entrypoints and runtime adapter configuration.
 
 ## 21.1 The Express Adapter
 
 Express is still the most widely used framework in the Node.js ecosystem. If existing Express infrastructure is part of your operational path, or if you need to move a legacy Express app into fluo gradually, `@fluojs/platform-express` is a practical entry point.
+
+The Express adapter targets Node.js 20 or newer and its package manifest declares `engines.node >=20.0.0`.
 
 ### 21.1.1 Installation
 
@@ -33,10 +36,13 @@ npm install @fluojs/platform-express express
 
 ### 21.1.2 Bootstrapping with Express
 
-The switch to Express starts by changing the adapter selection in the application entrypoint. Controllers and services stay the same; only the HTTP engine boundary is replaced. This lets you use Express as the host engine without rewriting existing business logic.
+Switch to Express only after the application layer has moved off NestJS metadata semantics. Controllers and providers must use TC39 standard decorators, class-level `@Inject(...)`, and explicit DI/module wiring before the entrypoint changes its HTTP adapter. Once that migration is complete, business logic can stay unchanged while only the host engine boundary is replaced; changing the adapter alone does not preserve NestJS legacy decorators, reflection metadata, or implicit dependency discovery.
 
 ```typescript
-import { createExpressAdapter } from '@fluojs/platform-express';
+import {
+  createExpressAdapter,
+  ExpressHttpApplicationAdapter,
+} from '@fluojs/platform-express';
 import { fluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
@@ -48,13 +54,20 @@ async function bootstrap() {
 
   const app = await fluoFactory.create(AppModule, { adapter });
   
-  // You can still inspect the underlying Node server when absolutely necessary.
-  const nativeServer = adapter.getServer?.();
-  
   await app.listen();
+
+  if (!(adapter instanceof ExpressHttpApplicationAdapter)) {
+    throw new TypeError('Expected the Express adapter factory to return the Express implementation');
+  }
+
+  // Resolve the actual target after startup, including an OS-assigned port.
+  const { bindTarget, url } = adapter.getListenTarget();
+  console.log(`Listening on ${url} (${bindTarget})`);
 }
 bootstrap();
 ```
+
+`createExpressAdapter()` intentionally exposes the shared `HttpApplicationAdapter` return type. Narrow it with the exported `ExpressHttpApplicationAdapter` class before accessing the Express-only `getListenTarget()` helper. The helper reports the resolved bind target and public URL after startup. Keep it, `getServer()`, and `getRealtimeCapability()` at infrastructure boundaries such as startup logging, probes, or realtime integration; ordinary controllers and providers should stay on portable fluo contracts.
 
 ### 21.1.3 Handling Middleware
 
@@ -207,7 +220,7 @@ Portability does not mean giving up the tools you prefer. fluo's adapter system 
 
 ## 21.5 FluoShop Integration: Moving to Express
 
-When moving FluoShop to Express, the key change point is `main.ts`. Controllers and services keep runtime-independent contracts, so changing the HTTP adapter should not spill into application logic changes.
+When moving FluoShop to Express, the key host change point is `main.ts`, but only after controllers, providers, and modules have already moved to standard decorators and explicit DI/module wiring. With those runtime-independent contracts in place, changing the HTTP adapter should not spill into application logic changes.
 
 ```typescript
 // apps/fluoshop-api/src/main.ts
@@ -269,6 +282,6 @@ This helper wires process signals to the standard fluo shutdown lifecycle and he
 - `nativeMiddleware` is a migration-only Express boundary with native continuation, termination, error, and resource-ownership semantics; it is not portable fluo middleware.
 - `@fluojs/platform-nodejs` provides a minimal HTTP layer without a framework.
 - Most fluo code (Controllers, Providers, Modules) does not need to know which adapter is running at all.
-- Access the underlying Node server with `getServer?.()` or inspect `getRealtimeCapability()` only when you need platform-specific features.
+- Use `getListenTarget()` for the resolved post-startup bind target, and access `getServer()` or `getRealtimeCapability()` only at infrastructure boundaries that require platform-specific features.
 - Runtime owns diagnostic snapshot and issue production; Studio owns graph viewing and Mermaid rendering of those artifacts.
 - To maintain cross-platform compatibility, review fluo abstractions first, such as `MiddlewareConsumer`.

@@ -22,6 +22,7 @@
 | `emitDecoratorMetadata`를 통한 생성자 타입 리플렉션 | `@fluojs/core`의 `@Inject(TokenA, TokenB)` | 생성자 의존성은 데코레이터 인자 순서대로 명시한다. |
 | `@Inject(TOKEN) private value` 같은 속성 주입 | 클래스 수준 `@Inject(TOKEN)`과 이에 대응하는 생성자 매개변수 | fluo의 `@Inject(...)`는 생성자 토큰을 매개변수 순서대로 선언하는 표준 클래스 데코레이터다. 속성 또는 생성자 매개변수 데코레이터가 아니다. |
 | `class-validator` / 데코레이터 중심 DTO 검증 | Zod와 Valibot을 포함한 Standard Schema를 지원하는 `@fluojs/validation` | 이는 class-validator 호환 계층이 아니라 fluo 고유 검증 surface다. 일반 validator는 `null` / `undefined`를 건너뛰고, 필수값에는 `@IsDefined()`를 사용하며, plain 객체 materialization은 안전한 own enumerable 추가 속성을 유지하고 validation group은 지원되지 않는다. |
+| `nestjs-i18n` `I18nModule.forRoot(...)`, request locale resolver, request-scoped `I18nContext`, localized validation filter | `@fluojs/i18n`의 `I18nModule.forRoot(...)`; `@fluojs/i18n/http`의 `createAcceptLanguageLocaleResolver(...)`, `resolveHttpLocale(...)`, `getHttpLocale(...)`; `@fluojs/i18n/validation`의 `localizeDtoValidationError(...)` | Application module에 catalog를 등록하고 application-owned request boundary에서 locale을 resolve 및 저장한 뒤, 선택된 locale을 translation과 validation localization에 명시적으로 전달한다. fluo는 NestJS resolver class를 discovery하거나 implicit request-locale global을 노출하지 않는다. |
 | `SwaggerModule.createDocument(...)`와 `SwaggerModule.setup(...)` | `@fluojs/openapi`의 `OpenApiModule.forRoot({ title, version, sources, descriptors, ui, swaggerUiAssets })` | OpenAPI 도입은 명시적이다. 문서화할 모든 controller를 `sources`에 나열하거나, 미리 만든 HTTP handler mapping을 `descriptors`에 전달하거나, 둘 다 사용한다. fluo는 application module graph에서 controller를 scan하지 않는다. `/openapi.json`은 UI와 독립적으로 계속 제공되며, Swagger UI는 `ui: true`일 때만 `/docs`에서 제공된다. `swaggerUiAssets`로 기본 CSS와 JavaScript URL을 교체할 수 있다. |
 | `@nestjs/graphql` resolver discovery, reflected return type, `forRootAsync(...)` | `@fluojs/graphql`의 `GraphqlModule.forRoot(...)`, module provider/controller, `@Resolver`, `@Query`, `@Mutation`, `@Subscription`, `listOf(...)` | Resolver class를 compiled module의 provider 또는 controller로 등록한다. `resolvers` option은 discovery 가능한 class에 적용하는 선택적 allowlist/filter다. 이를 생략하거나 빈 list를 전달하면 등록된 decorated candidate를 모두 허용한다. fluo는 metadata에서 provider나 GraphQL output type을 추론하지 않는다. Object 결과에는 `outputType`, array에는 `outputType: listOf(ItemType)`이 필요하며 생략한 output type은 GraphQL `String`을 사용한다. `forRootAsync(...)`, object field resolver, `@Subscription({ topics })` 계약은 없다. 선택적 WebSocket subscription에는 server-backed Node HTTP/S adapter가 필요하다. |
 | `@Param()`, `@Query()`, `@Body()`, `@Headers()`, `@Req()`, `@Res()` 같은 controller parameter decorator와 `Pipe` / `ValidationPipe` transformation | `@fluojs/http`의 `@RequestDto(...)`와 field-level `@FromPath(...)`, `@FromQuery(...)`, `@FromBody(...)`, `@FromHeader(...)`, `@FromCookie(...)`, `@Convert(...)`; 고급 request/response 접근을 위한 `RequestContext` handler parameter | fluo는 NestJS-style controller parameter decorator나 public parameter Pipe 단계를 노출하지 않는다. 하나의 request DTO를 바인딩하고, 각 field source를 선언하며, number/boolean/date/domain conversion에는 `@Convert(...)`를 사용한 뒤 materialized DTO를 validation package로 검증한다. |
@@ -57,6 +58,7 @@
 - NestJS controller parameter decorator, Pipe, `ValidationPipe` migration은 parameter-for-parameter 치환이 아니다. `@Param()`, `@Query()`, `@Body()`, `@Headers()`, `@Req()`, `@Res()` 가정은 하나의 `@RequestDto(...)`, field-level source decorator, `@Convert(...)`, 그리고 low-level 접근이 필요할 때의 명시적 `RequestContext` handler parameter로 바꾼다. 검증은 public controller-parameter Pipe stage가 아니라 DTO materialization 이후에 실행된다.
 - Response ownership을 직접 가진 뒤에도 `ClassSerializerInterceptor`처럼 후처리될 것이라고 기대하면 안 된다. `SerializerInterceptor`가 DTO를 shaping해야 한다면 response를 commit하지 말고 DTO를 반환한다. Migrated code가 `RequestContext.response.send(...)`, `redirect(...)`, 또는 수동 streaming helper를 호출한다면 commit 전에 안전한 최종 payload를 만들어야 한다. 이후 `SerializerInterceptor`는 serialization을 우회하고 `next.handle()`에서 받은 값을 그대로 반환하지만, 다른 interceptor는 chain 결과를 계속 변환할 수 있다. Dispatcher는 이와 별개로 두 번째 success-response write를 건너뛴다.
 - `ValidationPipe`의 whitelist/forbid 가정이나 class-validator group 실행을 그대로 옮기지 않는다. 일반 fluo validator는 `null`과 `undefined`를 건너뛰므로 필수 field에는 `@IsDefined()`를 추가한다. 입력이 plain 객체일 때 `materialize()`는 안전한 own enumerable 추가 속성을 제거하거나 거부하지 않고 유지하며, 이 filtering 보장은 이미 생성된 DTO 인스턴스를 설명하지 않는다. Decorator option은 `groups`와 `always`를 지원하지 않는다. Workflow별 규칙에는 명시적 input shaping과 별도 DTO, mapped DTO, `@ValidateIf(...)`, class-level validator를 사용한다.
+- NestJS i18n request-scoped context와 resolver discovery는 그대로 옮겨지지 않는다. Application-owned request boundary에서 ordered resolver list와 함께 `resolveHttpLocale(...)`을 실행하고, `getHttpLocale(...)`로 해당 `RequestContext`에 저장된 metadata만 읽은 뒤, 그 `locale`을 각 `I18nService` 또는 `localizeDtoValidationError(...)` 호출에 전달한다. Validation helper는 request state나 global locale을 암묵적으로 읽지 않는다.
 - OpenAPI migration은 reflection-driven `SwaggerModule` 치환이 아니다. `OpenApiModule`에는 `title`과 `version`이 필요하며, 문서화할 operation은 명시적 `sources`, 명시적 `descriptors`, 또는 둘 모두에서 와야 한다. Application `controllers`는 자동 추론되지 않는다. Handler 반환값과 TypeScript 반환 타입은 response schema를 만들지 않는다. `@ApiResponse(...)`가 없으면 생성된 success response에는 method-derived 또는 `@HttpCode(...)` status와 `OK` description만 포함된다. Response content가 필요하면 `@ApiResponse(...)`에 `schema` 또는 `type`을 제공한다. 같은 OpenAPI path/method operation이 겹치면 나중 descriptor가 우선하며, module composition은 explicit `descriptors`를 discovered `sources` 뒤에 두므로 충돌 시 explicit descriptor가 이긴다.
 - 컨트롤러 데코레이터는 반드시 `@fluojs/http`에서 가져오고, `@Module` 같은 구조 데코레이터는 `@fluojs/core`에서 가져온다.
 - Observable을 반환하는 NestJS `@Sse()` 핸들러는 반드시 `SseResponse`를 만들거나 `AsyncIterable`을 반환하도록 재작성해야 한다. 수동 `SseResponse` stream은 `send(...)` 또는 `comment(...)`를 호출하고 request abort 또는 application cleanup 경로에서 닫아야 하며, managed async iterable은 request abort 또는 response stream close 시 dispatcher가 닫는다.
@@ -75,7 +77,8 @@
 - `@fluojs/terminus`는 별도의 process-only liveness route를 기본으로 만들지 않는다. 기본 `GET /health` aggregated health route와 `GET /ready` readiness gate를 유지하고, 더 좁은 process probe가 필요하면 애플리케이션 또는 배포 계층에서 정의한다.
 - Throttler migration은 global module을 global enforcement로 치환하는 방식이 아니다. `ThrottlerModule.forRoot(...)`는 default를 등록하고, `ThrottlerGuard`는 보호할 controller나 handler의 guard metadata로 활성화해야 한다.
 - `@fluojs/throttler`는 하나의 module default와 class/method `@Throttle({ ttl, limit })` override를 제공한다. burst와 sustained limit 같은 multi-window 정책은 HTTP middleware, custom `ThrottlerStore`, 또는 애플리케이션이 소유한 guard wrapper로 명시적으로 구현해야 한다.
-- `@fluojs/platform-express`는 Express를 host engine으로 보존하지만 implicit middleware translation layer로 동작하지 않는다. NestJS 또는 Express migration에서 가져온 native Express/Connect `(req, res, next)` middleware는 Express routing과 fluo dispatch보다 먼저 배열 순서대로 실행되는 adapter의 명시적 `nativeMiddleware` 옵션에 전달할 수 있다. Handler가 `next()`를 호출하면 fluo로 계속 진행하고 response를 끝내면 진행하지 않는다. Native failure는 Express error chain에 남고 native middleware resource는 애플리케이션이 소유한다. 장기적으로 유지할 동작은 fluo `Middleware`로 감싼 뒤 `fluoFactory.create({ middleware })`에 넣는 방식을 우선한다.
+- `@fluojs/platform-express`는 Node.js 20+가 필요하며 Express를 host engine으로만 보존한다. NestJS HTTP adapter를 교체하기 전에 controller와 provider를 TC39 표준 데코레이터로 마이그레이션하고, class-level `@Inject(...)`로 constructor token을 선언하며, 명시적 module/provider registration을 사용한다. `experimentalDecorators`와 `emitDecoratorMetadata`는 비활성화한 상태로 유지해야 하며, HTTP host 변경은 NestJS decorator, reflection metadata, implicit dependency-discovery semantics를 보존하지 않는다.
+- `@fluojs/platform-express`는 implicit middleware translation layer로 동작하지 않는다. NestJS 또는 Express migration에서 가져온 native Express/Connect `(req, res, next)` middleware는 Express routing과 fluo dispatch보다 먼저 배열 순서대로 실행되는 adapter의 명시적 `nativeMiddleware` 옵션에 전달할 수 있다. Handler가 `next()`를 호출하면 fluo로 계속 진행하고 response를 끝내면 진행하지 않는다. Native failure는 Express error chain에 남고 native middleware resource는 애플리케이션이 소유한다. 장기적으로 유지할 동작은 fluo `Middleware`로 감싼 뒤 `fluoFactory.create({ middleware })`에 넣는 방식을 우선한다.
 - Forwarded client IP header는 `Forwarded`, `X-Forwarded-For`, `X-Real-IP`를 신뢰 가능한 proxy가 덮어쓰는 배포에서 `trustProxyHeaders: true`를 설정한 경우에만 사용된다.
 - Throttling된 응답에서 보장되는 metadata는 HTTP `429`와 `Retry-After`다. 추가 rate-limit header나 body shape는 애플리케이션 경계에서 더한다.
 - WebSocket migration은 decorator-for-decorator 치환이 아닙니다. `@fluojs/websockets`의 `@OnMessage(event?)`를 사용하고, handler 입력은 `(payload, socket, request)` positional argument로 읽으며, room membership 또는 broadcast에는 NestJS gateway server injection이나 parameter decorator가 그대로 이어진다고 가정하지 말고 `WebSocketRoomService`를 사용합니다. Root `@fluojs/websockets`와 `@fluojs/websockets/node` module path는 Node.js default이며 upgrade guard가 `IncomingMessage`를 받습니다. Bun, Deno, Cloudflare Workers migration은 guard/request type과 runtime lifecycle service가 올바른 subpath boundary에 머물도록 `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`에서 import해야 합니다. Raw WebSocket gateway 반환값은 await된 뒤 무시됩니다. Reply는 runtime socket argument로 명시적으로 보내세요.
@@ -101,6 +104,60 @@
 - `NotificationsModule`은 기본적으로 `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS`에 대해 global이다. Migrated code에 module-local visibility가 필요할 때는 `global: false`를 사용한다.
 - Slack migration은 NestJS async dynamic-module 또는 package-level multi-client registry clone이 아니다. `SlackModule.forRootAsync(...)`는 `inject`와 `useFactory`를 받으며, `imports`, `useClass`, `useExisting`은 소비하지 않는다. 필요한 의존성은 application module graph에 등록한 뒤 token을 `inject`에 나열하고, `useFactory`에서 최종 Slack option을 반환한다. `@fluojs/slack`은 singleton compatibility token인 `SLACK`과 `SLACK_CHANNEL`을 노출하고 `createSlackProviders(...)`로 같은 singleton wiring을 재사용하며, NestJS `isGlobal` 대신 기본 global visibility를 가진 `global?: boolean`을 사용한다.
 - Discord migration은 NestJS async dynamic-module 또는 custom-provider clone이 아니다. `DiscordModule.forRootAsync(...)`는 `inject`와 `useFactory`를 받으며, `imports`, `useClass`, `useExisting`는 소비하지 않는다. `@fluojs/discord`는 singleton compatibility token인 `DISCORD`와 `DISCORD_CHANNEL`을 노출하고, NestJS `isGlobal` 대신 기본 global visibility를 가진 `global?: boolean`을 사용하며, `createDiscordProviders(...)`, `DISCORD_OPTIONS`, `NormalizedDiscordModuleOptions` 같은 내부 provider helper는 private으로 유지한다.
+
+### NestJS i18n Locale 및 Validation Migration
+
+NestJS i18n의 resolver discovery와 request-scoped context를 하나의 명시적 request-boundary handoff로 바꾼다. Root module로 catalog를 등록하고 HTTP subpath로 request locale을 선택한 뒤 그 locale을 validation subpath에 전달한다.
+
+```typescript
+import { Module } from '@fluojs/core';
+import { I18nModule, type I18nService } from '@fluojs/i18n';
+import {
+  createAcceptLanguageLocaleResolver,
+  getHttpLocale,
+  resolveHttpLocale,
+} from '@fluojs/i18n/http';
+import { localizeDtoValidationError } from '@fluojs/i18n/validation';
+import type { RequestContext } from '@fluojs/http';
+import type { DtoValidationError } from '@fluojs/validation';
+
+const acceptLanguage = createAcceptLanguageLocaleResolver();
+
+@Module({
+  imports: [
+    I18nModule.forRoot({
+      defaultLocale: 'en',
+      supportedLocales: ['en', 'ko'],
+      catalogs: {
+        en: { validation: { email: { EMAIL: '{{ field }} must be a valid email address.' } } },
+        ko: { validation: { email: { EMAIL: '{{ field }}에는 올바른 이메일 주소가 필요합니다.' } } },
+      },
+    }),
+  ],
+})
+class AppModule {}
+
+function bindRequestLocale(context: RequestContext) {
+  return resolveHttpLocale(context, {
+    defaultLocale: 'en',
+    supportedLocales: ['en', 'ko'],
+    resolvers: [acceptLanguage],
+  });
+}
+
+function localizeValidationFailure(
+  i18n: I18nService,
+  error: DtoValidationError,
+  context: RequestContext,
+): DtoValidationError {
+  const locale = getHttpLocale(context)?.locale ?? 'en';
+  return localizeDtoValidationError(i18n, error, { locale });
+}
+```
+
+Downstream translation 또는 validation-error handling 전에 application-owned middleware나 다른 request hook에서 `bindRequestLocale(...)`을 호출한다. `resolveHttpLocale(...)`은 resolver를 배열 순서대로 실행하고 invalid 또는 unsupported result를 무시하며, 아무 것도 match하지 않으면 configured default를 source `default`로 저장한다. `getHttpLocale(...)`은 해당 `RequestContext`만 읽고 global state는 조회하지 않는다.
+
+`localizeDtoValidationError(...)`은 명시적 locale을 사용한 issue message를 포함하는 새 error를 반환한다. 기본 namespace는 `validation`이고 candidate key는 `source.field.code`에서 `code` 순서로 해석되며, `fallbackToIssueMessage: false`를 선택하지 않으면 missing translation은 원래 issue message를 보존한다. 이 helper는 transport-agnostic 상태를 유지한다. 여기서는 HTTP가 locale을 선택하지만 validation localization 자체는 HTTP state를 읽지 않는다.
 
 ### Prisma Request-Wide Transaction Migration
 
@@ -286,4 +343,5 @@ Codemod는 import 재작성, `@Injectable()` 제거, provider scope 매핑, cons
 - [DI and Modules](../architecture/di-and-modules.ko.md)
 - [Decorators and Metadata](../architecture/decorators-and-metadata.ko.md)
 - [CQRS Contract](../architecture/cqrs.ko.md)
+- [i18n Ecosystem Bridge Decision](../reference/i18n-ecosystem-bridges.ko.md)
 - [fluo new Support Matrix](../reference/fluo-new-support-matrix.ko.md)

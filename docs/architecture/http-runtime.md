@@ -28,6 +28,7 @@ This document defines the current request execution contract implemented by `@fl
 | Path normalization | `normalizeRoutePath(...)` removes duplicate and trailing slashes, so equivalent forms normalize to one canonical path. |
 | Supported segments | `parseRoutePath(...)` accepts literal segments and full-segment `:param` placeholders only. |
 | Unsupported syntax | Wildcards, regex-like tokens, inline modifiers, and mixed segments such as `user-:id` or `:id.json` are rejected by route validation. |
+| Catch-all decision | Catch-all grammar is deferred; see the [HTTP catch-all route grammar decision](./http-catch-all-route-grammar.md). No candidate syntax is active. |
 | Param naming | Route param names MUST match `/[a-zA-Z_][a-zA-Z0-9_]*/`. |
 | Match shape | `matchRoutePath(...)` matches only when the registered path and incoming path have the same segment count. |
 | Handler lookup | `HandlerMapping.match(request)` returns one `HandlerMatch` containing the descriptor and extracted params, or `undefined` when no route matches. |

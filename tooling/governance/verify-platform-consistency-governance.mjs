@@ -14,6 +14,7 @@ const nodeGlobalBufferPattern = /\bBuffer\b/g;
 
 const ssotPairs = [
   ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'],
+  ['docs/architecture/http-catch-all-route-grammar.md', 'docs/architecture/http-catch-all-route-grammar.ko.md'],
   ['docs/architecture/platform-consistency-design.md', 'docs/architecture/platform-consistency-design.ko.md'],
   ['docs/contracts/behavioral-contract-policy.md', 'docs/contracts/behavioral-contract-policy.ko.md'],
   ['docs/contracts/public-export-tsdoc-baseline.md', 'docs/contracts/public-export-tsdoc-baseline.ko.md'],
@@ -24,6 +25,8 @@ const ssotPairs = [
 ];
 
 const contractGateTriggers = new Set([
+  'docs/architecture/http-catch-all-route-grammar.md',
+  'docs/architecture/http-catch-all-route-grammar.ko.md',
   'docs/architecture/platform-consistency-design.md',
   'docs/architecture/platform-consistency-design.ko.md',
   'docs/contracts/behavioral-contract-policy.md',
@@ -888,6 +891,138 @@ export function enforceCloudflareWorkersLifecycleDocsSync(
   }
 }
 
+const expressRuntimeMigrationDocRequirements = [
+  [
+    'packages/platform-express/README.md',
+    ['Node.js 20 or newer', 'engines.node >=20.0.0', 'TC39 standard decorators', 'explicit module/provider registration'],
+  ],
+  [
+    'packages/platform-express/README.ko.md',
+    ['Node.js 20 이상', 'engines.node >=20.0.0', 'TC39 표준 데코레이터', '명시적 module/provider registration'],
+  ],
+  [
+    'docs/reference/package-surface.md',
+    ['Node.js 20+', 'engines.node >=20.0.0', 'TC39 standard decorator', 'explicit DI/module wiring'],
+  ],
+  [
+    'docs/reference/package-surface.ko.md',
+    ['Node.js 20+', 'engines.node >=20.0.0', 'TC39 표준 데코레이터', '명시적 DI/module wiring'],
+  ],
+  [
+    'docs/reference/package-chooser.md',
+    ['Node.js 20+', 'engines.node >=20.0.0', 'TC39 standard decorators', 'explicit DI/module wiring'],
+  ],
+  [
+    'docs/reference/package-chooser.ko.md',
+    ['Node.js 20+', 'engines.node >=20.0.0', 'TC39 표준 데코레이터', '명시적 DI/module wiring'],
+  ],
+  [
+    'docs/getting-started/migrate-from-nestjs.md',
+    ['Node.js 20+', 'TC39 standard decorators', 'class-level `@Inject(...)`', 'explicit module/provider registration'],
+  ],
+  [
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    ['Node.js 20+', 'TC39 표준 데코레이터', 'class-level `@Inject(...)`', '명시적 module/provider registration'],
+  ],
+  [
+    'book/intermediate/ch21-express-node.md',
+    ['Node.js 20 or newer', 'engines.node >=20.0.0', 'getListenTarget()', 'explicit DI/module wiring'],
+  ],
+  [
+    'book/intermediate/ch21-express-node.ko.md',
+    ['Node.js 20 이상', 'engines.node >=20.0.0', 'getListenTarget()', '명시적 DI/module wiring'],
+  ],
+  [
+    'apps/docs/content/docs/guides/runtime-adapters.mdx',
+    ['Node.js 20 or newer', 'engines.node >=20.0.0', 'getListenTarget()', 'explicit DI/module wiring'],
+  ],
+  [
+    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+    ['Node.js 20 이상', 'engines.node >=20.0.0', 'getListenTarget()', '명시적 DI/module wiring'],
+  ],
+  [
+    'docs/CONTEXT.md',
+    ['Node.js 20+', 'engines.node >=20.0.0', 'getListenTarget()', 'explicit DI/module wiring'],
+  ],
+  [
+    'docs/CONTEXT.ko.md',
+    ['Node.js 20+', 'engines.node >=20.0.0', 'getListenTarget()', '명시적 DI/module wiring'],
+  ],
+];
+
+const expressListenTargetExamplePaths = [
+  'book/intermediate/ch21-express-node.md',
+  'book/intermediate/ch21-express-node.ko.md',
+  'apps/docs/content/docs/guides/runtime-adapters.mdx',
+  'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+];
+
+function includesMarkersInOrder(content, markers) {
+  let offset = 0;
+
+  return markers.every((marker) => {
+    const index = content.indexOf(marker, offset);
+    if (index === -1) {
+      return false;
+    }
+
+    offset = index + marker.length;
+    return true;
+  });
+}
+
+function includesTypeCorrectExpressListenTargetExample(content) {
+  const typedCodeFence = /```(?:ts|typescript)\r?\n([\s\S]*?)```/g;
+
+  return Array.from(content.matchAll(typedCodeFence), (match) => match[1] ?? '').some((code) =>
+    includesMarkersInOrder(code, [
+      'createExpressAdapter,',
+      'ExpressHttpApplicationAdapter,',
+      'const adapter = createExpressAdapter(',
+      'adapter instanceof ExpressHttpApplicationAdapter',
+      'adapter.getListenTarget()',
+    ]),
+  );
+}
+
+export function enforceExpressRuntimeMigrationDocsSync(
+  readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
+) {
+  for (const [relativePath, requiredMarkers] of expressRuntimeMigrationDocRequirements) {
+    const content = readText(relativePath);
+    const missingMarkers = requiredMarkers.filter((marker) => !content.includes(marker));
+
+    assert(
+      missingMarkers.length === 0,
+      `${relativePath} must keep the Express Node.js runtime floor, infrastructure helpers, and NestJS migration boundary synchronized; missing: ${missingMarkers.join(', ')}.`,
+    );
+  }
+
+  const adapterSourcePath = 'packages/platform-express/src/adapter.ts';
+  const adapterSource = readText(adapterSourcePath);
+  const factoryStart = adapterSource.indexOf('export function createExpressAdapter(');
+  const nextExport = factoryStart === -1 ? -1 : adapterSource.indexOf('\nexport ', factoryStart + 1);
+  const factorySource =
+    factoryStart === -1 ? '' : adapterSource.slice(factoryStart, nextExport === -1 ? undefined : nextExport);
+  assert(
+    adapterSource.includes('export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {') &&
+      includesMarkersInOrder(factorySource, [
+        'export function createExpressAdapter(',
+        '): HttpApplicationAdapter {',
+        'return new ExpressHttpApplicationAdapter(',
+      ]),
+    `${adapterSourcePath} must keep createExpressAdapter() on the shared HttpApplicationAdapter public return type while constructing the exported ExpressHttpApplicationAdapter implementation.`,
+  );
+
+  for (const relativePath of expressListenTargetExamplePaths) {
+    const content = readText(relativePath);
+    assert(
+      includesTypeCorrectExpressListenTargetExample(content),
+      `${relativePath} must narrow createExpressAdapter() from its shared HttpApplicationAdapter return type to the public ExpressHttpApplicationAdapter implementation before calling getListenTarget().`,
+    );
+  }
+}
+
 function enforceCanonicalRuntimeMatrixReferences() {
   const packageSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
   const packageSurfaceKo = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
@@ -1645,6 +1780,57 @@ export function enforceReactClientSubpathContract() {
   );
 }
 
+export function enforceHttpCatchAllRouteGrammarDecision() {
+  const decisionPaths = [
+    'docs/architecture/http-catch-all-route-grammar.md',
+    'docs/architecture/http-catch-all-route-grammar.ko.md',
+  ];
+  const linkedSurfacePaths = [
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'docs/architecture/http-runtime.md',
+    'docs/architecture/http-runtime.ko.md',
+    'packages/http/README.md',
+    'packages/http/README.ko.md',
+    'packages/react/README.md',
+    'packages/react/README.ko.md',
+  ];
+
+  for (const decisionPath of decisionPaths) {
+    const decision = read(decisionPath);
+
+    for (const requiredContract of [
+      'Status: Deferred',
+      '/*path',
+      '/:path*',
+      'static > param > catch-all',
+      'Readonly<Record<string, string>>',
+      'OpenAPI',
+      'native fast path',
+      '@fluojs/react/client',
+    ]) {
+      assert(
+        decision.includes(requiredContract),
+        `${decisionPath} must keep the deferred catch-all decision and adoption gate ${requiredContract} explicit.`,
+      );
+    }
+  }
+
+  for (const surfacePath of linkedSurfacePaths) {
+    assert(
+      read(surfacePath).includes('http-catch-all-route-grammar'),
+      `${surfacePath} must link the HTTP catch-all route grammar decision.`,
+    );
+  }
+
+  const routePathSource = read('packages/http/src/route-path.ts');
+  assert(
+    routePathSource.includes('Only literal segments and full-segment ":param" placeholders are supported.') &&
+      !routePathSource.includes("kind: 'catch-all'"),
+    'packages/http/src/route-path.ts must keep catch-all grammar inactive while the decision status is Deferred.',
+  );
+}
+
 export function enforceGraphqlRuntimeBoundaryDiscoverability() {
   const expectedNodeEngine = '>=20.16.0';
   const graphqlPackageJson = JSON.parse(read('packages/graphql/package.json'));
@@ -1732,12 +1918,14 @@ export function main() {
   enforceDocsHubOfficialTransportLinks();
   enforceSerializerResponseOwnershipDocsSync();
   enforceCloudflareWorkersLifecycleDocsSync();
+  enforceExpressRuntimeMigrationDocsSync();
   enforceCanonicalRuntimeMatrixReferences();
   enforceRemovedRuntimeFactoryNamesNotUsedInDocs();
   enforceNoDirectProcessEnvInOrdinaryPackageSource();
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices();
   enforceViteToolingDiscoverability();
   enforceReactClientSubpathContract();
+  enforceHttpCatchAllRouteGrammarDecision();
   enforceGraphqlRuntimeBoundaryDiscoverability();
   enforcePersistenceTransactionInterceptorCompatibility();
   enforceAdvancedBookCoreBoundaryCompanions(changedFiles);
