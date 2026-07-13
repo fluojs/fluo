@@ -607,7 +607,9 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // explicit descriptor adoption, response metadata, Swagger UI asset, and
   // path/method collision-precedence boundaries, plus GraphQL's explicit
   // resolver/provider wiring, root-only operations, output type declarations,
-  // and server-backed WebSocket migration boundaries.
+  // and server-backed WebSocket migration boundaries, plus JWT refresh-token
+  // family-scoped reuse revocation, subject-wide compatibility fallback, and
+  // consume-only rotation regression coverage.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
