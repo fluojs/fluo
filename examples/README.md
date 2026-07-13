@@ -14,6 +14,8 @@ These examples intentionally stay on the HTTP side of the published `fluo new` v
 - `./ops-metrics-terminus/` — operations example centered on `/metrics`, `/health`, and `/ready`
 - `./react-stable-ssr/` — stable `@fluojs/react` SSR MVP example with HTTP-owned routes, DTO-bound
   params/search, lifecycle middleware, and explicit hydration assets
+- `./react-vite-ssr/` — Vite-backed React SSR example with manifest-fed assets, streamed Suspense,
+  and a hydrated client interaction
 
 ## recommended reading order
 
@@ -24,8 +26,9 @@ If you are new to the repo, follow this order:
 3. `./auth-jwt-passport/README.md` — auth, JWT issuance, and protected route path
 4. `./ops-metrics-terminus/README.md` — metrics and health/readiness path
 5. `./react-stable-ssr/README.md` — stable React SSR pages as HTTP-owned handlers
-6. `../book/beginner/ch02-cli-setup.md` — first local project setup through the CLI
-7. `../book/beginner/ch03-modules-providers.md` — first module/provider wiring and package mental model
+6. `./react-vite-ssr/README.md` — Vite build manifest and hydration layered onto the SSR baseline
+7. `../book/beginner/ch02-cli-setup.md` — first local project setup through the CLI
+8. `../book/beginner/ch03-modules-providers.md` — first module/provider wiring and package mental model
 
 ## how these examples fit the docs
 
@@ -37,6 +40,9 @@ If you are new to the repo, follow this order:
   facades over `@fluojs/http`, URL matching and route grammar stay HTTP-owned, DTO validation and
   the request lifecycle are preserved, hydration assets are explicit, and RSC/server functions stay
   outside the stable root
+- `react-vite-ssr` proves the `0.2.0` example phase: the same HTTP-owned route and DTO contracts feed
+  streamed Suspense HTML, an already-loaded Vite manifest supplies hydration assets, and a browser
+  interaction hydrates without claiming SPA navigation or file-based routing
 
 The examples also anchor the canonical fluo TDD ladder from `../docs/contracts/testing-guide.md`: write fast unit tests near `src/**`, add slice/module tests with `createTestingModule({ rootModule })` when DI wiring or provider overrides matter, and use `createTestApp({ rootModule })` with `app.request(...).send()` for app-level e2e-style request-pipeline checks. Existing files such as `minimal/src/app.test.ts`, `auth-jwt-passport/src/app.test.ts`, and `ops-metrics-terminus/src/app.test.ts` show the app-level end of that ladder.
 
@@ -56,6 +62,7 @@ pnpm vitest run examples/realworld-api
 pnpm vitest run examples/auth-jwt-passport
 pnpm vitest run examples/ops-metrics-terminus
 pnpm vitest run examples/react-stable-ssr
+pnpm vitest run examples/react-vite-ssr
 ```
 
 ## related docs

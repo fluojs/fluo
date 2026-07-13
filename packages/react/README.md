@@ -312,6 +312,8 @@ Expected manifest failures return diagnostics instead of throwing. Stable diagno
 TC39 decorator transform used by fluo applications. Use `@fluojs/react/vite` in React SSR code to
 parse React build assets and feed the existing hydration contract. Neither package owns file routes,
 React-only route grammar, Next.js route segment conventions, RSC bundler behavior, or URL matching.
+The runnable `examples/react-vite-ssr/` application shows this boundary with generated assets,
+streamed Suspense content, and direct React DOM hydration while client navigation remains future work.
 
 ## Current Limitations
 
@@ -386,3 +388,7 @@ This package currently does **not** provide:
 - `packages/react/src/index.test.ts`
 - `examples/react-stable-ssr/README.md`
 - `examples/react-stable-ssr/src/app.test.ts`
+- `examples/react-vite-ssr/README.md`
+- `examples/react-vite-ssr/src/app.test.ts`
+- `examples/react-vite-ssr/src/hydration.test.ts`
+- `examples/react-vite-ssr/tests/production-hydration.spec.ts`

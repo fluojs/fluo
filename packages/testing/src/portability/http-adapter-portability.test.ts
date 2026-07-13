@@ -1,13 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
-
+import { bootstrapExpressApplication, runExpressApplication } from '@fluojs/platform-express';
 import {
   bootstrapFastifyApplication,
-  FastifyHttpApplicationAdapter,
+  type FastifyHttpApplicationAdapter,
   runFastifyApplication,
 } from '@fluojs/platform-fastify';
-import { bootstrapExpressApplication, runExpressApplication } from '@fluojs/platform-express';
 import { bootstrapNodejsApplication, runNodejsApplication } from '@fluojs/platform-nodejs';
 import { bootstrapNodeApplication, runNodeApplication } from '@fluojs/runtime/node';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createHttpAdapterPortabilityHarness } from './http-adapter-portability.js';
 
@@ -273,15 +272,19 @@ describe('http adapter portability cleanup reporting', () => {
     });
 
     try {
-      await harness.assertRemovesShutdownSignalListenersAfterClose();
-      throw new Error('Expected cleanup failure to be reported.');
-    } catch (error) {
-      expect(error).toBeInstanceOf(AggregateError);
-      if (!(error instanceof AggregateError)) {
-        throw error;
+      try {
+        await harness.assertRemovesShutdownSignalListenersAfterClose();
+        throw new Error('Expected cleanup failure to be reported.');
+      } catch (error) {
+        expect(error).toBeInstanceOf(AggregateError);
+        if (!(error instanceof AggregateError)) {
+          throw error;
+        }
+        expect(error.message).toContain('app.close() failed during portability harness cleanup');
+        expect(error.errors).toEqual([closeError]);
       }
-      expect(error.message).toContain('app.close() failed during portability harness cleanup');
-      expect(error.errors).toEqual([closeError]);
+    } finally {
+      process.removeListener(signal, listener);
     }
   });
 

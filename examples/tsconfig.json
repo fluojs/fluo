@@ -6,6 +6,7 @@
       "@fluojs/core/internal": ["../packages/core/src/internal.ts"],
       "@fluojs/core/request-pipeline": ["../packages/core/src/request-pipeline.ts"],
       "@fluojs/http/internal": ["../packages/http/src/internal.ts"],
+      "@fluojs/react/vite": ["../packages/react/src/vite.ts"],
       "@fluojs/terminus/node": ["../packages/terminus/src/node.ts"],
       "@fluojs/runtime/internal": ["../packages/runtime/src/internal.ts"],
       "@fluojs/runtime/internal/http-adapter": ["../packages/runtime/src/internal-http-adapter.ts"],
