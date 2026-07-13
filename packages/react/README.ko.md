@@ -164,6 +164,10 @@ segment와 full-segment `:param` placeholder뿐입니다. wildcard, catch-all ro
 regex-like token, `user-:id` 같은 mixed literal/parameter segment, `:id.json` 같은 suffix param은
 지원하지 않습니다.
 
+[HTTP catch-all route grammar 결정](../../docs/architecture/http-catch-all-route-grammar.ko.md)은
+wildcard 도입을 유예합니다. React는 자체 syntax를 추가하지 않습니다. Page handler는 명시적인 server
+route를 유지해야 하며, 향후 catch-all은 먼저 승인된 `@fluojs/http` contract가 되어야 합니다.
+
 ## Web Streams SSR
 
 React page handler에서 `createReactServerEntry(...)`를 반환하면 기존 fluo HTTP dispatcher를 통해 HTML을
@@ -392,6 +396,12 @@ Navigation contract는 의도적으로 HTTP-first입니다.
 
 이 phase는 `prefetch`를 의도적으로 제공하지 않습니다. 소유한 client data/render cache가 없으므로
 prefetch를 제공하면 일관되게 revalidate하거나 consume할 수 없는 behavior를 약속하게 됩니다.
+
+Client navigation에는 catch-all route가 필요하지 않습니다. `Link`는 실제 anchor로 남으므로 hydration
+gap이나 JavaScript disabled 환경에서는 일반 full-document browser navigation으로 fallback합니다. 이후
+server는 명시적인 `@Path(...)`/HTTP route를 match하거나 정상적인 not-found response를 반환합니다.
+의도적인 deployment-level document rewrite를 별도로 설정할 수 있지만, 이는 React route grammar를 만들거나
+server DTO validation을 변경하지 않습니다.
 
 ## 현재 제한 사항
 

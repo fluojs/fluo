@@ -129,19 +129,32 @@ Shutdown timeout이나 failure가 발생하면 helper는 log를 남기고 `proce
 
 ## Express
 
-기존 Express-oriented environment와 통합하려면 Express adapter를 사용합니다.
+기존 Express-oriented environment와 통합하려면 Express adapter를 사용합니다. `@fluojs/platform-express`는 Node.js 20 이상이 필요하며 `engines.node >=20.0.0`을 선언합니다.
+
+Express host 교체는 NestJS legacy decorator 또는 reflection metadata semantics를 유지하지 않습니다. HTTP host를 변경하기 전에 controller와 provider를 TC39 표준 데코레이터, class-level `@Inject(...)`, 명시적 DI/module wiring으로 마이그레이션하세요.
 
 ```ts
-import { createExpressAdapter } from '@fluojs/platform-express';
+import {
+  createExpressAdapter,
+  ExpressHttpApplicationAdapter,
+} from '@fluojs/platform-express';
 import { fluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module';
 
-const app = await fluoFactory.create(AppModule, {
-  adapter: createExpressAdapter({ port: 3000 }),
-});
+const adapter = createExpressAdapter({ port: 3000 });
+const app = await fluoFactory.create(AppModule, { adapter });
 
 await app.listen();
+
+if (!(adapter instanceof ExpressHttpApplicationAdapter)) {
+  throw new TypeError('Expected the Express adapter factory to return the Express implementation');
+}
+
+const { bindTarget, url } = adapter.getListenTarget();
+console.log(`Listening on ${url} (${bindTarget})`);
 ```
+
+`createExpressAdapter()`는 의도적으로 공유 `HttpApplicationAdapter` return type을 노출합니다. startup 이후 Express 전용 `getListenTarget()` helper를 해석하기 전에 export된 `ExpressHttpApplicationAdapter` class로 narrow하세요. 이 helper와 `getServer()`, `getRealtimeCapability()`는 native host detail을 application provider에 전달하지 말고 infrastructure boundary에만 두세요.
 
 Express는 shared SSE/streaming response contract를 지원합니다.
 
