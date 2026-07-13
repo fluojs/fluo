@@ -41,6 +41,7 @@ permission:
     'true *': allow
     'exit *': allow
     'printf *': allow
+    'echo *': allow
     'command -v *': allow
     'jq *': allow
     'actionlint': allow
@@ -153,6 +154,7 @@ permission:
     'GIT_MASTER=1 git worktree remove*': deny
     'sort*': allow
     'gh search issues *': allow
+    'gh search code *': allow
     'gh repo view *': allow
     'gh release view *': allow
     'gh pr *': allow
@@ -231,6 +233,7 @@ permission:
     'true *': allow
     'exit *': allow
     'printf *': allow
+    'echo *': allow
     'command -v *': allow
     'jq *': allow
     'actionlint': allow
@@ -336,6 +339,7 @@ permission:
     'GIT_MASTER=1 git fetch*': allow
     'GIT_MASTER=1 git push*': allow
     'gh search issues *': allow
+    'gh search code *': allow
     'gh repo view *': allow
     'gh release view *': allow
     'gh issue view*': allow
@@ -350,6 +354,7 @@ permission:
     'gh auth status *': allow
     'gh run list *': allow
     'gh run watch *': allow
+    'gh run view*': allow
     'git merge*': deny
     'git rebase*': deny
     'npm publish*': deny
