@@ -25,9 +25,10 @@ Functions, TanStack route trees, Angular `Routes[]`, file routes, or a React-own
 table. The route is discovered through the fluo module/controller graph, URL matching stays in
 `@fluojs/http`, and the React package only adds page-oriented naming plus SSR rendering helpers.
 
-Future phase boundaries remain outside this example:
+Additional phase boundaries remain outside this example:
 
-- `@fluojs/react/vite` — future Vite/manifest asset discovery.
+- `@fluojs/react/vite` — current parsing of already-loaded Vite build manifests into deterministic
+  hydration assets. It does not discover manifests from the filesystem.
 - `@fluojs/react/client` — future browser navigation and client hydration helpers.
 - `@fluojs/react/experimental/rsc` — future RSC and Server Functions experiments.
 

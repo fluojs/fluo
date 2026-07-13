@@ -112,6 +112,7 @@ function liveHeartbeatEvent(sequence: number): StudioLiveEvent {
 describe('useStudioLiveConnection', () => {
   afterEach(() => {
     delete (window as typeof window & { __FLUO_STUDIO__?: unknown }).__FLUO_STUDIO__;
+    window.history.replaceState({}, '', '/');
     vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
@@ -164,6 +165,41 @@ describe('useStudioLiveConnection', () => {
 
     expect(FakeEventSource.instances).toHaveLength(0);
     expect(observedStates.some((state) => state.events.length > 0)).toBe(false);
+  });
+
+  it('consumes the viewer query token for state replay and live events', async () => {
+    const token = 'live token+/=?&';
+    const encodedToken = encodeURIComponent(token);
+    const search = new URLSearchParams({ token });
+    window.history.replaceState({}, '', `/?${search.toString()}`);
+    vi.stubGlobal('EventSource', FakeEventSource);
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ events: [], sequence: 0 }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    function Harness() {
+      const [state, dispatch] = useReducer(studioReducer, initialStudioState);
+      useStudioLiveConnection(dispatch);
+      return createElement('output', null, state.connection.status);
+    }
+
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root: Root = createRoot(container);
+    root.render(createElement(Harness));
+
+    try {
+      await vi.waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(
+          `/api/state?token=${encodedToken}`,
+          expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        );
+        expect(FakeEventSource.instances).toHaveLength(1);
+      });
+
+      expect(FakeEventSource.instances[0]?.url).toBe(`/api/events?token=${encodedToken}`);
+    } finally {
+      root.unmount();
+    }
   });
 
   it('reports the full live connection lifecycle state set', async () => {

@@ -25,7 +25,7 @@
 | condition | package choice | notes |
 | --- | --- | --- |
 | Need HTTP-owned React page handlers with Web Streams SSR | `@fluojs/react` + `@fluojs/http` | Use the root `@fluojs/react` package when pages should stay in fluo's existing module/controller pipeline. `@Router(...)` and `@Path(...)` are lexical React facades over HTTP metadata; URL matching, route grammar, DTO-bound path/search params, validation, guards, interceptors, middleware, headers, and request lifecycle remain owned by `@fluojs/http`. This is not a Next.js App Router, TanStack route tree, Angular `Routes[]`, file routing, RSC, Server Functions, or React-owned `routes: []` model. |
-| Need hydration assets for stable SSR | `@fluojs/react` | Pass explicit `bootstrapScripts`, `bootstrapModules`, trusted `bootstrapScriptContent`, `nonce`, `identifierPrefix`, and trusted `assetMap` snapshots to `createReactServerEntry(...)`. Manifest discovery belongs to future `@fluojs/react/vite`; browser navigation belongs to future `@fluojs/react/client`; RSC and Server Functions belong to future `@fluojs/react/experimental/rsc`. |
+| Need hydration assets for stable SSR | `@fluojs/react` or `@fluojs/react/vite` | Pass explicit `bootstrapScripts`, `bootstrapModules`, trusted `bootstrapScriptContent`, `nonce`, `identifierPrefix`, and trusted `assetMap` snapshots directly to `createReactServerEntry(...)`, or use `@fluojs/react/vite` to parse an already-loaded Vite manifest into deterministic CSS, JavaScript bootstrap assets, asset maps, trusted bootstrap data, and diagnostics for the same hydration contract. Browser navigation belongs to future `@fluojs/react/client`; RSC and Server Functions belong to future `@fluojs/react/experimental/rsc`. |
 
 ## deploy to edge / modern runtimes
 
