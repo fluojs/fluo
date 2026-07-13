@@ -188,6 +188,61 @@ importers:
         specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.14)
 
+  examples/react-vite-ssr:
+    dependencies:
+      '@fluojs/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@fluojs/http':
+        specifier: workspace:*
+        version: link:../../packages/http
+      '@fluojs/platform-fastify':
+        specifier: workspace:*
+        version: link:../../packages/platform-fastify
+      '@fluojs/react':
+        specifier: workspace:*
+        version: link:../../packages/react
+      '@fluojs/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      react:
+        specifier: ^19.2.6
+        version: 19.2.6
+      react-dom:
+        specifier: ^19.2.6
+        version: 19.2.6(react@19.2.6)
+    devDependencies:
+      '@babel/core':
+        specifier: ^7.26.10
+        version: 7.29.0
+      '@babel/plugin-proposal-decorators':
+        specifier: ^7.28.0
+        version: 7.29.0(@babel/core@7.29.0)
+      '@babel/preset-typescript':
+        specifier: ^7.27.1
+        version: 7.28.5(@babel/core@7.29.0)
+      '@fluojs/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@fluojs/vite':
+        specifier: workspace:*
+        version: link:../../packages/vite
+      '@types/react':
+        specifier: ^19.2.14
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.14)
+      happy-dom:
+        specifier: ^20.9.0
+        version: 20.9.0
+      vite:
+        specifier: ^6.2.1
+        version: 6.4.1(@types/node@22.19.15)(tsx@4.21.0)
+      vitest:
+        specifier: ^3.0.8
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.15)(happy-dom@20.9.0)(tsx@4.21.0)
+
   examples/realworld-api:
     dependencies:
       '@fluojs/config':

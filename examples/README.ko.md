@@ -14,6 +14,8 @@
 - `./ops-metrics-terminus/` — `/metrics`, `/health`, `/ready`에 초점을 둔 운영 예제
 - `./react-stable-ssr/` — HTTP-owned route, DTO-bound params/search, lifecycle middleware, 명시적인
   hydration asset을 포함한 안정 `@fluojs/react` SSR MVP 예제
+- `./react-vite-ssr/` — manifest-fed asset, streamed Suspense, hydrated client interaction을 포함한
+  Vite-backed React SSR 예제
 
 ## 권장 읽기 순서
 
@@ -24,8 +26,9 @@
 3. `./auth-jwt-passport/README.ko.md` — auth, JWT 발급, 보호 라우트 경로
 4. `./ops-metrics-terminus/README.ko.md` — metrics와 health/readiness 경로
 5. `./react-stable-ssr/README.ko.md` — HTTP-owned handler로서의 안정 React SSR page
-6. `../book/beginner/ch02-cli-setup.ko.md` — CLI를 통한 첫 로컬 프로젝트 설정
-7. `../book/beginner/ch03-modules-providers.ko.md` — 첫 module/provider wiring과 package mental model
+6. `./react-vite-ssr/README.ko.md` — SSR baseline 위에 Vite build manifest와 hydration 추가
+7. `../book/beginner/ch02-cli-setup.ko.md` — CLI를 통한 첫 로컬 프로젝트 설정
+8. `../book/beginner/ch03-modules-providers.ko.md` — 첫 module/provider wiring과 package mental model
 
 ## 예제가 문서에서 맡는 역할
 
@@ -37,6 +40,9 @@
   `@fluojs/http` 위의 lexical facade이고, URL matching과 route grammar는 HTTP-owned 상태로 남으며,
   DTO validation과 request lifecycle은 보존되고, hydration asset은 명시적이며, RSC/server functions는
   stable root 밖에 남습니다.
+- `react-vite-ssr`은 `0.2.0` example phase를 증명합니다. 같은 HTTP-owned route와 DTO contract가
+  streamed Suspense HTML을 만들고, 이미 로드한 Vite manifest가 hydration asset을 공급하며, browser
+  interaction이 SPA navigation이나 file-based routing을 약속하지 않고 hydrate됩니다.
 
 예제는 `../docs/contracts/testing-guide.ko.md`의 canonical fluo TDD ladder도 고정합니다. 빠른 unit 테스트는 `src/**` 가까이에 작성하고, DI wiring이나 provider override가 중요할 때는 `createTestingModule({ rootModule })` 기반 slice/module 테스트를 추가하며, app-level e2e 스타일 request-pipeline 점검에는 `createTestApp({ rootModule })`와 `app.request(...).send()`를 사용합니다. `minimal/src/app.test.ts`, `auth-jwt-passport/src/app.test.ts`, `ops-metrics-terminus/src/app.test.ts` 같은 기존 파일은 그 ladder의 app-level 끝단을 보여줍니다.
 
@@ -56,6 +62,7 @@ pnpm vitest run examples/realworld-api
 pnpm vitest run examples/auth-jwt-passport
 pnpm vitest run examples/ops-metrics-terminus
 pnpm vitest run examples/react-stable-ssr
+pnpm vitest run examples/react-vite-ssr
 ```
 
 ## 관련 문서
