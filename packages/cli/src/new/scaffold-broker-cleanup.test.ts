@@ -44,7 +44,10 @@ function installCommonStubs(projectDirectory: string): void {
 class BrokerTransport {
   async close() {
     globalThis.__events.push('transport.close');
-    if (globalThis.__delegatedCloseFails) throw new Error('delegated close failed');
+    if (globalThis.__delegatedCloseFails) {
+      globalThis.__delegatedCloseError = new Error('delegated close failed');
+      throw globalThis.__delegatedCloseError;
+    }
   }
   async emit() {}
   async listen() {}
@@ -71,7 +74,10 @@ function installBrokerStub(projectDirectory: string, transport: BrokerTransport)
       `export function JSONCodec() { return { decode(value) { return value; }, encode(value) { return value; } }; }
 export async function connect() {
   return {
-    async close() { globalThis.__events.push('nats.connection.close'); },
+    async close() {
+      globalThis.__events.push('nats.connection.close');
+      if (globalThis.__cleanupFails) throw new Error('nats cleanup failed');
+    },
     publish() {}, request() {}, subscribe() {},
   };
 }
@@ -191,6 +197,31 @@ await transport.close().then(
 );
 for (const event of ${JSON.stringify(expectedEvents)}) {
   if (!globalThis.__events.includes(event)) throw new Error('Missing cleanup event: ' + event);
+}
+`,
+    );
+  });
+
+  it('closes the NATS connection and rethrows the delegated close error when cleanup also fails', async () => {
+    const projectDirectory = await generateBrokerStarter('nats');
+
+    runAssertionScript(
+      projectDirectory,
+      `await import(__MODULE_URL__);
+const transport = globalThis.__fluoGeneratedTransport;
+await transport.listen(() => undefined);
+globalThis.__delegatedCloseFails = true;
+globalThis.__cleanupFails = true;
+await transport.close().then(
+  () => { throw new Error('Expected delegated close failure.'); },
+  (error) => {
+    if (error !== globalThis.__delegatedCloseError || error.message !== 'delegated close failed') {
+      throw new Error('NATS starter did not preserve the delegated close error.');
+    }
+  },
+);
+if (!globalThis.__events.includes('nats.connection.close')) {
+  throw new Error('NATS connection cleanup was not attempted.');
 }
 `,
     );

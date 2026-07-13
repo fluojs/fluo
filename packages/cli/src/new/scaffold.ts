@@ -1220,16 +1220,30 @@ class LazyNatsTransport implements MicroserviceTransport {
 
   async close() {
     const transport = this.initializing ? await this.initializing.catch(() => undefined) : this.transport;
+    let closeError: unknown;
+    let closeFailed = false;
     try {
       await transport?.close();
+    } catch (error) {
+      closeError = error;
+      closeFailed = true;
     } finally {
       try {
         await this.connection?.close();
+      } catch (error) {
+        if (!closeFailed) {
+          closeError = error;
+          closeFailed = true;
+        }
       } finally {
         this.initializing = undefined;
         this.transport = undefined;
         this.connection = undefined;
       }
+    }
+
+    if (closeFailed) {
+      throw closeError;
     }
   }
 
