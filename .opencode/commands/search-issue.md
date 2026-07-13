@@ -184,9 +184,9 @@ scope_decision:
 
 ## 5. Purpose Router and Batch Orchestration
 
-- 권장 batch size는 8 packages다.
+- 권장 batch size는 7 packages다.
 - batch가 여러 개여도 Scope Resolution 결과의 package 목록과 Intake Question Gate의 audit purposes만 사용한다.
-- `all` mode의 42개 package는 8개 단위로 6개 batch를 만든다. 앞의 5개 batch는 각각 8개 package, 마지막 batch는 2개 package가 된다 (`8 × 5 + 2 = 42`).
+- `all` mode의 42개 package는 7개 단위로 6개 batch를 만든다. 모든 batch는 각각 7개 package가 된다 (`7 × 6 = 42`).
 - `all` mode에서 `comprehensive`를 단독 선택하면 package별 primary reviewer triad를 실행하므로 expected primary invocations는 `126`회다 (`42 × 3`). Trigger된 conditional specialist invocation은 이 수치에 별도로 더한다.
 - batch 시작 전 package별 `route_plan`을 먼저 작성한다. `route_plan`과 batch manifest 없이 reviewer/R&D agent를 호출하지 않는다.
 - `expected_agent_invocations`는 고정 `package_count * 3`이 아니다. 각 package의 `route_plan.primary_agents.length` 합계와 `conditional_agents` 중 실제 trigger된 호출 수를 기준으로 계산한다.
@@ -236,7 +236,7 @@ route_plan:
 
 ```yaml
 batch_plan:
-  batch_size: 8
+  batch_size: 7
   package_count: <scope_decision.packages.length>
   expected_agent_invocations: <sum(route_plan.primary_agents) + triggered conditional agents>
   batches:
