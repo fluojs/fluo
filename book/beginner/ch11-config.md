@@ -79,33 +79,50 @@ Behind the scenes, `ConfigService` keeps a normalized in-memory snapshot of the 
 Open `src/app.module.ts` and add `ConfigModule` to the `imports` array.
 
 ```typescript
+import {
+  ConfigModule,
+  loadConfig,
+  type ConfigModuleOptions,
+} from '@fluojs/config';
 import { Module } from '@fluojs/core';
-import { ConfigModule } from '@fluojs/config';
+import { z } from 'zod';
+
+export const ConfigSchema = z.object({
+  PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+});
+
+const configSources = {
+  envFile: '.env',
+  processEnv: {
+    PORT: process.env.PORT,
+    NODE_ENV: process.env.NODE_ENV,
+  },
+  defaults: {
+    PORT: 3000,
+    NODE_ENV: 'development',
+  },
+  schema: ConfigSchema,
+} satisfies ConfigModuleOptions;
+
+export const validatedConfig = ConfigSchema.parse(loadConfig(configSources));
+const configModuleOptions = {
+  defaults: validatedConfig,
+  schema: ConfigSchema,
+} satisfies ConfigModuleOptions;
 
 @Module({
-  imports: [
-    ConfigModule.forRoot({
-      // Environment file path
-      envFile: '.env',
-      // Explicit application-boundary snapshot; ambient process.env is not scanned.
-      processEnv: {
-        PORT: process.env.PORT,
-      },
-      // Reasonable defaults for local development
-      defaults: {
-        PORT: 3000,
-        NODE_ENV: 'development',
-      },
-    }),
-  ],
+  imports: [ConfigModule.forRoot(configModuleOptions)],
 })
 export class AppModule {}
 ```
 
+`loadConfig(configSources)` applies the package precedence and synchronous schema at the application boundary. `ConfigModule` then receives the resulting `validatedConfig` as its source and keeps the same `schema` on registration, so HTTP bootstrap and injected consumers cannot drift onto separately parsed environment values.
+
 ### Precedence Rules and Conflict Resolution
 When `fluo` merges configuration sources, it follows a strict priority order. This order is designed to keep flexibility while maintaining a single source of truth for each setting.
 1. **Runtime Overrides**: Values passed directly from code, with the highest priority.
-2. **Explicit ProcessEnv Snapshot**: Values passed to `processEnv` in `forRoot(...)`.
+2. **Explicit ProcessEnv Snapshot**: Values passed to `processEnv` in config loading or module options.
 3. **Environment File**: Values defined in the `.env` file.
 4. **Defaults**: Defaults hardcoded in the Module options, with the lowest priority.
 
@@ -145,26 +162,24 @@ The DI-based approach also prevents hidden dependencies. In legacy apps, `proces
 
 Once registration is complete, the Module handles configuration loading, while application code reads values through `ConfigService`. Separating these roles keeps business code from being pulled into configuration loading details, so it can focus only on using the values it needs.
 
-### Adapter-First Bootstrap and Service Availability
-The HTTP adapter must exist before `FluoFactory.create(...)` can build the application container, so `ConfigService` cannot choose the adapter's port after creation. Parse that adapter input at the application entrypoint, pass the adapter explicitly, and call `listen()` without a port. Providers can resolve `ConfigService` after the application has been created.
+### HTTP Listen Boundary and Service Availability
+`FluoFactory.create(...)` can build an application container without an HTTP adapter, and `FluoFactory.createApplicationContext(AppModule)` is the explicit DI-only form. Configuration providers are available in either adapterless boundary. Only `listen()` requires an application created with an adapter. For one-pass HTTP startup, use the validated snapshot prepared during registration to configure the adapter and the injected `ConfigService`, then call `listen()` without a port.
 
 ```typescript
 import { createFastifyAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
-import { z } from 'zod';
-import { AppModule } from './app.module';
+import { AppModule, validatedConfig } from './app.module';
 
 async function bootstrap() {
-  const port = z.coerce.number().int().min(1).max(65_535).default(3000).parse(process.env.PORT);
   const app = await FluoFactory.create(AppModule, {
-    adapter: createFastifyAdapter({ port }),
+    adapter: createFastifyAdapter({ port: validatedConfig.PORT }),
   });
 
   await app.listen();
 }
 ```
 
-This entrypoint read is an application-boundary operation, not permission for package or business code to read `process.env`. Keep `ConfigModule.forRoot({ processEnv, schema })` as the application configuration contract, and use the same validation rules for values that must be available before the container exists. Async secret stores or namespaced configuration factories must also finish at this boundary before module registration and adapter construction.
+The HTTP bootstrap does not read ambient `process.env` or validate `PORT` a second way. `validatedConfig` is both the module source and the adapter input. Async secret stores or namespaced configuration factories must finish before synchronous module registration, but their nested objects should remain nested so deep merging and dot-path `ConfigService` access continue to work.
 
 Inside a service or Controller, use it like this.
 
@@ -199,18 +214,21 @@ A simple schema check is better than none, but a library like **Zod** gives you 
 
 For important settings such as database credentials, using `getOrThrow()` is strongly recommended. It ensures that the application never runs in a broken state, and it naturally leads into the next step, configuration validation.
 
-```typescript
-import { z } from 'zod'; // Optional validation library
+Extend the shared `ConfigSchema` and `configSources.processEnv` from the registration example instead of creating a second bootstrap parser:
 
-const ConfigSchema = z.object({
+```typescript
+export const ConfigSchema = z.object({
   PORT: z.coerce.number().default(3000),
   DATABASE_URL: z.string().url(),
   JWT_SECRET: z.string().min(32),
 });
 
-ConfigModule.forRoot({
+const configModuleOptions = {
+  defaults: validatedConfig,
   schema: ConfigSchema,
-})
+} satisfies ConfigModuleOptions;
+
+ConfigModule.forRoot(configModuleOptions);
 ```
 
 By validating during `forRoot`, Fluo raises a detailed `INVALID_CONFIG` error and **stops bootstrap** when configuration is invalid. The schema's validated `value` becomes the final config snapshot, so coercions such as `PORT` becoming a number are visible through `ConfigService`. Config schemas must validate synchronously; async Standard Schema results are rejected by the synchronous config API. This ensures that a misconfigured node is never put into load balancer rotation.
@@ -232,25 +250,19 @@ You now have all the concepts you need. The current FluoBlog project may still c
    ```
 
 2. **Access through the service**:
-Replace the hardcoded port or repository URL in `main.ts` with a `ConfigService` lookup.
+Use the shared `validatedConfig` for the adapter port in `main.ts`, and use `ConfigService` inside providers for values such as the repository URL.
 
-Then use the following in `app.module.ts`.
+Then extend the single explicit snapshot in `app.module.ts`; the `ConfigModule.forRoot(configModuleOptions)` call from Section 11.2 continues to register the resulting validated snapshot.
 
 ```typescript
-import { Module } from '@fluojs/core';
-import { ConfigModule } from '@fluojs/config';
-
-@Module({
-  imports: [
-    ConfigModule.forRoot({
-      envFile: '.env',
-      processEnv: {
-        DATABASE_URL: process.env.DATABASE_URL,
-      },
-    }),
-  ],
-})
-export class AppModule {}
+const configSources = {
+  envFile: '.env',
+  processEnv: {
+    PORT: process.env.PORT,
+    DATABASE_URL: process.env.DATABASE_URL,
+  },
+  schema: ConfigSchema,
+} satisfies ConfigModuleOptions;
 ```
 
 This pattern lets you combine the env file and the explicitly passed environment snapshot in one place. And when you connect the database in the next chapter, you'll be able to see at a glance where the connection information comes from.
@@ -267,9 +279,11 @@ The standard practice is:
 Larger projects usually need different configuration for `test`, `dev`, and `prod` environments. You can handle this by selecting `envFile` dynamically.
 
 ```typescript
-ConfigModule.forRoot({
+const configSources = {
   envFile: process.env.NODE_ENV === 'test' ? '.env.test' : '.env',
-})
+  processEnv,
+  schema: ConfigSchema,
+} satisfies ConfigModuleOptions;
 ```
 
 ### Advanced Precedence: Docker and Kubernetes
