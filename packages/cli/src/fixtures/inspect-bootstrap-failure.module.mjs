@@ -2,9 +2,18 @@ import { appendFileSync } from 'node:fs';
 
 import { defineModule } from '@fluojs/runtime';
 
+let lifecycleLogPath;
+
+export function configureInspectLifecycleLogPath(logPath) {
+  lifecycleLogPath = logPath;
+}
+
+export function resetInspectLifecycleLogPath() {
+  lifecycleLogPath = undefined;
+}
+
 class InspectLifecycleRecorder {
   onModuleDestroy() {
-    const lifecycleLogPath = process.env.FLUO_INSPECT_LIFECYCLE_LOG;
     if (lifecycleLogPath) {
       appendFileSync(lifecycleLogPath, 'close\n');
     }

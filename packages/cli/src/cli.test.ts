@@ -4,7 +4,7 @@ import { chmodSync, existsSync, type FSWatcher, mkdirSync, mkdtempSync, readFile
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -3957,8 +3957,11 @@ exit 7
     const lifecycleLogPath = join(workspaceDirectory, 'close.log');
     const stdoutBuffer: string[] = [];
     const stderrBuffer: string[] = [];
-    const previousLifecycleLogPath = process.env.FLUO_INSPECT_LIFECYCLE_LOG;
-    process.env.FLUO_INSPECT_LIFECYCLE_LOG = lifecycleLogPath;
+    const lifecycleFixture = await import(pathToFileURL(inspectFixtureModulePath).href) as {
+      configureInspectLifecycleLogPath(logPath: string): void;
+      resetInspectLifecycleLogPath(): void;
+    };
+    lifecycleFixture.configureInspectLifecycleLogPath(lifecycleLogPath);
     let exitCode: number;
 
     try {
@@ -3968,11 +3971,7 @@ exit 7
         stdout: { write: (message) => stdoutBuffer.push(message) },
       });
     } finally {
-      if (previousLifecycleLogPath === undefined) {
-        delete process.env.FLUO_INSPECT_LIFECYCLE_LOG;
-      } else {
-        process.env.FLUO_INSPECT_LIFECYCLE_LOG = previousLifecycleLogPath;
-      }
+      lifecycleFixture.resetInspectLifecycleLogPath();
     }
 
     const payload = JSON.parse(stdoutBuffer.join('')) as {

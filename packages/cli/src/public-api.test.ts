@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -177,8 +177,11 @@ describe('public CLI package API', () => {
     const lifecycleLogPath = join(workspaceDirectory, 'close.log');
     const stdoutBuffer: string[] = [];
     const stderrBuffer: string[] = [];
-    const previousLifecycleLogPath = process.env.FLUO_INSPECT_LIFECYCLE_LOG;
-    process.env.FLUO_INSPECT_LIFECYCLE_LOG = lifecycleLogPath;
+    const lifecycleFixture = await import(pathToFileURL(inspectBootstrapFailureFixtureModulePath).href) as {
+      configureInspectLifecycleLogPath(logPath: string): void;
+      resetInspectLifecycleLogPath(): void;
+    };
+    lifecycleFixture.configureInspectLifecycleLogPath(lifecycleLogPath);
     let exitCode: number;
 
     try {
@@ -188,11 +191,7 @@ describe('public CLI package API', () => {
         stdout: { write: (message) => stdoutBuffer.push(message) },
       });
     } finally {
-      if (previousLifecycleLogPath === undefined) {
-        delete process.env.FLUO_INSPECT_LIFECYCLE_LOG;
-      } else {
-        process.env.FLUO_INSPECT_LIFECYCLE_LOG = previousLifecycleLogPath;
-      }
+      lifecycleFixture.resetInspectLifecycleLogPath();
     }
 
     expect(exitCode).toBe(1);
