@@ -23,11 +23,11 @@ This chapter covers how to add a query layer to FluoShop that differs from REST.
 fluo's philosophy of **Explicit Over Implicit** fits well with GraphQL's typed schema model. Using `@fluojs/graphql` gives you these benefits.
 
 - **Unified DI**: Resolvers are treated as top-level Providers inside the fluo container.
-- **HTTP Transport Seam**: On the supported Node.js `>=20.0.0` runtime, HTTP queries/mutations and the default SSE subscription path use fluo's Web-standard HTTP abstraction; optional WebSocket subscriptions also require an adapter that exposes Node HTTP/S upgrade listeners.
+- **HTTP Transport Seam**: On the supported Node.js `>=20.16.0` runtime, HTTP queries/mutations and the default SSE subscription path use fluo's Web-standard HTTP abstraction; optional WebSocket subscriptions also require an adapter that exposes Node HTTP/S upgrade listeners.
 - **Standard Decorators**: It does not depend on the legacy `experimentalDecorators` flag.
 - **Performance**: Direct integration with the runtime facade reduces unnecessary overhead.
 
-The published `@fluojs/graphql` manifest and all mandatory first-party dependencies declare `engines.node >=20.0.0`. Web-standard request/response primitives inside the HTTP and SSE implementation do not make Bun, Deno, or Edge Workers supported GraphQL package runtimes; those targets require aligned dependency metadata and native runtime verification before they can become part of the contract.
+The published `@fluojs/graphql` manifest declares `engines.node >=20.16.0`, covering the highest floor in its mandatory first-party dependency graph because `@fluojs/runtime` transitively depends on `@fluojs/config`, which has the same floor. Web-standard request/response primitives inside the HTTP and SSE implementation do not make Bun, Deno, or Edge Workers supported GraphQL package runtimes; those targets require aligned dependency metadata and native runtime verification before they can become part of the contract.
 
 ## 18.2 Installation and Setup
 

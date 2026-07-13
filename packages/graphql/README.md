@@ -22,7 +22,7 @@ Decorator-based GraphQL integration for fluo. Built on **GraphQL Yoga**, it prov
 pnpm add @fluojs/graphql graphql graphql-yoga
 ```
 
-`@fluojs/graphql` supports Node.js `>=20.0.0` and declares that floor through `engines.node`, matching every mandatory `@fluojs/*` dependency in its published dependency graph. HTTP queries/mutations and the default SSE subscription path use Web-standard request/response primitives internally, but that implementation detail does not establish package support for Bun, Deno, or Cloudflare Workers. Those runtimes remain unsupported until the complete dependency metadata and native runtime suites prove the full GraphQL contract. Optional WebSocket subscriptions additionally require an adapter that exposes a server-backed Node HTTP/S upgrade surface.
+`@fluojs/graphql` supports Node.js `>=20.16.0` and declares that effective floor through `engines.node`. Its mandatory dependency graph reaches `@fluojs/config` through `@fluojs/runtime`; `@fluojs/config` also requires Node.js `>=20.16.0`, while the lower floors declared by other mandatory first-party dependencies remain compatible. HTTP queries/mutations and the default SSE subscription path use Web-standard request/response primitives internally, but that implementation detail does not establish package support for Bun, Deno, or Cloudflare Workers. Those runtimes remain unsupported until the complete dependency metadata and native runtime suites prove the full GraphQL contract. Optional WebSocket subscriptions additionally require an adapter that exposes a server-backed Node HTTP/S upgrade surface.
 
 ## When to Use
 
@@ -178,7 +178,7 @@ class RequestResolver {
 - **SSE**: Subscriptions over Server-Sent Events (default).
 - **WebSockets**: Optional `graphql-ws` support for real-time subscriptions when the active adapter exposes a Node HTTP/S server with upgrade listeners (for example, the Node HTTP adapter).
 
-On the supported Node.js `>=20.0.0` runtime, HTTP queries/mutations and the default SSE subscription path run through fluo's Web-standard HTTP abstraction. This internal transport seam is not a Bun, Deno, or Cloudflare Workers support guarantee. The optional websocket transport is narrower still because it requires a server-backed Node HTTP/S adapter surface.
+On the supported Node.js `>=20.16.0` runtime, HTTP queries/mutations and the default SSE subscription path run through fluo's Web-standard HTTP abstraction. This internal transport seam is not a Bun, Deno, or Cloudflare Workers support guarantee. The optional websocket transport is narrower still because it requires a server-backed Node HTTP/S adapter surface.
 
 ```typescript
 GraphqlModule.forRoot({
@@ -253,5 +253,5 @@ Supported module options include `schema`, `context`, `plugins`, `graphiql`, `in
 ## Example Sources
 
 - `packages/graphql/src/module.test.ts`: Integration tests and usage examples for module registration, resolver execution, request-scoped containers, subscriptions, and guardrail defaults.
-- `packages/graphql/src/runtime-support.test.ts`: Regression coverage that keeps the package's Node.js engine floor aligned with every mandatory first-party dependency.
+- `packages/graphql/src/runtime-support.test.ts`: Regression coverage that keeps the package's Node.js engine floor at or above the highest floor in its mandatory first-party dependency graph.
 - `packages/graphql/field-resolver-rfc.md`: Design notes for field-resolver patterns that are not part of the current runtime contract.
