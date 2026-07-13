@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   collectDirectProcessEnvViolations,
   collectNodeGlobalBufferViolations,
+  enforceGraphqlRuntimeBoundaryDiscoverability,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
   isGovernedPackageSourcePath,
@@ -1525,22 +1526,8 @@ describe('Terminus chooser discoverability', () => {
 });
 
 describe('GraphQL runtime boundary discoverability', () => {
-  const nodeEngineDeclaration = /"engines"\s*:\s*\{\s*"node"\s*:\s*">=20\.0\.0"/u;
-  const mandatoryManifestPaths = [
-    'packages/graphql/package.json',
-    'packages/core/package.json',
-    'packages/di/package.json',
-    'packages/http/package.json',
-    'packages/runtime/package.json',
-    'packages/validation/package.json',
-  ] as const;
-
-  it('keeps the GraphQL package engine aligned with every mandatory first-party dependency', () => {
-    for (const manifestPath of mandatoryManifestPaths) {
-      const manifest = readFileSync(join(repoRoot, manifestPath), 'utf8');
-
-      expect(manifest).toMatch(nodeEngineDeclaration);
-    }
+  it('keeps the GraphQL package engine aligned with the effective transitive dependency floor', () => {
+    expect(() => enforceGraphqlRuntimeBoundaryDiscoverability()).not.toThrow();
   });
 
   it('keeps unsupported non-Node GraphQL targets explicit across bilingual contract surfaces', () => {
@@ -1554,12 +1541,12 @@ describe('GraphQL runtime boundary discoverability', () => {
     const koreanFinalChapter = readFileSync(join(repoRoot, 'book/intermediate/ch25-final.ko.md'), 'utf8');
 
     for (const content of [englishReadme, englishContext, englishChapter]) {
-      expect(content).toContain('Node.js `>=20.0.0`');
+      expect(content).toContain('Node.js `>=20.16.0`');
       expect(content).toContain('Bun');
       expect(content).toContain('Deno');
     }
     for (const content of [koreanReadme, koreanContext, koreanChapter]) {
-      expect(content).toContain('Node.js `>=20.0.0`');
+      expect(content).toContain('Node.js `>=20.16.0`');
       expect(content).toContain('Bun');
       expect(content).toContain('Deno');
     }

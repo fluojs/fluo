@@ -1410,6 +1410,46 @@ function enforceViteToolingDiscoverability() {
   }
 }
 
+export function enforceGraphqlRuntimeBoundaryDiscoverability() {
+  const expectedNodeEngine = '>=20.16.0';
+  const graphqlPackageJson = JSON.parse(read('packages/graphql/package.json'));
+  const runtimePackageJson = JSON.parse(read('packages/runtime/package.json'));
+  const configPackageJson = JSON.parse(read('packages/config/package.json'));
+
+  assert(
+    graphqlPackageJson.engines?.node === expectedNodeEngine,
+    `packages/graphql/package.json must cover the effective mandatory dependency floor with Node.js ${expectedNodeEngine}.`,
+  );
+  assert(
+    runtimePackageJson.dependencies?.['@fluojs/config'] === 'workspace:^',
+    'packages/runtime/package.json must keep the mandatory @fluojs/config dependency edge covered by the GraphQL runtime contract.',
+  );
+  assert(
+    configPackageJson.engines?.node === expectedNodeEngine,
+    `packages/config/package.json must keep the Node.js ${expectedNodeEngine} floor covered by the GraphQL runtime contract.`,
+  );
+
+  const contractPaths = [
+    'packages/graphql/README.md',
+    'packages/graphql/README.ko.md',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'book/intermediate/ch18-graphql.md',
+    'book/intermediate/ch18-graphql.ko.md',
+    'book/intermediate/ch25-final.md',
+    'book/intermediate/ch25-final.ko.md',
+  ];
+
+  for (const contractPath of contractPaths) {
+    assert(
+      read(contractPath).includes(`Node.js \`${expectedNodeEngine}\``),
+      `${contractPath} must keep the effective GraphQL Node.js ${expectedNodeEngine} floor discoverable.`,
+    );
+  }
+}
+
 export function enforcePersistenceTransactionInterceptorCompatibility() {
   const compatibilityExports = [
     ['PrismaTransactionInterceptor', 'packages/prisma/src/module.ts', 'packages/prisma/src/transaction.ts'],
@@ -1460,6 +1500,7 @@ export function main() {
   enforceNoDirectProcessEnvInOrdinaryPackageSource();
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices();
   enforceViteToolingDiscoverability();
+  enforceGraphqlRuntimeBoundaryDiscoverability();
   enforcePersistenceTransactionInterceptorCompatibility();
   enforceAdvancedBookCoreBoundaryCompanions(changedFiles);
   enforceContractCompanionUpdates(changedFiles);
