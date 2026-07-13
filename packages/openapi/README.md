@@ -26,6 +26,7 @@ pnpm add @fluojs/openapi
 - When you need a machine-readable **OpenAPI 3.1.0** specification for client generation or testing.
 - When you want to keep your API documentation in sync with your code using standard decorators.
 - When you need to derive request models from DTO binding/validation metadata and declare response models explicitly.
+- When one application needs separate JSON and UI routes for multiple API versions or audiences.
 
 ## Quick Start
 
@@ -99,11 +100,40 @@ Stacking multiple `@ApiSecurity()` decorators for the same scheme merges scopes 
 ### Deterministic Swagger UI Assets
 When `ui: true` is enabled, the generated `/docs` page references an exact `swagger-ui-dist` asset version so release behavior stays deterministic across package updates. If your deployment requires self-hosted assets for offline or CSP-controlled environments, set `swaggerUiAssets.cssUrl` and `swaggerUiAssets.jsBundleUrl`; the generated HTML escapes those URLs and does not expose the Swagger UI instance on `window.ui`.
 
+### Configurable Document Routes
+Each `OpenApiModule` registration serves JSON at `documentPath` and reserves its Swagger UI route at `uiPath`. The defaults remain `/openapi.json` and `/docs`, so existing applications do not need configuration changes. Set both paths when one application imports multiple OpenAPI modules:
+
+```typescript
+@Module({
+  imports: [
+    OpenApiModule.forRoot({
+      documentPath: '/openapi/public.json',
+      sources: [{ controllerToken: PublicController }],
+      title: 'Public API',
+      ui: true,
+      uiPath: '/docs/public',
+      version: '1.0.0',
+    }),
+    OpenApiModule.forRoot({
+      documentPath: '/openapi/admin.json',
+      sources: [{ controllerToken: AdminController }],
+      title: 'Admin API',
+      ui: true,
+      uiPath: '/docs/admin',
+      version: '1.0.0',
+    }),
+  ],
+})
+class AppModule {}
+```
+
+Paths follow the `@fluojs/http` route grammar and normalize duplicate or trailing slashes. Route collisions do not use document-descriptor precedence: if two normalized `GET` routes collide—between JSON and UI paths, separate OpenAPI modules, or another application controller—application bootstrap fails with `RouteConflictError`. The UI route remains reserved when `ui` is false so the configured endpoint can return the documented `Swagger UI is disabled.` not-found response.
+
 ### Module Option Determinism
-`OpenApiModule.forRoot(...)` snapshots and freezes its options at registration time. Mutating the original options object, `sources`, `descriptors`, `securitySchemes`, `extraModels`, or `swaggerUiAssets` after registration does not alter the served OpenAPI document or `/docs` HTML. The generated singleton document is also served through defensive copies, so downstream response serialization or tests cannot mutate the stored document for later requests. `OpenApiModule.forRootAsync(...)` applies the same snapshot once the async factory resolves, and factory failures propagate during bootstrap.
+`OpenApiModule.forRoot(...)` snapshots and freezes its options at registration time. Mutating the original options object, `documentPath`, `uiPath`, `sources`, `descriptors`, `securitySchemes`, `extraModels`, or `swaggerUiAssets` after registration does not alter the served OpenAPI document or UI HTML. The generated singleton document is also served through defensive copies, so downstream response serialization or tests cannot mutate the stored document for later requests. `OpenApiModule.forRootAsync(...)` fixes `documentPath` and `uiPath` from the outer registration before module compilation, applies the same snapshot once the async document-options factory resolves, and propagates factory failures during bootstrap.
 
 ### Async Registration and Options
-Use `OpenApiModule.forRootAsync(...)` when title/version/source configuration comes from DI or async setup. Module options include `sources`, `descriptors`, `securitySchemes`, `extraModels`, `defaultErrorResponsesPolicy`, `documentTransform`, `ui`, and `swaggerUiAssets`. `defaultErrorResponsesPolicy` defaults to injecting standard error responses and an `ErrorResponse` schema, while `documentTransform` runs after document generation and before serving.
+Use `OpenApiModule.forRootAsync(...)` when title/version/source configuration comes from DI or async setup. Put registration-time `documentPath` and `uiPath` beside `inject` and `useFactory`; return `sources`, `descriptors`, `securitySchemes`, `extraModels`, `defaultErrorResponsesPolicy`, `documentTransform`, `ui`, and `swaggerUiAssets` from the factory. `defaultErrorResponsesPolicy` defaults to injecting standard error responses and an `ErrorResponse` schema, while `documentTransform` runs after document generation and before serving.
 
 ## Public API
 
@@ -115,7 +145,7 @@ Use `OpenApiModule.forRootAsync(...)` when title/version/source configuration co
 - `buildOpenApiDocument`: Programmatic document builder (low-level).
 - `OpenApiHandlerRegistry`: Mutable descriptor registry used by advanced integrations to snapshot handler descriptors before document generation.
 - `getControllerTags`, `getMethodApiMetadata`: Metadata readers for advanced tests and integration tooling.
-- `OpenApiModuleOptions`, `OpenApiSwaggerUiAssetsOptions`, `BuildOpenApiDocumentOptions`, `DefaultErrorResponsesPolicy`: Option types for module and builder integrations.
+- `OpenApiModuleOptions`, `OpenApiAsyncModuleOptions`, `OpenApiRouteOptions`, `OpenApiSwaggerUiAssetsOptions`, `BuildOpenApiDocumentOptions`, `DefaultErrorResponsesPolicy`: Option types for module and builder integrations.
 - `OpenApiDocument`, `OpenApiSecuritySchemeObject`, and related OpenAPI shape types: Typed document surface for tests, tooling, and integrations.
 - `OpenApiSchemaObject`: Typed schema surface for explicit `@ApiBody(...)` and `@ApiResponse(...)` schemas, including OpenAPI 3.1 composition (`allOf`, `oneOf`, `anyOf`), object/array constraints, examples/defaults, and read/write/deprecated annotations.
 
@@ -128,4 +158,5 @@ Use `OpenApiModule.forRootAsync(...)` when title/version/source configuration co
 ## Example Sources
 
 - `packages/openapi/src/openapi-module.test.ts`: Integration tests and usage examples.
+- `packages/openapi/src/openapi-module-routes.test.ts`: Default, custom, multi-document, and route-collision examples.
 - `packages/openapi/src/schema-builder.test.ts`: Document builder and schema generation examples.

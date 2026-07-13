@@ -26,6 +26,7 @@ pnpm add @fluojs/openapi
 - 클라이언트 생성 또는 테스트를 위해 기계 읽기 가능한 **OpenAPI 3.1.0** 명세가 필요할 때.
 - 표준 데코레이터를 사용하여 API 문서와 코드를 동기화된 상태로 유지하고 싶을 때.
 - DTO binding/validation metadata에서 request model을 파생하고 response model을 명시적으로 선언해야 할 때.
+- 하나의 application에서 여러 API version 또는 audience를 위해 JSON/UI route를 분리해야 할 때.
 
 ## 빠른 시작
 
@@ -99,11 +100,40 @@ Builder는 handler 반환값이나 TypeScript 반환 타입을 검사해 respons
 ### 결정적인 Swagger UI 자산
 `ui: true`를 활성화하면 생성되는 `/docs` 페이지는 정확한 `swagger-ui-dist` 버전의 자산을 참조하여 패키지 릴리스마다 동일한 동작을 유지합니다. 오프라인 또는 CSP 제어 환경에서 자체 호스팅 자산이 필요하면 `swaggerUiAssets.cssUrl`과 `swaggerUiAssets.jsBundleUrl`을 설정하세요. 생성된 HTML은 해당 URL을 이스케이프하며 Swagger UI 인스턴스를 `window.ui`에 노출하지 않습니다.
 
+### 설정 가능한 문서 라우트
+각 `OpenApiModule` 등록은 `documentPath`에서 JSON을 제공하고 `uiPath`에 Swagger UI route를 예약합니다. 기본값은 계속 `/openapi.json`과 `/docs`이므로 기존 application은 설정을 바꿀 필요가 없습니다. 하나의 application에서 여러 OpenAPI module을 import할 때는 두 path를 모두 지정하세요.
+
+```typescript
+@Module({
+  imports: [
+    OpenApiModule.forRoot({
+      documentPath: '/openapi/public.json',
+      sources: [{ controllerToken: PublicController }],
+      title: 'Public API',
+      ui: true,
+      uiPath: '/docs/public',
+      version: '1.0.0',
+    }),
+    OpenApiModule.forRoot({
+      documentPath: '/openapi/admin.json',
+      sources: [{ controllerToken: AdminController }],
+      title: 'Admin API',
+      ui: true,
+      uiPath: '/docs/admin',
+      version: '1.0.0',
+    }),
+  ],
+})
+class AppModule {}
+```
+
+Path는 `@fluojs/http` route grammar를 따르며 중복 slash와 trailing slash를 정규화합니다. Route collision에는 document descriptor precedence가 적용되지 않습니다. JSON/UI path끼리, 서로 다른 OpenAPI module끼리, 또는 다른 application controller와 정규화된 `GET` route가 겹치면 application bootstrap이 `RouteConflictError`로 실패합니다. `ui`가 false여도 UI route는 예약되므로, 설정한 endpoint는 문서화된 `Swagger UI is disabled.` not-found response를 반환할 수 있습니다.
+
 ### 모듈 옵션 결정성
-`OpenApiModule.forRoot(...)`는 등록 시점에 옵션을 스냅샷하고 freeze합니다. 등록 후 원본 options 객체, `sources`, `descriptors`, `securitySchemes`, `extraModels`, `swaggerUiAssets`를 변경해도 제공되는 OpenAPI 문서나 `/docs` HTML은 바뀌지 않습니다. 생성된 singleton 문서도 defensive copy로 제공되므로 downstream response serialization이나 테스트가 이후 요청에 쓰이는 저장 문서를 변경할 수 없습니다. `OpenApiModule.forRootAsync(...)`도 async factory가 resolve된 뒤 같은 스냅샷을 적용하며, factory 실패는 bootstrap 중 전파됩니다.
+`OpenApiModule.forRoot(...)`는 등록 시점에 옵션을 스냅샷하고 freeze합니다. 등록 후 원본 options 객체, `documentPath`, `uiPath`, `sources`, `descriptors`, `securitySchemes`, `extraModels`, `swaggerUiAssets`를 변경해도 제공되는 OpenAPI 문서나 UI HTML은 바뀌지 않습니다. 생성된 singleton 문서도 defensive copy로 제공되므로 downstream response serialization이나 테스트가 이후 요청에 쓰이는 저장 문서를 변경할 수 없습니다. `OpenApiModule.forRootAsync(...)`는 module compile 전에 outer registration의 `documentPath`와 `uiPath`를 고정하고, async document-options factory가 resolve된 뒤 같은 스냅샷을 적용하며, factory 실패는 bootstrap 중 전파됩니다.
 
 ### Async 등록과 옵션
-title/version/source 설정이 DI나 async setup에서 나오는 경우 `OpenApiModule.forRootAsync(...)`를 사용합니다. Module option에는 `sources`, `descriptors`, `securitySchemes`, `extraModels`, `defaultErrorResponsesPolicy`, `documentTransform`, `ui`, `swaggerUiAssets`가 포함됩니다. `defaultErrorResponsesPolicy`는 기본적으로 표준 error response와 `ErrorResponse` schema를 주입하며, `documentTransform`은 문서 생성 뒤 제공되기 전에 실행됩니다.
+title/version/source 설정이 DI나 async setup에서 나오는 경우 `OpenApiModule.forRootAsync(...)`를 사용합니다. 등록 시점의 `documentPath`와 `uiPath`는 `inject`, `useFactory` 옆에 두고, factory에서는 `sources`, `descriptors`, `securitySchemes`, `extraModels`, `defaultErrorResponsesPolicy`, `documentTransform`, `ui`, `swaggerUiAssets`를 반환합니다. `defaultErrorResponsesPolicy`는 기본적으로 표준 error response와 `ErrorResponse` schema를 주입하며, `documentTransform`은 문서 생성 뒤 제공되기 전에 실행됩니다.
 
 ## 공개 API
 
@@ -115,7 +145,7 @@ title/version/source 설정이 DI나 async setup에서 나오는 경우 `OpenApi
 - `buildOpenApiDocument`: 프로그래밍 방식의 문서 빌더 (저수준).
 - `OpenApiHandlerRegistry`: 고급 통합에서 문서 생성 전에 handler descriptor를 스냅샷하는 mutable descriptor registry.
 - `getControllerTags`, `getMethodApiMetadata`: 고급 테스트와 통합 tooling을 위한 metadata reader.
-- `OpenApiModuleOptions`, `OpenApiSwaggerUiAssetsOptions`, `BuildOpenApiDocumentOptions`, `DefaultErrorResponsesPolicy`: module과 builder integration을 위한 option type.
+- `OpenApiModuleOptions`, `OpenApiAsyncModuleOptions`, `OpenApiRouteOptions`, `OpenApiSwaggerUiAssetsOptions`, `BuildOpenApiDocumentOptions`, `DefaultErrorResponsesPolicy`: module과 builder integration을 위한 option type.
 - `OpenApiDocument`, `OpenApiSecuritySchemeObject` 및 관련 OpenAPI shape type: 테스트, tooling, integration을 위한 typed document surface.
 - `OpenApiSchemaObject`: 명시적 `@ApiBody(...)` 및 `@ApiResponse(...)` 스키마를 위한 타입화된 스키마 표면입니다. OpenAPI 3.1 조합(`allOf`, `oneOf`, `anyOf`), 객체/배열 제약, examples/defaults, 읽기/쓰기/Deprecated 주석을 포함합니다.
 
@@ -128,4 +158,5 @@ title/version/source 설정이 DI나 async setup에서 나오는 경우 `OpenApi
 ## 예제 소스
 
 - `packages/openapi/src/openapi-module.test.ts`: 통합 테스트 및 사용 예제.
+- `packages/openapi/src/openapi-module-routes.test.ts`: 기본/custom/multi-document/route-collision 예제.
 - `packages/openapi/src/schema-builder.test.ts`: 문서 builder와 schema generation 예제.

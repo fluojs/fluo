@@ -1,13 +1,13 @@
+import { type AsyncModuleOptions, type Constructor, Inject, type InjectionToken, type MaybePromise } from '@fluojs/core';
 import {
   Controller,
-  Get,
-  NotFoundException,
   createHandlerMapping,
+  Get,
   type HandlerDescriptor,
   type HandlerSource,
+  NotFoundException,
   type RequestContext,
 } from '@fluojs/http';
-import { Inject, type AsyncModuleOptions, type Constructor, type InjectionToken, type MaybePromise } from '@fluojs/core';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { OpenApiHandlerRegistry } from './handler-registry.js';
@@ -18,28 +18,39 @@ import {
   type OpenApiSecuritySchemeObject,
 } from './schema-builder.js';
 import { cloneSnapshotValue, createFrozenSnapshot } from './snapshot.js';
+import {
+  createSwaggerUiHtml,
+  type OpenApiSwaggerUiAssetsOptions,
+  resolveSwaggerUiAssets,
+} from './swagger-ui.js';
 
-const SWAGGER_UI_DIST_VERSION = '5.32.2';
-const SWAGGER_UI_DIST_BASE_URL = `https://unpkg.com/swagger-ui-dist@${SWAGGER_UI_DIST_VERSION}`;
-const SWAGGER_UI_CSS_URL = `${SWAGGER_UI_DIST_BASE_URL}/swagger-ui.css`;
-const SWAGGER_UI_BUNDLE_JS_URL = `${SWAGGER_UI_DIST_BASE_URL}/swagger-ui-bundle.js`;
+const DEFAULT_DOCUMENT_PATH = '/openapi.json';
+const DEFAULT_UI_PATH = '/docs';
+
+export type { OpenApiSwaggerUiAssetsOptions } from './swagger-ui.js';
 
 /**
- * Asset URLs used by the generated Swagger UI HTML page.
+ * Routes owned by one `OpenApiModule` registration.
+ *
+ * @remarks
+ * Paths use the normal `@fluojs/http` route grammar and are normalized before
+ * registration. The defaults remain `/openapi.json` and `/docs`.
  */
-export interface OpenApiSwaggerUiAssetsOptions {
-  cssUrl?: string;
-  jsBundleUrl?: string;
+export interface OpenApiRouteOptions {
+  /** JSON document route. Defaults to `/openapi.json`. */
+  readonly documentPath?: string;
+  /** Swagger UI route. Defaults to `/docs`. */
+  readonly uiPath?: string;
 }
 
 /**
- * Public options for `OpenApiModule.forRoot(...)` and `OpenApiModule.forRootAsync(...)`.
+ * Public document and route options for `OpenApiModule.forRoot(...)`.
  *
  * @remarks
  * Keep README examples for full controller/module workflows. These options are
  * intended to document the runtime hooks that shape the generated document.
  */
-export interface OpenApiModuleOptions {
+export interface OpenApiModuleOptions extends OpenApiRouteOptions {
   defaultErrorResponsesPolicy?: DefaultErrorResponsesPolicy;
   title: string;
   version: string;
@@ -52,6 +63,19 @@ export interface OpenApiModuleOptions {
   documentTransform?: (document: OpenApiDocument) => OpenApiDocument;
 }
 
+/**
+ * Async OpenAPI registration options with routes fixed before module compilation.
+ *
+ * @remarks
+ * `documentPath` and `uiPath` belong to the outer registration because HTTP
+ * routes are compiled before the injected options factory resolves.
+ */
+export type OpenApiAsyncModuleOptions = AsyncModuleOptions<
+  Omit<OpenApiModuleOptions, keyof OpenApiRouteOptions>
+> & OpenApiRouteOptions;
+
+type ResolvedOpenApiRouteOptions = Required<OpenApiRouteOptions>;
+
 type OpenApiOptionsProvider =
   | {
       scope: 'singleton';
@@ -62,15 +86,6 @@ type OpenApiOptionsProvider =
       scope: 'singleton';
       useFactory: (...deps: unknown[]) => MaybePromise<OpenApiModuleOptions>;
     };
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;');
-}
 
 function cloneRecord<T>(record: Record<string, T> | undefined): Record<string, T> | undefined {
   if (!record) {
@@ -90,6 +105,7 @@ function snapshotOpenApiModuleOptions(options: OpenApiModuleOptions): OpenApiMod
   return createFrozenSnapshot({
     defaultErrorResponsesPolicy: options.defaultErrorResponsesPolicy,
     descriptors: options.descriptors ? cloneSnapshotValue(options.descriptors) : undefined,
+    documentPath: options.documentPath,
     documentTransform: options.documentTransform,
     extraModels: options.extraModels ? [...options.extraModels] : undefined,
     securitySchemes: cloneRecord(options.securitySchemes),
@@ -97,39 +113,18 @@ function snapshotOpenApiModuleOptions(options: OpenApiModuleOptions): OpenApiMod
     swaggerUiAssets: options.swaggerUiAssets ? { ...options.swaggerUiAssets } : undefined,
     title: options.title,
     ui: options.ui,
+    uiPath: options.uiPath,
     version: options.version,
   });
 }
 
-function resolveSwaggerUiAssets(options: OpenApiModuleOptions): Required<OpenApiSwaggerUiAssetsOptions> {
-  return {
-    cssUrl: options.swaggerUiAssets?.cssUrl ?? SWAGGER_UI_CSS_URL,
-    jsBundleUrl: options.swaggerUiAssets?.jsBundleUrl ?? SWAGGER_UI_BUNDLE_JS_URL,
-  };
-}
+function resolveOpenApiRouteOptions(options: OpenApiRouteOptions): ResolvedOpenApiRouteOptions {
+  const normalizePath = (path: string): string => `/${path.split('/').filter(Boolean).join('/')}`;
 
-function createSwaggerUiHtml(title: string, assets: Required<OpenApiSwaggerUiAssetsOptions>): string {
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${escapeHtml(title)}</title>
-    <link rel="stylesheet" href="${escapeHtml(assets.cssUrl)}" />
-  </head>
-  <body>
-    <div id="swagger-ui"></div>
-    <script src="${escapeHtml(assets.jsBundleUrl)}" crossorigin></script>
-    <script>
-      const specUrl = window.location.pathname.replace(/\/docs\/?$/, '/openapi.json');
-      const swaggerUi = SwaggerUIBundle({
-        url: specUrl,
-        dom_id: '#swagger-ui'
-      });
-      void swaggerUi;
-    </script>
-  </body>
-</html>`;
+  return {
+    documentPath: normalizePath(options.documentPath ?? DEFAULT_DOCUMENT_PATH),
+    uiPath: normalizePath(options.uiPath ?? DEFAULT_UI_PATH),
+  };
 }
 
 function isOpenApiModuleOptions(value: unknown): value is OpenApiModuleOptions {
@@ -177,10 +172,12 @@ export class OpenApiModule {
    * ```
    */
   static forRoot(options: OpenApiModuleOptions): ModuleType {
+    const snapshot = snapshotOpenApiModuleOptions(options);
+
     return this.createModule({
       scope: 'singleton',
-      useValue: snapshotOpenApiModuleOptions(options),
-    });
+      useValue: snapshot,
+    }, resolveOpenApiRouteOptions(snapshot));
   }
 
   /**
@@ -192,7 +189,9 @@ export class OpenApiModule {
    * @example
    * ```ts
    * OpenApiModule.forRootAsync({
+   *   documentPath: '/openapi/internal.json',
    *   inject: [ConfigService],
+   *   uiPath: '/docs/internal',
    *   useFactory: (config) => ({
    *     title: config.get('APP_NAME'),
    *     version: config.get('APP_VERSION'),
@@ -200,15 +199,23 @@ export class OpenApiModule {
    * });
    * ```
    */
-  static forRootAsync(options: AsyncModuleOptions<OpenApiModuleOptions>): ModuleType {
+  static forRootAsync(options: OpenApiAsyncModuleOptions): ModuleType {
+    const routes = resolveOpenApiRouteOptions(options);
+
     return this.createModule({
       inject: options.inject,
       scope: 'singleton',
-      useFactory: async (...deps: unknown[]) => snapshotOpenApiModuleOptions(await options.useFactory(...deps)),
-    });
+      useFactory: async (...deps: unknown[]) => snapshotOpenApiModuleOptions({
+        ...await options.useFactory(...deps),
+        ...routes,
+      }),
+    }, routes);
   }
 
-  private static createModule(optionsProvider: OpenApiOptionsProvider): ModuleType {
+  private static createModule(
+    optionsProvider: OpenApiOptionsProvider,
+    routes: ResolvedOpenApiRouteOptions,
+  ): ModuleType {
     const openApiModuleOptionsToken = Symbol('fluo.openapi.module-options');
     const openApiDocumentToken = Symbol('fluo.openapi.document');
 
@@ -220,12 +227,12 @@ export class OpenApiModule {
         private readonly options: OpenApiModuleOptions,
       ) {}
 
-      @Get('/openapi.json')
+      @Get(routes.documentPath)
       getDocument() {
         return cloneSnapshotValue(this.document);
       }
 
-      @Get('/docs')
+      @Get(routes.uiPath)
       getSwaggerUi(_input: undefined, context: RequestContext): string {
         if (!(this.options.ui ?? false)) {
           throw new NotFoundException('Swagger UI is disabled.');
@@ -233,7 +240,7 @@ export class OpenApiModule {
 
         context.response.setHeader('content-type', 'text/html; charset=utf-8');
 
-        return createSwaggerUiHtml(this.options.title, resolveSwaggerUiAssets(this.options));
+        return createSwaggerUiHtml(this.options.title, resolveSwaggerUiAssets(this.options.swaggerUiAssets), routes);
       }
     }
 
