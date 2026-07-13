@@ -171,6 +171,7 @@ IPv6 모두 허용" 계약을 명시하고 싶을 때 사용할 수 있습니다
 ### 중첩 검증
 
 `@ValidateNested(...)`는 객체 필드, 배열, `Set`, `Map`을 지원합니다. 중첩 DTO path는 validation issue에서 dot/index 표기법을 사용하며, cycle은 안전하게 감지되고 shared reference는 허용됩니다.
+Array, `Set`, `Map` member는 자동으로 검증되고 실체화되므로 nested collection 순회를 활성화하기 위해 `each: true`를 지정할 필요가 없습니다. 기존 DTO를 위해 이 option은 계속 허용됩니다.
 중첩 타입을 지연 해석해야 할 때는 DTO 클래스 자체나 `() => ChildDto`, `function resolveChildDto() { return ChildDto; }` 같은 lazy constructor factory를 전달할 수 있습니다.
 
 ### 암묵적 scalar coercion 없음

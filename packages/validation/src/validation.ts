@@ -118,9 +118,7 @@ function createNestedDtoInstance<T>(target: Constructor<T>, rawValue: unknown, c
         continue;
       }
 
-      instance[nestedEntry.propertyKey] = nestedEntry.each
-        ? transformNestedEachValue(currentValue, nestedEntry.target, context)
-        : transformNestedValue(currentValue, nestedEntry.target, context);
+      instance[nestedEntry.propertyKey] = transformNestedCollectionValue(currentValue, nestedEntry.target, context);
     }
 
     return instance as T;
@@ -158,7 +156,7 @@ function transformNestedValue(value: unknown, target: Constructor, context?: Nes
   return value === undefined || value === null ? value : materializeNestedDtoValue(target, value, context);
 }
 
-function transformNestedEachValue(value: unknown, target: Constructor, context?: NestedTraversalContext): unknown {
+function transformNestedCollectionValue(value: unknown, target: Constructor, context?: NestedTraversalContext): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => transformNestedValue(item, target, context));
   }
@@ -266,13 +264,15 @@ async function validateNestedRule(
   inheritedSource: ValidationIssue['source'],
   context: NestedTraversalContext,
 ): Promise<ValidationIssue[]> {
-  const values = rule.each ? getIterableValues(value) ?? [value] : [value];
+  const collectionValues = getIterableValues(value);
+  const values = collectionValues ?? [value];
+  const useIndexedPath = rule.each === true || collectionValues !== undefined;
   const issues: ValidationIssue[] = [];
   const resolvedDto = resolveNestedDto(rule.dto);
 
   for (const [index, entry] of values.entries()) {
     if (entry === undefined || entry === null) continue;
-    const nestedPath = rule.each ? `${fieldPath}[${String(index)}]` : fieldPath;
+    const nestedPath = useIndexedPath ? `${fieldPath}[${String(index)}]` : fieldPath;
     const trackedEntry = typeof entry === 'object' && entry !== null ? entry : undefined;
 
     if (!(entry instanceof resolvedDto) && !isPlainObject(entry)) {

@@ -175,6 +175,7 @@ contract explicitly while still using the same runtime behavior as `@IsIP()`.
 ### Nested validation
 
 `@ValidateNested(...)` supports object fields, arrays, `Set`, and `Map`. Nested DTO paths use dot/index notation in validation issues, cycles are detected safely, and shared references are allowed.
+Array, `Set`, and `Map` members are validated and materialized automatically; `each: true` is not required to enable nested collection traversal. The option remains accepted for existing DTOs.
 Pass either a DTO class or a lazy constructor factory such as `() => ChildDto` or `function resolveChildDto() { return ChildDto; }` when nested types need deferred resolution.
 
 ### No implicit scalar coercion
