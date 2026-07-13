@@ -34,7 +34,7 @@ function normalizeRedisModuleOptions(options: RedisModuleOptions): {
   lifecycleOptions: RedisLifecycleOptions;
   name?: string;
 } {
-  const { global, lifecycle, name, ...clientOptions } = options;
+  const { global, lifecycle, name, sentinelName, ...clientOptions } = options;
   const normalizedName = name?.trim();
   const lifecycleOptions = normalizeRedisLifecycleOptions(lifecycle);
 
@@ -47,7 +47,10 @@ function normalizeRedisModuleOptions(options: RedisModuleOptions): {
   }
 
   return {
-    clientOptions,
+    clientOptions: {
+      ...clientOptions,
+      ...(sentinelName === undefined ? {} : { name: sentinelName }),
+    },
     global: normalizedName === undefined ? global ?? true : false,
     lifecycleOptions,
     name: normalizedName,

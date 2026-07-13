@@ -83,6 +83,8 @@ export class DeployNotifier {
 
 `SlackModule.forRoot(...)` and `SlackModule.forRootAsync(...)` return a global module by default. The module exports `SlackService`, `SlackChannel`, `SLACK`, and `SLACK_CHANNEL`; pass `global: false` only when migrated code needs those providers to remain visible only to modules that explicitly import the returned module. The option is `global?: boolean`, not NestJS `isGlobal`.
 
+Async registration supports the injected factory shape only: `SlackModule.forRootAsync({ inject, useFactory, global? })`. It consumes `inject` and `useFactory`, not NestJS `imports`, `useClass`, or `useExisting`. Register dependencies in the application module graph first, list their tokens in `inject`, then return the final Slack options from `useFactory`.
+
 The package-level registration surface is intentionally singleton-oriented. `SLACK` and `SLACK_CHANNEL` are compatibility tokens for the one configured Slack service and notifications channel, and `createSlackProviders(...)` mirrors that same singleton wiring for manual module composition. Applications that need multiple Slack clients should compose their own modules/providers around distinct `SlackTransport` instances or expose app-owned facades instead of expecting a package-level multi-client registry.
 
 ### Manual provider composition with `createSlackProviders`
@@ -135,11 +137,11 @@ SlackModule.forRootAsync({
 Behavioral contract notes:
 
 - `SlackService.send(...)` resolves `defaultChannel` before delivery.
-- `SlackService.sendMany(...)` sends messages sequentially and supports `continueOnError` when callers need a batch result instead of fail-fast behavior.
-- `SlackService.send(...)`, `SlackService.sendMany(...)`, and `SlackService.sendNotification(...)` honor already-aborted signals before provider handoff, and the same signal is propagated to transport calls.
+- `SlackService.sendMany(...)` sends messages sequentially and supports `continueOnError` when callers need a batch result instead of fail-fast behavior; it collects ordinary provider failures only, while caller cancellation always rejects the batch.
+- `SlackService.send(...)`, `SlackService.sendMany(...)`, and `SlackService.sendNotification(...)` honor already-aborted signals before provider handoff. An aborted signal or a transport `AbortError` takes precedence over `continueOnError`, and the same signal is propagated through notification channels to transport calls.
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
 - Direct and notification-backed delivery require the lifecycle to be `ready`; calls before `onModuleInit()` finishes, after initialization failure, or during shutdown fail with `SlackLifecycleError` instead of lazily creating or reusing transports.
-- Shutdown awaits any in-flight factory-owned transport creation and closes it before completion.
+- Shutdown rejects new deliveries, waits for active deliveries and any in-flight factory-owned transport creation to settle, and then closes the owned transport before completion.
 - Factory-owned transport cleanup is serialized across bootstrap-failure cleanup and application shutdown, so the same owned transport is closed at most once even when those paths race.
 - `SlackService.createPlatformStatusSnapshot()` reports lifecycle, readiness, and transport ownership without requiring callers to reach into internal options.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
@@ -295,8 +297,8 @@ await notifications.dispatch({
 
 Merge precedence is deterministic:
 
-- `payload.attachments`, `payload.blocks`, and `payload.text` win over rendered `attachments`, `blocks`, and `text` when those payload fields are defined.
-- Text falls back from `payload.text` to rendered `text`, then to `notification.subject`.
+- `payload.attachments` and `payload.blocks` win over rendered `attachments` and `blocks` when those payload fields are defined. Non-blank `payload.text` wins over rendered `text`.
+- Text falls back from non-blank `payload.text` to non-blank rendered `text`, then to non-blank `notification.subject`. Empty or whitespace-only text values are treated as unspecified.
 - Metadata is merged as payload metadata, dispatch metadata, subject marker, then template marker. Later entries win on duplicate keys, so the final message records the dispatch `subject` and `template` markers when present.
 - If no `template` is set or no renderer is registered, no template rendering occurs; the notification is adapted from its payload and subject only.
 
@@ -321,7 +323,7 @@ For richer API integrations such as `chat.postMessage`, implement the exported `
 Behavioral contract notes:
 
 - Passing `fetch` explicitly is the portable path and is recommended for all supported runtimes. For backward compatibility, omitting `fetch` falls back to `globalThis.fetch` when that ambient runtime API exists; runtimes without `globalThis.fetch` fail fast with `SlackConfigurationError`.
-- The built-in webhook transport retries transient `408`, `429`, and `5xx` failures with bounded exponential backoff before surfacing an error.
+- The built-in webhook transport consumes transient `408`, `429`, and `5xx` response bodies before retrying with bounded exponential backoff, then surfaces an error only after retries are exhausted.
 - Abort signals are passed to the injected `fetch` boundary and cancel retry backoff without wrapping `AbortError` values as `SlackTransportError`.
 - Caller-visible `SlackTransportError` messages omit raw upstream response bodies by default.
 

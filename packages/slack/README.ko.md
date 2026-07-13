@@ -83,6 +83,8 @@ export class DeployNotifier {
 
 `SlackModule.forRoot(...)`와 `SlackModule.forRootAsync(...)`는 기본적으로 global module을 반환합니다. 이 module은 `SlackService`, `SlackChannel`, `SLACK`, `SLACK_CHANNEL`을 export하며, migrated code에서 해당 provider를 반환된 module을 명시적으로 import한 module에만 보이게 해야 할 때만 `global: false`를 전달합니다. 옵션 이름은 NestJS `isGlobal`이 아니라 `global?: boolean`입니다.
 
+Async registration은 injected factory 형태인 `SlackModule.forRootAsync({ inject, useFactory, global? })`만 지원합니다. `inject`와 `useFactory`만 소비하며 NestJS `imports`, `useClass`, `useExisting`은 소비하지 않습니다. 필요한 의존성은 application module graph에 먼저 등록하고 token을 `inject`에 나열한 뒤, `useFactory`에서 최종 Slack option을 반환하세요.
+
 패키지 수준 registration surface는 의도적으로 singleton 중심입니다. `SLACK`과 `SLACK_CHANNEL`은 하나의 설정된 Slack service와 notifications channel을 위한 compatibility token이며, `createSlackProviders(...)`는 수동 module composition에서도 같은 singleton wiring을 재사용합니다. 여러 Slack client가 필요한 애플리케이션은 package-level multi-client registry를 기대하지 말고, 서로 다른 `SlackTransport` 인스턴스를 감싸는 자체 module/provider를 조합하거나 app-owned facade를 노출해야 합니다.
 
 ### `createSlackProviders`를 이용한 수동 provider 조합
@@ -135,11 +137,11 @@ SlackModule.forRootAsync({
 Behavioral contract 메모:
 
 - `SlackService.send(...)`는 전달 전에 `defaultChannel`을 해석합니다.
-- `SlackService.sendMany(...)`는 메시지를 순차적으로 보내며, fail-fast 대신 batch result가 필요한 호출자를 위해 `continueOnError`를 지원합니다.
-- `SlackService.send(...)`, `SlackService.sendMany(...)`, `SlackService.sendNotification(...)`은 provider handoff 전에 이미 abort된 signal을 존중하며, 같은 signal을 transport 호출로 전달합니다.
+- `SlackService.sendMany(...)`는 메시지를 순차적으로 보내며, fail-fast 대신 batch result가 필요한 호출자를 위해 `continueOnError`를 지원합니다. 다만 일반 provider 실패만 수집하며 caller 취소는 항상 batch를 reject합니다.
+- `SlackService.send(...)`, `SlackService.sendMany(...)`, `SlackService.sendNotification(...)`은 provider handoff 전에 이미 abort된 signal을 존중합니다. Abort된 signal 또는 transport의 `AbortError`는 `continueOnError`보다 우선하며, 같은 signal은 notification channel을 거쳐 transport 호출까지 전달됩니다.
 - 서비스는 모듈 bootstrap 시 transport를 초기화하고, factory가 소유한 리소스만 애플리케이션 shutdown 시 닫습니다.
 - 직접 전달과 notifications 기반 전달은 lifecycle이 `ready`일 때만 허용됩니다. `onModuleInit()`이 끝나기 전, 초기화 실패 뒤, 또는 shutdown 중 호출하면 transport를 lazy 생성하거나 재사용하지 않고 `SlackLifecycleError`로 실패합니다.
-- shutdown은 진행 중인 factory 소유 transport 생성을 기다린 뒤 닫고 완료됩니다.
+- shutdown은 새 전달을 거부하고, 활성 전달과 진행 중인 factory 소유 transport 생성을 모두 settle한 뒤 소유한 transport를 닫고 완료됩니다.
 - factory 소유 transport cleanup은 bootstrap 실패 cleanup과 application shutdown 사이에서 직렬화되므로, 두 경로가 경합해도 같은 owned transport는 최대 한 번만 닫힙니다.
 - `SlackService.createPlatformStatusSnapshot()`은 호출자가 내부 옵션에 접근하지 않아도 lifecycle, readiness, transport 소유권을 보고합니다.
 - 이 패키지는 절대로 `process.env`를 직접 읽지 않습니다. 모든 설정은 명시적인 옵션 또는 DI를 통해 들어와야 합니다.
@@ -295,8 +297,8 @@ await notifications.dispatch({
 
 Merge precedence는 결정적입니다.
 
-- `payload.attachments`, `payload.blocks`, `payload.text`가 정의되어 있으면 rendered `attachments`, `blocks`, `text`보다 우선합니다.
-- Text는 `payload.text`에서 rendered `text`, 그리고 `notification.subject` 순서로 fallback합니다.
+- `payload.attachments`, `payload.blocks`가 정의되어 있으면 rendered `attachments`, `blocks`보다 우선합니다. 비공백 `payload.text`는 rendered `text`보다 우선합니다.
+- Text는 비공백 `payload.text`에서 비공백 rendered `text`, 그리고 비공백 `notification.subject` 순서로 fallback합니다. 빈 문자열 또는 공백 전용 text 값은 미지정으로 취급합니다.
 - Metadata는 payload metadata, dispatch metadata, subject marker, template marker 순서로 merge됩니다. 중복 키는 뒤쪽 값이 이기므로, 최종 메시지는 존재하는 dispatch `subject`와 `template` marker를 기록합니다.
 - `template`이 없거나 renderer가 등록되지 않았다면 template rendering은 실행되지 않습니다. 이 경우 notification은 payload와 subject만으로 Slack 메시지로 변환됩니다.
 
@@ -321,7 +323,7 @@ await slack.send({
 Behavioral contract 메모:
 
 - `fetch`를 명시적으로 전달하는 방식이 portable path이며 모든 지원 런타임에서 권장됩니다. 하위 호환성을 위해 `fetch`를 생략하면 ambient runtime API인 `globalThis.fetch`가 있을 때 이를 폴백으로 사용합니다. `globalThis.fetch`가 없는 런타임에서는 `SlackConfigurationError`로 빠르게 실패합니다.
-- 내장 webhook transport는 `408`, `429`, `5xx` 같은 일시적 실패를 호출자에게 에러를 노출하기 전에 bounded exponential backoff로 재시도합니다.
+- 내장 webhook transport는 `408`, `429`, `5xx` 같은 일시적 실패 응답의 본문을 소비한 뒤 bounded exponential backoff로 재시도하고, 재시도가 모두 소진된 뒤에만 호출자에게 에러를 노출합니다.
 - Abort signal은 주입된 `fetch` 경계로 전달되며, retry backoff를 취소할 때 `AbortError`를 `SlackTransportError`로 감싸지 않습니다.
 - 호출자에게 보이는 `SlackTransportError` 메시지는 기본적으로 raw upstream response body를 포함하지 않습니다.
 

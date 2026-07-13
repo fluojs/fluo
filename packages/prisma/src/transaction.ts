@@ -1,4 +1,9 @@
+import { Inject } from '@fluojs/core';
+import type { CallHandler, Interceptor, InterceptorContext } from '@fluojs/http';
+
 import { isPrismaServiceHandle } from './prisma-service-brand.js';
+import { PrismaService } from './service.js';
+import type { PrismaClientLike } from './types.js';
 
 type TransactionalPrismaService<TOptions = unknown> = {
   createPlatformStatusSnapshot(): unknown;
@@ -118,4 +123,30 @@ export function Transaction<THost, TOptions = unknown>(
       return prisma.transaction(() => value.apply(this, args), options);
     };
   };
+}
+
+/**
+ * Compatibility HTTP interceptor that opens a Prisma request transaction around a routed handler.
+ *
+ * @remarks
+ * This deprecated 1.x bridge forwards the request `AbortSignal` to `PrismaService.requestTransaction(...)` and is
+ * registered only by the unnamed `PrismaModule` entrypoint. Prefer service-layer `@Transaction()` or an explicit
+ * request boundary for new code.
+ *
+ * @deprecated Prefer service-layer `@Transaction()` or explicit `PrismaService.requestTransaction(...)`.
+ */
+@Inject(PrismaService)
+export class PrismaTransactionInterceptor implements Interceptor {
+  constructor(private readonly prisma: PrismaService<PrismaClientLike>) {}
+
+  /**
+   * Runs the downstream handler inside the compatibility request transaction.
+   *
+   * @param context Interceptor context containing the request cancellation signal.
+   * @param next Downstream handler chain.
+   * @returns The downstream result after the request transaction settles.
+   */
+  async intercept(context: InterceptorContext, next: CallHandler): Promise<unknown> {
+    return this.prisma.requestTransaction(() => next.handle(), context.requestContext.request.signal);
+  }
 }

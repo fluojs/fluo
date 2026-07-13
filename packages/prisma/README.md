@@ -11,6 +11,7 @@ Node.js 20+ Prisma lifecycle and ALS-backed transaction context for fluo applica
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
   - [Service Transaction Boundary (@Transaction)](#service-transaction-boundary-transaction)
+  - [Request Transaction Interceptor Compatibility](#request-transaction-interceptor-compatibility)
   - [Named Registrations for Multiple Clients](#named-registrations-for-multiple-clients)
   - [Manual Transactions and current()](#manual-transactions-and-current)
   - [Shutdown and Status Contracts](#shutdown-and-status-contracts)
@@ -93,6 +94,55 @@ export class UserRepository {
 ```
 
 Calls to `@Transaction()` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying Prisma transaction.
+
+### Request Transaction Interceptor Compatibility
+
+`PrismaTransactionInterceptor` is restored as a deprecated 1.x compatibility export for existing `@UseInterceptors(...)` request-wide boundaries. The unnamed `PrismaModule.forRoot(...)` and `forRootAsync(...)` registrations provide and export it. It delegates to `PrismaService.requestTransaction(...)` and forwards the request `AbortSignal`.
+
+```typescript
+import { Controller, Post, UseInterceptors } from '@fluojs/http';
+import { PrismaTransactionInterceptor } from '@fluojs/prisma';
+
+@Controller('/orders')
+export class OrdersController {
+  @Post('/')
+  @UseInterceptors(PrismaTransactionInterceptor)
+  createOrder() {
+    return this.orders.create();
+  }
+}
+```
+
+Prefer service-layer `@Transaction()` for new business operations. Use explicit `requestTransaction(...)` when a complete request truly needs one transaction or named/multiple Prisma registrations must select a specific service; the compatibility interceptor targets only the unnamed default registration.
+
+When request-wide atomicity is genuinely required, make the boundary and cancellation input visible in application code:
+
+```typescript
+import { Inject } from '@fluojs/core';
+import { Controller, Post, type RequestContext } from '@fluojs/http';
+import { PrismaService } from '@fluojs/prisma';
+import { PrismaClient } from '@prisma/client';
+
+@Inject(PrismaService, OrdersService)
+@Controller('/orders')
+export class OrdersController {
+  constructor(
+    private readonly prisma: PrismaService<PrismaClient>,
+    private readonly orders: OrdersService,
+  ) {}
+
+  @Post('/checkout')
+  checkout(input: CheckoutInput, context: RequestContext) {
+    const { request } = context;
+    return this.prisma.requestTransaction(
+      () => this.orders.checkout(input),
+      request.signal,
+    );
+  }
+}
+```
+
+This is a narrow compatibility pattern, not a replacement for service `@Transaction()`. A request-wide transaction can hold database locks for the entire HTTP operation, so keep the boundary short and explicit.
 
 ### Named Registrations for Multiple Clients
 
@@ -235,6 +285,12 @@ Use `PrismaService<TClient>` when a provider only needs wrapper methods such as 
 ### `Transaction`
 
 - Standard TC39 method decorator for service-layer transaction boundaries. It resolves a Prisma service/facade-shaped property by default, accepts an accessor for named clients or ambiguous hosts, and can forward Prisma transaction options to the outer boundary.
+
+### `PrismaTransactionInterceptor` (deprecated compatibility)
+
+- Request-wide HTTP compatibility interceptor for existing 1.x imports.
+- Delegates to `PrismaService.requestTransaction(...)` and forwards request cancellation.
+- Prefer service `@Transaction()` or an explicit request boundary in new code.
 
 ### `PRISMA_CLIENT` (Token)
 

@@ -127,7 +127,11 @@ class DelayedLifecycleTransport implements SlackTransport {
   sendCalls = 0;
   verifyCalls = 0;
 
-  constructor(private readonly verifyDelay: Promise<void> | undefined = undefined) {}
+  constructor(
+    private readonly verifyDelay: Promise<void> | undefined = undefined,
+    private readonly sendDelay: Promise<void> | undefined = undefined,
+    private readonly onSendStarted: (() => void) | undefined = undefined,
+  ) {}
 
   async close(): Promise<void> {
     this.closeCalls += 1;
@@ -135,6 +139,8 @@ class DelayedLifecycleTransport implements SlackTransport {
 
   async send(message: NormalizedSlackMessage) {
     this.sendCalls += 1;
+    this.onSendStarted?.();
+    await this.sendDelay;
 
     return {
       channel: message.channel,
@@ -588,6 +594,23 @@ describe('SlackModule', () => {
     expect(transport.sent).toEqual([]);
   });
 
+  it('honors a signal aborted between delivery tracking and provider handoff', async () => {
+    const controller = new AbortController();
+    const transport = new PassiveTransport();
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      transport,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await initializeSlackService(container);
+    const delivery = service.send({ text: 'Abort before handoff' }, { signal: controller.signal });
+    queueMicrotask(() => controller.abort());
+
+    await expect(delivery).rejects.toMatchObject({ name: 'AbortError' });
+    expect(transport.sent).toEqual([]);
+  });
+
   it('honors an already-aborted signal before notification rendering or provider handoff', async () => {
     const controller = new AbortController();
     const render = vi.fn(async () => ({ text: 'rendered' }));
@@ -845,6 +868,45 @@ describe('SlackModule', () => {
     });
   });
 
+  it('forwards notification dispatch signals through SlackChannel to the transport', async () => {
+    const controller = new AbortController();
+    let observedSignal: AbortSignal | undefined;
+    const container = new Container();
+    const slackModuleType = SlackModule.forRoot({
+      transport: {
+        async send(message, context) {
+          observedSignal = context.signal;
+
+          return {
+            channel: message.channel,
+            ok: true,
+            response: 'ok',
+            statusCode: 200,
+            warnings: [],
+          };
+        },
+      },
+    });
+    container.register(...moduleProviders(slackModuleType));
+    const channel = await container.resolve(SlackChannel);
+    const notificationsModuleType = NotificationsModule.forRoot({ channels: [channel] });
+    container.register(...moduleProviders(notificationsModuleType));
+
+    await initializeSlackService(container);
+    const notifications = await container.resolve(NotificationsService);
+
+    await expect(
+      notifications.dispatch(
+        {
+          channel: 'slack',
+          payload: { text: 'Signal forwarding through notifications' },
+        },
+        { signal: controller.signal },
+      ),
+    ).resolves.toMatchObject({ channel: 'slack', status: 'delivered' });
+    expect(observedSignal).toBe(controller.signal);
+  });
+
   it('renders notification templates and adapts them through SlackChannel', async () => {
     const container = new Container();
     const moduleType = SlackModule.forRoot({
@@ -958,7 +1020,7 @@ describe('SlackModule', () => {
       async render(input) {
         renderInputs.push(input);
 
-        if (input.template === 'deploy.subject-fallback') {
+        if (input.template === 'deploy.subject-fallback' || input.template === 'deploy.blank-payload-subject-fallback') {
           return {};
         }
 
@@ -1019,8 +1081,22 @@ describe('SlackModule', () => {
       subject: 'Subject fallback text',
       template: 'deploy.subject-fallback',
     });
+    await service.sendNotification({
+      channel: 'slack',
+      payload: { text: '   ' },
+      recipients: ['#ops'],
+      subject: 'Blank payload text fallback',
+      template: 'deploy.blank-payload-text',
+    });
+    await service.sendNotification({
+      channel: 'slack',
+      payload: { text: '   ' },
+      recipients: ['#ops'],
+      subject: 'Blank payload subject fallback',
+      template: 'deploy.blank-payload-subject-fallback',
+    });
 
-    expect(renderInputs).toHaveLength(3);
+    expect(renderInputs).toHaveLength(5);
     expect(renderInputs[0]).toMatchObject({
       locale: 'en',
       metadata: {
@@ -1055,6 +1131,8 @@ describe('SlackModule', () => {
       template: 'deploy.subject-fallback',
     });
     expect(transportState.sent[2]?.text).toBe('Subject fallback text');
+    expect(transportState.sent[3]?.text).toBe('Rendered Blank payload text fallback');
+    expect(transportState.sent[4]?.text).toBe('Blank payload subject fallback');
   });
 
   it('creates a webhook-first transport with an explicit fetch-compatible boundary', async () => {
@@ -1343,7 +1421,7 @@ describe('SlackModule', () => {
     expect(transport.sent).toEqual(['ok-1', 'fail-2', 'ok-3']);
   });
 
-  it('propagates sendMany abort signals between sequential deliveries', async () => {
+  it('rethrows signal aborts between sendMany deliveries even when continueOnError is enabled', async () => {
     const controller = new AbortController();
     const container = new Container();
     const moduleType = SlackModule.forRoot({
@@ -1368,17 +1446,40 @@ describe('SlackModule', () => {
     container.register(...moduleProviders(moduleType));
     const service = await initializeSlackService(container);
 
-    const result = await service.sendMany([{ text: 'first' }, { text: 'second' }], {
-      continueOnError: true,
-      signal: controller.signal,
-    });
-
-    expect(result).toMatchObject({ failed: 1, succeeded: 1 });
-    expect(result.failures[0]?.error).toMatchObject({ name: 'AbortError' });
+    await expect(
+      service.sendMany([{ text: 'first' }, { text: 'second' }], {
+        continueOnError: true,
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
     expect(transportState.sent.map((entry) => entry.text)).toEqual(['first']);
   });
 
-  it('retries transient webhook failures with exponential backoff before succeeding', async () => {
+  it('rethrows transport AbortErrors from sendMany even when continueOnError is enabled', async () => {
+    const sent: string[] = [];
+    const abortError = new Error('Slack transport aborted delivery.');
+    abortError.name = 'AbortError';
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      defaultChannel: '#ops',
+      transport: {
+        async send(message) {
+          sent.push(message.text ?? '');
+          throw abortError;
+        },
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await initializeSlackService(container);
+
+    await expect(
+      service.sendMany([{ text: 'first' }, { text: 'second' }], { continueOnError: true }),
+    ).rejects.toBe(abortError);
+    expect(sent).toEqual(['first']);
+  });
+
+  it('consumes transient webhook responses before retrying with exponential backoff', async () => {
     vi.useFakeTimers();
 
     try {
@@ -1413,15 +1514,15 @@ describe('SlackModule', () => {
 
       await expect(pending).resolves.toMatchObject({ ok: true, response: 'ok', statusCode: 200 });
       expect(fetchLike).toHaveBeenCalledTimes(3);
-      expect(rateLimitedText).not.toHaveBeenCalled();
-      expect(outageText).not.toHaveBeenCalled();
+      expect(rateLimitedText).toHaveBeenCalledOnce();
+      expect(outageText).toHaveBeenCalledOnce();
       expect(successText).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('retries request-timeout webhook failures before succeeding', async () => {
+  it('consumes request-timeout webhook responses before retrying', async () => {
     vi.useFakeTimers();
 
     try {
@@ -1450,7 +1551,45 @@ describe('SlackModule', () => {
 
       await expect(pending).resolves.toMatchObject({ ok: true, response: 'ok', statusCode: 200 });
       expect(fetchLike).toHaveBeenCalledTimes(2);
-      expect(requestTimeoutText).not.toHaveBeenCalled();
+      expect(requestTimeoutText).toHaveBeenCalledOnce();
+      expect(successText).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('continues retrying when consuming a transient webhook response fails', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const responseReadFailure = new Error('response stream failed');
+      const transientText = vi.fn(async () => {
+        throw responseReadFailure;
+      });
+      const successText = vi.fn(async () => 'ok');
+      const fetchLike = vi
+        .fn<SlackFetchLike>()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 429,
+          text: transientText,
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          text: successText,
+        });
+      const transport = createSlackWebhookTransport({
+        fetch: fetchLike,
+        webhookUrl: 'https://hooks.slack.test/services/T000/B000/XXXX',
+      });
+
+      const pending = transport.send({ attachments: [], blocks: [], channel: '#ops', text: 'Response read retry path' }, {});
+      await vi.runAllTimersAsync();
+
+      await expect(pending).resolves.toMatchObject({ ok: true, response: 'ok', statusCode: 200 });
+      expect(fetchLike).toHaveBeenCalledTimes(2);
+      expect(transientText).toHaveBeenCalledOnce();
       expect(successText).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();
@@ -1866,6 +2005,80 @@ describe('SlackModule', () => {
     expect(transport.closeCalls).toBe(1);
   });
 
+  it('drains in-flight deliveries before closing owned transports during shutdown', async () => {
+    let resolveSend!: () => void;
+    let resolveSendStarted!: () => void;
+    const sendDelay = new Promise<void>((resolve) => {
+      resolveSend = resolve;
+    });
+    const sendStarted = new Promise<void>((resolve) => {
+      resolveSendStarted = resolve;
+    });
+    const transport = new DelayedLifecycleTransport(undefined, sendDelay, resolveSendStarted);
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      transport: {
+        create: async () => transport,
+        ownsResources: true,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await initializeSlackService(container);
+    const delivery = service.send({ text: 'Drain delivery' });
+    await sendStarted;
+    const shutdown = service.onApplicationShutdown();
+    await Promise.resolve();
+
+    expect(transport.sendCalls).toBe(1);
+    expect(transport.closeCalls).toBe(0);
+
+    resolveSend();
+
+    await expect(delivery).resolves.toMatchObject({ ok: true });
+    await shutdown;
+    expect(transport.closeCalls).toBe(1);
+  });
+
+  it('tracks deliveries before synchronous transport callbacks can start shutdown', async () => {
+    let resolveSend!: () => void;
+    let service: SlackService | undefined;
+    let shutdown = Promise.resolve();
+    const sendDelay = new Promise<void>((resolve) => {
+      resolveSend = resolve;
+    });
+    const transport = new DelayedLifecycleTransport(undefined, sendDelay, () => {
+      if (!service) {
+        throw new Error('Slack service must be ready before delivery starts.');
+      }
+
+      shutdown = service.onApplicationShutdown();
+    });
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      transport: {
+        create: async () => transport,
+        ownsResources: true,
+      },
+    });
+
+    container.register(...moduleProviders(moduleType));
+    service = await initializeSlackService(container);
+    const delivery = service.send({ text: 'Reentrant shutdown delivery' });
+    await Promise.resolve();
+    await Promise.resolve();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(transport.sendCalls).toBe(1);
+    expect(transport.closeCalls).toBe(0);
+
+    resolveSend();
+
+    await expect(delivery).resolves.toMatchObject({ ok: true });
+    await shutdown;
+    expect(transport.closeCalls).toBe(1);
+  });
+
   it('wraps owned transport shutdown failures as lifecycle errors', async () => {
     const closeError = new Error('close failed');
     const container = new Container();
@@ -1983,6 +2196,29 @@ describe('SlackModule', () => {
 
     expect(transport.verifyCalls).toBe(1);
     expect(transport.closeCalls).toBe(1);
+    expect(transport.sent).toEqual([]);
+  });
+
+  it('preserves app-owned closeable transports when bootstrap verification fails', async () => {
+    const verificationError = new Error('app-owned slack auth failed');
+    const transport = new FailingVerificationTransport(verificationError);
+    const container = new Container();
+    const moduleType = SlackModule.forRoot({
+      defaultChannel: '#ops',
+      transport,
+      verifyOnModuleInit: true,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(SlackService);
+
+    await expect(service.onModuleInit()).rejects.toThrowError(
+      new SlackLifecycleError('Slack transport failed to initialize.', { cause: verificationError }),
+    );
+    await service.onApplicationShutdown();
+
+    expect(transport.verifyCalls).toBe(1);
+    expect(transport.closeCalls).toBe(0);
     expect(transport.sent).toEqual([]);
   });
 

@@ -201,7 +201,9 @@ The fluo runtime normalizes missing metadata fields, such as `exports: []` when 
 
 ### Handling Circular Dependencies
 
-In complex ecosystems, circular dependencies can appear between Modules. Use `forwardRef()` in both `imports` and `inject` arrays so the DI container can resolve these cycles lazily. This pattern is often needed when two Modules must share Providers while keeping strict encapsulation. Still, treat it as a signal to check whether shared responsibility should be moved into a separate Module instead of only hiding the cycle.
+The runtime rejects circular Module imports during Module Graph compilation. Do not wrap entries in `imports` with `forwardRef()`. Instead, move the Providers shared by both sides into a third Module that exports them, then import that shared Module from each side. If the shared responsibility is broader than one Module, extract it into a separate package.
+
+`forwardRef()` has a narrower DI role: use it only around a dependency Token inside a class-level `@Inject(...)` list or a Provider `inject` array when declaration order means that Token is not available yet. It delays Token lookup; it does not make a Module import cycle or a true constructor cycle resolvable.
 
 ## Conclusion
 

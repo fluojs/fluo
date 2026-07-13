@@ -157,11 +157,11 @@ export class AuthService {
 2. **Refresh Token**: 수명이 김(예: 7일). 새로운 액세스 토큰을 얻는 데만 사용됨.
 
 ### Rotation Strategy
-Fluo는 **리프레시 토큰 로테이션(Refresh Token Rotation)**을 구현합니다. 클라이언트가 새로운 액세스 토큰을 받기 위해 리프레시 토큰을 사용할 때마다, 서버는 해당 리프레시 토큰을 무효화하고 *새로운* 리프레시 토큰을 발급합니다. 만약 공격자와 정당한 사용자가 동일한 리프레시 토큰을 사용하려 한다면, Fluo는 재사용을 감지하고 해당 토큰 제품군(family) 전체를 무효화하여 관련된 모든 사람에게 재로그인을 강제합니다.
+Fluo는 **리프레시 토큰 로테이션(Refresh Token Rotation)**을 구현합니다. 클라이언트가 새로운 액세스 토큰을 받기 위해 리프레시 토큰을 사용할 때마다, 서버는 해당 리프레시 토큰을 무효화하고 *새로운* 리프레시 토큰을 발급합니다. 공격자와 정당한 사용자가 같은 refresh token을 사용하려 하면 Fluo가 재사용을 감지합니다. `revokeByFamily(...)`가 있는 store는 해당 token family만 무효화하고, 이 method가 없는 legacy store는 subject의 모든 refresh-token family를 revoke하는 fallback을 사용합니다.
 
-이러한 선제적인 보안 접근 방식은 리프레시 토큰이 유출되더라도 악용될 수 있는 기간을 극도로 좁혀줍니다. 재사용 감지 시 토큰 제품군 전체를 무효화함으로써 사용자를 지속적인 무단 접근으로부터 보호합니다. 이는 민감한 사용자 데이터를 다루는 모든 애플리케이션에서 매우 중요한 심층 방어(defense-in-depth) 조치입니다. 로테이션을 수동으로 구현하는 것은 매우 어렵고 오류가 발생하기 쉽지만, Fluo의 내장 지원을 통해 표준적인 인증 흐름의 일부가 됩니다. 이는 복잡한 보안 프로토콜을 간단한 설정 하나로 바꿔줍니다.
+이러한 선제적인 보안 접근 방식은 리프레시 토큰이 유출되더라도 악용될 수 있는 기간을 극도로 좁혀줍니다. 침해된 token family만 무효화하면 독립적인 device 또는 session family는 유지하면서 지속적인 무단 접근을 차단할 수 있습니다. Family revocation을 아직 채택하지 않은 store에는 더 넓고 안전한 subject-wide compatibility fallback이 적용됩니다. 이는 민감한 사용자 데이터를 다루는 애플리케이션의 중요한 심층 방어 조치입니다.
 
-프로덕션 저장소에서는 현재 토큰 소비와 대체 토큰 저장이 함께 완료되도록 refresh-token store의 durable rotation 작업을 구현하세요. 이렇게 하면 기존 토큰을 used로 표시한 뒤 대체 토큰 발급이나 저장이 실패해 유효한 세션을 잃는 상황을 피할 수 있습니다.
+프로덕션 store에서는 현재 토큰 소비와 대체 토큰 저장이 함께 완료되도록 durable `rotate(...)` 작업을 구현하고, replay 대응이 family scope에 머물도록 `revokeByFamily(...)`도 구현하세요. Consume-only store도 호환되며 consume 이후 대체 토큰을 저장하지만, 두 쓰기는 원자적이지 않습니다.
 
 `RefreshTokenService.issueRefreshToken(...)` 또는 `RefreshTokenService.rotateRefreshToken(...)`를 사용하기 전에 `JwtModule`에 `refreshToken` 옵션을 설정하고 durable `RefreshTokenStore`를 제공해야 합니다. 이 전제 조건이 없으면 서비스는 JWT provider surface의 일부로 사용할 수 있더라도, 이 챕터가 전제하는 storage-backed refresh-token 흐름은 아직 완성되지 않은 상태입니다.
 
@@ -416,7 +416,7 @@ Fluo 애플리케이션 내에서 이러한 로깅을 중앙 집중화하면 누
 ### The Role of Refresh Token Rotation in Security
 리프레시 토큰 로테이션에 대해 언급했지만 프로덕션 환경에서의 중요성은 아무리 강조해도 지나치지 않습니다. 이는 도난당한 리프레시 토큰이 무기한 접근을 유지하는 데 사용되는 것에 대한 주요 방어책입니다. 모든 액세스 토큰 갱신 시마다 새로운 리프레시 토큰을 발행함으로써 공격자에게 "움직이는 타겟"을 만듭니다.
 
-공격자가 오래된 리프레시 토큰을 사용하려고 시도하면 Fluo의 감지 메커니즘이 재사용을 식별하고 즉시 해당 계정의 전체 세션 제품군을 차단합니다. durable production store에서는 consume 단계와 replacement-token 저장을 하나의 원자적 store 작업으로 처리해야 성공한 refresh가 저장된 후속 토큰 없이 끝나지 않습니다. 복잡한 보안 경계를 패키지가 맡아 주면 애플리케이션 코드는 비즈니스 로직과 정책 결정에 더 집중할 수 있습니다.
+공격자가 오래된 refresh token을 사용하려 하면 Fluo의 감지 메커니즘이 재사용을 식별하고 store에 침해된 family의 revoke를 요청합니다. `revokeByFamily(...)`를 구현하지 않은 store는 해당 subject의 모든 family를 revoke하는 더 안전한 legacy fallback을 사용합니다. Durable production store에서는 consume 단계와 replacement-token 저장을 하나의 원자적 store 작업으로 처리해야 성공한 refresh가 저장된 후속 토큰 없이 끝나지 않습니다.
 
 ### Implementing Secure Default Claims
 Fluo 애플리케이션에서 발행하는 모든 JWT에는 표준 보안 클레임 세트를 검토해야 합니다. 대부분의 프로덕션 흐름에서는 `iat` (발행 시간)와 `exp` (만료 시간)를 기본으로 고려하고, 특정 시점 전에는 토큰이 활성화되면 안 되는 경우 `nbf` (활성 시점)도 명시적으로 설정하는 편이 좋습니다.

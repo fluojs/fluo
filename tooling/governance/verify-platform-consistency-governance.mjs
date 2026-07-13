@@ -567,7 +567,10 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // the contract-governing documentation surface, including package-surface
   // transaction boundary and observability ownership updates that must stay
   // paired with runtime tests, such as Prisma branded transaction target
-  // resolution and ALS host lookup fail-closed coverage, Drizzle shutdown-drain
+  // resolution, ALS host lookup fail-closed coverage, service-decorator shutdown
+  // drain, concurrent multi-container context isolation, explicit request signal
+  // forwarding, facade/wrapper responsibility, fail-open rollback limits, and
+  // non-contract replica routing/transaction telemetry claims, Drizzle shutdown-drain
   // coverage for fail-open manual transactions, Drizzle decorated-instance
   // transaction target fallback discoverability, Mongoose ALS session/request
   // tracking, fail-open manual transaction drain, plus runtime-boundary docs,
@@ -577,6 +580,7 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // stale-series ownership docs, and email
   // transport-agnostic status snapshots plus caller-owned shutdown boundaries,
   // validation mapped-type/nested-materialization contract discoverability,
+  // missing-value, safe-extra-property, and unsupported-group migration rules,
   // serialization class options plus request-boundary interceptor coverage, CLI
   // public runtime type boundaries plus the documented Node.js runtime floor,
   // and Studio live helper contracts such as deterministic Mermaid rendering,
@@ -586,13 +590,26 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // bounded shutdown lock-release I/O, timeout ownership retention, dynamic
   // blank-name rejection, immutable registry descriptor snapshots, and
   // microservices facade shutdown signal forwarding plus transport-owned
-  // cancellation cleanup docs/tests, notifications queue opt-in, status
+  // cancellation cleanup docs/tests, Queue's package-level Node.js runtime
+  // floor discoverability and Queue migration from NestJS/Bull processor metadata
+  // to explicit singleton worker registration, jobName/payload cutover, and
+  // bootstrap-ready/bounded-shutdown ownership, notifications queue opt-in, status
   // details, and generated identity diagnostics contracts, plus Slack singleton
   // provider discoverability and owned transport cleanup serialization docs/tests,
+  // plus CQRS provider-token fan-out, private immutable dispatch topology state,
+  // full handler/saga/delegated pipeline ordering, and shutdown authorization,
+  // plus event-bus background handler/transport shutdown drain, inbound timeout,
+  // stable eventKey migration, and CQRS responsibility-boundary docs/tests,
   // plus React Router/Path facade-over-HTTP metadata, ReactModule.forRoot
   // registration contract discoverability, stable SSR phase boundaries, and
   // the root package's non-goals for Vite assets, client navigation, RSC,
-  // server functions, and React-owned route-table models.
+  // server functions, and React-owned route-table models, plus OpenAPI's
+  // explicit descriptor adoption, response metadata, Swagger UI asset, and
+  // path/method collision-precedence boundaries, plus GraphQL's explicit
+  // resolver/provider wiring, root-only operations, output type declarations,
+  // and server-backed WebSocket migration boundaries, plus JWT refresh-token
+  // family-scoped reuse revocation, subject-wide compatibility fallback, and
+  // consume-only rotation regression coverage.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
@@ -914,10 +931,16 @@ function enforceCanonicalRuntimeMatrixReferences() {
   assert(
     expressReadme.includes('Express compatibility does not mean that native Express/Connect') &&
       expressReadme.includes('Do not pass an Express/Connect function') &&
+      expressReadme.includes('`nativeMiddleware` is mounted in array order before') &&
       packageSurface.includes('native Express/Connect `(req, res, next)` functions are not portable fluo middleware') &&
+      packageSurface.includes('pre-router `nativeMiddleware` option') &&
       packageChooser.includes('Use fluo `Middleware` for the application pipeline') &&
+      packageChooser.includes('pre-router `nativeMiddleware` option') &&
       migrateFromNestjs.includes('Native Express/Connect `(req, res, next)` middleware') &&
+      migrateFromNestjs.includes('explicit `nativeMiddleware` option') &&
       docsContext.includes('Express host compatibility boundary') &&
+      docsContext.includes('Express native middleware seam') &&
+      docsContext.includes('`nativeMiddleware` adapter option') &&
       docsContext.includes('getServer()') &&
       docsContext.includes('getRealtimeCapability()'),
     'Express platform docs must keep host compatibility, native middleware limits, and infrastructure helper boundaries discoverable together.',
@@ -925,13 +948,19 @@ function enforceCanonicalRuntimeMatrixReferences() {
   assert(
     expressReadmeKo.includes('Express 호환성은 native Express/Connect') &&
       expressReadmeKo.includes('Express/Connect function을 fluo middleware로 직접 전달하지 마세요') &&
+      expressReadmeKo.includes('`nativeMiddleware`는 배열 순서대로 adapter의 Express Router') &&
       packageSurfaceKo.includes('native Express/Connect `(req, res, next)` function은 portable fluo middleware가 아닙니다') &&
+      packageSurfaceKo.includes('pre-router `nativeMiddleware` 옵션') &&
       packageChooserKo.includes('Application pipeline에는 fluo `Middleware`를 사용') &&
+      packageChooserKo.includes('pre-router `nativeMiddleware` 옵션') &&
       migrateFromNestjsKo.includes('native Express/Connect `(req, res, next)` middleware') &&
+      migrateFromNestjsKo.includes('명시적 `nativeMiddleware` 옵션') &&
       docsContextKo.includes('Express host compatibility boundary') &&
+      docsContextKo.includes('Express native middleware seam') &&
+      docsContextKo.includes('`nativeMiddleware` adapter 옵션') &&
       docsContextKo.includes('getServer()') &&
       docsContextKo.includes('getRealtimeCapability()'),
-    'Korean Express platform docs must keep host compatibility, native middleware limits, and infrastructure helper boundaries discoverable together.',
+    'Korean Express platform docs must keep host compatibility, native middleware limits, explicit registration, and infrastructure helper boundaries discoverable together.',
   );
   assert(
     fastifyReadme.includes('engines.node >=20.0.0') &&
@@ -1380,6 +1409,43 @@ function enforceViteToolingDiscoverability() {
   }
 }
 
+export function enforcePersistenceTransactionInterceptorCompatibility() {
+  const compatibilityExports = [
+    ['PrismaTransactionInterceptor', 'packages/prisma/src/module.ts', 'packages/prisma/src/transaction.ts'],
+    ['MongooseTransactionInterceptor', 'packages/mongoose/src/module.ts', 'packages/mongoose/src/transaction.ts'],
+  ];
+  const contractPaths = [
+    'apps/docs/content/docs/guides/persistence.mdx',
+    'apps/docs/content/docs/guides/persistence.ko.mdx',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'docs/architecture/transactions.md',
+    'docs/architecture/transactions.ko.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'docs/reference/package-surface.md',
+    'docs/reference/package-surface.ko.md',
+  ];
+
+  for (const [interceptor, modulePath, sourcePath] of compatibilityExports) {
+    const moduleSource = readFileSync(resolve(repoRoot, modulePath), 'utf8');
+    const source = readFileSync(resolve(repoRoot, sourcePath), 'utf8');
+
+    assert(
+      source.includes(`export class ${interceptor}`) && source.includes('@deprecated'),
+      `${sourcePath} must keep ${interceptor} exported and deprecated for 1.x compatibility.`,
+    );
+    assert(moduleSource.includes(interceptor), `${modulePath} must register ${interceptor}.`);
+
+    for (const contractPath of contractPaths) {
+      assert(
+        readFileSync(resolve(repoRoot, contractPath), 'utf8').includes(interceptor),
+        `${contractPath} must keep ${interceptor} compatibility discoverable.`,
+      );
+    }
+  }
+}
+
 export function main() {
   const changedFiles = changedFilesFromGit();
 
@@ -1393,6 +1459,7 @@ export function main() {
   enforceNoDirectProcessEnvInOrdinaryPackageSource();
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices();
   enforceViteToolingDiscoverability();
+  enforcePersistenceTransactionInterceptorCompatibility();
   enforceAdvancedBookCoreBoundaryCompanions(changedFiles);
   enforceContractCompanionUpdates(changedFiles);
   enforceAlignmentClaimsBackedByHarness(changedFiles);

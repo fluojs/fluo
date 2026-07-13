@@ -25,7 +25,7 @@ npm install @fluojs/platform-express express
 
 fluo 애플리케이션의 기본 HTTP 엔진으로 Express를 사용하려는 경우에 이 패키지를 사용합니다. 기존 Express 운영 자산, 호스팅 관례, 서버 통합은 platform boundary 근처에 두고 controller, provider, guard, interceptor, middleware는 fluo 런타임 계약을 유지해야 할 때 유용합니다.
 
-Express 호환성은 native Express/Connect `(req, res, next)` middleware를 fluo의 애플리케이션 레벨 `middleware` 옵션에 직접 전달할 수 있다는 의미가 아닙니다. 이 옵션은 fluo middleware(`handle(context, next)`) 또는 route-scoped fluo middleware provider를 받습니다. Native Express/Connect middleware는 Express가 소유하는 통합 계층에 두거나, Fastify, raw Node.js, Bun, Deno, Workers adapter로도 이동할 수 있도록 fluo `Middleware` 계약 뒤에 감싸세요.
+Express 호환성은 native Express/Connect `(req, res, next)` middleware를 fluo의 애플리케이션 레벨 `middleware` 옵션에 직접 전달할 수 있다는 의미가 아닙니다. 이 옵션은 fluo middleware(`handle(context, next)`) 또는 route-scoped fluo middleware provider를 받습니다. Migration 전용 native handler는 adapter의 명시적 `nativeMiddleware` 옵션에 등록하거나, Fastify, raw Node.js, Bun, Deno, Workers adapter로도 이동할 수 있도록 fluo `Middleware` 계약 뒤에 감싸세요.
 
 ## 빠른 시작
 
@@ -95,7 +95,25 @@ const app = await fluoFactory.create(AppModule, {
 });
 ```
 
-`compression()` 같은 Express/Connect function을 fluo middleware로 직접 전달하지 마세요. Migration 중 native Express middleware가 필요하다면 platform-specific bootstrap code에 격리하고 route behavior, request context mutation, cross-platform concern은 fluo middleware, guard, interceptor에 두세요.
+`compression()` 같은 Express/Connect function을 fluo middleware로 직접 전달하지 마세요. Migration 중 native handler를 유지해야 한다면 adapter construction이 완료되기 전에 명시적으로 등록하세요.
+
+```typescript
+import type { RequestHandler } from 'express';
+
+const legacyRequestTag: RequestHandler = (_request, response, next) => {
+  response.setHeader('x-migration-host', 'express');
+  next();
+};
+
+const adapter = createExpressAdapter({
+  nativeMiddleware: [legacyRequestTag],
+  port: 3000,
+});
+```
+
+`nativeMiddleware`는 배열 순서대로 adapter의 Express Router와 catch-all fluo dispatch보다 먼저 mount됩니다. `next()`를 호출하면 fluo middleware, guard, interceptor, handler로 계속 진행합니다. Native response를 끝내면 fluo dispatch에 들어가지 않고 그 자리에서 종료됩니다. Throw/rejected error와 `next(error)`는 Express error chain에 남으므로, native Express error handler는 같은 배열에서 자신이 처리할 middleware 뒤에 두세요. Dispatch 전에 발생한 실패는 fluo error filter나 envelope가 변환하지 않습니다.
+
+Native stack은 adapter 생성 시 고정됩니다. Adapter는 Node HTTP/S listener와 connection을 소유하지만 native middleware가 캡처한 timer, client, 기타 resource를 발견하거나 dispose하지 않습니다. 이 resource는 application bootstrap code가 정리해야 합니다. Route behavior, request-context mutation, cross-platform concern은 fluo middleware, guard, interceptor에 두세요.
 
 ### 안전한 fallback을 포함한 Native Route Registration
 어댑터는 의미 보존이 가능한 명시적 `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD` route를 Express Router에 사전 등록하면서도, 실제 요청 처리는 계속 공유 fluo dispatcher를 통해 수행합니다.
@@ -107,19 +125,20 @@ const app = await fluoFactory.create(AppModule, {
 문서화된 fluo semantics를 바꾸지 않기 위해 `/:id` 와 `/:slug`처럼 shape가 겹치는 파라미터 라우트, `@All(...)` 핸들러, `OPTIONS` 소유권, non-URI versioning, 그리고 duplicate slash/trailing slash 정규화에 의존하는 요청은 catch-all fallback 경로에 남겨둡니다.
 
 ### Startup Retry와 Shutdown
-`listen()`은 adapter가 열린 상태인 동안에만 `retryDelayMs` 및 `retryLimit`에 따라 `EADDRINUSE`를 재시도합니다. Startup이 retry loop에서 대기 중일 때 `close()`가 호출되면, underlying Node server가 아직 listening 상태에 도달하지 않았더라도 adapter는 in-flight listen attempt를 abort하고 그 작업이 settle될 때까지 기다린 뒤 `close()`를 완료합니다. `close()`가 resolve된 뒤 막혀 있던 port를 해제해도 adapter가 나중에 bind되지 않으며, 다시 시작하려면 호출자가 명시적으로 `listen()`을 다시 호출해야 합니다.
+`listen()`은 adapter가 열린 상태인 동안에만 `retryDelayMs` 및 `retryLimit`에 따라 `EADDRINUSE`를 재시도합니다. 동시에 호출된 `listen()`은 서로 겹치는 retry loop를 시작하지 않고 첫 호출자의 in-flight startup lifecycle과 dispatcher를 공유합니다. Startup이 retry loop에서 대기 중일 때 `close()`가 호출되면, underlying Node server가 아직 listening 상태에 도달하지 않았더라도 adapter는 공유 listen attempt를 abort하고 그 작업이 settle될 때까지 기다린 뒤 `close()`를 완료합니다. `close()` 진행 중 호출된 `listen()`은 reject되며 `close()`가 resolve된 뒤 다시 시도할 수 있습니다. `close()`가 resolve된 뒤 막혀 있던 port를 해제해도 adapter가 나중에 bind되지 않으며, 다시 시작하려면 호출자가 명시적으로 `listen()`을 다시 호출해야 합니다.
 
 ## 어댑터 계약
 
 - **공유 dispatcher 소유권 유지**: Native Express Router 매치 이후에도 실제 요청은 공유 fluo dispatcher가 처리하므로 middleware, guards, interceptors, observers, params, error envelope 계약은 그대로 유지됩니다.
-- **Host engine 경계**: Express는 host/platform HTTP engine이지만 fluo는 native Express/Connect middleware를 fluo middleware로 재해석하지 않습니다. Application-level middleware는 공유 `Middleware` 계약을 구현해야 합니다.
+- **Host engine 경계**: Express는 host/platform HTTP engine이지만 fluo는 native Express/Connect middleware를 fluo middleware로 재해석하지 않습니다. Application-level middleware는 공유 `Middleware` 계약을 구현하고, platform-specific `nativeMiddleware` 옵션은 routing 전에 native handler를 mount합니다.
+- **Native middleware 소유권**: Native handler는 선언 순서대로 실행되며 Express continuation, response termination, error-chain semantics를 유지합니다. Adapter shutdown은 listener와 connection을 닫지만 handler가 소유한 resource는 dispose하지 않습니다.
 - **안전한 fallback 범위**: `@All(...)` 핸들러와 shape가 겹치는 파라미터 라우트는 Express Router에 강제 등록하지 않고 의도적으로 catch-all fallback 경로에 둡니다.
 - **OPTIONS 소유권 parity**: 어댑터는 native route에 대해 Express Router가 `OPTIONS`를 자동 응답하지 못하게 막아, 미지원 메서드도 계속 fluo dispatcher semantics로 흘러가고 `@All(...)` 핸들러가 정의된 경우 `OPTIONS`도 그대로 소유할 수 있게 합니다.
 - **경로 정규화 parity**: duplicate slash 변형처럼 Express Router와 fluo의 정규화 방식이 다를 수 있는 요청도 fallback dispatch를 통해 fluo의 normalized route contract를 유지합니다.
 - **버저닝 parity**: Express Router가 최초 path match를 하더라도 header/media-type/custom version 선택은 계속 dispatcher가 최종 결정합니다.
 - **Middleware rewrite parity**: App middleware가 method/path를 rewrite하면 native handoff는 무효화되고 rewrite된 요청을 기준으로 다시 매칭합니다.
 - **응답 serialization parity**: String response는 기본적으로 `text/plain`, object/array는 JSON, binary payload는 `application/octet-stream`으로 serialize되며 `set-cookie` 값은 병합됩니다.
-- **Startup과 shutdown**: 어댑터는 HTTP/HTTPS startup, adapter가 열린 상태에서 `retryLimit` 소진 전까지 retry option에 따른 `EADDRINUSE` 재시도, `close()` 중 in-flight listen retry loop를 abort 및 join한 뒤 shutdown 완료 보고, 이미 시작된 adapter에 대한 중복 `listen()` 호출의 idempotent 처리와 live dispatcher 보존, 정상 close 시 idle keep-alive socket drain, 동시에 들어온 `close()` 호출의 단일 in-flight close lifecycle 재사용, shutdown timeout 이후 force-close를 지원하며, `shutdownTimeoutMs`가 `0`이면 즉시 force-close합니다.
+- **Startup과 shutdown**: 어댑터는 HTTP/HTTPS startup, adapter가 열린 상태에서 `retryLimit` 소진 전까지 retry option에 따른 `EADDRINUSE` 재시도, 동시 startup 호출자의 단일 in-flight listen lifecycle 및 dispatcher 재사용, `close()` 중 해당 공유 retry loop를 abort 및 join한 뒤 shutdown 완료 보고, close 진행 중 `listen()` reject, 이미 시작된 adapter에 대한 중복 `listen()` 호출의 idempotent 처리와 live dispatcher 보존, 정상 close 시 idle keep-alive socket drain, 동시에 들어온 `close()` 호출의 단일 in-flight close lifecycle 재사용, shutdown timeout 이후 force-close를 지원하며, `shutdownTimeoutMs`가 `0`이면 즉시 force-close합니다.
 
 ## 공개 API 개요
 
@@ -128,9 +147,9 @@ const app = await fluoFactory.create(AppModule, {
 - `runExpressApplication(module, options)`: 시그널 연결을 포함한 빠른 시작을 위한 호환 헬퍼입니다. timeout/실패 시에는 해당 상태를 로그와 `process.exitCode`로 보고하고, 최종 프로세스 종료는 주변 호스트에 맡깁니다.
 - `isExpressMultipartTooLargeError(error)`: adapter error shape 전반에서 multipart limit 감지를 정규화합니다.
 - `ExpressHttpApplicationAdapter`: 핵심 어댑터 구현 클래스입니다. `getServer()`는 좁은 platform integration을 위해 underlying Node HTTP/HTTPS server를 노출하고, `getListenTarget()`은 startup 이후 resolved bind target과 public URL을 보고하며, `getRealtimeCapability()`는 realtime package가 사용하는 server-backed capability를 반환합니다. 이러한 helper는 모두 일반 애플리케이션 코드에 native server object를 퍼뜨리기보다 infrastructure boundary에만 두세요.
-- Option type: `ExpressAdapterOptions`, `BootstrapExpressApplicationOptions`, `RunExpressApplicationOptions`, `CorsInput`, `ExpressApplicationSignal`.
+- Option type: `ExpressAdapterOptions`, `BootstrapExpressApplicationOptions`, `RunExpressApplicationOptions`, `ExpressNativeMiddleware`, `CorsInput`, `ExpressApplicationSignal`.
 
-`createExpressAdapter(options, multipartOptions?)`는 `host`, `https`, `maxBodySize`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs`를 지원합니다. `ExpressHttpApplicationAdapter`를 직접 생성하는 경우에도 factory와 같은 numeric validation이 적용됩니다. `bootstrapExpressApplication(...)`과 `runExpressApplication(...)`은 `cors`, `globalPrefix`, `globalPrefixExclude`, `middleware`, `multipart`, `securityHeaders`, `forceExitTimeoutMs`, `shutdownSignals`, `logger`도 받습니다. startup/shutdown diagnostics에는 framework console logger를 기본으로 사용하며, `logger`가 제공되면 주입된 `ApplicationLogger`를 따릅니다.
+`createExpressAdapter(options, multipartOptions?)`는 `host`, `https`, `maxBodySize`, `nativeMiddleware`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs`를 지원합니다. `ExpressHttpApplicationAdapter`를 직접 생성하는 경우에도 factory와 같은 numeric validation이 적용됩니다. `bootstrapExpressApplication(...)`과 `runExpressApplication(...)`은 `cors`, `globalPrefix`, `globalPrefixExclude`, `middleware`, `multipart`, `nativeMiddleware`, `securityHeaders`, `forceExitTimeoutMs`, `shutdownSignals`, `logger`도 받습니다. startup/shutdown diagnostics에는 framework console logger를 기본으로 사용하며, `logger`가 제공되면 주입된 `ApplicationLogger`를 따릅니다.
 
 ## 관련 패키지
 
@@ -141,4 +160,4 @@ const app = await fluoFactory.create(AppModule, {
 ## 예제 소스
 
 - `packages/platform-express/src/adapter.test.ts`
-- 이 패키지는 아직 전용 `examples/platform-express` 앱을 제공하지 않습니다. Express bootstrap 형태는 이 README의 빠른 시작을 사용하고, SSE framing, native-route fallback parity, duplicate listen idempotency, retry exhaustion, shutdown 중 startup retry cancellation, idle keep-alive drain, forced shutdown을 포함한 실행 가능한 Express adapter coverage는 `packages/platform-express/src/adapter.test.ts`를 사용하세요. `examples/minimal/src/main.ts`는 Fastify 기반이므로 Express 예제 소스로 취급하지 않아야 합니다.
+- 이 패키지는 아직 전용 `examples/platform-express` 앱을 제공하지 않습니다. Express bootstrap 형태는 이 README의 빠른 시작 및 native middleware scenario를 사용하고, native middleware ordering/termination/error propagation, SSE framing, native-route fallback parity, duplicate listen idempotency, retry exhaustion, shutdown 중 startup retry cancellation, idle keep-alive drain, forced shutdown을 포함한 실행 가능한 Express adapter coverage는 `packages/platform-express/src/adapter.test.ts`를 사용하세요. `examples/minimal/src/main.ts`는 Fastify 기반이므로 Express 예제 소스로 취급하지 않아야 합니다.

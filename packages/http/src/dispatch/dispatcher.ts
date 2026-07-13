@@ -127,6 +127,16 @@ interface FastPathHandlerRuntimeCache {
 const EMPTY_NATIVE_FAST_PATH_HANDLER_EXECUTION_PLANS = new WeakMap<HandlerDescriptor, CompiledHandlerExecutionPlan>();
 const EMPTY_NATIVE_FAST_PATH_OBSERVERS: RequestObserverLike[] = [];
 
+class ManagedSseCleanupError extends Error {
+  readonly cleanupError: unknown;
+
+  constructor(cleanupError: unknown) {
+    super('Managed SSE iterator cleanup failed.', { cause: cleanupError });
+    this.name = 'ManagedSseCleanupError';
+    this.cleanupError = cleanupError;
+  }
+}
+
 function logDispatchFailure(
   logger: DispatcherLogger | undefined,
   message: string,
@@ -538,8 +548,8 @@ function resolveManagedSseFrame(value: unknown): { data: unknown; options: SseSe
   return { data: value, options: {} };
 }
 
-function closeAsyncIteratorEventually(iterator: AsyncIterator<unknown>): void {
-  void iterator.return?.().catch(() => undefined);
+async function closeAsyncIterator(iterator: AsyncIterator<unknown>): Promise<void> {
+  await iterator.return?.();
 }
 
 async function readManagedSseNext(
@@ -577,13 +587,20 @@ async function writeManagedSseIterable(
   }
 
   const iterator = source[Symbol.asyncIterator]();
+  let iteratorCleanup: Promise<void> | undefined;
+  let iteratorCleanupFailure: ManagedSseCleanupError | undefined;
 
   try {
-    while (!isRequestAborted(requestContext.request)) {
+    while (true) {
+      if (isRequestAborted(requestContext.request)) {
+        iteratorCleanup ??= closeAsyncIterator(iterator);
+        break;
+      }
+
       const next = await readManagedSseNext(requestContext.request, stream, iterator);
 
       if (next === 'aborted') {
-        closeAsyncIteratorEventually(iterator);
+        iteratorCleanup ??= closeAsyncIterator(iterator);
         break;
       }
 
@@ -600,6 +617,18 @@ async function writeManagedSseIterable(
     }
   } finally {
     sse.close();
+
+    if (iteratorCleanup) {
+      try {
+        await iteratorCleanup;
+      } catch (error) {
+        iteratorCleanupFailure = new ManagedSseCleanupError(error);
+      }
+    }
+  }
+
+  if (iteratorCleanupFailure) {
+    throw iteratorCleanupFailure;
   }
 
   return true;
@@ -1032,14 +1061,17 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
 }
 
 async function handleDispatchError(context: DispatchPhaseContext, error: unknown): Promise<void> {
-      if (error instanceof RequestAbortedError || isRequestAborted(context.requestContext.request)) {
+  const managedSseCleanupFailed = error instanceof ManagedSseCleanupError;
+  const dispatchError = managedSseCleanupFailed ? error.cleanupError : error;
+
+  if (!managedSseCleanupFailed && (error instanceof RequestAbortedError || isRequestAborted(context.requestContext.request))) {
     return;
   }
 
-  await notifyRequestError(context, error);
+  await notifyRequestError(context, dispatchError);
 
   const handled = await context.options.onError?.(
-    error,
+    dispatchError,
     context.requestContext.request,
     context.response,
     context.requestContext.requestId,
@@ -1049,7 +1081,11 @@ async function handleDispatchError(context: DispatchPhaseContext, error: unknown
     return;
   }
 
-  await writeErrorResponse(error, context.response, context.requestContext.requestId);
+  if (managedSseCleanupFailed) {
+    logDispatchFailure(context.options.logger, 'Managed SSE iterator cleanup threw an error.', dispatchError);
+  }
+
+  await writeErrorResponse(dispatchError, context.response, context.requestContext.requestId);
 }
 
 /**

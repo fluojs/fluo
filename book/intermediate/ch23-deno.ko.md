@@ -1,4 +1,4 @@
-<!-- packages: @fluojs/platform-deno, @fluojs/runtime, @fluojs/http, @fluojs/testing -->
+<!-- packages: @fluojs/platform-deno, @fluojs/runtime, @fluojs/http -->
 <!-- project-state: FluoShop v2.5.0 -->
 
 # Chapter 23. Porting to Deno
@@ -58,32 +58,31 @@ await runDenoApplication(AppModule, {
 이 애플리케이션을 실행하려면 필요한 권한을 명시적으로 제공해야 합니다. Deno에서는 이 권한 목록이 운영 계약의 일부가 됩니다.
 
 ```bash
-deno run --allow-net --allow-read --allow-env main.ts
+deno run --allow-net --allow-env main.ts
 ```
 
-플래그를 빠뜨리면 Deno는 실행 시 프롬프트를 띄우거나 명확한 에러와 함께 종료합니다. 권한 누락은 배포 전에 드러나는 설정 문제로 다루는 편이 안전합니다. 따라서 실행 명령 자체가 애플리케이션이 접근할 수 있는 리소스를 설명하는 문서 역할을 합니다.
+플래그를 빠뜨리면 Deno는 실행 시 프롬프트를 띄우거나 명확한 에러와 함께 종료합니다. 권한 누락은 배포 전에 드러나는 설정 문제로 다루는 편이 안전합니다. 따라서 실행 명령 자체가 애플리케이션이 접근할 수 있는 리소스를 설명하는 문서 역할을 합니다. Canonical starter에는 파일 시스템 접근이 필요하지 않으므로 `--allow-read`를 부여하지 않습니다. 애플리케이션 코드가 인증서, 설정 파일, 정적 자산을 실제로 읽을 때만 `--allow-read=./static`처럼 대상 경로를 한정한 권한을 추가하세요.
 
 ## 23.3 Web Standards and Request Dispatching
 
-Deno는 웹 표준을 기반으로 구축되었기 때문에 fluo의 내부 디스패처와 자연스럽게 맞물립니다. 프레임워크는 생명주기 전반에서 네이티브 `Request` 및 `Response` 객체를 다루며, 어댑터의 `handle()` 메서드로 요청을 수동 처리할 수도 있습니다. 이 방식은 테스트나 서버리스 스타일 실행을 구성할 때 유용합니다.
+Deno는 웹 표준을 기반으로 구축되었기 때문에 fluo의 내부 디스패처와 자연스럽게 맞물립니다. FluoShop이 커스텀 routing 또는 다른 fetch handler와 host-owned `Deno.serve(...)` process를 공유해야 한다면 `app.listen()` 없이 application을 bootstrap하고 public dispatcher에서 handler를 생성하세요.
 
 ```typescript
-import { createDenoAdapter } from '@fluojs/platform-deno';
+import { createDenoAdapter, createDenoFetchHandler } from '@fluojs/platform-deno';
 import { fluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module.ts';
 
-const adapter = createDenoAdapter({ port: 3000 });
+const adapter = createDenoAdapter();
 const app = await fluoFactory.create(AppModule, { adapter });
+const handler = createDenoFetchHandler({
+  dispatcher: app.dispatcher,
+  rawBody: true,
+});
 
-await app.listen();
-
-// 테스트나 커스텀 로직을 위해 요청을 수동으로 디스패치
-const request = new Request('http://localhost:3000/api/v1/products');
-const response = await adapter.handle(request);
-console.log(await response.json());
+Deno.serve({ port: 3000 }, handler);
 ```
 
-웹 표준과의 일치는 Deno에서 실행되는 fluo 앱의 런타임 경계를 읽기 쉽게 만듭니다.
+`createDenoFetchHandler(...)`는 `Deno.serve(...)`를 호출하지 않습니다. Shared cookie/query, raw-body, multipart, SSE 동작을 보존하고 주변 host가 server shutdown, process signal, websocket upgrade를 소유합니다. fluo가 Deno server lifecycle을 소유해야 한다면 `runDenoApplication(...)` 또는 `app.listen()`을 사용하세요.
 
 ## 23.4 Native Deno WebSockets
 
@@ -212,24 +211,29 @@ import { Client } from "https://deno.land/x/postgres/mod.ts";
 
 ## 23.9 Testing in Deno
 
-Deno의 내장 테스트 러너는 별도 Jest나 Vitest 의존성 없이 사용할 수 있습니다. fluo 테스트 유틸리티를 `Deno.test`와 함께 사용할 때는 권한 플래그와 임포트 경로까지 테스트 환경에 포함하세요. 운영 실행과 같은 권한 모델로 테스트하면 배포 전에 런타임 제약을 더 일찍 확인할 수 있습니다. 라우트 수준 단언에는 `@fluojs/testing`의 `createTestApp({ rootModule })`을 사용하고, HTTP 디스패치 없이 DI와 lifecycle hook만 필요한 테스트에는 `fluoFactory.createApplicationContext(AppModule)`을 사용하세요.
+Deno의 내장 테스트 러너는 별도 Jest나 Vitest 의존성 없이 사용할 수 있습니다. 배포된 `@fluojs/testing` 패키지는 `engines.node >=20.0.0`을 선언하므로 Deno 테스트 경로에서 import하지 마세요. 대신 `Deno.test`, Deno 표준 assertion 라이브러리, public Deno fetch handler를 조합하면 서버를 시작하지 않고 실제 Web `Request`에서 `Response`까지의 경계를 검증할 수 있습니다.
 
 ```typescript
-import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-import { createTestApp } from "npm:@fluojs/testing";
+import { assertEquals } from "jsr:@std/assert";
+import { createDenoAdapter, createDenoFetchHandler } from "npm:@fluojs/platform-deno";
+import { fluoFactory } from "npm:@fluojs/runtime";
 import { AppModule } from "./app.module.ts";
 
 Deno.test("ProductService should return products", async () => {
-  const app = await createTestApp({ rootModule: AppModule });
+  const adapter = createDenoAdapter();
+  const app = await fluoFactory.create(AppModule, { adapter });
+  const handler = createDenoFetchHandler({ dispatcher: app.dispatcher });
 
   try {
-    const response = await app.request("GET", "/api/v1/products").send();
+    const response = await handler(new Request("http://localhost/api/v1/products"));
     assertEquals(response.status, 200);
   } finally {
     await app.close();
   }
 });
 ```
+
+이 테스트는 process 내부에서 dispatch하므로 파일 시스템 권한이 필요하지 않습니다. `--allow-read` 없이 실행하세요. Import된 애플리케이션 그래프가 환경 변수를 읽거나 외부 서비스에 연결한다면 `deno test --allow-env=DATABASE_URL --allow-net=database.host:5432`처럼 필요한 key나 destination만 허용하세요. Fixture를 의도적으로 읽는 테스트라면 `--allow-read=./test/fixtures`처럼 fixture 경로에만 한정된 권한을 추가할 수 있습니다.
 
 ## 23.10 Summary: The Deno Advantage
 

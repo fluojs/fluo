@@ -202,7 +202,7 @@ export class CronDistributedLockManager {
       renewalState.renewalChain = renewalState.renewalChain.then(async () => {
         await this.runLockRenewalAttempt(descriptor, renewalState);
       });
-    }, renewalState.renewalIntervalMs);
+    }, renewalState.renewalIntervalMs).unref();
 
     return {
       getPostRunError: async (): Promise<Error | undefined> => {

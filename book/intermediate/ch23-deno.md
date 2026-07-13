@@ -1,4 +1,4 @@
-<!-- packages: @fluojs/platform-deno, @fluojs/runtime, @fluojs/http, @fluojs/testing -->
+<!-- packages: @fluojs/platform-deno, @fluojs/runtime, @fluojs/http -->
 <!-- project-state: FluoShop v2.5.0 -->
 
 # Chapter 23. Porting to Deno
@@ -58,32 +58,31 @@ await runDenoApplication(AppModule, {
 To run this application, you must explicitly provide the required permissions. In Deno, this permission list becomes part of the operational contract.
 
 ```bash
-deno run --allow-net --allow-read --allow-env main.ts
+deno run --allow-net --allow-env main.ts
 ```
 
-If a flag is missing, Deno prompts at runtime or exits with a clear error. It is safer to treat missing permissions as configuration problems that should surface before deployment. The run command itself becomes documentation for the resources the application is allowed to access.
+If a flag is missing, Deno prompts at runtime or exits with a clear error. It is safer to treat missing permissions as configuration problems that should surface before deployment. The run command itself becomes documentation for the resources the application is allowed to access. The canonical starter does not need filesystem access, so it does not grant `--allow-read`. Add a scoped grant such as `--allow-read=./static` only when application code actually reads certificates, configuration files, or static assets from that path.
 
 ## 23.3 Web Standards and Request Dispatching
 
-Deno is built on Web standards, so it fits naturally with fluo's internal Dispatcher. The framework handles native `Request` and `Response` objects throughout the lifecycle, and you can also manually process requests with the adapter's `handle()` method. This approach is useful when configuring tests or serverless-style execution.
+Deno is built on Web standards, so it fits naturally with fluo's internal Dispatcher. When FluoShop must share a host-owned `Deno.serve(...)` process with custom routing or other fetch handlers, bootstrap the application without `app.listen()` and create a handler from the public dispatcher.
 
 ```typescript
-import { createDenoAdapter } from '@fluojs/platform-deno';
+import { createDenoAdapter, createDenoFetchHandler } from '@fluojs/platform-deno';
 import { fluoFactory } from '@fluojs/runtime';
 import { AppModule } from './app.module.ts';
 
-const adapter = createDenoAdapter({ port: 3000 });
+const adapter = createDenoAdapter();
 const app = await fluoFactory.create(AppModule, { adapter });
+const handler = createDenoFetchHandler({
+  dispatcher: app.dispatcher,
+  rawBody: true,
+});
 
-await app.listen();
-
-// Manually dispatch a request for testing or custom logic
-const request = new Request('http://localhost:3000/api/v1/products');
-const response = await adapter.handle(request);
-console.log(await response.json());
+Deno.serve({ port: 3000 }, handler);
 ```
 
-Alignment with Web standards makes the runtime boundary of fluo apps running on Deno easier to read.
+`createDenoFetchHandler(...)` does not call `Deno.serve(...)`. It preserves the shared cookie/query, raw-body, multipart, and SSE behavior, while the surrounding host owns server shutdown, process signals, and websocket upgrades. Use `runDenoApplication(...)` or `app.listen()` instead when fluo should own the Deno server lifecycle.
 
 ## 23.4 Native Deno WebSockets
 
@@ -212,24 +211,29 @@ import { Client } from "https://deno.land/x/postgres/mod.ts";
 
 ## 23.9 Testing in Deno
 
-Deno's built-in test runner can be used without separate Jest or Vitest dependencies. When using fluo testing utilities with `Deno.test`, include permission flags and import paths in the test environment as well. Use `createTestApp({ rootModule })` from `@fluojs/testing` for route-level assertions, or `fluoFactory.createApplicationContext(AppModule)` when the test only needs DI and lifecycle hooks without HTTP dispatch.
+Deno's built-in test runner can be used without separate Jest or Vitest dependencies. The published `@fluojs/testing` package declares `engines.node >=20.0.0`, so do not import it into the Deno test path. Instead, combine `Deno.test`, Deno's standard assertion library, and the public Deno fetch handler to exercise the real Web `Request` to `Response` boundary without starting a server.
 
 ```typescript
-import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-import { createTestApp } from "npm:@fluojs/testing";
+import { assertEquals } from "jsr:@std/assert";
+import { createDenoAdapter, createDenoFetchHandler } from "npm:@fluojs/platform-deno";
+import { fluoFactory } from "npm:@fluojs/runtime";
 import { AppModule } from "./app.module.ts";
 
 Deno.test("ProductService should return products", async () => {
-  const app = await createTestApp({ rootModule: AppModule });
+  const adapter = createDenoAdapter();
+  const app = await fluoFactory.create(AppModule, { adapter });
+  const handler = createDenoFetchHandler({ dispatcher: app.dispatcher });
 
   try {
-    const response = await app.request("GET", "/api/v1/products").send();
+    const response = await handler(new Request("http://localhost/api/v1/products"));
     assertEquals(response.status, 200);
   } finally {
     await app.close();
   }
 });
 ```
+
+This test performs in-process dispatch and needs no filesystem permission. Run it without `--allow-read`; if the imported application graph reads environment variables or contacts an external service, grant only the required keys or destinations, for example `deno test --allow-env=DATABASE_URL --allow-net=database.host:5432`. Tests that intentionally load fixtures may add a fixture-only scope such as `--allow-read=./test/fixtures`.
 
 ## 23.10 Summary: The Deno Advantage
 

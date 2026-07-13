@@ -103,6 +103,24 @@ The `@fluojs/validation` package provides a broad set of decorators for many dat
 
 You do not need to memorize all of them. Just remember that if you have a common data requirement, there is a good chance a decorator already exists for it.
 
+### Required Fields, Extra Properties, and Groups
+
+An ordinary validator such as `@IsString()` skips `null` and `undefined`; it does
+not make a field required by itself. Add `@IsDefined()` when either missing value
+must fail. Use `@IsOptional()` when that skip should be an explicit part of the
+DTO contract.
+
+Materializing a plain input object also retains its safe own enumerable properties
+contains beyond the declared DTO fields. It excludes dangerous prototype keys,
+inherited properties, and non-enumerable properties, but it is not a whitelist or
+forbid-extra-fields mode. Shape or reject extra input explicitly when your API
+needs that policy.
+
+Finally, fluo validation does not execute class-validator-style `groups` or
+`always` options. Use separate DTOs, mapped DTO helpers, `@ValidateIf(...)`, or
+class-level validation when create, update, or other workflows need different
+rules.
+
 ## 6.3 Connecting DTOs to the HTTP Layer
 
 Validation only becomes meaningful when the controller actually asks for DTO materialization.
@@ -220,7 +238,10 @@ Do not assume the network sends the exact type you want. Describe the type you e
 If you really need to accept a number from a query parameter, bind it to a DTO first, then make the conversion explicit in code.
 
 ```typescript
+import { FromQuery, Get, RequestDto } from '@fluojs/http';
+
 class ListPostsQueryDto {
+  @FromQuery('page')
   page = '1';
 }
 
@@ -232,7 +253,7 @@ findAll(input: ListPostsQueryDto) {
 }
 ```
 
-This makes the conversion process explicit and visible. First you fix the DTO input contract, then you show the required conversion in code.
+This makes both the request source and the conversion process explicit and visible. First `@FromQuery('page')` binds the `page` query field to the DTO, then the handler shows the required conversion in code.
 
 ## 6.6 What FluoBlog Looks Like After Validation
 

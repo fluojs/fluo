@@ -77,11 +77,48 @@ fluo는 표준 데코레이터를 사용하여 GraphQL 스키마를 정의합니
 
 현재 `@fluojs/graphql` 런타임은 root operation resolver만 지원합니다. `author(book, context)` 같은 object field resolver 패턴은 아직 런타임 계약이 아니라 `packages/graphql/field-resolver-rfc.md`에 정리된 설계 초안입니다.
 
+Resolver 반환 타입은 TypeScript metadata에서 추론되지 않습니다. `outputType`이 없는 operation은 GraphQL `String`을 사용합니다. Object 결과에는 GraphQL output type을 전달해야 하고, array 결과에는 item type을 `listOf(...)`로 감싸야 합니다.
+
+```typescript
+import { GraphQLObjectType, GraphQLString } from 'graphql';
+import { listOf, Query, Resolver } from '@fluojs/graphql';
+
+const UserType = new GraphQLObjectType({
+  name: 'User',
+  fields: {
+    id: { type: GraphQLString },
+    name: { type: GraphQLString },
+  },
+});
+
+@Resolver()
+class UserResolver {
+  @Query({ outputType: UserType })
+  async user() {
+    return userService.findCurrent();
+  }
+
+  @Query({ outputType: listOf(UserType) })
+  async users() {
+    return userService.findAll();
+  }
+}
+```
+
 ### Request-Scoped DataLoaders
 내장된 DataLoader 통합을 통해 N+1 문제를 효율적으로 해결합니다. Loader는 각 GraphQL 작업마다 자동으로 격리됩니다.
 
 ```typescript
-import { createDataLoader, type GraphQLContext } from '@fluojs/graphql';
+import { GraphQLObjectType, GraphQLString } from 'graphql';
+import { createDataLoader, type GraphQLContext, Query, Resolver } from '@fluojs/graphql';
+
+const UserType = new GraphQLObjectType({
+  name: 'User',
+  fields: {
+    id: { type: GraphQLString },
+    name: { type: GraphQLString },
+  },
+});
 
 const userLoader = createDataLoader(async (ids: string[]) => {
   const users = await userService.findByIds(ids);
@@ -95,7 +132,7 @@ class UserInput {
 
 @Resolver()
 class UserResolver {
-  @Query({ input: UserInput })
+  @Query({ input: UserInput, outputType: UserType })
   async user(input: UserInput, context: GraphQLContext) {
     return userLoader(context).load(input.id);
   }

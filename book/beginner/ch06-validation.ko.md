@@ -103,6 +103,23 @@ fluo는 클래스 프로퍼티에 직접 `@IsString()` 같은 데코레이터를
 
 이 모든 것을 외울 필요는 없습니다. 일반적인 데이터 요구 사항이 있다면 그에 맞는 데코레이터가 이미 존재할 가능성이 높다는 점만 기억하세요.
 
+### 필수 field, 추가 속성, group
+
+`@IsString()` 같은 일반 validator는 `null`과 `undefined`를 건너뛰며, 그 자체로
+field를 필수로 만들지 않습니다. 두 누락 값 중 하나라도 실패해야 한다면
+`@IsDefined()`를 추가하세요. 이 skip을 DTO 계약에 명시하려면 `@IsOptional()`을
+사용합니다.
+
+Plain 입력 객체를 materialize할 때 선언된 DTO field 외의 안전한 own enumerable
+속성도 유지합니다. 위험한 prototype key, inherited 속성, non-enumerable 속성은
+제외하지만 whitelist 또는 추가 field 금지 모드는 아닙니다. API에 해당 정책이
+필요하면 추가 입력을 명시적으로 shaping하거나 거부하세요.
+
+마지막으로 fluo validation은 class-validator 스타일의 `groups` 또는 `always`
+option을 실행하지 않습니다. Create, update, 기타 workflow에 서로 다른 규칙이
+필요하면 별도 DTO, mapped DTO helper, `@ValidateIf(...)`, class-level validation을
+사용하세요.
+
 ## 6.3 Connecting DTOs to the HTTP Layer
 
 검증은 컨트롤러가 실제로 DTO materialization을 요청할 때 비로소 의미가 생깁니다.
@@ -220,7 +237,10 @@ export class PublicCreateDto extends OmitType(CreatePostDto, ['published']) {}
 만약 쿼리 파라미터에서 꼭 숫자를 받아야 한다면, DTO에 먼저 바인딩한 뒤 변환을 코드에서 명시적으로 드러내면 됩니다.
 
 ```typescript
+import { FromQuery, Get, RequestDto } from '@fluojs/http';
+
 class ListPostsQueryDto {
+  @FromQuery('page')
   page = '1';
 }
 
@@ -232,7 +252,7 @@ findAll(input: ListPostsQueryDto) {
 }
 ```
 
-이렇게 하면 변환 과정이 명시적이고 가시적이게 됩니다. 먼저 DTO 입력 계약을 고정하고, 그 다음 필요한 변환을 코드에서 드러내는 방식입니다.
+이렇게 하면 요청 소스와 변환 과정이 모두 명시적이고 가시적이게 됩니다. 먼저 `@FromQuery('page')`가 `page` 쿼리 필드를 DTO에 바인딩하고, 그 다음 핸들러가 필요한 변환을 코드에서 드러냅니다.
 
 ## 6.6 What FluoBlog Looks Like After Validation
 

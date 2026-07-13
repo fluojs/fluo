@@ -72,7 +72,21 @@ export class ReservationExpiryService {
 
 This is time-based maintenance tied to a business rule. The schedule is part of the behavior contract. How often it runs is not just an operations setting, but also a policy for how long inventory may remain reserved.
 
-### 12.3.2 Startup timeout and periodic polling
+### 12.3.2 Migrating NestJS cron options
+
+NestJS cron option objects are not portable as-is. Rename `timeZone` to the lowercase fluo option `timezone`, and remove `waitForCompletion`:
+
+```typescript
+// NestJS
+@Cron('0 9 * * *', { timeZone: 'Asia/Seoul', waitForCompletion: true })
+
+// fluo
+@Cron('0 9 * * *', { timezone: 'Asia/Seoul' })
+```
+
+fluo has no `waitForCompletion` or overlap-enable option. It always sends no-overlap protection to the scheduler and also keeps an in-process running guard. A tick that arrives while the same task instance is active is skipped rather than queued, so a NestJS task with `waitForCompletion: true` needs no replacement flag. If existing code intentionally relied on `waitForCompletion: false` or the NestJS default to overlap executions, move that concurrent work behind an application-owned queue or worker instead of inventing an unsupported option. The local guard covers one task instance; Section 12.4's distributed lock is still required to coordinate the same task across application instances.
+
+### 12.3.3 Startup timeout and periodic polling
 
 Some work should run after a certain amount of time has passed since boot. For example, FluoShop can perform an initial cache warm-up or configuration sync five seconds after startup. Other work can poll a partner API every 15 seconds. These flows map naturally to `@Timeout` and `@Interval`. The key point is that fluo treats them as first-class scheduling concepts, not improvised `setTimeout` or `setInterval` calls scattered through bootstrap code.
 
@@ -146,7 +160,7 @@ export class CampaignWindowService {
 }
 ```
 
-This feature is powerful, so it should be used with care. A dynamic schedule is the right fit when business timing truly changes at runtime. It does not mean ordinary static maintenance tasks should be hidden behind registry calls. Dynamic `options.name` overrides follow the same non-empty name rule as decorator names and are rejected before scheduler or registry state is retained. The registry is descriptor-based: `get()` and `getAll()` describe tasks through immutable `SchedulingTaskDescriptor` snapshots instead of returning live scheduler handles or mutable internal state. `updateCronExpression()` changes cron timing, and `updateIntervalMs()` changes fixed-interval cadence with the same rollback-safe reschedule contract: if the scheduler rejects the new cadence, the previous descriptor and scheduled handle stay active. That keeps runtime controls explicit while preventing application code from depending on scheduler-engine internals.
+This feature is powerful, so it should be used with care. A dynamic schedule is the right fit when business timing truly changes at runtime. It does not mean ordinary static maintenance tasks should be hidden behind registry calls. Dynamic `options.name` overrides follow the same non-empty name rule as decorator names and are rejected before scheduler or registry state is retained. The registry is descriptor-based: `get()` and `getAll()` describe tasks through immutable `SchedulingTaskDescriptor` snapshots instead of returning live scheduler handles or mutable internal state. `updateCronExpression()` changes cron timing, and `updateIntervalMs()` changes fixed-interval cadence with the same rollback-safe reschedule contract: fluo commits the replacement only after stopping the previous handle. If the scheduler rejects the new cadence or the previous handle cannot be stopped, fluo cleans up the provisional replacement, restores the previous descriptor and handle, and rethrows the failure. That keeps runtime controls explicit while preventing application code from depending on scheduler-engine internals or leaving duplicate schedules after a failed update.
 
 ## 12.7 Bounded shutdown
 
@@ -180,6 +194,7 @@ By the end of this chapter, FluoShop can react both to business facts and to tim
 ## 12.11 Summary
 
 - `@fluojs/cron` gives FluoShop cron expressions, intervals, and timeouts through decorator-based scheduling.
+- NestJS cron options require `timeZone` to become `timezone`; `waitForCompletion` is omitted because fluo always skips overlapping ticks for the same task instance and exposes no overlap opt-out.
 - Redis-backed distributed locking ensures that only one instance runs a scheduled task in multi-instance deployments.
 - `distributed.lockTtlMs` and optional named Redis clients are operational settings that determine reliability, and enabled TTLs are validated before Redis I/O.
 - Dynamic scheduling through `SCHEDULING_REGISTRY` is supported when the business truly needs runtime-created tasks.

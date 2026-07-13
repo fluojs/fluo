@@ -36,6 +36,43 @@ permission:
     '*': ask
     'find *': deny
     'xargs *': deny
+    'ls *': allow
+    'test *': allow
+    'true *': allow
+    'exit *': allow
+    'printf *': allow
+    'command -v *': allow
+    'gh api *': allow
+    'rmdir *': allow
+    'bun run *': allow
+    'python -c *': allow
+    'git fetch *': allow
+    'git show-ref *': allow
+    'print *': allow
+    'git worktree *': allow
+    'python3 *': allow
+    'nohup *': allow
+    'jobs *': allow
+    'ps *': allow
+    'node *': allow
+    'pnpm --version *': allow
+    'command *': allow
+    'file *': allow
+    'readlink *': allow
+    'pnpm verify:release-readiness *': allow
+    'pgrep *': allow
+    'sleep *': allow
+    'env *': allow
+    'npx *': allow
+    'git ls-remote *': allow
+    'gh pr view *': allow
+    'realpath *': allow
+    'pnpm vitest *': allow
+    'perl *': allow
+    'pnpm exec biome *': allow
+    'kill *': allow
+    'pnpm *': allow
+    'pnpm publish*': deny
     'base64 *': allow
     'nl *': allow
     'sed *': allow
@@ -44,6 +81,14 @@ permission:
     'grep *': allow
     'awk *': allow
     'wc *': allow
+    'pwd *': allow
+    'git status *': allow
+    'git log *': allow
+    'git branch': allow
+    'git branch --show-current': allow
+    'git branch --list*': allow
+    'git branch -a*': allow
+    'git branch -r*': allow
     # OpenCode applies the last matching rule, so broad allows must stay before specific denies.
     'git *': allow
     'GIT_MASTER=1 git *': allow
@@ -94,6 +139,9 @@ permission:
     'GIT_MASTER=1 git branch --delete *': deny
     'GIT_MASTER=1 git worktree remove*': deny
     'sort*': allow
+    'gh search issues *': allow
+    'gh repo view *': allow
+    'gh release view *': allow
     'gh pr *': allow
     'gh issue *': allow
     'gh label *': allow
@@ -161,6 +209,42 @@ permission:
     '*': ask
     'find *': deny
     'xargs *': deny
+    'ls *': allow
+    'test *': allow
+    'true *': allow
+    'exit *': allow
+    'printf *': allow
+    'command -v *': allow
+    'gh api *': allow
+    'rmdir *': allow
+    'bun run *': allow
+    'python -c *': allow
+    'git fetch *': allow
+    'git show-ref *': allow
+    'print *': allow
+    'git worktree *': allow
+    'python3 *': allow
+    'nohup *': allow
+    'jobs *': allow
+    'ps *': allow
+    'node *': allow
+    'pnpm --version *': allow
+    'command *': allow
+    'file *': allow
+    'readlink *': allow
+    'pnpm verify:release-readiness *': allow
+    'pgrep *': allow
+    'sleep *': allow
+    'env *': allow
+    'npx *': allow
+    'git ls-remote *': allow
+    'gh pr view *': allow
+    'realpath *': allow
+    'pnpm vitest *': allow
+    'perl *': allow
+    'pnpm exec biome *': allow
+    'kill *': allow
+    'pnpm *': allow
     'base64 *': allow
     'nl *': allow
     'sed *': allow
@@ -169,11 +253,17 @@ permission:
     'grep *': allow
     'awk *': allow
     'wc *': allow
+    'pwd *': allow
+    'git status *': allow
+    'git log *': allow
+    'git branch': allow
+    'git branch --show-current': allow
+    'git branch --list*': allow
+    'git branch -a*': allow
+    'git branch -r*': allow
     # OpenCode applies the last matching rule, so broad allows must stay before specific denies.
     'git *': allow
     'GIT_MASTER=1 git *': allow
-    'git merge*': deny
-    'git rebase*': deny
     'git reset': deny
     'git reset *': deny
     'git clean*': deny
@@ -215,16 +305,9 @@ permission:
     'GIT_MASTER=1 git commit*': allow
     'GIT_MASTER=1 git fetch*': allow
     'GIT_MASTER=1 git push*': allow
-    'pnpm install*': allow
-    'pnpm exec*': allow
-    'pnpm --filter*': allow
-    'pnpm --dir*': allow
-    'pnpm test*': allow
-    'pnpm typecheck*': allow
-    'pnpm build*': allow
-    'pnpm verify*': allow
-    'pnpm lint*': allow
-    'pnpm changeset*': allow
+    'gh search issues *': allow
+    'gh repo view *': allow
+    'gh release view *': allow
     'gh issue view*': allow
     'gh issue list*': allow
     'gh label list*': allow
@@ -272,7 +355,12 @@ Rules:
 - Do not rely on implicit name matching.
 - Keep reviewer templates separate from write-capable implementers.
 - Prefer one role per file.
-- Use provider-qualified model IDs in agent frontmatter, e.g. `openai/gpt-5.5`, not bare model names such as `gpt-5.5`.
+- Use provider-qualified model IDs in agent frontmatter. The current local GPT-5.6 aliases are `openai/gpt-5.6-sol-pro`, `openai/gpt-5.6-terra-pro`, and `openai/gpt-5.6-luna-fast`.
+- Select `openai/gpt-5.6-sol-pro` for central or high-stakes gates and implementation agents.
+- Select `openai/gpt-5.6-terra-pro` for specialist package audits and reviews.
+- Use `openai/gpt-5.6-luna-fast` only for low-risk discovery where speed matters more than depth.
+- Before pinning an alias, verify it appears in the local `opencode models openai` catalog.
+- Do not combine suffix aliases such as `*-pro` or `*-fast` with a separate `variant: pro` or `variant: fast` field.
 - Put provider/model request tuning under `options:`. Do not add plugin-specific keys such as `fallback_models` unless the matching OpenCode plugin is installed and documented in this repository.
 
 ## GitHub CLI permission policy

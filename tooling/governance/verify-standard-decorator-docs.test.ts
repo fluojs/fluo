@@ -139,4 +139,22 @@ class Service {
 
     expect(collectParameterInjectExamples(markdownFiles)).toEqual([]);
   });
+
+  it('keeps constructor injection and forwardRef migration boundaries explicit in both locales', () => {
+    const englishBeginner = readFileSync('book/beginner/ch04-decorators-intro.md', 'utf8');
+    const koreanBeginner = readFileSync('book/beginner/ch04-decorators-intro.ko.md', 'utf8');
+    const englishAdvanced = readFileSync('book/advanced/ch16-custom-package.md', 'utf8');
+    const koreanAdvanced = readFileSync('book/advanced/ch16-custom-package.ko.md', 'utf8');
+    const englishMigration = readFileSync('docs/getting-started/migrate-from-nestjs.md', 'utf8');
+    const koreanMigration = readFileSync('docs/getting-started/migrate-from-nestjs.ko.md', 'utf8');
+
+    expect(englishBeginner).toMatch(/class-level `@Inject\(\.\.\.\)`[^\n]+not a property-injection Decorator/u);
+    expect(koreanBeginner).toMatch(/클래스 수준 `@Inject\(\.\.\.\)`[^\n]+속성 주입 데코레이터가 아닙니다/u);
+    expect(englishAdvanced).toMatch(/rejects circular Module imports[^\n]+Do not wrap entries in `imports` with `forwardRef\(\)`/u);
+    expect(koreanAdvanced).toMatch(/순환 모듈 import를 거부[^\n]+`imports` 항목을 `forwardRef\(\)`로 감싸지 마세요/u);
+    expect(englishMigration).toMatch(/property injection MUST become constructor injection/u);
+    expect(englishMigration).toMatch(/Module `forwardRef\(\.\.\.\)` has no fluo equivalent/u);
+    expect(koreanMigration).toMatch(/속성 주입은 반드시 생성자 주입으로 바꾼다/u);
+    expect(koreanMigration).toMatch(/모듈 `forwardRef\(\.\.\.\)`에 직접 대응하는 fluo 기능은 없다/u);
+  });
 });

@@ -67,10 +67,19 @@ import {
 } from '@fluojs/runtime/node';
 import { parseMultipart } from '@fluojs/runtime/web';
 import express, {
+  type ErrorRequestHandler,
   type Express,
   type Request as ExpressRequest,
+  type RequestHandler,
   type Response as ExpressResponse,
 } from 'express';
+
+/**
+ * Defines a native Express/Connect middleware handler registered before fluo routing.
+ *
+ * @remarks Native middleware remains platform-specific and follows Express response and error-chain semantics.
+ */
+export type ExpressNativeMiddleware = RequestHandler | ErrorRequestHandler;
 
 /**
  * Describes the express adapter options contract.
@@ -79,6 +88,7 @@ export interface ExpressAdapterOptions {
   host?: string;
   https?: HttpsServerOptions;
   maxBodySize?: number;
+  nativeMiddleware?: readonly ExpressNativeMiddleware[];
   port?: number;
   rawBody?: boolean;
   retryDelayMs?: number;
@@ -118,6 +128,7 @@ export interface BootstrapExpressApplicationOptions extends Omit<CreateApplicati
   maxBodySize?: number;
   middleware?: MiddlewareLike[];
   multipart?: MultipartOptions;
+  nativeMiddleware?: readonly ExpressNativeMiddleware[];
   port?: number;
   rawBody?: boolean;
   retryDelayMs?: number;
@@ -178,6 +189,7 @@ type ExpressMultipartLikeError = Error & {
  * Represents the express http application adapter.
  */
 export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
+  private closing = false;
   private closeInFlight?: Promise<void>;
   private dispatcher?: Dispatcher;
   private listenAbortController?: AbortController;
@@ -203,6 +215,7 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
     private readonly maxBodySize = DEFAULT_MAX_BODY_SIZE,
     private readonly preserveRawBody = false,
     private readonly shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
+    nativeMiddleware: readonly ExpressNativeMiddleware[] = [],
   ) {
     resolvePort(this.port);
     resolveNonNegativeIntegerOption('retryDelayMs', this.retryDelayMs, 150);
@@ -210,6 +223,11 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
     resolveNonNegativeIntegerOption('maxBodySize', this.maxBodySize, DEFAULT_MAX_BODY_SIZE);
     resolveNonNegativeIntegerOption('shutdownTimeoutMs', this.shutdownTimeoutMs, DEFAULT_SHUTDOWN_TIMEOUT_MS);
     this.app = express();
+
+    for (const middleware of nativeMiddleware) {
+      this.app.use(middleware);
+    }
+
     this.requestResponseFactory = createExpressRequestResponseFactory(
       this.multipartOptions,
       this.maxBodySize,
@@ -241,7 +259,16 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
   }
 
   async listen(dispatcher: Dispatcher): Promise<void> {
+    if (this.closing) {
+      throw new Error('Express adapter is closing. Wait for close() to complete before listen().');
+    }
+
     if (this.server.listening) {
+      return;
+    }
+
+    if (this.listenInFlight) {
+      await this.listenInFlight;
       return;
     }
 
@@ -270,18 +297,19 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
       return;
     }
 
-    if (this.listenInFlight) {
-      this.listenAbortController?.abort();
-      await waitForCloseWithTimeout(ignoreCancelledListen(this.listenInFlight), this.shutdownTimeoutMs);
-    }
+    this.closing = true;
+    const closePromise = (async () => {
+      if (this.listenInFlight) {
+        this.listenAbortController?.abort();
+        await waitForCloseWithTimeout(ignoreCancelledListen(this.listenInFlight), this.shutdownTimeoutMs);
+      }
 
-    if (!this.server.listening) {
-      this.dispatcher = undefined;
-      return;
-    }
-
-    const closePromise = closeServerWithDrain(this.server, this.sockets, this.shutdownTimeoutMs);
+      if (this.server.listening) {
+        await closeServerWithDrain(this.server, this.sockets, this.shutdownTimeoutMs);
+      }
+    })();
     const closeInFlight = closePromise.finally(() => {
+      this.closing = false;
       this.closeInFlight = undefined;
       this.dispatcher = undefined;
     });
@@ -560,6 +588,7 @@ export function createExpressAdapter(
     resolveNonNegativeIntegerOption('maxBodySize', options.maxBodySize, DEFAULT_MAX_BODY_SIZE),
     options.rawBody,
     resolveNonNegativeIntegerOption('shutdownTimeoutMs', options.shutdownTimeoutMs, DEFAULT_SHUTDOWN_TIMEOUT_MS),
+    options.nativeMiddleware,
   );
 }
 

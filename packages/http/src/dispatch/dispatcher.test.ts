@@ -445,6 +445,30 @@ describe('dispatcher runtime', () => {
     expect(root.requestScopeDisposeCount).toBe(2);
   });
 
+  it('disposes a request scope exactly once when the handler throws', async () => {
+    @ScopeDecorator('request')
+    @Controller('/request-controller-error')
+    class FailingRequestController {
+      @Get('/')
+      fail() {
+        throw new Error('handler failed');
+      }
+    }
+
+    const root = new CountingContainer().register(FailingRequestController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: FailingRequestController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/request-controller-error', 'GET'), response);
+
+    expect(response.statusCode).toBe(500);
+    expect(root.requestScopeCreateCount).toBe(1);
+    expect(root.requestScopeDisposeCount).toBe(1);
+  });
+
   it('uses request scope for custom binders before they resolve request-scoped providers', async () => {
     let created = 0;
 
@@ -1852,17 +1876,20 @@ describe('dispatcher runtime', () => {
     expect(cleanupCalled).toBe(true);
   });
 
-  it('does not await native async generator return when abort happens during a pending read', async () => {
+  it('awaits native async generator cleanup when abort happens during a pending read', async () => {
     const controller = new AbortController();
     let waitingForSecondRead = false;
     let generatorFinallyReached = false;
-    const never = new Promise<never>(() => undefined);
+    let continuePendingRead: () => void = () => {};
+    const pendingRead = new Promise<void>((resolve) => {
+      continuePendingRead = () => resolve();
+    });
 
     async function* source() {
       try {
         yield 'first';
         waitingForSecondRead = true;
-        await never;
+        await pendingRead;
         yield 'unreachable';
       } finally {
         generatorFinallyReached = true;
@@ -1890,24 +1917,39 @@ describe('dispatcher runtime', () => {
     await vi.waitFor(() => {
       expect(waitingForSecondRead).toBe(true);
     });
+    let dispatchSettled = false;
+    void dispatch.finally(() => {
+      dispatchSettled = true;
+    });
     controller.abort(new Error('client disconnected'));
+    await vi.waitFor(() => {
+      expect(response.stream.closeCalls).toBe(1);
+    });
+
+    expect(dispatchSettled).toBe(false);
+    expect(generatorFinallyReached).toBe(false);
+
+    continuePendingRead();
     await expect(dispatch).resolves.toBeUndefined();
 
     expect(response.stream.writes).toEqual(['data: first\n\n']);
     expect(response.stream.closeCalls).toBe(1);
-    expect(generatorFinallyReached).toBe(false);
+    expect(generatorFinallyReached).toBe(true);
   });
 
-  it('does not await native async generator return when disconnect happens during a pending read', async () => {
+  it('awaits native async generator cleanup when disconnect happens during a pending read', async () => {
     let waitingForSecondRead = false;
     let generatorFinallyReached = false;
-    const never = new Promise<never>(() => undefined);
+    let continuePendingRead: () => void = () => {};
+    const pendingRead = new Promise<void>((resolve) => {
+      continuePendingRead = () => resolve();
+    });
 
     async function* source() {
       try {
         yield 'first';
         waitingForSecondRead = true;
-        await never;
+        await pendingRead;
         yield 'unreachable';
       } finally {
         generatorFinallyReached = true;
@@ -1933,12 +1975,161 @@ describe('dispatcher runtime', () => {
     await vi.waitFor(() => {
       expect(waitingForSecondRead).toBe(true);
     });
+    let dispatchSettled = false;
+    void dispatch.finally(() => {
+      dispatchSettled = true;
+    });
     response.stream.emitClose();
+    await vi.waitFor(() => {
+      expect(response.stream.closeCalls).toBe(1);
+    });
+
+    expect(dispatchSettled).toBe(false);
+    expect(generatorFinallyReached).toBe(false);
+
+    continuePendingRead();
     await expect(dispatch).resolves.toBeUndefined();
 
     expect(response.stream.writes).toEqual(['data: first\n\n']);
     expect(response.stream.closeCalls).toBe(1);
-    expect(generatorFinallyReached).toBe(false);
+    expect(generatorFinallyReached).toBe(true);
+  });
+
+  it('finishes managed SSE iterator cleanup before disposing the request scope', async () => {
+    const controller = new AbortController();
+    let cleanupStarted = false;
+    let cleanupFinished = false;
+    let waitingForSecondRead = false;
+    let finishCleanup: () => void = () => {};
+    const cleanupGate = new Promise<void>((resolve) => {
+      finishCleanup = () => resolve();
+    });
+    const pendingRead = new Promise<IteratorResult<unknown>>(() => {});
+    const source: AsyncIterable<unknown> = {
+      [Symbol.asyncIterator]() {
+        let readCount = 0;
+
+        return {
+          next() {
+            readCount += 1;
+
+            if (readCount === 1) {
+              return Promise.resolve({ done: false, value: 'first' });
+            }
+
+            waitingForSecondRead = true;
+            return pendingRead;
+          },
+          async return() {
+            cleanupStarted = true;
+            await cleanupGate;
+            cleanupFinished = true;
+            return { done: true, value: undefined };
+          },
+        };
+      },
+    };
+
+    @ScopeDecorator('request')
+    @Controller('/managed-cleanup-order')
+    class ManagedCleanupOrderController {
+      @Sse('/')
+      stream() {
+        return source;
+      }
+    }
+
+    const root = new CountingContainer().register(ManagedCleanupOrderController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ManagedCleanupOrderController }]),
+      rootContainer: root,
+    });
+    const request = createRequest('/managed-cleanup-order', 'GET');
+    request.signal = controller.signal;
+    const response = createStreamingResponse();
+
+    const dispatch = dispatcher.dispatch(request, response);
+    await vi.waitFor(() => {
+      expect(waitingForSecondRead).toBe(true);
+    });
+    controller.abort(new Error('client disconnected'));
+    await vi.waitFor(() => {
+      expect(cleanupStarted).toBe(true);
+    });
+
+    expect(cleanupFinished).toBe(false);
+    expect(root.requestScopeDisposeCount).toBe(0);
+
+    finishCleanup();
+    await dispatch;
+
+    expect(cleanupFinished).toBe(true);
+    expect(root.requestScopeDisposeCount).toBe(1);
+  });
+
+  it('reports managed SSE iterator cleanup failures without replacing a committed response', async () => {
+    const controller = new AbortController();
+    const cleanupError = new Error('iterator cleanup failed');
+    const logger = { error: vi.fn() };
+    const onRequestError = vi.fn();
+    let waitingForSecondRead = false;
+    const pendingRead = new Promise<IteratorResult<unknown>>(() => {});
+    const source: AsyncIterable<unknown> = {
+      [Symbol.asyncIterator]() {
+        let readCount = 0;
+
+        return {
+          next() {
+            readCount += 1;
+
+            if (readCount === 1) {
+              return Promise.resolve({ done: false, value: 'first' });
+            }
+
+            waitingForSecondRead = true;
+            return pendingRead;
+          },
+          return() {
+            return Promise.reject(cleanupError);
+          },
+        };
+      },
+    };
+
+    @Controller('/managed-cleanup-error')
+    class ManagedCleanupErrorController {
+      @Sse('/')
+      stream() {
+        return source;
+      }
+    }
+
+    const root = new Container().register(ManagedCleanupErrorController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ManagedCleanupErrorController }]),
+      logger,
+      observers: [{ onRequestError }],
+      rootContainer: root,
+    });
+    const request = createRequest('/managed-cleanup-error', 'GET');
+    request.signal = controller.signal;
+    const response = createStreamingResponse();
+
+    const dispatch = dispatcher.dispatch(request, response);
+    await vi.waitFor(() => {
+      expect(waitingForSecondRead).toBe(true);
+    });
+    controller.abort(new Error('client disconnected'));
+    await dispatch;
+
+    expect(onRequestError).toHaveBeenCalledWith(expect.any(Object), cleanupError);
+    expect(logger.error).toHaveBeenCalledWith(
+      'Managed SSE iterator cleanup threw an error.',
+      cleanupError,
+      'HttpDispatcher',
+    );
+    expect(response.body).toBeUndefined();
+    expect(response.stream.closeCalls).toBe(1);
   });
 
   it('waits for drain when managed SSE writes report backpressure', async () => {
@@ -1968,7 +2159,7 @@ describe('dispatcher runtime', () => {
     const events: string[] = [];
     const observer = {
       onRequestError(_context: RequestObservationContext, error: unknown) {
-        events.push(error instanceof Error ? error.message : 'unknown');
+        events.push(`observer:${error instanceof Error ? error.message : 'unknown'}`);
       },
     };
 
@@ -1988,12 +2179,17 @@ describe('dispatcher runtime', () => {
       rootContainer: root,
     });
     const response = createStreamingResponse();
+    const close = response.stream.close.bind(response.stream);
+    response.stream.close = () => {
+      events.push('stream:close');
+      close();
+    };
 
     await dispatcher.dispatch(createRequest('/managed-error', 'GET'), response);
 
     expect(response.stream.writes).toEqual(['data: first\n\n']);
     expect(response.stream.closeCalls).toBe(1);
-    expect(events).toEqual(['source failed']);
+    expect(events).toEqual(['stream:close', 'observer:source failed']);
     expect(response.body).toBeUndefined();
   });
 

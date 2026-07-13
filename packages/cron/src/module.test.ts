@@ -1339,7 +1339,15 @@ describe('@fluojs/cron', () => {
     expect(redis.setAttempts).toBe(0);
   });
 
-  it('preserves disabled distributed mode when an inactive TTL is below the distributed minimum', async () => {
+  it('preserves disabled distributed mode when inactive module and task TTLs are below the minimum', async () => {
+    class LocalTaskService {
+      @Cron(CronExpression.EVERY_SECOND, {
+        lockTtlMs: 500,
+        name: 'local-task-with-inactive-lock-ttl',
+      })
+      async run() {}
+    }
+
     class AppModule {}
     defineModule(AppModule, {
       imports: [
@@ -1350,11 +1358,74 @@ describe('@fluojs/cron', () => {
           },
         }),
       ],
+      providers: [LocalTaskService],
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
 
     await closeApplication(app);
+  });
+
+  it('allows an inactive task lock TTL when only module distributed mode is enabled', async () => {
+    class LocalTaskService {
+      @Cron(CronExpression.EVERY_SECOND, {
+        distributed: false,
+        lockTtlMs: 500,
+        name: 'local-task-with-disabled-distributed-lock',
+      })
+      async run() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: {
+            enabled: true,
+            lockTtlMs: 1_000,
+          },
+        }),
+      ],
+      providers: [LocalTaskService],
+    });
+
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: new InMemoryLockRedisClient() }],
+      rootModule: AppModule,
+    });
+
+    await closeApplication(app);
+  });
+
+  it('rejects an active task lock TTL below the distributed minimum', async () => {
+    class DistributedTaskService {
+      @Cron(CronExpression.EVERY_SECOND, {
+        distributed: true,
+        lockTtlMs: 500,
+        name: 'distributed-task-with-invalid-lock-ttl',
+      })
+      async run() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: {
+            enabled: true,
+            lockTtlMs: 1_000,
+          },
+        }),
+      ],
+      providers: [DistributedTaskService],
+    });
+
+    await expect(
+      bootstrapApplication({
+        providers: [{ provide: REDIS_CLIENT, useValue: new InMemoryLockRedisClient() }],
+        rootModule: AppModule,
+      }),
+    ).rejects.toThrow(/lockTtlMs/i);
   });
 
   it('runs lifecycle hooks around successful cron execution', async () => {
@@ -2174,6 +2245,40 @@ describe('@fluojs/cron', () => {
     await closeApplication(app);
   });
 
+  it('rolls back interval reschedules when the previous handle cannot be stopped', async () => {
+    vi.useFakeTimers();
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CronModule.forRoot()],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+    const events: string[] = [];
+
+    registry.addInterval('dynamic-interval', 1_000, () => {
+      events.push('interval');
+    });
+
+    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
+    clearIntervalSpy.mockImplementationOnce(() => {
+      throw new Error('previous interval stop failed');
+    });
+
+    try {
+      expect(() => registry.updateIntervalMs('dynamic-interval', 250)).toThrow('previous interval stop failed');
+      expect(registry.get('dynamic-interval')?.ms).toBe(1_000);
+      expect(clearIntervalSpy).toHaveBeenCalledTimes(2);
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(events).toEqual(['interval']);
+    } finally {
+      clearIntervalSpy.mockRestore();
+      await closeApplication(app);
+    }
+  });
+
   it('stops and resumes dynamic cron execution while cleaning up old scheduler handles', async () => {
     const scheduled = createManualScheduler();
     const events: string[] = [];
@@ -2317,6 +2422,36 @@ describe('@fluojs/cron', () => {
     await closeApplication(app);
   });
 
+  it('rejects blank required dynamic task names without changing registry or scheduler state', async () => {
+    vi.useFakeTimers();
+    const scheduled = createManualScheduler();
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+
+    registry.addCron('existing-cron', CronExpression.EVERY_SECOND, () => {});
+    const registryState = registry.getAll();
+    const schedulerState = [...scheduled.records];
+    const timerCount = vi.getTimerCount();
+
+    expect(() => registry.addCron('   ', CronExpression.EVERY_SECOND, () => {})).toThrow(/non-empty string/i);
+    expect(() => registry.addInterval('   ', 1_000, () => {})).toThrow(/non-empty string/i);
+    expect(vi.getTimerCount()).toBe(timerCount);
+    expect(() => registry.addTimeout('   ', 1_000, () => {})).toThrow(/non-empty string/i);
+    expect(vi.getTimerCount()).toBe(timerCount);
+
+    expect(registry.getAll()).toEqual(registryState);
+    expect(scheduled.records).toEqual(schedulerState);
+    expect(schedulerState[0]?.stop).not.toHaveBeenCalled();
+
+    await closeApplication(app);
+  });
+
   it('returns immutable scheduling descriptor snapshots from get and getAll', async () => {
     class AppModule {}
     defineModule(AppModule, {
@@ -2411,6 +2546,57 @@ describe('@fluojs/cron', () => {
 
     await closeApplication(app);
     expect(firstStop).toHaveBeenCalledTimes(1);
+  });
+
+  it('rolls back cron expression updates when the previous handle cannot be stopped', async () => {
+    const scheduled = createManualScheduler();
+    const events: string[] = [];
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+
+    registry.addCron('dynamic-cron', CronExpression.EVERY_SECOND, () => {
+      events.push('cron');
+    });
+
+    const previousRecord = scheduled.records[0];
+    expect(previousRecord).toBeDefined();
+
+    if (!previousRecord) {
+      throw new Error('expected previous cron handle to exist');
+    }
+
+    previousRecord.stop.mockImplementationOnce(() => {
+      throw new Error('previous cron stop failed');
+    });
+
+    try {
+      expect(() => registry.updateCronExpression('dynamic-cron', CronExpression.EVERY_5_SECONDS)).toThrow(
+        'previous cron stop failed',
+      );
+      expect(registry.get('dynamic-cron')?.expression).toBe(CronExpression.EVERY_SECOND);
+
+      const nextRecord = scheduled.records[1];
+      expect(nextRecord).toBeDefined();
+
+      if (!nextRecord) {
+        throw new Error('expected replacement cron handle to exist');
+      }
+
+      expect(previousRecord.stop).toHaveBeenCalledTimes(1);
+      expect(nextRecord.stop).toHaveBeenCalledTimes(1);
+
+      await previousRecord.tick();
+      await nextRecord.tick();
+      expect(events).toEqual(['cron']);
+    } finally {
+      await closeApplication(app);
+    }
   });
 
   it('prevents overlapping dynamic cron ticks while forwarding no-overlap scheduler protection', async () => {
@@ -2525,6 +2711,57 @@ describe('@fluojs/cron', () => {
     expect(store.intervalCount).toBe(1);
     expect(store.timeoutCount).toBe(0);
     expect(scheduled.records[0]?.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the default 10_000ms timeout when shutdown drains a hung cron task', async () => {
+    vi.useFakeTimers();
+    const scheduled = createManualScheduler();
+    const loggerEvents: string[] = [];
+    const started = createDeferred<void>();
+
+    class TaskService {
+      @Cron(CronExpression.EVERY_SECOND, { name: 'default-timeout-hung-cron' })
+      async run(): Promise<void> {
+        started.resolve();
+        await new Promise(() => {});
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
+      providers: [TaskService],
+    });
+
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      rootModule: AppModule,
+    });
+
+    void scheduled.records[0]?.tick();
+    await started.promise;
+
+    let closeResolved = false;
+    const closePromise = app.close().then(() => {
+      closeResolved = true;
+    });
+
+    await Promise.resolve();
+
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(closeResolved).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await closePromise;
+    await settleCronTeardown();
+
+    expect(closeResolved).toBe(true);
+    expect(scheduled.records[0]?.stop).toHaveBeenCalledTimes(1);
+    expect(
+      loggerEvents.some((event) =>
+        event.includes('Cron shutdown timed out after 10000ms with 1 active task(s) still pending.'),
+      ),
+    ).toBe(true);
   });
 
   it('bounds shutdown when an active cron task never settles', async () => {
@@ -2668,6 +2905,81 @@ describe('@fluojs/cron', () => {
     expect(secondStore.count).toBe(1);
 
     await appTwo.close();
+  });
+
+  it('unrefs and eventually clears lock renewal timers across bounded shutdown timeout', async () => {
+    const scheduled = createManualScheduler();
+    const redis = new InMemoryLockRedisClient();
+    const started = createDeferred<void>();
+    const release = createDeferred<void>();
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
+
+    class DistributedTaskService {
+      @Cron(CronExpression.EVERY_SECOND, { name: 'distributed-renewal-timer-timeout' })
+      async run() {
+        started.resolve();
+        await release.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'cron-renewal-timer-timeout',
+            lockTtlMs: 60_000,
+          },
+          scheduler: scheduled.scheduler,
+          shutdown: {
+            timeoutMs: 0,
+          },
+        }),
+      ],
+      providers: [DistributedTaskService],
+    });
+
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const scheduledTask = scheduled.records[0];
+
+    if (!scheduledTask) {
+      throw new Error('Expected the distributed renewal timer task to be scheduled.');
+    }
+
+    const tickPromise = scheduledTask.tick();
+
+    try {
+      await started.promise;
+      await app.close();
+
+      const renewalTimer: unknown = setIntervalSpy.mock.results.at(-1)?.value;
+
+      if (
+        typeof renewalTimer !== 'object' ||
+        renewalTimer === null ||
+        !('hasRef' in renewalTimer) ||
+        typeof renewalTimer.hasRef !== 'function'
+      ) {
+        throw new Error('Expected the Node.js lock renewal timer handle.');
+      }
+
+      expect(renewalTimer.hasRef()).toBe(false);
+
+      release.resolve();
+      await tickPromise;
+
+      expect(clearIntervalSpy).toHaveBeenCalledWith(renewalTimer);
+    } finally {
+      release.resolve();
+      await tickPromise;
+      setIntervalSpy.mockRestore();
+      clearIntervalSpy.mockRestore();
+    }
   });
 
   it('retries distributed lock release on a later shutdown call after a timed-out task settles', async () => {

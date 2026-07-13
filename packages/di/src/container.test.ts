@@ -2122,6 +2122,133 @@ describe('Container', () => {
       ]);
     });
 
+    it('waits for descendant stale disposal before resolving a root replacement', async () => {
+      const events: string[] = [];
+      const CONFIG = Symbol('RootReplacementConfig');
+      let releaseStaleDisposal!: () => void;
+      const staleDisposal = new Promise<void>((resolve) => {
+        releaseStaleDisposal = resolve;
+      });
+
+      class RequestConsumer {
+        constructor(readonly config: string) {}
+
+        async onDestroy() {
+          events.push(`destroy:start:${this.config}`);
+          await staleDisposal;
+          events.push(`destroy:end:${this.config}`);
+        }
+      }
+
+      const root = new Container().register(
+        { provide: CONFIG, useValue: 'before-override' },
+        { provide: RequestConsumer, scope: Scope.REQUEST, useClass: RequestConsumer, inject: [CONFIG] },
+      );
+      const requestScope = root.createRequestScope();
+
+      await requestScope.resolve(RequestConsumer);
+      root.override({ provide: CONFIG, useValue: 'after-override' });
+
+      const replacement = root.resolve<string>(CONFIG).then((config) => events.push(`resolved:${config}`));
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      expect(events).toEqual(['destroy:start:before-override']);
+
+      releaseStaleDisposal();
+      await replacement;
+      await root.dispose();
+
+      expect(events).toEqual([
+        'destroy:start:before-override',
+        'destroy:end:before-override',
+        'resolved:after-override',
+      ]);
+    });
+
+    it('surfaces descendant stale disposal failures before resolving a root replacement', async () => {
+      const CONFIG = Symbol('FailingDescendantConfig');
+
+      class RequestConsumer {
+        onDestroy() {
+          throw new Error('descendant stale failed');
+        }
+      }
+
+      const root = new Container().register(
+        { provide: CONFIG, useValue: 'before-override' },
+        { provide: RequestConsumer, scope: Scope.REQUEST, useClass: RequestConsumer, inject: [CONFIG] },
+      );
+      const requestScope = root.createRequestScope();
+
+      await requestScope.resolve(RequestConsumer);
+      root.override({ provide: CONFIG, useValue: 'after-override' });
+
+      await expect(root.resolve(CONFIG)).rejects.toThrow('descendant stale failed');
+      await expect(root.resolve(CONFIG)).resolves.toBe('after-override');
+      await root.dispose();
+    });
+
+    it('does not delay unrelated root resolution for a child-local override', async () => {
+      const events: string[] = [];
+      const ROOT_VALUE = Symbol('UnrelatedRootValue');
+      const CHILD_SERVICE = Symbol('ChildLocalService');
+      let releaseStaleDisposal!: () => void;
+      const staleDisposal = new Promise<void>((resolve) => {
+        releaseStaleDisposal = resolve;
+      });
+
+      class FirstChildService {
+        async onDestroy() {
+          events.push('child:destroy:start');
+          await staleDisposal;
+          events.push('child:destroy:end');
+        }
+      }
+
+      class SecondChildService {}
+
+      const root = new Container().register({ provide: ROOT_VALUE, useValue: 'root' });
+      const requestScope = root.createRequestScope().override({ provide: CHILD_SERVICE, useClass: FirstChildService });
+
+      await requestScope.resolve(CHILD_SERVICE);
+      requestScope.override({ provide: CHILD_SERVICE, useClass: SecondChildService });
+
+      const rootResolution = root.resolve<string>(ROOT_VALUE).then((value) => events.push(`root:resolved:${value}`));
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      const eventsBeforeRelease = [...events];
+
+      releaseStaleDisposal();
+      await rootResolution;
+      await requestScope.resolve(CHILD_SERVICE);
+      await root.dispose();
+
+      expect(eventsBeforeRelease).toEqual(['child:destroy:start', 'root:resolved:root']);
+    });
+
+    it('does not leak child-local stale disposal failures into unrelated root resolution', async () => {
+      const ROOT_VALUE = Symbol('FailureIsolatedRootValue');
+      const CHILD_SERVICE = Symbol('FailingChildLocalService');
+
+      class FirstChildService {
+        onDestroy() {
+          throw new Error('child-local stale failed');
+        }
+      }
+
+      class SecondChildService {}
+
+      const root = new Container().register({ provide: ROOT_VALUE, useValue: 'root' });
+      const requestScope = root.createRequestScope().override({ provide: CHILD_SERVICE, useClass: FirstChildService });
+
+      await requestScope.resolve(CHILD_SERVICE);
+      requestScope.override({ provide: CHILD_SERVICE, useClass: SecondChildService });
+
+      await expect(root.resolve(ROOT_VALUE)).resolves.toBe('root');
+      await expect(requestScope.resolve(CHILD_SERVICE)).rejects.toThrow('child-local stale failed');
+      await expect(requestScope.resolve(CHILD_SERVICE)).resolves.toBeInstanceOf(SecondChildService);
+      await root.dispose();
+    });
+
     it('disposes stale overridden multi singleton instances immediately and exactly once', async () => {
       const events: string[] = [];
       const token = Symbol('multi-rotating-disposable-token');

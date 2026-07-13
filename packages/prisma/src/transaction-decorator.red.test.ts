@@ -70,16 +70,19 @@ describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 im
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
-    const service = await app.container.resolve(UserService);
 
-    await expect(service.create('ada@example.com')).resolves.toEqual({
-      email: 'ada@example.com',
-      id: 'tx-user',
-    });
+    try {
+      const service = await app.container.resolve(UserService);
 
-    expect(events).toEqual(['connect', 'transaction:start', 'tx:create:ada@example.com', 'transaction:end']);
+      await expect(service.create('ada@example.com')).resolves.toEqual({
+        email: 'ada@example.com',
+        id: 'tx-user',
+      });
 
-    await app.close();
+      expect(events).toEqual(['connect', 'transaction:start', 'tx:create:ada@example.com', 'transaction:end']);
+    } finally {
+      await app.close();
+    }
   });
 
   it('reuses an active transaction for nested @Transaction() calls', async () => {
@@ -151,16 +154,19 @@ describe('@fluojs/prisma Transaction decorator contract (RED - pending Task 7 im
     });
 
     const app = await bootstrapApplication({ rootModule: AppModule });
-    const service = await app.container.resolve(UserService);
 
-    await expect(service.outer('grace@example.com')).resolves.toEqual({
-      email: 'grace@example.com',
-      id: 'tx-user',
-    });
+    try {
+      const service = await app.container.resolve(UserService);
 
-    expect(events).toEqual(['connect', 'transaction:start', 'tx:create:grace@example.com', 'transaction:end']);
+      await expect(service.outer('grace@example.com')).resolves.toEqual({
+        email: 'grace@example.com',
+        id: 'tx-user',
+      });
 
-    await app.close();
+      expect(events).toEqual(['connect', 'transaction:start', 'tx:create:grace@example.com', 'transaction:end']);
+    } finally {
+      await app.close();
+    }
   });
 
   it('binds current-less top-level Prisma methods to the ambient transaction client', async () => {
@@ -880,6 +886,89 @@ describe('@fluojs/prisma Transaction decorator — named/accessor contract', () 
       expect(events).toEqual(['connect', 'disconnect:pending', 'disconnect:done']);
     } finally {
       releaseDisconnect();
+      await app.close();
+    }
+  });
+
+  it('waits for an already-open service @Transaction() boundary before disconnecting on shutdown', async () => {
+    const events: string[] = [];
+    let releaseTransaction: () => void = () => undefined;
+    const transactionBarrier = new Promise<void>((resolve) => {
+      releaseTransaction = resolve;
+    });
+    let markServiceStarted: () => void = () => undefined;
+    const serviceStarted = new Promise<void>((resolve) => {
+      markServiceStarted = resolve;
+    });
+    const transactionClient = {
+      kind: 'transaction' as const,
+    };
+    const client = {
+      async $connect() {
+        events.push('connect');
+      },
+      async $disconnect() {
+        events.push('disconnect');
+      },
+      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+        events.push('transaction:start');
+
+        try {
+          return await callback(transactionClient);
+        } finally {
+          events.push('transaction:end');
+        }
+      },
+    };
+
+    @Inject(PrismaService)
+    class UserService {
+      constructor(private readonly prisma: PrismaServiceFacade<typeof client, typeof transactionClient>) {}
+
+      @Transaction()
+      async holdOpen() {
+        void this.prisma;
+        events.push('service:start');
+        markServiceStarted();
+        await transactionBarrier;
+        events.push('service:end');
+        return 'settled';
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [PrismaModule.forRoot({ client })],
+      providers: [UserService],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const service = await app.container.resolve(UserService);
+      const openTransaction = service.holdOpen();
+
+      await serviceStarted;
+      const shutdown = app.close();
+      await vi.waitFor(() => expect(events).toEqual(['connect', 'transaction:start', 'service:start']));
+
+      expect(events).not.toContain('disconnect');
+      releaseTransaction();
+
+      await expect(openTransaction).resolves.toBe('settled');
+      await shutdown;
+
+      expect(events).toEqual([
+        'connect',
+        'transaction:start',
+        'service:start',
+        'service:end',
+        'transaction:end',
+        'disconnect',
+      ]);
+    } finally {
+      releaseTransaction();
       await app.close();
     }
   });

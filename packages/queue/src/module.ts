@@ -23,10 +23,15 @@ import {
   QUEUE,
 } from './tokens.js';
 import type { QueueModuleContext } from './tokens.js';
-import type { NormalizedQueueModuleOptions, QueueModuleOptions } from './types.js';
+import type {
+  NormalizedQueueModuleOptions,
+  QueueDeadLetterInspectionOptions,
+  QueueModuleOptions,
+} from './types.js';
 
 interface QueueModuleRedisClient {
   duplicate(options?: { maxRetriesPerRequest: null }): QueueModuleRedisConnection;
+  lrange(key: string, start: number, stop: number): Promise<string[]>;
   ltrim(key: string, start: number, stop: number): Promise<unknown>;
   rpush(key: string, value: string): Promise<unknown>;
 }
@@ -44,9 +49,14 @@ function hasQueueRedisClient(value: unknown): value is QueueModuleRedisClient {
     return false;
   }
 
-  const client = value as { duplicate?: unknown; ltrim?: unknown; rpush?: unknown };
+  const client = value as { duplicate?: unknown; lrange?: unknown; ltrim?: unknown; rpush?: unknown };
 
-  return typeof client.duplicate === 'function' && typeof client.rpush === 'function' && typeof client.ltrim === 'function';
+  return (
+    typeof client.duplicate === 'function' &&
+    typeof client.lrange === 'function' &&
+    typeof client.rpush === 'function' &&
+    typeof client.ltrim === 'function'
+  );
 }
 
 type QueueLifecycleServiceFactoryDeps = [
@@ -148,13 +158,17 @@ function createQueueProviders(normalizedOptions: NormalizedQueueModuleOptions, m
         }
 
         if (!runtimeContainer.has(redisToken)) {
-          throw new Error('@fluojs/queue requires a registered Redis client with duplicate(), rpush(), and ltrim() methods.');
+          throw new Error(
+            '@fluojs/queue requires a registered Redis client with duplicate(), lrange(), rpush(), and ltrim() methods.',
+          );
         }
 
         const redisClient = await runtimeContainer.resolve(redisToken);
 
         if (!hasQueueRedisClient(redisClient)) {
-          throw new Error('@fluojs/queue requires a Redis client with duplicate(), rpush(), and ltrim() methods.');
+          throw new Error(
+            '@fluojs/queue requires a Redis client with duplicate(), lrange(), rpush(), and ltrim() methods.',
+          );
         }
 
         return redisClient;
@@ -182,6 +196,8 @@ function createQueueProviders(normalizedOptions: NormalizedQueueModuleOptions, m
       provide: tokens.queueToken,
       useFactory: (service: unknown) => ({
         enqueue: (job: object) => (service as QueueLifecycleService).enqueue(job),
+        inspectDeadLetters: (jobName: string, options?: QueueDeadLetterInspectionOptions) =>
+          (service as QueueLifecycleService).inspectDeadLetters(jobName, options),
       }),
     },
   ];

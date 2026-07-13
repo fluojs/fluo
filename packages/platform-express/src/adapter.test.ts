@@ -39,7 +39,12 @@ import {
   fluoFactory,
 } from '@fluojs/runtime';
 import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
-import type { Request as ExpressRequest, Response as ExpressResponse } from 'express';
+import type {
+  ErrorRequestHandler,
+  Request as ExpressRequest,
+  RequestHandler,
+  Response as ExpressResponse,
+} from 'express';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -245,12 +250,16 @@ describe('@fluojs/platform-express', () => {
 
     expect(packageReadme).toContain('Express compatibility does not mean that native Express/Connect');
     expect(packageReadme).toContain('Do not pass an Express/Connect function such as `compression()` directly as fluo middleware.');
+    expect(packageReadme).toContain('`nativeMiddleware` is mounted in array order before the adapter\'s Express Router');
     expect(packageReadme).toContain('`getServer()` exposes the underlying Node HTTP/HTTPS server');
     expect(packageReadmeKo).toContain('Express 호환성은 native Express/Connect');
+    expect(packageReadmeKo).toContain('`nativeMiddleware`는 배열 순서대로 adapter의 Express Router');
     expect(packageReadmeKo).toContain('`getServer()`는 좁은 platform integration을 위해 underlying Node HTTP/HTTPS server를 노출');
     expect(packageSurface).toContain('native Express/Connect `(req, res, next)` functions are not portable fluo middleware');
+    expect(packageSurface).toContain('pre-router `nativeMiddleware` option');
     expect(packageSurfaceKo).toContain('native Express/Connect `(req, res, next)` function은 portable fluo middleware가 아닙니다');
     expect(migrationGuide).toContain('Native Express/Connect `(req, res, next)` middleware from a NestJS or Express migration');
+    expect(migrationGuide).toContain('explicit `nativeMiddleware` option');
   });
 
   describe('adapter portability', () => {
@@ -311,6 +320,125 @@ describe('@fluojs/platform-express', () => {
     expect(() => new ExpressHttpApplicationAdapter(3000, undefined, 150, 1.5, undefined)).toThrow(/retryLimit/i);
     expect(() => new ExpressHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, -1)).toThrow(/maxBodySize/i);
     expect(() => new ExpressHttpApplicationAdapter(3000, undefined, 150, 20, undefined, undefined, 1024, false, Number.NaN)).toThrow(/shutdownTimeoutMs/i);
+  });
+
+  it('runs native Express middleware before the fluo request pipeline when it calls next', async () => {
+    const lifecycle: string[] = [];
+    const nativeMiddleware: RequestHandler = (_request, response, next) => {
+      lifecycle.push('native');
+      response.setHeader('x-native-middleware', 'active');
+      next();
+    };
+    const fluoMiddleware = {
+      async handle(_context: MiddlewareContext, next: () => Promise<void>) {
+        lifecycle.push('fluo');
+        await next();
+      },
+    };
+
+    @Controller('/native-middleware')
+    class NativeMiddlewareController {
+      @Get('/ordering')
+      ordering() {
+        lifecycle.push('handler');
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [NativeMiddlewareController] });
+
+    const port = await findAvailablePort();
+    const adapter = createExpressAdapter({
+      nativeMiddleware: [nativeMiddleware],
+      port,
+    });
+    const app = await fluoFactory.create(AppModule, {
+      adapter,
+      middleware: [fluoMiddleware],
+    });
+
+    await app.listen();
+
+    try {
+      const response = await requestHttp({
+        method: 'GET',
+        path: '/native-middleware/ordering',
+        port,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.headers.get('x-native-middleware')).toBe('active');
+      expect(JSON.parse(response.body)).toEqual({ ok: true });
+      expect(lifecycle).toEqual(['native', 'fluo', 'handler']);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('lets native Express middleware terminate a response without entering fluo dispatch', async () => {
+    const dispatch = vi.fn();
+    const nativeMiddleware: RequestHandler = (_request, response) => {
+      response.status(202).json({ owner: 'express' });
+    };
+    const port = await findAvailablePort();
+    const adapter = createExpressAdapter({
+      nativeMiddleware: [nativeMiddleware],
+      port,
+    }) as ExpressHttpApplicationAdapter;
+
+    await adapter.listen({ dispatch });
+
+    try {
+      const response = await requestHttp({
+        method: 'GET',
+        path: '/native-response',
+        port,
+      });
+
+      expect(response.statusCode).toBe(202);
+      expect(JSON.parse(response.body)).toEqual({ owner: 'express' });
+      expect(dispatch).not.toHaveBeenCalled();
+    } finally {
+      await adapter.close();
+    }
+  });
+
+  it('keeps native Express middleware errors in the Express error chain', async () => {
+    const dispatch = vi.fn();
+    const nativeFailure: RequestHandler = (_request, _response, next) => {
+      next(new Error('native middleware failure'));
+    };
+    const nativeErrorHandler: ErrorRequestHandler = (error, _request, response, _next) => {
+      response.status(503).json({
+        message: error instanceof Error ? error.message : 'unknown native middleware failure',
+        owner: 'express',
+      });
+    };
+    const port = await findAvailablePort();
+    const adapter = createExpressAdapter({
+      nativeMiddleware: [nativeFailure, nativeErrorHandler],
+      port,
+    }) as ExpressHttpApplicationAdapter;
+
+    await adapter.listen({ dispatch });
+
+    try {
+      const response = await requestHttp({
+        method: 'GET',
+        path: '/native-error',
+        port,
+      });
+
+      expect(response.statusCode).toBe(503);
+      expect(JSON.parse(response.body)).toEqual({
+        message: 'native middleware failure',
+        owner: 'express',
+      });
+      expect(dispatch).not.toHaveBeenCalled();
+    } finally {
+      await adapter.close();
+    }
   });
 
   it('preserves response parity for simple JSON and non-fast-path responses', async () => {
@@ -2193,6 +2321,121 @@ describe('@fluojs/platform-express', () => {
     }
   });
 
+  it('reuses one retrying listen lifecycle for concurrent callers', async () => {
+    const blocker = createHttpServer();
+    const port = await findAvailablePort();
+
+    await new Promise<void>((resolve, reject) => {
+      blocker.once('error', reject);
+      blocker.listen({ host: '127.0.0.1', port }, () => {
+        blocker.removeListener('error', reject);
+        resolve();
+      });
+    });
+
+    const closeBlocker = async (): Promise<void> => {
+      if (!blocker.listening) {
+        return;
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        blocker.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    };
+    const firstDispatcher = {
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        await response.send({ dispatcher: 'first' });
+      },
+    };
+    const secondDispatcher = {
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        await response.send({ dispatcher: 'second' });
+      },
+    };
+    const adapter = new ExpressHttpApplicationAdapter(port, '127.0.0.1', 20, 20, undefined, undefined, 1024, false, 500);
+
+    try {
+      const firstListen = adapter.listen(firstDispatcher);
+      const secondListen = adapter.listen(secondDispatcher);
+
+      await closeBlocker();
+      await Promise.all([firstListen, secondListen]);
+
+      const response = await fetch(`http://127.0.0.1:${String(port)}/single-flight`);
+
+      await expect(response.json()).resolves.toEqual({ dispatcher: 'first' });
+    } finally {
+      await adapter.close();
+      await closeBlocker();
+    }
+  });
+
+  it('rejects relisten after cancellation settles while close is still joining startup', async () => {
+    const blocker = createHttpServer();
+    const port = await findAvailablePort();
+
+    await new Promise<void>((resolve, reject) => {
+      blocker.once('error', reject);
+      blocker.listen({ host: '127.0.0.1', port }, () => {
+        blocker.removeListener('error', reject);
+        resolve();
+      });
+    });
+
+    const closeBlocker = async (): Promise<void> => {
+      if (!blocker.listening) {
+        return;
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        blocker.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    };
+    const adapter = new ExpressHttpApplicationAdapter(port, '127.0.0.1', 20, 20, undefined, undefined, 1024, false, 500);
+    const dispatcher = { async dispatch() {} };
+    const firstListenResult = adapter.listen(dispatcher).then(
+      () => 'listened' as const,
+      (error: unknown) => error,
+    );
+    const activeListen = Reflect.get(adapter, 'listenInFlight') as Promise<void>;
+    const relistenResult = activeListen.then(
+      () => 'settled-without-cancellation' as const,
+      () => adapter.listen(dispatcher).then(
+        () => 'listened' as const,
+        (error: unknown) => error,
+      ),
+    );
+
+    try {
+      await expect(adapter.close()).resolves.toBeUndefined();
+      await closeBlocker();
+
+      const firstResult = await firstListenResult;
+      const secondResult = await relistenResult;
+
+      expect(firstResult).toBeInstanceOf(Error);
+      expect(secondResult).toBeInstanceOf(Error);
+      expect(String(secondResult instanceof Error ? secondResult.message : secondResult)).toContain('close() to complete');
+    } finally {
+      await adapter.close();
+      await closeBlocker();
+    }
+  });
+
   it('cancels retrying startup during close before a later Express bind can occur', async () => {
     const blocker = createHttpServer((_request, response) => {
       response.statusCode = 200;
@@ -2229,7 +2472,11 @@ describe('@fluojs/platform-express', () => {
     const dispatcher = {
       async dispatch() {},
     };
-    const listenResult = adapter.listen(dispatcher).then(
+    const firstListenResult = adapter.listen(dispatcher).then(
+      () => 'listened' as const,
+      (error: unknown) => error,
+    );
+    const secondListenResult = adapter.listen(dispatcher).then(
       () => 'listened' as const,
       (error: unknown) => error,
     );
@@ -2241,9 +2488,12 @@ describe('@fluojs/platform-express', () => {
       await expect(adapter.close()).resolves.toBeUndefined();
       await closeBlocker();
 
-      const result = await listenResult;
-      expect(result).toBeInstanceOf(Error);
-      expect(String(result instanceof Error ? result.message : result)).toContain('startup was cancelled');
+      const results = await Promise.all([firstListenResult, secondListenResult]);
+
+      for (const result of results) {
+        expect(result).toBeInstanceOf(Error);
+        expect(String(result instanceof Error ? result.message : result)).toContain('startup was cancelled');
+      }
 
       await new Promise((resolve) => {
         setTimeout(resolve, 60);

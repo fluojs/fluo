@@ -9,8 +9,8 @@ import type {
   OnApplicationShutdown,
   OnModuleDestroy,
 } from '@fluojs/runtime';
-import { type BootstrapReadySignal } from '@fluojs/runtime/internal';
-import { Queue as BullQueue, Worker as BullWorker, type ConnectionOptions, type JobsOptions, type Job as BullJob } from 'bullmq';
+import type { BootstrapReadySignal } from '@fluojs/runtime/internal';
+import { type Job as BullJob, Queue as BullQueue, Worker as BullWorker, type ConnectionOptions, type JobsOptions } from 'bullmq';
 
 import { QueueDeadLetterManager, type QueueRedisDeadLetterClient } from './dead-letter-manager.js';
 import { normalizePositiveInteger, withTimeout } from './helpers.js';
@@ -19,16 +19,18 @@ import {
   type QueueLifecycleState,
   type QueuePlatformStatusSnapshot,
 } from './status.js';
-import { getQueueLifecycleServiceToken, getQueueToken, QUEUE } from './tokens.js';
 import type { QueueModuleContext } from './tokens.js';
-import { discoverQueueWorkerDescriptors } from './worker-discovery.js';
+import { getQueueLifecycleServiceToken, getQueueToken, QUEUE } from './tokens.js';
 import type {
   NormalizedQueueModuleOptions,
   Queue,
   QueueBackoffOptions,
+  QueueDeadLetterInspectionOptions,
+  QueueDeadLetterInspectionResult,
   QueueJobType,
   QueueWorkerDescriptor,
 } from './types.js';
+import { discoverQueueWorkerDescriptors } from './worker-discovery.js';
 
 type QueuePayload = Record<string, unknown>;
 type QueueInstance = BullQueue;
@@ -104,9 +106,14 @@ function hasQueueRedisClient(value: unknown): value is QueueRedisClient {
     return false;
   }
 
-  const client = value as { duplicate?: unknown; ltrim?: unknown; rpush?: unknown };
+  const client = value as { duplicate?: unknown; lrange?: unknown; ltrim?: unknown; rpush?: unknown };
 
-  return typeof client.duplicate === 'function' && typeof client.rpush === 'function' && typeof client.ltrim === 'function';
+  return (
+    typeof client.duplicate === 'function' &&
+    typeof client.lrange === 'function' &&
+    typeof client.rpush === 'function' &&
+    typeof client.ltrim === 'function'
+  );
 }
 
 function isQueuePayload(value: unknown): value is QueuePayload {
@@ -266,6 +273,24 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
   }
 
   /**
+   * Reads a bounded snapshot of dead-letter records for one queue job name.
+   *
+   * Inspection reads Redis without starting workers or lifecycle-gating the read. The backing Redis client must
+   * remain reachable; `RedisModule` owns that shared client's shutdown.
+   *
+   * @param jobName Queue worker job name whose dead letters should be inspected.
+   * @param options Optional bounded inspection settings.
+   * @returns Valid records in newest-first order plus the malformed count for the inspected window.
+   * @throws The backing Redis read error when that client is unavailable or already shut down.
+   */
+  async inspectDeadLetters(
+    jobName: string,
+    options?: QueueDeadLetterInspectionOptions,
+  ): Promise<QueueDeadLetterInspectionResult> {
+    return this.deadLetterManager.inspect(jobName, options);
+  }
+
+  /**
    * Creates a platform status snapshot for health checks and diagnostics.
    *
    * @returns A structured snapshot describing lifecycle state, discovered workers, and pending dead-letter writes.
@@ -393,7 +418,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
 
   private resolveRedisClient(): QueueRedisClient {
     if (!hasQueueRedisClient(this.redisClient)) {
-      throw new Error('@fluojs/queue requires a Redis client with duplicate(), rpush(), and ltrim() methods.');
+      throw new Error('@fluojs/queue requires a Redis client with duplicate(), lrange(), rpush(), and ltrim() methods.');
     }
 
     return this.redisClient;

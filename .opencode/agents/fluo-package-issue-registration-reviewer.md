@@ -1,7 +1,7 @@
 ---
 description: fluo-package-issue-registration-reviewer reviews drafted package audit issues read-only and decides register, defer, or reject before the command harness creates GitHub issues.
 mode: subagent
-model: openai/gpt-5.4
+model: openai/gpt-5.6-terra-pro
 options:
   reasoningEffort: high
   reasoningSummary: auto
@@ -17,6 +17,42 @@ permission:
     '*': ask
     'find *': deny
     'xargs *': deny
+    'ls *': allow
+    'test *': allow
+    'true *': allow
+    'exit *': allow
+    'printf *': allow
+    'command -v *': allow
+    'gh api *': allow
+    'rmdir *': allow
+    'bun run *': allow
+    'python -c *': allow
+    'git fetch *': allow
+    'git show-ref *': allow
+    'print *': allow
+    'git worktree *': allow
+    'python3 *': allow
+    'nohup *': allow
+    'jobs *': allow
+    'ps *': allow
+    'node *': allow
+    'pnpm --version *': allow
+    'command *': allow
+    'file *': allow
+    'readlink *': allow
+    'pnpm verify:release-readiness *': allow
+    'pgrep *': allow
+    'sleep *': allow
+    'env *': allow
+    'npx *': allow
+    'git ls-remote *': allow
+    'gh pr view *': allow
+    'realpath *': allow
+    'pnpm vitest *': allow
+    'perl *': allow
+    'pnpm exec biome *': allow
+    'kill *': allow
+    'pnpm *': allow
     'base64 *': allow
     'nl *': allow
     'sed *': allow
@@ -25,6 +61,14 @@ permission:
     'grep *': allow
     'awk *': allow
     'wc *': allow
+    'pwd *': allow
+    'git status *': allow
+    'git log *': allow
+    'git branch': allow
+    'git branch --show-current': allow
+    'git branch --list*': allow
+    'git branch -a*': allow
+    'git branch -r*': allow
     'git *': allow
     'GIT_MASTER=1 git *': allow
     'git push*': deny
@@ -74,6 +118,9 @@ permission:
     'GIT_MASTER=1 git branch --delete *': deny
     'GIT_MASTER=1 git worktree remove*': deny
     'sort*': allow
+    'gh search issues *': allow
+    'gh repo view *': allow
+    'gh release view *': allow
     'gh issue *': allow
     'gh label *': allow
     'gh issue create*': deny

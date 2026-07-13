@@ -7,7 +7,7 @@ import { getRedisComponentId, REDIS_CLIENT } from './tokens.js';
 import type { RedisLifecycleOptions } from './types.js';
 
 const QUITTABLE_STATUSES = new Set(['connect', 'connecting', 'ready', 'reconnecting']);
-const DISCONNECTABLE_STATUSES = new Set(['close', 'connect', 'connecting', 'ready', 'reconnecting', 'wait']);
+const DISCONNECTABLE_STATUSES = new Set(['close', 'connect', 'connecting', 'monitoring', 'ready', 'reconnecting', 'wait']);
 const DEFAULT_REDIS_LIFECYCLE_TIMEOUT_MS = 10_000;
 
 function isClosed(status: string): boolean {
@@ -127,14 +127,22 @@ export class RedisLifecycleService implements OnModuleInit, OnApplicationShutdow
   }
 
   private async connectWithDisconnectFallback(): Promise<void> {
+    const connectPromise = this.client.connect();
+
     try {
       await withLifecycleTimeout(
-        this.client.connect(),
+        connectPromise,
         normalizeTimeoutMs(this.lifecycleOptions.connectTimeoutMs),
         `Redis client ${this.describeClient()} connect timed out after ${String(normalizeTimeoutMs(this.lifecycleOptions.connectTimeoutMs))}ms.`,
       );
     } catch (error: unknown) {
       this.disconnectIfPossible(this.client.status);
+      void connectPromise.then(
+        () => {
+          this.disconnectIfPossible(this.client.status);
+        },
+        () => undefined,
+      );
 
       throw error;
     }

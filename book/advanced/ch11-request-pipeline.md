@@ -82,24 +82,20 @@ When a single HTTP request arrives, fluo runs the pipeline in the following orde
 9.  **Interceptors (After)**: Processes the result returned by the handler, or the error it threw. The reverse-order chain in `interceptors.ts` completes here and normalizes the final response object.
 10. **Response Writing**: Serializes the final result into an HTTP response and sends it to the client. `writeSuccessResponse` is called in `dispatcher.ts:L188`. `Content-Type` negotiation is finalized at this point.
 
-## 11.3 RequestContext and Async Isolation
+## 11.3 RequestContext and Runtime-Dependent Async Isolation
 
-fluo uses `AsyncLocalStorage` to manage global request state. This lets deep call sites, such as service layers or repository layers, access current request information like `requestId`, `user`, and `traceId` without passing the `req` object through every function argument.
+fluo exposes `runWithRequestContext(...)` and `getCurrentRequestContext()` so deep call sites, such as service or repository layers, can read the current request without passing the request object through every function argument. The isolation guarantee depends on the host's async-context capability; it is not a universal promise that every runtime has `AsyncLocalStorage`.
 
-The `packages/http/src/context/request-context.ts` system becomes active when the Dispatcher calls `runWithRequestContext`. The tests in `packages/http/src/context/request-context.test.ts:L50-L148` verify that each request's context stays strictly isolated when several requests arrive in parallel at the same time.
+The root `@fluojs/http` import does not eagerly load Node's async hooks. On first use, the request-context helper prefers an already available `globalThis.AsyncLocalStorage`, and on supported Node.js hosts it can resolve `node:async_hooks` lazily. With either storage implementation, the context follows awaited continuations and overlapping requests stay isolated.
 
 ```typescript
-// packages/http/src/context/request-context.ts:L45-L60
-export function getCurrentRequestContext(): RequestContext | undefined {
-  return requestContextStorage.getStore();
-}
-
-export function runWithRequestContext<T>(context: RequestContext, fn: () => T): T {
-  return requestContextStorage.run(context, fn);
-}
+runWithRequestContext(context, () => {
+  const active = getCurrentRequestContext();
+  // active === context in this callback
+});
 ```
 
-This mechanism makes distributed tracing easier in large distributed systems. A logger can call `getCurrentRequestContext()` internally and mark which request a log entry belongs to, without requiring manual context injection at every logging site.
+If the host offers no async-context primitive, fluo uses a synchronous stack fallback. The context is available only while the callback's synchronous frame is running and is cleared before an awaited continuation resumes. This intentionally gives up post-`await` context availability rather than leaking one request's context into another. Pass `RequestContext` explicitly when code must remain portable across such hosts.
 
 ## 11.4 Monitoring Through the Observer Pattern
 
@@ -129,18 +125,16 @@ This structure lets you record global performance metrics or audit logs without 
 
 ## 11.5 Precise Handling of Aborted Requests
 
-If a client disconnects before receiving the response, such as during a browser refresh or a mobile network failure, the server should stop in-progress database queries or business logic to avoid wasting resources. The Dispatcher watches the standard `AbortSignal` and checks it at each pipeline stage.
+If a client disconnects before receiving the response, such as during a browser refresh or a mobile network failure, the adapter should expose that state through `FrameworkRequest.signal` or, when allocating a signal is impractical, through `FrameworkRequest.isAborted()`.
 
 ```typescript
-// packages/http/src/dispatch/dispatcher.ts:L103-L107
-function ensureRequestNotAborted(request: FrameworkRequest): void {
-  if (request.signal?.aborted) {
-    throw new RequestAbortedError();
-  }
+// packages/http/src/dispatch/dispatcher.ts (simplified)
+function isRequestAborted(request: FrameworkRequest): boolean {
+  return request.isAborted?.() ?? request.signal?.aborted === true;
 }
 ```
 
-The Dispatcher calls `ensureRequestNotAborted` before Middleware execution, after Guard execution, and right before writing the response to avoid unnecessary work. `packages/http/src/dispatch/dispatcher.test.ts:L622-L735` tests that resource cleanup logic in the `finally` block always runs when a request is aborted in the middle of the pipeline. This behavior is needed to maintain server availability for resource-heavy requests such as file uploads or large data processing.
+The ordinary dispatch pipeline checks this state at entry and, when a handler runs through the general path, again after handler/interceptor work before response writing. Native fast-path dispatch checks at entry. This is a boundary check, not automatic cancellation of every middleware, database query, or arbitrary business operation. Long-running application code must accept and propagate `RequestContext.request.signal` to APIs that support cancellation. Managed SSE additionally reacts to the request signal and response-stream close notifications.
 
 ## 11.6 Pipeline Visualization Diagram
 
@@ -230,18 +224,16 @@ When request handling ends, a promoted request-scoped container must be disposed
 
 `packages/http/src/dispatch/dispatcher.ts` (simplified)
 ```typescript
-async function finalizeRequest(phaseContext: DispatchPhaseContext): Promise<void> {
-  try {
-    await notifyObservers(phaseContext.observers, phaseContext.requestContext, (o, ctx) => o.onRequestFinish?.(ctx));
-  } catch (error) {
-    phaseContext.options.logger?.error('Observer onRequestFinish threw an error', error);
-  } finally {
+try {
+  await runDispatchPipeline(phaseContext);
+} finally {
+  await notifyRequestFinish(phaseContext);
+
+  if (phaseContext.dispatchScope.requestScoped) {
     try {
-      if (phaseContext.dispatchScope.requestScoped) {
-        await phaseContext.dispatchScope.container.dispose();
-      }
+      await phaseContext.dispatchScope.container.dispose();
     } catch (error) {
-      phaseContext.options.logger?.error('Request-scoped container dispose threw an error', error);
+      logger?.error('Request-scoped container dispose threw an error.', error);
     }
   }
 }
@@ -249,14 +241,14 @@ async function finalizeRequest(phaseContext: DispatchPhaseContext): Promise<void
 
 This process runs inside a `finally` block, so it always checks cleanup regardless of whether the request succeeds or fails. `packages/http/src/dispatch/dispatcher.test.ts` verifies both sides of the policy: singleton-only routes skip request-scope creation, while request-scoped controllers, active middleware, observers, custom binders, DTO converters, and manual container resolution use isolated scopes that are disposed after the dispatch.
 
-Temporary file references or open streams stored inside `RequestContext` are also closed at this stage. Fluo's HTTP Dispatcher uses a leak-prevention-centered design to help keep memory usage stable in production environments with heavy request traffic.
+The Dispatcher does not inspect `RequestContext` and automatically close arbitrary temporary files, database handles, or application-owned streams. Put those resources behind request-scoped providers with `onDispose`, release them in application `finally` blocks, or attach cleanup to the request abort signal. Managed `SseResponse`/`AsyncIterable` handling owns only its documented response-stream lifecycle; adapters and application code retain ownership of their other native resources.
 
 ## Summary
 - **General Dispatcher**: Provides a standardized request handling pipeline without binding to a specific framework.
 - **Ten-step pipeline**: Guarantees clearly defined phase-by-phase execution from global Middleware to response writing.
-- **Async isolation**: Isolates data between requests with `AsyncLocalStorage`-based `RequestContext`.
+- **Runtime-dependent async isolation**: Preserves context across awaited work when the host provides async-context storage and otherwise uses a synchronous-only fallback.
 - **Observability layer**: Enables monitoring across the full flow through the observer pattern without changing business logic.
-- **Reliable cleanup**: Reduces wasted resources through `AbortSignal` checks and request-scope disposal whenever dispatch promoted to an isolated request scope.
+- **Explicit cleanup**: Checks adapter-provided abort state at documented boundaries and disposes request scopes created by the Dispatcher; application-owned resources still need explicit owners.
 
 ## Next Chapter Preview
 The next chapter looks more deeply at how Guards, Interceptors, and Middleware form chains and control each other's execution. It also covers what execution order is produced by chain composition with `reduceRight`.
