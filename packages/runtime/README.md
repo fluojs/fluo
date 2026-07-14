@@ -164,6 +164,7 @@ class UsersModule {}
 - Platform component snapshots are runtime-owned contract payloads: each component reports `readiness`, `health`, dependency ids, telemetry tags, diagnostic issues, and resource ownership through `ownership.ownsResources` / `ownership.externallyManaged`. Runtime preserves those ownership flags in shell snapshots so adapters and package integrations can distinguish resources fluo must stop from externally managed resources the host owns.
 - Module graph compile-result caching is opt-in through `moduleGraphCache: true`; it keys entries by root module identity, runtime providers, validation tokens, module replacement pairs, core metadata versions, and the compile algorithm version, caches only successful compilations, and returns isolated graph copies so caller mutations cannot poison later bootstraps.
 - `moduleReplacements` is a low-level testing seam on `bootstrapModule(...)` / `BootstrapModuleOptions`. It compiles replacement module metadata while preserving the original logical module identity, rejects replacement cycles through the normal module graph validation path, and does not mutate source module metadata.
+- `raceWithAbort(fn, signal)` always removes its abort listener once `fn` settles, including when `fn` throws synchronously before returning a promise. The synchronous throw is converted into a settled rejection so the cleanup-dependent `finally` flow still runs and the listener is not leaked across repeated failed operations.
 
 ## Public API Overview
 
