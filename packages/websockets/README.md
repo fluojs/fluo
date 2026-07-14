@@ -107,11 +107,15 @@ When omitted, `@fluojs/websockets` applies bounded defaults for concurrent conne
 The root `@fluojs/websockets` / `@fluojs/websockets/node` guard receives Node's `IncomingMessage`. Fetch-style subpaths receive a Web-standard `Request`, so choose the subpath-specific `WebSocketModuleOptions` type when authoring reusable option objects. Guards may allow an upgrade with `true`, `undefined`, or no return value; reject with `false` or a `{ status, body? }` `WebSocketUpgradeRejection`; or throw an `HttpException`-like error such as `UnauthorizedException`. Thrown HTTP exceptions are converted to the same pre-handshake rejection response before any socket is accepted.
 
 ### Rooms
-`WebSocketRoomService` lets gateway or application services keep lightweight room membership state without reaching into adapter internals. Runtime lifecycle services implement `joinRoom(socketId, room)`, `leaveRoom(socketId, room)`, `broadcastToRoom(room, event, data)`, and `getRooms(socketId)`. `broadcastToRoom(...)` sends a JSON frame shaped as `{ event, data }` to currently open sockets in the room and applies the configured backpressure policy before sending.
+`WebSocketRoomService` lets gateway or application services keep lightweight room membership state without reaching into adapter internals. Runtime lifecycle services implement `joinRoom(socketId, room)`, `leaveRoom(socketId, room)`, `broadcastToRoom(room, event, data)`, and `getRooms(socketId)`. `broadcastToRoom(...)` sends a JSON frame shaped as `{ event, data }` to currently open sockets in the room. The Node.js-backed adapter applies the configured `backpressure` policy before sending; the fetch-style runtimes (`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers`) do not apply a backpressure policy to room broadcasts.
+
+`WebSocketRoomService` is a type-only contract implemented by the runtime lifecycle service. Inject the lifecycle service token with `@Inject(...)` and type the constructor parameter as `WebSocketRoomService`. The root `@fluojs/websockets` and `@fluojs/websockets/node` entrypoints expose `WebSocketGatewayLifecycleService` as the DI token; runtime-specific subpaths expose the matching `*WebSocketGatewayLifecycleService` token listed in the runtime table below.
 
 ```typescript
-import { WebSocketRoomService } from '@fluojs/websockets';
+import { Inject } from '@fluojs/core';
+import { WebSocketGatewayLifecycleService, type WebSocketRoomService } from '@fluojs/websockets';
 
+@Inject(WebSocketGatewayLifecycleService)
 class OrderStatusPublisher {
   constructor(private readonly rooms: WebSocketRoomService) {}
 

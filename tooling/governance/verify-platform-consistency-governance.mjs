@@ -636,7 +636,12 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // Node.js runtime-floor/dependency alignment, unsupported non-Node targets,
   // and server-backed WebSocket migration boundaries, plus JWT refresh-token
   // family-scoped reuse revocation, subject-wide compatibility fallback, and
-  // consume-only rotation regression coverage.
+  // consume-only rotation regression coverage, plus WebSocket room injection
+  // token discoverability (WebSocketRoomService as a type-only contract injected
+  // via @Inject(...) with the root/Node WebSocketGatewayLifecycleService token
+  // or the matching *WebSocketGatewayLifecycleService token on runtime subpaths)
+  // and room broadcast backpressure runtime limits (Node.js-backed adapter only;
+  // fetch-style runtimes do not apply a backpressure policy to room broadcasts).
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
