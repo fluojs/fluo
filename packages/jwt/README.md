@@ -172,7 +172,17 @@ Access-token TTL must also be a positive finite number. When `accessTokenTtlSeco
 
 Verification fails closed on malformed time policy. `exp`, `nbf`, and `iat` claims that participate in verification must be finite JWT NumericDate numbers, and `clockSkewSeconds` must be a non-negative finite number. Non-finite values are rejected instead of extending expiration, not-before, or age checks. A token is expired when verifier time reaches its `exp` NumericDate; equality is treated as expired unless positive clock skew still covers the boundary.
 
+### Node runtime boundary
+
 The root `@fluojs/jwt` import surface is safe to load before selecting a runtime-specific authentication path: Node.js `node:crypto` primitives are loaded lazily only when signing, verification, JWKS key parsing, or refresh-token id generation actually executes. This preserves the existing public exports while avoiding Node-specific crypto work at module import time.
+
+Lazy loading is an import-time safety property only. It does **not** make signing or verification portable across runtimes. Once a signing, verification, JWKS key-parsing, or refresh-token id-generation path executes, that path requires a Node.js-compatible `node:crypto` implementation (`createHmac`, `createSign`, `createVerify`, `createPublicKey`, `timingSafeEqual`, `randomUUID`). Bun satisfies this through its Node compatibility layer; Deno and Cloudflare Workers do not provide a compatible `node:crypto` surface for these operations and are not supported JWT signing/verification runtimes. Treat `@fluojs/jwt` as a Node-runtime auth package: keep import-time loading lazy, but do not assume the package can sign or verify tokens on non-Node runtimes without a compatible `node:crypto` polyfill.
+
+### `decode()` trust boundary
+
+`JwtService.decode(token)` reads the JWT payload segment without verifying the signature, `alg`, `exp`, `nbf`, `iss`, `aud`, or any other claim. The returned object is **unverified input** and must never be used for authorization decisions, identity resolution, or any code path that grants access. Use `JwtService.verify(token, options)` (or `DefaultJwtVerifier.verifyAccessToken(token)`) first, and read identity from the normalized `JwtPrincipal` that verification returns.
+
+`decode()` exists for diagnostics and non-authoritative inspection only, such as reading token metadata for logging or selecting a verification key before calling `verify()`. Any claim value read from `decode()` — including `sub`, `roles`, `scopes`, `iss`, `aud`, and `exp` — must be treated as attacker-controlled until `verify()` succeeds. Never branch on `decode()` output to allow or deny a request, and never expose decoded claims to downstream code as if they were verified.
 
 ## Public API Overview
 
