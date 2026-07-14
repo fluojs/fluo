@@ -1039,6 +1039,104 @@ describe('@fluojs/cron', () => {
     ).toThrow('Cron distributed clientName must be a non-empty string when provided.');
   });
 
+  it('rejects blank explicit distributed ownerId during module option normalization', () => {
+    expect(() =>
+      normalizeCronModuleOptions({
+        distributed: {
+          enabled: true,
+          ownerId: '   ',
+        },
+      }),
+    ).toThrow('Cron distributed ownerId must be a non-empty string when provided.');
+  });
+
+  it('rejects empty explicit distributed ownerId during module option normalization', () => {
+    expect(() =>
+      normalizeCronModuleOptions({
+        distributed: {
+          enabled: true,
+          ownerId: '',
+        },
+      }),
+    ).toThrow('Cron distributed ownerId must be a non-empty string when provided.');
+  });
+
+  it('rejects non-string explicit distributed ownerId during module option normalization', () => {
+    expect(() =>
+      normalizeCronModuleOptions({
+        distributed: {
+          enabled: true,
+          ownerId: 123 as unknown as string,
+        },
+      }),
+    ).toThrow('Cron distributed ownerId must be a string when provided.');
+  });
+
+  it('trims explicit distributed ownerId during module option normalization', () => {
+    const normalized = normalizeCronModuleOptions({
+      distributed: {
+        enabled: true,
+        ownerId: '  node-a-1  ',
+      },
+    });
+
+    expect(normalized.distributed.ownerId).toBe('node-a-1');
+  });
+
+  it('preserves a valid explicit distributed ownerId during module option normalization', () => {
+    const normalized = normalizeCronModuleOptions({
+      distributed: {
+        enabled: true,
+        ownerId: 'node-a-1',
+      },
+    });
+
+    expect(normalized.distributed.ownerId).toBe('node-a-1');
+  });
+
+  it('rejects blank explicit distributed ownerId before Redis resolution or probe I/O', async () => {
+    const redis = new RedisResolutionProbeClient();
+
+    expect(() => {
+      CronModule.forRoot({
+        distributed: {
+          enabled: true,
+          ownerId: '   ',
+        },
+      });
+    }).toThrow('Cron distributed ownerId must be a non-empty string when provided.');
+    expect(redis.setAttempts).toBe(0);
+  });
+
+  it('fails bootstrap before scheduling jobs when distributed ownerId is blank', async () => {
+    const scheduler = createManualScheduler();
+
+    class DistributedTaskService {
+      @Cron(CronExpression.EVERY_SECOND, { name: 'distributed-blank-owner-id' })
+      async run() {}
+    }
+
+    class AppModule {}
+
+    expect(() => {
+      defineModule(AppModule, {
+        imports: [
+          CronModule.forRoot({
+            distributed: {
+              enabled: true,
+              keyPrefix: 'cron-blank-owner-id',
+              lockTtlMs: 60_000,
+              ownerId: '   ',
+            },
+            scheduler: scheduler.scheduler,
+          }),
+        ],
+        providers: [DistributedTaskService],
+      });
+    }).toThrow('Cron distributed ownerId must be a non-empty string when provided.');
+    expect(scheduler.records).toHaveLength(0);
+  });
+
   it('fails bootstrap before scheduling jobs when the configured Redis client cannot perform lock operations', async () => {
     const scheduler = createManualScheduler();
 

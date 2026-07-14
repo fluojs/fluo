@@ -38,6 +38,24 @@ function assertValidDistributedLockTtlMs(lockTtlMs: number): void {
   }
 }
 
+function normalizeDistributedOwnerId(ownerId: string | undefined): string {
+  if (ownerId === undefined) {
+    return randomId();
+  }
+
+  if (typeof ownerId !== 'string') {
+    throw new Error('Cron distributed ownerId must be a string when provided.');
+  }
+
+  const normalizedOwnerId = ownerId.trim();
+
+  if (normalizedOwnerId.length === 0) {
+    throw new Error('Cron distributed ownerId must be a non-empty string when provided.');
+  }
+
+  return normalizedOwnerId;
+}
+
 function normalizeDistributedOptions(distributed: CronModuleOptions['distributed']): NormalizedCronModuleOptions['distributed'] {
   if (distributed === undefined || distributed === false) {
     return {
@@ -64,7 +82,7 @@ function normalizeDistributedOptions(distributed: CronModuleOptions['distributed
     enabled: distributed.enabled ?? true,
     keyPrefix: distributed.keyPrefix ?? 'fluo:cron:lock',
     lockTtlMs: distributed.lockTtlMs ?? 30_000,
-    ownerId: distributed.ownerId ?? randomId(),
+    ownerId: normalizeDistributedOwnerId(distributed.ownerId),
   };
 
   if (normalizedDistributed.enabled) {
