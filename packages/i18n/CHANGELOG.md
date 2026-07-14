@@ -4,6 +4,10 @@
 
 ## 2.0.0
 
+### Major Changes
+
+- [#2439](https://github.com/fluojs/fluo/pull/2439) [`2854c36`](https://github.com/fluojs/fluo/commit/2854c366d99c191eae3416e375b9db577711aaff) Thanks [@ayden94](https://github.com/ayden94)! - Bump major in lockstep with `@fluojs/http@2.0.0` because `@fluojs/i18n` depends on the HTTP package's public `ResponseFormatter` contract. The i18n package itself has no breaking API changes; consumers upgrading from `@fluojs/i18n@1.x` should follow the migration notes for `@fluojs/http` (`ResponseFormatter.format(...)` now returns runtime-neutral `Uint8Array` instead of Node-specific `Buffer`).
+
 ### Patch Changes
 
 - [#2648](https://github.com/fluojs/fluo/pull/2648) [`337c0e2`](https://github.com/fluojs/fluo/commit/337c0e2eeeabce3c4e6fa1749c6919f62a88d925) Thanks [@ayden94](https://github.com/ayden94)! - Restore the governed `Unreleased` changelog placeholder for foundation packages and preserve it when Changesets generates future package versions.

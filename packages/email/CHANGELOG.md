@@ -4,6 +4,10 @@
 
 ## 2.0.0
 
+### Major Changes
+
+- [#2649](https://github.com/fluojs/fluo/pull/2649) [`1261d96`](https://github.com/fluojs/fluo/commit/1261d96ecae66576fe26fae0a39f03458307e6a4) Thanks [@ayden94](https://github.com/ayden94)! - Bump major in lockstep with `@fluojs/runtime@2.0.0`, `@fluojs/di@2.0.0`, and `@fluojs/queue@2.0.0` because `@fluojs/email` depends on those packages' public contracts. The email package itself has no breaking API changes; consumers upgrading from `@fluojs/email@1.x` should follow the migration notes for `@fluojs/runtime` (multipart file payloads are now runtime-neutral `Uint8Array`), `@fluojs/di` (introspection state is read-only), and `@fluojs/queue` (scoped queue module discovery and dead-letter drain semantics).
+
 ### Patch Changes
 
 - [#2617](https://github.com/fluojs/fluo/pull/2617) [`5c9246c`](https://github.com/fluojs/fluo/commit/5c9246ca684137051d2ac43f92104e2a9cb9fce9) Thanks [@ayden94](https://github.com/ayden94)! - Make repeated and concurrent Email service shutdown calls share one cleanup operation so owned transports close at most once.
