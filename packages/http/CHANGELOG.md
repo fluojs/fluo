@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## 2.0.1
+
+### Patch Changes
+
+- [#2760](https://github.com/fluojs/fluo/pull/2760) [`c0ebd48`](https://github.com/fluojs/fluo/commit/c0ebd485d5dcd0922ab93f2e4086428a3e64cf04) Thanks [@ayden94](https://github.com/ayden94)! - Reject managed SSE async iterables when the active adapter does not expose `FrameworkResponse.stream` instead of silently reporting the stream as handled. The dispatcher now surfaces an unsupported-stream failure through the standard dispatch error path before marking the response committed, aligning managed SSE with the documented adapter contract.
+
 ## 2.0.0
 
 ### Major Changes

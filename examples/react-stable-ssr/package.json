@@ -1,7 +1,7 @@
 {
   "name": "@fluojs/example-react-stable-ssr",
   "description": "Stable @fluojs/react SSR MVP example with HTTP-owned routes, DTO binding, and hydration assets.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "type": "module",
   "engines": {

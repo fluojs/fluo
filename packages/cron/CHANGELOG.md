@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## 2.0.1
+
+### Patch Changes
+
+- [#2758](https://github.com/fluojs/fluo/pull/2758) [`dedaf71`](https://github.com/fluojs/fluo/commit/dedaf71024b3bd7e77403a183e0e0916222554b1) Thanks [@ayden94](https://github.com/ayden94)! - Validate explicit Cron distributed `ownerId` before scheduler or Redis lifecycle setup.
+
+  `CronModule.forRoot({ distributed: { ownerId } })` now trims the provided `ownerId` during module option normalization and rejects blank, empty, or non-string values before the scheduler or Redis distributed lock lifecycle begins. Previously, invalid or empty owner identifiers could enter Redis lock ownership state despite the distributed-lock contract. Applications that already pass a non-empty string `ownerId` are unaffected; applications relying on blank or whitespace-only `ownerId` values must now provide a valid stable owner identifier or omit `ownerId` to keep the platform-neutral default.
+
+- Updated dependencies [[`65cc3a2`](https://github.com/fluojs/fluo/commit/65cc3a28457d58b75858ed33ab7280b09900db36)]:
+  - @fluojs/runtime@2.0.1
+
 ## 2.0.0
 
 ### Major Changes

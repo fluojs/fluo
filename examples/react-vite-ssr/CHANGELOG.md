@@ -1,5 +1,13 @@
 # @fluojs/example-react-vite-ssr
 
+## 0.0.2
+
+### Patch Changes
+
+- Updated dependencies [[`c0ebd48`](https://github.com/fluojs/fluo/commit/c0ebd485d5dcd0922ab93f2e4086428a3e64cf04), [`65cc3a2`](https://github.com/fluojs/fluo/commit/65cc3a28457d58b75858ed33ab7280b09900db36)]:
+  - @fluojs/http@2.0.1
+  - @fluojs/runtime@2.0.1
+
 ## 0.0.1
 
 ### Patch Changes
