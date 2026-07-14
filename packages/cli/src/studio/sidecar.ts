@@ -140,21 +140,57 @@ function createDefaultAppId(): string {
 
 function readBody(request: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
+    let settled = false;
     let body = '';
     request.setEncoding('utf8');
-    request.on('data', (chunk: string) => {
+
+    const settle = (action: 'resolve' | 'reject', value: string | Error): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      request.off('data', onData);
+      request.off('end', onEnd);
+      request.off('error', onError);
+      request.off('close', onClose);
+      if (action === 'resolve') {
+        resolve(value as string);
+      } else {
+        reject(value as Error);
+      }
+    };
+
+    const onData = (chunk: string): void => {
       body += chunk;
       if (body.length > MAX_REQUEST_BYTES) {
-        reject(new Error('Studio event payload is too large.'));
+        settle('reject', new Error('Studio event payload is too large.'));
         request.destroy();
       }
-    });
-    request.on('end', () => resolve(body));
-    request.on('error', reject);
+    };
+    const onEnd = (): void => settle('resolve', body);
+    const onError = (error: NodeJS.ErrnoException): void => settle('reject', error);
+    // A client that closes the socket after sending only a partial request body
+    // may never emit `end` or `error`. Bind `close` to body-reader cancellation
+    // so the sidecar cannot hang on a malformed local client indefinitely.
+    const onClose = (): void => {
+      if (body.length === 0) {
+        settle('reject', new Error('Studio sidecar request closed before any body was received.'));
+        return;
+      }
+      settle('reject', new Error('Studio sidecar request closed before the full body was received.'));
+    };
+
+    request.on('data', onData);
+    request.on('end', onEnd);
+    request.on('error', onError);
+    request.on('close', onClose);
   });
 }
 
 function writeJson(response: ServerResponse, statusCode: number, payload: unknown): void {
+  if (response.writableEnded) {
+    return;
+  }
   response.writeHead(statusCode, {
     'cache-control': 'no-store',
     'content-type': 'application/json; charset=utf-8',

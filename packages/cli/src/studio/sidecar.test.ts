@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { connect, type Socket } from 'node:net';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -250,5 +251,55 @@ describe('Studio sidecar', () => {
     expect(sidecar.epoch).not.toBe(initialEpoch);
     expect(sidecar.epoch).toBe(nextEpoch);
     expect(sidecar.env.FLUO_STUDIO_EPOCH).toBe(nextEpoch);
+  });
+
+  it('settles the ingestion request when a client closes the socket after a partial body', async () => {
+    const sidecar = await startTestSidecar();
+    const port = sidecar.port;
+    const token = sidecar.token;
+
+    const socket = connect(port, '127.0.0.1');
+    await new Promise<void>((resolve) => socket.on('connect', () => resolve()));
+
+    const partialBody = '{"payload":{"phase":"scheduled"},"source":';
+    socket.write(
+      `POST /api/runtime/events HTTP/1.1\r\n` +
+      `Host: 127.0.0.1:${port}\r\n` +
+      `Authorization: Bearer ${token}\r\n` +
+      `Content-Type: application/json\r\n` +
+      `Content-Length: 1000\r\n` +
+      `\r\n` +
+      partialBody,
+    );
+
+    await new Promise<void>((resolve) => socket.end(() => resolve()));
+
+    const state = await fetch(`${sidecar.url}/api/state?token=${encodeURIComponent(token)}`);
+    const stateJson = await state.json() as { events: Array<{ type: string }> };
+    expect(stateJson.events.some((event) => event.type === 'restart')).toBe(false);
+  });
+
+  it('settles the ingestion request when a client closes the socket before sending any body', async () => {
+    const sidecar = await startTestSidecar();
+    const port = sidecar.port;
+    const token = sidecar.token;
+
+    const socket = connect(port, '127.0.0.1');
+    await new Promise<void>((resolve) => socket.on('connect', () => resolve()));
+
+    socket.write(
+      `POST /api/runtime/events HTTP/1.1\r\n` +
+      `Host: 127.0.0.1:${port}\r\n` +
+      `Authorization: Bearer ${token}\r\n` +
+      `Content-Type: application/json\r\n` +
+      `Content-Length: 1000\r\n` +
+      `\r\n`,
+    );
+
+    await new Promise<void>((resolve) => socket.end(() => resolve()));
+
+    const state = await fetch(`${sidecar.url}/api/state?token=${encodeURIComponent(token)}`);
+    const stateJson = await state.json() as { events: Array<{ type: string }> };
+    expect(stateJson.events).toHaveLength(0);
   });
 });

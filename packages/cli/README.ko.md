@@ -209,7 +209,7 @@ fluo dev --studio --dry-run
 
 CLI는 local Studio sidecar를 시작하고, tokenized URL을 출력하며, restart lifecycle event를 sidecar로 계속 전달하고, 앱이 `@fluojs/runtime`을 import하기 전에 명시적인 Studio config를 Node 앱 child에 주입합니다. Studio live mode는 fluo가 소유한 Node restart runner를 요구합니다. 따라서 lifecycle event가 CLI restart boundary와 분리되지 않도록 `fluo dev --studio`는 `--raw-watch`, `--runner native`, `FLUO_DEV_RUNNER=native`를 거부합니다. Optional package인 `@fluojs/studio`가 설치되어 있으면 sidecar는 패키징된 `@fluojs/studio/viewer` React app을 제공합니다. Runtime package source는 `process.env`를 직접 읽지 않으며, CLI가 주입한 Studio config가 있을 때만 live graph/routes/request/timing/diagnostic event를 전송합니다.
 
-보안 기본값은 local-only입니다. Sidecar는 `127.0.0.1`에 bind되고, runtime ingestion 및 browser state/SSE API는 generated token을 요구하며, CORS는 기본적으로 활성화하지 않고, request body는 기본적으로 수집하지 않습니다.
+보안 기본값은 local-only입니다. Sidecar는 `127.0.0.1`에 bind되고, runtime ingestion 및 browser state/SSE API는 generated token을 요구하며, CORS는 기본적으로 활성화하지 않고, request body는 기본적으로 수집하지 않습니다. Local client가 partial request body만 보내고 socket을 닫으면 sidecar는 bounded error completion으로 ingestion 요청을 settle하므로, malformed local client가 sidecar 작업을 무기한 대기시킬 수 없습니다.
 
 MVP runtime support는 명시적으로 제한됩니다.
 
