@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## 2.0.1
+
+### Patch Changes
+
+- [#2761](https://github.com/fluojs/fluo/pull/2761) [`a88152c`](https://github.com/fluojs/fluo/commit/a88152c18378a9016fba505b90de4975a1c0d260) Thanks [@ayden94](https://github.com/ayden94)! - Settle Studio sidecar ingestion when a local client closes the socket after sending only a partial request body. The sidecar now binds request `close`/`error` events to body-reader cancellation and sends a bounded error completion instead of hanging indefinitely on a malformed local client.
+
+- Updated dependencies [[`65cc3a2`](https://github.com/fluojs/fluo/commit/65cc3a28457d58b75858ed33ab7280b09900db36)]:
+  - @fluojs/runtime@2.0.1
+
 ## 2.0.0
 
 ### Major Changes

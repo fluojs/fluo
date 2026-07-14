@@ -1,5 +1,12 @@
 # @fluojs/example-openapi-multiple-documents
 
+## 0.0.2
+
+### Patch Changes
+
+- Updated dependencies [[`65cc3a2`](https://github.com/fluojs/fluo/commit/65cc3a28457d58b75858ed33ab7280b09900db36)]:
+  - @fluojs/runtime@2.0.1
+
 ## 0.0.1
 
 ### Patch Changes
