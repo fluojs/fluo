@@ -164,6 +164,7 @@ class UsersModule {}
 - 플랫폼 component snapshot은 런타임 소유 계약 payload입니다. 각 component는 `readiness`, `health`, dependency id, telemetry tag, diagnostic issue, 그리고 `ownership.ownsResources` / `ownership.externallyManaged`를 통해 리소스 소유권을 보고합니다. Runtime은 shell snapshot에서 이 ownership flag를 보존하므로 adapter와 package integration이 fluo가 종료해야 하는 리소스와 host가 소유한 외부 관리 리소스를 구분할 수 있습니다.
 - 모듈 그래프 컴파일 결과 캐시는 `moduleGraphCache: true`를 통한 opt-in입니다. 캐시 항목은 root module identity, runtime provider, validation token, module replacement pair, core metadata version, compile algorithm version으로 식별되며, 성공한 컴파일만 저장하고 호출자 mutation이 이후 bootstrap을 오염시키지 않도록 격리된 그래프 복사본을 반환합니다.
 - `moduleReplacements`는 `bootstrapModule(...)` / `BootstrapModuleOptions`의 저수준 testing seam입니다. 원래 logical module identity를 보존하면서 replacement module metadata로 컴파일하고, replacement cycle은 일반 module graph validation 경로에서 거부하며, source module metadata를 mutate하지 않습니다.
+- `raceWithAbort(fn, signal)`은 `fn`이 settle된 후 항상 abort listener를 제거합니다. `fn`이 promise를 반환하기 전에 동기적으로 throw하는 경우도 포함합니다. 동기 throw는 settled rejection으로 변환되어 cleanup-dependent `finally` flow가 여전히 실행되고, 반복된 실패 작업에서 listener가 leak되지 않습니다.
 
 ## 공개 API 개요
 

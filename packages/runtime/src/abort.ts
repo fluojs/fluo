@@ -3,10 +3,15 @@
  * Rejects immediately if the signal is already aborted, or rejects as soon
  * as the signal fires while `fn` is still pending.
  *
+ * The abort listener is always removed once `fn` settles, including when
+ * `fn` throws synchronously before returning a promise. The synchronous
+ * throw is converted into a settled rejection so the cleanup-dependent
+ * `finally` flow still runs.
+ *
  * @param fn Async operation to execute while observing the abort signal.
  * @param signal Abort signal that can cancel the in-flight operation.
  * @returns The resolved value from `fn` when no abort happens first.
- * @throws {Error} An `AbortError` when the signal is already aborted or aborts before `fn` settles.
+ * @throws {Error} An `AbortError` when the signal is already aborted or aborts before `fn` settles. Re-throws the original error when `fn` throws synchronously.
  */
 export async function raceWithAbort<T>(fn: () => Promise<T>, signal: AbortSignal): Promise<T> {
   if (signal.aborted) {
@@ -20,7 +25,18 @@ export async function raceWithAbort<T>(fn: () => Promise<T>, signal: AbortSignal
 
     signal.addEventListener('abort', onAbort, { once: true });
 
-    Promise.resolve(fn()).then(resolve, reject).finally(() => {
+    // Convert `fn()` invocation into a settled promise so a synchronous
+    // throw still flows through the `finally` cleanup that removes the
+    // abort listener. `Promise.resolve()` only wraps an already-produced
+    // value; it does not catch a throw emitted while `fn()` is invoked.
+    let fnResultPromise: Promise<T>;
+    try {
+      fnResultPromise = Promise.resolve(fn());
+    } catch (syncError) {
+      fnResultPromise = Promise.reject(syncError);
+    }
+
+    fnResultPromise.then(resolve, reject).finally(() => {
       signal.removeEventListener('abort', onAbort);
     });
   });
