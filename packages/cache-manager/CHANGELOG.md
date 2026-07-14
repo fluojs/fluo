@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## 1.0.6
+
+### Patch Changes
+
+- [#2757](https://github.com/fluojs/fluo/pull/2757) [`6dd519f`](https://github.com/fluojs/fluo/commit/6dd519f78ff9aaa9acb37a4bec455eb75c213a91) Thanks [@ayden94](https://github.com/ayden94)! - Preserve commit-only cache eviction under pending send
+
+  The deferred eviction fallback timer no longer evicts while `response.send(...)` is still pending. Previously, the five-second fallback timer could fire before the response commit completed, contradicting the documented commit-only eviction contract. The fallback timer now evicts only when no response commit path was invoked, so the send path retains ownership of eviction (on success) or cancellation (on failure) while a send is in flight. This prevents a stale write response from invalidating cache before a failed commit becomes visible.
+
+- Updated dependencies [[`c0ebd48`](https://github.com/fluojs/fluo/commit/c0ebd485d5dcd0922ab93f2e4086428a3e64cf04), [`65cc3a2`](https://github.com/fluojs/fluo/commit/65cc3a28457d58b75858ed33ab7280b09900db36)]:
+  - @fluojs/http@2.0.1
+  - @fluojs/runtime@2.0.1
+
 ## 1.0.5
 
 ### Patch Changes
