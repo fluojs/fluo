@@ -212,11 +212,13 @@ await this.prisma.transaction(async () => {
 
 `createPrismaPlatformStatusSnapshot(...)`와 `PrismaService.createPlatformStatusSnapshot()`은 같은 라이프사이클 계약을 진단 surface에 노출합니다.
 
-- `readiness.status`는 `onModuleInit()`이 클라이언트를 연결하기 전, Prisma가 종료 중이거나 stopped 상태일 때, 그리고 `strictTransactions`가 켜져 있는데 `$transaction(...)`을 지원하지 않을 때 `not-ready`입니다.
+- `readiness.status`는 `onModuleInit()`이 클라이언트를 연결하기 전, Prisma가 종료 중이거나 stopped 상태일 때, `strictTransactions`가 켜져 있는데 `$transaction(...)`을 지원하지 않을 때, 그리고 클라이언트가 interactive transaction을 지원하지만 호스트 런타임이 `AsyncLocalStorage`를 제공하지 않을 때 `not-ready`입니다. ALS 미지원 상태의 readiness reason은 `Prisma transaction context requires AsyncLocalStorage support from the host runtime.`이며 `details.transactionContext`가 `unavailable`로 보고됩니다. 이 상태는 Prisma 클라이언트 자체는 연결되어 있고 기능적으로 정상일 수 있으므로 일반 database readiness 실패와 구분됩니다.
 - `health.status`는 종료 중 요청 트랜잭션을 drain하는 동안 `degraded`, disconnect 이후 `unhealthy`입니다.
 - `details.activeRequestTransactions`, `details.lifecycleState`, `details.strictTransactions`, `details.supportsTransaction`, `details.transactionAbortSignalSupport`는 현재 요청 트랜잭션과 트랜잭션 capability 상태를 설명합니다.
-- `details.transactionContext: 'als'`는 요청 및 서비스 트랜잭션 경계가 사용하는 async-local transaction context를 식별합니다.
+- `details.transactionContext: 'als'`는 요청 및 서비스 트랜잭션 경계가 사용하는 async-local transaction context를 식별합니다. `details.transactionContext: 'unavailable'`은 호스트 런타임이 사용 가능한 `AsyncLocalStorage`를 노출하지 않았음을 나타내며, 이 경우 `transaction()`과 `requestTransaction()`은 Prisma 트랜잭션을 열기 전에 예외를 던집니다.
 - `ownership.externallyManaged: false`와 `ownership.ownsResources: true`는 패키지가 fluo 애플리케이션 라이프사이클 안에서 등록된 클라이언트의 `$connect()` / `$disconnect()` lifecycle hook을 소유한다는 의미입니다.
+
+`details.transactionContext`가 `unavailable`이면 패키지는 동기 stack 기반 컨텍스트로 fallback하지 않습니다. async boundary 사이에서 `current()`를 잃기 때문입니다. fallback boundary는 애플리케이션이 소유합니다. 트랜잭션 컨텍스트 없이도 데이터베이스 접근이 필요한 호출자는 (예: `PRISMA_CLIENT` 토큰을 통해) 원시 `PrismaClient`를 직접 호출하고 자체 일관성 semantics를 관리하거나, `AsyncLocalStorage`를 제공하는 호스트 런타임(Node.js 20+가 문서화된 경로)에서 실행해야 합니다. `unavailable` readiness 상태는 운영적으로 실행 가능한 신호로 취급하세요. health check에 노출하고, 호스트가 ALS를 제공하거나 애플리케이션이 비트랜잭션 접근 경로로 전환할 때까지 트랜잭션 의존 handler로 트래픽을 라우팅하지 마세요.
 
 ### 비동기 설정과 격리
 

@@ -213,11 +213,13 @@ When `transaction()` is called while a transaction context is already active, `P
 
 `createPrismaPlatformStatusSnapshot(...)` and `PrismaService.createPlatformStatusSnapshot()` expose the same lifecycle contract to diagnostics surfaces:
 
-- `readiness.status` is `not-ready` before `onModuleInit()` connects the client, while Prisma is shutting down or stopped, and when `strictTransactions` is enabled without `$transaction(...)` support.
+- `readiness.status` is `not-ready` before `onModuleInit()` connects the client, while Prisma is shutting down or stopped, when `strictTransactions` is enabled without `$transaction(...)` support, and when the host runtime does not provide `AsyncLocalStorage` while the client supports interactive transactions. In the ALS-unavailable case the readiness reason is `Prisma transaction context requires AsyncLocalStorage support from the host runtime.` and `details.transactionContext` reports `unavailable`; this state is distinct from an ordinary database readiness failure because the Prisma client itself may be connected and otherwise functional.
 - `health.status` is `degraded` while request transactions are draining during shutdown and `unhealthy` after disconnect.
 - `details.activeRequestTransactions`, `details.lifecycleState`, `details.strictTransactions`, `details.supportsTransaction`, and `details.transactionAbortSignalSupport` describe the current request transaction and transaction-capability state.
-- `details.transactionContext: 'als'` identifies the async-local transaction context used by request and service transaction boundaries.
+- `details.transactionContext: 'als'` identifies the async-local transaction context used by request and service transaction boundaries. `details.transactionContext: 'unavailable'` indicates the host runtime did not expose a usable `AsyncLocalStorage`, so `transaction()` and `requestTransaction()` reject before opening a Prisma transaction.
 - `ownership.externallyManaged: false` and `ownership.ownsResources: true` mean the package owns the registered client's `$connect()` / `$disconnect()` lifecycle hooks inside the fluo application lifecycle.
+
+When `details.transactionContext` is `unavailable`, the package does not fall back to a synchronous stack-based context because that would lose `current()` across async boundaries. The application owns the fallback boundary: callers that still need database access without a transaction context must invoke the raw `PrismaClient` directly (for example through the `PRISMA_CLIENT` token) and manage their own consistency semantics, or run on a host runtime that provides `AsyncLocalStorage` (Node.js 20+ is the documented path). Treat the `unavailable` readiness state as operationally actionable — surface it in health checks and route traffic away from transaction-dependent handlers until the host provides ALS or the application switches to a non-transactional access path.
 
 ### Async Configuration and Isolation
 

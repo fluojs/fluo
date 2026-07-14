@@ -220,6 +220,11 @@ By calling generated model delegates directly on `PrismaServiceFacade`, the Repo
 
 This pattern is a core part of fluo's "Transaction Agnostic" repository design. It ensures your data access layer stays clean, type-safe, and performs well under various transactional boundaries.
 
+### Readiness Without AsyncLocalStorage
+The transaction context that `PrismaServiceFacade` and `PrismaService` rely on is backed by host-provided `AsyncLocalStorage`. On Node.js 20+ this is always available, but if you ever run `@fluojs/prisma` on a host that does not expose a usable `AsyncLocalStorage`, the package does not fall back to a synchronous stack-based context — that would silently lose `current()` across async boundaries. Instead, `transaction()` and `requestTransaction()` reject before opening a Prisma transaction, and `createPlatformStatusSnapshot()` reports `readiness.status: 'not-ready'` with `details.transactionContext: 'unavailable'`.
+
+This `not-ready` state is distinct from an ordinary database readiness failure: the Prisma client itself may be connected and otherwise functional. The application owns the fallback boundary. If a handler still needs database access without a transaction context, it must call the raw `PrismaClient` directly (for example through the `PRISMA_CLIENT` token) and manage its own consistency semantics, or you must run on a host that provides `AsyncLocalStorage`. Surface the `unavailable` readiness state in health checks and route traffic away from transaction-dependent handlers until the host provides ALS or the application switches to a non-transactional access path.
+
 ### Error Handling in Database Operations
 Database operations can fail in many ways, such as unique constraint violations, connection timeouts, and foreign key errors. Prisma provides specialized error classes for these cases. fluo recommends catching these errors early in the Repository or service layer and converting them into meaningful HTTP exceptions that give API users clear feedback, such as `ConflictException` for a unique constraint violation.
 
