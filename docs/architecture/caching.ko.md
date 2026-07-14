@@ -43,7 +43,7 @@
 | 규칙 | 현재 계약 | 소스 기준 |
 | --- | --- | --- |
 | 데코레이터 경로 | `@CacheEvict(...)`는 단일 키, 키 목록, 또는 resolver 함수를 HTTP route metadata로 저장합니다. 이 metadata는 non-GET controller handler에서 `CacheInterceptor`만 소비하며, service method와 그 밖의 non-HTTP call path는 `CacheService.del(...)` 또는 다른 명시적 애플리케이션 경로로 무효화해야 합니다. | `packages/cache-manager/src/decorators.ts`, `packages/cache-manager/src/interceptor.ts` |
-| eviction 시점 | GET이 아닌 핸들러에서는 downstream 핸들러가 성공하고 HTTP 응답이 성공적으로 commit된 뒤에만 eviction이 실행됩니다. `response.send(...)`가 reject되면 지연 eviction은 취소되며, 어댑터가 `response.send(...)`를 호출하지 않는 경우에는 성공한 핸들러 결과 이후 bounded fallback timer가 eviction을 수행합니다. | `packages/cache-manager/src/interceptor.ts` |
+| eviction 시점 | GET이 아닌 핸들러에서는 downstream 핸들러가 성공하고 HTTP 응답이 성공적으로 commit된 뒤에만 eviction이 실행됩니다. `response.send(...)`가 reject되면 지연 eviction은 취소되며, 어댑터가 `response.send(...)`를 호출하지 않는 경우에는 성공한 핸들러 결과 이후 bounded fallback timer가 eviction을 수행합니다. fallback timer는 response commit 경로가 호출되지 않았을 때만 eviction을 수행하므로 `response.send(...)`가 여전히 pending 상태인 동안에는 eviction을 실행하지 않습니다. | `packages/cache-manager/src/interceptor.ts` |
 | 실패 격리 | `safeGet`, `safeSet`, `safeDel`은 저장소 오류를 삼킵니다. 캐시 실패가 다른 정상 핸들러를 실패시키지 않습니다. | `packages/cache-manager/src/interceptor.ts` |
 | 진행 중 로드 무효화 | `CacheService.del(...)`은 아직 로딩 중인 키를 표시하여, 같은 로드 주기 중 무효화된 키가 `remember(...)`에 의해 다시 채워지지 않도록 합니다. | `packages/cache-manager/src/service.ts` |
 | 전체 reset | `CacheService.reset()`은 내부 reset version을 증가시키고, 진행 중/대기 중인 load bookkeeping과 진행 중 무효화 마커를 지운 뒤, 하위 저장소를 reset합니다. | `packages/cache-manager/src/service.ts` |

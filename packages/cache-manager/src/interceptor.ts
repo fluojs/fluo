@@ -153,6 +153,7 @@ function installDeferredEviction(
   const originalSend = response.send.bind(response);
   let restored = false;
   let completed = false;
+  let sendInvoked = false;
 
   const runEviction = () => {
     if (completed) {
@@ -175,11 +176,19 @@ function installDeferredEviction(
   };
 
   const fallbackTimer = setTimeout(() => {
-    runEviction();
+    // Run fallback eviction only when no response commit path was invoked.
+    // If response.send(...) is still pending or already completed, the send
+    // path owns eviction (on success) or cancellation (on failure), so the
+    // fallback timer must not evict under a pending send.
+    if (!sendInvoked) {
+      runEviction();
+    }
+
     restore();
   }, EVICTION_FALLBACK_TIMEOUT_MS);
 
   response.send = async (body: unknown) => {
+    sendInvoked = true;
     try {
       await originalSend(body);
       runEviction();
