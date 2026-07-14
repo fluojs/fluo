@@ -2193,6 +2193,43 @@ describe('dispatcher runtime', () => {
     expect(response.body).toBeUndefined();
   });
 
+  it('rejects managed SSE AsyncIterable sources when the adapter exposes no response stream', async () => {
+    const events: string[] = [];
+    const observer = {
+      onRequestError(_context: RequestObservationContext, error: unknown) {
+        events.push(`observer:${error instanceof Error ? error.message : 'unknown'}`);
+      },
+    };
+
+    @Controller('/managed-no-stream')
+    class ManagedNoStreamController {
+      @Sse('/')
+      async *stream() {
+        yield 'first';
+      }
+    }
+
+    const root = new Container().register(ManagedNoStreamController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: ManagedNoStreamController }]),
+      observers: [observer],
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/managed-no-stream', 'GET'), response);
+
+    expect(response.committed).toBe(true);
+    expect(response.statusCode).toBe(500);
+    expect(response.body).toEqual({
+      error: expect.objectContaining({
+        status: 500,
+        message: 'Internal server error.',
+      }),
+    });
+    expect(events).toEqual(['observer:Managed SSE requires adapter-provided response.stream support.']);
+  });
+
   it('keeps @Sse handlers on the full path instead of the simple JSON fast path', async () => {
     @Controller('/managed-fast-path')
     class ManagedFastPathController {
