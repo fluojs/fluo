@@ -135,6 +135,8 @@ export class OrdersEventsController {
 
 `@Sse(path)`는 `GET` 라우트를 등록하고 `text/event-stream` produced media type metadata를 선언합니다. Handler는 수동 stream 제어가 필요하면 `SseResponse`를 반환할 수 있고, managed streaming이 필요하면 `AsyncIterable<SseMessage<T> | T>`를 반환할 수 있습니다. Managed async iterable은 `SseResponse`와 같은 `encodeSseMessage(...)` 동작으로 변환됩니다. 일반 yield 값은 `data:` frame이 되고, `data` 필드가 있는 객체는 `event`, `id`, `retry`도 함께 제공할 수 있습니다. Dispatcher는 `RequestContext.request.signal`이 abort되거나 response stream이 닫히면 source 소비를 중단하고, write가 backpressure를 보고하면 `FrameworkResponseStream.waitForDrain()`을 기다리며, 완료 또는 source error 시 stream을 닫습니다. 취소 시에는 response stream을 즉시 닫고 request-scoped resource를 dispose하기 전에 source iterator의 `return()` cleanup을 기다립니다. Cleanup 실패는 이미 commit된 SSE response를 대체하지 않고 request observer와 dispatcher logger seam으로 보고됩니다. Source에서 던진 오류도 같은 committed-response error/observer 경계를 따릅니다. Observable 값은 계속 범위 밖이며 RxJS dependency는 필요하지 않습니다.
 
+Managed SSE는 `FrameworkResponse.stream`을 노출하는 adapter가 필요합니다. 활성 adapter가 response stream을 제공하지 않으면 dispatcher는 response를 처리된 것으로 표시하기 전에 managed async iterable을 거부하고, stream이 처리된 것으로 조용히 보고하는 대신 표준 dispatch error 경로(request error observer와 구성된 error response writer)를 통해 실패를 전달합니다.
+
 브라우저 쪽에서는 해당 연결을 소유하는 React effect 안에서 `EventSource`를 만들고 cleanup 함수에서 항상 닫아야 합니다. 그래야 route 변경, Strict Mode remount, component unmount가 중복 stream을 남기지 않습니다.
 
 ```tsx

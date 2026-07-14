@@ -579,12 +579,13 @@ async function writeManagedSseIterable(
     return false;
   }
 
-  const sse = new SseResponse(requestContext);
   const stream = requestContext.response.stream;
 
   if (!stream) {
-    return true;
+    throw new Error('Managed SSE requires adapter-provided response.stream support.');
   }
+
+  const sse = new SseResponse(requestContext);
 
   const iterator = source[Symbol.asyncIterator]();
   let iteratorCleanup: Promise<void> | undefined;
