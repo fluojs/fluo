@@ -55,3 +55,20 @@ Principal 처리 제약:
 - 애플리케이션 코드는 `requestContext.principal`을 활성 인증 전략이 채우는 런타임 소유 신원 경계로 취급해야 합니다.
 - 전략 구현은 `@fluojs/http`가 허용하는 임의의 `Principal` 형태를 반환할 수 있지만, JWT 기반 전략은 `DefaultJwtVerifier`가 생성한 정규화 `JwtPrincipal`을 반환하는 편이 맞습니다.
 - Scope가 필요한 라우트는 컨트롤러에서 원시 JWT 클레임을 직접 읽기보다 `@RequireScopes(...)`로 scope를 선언해야 합니다.
+
+## Node Crypto Runtime Boundary
+
+| Rule | Current contract | Source anchor |
+| --- | --- | --- |
+| Import-time safety | 루트 `@fluojs/jwt` import surface는 `node:crypto` 값을 정적으로 import하지 않습니다. `node:crypto` primitive는 서명, 검증, JWKS key parsing, refresh-token id 생성이 실제로 실행될 때만 lazy load됩니다. | `packages/jwt/src/runtime-boundary.test.ts`, `packages/jwt/src/signing/signer.ts`, `packages/jwt/src/signing/verifier.ts`, `packages/jwt/src/signing/jwks.ts`, `packages/jwt/src/refresh/refresh-token.ts` |
+| Runtime requirement | Lazy loading은 import-time 속성일 뿐입니다. 서명이나 검증을 runtime 간 이식 가능하게 만들지는 **않습니다**. 서명, 검증, JWKS key parsing, refresh-token id 생성 경로가 실행되면 해당 경로는 Node.js 호환 `node:crypto` 구현(`createHmac`, `createSign`, `createVerify`, `createPublicKey`, `timingSafeEqual`, `randomUUID`)을 필요로 합니다. | `packages/jwt/src/signing/signer.ts`, `packages/jwt/src/signing/verifier.ts`, `packages/jwt/src/signing/jwks.ts`, `packages/jwt/src/refresh/refresh-token.ts` |
+| Supported runtimes | Bun은 Node 호환성 레이어로 `node:crypto` 요구사항을 만족합니다. Deno와 Cloudflare Workers는 이러한 연산에 호환되는 `node:crypto` surface를 제공하지 않으므로 지원되는 JWT 서명/검증 runtime이 아닙니다. | `packages/jwt/README.md` |
+
+## `decode()` Trust Boundary
+
+| Rule | Current contract | Source anchor |
+| --- | --- | --- |
+| No verification | `JwtService.decode(token)`는 서명, `alg`, `exp`, `nbf`, `iss`, `aud` 또는 기타 클레임을 검증하지 않고 JWT payload segment를 읽습니다. | `packages/jwt/src/service.ts` |
+| Unverified input | 반환된 객체는 검증되지 않은 입력(unverified input)입니다. `decode()` 출력에서 읽은 모든 클레임 값 — `sub`, `roles`, `scopes`, `iss`, `aud`, `exp` 포함 — 은 `verify()`가 성공하기 전까지 공격자가 제어한 값으로 취급해야 합니다. | `packages/jwt/src/service.ts` |
+| Authorization prohibition | `decode()` 출력은 권한 결정(authorization decisions), 신원 확인(identity resolution), 또는 접근을 허가하는 모든 코드 경로에 사용해서는 안 됩니다. 먼저 `JwtService.verify(token, options)` 또는 `DefaultJwtVerifier.verifyAccessToken(token)`을 호출하고, 검증이 반환하는 정규화된 `JwtPrincipal`에서 신원을 읽으세요. | `packages/jwt/src/service.ts`, `packages/jwt/README.md` |
+| Permitted uses | `decode()`는 진단(diagnostics) 및 비권위적 검사(non-authoritative inspection)에만 사용됩니다. 예를 들어 로깅을 위해 토큰 메타데이터를 읽거나 `verify()` 호출 전에 검증 키를 선택할 때 사용할 수 있습니다. | `packages/jwt/src/service.ts` |

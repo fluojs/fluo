@@ -324,6 +324,8 @@ When an app sits behind a trusted reverse proxy, opt in to proxy header identity
 | Refresh rotation | Use atomic consume/revoke semantics; avoid memory stores in multi-instance production. |
 | Optional auth | Use only for guest-compatible routes; scoped routes still need credentials. |
 | Throttling identity | Trust proxy headers only when your deployment controls the proxy boundary. |
+| Node runtime | `@fluojs/jwt` signing, verification, JWKS key parsing, and refresh-token id generation require a Node.js-compatible `node:crypto` implementation. Bun satisfies this through its Node compatibility layer; Deno and Cloudflare Workers are not supported JWT signing/verification runtimes. The lazy root import is an import-time safety property only. |
+| `decode()` trust | `JwtService.decode(token)` reads the payload without verifying the signature or any claim. The returned object is unverified input and must never be used for authorization decisions. Use `verify()` first and read identity from the normalized `JwtPrincipal`. `decode()` is for diagnostics and non-authoritative inspection only. |
 
 ## Public API summary
 
@@ -366,6 +368,8 @@ Recommended reading order:
 | Using in-memory refresh or throttler stores in multi-instance production | Use durable or distributed storage. |
 | Trusting forwarded IP headers by default | Enable proxy trust only behind infrastructure you control. |
 | Returning raw token claims as application identity | Use the normalized principal contract. |
+| Using `decode()` output for authorization | `decode()` does not verify the signature or claims. Use `verify()` first and read identity from the normalized `JwtPrincipal`. |
+| Assuming `@fluojs/jwt` works on Deno or Cloudflare Workers | Signing and verification require a Node.js-compatible `node:crypto` implementation. Use Bun or Node.js. |
 
 ## Related reading
 

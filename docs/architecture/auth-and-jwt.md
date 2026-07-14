@@ -55,3 +55,20 @@ Principal-handling constraints:
 - Application code should treat `requestContext.principal` as the runtime-owned identity boundary populated by the active auth strategy.
 - Strategy implementations MAY return any `Principal` shape accepted by `@fluojs/http`, but JWT-based strategies should return the normalized `JwtPrincipal` produced by `DefaultJwtVerifier`.
 - Scope-bearing routes should declare scopes through `@RequireScopes(...)`, not by reading raw JWT claims inside controllers.
+
+## Node Crypto Runtime Boundary
+
+| Rule | Current contract | Source anchor |
+| --- | --- | --- |
+| Import-time safety | The root `@fluojs/jwt` import surface does not statically import `node:crypto` values. `node:crypto` primitives are loaded lazily only when signing, verification, JWKS key parsing, or refresh-token id generation actually executes. | `packages/jwt/src/runtime-boundary.test.ts`, `packages/jwt/src/signing/signer.ts`, `packages/jwt/src/signing/verifier.ts`, `packages/jwt/src/signing/jwks.ts`, `packages/jwt/src/refresh/refresh-token.ts` |
+| Runtime requirement | Lazy loading is an import-time property only. It does **not** make signing or verification portable across runtimes. Once a signing, verification, JWKS key-parsing, or refresh-token id-generation path executes, that path requires a Node.js-compatible `node:crypto` implementation (`createHmac`, `createSign`, `createVerify`, `createPublicKey`, `timingSafeEqual`, `randomUUID`). | `packages/jwt/src/signing/signer.ts`, `packages/jwt/src/signing/verifier.ts`, `packages/jwt/src/signing/jwks.ts`, `packages/jwt/src/refresh/refresh-token.ts` |
+| Supported runtimes | Bun satisfies the `node:crypto` requirement through its Node compatibility layer. Deno and Cloudflare Workers do not provide a compatible `node:crypto` surface for these operations and are not supported JWT signing/verification runtimes. | `packages/jwt/README.md` |
+
+## `decode()` Trust Boundary
+
+| Rule | Current contract | Source anchor |
+| --- | --- | --- |
+| No verification | `JwtService.decode(token)` reads the JWT payload segment without verifying the signature, `alg`, `exp`, `nbf`, `iss`, `aud`, or any other claim. | `packages/jwt/src/service.ts` |
+| Unverified input | The returned object is unverified input. Any claim value read from `decode()` — including `sub`, `roles`, `scopes`, `iss`, `aud`, and `exp` — must be treated as attacker-controlled until `verify()` succeeds. | `packages/jwt/src/service.ts` |
+| Authorization prohibition | `decode()` output MUST NOT be used for authorization decisions, identity resolution, or any code path that grants access. Use `JwtService.verify(token, options)` or `DefaultJwtVerifier.verifyAccessToken(token)` first, and read identity from the normalized `JwtPrincipal` that verification returns. | `packages/jwt/src/service.ts`, `packages/jwt/README.md` |
+| Permitted uses | `decode()` is for diagnostics and non-authoritative inspection only, such as reading token metadata for logging or selecting a verification key before calling `verify()`. | `packages/jwt/src/service.ts` |
