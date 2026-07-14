@@ -263,7 +263,7 @@ class ProductController {
 }
 ```
 
-On that supported HTTP path, eviction is deferred until the response successfully commits. If `response.send(...)` rejects, the deferred eviction is cancelled so a failed commit does not drop the previous cached read result. If an adapter path never calls `response.send(...)`, the interceptor still runs a bounded fallback timer so successful writes do not leave stale entries behind indefinitely. Deferred eviction failures stay contained inside the interceptor, so cache-key factories or cache-store deletes cannot surface as post-response unhandled promise rejections.
+On that supported HTTP path, eviction is deferred until the response successfully commits. If `response.send(...)` rejects, the deferred eviction is cancelled so a failed commit does not drop the previous cached read result. If an adapter path never calls `response.send(...)`, the interceptor still runs a bounded fallback timer so successful writes do not leave stale entries behind indefinitely. The fallback timer evicts only when no response commit path was invoked; while `response.send(...)` is still pending, the send path owns eviction (on success) or cancellation (on failure), so the fallback timer does not evict under a pending send. Deferred eviction failures stay contained inside the interceptor, so cache-key factories or cache-store deletes cannot surface as post-response unhandled promise rejections.
 
 ## Public API Overview
 
