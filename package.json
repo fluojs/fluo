@@ -7,7 +7,7 @@
   },
   "devDependencies": {
     "@babel/cli": "^7.26.4",
-    "@babel/core": "^7.26.10",
+    "@babel/core": "^7.29.7",
     "@babel/plugin-proposal-decorators": "^7.28.0",
     "@babel/preset-typescript": "^7.27.1",
     "@biomejs/biome": "^2.4.10",
@@ -16,8 +16,8 @@
     "@types/babel__core": "^7.20.5",
     "@types/node": "^22.13.10",
     "typescript": "^6.0.2",
-    "vite": "^6.2.1",
-    "vitest": "^3.0.8"
+    "vite": "^6.4.3",
+    "vitest": "^3.2.7"
   },
   "scripts": {
     "build": "pnpm -r --filter './packages/*' --if-present run build",
@@ -51,7 +51,12 @@
       "protobufjs"
     ],
     "overrides": {
-      "protobufjs": "7.5.5"
+      "@babel/core": "7.29.7",
+      "js-yaml@3.14.2": "3.15.0",
+      "js-yaml@4.1.1": "4.2.0",
+      "postcss": "8.5.10",
+      "protobufjs": "7.5.5",
+      "vite": "6.4.3"
     }
   }
 }
