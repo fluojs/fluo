@@ -2454,6 +2454,43 @@ describe('@fluojs/cron', () => {
     await closeApplication(app);
   });
 
+  it('reports a scheduler stop failure when disabling while retaining the handle for shutdown retry', async () => {
+    const scheduled = createManualScheduler();
+
+    // Given
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+
+    registry.addCron('dynamic-disable-stop-retry', CronExpression.EVERY_SECOND, () => {});
+
+    const record = scheduled.records[0];
+    expect(record).toBeDefined();
+
+    if (!record) {
+      throw new Error('expected dynamic cron handle to exist');
+    }
+
+    record.stop.mockImplementationOnce(() => {
+      throw new Error('dynamic cron stop failed');
+    });
+
+    // When
+    const disabled = registry.disable('dynamic-disable-stop-retry');
+
+    // Then
+    expect(disabled).toBe(false);
+    expect(registry.get('dynamic-disable-stop-retry')?.enabled).toBe(false);
+    expect(record.stop).toHaveBeenCalledTimes(1);
+
+    await closeApplication(app);
+    expect(record.stop).toHaveBeenCalledTimes(2);
+  });
+
   it('cleans up dynamic interval and timeout timers when disabled or removed', async () => {
     vi.useFakeTimers();
     const events: string[] = [];

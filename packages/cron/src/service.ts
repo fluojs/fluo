@@ -261,7 +261,7 @@ export class CronLifecycleService
    * Disables a task without removing its descriptor.
    *
    * @param name Task name to disable.
-   * @returns `true` when the task exists after the operation.
+   * @returns `true` when the task exists and its handle stopped; `false` when it was absent or its handle could not stop.
    */
   disable(name: string): boolean {
     const task = this.tasks.get(name);
@@ -275,8 +275,7 @@ export class CronLifecycleService
     }
 
     task.enabled = false;
-    this.unscheduleTask(task);
-    return true;
+    return this.unscheduleTask(task);
   }
 
   /**

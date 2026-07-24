@@ -206,7 +206,8 @@ export interface SchedulingRegistry {
    * Disables a task without deleting its descriptor.
    *
    * @param name Task name to disable.
-   * @returns `true` when the task exists after the operation.
+   * @returns `true` when the task exists and its handle stopped; `false` when it was absent or its handle could not stop.
+   * @remarks A failed stop leaves the task disabled and keeps its scheduler handle registered for cleanup retry.
    */
   disable(name: string): boolean;
   /**
