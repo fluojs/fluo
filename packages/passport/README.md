@@ -196,10 +196,21 @@ import {
   UseAuth,
 } from '@fluojs/passport';
 
+@Controller('/auth')
+export class AuthController {
+  @Post('/refresh')
+  @UseAuth('refresh-token')
+  async refresh(input: never, ctx: RequestContext) {
+    return ctx.principal; // Contains new token pair
+  }
+}
+
 @Module({
+  controllers: [AuthController],
   imports: [
     JwtModule.forRoot({
       algorithms: ['HS256'],
+      global: true,
       secret: 'your-access-token-secret',
     }),
     RefreshTokenModule.forRoot(MyRefreshTokenService),
@@ -211,18 +222,9 @@ import {
   providers: [MyRefreshTokenService],
 })
 export class AuthModule {}
-
-@Controller('/auth')
-export class AuthController {
-  @Post('/refresh')
-  @UseAuth('refresh-token')
-  async refresh(input: never, ctx: RequestContext) {
-    return ctx.principal; // Contains new token pair
-  }
-}
 ```
 
-Import `JwtModule.forRoot(...)`, `RefreshTokenModule.forRoot(...)`, and `PassportModule.forRoot(...)` together. `JwtModule` provides the `DefaultJwtVerifier` injected into `RefreshTokenStrategy` to validate the access token returned after rotation, `RefreshTokenModule` provides the strategy and shared `REFRESH_TOKEN_SERVICE` alias, and `PassportModule` registers the named strategy resolved by `@UseAuth('refresh-token')`.
+Import `JwtModule.forRoot(...)`, `RefreshTokenModule.forRoot(...)`, and `PassportModule.forRoot(...)` together. `RefreshTokenStrategy` belongs to `RefreshTokenModule`, which is a sibling of `JwtModule` in this graph, so this example sets the documented `global: true` option to make `DefaultJwtVerifier` visible when the refresh module resolves the strategy. `RefreshTokenModule` provides the strategy and shared `REFRESH_TOKEN_SERVICE` alias, `PassportModule` registers the named strategy resolved by `@UseAuth('refresh-token')`, and the application module must register `AuthController` for the refresh route to exist.
 
 `RefreshTokenStrategy` reads tokens from `body.refreshToken`, `Authorization: Bearer ...`, or `x-refresh-token`; malformed non-string tokens fail authentication. After rotation, it trusts the normalized access-token principal subject returned by `@fluojs/jwt`. `JwtRefreshTokenAdapter` requires a `secret` and a backing store; `store: 'memory'` is for development and single-instance deployments only, and rotation detects reuse through the store consume contract.
 

@@ -196,10 +196,21 @@ import {
   UseAuth,
 } from '@fluojs/passport';
 
+@Controller('/auth')
+export class AuthController {
+  @Post('/refresh')
+  @UseAuth('refresh-token')
+  async refresh(input: never, ctx: RequestContext) {
+    return ctx.principal; // 새 토큰 쌍이 포함된 principal 반환
+  }
+}
+
 @Module({
+  controllers: [AuthController],
   imports: [
     JwtModule.forRoot({
       algorithms: ['HS256'],
+      global: true,
       secret: 'your-access-token-secret',
     }),
     RefreshTokenModule.forRoot(MyRefreshTokenService),
@@ -211,18 +222,9 @@ import {
   providers: [MyRefreshTokenService],
 })
 export class AuthModule {}
-
-@Controller('/auth')
-export class AuthController {
-  @Post('/refresh')
-  @UseAuth('refresh-token')
-  async refresh(input: never, ctx: RequestContext) {
-    return ctx.principal; // 새 토큰 쌍이 포함된 principal 반환
-  }
-}
 ```
 
-`JwtModule.forRoot(...)`, `RefreshTokenModule.forRoot(...)`, `PassportModule.forRoot(...)`를 함께 import 하세요. `JwtModule`은 rotation 뒤 반환되는 access token을 검증하기 위해 `RefreshTokenStrategy`에 주입되는 `DefaultJwtVerifier`를 제공하고, `RefreshTokenModule`은 strategy와 공유 `REFRESH_TOKEN_SERVICE` alias를 제공하며, `PassportModule`은 `@UseAuth('refresh-token')`가 resolve하는 named strategy를 등록합니다.
+`JwtModule.forRoot(...)`, `RefreshTokenModule.forRoot(...)`, `PassportModule.forRoot(...)`를 함께 import 하세요. 이 graph에서 `RefreshTokenStrategy`는 `JwtModule`의 sibling인 `RefreshTokenModule`에 속하므로, 이 예제는 문서화된 `global: true` option을 설정해 refresh module이 strategy를 resolve할 때 `DefaultJwtVerifier`를 볼 수 있게 합니다. `RefreshTokenModule`은 strategy와 공유 `REFRESH_TOKEN_SERVICE` alias를 제공하고, `PassportModule`은 `@UseAuth('refresh-token')`가 resolve하는 named strategy를 등록하며, refresh route가 실제로 존재하려면 application module이 `AuthController`를 등록해야 합니다.
 
 `RefreshTokenStrategy`는 `body.refreshToken`, `Authorization: Bearer ...`, `x-refresh-token`에서 token을 읽습니다. Malformed non-string token은 인증 실패로 처리됩니다. Rotation 후에는 `@fluojs/jwt`가 반환한 정규화 access-token principal subject를 신뢰합니다. `JwtRefreshTokenAdapter`는 `secret`과 backing store가 필요하며, `store: 'memory'`는 development 및 single-instance deployment용이고 rotation은 store consume contract를 통해 재사용을 감지합니다.
 
