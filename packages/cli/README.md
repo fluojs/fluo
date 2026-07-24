@@ -32,6 +32,7 @@ pnpm dlx @fluojs/cli new my-app
 
 - `@fluojs/cli` is a public package in the intended publish surface.
 - `@fluojs/cli` requires Node.js `>=20.0.0`; generated Bun, Deno, and Cloudflare Workers starters may target non-Node runtimes, but the CLI process itself runs on Node.js.
+- The CLI and generated Node.js starter toolchain use `tsx@^4.23.1`; generated gRPC starters require `@grpc/grpc-js@^1.14.4`. Refresh existing project lockfiles when adopting these patched floors.
 - The supported install paths are the global package (`npm install -g @fluojs/cli`, `pnpm add -g @fluojs/cli`, `bun add -g @fluojs/cli`, or `yarn global add @fluojs/cli`) and the no-install runner (`pnpm dlx @fluojs/cli ...`).
 - The published `fluo` bin is the `./bin/fluo.mjs` wrapper declared in `package.json`; that wrapper loads the dist-built CLI entrypoint at `../dist/cli.js`.
 
