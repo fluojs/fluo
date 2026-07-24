@@ -77,7 +77,7 @@ JWT-based passport strategies require both pieces of module wiring: `JwtModule.f
 
 ### 2. Protect Routes
 
-Use `@UseAuth()` and `@RequireScopes()` to enforce authentication.
+Use `@UseAuth()` to enforce authentication and `@RequireScopes()` to enforce authorization.
 
 ```typescript
 import { Controller, Get, type RequestContext } from '@fluojs/http';

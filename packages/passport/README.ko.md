@@ -77,7 +77,7 @@ JWT 기반 passport 전략에는 두 가지 module wiring이 모두 필요합니
 
 ### 2. 라우트 보호
 
-`@UseAuth()`와 `@RequireScopes()`를 사용하여 인증을 강제합니다.
+`@UseAuth()`로 인증을, `@RequireScopes()`로 인가를 강제합니다.
 
 ```typescript
 import { Controller, Get, type RequestContext } from '@fluojs/http';
