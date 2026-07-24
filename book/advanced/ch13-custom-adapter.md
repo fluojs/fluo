@@ -325,7 +325,7 @@ export class TinyNodeAdapter implements HttpApplicationAdapter {
 }
 ```
 
-This skeleton now satisfies the required request/response shape, but it is still intentionally incomplete: production code must parse request bodies and cookies, enforce size limits, preserve exact raw bytes when needed, normalize headers, remove native listeners, and implement streaming/backpressure and shutdown policy. A production adapter, such as `FastifyAdapter`, also adds multipart handling, compression, and protocol optimization logic such as HTTP/2.
+This skeleton now satisfies the required request/response shape, but it is still intentionally incomplete: production code must parse request bodies and cookies, enforce size limits, preserve exact raw bytes when needed, normalize headers, remove native listeners, and implement streaming/backpressure and shutdown policy. A production adapter, such as `FastifyAdapter`, also adds multipart handling.
 
 ## 13.13 Summary
 
