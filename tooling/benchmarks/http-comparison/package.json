@@ -23,9 +23,9 @@
     "@fluojs/platform-fastify": "link:../../../packages/platform-fastify",
     "@fluojs/runtime": "link:../../../packages/runtime",
     "@fluojs/validation": "link:../../../packages/validation",
-    "@nestjs/common": "^11.0.0",
-    "@nestjs/core": "^11.0.0",
-    "@nestjs/platform-fastify": "^11.0.0",
+    "@nestjs/common": "^11.1.24",
+    "@nestjs/core": "^11.1.24",
+    "@nestjs/platform-fastify": "^11.1.24",
     "fastify": "^5.8.5",
     "reflect-metadata": "^0.2.0"
   },
@@ -34,12 +34,16 @@
     "@types/node": "^22.0.0",
     "autocannon": "^7.0.0",
     "ts-node": "^10.0.0",
-    "tsx": "^4.0.0",
+    "tsx": "^4.23.1",
     "typescript": "~5.8.3"
   },
   "pnpm": {
     "overrides": {
-      "fastify": "5.8.5"
+      "esbuild": "0.28.1",
+      "fast-uri": "3.1.2",
+      "fastify": "5.8.5",
+      "form-data": "4.0.6",
+      "uuid": "11.1.1"
     }
   }
 }
