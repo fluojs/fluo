@@ -1,46 +1,45 @@
-import { Container, type Provider } from '@fluojs/di';
 import { InvariantError, type Token } from '@fluojs/core';
+import { Container, type Provider } from '@fluojs/di';
 import {
   createDispatcher,
   createHandlerMapping,
+  type Dispatcher,
   type FrameworkRequest,
   type FrameworkResponse,
-  type HttpApplicationAdapter,
-  type Dispatcher,
   type HandlerSource,
+  type HttpApplicationAdapter,
 } from '@fluojs/http';
-
-import { DuplicateProviderError } from './errors.js';
-import { createBootstrapTimingDiagnostics, type BootstrapTimingPhase } from './health/diagnostics.js';
 import {
   applyStudioDevtoolsApplicationOptions,
   applyStudioDevtoolsContextOptions,
   createStudioDevtoolsRuntimeFromConfig,
   publishStudioBootstrapSnapshot,
 } from './devtools/studio-runtime.js';
+import { DuplicateProviderError } from './errors.js';
+import { type BootstrapTimingPhase, createBootstrapTimingDiagnostics } from './health/diagnostics.js';
 import { defineRuntimeModuleMetadata, getRuntimeClassDiMetadata } from './internal/core-metadata.js';
 import { RuntimeDefaultBinder } from './internal/http-runtime.js';
 import { createDefaultApplicationLogger } from './logging/default-logger.js';
 import { compileModuleGraph, providerToken } from './module-graph.js';
 import { createRuntimePlatformShell, type RuntimePlatformShell } from './platform-shell.js';
-import { APPLICATION_LOGGER, BOOTSTRAP_READY_SIGNAL, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from './tokens.js';
 import type { BootstrapReadySignal } from './tokens.js';
+import { APPLICATION_LOGGER, BOOTSTRAP_READY_SIGNAL, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from './tokens.js';
 import type {
-  ApplicationContext,
   Application,
+  ApplicationContext,
   ApplicationLogger,
-  MicroserviceApplication,
-  MicroserviceRuntime,
   ApplicationState,
   BootstrapApplicationOptions,
+  BootstrapEffectiveProviders,
   BootstrapModuleOptions,
   BootstrapResult,
-  BootstrapEffectiveProviders,
   CompiledModule,
-  CreateApplicationOptions,
   CreateApplicationContextOptions,
+  CreateApplicationOptions,
   CreateMicroserviceOptions,
   ExceptionFilterHandler,
+  MicroserviceApplication,
+  MicroserviceRuntime,
   ModuleDefinition,
   ModuleType,
   OnApplicationBootstrap,
@@ -863,6 +862,7 @@ class FluoApplicationContext implements ApplicationContext {
 
 class FluoMicroserviceApplication implements MicroserviceApplication {
   private closed = false;
+  private closeStarted = false;
   private closingPromise: Promise<void> | undefined;
   private listenPromise: Promise<void> | undefined;
   private microserviceState: ApplicationState = 'bootstrapped';
@@ -895,7 +895,7 @@ class FluoMicroserviceApplication implements MicroserviceApplication {
   }
 
   async listen(): Promise<void> {
-    if (this.closed || this.closingPromise || this.microserviceState === 'closed') {
+    if (this.closeStarted) {
       throw new InvariantError('Microservice cannot listen after it has been closed.');
     }
 
@@ -918,13 +918,13 @@ class FluoMicroserviceApplication implements MicroserviceApplication {
   }
 
   private async startListening(): Promise<void> {
-    if (this.closed || this.closingPromise || this.microserviceState === 'closed') {
+    if (this.closeStarted) {
       throw new InvariantError('Microservice cannot listen after it has been closed.');
     }
 
     await this.runtime.listen();
 
-    if (this.closed || this.closingPromise) {
+    if (this.closeStarted) {
       throw new InvariantError('Microservice startup was interrupted by shutdown.');
     }
 
@@ -933,6 +933,8 @@ class FluoMicroserviceApplication implements MicroserviceApplication {
   }
 
   async send(pattern: string, payload: unknown, signal?: AbortSignal): Promise<unknown> {
+    this.assertTransportIngressOpen('send');
+
     if (!this.runtime.send) {
       throw new InvariantError('Resolved microservice runtime does not implement send().');
     }
@@ -941,6 +943,8 @@ class FluoMicroserviceApplication implements MicroserviceApplication {
   }
 
   async emit(pattern: string, payload: unknown): Promise<void> {
+    this.assertTransportIngressOpen('emit');
+
     if (!this.runtime.emit) {
       throw new InvariantError('Resolved microservice runtime does not implement emit().');
     }
@@ -958,6 +962,7 @@ class FluoMicroserviceApplication implements MicroserviceApplication {
       return;
     }
 
+    this.closeStarted = true;
     this.closingPromise = (async () => {
       if (this.listenPromise) {
         try {
@@ -996,6 +1001,12 @@ class FluoMicroserviceApplication implements MicroserviceApplication {
     } catch (error) {
       this.closingPromise = undefined;
       throw error;
+    }
+  }
+
+  private assertTransportIngressOpen(operation: 'emit' | 'send'): void {
+    if (this.closeStarted) {
+      throw new InvariantError(`Microservice cannot ${operation} after shutdown has started.`);
     }
   }
 }
