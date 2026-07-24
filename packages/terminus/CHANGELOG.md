@@ -6,6 +6,14 @@
 
 - Harden health/readiness diagnostics so timed-out indicator probes do not overlap later checks for the same indicator instance, platform diagnostic keys preserve runtime payloads on user-key collisions, and Terminus docs/tests align with the runtime-owned endpoint contract.
 
+## 2.0.0
+
+### Patch Changes
+
+- Updated dependencies [[`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4), [`edf4092`](https://github.com/fluojs/fluo/commit/edf4092030e434ca306735953298d81808b69995)]:
+  - @fluojs/runtime@2.0.2
+  - @fluojs/drizzle@2.0.0
+
 ## 1.1.0
 
 ### Minor Changes

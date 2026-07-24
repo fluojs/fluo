@@ -6,6 +6,15 @@
 
 - Align websocket runtime contracts, docs, and regression coverage for room service behavior, bounded shutdown cleanup, payload normalization, and runtime-specific upgrade guard typing.
 
+## 1.0.9
+
+### Patch Changes
+
+- [#2776](https://github.com/fluojs/fluo/pull/2776) [`edf4092`](https://github.com/fluojs/fluo/commit/edf4092030e434ca306735953298d81808b69995) Thanks [@ayden94](https://github.com/ayden94)! - Raise the package-owned `ws` dependency to 8.21.0 or newer for the Node.js WebSocket runtime. Refresh consumer lockfiles when upgrading so the patched runtime is installed.
+
+- Updated dependencies [[`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4)]:
+  - @fluojs/runtime@2.0.2
+
 ## 1.0.8
 
 ### Patch Changes

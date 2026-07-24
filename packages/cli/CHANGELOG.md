@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## 2.0.2
+
+### Patch Changes
+
+- [#2776](https://github.com/fluojs/fluo/pull/2776) [`edf4092`](https://github.com/fluojs/fluo/commit/edf4092030e434ca306735953298d81808b69995) Thanks [@ayden94](https://github.com/ayden94)! - Raise the CLI and generated Node.js starter `tsx` floor to 4.23.1, and generate gRPC starters with `@grpc/grpc-js` 1.14.4 or newer. Refresh existing project lockfiles when adopting these patched toolchain floors.
+
+- Updated dependencies [[`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4)]:
+  - @fluojs/runtime@2.0.2
+
 ## 2.0.1
 
 ### Patch Changes

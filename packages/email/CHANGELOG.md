@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## 3.0.0
+
+### Major Changes
+
+- [#2776](https://github.com/fluojs/fluo/pull/2776) [`edf4092`](https://github.com/fluojs/fluo/commit/edf4092030e434ca306735953298d81808b69995) Thanks [@ayden94](https://github.com/ayden94)! - Require Nodemailer 9.0.1 or newer for the Node SMTP subpath. Upgrade Nodemailer 6, 7, or 8 consumers to `nodemailer@^9.0.1`, refresh the application lockfile, and validate provider-specific SMTP options before adopting this release; the fluo transport factory API is unchanged.
+
+### Patch Changes
+
+- Updated dependencies [[`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4)]:
+  - @fluojs/runtime@2.0.2
+
 ## 2.0.0
 
 ### Major Changes

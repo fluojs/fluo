@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## 2.0.0
+
+### Major Changes
+
+- [#2776](https://github.com/fluojs/fluo/pull/2776) [`edf4092`](https://github.com/fluojs/fluo/commit/edf4092030e434ca306735953298d81808b69995) Thanks [@ayden94](https://github.com/ayden94)! - Require Drizzle ORM 0.45.2 or newer. Consumers using an older Drizzle ORM release must upgrade the peer, refresh their lockfile, and run driver-specific query and migration tests before adopting this release; the fluo integration API is unchanged.
+
+### Patch Changes
+
+- Updated dependencies [[`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4)]:
+  - @fluojs/runtime@2.0.2
+
 ## 1.1.1
 
 ### Patch Changes

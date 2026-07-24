@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## 2.0.0
+
+### Major Changes
+
+- [#2776](https://github.com/fluojs/fluo/pull/2776) [`edf4092`](https://github.com/fluojs/fluo/commit/edf4092030e434ca306735953298d81808b69995) Thanks [@ayden94](https://github.com/ayden94)! - Require `@grpc/grpc-js` 1.14.4 or newer for the optional gRPC transport. Upgrade the peer and refresh consumer lockfiles so the proto-loader chain resolves `protobufjs` 7.6.5 or newer; the fluo transport API is unchanged.
+
+### Patch Changes
+
+- Updated dependencies [[`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4)]:
+  - @fluojs/runtime@2.0.2
+
 ## 1.0.5
 
 ### Patch Changes

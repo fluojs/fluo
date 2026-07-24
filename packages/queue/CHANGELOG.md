@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## 2.0.1
+
+### Patch Changes
+
+- [#2776](https://github.com/fluojs/fluo/pull/2776) [`edf4092`](https://github.com/fluojs/fluo/commit/edf4092030e434ca306735953298d81808b69995) Thanks [@ayden94](https://github.com/ayden94)! - Raise BullMQ to 5.81.1 or newer so consumers install its patched dependency graph. Refresh application lockfiles when upgrading; queue registration, worker discovery, and persisted-job contracts are unchanged.
+
+- Updated dependencies [[`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4)]:
+  - @fluojs/runtime@2.0.2
+
 ## 2.0.0
 
 ### Major Changes
