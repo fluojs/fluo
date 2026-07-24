@@ -146,6 +146,10 @@ The Cron NestJS migration surfaces record that NestJS `timeZone` becomes fluo `t
 
 The Cron dynamic scheduling contract is aligned across `packages/cron/README.md`, [`docs/reference/package-surface.md`](./reference/package-surface.md), and [`book/intermediate/ch12-cron.md`](../book/intermediate/ch12-cron.md): disabling or removing a task clears its scheduler handle only after `stop()` succeeds. A stop failure remains observable through logging and a `false` result, keeps the handle registered for retry, leaves a failed disable logically disabled, and keeps a failed removal registered.
 
+## Cron Post-Task Release Deadline
+
+The Cron shutdown contract is aligned across `packages/cron/README.md`, [`docs/architecture/lifecycle-and-shutdown.md`](./architecture/lifecycle-and-shutdown.md), [`docs/reference/package-surface.md`](./reference/package-surface.md), and [`book/intermediate/ch12-cron.md`](../book/intermediate/ch12-cron.md): after shutdown starts, task-finally Redis release and its immediate stopped-state retry share one deadline capped by `shutdown.timeoutMs`. If Redis does not confirm release before that deadline, the platform status snapshot continues to expose the unresolved local ownership.
+
 ## HTTP Catch-All Decision
 
 [`docs/architecture/http-catch-all-route-grammar.md`](./architecture/http-catch-all-route-grammar.md) defers catch-all adoption. `@fluojs/http` continues to accept only literal and full-segment `:param` route segments, while `@fluojs/react/client` real anchors provide ordinary full-document fallback to explicit server routes without creating a client route grammar. Reconsideration requires an HTTP-owned syntax, `static > param > catch-all` ordering, string params, OpenAPI policy, adapter parity, native fast path decisions, and performance evidence.
