@@ -66,10 +66,21 @@ fluo -v
 몇 초 만에 완전한 스타터 애플리케이션을 스캐폴딩합니다.
 
 ```bash
-fluo new my-app
+fluo new my-app --package-manager pnpm
 cd my-app
 pnpm dev
 ```
+
+이 예제는 `pnpm`을 명시하므로 성공한 모든 스캐폴드는 같은 완료 블록으로 끝납니다.
+
+```text
+Done.
+Next steps:
+  cd ./my-app
+  pnpm dev  # runs fluo dev
+```
+
+Non-interactive 출력에서는 이 블록 전에 설치 시 `Installing dependencies with pnpm...`과 package manager 출력이 나타나고, `--no-install` 사용 시 `Skipping dependency installation.`이 나타납니다. Interactive terminal에서는 wizard가 이러한 non-interactive stdout line 대신 status UI(`Dependencies installed` 또는 `Dependency installation skipped`)로 같은 설치 상태를 알린 뒤 공통 완료 블록을 출력합니다. pnpm 설치가 완료되면 `pnpm-lock.yaml`이 생성되며, `--no-install`을 사용하면 생성 프로젝트에서 `pnpm install`을 실행할 때까지 이 파일이 없습니다. `--package-manager pnpm`을 생략하면 CLI가 현재 invocation 또는 workspace signal을 바탕으로 manager를 선택하고 신호가 없으면 pnpm을 사용하므로, 다음 단계 명령과 lockfile도 선택된 manager에 맞게 달라집니다. 다른 manager는 설치 시 `pnpm-lock.yaml` 대신 각자의 lockfile을 생성합니다.
 
 `fluo create`는 `fluo new`의 alias입니다. 버전 확인, 명령 도움말, 진단, first-party package shortcut, upgrade 안내가 필요하면 `fluo version`, `fluo help <command>`, `fluo doctor`/`fluo info`/`fluo analyze`, `fluo add`, `fluo upgrade`를 사용하세요.
 

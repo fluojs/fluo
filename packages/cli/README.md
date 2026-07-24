@@ -66,10 +66,21 @@ The update check is skipped in CI, non-TTY output, npm-script contexts, rerun-af
 Scaffold a complete starter application in seconds.
 
 ```bash
-fluo new my-app
+fluo new my-app --package-manager pnpm
 cd my-app
 pnpm dev
 ```
+
+This example pins `pnpm`, so every successful scaffold ends with the same completion block:
+
+```text
+Done.
+Next steps:
+  cd ./my-app
+  pnpm dev  # runs fluo dev
+```
+
+In non-interactive output, an install prints `Installing dependencies with pnpm...` and the package-manager output before that block, while `--no-install` prints `Skipping dependency installation.`. In an interactive terminal, the wizard reports the same install state through its status UI (`Dependencies installed` or `Dependency installation skipped`) instead of those non-interactive stdout lines, then prints the common completion block. A completed pnpm install writes `pnpm-lock.yaml`; `--no-install` leaves it absent until you run `pnpm install` in the generated project. If you omit `--package-manager pnpm`, the CLI selects a manager from the current invocation or workspace signals and falls back to pnpm, so both the next-step command and the lockfile become manager-specific; other managers write their own lockfile instead of `pnpm-lock.yaml` when installation runs.
 
 `fluo create` is an alias for `fluo new`. Use `fluo version`, `fluo help <command>`, `fluo doctor`/`fluo info`/`fluo analyze`, `fluo add`, and `fluo upgrade` for version checks, command help, diagnostics, first-party package shortcuts, and upgrade guidance.
 
