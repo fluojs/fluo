@@ -130,7 +130,7 @@ v2.1.0에서 distributed cron flow는 다음과 같습니다.
 
 이 패턴은 설명하기 쉽습니다. 이는 좋은 신호입니다. 분산 coordination은 incident 상황에서도 운영자가 추론할 수 있을 만큼 명시적이어야 합니다.
 
-Lock release는 task execution 뒤 `finally` 경로에서 실행됩니다. Redis가 release 시점에 일시적으로 사용할 수 없으면 fluo는 shutdown 중 재시도할 수 있도록 local ownership을 계속 드러냅니다. Shutdown이 시작된 뒤에는 active-task drain timeout 뒤에 task가 settle되는 경우까지 post-task release와 즉시 이어지는 stopped-state retry가 `shutdown.timeoutMs`로 제한된 하나의 deadline을 공유합니다. Deadline이 소진되면 lock을 지운 것처럼 처리하지 않고 local ownership을 보존합니다. 그래도 Redis TTL과 renewal은 drift 영향을 받는 coordination primitive이지 완전한 fencing system이 아닙니다. Stale write가 위험하다면 job body에 application-level idempotency 또는 fencing check를 포함해야 합니다.
+Lock release는 task execution 뒤 `finally` 경로에서 실행됩니다. Redis가 release 시점에 일시적으로 사용할 수 없으면 fluo는 shutdown 중 재시도할 수 있도록 local ownership을 계속 드러냅니다. Post-task release와 즉시 이어지는 stopped-state retry는 shutdown 시작 시 설정된 deadline의 남은 시간만 사용하며, deadline 뒤에 task가 settle되어도 새 release window를 열지 않습니다. Deadline이 소진되면 lock을 지운 것처럼 처리하지 않고 local ownership을 보존합니다. 그래도 Redis TTL과 renewal은 drift 영향을 받는 coordination primitive이지 완전한 fencing system이 아닙니다. Stale write가 위험하다면 job body에 application-level idempotency 또는 fencing check를 포함해야 합니다.
 
 ## 12.5 Lock TTL and named Redis clients
 
@@ -164,7 +164,7 @@ export class CampaignWindowService {
 
 ## 12.7 Bounded shutdown
 
-README에서 가장 실용적인 내용 중 하나는 shutdown에 관한 부분입니다. `CronModule`은 애플리케이션 shutdown 중 active task execution을 drain하지만, bounded timeout까지만 기다립니다. 문서화된 기본값은 `10_000ms`입니다. 같은 timeout은 shutdown 중 Redis owned-lock release I/O도 제한하며, drain timeout 뒤에 시작된 task-finally release와 immediate retry도 하나의 shared deadline 안에 둡니다. 그 이후에는 fluo가 warning을 남기고, release를 확인하지 못한 lock의 local ownership을 보존한 채 shutdown을 계속 진행합니다. 이는 운영적으로 성숙한 선택입니다. 하나의 hung scheduler task나 stuck Redis release가 process termination을 영원히 막아서는 안 되기 때문입니다.
+README에서 가장 실용적인 내용 중 하나는 shutdown에 관한 부분입니다. `CronModule`은 애플리케이션 shutdown 중 active task execution을 drain하지만, bounded timeout까지만 기다립니다. 문서화된 기본값은 `10_000ms`입니다. 같은 shutdown-start deadline이 task-finally release와 immediate retry를 포함한 Redis owned-lock release I/O를 제한하며, late task settlement는 deadline을 재설정하지 않습니다. 그 이후에는 fluo가 warning을 남기고, release를 확인하지 못한 lock의 local ownership을 보존한 채 shutdown을 계속 진행합니다. 이는 운영적으로 성숙한 선택입니다. 하나의 hung scheduler task나 stuck Redis release가 process termination을 영원히 막아서는 안 되기 때문입니다.
 
 ### 12.7.1 Why this matters in FluoShop
 
