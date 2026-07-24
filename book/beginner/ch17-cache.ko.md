@@ -139,7 +139,7 @@ export class AppModule {}
 ### 17.3.4 Cache Persistence and Reliability
 캐시는 일반적으로 "휘발성" 저장소로 간주되지만, Redis와 같은 일부 제공자는 **영속성(Persistence)** 기능을 제공합니다. 캐시 데이터의 주기적인 스냅샷(RDB)을 생성하거나 모든 수정 사항을 로그(AOF)로 기록함으로써, 시스템 재부팅 후에도 캐시를 "따뜻하게(warm)" 유지할 수 있습니다. 이는 데이터베이스에서 캐시를 재구축하는 데 수 시간이 걸리는 대규모 데이터 세트를 가진 애플리케이션에 특히 유용합니다.
 
-그러나 영속성은 쓰기 성능에 영향을 줄 수 있으므로 주의해야 합니다. 대부분의 Fluo 애플리케이션에서는 최대 속도를 위해 영속성이 없는 기본 모드를 선호합니다. 캐시 서버가 다운되면 애플리케이션은 캐시가 복구될 때까지 데이터베이스로 폴백하여 기능을 수행합니다. 이러한 "Fail-soft" 동작은 고가용성 시스템의 핵심 설계 원칙이며, 한 구성 요소의 실패가 전체 서비스 중단으로 이어지지 않도록 보장합니다.
+그러나 영속성은 쓰기 성능에 영향을 줄 수 있으므로 주의해야 합니다. 대부분의 Fluo 애플리케이션에서는 최대 속도를 위해 영속성이 없는 기본 모드를 선호합니다. 실패 동작은 캐시 호출 방식에 따라 달라집니다. `CacheInterceptor`가 감싼 HTTP route에서는 interceptor가 store read 실패를 cache miss로 취급하고 store write 또는 eviction 실패를 내부에 격리하므로, 캐시 저장소 오류 외에는 정상인 handler가 계속 완료될 수 있습니다. 이 route 전용 격리는 명시적인 `CacheService` operation에는 적용되지 않습니다. `get`, `set`, `remember`, `del`, `reset`은 store 작업을 기다리며, 애플리케이션이 오류를 catch하지 않으면 해당 작업 실패로 reject됩니다. 각 수동 호출 지점에서 cache가 필수인지 fail-soft여야 하는지 결정하고, 오류를 격리할 때도 log나 metric을 남기세요.
 
 ## 17.4 Automatic Response Caching
 성능을 향상시키는 가장 쉬운 방법은 전체 HTTP 응답을 캐싱하는 것입니다. Fluo는 이 목적을 위해 `CacheInterceptor`를 제공합니다. 특정 라우트에 이 인터셉터를 적용하면 아직 commit되지 않은 성공적인 GET 결과가 자동으로 캐싱되어, 이후 들어오는 동일한 요청에 대해 캐시된 내용을 즉시 반환합니다.
@@ -221,7 +221,9 @@ export class WeatherService {
 ```
 
 ### 17.5.1 The "Cache-Aside" Pattern
-이는 전형적인 **Cache-Aside** 패턴의 구현입니다. 애플리케이션 코드는 먼저 캐시를 확인하고, 데이터가 없는 경우에만 실제 소스(데이터베이스나 API)를 조회한 뒤 캐시를 채웁니다. 이 방식은 실제로 요청되는 데이터만 캐시에 담기도록 보장하여 메모리 사용을 최적화합니다. 또한 시스템의 복원력을 높여줍니다. 캐시 서버가 다운되더라도 애플리케이션은 기본 데이터베이스로 폴백하여 기능을 계속 수행할 수 있습니다(속도는 느려지겠지만요).
+이는 전형적인 **Cache-Aside** 패턴의 구현입니다. 애플리케이션 코드는 먼저 캐시를 확인하고, 데이터가 없는 경우에만 실제 소스(데이터베이스나 API)를 조회한 뒤 캐시를 채웁니다. 이 방식은 실제로 요청되는 데이터만 캐시에 담기도록 보장하여 메모리 사용을 최적화합니다.
+
+직접 API를 호출하는 위 예제는 자동으로 fail-soft가 되지 않습니다. Store를 사용할 수 없으면 `await this.cache.get(...)`은 cache miss가 되는 대신 reject되고, 기본 데이터 소스 조회가 성공한 뒤에도 `await this.cache.set(...)`이 reject될 수 있습니다. 선택적인 수동 cache를 fail-soft로 만들려면 read 오류를 catch하고 보고한 뒤 기본 데이터 소스 조회를 계속하고, 원본 결과를 반환하기 전에 write 오류도 catch하고 보고하세요. 애플리케이션 정확성이 cache operation에 의존한다면 대신 rejection을 그대로 노출하세요. `CacheService`는 `CacheInterceptor`의 route-level 실패 격리를 상속하지 않고 이 정책을 명시적인 애플리케이션 책임으로 둡니다.
 
 ### 17.5.2 Atomic Operations and Concurrency
 트래픽이 많은 환경에서 수동 캐시 관리를 사용할 때는 경쟁 상태(race condition)를 주의해야 합니다. 누락된 키에 대해 두 개의 요청이 동시에 들어오면 둘 다 고비용의 데이터베이스 쿼리를 실행할 수 있습니다. 내장 `CacheService.remember(...)`는 현재 `CacheService` 인스턴스 하나 안에서만 같은 키의 동시 miss를 합쳐 주므로, 단일 프로세스 내부 중복 완화에는 도움이 됩니다. 하지만 이것이 분산 락이나 다중 인스턴스 스탬피드 방지 기능을 의미하지는 않습니다. 여러 노드가 있는 배포에서는 선택한 저장소의 원자적 연산이나 별도 조정 전략을 함께 검토해야 합니다.
@@ -250,7 +252,7 @@ export class PostsController {
 }
 ```
 
-지원되는 이 route 경로에서는 non-GET handler가 성공하고 HTTP response가 commit된 뒤 eviction이 실행됩니다. `@CacheEvict(...)`를 controller 경계에 두면 interceptor가 response-aware timing을 담당하고, service layer invalidation은 `CacheService`를 통해 명시적이고 테스트 가능한 형태로 유지됩니다.
+지원되는 이 route 경로에서는 non-GET handler가 성공하고 HTTP response가 commit된 뒤 eviction이 실행됩니다. `@CacheEvict(...)`를 controller 경계에 두면 interceptor가 response-aware timing을 담당하고, 성공한 handler 이후의 store 삭제 실패도 내부에 격리합니다. Service layer invalidation은 `CacheService`를 통해 명시적이고 테스트 가능한 형태로 유지됩니다. `await cache.del(...)`에는 HTTP response-commit 경계가 없으며, caller가 catch하거나 retry하지 않으면 store 삭제 실패가 그대로 전파됩니다.
 
 이러한 고급 수동 패턴을 자동 응답 캐싱과 결합하면 Fluo 백엔드의 성능과 신뢰성을 함께 높이는 효율적인 데이터 계층을 만들 수 있습니다. 캐싱의 목표는 사용자에게 가능한 가장 빠른 응답을 제공하는 동시에 기본 데이터 소스의 부하를 줄이는 것임을 항상 기억하십시오. 이 레이어에서 수행하는 모든 최적화는 전반적으로 더 확장 가능하고 복원력 있는 시스템을 만드는 데 기여합니다.
 

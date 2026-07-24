@@ -139,7 +139,7 @@ This boundary also matters for operations. If you need extremely fast responses 
 ### 17.3.4 Cache Persistence and Reliability
 Although caches are usually considered "volatile" storage, some providers such as Redis offer **persistence** features. By creating periodic snapshots of cache data, or RDB, or recording every modification in a log, or AOF, Redis can keep the cache "warm" after a system reboot. This is especially useful for applications with large datasets that would take hours to rebuild from the database.
 
-However, persistence can affect write performance, so use it carefully. Most Fluo applications prefer the default non-persistent mode for maximum speed. If the cache server goes down, the application falls back to the database until the cache recovers. This "fail-soft" behavior is a key design principle of high-availability systems because it prevents a single component failure from turning into a full service outage.
+However, persistence can affect write performance, so use it carefully. Most Fluo applications prefer the default non-persistent mode for maximum speed. Failure behavior then depends on how the cache is called. On HTTP routes wrapped by `CacheInterceptor`, the interceptor treats store read failures as cache misses and contains store write or eviction failures, so an otherwise successful handler can continue. This route-only isolation does not apply to explicit `CacheService` operations: `get`, `set`, `remember`, `del`, and `reset` await store work and reject when that work fails unless the application catches the error. Decide at each manual call site whether the cache is critical or should fail soft, and preserve logs or metrics when containing an error.
 
 ## 17.4 Automatic Response Caching
 The easiest way to improve performance is to cache entire HTTP responses. Fluo provides `CacheInterceptor` for this purpose. When this Interceptor is applied to a specific route, successful uncommitted GET results are cached automatically, and later identical requests return the cached content immediately.
@@ -221,7 +221,9 @@ export class WeatherService {
 ```
 
 ### 17.5.1 The "Cache-Aside" Pattern
-This is a classic implementation of the **Cache-Aside** pattern. The application code checks the cache first, queries the real source, such as a database or API, only when the data is missing, then fills the cache. This approach optimizes memory use by ensuring only data that is actually requested enters the cache. It also improves system resilience. If the cache server goes down, the application can fall back to the primary database and keep functioning, although more slowly.
+This is a classic implementation of the **Cache-Aside** pattern. The application code checks the cache first, queries the real source, such as a database or API, only when the data is missing, then fills the cache. This approach optimizes memory use by ensuring only data that is actually requested enters the cache.
+
+The direct API example is not automatically fail-soft. If the store is unavailable, `await this.cache.get(...)` rejects instead of becoming a cache miss, and `await this.cache.set(...)` can reject after the primary source succeeds. To make an optional manual cache fail soft, catch and report read errors before continuing to the primary source, then catch and report write errors before returning the source result. If application correctness depends on the cache operation, let the rejection surface instead. `CacheService` keeps that policy explicit rather than inheriting `CacheInterceptor`'s route-level failure isolation.
 
 ### 17.5.2 Atomic Operations and Concurrency
 When using manual cache management in high-traffic environments, watch for race conditions. If two requests for a missing key arrive at the same time, both may run the expensive database query. The built-in `CacheService.remember(...)` helps only within the current `CacheService` instance by de-duplicating concurrent misses for the same key in that one process. It is useful for single-process overlap, but it is not a distributed lock or a cross-instance stampede shield. For multi-node deployments, review atomic operations provided by the selected store or add a separate coordination strategy.
@@ -250,7 +252,7 @@ export class PostsController {
 }
 ```
 
-On this supported route path, eviction runs after the non-GET handler succeeds and the HTTP response commits. Keeping `@CacheEvict(...)` at the controller boundary makes the interceptor responsible for response-aware timing, while service-layer invalidation stays explicit and testable through `CacheService`.
+On this supported route path, eviction runs after the non-GET handler succeeds and the HTTP response commits. Keeping `@CacheEvict(...)` at the controller boundary makes the interceptor responsible for response-aware timing and contains a store deletion failure after the successful handler. Service-layer invalidation stays explicit and testable through `CacheService`: `await cache.del(...)` has no HTTP response-commit boundary and propagates a store deletion failure unless the caller catches or retries it.
 
 By combining these advanced manual patterns with automatic response caching, you can create a highly efficient data layer that maximizes the performance and reliability of your Fluo backend. Always remember that the goal of caching is to give users the fastest possible response while reducing load on the primary data source. Every optimization you make in this layer contributes to a more scalable and resilient system overall.
 
