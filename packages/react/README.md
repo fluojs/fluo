@@ -664,10 +664,11 @@ This package currently does **not** provide:
 - `ReactRouterMetadata`, `ReactPathMetadata`, `ReactPathOptions` — type-only metadata contracts for
   diagnostics and future rendering integration.
 - `@fluojs/react/vite` subpath — `createReactViteAssetManifest(...)` plus
-  `ReactViteBuildManifest`, `ReactViteBuildManifestChunk`, `ReactViteManifestOptions`,
-  `ReactViteManifestDiagnostic`, `ReactViteAssetManifest`, `ReactViteHydrationOptions`,
-  `ReactViteJavaScriptAssets`, `ReactViteBootstrapData`, and `ReactViteResolvedEntry` for parsing
-  Vite manifests into the stable hydration asset contract without importing Vite from the root.
+  `ReactViteBuildManifest`, `ReactViteBuildManifestChunk`, `ReactViteManifestEntries`,
+  `ReactViteManifestOptions`, `ReactViteManifestDiagnostic`, `ReactViteManifestDiagnosticCode`,
+  `ReactViteAssetManifest`, `ReactViteAssetManifestResult`, `ReactViteHydrationOptions`,
+  `ReactViteJavaScriptAssets`, `ReactViteBootstrapData`, and `ReactViteResolvedEntry` for parsing Vite
+  manifests into the stable hydration asset contract without importing Vite from the root.
 - `@fluojs/react/client` subpath — `Link`, `ReactClientRouterProvider`,
   `createReactRouteSnapshot(...)`, `useRouter()`, `usePathname()`, `useParams()`,
   `useSearchParams()`, `useNavigation()`, and `useRouterState()` for progressive HTTP-first browser
