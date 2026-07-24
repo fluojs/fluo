@@ -611,7 +611,7 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // lifecycle contracts such as enabled TTL validation before Redis I/O,
   // bounded shutdown lock-release I/O, timeout ownership retention, dynamic
   // blank-name rejection, immutable registry descriptor snapshots, failed-stop
-  // scheduler handle retention for retryable registry removal, and
+  // scheduler handle retention for retryable registry disable/removal, and
   // microservices facade shutdown signal forwarding plus transport-owned
   // cancellation cleanup docs/tests, Queue's package-level Node.js runtime
   // floor discoverability and Queue migration from NestJS/Bull processor metadata
