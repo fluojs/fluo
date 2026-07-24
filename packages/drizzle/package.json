@@ -48,7 +48,7 @@
     "@fluojs/runtime": "workspace:^"
   },
   "peerDependencies": {
-    "drizzle-orm": ">=0.30.0"
+    "drizzle-orm": ">=0.45.2"
   },
   "peerDependenciesMeta": {
     "drizzle-orm": {

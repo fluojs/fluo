@@ -37,10 +37,12 @@ npm install @fluojs/notifications @fluojs/queue
 Install `nodemailer` only when you use the explicit `@fluojs/email/node` subpath for Node-only SMTP delivery.
 
 ```bash
-npm install @fluojs/email nodemailer
+npm install @fluojs/email nodemailer@^9.0.1
 ```
 
 Node-specific SMTP delivery is available from the explicit `@fluojs/email/node` subpath. Queue-backed notifications integration is available from `@fluojs/email/queue`, and `@fluojs/queue` is declared as an optional peer for that subpath. The root `@fluojs/email` entrypoint stays transport-agnostic so Bun, Deno, Cloudflare, and custom HTTP transports do not inherit Node-only or queue-specific behavior.
+
+`@fluojs/email/node` requires Nodemailer `^9.0.1`. Consumers upgrading from Nodemailer 6, 7, or 8 must upgrade the peer and refresh their lockfile before adopting this major `@fluojs/email` release. The fluo transport factory API is unchanged, but applications should validate provider-specific SMTP options against Nodemailer 9 when migrating.
 
 ## When to Use
 

@@ -18,6 +18,12 @@ type UpgradeGuardRequest<TOptions> = TOptions extends { upgrade?: { guard?: (req
   : never;
 
 describe('@fluojs/websockets public surface', () => {
+  it('declares the patched ws dependency floor', () => {
+    const packageManifest = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
+
+    expect(packageManifest).toContain('"ws": "^8.21.0"');
+  });
+
   it('keeps root package imports behind runtime-neutral source boundaries', () => {
     const rootEntrypoint = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
     const rootModule = readFileSync(new URL('./module.ts', import.meta.url), 'utf8');

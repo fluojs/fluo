@@ -34,7 +34,7 @@ describe('@fluojs/microservices root barrel public surface', () => {
     const readme = readFileSync(resolve(import.meta.dirname, '../README.md'), 'utf8');
 
     expect(packageJson.peerDependencies).toMatchObject({
-      '@grpc/grpc-js': '^1.0.0',
+      '@grpc/grpc-js': '^1.14.4',
       '@grpc/proto-loader': '^0.8.0',
       ioredis: '^5.0.0',
       mqtt: '^5.0.0',

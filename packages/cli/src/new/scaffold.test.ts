@@ -890,7 +890,7 @@ describe('scaffoldBootstrapApp', () => {
 
     expect(packageJson.dependencies).toMatchObject({
       '@fluojs/microservices': expect.any(String),
-      '@grpc/grpc-js': '^1.0.0',
+      '@grpc/grpc-js': '^1.14.4',
       '@grpc/proto-loader': '^0.8.0',
     });
     expect(readme).toContain('Transport: `grpc` is the generated runnable starter contract for this project');

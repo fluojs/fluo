@@ -52,7 +52,7 @@
     "graphql": "^16.13.1",
     "graphql-ws": "^5.16.2",
     "graphql-yoga": "^5.18.1",
-    "ws": "^8.18.3"
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/ws": "^8.18.1",

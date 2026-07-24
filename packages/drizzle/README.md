@@ -23,10 +23,12 @@ Node.js-only Drizzle ORM integration for fluo with a transaction-aware database 
 ## Installation
 
 ```bash
-npm install @fluojs/drizzle drizzle-orm
+npm install @fluojs/drizzle drizzle-orm@^0.45.2
 # Install the driver for your Drizzle adapter as well, for example:
 npm install pg
 ```
+
+`@fluojs/drizzle` requires Drizzle ORM `>=0.45.2`. Consumers using an older Drizzle ORM release must upgrade the peer and refresh their lockfile before adopting this major `@fluojs/drizzle` release. The fluo integration API is unchanged, but applications should run their driver-specific query and migration tests against the upgraded ORM.
 
 ## Runtime Support
 

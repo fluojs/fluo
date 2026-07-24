@@ -23,6 +23,8 @@ npm install @fluojs/websockets
 
 Root Node.js module path는 `WebSocketModule.forRoot()`가 runtime에서 해석될 때만 패키지가 직접 소유한 `ws` dependency를 사용합니다. 애플리케이션 코드에서 `ws`를 직접 사용하지 않는 한 별도 설치가 필요하지 않습니다.
 
+`@fluojs/websockets`은 `ws@^8.21.0`을 포함합니다. 업그레이드할 때 application lockfile을 갱신해 패치된 package-owned Node.js WebSocket runtime이 설치되도록 하세요. Bun, Deno, Cloudflare Workers subpath는 계속 각 runtime이 소유한 WebSocket 구현을 사용합니다.
+
 ## 사용 시점
 
 fluo 애플리케이션에 실시간 WebSocket 기능을 추가할 때 이 패키지를 사용합니다. 연결, 메시지 및 연결 해제 처리를 위한 깔끔한 데코레이터 기반 API를 제공하며, 다양한 런타임(Node.js, Bun, Deno, Cloudflare Workers)을 최고 수준으로 지원합니다.

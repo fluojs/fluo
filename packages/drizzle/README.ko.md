@@ -23,10 +23,12 @@ Node.js 전용 트랜잭션 인지형 데이터베이스 래퍼와 선택적 dis
 ## 설치
 
 ```bash
-npm install @fluojs/drizzle drizzle-orm
+npm install @fluojs/drizzle drizzle-orm@^0.45.2
 # 사용하는 Drizzle adapter에 맞는 driver도 함께 설치하세요. 예:
 npm install pg
 ```
+
+`@fluojs/drizzle`은 Drizzle ORM `>=0.45.2`를 요구합니다. 더 오래된 Drizzle ORM release를 사용하던 consumer는 이 major `@fluojs/drizzle` release를 적용하기 전에 peer를 업그레이드하고 lockfile을 갱신해야 합니다. fluo integration API는 그대로지만, 애플리케이션은 업그레이드된 ORM을 대상으로 driver별 query 및 migration test를 실행해야 합니다.
 
 ## 런타임 지원
 

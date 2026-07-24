@@ -37,10 +37,12 @@ npm install @fluojs/notifications @fluojs/queue
 명시적인 `@fluojs/email/node` 서브패스로 Node 전용 SMTP 전달을 사용할 때만 `nodemailer`를 설치하면 됩니다.
 
 ```bash
-npm install @fluojs/email nodemailer
+npm install @fluojs/email nodemailer@^9.0.1
 ```
 
 Node 전용 SMTP 전달은 명시적인 `@fluojs/email/node` 서브패스에서 사용할 수 있습니다. queue 기반 notifications 통합은 `@fluojs/email/queue` 서브패스에 있으며, 이 서브패스용 `@fluojs/queue`는 루트 설치 필수가 아닌 optional peer로 선언됩니다. 루트 `@fluojs/email` 엔트리포인트는 계속 transport-agnostic 상태를 유지하므로 Bun, Deno, Cloudflare, 커스텀 HTTP transport가 Node 전용 또는 queue 전용 동작을 함께 끌어오지 않습니다.
+
+`@fluojs/email/node`는 Nodemailer `^9.0.1`을 요구합니다. Nodemailer 6, 7, 8을 사용하던 consumer는 이 major `@fluojs/email` release를 적용하기 전에 peer를 업그레이드하고 lockfile을 갱신해야 합니다. fluo transport factory API는 그대로지만, migration 시 provider별 SMTP option이 Nodemailer 9와 호환되는지 확인하세요.
 
 ## 사용 시점
 

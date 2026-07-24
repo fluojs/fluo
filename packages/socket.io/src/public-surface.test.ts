@@ -16,6 +16,12 @@ import type {
 const sourceDir = dirname(fileURLToPath(import.meta.url));
 
 describe('@fluojs/socket.io public surface', () => {
+  it('requires the patched Socket.IO peer floor', () => {
+    const packageManifest = readFileSync(resolve(sourceDir, '../package.json'), 'utf8');
+
+    expect(packageManifest).toContain('"socket.io": "^4.8.3"');
+  });
+
   it('keeps the Bun engine dependency out of the Node module-load path', () => {
     const adapterSource = readFileSync(resolve(sourceDir, 'adapter.ts'), 'utf8');
 

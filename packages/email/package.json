@@ -66,7 +66,7 @@
   },
   "peerDependencies": {
     "@fluojs/queue": "workspace:^",
-    "nodemailer": "^6.10.1"
+    "nodemailer": "^9.0.1"
   },
   "peerDependenciesMeta": {
     "@fluojs/queue": {

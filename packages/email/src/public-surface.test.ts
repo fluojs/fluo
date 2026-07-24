@@ -64,7 +64,7 @@ describe('@fluojs/email public API surface', () => {
     expect(packageJson.dependencies).not.toHaveProperty('nodemailer');
     expect(packageJson.peerDependencies).toMatchObject({
       '@fluojs/queue': 'workspace:^',
-      nodemailer: '^6.10.1',
+      nodemailer: '^9.0.1',
     });
     expect(packageJson.peerDependenciesMeta).toMatchObject({
       '@fluojs/queue': {

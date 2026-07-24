@@ -1211,10 +1211,10 @@ describe('repository governance contracts', () => {
       'run: pnpm vitest run $' + '{{ needs.resolve-pr-verification-scope.outputs.test_paths }}',
     );
     expect(ciWorkflow).toContain("if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped'");
-    expect(ciWorkflow).toContain('run: pnpm vitest run --project packages');
-    expect(ciWorkflow).toContain('run: pnpm vitest run --project apps');
-    expect(ciWorkflow).toContain('run: pnpm vitest run --project examples');
-    expect(ciWorkflow).toContain('run: pnpm vitest run --project tooling');
+    expect(ciWorkflow).toContain('run: pnpm vitest run --project packages --maxWorkers=1');
+    expect(ciWorkflow).toContain('run: pnpm vitest run --project apps --maxWorkers=1');
+    expect(ciWorkflow).toContain('run: pnpm vitest run --project examples --maxWorkers=1');
+    expect(ciWorkflow).toContain('run: pnpm vitest run --project tooling --maxWorkers=1');
     expect(ciWorkflow).toContain('FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/packages');
     expect(ciWorkflow).toContain('FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/tooling');
     expect(ciWorkflow).toContain("hashFiles('.artifacts/vitest-shutdown-debug/**/*.json') != ''");

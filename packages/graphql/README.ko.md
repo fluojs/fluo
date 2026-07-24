@@ -22,6 +22,8 @@ fluo를 위한 데코레이터 기반 GraphQL 통합 패키지입니다. **Graph
 pnpm add @fluojs/graphql graphql graphql-yoga
 ```
 
+`@fluojs/graphql`은 선택적 GraphQL-over-WebSocket subscription을 위해 `ws@^8.21.0`을 포함합니다. 업그레이드할 때 application lockfile을 갱신해 패치된 package-owned WebSocket runtime이 설치되도록 하세요. 애플리케이션이 `ws`를 직접 import하지 않는 한 별도로 추가할 필요는 없습니다.
+
 `@fluojs/graphql`은 Node.js `>=20.16.0`을 지원하며, 이 유효 하한을 `engines.node`로 선언합니다. 필수 dependency graph는 `@fluojs/runtime`을 통해 `@fluojs/config`에 도달하며, `@fluojs/config`도 Node.js `>=20.16.0`을 요구합니다. 다른 필수 first-party dependency가 선언한 더 낮은 하한은 이 범위와 호환됩니다. HTTP query/mutation과 기본 SSE subscription 경로는 내부적으로 Web-standard request/response primitive를 사용하지만, 이 구현 세부 사항이 Bun, Deno, Cloudflare Workers에 대한 package 지원을 의미하지는 않습니다. 전체 dependency metadata와 native runtime suite가 완전한 GraphQL 계약을 입증하기 전까지 해당 runtime은 지원하지 않습니다. 선택적 WebSocket subscription에는 server-backed Node HTTP/S upgrade 표면을 노출하는 adapter도 필요합니다.
 
 ## 사용 시점
