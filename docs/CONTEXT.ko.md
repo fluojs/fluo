@@ -142,6 +142,10 @@ CLI와 Studio diagnostics discoverability는 CLI 패키지, Studio 패키지, go
 
 Cron NestJS migration surface는 NestJS `timeZone`을 fluo `timezone`으로 바꿔야 한다는 점을 기록합니다. `waitForCompletion`은 fluo에 직접 대응하는 option이 없으며 scheduler protection과 in-process running guard가 같은 task instance의 overlapping tick을 queue하지 않고 항상 건너뜁니다. NestJS overlap에 의존한 작업은 application-owned queue나 worker로 옮겨야 하고, application instance 사이의 exclusion에는 여전히 Redis distributed locking이 필요합니다.
 
+## Cron Scheduler Handle Retention
+
+Cron dynamic scheduling contract는 `packages/cron/README.ko.md`, [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md), [`book/intermediate/ch12-cron.ko.md`](../book/intermediate/ch12-cron.ko.md)에서 정렬됩니다. Task를 disable 또는 remove할 때 scheduler handle은 `stop()`이 성공한 뒤에만 지워집니다. Stop failure는 log로 관찰할 수 있고, retry를 위해 handle을 registry에 유지하며, `remove()`는 task를 삭제하지 않고 `false`를 반환합니다.
+
 ## HTTP Catch-All Decision
 
 [`docs/architecture/http-catch-all-route-grammar.ko.md`](./architecture/http-catch-all-route-grammar.ko.md)는 catch-all 도입을 유예한다. `@fluojs/http`는 literal 및 full-segment `:param` route segment만 계속 허용하고, `@fluojs/react/client`의 실제 anchor는 client route grammar를 만들지 않으면서 명시적인 server route로 일반 full-document fallback을 제공한다. 재검토에는 HTTP-owned syntax, `static > param > catch-all` ordering, string params, OpenAPI policy, adapter parity, native fast path 결정, performance evidence가 필요하다.

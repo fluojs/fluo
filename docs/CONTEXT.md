@@ -142,6 +142,10 @@ CLI and Studio diagnostics discoverability is split across the CLI package, Stud
 
 The Cron NestJS migration surfaces record that NestJS `timeZone` becomes fluo `timezone`, while `waitForCompletion` has no direct fluo option because scheduler protection and the in-process running guard always skip overlapping ticks for the same task instance rather than queueing another run. Work that relied on NestJS overlap must move to an application-owned queue or worker, and cross-instance exclusion still requires Redis distributed locking.
 
+## Cron Scheduler Handle Retention
+
+The Cron dynamic scheduling contract is aligned across `packages/cron/README.md`, [`docs/reference/package-surface.md`](./reference/package-surface.md), and [`book/intermediate/ch12-cron.md`](../book/intermediate/ch12-cron.md): disabling or removing a task clears its scheduler handle only after `stop()` succeeds. A stop failure remains observable through logging, keeps the handle registered for retry, and makes `remove()` return `false` without deleting the task.
+
 ## HTTP Catch-All Decision
 
 [`docs/architecture/http-catch-all-route-grammar.md`](./architecture/http-catch-all-route-grammar.md) defers catch-all adoption. `@fluojs/http` continues to accept only literal and full-segment `:param` route segments, while `@fluojs/react/client` real anchors provide ordinary full-document fallback to explicit server routes without creating a client route grammar. Reconsideration requires an HTTP-owned syntax, `static > param > catch-all` ordering, string params, OpenAPI policy, adapter parity, native fast path decisions, and performance evidence.

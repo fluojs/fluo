@@ -610,7 +610,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // tooling runtime-floor discoverability, plus Cron distributed-lock
   // lifecycle contracts such as enabled TTL validation before Redis I/O,
   // bounded shutdown lock-release I/O, timeout ownership retention, dynamic
-  // blank-name rejection, immutable registry descriptor snapshots, and
+  // blank-name rejection, immutable registry descriptor snapshots, failed-stop
+  // scheduler handle retention for retryable registry removal, and
   // microservices facade shutdown signal forwarding plus transport-owned
   // cancellation cleanup docs/tests, Queue's package-level Node.js runtime
   // floor discoverability and Queue migration from NestJS/Bull processor metadata
