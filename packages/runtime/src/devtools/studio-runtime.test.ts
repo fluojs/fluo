@@ -1,3 +1,4 @@
+import { Container } from '@fluojs/di';
 import type { RequestContext } from '@fluojs/http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -34,6 +35,53 @@ describe('Studio devtools runtime bridge', () => {
     expect(createStudioDevtoolsRuntimeFromEnv({})).toBeUndefined();
     expect(createStudioDevtoolsRuntimeFromEnv({ FLUO_STUDIO: '1', FLUO_STUDIO_URL: 'http://127.0.0.1:49152' })).toBeUndefined();
     expect(createStudioDevtoolsRuntimeFromEnv({ FLUO_STUDIO: '1', FLUO_STUDIO_TOKEN: 'secret' })).toBeUndefined();
+  });
+
+  it('captures each CLI-injected Studio config field once when creating the runtime bridge', async () => {
+    // Given
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 202 }));
+    let token = 'studio-token-at-bootstrap';
+    (globalThis as Record<string, unknown>)[studioGlobalConfigKey] = {
+      FLUO_STUDIO: '1',
+      FLUO_STUDIO_ENDPOINT: 'http://127.0.0.1:49152/api/runtime/events',
+      get FLUO_STUDIO_TOKEN() {
+        const capturedToken = token;
+        token = 'studio-token-after-bootstrap';
+        return capturedToken;
+      },
+    };
+
+    // When
+    const runtime = createStudioDevtoolsRuntimeFromConfig();
+    runtime?.publish('heartbeat', { uptimeMs: 0 });
+
+    // Then
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        'http://127.0.0.1:49152/api/runtime/events',
+        expect.objectContaining({
+          headers: {
+            authorization: 'Bearer studio-token-at-bootstrap',
+            'content-type': 'application/json',
+          },
+        }),
+      );
+    });
+  });
+
+  it('stays disabled when the captured Studio endpoint is malformed', () => {
+    // Given
+    (globalThis as Record<string, unknown>)[studioGlobalConfigKey] = {
+      FLUO_STUDIO: '1',
+      FLUO_STUDIO_ENDPOINT: 'not-an-absolute-url',
+      FLUO_STUDIO_TOKEN: 'studio-token',
+    };
+
+    // When
+    const runtime = createStudioDevtoolsRuntimeFromConfig();
+
+    // Then
+    expect(runtime).toBeUndefined();
   });
 
   it('builds module, provider, controller, export, and dependency graph snapshots', () => {
@@ -92,7 +140,7 @@ describe('Studio devtools runtime bridge', () => {
       },
     });
     const requestContext = {
-      container: {},
+      container: new Container(),
       metadata: {},
       request: {
         body: { password: 'do-not-send' },
@@ -115,7 +163,7 @@ describe('Studio devtools runtime bridge', () => {
         redirect() {},
         statusCode: 201,
       },
-    } as unknown as RequestContext;
+    } satisfies RequestContext;
 
     runtime.requestObserver.onRequestStart?.({ requestContext });
     runtime.requestObserver.onRequestSuccess?.({ requestContext }, { ok: true });

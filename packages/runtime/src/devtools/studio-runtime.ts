@@ -1,9 +1,13 @@
-import type { HandlerDescriptor, RequestObservationContext, RequestObserver } from '@fluojs/http';
+import type { HandlerDescriptor, RequestObserver } from '@fluojs/http';
 
 import type { BootstrapTimingDiagnostics } from '../health/diagnostics.js';
 import type { BootstrapApplicationOptions, CompiledModule, CreateApplicationContextOptions, ModuleType } from '../types.js';
-import type { StudioLiveEvent, StudioLiveEventSource, StudioLiveSnapshot, StudioRequestTrace } from './contracts.js';
-import { createStudioLiveSnapshot, handlerToStudioRouteDescriptor } from './snapshot.js';
+import type { StudioLiveEvent, StudioLiveEventSource, StudioLiveSnapshot } from './contracts.js';
+import { createStudioLiveSnapshot } from './snapshot.js';
+import { StudioRequestObserver } from './studio-request-observer.js';
+import { captureStudioDevtoolsConfig, type StudioDevtoolsConfig } from './studio-runtime-config.js';
+
+export type { StudioDevtoolsConfig } from './studio-runtime-config.js';
 
 const runtimePerformance = globalThis.performance ?? { now: () => Date.now() };
 const processStart = runtimePerformance.now();
@@ -36,35 +40,6 @@ export interface StudioBootstrapSnapshotInput {
   timing?: BootstrapTimingDiagnostics;
 }
 
-interface MutableTrace {
-  error?: StudioRequestTrace['error'];
-  handler?: HandlerDescriptor;
-  method: string;
-  path: string;
-  requestId: string;
-  startedAt: string;
-  startMs: number;
-  status: StudioRequestTrace['status'];
-  url: string;
-}
-
-/**
- * Describes Studio Devtools Config data used by the Studio devtool.
- */
-export interface StudioDevtoolsConfig {
-  FLUO_STUDIO?: string;
-  FLUO_STUDIO_APP_ID?: string;
-  FLUO_STUDIO_ENDPOINT?: string;
-  FLUO_STUDIO_EPOCH?: string;
-  FLUO_STUDIO_RUNTIME?: string;
-  FLUO_STUDIO_TOKEN?: string;
-  FLUO_STUDIO_URL?: string;
-}
-
-function isEnabled(value: string | undefined): boolean {
-  return value === '1' || value === 'true' || value === 'yes';
-}
-
 function createEpoch(): string {
   if (typeof globalThis.crypto?.randomUUID === 'function') {
     return globalThis.crypto.randomUUID();
@@ -75,93 +50,6 @@ function createEpoch(): string {
 
 function createAppId(): string {
   return `app-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-}
-
-function createRequestId(): string {
-  return `req-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-}
-
-function normalizeRuntime(value: string | undefined): StudioLiveEventSource['runtime'] {
-  if (value === 'node' || value === 'bun' || value === 'deno' || value === 'worker') {
-    return value;
-  }
-
-  return 'node';
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function resolveEndpoint(env: StudioDevtoolsConfig): string | undefined {
-  if (env.FLUO_STUDIO_ENDPOINT) {
-    return env.FLUO_STUDIO_ENDPOINT;
-  }
-
-  if (!env.FLUO_STUDIO_URL) {
-    return undefined;
-  }
-
-  try {
-    return new URL('/api/runtime/events', env.FLUO_STUDIO_URL).toString();
-  } catch {
-    return undefined;
-  }
-}
-
-function toErrorPayload(error: unknown): StudioRequestTrace['error'] {
-  if (error instanceof Error) {
-    return {
-      message: error.message,
-      name: error.name,
-    };
-  }
-
-  return {
-    message: String(error),
-  };
-}
-
-function sanitizeRequestUrl(value: string): string {
-  try {
-    const parsed = new URL(value, 'http://fluo.local');
-    return parsed.pathname || '/';
-  } catch {
-    return value.split('#', 1)[0]?.split('?', 1)[0] || value;
-  }
-}
-
-function traceToPayload(trace: MutableTrace, statusCode?: number): StudioRequestTrace {
-  const payload: StudioRequestTrace = {
-    method: trace.method,
-    path: trace.path,
-    requestId: trace.requestId,
-    startedAt: trace.startedAt,
-    status: trace.status,
-    url: trace.url,
-  };
-
-  if (trace.handler) {
-    const route = handlerToStudioRouteDescriptor(trace.handler);
-    payload.controller = route.controller;
-    payload.handler = route.handler;
-    payload.routeId = route.id;
-  }
-
-  if (trace.error) {
-    payload.error = trace.error;
-  }
-
-  if (statusCode !== undefined) {
-    payload.statusCode = statusCode;
-  }
-
-  if (trace.status === 'succeeded' || trace.status === 'failed' || trace.status === 'finished') {
-    payload.finishedAt = new Date().toISOString();
-    payload.durationMs = Number((runtimePerformance.now() - trace.startMs).toFixed(3));
-  }
-
-  return payload;
 }
 
 class FetchStudioTransport implements StudioDevtoolsRuntimeTransport {
@@ -179,83 +67,6 @@ class FetchStudioTransport implements StudioDevtoolsRuntimeTransport {
       },
       method: 'POST',
     });
-  }
-}
-
-class StudioRequestObserver implements RequestObserver {
-  private readonly traces = new WeakMap<object, MutableTrace>();
-
-  constructor(private readonly runtime: StudioDevtoolsRuntime) {}
-
-  onRequestStart(context: RequestObservationContext): void {
-    const request = context.requestContext.request;
-    const requestId = request.requestId
-      ?? (typeof request.headers['x-request-id'] === 'string' ? request.headers['x-request-id'] : undefined)
-      ?? createRequestId();
-    const trace: MutableTrace = {
-      method: request.method,
-      path: request.path,
-      requestId,
-      startedAt: new Date().toISOString(),
-      startMs: runtimePerformance.now(),
-      status: 'started',
-      url: sanitizeRequestUrl(request.url),
-    };
-
-    this.traces.set(context.requestContext, trace);
-    this.runtime.publish('request', traceToPayload(trace));
-  }
-
-  onHandlerMatched(context: RequestObservationContext): void {
-    const trace = this.ensureTrace(context);
-    trace.handler = context.handler;
-    trace.status = 'matched';
-    this.runtime.publish('request', traceToPayload(trace));
-  }
-
-  onRequestSuccess(context: RequestObservationContext): void {
-    const trace = this.ensureTrace(context);
-    trace.handler = context.handler ?? trace.handler;
-    trace.status = 'succeeded';
-  }
-
-  onRequestError(context: RequestObservationContext, error: unknown): void {
-    const trace = this.ensureTrace(context);
-    trace.handler = context.handler ?? trace.handler;
-    trace.error = toErrorPayload(error);
-    trace.status = 'failed';
-    this.runtime.publish('request', traceToPayload(trace, context.requestContext.response.statusCode));
-  }
-
-  onRequestFinish(context: RequestObservationContext): void {
-    const trace = this.ensureTrace(context);
-    trace.handler = context.handler ?? trace.handler;
-    if (trace.status !== 'failed' && trace.status !== 'succeeded') {
-      trace.status = 'finished';
-    }
-
-    this.runtime.publish('request', traceToPayload(trace, context.requestContext.response.statusCode));
-  }
-
-  private ensureTrace(context: RequestObservationContext): MutableTrace {
-    const existing = this.traces.get(context.requestContext);
-
-    if (existing) {
-      return existing;
-    }
-
-    const request = context.requestContext.request;
-    const trace: MutableTrace = {
-      method: request.method,
-      path: request.path,
-      requestId: request.requestId ?? createRequestId(),
-      startedAt: new Date().toISOString(),
-      startMs: runtimePerformance.now(),
-      status: 'started',
-      url: sanitizeRequestUrl(request.url),
-    };
-    this.traces.set(context.requestContext, trace);
-    return trace;
   }
 }
 
@@ -320,26 +131,6 @@ export class StudioDevtoolsRuntime {
   }
 }
 
-const STUDIO_DEVTOOLS_GLOBAL_CONFIG_KEY = '__FLUO_STUDIO_DEVTOOLS_CONFIG__';
-
-declare global {
-  // eslint-disable-next-line no-var
-  var __FLUO_STUDIO_DEVTOOLS_CONFIG__: StudioDevtoolsConfig | undefined;
-}
-
-function isStudioDevtoolsConfig(value: unknown): value is StudioDevtoolsConfig {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return value.FLUO_STUDIO === undefined || typeof value.FLUO_STUDIO === 'string';
-}
-
-function readInjectedStudioDevtoolsConfig(): StudioDevtoolsConfig | undefined {
-  const value = globalThis[STUDIO_DEVTOOLS_GLOBAL_CONFIG_KEY as keyof typeof globalThis];
-  return isStudioDevtoolsConfig(value) ? value : undefined;
-}
-
 /**
  * Creates the Studio runtime bridge from explicit CLI-injected config.
  * Returns `undefined` unless Studio is explicitly enabled and a token-protected endpoint is present.
@@ -347,22 +138,18 @@ function readInjectedStudioDevtoolsConfig(): StudioDevtoolsConfig | undefined {
  * @param config Explicit Studio config injected by the application boundary.
  * @returns Studio runtime bridge, or `undefined` when Studio is disabled or incomplete.
  */
-export function createStudioDevtoolsRuntimeFromConfig(config: StudioDevtoolsConfig | undefined = readInjectedStudioDevtoolsConfig()): StudioDevtoolsRuntime | undefined {
-  if (!config || !isEnabled(config.FLUO_STUDIO)) {
+export function createStudioDevtoolsRuntimeFromConfig(config?: StudioDevtoolsConfig): StudioDevtoolsRuntime | undefined {
+  const snapshot = captureStudioDevtoolsConfig(config);
+  if (!snapshot || typeof globalThis.fetch !== 'function') {
     return undefined;
   }
 
-  const endpoint = resolveEndpoint(config);
-  if (!endpoint || !config.FLUO_STUDIO_TOKEN || typeof globalThis.fetch !== 'function') {
-    return undefined;
-  }
-
-  const epoch = config.FLUO_STUDIO_EPOCH ?? createEpoch();
+  const epoch = snapshot.epoch ?? createEpoch();
   return new StudioDevtoolsRuntime({
-    appId: config.FLUO_STUDIO_APP_ID ?? createAppId(),
+    appId: snapshot.appId ?? createAppId(),
     epoch,
-    runtime: normalizeRuntime(config.FLUO_STUDIO_RUNTIME),
-    transport: new FetchStudioTransport(endpoint, config.FLUO_STUDIO_TOKEN),
+    runtime: snapshot.runtime,
+    transport: new FetchStudioTransport(snapshot.endpoint, snapshot.token),
   });
 }
 
