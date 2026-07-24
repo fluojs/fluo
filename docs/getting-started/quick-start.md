@@ -43,14 +43,16 @@ fluo new my-fluo-app
 cd my-fluo-app
 ```
 
-Expected output pattern:
+Completion output pattern:
 
 ```text
-Scaffolding project: my-fluo-app
-Template: application/http/node/fastify
-Installing dependencies: <package-manager-dependent>
-Project ready
+Done.
+Next steps:
+  cd ./my-fluo-app
+  pnpm dev  # runs fluo dev
 ```
+
+When you choose not to install dependencies, the CLI prints `Skipping dependency installation.` before this completion output. When you install dependencies, it prints `Installing dependencies with pnpm...` and the package-manager output before the same next steps.
 
 Representative explicit starters:
 
@@ -80,7 +82,7 @@ my-fluo-app/
 ├── README.md
 ├── babel.config.cjs
 ├── package.json
-├── pnpm-lock.yaml
+├── pnpm-lock.yaml # written when dependencies are installed
 ├── tsconfig.json
 ├── tsconfig.build.json
 ├── vite.config.ts
@@ -103,7 +105,7 @@ my-fluo-app/
         └── greeting.slice.test.ts
 ```
 
-The tree above describes the default Node.js + Fastify application starter. The `vite.config.ts` artifact imports `fluoDecoratorsPlugin()` from `@fluojs/vite` for application-file decorator transforms, while `vitest.config.ts` imports `@fluojs/testing/vitest` so generated test files keep their testing-specific transform path. Other shipped starter recipes deliberately differ: Deno omits the Node/Vite/Babel/Vitest config files and keeps a Deno-native `src/app.test.ts`; Cloudflare Workers uses `src/worker.ts` plus `wrangler.jsonc`; gRPC microservices add `proto/math.proto`; and microservice or mixed starters emit `src/math/*` transport handlers instead of the HTTP-only greeting tree alone.
+The tree above describes the default Node.js + Fastify application starter. `pnpm-lock.yaml` is created by the dependency-install step, so `fluo new ... --no-install` omits it. The `vite.config.ts` artifact imports `fluoDecoratorsPlugin()` from `@fluojs/vite` for application-file decorator transforms, while `vitest.config.ts` imports `@fluojs/testing/vitest` so generated test files keep their testing-specific transform path. Other shipped starter recipes deliberately differ: Deno omits the Node/Vite/Babel/Vitest config files and keeps a Deno-native `src/app.test.ts`; Cloudflare Workers uses `src/worker.ts` plus `wrangler.jsonc`; gRPC microservices add `proto/math.proto`; and microservice or mixed starters emit `src/math/*` transport handlers instead of the HTTP-only greeting tree alone.
 
 Authoritative starter matrix: [fluo new support matrix](../reference/fluo-new-support-matrix.md).
 
