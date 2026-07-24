@@ -10,7 +10,7 @@
 - `@fluojs/passport`로 인증 전략을 구성합니다.
 - 커스텀 `AuthStrategy`로 토큰을 검증하고 principal을 구성합니다.
 - `@UseAuth()`로 라우트와 컨트롤러를 보호합니다.
-- `RolesGuard`로 역할 기반 인가를 구현합니다.
+- 지원되는 `@RequireScopes()` 데코레이터로 라우트 인가를 강제합니다.
 - 여러 인증 전략을 조합하는 흐름을 살펴봅니다.
 - 속성 기반 인가와 동적 정책 적용의 기초를 이해합니다.
 - 프로덕션 보안 설계에서 가드와 전략의 역할을 정리합니다.
@@ -160,17 +160,32 @@ export class ProfileController {
 ### 15.4.2 Controller-Level vs. Method-Level Guards
 `@UseAuth()`는 클래스 전체(컨트롤러)에 적용하거나 개별 메서드에 적용할 수 있습니다. 컨트롤러 수준에서 적용하는 것은 "기본적으로 보안 적용(secure by default)" 접근 방식으로, 해당 클래스의 모든 라우트가 보호되도록 보장합니다. 일부 라우트만 공개해야 하는 경우, 더 구체적인 설정이나 커스텀 가드를 사용하여 예외를 처리할 수 있습니다.
 
-이러한 유연성을 통해 애플리케이션의 계층 구조에 맞는 보안 정책을 설계할 수 있습니다. 예를 들어, `UsersController` 전체를 JWT 가드로 보호하면서 `deleteUser` 메서드에만 추가적으로 `RolesGuard`를 적용할 수 있습니다. 계층적 접근 방식은 감사 가능한 보안 표면을 만들고, 개발자가 실수로 가드를 적용하지 않아 새로운 엔드포인트가 무방비로 노출되는 "보안 편차(Security Drift)"를 줄입니다.
+이러한 유연성을 통해 애플리케이션의 계층 구조에 맞는 보안 정책을 설계할 수 있습니다. 예를 들어, `UsersController` 전체를 `@UseAuth('jwt')`로 보호하고 `deleteUser` 메서드에만 `@RequireScopes('users:delete')`를 선언할 수 있습니다. 선택된 strategy가 요청을 인증한 뒤 `AuthGuard`가 이 required scope를 강제합니다. 역할, 소유권, 속성에 의존하는 애플리케이션별 정책은 `requestContext.principal`을 읽는 애플리케이션 Guard 또는 service에 두어야 합니다. 계층적 접근 방식은 감사 가능한 보안 표면을 만들고, 개발자가 실수로 가드를 적용하지 않아 새로운 엔드포인트가 무방비로 노출되는 "보안 편차(Security Drift)"를 줄입니다.
 
 ### 15.4.3 Mixing Multiple Guards
 Fluo를 사용하면 passport 인증 뒤에 추가 가드를 쌓을 수 있습니다. 인증이 먼저 principal을 만들고, 뒤의 가드는 그 principal이나 요청 컨텍스트를 기준으로 추가 정책을 검사합니다. 이러한 효율성은 성능 면에서 중요한데, 요청이 이미 승인되지 않은 것으로 간주된 후 불필요한 데이터베이스 조회나 암호화 체크를 피할 수 있기 때문입니다.
 
 내장 passport 인증과 커스텀 가드를 혼합하여 사용할 수도 있습니다. 예를 들어, `@UseAuth('jwt')`로 신원을 확인한 다음 커스텀 `IpWhitelistGuard`를 사용하여 사내 네트워크로 접근을 제한할 수 있습니다. 가드의 이러한 조합 가능한 특성은 복잡한 보안 파이프라인을 구축하면서도 각 부분을 독립적으로 추론하고 테스트하기 쉽게 만들어 줍니다.
 
-## 15.5 Role-Based Access Control (RBAC)
-인증(누구인가?)은 전투의 절반일 뿐입니다. 나머지 절반은 **인가(무엇을 할 수 있는가?)**입니다. Fluo에서는 인증이 끝난 뒤 `requestContext.principal.roles`나 `requestContext.principal.scopes`를 기준으로 추가 가드나 서비스 정책을 적용하는 식으로 RBAC를 설계하는 것이 자연스럽습니다.
+## 15.5 스코프 인가와 애플리케이션 정책
+인증(누구인가?)은 전투의 절반일 뿐입니다. 나머지 절반은 **인가(무엇을 할 수 있는가?)**입니다. 내장 라우트 인가에는 `@UseAuth('jwt')`와 `@RequireScopes(...)`를 함께 사용하세요. 인증이 성공한 뒤 `AuthGuard`가 선언된 모든 scope가 `requestContext.principal`에 있는지 확인합니다.
 
-실무에서는 먼저 `@UseAuth('jwt')`로 principal을 확보하고, 그 다음 단계에서 역할이나 스코프를 검사하는 guard를 붙이면 됩니다. 핵심은 인증과 인가를 분리해 두어, 어떤 전략이 principal을 만들었는지와 무관하게 같은 권한 정책을 재사용하는 것입니다.
+역할, 리소스 소유권, 또는 다른 속성에 의존하는 정책에는 애플리케이션이 소유한 Guard나 service를 사용하세요. 인증과 인가를 분리하면 어떤 strategy가 principal을 만들었는지와 무관하게 같은 인가 정책을 재사용할 수 있습니다.
+
+```typescript
+import { Controller, Delete, type RequestContext } from '@fluojs/http';
+import { RequireScopes, UseAuth } from '@fluojs/passport';
+
+@Controller('/users')
+@UseAuth('jwt')
+export class UsersController {
+  @Delete('/:id')
+  @RequireScopes('users:delete')
+  deleteUser(_input: never, ctx: RequestContext) {
+    return { deletedBy: ctx.principal?.subject };
+  }
+}
+```
 
 ### 15.5.5 Passing Options to AuthGuard
 때때로 라우트별로 인증 동작을 커스터마이징해야 할 때가 있습니다. fluo에서는 요청 객체의 임의 속성을 바꾸는 방식보다, 전략에서 어떤 principal을 반환할지와 라우트에 어떤 `@UseAuth()` 조합을 붙일지를 명시적으로 유지하는 편이 더 안전합니다.
@@ -238,7 +253,7 @@ return {
 };
 ```
 
-그런 다음 라우트에서 요구하는 특정 스코프를 확인하는 `ScopesGuard`를 만들 수 있습니다. 이는 또 다른 보안 레이어를 추가하여, 사용자가 'admin'이더라도 사용 중인 특정 클라이언트에 부여된 권한만 토큰에 포함되도록 보장합니다. 이러한 "최소 권한의 원칙(Principle of Least Privilege)"은 토큰 탈취나 손상된 클라이언트 애플리케이션으로부터 API를 보호하는 데 필수적입니다. 또한 사용자가 특정 기능이 필요할 때만 권한을 부여하는 "점진적 동의(Incremental Consent)" 패턴을 구현할 수 있게 해줍니다.
+`@UseAuth('jwt')`와 함께 지원되는 `@RequireScopes('posts:write')` 데코레이터로 라우트의 필요 scope를 선언하세요. 그러면 strategy가 principal을 반환한 뒤 `AuthGuard`가 해당 scope를 검사합니다. 이렇게 하면 사용자가 'admin'이더라도 사용 중인 특정 클라이언트에 부여된 권한만 토큰에 포함되도록 보장합니다. 이러한 "최소 권한의 원칙(Principle of Least Privilege)"은 토큰 탈취나 손상된 클라이언트 애플리케이션으로부터 API를 보호하는 데 필수적입니다. 또한 사용자가 특정 기능이 필요할 때만 권한을 부여하는 "점진적 동의(Incremental Consent)" 패턴을 구현할 수 있게 해줍니다.
 
 또한 스코프는 UI 동작을 제어하는 데 사용될 수 있습니다. 토큰에 있는 스코프를 확인하여 프론트엔드에서 특정 버튼이나 내비게이션 링크를 표시하거나 숨길지 결정함으로써, 서버 측 가드 체크를 통해 보안을 유지하면서도 더 직관적인 사용자 경험을 제공할 수 있습니다. 프론트엔드 가시성과 백엔드 집행 사이의 이러한 동기화는 잘 설계된 현대적 애플리케이션의 특징입니다.
 
@@ -303,7 +318,7 @@ Fluo의 보안 계층과 이러한 업계 표준 관행을 함께 적용하면, 
 - **가드**는 모든 요청에 대해 "들어와도 되는가?"라는 로직을 처리합니다.
 - **Passport 전략**은 신원 확인 방식(JWT 등)을 표준화합니다.
 - **JwtStrategy**는 원본 토큰과 정규화된 Principal 사이의 가교 역할을 합니다.
-- `RolesGuard`를 통한 **RBAC**는 사용자가 허용된 영역 내에 머물도록 보장합니다.
+- `@RequireScopes(...)`를 통한 **스코프 인가**는 각 라우트에 필요한 권한을 호출자가 가졌는지 보장합니다.
 - ABAC 및 정책 서비스를 통한 **고급 로직**은 복잡한 소유권 및 리소스 제한을 처리합니다.
 - **스코프와 클레임**은 현대적인 OAuth2 흐름과 다중 테넌트 격리에 필요한 세밀함을 제공합니다.
 - **프로덕션 베스트 프랙티스**는 보안 레이어가 성능과 감사 준비 상태를 모두 갖추도록 보장합니다.

@@ -10,7 +10,7 @@ This chapter explains how to connect FluoBlog's Authentication flow to Guards an
 - Configure Authentication strategies with `@fluojs/passport`.
 - Verify tokens and build a principal with a custom `AuthStrategy`.
 - Protect routes and controllers with `@UseAuth()`.
-- Implement role-based Authorization with `RolesGuard`.
+- Enforce route authorization with the supported `@RequireScopes()` decorator.
 - Explore flows that combine multiple Authentication strategies.
 - Understand the basics of attribute-based Authorization and dynamic policy application.
 - Summarize the role of Guards and strategies in production security design.
@@ -160,17 +160,32 @@ export class ProfileController {
 ### 15.4.2 Controller-Level vs. Method-Level Guards
 `@UseAuth()` can be applied to an entire class, the controller, or to individual methods. Applying it at the controller level is a "secure by default" approach that ensures every route in that class is protected. If only some routes should be public, you can handle exceptions with more specific configuration or a custom Guard.
 
-This flexibility lets you design security policies that match your application's hierarchy. For example, you can protect the entire `UsersController` with a JWT Guard while applying an additional `RolesGuard` only to the `deleteUser` method. This hierarchical approach creates an auditable security surface and reduces "Security Drift", where a developer accidentally leaves a new endpoint exposed by forgetting to apply a Guard.
+This flexibility lets you design security policies that match your application's hierarchy. For example, protect the entire `UsersController` with `@UseAuth('jwt')` and declare `@RequireScopes('users:delete')` on only the `deleteUser` method. `AuthGuard` enforces that required scope after the selected strategy authenticates the request. Application-specific role, ownership, or attribute policies belong in an application Guard or service that reads `requestContext.principal`. This hierarchical approach creates an auditable security surface and reduces "Security Drift", where a developer accidentally leaves a new endpoint exposed by forgetting to apply a Guard.
 
 ### 15.4.3 Mixing Multiple Guards
 Fluo lets you stack additional Guards after Passport Authentication. Authentication first creates the principal, and later Guards inspect that principal or the request context to check additional policies. This efficiency matters for performance because it avoids unnecessary database lookups or cryptographic checks after a request has already been treated as unauthorized.
 
 You can also mix built-in Passport Authentication with custom Guards. For example, you can verify identity with `@UseAuth('jwt')` and then restrict access to the corporate network with a custom `IpWhitelistGuard`. This composable nature of Guards makes it easy to build complex security pipelines while keeping each part independently understandable and testable.
 
-## 15.5 Role-Based Access Control (RBAC)
-Authentication, who are you, is only half the battle. The other half is **Authorization, what are you allowed to do**. In Fluo, it is natural to design RBAC by applying additional Guards or service policies after Authentication based on `requestContext.principal.roles` or `requestContext.principal.scopes`.
+## 15.5 Scope Authorization and Application Policies
+Authentication, who are you, is only half the battle. The other half is **Authorization, what are you allowed to do**. For built-in route authorization, combine `@UseAuth('jwt')` with `@RequireScopes(...)`; `AuthGuard` verifies that every declared scope is present on `requestContext.principal` after authentication succeeds.
 
-In practice, first secure the principal with `@UseAuth('jwt')`, then attach a Guard that checks roles or scopes in the next step. The key is keeping Authentication and Authorization separate, so the same permission policy can be reused no matter which strategy created the principal.
+Use application-owned Guards or services when a policy depends on roles, resource ownership, or other attributes. Keeping Authentication and Authorization separate lets the same authorization policy work no matter which strategy created the principal.
+
+```typescript
+import { Controller, Delete, type RequestContext } from '@fluojs/http';
+import { RequireScopes, UseAuth } from '@fluojs/passport';
+
+@Controller('/users')
+@UseAuth('jwt')
+export class UsersController {
+  @Delete('/:id')
+  @RequireScopes('users:delete')
+  deleteUser(_input: never, ctx: RequestContext) {
+    return { deletedBy: ctx.principal?.subject };
+  }
+}
+```
 
 ### 15.5.5 Passing Options to AuthGuard
 Sometimes you need to customize Authentication behavior per route. In Fluo, it is safer to keep explicit which principal a strategy returns and which `@UseAuth()` combination is attached to a route, rather than mutating arbitrary properties on the request object.
@@ -238,7 +253,7 @@ return {
 };
 ```
 
-You can then create a `ScopesGuard` that checks for specific scopes required by a route. This adds another security layer and ensures that even if a user is an `admin`, the token only contains the permissions granted to the specific client being used. This "Principle of Least Privilege" is essential for protecting APIs from token theft or compromised client applications. It also lets you implement an "Incremental Consent" pattern, where users grant permissions only when a specific feature needs them.
+Declare the route's required scopes with the supported `@RequireScopes('posts:write')` decorator alongside `@UseAuth('jwt')`. `AuthGuard` then checks those scopes after the strategy returns a principal. This ensures that even if a user is an `admin`, the token only contains the permissions granted to the specific client being used. This "Principle of Least Privilege" is essential for protecting APIs from token theft or compromised client applications. It also lets you implement an "Incremental Consent" pattern, where users grant permissions only when a specific feature needs them.
 
 Scopes can also control UI behavior. By checking scopes in a token, the frontend can decide whether to show or hide specific buttons or navigation links, providing a more intuitive user experience while server-side Guard checks still enforce security. This synchronization between frontend visibility and backend enforcement is a hallmark of well-designed modern applications.
 
@@ -303,7 +318,7 @@ Guards and Passport strategies form the protective shield around FluoBlog. By co
 - **Guards** handle the "may this request enter?" logic for every request.
 - **Passport strategies** standardize identity verification methods such as JWT.
 - **JwtStrategy** bridges raw tokens and normalized Principal objects.
-- **RBAC** through `RolesGuard` ensures users stay within the areas they are allowed to access.
+- **Scope authorization** through `@RequireScopes(...)` ensures callers have the permissions required by each route.
 - **Advanced logic** through ABAC and policy services handles complex ownership and resource constraints.
 - **Scopes and claims** provide the granularity needed for modern OAuth2 flows and multi-tenant isolation.
 - **Production best practices** ensure the security layer is both performant and audit-ready.
