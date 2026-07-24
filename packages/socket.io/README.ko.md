@@ -17,10 +17,12 @@ fluo 런타임용 Socket.IO v4 게이트웨이 어댑터입니다.
 ## 설치
 
 ```bash
-npm install @fluojs/core @fluojs/socket.io @fluojs/websockets socket.io
+npm install @fluojs/core @fluojs/socket.io @fluojs/websockets socket.io@^4.8.3
 ```
 
 `@fluojs/socket.io`는 Node-backed adapter에 대해 Node.js 20+ package floor를 선언합니다. Socket.IO gateway authoring은 `@fluojs/websockets`의 `@WebSocketGateway`, `@OnMessage`, lifecycle decorator를 재사용하므로 companion 패키지도 함께 설치하세요.
+
+`@fluojs/socket.io`는 Socket.IO `^4.8.3`을 요구합니다. 더 오래된 Socket.IO v4 release를 사용하던 consumer는 이 major `@fluojs/socket.io` release를 적용하기 전에 peer를 업그레이드하고 lockfile을 갱신해야 합니다. 갱신된 Engine.IO chain은 패치된 WebSocket runtime을 resolve해야 합니다. fluo adapter API는 그대로입니다.
 
 ## 사용 시점
 
