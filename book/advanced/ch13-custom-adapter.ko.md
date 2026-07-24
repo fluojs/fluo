@@ -325,7 +325,7 @@ export class TinyNodeAdapter implements HttpApplicationAdapter {
 }
 ```
 
-이 스켈레톤은 이제 필수 request/response shape를 만족하지만 여전히 의도적으로 불완전합니다. Production code는 request body와 cookie parsing, size limit, 필요한 경우 정확한 raw byte 보존, header normalization, native listener 제거, streaming/backpressure, shutdown policy를 구현해야 합니다. 실제 상용 어댑터(예: FastifyAdapter)는 여기에 multipart 처리, compression, HTTP/2 같은 protocol optimization도 더합니다.
+이 스켈레톤은 이제 필수 request/response shape를 만족하지만 여전히 의도적으로 불완전합니다. Production code는 request body와 cookie parsing, size limit, 필요한 경우 정확한 raw byte 보존, header normalization, native listener 제거, streaming/backpressure, shutdown policy를 구현해야 합니다. 실제 상용 어댑터(예: FastifyAdapter)는 여기에 multipart 처리도 더합니다.
 
 ## 13.13 요약
 
