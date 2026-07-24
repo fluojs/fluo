@@ -1,4 +1,4 @@
-import { Inject, type MetadataPropertyKey, type Token } from '@fluojs/core';
+import { Inject, InvariantError, type MetadataPropertyKey, type Token } from '@fluojs/core';
 import { cloneWithFallback, getClassDiMetadata } from '@fluojs/core/internal';
 import type { Container, Provider } from '@fluojs/di';
 import type { ApplicationLogger, CompiledModule, MicroserviceRuntime, OnApplicationShutdown } from '@fluojs/runtime';
@@ -54,6 +54,7 @@ function isClassProvider(provider: Provider): provider is Extract<Provider, { pr
 export class MicroserviceLifecycleService implements Microservice, MicroserviceRuntime, OnApplicationShutdown {
   private readonly descriptors: HandlerDescriptor[] = [];
   private readonly handlerInstances = new Map<Token, Promise<unknown>>();
+  private closeStarted = false;
   private lifecycleState: 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
   private lastListenError: string | undefined;
   private listening = false;
@@ -138,6 +139,7 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
    */
   async close(signal?: string): Promise<void> {
     void signal;
+    this.closeStarted = true;
 
     let listenError: unknown;
 
@@ -209,6 +211,8 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
    * @returns The transport response payload.
    */
   async send(pattern: string, payload: unknown, signal?: AbortSignal): Promise<unknown> {
+    this.assertTransportIngressOpen('send');
+
     return this.moduleOptions.transport.send(pattern, cloneWithFallback(payload), signal);
   }
 
@@ -220,7 +224,14 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
    * @returns A promise that resolves once the transport accepts the event.
    */
   async emit(pattern: string, payload: unknown): Promise<void> {
+    this.assertTransportIngressOpen('emit');
     await this.moduleOptions.transport.emit(pattern, cloneWithFallback(payload));
+  }
+
+  private assertTransportIngressOpen(operation: 'emit' | 'send'): void {
+    if (this.closeStarted) {
+      throw new InvariantError(`Microservice cannot ${operation} after shutdown has started.`);
+    }
   }
 
   /**
