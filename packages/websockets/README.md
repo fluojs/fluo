@@ -23,6 +23,8 @@ npm install @fluojs/websockets
 
 The root Node.js module path uses the package-owned `ws` dependency only when `WebSocketModule.forRoot()` is resolved at runtime. Applications do not need to install `ws` separately unless they use it directly in their own code.
 
+`@fluojs/websockets` includes `ws@^8.21.0`. Refresh the application lockfile when upgrading so the patched package-owned Node.js WebSocket runtime is installed. The Bun, Deno, and Cloudflare Workers subpaths continue to use their runtime-owned WebSocket implementations.
+
 ## When to Use
 
 Use this package to add real-time WebSocket capabilities to your fluo application. It provides a clean, decorator-driven API for handling connections, messages, and disconnections, with first-class support for multiple runtimes (Node.js, Bun, Deno, Cloudflare Workers).
