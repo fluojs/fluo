@@ -132,6 +132,8 @@ fluo new fluo-blog
 4. **Tooling and package manager**: 생성 프로젝트가 사용할 스크립트와 설치 흐름.
 5. **Install and git choices**: CLI가 의존성 설치와 git 초기화를 바로 수행할지 여부.
 
+이 책에서는 package manager로 pnpm을 선택합니다. 첫 실행으로 바로 이어가려면 즉시 dependency 설치를 승인하세요. 설치를 건너뛰었다면 생성 프로젝트로 이동한 뒤 `pnpm dev` 전에 `pnpm install`을 실행해야 하며, 해당 설치가 끝날 때까지 `pnpm-lock.yaml`은 존재하지 않습니다.
+
 ### Previewing the starter plan
 
 처음에는 CLI가 파일을 쓰기 전에 무엇을 하려는지 먼저 보는 편이 도움이 됩니다. 이때 `--print-plan`을 사용합니다.
@@ -153,7 +155,7 @@ Plan preview 모드는 실제 스캐폴딩과 같은 프로젝트 이름, shape,
 - 스타터 템플릿을 준비합니다.
 - `package.json`에 프로젝트 메타데이터를 기록합니다.
 - fluo 관례에 맞는 소스 트리를 만듭니다.
-- 앱 실행에 필요한 패키지를 설치합니다.
+- 즉시 설치를 선택하면 앱 실행에 필요한 패키지를 설치하고, 건너뛰면 해당 단계를 사용자가 나중에 수행하도록 남겨 둡니다.
 - 곧바로 읽고 실행할 수 있는 구조를 남깁니다.
 
 처음 fluo를 접하는 개발자에게 이 과정이 유용한 이유는 분명합니다. “프레임워크를 공부하고 싶다”는 의도를 “이제 실제로 열어 보고 실행할 수 있는 기준점이 있다”는 상태로 바꿔 주기 때문입니다.
@@ -179,7 +181,7 @@ Plan preview 모드는 실제 스캐폴딩과 같은 프로젝트 이름, shape,
 생성기 출력 메시지를 그냥 지나치지 마세요. 처음 실행하면 마지막에 짧은 터미널 요약이 보이고, 그 부분에는 바로 다음 행동을 정하는 데 필요한 정보가 들어 있습니다. 보통 다음 정보를 알려 줍니다.
 
 - 어떤 폴더가 생성되었는지,
-- 어떤 의존성이 설치되었는지,
+- 의존성을 설치했는지 건너뛰었는지,
 - 다음에 어떤 명령을 실행해야 하는지,
 - 실행 전 주의할 점이 있는지.
 
@@ -218,7 +220,7 @@ cd fluo-blog
 ```text
 fluo-blog/
 ├── package.json              # Scripts and dependencies
-├── pnpm-lock.yaml            # Locked dependency versions
+├── pnpm-lock.yaml            # pnpm install 완료 후 존재
 ├── tsconfig.json             # TypeScript configuration
 ├── vitest.config.ts          # Unit, slice, e2e test configuration
 ├── test/                     # Request-pipeline/e2e tests
@@ -238,6 +240,8 @@ fluo-blog/
     │   └── greeting.slice.test.ts      # Module/provider wiring test
     └── main.ts               # Bootstrap entrypoint
 ```
+
+이 책은 의도적으로 pnpm 경로를 따릅니다. 위 트리에 `pnpm-lock.yaml`이 포함되는 시점은 wizard가 dependency를 설치했거나 사용자가 직접 `pnpm install`을 실행한 뒤뿐입니다. 스캐폴딩 중 설치를 건너뛰면 해당 명령이 완료될 때까지 이 파일은 없습니다.
 
 이 단계에서 각 파일은 처음 프로젝트를 열었을 때 자연스럽게 생기는 질문에 답해 줍니다.
 
@@ -406,7 +410,7 @@ curl http://localhost:3000/greeting
 처음 실행에 성공하면 그 요청이 무엇을 증명하는지 과소평가하기 쉽습니다.
 
 - CLI가 유효한 프로젝트를 생성했습니다.
-- 의존성이 정상적으로 설치되었습니다.
+- 의존성이 wizard 또는 나중에 실행한 `pnpm install`을 통해 정상적으로 설치되었습니다.
 - TypeScript가 개발 모드에서 기대한 방식으로 컴파일 또는 변환되었습니다.
 - 런타임 어댑터가 정상적으로 시작되었습니다.
 - 기본 검증 라우트인 runtime `/health`와 starter-owned `/greeting`에 접근할 수 있습니다.
