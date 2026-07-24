@@ -2417,6 +2417,43 @@ describe('@fluojs/cron', () => {
     await closeApplication(app);
   });
 
+  it('retries a retained dynamic cron handle on the next removal', async () => {
+    const scheduled = createManualScheduler();
+
+    // Given
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+
+    registry.addCron('dynamic-stop-retry', CronExpression.EVERY_SECOND, () => {});
+
+    const record = scheduled.records[0];
+    expect(record).toBeDefined();
+
+    if (!record) {
+      throw new Error('expected dynamic cron handle to exist');
+    }
+
+    record.stop.mockImplementationOnce(() => {
+      throw new Error('dynamic cron stop failed');
+    });
+    expect(registry.remove('dynamic-stop-retry')).toBe(false);
+
+    // When
+    const removed = registry.remove('dynamic-stop-retry');
+
+    // Then
+    expect(removed).toBe(true);
+    expect(record.stop).toHaveBeenCalledTimes(2);
+    expect(registry.get('dynamic-stop-retry')).toBeUndefined();
+
+    await closeApplication(app);
+  });
+
   it('cleans up dynamic interval and timeout timers when disabled or removed', async () => {
     vi.useFakeTimers();
     const events: string[] = [];

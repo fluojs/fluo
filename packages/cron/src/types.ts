@@ -191,7 +191,8 @@ export interface SchedulingRegistry {
    * Removes one registered task from the runtime registry.
    *
    * @param name Task name to remove.
-   * @returns `true` when a task existed and was removed.
+   * @returns `true` when a task existed and was removed; `false` when it was absent or its handle could not stop.
+   * @remarks A failed stop keeps the task and scheduler handle registered so removal can be retried safely.
    */
   remove(name: string): boolean;
   /**
