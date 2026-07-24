@@ -40,6 +40,12 @@ function compareNodeEngineFloors(
 }
 
 describe('@fluojs/graphql runtime support metadata', () => {
+  it('declares the patched ws dependency floor', () => {
+    const manifest = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
+
+    expect(manifest).toContain('"ws": "^8.21.0"');
+  });
+
   it('declares the Node.js floor required by the published package contract', () => {
     const manifest = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
 

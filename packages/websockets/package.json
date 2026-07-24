@@ -79,7 +79,7 @@
     "@fluojs/di": "workspace:^",
     "@fluojs/http": "workspace:^",
     "@fluojs/runtime": "workspace:^",
-    "ws": "^8.18.3"
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@fluojs/platform-bun": "workspace:^",

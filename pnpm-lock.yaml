@@ -546,8 +546,8 @@ importers:
         specifier: ^5.18.1
         version: 5.18.1(graphql@16.13.1)
       ws:
-        specifier: ^8.18.3
-        version: 8.19.0
+        specifier: ^8.21.0
+        version: 8.21.1
     devDependencies:
       '@types/ws':
         specifier: ^8.18.1
@@ -1236,8 +1236,8 @@ importers:
         specifier: workspace:^
         version: link:../runtime
       ws:
-        specifier: ^8.18.3
-        version: 8.19.0
+        specifier: ^8.21.0
+        version: 8.21.1
     devDependencies:
       '@fluojs/platform-bun':
         specifier: workspace:^
@@ -5627,6 +5627,18 @@ packages:
       utf-8-validate:
         optional: true
 
+  ws@8.21.1:
+    resolution: {integrity: sha512-+0NTnW77fFN/DjQi6k/Sq/Yvk4Sgajw7urW8V+asjXnRgDs9gyGkdb7EzgfhA4goXsRIZKE28fzIXBHEzhuiWw==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+
   xmlhttprequest-ssl@2.1.2:
     resolution: {integrity: sha512-TEU+nJVUUnA4CYJFLvK5X9AOeH4KvDvhIfm0vV1GaQRtchnG0hgK5p8hw/xjv8cunWYCsiPCSDzObPyhEwq3KQ==}
     engines: {node: '>=0.4.0'}
@@ -9282,7 +9294,7 @@ snapshots:
       socks: 2.8.7
       split2: 4.2.0
       worker-timers: 8.0.31
-      ws: 8.19.0
+      ws: 8.21.1
     transitivePeerDependencies:
       - bufferutil
       - supports-color
@@ -10352,6 +10364,8 @@ snapshots:
   ws@8.18.3: {}
 
   ws@8.19.0: {}
+
+  ws@8.21.1: {}
 
   xmlhttprequest-ssl@2.1.2: {}
 
