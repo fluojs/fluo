@@ -85,6 +85,25 @@ export class CacheRepository {
 - shutdown 단계에서는 ready/connecting 계열 상태에 `quit()`를 우선 시도해 정상 종료를 노리고, monitoring, wait/종료 전이 상태에서는 `disconnect()`를 직접 사용합니다.
 - `quit()`가 실패하면 Fluo는 `disconnect()`로 fallback하고, 그 뒤에도 클라이언트가 닫히지 않은 경우에만 에러를 다시 던집니다.
 
+### 옵션 정규화
+
+`RedisModuleOptions`는 최종 `ioredis` 생성자 형태가 아니라 `RedisModule.forRoot(...)`가 받는 caller-facing 입력입니다. 일반 `ioredis` 옵션 중 `lazyConnect`와 `name`을 제외한 필드에 Fluo 전용 필드 네 개를 추가합니다.
+
+- `name`은 Fluo 등록과 해당 DI 토큰을 식별합니다. 이 값은 `ioredis` 생성자 `name`이 되지 않습니다.
+- `global`은 module visibility를 제어합니다. 기본 등록은 `false`로 지정하지 않는 한 global이고, named registration은 항상 scoped이며 `global: true`를 거부합니다.
+- `lifecycle`은 Fluo가 소유한 `connect()`와 `quit()` timeout guardrail을 설정합니다.
+- `sentinelName`은 입력의 `name` 필드가 Fluo 등록 식별자에 예약되어 있으므로 ioredis Sentinel master name을 별도로 받습니다.
+
+Client 생성 전에 다음 순서로 정규화합니다.
+
+1. 일반 ioredis option에서 `name`, `global`, `lifecycle`, `sentinelName`을 분리합니다.
+2. 등록 `name`을 trim한 뒤 lifecycle timeout을 정규화하고 검증합니다.
+3. 빈 등록 `name`을 거부하고 named registration의 `global: true`를 거부합니다.
+4. `sentinelName`이 있으면 ioredis 생성자 `name`으로 매핑해 `RedisClientOptions`를 만듭니다.
+5. Provider가 `{ ...clientOptions, lazyConnect: true }`로 client를 생성합니다. 호출자가 type restriction을 우회해 `lazyConnect: false`를 강제로 cast하더라도 마지막 할당이 항상 우선합니다.
+
+따라서 `RedisClientOptions`는 provider factory가 소비하는 정규화된 constructor-facing option을 나타냅니다. 일반 ioredis option과 선택적 Sentinel `name`을 포함하지만 Fluo 전용 field와 caller-controlled `lazyConnect`는 포함하지 않습니다. `forRoot(...)`가 받는 `RedisModuleOptions`와 같은 의미가 아닙니다.
+
 ### 이름 있는 클라이언트
 
 하나의 애플리케이션에서 여러 Redis 연결이 필요하면 `RedisModule.forRoot({ name, ...options })`를 사용하세요. `name` 없는 `RedisModule.forRoot(options)`는 기본 `REDIS_CLIENT`와 `RedisService` 별칭을 제공하고, 이름 있는 등록은 `getRedisClientToken(name)`과 `getRedisServiceToken(name)`으로 해석합니다.
@@ -202,8 +221,8 @@ export class PubSubTransportFactory {
 ### 타입
 - `DefaultRedisModuleOptions`: 이름 없는 기본 Redis 등록이 받는 옵션입니다. 선택적 global alias visibility와 lifecycle timeout control을 포함합니다.
 - `NamedRedisModuleOptions`: 추가 이름 있는 Redis 등록이 받는 옵션입니다. 필수 `name`과 scoped lifecycle timeout control을 포함합니다.
-- `RedisModuleOptions`: Fluo가 module-only `name`, `global`, `lifecycle`, `sentinelName` 필드를 제거한 뒤 `ioredis` 생성자에 전달하는 설정 옵션입니다. `sentinelName`은 ioredis Sentinel master `name`으로 전달되고, `name`은 Fluo 등록 식별자로 유지됩니다.
-- `RedisClientOptions`: Fluo가 module-only field를 제거하고 내부에서 `lazyConnect: true`를 강제하기 전의 Redis constructor option입니다.
+- `RedisModuleOptions`: `RedisModule.forRoot(...)`가 받는 caller-facing union입니다. `lazyConnect`와 `name`을 제외한 일반 ioredis option에 Fluo 전용 `name`, `global`, `lifecycle`, `sentinelName` field를 결합합니다.
+- `RedisClientOptions`: Fluo가 module-only field를 제거하고 `sentinelName`을 ioredis Sentinel `name`으로 매핑한 뒤의 정규화된 constructor-facing option입니다. Provider는 그 다음 마지막 override로 `lazyConnect: true`를 추가합니다.
 - `RedisLifecycleOptions`: Fluo가 소유한 `connect()`와 `quit()` lifecycle command의 timeout을 조정하는 선택적 옵션입니다.
 - `PersistencePlatformStatusSnapshot`, `RedisStatusAdapterInput`: status snapshot input/output type입니다.
 
