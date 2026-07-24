@@ -77,7 +77,7 @@ JWT 기반 passport 전략에는 두 가지 module wiring이 모두 필요합니
 
 ### 2. 라우트 보호
 
-`@UseAuth()`와 `@RequireScopes()`를 사용하여 인증을 강제합니다.
+`@UseAuth()`로 인증을, `@RequireScopes()`로 인가를 강제합니다.
 
 ```typescript
 import { Controller, Get, type RequestContext } from '@fluojs/http';
@@ -187,6 +187,7 @@ export class SessionController {
 ```typescript
 import { Module } from '@fluojs/core';
 import { Controller, Post, type RequestContext } from '@fluojs/http';
+import { JwtModule } from '@fluojs/jwt';
 import {
   PassportModule,
   REFRESH_TOKEN_STRATEGY_NAME,
@@ -194,18 +195,6 @@ import {
   RefreshTokenStrategy,
   UseAuth,
 } from '@fluojs/passport';
-
-@Module({
-  imports: [
-    RefreshTokenModule.forRoot(MyRefreshTokenService),
-    PassportModule.forRoot(
-      { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
-      [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
-    ),
-  ],
-  providers: [MyRefreshTokenService],
-})
-export class AuthModule {}
 
 @Controller('/auth')
 export class AuthController {
@@ -215,9 +204,27 @@ export class AuthController {
     return ctx.principal; // 새 토큰 쌍이 포함된 principal 반환
   }
 }
+
+@Module({
+  controllers: [AuthController],
+  imports: [
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      global: true,
+      secret: 'your-access-token-secret',
+    }),
+    RefreshTokenModule.forRoot(MyRefreshTokenService),
+    PassportModule.forRoot(
+      { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
+      [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
+    ),
+  ],
+  providers: [MyRefreshTokenService],
+})
+export class AuthModule {}
 ```
 
-`RefreshTokenModule.forRoot(...)`를 `PassportModule.forRoot(...)`와 함께 import 하여 refresh-token 전략과 공유 `REFRESH_TOKEN_SERVICE` alias를 같은 모듈 wiring에서 사용하세요.
+`JwtModule.forRoot(...)`, `RefreshTokenModule.forRoot(...)`, `PassportModule.forRoot(...)`를 함께 import 하세요. 이 graph에서 `RefreshTokenStrategy`는 `JwtModule`의 sibling인 `RefreshTokenModule`에 속하므로, 이 예제는 문서화된 `global: true` option을 설정해 refresh module이 strategy를 resolve할 때 `DefaultJwtVerifier`를 볼 수 있게 합니다. `RefreshTokenModule`은 strategy와 공유 `REFRESH_TOKEN_SERVICE` alias를 제공하고, `PassportModule`은 `@UseAuth('refresh-token')`가 resolve하는 named strategy를 등록하며, refresh route가 실제로 존재하려면 application module이 `AuthController`를 등록해야 합니다.
 
 `RefreshTokenStrategy`는 `body.refreshToken`, `Authorization: Bearer ...`, `x-refresh-token`에서 token을 읽습니다. Malformed non-string token은 인증 실패로 처리됩니다. Rotation 후에는 `@fluojs/jwt`가 반환한 정규화 access-token principal subject를 신뢰합니다. `JwtRefreshTokenAdapter`는 `secret`과 backing store가 필요하며, `store: 'memory'`는 development 및 single-instance deployment용이고 rotation은 store consume contract를 통해 재사용을 감지합니다.
 

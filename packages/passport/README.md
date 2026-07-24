@@ -77,7 +77,7 @@ JWT-based passport strategies require both pieces of module wiring: `JwtModule.f
 
 ### 2. Protect Routes
 
-Use `@UseAuth()` and `@RequireScopes()` to enforce authentication.
+Use `@UseAuth()` to enforce authentication and `@RequireScopes()` to enforce authorization.
 
 ```typescript
 import { Controller, Get, type RequestContext } from '@fluojs/http';
@@ -187,6 +187,7 @@ The package provides a built-in `RefreshTokenStrategy` plus the `RefreshTokenMod
 ```typescript
 import { Module } from '@fluojs/core';
 import { Controller, Post, type RequestContext } from '@fluojs/http';
+import { JwtModule } from '@fluojs/jwt';
 import {
   PassportModule,
   REFRESH_TOKEN_STRATEGY_NAME,
@@ -194,18 +195,6 @@ import {
   RefreshTokenStrategy,
   UseAuth,
 } from '@fluojs/passport';
-
-@Module({
-  imports: [
-    RefreshTokenModule.forRoot(MyRefreshTokenService),
-    PassportModule.forRoot(
-      { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
-      [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
-    ),
-  ],
-  providers: [MyRefreshTokenService],
-})
-export class AuthModule {}
 
 @Controller('/auth')
 export class AuthController {
@@ -215,9 +204,27 @@ export class AuthController {
     return ctx.principal; // Contains new token pair
   }
 }
+
+@Module({
+  controllers: [AuthController],
+  imports: [
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      global: true,
+      secret: 'your-access-token-secret',
+    }),
+    RefreshTokenModule.forRoot(MyRefreshTokenService),
+    PassportModule.forRoot(
+      { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
+      [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
+    ),
+  ],
+  providers: [MyRefreshTokenService],
+})
+export class AuthModule {}
 ```
 
-Import `RefreshTokenModule.forRoot(...)` alongside `PassportModule.forRoot(...)` so the refresh-token strategy and shared `REFRESH_TOKEN_SERVICE` alias are available in the same module wiring.
+Import `JwtModule.forRoot(...)`, `RefreshTokenModule.forRoot(...)`, and `PassportModule.forRoot(...)` together. `RefreshTokenStrategy` belongs to `RefreshTokenModule`, which is a sibling of `JwtModule` in this graph, so this example sets the documented `global: true` option to make `DefaultJwtVerifier` visible when the refresh module resolves the strategy. `RefreshTokenModule` provides the strategy and shared `REFRESH_TOKEN_SERVICE` alias, `PassportModule` registers the named strategy resolved by `@UseAuth('refresh-token')`, and the application module must register `AuthController` for the refresh route to exist.
 
 `RefreshTokenStrategy` reads tokens from `body.refreshToken`, `Authorization: Bearer ...`, or `x-refresh-token`; malformed non-string tokens fail authentication. After rotation, it trusts the normalized access-token principal subject returned by `@fluojs/jwt`. `JwtRefreshTokenAdapter` requires a `secret` and a backing store; `store: 'memory'` is for development and single-instance deployments only, and rotation detects reuse through the store consume contract.
 
