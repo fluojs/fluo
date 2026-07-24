@@ -169,25 +169,25 @@ jobs:
         if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped'
         env:
           FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/packages
-        run: pnpm vitest run --project packages
+        run: pnpm vitest run --project packages --maxWorkers=1
 
       - name: Test (full apps project)
         if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped'
         env:
           FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/apps
-        run: pnpm vitest run --project apps
+        run: pnpm vitest run --project apps --maxWorkers=1
 
       - name: Test (full examples project)
         if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped'
         env:
           FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/examples
-        run: pnpm vitest run --project examples
+        run: pnpm vitest run --project examples --maxWorkers=1
 
       - name: Test (full tooling project)
         if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped'
         env:
           FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/tooling
-        run: pnpm vitest run --project tooling
+        run: pnpm vitest run --project tooling --maxWorkers=1
 
       - name: Print Vitest shutdown debug summary
         if: ${{ always() }}
