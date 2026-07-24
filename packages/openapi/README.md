@@ -142,6 +142,7 @@ Use `OpenApiModule.forRootAsync(...)` when title/version/source configuration co
 - `ApiBody`, `ApiParam`, `ApiQuery`, `ApiHeader`, `ApiCookie`: Explicit request-body and parameter documentation decorators that override inferred request documentation when names overlap.
 - `ApiBearerAuth`, `ApiSecurity`: Security requirement decorators.
 - `ApiExcludeEndpoint`: Omit specific handlers from documentation.
+- `ApiOperationOptions`, `ApiResponseOptions`, `ApiParameterOptions`, `ApiBodyOptions`: Decorator option types accepted by `@ApiOperation(...)`, `@ApiResponse(...)`, `@ApiParam(...)`, `@ApiQuery(...)`, `@ApiHeader(...)`, `@ApiCookie(...)`, and `@ApiBody(...)`.
 - `buildOpenApiDocument`: Programmatic document builder (low-level).
 - `OpenApiHandlerRegistry`: Mutable descriptor registry used by advanced integrations to snapshot handler descriptors before document generation.
 - `getControllerTags`, `getMethodApiMetadata`: Metadata readers for advanced tests and integration tooling.
