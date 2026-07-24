@@ -30,20 +30,29 @@
 
 ## 16.2 Registering the Email Module
 
-모듈을 등록하려면 먼저 트랜스포트를 결정해야 합니다. 아래 예제는 일반적인 HTTP 기반 트랜스포트를 사용하지만, fluo는 Node.js SMTP용 퍼스트 파티 트랜스포트도 별도로 제공합니다.
+모듈을 등록할 때는 transport를 반드시 제공해야 합니다. 아래의 완전한 Node.js 예제는 fluo의 1st-party Nodemailer factory를 사용합니다. 다른 런타임에서는 transport를 생략하지 말고 애플리케이션이 소유한 `EmailTransport` 또는 `EmailTransportFactory`를 전달하세요.
 
 ```typescript
 import { Module } from '@fluojs/core';
 import { EmailModule } from '@fluojs/email';
+import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
 
 @Module({
   imports: [
     EmailModule.forRoot({
       defaultFrom: 'noreply@fluoshop.com',
-      transport: {
-        kind: 'transactional-api',
-        create: async () => new MyApiTransport(),
-      },
+      transport: createNodemailerEmailTransportFactory({
+        smtp: {
+          auth: {
+            pass: 'secret',
+            user: 'api-key',
+          },
+          host: 'smtp.fluoshop.com',
+          port: 587,
+          secure: false,
+        },
+      }),
+      verifyOnModuleInit: true,
     }),
   ],
 })
@@ -55,24 +64,36 @@ export class AppModule {}
 설정이 config service 같은 다른 provider에 의존한다면 fluo async factory 형태를 사용합니다:
 
 ```typescript
+import { ConfigService } from '@fluojs/config';
+import { EmailModule } from '@fluojs/email';
+import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
+
 EmailModule.forRootAsync({
   inject: [ConfigService],
   useFactory: (config) => ({
-    defaultFrom: config.mail.from,
-    transport: {
-      kind: config.mail.transportKind,
-      create: () => config.mail.transport,
-    },
+    defaultFrom: String(config.getOrThrow('MAIL_FROM')),
+    transport: createNodemailerEmailTransportFactory({
+      smtp: {
+        auth: {
+          pass: String(config.getOrThrow('SMTP_PASSWORD')),
+          user: String(config.getOrThrow('SMTP_USER')),
+        },
+        host: String(config.getOrThrow('SMTP_HOST')),
+        port: Number(config.getOrThrow('SMTP_PORT')),
+        secure: false,
+      },
+    }),
+    verifyOnModuleInit: true,
   }),
 });
 ```
 
-이 migration boundary는 NestJS dynamic module보다 의도적으로 좁습니다. `EmailModule.forRootAsync(...)`는 `inject`와 `useFactory`를 지원하며, `imports`, `useClass`, `useExisting`는 지원하지 않습니다. 필요한 의존성은 애플리케이션 module graph에 먼저 등록한 뒤 필요한 token을 `inject`에 나열하세요. module-local visibility가 필요하면 최상위 options object에 `global: false`를 둡니다.
+이 migration boundary는 NestJS dynamic module보다 의도적으로 좁습니다. `EmailModule.forRootAsync(...)`는 `inject`와 `useFactory`를 지원하며, `imports`, `useClass`, `useExisting`는 지원하지 않습니다. 필요한 의존성은 애플리케이션 module graph에 먼저 등록한 뒤 필요한 token을 `inject`에 나열하세요. `global`을 생략하면 반환된 module은 global이며, module-local visibility가 필요할 때만 factory result 바깥의 최상위 options object에 `global: false`를 둡니다.
 
 ### verifyOnModuleInit
 `verifyOnModuleInit: true`를 설정하면 애플리케이션 부트스트랩 중 트랜스포트가 실제로 사용 가능한지 확인할 수 있습니다. SMTP 자격 증명 검증처럼 배포 초기에 실패를 드러내야 하는 경우에 유용합니다. 이렇게 시작 단계에서 문제를 확인하면 첫 주문 확인 메일이 실패한 뒤에야 설정 오류를 발견하는 상황을 줄일 수 있습니다.
 
-Bootstrap 검증이 활성화된 경우 `EmailService`는 검증이 성공적으로 끝나기 전까지 메시지를 transport에 넘기지 않습니다. `EmailModule.forRootAsync(...)`로 구성을 해석하다가 factory가 reject되더라도 fluo는 그 rejection을 영구 memoize하지 않으므로, 이후 provider resolution에서 configuration lookup을 다시 시도할 수 있습니다.
+Bootstrap 검증이 활성화된 경우 `EmailService`는 검증이 성공적으로 끝나기 전까지 메시지를 transport에 넘기지 않습니다. `EmailModule.forRootAsync(...)`는 해당 module instance에서 처음으로 normalize에 성공한 options 결과를 memoize합니다. Options factory가 reject되거나 유효하지 않은 options를 반환하면 fluo는 실패한 시도를 지우므로, 이후 provider resolution에서 factory를 다시 호출할 수 있습니다.
 
 ## 16.3 Node-only SMTP with @fluojs/email/node
 
@@ -127,12 +148,24 @@ export class InvoiceService {
 Chapter 15에서 구성한 알림 오케스트레이션에 이메일을 추가하려면 `EMAIL_CHANNEL` 토큰을 주입합니다. 이렇게 하면 이메일은 독립 서비스로도 사용할 수 있고, 같은 구현을 알림 채널로도 재사용할 수 있습니다.
 
 ```typescript
+import { Module } from '@fluojs/core';
 import { EmailModule, EMAIL_CHANNEL } from '@fluojs/email';
+import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
 import { NotificationsModule } from '@fluojs/notifications';
 
 @Module({
   imports: [
-    EmailModule.forRoot({ ... }),
+    EmailModule.forRoot({
+      defaultFrom: 'noreply@fluoshop.com',
+      transport: createNodemailerEmailTransportFactory({
+        smtp: {
+          auth: { pass: 'secret', user: 'api-key' },
+          host: 'smtp.fluoshop.com',
+          port: 587,
+          secure: false,
+        },
+      }),
+    }),
     NotificationsModule.forRootAsync({
       inject: [EMAIL_CHANNEL],
       useFactory: (channel) => ({
@@ -157,13 +190,24 @@ import {
   createEmailNotificationsQueueAdapter,
   EmailNotificationsQueueWorker,
 } from '@fluojs/email/queue';
+import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
 import { NotificationsModule } from '@fluojs/notifications';
 import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
 
 @Module({
   imports: [
     QueueModule.forRoot(),
-    EmailModule.forRoot({ ... }),
+    EmailModule.forRoot({
+      defaultFrom: 'noreply@fluoshop.com',
+      transport: createNodemailerEmailTransportFactory({
+        smtp: {
+          auth: { pass: 'secret', user: 'api-key' },
+          host: 'smtp.fluoshop.com',
+          port: 587,
+          secure: false,
+        },
+      }),
+    }),
     NotificationsModule.forRootAsync({
       inject: [EMAIL_CHANNEL, QueueLifecycleService],
       useFactory: (channel, queue) => ({
@@ -187,6 +231,9 @@ export class AppModule {}
 `@fluojs/email`은 교체 가능한 템플릿 렌더러를 지원합니다. 핵심 패키지를 특정 엔진에 묶지 않으면서 Handlebars, EJS, React-email 같은 렌더링 방식을 선택할 수 있습니다.
 
 ```typescript
+import { EmailModule } from '@fluojs/email';
+import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
+
 EmailModule.forRoot({
   renderer: {
     render: async ({ payload, template }) => {
@@ -195,6 +242,14 @@ EmailModule.forRoot({
       return { html: `<h1>안녕하세요 ${String(data.name)}님</h1>`, subject: template };
     },
   },
+  transport: createNodemailerEmailTransportFactory({
+    smtp: {
+      auth: { pass: 'secret', user: 'api-key' },
+      host: 'smtp.fluoshop.com',
+      port: 587,
+      secure: false,
+    },
+  }),
 });
 ```
 
