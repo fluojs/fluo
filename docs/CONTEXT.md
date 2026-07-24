@@ -148,7 +148,7 @@ The Cron dynamic scheduling contract is aligned across `packages/cron/README.md`
 
 ## Cron Post-Task Release Deadline
 
-The Cron shutdown contract is aligned across `packages/cron/README.md`, [`docs/architecture/lifecycle-and-shutdown.md`](./architecture/lifecycle-and-shutdown.md), [`docs/reference/package-surface.md`](./reference/package-surface.md), and [`book/intermediate/ch12-cron.md`](../book/intermediate/ch12-cron.md): after shutdown starts, task-finally Redis release and its immediate stopped-state retry share one deadline capped by `shutdown.timeoutMs`. If Redis does not confirm release before that deadline, the platform status snapshot continues to expose the unresolved local ownership.
+The Cron shutdown contract is aligned across `packages/cron/README.md`, [`docs/architecture/lifecycle-and-shutdown.md`](./architecture/lifecycle-and-shutdown.md), [`docs/reference/package-surface.md`](./reference/package-surface.md), and [`book/intermediate/ch12-cron.md`](../book/intermediate/ch12-cron.md): task-finally Redis release and its immediate stopped-state retry use only the time remaining on the deadline established when shutdown starts. Late task settlement does not reset the deadline, and an unconfirmed release remains visible as unresolved local ownership in the platform status snapshot.
 
 ## HTTP Catch-All Decision
 

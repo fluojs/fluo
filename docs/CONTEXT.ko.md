@@ -148,7 +148,7 @@ Cron dynamic scheduling contract는 `packages/cron/README.ko.md`, [`docs/referen
 
 ## Cron Post-Task Release Deadline
 
-Cron shutdown contract는 `packages/cron/README.ko.md`, [`docs/architecture/lifecycle-and-shutdown.ko.md`](./architecture/lifecycle-and-shutdown.ko.md), [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md), [`book/intermediate/ch12-cron.ko.md`](../book/intermediate/ch12-cron.ko.md)에서 정렬됩니다. Shutdown이 시작된 뒤 task-finally Redis release와 즉시 이어지는 stopped-state retry는 `shutdown.timeoutMs`로 제한된 하나의 deadline을 공유합니다. Redis가 deadline 전에 release를 확인하지 못하면 platform status snapshot은 해결되지 않은 local ownership을 계속 노출합니다.
+Cron shutdown contract는 `packages/cron/README.ko.md`, [`docs/architecture/lifecycle-and-shutdown.ko.md`](./architecture/lifecycle-and-shutdown.ko.md), [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md), [`book/intermediate/ch12-cron.ko.md`](../book/intermediate/ch12-cron.ko.md)에서 정렬됩니다. Task-finally Redis release와 즉시 이어지는 stopped-state retry는 shutdown 시작 시 설정된 deadline의 남은 시간만 사용합니다. Late task settlement는 deadline을 재설정하지 않으며, release를 확인하지 못한 local ownership은 platform status snapshot에 계속 노출됩니다.
 
 ## HTTP Catch-All Decision
 
