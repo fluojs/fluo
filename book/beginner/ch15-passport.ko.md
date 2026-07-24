@@ -160,7 +160,7 @@ export class ProfileController {
 ### 15.4.2 Controller-Level vs. Method-Level Guards
 `@UseAuth()`는 클래스 전체(컨트롤러)에 적용하거나 개별 메서드에 적용할 수 있습니다. 컨트롤러 수준에서 적용하는 것은 "기본적으로 보안 적용(secure by default)" 접근 방식으로, 해당 클래스의 모든 라우트가 보호되도록 보장합니다. 일부 라우트만 공개해야 하는 경우, 더 구체적인 설정이나 커스텀 가드를 사용하여 예외를 처리할 수 있습니다.
 
-이러한 유연성을 통해 애플리케이션의 계층 구조에 맞는 보안 정책을 설계할 수 있습니다. 예를 들어, `UsersController` 전체를 `@UseAuth('jwt')`로 보호하고 `deleteUser` 메서드에만 `@RequireScopes('users:delete')`를 선언할 수 있습니다. 선택된 strategy가 요청을 인증한 뒤 `AuthGuard`가 이 required scope를 강제합니다. 역할, 소유권, 속성에 의존하는 애플리케이션별 정책은 `requestContext.principal`을 읽는 애플리케이션 Guard 또는 service에 두어야 합니다. 계층적 접근 방식은 감사 가능한 보안 표면을 만들고, 개발자가 실수로 가드를 적용하지 않아 새로운 엔드포인트가 무방비로 노출되는 "보안 편차(Security Drift)"를 줄입니다.
+이러한 유연성을 통해 애플리케이션의 계층 구조에 맞는 보안 정책을 설계할 수 있습니다. 라우트가 scope도 선언한다면 `@UseAuth('jwt')`와 `@RequireScopes('users:delete')`를 해당 메서드에 함께 배치하세요. 그러면 두 decorator가 하나의 method-level 인증 requirement를 구성하며 controller와 method 양쪽에 `AuthGuard`를 중복 등록하지 않습니다. 역할, 소유권, 속성에 의존하는 애플리케이션별 정책은 `requestContext.principal`을 읽는 애플리케이션 Guard 또는 service에 두어야 합니다. 이 명시적인 배치는 감사 가능한 보안 표면을 만들고, 개발자가 실수로 가드를 적용하지 않아 새로운 엔드포인트가 무방비로 노출되는 "보안 편차(Security Drift)"를 줄입니다.
 
 ### 15.4.3 Mixing Multiple Guards
 Fluo를 사용하면 passport 인증 뒤에 추가 가드를 쌓을 수 있습니다. 인증이 먼저 principal을 만들고, 뒤의 가드는 그 principal이나 요청 컨텍스트를 기준으로 추가 정책을 검사합니다. 이러한 효율성은 성능 면에서 중요한데, 요청이 이미 승인되지 않은 것으로 간주된 후 불필요한 데이터베이스 조회나 암호화 체크를 피할 수 있기 때문입니다.
@@ -177,9 +177,9 @@ import { Controller, Delete, type RequestContext } from '@fluojs/http';
 import { RequireScopes, UseAuth } from '@fluojs/passport';
 
 @Controller('/users')
-@UseAuth('jwt')
 export class UsersController {
   @Delete('/:id')
+  @UseAuth('jwt')
   @RequireScopes('users:delete')
   deleteUser(_input: never, ctx: RequestContext) {
     return { deletedBy: ctx.principal?.subject };

@@ -160,7 +160,7 @@ export class ProfileController {
 ### 15.4.2 Controller-Level vs. Method-Level Guards
 `@UseAuth()` can be applied to an entire class, the controller, or to individual methods. Applying it at the controller level is a "secure by default" approach that ensures every route in that class is protected. If only some routes should be public, you can handle exceptions with more specific configuration or a custom Guard.
 
-This flexibility lets you design security policies that match your application's hierarchy. For example, protect the entire `UsersController` with `@UseAuth('jwt')` and declare `@RequireScopes('users:delete')` on only the `deleteUser` method. `AuthGuard` enforces that required scope after the selected strategy authenticates the request. Application-specific role, ownership, or attribute policies belong in an application Guard or service that reads `requestContext.principal`. This hierarchical approach creates an auditable security surface and reduces "Security Drift", where a developer accidentally leaves a new endpoint exposed by forgetting to apply a Guard.
+This flexibility lets you design security policies that match your application's hierarchy. When a route also declares scopes, place `@UseAuth('jwt')` and `@RequireScopes('users:delete')` together on that method. Both decorators then contribute to one method-level authentication requirement without registering `AuthGuard` at both the controller and method levels. Application-specific role, ownership, or attribute policies belong in an application Guard or service that reads `requestContext.principal`. This explicit placement creates an auditable security surface and reduces "Security Drift", where a developer accidentally leaves a new endpoint exposed by forgetting to apply a Guard.
 
 ### 15.4.3 Mixing Multiple Guards
 Fluo lets you stack additional Guards after Passport Authentication. Authentication first creates the principal, and later Guards inspect that principal or the request context to check additional policies. This efficiency matters for performance because it avoids unnecessary database lookups or cryptographic checks after a request has already been treated as unauthorized.
@@ -177,9 +177,9 @@ import { Controller, Delete, type RequestContext } from '@fluojs/http';
 import { RequireScopes, UseAuth } from '@fluojs/passport';
 
 @Controller('/users')
-@UseAuth('jwt')
 export class UsersController {
   @Delete('/:id')
+  @UseAuth('jwt')
   @RequireScopes('users:delete')
   deleteUser(_input: never, ctx: RequestContext) {
     return { deletedBy: ctx.principal?.subject };
