@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## 2.0.2
+
+### Patch Changes
+
+- [#2781](https://github.com/fluojs/fluo/pull/2781) [`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4) Thanks [@ayden94](https://github.com/ayden94)! - Capture CLI-injected Studio configuration once as a validated, immutable runtime bridge snapshot.
+
 ## 2.0.1
 
 ### Patch Changes

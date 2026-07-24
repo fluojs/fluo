@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## 1.1.1
+
+### Patch Changes
+
+- [#2770](https://github.com/fluojs/fluo/pull/2770) [`6edaaa0`](https://github.com/fluojs/fluo/commit/6edaaa05202635a86cc64bd83453983ed239fa12) Thanks [@ayden94](https://github.com/ayden94)! - Type `ExpressHttpApplicationAdapter.getServer()` as its Node HTTP/HTTPS server union.
+
+- Updated dependencies [[`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4)]:
+  - @fluojs/runtime@2.0.2
+
 ## 1.1.0
 
 ### Minor Changes

@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## 2.0.2
+
+### Patch Changes
+
+- [#2780](https://github.com/fluojs/fluo/pull/2780) [`8a0639d`](https://github.com/fluojs/fluo/commit/8a0639deea1d5122b73ddd88a0ac7043dbd14c70) Thanks [@ayden94](https://github.com/ayden94)! - Retain scheduler handles when stopping a task fails so dynamic disable and removal report failure and can retry without losing lifecycle ownership.
+
+- Updated dependencies [[`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4)]:
+  - @fluojs/runtime@2.0.2
+
 ## 2.0.1
 
 ### Patch Changes
