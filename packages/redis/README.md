@@ -85,6 +85,25 @@ Every `RedisModule.forRoot(...)` registration creates a new client that `@fluojs
 - During shutdown, ready/connecting clients attempt `quit()` first for graceful teardown, while monitoring, wait, and closed-transition states use `disconnect()` directly.
 - If `quit()` fails, Fluo falls back to `disconnect()` and only rethrows when the client still remains open afterward.
 
+### Option Normalization
+
+`RedisModuleOptions` is the caller-facing input to `RedisModule.forRoot(...)`, not the final `ioredis` constructor shape. It accepts ordinary `ioredis` options except `lazyConnect` and `name`, then adds four Fluo-only fields:
+
+- `name` identifies the Fluo registration and its DI tokens. It never becomes the `ioredis` constructor `name`.
+- `global` controls module visibility. The default registration is global unless set to `false`; named registrations are always scoped and reject `global: true`.
+- `lifecycle` configures Fluo-owned `connect()` and `quit()` timeout guardrails.
+- `sentinelName` supplies the ioredis Sentinel master name because the input `name` field is reserved for Fluo registration identity.
+
+Normalization happens before client construction in this order:
+
+1. Fluo removes `name`, `global`, `lifecycle`, and `sentinelName` from the ordinary ioredis options.
+2. It trims the registration `name`, then normalizes and validates the lifecycle timeouts.
+3. It rejects a blank registration name and rejects `global: true` on a named registration.
+4. It maps `sentinelName`, when present, to the ioredis constructor `name` and produces `RedisClientOptions`.
+5. The provider creates the client with `{ ...clientOptions, lazyConnect: true }`. This final assignment always wins, including when a caller bypasses the type restriction and casts `lazyConnect: false` into the input.
+
+`RedisClientOptions` therefore describes the normalized constructor-facing options consumed by the provider factory: ordinary ioredis options plus an optional Sentinel `name`, but no Fluo-only fields and no caller-controlled `lazyConnect`. It is not a synonym for the `RedisModuleOptions` accepted by `forRoot(...)`.
+
 ### Named Clients
 
 Use `RedisModule.forRoot({ name, ...options })` when one application needs more than one Redis connection. `RedisModule.forRoot(options)` without `name` provides the default `REDIS_CLIENT` and `RedisService` aliases, and named registrations are resolved with `getRedisClientToken(name)` and `getRedisServiceToken(name)`.
@@ -202,8 +221,8 @@ export class PubSubTransportFactory {
 ### Types
 - `DefaultRedisModuleOptions`: Options accepted by the unnamed default Redis registration, including optional global alias visibility and lifecycle timeout controls.
 - `NamedRedisModuleOptions`: Options accepted by additional named Redis registrations, including required `name` and scoped lifecycle timeout controls.
-- `RedisModuleOptions`: Configuration options passed to the `ioredis` constructor after Fluo removes module-only `name`, `global`, `lifecycle`, and `sentinelName` fields. `sentinelName` is forwarded as the ioredis Sentinel master `name`, while `name` remains the Fluo registration identifier.
-- `RedisClientOptions`: Redis constructor options after Fluo removes module-only fields and before it forces `lazyConnect: true` internally.
+- `RedisModuleOptions`: Caller-facing union accepted by `RedisModule.forRoot(...)`. It combines ordinary ioredis options except `lazyConnect` and `name` with the Fluo-only `name`, `global`, `lifecycle`, and `sentinelName` fields.
+- `RedisClientOptions`: Normalized constructor-facing options after Fluo removes its module-only fields and maps `sentinelName` to the ioredis Sentinel `name`. The provider adds `lazyConnect: true` afterward as the final override.
 - `RedisLifecycleOptions`: Optional timeout controls for Fluo-owned `connect()` and `quit()` lifecycle commands.
 - `PersistencePlatformStatusSnapshot`, `RedisStatusAdapterInput`: Status snapshot input/output types.
 
