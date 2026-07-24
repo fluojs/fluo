@@ -1,8 +1,17 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import * as drizzlePublicApi from './index.js';
 
 describe('@fluojs/drizzle public API surface', () => {
+  it('requires the patched Drizzle ORM peer floor', () => {
+    const packageManifest = readFileSync(resolve(import.meta.dirname, '../package.json'), 'utf8');
+
+    expect(packageManifest).toContain('"drizzle-orm": ">=0.45.2"');
+  });
+
   it('keeps documented supported root-barrel exports', () => {
     expect(drizzlePublicApi).toHaveProperty('DrizzleDatabase');
     expect(drizzlePublicApi).toHaveProperty('DrizzleModule');
