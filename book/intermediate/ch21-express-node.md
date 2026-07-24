@@ -67,7 +67,7 @@ async function bootstrap() {
 bootstrap();
 ```
 
-`createExpressAdapter()` intentionally exposes the shared `HttpApplicationAdapter` return type. Narrow it with the exported `ExpressHttpApplicationAdapter` class before accessing the Express-only `getListenTarget()` helper. The helper reports the resolved bind target and public URL after startup. Keep it, `getServer()`, and `getRealtimeCapability()` at infrastructure boundaries such as startup logging, probes, or realtime integration; ordinary controllers and providers should stay on portable fluo contracts.
+`createExpressAdapter()` intentionally exposes the shared `HttpApplicationAdapter` return type. Narrow it with the exported `ExpressHttpApplicationAdapter` class before accessing the Express-only `getListenTarget()` helper. The helper reports the resolved bind target and public URL after startup. `getServer()` returns the adapter-owned `node:http` `Server` or `node:https` `Server` union. Keep it, `getListenTarget()`, and `getRealtimeCapability()` at infrastructure boundaries such as startup logging, probes, or realtime integration; ordinary controllers and providers should stay on portable fluo contracts.
 
 ### 21.1.3 Handling Middleware
 

@@ -1,10 +1,12 @@
 import type {
   IncomingHttpHeaders,
   IncomingMessage,
+  Server as HttpServer,
 } from 'node:http';
 import { createServer as createHttpServer } from 'node:http';
 import {
   createServer as createHttpsServer,
+  type Server as HttpsServer,
   type ServerOptions as HttpsServerOptions,
 } from 'node:https';
 import type { AddressInfo, Socket } from 'node:net';
@@ -150,7 +152,10 @@ interface ExpressListenTarget {
   url: string;
 }
 
-type ExpressServer = ReturnType<typeof createHttpServer> | ReturnType<typeof createHttpsServer>;
+/**
+ * The Node.js HTTP or HTTPS server owned by the Express adapter.
+ */
+export type ExpressServer = HttpServer | HttpsServer;
 
 interface ExpressNativeRouteDefinition {
   descriptorsByMethod: Readonly<Partial<Record<ExpressNativeRouteMethod, HandlerDescriptor>>>;
@@ -246,7 +251,12 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
     });
   }
 
-  getServer(): unknown {
+  /**
+   * Returns the Node.js HTTP or HTTPS server owned by this adapter.
+   *
+   * @returns The platform-owned Node.js HTTP or HTTPS server.
+   */
+  getServer(): ExpressServer {
     return this.server;
   }
 

@@ -67,7 +67,7 @@ async function bootstrap() {
 bootstrap();
 ```
 
-`createExpressAdapter()`는 의도적으로 공유 `HttpApplicationAdapter` return type을 노출합니다. Express 전용 `getListenTarget()` helper에 접근하기 전에 export된 `ExpressHttpApplicationAdapter` class로 narrow하세요. 이 helper는 startup 이후 해석된 bind target과 public URL을 보고합니다. 이 helper와 `getServer()`, `getRealtimeCapability()`는 startup logging, probe, realtime integration 같은 infrastructure boundary에만 두고, 일반 controller와 provider는 portable fluo 계약을 유지하세요.
+`createExpressAdapter()`는 의도적으로 공유 `HttpApplicationAdapter` return type을 노출합니다. Express 전용 `getListenTarget()` helper에 접근하기 전에 export된 `ExpressHttpApplicationAdapter` class로 narrow하세요. 이 helper는 startup 이후 해석된 bind target과 public URL을 보고합니다. `getServer()`는 adapter가 소유한 `node:http` `Server` 또는 `node:https` `Server` union을 반환합니다. 이 helper와 `getServer()`, `getRealtimeCapability()`는 startup logging, probe, realtime integration 같은 infrastructure boundary에만 두고, 일반 controller와 provider는 portable fluo 계약을 유지하세요.
 
 ### 21.1.3 Handling Middleware
 
