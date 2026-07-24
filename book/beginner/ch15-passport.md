@@ -239,12 +239,12 @@ Dynamic constraints can also apply to **Time-Based Access**. For example, studen
 Modern OAuth2 and OpenID Connect flows distinguish between **Scopes**, what a token can do, and **Claims**, what a token says about a user.
 
 ### 15.8.1 Working with Scopes
-Scopes are permissions requested by a client application. For example, a mobile app may request the `posts:write` scope so a user can create content. `JwtStrategy` should extract these scopes and include them in the normalized Principal.
+Scopes are permissions requested by a client application. For example, a mobile app may request the `posts:write` scope so a user can create content. The issuer or Authorization Server decides which requested scopes to grant and records those grants in the token. After token verification, the strategy normalizes the verified grants into the Principal's `scopes` field.
 
 In many OAuth2 implementations, scopes limit what an application can do on behalf of a user. When a user signs in through the official web portal, they may have full administrator permissions, but a third-party integration might receive only a "read-only" scope. This abstraction layer is critical for building a security ecosystem where users can safely grant limited access to their data without sharing their primary credentials.
 
 ```typescript
-// Inside a custom AuthStrategy
+// Inside a custom AuthStrategy, after token verification
 return {
   subject: payload.sub,
   claims: payload,
@@ -253,7 +253,7 @@ return {
 };
 ```
 
-Declare the route's required scopes with the supported `@RequireScopes('posts:write')` decorator alongside `@UseAuth('jwt')`. `AuthGuard` then checks those scopes after the strategy returns a principal. This ensures that even if a user is an `admin`, the token only contains the permissions granted to the specific client being used. This "Principle of Least Privilege" is essential for protecting APIs from token theft or compromised client applications. It also lets you implement an "Incremental Consent" pattern, where users grant permissions only when a specific feature needs them.
+Declare the route's required scopes with the supported `@RequireScopes('posts:write')` decorator alongside `@UseAuth('jwt')`. `AuthGuard` then checks the route requirement against the already granted scopes after the verified strategy returns a principal. `@RequireScopes(...)` does not grant scopes, remove scopes, or constrain token contents; token issuance remains the issuer or Authorization Server's responsibility. Keeping issuance separate from route enforcement preserves the "Principle of Least Privilege" for stolen tokens or compromised clients and supports "Incremental Consent", where users grant permissions only when a specific feature needs them.
 
 Scopes can also control UI behavior. By checking scopes in a token, the frontend can decide whether to show or hide specific buttons or navigation links, providing a more intuitive user experience while server-side Guard checks still enforce security. This synchronization between frontend visibility and backend enforcement is a hallmark of well-designed modern applications.
 
