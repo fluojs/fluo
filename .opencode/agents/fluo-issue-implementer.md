@@ -1,7 +1,7 @@
 ---
 description: fluo-issue-implementer implements a single GitHub issue inside an isolated .worktrees/<branch> worktree and reports a verification summary back to the invoking command or harness
 mode: subagent
-model: openai/gpt-5.6-sol-pro
+model: openai/gpt-5.6-sol
 options:
   reasoningEffort: xhigh
   reasoningSummary: auto

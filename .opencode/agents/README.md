@@ -394,9 +394,9 @@ Rules:
 - Do not rely on implicit name matching.
 - Keep reviewer templates separate from write-capable implementers.
 - Prefer one role per file.
-- Use provider-qualified model IDs in agent frontmatter. The current local GPT-5.6 aliases are `openai/gpt-5.6-sol-pro`, `openai/gpt-5.6-terra-pro`, and `openai/gpt-5.6-luna-fast`.
-- Select `openai/gpt-5.6-sol-pro` for central or high-stakes gates and implementation agents.
-- Select `openai/gpt-5.6-terra-pro` for specialist package audits and reviews.
+- Use provider-qualified model IDs in agent frontmatter. The current local GPT-5.6 aliases are `openai/gpt-5.6-sol`, `openai/gpt-5.6-terra`, and `openai/gpt-5.6-luna-fast`.
+- Select `openai/gpt-5.6-sol` for central or high-stakes gates and implementation agents.
+- Select `openai/gpt-5.6-terra` for specialist package audits and reviews.
 - Use `openai/gpt-5.6-luna-fast` only for low-risk discovery where speed matters more than depth.
 - Before pinning an alias, verify it appears in the local `opencode models openai` catalog.
 - Do not combine suffix aliases such as `*-pro` or `*-fast` with a separate `variant: pro` or `variant: fast` field.

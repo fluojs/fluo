@@ -1,7 +1,7 @@
 ---
 description: fluo-package-feature-rd-reviewer researches feature opportunities for a single package read-only and returns rd_brief candidates, deferred items, or rejects without creating issues.
 mode: subagent
-model: openai/gpt-5.6-terra-pro
+model: openai/gpt-5.6-terra
 options:
   reasoningEffort: high
   reasoningSummary: auto

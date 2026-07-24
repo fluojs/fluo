@@ -1,7 +1,7 @@
 ---
 description: fluo-package-architecture-reviewer audits a single package's implementation code for layering violations, dependency direction, resource ownership, environment isolation, and configuration boundary issues. Read-only. Returns schema-compliant findings only.
 mode: subagent
-model: openai/gpt-5.6-terra-pro
+model: openai/gpt-5.6-terra
 options:
   reasoningEffort: high
   reasoningSummary: auto
