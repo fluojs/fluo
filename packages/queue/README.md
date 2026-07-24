@@ -23,6 +23,8 @@ npm install @fluojs/queue @fluojs/redis
 
 `@fluojs/queue` requires Node.js `>=20.0.0`, as declared by `engines.node` in the package manifest. This package-level requirement still applies when the rest of a fluo application uses runtime-portable APIs.
 
+`@fluojs/queue` includes BullMQ `^5.81.1`. Refresh the application lockfile when upgrading so BullMQ's patched dependency graph is installed. Queue registration, worker discovery, and persisted-job contracts are unchanged.
+
 ## When to Use
 
 - When you need to process long-running or resource-intensive tasks in the background.
