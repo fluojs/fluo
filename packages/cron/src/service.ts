@@ -81,6 +81,10 @@ function createRedisDependencyId(name?: string): string {
   return `redis.${normalizedName}`;
 }
 
+function getRemainingTimeoutMs(deadlineMs: number): number {
+  return Math.max(0, deadlineMs - Date.now());
+}
+
 /**
  * Lifecycle-managed scheduler runtime for decorator-discovered and dynamic tasks.
  *
@@ -763,10 +767,21 @@ export class CronLifecycleService
     } finally {
       lockRenewalMonitor.stop();
       this.runningDistributedLockKeys.delete(descriptor.lockKey);
-      const released = await this.distributedLocks.releaseLock(descriptor);
+      const releaseDeadlineMs = this.shutdownPromise
+        ? Date.now() + this.options.shutdown.timeoutMs
+        : undefined;
+      const released = await this.distributedLocks.releaseLock(
+        descriptor,
+        releaseDeadlineMs === undefined ? undefined : getRemainingTimeoutMs(releaseDeadlineMs),
+      );
 
       if (!released && this.lifecycleState === 'stopped') {
-        await this.distributedLocks.releaseOwnedLocks(new Set(), this.options.shutdown.timeoutMs);
+        await this.distributedLocks.releaseOwnedLocks(
+          new Set(),
+          releaseDeadlineMs === undefined
+            ? this.options.shutdown.timeoutMs
+            : getRemainingTimeoutMs(releaseDeadlineMs),
+        );
       }
     }
   }
