@@ -206,7 +206,7 @@ export class CronLifecycleService
    * Removes a registered task by name.
    *
    * @param name Task name to remove.
-   * @returns `true` when a task existed and was removed.
+   * @returns `true` when a task existed and was removed; `false` when it was absent or its handle could not stop.
    */
   remove(name: string): boolean {
     const task = this.tasks.get(name);
@@ -215,7 +215,10 @@ export class CronLifecycleService
       return false;
     }
 
-    this.unscheduleTask(task);
+    if (!this.unscheduleTask(task)) {
+      return false;
+    }
+
     this.tasks.delete(name);
     return true;
   }
@@ -258,7 +261,7 @@ export class CronLifecycleService
    * Disables a task without removing its descriptor.
    *
    * @param name Task name to disable.
-   * @returns `true` when the task exists after the operation.
+   * @returns `true` when the task exists and its handle stopped; `false` when it was absent or its handle could not stop.
    */
   disable(name: string): boolean {
     const task = this.tasks.get(name);
@@ -272,8 +275,7 @@ export class CronLifecycleService
     }
 
     task.enabled = false;
-    this.unscheduleTask(task);
-    return true;
+    return this.unscheduleTask(task);
   }
 
   /**
@@ -686,21 +688,28 @@ export class CronLifecycleService
     task.enabled = false;
   }
 
-  private unscheduleTask(task: RuntimeTaskState): void {
+  private unscheduleTask(task: RuntimeTaskState): boolean {
     if (!task.scheduledHandle) {
-      return;
+      return true;
     }
 
     const scheduledHandle = task.scheduledHandle;
+
+    if (!this.stopScheduledHandle(scheduledHandle)) {
+      return false;
+    }
+
     task.scheduledHandle = undefined;
-    this.stopScheduledHandle(scheduledHandle);
+    return true;
   }
 
-  private stopScheduledHandle(scheduledHandle: RuntimeScheduledTask): void {
+  private stopScheduledHandle(scheduledHandle: RuntimeScheduledTask): boolean {
     try {
       scheduledHandle.stop();
+      return true;
     } catch (error) {
       this.logger.error('Failed to stop scheduled task.', error, 'CronLifecycleService');
+      return false;
     }
   }
 
