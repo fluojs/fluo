@@ -30,20 +30,29 @@ The email package is designed to stay lightweight without reducing runtime porta
 
 ## 16.2 Registering the Email Module
 
-To register the Module, you first need to choose a transport. The example below uses a typical HTTP-based transport, but fluo also provides a separate first-party transport for Node.js SMTP.
+To register the Module, you must provide a transport. This complete Node.js example uses fluo's first-party Nodemailer factory; other runtimes must pass an application-owned `EmailTransport` or `EmailTransportFactory` instead of omitting the transport.
 
 ```typescript
 import { Module } from '@fluojs/core';
 import { EmailModule } from '@fluojs/email';
+import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
 
 @Module({
   imports: [
     EmailModule.forRoot({
       defaultFrom: 'noreply@fluoshop.com',
-      transport: {
-        kind: 'transactional-api',
-        create: async () => new MyApiTransport(),
-      },
+      transport: createNodemailerEmailTransportFactory({
+        smtp: {
+          auth: {
+            pass: 'secret',
+            user: 'api-key',
+          },
+          host: 'smtp.fluoshop.com',
+          port: 587,
+          secure: false,
+        },
+      }),
+      verifyOnModuleInit: true,
     }),
   ],
 })
@@ -55,24 +64,36 @@ export class AppModule {}
 When configuration depends on another provider such as a config service, use the fluo async factory shape:
 
 ```typescript
+import { ConfigService } from '@fluojs/config';
+import { EmailModule } from '@fluojs/email';
+import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
+
 EmailModule.forRootAsync({
   inject: [ConfigService],
   useFactory: (config) => ({
-    defaultFrom: config.mail.from,
-    transport: {
-      kind: config.mail.transportKind,
-      create: () => config.mail.transport,
-    },
+    defaultFrom: String(config.getOrThrow('MAIL_FROM')),
+    transport: createNodemailerEmailTransportFactory({
+      smtp: {
+        auth: {
+          pass: String(config.getOrThrow('SMTP_PASSWORD')),
+          user: String(config.getOrThrow('SMTP_USER')),
+        },
+        host: String(config.getOrThrow('SMTP_HOST')),
+        port: Number(config.getOrThrow('SMTP_PORT')),
+        secure: false,
+      },
+    }),
+    verifyOnModuleInit: true,
   }),
 });
 ```
 
-This migration boundary is intentionally narrower than NestJS dynamic modules: `EmailModule.forRootAsync(...)` supports `inject` plus `useFactory`, not `imports`, `useClass`, or `useExisting`. Register the dependencies in your application module graph first, then list the required tokens in `inject`; put `global: false` on the top-level options object when you need local module visibility.
+This migration boundary is intentionally narrower than NestJS dynamic modules: `EmailModule.forRootAsync(...)` supports `inject` plus `useFactory`, not `imports`, `useClass`, or `useExisting`. Register the dependencies in your application module graph first, then list the required tokens in `inject`. The returned module is global when `global` is omitted; put `global: false` on the top-level options object, outside the factory result, only when you need module-local visibility.
 
 ### verifyOnModuleInit
 Setting `verifyOnModuleInit: true` lets you confirm during application bootstrap that the transport is actually usable. This is useful when deployment should surface failures early, such as SMTP credential validation. Catching the problem at startup reduces the chance that the first order confirmation email is where you discover a bad setting.
 
-When bootstrap verification is enabled, `EmailService` does not hand a message to the transport until verification has completed successfully. If configuration is resolved through `EmailModule.forRootAsync(...)` and the factory rejects, fluo does not permanently memoize that rejection; a later provider resolution can retry the configuration lookup.
+When bootstrap verification is enabled, `EmailService` does not hand a message to the transport until verification has completed successfully. `EmailModule.forRootAsync(...)` memoizes the first successfully normalized options result for that module instance. If the options factory rejects or returns invalid options, fluo clears that failed attempt so a later provider resolution can invoke the factory again.
 
 ## 16.3 Node-only SMTP with @fluojs/email/node
 
@@ -127,12 +148,24 @@ The service applies `defaultFrom` and validates the message before delivery. The
 To add email to the notification orchestration configured in Chapter 15, inject the `EMAIL_CHANNEL` token. This lets email work both as an independent service and as a reusable notification channel backed by the same implementation.
 
 ```typescript
+import { Module } from '@fluojs/core';
 import { EmailModule, EMAIL_CHANNEL } from '@fluojs/email';
+import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
 import { NotificationsModule } from '@fluojs/notifications';
 
 @Module({
   imports: [
-    EmailModule.forRoot({ ... }),
+    EmailModule.forRoot({
+      defaultFrom: 'noreply@fluoshop.com',
+      transport: createNodemailerEmailTransportFactory({
+        smtp: {
+          auth: { pass: 'secret', user: 'api-key' },
+          host: 'smtp.fluoshop.com',
+          port: 587,
+          secure: false,
+        },
+      }),
+    }),
     NotificationsModule.forRootAsync({
       inject: [EMAIL_CHANNEL],
       useFactory: (channel) => ({
@@ -157,13 +190,24 @@ import {
   createEmailNotificationsQueueAdapter,
   EmailNotificationsQueueWorker,
 } from '@fluojs/email/queue';
+import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
 import { NotificationsModule } from '@fluojs/notifications';
 import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
 
 @Module({
   imports: [
     QueueModule.forRoot(),
-    EmailModule.forRoot({ ... }),
+    EmailModule.forRoot({
+      defaultFrom: 'noreply@fluoshop.com',
+      transport: createNodemailerEmailTransportFactory({
+        smtp: {
+          auth: { pass: 'secret', user: 'api-key' },
+          host: 'smtp.fluoshop.com',
+          port: 587,
+          secure: false,
+        },
+      }),
+    }),
     NotificationsModule.forRootAsync({
       inject: [EMAIL_CHANNEL, QueueLifecycleService],
       useFactory: (channel, queue) => ({
@@ -187,6 +231,9 @@ The queue adapter splits bulk notifications into individual background jobs, and
 `@fluojs/email` supports replaceable template rendering. You can choose rendering approaches such as Handlebars, EJS, or React-email without binding the core package to a specific engine.
 
 ```typescript
+import { EmailModule } from '@fluojs/email';
+import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
+
 EmailModule.forRoot({
   renderer: {
     render: async ({ payload, template }) => {
@@ -195,6 +242,14 @@ EmailModule.forRoot({
       return { html: `<h1>Hello, ${String(data.name)}</h1>`, subject: template };
     },
   },
+  transport: createNodemailerEmailTransportFactory({
+    smtp: {
+      auth: { pass: 'secret', user: 'api-key' },
+      host: 'smtp.fluoshop.com',
+      port: 587,
+      secure: false,
+    },
+  }),
 });
 ```
 
