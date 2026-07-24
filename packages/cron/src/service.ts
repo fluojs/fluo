@@ -102,6 +102,7 @@ export class CronLifecycleService
   private readonly distributedLocks: CronDistributedLockManager;
   private readonly taskRunner: CronTaskRunner;
   private lifecycleState: 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
+  private shutdownDeadlineMs: number | undefined;
   private started = false;
   private shutdownPromise: Promise<void> | undefined;
 
@@ -483,6 +484,7 @@ export class CronLifecycleService
       return;
     }
 
+    this.shutdownDeadlineMs = Date.now() + this.options.shutdown.timeoutMs;
     this.shutdownPromise = this.runShutdownLifecycle();
 
     await this.shutdownPromise;
@@ -493,7 +495,7 @@ export class CronLifecycleService
       return;
     }
 
-    await this.distributedLocks.releaseOwnedLocks(new Set(), this.options.shutdown.timeoutMs);
+    await this.distributedLocks.releaseOwnedLocks(new Set(), this.getRemainingShutdownTimeoutMs());
   }
 
   private async startLifecycle(): Promise<void> {
@@ -565,9 +567,15 @@ export class CronLifecycleService
 
     await this.distributedLocks.releaseOwnedLocks(
       shutdownTimedOut ? this.getRunningDistributedLockKeys() : new Set(),
-      this.options.shutdown.timeoutMs,
+      this.getRemainingShutdownTimeoutMs(),
     );
     this.lifecycleState = 'stopped';
+  }
+
+  private getRemainingShutdownTimeoutMs(): number {
+    return this.shutdownDeadlineMs === undefined
+      ? this.options.shutdown.timeoutMs
+      : getRemainingTimeoutMs(this.shutdownDeadlineMs);
   }
 
   private getRunningDistributedLockKeys(): ReadonlySet<string> {
@@ -767,21 +775,13 @@ export class CronLifecycleService
     } finally {
       lockRenewalMonitor.stop();
       this.runningDistributedLockKeys.delete(descriptor.lockKey);
-      const releaseDeadlineMs = this.shutdownPromise
-        ? Date.now() + this.options.shutdown.timeoutMs
-        : undefined;
       const released = await this.distributedLocks.releaseLock(
         descriptor,
-        releaseDeadlineMs === undefined ? undefined : getRemainingTimeoutMs(releaseDeadlineMs),
+        this.shutdownPromise ? this.getRemainingShutdownTimeoutMs() : undefined,
       );
 
       if (!released && this.lifecycleState === 'stopped') {
-        await this.distributedLocks.releaseOwnedLocks(
-          new Set(),
-          releaseDeadlineMs === undefined
-            ? this.options.shutdown.timeoutMs
-            : getRemainingTimeoutMs(releaseDeadlineMs),
-        );
+        await this.distributedLocks.releaseOwnedLocks(new Set(), this.getRemainingShutdownTimeoutMs());
       }
     }
   }
@@ -791,7 +791,9 @@ export class CronLifecycleService
       return false;
     }
 
-    if (this.options.shutdown.timeoutMs === 0) {
+    const timeoutMs = this.getRemainingShutdownTimeoutMs();
+
+    if (timeoutMs === 0) {
       return true;
     }
 
@@ -803,7 +805,7 @@ export class CronLifecycleService
         new Promise<boolean>((resolve) => {
           timeoutHandle = setTimeout(() => {
             resolve(true);
-          }, this.options.shutdown.timeoutMs);
+          }, timeoutMs);
         }),
       ]);
     } finally {

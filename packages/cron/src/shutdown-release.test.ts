@@ -154,7 +154,7 @@ describe('Cron distributed release during shutdown', () => {
     vi.useRealTimers();
   });
 
-  it('settles task-finally lock release within the shutdown timeout after shutdown has elapsed', async () => {
+  it('does not start a new release timeout after the shutdown deadline has elapsed', async () => {
     // Given
     vi.useFakeTimers();
     const scenario = await createShutdownReleaseScenario();
@@ -162,19 +162,17 @@ describe('Cron distributed release during shutdown', () => {
     void scenario.tickPromise.then(() => {
       tickSettled = true;
     });
+    const elapsedShutdownDeadlineMs = Date.now();
 
     // When
     scenario.finishTask();
-    await Promise.resolve();
-    await vi.advanceTimersByTimeAsync(49);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.runOnlyPendingTimersAsync();
+    await scenario.tickPromise;
 
     // Then
-    expect(tickSettled).toBe(false);
-
-    await vi.advanceTimersByTimeAsync(1);
-    await vi.runOnlyPendingTimersAsync();
-    await Promise.resolve();
     expect(tickSettled).toBe(true);
+    expect(Date.now() - elapsedShutdownDeadlineMs).toBeLessThanOrEqual(1);
   });
 
   it('retains unresolved ownership when task-finally lock release reaches the shutdown timeout', async () => {
@@ -185,16 +183,17 @@ describe('Cron distributed release during shutdown', () => {
     void scenario.tickPromise.then(() => {
       tickSettled = true;
     });
+    const elapsedShutdownDeadlineMs = Date.now();
 
     // When
     scenario.finishTask();
-    await Promise.resolve();
-    await vi.advanceTimersByTimeAsync(50);
+    await vi.advanceTimersByTimeAsync(0);
     await vi.runOnlyPendingTimersAsync();
-    await Promise.resolve();
+    await scenario.tickPromise;
 
     // Then
     expect(tickSettled).toBe(true);
+    expect(Date.now() - elapsedShutdownDeadlineMs).toBeLessThanOrEqual(1);
     expect(scenario.statusService.createPlatformStatusSnapshot().details.ownedLocks).toBe(1);
   });
 });
