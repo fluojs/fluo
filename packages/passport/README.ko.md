@@ -187,6 +187,7 @@ export class SessionController {
 ```typescript
 import { Module } from '@fluojs/core';
 import { Controller, Post, type RequestContext } from '@fluojs/http';
+import { JwtModule } from '@fluojs/jwt';
 import {
   PassportModule,
   REFRESH_TOKEN_STRATEGY_NAME,
@@ -197,6 +198,10 @@ import {
 
 @Module({
   imports: [
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      secret: 'your-access-token-secret',
+    }),
     RefreshTokenModule.forRoot(MyRefreshTokenService),
     PassportModule.forRoot(
       { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
@@ -217,7 +222,7 @@ export class AuthController {
 }
 ```
 
-`RefreshTokenModule.forRoot(...)`를 `PassportModule.forRoot(...)`와 함께 import 하여 refresh-token 전략과 공유 `REFRESH_TOKEN_SERVICE` alias를 같은 모듈 wiring에서 사용하세요.
+`JwtModule.forRoot(...)`, `RefreshTokenModule.forRoot(...)`, `PassportModule.forRoot(...)`를 함께 import 하세요. `JwtModule`은 rotation 뒤 반환되는 access token을 검증하기 위해 `RefreshTokenStrategy`에 주입되는 `DefaultJwtVerifier`를 제공하고, `RefreshTokenModule`은 strategy와 공유 `REFRESH_TOKEN_SERVICE` alias를 제공하며, `PassportModule`은 `@UseAuth('refresh-token')`가 resolve하는 named strategy를 등록합니다.
 
 `RefreshTokenStrategy`는 `body.refreshToken`, `Authorization: Bearer ...`, `x-refresh-token`에서 token을 읽습니다. Malformed non-string token은 인증 실패로 처리됩니다. Rotation 후에는 `@fluojs/jwt`가 반환한 정규화 access-token principal subject를 신뢰합니다. `JwtRefreshTokenAdapter`는 `secret`과 backing store가 필요하며, `store: 'memory'`는 development 및 single-instance deployment용이고 rotation은 store consume contract를 통해 재사용을 감지합니다.
 

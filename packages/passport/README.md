@@ -187,6 +187,7 @@ The package provides a built-in `RefreshTokenStrategy` plus the `RefreshTokenMod
 ```typescript
 import { Module } from '@fluojs/core';
 import { Controller, Post, type RequestContext } from '@fluojs/http';
+import { JwtModule } from '@fluojs/jwt';
 import {
   PassportModule,
   REFRESH_TOKEN_STRATEGY_NAME,
@@ -197,6 +198,10 @@ import {
 
 @Module({
   imports: [
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      secret: 'your-access-token-secret',
+    }),
     RefreshTokenModule.forRoot(MyRefreshTokenService),
     PassportModule.forRoot(
       { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
@@ -217,7 +222,7 @@ export class AuthController {
 }
 ```
 
-Import `RefreshTokenModule.forRoot(...)` alongside `PassportModule.forRoot(...)` so the refresh-token strategy and shared `REFRESH_TOKEN_SERVICE` alias are available in the same module wiring.
+Import `JwtModule.forRoot(...)`, `RefreshTokenModule.forRoot(...)`, and `PassportModule.forRoot(...)` together. `JwtModule` provides the `DefaultJwtVerifier` injected into `RefreshTokenStrategy` to validate the access token returned after rotation, `RefreshTokenModule` provides the strategy and shared `REFRESH_TOKEN_SERVICE` alias, and `PassportModule` registers the named strategy resolved by `@UseAuth('refresh-token')`.
 
 `RefreshTokenStrategy` reads tokens from `body.refreshToken`, `Authorization: Bearer ...`, or `x-refresh-token`; malformed non-string tokens fail authentication. After rotation, it trusts the normalized access-token principal subject returned by `@fluojs/jwt`. `JwtRefreshTokenAdapter` requires a `secret` and a backing store; `store: 'memory'` is for development and single-instance deployments only, and rotation detects reuse through the store consume contract.
 
