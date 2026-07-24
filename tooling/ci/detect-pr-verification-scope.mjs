@@ -26,6 +26,8 @@ const alwaysFullVerifyPaths = new Set([
   'biome.json',
 ]);
 
+const isolatedHttpBenchmarkPrefix = 'tooling/benchmarks/http-comparison/';
+
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: repoRoot,
@@ -193,6 +195,10 @@ export function shouldForceFullVerificationByPath(changedFiles) {
   return undefined;
 }
 
+export function shouldVerifyIsolatedHttpBenchmark(changedFiles) {
+  return changedFiles.some((path) => path.startsWith(isolatedHttpBenchmarkPrefix));
+}
+
 export function resolveChangedPackageDirectories(changedFiles) {
   const directories = new Set();
   for (const path of changedFiles) {
@@ -316,16 +322,6 @@ export function resolveVerificationScope(changedFiles) {
 }
 
 export function collectResult() {
-  if (process.env.CI_FORCE_FULL_VERIFY === '1') {
-    return {
-      mode: 'full',
-      reason: 'CI_FORCE_FULL_VERIFY=1',
-      filters: [],
-      packageNames: [],
-      packageDirectories: [],
-    };
-  }
-
   const eventName = process.env.GITHUB_EVENT_NAME;
   if (eventName !== 'pull_request') {
     return {
@@ -334,6 +330,22 @@ export function collectResult() {
       filters: [],
       packageNames: [],
       packageDirectories: [],
+      verifyIsolatedHttpBenchmark: false,
+    };
+  }
+
+  const changedFilesResult = changedFilesFromGit();
+  const verifyIsolatedHttpBenchmark =
+    changedFilesResult.ok && shouldVerifyIsolatedHttpBenchmark(changedFilesResult.files);
+
+  if (process.env.CI_FORCE_FULL_VERIFY === '1') {
+    return {
+      mode: 'full',
+      reason: 'CI_FORCE_FULL_VERIFY=1',
+      filters: [],
+      packageNames: [],
+      packageDirectories: [],
+      verifyIsolatedHttpBenchmark,
     };
   }
 
@@ -345,10 +357,10 @@ export function collectResult() {
       filters: [],
       packageNames: [],
       packageDirectories: [],
+      verifyIsolatedHttpBenchmark,
     };
   }
 
-  const changedFilesResult = changedFilesFromGit();
   if (!changedFilesResult.ok) {
     return {
       mode: 'full',
@@ -356,6 +368,7 @@ export function collectResult() {
       filters: [],
       packageNames: [],
       packageDirectories: [],
+      verifyIsolatedHttpBenchmark,
     };
   }
 
@@ -366,10 +379,14 @@ export function collectResult() {
       filters: [],
       packageNames: [],
       packageDirectories: [],
+      verifyIsolatedHttpBenchmark,
     };
   }
 
-  return resolveVerificationScope(changedFilesResult.files);
+  return {
+    ...resolveVerificationScope(changedFilesResult.files),
+    verifyIsolatedHttpBenchmark,
+  };
 }
 
 export function writeGithubOutput(result) {
@@ -387,6 +404,7 @@ export function writeGithubOutput(result) {
     `test_filter_args=${(result.testScriptPackageNames ?? []).map((name) => `--filter=${name}`).join(' ')}`,
     `test_package_names=${(result.testScriptPackageNames ?? []).join(',')}`,
     `test_paths=${(result.testPathFallbackDirectories ?? result.packageDirectories).join(' ')}`,
+    `verify_isolated_http_benchmark=${result.verifyIsolatedHttpBenchmark === true ? 'true' : 'false'}`,
   ];
   lines.push(`is_scoped=${result.mode === 'scoped' ? 'true' : 'false'}`);
 

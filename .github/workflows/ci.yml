@@ -43,6 +43,7 @@ jobs:
       test_filter_args: ${{ steps.resolve.outputs.test_filter_args }}
       test_package_names: ${{ steps.resolve.outputs.test_package_names }}
       test_paths: ${{ steps.resolve.outputs.test_paths }}
+      verify_isolated_http_benchmark: ${{ steps.resolve.outputs.verify_isolated_http_benchmark }}
 
     steps:
       - name: Checkout
@@ -83,6 +84,14 @@ jobs:
       - name: Build (full)
         if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped'
         run: pnpm build
+
+      - name: Install isolated HTTP benchmark dependencies
+        if: needs.resolve-pr-verification-scope.outputs.verify_isolated_http_benchmark == 'true'
+        run: pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace install --frozen-lockfile
+
+      - name: Typecheck isolated HTTP benchmark
+        if: needs.resolve-pr-verification-scope.outputs.verify_isolated_http_benchmark == 'true'
+        run: pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace typecheck
 
       - name: Typecheck (scoped PR)
         if: github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped'
