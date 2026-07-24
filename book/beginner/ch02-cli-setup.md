@@ -132,6 +132,8 @@ Typical questions include the following.
 4. **Tooling and package manager**: The scripts and install flow the generated project will use.
 5. **Install and git choices**: Whether the CLI should install dependencies and initialize a repository immediately.
 
+Keep the package-manager choice on pnpm for this book. Accept immediate dependency installation to continue directly to the first run. If you skip it, enter the generated project and run `pnpm install` before `pnpm dev`; `pnpm-lock.yaml` remains absent until that install completes.
+
 ### Previewing the starter plan
 
 When you are new, it can be helpful to see what the CLI would do before it writes files. Use `--print-plan` for that.
@@ -153,7 +155,7 @@ The generator is not just a folder-copying tool.
 - It prepares the starter template.
 - It records project metadata in `package.json`.
 - It creates a source tree that follows fluo conventions.
-- It installs the packages required to run the app.
+- If you choose immediate installation, it installs the packages required to run the app; otherwise, it leaves that step for you.
 - It leaves behind a structure you can read and run right away.
 
 This process is useful for developers new to fluo because it turns the intent to study the framework into a concrete baseline that you can open and execute.
@@ -179,7 +181,7 @@ In this chapter, the interactive flow is more helpful because each configuration
 Do not skip over the generator output. On the first run, you will see a short terminal summary at the end, and it contains the information you need to decide what to do next. It usually tells you the following.
 
 - Which folder was created,
-- Which dependencies were installed,
+- Whether dependencies were installed or skipped,
 - Which command to run next,
 - Whether there is anything to watch before running the app.
 
@@ -218,7 +220,7 @@ The generated structure is intentionally small. It is designed so you can unders
 ```text
 fluo-blog/
 ├── package.json              # Scripts and dependencies
-├── pnpm-lock.yaml            # Locked dependency versions
+├── pnpm-lock.yaml            # Present after pnpm install completes
 ├── tsconfig.json             # TypeScript configuration
 ├── vitest.config.ts          # Unit, slice, and e2e test configuration
 ├── test/                     # Request-pipeline/e2e tests
@@ -238,6 +240,8 @@ fluo-blog/
     │   └── greeting.slice.test.ts      # Module/provider wiring test
     └── main.ts               # Bootstrap entrypoint
 ```
+
+This book intentionally follows the pnpm path. The tree includes `pnpm-lock.yaml` only after the wizard installs dependencies or you run `pnpm install` yourself. If you skip installation during scaffolding, the file is absent until that command completes.
 
 At this stage, each file answers questions that naturally come up when opening a project for the first time.
 
@@ -406,7 +410,7 @@ If you see `{"status":"ok"}` and a greeting payload such as `{"message":"Hello f
 When the first run succeeds, it is easy to underestimate what that request proves.
 
 - The CLI generated a valid project.
-- Dependencies were installed correctly.
+- Dependencies were installed correctly, either by the wizard or by your later `pnpm install`.
 - TypeScript compiled or transformed as expected in development mode.
 - The runtime adapter started correctly.
 - The default verification routes, runtime `/health` and starter-owned `/greeting`, are reachable.
