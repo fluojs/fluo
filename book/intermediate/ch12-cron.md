@@ -130,7 +130,7 @@ In v2.1.0, the distributed cron flow works like this:
 
 This pattern is easy to explain. That is a good sign. Distributed coordination should be explicit enough for operators to reason about during incidents.
 
-Lock release runs after task execution in a `finally` path. If Redis is temporarily unavailable during release, fluo keeps local ownership visible so shutdown can retry and operators can still see the pending lock. Shutdown uses the same configured timeout to bound Redis owned-lock release I/O, and a release timeout preserves local ownership instead of pretending the lock was cleared. Teams should still treat Redis TTL and renewal as drift-sensitive coordination rather than a complete fencing system. When stale writes would be unsafe, the job body should include application-level idempotency or fencing checks.
+Lock release runs after task execution in a `finally` path. If Redis is temporarily unavailable during release, fluo keeps local ownership visible so shutdown can retry and operators can still see the pending lock. Once shutdown has started, that post-task release and any immediate stopped-state retry share one deadline capped by `shutdown.timeoutMs`, including when the task settles after the active-task drain timed out. Exhausting the deadline preserves local ownership instead of pretending the lock was cleared. Teams should still treat Redis TTL and renewal as drift-sensitive coordination rather than a complete fencing system. When stale writes would be unsafe, the job body should include application-level idempotency or fencing checks.
 
 ## 12.5 Lock TTL and named Redis clients
 
@@ -164,7 +164,7 @@ This feature is powerful, so it should be used with care. A dynamic schedule is 
 
 ## 12.7 Bounded shutdown
 
-One of the most practical parts of the README is its shutdown behavior. `CronModule` drains active task executions during application shutdown, but only up to a bounded timeout. The documented default is `10_000ms`. The same timeout also bounds Redis owned-lock release I/O during shutdown. After that, fluo leaves a warning and continues shutdown while preserving local ownership for locks whose release could not be confirmed. This is an operationally mature choice because one hung scheduler task or stuck Redis release must not block process termination forever.
+One of the most practical parts of the README is its shutdown behavior. `CronModule` drains active task executions during application shutdown, but only up to a bounded timeout. The documented default is `10_000ms`. The same timeout also bounds Redis owned-lock release I/O during shutdown, including task-finally release that starts after the drain timeout and its immediate retry within one shared deadline. After that, fluo leaves a warning and continues shutdown while preserving local ownership for locks whose release could not be confirmed. This is an operationally mature choice because one hung scheduler task or stuck Redis release must not block process termination forever.
 
 ### 12.7.1 Why this matters in FluoShop
 
