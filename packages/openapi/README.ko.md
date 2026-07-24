@@ -142,6 +142,7 @@ title/version/source 설정이 DI나 async setup에서 나오는 경우 `OpenApi
 - `ApiBody`, `ApiParam`, `ApiQuery`, `ApiHeader`, `ApiCookie`: 이름이 겹칠 때 추론된 요청 문서를 대체하는 명시적 요청 본문 및 파라미터 문서화 데코레이터.
 - `ApiBearerAuth`, `ApiSecurity`: 보안 요구사항 데코레이터.
 - `ApiExcludeEndpoint`: 특정 핸들러를 문서화에서 제외.
+- `ApiOperationOptions`, `ApiResponseOptions`, `ApiParameterOptions`, `ApiBodyOptions`: `@ApiOperation(...)`, `@ApiResponse(...)`, `@ApiParam(...)`, `@ApiQuery(...)`, `@ApiHeader(...)`, `@ApiCookie(...)`, `@ApiBody(...)`가 받는 데코레이터 옵션 타입.
 - `buildOpenApiDocument`: 프로그래밍 방식의 문서 빌더 (저수준).
 - `OpenApiHandlerRegistry`: 고급 통합에서 문서 생성 전에 handler descriptor를 스냅샷하는 mutable descriptor registry.
 - `getControllerTags`, `getMethodApiMetadata`: 고급 테스트와 통합 tooling을 위한 metadata reader.
