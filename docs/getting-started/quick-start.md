@@ -39,7 +39,7 @@ pnpm dlx @fluojs/cli new my-fluo-app
 Default application starter:
 
 ```bash
-fluo new my-fluo-app
+fluo new my-fluo-app --package-manager pnpm
 cd my-fluo-app
 ```
 
@@ -52,7 +52,7 @@ Next steps:
   pnpm dev  # runs fluo dev
 ```
 
-When you choose not to install dependencies, the CLI prints `Skipping dependency installation.` before this completion output. When you install dependencies, it prints `Installing dependencies with pnpm...` and the package-manager output before the same next steps.
+The `Done.` and `Next steps` block is common to every successful scaffold. In non-interactive output, installing dependencies prints `Installing dependencies with pnpm...` and the package-manager output before this block, while `--no-install` prints `Skipping dependency installation.`. In an interactive terminal, the wizard reports the same state through its status UI (`Dependencies installed` or `Dependency installation skipped`) instead of those non-interactive stdout lines, then prints the common completion block. This literal example pins pnpm; if you omit `--package-manager pnpm`, the selected manager determines the next-step command and lockfile.
 
 Representative explicit starters:
 
@@ -82,7 +82,7 @@ my-fluo-app/
 ├── README.md
 ├── babel.config.cjs
 ├── package.json
-├── pnpm-lock.yaml # written when dependencies are installed
+├── pnpm-lock.yaml # present after pnpm dependency installation
 ├── tsconfig.json
 ├── tsconfig.build.json
 ├── vite.config.ts
@@ -105,7 +105,7 @@ my-fluo-app/
         └── greeting.slice.test.ts
 ```
 
-The tree above describes the default Node.js + Fastify application starter. `pnpm-lock.yaml` is created by the dependency-install step, so `fluo new ... --no-install` omits it. The `vite.config.ts` artifact imports `fluoDecoratorsPlugin()` from `@fluojs/vite` for application-file decorator transforms, while `vitest.config.ts` imports `@fluojs/testing/vitest` so generated test files keep their testing-specific transform path. Other shipped starter recipes deliberately differ: Deno omits the Node/Vite/Babel/Vitest config files and keeps a Deno-native `src/app.test.ts`; Cloudflare Workers uses `src/worker.ts` plus `wrangler.jsonc`; gRPC microservices add `proto/math.proto`; and microservice or mixed starters emit `src/math/*` transport handlers instead of the HTTP-only greeting tree alone.
+The tree above describes the default Node.js + Fastify application starter after the pinned pnpm dependency installation completes. That install creates `pnpm-lock.yaml`; `fluo new ... --no-install` omits it until you run `pnpm install` in the generated project. If another package manager is selected, its installation writes that manager's lockfile instead of `pnpm-lock.yaml`. The `vite.config.ts` artifact imports `fluoDecoratorsPlugin()` from `@fluojs/vite` for application-file decorator transforms, while `vitest.config.ts` imports `@fluojs/testing/vitest` so generated test files keep their testing-specific transform path. Other shipped starter recipes deliberately differ: Deno omits the Node/Vite/Babel/Vitest config files and keeps a Deno-native `src/app.test.ts`; Cloudflare Workers uses `src/worker.ts` plus `wrangler.jsonc`; gRPC microservices add `proto/math.proto`; and microservice or mixed starters emit `src/math/*` transport handlers instead of the HTTP-only greeting tree alone.
 
 Authoritative starter matrix: [fluo new support matrix](../reference/fluo-new-support-matrix.md).
 
