@@ -48,6 +48,13 @@ afterEach(() => {
 });
 
 describe('public CLI package API', () => {
+  it('declares the patched tsx dependency floor', () => {
+    const sourceRoot = dirname(fileURLToPath(import.meta.url));
+    const packageManifest = readFileSync(join(sourceRoot, '../package.json'), 'utf8');
+
+    expect(packageManifest).toContain('"tsx": "^4.23.1"');
+  });
+
   it('keeps the root runCli export behind a lazy facade', () => {
     const sourceRoot = dirname(fileURLToPath(import.meta.url));
     const rootEntrypoint = readFileSync(join(sourceRoot, 'index.ts'), 'utf8');

@@ -16,7 +16,7 @@ const PUBLISHED_DEV_DEPENDENCIES = {
   '@types/babel__core': '^7.20.5',
   '@types/node': '^22.13.10',
   '@vitest/coverage-v8': '^3.0.8',
-  tsx: '^4.20.4',
+  tsx: '^4.23.1',
   typescript: '^6.0.2',
   vite: '^6.2.1',
   vitest: '^3.0.8',
@@ -24,7 +24,7 @@ const PUBLISHED_DEV_DEPENDENCIES = {
 
 const PUBLISHED_RUNTIME_DEPENDENCIES = {
   '@types/amqplib': '^0.10.7',
-  '@grpc/grpc-js': '^1.0.0',
+  '@grpc/grpc-js': '^1.14.4',
   '@grpc/proto-loader': '^0.8.0',
   amqplib: '^0.10.5',
   ioredis: '^5.0.0',

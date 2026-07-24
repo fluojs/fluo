@@ -1411,7 +1411,7 @@ void bootstrap();
 
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('cd ./starter-microservice-grpc');
-    expect(packageJson).toContain('"@grpc/grpc-js": "^1.0.0"');
+    expect(packageJson).toContain('"@grpc/grpc-js": "^1.14.4"');
     expect(packageJson).toContain('"@grpc/proto-loader": "^0.8.0"');
     expect(appFile).toContain('new GrpcMicroserviceTransport({');
     expect(protoFile).toContain('service MathService');

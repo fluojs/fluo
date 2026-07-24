@@ -6,6 +6,12 @@ import { describe, expect, it } from 'vitest';
 import * as queue from './index.js';
 
 describe('@fluojs/queue root barrel public surface', () => {
+  it('declares the patched BullMQ dependency floor', () => {
+    const packageManifest = readFileSync(resolve(import.meta.dirname, '../package.json'), 'utf8');
+
+    expect(packageManifest).toContain('"bullmq": "^5.81.1"');
+  });
+
   it('keeps the documented root exports stable for 0.x governance', () => {
     expect(queue).toHaveProperty('QueueModule');
     expect(queue).not.toHaveProperty('createQueueModule');
