@@ -51,14 +51,14 @@
     "@fluojs/websockets": "workspace:^"
   },
   "peerDependencies": {
-    "socket.io": "^4.0.0"
+    "socket.io": "^4.8.3"
   },
   "devDependencies": {
     "@fluojs/platform-express": "workspace:^",
     "@fluojs/platform-fastify": "workspace:^",
     "@fluojs/platform-nodejs": "workspace:^",
-    "socket.io": "^4.8.1",
-    "socket.io-client": "^4.8.1",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
     "vitest": "^3.2.4"
   }
 }
