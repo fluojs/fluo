@@ -4,13 +4,13 @@ import type { StudioLiveEventSource } from './contracts.js';
  * Describes Studio Devtools Config data used by the Studio devtool.
  */
 export interface StudioDevtoolsConfig {
-  readonly FLUO_STUDIO?: string;
-  readonly FLUO_STUDIO_APP_ID?: string;
-  readonly FLUO_STUDIO_ENDPOINT?: string;
-  readonly FLUO_STUDIO_EPOCH?: string;
-  readonly FLUO_STUDIO_RUNTIME?: string;
-  readonly FLUO_STUDIO_TOKEN?: string;
-  readonly FLUO_STUDIO_URL?: string;
+  FLUO_STUDIO?: string;
+  FLUO_STUDIO_APP_ID?: string;
+  FLUO_STUDIO_ENDPOINT?: string;
+  FLUO_STUDIO_EPOCH?: string;
+  FLUO_STUDIO_RUNTIME?: string;
+  FLUO_STUDIO_TOKEN?: string;
+  FLUO_STUDIO_URL?: string;
 }
 
 export interface StudioDevtoolsConfigSnapshot {
