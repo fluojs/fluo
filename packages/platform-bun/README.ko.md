@@ -64,12 +64,20 @@ Bun.serve({
 ```
 
 ### 네이티브 WebSocket 업그레이드
-어댑터는 `@fluojs/websockets/bun` 바인딩을 통해 Bun의 네이티브 `server.upgrade()`를 지원합니다.
+어댑터는 `@fluojs/websockets/bun` 바인딩을 통해 Bun의 네이티브 `server.upgrade()`를 지원합니다. 런타임이 해당 바인딩을 설치하고 등록된 게이트웨이를 찾을 수 있도록 `app.listen()` 전에 application module에서 `BunWebSocketModule.forRoot(...)`를 import하세요.
 
 ```typescript
-// Bun 어댑터가 활성화된 경우 게이트웨이는 자동으로 Bun의 네이티브 업그레이드를 사용합니다.
+import { Module } from '@fluojs/core';
+import { BunWebSocketModule, WebSocketGateway } from '@fluojs/websockets/bun';
+
 @WebSocketGateway({ path: '/ws' })
-export class MyGateway {}
+class MyGateway {}
+
+@Module({
+  imports: [BunWebSocketModule.forRoot()],
+  providers: [MyGateway],
+})
+export class AppModule {}
 ```
 
 ### 네이티브 `routes` Object 가속
