@@ -8,7 +8,7 @@ Part 0 closes by moving one layer below Modules and Providers. If Chapter 3 show
 ## Learning Objectives
 - Define what Decorators are from a modern JavaScript perspective.
 - Understand the difference between legacy Decorators and standard Decorators.
-- Look at where class, method, and accessor Decorators are used.
+- Look at where fluo's supported class and method Decorators are used.
 - Check the TypeScript settings that keep fluo aligned with the standard.
 - Understand why Decorators matter to framework architecture.
 - Finish Part 0 with a stable conceptual foundation.
@@ -235,50 +235,53 @@ When reviewing Controller methods, read the method body together with the Decora
 
 The method body shows what the code does, and the Decorator lines tell you where that code participates in the application surface.
 
-## 4.5 Accessor and Field Decorators
+## 4.5 Composing Supported Class Decorators
 
-The standard model does not stop at classes and methods, so before closing the chapter it is worth looking at the wider picture.
+Before closing the chapter, it is worth seeing how fluo combines multiple supported standard Decorators on one class.
 
-Standard Decorators also support accessor-centered patterns, which provide a more structured model than older field-centered workarounds.
-
-This matters to fluo because useful framework behavior does not always happen only at the class or method level.
+The TC39 model can describe several kinds of class elements, but a language capability does not automatically become a framework API. The public `@fluojs/core` Decorators are class-level: `@Module()`, `@Global()`, `@Inject(...)`, and `@Scope(...)`. fluo does not provide a core accessor-interception Decorator or contract.
 
 ```typescript
-class MyController {
-  @TrackAccess('viewCount')
-  accessor viewCount = 0;
+import { Inject, Scope } from '@fluojs/core';
+
+class PostsRepository {}
+
+@Inject(PostsRepository)
+@Scope('request')
+class PostsService {
+  constructor(private readonly posts: PostsRepository) {}
 }
 ```
 
 ### Why This Is Interesting
 
-Accessors provide clearer language-level hooks for property-related behavior. That makes it possible to express state access, initialization, and metadata attachment more structurally, which is useful for patterns like these.
+The two Decorators communicate separate framework intentions without changing property access.
 
-- property access tracking,
-- lazy initialization,
-- structured metadata attachment.
+- `@Inject(PostsRepository)` records the constructor Token explicitly.
+- `@Scope('request')` selects the Provider lifetime.
+- Both declarations stay next to the class whose creation they describe.
 
 ### Why Beginners Should Stay Calm
 
-You do not need to use accessor Decorators heavily in your first fluo project. The important thing is to know that this tool exists. The standard Decorator model gives framework authors a broader and cleaner design space, not just classes and methods.
+You do not need to invent a low-level Decorator in your first fluo project. Start with the public Decorators exported by the package, and confirm unfamiliar names against the package README or TypeScript exports before using them.
 
-### Encapsulation and Getters/Setters
+### Explicit Metadata Instead of Accessor Interception
 
-When the `accessor` keyword is combined with Decorators, fluo can intercept property access while still respecting standard JavaScript encapsulation. Your code stays idiomatic, and the framework handles work such as state observation or structured metadata attachment at defined points.
+`@Inject(...)` and `@Scope(...)` record class metadata that the DI container reads when it creates the Provider. They do not wrap getters or setters, observe property reads, or change instance state directly.
 
-### Reactivity and State Management
+### Standard Capability vs. fluo API
 
-Although this is less common in the basic FluoBlog example, accessor Decorators are a foundation for future reactivity features in fluo. They let the framework detect when a property changes and trigger the needed side effects. The idea is similar to how modern frontend frameworks handle state changes.
+The standard Decorator model supports more element kinds than fluo's core API currently needs. You can study custom accessor Decorators later as a JavaScript language feature, but they are outside the current `@fluojs/core` learning contract.
 
-### Performance and Predictability
+### Supported Surface and Predictability
 
-Older field Decorator patterns often felt awkward because they had to work around language limits. Standardized accessor behavior gives frameworks a more predictable foundation, which tends to help both performance and maintainability.
+Using documented exports keeps examples type-checkable and makes framework behavior traceable to real metadata consumers. That predictability is more useful to beginners than a hypothetical API that the runtime does not implement.
 
 ### A Practical Takeaway
 
 At this stage, it is enough to remember one rule.
 
-Class Decorators define what a class is, method Decorators define what a method does on the application surface, and accessor Decorators help define how a property participates in framework behavior.
+Class Decorators define module composition, dependency Tokens, and Provider scope, while method Decorators define what a method does on the application surface. Use the Decorators that the relevant fluo package actually exports.
 
 ## 4.6 Verification: tsconfig.json Settings
 
@@ -387,7 +390,7 @@ That sense of connection is the real outcome of Part 0.
 ## Summary
 - Decorators express intent about classes and class members.
 - TC39 Stage 3 Decorators are the standard direction of JavaScript.
-- Class, method, and accessor Decorators play different framework roles.
+- Supported class and method Decorators play different framework roles.
 - fluo aligns TypeScript settings with the standard Decorator model.
 - Understanding Decorators makes the rest of the framework easier to read.
 
