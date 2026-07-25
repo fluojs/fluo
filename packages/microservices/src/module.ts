@@ -30,6 +30,7 @@ export function createMicroservicesProviders(options: MicroserviceModuleOptions)
           close: (signal?: string) => runtime.close(signal),
           emit: (pattern: string, payload: unknown) => runtime.emit(pattern, payload),
           listen: () => runtime.listen(),
+          markShutdownStarted: () => runtime.markShutdownStarted(),
           send: (pattern: string, payload: unknown, signal?: AbortSignal) => runtime.send(pattern, payload, signal),
           serverStream: runtime.serverStream
             ? (pattern: string, payload: unknown, signal?: AbortSignal) => runtime.serverStream!(pattern, payload, signal)

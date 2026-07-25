@@ -26,6 +26,50 @@ const safetyGuidanceAnchors = [
   'abort listener',
 ];
 
+const ingressGuidancePaths = [
+  'packages/runtime/README.md',
+  'packages/runtime/README.ko.md',
+  'packages/microservices/README.md',
+  'packages/microservices/README.ko.md',
+  'book/intermediate/ch01-microservices-intro.md',
+  'book/intermediate/ch01-microservices-intro.ko.md',
+  'docs/CONTEXT.md',
+  'docs/CONTEXT.ko.md',
+  'docs/architecture/lifecycle-and-shutdown.md',
+  'docs/architecture/lifecycle-and-shutdown.ko.md',
+  'docs/reference/package-surface.md',
+  'docs/reference/package-surface.ko.md',
+];
+
+const ingressGuidanceAnchors = [
+  'terminal',
+  '`listen()`',
+  '`send()`',
+  '`emit()`',
+  'transport handoff',
+];
+
+const ingressRegressionClaims = [
+  [
+    'packages/runtime/src/microservice-application.lifecycle.test.ts',
+    [
+      'rejects send before transport admission when close races with listen',
+      'rejects emit before transport admission when close races with listen',
+      'notifies runtime facade of shutdown start before awaiting in-flight listen',
+      'keeps send and emit rejected after a failed close attempt',
+    ],
+  ],
+  [
+    'packages/microservices/src/lifecycle-regression.test.ts',
+    [
+      'rejects facade send before transport admission when close races with listen',
+      'rejects facade emit before transport admission when close races with listen',
+      'keeps facade send and emit rejected after a failed close attempt',
+      'rejects resolved lifecycle facade send and emit while shell listen is still pending',
+    ],
+  ],
+];
+
 const localizedStreamingCleanupClaims = [
   [
     'before reader iteration starts',
@@ -194,6 +238,22 @@ export function enforceMicroservicesSafetyGuidanceParity() {
 
     for (const anchor of safetyGuidanceAnchors) {
       assert(markdown.includes(anchor), `${relativePath} must keep the Microservices safety anchor ${anchor}.`);
+    }
+  }
+
+  for (const relativePath of ingressGuidancePaths) {
+    const markdown = read(relativePath);
+
+    for (const anchor of ingressGuidanceAnchors) {
+      assert(markdown.includes(anchor), `${relativePath} must keep the Microservices ingress anchor ${anchor}.`);
+    }
+  }
+
+  for (const [relativePath, requiredClaims] of ingressRegressionClaims) {
+    const source = read(relativePath);
+
+    for (const requiredClaim of requiredClaims) {
+      assert(source.includes(requiredClaim), `${relativePath} must keep the Microservices ingress regression ${requiredClaim}.`);
     }
   }
 

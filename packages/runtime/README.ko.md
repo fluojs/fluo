@@ -144,7 +144,7 @@ class UsersModule {}
 - `duplicateProviderPolicy`가 `warn` 또는 `ignore`일 때 context cache 적격성과 lifecycle hook 실행은 bootstrap이 선택한 effective winning provider를 기준으로 결정됩니다. stale losing provider는 cache entry나 lifecycle hook을 만들지 않습니다.
 - 모듈 그래프 컴파일은 cache key 생성이나 visibility 순회 전에 runtime provider와 `@Module(...)` provider 선언을 DI의 canonical normalization으로 검증합니다. 따라서 잘못된 `inject` 값, dependency wrapper/token, scope는 순회 단계 고유 오류를 노출하지 않고 `InvalidProviderError`로 실패합니다.
 - 애플리케이션 또는 컨텍스트 bootstrap이 런타임 리소스나 lifecycle instance 생성 이후 실패하면 fluo는 readiness를 초기화하고, 등록된 runtime cleanup callback을 실행하며, 그 시점까지 해석된 instance의 shutdown hook을 `bootstrap-failed`로 호출하고, 컨테이너를 dispose하고, cleanup 실패를 로그로 남긴 뒤 원래 bootstrap error를 다시 던집니다.
-- `Application.listen()`과 microservice `listen()`은 shutdown과 직렬화됩니다. 겹치는 startup 호출은 같은 in-flight startup을 공유하고, shutdown은 진행 중인 startup이 끝날 때까지 기다리며, shutdown과 경합한 startup은 close 시작 이후 shell을 다시 `ready`로 전이할 수 없습니다.
+- `Application.listen()`과 microservice `listen()`은 shutdown과 직렬화됩니다. 겹치는 startup 호출은 같은 in-flight startup을 공유하고, shutdown은 진행 중인 startup이 끝날 때까지 기다리며, shutdown과 경합한 startup은 close 시작 이후 shell을 다시 `ready`로 전이할 수 없습니다. Microservice close가 시작되면 terminal ingress gate가 새 `send()`와 `emit()` 호출을 `listen()`이 아직 pending 상태이거나 close 시도가 실패한 뒤에도 runtime 또는 transport handoff 전에 reject합니다.
 - 종료 시그널 등록 실패는 사용자가 관찰할 수 있습니다. `runNodeApplication(...)`, `bootstrapNodeApplication(...)`, adapter 소유 runtime helper는 이미 시작된 애플리케이션을 `bootstrap-failed`로 닫고, close 실패가 있으면 별도로 로그로 남기며, 원래 registration error로 reject합니다.
 - 종료 시그널 등록 해제 실패는 애플리케이션 close를 건너뛰지 않습니다. `app.close()`는 항상 adapter shutdown, lifecycle hook, runtime cleanup callback, container dispose까지 계속 진행합니다. close 자체가 성공하면 unregistration error로 reject하고, close도 실패하면 두 실패를 모두 담은 aggregate로 reject합니다.
 - 연결된 microservice는 부모 `Application`이 소유하는 child입니다. `startAllMicroservices()`는 순차적으로 시작하며 이후 child 시작이 실패하면 이미 시작된 child를 `bootstrap-failed`로 rollback하고, `Application.close(signal)`은 부모 lifecycle hook, adapter 종료, container dispose보다 먼저 연결된 child를 닫습니다.
@@ -173,6 +173,7 @@ class UsersModule {}
 - `Application`: `ApplicationContext`를 확장하며 `listen()`, `dispatch()`, `state`를 포함합니다.
 - `ApplicationContext`: `get<T>(token)`, `close()` 기능을 제공하며 `container`, `modules`, bootstrap diagnostics에 접근할 수 있습니다.
 - `LifecycleHooks`: `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, `OnApplicationShutdown`를 묶는 편의 union 타입입니다.
+- `MicroserviceRuntime`: `FluoFactory.createMicroservice(...)`가 해석하는 transport 계약입니다. 구현체는 `listen()`, 선택적 `send()`/`emit()`, 선택적 `close(signal?)`을 노출합니다. 선택적 `markShutdownStarted()` hook은 소유 shell이 종료를 시작할 때 동기적으로 호출되므로, 구현체는 어떤 awaited cleanup보다 먼저 자체 ingress gate를 닫을 수 있고, 경쟁 중인 `listen()`이 아직 settle되는 동안에도 새 `send()`/`emit()`/`listen()` 시도가 계속 reject됩니다.
 - `HealthModule.forRoot(options)`: bootstrap 및 shutdown 라이프사이클 전이에 맞춰 readiness marker를 관리하는 런타임 소유 `/health`, `/ready` 모듈 파사드입니다. `RuntimeHealthModule`을 반환하므로 first-party runtime-aware package가 internal runtime seam을 import하지 않고 `ReadinessCheck` function을 등록할 수 있습니다.
 - `createHealthModule(options)`: 같은 런타임 health module 계약을 위한 deprecated compatibility helper입니다. 애플리케이션-facing module import에서는 `HealthModule.forRoot(...)`를 우선 사용하세요.
 - `RuntimeHealthModule`: `HealthModule.forRoot(...)`가 반환하는 module class contract이며 `addReadinessCheck(...)`, `markReady()`, `markStarting()`을 포함합니다.

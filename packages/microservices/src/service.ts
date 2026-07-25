@@ -1,4 +1,4 @@
-import { Inject, type MetadataPropertyKey, type Token } from '@fluojs/core';
+import { Inject, InvariantError, type MetadataPropertyKey, type Token } from '@fluojs/core';
 import { cloneWithFallback, getClassDiMetadata } from '@fluojs/core/internal';
 import type { Container, Provider } from '@fluojs/di';
 import type { ApplicationLogger, CompiledModule, MicroserviceRuntime, OnApplicationShutdown } from '@fluojs/runtime';
@@ -54,6 +54,7 @@ function isClassProvider(provider: Provider): provider is Extract<Provider, { pr
 export class MicroserviceLifecycleService implements Microservice, MicroserviceRuntime, OnApplicationShutdown {
   private readonly descriptors: HandlerDescriptor[] = [];
   private readonly handlerInstances = new Map<Token, Promise<unknown>>();
+  private closeStarted = false;
   private lifecycleState: 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
   private lastListenError: string | undefined;
   private listening = false;
@@ -72,6 +73,8 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
    * @returns A promise that resolves once the configured transport is ready to accept traffic.
    */
   async listen(): Promise<void> {
+    this.assertTransportIngressOpen('listen');
+
     if (this.listening) {
       return;
     }
@@ -81,43 +84,7 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
       return;
     }
 
-    this.listenPromise = (async () => {
-      this.lifecycleState = 'starting';
-      this.lastListenError = undefined;
-      this.descriptors.length = 0;
-      this.descriptors.push(...this.discoverHandlerDescriptors());
-
-      const transport = this.moduleOptions.transport;
-      transport.setLogger?.(this.logger);
-
-      if (transport.listenServerStreaming) {
-        transport.listenServerStreaming(
-          async (pattern: string, payload: unknown, writer: ServerStreamWriter) => {
-    await this.dispatchServerStream(pattern, cloneWithFallback(payload), writer);
-          },
-        );
-      }
-
-      if (transport.listenClientStreaming) {
-        transport.listenClientStreaming(
-          async (pattern: string, reader: AsyncIterable<unknown>) => {
-            return await this.dispatchClientStream(pattern, reader);
-          },
-        );
-      }
-
-      if (transport.listenBidiStreaming) {
-        transport.listenBidiStreaming(
-          async (pattern: string, reader: AsyncIterable<unknown>, writer: ServerStreamWriter) => {
-            await this.dispatchBidiStream(pattern, reader, writer);
-          },
-        );
-      }
-
-      await transport.listen(async (packet) => this.dispatchPacket(packet));
-      this.listening = true;
-      this.lifecycleState = 'ready';
-    })();
+    this.listenPromise = this.startListening();
 
     try {
       await this.listenPromise;
@@ -130,6 +97,45 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     }
   }
 
+  private async startListening(): Promise<void> {
+    this.assertTransportIngressOpen('listen');
+    this.lifecycleState = 'starting';
+    this.lastListenError = undefined;
+    this.descriptors.length = 0;
+    this.descriptors.push(...this.discoverHandlerDescriptors());
+
+    const transport = this.moduleOptions.transport;
+    transport.setLogger?.(this.logger);
+
+    if (transport.listenServerStreaming) {
+      transport.listenServerStreaming(
+        async (pattern: string, payload: unknown, writer: ServerStreamWriter) => {
+          await this.dispatchServerStream(pattern, cloneWithFallback(payload), writer);
+        },
+      );
+    }
+
+    if (transport.listenClientStreaming) {
+      transport.listenClientStreaming(
+        async (pattern: string, reader: AsyncIterable<unknown>) => {
+          return await this.dispatchClientStream(pattern, reader);
+        },
+      );
+    }
+
+    if (transport.listenBidiStreaming) {
+      transport.listenBidiStreaming(
+        async (pattern: string, reader: AsyncIterable<unknown>, writer: ServerStreamWriter) => {
+          await this.dispatchBidiStream(pattern, reader, writer);
+        },
+      );
+    }
+
+    await transport.listen(async (packet) => this.dispatchPacket(packet));
+    this.listening = true;
+    this.lifecycleState = 'ready';
+  }
+
   /**
    * Closes the configured transport and stops accepting microservice traffic.
    *
@@ -138,6 +144,7 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
    */
   async close(signal?: string): Promise<void> {
     void signal;
+    this.closeStarted = true;
 
     let listenError: unknown;
 
@@ -167,6 +174,10 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
       this.lastListenError = error instanceof Error ? error.message : String(error);
       throw error;
     }
+  }
+
+  markShutdownStarted(): void {
+    this.closeStarted = true;
   }
 
   async onApplicationShutdown(signal?: string): Promise<void> {
@@ -209,6 +220,8 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
    * @returns The transport response payload.
    */
   async send(pattern: string, payload: unknown, signal?: AbortSignal): Promise<unknown> {
+    this.assertTransportIngressOpen('send');
+
     return this.moduleOptions.transport.send(pattern, cloneWithFallback(payload), signal);
   }
 
@@ -220,7 +233,14 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
    * @returns A promise that resolves once the transport accepts the event.
    */
   async emit(pattern: string, payload: unknown): Promise<void> {
+    this.assertTransportIngressOpen('emit');
     await this.moduleOptions.transport.emit(pattern, cloneWithFallback(payload));
+  }
+
+  private assertTransportIngressOpen(operation: 'emit' | 'listen' | 'send'): void {
+    if (this.closeStarted) {
+      throw new InvariantError(`Microservice cannot ${operation} after shutdown has started.`);
+    }
   }
 
   /**
