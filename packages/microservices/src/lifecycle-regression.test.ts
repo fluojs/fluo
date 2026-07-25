@@ -237,9 +237,10 @@ it('keeps facade send and emit rejected after a failed close attempt', async () 
   } catch {}
 });
 
-  it('rejects resolved lifecycle facade send and emit after shell close starts', async () => {
+  it('rejects resolved lifecycle facade send and emit while shell listen is still pending', async () => {
     // Given
     const events: string[] = [];
+    const listenCanFinish = createDeferred();
     const closeCanFinish = createDeferred();
     const transport: MicroserviceTransport = {
       async close() {
@@ -251,7 +252,9 @@ it('keeps facade send and emit rejected after a failed close attempt', async () 
         events.push('transport:emit');
       },
       async listen() {
-        events.push('transport:listen');
+        events.push('transport:listen:start');
+        await listenCanFinish.promise;
+        events.push('transport:listen:end');
       },
       async send() {
         events.push('transport:send');
@@ -266,13 +269,13 @@ it('keeps facade send and emit rejected after a failed close attempt', async () 
 
     const shell = await FluoFactory.createMicroservice(AppModule);
     const lifecycle = await shell.container.resolve(MicroserviceLifecycleService);
-    await shell.listen();
+    const listenPromise = shell.listen();
+    await vi.waitFor(() => {
+      expect(events).toEqual(['transport:listen:start']);
+    });
 
     // When
     const closePromise = shell.close();
-    await vi.waitFor(() => {
-      expect(events).toContain('transport:close:start');
-    });
 
     // Then
     try {
@@ -282,10 +285,11 @@ it('keeps facade send and emit rejected after a failed close attempt', async () 
       await expect(lifecycle.emit('orders.created', { id: 'order-1' })).rejects.toThrow(
         'Microservice cannot emit after shutdown has started.',
       );
-      expect(events).not.toContain('transport:send');
-      expect(events).not.toContain('transport:emit');
+      expect(events).toEqual(['transport:listen:start']);
     } finally {
+      listenCanFinish.resolve();
       closeCanFinish.resolve();
+      await expect(listenPromise).rejects.toThrow('Microservice startup was interrupted by shutdown.');
       await closePromise;
     }
   });

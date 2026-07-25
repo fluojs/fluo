@@ -190,6 +190,10 @@ it('keeps send and emit rejected after a failed close attempt', async () => {
       throw closeError;
     }
 
+    async emit(): Promise<void> {
+      events.push('runtime:emit');
+    }
+
     async listen(): Promise<void> {
       events.push('runtime:listen');
     }
@@ -221,7 +225,11 @@ it('keeps send and emit rejected after a failed close attempt', async () => {
     await expect(app.send('orders.create', { id: 'order-1' })).rejects.toThrow(
       'Microservice cannot send after shutdown has started.',
     );
+    await expect(app.emit('orders.created', { id: 'order-1' })).rejects.toThrow(
+      'Microservice cannot emit after shutdown has started.',
+    );
     expect(events).not.toContain('runtime:send');
+    expect(events).not.toContain('runtime:emit');
   } finally {
     await disposeApp(app);
   }
