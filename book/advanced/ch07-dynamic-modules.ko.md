@@ -91,15 +91,15 @@ export function defineModuleMetadata(target: Function, metadata: ModuleMetadata)
 - **정적 decorator 스타일**은 `path:packages/core/src/decorators.ts:13-34`의 `@Module(...)`과 `@Global()`을 사용하며, 이는 선언 시점에 메타데이터 세터를 호출하는 문법적 설탕(syntactic sugar)에 불과합니다.
 - **programmatic 스타일**은 factory function 내에서 `defineModule(...)` 또는 심지어 `defineModuleMetadata(...)`를 직접 호출합니다.
 
-런타임에서는 둘 다 같은 metadata store로 수렴합니다. 가장 작은 예시는 `ConfigReloadModule.forRoot()`입니다. `path:packages/config/src/reload-module.ts:127-149`는 `ConfigReloadModuleImpl` subclass를 만들고, `defineModuleMetadata(...)`로 module metadata를 기록한 뒤, 그 subclass를 반환합니다. 별도의 runtime wrapper object나 proxy는 생성되지 않습니다.
+런타임에서는 둘 다 같은 metadata store로 수렴합니다. 가장 작은 예시는 `ConfigReloadModule.forRoot()`입니다. `path:packages/config/src/reload-module.ts:128-153`는 `ConfigReloadModuleImpl` subclass를 만들고 caller-owned load option을 snapshot으로 분리한 뒤, `defineModuleMetadata(...)`로 module metadata를 기록하고 그 subclass를 반환합니다. 별도의 runtime wrapper object나 proxy는 생성되지 않습니다.
 
 `ConfigReloadModule`은 subclass identity와 metadata binding이 한 함수 안에서 어떻게 만나는지 보여 주는 짧은 예입니다.
 
-`path:packages/config/src/reload-module.ts:127-149`
+`path:packages/config/src/reload-module.ts:128-153`
 ```typescript
 export class ConfigReloadModule {
   static forRoot(options?: ConfigLoadOptions): new () => ConfigReloadModule {
-    const loadOptions = options ?? {};
+    const loadOptions = snapshotConfigLoadOptions(options);
 
     class ConfigReloadModuleImpl extends ConfigReloadModule {}
 
@@ -124,6 +124,8 @@ export class ConfigReloadModule {
 ```
 
 여기서 동적 결과물은 `ConfigReloadModuleImpl` class입니다. 옵션 값, manager, alias provider는 모두 그 class의 module metadata에 붙고, 반환된 class가 이후 module graph의 노드가 됩니다.
+
+Snapshot 호출은 단순한 복사가 아니라 registration contract의 일부입니다. `path:packages/config/src/options.ts:42-80`은 `forRoot(...)` 호출 중 config dictionary, `processEnv`, Standard Schema descriptor를 동기적으로 분리하고, callable value는 그 경계에서 캡처한 reference로 유지합니다. Module metadata가 caller object 대신 `loadOptions`를 저장하므로 `ConfigReloadModule.forRoot(...)` 반환 뒤의 mutation은 이후 bootstrap, manual reload, watch reload 입력을 바꾸지 못합니다. `path:packages/config/src/reload-module.test.ts:135-160`은 caller-mutation test로 이 registration-time 동작을 고정합니다.
 
 여기서 subclass를 사용하는 것은 type identity를 유지하기 위한 실용적인 기법입니다. 기본 모듈 클래스를 확장하면 동적 모듈은 정적 메서드나 속성을 상속받으면서도 자신만의 메타데이터를 가질 수 있습니다. 위 `ConfigReloadModuleImpl`처럼 factory 호출 안에서 새 constructor를 만들면, 두 동적 모듈이 같은 provider를 갖더라도 서로 다른 class constructor에서 생성된 별개의 entity로 취급됩니다.
 
@@ -284,7 +286,7 @@ Provider 생성을 `forRoot()` binder에서 분리한 것은 이 접근의 모�
 정적 모듈 헬퍼의 전형적인 실행 흐름은 다음과 같습니다.
 
 1. 사용자 옵션을 **수신**합니다.
-2. 옵션을 안정적인 내부 형태(예: 기본값 병합)로 **정규화**합니다.
+2. 옵션을 안정적인 내부 형태(예: caller input 분리 또는 기본값 병합)로 **snapshot 또는 정규화**합니다.
 3. 정규화된 옵션으로부터 provider 배열을 **파생**합니다.
 4. 새로운 모듈 클래스를 **생성**합니다(필요시 서브클래싱).
 5. `defineModule`을 사용하여 exports, imports, providers, global 메타데이터를 **바인딩**합니다.
@@ -292,29 +294,43 @@ Provider 생성을 `forRoot()` binder에서 분리한 것은 이 접근의 모�
 
 이 패턴은 module registration 과정을 감사 가능하게 만듭니다. 여러 파일에 흩어진 decorator를 추적하는 대신, 단일 helper 파일에서 전체 registration surface를 확인할 수 있습니다.
 
-이 과정을 실제로 보려면 `ConfigModule.forRoot()`가 구성 로딩 결과를 `ConfigService` provider로 감싸는 방식을 보면 됩니다. 동적 모듈은 환경 파일, 기본값, schema validator를 직접 전역 상태로 흘리지 않고, 제어된 factory function 안에서 service provider로 묶습니다.
+이 과정을 실제로 보려면 `ConfigModule.forRoot()`가 구성 로딩 결과를 `ConfigService` provider로 감싸는 방식을 보면 됩니다. 동적 모듈은 환경 파일, 기본값, schema validator를 직접 전역 상태로 흘리지 않고 registration 시점에 snapshot으로 캡처한 뒤, 제어된 factory function 안에서 service provider로 묶습니다.
 
-`path:packages/config/src/module.ts:30-45`
+`path:packages/config/src/module.ts:85-112`
 ```typescript
 static forRoot(options?: ConfigModuleOptions): new () => ConfigModule {
+  const loadOptions = snapshotConfigModuleOptions(options);
   class ConfigModuleImpl extends ConfigModule {}
+  const providers: NonNullable<ModuleMetadata['providers']> = [
+    {
+      provide: ConfigService,
+      useFactory: () => createConfigServiceFromSnapshot(loadConfig(loadOptions)),
+    },
+  ];
+
+  if (loadOptions.watch) {
+    providers.push(
+      {
+        provide: CONFIG_MODULE_WATCH_OPTIONS,
+        useValue: loadOptions,
+      },
+      ConfigModuleWatchManager,
+    );
+  }
 
   defineModuleMetadata(ConfigModuleImpl, {
-    global: options?.global ?? true,
+    global: loadOptions.global ?? true,
     exports: [ConfigService],
-    providers: [
-      {
-        provide: ConfigService,
-        useFactory: () => new ConfigService(loadConfig(options ?? {})),
-      },
-    ],
+    providers,
   });
 
   return ConfigModuleImpl;
 }
 ```
 
-이 발췌도 같은 흐름입니다. 새 module class를 만들고, public export는 `ConfigService`로 좁히며, 실제 로딩은 factory provider 내부로 넣습니다. 그래서 전체 애플리케이션 컨테이너와 분리해 module production 로직을 테스트할 수 있습니다.
+이 발췌도 같은 흐름입니다. 새 module class를 만들고, public export는 `ConfigService`로 좁히며, 실제 로딩은 factory provider 내부로 넣습니다. 중요한 시점 차이는 `snapshotConfigModuleOptions(options)`가 `forRoot(...)` 중 즉시 실행되고, Factory Provider는 이후 bootstrap 중 resolve된다는 점입니다. Watch mode가 활성화되면 initial loader와 `ConfigModuleWatchManager`가 동일하게 캡처된 option snapshot을 받습니다. 따라서 나중의 caller mutation이 bootstrap snapshot과 watch reload 입력 사이에 불일치를 만들 수 없습니다. `path:packages/config/src/module.test.ts:123-139`은 registration-time runtime override에 대해 이 경계를 검증합니다.
+
+`createConfigReloader(...)`도 Module registration이 아닌 value construction 시점에 같은 규칙을 적용합니다. `path:packages/config/src/load.ts:739-752`는 watcher state를 만들기 전에 input을 snapshot으로 분리하고 정규화하며, `path:packages/config/src/load.test.ts:613-684`는 이후 mutation이 `current()`, manual reload, watch reload에 영향을 주지 않는지 검증합니다. 이 사례들은 안정적인 dynamic-module boundary에 normalization과 defensive option snapshot이 함께 필요할 수 있음을 보여 줍니다.
 
 이 "제조(manufacturing)" 방식의 또 다른 장점은 module boundary에서 아키텍처 규칙을 강제할 수 있다는 점입니다. 예를 들어 동적 모듈은 instance 생성이 허용되기 전에 사용자 옵션이 전역 애플리케이션 정책과 충돌하지 않는지 확인할 수 있습니다. 이런 검사를 `forRoot` helper의 시작 부분에 두면, 에러를 "런타임 서비스 실패"가 아니라 "부트스트랩 시점의 설정 에러"로 옮길 수 있습니다.
 
@@ -550,7 +566,7 @@ dynamic module이 `global: true`를 선언할 때, 그것은 어떤 마법의 �
 
 첫째, 그 모듈이 정말 dynamic해야 하는지부터 판단하십시오. 등록에 런타임 옵션도 없고 계산된 provider 집합도 없다면, 평범한 `@Module(...)` metadata가 더 단순할 수 있습니다. 동적 모듈은 코드가 metadata나 provider를 실제로 계산해야 할 때 사용하십시오. 정적 모듈은 분석과 lint가 더 쉽기 때문에, 유연성이 필요한 지점에만 동적 모듈을 두는 편이 좋습니다.
 
-둘째, provider graph를 만들기 전에 옵션을 정규화하십시오. `path:packages/prisma/src/module.ts:63-76`의 `normalizePrismaModuleOptions()`, `path:packages/queue/src/module.ts:9-25`의 `normalizeQueueModuleOptions()`, `path:packages/email/src/module.ts:48-72`의 `normalizeEmailModuleOptions()`가 모두 이 규칙을 보여 줍니다. 이 단계가 있어야 provider factory가 작게 유지되고 검증 로직이 중복되지 않습니다. 정규화 함수는 기본값(defaults)을 처리하고, provider factory가 완전한 내부 형태만 다룬다고 가정할 수 있게 해야 합니다.
+둘째, provider graph를 만들기 전에 옵션을 안정화하십시오. Caller가 기본값이나 검증이 필요한 partial shape를 제공하면 normalization을 사용하고, 이후 caller mutation이 등록된 동작을 바꾸면 안 된다면 detached snapshot을 사용합니다. `path:packages/prisma/src/module.ts:63-76`의 `normalizePrismaModuleOptions()`, `path:packages/queue/src/module.ts:9-25`의 `normalizeQueueModuleOptions()`, `path:packages/email/src/module.ts:48-72`의 `normalizeEmailModuleOptions()`는 normalization을 보여 줍니다. `path:packages/config/src/options.ts:42-80`의 `snapshotConfigModuleOptions()`와 `snapshotConfigLoadOptions()`는 call-time snapshot을 보여 줍니다. 두 방식 모두 provider factory를 작게 유지하고 안정적인 내부 input을 제공합니다.
 
 이 항목은 package inventory 성격이 강하므로 세 파일을 모두 코드로 펼치지 않습니다. 앞의 Prisma와 Queue 발췌가 정규화된 값 provider 패턴을 대표하고, Email은 비동기 options provider 발췌에서 같은 `normalizeEmailModuleOptions()` 진입점을 보여 주었습니다.
 
@@ -578,7 +594,7 @@ dynamic module이 `global: true`를 선언할 때, 그것은 어떤 마법의 �
 
 ```text
 정적 등록과 동적 등록 중 결정하기
-옵션을 내부 형태로 정규화하기 (기본값 + 검증)
+Caller-owned input을 snapshot으로 분리하거나 옵션을 내부 형태로 정규화하기 (분리 + 기본값 + 검증)
 하나의 표준적인 옵션 토큰/프로바이더 생성하기
 해당 토큰에서 런타임 프로바이더 파생하기
 로컬 프로미스 캐시를 사용하여 비동기 옵션 팩토리 메모이제이션하기
