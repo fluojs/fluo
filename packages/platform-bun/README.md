@@ -64,12 +64,20 @@ Bun.serve({
 ```
 
 ### Native WebSocket Upgrade
-The adapter supports Bun's native `server.upgrade()` through the `@fluojs/websockets/bun` binding.
+The adapter supports Bun's native `server.upgrade()` through the `@fluojs/websockets/bun` binding. Import `BunWebSocketModule.forRoot(...)` into the application module before `app.listen()` so the runtime can install that binding and discover the registered gateways.
 
 ```typescript
-// gateways automatically use Bun's native upgrade when the Bun adapter is active
+import { Module } from '@fluojs/core';
+import { BunWebSocketModule, WebSocketGateway } from '@fluojs/websockets/bun';
+
 @WebSocketGateway({ path: '/ws' })
-export class MyGateway {}
+class MyGateway {}
+
+@Module({
+  imports: [BunWebSocketModule.forRoot()],
+  providers: [MyGateway],
+})
+export class AppModule {}
 ```
 
 ### Native `routes` Object Acceleration
