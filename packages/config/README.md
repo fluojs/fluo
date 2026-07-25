@@ -104,7 +104,7 @@ The `schema` option accepts a synchronous [Standard Schema](https://standardsche
 
 `ConfigReloadManager.reload()` serializes reload work. If another reload is requested while the current reload is notifying listeners, the follow-up reload is queued and applied after the active notification finishes; if the active notification fails, the previous snapshot is restored and the queued reload is discarded. The same serialization and rollback contract applies to `createConfigReloader(...).reload()`, including manual reloads queued during watch-triggered notifications.
 
-Module registration and reloader creation snapshot caller-owned options before storing them, including nested Standard Schema validator objects supplied through `schema`. Later mutations to objects passed to `ConfigModule.forRoot(...)`, `ConfigReloadModule.forRoot(...)`, or `createConfigReloader(...)` do not affect bootstrap, manual reloads, or watch reloads. When `ConfigModule.forRoot({ watch: true, ... })` is used, the module starts an env-file watcher during application bootstrap, first aligns the injected `ConfigService` with the watch reloader baseline, and then updates the same injected `ConfigService` instance after successful watch reloads. Pass `onReloadError` when the application needs ownership of automatic watch reload failures from `ConfigModule`. In watch mode, the parent directory is watched for both existing and missing env files, so creating or atomically replacing the env file can trigger reload. Watch reloads compare the final env file content with the last committed watch baseline before reloading, so unchanged saves and change-then-revert bursts do not replace the in-process config snapshot.
+Module registration and reloader creation snapshot caller-owned options before storing them, including nested Standard Schema validator objects supplied through `schema`. This capture happens synchronously when `ConfigModule.forRoot(...)`, `ConfigReloadModule.forRoot(...)`, or `createConfigReloader(...)` is called, before provider resolution or application bootstrap. Config dictionaries, `processEnv`, and the Standard Schema descriptor are detached, while callable values such as `parse`, `onReloadError`, and the schema validator remain the references captured at that call. Later mutations to the option object or its snapshotted nested objects do not affect bootstrap, manual reloads, or watch reloads. When `ConfigModule.forRoot({ watch: true, ... })` is used, the module starts an env-file watcher during application bootstrap, first aligns the injected `ConfigService` with the watch reloader baseline, and then updates the same injected `ConfigService` instance after successful watch reloads. Pass `onReloadError` when the application needs ownership of automatic watch reload failures from `ConfigModule`. In watch mode, the parent directory is watched for both existing and missing env files, so creating or atomically replacing the env file can trigger reload. Watch reloads compare the final env file content with the last committed watch baseline before reloading, so unchanged saves and change-then-revert bursts do not replace the in-process config snapshot.
 
 `ConfigReloadModule` is the explicit injectable reload layer, not a standalone config source. Pair it with `ConfigModule` or another `ConfigService` provider when callers need `CONFIG_RELOADER` for manual reloads or subscriptions. Watchers created by `ConfigModule` or `ConfigReloadModule` are created only when `watch: true`, and they are closed during module shutdown. Enable `watch: true` on one layer for a given env file: use `ConfigModule` for automatic `ConfigService` updates, or `ConfigReloadModule` when callers need the injected reloader contract for subscriptions/manual reloads.
 
@@ -132,8 +132,11 @@ The package also exports option and subscription types such as `ConfigModuleOpti
 ## Example Sources
 
 - `packages/config/src/load.ts`
+- `packages/config/src/options.ts`
+- `packages/config/src/module.ts`
 - `packages/config/src/service.ts`
 - `packages/config/src/load.test.ts`
 - `packages/config/src/reload-module.ts`
-- `docs/architecture/config-and-environments.md`
-- `docs/architecture/dev-reload-architecture.md`
+- `packages/config/src/reload-module.test.ts`
+- [Config and Environments](../../docs/architecture/config-and-environments.md)
+- [Dev Reload Architecture](../../docs/architecture/dev-reload-architecture.md)
