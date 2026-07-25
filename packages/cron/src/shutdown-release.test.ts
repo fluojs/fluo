@@ -16,6 +16,7 @@ interface Deferred {
 
 interface ShutdownReleaseScenario {
   readonly finishTask: () => void;
+  readonly getReleaseAttempts: () => number;
   readonly statusService: StatusAwareSchedulingRegistry;
   readonly tickPromise: Promise<void>;
 }
@@ -27,6 +28,7 @@ interface StatusAwareSchedulingRegistry extends SchedulingRegistry {
 class HangingReleaseRedisClient {
   private readonly hangingRelease = new Promise<number>(() => {});
   private readonly locks = new Map<string, string>();
+  releaseAttempts = 0;
 
   async set(key: string, owner: string, _mode: 'PX', _ttl: number, _existence: 'NX'): Promise<'OK' | null> {
     if (this.locks.has(key)) {
@@ -51,6 +53,7 @@ class HangingReleaseRedisClient {
       return 1;
     }
 
+    this.releaseAttempts += 1;
     return await this.hangingRelease;
   }
 }
@@ -98,6 +101,7 @@ async function createShutdownReleaseScenario(): Promise<ShutdownReleaseScenario>
   const scheduled = createManualScheduler();
   const started = createDeferred();
   const finished = createDeferred();
+  const redis = new HangingReleaseRedisClient();
 
   class DistributedTaskService {
     @Cron(CronExpression.EVERY_SECOND, { name: 'bounded-post-shutdown-release' })
@@ -124,7 +128,7 @@ async function createShutdownReleaseScenario(): Promise<ShutdownReleaseScenario>
   });
 
   const app = await bootstrapApplication({
-    providers: [{ provide: REDIS_CLIENT, useValue: new HangingReleaseRedisClient() }],
+    providers: [{ provide: REDIS_CLIENT, useValue: redis }],
     rootModule: AppModule,
   });
   const registry = await app.container.resolve(SCHEDULING_REGISTRY);
@@ -143,6 +147,7 @@ async function createShutdownReleaseScenario(): Promise<ShutdownReleaseScenario>
 
   return {
     finishTask: finished.resolve,
+    getReleaseAttempts: () => redis.releaseAttempts,
     statusService: registry,
     tickPromise,
   };
@@ -172,6 +177,23 @@ describe('Cron distributed release during shutdown', () => {
 
     // Then
     expect(tickSettled).toBe(true);
+    expect(Date.now() - elapsedShutdownDeadlineMs).toBeLessThanOrEqual(1);
+  });
+
+  it('retries stopped-state release separately after task-finally release using the shutdown-start deadline', async () => {
+    // Given
+    vi.useFakeTimers();
+    const scenario = await createShutdownReleaseScenario();
+    const elapsedShutdownDeadlineMs = Date.now();
+
+    // When
+    scenario.finishTask();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.runOnlyPendingTimersAsync();
+    await scenario.tickPromise;
+
+    // Then
+    expect(scenario.getReleaseAttempts()).toBe(2);
     expect(Date.now() - elapsedShutdownDeadlineMs).toBeLessThanOrEqual(1);
   });
 
