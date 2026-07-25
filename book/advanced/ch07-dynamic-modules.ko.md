@@ -294,7 +294,7 @@ Provider 생성을 `forRoot()` binder에서 분리한 것은 이 접근의 모�
 
 이 패턴은 module registration 과정을 감사 가능하게 만듭니다. 여러 파일에 흩어진 decorator를 추적하는 대신, 단일 helper 파일에서 전체 registration surface를 확인할 수 있습니다.
 
-이 과정을 실제로 보려면 `ConfigModule.forRoot()`가 구성 로딩 결과를 `ConfigService` provider로 감싸는 방식을 보면 됩니다. 동적 모듈은 환경 파일, 기본값, schema validator를 직접 전역 상태로 흘리지 않고 registration 시점에 snapshot으로 캡처한 뒤, 제어된 factory function 안에서 service provider로 묶습니다.
+이 과정을 실제로 보려면 `ConfigModule.forRoot()`가 구성 로딩 결과를 `ConfigService` provider로 감싸는 방식을 보면 됩니다. 동적 모듈은 env-file option, 기본값, schema validator를 직접 전역 상태로 흘리지 않습니다. Env-file path와 관련 option을 포함한 caller-owned option을 registration 시점에 동기적으로 snapshot한 뒤, 제어된 factory function 안에서 service provider로 묶습니다. Registration 중에는 env-file content를 읽지 않습니다.
 
 `path:packages/config/src/module.ts:85-112`
 ```typescript
@@ -328,7 +328,7 @@ static forRoot(options?: ConfigModuleOptions): new () => ConfigModule {
 }
 ```
 
-이 발췌도 같은 흐름입니다. 새 module class를 만들고, public export는 `ConfigService`로 좁히며, 실제 로딩은 factory provider 내부로 넣습니다. 중요한 시점 차이는 `snapshotConfigModuleOptions(options)`가 `forRoot(...)` 중 즉시 실행되고, Factory Provider는 이후 bootstrap 중 resolve된다는 점입니다. Watch mode가 활성화되면 initial loader와 `ConfigModuleWatchManager`가 동일하게 캡처된 option snapshot을 받습니다. 따라서 나중의 caller mutation이 bootstrap snapshot과 watch reload 입력 사이에 불일치를 만들 수 없습니다. `path:packages/config/src/module.test.ts:123-139`은 registration-time runtime override에 대해 이 경계를 검증합니다.
+이 발췌도 같은 흐름입니다. 새 module class를 만들고, public export는 `ConfigService`로 좁히며, 실제 로딩은 factory provider 내부로 넣습니다. 중요한 시점 차이는 `snapshotConfigModuleOptions(options)`가 `forRoot(...)` 중 env-file path와 관련 option을 포함한 caller-owned option을 동기적으로 캡처하지만 env-file content는 읽지 않는다는 점입니다. Factory Provider는 이후 bootstrap 중 resolve되며, 이때 `loadConfig(loadOptions)`가 env-file content를 읽어 `ConfigService` snapshot을 생성합니다. Watch mode가 활성화되면 initial loader와 `ConfigModuleWatchManager`가 동일하게 캡처된 option snapshot을 받습니다. 따라서 나중의 caller mutation이 bootstrap snapshot과 watch reload 입력 사이에 불일치를 만들 수 없습니다. `path:packages/config/src/load.ts:388-402,782-783`은 이후 env-file read를 보여 주고, `path:packages/config/src/module.test.ts:123-139`은 registration-time runtime override에 대해 이 경계를 검증합니다.
 
 `createConfigReloader(...)`도 Module registration이 아닌 value construction 시점에 같은 규칙을 적용합니다. `path:packages/config/src/load.ts:739-752`는 watcher state를 만들기 전에 input을 snapshot으로 분리하고 정규화하며, `path:packages/config/src/load.test.ts:613-684`는 이후 mutation이 `current()`, manual reload, watch reload에 영향을 주지 않는지 검증합니다. 이 사례들은 안정적인 dynamic-module boundary에 normalization과 defensive option snapshot이 함께 필요할 수 있음을 보여 줍니다.
 

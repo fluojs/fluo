@@ -294,7 +294,7 @@ A typical static Module helper execution flow is:
 
 This pattern makes the Module registration process auditable. Instead of tracing Decorators spread across several files, you can inspect the full registration surface in one helper file.
 
-To see this process in practice, look at how `ConfigModule.forRoot()` wraps the result of configuration loading as a `ConfigService` Provider. The Dynamic Module does not leak environment files, defaults, or schema validators into global state directly. It snapshots them at registration time and binds the captured options to a service Provider inside a controlled factory function.
+To see this process in practice, look at how `ConfigModule.forRoot()` wraps the result of configuration loading as a `ConfigService` Provider. The Dynamic Module does not leak env-file options, defaults, or schema validators into global state directly. It synchronously snapshots the caller-owned options, including the env-file path and related options, at registration time and binds the captured options to a service Provider inside a controlled factory function. It does not read env-file content during registration.
 
 `path:packages/config/src/module.ts:85-112`
 ```typescript
@@ -328,7 +328,7 @@ static forRoot(options?: ConfigModuleOptions): new () => ConfigModule {
 }
 ```
 
-This excerpt follows the same flow. It creates a new Module class, narrows the public export to `ConfigService`, and puts the actual loading inside a Factory Provider. The important timing distinction is that `snapshotConfigModuleOptions(options)` runs immediately during `forRoot(...)`, while the Factory Provider resolves later during bootstrap. When watch mode is enabled, the initial loader and `ConfigModuleWatchManager` receive the same captured option snapshot. Later caller mutations cannot create a mismatch between the bootstrap snapshot and watch reload inputs. `path:packages/config/src/module.test.ts:123-139` verifies this boundary for registration-time runtime overrides.
+This excerpt follows the same flow. It creates a new Module class, narrows the public export to `ConfigService`, and puts the actual loading inside a Factory Provider. The important timing distinction is that `snapshotConfigModuleOptions(options)` synchronously captures caller-owned options, including the env-file path and related options, during `forRoot(...)` without reading env-file content. The Factory Provider resolves later during bootstrap, when `loadConfig(loadOptions)` reads env-file content and creates the `ConfigService` snapshot. When watch mode is enabled, the initial loader and `ConfigModuleWatchManager` receive the same captured option snapshot. Later caller mutations cannot create a mismatch between the bootstrap snapshot and watch reload inputs. `path:packages/config/src/load.ts:388-402,782-783` shows the later env-file read, and `path:packages/config/src/module.test.ts:123-139` verifies the registration-time boundary for runtime overrides.
 
 `createConfigReloader(...)` applies the same rule at value-construction time rather than Module registration time. `path:packages/config/src/load.ts:739-752` snapshots and normalizes its input before creating watcher state, and `path:packages/config/src/load.test.ts:613-684` verifies that later mutations do not affect `current()`, manual reloads, or watch reloads. Together, these examples show that a stable Dynamic Module boundary may require both normalization and defensive option snapshotting.
 
