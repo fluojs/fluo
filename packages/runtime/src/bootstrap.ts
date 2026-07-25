@@ -963,6 +963,8 @@ class FluoMicroserviceApplication implements MicroserviceApplication {
     }
 
     this.closeStarted = true;
+    this.runtime.markShutdownStarted?.();
+
     this.closingPromise = (async () => {
       if (this.listenPromise) {
         try {

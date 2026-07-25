@@ -173,6 +173,7 @@ class UsersModule {}
 - `Application`: Extends `ApplicationContext` with `listen()`, `dispatch()`, and `state`.
 - `ApplicationContext`: Provides `get<T>(token)`, `close()`, and access to `container`, `modules`, and bootstrap diagnostics.
 - `LifecycleHooks`: Convenience union covering `OnModuleInit`, `OnApplicationBootstrap`, `OnModuleDestroy`, and `OnApplicationShutdown`.
+- `MicroserviceRuntime`: Transport contract resolved by `FluoFactory.createMicroservice(...)`. Implementations expose `listen()`, optional `send()`/`emit()`, and an optional `close(signal?)`. The optional `markShutdownStarted()` hook is invoked synchronously when the owning shell begins shutdown so implementations can close their own ingress gate before any awaited cleanup, keeping new `send()`/`emit()`/`listen()` attempts rejected even while a racing `listen()` is still settling.
 - `HealthModule.forRoot(options)`: Runtime-owned `/health` and `/ready` module facade whose readiness marker follows bootstrap and shutdown lifecycle transitions. It returns a `RuntimeHealthModule` so first-party runtime-aware packages can register `ReadinessCheck` functions without importing internal runtime seams.
 - `createHealthModule(options)`: Deprecated compatibility helper for the same runtime health module contract; prefer `HealthModule.forRoot(...)` in application-facing module imports.
 - `RuntimeHealthModule`: Module class contract returned by `HealthModule.forRoot(...)`, including `addReadinessCheck(...)`, `markReady()`, and `markStarting()`.

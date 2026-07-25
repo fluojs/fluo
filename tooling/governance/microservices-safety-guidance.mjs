@@ -55,6 +55,8 @@ const ingressRegressionClaims = [
     [
       'rejects send before transport admission when close races with listen',
       'rejects emit before transport admission when close races with listen',
+      'notifies runtime facade of shutdown start before awaiting in-flight listen',
+      'keeps send and emit rejected after a failed close attempt',
     ],
   ],
   [
@@ -62,6 +64,8 @@ const ingressRegressionClaims = [
     [
       'rejects facade send before transport admission when close races with listen',
       'rejects facade emit before transport admission when close races with listen',
+      'keeps facade send and emit rejected after a failed close attempt',
+      'rejects resolved lifecycle facade send and emit after shell close starts',
     ],
   ],
 ];

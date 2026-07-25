@@ -1,6 +1,6 @@
 import { InvariantError } from '@fluojs/core';
 import { defineModuleMetadata } from '@fluojs/core/internal';
-import { bootstrapApplication } from '@fluojs/runtime';
+import { bootstrapApplication, FluoFactory } from '@fluojs/runtime';
 import { expect, it, vi } from 'vitest';
 
 import { MicroservicesModule } from './module.js';
@@ -197,3 +197,95 @@ it('rejects facade emit before transport admission when close races with listen'
     await app.close();
   }
 });
+
+it('keeps facade send and emit rejected after a failed close attempt', async () => {
+  // Given
+  const closeError = new Error('transport close failed');
+  const transport: MicroserviceTransport = {
+    async close() {
+      throw closeError;
+    },
+    async emit() {},
+    async listen() {},
+    async send() {
+      return 'sent';
+    },
+  };
+
+  class AppModule {}
+  defineModuleMetadata(AppModule, {
+    imports: [MicroservicesModule.forRoot({ transport })],
+  });
+
+  const app = await bootstrapApplication({ rootModule: AppModule });
+  const microservice = await app.container.resolve(MicroserviceLifecycleService);
+  await microservice.listen();
+
+  // When
+  await expect(microservice.close()).rejects.toThrow(closeError);
+
+  // Then
+  await expect(microservice.send('orders.create', { id: 'order-1' })).rejects.toThrow(
+    'Microservice cannot send after shutdown has started.',
+  );
+  await expect(microservice.emit('orders.created', { id: 'order-1' })).rejects.toThrow(
+    'Microservice cannot emit after shutdown has started.',
+  );
+
+  try {
+    await app.close();
+  } catch {}
+});
+
+  it('rejects resolved lifecycle facade send and emit after shell close starts', async () => {
+    // Given
+    const events: string[] = [];
+    const closeCanFinish = createDeferred();
+    const transport: MicroserviceTransport = {
+      async close() {
+        events.push('transport:close:start');
+        await closeCanFinish.promise;
+        events.push('transport:close:end');
+      },
+      async emit() {
+        events.push('transport:emit');
+      },
+      async listen() {
+        events.push('transport:listen');
+      },
+      async send() {
+        events.push('transport:send');
+        return 'sent';
+      },
+    };
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [MicroservicesModule.forRoot({ transport })],
+    });
+
+    const shell = await FluoFactory.createMicroservice(AppModule);
+    const lifecycle = await shell.container.resolve(MicroserviceLifecycleService);
+    await shell.listen();
+
+    // When
+    const closePromise = shell.close();
+    await vi.waitFor(() => {
+      expect(events).toContain('transport:close:start');
+    });
+
+    // Then
+    try {
+      await expect(lifecycle.send('orders.create', { id: 'order-1' })).rejects.toThrow(
+        'Microservice cannot send after shutdown has started.',
+      );
+      await expect(lifecycle.emit('orders.created', { id: 'order-1' })).rejects.toThrow(
+        'Microservice cannot emit after shutdown has started.',
+      );
+      expect(events).not.toContain('transport:send');
+      expect(events).not.toContain('transport:emit');
+    } finally {
+      closeCanFinish.resolve();
+      await closePromise;
+    }
+  });

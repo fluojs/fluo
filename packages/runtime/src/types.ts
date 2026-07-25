@@ -191,6 +191,15 @@ export interface MicroserviceRuntime {
   emit?(pattern: string, payload: unknown): MaybePromise<void>;
   /** Start listening for transport messages. */
   listen(): MaybePromise<void>;
+  /**
+   * Synchronously notified when the owning shell begins shutdown.
+   *
+   * Implementations that expose their own ingress admission gate must close it
+   * before the first await in this call so that new send()/emit()/listen()
+   * attempts are rejected while a racing listen() is still settling. The
+   * terminal gate must stay closed even if close() later rejects.
+   */
+  markShutdownStarted?(): void;
   /** Send a request/response message for the given transport pattern. */
   send?(pattern: string, payload: unknown, signal?: AbortSignal): MaybePromise<unknown>;
 }
