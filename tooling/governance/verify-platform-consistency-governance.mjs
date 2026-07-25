@@ -609,7 +609,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // route-id graph correlation, viewer dependency classification, and Node.js
   // tooling runtime-floor discoverability, plus Cron distributed-lock
   // lifecycle contracts such as enabled TTL validation before Redis I/O,
-  // bounded shutdown lock-release I/O, timeout ownership retention, dynamic
+  // bounded shutdown lock-release I/O including the shutdown-start deadline reused
+  // by post-task release/retry, timeout ownership retention, dynamic
   // blank-name rejection, immutable registry descriptor snapshots, failed-stop
   // scheduler handle retention for retryable registry disable/removal, and
   // microservices facade shutdown signal forwarding plus transport-owned

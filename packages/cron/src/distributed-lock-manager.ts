@@ -221,8 +221,8 @@ export class CronDistributedLockManager {
     };
   }
 
-  async releaseLock(descriptor: CronTaskDescriptor): Promise<boolean> {
-    return await this.releaseLockKey(descriptor.lockKey, descriptor.taskName);
+  async releaseLock(descriptor: CronTaskDescriptor, timeoutMs?: number): Promise<boolean> {
+    return await this.releaseLockKey(descriptor.lockKey, descriptor.taskName, timeoutMs);
   }
 
   async releaseOwnedLocks(excludedLockKeys: ReadonlySet<string> = new Set(), timeoutMs?: number): Promise<void> {
