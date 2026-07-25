@@ -566,7 +566,7 @@ dynamic module이 `global: true`를 선언할 때, 그것은 어떤 마법의 �
 
 첫째, 그 모듈이 정말 dynamic해야 하는지부터 판단하십시오. 등록에 런타임 옵션도 없고 계산된 provider 집합도 없다면, 평범한 `@Module(...)` metadata가 더 단순할 수 있습니다. 동적 모듈은 코드가 metadata나 provider를 실제로 계산해야 할 때 사용하십시오. 정적 모듈은 분석과 lint가 더 쉽기 때문에, 유연성이 필요한 지점에만 동적 모듈을 두는 편이 좋습니다.
 
-둘째, provider graph를 만들기 전에 옵션을 안정화하십시오. Caller가 기본값이나 검증이 필요한 partial shape를 제공하면 normalization을 사용하고, 이후 caller mutation이 등록된 동작을 바꾸면 안 된다면 detached snapshot을 사용합니다. `path:packages/prisma/src/module.ts:63-76`의 `normalizePrismaModuleOptions()`, `path:packages/queue/src/module.ts:9-25`의 `normalizeQueueModuleOptions()`, `path:packages/email/src/module.ts:48-72`의 `normalizeEmailModuleOptions()`는 normalization을 보여 줍니다. `path:packages/config/src/options.ts:42-80`의 `snapshotConfigModuleOptions()`와 `snapshotConfigLoadOptions()`는 call-time snapshot을 보여 줍니다. 두 방식 모두 provider factory를 작게 유지하고 안정적인 내부 input을 제공합니다.
+둘째, provider graph를 만들기 전에 옵션을 안정화하십시오. Caller가 기본값이나 검증이 필요한 partial shape를 제공하면 normalization을 사용하고, 이후 caller mutation이 등록된 동작을 바꾸면 안 된다면 detached snapshot을 사용합니다. `path:packages/prisma/src/module.ts:75-92`의 `normalizePrismaModuleOptions()`, `path:packages/queue/src/module.ts:80-100`의 `normalizeQueueModuleOptions()`, `path:packages/email/src/module.ts:47-71`의 `normalizeEmailModuleOptions()`는 normalization을 보여 줍니다. `path:packages/config/src/options.ts:42-80`의 `snapshotConfigModuleOptions()`와 `snapshotConfigLoadOptions()`는 call-time snapshot을 보여 줍니다. 두 방식 모두 provider factory를 작게 유지하고 안정적인 내부 input을 제공합니다.
 
 이 항목은 package inventory 성격이 강하므로 세 파일을 모두 코드로 펼치지 않습니다. 앞의 Prisma와 Queue 발췌가 정규화된 값 provider 패턴을 대표하고, Email은 비동기 options provider 발췌에서 같은 `normalizeEmailModuleOptions()` 진입점을 보여 주었습니다.
 
