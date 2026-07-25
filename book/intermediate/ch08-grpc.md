@@ -49,7 +49,7 @@ This transport requires several settings to bridge runtime patterns and static s
 - `channelOptions`: Options for the `@grpc/grpc-js` channel.
 - `kindMetadataKey`: Metadata key used to distinguish messages from events, defaulting to `x-fluo-kind`.
 
-The configuration list is longer than other transports because gRPC is schema-first. High configuration explicitness is the cost of runtime contract safety.
+The configuration list is longer than other transports because gRPC is schema-first. These explicit settings select the service definitions and protobuf codec used at the wire boundary; they do not make the transport an application-level runtime validator.
 
 ### 8.2.2 Module wiring
 
@@ -91,12 +91,12 @@ service CheckoutService {
 ```typescript
 @MessagePattern('CheckoutService.GetQuote')
 async getQuote(input: { orderId: string; loyaltyTier: string }) {
-  // input is mapped automatically from the proto request object.
+  // gRPC decodes the proto request; validate business invariants here.
   return await this.quoteService.calculate(input);
 }
 ```
 
-The handler stays concise. The contract precision lives in the `.proto` file, and `GrpcMicroserviceTransport` verifies that inbound objects match the expected shape before invoking the handler.
+The handler stays concise. The gRPC server decodes the wire message according to the loaded protobuf service definition, and `GrpcMicroserviceTransport` forwards the decoded `call.request` to the matching handler. The transport does not run an additional DTO or runtime shape validator. The TypeScript annotation above is compile-time guidance only; validate required-field presence, ranges, cross-field rules, and other business invariants explicitly at the handler or application-service boundary before using the data.
 
 ### 8.3.2 Event-style unary with metadata kind
 
@@ -140,7 +140,7 @@ async streamOrder(
 
 ### 8.4.2 Client-streaming warehouse batch scans
 
-Client streaming is useful when many small messages should produce one summary response. Warehouse handheld devices are a good example. When they upload a batch of collected scan results, the server validates data in realtime as it receives the stream, then returns a final aggregate response when the stream ends. This reduces network overhead while keeping the whole process type-safe.
+Client streaming is useful when many small messages should produce one summary response. Warehouse handheld devices are a good example. When they upload a batch of collected scan results, the application handler can validate each decoded item as it consumes the stream, then return a final aggregate response when the stream ends. That validation must be explicit application code; `GrpcMicroserviceTransport` only exposes the decoded stream and does not apply runtime shape or business-rule validation. This reduces network overhead while keeping the protobuf stream boundary explicit.
 
 ### 8.4.3 Bidirectional courier sessions
 

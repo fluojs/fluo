@@ -49,7 +49,7 @@ FluoShop은 브로커를 통한 디커플링보다 엄격한 계약(strict contr
 - `channelOptions`: `@grpc/grpc-js` 채널용 옵션.
 - `kindMetadataKey`: 메시지와 이벤트를 구분하기 위한 메타데이터 키 (기본값 `x-fluo-kind`).
 
-다른 transport보다 설정 목록이 긴 이유는 gRPC가 schema-first이기 때문입니다. 설정의 명시성이 높다는 것은 런타임 계약의 안전성을 확보하는 비용입니다.
+다른 transport보다 설정 목록이 긴 이유는 gRPC가 schema-first이기 때문입니다. 이 명시적 설정은 wire 경계에서 사용할 service definition과 protobuf codec을 선택하지만, transport를 애플리케이션 수준 런타임 validator로 만들지는 않습니다.
 
 ### 8.2.2 Module wiring
 
@@ -91,12 +91,12 @@ service CheckoutService {
 ```typescript
 @MessagePattern('CheckoutService.GetQuote')
 async getQuote(input: { orderId: string; loyaltyTier: string }) {
-  // input은 proto 요청 객체로부터 자동 매핑됩니다.
+  // gRPC가 proto 요청을 decode하며, 비즈니스 불변식은 여기서 검증합니다.
   return await this.quoteService.calculate(input);
 }
 ```
 
-핸들러는 여전히 간결합니다. 계약의 정밀함은 `.proto` 파일에 있으며, `GrpcMicroserviceTransport`는 인바운드 객체가 핸들러를 호출하기 전에 예상된 형태와 맞는지 확인합니다.
+핸들러는 여전히 간결합니다. gRPC server는 로드된 protobuf service definition에 따라 wire message를 decode하고, `GrpcMicroserviceTransport`는 decode된 `call.request`를 일치하는 핸들러로 전달합니다. Transport는 별도의 DTO 또는 런타임 shape validator를 실행하지 않습니다. 위 TypeScript annotation은 compile-time 지침일 뿐이므로 required field 존재 여부, 범위, cross-field rule, 그 밖의 비즈니스 불변식은 데이터를 사용하기 전에 핸들러 또는 application-service 경계에서 명시적으로 검증해야 합니다.
 
 ### 8.3.2 Event-style unary with metadata kind
 
@@ -140,7 +140,7 @@ async streamOrder(
 
 ### 8.4.2 Client-streaming warehouse batch scans
 
-클라이언트 스트리밍은 많은 작은 메시지가 하나의 요약 응답으로 이어져야 할 때 유용합니다. 창고의 핸드헬드 기기가 좋은 예시입니다. 수집된 스캔 결과 배치를 업로드하면, 서버는 스트림을 받으면서 실시간으로 검증을 수행하고 스트림이 끝나면 최종 집계 응답을 반환합니다. 이 방식은 네트워크 오버헤드를 줄이면서도 전체 과정을 타입 안전하게 유지합니다.
+클라이언트 스트리밍은 많은 작은 메시지가 하나의 요약 응답으로 이어져야 할 때 유용합니다. 창고의 핸드헬드 기기가 좋은 예시입니다. 수집된 스캔 결과 배치를 업로드하면, application handler가 stream을 소비하면서 decode된 각 항목을 검증하고 stream이 끝난 뒤 최종 집계 응답을 반환할 수 있습니다. 이 검증은 명시적인 애플리케이션 코드여야 합니다. `GrpcMicroserviceTransport`는 decode된 stream만 노출하며 런타임 shape 또는 비즈니스 규칙 검증을 적용하지 않습니다. 이 방식은 protobuf stream 경계를 명확하게 유지하면서 네트워크 오버헤드를 줄입니다.
 
 ### 8.4.3 Bidirectional courier sessions
 
