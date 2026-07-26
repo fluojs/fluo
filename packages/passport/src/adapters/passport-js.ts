@@ -1,6 +1,7 @@
+// allow: SIZE_OK — Keep the Passport.js action-binding state machine with its public bridge contracts for auditability.
 import type { Token } from '@fluojs/core';
-import type { GuardContext, Principal } from '@fluojs/http';
 import type { Provider } from '@fluojs/di';
+import type { GuardContext, Principal } from '@fluojs/http';
 
 import { AuthenticationFailedError, AuthenticationRequiredError } from '../errors.js';
 import { normalizePrincipalScopes } from '../scope.js';
@@ -65,7 +66,10 @@ export type PassportJsPrincipalMapper = (input: PassportJsPrincipalMapperInput) 
 export interface PassportJsAuthStrategyOptions {
   /** Optional options to pass to the Passport strategy's `authenticate` method. */
   authenticateOptions?: Readonly<Record<string, unknown>>;
-  /** Maximum time to wait for callback-style strategies to call a bound Passport action. */
+  /**
+   * Maximum time to wait for callback-style strategies to call a bound Passport action.
+   * Must be a non-negative finite number. A value of `0` schedules settlement on the next timer turn.
+   */
   actionTimeoutMs?: number;
   /** Optional custom mapper for converting user data to a principal. */
   mapPrincipal?: PassportJsPrincipalMapper;
@@ -184,14 +188,25 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
 /**
  * A bridge strategy that allows using Passport.js strategies within the fluo
  * authentication framework.
+ *
+ * @throws {RangeError} When `actionTimeoutMs` is negative or non-finite.
  */
 export class PassportJsAuthStrategy implements AuthStrategy {
+  private readonly actionTimeoutMs: number;
   private readonly requestState = new WeakMap<PassportJsExecutableStrategy, PassportJsRequestState>();
 
   constructor(
     private readonly strategyTemplate: PassportJsStrategyLike,
     private readonly options: PassportJsAuthStrategyOptions = {},
-  ) {}
+  ) {
+    const actionTimeoutMs = options.actionTimeoutMs ?? DEFAULT_ACTION_TIMEOUT_MS;
+
+    if (!Number.isFinite(actionTimeoutMs) || actionTimeoutMs < 0) {
+      throw new RangeError('Passport.js actionTimeoutMs must be a non-negative finite number.');
+    }
+
+    this.actionTimeoutMs = actionTimeoutMs;
+  }
 
   authenticate(context: GuardContext): Promise<Principal | AuthHandledResult> {
     const response = context.requestContext.response;
@@ -221,15 +236,11 @@ export class PassportJsAuthStrategy implements AuthStrategy {
 
       this.bindStrategyActions(strategy);
 
-      const actionTimeoutMs = this.options.actionTimeoutMs ?? DEFAULT_ACTION_TIMEOUT_MS;
-
-      if (Number.isFinite(actionTimeoutMs) && actionTimeoutMs >= 0) {
-        actionTimeout = setTimeout(() => {
-          this.settle(strategy, (state) => {
-            state.reject(new AuthenticationRequiredError('Passport strategy did not settle authentication.'));
-          });
-        }, actionTimeoutMs);
-      }
+      actionTimeout = setTimeout(() => {
+        this.settle(strategy, (state) => {
+          state.reject(new AuthenticationRequiredError('Passport strategy did not settle authentication.'));
+        });
+      }, this.actionTimeoutMs);
 
       try {
         const result = strategy.authenticate(request, this.options.authenticateOptions);
@@ -250,7 +261,7 @@ export class PassportJsAuthStrategy implements AuthStrategy {
             },
           );
         }
-      } catch (error: unknown) {
+      } catch (error: unknown) { // no-excuse-ok: catch — convert synchronous strategy throws to promise rejection.
         clearActionTimeout();
         this.settle(strategy, () => reject(error));
       }
@@ -298,7 +309,7 @@ export class PassportJsAuthStrategy implements AuthStrategy {
       this.settle(strategy, (state) => {
         try {
           state.resolve(state.mapPrincipal({ context: state.context, info, user }));
-        } catch (error: unknown) {
+        } catch (error: unknown) { // no-excuse-ok: catch — convert mapper throws to authentication promise rejection.
           state.reject(error);
         }
       });
