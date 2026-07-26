@@ -833,10 +833,11 @@ describe('@fluojs/drizzle', () => {
     }
   });
 
-  it('aborts unsupported requestTransaction fallback on shutdown before dispose', async () => {
+  it('keeps an aborted requestTransaction fallback in the shutdown drain until direct execution settles', async () => {
     const events: string[] = [];
     const database = {};
-    let requestRejected = false;
+    const controller = new AbortController();
+    const fallbackBarrier = createDeferred();
 
     const drizzleModule = DrizzleModule.forRoot<typeof database>({
       database,
@@ -856,20 +857,35 @@ describe('@fluojs/drizzle', () => {
     });
     const drizzle = await app.container.resolve(DrizzleDatabase<typeof database>);
 
+    // Given: fail-open direct execution that remains active after its caller is aborted.
     const openTransaction = drizzle.requestTransaction(async () => {
       events.push('request:start');
-      return new Promise<never>(() => undefined);
-    });
+      await fallbackBarrier.promise;
+      events.push('request:end');
+    }, controller.signal);
 
-    void openTransaction.catch(() => {
-      requestRejected = true;
-    });
+    let shutdownPromise: Promise<void> | undefined;
 
-    await app.close();
+    try {
+      // When: request cancellation rejects the caller before direct execution settles.
+      controller.abort(new Error('request aborted during fallback'));
 
-    await expect(openTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
-    expect(requestRejected).toBe(true);
-    expect(events).toEqual(['request:start', 'dispose']);
+      // Then: shutdown still drains the underlying callback before disposal.
+      await expect(openTransaction).rejects.toThrow('request aborted during fallback');
+      expect(drizzle.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(1);
+
+      shutdownPromise = app.close();
+      await Promise.resolve();
+      expect(events).toEqual(['request:start']);
+
+      fallbackBarrier.resolve();
+      await shutdownPromise;
+
+      expect(events).toEqual(['request:start', 'request:end', 'dispose']);
+    } finally {
+      fallbackBarrier.resolve();
+      await Promise.allSettled([openTransaction, shutdownPromise ?? app.close()]);
+    }
   });
 
   it('runs nested request and service transactions through a single transaction boundary', async () => {
