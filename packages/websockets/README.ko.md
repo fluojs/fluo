@@ -111,7 +111,7 @@ Root `@fluojs/websockets` / `@fluojs/websockets/node` guard는 Node의 `Incoming
 ### Room
 `WebSocketRoomService`를 사용하면 gateway 또는 application service가 adapter 내부에 접근하지 않고도 가벼운 room membership state를 유지할 수 있습니다. Runtime lifecycle service는 `joinRoom(socketId, room)`, `leaveRoom(socketId, room)`, `broadcastToRoom(room, event, data)`, `getRooms(socketId)`를 구현합니다. `broadcastToRoom(...)`은 현재 room에 있는 열린 socket에 `{ event, data }` 형태의 JSON frame을 보냅니다. Node.js 기반 adapter는 전송 전에 설정된 `backpressure` policy를 적용하지만, fetch-style runtime(`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`)은 room broadcast에 backpressure policy를 적용하지 않습니다.
 
-`WebSocketRoomService`는 runtime lifecycle service가 구현하는 type-only contract입니다. `@Inject(...)`로 lifecycle service token을 주입하고 constructor parameter를 `WebSocketRoomService`로 type 지정하세요. Root `@fluojs/websockets`와 `@fluojs/websockets/node` entrypoint는 `WebSocketGatewayLifecycleService`를 DI token으로 노출하고, runtime-specific subpath는 아래 runtime 표에 나열된 해당 `*WebSocketGatewayLifecycleService` token을 노출합니다.
+`WebSocketRoomService`는 runtime lifecycle service가 구현하는 type-only contract입니다. `@Inject(...)`로 lifecycle service token을 주입하고 constructor parameter를 `WebSocketRoomService`로 type 지정하세요. Root `@fluojs/websockets` entrypoint는 `WebSocketGatewayLifecycleService`를 DI token으로 노출하고, 명시적 `@fluojs/websockets/node` subpath는 `NodeWebSocketGatewayLifecycleService`를 노출합니다. 다른 runtime-specific subpath는 아래 runtime 표에 나열된 해당 `*WebSocketGatewayLifecycleService` token을 노출합니다.
 
 ```typescript
 import { Inject } from '@fluojs/core';
