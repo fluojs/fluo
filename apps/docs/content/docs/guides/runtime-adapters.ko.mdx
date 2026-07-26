@@ -322,7 +322,39 @@ export class RealtimeModule {}
 
 Worker request는 active HTTP, SSE body, upgraded WebSocket work를 `executionContext.waitUntil(...)`에 등록합니다. Shutdown 중 새 HTTP 및 WebSocket ingress는 JSON `503`을 받고, active work에는 bounded 10-second drain window가 주어집니다. Lazy entrypoint의 `close()`가 timeout되면 underlying drain이 settle될 때까지 shutdown gate를 유지한 뒤, 이후 request가 새 application을 bootstrap할 수 있게 합니다.
 
-Worker `env` object는 request별로 `request.cloudflare.env`에서 사용할 수 있지만 package configuration이 자동으로 소비하지는 않습니다. 필요한 binding은 명시적 application provider 또는 `@fluojs/config`로 매핑하고, configuration ownership을 platform package code로 옮기지 마세요.
+Worker `env` object는 request별로 `request.cloudflare.env`에서 사용할 수 있습니다. `bootstrapCloudflareWorkerApplication(...)`은 exported `fetch(...)`가 traffic을 처리하기 전에 module registration을 완료합니다. `createCloudflareWorkerEntrypoint(...)`의 첫 request는 bootstrap을 시작하지만, 미리 선언한 root module과 option만 module registration에 참여하고 해당 request의 `env`는 dispatch 중에 연결됩니다. 따라서 fetch-time binding은 `ConfigModule.forRoot(...)` 또는 singleton bootstrap provider를 구성할 수 없습니다. Bootstrap configuration은 module registration 전에 사용할 수 있는 값으로 제한하세요. Handler의 `RequestContext`에서 선택한 fetch-time binding을 읽고 검증하고 좁힌 뒤 application-shaped 값만 injected provider method에 전달하세요.
+
+```ts
+import { Inject } from '@fluojs/core';
+import { Controller, Get, type RequestContext } from '@fluojs/http';
+
+interface WorkerEnv {
+  API_KEY: string;
+}
+
+export class CatalogService {
+  read(input: { apiKey: string }) {
+    return { configured: input.apiKey.length > 0 };
+  }
+}
+
+@Inject(CatalogService)
+@Controller('/worker')
+export class WorkerController {
+  constructor(private readonly catalog: CatalogService) {}
+
+  @Get('/catalog')
+  readCatalog(_input: undefined, context: RequestContext) {
+    const env = context.request.cloudflare?.env as Partial<WorkerEnv> | undefined;
+    const apiKey = env?.API_KEY;
+    if (typeof apiKey !== 'string' || apiKey.length === 0) {
+      throw new Error('API_KEY Worker binding is required.');
+    }
+
+    return this.catalog.read({ apiKey });
+  }
+}
+```
 
 ## Runtime behavior matrix
 

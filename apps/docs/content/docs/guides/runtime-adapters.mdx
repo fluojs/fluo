@@ -322,7 +322,39 @@ export class RealtimeModule {}
 
 Worker requests register active HTTP, SSE-body, and upgraded WebSocket work with `executionContext.waitUntil(...)`. During shutdown, new HTTP and WebSocket ingress receives JSON `503`, and active work gets a bounded 10-second drain window. A lazy entrypoint whose `close()` times out keeps that shutdown gate until the underlying drain settles, then permits a later request to bootstrap a fresh application.
 
-The Worker `env` object is available per request at `request.cloudflare.env`, but package configuration does not consume it automatically. Map required bindings into explicit application providers or `@fluojs/config`; do not move configuration ownership into platform package code.
+The Worker `env` object is available per request at `request.cloudflare.env`. `bootstrapCloudflareWorkerApplication(...)` finishes module registration before its exported `fetch(...)` handles traffic. The first `createCloudflareWorkerEntrypoint(...)` request triggers bootstrap, but only the predeclared root module and options participate in module registration; that request's `env` is attached during dispatch. Fetch-time bindings therefore cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers. Keep bootstrap configuration limited to values available before module registration. Read, validate, and narrow selected fetch-time bindings from the handler's `RequestContext`, then pass only application-shaped values into an injected provider method.
+
+```ts
+import { Inject } from '@fluojs/core';
+import { Controller, Get, type RequestContext } from '@fluojs/http';
+
+interface WorkerEnv {
+  API_KEY: string;
+}
+
+export class CatalogService {
+  read(input: { apiKey: string }) {
+    return { configured: input.apiKey.length > 0 };
+  }
+}
+
+@Inject(CatalogService)
+@Controller('/worker')
+export class WorkerController {
+  constructor(private readonly catalog: CatalogService) {}
+
+  @Get('/catalog')
+  readCatalog(_input: undefined, context: RequestContext) {
+    const env = context.request.cloudflare?.env as Partial<WorkerEnv> | undefined;
+    const apiKey = env?.API_KEY;
+    if (typeof apiKey !== 'string' || apiKey.length === 0) {
+      throw new Error('API_KEY Worker binding is required.');
+    }
+
+    return this.catalog.read({ apiKey });
+  }
+}
+```
 
 ## Runtime behavior matrix
 
