@@ -225,6 +225,29 @@ describe('enforceCloudflareWorkersLifecycleDocsSync', () => {
       /packages\/platform-cloudflare-workers\/README\.md/,
     );
   });
+
+  it('rejects bootstrap-provider guidance for request-bound Worker env', () => {
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      if (relativePath !== 'packages/platform-cloudflare-workers/README.md') {
+        return content;
+      }
+
+      return content.replace(
+        'cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers',
+        'Map fetch-time bindings into `ConfigModule.forRoot(...)` or singleton bootstrap providers',
+      );
+    };
+
+    expect(() => enforceCloudflareWorkersLifecycleDocsSync(readText)).toThrowError(
+      /packages\/platform-cloudflare-workers\/README\.md.*cannot supply/u,
+    );
+  });
+
+  it('accepts synchronized fetch-time Worker env guidance', () => {
+    expect(() => enforceCloudflareWorkersLifecycleDocsSync()).not.toThrow();
+  });
 });
 
 describe('enforceExpressRuntimeMigrationDocsSync', () => {
