@@ -322,10 +322,10 @@ export class RealtimeModule {}
 
 Worker requests register active HTTP, SSE-body, and upgraded WebSocket work with `executionContext.waitUntil(...)`. During shutdown, new HTTP and WebSocket ingress receives JSON `503`, and active work gets a bounded 10-second drain window. A lazy entrypoint whose `close()` times out keeps that shutdown gate until the underlying drain settles, then permits a later request to bootstrap a fresh application.
 
-The Worker `env` object is available per request at `request.cloudflare.env`. `bootstrapCloudflareWorkerApplication(...)` finishes module registration before its exported `fetch(...)` handles traffic. The first `createCloudflareWorkerEntrypoint(...)` request triggers bootstrap, but only the predeclared root module and options participate in module registration; that request's `env` is attached during dispatch. Fetch-time bindings therefore cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers. Keep bootstrap configuration limited to values available before module registration. Read, validate, and narrow selected fetch-time bindings from the handler's `RequestContext`, then pass only application-shaped values into an injected provider method.
+The Worker `env` object is available per request at `request.cloudflare.env`. `bootstrapCloudflareWorkerApplication(...)` finishes module registration before its exported `fetch(...)` handles traffic. The first `createCloudflareWorkerEntrypoint(...)` request triggers bootstrap only when `ready()` has not already started it. In either path, only the predeclared root module and options participate in module registration; that request's `env` is attached during dispatch. Fetch-time bindings therefore cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers. Keep bootstrap configuration limited to values available before module registration. Read, validate, and narrow selected fetch-time bindings from the handler's `RequestContext`, then pass only application-shaped values into an injected provider method. Register the provider and controller in the owning module.
 
 ```ts
-import { Inject } from '@fluojs/core';
+import { Inject, Module } from '@fluojs/core';
 import { Controller, Get, type RequestContext } from '@fluojs/http';
 
 interface WorkerEnv {
@@ -354,6 +354,12 @@ export class WorkerController {
     return this.catalog.read({ apiKey });
   }
 }
+
+@Module({
+  controllers: [WorkerController],
+  providers: [CatalogService],
+})
+export class WorkerBindingsModule {}
 ```
 
 ## Runtime behavior matrix
