@@ -97,12 +97,12 @@ Cloudflare Workers have constraints that differ from traditional Node.js environ
 
 ### 24.4.1 Integrating Worker Env into fluo
 
-fluo's Cloudflare adapter attaches the Worker `env` object to each request as `context.request.cloudflare?.env` and exposes the Worker execution context as `context.request.cloudflare?.executionContext`. `bootstrapCloudflareWorkerApplication(...)` finishes module registration before its exported `fetch(...)` handles traffic. With `createCloudflareWorkerEntrypoint(...)`, the first `fetch(request, env, ctx)` starts bootstrap, but bootstrap receives only the predeclared root module and options; that request's `env` is attached later, during dispatch. Fetch-time bindings therefore cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers. Reserve bootstrap configuration for values available before module registration.
+fluo's Cloudflare adapter attaches the Worker `env` object to each request as `context.request.cloudflare?.env` and exposes the Worker execution context as `context.request.cloudflare?.executionContext`. `bootstrapCloudflareWorkerApplication(...)` finishes module registration before its exported `fetch(...)` handles traffic. With `createCloudflareWorkerEntrypoint(...)`, the first `fetch(request, env, ctx)` starts bootstrap only when `ready()` has not already started it. In either path, bootstrap receives only the predeclared root module and options; that request's `env` is attached later, during dispatch. Fetch-time bindings therefore cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers. Reserve bootstrap configuration for values available before module registration.
 
 Keep the mapping application-owned and request-bound: read and narrow the required bindings from the handler's `RequestContext`, then pass an application-shaped value into an injected provider method. Register `CatalogService` as a provider and `WorkerController` as a controller in the owning module.
 
 ```typescript
-import { Inject } from '@fluojs/core';
+import { Inject, Module } from '@fluojs/core';
 import { Controller, Get, type RequestContext } from '@fluojs/http';
 
 interface WorkerEnv {
@@ -132,6 +132,12 @@ export class WorkerController {
     return this.catalog.read({ apiKey });
   }
 }
+
+@Module({
+  controllers: [WorkerController],
+  providers: [CatalogService],
+})
+export class WorkerBindingsModule {}
 ```
 
 ## 24.5 Edge-Native WebSockets
@@ -215,7 +221,7 @@ Cloudflare D1 is a SQL database available near Workers. With the D1 driver and D
 Do not register a fetch-time `CF_ENV` object as a singleton provider. Map the D1 binding at the same request boundary and pass it into an application provider method:
 
 ```typescript
-import { Inject } from '@fluojs/core';
+import { Inject, Module } from '@fluojs/core';
 import { Controller, Get, type RequestContext } from '@fluojs/http';
 import { drizzle } from 'drizzle-orm/d1';
 import { products } from './schema';
@@ -246,6 +252,12 @@ export class ProductController {
     return this.products.list(database);
   }
 }
+
+@Module({
+  controllers: [ProductController],
+  providers: [ProductRepository],
+})
+export class DatabaseModule {}
 ```
 
 ## 24.10 Summary: The Edge Advantage

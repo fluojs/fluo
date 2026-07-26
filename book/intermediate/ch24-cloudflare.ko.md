@@ -97,12 +97,12 @@ Cloudflare Workers는 전통적인 Node.js 환경과 다른 제약을 갖습니�
 
 ### 24.4.1 Integrating Worker Env into fluo
 
-fluo의 Cloudflare 어댑터는 Worker `env` 객체를 각 요청의 `context.request.cloudflare?.env`에 연결하고 Worker execution context를 `context.request.cloudflare?.executionContext`로 제공합니다. `bootstrapCloudflareWorkerApplication(...)`은 exported `fetch(...)`가 traffic을 처리하기 전에 module registration을 완료합니다. `createCloudflareWorkerEntrypoint(...)`에서는 첫 `fetch(request, env, ctx)`가 bootstrap을 시작하지만, bootstrap에는 미리 선언한 root module과 option만 전달되고 해당 request의 `env`는 dispatch 중에 연결됩니다. 따라서 fetch-time binding은 `ConfigModule.forRoot(...)` 또는 singleton bootstrap provider를 구성할 수 없습니다. Bootstrap configuration은 module registration 전에 사용할 수 있는 값에만 사용하세요.
+fluo의 Cloudflare 어댑터는 Worker `env` 객체를 각 요청의 `context.request.cloudflare?.env`에 연결하고 Worker execution context를 `context.request.cloudflare?.executionContext`로 제공합니다. `bootstrapCloudflareWorkerApplication(...)`은 exported `fetch(...)`가 traffic을 처리하기 전에 module registration을 완료합니다. `createCloudflareWorkerEntrypoint(...)`에서는 `ready()`가 bootstrap을 미리 시작하지 않은 경우에만 첫 `fetch(request, env, ctx)`가 bootstrap을 시작합니다. 어느 경로든 bootstrap에는 미리 선언한 root module과 option만 전달되고 해당 request의 `env`는 dispatch 중에 연결됩니다. 따라서 fetch-time binding은 `ConfigModule.forRoot(...)` 또는 singleton bootstrap provider를 구성할 수 없습니다. Bootstrap configuration은 module registration 전에 사용할 수 있는 값에만 사용하세요.
 
 Mapping은 application-owned request boundary에 두세요. Handler의 `RequestContext`에서 필요한 binding을 읽고 좁힌 뒤 application-shaped 값으로 바꾸어 injected provider method에 전달합니다. `CatalogService`는 provider로, `WorkerController`는 controller로 owning module에 등록합니다.
 
 ```typescript
-import { Inject } from '@fluojs/core';
+import { Inject, Module } from '@fluojs/core';
 import { Controller, Get, type RequestContext } from '@fluojs/http';
 
 interface WorkerEnv {
@@ -132,6 +132,12 @@ export class WorkerController {
     return this.catalog.read({ apiKey });
   }
 }
+
+@Module({
+  controllers: [WorkerController],
+  providers: [CatalogService],
+})
+export class WorkerBindingsModule {}
 ```
 
 ## 24.5 Edge-Native WebSockets
@@ -215,7 +221,7 @@ Cloudflare D1은 Worker와 가까운 위치에서 사용할 수 있는 SQL 데�
 Fetch-time `CF_ENV` object를 singleton provider로 등록하지 마세요. 동일한 request boundary에서 D1 binding을 매핑한 뒤 application provider method로 전달합니다.
 
 ```typescript
-import { Inject } from '@fluojs/core';
+import { Inject, Module } from '@fluojs/core';
 import { Controller, Get, type RequestContext } from '@fluojs/http';
 import { drizzle } from 'drizzle-orm/d1';
 import { products } from './schema';
@@ -246,6 +252,12 @@ export class ProductController {
     return this.products.list(database);
   }
 }
+
+@Module({
+  controllers: [ProductController],
+  providers: [ProductRepository],
+})
+export class DatabaseModule {}
 ```
 
 ## 24.10 Summary: The Edge Advantage
