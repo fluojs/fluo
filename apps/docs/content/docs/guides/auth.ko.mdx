@@ -191,7 +191,11 @@ import {
 @Module({
   imports: [
     CookieAuthModule.forRoot(),
-    JwtModule.forRoot({ algorithms: ['HS256'], secret: 'your-secure-secret' }),
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      global: true,
+      secret: 'your-secure-secret',
+    }),
     PassportModule.forRoot(
       { defaultStrategy: COOKIE_AUTH_STRATEGY_NAME },
       [{ name: COOKIE_AUTH_STRATEGY_NAME, token: CookieAuthStrategy }],
@@ -200,6 +204,8 @@ import {
 })
 export class AuthModule {}
 ```
+
+여기서 `CookieAuthModule`과 `JwtModule`은 sibling import입니다. Cookie module이 `CookieAuthStrategy`를 resolve할 때 `DefaultJwtVerifier`를 볼 수 있도록 JWT registration에 `global: true`를 유지하세요.
 
 Protected route에는 여전히 `@UseAuth(...)`가 필요합니다. Signed-in caller와 guest caller를 모두 허용하는 route라면 의도적으로 `@UseOptionalAuth(...)`를 사용합니다.
 
@@ -320,6 +326,7 @@ ThrottlerModule.forRoot({
 | Algorithms | 지원 algorithm을 하나 이상 설정하세요. 빈 algorithm list는 fail-fast됩니다. |
 | Access-token TTL | 양의 finite `accessTokenTtlSeconds`를 사용하세요. 잘못된 TTL은 token 발급 전에 실패합니다. |
 | JWKS | `jwksRequestTimeoutMs`로 remote JWKS fetch를 bounded하게 유지하세요. 기본값은 `5_000`입니다. |
+| Passport.js bridge | Callback settlement는 0 이상인 유한한 `actionTimeoutMs`(기본값 `30_000`)로 제한하세요. `0`은 다음 turn timeout으로 유지되고 invalid 값은 즉시 실패합니다. |
 | Principal shape | Normalized principal의 `subject`, `roles`, `scopes`, `claims`를 읽으세요. |
 | Refresh rotation | Atomic consume/revoke semantics를 사용하고, multi-instance production에서 memory store를 피하세요. |
 | Optional auth | Guest-compatible route에만 사용하세요. Scoped route에는 credential이 필요합니다. |

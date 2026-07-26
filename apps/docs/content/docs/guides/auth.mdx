@@ -191,7 +191,11 @@ import {
 @Module({
   imports: [
     CookieAuthModule.forRoot(),
-    JwtModule.forRoot({ algorithms: ['HS256'], secret: 'your-secure-secret' }),
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      global: true,
+      secret: 'your-secure-secret',
+    }),
     PassportModule.forRoot(
       { defaultStrategy: COOKIE_AUTH_STRATEGY_NAME },
       [{ name: COOKIE_AUTH_STRATEGY_NAME, token: CookieAuthStrategy }],
@@ -200,6 +204,8 @@ import {
 })
 export class AuthModule {}
 ```
+
+`CookieAuthModule` and `JwtModule` are sibling imports here. Keep `global: true` on the JWT registration so `DefaultJwtVerifier` is visible when the cookie module resolves `CookieAuthStrategy`.
 
 Protected routes still need `@UseAuth(...)`. If a route supports both signed-in and guest callers, use `@UseOptionalAuth(...)` intentionally.
 
@@ -320,6 +326,7 @@ When an app sits behind a trusted reverse proxy, opt in to proxy header identity
 | Algorithms | Configure at least one supported algorithm. Empty algorithm lists fail fast. |
 | Access-token TTL | Use a positive finite `accessTokenTtlSeconds`; invalid TTL values fail before issuing a token. |
 | JWKS | Keep remote JWKS fetches bounded with `jwksRequestTimeoutMs` (default `5_000`). |
+| Passport.js bridge | Keep callback settlement bounded with a non-negative finite `actionTimeoutMs` (default `30_000`); `0` remains a next-turn timeout, while invalid values fail fast. |
 | Principal shape | Read `subject`, `roles`, `scopes`, and `claims` from the normalized principal. |
 | Refresh rotation | Use atomic consume/revoke semantics; avoid memory stores in multi-instance production. |
 | Optional auth | Use only for guest-compatible routes; scoped routes still need credentials. |
