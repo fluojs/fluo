@@ -764,21 +764,45 @@ const cloudflareWorkerFetchEnvMarkers = {
   ],
 };
 
+const cloudflareWorkerFetchEnvForbiddenClaims = {
+  english: [
+    /(?:env|bindings?)[^.\n]*\b(?:can|may|should|must|is|are)\b\s+(?:be\s+)?(?:mapped|passed|supplied|registered|captured)[^.\n]*(?:`ConfigModule\.forRoot\(\.\.\.\)`|`@fluojs\/config`|bootstrap(?:-time)? provider)/iu,
+    /\bmap\b[^.\n]*(?:env|bindings?)[^.\n]*(?:`ConfigModule\.forRoot\(\.\.\.\)`|`@fluojs\/config`|bootstrap(?:-time)? provider)/iu,
+  ],
+  korean: [
+    /(?:env|binding)[^.\n]*(?:`ConfigModule\.forRoot\(\.\.\.\)`|`@fluojs\/config`|bootstrap(?:-time)? provider)[^.\n]*(?:매핑|전달|공급|등록|캡처)(?:하고|해야|하세요|합니다|할 수 있)/u,
+    /(?:env|binding)[^.\n]*(?:매핑|전달|공급|등록|캡처)(?:하고|해야|하세요|합니다|할 수 있)[^.\n]*(?:`ConfigModule\.forRoot\(\.\.\.\)`|`@fluojs\/config`|bootstrap(?:-time)? provider)/u,
+  ],
+};
+
+const cloudflareWorkerFetchEnvGovernedDocs = [
+  ['packages/platform-cloudflare-workers/README.md', cloudflareWorkerFetchEnvForbiddenClaims.english],
+  ['packages/platform-cloudflare-workers/README.ko.md', cloudflareWorkerFetchEnvForbiddenClaims.korean],
+  ['book/intermediate/ch24-cloudflare.md', cloudflareWorkerFetchEnvForbiddenClaims.english],
+  ['book/intermediate/ch24-cloudflare.ko.md', cloudflareWorkerFetchEnvForbiddenClaims.korean],
+  ['docs/getting-started/migrate-from-nestjs.md', cloudflareWorkerFetchEnvForbiddenClaims.english],
+  ['docs/getting-started/migrate-from-nestjs.ko.md', cloudflareWorkerFetchEnvForbiddenClaims.korean],
+  ['apps/docs/content/docs/guides/runtime-adapters.mdx', cloudflareWorkerFetchEnvForbiddenClaims.english],
+  ['apps/docs/content/docs/guides/runtime-adapters.ko.mdx', cloudflareWorkerFetchEnvForbiddenClaims.korean],
+  ['docs/CONTEXT.md', cloudflareWorkerFetchEnvForbiddenClaims.english],
+  ['docs/CONTEXT.ko.md', cloudflareWorkerFetchEnvForbiddenClaims.korean],
+];
+
 const cloudflareWorkersLifecycleDocRequirements = [
   ['packages/platform-cloudflare-workers/README.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'app.listen()', 'timed-out close', ...cloudflareWorkerFetchEnvMarkers.english]],
   ['packages/platform-cloudflare-workers/README.ko.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'app.listen()', 'timed-out close', ...cloudflareWorkerFetchEnvMarkers.korean]],
   ['docs/reference/package-surface.md', ['executionContext.waitUntil(...)', 'underlying drain', 'bootstrap a fresh application']],
   ['docs/reference/package-surface.ko.md', ['executionContext.waitUntil(...)', 'underlying drain', '새 application을 bootstrap']],
-  ['book/intermediate/ch24-cloudflare.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil()', 'underlying drain', ...cloudflareWorkerFetchEnvMarkers.english, 'Partial<WorkerEnv>']],
-  ['book/intermediate/ch24-cloudflare.ko.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil()', 'underlying drain', ...cloudflareWorkerFetchEnvMarkers.korean, 'Partial<WorkerEnv>']],
+  ['book/intermediate/ch24-cloudflare.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil()', 'underlying drain', ...cloudflareWorkerFetchEnvMarkers.english, 'Partial<WorkerEnv>', 'export class WorkerBindingsModule', 'export class DatabaseModule']],
+  ['book/intermediate/ch24-cloudflare.ko.md', ['CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil()', 'underlying drain', ...cloudflareWorkerFetchEnvMarkers.korean, 'Partial<WorkerEnv>', 'export class WorkerBindingsModule', 'export class DatabaseModule']],
   ['docs/getting-started/migrate-from-nestjs.md', ['fetch(request, env, ctx)', 'CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil(...)', '@fluojs/config', ...cloudflareWorkerFetchEnvMarkers.english]],
   ['docs/getting-started/migrate-from-nestjs.ko.md', ['fetch(request, env, ctx)', 'CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil(...)', '@fluojs/config', ...cloudflareWorkerFetchEnvMarkers.korean]],
-  ['apps/docs/content/docs/guides/runtime-adapters.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'request.cloudflare.env', 'underlying drain', ...cloudflareWorkerFetchEnvMarkers.english, 'Partial<WorkerEnv>']],
-  ['apps/docs/content/docs/guides/runtime-adapters.ko.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'request.cloudflare.env', 'underlying drain', ...cloudflareWorkerFetchEnvMarkers.korean, 'Partial<WorkerEnv>']],
+  ['apps/docs/content/docs/guides/runtime-adapters.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'request.cloudflare.env', 'underlying drain', ...cloudflareWorkerFetchEnvMarkers.english, 'Partial<WorkerEnv>', 'export class WorkerBindingsModule']],
+  ['apps/docs/content/docs/guides/runtime-adapters.ko.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'request.cloudflare.env', 'underlying drain', ...cloudflareWorkerFetchEnvMarkers.korean, 'Partial<WorkerEnv>', 'export class WorkerBindingsModule']],
   ['apps/docs/content/docs/guides/realtime.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'JSON `503`']],
   ['apps/docs/content/docs/guides/realtime.ko.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'JSON `503`']],
-  ['docs/CONTEXT.md', ['packages/platform-cloudflare-workers/README.md', 'docs/getting-started/migrate-from-nestjs.md', 'website runtime/realtime guides', 'pre-registration bootstrap configuration and fetch-time `env`', 'request-bound validation/narrowing']],
-  ['docs/CONTEXT.ko.md', ['packages/platform-cloudflare-workers/README.ko.md', 'docs/getting-started/migrate-from-nestjs.ko.md', 'website runtime/realtime guide', 'pre-registration bootstrap configuration과 fetch-time `env`', 'request boundary의 검증 및 narrowing']],
+  ['docs/CONTEXT.md', ['packages/platform-cloudflare-workers/README.md', 'docs/getting-started/migrate-from-nestjs.md', 'website runtime/realtime guides', 'fetch-time `env` boundary is mirrored specifically in the package README, intermediate book, NestJS migration map, and website runtime guide', 'request-bound bindings are validated and narrowed']],
+  ['docs/CONTEXT.ko.md', ['packages/platform-cloudflare-workers/README.ko.md', 'docs/getting-started/migrate-from-nestjs.ko.md', 'website runtime/realtime guide', 'Fetch-time `env` boundary는 package README, intermediate book, NestJS migration map, website runtime guide에만 명시적으로 반영', 'request-bound binding은 application-shaped 값이 provider method에 전달되기 전에 검증하고 좁혀야 합니다']],
 ];
 
 const serializerResponseOwnershipDocRequirements = [
@@ -926,6 +950,15 @@ export function enforceCloudflareWorkersLifecycleDocsSync(
     assert(
       missingMarkers.length === 0,
       `${relativePath} must keep Cloudflare Workers lifecycle and migration guidance synchronized; missing: ${missingMarkers.join(', ')}.`,
+    );
+  }
+
+  for (const [relativePath, forbiddenClaims] of cloudflareWorkerFetchEnvGovernedDocs) {
+    const content = readText(relativePath);
+
+    assert(
+      forbiddenClaims.every((pattern) => !pattern.test(content)),
+      `${relativePath} must not map request-bound Worker env into bootstrap configuration or singleton bootstrap providers.`,
     );
   }
 }
