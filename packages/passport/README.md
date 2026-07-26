@@ -122,6 +122,8 @@ This bridge helper is the official exception to the module-facade rule for Passp
 
 The bridge settles each Passport.js strategy execution exactly once. A strategy must call one of the bound Passport actions (`success`, `fail`, `redirect`, `pass`, or `error`); promise rejections, promise completion without an action, and callback-style executions that exceed the bounded action timeout become authentication failures instead of leaving the request unresolved. Any `AuthStrategyResult` with `handled: true` is fully terminal after the strategy commits a response, even if it also includes a `principal`; `AuthGuard` skips principal validation, scope checks, `requestContext.principal` assignment, and the protected handler. Custom `mapPrincipal` functions must return a valid fluo `Principal` with a non-empty `subject` and object `claims`.
 
+`actionTimeoutMs` defaults to `30_000` milliseconds and must be a non-negative finite number. Set it to `0` to schedule timeout settlement on the next timer turn. Negative, `NaN`, and infinite values throw `RangeError` when the bridge strategy is constructed instead of disabling the settlement bound.
+
 ### Cookie Auth Preset
 
 Use `CookieAuthModule.forRoot(...)` when your app authenticates requests from HTTP cookies.
@@ -141,6 +143,7 @@ import {
     CookieAuthModule.forRoot(),
     JwtModule.forRoot({
       algorithms: ['HS256'],
+      global: true,
       secret: 'your-secure-secret',
     }),
     PassportModule.forRoot(
@@ -152,7 +155,7 @@ import {
 export class AuthModule {}
 ```
 
-Import `CookieAuthModule.forRoot(...)`, `JwtModule.forRoot(...)`, and `PassportModule.forRoot(...)` together when you want cookie-auth support in an application module. The cookie preset provides `CookieAuthStrategy` and cookie options; JWT verification still comes from `@fluojs/jwt`, and the passport registry still comes from `PassportModule.forRoot(...)`.
+Import `CookieAuthModule.forRoot(...)`, `JwtModule.forRoot(...)`, and `PassportModule.forRoot(...)` together when you want cookie-auth support in an application module. `CookieAuthModule` and `JwtModule` are sibling imports in this graph, so set the documented `global: true` JWT option to make `DefaultJwtVerifier` visible when the cookie module resolves `CookieAuthStrategy`. The cookie preset provides `CookieAuthStrategy` and cookie options; JWT verification still comes from `@fluojs/jwt`, and the passport registry still comes from `PassportModule.forRoot(...)`.
 
 `CookieAuthModule.forRoot(...)` is the canonical module-first entrypoint for application registration. `createCookieAuthPreset(...)` remains public as a compatibility bundle for manual provider composition; it returns the same cookie-auth providers plus the matching strategy registration for hosts that assemble provider graphs themselves. Prefer the module facade in application docs, generated code, and ordinary app modules.
 

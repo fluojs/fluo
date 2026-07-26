@@ -122,6 +122,8 @@ export class AuthModule {}
 
 브릿지는 각 Passport.js 전략 실행을 정확히 한 번만 정착(settle)시킵니다. 전략은 바인딩된 Passport 액션(`success`, `fail`, `redirect`, `pass`, `error`) 중 하나를 호출해야 하며, promise rejection, 액션 없이 완료된 promise, 그리고 제한된 action timeout을 초과한 callback-style 실행은 요청을 미해결 상태로 두지 않고 인증 실패로 처리됩니다. `handled: true`를 포함한 모든 `AuthStrategyResult`는 전략이 response를 commit한 뒤에는 `principal`을 함께 포함하더라도 완전히 terminal입니다. 이때 `AuthGuard`는 principal validation, scope check, `requestContext.principal` 할당, protected handler 실행을 모두 건너뜁니다. 커스텀 `mapPrincipal` 함수는 비어 있지 않은 `subject`와 객체 형태의 `claims`를 포함한 유효한 fluo `Principal`을 반환해야 합니다.
 
+`actionTimeoutMs` 기본값은 `30_000`밀리초이며 0 이상인 유한한 숫자여야 합니다. `0`으로 설정하면 다음 timer turn에 timeout settlement를 예약합니다. 음수, `NaN`, 무한대 값은 settlement 제한을 비활성화하지 않고 bridge strategy 생성 시 `RangeError`를 발생시킵니다.
+
 ### 쿠키 인증 프리셋
 
 HTTP 쿠키에서 인증 정보를 읽는 애플리케이션이라면 `CookieAuthModule.forRoot(...)`를 사용합니다.
@@ -141,6 +143,7 @@ import {
     CookieAuthModule.forRoot(),
     JwtModule.forRoot({
       algorithms: ['HS256'],
+      global: true,
       secret: 'your-secure-secret',
     }),
     PassportModule.forRoot(
@@ -152,7 +155,7 @@ import {
 export class AuthModule {}
 ```
 
-애플리케이션 모듈에서 cookie-auth 지원이 필요하면 `CookieAuthModule.forRoot(...)`, `JwtModule.forRoot(...)`, `PassportModule.forRoot(...)`를 함께 import 하세요. Cookie preset은 `CookieAuthStrategy`와 cookie option을 제공하고, JWT 검증은 여전히 `@fluojs/jwt`에서 오며, passport registry는 여전히 `PassportModule.forRoot(...)`에서 옵니다.
+애플리케이션 모듈에서 cookie-auth 지원이 필요하면 `CookieAuthModule.forRoot(...)`, `JwtModule.forRoot(...)`, `PassportModule.forRoot(...)`를 함께 import 하세요. 이 graph에서 `CookieAuthModule`과 `JwtModule`은 sibling import이므로, cookie module이 `CookieAuthStrategy`를 resolve할 때 `DefaultJwtVerifier`를 볼 수 있도록 문서화된 JWT option `global: true`를 설정해야 합니다. Cookie preset은 `CookieAuthStrategy`와 cookie option을 제공하고, JWT 검증은 여전히 `@fluojs/jwt`에서 오며, passport registry는 여전히 `PassportModule.forRoot(...)`에서 옵니다.
 
 `CookieAuthModule.forRoot(...)`는 애플리케이션 등록을 위한 canonical module-first entrypoint입니다. `createCookieAuthPreset(...)`은 provider graph를 직접 조립하는 host를 위한 compatibility bundle로 공개되어 있으며, 동일한 cookie-auth provider와 대응하는 strategy registration을 반환합니다. 애플리케이션 문서, generated code, 일반 app module에서는 module facade를 우선 사용하세요.
 

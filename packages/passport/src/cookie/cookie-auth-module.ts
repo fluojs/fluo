@@ -1,14 +1,13 @@
 import type { Provider } from '@fluojs/di';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
-
+import type { AuthStrategyRegistration } from '../types.js';
 import {
   COOKIE_AUTH_OPTIONS,
   COOKIE_AUTH_STRATEGY_NAME,
-  CookieAuthStrategy,
   type CookieAuthOptions,
+  CookieAuthStrategy,
 } from './cookie-auth.js';
 import { CookieManager, type CookieManagerConfig } from './cookie-manager.js';
-import type { AuthStrategyRegistration } from '../types.js';
 
 type CookieAuthModuleType = ModuleType;
 
@@ -76,6 +75,7 @@ export class CookieAuthModule {
    * @example
    * ```ts
    * import { Module } from '@fluojs/core';
+   * import { JwtModule } from '@fluojs/jwt';
    * import {
    *   CookieAuthModule,
    *   CookieAuthStrategy,
@@ -86,6 +86,11 @@ export class CookieAuthModule {
    * @Module({
    *   imports: [
    *     CookieAuthModule.forRoot(),
+   *     JwtModule.forRoot({
+   *       algorithms: ['HS256'],
+   *       global: true,
+   *       secret: 'your-secure-secret',
+   *     }),
    *     PassportModule.forRoot(
    *       { defaultStrategy: COOKIE_AUTH_STRATEGY_NAME },
    *       [{ name: COOKIE_AUTH_STRATEGY_NAME, token: CookieAuthStrategy }],
