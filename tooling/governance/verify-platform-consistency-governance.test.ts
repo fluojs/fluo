@@ -220,10 +220,88 @@ describe('enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices', () => {
 });
 
 describe('enforceCloudflareWorkersLifecycleDocsSync', () => {
+  const additiveWorkerEnvContradictions = [
+    [
+      'packages/platform-cloudflare-workers/README.md',
+      'Fetch-time Worker env can be mapped into `ConfigModule.forRoot(...)` during bootstrap.',
+    ],
+    [
+      'packages/platform-cloudflare-workers/README.ko.md',
+      'Fetch-time Worker env binding은 bootstrap 중 `ConfigModule.forRoot(...)`로 매핑할 수 있습니다.',
+    ],
+    [
+      'book/intermediate/ch24-cloudflare.md',
+      'Map request-bound Worker env into `@fluojs/config` during bootstrap.',
+    ],
+    [
+      'book/intermediate/ch24-cloudflare.ko.md',
+      'Worker env binding은 매핑해야 하며 `ConfigModule.forRoot(...)` bootstrap provider에서 사용합니다.',
+    ],
+    [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'Fetch-time Worker env can be mapped into `ConfigModule.forRoot(...)` during bootstrap.',
+    ],
+    [
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'Fetch-time Worker env binding은 bootstrap 중 `ConfigModule.forRoot(...)`로 매핑할 수 있습니다.',
+    ],
+    [
+      'apps/docs/content/docs/guides/runtime-adapters.mdx',
+      'Map request-bound Worker env into `@fluojs/config` during bootstrap.',
+    ],
+    [
+      'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+      'Worker env binding은 매핑해야 하며 `ConfigModule.forRoot(...)` bootstrap provider에서 사용합니다.',
+    ],
+    [
+      'docs/CONTEXT.md',
+      'Fetch-time Worker env can be mapped into `ConfigModule.forRoot(...)` during bootstrap.',
+    ],
+    [
+      'docs/CONTEXT.ko.md',
+      'Fetch-time Worker env binding은 bootstrap 중 `ConfigModule.forRoot(...)`로 매핑할 수 있습니다.',
+    ],
+  ] as const;
+
   it('reports the governed surface when Workers lifecycle guidance drifts', () => {
     expect(() => enforceCloudflareWorkersLifecycleDocsSync(() => '')).toThrowError(
       /packages\/platform-cloudflare-workers\/README\.md/,
     );
+  });
+
+  it('rejects bootstrap-provider guidance for request-bound Worker env', () => {
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      if (relativePath !== 'packages/platform-cloudflare-workers/README.md') {
+        return content;
+      }
+
+      return content.replace(
+        'cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers',
+        'Map fetch-time bindings into `ConfigModule.forRoot(...)` or singleton bootstrap providers',
+      );
+    };
+
+    expect(() => enforceCloudflareWorkersLifecycleDocsSync(readText)).toThrowError(
+      /packages\/platform-cloudflare-workers\/README\.md.*cannot supply/u,
+    );
+  });
+
+  it.each(additiveWorkerEnvContradictions)(
+    'rejects additive contradictory Worker env guidance in %s',
+    (targetPath, contradictoryClaim) => {
+      const readText = (relativePath: string): string => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === targetPath ? `${content}\n${contradictoryClaim}\n` : content;
+      };
+
+      expect(() => enforceCloudflareWorkersLifecycleDocsSync(readText)).toThrowError(targetPath);
+    },
+  );
+
+  it('accepts synchronized fetch-time Worker env guidance', () => {
+    expect(() => enforceCloudflareWorkersLifecycleDocsSync()).not.toThrow();
   });
 });
 

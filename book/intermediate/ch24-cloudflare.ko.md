@@ -97,19 +97,47 @@ Cloudflare Workers는 전통적인 Node.js 환경과 다른 제약을 갖습니�
 
 ### 24.4.1 Integrating Worker Env into fluo
 
-fluo의 Cloudflare 어댑터는 Worker `env` 객체를 각 요청의 `context.request.cloudflare?.env`에 연결하고 Worker execution context를 `context.request.cloudflare?.executionContext`로 제공합니다. 하지만 이 binding을 package configuration에 직접 읽거나 병합하지는 않습니다. 설정 소유권은 애플리케이션에 두고, 필요한 Worker binding을 명시적 provider 또는 bootstrap 시점의 `@fluojs/config`로 매핑하세요. 이렇게 하면 서비스 코드가 Cloudflare 전역 객체를 직접 읽지 않아도 됩니다.
+fluo의 Cloudflare 어댑터는 Worker `env` 객체를 각 요청의 `context.request.cloudflare?.env`에 연결하고 Worker execution context를 `context.request.cloudflare?.executionContext`로 제공합니다. `bootstrapCloudflareWorkerApplication(...)`은 exported `fetch(...)`가 traffic을 처리하기 전에 module registration을 완료합니다. `createCloudflareWorkerEntrypoint(...)`에서는 `ready()`가 bootstrap을 미리 시작하지 않은 경우에만 첫 `fetch(request, env, ctx)`가 bootstrap을 시작합니다. 어느 경로든 bootstrap에는 미리 선언한 root module과 option만 전달되고 해당 request의 `env`는 dispatch 중에 연결됩니다. 따라서 fetch-time binding은 `ConfigModule.forRoot(...)` 또는 singleton bootstrap provider를 구성할 수 없습니다. Bootstrap configuration은 module registration 전에 사용할 수 있는 값에만 사용하세요.
+
+Mapping은 application-owned request boundary에 두세요. Handler의 `RequestContext`에서 필요한 binding을 읽고 좁힌 뒤 application-shaped 값으로 바꾸어 injected provider method에 전달합니다. `CatalogService`는 provider로, `WorkerController`는 controller로 owning module에 등록합니다.
 
 ```typescript
-import { ConfigService } from '@fluojs/config';
-import { Inject } from '@fluojs/core';
+import { Inject, Module } from '@fluojs/core';
+import { Controller, Get, type RequestContext } from '@fluojs/http';
 
-@Inject(ConfigService)
-export class MyService {
-  constructor(private config: ConfigService) {
-    // 애플리케이션이 Worker env에서 매핑한 변수를 올바르게 확인합니다.
-    const apiKey = this.config.get('API_KEY');
+interface WorkerEnv {
+  API_KEY: string;
+}
+
+export class CatalogService {
+  read(input: { apiKey: string }) {
+    // Business logic은 Worker env object가 아니라 application-owned shape를 받습니다.
+    return { configured: input.apiKey.length > 0 };
   }
 }
+
+@Inject(CatalogService)
+@Controller('/worker')
+export class WorkerController {
+  constructor(private readonly catalog: CatalogService) {}
+
+  @Get('/catalog')
+  readCatalog(_input: undefined, context: RequestContext) {
+    const env = context.request.cloudflare?.env as Partial<WorkerEnv> | undefined;
+    const apiKey = env?.API_KEY;
+    if (typeof apiKey !== 'string' || apiKey.length === 0) {
+      throw new Error('API_KEY Worker binding is required.');
+    }
+
+    return this.catalog.read({ apiKey });
+  }
+}
+
+@Module({
+  controllers: [WorkerController],
+  providers: [CatalogService],
+})
+export class WorkerBindingsModule {}
 ```
 
 ## 24.5 Edge-Native WebSockets
@@ -190,17 +218,44 @@ export class MyDurableObject extends DurableObject {
 
 Cloudflare D1은 Worker와 가까운 위치에서 사용할 수 있는 SQL 데이터베이스입니다. D1 드라이버와 Drizzle(20장)을 함께 쓰면 엣지 배치와 SQL 모델을 같은 fluo 저장소 경계 안에서 다룰 수 있습니다. 다만 전역 복제와 일관성 요구가 서비스마다 다르므로, 어떤 데이터를 엣지에 둘지 먼저 결정해야 합니다.
 
+Fetch-time `CF_ENV` object를 singleton provider로 등록하지 마세요. 동일한 request boundary에서 D1 binding을 매핑한 뒤 application provider method로 전달합니다.
+
 ```typescript
+import { Inject, Module } from '@fluojs/core';
+import { Controller, Get, type RequestContext } from '@fluojs/http';
 import { drizzle } from 'drizzle-orm/d1';
+import { products } from './schema';
+
+interface D1WorkerEnv {
+  DB: D1Database;
+}
+
+export class ProductRepository {
+  async list(database: D1Database) {
+    return await drizzle(database).select().from(products);
+  }
+}
+
+@Inject(ProductRepository)
+@Controller('/products')
+export class ProductController {
+  constructor(private readonly products: ProductRepository) {}
+
+  @Get('/')
+  list(_input: undefined, context: RequestContext) {
+    const env = context.request.cloudflare?.env as Partial<D1WorkerEnv> | undefined;
+    const database = env?.DB;
+    if (!database) {
+      throw new Error('DB Worker binding is required.');
+    }
+
+    return this.products.list(database);
+  }
+}
 
 @Module({
-  providers: [
-    {
-      provide: 'DATABASE',
-      inject: ['CF_ENV'],
-      useFactory: (env) => drizzle(env.DB)
-    }
-  ]
+  controllers: [ProductController],
+  providers: [ProductRepository],
 })
 export class DatabaseModule {}
 ```
@@ -219,7 +274,7 @@ export class DatabaseModule {}
 - `@fluojs/platform-cloudflare-workers`는 fluo 생명주기와 통합되는 표준 `fetch` 기반 어댑터를 제공합니다.
 - Worker 런타임에 맞추기 위해 서버 소켓을 열지 말고 `fetch` 핸들러를 내보내세요. 단, Worker handler가 traffic을 받기 전에 `app.listen()`은 fluo dispatcher를 binding합니다.
 - KV, D1, WebSockets와 같은 네이티브 엣지 기능은 전용 fluo 바인딩과 프로바이더 경계로 연결할 수 있습니다.
-- Worker binding은 application boundary에서만 `context.request.cloudflare?.env`로 읽고, service code가 `ConfigService` 같은 provider를 통해 읽기 전에 매핑하세요.
+- Fetch-time Worker binding은 bootstrap configuration이 아닙니다. Application request boundary에서 `context.request.cloudflare?.env`를 읽고 좁힌 뒤 application-shaped 값만 provider method에 전달하세요.
 - 배포와 환경 관리를 일관되게 유지하려면 `wrangler`를 사용하세요.
 - `ctx.waitUntil`은 fluo에 의해 처리되어 엣지에서 요청 lifecycle tracking과 SSE(`text/event-stream`) response drain을 유지합니다.
 - 엣지는 단순한 호스팅 플랫폼이 아니라, 글로벌 애플리케이션 아키텍처에 대해 생각하는 다른 방식입니다.
