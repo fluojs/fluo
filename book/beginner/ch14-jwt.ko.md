@@ -270,7 +270,7 @@ JWT는 상태 비저장 방식이지만, 사용자가 비밀번호를 변경하�
 ### Auth in a Serverless World
 AWS Lambda와 같은 서버리스 환경에서는 콜드 스타트(cold start)와 실행 시간이 매우 중요합니다. 무거운 의존성 체인이나 동기식 파일 I/O에 의존하는 전통적인 인증 라이브러리는 성능을 저하시킬 수 있습니다. Fluo의 JWT 패키지는 작은 API와 전송 계층 독립성을 유지하므로, 같은 서명/검증 계약을 여러 HTTP 어댑터 뒤에 둘 수 있고 비즈니스 로직을 요청 전송 방식에 묶지 않아도 됩니다.
 
-이러한 성능 우위는 규모가 커질수록 더욱 두드러집니다. 수백만 개의 요청을 처리할 때 모든 인증 체크에서 절약된 매 밀리초는 상당한 비용 절감과 사용자에게 더 쾌적한 경험으로 이어집니다. 대규모 Kubernetes 클러스터에서 실행하든 작은 에지 워커에서 실행하든, Fluo의 인증 로직은 가볍고 빠르며 안전하게 유지됩니다.
+이러한 성능 이점은 규모가 커질수록 중요해지지만 패키지의 런타임 지원 범위를 넓히지는 않습니다. JWT 서명, 검증, JWKS key parsing, refresh-token id 생성은 AWS Lambda의 Node.js runtime과 같은 Node.js 호환 serverless function 또는 Bun의 Node 호환성 레이어에서 실행하세요. Lazy root import는 import 시점의 Node-specific 작업만 피할 뿐이며, 해당 경로를 Deno나 Cloudflare Workers에서 실행 가능하게 만들지는 않습니다.
 
 ### Implementing a Unified Auth Flow
 Chapter 15에서 가드에 대해 자세히 다루겠지만, Fluo 애플리케이션에서 JWT 인증이 일반적으로 어떻게 적용되는지 이해하는 것이 도움이 됩니다. 대부분의 프로젝트는 보호가 필요한 라우트에 `@UseAuth('jwt')`를 붙이고, 검증이 끝난 principal을 `RequestContext.principal`로 읽는 흐름을 사용합니다.
