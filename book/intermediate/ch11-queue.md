@@ -58,6 +58,8 @@ This contract keeps the same shape as the rest of fluo. A Module registers the p
 
 A job is a serialized unit of work. A worker owns how that job is processed. This split is simple but important. The job payload is the durable handoff, while the worker implementation can evolve independently behind that boundary.
 
+Queue accepts job objects, including class instances such as `new GenerateInvoiceJob(orderId)`. Before enqueueing, it JSON-serializes the job and requires the serialized payload to be a non-null, non-array JSON object. The worker receives that data with the registered job prototype rehydrated, so methods such as `job.someMethod()` remain available even though the persisted payload contains only serialized data.
+
 ### 11.3.1 Invoice generation job
 
 Invoice PDF generation is a typical queue task. It takes too long to run inside the checkout confirmation path. It may also fail for temporary reasons such as file storage or rendering outages.
@@ -129,7 +131,7 @@ Fixed backoff is easy to predict. Exponential backoff is often safer for depende
 
 ## 11.5 Dead-letter handling
 
-Some jobs still fail after every retry attempt. Those failures must not disappear silently. The Queue package appends a dead-letter record to a Redis list under `fluo:queue:dead-letter:<jobName>`; it does not move the BullMQ job itself. That list gives operators a durable place to inspect what failed. The README also states the default retention policy. Without separate configuration, `QueueModule.forRoot()` keeps the most recent `1_000` dead-letter entries per job. This is an important operational default. It prevents unbounded growth while preserving recent failure evidence.
+Some jobs still fail after every retry attempt. Those failures must not disappear silently. The Queue package appends a separate dead-letter record to a Redis list under `fluo:queue:dead-letter:<jobName>`; it does not move the BullMQ job itself into that list. That list gives operators a durable place to inspect what failed. The README also states the default retention policy. Without separate configuration, `QueueModule.forRoot()` keeps the most recent `1_000` dead-letter entries per job. This is an important operational default. It prevents unbounded growth while preserving recent failure evidence.
 
 ### 11.5.1 What FluoShop stores in dead letters
 
@@ -164,7 +166,7 @@ In v2.0.0, a representative background flow looks like this:
 5. Billing reacts and enqueues `GenerateInvoiceJob`.
 6. `InvoiceWorker` processes the job in the background.
 7. If rendering fails temporarily, retry and backoff apply.
-8. If it still fails, the job remains in the dead-letter list.
+8. If it still fails, Queue appends a separate record to the dead-letter list without moving the BullMQ job itself.
 
 This boundary is operationally better than generating the PDF inline. The customer gets a timely API response, operators get a controlled failure model, and the system keeps room to recover.
 
@@ -192,7 +194,7 @@ As FluoShop moves to v2.0.0, it no longer stops at being event-aware. It recogni
 - NestJS migration requires an explicit singleton `@QueueWorker(JobClass)` provider with `handle(job)`, module-graph reachability, and an application-verified `jobName`/payload cutover; legacy processor metadata is not a compatibility surface.
 - A job is a durable handoff for slow or failure-prone work such as invoice generation, email batches, and catalog syncs.
 - Retry attempts and backoff strategies should be chosen per workload rather than copied uncritically.
-- The dead-letter list preserves repeatedly failed jobs under a bounded retention policy, and the read-only inspection API returns newest-first typed metadata without exposing Queue's Redis key format.
+- The dead-letter list preserves separate records for repeatedly failed jobs under a bounded retention policy; it does not own or move the BullMQ jobs themselves. The read-only inspection API returns newest-first typed metadata without exposing Queue's Redis key format.
 - Queue starts processors after the bootstrap-ready handoff. Only while Queue is `started` and all discovered processors are ready do pending dead-letter writes leave readiness `ready` while health is `degraded`; `stopping` is not-ready/degraded and `stopped` is not-ready/unhealthy. Shutdown is bounded by a `5_000ms` per-write drain plus `workerShutdownTimeoutMs` for stuck processors.
 - FluoShop v2.0.0 now moves expensive post-order work behind a queue boundary instead of extending the customer request path.
 
