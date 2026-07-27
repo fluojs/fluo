@@ -410,13 +410,15 @@ export class DrizzleDatabase<
     }
 
     const active = this.trackActiveRequestTransaction(abortContext.controller);
-    const callback = new Promise<T>((resolve) => resolve(fn()));
-    const trackedCallback = callback.finally(() => {
-      this.untrackActiveRequestTransaction(active);
-    });
 
     try {
-      const result = await raceWithAbort(() => trackedCallback, abortContext.signal);
+      const result = await raceWithAbort(() => {
+        const callback = new Promise<T>((resolve) => resolve(fn()));
+
+        return callback.finally(() => {
+          this.untrackActiveRequestTransaction(active);
+        });
+      }, abortContext.signal);
 
       this.throwIfRequestAborted(abortContext.signal);
 

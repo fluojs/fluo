@@ -888,6 +888,54 @@ describe('@fluojs/drizzle', () => {
     }
   });
 
+  it('observes a late fallback rejection after synchronous self-abort while shutdown drains', async () => {
+    const events: string[] = [];
+    const unhandledRejections: unknown[] = [];
+    const database = {};
+    const controller = new AbortController();
+    const fallbackBarrier = createDeferred();
+    const callbackError = new Error('late fallback rejection');
+    const onUnhandledRejection = (reason: unknown) => {
+      unhandledRejections.push(reason);
+    };
+    const drizzle = new DrizzleDatabase<typeof database>(database, () => {
+      events.push('dispose');
+    });
+    process.on('unhandledRejection', onUnhandledRejection);
+
+    // Given: the fail-open callback aborts its own request synchronously, then remains pending.
+    const openTransaction = drizzle.requestTransaction(async () => {
+      events.push('request:start');
+      controller.abort(new Error('request aborted synchronously during fallback'));
+      await fallbackBarrier.promise;
+    }, controller.signal);
+
+    let shutdownPromise: Promise<void> | undefined;
+
+    try {
+      // When: the caller observes cancellation and shutdown starts before the callback rejects.
+      await expect(openTransaction).rejects.toThrow('request aborted synchronously during fallback');
+      expect(drizzle.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(1);
+
+      shutdownPromise = drizzle.onApplicationShutdown();
+      await Promise.resolve();
+      expect(events).toEqual(['request:start']);
+
+      fallbackBarrier.reject(callbackError);
+      await shutdownPromise;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      // Then: disposal waits for callback settlement and its rejection remains observed.
+      expect(events).toEqual(['request:start', 'dispose']);
+      expect(unhandledRejections).toEqual([]);
+    } finally {
+      fallbackBarrier.reject(callbackError);
+      await Promise.allSettled([openTransaction, shutdownPromise ?? drizzle.onApplicationShutdown()]);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      process.off('unhandledRejection', onUnhandledRejection);
+    }
+  });
+
   it('runs nested request and service transactions through a single transaction boundary', async () => {
     let transactionCalls = 0;
     const transactionDatabase = {
