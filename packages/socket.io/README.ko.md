@@ -135,7 +135,7 @@ SocketIoModule.forRoot({
 });
 ```
 
-`cors`를 생략하면 `@fluojs/socket.io`는 `{ credentials: false, origin: false }`를 기본값으로 사용하므로 cross-origin 노출은 명시적 opt-in이 필요합니다. `engine.maxHttpBufferSize`를 생략하면 어댑터가 1 MiB Engine.IO payload 상한을 적용합니다. 기본값에는 `buffer.maxPendingMessagesPerSocket: 128`, `buffer.overflowPolicy: 'drop-oldest'`, `shutdown.timeoutMs: 5000`도 포함됩니다. 명시적인 `engine.maxHttpBufferSize`, `buffer.maxPendingMessagesPerSocket`, `shutdown.timeoutMs` 값은 양의 정수여야 하며, 잘못된 명시 값은 기본값으로 fallback하지 않고 모듈 등록 중 실패합니다.
+`cors`를 생략하면 `@fluojs/socket.io`는 `{ credentials: false, origin: false }`를 기본값으로 사용하므로 cross-origin 노출은 명시적 opt-in이 필요합니다. `engine.maxHttpBufferSize`를 생략하면 어댑터가 1 MiB Engine.IO payload 상한을 적용합니다. 기본값에는 `buffer.maxPendingMessagesPerSocket: 128`, `buffer.overflowPolicy: 'drop-oldest'`, `shutdown.timeoutMs: 5000`도 포함됩니다. `buffer` 옵션은 socket 연결 후 connection handler가 준비되기 전에 들어온 inbound event를 제한하며, outbound emit이나 Socket.IO reconnect buffering을 제어하지 않습니다. 명시적인 `engine.maxHttpBufferSize`, `buffer.maxPendingMessagesPerSocket`, `shutdown.timeoutMs` 값은 양의 정수여야 하며, 잘못된 명시 값은 기본값으로 fallback하지 않고 모듈 등록 중 실패합니다.
 
 정적 `@WebSocketGateway({ path })` namespace는 fluo gateway discovery가 소유하며 Socket.IO dynamic child namespace로 취급하지 않습니다. 어댑터는 이러한 정적 namespace에 대해 Socket.IO의 `cleanupEmptyChildNamespaces` 동작을 비활성화합니다. 애플리케이션 코드가 raw `SOCKETIO_SERVER` 접근으로 dynamic child namespace를 만들면 해당 소유권과 cleanup 정책은 애플리케이션 수준 Socket.IO 통합이 담당합니다.
 
@@ -143,7 +143,7 @@ SocketIoModule.forRoot({
 
 ### Guard 계약
 
-`auth.connection`은 namespace connect handler가 실행되기 전에 `SocketIoConnectionGuardContext`를 받습니다. `auth.message`는 message handler가 실행되기 전에 `SocketIoMessageGuardContext`를 받습니다. Guard는 `true`, `undefined`, 또는 아무 값도 반환하지 않으면 허용합니다. `false` 또는 `message`, optional `data`, optional `disconnect`를 가진 `SocketIoGuardRejection`을 반환하면 거부하며, message rejection은 `{ error, data }` 형태의 ACK payload를 사용합니다. Root export의 `SocketIoHandshakeRequest`는 런타임 중립으로 유지됩니다. Node-backed adapter는 구조적으로 typed HTTP handshake request를 제공하고 Bun은 Web-standard `Request`를 제공합니다.
+`auth.connection`은 namespace connect handler가 실행되기 전에 `SocketIoConnectionGuardContext`를 받습니다. `auth.message`는 message handler가 실행되기 전에 `SocketIoMessageGuardContext`를 받습니다. Guard는 `true`, `undefined`, 또는 아무 값도 반환하지 않으면 허용합니다. `false` 또는 `message`, optional `data`, optional `disconnect`를 가진 `SocketIoGuardRejection`을 반환하면 거부합니다. Connection rejection은 Socket.IO namespace connection error 경로를 사용합니다. Message rejection은 해당 event에 acknowledgement callback이 제공된 경우에만 `{ error, data }` 형태의 ACK payload로 전달되며, ACK callback이 없으면 fluo는 암묵적인 client error event를 emit하지 않습니다. 명시적인 `disconnect: true`는 그대로 socket 연결을 종료합니다. Root export의 `SocketIoHandshakeRequest`는 런타임 중립으로 유지됩니다. Node-backed adapter는 구조적으로 typed HTTP handshake request를 제공하고 Bun은 Web-standard `Request`를 제공합니다.
 
 ### Bun 전용 참고
 

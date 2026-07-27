@@ -130,7 +130,8 @@ export interface SocketIoMessageGuardContext {
  * Guard function that can reject one inbound Socket.IO event before gateway message handlers execute.
  *
  * Returning `true`, `undefined`, or no value accepts the event. Returning `false` or a
- * {@link SocketIoGuardRejection} rejects it.
+ * {@link SocketIoGuardRejection} rejects it. A rejection is reported to the client only through
+ * the event's acknowledgement callback when one was supplied; no implicit error event is emitted.
  */
 export type SocketIoMessageGuard = (
   context: SocketIoMessageGuardContext,
@@ -158,13 +159,13 @@ export interface SocketIoModuleOptions {
   };
 
   /**
-   * In-memory outbound buffering controls applied before the server flushes messages to sockets.
+   * In-memory inbound buffering controls applied while connection handlers are becoming ready.
    */
   buffer?: {
-    /** Maximum number of queued outbound messages allowed per socket before overflow handling applies. */
+    /** Maximum inbound events queued per socket before its connection handlers become ready. */
     maxPendingMessagesPerSocket?: number;
 
-    /** Strategy used when one socket exceeds the configured pending message cap. */
+    /** Strategy used when one socket exceeds the configured pre-ready inbound event cap. */
     overflowPolicy?: 'close' | 'drop-newest' | 'drop-oldest';
   };
 
