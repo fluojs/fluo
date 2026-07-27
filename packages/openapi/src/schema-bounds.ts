@@ -7,14 +7,17 @@ import type {
   OpenApiSchemaObject,
 } from './schema-builder.js';
 
+type NormalizedSchemaCache = WeakMap<OpenApiSchemaObject, OpenApiSchemaObject>;
+
 function normalizeSchemaRecord(
   schemas: Record<string, OpenApiSchemaObject>,
   path: string,
+  normalizedSchemas: NormalizedSchemaCache,
 ): Record<string, OpenApiSchemaObject> {
   const normalized: Record<string, OpenApiSchemaObject> = {};
 
   for (const [name, schema] of Object.entries(schemas)) {
-    normalized[name] = normalizeOpenApiSchemaBounds(schema, `${path}.${name}`);
+    normalized[name] = normalizeOpenApiSchemaBounds(schema, `${path}.${name}`, normalizedSchemas);
   }
 
   return normalized;
@@ -23,12 +26,28 @@ function normalizeSchemaRecord(
 function normalizeSchemaList(
   schemas: readonly OpenApiSchemaObject[],
   path: string,
+  normalizedSchemas: NormalizedSchemaCache,
 ): OpenApiSchemaObject[] {
-  return schemas.map((schema, index) => normalizeOpenApiSchemaBounds(schema, `${path}[${String(index)}]`));
+  return schemas.map((schema, index) => normalizeOpenApiSchemaBounds(
+    schema,
+    `${path}[${String(index)}]`,
+    normalizedSchemas,
+  ));
 }
 
-function normalizeOpenApiSchemaBounds(schema: OpenApiSchemaObject, path: string): OpenApiSchemaObject {
+function normalizeOpenApiSchemaBounds(
+  schema: OpenApiSchemaObject,
+  path: string,
+  normalizedSchemas: NormalizedSchemaCache,
+): OpenApiSchemaObject {
+  const cachedSchema = normalizedSchemas.get(schema);
+
+  if (cachedSchema) {
+    return cachedSchema;
+  }
+
   const normalized: OpenApiSchemaObject = { ...schema };
+  normalizedSchemas.set(schema, normalized);
 
   if (typeof schema.exclusiveMinimum === 'number' && !Number.isFinite(schema.exclusiveMinimum)) {
     throw new TypeError(`OpenAPI schema ${path}.exclusiveMinimum must be a finite number.`);
@@ -65,33 +84,34 @@ function normalizeOpenApiSchemaBounds(schema: OpenApiSchemaObject, path: string)
   }
 
   if (schema.allOf) {
-    normalized.allOf = normalizeSchemaList(schema.allOf, `${path}.allOf`);
+    normalized.allOf = normalizeSchemaList(schema.allOf, `${path}.allOf`, normalizedSchemas);
   }
 
   if (schema.oneOf) {
-    normalized.oneOf = normalizeSchemaList(schema.oneOf, `${path}.oneOf`);
+    normalized.oneOf = normalizeSchemaList(schema.oneOf, `${path}.oneOf`, normalizedSchemas);
   }
 
   if (schema.anyOf) {
-    normalized.anyOf = normalizeSchemaList(schema.anyOf, `${path}.anyOf`);
+    normalized.anyOf = normalizeSchemaList(schema.anyOf, `${path}.anyOf`, normalizedSchemas);
   }
 
   if (schema.not) {
-    normalized.not = normalizeOpenApiSchemaBounds(schema.not, `${path}.not`);
+    normalized.not = normalizeOpenApiSchemaBounds(schema.not, `${path}.not`, normalizedSchemas);
   }
 
   if (schema.properties) {
-    normalized.properties = normalizeSchemaRecord(schema.properties, `${path}.properties`);
+    normalized.properties = normalizeSchemaRecord(schema.properties, `${path}.properties`, normalizedSchemas);
   }
 
   if (schema.items) {
-    normalized.items = normalizeOpenApiSchemaBounds(schema.items, `${path}.items`);
+    normalized.items = normalizeOpenApiSchemaBounds(schema.items, `${path}.items`, normalizedSchemas);
   }
 
   if (typeof schema.additionalProperties === 'object') {
     normalized.additionalProperties = normalizeOpenApiSchemaBounds(
       schema.additionalProperties,
       `${path}.additionalProperties`,
+      normalizedSchemas,
     );
   }
 
@@ -101,13 +121,14 @@ function normalizeOpenApiSchemaBounds(schema: OpenApiSchemaObject, path: string)
 function normalizeContent(
   content: Record<string, OpenApiMediaTypeObject>,
   path: string,
+  normalizedSchemas: NormalizedSchemaCache,
 ): Record<string, OpenApiMediaTypeObject> {
   const normalized: Record<string, OpenApiMediaTypeObject> = {};
 
   for (const [mediaType, media] of Object.entries(content)) {
     normalized[mediaType] = {
       ...media,
-      schema: normalizeOpenApiSchemaBounds(media.schema, `${path}.${mediaType}.schema`),
+      schema: normalizeOpenApiSchemaBounds(media.schema, `${path}.${mediaType}.schema`, normalizedSchemas),
     };
   }
 
@@ -117,27 +138,38 @@ function normalizeContent(
 function normalizeResponses(
   responses: Record<string, OpenApiResponseObject>,
   path: string,
+  normalizedSchemas: NormalizedSchemaCache,
 ): Record<string, OpenApiResponseObject> {
   const normalized: Record<string, OpenApiResponseObject> = {};
 
   for (const [status, response] of Object.entries(responses)) {
     normalized[status] = {
       ...response,
-      ...(response.content ? { content: normalizeContent(response.content, `${path}.${status}.content`) } : {}),
+      ...(response.content
+        ? { content: normalizeContent(response.content, `${path}.${status}.content`, normalizedSchemas) }
+        : {}),
     };
   }
 
   return normalized;
 }
 
-function normalizeOperation(operation: OpenApiOperationObject, path: string): OpenApiOperationObject {
+function normalizeOperation(
+  operation: OpenApiOperationObject,
+  path: string,
+  normalizedSchemas: NormalizedSchemaCache,
+): OpenApiOperationObject {
   return {
     ...operation,
     ...(operation.parameters
       ? {
           parameters: operation.parameters.map((parameter, index) => ({
             ...parameter,
-            schema: normalizeOpenApiSchemaBounds(parameter.schema, `${path}.parameters[${String(index)}].schema`),
+            schema: normalizeOpenApiSchemaBounds(
+              parameter.schema,
+              `${path}.parameters[${String(index)}].schema`,
+              normalizedSchemas,
+            ),
           })),
         }
       : {}),
@@ -145,22 +177,27 @@ function normalizeOperation(operation: OpenApiOperationObject, path: string): Op
       ? {
           requestBody: {
             ...operation.requestBody,
-            content: normalizeContent(operation.requestBody.content, `${path}.requestBody.content`),
+            content: normalizeContent(operation.requestBody.content, `${path}.requestBody.content`, normalizedSchemas),
           },
         }
       : {}),
-    responses: normalizeResponses(operation.responses, `${path}.responses`),
+    responses: normalizeResponses(operation.responses, `${path}.responses`, normalizedSchemas),
   };
 }
 
-function normalizePaths(paths: Record<string, OpenApiPathItemObject>): Record<string, OpenApiPathItemObject> {
+function normalizePaths(
+  paths: Record<string, OpenApiPathItemObject>,
+  normalizedSchemas: NormalizedSchemaCache,
+): Record<string, OpenApiPathItemObject> {
   const normalizedPaths: Record<string, OpenApiPathItemObject> = {};
 
   for (const [path, pathItem] of Object.entries(paths)) {
     const normalizedPathItem: OpenApiPathItemObject = {};
 
     for (const [method, operation] of Object.entries(pathItem)) {
-      normalizedPathItem[method] = operation ? normalizeOperation(operation, `paths.${path}.${method}`) : undefined;
+      normalizedPathItem[method] = operation
+        ? normalizeOperation(operation, `paths.${path}.${method}`, normalizedSchemas)
+        : undefined;
     }
 
     normalizedPaths[path] = normalizedPathItem;
@@ -176,6 +213,8 @@ function normalizePaths(paths: Record<string, OpenApiPathItemObject>): Record<st
  * @returns A detached document whose exclusive bounds use OpenAPI 3.1 numeric keywords.
  */
 export function normalizeOpenApiDocumentSchemaBounds(document: OpenApiDocument): OpenApiDocument {
+  const normalizedSchemas: NormalizedSchemaCache = new WeakMap();
+
   return {
     ...document,
     ...(document.components
@@ -183,11 +222,11 @@ export function normalizeOpenApiDocumentSchemaBounds(document: OpenApiDocument):
           components: {
             ...document.components,
             ...(document.components.schemas
-              ? { schemas: normalizeSchemaRecord(document.components.schemas, 'components.schemas') }
+              ? { schemas: normalizeSchemaRecord(document.components.schemas, 'components.schemas', normalizedSchemas) }
               : {}),
           },
         }
       : {}),
-    paths: normalizePaths(document.paths),
+    paths: normalizePaths(document.paths, normalizedSchemas),
   };
 }
