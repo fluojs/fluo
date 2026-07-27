@@ -16,11 +16,11 @@ let fallbackRequestContextStore: RequestContextStore | undefined;
 /**
  * Runs a callback inside the request-scoped async context.
  *
- * Hosts with `AsyncLocalStorage` preserve the context across awaited work. During lazy
- * `AsyncLocalStorage` resolution, declared async callbacks wait for a request-local store before
- * running. Non-async callbacks use a synchronous stack fallback so their immediate return and throw
- * behavior stays unchanged; a returned promise continues without ambient context after that frame.
- * Hosts without an async context primitive use the same synchronous-only fallback.
+ * Hosts with `AsyncLocalStorage` preserve the context across awaited work. Runtime-specific package
+ * entrypoints register an immediately available constructor before exposing this helper, so
+ * non-async callbacks retain synchronous return and throw behavior while returned promise
+ * continuations remain request-local. Hosts without an async context primitive use a synchronous-only
+ * fallback that clears the context before awaited work resumes.
  *
  * @param context Request context snapshot to bind to the current async execution chain.
  * @param callback Callback executed with `context` available through request-context helpers.

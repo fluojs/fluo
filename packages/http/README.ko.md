@@ -108,7 +108,7 @@ function someDeepHelper() {
 }
 ```
 
-`runWithRequestContext(...)`는 호스트가 `globalThis.AsyncLocalStorage` 또는 Node 내장 `node:async_hooks` 모듈로 `AsyncLocalStorage`를 제공할 때 활성 컨텍스트를 `await` 이후까지 보존합니다. 루트 `@fluojs/http` import는 async-context storage를 probe하거나 instantiate하지 않습니다. Helper는 처음 사용할 때 storage를 lazy하게 해석하고 `process.getBuiltinModule(...)` 실패를 guard합니다. 첫 lazy resolution 동안 선언된 async callback은 request-local storage가 준비된 뒤 실행됩니다. Non-async callback은 동기 fallback에서 실행되어 동기 반환과 throw 동작을 유지하며, promise를 반환하면 storage resolution이 끝날 때까지 callback의 동기 frame 이후 ambient context를 의도적으로 사용할 수 없습니다. Helper는 `Promise.prototype.then`을 교체하지 않으므로 관련 없는 promise continuation이 pending request를 capture하지 않습니다. 비동기 컨텍스트 primitive가 없는 비 Node 호스트도 같은 synchronous-only fallback을 사용합니다.
+`runWithRequestContext(...)`는 호스트가 `globalThis.AsyncLocalStorage` 또는 `node:async_hooks` 모듈로 `AsyncLocalStorage`를 제공할 때 활성 컨텍스트를 `await` 이후까지 보존합니다. 루트 `@fluojs/http` export는 async-context storage를 probe하거나 instantiate하지 않고 runtime-specific entrypoint를 선택합니다. Node와 Bun은 module initialization 중 host constructor를 등록하고, Deno, worker, browser, default entry는 Node built-in import 없이 유지됩니다. Request-local store 자체는 첫 사용 시점에 계속 lazy하게 생성됩니다. Promise를 반환하는 non-async callback은 동기 호출, 반환, throw 동작을 유지하고, 반환한 promise가 settle될 때까지 continuation에서 바인딩된 context를 보존합니다. Helper는 `Promise.prototype.then`을 교체하지 않으므로 관련 없는 promise continuation이 request를 capture하지 않습니다. 비동기 컨텍스트 primitive가 없는 호스트는 awaited work가 재개되기 전에 context를 지우는 synchronous-only fallback을 사용합니다.
 
 ### 프록시 뒤의 속도 제한
 
