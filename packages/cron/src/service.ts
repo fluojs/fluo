@@ -820,7 +820,7 @@ export class CronLifecycleService
       );
 
       if (!released && this.lifecycleState === 'stopped') {
-        await this.distributedLocks.releaseOwnedLocks(new Set(), this.getRemainingShutdownTimeoutMs());
+        await this.distributedLocks.releaseOwnedLocks(this.getRunningDistributedLockKeys(), this.getRemainingShutdownTimeoutMs());
       }
     }
   }
