@@ -5,10 +5,12 @@ import {
   Controller,
   createDispatcher,
   createHandlerMapping,
-  type FrameworkRequest,
-  type FrameworkResponse,
-  Get,
-  Header,
+    type FrameworkRequest,
+    type FrameworkResponse,
+    Get,
+    Header,
+    type MiddlewareContext,
+    type Next,
 } from '../index.js';
 
 type CustomResponseWriterContext = {
@@ -100,5 +102,51 @@ describe('dispatch response policy', () => {
     expect(response.headers['x-react-route']).toBe('html');
     expect(response.headers['Content-Type']).toBe('text/html; charset=utf-8');
     expect(response.body).toBe('<main>React SSR</main>');
+  });
+
+  it('finalizes an integration-owned handler value before selecting its response writer', async () => {
+    const pageValue = { kind: 'page' };
+    const htmlEntry = { html: '<main>Finalized page</main>' };
+
+    Object.defineProperty(htmlEntry, Symbol.for('fluo.http.responseWriter'), {
+      enumerable: false,
+      value(context: CustomResponseWriterContext) {
+        context.applySuccessResponseMetadata();
+        context.response.setHeader('Content-Type', 'text/html; charset=utf-8');
+        return context.response.send(htmlEntry.html);
+      },
+    });
+
+    @Controller('/response-finalizer')
+    class ResponseFinalizerController {
+      @Get('/page')
+      getValue() {
+        return pageValue;
+      }
+    }
+
+    const root = new Container().register(ResponseFinalizerController);
+    const dispatcher = createDispatcher({
+      appMiddleware: [{
+        async handle(context: MiddlewareContext, next: Next) {
+          context.requestContext.metadata[Symbol.for('fluo.http.responseValueFinalizer')] = ({ value }: { value: unknown }) => (
+            value === pageValue ? htmlEntry : value
+          );
+          await next();
+        },
+      }],
+      handlerMapping: createHandlerMapping([{ controllerToken: ResponseFinalizerController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    // Given: an integration installs a request-local result finalizer through middleware metadata.
+    // When: the controller result reaches the shared success-response policy.
+    await dispatcher.dispatch(createRequest('/response-finalizer/page'), response);
+
+    // Then: the finalized value uses its custom writer instead of ordinary object serialization.
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('text/html; charset=utf-8');
+    expect(response.body).toBe('<main>Finalized page</main>');
   });
 });

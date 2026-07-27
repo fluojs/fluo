@@ -59,6 +59,7 @@ function createResponse(): TestResponse {
 describe('React page pre-render HTTP failures', () => {
   it('preserves the ordinary HTTP 403 error response when a guard denies before React rendering', async () => {
     const events: string[] = [];
+    const diagnostics: Array<{ readonly code: string; readonly phase: string }> = [];
     let renderAttempts = 0;
 
     class DenyGuard implements Guard {
@@ -86,7 +87,13 @@ describe('React page pre-render HTTP failures', () => {
     }
 
     @Module({
-      imports: [ReactModule.forRoot({ controllers: [GuardedRouter], providers: [DenyGuard] })],
+      imports: [ReactModule.forRoot({
+        controllers: [GuardedRouter],
+        onDiagnostic(diagnostic) {
+          diagnostics.push({ code: diagnostic.code, phase: diagnostic.phase });
+        },
+        providers: [DenyGuard],
+      })],
     })
     class AppModule {}
 
@@ -115,6 +122,10 @@ describe('React page pre-render HTTP failures', () => {
       });
       expect(events).toEqual(['guard']);
       expect(renderAttempts).toBe(0);
+      expect(diagnostics).toEqual([{
+        code: 'react-ssr-http-pipeline-failure',
+        phase: 'http-pipeline',
+      }]);
     } finally {
       await app.close();
     }

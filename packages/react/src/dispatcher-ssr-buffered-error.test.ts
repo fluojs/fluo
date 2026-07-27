@@ -137,4 +137,74 @@ describe('React SSR buffered error handling', () => {
       await app.close();
     }
   });
+
+  it('reports post-shell recoverable errors through the module diagnostic callback', async () => {
+    const diagnostics: Array<{ readonly code: string; readonly phase: string }> = [];
+    const recoverableError = new Error('Recoverable suspense boundary.');
+    const renderToReadableStream: ReactReadableStreamRenderer = async (_node, options) => {
+      options.onError?.(recoverableError);
+      return new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('<main>Fallback</main>'));
+          controller.close();
+        },
+      });
+    };
+    const entry: ReactServerEntry = {
+      assetMap: {},
+      bootstrapModules: [],
+      bootstrapScripts: [],
+      headers: {},
+      node: createElement('main', null, 'Fallback'),
+    };
+
+    Object.defineProperty(entry, Symbol.for('fluo.react.serverEntry'), { value: true });
+    Object.defineProperty(entry, Symbol.for('fluo.http.responseWriter'), {
+      enumerable: false,
+      value: async (context: ReactResponseWriterContext): Promise<void> => {
+        await renderReactResponse(entry, context.requestContext, {
+          applySuccessResponseMetadata: context.applySuccessResponseMetadata,
+          renderToReadableStream,
+        });
+      },
+    });
+
+    @Router('/recoverable')
+    class RecoverableRouter {
+      @Path('/')
+      show() {
+        return entry;
+      }
+    }
+
+    @Module({
+      imports: [ReactModule.forRoot({
+        controllers: [RecoverableRouter],
+        onDiagnostic(diagnostic) {
+          diagnostics.push({ code: diagnostic.code, phase: diagnostic.phase });
+        },
+      })],
+    })
+    class AppModule {}
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      // Given: a React entry reports a recoverable render error while producing a valid shell.
+      const response = createBufferedResponse();
+
+      // When: the @Path result is finalized through the existing buffered response writer.
+      await app.dispatch(createRequest('/recoverable'), response);
+
+      // Then: the response succeeds and diagnostics identify the post-shell recoverable phase.
+      expect(response.statusCode).toBe(200);
+      expect(response.chunks.join('')).toBe('<main>Fallback</main>');
+      expect(diagnostics).toEqual([{
+        code: 'react-ssr-post-shell-recoverable-error',
+        phase: 'post-shell-recoverable',
+      }]);
+    } finally {
+      await app.close();
+    }
+  });
 });

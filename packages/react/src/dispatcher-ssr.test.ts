@@ -198,6 +198,8 @@ describe('React SSR dispatcher integration', () => {
   });
 
   it('does not leak route success headers when React shell rendering fails before commit', async () => {
+    const diagnostics: Array<{ readonly code: string; readonly phase: string }> = [];
+
     class ReactShellRenderError extends Error {
       readonly name = 'ReactShellRenderError';
 
@@ -224,6 +226,9 @@ describe('React SSR dispatcher integration', () => {
       imports: [
         ReactModule.forRoot({
           controllers: [BrokenRouter],
+          onDiagnostic(diagnostic) {
+            diagnostics.push({ code: diagnostic.code, phase: diagnostic.phase });
+          },
         }),
       ],
     })
@@ -242,6 +247,10 @@ describe('React SSR dispatcher integration', () => {
       expect(response.statusCode).toBe(500);
       expect(response.headers['x-react-route']).toBeUndefined();
       expect(response.chunks.join('')).toContain('INTERNAL_SERVER_ERROR');
+      expect(diagnostics).toEqual([{
+        code: 'react-ssr-pre-commit-shell-failure',
+        phase: 'pre-commit-shell',
+      }]);
     } finally {
       await app.close();
     }

@@ -1,12 +1,12 @@
 import type { RequestContext } from '@fluojs/http';
 import type { ReactNode } from 'react';
 
-import type {
-  ReactAssetMap,
-  ReactBootstrapAsset,
-  ReactBootstrapScriptDescriptor,
-  ReactRecoverableErrorContext,
-  ReactServerEntry,
+import { createReactRenderDiagnostics, type PendingReactRecoverableError } from './render-diagnostics.js';
+import {
+  type ReactAssetMap,
+  type ReactBootstrapAsset,
+  type ReactBootstrapScriptDescriptor,
+  type ReactServerEntry,
 } from './server-entry.js';
 import { collectReadableStream, pipeReadableStream, throwIfReactRequestAborted } from './render-stream.js';
 
@@ -73,15 +73,10 @@ export type RenderReactResponseOptions = {
 /** Minimal fluo request context needed to render one React HTML response. */
 export type ReactRenderContext = Pick<RequestContext, 'request' | 'requestId' | 'response'>;
 
-type PendingRecoverableError = {
-  readonly error: unknown;
-  readonly errorInfo?: unknown;
-};
-
 type ReactStreamWritePlan = {
   readonly applySuccessMetadata: () => void;
-  readonly entry: ReactServerEntry;
-  readonly pendingRecoverableErrors: readonly PendingRecoverableError[];
+  readonly pendingRecoverableErrors: readonly PendingReactRecoverableError[];
+  readonly reportRecoverableErrors: (events: readonly PendingReactRecoverableError[]) => void;
   readonly requestContext: ReactRenderContext;
   readonly stream: ReactReadableStream;
 };
@@ -154,56 +149,15 @@ function createReactDomRenderOptions(options: ReactReadableStreamRenderOptions):
   };
 }
 
-function createRecoverableErrorContext(
-  errorInfo: unknown,
-  requestContext: ReactRenderContext,
-): ReactRecoverableErrorContext {
-  return {
-    ...(errorInfo !== undefined ? { errorInfo } : {}),
-    request: requestContext.request,
-    ...(requestContext.requestId !== undefined ? { requestId: requestContext.requestId } : {}),
-  };
-}
-
-function reportRecoverableError(
-  entry: ReactServerEntry,
-  requestContext: ReactRenderContext,
-  event: PendingRecoverableError,
-): void {
-  const hook = entry.onRecoverableError;
-
-  if (!hook) {
-    return;
-  }
-
-  try {
-    hook(event.error, createRecoverableErrorContext(event.errorInfo, requestContext));
-  } catch (error) {
-    if (error instanceof Error) {
-      return;
-    }
-  }
-}
-
-function reportRecoverableErrors(
-  entry: ReactServerEntry,
-  requestContext: ReactRenderContext,
-  events: readonly PendingRecoverableError[],
-): void {
-  for (const event of events) {
-    reportRecoverableError(entry, requestContext, event);
-  }
-}
-
 async function writeReactStream(plan: ReactStreamWritePlan): Promise<void> {
-  const { applySuccessMetadata, entry, pendingRecoverableErrors, requestContext, stream } = plan;
+  const { applySuccessMetadata, pendingRecoverableErrors, reportRecoverableErrors, requestContext, stream } = plan;
   const responseStream = requestContext.response.stream;
 
   if (!responseStream) {
     const body = await collectReadableStream(stream, requestContext.request);
     throwIfReactRequestAborted(requestContext.request);
     applySuccessMetadata();
-    reportRecoverableErrors(entry, requestContext, pendingRecoverableErrors);
+    reportRecoverableErrors(pendingRecoverableErrors);
     await requestContext.response.send(body);
     return;
   }
@@ -211,7 +165,7 @@ async function writeReactStream(plan: ReactStreamWritePlan): Promise<void> {
   applySuccessMetadata();
   requestContext.response.committed = true;
   responseStream.flush?.();
-  reportRecoverableErrors(entry, requestContext, pendingRecoverableErrors);
+  reportRecoverableErrors(pendingRecoverableErrors);
   await pipeReadableStream(stream, responseStream, requestContext.request);
 }
 
@@ -239,33 +193,45 @@ export async function renderReactResponse(
   requestContext: ReactRenderContext,
   options: RenderReactResponseOptions = {},
 ): Promise<void> {
-  throwIfReactRequestAborted(requestContext.request);
+  const diagnostics = createReactRenderDiagnostics(entry, requestContext);
 
-  const renderToReadableStream = options.renderToReadableStream ?? defaultRenderToReadableStream;
-  const pendingRecoverableErrors: PendingRecoverableError[] = [];
-  let shellReady = false;
-  const stream = await renderToReadableStream(
-    entry.node,
-    createReactReadableStreamRenderOptions(entry, requestContext, (error, errorInfo) => {
-      const event = errorInfo !== undefined ? { error, errorInfo } : { error };
+  try {
+    throwIfReactRequestAborted(requestContext.request);
 
-      if (shellReady) {
-        reportRecoverableError(entry, requestContext, event);
-        return;
-      }
+    const renderToReadableStream = options.renderToReadableStream ?? defaultRenderToReadableStream;
+    const pendingRecoverableErrors: PendingReactRecoverableError[] = [];
+    let shellReady = false;
+    const stream = await renderToReadableStream(
+      entry.node,
+      createReactReadableStreamRenderOptions(entry, requestContext, (error, errorInfo) => {
+        const event = errorInfo !== undefined ? { error, errorInfo } : { error };
 
-      pendingRecoverableErrors.push(event);
-    }),
-  );
+        if (shellReady) {
+          diagnostics.reportRecoverableError(event);
+          return;
+        }
 
-  shellReady = true;
-  throwIfReactRequestAborted(requestContext.request);
+        pendingRecoverableErrors.push(event);
+      }),
+    );
 
-  const applySuccessMetadata = () => {
-    options.applySuccessResponseMetadata?.();
-    applyEntryStatus(entry, requestContext);
-    applyEntryHeaders(entry, requestContext);
-  };
+    shellReady = true;
+    throwIfReactRequestAborted(requestContext.request);
 
-  await writeReactStream({ applySuccessMetadata, entry, pendingRecoverableErrors, requestContext, stream });
+    const applySuccessMetadata = () => {
+      options.applySuccessResponseMetadata?.();
+      applyEntryStatus(entry, requestContext);
+      applyEntryHeaders(entry, requestContext);
+    };
+
+    await writeReactStream({
+      applySuccessMetadata,
+      pendingRecoverableErrors,
+      reportRecoverableErrors: diagnostics.reportRecoverableErrors,
+      requestContext,
+      stream,
+    });
+  } catch (error) {
+    throw diagnostics.preservePreCommitShellError(error);
+  }
 }

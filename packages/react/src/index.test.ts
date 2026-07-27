@@ -17,7 +17,10 @@ describe('@fluojs/react root package scaffold', () => {
     expect(Object.keys(react).sort()).toEqual([
       'Path',
       'REACT_PAGE_RENDERER',
+      'REACT_SSR_DIAGNOSTIC_CODES',
+      'REACT_SSR_DIAGNOSTIC_PHASES',
       'ReactModule',
+      'ReactSsrDiagnosticError',
       'Router',
       'createReactServerEntry',
       'getReactPathMetadata',
@@ -59,6 +62,7 @@ describe('@fluojs/react root package scaffold', () => {
     expect(rootEntrypoint).toContain("from './module.js'");
     expect(rootEntrypoint).toContain("from './page-renderer.js'");
     expect(rootEntrypoint).toContain("from './decorators.js'");
+    expect(rootEntrypoint).toContain("from './diagnostics.js'");
     expect(rootEntrypoint).toContain("from './server-entry.js'");
     expect(rootEntrypoint).toContain("from './render.js'");
     expect(rootEntrypoint).not.toContain('react-dom/server');
