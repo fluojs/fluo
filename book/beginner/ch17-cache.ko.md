@@ -103,7 +103,7 @@ import { RedisModule } from '@fluojs/redis';
 export class AppModule {}
 ```
 
-Top-level `keyPrefix`는 nested `redis` connection option이 아니라 Redis 소유권 경계입니다. 기본값은 `fluo:cache:`이며, 모든 cache entry에 prefix를 붙이고 `CacheService.reset()`을 해당 namespace로 제한합니다. 여러 애플리케이션이 Redis를 공유한다면 비어 있지 않은 애플리케이션 전용 prefix를 사용하세요. 빈 prefix는 의도적으로 `*` scan을 피하고 store instance가 직접 쓰고 계속 추적하는 key만 reset하므로, 재시작이나 여러 process를 가로지르는 reset 소유권을 제공할 수 없습니다.
+Top-level `keyPrefix`는 nested `redis` connection option이 아니라 Redis 소유권 경계입니다. 기본값은 `fluo:cache:`이며, 모든 cache entry에 prefix를 붙이고 `CacheService.reset()`을 해당 namespace로 제한합니다. 설정된 prefix의 Redis glob metacharacter는 reset scan 전에 escape되므로 `*`, `?`, bracket, backslash를 포함한 prefix도 literal 소유권 경계로 유지됩니다. 여러 애플리케이션이 Redis를 공유한다면 비어 있지 않은 애플리케이션 전용 prefix를 사용하세요. 빈 prefix는 의도적으로 `*` scan을 피하고 store instance가 직접 쓰고 계속 추적하는 key만 reset하므로, 재시작이나 여러 process를 가로지르는 reset 소유권을 제공할 수 없습니다.
 
 ### 17.3.2 Synchronous Configuration and Secret Management: Best Practices
 실제 애플리케이션에서는 캐시 자격 증명을 하드코딩해서는 안 됩니다. fluo에서 `CacheModule.forRoot(options)`는 동기 모듈 진입점입니다. Lifecycle-managed 경로에서는 기본 또는 named raw client를 `@fluojs/redis`로 준비한 뒤, `store: 'redis'`와 선택적 `redis.clientName`으로 해당 등록을 가리키는 일반 cache option을 전달합니다. 이렇게 하면 캐시 모듈 쪽 공개 표면은 단순하게 유지하면서도 환경별 연결 정보는 별도의 설정 계층에서 관리할 수 있습니다.
@@ -167,7 +167,7 @@ export class PostsController {
 FluoBlog에서는 이를 **메인 피드**와 **검색 결과**에 적용합니다. 이러한 고비용 쿼리를 단 30초만 캐싱하더라도 피크 시간대에 Prisma 서비스에 가해지는 부하를 90% 이상 줄일 수 있습니다. 이러한 "단기 캐싱"은 데이터 최신성을 크게 희생하지 않으면서 트래픽 증가를 처리하는 실용적인 방법입니다. 100명에게만 항상 최신인 데이터를 제공하려다 서버가 마비되는 것보다, 10,000명에게 30초 전의 데이터를 제공하는 것이 더 나은 선택일 수 있습니다.
 
 ### 17.4.2 Dynamic Cache Keys: Precision at Scale
-가끔은 정적인 `@CacheKey()`만으로는 충분하지 않습니다. 쿼리 파라미터나 URL 세그먼트를 기반으로 응답을 캐싱하고 싶을 수 있습니다. custom key가 handler 하나에만 필요하면 function-based `@CacheKey(...)` 경로를 사용하고, 같은 request-aware 규칙을 여러 handler에 적용해야 한다면 function-valued `httpKeyStrategy`를 설정하세요. 예를 들어 검색 라우트는 `CacheInterceptor`를 subclass하지 않고도 `search:${query_string}`과 같은 키를 사용할 수 있습니다.
+가끔은 정적인 `@CacheKey()`만으로는 충분하지 않습니다. 쿼리 파라미터나 URL 세그먼트를 기반으로 응답을 캐싱하고 싶을 수 있습니다. custom key가 handler 하나에만 필요하면 function-based `@CacheKey(...)` 경로를 사용하고, 같은 request-aware 규칙을 여러 handler에 적용해야 한다면 function-valued `httpKeyStrategy`를 설정하세요. 명시적인 빈 `@CacheKey('')`를 포함한 literal 값은 그대로 유지되며, decorator를 생략한 경우에만 설정된 strategy를 선택합니다. 예를 들어 검색 라우트는 `CacheInterceptor`를 subclass하지 않고도 `search:${query_string}`과 같은 키를 사용할 수 있습니다.
 
 ```typescript
 @Get('search')
@@ -252,7 +252,7 @@ export class PostsController {
 }
 ```
 
-지원되는 이 route 경로에서는 non-GET handler가 성공하고 HTTP response가 commit된 뒤 eviction이 실행됩니다. `@CacheEvict(...)`를 controller 경계에 두면 interceptor가 response-aware timing을 담당하고, 성공한 handler 이후의 store 삭제 실패도 내부에 격리합니다. Service layer invalidation은 `CacheService`를 통해 명시적이고 테스트 가능한 형태로 유지됩니다. `await cache.del(...)`에는 HTTP response-commit 경계가 없으며, caller가 catch하거나 retry하지 않으면 store 삭제 실패가 그대로 전파됩니다.
+지원되는 이 route 경로에서는 non-GET handler가 성공하고 HTTP response가 commit된 뒤 eviction이 실행됩니다. Adapter가 `response.send(...)`를 호출하지 않으면 bounded fallback timer가 Node.js process를 계속 붙잡지 않으면서 eviction을 수행하고, send 경로가 실행되면 settle 후 framework-owned timer를 clear합니다. `@CacheEvict(...)`를 controller 경계에 두면 interceptor가 response-aware timing을 담당하고, 성공한 handler 이후의 store 삭제 실패도 내부에 격리합니다. Service layer invalidation은 `CacheService`를 통해 명시적이고 테스트 가능한 형태로 유지됩니다. `await cache.del(...)`에는 HTTP response-commit 경계가 없으며, caller가 catch하거나 retry하지 않으면 store 삭제 실패가 그대로 전파됩니다.
 
 이러한 고급 수동 패턴을 자동 응답 캐싱과 결합하면 Fluo 백엔드의 성능과 신뢰성을 함께 높이는 효율적인 데이터 계층을 만들 수 있습니다. 캐싱의 목표는 사용자에게 가능한 가장 빠른 응답을 제공하는 동시에 기본 데이터 소스의 부하를 줄이는 것임을 항상 기억하십시오. 이 레이어에서 수행하는 모든 최적화는 전반적으로 더 확장 가능하고 복원력 있는 시스템을 만드는 데 기여합니다.
 

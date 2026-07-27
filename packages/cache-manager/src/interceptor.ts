@@ -3,6 +3,7 @@ import { getStandardMetadataBag } from '@fluojs/core/internal';
 import { type CallHandler, type Interceptor, type InterceptorContext, SseResponse } from '@fluojs/http';
 
 import { cacheRouteMetadataKey, getCacheEvictMetadata, getCacheKeyMetadata, getCacheTtlMetadata } from './decorators.js';
+import { installDeferredEviction } from './deferred-eviction.js';
 import { CacheService } from './service.js';
 import { CACHE_OPTIONS } from './tokens.js';
 import type { CacheEvictDecoratorValue, CacheKeyDecoratorValue, CacheKeyStrategy, NormalizedCacheModuleOptions, PrincipalScopeResolver } from './types.js';
@@ -133,7 +134,7 @@ async function resolveCacheKeyValue(
   strategy: CacheKeyStrategy,
   resolver: PrincipalScopeResolver | undefined,
 ): Promise<string> {
-  if (!metadata) {
+  if (metadata === undefined) {
     return defaultCacheKey(context, strategy, resolver);
   }
 
@@ -142,65 +143,6 @@ async function resolveCacheKeyValue(
   }
 
   return metadata(context);
-}
-
-const EVICTION_FALLBACK_TIMEOUT_MS = 5_000;
-
-function installDeferredEviction(
-  response: InterceptorContext['requestContext']['response'],
-  evict: () => Promise<void>,
-): () => void {
-  const originalSend = response.send.bind(response);
-  let restored = false;
-  let completed = false;
-  let sendInvoked = false;
-
-  const runEviction = () => {
-    if (completed) {
-      return;
-    }
-
-    completed = true;
-    void evict().catch(() => {
-    });
-  };
-
-  const restore = () => {
-    if (restored) {
-      return;
-    }
-
-    clearTimeout(fallbackTimer);
-    response.send = originalSend;
-    restored = true;
-  };
-
-  const fallbackTimer = setTimeout(() => {
-    // Run fallback eviction only when no response commit path was invoked.
-    // If response.send(...) is still pending or already completed, the send
-    // path owns eviction (on success) or cancellation (on failure), so the
-    // fallback timer must not evict under a pending send.
-    if (!sendInvoked) {
-      runEviction();
-    }
-
-    restore();
-  }, EVICTION_FALLBACK_TIMEOUT_MS);
-
-  response.send = async (body: unknown) => {
-    sendInvoked = true;
-    try {
-      await originalSend(body);
-      runEviction();
-    } catch (error) {
-      completed = true;
-      throw error;
-    } finally {
-      restore();
-    }
-  };
-
-  return restore;
 }
 
 /**

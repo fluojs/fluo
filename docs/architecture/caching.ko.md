@@ -14,7 +14,7 @@
 | 메모리 저장소 | `MemoryStore`는 캐시 엔트리를 프로세스 내부에 보관하고, 접근 시점에 만료를 지연 정리하며, 가장 오래된 키부터 제거하면서 라이브 엔트리를 `1,000`개로 제한합니다. | `packages/cache-manager/src/stores/memory-store.ts` |
 | Redis 저장소 | `RedisStore`는 JSON 직렬화된 엔트리를 prefix가 붙은 키 공간에 저장하고, 양수 TTL에는 `EX`를 사용하며, 설정된 prefix를 scan해서 reset을 수행합니다. | `packages/cache-manager/src/stores/redis-store.ts` |
 | Redis client 통합 | `redis.client`는 직접 전달한 `RedisCompatibleClient`를 받고 `@fluojs/redis`를 load하지 않은 채 가장 높은 우선순위를 가지며, 해당 client의 lifecycle은 애플리케이션이 소유합니다. 이 값이 없으면 cache module이 `@fluojs/redis`를 선택적으로 load하고 기본 또는 `redis.clientName` raw-client token을 해석합니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
-| Redis namespace 소유권 | Top-level `keyPrefix`는 기본값이 `fluo:cache:`이고 모든 Redis key와 `reset()` scan 범위를 제한합니다. 빈 prefix는 wildcard scan을 비활성화하고 reset을 현재 `RedisStore` 인스턴스가 추적한 key로 제한합니다. | `packages/cache-manager/src/module.ts`, `packages/cache-manager/src/stores/redis-store.ts` |
+| Redis namespace 소유권 | Top-level `keyPrefix`는 기본값이 `fluo:cache:`이고 모든 Redis key와 `reset()` scan 범위를 제한합니다. 비어 있지 않은 prefix의 Redis glob metacharacter는 `SCAN` 전에 escape되어 prefix가 literal로 match됩니다. 빈 prefix는 wildcard scan을 비활성화하고 reset을 현재 `RedisStore` 인스턴스가 추적한 key로 제한합니다. | `packages/cache-manager/src/module.ts`, `packages/cache-manager/src/stores/redis-store.ts` |
 
 ## 캐시 키 규칙
 
@@ -25,7 +25,7 @@
 | 확장 경로 | 애플리케이션은 function-based `httpKeyStrategy` 설정 또는 handler-local `@CacheKey(...)` factory로 key 생성을 커스터마이즈합니다. key 생성만 바꾸기 위해 `CacheInterceptor`를 subclass하는 것은 문서화된 확장 경로가 아닙니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/decorators.ts`, `packages/cache-manager/README.md` |
 | query 정규화 | query를 포함하는 키에서는 query 항목을 키 기준으로 정렬하고 반복 값도 정렬한 뒤 직렬화하므로, 순서만 다른 query string은 동일한 키로 매핑됩니다. | `packages/cache-manager/src/interceptor.ts` |
 | principal 격리 | 내장 키 전략은 `principalScopeResolver`가 값을 반환하면 `|principal:<scope>`를 추가합니다. 사용자 정의 resolver가 없으면 인증된 요청은 `requestContext.principal`의 `issuer`와 `subject`를 추가합니다. | `packages/cache-manager/src/interceptor.ts` |
-| 명시적 override | `@CacheKey(...)`는 정적 문자열 또는 resolver 함수를 저장할 수 있으며, 해당 핸들러의 계산된 GET 키를 덮어씁니다. | `packages/cache-manager/src/decorators.ts` |
+| 명시적 override | `@CacheKey(...)`는 빈 문자열을 포함한 정적 문자열 또는 resolver 함수를 저장할 수 있으며, 해당 핸들러의 계산된 GET 키를 덮어씁니다. Metadata가 없을 때만 설정된 fallback strategy를 선택합니다. | `packages/cache-manager/src/decorators.ts`, `packages/cache-manager/src/interceptor.ts` |
 
 ## TTL 및 쓰기 규칙
 
@@ -43,7 +43,7 @@
 | 규칙 | 현재 계약 | 소스 기준 |
 | --- | --- | --- |
 | 데코레이터 경로 | `@CacheEvict(...)`는 단일 키, 키 목록, 또는 resolver 함수를 HTTP route metadata로 저장합니다. 이 metadata는 non-GET controller handler에서 `CacheInterceptor`만 소비하며, service method와 그 밖의 non-HTTP call path는 `CacheService.del(...)` 또는 다른 명시적 애플리케이션 경로로 무효화해야 합니다. | `packages/cache-manager/src/decorators.ts`, `packages/cache-manager/src/interceptor.ts` |
-| eviction 시점 | GET이 아닌 핸들러에서는 downstream 핸들러가 성공하고 HTTP 응답이 성공적으로 commit된 뒤에만 eviction이 실행됩니다. `response.send(...)`가 reject되면 지연 eviction은 취소되며, 어댑터가 `response.send(...)`를 호출하지 않는 경우에는 성공한 핸들러 결과 이후 bounded fallback timer가 eviction을 수행합니다. fallback timer는 response commit 경로가 호출되지 않았을 때만 eviction을 수행하므로 `response.send(...)`가 여전히 pending 상태인 동안에는 eviction을 실행하지 않습니다. | `packages/cache-manager/src/interceptor.ts` |
+| eviction 시점 | GET이 아닌 핸들러에서는 downstream 핸들러가 성공하고 HTTP 응답이 성공적으로 commit된 뒤에만 eviction이 실행됩니다. `response.send(...)`가 reject되면 지연 eviction은 취소되며, 어댑터가 `response.send(...)`를 호출하지 않는 경우에는 성공한 핸들러 결과 이후 bounded fallback timer가 eviction을 수행합니다. fallback timer는 response commit 경로가 호출되지 않았을 때만 eviction을 수행하므로 `response.send(...)`가 여전히 pending 상태인 동안에는 eviction을 실행하지 않습니다. Framework는 Node.js에서 이 timer를 unref하고 send 경로가 settle될 때 clear하므로 fallback 소유권이 shutdown을 계속 붙잡지 않습니다. | `packages/cache-manager/src/interceptor.ts`, `packages/cache-manager/src/deferred-eviction.ts` |
 | 실패 격리 | `safeGet`, `safeSet`, `safeDel`은 저장소 오류를 삼킵니다. 캐시 실패가 다른 정상 핸들러를 실패시키지 않습니다. | `packages/cache-manager/src/interceptor.ts` |
 | 진행 중 로드 무효화 | `CacheService.del(...)`은 아직 로딩 중인 키를 표시하여, 같은 로드 주기 중 무효화된 키가 `remember(...)`에 의해 다시 채워지지 않도록 합니다. | `packages/cache-manager/src/service.ts` |
 | 전체 reset | `CacheService.reset()`은 내부 reset version을 증가시키고, 진행 중/대기 중인 load bookkeeping과 진행 중 무효화 마커를 지운 뒤, 하위 저장소를 reset합니다. | `packages/cache-manager/src/service.ts` |

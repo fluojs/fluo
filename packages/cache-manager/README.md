@@ -160,7 +160,7 @@ The built-in `RedisStore` persists entries with `JSON.stringify(...)`. Cache val
 
 Positive Redis TTL values are accepted in seconds and may be fractional. Redis expiry is rounded up to the next whole second because Redis `EX` uses integer seconds, while fluo also records the millisecond-precision expiry timestamp in the stored entry and treats the value as expired once that timestamp is reached. Use `ttl: 0` when you intentionally want no Redis expiry.
 
-Redis reset ownership is scoped by the top-level `keyPrefix` option, which defaults to `fluo:cache:` and is passed through to the built-in `RedisStore` namespace. `CacheService.reset()` deletes only keys under that prefix for Redis-backed stores, so application-owned Redis data outside the cache prefix is preserved. If you intentionally configure an empty `keyPrefix`, reset is limited to keys written by the current `RedisStore` instance instead of scanning `*`; use a non-empty, application-specific prefix when you need reset to cover cache entries across restarts or multiple processes.
+Redis reset ownership is scoped by the top-level `keyPrefix` option, which defaults to `fluo:cache:` and is passed through to the built-in `RedisStore` namespace. `CacheService.reset()` deletes only keys under that prefix for Redis-backed stores, so application-owned Redis data outside the cache prefix is preserved. Redis glob metacharacters in a non-empty prefix (`*`, `?`, `[`, `]`, and `\`) are escaped before `SCAN`, so the configured prefix remains a literal namespace instead of broadening reset ownership. If you intentionally configure an empty `keyPrefix`, reset is limited to keys written by the current `RedisStore` instance instead of scanning `*`; use a non-empty, application-specific prefix when you need reset to cover cache entries across restarts or multiple processes.
 
 ### Query-Sensitive Caching
 
@@ -175,7 +175,7 @@ CacheModule.forRoot({
 })
 ```
 
-For fully custom keying, pass a function as `httpKeyStrategy` or use `@CacheKey(...)` with either a literal key or a key factory. These function-based hooks are the supported extension path for request-aware keys; do not subclass `CacheInterceptor` just to replace cache-key generation.
+For fully custom keying, pass a function as `httpKeyStrategy` or use `@CacheKey(...)` with either a literal key or a key factory. An empty literal `@CacheKey('')` remains an explicit key; only absent decorator metadata selects the configured `httpKeyStrategy`. These function-based hooks are the supported extension path for request-aware keys; do not subclass `CacheInterceptor` just to replace cache-key generation.
 
 ```typescript
 CacheModule.forRoot({
@@ -263,7 +263,7 @@ class ProductController {
 }
 ```
 
-On that supported HTTP path, eviction is deferred until the response successfully commits. If `response.send(...)` rejects, the deferred eviction is cancelled so a failed commit does not drop the previous cached read result. If an adapter path never calls `response.send(...)`, the interceptor still runs a bounded fallback timer so successful writes do not leave stale entries behind indefinitely. The fallback timer evicts only when no response commit path was invoked; while `response.send(...)` is still pending, the send path owns eviction (on success) or cancellation (on failure), so the fallback timer does not evict under a pending send. Deferred eviction failures stay contained inside the interceptor, so cache-key factories or cache-store deletes cannot surface as post-response unhandled promise rejections.
+On that supported HTTP path, eviction is deferred until the response successfully commits. If `response.send(...)` rejects, the deferred eviction is cancelled so a failed commit does not drop the previous cached read result. If an adapter path never calls `response.send(...)`, the interceptor still runs a bounded fallback timer so successful writes do not leave stale entries behind indefinitely. The fallback timer evicts only when no response commit path was invoked; while `response.send(...)` is still pending, the send path owns eviction (on success) or cancellation (on failure), so the fallback timer does not evict under a pending send. The framework-created timer is unreferenced on Node.js and cleared when the send path settles, so pending fallback work does not keep process shutdown alive. Deferred eviction failures stay contained inside the interceptor, so cache-key factories or cache-store deletes cannot surface as post-response unhandled promise rejections.
 
 ## Public API Overview
 

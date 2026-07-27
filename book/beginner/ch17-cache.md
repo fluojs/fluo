@@ -103,7 +103,7 @@ import { RedisModule } from '@fluojs/redis';
 export class AppModule {}
 ```
 
-The top-level `keyPrefix` is the Redis ownership boundary, not a nested `redis` connection option. It defaults to `fluo:cache:`, prefixes every cache entry, and limits `CacheService.reset()` to that namespace. Use an application-specific non-empty prefix when multiple applications share Redis. An empty prefix intentionally avoids scanning `*` and lets a store instance reset only the keys it wrote and still tracks, so it cannot provide cross-restart or cross-process reset ownership.
+The top-level `keyPrefix` is the Redis ownership boundary, not a nested `redis` connection option. It defaults to `fluo:cache:`, prefixes every cache entry, and limits `CacheService.reset()` to that namespace. Redis glob metacharacters in the configured prefix are escaped before reset scanning, so even prefixes containing `*`, `?`, brackets, or backslashes remain literal ownership boundaries. Use an application-specific non-empty prefix when multiple applications share Redis. An empty prefix intentionally avoids scanning `*` and lets a store instance reset only the keys it wrote and still tracks, so it cannot provide cross-restart or cross-process reset ownership.
 
 ### 17.3.2 Synchronous Configuration and Secret Management: Best Practices
 In real applications, you should not hardcode cache credentials. In fluo, `CacheModule.forRoot(options)` is the synchronous module entrypoint. The lifecycle-managed path prepares a default or named raw client with `@fluojs/redis`, then passes ordinary cache options that point to that registration through `store: 'redis'` and optional `redis.clientName`. This keeps the cache module's public surface simple while letting a separate configuration layer manage environment-specific connection details.
@@ -167,7 +167,7 @@ Automatic caching is a good fit for read-heavy routes where data does not change
 In FluoBlog, this applies to the **main feed** and **search results**. Caching these expensive queries for only 30 seconds can still reduce load on the Prisma service by more than 90 percent during peak hours. This kind of "short-term caching" is a practical way to handle traffic growth without giving up much data freshness. Serving data that is 30 seconds old to 10,000 users may be a better choice than bringing the server down while trying to serve perfectly fresh data to only 100 users.
 
 ### 17.4.2 Dynamic Cache Keys: Precision at Scale
-Sometimes a static `@CacheKey()` is not enough. You may want to cache responses based on query parameters or URL segments. Use the function-based `@CacheKey(...)` path when the custom key belongs to one handler, or configure a function-valued `httpKeyStrategy` when the same request-aware rule should apply across many handlers. For example, a search route can use a key such as `search:${query_string}` without subclassing `CacheInterceptor`.
+Sometimes a static `@CacheKey()` is not enough. You may want to cache responses based on query parameters or URL segments. Use the function-based `@CacheKey(...)` path when the custom key belongs to one handler, or configure a function-valued `httpKeyStrategy` when the same request-aware rule should apply across many handlers. Literal values are preserved exactly, including an explicit empty `@CacheKey('')`; only omitting the decorator selects the configured strategy. For example, a search route can use a key such as `search:${query_string}` without subclassing `CacheInterceptor`.
 
 ```typescript
 @Get('search')
@@ -252,7 +252,7 @@ export class PostsController {
 }
 ```
 
-On this supported route path, eviction runs after the non-GET handler succeeds and the HTTP response commits. Keeping `@CacheEvict(...)` at the controller boundary makes the interceptor responsible for response-aware timing and contains a store deletion failure after the successful handler. Service-layer invalidation stays explicit and testable through `CacheService`: `await cache.del(...)` has no HTTP response-commit boundary and propagates a store deletion failure unless the caller catches or retries it.
+On this supported route path, eviction runs after the non-GET handler succeeds and the HTTP response commits. If an adapter never invokes `response.send(...)`, a bounded fallback timer performs eviction without keeping the Node.js process alive; when the send path does run, it clears that framework-owned timer after settling. Keeping `@CacheEvict(...)` at the controller boundary makes the interceptor responsible for response-aware timing and contains a store deletion failure after the successful handler. Service-layer invalidation stays explicit and testable through `CacheService`: `await cache.del(...)` has no HTTP response-commit boundary and propagates a store deletion failure unless the caller catches or retries it.
 
 By combining these advanced manual patterns with automatic response caching, you can create a highly efficient data layer that maximizes the performance and reliability of your Fluo backend. Always remember that the goal of caching is to give users the fastest possible response while reducing load on the primary data source. Every optimization you make in this layer contributes to a more scalable and resilient system overall.
 
