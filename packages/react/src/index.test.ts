@@ -16,6 +16,7 @@ describe('@fluojs/react root package scaffold', () => {
 
     expect(Object.keys(react).sort()).toEqual([
       'Path',
+      'REACT_PAGE_RENDERER',
       'ReactModule',
       'Router',
       'createReactServerEntry',
@@ -39,6 +40,7 @@ describe('@fluojs/react root package scaffold', () => {
 
       expect(react).toHaveProperty('Path');
       expect(react).toHaveProperty('ReactModule');
+      expect(react).toHaveProperty('REACT_PAGE_RENDERER');
       expect(react).toHaveProperty('Router');
       expect(react).toHaveProperty('createReactServerEntry');
       expect(react).toHaveProperty('renderReactResponse');
@@ -55,6 +57,7 @@ describe('@fluojs/react root package scaffold', () => {
     const renderEntrypoint = readFileSync(new URL('./render.ts', import.meta.url), 'utf8');
 
     expect(rootEntrypoint).toContain("from './module.js'");
+    expect(rootEntrypoint).toContain("from './page-renderer.js'");
     expect(rootEntrypoint).toContain("from './decorators.js'");
     expect(rootEntrypoint).toContain("from './server-entry.js'");
     expect(rootEntrypoint).toContain("from './render.js'");
