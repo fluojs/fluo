@@ -22,7 +22,11 @@ function resolveNodeProcess(): NodeProcessLike | undefined {
   return runtimeGlobal.process;
 }
 
-/** Read Node.js process memory usage through the Terminus Node runtime seam. */
+/**
+ * Read Node.js process memory usage through the Terminus Node runtime seam.
+ *
+ * @returns A snapshot of the current Node.js process memory usage.
+ */
 export function readNodeMemoryUsage(): NodeMemoryUsageSnapshot {
   const memoryUsage = resolveNodeProcess()?.memoryUsage;
 
