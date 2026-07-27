@@ -1,5 +1,5 @@
 import { FluoError } from '@fluojs/core';
-import type { FrameworkRequest } from '@fluojs/http';
+import type { FrameworkRequest, RequestContext } from '@fluojs/http';
 
 /** Stable machine-readable phases for the React SSR request lifecycle. */
 export const REACT_SSR_DIAGNOSTIC_PHASES = {
@@ -87,11 +87,58 @@ type ReactSsrDiagnosticMarker = {
 };
 
 const diagnosticMarkers = new WeakMap<object, ReactSsrDiagnosticMarker>();
+const diagnosticHandlerKey = Symbol.for('fluo.react.ssrDiagnosticHandler');
 
 function isDiagnosticMarkerKey(value: unknown): value is object {
   return (typeof value === 'object' && value !== null) || typeof value === 'function';
 }
 
+/**
+ * Stores the module diagnostic handler on the active request context.
+ *
+ * @param context Request context that owns the render lifecycle.
+ * @param handler Module diagnostic handler, when configured.
+ */
+export function bindReactSsrDiagnosticHandler(
+  context: RequestContext,
+  handler: ReactSsrDiagnosticHandler | undefined,
+): void {
+  if (handler === undefined) {
+    delete context.metadata[diagnosticHandlerKey];
+    return;
+  }
+
+  context.metadata[diagnosticHandlerKey] = handler;
+}
+
+/**
+ * Reads the module diagnostic handler from a render request context.
+ *
+ * @param context Render context that may carry request metadata.
+ * @returns The request-local diagnostic handler, when one exists.
+ */
+export function readReactSsrDiagnosticHandler(
+  context: object,
+): ReactSsrDiagnosticHandler | undefined {
+  const metadata: unknown = Reflect.get(context, 'metadata');
+  if (typeof metadata !== 'object' || metadata === null) {
+    return undefined;
+  }
+
+  const handler: unknown = Reflect.get(metadata, diagnosticHandlerKey);
+  if (typeof handler !== 'function') {
+    return undefined;
+  }
+
+  return (diagnostic) => Reflect.apply(handler, undefined, [diagnostic]);
+}
+
+/**
+ * Associates a diagnostic classification with an error without changing its identity.
+ *
+ * @param error Original lifecycle failure.
+ * @param marker Stable code and phase retained for the request error boundary.
+ */
 export function markReactSsrDiagnostic(
   error: unknown,
   marker: ReactSsrDiagnosticMarker,
@@ -101,6 +148,12 @@ export function markReactSsrDiagnostic(
   }
 }
 
+/**
+ * Reads and consumes the diagnostic classification associated with an error.
+ *
+ * @param error Original lifecycle failure.
+ * @returns The retained classification, when one exists.
+ */
 export function readReactSsrDiagnosticMarker(
   error: unknown,
 ): ReactSsrDiagnosticMarker | undefined {
@@ -113,6 +166,12 @@ export function readReactSsrDiagnosticMarker(
   return marker;
 }
 
+/**
+ * Creates a structured diagnostic snapshot for an SSR lifecycle event.
+ *
+ * @param diagnostic Diagnostic values observed at the active request boundary.
+ * @returns A request-safe diagnostic object.
+ */
 export function createReactSsrDiagnostic(
   diagnostic: ReactSsrDiagnostic,
 ): ReactSsrDiagnostic {
@@ -125,6 +184,12 @@ export function createReactSsrDiagnostic(
   };
 }
 
+/**
+ * Reports an SSR diagnostic without allowing observer failures to replace the request outcome.
+ *
+ * @param handler Application diagnostic observer, when configured.
+ * @param diagnostic Structured lifecycle event to report.
+ */
 export function reportReactSsrDiagnostic(
   handler: ReactSsrDiagnosticHandler | undefined,
   diagnostic: ReactSsrDiagnostic,

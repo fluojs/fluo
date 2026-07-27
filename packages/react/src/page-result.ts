@@ -13,13 +13,14 @@ import {
   REACT_SSR_DIAGNOSTIC_CODES,
   REACT_SSR_DIAGNOSTIC_PHASES,
   ReactSsrDiagnosticError,
+  bindReactSsrDiagnosticHandler,
   createReactSsrDiagnostic,
   readReactSsrDiagnosticMarker,
   reportReactSsrDiagnostic,
   type ReactSsrDiagnosticHandler,
 } from './diagnostics.js';
 import type { ReactPageRenderer } from './page-renderer.js';
-import { bindReactSsrDiagnosticHandler, isReactServerEntry } from './server-entry.js';
+import { isReactServerEntry } from './server-entry.js';
 
 const responseValueFinalizerKey = Symbol.for('fluo.http.responseValueFinalizer');
 
@@ -109,7 +110,6 @@ function finalizeReactPageResult(
   }
 
   if (isReactServerEntry(context.value)) {
-    bindReactSsrDiagnosticHandler(context.value, runtime.onDiagnostic);
     return context.value;
   }
 
@@ -129,13 +129,19 @@ function finalizeReactPageResult(
   }
 
   const entry = runtime.renderPage(context.value, context.requestContext);
-  bindReactSsrDiagnosticHandler(entry, runtime.onDiagnostic);
   return entry;
 }
 
+/**
+ * Creates module middleware that finalizes React page values through the HTTP response lifecycle.
+ *
+ * @param runtime Module-level renderer and diagnostic configuration.
+ * @returns Middleware that installs request-local React response state.
+ */
 export function createReactPageResultMiddleware(runtime: ReactPageResultRuntime): Middleware {
   return {
     async handle(context: MiddlewareContext, next: Next): Promise<void> {
+      bindReactSsrDiagnosticHandler(context.requestContext, runtime.onDiagnostic);
       context.requestContext.metadata[responseValueFinalizerKey] = (
         finalizerContext: ReactPageResultFinalizerContext,
       ): unknown => finalizeReactPageResult(runtime, finalizerContext);

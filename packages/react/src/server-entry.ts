@@ -3,14 +3,12 @@ import { cloneElement, isValidElement, type ReactNode } from 'react';
 
 import type {
   ReactSsrDiagnosticCode,
-  ReactSsrDiagnosticHandler,
   ReactSsrDiagnosticPhase,
 } from './diagnostics.js';
 import type { ReactRenderContext } from './render.js';
 
 const responseWriterKey = Symbol.for('fluo.http.responseWriter');
 const serverEntryKey = Symbol.for('fluo.react.serverEntry');
-const diagnosticHandlerKey = Symbol.for('fluo.react.ssrDiagnosticHandler');
 
 type ReactResponseWriterContext = {
   readonly applySuccessResponseMetadata: () => void;
@@ -116,45 +114,6 @@ export function isReactServerEntry(value: unknown): value is ReactServerEntry {
   return typeof value === 'object'
     && value !== null
     && Reflect.get(value, serverEntryKey) === true;
-}
-
-/**
- * Binds a module-level diagnostic handler to one React server entry without changing its public shape.
- *
- * @param entry React server entry receiving the request-local handler.
- * @param handler Module-level diagnostic handler, when configured.
- */
-export function bindReactSsrDiagnosticHandler(
-  entry: ReactServerEntry,
-  handler: ReactSsrDiagnosticHandler | undefined,
-): void {
-  if (handler === undefined) {
-    return;
-  }
-
-  Object.defineProperty(entry, diagnosticHandlerKey, {
-    configurable: true,
-    enumerable: false,
-    value: handler,
-  });
-}
-
-/**
- * Reads the module-level diagnostic handler bound to a React server entry.
- *
- * @param entry React server entry carrying request-local diagnostic state.
- * @returns The bound handler, when one exists.
- */
-export function readReactSsrDiagnosticHandler(
-  entry: ReactServerEntry,
-): ReactSsrDiagnosticHandler | undefined {
-  const handler = Reflect.get(entry, diagnosticHandlerKey);
-
-  if (typeof handler !== 'function') {
-    return undefined;
-  }
-
-  return (diagnostic) => Reflect.apply(handler, undefined, [diagnostic]);
 }
 
 function cloneAssetMap(assetMap: ReactAssetMap | undefined): ReactAssetMap {

@@ -6,14 +6,11 @@ import {
   ReactSsrDiagnosticError,
   createReactSsrDiagnostic,
   markReactSsrDiagnostic,
+  readReactSsrDiagnosticHandler,
   reportReactSsrDiagnostic,
 } from './diagnostics.js';
 import type { ReactRenderContext } from './render.js';
-import {
-  readReactSsrDiagnosticHandler,
-  type ReactRecoverableErrorContext,
-  type ReactServerEntry,
-} from './server-entry.js';
+import type { ReactRecoverableErrorContext, ReactServerEntry } from './server-entry.js';
 
 /** Recoverable React render error retained until the response shell can commit. */
 export type PendingReactRecoverableError = {
@@ -25,6 +22,7 @@ export type PendingReactRecoverableError = {
 
 type ReactRenderDiagnostics = {
   readonly preservePreCommitShellError: (error: unknown) => unknown;
+  readonly reportRequestAbort: () => void;
   readonly reportRecoverableError: (event: PendingReactRecoverableError) => void;
   readonly reportRecoverableErrors: (events: readonly PendingReactRecoverableError[]) => void;
 };
@@ -60,7 +58,7 @@ export function createReactRenderDiagnostics(
   const reportRecoverableError = (event: PendingReactRecoverableError): void => {
     const recoverableContext = createRecoverableErrorContext(event.errorInfo, requestContext);
     reportReactSsrDiagnostic(
-      readReactSsrDiagnosticHandler(entry),
+      readReactSsrDiagnosticHandler(requestContext),
       createReactSsrDiagnostic({
         code: recoverableContext.code,
         error: event.error,
@@ -111,6 +109,25 @@ export function createReactRenderDiagnostics(
         phase: REACT_SSR_DIAGNOSTIC_PHASES.preCommitShell,
       });
       return error;
+    },
+    reportRequestAbort() {
+      if (
+        requestContext.request.signal?.aborted !== true
+        && requestContext.request.isAborted?.() !== true
+      ) {
+        return;
+      }
+
+      reportReactSsrDiagnostic(
+        readReactSsrDiagnosticHandler(requestContext),
+        createReactSsrDiagnostic({
+          code: REACT_SSR_DIAGNOSTIC_CODES.requestAbort,
+          error: new RequestAbortedError(),
+          phase: REACT_SSR_DIAGNOSTIC_PHASES.requestAbort,
+          request: requestContext.request,
+          ...(requestContext.requestId === undefined ? {} : { requestId: requestContext.requestId }),
+        }),
+      );
     },
     reportRecoverableError,
     reportRecoverableErrors(events) {
