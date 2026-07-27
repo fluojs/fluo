@@ -1279,6 +1279,7 @@ describe('@fluojs/platform-deno', () => {
 
     expect(serve).toHaveBeenCalledTimes(2);
     expect(serveSignals).toHaveLength(2);
+    expect(serveSignals[0]?.aborted).toBe(true);
     expect(serveSignals[1]).not.toBe(serveSignals[0]);
     expect(adapter.getListenTarget()).toEqual({
       bindTarget: '127.0.0.1:4321',
@@ -1289,6 +1290,36 @@ describe('@fluojs/platform-deno', () => {
     expect(retryDispatcher.dispatch).toHaveBeenCalledTimes(1);
 
     await adapter.close();
+  });
+
+  it('restores pre-listen dispatcher state when Deno.serve cannot be resolved', async () => {
+    const originalDeno = (globalThis as typeof globalThis & { Deno?: unknown }).Deno;
+    delete (globalThis as typeof globalThis & { Deno?: unknown }).Deno;
+    const adapter = createDenoAdapter();
+    const dispatcher = {
+      dispatch: vi.fn(async (_request: FrameworkRequest, response: FrameworkResponse) => {
+        response.setStatus(200);
+        await response.send({ dispatcher: 'unexpected' });
+      }),
+    };
+
+    try {
+      await expect(adapter.listen(dispatcher)).rejects.toThrow(
+        'Deno.serve is not available. Pass options.serve when running outside Deno.',
+      );
+
+      const response = await adapter.handle(new Request('https://runtime.test/missing-serve'));
+
+      expect(response.status).toBe(500);
+      expect(dispatcher.dispatch).not.toHaveBeenCalled();
+      expect(adapter.getServer()).toBeUndefined();
+    } finally {
+      if (originalDeno === undefined) {
+        delete (globalThis as typeof globalThis & { Deno?: unknown }).Deno;
+      } else {
+        (globalThis as typeof globalThis & { Deno?: unknown }).Deno = originalDeno;
+      }
+    }
   });
 
   it('clears the Deno shutdown timer once close settles', async () => {

@@ -235,13 +235,12 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
     const previousAbortController = this.abortController;
     const previousDispatcher = this.dispatcher;
     const previousListenAddress = this.listenAddress;
-    this.dispatcher = dispatcher;
-
     const abortController = new AbortController();
-    const serve = resolveServe(this.options.serve);
     const listenReady = this.options.port === 0 ? createDeferred<void>() : undefined;
 
     try {
+      const serve = resolveServe(this.options.serve);
+      this.dispatcher = dispatcher;
       this.abortController = abortController;
       this.server = serve({
         cert: this.options.https?.cert,
@@ -260,6 +259,7 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
 
       await listenReady?.promise;
     } catch (error) {
+      abortController.abort();
       this.abortController = previousAbortController;
       this.dispatcher = previousDispatcher;
       this.listenAddress = previousListenAddress;
