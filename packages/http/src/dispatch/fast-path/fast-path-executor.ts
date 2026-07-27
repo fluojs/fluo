@@ -6,7 +6,6 @@ import { getCompiledDtoBindingPlan } from '../../adapters/dto-binding-plan.js';
 import { HttpDtoValidationAdapter } from '../../adapters/dto-validation-adapter.js';
 import { SseResponse } from '../../context/sse.js';
 import { RequestAbortedError } from '../../errors.js';
-import { type ResolvedContentNegotiation, writeSuccessResponse } from '../dispatch-response-policy.js';
 import type {
   Binder,
   FrameworkRequest,
@@ -14,6 +13,8 @@ import type {
   HandlerDescriptor,
   RequestContext,
 } from '../../types.js';
+import { type ResolvedContentNegotiation, writeSuccessResponse } from '../dispatch-response-policy.js';
+import { isRequestAborted } from '../request-abort.js';
 import type { FastPathExecutionResult } from './eligibility-checker.js';
 
 const defaultBinder = new DefaultBinder();
@@ -125,8 +126,4 @@ export function shouldUseFastPathForRequest(
     return false;
   }
   return true;
-}
-
-function isRequestAborted(request: FrameworkRequest): boolean {
-  return request.isAborted?.() ?? request.signal?.aborted === true;
 }
