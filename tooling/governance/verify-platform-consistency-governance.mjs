@@ -1949,6 +1949,69 @@ export function enforceReactServerFunctionContract() {
   }
 }
 
+export function enforceHttpRuntimeCancellationAndContextIsolation() {
+  const abortSource = read('packages/http/src/dispatch/request-abort.ts');
+  const dispatcherSource = read('packages/http/src/dispatch/dispatcher.ts');
+  const fastPathSource = read('packages/http/src/dispatch/fast-path/fast-path-executor.ts');
+  const contextSource = read('packages/http/src/context/request-context.ts');
+  const nodeRootSource = read('packages/http/src/index.ts');
+  const portableRootSource = read('packages/http/src/index.portable.ts');
+  const httpPackage = JSON.parse(read('packages/http/package.json'));
+  const cancellationRegression = read('packages/http/src/dispatch/dispatcher-cancellation.test.ts');
+  const contextRegression = read('packages/http/src/context/request-context-isolation.test.ts');
+
+  assert(
+    abortSource.includes('request.isAborted?.() === true || request.signal?.aborted === true'),
+    'HTTP request cancellation must treat isAborted() and signal.aborted as independent authoritative surfaces.',
+  );
+  assert(
+    dispatcherSource.includes("import { isRequestAborted } from './request-abort.js';") &&
+      fastPathSource.includes("import { isRequestAborted } from '../request-abort.js';"),
+    'Full and fast HTTP dispatch must share the dual-surface request abort decision.',
+  );
+  assert(
+    !contextSource.includes('Promise.prototype') &&
+      contextSource.includes('getFallbackRequestContextStore().run(context, callback)'),
+    'Lazy request-context resolution must use a request-local store or synchronous fallback without patching Promise.prototype.',
+  );
+  assert(
+    nodeRootSource.includes("from 'node:async_hooks'") &&
+      nodeRootSource.includes('registerImmediateAsyncLocalStorageConstructor(AsyncLocalStorage)') &&
+      !portableRootSource.includes('node:async_hooks') &&
+      httpPackage.exports?.['.']?.node === './dist/index.js' &&
+      httpPackage.exports?.['.']?.import === './dist/index.portable.js',
+    'HTTP root export conditions must provide synchronous Node async storage without adding Node built-ins to the portable root.',
+  );
+  assert(
+    cancellationRegression.includes('request.isAborted = () => false') &&
+      cancellationRegression.includes('request.signal = abortController.signal'),
+    'HTTP cancellation regressions must cover a false adapter probe paired with an aborted signal.',
+  );
+  assert(
+    contextRegression.includes('Promise.prototype.then') &&
+      contextRegression.includes('unrelatedRequestId') &&
+      contextRegression.includes("createContext('promise-callback')") &&
+      contextRegression.includes("createContext('request-a')") &&
+      contextRegression.includes("createContext('request-b')"),
+    'HTTP request-context regressions must cover Promise prototype stability, promise-returning callbacks, concurrent requests, and unrelated continuation isolation.',
+  );
+
+  for (const documentationPath of [
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'docs/architecture/http-runtime.md',
+    'docs/architecture/http-runtime.ko.md',
+    'packages/http/README.md',
+    'packages/http/README.ko.md',
+  ]) {
+    const documentation = read(documentationPath);
+    assert(
+      documentation.includes('Promise.prototype') && documentation.includes('isAborted()'),
+      `${documentationPath} must document HTTP cancellation and request-context isolation together.`,
+    );
+  }
+}
+
 export function enforceHttpCatchAllRouteGrammarDecision() {
   const decisionPaths = [
     'docs/architecture/http-catch-all-route-grammar.md',
@@ -2097,6 +2160,7 @@ export function main() {
   enforceReactClientSubpathContract();
   enforceReactRscGraduationGovernance(changedFiles);
   enforceReactServerFunctionContract();
+  enforceHttpRuntimeCancellationAndContextIsolation();
   enforceHttpCatchAllRouteGrammarDecision();
   enforceGraphqlRuntimeBoundaryDiscoverability();
   enforcePersistenceTransactionInterceptorCompatibility();

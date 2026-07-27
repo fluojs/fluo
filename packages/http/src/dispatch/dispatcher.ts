@@ -2,7 +2,7 @@ import type { Token } from '@fluojs/core';
 import type { Container, RequestScopeContainer } from '@fluojs/di';
 import { getCompiledDtoBindingPlan } from '../adapters/dto-binding-plan.js';
 import { createRequestContext, runWithRequestContext } from '../context/request-context.js';
-import { SseResponse, isSseMessage, type SseSendOptions } from '../context/sse.js';
+import { isSseMessage, SseResponse, type SseSendOptions } from '../context/sse.js';
 import { RequestAbortedError } from '../errors.js';
 import { runGuardChain } from '../guards.js';
 import { runInterceptorChain } from '../interceptors.js';
@@ -32,20 +32,21 @@ import type {
 import { invokeControllerHandler } from './dispatch-handler-policy.js';
 import { type ResolvedContentNegotiation, resolveContentNegotiation, writeErrorResponse, writeSuccessResponse } from './dispatch-response-policy.js';
 import { matchHandlerOrThrow, updateRequestParams } from './dispatch-routing-policy.js';
-import { attachFrameworkRequestNativeRouteHandoff, readFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
 import {
-  compileFastPathEligibility,
-  getHandlerFastPathEligibility,
-  setHandlerFastPathEligibility,
-  type FastPathEligibility,
-  type FastPathStats,
-  FAST_PATH_STATS_SYMBOL,
   addPathDebugHeader,
+  compileFastPathEligibility,
   createFastPathStats,
   createPathDebugInfo,
   executeFastPath,
+  FAST_PATH_STATS_SYMBOL,
+  type FastPathEligibility,
+  type FastPathStats,
+  getHandlerFastPathEligibility,
+  setHandlerFastPathEligibility,
   shouldUseFastPathForRequest,
 } from './fast-path/index.js';
+import { attachFrameworkRequestNativeRouteHandoff, readFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
+import { isRequestAborted } from './request-abort.js';
 
 export type { FastPathEligibility, FastPathStats } from './fast-path/index.js';
 export { FAST_PATH_ELIGIBILITY_SYMBOL, FAST_PATH_STATS_SYMBOL } from './fast-path/index.js';
@@ -451,10 +452,6 @@ function ensureRequestNotAborted(request: FrameworkRequest): void {
   if (isRequestAborted(request)) {
     throw new RequestAbortedError();
   }
-}
-
-function isRequestAborted(request: FrameworkRequest): boolean {
-  return request.isAborted?.() ?? request.signal?.aborted === true;
 }
 
 function isSseRoute(handler: HandlerDescriptor): boolean {

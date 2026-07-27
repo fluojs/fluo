@@ -18,6 +18,19 @@ type AsyncLocalStorageResolutionHost = {
 
 type NodeAsyncHooksLoader = () => Promise<NodeAsyncHooksModule>;
 
+let registeredAsyncLocalStorageConstructor: AsyncLocalStorageConstructor | undefined;
+
+/**
+ * Registers a host-provided constructor that can be used without an asynchronous module lookup.
+ *
+ * @param AsyncLocalStorage Constructor supplied by a runtime-specific package entrypoint.
+ */
+export function registerImmediateAsyncLocalStorageConstructor(
+  AsyncLocalStorage: AsyncLocalStorageConstructor,
+): void {
+  registeredAsyncLocalStorageConstructor = AsyncLocalStorage;
+}
+
 /**
  * Resolves host-provided `AsyncLocalStorage` without async imports or throwing host probes.
  *
@@ -27,6 +40,10 @@ type NodeAsyncHooksLoader = () => Promise<NodeAsyncHooksModule>;
 export function resolveImmediateAsyncLocalStorageConstructor(
   host: AsyncLocalStorageResolutionHost = globalThis,
 ): AsyncLocalStorageConstructor | undefined {
+  if (registeredAsyncLocalStorageConstructor) {
+    return registeredAsyncLocalStorageConstructor;
+  }
+
   if (typeof host.AsyncLocalStorage === 'function') {
     return host.AsyncLocalStorage;
   }
