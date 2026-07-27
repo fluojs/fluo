@@ -402,17 +402,29 @@ export class DrizzleDatabase<
     this.assertRequestTransactionsAvailable();
 
     const abortContext = createRequestAbortContext(signal);
+
+    if (abortContext.signal.aborted) {
+      const abortError = createAbortError(abortContext.signal.reason);
+      abortContext.cleanup();
+      throw abortError;
+    }
+
     const active = this.trackActiveRequestTransaction(abortContext.controller);
 
     try {
-      const result = await raceWithAbort(fn, abortContext.signal);
+      const result = await raceWithAbort(() => {
+        const callback = new Promise<T>((resolve) => resolve(fn()));
+
+        return callback.finally(() => {
+          this.untrackActiveRequestTransaction(active);
+        });
+      }, abortContext.signal);
 
       this.throwIfRequestAborted(abortContext.signal);
 
       return result;
     } finally {
       abortContext.cleanup();
-      this.untrackActiveRequestTransaction(active);
     }
   }
 

@@ -123,10 +123,12 @@ export class AppModule {}
 Repository code uses `DrizzleDatabase.current()` so it automatically sees the active transaction handle.
 
 ```ts
+import { Inject } from '@fluojs/core';
 import { DrizzleDatabase } from '@fluojs/drizzle';
 import { eq } from 'drizzle-orm';
 import { users } from './schema';
 
+@Inject(DrizzleDatabase)
 export class UserRepository {
   constructor(private readonly db: DrizzleDatabase) {}
 
