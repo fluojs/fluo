@@ -55,7 +55,7 @@ import { SocketIoModule } from '@fluojs/socket.io';
 export class ChatModule {}
 ```
 
-By default, fluo keeps CORS deny by default, meaning `origin: false`. To allow cross origin browser clients, you must explicitly write the allowed origin list. The `engine` configuration maps directly to Engine.IO, letting you limit payload size for production stability. On Bun, the adapter maps the same `engine.maxHttpBufferSize` value into both the HTTP request body limit and the WebSocket payload limit because Bun exposes those host contracts separately. These defaults are a safer starting point because realtime browser connections often stay open for a long time.
+By default, fluo keeps CORS deny by default, meaning `origin: false`. To allow cross origin browser clients, you must explicitly write the allowed origin list. The `engine` configuration maps directly to Engine.IO, letting you limit payload size for production stability. On Bun, the adapter maps the same `engine.maxHttpBufferSize` value into both the HTTP request body limit and the WebSocket payload limit because Bun exposes those host contracts separately. Separately, `buffer.maxPendingMessagesPerSocket` and `buffer.overflowPolicy` bound inbound events received after a socket connects but before its connection handlers become ready; they do not control outbound emits or Socket.IO reconnect buffering. These defaults are a safer starting point because realtime browser connections often stay open for a long time.
 
 ## 14.3 Room management with SocketIoRoomService
 
@@ -122,7 +122,7 @@ SocketIoModule.forRoot({
 })
 ```
 
-Guards accept when they return `true`, `undefined`, or no value. They reject only when they return `false` or a rejection object such as `{ message: 'Unauthorized command.' }`; the connection or message is then rejected with a standardized Socket.IO error object. Clients can handle failures consistently, and the server can block unauthorized realtime work before a handler runs. Prefer explicit `true`/`false`/rejection returns in application code when that makes the policy easier to audit, but do not treat a `void` guard as rejection.
+Guards accept when they return `true`, `undefined`, or no value. They reject only when they return `false` or a rejection object such as `{ message: 'Unauthorized command.' }`. Connection rejection follows Socket.IO's namespace connection error path. Message rejection reaches the client only through an acknowledgement callback supplied with that event, using `{ error, data }`; without an ACK callback, fluo emits no implicit client error event. A rejection with `disconnect: true` still closes the socket. The server therefore blocks unauthorized realtime work before a handler runs without inventing a second message-error channel. Prefer explicit `true`/`false`/rejection returns in application code when that makes the policy easier to audit, but do not treat a `void` guard as rejection.
 
 ## 14.5 Accessing the raw server
 

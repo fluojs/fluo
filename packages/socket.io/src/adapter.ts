@@ -382,6 +382,7 @@ export class SocketIoLifecycleService
   private namespaceContext: AsyncLocalStorage<string> | undefined;
   private namespaceContextPromise: Promise<AsyncLocalStorage<string>> | undefined;
   private readonly socketRegistry = new Map<string, Socket>();
+  private serverInitializationPromise: Promise<Server> | undefined;
   private shutdownPromise: Promise<void> | undefined;
   private shutdownStarted = false;
   private wired = false;
@@ -428,6 +429,10 @@ export class SocketIoLifecycleService
       return this.io;
     }
 
+    if (this.serverInitializationPromise) {
+      return this.serverInitializationPromise;
+    }
+
     const runtime = resolveSocketIoBootstrapRuntime(this.adapter);
 
     if (runtime.kind === 'server-backed') {
@@ -435,9 +440,42 @@ export class SocketIoLifecycleService
       return this.io;
     }
 
-    this.io = new Server(this.createServerOptions());
-    await this.installBunSocketIoBinding(runtime, this.io);
-    return this.io;
+    const io = new Server(this.createServerOptions());
+    const initialization = this.installBunSocketIoBinding(runtime, io)
+      .then(() => {
+        this.io = io;
+        return io;
+      })
+      .catch(async (error: unknown) => {
+        this.io = undefined;
+        this.bunEngine = undefined;
+
+        const cleanupResults = await Promise.allSettled([
+          Promise.resolve().then(() => runtime.bindingHost.configureRealtimeBinding(undefined)),
+          this.closeServerWithTimeout(io, this.resolveShutdownTimeoutMs()),
+        ]);
+        const cleanupErrors = cleanupResults.flatMap((result) =>
+          result.status === 'rejected' ? [result.reason] : [],
+        );
+
+        if (cleanupErrors.length > 0) {
+          throw new AggregateError(
+            [error, ...cleanupErrors],
+            'Socket.IO Bun initialization failed and partial resource cleanup did not complete.',
+          );
+        }
+
+        throw error;
+      });
+    this.serverInitializationPromise = initialization;
+
+    try {
+      return await initialization;
+    } finally {
+      if (this.serverInitializationPromise === initialization) {
+        this.serverInitializationPromise = undefined;
+      }
+    }
   }
 
   /**
@@ -1255,6 +1293,11 @@ export class SocketIoLifecycleService
   }
 
   private async runShutdownLifecycle(): Promise<void> {
+    const initialization = this.serverInitializationPromise;
+    if (initialization) {
+      await Promise.allSettled([initialization]);
+    }
+
     const io = this.io;
 
     if (!io) {

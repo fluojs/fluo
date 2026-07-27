@@ -55,7 +55,7 @@ import { SocketIoModule } from '@fluojs/socket.io';
 export class ChatModule {}
 ```
 
-기본적으로 fluo는 CORS를 deny-by-default, 즉 `origin: false` 상태로 유지합니다. Cross-origin 브라우저 클라이언트를 허용하려면 허용된 origin 목록을 명시적으로 작성해야 합니다. `engine` 설정은 Engine.IO에 직접 매핑되며, production 안정성을 위해 payload size를 제한할 수 있게 합니다. Bun에서는 adapter가 같은 `engine.maxHttpBufferSize` 값을 HTTP request body limit와 WebSocket payload limit 양쪽에 매핑합니다. Bun은 이 두 host contract를 별도로 노출하기 때문입니다. 이런 기본값은 실시간 연결이 브라우저에서 오래 유지되는 특성을 고려한 안전한 출발점입니다.
+기본적으로 fluo는 CORS를 deny-by-default, 즉 `origin: false` 상태로 유지합니다. Cross-origin 브라우저 클라이언트를 허용하려면 허용된 origin 목록을 명시적으로 작성해야 합니다. `engine` 설정은 Engine.IO에 직접 매핑되며, production 안정성을 위해 payload size를 제한할 수 있게 합니다. Bun에서는 adapter가 같은 `engine.maxHttpBufferSize` 값을 HTTP request body limit와 WebSocket payload limit 양쪽에 매핑합니다. Bun은 이 두 host contract를 별도로 노출하기 때문입니다. 별도로 `buffer.maxPendingMessagesPerSocket`과 `buffer.overflowPolicy`는 socket 연결 후 connection handler가 준비되기 전에 수신한 inbound event를 제한하며, outbound emit이나 Socket.IO reconnect buffering을 제어하지 않습니다. 이런 기본값은 실시간 연결이 브라우저에서 오래 유지되는 특성을 고려한 안전한 출발점입니다.
 
 ## 14.3 Room management with SocketIoRoomService
 
@@ -122,7 +122,7 @@ SocketIoModule.forRoot({
 })
 ```
 
-Guard는 `true`, `undefined`, 또는 아무 값을 반환하지 않을 때 허용합니다. `false` 또는 `{ message: '권한이 없는 명령어입니다.' }` 같은 rejection object를 반환할 때만 연결이나 메시지가 표준화된 Socket.IO error 객체와 함께 거부됩니다. 클라이언트는 실패 원인을 일관된 방식으로 처리할 수 있고, 서버는 권한 없는 실시간 동작을 handler 실행 전에 차단할 수 있습니다. 정책을 감사하기 쉽게 만들고 싶다면 애플리케이션 코드에서는 명시적인 `true`/`false`/rejection 반환을 선호하되, `void` guard를 rejection으로 취급하지 마세요.
+Guard는 `true`, `undefined`, 또는 아무 값을 반환하지 않을 때 허용합니다. `false` 또는 `{ message: '권한이 없는 명령어입니다.' }` 같은 rejection object를 반환할 때만 거부합니다. Connection rejection은 Socket.IO namespace connection error 경로를 따릅니다. Message rejection은 해당 event에 acknowledgement callback이 제공된 경우에만 `{ error, data }` 형태로 client에 전달되며, ACK callback이 없으면 fluo는 암묵적인 client error event를 emit하지 않습니다. `disconnect: true`인 rejection은 그대로 socket 연결을 종료합니다. 따라서 server는 별도의 message-error channel을 만들지 않고도 권한 없는 실시간 동작을 handler 실행 전에 차단합니다. 정책을 감사하기 쉽게 만들고 싶다면 애플리케이션 코드에서는 명시적인 `true`/`false`/rejection 반환을 선호하되, `void` guard를 rejection으로 취급하지 마세요.
 
 ## 14.5 Accessing the raw server
 

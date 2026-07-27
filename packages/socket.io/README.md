@@ -137,7 +137,7 @@ SocketIoModule.forRoot({
 });
 ```
 
-When `cors` is omitted, `@fluojs/socket.io` defaults to `{ credentials: false, origin: false }` so cross-origin exposure stays opt-in. When `engine.maxHttpBufferSize` is omitted, the adapter applies a bounded 1 MiB Engine.IO payload limit. Defaults also include `buffer.maxPendingMessagesPerSocket: 128`, `buffer.overflowPolicy: 'drop-oldest'`, and `shutdown.timeoutMs: 5000`. Explicit `engine.maxHttpBufferSize`, `buffer.maxPendingMessagesPerSocket`, and `shutdown.timeoutMs` values must be positive integers; invalid explicit values fail during module registration instead of falling back to defaults.
+When `cors` is omitted, `@fluojs/socket.io` defaults to `{ credentials: false, origin: false }` so cross-origin exposure stays opt-in. When `engine.maxHttpBufferSize` is omitted, the adapter applies a bounded 1 MiB Engine.IO payload limit. Defaults also include `buffer.maxPendingMessagesPerSocket: 128`, `buffer.overflowPolicy: 'drop-oldest'`, and `shutdown.timeoutMs: 5000`. The `buffer` options bound inbound events that arrive after a socket connects but before its connection handlers become ready; they do not control outbound emits or Socket.IO reconnect buffering. Explicit `engine.maxHttpBufferSize`, `buffer.maxPendingMessagesPerSocket`, and `shutdown.timeoutMs` values must be positive integers; invalid explicit values fail during module registration instead of falling back to defaults.
 
 Static `@WebSocketGateway({ path })` namespaces are owned by fluo's gateway discovery and are not treated as Socket.IO dynamic child namespaces. The adapter keeps Socket.IO's `cleanupEmptyChildNamespaces` behavior disabled for those static namespaces. If application code creates dynamic child namespaces through raw `SOCKETIO_SERVER` access, that ownership and cleanup policy stays with the application-level Socket.IO integration.
 
@@ -145,7 +145,7 @@ During application shutdown, Socket.IO owns cleanup for connected Socket.IO clie
 
 ### Guard contracts
 
-`auth.connection` receives `SocketIoConnectionGuardContext` before namespace connect handlers run. `auth.message` receives `SocketIoMessageGuardContext` before message handlers run. Guards accept by returning `true`, `undefined`, or no value. They reject by returning `false` or a `SocketIoGuardRejection` with `message`, optional `data`, and optional `disconnect`; message rejections use ACK payloads shaped as `{ error, data }`. `SocketIoHandshakeRequest` stays runtime-neutral at the root export: Node-backed adapters provide a structurally typed HTTP handshake request and Bun provides a Web-standard `Request`.
+`auth.connection` receives `SocketIoConnectionGuardContext` before namespace connect handlers run. `auth.message` receives `SocketIoMessageGuardContext` before message handlers run. Guards accept by returning `true`, `undefined`, or no value. They reject by returning `false` or a `SocketIoGuardRejection` with `message`, optional `data`, and optional `disconnect`. Connection rejection uses Socket.IO's namespace connection error path. Message rejection is reported only through an acknowledgement callback supplied with that event, using an ACK payload shaped as `{ error, data }`; without an ACK callback, fluo emits no implicit client error event. An explicit `disconnect: true` still disconnects the socket. `SocketIoHandshakeRequest` stays runtime-neutral at the root export: Node-backed adapters provide a structurally typed HTTP handshake request and Bun provides a Web-standard `Request`.
 
 ### Bun-specific notes
 
