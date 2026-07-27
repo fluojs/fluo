@@ -68,7 +68,7 @@ Live mode는 다음을 보여줍니다.
 - module/provider/controller/route graph node와 import/export/ownership/dependency edge
 - HTTP method/path/controller handler route descriptor
 - route/handler correlation, success/error, status code, duration을 포함한 최근 request flow
-- bootstrap/restart/request timing summary
+- live 및 static/report 데이터의 bootstrap timing summary
 - severity, target, message, 가능한 fix hint가 포함된 runtime/request diagnostics
 
 MVP request flow는 route/handler와 dependency-graph correlation을 의미합니다. full method-level service call-chain tracing은 아직 포함하지 않습니다.
