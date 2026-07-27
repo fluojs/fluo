@@ -1,22 +1,13 @@
 import type { Provider } from '@fluojs/di';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 
+import { createCronRandomId } from './random-id.js';
 import { defaultCronScheduler } from './scheduler.js';
 import { CronLifecycleService } from './service.js';
 import { CRON_OPTIONS, SCHEDULING_REGISTRY } from './tokens.js';
 import type { CronModuleOptions, NormalizedCronModuleOptions } from './types.js';
 
 const DEFAULT_CRON_SHUTDOWN_TIMEOUT_MS = 10_000;
-
-function randomId(): string {
-  const randomUUID = globalThis.crypto?.randomUUID;
-
-  if (randomUUID) {
-    return randomUUID.call(globalThis.crypto);
-  }
-
-  return `cron-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}
 
 function normalizeRedisClientName(clientName: string | undefined): string | undefined {
   if (clientName === undefined) {
@@ -40,7 +31,7 @@ function assertValidDistributedLockTtlMs(lockTtlMs: number): void {
 
 function normalizeDistributedOwnerId(ownerId: string | undefined): string {
   if (ownerId === undefined) {
-    return randomId();
+    return createCronRandomId();
   }
 
   if (typeof ownerId !== 'string') {
@@ -63,7 +54,7 @@ function normalizeDistributedOptions(distributed: CronModuleOptions['distributed
       enabled: false,
       keyPrefix: 'fluo:cron:lock',
       lockTtlMs: 30_000,
-      ownerId: randomId(),
+      ownerId: createCronRandomId(),
     };
   }
 
@@ -73,7 +64,7 @@ function normalizeDistributedOptions(distributed: CronModuleOptions['distributed
       enabled: true,
       keyPrefix: 'fluo:cron:lock',
       lockTtlMs: 30_000,
-      ownerId: randomId(),
+      ownerId: createCronRandomId(),
     };
   }
 
