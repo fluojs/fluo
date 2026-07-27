@@ -1,6 +1,9 @@
 import type { ParsedPayload, StudioConnectionState, StudioLiveEvent } from '../../contracts.js';
 import type { StudioDashboardState } from './model.js';
 
+/**
+ * Describes state transitions handled by the Studio dashboard reducer.
+ */
 export type StudioAction =
   | { type: 'connection'; connection: StudioConnectionState }
   | { type: 'file-error'; message: string }
