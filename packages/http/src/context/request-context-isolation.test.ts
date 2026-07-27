@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { RequestContext } from '../types.js';
 
-function createContext(): RequestContext {
+function createContext(requestId = 'request-context-isolation'): RequestContext {
   const root = new Container();
 
   return {
@@ -20,7 +20,7 @@ function createContext(): RequestContext {
       raw: {},
       url: '/context-isolation',
     },
-    requestId: 'request-context-isolation',
+    requestId,
     response: {
       committed: false,
       headers: {},
@@ -38,6 +38,75 @@ function createContext(): RequestContext {
 }
 
 describe('lazy request context isolation', () => {
+  it('preserves promise-returning non-async callback context without replacing Promise.prototype.then', async () => {
+    // Given
+    vi.resetModules();
+    const getBuiltinModuleDescriptor = Object.getOwnPropertyDescriptor(process, 'getBuiltinModule');
+    const originalThen = Promise.prototype.then;
+
+    Object.defineProperty(process, 'getBuiltinModule', {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      const http = await import('../index.js');
+
+      // When
+      const requestId = http.runWithRequestContext(createContext('promise-callback'), () =>
+        Promise.resolve().then(() => http.getCurrentRequestContext()?.requestId),
+      );
+
+      // Then
+      expect(Promise.prototype.then).toBe(originalThen);
+      await expect(requestId).resolves.toBe('promise-callback');
+    } finally {
+      if (getBuiltinModuleDescriptor) {
+        Object.defineProperty(process, 'getBuiltinModule', getBuiltinModuleDescriptor);
+      }
+      vi.resetModules();
+    }
+  });
+
+  it('isolates concurrent promise-returning non-async callback contexts', async () => {
+    // Given
+    vi.resetModules();
+    const getBuiltinModuleDescriptor = Object.getOwnPropertyDescriptor(process, 'getBuiltinModule');
+    const releaseA = createDeferred<void>();
+    const releaseB = createDeferred<void>();
+
+    Object.defineProperty(process, 'getBuiltinModule', {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      const http = await import('../index.js');
+
+      // When
+      const requestA = http.runWithRequestContext(createContext('request-a'), () =>
+        releaseA.promise.then(() => http.getCurrentRequestContext()?.requestId),
+      );
+      const requestB = http.runWithRequestContext(createContext('request-b'), () => {
+        releaseA.resolve();
+
+        return releaseB.promise.then(() => http.getCurrentRequestContext()?.requestId);
+      });
+
+      await Promise.resolve();
+      releaseB.resolve();
+
+      // Then
+      await expect(requestA).resolves.toBe('request-a');
+      await expect(requestB).resolves.toBe('request-b');
+    } finally {
+      if (getBuiltinModuleDescriptor) {
+        Object.defineProperty(process, 'getBuiltinModule', getBuiltinModuleDescriptor);
+      }
+      vi.resetModules();
+    }
+  });
+
   it('does not replace Promise.prototype.then while Node async storage resolves', async () => {
     // Given
     vi.resetModules();
@@ -108,3 +177,12 @@ describe('lazy request context isolation', () => {
     }
   });
 });
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+
+  return { promise, resolve };
+}
