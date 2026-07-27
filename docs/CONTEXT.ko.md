@@ -152,6 +152,10 @@ Cron dynamic scheduling contract는 `packages/cron/README.ko.md`, [`docs/referen
 
 Cron shutdown contract는 `packages/cron/README.ko.md`, [`docs/architecture/lifecycle-and-shutdown.ko.md`](./architecture/lifecycle-and-shutdown.ko.md), [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md), [`book/intermediate/ch12-cron.ko.md`](../book/intermediate/ch12-cron.ko.md)에서 정렬됩니다. Task-finally Redis release와 즉시 이어지는 stopped-state retry는 shutdown 시작 시 설정된 deadline의 남은 시간만 사용합니다. Late task settlement는 deadline을 재설정하지 않으며, release를 확인하지 못한 local ownership은 platform status snapshot에 계속 노출됩니다.
 
+## Cron Race Safety
+
+Cron lifecycle contract는 committed scheduler handle token으로 callback을 gate하고 shutdown이 시작되면 tick admission을 닫습니다. Provisional replacement handle은 이전 handle이 stop되기 전에 실행할 수 없고 retired handle이 queue한 callback은 무시되며, 성공한 Redis acquisition마다 서로 다른 lease token을 받아 stale release가 같은 configured owner identity로 생성된 새 lease를 삭제하지 못합니다.
+
 ## HTTP Catch-All Decision
 
 [`docs/architecture/http-catch-all-route-grammar.ko.md`](./architecture/http-catch-all-route-grammar.ko.md)는 catch-all 도입을 유예한다. `@fluojs/http`는 literal 및 full-segment `:param` route segment만 계속 허용하고, `@fluojs/react/client`의 실제 anchor는 client route grammar를 만들지 않으면서 명시적인 server route로 일반 full-document fallback을 제공한다. 재검토에는 HTTP-owned syntax, `static > param > catch-all` ordering, string params, OpenAPI policy, adapter parity, native fast path 결정, performance evidence가 필요하다.

@@ -32,10 +32,12 @@ import type {
 } from './types.js';
 
 interface RuntimeScheduledTask {
+  readonly token: object;
   stop(): void;
 }
 
 interface RuntimeTaskState {
+  activeScheduleToken: object | undefined;
   descriptor: CronTaskDescriptor;
   enabled: boolean;
   running: boolean;
@@ -98,7 +100,7 @@ export class CronLifecycleService
 {
   private readonly tasks = new Map<string, RuntimeTaskState>();
   private readonly activeTasks = new Set<Promise<void>>();
-  private readonly runningDistributedLockKeys = new Set<string>();
+  private readonly runningDistributedLeaseCounts = new Map<string, number>();
   private readonly distributedLocks: CronDistributedLockManager;
   private readonly taskRunner: CronTaskRunner;
   private lifecycleState: 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
@@ -331,6 +333,7 @@ export class CronLifecycleService
 
     const previousExpression = task.descriptor.expression;
     const previousHandle = task.scheduledHandle;
+    const previousToken = task.activeScheduleToken;
     let nextHandle: RuntimeScheduledTask | undefined;
 
     task.descriptor.expression = expression;
@@ -343,6 +346,7 @@ export class CronLifecycleService
       }
 
       task.scheduledHandle = nextHandle;
+      task.activeScheduleToken = nextHandle.token;
     } catch (error) {
       if (nextHandle) {
         this.stopScheduledHandle(nextHandle);
@@ -350,6 +354,7 @@ export class CronLifecycleService
 
       task.descriptor.expression = previousExpression;
       task.scheduledHandle = previousHandle;
+      task.activeScheduleToken = previousToken;
       throw error;
     }
   }
@@ -381,6 +386,7 @@ export class CronLifecycleService
 
     const previousMs = task.descriptor.ms;
     const previousHandle = task.scheduledHandle;
+    const previousToken = task.activeScheduleToken;
     let nextHandle: RuntimeScheduledTask | undefined;
 
     task.descriptor.ms = ms;
@@ -393,6 +399,7 @@ export class CronLifecycleService
       }
 
       task.scheduledHandle = nextHandle;
+      task.activeScheduleToken = nextHandle.token;
     } catch (error) {
       if (nextHandle) {
         this.stopScheduledHandle(nextHandle);
@@ -400,6 +407,7 @@ export class CronLifecycleService
 
       task.descriptor.ms = previousMs;
       task.scheduledHandle = previousHandle;
+      task.activeScheduleToken = previousToken;
       throw error;
     }
   }
@@ -579,7 +587,7 @@ export class CronLifecycleService
   }
 
   private getRunningDistributedLockKeys(): ReadonlySet<string> {
-    return new Set(this.runningDistributedLockKeys);
+    return new Set(this.runningDistributedLeaseCounts.keys());
   }
 
   private registerDecoratorTasks(): void {
@@ -599,6 +607,7 @@ export class CronLifecycleService
     }
 
     const task: RuntimeTaskState = {
+      activeScheduleToken: undefined,
       descriptor,
       enabled: true,
       running: false,
@@ -607,7 +616,7 @@ export class CronLifecycleService
     };
 
     if (this.started) {
-      task.scheduledHandle = this.createScheduledHandle(task);
+      this.scheduleTask(task);
     }
 
     this.tasks.set(descriptor.taskName, task);
@@ -632,10 +641,19 @@ export class CronLifecycleService
       return;
     }
 
-    task.scheduledHandle = this.createScheduledHandle(task);
+    const previousToken = task.activeScheduleToken;
+    const nextToken = {};
+    task.activeScheduleToken = nextToken;
+
+    try {
+      task.scheduledHandle = this.createScheduledHandle(task, nextToken);
+    } catch (error) {
+      task.activeScheduleToken = previousToken;
+      throw error;
+    }
   }
 
-  private createScheduledHandle(task: RuntimeTaskState): RuntimeScheduledTask {
+  private createScheduledHandle(task: RuntimeTaskState, token: object = {}): RuntimeScheduledTask {
     const taskName = task.descriptor.taskName;
 
     if (task.descriptor.kind === 'cron') {
@@ -645,7 +663,7 @@ export class CronLifecycleService
         throw new Error(`Cron task "${taskName}" is missing a cron expression.`);
       }
 
-      return this.options.scheduler(
+      const scheduledHandle = this.options.scheduler(
         expression,
         {
           name: taskName,
@@ -653,9 +671,16 @@ export class CronLifecycleService
           timezone: task.descriptor.timezone,
         },
         async () => {
-          await this.handleTaskTick(taskName);
+          await this.handleTaskTick(taskName, token);
         },
       );
+
+      return {
+        stop: () => {
+          scheduledHandle.stop();
+        },
+        token,
+      };
     }
 
     const ms = task.descriptor.ms;
@@ -666,19 +691,20 @@ export class CronLifecycleService
 
     if (task.descriptor.kind === 'interval') {
       const timer = setInterval(() => {
-        void this.handleTaskTick(taskName);
+        void this.handleTaskTick(taskName, token);
       }, ms);
 
       return {
         stop: () => {
           clearInterval(timer);
         },
+        token,
       };
     }
 
     const timer = setTimeout(() => {
-      void this.handleTaskTick(taskName).finally(() => {
-        this.completeTimeoutTask(taskName);
+      void this.handleTaskTick(taskName, token).finally(() => {
+        this.completeTimeoutTask(taskName, token);
       });
     }, ms);
 
@@ -686,17 +712,19 @@ export class CronLifecycleService
       stop: () => {
         clearTimeout(timer);
       },
+      token,
     };
   }
 
-  private completeTimeoutTask(taskName: string): void {
+  private completeTimeoutTask(taskName: string, token: object): void {
     const task = this.tasks.get(taskName);
 
-    if (!task || task.descriptor.kind !== 'timeout') {
+    if (!task || task.descriptor.kind !== 'timeout' || task.activeScheduleToken !== token) {
       return;
     }
 
     task.scheduledHandle = undefined;
+    task.activeScheduleToken = undefined;
     task.enabled = false;
   }
 
@@ -712,6 +740,7 @@ export class CronLifecycleService
     }
 
     task.scheduledHandle = undefined;
+    task.activeScheduleToken = undefined;
     return true;
   }
 
@@ -725,10 +754,10 @@ export class CronLifecycleService
     }
   }
 
-  private async handleTaskTick(taskName: string): Promise<void> {
+  private async handleTaskTick(taskName: string, token: object): Promise<void> {
     const taskState = this.tasks.get(taskName);
 
-    if (!taskState?.enabled || taskState.running) {
+    if (!this.started || !taskState?.enabled || taskState.running || taskState.activeScheduleToken !== token) {
       return;
     }
 
@@ -758,14 +787,17 @@ export class CronLifecycleService
   }
 
   private async runDistributedTaskTick(descriptor: CronTaskDescriptor, taskState: RuntimeTaskState): Promise<void> {
-    const lockAcquired = await this.distributedLocks.tryAcquireLock(descriptor);
+    const lease = await this.distributedLocks.tryAcquireLock(descriptor);
 
-    if (!lockAcquired) {
+    if (!lease) {
       return;
     }
 
-    const lockRenewalMonitor = this.distributedLocks.startLockRenewalMonitor(descriptor);
-    this.runningDistributedLockKeys.add(descriptor.lockKey);
+    const lockRenewalMonitor = this.distributedLocks.startLockRenewalMonitor(descriptor, lease);
+    this.runningDistributedLeaseCounts.set(
+      descriptor.lockKey,
+      (this.runningDistributedLeaseCounts.get(descriptor.lockKey) ?? 0) + 1,
+    );
 
     try {
       await this.executeTask(descriptor, taskState, async () => {
@@ -774,14 +806,21 @@ export class CronLifecycleService
       });
     } finally {
       lockRenewalMonitor.stop();
-      this.runningDistributedLockKeys.delete(descriptor.lockKey);
+      const runningLeaseCount = this.runningDistributedLeaseCounts.get(descriptor.lockKey);
+
+      if (runningLeaseCount === 1) {
+        this.runningDistributedLeaseCounts.delete(descriptor.lockKey);
+      } else if (runningLeaseCount !== undefined) {
+        this.runningDistributedLeaseCounts.set(descriptor.lockKey, runningLeaseCount - 1);
+      }
+
       const released = await this.distributedLocks.releaseLock(
-        descriptor,
+        lease,
         this.shutdownPromise ? this.getRemainingShutdownTimeoutMs() : undefined,
       );
 
       if (!released && this.lifecycleState === 'stopped') {
-        await this.distributedLocks.releaseOwnedLocks(new Set(), this.getRemainingShutdownTimeoutMs());
+        await this.distributedLocks.releaseOwnedLocks(this.getRunningDistributedLockKeys(), this.getRemainingShutdownTimeoutMs());
       }
     }
   }
@@ -831,6 +870,7 @@ export class CronLifecycleService
     if (descriptor.kind === 'timeout') {
       taskState.enabled = false;
       taskState.scheduledHandle = undefined;
+      taskState.activeScheduleToken = undefined;
     }
   }
   private stopAllScheduledTasks(): void {

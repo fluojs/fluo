@@ -152,6 +152,10 @@ The Cron dynamic scheduling contract is aligned across `packages/cron/README.md`
 
 The Cron shutdown contract is aligned across `packages/cron/README.md`, [`docs/architecture/lifecycle-and-shutdown.md`](./architecture/lifecycle-and-shutdown.md), [`docs/reference/package-surface.md`](./reference/package-surface.md), and [`book/intermediate/ch12-cron.md`](../book/intermediate/ch12-cron.md): task-finally Redis release and its immediate stopped-state retry use only the time remaining on the deadline established when shutdown starts. Late task settlement does not reset the deadline, and an unconfirmed release remains visible as unresolved local ownership in the platform status snapshot.
 
+## Cron Race Safety
+
+The Cron lifecycle contract gates callbacks with the committed scheduler handle token and closes tick admission when shutdown starts. Provisional replacement handles cannot execute before the previous handle stops, callbacks queued by retired handles are ignored, and each successful Redis acquisition receives a distinct lease token so a stale release cannot delete a newer lease created with the same configured owner identity.
+
 ## HTTP Catch-All Decision
 
 [`docs/architecture/http-catch-all-route-grammar.md`](./architecture/http-catch-all-route-grammar.md) defers catch-all adoption. `@fluojs/http` continues to accept only literal and full-segment `:param` route segments, while `@fluojs/react/client` real anchors provide ordinary full-document fallback to explicit server routes without creating a client route grammar. Reconsideration requires an HTTP-owned syntax, `static > param > catch-all` ordering, string params, OpenAPI policy, adapter parity, native fast path decisions, and performance evidence.
