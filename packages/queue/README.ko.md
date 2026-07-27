@@ -155,7 +155,7 @@ Queue는 애플리케이션 부트스트랩 중 worker를 탐색하고 Queue가 
 
 ### 데드 레터 처리 (Dead-Letter Handling)
 
-워커가 모든 재시도를 소진하면 Queue는 Redis의 데드 레터 리스트(`fluo:queue:dead-letter:<jobName>`)에 레코드를 append하여, 나중에 수동으로 확인하거나 복구할 수 있게 합니다. BullMQ job 자체를 이동시키는 것은 아닙니다.
+워커가 모든 재시도를 소진하면 Queue는 Redis의 데드 레터 리스트(`fluo:queue:dead-letter:<jobName>`)에 별도의 레코드를 append하여, 나중에 수동으로 확인하거나 복구할 수 있게 합니다. BullMQ job 자체를 그 리스트로 이동시키지는 않습니다.
 
 `QueueModule.forRoot()`는 기본적으로 작업별 최근 데드 레터 엔트리 `1_000`개만 유지합니다. 무제한 보관이 꼭 필요하면 `defaultDeadLetterMaxEntries: false`로 opt-out 하고, 더 엄격한 운영 예산이 필요하면 더 작은 양의 정수를 지정하세요.
 
@@ -171,7 +171,7 @@ for (const record of inspection.records) {
 
 Inspection은 read-only이며 유효한 record를 최신순으로 반환합니다. Redis read를 worker lifecycle state로 gate하지 않으므로 inspection이 worker를 시작하지 않으며, backing Redis client에 접근 가능한 동안에는 Queue가 `idle`이거나 worker startup이 `failed`에 도달한 뒤에도 사용할 수 있습니다. Queue는 shared Redis client를 소유하지 않습니다. `RedisModule`이 해당 client를 종료한 뒤에는 post-shutdown availability를 보장하지 않고 backing Redis operation error를 그대로 전달합니다. Limit은 기본적으로 저장된 entry `100`개이며 최대 `1_000`개로 제한되고, 잘못된 limit은 기본값으로 대체됩니다. Malformed stored value는 결과에서 제외되고 해당 inspection window의 `malformedRecordCount`에 집계됩니다. `payload`는 `unknown`으로 유지되므로 애플리케이션 코드가 자신의 job data를 직접 narrow해야 합니다. Inspection은 job이나 dead-letter record를 삭제, replay 또는 mutate하지 않습니다.
 
-Job은 JSON으로 직렬화 가능한 plain object여야 합니다. Queue는 enqueue 전에 job payload를 직렬화하고, worker 측에서 job prototype을 다시 입힙니다.
+Queue는 `new ProcessOrderJob(id)` 같은 class instance를 포함한 job object를 입력으로 받습니다. Enqueue 전에 Queue는 job을 JSON으로 직렬화하며, 직렬화 결과는 `null`이나 array가 아닌 JSON object여야 합니다. Worker 측에서는 그 직렬화된 object 위에 등록된 job prototype을 다시 입힙니다.
 
 저수준 provider 조합을 루트 barrel API의 일부가 아니라 내부 구현 세부사항으로 취급해야 합니다. 저수준 provider helper는 문서화된 루트 barrel 계약에 포함되지 않습니다.
 
