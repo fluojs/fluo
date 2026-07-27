@@ -2,63 +2,17 @@ import type {
   Constructor,
   MetadataPropertyKey,
 } from '@fluojs/core';
-import type { ClassValidationRule, DtoFieldBindingMetadata, DtoFieldValidationRule, ValidationIssueMetadata, ValidationRuleResult } from '@fluojs/core/request-pipeline';
+import type { ClassValidationRule, DtoFieldBindingMetadata, DtoFieldValidationRule } from '@fluojs/core/request-pipeline';
 
 import { DtoValidationError } from './errors.js';
 import { getCachedDtoMetadata, resolveNestedDto } from './internal/dto-metadata-cache.js';
 import { assignSafeOwnEnumerableProperties, getIterableValues, isPlainObject } from './internal/object-utils.js';
 import { getRuleHandler, type NonCustomRule } from './internal/rule-handlers.js';
+import { buildIssue, joinFieldPath, normalizeResult, prefixIssues } from './internal/validation-issues.js';
 import type { ValidationIssue, Validator } from './types.js';
 
 function toFieldName(propertyKey: MetadataPropertyKey): string {
   return typeof propertyKey === 'string' ? propertyKey : String(propertyKey);
-}
-
-function normalizeIssue(
-  issue: ValidationIssueMetadata,
-  field: string | undefined,
-  source: ValidationIssue['source'],
-): ValidationIssue {
-  return {
-    code: issue.code,
-    field: issue.field ?? field,
-    message: issue.message,
-    source: issue.source ?? source,
-  };
-}
-
-function normalizeResult(
-  result: ValidationRuleResult,
-  field: string | undefined,
-  source: ValidationIssue['source'],
-  fallback: { code: string; message: string },
-): ValidationIssue[] {
-  if (result === undefined || result === true) {
-    return [];
-  }
-
-  if (result === false) {
-    return [{ code: fallback.code, field, message: fallback.message, source }];
-  }
-
-  if (Array.isArray(result)) {
-    return result.map((issue) => normalizeIssue(issue, field, source));
-  }
-
-  return [normalizeIssue(result as ValidationIssueMetadata, field, source)];
-}
-
-function joinFieldPath(parent: string, child?: string): string {
-  if (!child) return parent;
-  return child.startsWith('[') ? `${parent}${child}` : `${parent}.${child}`;
-}
-
-function prefixIssues(
-  issues: readonly ValidationIssue[],
-  fieldPrefix: string,
-  source: ValidationIssue['source'],
-): ValidationIssue[] {
-  return issues.map((issue) => ({ ...issue, field: joinFieldPath(fieldPrefix, issue.field), source: issue.source ?? source }));
 }
 
 interface NestedTraversalContext {
@@ -178,15 +132,6 @@ function describeValidator(rule: DtoFieldValidationRule, field: string): { code:
   return {
     code: rule.code ?? (rule.kind === 'validatorjs' ? rule.validator.toUpperCase() : handler.defaultCode),
     message: rule.message ?? handler.describe(field, rule),
-  };
-}
-
-function buildIssue(fallback: { code: string; message: string }, field: string, source: ValidationIssue['source']): ValidationIssue {
-  return {
-    code: fallback.code,
-    field,
-    message: fallback.message,
-    source,
   };
 }
 
