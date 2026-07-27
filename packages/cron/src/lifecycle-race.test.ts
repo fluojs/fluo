@@ -6,6 +6,25 @@ import { CronModule } from './module.js';
 import { SCHEDULING_REGISTRY } from './tokens.js';
 import type { CronScheduledJob, CronScheduler, SchedulingRegistry } from './types.js';
 
+interface Deferred {
+  readonly promise: Promise<void>;
+  readonly resolve: () => void;
+}
+
+function createDeferred(): Deferred {
+  let resolvePromise: (() => void) | undefined;
+  const promise = new Promise<void>((resolve) => {
+    resolvePromise = resolve;
+  });
+
+  return {
+    promise,
+    resolve: () => {
+      resolvePromise?.();
+    },
+  };
+}
+
 function requireValue<T>(value: T | undefined, message: string): T {
   if (value === undefined) {
     throw new Error(message);
@@ -17,24 +36,28 @@ function requireValue<T>(value: T | undefined, message: string): T {
 function createRetainedCallbackScheduler(): {
   readonly callbacks: Array<() => Promise<void>>;
   readonly scheduler: CronScheduler;
+  readonly stopStarted: Promise<void>;
   readonly stops: Array<ReturnType<typeof vi.fn>>;
 } {
   const callbacks: Array<() => Promise<void>> = [];
+  const stopStarted = createDeferred();
   const stops: Array<ReturnType<typeof vi.fn>> = [];
   const scheduler: CronScheduler = (_expression, _options, callback): CronScheduledJob => {
-    const stop = vi.fn();
+    const stop = vi.fn(stopStarted.resolve);
     callbacks.push(callback);
     stops.push(stop);
     return { stop };
   };
 
-  return { callbacks, scheduler, stops };
+  return { callbacks, scheduler, stopStarted: stopStarted.promise, stops };
 }
 
 describe('Cron lifecycle race safety', () => {
-  it('does not execute a queued tick after shutdown starts', async () => {
+  it('does not execute a queued tick while shutdown drains active work', async () => {
     // Given
     const scheduled = createRetainedCallbackScheduler();
+    const activeTaskFinished = createDeferred();
+    const activeTaskStarted = createDeferred();
     let runs = 0;
     class AppModule {}
     defineModule(AppModule, {
@@ -43,17 +66,29 @@ describe('Cron lifecycle race safety', () => {
 
     const app = await bootstrapApplication({ rootModule: AppModule });
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+    registry.addCron('active-during-shutdown', CronExpression.EVERY_SECOND, async () => {
+      activeTaskStarted.resolve();
+      await activeTaskFinished.promise;
+    });
     registry.addCron('queued-during-shutdown', CronExpression.EVERY_SECOND, () => {
       runs += 1;
     });
-    const queuedTick = requireValue(scheduled.callbacks[0], 'Expected a queued cron callback.');
+    const activeTick = requireValue(scheduled.callbacks[0], 'Expected an active cron callback.')();
+    const queuedTick = requireValue(scheduled.callbacks[1], 'Expected a queued cron callback.');
+    await activeTaskStarted.promise;
 
     // When
-    await app.close();
-    await queuedTick();
+    const closePromise = app.close();
+    await scheduled.stopStarted;
 
     // Then
-    expect(runs).toBe(0);
+    try {
+      await queuedTick();
+      expect(runs).toBe(0);
+    } finally {
+      activeTaskFinished.resolve();
+      await Promise.all([activeTick, closePromise]);
+    }
   });
 
   it('does not execute a provisional replacement before the previous handle stops', async () => {
@@ -95,5 +130,33 @@ describe('Cron lifecycle race safety', () => {
     expect(runs).toBe(0);
 
     await app.close();
+  });
+
+  it('does not execute a callback queued by a successfully retired handle', async () => {
+    // Given
+    const scheduled = createRetainedCallbackScheduler();
+    let runs = 0;
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+    registry.addCron('successful-replacement', CronExpression.EVERY_SECOND, () => {
+      runs += 1;
+    });
+    const retiredTick = requireValue(scheduled.callbacks[0], 'Expected the previous cron callback.');
+    registry.updateCronExpression('successful-replacement', CronExpression.EVERY_5_SECONDS);
+
+    // When
+    try {
+      await retiredTick();
+
+      // Then
+      expect(runs).toBe(0);
+    } finally {
+      await app.close();
+    }
   });
 });
