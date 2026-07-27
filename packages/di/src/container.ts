@@ -924,14 +924,32 @@ export class Container {
     }
 
     const cache = this.multiCacheFor(provider);
+    const cachedInstance = cache.get(provider);
 
-    if (!cache.has(provider)) {
-      const promise = this.instantiate(provider, chain, activeTokens);
-      cache.set(provider, promise);
-      promise.catch(() => cache.delete(provider));
+    if (cachedInstance) {
+      const releasePendingResolution = linkPendingResolution(cachedInstance, activeTokens, provider.provide);
+      return releasePendingResolution
+        ? cachedInstance.finally(releasePendingResolution)
+        : cachedInstance;
     }
 
-    return await cache.get(provider)!;
+    let promise: Promise<unknown>;
+    promise = this.instantiate(provider, chain, activeTokens).then(
+      (value) => {
+        untrackPendingResolution(promise, activeTokens);
+        return value;
+      },
+      (error: unknown) => {
+        cache.delete(provider);
+        untrackPendingResolution(promise, activeTokens);
+        throw error;
+      },
+    );
+
+    trackPendingResolution(promise, activeTokens);
+    cache.set(provider, promise);
+
+    return promise;
   }
 
   private resolveExistingProviderTarget(provider: NormalizedProvider): Token | undefined {
