@@ -60,6 +60,10 @@ function normalizeRedisExpirySeconds(ttlSeconds: number): number {
   return Math.max(1, Math.ceil(ttlSeconds));
 }
 
+function escapeRedisGlobPattern(value: string): string {
+  return value.replace(/[\\*?[\]]/g, '\\$&');
+}
+
 /**
  * Cache store implementation backed by a Redis-compatible client.
  */
@@ -151,7 +155,7 @@ export class RedisStore implements CacheStore {
     }
 
     let cursor = '0';
-    const pattern = `${this.keyPrefix}*`;
+    const pattern = `${escapeRedisGlobPattern(this.keyPrefix)}*`;
 
     do {
       const scanResult = normalizeScanResponse(
