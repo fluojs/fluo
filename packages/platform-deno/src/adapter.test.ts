@@ -1219,6 +1219,78 @@ describe('@fluojs/platform-deno', () => {
     await adapter.close();
   });
 
+  it('restores pre-listen state after Deno.serve fails and allows a successful retry', async () => {
+    const server = createServeStub();
+    const listenFailure = new Error('Deno.serve failed to bind');
+    const serveSignals: AbortSignal[] = [];
+    let serveAttempt = 0;
+    const serve = vi.fn((options: DenoServeOptions, handler: DenoServeHandler): DenoServeController => {
+      serveAttempt += 1;
+
+      if (options.signal) {
+        serveSignals.push(options.signal);
+      }
+
+      options.onListen?.({
+        hostname: '127.0.0.1',
+        port: serveAttempt === 1 ? 65_535 : 4_321,
+      });
+
+      if (serveAttempt === 1) {
+        throw listenFailure;
+      }
+
+      return server.serve(options, handler);
+    });
+    const adapter = new DenoHttpApplicationAdapter({
+      hostname: '0.0.0.0',
+      port: 3_000,
+      serve,
+    });
+    const failedDispatcher = {
+      dispatch: vi.fn(async (_request: FrameworkRequest, response: FrameworkResponse) => {
+        response.setStatus(200);
+        await response.send({ dispatcher: 'failed' });
+      }),
+    };
+    const retryDispatcher = {
+      dispatch: vi.fn(async (_request: FrameworkRequest, response: FrameworkResponse) => {
+        response.setStatus(200);
+        await response.send({ dispatcher: 'retry' });
+      }),
+    };
+
+    await expect(adapter.listen(failedDispatcher)).rejects.toBe(listenFailure);
+
+    const failedListenResponse = await adapter.handle(new Request('https://runtime.test/failed-listen'));
+
+    expect(failedListenResponse.status).toBe(500);
+    expect(failedDispatcher.dispatch).not.toHaveBeenCalled();
+    expect(adapter.getServer()).toBeUndefined();
+    expect(adapter.getListenTarget()).toEqual({
+      bindTarget: '0.0.0.0:3000',
+      url: 'http://localhost:3000',
+    });
+    expect(Reflect.get(adapter, 'abortController')).toBeUndefined();
+
+    await adapter.listen(retryDispatcher);
+
+    const retryResponse = await server.handler?.(new Request('https://runtime.test/retry'));
+
+    expect(serve).toHaveBeenCalledTimes(2);
+    expect(serveSignals).toHaveLength(2);
+    expect(serveSignals[1]).not.toBe(serveSignals[0]);
+    expect(adapter.getListenTarget()).toEqual({
+      bindTarget: '127.0.0.1:4321',
+      url: 'http://127.0.0.1:4321',
+    });
+    expect(retryResponse?.status).toBe(200);
+    await expect(retryResponse?.json()).resolves.toEqual({ dispatcher: 'retry' });
+    expect(retryDispatcher.dispatch).toHaveBeenCalledTimes(1);
+
+    await adapter.close();
+  });
+
   it('clears the Deno shutdown timer once close settles', async () => {
     vi.useFakeTimers();
 

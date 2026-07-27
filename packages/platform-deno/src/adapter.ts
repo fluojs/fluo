@@ -232,29 +232,39 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
       return;
     }
 
+    const previousAbortController = this.abortController;
+    const previousDispatcher = this.dispatcher;
+    const previousListenAddress = this.listenAddress;
     this.dispatcher = dispatcher;
 
     const abortController = new AbortController();
     const serve = resolveServe(this.options.serve);
     const listenReady = this.options.port === 0 ? createDeferred<void>() : undefined;
 
-    this.abortController = abortController;
-    this.server = serve({
-      cert: this.options.https?.cert,
-      hostname: this.options.hostname,
-      key: this.options.https?.key,
-      onListen: (localAddr) => {
-        this.listenAddress = localAddr;
-        listenReady?.resolve();
-        this.options.onListen?.(localAddr);
-      },
-      port: this.options.port,
-      signal: abortController.signal,
-    }, async (request) => {
-      return await this.handle(request);
-    });
+    try {
+      this.abortController = abortController;
+      this.server = serve({
+        cert: this.options.https?.cert,
+        hostname: this.options.hostname,
+        key: this.options.https?.key,
+        onListen: (localAddr) => {
+          this.listenAddress = localAddr;
+          listenReady?.resolve();
+          this.options.onListen?.(localAddr);
+        },
+        port: this.options.port,
+        signal: abortController.signal,
+      }, async (request) => {
+        return await this.handle(request);
+      });
 
-    await listenReady?.promise;
+      await listenReady?.promise;
+    } catch (error) {
+      this.abortController = previousAbortController;
+      this.dispatcher = previousDispatcher;
+      this.listenAddress = previousListenAddress;
+      throw error;
+    }
   }
 
   async close(): Promise<void> {
