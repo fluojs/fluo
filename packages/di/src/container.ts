@@ -173,9 +173,116 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   );
 }
 
+interface PendingResolutionContext {
+  readonly dependencies: Map<Set<Token>, number>;
+  pendingPromises: number;
+}
+
+const pendingResolutionContexts = new WeakMap<Set<Token>, PendingResolutionContext>();
+const pendingResolutionOwners = new WeakMap<Promise<unknown>, Set<Token>>();
+
+function trackPendingResolution(promise: Promise<unknown>, activeTokens: Set<Token>): void {
+  const context = pendingResolutionContexts.get(activeTokens) ?? {
+    dependencies: new Map<Set<Token>, number>(),
+    pendingPromises: 0,
+  };
+  context.pendingPromises += 1;
+  pendingResolutionContexts.set(activeTokens, context);
+  pendingResolutionOwners.set(promise, activeTokens);
+}
+
+function untrackPendingResolution(promise: Promise<unknown>, activeTokens: Set<Token>): void {
+  const context = pendingResolutionContexts.get(activeTokens);
+  pendingResolutionOwners.delete(promise);
+
+  if (!context) {
+    return;
+  }
+
+  context.pendingPromises -= 1;
+
+  if (context.pendingPromises === 0 && context.dependencies.size === 0) {
+    pendingResolutionContexts.delete(activeTokens);
+  }
+}
+
+function findPendingResolutionPath(
+  start: Set<Token>,
+  target: Set<Token>,
+  visited: Set<Set<Token>>,
+): readonly Set<Token>[] | undefined {
+  if (start === target) {
+    return [start];
+  }
+
+  if (visited.has(start)) {
+    return undefined;
+  }
+
+  visited.add(start);
+
+  for (const dependency of pendingResolutionContexts.get(start)?.dependencies.keys() ?? []) {
+    const path = findPendingResolutionPath(dependency, target, visited);
+
+    if (path) {
+      return [start, ...path];
+    }
+  }
+
+  return undefined;
+}
+
+function linkPendingResolution(
+  promise: Promise<unknown>,
+  activeTokens: Set<Token>,
+  token: Token,
+): (() => void) | undefined {
+  const owner = pendingResolutionOwners.get(promise);
+
+  if (!owner || activeTokens.size === 0) {
+    return undefined;
+  }
+
+  const cyclePath = findPendingResolutionPath(owner, activeTokens, new Set<Set<Token>>());
+
+  if (cyclePath) {
+    throw new CircularDependencyError([
+      ...activeTokens,
+      token,
+      ...cyclePath.flatMap((context) => [...context]),
+    ]);
+  }
+
+  const context = pendingResolutionContexts.get(activeTokens) ?? {
+    dependencies: new Map<Set<Token>, number>(),
+    pendingPromises: 0,
+  };
+  context.dependencies.set(owner, (context.dependencies.get(owner) ?? 0) + 1);
+  pendingResolutionContexts.set(activeTokens, context);
+
+  return () => {
+    const dependencyCount = context.dependencies.get(owner);
+
+    if (dependencyCount === undefined) {
+      return;
+    }
+
+    if (dependencyCount === 1) {
+      context.dependencies.delete(owner);
+    } else {
+      context.dependencies.set(owner, dependencyCount - 1);
+    }
+
+    if (context.pendingPromises === 0 && context.dependencies.size === 0) {
+      pendingResolutionContexts.delete(activeTokens);
+    }
+  };
+}
+
 /**
  * Scope-aware dependency injection container for Fluo providers.
  */
+// allow: SIZE_OK — Container is the package's existing DI lifecycle state machine.
 export class Container {
   private readonly registrations = new Map<Token, NormalizedProvider>();
   private readonly multiRegistrations = new Map<Token, NormalizedProvider[]>();
@@ -271,6 +378,7 @@ export class Container {
    * @param providers Provider definitions that should replace existing registrations for each token.
    * @returns The same container instance for fluent override chains.
    * @throws {ContainerResolutionError} When called after the container was disposed.
+   * @throws {ScopeMismatchError} When a request-scope override would introduce a new singleton token.
    * @throws {InvalidProviderError} When a provider definition is structurally invalid.
    */
   override(...providers: Provider[]): this {
@@ -293,6 +401,23 @@ export class Container {
       }
 
       normalizedByToken.set(normalized.provide, [normalized]);
+    }
+
+    if (this.requestScopeEnabled) {
+      for (const [token, normalizedProviders] of normalizedByToken) {
+        const introducesSingleton = normalizedProviders.some((normalized) => normalized.scope === Scope.DEFAULT);
+
+        if (introducesSingleton && !this.has(token)) {
+          throw new ScopeMismatchError(
+            `Singleton provider ${formatTokenName(token)} cannot be introduced by override() on a request-scope container.`,
+            {
+              token,
+              scope: 'singleton',
+              hint: 'Register it on the root container before creating the request scope, or register a request/transient provider in the request scope.',
+            },
+          );
+        }
+      }
     }
 
     for (const [token, normalizedProviders] of normalizedByToken) {
@@ -711,7 +836,13 @@ export class Container {
     const cachedInstance = this.getCachedScopedOrSingletonInstance(provider);
 
     if (cachedInstance) {
-      return (await cachedInstance) as T;
+      const releasePendingResolution = linkPendingResolution(cachedInstance, activeTokens, token);
+
+      try {
+        return (await cachedInstance) as T;
+      } finally {
+        releasePendingResolution?.();
+      }
     }
 
     return (await this.withTokenInChain(token, chain, activeTokens, async (c, at) =>
@@ -793,14 +924,32 @@ export class Container {
     }
 
     const cache = this.multiCacheFor(provider);
+    const cachedInstance = cache.get(provider);
 
-    if (!cache.has(provider)) {
-      const promise = this.instantiate(provider, chain, activeTokens);
-      cache.set(provider, promise);
-      promise.catch(() => cache.delete(provider));
+    if (cachedInstance) {
+      const releasePendingResolution = linkPendingResolution(cachedInstance, activeTokens, provider.provide);
+      return releasePendingResolution
+        ? cachedInstance.finally(releasePendingResolution)
+        : cachedInstance;
     }
 
-    return await cache.get(provider)!;
+    let promise: Promise<unknown>;
+    promise = this.instantiate(provider, chain, activeTokens).then(
+      (value) => {
+        untrackPendingResolution(promise, activeTokens);
+        return value;
+      },
+      (error: unknown) => {
+        cache.delete(provider);
+        untrackPendingResolution(promise, activeTokens);
+        throw error;
+      },
+    );
+
+    trackPendingResolution(promise, activeTokens);
+    cache.set(provider, promise);
+
+    return promise;
   }
 
   private resolveExistingProviderTarget(provider: NormalizedProvider): Token | undefined {
@@ -821,17 +970,32 @@ export class Container {
     }
 
     const cache = this.cacheFor(provider);
+    const cachedInstance = cache.get(provider.provide);
 
-    if (!cache.has(provider.provide)) {
-      const promise = this.instantiate(provider, chain, activeTokens).catch((error: unknown) => {
-        cache.delete(provider.provide);
-        throw error;
-      });
-
-      cache.set(provider.provide, promise);
+    if (cachedInstance) {
+      const releasePendingResolution = linkPendingResolution(cachedInstance, activeTokens, provider.provide);
+      return releasePendingResolution
+        ? cachedInstance.finally(releasePendingResolution)
+        : cachedInstance;
     }
 
-    return cache.get(provider.provide);
+    let promise: Promise<unknown>;
+    promise = this.instantiate(provider, chain, activeTokens).then(
+      (value) => {
+        untrackPendingResolution(promise, activeTokens);
+        return value;
+      },
+      (error: unknown) => {
+        cache.delete(provider.provide);
+        untrackPendingResolution(promise, activeTokens);
+        throw error;
+      },
+    );
+
+    trackPendingResolution(promise, activeTokens);
+    cache.set(provider.provide, promise);
+
+    return promise;
   }
 
   private getCachedScopedOrSingletonInstance(provider: NormalizedProvider): Promise<unknown> | undefined {

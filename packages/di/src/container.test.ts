@@ -1,10 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
-
 import { Inject, Scope as ScopeDecorator, type Token } from '@fluojs/core';
+import { describe, expect, it, vi } from 'vitest';
 
 import { Container } from './container.js';
 import { CircularDependencyError, ContainerResolutionError, DuplicateProviderError, InvalidProviderError, RequestScopeResolutionError, ScopeMismatchError } from './errors.js';
-import { Scope, forwardRef, optional, type Provider } from './types.js';
+import { forwardRef, optional, type Provider, Scope } from './types.js';
 
 describe('Container', () => {
   it('caches singleton providers', async () => {
@@ -2208,10 +2207,10 @@ describe('Container', () => {
       class SecondChildService {}
 
       const root = new Container().register({ provide: ROOT_VALUE, useValue: 'root' });
-      const requestScope = root.createRequestScope().override({ provide: CHILD_SERVICE, useClass: FirstChildService });
+      const requestScope = root.createRequestScope().override({ provide: CHILD_SERVICE, scope: Scope.REQUEST, useClass: FirstChildService });
 
       await requestScope.resolve(CHILD_SERVICE);
-      requestScope.override({ provide: CHILD_SERVICE, useClass: SecondChildService });
+      requestScope.override({ provide: CHILD_SERVICE, scope: Scope.REQUEST, useClass: SecondChildService });
 
       const rootResolution = root.resolve<string>(ROOT_VALUE).then((value) => events.push(`root:resolved:${value}`));
       await new Promise<void>((resolve) => setImmediate(resolve));
@@ -2238,10 +2237,10 @@ describe('Container', () => {
       class SecondChildService {}
 
       const root = new Container().register({ provide: ROOT_VALUE, useValue: 'root' });
-      const requestScope = root.createRequestScope().override({ provide: CHILD_SERVICE, useClass: FirstChildService });
+      const requestScope = root.createRequestScope().override({ provide: CHILD_SERVICE, scope: Scope.REQUEST, useClass: FirstChildService });
 
       await requestScope.resolve(CHILD_SERVICE);
-      requestScope.override({ provide: CHILD_SERVICE, useClass: SecondChildService });
+      requestScope.override({ provide: CHILD_SERVICE, scope: Scope.REQUEST, useClass: SecondChildService });
 
       await expect(root.resolve(ROOT_VALUE)).resolves.toBe('root');
       await expect(requestScope.resolve(CHILD_SERVICE)).rejects.toThrow('child-local stale failed');
