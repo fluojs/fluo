@@ -100,7 +100,7 @@ export class CronLifecycleService
 {
   private readonly tasks = new Map<string, RuntimeTaskState>();
   private readonly activeTasks = new Set<Promise<void>>();
-  private readonly runningDistributedLockKeys = new Set<string>();
+  private readonly runningDistributedLeaseCounts = new Map<string, number>();
   private readonly distributedLocks: CronDistributedLockManager;
   private readonly taskRunner: CronTaskRunner;
   private lifecycleState: 'created' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed' = 'created';
@@ -587,7 +587,7 @@ export class CronLifecycleService
   }
 
   private getRunningDistributedLockKeys(): ReadonlySet<string> {
-    return new Set(this.runningDistributedLockKeys);
+    return new Set(this.runningDistributedLeaseCounts.keys());
   }
 
   private registerDecoratorTasks(): void {
@@ -794,7 +794,10 @@ export class CronLifecycleService
     }
 
     const lockRenewalMonitor = this.distributedLocks.startLockRenewalMonitor(descriptor, lease);
-    this.runningDistributedLockKeys.add(descriptor.lockKey);
+    this.runningDistributedLeaseCounts.set(
+      descriptor.lockKey,
+      (this.runningDistributedLeaseCounts.get(descriptor.lockKey) ?? 0) + 1,
+    );
 
     try {
       await this.executeTask(descriptor, taskState, async () => {
@@ -803,7 +806,14 @@ export class CronLifecycleService
       });
     } finally {
       lockRenewalMonitor.stop();
-      this.runningDistributedLockKeys.delete(descriptor.lockKey);
+      const runningLeaseCount = this.runningDistributedLeaseCounts.get(descriptor.lockKey);
+
+      if (runningLeaseCount === 1) {
+        this.runningDistributedLeaseCounts.delete(descriptor.lockKey);
+      } else if (runningLeaseCount !== undefined) {
+        this.runningDistributedLeaseCounts.set(descriptor.lockKey, runningLeaseCount - 1);
+      }
+
       const released = await this.distributedLocks.releaseLock(
         lease,
         this.shutdownPromise ? this.getRemainingShutdownTimeoutMs() : undefined,

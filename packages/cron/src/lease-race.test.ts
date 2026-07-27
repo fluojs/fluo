@@ -94,6 +94,40 @@ class DelayedFirstReleaseRedisClient {
   }
 }
 
+class ExpiringLeaseRedisClient {
+  private readonly locks = new Map<string, string>();
+
+  expire(key: string): void {
+    this.locks.delete(key);
+  }
+
+  hasLock(key: string): boolean {
+    return this.locks.has(key);
+  }
+
+  async set(key: string, value: string, _mode: 'PX', _ttl: number, _existence: 'NX'): Promise<'OK' | null> {
+    if (this.locks.has(key)) {
+      return null;
+    }
+
+    this.locks.set(key, value);
+    return 'OK';
+  }
+
+  async eval(script: string, _keysLength: number, key: string, token: string): Promise<number> {
+    if (script.includes('PEXPIRE')) {
+      return this.locks.get(key) === token ? 1 : 0;
+    }
+
+    if (!script.includes('DEL') || this.locks.get(key) !== token) {
+      return 0;
+    }
+
+    this.locks.delete(key);
+    return 1;
+  }
+}
+
 function createManualScheduler(): {
   readonly callbacks: Array<() => Promise<void>>;
   readonly scheduler: CronScheduler;
@@ -186,5 +220,70 @@ describe('Cron distributed lease race safety', () => {
     secondTaskFinished.resolve();
     await secondTick;
     await secondApp.close();
+  });
+
+  it('preserves a newer same-manager lease when stale work settles before shutdown', async () => {
+    // Given
+    const redis = new ExpiringLeaseRedisClient();
+    const scheduled = createManualScheduler();
+    const staleTaskFinished = createDeferred();
+    const staleTaskStarted = createDeferred();
+    const currentTaskFinished = createDeferred();
+    const currentTaskStarted = createDeferred();
+    const lockKey = 'lease-race:shared-task';
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: { enabled: true, keyPrefix: 'lease-race', lockTtlMs: 60_000 },
+          scheduler: scheduled.scheduler,
+          shutdown: { timeoutMs: 0 },
+        }),
+      ],
+    });
+
+    const app = await bootstrapApplication({
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+    registry.addCron(
+      'stale-task',
+      CronExpression.EVERY_SECOND,
+      async () => {
+        staleTaskStarted.resolve();
+        await staleTaskFinished.promise;
+      },
+      { key: 'shared-task' },
+    );
+    registry.addCron(
+      'current-task',
+      CronExpression.EVERY_SECOND,
+      async () => {
+        currentTaskStarted.resolve();
+        await currentTaskFinished.promise;
+      },
+      { key: 'shared-task' },
+    );
+
+    const staleTick = requireValue(scheduled.callbacks[0], 'Expected the stale cron callback.')();
+    await staleTaskStarted.promise;
+    redis.expire(lockKey);
+    const currentTick = requireValue(scheduled.callbacks[1], 'Expected the current cron callback.')();
+    await currentTaskStarted.promise;
+    staleTaskFinished.resolve();
+    await staleTick;
+
+    // When
+    await app.close();
+
+    // Then
+    try {
+      expect(redis.hasLock(lockKey)).toBe(true);
+    } finally {
+      currentTaskFinished.resolve();
+      await currentTick;
+    }
   });
 });
