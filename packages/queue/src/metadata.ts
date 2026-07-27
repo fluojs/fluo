@@ -19,20 +19,20 @@ function getStandardQueueWorkerMetadata(target: Function): QueueWorkerMetadata |
 }
 
 /**
- * Define queue worker metadata.
+ * Stores queue worker metadata for a decorated worker class.
  *
- * @param target The target.
- * @param metadata The metadata.
+ * @param target Decorated worker class that owns the metadata.
+ * @param metadata Job type and worker options to store for the class.
  */
 export function defineQueueWorkerMetadata(target: Function, metadata: QueueWorkerMetadata): void {
   queueWorkerMetadataStore.set(target, cloneQueueWorkerMetadata(metadata));
 }
 
 /**
- * Get queue worker metadata.
+ * Reads queue worker metadata for a decorated worker class.
  *
- * @param target The target.
- * @returns The get queue worker metadata result.
+ * @param target Worker class whose metadata should be read.
+ * @returns A cloned metadata snapshot, or `undefined` when the class has no queue worker metadata.
  */
 export function getQueueWorkerMetadata(target: Function): QueueWorkerMetadata | undefined {
   const stored = queueWorkerMetadataStore.get(target);
