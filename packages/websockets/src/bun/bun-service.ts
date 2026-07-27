@@ -166,12 +166,10 @@ export class BunWebSocketGatewayLifecycleService
         this.handleUpgradeRequest(request, server, descriptorsByPath),
       ),
       websocket: {
-        backpressureLimit: this.resolveBackpressureLimit(),
         close: (socket, code, reason) => {
           this.unregisterSocket(socket.data.state.socketId);
           this.handleSocketClose(socket, code, reason);
         },
-        closeOnBackpressureLimit: this.moduleOptions.backpressure?.policy === 'close',
         error: (socket, error) => {
           this.unregisterSocket(socket.data.state.socketId);
           this.logger.error('WebSocket gateway socket emitted an error.', error, LIFECYCLE_LOG_CONTEXT);
@@ -613,16 +611,6 @@ export class BunWebSocketGatewayLifecycleService
     }
 
     this.clearBufferedMessages(state);
-  }
-
-  private resolveBackpressureLimit(): number {
-    const configured = this.moduleOptions.backpressure?.maxBufferedAmountBytes;
-
-    if (!isFinitePositiveInteger(configured)) {
-      return 1_048_576;
-    }
-
-    return configured;
   }
 
   private async resolveUpgradeRejection(

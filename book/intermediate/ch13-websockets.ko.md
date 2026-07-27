@@ -140,7 +140,7 @@ export class OrderStatusGateway {
 
 Fan-out 사용 사례에서는 모든 socket을 custom map에 직접 보관하는 대신 패키지의 room contract를 주입하세요. `WebSocketRoomService`는 `joinRoom(socketId, room)`, `leaveRoom(socketId, room)`, `broadcastToRoom(room, event, data)`, `getRooms(socketId)`를 지원합니다. Broadcast는 현재 room에 있는 열린 socket에 `{ event, data }` 형태의 JSON frame을 보냅니다. Node.js 기반 adapter는 전송 전에 설정된 `backpressure` policy를 적용하지만, fetch-style runtime(`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`)은 room broadcast에 backpressure policy를 적용하지 않습니다.
 
-`WebSocketRoomService`는 runtime lifecycle service가 구현하는 type-only contract입니다. `@Inject(...)`로 lifecycle service token을 주입하고 constructor parameter를 `WebSocketRoomService`로 type 지정하세요. Root `@fluojs/websockets`와 `@fluojs/websockets/node` entrypoint는 `WebSocketGatewayLifecycleService`를 DI token으로 노출하고, runtime-specific subpath는 13.6절의 runtime 표에 나열된 해당 `*WebSocketGatewayLifecycleService` token을 노출합니다.
+`WebSocketRoomService`는 runtime lifecycle service가 구현하는 type-only contract입니다. `@Inject(...)`로 lifecycle service token을 주입하고 constructor parameter를 `WebSocketRoomService`로 type 지정하세요. Root `@fluojs/websockets` entrypoint는 `WebSocketGatewayLifecycleService`를 DI token으로 노출하고, 명시적 `@fluojs/websockets/node` subpath는 `NodeWebSocketGatewayLifecycleService`를 노출합니다. 다른 runtime-specific subpath는 13.6절의 runtime 표에 나열된 해당 `*WebSocketGatewayLifecycleService` token을 노출합니다.
 
 ```typescript
 import { Inject } from '@fluojs/core';
@@ -232,7 +232,7 @@ WebSocket이 도입되면서 주문 흐름은 더 직접적인 실시간 계약�
 - `@WebSocketGateway` 클래스는 connection lifecycle과 message routing을 관리합니다.
 - `upgrade.guard`를 사용하면 서버 리소스를 소모하기 전에 인증되지 않은 handshake를 거부할 수 있습니다.
 - Runtime-specific subpath는 실시간 로직이 Node, Bun, Deno, Cloudflare Workers 간에 이식 가능하도록 보장합니다.
-- `WebSocketRoomService`는 gateway에 문서화된 room membership 및 broadcast contract를 제공합니다. runtime lifecycle service token(root/Node entrypoint는 `WebSocketGatewayLifecycleService`, runtime subpath는 해당 `*WebSocketGatewayLifecycleService`)을 `@Inject(...)`로 주입하고 parameter를 `WebSocketRoomService`로 type 지정하세요.
+- `WebSocketRoomService`는 gateway에 문서화된 room membership 및 broadcast contract를 제공합니다. Root entrypoint의 `WebSocketGatewayLifecycleService`, 명시적 Node subpath의 `NodeWebSocketGatewayLifecycleService`, 또는 다른 runtime subpath의 해당 `*WebSocketGatewayLifecycleService` token을 `@Inject(...)`로 주입하고 parameter를 `WebSocketRoomService`로 type 지정하세요.
 - Text 및 binary payload는 `@OnMessage()` handler가 실행되기 전에 정규화됩니다.
 - Heartbeat와 bounded default는 리소스 누수와 ghost connection을 방지합니다.
 

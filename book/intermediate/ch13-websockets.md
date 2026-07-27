@@ -140,7 +140,7 @@ This connection bridges the asynchronous domain and the real-time surface. The G
 
 For fan-out use cases, inject the package's room contract instead of keeping every socket in a custom map. `WebSocketRoomService` supports `joinRoom(socketId, room)`, `leaveRoom(socketId, room)`, `broadcastToRoom(room, event, data)`, and `getRooms(socketId)`. Broadcasts send a JSON frame shaped as `{ event, data }` to currently open sockets in the room. The Node.js-backed adapter applies the configured `backpressure` policy before writing to sockets; the fetch-style runtimes (`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers`) do not apply a backpressure policy to room broadcasts.
 
-`WebSocketRoomService` is a type-only contract implemented by the runtime lifecycle service. Inject the lifecycle service token with `@Inject(...)` and type the constructor parameter as `WebSocketRoomService`. The root `@fluojs/websockets` and `@fluojs/websockets/node` entrypoints expose `WebSocketGatewayLifecycleService` as the DI token; runtime-specific subpaths expose the matching `*WebSocketGatewayLifecycleService` token listed in the runtime table in Section 13.6.
+`WebSocketRoomService` is a type-only contract implemented by the runtime lifecycle service. Inject the lifecycle service token with `@Inject(...)` and type the constructor parameter as `WebSocketRoomService`. The root `@fluojs/websockets` entrypoint exposes `WebSocketGatewayLifecycleService` as the DI token, while the explicit `@fluojs/websockets/node` subpath exposes `NodeWebSocketGatewayLifecycleService`; the other runtime-specific subpaths expose the matching `*WebSocketGatewayLifecycleService` token listed in the runtime table in Section 13.6.
 
 ```typescript
 import { Inject } from '@fluojs/core';
@@ -232,7 +232,7 @@ This flow reduces repeated polling by users and gives them an experience where t
 - `@WebSocketGateway` classes manage the connection lifecycle and message routing.
 - You can use `upgrade.guard` to reject unauthenticated handshakes before they consume server resources.
 - Runtime-specific subpaths ensure realtime logic stays portable across Node, Bun, Deno, and Cloudflare Workers.
-- `WebSocketRoomService` gives gateways a documented room membership and broadcast contract; inject the runtime lifecycle service token (`WebSocketGatewayLifecycleService` on the root/Node entrypoint, or the matching `*WebSocketGatewayLifecycleService` on runtime subpaths) with `@Inject(...)` and type the parameter as `WebSocketRoomService`.
+- `WebSocketRoomService` gives gateways a documented room membership and broadcast contract; inject `WebSocketGatewayLifecycleService` from the root entrypoint, `NodeWebSocketGatewayLifecycleService` from the explicit Node subpath, or the matching `*WebSocketGatewayLifecycleService` from another runtime subpath with `@Inject(...)`, and type the parameter as `WebSocketRoomService`.
 - Text and binary payloads are normalized before `@OnMessage()` handlers run.
 - Heartbeat and bounded defaults prevent resource leaks and ghost connections.
 

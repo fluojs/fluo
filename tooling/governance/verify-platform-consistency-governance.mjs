@@ -640,8 +640,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // family-scoped reuse revocation, subject-wide compatibility fallback, and
   // consume-only rotation regression coverage, plus WebSocket room injection
   // token discoverability (WebSocketRoomService as a type-only contract injected
-  // via @Inject(...) with the root/Node WebSocketGatewayLifecycleService token
-  // or the matching *WebSocketGatewayLifecycleService token on runtime subpaths)
+  // via @Inject(...) with root WebSocketGatewayLifecycleService, explicit Node
+  // NodeWebSocketGatewayLifecycleService, or the matching runtime-subpath token)
   // and room broadcast backpressure runtime limits (Node.js-backed adapter only;
   // fetch-style runtimes do not apply a backpressure policy to room broadcasts).
 
