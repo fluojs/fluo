@@ -13,8 +13,9 @@ import { createReactFlightResponse } from './rsc.js';
 
 type TestStreamOptions = {
   readonly closeAfterFlush?: boolean;
+  readonly onCloseListenerRemoved?: () => void;
   readonly onUnobservedClose?: () => void;
-  readonly waitForDrain?: () => Promise<void>;
+  readonly waitForDrain?: (emitClose: () => void) => Promise<void>;
   readonly write?: (chunk: string | Uint8Array) => boolean;
 };
 
@@ -57,20 +58,24 @@ function createResponse(stream: FrameworkResponseStream): FrameworkResponse {
 
 function createResponseStream(options: TestStreamOptions = {}): FrameworkResponseStream {
   const closeListeners = new Set<() => void>();
+  const waitForDrain = options.waitForDrain;
   let closed = false;
+  const emitClose = (): void => {
+    const listeners = [...closeListeners];
+    for (const listener of listeners) {
+      listener();
+    }
+    if (listeners.length === 0) {
+      options.onUnobservedClose?.();
+    }
+  };
   const stream: FrameworkResponseStream = {
     close() {
       if (closed) {
         return;
       }
       closed = true;
-      const listeners = [...closeListeners];
-      for (const listener of listeners) {
-        listener();
-      }
-      if (listeners.length === 0) {
-        options.onUnobservedClose?.();
-      }
+      emitClose();
     },
     get closed() {
       return closed;
@@ -87,10 +92,11 @@ function createResponseStream(options: TestStreamOptions = {}): FrameworkRespons
       }
       closeListeners.add(listener);
       return () => {
+        options.onCloseListenerRemoved?.();
         closeListeners.delete(listener);
       };
     },
-    waitForDrain: options.waitForDrain ?? (() => Promise.resolve()),
+    waitForDrain: waitForDrain ? () => waitForDrain(emitClose) : () => Promise.resolve(),
     write: options.write ?? (() => !closed),
   };
 
@@ -157,6 +163,55 @@ describe('experimental RSC Flight stream lifecycle', () => {
     }
   });
 
+  it('cancels before another Flight read when sink close resolves drain without marking the response closed', async () => {
+    // Given: a Node-like Flight sink whose close event resolves backpressure without setting closed.
+    const cancel = vi.fn();
+    const removeCloseListener = vi.fn();
+    let hostClosed = false;
+    let pullCount = 0;
+    let readAfterClose = false;
+    const source = new ReadableStream<Uint8Array>({
+      cancel,
+      pull(controller) {
+        pullCount += 1;
+        if (pullCount === 1) {
+          controller.enqueue(new Uint8Array([1]));
+          return;
+        }
+
+        readAfterClose = hostClosed;
+        controller.close();
+      },
+    }, { highWaterMark: 0 });
+    const stream = createResponseStream({
+      onCloseListenerRemoved: removeCloseListener,
+      waitForDrain: (emitClose) => {
+        return new Promise<void>((resolve) => {
+          queueMicrotask(() => {
+            hostClosed = true;
+            emitClose();
+            resolve();
+          });
+        });
+      },
+      write: () => false,
+    });
+    const app = await bootstrapStreamingFlightApp(source);
+
+    try {
+      // When: ordinary dispatch observes host close while the shared stream pipe waits for drain.
+      await app.dispatch(createRequest(), createResponse(stream));
+
+      // Then: Flight shares the same persistent close observation and exactly-once cleanup.
+      expect(readAfterClose).toBe(false);
+      expect(cancel).toHaveBeenCalledTimes(1);
+      expect(removeCloseListener).toHaveBeenCalledTimes(1);
+      expect(source.locked).toBe(false);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('preserves a sink write failure while cancelling the unfinished reader once and releasing its lock', async () => {
     // Given: an unfinished Flight source and a response sink whose write throws.
     const cancel = vi.fn();
@@ -192,7 +247,9 @@ describe('experimental RSC Flight stream lifecycle', () => {
 
   it('cancels the unfinished reader once and releases its lock when sink drain fails', async () => {
     // Given: an unfinished Flight source and a backpressured sink whose drain wait rejects.
-    const cancel = vi.fn();
+    const cancel = vi.fn(() => {
+      throw new Error('reader cancellation failed');
+    });
     const source = new ReadableStream<Uint8Array>({
       cancel,
       pull(controller) {
@@ -206,13 +263,17 @@ describe('experimental RSC Flight stream lifecycle', () => {
       },
       write: () => false,
     });
-    const app = await bootstrapStreamingFlightApp(source);
+    let observedFailure: unknown;
+    const app = await bootstrapStreamingFlightApp(source, (error) => {
+      observedFailure = error;
+    });
 
     try {
       // When: ordinary HTTP dispatch reaches the failed drain boundary.
       await app.dispatch(createRequest(), createResponse(stream));
 
-      // Then: cleanup cancels exactly once and releases the reader lock.
+      // Then: cleanup retains the drain failure, cancels exactly once, and releases the reader lock.
+      expect(observedFailure).toBe(drainFailure);
       expect(cancel).toHaveBeenCalledTimes(1);
       expect(source.locked).toBe(false);
     } finally {

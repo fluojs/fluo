@@ -27,7 +27,10 @@ function createRequest(): FrameworkRequest {
   };
 }
 
-function createResponse(onWrite: () => void): FrameworkResponse {
+function createResponse(
+  onWrite: () => void,
+  streamOverride?: FrameworkResponseStream,
+): FrameworkResponse {
   let closed = false;
   const stream: FrameworkResponseStream = {
     close() {
@@ -63,7 +66,7 @@ function createResponse(onWrite: () => void): FrameworkResponse {
       this.statusCode = code;
       this.statusSet = true;
     },
-    stream,
+    stream: streamOverride ?? stream,
   };
 }
 
@@ -103,6 +106,78 @@ describe('renderReactResponse stream lifecycle', () => {
 
     // Then: source work is cancelled exactly once and no reader lock remains held.
     expect(cancel).toHaveBeenCalledTimes(1);
+    expect(source.locked).toBe(false);
+  });
+
+  it('cancels before another read when sink close resolves drain without marking the response closed', async () => {
+    // Given: Node-like backpressure where close resolves drain while writableEnded-backed closed stays false.
+    const cancel = vi.fn();
+    const removeCloseListener = vi.fn();
+    const closeListeners = new Set<() => void>();
+    let hostClosed = false;
+    let pullCount = 0;
+    let readAfterClose = false;
+    const source = new ReadableStream<Uint8Array>({
+      cancel,
+      pull(controller) {
+        pullCount += 1;
+        if (pullCount === 1) {
+          controller.enqueue(TEXT_ENCODER.encode('<main>partial</main>'));
+          return;
+        }
+
+        readAfterClose = hostClosed;
+        controller.close();
+      },
+    }, { highWaterMark: 0 });
+    const stream: FrameworkResponseStream = {
+      close() {},
+      get closed() {
+        return false;
+      },
+      onClose(listener) {
+        closeListeners.add(listener);
+        return () => {
+          removeCloseListener();
+          closeListeners.delete(listener);
+        };
+      },
+      waitForDrain() {
+        return new Promise<void>((resolve) => {
+          queueMicrotask(() => {
+            hostClosed = true;
+            for (const listener of [...closeListeners]) {
+              listener();
+            }
+            resolve();
+          });
+        });
+      },
+      write() {
+        return false;
+      },
+    };
+    const response = createResponse(() => undefined, stream);
+    const context = createRequestContext({
+      container: new Container(),
+      metadata: {},
+      request: createRequest(),
+      response,
+    });
+    const renderToReadableStream = vi.fn<ReactReadableStreamRenderer>(async () => source);
+
+    // When: the host emits close while the renderer is waiting for drain.
+    await renderReactResponse(
+      createReactServerEntry(createElement('main', null, 'Dashboard')),
+      context,
+      { renderToReadableStream },
+    );
+
+    // Then: the close is retained across backpressure and cleanup is exactly once.
+    expect(readAfterClose).toBe(false);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(removeCloseListener).toHaveBeenCalledTimes(1);
+    expect(closeListeners.size).toBe(0);
     expect(source.locked).toBe(false);
   });
 

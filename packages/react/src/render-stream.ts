@@ -7,6 +7,12 @@ type StreamStopWait = {
   readonly promise: Promise<StreamStop>;
 };
 
+type ResponseCloseObserver = {
+  readonly cleanup: () => void;
+  readonly isClosed: () => boolean;
+  readonly promise: Promise<'closed'> | undefined;
+};
+
 /** Minimal request abort surface used while React Web Streams are read. */
 export type ReactAbortSource = Pick<FrameworkRequest, 'isAborted' | 'signal'>;
 
@@ -35,36 +41,32 @@ function createAbortWait(signal: AbortSignal | undefined): StreamStopWait | unde
   };
 }
 
-function createResponseCloseWait(target: FrameworkResponseStream | undefined): StreamStopWait | undefined {
-  if (!target) {
-    return undefined;
-  }
-
-  if (target.closed) {
-    return { cleanup: () => undefined, promise: Promise.resolve('closed') };
-  }
-
-  if (!target.onClose) {
-    return undefined;
-  }
-
+function createResponseCloseObserver(target: FrameworkResponseStream): ResponseCloseObserver {
+  let closeObserved = target.closed;
   let removeListener: (() => void) | undefined;
-  const promise = new Promise<'closed'>((resolve) => {
-    removeListener = target.onClose?.(() => resolve('closed')) ?? undefined;
-  });
+  const promise = closeObserved
+    ? Promise.resolve<'closed'>('closed')
+    : target.onClose
+      ? new Promise<'closed'>((resolve) => {
+        removeListener = target.onClose?.(() => {
+          closeObserved = true;
+          resolve('closed');
+        }) ?? undefined;
+      })
+      : undefined;
 
   return {
-    cleanup: () => removeListener?.(),
+    cleanup: () => {
+      removeListener?.();
+      removeListener = undefined;
+    },
+    isClosed: () => closeObserved || target.closed,
     promise,
   };
 }
 
 function isReactRequestAborted(source: ReactAbortSource): boolean {
   return source.isAborted?.() === true || source.signal?.aborted === true;
-}
-
-function isResponseSinkClosed(target: FrameworkResponseStream | undefined): boolean {
-  return target?.closed === true;
 }
 
 /**
@@ -85,31 +87,30 @@ async function readNextChunk(
 async function readNextChunk(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   abortSource: ReactAbortSource,
-  target: FrameworkResponseStream,
+  responseClose: ResponseCloseObserver,
 ): Promise<ReadableStreamReadResult<Uint8Array> | StreamStop>;
 async function readNextChunk(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   abortSource: ReactAbortSource,
-  target?: FrameworkResponseStream,
+  responseClose?: ResponseCloseObserver,
 ): Promise<ReadableStreamReadResult<Uint8Array> | StreamStop> {
   if (isReactRequestAborted(abortSource)) {
     return 'aborted';
   }
 
-  if (isResponseSinkClosed(target)) {
+  if (responseClose?.isClosed()) {
     return 'closed';
   }
 
-  const stops: StreamStopWait[] = [];
+  const stops: Promise<StreamStop>[] = [];
   const abort = createAbortWait(abortSource.signal);
-  const responseClose = createResponseCloseWait(target);
 
   if (abort) {
-    stops.push(abort);
+    stops.push(abort.promise);
   }
 
-  if (responseClose) {
-    stops.push(responseClose);
+  if (responseClose?.promise) {
+    stops.push(responseClose.promise);
   }
 
   if (stops.length === 0) {
@@ -117,22 +118,20 @@ async function readNextChunk(
     if (isReactRequestAborted(abortSource)) {
       return 'aborted';
     }
-    return isResponseSinkClosed(target) ? 'closed' : next;
+    return responseClose?.isClosed() ? 'closed' : next;
   }
 
   try {
-    const next = await Promise.race([reader.read(), ...stops.map((stop) => stop.promise)]);
+    const next = await Promise.race([reader.read(), ...stops]);
     if (next === 'aborted' || isReactRequestAborted(abortSource)) {
       return 'aborted';
     }
-    if (next === 'closed' || isResponseSinkClosed(target)) {
+    if (next === 'closed' || responseClose?.isClosed()) {
       return 'closed';
     }
     return next;
   } finally {
-    for (const stop of stops) {
-      stop.cleanup();
-    }
+    abort?.cleanup();
   }
 }
 
@@ -201,6 +200,7 @@ export async function pipeReadableStream(
   abortSource: ReactAbortSource,
 ): Promise<void> {
   const reader = stream.getReader();
+  let responseClose: ResponseCloseObserver | undefined;
   let cancelPromise: Promise<void> | undefined;
   let sourceCompleted = false;
   let stopped = false;
@@ -210,8 +210,10 @@ export async function pipeReadableStream(
   };
 
   try {
-    while (!isReactRequestAborted(abortSource) && !target.closed) {
-      const next = await readNextChunk(reader, abortSource, target);
+    responseClose = createResponseCloseObserver(target);
+
+    while (!isReactRequestAborted(abortSource) && !responseClose.isClosed()) {
+      const next = await readNextChunk(reader, abortSource, responseClose);
 
       if (next === 'aborted' || next === 'closed') {
         stopped = true;
@@ -226,8 +228,21 @@ export async function pipeReadableStream(
       try {
         const accepted = target.write(next.value);
 
+        if (responseClose.isClosed()) {
+          stopped = true;
+          break;
+        }
+
         if (!accepted) {
-          await target.waitForDrain?.();
+          const drain = target.waitForDrain?.();
+          if (drain) {
+            await (responseClose.promise ? Promise.race([drain, responseClose.promise]) : drain);
+          }
+
+          if (responseClose.isClosed()) {
+            stopped = true;
+            break;
+          }
         }
       } catch (error) {
         await Promise.allSettled([cancelReaderOnce()]);
@@ -235,10 +250,11 @@ export async function pipeReadableStream(
       }
     }
 
-    if (!sourceCompleted && (stopped || isReactRequestAborted(abortSource) || target.closed)) {
+    if (!sourceCompleted && (stopped || isReactRequestAborted(abortSource) || responseClose.isClosed())) {
       await cancelReaderOnce();
     }
   } finally {
+    responseClose?.cleanup();
     reader.releaseLock();
 
     if (!target.closed) {
