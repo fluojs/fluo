@@ -160,7 +160,7 @@ class AppModule {}
 
 양수 Redis TTL 값은 초 단위로 받으며 소수도 허용됩니다. Redis `EX`는 정수 초를 사용하므로 Redis 만료 시간은 다음 정수 초로 올림하지만, fluo는 저장된 엔트리 안에 밀리초 정밀도의 만료 timestamp도 기록하고 해당 timestamp에 도달하면 값을 만료된 것으로 처리합니다. Redis 만료를 의도적으로 사용하지 않으려면 `ttl: 0`을 사용하세요.
 
-Redis reset 소유권은 기본값이 `fluo:cache:`이며 내장 `RedisStore` namespace로 전달되는 top-level `keyPrefix` 옵션으로 제한됩니다. Redis 기반 저장소에서 `CacheService.reset()`은 해당 prefix 아래의 키만 삭제하므로, cache prefix 밖의 애플리케이션 소유 Redis 데이터는 유지됩니다. 의도적으로 빈 `keyPrefix`를 설정하면 reset은 `*`를 scan하지 않고 현재 `RedisStore` 인스턴스가 쓴 키로만 제한됩니다. 재시작 이후나 여러 프로세스에 걸친 캐시 엔트리까지 reset해야 한다면 비어 있지 않은 애플리케이션 전용 prefix를 사용하세요.
+Redis reset 소유권은 기본값이 `fluo:cache:`이며 내장 `RedisStore` namespace로 전달되는 top-level `keyPrefix` 옵션으로 제한됩니다. Redis 기반 저장소에서 `CacheService.reset()`은 해당 prefix 아래의 키만 삭제하므로, cache prefix 밖의 애플리케이션 소유 Redis 데이터는 유지됩니다. 비어 있지 않은 prefix의 Redis glob metacharacter(`*`, `?`, `[`, `]`, `\`)는 `SCAN` 전에 escape되므로 설정한 prefix가 reset 소유권을 넓히지 않고 literal namespace로 유지됩니다. 의도적으로 빈 `keyPrefix`를 설정하면 reset은 `*`를 scan하지 않고 현재 `RedisStore` 인스턴스가 쓴 키로만 제한됩니다. 재시작 이후나 여러 프로세스에 걸친 캐시 엔트리까지 reset해야 한다면 비어 있지 않은 애플리케이션 전용 prefix를 사용하세요.
 
 ### 쿼리 매개변수 기반 캐싱
 
@@ -175,7 +175,7 @@ CacheModule.forRoot({
 })
 ```
 
-완전히 다른 키 전략이 필요하다면 `httpKeyStrategy`에 함수를 전달하거나, literal key 또는 key factory를 받는 `@CacheKey(...)`를 사용하세요. 요청을 인식하는 cache key를 만들 때 지원되는 확장 경로는 이러한 function-based hook이며, cache key 생성만 바꾸기 위해 `CacheInterceptor`를 subclass하지 않습니다.
+완전히 다른 키 전략이 필요하다면 `httpKeyStrategy`에 함수를 전달하거나, literal key 또는 key factory를 받는 `@CacheKey(...)`를 사용하세요. 빈 literal `@CacheKey('')`도 명시적인 key로 유지되며, decorator metadata가 없을 때만 설정된 `httpKeyStrategy`를 선택합니다. 요청을 인식하는 cache key를 만들 때 지원되는 확장 경로는 이러한 function-based hook이며, cache key 생성만 바꾸기 위해 `CacheInterceptor`를 subclass하지 않습니다.
 
 ```typescript
 CacheModule.forRoot({
@@ -263,7 +263,7 @@ class ProductController {
 }
 ```
 
-이렇게 지원되는 HTTP 경로에서는 응답이 성공적으로 commit된 뒤에 캐시를 삭제합니다. `response.send(...)`가 reject되면 지연 eviction을 취소하여 실패한 commit이 이전 캐시된 읽기 결과를 삭제하지 않도록 합니다. 어댑터 경로가 `response.send(...)`를 호출하지 않더라도, 인터셉터는 bounded fallback timer를 통해 성공한 쓰기 이후 stale 엔트리가 무기한 남지 않도록 보장합니다. fallback timer는 response commit 경로가 호출되지 않았을 때만 eviction을 수행하며, `response.send(...)`가 여전히 pending 상태인 동안에는 send 경로가 eviction(성공 시) 또는 취소(실패 시)를 소유하므로 fallback timer가 pending send 하에서 eviction을 실행하지 않습니다. 또한 지연 eviction 실패는 인터셉터 내부에 containment되어 cache key factory나 cache store 삭제 오류가 응답 이후 unhandled promise rejection으로 노출되지 않습니다.
+이렇게 지원되는 HTTP 경로에서는 응답이 성공적으로 commit된 뒤에 캐시를 삭제합니다. `response.send(...)`가 reject되면 지연 eviction을 취소하여 실패한 commit이 이전 캐시된 읽기 결과를 삭제하지 않도록 합니다. 어댑터 경로가 `response.send(...)`를 호출하지 않더라도, 인터셉터는 bounded fallback timer를 통해 성공한 쓰기 이후 stale 엔트리가 무기한 남지 않도록 보장합니다. fallback timer는 response commit 경로가 호출되지 않았을 때만 eviction을 수행하며, `response.send(...)`가 여전히 pending 상태인 동안에는 send 경로가 eviction(성공 시) 또는 취소(실패 시)를 소유하므로 fallback timer가 pending send 하에서 eviction을 실행하지 않습니다. Framework가 생성한 timer는 Node.js에서 unref되고 send 경로가 settle될 때 clear되므로 pending fallback work가 process shutdown을 계속 붙잡지 않습니다. 또한 지연 eviction 실패는 인터셉터 내부에 containment되어 cache key factory나 cache store 삭제 오류가 응답 이후 unhandled promise rejection으로 노출되지 않습니다.
 
 ## 공개 API 개요
 
