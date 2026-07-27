@@ -50,7 +50,7 @@ export function TimingPanel({ state }: TimingPanelProps) {
     <section className="card timing-card">
       <div className="section-title-row">
         <div>
-          <p className="eyebrow">Bootstrap, restart, and request timing</p>
+          <p className="eyebrow">Bootstrap timing</p>
           <h2>Timing</h2>
         </div>
       </div>

@@ -68,7 +68,7 @@ Live mode shows:
 - module/provider/controller/route graph nodes and import/export/ownership/dependency edges;
 - HTTP method/path/controller handler route descriptors;
 - recent request flow with route/handler correlation, success/error, status code, and duration;
-- bootstrap/restart/request timing summaries;
+- bootstrap timing summaries for live and static/report data;
 - runtime/request diagnostics with severity, target, message, and fix hints where available.
 
 MVP request flow intentionally means route/handler and dependency-graph correlation, not full method-level service call-chain tracing.
