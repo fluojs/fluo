@@ -15,7 +15,7 @@
 
 fluo 기능을 테스트 주도 개발(TDD)로 만들 때는 다음 ladder를 사용합니다.
 
-1. **Unit**: 빠른 service, controller, helper, failure branch 테스트는 `src/**` 아래 source 가까이에 둡니다. 클래스를 직접 구성하고 명시적 fake를 넘기거나, typed double이 설정을 명확하게 만들 때 `@fluojs/testing/mock`의 `createMock(...)`, `createDeepMock(...)`, `asMock(...)`, `mockToken(...)` 헬퍼를 사용합니다.
+1. **Unit**: 빠른 service, controller, helper, failure branch 테스트는 `src/**` 아래 source 가까이에 둡니다. 클래스를 직접 구성하고 명시적 fake를 넘기거나, typed double이 설정을 명확하게 만들 때 `@fluojs/testing/mock`의 `createMock(...)`, `createDeepMock(...)`, 함수만 받아 Vitest `Mock<T>`로 좁히는 `asMock(fn)`, `mockToken(...)` 헬퍼를 사용합니다.
 2. **Slice/module integration**: role-specific slice 테스트에서는 `createTestingModule({ rootModule })` 또는 `Test.createTestingModule({ rootModule })`로 프로덕션과 같은 형태의 module graph를 컴파일합니다. 이 계층은 DI wiring, provider visibility, lifecycle hook, 그리고 `.compile()` 전 명시적 provider/guard/interceptor/filter/module override를 검증하는 위치입니다.
 3. **HTTP e2e-style**: request-pipeline 테스트는 전용 app-level test 영역에 두고 `createTestApp({ rootModule })`로 virtual app을 만듭니다. header, query parameter, request body, principal, response assertion에는 기본 route assertion helper인 `app.request(...).send()`를 사용하고, assertion 실패 후에도 resource가 해제되도록 app은 `finally`에서 닫습니다. 더 낮은 수준의 dispatch path 자체가 계약일 때만 `app.dispatch(...)`를 사용합니다.
 4. **Platform/conformance**: `@fluojs/testing/*-conformance`와 portability harness subpath는 adapter/runtime package 전용으로 남겨 둡니다. 애플리케이션 기능 테스트는 platform-facing contract를 증명하는 경우가 아니면 이 harness를 사용하지 않습니다.
