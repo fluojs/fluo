@@ -539,15 +539,15 @@ function createLifecyclePublicationFailureError(dispatchError: unknown, ...publi
 }
 
 function stableNotificationHash(notification: NotificationDispatchRequest): string {
-  let hash = 0x811c9dc5;
+  let hash = 0xcbf29ce484222325n;
   const input = stableStringify(notification, createStableStringifyContext());
 
   for (let index = 0; index < input.length; index += 1) {
-    hash ^= input.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193) >>> 0;
+    hash ^= BigInt(input.charCodeAt(index));
+    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
   }
 
-  return hash.toString(36).padStart(7, '0');
+  return hash.toString(36).padStart(13, '0');
 }
 
 interface StableStringifyContext {
@@ -686,7 +686,7 @@ function stableStringify(value: unknown, context: StableStringifyContext): strin
   const objectTag = prototype && prototype !== Object.prototype ? `${prototype.constructor?.name ?? 'Object'}:` : '';
   const entries = Object.entries(value as Record<string, unknown>)
     .filter(([, entry]) => entry !== undefined)
-    .sort(([left], [right]) => left.localeCompare(right));
+    .sort(([left], [right]) => compareStableString(left, right));
 
   const serialized = `${objectTag}{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${stableStringify(entry, context)}`).join(',')}}`;
   context.seen.delete(value);

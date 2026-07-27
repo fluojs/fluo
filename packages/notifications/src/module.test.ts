@@ -108,7 +108,7 @@ class LifecycleAwarePublisher extends RecordingPublisher {
 }
 
 function expectGeneratedQueueJobId(value: string | undefined): void {
-  expect(value).toMatch(/^notification:email:[a-z0-9]{7}$/);
+  expect(value).toMatch(/^notification:email:[a-z0-9]{13}$/);
 }
 
 class MalformedEnqueueManyQueueAdapter implements NotificationsQueueAdapter {
@@ -1950,7 +1950,7 @@ describe('NotificationsModule', () => {
 
     expectGeneratedQueueJobId(queue.jobs[0]?.id);
     expect(queue.jobs[1]?.id).toBe(queue.jobs[0]?.id);
-    expect(firstFallback.deliveryId).toMatch(/^fallback:email:[a-z0-9]{7}$/);
+    expect(firstFallback.deliveryId).toMatch(/^fallback:email:[a-z0-9]{13}$/);
     expect(repeatedFallback.deliveryId).toBe(firstFallback.deliveryId);
   });
 
