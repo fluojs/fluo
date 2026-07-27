@@ -112,7 +112,7 @@ export class AppModule {}
 
 Discord registration도 기본적으로 global입니다. `DiscordModule.forRoot(...)`와 `DiscordModule.forRootAsync(...)`는 `global: options.global ?? true`로 `DiscordService`, `DiscordChannel`, `DISCORD`, `DISCORD_CHANNEL`을 export합니다. fluo 옵션은 NestJS `isGlobal`이 아니라 `global?: boolean`이며, migrated module이 Discord provider를 명시적으로 import한 module 안에만 유지해야 할 때만 `global: false`를 설정합니다. Async registration은 fluo injected factory 형태인 `DiscordModule.forRootAsync({ inject, useFactory, global? })`만 지원합니다. NestJS `imports`, `useClass`, `useExisting` 패턴은 최종 Discord option을 반환하기 전에 app-owned provider로 옮기고, `createDiscordProviders(...)`, `DISCORD_OPTIONS`, `NormalizedDiscordModuleOptions` 같은 private provider helper를 import하지 말고 module facade를 감싸세요.
 
-`verifyOnModuleInit`을 사용하면 verification 실패와 shutdown이 동시에 시작되어도 factory-owned transport를 정확히 한 번 닫고, 직접 전달한 app-owned transport는 caller ownership으로 유지합니다. Notification rendering은 lifecycle gate 뒤에서 실행되며 transport delivery와 같은 `AbortSignal`을 받으므로, stopped service는 renderer 작업 전에 요청을 거부하고 renderer는 cancellation에 협력할 수 있습니다.
+`verifyOnModuleInit`을 사용하면 shutdown은 진행 중인 verification이 settle될 때까지 기다린 뒤 factory-owned transport를 정확히 한 번 닫고, 직접 전달한 app-owned transport는 caller ownership으로 유지합니다. Verification과 후속 owned cleanup이 모두 실패하면 Discord는 이를 `shutdown-cleanup`으로 재분류하지 않고 최초 `initialization` phase를 status diagnostics에 유지합니다. Notification rendering은 lifecycle gate 뒤에서 실행되며 transport delivery와 같은 `AbortSignal`을 받으므로, stopped service는 renderer 작업 전에 요청을 거부하고 renderer는 cancellation에 협력할 수 있습니다.
 
 ## 17.3 Standalone Usage: SlackService & DiscordService
 

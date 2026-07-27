@@ -96,6 +96,7 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
   private resolvedTransport: DiscordTransport | undefined;
   private shutdownPromise: Promise<void> | undefined;
   private transportPromise: Promise<DiscordTransport> | undefined;
+  private transportVerificationPromise: Promise<void> | undefined;
 
   constructor(private readonly options: NormalizedDiscordModuleOptions) {}
 
@@ -109,7 +110,6 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
     }
 
     this.lifecycleState = 'stopping';
-    this.lifecycleFailurePhase = undefined;
 
     this.shutdownPromise = this.closeOwnedTransport();
 
@@ -124,7 +124,7 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
       this.lifecycleFailurePhase = undefined;
     } catch (error) {
       this.lifecycleState = 'failed';
-      this.lifecycleFailurePhase = 'shutdown-cleanup';
+      this.lifecycleFailurePhase ??= 'shutdown-cleanup';
       throw new Error('Discord transport failed to close cleanly.', { cause: error });
     }
   }
@@ -140,6 +140,14 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
   private async closeOwnedTransportResourcesOnce(): Promise<void> {
     try {
       const transport = await this.resolveTransportForCleanup();
+      const verificationPromise = this.transportVerificationPromise;
+
+      if (verificationPromise) {
+        await verificationPromise.then(
+          () => undefined,
+          () => undefined,
+        );
+      }
 
       if (transport && this.options.transport.ownsResources && transport.close) {
         await transport.close();
@@ -180,7 +188,8 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
       }
 
       if (this.options.verifyOnModuleInit && transport.verify) {
-        await transport.verify();
+        this.transportVerificationPromise = Promise.resolve(transport.verify());
+        await this.transportVerificationPromise;
       }
 
       if (this.lifecycleState !== 'starting') {
@@ -375,14 +384,15 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
   private clearResolvedTransport(): void {
     this.resolvedTransport = undefined;
     this.transportPromise = undefined;
+    this.transportVerificationPromise = undefined;
   }
 
   private async handleTransportInitializationFailure(error: unknown): Promise<never> {
     const interruptedByShutdown = isShutdownLifecycleState(this.lifecycleState);
+    this.lifecycleFailurePhase ??= 'initialization';
 
     if (!interruptedByShutdown) {
       this.lifecycleState = 'failed';
-      this.lifecycleFailurePhase = 'initialization';
     }
 
     let cause: unknown = error;
@@ -395,7 +405,6 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
 
     if (!interruptedByShutdown && !isShutdownLifecycleState(this.lifecycleState)) {
       this.lifecycleState = 'failed';
-      this.lifecycleFailurePhase = 'initialization';
     }
 
     throw new Error('Discord transport failed to initialize.', { cause });
