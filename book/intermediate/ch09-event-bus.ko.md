@@ -80,6 +80,8 @@ export class OrderEventsModule {}
 
 이 경계는 중요합니다. 이벤트 버스 API는 그대로 유지되고, 뒤에 있는 transport만 바뀝니다. 이 연속성은 앞선 장에서 본 fluo의 설계 철학과 맞닿아 있습니다.
 
+Redis adapter는 message decoding을 소유하지만 Redis client lifecycle은 소유하지 않습니다. `RedisEventBusTransport`는 inbound Redis Pub/Sub message를 JSON decode하고 잘못된 JSON은 handler dispatch 전에 버립니다. 이는 Redis에만 해당하는 규칙이며 모든 `EventBusTransport`에 대한 보장이 아닙니다. `close()`는 자신이 등록한 channel을 unsubscribe하고 message listener를 분리하지만, 호출자가 소유한 `publishClient` 또는 `subscribeClient`를 disconnect하지 않습니다. 해당 client를 생성한 FluoShop lifecycle이 event-bus transport teardown 후 별도로 닫아야 합니다.
+
 ## 9.3 Publish from the write boundary
 
 이벤트에서 가장 흔한 실수는 어디서나 publish하는 것입니다. FluoShop은 그렇게 하지 않습니다. 성공적인 write completion에 가까운 곳에서 domain event를 publish합니다. 즉, 시스템이 상태 변화가 실제로 일어났다고 확신한 뒤에 발행합니다. 실제 구현에서는 transaction이 정리된 뒤 application service나 command handler가 publish하는 경우가 많습니다.
@@ -108,7 +110,7 @@ export class CheckoutService {
 }
 ```
 
-이렇게 하면 write path가 명시적으로 유지됩니다. 서비스는 상태 변화를 계속 소유하고, side effect는 위임됩니다. `waitForHandlers`의 기본값이 `true`이므로 위 코드처럼 await한 publish는 일치하는 local handler와 구성된 transport publish가 각 bound 안에서 settle된 뒤에 완료됩니다. 의도적으로 background reaction이 필요할 때만 `waitForHandlers: false`를 사용하세요. 이 작업들도 shutdown drain 추적에는 계속 포함됩니다.
+이렇게 하면 write path가 명시적으로 유지됩니다. 서비스는 상태 변화를 계속 소유하고, side effect는 위임됩니다. `EventPublishOptions`는 일치하는 local handler 작업과 구성된 transport publication을 모두 제한합니다. `waitForHandlers`의 기본값이 `true`이므로 위 코드처럼 await한 publish는 두 종류의 작업이 `signal` 및 `timeoutMs` bound 안에서 settle된 뒤에 완료됩니다. 이미 abort된 signal은 아직 시작하지 않은 작업을 건너뛰고, 작업이 시작된 뒤 발생한 cancellation이나 timeout은 호출자에게 보이는 wait를 settle하지만 shutdown이 추적하는 underlying work를 종료하지는 않습니다. 의도적으로 background reaction이 필요할 때만 `waitForHandlers: false`를 사용하세요. 이 옵션은 두 종류의 작업을 scheduling한 뒤 반환하고 `timeoutMs`를 무시하며, 해당 작업을 shutdown drain 추적에 유지합니다.
 
 ### 9.3.2 Why this is better than chained service calls
 
@@ -232,6 +234,8 @@ Part 1은 FluoShop이 boundary를 넘어 통신하는 방법을 정리했습니�
 - event class는 미래의 intent가 아니라 완료된 business fact를 나타내야 합니다.
 - stable `eventKey` 값은 refactor를 넘어 routing contract를 유지하는 데 도움이 됩니다.
 - in-process publish and subscribe가 기본이며, Redis transport는 같은 모델을 process boundary 너머로 확장합니다.
+- `EventPublishOptions`는 local handler와 transport publication 모두에 호출자 관점의 bound를 적용합니다.
+- 잘못된 JSON을 버리는 동작은 Redis adapter에만 해당하며, 애플리케이션은 자신의 Redis client를 닫을 책임을 계속 가집니다.
 - Redis fan-out에는 idempotent handler가 필요하며, 느리거나 retry 가능한 reaction은 durable work를 Queue로 넘겨야 합니다.
 - FluoShop v1.8.0은 이제 여러 module이 독립적으로 반응할 수 있는 order 및 fulfillment fact를 publish합니다.
 
