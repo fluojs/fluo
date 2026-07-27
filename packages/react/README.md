@@ -27,9 +27,9 @@ Runtime-neutral React integration for fluo applications.
 
 ## Installation
 
-The first public release target for this package is `0.1.0`. The manifest starts at
-`0.0.0` so Changesets can publish the initial `0.1.0` version through the canonical
-release workflow.
+The package has completed its initial `0.1.0` release and no longer uses the `0.0.0` bootstrap
+placeholder. Future versions are recorded through committed Changesets and published only through
+the canonical release workflow.
 
 When the package is published, install it with React and React DOM as peers:
 
@@ -216,6 +216,9 @@ when an adapter provides one, and throws shell render failures before response b
 Recoverable Suspense errors are reported through `onRecoverableError` and do not rewrite an already
 committed status. Call `renderReactResponse(entry, requestContext)` directly only when a custom
 handler needs to finalize the response itself instead of returning the entry to the dispatcher.
+On streaming hosts, an early response-sink close or a failed `write(...)` / `waitForDrain()` cancels
+the unfinished React reader exactly once and releases its lock. Sink failures remain the reported
+failure rather than being replaced by reader-cancellation cleanup.
 
 ## Hydration Asset Contract
 
@@ -483,6 +486,10 @@ metadata, middleware, guards, interceptors, request scopes, errors, and adapter 
 the helper adds the fixed `text/x-component; charset=utf-8` content type and does not create a
 parallel router.
 
+Streamed Flight payloads use the same lifecycle guarantee as stable SSR: an early response-sink
+close or a failed write/drain cancels the unfinished reader exactly once, releases its lock, and
+preserves the sink failure for the ordinary HTTP error pipeline.
+
 ```ts
 import { Controller, Get } from '@fluojs/http';
 import { createReactFlightResponse } from '@fluojs/react/experimental/rsc';
@@ -670,15 +677,29 @@ This package currently does **not** provide:
   `ReactViteJavaScriptAssets`, `ReactViteBootstrapData`, and `ReactViteResolvedEntry` for parsing Vite
   manifests into the stable hydration asset contract without importing Vite from the root.
 - `@fluojs/react/client` subpath — `Link`, `ReactClientRouterProvider`,
-  `createReactRouteSnapshot(...)`, `useRouter()`, `usePathname()`, `useParams()`,
-  `useSearchParams()`, `useNavigation()`, and `useRouterState()` for progressive HTTP-first browser
-  navigation without widening the root package or adding a client route grammar.
-- `@fluojs/react/experimental/rsc` subpath — `inspectReactRscEnvironment(...)`,
-  `createReactRscManifest(...)`, `createReactFlightResponse(...)`, exact-version and Flight content
-  type constants, diagnostics, client-reference/server-module mapping types, signed
-  `createReactServerFunctionRegistry(...)`, explicit `createReactServerFunctionClient(...)`, stable
-  Server Function error codes, and related transport types without any root or stable-client
-  re-export.
+  `ReactClientNavigationError`, `ReactClientRouterContextError`, `createReactRouteSnapshot(...)`,
+  `useRouter()`, `usePathname()`, `useParams()`, `useSearchParams()`, `useNavigation()`, and
+  `useRouterState()` for progressive HTTP-first browser navigation without widening the root package
+  or adding a client route grammar. Type exports are `LinkProps`, `ReactClientNavigationErrorCode`,
+  `ReactClientRouterProviderProps`, `ReactNavigationSnapshot`, `ReactNavigationStatus`,
+  `ReactNavigationType`, `ReactReadonlySearchParams`, `ReactRouteSnapshot`,
+  `ReactRouteSnapshotInput`, and `ReactRouter`.
+- `@fluojs/react/experimental/rsc` subpath — runtime exports are `REACT_RSC_DIAGNOSTIC_CODES`,
+  `REACT_RSC_FLIGHT_CONTENT_TYPE`, `REACT_RSC_SUPPORTED_VERSION`,
+  `REACT_SERVER_FUNCTION_ERROR_CODES`, `REACT_SERVER_FUNCTION_REQUEST_HEADER`,
+  `ReactServerFunctionClientError`, `ReactServerFunctionConfigurationError`,
+  `createReactFlightResponse(...)`, `createReactRscManifest(...)`,
+  `createReactServerFunctionClient(...)`, `createReactServerFunctionRegistry(...)`, and
+  `inspectReactRscEnvironment(...)`. Type exports are `ReactFlightPayload`, `ReactFlightResponse`,
+  `ReactFlightResponseHeaders`, `ReactFlightResponseOptions`, `ReactRscBuildCapabilities`,
+  `ReactRscClientReference`, `ReactRscClientReferenceManifest`, `ReactRscDiagnostic`,
+  `ReactRscDiagnosticCode`, `ReactRscEnvironmentOptions`, `ReactRscManifest`,
+  `ReactRscManifestInput`, `ReactRscManifestResult`, `ReactRscRuntimeCapabilities`,
+  `ReactRscServerClientModuleMap`, `ReactRscSupportResult`, `ReactServerFunctionClient`,
+  `ReactServerFunctionClientOptions`, `ReactServerFunctionErrorCode`, `ReactServerFunctionFetch`,
+  `ReactServerFunctionHandler`, `ReactServerFunctionReference`, `ReactServerFunctionRegistry`,
+  `ReactServerFunctionRegistryOptions`, `ReactServerFunctionResponse`, and
+  `ReactServerFunctionValue`. None are re-exported from the root or stable client subpath.
 
 ## Related Packages
 
@@ -703,6 +724,7 @@ This package currently does **not** provide:
 - `packages/react/src/experimental/rsc.test.ts`
 - `packages/react/src/experimental/rsc-diagnostics.test.ts`
 - `packages/react/src/experimental/rsc-flight.test.ts`
+- `packages/react/src/experimental/rsc-flight-stream-lifecycle.test.ts`
 - `packages/react/src/experimental/rsc-manifest.test.ts`
 - `packages/react/src/experimental/server-functions-server.ts`
 - `packages/react/src/experimental/server-functions-client.ts`
