@@ -2,14 +2,22 @@ import type { Redis } from 'ioredis';
 
 import type { EventBusTransport } from '../types.js';
 
-/** Clients used by {@link RedisEventBusTransport} for publish and subscribe responsibilities. */
+/** Caller-owned Redis clients used by {@link RedisEventBusTransport}. */
 export interface RedisEventBusTransportOptions {
+  /** Caller-owned client used to publish serialized event payloads. */
   publishClient: Redis;
+  /** Caller-owned, dedicated Pub/Sub client used for event subscriptions. */
   subscribeClient: Redis;
 }
 
 /**
  * Redis Pub/Sub transport adapter for cross-process event fan-out.
+ * Incoming Redis messages are JSON-decoded by this adapter, and malformed JSON is dropped before
+ * handler dispatch.
+ *
+ * @remarks
+ * The publish and subscribe clients remain caller-owned. {@link RedisEventBusTransport.close}
+ * removes this transport's subscriptions and listener but does not disconnect either client.
  *
  * @example
  * ```ts
@@ -31,7 +39,7 @@ export class RedisEventBusTransport implements EventBusTransport {
   /**
    * Creates a Redis-backed event-bus transport.
    *
-   * @param options Redis clients dedicated to publish and subscribe operations.
+   * @param options Caller-owned Redis clients for publish and subscribe operations.
    */
   constructor(options: RedisEventBusTransportOptions) {
     this.publishClient = options.publishClient;
@@ -86,6 +94,7 @@ export class RedisEventBusTransport implements EventBusTransport {
 
   /**
    * Unsubscribes all tracked channels and detaches the Redis message listener.
+   * The caller-owned publish and subscribe clients remain connected for their owner to close.
    *
    * @returns A promise that resolves once the transport cleanup finishes.
    */
