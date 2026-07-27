@@ -12,6 +12,7 @@ fluo 애플리케이션을 위한 런타임 중립 React 통합입니다.
 - [런타임 및 피어 계약](#런타임-및-피어-계약)
 - [Phase Boundaries](#phase-boundaries)
 - [ReactModule Registration](#reactmodule-registration)
+- [Application Page Renderer](#application-page-renderer)
 - [Router 및 Path Decorators](#router-및-path-decorators)
 - [Web Streams SSR](#web-streams-ssr)
 - [Hydration Asset Contract](#hydration-asset-contract)
@@ -128,6 +129,82 @@ class AppModule {}
 `ReactModule`은 URL matching을 소유하지 않습니다. 이 module을 통해 등록한 router는 일반 HTTP handler
 source가 되므로 `createHandlerMapping(...)`과 `Dispatcher`가 계속 duplicate route detection,
 module-level middleware, request scope 생성, guard 및 interceptor 실행, route versioning을 담당합니다.
+
+## Application Page Renderer
+
+모든 page가 같은 document shell, provider, hydration asset, route snapshot wiring,
+recoverable-render policy를 공유해야 한다면 application-owned `renderPage` callback 하나를 등록하세요.
+Callback은 `ReactPageRenderer`를 구현하고 하나의 `ReactElement`와 활성 `ReactRenderContext`를 받아
+`ReactServerEntry`를 반환해야 합니다. `ReactModule.forRoot(...)`는 callback을
+`REACT_PAGE_RENDERER`로 등록하고 export하므로 router는 별도 response path를 만들지 않고 callback을
+inject할 수 있습니다.
+
+```tsx
+import { Inject, Module } from '@fluojs/core';
+import {
+  Path,
+  REACT_PAGE_RENDERER,
+  ReactModule,
+  Router,
+  createReactServerEntry,
+  type ReactPageRenderer,
+  type ReactRenderContext,
+} from '@fluojs/react';
+import {
+  ReactClientRouterProvider,
+  createReactRouteSnapshot,
+} from '@fluojs/react/client';
+
+const hydrationOptions = {
+  assetMap: { 'client.js': '/assets/client.123.js' },
+  bootstrapModules: ['/assets/client.123.js'],
+} as const;
+
+const renderPage: ReactPageRenderer = (page, context) => {
+  const initialSnapshot = createReactRouteSnapshot({
+    params: context.request.params,
+    url: context.request.url,
+  });
+
+  return createReactServerEntry(
+    <html lang="ko">
+      <body>
+        <ReactClientRouterProvider initialSnapshot={initialSnapshot}>
+          {page}
+        </ReactClientRouterProvider>
+      </body>
+    </html>,
+    hydrationOptions,
+  );
+};
+
+@Inject(REACT_PAGE_RENDERER)
+@Router('/products')
+class ProductRouter {
+  constructor(private readonly renderPage: ReactPageRenderer) {}
+
+  @Path('/:id')
+  show(_input: undefined, context: ReactRenderContext) {
+    return this.renderPage(<main>Product {context.request.params.id}</main>, context);
+  }
+}
+
+@Module({
+  imports: [ReactModule.forRoot({ controllers: [ProductRouter], renderPage })],
+})
+class AppModule {}
+```
+
+Root package는 `@fluojs/react/client`나 `@fluojs/react/vite`를 import하지 않습니다. 애플리케이션은 위와
+같이 client helper를 명시적으로 compose할 수 있고, 이미 로드한 manifest를
+`createReactViteAssetManifest(...)`로 처리해 얻은 hydration option을 callback closure에서 사용할 수
+있습니다. Renderer는 manifest discovery, bundle generation, route matching을 수행하지 않으며 DTO
+binding, middleware, guard, interceptor, request scope, abort propagation, shell failure handling,
+recoverable streaming behavior를 우회하지 않습니다.
+
+이 phase는 JSX return 값을 암묵적으로 변환하지 않습니다. Handler는 `REACT_PAGE_RENDERER`를 inject해
+호출하거나 계속 `createReactServerEntry(...)`를 직접 반환해야 합니다. 명시적인 `ReactServerEntry` 값은
+그대로 유지되며 configured callback을 통과하지 않습니다.
 
 ## Router 및 Path Decorators
 
@@ -643,14 +720,18 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - `getReactPathMetadata` — router method에서 React render metadata를 읽습니다.
 - `ReactModule` — `forRoot(...)`가 기존 fluo module/controller metadata path를 통해 React router를
   등록하는 런타임 중립 module facade입니다.
+- `REACT_PAGE_RENDERER` — `ReactModule.forRoot({ renderPage })`가 등록하는 application page renderer의
+  dependency-injection token입니다.
+- `ReactPageRenderer` — `ReactElement`와 활성 `ReactRenderContext`를 기존 `ReactServerEntry`로 compose하는
+  type-only application callback입니다.
 - `createReactServerEntry` — page handler가 Web Streams SSR을 위해 반환하는 runtime-neutral React server
   entry를 생성합니다.
 - `renderReactResponse` — lazy `react-dom/server` loading으로 React server entry 하나를 fluo HTML
   response에 렌더링합니다.
 - `ReactAssetMap`, `ReactBootstrapAsset`, `ReactBootstrapScriptDescriptor` — build-produced asset map 및
   React DOM bootstrap script/module entry를 위한 type-only contract입니다.
-- `ReactModuleOptions` — `controllers`, `imports`, `providers`, `exports`, module-level `middleware`를 포함하는
-  `ReactModule.forRoot(...)` option입니다.
+- `ReactModuleOptions` — `controllers`, `imports`, `providers`, `exports`, module-level `middleware`, optional
+  `renderPage` registration을 포함하는 `ReactModule.forRoot(...)` option입니다.
 - `ReactServerEntry`, `ReactServerEntryOptions`, `ReactServerEntryHeaders`,
   `ReactRecoverableErrorHandler`, `ReactRecoverableErrorContext`, `ReactRenderContext`,
   `ReactReadableStream`, `ReactReadableStreamRenderer`, `ReactReadableStreamRenderOptions`,
@@ -723,6 +804,7 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - `packages/react/src/server-entry.ts`
 - `packages/react/src/render.ts`
 - `packages/react/src/module.ts`
+- `packages/react/src/page-renderer.ts`
 - `packages/react/src/render.test.ts`
 - `packages/react/src/dispatcher-ssr.test.ts`
 - `packages/react/src/hydration-assets.test.ts`
