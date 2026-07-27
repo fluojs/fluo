@@ -2,11 +2,18 @@ import type {
   Constructor,
   MetadataPropertyKey,
 } from '@fluojs/core';
-import type { ClassValidationRule, DtoFieldBindingMetadata, DtoFieldValidationRule } from '@fluojs/core/request-pipeline';
+import type { ClassValidationRule, DtoFieldValidationRule } from '@fluojs/core/request-pipeline';
 
 import { DtoValidationError } from './errors.js';
+import {
+  assertValidRootValue,
+  createNestedDtoInstance,
+  enterTraversal,
+  exitTraversal,
+  type NestedTraversalContext,
+} from './internal/dto-materialization.js';
 import { getCachedDtoMetadata, resolveNestedDto } from './internal/dto-metadata-cache.js';
-import { assignSafeOwnEnumerableProperties, getIterableValues, isPlainObject } from './internal/object-utils.js';
+import { getIterableValues, isPlainObject } from './internal/object-utils.js';
 import { getRuleHandler, type NonCustomRule } from './internal/rule-handlers.js';
 import { buildIssue, joinFieldPath, normalizeResult, prefixIssues } from './internal/validation-issues.js';
 import type { ValidationIssue, Validator } from './types.js';
@@ -15,115 +22,9 @@ function toFieldName(propertyKey: MetadataPropertyKey): string {
   return typeof propertyKey === 'string' ? propertyKey : String(propertyKey);
 }
 
-interface NestedTraversalContext {
-  readonly active: WeakSet<object>;
-}
-
 interface ValidationContext {
   readonly fieldPrefix?: string;
   readonly inheritedSource?: ValidationIssue['source'];
-}
-
-function enterTraversal(value: unknown, context?: NestedTraversalContext): boolean {
-  if (!context || typeof value !== 'object' || value === null) {
-    return true;
-  }
-
-  if (context.active.has(value)) {
-    return false;
-  }
-
-  context.active.add(value);
-  return true;
-}
-
-function exitTraversal(value: unknown, context?: NestedTraversalContext): void {
-  if (!context || typeof value !== 'object' || value === null) {
-    return;
-  }
-
-  context.active.delete(value);
-}
-
-function createNestedDtoInstance<T>(target: Constructor<T>, rawValue: unknown, context?: NestedTraversalContext): T {
-  if (rawValue instanceof target) {
-    return rawValue as T;
-  }
-
-  if (!isPlainObject(rawValue)) {
-    return rawValue as T;
-  }
-
-  const instance = new target() as Record<PropertyKey, unknown>;
-
-  if (!enterTraversal(rawValue, context)) {
-    return rawValue as T;
-  }
-
-  try {
-    assignSafeOwnEnumerableProperties(instance, rawValue);
-
-    const metadata = getCachedDtoMetadata(target);
-    applyBindingValues(instance, rawValue, metadata.mergedPropertyKeys, metadata.bindingMap);
-
-    for (const nestedEntry of metadata.nestedDtoTransforms) {
-      const currentValue = instance[nestedEntry.propertyKey];
-      if (currentValue === undefined || currentValue === null) {
-        continue;
-      }
-
-      instance[nestedEntry.propertyKey] = transformNestedCollectionValue(currentValue, nestedEntry.target, context);
-    }
-
-    return instance as T;
-  } finally {
-    exitTraversal(rawValue, context);
-  }
-}
-
-function materializeNestedDtoValue<T>(target: Constructor<T>, rawValue: unknown, context?: NestedTraversalContext): unknown {
-  if (rawValue instanceof target) {
-    return rawValue;
-  }
-
-  if (!isPlainObject(rawValue)) {
-    return rawValue;
-  }
-
-  return createNestedDtoInstance(target, rawValue, context);
-}
-
-function applyBindingValues(
-  instance: Record<PropertyKey, unknown>,
-  rawValue: Record<PropertyKey, unknown>,
-  keys: Set<MetadataPropertyKey>,
-  bindingMap: Map<MetadataPropertyKey, DtoFieldBindingMetadata>,
-): void {
-  for (const propertyKey of keys) {
-    const sourceKey = bindingMap.get(propertyKey)?.key;
-    if (!sourceKey) continue;
-    instance[propertyKey] = rawValue[sourceKey];
-  }
-}
-
-function transformNestedValue(value: unknown, target: Constructor, context?: NestedTraversalContext): unknown {
-  return value === undefined || value === null ? value : materializeNestedDtoValue(target, value, context);
-}
-
-function transformNestedCollectionValue(value: unknown, target: Constructor, context?: NestedTraversalContext): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => transformNestedValue(item, target, context));
-  }
-
-  if (value instanceof Set) {
-    return new Set(Array.from(value.values(), (item) => transformNestedValue(item, target, context)));
-  }
-
-  if (value instanceof Map) {
-    return new Map(Array.from(value.entries(), ([key, item]) => [key, transformNestedValue(item, target, context)]));
-  }
-
-  return transformNestedValue(value, target, context);
 }
 
 function describeValidator(rule: DtoFieldValidationRule, field: string): { code: string; message: string } {
@@ -133,21 +34,6 @@ function describeValidator(rule: DtoFieldValidationRule, field: string): { code:
     code: rule.code ?? (rule.kind === 'validatorjs' ? rule.validator.toUpperCase() : handler.defaultCode),
     message: rule.message ?? handler.describe(field, rule),
   };
-}
-
-function buildInvalidRootIssue(): ValidationIssue {
-  return {
-    code: 'INVALID_DTO',
-    message: 'DTO root value must be a plain object.',
-  };
-}
-
-function assertValidRootValue(value: unknown, target: Constructor): void {
-  if (value instanceof target || isPlainObject(value)) {
-    return;
-  }
-
-  throw new DtoValidationError('Validation failed.', [buildInvalidRootIssue()]);
 }
 
 function getRuleValues(value: unknown): unknown[] {
@@ -384,7 +270,10 @@ export class DefaultValidator implements Validator {
   async materialize<T>(value: unknown, target: Constructor<T>): Promise<T> {
     assertValidRootValue(value, target);
 
-    const instance = createNestedDtoInstance(target, value, { active: new WeakSet<object>() });
+    const instance = createNestedDtoInstance(target, value, {
+      active: new WeakSet<object>(),
+      hydrateExistingInstances: true,
+    });
     const issues = await collectValidationIssues(target, instance);
 
     if (issues.length > 0) {
