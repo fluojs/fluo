@@ -12,6 +12,7 @@ Runtime-neutral React integration for fluo applications.
 - [Runtime and Peer Contract](#runtime-and-peer-contract)
 - [Phase Boundaries](#phase-boundaries)
 - [ReactModule Registration](#reactmodule-registration)
+- [Application Page Renderer](#application-page-renderer)
 - [Router and Path Decorators](#router-and-path-decorators)
 - [Web Streams SSR](#web-streams-ssr)
 - [Hydration Asset Contract](#hydration-asset-contract)
@@ -132,6 +133,80 @@ class AppModule {}
 sources, so `createHandlerMapping(...)` and `Dispatcher` still detect duplicate routes, apply
 module-level middleware, create request scopes, run guards and interceptors, and resolve route
 versioning.
+
+## Application Page Renderer
+
+Register one application-owned `renderPage` callback when every page should share the same document
+shell, providers, hydration assets, route snapshot wiring, and recoverable-render policy. The callback
+implements `ReactPageRenderer`, receives one `ReactElement` plus the active `ReactRenderContext`, and
+must return `ReactServerEntry`. `ReactModule.forRoot(...)` registers and exports it through
+`REACT_PAGE_RENDERER`, so routers can inject the callback without creating a second response path.
+
+```tsx
+import { Inject, Module } from '@fluojs/core';
+import {
+  Path,
+  REACT_PAGE_RENDERER,
+  ReactModule,
+  Router,
+  createReactServerEntry,
+  type ReactPageRenderer,
+  type ReactRenderContext,
+} from '@fluojs/react';
+import {
+  ReactClientRouterProvider,
+  createReactRouteSnapshot,
+} from '@fluojs/react/client';
+
+const hydrationOptions = {
+  assetMap: { 'client.js': '/assets/client.123.js' },
+  bootstrapModules: ['/assets/client.123.js'],
+} as const;
+
+const renderPage: ReactPageRenderer = (page, context) => {
+  const initialSnapshot = createReactRouteSnapshot({
+    params: context.request.params,
+    url: context.request.url,
+  });
+
+  return createReactServerEntry(
+    <html lang="en">
+      <body>
+        <ReactClientRouterProvider initialSnapshot={initialSnapshot}>
+          {page}
+        </ReactClientRouterProvider>
+      </body>
+    </html>,
+    hydrationOptions,
+  );
+};
+
+@Inject(REACT_PAGE_RENDERER)
+@Router('/products')
+class ProductRouter {
+  constructor(private readonly renderPage: ReactPageRenderer) {}
+
+  @Path('/:id')
+  show(_input: undefined, context: ReactRenderContext) {
+    return this.renderPage(<main>Product {context.request.params.id}</main>, context);
+  }
+}
+
+@Module({
+  imports: [ReactModule.forRoot({ controllers: [ProductRouter], renderPage })],
+})
+class AppModule {}
+```
+
+The root package does not import `@fluojs/react/client` or `@fluojs/react/vite`. Applications may
+compose client helpers explicitly as above and may close over hydration options produced from an
+already-loaded manifest by `createReactViteAssetManifest(...)`. The renderer does not discover
+manifests, generate bundles, match routes, or bypass DTO binding, middleware, guards, interceptors,
+request scopes, abort propagation, shell failure handling, or recoverable streaming behavior.
+
+This phase does not implicitly convert a JSX return value. A handler must inject and call
+`REACT_PAGE_RENDERER`, or continue returning `createReactServerEntry(...)` directly. Explicit
+`ReactServerEntry` values remain unchanged and do not pass through the configured callback.
 
 ## Router and Path Decorators
 
@@ -655,6 +730,10 @@ This package currently does **not** provide:
 - `getReactPathMetadata` — reads React render metadata from a router method.
 - `ReactModule` — runtime-neutral module facade whose `forRoot(...)` registers React routers through
   the existing fluo module/controller metadata path.
+- `REACT_PAGE_RENDERER` — dependency-injection token for the application page renderer registered by
+  `ReactModule.forRoot({ renderPage })`.
+- `ReactPageRenderer` — type-only application callback that composes a `ReactElement` and active
+  `ReactRenderContext` into an existing `ReactServerEntry`.
 - `createReactServerEntry` — creates a runtime-neutral React server entry returned by page handlers
   for Web Streams SSR.
 - `renderReactResponse` — renders one React server entry to a fluo HTML response with lazy
@@ -662,7 +741,7 @@ This package currently does **not** provide:
 - `ReactAssetMap`, `ReactBootstrapAsset`, and `ReactBootstrapScriptDescriptor` — type-only contracts
   for build-produced asset maps and React DOM bootstrap script/module entries.
 - `ReactModuleOptions` — options accepted by `ReactModule.forRoot(...)`, including `controllers`,
-  `imports`, `providers`, `exports`, and module-level `middleware`.
+  `imports`, `providers`, `exports`, module-level `middleware`, and optional `renderPage` registration.
 - `ReactServerEntry`, `ReactServerEntryOptions`, `ReactServerEntryHeaders`,
   `ReactRecoverableErrorHandler`, `ReactRecoverableErrorContext`, `ReactRenderContext`,
   `ReactReadableStream`, `ReactReadableStreamRenderer`, `ReactReadableStreamRenderOptions`, and
@@ -736,6 +815,7 @@ This package currently does **not** provide:
 - `packages/react/src/server-entry.ts`
 - `packages/react/src/render.ts`
 - `packages/react/src/module.ts`
+- `packages/react/src/page-renderer.ts`
 - `packages/react/src/render.test.ts`
 - `packages/react/src/dispatcher-ssr.test.ts`
 - `packages/react/src/hydration-assets.test.ts`

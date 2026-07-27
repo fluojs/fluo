@@ -3,6 +3,8 @@ import type { Provider } from '@fluojs/di';
 import type { MiddlewareLike } from '@fluojs/http';
 import { defineModule, type ModuleDefinition, type ModuleType } from '@fluojs/runtime';
 
+import { REACT_PAGE_RENDERER, type ReactPageRenderer } from './page-renderer.js';
+
 /**
  * Options for registering React routers through the fluo module graph.
  */
@@ -17,6 +19,8 @@ export type ReactModuleOptions = {
   readonly middleware?: readonly MiddlewareLike[];
   /** Providers local to this dynamic React module and visible to registered routers. */
   readonly providers?: readonly Provider[];
+  /** Application callback that composes page elements into existing React server entries. */
+  readonly renderPage?: ReactPageRenderer;
 };
 
 /**
@@ -41,12 +45,23 @@ export class ReactModule {
   static forRoot(options: ReactModuleOptions): ModuleType {
     class ReactRootModule extends ReactModule {}
 
+    const pageRendererProvider: Provider<ReactPageRenderer> | undefined = options.renderPage === undefined
+      ? undefined
+      : { provide: REACT_PAGE_RENDERER, useValue: options.renderPage };
+    const exports = [
+      ...(options.exports ?? []),
+      ...(pageRendererProvider === undefined ? [] : [REACT_PAGE_RENDERER]),
+    ];
+    const providers = [
+      ...(options.providers ?? []),
+      ...(pageRendererProvider === undefined ? [] : [pageRendererProvider]),
+    ];
     const definition = {
       controllers: [...options.controllers],
-      ...(options.exports ? { exports: [...options.exports] } : {}),
+      ...(exports.length > 0 ? { exports } : {}),
       ...(options.imports ? { imports: [...options.imports] } : {}),
       ...(options.middleware ? { middleware: [...options.middleware] } : {}),
-      ...(options.providers ? { providers: [...options.providers] } : {}),
+      ...(providers.length > 0 ? { providers } : {}),
     } satisfies ModuleDefinition;
 
     return defineModule(ReactRootModule, definition);
