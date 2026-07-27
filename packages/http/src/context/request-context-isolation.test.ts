@@ -179,10 +179,14 @@ describe('lazy request context isolation', () => {
 });
 
 function createDeferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
+  let resolvePromise: ((value: T | PromiseLike<T>) => void) | undefined;
   const promise = new Promise<T>((promiseResolve) => {
-    resolve = promiseResolve;
+    resolvePromise = promiseResolve;
   });
 
-  return { promise, resolve };
+  if (!resolvePromise) {
+    throw new TypeError('Promise executor did not initialize its resolver synchronously.');
+  }
+
+  return { promise, resolve: resolvePromise };
 }
