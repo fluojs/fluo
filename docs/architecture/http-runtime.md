@@ -17,9 +17,16 @@ This document defines the current request execution contract implemented by `@fl
 9. The interceptor chain is composed from global interceptors followed by route interceptors.
 10. `invokeControllerHandler(...)` resolves the controller from the request container, binds the declared DTO through the binder, and validates DTO input through `HttpDtoValidationAdapter` when the route declares `request` metadata.
 11. The controller method receives `(input, requestContext)` and returns the handler result.
-12. Successful non-SSE results are written through `writeSuccessResponse(...)`, which applies redirect metadata, route headers, formatter selection, and default success status rules. The dispatcher checks `signal` and `isAborted()` before and after handler execution so aborted requests do not commit late success responses.
+12. Successful non-SSE results are written through `writeSuccessResponse(...)`, which applies redirect metadata, route headers, formatter selection, and default success status rules. The dispatcher checks `signal` and `isAborted()` before and after handler execution, treating either cancellation surface as authoritative so a `false` probe cannot mask an aborted signal and aborted requests do not commit late success responses.
 13. If any stage throws, the dispatcher runs `onError` when configured, otherwise `writeErrorResponse(...)` writes the default error response.
 14. The dispatcher always emits `onRequestFinish`. When a request scope was created or lazily promoted, it disposes that isolated request-scoped container before the request ends; singleton-only fast-path requests that never promote do not dispose the root container.
+
+## Request Context Isolation
+
+- When async-context storage is immediately available, `runWithRequestContext(...)` runs the callback inside that request-local store.
+- During lazy Node async-storage resolution, declared async callbacks wait for the request-local store before running.
+- Non-async callbacks run immediately in a synchronous stack fallback so return and throw behavior remains synchronous. A promise returned from that callback continues without ambient request context after the synchronous frame.
+- Request-context helpers never patch `Promise.prototype` or expose a pending fallback context to unrelated promise continuations.
 
 ## Routing Rules
 

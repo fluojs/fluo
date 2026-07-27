@@ -17,9 +17,16 @@
 9. interceptor chain은 global interceptor 다음 route interceptor 순서로 구성된다.
 10. `invokeControllerHandler(...)`는 request container에서 controller를 해석하고, binder로 선언된 DTO를 바인딩하며, route가 `request` metadata를 선언한 경우 `HttpDtoValidationAdapter`로 DTO 입력을 검증한다.
 11. controller method는 `(input, requestContext)`를 받고 handler 결과를 반환한다.
-12. 성공한 non-SSE 결과는 `writeSuccessResponse(...)`를 통해 기록되며, 여기서 redirect metadata, route header, formatter 선택, 기본 성공 status 규칙이 적용된다. dispatcher는 handler 실행 전후에 `signal`과 `isAborted()`를 검사해 abort된 요청이 뒤늦게 성공 응답을 commit하지 않게 한다.
+12. 성공한 non-SSE 결과는 `writeSuccessResponse(...)`를 통해 기록되며, 여기서 redirect metadata, route header, formatter 선택, 기본 성공 status 규칙이 적용된다. Dispatcher는 handler 실행 전후에 `signal`과 `isAborted()`를 검사하고 어느 cancellation surface든 authoritative하게 처리하므로 `false` probe가 aborted signal을 가리지 않으며 abort된 요청은 뒤늦게 성공 응답을 commit하지 않는다.
 13. 어느 단계에서든 예외가 발생하면 dispatcher는 설정된 경우 `onError`를 실행하고, 그렇지 않으면 `writeErrorResponse(...)`가 기본 에러 응답을 기록한다.
 14. dispatcher는 항상 `onRequestFinish`를 호출한다. request scope가 생성되었거나 lazy promotion 되었다면 요청이 끝나기 전에 해당 isolated request-scoped container를 dispose하며, 끝까지 승격되지 않은 singleton-only fast-path 요청은 root container를 dispose하지 않는다.
+
+## Request Context Isolation
+
+- Async-context storage를 즉시 사용할 수 있으면 `runWithRequestContext(...)`는 해당 request-local store 안에서 callback을 실행한다.
+- Node async storage를 lazy하게 해석하는 동안 선언된 async callback은 request-local store가 준비될 때까지 기다린 뒤 실행된다.
+- Non-async callback은 synchronous stack fallback에서 즉시 실행되어 반환과 throw 동작을 동기로 유지한다. 해당 callback이 반환한 promise는 동기 frame 이후 ambient request context 없이 계속된다.
+- Request-context helper는 `Promise.prototype`을 patch하지 않으며 pending fallback context를 관련 없는 promise continuation에 노출하지 않는다.
 
 ## Routing Rules
 
