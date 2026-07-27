@@ -27,8 +27,8 @@ fluo 애플리케이션을 위한 런타임 중립 React 통합입니다.
 
 ## 설치
 
-이 패키지의 첫 공개 릴리스 목표는 `0.1.0`입니다. manifest는 `0.0.0`에서 시작해
-Changesets가 표준 릴리스 워크플로를 통해 초기 `0.1.0` 버전을 게시할 수 있게 합니다.
+이 패키지는 초기 `0.1.0` 릴리스를 완료했으며 더 이상 `0.0.0` bootstrap placeholder를 사용하지
+않습니다. 이후 버전은 commit된 Changeset으로 기록하고 canonical release workflow를 통해서만 게시합니다.
 
 패키지가 게시되면 React와 React DOM을 peer로 함께 설치합니다.
 
@@ -212,6 +212,9 @@ Renderer는 기본적으로 `react-dom/server`의 `renderToReadableStream(...)`�
 throw합니다. Recoverable Suspense error는 `onRecoverableError`로 보고되며 이미 committed된 status를 다시
 쓰지 않습니다. Handler가 entry를 dispatcher에 반환하지 않고 직접 response를 finalize해야 할 때만
 `renderReactResponse(entry, requestContext)`를 호출하세요.
+Streaming host에서는 response sink가 일찍 닫히거나 `write(...)` / `waitForDrain()`이 실패하면 완료되지
+않은 React reader를 정확히 한 번 cancel하고 lock을 해제합니다. Sink failure는 reader cancellation cleanup에
+의해 대체되지 않고 원래 failure로 보고됩니다.
 
 ## Hydration Asset Contract
 
@@ -474,6 +477,10 @@ Flight encoding도 애플리케이션이 소유합니다. 선택한 renderer가 
 interceptor, request scope, error, adapter response writing을 계속 소유합니다. Helper는 고정된
 `text/x-component; charset=utf-8` content type만 추가하며 별도 router를 만들지 않습니다.
 
+Streamed Flight payload도 stable SSR과 같은 lifecycle guarantee를 사용합니다. Response sink가 일찍 닫히거나
+write/drain이 실패하면 완료되지 않은 reader를 정확히 한 번 cancel하고 lock을 해제하며, sink failure는 일반
+HTTP error pipeline에 그대로 전달합니다.
+
 ```ts
 import { Controller, Get } from '@fluojs/http';
 import { createReactFlightResponse } from '@fluojs/react/experimental/rsc';
@@ -659,13 +666,28 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
   `ReactViteResolvedEntry`를 제공합니다.
 - `@fluojs/react/client` subpath — root package를 넓히거나 client route grammar를 추가하지 않고
   progressive HTTP-first browser navigation을 제공하는 `Link`, `ReactClientRouterProvider`,
-  `createReactRouteSnapshot(...)`, `useRouter()`, `usePathname()`, `useParams()`,
-  `useSearchParams()`, `useNavigation()`, `useRouterState()`를 제공합니다.
-- `@fluojs/react/experimental/rsc` subpath — root re-export 없이 `inspectReactRscEnvironment(...)`,
-  `createReactRscManifest(...)`, `createReactFlightResponse(...)`, exact-version 및 Flight content type
-  constant, diagnostic, client-reference/server-module mapping type, signed
-  `createReactServerFunctionRegistry(...)`, 명시적인 `createReactServerFunctionClient(...)`, stable Server
-  Function error code와 관련 transport type을 제공하며 root나 stable-client에서 re-export하지 않습니다.
+  `ReactClientNavigationError`, `ReactClientRouterContextError`, `createReactRouteSnapshot(...)`,
+  `useRouter()`, `usePathname()`, `useParams()`, `useSearchParams()`, `useNavigation()`,
+  `useRouterState()`를 제공합니다. Type export는 `LinkProps`, `ReactClientNavigationErrorCode`,
+  `ReactClientRouterProviderProps`, `ReactNavigationSnapshot`, `ReactNavigationStatus`,
+  `ReactNavigationType`, `ReactReadonlySearchParams`, `ReactRouteSnapshot`,
+  `ReactRouteSnapshotInput`, `ReactRouter`입니다.
+- `@fluojs/react/experimental/rsc` subpath — runtime export는 `REACT_RSC_DIAGNOSTIC_CODES`,
+  `REACT_RSC_FLIGHT_CONTENT_TYPE`, `REACT_RSC_SUPPORTED_VERSION`,
+  `REACT_SERVER_FUNCTION_ERROR_CODES`, `REACT_SERVER_FUNCTION_REQUEST_HEADER`,
+  `ReactServerFunctionClientError`, `ReactServerFunctionConfigurationError`,
+  `createReactFlightResponse(...)`, `createReactRscManifest(...)`,
+  `createReactServerFunctionClient(...)`, `createReactServerFunctionRegistry(...)`,
+  `inspectReactRscEnvironment(...)`입니다. Type export는 `ReactFlightPayload`, `ReactFlightResponse`,
+  `ReactFlightResponseHeaders`, `ReactFlightResponseOptions`, `ReactRscBuildCapabilities`,
+  `ReactRscClientReference`, `ReactRscClientReferenceManifest`, `ReactRscDiagnostic`,
+  `ReactRscDiagnosticCode`, `ReactRscEnvironmentOptions`, `ReactRscManifest`,
+  `ReactRscManifestInput`, `ReactRscManifestResult`, `ReactRscRuntimeCapabilities`,
+  `ReactRscServerClientModuleMap`, `ReactRscSupportResult`, `ReactServerFunctionClient`,
+  `ReactServerFunctionClientOptions`, `ReactServerFunctionErrorCode`, `ReactServerFunctionFetch`,
+  `ReactServerFunctionHandler`, `ReactServerFunctionReference`, `ReactServerFunctionRegistry`,
+  `ReactServerFunctionRegistryOptions`, `ReactServerFunctionResponse`,
+  `ReactServerFunctionValue`이며 root나 stable client subpath에서 re-export하지 않습니다.
 
 ## 관련 패키지
 
@@ -689,6 +711,7 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - `packages/react/src/experimental/rsc.test.ts`
 - `packages/react/src/experimental/rsc-diagnostics.test.ts`
 - `packages/react/src/experimental/rsc-flight.test.ts`
+- `packages/react/src/experimental/rsc-flight-stream-lifecycle.test.ts`
 - `packages/react/src/experimental/rsc-manifest.test.ts`
 - `packages/react/src/experimental/server-functions-server.ts`
 - `packages/react/src/experimental/server-functions-client.ts`
