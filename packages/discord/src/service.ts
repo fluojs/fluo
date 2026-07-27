@@ -140,7 +140,14 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
   private async closeOwnedTransportResourcesOnce(): Promise<void> {
     try {
       const transport = await this.resolveTransportForCleanup();
-      await this.waitForTransportVerificationToSettle();
+      const verificationPromise = this.transportVerificationPromise;
+
+      if (verificationPromise) {
+        await verificationPromise.then(
+          () => undefined,
+          () => undefined,
+        );
+      }
 
       if (transport && this.options.transport.ownsResources && transport.close) {
         await transport.close();
@@ -161,19 +168,6 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
 
     return this.transportPromise.then(
       (transport) => transport,
-      () => undefined,
-    );
-  }
-
-  private async waitForTransportVerificationToSettle(): Promise<void> {
-    const verificationPromise = this.transportVerificationPromise;
-
-    if (!verificationPromise) {
-      return;
-    }
-
-    await verificationPromise.then(
-      () => undefined,
       () => undefined,
     );
   }
