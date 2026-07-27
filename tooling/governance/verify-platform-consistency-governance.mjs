@@ -1954,6 +1954,9 @@ export function enforceHttpRuntimeCancellationAndContextIsolation() {
   const dispatcherSource = read('packages/http/src/dispatch/dispatcher.ts');
   const fastPathSource = read('packages/http/src/dispatch/fast-path/fast-path-executor.ts');
   const contextSource = read('packages/http/src/context/request-context.ts');
+  const nodeRootSource = read('packages/http/src/index.ts');
+  const portableRootSource = read('packages/http/src/index.portable.ts');
+  const httpPackage = JSON.parse(read('packages/http/package.json'));
   const cancellationRegression = read('packages/http/src/dispatch/dispatcher-cancellation.test.ts');
   const contextRegression = read('packages/http/src/context/request-context-isolation.test.ts');
 
@@ -1972,14 +1975,25 @@ export function enforceHttpRuntimeCancellationAndContextIsolation() {
     'Lazy request-context resolution must use a request-local store or synchronous fallback without patching Promise.prototype.',
   );
   assert(
+    nodeRootSource.includes("from 'node:async_hooks'") &&
+      nodeRootSource.includes('registerImmediateAsyncLocalStorageConstructor(AsyncLocalStorage)') &&
+      !portableRootSource.includes('node:async_hooks') &&
+      httpPackage.exports?.['.']?.node === './dist/index.js' &&
+      httpPackage.exports?.['.']?.import === './dist/index.portable.js',
+    'HTTP root export conditions must provide synchronous Node async storage without adding Node built-ins to the portable root.',
+  );
+  assert(
     cancellationRegression.includes('request.isAborted = () => false') &&
       cancellationRegression.includes('request.signal = abortController.signal'),
     'HTTP cancellation regressions must cover a false adapter probe paired with an aborted signal.',
   );
   assert(
     contextRegression.includes('Promise.prototype.then') &&
-      contextRegression.includes('unrelatedRequestId'),
-    'HTTP request-context regressions must cover Promise prototype stability and unrelated continuation isolation.',
+      contextRegression.includes('unrelatedRequestId') &&
+      contextRegression.includes("createContext('promise-callback')") &&
+      contextRegression.includes("createContext('request-a')") &&
+      contextRegression.includes("createContext('request-b')"),
+    'HTTP request-context regressions must cover Promise prototype stability, promise-returning callbacks, concurrent requests, and unrelated continuation isolation.',
   );
 
   for (const documentationPath of [
