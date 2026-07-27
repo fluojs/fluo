@@ -7,6 +7,7 @@ import {
   ProductPageRouter,
   ReactSsrTraceMiddleware,
   RenderPhaseInterceptor,
+  renderProductPage,
 } from './pages';
 
 @Module({
@@ -15,6 +16,7 @@ import {
       controllers: [ProductPageRouter],
       middleware: [ReactSsrTraceMiddleware],
       providers: [ProductCatalogService, PreviewGuard, RenderPhaseInterceptor],
+      renderPage: renderProductPage,
     }),
   ],
 })

@@ -14,9 +14,12 @@ request lifecycle ownership in `@fluojs/http` while using React for page-shaped 
 - HTTP-owned route grammar: literal segments plus full-segment `:param` placeholders only.
 - Guards, interceptors, module middleware, route headers, and entry headers running before the React
   server entry commits HTML.
-- Web Streams SSR through `createReactServerEntry(...)` and lazy `react-dom/server` rendering.
+- A direct `ReactElement` return from `@Path(...)`, composed by the application `renderPage` callback
+  into `createReactServerEntry(...)` before lazy `react-dom/server` Web Streams rendering.
 - Explicit hydration asset options from the stable root: `bootstrapModules`, trusted
   `bootstrapScriptContent`, `nonce`, `identifierPrefix`, and a trusted `assetMap` snapshot.
+- Stable SSR diagnostics for HTTP-pipeline, pre-commit shell, request-abort, and post-shell
+  recoverable phases are documented in the package README.
 
 ## stable boundaries
 
@@ -48,7 +51,7 @@ examples/react-stable-ssr/
 ├── src/
 │   ├── app.ts       # AppModule imports ReactModule.forRoot(...)
 │   ├── main.ts      # Optional Fastify startup for local manual runs
-│   ├── pages.ts     # Router, DTO, guard, interceptor, middleware, and SSR entry
+│   ├── pages.ts     # Router, direct page return, application renderer, and HTTP lifecycle helpers
 │   └── app.test.ts  # createTestApp request-pipeline SSR assertion
 ├── README.md
 └── README.ko.md

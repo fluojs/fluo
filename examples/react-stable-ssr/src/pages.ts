@@ -16,7 +16,13 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@fluojs/http';
-import { Path, Router, createReactServerEntry, type ReactAssetMap } from '@fluojs/react';
+import {
+  Path,
+  Router,
+  createReactServerEntry,
+  type ReactAssetMap,
+  type ReactPageRenderer,
+} from '@fluojs/react';
 import { Suspense, createElement } from 'react';
 
 const HYDRATION_ASSETS = {
@@ -103,6 +109,15 @@ function ProductPage({ assetMap, model }: ProductPageProps) {
   );
 }
 
+export const renderProductPage: ReactPageRenderer = (page) => createReactServerEntry(page, {
+  assetMap: HYDRATION_ASSETS,
+  bootstrapModules: [HYDRATION_ASSETS['client.js'], HYDRATION_ASSETS['client.js']],
+  bootstrapScriptContent: 'window.__FLUO_REACT_STABLE_SSR__ = true;',
+  headers: { 'x-example-entry': 'react-server-entry' },
+  identifierPrefix: 'fluo-react-stable-',
+  nonce: 'example-nonce',
+});
+
 @Inject(ProductCatalogService)
 @UseGuards(PreviewGuard)
 @UseInterceptors(RenderPhaseInterceptor)
@@ -116,13 +131,6 @@ export class ProductPageRouter {
   show(input: ProductPageRequest) {
     const model = this.catalog.renderProduct(input);
 
-    return createReactServerEntry(createElement(ProductPage, { assetMap: HYDRATION_ASSETS, model }), {
-      assetMap: HYDRATION_ASSETS,
-      bootstrapModules: [HYDRATION_ASSETS['client.js'], HYDRATION_ASSETS['client.js']],
-      bootstrapScriptContent: 'window.__FLUO_REACT_STABLE_SSR__ = true;',
-      headers: { 'x-example-entry': 'react-server-entry' },
-      identifierPrefix: 'fluo-react-stable-',
-      nonce: 'example-nonce',
-    });
+    return createElement(ProductPage, { assetMap: HYDRATION_ASSETS, model });
   }
 }

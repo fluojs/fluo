@@ -11,6 +11,8 @@ hydrated browser runtime without introducing a second routing model.
 - `@Router('/products')` and `@Path('/:sku')` page routes discovered by the fluo HTTP module graph.
 - Typed path and search input through `@RequestDto(...)`, `@FromPath('sku')`, and
   `@FromQuery('preview')`.
+- A direct `ReactElement` page return composed by the application `renderPage` callback with
+  manifest-derived hydration options.
 - A `Suspense` boundary whose fallback and resolved recommendation content are emitted by Web
   Streams SSR.
 - A Vite client build that writes `dist/client/.vite/manifest.json`, then
@@ -50,6 +52,8 @@ client navigation whose URL and server-rendered route state do not agree.
 
 - The stable `0.1.0` root contract still owns HTTP-first React SSR. This `0.2.0` example composes
   that contract with the `@fluojs/react/vite` manifest parser added after the initial SSR example.
+- Direct page returns do not create a second response path: the application renderer still returns
+  `ReactServerEntry`, and the existing HTTP writer owns status, headers, errors, and streaming.
 - `src/entry-client.ts` is the browser-only boundary. Server modules do not access `window` or
   `document`, and the server loads the Vite manifest explicitly from the application boundary.
 - `ReactClientRouterProvider` receives the same request URL and HTTP-matched params during SSR and

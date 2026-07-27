@@ -11,7 +11,13 @@ import {
   RequestDto,
   type RequestContext,
 } from '@fluojs/http';
-import { Path, ReactModule, Router, createReactServerEntry } from '@fluojs/react';
+import {
+  Path,
+  ReactModule,
+  Router,
+  createReactServerEntry,
+  type ReactPageRenderer,
+} from '@fluojs/react';
 import { createReactViteAssetManifest } from '@fluojs/react/vite';
 import { IsIn, IsString, MinLength } from '@fluojs/validation';
 import { createElement } from 'react';
@@ -63,22 +69,20 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
   }
 
   const assets = result.manifest;
+  const renderPage: ReactPageRenderer = (page) => createReactServerEntry(page, assets.hydrationOptions);
 
   @Router('/products')
   class ProductPageRouter {
     @Path('/:sku')
     @RequestDto(ProductPageRequest)
     show(input: ProductPageRequest, context: RequestContext) {
-      return createReactServerEntry(
-        createElement(ProductDocument, {
-          preview: input.preview === 'true',
-          routeParams: context.request.params,
-          routeUrl: context.request.url,
-          sku: input.sku,
-          stylesheets: assets.css,
-        }),
-        assets.hydrationOptions,
-      );
+      return createElement(ProductDocument, {
+        preview: input.preview === 'true',
+        routeParams: context.request.params,
+        routeUrl: context.request.url,
+        sku: input.sku,
+        stylesheets: assets.css,
+      });
     }
   }
 
@@ -109,7 +113,7 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
 
   @Module({
     controllers: [ViteAssetController],
-    imports: [ReactModule.forRoot({ controllers: [ProductPageRouter] })],
+    imports: [ReactModule.forRoot({ controllers: [ProductPageRouter], renderPage })],
   })
   class ReactViteExampleModule {}
 
