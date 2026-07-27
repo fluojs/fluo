@@ -270,7 +270,7 @@ This zero-downtime key rotation is a hallmark of resilient enterprise grade syst
 ### Auth in a Serverless World
 In serverless environments such as AWS Lambda, cold starts and execution time matter a lot. Traditional Authentication libraries that rely on heavy dependency chains or synchronous file I/O can hurt performance. Fluo's JWT package keeps the API small and transport independent, so the same signing and verification contract can sit behind different HTTP adapters without tying business logic to request transport details.
 
-This performance advantage becomes more visible as scale grows. When you handle millions of requests, every millisecond saved on every Authentication check translates into significant cost savings and a smoother user experience. Whether you run on a large Kubernetes cluster or a small edge worker, Fluo's Authentication logic stays light, fast, and safe.
+This performance advantage becomes more visible as scale grows, but it does not expand the package's runtime support. Keep JWT signing, verification, JWKS key parsing, and refresh-token id generation on Node.js-compatible serverless functions, such as the Node.js AWS Lambda runtime, or on Bun's Node compatibility layer. The lazy root import only avoids Node-specific work at import time; it does not make those operations runnable on Deno or Cloudflare Workers.
 
 ### Implementing a Unified Auth Flow
 Chapter 15 will cover Guards in detail, but it is useful to understand how JWT Authentication is typically applied in a Fluo application. Most projects use a flow where routes that need protection are marked with `@UseAuth('jwt')`, and the verified principal is read from `RequestContext.principal`.
