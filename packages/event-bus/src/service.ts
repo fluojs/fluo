@@ -176,7 +176,7 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
    * Publishes one event to matching local handlers and, when configured, to the external transport.
    *
    * @param event Event instance to publish.
-   * @param options Optional timeout, abort signal, and wait-for-handler controls.
+   * @param options Optional bounds for matching local handlers and transport publication.
    * @returns A promise that resolves once the configured local/transport publication completes.
    */
   async publish(event: object, options?: EventPublishOptions): Promise<void> {

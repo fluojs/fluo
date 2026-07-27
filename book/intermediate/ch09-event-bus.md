@@ -80,6 +80,8 @@ export class OrderEventsModule {}
 
 This boundary matters. The event bus API stays the same, and only the transport behind it changes. That continuity matches the fluo design philosophy we saw in earlier chapters.
 
+The Redis adapter owns message decoding but not the Redis client lifecycle. `RedisEventBusTransport` JSON-decodes inbound Redis Pub/Sub messages and drops malformed JSON before handler dispatch; this is a Redis-specific rule, not a guarantee for every `EventBusTransport`. Its `close()` path unsubscribes the channels it registered and detaches its message listener, but it does not disconnect the caller-owned `publishClient` or `subscribeClient`. The FluoShop lifecycle that created those clients must close them separately after event-bus transport teardown.
+
 ## 9.3 Publish from the write boundary
 
 The most common mistake with events is publishing them from anywhere. FluoShop doesn't do that. It publishes domain events close to successful write completion. In other words, it publishes after the system is confident that the state change really happened. In a real implementation, an application service or command handler often publishes after the transaction has been settled.
@@ -108,7 +110,7 @@ export class CheckoutService {
 }
 ```
 
-This keeps the write path explicit. The service still owns the state change, while side effects are delegated. Because `waitForHandlers` defaults to `true`, this awaited publish completes only after matching local handlers and configured transport publishes settle within their bounds. Use `waitForHandlers: false` only for deliberately background reactions; those tasks still participate in shutdown drain tracking.
+This keeps the write path explicit. The service still owns the state change, while side effects are delegated. `EventPublishOptions` bounds both matching local handler work and configured transport publication. Because `waitForHandlers` defaults to `true`, this awaited publish completes only after both kinds of work settle within the `signal` and `timeoutMs` bounds. A signal that is already aborted skips work that has not started; cancellation or timeout after work starts settles the caller-facing wait but does not terminate the underlying shutdown-tracked work. Use `waitForHandlers: false` only for deliberately background reactions. It returns after scheduling both kinds of work, ignores `timeoutMs`, and keeps the work in shutdown drain tracking.
 
 ### 9.3.2 Why this is better than chained service calls
 
@@ -232,6 +234,8 @@ Part 1 organized how FluoShop communicates across boundaries. This chapter cover
 - An event class should represent a completed business fact, not future intent.
 - Stable `eventKey` values help preserve routing contracts across refactors.
 - In-process publish and subscribe is the default, while Redis transport extends the same model beyond process boundaries.
+- `EventPublishOptions` applies caller-facing bounds to both local handlers and transport publication.
+- Only the Redis adapter drops malformed JSON, and the application remains responsible for closing its Redis clients.
 - Redis fan-out requires idempotent handlers, and slow or retryable reactions should hand durable work to Queue.
 - FluoShop v1.8.0 now publishes order and fulfillment facts that multiple modules can react to independently.
 

@@ -21,10 +21,24 @@ export interface EventHandlerDescriptor {
   token: Token;
 }
 
-/** Options that control how one `publish()` call waits for local handlers. */
+/** Per-call bounds for matching local handlers and optional transport publication. */
 export interface EventPublishOptions {
+  /**
+   * Cancellation bound for local dispatch and transport publication.
+   * An already-aborted signal skips work that has not started. Aborting while awaited work is
+   * running settles the caller-facing wait without terminating the underlying shutdown-tracked work.
+   */
   signal?: AbortSignal;
+  /**
+   * Positive finite timeout applied while awaiting each local handler and transport publication.
+   * Non-positive or non-finite values disable the timeout. Ignored when `waitForHandlers` is `false`.
+   */
   timeoutMs?: number;
+  /**
+   * Whether `publish()` waits for local handlers and transport publication within the configured bounds.
+   * Defaults to `true`. When `false`, both kinds of work continue in the background and remain part of
+   * shutdown drain tracking.
+   */
   waitForHandlers?: boolean;
 }
 
@@ -45,7 +59,8 @@ export interface EventBusTransport {
   subscribe(channel: string, handler: (payload: unknown) => Promise<void>): Promise<void>;
 
   /**
-   * Tear down any open connections. Called during application shutdown.
+   * Release transport-owned subscriptions, listeners, and resources during application shutdown.
+   * Adapter-specific ownership rules determine whether injected clients or connections remain open.
    */
   close(): Promise<void>;
 }
@@ -76,7 +91,7 @@ export interface EventBus {
    * Publishes one event to matching local handlers and the optional external transport.
    *
    * @param event Event instance to publish.
-   * @param options Optional timeout, abort signal, and wait-for-handler controls.
+   * @param options Optional bounds for matching local handlers and transport publication.
    * @returns A promise that resolves once the configured publish workflow completes.
    */
   publish(event: object, options?: EventPublishOptions): Promise<void>;

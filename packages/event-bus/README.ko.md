@@ -75,7 +75,7 @@ export class UserService {
 export class AppModule {}
 ```
 
-`publish(event, options?)`는 `signal`, `timeoutMs`, `waitForHandlers`를 지원합니다. `waitForHandlers`의 기본값은 `true`이며, 기다리는 로컬 핸들러와 기다리는 트랜스포트 publish는 동일한 timeout 및 cancellation bound를 공유합니다. 이러한 bound가 실제 handler 또는 transport 작업이 끝나기 전에 호출자에게 반환되는 publish promise를 settle하더라도, shutdown은 해당 underlying awaited work가 settle되거나 shutdown drain bound가 만료될 때까지 계속 추적합니다. `waitForHandlers`를 `false`로 설정하면 publish가 즉시 반환되고 timeout bound를 적용하지 않지만, handler와 transport 작업은 background에서 계속 실행되며 shutdown drain 추적 대상에 남습니다. Shutdown 중에는 이벤트 버스가 진행 중인 awaited/background publish 및 inbound transport handler 작업을 drain한 뒤 트랜스포트를 닫고, lifecycle이 stopping에 진입한 뒤의 새 publish 호출과 shutdown 시작 뒤 도착한 inbound transport callback은 무시합니다. Shutdown drain은 기본값이 5000ms인 `EventBusModule.forRoot({ shutdown: { drainTimeoutMs } })`로 제한됩니다. 활성 dispatch 작업이 이 bound 이후에도 멈춰 있으면 bus는 degraded status diagnostic을 기록하고 경고를 남긴 뒤, 애플리케이션 close를 무기한 hang시키지 않고 transport cleanup을 계속합니다.
+`EventPublishOptions`는 일치하는 로컬 핸들러 작업과 선택적 트랜스포트 발행을 모두 제한합니다. `publish(event, options?)`는 `signal`, `timeoutMs`, `waitForHandlers`를 지원합니다. `waitForHandlers`의 기본값은 `true`이며, 기다리는 로컬 핸들러와 기다리는 트랜스포트 publish는 동일한 timeout 및 cancellation bound를 공유합니다. 이러한 bound가 실제 handler 또는 transport 작업이 끝나기 전에 호출자에게 반환되는 publish promise를 settle하더라도, shutdown은 해당 underlying awaited work가 settle되거나 shutdown drain bound가 만료될 때까지 계속 추적합니다. `waitForHandlers`를 `false`로 설정하면 publish가 즉시 반환되고 timeout bound를 적용하지 않지만, handler와 transport 작업은 background에서 계속 실행되며 shutdown drain 추적 대상에 남습니다. Shutdown 중에는 이벤트 버스가 진행 중인 awaited/background publish 및 inbound transport handler 작업을 drain한 뒤 트랜스포트를 닫고, lifecycle이 stopping에 진입한 뒤의 새 publish 호출과 shutdown 시작 뒤 도착한 inbound transport callback은 무시합니다. Shutdown drain은 기본값이 5000ms인 `EventBusModule.forRoot({ shutdown: { drainTimeoutMs } })`로 제한됩니다. 활성 dispatch 작업이 이 bound 이후에도 멈춰 있으면 bus는 degraded status diagnostic을 기록하고 경고를 남긴 뒤, 애플리케이션 close를 무기한 hang시키지 않고 transport cleanup을 계속합니다.
 
 **마이그레이션 참고:** `waitForHandlers: false`를 사용하는 애플리케이션은 이제 background handler 및 transport 작업을 위해 `app.close()`가 최대 `shutdown.drainTimeoutMs`까지 기다린 뒤 transport cleanup을 계속할 수 있음을 shutdown budget에 반영해야 합니다. 해당 작업을 bounded하게 유지하거나 애플리케이션에 적절한 drain budget을 구성하세요.
 
@@ -162,7 +162,7 @@ class UserRegisteredEvent {
 - `EventBus`, `EventPublishOptions`, `EventBusModuleOptions`, `EventType`: 발행, 기본값, 트랜스포트, 안정적인 이벤트 키를 위한 타입 전용 계약입니다.
 - `EventBusLifecycleState`, `EventBusStatusAdapterInput`, `EventBusPlatformStatusSnapshot`: status snapshot 계약입니다.
 
-Transport bootstrap은 unique event channel마다 한 번만 subscribe합니다. `eventKey`가 있으면 transport channel 이름을 제어합니다. Bootstrap 중 이후 transport subscription이 실패하면 이벤트 버스는 이미 열린 channel을 rollback하기 위해 subscription error를 다시 던지기 전에 transport를 닫습니다. 잘못된 JSON transport message는 무시되며, shutdown 시작 뒤 도착한 inbound transport message는 local handler dispatch 전에 무시됩니다.
+Transport bootstrap은 unique event channel마다 한 번만 subscribe합니다. `eventKey`가 있으면 transport channel 이름을 제어합니다. Bootstrap 중 이후 transport subscription이 실패하면 이벤트 버스는 이미 열린 channel을 rollback하기 위해 subscription error를 다시 던지기 전에 transport를 닫습니다. Shutdown 시작 뒤 도착한 inbound transport message는 local handler dispatch 전에 무시됩니다.
 
 ## 런타임별 및 통합 서브패스
 
@@ -170,7 +170,7 @@ Transport bootstrap은 unique event channel마다 한 번만 subscribe합니다.
 | --- | --- | --- |
 | Redis Pub/Sub 트랜스포트 | `@fluojs/event-bus/redis` | `RedisEventBusTransport`, `RedisEventBusTransportOptions` |
 
-`RedisEventBusTransport`는 명시적인 `@fluojs/event-bus/redis` 서브패스에만 유지되어 루트 `@fluojs/event-bus` 진입점이 모듈 등록, 로컬 발행, 데코레이터, 타입 전용 계약에 집중하도록 합니다. 이 트랜스포트는 shutdown 중 자신이 등록한 채널을 unsubscribe하고 message listener를 분리하지만, 호출자가 소유한 Redis 클라이언트를 disconnect하지 않습니다.
+`RedisEventBusTransport`는 명시적인 `@fluojs/event-bus/redis` 서브패스에만 유지되어 루트 `@fluojs/event-bus` 진입점이 모듈 등록, 로컬 발행, 데코레이터, 타입 전용 계약에 집중하도록 합니다. 이 Redis adapter는 inbound Redis message를 JSON decode하고 잘못된 JSON은 handler dispatch 전에 버립니다. 이 parsing 규칙은 임의의 `EventBusTransport` 구현에는 적용되지 않습니다. Shutdown 중 adapter는 자신이 등록한 채널을 unsubscribe하고 message listener를 분리하지만, `close()`는 호출자가 소유한 `publishClient` 또는 `subscribeClient`를 disconnect하지 않습니다. 애플리케이션 또는 client-owning module이 event-bus teardown 후 해당 client를 별도로 닫아야 합니다.
 
 ## 관련 패키지
 
