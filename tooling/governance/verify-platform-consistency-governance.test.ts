@@ -2067,6 +2067,8 @@ describe('Cron scheduling discoverability', () => {
   const koreanMigration = readFileSync(join(repoRoot, 'docs/getting-started/migrate-from-nestjs.ko.md'), 'utf8');
   const englishChapter = readFileSync(join(repoRoot, 'book/intermediate/ch12-cron.md'), 'utf8');
   const koreanChapter = readFileSync(join(repoRoot, 'book/intermediate/ch12-cron.ko.md'), 'utf8');
+  const englishLifecycle = readFileSync(join(repoRoot, 'docs/architecture/lifecycle-and-shutdown.md'), 'utf8');
+  const koreanLifecycle = readFileSync(join(repoRoot, 'docs/architecture/lifecycle-and-shutdown.ko.md'), 'utf8');
 
   it('keeps cron lifecycle, public API, and package-surface guidance discoverable from the context hub', () => {
     for (const content of [englishContext, koreanContext]) {
@@ -2103,6 +2105,28 @@ describe('Cron scheduling discoverability', () => {
     for (const content of [englishChapter, koreanChapter]) {
       expect(content).toContain('Redis peer');
       expect(content).toContain('distributed-lock');
+    }
+  });
+
+  it('keeps Cron race-safety contracts aligned across bilingual lifecycle surfaces', () => {
+    for (const content of [englishContext, koreanContext]) {
+      expect(content).toContain('committed scheduler handle token');
+      expect(content).toContain('lease token');
+    }
+
+    for (const content of [englishPackageSurface, koreanPackageSurface]) {
+      expect(content).toContain('late queued tick');
+      expect(content).toContain('per-acquisition lease token');
+    }
+
+    for (const content of [englishReadme, koreanReadme, englishChapter, koreanChapter]) {
+      expect(content).toContain('provisional replacement');
+      expect(content).toContain('lease token');
+    }
+
+    for (const content of [englishLifecycle, koreanLifecycle]) {
+      expect(content).toContain('tick admission');
+      expect(content).toContain('Redis lease token');
     }
   });
 

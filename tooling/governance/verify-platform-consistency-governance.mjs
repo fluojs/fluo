@@ -1128,6 +1128,12 @@ function enforceCanonicalRuntimeMatrixReferences() {
   const notificationsReadmeKo = readFileSync(join(repoRoot, 'packages/notifications/README.ko.md'), 'utf8');
   const notificationsChapter = readFileSync(join(repoRoot, 'book/intermediate/ch15-notifications.md'), 'utf8');
   const notificationsChapterKo = readFileSync(join(repoRoot, 'book/intermediate/ch15-notifications.ko.md'), 'utf8');
+  const cronReadme = readFileSync(join(repoRoot, 'packages/cron/README.md'), 'utf8');
+  const cronReadmeKo = readFileSync(join(repoRoot, 'packages/cron/README.ko.md'), 'utf8');
+  const cronChapter = readFileSync(join(repoRoot, 'book/intermediate/ch12-cron.md'), 'utf8');
+  const cronChapterKo = readFileSync(join(repoRoot, 'book/intermediate/ch12-cron.ko.md'), 'utf8');
+  const lifecycleAndShutdown = readFileSync(join(repoRoot, 'docs/architecture/lifecycle-and-shutdown.md'), 'utf8');
+  const lifecycleAndShutdownKo = readFileSync(join(repoRoot, 'docs/architecture/lifecycle-and-shutdown.ko.md'), 'utf8');
   const cliReadme = readFileSync(join(repoRoot, 'packages/cli/README.md'), 'utf8');
   const cliReadmeKo = readFileSync(join(repoRoot, 'packages/cli/README.ko.md'), 'utf8');
   const studioReadme = readFileSync(join(repoRoot, 'packages/studio/README.md'), 'utf8');
@@ -1610,6 +1616,28 @@ function enforceCanonicalRuntimeMatrixReferences() {
       docsContextKo.includes('book/intermediate/ch12-cron.ko.md') &&
       docsContextKo.includes('dynamic-start lifecycle guarantee'),
     'docs/CONTEXT.ko.md must keep cron scheduling, status snapshot, and book lifecycle guidance discoverable when package-surface.ko.md documents them.',
+  );
+  assert(
+    packageSurface.includes('per-acquisition lease tokens') &&
+      packageSurface.includes('rejects late queued ticks') &&
+      docsContext.includes('committed scheduler handle token') &&
+      docsContext.includes('distinct lease token') &&
+      cronReadme.includes('unique lease token') &&
+      cronReadme.includes('already queued') &&
+      cronChapter.includes('provisional replacement tick-gated') &&
+      lifecycleAndShutdown.includes('distinct Redis lease token'),
+    'Cron English contract surfaces must keep shutdown tick admission, transactional replacement handles, and per-acquisition lease fencing aligned.',
+  );
+  assert(
+    packageSurfaceKo.includes('per-acquisition lease token') &&
+      packageSurfaceKo.includes('late queued tick') &&
+      docsContextKo.includes('committed scheduler handle token') &&
+      docsContextKo.includes('서로 다른 lease token') &&
+      cronReadmeKo.includes('고유한 lease token') &&
+      cronReadmeKo.includes('이미 queue된 callback') &&
+      cronChapterKo.includes('provisional replacement의 tick을 gate') &&
+      lifecycleAndShutdownKo.includes('서로 다른 Redis lease token'),
+    'Cron Korean contract surfaces must keep shutdown tick admission, transactional replacement handles, and per-acquisition lease fencing aligned.',
   );
   assert(
     packageSurface.includes('@fluojs/socket.io') &&
