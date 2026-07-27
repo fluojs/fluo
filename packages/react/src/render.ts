@@ -73,14 +73,6 @@ export type RenderReactResponseOptions = {
 /** Minimal fluo request context needed to render one React HTML response. */
 export type ReactRenderContext = Pick<RequestContext, 'request' | 'requestId' | 'response'>;
 
-type ReactStreamWritePlan = {
-  readonly applySuccessMetadata: () => void;
-  readonly pendingRecoverableErrors: readonly PendingReactRecoverableError[];
-  readonly reportRecoverableErrors: (events: readonly PendingReactRecoverableError[]) => void;
-  readonly requestContext: ReactRenderContext;
-  readonly stream: ReactReadableStream;
-};
-
 function applyEntryHeaders(entry: ReactServerEntry, requestContext: ReactRenderContext): void {
   for (const [name, value] of Object.entries(entry.headers)) {
     requestContext.response.setHeader(name, typeof value === 'string' ? value : [...value]);
@@ -149,26 +141,6 @@ function createReactDomRenderOptions(options: ReactReadableStreamRenderOptions):
   };
 }
 
-async function writeReactStream(plan: ReactStreamWritePlan): Promise<void> {
-  const { applySuccessMetadata, pendingRecoverableErrors, reportRecoverableErrors, requestContext, stream } = plan;
-  const responseStream = requestContext.response.stream;
-
-  if (!responseStream) {
-    const body = await collectReadableStream(stream, requestContext.request);
-    throwIfReactRequestAborted(requestContext.request);
-    applySuccessMetadata();
-    reportRecoverableErrors(pendingRecoverableErrors);
-    await requestContext.response.send(body);
-    return;
-  }
-
-  applySuccessMetadata();
-  requestContext.response.committed = true;
-  responseStream.flush?.();
-  reportRecoverableErrors(pendingRecoverableErrors);
-  await pipeReadableStream(stream, responseStream, requestContext.request);
-}
-
 async function defaultRenderToReadableStream(
   node: ReactNode,
   options: ReactReadableStreamRenderOptions,
@@ -194,14 +166,14 @@ export async function renderReactResponse(
   options: RenderReactResponseOptions = {},
 ): Promise<void> {
   const diagnostics = createReactRenderDiagnostics(entry, requestContext);
+  const renderToReadableStream = options.renderToReadableStream ?? defaultRenderToReadableStream;
+  const pendingRecoverableErrors: PendingReactRecoverableError[] = [];
+  let shellReady = false;
+  let stream: ReactReadableStream;
 
   try {
     throwIfReactRequestAborted(requestContext.request);
-
-    const renderToReadableStream = options.renderToReadableStream ?? defaultRenderToReadableStream;
-    const pendingRecoverableErrors: PendingReactRecoverableError[] = [];
-    let shellReady = false;
-    const stream = await renderToReadableStream(
+    stream = await renderToReadableStream(
       entry.node,
       createReactReadableStreamRenderOptions(entry, requestContext, (error, errorInfo) => {
         const event = errorInfo !== undefined ? { error, errorInfo } : { error };
@@ -217,21 +189,37 @@ export async function renderReactResponse(
 
     shellReady = true;
     throwIfReactRequestAborted(requestContext.request);
-
-    const applySuccessMetadata = () => {
-      options.applySuccessResponseMetadata?.();
-      applyEntryStatus(entry, requestContext);
-      applyEntryHeaders(entry, requestContext);
-    };
-
-    await writeReactStream({
-      applySuccessMetadata,
-      pendingRecoverableErrors,
-      reportRecoverableErrors: diagnostics.reportRecoverableErrors,
-      requestContext,
-      stream,
-    });
   } catch (error) {
     throw diagnostics.preservePreCommitShellError(error);
   }
+
+  const applySuccessMetadata = () => {
+    options.applySuccessResponseMetadata?.();
+    applyEntryStatus(entry, requestContext);
+    applyEntryHeaders(entry, requestContext);
+  };
+  const responseStream = requestContext.response.stream;
+
+  if (!responseStream) {
+    let body: Uint8Array;
+
+    try {
+      body = await collectReadableStream(stream, requestContext.request);
+      throwIfReactRequestAborted(requestContext.request);
+    } catch (error) {
+      throw diagnostics.preservePreCommitShellError(error);
+    }
+
+    applySuccessMetadata();
+    diagnostics.reportRecoverableErrors(pendingRecoverableErrors);
+    await requestContext.response.send(body);
+    return;
+  }
+
+  applySuccessMetadata();
+  requestContext.response.committed = true;
+  responseStream.flush?.();
+  diagnostics.reportRecoverableErrors(pendingRecoverableErrors);
+  await pipeReadableStream(stream, responseStream, requestContext.request);
+  diagnostics.reportRequestAbort();
 }
