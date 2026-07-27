@@ -1293,6 +1293,11 @@ export class SocketIoLifecycleService
   }
 
   private async runShutdownLifecycle(): Promise<void> {
+    const initialization = this.serverInitializationPromise;
+    if (initialization) {
+      await Promise.allSettled([initialization]);
+    }
+
     const io = this.io;
 
     if (!io) {

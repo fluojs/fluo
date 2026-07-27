@@ -18,9 +18,11 @@ class TestBunAdapter implements HttpApplicationAdapter {
   private binding: unknown | undefined;
   private bindingAttemptCount = 0;
   private bindingClearCount = 0;
-  private failNextBinding = true;
 
-  constructor(private readonly retainFailedBinding = false) {}
+  constructor(
+    private readonly retainFailedBinding = false,
+    private failNextBinding = true,
+  ) {}
 
   get attempts(): number {
     return this.bindingAttemptCount;
@@ -28,6 +30,10 @@ class TestBunAdapter implements HttpApplicationAdapter {
 
   get clears(): number {
     return this.bindingClearCount;
+  }
+
+  get currentBinding(): unknown | undefined {
+    return this.binding;
   }
 
   close(): void {}
@@ -109,5 +115,37 @@ describe('SocketIoLifecycleService Bun initialization', () => {
     expect(server).toBeInstanceOf(Server);
     expect(adapter.attempts).toBe(2);
     expect(adapter.clears).toBe(1);
+  });
+
+  it('clears a Bun server initialized while application shutdown is in progress', async () => {
+    // Given
+    const adapter = new TestBunAdapter(false, false);
+    const service = createLifecycleService(adapter);
+    const installBinding = service['installBunSocketIoBinding'].bind(service);
+    let markInitializationStarted = (): void => undefined;
+    let releaseInitialization = (): void => undefined;
+    const initializationStarted = new Promise<void>((resolve) => {
+      markInitializationStarted = resolve;
+    });
+    const initializationGate = new Promise<void>((resolve) => {
+      releaseInitialization = resolve;
+    });
+    service['installBunSocketIoBinding'] = async (runtime, io) => {
+      markInitializationStarted();
+      await initializationGate;
+      await installBinding(runtime, io);
+    };
+    const initialization = service.getServerAsync();
+    await initializationStarted;
+
+    // When
+    const shutdown = service.onApplicationShutdown();
+    releaseInitialization();
+    await Promise.all([initialization, shutdown]);
+
+    // Then
+    expect(service['io']).toBeUndefined();
+    expect(service['bunEngine']).toBeUndefined();
+    expect(adapter.currentBinding).toBeUndefined();
   });
 });
