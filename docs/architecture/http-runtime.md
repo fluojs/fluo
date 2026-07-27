@@ -23,10 +23,11 @@ This document defines the current request execution contract implemented by `@fl
 
 ## Request Context Isolation
 
-- When async-context storage is immediately available, `runWithRequestContext(...)` runs the callback inside that request-local store.
-- During lazy Node async-storage resolution, declared async callbacks wait for the request-local store before running.
-- Non-async callbacks run immediately in a synchronous stack fallback so return and throw behavior remains synchronous. A promise returned from that callback continues without ambient request context after the synchronous frame.
-- Request-context helpers never patch `Promise.prototype` or expose a pending fallback context to unrelated promise continuations.
+- Runtime-specific root entries make host async-context storage available before exposing `runWithRequestContext(...)`: Node and Bun register the `node:async_hooks` constructor, while portable entries remain free of Node built-in imports.
+- The request-local store is instantiated lazily on first helper use, and the callback runs inside that store whenever the host provides an async-context primitive.
+- Non-async callbacks run immediately so return and throw behavior remains synchronous. When they return a promise, continuations created by the callback retain that request context until the promise settles, including while requests overlap.
+- Request-context helpers never patch `Promise.prototype` or expose one request context to unrelated promise continuations.
+- Hosts without an async-context primitive use a synchronous stack fallback that clears the context before awaited work resumes.
 
 ## Routing Rules
 

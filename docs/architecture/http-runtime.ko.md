@@ -23,10 +23,11 @@
 
 ## Request Context Isolation
 
-- Async-context storage를 즉시 사용할 수 있으면 `runWithRequestContext(...)`는 해당 request-local store 안에서 callback을 실행한다.
-- Node async storage를 lazy하게 해석하는 동안 선언된 async callback은 request-local store가 준비될 때까지 기다린 뒤 실행된다.
-- Non-async callback은 synchronous stack fallback에서 즉시 실행되어 반환과 throw 동작을 동기로 유지한다. 해당 callback이 반환한 promise는 동기 frame 이후 ambient request context 없이 계속된다.
-- Request-context helper는 `Promise.prototype`을 patch하지 않으며 pending fallback context를 관련 없는 promise continuation에 노출하지 않는다.
+- Runtime-specific root entry는 `runWithRequestContext(...)`를 노출하기 전에 host async-context storage를 사용할 수 있게 한다. Node와 Bun은 `node:async_hooks` constructor를 등록하고 portable entry는 Node built-in import 없이 유지된다.
+- Request-local store는 첫 helper 사용 시점에 lazy하게 instantiate되며, host가 async-context primitive를 제공하면 callback은 해당 store 안에서 실행된다.
+- Non-async callback은 즉시 실행되므로 반환과 throw 동작이 동기로 유지된다. Promise를 반환하면 callback이 만든 continuation은 요청이 겹치는 동안에도 해당 promise가 settle될 때까지 request context를 보존한다.
+- Request-context helper는 `Promise.prototype`을 patch하지 않으며 한 요청의 context를 관련 없는 promise continuation에 노출하지 않는다.
+- 비동기 컨텍스트 primitive가 없는 host는 awaited work가 재개되기 전에 context를 지우는 synchronous stack fallback을 사용한다.
 
 ## Routing Rules
 
