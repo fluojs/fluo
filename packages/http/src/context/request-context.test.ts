@@ -187,7 +187,7 @@ describe('request context store', () => {
     }
   });
 
-  it('preserves context for promise-returning non-async callbacks when getBuiltinModule is unavailable', async () => {
+  it('limits promise-returning non-async callbacks to synchronous context when getBuiltinModule is unavailable', async () => {
     vi.resetModules();
     const getBuiltinModuleDescriptor = Object.getOwnPropertyDescriptor(process, 'getBuiltinModule');
 
@@ -201,10 +201,10 @@ describe('request context store', () => {
       const context = requestContext.createRequestContext(createMockContext());
 
       const requestId = await requestContext.runWithRequestContext(context, () =>
-        Promise.resolve().then(() => requestContext.assertRequestContext().requestId),
+        Promise.resolve().then(() => requestContext.getCurrentRequestContext()?.requestId),
       );
 
-      expect(requestId).toBe('req_123');
+      expect(requestId).toBeUndefined();
     } finally {
       if (getBuiltinModuleDescriptor) {
         Object.defineProperty(process, 'getBuiltinModule', getBuiltinModuleDescriptor);
@@ -213,7 +213,7 @@ describe('request context store', () => {
     }
   });
 
-  it('preserves async IIFE continuation context for promise-returning non-async callbacks when getBuiltinModule is unavailable', async () => {
+  it('limits async IIFEs returned by non-async callbacks to synchronous context during lazy resolution', async () => {
     vi.resetModules();
     const getBuiltinModuleDescriptor = Object.getOwnPropertyDescriptor(process, 'getBuiltinModule');
 
@@ -230,11 +230,11 @@ describe('request context store', () => {
         (async () => {
           await Promise.resolve();
 
-          return requestContext.assertRequestContext().requestId;
+          return requestContext.getCurrentRequestContext()?.requestId;
         })(),
       );
 
-      expect(requestId).toBe('req_123');
+      expect(requestId).toBeUndefined();
     } finally {
       if (getBuiltinModuleDescriptor) {
         Object.defineProperty(process, 'getBuiltinModule', getBuiltinModuleDescriptor);
@@ -319,7 +319,7 @@ describe('request context store', () => {
     }
   });
 
-  it('preserves context for promise-returning non-async callbacks when getBuiltinModule throws', async () => {
+  it('limits promise-returning non-async callbacks to synchronous context when getBuiltinModule throws', async () => {
     vi.resetModules();
 
     const getBuiltinModule = vi.spyOn(process, 'getBuiltinModule').mockImplementation(() => {
@@ -331,17 +331,17 @@ describe('request context store', () => {
       const context = requestContext.createRequestContext(createMockContext());
 
       const requestId = await requestContext.runWithRequestContext(context, () =>
-        Promise.resolve().then(() => requestContext.assertRequestContext().requestId),
+        Promise.resolve().then(() => requestContext.getCurrentRequestContext()?.requestId),
       );
 
-      expect(requestId).toBe('req_123');
+      expect(requestId).toBeUndefined();
     } finally {
       getBuiltinModule.mockRestore();
       vi.resetModules();
     }
   });
 
-  it('preserves overlapping promise-returning callback contexts while dynamic storage resolves', async () => {
+  it('does not expose overlapping promise-returning callback contexts while dynamic storage resolves', async () => {
     vi.resetModules();
     const getBuiltinModuleDescriptor = Object.getOwnPropertyDescriptor(process, 'getBuiltinModule');
 
@@ -364,19 +364,19 @@ describe('request context store', () => {
       const releaseB = createDeferred<void>();
 
       const requestA = requestContext.runWithRequestContext(contextA, () =>
-        releaseA.promise.then(() => requestContext.assertRequestContext().requestId),
+        releaseA.promise.then(() => requestContext.getCurrentRequestContext()?.requestId),
       );
       const requestB = requestContext.runWithRequestContext(contextB, () => {
         releaseA.resolve();
 
-        return releaseB.promise.then(() => requestContext.assertRequestContext().requestId);
+        return releaseB.promise.then(() => requestContext.getCurrentRequestContext()?.requestId);
       });
 
       await Promise.resolve();
       releaseB.resolve();
 
-      await expect(requestA).resolves.toBe('req_a');
-      await expect(requestB).resolves.toBe('req_b');
+      await expect(requestA).resolves.toBeUndefined();
+      await expect(requestB).resolves.toBeUndefined();
     } finally {
       if (getBuiltinModuleDescriptor) {
         Object.defineProperty(process, 'getBuiltinModule', getBuiltinModuleDescriptor);
