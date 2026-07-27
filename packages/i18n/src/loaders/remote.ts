@@ -201,12 +201,10 @@ export class RemoteI18nLoader implements I18nLoader {
     const controller = new AbortController();
     const unlinkCallerAbort = linkCallerAbort(options.signal, controller);
     const timeout = setTimeout(() => controller.abort(createTimeoutError()), this.timeoutMs);
+    let rejectOnAbort: (() => void) | undefined;
     const abortRace = new Promise<never>((_resolve, reject) => {
-      controller.signal.addEventListener(
-        'abort',
-        () => reject(controller.signal.reason instanceof I18nError ? controller.signal.reason : createAbortError()),
-        { once: true },
-      );
+      rejectOnAbort = () => reject(controller.signal.reason instanceof I18nError ? controller.signal.reason : createAbortError());
+      controller.signal.addEventListener('abort', rejectOnAbort, { once: true });
     });
 
     try {
@@ -223,6 +221,9 @@ export class RemoteI18nLoader implements I18nLoader {
     } finally {
       clearTimeout(timeout);
       unlinkCallerAbort();
+      if (rejectOnAbort !== undefined) {
+        controller.signal.removeEventListener('abort', rejectOnAbort);
+      }
     }
   }
 }
