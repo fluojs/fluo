@@ -58,6 +58,8 @@ export class BackgroundJobsModule {}
 
 Job은 직렬화된 작업 단위입니다. Worker는 그 job을 처리하는 방식을 소유합니다. 이 분리는 단순하지만 중요합니다. job payload는 durable handoff이고, worker 구현은 그 경계 뒤에서 독립적으로 바뀔 수 있습니다.
 
+Queue는 `new GenerateInvoiceJob(orderId)` 같은 class instance를 포함한 job object를 입력으로 받습니다. Enqueue 전에 job을 JSON으로 직렬화하며, 직렬화 결과는 `null`이나 array가 아닌 JSON object여야 합니다. Worker는 그 data 위에 등록된 job prototype이 다시 입혀진 값을 받으므로, 영속 payload에는 직렬화된 data만 포함되어도 `job.someMethod()` 같은 메서드를 사용할 수 있습니다.
+
 ### 11.3.1 Invoice generation job
 
 Invoice PDF 생성은 전형적인 queue task입니다. checkout confirmation path 안에서 처리하기에는 오래 걸립니다. file storage나 rendering outage 같은 일시적인 원인으로 실패할 수도 있습니다.
@@ -129,7 +131,7 @@ fixed backoff는 예측하기 쉽습니다. exponential backoff는 부하를 받
 
 ## 11.5 Dead-letter handling
 
-모든 retry attempt 이후에도 실패하는 job이 있습니다. 그런 실패가 조용히 사라지면 안 됩니다. Queue 패키지는 `fluo:queue:dead-letter:<jobName>` 아래의 Redis dead-letter list에 dead-letter record를 append하며, BullMQ job 자체를 옮기지는 않습니다. 운영자는 이 목록을 통해 무엇이 실패했는지 확인할 수 있는 durable place를 얻습니다. README는 기본 retention policy도 명시합니다. 별도 설정이 없으면 `QueueModule.forRoot()`는 job당 가장 최근 `1_000`개의 dead-letter entry를 유지합니다. 이는 운영상 중요한 기본값입니다. 무한 성장을 막으면서도 최근 실패 증거를 보존하기 때문입니다.
+모든 retry attempt 이후에도 실패하는 job이 있습니다. 그런 실패가 조용히 사라지면 안 됩니다. Queue 패키지는 `fluo:queue:dead-letter:<jobName>` 아래의 Redis dead-letter list에 별도의 dead-letter record를 append하며, BullMQ job 자체를 그 list로 옮기지는 않습니다. 운영자는 이 목록을 통해 무엇이 실패했는지 확인할 수 있는 durable place를 얻습니다. README는 기본 retention policy도 명시합니다. 별도 설정이 없으면 `QueueModule.forRoot()`는 job당 가장 최근 `1_000`개의 dead-letter entry를 유지합니다. 이는 운영상 중요한 기본값입니다. 무한 성장을 막으면서도 최근 실패 증거를 보존하기 때문입니다.
 
 ### 11.5.1 What FluoShop stores in dead letters
 
@@ -164,7 +166,7 @@ v2.0.0에서 대표적인 background flow는 다음과 같습니다.
 5. Billing이 반응하여 `GenerateInvoiceJob`을 enqueue합니다.
 6. `InvoiceWorker`가 background에서 job을 처리합니다.
 7. rendering이 일시적으로 실패하면 retry와 backoff가 적용됩니다.
-8. 그래도 실패하면 job은 dead-letter list에 남습니다.
+8. 그래도 실패하면 Queue는 BullMQ job 자체를 옮기지 않고 dead-letter list에 별도의 record를 append합니다.
 
 이 경계는 PDF generation을 inline으로 수행하는 방식보다 운영적으로 낫습니다. 고객은 시의적절한 API 응답을 받고, 운영자는 통제된 failure model을 얻으며, 시스템은 회복할 여지를 확보합니다.
 
@@ -192,7 +194,7 @@ v2.0.0으로 넘어가면서 FluoShop은 더 이상 event-aware 수준에 머무
 - NestJS migration에는 `handle(job)`을 가진 명시적 singleton `@QueueWorker(JobClass)` provider, module-graph reachability, 애플리케이션이 검증한 `jobName`/payload cutover가 필요하며 legacy processor metadata는 compatibility surface가 아닙니다.
 - job은 invoice generation, email batch, catalog sync처럼 느리거나 failure-prone한 작업을 위한 durable handoff입니다.
 - retry attempt와 backoff strategy는 무비판적으로 복사하지 말고 workload별로 선택해야 합니다.
-- dead-letter list는 bounded retention policy 아래에서 반복 실패 job을 보존하며, read-only inspection API는 Queue의 Redis key 형식을 노출하지 않고 최신순 typed metadata를 반환합니다.
+- dead-letter list는 bounded retention policy 아래에서 반복 실패 job의 별도 record를 보존하며, BullMQ job 자체를 소유하거나 옮기지는 않습니다. Read-only inspection API는 Queue의 Redis key 형식을 노출하지 않고 최신순 typed metadata를 반환합니다.
 - Queue는 bootstrap-ready handoff 이후 processor를 시작합니다. Queue가 `started`이고 탐색된 모든 processor가 ready인 동안에만 pending dead-letter write가 readiness를 `ready`로 유지하고 health를 `degraded`로 만들며, `stopping`은 not-ready/degraded, `stopped`는 not-ready/unhealthy입니다. 종료는 각 write의 `5_000ms` drain과 stuck processor를 위한 `workerShutdownTimeoutMs`로 제한됩니다.
 - FluoShop v2.0.0은 이제 post-order의 expensive work를 customer request path를 늘리는 대신 queue boundary 뒤로 이동시킵니다.
 

@@ -155,7 +155,7 @@ Workers can be configured with a maximum number of attempts and backoff strategi
 
 ### Dead-Letter Handling
 
-When a worker exhausts its retry attempts, Queue appends a dead-letter record to Redis (`fluo:queue:dead-letter:<jobName>`) for manual inspection or recovery. Queue does not move the BullMQ job itself.
+When a worker exhausts its retry attempts, Queue appends a separate dead-letter record to Redis (`fluo:queue:dead-letter:<jobName>`) for manual inspection or recovery. Queue does not move the BullMQ job itself into that list.
 
 `QueueModule.forRoot()` keeps the most recent `1_000` dead-letter entries per job by default. Set `defaultDeadLetterMaxEntries: false` to opt out, or provide a smaller positive number when operators need a tighter retention budget.
 
@@ -171,7 +171,7 @@ for (const record of inspection.records) {
 
 Inspection is read-only and returns valid records in newest-first order. It reads Redis without lifecycle-gating the operation, so inspection does not start workers and remains usable while Queue is `idle` or after worker startup reaches `failed`, as long as the backing Redis client is reachable. Queue does not own the shared Redis client; after `RedisModule` shuts that client down, inspection propagates the backing Redis operation error instead of promising post-shutdown availability. The limit defaults to `100` stored entries and is capped at `1_000`; invalid limits fall back to the default. Malformed stored values are omitted and counted in `malformedRecordCount` for the inspected window, and `payload` remains `unknown` so application code must narrow its own job data. Inspection does not delete, replay, or mutate jobs or dead-letter records.
 
-Jobs must be JSON-serializable plain objects. Queue serializes the job payload before enqueueing and rehydrates the job prototype on the worker side.
+Queue accepts job objects, including class instances such as `new ProcessOrderJob(id)`. Before enqueueing, Queue JSON-serializes the job and requires the serialized payload to be a non-null, non-array JSON object. On the worker side, Queue rehydrates the registered job prototype over that serialized object.
 
 Treat low-level provider assembly as an internal implementation detail: low-level provider helpers are not part of the documented root-barrel contract.
 
