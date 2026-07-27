@@ -1,13 +1,14 @@
 import type { Constructor, MetadataPropertyKey } from '@fluojs/core';
-import { getDtoBindingSchema, getDtoValidationSchema, type DtoFieldValidationRule } from '@fluojs/core/request-pipeline';
+import { type DtoFieldValidationRule, getDtoBindingSchema, getDtoValidationSchema } from '@fluojs/core/request-pipeline';
 import type { HandlerDescriptor, HttpMethod } from '@fluojs/http';
 import {
   type ApiParameterMetadata,
+  type ApiResponseMetadata,
   getControllerTags,
   getMethodApiMetadata,
-  type ApiResponseMetadata,
   type MethodApiMetadata,
 } from './decorators.js';
+import { normalizeOpenApiDocumentSchemaBounds } from './schema-bounds.js';
 import { cloneSnapshotValue } from './snapshot.js';
 
 type OpenApiOperationMethod = Lowercase<HttpMethod>;
@@ -1320,5 +1321,5 @@ export function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): Open
     paths,
   };
 
-  return options.documentTransform ? options.documentTransform(document) : document;
+  return normalizeOpenApiDocumentSchemaBounds(options.documentTransform ? options.documentTransform(document) : document);
 }
