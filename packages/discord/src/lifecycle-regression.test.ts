@@ -28,15 +28,9 @@ async function resolveService(moduleType: Constructor): Promise<DiscordService> 
 }
 
 describe('DiscordService lifecycle regressions', () => {
-  it('closes a factory-owned transport exactly once when verification fails during shutdown', async () => {
+  it('waits for in-flight verification before closing a factory-owned transport during shutdown', async () => {
     let rejectVerification = (_reason: Error): void => {
       throw new Error('Verification reject callback was not initialized.');
-    };
-    let resolveClose = (): void => {
-      throw new Error('Close resolver was not initialized.');
-    };
-    let resolveCloseStarted = (): void => {
-      throw new Error('Close-start resolver was not initialized.');
     };
     let resolveVerificationStarted = (): void => {
       throw new Error('Verification-start resolver was not initialized.');
@@ -48,15 +42,82 @@ describe('DiscordService lifecycle regressions', () => {
     const verificationStarted = new Promise<void>((resolve) => {
       resolveVerificationStarted = resolve;
     });
-    const closeDelay = new Promise<void>((resolve) => {
-      resolveClose = resolve;
+    const close = vi.fn(async () => undefined);
+    const transport: DiscordTransport = {
+      close,
+      async send() {
+        return { ok: true, warnings: [] };
+      },
+      async verify() {
+        resolveVerificationStarted();
+        await verification;
+      },
+    };
+    const service = await resolveService(
+      DiscordModule.forRoot({
+        transport: {
+          create: async () => transport,
+          ownsResources: true,
+        },
+        verifyOnModuleInit: true,
+      }),
+    );
+
+    const startup = service.onModuleInit();
+    await verificationStarted;
+    const shutdown = service.onApplicationShutdown();
+
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: { lifecycleState: 'stopping' },
+      readiness: {
+        reason: 'Discord transport is shutting down or already stopped.',
+        status: 'not-ready',
+      },
     });
-    const closeStarted = new Promise<void>((resolve) => {
-      resolveCloseStarted = resolve;
+
+    const startupExpectation = expect(startup).rejects.toMatchObject({
+      cause: verificationError,
+      message: 'Discord transport failed to initialize.',
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    const closeCallsBeforeVerificationSettled = close.mock.calls.length;
+
+    rejectVerification(verificationError);
+    await startupExpectation;
+    await expect(shutdown).resolves.toBeUndefined();
+    await service.onApplicationShutdown();
+
+    expect(closeCallsBeforeVerificationSettled).toBe(0);
+    expect(close).toHaveBeenCalledOnce();
+    const stoppedStatus = service.createPlatformStatusSnapshot();
+    expect(stoppedStatus).toMatchObject({
+      details: { lifecycleState: 'stopped' },
+      readiness: {
+        reason: 'Discord transport is shutting down or already stopped.',
+        status: 'not-ready',
+      },
+    });
+    expect(stoppedStatus.details).not.toHaveProperty('lifecycleFailurePhase');
+  });
+
+  it('preserves the initialization phase when owned cleanup also fails during concurrent shutdown', async () => {
+    let rejectVerification = (_reason: Error): void => {
+      throw new Error('Verification reject callback was not initialized.');
+    };
+    let resolveVerificationStarted = (): void => {
+      throw new Error('Verification-start resolver was not initialized.');
+    };
+    const verificationError = new Error('discord verification failed');
+    const cleanupError = new Error('discord transport close failed');
+    const verification = new Promise<void>((_resolve, reject) => {
+      rejectVerification = reject;
+    });
+    const verificationStarted = new Promise<void>((resolve) => {
+      resolveVerificationStarted = resolve;
     });
     const close = vi.fn(async () => {
-      resolveCloseStarted();
-      await closeDelay;
+      throw cleanupError;
     });
     const transport: DiscordTransport = {
       close,
@@ -81,42 +142,32 @@ describe('DiscordService lifecycle regressions', () => {
     const startup = service.onModuleInit();
     await verificationStarted;
     const shutdown = service.onApplicationShutdown();
-    await closeStarted;
-
-    expect(service.createPlatformStatusSnapshot()).toMatchObject({
-      details: { lifecycleState: 'stopping' },
-      readiness: {
-        reason: 'Discord transport is shutting down or already stopped.',
-        status: 'not-ready',
-      },
-    });
-    expect(close).toHaveBeenCalledOnce();
-
     const startupExpectation = expect(startup).rejects.toMatchObject({
-      cause: verificationError,
       message: 'Discord transport failed to initialize.',
     });
+    const shutdownExpectation = expect(shutdown).rejects.toMatchObject({
+      cause: cleanupError,
+      message: 'Discord transport failed to close cleanly.',
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    const closeCallsBeforeVerificationSettled = close.mock.calls.length;
+
     rejectVerification(verificationError);
-    await Promise.resolve();
-    await Promise.resolve();
+    await Promise.all([startupExpectation, shutdownExpectation]);
 
+    expect(closeCallsBeforeVerificationSettled).toBe(0);
     expect(close).toHaveBeenCalledOnce();
-
-    resolveClose();
-    await startupExpectation;
-    await expect(shutdown).resolves.toBeUndefined();
-    await service.onApplicationShutdown();
-
-    expect(close).toHaveBeenCalledOnce();
-    const stoppedStatus = service.createPlatformStatusSnapshot();
-    expect(stoppedStatus).toMatchObject({
-      details: { lifecycleState: 'stopped' },
+    expect(service.createPlatformStatusSnapshot()).toMatchObject({
+      details: {
+        lifecycleFailurePhase: 'initialization',
+        lifecycleState: 'failed',
+      },
       readiness: {
-        reason: 'Discord transport is shutting down or already stopped.',
+        reason: 'Discord transport failed to initialize.',
         status: 'not-ready',
       },
     });
-    expect(stoppedStatus.details).not.toHaveProperty('lifecycleFailurePhase');
   });
 
   it('keeps a rejected factory create failure out of shutdown cleanup diagnostics', async () => {
