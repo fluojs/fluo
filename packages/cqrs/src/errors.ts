@@ -49,9 +49,11 @@ export class DuplicateQueryHandlerError extends FluoError {
 }
 
 /**
- * Raised when conflicting event-handler registrations break CQRS discovery invariants.
+ * Compatibility error type retained for existing imports.
  *
- * Ordinary multiple `@EventHandler(...)` providers for the same event are valid and fan out.
+ * Event-handler discovery does not throw this error. Repeated discovery of the same singleton provider token and event
+ * type is silently deduplicated, while distinct singleton provider tokens remain valid fan-out routes in discovery
+ * order.
  */
 export class DuplicateEventHandlerError extends FluoError {
   /**
