@@ -89,6 +89,9 @@ Builder는 handler 반환값이나 TypeScript 반환 타입을 검사해 respons
 ### 통합 DTO 스키마
 `@fluojs/validation`과 함께 DTO binding 및 validation metadata에서 request schema를 파생합니다. Response DTO는 `@ApiResponse(..., { type: ResponseDto })` 또는 `extraModels`처럼 명시적으로 참조할 때만 OpenAPI component가 됩니다.
 
+### OpenAPI 3.1 배타적 경계
+`OpenApiSchemaObject`는 OpenAPI 3.1의 숫자 `exclusiveMinimum` 및 `exclusiveMaximum` 값을 받으면서 기존 boolean metadata와의 호환성도 유지합니다. `minimum` 또는 `maximum`과 함께 사용한 `true` 플래그는 생성 문서에서 대응하는 숫자 배타적 경계로 변환되고, `false` 플래그는 생략되는 대신 포괄 경계는 유지됩니다. 유한한 숫자 배타적 경계는 변경 없이 통과합니다. 유한한 대응 경계가 없는 `true` 플래그나 유한하지 않은 숫자 배타적 경계는 잘못된 OpenAPI 3.1 schema를 생성하는 대신 문서 생성을 실패시킵니다. 같은 정규화는 문서가 노출되기 전에 `documentTransform` 이후에도 실행됩니다.
+
 ### 버전 관리 지원
 `@fluojs/http`의 URI 기반 버전 관리를 자동으로 처리합니다. OpenAPI 경로에 해결된 버전 경로가 올바르게 반영됩니다.
 
