@@ -39,8 +39,10 @@ export interface StudioRouteDescriptor {
   controller: string;
   handler: string;
   id: string;
+  kind: string;
   method: string;
   module?: string;
+  params: string[];
   path: string;
   version?: string;
 }
