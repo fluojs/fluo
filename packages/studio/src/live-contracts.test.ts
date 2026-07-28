@@ -31,7 +31,7 @@ const liveEvents: readonly StudioLiveEvent[] = [
         ],
       },
       requests: [],
-      routes: [{ controller: 'HealthController', handler: 'getHealth', id: 'route:health', method: 'GET', path: '/health' }],
+      routes: [{ controller: 'HealthController', handler: 'getHealth', id: 'route:health', kind: 'http', method: 'GET', params: [], path: '/health' }],
       version: 1,
     },
     type: 'snapshot',

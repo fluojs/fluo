@@ -35,7 +35,7 @@ export interface StudioReportSummary {
  */
 export interface StudioReportArtifact {
   generatedAt: string;
-  snapshot: PlatformShellSnapshot;
+  snapshot: StudioInspectionSnapshot;
   summary: StudioReportSummary;
   timing: BootstrapTimingDiagnostics;
   version: 1;
@@ -46,7 +46,7 @@ export interface StudioReportArtifact {
  */
 export interface StudioPayload {
   report?: StudioReportArtifact;
-  snapshot?: PlatformShellSnapshot;
+  snapshot?: StudioInspectionSnapshot;
   timing?: BootstrapTimingDiagnostics;
 }
 
@@ -81,10 +81,17 @@ export interface StudioRouteDescriptor {
   controller: string;
   handler: string;
   id: string;
+  kind: string;
   method: string;
   module?: string;
+  params: string[];
   path: string;
   version?: string;
+}
+
+/** Static inspect snapshot with optional compiled route diagnostics. */
+export interface StudioInspectionSnapshot extends PlatformShellSnapshot {
+  routes?: StudioRouteDescriptor[];
 }
 
 /** Request lifecycle status understood by the live Studio request-flow panel. */
@@ -371,11 +378,20 @@ function validateStudioRouteDescriptor(value: unknown): StudioRouteDescriptor {
     throw new Error('Invalid Studio live route descriptor payload.');
   }
 
+  const params = value.params;
+  if (params !== undefined && !isStringArray(params)) {
+    throw new Error('Invalid Studio live route descriptor params payload.');
+  }
+
   const route: StudioRouteDescriptor = {
     controller: validateString(value.controller, 'Invalid Studio live route descriptor payload.'),
     handler: validateString(value.handler, 'Invalid Studio live route descriptor payload.'),
     id: validateString(value.id, 'Invalid Studio live route descriptor payload.'),
+    kind: value.kind === undefined
+      ? 'http'
+      : validateString(value.kind, 'Invalid Studio live route descriptor kind payload.'),
     method: validateString(value.method, 'Invalid Studio live route descriptor payload.'),
+    params: params === undefined ? [] : [...params],
     path: validateString(value.path, 'Invalid Studio live route descriptor payload.'),
   };
 
@@ -668,7 +684,7 @@ export function isStudioLiveEvent(value: unknown): value is StudioLiveEvent {
   }
 }
 
-function validateSnapshot(value: unknown): PlatformShellSnapshot | null {
+function validateSnapshot(value: unknown): StudioInspectionSnapshot | null {
   if (!isRecord(value)) {
     return null;
   }
@@ -752,7 +768,17 @@ function validateSnapshot(value: unknown): PlatformShellSnapshot | null {
     }
   }
 
-  return value as unknown as PlatformShellSnapshot;
+  if (value.routes !== undefined && !Array.isArray(value.routes)) {
+    throw new Error('Invalid route diagnostics in platform snapshot payload.');
+  }
+
+  const snapshot = value as unknown as StudioInspectionSnapshot;
+  return value.routes === undefined
+    ? snapshot
+    : {
+        ...snapshot,
+        routes: value.routes.map((route) => validateStudioRouteDescriptor(route)),
+      };
 }
 
 function validateTiming(value: unknown): BootstrapTimingDiagnostics | null {
@@ -799,7 +825,7 @@ function validateReportSummary(value: unknown): StudioReportSummary {
 
 function validateReportSummaryConsistency(
   summary: StudioReportSummary,
-  snapshot: PlatformShellSnapshot,
+  snapshot: StudioInspectionSnapshot,
   timing: BootstrapTimingDiagnostics,
 ): void {
   const errorCount = snapshot.diagnostics.filter((diagnostic: PlatformDiagnosticIssue) => diagnostic.severity === 'error').length;
@@ -823,7 +849,7 @@ function isReportArtifactEnvelope(value: Record<string, unknown>): boolean {
     || (hasOwn(value, 'snapshot') && hasOwn(value, 'timing') && (hasOwn(value, 'generatedAt') || hasOwn(value, 'version')));
 }
 
-function validateReport(value: unknown, snapshot: PlatformShellSnapshot | null, timing: BootstrapTimingDiagnostics | null): StudioReportArtifact | null {
+function validateReport(value: unknown, snapshot: StudioInspectionSnapshot | null, timing: BootstrapTimingDiagnostics | null): StudioReportArtifact | null {
   if (!isRecord(value) || !isReportArtifactEnvelope(value)) {
     return null;
   }
