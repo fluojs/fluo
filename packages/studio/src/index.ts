@@ -12,6 +12,7 @@ export {
   type PlatformReadinessStatus,
   type StudioReportArtifact,
   type StudioReportSummary,
+  type StudioInspectionSnapshot,
   type PlatformShellSnapshot,
   type StudioPayload,
   type StudioConnectionState,

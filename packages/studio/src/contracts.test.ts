@@ -447,6 +447,24 @@ describe('parseStudioPayload', () => {
     expect(issue.code).toBe('QUEUE_DEPENDENCY_NOT_READY');
   });
 
+  it('keeps legacy route descriptor construction source-compatible at the root entrypoint', () => {
+    const route: studio.StudioRouteDescriptor = {
+      controller: 'LegacyController',
+      handler: 'list',
+      id: 'GET /legacy LegacyController list',
+      method: 'GET',
+      path: '/legacy',
+    };
+
+    expect(route.path).toBe('/legacy');
+  });
+
+  it('publishes the static inspection snapshot type from the root package entrypoint', () => {
+    const snapshot: studio.StudioInspectionSnapshot = snapshotFixture;
+
+    expect(snapshot.generatedAt).toBe(snapshotFixture.generatedAt);
+  });
+
   it('parses platform snapshot payload', () => {
     const rawJson = JSON.stringify(snapshotFixture);
     const parsed = parseStudioPayload(rawJson);
