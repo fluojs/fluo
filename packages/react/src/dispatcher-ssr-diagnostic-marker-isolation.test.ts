@@ -158,4 +158,57 @@ describe('React SSR diagnostic marker isolation', () => {
     }
   });
 
+  it('does not reuse an unconsumed direct-render shell marker in a later request', async () => {
+    const sharedError = new Error('Shared direct and HTTP failure.');
+    const diagnostics: ReactSsrDiagnostic[] = [];
+    const renderToReadableStream: ReactReadableStreamRenderer = async () => {
+      throw sharedError;
+    };
+    const directEntry = createFailingEntry(renderToReadableStream);
+    const directContext: ReactRenderContext = {
+      request: createRequest('/direct-render'),
+      response: createResponse(),
+    };
+
+    // Given: a direct render leaves its original shell Error unhandled by React page middleware.
+    await expect(renderReactResponse(directEntry, directContext, {
+      renderToReadableStream,
+    })).rejects.toBe(sharedError);
+
+    @Router('/http-pipeline')
+    class HttpPipelineRouter {
+      @Path('/')
+      show(): never {
+        throw sharedError;
+      }
+    }
+
+    @Module({
+      imports: [ReactModule.forRoot({
+        controllers: [HttpPipelineRouter],
+        onDiagnostic(diagnostic) {
+          diagnostics.push(diagnostic);
+        },
+      })],
+    })
+    class AppModule {}
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      // When: a later request throws the same Error identity in its HTTP pipeline.
+      await app.dispatch(createRequest('/http-pipeline'), createResponse());
+
+      // Then: the later request reports its own phase without consuming stale direct-render state.
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0]).toMatchObject({
+        code: 'react-ssr-http-pipeline-failure',
+        phase: 'http-pipeline',
+        request: { url: '/http-pipeline' },
+      });
+      expect(diagnostics[0]?.error).toBe(sharedError);
+    } finally {
+      await app.close();
+    }
+  });
 });
