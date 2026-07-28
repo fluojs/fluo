@@ -1,15 +1,28 @@
 import { readFile } from 'node:fs/promises';
 
-import { Module } from '@fluojs/core';
+import { Inject, Module } from '@fluojs/core';
 import {
+  type CallHandler,
   Controller,
+  ForbiddenException,
+  FromBody,
   FromPath,
   FromQuery,
   Get,
+  type Guard,
+  type GuardContext,
+  type Interceptor,
+  type InterceptorContext,
+  type Middleware,
+  type MiddlewareContext,
+  type Next,
   NotFoundException,
   Optional,
+  Post,
   RequestDto,
   type RequestContext,
+  UseGuards,
+  UseInterceptors,
 } from '@fluojs/http';
 import {
   Path,
@@ -46,11 +59,67 @@ class ProductPageRequest {
   @Optional()
   @FromQuery('preview')
   preview?: string;
+
+  @IsIn(['true'])
+  @Optional()
+  @FromQuery('updated')
+  updated?: string;
+}
+
+class ProductMutationRequest {
+  @MinLength(3, {
+    code: 'PRODUCT_NAME_TOO_SHORT',
+    message: 'Product name must contain at least 3 characters.',
+  })
+  @IsString()
+  @FromBody('name')
+  name = '';
+
+  @MinLength(3)
+  @IsString()
+  @FromPath('sku')
+  sku = '';
 }
 
 class AssetRequest {
   @FromPath('file')
   file = '';
+}
+
+class CatalogMutationGuard implements Guard {
+  canActivate(context: GuardContext): boolean {
+    if (context.requestContext.request.headers['x-example-user'] !== 'catalog-editor') {
+      throw new ForbiddenException('Catalog mutations require an authorized editor.');
+    }
+
+    return true;
+  }
+}
+
+class CatalogMutationInterceptor implements Interceptor {
+  async intercept(context: InterceptorContext, next: CallHandler): Promise<unknown> {
+    context.requestContext.response.setHeader('x-example-interceptor', 'request-scoped');
+    return next.handle();
+  }
+}
+
+class CatalogRequestMiddleware implements Middleware {
+  async handle(context: MiddlewareContext, next: Next): Promise<void> {
+    context.response.setHeader('x-example-middleware', 'react-native-form');
+    await next();
+  }
+}
+
+class ProductCatalog {
+  readonly #names = new Map<string, string>();
+
+  findName(sku: string): string {
+    return this.#names.get(sku) ?? `Catalog item ${sku}`;
+  }
+
+  rename(sku: string, name: string): void {
+    this.#names.set(sku, name);
+  }
 }
 
 export function createReactViteExampleModule(options: ReactViteExampleModuleOptions) {
@@ -71,18 +140,32 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
   const assets = result.manifest;
   const renderPage: ReactPageRenderer = (page) => createReactServerEntry(page, assets.hydrationOptions);
 
+  @Inject(ProductCatalog)
   @Router('/products')
   class ProductPageRouter {
+    constructor(private readonly catalog: ProductCatalog) {}
+
     @Path('/:sku')
     @RequestDto(ProductPageRequest)
     show(input: ProductPageRequest, context: RequestContext) {
       return createElement(ProductDocument, {
         preview: input.preview === 'true',
+        productName: this.catalog.findName(input.sku),
         routeParams: context.request.params,
         routeUrl: context.request.url,
+        saved: input.updated === 'true',
         sku: input.sku,
         stylesheets: assets.css,
       });
+    }
+
+    @Post('/:sku')
+    @RequestDto(ProductMutationRequest)
+    @UseGuards(CatalogMutationGuard)
+    @UseInterceptors(CatalogMutationInterceptor)
+    update(input: ProductMutationRequest, context: RequestContext) {
+      this.catalog.rename(input.sku, input.name);
+      context.response.redirect(303, `/products/${encodeURIComponent(input.sku)}?updated=true`);
     }
   }
 
@@ -113,7 +196,22 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
 
   @Module({
     controllers: [ViteAssetController],
-    imports: [ReactModule.forRoot({ controllers: [ProductPageRouter], renderPage })],
+    imports: [
+      ReactModule.forRoot({
+        controllers: [ProductPageRouter],
+        middleware: [CatalogRequestMiddleware],
+        providers: [
+          CatalogMutationGuard,
+          ProductCatalog,
+          {
+            provide: CatalogMutationInterceptor,
+            scope: 'request',
+            useClass: CatalogMutationInterceptor,
+          },
+        ],
+        renderPage,
+      }),
+    ],
   })
   class ReactViteExampleModule {}
 

@@ -79,4 +79,90 @@ describe('react-vite-ssr example', () => {
       await app.close();
     }
   });
+
+  it('protects native form mutations with the ordinary HTTP guard pipeline', async () => {
+    // Given: a rendered React product whose mutation route requires application authorization.
+    const AppModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      manifest: VITE_MANIFEST,
+    });
+    const app = await createTestApp({ rootModule: AppModule });
+
+    try {
+      // When: an unauthenticated native-form payload reaches the ordinary POST route.
+      const response = await app.request('POST', '/products/sku-42').body({ name: 'Renamed catalog item' }).send();
+
+      // Then: the route guard rejects the mutation before application state changes.
+      expect(response.status).toBe(403);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('returns a safe 400 representation for invalid native form input', async () => {
+    // Given: an authorized request to the ordinary HTTP mutation route.
+    const AppModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      manifest: VITE_MANIFEST,
+    });
+    const app = await createTestApp({ rootModule: AppModule });
+
+    try {
+      // When: the submitted product name violates the request DTO contract.
+      const response = await app
+        .request('POST', '/products/sku-42')
+        .header('x-example-user', 'catalog-editor')
+        .header('x-request-id', 'native-form-invalid')
+        .body({ name: 'x' })
+        .send();
+
+      // Then: the canonical validation envelope exposes safe field-level details.
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({
+        error: {
+          code: 'BAD_REQUEST',
+          details: [
+            {
+              code: 'PRODUCT_NAME_TOO_SHORT',
+              field: 'name',
+              message: 'Product name must contain at least 3 characters.',
+              source: 'body',
+            },
+          ],
+          message: 'Validation failed.',
+          meta: undefined,
+          requestId: 'native-form-invalid',
+          status: 400,
+        },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('redirects a successful native form mutation with 303 See Other', async () => {
+    // Given: an authorized editor submitting a valid product mutation.
+    const AppModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      manifest: VITE_MANIFEST,
+    });
+    const app = await createTestApp({ rootModule: AppModule });
+
+    try {
+      // When: the ordinary POST handler accepts the bound request DTO.
+      const response = await app
+        .request('POST', '/products/sku-42')
+        .header('x-example-user', 'catalog-editor')
+        .body({ name: 'Renamed catalog item' })
+        .send();
+
+      // Then: the handler sends the browser back through the ordinary GET dispatcher.
+      expect(response.status).toBe(303);
+      expect(response.headers.location).toBe('/products/sku-42?updated=true');
+      expect(response.headers['x-example-middleware']).toBe('react-native-form');
+      expect(response.headers['x-example-interceptor']).toBe('request-scoped');
+    } finally {
+      await app.close();
+    }
+  });
 });

@@ -21,8 +21,10 @@ const LazyRecommendations = lazy(async () => {
 
 export type ProductDocumentProps = {
   readonly preview: boolean;
+  readonly productName: string;
   readonly routeParams: Readonly<Record<string, string>>;
   readonly routeUrl: string;
+  readonly saved: boolean;
   readonly sku: string;
   readonly stylesheets: readonly string[];
 };
@@ -66,7 +68,15 @@ function ProductNavigation() {
   );
 }
 
-export function ProductDocument({ preview, routeParams, routeUrl, sku, stylesheets }: ProductDocumentProps) {
+export function ProductDocument({
+  preview,
+  productName,
+  routeParams,
+  routeUrl,
+  saved,
+  sku,
+  stylesheets,
+}: ProductDocumentProps) {
   const identifier = useId();
   const initialSnapshot = createReactRouteSnapshot({ params: routeParams, url: routeUrl });
 
@@ -75,7 +85,13 @@ export function ProductDocument({ preview, routeParams, routeUrl, sku, styleshee
     { initialSnapshot },
     createElement(
       'html',
-      { 'data-preview': String(preview), 'data-sku': sku, lang: 'en' },
+      {
+        'data-preview': String(preview),
+        'data-product-name': productName,
+        'data-saved': String(saved),
+        'data-sku': sku,
+        lang: 'en',
+      },
       createElement(
         'head',
         null,
@@ -97,6 +113,30 @@ export function ProductDocument({ preview, routeParams, routeUrl, sku, styleshee
           createElement('h1', null, `Catalog item ${sku}`),
           createElement('p', null, preview ? 'Preview mode' : 'Published mode'),
           createElement('p', null, `DTO-bound sku: ${sku}`),
+          saved ? createElement('p', { role: 'status' }, `Saved product: ${productName}`) : null,
+          createElement(
+            'form',
+            {
+              action: `/products/${encodeURIComponent(sku)}`,
+              encType: 'multipart/form-data',
+              method: 'post',
+            },
+            createElement(
+              'p',
+              null,
+              createElement('label', { htmlFor: 'product-name' }, 'Product name'),
+              createElement('br'),
+              createElement('input', {
+                defaultValue: productName,
+                id: 'product-name',
+                minLength: 3,
+                name: 'name',
+                required: true,
+                type: 'text',
+              }),
+            ),
+            createElement('button', { type: 'submit' }, 'Save product'),
+          ),
           createElement('p', { 'data-react-identifier': true, id: identifier }, 'Shared hydration identifier'),
           createElement(
             Suspense,

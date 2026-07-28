@@ -4,7 +4,8 @@
 
 Minimal Vite-backed `@fluojs/react` application for the hydration and client-navigation phases. It connects
 HTTP-owned page routes, DTO-bound parameters, streamed React SSR, Vite manifest assets, and one
-hydrated browser runtime without introducing a second routing model.
+hydrated browser runtime with a progressively enhanced native mutation form, without introducing a
+second routing model.
 
 ## what this example demonstrates
 
@@ -20,6 +21,9 @@ hydrated browser runtime without introducing a second routing model.
 - A server-rendered counter that becomes interactive through React DOM `hydrateRoot(...)`.
 - `@fluojs/react/client` route snapshots, URL-state hooks, progressive `Link`, and full-document
   `push` navigation that still reaches the server-owned DTO validation boundary.
+- A native `multipart/form-data` form that reaches an ordinary guarded/intercepted `@Post(...)`
+  route, mutates application state, and returns `303 See Other` to an HTTP-matched destination.
+- Production browser coverage that submits that form with JavaScript disabled.
 - A production build served by the Fastify adapter, including the generated Vite client assets.
 
 ## run from the repo root
@@ -44,9 +48,41 @@ pnpm --filter @fluojs/example-react-vite-ssr test:browser
 ```
 
 The browser command rebuilds workspace packages plus the example, starts the built server, and runs
-the production client entry in Chrome. It fails on missing or non-200 bootstrap/style assets,
-hydration warnings or errors, an identifier-prefix mismatch, a counter that does not hydrate, or
-client navigation whose URL and server-rendered route state do not agree.
+Chrome coverage for both the production client entry and a JavaScript-disabled context. It fails on
+missing or non-200 bootstrap/style assets, hydration warnings or errors, an identifier-prefix
+mismatch, a counter that does not hydrate, client navigation whose URL and server-rendered route
+state do not agree, or a native form that cannot complete its `POST` → `303` → `GET` flow.
+
+## native form mutation workflow
+
+`ProductDocument` renders a real form with a label, required input, submit button, ordinary route
+action, and explicit multipart encoding:
+
+```html
+<form action="/products/sku-42" enctype="multipart/form-data" method="post">
+  <label for="product-name">Product name</label>
+  <input id="product-name" minlength="3" name="name" required />
+  <button type="submit">Save product</button>
+</form>
+```
+
+The receiving method is an ordinary `@Post('/:sku')` handler on the same HTTP-owned router. It binds
+path and body fields with `@RequestDto(...)`, runs `CatalogMutationGuard`, runs the request-scoped
+`CatalogMutationInterceptor`, mutates the singleton example catalog, and calls
+`context.response.redirect(303, ...)`. `CatalogRequestMiddleware` remains in the module middleware
+chain. The focused authorization fixture uses `x-example-user: catalog-editor`; replace it with the
+same session/cookie and CSRF policy used by the rest of your application.
+
+Invalid input returns the canonical `400` validation envelope with safe field/source/code/message
+details. Successful input redirects to `/products/:sku?updated=true`; that `GET` destination is
+matched, bound, and rendered again by the ordinary dispatcher. The browser regression creates a
+Chrome context with `javaScriptEnabled: false`, submits the rendered form, observes the `303`, and
+asserts the destination document contains the mutated value.
+
+This flow is not a React Router action/fetcher, Astro Action, Next.js Server Action, or experimental
+fluo Server Function. It does not compile action ids, own route matching, revalidate a client cache,
+or promise optimistic state. No submit-state helper is added because the native form already provides
+the complete fallback and the stable client package owns neither mutation routes nor cache policy.
 
 ## phase boundaries and limitations
 
@@ -73,17 +109,17 @@ client navigation whose URL and server-rendered route state do not agree.
 ```txt
 examples/react-vite-ssr/
 ├── src/
-│   ├── app.ts              # @Router/@Path page and Vite asset serving module
-│   ├── app.test.ts         # DTO, streamed Suspense, and manifest asset assertions
+│   ├── app.ts              # @Router pages, native POST mutation, and Vite asset serving module
+│   ├── app.test.ts         # DTO, protected mutation, redirect, and streamed SSR assertions
 │   ├── entry-client.ts     # Browser-only hydrateRoot(...) entry
 │   ├── entry-server.ts     # Explicit Vite server-entry selector
 │   ├── hydration.ts        # Shared server/client identifierPrefix
 │   ├── hydration.test.ts   # DOM-equivalent hydration interaction and warning check
 │   ├── main.ts             # Loads the generated manifest and starts Fastify
-│   ├── page.ts             # Shared server/client document and interactive counter
+│   ├── page.ts             # Shared document, native form, client router, and interactive counter
 │   └── recommendations.ts  # Lazy Suspense content
 ├── tests/
-│   └── production-hydration.spec.ts # Built-server and production-client browser regression
+│   └── production-hydration.spec.ts # Hydration and JavaScript-disabled form regressions
 ├── playwright.config.ts
 ├── vite.client.config.ts
 ├── vite.server.config.ts

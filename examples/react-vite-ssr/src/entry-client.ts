@@ -13,8 +13,10 @@ hydrateRoot(
   document,
   createElement(ProductDocument, {
     preview: document.documentElement.dataset.preview === 'true',
+    productName: document.documentElement.dataset.productName ?? '',
     routeParams: { sku: document.documentElement.dataset.sku ?? '' },
     routeUrl: `${window.location.pathname}${window.location.search}`,
+    saved: document.documentElement.dataset.saved === 'true',
     sku: document.documentElement.dataset.sku ?? '',
     stylesheets,
   }),

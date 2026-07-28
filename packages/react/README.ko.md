@@ -19,6 +19,7 @@ fluo 애플리케이션을 위한 런타임 중립 React 통합입니다.
 - [Hydration Asset Contract](#hydration-asset-contract)
 - [Vite Asset Manifest Integration](#vite-asset-manifest-integration)
 - [Client Navigation Runtime](#client-navigation-runtime)
+- [Native Form Mutations](#native-form-mutations)
 - [Experimental RSC Prototype](#experimental-rsc-prototype)
 - [Experimental Server Functions](#experimental-server-functions)
 - [RSC Graduation Policy](#rsc-graduation-policy)
@@ -523,6 +524,82 @@ gap이나 JavaScript disabled 환경에서는 일반 full-document browser navig
 server는 명시적인 `@Path(...)`/HTTP route를 match하거나 정상적인 not-found response를 반환합니다.
 의도적인 deployment-level document rewrite를 별도로 설정할 수 있지만, 이는 React route grammar를 만들거나
 server DTO validation을 변경하지 않습니다.
+
+## Native Form Mutations
+
+React page mutation이 hydration 전이나 client JavaScript disabled 환경에서도 동작해야 한다면 native HTML
+form을 사용하세요. React-owned action transport를 만들지 말고 일반 `@Post(...)` route로 제출합니다. 실행 가능한
+`examples/react-vite-ssr/` slice는 `multipart/form-data`를 사용합니다. Browser가 multipart boundary를
+제공하면 기존 adapter와 `@RequestDto(...)` body-binding path가 field를 materialize합니다.
+
+```tsx
+function ProductForm({ name, sku }: { readonly name: string; readonly sku: string }) {
+  return (
+    <form action={`/products/${encodeURIComponent(sku)}`} encType="multipart/form-data" method="post">
+      <label htmlFor="product-name">Product name</label>
+      <input defaultValue={name} id="product-name" minLength={3} name="name" required />
+      <button type="submit">Save product</button>
+    </form>
+  );
+}
+```
+
+Target은 일반 HTTP handler로 남습니다. DTO binding과 validation은 request boundary에서 한 번 실행되고,
+module middleware, guard, interceptor, request-scoped provider, observer, adapter response writing은 일반
+HTTP pipeline의 ordering과 ownership을 그대로 유지합니다.
+
+```ts
+import {
+  FromBody,
+  FromPath,
+  Post,
+  RequestDto,
+  type RequestContext,
+  UseGuards,
+  UseInterceptors,
+} from '@fluojs/http';
+import { Router } from '@fluojs/react';
+import { IsString, MinLength } from '@fluojs/validation';
+
+class RenameProductRequest {
+  @MinLength(3, {
+    code: 'PRODUCT_NAME_TOO_SHORT',
+    message: 'Product name must contain at least 3 characters.',
+  })
+  @IsString()
+  @FromBody('name')
+  name = '';
+
+  @IsString()
+  @FromPath('sku')
+  sku = '';
+}
+
+@Router('/products')
+class ProductRouter {
+  @Post('/:sku')
+  @RequestDto(RenameProductRequest)
+  @UseGuards(EditorGuard)
+  @UseInterceptors(MutationAuditInterceptor)
+  rename(input: RenameProductRequest, context: RequestContext) {
+    productCatalog.rename(input.sku, input.name);
+    context.response.redirect(303, `/products/${encodeURIComponent(input.sku)}?updated=true`);
+  }
+}
+```
+
+잘못된 제출은 canonical HTTP `400` validation envelope를 유지합니다. `details` entry에는 안전한 field,
+source, code, application-authored validation message만 포함하고 제출 값, stack, internal exception은 노출하지
+않습니다. 성공한 mutation은 `303 See Other`를 사용하므로 browser가 `GET`으로 후속 요청을 보내고, destination은
+일반 HTTP dispatcher를 통해 다시 match됩니다. Authorization과 CSRF policy는 애플리케이션 책임입니다.
+Non-React route와 같은 session/cookie, guard, middleware policy를 사용하세요.
+
+이 recipe는 React Router action/fetcher, Astro Actions, Next.js Server Actions와 의도적으로 다릅니다. fluo는
+function reference를 compile하거나, route matching을 소유하거나, loader/client cache를 revalidate하거나,
+document response를 교체하지 않습니다. Experimental fluo Server Functions transport와도 별개입니다. Native
+form이 이미 완전한 fallback을 제공하고 `@fluojs/react/client`가 mutation route나 cache invalidation을 소유하지
+않으므로 이 phase에서는 stable submit-state helper를 추가하지 않습니다. Application은 실제 form action과
+native submission을 유지하는 경우에만 hydration 이후 local pending UI를 추가할 수 있습니다.
 
 ## Experimental RSC Prototype
 
