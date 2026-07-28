@@ -26,6 +26,7 @@ describe('@fluojs/react root package scaffold', () => {
       'ReactSsrDiagnosticError',
       'Router',
       'SuspenseFallback',
+      'createReactPageCatalog',
       'createReactServerEntry',
       'getReactPathMetadata',
       'getReactRenderPolicies',
@@ -52,6 +53,7 @@ describe('@fluojs/react root package scaffold', () => {
       expect(react).toHaveProperty('REACT_PAGE_RENDERER');
       expect(react).toHaveProperty('Router');
       expect(react).toHaveProperty('SuspenseFallback');
+      expect(react).toHaveProperty('createReactPageCatalog');
       expect(react).toHaveProperty('createReactServerEntry');
       expect(react).toHaveProperty('renderReactResponse');
     } finally {
