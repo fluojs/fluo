@@ -1,11 +1,11 @@
-import { Module, type Constructor, type Token } from '@fluojs/core';
+import { type Constructor, Module, type Token } from '@fluojs/core';
 import type { Provider } from '@fluojs/di';
 import type { MiddlewareLike } from '@fluojs/http';
 import { defineModule, type ModuleDefinition, type ModuleType } from '@fluojs/runtime';
-
+import type { ReactSsrDiagnosticHandler } from './diagnostics.js';
 import { REACT_PAGE_RENDERER, type ReactPageRenderer } from './page-renderer.js';
 import { createReactPageResultMiddleware } from './page-result.js';
-import type { ReactSsrDiagnosticHandler } from './diagnostics.js';
+import { validateReactRenderPolicyControllers } from './render-policy.js';
 
 /**
  * Options for registering React routers through the fluo module graph.
@@ -52,12 +52,24 @@ export class ReactModule {
     const pageRendererProvider: Provider<ReactPageRenderer> | undefined = options.renderPage === undefined
       ? undefined
       : { provide: REACT_PAGE_RENDERER, useValue: options.renderPage };
+    const renderPolicyValidatorProvider: Provider = {
+      provide: Symbol('fluo.react.render-policy-validator'),
+      useValue: {
+        onModuleInit(): void {
+          validateReactRenderPolicyControllers(
+            options.controllers,
+            options.renderPage !== undefined,
+          );
+        },
+      },
+    };
     const exports = [
       ...(options.exports ?? []),
       ...(pageRendererProvider === undefined ? [] : [REACT_PAGE_RENDERER]),
     ];
     const providers = [
       ...(options.providers ?? []),
+      renderPolicyValidatorProvider,
       ...(pageRendererProvider === undefined ? [] : [pageRendererProvider]),
     ];
     const middleware = [
