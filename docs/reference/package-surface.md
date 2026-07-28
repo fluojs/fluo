@@ -49,6 +49,15 @@
 
   Stable phase boundaries keep root `@fluojs/react` focused on runtime-neutral SSR contracts. `@fluojs/react/vite` owns Vite asset manifest parsing, `@fluojs/react/client` owns HTTP-first browser navigation and hydration-safe route-state hooks, and `@fluojs/react/experimental/rsc` owns the unstable exact-React-version RSC compatibility, client-reference/server-module manifest, HTTP-dispatched Flight response, and signed Server Function transport seams. Server Functions require an application-owned explicit POST route, Web Crypto provider, 32-byte-or-longer secret, exact origin allowlist, non-simple request marker, JSON/body/depth/result limits, and action-level or guard authorization; they do not create a renderer, build plugin, loader/cache system, or separate router. The stable root and client subpath should not be presented as a Next.js App Router clone, React Server Components framework, TanStack route tree, Angular `Routes[]`, file-route scanner, or primary React-owned `routes: []` table.
 
+  Stable root render policies are limited to `@PageLayout(...)` and `@SuspenseFallback(...)`
+  component references on `@Router(...)` classes and `@Path(...)` methods. The application
+  `ReactPageRenderer` alone receives resolved base-to-derived class/method policies after HTTP
+  matching, with the active request-scope container available through `ReactRenderContext`.
+  Same-site duplicates, invalid targets/references, and policies without `renderPage` fail during
+  bootstrap. Suspense fallback metadata covers only descendants that suspend during SSR; it does not
+  add handler-await, client-navigation pending UI, error/not-found ownership, or URL-prefix ancestry.
+  The [render policy decision](../architecture/react-render-policy-decorators.md) is canonical.
+
   The [React RSC graduation policy](../contracts/react-rsc-graduation.md) keeps `@fluojs/react/rsc` blocked until maintainer-approved evidence covers React/renderer versions, manifest and Server Function transport compatibility, browser/server separation, SSR/CSR/prerendering, hydration mismatch recovery, safe transfer rules, HTTP route and #2506 navigation ownership, dual-import tests, bilingual docs, and Changesets intent. Graduation never adds a stable root RSC export. When approved, the experimental path remains a tested re-export for the policy's deprecation window.
 - **`@fluojs/jwt`**: HTTP-agnostic JWT signing, verification, principal normalization, refresh-token rotation contracts with optional family-scoped reuse revocation and a compatible subject-revocation fallback, and platform status/diagnostic helpers with exported status snapshot and adapter input types.
 - **`@fluojs/passport`**: Strategy-agnostic authentication guards, optional auth and scope decorators, `PassportModule` strategy registry wiring, Passport.js manual bridge provider bundles, cookie-auth and refresh-token presets, account-linking policy helpers, public auth metadata helpers, and platform status/diagnostic helpers for auth readiness.
