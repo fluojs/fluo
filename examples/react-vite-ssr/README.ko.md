@@ -4,7 +4,8 @@
 
 Hydration 및 client-navigation phase를 위한 최소 Vite-backed `@fluojs/react` 애플리케이션입니다.
 두 번째 routing model을 만들지 않고 HTTP-owned page route, DTO-bound parameter, streamed React
-SSR, Vite manifest asset, hydrated browser runtime을 연결합니다.
+SSR, Vite manifest asset, hydrated browser runtime, progressively enhanced native mutation form을
+연결합니다.
 
 ## 이 예제가 보여주는 것
 
@@ -18,6 +19,9 @@ SSR, Vite manifest asset, hydrated browser runtime을 연결합니다.
 - React DOM `hydrateRoot(...)`를 통해 interactive 상태가 되는 server-rendered counter.
 - Server-owned DTO validation boundary에 계속 도달하는 `@fluojs/react/client` route snapshot,
   URL-state hook, progressive `Link`, full-document `push` navigation.
+- 일반 guarded/intercepted `@Post(...)` route에 도달해 application state를 mutate하고 HTTP-matched
+  destination으로 `303 See Other`를 반환하는 native `multipart/form-data` form.
+- JavaScript disabled 상태에서 해당 form을 submit하는 production browser coverage.
 - 생성된 Vite client asset까지 Fastify adapter로 제공하는 production build.
 
 ## 레포 루트에서 실행하기
@@ -42,9 +46,41 @@ pnpm --filter @fluojs/example-react-vite-ssr test:browser
 ```
 
 Browser 명령은 workspace package와 예제를 다시 build하고, build된 server를 시작한 뒤 production
-client entry를 Chrome에서 실행합니다. Bootstrap/style asset 누락 또는 non-200 response, hydration
-warning/error, identifier-prefix mismatch, hydrate되지 않는 counter, URL과 server-rendered route
-state가 일치하지 않는 client navigation이 있으면 실패합니다.
+client entry 및 JavaScript-disabled context를 Chrome에서 실행합니다. Bootstrap/style asset 누락 또는
+non-200 response, hydration warning/error, identifier-prefix mismatch, hydrate되지 않는 counter,
+URL과 server-rendered route state가 일치하지 않는 client navigation, `POST` → `303` → `GET` flow를
+완료하지 못하는 native form이 있으면 실패합니다.
+
+## native form mutation workflow
+
+`ProductDocument`는 label, required input, submit button, 일반 route action, 명시적인 multipart encoding을
+가진 실제 form을 렌더링합니다.
+
+```html
+<form action="/products/sku-42" enctype="multipart/form-data" method="post">
+  <label for="product-name">Product name</label>
+  <input id="product-name" minlength="3" name="name" required />
+  <button type="submit">Save product</button>
+</form>
+```
+
+Receiving method는 같은 HTTP-owned router의 일반 `@Post('/:sku')` handler입니다. Path와 body field를
+`@RequestDto(...)`로 bind하고, `CatalogMutationGuard`와 request-scoped
+`CatalogMutationInterceptor`를 실행하며, singleton example catalog를 mutate한 뒤
+`context.response.redirect(303, ...)`를 호출합니다. `CatalogRequestMiddleware`는 module middleware
+chain에 그대로 남습니다. Focused authorization fixture는 `x-example-user: catalog-editor`를 사용합니다.
+실제 애플리케이션에서는 나머지 route와 같은 session/cookie 및 CSRF policy로 교체하세요.
+
+잘못된 input은 안전한 field/source/code/message detail을 가진 canonical `400` validation envelope를
+반환합니다. 성공한 input은 `/products/:sku?updated=true`로 redirect되고, 해당 `GET` destination은 일반
+dispatcher가 다시 match, bind, render합니다. Browser regression은 `javaScriptEnabled: false` Chrome
+context를 만들고 rendered form을 제출한 뒤 `303`을 관찰하며 destination document가 mutate된 값을
+포함하는지 확인합니다.
+
+이 flow는 React Router action/fetcher, Astro Action, Next.js Server Action, experimental fluo Server
+Function이 아닙니다. Action id를 compile하거나 route matching을 소유하거나 client cache를 revalidate하거나
+optimistic state를 약속하지 않습니다. Native form이 이미 완전한 fallback을 제공하고 stable client package가
+mutation route나 cache policy를 소유하지 않으므로 submit-state helper를 추가하지 않습니다.
 
 ## phase 경계와 제한 사항
 
@@ -70,17 +106,17 @@ state가 일치하지 않는 client navigation이 있으면 실패합니다.
 ```txt
 examples/react-vite-ssr/
 ├── src/
-│   ├── app.ts              # @Router/@Path page와 Vite asset serving module
-│   ├── app.test.ts         # DTO, streamed Suspense, manifest asset assertion
+│   ├── app.ts              # @Router page, native POST mutation, Vite asset serving module
+│   ├── app.test.ts         # DTO, protected mutation, redirect, streamed SSR assertion
 │   ├── entry-client.ts     # Browser-only hydrateRoot(...) entry
 │   ├── entry-server.ts     # 명시적 Vite server-entry selector
 │   ├── hydration.ts        # server/client 공유 identifierPrefix
 │   ├── hydration.test.ts   # DOM-equivalent hydration interaction 및 warning 검증
 │   ├── main.ts             # 생성된 manifest를 로드하고 Fastify 시작
-│   ├── page.ts             # server/client 공유 document와 interactive counter
+│   ├── page.ts             # 공유 document, native form, client router, interactive counter
 │   └── recommendations.ts  # Lazy Suspense content
 ├── tests/
-│   └── production-hydration.spec.ts # Built-server 및 production-client browser regression
+│   └── production-hydration.spec.ts # Hydration 및 JavaScript-disabled form regression
 ├── playwright.config.ts
 ├── vite.client.config.ts
 ├── vite.server.config.ts
