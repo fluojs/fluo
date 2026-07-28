@@ -13,6 +13,7 @@ Runtime-neutral React integration for fluo applications.
 - [Phase Boundaries](#phase-boundaries)
 - [ReactModule Registration](#reactmodule-registration)
 - [Application Page Renderer](#application-page-renderer)
+- [Render Policy Decorators](#render-policy-decorators)
 - [SSR Diagnostic Phases](#ssr-diagnostic-phases)
 - [Router and Path Decorators](#router-and-path-decorators)
 - [Web Streams SSR](#web-streams-ssr)
@@ -213,6 +214,83 @@ same renderer explicitly.
 Returning a `ReactElement` without configuring `renderPage` fails before response commit with
 `ReactSsrDiagnosticError`, code `react-ssr-missing-page-renderer`, and an actionable message. Configure
 `ReactModule.forRoot({ ..., renderPage })` or return `createReactServerEntry(...)` explicitly.
+
+## Render Policy Decorators
+
+Use `@PageLayout(...)` and `@SuspenseFallback(...)` when one React router class or `@Path(...)`
+method needs route-local composition while the application keeps one `renderPage` callback. Both
+decorators accept component references, not pre-created JSX elements. Their metadata is resolved
+after HTTP matching and passed only to the application page renderer; it never changes paths,
+matching precedence, params, or not-found behavior.
+
+```tsx
+import { Suspense, createElement, type ReactElement } from 'react';
+import {
+  PageLayout,
+  Path,
+  ReactModule,
+  Router,
+  SuspenseFallback,
+  createReactServerEntry,
+  type ReactPageLayoutProps,
+  type ReactPageRenderer,
+  type ReactSuspenseFallbackProps,
+} from '@fluojs/react';
+
+function ShopLayout({ children, context }: ReactPageLayoutProps) {
+  return <section data-request-path={context.request.path}>{children}</section>;
+}
+
+function ProductFallback({ context }: ReactSuspenseFallbackProps) {
+  return <p>Loading {context.request.params.id}…</p>;
+}
+
+const renderPage: ReactPageRenderer = (page, context, policies) => {
+  const pageBoundary = policies.suspenseFallback === undefined
+    ? page
+    : createElement(Suspense, {
+        fallback: createElement(policies.suspenseFallback, { context }),
+      }, page);
+  const composedPage = policies.layouts.reduceRight<ReactElement>(
+    (children, Layout) => createElement(Layout, { children, context }),
+    pageBoundary,
+  );
+
+  return createReactServerEntry(
+    <html lang="en"><body>{composedPage}</body></html>,
+  );
+};
+
+@PageLayout(ShopLayout)
+@Router('/products')
+class ProductRouter {
+  @SuspenseFallback(ProductFallback)
+  @Path('/:id')
+  show() {
+    return <ProductPage />;
+  }
+}
+
+ReactModule.forRoot({ controllers: [ProductRouter], renderPage });
+```
+
+Resolved layouts are ordered outermost to innermost: base class, derived class, base method, then
+derived method. Layouts compose across inheritance. The nearest fallback wins, so a method fallback
+overrides a class fallback and a derived declaration overrides a base declaration. A class or method
+site may declare each policy kind once; same-site duplicates fail during bootstrap.
+
+`ReactRenderContext` includes the active request-scope `container`. Policy components receive that
+context as an explicit prop, but fluo does not instantiate React components through DI or resolve
+tokens on their behalf. A policy without `renderPage`, a class policy outside `@Router(...)`, or a
+method policy outside `@Path(...)` fails bootstrap with `ReactRenderPolicyConfigurationError` and a
+stable value from `REACT_RENDER_POLICY_DIAGNOSTIC_CODES`.
+
+`@SuspenseFallback(...)` supplies an ordinary React Suspense fallback for descendants that suspend
+during SSR. It does not observe handler `await`, effects, event handlers, native form submission, or
+full-document/client navigation pending state. HTTP pipeline errors, not-found/404 responses,
+pre-commit shell failures, request aborts, and post-shell recoverable errors keep their separate
+existing phases. The complete ordering, inheritance, duplicate, and phase decision is recorded in
+the [React render policy decorator decision](../../docs/architecture/react-render-policy-decorators.md).
 
 ## SSR Diagnostic Phases
 
@@ -837,6 +915,8 @@ This package currently does **not** provide:
   `@fluojs/react/vite`
 - automatic serialization of arbitrary data into `bootstrapScriptContent`
 - Node-only `react-dom/server` pipeable stream root APIs such as `renderToPipeableStream(...)`
+- Next.js-style segment `loading`, `error`, `notFound`, template, or layout ancestry semantics;
+  `@SuspenseFallback(...)` is SSR-descendant Suspense metadata only
 
 ## Public API
 
@@ -849,7 +929,16 @@ This package currently does **not** provide:
 - `REACT_PAGE_RENDERER` — dependency-injection token for the application page renderer registered by
   `ReactModule.forRoot({ renderPage })`.
 - `ReactPageRenderer` — type-only application callback that composes a `ReactElement` and active
-  `ReactRenderContext` into an existing `ReactServerEntry`.
+  `ReactRenderContext` plus resolved `ReactRenderPolicies` into an existing `ReactServerEntry`.
+- `PageLayout` and `SuspenseFallback` — class-or-method decorators that record component references
+  consumed only by the application page renderer.
+- `getReactRenderPolicies` — resolves inherited class/method policies in outer-to-inner order.
+- `REACT_RENDER_POLICY_DIAGNOSTIC_CODES` and `ReactRenderPolicyConfigurationError` — stable
+  bootstrap diagnostics for duplicate, invalid-target, invalid-reference, and missing-renderer policy
+  declarations.
+- `ReactPageLayout`, `ReactPageLayoutProps`, `ReactSuspenseFallback`,
+  `ReactSuspenseFallbackProps`, `ReactRenderPolicies`, and `ReactRenderPolicyDiagnosticCode` —
+  type-only render-policy composition contracts.
 - `REACT_SSR_DIAGNOSTIC_PHASES` and `REACT_SSR_DIAGNOSTIC_CODES` — stable machine-readable SSR
   lifecycle phase and diagnostic code constants.
 - `ReactSsrDiagnosticError` — typed pre-commit configuration/render failure with stable `code` and
@@ -939,6 +1028,9 @@ This package currently does **not** provide:
 - `packages/react/src/render.ts`
 - `packages/react/src/module.ts`
 - `packages/react/src/page-renderer.ts`
+- `packages/react/src/render-policy.ts`
+- `packages/react/src/render-policy-metadata.ts`
+- `packages/react/src/render-policy.test.ts`
 - `packages/react/src/render.test.ts`
 - `packages/react/src/dispatcher-ssr.test.ts`
 - `packages/react/src/hydration-assets.test.ts`
