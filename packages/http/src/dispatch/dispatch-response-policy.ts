@@ -14,6 +14,7 @@ import { writeErrorResponse } from './dispatch-error-policy.js';
 
 type SimpleJsonResponseBody = Record<string, unknown> | unknown[];
 const responseWriterKey = Symbol.for('fluo.http.responseWriter');
+const responseValueFinalizerKey = Symbol.for('fluo.http.responseValueFinalizer');
 
 type FrameworkResponseWriterContext = {
   readonly applySuccessResponseMetadata: () => void;
@@ -24,6 +25,16 @@ type FrameworkResponseWriterContext = {
 };
 
 type FrameworkResponseWriter = (context: FrameworkResponseWriterContext) => ReturnType<FrameworkResponse['send']> | void;
+
+type FrameworkResponseValueFinalizerContext = {
+  readonly handler: HandlerDescriptor;
+  readonly request: FrameworkRequest;
+  readonly requestContext: RequestContext;
+  readonly response: FrameworkResponse;
+  readonly value: unknown;
+};
+
+type FrameworkResponseValueFinalizer = (context: FrameworkResponseValueFinalizerContext) => unknown;
 
 type SimpleJsonFrameworkResponse = FrameworkResponse & {
   sendSimpleJson(body: SimpleJsonResponseBody): ReturnType<FrameworkResponse['send']>;
@@ -79,6 +90,16 @@ function readFrameworkResponseWriter(value: unknown): FrameworkResponseWriter | 
   const writer = Reflect.get(value, responseWriterKey);
 
   return typeof writer === 'function' ? writer : undefined;
+}
+
+function readFrameworkResponseValueFinalizer(requestContext: RequestContext): FrameworkResponseValueFinalizer | undefined {
+  const finalizer = requestContext.metadata[responseValueFinalizerKey];
+
+  if (typeof finalizer !== 'function') {
+    return undefined;
+  }
+
+  return (context) => Reflect.apply(finalizer, undefined, [context]);
 }
 
 function isResponseBodyForbidden(status: number | undefined): boolean {
@@ -149,7 +170,11 @@ export function writeSuccessResponse(
     return;
   }
 
-  const responseWriter = readFrameworkResponseWriter(value);
+  const responseValueFinalizer = readFrameworkResponseValueFinalizer(requestContext);
+  const responseValue = responseValueFinalizer
+    ? responseValueFinalizer({ handler, request, requestContext, response, value })
+    : value;
+  const responseWriter = readFrameworkResponseWriter(responseValue);
 
   if (responseWriter) {
     let successResponseMetadataApplied = false;
@@ -159,7 +184,7 @@ export function writeSuccessResponse(
       }
 
       successResponseMetadataApplied = true;
-      applySuccessResponseMetadata({ formatter: undefined, handler, response, value });
+      applySuccessResponseMetadata({ formatter: undefined, handler, response, value: responseValue });
     };
 
     return responseWriter({
@@ -175,15 +200,15 @@ export function writeSuccessResponse(
     ? selectResponseFormatter(handler, request, contentNegotiation)
     : undefined;
 
-  applySuccessResponseMetadata({ formatter, handler, response, value });
+  applySuccessResponseMetadata({ formatter, handler, response, value: responseValue });
 
-  if (!formatter && hasSimpleJsonResponseWriter(response) && canUseSimpleJsonFastPath(response, value)) {
-    return response.sendSimpleJson(value);
+  if (!formatter && hasSimpleJsonResponseWriter(response) && canUseSimpleJsonFastPath(response, responseValue)) {
+    return response.sendSimpleJson(responseValue);
   }
 
   const responseBody = formatter
-    ? formatter.format(value)
-    : value;
+    ? formatter.format(responseValue)
+    : responseValue;
   return response.send(responseBody);
 }
 

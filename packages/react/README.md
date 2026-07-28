@@ -13,6 +13,7 @@ Runtime-neutral React integration for fluo applications.
 - [Phase Boundaries](#phase-boundaries)
 - [ReactModule Registration](#reactmodule-registration)
 - [Application Page Renderer](#application-page-renderer)
+- [SSR Diagnostic Phases](#ssr-diagnostic-phases)
 - [Router and Path Decorators](#router-and-path-decorators)
 - [Web Streams SSR](#web-streams-ssr)
 - [Hydration Asset Contract](#hydration-asset-contract)
@@ -59,8 +60,9 @@ validation, guards, interceptors, headers, module middleware, request scopes, an
 This package is therefore **not** a Next.js App Router clone, React Server Components framework,
 TanStack route tree, Angular `Routes[]` table, file-route scanner, or primary React-owned
 `routes: []` configuration model. Treat React routers as page-shaped HTTP handlers. Route discovery
-and dispatch stay in the existing fluo module/controller pipeline, and page handlers return either
-ordinary values or `createReactServerEntry(...)` when they want streamed HTML.
+and dispatch stay in the existing fluo module/controller pipeline. Page handlers may return ordinary
+HTTP values, return one valid `ReactElement` for the configured application page renderer, or return
+`createReactServerEntry(...)` explicitly when they need per-route SSR options.
 
 ## Runtime and Peer Contract
 
@@ -143,10 +145,9 @@ must return `ReactServerEntry`. `ReactModule.forRoot(...)` registers and exports
 `REACT_PAGE_RENDERER`, so routers can inject the callback without creating a second response path.
 
 ```tsx
-import { Inject, Module } from '@fluojs/core';
+import { Module } from '@fluojs/core';
 import {
   Path,
-  REACT_PAGE_RENDERER,
   ReactModule,
   Router,
   createReactServerEntry,
@@ -181,14 +182,11 @@ const renderPage: ReactPageRenderer = (page, context) => {
   );
 };
 
-@Inject(REACT_PAGE_RENDERER)
 @Router('/products')
 class ProductRouter {
-  constructor(private readonly renderPage: ReactPageRenderer) {}
-
   @Path('/:id')
   show(_input: undefined, context: ReactRenderContext) {
-    return this.renderPage(<main>Product {context.request.params.id}</main>, context);
+    return <main>Product {context.request.params.id}</main>;
   }
 }
 
@@ -204,9 +202,47 @@ already-loaded manifest by `createReactViteAssetManifest(...)`. The renderer doe
 manifests, generate bundles, match routes, or bypass DTO binding, middleware, guards, interceptors,
 request scopes, abort propagation, shell failure handling, or recoverable streaming behavior.
 
-This phase does not implicitly convert a JSX return value. A handler must inject and call
-`REACT_PAGE_RENDERER`, or continue returning `createReactServerEntry(...)` directly. Explicit
-`ReactServerEntry` values remain unchanged and do not pass through the configured callback.
+When `renderPage` is configured, the final value from an `@Path(...)` request is passed to that
+callback only when React `isValidElement(...)` recognizes it as one `ReactElement`. Plain objects,
+strings, arrays, `null`, and other ordinary values keep the normal HTTP response path. Explicit
+`ReactServerEntry` values remain unchanged and do not pass through the configured callback. The
+`REACT_PAGE_RENDERER` token remains available when another application provider needs to invoke the
+same renderer explicitly.
+
+Returning a `ReactElement` without configuring `renderPage` fails before response commit with
+`ReactSsrDiagnosticError`, code `react-ssr-missing-page-renderer`, and an actionable message. Configure
+`ReactModule.forRoot({ ..., renderPage })` or return `createReactServerEntry(...)` explicitly.
+
+## SSR Diagnostic Phases
+
+Register `onDiagnostic` on `ReactModule.forRoot(...)` when application logging or diagnostics tooling
+needs one stable event shape across HTTP and React rendering boundaries:
+
+```tsx
+ReactModule.forRoot({
+  controllers: [ProductRouter],
+  renderPage,
+  onDiagnostic(diagnostic) {
+    applicationDiagnostics.report(diagnostic);
+  },
+});
+```
+
+Each `ReactSsrDiagnostic` contains `code`, `phase`, the original `error`, the active `request`, and an
+optional `requestId`. The callback is observational: an exception thrown by it does not replace the
+request outcome. Stable phases and codes are:
+
+| Phase | Code | Boundary |
+| --- | --- | --- |
+| `http-pipeline` | `react-ssr-http-pipeline-failure` | DTO binding, middleware, guards, interceptors, handlers, and other failures before React shell rendering. |
+| `http-pipeline` | `react-ssr-missing-page-renderer` | A valid `ReactElement` reached an `@Path(...)` response without `renderPage` configuration. |
+| `pre-commit-shell` | `react-ssr-pre-commit-shell-failure` | React shell creation or buffered stream collection failed before response commit. The original thrown `Error` identity is preserved. |
+| `request-abort` | `react-ssr-request-abort` | The request signal or abort probe stopped React rendering; existing no-commit or committed-stream abort behavior remains unchanged. |
+| `post-shell-recoverable` | `react-ssr-post-shell-recoverable-error` | React reported a recoverable render error after a shell could be written; status and headers are not rewritten. |
+
+`REACT_SSR_DIAGNOSTIC_PHASES` and `REACT_SSR_DIAGNOSTIC_CODES` expose these values for comparisons.
+The existing `onRecoverableError` entry hook also receives `code` and `phase` in
+`ReactRecoverableErrorContext`.
 
 ## Router and Path Decorators
 
@@ -253,10 +289,10 @@ server routes, and any future catch-all must first become an approved `@fluojs/h
 
 ## Web Streams SSR
 
-Return `createReactServerEntry(...)` from a React page handler to stream HTML through the existing
-fluo HTTP dispatcher. Guards, interceptors, module middleware, route headers, `@HttpCode(...)`, DTO
-binding, request scopes, and duplicate route detection all run before `renderReactResponse(...)`
-finalizes the HTML response.
+Return one `ReactElement` through a configured application page renderer, or return
+`createReactServerEntry(...)` explicitly, to stream HTML through the existing fluo HTTP dispatcher.
+Guards, interceptors, module middleware, route headers, `@HttpCode(...)`, DTO binding, request scopes,
+and duplicate route detection all run before `renderReactResponse(...)` finalizes the HTML response.
 
 ```tsx
 import { HttpCode, RequestDto, FromPath } from '@fluojs/http';
@@ -734,6 +770,13 @@ This package currently does **not** provide:
   `ReactModule.forRoot({ renderPage })`.
 - `ReactPageRenderer` — type-only application callback that composes a `ReactElement` and active
   `ReactRenderContext` into an existing `ReactServerEntry`.
+- `REACT_SSR_DIAGNOSTIC_PHASES` and `REACT_SSR_DIAGNOSTIC_CODES` — stable machine-readable SSR
+  lifecycle phase and diagnostic code constants.
+- `ReactSsrDiagnosticError` — typed pre-commit configuration/render failure with stable `code` and
+  `phase` metadata.
+- `ReactSsrDiagnostic`, `ReactSsrDiagnosticCode`, `ReactSsrDiagnosticErrorOptions`,
+  `ReactSsrDiagnosticHandler`, and `ReactSsrDiagnosticPhase` — type-only contracts for application
+  diagnostics tooling.
 - `createReactServerEntry` — creates a runtime-neutral React server entry returned by page handlers
   for Web Streams SSR.
 - `renderReactResponse` — renders one React server entry to a fluo HTML response with lazy

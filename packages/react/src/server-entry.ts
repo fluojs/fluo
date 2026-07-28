@@ -1,9 +1,14 @@
 import type { FrameworkRequest } from '@fluojs/http';
 import { cloneElement, isValidElement, type ReactNode } from 'react';
 
+import type {
+  ReactSsrDiagnosticCode,
+  ReactSsrDiagnosticPhase,
+} from './diagnostics.js';
 import type { ReactRenderContext } from './render.js';
 
 const responseWriterKey = Symbol.for('fluo.http.responseWriter');
+const serverEntryKey = Symbol.for('fluo.react.serverEntry');
 
 type ReactResponseWriterContext = {
   readonly applySuccessResponseMetadata: () => void;
@@ -35,8 +40,12 @@ export type ReactBootstrapAsset = string | ReactBootstrapScriptDescriptor;
 
 /** Recoverable React render error details reported after the shell can stream. */
 export type ReactRecoverableErrorContext = {
+  /** Stable machine-readable diagnostic code for recoverable rendering failures. */
+  readonly code: ReactSsrDiagnosticCode;
   /** React-provided error metadata, such as a component stack, when available. */
   readonly errorInfo?: unknown;
+  /** Stable SSR lifecycle phase for recoverable rendering failures. */
+  readonly phase: ReactSsrDiagnosticPhase;
   /** Framework request being rendered. */
   readonly request: FrameworkRequest;
   /** Adapter-provided request id, when available. */
@@ -94,6 +103,18 @@ export type ReactServerEntry = {
   /** HTTP status to apply before streaming starts. Defaults to the current response status or `200`. */
   readonly status?: number;
 };
+
+/**
+ * Returns whether a value is a React server entry created or branded by the stable SSR seam.
+ *
+ * @param value Candidate response value.
+ * @returns Whether the value carries the React server entry brand.
+ */
+export function isReactServerEntry(value: unknown): value is ReactServerEntry {
+  return typeof value === 'object'
+    && value !== null
+    && Reflect.get(value, serverEntryKey) === true;
+}
 
 function cloneAssetMap(assetMap: ReactAssetMap | undefined): ReactAssetMap {
   const cloned: Record<string, string> = {};
@@ -196,6 +217,11 @@ export function createReactServerEntry(
     ...(options.onRecoverableError !== undefined ? { onRecoverableError: options.onRecoverableError } : {}),
     ...(options.status !== undefined ? { status: options.status } : {}),
   };
+
+  Object.defineProperty(entry, serverEntryKey, {
+    enumerable: false,
+    value: true,
+  });
 
   Object.defineProperty(entry, responseWriterKey, {
     enumerable: false,

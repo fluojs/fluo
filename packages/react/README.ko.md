@@ -13,6 +13,7 @@ fluo 애플리케이션을 위한 런타임 중립 React 통합입니다.
 - [Phase Boundaries](#phase-boundaries)
 - [ReactModule Registration](#reactmodule-registration)
 - [Application Page Renderer](#application-page-renderer)
+- [SSR Diagnostic Phases](#ssr-diagnostic-phases)
 - [Router 및 Path Decorators](#router-및-path-decorators)
 - [Web Streams SSR](#web-streams-ssr)
 - [Hydration Asset Contract](#hydration-asset-contract)
@@ -57,8 +58,9 @@ guards, interceptors, headers, module middleware, request scope, request lifecyc
 따라서 이 패키지는 Next.js App Router clone, React Server Components framework, TanStack route tree,
 Angular `Routes[]` table, file-route scanner, primary React-owned `routes: []` configuration model이
 **아닙니다**. React router는 page 형태를 가진 HTTP handler로 이해하세요. Route discovery와 dispatch는
-기존 fluo module/controller pipeline에 남아 있고, page handler는 일반 값을 반환하거나 streamed HTML이
-필요할 때 `createReactServerEntry(...)`를 반환합니다.
+기존 fluo module/controller pipeline에 남아 있습니다. Page handler는 일반 HTTP 값을 반환하거나,
+configured application page renderer가 처리할 유효한 `ReactElement` 하나를 반환하거나, route별 SSR option이
+필요할 때 `createReactServerEntry(...)`를 명시적으로 반환할 수 있습니다.
 
 ## 런타임 및 피어 계약
 
@@ -140,10 +142,9 @@ Callback은 `ReactPageRenderer`를 구현하고 하나의 `ReactElement`와 활�
 inject할 수 있습니다.
 
 ```tsx
-import { Inject, Module } from '@fluojs/core';
+import { Module } from '@fluojs/core';
 import {
   Path,
-  REACT_PAGE_RENDERER,
   ReactModule,
   Router,
   createReactServerEntry,
@@ -178,14 +179,11 @@ const renderPage: ReactPageRenderer = (page, context) => {
   );
 };
 
-@Inject(REACT_PAGE_RENDERER)
 @Router('/products')
 class ProductRouter {
-  constructor(private readonly renderPage: ReactPageRenderer) {}
-
   @Path('/:id')
   show(_input: undefined, context: ReactRenderContext) {
-    return this.renderPage(<main>Product {context.request.params.id}</main>, context);
+    return <main>Product {context.request.params.id}</main>;
   }
 }
 
@@ -202,9 +200,47 @@ Root package는 `@fluojs/react/client`나 `@fluojs/react/vite`를 import하지 �
 binding, middleware, guard, interceptor, request scope, abort propagation, shell failure handling,
 recoverable streaming behavior를 우회하지 않습니다.
 
-이 phase는 JSX return 값을 암묵적으로 변환하지 않습니다. Handler는 `REACT_PAGE_RENDERER`를 inject해
-호출하거나 계속 `createReactServerEntry(...)`를 직접 반환해야 합니다. 명시적인 `ReactServerEntry` 값은
-그대로 유지되며 configured callback을 통과하지 않습니다.
+`renderPage`가 configured 상태라면 `@Path(...)` request의 최종 값 중 React
+`isValidElement(...)`가 단일 `ReactElement`로 판별한 값만 callback에 전달합니다. Plain object, string,
+array, `null`, 그 밖의 일반 값은 기존 HTTP response path를 유지합니다. 명시적인 `ReactServerEntry`는
+그대로 유지되고 configured callback을 통과하지 않습니다. 다른 application provider가 같은 renderer를
+명시적으로 호출해야 할 때는 `REACT_PAGE_RENDERER` token을 계속 사용할 수 있습니다.
+
+`renderPage`를 설정하지 않고 `ReactElement`를 반환하면 response commit 전에
+`ReactSsrDiagnosticError`가 발생합니다. Code는 `react-ssr-missing-page-renderer`이고 해결 방법을 포함한
+message를 제공합니다. `ReactModule.forRoot({ ..., renderPage })`를 설정하거나
+`createReactServerEntry(...)`를 명시적으로 반환하세요.
+
+## SSR Diagnostic Phases
+
+Application logging이나 diagnostics tooling이 HTTP 및 React rendering boundary 전체에서 하나의 안정된 event
+shape를 사용해야 한다면 `ReactModule.forRoot(...)`에 `onDiagnostic`을 등록하세요.
+
+```tsx
+ReactModule.forRoot({
+  controllers: [ProductRouter],
+  renderPage,
+  onDiagnostic(diagnostic) {
+    applicationDiagnostics.report(diagnostic);
+  },
+});
+```
+
+각 `ReactSsrDiagnostic`은 `code`, `phase`, 원본 `error`, 활성 `request`, optional `requestId`를
+포함합니다. Callback은 observational contract입니다. Callback이 throw해도 request outcome을 대체하지
+않습니다. Stable phase와 code는 다음과 같습니다.
+
+| Phase | Code | Boundary |
+| --- | --- | --- |
+| `http-pipeline` | `react-ssr-http-pipeline-failure` | React shell rendering 전 DTO binding, middleware, guard, interceptor, handler 및 기타 HTTP pipeline failure입니다. |
+| `http-pipeline` | `react-ssr-missing-page-renderer` | 유효한 `ReactElement`가 `renderPage` 설정 없이 `@Path(...)` response에 도달했습니다. |
+| `pre-commit-shell` | `react-ssr-pre-commit-shell-failure` | Response commit 전 React shell 생성 또는 buffered stream collection이 실패했습니다. 원본 throw된 `Error` identity를 보존합니다. |
+| `request-abort` | `react-ssr-request-abort` | Request signal 또는 abort probe가 React rendering을 중단했습니다. 기존 no-commit 또는 committed-stream abort behavior는 바뀌지 않습니다. |
+| `post-shell-recoverable` | `react-ssr-post-shell-recoverable-error` | Shell을 쓸 수 있게 된 뒤 React가 recoverable render error를 보고했습니다. Status와 header를 다시 쓰지 않습니다. |
+
+`REACT_SSR_DIAGNOSTIC_PHASES`와 `REACT_SSR_DIAGNOSTIC_CODES`는 비교에 사용할 수 있는 이 값을
+노출합니다. 기존 entry `onRecoverableError` hook도 `ReactRecoverableErrorContext`의 `code`와 `phase`를
+받습니다.
 
 ## Router 및 Path Decorators
 
@@ -251,7 +287,8 @@ route를 유지해야 하며, 향후 catch-all은 먼저 승인된 `@fluojs/http
 
 ## Web Streams SSR
 
-React page handler에서 `createReactServerEntry(...)`를 반환하면 기존 fluo HTTP dispatcher를 통해 HTML을
+Configured application page renderer를 통해 `ReactElement` 하나를 반환하거나
+`createReactServerEntry(...)`를 명시적으로 반환하면 기존 fluo HTTP dispatcher를 통해 HTML을
 streaming합니다. Guard, interceptor, module middleware, route header, `@HttpCode(...)`, DTO binding,
 request scope, duplicate route detection은 모두 `renderReactResponse(...)`가 HTML response를 finalize하기
 전에 실행됩니다.
@@ -724,6 +761,13 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
   dependency-injection token입니다.
 - `ReactPageRenderer` — `ReactElement`와 활성 `ReactRenderContext`를 기존 `ReactServerEntry`로 compose하는
   type-only application callback입니다.
+- `REACT_SSR_DIAGNOSTIC_PHASES` 및 `REACT_SSR_DIAGNOSTIC_CODES` — stable machine-readable SSR
+  lifecycle phase 및 diagnostic code constant입니다.
+- `ReactSsrDiagnosticError` — stable `code`와 `phase` metadata를 가진 typed pre-commit
+  configuration/render failure입니다.
+- `ReactSsrDiagnostic`, `ReactSsrDiagnosticCode`, `ReactSsrDiagnosticErrorOptions`,
+  `ReactSsrDiagnosticHandler`, `ReactSsrDiagnosticPhase` — application diagnostics tooling을 위한
+  type-only contract입니다.
 - `createReactServerEntry` — page handler가 Web Streams SSR을 위해 반환하는 runtime-neutral React server
   entry를 생성합니다.
 - `renderReactResponse` — lazy `react-dom/server` loading으로 React server entry 하나를 fluo HTML

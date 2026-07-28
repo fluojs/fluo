@@ -4,6 +4,8 @@ import type { MiddlewareLike } from '@fluojs/http';
 import { defineModule, type ModuleDefinition, type ModuleType } from '@fluojs/runtime';
 
 import { REACT_PAGE_RENDERER, type ReactPageRenderer } from './page-renderer.js';
+import { createReactPageResultMiddleware } from './page-result.js';
+import type { ReactSsrDiagnosticHandler } from './diagnostics.js';
 
 /**
  * Options for registering React routers through the fluo module graph.
@@ -17,6 +19,8 @@ export type ReactModuleOptions = {
   readonly imports?: readonly ModuleType[];
   /** Module-level middleware applied by the existing HTTP dispatcher to this module's routes. */
   readonly middleware?: readonly MiddlewareLike[];
+  /** Application callback for stable phase-aware React SSR diagnostics. */
+  readonly onDiagnostic?: ReactSsrDiagnosticHandler;
   /** Providers local to this dynamic React module and visible to registered routers. */
   readonly providers?: readonly Provider[];
   /** Application callback that composes page elements into existing React server entries. */
@@ -56,11 +60,18 @@ export class ReactModule {
       ...(options.providers ?? []),
       ...(pageRendererProvider === undefined ? [] : [pageRendererProvider]),
     ];
+    const middleware = [
+      createReactPageResultMiddleware({
+        ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
+        ...(options.renderPage === undefined ? {} : { renderPage: options.renderPage }),
+      }),
+      ...(options.middleware ?? []),
+    ];
     const definition = {
       controllers: [...options.controllers],
       ...(exports.length > 0 ? { exports } : {}),
       ...(options.imports ? { imports: [...options.imports] } : {}),
-      ...(options.middleware ? { middleware: [...options.middleware] } : {}),
+      middleware,
       ...(providers.length > 0 ? { providers } : {}),
     } satisfies ModuleDefinition;
 

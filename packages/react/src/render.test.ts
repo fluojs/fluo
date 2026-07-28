@@ -212,7 +212,9 @@ describe('renderReactResponse', () => {
     );
 
     expect(onRecoverableError).toHaveBeenCalledWith(recoverableError, expect.objectContaining({
+      code: 'react-ssr-post-shell-recoverable-error',
       errorInfo: { componentStack: '\n    at SlowPanel' },
+      phase: 'post-shell-recoverable',
       request: context.request,
     }));
     expect(response.statusCode).toBe(200);

@@ -10,6 +10,8 @@ SSR, Vite manifest asset, hydrated browser runtime을 연결합니다.
 
 - fluo HTTP module graph가 발견하는 `@Router('/products')` 및 `@Path('/:sku')` page route.
 - `@RequestDto(...)`, `@FromPath('sku')`, `@FromQuery('preview')`를 통한 typed path/search input.
+- Application `renderPage` callback이 manifest-derived hydration option과 compose하는 직접적인
+  `ReactElement` page return.
 - Web Streams SSR이 fallback과 resolve된 recommendation content를 emit하는 `Suspense` boundary.
 - `dist/client/.vite/manifest.json`을 생성하는 Vite client build와, 이미 로드한 manifest를 ordered
   CSS 및 hydration module asset으로 바꾸는 `@fluojs/react/vite`.
@@ -48,6 +50,8 @@ state가 일치하지 않는 client navigation이 있으면 실패합니다.
 
 - 안정 `0.1.0` root contract는 계속 HTTP-first React SSR을 소유합니다. 이 `0.2.0` 예제는 초기
   SSR 예제 이후 추가된 `@fluojs/react/vite` manifest parser와 그 contract를 조합합니다.
+- Direct page return은 두 번째 response path를 만들지 않습니다. Application renderer는 계속
+  `ReactServerEntry`를 반환하고 기존 HTTP writer가 status, header, error, streaming을 소유합니다.
 - `src/entry-client.ts`가 browser-only boundary입니다. Server module은 `window`나 `document`에
   접근하지 않으며, server는 application boundary에서 Vite manifest를 명시적으로 로드합니다.
 - `ReactClientRouterProvider`는 SSR과 hydration에서 같은 request URL과 HTTP-matched param을 받습니다.

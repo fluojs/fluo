@@ -13,9 +13,12 @@ lifecycle ownership은 `@fluojs/http`에 남겨 두고, React는 page 형태의 
 - HTTP-owned route grammar: literal segment와 full-segment `:param` placeholder만 지원합니다.
 - React server entry가 HTML을 commit하기 전에 guard, interceptor, module middleware, route header,
   entry header가 실행되는 request lifecycle.
-- `createReactServerEntry(...)`와 lazy `react-dom/server` rendering을 통한 Web Streams SSR.
+- `@Path(...)`가 직접 반환한 `ReactElement`를 application `renderPage` callback이
+  `createReactServerEntry(...)`로 compose한 뒤 lazy `react-dom/server` Web Streams로 렌더링하는 흐름.
 - Stable root의 명시적 hydration asset option: `bootstrapModules`, 신뢰된 `bootstrapScriptContent`,
   `nonce`, `identifierPrefix`, 신뢰된 `assetMap` snapshot.
+- HTTP-pipeline, pre-commit shell, request-abort, post-shell recoverable phase를 위한 stable SSR
+  diagnostics는 package README에 문서화되어 있습니다.
 
 ## 안정 경계
 
@@ -47,7 +50,7 @@ examples/react-stable-ssr/
 ├── src/
 │   ├── app.ts       # AppModule imports ReactModule.forRoot(...)
 │   ├── main.ts      # 로컬 수동 실행용 optional Fastify startup
-│   ├── pages.ts     # Router, DTO, guard, interceptor, middleware, SSR entry
+│   ├── pages.ts     # Router, direct page return, application renderer, HTTP lifecycle helper
 │   └── app.test.ts  # createTestApp request-pipeline SSR assertion
 ├── README.md
 └── README.ko.md
