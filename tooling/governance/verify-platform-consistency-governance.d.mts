@@ -29,6 +29,7 @@ export function enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices(
   readSource?: (relativePath: string) => string,
 ): void;
 export function enforceReactClientSubpathContract(): void;
+export function enforceReactPageCatalogContract(readText?: (relativePath: string) => string): void;
 export function enforceReactRscGraduationEvidenceUpdates(
   changedFiles: readonly string[],
   readText?: (relativePath: string) => string,

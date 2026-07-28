@@ -12,6 +12,7 @@ import {
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
   enforceReactClientSubpathContract,
+  enforceReactPageCatalogContract,
   enforceReactServerFunctionContract,
   isGovernedPackageSourcePath,
   parsePackageNamesFromFamilyTable,
@@ -121,6 +122,12 @@ describe('collectDirectProcessEnvViolations', () => {
 describe('enforceReactClientSubpathContract', () => {
   it('keeps client navigation isolated, exported, and documented', () => {
     expect(() => enforceReactClientSubpathContract()).not.toThrow();
+  });
+});
+
+describe('enforceReactPageCatalogContract', () => {
+  it('keeps compiled React page diagnostics aligned across source and bilingual docs', () => {
+    expect(() => enforceReactPageCatalogContract()).not.toThrow();
   });
 });
 
