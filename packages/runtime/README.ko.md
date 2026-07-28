@@ -27,7 +27,7 @@ npm install @fluojs/runtime
 - **fluo 애플리케이션 부트스트랩**: 모듈을 실행 중인 HTTP 서버나 마이크로서비스로 변환할 때.
 - **DI 및 라이프사이클 오케스트레이션**: 모듈 그래프 컴파일, 프로바이더 연결 및 애플리케이션 훅(`onModuleInit`, `onApplicationBootstrap`)을 관리할 때.
 - **독립형 컨텍스트 생성**: HTTP 서버는 필요 없지만 DI가 필요한 CLI task, script 또는 worker를 실행할 때.
-- **진단 및 검사**: CLI 내보내기를 위한 기계 읽기 가능한 플랫폼 snapshot과 diagnostic issue를 생산하되, 그래프 보기와 Mermaid 표현은 Studio에 맡길 때.
+- **진단 및 검사**: CLI 내보내기를 위한 기계 읽기 가능한 플랫폼 snapshot, compiled route catalog, diagnostic issue를 생산하되, 그래프 보기와 Mermaid 표현은 Studio에 맡길 때.
 
 ## 퀵 스타트
 
@@ -159,6 +159,7 @@ class UsersModule {}
 - 런타임 health module readiness check는 현재 `RequestContext`를 받으므로, public integration이 internal runtime token을 import하지 않고도 runtime-exposed status provider를 해석할 수 있습니다.
 - 시그널 기반 종료 헬퍼는 bounded drain semantics를 유지하면서 timeout/실패 상황을 로그와 `process.exitCode`로 보고하지만, 최종 프로세스 종료 소유권은 주변 호스트 런타임에 남겨 둡니다.
 - 플랫폼 snapshot 및 diagnostic issue 생산은 런타임에 남아 있고, 그래프 보기, filtering 표현, Mermaid 렌더링은 CLI 및 자동화 호출자가 소비하는 Studio 소유 계약입니다.
+- Compiled route inspection은 `HandlerDescriptor` 값의 one-way projection입니다. Effective method, path, version, params, module, controller, handler field를 freeze된 entry로 복사합니다. 일반 route는 `kind: 'http'`를 사용하고 runtime-aware integration은 `react-page` 같은 더 구체적인 marker를 publish할 수 있습니다. Route inspection은 matching, conflict detection, dispatch에 관여하지 않으며 request body, cookie, header, query value 또는 다른 request-private data를 보관하지 않습니다.
 - Runtime-connected Studio instrumentation은 명시적인 CLI 주입 Studio config로만 활성화되며 runtime package source에서 `process.env`를 직접 읽지 않습니다. Bridge 생성은 알려진 각 field를 한 번씩 읽어 검증되고 freeze된 private snapshot으로 캡처하며 HTTP(S) tokenized endpoint만 허용하므로, 이후 global object mutation이 instrumentation 대상을 바꾸거나 재인증할 수 없습니다. 유효한 config와 tokenized endpoint가 없으면 non-Node 런타임을 포함해 Studio 관점의 runtime bootstrap은 no-op입니다.
 - Studio request trace는 request/response body, cookie, 전체 header를 제외합니다. Trace `url`은 publish 전에 path-only 형태로 sanitize되어 query token과 fragment가 local Studio event history에 남지 않습니다.
 - 플랫폼 component snapshot은 런타임 소유 계약 payload입니다. 각 component는 `readiness`, `health`, dependency id, telemetry tag, diagnostic issue, 그리고 `ownership.ownsResources` / `ownership.externallyManaged`를 통해 리소스 소유권을 보고합니다. Runtime은 shell snapshot에서 이 ownership flag를 보존하므로 adapter와 package integration이 fluo가 종료해야 하는 리소스와 host가 소유한 외부 관리 리소스를 구분할 수 있습니다.
@@ -182,6 +183,8 @@ class UsersModule {}
 - `bootstrapApplication(options)`: 저수준 비동기 부트스트랩 함수입니다.
 - `bootstrapModule(...)`: 저수준 module graph bootstrap helper입니다. `BootstrapModuleOptions`에는 opt-in compile-result cache를 위한 `moduleGraphCache`와 authored module identity를 안정적으로 유지하는 testing-only module replacement compilation을 위한 `moduleReplacements` / `ModuleReplacementMap`이 포함됩니다.
 - `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: CLI/support tooling을 위한 runtime 소유 diagnostics snapshot helper입니다. 이 helper들은 기계 읽기 가능한 데이터를 생산하며, Studio가 viewer parsing, graph presentation, Mermaid rendering을 소유합니다.
+- `createRuntimeRouteInspection(...)`, `createRuntimeRouteCatalog(...)`, `createRuntimeInspectionSnapshot(...)`: HTTP route behavior를 변경하지 않고 platform snapshot에 effective compiled route diagnostics를 추가하는 runtime-owned immutable projection입니다.
+- `RuntimeRouteInspection`, `RuntimeInspectionSnapshot`: serializable read-only route 및 inspect artifact contract입니다. `RuntimeRouteInspection.params`에는 parameter name만 포함되고 request value는 포함되지 않습니다.
 - `PlatformShell`, `PlatformComponent`, `PlatformShellSnapshot`, `PlatformSnapshot`, `PlatformDiagnosticIssue` 및 관련 platform report 타입: runtime-aware package가 사용하는 공개 lifecycle diagnostics 및 resource-ownership 계약입니다. `RuntimePlatformShell`은 component가 제공한 ownership을 보존하고, consumer가 internal runtime token을 import하지 않아도 validation/readiness/health diagnostics를 내보냅니다.
 - `createRequestAbortContext(...)`, `trackActiveRequestTransaction(...)`, `untrackActiveRequestTransaction(...)`: runtime-aware integration이 사용하는 request abort 및 active transaction helper입니다.
 - `UploadedFile`: 메모리 내 `buffer` payload를 Web 표준 `Uint8Array`로 제공하는 runtime-neutral 멀티파트 파일 descriptor입니다.
@@ -194,7 +197,7 @@ class UsersModule {}
 | :--- | :--- |
 | `@fluojs/runtime/node` | 로거 팩토리, Node 어댑터/부트스트랩 헬퍼, 종료 시그널 등록을 위한 지원되는 Node.js 전용 진입점입니다. |
 | `@fluojs/runtime/web` | Bun, Deno, Cloudflare Workers를 위한 공유 Web 표준 요청/응답 유틸리티입니다. `createWebRequestResponseFactory`, `dispatchWebRequest`, `createWebFrameworkRequest`, `parseMultipart`를 포함합니다. |
-| `@fluojs/runtime/internal` | runtime wiring token과, compiled module graph의 provider scope와 정렬되어야 하는 first-party adapter가 사용하는 runtime-owned class metadata reader를 위한 internal package-integration seam입니다. |
+| `@fluojs/runtime/internal` | runtime wiring token, runtime-owned class metadata reader, compiled runtime descriptor와 정렬되어야 하는 first-party integration용 route-kind marker helper를 제공하는 internal package-integration seam입니다. |
 | `@fluojs/runtime/internal-node` | adapter/runtime plumbing을 위한 Node 전용 internal seam이며, 애플리케이션 코드에서는 `@fluojs/runtime/node`를 우선 사용하세요. |
 | `@fluojs/runtime/internal/http-adapter` | platform package를 위한 internal HTTP adapter seam입니다. |
 | `@fluojs/runtime/internal/request-response-factory` | platform package를 위한 internal request/response factory seam입니다. |

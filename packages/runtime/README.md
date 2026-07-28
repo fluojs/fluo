@@ -27,7 +27,7 @@ Use this package when you need to:
 - **Bootstrap a fluo application**: Convert your modules into a running HTTP server or microservice.
 - **Orchestrate DI and Lifecycle**: Manage module-graph compilation, provider wiring, and application hooks (`onModuleInit`, `onApplicationBootstrap`).
 - **Create Standalone Contexts**: Run CLI tasks, scripts, or workers that need DI but not an HTTP server.
-- **Diagnostic Inspection**: Produce machine-readable platform snapshots and diagnostic issues for CLI export while leaving graph viewing and Mermaid presentation to Studio.
+- **Diagnostic Inspection**: Produce machine-readable platform snapshots, compiled route catalogs, and diagnostic issues for CLI export while leaving graph viewing and Mermaid presentation to Studio.
 
 ## Quick Start
 
@@ -159,6 +159,7 @@ class UsersModule {}
 - Runtime health module readiness checks receive the current `RequestContext`, allowing public integrations to resolve runtime-exposed status providers without importing internal runtime tokens.
 - Signal-driven shutdown helpers preserve bounded drain semantics, log timeout/failure conditions, and set `process.exitCode` when shutdown does not finish cleanly, but they leave final process termination ownership to the surrounding host runtime.
 - Platform snapshot and diagnostic issue production stay in runtime; graph viewing, filtering presentation, and Mermaid rendering are Studio-owned contracts consumed by CLI and automation callers.
+- Compiled route inspection is a one-way projection from `HandlerDescriptor` values. Effective method, path, version, params, module, controller, and handler fields are copied into frozen entries; ordinary routes use `kind: 'http'`, while runtime-aware integrations can publish a more specific marker such as `react-page`. Route inspection never participates in matching, conflict detection, or dispatch and does not retain request body, cookie, header, query-value, or other request-private data.
 - Runtime-connected Studio instrumentation is activated only by explicit CLI-injected Studio config, never by direct `process.env` reads inside runtime package source. Bridge creation captures each known field once into a validated, frozen private snapshot and accepts only an HTTP(S) tokenized endpoint, so later global-object mutation cannot retarget or reauthorize instrumentation. Without valid config and tokenized endpoint, runtime bootstrap is a no-op for Studio, including non-Node runtimes.
 - Studio request traces omit request/response bodies, cookies, and full headers; the trace `url` is sanitized to path-only form before publish so query tokens and fragments are not retained in local Studio event history.
 - Platform component snapshots are runtime-owned contract payloads: each component reports `readiness`, `health`, dependency ids, telemetry tags, diagnostic issues, and resource ownership through `ownership.ownsResources` / `ownership.externallyManaged`. Runtime preserves those ownership flags in shell snapshots so adapters and package integrations can distinguish resources fluo must stop from externally managed resources the host owns.
@@ -182,6 +183,8 @@ class UsersModule {}
 - `bootstrapApplication(options)`: Lower-level async bootstrap function.
 - `bootstrapModule(...)`: Lower-level module graph bootstrap helper. Its `BootstrapModuleOptions` include `moduleGraphCache` for opt-in compile-result caching and `moduleReplacements` / `ModuleReplacementMap` for testing-only module replacement compilation that keeps authored module identities stable.
 - `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: Runtime-owned diagnostics snapshot helpers for CLI/support tooling. They produce machine-readable data; Studio owns viewer parsing, graph presentation, and Mermaid rendering.
+- `createRuntimeRouteInspection(...)`, `createRuntimeRouteCatalog(...)`, and `createRuntimeInspectionSnapshot(...)`: Runtime-owned immutable projections that add effective compiled route diagnostics to platform snapshots without changing HTTP route behavior.
+- `RuntimeRouteInspection` and `RuntimeInspectionSnapshot`: Serializable read-only route and inspect artifact contracts. `RuntimeRouteInspection.params` contains parameter names only, never request values.
 - `PlatformShell`, `PlatformComponent`, `PlatformShellSnapshot`, `PlatformSnapshot`, `PlatformDiagnosticIssue`, and related platform report types: Public lifecycle diagnostics and resource-ownership contracts used by runtime-aware packages. `RuntimePlatformShell` preserves component-provided ownership and emits validation/readiness/health diagnostics without requiring consumers to import internal runtime tokens.
 - `createRequestAbortContext(...)`, `trackActiveRequestTransaction(...)`, `untrackActiveRequestTransaction(...)`: Request abort and active transaction helpers used by runtime-aware integrations.
 - `UploadedFile`: Runtime-neutral multipart file descriptor whose in-memory `buffer` payload is a Web-standard `Uint8Array`.
@@ -194,7 +197,7 @@ Use `@fluojs/runtime/node` and `@fluojs/runtime/web` for application-facing runt
 | :--- | :--- |
 | `@fluojs/runtime/node` | Supported Node.js entrypoint for logger factories, Node adapter/bootstrap helpers, and shutdown signal registration. |
 | `@fluojs/runtime/web` | Shared Web-standard request/response utilities for Bun, Deno, and Cloudflare Workers, including `createWebRequestResponseFactory`, `dispatchWebRequest`, `createWebFrameworkRequest`, and `parseMultipart`. |
-| `@fluojs/runtime/internal` | Internal package-integration seam for runtime wiring tokens and the runtime-owned class metadata reader used by first-party adapters that must align provider scope with the compiled module graph. |
+| `@fluojs/runtime/internal` | Internal package-integration seam for runtime wiring tokens, the runtime-owned class metadata reader, and route-kind marker helpers used by first-party integrations that must align with compiled runtime descriptors. |
 | `@fluojs/runtime/internal-node` | Node-only internal seam for adapter/runtime plumbing; prefer `@fluojs/runtime/node` in application code. |
 | `@fluojs/runtime/internal/http-adapter` | Internal HTTP adapter seam for platform packages. |
 | `@fluojs/runtime/internal/request-response-factory` | Internal request/response factory seam for platform packages. |
