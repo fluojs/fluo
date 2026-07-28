@@ -160,6 +160,16 @@ The Cron lifecycle contract gates callbacks with the committed scheduler handle 
 
 [`docs/architecture/http-catch-all-route-grammar.md`](./architecture/http-catch-all-route-grammar.md) defers catch-all adoption. `@fluojs/http` continues to accept only literal and full-segment `:param` route segments, while `@fluojs/react/client` real anchors provide ordinary full-document fallback to explicit server routes without creating a client route grammar. Reconsideration requires an HTTP-owned syntax, `static > param > catch-all` ordering, string params, OpenAPI policy, adapter parity, native fast path decisions, and performance evidence.
 
+## React Render Policy Decision
+
+The accepted [React render policy decorator decision](./architecture/react-render-policy-decorators.md)
+adds `@PageLayout(...)` and `@SuspenseFallback(...)` component-reference metadata for `@Router(...)`
+classes and `@Path(...)` methods. Base-to-derived class layouts compose before base-to-derived method
+layouts, the nearest fallback wins, and invalid or duplicate declarations fail during bootstrap.
+Only the configured application `ReactPageRenderer` consumes the resolved policies after HTTP
+matching; URL matching, not-found handling, HTTP errors, shell failures, request aborts, and
+post-shell recoverable errors retain their existing owners and phases.
+
 ## React RSC Graduation Gate
 
 The canonical [React RSC graduation policy](./contracts/react-rsc-graduation.md) keeps

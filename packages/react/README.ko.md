@@ -13,6 +13,7 @@ fluo 애플리케이션을 위한 런타임 중립 React 통합입니다.
 - [Phase Boundaries](#phase-boundaries)
 - [ReactModule Registration](#reactmodule-registration)
 - [Application Page Renderer](#application-page-renderer)
+- [Render Policy Decorators](#render-policy-decorators)
 - [SSR Diagnostic Phases](#ssr-diagnostic-phases)
 - [Router 및 Path Decorators](#router-및-path-decorators)
 - [Web Streams SSR](#web-streams-ssr)
@@ -211,6 +212,83 @@ array, `null`, 그 밖의 일반 값은 기존 HTTP response path를 유지합�
 `ReactSsrDiagnosticError`가 발생합니다. Code는 `react-ssr-missing-page-renderer`이고 해결 방법을 포함한
 message를 제공합니다. `ReactModule.forRoot({ ..., renderPage })`를 설정하거나
 `createReactServerEntry(...)`를 명시적으로 반환하세요.
+
+## Render Policy Decorators
+
+React router class 또는 `@Path(...)` method 하나에 route-local composition이 필요하지만 application은
+하나의 `renderPage` callback을 유지해야 할 때 `@PageLayout(...)`과 `@SuspenseFallback(...)`을
+사용하세요. 두 decorator는 미리 생성한 JSX element가 아니라 component reference를 받습니다. Metadata는
+HTTP matching 이후 resolve되어 application page renderer에만 전달되며 path, matching precedence, param,
+not-found behavior를 변경하지 않습니다.
+
+```tsx
+import { Suspense, createElement, type ReactElement } from 'react';
+import {
+  PageLayout,
+  Path,
+  ReactModule,
+  Router,
+  SuspenseFallback,
+  createReactServerEntry,
+  type ReactPageLayoutProps,
+  type ReactPageRenderer,
+  type ReactSuspenseFallbackProps,
+} from '@fluojs/react';
+
+function ShopLayout({ children, context }: ReactPageLayoutProps) {
+  return <section data-request-path={context.request.path}>{children}</section>;
+}
+
+function ProductFallback({ context }: ReactSuspenseFallbackProps) {
+  return <p>Loading {context.request.params.id}…</p>;
+}
+
+const renderPage: ReactPageRenderer = (page, context, policies) => {
+  const pageBoundary = policies.suspenseFallback === undefined
+    ? page
+    : createElement(Suspense, {
+        fallback: createElement(policies.suspenseFallback, { context }),
+      }, page);
+  const composedPage = policies.layouts.reduceRight<ReactElement>(
+    (children, Layout) => createElement(Layout, { children, context }),
+    pageBoundary,
+  );
+
+  return createReactServerEntry(
+    <html lang="ko"><body>{composedPage}</body></html>,
+  );
+};
+
+@PageLayout(ShopLayout)
+@Router('/products')
+class ProductRouter {
+  @SuspenseFallback(ProductFallback)
+  @Path('/:id')
+  show() {
+    return <ProductPage />;
+  }
+}
+
+ReactModule.forRoot({ controllers: [ProductRouter], renderPage });
+```
+
+Resolved layout은 outermost에서 innermost 순서로 base class, derived class, base method, derived method를
+따릅니다. Layout은 inheritance 전체에서 compose됩니다. 가장 가까운 fallback이 우선하므로 method
+fallback은 class fallback을 대체하고 derived declaration은 base declaration을 대체합니다. Class 또는
+method site는 각 policy kind를 한 번만 선언할 수 있으며 같은 site의 duplicate는 bootstrap 중 실패합니다.
+
+`ReactRenderContext`는 활성 request-scope `container`를 포함합니다. Policy component는 이 context를
+명시적인 prop으로 받지만 fluo가 React component를 DI로 instantiate하거나 token을 대신 resolve하지는
+않습니다. `renderPage` 없는 policy, `@Router(...)` 밖의 class policy, `@Path(...)` 밖의 method policy는
+`ReactRenderPolicyConfigurationError`와 `REACT_RENDER_POLICY_DIAGNOSTIC_CODES`의 stable value로
+bootstrap을 실패시킵니다.
+
+`@SuspenseFallback(...)`은 SSR 중 suspend하는 descendant를 위한 ordinary React Suspense fallback을
+제공합니다. Handler `await`, effect, event handler, native form submission, full-document/client navigation
+pending state는 관찰하지 않습니다. HTTP pipeline error, not-found/404 response, pre-commit shell failure,
+request abort, post-shell recoverable error는 기존의 별도 phase를 유지합니다. 전체 ordering, inheritance,
+duplicate, phase 결정은 [React render policy decorator decision](../../docs/architecture/react-render-policy-decorators.ko.md)에
+기록되어 있습니다.
 
 ## SSR Diagnostic Phases
 
@@ -825,6 +903,8 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - filesystem scanning 또는 자동 manifest file discovery. 이미 로드한 manifest 값을 `@fluojs/react/vite`에 넘기세요.
 - `bootstrapScriptContent`로 임의 data를 자동 serialize하는 기능
 - `renderToPipeableStream(...)` 같은 Node 전용 `react-dom/server` pipeable stream root API
+- Next.js-style segment `loading`, `error`, `notFound`, template 또는 layout ancestry semantic.
+  `@SuspenseFallback(...)`은 SSR-descendant Suspense metadata만 제공합니다.
 
 ## Public API
 
@@ -837,7 +917,15 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - `REACT_PAGE_RENDERER` — `ReactModule.forRoot({ renderPage })`가 등록하는 application page renderer의
   dependency-injection token입니다.
 - `ReactPageRenderer` — `ReactElement`와 활성 `ReactRenderContext`를 기존 `ReactServerEntry`로 compose하는
-  type-only application callback입니다.
+  과정에 resolved `ReactRenderPolicies`도 전달받는 type-only application callback입니다.
+- `PageLayout` 및 `SuspenseFallback` — application page renderer만 consume하는 component reference를
+  기록하는 class-or-method decorator입니다.
+- `getReactRenderPolicies` — inherited class/method policy를 outer-to-inner order로 resolve합니다.
+- `REACT_RENDER_POLICY_DIAGNOSTIC_CODES` 및 `ReactRenderPolicyConfigurationError` — duplicate,
+  invalid-target, invalid-reference, missing-renderer policy declaration을 위한 stable bootstrap diagnostic입니다.
+- `ReactPageLayout`, `ReactPageLayoutProps`, `ReactSuspenseFallback`,
+  `ReactSuspenseFallbackProps`, `ReactRenderPolicies`, `ReactRenderPolicyDiagnosticCode` — type-only
+  render-policy composition contract입니다.
 - `REACT_SSR_DIAGNOSTIC_PHASES` 및 `REACT_SSR_DIAGNOSTIC_CODES` — stable machine-readable SSR
   lifecycle phase 및 diagnostic code constant입니다.
 - `ReactSsrDiagnosticError` — stable `code`와 `phase` metadata를 가진 typed pre-commit
@@ -926,6 +1014,9 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - `packages/react/src/render.ts`
 - `packages/react/src/module.ts`
 - `packages/react/src/page-renderer.ts`
+- `packages/react/src/render-policy.ts`
+- `packages/react/src/render-policy-metadata.ts`
+- `packages/react/src/render-policy.test.ts`
 - `packages/react/src/render.test.ts`
 - `packages/react/src/dispatcher-ssr.test.ts`
 - `packages/react/src/hydration-assets.test.ts`

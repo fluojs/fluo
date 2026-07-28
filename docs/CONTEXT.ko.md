@@ -160,6 +160,16 @@ Cron lifecycle contract는 committed scheduler handle token으로 callback을 ga
 
 [`docs/architecture/http-catch-all-route-grammar.ko.md`](./architecture/http-catch-all-route-grammar.ko.md)는 catch-all 도입을 유예한다. `@fluojs/http`는 literal 및 full-segment `:param` route segment만 계속 허용하고, `@fluojs/react/client`의 실제 anchor는 client route grammar를 만들지 않으면서 명시적인 server route로 일반 full-document fallback을 제공한다. 재검토에는 HTTP-owned syntax, `static > param > catch-all` ordering, string params, OpenAPI policy, adapter parity, native fast path 결정, performance evidence가 필요하다.
 
+## React Render Policy Decision
+
+채택된 [React render policy decorator decision](./architecture/react-render-policy-decorators.ko.md)은
+`@Router(...)` class와 `@Path(...)` method를 위한 `@PageLayout(...)`,
+`@SuspenseFallback(...)` component-reference metadata를 추가합니다. Base-to-derived class layout이
+base-to-derived method layout보다 먼저 compose되고 가장 가까운 fallback이 우선하며 invalid 또는 duplicate
+declaration은 bootstrap 중 실패합니다. Configured application `ReactPageRenderer`만 HTTP matching 이후
+resolved policy를 consume합니다. URL matching, not-found handling, HTTP error, shell failure, request abort,
+post-shell recoverable error는 기존 owner와 phase를 유지합니다.
+
 ## React RSC Graduation Gate
 
 Canonical [React RSC graduation policy](./contracts/react-rsc-graduation.ko.md)는 maintainer-approved

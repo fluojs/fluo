@@ -1,4 +1,5 @@
 import { Inject, Module } from '@fluojs/core';
+import type { RequestScopeContainer } from '@fluojs/di';
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 import { bootstrapApplication } from '@fluojs/runtime';
 import { createElement } from 'react';
@@ -8,6 +9,12 @@ import { Path, Router } from './decorators.js';
 import { ReactModule } from './module.js';
 import { REACT_PAGE_RENDERER, type ReactPageRenderer } from './page-renderer.js';
 import type { ReactRenderContext } from './render.js';
+import {
+  PageLayout,
+  type ReactPageLayout,
+  type ReactSuspenseFallback,
+  SuspenseFallback,
+} from './render-policy.js';
 import { createReactServerEntry } from './server-entry.js';
 
 type TestResponse = FrameworkResponse & { body?: unknown };
@@ -80,6 +87,7 @@ describe('ReactPageRenderer', () => {
         return this.renderPage(
           createElement('main', null, `Product ${context.request.params.id ?? 'missing'}`),
           context,
+          { layouts: [] },
         );
       }
     }
@@ -143,6 +151,56 @@ describe('ReactPageRenderer', () => {
 
       expect(rendererCalls).toBe(0);
       expect(decodeBufferedBody(response)).toContain('Explicit entry');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('passes resolved render policies and the active DI context to the application renderer', async () => {
+    const ClassLayout: ReactPageLayout = ({ children }) => children;
+    const MethodLayout: ReactPageLayout = ({ children }) => children;
+    const MethodFallback: ReactSuspenseFallback = () => null;
+    let handlerContainer: RequestScopeContainer | undefined;
+    let rendererContainer: RequestScopeContainer | undefined;
+    let renderedLayouts: readonly ReactPageLayout[] = [];
+    let renderedFallback: ReactSuspenseFallback | undefined;
+    const applicationRenderPage: ReactPageRenderer = (page, context, policies) => {
+      rendererContainer = context.container;
+      renderedLayouts = policies.layouts;
+      renderedFallback = policies.suspenseFallback;
+      return createReactServerEntry(createElement('html', null, createElement('body', null, page)));
+    };
+
+    // Given: class and method policies decorate one direct React page return.
+    @PageLayout(ClassLayout)
+    @Router('/policy-page')
+    class PolicyRouter {
+      @PageLayout(MethodLayout)
+      @SuspenseFallback(MethodFallback)
+      @Path('/')
+      show(_input: undefined, context: ReactRenderContext) {
+        handlerContainer = context.container;
+        return createElement('main', null, 'Policy page');
+      }
+    }
+
+    @Module({
+      imports: [ReactModule.forRoot({ controllers: [PolicyRouter], renderPage: applicationRenderPage })],
+    })
+    class AppModule {}
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      // When: the matched Path result reaches the application page renderer.
+      const response = createResponse();
+      await app.dispatch(createRequest('/policy-page'), response);
+
+      // Then: policy order and request-scoped DI identity remain renderer-visible.
+      expect(renderedLayouts).toEqual([ClassLayout, MethodLayout]);
+      expect(renderedFallback).toBe(MethodFallback);
+      expect(rendererContainer).toBe(handlerContainer);
+      expect(decodeBufferedBody(response)).toContain('Policy page');
     } finally {
       await app.close();
     }

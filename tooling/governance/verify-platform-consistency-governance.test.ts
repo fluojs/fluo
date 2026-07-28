@@ -896,6 +896,30 @@ describe('enforceContractCompanionUpdates', () => {
     }
   });
 
+  it('treats the React render policy decision pair as contract-governing updates', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const renderPolicyDecisionTriggers = [
+      'docs/architecture/react-render-policy-decorators.md',
+      'docs/architecture/react-render-policy-decorators.ko.md',
+    ];
+
+    for (const trigger of renderPolicyDecisionTriggers) {
+      expect(() => enforceContractCompanionUpdates([trigger])).toThrowError(
+        /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
+      );
+    }
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...renderPolicyDecisionTriggers,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'packages/react/src/render-policy.test.ts',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('accepts Studio package-surface privacy and artifact guidance when paired with package tests', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 

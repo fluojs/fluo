@@ -49,6 +49,15 @@
 
   Stable phase boundary는 root `@fluojs/react`를 runtime-neutral SSR contract에 집중하게 합니다. `@fluojs/react/vite`는 Vite asset manifest parsing, `@fluojs/react/client`는 HTTP-first browser navigation과 hydration-safe route-state hook, `@fluojs/react/experimental/rsc`는 불안정한 exact-React-version RSC compatibility, client-reference/server-module manifest, HTTP-dispatched Flight response, signed Server Function transport seam을 소유합니다. Server Functions에는 application-owned explicit POST route, Web Crypto provider, 32 byte 이상의 secret, exact origin allowlist, non-simple request marker, JSON/body/depth/result limit, action-level 또는 guard authorization이 필요하며 renderer, build plugin, loader/cache system, 별도 router를 만들지 않습니다. Stable root와 client subpath를 Next.js App Router clone, React Server Components framework, TanStack route tree, Angular `Routes[]`, file-route scanner, primary React-owned `routes: []` table로 설명하면 안 됩니다.
 
+  Stable root render policy는 `@Router(...)` class 및 `@Path(...)` method의
+  `@PageLayout(...)`, `@SuspenseFallback(...)` component reference로 제한됩니다. Application
+  `ReactPageRenderer`만 HTTP matching 이후 resolve된 base-to-derived class/method policy를 받고,
+  `ReactRenderContext`를 통해 활성 request-scope container를 사용할 수 있습니다. Same-site duplicate,
+  invalid target/reference, `renderPage` 없는 policy는 bootstrap 중 실패합니다. Suspense fallback metadata는
+  SSR 중 suspend하는 descendant만 다루며 handler-await, client-navigation pending UI, error/not-found ownership,
+  URL-prefix ancestry를 추가하지 않습니다. Canonical source는
+  [render policy decision](../architecture/react-render-policy-decorators.ko.md)입니다.
+
   [React RSC graduation policy](../contracts/react-rsc-graduation.ko.md)는 maintainer-approved evidence가 React/renderer version, manifest 및 Server Function transport compatibility, browser/server separation, SSR/CSR/prerendering, hydration mismatch recovery, safe transfer rule, HTTP route 및 #2506 navigation ownership, dual-import test, bilingual docs, Changesets intent를 다룰 때까지 `@fluojs/react/rsc`를 blocked 상태로 유지합니다. Graduation은 stable root RSC export를 추가하지 않습니다. 승인되면 experimental path는 정책의 deprecation window 동안 테스트되는 re-export로 남습니다.
 - **`@fluojs/jwt`**: HTTP 비종속 JWT 서명, 검증, principal 정규화, optional family-scoped reuse revocation과 호환 가능한 subject-revocation fallback을 포함한 refresh-token rotation 계약, export된 status snapshot 및 adapter input 타입을 포함한 platform status/diagnostic helper.
 - **`@fluojs/passport`**: 전략 비종속 인증 가드, optional auth 및 scope decorator, `PassportModule` strategy registry wiring, Passport.js manual bridge provider bundle, cookie-auth 및 refresh-token preset, account-linking policy helper, 공개 auth metadata helper, auth readiness를 위한 platform status/diagnostic helper.

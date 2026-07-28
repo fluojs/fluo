@@ -2,13 +2,13 @@ import type { RequestContext } from '@fluojs/http';
 import type { ReactNode } from 'react';
 
 import { createReactRenderDiagnostics, type PendingReactRecoverableError } from './render-diagnostics.js';
-import {
-  type ReactAssetMap,
-  type ReactBootstrapAsset,
-  type ReactBootstrapScriptDescriptor,
-  type ReactServerEntry,
-} from './server-entry.js';
 import { collectReadableStream, pipeReadableStream, throwIfReactRequestAborted } from './render-stream.js';
+import type {
+  ReactAssetMap,
+  ReactBootstrapAsset,
+  ReactBootstrapScriptDescriptor,
+  ReactServerEntry,
+} from './server-entry.js';
 
 const HTML_CONTENT_TYPE = 'text/html; charset=utf-8';
 
@@ -70,8 +70,11 @@ export type RenderReactResponseOptions = {
   readonly renderToReadableStream?: ReactReadableStreamRenderer;
 };
 
-/** Minimal fluo request context needed to render one React HTML response. */
-export type ReactRenderContext = Pick<RequestContext, 'request' | 'requestId' | 'response'>;
+/** Request-scoped fluo context available to page renderers and render policy components. */
+export type ReactRenderContext = Pick<
+  RequestContext,
+  'container' | 'request' | 'requestId' | 'response'
+>;
 
 function applyEntryHeaders(entry: ReactServerEntry, requestContext: ReactRenderContext): void {
   for (const [name, value] of Object.entries(entry.headers)) {

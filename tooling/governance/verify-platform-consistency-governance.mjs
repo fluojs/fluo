@@ -31,6 +31,10 @@ const ssotPairs = [
   ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'],
   ['docs/architecture/http-catch-all-route-grammar.md', 'docs/architecture/http-catch-all-route-grammar.ko.md'],
   ['docs/architecture/platform-consistency-design.md', 'docs/architecture/platform-consistency-design.ko.md'],
+  [
+    'docs/architecture/react-render-policy-decorators.md',
+    'docs/architecture/react-render-policy-decorators.ko.md',
+  ],
   ['docs/contracts/behavioral-contract-policy.md', 'docs/contracts/behavioral-contract-policy.ko.md'],
   ['docs/contracts/public-export-tsdoc-baseline.md', 'docs/contracts/public-export-tsdoc-baseline.ko.md'],
   ['docs/contracts/react-rsc-graduation.md', 'docs/contracts/react-rsc-graduation.ko.md'],
@@ -45,6 +49,8 @@ const contractGateTriggers = new Set([
   'docs/architecture/http-catch-all-route-grammar.ko.md',
   'docs/architecture/platform-consistency-design.md',
   'docs/architecture/platform-consistency-design.ko.md',
+  'docs/architecture/react-render-policy-decorators.md',
+  'docs/architecture/react-render-policy-decorators.ko.md',
   'docs/contracts/behavioral-contract-policy.md',
   'docs/contracts/behavioral-contract-policy.ko.md',
   'docs/contracts/public-export-tsdoc-baseline.md',
@@ -625,7 +631,10 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // plus event-bus background handler/transport shutdown drain, inbound timeout,
   // stable eventKey migration, and CQRS responsibility-boundary docs/tests,
   // plus React Router/Path facade-over-HTTP metadata, ReactModule.forRoot
-  // registration contract discoverability, stable SSR phase boundaries,
+  // registration contract discoverability, inherited class/method render-policy
+  // ordering, nearest Suspense fallback selection, request-scope renderer context,
+  // bootstrap diagnostics for invalid/duplicate policies or missing renderPage,
+  // stable SSR phase boundaries,
   // isolated Vite/client/experimental-RSC subpaths, HTTP-first full-document
   // navigation, exact RSC version diagnostics, explicit client-reference and
   // server-to-client module maps, HTTP-dispatched Flight responses, and the
