@@ -66,7 +66,7 @@ Live mode shows:
 
 - connection state (`connecting`, `connected`, `restarting`, `reconnecting`, `stale`, `disconnected`, `error`);
 - module/provider/controller/route graph nodes and import/export/ownership/dependency edges;
-- HTTP method/path/controller handler route descriptors;
+- HTTP method/path/controller handler route descriptors that label `react-page` separately from ordinary `http` handlers and show effective path parameter names;
 - recent request flow with route/handler correlation, success/error, status code, and duration;
 - bootstrap timing summaries for live and static/report data;
 - runtime/request diagnostics with severity, target, message, and fix hints where available.
@@ -75,7 +75,7 @@ MVP request flow intentionally means route/handler and dependency-graph correlat
 
 ## Static/Report Compatibility
 
-Studio still accepts JSON exports from the fluo CLI. Runtime produces snapshots, the CLI owns artifact export/write/delegation, and Studio owns the public helpers and viewer surface that parse, filter, inspect, and render those snapshots for people and automation callers. Supported inspect artifacts include raw snapshots, snapshot-plus-timing envelopes, report artifacts produced by `fluo inspect --report`, and legacy standalone timing diagnostics.
+Studio still accepts JSON exports from the fluo CLI. Runtime produces snapshots, the CLI owns artifact export/write/delegation, and Studio owns the public helpers and viewer surface that parse, filter, inspect, and render those snapshots for people and automation callers. Supported inspect artifacts include raw snapshots, snapshot-plus-timing envelopes, report artifacts produced by `fluo inspect --report`, and legacy standalone timing diagnostics. New snapshots may include compiled `routes`; Studio validates `kind` and parameter-name-only `params`, displays `react-page` as **React page**, and keeps artifacts without `routes` or older route entries without those fields backward compatible as ordinary HTTP diagnostics.
 
 This file-first path is the compatibility and migration fallback for CI, support handoffs, architecture reviews, and non-Node runtime targets. Bun, Deno, and Cloudflare Workers projects should generate inspect/static artifacts and open them with the packaged viewer instead of expecting live sidecar events in the MVP. The packaged viewer is resolved through the Node-based package entrypoint (`node -p "require.resolve('@fluojs/studio/viewer')"`), even when the inspected artifact came from a non-Node runtime fallback workflow.
 
@@ -128,7 +128,7 @@ Studio is primarily a CLI-launched sidecar and browser viewer, but the published
 | `isStudioLiveEvent(value)` | Runtime-safe type guard for checking sidecar/SSE envelopes before parsing or dispatch. |
 | `StudioLiveSnapshot` | Live graph/routes/requests/timing/diagnostics snapshot consumed by the React UI. |
 | `StudioLiveEvent` | Versioned live event envelope for `snapshot`, `request`, `timing`, `diagnostic`, `restart`, `disconnect`, and `heartbeat`. |
-| `StudioPayload` / `StudioReportArtifact` / `StudioReportSummary` | Static/report compatibility contracts. |
+| `StudioPayload` / `StudioInspectionSnapshot` / `StudioReportArtifact` / `StudioReportSummary` | Static/report compatibility contracts, including optional compiled route diagnostics. |
 
 ### Root type exports
 
@@ -140,6 +140,7 @@ Studio is primarily a CLI-launched sidecar and browser viewer, but the published
 | `PlatformDiagnosticSeverity` | Diagnostic severity union used by filters and live diagnostics. |
 | `PlatformReadinessStatus` | Readiness status union used by filters and graph annotations. |
 | `PlatformShellSnapshot` | Runtime-produced snapshot type re-exported from `@fluojs/runtime` for inspect artifacts. |
+| `StudioInspectionSnapshot` | Static inspect snapshot that optionally carries validated compiled route descriptors. |
 | `StudioPayload` | Static artifact envelope containing a snapshot, timing diagnostics, and/or report artifact. |
 | `StudioReportArtifact` | CI/support report artifact produced by `fluo inspect --report`. |
 | `StudioReportSummary` | Stable summary fields embedded in a report artifact. |
@@ -159,7 +160,7 @@ Studio is primarily a CLI-launched sidecar and browser viewer, but the published
 | `StudioRequestStatus` | Request lifecycle status union used by live request traces. |
 | `StudioRequestTrace` | Request trace metadata emitted without request or response bodies. |
 | `StudioRestartPayload` | Runtime/app restart lifecycle payload emitted by CLI-owned dev supervision. |
-| `StudioRouteDescriptor` | Route descriptor projected into the live Studio UI. |
+| `StudioRouteDescriptor` | Live/static route descriptor with `kind`, method/effective path, parameter names, and controller-handler identity. |
 
 ### Published package entrypoints
 

@@ -66,7 +66,7 @@ Live mode는 다음을 보여줍니다.
 
 - connection state(`connecting`, `connected`, `restarting`, `reconnecting`, `stale`, `disconnected`, `error`)
 - module/provider/controller/route graph node와 import/export/ownership/dependency edge
-- HTTP method/path/controller handler route descriptor
+- `react-page`를 일반 `http` handler와 구분하고 effective path parameter name을 보여주는 HTTP method/path/controller handler route descriptor
 - route/handler correlation, success/error, status code, duration을 포함한 최근 request flow
 - live 및 static/report 데이터의 bootstrap timing summary
 - severity, target, message, 가능한 fix hint가 포함된 runtime/request diagnostics
@@ -75,7 +75,7 @@ MVP request flow는 route/handler와 dependency-graph correlation을 의미합�
 
 ## 정적/리포트 호환성
 
-Studio는 여전히 fluo CLI가 내보낸 JSON 파일을 소비합니다. 런타임은 snapshot을 생산하고, CLI는 artifact export/write/delegation을 소유하며, Studio는 사람과 자동화 호출자가 사용할 수 있도록 snapshot을 파싱, 필터링, 검사, 렌더링하는 공개 헬퍼와 viewer surface를 소유합니다. 지원되는 inspect artifact에는 raw snapshot, snapshot-plus-timing envelope, `fluo inspect --report`가 생성한 report artifact, legacy standalone timing diagnostics가 포함됩니다.
+Studio는 여전히 fluo CLI가 내보낸 JSON 파일을 소비합니다. 런타임은 snapshot을 생산하고, CLI는 artifact export/write/delegation을 소유하며, Studio는 사람과 자동화 호출자가 사용할 수 있도록 snapshot을 파싱, 필터링, 검사, 렌더링하는 공개 헬퍼와 viewer surface를 소유합니다. 지원되는 inspect artifact에는 raw snapshot, snapshot-plus-timing envelope, `fluo inspect --report`가 생성한 report artifact, legacy standalone timing diagnostics가 포함됩니다. 새 snapshot은 compiled `routes`를 포함할 수 있습니다. Studio는 `kind`와 parameter-name-only `params`를 검증하고 `react-page`를 **React page**로 표시하며, `routes`가 없는 artifact 또는 이 field가 없는 이전 route entry는 ordinary HTTP diagnostic으로 backward-compatible하게 처리합니다.
 
 이 file-first 경로는 CI, support handoff, architecture review, non-Node runtime target을 위한 호환성 및 migration fallback입니다. Bun, Deno, Cloudflare Workers 프로젝트는 MVP에서 live sidecar event를 기대하는 대신 inspect/static artifact를 생성하고 패키징된 viewer로 열어야 합니다. 패키징된 viewer는 inspected artifact가 non-Node runtime fallback workflow에서 생성된 경우에도 Node 기반 package entrypoint(`node -p "require.resolve('@fluojs/studio/viewer')"`)로 resolve합니다.
 
@@ -128,7 +128,7 @@ Studio는 주로 CLI가 실행하는 sidecar와 browser viewer이지만, 배포�
 | `isStudioLiveEvent(value)` | parsing 또는 dispatch 전에 sidecar/SSE envelope를 확인하는 runtime-safe type guard입니다. |
 | `StudioLiveSnapshot` | React UI가 소비하는 live graph/routes/requests/timing/diagnostics snapshot입니다. |
 | `StudioLiveEvent` | `snapshot`, `request`, `timing`, `diagnostic`, `restart`, `disconnect`, `heartbeat`를 위한 versioned live event envelope입니다. |
-| `StudioPayload` / `StudioReportArtifact` / `StudioReportSummary` | Static/report 호환성 계약입니다. |
+| `StudioPayload` / `StudioInspectionSnapshot` / `StudioReportArtifact` / `StudioReportSummary` | Optional compiled route diagnostics를 포함하는 static/report 호환성 계약입니다. |
 
 ### Root type export
 
@@ -140,6 +140,7 @@ Studio는 주로 CLI가 실행하는 sidecar와 browser viewer이지만, 배포�
 | `PlatformDiagnosticSeverity` | Filter와 live diagnostic에서 사용하는 diagnostic severity union입니다. |
 | `PlatformReadinessStatus` | Filter와 graph annotation에서 사용하는 readiness status union입니다. |
 | `PlatformShellSnapshot` | Inspect artifact를 위해 `@fluojs/runtime`에서 다시 export하는 runtime-produced snapshot type입니다. |
+| `StudioInspectionSnapshot` | 검증된 compiled route descriptor를 optional로 포함하는 static inspect snapshot입니다. |
 | `StudioPayload` | Snapshot, timing diagnostics, report artifact를 담을 수 있는 static artifact envelope입니다. |
 | `StudioReportArtifact` | `fluo inspect --report`가 생성하는 CI/support report artifact입니다. |
 | `StudioReportSummary` | Report artifact에 포함되는 stable summary field입니다. |
@@ -159,7 +160,7 @@ Studio는 주로 CLI가 실행하는 sidecar와 browser viewer이지만, 배포�
 | `StudioRequestStatus` | Live request trace에서 쓰는 request lifecycle status union입니다. |
 | `StudioRequestTrace` | Request/response body 없이 emit되는 request trace metadata입니다. |
 | `StudioRestartPayload` | CLI-owned dev supervision이 emit하는 runtime/app restart lifecycle payload입니다. |
-| `StudioRouteDescriptor` | Live Studio UI에 투영되는 route descriptor입니다. |
+| `StudioRouteDescriptor` | `kind`, method/effective path, parameter name, controller-handler identity를 포함하는 live/static route descriptor입니다. |
 
 ### 배포 패키지 진입점
 
