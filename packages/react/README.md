@@ -19,6 +19,7 @@ Runtime-neutral React integration for fluo applications.
 - [Hydration Asset Contract](#hydration-asset-contract)
 - [Vite Asset Manifest Integration](#vite-asset-manifest-integration)
 - [Client Navigation Runtime](#client-navigation-runtime)
+- [Native Form Mutations](#native-form-mutations)
 - [Experimental RSC Prototype](#experimental-rsc-prototype)
 - [Experimental Server Functions](#experimental-server-functions)
 - [RSC Graduation Policy](#rsc-graduation-policy)
@@ -528,6 +529,85 @@ gaps and disabled JavaScript fall back to ordinary full-document browser navigat
 matches an explicit `@Path(...)`/HTTP route or returns its normal not-found response. An intentional
 deployment-level document rewrite may be configured separately, but it does not create a React route
 grammar or change server DTO validation.
+
+## Native Form Mutations
+
+Use a native HTML form when a React page needs a mutation that remains functional before hydration or
+with client JavaScript disabled. Submit to an ordinary `@Post(...)` route rather than creating a
+React-owned action transport. The runnable `examples/react-vite-ssr/` slice uses
+`multipart/form-data`, which lets the browser provide the multipart boundary while the existing
+adapter and `@RequestDto(...)` body-binding path materialize the fields.
+
+```tsx
+function ProductForm({ name, sku }: { readonly name: string; readonly sku: string }) {
+  return (
+    <form action={`/products/${encodeURIComponent(sku)}`} encType="multipart/form-data" method="post">
+      <label htmlFor="product-name">Product name</label>
+      <input defaultValue={name} id="product-name" minLength={3} name="name" required />
+      <button type="submit">Save product</button>
+    </form>
+  );
+}
+```
+
+The target remains a normal HTTP handler. DTO binding and validation run once at the request
+boundary; module middleware, guards, interceptors, request-scoped providers, observers, and adapter
+response writing keep their ordinary ordering and ownership.
+
+```ts
+import {
+  FromBody,
+  FromPath,
+  Post,
+  RequestDto,
+  type RequestContext,
+  UseGuards,
+  UseInterceptors,
+} from '@fluojs/http';
+import { Router } from '@fluojs/react';
+import { IsString, MinLength } from '@fluojs/validation';
+
+class RenameProductRequest {
+  @MinLength(3, {
+    code: 'PRODUCT_NAME_TOO_SHORT',
+    message: 'Product name must contain at least 3 characters.',
+  })
+  @IsString()
+  @FromBody('name')
+  name = '';
+
+  @IsString()
+  @FromPath('sku')
+  sku = '';
+}
+
+@Router('/products')
+class ProductRouter {
+  @Post('/:sku')
+  @RequestDto(RenameProductRequest)
+  @UseGuards(EditorGuard)
+  @UseInterceptors(MutationAuditInterceptor)
+  rename(input: RenameProductRequest, context: RequestContext) {
+    productCatalog.rename(input.sku, input.name);
+    context.response.redirect(303, `/products/${encodeURIComponent(input.sku)}?updated=true`);
+  }
+}
+```
+
+An invalid submission keeps the canonical HTTP `400` validation envelope. Its `details` entries
+contain the safe field, source, code, and application-authored validation message; they do not expose
+the submitted value, stack, or internal exception. A successful mutation uses `303 See Other` so the
+browser follows with `GET`, and that destination is matched again by the ordinary HTTP dispatcher.
+Authorization and CSRF policy remain application responsibilities; use the same session/cookie,
+guard, and middleware policies as non-React routes.
+
+This recipe is intentionally different from React Router actions/fetchers, Astro Actions, and
+Next.js Server Actions: fluo does not compile a function reference, own route matching, revalidate a
+loader/client cache, or replace the document response. It is also separate from the experimental
+fluo Server Functions transport. No stable submit-state helper is added in this phase because the
+native form already supplies the complete fallback and `@fluojs/react/client` does not own mutation
+routes or cache invalidation. Applications may add local pending UI after hydration only when the
+real form action and native submission remain intact.
 
 ## Experimental RSC Prototype
 
