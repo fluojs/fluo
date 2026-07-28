@@ -108,4 +108,43 @@ describe('RoutesPanel', () => {
       root.unmount();
     }
   });
+
+  it('normalizes legacy route descriptors before rendering route details', async () => {
+    const state: StudioDashboardState = {
+      ...initialStudioState,
+      staticReport: {
+        payload: {
+          snapshot: {
+            components: [],
+            diagnostics: [],
+            generatedAt: '2026-07-28T00:00:00.000Z',
+            health: { status: 'healthy' },
+            readiness: { critical: false, status: 'ready' },
+            routes: [
+              {
+                controller: 'LegacyController',
+                handler: 'list',
+                id: 'GET /legacy LegacyController list',
+                method: 'GET',
+                path: '/legacy',
+              },
+            ],
+          },
+        },
+      },
+    };
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    root.render(createElement(RoutesPanel, { dispatch: vi.fn(), state }));
+
+    try {
+      await vi.waitFor(() => {
+        expect(container.querySelectorAll('.route-row')).toHaveLength(1);
+      });
+      expect(container.textContent).toContain('HTTP handler');
+      expect(container.textContent).not.toContain('params:');
+    } finally {
+      root.unmount();
+    }
+  });
 });
