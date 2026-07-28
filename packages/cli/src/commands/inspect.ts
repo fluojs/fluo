@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, extname, resolve } from 'node:path';
@@ -206,6 +207,11 @@ async function importInspectModule(modulePath: string): Promise<Record<string, u
   const moduleUrl = pathToFileURL(modulePath).href;
 
   if (TYPESCRIPT_MODULE_EXTENSIONS.has(extname(modulePath))) {
+    const adjacentTsconfigPath = resolve(dirname(modulePath), 'tsconfig.json');
+    if (existsSync(adjacentTsconfigPath)) {
+      return tsImport(moduleUrl, { parentURL: import.meta.url, tsconfig: adjacentTsconfigPath });
+    }
+
     return tsImport(moduleUrl, import.meta.url);
   }
 

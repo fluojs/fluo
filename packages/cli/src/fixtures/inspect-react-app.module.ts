@@ -1,5 +1,5 @@
-import { Path, ReactModule, Router } from '@fluojs/react';
 import { defineModule } from '@fluojs/runtime';
+import { Path, ReactModule, Router } from '@fluojs/react';
 
 @Router('/products')
 class ProductRouter {
@@ -7,6 +7,7 @@ class ProductRouter {
   show(): void {}
 }
 
+/** Fixture application module used by build-less React route inspection tests. */
 export class AppModule {}
 
 defineModule(AppModule, {
