@@ -20,6 +20,7 @@ import {
   reportReactSsrDiagnostic,
 } from './diagnostics.js';
 import type { ReactPageRenderer } from './page-renderer.js';
+import { getReactRenderPolicies } from './render-policy.js';
 import { isReactServerEntry } from './server-entry.js';
 
 const responseValueFinalizerKey = Symbol.for('fluo.http.responseValueFinalizer');
@@ -128,7 +129,11 @@ function finalizeReactPageResult(
     );
   }
 
-  const entry = runtime.renderPage(context.value, context.requestContext);
+  const policies = getReactRenderPolicies(
+    context.handler.controllerToken,
+    context.handler.methodName,
+  );
+  const entry = runtime.renderPage(context.value, context.requestContext, policies);
   return entry;
 }
 
