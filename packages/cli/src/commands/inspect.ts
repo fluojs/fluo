@@ -6,12 +6,14 @@ import { pathToFileURL } from 'node:url';
 import * as clack from '@clack/prompts';
 import {
   type BootstrapTimingDiagnostics,
+  createRuntimeInspectionSnapshot,
   FluoFactory,
   type ModuleType,
   PLATFORM_SHELL,
   type PlatformDiagnosticIssue,
   type PlatformShell,
   type PlatformShellSnapshot,
+  type RuntimeInspectionSnapshot,
 } from '@fluojs/runtime';
 import { tsImport } from 'tsx/esm/api';
 
@@ -69,7 +71,7 @@ type ParsedInspectArgs = {
 
 type InspectReport = {
   generatedAt: string;
-  snapshot: PlatformShellSnapshot;
+  snapshot: RuntimeInspectionSnapshot;
   summary: {
     componentCount: number;
     diagnosticCount: number;
@@ -210,7 +212,7 @@ async function importInspectModule(modulePath: string): Promise<Record<string, u
   return import(moduleUrl) as Promise<Record<string, unknown>>;
 }
 
-function stringifySnapshot(snapshot: PlatformShellSnapshot): string {
+function stringifySnapshot(snapshot: RuntimeInspectionSnapshot): string {
   return JSON.stringify(snapshot, null, 2);
 }
 
@@ -222,7 +224,7 @@ function createEmptyTimingDiagnostics(): BootstrapTimingDiagnostics {
   };
 }
 
-function createInspectReport(snapshot: PlatformShellSnapshot, timing: BootstrapTimingDiagnostics | undefined): InspectReport {
+function createInspectReport(snapshot: RuntimeInspectionSnapshot, timing: BootstrapTimingDiagnostics | undefined): InspectReport {
   const resolvedTiming = timing ?? createEmptyTimingDiagnostics();
   const errorCount = snapshot.diagnostics.filter((diagnostic: PlatformDiagnosticIssue) => diagnostic.severity === 'error').length;
   const warningCount = snapshot.diagnostics.filter((diagnostic: PlatformDiagnosticIssue) => diagnostic.severity === 'warning').length;
@@ -244,7 +246,7 @@ function createInspectReport(snapshot: PlatformShellSnapshot, timing: BootstrapT
   };
 }
 
-function stringifySnapshotWithTiming(snapshot: PlatformShellSnapshot, timing: BootstrapTimingDiagnostics | undefined): string {
+function stringifySnapshotWithTiming(snapshot: RuntimeInspectionSnapshot, timing: BootstrapTimingDiagnostics | undefined): string {
   return JSON.stringify({
     snapshot,
     timing: timing ?? createEmptyTimingDiagnostics(),
@@ -370,20 +372,22 @@ export async function runInspectCommand(argv: string[], runtime: InspectCommandR
     const importedModule = await importInspectModule(modulePath);
     const rootModule = resolveRootModule(importedModule[parsed.exportName], parsed.exportName);
 
-    const context = await FluoFactory.createApplicationContext(rootModule, {
+    const application = await FluoFactory.create(rootModule, {
       diagnostics: parsed.timing || parsed.report ? { timing: true } : undefined,
     });
 
     try {
-      const platformShell = await context.get<PlatformShell>(PLATFORM_SHELL);
-      const snapshot = await platformShell.snapshot();
+      const platformShell = await application.get<PlatformShell>(PLATFORM_SHELL);
+      const platformSnapshot = await platformShell.snapshot();
+      const routes = application.dispatcher.describeRoutes?.() ?? [];
+      const snapshot = createRuntimeInspectionSnapshot(platformSnapshot, routes);
 
       if (parsed.json) {
-        await emitInspectPayload(parsed.timing ? stringifySnapshotWithTiming(snapshot, context.bootstrapTiming) : stringifySnapshot(snapshot), parsed, cwd, stdout);
+        await emitInspectPayload(parsed.timing ? stringifySnapshotWithTiming(snapshot, application.bootstrapTiming) : stringifySnapshot(snapshot), parsed, cwd, stdout);
       }
 
       if (parsed.report) {
-        await emitInspectPayload(JSON.stringify(createInspectReport(snapshot, context.bootstrapTiming), null, 2), parsed, cwd, stdout);
+        await emitInspectPayload(JSON.stringify(createInspectReport(snapshot, application.bootstrapTiming), null, 2), parsed, cwd, stdout);
       }
 
       if (parsed.mermaid) {
@@ -391,7 +395,7 @@ export async function runInspectCommand(argv: string[], runtime: InspectCommandR
         await emitInspectPayload(renderMermaid(snapshot), parsed, cwd, stdout);
       }
     } finally {
-      await context.close();
+      await application.close();
     }
 
     return 0;

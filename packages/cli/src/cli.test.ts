@@ -24,6 +24,11 @@ const inspectTypeScriptFixtureModulePath = join(
   'fixtures',
   'inspect-app.module.ts',
 );
+const inspectReactFixtureModulePath = join(
+  dirname(fileURLToPath(import.meta.url)),
+  'fixtures',
+  'inspect-react-app.module.ts',
+);
 
 const updateCheckEnv: NodeJS.ProcessEnv = {
   PATH: process.env.PATH,
@@ -4019,6 +4024,39 @@ exit 7
     expect(payload.diagnostics).toEqual([]);
     expect(payload.readiness.status).toBe('ready');
     expect(payload.health.status).toBe('healthy');
+  });
+
+  it('emits bootstrap-resolved React page markers in inspect JSON route output', async () => {
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(['inspect', inspectReactFixtureModulePath, '--json'], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+    const payload = JSON.parse(stdoutBuffer.join('')) as {
+      routes: Array<{
+        controller: string;
+        handler: string;
+        kind: string;
+        method: string;
+        params: string[];
+        path: string;
+      }>;
+    };
+
+    expectCliCommandSuccess(exitCode, stdoutBuffer, stderrBuffer);
+    expect(payload.routes).toEqual([
+      expect.objectContaining({
+        controller: 'ProductRouter',
+        handler: 'show',
+        kind: 'react-page',
+        method: 'GET',
+        params: ['productId'],
+        path: '/products/:productId',
+      }),
+    ]);
   });
 
   it('writes inspect JSON artifacts to an explicit output path without stdout payloads', async () => {
