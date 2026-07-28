@@ -4035,6 +4035,10 @@ exit 7
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: (message) => stdoutBuffer.push(message) },
     });
+
+    expectCliCommandSuccess(exitCode, stdoutBuffer, stderrBuffer);
+    expect(stderrBuffer.join('')).toBe('');
+
     const payload = JSON.parse(stdoutBuffer.join('')) as {
       routes: Array<{
         controller: string;
@@ -4046,7 +4050,6 @@ exit 7
       }>;
     };
 
-    expectCliCommandSuccess(exitCode, stdoutBuffer, stderrBuffer);
     expect(payload.routes).toEqual([
       expect.objectContaining({
         controller: 'ProductRouter',
