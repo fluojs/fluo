@@ -1,11 +1,11 @@
 import { RequestAbortedError } from '@fluojs/http';
 
 import {
+  createReactSsrDiagnostic,
+  markReactSsrDiagnostic,
   REACT_SSR_DIAGNOSTIC_CODES,
   REACT_SSR_DIAGNOSTIC_PHASES,
   ReactSsrDiagnosticError,
-  createReactSsrDiagnostic,
-  markReactSsrDiagnostic,
   readReactSsrDiagnosticHandler,
   reportReactSsrDiagnostic,
 } from './diagnostics.js';
@@ -103,7 +103,7 @@ export function createReactRenderDiagnostics(
         );
       }
 
-      markReactSsrDiagnostic(error, {
+      markReactSsrDiagnostic(requestContext, error, {
         code: REACT_SSR_DIAGNOSTIC_CODES.preCommitShellFailure,
         error,
         phase: REACT_SSR_DIAGNOSTIC_PHASES.preCommitShell,

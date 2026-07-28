@@ -86,11 +86,30 @@ type ReactSsrDiagnosticMarker = {
   readonly phase: ReactSsrDiagnosticPhase;
 };
 
-const diagnosticMarkers = new WeakMap<object, ReactSsrDiagnosticMarker>();
 const diagnosticHandlerKey = Symbol.for('fluo.react.ssrDiagnosticHandler');
+const diagnosticMarkerKey = Symbol.for('fluo.react.ssrDiagnosticMarker');
+
+class ReactSsrDiagnosticMarkerStore {
+  private readonly markers = new WeakMap<object, ReactSsrDiagnosticMarker>();
+
+  set(error: object, marker: ReactSsrDiagnosticMarker): void {
+    this.markers.set(error, marker);
+  }
+
+  take(error: object): ReactSsrDiagnosticMarker | undefined {
+    const marker = this.markers.get(error);
+    this.markers.delete(error);
+    return marker;
+  }
+}
 
 function isDiagnosticMarkerKey(value: unknown): value is object {
   return (typeof value === 'object' && value !== null) || typeof value === 'function';
+}
+
+function readReactSsrDiagnosticMetadata(context: object): object | undefined {
+  const metadata: unknown = Reflect.get(context, 'metadata');
+  return typeof metadata === 'object' && metadata !== null ? metadata : undefined;
 }
 
 /**
@@ -120,8 +139,8 @@ export function bindReactSsrDiagnosticHandler(
 export function readReactSsrDiagnosticHandler(
   context: object,
 ): ReactSsrDiagnosticHandler | undefined {
-  const metadata: unknown = Reflect.get(context, 'metadata');
-  if (typeof metadata !== 'object' || metadata === null) {
+  const metadata = readReactSsrDiagnosticMetadata(context);
+  if (metadata === undefined) {
     return undefined;
   }
 
@@ -136,34 +155,48 @@ export function readReactSsrDiagnosticHandler(
 /**
  * Associates a diagnostic classification with an error without changing its identity.
  *
+ * @param context Render context that owns the request-local marker.
  * @param error Original lifecycle failure.
  * @param marker Stable code and phase retained for the request error boundary.
  */
 export function markReactSsrDiagnostic(
+  context: object,
   error: unknown,
   marker: ReactSsrDiagnosticMarker,
 ): void {
-  if (isDiagnosticMarkerKey(error)) {
-    diagnosticMarkers.set(error, marker);
+  const metadata = readReactSsrDiagnosticMetadata(context);
+  if (metadata !== undefined && isDiagnosticMarkerKey(error)) {
+    const state: unknown = Reflect.get(metadata, diagnosticMarkerKey);
+    const store = state instanceof ReactSsrDiagnosticMarkerStore
+      ? state
+      : new ReactSsrDiagnosticMarkerStore();
+    store.set(error, marker);
+    Reflect.set(metadata, diagnosticMarkerKey, store);
   }
 }
 
 /**
  * Reads and consumes the diagnostic classification associated with an error.
  *
+ * @param context Request context that owns the request-local marker.
  * @param error Original lifecycle failure.
  * @returns The retained classification, when one exists.
  */
 export function readReactSsrDiagnosticMarker(
+  context: object,
   error: unknown,
 ): ReactSsrDiagnosticMarker | undefined {
-  if (!isDiagnosticMarkerKey(error)) {
+  const metadata = readReactSsrDiagnosticMetadata(context);
+  if (metadata === undefined || !isDiagnosticMarkerKey(error)) {
     return undefined;
   }
 
-  const marker = diagnosticMarkers.get(error);
-  diagnosticMarkers.delete(error);
-  return marker;
+  const state: unknown = Reflect.get(metadata, diagnosticMarkerKey);
+  if (!(state instanceof ReactSsrDiagnosticMarkerStore)) {
+    return undefined;
+  }
+
+  return state.take(error);
 }
 
 /**

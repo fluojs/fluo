@@ -1,23 +1,23 @@
 import {
-  RequestAbortedError,
   type HandlerDescriptor,
   type Middleware,
   type MiddlewareContext,
   type Next,
+  RequestAbortedError,
   type RequestContext,
 } from '@fluojs/http';
 import { isValidElement } from 'react';
 
 import { getReactPathMetadata } from './decorators.js';
 import {
+  bindReactSsrDiagnosticHandler,
+  createReactSsrDiagnostic,
   REACT_SSR_DIAGNOSTIC_CODES,
   REACT_SSR_DIAGNOSTIC_PHASES,
   ReactSsrDiagnosticError,
-  bindReactSsrDiagnosticHandler,
-  createReactSsrDiagnostic,
+  type ReactSsrDiagnosticHandler,
   readReactSsrDiagnosticMarker,
   reportReactSsrDiagnostic,
-  type ReactSsrDiagnosticHandler,
 } from './diagnostics.js';
 import type { ReactPageRenderer } from './page-renderer.js';
 import { isReactServerEntry } from './server-entry.js';
@@ -44,7 +44,7 @@ function reportReactPageFailure(
   error: unknown,
   context: RequestContext,
 ): void {
-  const marker = readReactSsrDiagnosticMarker(error);
+  const marker = readReactSsrDiagnosticMarker(context, error);
   if (marker !== undefined) {
     reportReactSsrDiagnostic(
       runtime.onDiagnostic,
