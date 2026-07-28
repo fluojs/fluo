@@ -2,6 +2,7 @@ import type { BootstrapTimingDiagnostics, PlatformShellSnapshot, PlatformSnapsho
 import type {
   FilterState,
   StudioConnectionState,
+  StudioInspectionSnapshot,
   StudioLiveDiagnostic,
   StudioLiveEvent,
   StudioLiveSnapshot,
@@ -21,7 +22,7 @@ export type StudioMode = 'live' | 'static';
 export interface StaticReportState {
   filteredSnapshot?: PlatformShellSnapshot;
   payload?: {
-    snapshot?: PlatformShellSnapshot;
+    snapshot?: StudioInspectionSnapshot;
     timing?: BootstrapTimingDiagnostics;
   };
   rawJson?: string;
@@ -135,6 +136,18 @@ export function selectLiveRoutes(state: StudioDashboardState): StudioRouteDescri
 }
 
 /**
+ * Selects the route diagnostics for the active Studio mode.
+ *
+ * @param state Studio dashboard state containing live and static route sources.
+ * @returns Live routes in live mode or compiled routes from the loaded static snapshot.
+ */
+export function selectRoutes(state: StudioDashboardState): StudioRouteDescriptor[] {
+  return state.mode === 'live'
+    ? selectLiveRoutes(state)
+    : state.staticReport.payload?.snapshot?.routes ?? [];
+}
+
+/**
  * Provides select Selected Static Component behavior for the Studio devtool.
  *
  * @param state state value used by select Selected Static Component.
@@ -161,7 +174,7 @@ export function selectSelectedStaticComponent(state: StudioDashboardState): Plat
  * @returns The select Selected Route result.
  */
 export function selectSelectedRoute(state: StudioDashboardState): StudioRouteDescriptor | undefined {
-  const routes = selectLiveRoutes(state);
+  const routes = selectRoutes(state);
   if (routes.length === 0) {
     return undefined;
   }
