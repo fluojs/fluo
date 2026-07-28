@@ -2,6 +2,7 @@ import type { BootstrapTimingDiagnostics, PlatformShellSnapshot, PlatformSnapsho
 import type {
   FilterState,
   StudioConnectionState,
+  StudioInspectionSnapshot,
   StudioLiveDiagnostic,
   StudioLiveEvent,
   StudioLiveSnapshot,
@@ -21,7 +22,7 @@ export type StudioMode = 'live' | 'static';
 export interface StaticReportState {
   filteredSnapshot?: PlatformShellSnapshot;
   payload?: {
-    snapshot?: PlatformShellSnapshot;
+    snapshot?: StudioInspectionSnapshot;
     timing?: BootstrapTimingDiagnostics;
   };
   rawJson?: string;
@@ -44,6 +45,19 @@ export interface StudioDashboardState {
   selectedRequestId?: string;
   selectedRouteId?: string;
   staticReport: StaticReportState;
+}
+
+type StudioDisplayRouteDescriptor = Omit<StudioRouteDescriptor, 'kind' | 'params'> & {
+  kind: string;
+  params: string[];
+};
+
+function normalizeStudioRouteDescriptor(route: StudioRouteDescriptor): StudioDisplayRouteDescriptor {
+  return {
+    ...route,
+    kind: route.kind ?? 'http',
+    params: route.params === undefined ? [] : [...route.params],
+  };
 }
 
 /**
@@ -135,6 +149,19 @@ export function selectLiveRoutes(state: StudioDashboardState): StudioRouteDescri
 }
 
 /**
+ * Selects the route diagnostics for the active Studio mode.
+ *
+ * @param state Studio dashboard state containing live and static route sources.
+ * @returns Live routes in live mode or compiled routes from the loaded static snapshot.
+ */
+export function selectRoutes(state: StudioDashboardState): StudioDisplayRouteDescriptor[] {
+  const routes = state.mode === 'live'
+    ? selectLiveRoutes(state)
+    : state.staticReport.payload?.snapshot?.routes ?? [];
+  return routes.map(normalizeStudioRouteDescriptor);
+}
+
+/**
  * Provides select Selected Static Component behavior for the Studio devtool.
  *
  * @param state state value used by select Selected Static Component.
@@ -160,8 +187,8 @@ export function selectSelectedStaticComponent(state: StudioDashboardState): Plat
  * @param state state value used by select Selected Route.
  * @returns The select Selected Route result.
  */
-export function selectSelectedRoute(state: StudioDashboardState): StudioRouteDescriptor | undefined {
-  const routes = selectLiveRoutes(state);
+export function selectSelectedRoute(state: StudioDashboardState): StudioDisplayRouteDescriptor | undefined {
+  const routes = selectRoutes(state);
   if (routes.length === 0) {
     return undefined;
   }

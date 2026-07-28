@@ -1,6 +1,10 @@
 import type { MetadataPropertyKey } from '@fluojs/core';
 import { getStandardMetadataBag } from '@fluojs/core/internal';
 import { Controller, Get } from '@fluojs/http';
+import {
+  defineLegacyRuntimeRouteInspectionMetadata,
+  defineStandardRuntimeRouteInspectionMetadata,
+} from '@fluojs/runtime/internal';
 
 type StandardClassDecoratorFn = (value: Function, context: ClassDecoratorContext) => void;
 type StandardMethodDecoratorFn = (value: Function, context: ClassMethodDecoratorContext) => void;
@@ -11,6 +15,7 @@ type MethodDecoratorLike = StandardMethodDecoratorFn & LegacyMethodDecoratorFn;
 
 const reactRouterMetadataKey = Symbol.for('fluo.react.router');
 const reactPathMetadataKey = Symbol.for('fluo.react.path');
+const reactPageInspectionMetadata = Object.freeze({ kind: 'react-page' });
 
 const legacyRouterMetadataStore = new WeakMap<Function, ReactRouterMetadata>();
 const legacyPathMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, ReactPathMetadata>>();
@@ -241,11 +246,21 @@ export function Path(path: string, options?: ReactPathOptions): MethodDecoratorL
 
     if (isStandardMethodDecoratorContext(contextOrPropertyKey)) {
       defineStandardReactPathMetadata(contextOrPropertyKey.metadata, contextOrPropertyKey.name, metadata);
+      defineStandardRuntimeRouteInspectionMetadata(
+        contextOrPropertyKey.metadata,
+        contextOrPropertyKey.name,
+        reactPageInspectionMetadata,
+      );
       return;
     }
 
     if (isMetadataPropertyKey(contextOrPropertyKey)) {
       defineLegacyReactPathMetadata(valueOrTarget, contextOrPropertyKey, metadata);
+      defineLegacyRuntimeRouteInspectionMetadata(
+        valueOrTarget,
+        contextOrPropertyKey,
+        reactPageInspectionMetadata,
+      );
     }
   };
 

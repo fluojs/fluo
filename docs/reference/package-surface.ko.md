@@ -49,6 +49,13 @@
 
   Stable phase boundary는 root `@fluojs/react`를 runtime-neutral SSR contract에 집중하게 합니다. `@fluojs/react/vite`는 Vite asset manifest parsing, `@fluojs/react/client`는 HTTP-first browser navigation과 hydration-safe route-state hook, `@fluojs/react/experimental/rsc`는 불안정한 exact-React-version RSC compatibility, client-reference/server-module manifest, HTTP-dispatched Flight response, signed Server Function transport seam을 소유합니다. Server Functions에는 application-owned explicit POST route, Web Crypto provider, 32 byte 이상의 secret, exact origin allowlist, non-simple request marker, JSON/body/depth/result limit, action-level 또는 guard authorization이 필요하며 renderer, build plugin, loader/cache system, 별도 router를 만들지 않습니다. Stable root와 client subpath를 Next.js App Router clone, React Server Components framework, TanStack route tree, Angular `Routes[]`, file-route scanner, primary React-owned `routes: []` table로 설명하면 안 됩니다.
 
+  Stable root는 `createReactPageCatalog(...)`와 `ReactPageCatalogEntry`도 export합니다. 이 read-only
+  catalog는 authoritative compiled HTTP descriptor를 React router/path marker로 filter하고 effective
+  method, path, version, parameter name, module, router, handler identity를 project합니다. 이 동작은 관찰
+  전용이며 matching, conflict detection, dispatch, non-React route behavior는 계속 HTTP가 소유합니다.
+  Runtime/CLI inspection은 request value를 보관하거나 React route table을 만들지 않고 같은 route-kind
+  marker를 `react-page`로 serialize합니다.
+
   Stable root render policy는 `@Router(...)` class 및 `@Path(...)` method의
   `@PageLayout(...)`, `@SuspenseFallback(...)` component reference로 제한됩니다. Application
   `ReactPageRenderer`만 HTTP matching 이후 resolve된 base-to-derived class/method policy를 받고,

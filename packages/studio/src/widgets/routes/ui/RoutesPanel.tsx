@@ -2,7 +2,7 @@ import type { Dispatch } from 'react';
 import type { StudioRouteDescriptor } from '../../../contracts.js';
 import type { StudioAction } from '../../../entities/studio/actions.js';
 import type { StudioDashboardState } from '../../../entities/studio/model.js';
-import { selectSelectedRoute } from '../../../entities/studio/model.js';
+import { selectRoutes, selectSelectedRoute } from '../../../entities/studio/model.js';
 import { EmptyState } from '../../../shared/ui/EmptyState.js';
 
 interface RoutesPanelProps {
@@ -20,11 +20,15 @@ function routeGraphNodeId(route: StudioRouteDescriptor, state: StudioDashboardSt
   return state.liveSnapshot?.graph.nodes.find((node) => node.kind === 'route' && node.id === expectedNodeId)?.id;
 }
 
+function routeKindLabel(route: StudioRouteDescriptor): string {
+  return route.kind === 'react-page' ? 'React page' : 'HTTP handler';
+}
+
 /**
  * Provides Routes Panel behavior for the Studio devtool.
  */
 export function RoutesPanel({ dispatch, state }: RoutesPanelProps) {
-  const routes = state.liveSnapshot?.routes ?? [];
+  const routes = selectRoutes(state);
   const selectedRoute = selectSelectedRoute(state);
 
   return (
@@ -36,7 +40,12 @@ export function RoutesPanel({ dispatch, state }: RoutesPanelProps) {
         </div>
         <span className="mode-badge">{routes.length} routes</span>
       </div>
-      {routes.length === 0 ? <EmptyState action="Runtime route descriptors will appear after bootstrap." title="No live routes yet." /> : (
+      {routes.length === 0 ? <EmptyState
+        action={state.mode === 'live'
+          ? 'Runtime route descriptors will appear after bootstrap.'
+          : 'Load a fluo inspect artifact with compiled route diagnostics.'}
+        title="No routes yet."
+      /> : (
         <div className="routes-layout">
           <div className="route-list">
             {routes.map((route) => {
@@ -49,7 +58,7 @@ export function RoutesPanel({ dispatch, state }: RoutesPanelProps) {
                 }} type="button">
                   <span className={`method method-${route.method.toLowerCase()}`}>{route.method}</span>
                   <strong>{route.path}</strong>
-                  <small>{route.module ?? 'unknown module'} · {route.controller}.{route.handler}</small>
+                  <small>{routeKindLabel(route)} · {route.module ?? 'unknown module'} · {route.controller}.{route.handler}</small>
                 </button>
               );
             })}
@@ -62,8 +71,12 @@ export function RoutesPanel({ dispatch, state }: RoutesPanelProps) {
                 <div className="chips">
                   <span className="chip">controller: {selectedRoute.controller}</span>
                   <span className="chip">handler: {selectedRoute.handler}</span>
+                  <span className="chip">kind: {routeKindLabel(selectedRoute)}</span>
                   {selectedRoute.module ? <span className="chip">module: {selectedRoute.module}</span> : null}
                   {selectedRoute.version ? <span className="chip">version: {selectedRoute.version}</span> : null}
+                  {selectedRoute.params.length > 0
+                    ? <span className="chip">params: {selectedRoute.params.join(', ')}</span>
+                    : null}
                 </div>
               </>
             ) : <p className="muted">Select a route to inspect handler correlation.</p>}

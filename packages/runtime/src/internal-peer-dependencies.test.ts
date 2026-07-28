@@ -51,6 +51,7 @@ describe('runtime peer package internal dependencies', () => {
     })).toEqual([
       { file: 'internal/core-metadata.ts', specifier: CORE_INTERNAL_IMPORT },
       { file: 'internal/http-runtime.ts', specifier: HTTP_INTERNAL_IMPORT },
+      { file: 'internal/route-inspection-metadata.ts', specifier: CORE_INTERNAL_IMPORT },
     ]);
   });
 });

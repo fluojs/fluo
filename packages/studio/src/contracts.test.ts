@@ -206,8 +206,10 @@ describe('Studio live contracts', () => {
         controller: 'HealthController',
         handler: 'getHealth',
         id: 'GET /health HealthController getHealth',
+        kind: 'react-page',
         method: 'GET',
         module: 'AppModule',
+        params: [],
         path: '/health',
       },
     ],
@@ -445,12 +447,63 @@ describe('parseStudioPayload', () => {
     expect(issue.code).toBe('QUEUE_DEPENDENCY_NOT_READY');
   });
 
+  it('keeps legacy route descriptor construction source-compatible at the root entrypoint', () => {
+    const route: studio.StudioRouteDescriptor = {
+      controller: 'LegacyController',
+      handler: 'list',
+      id: 'GET /legacy LegacyController list',
+      method: 'GET',
+      path: '/legacy',
+    };
+
+    expect(route.path).toBe('/legacy');
+  });
+
+  it('publishes the static inspection snapshot type from the root package entrypoint', () => {
+    const snapshot: studio.StudioInspectionSnapshot = snapshotFixture;
+
+    expect(snapshot.generatedAt).toBe(snapshotFixture.generatedAt);
+  });
+
   it('parses platform snapshot payload', () => {
     const rawJson = JSON.stringify(snapshotFixture);
     const parsed = parseStudioPayload(rawJson);
     expect(parsed.payload.snapshot?.components[0]?.id).toBe('redis.default');
     expect(parsed.payload.snapshot?.diagnostics[0]?.code).toBe('QUEUE_DEPENDENCY_NOT_READY');
     expect(parsed.rawJson).toBe(rawJson);
+  });
+
+  it('validates compiled route diagnostics in static inspect snapshots', () => {
+    const parsed = parseStudioPayload(JSON.stringify({
+      ...snapshotFixture,
+      routes: [
+        {
+          controller: 'ProductRouter',
+          handler: 'show',
+          id: 'GET /products/:productId ProductRouter show',
+          kind: 'react-page',
+          method: 'GET',
+          params: ['productId'],
+          path: '/products/:productId',
+        },
+      ],
+    }));
+
+    expect(parsed.payload.snapshot?.routes).toEqual([
+      {
+        controller: 'ProductRouter',
+        handler: 'show',
+        id: 'GET /products/:productId ProductRouter show',
+        kind: 'react-page',
+        method: 'GET',
+        params: ['productId'],
+        path: '/products/:productId',
+      },
+    ]);
+    expect(() => parseStudioPayload(JSON.stringify({
+      ...snapshotFixture,
+      routes: [{ controller: 'Broken', handler: 'show', id: 'broken', method: 'GET', params: [42], path: '/' }],
+    }))).toThrow('Invalid Studio live route descriptor params payload.');
   });
 
   it('rejects arbitrary JSON objects that are not Studio inspect artifacts', () => {

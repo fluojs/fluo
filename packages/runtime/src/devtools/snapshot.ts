@@ -2,9 +2,13 @@ import type { Token } from '@fluojs/core';
 import type { Provider, Scope } from '@fluojs/di';
 import type { HandlerDescriptor } from '@fluojs/http';
 
-import { createRuntimeDiagnosticsGraph, type BootstrapTimingDiagnostics } from '../health/diagnostics.js';
+import { type BootstrapTimingDiagnostics, createRuntimeDiagnosticsGraph } from '../health/diagnostics.js';
 import { getRuntimeClassDiMetadata, type RuntimeInjectionToken } from '../internal/core-metadata.js';
 import { providerToken } from '../module-graph.js';
+import {
+  createRuntimeRouteInspection,
+  createRuntimeRouteInspectionId,
+} from '../route-inspection.js';
 import type { CompiledModule, ModuleType } from '../types.js';
 import type {
   StudioGraphEdge,
@@ -197,10 +201,6 @@ function createDependencyEdgeTarget(
   return externalId;
 }
 
-function routePath(descriptor: HandlerDescriptor): string {
-  return descriptor.metadata.effectivePath || descriptor.route.path;
-}
-
 /**
  * Creates a stable route id shared by runtime request traces and Studio graph snapshots.
  *
@@ -208,12 +208,7 @@ function routePath(descriptor: HandlerDescriptor): string {
  * @returns Stable Studio route id for the handler.
  */
 export function createStudioRouteId(descriptor: HandlerDescriptor): string {
-  return [
-    descriptor.route.method,
-    routePath(descriptor),
-    descriptor.controllerToken.name || '<anonymous-controller>',
-    descriptor.methodName,
-  ].join(' ');
+  return createRuntimeRouteInspectionId(descriptor);
 }
 
 /**
@@ -223,20 +218,23 @@ export function createStudioRouteId(descriptor: HandlerDescriptor): string {
  * @returns Route descriptor consumed by the Studio UI and request traces.
  */
 export function handlerToStudioRouteDescriptor(descriptor: HandlerDescriptor): StudioRouteDescriptor {
+  const inspection = createRuntimeRouteInspection(descriptor);
   const route: StudioRouteDescriptor = {
-    controller: descriptor.controllerToken.name || '<anonymous-controller>',
-    handler: descriptor.methodName,
-    id: createStudioRouteId(descriptor),
-    method: descriptor.route.method,
-    path: routePath(descriptor),
+    controller: inspection.controller,
+    handler: inspection.handler,
+    id: inspection.id,
+    kind: inspection.kind,
+    method: inspection.method,
+    params: [...inspection.params],
+    path: inspection.path,
   };
 
-  const moduleName = descriptor.metadata.moduleType?.name;
+  const moduleName = inspection.module;
   if (moduleName) {
     route.module = moduleName;
   }
 
-  const version = descriptor.metadata.effectiveVersion ?? descriptor.route.version;
+  const version = inspection.version;
   if (version) {
     route.version = version;
   }

@@ -1,9 +1,6 @@
 export * from './abort.js';
 export * from './bootstrap.js';
-export {
-  createBootstrapTimingDiagnostics,
-  createRuntimeDiagnosticsGraph,
-} from './health/diagnostics.js';
+export * from './errors.js';
 export type {
   BootstrapTimingDiagnostics,
   BootstrapTimingPhase,
@@ -12,7 +9,10 @@ export type {
   RuntimeDiagnosticsProvider,
   RuntimeDiagnosticsRelationships,
 } from './health/diagnostics.js';
-export * from './errors.js';
+export {
+  createBootstrapTimingDiagnostics,
+  createRuntimeDiagnosticsGraph,
+} from './health/diagnostics.js';
 export * from './health/health.js';
 export type {
   MultipartOptions,
@@ -37,5 +37,6 @@ export type {
   PlatformValidationResult,
 } from './platform-contract.js';
 export * from './request-transaction.js';
+export * from './route-inspection.js';
 export { APPLICATION_LOGGER, PLATFORM_SHELL } from './tokens.js';
 export * from './types.js';

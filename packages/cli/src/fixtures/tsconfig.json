@@ -1,0 +1,14 @@
+{
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@fluojs/core/internal": ["../../../core/src/internal.ts"],
+      "@fluojs/core/request-pipeline": ["../../../core/src/request-pipeline.ts"],
+      "@fluojs/di/internal": ["../../../di/src/internal.ts"],
+      "@fluojs/http/internal": ["../../../http/src/internal.ts"],
+      "@fluojs/runtime/internal": ["../../../runtime/src/internal.ts"],
+      "@fluojs/*": ["../../../*/src/index.ts"]
+    }
+  }
+}

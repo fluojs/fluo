@@ -354,6 +354,9 @@ importers:
         specifier: ^6.0.2
         version: 6.0.2
     devDependencies:
+      '@fluojs/react':
+        specifier: workspace:^
+        version: link:../react
       '@types/ejs':
         specifier: ^3.1.5
         version: 3.1.5

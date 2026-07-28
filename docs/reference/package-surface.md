@@ -49,6 +49,13 @@
 
   Stable phase boundaries keep root `@fluojs/react` focused on runtime-neutral SSR contracts. `@fluojs/react/vite` owns Vite asset manifest parsing, `@fluojs/react/client` owns HTTP-first browser navigation and hydration-safe route-state hooks, and `@fluojs/react/experimental/rsc` owns the unstable exact-React-version RSC compatibility, client-reference/server-module manifest, HTTP-dispatched Flight response, and signed Server Function transport seams. Server Functions require an application-owned explicit POST route, Web Crypto provider, 32-byte-or-longer secret, exact origin allowlist, non-simple request marker, JSON/body/depth/result limits, and action-level or guard authorization; they do not create a renderer, build plugin, loader/cache system, or separate router. The stable root and client subpath should not be presented as a Next.js App Router clone, React Server Components framework, TanStack route tree, Angular `Routes[]`, file-route scanner, or primary React-owned `routes: []` table.
 
+  The stable root also exports `createReactPageCatalog(...)` and `ReactPageCatalogEntry`. This
+  read-only catalog filters authoritative compiled HTTP descriptors by React router/path markers and
+  projects effective method, path, version, parameter names, module, router, and handler identity.
+  It is observational only: matching, conflict detection, dispatch, and non-React route behavior
+  remain HTTP-owned. Runtime/CLI inspection serializes the same route-kind marker as `react-page`
+  without retaining request values or creating a React route table.
+
   Stable root render policies are limited to `@PageLayout(...)` and `@SuspenseFallback(...)`
   component references on `@Router(...)` classes and `@Path(...)` methods. The application
   `ReactPageRenderer` alone receives resolved base-to-derived class/method policies after HTTP

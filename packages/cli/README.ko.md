@@ -309,7 +309,14 @@ fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
 fluo inspect ./src/app.module.ts --export AdminModule --json
 ```
 
-런타임이 inspection snapshot을 생산합니다. `fluo inspect`는 `./src/app.ts` 또는 `./src/app.module.ts` 같은 생성된 TypeScript source module을 명시적 TypeScript loader boundary로 받아들이며, 기존 `.js`와 `.mjs` module path는 계속 Node.js native ESM으로 로드합니다. CLI는 inspect orchestration, JSON serialization, report wrapping, `--output <path>` artifact write를 소유하고, Studio는 snapshot parsing, filtering, connection inspection, viewer rendering, Mermaid graph semantics를 소유합니다. `fluo inspect`는 output mode flag가 없을 때 기본적으로 그 snapshot을 JSON으로 직렬화하고, `fluo inspect --mermaid`는 snapshot-to-Mermaid 렌더링을 선택적 `@fluojs/studio` 계약에 위임합니다. `--export <name>`은 bootstrap할 module export를 선택하며 기본값은 `AppModule`입니다. `--timing`은 명시적인 `--json` flag 없이 제공된 경우를 포함해 JSON snapshot 출력 옆에 bootstrap timing diagnostics를 기록하고, `--report`는 CI/support triage를 위해 런타임이 생산한 snapshot을 안정적인 요약과 함께 감쌉니다. `--timing`은 Mermaid 출력과 함께 사용할 수 없습니다. `--output <path>`는 선택한 inspect payload를 stdout 대신 명시적 artifact 경로에 씁니다. 이 동작은 검사 대상 애플리케이션을 writable하게 만들지 않으며, 일반 bootstrap/close cycle 외에 module graph state를 바꾸지 않습니다. Mermaid 출력이 필요하면 명령을 실행하는 프로젝트에 Studio를 설치하세요:
+런타임이 inspection snapshot을 생산합니다. `fluo inspect`는 `./src/app.ts` 또는 `./src/app.module.ts` 같은 생성된 TypeScript source module을 명시적 TypeScript loader boundary로 받아들이며, 기존 `.js`와 `.mjs` module path는 계속 Node.js native ESM으로 로드합니다. CLI는 authoritative HTTP dispatcher descriptor를 사용할 수 있도록 adapterless application을 bootstrap한 뒤 runtime-owned `routes` projection을 JSON, timing envelope, report snapshot에 추가합니다. CLI는 inspect orchestration, JSON serialization, report wrapping, `--output <path>` artifact write를 소유하고, Studio는 snapshot parsing, filtering, connection inspection, viewer rendering, Mermaid graph semantics를 소유합니다. `fluo inspect`는 output mode flag가 없을 때 기본적으로 그 snapshot을 JSON으로 직렬화하고, `fluo inspect --mermaid`는 snapshot-to-Mermaid 렌더링을 선택적 `@fluojs/studio` 계약에 위임합니다. `--export <name>`은 bootstrap할 module export를 선택하며 기본값은 `AppModule`입니다. `--timing`은 명시적인 `--json` flag 없이 제공된 경우를 포함해 JSON snapshot 출력 옆에 bootstrap timing diagnostics를 기록하고, `--report`는 CI/support triage를 위해 런타임이 생산한 snapshot을 안정적인 요약과 함께 감쌉니다. `--timing`은 Mermaid 출력과 함께 사용할 수 없습니다. `--output <path>`는 선택한 inspect payload를 stdout 대신 명시적 artifact 경로에 씁니다. 이 동작은 검사 대상 애플리케이션을 writable하게 만들지 않으며, 일반 bootstrap/close cycle 외에 module graph state를 바꾸지 않습니다.
+
+각 `routes[]` entry는 `id`, `kind`, `method`, effective `path`, optional effective `version`, `params`의
+parameter name, originating `module`, `controller`, `handler`를 포함합니다. React `@Path(...)`
+handler는 `kind: 'react-page'`, 일반 HTTP handler는 `kind: 'http'`를 사용합니다. Artifact에는 parameter
+value, request body, cookie, header, query value가 포함되지 않으며 route projection은 matching, conflict
+detection, dispatch에 관여하지 않습니다. Mermaid 출력이 필요하면 명령을 실행하는 프로젝트에 Studio를
+설치하세요:
 
 ```bash
 pnpm add -D @fluojs/studio
@@ -337,7 +344,7 @@ Studio가 없으면 CI와 non-interactive 실행은 prompt나 package manager �
 | `GeneratorKind` | 지원되는 모든 생성기 유형(예: `'controller'`, `'service'`)의 유니온 타입입니다. |
 | `ModuleRegistration` | generator 실행의 controller, provider, middleware module wiring metadata를 설명하는 타입입니다. |
 | `inspectUsage()` | help surface와 test에서 사용하는 현재 `fluo inspect` usage text를 반환합니다. |
-| `runInspectCommand(argv, options?)` | inspect orchestration, JSON/report emission, Studio Mermaid delegation에 대한 프로그래밍적 접근을 제공합니다. |
+| `runInspectCommand(argv, options?)` | inspect orchestration, compiled route JSON/report emission, Studio Mermaid delegation에 대한 프로그래밍적 접근을 제공합니다. |
 | `InspectCommandRuntimeOptions` | cwd, stream, prompt, Studio renderer loading 같은 `runInspectCommand(...)`와 `runCli(...)` inspect runtime override 타입입니다. |
 
 프로그래밍 방식 진입점은 호출자 프로세스의 소유권을 보존합니다. `runCli(...)`, `runNewCommand(...)`, `runInspectCommand(...)`는 `process.exit(...)`를 호출하지 않고 숫자 exit code를 반환하며, prompt 취소는 command runner를 통해 exit code `0`으로 해석됩니다. dependency 설치나 git 초기화 같은 setup 작업은 해석된 `fluo new` 옵션이 요청한 경우에만 실행됩니다. `runGenerateCommand(...)`는 구조화된 `GenerateResult`를 반환합니다. 파일 쓰기 없이 생성 파일과 module-wiring action을 미리 보려면 `dryRun: true`를 전달하세요. 호출자가 제공한 prompt hook은 공개 패키지 엔트리포인트의 `CliPromptCancelledError`를 throw해 CLI 내부 파일에 의존하지 않고 정상 취소를 표현할 수 있습니다.

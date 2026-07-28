@@ -9,6 +9,7 @@ import {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
 } from './microservices-safety-guidance.mjs';
+import { enforceReactPageCatalogContract } from './react-page-catalog-contract.mjs';
 import { enforceReactRscGraduationGovernance } from './react-rsc-graduation-policy.mjs';
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
@@ -16,6 +17,7 @@ export {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
 } from './microservices-safety-guidance.mjs';
+export { enforceReactPageCatalogContract } from './react-page-catalog-contract.mjs';
 export {
   enforceReactRscGraduationEvidenceUpdates,
   enforceReactRscGraduationGovernance,
@@ -2194,6 +2196,7 @@ export function main() {
   enforceNoDirectProcessEnvInOrdinaryPackageSource();
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices();
   enforceViteToolingDiscoverability();
+  enforceReactPageCatalogContract();
   enforceReactClientSubpathContract();
   enforceReactRscGraduationGovernance(changedFiles);
   enforceReactServerFunctionContract();
