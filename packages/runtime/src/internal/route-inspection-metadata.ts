@@ -8,6 +8,7 @@ const legacyRouteInspectionMetadataStore = new WeakMap<
   Map<MetadataPropertyKey, RuntimeRouteInspectionMetadata>
 >();
 
+/** Describes package-integration metadata that classifies a compiled runtime route. */
 export interface RuntimeRouteInspectionMetadata {
   readonly kind: string;
 }
@@ -34,6 +35,13 @@ function getMetadataMap(metadata: unknown): Map<MetadataPropertyKey, RuntimeRout
   return created;
 }
 
+/**
+ * Records route inspection metadata in a TC39 standard decorator metadata bag.
+ *
+ * @param metadata Standard decorator metadata bag that owns the route marker.
+ * @param propertyKey Controller method key associated with the route.
+ * @param value Route inspection metadata to store as an immutable snapshot.
+ */
 export function defineStandardRuntimeRouteInspectionMetadata(
   metadata: unknown,
   propertyKey: MetadataPropertyKey,
@@ -42,6 +50,13 @@ export function defineStandardRuntimeRouteInspectionMetadata(
   getMetadataMap(metadata).set(propertyKey, cloneMetadata(value));
 }
 
+/**
+ * Records route inspection metadata for legacy decorator-call compatibility.
+ *
+ * @param target Controller prototype that owns the decorated route.
+ * @param propertyKey Controller method key associated with the route.
+ * @param value Route inspection metadata to store as an immutable snapshot.
+ */
 export function defineLegacyRuntimeRouteInspectionMetadata(
   target: object,
   propertyKey: MetadataPropertyKey,
@@ -66,6 +81,13 @@ function isRuntimeRouteInspectionMetadata(value: unknown): value is RuntimeRoute
     && kind.length > 0;
 }
 
+/**
+ * Reads the immutable route inspection marker for a compiled controller method.
+ *
+ * @param controllerToken Controller class that owns the route handler.
+ * @param propertyKey Controller method key associated with the route.
+ * @returns The normalized route metadata when a package integration recorded one.
+ */
 export function getRuntimeRouteInspectionMetadata(
   controllerToken: Function,
   propertyKey: MetadataPropertyKey,
