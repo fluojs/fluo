@@ -47,7 +47,10 @@ describe('runtime export boundaries', () => {
       'PLATFORM_SHELL',
       'RUNTIME_CLEANUP_REGISTRATION',
       'RUNTIME_CONTAINER',
+      'defineLegacyRuntimeRouteInspectionMetadata',
+      'defineStandardRuntimeRouteInspectionMetadata',
       'getRuntimeClassDiMetadata',
+      'getRuntimeRouteInspectionMetadata',
     ]);
   });
 
