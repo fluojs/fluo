@@ -625,7 +625,10 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // plus event-bus background handler/transport shutdown drain, inbound timeout,
   // stable eventKey migration, and CQRS responsibility-boundary docs/tests,
   // plus React Router/Path facade-over-HTTP metadata, ReactModule.forRoot
-  // registration contract discoverability, stable SSR phase boundaries,
+  // registration contract discoverability, inherited class/method render-policy
+  // ordering, nearest Suspense fallback selection, request-scope renderer context,
+  // bootstrap diagnostics for invalid/duplicate policies or missing renderPage,
+  // stable SSR phase boundaries,
   // isolated Vite/client/experimental-RSC subpaths, HTTP-first full-document
   // navigation, exact RSC version diagnostics, explicit client-reference and
   // server-to-client module maps, HTTP-dispatched Flight responses, and the
