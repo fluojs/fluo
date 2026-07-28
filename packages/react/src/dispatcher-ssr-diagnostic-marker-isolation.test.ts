@@ -1,4 +1,5 @@
 import { Module } from '@fluojs/core';
+import { Container } from '@fluojs/di';
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 import { bootstrapApplication } from '@fluojs/runtime';
 import { createElement } from 'react';
@@ -166,6 +167,7 @@ describe('React SSR diagnostic marker isolation', () => {
     };
     const directEntry = createFailingEntry(renderToReadableStream);
     const directContext: ReactRenderContext = {
+      container: new Container().createRequestScope(),
       request: createRequest('/direct-render'),
       response: createResponse(),
     };
