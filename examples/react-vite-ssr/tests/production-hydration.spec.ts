@@ -66,3 +66,38 @@ test('hydrates streamed production HTML with generated Vite assets', async ({ pa
   await expect(page.getByText('Current path: /products/sku-126')).toBeVisible();
   expect(browserDiagnostics).toEqual([]);
 });
+
+test('submits the native mutation form without client JavaScript', async ({ baseURL, browser }) => {
+  // Given: an authorized browser context with JavaScript disabled.
+  if (baseURL === undefined) {
+    throw new TypeError('The browser test requires a configured base URL.');
+  }
+
+  const context = await browser.newContext({
+    baseURL,
+    extraHTTPHeaders: { 'x-example-user': 'catalog-editor' },
+    javaScriptEnabled: false,
+  });
+  const page = await context.newPage();
+
+  try {
+    await page.goto('/products/sku-42?preview=true');
+    await page.getByLabel('Product name').fill('No-script catalog item');
+    const mutationResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' && new URL(response.url()).pathname === '/products/sku-42',
+    );
+
+    // When: the browser submits the rendered HTML form.
+    await page.getByRole('button', { name: 'Save product' }).click();
+    const mutationResponse = await mutationResponsePromise;
+
+    // Then: the POST redirects through the normal GET route in the no-JavaScript context.
+    expect(mutationResponse.status()).toBe(303);
+    expect(mutationResponse.headers().location).toBe('/products/sku-42?updated=true');
+    await expect(page).toHaveURL(/\/products\/sku-42\?updated=true$/u);
+    await expect(page.getByText('Saved product: No-script catalog item')).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
