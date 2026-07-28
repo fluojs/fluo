@@ -16,6 +16,7 @@ fluo 애플리케이션을 위한 런타임 중립 React 통합입니다.
 - [Render Policy Decorators](#render-policy-decorators)
 - [SSR Diagnostic Phases](#ssr-diagnostic-phases)
 - [Router 및 Path Decorators](#router-및-path-decorators)
+- [Bootstrap-Resolved Page Catalog](#bootstrap-resolved-page-catalog)
 - [Web Streams SSR](#web-streams-ssr)
 - [Hydration Asset Contract](#hydration-asset-contract)
 - [Vite Asset Manifest Integration](#vite-asset-manifest-integration)
@@ -363,6 +364,37 @@ regex-like token, `user-:id` 같은 mixed literal/parameter segment, `:id.json` 
 [HTTP catch-all route grammar 결정](../../docs/architecture/http-catch-all-route-grammar.ko.md)은
 wildcard 도입을 유예합니다. React는 자체 syntax를 추가하지 않습니다. Page handler는 명시적인 server
 route를 유지해야 하며, 향후 catch-all은 먼저 승인된 `@fluojs/http` contract가 되어야 합니다.
+
+## Bootstrap-Resolved Page Catalog
+
+Tooling에서 React page의 read-only 목록이 필요하면 HTTP handler compilation 이후
+`createReactPageCatalog(...)`를 사용합니다. `createHandlerMapping(...)` 또는
+`app.dispatcher.describeRoutes()`가 제공하는 authoritative `HandlerDescriptor[]`를 넘기세요. 결과에는
+`@Router(...)`와 `@Path(...)` marker를 모두 가진 handler만 descriptor registration order로 포함됩니다.
+
+```ts
+import { createHandlerMapping } from '@fluojs/http';
+import { createReactPageCatalog } from '@fluojs/react';
+
+const mapping = createHandlerMapping([{ controllerToken: ProductRouter }]);
+const pages = createReactPageCatalog(mapping.descriptors);
+
+console.log(pages[0]);
+// {
+//   kind: 'react-page', method: 'GET', path: '/v2/products/:productId',
+//   version: '2', params: ['productId'], router: 'ProductRouter', handler: 'show'
+// }
+```
+
+`getReactRouterMetadata(...)`와 `getReactPathMetadata(...)`는 router base path, relative page path,
+React option처럼 decorator site에 작성된 static 값을 노출합니다. Catalog는 다릅니다. Method, path,
+version, params, module, router, handler field는 bootstrap-resolved HTTP descriptor에서 project되므로
+controller composition과 URI versioning이 이미 반영되어 있습니다. 반환 array, entry, `params` array는
+모두 freeze된 defensive snapshot입니다.
+
+Catalog 생성은 관찰 전용입니다. HTTP matcher를 호출하거나 대체하지 않으며 route conflict detection,
+request dispatch, not-found behavior, non-React handler에 관여하지 않습니다. Route tree, client manifest,
+relative-route model, prefetch layer, cache도 만들지 않습니다.
 
 ## Web Streams SSR
 
@@ -912,6 +944,10 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - `Path` — HTTP `GET` route metadata와 React render metadata를 함께 기록하는 method decorator입니다.
 - `getReactRouterMetadata` — router class에서 React router marker metadata를 읽습니다.
 - `getReactPathMetadata` — router method에서 React render metadata를 읽습니다.
+- `createReactPageCatalog` — matching이나 dispatch에 관여하지 않고 authoritative compiled HTTP
+  descriptor에서 freeze된 read-only React page catalog를 만듭니다.
+- `ReactPageCatalogEntry` — effective HTTP method/path/version/params와 originating router/handler를
+  담는 type-only bootstrap-resolved page descriptor입니다.
 - `ReactModule` — `forRoot(...)`가 기존 fluo module/controller metadata path를 통해 React router를
   등록하는 런타임 중립 module facade입니다.
 - `REACT_PAGE_RENDERER` — `ReactModule.forRoot({ renderPage })`가 등록하는 application page renderer의

@@ -16,6 +16,7 @@ Runtime-neutral React integration for fluo applications.
 - [Render Policy Decorators](#render-policy-decorators)
 - [SSR Diagnostic Phases](#ssr-diagnostic-phases)
 - [Router and Path Decorators](#router-and-path-decorators)
+- [Bootstrap-Resolved Page Catalog](#bootstrap-resolved-page-catalog)
 - [Web Streams SSR](#web-streams-ssr)
 - [Hydration Asset Contract](#hydration-asset-contract)
 - [Vite Asset Manifest Integration](#vite-asset-manifest-integration)
@@ -365,6 +366,37 @@ supported.
 The [HTTP catch-all route grammar decision](../../docs/architecture/http-catch-all-route-grammar.md)
 defers wildcard adoption. React does not add its own syntax: page handlers should keep explicit
 server routes, and any future catch-all must first become an approved `@fluojs/http` contract.
+
+## Bootstrap-Resolved Page Catalog
+
+Use `createReactPageCatalog(...)` after HTTP handler compilation when tooling needs a read-only list
+of React pages. Pass the authoritative `HandlerDescriptor[]` from `createHandlerMapping(...)` or
+`app.dispatcher.describeRoutes()`. The result contains only handlers marked by both `@Router(...)`
+and `@Path(...)`, in descriptor registration order.
+
+```ts
+import { createHandlerMapping } from '@fluojs/http';
+import { createReactPageCatalog } from '@fluojs/react';
+
+const mapping = createHandlerMapping([{ controllerToken: ProductRouter }]);
+const pages = createReactPageCatalog(mapping.descriptors);
+
+console.log(pages[0]);
+// {
+//   kind: 'react-page', method: 'GET', path: '/v2/products/:productId',
+//   version: '2', params: ['productId'], router: 'ProductRouter', handler: 'show'
+// }
+```
+
+`getReactRouterMetadata(...)` and `getReactPathMetadata(...)` expose static values authored at the
+decorator sites, such as the router base path, relative page path, and React options. The catalog is
+different: its method, path, version, params, module, router, and handler fields are projected from
+bootstrap-resolved HTTP descriptors, so controller composition and URI versioning are already
+reflected. The returned array, entries, and `params` arrays are frozen defensive snapshots.
+
+Catalog construction is observational only. It never calls or replaces the HTTP matcher and has no
+role in route conflict detection, request dispatch, not-found behavior, or non-React handlers. It
+does not create a route tree, client manifest, relative-route model, prefetch layer, or cache.
 
 ## Web Streams SSR
 
@@ -924,6 +956,10 @@ This package currently does **not** provide:
 - `Path` — method decorator that writes HTTP `GET` route metadata plus React render metadata.
 - `getReactRouterMetadata` — reads React router marker metadata from a router class.
 - `getReactPathMetadata` — reads React render metadata from a router method.
+- `createReactPageCatalog` — creates a frozen, read-only React page catalog from authoritative
+  compiled HTTP descriptors without participating in matching or dispatch.
+- `ReactPageCatalogEntry` — type-only bootstrap-resolved page descriptor with effective HTTP
+  method/path/version/params plus the originating router and handler.
 - `ReactModule` — runtime-neutral module facade whose `forRoot(...)` registers React routers through
   the existing fluo module/controller metadata path.
 - `REACT_PAGE_RENDERER` — dependency-injection token for the application page renderer registered by
