@@ -105,10 +105,12 @@ function readPageLayout(site: ReactRenderPolicySite): ReactPageLayout | undefine
     );
   }
 
-  const reference = records[0]?.reference;
-  if (reference === undefined) {
+  const [record] = records;
+  if (record === undefined) {
     return undefined;
   }
+
+  const { reference } = record;
   if (!isPageLayoutReference(reference)) {
     throw new ReactRenderPolicyConfigurationError(
       REACT_RENDER_POLICY_DIAGNOSTIC_CODES.invalidReference,
@@ -127,10 +129,12 @@ function readSuspenseFallback(site: ReactRenderPolicySite): ReactSuspenseFallbac
     );
   }
 
-  const reference = records[0]?.reference;
-  if (reference === undefined) {
+  const [record] = records;
+  if (record === undefined) {
     return undefined;
   }
+
+  const { reference } = record;
   if (!isSuspenseFallbackReference(reference)) {
     throw new ReactRenderPolicyConfigurationError(
       REACT_RENDER_POLICY_DIAGNOSTIC_CODES.invalidReference,
