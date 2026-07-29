@@ -80,26 +80,27 @@ function renderHrefExpression(entry: ReactPageCatalogEntry): string {
   return `[${parts.join(', ')}].join('')`;
 }
 
-function renderParams(entry: ReactPageCatalogEntry): string | undefined {
-  return uniqueParams(entry).length === 0
-    ? undefined
-    : `params: ReactPageParamsById[${stringLiteral(entry.id)}]`;
+function renderParameters(entry: ReactPageCatalogEntry, leadingParameter?: string): string {
+  if (uniqueParams(entry).length === 0) {
+    return `(${leadingParameter ?? ''})`;
+  }
+
+  const expected = `ReactPageParamsById[${stringLiteral(entry.id)}]`;
+  const prefix = leadingParameter === undefined ? '' : `${leadingParameter}, `;
+  return `<Actual extends ${expected}>(${prefix}params: Actual & Record<Exclude<keyof Actual, keyof ${expected}>, never>)`;
 }
 
 function renderHref(entry: ReactPageCatalogEntry): string {
-  const params = renderParams(entry);
-  return `href: (${params ?? ''}): string => ${renderHrefExpression(entry)}`;
+  return `href: ${renderParameters(entry)}: string => ${renderHrefExpression(entry)}`;
 }
 
 function renderLink(entry: ReactPageCatalogEntry): string {
-  const params = renderParams(entry);
-  return `link: (${params ?? ''}): ReactPageLinkProps => ({ href: ${renderHrefExpression(entry)} })`;
+  return `link: ${renderParameters(entry)}: ReactPageLinkProps => ({ href: ${renderHrefExpression(entry)} })`;
 }
 
 function renderNavigation(entry: ReactPageCatalogEntry, operation: 'push' | 'replace'): string {
-  const params = renderParams(entry);
-  const signature = params === undefined ? 'navigator: ReactPageNavigator' : `navigator: ReactPageNavigator, ${params}`;
-  return `${operation}: (${signature}): void => navigator.${operation}(${renderHrefExpression(entry)})`;
+  const parameters = renderParameters(entry, 'navigator: ReactPageNavigator');
+  return `${operation}: ${parameters}: void => navigator.${operation}(${renderHrefExpression(entry)})`;
 }
 
 function renderRoutes(catalog: readonly ReactPageCatalogEntry[]): string[] {

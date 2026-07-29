@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import ts from 'typescript';
 import { tsImport } from 'tsx/esm/api';
+import ts from 'typescript';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { runTypegenCommand, type TypegenCommandRuntimeOptions } from './typegen.js';
@@ -118,13 +118,16 @@ describe('fluo typegen navigation authoring', () => {
       "import { reactPageRoutes, type ReactPageLinkProps } from './generated/react-pages.js';",
       `import { Link, type ReactRouter } from ${JSON.stringify(reactClientModulePath)};`,
       'const navigator: ReactRouter = { back: () => undefined, push: () => undefined, refresh: () => undefined, replace: () => undefined };',
+      "const params = { productId: 'sku-42' };",
+      `const productHref: string = reactPageRoutes[${JSON.stringify(dynamicRouteId)}].href(params);`,
       `const staticLinkProps: ReactPageLinkProps = reactPageRoutes[${JSON.stringify(staticRouteId)}].link();`,
       "Link({ ...staticLinkProps, children: 'Products' });",
-      `Link({ ...reactPageRoutes[${JSON.stringify(dynamicRouteId)}].link({ productId: 'sku-42' }), children: 'Product' });`,
+      `Link({ ...reactPageRoutes[${JSON.stringify(dynamicRouteId)}].link(params), children: 'Product' });`,
       `reactPageRoutes[${JSON.stringify(staticRouteId)}].push(navigator);`,
       `reactPageRoutes[${JSON.stringify(staticRouteId)}].replace(navigator);`,
-      `reactPageRoutes[${JSON.stringify(dynamicRouteId)}].push(navigator, { productId: 'sku-42' });`,
+      `reactPageRoutes[${JSON.stringify(dynamicRouteId)}].push(navigator, params);`,
       `reactPageRoutes[${JSON.stringify(dynamicRouteId)}].replace(navigator, { productId: 'sku-84' });`,
+      'void productHref;',
     ].join('\n'), 'utf8');
 
     // When: TypeScript checks the complete declarative and programmatic authoring flow.
@@ -188,6 +191,27 @@ describe('fluo typegen navigation authoring', () => {
     const diagnostics = compile(consumerPath);
 
     // Then: static methods accept no param object and dynamic methods reject unknown keys.
-    expect(diagnostics.map((diagnostic) => diagnostic.code).sort()).toEqual([2353, 2353, 2353, 2554, 2554, 2554]);
+    expect(diagnostics.map((diagnostic) => diagnostic.code).sort()).toEqual([2322, 2322, 2322, 2554, 2554, 2554]);
+  });
+
+  it('rejects aliased extra params for href, Link, push, and replace authoring', async () => {
+    // Given: an aliased params object whose required key is accompanied by one unsupported key.
+    const fixture = await createGeneratedArtifact();
+    const consumerPath = join(fixture.cwd, 'aliased-extra-navigation-params-consumer.ts');
+    await writeFile(consumerPath, [
+      "import { reactPageRoutes, type ReactPageNavigator } from './generated/react-pages.js';",
+      'const navigator: ReactPageNavigator = { push: () => undefined, replace: () => undefined };',
+      "const params = { productId: 'sku-42', extra: 'value' };",
+      `reactPageRoutes[${JSON.stringify(dynamicRouteId)}].href(params);`,
+      `reactPageRoutes[${JSON.stringify(dynamicRouteId)}].link(params);`,
+      `reactPageRoutes[${JSON.stringify(dynamicRouteId)}].push(navigator, params);`,
+      `reactPageRoutes[${JSON.stringify(dynamicRouteId)}].replace(navigator, params);`,
+    ].join('\n'), 'utf8');
+
+    // When: TypeScript checks calls that cannot rely on fresh-object excess-property checks.
+    const diagnostics = compile(consumerPath);
+
+    // Then: every generated parameterized method rejects the aliased extra key.
+    expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual([2345, 2345, 2345, 2345]);
   });
 });
