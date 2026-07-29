@@ -311,6 +311,16 @@ describe('resolveBootstrapPlan', () => {
     ]));
   });
 
+  it('rejects the React SSR + Vite starter when combined with an incompatible runtime', () => {
+    expect(() => resolveBootstrapPlan({
+      packageManager: 'pnpm',
+      runtime: 'bun',
+      starter: 'react-vite-ssr',
+    })).toThrow(
+      'The React SSR + Vite starter requires application/node/http/fastify/standard/single-package.',
+    );
+  });
+
   it('resolves the Bun application starter as a first-class HTTP path', () => {
     expect(resolveBootstrapPlan({
       packageManager: 'pnpm' as const,
