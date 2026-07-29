@@ -118,16 +118,23 @@ describe('fluo typegen navigation authoring', () => {
       "import { reactPageRoutes, type ReactPageLinkProps } from './generated/react-pages.js';",
       `import { Link, type ReactRouter } from ${JSON.stringify(reactClientModulePath)};`,
       'const navigator: ReactRouter = { back: () => undefined, push: () => undefined, refresh: () => undefined, replace: () => undefined };',
+      "type ValidUnionParams = { readonly productId: 'sku-42' } | { readonly productId: 'sku-84' };",
+      'declare const unionParams: ValidUnionParams;',
       "const params = { productId: 'sku-42' };",
       `const productHref: string = reactPageRoutes[${JSON.stringify(dynamicRouteId)}].href(params);`,
+      `const unionHref: string = reactPageRoutes[${JSON.stringify(dynamicRouteId)}].href(unionParams);`,
       `const staticLinkProps: ReactPageLinkProps = reactPageRoutes[${JSON.stringify(staticRouteId)}].link();`,
       "Link({ ...staticLinkProps, children: 'Products' });",
       `Link({ ...reactPageRoutes[${JSON.stringify(dynamicRouteId)}].link(params), children: 'Product' });`,
+      `Link({ ...reactPageRoutes[${JSON.stringify(dynamicRouteId)}].link(unionParams), children: 'Union product' });`,
       `reactPageRoutes[${JSON.stringify(staticRouteId)}].push(navigator);`,
       `reactPageRoutes[${JSON.stringify(staticRouteId)}].replace(navigator);`,
       `reactPageRoutes[${JSON.stringify(dynamicRouteId)}].push(navigator, params);`,
       `reactPageRoutes[${JSON.stringify(dynamicRouteId)}].replace(navigator, { productId: 'sku-84' });`,
+      `reactPageRoutes[${JSON.stringify(dynamicRouteId)}].push(navigator, unionParams);`,
+      `reactPageRoutes[${JSON.stringify(dynamicRouteId)}].replace(navigator, unionParams);`,
       'void productHref;',
+      'void unionHref;',
     ].join('\n'), 'utf8');
 
     // When: TypeScript checks the complete declarative and programmatic authoring flow.
@@ -213,5 +220,36 @@ describe('fluo typegen navigation authoring', () => {
 
     // Then: every generated parameterized method rejects the aliased extra key.
     expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual([2345, 2345, 2345, 2345]);
+  });
+
+  it('rejects extra params from every member of union aliases', async () => {
+    // Given: one union with a valid branch and one with a different unsupported key in every branch.
+    const fixture = await createGeneratedArtifact();
+    const consumerPath = join(fixture.cwd, 'union-extra-navigation-params-consumer.ts');
+    await writeFile(consumerPath, [
+      "import { reactPageRoutes, type ReactPageNavigator } from './generated/react-pages.js';",
+      'const navigator: ReactPageNavigator = { push: () => undefined, replace: () => undefined };',
+      'type SometimesExtraParams = { readonly productId: string } | { readonly productId: string; readonly extra: string };',
+      'type DistinctExtraParams = { readonly productId: string; readonly first: string } | { readonly productId: string; readonly second: string };',
+      'declare const sometimesExtraParams: SometimesExtraParams;',
+      'declare const distinctExtraParams: DistinctExtraParams;',
+      `reactPageRoutes[${JSON.stringify(dynamicRouteId)}].href(sometimesExtraParams);`,
+      `reactPageRoutes[${JSON.stringify(dynamicRouteId)}].link(sometimesExtraParams);`,
+      `reactPageRoutes[${JSON.stringify(dynamicRouteId)}].push(navigator, sometimesExtraParams);`,
+      `reactPageRoutes[${JSON.stringify(dynamicRouteId)}].replace(navigator, sometimesExtraParams);`,
+      `reactPageRoutes[${JSON.stringify(dynamicRouteId)}].href(distinctExtraParams);`,
+      `reactPageRoutes[${JSON.stringify(dynamicRouteId)}].link(distinctExtraParams);`,
+      `reactPageRoutes[${JSON.stringify(dynamicRouteId)}].push(navigator, distinctExtraParams);`,
+      `reactPageRoutes[${JSON.stringify(dynamicRouteId)}].replace(navigator, distinctExtraParams);`,
+    ].join('\n'), 'utf8');
+
+    // When: TypeScript checks union aliases whose non-common keys would disappear from keyof.
+    const diagnostics = compile(consumerPath);
+
+    // Then: every generated parameterized method rejects both invalid union shapes.
+    expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual([
+      2345, 2345, 2345, 2345,
+      2345, 2345, 2345, 2345,
+    ]);
   });
 });

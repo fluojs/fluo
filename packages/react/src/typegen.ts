@@ -87,7 +87,7 @@ function renderParameters(entry: ReactPageCatalogEntry, leadingParameter?: strin
 
   const expected = `ReactPageParamsById[${stringLiteral(entry.id)}]`;
   const prefix = leadingParameter === undefined ? '' : `${leadingParameter}, `;
-  return `<Actual extends ${expected}>(${prefix}params: Actual & Record<Exclude<keyof Actual, keyof ${expected}>, never>)`;
+  return `<Actual extends ${expected}>(${prefix}params: Actual & Record<Actual extends ${expected} ? Exclude<keyof Actual, keyof ${expected}> : never, never>)`;
 }
 
 function renderHref(entry: ReactPageCatalogEntry): string {

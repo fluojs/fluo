@@ -60,7 +60,7 @@ describe('@fluojs/react/typegen', () => {
     expect(output).toContain('link: <Actual extends ReactPageParamsById["GET /products/:productId ProductRouter show"]>');
     expect(output).toContain('push: <Actual extends ReactPageParamsById["GET /products/:productId ProductRouter show"]>');
     expect(output).toContain('replace: <Actual extends ReactPageParamsById["GET /products/:productId ProductRouter show"]>');
-    expect(output).toContain('params: Actual & Record<Exclude<keyof Actual, keyof ReactPageParamsById["GET /products/:productId ProductRouter show"]>, never>');
+    expect(output).toContain('params: Actual & Record<Actual extends ReactPageParamsById["GET /products/:productId ProductRouter show"] ? Exclude<keyof Actual, keyof ReactPageParamsById["GET /products/:productId ProductRouter show"]> : never, never>');
   });
 
   it('keeps output deterministic when catalog registration order changes', () => {
