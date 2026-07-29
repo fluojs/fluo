@@ -55,6 +55,30 @@ describe('@fluojs/react/typegen', () => {
     expect(second).toBe(first);
   });
 
+  it('orders canonically equivalent Unicode ids by code units regardless of registration order', () => {
+    // Given
+    const composedPage = {
+      ...catalog[0],
+      id: 'GET /caf\u00e9 CafeRouter show',
+      path: '/caf\u00e9',
+      router: 'CafeRouter',
+    } satisfies ReactPageCatalogEntry;
+    const decomposedPage = {
+      ...catalog[0],
+      id: 'GET /cafe\u0301 CafeRouter show',
+      path: '/cafe\u0301',
+      router: 'CafeRouter',
+    } satisfies ReactPageCatalogEntry;
+
+    // When
+    const first = generateReactPageTypes([composedPage, decomposedPage]);
+    const second = generateReactPageTypes([decomposedPage, composedPage]);
+
+    // Then
+    expect(second).toBe(first);
+    expect(first.indexOf(JSON.stringify(decomposedPage.id))).toBeLessThan(first.indexOf(JSON.stringify(composedPage.id)));
+  });
+
   it('rejects versioned pages instead of erasing non-path dispatch requirements', () => {
     // Given
     const versionedCatalog = [

@@ -106,7 +106,15 @@ export function generateReactPageTypes(catalog: readonly ReactPageCatalogEntry[]
     }
   }
 
-  const sortedCatalog = [...catalog].sort((left, right) => left.id.localeCompare(right.id));
+  const sortedCatalog = [...catalog].sort((left, right) => {
+    if (left.id < right.id) {
+      return -1;
+    }
+    if (left.id > right.id) {
+      return 1;
+    }
+    return 0;
+  });
 
   return [
     GENERATED_BANNER,
