@@ -19,6 +19,9 @@ import {
   runGenerateCommand,
   runInspectCommand,
   runNewCommand,
+  runTypegenCommand,
+  type TypegenCommandRuntimeOptions,
+  typegenUsage,
 } from './index.js';
 
 const tempDirectories: string[] = [];
@@ -33,7 +36,7 @@ const inspectBootstrapFailureFixtureModulePath = join(
   'inspect-bootstrap-failure.module.mjs',
 );
 
-function expectNoEagerCommandLink(source: string, commandName: 'generate' | 'inspect' | 'new'): void {
+function expectNoEagerCommandLink(source: string, commandName: 'generate' | 'inspect' | 'new' | 'typegen'): void {
   const eagerCommandLink = new RegExp(
     String.raw`(?:^|\n)\s*(?:import\s+(?!type\b)[^;]+from|export\s+\{[^}]*\}\s+from)\s+['"]\./commands/${commandName}\.js['"]`,
   );
@@ -79,6 +82,7 @@ describe('public CLI package API', () => {
       ['generate', readFileSync(join(sourceRoot, 'public-generate.ts'), 'utf8')],
       ['inspect', readFileSync(join(sourceRoot, 'public-inspect.ts'), 'utf8')],
       ['new', readFileSync(join(sourceRoot, 'public-new.ts'), 'utf8')],
+      ['typegen', readFileSync(join(sourceRoot, 'public-typegen.ts'), 'utf8')],
     ] as const;
 
     for (const [commandName, facadeSource] of publicFacades) {
@@ -108,16 +112,28 @@ describe('public CLI package API', () => {
       stderr: { write: () => undefined },
       stdout: { write: () => undefined },
     };
+    const typegenRuntimeOptions: TypegenCommandRuntimeOptions = {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    };
+    const runCliTypegenRuntimeOptions: NonNullable<Parameters<typeof runCli>[1]> = {
+      loadReactTypegenModules: async () => ({ react: {}, runtime: {}, typegen: {} }),
+    };
 
     expect(typeof runGenerateCommand).toBe('function');
     expect(typeof runInspectCommand).toBe('function');
+    expect(typeof runTypegenCommand).toBe('function');
     expect(inspectUsage()).toContain('Usage: fluo inspect');
+    expect(typegenUsage()).toContain('Usage: fluo typegen');
     expect(result.wiringBehavior).toBe('auto-registered');
     expect(result.moduleRegistered).toBe(true);
     expect(result.plannedFiles.map((entry) => entry.action)).toContain('module-create');
     expect(moduleRegistration.kind).toBe('middleware');
     expect(planEntry.action).toBe('module-create');
     expect(inspectRuntimeOptions.ci).toBe(true);
+    expect(typegenRuntimeOptions.cwd).toBe(workspaceDirectory);
+    expect(typeof runCliTypegenRuntimeOptions.loadReactTypegenModules).toBe('function');
   });
 
   it('exports the documented new command programmatic surface from the root entrypoint', async () => {

@@ -1,6 +1,7 @@
 import type { CliRuntimeOptions } from './cli.js';
 import type { InspectCommandRuntimeOptions } from './commands/inspect.js';
 import type { NewCommandRuntimeOptions } from './commands/new.js';
+import type { TypegenCommandRuntimeOptions } from './commands/typegen.js';
 
 export type { CliRuntimeOptions } from './cli.js';
 
@@ -16,7 +17,7 @@ export type { CliRuntimeOptions } from './cli.js';
  */
 export async function runCli(
   argv?: string[],
-  runtime: CliRuntimeOptions & NewCommandRuntimeOptions & InspectCommandRuntimeOptions = {},
+  runtime: CliRuntimeOptions & NewCommandRuntimeOptions & InspectCommandRuntimeOptions & TypegenCommandRuntimeOptions = {},
 ): Promise<number> {
   const { runCli: runCliImplementation } = await import('./cli.js');
   return runCliImplementation(argv, runtime);
