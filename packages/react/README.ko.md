@@ -9,6 +9,7 @@ fluo 애플리케이션을 위한 런타임 중립 React 통합입니다.
 - [설치](#설치)
 - [사용 시점](#사용-시점)
 - [Stable SSR Mental Model](#stable-ssr-mental-model)
+- [React 사용자 개념 번역](#react-사용자-개념-번역)
 - [런타임 및 피어 계약](#런타임-및-피어-계약)
 - [Phase Boundaries](#phase-boundaries)
 - [ReactModule Registration](#reactmodule-registration)
@@ -65,6 +66,14 @@ Angular `Routes[]` table, file-route scanner, primary React-owned `routes: []` c
 기존 fluo module/controller pipeline에 남아 있습니다. Page handler는 일반 HTTP 값을 반환하거나,
 configured application page renderer가 처리할 유효한 `ReactElement` 하나를 반환하거나, route별 SSR option이
 필요할 때 `createReactServerEntry(...)`를 명시적으로 반환할 수 있습니다.
+
+## React 사용자 개념 번역
+
+Page, layout, loader, action, navigation, pending UI, metadata, hydration, build asset 용어에서
+출발한다면 간결한 [fluo의 React 개념 가이드](../../docs/guides/react-user-concepts.ko.md)를 사용하세요.
+이 가이드는 shipped equivalent, intentionally different behavior, experimental surface, unsupported
+concept를 구분하고, `@Router(...)`/`@Path(...)`에서 application renderer, Vite asset, hydration,
+client navigation, native form mutation으로 이어지는 실행 가능한 path 하나를 따라갑니다.
 
 ## 런타임 및 피어 계약
 

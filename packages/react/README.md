@@ -9,6 +9,7 @@ Runtime-neutral React integration for fluo applications.
 - [Installation](#installation)
 - [When to Use](#when-to-use)
 - [Stable SSR Mental Model](#stable-ssr-mental-model)
+- [React User Concept Translation](#react-user-concept-translation)
 - [Runtime and Peer Contract](#runtime-and-peer-contract)
 - [Phase Boundaries](#phase-boundaries)
 - [ReactModule Registration](#reactmodule-registration)
@@ -67,6 +68,15 @@ TanStack route tree, Angular `Routes[]` table, file-route scanner, or primary Re
 and dispatch stay in the existing fluo module/controller pipeline. Page handlers may return ordinary
 HTTP values, return one valid `ReactElement` for the configured application page renderer, or return
 `createReactServerEntry(...)` explicitly when they need per-route SSR options.
+
+## React User Concept Translation
+
+If your starting vocabulary is pages, layouts, loaders, actions, navigation, pending UI, metadata,
+hydration, or build assets, use the concise
+[React concepts in fluo guide](../../docs/guides/react-user-concepts.md). It separates shipped
+equivalents, intentionally different behavior, experimental surfaces, and unsupported concepts,
+then follows one runnable path from `@Router(...)`/`@Path(...)` through the application renderer,
+Vite assets, hydration, client navigation, and a native form mutation.
 
 ## Runtime and Peer Contract
 
