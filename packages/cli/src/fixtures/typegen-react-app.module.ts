@@ -10,6 +10,7 @@ class ProductRouter {
   show(): void {}
 }
 
+/** Fixture root module used by CLI React page typegen tests. */
 export class AppModule {}
 
 defineModule(AppModule, {

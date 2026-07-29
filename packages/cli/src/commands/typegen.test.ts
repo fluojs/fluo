@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import ts from 'typescript';
 import { tsImport } from 'tsx/esm/api';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { runTypegenCommand, type TypegenCommandRuntimeOptions } from './typegen.js';
 
@@ -165,13 +165,49 @@ describe('fluo typegen', () => {
     // When
     const updateExitCode = await runTypegenCommand([fixtureModulePath, '--output', fixture.outputPath], fixture.runtime);
     const updated = await readFile(fixture.outputPath, 'utf8');
+    const updateOutput = fixture.stdout.join('');
     fixture.stdout.splice(0);
     const unchangedExitCode = await runTypegenCommand([fixtureModulePath, '--output', fixture.outputPath], fixture.runtime);
 
     // Then
     expect(updateExitCode).toBe(0);
+    expect(updateOutput).toContain('UPDATE');
     expect(unchangedExitCode).toBe(0);
     expect(updated).not.toBe('stale\n');
     expect(fixture.stdout.join('')).toContain('UNCHANGED');
+  });
+
+  it('closes the bootstrapped application when React page catalog projection fails', async () => {
+    // Given
+    const fixture = await createFixture();
+    const close = vi.fn(async () => undefined);
+    const projectionError = new Error('React page catalog projection failed.');
+    const runtime: TypegenCommandRuntimeOptions = {
+      ...fixture.runtime,
+      loadReactTypegenModules: async () => ({
+        react: {
+          createReactPageCatalog: () => {
+            throw projectionError;
+          },
+        },
+        runtime: {
+          FluoFactory: Object.assign(() => undefined, {
+            create: async () => ({
+              close,
+              dispatcher: { describeRoutes: () => [] },
+            }),
+          }),
+        },
+        typegen: { generateReactPageTypes: () => '' },
+      }),
+    };
+
+    // When
+    const exitCode = await runTypegenCommand([fixtureModulePath, '--output', fixture.outputPath], runtime);
+
+    // Then
+    expect(exitCode).toBe(1);
+    expect(close).toHaveBeenCalledOnce();
+    expect(fixture.stderr).toEqual([`${projectionError.message}\n`]);
   });
 });
