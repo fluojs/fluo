@@ -1,0 +1,92 @@
+import { readFileSync } from 'node:fs';
+
+import { describe, expect, it } from 'vitest';
+
+import type { ReactPageCatalogEntry } from './page-catalog.js';
+import { generateReactPageTypes } from './typegen.js';
+
+const catalog = [
+  {
+    handler: 'index',
+    id: 'GET /products ProductRouter index',
+    kind: 'react-page',
+    method: 'GET',
+    params: [],
+    path: '/products',
+    router: 'ProductRouter',
+  },
+  {
+    handler: 'show',
+    id: 'GET /products/:productId ProductRouter show',
+    kind: 'react-page',
+    method: 'GET',
+    params: ['productId'],
+    path: '/products/:productId',
+    router: 'ProductRouter',
+  },
+] satisfies readonly ReactPageCatalogEntry[];
+
+describe('@fluojs/react/typegen', () => {
+  it('generates absolute paths and href builders with required params', () => {
+    // Given
+    const pages = catalog;
+
+    // When
+    const output = generateReactPageTypes(pages);
+
+    // Then
+    expect(output).toContain('export type ReactPageRouteId =');
+    expect(output).toContain('readonly "GET /products ProductRouter index": "/products";');
+    expect(output).toContain('readonly "GET /products/:productId ProductRouter show": {');
+    expect(output).toContain('readonly "productId": string;');
+    expect(output).toContain('href: (): string => "/products"');
+    expect(output).toContain('encodeURIComponent(params["productId"])');
+  });
+
+  it('keeps output deterministic when catalog registration order changes', () => {
+    // Given
+    const reversedPages = [...catalog].reverse();
+
+    // When
+    const first = generateReactPageTypes(catalog);
+    const second = generateReactPageTypes(reversedPages);
+
+    // Then
+    expect(second).toBe(first);
+  });
+
+  it('rejects versioned pages instead of erasing non-path dispatch requirements', () => {
+    // Given
+    const versionedCatalog = [
+      {
+        ...catalog[0],
+        id: 'GET /v2/products ProductRouter index',
+        path: '/v2/products',
+        version: '2',
+      },
+    ] satisfies readonly ReactPageCatalogEntry[];
+
+    // When
+    const action = () => generateReactPageTypes(versionedCatalog);
+
+    // Then
+    expect(action).toThrow(expect.objectContaining({
+      code: 'react-page-typegen-versioned-route-unsupported',
+      routeId: 'GET /v2/products ProductRouter index',
+    }));
+  });
+
+  it('publishes typegen from a tooling subpath without widening the runtime-neutral root', async () => {
+    // Given
+    const packageManifest = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
+
+    // When
+    const root = await import('./index.js');
+    const typegen = await import('./typegen.js');
+
+    // Then
+    expect(packageManifest).toContain('"./typegen"');
+    expect(root).not.toHaveProperty('generateReactPageTypes');
+    expect(typegen.generateReactPageTypes).toBe(generateReactPageTypes);
+  });
+});
