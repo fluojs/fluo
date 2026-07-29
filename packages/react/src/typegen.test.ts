@@ -43,6 +43,24 @@ describe('@fluojs/react/typegen', () => {
     expect(output).toContain('encodeURIComponent(params["productId"])');
   });
 
+  it('generates route-bound Link props and push or replace authoring methods', () => {
+    // Given
+    const pages = catalog;
+
+    // When
+    const output = generateReactPageTypes(pages);
+
+    // Then
+    expect(output).toContain('export type ReactPageLinkProps = { readonly href: string; };');
+    expect(output).toContain('export interface ReactPageNavigator {');
+    expect(output).toContain('link: (): ReactPageLinkProps => ({ href: "/products" })');
+    expect(output).toContain('push: (navigator: ReactPageNavigator): void => navigator.push("/products")');
+    expect(output).toContain('replace: (navigator: ReactPageNavigator): void => navigator.replace("/products")');
+    expect(output).toContain('link: (params: ReactPageParamsById["GET /products/:productId ProductRouter show"])');
+    expect(output).toContain('push: (navigator: ReactPageNavigator, params: ReactPageParamsById["GET /products/:productId ProductRouter show"])');
+    expect(output).toContain('replace: (navigator: ReactPageNavigator, params: ReactPageParamsById["GET /products/:productId ProductRouter show"])');
+  });
+
   it('keeps output deterministic when catalog registration order changes', () => {
     // Given
     const reversedPages = [...catalog].reverse();
