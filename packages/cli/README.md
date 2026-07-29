@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-The canonical CLI for fluo — bootstrap new applications, generate components, export runtime inspection data, and run code transforms.
+The canonical CLI for fluo — bootstrap new applications, generate components and React page types, export runtime inspection data, and run code transforms.
 
 ## Table of Contents
 
@@ -333,6 +333,28 @@ pnpm add -D @fluojs/studio
 
 If Studio is missing, CI and other non-interactive runs fail fast with install guidance instead of prompting or running a package manager. Interactive runs may ask whether you want to install Studio, but `fluo inspect` does not run installs unless an explicit install flow is implemented and approved.
 
+### React Page Type Generation
+
+Generate application-owned, path-only React page types and absolute href builders from the
+bootstrap-resolved route catalog:
+
+```bash
+fluo typegen ./src/app.ts --output ./src/generated/react-pages.ts
+fluo typegen ./src/admin.ts --export AdminModule --output ./src/generated/admin-pages.ts
+```
+
+`--export` defaults to `AppModule`. The command loads TypeScript source through the CLI loader,
+bootstraps the application, reads `app.dispatcher.describeRoutes()`, calls
+`createReactPageCatalog(...)` and `generateReactPageTypes(...)`, then closes the application. Output
+paths are resolved from the current working directory. A missing file is reported as `CREATE`, stale
+content as `UPDATE`, and byte-identical content as `UNCHANGED`.
+
+The generated `reactPageRoutes` object keys routes by stable catalog `id`. Its dynamic `href(...)`
+builders require all path params and URI-encode each value; static builders accept no params.
+Versioned routes fail explicitly because the catalog cannot distinguish URI versioning from header,
+media-type, or custom version strategies. See the
+[@fluojs/react path-only typegen contract](../react/README.md#path-only-page-type-generation).
+
 ## Public API
 
 The package can be used programmatically to trigger CLI actions from within other tools.
@@ -355,8 +377,11 @@ The package can be used programmatically to trigger CLI actions from within othe
 | `inspectUsage()` | Returns the current `fluo inspect` usage text for help surfaces and tests. |
 | `runInspectCommand(argv, options?)` | Programmatic access to inspect orchestration, compiled route JSON/report emission, and Studio Mermaid delegation. |
 | `InspectCommandRuntimeOptions` | Type for `runInspectCommand(...)` and `runCli(...)` inspect runtime overrides such as cwd, streams, prompts, and Studio renderer loading. |
+| `typegenUsage()` | Returns the current `fluo typegen` usage text for help surfaces and tests. |
+| `runTypegenCommand(argv, options?)` | Programmatic access to bootstrap-resolved React page type generation and deterministic artifact writes. |
+| `TypegenCommandRuntimeOptions` | Type for `runTypegenCommand(...)` and `runCli(...)` typegen runtime overrides such as cwd, streams, and tooling module loading. |
 
-Programmatic entry points preserve caller process ownership. `runCli(...)`, `runNewCommand(...)`, and `runInspectCommand(...)` return numeric exit codes instead of calling `process.exit(...)`; prompt cancellation resolves as exit code `0` through the command runner, and setup actions such as dependency installation or git initialization only run when the resolved `fluo new` options request them. `runGenerateCommand(...)` returns a structured `GenerateResult`; pass `dryRun: true` to preview generated file and module-wiring actions without writing files. Caller-supplied prompt hooks can throw `CliPromptCancelledError` from the public package entrypoint to express normal cancellation without depending on CLI-internal files.
+Programmatic entry points preserve caller process ownership. `runCli(...)`, `runNewCommand(...)`, `runInspectCommand(...)`, and `runTypegenCommand(...)` return numeric exit codes instead of calling `process.exit(...)`; prompt cancellation resolves as exit code `0` through the command runner, and setup actions such as dependency installation or git initialization only run when the resolved `fluo new` options request them. `runGenerateCommand(...)` returns a structured `GenerateResult`; pass `dryRun: true` to preview generated file and module-wiring actions without writing files. Caller-supplied prompt hooks can throw `CliPromptCancelledError` from the public package entrypoint to express normal cancellation without depending on CLI-internal files.
 
 ## Related Packages
 
@@ -371,6 +396,7 @@ Programmatic entry points preserve caller process ownership. `runCli(...)`, `run
 - [cli.ts](./src/cli.ts) - Command dispatcher and argument parsing.
 - [commands/new.ts](./src/commands/new.ts) - Project scaffolding implementation.
 - [commands/inspect.ts](./src/commands/inspect.ts) - Runtime inspection export modes and Studio delegation.
+- [commands/typegen.ts](./src/commands/typegen.ts) - React page catalog bootstrap and deterministic path-only artifact writes.
 - [commands/migrate.ts](./src/commands/migrate.ts) - Decorator codemods, JSON reporting, and transform filters.
 - [commands/package-workflow.ts](./src/commands/package-workflow.ts) - `fluo add` and `fluo upgrade` workflows.
 - [commands/scripts.ts](./src/commands/scripts.ts) - `dev`, `build`, and `start` lifecycle command boundaries.
