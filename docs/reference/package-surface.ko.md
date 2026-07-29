@@ -56,6 +56,11 @@
   Runtime/CLI inspection은 request value를 보관하거나 React route table을 만들지 않고 같은 route-kind
   marker를 `react-page`로 serialize합니다.
 
+  Stable `@fluojs/react/typegen` tooling subpath는 runtime-neutral package root를 확장하지 않고 이
+  catalog에서 deterministic path-only TypeScript declaration과 absolute href builder를 생성합니다.
+  Catalog가 URI versioning과 header, media-type, custom version strategy를 구분할 수 없으므로 versioned
+  route는 거부합니다.
+
   Stable root render policy는 `@Router(...)` class 및 `@Path(...)` method의
   `@PageLayout(...)`, `@SuspenseFallback(...)` component reference로 제한됩니다. Application
   `ReactPageRenderer`만 HTTP matching 이후 resolve된 base-to-derived class/method policy를 받고,

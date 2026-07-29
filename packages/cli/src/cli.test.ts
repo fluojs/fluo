@@ -3987,6 +3987,40 @@ exit 7
     expect(stdoutBuffer.join('')).toContain('Docs: https://github.com/fluojs/fluo/tree/main/docs/getting-started/quick-start.md');
   });
 
+  it('prints typegen usage for `help typegen`', async () => {
+    // Given
+    const stdoutBuffer: string[] = [];
+
+    // When
+    const exitCode = await runCli(['help', 'typegen'], {
+      cwd: process.cwd(),
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    // Then
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('Usage: fluo typegen <module-path> --output <path> [options]');
+    expect(stdoutBuffer.join('')).toContain('--export <name>');
+  });
+
+  it('dispatches incomplete typegen invocations to the typegen command', async () => {
+    // Given
+    const stderrBuffer: string[] = [];
+
+    // When
+    const exitCode = await runCli(['typegen'], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+      updateCheck: false,
+    });
+
+    // Then
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('Usage: fluo typegen');
+  });
+
   it('emits platform snapshot JSON and closes the inspect context exactly once on success', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-inspect-lifecycle-'));
     createdDirectories.push(workspaceDirectory);

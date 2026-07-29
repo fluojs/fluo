@@ -33,6 +33,10 @@
       "types": "./dist/experimental/rsc.d.ts",
       "import": "./dist/experimental/rsc.js"
     },
+    "./typegen": {
+      "types": "./dist/typegen.d.ts",
+      "import": "./dist/typegen.js"
+    },
     "./vite": {
       "types": "./dist/vite.d.ts",
       "import": "./dist/vite.js"

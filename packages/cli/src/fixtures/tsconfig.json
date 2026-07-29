@@ -1,14 +1,18 @@
 {
   "extends": "../../../../tsconfig.base.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
-      "@fluojs/core/internal": ["../../../core/src/internal.ts"],
-      "@fluojs/core/request-pipeline": ["../../../core/src/request-pipeline.ts"],
-      "@fluojs/di/internal": ["../../../di/src/internal.ts"],
-      "@fluojs/http/internal": ["../../../http/src/internal.ts"],
-      "@fluojs/runtime/internal": ["../../../runtime/src/internal.ts"],
-      "@fluojs/*": ["../../../*/src/index.ts"]
-    }
-  }
+      "@fluojs/core/internal": ["../../../../packages/core/src/internal.ts"],
+      "@fluojs/core/request-pipeline": ["../../../../packages/core/src/request-pipeline.ts"],
+      "@fluojs/di/internal": ["../../../../packages/di/src/internal.ts"],
+      "@fluojs/http/internal": ["../../../../packages/http/src/internal.ts"],
+      "@fluojs/react/typegen": ["../../../../packages/react/src/typegen.ts"],
+      "@fluojs/runtime/internal": ["../../../../packages/runtime/src/internal.ts"],
+      "@fluojs/runtime/internal/http-adapter": ["../../../../packages/runtime/src/internal-http-adapter.ts"],
+      "@fluojs/runtime/internal/request-response-factory": ["../../../../packages/runtime/src/internal-request-response-factory.ts"],
+      "@fluojs/*": ["../../../../packages/*/src/index.ts"]
+    },
+    "types": ["node"]
+  },
+  "include": ["./*.ts"]
 }

@@ -17,6 +17,7 @@ fluo 애플리케이션을 위한 런타임 중립 React 통합입니다.
 - [SSR Diagnostic Phases](#ssr-diagnostic-phases)
 - [Router 및 Path Decorators](#router-및-path-decorators)
 - [Bootstrap-Resolved Page Catalog](#bootstrap-resolved-page-catalog)
+- [Path-Only Page Type Generation](#path-only-page-type-generation)
 - [Web Streams SSR](#web-streams-ssr)
 - [Hydration Asset Contract](#hydration-asset-contract)
 - [Vite Asset Manifest Integration](#vite-asset-manifest-integration)
@@ -395,6 +396,46 @@ controller composition과 URI versioning이 이미 반영되어 있습니다. �
 Catalog 생성은 관찰 전용입니다. HTTP matcher를 호출하거나 대체하지 않으며 route conflict detection,
 request dispatch, not-found behavior, non-React handler에 관여하지 않습니다. Route tree, client manifest,
 relative-route model, prefetch layer, cache도 만들지 않습니다.
+
+## Path-Only Page Type Generation
+
+`fluo typegen`은 application module을 bootstrap하고 compiled React page catalog를 project한 뒤
+application-owned TypeScript route helper를 작성합니다. 출력은 전용 `@fluojs/react/typegen` subpath에서
+생성되며 runtime-neutral package root는 generator를 export하지 않습니다.
+
+```bash
+fluo typegen ./src/app.ts --output ./src/generated/react-pages.ts
+fluo typegen ./src/admin.ts --export AdminModule --output ./src/generated/admin-pages.ts
+```
+
+명령은 필요하면 output directory를 만들고 stale output을 deterministic하게 덮어쓰며 `CREATE`,
+`UPDATE`, `UNCHANGED` 중 하나를 보고합니다. `app.dispatcher.describeRoutes()`를 읽은 뒤 bootstrap한
+application을 닫습니다. 생성 artifact는 application code에서 import합니다.
+
+```ts
+import {
+  reactPageRoutes,
+  type ReactPageParams,
+  type ReactPagePath,
+  type ReactPageRouteId,
+} from './generated/react-pages.js';
+
+const productHref = reactPageRoutes['GET /products/:productId ProductRouter show'].href({
+  productId: 'desk/chair',
+});
+// /products/desk%2Fchair
+```
+
+생성 route id는 stable catalog `id`를 사용합니다. Static builder는 parameter를 받지 않고 dynamic
+builder는 모든 catalog path parameter를 요구하며 각 값을 `encodeURIComponent(...)`로 encode합니다.
+Artifact는 `ReactPagePathById`, `ReactPageParamsById`, `ReactPagePath<RouteId>`,
+`ReactPageParams<RouteId>`, `ReactPageRoute`도 export합니다.
+
+이 contract는 의도적으로 path-only입니다. Query string, fragment, relative route, optional parameter,
+client route tree를 생성하지 않습니다. Typegen은 `version`이 있는 모든 catalog entry를 거부합니다.
+Compiled catalog만으로는 version selection이 URI, header, media type, custom strategy 중 어디에서
+왔는지 구분할 수 없으므로 하나의 absolute href를 생성하면 실제와 다른 URL contract를 약속할 수
+있기 때문입니다.
 
 ## Web Streams SSR
 
@@ -932,6 +973,8 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - Next.js App Router, TanStack route tree, Angular `Routes[]`, file-route scanner, React-owned
   `routes: []` table
 - 자동 client bundle 생성
+- versioned React page의 href 생성. Catalog가 URI versioning과 non-path version strategy를 구분할 수
+  있을 때까지 path-only typegen은 versioned catalog entry를 거부합니다.
 - filesystem scanning 또는 자동 manifest file discovery. 이미 로드한 manifest 값을 `@fluojs/react/vite`에 넘기세요.
 - `bootstrapScriptContent`로 임의 data를 자동 serialize하는 기능
 - `renderToPipeableStream(...)` 같은 Node 전용 `react-dom/server` pipeable stream root API
@@ -948,6 +991,9 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
   descriptor에서 freeze된 read-only React page catalog를 만듭니다.
 - `ReactPageCatalogEntry` — effective HTTP method/path/version/params와 originating router/handler를
   담는 type-only bootstrap-resolved page descriptor입니다.
+- `@fluojs/react/typegen` subpath — package root를 넓히지 않고 deterministic path-only declaration과
+  absolute href builder를 생성하는 `generateReactPageTypes(...)`, `ReactPageTypegenError`,
+  `REACT_PAGE_TYPEGEN_ERROR_CODES`, `ReactPageTypegenErrorCode`를 제공합니다.
 - `ReactModule` — `forRoot(...)`가 기존 fluo module/controller metadata path를 통해 React router를
   등록하는 런타임 중립 module facade입니다.
 - `REACT_PAGE_RENDERER` — `ReactModule.forRoot({ renderPage })`가 등록하는 application page renderer의

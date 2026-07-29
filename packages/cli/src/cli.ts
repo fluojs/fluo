@@ -9,13 +9,14 @@ import { migrateUsage, runMigrateCommand } from './commands/migrate.js';
 import { type NewCommandRuntimeOptions, runNewCommand } from './commands/new.js';
 import { addUsage, runAddCommand, runUpgradeCommand, upgradeUsage } from './commands/package-workflow.js';
 import { runScriptCommand, scriptUsage } from './commands/scripts.js';
+import { type TypegenCommandRuntimeOptions, runTypegenCommand } from './commands/typegen.js';
 import { type DevRunnerRuntime, runNodeRestartRunner } from './dev-runner/node-restart-runner.js';
 import { builtInGeneratorCollection, generatorManifest, generatorOptionSchemas, resolveGeneratorKind } from './generators/manifest.js';
 import { renderAliasList, renderHelpTable } from './help.js';
 import type { startStudioSidecar } from './studio/sidecar.js';
 import type { GenerateOptions, GeneratorKind } from './types.js';
 import { type CliUpdateCheckRuntimeOptions, removeUpdateCheckFlags, runCliUpdateCheck } from './update-check.js';
-import { inspectUsage, newUsage } from './usage.js';
+import { inspectUsage, newUsage, typegenUsage } from './usage.js';
 
 type CliStream = {
   isTTY?: boolean;
@@ -88,6 +89,10 @@ type ParsedCommand =
     }
   | {
       argv: string[];
+      command: 'typegen';
+    }
+  | {
+      argv: string[];
       command: 'generate';
       parsed: ParsedCliArgs;
     };
@@ -141,6 +146,7 @@ const TOP_LEVEL_COMMAND_HELP: TopLevelCommandHelpEntry[] = [
   { aliases: [], command: 'add', description: 'Install @fluojs packages with the detected package manager.' },
   { aliases: [], command: 'upgrade', description: 'Report latest CLI state and migration workflow guidance.' },
   { aliases: [], command: 'inspect', description: 'Inspect runtime platform snapshot/diagnostics and emit timing optionally.' },
+  { aliases: [], command: 'typegen', description: 'Generate path-only React page route types and absolute href builders.' },
   { aliases: [], command: 'migrate', description: 'Run NestJS-to-fluo codemods (dry-run by default).' },
   { aliases: ['--version', '-v'], command: 'version', description: 'Print the installed fluo CLI version.' },
   { aliases: [], command: 'help', description: 'Show top-level or command-specific help.' },
@@ -445,6 +451,13 @@ function parseCommand(argv: string[]): ParsedCommand {
     };
   }
 
+  if (command === 'typegen') {
+    return {
+      argv: argv.slice(1),
+      command: 'typegen',
+    };
+  }
+
   return {
     argv,
     command: 'generate',
@@ -476,7 +489,7 @@ function parseCommand(argv: string[]): ParsedCommand {
  */
 export async function runCli(
   argv = process.argv.slice(2),
-  runtime: CliRuntimeOptions & NewCommandRuntimeOptions & InspectCommandRuntimeOptions = {},
+  runtime: CliRuntimeOptions & NewCommandRuntimeOptions & InspectCommandRuntimeOptions & TypegenCommandRuntimeOptions = {},
 ): Promise<number> {
   const cwd = runtime.cwd ? resolve(runtime.cwd) : process.cwd();
   const stdout = runtime.stdout ?? process.stdout;
@@ -568,6 +581,11 @@ export async function runCli(
         return 0;
       }
 
+      if (topic === 'typegen') {
+        stdout.write(`${typegenUsage()}\n`);
+        return 0;
+      }
+
       stdout.write(`${usage()}\n`);
       return 0;
     }
@@ -617,6 +635,11 @@ export async function runCli(
       return 0;
     }
 
+    if (commandArgv[0] === 'typegen' && commandArgv.slice(1).some(isHelpFlag)) {
+      stdout.write(`${typegenUsage()}\n`);
+      return 0;
+    }
+
     const parsedCommand = parseCommand(commandArgv);
 
     if (parsedCommand.command === 'analyze') {
@@ -653,6 +676,10 @@ export async function runCli(
 
     if (parsedCommand.command === 'inspect') {
       return runInspectCommand(parsedCommand.argv, commandRuntime);
+    }
+
+    if (parsedCommand.command === 'typegen') {
+      return runTypegenCommand(parsedCommand.argv, commandRuntime);
     }
 
     if (parsedCommand.command !== 'generate') {

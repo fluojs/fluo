@@ -17,6 +17,7 @@ Runtime-neutral React integration for fluo applications.
 - [SSR Diagnostic Phases](#ssr-diagnostic-phases)
 - [Router and Path Decorators](#router-and-path-decorators)
 - [Bootstrap-Resolved Page Catalog](#bootstrap-resolved-page-catalog)
+- [Path-Only Page Type Generation](#path-only-page-type-generation)
 - [Web Streams SSR](#web-streams-ssr)
 - [Hydration Asset Contract](#hydration-asset-contract)
 - [Vite Asset Manifest Integration](#vite-asset-manifest-integration)
@@ -397,6 +398,46 @@ reflected. The returned array, entries, and `params` arrays are frozen defensive
 Catalog construction is observational only. It never calls or replaces the HTTP matcher and has no
 role in route conflict detection, request dispatch, not-found behavior, or non-React handlers. It
 does not create a route tree, client manifest, relative-route model, prefetch layer, or cache.
+
+## Path-Only Page Type Generation
+
+Use `fluo typegen` to bootstrap an application module, project its compiled React page catalog, and
+write application-owned TypeScript route helpers. The output comes from the dedicated
+`@fluojs/react/typegen` subpath; the runtime-neutral package root does not export the generator.
+
+```bash
+fluo typegen ./src/app.ts --output ./src/generated/react-pages.ts
+fluo typegen ./src/admin.ts --export AdminModule --output ./src/generated/admin-pages.ts
+```
+
+The command creates the output directory when needed, overwrites stale output deterministically,
+and reports `CREATE`, `UPDATE`, or `UNCHANGED`. It closes the bootstrapped application after reading
+`app.dispatcher.describeRoutes()`. Import the generated artifact from application code:
+
+```ts
+import {
+  reactPageRoutes,
+  type ReactPageParams,
+  type ReactPagePath,
+  type ReactPageRouteId,
+} from './generated/react-pages.js';
+
+const productHref = reactPageRoutes['GET /products/:productId ProductRouter show'].href({
+  productId: 'desk/chair',
+});
+// /products/desk%2Fchair
+```
+
+Generated route ids use the stable catalog `id`. Static builders accept no parameters; dynamic
+builders require every catalog path parameter and encode each value with `encodeURIComponent(...)`.
+The artifact also exports `ReactPagePathById`, `ReactPageParamsById`, `ReactPagePath<RouteId>`,
+`ReactPageParams<RouteId>`, and `ReactPageRoute`.
+
+This contract is deliberately path-only. It does not generate query strings, fragments, relative
+routes, optional parameters, or a client route tree. Typegen rejects every catalog entry with a
+`version` because the compiled catalog does not identify whether version selection came from the
+URI, a header, media type, or a custom strategy; emitting one absolute href would otherwise claim a
+URL contract that may be false.
 
 ## Web Streams SSR
 
@@ -943,6 +984,8 @@ This package currently does **not** provide:
 - a Next.js App Router, TanStack route tree, Angular `Routes[]`, file-route scanner, or React-owned
   `routes: []` table
 - automatic client bundle generation
+- href generation for versioned React pages; path-only typegen rejects versioned catalog entries
+  until the catalog can distinguish URI versioning from non-path version strategies
 - filesystem scanning or automatic manifest file discovery; pass an already-loaded manifest value to
   `@fluojs/react/vite`
 - automatic serialization of arbitrary data into `bootstrapScriptContent`
@@ -960,6 +1003,9 @@ This package currently does **not** provide:
   compiled HTTP descriptors without participating in matching or dispatch.
 - `ReactPageCatalogEntry` — type-only bootstrap-resolved page descriptor with effective HTTP
   method/path/version/params plus the originating router and handler.
+- `@fluojs/react/typegen` subpath — `generateReactPageTypes(...)`, `ReactPageTypegenError`,
+  `REACT_PAGE_TYPEGEN_ERROR_CODES`, and `ReactPageTypegenErrorCode` for deterministic path-only
+  declarations and absolute href builders without widening the package root.
 - `ReactModule` — runtime-neutral module facade whose `forRoot(...)` registers React routers through
   the existing fluo module/controller metadata path.
 - `REACT_PAGE_RENDERER` — dependency-injection token for the application page renderer registered by

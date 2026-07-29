@@ -132,6 +132,24 @@ const INSPECT_OPTION_HELP: CommandOptionHelpEntry[] = [
   },
 ];
 
+const TYPEGEN_OPTION_HELP: CommandOptionHelpEntry[] = [
+  {
+    aliases: [],
+    description: 'Write the generated React page route types to this file.',
+    option: '--output <path>',
+  },
+  {
+    aliases: [],
+    description: 'Select the exported module symbol name (default: AppModule).',
+    option: '--export <name>',
+  },
+  {
+    aliases: ['-h'],
+    description: 'Show help for the typegen command.',
+    option: '--help',
+  },
+];
+
 /**
  * Renders CLI help text for `fluo new` without importing the scaffold implementation.
  *
@@ -182,5 +200,25 @@ export function inspectUsage(): string {
     ]),
     '',
     'Docs: https://github.com/fluojs/fluo/tree/main/docs/getting-started/quick-start.md',
+  ].join('\n');
+}
+
+/**
+ * Returns the usage information string for React page type generation.
+ *
+ * @returns Formatted help text including required output and optional export arguments.
+ */
+export function typegenUsage(): string {
+  return [
+    'Usage: fluo typegen <module-path> --output <path> [options]',
+    '',
+    'Options',
+    renderHelpTable(TYPEGEN_OPTION_HELP, [
+      { header: 'Option', render: (entry) => entry.option },
+      { header: 'Aliases', render: (entry) => renderAliasList(entry.aliases) },
+      { header: 'Description', render: (entry) => entry.description },
+    ]),
+    '',
+    'Docs: https://github.com/fluojs/fluo/tree/main/packages/react#path-only-page-type-generation',
   ].join('\n');
 }

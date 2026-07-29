@@ -56,6 +56,11 @@
   remain HTTP-owned. Runtime/CLI inspection serializes the same route-kind marker as `react-page`
   without retaining request values or creating a React route table.
 
+  The stable `@fluojs/react/typegen` tooling subpath generates deterministic, path-only TypeScript
+  declarations and absolute href builders from that catalog without widening the runtime-neutral
+  package root. It rejects versioned routes because the catalog cannot distinguish URI versioning
+  from header, media-type, or custom version strategies.
+
   Stable root render policies are limited to `@PageLayout(...)` and `@SuspenseFallback(...)`
   component references on `@Router(...)` classes and `@Path(...)` methods. The application
   `ReactPageRenderer` alone receives resolved base-to-derived class/method policies after HTTP

@@ -2,7 +2,7 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-fluo 공식 CLI — 새 애플리케이션 부트스트랩, 컴포넌트 생성, 런타임 검사 데이터 내보내기, 코드 변환을 지원합니다.
+fluo 공식 CLI — 새 애플리케이션 부트스트랩, 컴포넌트와 React page type 생성, 런타임 검사 데이터 내보내기, 코드 변환을 지원합니다.
 
 ## 목차
 
@@ -333,6 +333,28 @@ pnpm add -D @fluojs/studio
 
 Studio가 없으면 CI와 non-interactive 실행은 prompt나 package manager 실행 없이 설치 안내와 함께 빠르게 실패합니다. Interactive 실행에서는 Studio 설치 여부를 물을 수 있지만, 명시적으로 승인되고 구현된 설치 흐름이 없는 한 `fluo inspect`가 package manager install을 실행하지 않습니다.
 
+### React Page Type Generation
+
+Bootstrap-resolved route catalog에서 application-owned path-only React page type과 absolute href
+builder를 생성합니다.
+
+```bash
+fluo typegen ./src/app.ts --output ./src/generated/react-pages.ts
+fluo typegen ./src/admin.ts --export AdminModule --output ./src/generated/admin-pages.ts
+```
+
+`--export` 기본값은 `AppModule`입니다. 명령은 CLI loader로 TypeScript source를 로드하고 application을
+bootstrap한 다음 `app.dispatcher.describeRoutes()`를 읽어 `createReactPageCatalog(...)`와
+`generateReactPageTypes(...)`를 호출하고 application을 닫습니다. Output path는 현재 working
+directory를 기준으로 resolve됩니다. 파일이 없으면 `CREATE`, content가 stale하면 `UPDATE`, byte 단위로
+같으면 `UNCHANGED`를 보고합니다.
+
+생성된 `reactPageRoutes` object는 stable catalog `id`를 key로 사용합니다. Dynamic `href(...)` builder는
+모든 path param을 요구하고 각 값을 URI-encode하며 static builder는 param을 받지 않습니다. Versioned
+route는 명시적으로 실패합니다. Catalog만으로는 URI versioning과 header, media-type, custom version
+strategy를 구분할 수 없기 때문입니다. 자세한 내용은
+[@fluojs/react path-only typegen contract](../react/README.ko.md#path-only-page-type-generation)를 참고하세요.
+
 ## 공개 API
 
 다른 도구 내에서 CLI 동작을 트리거하기 위해 패키지를 프로그래밍 방식으로 사용할 수 있습니다.
@@ -355,8 +377,11 @@ Studio가 없으면 CI와 non-interactive 실행은 prompt나 package manager �
 | `inspectUsage()` | help surface와 test에서 사용하는 현재 `fluo inspect` usage text를 반환합니다. |
 | `runInspectCommand(argv, options?)` | inspect orchestration, compiled route JSON/report emission, Studio Mermaid delegation에 대한 프로그래밍적 접근을 제공합니다. |
 | `InspectCommandRuntimeOptions` | cwd, stream, prompt, Studio renderer loading 같은 `runInspectCommand(...)`와 `runCli(...)` inspect runtime override 타입입니다. |
+| `typegenUsage()` | help surface와 test에서 사용하는 현재 `fluo typegen` usage text를 반환합니다. |
+| `runTypegenCommand(argv, options?)` | bootstrap-resolved React page type generation과 deterministic artifact write에 대한 프로그래밍적 접근을 제공합니다. |
+| `TypegenCommandRuntimeOptions` | cwd, stream, tooling module loading 같은 `runTypegenCommand(...)`와 `runCli(...)` typegen runtime override 타입입니다. |
 
-프로그래밍 방식 진입점은 호출자 프로세스의 소유권을 보존합니다. `runCli(...)`, `runNewCommand(...)`, `runInspectCommand(...)`는 `process.exit(...)`를 호출하지 않고 숫자 exit code를 반환하며, prompt 취소는 command runner를 통해 exit code `0`으로 해석됩니다. dependency 설치나 git 초기화 같은 setup 작업은 해석된 `fluo new` 옵션이 요청한 경우에만 실행됩니다. `runGenerateCommand(...)`는 구조화된 `GenerateResult`를 반환합니다. 파일 쓰기 없이 생성 파일과 module-wiring action을 미리 보려면 `dryRun: true`를 전달하세요. 호출자가 제공한 prompt hook은 공개 패키지 엔트리포인트의 `CliPromptCancelledError`를 throw해 CLI 내부 파일에 의존하지 않고 정상 취소를 표현할 수 있습니다.
+프로그래밍 방식 진입점은 호출자 프로세스의 소유권을 보존합니다. `runCli(...)`, `runNewCommand(...)`, `runInspectCommand(...)`, `runTypegenCommand(...)`는 `process.exit(...)`를 호출하지 않고 숫자 exit code를 반환하며, prompt 취소는 command runner를 통해 exit code `0`으로 해석됩니다. dependency 설치나 git 초기화 같은 setup 작업은 해석된 `fluo new` 옵션이 요청한 경우에만 실행됩니다. `runGenerateCommand(...)`는 구조화된 `GenerateResult`를 반환합니다. 파일 쓰기 없이 생성 파일과 module-wiring action을 미리 보려면 `dryRun: true`를 전달하세요. 호출자가 제공한 prompt hook은 공개 패키지 엔트리포인트의 `CliPromptCancelledError`를 throw해 CLI 내부 파일에 의존하지 않고 정상 취소를 표현할 수 있습니다.
 
 ## 관련 패키지
 
@@ -371,6 +396,7 @@ Studio가 없으면 CI와 non-interactive 실행은 prompt나 package manager �
 - [cli.ts](./src/cli.ts) - 명령 디스패처 및 인자 파싱.
 - [commands/new.ts](./src/commands/new.ts) - 프로젝트 스캐폴딩 구현.
 - [commands/inspect.ts](./src/commands/inspect.ts) - 런타임 검사 export mode와 Studio 위임.
+- [commands/typegen.ts](./src/commands/typegen.ts) - React page catalog bootstrap과 deterministic path-only artifact write.
 - [commands/migrate.ts](./src/commands/migrate.ts) - decorator codemod, JSON report, transform filter.
 - [commands/package-workflow.ts](./src/commands/package-workflow.ts) - `fluo add`와 `fluo upgrade` workflow.
 - [commands/scripts.ts](./src/commands/scripts.ts) - `dev`, `build`, `start` lifecycle command boundary.
