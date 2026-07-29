@@ -420,7 +420,7 @@ import {
   type ReactPageRouteId,
 } from './generated/react-pages.js';
 
-const productHref = reactPageRoutes['AppModule::ProductRouter::show'].href({
+const productHref = reactPageRoutes['GET /products/:productId ProductRouter show'].href({
   productId: 'desk/chair',
 });
 // /products/desk%2Fchair
