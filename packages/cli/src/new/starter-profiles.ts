@@ -3,13 +3,14 @@ import type {
   BootstrapRuntime,
   BootstrapSchema,
   BootstrapShape,
+  BootstrapStarter,
   BootstrapToolingPreset,
   BootstrapTopology,
   BootstrapTransport,
 } from './types.js';
 
 /** Emitter families that decide which scaffold template tree renders the starter. */
-export type StarterEmitterType = 'http' | 'microservice' | 'mixed';
+export type StarterEmitterType = 'http' | 'microservice' | 'mixed' | 'react-vite-ssr';
 /** Stable IDs for the scaffold recipes currently shipped by `fluo new`. */
 export type StarterScaffoldRecipeId =
   | 'application-bun-bun-http'
@@ -17,6 +18,7 @@ export type StarterScaffoldRecipeId =
   | 'application-deno-deno-http'
   | 'application-node-express-http'
   | 'application-node-fastify-http'
+  | 'application-node-fastify-react-vite-ssr'
   | 'application-node-nodejs-http'
   | 'microservice-node-none-grpc'
   | 'microservice-node-none-kafka'
@@ -46,6 +48,7 @@ export interface StarterProfile {
   platformPromptLabel?: string;
   promptLabel: string;
   schema: BootstrapSchema;
+  starter: BootstrapStarter;
 }
 
 const DEFAULT_TOPOLOGY: BootstrapTopology = {
@@ -121,6 +124,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
     platformPromptLabel: 'Bun native HTTP',
     promptLabel: 'Application (HTTP starter)',
     schema: createSchema('application', 'bun', 'bun', 'http'),
+    starter: 'standard',
   },
   {
     dependencies: {
@@ -148,6 +152,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
     platformPromptLabel: 'Deno native HTTP',
     promptLabel: 'Application (HTTP starter)',
     schema: createSchema('application', 'deno', 'deno', 'http'),
+    starter: 'standard',
   },
   {
     dependencies: {
@@ -176,6 +181,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
     platformPromptLabel: 'Cloudflare Workers',
     promptLabel: 'Application (HTTP starter)',
     schema: createSchema('application', 'cloudflare-workers', 'cloudflare-workers', 'http'),
+    starter: 'standard',
   },
   {
     dependencies: {
@@ -205,6 +211,42 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
     platformPromptLabel: 'Fastify',
     promptLabel: 'Application (HTTP starter)',
     schema: createSchema('application', 'node', 'fastify', 'http'),
+    starter: 'standard',
+  },
+  {
+    dependencies: {
+      dependencies: [
+        '@fluojs/core',
+        '@fluojs/http',
+        '@fluojs/platform-fastify',
+        '@fluojs/react',
+        '@fluojs/runtime',
+        '@fluojs/validation',
+        'react',
+        'react-dom',
+      ],
+      devDependencies: [
+        '@fluojs/cli',
+        '@fluojs/testing',
+        '@fluojs/vite',
+        '@playwright/test',
+        '@types/react',
+        '@types/react-dom',
+        'happy-dom',
+      ],
+    },
+    emitter: {
+      platform: 'fastify',
+      preset: 'standard',
+      runtime: 'node',
+      transport: 'http',
+      type: 'react-vite-ssr',
+    },
+    id: 'application-node-fastify-react-vite-ssr',
+    platformPromptLabel: 'Fastify',
+    promptLabel: 'React SSR + Vite',
+    schema: createSchema('application', 'node', 'fastify', 'http'),
+    starter: 'react-vite-ssr',
   },
   {
     dependencies: {
@@ -234,6 +276,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
     platformPromptLabel: 'Express',
     promptLabel: 'Application (HTTP starter)',
     schema: createSchema('application', 'node', 'express', 'http'),
+    starter: 'standard',
   },
   {
     dependencies: {
@@ -263,6 +306,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
     platformPromptLabel: 'Raw Node.js HTTP',
     promptLabel: 'Application (HTTP starter)',
     schema: createSchema('application', 'node', 'nodejs', 'http'),
+    starter: 'standard',
   },
   {
     dependencies: {
@@ -289,6 +333,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
     id: 'microservice-node-none-tcp',
     promptLabel: 'Microservice (transport-first starter)',
     schema: createSchema('microservice', 'node', 'none', 'tcp'),
+    starter: 'standard',
   },
   {
     dependencies: {
@@ -316,6 +361,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
     id: 'microservice-node-none-redis-streams',
     promptLabel: 'Microservice (Redis Streams starter)',
     schema: createSchema('microservice', 'node', 'none', 'redis-streams'),
+    starter: 'standard',
   },
   {
     dependencies: {
@@ -343,6 +389,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
     id: 'microservice-node-none-mqtt',
     promptLabel: 'Microservice (MQTT starter)',
     schema: createSchema('microservice', 'node', 'none', 'mqtt'),
+    starter: 'standard',
   },
   {
     dependencies: {
@@ -371,6 +418,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
     id: 'microservice-node-none-grpc',
     promptLabel: 'Microservice (gRPC starter)',
     schema: createSchema('microservice', 'node', 'none', 'grpc'),
+    starter: 'standard',
   },
   {
     dependencies: {
@@ -398,6 +446,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
     id: 'microservice-node-none-nats',
     promptLabel: 'Microservice (NATS starter)',
     schema: createSchema('microservice', 'node', 'none', 'nats'),
+    starter: 'standard',
   },
   {
     dependencies: {
@@ -425,6 +474,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
     id: 'microservice-node-none-kafka',
     promptLabel: 'Microservice (Kafka starter)',
     schema: createSchema('microservice', 'node', 'none', 'kafka'),
+    starter: 'standard',
   },
   {
     dependencies: {
@@ -453,6 +503,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
     id: 'microservice-node-none-rabbitmq',
     promptLabel: 'Microservice (RabbitMQ starter)',
     schema: createSchema('microservice', 'node', 'none', 'rabbitmq'),
+    starter: 'standard',
   },
   {
     dependencies: {
@@ -482,6 +533,7 @@ export const STARTER_PROFILE_REGISTRY: readonly StarterProfile[] = [
     id: 'mixed-node-fastify-tcp',
     promptLabel: 'Mixed (HTTP API + microservice starter)',
     schema: createSchema('mixed', 'node', 'fastify', 'tcp'),
+    starter: 'standard',
   },
 ] as const;
 
@@ -505,6 +557,8 @@ export const SUPPORTED_BOOTSTRAP_TRANSPORTS: readonly BootstrapTransport[] = ['h
 export const SUPPORTED_BOOTSTRAP_TOOLING_PRESETS: readonly BootstrapToolingPreset[] = ['standard'];
 /** Supported topology modes accepted by the current starter matrix. */
 export const SUPPORTED_BOOTSTRAP_TOPOLOGY_MODES: readonly BootstrapTopology['mode'][] = ['single-package'];
+/** Named starter variants accepted by `fluo new`. */
+export const SUPPORTED_BOOTSTRAP_STARTERS: readonly BootstrapStarter[] = ['standard', 'react-vite-ssr'];
 
 /** Default starter profile used for shape-less `fluo new` invocations. */
 export const DEFAULT_BOOTSTRAP_PROFILE = STARTER_PROFILE_REGISTRY.find((profile) => profile.id === 'application-node-fastify-http')!;
@@ -519,7 +573,7 @@ export const DEFAULT_BOOTSTRAP_PROFILE = STARTER_PROFILE_REGISTRY.find((profile)
 export function getStarterProfileForShape(shape: BootstrapShape, runtime?: BootstrapRuntime): StarterProfile {
   if (runtime !== undefined) {
     return STARTER_PROFILE_REGISTRY.find((profile) => (
-      profile.schema.shape === shape && profile.schema.runtime === runtime
+      profile.starter === 'standard' && profile.schema.shape === shape && profile.schema.runtime === runtime
     )) ?? DEFAULT_BOOTSTRAP_PROFILE;
   }
 
@@ -546,7 +600,9 @@ export function getStarterProfileForShape(shape: BootstrapShape, runtime?: Boots
  */
 export function getApplicationStarterProfiles(runtime?: BootstrapRuntime): readonly StarterProfile[] {
   return STARTER_PROFILE_REGISTRY.filter((profile) => (
-    profile.schema.shape === 'application' && (runtime === undefined || profile.schema.runtime === runtime)
+    profile.starter === 'standard'
+    && profile.schema.shape === 'application'
+    && (runtime === undefined || profile.schema.runtime === runtime)
   ));
 }
 
@@ -574,11 +630,16 @@ export function getDefaultBootstrapSchema(): BootstrapSchema {
  * Finds the starter profile that exactly matches a resolved bootstrap schema.
  *
  * @param schema Fully resolved bootstrap schema.
+ * @param starter Named starter variant selected by the caller.
  * @returns The matching starter profile, or `undefined` when the schema is validation-only.
  */
-export function getStarterProfileFromSchema(schema: BootstrapSchema): StarterProfile | undefined {
+export function getStarterProfileFromSchema(
+  schema: BootstrapSchema,
+  starter: BootstrapStarter = 'standard',
+): StarterProfile | undefined {
   return STARTER_PROFILE_REGISTRY.find((profile) => (
-    profile.schema.shape === schema.shape
+    profile.starter === starter
+    && profile.schema.shape === schema.shape
     && profile.schema.runtime === schema.runtime
     && profile.schema.platform === schema.platform
     && profile.schema.transport === schema.transport

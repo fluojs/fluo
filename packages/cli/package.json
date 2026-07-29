@@ -41,7 +41,7 @@
   ],
   "scripts": {
     "prebuild": "node ../../tooling/scripts/clean-dist.mjs",
-    "build": "pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json && node -e \"require('fs').cpSync('src/generators/templates', 'dist/generators/templates', {recursive: true})\"",
+    "build": "pnpm exec babel src --extensions .ts --ignore 'src/**/*.test.ts' --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json && node -e \"const fs=require('fs'); fs.cpSync('src/generators/templates', 'dist/generators/templates', {recursive: true}); fs.cpSync('src/new/templates', 'dist/new/templates', {recursive: true})\"",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
     "test": "pnpm exec vitest run -c vitest.config.ts",
     "test:watch": "pnpm exec vitest -c vitest.config.ts",

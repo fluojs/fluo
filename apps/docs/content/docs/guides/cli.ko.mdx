@@ -43,6 +43,7 @@ pnpm dev
 
 ```bash
 fluo new my-app --shape application --runtime node --platform fastify --print-plan
+fluo new my-react-app --starter react-vite-ssr --print-plan
 fluo new my-service --shape microservice --transport tcp --print-plan
 fluo new my-mixed-app --shape mixed --print-plan
 ```
@@ -65,12 +66,22 @@ fluo new my-deno-app --shape application --transport http --runtime deno --platf
 fluo new my-worker-app --shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers
 ```
 
+공식 Node.js + Fastify HTTP SSR 경로에는 named React starter를 사용합니다.
+
+```bash
+fluo new my-react-app --starter react-vite-ssr
+```
+
+이 starter는 명시적인 client/server entry, 분리된 Vite config, `hydrateRoot(...)`, HTTP-owned page router, application page rendering, direct JSX를 생성합니다. Application은 `src/main.ts`에서 `dist/client/.vite/manifest.json`을 로드한 뒤 `@fluojs/react/vite`가 이를 parse하도록 전달합니다. Link는 real anchor로 남고 client navigation은 full-document request를 수행하므로 HTTP matching과 DTO validation이 계속 authoritative합니다. RSC, Server Functions, file routing, client route table, prefetch, data cache는 포함하지 않습니다.
+
 Generated non-Deno HTTP starter는 TDD-first Vitest layout을 포함합니다.
 
 - `src/**` 아래 colocated fast unit tests
 - `*.slice.test.ts` slice tests
 - `src/app.test.ts` app dispatch tests
 - `createTestApp({ rootModule })` 기반 `test/app.e2e.test.ts` default e2e-style tests
+
+React starter는 streamed SSR 및 hydration focused test와 production build를 시작해 asset 누락이나 hydration warning을 거부하는 `pnpm test:browser`를 사용합니다.
 
 ## Microservice and mixed starters
 

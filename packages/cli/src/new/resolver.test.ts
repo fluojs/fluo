@@ -42,7 +42,7 @@ describe('resolveBootstrapSchema', () => {
 });
 
 describe('resolveBootstrapPlan', () => {
-  it('locks the shipped starter registry to the current fourteen supported matrix profiles', () => {
+  it('locks the shipped starter registry to the current fifteen supported matrix profiles', () => {
     expect(STARTER_PROFILE_REGISTRY.map((profile) => ({
       id: profile.id,
       schema: profile.schema,
@@ -91,6 +91,20 @@ describe('resolveBootstrapPlan', () => {
       },
       {
         id: 'application-node-fastify-http',
+        schema: {
+          platform: 'fastify',
+          runtime: 'node',
+          shape: 'application',
+          tooling: 'standard',
+          topology: {
+            deferred: true,
+            mode: 'single-package',
+          },
+          transport: 'http',
+        },
+      },
+      {
+        id: 'application-node-fastify-react-vite-ssr',
         schema: {
           platform: 'fastify',
           runtime: 'node',
@@ -274,6 +288,37 @@ describe('resolveBootstrapPlan', () => {
       profile: profileById('application-node-fastify-http'),
       schema: DEFAULT_BOOTSTRAP_SCHEMA,
     });
+  });
+
+  it('resolves the React SSR + Vite starter as an explicit first-class path', () => {
+    const plan = resolveBootstrapPlan({
+      packageManager: 'pnpm' as const,
+      starter: 'react-vite-ssr',
+    });
+
+    expect(plan.profile.id).toBe('application-node-fastify-react-vite-ssr');
+    expect(plan.profile.starter).toBe('react-vite-ssr');
+    expect(plan.schema).toEqual(DEFAULT_BOOTSTRAP_SCHEMA);
+    expect(plan.dependencies.dependencies).toEqual(expect.arrayContaining([
+      '@fluojs/react',
+      'react',
+      'react-dom',
+    ]));
+    expect(plan.dependencies.devDependencies).toEqual(expect.arrayContaining([
+      '@playwright/test',
+      '@types/react',
+      '@types/react-dom',
+    ]));
+  });
+
+  it('rejects the React SSR + Vite starter when combined with an incompatible runtime', () => {
+    expect(() => resolveBootstrapPlan({
+      packageManager: 'pnpm',
+      runtime: 'bun',
+      starter: 'react-vite-ssr',
+    })).toThrow(
+      'The React SSR + Vite starter requires application/node/http/fastify/standard/single-package.',
+    );
   });
 
   it('resolves the Bun application starter as a first-class HTTP path', () => {

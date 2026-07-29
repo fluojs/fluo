@@ -9,6 +9,11 @@ type CommandOptionHelpEntry = {
 const NEW_OPTION_HELP: CommandOptionHelpEntry[] = [
   {
     aliases: [],
+    description: 'Select a named starter (standard backend or the React SSR + Vite application).',
+    option: '--starter <standard|react-vite-ssr>',
+  },
+  {
+    aliases: [],
     description: 'Provide the project name without using the positional argument.',
     option: '--name <project-name>',
   },

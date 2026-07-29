@@ -11,6 +11,13 @@ const packageRoot = resolve(scriptDirectory, '..');
 const repoRoot = resolve(packageRoot, '..', '..');
 const representativeStarterSmokeScenarios = [
   {
+    env: {
+      FLUO_CLI_SANDBOX_STARTER: 'react-vite-ssr',
+    },
+    label: 'React SSR + Vite starter',
+    projectName: 'starter-react-vite-ssr',
+  },
+  {
     env: {},
     label: 'default Node.js + Fastify application',
     projectName: 'starter-app',
@@ -65,13 +72,15 @@ const { sandboxRoot, warning: sandboxRootWarning } = resolveSandboxRoot(process.
 const defaultProjectName = 'starter-app';
 
 function resolveStarterArgsFromEnv(env) {
+  const starter = env.FLUO_CLI_SANDBOX_STARTER;
   const shape = env.FLUO_CLI_SANDBOX_SHAPE;
+  const args = starter ? ['--starter', starter] : [];
 
   if (!shape) {
-    return [];
+    return args;
   }
 
-  const args = ['--shape', shape];
+  args.push('--shape', shape);
 
   if (env.FLUO_CLI_SANDBOX_TRANSPORT) {
     args.push('--transport', env.FLUO_CLI_SANDBOX_TRANSPORT);
@@ -252,6 +261,7 @@ async function withStarterEnv(envOverrides, action) {
     'FLUO_CLI_SANDBOX_PLATFORM',
     'FLUO_CLI_SANDBOX_RUNTIME',
     'FLUO_CLI_SANDBOX_SHAPE',
+    'FLUO_CLI_SANDBOX_STARTER',
     'FLUO_CLI_SANDBOX_TRANSPORT',
   ];
   const previous = new Map(keys.map((key) => [key, process.env[key]]));
@@ -333,7 +343,10 @@ function verifySandboxProject(projectName) {
   const packageJson = JSON.parse(readFileSync(join(projectDirectory, 'package.json'), 'utf8'));
   const hasHttpStarter = Boolean(packageJson.dependencies?.['@fluojs/http']);
   const hasMicroserviceStarter = Boolean(packageJson.dependencies?.['@fluojs/microservices']);
-  const starterContract = hasHttpStarter && hasMicroserviceStarter
+  const hasReactViteSsrStarter = Boolean(packageJson.dependencies?.['@fluojs/react']);
+  const starterContract = hasReactViteSsrStarter
+    ? 'react-vite-ssr'
+    : hasHttpStarter && hasMicroserviceStarter
     ? 'mixed'
     : hasMicroserviceStarter
       ? 'microservice'
@@ -349,7 +362,11 @@ function verifySandboxProject(projectName) {
     throw new Error('Expected the starter scaffold to include test/app.e2e.test.ts.');
   }
 
-  if (!existsSync(join(projectDirectory, 'vite.config.ts'))) {
+  if (starterContract === 'react-vite-ssr' && !existsSync(join(projectDirectory, 'tests', 'production-hydration.spec.ts'))) {
+    throw new Error('Expected the React SSR + Vite starter to include its production hydration browser test.');
+  }
+
+  if (starterContract !== 'react-vite-ssr' && !existsSync(join(projectDirectory, 'vite.config.ts'))) {
     throw new Error('Expected the starter scaffold to include vite.config.ts.');
   }
 
@@ -369,7 +386,11 @@ function verifySandboxProject(projectName) {
 
   }
 
-  for (const configPath of ['tsconfig.json', 'tsconfig.build.json', 'vite.config.ts', 'vitest.config.ts']) {
+  const configPaths = starterContract === 'react-vite-ssr'
+    ? ['tsconfig.json', 'vite.client.config.ts', 'vite.server.config.ts', 'vitest.config.ts']
+    : ['tsconfig.json', 'tsconfig.build.json', 'vite.config.ts', 'vitest.config.ts'];
+
+  for (const configPath of configPaths) {
     const content = readFileSync(join(projectDirectory, configPath), 'utf8');
     if (content.includes('baseUrl')) {
       throw new Error(`Expected ${configPath} to avoid deprecated baseUrl aliasing.`);
@@ -380,6 +401,9 @@ function verifySandboxProject(projectName) {
   run('pnpm', ['typecheck'], projectDirectory);
   run('pnpm', ['build'], projectDirectory);
   run('pnpm', ['test'], projectDirectory);
+  if (starterContract === 'react-vite-ssr') {
+    run('pnpm', ['test:browser'], projectDirectory);
+  }
 
   log('Checking installed CLI command paths inside the sandbox project');
   if (!existsSync(join(projectDirectory, 'node_modules', '.bin', 'fluo'))) {
@@ -408,7 +432,7 @@ function printUsage() {
   process.stdout.write(
     [
       'Usage: node ./scripts/local-test-env.mjs <create|verify|test|clean> [project-name]',
-      'Use `matrix` to run the representative generated-project smoke suite (default app, TCP microservice, mixed app).',
+      'Use `matrix` to run the representative generated-project smoke suite (default app, React SSR + Vite, TCP microservice, mixed app).',
       'Defaults project-name to starter-app and uses the sandbox root itself as the generated app directory.',
       'Set FLUO_CLI_SANDBOX_ROOT to override the sandbox root outside the repo workspace.',
     ].join('\n') + '\n',

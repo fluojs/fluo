@@ -1,0 +1,66 @@
+import { createTestApp } from '@fluojs/testing';
+import { describe, expect, it } from 'vitest';
+
+import { createAppModule } from './app';
+
+const VITE_MANIFEST = {
+  'src/entry-client.tsx': {
+    css: ['styles.css'],
+    file: 'entry-client.js',
+    imports: ['src/entry-server.ts'],
+    isEntry: true,
+    src: 'src/entry-client.tsx',
+  },
+  'src/entry-server.ts': {
+    file: 'entry-server.js',
+    isEntry: true,
+    src: 'src/entry-server.ts',
+  },
+} as const;
+
+function readHtml(body: unknown): string {
+  if (body instanceof Uint8Array) {
+    return new TextDecoder().decode(body);
+  }
+  return typeof body === 'string' ? body : JSON.stringify(body);
+}
+
+describe('React Vite SSR starter', () => {
+  it('streams an HTTP-owned page with manifest-derived hydration assets', async () => {
+    const AppModule = createAppModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      manifest: VITE_MANIFEST,
+    });
+    const app = await createTestApp({ rootModule: AppModule });
+
+    try {
+      const response = await app.request('GET', '/products/sku-42').query('preview', 'true').send();
+      const html = readHtml(response.body);
+
+      expect(response.status).toBe(200);
+      expect(response.headers['Content-Type']).toBe('text/html; charset=utf-8');
+      expect(html).toContain('Catalog item sku-42');
+      expect(html).toContain('Preview mode');
+      expect(html).toContain('src="/assets/entry-client.js"');
+      expect(html).toContain('href="/assets/styles.css"');
+      expect(html).toContain('href="/products/sku-84?preview=false"');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps route validation on the server DTO boundary', async () => {
+    const AppModule = createAppModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      manifest: VITE_MANIFEST,
+    });
+    const app = await createTestApp({ rootModule: AppModule });
+
+    try {
+      const response = await app.request('GET', '/products/x').query('preview', 'maybe').send();
+      expect(response.status).toBe(400);
+    } finally {
+      await app.close();
+    }
+  });
+});

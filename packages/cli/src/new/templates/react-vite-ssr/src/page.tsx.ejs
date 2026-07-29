@@ -1,0 +1,73 @@
+import {
+  Link,
+  ReactClientRouterProvider,
+  createReactRouteSnapshot,
+  useRouter,
+} from '@fluojs/react/client';
+import { type ReactElement, useId, useState } from 'react';
+
+export type ProductDocumentProps = {
+  preview: boolean;
+  routeParams: Readonly<Record<string, string>>;
+  routeUrl: string;
+  sku: string;
+  stylesheets: readonly string[];
+};
+
+export function HydratedCounter(): ReactElement {
+  const [count, setCount] = useState(0);
+  return <button onClick={() => setCount((value) => value + 1)} type='button'>Count: {count}</button>;
+}
+
+function ProductNavigation(): ReactElement {
+  const router = useRouter();
+
+  return (
+    <nav aria-label='Product navigation'>
+      <Link href='/products/sku-84?preview=false'>Open sku-84</Link>
+      <button onClick={() => router.push('/products/sku-126?preview=true')} type='button'>
+        Push sku-126
+      </button>
+    </nav>
+  );
+}
+
+function ProductDocument({
+  preview,
+  routeParams,
+  routeUrl,
+  sku,
+  stylesheets,
+}: ProductDocumentProps): ReactElement {
+  const identifier = useId();
+  const initialSnapshot = createReactRouteSnapshot({ params: routeParams, url: routeUrl });
+
+  return (
+    <ReactClientRouterProvider initialSnapshot={initialSnapshot}>
+      <html data-preview={String(preview)} data-sku={sku} lang='en'>
+        <head>
+          <meta charSet='utf-8' />
+          <meta content='width=device-width, initial-scale=1' name='viewport' />
+          <link href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>' rel='icon' />
+          <title>{`Catalog item ${sku}`}</title>
+          {stylesheets.map((href) => (
+            <link data-vite-style href={href} key={href} rel='stylesheet' />
+          ))}
+        </head>
+        <body>
+          <main>
+            <h1>{`Catalog item ${sku}`}</h1>
+            <p>{preview ? 'Preview mode' : 'Published mode'}</p>
+            <p data-react-identifier id={identifier}>Shared hydration identifier</p>
+            <HydratedCounter />
+            <ProductNavigation />
+          </main>
+        </body>
+      </html>
+    </ReactClientRouterProvider>
+  );
+}
+
+export function renderProductDocument(props: ProductDocumentProps): ReactElement {
+  return <ProductDocument {...props} />;
+}
