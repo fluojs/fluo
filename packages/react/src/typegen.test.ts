@@ -40,7 +40,27 @@ describe('@fluojs/react/typegen', () => {
     expect(output).toContain('readonly "GET /products/:productId ProductRouter show": {');
     expect(output).toContain('readonly "productId": string;');
     expect(output).toContain('href: (): string => "/products"');
+    expect(output).toContain('href: <Actual extends ReactPageParamsById["GET /products/:productId ProductRouter show"]>');
     expect(output).toContain('encodeURIComponent(params["productId"])');
+  });
+
+  it('generates route-bound Link props and push or replace authoring methods', () => {
+    // Given
+    const pages = catalog;
+
+    // When
+    const output = generateReactPageTypes(pages);
+
+    // Then
+    expect(output).toContain('export type ReactPageLinkProps = { readonly href: string; };');
+    expect(output).toContain('export interface ReactPageNavigator {');
+    expect(output).toContain('link: (): ReactPageLinkProps => ({ href: "/products" })');
+    expect(output).toContain('push: (navigator: ReactPageNavigator): void => navigator.push("/products")');
+    expect(output).toContain('replace: (navigator: ReactPageNavigator): void => navigator.replace("/products")');
+    expect(output).toContain('link: <Actual extends ReactPageParamsById["GET /products/:productId ProductRouter show"]>');
+    expect(output).toContain('push: <Actual extends ReactPageParamsById["GET /products/:productId ProductRouter show"]>');
+    expect(output).toContain('replace: <Actual extends ReactPageParamsById["GET /products/:productId ProductRouter show"]>');
+    expect(output).toContain('params: Actual & Record<Actual extends ReactPageParamsById["GET /products/:productId ProductRouter show"] ? Exclude<keyof Actual, keyof ReactPageParamsById["GET /products/:productId ProductRouter show"]> : never, never>');
   });
 
   it('keeps output deterministic when catalog registration order changes', () => {

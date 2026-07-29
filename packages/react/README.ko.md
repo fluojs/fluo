@@ -438,7 +438,41 @@ const productHref = reactPageRoutes['GET /products/:productId ProductRouter show
 생성 route id는 stable catalog `id`를 사용합니다. Static builder는 parameter를 받지 않고 dynamic
 builder는 모든 catalog path parameter를 요구하며 각 값을 `encodeURIComponent(...)`로 encode합니다.
 Artifact는 `ReactPagePathById`, `ReactPageParamsById`, `ReactPagePath<RouteId>`,
-`ReactPageParams<RouteId>`, `ReactPageRoute`도 export합니다.
+`ReactPageParams<RouteId>`, `ReactPageRoute`, `ReactPageLinkProps`, `ReactPageNavigator`도 export합니다.
+
+각 generated route는 같은 href builder를 declarative `Link`와 programmatic `push`/`replace` authoring에도
+연결합니다. `link(...)`는 기존 real-anchor `Link`에 전달할 일반 `{ href: string }` object를 반환하고,
+`push(router, ...)`와 `replace(router, ...)`는 같은 absolute href를 resolve한 뒤 기존 `ReactRouter` string
+overload를 호출합니다. 따라서 두 번째 runtime route table 없이 route identity와 정확한 param이 callsite에
+계속 드러납니다.
+
+```tsx
+import { Link, useRouter } from '@fluojs/react/client';
+import { reactPageRoutes } from './generated/react-pages.js';
+
+const productsRoute = reactPageRoutes['GET /products ProductRouter index'];
+const productRoute = reactPageRoutes['GET /products/:productId ProductRouter show'];
+
+function ProductNavigation({ productId }: { readonly productId: string }) {
+  const router = useRouter();
+
+  return (
+    <nav>
+      <Link {...productsRoute.link()}>Products</Link>
+      <Link {...productRoute.link({ productId })}>Current product</Link>
+      <button type="button" onClick={() => productRoute.push(router, { productId })}>Open</button>
+      <button type="button" onClick={() => productRoute.replace(router, { productId })}>Replace</button>
+    </nav>
+  );
+}
+```
+
+Static `link`, `push`, `replace` method는 param을 받지 않고 parameterized method는 모든 path param을
+요구하며 누락되거나 추가된 key를 거부합니다. 기존 generated `href(...)` builder,
+`<Link href={stringOrUrl}>`, `router.push(...)` / `router.replace(...)`의 string 또는 `URL` 호출은 계속
+지원됩니다. Generated method는 absolute href string을 생성하거나 기존 API에 전달할 뿐이므로 real-anchor
+fallback, full-document HTTP navigation, matching, DTO binding, guard, interceptor, not-found behavior는 현재
+owner를 그대로 유지합니다.
 
 이 contract는 의도적으로 path-only입니다. Query string, fragment, relative route, optional parameter,
 client route tree를 생성하지 않습니다. Typegen은 `version`이 있는 모든 catalog entry를 거부합니다.
@@ -1001,7 +1035,8 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - `ReactPageCatalogEntry` — effective HTTP method/path/version/params와 originating router/handler를
   담는 type-only bootstrap-resolved page descriptor입니다.
 - `@fluojs/react/typegen` subpath — package root를 넓히지 않고 deterministic path-only declaration과
-  absolute href builder를 생성하는 `generateReactPageTypes(...)`, `ReactPageTypegenError`,
+  absolute href builder, route-bound `Link` props, typed `push`/`replace` method를 생성하는
+  `generateReactPageTypes(...)`, `ReactPageTypegenError`,
   `REACT_PAGE_TYPEGEN_ERROR_CODES`, `ReactPageTypegenErrorCode`를 제공합니다.
 - `ReactModule` — `forRoot(...)`가 기존 fluo module/controller metadata path를 통해 React router를
   등록하는 런타임 중립 module facade입니다.

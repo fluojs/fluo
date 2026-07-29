@@ -637,6 +637,7 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // ordering, nearest Suspense fallback selection, request-scope renderer context,
   // bootstrap diagnostics for invalid/duplicate policies or missing renderPage,
   // stable path-only @fluojs/react/typegen output with locale-independent ordering,
+  // route-bound real-anchor props, and typed push/replace href resolution,
   // stable SSR phase boundaries,
   // isolated Vite/client/experimental-RSC subpaths, HTTP-first full-document
   // navigation, exact RSC version diagnostics, explicit client-reference and

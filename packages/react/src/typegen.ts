@@ -61,10 +61,10 @@ function renderParamsMap(catalog: readonly ReactPageCatalogEntry[]): string[] {
   return lines;
 }
 
-function renderHref(entry: ReactPageCatalogEntry): string {
+function renderHrefExpression(entry: ReactPageCatalogEntry): string {
   const params = uniqueParams(entry);
   if (params.length === 0) {
-    return `href: (): string => ${stringLiteral(entry.path)}`;
+    return stringLiteral(entry.path);
   }
 
   const paramNames = new Set(params);
@@ -77,7 +77,30 @@ function renderHref(entry: ReactPageCatalogEntry): string {
     return [stringLiteral(`/${segment}`)];
   });
 
-  return `href: (params: ReactPageParamsById[${stringLiteral(entry.id)}]): string => [${parts.join(', ')}].join('')`;
+  return `[${parts.join(', ')}].join('')`;
+}
+
+function renderParameters(entry: ReactPageCatalogEntry, leadingParameter?: string): string {
+  if (uniqueParams(entry).length === 0) {
+    return `(${leadingParameter ?? ''})`;
+  }
+
+  const expected = `ReactPageParamsById[${stringLiteral(entry.id)}]`;
+  const prefix = leadingParameter === undefined ? '' : `${leadingParameter}, `;
+  return `<Actual extends ${expected}>(${prefix}params: Actual & Record<Actual extends ${expected} ? Exclude<keyof Actual, keyof ${expected}> : never, never>)`;
+}
+
+function renderHref(entry: ReactPageCatalogEntry): string {
+  return `href: ${renderParameters(entry)}: string => ${renderHrefExpression(entry)}`;
+}
+
+function renderLink(entry: ReactPageCatalogEntry): string {
+  return `link: ${renderParameters(entry)}: ReactPageLinkProps => ({ href: ${renderHrefExpression(entry)} })`;
+}
+
+function renderNavigation(entry: ReactPageCatalogEntry, operation: 'push' | 'replace'): string {
+  const parameters = renderParameters(entry, 'navigator: ReactPageNavigator');
+  return `${operation}: ${parameters}: void => navigator.${operation}(${renderHrefExpression(entry)})`;
 }
 
 function renderRoutes(catalog: readonly ReactPageCatalogEntry[]): string[] {
@@ -87,6 +110,9 @@ function renderRoutes(catalog: readonly ReactPageCatalogEntry[]): string[] {
     lines.push(`    id: ${stringLiteral(entry.id)},`);
     lines.push(`    path: ${stringLiteral(entry.path)},`);
     lines.push(`    ${renderHref(entry)},`);
+    lines.push(`    ${renderLink(entry)},`);
+    lines.push(`    ${renderNavigation(entry, 'push')},`);
+    lines.push(`    ${renderNavigation(entry, 'replace')},`);
     lines.push('  },');
   }
   lines.push('} as const;');
@@ -124,6 +150,13 @@ export function generateReactPageTypes(catalog: readonly ReactPageCatalogEntry[]
     ...renderParamsMap(sortedCatalog),
     'export type ReactPagePath<RouteId extends ReactPageRouteId> = ReactPagePathById[RouteId];',
     'export type ReactPageParams<RouteId extends ReactPageRouteId> = ReactPageParamsById[RouteId];',
+    '/** Real-anchor props produced by one generated React page route. */',
+    'export type ReactPageLinkProps = { readonly href: string; };',
+    '/** Minimal HTTP-first router surface consumed by generated push and replace methods. */',
+    'export interface ReactPageNavigator {',
+    '  readonly push: (href: string) => void;',
+    '  readonly replace: (href: string) => void;',
+    '}',
     ...renderRoutes(sortedCatalog),
     'export type ReactPageRoute = (typeof reactPageRoutes)[ReactPageRouteId];',
     '',

@@ -441,7 +441,41 @@ const productHref = reactPageRoutes['GET /products/:productId ProductRouter show
 Generated route ids use the stable catalog `id`. Static builders accept no parameters; dynamic
 builders require every catalog path parameter and encode each value with `encodeURIComponent(...)`.
 The artifact also exports `ReactPagePathById`, `ReactPageParamsById`, `ReactPagePath<RouteId>`,
-`ReactPageParams<RouteId>`, and `ReactPageRoute`.
+`ReactPageParams<RouteId>`, `ReactPageRoute`, `ReactPageLinkProps`, and `ReactPageNavigator`.
+
+Each generated route also binds the same href builder to declarative `Link` and programmatic
+`push`/`replace` authoring. `link(...)` returns an ordinary `{ href: string }` object for the existing
+real-anchor `Link`; `push(router, ...)` and `replace(router, ...)` resolve the same absolute href before
+calling the existing `ReactRouter` string overload. Route identity and exact params therefore remain
+visible at the callsite without a second runtime route table:
+
+```tsx
+import { Link, useRouter } from '@fluojs/react/client';
+import { reactPageRoutes } from './generated/react-pages.js';
+
+const productsRoute = reactPageRoutes['GET /products ProductRouter index'];
+const productRoute = reactPageRoutes['GET /products/:productId ProductRouter show'];
+
+function ProductNavigation({ productId }: { readonly productId: string }) {
+  const router = useRouter();
+
+  return (
+    <nav>
+      <Link {...productsRoute.link()}>Products</Link>
+      <Link {...productRoute.link({ productId })}>Current product</Link>
+      <button type="button" onClick={() => productRoute.push(router, { productId })}>Open</button>
+      <button type="button" onClick={() => productRoute.replace(router, { productId })}>Replace</button>
+    </nav>
+  );
+}
+```
+
+Static `link`, `push`, and `replace` methods accept no params; parameterized methods require every
+path param and reject missing or extra keys. The existing generated `href(...)` builders,
+`<Link href={stringOrUrl}>`, and `router.push(...)` / `router.replace(...)` string or `URL` calls remain
+supported. Generated methods only produce or pass absolute href strings into those existing APIs, so
+real-anchor fallback, full-document HTTP navigation, matching, DTO binding, guards, interceptors, and
+not-found behavior keep their current owners.
 
 This contract is deliberately path-only. It does not generate query strings, fragments, relative
 routes, optional parameters, or a client route tree. Typegen rejects every catalog entry with a
@@ -1015,7 +1049,8 @@ This package currently does **not** provide:
   method/path/version/params plus the originating router and handler.
 - `@fluojs/react/typegen` subpath — `generateReactPageTypes(...)`, `ReactPageTypegenError`,
   `REACT_PAGE_TYPEGEN_ERROR_CODES`, and `ReactPageTypegenErrorCode` for deterministic path-only
-  declarations and absolute href builders without widening the package root.
+  declarations, absolute href builders, route-bound `Link` props, and typed `push`/`replace` methods
+  without widening the package root or adding a runtime route table.
 - `ReactModule` — runtime-neutral module facade whose `forRoot(...)` registers React routers through
   the existing fluo module/controller metadata path.
 - `REACT_PAGE_RENDERER` — dependency-injection token for the application page renderer registered by
