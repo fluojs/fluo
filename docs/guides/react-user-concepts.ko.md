@@ -13,12 +13,13 @@ composition을 소유하며, `@fluojs/react`를 사용해 React document를 stre
 
 1. `@fluojs/http`가 명시적 route를 match하고 DTO binding, validation, middleware, guard,
    interceptor, versioning, request-scope 생성을 실행합니다.
-2. `@Path(...)` handler가 `ReactElement` 하나를 반환하거나, route별 entry option이 필요하면
-   `createReactServerEntry(...)`를 명시적으로 반환합니다.
-3. 애플리케이션 `ReactPageRenderer`가 page를 document shell에 compose하고 `ReactServerEntry`를
-   반환합니다.
-4. 기존 HTTP response writer가 React 결과를 stream하며 status, header, error, abort, not-found
-   response의 소유권을 유지합니다.
+2. `@Path(...)` handler는 일반 HTTP 값을 반환할 수 있으며, 이 값은 React rendering을 우회하고
+   기존 HTTP response path를 유지합니다. React로 렌더링할 page라면 `ReactElement` 하나를 반환하거나,
+   route별 entry option이 필요할 때 `createReactServerEntry(...)`를 명시적으로 반환합니다.
+3. 반환된 값이 `ReactElement`이면 애플리케이션 `ReactPageRenderer`가 page를 document shell에
+   compose하고 `ReactServerEntry`를 반환합니다.
+4. 기존 HTTP response writer가 일반 값을 쓰거나 React entry를 stream하며 status, header, error,
+   abort, not-found response의 소유권을 유지합니다.
 5. 애플리케이션이 로드한 build asset과 browser code가 document를 hydrate하고 progressive
    navigation이나 local interaction을 추가할 수 있습니다.
 
@@ -30,7 +31,7 @@ validation, guard, interceptor, middleware, versioning, request scope, not-found
 
 | 익숙한 개념 | 현재 fluo 동등 개념 | 경계 |
 | --- | --- | --- |
-| **Page** | `@Router(...)`와 `@Path(...)`로 표시한 `GET` handler입니다. Configured application renderer가 처리할 `ReactElement` 하나를 반환하거나 `createReactServerEntry(...)`를 명시적으로 반환합니다. | **Shipped.** Page는 file 또는 route-module convention이 아니라 여전히 HTTP handler입니다. |
+| **Page** | `@Router(...)`와 `@Path(...)`로 표시한 `GET` handler입니다. React rendering을 우회하는 일반 HTTP 값, configured application renderer가 처리할 `ReactElement` 하나, 또는 명시적인 `createReactServerEntry(...)`를 반환할 수 있습니다. | **Shipped.** Page는 file 또는 route-module convention이 아니라 여전히 HTTP handler입니다. |
 | **Route** | 일반 fluo module/controller metadata에서 compile된 effective route입니다. `@Path(...)`는 `@fluojs/http`와 같은 `GET` metadata를 기록하고, `@fluojs/react/typegen`은 compiled page catalog를 path-only href builder로 project할 수 있습니다. | **Shipped, intentionally different.** HTTP가 matching, grammar, conflict, param, versioning, dispatch를 소유합니다. Typegen은 route tree를 만들지 않고 versioned route를 표현하지 않습니다. |
 | **Layout** | 애플리케이션 `ReactPageRenderer`가 document shell과 shared provider를 소유합니다. `@PageLayout(...)`은 같은 renderer가 compose하는 optional class/method component-reference metadata를 추가합니다. | **Shipped.** File ancestry나 framework-owned layout router는 없습니다. |
 | **Loading UI** | Application tree의 일반 React `Suspense`를 사용하고, 필요하면 `@SuspenseFallback(...)`으로 page fallback을 선택합니다. | **Shipped with a narrow boundary.** Fallback은 SSR 중 suspend하는 descendant를 다루며 handler `await`, form, effect, navigation은 관찰하지 않습니다. |
@@ -49,7 +50,7 @@ validation, guard, interceptor, middleware, versioning, request scope, not-found
 | Import | 책임 | 상태 |
 | --- | --- | --- |
 | `@fluojs/react` | `ReactModule.forRoot(...)`, `@Router(...)`, `@Path(...)`, page rendering policy, Web Streams SSR, diagnostic, page catalog, 명시적 hydration option. | 안정적인 runtime-neutral root입니다. Browser, Vite, typegen, RSC code를 import하지 않습니다. |
-| `@fluojs/react/client` | 실제 anchor, full-document navigation control, request-scoped route snapshot, URL/navigation hook. | 안정적인 browser-only subpath입니다. Matcher, route table, document cache, prefetch layer는 없습니다. |
+| `@fluojs/react/client` | SSR-safe request-scoped route snapshot과 provider composition, 실제 anchor, hydration 이후 full-document navigation control, URL/navigation hook. | 안정적인 SSR-and-browser subpath입니다. `createReactRouteSnapshot(...)`과 `ReactClientRouterProvider`는 SSR 및 hydration을 지원하고 browser navigation effect는 hydration 이후에만 연결됩니다. Matcher, route table, document cache, prefetch layer는 없습니다. |
 | `@fluojs/react/vite` | 이미 로드한 Vite manifest를 deterministic React CSS, JavaScript, asset-map, hydration option으로 파싱합니다. | 안정적인 build-integration subpath입니다. File을 읽거나 Vite를 실행하지 않습니다. |
 | `@fluojs/react/typegen` | Compiled React page catalog에서 deterministic path-only declaration과 absolute href builder를 생성합니다. | 안정적인 tooling subpath입니다. Versioned route를 거부하고 query, fragment, relative-route, route-tree contract를 생성하지 않습니다. |
 | `@fluojs/react/experimental/rsc` | Compatibility diagnostic, application-supplied RSC manifest seam, Flight response, 명시적 HTTP endpoint에 mount하는 signed Server Function transport. | **Experimental.** 모든 stable entrypoint와 격리되며 stable RSC 또는 action promise가 아닙니다. |

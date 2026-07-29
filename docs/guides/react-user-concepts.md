@@ -13,12 +13,13 @@ The stable request path is:
 
 1. `@fluojs/http` matches an explicit route and runs DTO binding, validation, middleware, guards,
    interceptors, versioning, and request-scope creation.
-2. An `@Path(...)` handler returns one `ReactElement`, or returns `createReactServerEntry(...)`
-   explicitly when that route needs entry-specific options.
-3. The application `ReactPageRenderer` composes the page into its document shell and returns a
-   `ReactServerEntry`.
-4. The existing HTTP response writer streams the React result and keeps ownership of status,
-   headers, errors, aborts, and not-found responses.
+2. An `@Path(...)` handler may return an ordinary HTTP value, which bypasses React rendering and
+   keeps the normal HTTP response path. For a React-rendered page, it returns one `ReactElement` or
+   returns `createReactServerEntry(...)` explicitly when that route needs entry-specific options.
+3. For a returned `ReactElement`, the application `ReactPageRenderer` composes the page into its
+   document shell and returns a `ReactServerEntry`.
+4. The existing HTTP response writer writes the ordinary value or streams the React entry and keeps
+   ownership of status, headers, errors, aborts, and not-found responses.
 5. Application-loaded build assets and browser code hydrate the document and may add progressive
    navigation or local interaction.
 
@@ -30,7 +31,7 @@ remain in `@fluojs/http`.
 
 | Familiar concept | Current fluo equivalent | Boundary |
 | --- | --- | --- |
-| **Page** | A `GET` handler marked with `@Router(...)` and `@Path(...)`. Return one `ReactElement` for the configured application renderer, or return `createReactServerEntry(...)` explicitly. | **Shipped.** A page is still an HTTP handler, not a file or route-module convention. |
+| **Page** | A `GET` handler marked with `@Router(...)` and `@Path(...)`. It may return an ordinary HTTP value that bypasses React rendering, one `ReactElement` for the configured application renderer, or `createReactServerEntry(...)` explicitly. | **Shipped.** A page is still an HTTP handler, not a file or route-module convention. |
 | **Route** | The effective route compiled from ordinary fluo module/controller metadata. `@Path(...)` writes the same `GET` metadata as `@fluojs/http`; `@fluojs/react/typegen` can project the compiled page catalog into path-only href builders. | **Shipped, intentionally different.** HTTP owns matching, grammar, conflicts, params, versioning, and dispatch. Typegen does not create a route tree or represent versioned routes. |
 | **Layout** | The application `ReactPageRenderer` owns the document shell and shared providers. `@PageLayout(...)` adds optional class/method component-reference metadata that the same renderer composes. | **Shipped.** There is no file ancestry or framework-owned layout router. |
 | **Loading UI** | Ordinary React `Suspense` in the application tree, optionally selected for a page with `@SuspenseFallback(...)`. | **Shipped with a narrow boundary.** The fallback covers descendants that suspend during SSR; it does not observe handler `await`, forms, effects, or navigation. |
@@ -49,7 +50,7 @@ remain in `@fluojs/http`.
 | Import | Responsibility | Status |
 | --- | --- | --- |
 | `@fluojs/react` | `ReactModule.forRoot(...)`, `@Router(...)`, `@Path(...)`, page rendering policies, Web Streams SSR, diagnostics, page catalog, and explicit hydration options. | Stable runtime-neutral root. It does not import browser, Vite, typegen, or RSC code. |
-| `@fluojs/react/client` | Real anchors, full-document navigation controls, request-scoped route snapshots, and URL/navigation hooks. | Stable browser-only subpath. It has no matcher, route table, document cache, or prefetch layer. |
+| `@fluojs/react/client` | SSR-safe request-scoped route snapshots and provider composition, plus real anchors, hydrated full-document navigation controls, and URL/navigation hooks. | Stable SSR-and-browser subpath. `createReactRouteSnapshot(...)` and `ReactClientRouterProvider` support SSR and hydration; browser navigation effects bind only after hydration. It has no matcher, route table, document cache, or prefetch layer. |
 | `@fluojs/react/vite` | Parse an already-loaded Vite manifest into deterministic React CSS, JavaScript, asset-map, and hydration options. | Stable build-integration subpath. It does not read files or run Vite. |
 | `@fluojs/react/typegen` | Generate deterministic path-only declarations and absolute href builders from a compiled React page catalog. | Stable tooling subpath. It rejects versioned routes and does not generate query, fragment, relative-route, or route-tree contracts. |
 | `@fluojs/react/experimental/rsc` | Compatibility diagnostics, application-supplied RSC manifest seams, Flight responses, and signed Server Function transport mounted on explicit HTTP endpoints. | **Experimental.** It is isolated from every stable entrypoint and is not a stable RSC or action promise. |
