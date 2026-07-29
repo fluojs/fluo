@@ -349,10 +349,23 @@ bootstrap한 다음 `app.dispatcher.describeRoutes()`를 읽어 `createReactPage
 directory를 기준으로 resolve됩니다. 파일이 없으면 `CREATE`, content가 stale하면 `UPDATE`, byte 단위로
 같으면 `UNCHANGED`를 보고합니다.
 
-생성된 `reactPageRoutes` object는 stable catalog `id`를 key로 사용합니다. Dynamic `href(...)` builder는
-모든 path param을 요구하고 각 값을 URI-encode하며 static builder는 param을 받지 않습니다. Versioned
-route는 명시적으로 실패합니다. Catalog만으로는 URI versioning과 header, media-type, custom version
-strategy를 구분할 수 없기 때문입니다. 자세한 내용은
+생성된 `reactPageRoutes` object는 stable catalog `id`를 key로 사용합니다. Dynamic `href(...)`,
+`link(...)`, `push(...)`, `replace(...)` method는 모든 path param을 요구하고 각 값을 URI-encode하며
+static method는 param을 받지 않습니다. `route.link(params)`를 기존 real-anchor `Link`에 spread하거나,
+기존 `ReactRouter`를 `route.push(router, params)` / `route.replace(router, params)`에 전달하세요.
+
+```tsx
+const productRoute = reactPageRoutes['GET /products/:productId ProductRouter show'];
+
+<Link {...productRoute.link({ productId })}>Product</Link>;
+productRoute.push(router, { productId });
+productRoute.replace(router, { productId });
+```
+
+이 generated method는 기존 HTTP-first client API가 실행되기 전에 일반 absolute href string으로 resolve됩니다.
+Runtime route table, matcher, relative-route model, SPA navigation을 추가하지 않습니다. 기존 `href(...)`,
+`Link href`, router string/`URL` 호출은 계속 지원됩니다. Versioned route는 명시적으로 실패합니다.
+Catalog만으로는 URI versioning과 header, media-type, custom version strategy를 구분할 수 없기 때문입니다. 자세한 내용은
 [@fluojs/react path-only typegen contract](../react/README.ko.md#path-only-page-type-generation)를 참고하세요.
 
 ## 공개 API

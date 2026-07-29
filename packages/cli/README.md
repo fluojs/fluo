@@ -349,8 +349,22 @@ bootstraps the application, reads `app.dispatcher.describeRoutes()`, calls
 paths are resolved from the current working directory. A missing file is reported as `CREATE`, stale
 content as `UPDATE`, and byte-identical content as `UNCHANGED`.
 
-The generated `reactPageRoutes` object keys routes by stable catalog `id`. Its dynamic `href(...)`
-builders require all path params and URI-encode each value; static builders accept no params.
+The generated `reactPageRoutes` object keys routes by stable catalog `id`. Its dynamic `href(...)`,
+`link(...)`, `push(...)`, and `replace(...)` methods require all path params and URI-encode each value;
+static methods accept no params. Spread `route.link(params)` into the existing real-anchor `Link`, or
+pass the existing `ReactRouter` to `route.push(router, params)` / `route.replace(router, params)`:
+
+```tsx
+const productRoute = reactPageRoutes['GET /products/:productId ProductRouter show'];
+
+<Link {...productRoute.link({ productId })}>Product</Link>;
+productRoute.push(router, { productId });
+productRoute.replace(router, { productId });
+```
+
+These generated methods resolve to ordinary absolute href strings before the existing HTTP-first
+client APIs run. They do not add a runtime route table, matcher, relative-route model, or SPA
+navigation. Existing `href(...)`, `Link href`, and router string/`URL` calls remain supported.
 Versioned routes fail explicitly because the catalog cannot distinguish URI versioning from header,
 media-type, or custom version strategies. See the
 [@fluojs/react path-only typegen contract](../react/README.md#path-only-page-type-generation).
