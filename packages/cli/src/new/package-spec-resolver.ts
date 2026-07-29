@@ -20,6 +20,7 @@ const PACKAGE_DIRECTORY_BY_NAME = {
   '@fluojs/platform-express': 'platform-express',
   '@fluojs/platform-fastify': 'platform-fastify',
   '@fluojs/platform-nodejs': 'platform-nodejs',
+  '@fluojs/react': 'react',
   '@fluojs/runtime': 'runtime',
   '@fluojs/testing': 'testing',
   '@fluojs/validation': 'validation',

@@ -1,25 +1,25 @@
-import type {
-  BootstrapOptions,
-  BootstrapSchema,
-  BootstrapShape,
-  BootstrapTopology,
-} from './types.js';
 import {
   getDefaultBootstrapSchema,
   getDefaultBootstrapSchemaForShape,
   getStarterProfileForShape,
   getStarterProfileFromSchema,
   isSupportedMicroserviceStarterTransport,
+  type StarterProfile,
   SUPPORTED_BOOTSTRAP_PLATFORMS,
   SUPPORTED_BOOTSTRAP_RUNTIMES,
   SUPPORTED_BOOTSTRAP_SHAPES,
   SUPPORTED_BOOTSTRAP_TOOLING_PRESETS,
   SUPPORTED_BOOTSTRAP_TOPOLOGY_MODES,
   SUPPORTED_BOOTSTRAP_TRANSPORTS,
-  type StarterProfile,
 } from './starter-profiles.js';
+import type {
+  BootstrapOptions,
+  BootstrapSchema,
+  BootstrapShape,
+  BootstrapTopology,
+} from './types.js';
 
-type BootstrapResolutionInput = Partial<BootstrapSchema> & Pick<Partial<BootstrapOptions>, 'packageManager'>;
+type BootstrapResolutionInput = Partial<BootstrapSchema> & Pick<Partial<BootstrapOptions>, 'packageManager' | 'starter'>;
 
 /**
  * Shape-first compatibility baseline for `fluo new` until additional starter variants ship.
@@ -90,7 +90,8 @@ export function resolveBootstrapSchema(partial: Partial<BootstrapSchema> = {}): 
  */
 export function resolveBootstrapPlan(options: BootstrapResolutionInput | BootstrapOptions): ResolvedBootstrapPlan {
   const schema = resolveBootstrapSchema(options);
-  const starterProfile = getStarterProfileFromSchema(schema);
+  const starter = options.starter ?? 'standard';
+  const starterProfile = getStarterProfileFromSchema(schema, starter);
 
   if (starterProfile) {
     return {
@@ -102,6 +103,13 @@ export function resolveBootstrapPlan(options: BootstrapResolutionInput | Bootstr
   }
 
   const defaultProfile = getStarterProfileForShape(schema.shape);
+
+  if (starter === 'react-vite-ssr') {
+    throw new Error(
+      `Unsupported react-vite-ssr starter schema "${schema.shape}/${schema.runtime}/${schema.transport}/${schema.platform}/${schema.tooling}/${schema.topology.mode}". `
+      + 'The React SSR + Vite starter requires application/node/http/fastify/standard/single-package.',
+    );
+  }
 
   if (schema.shape === 'microservice' && schema.transport === 'http') {
     throw new Error(

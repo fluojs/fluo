@@ -970,6 +970,8 @@ void bootstrap();
         confirm: async (message) => message === 'Initialize a git repository',
         select: async <T extends string>(message: string, _choices: readonly { label: string; value: T }[], _defaultValue?: T) => {
           switch (message) {
+            case 'Starter':
+              return 'standard' as T;
             case 'Starter shape':
               return 'microservice' as T;
             case 'Microservice transport':
@@ -1564,6 +1566,34 @@ void bootstrap();
     expect(output).not.toContain('Skipping dependency installation.');
     expect(output).not.toContain('Done.');
     expect(existsSync(join(workspaceDirectory, 'starter-app'))).toBe(false);
+  });
+
+  it('prints the selected React SSR + Vite starter and recipe in the scaffold plan', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli([
+      'new',
+      'react-app',
+      '--starter',
+      'react-vite-ssr',
+      '--no-install',
+      '--no-git',
+      '--print-plan',
+    ], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+    const output = stdoutBuffer.join('');
+
+    expect(exitCode).toBe(0);
+    expect(output).toContain('Starter: react-vite-ssr');
+    expect(output).toContain('Starter recipe: application-node-fastify-react-vite-ssr');
+    expect(output).toContain('@fluojs/react');
+    expect(output).toContain('react-dom');
+    expect(existsSync(join(workspaceDirectory, 'react-app'))).toBe(false);
   });
 
   it('keeps --print-plan side-effect free for a non-empty target even with --force', async () => {
@@ -3877,6 +3907,7 @@ exit 7
     expect(stdoutBuffer.join('')).toContain('Usage: fluo new|create [project-name] [options]');
     expect(stdoutBuffer.join('')).toMatch(/\| Option\s+\| Aliases \| Description\s+\|/);
     expect(stdoutBuffer.join('')).toContain('--shape <application|microservice|mixed>');
+    expect(stdoutBuffer.join('')).toContain('--starter <standard|react-vite-ssr>');
     expect(stdoutBuffer.join('')).toContain('--transport <http|tcp|redis-streams|nats|kafka|rabbitmq|mqtt|grpc>');
     expect(stdoutBuffer.join('')).toContain('--runtime <node|bun|deno|cloudflare-workers>');
     expect(stdoutBuffer.join('')).toContain('--platform <fastify|express|nodejs|bun|deno|cloudflare-workers|none>');

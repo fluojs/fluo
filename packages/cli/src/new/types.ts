@@ -4,6 +4,8 @@ export type PackageManager = 'bun' | 'npm' | 'pnpm' | 'yarn';
 export type DependencySource = 'local' | 'published';
 /** Supported starter shapes for `fluo new`. */
 export type BootstrapShape = 'application' | 'microservice' | 'mixed';
+/** Named starter variants exposed by `fluo new`. */
+export type BootstrapStarter = 'react-vite-ssr' | 'standard';
 /** Supported runtime families for the current starter matrix. */
 export type BootstrapRuntime = 'bun' | 'cloudflare-workers' | 'deno' | 'node';
 /** Supported platform adapters for the current starter matrix. */
@@ -39,6 +41,7 @@ export interface BootstrapOptions extends BootstrapSchema {
   projectName: string;
   repoRoot?: string;
   skipInstall?: boolean;
+  starter?: BootstrapStarter;
   targetDirectory: string;
 }
 
@@ -54,6 +57,7 @@ export interface BootstrapAnswers extends BootstrapSchema {
   installDependencies: boolean;
   packageManager: PackageManager;
   projectName: string;
+  starter: BootstrapStarter;
   targetDirectory: string;
 }
 

@@ -89,9 +89,9 @@ Non-interactive 출력에서는 이 블록 전에 설치 시 `Installing depende
 
 생성된 starter는 프로젝트를 만든 generator CLI package version을 기준으로 `@fluojs/cli` `devDependency`를 설정합니다. 따라서 `pnpm dev`, `pnpm build`, `pnpm start` 같은 lifecycle script는 오래된 hard-coded range가 아니라 starter를 스캐폴딩한 CLI 동작과 같은 기준을 사용합니다.
 
-생성된 non-Deno starter의 `vite.config.ts`는 `@fluojs/vite`에서 `fluoDecoratorsPlugin()`을 import합니다. 따라서 decorator transform 업데이트는 각 신규 프로젝트에 inline 복사되는 대신 유지보수되는 Vite 패키지를 통해 전달됩니다.
+생성된 non-Deno standard starter의 `vite.config.ts`는 `@fluojs/vite`에서 `fluoDecoratorsPlugin()`을 import하고, React SSR + Vite starter는 같은 plugin을 `vite.server.config.ts`에 적용합니다. 따라서 decorator transform 업데이트는 각 신규 프로젝트에 inline 복사되는 대신 유지보수되는 Vite 패키지를 통해 전달됩니다.
 
-생성된 non-Deno HTTP starter는 TDD-first Vitest 레이아웃을 사용합니다. 빠른 greeting unit test와 `greeting.slice.test.ts`는 `src/greeting/` 아래에 colocate하고, 앱 dispatch test는 `src/app.test.ts`에 유지하며, 기본 e2e 스타일 request-pipeline test는 `createTestApp({ rootModule })`와 `app.request(...).send()`를 사용해 `test/app.e2e.test.ts`에 둡니다. 생성된 `vitest.config.ts`는 `src/**/*.test.ts`와 `test/**/*.test.ts`를 모두 포함하고, package script는 `test`, `test:watch`, `test:cov`, `test:e2e`를 노출합니다. 기존 `src/app.e2e.test.ts` 테스트는 request helper를 바꾸지 않고 `test/app.e2e.test.ts`로 이동할 수 있습니다.
+생성된 standard non-Deno HTTP starter는 TDD-first Vitest 레이아웃을 사용합니다. 빠른 greeting unit test와 `greeting.slice.test.ts`는 `src/greeting/` 아래에 colocate하고, 앱 dispatch test는 `src/app.test.ts`에 유지하며, 기본 e2e 스타일 request-pipeline test는 `createTestApp({ rootModule })`와 `app.request(...).send()`를 사용해 `test/app.e2e.test.ts`에 둡니다. React starter는 대신 streamed SSR, DOM hydration, production Playwright hydration에 집중한 test를 포함합니다. `test:browser` script는 build된 Fastify server를 시작하며 asset 누락, hydration warning, server-owned route를 우회하는 navigation이 있으면 실패합니다.
 
 생성된 Node.js 애플리케이션 프로젝트에서 `fluo dev`는 기본적으로 fluo가 소유한 restart boundary를 거칩니다. 이 runner는 source와 주요 config 입력을 watch하고, atomic-save event burst를 debounce하며, restart 전에 파일 content hash를 비교하고, spawn하는 각 Node 앱 child process마다 `.env`를 로드하며, `node_modules`, `dist`, `.git`, `.fluo`, coverage, cache 폴더, editor swap file 같은 noisy output/cache 경로를 무시합니다. 파일 내용이 바뀌지 않은 Ctrl+S 저장은 앱을 재시작하지 않아야 합니다. 계획된 restart와 terminal shutdown은 현재 앱 child에 먼저 `SIGTERM`을 보내고, 제한된 grace period 뒤에도 종료되지 않으면 force-kill하므로 비협조적인 child가 restart supervisor를 무기한 멈추게 할 수 없습니다. 계획된 restart가 아닌 terminal 앱 child exit 또는 crash가 발생하면 runner는 watcher를 닫고, pending restart timer와 path를 비우며, `SIGINT`/`SIGTERM` handler를 등록 해제하고, child의 terminal code로 종료합니다. 이 동작은 full-process restart-on-watch이며 module-level HMR이 아닙니다. Config watch reload는 별도의 in-process config 관심사이고, 향후 HMR 작업은 어떤 모듈을 안전하게 hot-swap할 수 있는지 따로 문서화해야 합니다. 디버깅에 runtime-native Node watcher가 필요하면 `fluo dev --raw-watch` 또는 `FLUO_DEV_RAW_WATCH=1`을 사용하세요. 생성된 Bun/Deno/Workers 프로젝트는 기본적으로 watch/reload를 `bun --watch`, `deno run --watch`, `wrangler dev`에 위임합니다. 해당 프로젝트에서 fluo 소유 restart runner로 되돌리려면 `fluo dev --runner fluo` 또는 `FLUO_DEV_RUNNER=fluo`를 사용하고, 그 runner에 추가 ignore 경로가 필요하면 `FLUO_DEV_WATCH_IGNORE=path,pattern`으로 지정하세요.
 
@@ -110,6 +110,14 @@ fluo new my-bun-app --shape application --transport http --runtime bun --platfor
 fluo new my-deno-app --shape application --transport http --runtime deno --platform deno
 fluo new my-worker-app --shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers
 ```
+
+공식 HTTP-first React SSR + Vite application은 named starter flag로 선택합니다.
+
+```bash
+fluo new my-react-app --starter react-vite-ssr
+```
+
+이 starter는 schema를 Node.js + Fastify HTTP로 고정하고 명시적인 server/client entry, 분리된 Vite client/server config, `hydrateRoot(...)`, `@Router(...)` page, application-owned `ReactPageRenderer`, direct JSX rendering을 생성합니다. `src/main.ts`는 생성된 Vite manifest를 로드한 뒤 `@fluojs/react/vite`에 전달하며, 해당 package가 Vite를 검색하거나 실행하지 않습니다. 생성된 `Link`는 real anchor로 남고 `router.push(...)`는 HTTP dispatcher를 통과하는 full-document navigation을 수행합니다. 이 starter는 RSC, Server Functions, file routing, client route table, SPA document swapping, prefetch, data cache를 의도적으로 제외합니다.
 
 `fluo new`는 microservice starter path도 제공합니다. `--transport`를 생략하면 TCP가 기본 경로로 사용되며, starter 매트릭스에는 transport별 dependency, env 템플릿, entrypoint를 갖춘 Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC 변형도 포함됩니다.
 
@@ -133,7 +141,7 @@ starter 매트릭스에는 mixed single-package starter도 포함됩니다. 하�
 fluo new my-mixed-app --shape mixed --transport tcp --runtime node --platform fastify
 ```
 
-`fluo new`가 interactive TTY에서 실행되면 wizard는 기존 flags/config 모델을 그대로 사용합니다. wizard는 프로젝트 이름, shape-first 분기(`application` -> runtime + HTTP platform, `microservice` -> transport), 유지보수 가능한 tooling preset, package manager, 즉시 dependency를 설치할지 여부, git 저장소를 초기화할지 여부를 묻습니다. non-interactive 플래그 경로와 프로그래밍 방식의 `runNewCommand(...)` 호출도 동일한 resolved defaults를 사용합니다.
+`fluo new`가 interactive TTY에서 실행되면 wizard는 기존 flags/config 모델을 그대로 사용합니다. 먼저 standard backend와 React SSR + Vite named starter를 제시합니다. Standard 분기는 shape-first 경로(`application` -> runtime + HTTP platform, `microservice` -> transport)를 이어서 묻고, React 분기는 고정된 Node.js + Fastify HTTP 계약을 사용합니다. 두 분기 모두 유지보수되는 tooling preset, package manager, dependency install, git initialization 선택을 이어갑니다. non-interactive 플래그 경로와 프로그래밍 방식의 `runNewCommand(...)` 호출도 동일한 resolved defaults를 사용합니다.
 
 기본적으로 `fluo new my-app`은 `./my-app`에 파일을 씁니다. 프로젝트 이름과 대상 경로가 달라야 하거나 자동화에서 명시적인 디렉터리에 써야 하면 `--target-directory <path>`를 사용하세요:
 
@@ -151,13 +159,14 @@ side effect 없이 완전히 resolved starter를 미리 확인하려면 `--print
 
 ```bash
 fluo new my-app --shape application --runtime node --platform fastify --print-plan
+fluo new my-react-app --starter react-vite-ssr --print-plan
 fluo new my-service --shape microservice --transport tcp --print-plan
 fluo new my-mixed-app --shape mixed --print-plan
 ```
 
-plan preview 모드는 실제 scaffold와 같은 프로젝트 이름, shape, runtime, platform, transport, tooling preset, package manager, install 선택, git 선택을 resolve합니다. 선택된 starter recipe와 dependency 세트를 출력한 뒤 파일 생성, dependency 설치, git 저장소 초기화 없이 종료합니다.
+plan preview 모드는 실제 scaffold와 같은 named starter, 프로젝트 이름, shape, runtime, platform, transport, tooling preset, package manager, install 선택, git 선택을 resolve합니다. 선택된 starter와 recipe, dependency 세트를 출력한 뒤 파일 생성, dependency 설치, git 저장소 초기화 없이 종료합니다.
 
-현재 제공되는 스타터 매트릭스(Node.js Fastify/Express/raw Node.js HTTP, Bun, Deno, Cloudflare Workers, TCP/Redis Streams/NATS/Kafka/RabbitMQ/MQTT/gRPC microservice, 그리고 mixed)와 남아 있는 더 넓은 어댑터 생태계를 문서 수준에서 구분한 표는 [fluo new 지원 매트릭스](../../docs/reference/fluo-new-support-matrix.ko.md)를 확인하세요. `@fluojs/redis` 같은 패키지 수준 통합은 더 넓은 생태계에 남아 있지만, 추가 `fluo new --transport` 스타터 플래그는 아닙니다.
+현재 제공되는 스타터 매트릭스(standard Node.js Fastify/Express/raw Node.js HTTP, Node.js + Fastify 기반 React SSR + Vite, Bun, Deno, Cloudflare Workers, TCP/Redis Streams/NATS/Kafka/RabbitMQ/MQTT/gRPC microservice, 그리고 mixed)와 남아 있는 더 넓은 어댑터 생태계를 문서 수준에서 구분한 표는 [fluo new 지원 매트릭스](../../docs/reference/fluo-new-support-matrix.ko.md)를 확인하세요. `@fluojs/redis` 같은 패키지 수준 통합은 더 넓은 생태계에 남아 있지만, 추가 `fluo new --transport` 스타터 플래그는 아닙니다.
 
 ### 2. 기능 추가
 feature slice를 생성합니다. 일부 schematic은 모듈에 자동 등록되고, 일부는 파일만 생성하므로 직접 wiring해야 합니다.

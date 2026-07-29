@@ -1,0 +1,117 @@
+import { readFile } from 'node:fs/promises';
+
+import { Module } from '@fluojs/core';
+import {
+  Controller,
+  FromPath,
+  FromQuery,
+  Get,
+  NotFoundException,
+  Optional,
+  RequestDto,
+  type RequestContext,
+} from '@fluojs/http';
+import {
+  Path,
+  ReactModule,
+  Router,
+  createReactServerEntry,
+  type ReactPageRenderer,
+} from '@fluojs/react';
+import { createReactViteAssetManifest } from '@fluojs/react/vite';
+import { IsIn, IsString, MinLength } from '@fluojs/validation';
+import type { ReactElement } from 'react';
+
+import { REACT_IDENTIFIER_PREFIX } from './hydration';
+import { renderProductDocument } from './page';
+
+const ASSET_FILE_PATTERN = /^[a-zA-Z0-9._-]+\.(?:css|js)$/u;
+
+export type ReactViteAppModuleOptions = {
+  clientDirectory: URL;
+  manifest: unknown;
+};
+
+class ProductPageRequest {
+  @MinLength(3)
+  @IsString()
+  @FromPath('sku')
+  sku = '';
+
+  @IsIn(['true', 'false'])
+  @Optional()
+  @FromQuery('preview')
+  preview?: string;
+}
+
+class AssetRequest {
+  @FromPath('file')
+  file = '';
+}
+
+export function createAppModule(options: ReactViteAppModuleOptions) {
+  const result = createReactViteAssetManifest({
+    base: '/assets/',
+    entries: {
+      client: 'src/entry-client.tsx',
+      server: 'src/entry-server.ts',
+    },
+    identifierPrefix: REACT_IDENTIFIER_PREFIX,
+    manifest: options.manifest,
+  });
+
+  if (!result.ok) {
+    throw new Error(result.diagnostics.map((diagnostic) => diagnostic.message).join('\n'));
+  }
+
+  const assets = result.manifest;
+  const renderPage: ReactPageRenderer = (page) => createReactServerEntry(page, assets.hydrationOptions);
+
+  @Router('/products')
+  class ProductPageRouter {
+    @Path('/:sku')
+    @RequestDto(ProductPageRequest)
+    show(input: ProductPageRequest, context: RequestContext): ReactElement {
+      return renderProductDocument({
+        preview: input.preview === 'true',
+        routeParams: context.request.params,
+        routeUrl: context.request.url,
+        sku: input.sku,
+        stylesheets: assets.css,
+      });
+    }
+  }
+
+  @Controller('/assets')
+  class ViteAssetController {
+    @Get('/:file')
+    @RequestDto(AssetRequest)
+    async serve(input: AssetRequest, context: RequestContext): Promise<Uint8Array> {
+      if (!ASSET_FILE_PATTERN.test(input.file)) {
+        throw new NotFoundException('Vite asset not found.');
+      }
+
+      try {
+        const body = await readFile(new URL(input.file, options.clientDirectory));
+        context.response.setHeader(
+          'Content-Type',
+          input.file.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8',
+        );
+        return body;
+      } catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+          throw new NotFoundException('Vite asset not found.', { cause: error });
+        }
+        throw error;
+      }
+    }
+  }
+
+  @Module({
+    controllers: [ViteAssetController],
+    imports: [ReactModule.forRoot({ controllers: [ProductPageRouter], renderPage })],
+  })
+  class AppModule {}
+
+  return AppModule;
+}

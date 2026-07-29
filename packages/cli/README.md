@@ -89,9 +89,9 @@ Generated Node.js `dev`, `build`, and `start` package scripts delegate to `fluo 
 
 Generated starters set their `@fluojs/cli` `devDependency` from the generator CLI package version that created the project, so lifecycle scripts such as `pnpm dev`, `pnpm build`, and `pnpm start` keep using the same CLI behavior that scaffolded the starter instead of a stale hard-coded range.
 
-Generated non-Deno starter `vite.config.ts` files import `fluoDecoratorsPlugin()` from `@fluojs/vite`, so decorator transform updates ship through the maintained Vite package instead of being copied inline into every new project.
+Generated non-Deno standard starter `vite.config.ts` files import `fluoDecoratorsPlugin()` from `@fluojs/vite`, while the React SSR + Vite starter applies the same plugin in `vite.server.config.ts`. Decorator transform updates therefore ship through the maintained Vite package instead of being copied inline into every new project.
 
-Generated non-Deno HTTP starters use a TDD-first Vitest layout: fast greeting unit tests and `greeting.slice.test.ts` stay colocated under `src/greeting/`, app dispatch tests stay in `src/app.test.ts`, and the default e2e-style request-pipeline tests live in `test/app.e2e.test.ts` with `createTestApp({ rootModule })` plus `app.request(...).send()`. The generated `vitest.config.ts` includes both `src/**/*.test.ts` and `test/**/*.test.ts`, while generated package scripts expose `test`, `test:watch`, `test:cov`, and `test:e2e`; existing `src/app.e2e.test.ts` tests can move to `test/app.e2e.test.ts` without changing the request helper.
+Generated standard non-Deno HTTP starters use a TDD-first Vitest layout: fast greeting unit tests and `greeting.slice.test.ts` stay colocated under `src/greeting/`, app dispatch tests stay in `src/app.test.ts`, and the default e2e-style request-pipeline tests live in `test/app.e2e.test.ts` with `createTestApp({ rootModule })` plus `app.request(...).send()`. The React starter instead includes focused streamed SSR, DOM hydration, and production Playwright hydration tests. Its `test:browser` script starts the built Fastify server and fails on missing assets, hydration warnings, or navigation that bypasses the server-owned route.
 
 For generated Node.js application projects, `fluo dev` runs through a fluo-owned restart boundary by default. The runner watches source and common config inputs, debounces atomic-save bursts, hashes file content before restarting, loads `.env` for each Node app child process it spawns, and ignores noisy output/cache paths such as `node_modules`, `dist`, `.git`, `.fluo`, coverage, cache folders, and editor swap files. Pressing Ctrl+S without changing file content should not restart the app. Planned restarts and terminal shutdown first send `SIGTERM` to the current app child, then force-kill it after a bounded grace period so a non-cooperative child cannot hang the restart supervisor indefinitely. On terminal app child exit or crash outside a planned restart, the runner closes watchers, clears the pending restart timer and paths, unregisters its `SIGINT`/`SIGTERM` handlers, and exits with the child terminal code. This is full-process restart-on-watch, not module-level HMR; config watch reloads are a separate in-process config concern, and future HMR work must document which modules can be safely hot-swapped. Use `fluo dev --raw-watch` or `FLUO_DEV_RAW_WATCH=1` when you need the runtime-native Node watcher for debugging. Generated Bun/Deno/Workers projects delegate watch/reload behavior to `bun --watch`, `deno run --watch`, or `wrangler dev` by default; use `fluo dev --runner fluo` or `FLUO_DEV_RUNNER=fluo` when those projects should return to the fluo-owned restart runner, and use `FLUO_DEV_WATCH_IGNORE=path,pattern` to add extra ignored paths for that runner.
 
@@ -110,6 +110,14 @@ fluo new my-bun-app --shape application --transport http --runtime bun --platfor
 fluo new my-deno-app --shape application --transport http --runtime deno --platform deno
 fluo new my-worker-app --shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers
 ```
+
+Select the official HTTP-first React SSR + Vite application with the named starter flag:
+
+```bash
+fluo new my-react-app --starter react-vite-ssr
+```
+
+This starter fixes the schema to Node.js + Fastify HTTP and generates explicit server/client entries, separate Vite client/server configs, `hydrateRoot(...)`, a `@Router(...)` page, an application-owned `ReactPageRenderer`, and direct JSX rendering. `src/main.ts` loads the generated Vite manifest before passing it to `@fluojs/react/vite`; the package does not discover or execute Vite. Generated `Link` output remains a real anchor and `router.push(...)` performs full-document navigation through the HTTP dispatcher. The starter intentionally excludes RSC, Server Functions, file routing, a client route table, SPA document swapping, prefetch, and a data cache.
 
 `fluo new` also exposes microservice starter paths. TCP is the default when you omit `--transport`, and the starter matrix includes runnable Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC variants with transport-specific dependencies, env templates, and entrypoints:
 
@@ -133,7 +141,7 @@ The starter matrix also includes a mixed single-package starter: one Fastify HTT
 fluo new my-mixed-app --shape mixed --transport tcp --runtime node --platform fastify
 ```
 
-When `fluo new` runs in an interactive TTY, the wizard uses the same flags/config model. It asks for the project name, shape-first branch (`application` -> runtime + HTTP platform, `microservice` -> transport), the maintained tooling preset, package-manager choice, whether to install dependencies immediately, and whether to initialize a git repository. Non-interactive flags and programmatic `runNewCommand(...)` calls use the same resolved defaults.
+When `fluo new` runs in an interactive TTY, the wizard uses the same flags/config model. It first offers the standard backend and React SSR + Vite named starters. The standard branch then asks for the shape-first path (`application` -> runtime + HTTP platform, `microservice` -> transport); the React branch uses its fixed Node.js + Fastify HTTP contract. Both continue with the maintained tooling preset, package-manager choice, dependency installation, and git initialization. Non-interactive flags and programmatic `runNewCommand(...)` calls use the same resolved defaults.
 
 By default, `fluo new my-app` writes to `./my-app`. Use `--target-directory <path>` when the project name and destination path should differ, or when automation should write to an explicit directory:
 
@@ -151,13 +159,14 @@ Use `--print-plan` when you want to preview the fully resolved starter without s
 
 ```bash
 fluo new my-app --shape application --runtime node --platform fastify --print-plan
+fluo new my-react-app --starter react-vite-ssr --print-plan
 fluo new my-service --shape microservice --transport tcp --print-plan
 fluo new my-mixed-app --shape mixed --print-plan
 ```
 
-Plan preview mode resolves the same project name, shape, runtime, platform, transport, tooling preset, package manager, install choice, and git choice as a real scaffold. It prints the selected starter recipe and dependency sets, then exits without creating files, installing dependencies, or initializing a git repository.
+Plan preview mode resolves the same named starter, project name, shape, runtime, platform, transport, tooling preset, package manager, install choice, and git choice as a real scaffold. It prints both the selected starter and recipe plus their dependency sets, then exits without creating files, installing dependencies, or initializing a git repository.
 
-For a docs-level table that separates the shipped starter matrix (Node.js Fastify/Express/raw Node.js HTTP, Bun, Deno, Cloudflare Workers, TCP/Redis Streams/NATS/Kafka/RabbitMQ/MQTT/gRPC microservices, plus mixed) from the remaining broader adapter ecosystem, see the [fluo new support matrix](../../docs/reference/fluo-new-support-matrix.md). Package-level integrations such as `@fluojs/redis` remain part of the broader ecosystem, but they are not extra `fluo new --transport` starter flags.
+For a docs-level table that separates the shipped starter matrix (standard Node.js Fastify/Express/raw Node.js HTTP, React SSR + Vite on Node.js + Fastify, Bun, Deno, Cloudflare Workers, TCP/Redis Streams/NATS/Kafka/RabbitMQ/MQTT/gRPC microservices, plus mixed) from the remaining broader adapter ecosystem, see the [fluo new support matrix](../../docs/reference/fluo-new-support-matrix.md). Package-level integrations such as `@fluojs/redis` remain part of the broader ecosystem, but they are not extra `fluo new --transport` starter flags.
 
 ### 2. Generate a feature
 Generate a feature slice; some schematics auto-register in the module, while others are files-only and must be wired manually.

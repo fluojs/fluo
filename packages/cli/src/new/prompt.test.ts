@@ -3,10 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
-
-import { collectBootstrapAnswers, detectPackageManager, resolveBootstrapAnswers, type BootstrapPrompter } from './prompt.js';
-import { DEFAULT_BOOTSTRAP_SCHEMA } from './resolver.js';
 import { CliPromptCancelledError } from '../index.js';
+import { type BootstrapPrompter, collectBootstrapAnswers, detectPackageManager, resolveBootstrapAnswers } from './prompt.js';
+import { DEFAULT_BOOTSTRAP_SCHEMA } from './resolver.js';
 
 const createdDirectories: string[] = [];
 
@@ -48,6 +47,7 @@ describe('resolveBootstrapAnswers', () => {
       packageManager: 'bun',
       ...DEFAULT_BOOTSTRAP_SCHEMA,
       projectName: 'starter-app',
+      starter: 'standard',
       targetDirectory: './starter-app',
     });
   });
@@ -111,8 +111,37 @@ describe('collectBootstrapAnswers', () => {
       packageManager: 'pnpm',
       ...DEFAULT_BOOTSTRAP_SCHEMA,
       projectName: 'starter-app',
+      starter: 'standard',
       targetDirectory: './starter-app',
     });
+  });
+
+  it('collects the React SSR + Vite starter without opening unrelated schema branches', async () => {
+    const messages: string[] = [];
+    const prompt = createPrompt({
+      confirm: async (_message, defaultValue) => defaultValue,
+      select: async <T extends string>(message: string, _choices: readonly { label: string; value: T }[], defaultValue?: T) => {
+        messages.push(message);
+        if (message === 'Starter') {
+          return 'react-vite-ssr' as T;
+        }
+
+        return (defaultValue ?? 'pnpm') as T;
+      },
+    });
+
+    await expect(collectBootstrapAnswers({}, process.cwd(), undefined, { interactive: true, prompt })).resolves.toEqual({
+      initializeGit: false,
+      installDependencies: true,
+      packageManager: 'pnpm',
+      ...DEFAULT_BOOTSTRAP_SCHEMA,
+      projectName: 'starter-app',
+      starter: 'react-vite-ssr',
+      targetDirectory: './starter-app',
+    });
+    expect(messages).not.toContain('Starter shape');
+    expect(messages).not.toContain('Runtime');
+    expect(messages).not.toContain('HTTP platform');
   });
 
   it('lets the application wizard choose Express explicitly while preserving Node defaults', async () => {
@@ -145,6 +174,7 @@ describe('collectBootstrapAnswers', () => {
       },
       transport: 'http',
       projectName: 'starter-app',
+      starter: 'standard',
       targetDirectory: './starter-app',
     });
   });
@@ -179,6 +209,7 @@ describe('collectBootstrapAnswers', () => {
       },
       transport: 'http',
       projectName: 'starter-app',
+      starter: 'standard',
       targetDirectory: './starter-app',
     });
   });
@@ -213,6 +244,7 @@ describe('collectBootstrapAnswers', () => {
       },
       transport: 'kafka',
       projectName: 'starter-app',
+      starter: 'standard',
       targetDirectory: './starter-app',
     });
   });
@@ -243,6 +275,7 @@ describe('collectBootstrapAnswers', () => {
       },
       transport: 'tcp',
       projectName: 'starter-app',
+      starter: 'standard',
       targetDirectory: './starter-app',
     });
   });

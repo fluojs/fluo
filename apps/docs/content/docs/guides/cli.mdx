@@ -43,6 +43,7 @@ Use `--print-plan` when you want to preview the resolved starter without creatin
 
 ```bash
 fluo new my-app --shape application --runtime node --platform fastify --print-plan
+fluo new my-react-app --starter react-vite-ssr --print-plan
 fluo new my-service --shape microservice --transport tcp --print-plan
 fluo new my-mixed-app --shape mixed --print-plan
 ```
@@ -65,12 +66,22 @@ fluo new my-deno-app --shape application --transport http --runtime deno --platf
 fluo new my-worker-app --shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers
 ```
 
+Use the named React starter for the official Node.js + Fastify HTTP SSR path.
+
+```bash
+fluo new my-react-app --starter react-vite-ssr
+```
+
+It generates explicit client/server entries, split Vite configs, `hydrateRoot(...)`, an HTTP-owned page router, application page rendering, and direct JSX. The application loads `dist/client/.vite/manifest.json` at `src/main.ts` before `@fluojs/react/vite` parses it. Links remain real anchors and client navigation performs full-document requests, so HTTP matching and DTO validation stay authoritative. RSC, Server Functions, file routing, client route tables, prefetch, and data caches are not included.
+
 Generated non-Deno HTTP starters include a TDD-first Vitest layout:
 
 - fast unit tests colocated under `src/**`,
 - slice tests such as `*.slice.test.ts`,
 - app dispatch tests in `src/app.test.ts`,
 - default e2e-style tests in `test/app.e2e.test.ts` using `createTestApp({ rootModule })`.
+
+The React starter uses focused streamed SSR and hydration tests plus `pnpm test:browser`, which starts the production build and rejects missing assets or hydration warnings.
 
 ## Microservice and mixed starters
 

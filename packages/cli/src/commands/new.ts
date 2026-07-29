@@ -10,6 +10,7 @@ import {
   SUPPORTED_BOOTSTRAP_PLATFORMS,
   SUPPORTED_BOOTSTRAP_RUNTIMES,
   SUPPORTED_BOOTSTRAP_SHAPES,
+  SUPPORTED_BOOTSTRAP_STARTERS,
   SUPPORTED_BOOTSTRAP_TOOLING_PRESETS,
   SUPPORTED_BOOTSTRAP_TOPOLOGY_MODES,
   SUPPORTED_BOOTSTRAP_TRANSPORTS,
@@ -68,6 +69,7 @@ export interface NewCommandRuntimeOptions extends NewCommandOptions {
 
 const SUPPORTED_PACKAGE_MANAGERS = new Set<BootstrapAnswers['packageManager']>(['bun', 'npm', 'pnpm', 'yarn']);
 const SUPPORTED_SHAPES = new Set<BootstrapAnswers['shape']>(SUPPORTED_BOOTSTRAP_SHAPES);
+const SUPPORTED_STARTERS = new Set<BootstrapAnswers['starter']>(SUPPORTED_BOOTSTRAP_STARTERS);
 const SUPPORTED_TRANSPORTS = new Set<BootstrapAnswers['transport']>(SUPPORTED_BOOTSTRAP_TRANSPORTS);
 const SUPPORTED_RUNTIMES = new Set<BootstrapAnswers['runtime']>(SUPPORTED_BOOTSTRAP_RUNTIMES);
 const SUPPORTED_PLATFORMS = new Set<BootstrapAnswers['platform']>(SUPPORTED_BOOTSTRAP_PLATFORMS);
@@ -83,6 +85,7 @@ function readOptionValue(
     | '--platform'
     | '--runtime'
     | '--shape'
+    | '--starter'
     | '--target-directory'
     | '--tooling'
     | '--topology'
@@ -147,6 +150,17 @@ function parseArgs(argv: string[]): Partial<BootstrapAnswers> & { force?: boolea
         parsed.shape = readOptionValue(argv, index, '--shape') as BootstrapAnswers['shape'];
         if (!SUPPORTED_SHAPES.has(parsed.shape)) {
           throw new Error(`Invalid --shape value "${parsed.shape}". Use one of: application, microservice, mixed.`);
+        }
+        index += 1;
+        break;
+      case '--starter':
+        if (parsed.starter) {
+          throw new Error('Duplicate --starter option.');
+        }
+
+        parsed.starter = readOptionValue(argv, index, '--starter') as BootstrapAnswers['starter'];
+        if (!SUPPORTED_STARTERS.has(parsed.starter)) {
+          throw new Error(`Invalid --starter value "${parsed.starter}". Use one of: standard, react-vite-ssr.`);
         }
         index += 1;
         break;
@@ -285,6 +299,7 @@ function renderScaffoldPlanPreview(answers: BootstrapAnswers, resolvedTargetDire
     `Project name: ${answers.projectName}`,
     `Target directory: ${answers.targetDirectory}`,
     `Resolved target: ${resolvedTargetDirectory}`,
+    `Starter: ${answers.starter}`,
     `Shape: ${answers.shape}`,
     `Runtime: ${answers.runtime}`,
     `Platform: ${answers.platform}`,
@@ -417,9 +432,17 @@ export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOp
       clackLog.step('Dependency installation skipped');
     }
 
+    const devCommand = answers.packageManager === 'npm'
+      ? 'npm run dev'
+      : answers.packageManager === 'bun'
+        ? 'bun run dev'
+        : `${answers.packageManager} dev`;
+    const devDescription = answers.starter === 'react-vite-ssr'
+      ? 'builds and starts the React SSR app'
+      : 'runs fluo dev';
     stdout.write('Done.\n');
     stdout.write(
-      `Next steps:\n  cd ${answers.targetDirectory}\n  ${answers.packageManager === 'npm' ? 'npm run dev' : answers.packageManager === 'bun' ? 'bun run dev' : `${answers.packageManager} dev`}  # runs fluo dev\n`,
+      `Next steps:\n  cd ${answers.targetDirectory}\n  ${devCommand}  # ${devDescription}\n`,
     );
     return 0;
   } catch (error: unknown) {

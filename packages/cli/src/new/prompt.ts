@@ -2,14 +2,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 import * as clack from '@clack/prompts';
-
+import { CliPromptCancelledError } from '../prompt-cancel.js';
 import { resolveBootstrapSchema } from './resolver.js';
 import {
   DOCUMENTED_MICROSERVICE_TRANSPORTS,
   getApplicationStarterProfiles,
 } from './starter-profiles.js';
 import type { BootstrapAnswers, PackageManager } from './types.js';
-import { CliPromptCancelledError } from '../prompt-cancel.js';
 
 /** Default package manager used when detection has no signal. */
 export const DEFAULT_PACKAGE_MANAGER: PackageManager = 'pnpm';
@@ -33,6 +32,11 @@ const STARTER_SHAPE_CHOICES = [
   { label: 'Application', value: 'application' },
   { label: 'Microservice', value: 'microservice' },
   { label: 'Mixed', value: 'mixed' },
+] as const;
+
+const STARTER_CHOICES = [
+  { label: 'Standard backend', value: 'standard' },
+  { label: 'React SSR + Vite', value: 'react-vite-ssr' },
 ] as const;
 
 /** Prompt contract used by the interactive `fluo new` wizard. */
@@ -124,8 +128,14 @@ function shouldPromptForAnswers(
   interactive: boolean,
 ): boolean {
   const selectedRuntime = partial.runtime;
+  const needsStarterSelection = !hasOwnValue(partial, 'starter')
+    && !hasOwnValue(partial, 'shape')
+    && !hasOwnValue(partial, 'runtime')
+    && !hasOwnValue(partial, 'platform')
+    && !hasOwnValue(partial, 'transport');
   return interactive && (
     !hasOwnValue(partial, 'projectName')
+    || needsStarterSelection
     || !hasOwnValue(partial, 'shape')
     || !hasOwnValue(partial, 'tooling')
     || !hasOwnValue(partial, 'packageManager')
@@ -150,11 +160,25 @@ async function resolveInteractiveBootstrapAnswers(
     answers.projectName = assertValidProjectName(await prompt.text('Project name'));
   }
 
-  if (!answers.shape) {
+  if (!answers.starter) {
+    const hasSchemaSelection = answers.shape !== undefined
+      || answers.runtime !== undefined
+      || answers.platform !== undefined
+      || answers.transport !== undefined;
+    answers.starter = hasSchemaSelection
+      ? 'standard'
+      : await prompt.select('Starter', STARTER_CHOICES, 'standard');
+  }
+
+  if (answers.starter === 'react-vite-ssr') {
+    Object.assign(answers, resolveBootstrapSchema(answers));
+  }
+
+  if (answers.starter === 'standard' && !answers.shape) {
     answers.shape = await prompt.select('Starter shape', STARTER_SHAPE_CHOICES, 'application');
   }
 
-  if (answers.shape === 'application' && !answers.runtime) {
+  if (answers.starter === 'standard' && answers.shape === 'application' && !answers.runtime) {
     answers.runtime = await prompt.select('Runtime', [
       { label: 'Bun', value: 'bun' },
       { label: 'Cloudflare Workers', value: 'cloudflare-workers' },
@@ -163,7 +187,7 @@ async function resolveInteractiveBootstrapAnswers(
     ] as const, 'node');
   }
 
-  if (answers.shape === 'application' && !answers.platform) {
+  if (answers.starter === 'standard' && answers.shape === 'application' && !answers.platform) {
     if (answers.runtime === 'node') {
       const applicationProfiles = getApplicationStarterProfiles('node');
       answers.platform = await prompt.select('HTTP platform', applicationProfiles.map((profile) => ({
@@ -175,7 +199,7 @@ async function resolveInteractiveBootstrapAnswers(
     }
   }
 
-  if (answers.shape === 'microservice' && !answers.transport) {
+  if (answers.starter === 'standard' && answers.shape === 'microservice' && !answers.transport) {
     answers.transport = await prompt.select(
       'Microservice transport',
       DOCUMENTED_MICROSERVICE_TRANSPORTS.map((transport) => ({ label: transport, value: transport })),
@@ -340,6 +364,7 @@ export function resolveBootstrapAnswers(
     packageManager: partial.packageManager ?? detectPackageManager(cwd, userAgent),
     ...schema,
     projectName,
+    starter: partial.starter ?? 'standard',
     targetDirectory: partial.targetDirectory ?? `./${projectName}`,
   };
 }

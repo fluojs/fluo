@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { initializeGitRepository, installDependencies } from './install.js';
 import { resolvePackageSpecs } from './package-spec-resolver.js';
+import { createReactViteSsrScaffoldFiles } from './react-vite-ssr-scaffold.js';
 import { type ResolvedBootstrapPlan, resolveBootstrapPlan } from './resolver.js';
 import type { StarterScaffoldRecipeId } from './starter-profiles.js';
 import type { BootstrapOptions, PackageManager } from './types.js';
@@ -23,6 +24,9 @@ const PUBLISHED_DEV_DEPENDENCIES = {
 } as const;
 
 const PUBLISHED_RUNTIME_DEPENDENCIES = {
+  '@playwright/test': '^1.51.1',
+  '@types/react': '^19.2.14',
+  '@types/react-dom': '^19.2.3',
   '@types/amqplib': '^0.10.7',
   '@grpc/grpc-js': '^1.14.4',
   '@grpc/proto-loader': '^0.8.0',
@@ -31,6 +35,9 @@ const PUBLISHED_RUNTIME_DEPENDENCIES = {
   kafkajs: '^2.2.4',
   mqtt: '^5.0.0',
   nats: '^2.29.3',
+  'happy-dom': '^20.9.0',
+  react: '^19.2.6',
+  'react-dom': '^19.2.6',
 } as const;
 
 const PUBLISHED_INTERNAL_DEPENDENCIES = {
@@ -45,6 +52,7 @@ const PUBLISHED_INTERNAL_DEPENDENCIES = {
   '@fluojs/platform-express': '^1.0.0',
   '@fluojs/platform-fastify': '^1.0.0',
   '@fluojs/platform-nodejs': '^1.0.0',
+  '@fluojs/react': '^1.0.0',
   '@fluojs/runtime': '^1.0.0',
   '@fluojs/testing': '^1.0.0',
   '@fluojs/validation': '^1.0.0',
@@ -191,6 +199,16 @@ function createExecCommand(packageManager: PackageManager, command: string): str
 
 function createProjectScripts(bootstrapPlan: ResolvedBootstrapPlan): Record<string, string> {
   switch (bootstrapPlan.profile.id) {
+    case 'application-node-fastify-react-vite-ssr':
+      return {
+        build: 'vite build --config vite.client.config.ts && vite build --config vite.server.config.ts',
+        dev: 'vite build --config vite.client.config.ts && vite build --config vite.server.config.ts && node dist/server/main.js',
+        start: 'node dist/server/main.js',
+        test: 'vitest run',
+        'test:browser': 'playwright test --config playwright.config.ts',
+        'test:watch': 'vitest',
+        typecheck: 'tsc -p tsconfig.json --noEmit',
+      };
     case 'application-bun-bun-http':
       return {
         build: 'bun build ./src/main.ts --outdir ./dist --target bun',
@@ -2287,6 +2305,16 @@ function emitSharedScaffoldFiles(
   packageSpecs: Record<string, string>,
 ): ScaffoldFile[] {
   const envFile = createEnvFile(bootstrapPlan);
+  if (bootstrapPlan.profile.id === 'application-node-fastify-react-vite-ssr') {
+    return [
+      { content: createProjectPackageJson(options, bootstrapPlan, releaseVersion, packageSpecs), path: 'package.json' },
+      ...createReactViteSsrScaffoldFiles(options.projectName),
+      { content: createBabelConfig(), path: 'babel.config.cjs' },
+      { content: createGitignore(), path: '.gitignore' },
+      ...(envFile ? [{ content: envFile, path: '.env' }] : []),
+    ];
+  }
+
   const sharedFiles: ScaffoldFile[] = [
     { content: createProjectPackageJson(options, bootstrapPlan, releaseVersion, packageSpecs), path: 'package.json' },
     { content: createProjectReadme(options, bootstrapPlan), path: 'README.md' },
@@ -2345,6 +2373,10 @@ function emitApplicationScaffoldFiles(options: BootstrapOptions): ScaffoldFile[]
 }
 
 function emitScaffoldFilesForRecipe(options: BootstrapOptions, recipeId: StarterScaffoldRecipeId): ScaffoldFile[] {
+  if (recipeId === 'application-node-fastify-react-vite-ssr') {
+    return [];
+  }
+
   if (
     recipeId === 'application-bun-bun-http'
     || recipeId === 'application-cloudflare-workers-cloudflare-workers-http'
