@@ -57,9 +57,11 @@
   without retaining request values or creating a React route table.
 
   The stable `@fluojs/react/typegen` tooling subpath generates deterministic, path-only TypeScript
-  declarations and absolute href builders from that catalog without widening the runtime-neutral
-  package root. It rejects versioned routes because the catalog cannot distinguish URI versioning
-  from header, media-type, or custom version strategies.
+  declarations, absolute href builders, route-bound real-anchor props, and typed `push`/`replace`
+  methods from that catalog without widening the runtime-neutral package root. Generated navigation
+  resolves ordinary absolute href strings into the existing HTTP-first client APIs instead of adding
+  a runtime route table or matcher. It rejects versioned routes because the catalog cannot distinguish
+  URI versioning from header, media-type, or custom version strategies.
 
   Stable root render policies are limited to `@PageLayout(...)` and `@SuspenseFallback(...)`
   component references on `@Router(...)` classes and `@Path(...)` methods. The application

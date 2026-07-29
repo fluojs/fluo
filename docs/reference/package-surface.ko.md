@@ -57,7 +57,9 @@
   marker를 `react-page`로 serialize합니다.
 
   Stable `@fluojs/react/typegen` tooling subpath는 runtime-neutral package root를 확장하지 않고 이
-  catalog에서 deterministic path-only TypeScript declaration과 absolute href builder를 생성합니다.
+  catalog에서 deterministic path-only TypeScript declaration, absolute href builder, route-bound
+  real-anchor props, typed `push`/`replace` method를 생성합니다. Generated navigation은 runtime route
+  table이나 matcher를 추가하지 않고 기존 HTTP-first client API에 일반 absolute href string을 resolve합니다.
   Catalog가 URI versioning과 header, media-type, custom version strategy를 구분할 수 없으므로 versioned
   route는 거부합니다.
 
