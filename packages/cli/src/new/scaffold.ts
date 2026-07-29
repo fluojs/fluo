@@ -2308,7 +2308,10 @@ function emitSharedScaffoldFiles(
   if (bootstrapPlan.profile.id === 'application-node-fastify-react-vite-ssr') {
     return [
       { content: createProjectPackageJson(options, bootstrapPlan, releaseVersion, packageSpecs), path: 'package.json' },
-      ...createReactViteSsrScaffoldFiles(options.projectName),
+      ...createReactViteSsrScaffoldFiles({
+        projectName: options.projectName,
+        startCommand: createRunCommand(options.packageManager, 'start'),
+      }),
       { content: createBabelConfig(), path: 'babel.config.cjs' },
       { content: createGitignore(), path: '.gitignore' },
       ...(envFile ? [{ content: envFile, path: '.env' }] : []),

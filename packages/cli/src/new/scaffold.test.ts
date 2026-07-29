@@ -546,6 +546,29 @@ describe('scaffoldBootstrapApp', () => {
     expect(snapshot['README.md']).toContain('intentionally excludes RSC, Server Functions, file routing, a client route table, SPA document swapping, prefetch, and a data cache');
   });
 
+  it.each([
+    ['bun', 'bun run start'],
+    ['npm', 'npm run start'],
+    ['pnpm', 'pnpm start'],
+    ['yarn', 'yarn start'],
+  ] as const)('uses the selected %s package manager in the generated Playwright server command', async (packageManager, startCommand) => {
+    const targetDirectory = mkdtempSync(join(tmpdir(), `fluo-scaffold-react-vite-${packageManager}-`));
+    temporaryDirectories.push(targetDirectory);
+
+    await scaffoldBootstrapApp({
+      ...DEFAULT_BOOTSTRAP_SCHEMA,
+      packageManager,
+      projectName: 'react-app',
+      skipInstall: true,
+      starter: 'react-vite-ssr',
+      targetDirectory,
+    });
+
+    expect(readFileSync(join(targetDirectory, 'playwright.config.ts'), 'utf8')).toContain(
+      `command: ${JSON.stringify(startCommand)}`,
+    );
+  });
+
   it('generates the Express application starter scaffold', async () => {
     const targetDirectory = mkdtempSync(join(tmpdir(), 'fluo-scaffold-express-'));
     temporaryDirectories.push(targetDirectory);

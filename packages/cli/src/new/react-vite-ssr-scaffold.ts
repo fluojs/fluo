@@ -7,7 +7,12 @@ type ReactViteSsrTemplate = {
   templatePath: string;
 };
 
-export type ReactViteSsrScaffoldFile = {
+type ReactViteSsrTemplateContext = {
+  readonly projectName: string;
+  readonly startCommand: string;
+};
+
+type ReactViteSsrScaffoldFile = {
   content: string;
   path: string;
 };
@@ -36,14 +41,23 @@ function resolveTemplateDirectory(importMetaUrl: string): string {
   return join(dirname(fileURLToPath(importMetaUrl)), 'templates', 'react-vite-ssr');
 }
 
+/**
+ * Renders the React SSR + Vite starter template tree with explicit lifecycle commands.
+ *
+ * @param context Validated project and package-manager command values for template rendering.
+ * @param importMetaUrl Module URL used to locate packaged starter templates.
+ * @returns Generated scaffold files with rendered template content.
+ */
 export function createReactViteSsrScaffoldFiles(
-  projectName: string,
+  context: ReactViteSsrTemplateContext,
   importMetaUrl = import.meta.url,
 ): ReactViteSsrScaffoldFile[] {
   const templateDirectory = resolveTemplateDirectory(importMetaUrl);
 
   return REACT_VITE_SSR_TEMPLATES.map(({ outputPath, templatePath }) => ({
-    content: readFileSync(join(templateDirectory, templatePath), 'utf8').replaceAll('<%= projectName %>', projectName),
+    content: readFileSync(join(templateDirectory, templatePath), 'utf8')
+      .replaceAll('<%= projectName %>', context.projectName)
+      .replaceAll('<%= startCommand %>', JSON.stringify(context.startCommand)),
     path: outputPath,
   }));
 }

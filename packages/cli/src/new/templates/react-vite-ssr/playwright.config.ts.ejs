@@ -13,7 +13,7 @@ export default defineConfig({
     headless: true,
   },
   webServer: {
-    command: 'pnpm start',
+    command: <%= startCommand %>,
     env: { PORT: String(BROWSER_TEST_PORT) },
     reuseExistingServer: false,
     timeout: 30_000,
