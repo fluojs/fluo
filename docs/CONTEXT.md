@@ -172,6 +172,14 @@ Only the configured application `ReactPageRenderer` consumes the resolved polici
 matching; URL matching, not-found handling, HTTP errors, shell failures, request aborts, and
 post-shell recoverable errors retain their existing owners and phases.
 
+The follow-up [React page render policy decision](./architecture/react-page-render-policies.md)
+accepts synchronous request-aware `@PageMetadata(...)` factories plus bounded title/meta/link
+resolution and ordinary React element creation. Factories receive the active request, optional
+request id, and request-scope container but no response authority; only the matched application
+renderer consumes them. Generic error presentation and page-local not-found presentation are
+rejected, so unmatched requests, handler-thrown `NotFoundException`, SSR diagnostic phases, Vite
+asset discovery, and inline serialization keep their existing owners and boundaries.
+
 ## React RSC Graduation Gate
 
 The canonical [React RSC graduation policy](./contracts/react-rsc-graduation.md) keeps
