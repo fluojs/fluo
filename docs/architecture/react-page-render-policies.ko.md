@@ -146,7 +146,8 @@ content negotiation, API/document selection, filter precedence, request scope, c
 - HTTP route grammar, matcher precedence, conflict, param, versioning, DTO binding, middleware, guard,
   interceptor, filter, not-found conversion, error writing은 바뀌지 않는다.
 - Direct `ReactServerEntry`와 non-React value는 계속 application page renderer를 우회한다.
-- Success metadata는 React shell creation 이후 buffered 또는 streaming response commit 직전에만 적용된다.
+- Success metadata는 matched handler가 완료된 후, renderer가 entry를 반환하기 전, SSR shell creation과
+  response commit 전에만 resolve된다.
 - SSR diagnostic code와 `http-pipeline`, `pre-commit-shell`, `request-abort`,
   `post-shell-recoverable` phase는 바뀌지 않는다.
 - Runtime-neutral root는 Node.js, Vite, browser, RSC, `react-dom/server` eager import를 추가하지 않는다.

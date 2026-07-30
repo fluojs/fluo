@@ -153,8 +153,8 @@ page render policy.
 - HTTP route grammar, matcher precedence, conflicts, params, versioning, DTO binding, middleware,
   guards, interceptors, filters, not-found conversion, and error writing are unchanged.
 - Direct `ReactServerEntry` and non-React values still bypass the application page renderer.
-- Success metadata is still applied only after React shell creation and immediately before buffered
-  or streaming response commit.
+- Success metadata is still resolved only after the matched handler completes, before the renderer
+  returns the entry, and before SSR shell creation or response commit.
 - SSR diagnostic codes and `http-pipeline`, `pre-commit-shell`, `request-abort`, and
   `post-shell-recoverable` phases are unchanged.
 - The runtime-neutral root adds no Node.js, Vite, browser, RSC, or `react-dom/server` eager import.
