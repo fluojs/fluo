@@ -227,20 +227,24 @@ message를 제공합니다. `ReactModule.forRoot({ ..., renderPage })`를 설정
 ## Render Policy Decorators
 
 React router class 또는 `@Path(...)` method 하나에 route-local composition이 필요하지만 application은
-하나의 `renderPage` callback을 유지해야 할 때 `@PageLayout(...)`과 `@SuspenseFallback(...)`을
-사용하세요. 두 decorator는 미리 생성한 JSX element가 아니라 component reference를 받습니다. Metadata는
-HTTP matching 이후 resolve되어 application page renderer에만 전달되며 path, matching precedence, param,
+하나의 `renderPage` callback을 유지해야 할 때 `@PageLayout(...)`, `@SuspenseFallback(...)`,
+`@PageMetadata(...)`를 사용하세요. Layout과 fallback decorator는 미리 생성한 JSX element가 아니라
+component reference를 받고, `PageMetadata`는 synchronous request-aware factory를 받습니다. Metadata는 HTTP
+matching 이후 resolve되어 application page renderer에만 전달되며 path, matching precedence, param, error,
 not-found behavior를 변경하지 않습니다.
 
 ```tsx
 import { Suspense, createElement, type ReactElement } from 'react';
 import {
   PageLayout,
+  PageMetadata,
   Path,
   ReactModule,
   Router,
   SuspenseFallback,
+  createReactPageMetadataElements,
   createReactServerEntry,
+  resolveReactPageMetadata,
   type ReactPageLayoutProps,
   type ReactPageRenderer,
   type ReactSuspenseFallbackProps,
@@ -255,6 +259,7 @@ function ProductFallback({ context }: ReactSuspenseFallbackProps) {
 }
 
 const renderPage: ReactPageRenderer = (page, context, policies) => {
+  const metadata = resolveReactPageMetadata(policies, context);
   const pageBoundary = policies.suspenseFallback === undefined
     ? page
     : createElement(Suspense, {
@@ -266,13 +271,20 @@ const renderPage: ReactPageRenderer = (page, context, policies) => {
   );
 
   return createReactServerEntry(
-    <html lang="ko"><body>{composedPage}</body></html>,
+    <html lang="ko">
+      <head>{createReactPageMetadataElements(metadata)}</head>
+      <body>{composedPage}</body>
+    </html>,
   );
 };
 
 @PageLayout(ShopLayout)
 @Router('/products')
 class ProductRouter {
+  @PageMetadata(({ request }) => ({
+    meta: [{ content: `Product ${request.params.id}`, name: 'description' }],
+    title: `Product ${request.params.id}`,
+  }))
   @SuspenseFallback(ProductFallback)
   @Path('/:id')
   show() {
@@ -288,18 +300,36 @@ Resolved layout은 outermost에서 innermost 순서로 base class, derived class
 fallback은 class fallback을 대체하고 derived declaration은 base declaration을 대체합니다. Class 또는
 method site는 각 policy kind를 한 번만 선언할 수 있으며 같은 site의 duplicate는 bootstrap 중 실패합니다.
 
+Metadata factory는 같은 broad-to-specific class/method order를 사용합니다. 가장 가까운 defined title이
+우선합니다. Later `<meta>` descriptor는 같은 `name` 또는 `property` identity의 earlier descriptor를
+대체하고, later `<link>` descriptor는 정확히 같은 `rel`과 `href` pair를 대체합니다. 관련 없는 descriptor는
+declaration order를 유지합니다. `resolveReactPageMetadata(...)`는 freeze된 bounded snapshot을 반환하고,
+`createReactPageMetadataElements(...)`는 ordinary React title, meta, link element를 만들어 text와 attribute
+escaping을 React에 맡깁니다. 두 helper 모두 Vite asset을 discover하거나 script tag를 만들거나 raw HTML을
+허용하거나 임의 inline data를 serialize하지 않습니다.
+
 `ReactRenderContext`는 활성 request-scope `container`를 포함합니다. Policy component는 이 context를
 명시적인 prop으로 받지만 fluo가 React component를 DI로 instantiate하거나 token을 대신 resolve하지는
 않습니다. `renderPage` 없는 policy, `@Router(...)` 밖의 class policy, `@Path(...)` 밖의 method policy는
 `ReactRenderPolicyConfigurationError`와 `REACT_RENDER_POLICY_DIAGNOSTIC_CODES`의 stable value로
 bootstrap을 실패시킵니다.
 
+Metadata factory는 active `request`, optional `requestId`, handler 및 renderer와 같은 request-scope
+`container` identity를 가진 `ReactPageMetadataContext`를 받습니다. 이 context는 의도적으로 `response`를
+제외하므로 metadata가 status, header, commit timing을 바꿀 수 없습니다. fluo는 factory를 DI로
+instantiate하거나 token을 대신 resolve하지 않습니다. Async data는 page composition 전에 matched HTTP
+handler에서 load해야 하며 metadata factory는 synchronous로 유지됩니다.
+
 `@SuspenseFallback(...)`은 SSR 중 suspend하는 descendant를 위한 ordinary React Suspense fallback을
 제공합니다. Handler `await`, effect, event handler, native form submission, full-document/client navigation
 pending state는 관찰하지 않습니다. HTTP pipeline error, not-found/404 response, pre-commit shell failure,
 request abort, post-shell recoverable error는 기존의 별도 phase를 유지합니다. 전체 ordering, inheritance,
 duplicate, phase 결정은 [React render policy decorator decision](../../docs/architecture/react-render-policy-decorators.ko.md)에
-기록되어 있습니다.
+기록되어 있습니다. 후속 [React page render policy decision](../../docs/architecture/react-page-render-policies.ko.md)은
+metadata를 채택하지만 generic error-presentation decorator와 page-local not-found presentation은 거부합니다.
+HTTP pipeline failure, shell failure, post-shell recoverable error, request abort, client React error, unmatched
+route, handler-thrown `NotFoundException` outcome은 기존 owner를 유지합니다. Placeholder error 또는
+not-found export는 제공하지 않습니다.
 
 ## SSR Diagnostic Phases
 
@@ -1023,6 +1053,8 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - `renderToPipeableStream(...)` 같은 Node 전용 `react-dom/server` pipeable stream root API
 - Next.js-style segment `loading`, `error`, `notFound`, template 또는 layout ancestry semantic.
   `@SuspenseFallback(...)`은 SSR-descendant Suspense metadata만 제공합니다.
+- generic page error-presentation policy 또는 page-local not-found renderer. Phase-specific error
+  presentation과 HTTP-owned HTML not-found seam은 별도 ownership decision이 필요합니다.
 
 ## Public API
 
@@ -1044,14 +1076,20 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
   dependency-injection token입니다.
 - `ReactPageRenderer` — `ReactElement`와 활성 `ReactRenderContext`를 기존 `ReactServerEntry`로 compose하는
   과정에 resolved `ReactRenderPolicies`도 전달받는 type-only application callback입니다.
-- `PageLayout` 및 `SuspenseFallback` — application page renderer만 consume하는 component reference를
-  기록하는 class-or-method decorator입니다.
+- `PageLayout`, `SuspenseFallback`, `PageMetadata` — renderer-only component reference 또는 synchronous
+  metadata factory 하나를 기록하는 class-or-method decorator입니다.
+- `resolveReactPageMetadata` — response mutation authority를 노출하지 않고 active request의 ordered metadata
+  factory를 compose합니다.
+- `createReactPageMetadataElements` — resolved metadata snapshot에서 ordinary escaped React title, meta, link
+  element를 생성합니다.
 - `getReactRenderPolicies` — inherited class/method policy를 outer-to-inner order로 resolve합니다.
 - `REACT_RENDER_POLICY_DIAGNOSTIC_CODES` 및 `ReactRenderPolicyConfigurationError` — duplicate,
   invalid-target, invalid-reference, missing-renderer policy declaration을 위한 stable bootstrap diagnostic입니다.
 - `ReactPageLayout`, `ReactPageLayoutProps`, `ReactSuspenseFallback`,
   `ReactSuspenseFallbackProps`, `ReactRenderPolicies`, `ReactRenderPolicyDiagnosticCode` — type-only
   render-policy composition contract입니다.
+- `ReactPageMetadata`, `ReactPageMetadataFactory`, `ReactPageMetadataContext`, `ReactPageMeta`,
+  `ReactPageLink` — type-only bounded page metadata contract입니다.
 - `REACT_SSR_DIAGNOSTIC_PHASES` 및 `REACT_SSR_DIAGNOSTIC_CODES` — stable machine-readable SSR
   lifecycle phase 및 diagnostic code constant입니다.
 - `ReactSsrDiagnosticError` — stable `code`와 `phase` metadata를 가진 typed pre-commit
@@ -1143,6 +1181,8 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - `packages/react/src/render-policy.ts`
 - `packages/react/src/render-policy-metadata.ts`
 - `packages/react/src/render-policy.test.ts`
+- `packages/react/src/page-metadata.ts`
+- `packages/react/src/page-metadata.test.ts`
 - `packages/react/src/render.test.ts`
 - `packages/react/src/dispatcher-ssr.test.ts`
 - `packages/react/src/hydration-assets.test.ts`
