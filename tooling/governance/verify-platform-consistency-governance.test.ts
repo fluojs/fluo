@@ -903,11 +903,13 @@ describe('enforceContractCompanionUpdates', () => {
     }
   });
 
-  it('treats the React render policy decision pair as contract-governing updates', async () => {
+  it('treats the React render policy decision pairs as contract-governing updates', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
     const renderPolicyDecisionTriggers = [
       'docs/architecture/react-render-policy-decorators.md',
       'docs/architecture/react-render-policy-decorators.ko.md',
+      'docs/architecture/react-page-render-policies.md',
+      'docs/architecture/react-page-render-policies.ko.md',
     ];
 
     for (const trigger of renderPolicyDecisionTriggers) {
@@ -921,6 +923,7 @@ describe('enforceContractCompanionUpdates', () => {
         ...renderPolicyDecisionTriggers,
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
+        'packages/react/src/page-metadata.test.ts',
         'packages/react/src/render-policy.test.ts',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),

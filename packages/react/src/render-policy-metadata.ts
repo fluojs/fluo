@@ -13,7 +13,7 @@ export type ReactRenderPolicyDecorator = {
 
 /** Internal render policy record retained until bootstrap validation. */
 export type ReactRenderPolicyRecord = {
-  readonly kind: 'layout' | 'suspense-fallback';
+  readonly kind: 'layout' | 'page-metadata' | 'suspense-fallback';
   readonly reference: unknown;
 };
 

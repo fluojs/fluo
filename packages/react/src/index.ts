@@ -21,6 +21,18 @@ export type { ReactModuleOptions } from './module.js';
 export { ReactModule } from './module.js';
 export type { ReactPageCatalogEntry } from './page-catalog.js';
 export { createReactPageCatalog } from './page-catalog.js';
+export type {
+  ReactPageLink,
+  ReactPageMeta,
+  ReactPageMetadata,
+  ReactPageMetadataContext,
+  ReactPageMetadataFactory,
+} from './page-metadata.js';
+export {
+  createReactPageMetadataElements,
+  PageMetadata,
+  resolveReactPageMetadata,
+} from './page-metadata.js';
 export type { ReactPageRenderer } from './page-renderer.js';
 export { REACT_PAGE_RENDERER } from './page-renderer.js';
 export type {

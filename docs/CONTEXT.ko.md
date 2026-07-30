@@ -172,6 +172,14 @@ declaration은 bootstrap 중 실패합니다. Configured application `ReactPageR
 resolved policy를 consume합니다. URL matching, not-found handling, HTTP error, shell failure, request abort,
 post-shell recoverable error는 기존 owner와 phase를 유지합니다.
 
+후속 [React page render policy decision](./architecture/react-page-render-policies.ko.md)은 synchronous
+request-aware `@PageMetadata(...)` factory와 bounded title/meta/link resolution, ordinary React element
+creation을 채택합니다. Factory는 active request, optional request id, request-scope container를 받지만
+response authority는 받지 않으며 matched application renderer만 이를 consume합니다. Generic error
+presentation과 page-local not-found presentation은 거부하므로 unmatched request, handler-thrown
+`NotFoundException`, SSR diagnostic phase, Vite asset discovery, inline serialization은 기존 owner와 boundary를
+유지합니다.
+
 ## React RSC Graduation Gate
 
 Canonical [React RSC graduation policy](./contracts/react-rsc-graduation.ko.md)는 maintainer-approved
