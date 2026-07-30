@@ -2,6 +2,7 @@ import type { MetadataPropertyKey } from '@fluojs/core';
 import type { ComponentType, ReactNode } from 'react';
 
 import { getReactPathMetadata, getReactRouterMetadata } from './decorators.js';
+import type { ReactPageMetadataFactory } from './page-metadata.js';
 import type { ReactRenderContext } from './render.js';
 import {
   createReactRenderPolicyDecorator,
@@ -14,6 +15,7 @@ import {
 /** Stable bootstrap diagnostic codes for invalid React render policy declarations. */
 export const REACT_RENDER_POLICY_DIAGNOSTIC_CODES = {
   duplicatePageLayout: 'react-render-policy-duplicate-page-layout',
+  duplicatePageMetadata: 'react-render-policy-duplicate-page-metadata',
   duplicateSuspenseFallback: 'react-render-policy-duplicate-suspense-fallback',
   invalidReference: 'react-render-policy-invalid-reference',
   invalidTarget: 'react-render-policy-invalid-target',
@@ -49,6 +51,8 @@ export type ReactSuspenseFallback = ComponentType<ReactSuspenseFallbackProps>;
 export type ReactRenderPolicies = {
   /** Layout references ordered from outermost class policy to innermost method policy. */
   readonly layouts: readonly ReactPageLayout[];
+  /** Page metadata factories ordered from broadest class policy to nearest method policy. */
+  readonly pageMetadata?: readonly ReactPageMetadataFactory[];
   /** Nearest method- or class-level SSR Suspense fallback reference. */
   readonly suspenseFallback?: ReactSuspenseFallback;
 };
@@ -92,6 +96,10 @@ function isPageLayoutReference(value: unknown): value is ReactPageLayout {
   return typeof value === 'function';
 }
 
+function isPageMetadataFactory(value: unknown): value is ReactPageMetadataFactory {
+  return typeof value === 'function';
+}
+
 function isSuspenseFallbackReference(value: unknown): value is ReactSuspenseFallback {
   return typeof value === 'function';
 }
@@ -112,6 +120,32 @@ function readPageLayout(site: ReactRenderPolicySite): ReactPageLayout | undefine
 
   const { reference } = record;
   if (!isPageLayoutReference(reference)) {
+    throw new ReactRenderPolicyConfigurationError(
+      REACT_RENDER_POLICY_DIAGNOSTIC_CODES.invalidReference,
+      siteTarget(site),
+    );
+  }
+  return reference;
+}
+
+function readPageMetadataFactory(
+  site: ReactRenderPolicySite,
+): ReactPageMetadataFactory | undefined {
+  const records = recordsForKind(site.records, 'page-metadata');
+  if (records.length > 1) {
+    throw new ReactRenderPolicyConfigurationError(
+      REACT_RENDER_POLICY_DIAGNOSTIC_CODES.duplicatePageMetadata,
+      siteTarget(site),
+    );
+  }
+
+  const [record] = records;
+  if (record === undefined) {
+    return undefined;
+  }
+
+  const { reference } = record;
+  if (!isPageMetadataFactory(reference)) {
     throw new ReactRenderPolicyConfigurationError(
       REACT_RENDER_POLICY_DIAGNOSTIC_CODES.invalidReference,
       siteTarget(site),
@@ -191,13 +225,18 @@ export function getReactRenderPolicies(
   const sites = getReactRenderPolicySites(routerToken);
   const relevantSites = sites.filter((site) => site.kind === 'class' || site.propertyKey === propertyKey);
   const layouts: ReactPageLayout[] = [];
+  const pageMetadata: ReactPageMetadataFactory[] = [];
   let suspenseFallback: ReactSuspenseFallback | undefined;
 
   for (const site of relevantSites) {
     const layout = readPageLayout(site);
+    const metadataFactory = readPageMetadataFactory(site);
     const fallback = readSuspenseFallback(site);
     if (layout !== undefined) {
       layouts.push(layout);
+    }
+    if (metadataFactory !== undefined) {
+      pageMetadata.push(metadataFactory);
     }
     if (fallback !== undefined) {
       suspenseFallback = fallback;
@@ -206,6 +245,7 @@ export function getReactRenderPolicies(
 
   return {
     layouts,
+    ...(pageMetadata.length === 0 ? {} : { pageMetadata }),
     ...(suspenseFallback === undefined ? {} : { suspenseFallback }),
   };
 }
@@ -236,6 +276,7 @@ export function validateReactRenderPolicyControllers(
     for (const site of sites) {
       assertValidPolicyTarget(site);
       readPageLayout(site);
+      readPageMetadataFactory(site);
       readSuspenseFallback(site);
     }
   }

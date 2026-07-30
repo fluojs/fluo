@@ -16,6 +16,7 @@ describe('@fluojs/react root package scaffold', () => {
 
     expect(Object.keys(react).sort()).toEqual([
       'PageLayout',
+      'PageMetadata',
       'Path',
       'REACT_PAGE_RENDERER',
       'REACT_RENDER_POLICY_DIAGNOSTIC_CODES',
@@ -27,11 +28,13 @@ describe('@fluojs/react root package scaffold', () => {
       'Router',
       'SuspenseFallback',
       'createReactPageCatalog',
+      'createReactPageMetadataElements',
       'createReactServerEntry',
       'getReactPathMetadata',
       'getReactRenderPolicies',
       'getReactRouterMetadata',
       'renderReactResponse',
+      'resolveReactPageMetadata',
     ]);
   });
 
@@ -49,13 +52,16 @@ describe('@fluojs/react root package scaffold', () => {
 
       expect(react).toHaveProperty('Path');
       expect(react).toHaveProperty('PageLayout');
+      expect(react).toHaveProperty('PageMetadata');
       expect(react).toHaveProperty('ReactModule');
       expect(react).toHaveProperty('REACT_PAGE_RENDERER');
       expect(react).toHaveProperty('Router');
       expect(react).toHaveProperty('SuspenseFallback');
       expect(react).toHaveProperty('createReactPageCatalog');
+      expect(react).toHaveProperty('createReactPageMetadataElements');
       expect(react).toHaveProperty('createReactServerEntry');
       expect(react).toHaveProperty('renderReactResponse');
+      expect(react).toHaveProperty('resolveReactPageMetadata');
     } finally {
       for (const [moduleId] of forbiddenRootImports) {
         vi.doUnmock(moduleId);
@@ -70,6 +76,7 @@ describe('@fluojs/react root package scaffold', () => {
 
     expect(rootEntrypoint).toContain("from './module.js'");
     expect(rootEntrypoint).toContain("from './page-renderer.js'");
+    expect(rootEntrypoint).toContain("from './page-metadata.js'");
     expect(rootEntrypoint).toContain("from './render-policy.js'");
     expect(rootEntrypoint).toContain("from './decorators.js'");
     expect(rootEntrypoint).toContain("from './diagnostics.js'");
