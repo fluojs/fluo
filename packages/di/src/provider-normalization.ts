@@ -187,6 +187,12 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
   const explicitScope = normalizeProviderScope(objectProvider.scope, objectProvider.provide);
 
   if ('useValue' in objectProvider) {
+    if (Object.hasOwn(objectProvider, 'inject')) {
+      throw new InvalidProviderError('Value providers must not declare inject dependencies.', {
+        token: objectProvider.provide,
+      });
+    }
+
     return freezeNormalizedProvider({
       inject: [],
       multi: objectProvider.multi,
