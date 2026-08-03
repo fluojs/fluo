@@ -10,6 +10,7 @@ The HTTP execution layer that turns route metadata into a request pipeline with 
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+- [HTTP Error Representations](#http-error-representations)
 - [Request Cleanup and Portability](#request-cleanup-and-portability)
 - [Public API](#public-api)
 - [Related Packages](#related-packages)
@@ -112,6 +113,49 @@ function someDeepHelper() {
 
 `runWithRequestContext(...)` preserves the active context across awaited work when the host provides `AsyncLocalStorage` through `globalThis.AsyncLocalStorage` or the `node:async_hooks` module. The root `@fluojs/http` export selects a runtime-specific entrypoint without probing or instantiating async-context storage: Node and Bun register the host constructor during module initialization, while Deno, worker, browser, and default entries remain free of Node built-in imports. The request-local store itself is still created lazily on first use. Promise-returning non-async callbacks keep synchronous invocation, return, and throw behavior, and their continuations retain the bound context until the returned promise settles. The helpers never replace `Promise.prototype.then`, so unrelated promise continuations cannot capture a request. Hosts without an async-context primitive use a synchronous-only fallback that clears the context before awaited work resumes.
 
+## HTTP Error Representations
+
+Canonical JSON remains the default error response. Register an optional application-owned HTML
+provider at runtime bootstrap when browser requests should receive complete error or not-found
+documents without changing API clients:
+
+```ts
+import type { HttpErrorRepresentationOptions } from '@fluojs/http';
+import { bootstrapApplication } from '@fluojs/runtime';
+
+const errorRepresentation = {
+  html: {
+    canRender({ request }) {
+      return request.method === 'GET' || request.method === 'HEAD';
+    },
+    render({ json }) {
+      return `<!doctype html><main>${json.error.status}: ${json.error.message}</main>`;
+    },
+  },
+} satisfies HttpErrorRepresentationOptions;
+
+const app = await bootstrapApplication({
+  errorRepresentation,
+  rootModule: AppModule,
+});
+```
+
+HTTP classifies the outcome before representation selection. Route misses become the existing 404
+outcome, and uncommitted `HttpException` values from middleware, DTO binding/validation, guards,
+interceptors, and handlers use the same seam. The provider receives the classified exception,
+canonical `ErrorResponse`, request, optional matched handler, request id, and active request-scope
+container. It receives no `FrameworkResponse`, so status, headers, `HEAD`, abort, and commit ownership
+remain in the dispatcher.
+
+`Accept` negotiation is deterministic: absent `Accept` and wildcard/tie cases select JSON; quality
+and specificity select between `application/json` and available `text/html`; unsupported ranges
+produce canonical JSON 406. `canRender(...)` may constrain HTML per application or matched handler.
+A provider failure falls back once to the original canonical JSON outcome, and committed or aborted
+requests are never rewritten. Successful-route `@Produces(...)` metadata does not control error
+representations. See the
+[HTTP error representation decision](../../docs/architecture/http-error-representations.md) for the
+complete phase and fallback contract.
+
 ### Rate limiting behind proxies
 
 `createRateLimitMiddleware(...)` resolves client identity from the raw socket `remoteAddress` by default. To trust `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`, opt in with `trustProxyHeaders: true` only when your adapter sits behind a trusted proxy that overwrites those headers. If your adapter exposes neither a trusted proxy chain nor a raw socket identity, provide an explicit `keyResolver`.
@@ -208,7 +252,7 @@ Response content negotiation formatters must return `string` or `Uint8Array` fro
 - **Binding decorators**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`, `Optional`, `Convert`
 - **Execution decorators**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
 - **Request/response and context types**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
-- **Dispatcher, routing, and negotiation types**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `FastPathEligibility`, `FastPathStats`
+- **Dispatcher, routing, and negotiation types**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `HttpErrorRepresentationContext`, `HtmlErrorRepresentationProvider`, `HttpErrorRepresentationOptions`, `FastPathEligibility`, `FastPathStats`
 - **Pipeline contract types**: `Middleware`, `MiddlewareLike`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardLike`, `GuardContext`, `Interceptor`, `InterceptorLike`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `RequestObserverLike`, `RequestObservationContext`, `ArgumentResolverContext`, `Binder`, `Converter`, `ConverterLike`, `ConverterTarget`, `ValidationIssue`, `Validator`
 - **Adapter API**: `HttpApplicationAdapter`, `HttpAdapterRealtimeCapability`, `ServerBackedHttpAdapterRealtimeCapability`, `FetchStyleHttpAdapterRealtimeCapability`, `UnsupportedHttpAdapterRealtimeCapability`, `createNoopHttpApplicationAdapter`, `createServerBackedHttpAdapterRealtimeCapability`, `createUnsupportedHttpAdapterRealtimeCapability`, `createFetchStyleHttpAdapterRealtimeCapability`
 - **Exceptions and errors**: `HttpExceptionDetail`, `HttpExceptionOptions`, `ErrorResponse`, `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `HandlerNotFoundError`, `RequestAbortedError`

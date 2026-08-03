@@ -10,6 +10,7 @@
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
+- [HTTP Error Representations](#http-error-representations)
 - [요청 정리와 런타임 이식성](#요청-정리와-런타임-이식성)
 - [공개 API](#공개-api)
 - [관련 패키지](#관련-패키지)
@@ -110,6 +111,46 @@ function someDeepHelper() {
 
 `runWithRequestContext(...)`는 호스트가 `globalThis.AsyncLocalStorage` 또는 `node:async_hooks` 모듈로 `AsyncLocalStorage`를 제공할 때 활성 컨텍스트를 `await` 이후까지 보존합니다. 루트 `@fluojs/http` export는 async-context storage를 probe하거나 instantiate하지 않고 runtime-specific entrypoint를 선택합니다. Node와 Bun은 module initialization 중 host constructor를 등록하고, Deno, worker, browser, default entry는 Node built-in import 없이 유지됩니다. Request-local store 자체는 첫 사용 시점에 계속 lazy하게 생성됩니다. Promise를 반환하는 non-async callback은 동기 호출, 반환, throw 동작을 유지하고, 반환한 promise가 settle될 때까지 continuation에서 바인딩된 context를 보존합니다. Helper는 `Promise.prototype.then`을 교체하지 않으므로 관련 없는 promise continuation이 request를 capture하지 않습니다. 비동기 컨텍스트 primitive가 없는 호스트는 awaited work가 재개되기 전에 context를 지우는 synchronous-only fallback을 사용합니다.
 
+## HTTP Error Representations
+
+Canonical JSON이 default error response로 유지된다. Browser request에 API client 동작을 바꾸지 않고 complete
+error/not-found document를 제공하려면 runtime bootstrap에 optional application-owned HTML provider를 등록한다.
+
+```ts
+import type { HttpErrorRepresentationOptions } from '@fluojs/http';
+import { bootstrapApplication } from '@fluojs/runtime';
+
+const errorRepresentation = {
+  html: {
+    canRender({ request }) {
+      return request.method === 'GET' || request.method === 'HEAD';
+    },
+    render({ json }) {
+      return `<!doctype html><main>${json.error.status}: ${json.error.message}</main>`;
+    },
+  },
+} satisfies HttpErrorRepresentationOptions;
+
+const app = await bootstrapApplication({
+  errorRepresentation,
+  rootModule: AppModule,
+});
+```
+
+HTTP가 representation selection 전에 outcome을 분류한다. Route miss는 기존 404 outcome이 되고 middleware,
+DTO binding/validation, guard, interceptor, handler의 uncommitted `HttpException`은 같은 seam을 사용한다.
+Provider는 classified exception, canonical `ErrorResponse`, request, optional matched handler, request id, active
+request-scope container를 받는다. `FrameworkResponse`는 받지 않으므로 status, header, `HEAD`, abort, commit
+ownership은 dispatcher에 남는다.
+
+`Accept` negotiation은 deterministic하다. `Accept`가 없거나 wildcard/tie이면 JSON을 선택하고 quality와
+specificity가 `application/json`과 available `text/html` 사이를 선택하며 unsupported range는 canonical JSON
+406을 만든다. `canRender(...)`로 application 또는 matched handler별 HTML availability를 제한할 수 있다.
+Provider failure는 원래 canonical JSON outcome으로 한 번만 fallback하며 committed 또는 aborted request는
+다시 쓰지 않는다. Successful-route `@Produces(...)` metadata는 error representation을 제어하지 않는다. 전체
+phase/fallback 계약은
+[HTTP error representation decision](../../docs/architecture/http-error-representations.ko.md)을 참고한다.
+
 ### 프록시 뒤의 속도 제한
 
 `createRateLimitMiddleware(...)`는 기본적으로 raw socket `remoteAddress`만으로 클라이언트 식별자를 해석합니다. `Forwarded`, `X-Forwarded-For`, `X-Real-IP`를 신뢰하려면 해당 헤더를 신뢰 가능한 프록시가 덮어쓰는 환경에서만 `trustProxyHeaders: true`를 명시적으로 켜세요. 어댑터가 신뢰 가능한 프록시 체인도 raw socket 식별자도 제공하지 않는다면 공유 fallback 버킷에 의존하지 말고 명시적인 `keyResolver`를 설정하세요.
@@ -206,7 +247,7 @@ Multipart upload를 parse하는 어댑터는 shared HTTP contract를 adapter-spe
 - **바인딩 데코레이터**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`, `Optional`, `Convert`
 - **실행 데코레이터**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
 - **요청/응답 및 컨텍스트 타입**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
-- **디스패처, 라우팅, 협상 타입**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `FastPathEligibility`, `FastPathStats`
+- **디스패처, 라우팅, 협상 타입**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `HttpErrorRepresentationContext`, `HtmlErrorRepresentationProvider`, `HttpErrorRepresentationOptions`, `FastPathEligibility`, `FastPathStats`
 - **파이프라인 계약 타입**: `Middleware`, `MiddlewareLike`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardLike`, `GuardContext`, `Interceptor`, `InterceptorLike`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `RequestObserverLike`, `RequestObservationContext`, `ArgumentResolverContext`, `Binder`, `Converter`, `ConverterLike`, `ConverterTarget`, `ValidationIssue`, `Validator`
 - **Adapter API**: `HttpApplicationAdapter`, `HttpAdapterRealtimeCapability`, `ServerBackedHttpAdapterRealtimeCapability`, `FetchStyleHttpAdapterRealtimeCapability`, `UnsupportedHttpAdapterRealtimeCapability`, `createNoopHttpApplicationAdapter`, `createServerBackedHttpAdapterRealtimeCapability`, `createUnsupportedHttpAdapterRealtimeCapability`, `createFetchStyleHttpAdapterRealtimeCapability`
 - **예외와 오류**: `HttpExceptionDetail`, `HttpExceptionOptions`, `ErrorResponse`, `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `HandlerNotFoundError`, `RequestAbortedError`
