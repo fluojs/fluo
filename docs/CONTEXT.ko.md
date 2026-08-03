@@ -162,6 +162,15 @@ Cron lifecycle contract는 committed scheduler handle token으로 callback을 ga
 
 [`docs/architecture/http-catch-all-route-grammar.ko.md`](./architecture/http-catch-all-route-grammar.ko.md)는 catch-all 도입을 유예한다. `@fluojs/http`는 literal 및 full-segment `:param` route segment만 계속 허용하고, `@fluojs/react/client`의 실제 anchor는 client route grammar를 만들지 않으면서 명시적인 server route로 일반 full-document fallback을 제공한다. 재검토에는 HTTP-owned syntax, `static > param > catch-all` ordering, string params, OpenAPI policy, adapter parity, native fast path 결정, performance evidence가 필요하다.
 
+## HTTP Error Representation Decision
+
+채택된 [HTTP error representation decision](./architecture/http-error-representations.ko.md)은
+classification, `Accept` negotiation, status/header, request scope, `HEAD`, abort, commit ownership을
+`@fluojs/http`에 유지한다. Application은 `errorRepresentation.html`을 등록할 수 있고 canonical JSON은
+default, wildcard/tie winner, 406 fallback, one-shot provider-failure fallback으로 유지된다.
+`@fluojs/react`는 `createReactErrorRepresentationProvider(...)`를 통해 application error document를
+buffer할 수 있지만 route를 match하거나 page policy를 조회하거나 HTTP outcome을 override하지 않는다.
+
 ## React Render Policy Decision
 
 채택된 [React render policy decorator decision](./architecture/react-render-policy-decorators.ko.md)은
@@ -175,10 +184,11 @@ post-shell recoverable error는 기존 owner와 phase를 유지합니다.
 후속 [React page render policy decision](./architecture/react-page-render-policies.ko.md)은 synchronous
 request-aware `@PageMetadata(...)` factory와 bounded title/meta/link resolution, ordinary React element
 creation을 채택합니다. Factory는 active request, optional request id, request-scope container를 받지만
-response authority는 받지 않으며 matched application renderer만 이를 consume합니다. Generic error
-presentation과 page-local not-found presentation은 거부하므로 unmatched request, handler-thrown
-`NotFoundException`, SSR diagnostic phase, Vite asset discovery, inline serialization은 기존 owner와 boundary를
-유지합니다.
+response authority는 받지 않으며 matched application renderer만 이를 consume합니다. Generic page error
+presentation과 page-local not-found presentation은 거부한다. 후속 HTTP-owned application seam은 HTTP
+classification 이후에만 optional React-produced document를 선택할 수 있으므로 unmatched request,
+handler-thrown `NotFoundException`, SSR diagnostic phase, Vite asset discovery, inline serialization은 기존
+owner와 boundary를 유지한다.
 
 ## React RSC Graduation Gate
 
@@ -208,6 +218,7 @@ HTTP route 및 #2506 navigation ownership, dual-import test, bilingual docs, Cha
 | 저장소 정체성과 위반 불가 규칙 확인 | `docs/CONTEXT.md` | `docs/contracts/behavioral-contract-policy.md` |
 | 아키텍처 모델, 요청 흐름, 런타임 경계 확인 | `docs/architecture/architecture-overview.md` | `docs/reference/glossary-and-mental-model.md` |
 | HTTP catch-all grammar 결정과 재검토 gate 확인 | `docs/architecture/http-catch-all-route-grammar.ko.md` | 활성 explicit-route contract는 `packages/http/README.ko.md` 및 `packages/react/README.ko.md` |
+| HTTP JSON/HTML error representation ownership와 negotiation 확인 | `docs/architecture/http-error-representations.ko.md` | `docs/architecture/error-responses.ko.md`, `packages/http/README.ko.md`, `packages/react/README.ko.md` |
 | 패키지 계열 조회 또는 런타임 범위 확인 | `docs/reference/package-surface.md` | 선택 로직이 필요하면 `docs/reference/package-chooser.md` |
 | i18n ecosystem bridge compatibility와 migration boundary 확인 | `docs/reference/i18n-ecosystem-bridges.ko.md` | third-party bridge 작성 시 `docs/contracts/third-party-extension-contract.ko.md` |
 | behavioral guarantee, Changesets 릴리스 흐름, 버전 정책 확인 | `docs/contracts/behavioral-contract-policy.md` | `docs/contracts/release-governance.md` |

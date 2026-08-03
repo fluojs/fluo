@@ -162,6 +162,16 @@ The Cron lifecycle contract gates callbacks with the committed scheduler handle 
 
 [`docs/architecture/http-catch-all-route-grammar.md`](./architecture/http-catch-all-route-grammar.md) defers catch-all adoption. `@fluojs/http` continues to accept only literal and full-segment `:param` route segments, while `@fluojs/react/client` real anchors provide ordinary full-document fallback to explicit server routes without creating a client route grammar. Reconsideration requires an HTTP-owned syntax, `static > param > catch-all` ordering, string params, OpenAPI policy, adapter parity, native fast path decisions, and performance evidence.
 
+## HTTP Error Representation Decision
+
+The accepted [HTTP error representation decision](./architecture/http-error-representations.md)
+keeps classification, `Accept` negotiation, status/headers, request scope, `HEAD`, abort, and commit
+ownership in `@fluojs/http`. Applications may register `errorRepresentation.html`; canonical JSON
+remains the default, wildcard/tie winner, 406 fallback, and one-shot provider-failure fallback.
+`@fluojs/react` may buffer an application error document through
+`createReactErrorRepresentationProvider(...)`, but it does not match routes, consult page policies,
+or override the HTTP outcome.
+
 ## React Render Policy Decision
 
 The accepted [React render policy decorator decision](./architecture/react-render-policy-decorators.md)
@@ -176,9 +186,10 @@ The follow-up [React page render policy decision](./architecture/react-page-rend
 accepts synchronous request-aware `@PageMetadata(...)` factories plus bounded title/meta/link
 resolution and ordinary React element creation. Factories receive the active request, optional
 request id, and request-scope container but no response authority; only the matched application
-renderer consumes them. Generic error presentation and page-local not-found presentation are
-rejected, so unmatched requests, handler-thrown `NotFoundException`, SSR diagnostic phases, Vite
-asset discovery, and inline serialization keep their existing owners and boundaries.
+renderer consumes them. Generic page error presentation and page-local not-found presentation are
+rejected. The later HTTP-owned application seam may select an optional React-produced document only
+after HTTP classification, so unmatched requests, handler-thrown `NotFoundException`, SSR diagnostic
+phases, Vite asset discovery, and inline serialization keep their existing owners and boundaries.
 
 ## React RSC Graduation Gate
 
@@ -208,6 +219,7 @@ re-export for the documented deprecation window.
 | Repository identity and non-negotiable rules | `docs/CONTEXT.md` | `docs/contracts/behavioral-contract-policy.md` |
 | Architecture model, request flow, and runtime boundaries | `docs/architecture/architecture-overview.md` | `docs/reference/glossary-and-mental-model.md` |
 | HTTP catch-all grammar decision and revisit gates | `docs/architecture/http-catch-all-route-grammar.md` | `packages/http/README.md` and `packages/react/README.md` for the active explicit-route contract |
+| HTTP JSON/HTML error representation ownership and negotiation | `docs/architecture/http-error-representations.md` | `docs/architecture/error-responses.md`, `packages/http/README.md`, and `packages/react/README.md` |
 | Package family lookup or runtime coverage | `docs/reference/package-surface.md` | `docs/reference/package-chooser.md` when selection logic is needed |
 | i18n ecosystem bridge compatibility and migration boundaries | `docs/reference/i18n-ecosystem-bridges.md` | `docs/contracts/third-party-extension-contract.md` when authoring a third-party bridge |
 | Behavioral guarantees, Changesets release flow, and versioning policy | `docs/contracts/behavioral-contract-policy.md` | `docs/contracts/release-governance.md` |
