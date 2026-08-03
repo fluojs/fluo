@@ -86,7 +86,7 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
 
 fluo는 `runWithRequestContext(...)`와 `getCurrentRequestContext()`를 노출하므로 서비스나 리포지토리처럼 깊은 호출 지점에서도 요청 객체를 모든 함수 인자로 전달하지 않고 현재 요청을 읽을 수 있습니다. 다만 격리 보장은 호스트의 async-context 역량에 따라 달라지며, 모든 런타임에 `AsyncLocalStorage`가 있다는 보편적 약속은 아닙니다.
 
-루트 `@fluojs/http` import는 Node async hooks를 즉시 로드하지 않습니다. Request-context helper는 처음 사용할 때 이미 존재하는 `globalThis.AsyncLocalStorage`를 우선 사용하고, 지원되는 Node.js 호스트에서는 `node:async_hooks`를 lazy하게 해석할 수 있습니다. 어느 storage를 사용하든 context는 awaited continuation을 따라가며 겹치는 요청을 격리합니다.
+루트 `@fluojs/http` import는 런타임별 entrypoint를 선택합니다. Node와 Bun은 module initialization 중 `node:async_hooks`의 host `AsyncLocalStorage` constructor를 등록하고, Deno, worker, browser, default entry는 Node built-in import를 포함하지 않습니다. Request-local store 자체는 첫 helper 사용 시점에 lazy하게 생성됩니다. 호스트가 async-context storage를 제공하면 context는 awaited continuation을 따라가며 겹치는 요청을 격리합니다.
 
 ```typescript
 runWithRequestContext(context, () => {
@@ -130,11 +130,11 @@ async function notifyObservers(
 ```typescript
 // packages/http/src/dispatch/dispatcher.ts (simplified)
 function isRequestAborted(request: FrameworkRequest): boolean {
-  return request.isAborted?.() ?? request.signal?.aborted === true;
+  return request.signal?.aborted === true || request.isAborted?.() === true;
 }
 ```
 
-일반 dispatch pipeline은 진입 시 이 상태를 확인하고, handler가 general path로 실행되면 handler/interceptor 작업 뒤 response를 쓰기 전에 다시 확인합니다. Native fast-path dispatch는 진입 시 확인합니다. 이것은 모든 middleware, database query, 임의의 business operation을 자동으로 취소하는 기능이 아니라 경계 검사입니다. 오래 실행되는 application code는 `RequestContext.request.signal`을 받아 cancellation을 지원하는 API로 직접 전파해야 합니다. Managed SSE는 request signal과 response-stream close notification에도 반응합니다.
+Dispatcher는 `signal`과 `isAborted()`를 독립적인 cancellation surface로 취급합니다. 어느 하나든 cancellation을 보고할 수 있으므로 `false` probe가 aborted signal을 가리지 않습니다. 일반 dispatch pipeline은 진입 시 이 상태를 확인하고, handler가 general path로 실행되면 handler/interceptor 작업 뒤 response를 쓰기 전에 다시 확인합니다. Native fast-path dispatch는 진입 시 확인합니다. 이것은 모든 middleware, database query, 임의의 business operation을 자동으로 취소하는 기능이 아니라 경계 검사입니다. 오래 실행되는 application code는 `RequestContext.request.signal`을 받아 cancellation을 지원하는 API로 직접 전파해야 합니다. Managed SSE는 request signal과 response-stream close notification에도 반응합니다.
 
 ## 11.6 파이프라인 시각화 다이어그램
 

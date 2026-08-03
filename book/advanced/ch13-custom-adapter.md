@@ -161,7 +161,7 @@ In `packages/platform-cloudflare-workers/src/adapter.ts`, `listen()` stores the 
 
 ## 13.7 Reporting Realtime Capability
 
-An adapter can tell the framework whether it supports WebSocket or SSE. This report is made through `getRealtimeCapability`. By stating whether a feature is truly supported, contract-only, or unsupported, the adapter lets higher-level modules decide safely whether they can turn realtime features on.
+An adapter reports its WebSocket and raw request-upgrade boundary through `getRealtimeCapability()`. By stating whether that boundary is truly supported, contract-only, or unsupported, the adapter lets higher-level WebSocket modules decide safely whether they can turn their features on. This capability does not report SSE support; server-sent events remain part of the HTTP response-stream contract.
 
 ```typescript
 // packages/http/src/adapter.ts:L49-L63
@@ -178,7 +178,7 @@ export function createFetchStyleHttpAdapterRealtimeCapability(
 }
 ```
 
-The framework uses this information to decide whether to enable modules that need realtime features, such as a Socket.IO integration, or to show warnings.
+The framework uses this information to validate modules that need WebSocket or raw-upgrade features, such as a Socket.IO integration, and fails fast with an error when the capability is unsupported or incompatible. Managed SSE instead requires only that the adapter expose `FrameworkResponse.stream`. When the host exposes request cancellation, the adapter should forward either `FrameworkRequest.signal` or `FrameworkRequest.isAborted()`; it should also expose response-close notifications through `stream.onClose(...)` when possible. If `stream.write(...)` reports backpressure, the dispatcher uses the optional `stream.waitForDrain()` hook when available before continuing.
 
 ## 13.8 No-op Adapter: Tests and Custom Runtimes
 
@@ -334,7 +334,7 @@ This skeleton now satisfies the required request/response shape, but it is still
 - `FrameworkRequest/Response` mapping is the core of adapter implementation.
 - Cooperation with the binder completes the pipeline where data flows.
 - In high-performance systems, resource cleanup optimization through AbortSignal integration is essential.
-- Realtime communication capability reporting is an important contract that guarantees compatibility across ecosystem modules.
+- WebSocket and raw-upgrade capability reporting is an important contract that guarantees compatibility across realtime ecosystem modules; managed SSE support belongs to `FrameworkResponse.stream`.
 
 ## 13.14 Next Chapter Preview
 
