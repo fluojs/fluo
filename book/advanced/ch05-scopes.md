@@ -130,24 +130,31 @@ The rest of this chapter traces how this one line expands into real cache behavi
 ## 5.2 Singleton caching and the root container baseline
 Singleton is the default lifetime, but Fluo's singleton behavior is more precise than simply "one object forever." In practice, it is closer to "one promise per token in the root singleton cache unless there is a documented override path."
 
-The cache fields are declared in `path:packages/di/src/container.ts:121-140`. The key field for single providers is `singletonCache: Map<Token, Promise<unknown>>`. Multi providers have a separate `multiSingletonCache: Map<NormalizedProvider, Promise<unknown>>`.
+The cache fields are declared in `path:packages/di/src/container.ts:287-313`. The key field for single providers is `singletonCache: Map<Token, Promise<unknown>>`. Multi providers have a separate `multiSingletonCache: Map<NormalizedProvider, Promise<unknown>>`.
 
 Looking at the container fields immediately shows why singleton, request, and multi providers use different cache maps.
 
-`path:packages/di/src/container.ts:121-140`
+`path:packages/di/src/container.ts:287-313`
 ```typescript
 private readonly registrations = new Map<Token, NormalizedProvider>();
 private readonly multiRegistrations = new Map<Token, NormalizedProvider[]>();
 private readonly multiOverriddenTokens = new Set<Token>();
-private readonly requestCache = new Map<Token, Promise<unknown>>();
-private readonly multiRequestCache = new Map<NormalizedProvider, Promise<unknown>>();
+private requestCache: Map<Token, Promise<unknown>> | undefined;
+private multiRequestCache: Map<NormalizedProvider, Promise<unknown>> | undefined;
 private readonly multiSingletonCache = new Map<NormalizedProvider, Promise<unknown>>();
-private readonly staleDisposalTasks = new Set<Promise<void>>();
-private readonly staleDisposalErrors: unknown[] = [];
+private readonly staleDisposalTasks = new Set<StaleDisposalTask>();
 private readonly singletonCache: Map<Token, Promise<unknown>>;
-private readonly childScopes = new Set<Container>();
+private readonly forwardRefTokenCache = new WeakMap<ForwardRefFn, Token>();
+private readonly factoryResolutionKinds = new WeakMap<NormalizedProvider, FactoryResolutionKind>();
+private readonly providerLookupPlanCache = new Map<Token, CachedResolutionPlan<NormalizedProvider | undefined>>();
+private readonly multiProviderPlanCache = new Map<Token, CachedResolutionPlan<readonly NormalizedProvider[]>>();
+private readonly requestScopeVerdictPlanCache = new Map<Token, CachedResolutionPlan<boolean>>();
+private readonly effectiveProviderPlanCache = new Map<Token, CachedResolutionPlan<NormalizedProvider | undefined>>();
+private childScopes: Set<Container> | undefined;
 private disposePromise: Promise<void> | undefined;
 private disposed = false;
+private trackedByParent = false;
+private graphRevision = 0;
 
 constructor(
   private readonly parent?: Container,
@@ -161,45 +168,43 @@ constructor(
 Because of this structure, the singleton cache is keyed by token, while the multi singleton cache is keyed by each normalized provider. The request caches repeat the same separation, but they are owned by the child container.
 
 The root container owns singleton cache state.
-`createRequestScope()` in `path:packages/di/src/container.ts:247-263` creates the child container by passing `this.root().singletonCache`.
+`createRequestScope()` in `path:packages/di/src/container.ts:563-572` creates the child container by passing `this.root().singletonCache`.
 So request scope does not copy singleton state. It shares it.
 
 The request child creation code passes that shared state directly as a constructor argument.
 
-`path:packages/di/src/container.ts:252-263`
+`path:packages/di/src/container.ts:563-572`
 ```typescript
 createRequestScope(): Container {
-  if (this.disposed) {
+  if (this.isDisposedInHierarchy()) {
     throw new ContainerResolutionError(
       'Container has been disposed and can no longer create request scopes.',
       { hint: 'Create request scopes before calling container.dispose().' },
     );
   }
 
-  const child = new Container(this, true, this.root().singletonCache);
-  this.root().childScopes.add(child);
-  return child;
+  return new Container(this, true, this.root().singletonCache);
 }
 ```
 
-A request child therefore has a parent and the request flag, but it sees the root's singleton promise map. This one line supports the chapter's claim that "the child is the boundary, and the root is the singleton owner."
+A request child therefore has a parent and the request flag, but it sees the root's singleton promise map. Empty scope shells are not tracked immediately. `ensureTrackedRequestScope()` and the lazy request-cache writers in `path:packages/di/src/container.ts:1066-1087` attach the child chain when request-owned cache state is first materialized. This preserves the chapter's ownership rule while making descendant invalidation and disposal operate on live request caches rather than every scope object ever created.
 
 The resolution step enforces the same structure again.
-`resolveScopedOrSingletonInstance()` in `path:packages/di/src/container.ts:527-548` first checks `shouldResolveFromRoot(provider)`.
-Then the helper in `path:packages/di/src/container.ts:550-552` returns true when the provider has default scope, the current container is request-scoped, and the provider is not a local registration. In that case, the child delegates to the root.
+`resolveScopedOrSingletonInstance()` in `path:packages/di/src/container.ts:963-999` first checks `shouldResolveFromRoot(provider)`.
+Then the helper in `path:packages/di/src/container.ts:1013-1019` returns true when the provider has default scope, the current container is request-scoped, and the provider is not a local registration. In that case, the child delegates to the root.
 
 The actual cache map is selected by `cacheFor()`.
-`path:packages/di/src/container.ts:624-645` shows the core rules.
+`path:packages/di/src/container.ts:1113-1134` shows the core rules.
 A default-scope provider normally uses the root `singletonCache`. The one exception is a provider locally registered in a request child, which uses the request cache. The method comment documents this exception as a footgun on purpose.
 
 We will inspect the cache selection rules closely once. The request, override, and disposal sections later recap from this excerpt.
 
-`path:packages/di/src/container.ts:624-645`
+`path:packages/di/src/container.ts:1113-1134`
 ```typescript
 private cacheFor(provider: NormalizedProvider): Map<Token, Promise<unknown>> {
   if (provider.scope === Scope.DEFAULT) {
     if (this.requestScopeEnabled && this.registrations.has(provider.provide)) {
-      return this.requestCache;
+      return this.requestCacheForWrite();
     }
 
     return this.root().singletonCache;
@@ -216,7 +221,7 @@ private cacheFor(provider: NormalizedProvider): Map<Token, Promise<unknown>> {
     );
   }
 
-  return this.requestCache;
+  return this.requestCacheForWrite();
 }
 ```
 
@@ -523,88 +528,84 @@ The cost is clear too. Because the container does not cache the result at all, e
 ## 5.5 Overrides, cache invalidation, and stale instance disposal
 The container's most subtle lifetime behavior appears when a provider is overridden after it has already been resolved. This is exactly where scope, cache invalidation, and disposal meet.
 
-`override()` itself is implemented in `path:packages/di/src/container.ts:207-234`. It normalizes the incoming provider, finds the existing visible provider, deletes both single and multi registrations for that token, then calls `invalidateCachedEntry(token, existing?.scope ?? normalized.scope)`.
+The current `override()` implementation is in `path:packages/di/src/container.ts:384-457`. It first normalizes and validates the complete replacement set for each token. For each valid token, it then invalidates affected cached entries in the current container hierarchy before replacing the single or multi registration.
 
-Override clears lifetime state before replacing the registration.
-
-`path:packages/di/src/container.ts:207-234`
+`path:packages/di/src/container.ts:423-454`
 ```typescript
-override(...providers: Provider[]): this {
-  if (this.disposed) {
-    throw new ContainerResolutionError(
-      'Container has been disposed and can no longer override providers.',
-      { hint: 'Ensure overrides are applied before calling container.dispose().' },
-    );
+for (const [token, normalizedProviders] of normalizedByToken) {
+  const firstProvider = normalizedProviders[0];
+
+  if (!firstProvider) {
+    continue;
   }
 
-  for (const provider of providers) {
-    const normalized = normalizeProvider(provider);
-    const existing = this.lookupProvider(normalized.provide);
+  const containsMultiProvider = normalizedProviders.some((normalized) => normalized.multi === true);
 
-    this.registrations.delete(normalized.provide);
-    this.multiRegistrations.delete(normalized.provide);
-    this.invalidateCachedEntry(normalized.provide, existing?.scope ?? normalized.scope);
-
-    if (normalized.multi) {
-      this.multiRegistrations.set(normalized.provide, [normalized]);
-      this.multiOverriddenTokens.add(normalized.provide);
-      continue;
-    }
-
-    this.multiOverriddenTokens.add(normalized.provide);
-    this.registrations.set(normalized.provide, normalized);
+  if (containsMultiProvider && normalizedProviders.some((normalized) => normalized.multi !== true)) {
+    throw new DuplicateProviderError(token);
   }
 
-  return this;
+  if (!containsMultiProvider && normalizedProviders.length > 1) {
+    throw new DuplicateProviderError(token);
+  }
+
+  this.invalidateAffectedCachedEntriesInHierarchy(token);
+  this.registrations.delete(token);
+  this.multiRegistrations.delete(token);
+
+  if (containsMultiProvider) {
+    this.multiRegistrations.set(token, normalizedProviders);
+    this.multiOverriddenTokens.add(token);
+    this.advanceGraphRevision();
+    continue;
+  }
+
+  this.multiOverriddenTokens.add(token);
+  this.registrations.set(token, firstProvider);
+  this.advanceGraphRevision();
 }
 ```
 
-The order matters. If Fluo deleted only the old registration and left the cache behind, the next resolve might not see the new provider. Fluo treats override as the combination of registration update and cache eviction.
+The hierarchy walk is implemented in `path:packages/di/src/container.ts:1551-1605`. It visits the container receiving the override and every tracked request-scope descendant. A request scope becomes tracked when it first materializes a request or request-local multi cache, as shown in `path:packages/di/src/container.ts:1066-1087`. Therefore, a root override can evict already-materialized descendant request entries for the overridden token and cached consumers whose provider graph depends on that token. The dependency-aware checks live in `path:packages/di/src/container.ts:1607-1662` and cover direct, alias, and multi-provider dependency paths.
 
-This invalidation routine is in `path:packages/di/src/container.ts:900-944`. It checks the request cache entry, root singleton cache entry, root multi singleton cache entry, and request multi cache entry. If there is a cached promise, it schedules stale disposal before deleting the cache entry.
+This is targeted invalidation, not a promise that every child cache is cleared or isolated from ancestor changes. A descendant with no affected materialized entry has nothing to retire; its later resolution follows the updated ancestor graph. A child-local override walks that child and its descendants, not its ancestors. Cache eviction also cannot revoke stale references that application code has already retained.
 
-The full routine is long, but the first part that handles stale single cache entries shows the core ownership rule.
+Each evicted cached promise is handed to `scheduleStaleDisposal()` in `path:packages/di/src/container.ts:1309-1340`. `override()` remains synchronous: it starts the asynchronous retirement task but does not wait for cleanup to finish. The task waits for the cached resolution promise, then awaits `onDestroy()` when the resolved value is disposable. Completion is guaranteed at the next observing lifecycle boundary, not at the moment `override()` returns.
 
-`path:packages/di/src/container.ts:900-923`
+Stale disposal is now a task state machine rather than a shutdown-only error accumulator. `StaleDisposalTask` records its promise, failure, and whether that failure has already been consumed (`path:packages/di/src/container.ts:31-36`). `resolve()` calls `assertStaleDisposalsSettled()` before beginning replacement resolution (`path:packages/di/src/container.ts:584-595`). Disposal reaches the same boundary through `disposeCache()` (`path:packages/di/src/container.ts:1181-1197`), while still collecting resolution and ordinary `onDestroy()` failures so cleanup can continue.
+
+`path:packages/di/src/container.ts:1289-1340`
 ```typescript
-private invalidateCachedEntry(token: Token, scope: Scope): void {
-  if (this.requestCache.has(token)) {
-    const cached = this.requestCache.get(token);
+private async assertStaleDisposalsSettled(): Promise<void> {
+  const errors: unknown[] = [];
 
-    if (cached) {
-      this.scheduleStaleDisposal(cached);
-    }
+  while (this.staleDisposalTasks.size > 0) {
+    const tasks = Array.from(this.staleDisposalTasks);
+    await Promise.all(tasks.map((task) => task.promise));
 
-    this.requestCache.delete(token);
-  }
+    for (const task of tasks) {
+      this.staleDisposalTasks.delete(task);
 
-  if (!this.parent && scope === Scope.DEFAULT) {
-    const singletonCache = this.singletonCache;
-
-    if (singletonCache.has(token)) {
-      const cached = singletonCache.get(token);
-
-      if (cached) {
-        this.scheduleStaleDisposal(cached);
+      if (task.failed && !task.errorConsumed) {
+        task.errorConsumed = true;
+        errors.push(task.error);
       }
-
-      singletonCache.delete(token);
     }
   }
-```
 
-Both the request cache and root singleton cache are checked because the override location and provider scope can differ. The later multi cache branch applies the same principle to provider array entries.
+  this.throwDisposalErrors(errors);
+}
 
-The actual scheduling path is `scheduleStaleDisposal()` in `path:packages/di/src/container.ts:762-780`. Fluo does not simply drop stale instance references. It awaits the already-created promise, and if the resulting instance has `onDestroy()`, it calls it exactly once. Errors from that path do not break `override()` synchronously. They are accumulated in `staleDisposalErrors`.
+private scheduleStaleDisposal(instancePromise: Promise<unknown>, staleDisposalOwner: Container): void {
+  const observers = staleDisposalOwner === this ? [this] : [this, staleDisposalOwner];
+  const task: StaleDisposalTask = {
+    error: undefined,
+    errorConsumed: false,
+    failed: false,
+    promise: Promise.resolve(),
+  };
 
-Stale disposal scheduling works from the cached promise.
-
-`path:packages/di/src/container.ts:762-780`
-```typescript
-private scheduleStaleDisposal(instancePromise: Promise<unknown>): void {
-  let task: Promise<void>;
-
-  task = (async () => {
+  task.promise = (async () => {
     try {
       const instance = await instancePromise;
 
@@ -612,36 +613,50 @@ private scheduleStaleDisposal(instancePromise: Promise<unknown>): void {
         await instance.onDestroy();
       }
     } catch (error) {
-      this.staleDisposalErrors.push(error);
+      task.error = error;
+      task.failed = true;
     }
   })().finally(() => {
-    this.staleDisposalTasks.delete(task);
+    if (!task.failed) {
+      for (const observer of observers) {
+        observer.staleDisposalTasks.delete(task);
+      }
+    }
   });
 
-  this.staleDisposalTasks.add(task);
+  for (const observer of observers) {
+    observer.staleDisposalTasks.add(task);
+  }
 }
 ```
 
-The design has to await the promise because only an object that has already been created can be disposed. The error collection structure separates the override call itself from later shutdown reporting.
+The observer set defines the lifecycle boundary precisely. A local override is observed by that container. When an ancestor override invalidates a descendant cache, the descendant and the ancestor that initiated invalidation observe the same task. This makes both a descendant replacement resolve and a root replacement resolve wait for affected descendant retirement. It does not make an unrelated root resolve wait for a child-local override, nor does a child-local stale-disposal failure leak into that unrelated root resolve.
 
-Tests pin this behavior tightly.
-`path:packages/di/src/container.test.ts:385-397` verifies that overriding an already-resolved singleton invalidates the cache.
-`path:packages/di/src/container.test.ts:905-932` proves that a stale overridden singleton instance is disposed immediately and exactly once.
-`path:packages/di/src/container.test.ts:934-974` extends the same guarantee to multi-provider singleton entries.
+If stale disposal fails, the first later `resolve()` or `dispose()` on an observing container consumes and propagates the failure. A `resolve()` rejects before constructing the replacement; because the task failure is consumed once, a retry can continue. A `dispose()` records the failure, continues the rest of teardown, and then throws the single error or an `AggregateError` when several cleanup paths failed (`path:packages/di/src/container.ts:1342-1359`). Failure reporting is therefore not deferred only to shutdown.
 
-There is also a regression test for repeated overrides.
-`path:packages/di/src/container.test.ts:976-1012` confirms that stale singleton versions do not keep piling up.
-As the token changes from `v1` to `v2` to `v3`, each old version is disposed exactly once.
+Tests pin each boundary. `path:packages/di/src/container.test.ts:503-690` covers direct, dependency-aware, materialized child, and nested descendant invalidation. `path:packages/di/src/container.test.ts:1959-2016` proves replacement resolution waits and receives stale-disposal failures. `path:packages/di/src/container.test.ts:2045-2188` covers descendant disposal, root waiting, and descendant failure propagation. `path:packages/di/src/container.test.ts:2190-2248` fixes the child-local/unrelated-root boundary, while `path:packages/di/src/container.test.ts:2251-2329` covers multi-provider and repeated override retirement.
 
-The override-and-evict algorithm can be summarized like this.
+The override-and-retire state machine can be summarized like this.
 
 ```text
-override(token, replacement):
-  delete visible registrations for token in current scope
-  find and evict matching cache entries
-  for each evicted cached promise:
-    schedule disposal of resolved stale instance
-  register replacement provider
+override(owner, token, replacements):
+  validate the complete replacement set
+  walk owner and already-materialized descendants
+  evict direct and dependency-affected cache entries
+  start one stale-disposal task per evicted cached promise
+  let the evicted container and invalidation owner observe that task
+  install the replacement registration
+  return without waiting
+
+before resolve(observer):
+  await every observed stale-disposal task
+  propagate each unconsumed failure once
+  only then resolve the replacement
+
+during dispose(observer):
+  settle observed stale-disposal tasks and collect failures
+  continue ordinary cache teardown
+  report one error or an AggregateError
 ```
 
 ```typescript
@@ -651,7 +666,7 @@ const CACHE_TOKEN = Symbol('CACHE_TOKEN');
 const events: string[] = [];
 
 class FirstCache {
-  onDestroy() {
+  async onDestroy() {
     events.push('first disposed');
   }
 }
@@ -662,15 +677,14 @@ const container = new Container().register({ provide: CACHE_TOKEN, useClass: Fir
 const stale = await container.resolve<FirstCache>(CACHE_TOKEN);
 
 container.override({ provide: CACHE_TOKEN, useClass: SecondCache });
-await Promise.resolve(); // Stale singleton cleanup is scheduled right after override.
-
+// resolve() waits for the stale instance's onDestroy() to settle.
 const fresh = await container.resolve<SecondCache>(CACHE_TOKEN);
 console.log(stale instanceof FirstCache, fresh instanceof SecondCache, events);
 ```
 
 This section proves that Fluo treats DI as a lifecycle system, not just a constructor helper. The container manages the retirement path for stale objects as strictly as it manages initial creation.
 
-For advanced users building test harnesses or hot-reload-like flows, the lesson is this. `override()` is safe because it changes registration state and lifetime state together. If it changed only the map and ignored the cache, singleton behavior would be dangerously distorted.
+For advanced users building test harnesses or hot-reload-like flows, the lesson is this. `override()` changes registration state and lifetime state together, but the asynchronous settlement boundary belongs to the next observing `resolve()` or `dispose()`. Do not assume stale cleanup has finished merely because `override()` returned.
 
 ## 5.6 Disposal order, child scopes, and shutdown guarantees
 The final scope question is how instances die. Fluo's answer is deterministic teardown, with a clear split between root singletons and request children.

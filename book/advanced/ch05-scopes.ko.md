@@ -130,24 +130,31 @@ const singleton = await root.resolve(DefaultSingleton);
 ## 5.2 Singleton caching and the root container baseline
 singleton은 기본 lifetime이지만, Fluo의 singleton 동작은 단순한 "영원히 객체 하나"보다 더 정밀합니다. 실제로는 "문서화된 override 경로가 없는 한 root singleton cache에 token별 promise 하나"에 가깝습니다.
 
-cache field는 `path:packages/di/src/container.ts:121-140`에 선언되어 있습니다. single provider 쪽의 핵심은 `singletonCache: Map<Token, Promise<unknown>>`입니다. multi provider는 `multiSingletonCache: Map<NormalizedProvider, Promise<unknown>>`를 따로 가집니다.
+cache field는 `path:packages/di/src/container.ts:287-313`에 선언되어 있습니다. single provider 쪽의 핵심은 `singletonCache: Map<Token, Promise<unknown>>`입니다. multi provider는 `multiSingletonCache: Map<NormalizedProvider, Promise<unknown>>`를 따로 가집니다.
 
 컨테이너 field를 보면 singleton, request, multi provider가 서로 다른 cache map을 갖는 이유가 바로 드러납니다.
 
-`path:packages/di/src/container.ts:121-140`
+`path:packages/di/src/container.ts:287-313`
 ```typescript
 private readonly registrations = new Map<Token, NormalizedProvider>();
 private readonly multiRegistrations = new Map<Token, NormalizedProvider[]>();
 private readonly multiOverriddenTokens = new Set<Token>();
-private readonly requestCache = new Map<Token, Promise<unknown>>();
-private readonly multiRequestCache = new Map<NormalizedProvider, Promise<unknown>>();
+private requestCache: Map<Token, Promise<unknown>> | undefined;
+private multiRequestCache: Map<NormalizedProvider, Promise<unknown>> | undefined;
 private readonly multiSingletonCache = new Map<NormalizedProvider, Promise<unknown>>();
-private readonly staleDisposalTasks = new Set<Promise<void>>();
-private readonly staleDisposalErrors: unknown[] = [];
+private readonly staleDisposalTasks = new Set<StaleDisposalTask>();
 private readonly singletonCache: Map<Token, Promise<unknown>>;
-private readonly childScopes = new Set<Container>();
+private readonly forwardRefTokenCache = new WeakMap<ForwardRefFn, Token>();
+private readonly factoryResolutionKinds = new WeakMap<NormalizedProvider, FactoryResolutionKind>();
+private readonly providerLookupPlanCache = new Map<Token, CachedResolutionPlan<NormalizedProvider | undefined>>();
+private readonly multiProviderPlanCache = new Map<Token, CachedResolutionPlan<readonly NormalizedProvider[]>>();
+private readonly requestScopeVerdictPlanCache = new Map<Token, CachedResolutionPlan<boolean>>();
+private readonly effectiveProviderPlanCache = new Map<Token, CachedResolutionPlan<NormalizedProvider | undefined>>();
+private childScopes: Set<Container> | undefined;
 private disposePromise: Promise<void> | undefined;
 private disposed = false;
+private trackedByParent = false;
+private graphRevision = 0;
 
 constructor(
   private readonly parent?: Container,
@@ -161,45 +168,43 @@ constructor(
 이 구조 때문에 singleton cache는 token 기준이고, multi singleton cache는 개별 normalized provider 기준입니다. request cache도 같은 분리를 반복하지만 child container의 소유물이 됩니다.
 
 root container가 singleton cache state를 소유합니다.
-`path:packages/di/src/container.ts:247-263`의 `createRequestScope()`는 `this.root().singletonCache`를 넘겨 child container를 생성합니다.
+`path:packages/di/src/container.ts:563-572`의 `createRequestScope()`는 `this.root().singletonCache`를 넘겨 child container를 생성합니다.
 즉 request scope는 singleton state를 복제하지 않습니다. 공유합니다.
 
 request child 생성 코드는 그 공유를 constructor 인자로 직접 넘깁니다.
 
-`path:packages/di/src/container.ts:252-263`
+`path:packages/di/src/container.ts:563-572`
 ```typescript
 createRequestScope(): Container {
-  if (this.disposed) {
+  if (this.isDisposedInHierarchy()) {
     throw new ContainerResolutionError(
       'Container has been disposed and can no longer create request scopes.',
       { hint: 'Create request scopes before calling container.dispose().' },
     );
   }
 
-  const child = new Container(this, true, this.root().singletonCache);
-  this.root().childScopes.add(child);
-  return child;
+  return new Container(this, true, this.root().singletonCache);
 }
 ```
 
-따라서 request child는 parent와 request flag를 갖지만, singleton promise map은 root의 것을 봅니다. 이 한 줄이 "child는 boundary이고 singleton owner는 root"라는 장의 주장을 지탱합니다.
+따라서 request child는 parent와 request flag를 갖지만, singleton promise map은 root의 것을 봅니다. 빈 scope shell은 즉시 추적되지 않습니다. `path:packages/di/src/container.ts:1066-1087`의 `ensureTrackedRequestScope()`와 lazy request-cache writer는 request-owned cache state가 처음 materialize될 때 child chain을 연결합니다. 이 방식은 chapter의 ownership rule을 유지하면서 descendant invalidation과 disposal이 생성된 모든 scope object가 아니라 실제 request cache를 대상으로 동작하게 합니다.
 
 이 구조는 resolution 단계에서 다시 강제됩니다.
-`path:packages/di/src/container.ts:527-548`의 `resolveScopedOrSingletonInstance()`는 먼저 `shouldResolveFromRoot(provider)`를 검사합니다.
-그리고 `path:packages/di/src/container.ts:550-552`의 helper는 provider가 default-scope이고, 현재 container가 request-scoped이며, provider가 local registration이 아닐 때 true를 반환합니다. 그 경우 child는 root로 위임합니다.
+`path:packages/di/src/container.ts:963-999`의 `resolveScopedOrSingletonInstance()`는 먼저 `shouldResolveFromRoot(provider)`를 검사합니다.
+그리고 `path:packages/di/src/container.ts:1013-1019`의 helper는 provider가 default-scope이고, 현재 container가 request-scoped이며, provider가 local registration이 아닐 때 true를 반환합니다. 그 경우 child는 root로 위임합니다.
 
 실제 cache map 선택은 `cacheFor()`가 합니다.
-`path:packages/di/src/container.ts:624-645`가 핵심 규칙을 보여 줍니다.
+`path:packages/di/src/container.ts:1113-1134`가 핵심 규칙을 보여 줍니다.
 default-scope provider는 원칙적으로 root `singletonCache`를 사용합니다. 단 request child에 locally registered된 경우만 예외적으로 request cache를 사용합니다. 메서드 주석이 이 예외를 일부러 footgun으로 문서화하는 이유도 여기에 있습니다.
 
 cache 선택 규칙은 한 번만 자세히 보겠습니다. 뒤의 request, override, disposal 문단은 이 발췌를 전제로 recap만 붙입니다.
 
-`path:packages/di/src/container.ts:624-645`
+`path:packages/di/src/container.ts:1113-1134`
 ```typescript
 private cacheFor(provider: NormalizedProvider): Map<Token, Promise<unknown>> {
   if (provider.scope === Scope.DEFAULT) {
     if (this.requestScopeEnabled && this.registrations.has(provider.provide)) {
-      return this.requestCache;
+      return this.requestCacheForWrite();
     }
 
     return this.root().singletonCache;
@@ -216,7 +221,7 @@ private cacheFor(provider: NormalizedProvider): Map<Token, Promise<unknown>> {
     );
   }
 
-  return this.requestCache;
+  return this.requestCacheForWrite();
 }
 ```
 
@@ -523,88 +528,84 @@ console.log(first === second, report.currentBuilder() instanceof QueryBuilder);
 ## 5.5 Overrides, cache invalidation, and stale instance disposal
 컨테이너의 가장 미묘한 lifetime 동작은, 이미 resolve된 뒤의 provider를 override할 때 나타납니다. 바로 여기서 scope와 cache invalidation, disposal이 만납니다.
 
-`override()` 자체는 `path:packages/di/src/container.ts:207-234`에 구현되어 있습니다. incoming provider를 normalize하고, 기존 visible provider를 찾고, 해당 token의 single/multi registration을 모두 삭제한 뒤, `invalidateCachedEntry(token, existing?.scope ?? normalized.scope)`를 호출합니다.
+현재 `override()` 구현은 `path:packages/di/src/container.ts:384-457`에 있습니다. 먼저 token별 전체 replacement set을 normalize하고 검증합니다. 각 token이 유효하면 single 또는 multi registration을 교체하기 전에 현재 container hierarchy에서 영향을 받는 cached entry를 무효화합니다.
 
-override는 registration 교체 전에 lifetime state를 먼저 비웁니다.
-
-`path:packages/di/src/container.ts:207-234`
+`path:packages/di/src/container.ts:423-454`
 ```typescript
-override(...providers: Provider[]): this {
-  if (this.disposed) {
-    throw new ContainerResolutionError(
-      'Container has been disposed and can no longer override providers.',
-      { hint: 'Ensure overrides are applied before calling container.dispose().' },
-    );
+for (const [token, normalizedProviders] of normalizedByToken) {
+  const firstProvider = normalizedProviders[0];
+
+  if (!firstProvider) {
+    continue;
   }
 
-  for (const provider of providers) {
-    const normalized = normalizeProvider(provider);
-    const existing = this.lookupProvider(normalized.provide);
+  const containsMultiProvider = normalizedProviders.some((normalized) => normalized.multi === true);
 
-    this.registrations.delete(normalized.provide);
-    this.multiRegistrations.delete(normalized.provide);
-    this.invalidateCachedEntry(normalized.provide, existing?.scope ?? normalized.scope);
-
-    if (normalized.multi) {
-      this.multiRegistrations.set(normalized.provide, [normalized]);
-      this.multiOverriddenTokens.add(normalized.provide);
-      continue;
-    }
-
-    this.multiOverriddenTokens.add(normalized.provide);
-    this.registrations.set(normalized.provide, normalized);
+  if (containsMultiProvider && normalizedProviders.some((normalized) => normalized.multi !== true)) {
+    throw new DuplicateProviderError(token);
   }
 
-  return this;
+  if (!containsMultiProvider && normalizedProviders.length > 1) {
+    throw new DuplicateProviderError(token);
+  }
+
+  this.invalidateAffectedCachedEntriesInHierarchy(token);
+  this.registrations.delete(token);
+  this.multiRegistrations.delete(token);
+
+  if (containsMultiProvider) {
+    this.multiRegistrations.set(token, normalizedProviders);
+    this.multiOverriddenTokens.add(token);
+    this.advanceGraphRevision();
+    continue;
+  }
+
+  this.multiOverriddenTokens.add(token);
+  this.registrations.set(token, firstProvider);
+  this.advanceGraphRevision();
 }
 ```
 
-이 순서가 중요합니다. 기존 registration만 지우고 cache를 남기면 다음 resolve가 새 provider를 보지 못할 수 있습니다. Fluo는 override를 registration update와 cache eviction의 결합으로 취급합니다.
+hierarchy walk은 `path:packages/di/src/container.ts:1551-1605`에 구현되어 있습니다. override를 받은 컨테이너와 추적 중인 모든 request-scope descendant를 방문합니다. `path:packages/di/src/container.ts:1066-1087`에서 보듯 request scope는 request cache 또는 request-local multi cache를 처음 materialize할 때 추적 대상이 됩니다. 따라서 root override는 이미 materialize된 descendant request entry 중 overridden token 자체와, provider graph가 그 token에 의존하는 cached consumer를 evict할 수 있습니다. direct, alias, multi-provider dependency path를 포괄하는 dependency-aware 검사는 `path:packages/di/src/container.ts:1607-1662`에 있습니다.
 
-이 invalidation routine은 `path:packages/di/src/container.ts:900-944`에 있습니다. request cache entry, root singleton cache entry, root multi singleton cache entry, request multi cache entry를 모두 검사합니다. cached promise가 있으면 cache entry를 삭제하기 전에 stale disposal을 예약합니다.
+이는 targeted invalidation이지, 모든 child cache를 비우거나 각 child가 ancestor 변경으로부터 격리된다는 보장이 아닙니다. 영향을 받는 materialized entry가 없는 descendant에는 retire할 대상이 없고, 이후 resolve는 갱신된 ancestor graph를 따릅니다. child-local override는 해당 child와 그 descendant만 순회하며 ancestor는 순회하지 않습니다. 또한 cache eviction이 application code가 이미 보관 중인 stale reference를 회수할 수는 없습니다.
 
-routine 전체는 길지만, stale single cache를 다루는 앞부분만으로 핵심 소유권을 볼 수 있습니다.
+evict된 각 cached promise는 `path:packages/di/src/container.ts:1309-1340`의 `scheduleStaleDisposal()`로 전달됩니다. `override()`는 여전히 동기적입니다. 비동기 retirement task를 시작하지만 cleanup 완료를 기다리지는 않습니다. task는 cached resolution promise를 기다리고, resolve된 값이 disposable이면 `onDestroy()`도 await합니다. 완료가 보장되는 시점은 `override()`가 반환하는 순간이 아니라 다음 observing lifecycle boundary입니다.
 
-`path:packages/di/src/container.ts:900-923`
+stale disposal은 이제 shutdown-only error accumulator가 아니라 task state machine입니다. `StaleDisposalTask`는 promise, failure, 그리고 failure가 이미 소비되었는지를 기록합니다(`path:packages/di/src/container.ts:31-36`). `resolve()`는 replacement resolution을 시작하기 전에 `assertStaleDisposalsSettled()`를 호출합니다(`path:packages/di/src/container.ts:584-595`). disposal도 `disposeCache()`를 통해 같은 경계에 도달하며(`path:packages/di/src/container.ts:1181-1197`), cleanup이 계속될 수 있도록 resolution failure와 일반 `onDestroy()` failure도 함께 수집합니다.
+
+`path:packages/di/src/container.ts:1289-1340`
 ```typescript
-private invalidateCachedEntry(token: Token, scope: Scope): void {
-  if (this.requestCache.has(token)) {
-    const cached = this.requestCache.get(token);
+private async assertStaleDisposalsSettled(): Promise<void> {
+  const errors: unknown[] = [];
 
-    if (cached) {
-      this.scheduleStaleDisposal(cached);
-    }
+  while (this.staleDisposalTasks.size > 0) {
+    const tasks = Array.from(this.staleDisposalTasks);
+    await Promise.all(tasks.map((task) => task.promise));
 
-    this.requestCache.delete(token);
-  }
+    for (const task of tasks) {
+      this.staleDisposalTasks.delete(task);
 
-  if (!this.parent && scope === Scope.DEFAULT) {
-    const singletonCache = this.singletonCache;
-
-    if (singletonCache.has(token)) {
-      const cached = singletonCache.get(token);
-
-      if (cached) {
-        this.scheduleStaleDisposal(cached);
+      if (task.failed && !task.errorConsumed) {
+        task.errorConsumed = true;
+        errors.push(task.error);
       }
-
-      singletonCache.delete(token);
     }
   }
-```
 
-request cache와 root singleton cache가 모두 검사되는 이유는 override 위치와 provider scope가 다를 수 있기 때문입니다. 뒤의 multi cache 분기도 같은 원칙을 provider 배열 entry에 적용합니다.
+  this.throwDisposalErrors(errors);
+}
 
-실제 예약 경로는 `path:packages/di/src/container.ts:762-780`의 `scheduleStaleDisposal()`입니다. Fluo는 stale instance reference를 그냥 버리지 않습니다. 이미 만들어진 promise를 await하고, 그 결과 인스턴스에 `onDestroy()`가 있으면 정확히 한 번 실행합니다. 여기서 발생한 에러는 `override()`를 동기적으로 깨뜨리지 않고 `staleDisposalErrors`에 누적됩니다.
+private scheduleStaleDisposal(instancePromise: Promise<unknown>, staleDisposalOwner: Container): void {
+  const observers = staleDisposalOwner === this ? [this] : [this, staleDisposalOwner];
+  const task: StaleDisposalTask = {
+    error: undefined,
+    errorConsumed: false,
+    failed: false,
+    promise: Promise.resolve(),
+  };
 
-stale disposal 예약은 cached promise를 기준으로 동작합니다.
-
-`path:packages/di/src/container.ts:762-780`
-```typescript
-private scheduleStaleDisposal(instancePromise: Promise<unknown>): void {
-  let task: Promise<void>;
-
-  task = (async () => {
+  task.promise = (async () => {
     try {
       const instance = await instancePromise;
 
@@ -612,36 +613,50 @@ private scheduleStaleDisposal(instancePromise: Promise<unknown>): void {
         await instance.onDestroy();
       }
     } catch (error) {
-      this.staleDisposalErrors.push(error);
+      task.error = error;
+      task.failed = true;
     }
   })().finally(() => {
-    this.staleDisposalTasks.delete(task);
+    if (!task.failed) {
+      for (const observer of observers) {
+        observer.staleDisposalTasks.delete(task);
+      }
+    }
   });
 
-  this.staleDisposalTasks.add(task);
+  for (const observer of observers) {
+    observer.staleDisposalTasks.add(task);
+  }
 }
 ```
 
-이미 만들어진 객체만 dispose할 수 있으므로 promise를 await하는 설계가 필요합니다. 에러를 모아 두는 구조는 override 호출 자체와 나중의 shutdown reporting을 분리합니다.
+observer set이 lifecycle boundary를 정확히 정의합니다. local override는 해당 컨테이너가 관찰합니다. ancestor override가 descendant cache를 무효화하면 그 descendant와 invalidation을 시작한 ancestor가 같은 task를 관찰합니다. 따라서 descendant replacement resolve와 root replacement resolve 모두 영향을 받은 descendant retirement를 기다립니다. 반면 unrelated root resolve는 child-local override를 기다리지 않으며, child-local stale-disposal failure도 그 unrelated root resolve로 유출되지 않습니다.
 
-이 동작은 테스트로 촘촘히 고정되어 있습니다.
-`path:packages/di/src/container.test.ts:385-397`은 이미 resolve된 singleton을 override하면 cache가 무효화됨을 검증합니다.
-`path:packages/di/src/container.test.ts:905-932`는 stale overridden singleton instance가 즉시 그리고 정확히 한 번 dispose됨을 증명합니다.
-`path:packages/di/src/container.test.ts:934-974`는 같은 보장을 multi-provider singleton entry까지 확장합니다.
+stale disposal이 실패하면 observing container의 다음 `resolve()` 또는 `dispose()` 중 처음 도달한 호출이 failure를 소비하고 전파합니다. `resolve()`는 replacement를 만들기 전에 reject하며, task failure는 한 번만 소비되므로 retry는 계속 진행할 수 있습니다. `dispose()`는 failure를 기록하고 나머지 teardown을 계속한 뒤, 단일 error 또는 여러 cleanup path가 실패했을 때 `AggregateError`를 던집니다(`path:packages/di/src/container.ts:1342-1359`). 따라서 failure reporting은 shutdown 시점에만 미뤄지지 않습니다.
 
-반복 override에 대한 회귀 테스트도 있습니다.
-`path:packages/di/src/container.test.ts:976-1012`는 stale singleton 버전이 계속 쌓이지 않음을 확인합니다.
-token이 `v1`에서 `v2`, `v3`로 바뀌는 동안 각 예전 버전은 정확히 한 번만 dispose됩니다.
+테스트는 각 경계를 고정합니다. `path:packages/di/src/container.test.ts:503-690`은 direct, dependency-aware, materialized child, nested descendant invalidation을 다룹니다. `path:packages/di/src/container.test.ts:1959-2016`은 replacement resolution의 대기와 stale-disposal failure 수신을 증명합니다. `path:packages/di/src/container.test.ts:2045-2188`은 descendant disposal, root 대기, descendant failure propagation을 다룹니다. `path:packages/di/src/container.test.ts:2190-2248`은 child-local/unrelated-root 경계를 고정하고, `path:packages/di/src/container.test.ts:2251-2329`는 multi-provider 및 반복 override retirement를 다룹니다.
 
-override-and-evict 알고리즘은 이렇게 정리할 수 있습니다.
+override-and-retire state machine은 이렇게 정리할 수 있습니다.
 
 ```text
-override(token, replacement):
-  delete visible registrations for token in current scope
-  find and evict matching cache entries
-  for each evicted cached promise:
-    schedule disposal of resolved stale instance
-  register replacement provider
+override(owner, token, replacements):
+  validate the complete replacement set
+  walk owner and already-materialized descendants
+  evict direct and dependency-affected cache entries
+  start one stale-disposal task per evicted cached promise
+  let the evicted container and invalidation owner observe that task
+  install the replacement registration
+  return without waiting
+
+before resolve(observer):
+  await every observed stale-disposal task
+  propagate each unconsumed failure once
+  only then resolve the replacement
+
+during dispose(observer):
+  settle observed stale-disposal tasks and collect failures
+  continue ordinary cache teardown
+  report one error or an AggregateError
 ```
 
 ```typescript
@@ -651,7 +666,7 @@ const CACHE_TOKEN = Symbol('CACHE_TOKEN');
 const events: string[] = [];
 
 class FirstCache {
-  onDestroy() {
+  async onDestroy() {
     events.push('first disposed');
   }
 }
@@ -662,15 +677,14 @@ const container = new Container().register({ provide: CACHE_TOKEN, useClass: Fir
 const stale = await container.resolve<FirstCache>(CACHE_TOKEN);
 
 container.override({ provide: CACHE_TOKEN, useClass: SecondCache });
-await Promise.resolve(); // stale singleton 정리는 override 직후 예약됩니다.
-
+// resolve()는 stale 인스턴스의 onDestroy()가 settle할 때까지 기다립니다.
 const fresh = await container.resolve<SecondCache>(CACHE_TOKEN);
 console.log(stale instanceof FirstCache, fresh instanceof SecondCache, events);
 ```
 
 이 부분은 Fluo가 DI를 단순 constructor helper가 아니라 lifecycle system으로 취급한다는 증거입니다. 컨테이너는 초기 생성만큼이나 stale object의 retirement 경로도 엄격하게 관리합니다.
 
-테스트 harness나 hot-reload 비슷한 흐름을 만드는 고급 사용자라면, 여기서 중요한 교훈은 이것입니다. `override()`가 안전한 이유는 registration state와 lifetime state를 동시에 바꾸기 때문입니다. 만약 map만 바꾸고 cache를 건드리지 않았다면 singleton 동작은 매우 위험하게 뒤틀렸을 것입니다.
+테스트 harness나 hot-reload 비슷한 흐름을 만드는 고급 사용자라면, 여기서 중요한 교훈은 이것입니다. `override()`는 registration state와 lifetime state를 함께 바꾸지만, 비동기 settlement boundary는 다음 observing `resolve()` 또는 `dispose()`에 있습니다. `override()`가 반환했다는 이유만으로 stale cleanup이 끝났다고 가정해서는 안 됩니다.
 
 ## 5.6 Disposal order, child scopes, and shutdown guarantees
 마지막 scope 질문은 인스턴스가 어떻게 죽느냐입니다. Fluo의 답은 deterministic teardown이며, root singleton과 request child를 명확히 분리합니다.
