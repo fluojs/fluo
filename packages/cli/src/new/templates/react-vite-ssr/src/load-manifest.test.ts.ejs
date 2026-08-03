@@ -27,7 +27,8 @@ describe('React Vite manifest loading', () => {
       expect(error).toBeInstanceOf(ReactStarterManifestError);
       if (error instanceof ReactStarterManifestError) {
         expect(error.code).toBe('react-starter-manifest-missing');
-        expect(error.message).toContain('pnpm build');
+        expect(error.message).toContain('generated build script');
+        expect(error.message).toContain('generated start script');
         expect(error.message).toContain('vite.client.config.ts');
       }
     }
@@ -47,6 +48,7 @@ describe('React Vite manifest loading', () => {
       if (error instanceof ReactStarterManifestError) {
         expect(error.code).toBe('react-starter-manifest-malformed');
         expect(error.message).toContain('dist/client/.vite/manifest.json');
+        expect(error.message).toContain('generated build script');
       }
     }
   });
