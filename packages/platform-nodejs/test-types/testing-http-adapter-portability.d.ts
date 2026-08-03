@@ -1,5 +1,5 @@
 declare module '@fluojs/testing/http-adapter-portability' {
-  import type { HttpErrorRepresentationOptions } from '@fluojs/http';
+  import type { HttpErrorRepresentationOptions, Middleware, RequestObserver } from '@fluojs/http';
   import type { ModuleType } from '@fluojs/runtime';
 
   type AppLike = {
@@ -16,6 +16,8 @@ declare module '@fluojs/testing/http-adapter-portability' {
     createErrorRepresentationBootstrapOptions?: (options: {
       readonly cors: false;
       readonly errorRepresentation: HttpErrorRepresentationOptions;
+      readonly middleware: Middleware[];
+      readonly observers: RequestObserver[];
       readonly port: 0;
     }) => TBootstrapOptions;
     exactRawBodyByteContentType?: string;
