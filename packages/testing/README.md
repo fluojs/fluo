@@ -150,6 +150,9 @@ Use `assertSupportsHttpErrorRepresentations()` to prove JSON, HTML, `HEAD`, unsu
 `WebHttpErrorRepresentationBootstrapOptions`. Supply `createErrorRepresentationBootstrapOptions`
 when an adapter's bootstrap type contains additional required fields—the typed builder receives only
 the common fixture fields and returns that adapter's complete bootstrap options without casts.
+Use `assertDoesNotCommitAbortedHttpErrorRepresentations()` to start an HTML provider, abort through
+the adapter's native request surface, and prove that neither the provider result nor canonical JSON
+fallback is written after cancellation.
 
 ## Canonical TDD Ladder
 
@@ -176,7 +179,7 @@ fluo differs from NestJS by requiring tests to name an explicit `rootModule`. Th
 
 - **Root package**: `createTestingModule(...)`, `Test.createTestingModule(...)`, `createTestApp(...)`, module introspection helpers, and shared app/module testing types including `DeepMocked<T>`
 - **Subpaths**: `@fluojs/testing/app`, `@fluojs/testing/module`, `@fluojs/testing/http`, `@fluojs/testing/mock` (including `DeepMocked<T>`), `@fluojs/testing/types` (including `DeepMocked<T>`), `@fluojs/testing/vitest`, `@fluojs/testing/vitest/tooling`
-- **Harness subpaths**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`. The HTTP portability harnesses expose `assertSupportsHttpErrorRepresentations()`, `createErrorRepresentationBootstrapOptions`, `NetworkHttpErrorRepresentationBootstrapOptions`, and `WebHttpErrorRepresentationBootstrapOptions` for adapter-owned bootstrap typing.
+- **Harness subpaths**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`. The HTTP portability harnesses expose `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `createErrorRepresentationBootstrapOptions`, `NetworkHttpErrorRepresentationBootstrapOptions`, and `WebHttpErrorRepresentationBootstrapOptions` for adapter-owned bootstrap typing.
 - **Tooling**: `@fluojs/testing/vitest` with `fluoBabelDecoratorsPlugin()` and `@fluojs/testing/vitest/tooling` with Vitest workspace config helpers (requires `vitest` and `@babel/core` in the consuming workspace)
 
 The package manifest declares `engines.node >=20.0.0`. Non-Node runtime application tests can still use runtime-native tools where documented, but the published `@fluojs/testing` package itself is governed by that Node.js engine floor.
