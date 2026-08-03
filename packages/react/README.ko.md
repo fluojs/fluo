@@ -8,6 +8,7 @@ fluo 애플리케이션을 위한 런타임 중립 React 통합입니다.
 
 - [설치](#설치)
 - [사용 시점](#사용-시점)
+- [Zero-to-First-Page Workflow](#zero-to-first-page-workflow)
 - [Stable SSR Mental Model](#stable-ssr-mental-model)
 - [React 사용자 개념 번역](#react-사용자-개념-번역)
 - [런타임 및 피어 계약](#런타임-및-피어-계약)
@@ -50,6 +51,35 @@ pipeline에는 그대로 참여해야 할 때 이 패키지를 사용하세요. 
 router를 일반 module controller metadata에 배치하고, `@Router(...)`와 `@Path(...)`는 `@fluojs/http`
 controller 및 `GET` route metadata 위의 React facade이므로 request DTO binding, versioning,
 guards, interceptors, headers, route validation, matching, dispatch는 계속 HTTP runtime contract를 사용합니다.
+
+## Zero-to-First-Page Workflow
+
+첫 page를 편집하기 전에 모든 stable seam을 직접 조립하지 않고 streamed SSR, hydration, Vite asset을
+사용하려면 공식 generated composition으로 시작하세요.
+
+```bash
+fluo new my-react-app --starter react-vite-ssr
+cd my-react-app
+pnpm dev
+```
+
+`/products/sku-42?preview=true`를 열고 `src/page.tsx`를 편집합니다. 명시적인
+`@Router(...)` / `@Path(...)` handler는 `src/app.tsx`에 남아 해당 page를 하나의 `ReactElement`로
+반환하므로 matching, DTO binding/validation, middleware, guard, interceptor, request scope,
+not-found behavior는 계속 `@fluojs/http`가 소유합니다.
+
+Generated wiring은 첫 편집에 부수적인 작업을 다음 application file로 이동합니다.
+
+- `src/entry-server.tsx`는 교체 가능한 `ReactPageRenderer`를 소유하고, application이 로드한 manifest를
+  `@fluojs/react/vite`로 parse하며, `createReactServerEntry(...)`로 `ReactServerEntry`를 반환합니다.
+- `src/react-app.tsx`는 server rendering과 hydration에 하나의 document,
+  `ReactClientRouterProvider`, route snapshot, stylesheet composition을 제공합니다.
+- `src/entry-client.tsx`는 같은 tree를 hydrate하고, `src/main.ts`와 `src/load-manifest.ts`는
+  filesystem loading 및 actionable build-output failure를 Node.js application boundary에 유지합니다.
+
+Advanced application은 generated renderer를 교체하거나 `createReactServerEntry(...)`에 명시적인
+hydration option을 전달할 수 있으며 아래 stable API도 그대로 사용할 수 있습니다. Runtime-neutral root
+export는 Node.js, Vite, browser code를 import하지 않고, starter는 별도 route matcher를 추가하지 않습니다.
 
 ## Stable SSR Mental Model
 

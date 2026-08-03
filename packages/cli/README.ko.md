@@ -117,7 +117,22 @@ fluo new my-worker-app --shape application --transport http --runtime cloudflare
 fluo new my-react-app --starter react-vite-ssr
 ```
 
-이 starter는 schema를 Node.js + Fastify HTTP로 고정하고 명시적인 server/client entry, 분리된 Vite client/server config, `hydrateRoot(...)`, `@Router(...)` page, application-owned `ReactPageRenderer`, direct JSX rendering을 생성합니다. `src/main.ts`는 생성된 Vite manifest를 로드한 뒤 `@fluojs/react/vite`에 전달하며, 해당 package가 Vite를 검색하거나 실행하지 않습니다. 생성된 `Link`는 real anchor로 남고 `router.push(...)`는 HTTP dispatcher를 통과하는 full-document navigation을 수행합니다. 이 starter는 RSC, Server Functions, file routing, client route table, SPA document swapping, prefetch, data cache를 의도적으로 제외합니다.
+이 starter는 schema를 Node.js + Fastify HTTP로 고정합니다. `pnpm dev`를 실행하고
+`/products/sku-42?preview=true`를 연 뒤 `src/page.tsx`를 편집하세요. Page UI는 더 이상 Vite asset,
+document shell, server/client route snapshot wiring을 함께 다루지 않습니다. `src/app.tsx`의 명시적인
+`@Router(...)` / `@Path(...)` handler가 page를 하나의 `ReactElement`로 반환하므로 기존 HTTP
+dispatcher가 계속 authoritative합니다.
+
+Generated application wiring은 framework abstraction에 숨지 않고 보이는 상태를 유지합니다.
+`src/entry-server.tsx`는 교체 가능한 `ReactPageRenderer`와 `ReactServerEntry` 생성을 소유하고,
+`src/react-app.tsx`는 server/client가 하나의 document 및 `ReactClientRouterProvider` composition을
+공유하게 하며, `src/entry-client.tsx`는 `hydrateRoot(...)`를 호출합니다. `src/main.ts`는
+`src/load-manifest.ts`를 사용해 generated Vite manifest를 로드한 뒤 `@fluojs/react/vite`가 이를
+parse하도록 전달합니다. Build output 누락, incompatible entry selector, hydration mismatch는 수정할
+application file과 다시 실행할 lifecycle command를 정확히 가리킵니다. 생성된 `Link`는 real anchor로
+남고 `router.push(...)`는 HTTP dispatcher를 통과하는 full-document navigation을 수행합니다. 이 starter는
+RSC, Server Functions, file routing, client route table, SPA document swapping, prefetch, data cache를
+의도적으로 제외합니다.
 
 `fluo new`는 microservice starter path도 제공합니다. `--transport`를 생략하면 TCP가 기본 경로로 사용되며, starter 매트릭스에는 transport별 dependency, env 템플릿, entrypoint를 갖춘 Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC 변형도 포함됩니다.
 

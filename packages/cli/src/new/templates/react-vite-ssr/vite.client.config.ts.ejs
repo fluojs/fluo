@@ -11,7 +11,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         'entry-client': fileURLToPath(new URL('./src/entry-client.tsx', import.meta.url)),
-        'entry-server': fileURLToPath(new URL('./src/entry-server.ts', import.meta.url)),
+        'entry-server': fileURLToPath(new URL('./src/entry-server.tsx', import.meta.url)),
       },
       output: {
         assetFileNames: '[name]-[hash][extname]',

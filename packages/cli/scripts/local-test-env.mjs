@@ -397,6 +397,22 @@ function verifySandboxProject(projectName) {
     }
   }
 
+  if (starterContract === 'react-vite-ssr') {
+    const previousServerCommand = process.env.FLUO_REACT_STARTER_SERVER_COMMAND;
+    process.env.FLUO_REACT_STARTER_SERVER_COMMAND = 'dev';
+
+    try {
+      log('Running the generated React development command through the first-page browser scenario');
+      run('pnpm', ['test:browser'], projectDirectory);
+    } finally {
+      if (previousServerCommand === undefined) {
+        delete process.env.FLUO_REACT_STARTER_SERVER_COMMAND;
+      } else {
+        process.env.FLUO_REACT_STARTER_SERVER_COMMAND = previousServerCommand;
+      }
+    }
+  }
+
   log('Running generated project checks');
   run('pnpm', ['typecheck'], projectDirectory);
   run('pnpm', ['build'], projectDirectory);

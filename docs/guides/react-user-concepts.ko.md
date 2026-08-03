@@ -57,28 +57,35 @@ validation, guard, interceptor, middleware, versioning, request scope, not-found
 
 ## 최소 end-to-end path
 
-실행 가능한 `react-vite-ssr` 예제가 canonical complete path입니다. 다음 순서로 읽으세요.
+Canonical starter composition 이전에는 application author가 첫 hydrated page를 자신 있게 편집하기 전에
+일곱 개 concept를 연결해야 했습니다. Vite manifest load, compatible server/client entry 선택, hydration
+asset 생성, `ReactPageRenderer` 구현, `ReactServerEntry` 반환, hydration에서 request route snapshot 재현,
+client entry와 server document 정렬입니다. 이 명시적 seam은 advanced contract로 유지되지만 첫 page에는
+부수적인 작업입니다.
 
-1. [`src/main.ts`](../../examples/react-vite-ssr/src/main.ts)는 application boundary에서 생성된 Vite
-   manifest를 로드하고 일반 fluo HTTP application을 bootstrap합니다.
-2. [`src/app.ts`](../../examples/react-vite-ssr/src/app.ts)는 그 값을
-   `createReactViteAssetManifest(...)`에 전달하고, `createReactServerEntry(...)`로
-   `ReactPageRenderer`를 만들며, `@Router('/products')`와 `@Path('/:sku')`를 선언하고,
-   `ReactModule.forRoot(...)`를 통해 router를 등록합니다.
-3. 같은 router의 `@Post('/:sku')` handler는 native form을 받고 일반 HTTP DTO, guard,
-   interceptor, middleware, request-scope path를 사용한 뒤 `303`으로 명시적 `GET` route에
-   redirect합니다.
-4. [`src/page.ts`](../../examples/react-vite-ssr/src/page.ts)는 document metadata와 Vite CSS를
-   렌더링하고, `createReactRouteSnapshot(...)`으로 request-scoped snapshot을 만들며, document를
-   `ReactClientRouterProvider`로 감싸고, 실제 `Link`와 `useNavigation()`을 사용하며, mutation
-   baseline으로 실제 `<form method="post">`를 유지합니다.
-5. [`src/entry-client.ts`](../../examples/react-vite-ssr/src/entry-client.ts)는 server rendering과
-   같은 URL, param, page data, stylesheet, identifier prefix로 React DOM `hydrateRoot(...)`를
-   호출합니다.
+이제 지원되는 짧은 path는 다음과 같습니다.
 
-더 작은 SSR-only 시작점은
-[`examples/react-stable-ssr`](../../examples/react-stable-ssr/README.ko.md)를 사용하세요. 생성된 build
-asset, hydration, client navigation, native form slice가 필요할 때만 Vite 예제를 추가하세요.
+1. `fluo new my-react-app --starter react-vite-ssr`를 실행하고 project로 이동한 뒤 `pnpm dev`를
+   실행합니다.
+2. `/products/sku-42?preview=true`를 열고 `src/page.tsx`를 편집합니다. Page component는 page UI와
+   hydrated interaction만 소유합니다.
+3. Route를 변경할 때 `src/app.tsx`를 읽습니다. 명시적인 `@Router(...)` / `@Path(...)` handler가
+   `<ProductPage />`를 반환하므로 HTTP matching, DTO validation, middleware, guard, interceptor,
+   request scope, not-found behavior가 React rendering보다 먼저 계속 실행됩니다.
+4. Production path에는 `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm start`,
+   `pnpm test:browser`를 실행합니다. Browser test는 console warning/error 없이 첫 response, emitted asset,
+   hydration, interaction, full-document navigation을 검증합니다.
+
+Generated application이 이 짧은 path 뒤의 composition을 소유합니다. `src/entry-server.tsx`는 교체 가능한
+`ReactPageRenderer` 및 `ReactServerEntry` boundary입니다. `src/react-app.tsx`는 server/client에 하나의
+`ReactClientRouterProvider`, route snapshot, document, stylesheet composition을 제공합니다.
+`src/entry-client.tsx`는 같은 tree를 hydrate합니다. `src/main.ts`와 `src/load-manifest.ts`는 Vite
+manifest I/O 및 actionable missing/malformed build diagnostic을 Node.js boundary에 유지합니다. Advanced
+application은 이 file을 편집하거나 교체하면서 아래의 모든 명시적 API를 계속 사용할 수 있습니다.
+
+실행 가능한 [`examples/react-vite-ssr`](../../examples/react-vite-ssr/README.ko.md)는 complete native-form
+및 policy example로 남습니다. Generated client asset이나 hydration이 필요 없는 SSR에는
+[`examples/react-stable-ssr`](../../examples/react-stable-ssr/README.ko.md)를 사용하세요.
 
 ## Experimental surface
 

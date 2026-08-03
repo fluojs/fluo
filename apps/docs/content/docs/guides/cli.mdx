@@ -72,7 +72,16 @@ Use the named React starter for the official Node.js + Fastify HTTP SSR path.
 fluo new my-react-app --starter react-vite-ssr
 ```
 
-It generates explicit client/server entries, split Vite configs, `hydrateRoot(...)`, an HTTP-owned page router, application page rendering, and direct JSX. The application loads `dist/client/.vite/manifest.json` at `src/main.ts` before `@fluojs/react/vite` parses it. Links remain real anchors and client navigation performs full-document requests, so HTTP matching and DTO validation stay authoritative. RSC, Server Functions, file routing, client route tables, prefetch, and data caches are not included.
+Run `pnpm dev`, open `/products/sku-42?preview=true`, and edit `src/page.tsx`. The explicit
+`@Router(...)` / `@Path(...)` handler stays in `src/app.tsx` and returns that page as one
+`ReactElement`, so HTTP matching and DTO validation remain authoritative. Generated wiring keeps the
+first-edit path small without hiding it: `src/entry-server.tsx` owns the replaceable
+`ReactPageRenderer`, `src/react-app.tsx` shares one document and `ReactClientRouterProvider`
+composition, `src/entry-client.tsx` hydrates that tree, and `src/main.ts` plus
+`src/load-manifest.ts` keep Vite manifest loading at the Node.js application boundary. Missing build
+output, incompatible entry selectors, and hydration mismatches identify those application-owned
+steps. RSC, Server Functions, file routing, client route tables, prefetch, and data caches are not
+included.
 
 Generated non-Deno HTTP starters include a TDD-first Vitest layout:
 
@@ -81,7 +90,9 @@ Generated non-Deno HTTP starters include a TDD-first Vitest layout:
 - app dispatch tests in `src/app.test.ts`,
 - default e2e-style tests in `test/app.e2e.test.ts` using `createTestApp({ rootModule })`.
 
-The React starter uses focused streamed SSR and hydration tests plus `pnpm test:browser`, which starts the production build and rejects missing assets or hydration warnings.
+The React starter uses focused streamed SSR, manifest-failure, and hydration tests plus
+`pnpm test:browser`, which starts the production build and rejects missing assets or hydration
+warnings.
 
 ## Microservice and mixed starters
 

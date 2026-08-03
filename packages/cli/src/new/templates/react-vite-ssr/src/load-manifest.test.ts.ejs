@@ -1,0 +1,55 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+import { afterEach, describe, expect, it } from 'vitest';
+
+import { ReactStarterManifestError, loadReactViteManifest } from './load-manifest';
+
+const temporaryDirectories: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(
+    temporaryDirectories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })),
+  );
+});
+
+describe('React Vite manifest loading', () => {
+  it('identifies the build command when the client manifest is missing', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'fluo-react-manifest-missing-'));
+    temporaryDirectories.push(directory);
+
+    try {
+      await loadReactViteManifest(pathToFileURL(join(directory, 'manifest.json')));
+      throw new TypeError('Expected loadReactViteManifest(...) to reject a missing manifest.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ReactStarterManifestError);
+      if (error instanceof ReactStarterManifestError) {
+        expect(error.code).toBe('react-starter-manifest-missing');
+        expect(error.message).toContain('generated build script');
+        expect(error.message).toContain('generated start script');
+        expect(error.message).toContain('vite.client.config.ts');
+      }
+    }
+  });
+
+  it('identifies generated build output when the client manifest is malformed', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'fluo-react-manifest-malformed-'));
+    temporaryDirectories.push(directory);
+    const manifestPath = join(directory, 'manifest.json');
+    await writeFile(manifestPath, '{');
+
+    try {
+      await loadReactViteManifest(pathToFileURL(manifestPath));
+      throw new TypeError('Expected loadReactViteManifest(...) to reject malformed JSON.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ReactStarterManifestError);
+      if (error instanceof ReactStarterManifestError) {
+        expect(error.code).toBe('react-starter-manifest-malformed');
+        expect(error.message).toContain('dist/client/.vite/manifest.json');
+        expect(error.message).toContain('generated build script');
+      }
+    }
+  });
+});

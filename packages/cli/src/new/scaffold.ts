@@ -2309,8 +2309,8 @@ function emitSharedScaffoldFiles(
     return [
       { content: createProjectPackageJson(options, bootstrapPlan, releaseVersion, packageSpecs), path: 'package.json' },
       ...createReactViteSsrScaffoldFiles({
+        packageManager: options.packageManager,
         projectName: options.projectName,
-        startCommand: createRunCommand(options.packageManager, 'start'),
       }),
       { content: createBabelConfig(), path: 'babel.config.cjs' },
       { content: createGitignore(), path: '.gitignore' },

@@ -1,0 +1,53 @@
+import { readFile } from 'node:fs/promises';
+
+export type ReactStarterManifestErrorCode =
+  | 'react-starter-manifest-malformed'
+  | 'react-starter-manifest-missing'
+  | 'react-starter-manifest-read-failed';
+
+export class ReactStarterManifestError extends Error {
+  constructor(
+    readonly code: ReactStarterManifestErrorCode,
+    message: string,
+    options: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = 'ReactStarterManifestError';
+  }
+}
+
+export async function loadReactViteManifest(manifestUrl: URL): Promise<unknown> {
+  let source: string;
+
+  try {
+    source = await readFile(manifestUrl, 'utf8');
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      throw new ReactStarterManifestError(
+        'react-starter-manifest-missing',
+        'The Vite client manifest is missing. Run the generated build script before the generated start script; if it remains missing, check build.manifest and build.outDir in vite.client.config.ts.',
+        { cause: error },
+      );
+    }
+
+    throw new ReactStarterManifestError(
+      'react-starter-manifest-read-failed',
+      'The Vite client manifest could not be read. Check the generated dist/client directory and file permissions, then run the generated build script again.',
+      { cause: error },
+    );
+  }
+
+  try {
+    const manifest: unknown = JSON.parse(source);
+    return manifest;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new ReactStarterManifestError(
+        'react-starter-manifest-malformed',
+        'The Vite client manifest is not valid JSON. Remove dist, run the generated build script again, and do not edit dist/client/.vite/manifest.json by hand.',
+        { cause: error },
+      );
+    }
+    throw error;
+  }
+}

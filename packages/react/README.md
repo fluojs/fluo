@@ -8,6 +8,7 @@ Runtime-neutral React integration for fluo applications.
 
 - [Installation](#installation)
 - [When to Use](#when-to-use)
+- [Zero-to-First-Page Workflow](#zero-to-first-page-workflow)
 - [Stable SSR Mental Model](#stable-ssr-mental-model)
 - [React User Concept Translation](#react-user-concept-translation)
 - [Runtime and Peer Contract](#runtime-and-peer-contract)
@@ -52,6 +53,36 @@ places React routers into ordinary module controller metadata, and `@Router(...)
 `@Path(...)` are React facades over `@fluojs/http` controller and `GET` route metadata, so request
 DTO binding, versioning, guards, interceptors, headers, route validation, matching, and dispatch
 continue to use the HTTP runtime contracts.
+
+## Zero-to-First-Page Workflow
+
+Use the official generated composition when you want streamed SSR, hydration, and Vite assets
+without assembling every stable seam before editing the first page:
+
+```bash
+fluo new my-react-app --starter react-vite-ssr
+cd my-react-app
+pnpm dev
+```
+
+Open `/products/sku-42?preview=true` and edit `src/page.tsx`. The explicit `@Router(...)` / `@Path(...)`
+handler remains in `src/app.tsx` and returns that page as one `ReactElement`, so `@fluojs/http` still
+owns matching, DTO binding and validation, middleware, guards, interceptors, request scopes, and
+not-found behavior.
+
+The generated wiring moves the incidental first-edit work into discoverable application files:
+
+- `src/entry-server.tsx` owns the replaceable `ReactPageRenderer`, parses the application-loaded
+  manifest with `@fluojs/react/vite`, and returns `ReactServerEntry` with
+  `createReactServerEntry(...)`.
+- `src/react-app.tsx` gives server rendering and hydration one document,
+  `ReactClientRouterProvider`, route snapshot, and stylesheet composition.
+- `src/entry-client.tsx` hydrates that same tree, while `src/main.ts` and `src/load-manifest.ts` keep
+  filesystem loading and actionable build-output failures at the Node.js application boundary.
+
+Advanced applications can replace the generated renderer or pass explicit hydration options to
+`createReactServerEntry(...)`; the stable APIs below remain available. No runtime-neutral root export
+imports Node.js, Vite, or browser code, and the starter does not add another route matcher.
 
 ## Stable SSR Mental Model
 
