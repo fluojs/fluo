@@ -105,6 +105,28 @@ describe('createFrameworkResponse', () => {
     expect(endSpy).toHaveBeenCalledWith(Buffer.from('hello', 'utf8'));
   });
 
+  it('settles waitForDrain and removes terminal listeners when the response drains', async () => {
+    const rawResponse = createMockServerResponse();
+    const frameworkResponse = createFrameworkResponse(rawResponse);
+    let settled = false;
+
+    const waitForDrain = frameworkResponse.stream?.waitForDrain?.();
+    void waitForDrain?.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+
+    expect(settled).toBe(false);
+
+    rawResponse.emit('drain');
+
+    await expect(waitForDrain).resolves.toBeUndefined();
+    expect(settled).toBe(true);
+    expect(rawResponse.listenerCount('drain')).toBe(0);
+    expect(rawResponse.listenerCount('close')).toBe(0);
+    expect(rawResponse.listenerCount('error')).toBe(0);
+  });
+
   it('settles waitForDrain when the response closes before drain', async () => {
     const rawResponse = createMockServerResponse();
     const frameworkResponse = createFrameworkResponse(rawResponse);
