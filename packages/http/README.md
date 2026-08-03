@@ -123,13 +123,22 @@ documents without changing API clients:
 import type { HttpErrorRepresentationOptions } from '@fluojs/http';
 import { bootstrapApplication } from '@fluojs/runtime';
 
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
 const errorRepresentation = {
   html: {
     canRender({ request }) {
       return request.method === 'GET' || request.method === 'HEAD';
     },
     render({ json }) {
-      return `<!doctype html><main>${json.error.status}: ${json.error.message}</main>`;
+      return `<!doctype html><main>${json.error.status}: ${escapeHtml(json.error.message)}</main>`;
     },
   },
 } satisfies HttpErrorRepresentationOptions;
@@ -147,11 +156,17 @@ canonical `ErrorResponse`, request, optional matched handler, request id, and ac
 container. It receives no `FrameworkResponse`, so status, headers, `HEAD`, abort, and commit ownership
 remain in the dispatcher.
 
+The provider return value is trusted application HTML. fluo does not escape or sanitize it. Escape
+every request-derived or error-derived value before interpolation, as the example does for
+`json.error.message`, or render through a framework whose text-node contract performs that escaping.
+
 `Accept` negotiation is deterministic: absent `Accept` and wildcard/tie cases select JSON; quality
 and specificity select between `application/json` and available `text/html`; unsupported ranges
 produce canonical JSON 406. `canRender(...)` may constrain HTML per application or matched handler.
 A provider failure falls back once to the original canonical JSON outcome, and committed or aborted
-requests are never rewritten. Successful-route `@Produces(...)` metadata does not control error
+requests are never rewritten. Response writer `send(...)` or stream/write failures propagate
+unchanged and do not trigger a second canonical JSON write. Existing native `Vary` values are
+preserved when HTTP adds `Accept`. Successful-route `@Produces(...)` metadata does not control error
 representations. See the
 [HTTP error representation decision](../../docs/architecture/http-error-representations.md) for the
 complete phase and fallback contract.
