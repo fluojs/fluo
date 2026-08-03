@@ -1,5 +1,6 @@
 import { InvariantError } from '@fluojs/core';
 
+import { PlatformLifecycleConflictError, type PlatformLifecycleOperation } from './errors.js';
 import type {
   PlatformComponent,
   PlatformComponentInput,
@@ -18,11 +19,8 @@ interface RegisteredPlatformComponent {
   dependencies: readonly string[];
 }
 
-type PlatformLifecycleOperation = 'start' | 'stop';
-
 interface PlatformLifecycleTransition {
-  operation: PlatformLifecycleOperation;
-  promise: Promise<void>;
+  readonly operation: PlatformLifecycleOperation;
 }
 
 function isRegistration(value: PlatformComponentInput): value is PlatformComponentRegistration {
@@ -168,7 +166,7 @@ export class RuntimePlatformShell implements PlatformShell {
   private orderedComponents: RegisteredPlatformComponent[] = [];
   private rollbackPendingComponents: RegisteredPlatformComponent[] = [];
   private readonly diagnostics: PlatformDiagnosticIssue[] = [];
-  private pendingLifecycleTransition: PlatformLifecycleTransition | undefined;
+  private activeLifecycleTransition: PlatformLifecycleTransition | undefined;
 
   constructor(private readonly registeredComponents: RegisteredPlatformComponent[]) {}
 
@@ -195,21 +193,21 @@ export class RuntimePlatformShell implements PlatformShell {
   }
 
   private runLifecycleTransition(operation: PlatformLifecycleOperation, run: () => Promise<void>): Promise<void> {
-    if (this.pendingLifecycleTransition?.operation === operation) {
-      return this.pendingLifecycleTransition.promise;
+    const activeTransition = this.activeLifecycleTransition;
+    if (activeTransition) {
+      return Promise.reject(new PlatformLifecycleConflictError(activeTransition.operation, operation));
     }
 
-    const previousTransition = this.pendingLifecycleTransition;
-    const promise = previousTransition ? previousTransition.promise.then(run, run) : run();
-    const transition: PlatformLifecycleTransition = { operation, promise };
-    this.pendingLifecycleTransition = transition;
+    const transition: PlatformLifecycleTransition = { operation };
+    this.activeLifecycleTransition = transition;
+    const promise = Promise.resolve(run());
 
-    const clearPendingTransition = (): void => {
-      if (this.pendingLifecycleTransition === transition) {
-        this.pendingLifecycleTransition = undefined;
+    const clearActiveTransition = (): void => {
+      if (this.activeLifecycleTransition === transition) {
+        this.activeLifecycleTransition = undefined;
       }
     };
-    void promise.then(clearPendingTransition, clearPendingTransition);
+    void promise.then(clearActiveTransition, clearActiveTransition);
 
     return promise;
   }
