@@ -161,7 +161,7 @@ AWS Lambda나 Cloudflare Workers 같은 환경에서는 플랫폼이 장기 실�
 
 ## 13.7 실시간 통신 역량(Realtime Capability) 보고
 
-어댑터는 자신이 WebSocket이나 SSE를 지원하는지 프레임워크에 알릴 수 있습니다. 이 보고는 `getRealtimeCapability`를 통해 수행됩니다. 기능이 실제로 지원되는지, 계약만 열려 있는지, 전혀 지원되지 않는지를 명시하면 상위 모듈이 안전하게 활성화 여부를 판단할 수 있습니다.
+어댑터는 WebSocket과 raw request-upgrade boundary를 `getRealtimeCapability()`로 보고합니다. 이 boundary가 실제로 지원되는지, contract-only인지, 지원되지 않는지를 명시하면 상위 WebSocket module이 기능 활성화 여부를 안전하게 판단할 수 있습니다. 이 capability는 SSE 지원을 보고하지 않으며, server-sent event는 HTTP response-stream contract에 속합니다.
 
 ```typescript
 // packages/http/src/adapter.ts:L49-L63
@@ -178,7 +178,7 @@ export function createFetchStyleHttpAdapterRealtimeCapability(
 }
 ```
 
-프레임워크는 이 정보를 바탕으로 실시간 기능이 필요한 모듈(예: Socket.IO 통합)의 활성화 여부를 결정하거나 경고를 표시합니다.
+프레임워크는 이 정보를 바탕으로 WebSocket 또는 raw-upgrade 기능이 필요한 모듈(예: Socket.IO 통합)의 활성화 여부를 결정하거나 경고를 표시합니다. Managed SSE는 그 대신 adapter가 `FrameworkResponse.stream`을 노출해야 합니다. 이 HTTP contract를 만족하려면 adapter가 request abort를 `FrameworkRequest.signal`에 보존하고, `stream.onClose(...)`로 response-close notification을 노출하며, write backpressure를 보고하고 `waitForDrain()`을 구현해야 합니다. 그래야 dispatcher가 stream을 중단하고 drain한 뒤 닫을 수 있습니다.
 
 ## 13.8 No-op 어댑터: 테스트와 커스텀 런타임
 
@@ -334,7 +334,7 @@ export class TinyNodeAdapter implements HttpApplicationAdapter {
 - `FrameworkRequest/Response` 매핑이 어댑터 구현의 핵심입니다.
 - 바인더와의 협력을 통해 데이터가 흐르는 파이프라인이 완성됩니다.
 - 고성능 시스템에서는 AbortSignal 연동을 통한 자원 정리 최적화가 필수적입니다.
-- 실시간 통신 역량 보고는 생태계 모듈 간의 호환성을 보장하는 중요한 계약입니다.
+- WebSocket과 raw-upgrade capability 보고는 realtime 생태계 모듈 간 호환성을 보장하는 중요한 계약이며, managed SSE 지원은 `FrameworkResponse.stream`에 속합니다.
 
 ## 13.14 다음 챕터 예고
 
