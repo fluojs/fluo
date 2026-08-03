@@ -701,55 +701,87 @@ function registerModuleMiddleware(container: Container, modules: CompiledModule[
 ## 8.5 Initialization order continues after registration through lifecycle resolution and hook execution
 module graph order는 initialization order의 절반에 불과합니다. registration 이후 runtime은 어떤 singleton instance를 eager하게 만들지, 어떤 hook을 실행할지, 언제 app이 ready해지는지도 결정해야 합니다.
 
-이 연속 단계는 `path:packages/runtime/src/bootstrap.ts:920-1029`의 `bootstrapApplication()`과, `path:packages/runtime/src/bootstrap.ts:1059-1153`의 `FluoFactory.createApplicationContext()`에 있습니다. 두 흐름은 같은 lifecycle skeleton을 공유합니다.
+이 연속 단계는 `path:packages/runtime/src/bootstrap.ts:1445-1590`의 `bootstrapApplication()`과 `path:packages/runtime/src/bootstrap.ts:1619-1740`의 `FluoFactory.createApplicationContext()`에 있습니다. 두 흐름은 같은 lifecycle skeleton을 공유합니다.
 
-첫째, runtime context token이 등록됩니다. `path:packages/runtime/src/bootstrap.ts:783-795`의 `registerRuntimeBootstrapTokens()`는 full application에 대해 `HTTP_APPLICATION_ADAPTER`와 `PLATFORM_SHELL`을 추가합니다. `path:packages/runtime/src/bootstrap.ts:811-816`의 `registerRuntimeApplicationContextTokens()`는 context-only bootstrap에 대해 `PLATFORM_SHELL`만 추가합니다.
+첫째, runtime context token이 등록됩니다. `path:packages/runtime/src/bootstrap.ts:1280-1300`의 `registerRuntimeBootstrapTokens()`는 full application에 대해 `HTTP_APPLICATION_ADAPTER`와 `PLATFORM_SHELL`을 추가합니다. `path:packages/runtime/src/bootstrap.ts:1316-1332`의 `registerRuntimeApplicationContextTokens()`는 context-only bootstrap에 `PLATFORM_SHELL`을 추가하지만 HTTP adapter는 추가하지 않습니다.
 
-둘째, runtime은 `path:packages/runtime/src/bootstrap.ts:818-828`의 `resolveBootstrapLifecycleInstances()`를 통해 lifecycle-bearing singleton instance를 해석합니다. 이 helper는 runtime provider와 module provider를 합친 뒤, `resolveLifecycleInstances()`에 위임합니다.
+둘째, runtime은 `path:packages/runtime/src/bootstrap.ts:1334-1344`의 `resolveBootstrapLifecycleInstances()`를 통해 lifecycle hook을 가질 수 있는 singleton instance를 해석합니다. 이 helper는 effective runtime provider와 module provider를 합친 뒤 `resolveLifecycleInstances()`에 위임합니다.
 
-`path:packages/runtime/src/bootstrap.ts:666-688`의 `resolveLifecycleInstances()`가 바로 eager instantiation policy를 명시하는 곳입니다. request scope와 transient provider는 건너뜁니다. token 기준으로 중복을 제거합니다. 그리고 singleton provider만 즉시 resolve합니다.
+`path:packages/runtime/src/bootstrap.ts:1019-1072`의 `resolveLifecycleInstances()`가 eager instantiation policy와 concurrency policy를 함께 명시합니다. Provider order대로 token 중복을 제거하고 hook-bearing value provider와 direct singleton class/factory provider만 유지합니다. Runtime은 direct-singleton filtering 전에 hook-bearing value provider를 lifecycle entry에 추가하므로, hook-bearing `multi: true` value provider도 lifecycle entry가 될 수 있습니다. Alias, request-scoped, transient, 그리고 value가 아닌 multi class/factory provider는 direct top-level lifecycle entry가 되지 않습니다.
 
 이 helper는 lifecycle 대상이 될 수 있는 provider를 의도적으로 좁힙니다.
 
-`path:packages/runtime/src/bootstrap.ts:666-688`
+`path:packages/runtime/src/bootstrap.ts:1019-1072`
 ```typescript
-async function resolveLifecycleInstances(container: Container, providers: Provider[]): Promise<unknown[]> {
-  const instances: unknown[] = [];
+async function resolveLifecycleInstances(
+  container: Container,
+  providers: Provider[],
+  resolvedInstances: unknown[] = [],
+): Promise<unknown[]> {
+  const lifecycleEntries: Array<{ token: Token; useValue?: unknown }> = [];
   const seen = new Set<Token>();
 
   for (const provider of providers) {
-    const scope = providerScope(provider);
-
-    if (scope === 'request' || scope === 'transient') {
-      continue;
-    }
-
     const token = providerToken(provider);
 
     if (seen.has(token)) {
       continue;
     }
 
+    if (isHookBearingValueProvider(provider)) {
+      seen.add(token);
+      lifecycleEntries.push({ token, useValue: provider.useValue });
+      continue;
+    }
+
+    if (!isDirectSingletonContextProvider(provider)) {
+      continue;
+    }
+
     seen.add(token);
-    instances.push(await container.resolve(token));
+    lifecycleEntries.push({ token });
   }
 
-  return instances;
+  const resolutionResults = await Promise.allSettled(
+    lifecycleEntries.map((entry) => entry.useValue ?? container.resolve(entry.token)),
+  );
+
+  let resolutionError: unknown;
+  let hasResolutionError = false;
+
+  for (const result of resolutionResults) {
+    if (result.status === 'fulfilled') {
+      resolvedInstances.push(result.value);
+      continue;
+    }
+
+    if (!hasResolutionError) {
+      resolutionError = result.reason;
+      hasResolutionError = true;
+    }
+  }
+
+  if (hasResolutionError) {
+    throw resolutionError;
+  }
+
+  return resolvedInstances;
 }
 ```
 
-그래프 순서 이후에도 모든 provider가 즉시 생성되는 것은 아닙니다. singleton 후보만 token 중복 제거를 거친 뒤 eager resolve 대상이 됩니다.
+그래프 순서 이후에도 모든 provider가 즉시 생성되는 것은 아닙니다. Direct singleton class/factory 후보와 hook-bearing singleton value만 token 중복 제거를 거쳐 eager lifecycle 대상이 됩니다.
 
+`Promise.allSettled(...)` map은 앞 entry가 끝날 때까지 기다리지 않고 모든 top-level lifecycle entry를 시작하므로 독립 singleton resolution이 겹칩니다. DI는 각 entry가 settle되기 전에 해당 entry 자체의 dependency chain을 계속 해석합니다. `Promise.allSettled(...)`는 input order로 result를 반환하고 이어지는 loop도 fulfilled instance를 같은 provider order로 append합니다. 따라서 resolution completion order가 이후 hook order를 바꿀 수 없습니다.
 
-즉 Fluo의 bootstrap order는 "모든 module의 모든 provider를 instantiate한다"가 아닙니다. "lifecycle hook에 참여할 수 있는 unique singleton provider를 eager하게 instantiate한다"에 가깝습니다. 이 정책이 더 제한적이고, 더 감사 가능하며, 무엇보다 구현 추적이 쉽습니다.
+즉 Fluo의 bootstrap order는 "모든 module의 모든 provider를 순차적으로 instantiate한다"가 아니라 "독립적인 unique singleton lifecycle candidate를 병렬로 resolve한 뒤 hook을 결정적으로 실행한다"에 가깝습니다. `path:packages/runtime/src/bootstrap.test.ts:887-936`은 이 분리를 직접 증명합니다. 첫 번째 factory가 중단된 동안 두 번째 factory가 resolve되지만, `first:init`은 여전히 `second:init`보다 먼저입니다. `path:packages/runtime/src/bootstrap.test.ts:938-980`은 병렬 peer가 실패해도 fulfilled lifecycle instance가 cleanup에 남는다는 점도 검증합니다.
 
-셋째, `path:packages/runtime/src/bootstrap.ts:830-840`의 `runBootstrapLifecycle()`이 실제 start sequence를 조율합니다. readiness marker를 reset하고, bootstrap hook을 실행하고, platform shell을 시작하고, readiness를 표시하고, compiled module 로그를 남깁니다.
+셋째, `path:packages/runtime/src/bootstrap.ts:1346-1358`의 `runBootstrapLifecycle()`이 실제 start sequence를 조율합니다. readiness marker를 reset하고, bootstrap hook을 실행하고, platform shell을 시작하고, readiness를 표시하고, bootstrap-ready signal을 resolve하고, compiled module 로그를 남깁니다.
 
-내부 hook ordering은 `path:packages/runtime/src/bootstrap.ts:693-705`의 `runBootstrapHooks()`에 있습니다. 모든 `onModuleInit()` hook이 먼저 실행됩니다. 그 pass가 끝난 뒤에야 모든 `onApplicationBootstrap()` hook이 실행됩니다. 즉 전역적인 phase barrier가 있습니다. instance별 interleave가 아닙니다.
+내부 hook ordering은 `path:packages/runtime/src/bootstrap.ts:1183-1195`의 `runBootstrapHooks()`에 있습니다. Provider order가 유지된 instance array를 순차적으로 소비합니다. 모든 `onModuleInit()` hook이 provider order대로 먼저 실행되고, 그 pass가 끝난 뒤에야 모든 `onApplicationBootstrap()` hook이 같은 순서로 실행됩니다. 즉 concurrent resolution 다음에 deterministic hook pass와 global phase barrier가 옵니다. Instance별 interleave가 아닙니다.
 
 bootstrap hook runner는 두 번의 pass로 phase barrier를 만듭니다.
 
-`path:packages/runtime/src/bootstrap.ts:693-705`
+`path:packages/runtime/src/bootstrap.ts:1183-1195`
 ```typescript
 async function runBootstrapHooks(instances: unknown[]): Promise<void> {
   for (const instance of instances) {
@@ -766,14 +798,13 @@ async function runBootstrapHooks(instances: unknown[]): Promise<void> {
 }
 ```
 
-한 instance의 두 hook을 붙여 실행하지 않고, 모든 module init을 먼저 끝냅니다. 이 구조가 lifecycle phase를 전역적으로 분리합니다.
+한 instance의 두 hook을 붙여 실행하지 않고 모든 module init을 먼저 끝내며, 각 pass 안에서는 provider order를 유지합니다. 이 구조가 resolution race order를 노출하지 않으면서 lifecycle phase를 전역적으로 분리합니다.
 
-
-shutdown ordering은 거울상입니다. `path:packages/runtime/src/bootstrap.ts:710-722`의 `runShutdownHooks()`는 instance를 역순으로 순회하면서, 먼저 모든 `onModuleDestroy()`를 실행하고, 그 다음 모든 `onApplicationShutdown()`을 실행합니다.
+shutdown ordering은 거울상입니다. `path:packages/runtime/src/bootstrap.ts:1200-1212`의 `runShutdownHooks()`는 provider order가 유지된 instance를 역순으로 순회하면서, 먼저 모든 `onModuleDestroy()`를 실행하고 그 다음 모든 `onApplicationShutdown()`을 실행합니다.
 
 종료 hook은 같은 phase 분리를 유지하되 instance 순서만 뒤집습니다.
 
-`path:packages/runtime/src/bootstrap.ts:710-722`
+`path:packages/runtime/src/bootstrap.ts:1200-1212`
 ```typescript
 async function runShutdownHooks(instances: readonly unknown[], signal?: string): Promise<void> {
   for (const instance of [...instances].reverse()) {
@@ -802,21 +833,23 @@ compile module graph
   -> validate visibility and exports
   -> register providers/controllers/middleware
   -> register runtime tokens
-  -> eagerly resolve singleton lifecycle instances
-  -> run all onModuleInit hooks
-  -> run all onApplicationBootstrap hooks
+  -> collect unique singleton lifecycle entries in provider order
+  -> resolve independent lifecycle entries concurrently
+  -> retain provider order from the settled results
+  -> run all onModuleInit hooks in provider order
+  -> run all onApplicationBootstrap hooks in provider order
   -> start platform shell
   -> create dispatcher/application shell
   -> later: listen() binds adapter
 ```
 
-`path:packages/runtime/src/bootstrap.test.ts:522-629`의 application-context 테스트는 HTTP adapter가 없어도 같은 lifecycle sequence가 유지됨을 보여 줍니다. 즉 initialization order는 transport startup에 속한 것이 아니라, runtime shell 자체에 속합니다. 이 구분이 바로 8장의 진짜 마무리입니다. Fluo에서 "module initialization order"는 단순한 topological sorting이 아닙니다. 더 구체적인 계층화된 모델입니다.
+`path:packages/runtime/src/bootstrap.test.ts:1090-1129`의 application-context 테스트는 HTTP adapter가 없어도 같은 lifecycle sequence가 유지됨을 보여 줍니다. 즉 initialization order는 transport startup에 속한 것이 아니라, runtime shell 자체에 속합니다. 이 구분이 바로 8장의 진짜 마무리입니다. Fluo에서 "module initialization order"는 단순한 topological sorting이 아닙니다. 더 구체적인 계층화된 모델입니다.
 
 첫째, **모듈 그래프의 컴파일 타임 순서**가 있습니다. 여기서 순환 의존성이 거부되고 가시성 경계가 그려집니다. 생성자가 하나도 호출되기 전에 애플리케이션이 여기서 실패한다면, `@Module()` import 구조에 결함이 있을 가능성이 큽니다. `compileModule()` 알고리즘은 모듈의 전체 의존성 하위 트리가 이해되고 검증될 때까지 어떤 모듈도 컨테이너에 들어가지 않도록 보장합니다. 그 결과 일부 모듈만 자신의 export를 알고 다른 모듈은 모르는 "부분적 그래프" 상태를 피하고, 후속 등록 단계에 일관된 세계관을 넘길 수 있습니다. 이 단계에서 `providerTokens`와 `exportedTokens`를 미리 계산하는 일은 전체 컨테이너 설정의 청사진을 만드는 작업입니다.
 
 둘째, **토큰 등록 순서**가 있습니다. 런타임은 컴파일된 모듈 레코드를 순회하면서 프로바이더 정의를 DI 컨테이너에 공급합니다. 이 과정은 평면적인 등록 pass이지만, 컴파일 중에 정해진 위상 순서(topological order)에 의해 제어됩니다. 등록 단계는 중복 프로바이더 정책이 강제되고 컨테이너의 내부 lookup table이 채워지는 지점입니다. 이 작업이 단일하고 순차적인 pass로 일어나기 때문에, Fluo는 일부 프레임워크에서 보이는 "지연 등록(lazy registration)"의 복잡성을 피하고 컨테이너의 최종 상태를 결정론적으로 유지합니다. 진단 도구로 감사하기도 쉬워집니다. 또한 이 단계는 별칭 프로바이더(alias providers)의 정규화를 처리하여 모든 `useExisting` redirect가 컨테이너의 내부 map에 올바르게 등록되도록 보장합니다.
 
-셋째, **싱글톤 라이프사이클 부트스트랩 순서**입니다. 이는 생성자와 `OnModuleInit` 훅의 형태로 사용자 코드가 실제로 실행되는 첫 지점입니다. Fluo는 의존성을 존중하는 순서로 라이프사이클을 가진 싱글톤을 해석합니다. 서비스 A가 서비스 B에 의존한다면, 서비스 B가 초기화되고 그 `onModuleInit` 훅이 완료된 뒤에 서비스 A의 훅이 시작됩니다. 이러한 "깊이 우선 초기화(depth-first initialization)"는 비즈니스 로직이 실행되기 시작할 때 의존 리소스가 알려진 준비 상태에 있음을 보장합니다. `resolveBootstrapLifecycleInstances()`를 통한 인스턴스 해석은 정적 그래프를 실제 운영 가능한 객체로 전환합니다.
+셋째, **싱글톤 라이프사이클 부트스트랩 순서**입니다. 이는 생성자와 lifecycle hook의 형태로 사용자 코드가 실제로 실행되는 첫 지점입니다. Fluo는 독립적인 top-level singleton resolution을 병렬로 시작하며, DI container는 각 provider가 settle되기 전에 해당 provider의 constructor/factory dependency를 계속 resolve합니다. Hook order는 별도 계약입니다. Settled instance는 deterministic provider order를 유지하고, 모든 `onModuleInit()`이 그 순서대로 직렬 실행된 뒤에야 provider-ordered `onApplicationBootstrap()` pass가 시작됩니다. 따라서 factory completion timing에서 hook order를 추론하거나 이를 depth-first lifecycle execution으로 설명하면 안 됩니다. `resolveBootstrapLifecycleInstances()`는 이 concurrency/order 경계를 보존하면서 정적 graph를 실제 운영 가능한 object로 전환합니다.
 
 넷째, 이전 계층이 모두 완료된 후에야 **전송 준비(transport readiness)** 단계가 시작됩니다. 여기서 HTTP 어댑터가 포트에서 리스닝을 시작하거나 메시지 큐 소비자가 태스크를 가져오기 시작할 수 있습니다. 전체 내부 런타임 셸이 건강하고 초기화될 때까지 전송 시작을 늦춤으로써, Fluo는 "절반만 준비된" 애플리케이션이 트래픽을 수락한 뒤 곧바로 실패하는 상황을 막습니다. 또한 부트스트랩 단계에서 등록된 health check endpoint가 애플리케이션 준비 상태를 실제 상태에 맞게 반영하도록 합니다. 이 분리는 애플리케이션의 내부 상태가 외부 가용성보다 먼저 확정되어야 한다는 원칙을 유지합니다.
 
