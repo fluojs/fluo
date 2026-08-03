@@ -219,6 +219,10 @@ describe('@fluojs/platform-fastify', () => {
       await fastifyPortabilityHarness.assertSupportsHttpErrorRepresentations();
     });
 
+    it('does not commit an error representation after client disconnect', async () => {
+      await fastifyPortabilityHarness.assertDoesNotCommitAbortedHttpErrorRepresentations();
+    });
+
     it('preserves malformed cookie values', async () => {
       await fastifyPortabilityHarness.assertPreservesMalformedCookieValues();
     });
