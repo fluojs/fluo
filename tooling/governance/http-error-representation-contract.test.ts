@@ -38,17 +38,33 @@ describe('HTTP error representation documentation contract', () => {
         'text/html',
         'HEAD',
         '406',
+        'Vary',
+        'send(...)',
+        'trusted',
       ]);
     }
   });
 
   it('keeps package-level bootstrap, React, and portability entrypoints documented in both locales', () => {
     for (const path of ['packages/http/README.md', 'packages/http/README.ko.md']) {
-      expectIdentifiers(read(path), ['HttpErrorRepresentationOptions', 'application/json', 'text/html', 'HEAD', '406']);
+      expectIdentifiers(read(path), [
+        'HttpErrorRepresentationOptions',
+        'application/json',
+        'text/html',
+        'HEAD',
+        '406',
+        'escapeHtml',
+        'trusted',
+      ]);
     }
 
     for (const path of ['packages/runtime/README.md', 'packages/runtime/README.ko.md']) {
-      expectIdentifiers(read(path), ['BootstrapApplicationOptions.errorRepresentation', 'FluoFactory.create(...)']);
+      expectIdentifiers(read(path), [
+        'BootstrapApplicationOptions.errorRepresentation',
+        'FluoFactory.create(...)',
+        'escapeHtml',
+        'trusted',
+      ]);
     }
 
     for (const path of ['packages/react/README.md', 'packages/react/README.ko.md']) {
@@ -56,13 +72,17 @@ describe('HTTP error representation documentation contract', () => {
         'createReactErrorRepresentationProvider',
         'ReactServerEntry.status',
         'ReactServerEntry.headers',
+        'dangerouslySetInnerHTML',
       ]);
     }
 
     for (const path of ['packages/testing/README.md', 'packages/testing/README.ko.md']) {
       expectIdentifiers(read(path), [
         'assertSupportsHttpErrorRepresentations()',
+        'assertDoesNotCommitAbortedHttpErrorRepresentations()',
         'createErrorRepresentationBootstrapOptions',
+        'NetworkHttpErrorRepresentationBootstrapOptions',
+        'WebHttpErrorRepresentationBootstrapOptions',
       ]);
     }
   });
