@@ -683,54 +683,87 @@ So the middle conclusion of Chapter 8 is this. The graph compiler decides legal 
 ## 8.5 Initialization order continues after registration through lifecycle resolution and hook execution
 Module Graph order is only half of initialization order. After registration, the runtime still has to decide which singleton instances to eagerly create, which hooks to run, and when the app becomes ready.
 
-This continuous phase lives in `bootstrapApplication()` at `path:packages/runtime/src/bootstrap.ts:920-1029` and in `FluoFactory.createApplicationContext()` at `path:packages/runtime/src/bootstrap.ts:1059-1153`. Both flows share the same lifecycle skeleton.
+This continuous phase lives in `bootstrapApplication()` at `path:packages/runtime/src/bootstrap.ts:1445-1590` and in `FluoFactory.createApplicationContext()` at `path:packages/runtime/src/bootstrap.ts:1619-1740`. Both flows share the same lifecycle skeleton.
 
-First, runtime context Tokens are registered. `registerRuntimeBootstrapTokens()` at `path:packages/runtime/src/bootstrap.ts:783-795` adds `HTTP_APPLICATION_ADAPTER` and `PLATFORM_SHELL` for a full application. `registerRuntimeApplicationContextTokens()` at `path:packages/runtime/src/bootstrap.ts:811-816` adds only `PLATFORM_SHELL` for context-only Bootstrap.
+First, runtime context Tokens are registered. `registerRuntimeBootstrapTokens()` at `path:packages/runtime/src/bootstrap.ts:1280-1300` adds `HTTP_APPLICATION_ADAPTER` and `PLATFORM_SHELL` for a full application. `registerRuntimeApplicationContextTokens()` at `path:packages/runtime/src/bootstrap.ts:1316-1332` adds `PLATFORM_SHELL` but not the HTTP adapter for context-only Bootstrap.
 
-Second, the runtime resolves singleton instances that may have lifecycle hooks through `resolveBootstrapLifecycleInstances()` at `path:packages/runtime/src/bootstrap.ts:818-828`. This helper combines runtime Providers and Module Providers, then delegates to `resolveLifecycleInstances()`.
+Second, the runtime resolves singleton instances that may have lifecycle hooks through `resolveBootstrapLifecycleInstances()` at `path:packages/runtime/src/bootstrap.ts:1334-1344`. This helper combines the effective runtime Providers and Module Providers, then delegates to `resolveLifecycleInstances()`.
 
-`resolveLifecycleInstances()` at `path:packages/runtime/src/bootstrap.ts:666-688` is where the eager instantiation policy is stated. It skips request-scoped and transient Providers. It deduplicates by Token. Then it immediately resolves only singleton Providers.
+`resolveLifecycleInstances()` at `path:packages/runtime/src/bootstrap.ts:1019-1072` states both the eager-instantiation and concurrency policies. In provider order, it deduplicates by Token and keeps hook-bearing value Providers plus direct singleton class/factory Providers. Alias, multi, request-scoped, and transient Providers are not top-level lifecycle resolution entries.
 
 This helper intentionally narrows the Providers that can become lifecycle targets.
 
-`path:packages/runtime/src/bootstrap.ts:666-688`
+`path:packages/runtime/src/bootstrap.ts:1019-1072`
 ```typescript
-async function resolveLifecycleInstances(container: Container, providers: Provider[]): Promise<unknown[]> {
-  const instances: unknown[] = [];
+async function resolveLifecycleInstances(
+  container: Container,
+  providers: Provider[],
+  resolvedInstances: unknown[] = [],
+): Promise<unknown[]> {
+  const lifecycleEntries: Array<{ token: Token; useValue?: unknown }> = [];
   const seen = new Set<Token>();
 
   for (const provider of providers) {
-    const scope = providerScope(provider);
-
-    if (scope === 'request' || scope === 'transient') {
-      continue;
-    }
-
     const token = providerToken(provider);
 
     if (seen.has(token)) {
       continue;
     }
 
+    if (isHookBearingValueProvider(provider)) {
+      seen.add(token);
+      lifecycleEntries.push({ token, useValue: provider.useValue });
+      continue;
+    }
+
+    if (!isDirectSingletonContextProvider(provider)) {
+      continue;
+    }
+
     seen.add(token);
-    instances.push(await container.resolve(token));
+    lifecycleEntries.push({ token });
   }
 
-  return instances;
+  const resolutionResults = await Promise.allSettled(
+    lifecycleEntries.map((entry) => entry.useValue ?? container.resolve(entry.token)),
+  );
+
+  let resolutionError: unknown;
+  let hasResolutionError = false;
+
+  for (const result of resolutionResults) {
+    if (result.status === 'fulfilled') {
+      resolvedInstances.push(result.value);
+      continue;
+    }
+
+    if (!hasResolutionError) {
+      resolutionError = result.reason;
+      hasResolutionError = true;
+    }
+  }
+
+  if (hasResolutionError) {
+    throw resolutionError;
+  }
+
+  return resolvedInstances;
 }
 ```
 
-Even after graph order, not every Provider is created immediately. Only singleton candidates become eager resolution targets after Token deduplication.
+Even after graph order, not every Provider is created immediately. Only direct singleton class/factory candidates and hook-bearing singleton values become eager lifecycle targets after Token deduplication.
 
-So Fluo's Bootstrap order is closer to "eagerly instantiate unique singleton Providers that can participate in lifecycle hooks" than to "instantiate every Provider in every Module." This policy is more limited, easier to audit, and above all easier to trace in the implementation.
+The `Promise.allSettled(...)` map starts every top-level lifecycle entry without waiting for the previous entry to finish, so independent singleton resolution overlaps. DI still resolves each entry's own dependency chain before that entry settles. `Promise.allSettled(...)` returns results in input order, and the following loop appends fulfilled instances in that same provider order. Resolution completion order therefore cannot reorder later hooks.
 
-Third, `runBootstrapLifecycle()` at `path:packages/runtime/src/bootstrap.ts:830-840` coordinates the actual start sequence. It resets the readiness marker, runs Bootstrap hooks, starts the platform shell, marks readiness, and logs the compiled Modules.
+So Fluo's Bootstrap order is closer to "resolve independent unique singleton lifecycle candidates concurrently, then run their hooks deterministically" than to "instantiate every Provider in every Module sequentially." `path:packages/runtime/src/bootstrap.test.ts:887-936` proves the split directly: the second factory resolves while the first is suspended, but `first:init` still precedes `second:init`. `path:packages/runtime/src/bootstrap.test.ts:938-980` also verifies that fulfilled lifecycle instances remain available for cleanup when a parallel peer fails.
 
-The internal hook ordering lives in `runBootstrapHooks()` at `path:packages/runtime/src/bootstrap.ts:693-705`. All `onModuleInit()` hooks run first. Only after that pass completes do all `onApplicationBootstrap()` hooks run. In other words, there is a global phase barrier. Hooks are not interleaved instance by instance.
+Third, `runBootstrapLifecycle()` at `path:packages/runtime/src/bootstrap.ts:1346-1358` coordinates the actual start sequence. It resets the readiness marker, runs Bootstrap hooks, starts the platform shell, marks readiness, resolves the bootstrap-ready signal, and logs the compiled Modules.
+
+The internal hook ordering lives in `runBootstrapHooks()` at `path:packages/runtime/src/bootstrap.ts:1183-1195`. It consumes the provider-ordered instance array sequentially. All `onModuleInit()` hooks run first in provider order. Only after that pass completes do all `onApplicationBootstrap()` hooks run in the same order. In other words, concurrent resolution is followed by deterministic hook passes with a global phase barrier. Hooks are not interleaved instance by instance.
 
 The Bootstrap hook runner creates a phase barrier with two passes.
 
-`path:packages/runtime/src/bootstrap.ts:693-705`
+`path:packages/runtime/src/bootstrap.ts:1183-1195`
 ```typescript
 async function runBootstrapHooks(instances: unknown[]): Promise<void> {
   for (const instance of instances) {
@@ -747,13 +780,13 @@ async function runBootstrapHooks(instances: unknown[]): Promise<void> {
 }
 ```
 
-It does not run both hooks for one instance together. It finishes all Module init hooks first. This structure separates lifecycle phases globally.
+It does not run both hooks for one instance together. It finishes all Module init hooks first, preserving provider order within each pass. This structure separates lifecycle phases globally without exposing resolution-race order.
 
-Shutdown ordering is the mirror image. `runShutdownHooks()` at `path:packages/runtime/src/bootstrap.ts:710-722` walks instances in reverse order, first running all `onModuleDestroy()` hooks, then all `onApplicationShutdown()` hooks.
+Shutdown ordering is the mirror image. `runShutdownHooks()` at `path:packages/runtime/src/bootstrap.ts:1200-1212` walks the provider-ordered instances in reverse, first running all `onModuleDestroy()` hooks, then all `onApplicationShutdown()` hooks.
 
 Shutdown hooks keep the same phase separation while reversing only the instance order.
 
-`path:packages/runtime/src/bootstrap.ts:710-722`
+`path:packages/runtime/src/bootstrap.ts:1200-1212`
 ```typescript
 async function runShutdownHooks(instances: readonly unknown[], signal?: string): Promise<void> {
   for (const instance of [...instances].reverse()) {
@@ -781,21 +814,23 @@ compile module graph
   -> validate visibility and exports
   -> register providers/controllers/middleware
   -> register runtime tokens
-  -> eagerly resolve singleton lifecycle instances
-  -> run all onModuleInit hooks
-  -> run all onApplicationBootstrap hooks
+  -> collect unique singleton lifecycle entries in provider order
+  -> resolve independent lifecycle entries concurrently
+  -> retain provider order from the settled results
+  -> run all onModuleInit hooks in provider order
+  -> run all onApplicationBootstrap hooks in provider order
   -> start platform shell
   -> create dispatcher/application shell
   -> later: listen() binds adapter
 ```
 
-The application-context test at `path:packages/runtime/src/bootstrap.test.ts:522-629` shows that the same lifecycle sequence holds even without an HTTP adapter. That means initialization order does not belong to transport startup, it belongs to the runtime shell itself. This distinction is the real conclusion of Chapter 8. In Fluo, "Module initialization order" is not just topological sorting. It is a more specific layered model.
+The application-context test at `path:packages/runtime/src/bootstrap.test.ts:1090-1129` shows that the same lifecycle sequence holds even without an HTTP adapter. That means initialization order does not belong to transport startup, it belongs to the runtime shell itself. This distinction is the real conclusion of Chapter 8. In Fluo, "Module initialization order" is not just topological sorting. It is a more specific layered model.
 
 First, there is the **compile-time order of the Module Graph**. This is where circular dependencies are rejected and visibility boundaries are drawn. If the application fails here before any constructor is called, the likely problem is a flaw in the `@Module()` import structure. The `compileModule()` algorithm ensures that no Module enters the container until the entire dependency subtree of that Module is understood and validated. As a result, it avoids a "partial graph" state where some Modules know their exports and others do not, and it passes a consistent worldview to the later registration phase. Calculating `providerTokens` and `exportedTokens` up front at this phase creates the blueprint for the whole container setup.
 
 Second, there is the **Token registration order**. The runtime walks compiled Module records and feeds Provider definitions into the DI container. This is a flat registration pass, but it is controlled by the topological order decided during compilation. Registration is where duplicate Provider policy is enforced and the container's internal lookup table is filled. Because this work happens as one sequential pass, Fluo avoids the complexity of lazy registration seen in some frameworks and keeps the final container state deterministic. It also becomes easier to audit with diagnostics. This phase also handles normalization of alias Providers so every `useExisting` redirect is correctly registered in the container's internal map.
 
-Third, there is the **singleton lifecycle Bootstrap order**. This is the first point where user code actually runs through constructors and `OnModuleInit` hooks. Fluo resolves lifecycle-bearing singletons in dependency-respecting order. If Service A depends on Service B, Service B is initialized and its `onModuleInit` hook completes before Service A's hook starts. This "depth-first initialization" ensures that dependent resources are in a known ready state when business logic begins to run. Resolving instances through `resolveBootstrapLifecycleInstances()` turns the static graph into actual operational objects.
+Third, there is the **singleton lifecycle Bootstrap order**. This is the first point where user code actually runs through constructors and lifecycle hooks. Fluo starts independent top-level singleton resolutions concurrently; the DI container still resolves each Provider's constructor or factory dependencies before that Provider settles. Hook order is a separate contract: settled instances retain deterministic provider order, every `onModuleInit()` runs sequentially in that order, and only then does the provider-ordered `onApplicationBootstrap()` pass begin. It is therefore incorrect to infer hook order from factory completion timing or to describe it as depth-first lifecycle execution. `resolveBootstrapLifecycleInstances()` turns the static graph into operational objects while preserving this concurrency-versus-order boundary.
 
 Fourth, only after all previous layers finish does the **transport readiness** phase start. This is where an HTTP adapter can start listening on a port, or a message queue consumer can start pulling tasks. By delaying transport startup until the entire internal runtime shell is healthy and initialized, Fluo prevents a half-ready application from accepting traffic and then immediately failing. It also makes health check endpoints registered during Bootstrap reflect the real application readiness state. This separation preserves the principle that an application's internal state must be settled before external availability.
 
