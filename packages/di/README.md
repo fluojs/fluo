@@ -197,6 +197,7 @@ Ensure all required providers are registered in the container. If you use `creat
 | Token wrapper types | `ForwardRefFn` and `OptionalToken` describe the wrapper values returned by `forwardRef(...)` and `optional(...)`. |
 | Container helper types | `ClassType`, `Disposable`, and `RequestScopeContainer` support typed provider declarations, teardown hooks, and request-scope helper boundaries. |
 | Container introspection helper types | `ContainerResolutionState`, `ContainerResolutionCacheOwner`, and `ContainerFactoryResolutionState` describe the read-only graph/cache views and controlled cache adoption helpers returned by `inspectResolutionState()`. |
+| `FactoryResolutionKind` | Root-exported type | Classifies whether a factory provider returned synchronously (`sync`) or through a promise (`async`) for container diagnostics and introspection. |
 | `NormalizedProvider` | Compatibility-only public type for the container's validated provider record shape. Prefer authoring providers with `Provider` or the specific provider interfaces; the container owns normalized record construction. |
 | `@fluojs/di/internal` | Package-integration seam exposing `validateProviderInputs(...)` so sibling fluo packages can apply the container's canonical provider validation before their own traversal. Application code should continue to register providers through `Container`. |
 | `DiErrorContext` | Structured context attached to DI errors so logs and tests can inspect tokens, scopes, modules, dependency chains, and hints. |
