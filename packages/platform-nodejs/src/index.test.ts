@@ -122,6 +122,10 @@ describe('@fluojs/platform-nodejs', () => {
       await nodejsPortabilityHarness.assertSupportsHttpErrorRepresentations();
     });
 
+    it('does not commit an error representation after client disconnect', async () => {
+      await nodejsPortabilityHarness.assertDoesNotCommitAbortedHttpErrorRepresentations();
+    });
+
     it('preserves malformed cookie values', async () => {
       await nodejsPortabilityHarness.assertPreservesMalformedCookieValues();
     });

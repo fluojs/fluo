@@ -29,6 +29,7 @@ declare module '@fluojs/testing/http-adapter-portability' {
     TRunOptions extends object,
     TApp extends AppLike = AppLike,
   > {
+    assertDoesNotCommitAbortedHttpErrorRepresentations(): Promise<void>;
     assertDefaultsMultipartTotalLimitToMaxBodySize(): Promise<void>;
     assertExcludesRawBodyForMultipart(): Promise<void>;
     assertPreservesExactRawBodyBytesForByteSensitivePayloads(): Promise<void>;
