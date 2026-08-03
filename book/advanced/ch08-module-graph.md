@@ -689,7 +689,7 @@ First, runtime context Tokens are registered. `registerRuntimeBootstrapTokens()`
 
 Second, the runtime resolves singleton instances that may have lifecycle hooks through `resolveBootstrapLifecycleInstances()` at `path:packages/runtime/src/bootstrap.ts:1334-1344`. This helper combines the effective runtime Providers and Module Providers, then delegates to `resolveLifecycleInstances()`.
 
-`resolveLifecycleInstances()` at `path:packages/runtime/src/bootstrap.ts:1019-1072` states both the eager-instantiation and concurrency policies. In provider order, it deduplicates by Token and keeps hook-bearing value Providers plus direct singleton class/factory Providers. Alias, multi, request-scoped, and transient Providers are not top-level lifecycle resolution entries.
+`resolveLifecycleInstances()` at `path:packages/runtime/src/bootstrap.ts:1019-1072` states both the eager-instantiation and concurrency policies. In provider order, it deduplicates by Token and keeps hook-bearing value Providers plus direct singleton class/factory Providers. Because the runtime adds hook-bearing value Providers before direct-singleton filtering, hook-bearing `multi: true` value Providers can be lifecycle entries. Alias, request-scoped, transient, and non-value multi class/factory Providers are not direct top-level lifecycle entries.
 
 This helper intentionally narrows the Providers that can become lifecycle targets.
 

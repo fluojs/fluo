@@ -707,7 +707,7 @@ module graph order는 initialization order의 절반에 불과합니다. registr
 
 둘째, runtime은 `path:packages/runtime/src/bootstrap.ts:1334-1344`의 `resolveBootstrapLifecycleInstances()`를 통해 lifecycle hook을 가질 수 있는 singleton instance를 해석합니다. 이 helper는 effective runtime provider와 module provider를 합친 뒤 `resolveLifecycleInstances()`에 위임합니다.
 
-`path:packages/runtime/src/bootstrap.ts:1019-1072`의 `resolveLifecycleInstances()`가 eager instantiation policy와 concurrency policy를 함께 명시합니다. Provider order대로 token 중복을 제거하고 hook-bearing value provider와 direct singleton class/factory provider만 유지합니다. Alias, multi, request-scoped, transient provider는 top-level lifecycle resolution entry가 되지 않습니다.
+`path:packages/runtime/src/bootstrap.ts:1019-1072`의 `resolveLifecycleInstances()`가 eager instantiation policy와 concurrency policy를 함께 명시합니다. Provider order대로 token 중복을 제거하고 hook-bearing value provider와 direct singleton class/factory provider만 유지합니다. Runtime은 direct-singleton filtering 전에 hook-bearing value provider를 lifecycle entry에 추가하므로, hook-bearing `multi: true` value provider도 lifecycle entry가 될 수 있습니다. Alias, request-scoped, transient, 그리고 value가 아닌 multi class/factory provider는 direct top-level lifecycle entry가 되지 않습니다.
 
 이 helper는 lifecycle 대상이 될 수 있는 provider를 의도적으로 좁힙니다.
 
