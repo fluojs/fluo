@@ -57,29 +57,34 @@ remain in `@fluojs/http`.
 
 ## Minimal end-to-end path
 
-The runnable `react-vite-ssr` example is the canonical complete path. Read it in this order:
+Before the canonical starter composition, an application author had to connect seven concepts before
+confidently editing the first hydrated page: load the Vite manifest, select compatible server/client
+entries, create hydration assets, implement `ReactPageRenderer`, return `ReactServerEntry`, reproduce
+the request route snapshot during hydration, and keep the client entry aligned with the server
+document. Those explicit seams remain the advanced contract, but they are incidental to a first page.
 
-1. [`src/main.ts`](../../examples/react-vite-ssr/src/main.ts) loads the generated Vite manifest at
-   the application boundary and bootstraps the normal fluo HTTP application.
-2. [`src/app.ts`](../../examples/react-vite-ssr/src/app.ts) passes that value to
-   `createReactViteAssetManifest(...)`, builds a `ReactPageRenderer` with
-   `createReactServerEntry(...)`, declares `@Router('/products')` plus `@Path('/:sku')`, and registers
-   the router through `ReactModule.forRoot(...)`.
-3. The same router's `@Post('/:sku')` handler receives the native form, uses the ordinary HTTP DTO,
-   guard, interceptor, middleware, and request-scope path, and redirects back to an explicit `GET`
-   route with `303`.
-4. [`src/page.ts`](../../examples/react-vite-ssr/src/page.ts) renders document metadata and Vite CSS,
-   creates the request-scoped snapshot with `createReactRouteSnapshot(...)`, wraps the document in
-   `ReactClientRouterProvider`, renders a real `Link`, exposes `useNavigation()`, and keeps a real
-   `<form method="post">` as the mutation baseline.
-5. [`src/entry-client.ts`](../../examples/react-vite-ssr/src/entry-client.ts) calls React DOM
-   `hydrateRoot(...)` with the same URL, params, page data, stylesheets, and identifier prefix used
-   for server rendering.
+The supported short path is now:
 
-For a smaller SSR-only starting point, use
-[`examples/react-stable-ssr`](../../examples/react-stable-ssr/README.md). Add the Vite example only
-when the application needs generated build assets, hydration, client navigation, or the native form
-slice.
+1. Run `fluo new my-react-app --starter react-vite-ssr`, enter the project, and run `pnpm dev`.
+2. Open `/products/sku-42?preview=true` and edit `src/page.tsx`. The page component owns page UI and
+   hydrated interaction only.
+3. Read `src/app.tsx` when changing routes. Its explicit `@Router(...)` / `@Path(...)` handler returns
+   `<ProductPage />`, so HTTP matching, DTO validation, middleware, guards, interceptors, request
+   scopes, and not-found behavior still run before React rendering.
+4. Run `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm start`, and `pnpm test:browser` for the
+   production path. The browser test verifies the first response, emitted assets, hydration,
+   interaction, and full-document navigation without console warnings or errors.
+
+The generated application owns the composition behind that short path. `src/entry-server.tsx` is the
+replaceable `ReactPageRenderer` and `ReactServerEntry` boundary. `src/react-app.tsx` gives server and
+client one `ReactClientRouterProvider`, route snapshot, document, and stylesheet composition.
+`src/entry-client.tsx` hydrates the same tree. `src/main.ts` and `src/load-manifest.ts` keep Vite
+manifest I/O and actionable missing/malformed build diagnostics at the Node.js boundary. Advanced
+applications can edit or replace those files and continue using every explicit API described below.
+
+The runnable [`examples/react-vite-ssr`](../../examples/react-vite-ssr/README.md) remains the complete
+native-form and policy example. For SSR without generated client assets or hydration, use
+[`examples/react-stable-ssr`](../../examples/react-stable-ssr/README.md).
 
 ## Experimental surfaces
 
