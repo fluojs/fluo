@@ -115,12 +115,21 @@ unchanged to the HTTP dispatcher. Register an application-owned provider when ne
 requests should receive complete HTML error or not-found documents while JSON remains canonical:
 
 ```typescript
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
 const app = await fluoFactory.create(AppModule, {
   adapter: createNodejsAdapter({ port: 3000 }),
   errorRepresentation: {
     html: {
       render({ json }) {
-        return `<!doctype html><main>${json.error.status}: ${json.error.message}</main>`;
+        return `<!doctype html><main>${json.error.status}: ${escapeHtml(json.error.message)}</main>`;
       },
     },
   },
@@ -129,6 +138,8 @@ const app = await fluoFactory.create(AppModule, {
 
 Runtime only wires this option. `@fluojs/http` owns error classification, `Accept` negotiation,
 request scope, response status and headers, `HEAD`, abort, commit, and canonical JSON fallback.
+The returned string or bytes are trusted application HTML: runtime does not escape or sanitize
+request-derived or error-derived values, so the provider must do so before interpolation.
 Standalone application contexts do not use the option because they do not create an HTTP dispatcher.
 See the [HTTP package contract](../http#http-error-representations).
 

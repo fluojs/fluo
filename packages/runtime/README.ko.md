@@ -115,12 +115,21 @@ const app = await fluoFactory.create(AppModule, {
 HTML error/not-found document를 제공하려면 application-owned provider를 등록하세요.
 
 ```typescript
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
 const app = await fluoFactory.create(AppModule, {
   adapter: createNodejsAdapter({ port: 3000 }),
   errorRepresentation: {
     html: {
       render({ json }) {
-        return `<!doctype html><main>${json.error.status}: ${json.error.message}</main>`;
+        return `<!doctype html><main>${json.error.status}: ${escapeHtml(json.error.message)}</main>`;
       },
     },
   },
@@ -128,7 +137,9 @@ const app = await fluoFactory.create(AppModule, {
 ```
 
 Runtime은 이 option을 wiring만 합니다. Error classification, `Accept` negotiation, request scope, response status와
-header, `HEAD`, abort, commit, canonical JSON fallback은 `@fluojs/http`가 소유합니다. Standalone application
+header, `HEAD`, abort, commit, canonical JSON fallback은 `@fluojs/http`가 소유합니다. 반환 string/byte는
+application이 책임지는 trusted HTML입니다. Runtime은 request-derived 또는 error-derived value를 escape하거나
+sanitize하지 않으므로 provider가 interpolation 전에 처리해야 합니다. Standalone application
 context는 HTTP dispatcher를 생성하지 않으므로 이 option을 사용하지 않습니다. 자세한 내용은
 [HTTP package contract](../http/README.ko.md#http-error-representations)를 참고하세요.
 
