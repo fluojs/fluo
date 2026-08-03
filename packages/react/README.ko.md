@@ -426,6 +426,10 @@ canonical JSON과 active request-scope container를 포함한 `HttpErrorRepresen
 mutation authority는 받지 않는다. React entry는 HTTP가 status, `Content-Type`, `Vary`, `HEAD` suppression,
 commit을 적용하기 전에 완전히 buffer된다.
 
+예제의 `json.error.message`는 JSX text child이므로 React가 escape한다. 그래도 complete trusted-HTML document
+contract는 application이 소유한다. Request-derived 또는 error-derived content를 application이 승인한 sanitizer나
+동등한 trusted-content boundary 없이 `dangerouslySetInnerHTML`로 옮기면 안 된다.
+
 이 path에서는 `ReactServerEntry.status`와 `ReactServerEntry.headers`를 무시한다. Helper는
 `ReactPageRenderer`, `PageLayout`, `PageMetadata`, `SuspenseFallback`, page catalog를 호출하지 않고 URL도
 match하지 않는다. Render failure는 HTTP의 one-shot canonical JSON fallback으로 전달된다. Matched-page

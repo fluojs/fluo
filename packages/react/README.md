@@ -431,6 +431,11 @@ The callback receives `HttpErrorRepresentationContext`, including canonical JSON
 request-scope container. It does not receive response mutation authority. The React entry is fully
 buffered before HTTP applies status, `Content-Type`, `Vary`, `HEAD` suppression, and commit.
 
+React escapes `json.error.message` in the example because it is a JSX text child. The application
+still owns the complete trusted-HTML document contract: do not move request-derived or error-derived
+content into `dangerouslySetInnerHTML` unless it has passed an application-approved sanitizer or
+equivalent trusted-content boundary.
+
 `ReactServerEntry.status` and `ReactServerEntry.headers` are ignored on this path. The helper never
 calls `ReactPageRenderer`, `PageLayout`, `PageMetadata`, `SuspenseFallback`, or the page catalog, and
 it never matches a URL. A render failure propagates to HTTP's one-shot canonical JSON fallback;
