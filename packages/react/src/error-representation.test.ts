@@ -12,6 +12,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import * as reactApi from './index.js';
 import { ReactModule } from './module.js';
+import * as pageCatalogApi from './page-catalog.js';
 import { PageMetadata } from './page-metadata.js';
 import type { ReactPageRenderer } from './page-renderer.js';
 import { PageLayout, SuspenseFallback } from './render-policy.js';
@@ -21,6 +22,7 @@ import {
   renderReactResponse,
 } from './render.js';
 import { createReactServerEntry, type ReactServerEntry } from './server-entry.js';
+import * as typegenApi from './typegen.js';
 import { Path, Router } from './decorators.js';
 
 type ErrorDocumentRenderer = (
@@ -96,11 +98,13 @@ function decodeBody(body: unknown): string {
 }
 
 describe('React HTTP error representation integration', () => {
-  it('renders an application document after HTTP classifies an unmatched route without consulting page policies', async () => {
+  it('renders an unmatched document without consulting page policies, the page catalog, or typegen', async () => {
     const layout = vi.fn(({ children }: { readonly children: ReactNode }) => children);
     const fallback = vi.fn(() => createElement('p', null, 'Loading'));
     const metadata = vi.fn(() => ({ title: 'Matched page' }));
     const renderPage = vi.fn<ReactPageRenderer>((page) => createReactServerEntry(page));
+    const createPageCatalog = vi.spyOn(pageCatalogApi, 'createReactPageCatalog');
+    const generatePageTypes = vi.spyOn(typegenApi, 'generateReactPageTypes');
 
     @PageLayout(layout)
     @Router('/owned')
@@ -152,6 +156,8 @@ describe('React HTTP error representation integration', () => {
       expect(fallback).not.toHaveBeenCalled();
       expect(metadata).not.toHaveBeenCalled();
       expect(renderPage).not.toHaveBeenCalled();
+      expect(createPageCatalog).not.toHaveBeenCalled();
+      expect(generatePageTypes).not.toHaveBeenCalled();
     } finally {
       await app.close();
     }
