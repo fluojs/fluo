@@ -5,6 +5,7 @@ import type {
   Dispatcher,
   FrameworkRequest,
   FrameworkResponse,
+  HttpErrorRepresentationOptions,
   HttpApplicationAdapter,
   InterceptorLike,
   MiddlewareLike,
@@ -139,6 +140,8 @@ export interface ExceptionFilterHandler {
 /** High-level bootstrap options for creating an HTTP application shell. */
 export interface BootstrapApplicationOptions {
   adapter?: HttpApplicationAdapter;
+  /** Application-owned HTML provider for HTTP-classified error and not-found outcomes. */
+  errorRepresentation?: HttpErrorRepresentationOptions;
   /**
    * Enables the opt-in process-local module graph compile result cache for this
    * bootstrap. The default is `false`, so each bootstrap compiles a fresh graph
