@@ -87,6 +87,88 @@ describe('dispatcher cancellation', () => {
     expect(response.committed).toBe(false);
   });
 
+  it('does not commit a full-path success response when the signal aborts during handler execution', async () => {
+    // Given
+    const abortController = new AbortController();
+    const handler = vi.fn(() => {
+      abortController.abort();
+      return { ok: true };
+    });
+
+    @Controller('/full-path-signal-cancellation')
+    class FullPathSignalCancellationController {
+      @Get('/')
+      handle() {
+        return handler();
+      }
+    }
+
+    const middleware: Middleware = {
+      async handle(_context, next) {
+        await next();
+      },
+    };
+    const root = new Container().register(FullPathSignalCancellationController);
+    const dispatcher = createDispatcher({
+      appMiddleware: [middleware],
+      handlerMapping: createHandlerMapping([{ controllerToken: FullPathSignalCancellationController }]),
+      rootContainer: root,
+    });
+    const request = createRequest('/full-path-signal-cancellation');
+    request.signal = abortController.signal;
+    const response = createResponse();
+
+    // When
+    await dispatcher.dispatch(request, response);
+
+    // Then
+    expect(getDispatcherFastPathStats(dispatcher)?.routes[0]?.executionPath).toBe('full');
+    expect(handler).toHaveBeenCalledOnce();
+    expect(response.committed).toBe(false);
+    expect(response.body).toBeUndefined();
+  });
+
+  it('does not commit a full-path success response when the abort probe changes during handler execution', async () => {
+    // Given
+    let aborted = false;
+    const handler = vi.fn(() => {
+      aborted = true;
+      return { ok: true };
+    });
+
+    @Controller('/full-path-probe-cancellation')
+    class FullPathProbeCancellationController {
+      @Get('/')
+      handle() {
+        return handler();
+      }
+    }
+
+    const middleware: Middleware = {
+      async handle(_context, next) {
+        await next();
+      },
+    };
+    const root = new Container().register(FullPathProbeCancellationController);
+    const dispatcher = createDispatcher({
+      appMiddleware: [middleware],
+      handlerMapping: createHandlerMapping([{ controllerToken: FullPathProbeCancellationController }]),
+      rootContainer: root,
+    });
+    const request = createRequest('/full-path-probe-cancellation');
+    request.isAborted = () => aborted;
+    const response = createResponse();
+
+    // When
+    await dispatcher.dispatch(request, response);
+
+    // Then
+    expect(getDispatcherFastPathStats(dispatcher)?.routes[0]?.executionPath).toBe('full');
+    expect(handler).toHaveBeenCalledOnce();
+    expect(response.committed).toBe(false);
+    expect(response.body).toBeUndefined();
+  });
+
   it('short-circuits the fast path when the signal is aborted and the adapter probe returns false', async () => {
     // Given
     const abortController = new AbortController();
