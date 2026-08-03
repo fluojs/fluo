@@ -91,7 +91,7 @@ Following the community standard, fluo libraries use `forRoot` for static config
    }
    ```
 4. **Factory-based `forRootAsync`**:
-   To let users provide a `useFactory`, `useClass`, or `useExisting` strategy, you need `AsyncModuleOptions`. The `inject` array is important because it resolves dependencies such as `ConfigService` before the factory runs.
+   Use `AsyncModuleOptions` when users provide the required `useFactory`. Its optional `inject` array lists dependencies such as `ConfigService` for the DI container to resolve before the factory runs.
 
 ## The exports Field and Visibility Contract
 
@@ -170,12 +170,11 @@ export class FeatureFlagsModule {
   static forRootAsync(options: AsyncModuleOptions<FeatureFlagsOptions>): DynamicModule {
     return {
       module: FeatureFlagsModule,
-      imports: options.imports || [],
       providers: [
         {
           provide: FEATURE_FLAGS_OPTIONS,
           useFactory: options.useFactory,
-          inject: options.inject || [],
+          inject: options.inject,
         },
         FeatureFlagsService,
       ],
