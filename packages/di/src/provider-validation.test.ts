@@ -1,6 +1,5 @@
-import { describe, expect, it } from 'vitest';
-
 import { Inject } from '@fluojs/core';
+import { describe, expect, it } from 'vitest';
 
 import { Container } from './container.js';
 import { InvalidProviderError } from './errors.js';
@@ -22,6 +21,25 @@ function captureRegistrationError(provider: unknown): InvalidProviderError {
 }
 
 describe('provider input validation', () => {
+  it.each([
+    ['an empty array', []],
+    ['undefined', undefined],
+  ])('rejects a value provider when inject is declared as %s', (_kind, inject) => {
+    // Given
+    const provider = {
+      provide: Symbol('value-with-inject'),
+      useValue: 'ready',
+      inject,
+    };
+
+    // When
+    const error = captureRegistrationError(provider);
+
+    // Then
+    expect(error).toBeInstanceOf(InvalidProviderError);
+    expect(error).toMatchObject({ code: 'INVALID_PROVIDER' });
+  });
+
   it.each([
     ['factory', { provide: Symbol('factory'), useFactory: () => undefined, inject: 'dependency' }],
     ['class', { provide: Symbol('class'), useClass: class Service {}, inject: { token: 'dependency' } }],
