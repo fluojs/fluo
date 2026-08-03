@@ -1,9 +1,12 @@
 import { Controller, Get, Post, SseResponse, type RequestContext } from '@fluojs/http';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
+import { assertWebHttpErrorRepresentationAbortPortability } from './error-representation-abort-portability.js';
 import {
   assertWebHttpErrorRepresentationPortability,
   type WebHttpErrorRepresentationBootstrapOptions,
 } from './error-representation-portability.js';
+
+export type { WebHttpErrorRepresentationBootstrapOptions } from './error-representation-portability.js';
 
 type WebRuntimePortabilityAppLike = {
   close(): Promise<void>;
@@ -82,6 +85,20 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
     }
 
     await assertWebHttpErrorRepresentationPortability({
+      bootstrap: this.options.bootstrap,
+      createBootstrapOptions,
+      name: this.options.name,
+    });
+  }
+
+  /** Verifies request abort propagation without an HTML or JSON fallback commit. */
+  async assertDoesNotCommitAbortedHttpErrorRepresentations(): Promise<void> {
+    const createBootstrapOptions = this.options.createErrorRepresentationBootstrapOptions;
+    if (createBootstrapOptions === undefined) {
+      throw new Error(`${this.options.name} adapter portability harness requires createErrorRepresentationBootstrapOptions.`);
+    }
+
+    await assertWebHttpErrorRepresentationAbortPortability({
       bootstrap: this.options.bootstrap,
       createBootstrapOptions,
       name: this.options.name,

@@ -264,6 +264,7 @@ async function createBunPortabilityApp(
 function registerWebRuntimePortabilitySuite(
   name: string,
   harness: {
+    assertDoesNotCommitAbortedHttpErrorRepresentations(): Promise<void>;
     assertExcludesRawBodyForMultipart(): Promise<void>;
     assertSupportsHttpErrorRepresentations(): Promise<void>;
     assertPreservesExactRawBodyBytesForByteSensitivePayloads(): Promise<void>;
@@ -276,6 +277,10 @@ function registerWebRuntimePortabilitySuite(
   describe(`${name} web runtime adapter portability`, () => {
     it('supports HTTP-owned JSON and HTML error representations', async () => {
       await harness.assertSupportsHttpErrorRepresentations();
+    });
+
+    it('does not commit an error representation after request abort', async () => {
+      await harness.assertDoesNotCommitAbortedHttpErrorRepresentations();
     });
 
     it('preserves query arrays and decoding semantics', async () => {
