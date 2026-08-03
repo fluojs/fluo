@@ -229,12 +229,12 @@ private cacheFor(provider: NormalizedProvider): Map<Token, Promise<unknown>> {
 
 테스트는 외부에서 보이는 singleton identity를 보여 줍니다.
 `path:packages/di/src/container.test.ts:10-19`는 같은 singleton token을 두 번 resolve하면 동일 인스턴스가 돌아옴을 검증합니다.
-`path:packages/di/src/container.test.ts:434-456`은 request-scope override가 root singleton cache를 오염시키지 않음을 증명합니다.
+`path:packages/di/src/container.test.ts:756-778`은 request-scope override가 root singleton cache를 오염시키지 않음을 증명합니다.
 
 이 마지막 테스트는 특히 중요합니다. root는 원래 singleton을 resolve합니다. request child가 같은 token을 override합니다. child는 override를 봅니다. 하지만 root와 두 번째 request child는 여전히 원래 root singleton을 봅니다. 이것은 root singleton state가 계층 전체의 기준선이고, child override state는 국지적이기 때문에 가능한 동작입니다.
 
 더 강한 회귀 테스트도 있습니다.
-`path:packages/di/src/container.test.ts:458-483`에서는 request child가 `ConfigService`를 override해도,
+`path:packages/di/src/container.test.ts:780-805`에서는 request child가 `ConfigService`를 override해도,
 root singleton consumer의 dependency graph는 바뀌지 않습니다. request child가 받아 가는 consumer 역시 이미 root에 캐시된 singleton consumer이며, 그 안에는 root config가 묶여 있습니다. Fluo가 graph stability를 얼마나 강하게 우선하는지 보여 주는 부분입니다.
 
 singleton 알고리즘은 다음처럼 정리할 수 있습니다.

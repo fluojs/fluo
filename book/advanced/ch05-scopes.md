@@ -229,12 +229,12 @@ This excerpt supports three claims at once. Default providers go to the root sin
 
 Tests show the externally visible singleton identity.
 `path:packages/di/src/container.test.ts:10-19` verifies that resolving the same singleton token twice returns the same instance.
-`path:packages/di/src/container.test.ts:434-456` proves that a request-scope override does not contaminate the root singleton cache.
+`path:packages/di/src/container.test.ts:756-778` proves that a request-scope override does not contaminate the root singleton cache.
 
 That last test is especially important. The root resolves the original singleton. A request child overrides the same token. The child sees the override. But the root and a second request child still see the original root singleton. This works because root singleton state is the baseline for the whole hierarchy, while child override state is local.
 
 There is an even stronger regression test.
-In `path:packages/di/src/container.test.ts:458-483`, even when a request child overrides `ConfigService`,
+In `path:packages/di/src/container.test.ts:780-805`, even when a request child overrides `ConfigService`,
 the dependency graph of a root singleton consumer does not change. The consumer received by the request child is still the singleton consumer already cached at the root, and it contains the root config. This section shows how strongly Fluo prioritizes graph stability.
 
 The singleton algorithm can be summarized like this.
