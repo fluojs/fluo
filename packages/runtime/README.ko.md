@@ -108,6 +108,30 @@ const app = await fluoFactory.create(AppModule, {
 });
 ```
 
+### Optional HTML Error Representations
+
+`FluoFactory.create(...)`와 `bootstrapApplication(...)`은 `errorRepresentation`을 받아 HTTP dispatcher에
+변경 없이 전달합니다. JSON을 canonical representation으로 유지하면서 negotiated browser request에 complete
+HTML error/not-found document를 제공하려면 application-owned provider를 등록하세요.
+
+```typescript
+const app = await fluoFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ port: 3000 }),
+  errorRepresentation: {
+    html: {
+      render({ json }) {
+        return `<!doctype html><main>${json.error.status}: ${json.error.message}</main>`;
+      },
+    },
+  },
+});
+```
+
+Runtime은 이 option을 wiring만 합니다. Error classification, `Accept` negotiation, request scope, response status와
+header, `HEAD`, abort, commit, canonical JSON fallback은 `@fluojs/http`가 소유합니다. Standalone application
+context는 HTTP dispatcher를 생성하지 않으므로 이 option을 사용하지 않습니다. 자세한 내용은
+[HTTP package contract](../http/README.ko.md#http-error-representations)를 참고하세요.
+
 ### Framework-managed response와 handler-owned response
 
 일반 request path는 framework-managed 방식입니다. Handler가 값을 반환하면 interceptor가 그 값을 변환할 수 있고, runtime response writer가 최종 결과를 commit합니다. `@fluojs/serialization`의 `SerializerInterceptor`가 반환 DTO에 적용되는 경로도 이 경로입니다.
@@ -155,6 +179,7 @@ class UsersModule {}
 - `@fluojs/runtime/web` 멀티파트 파싱은 Node.js `Buffer` global 없이 Web 표준 `TextEncoder`와 `Uint8Array` primitive만 사용합니다. 업로드 파일의 `buffer` 값은 `Uint8Array`이며, Node 전용 consumer는 애플리케이션 경계에서 `Buffer.from(file.buffer)`로 명시적으로 변환할 수 있습니다.
 - `createNodeHttpAdapter(...)`, `bootstrapNodeApplication(...)`, `runNodeApplication(...)`는 `maxBodySize`를 0 이상의 정수 바이트 수로만 받으며, 값이 잘못되면 어댑터 생성/부트스트랩 단계에서 즉시 실패합니다.
 - 응답 스트림 백프레셔 헬퍼는 `drain`, `close`, `error` 중 어느 경우에도 `waitForDrain()`을 완료시켜 끊어진 연결에서 스트리밍 작성기가 멈추지 않도록 합니다.
+- HTTP application bootstrap은 optional application-owned `errorRepresentation.html` provider를 representation ownership 없이 dispatcher에 전달합니다. Canonical JSON은 default로 유지되며 classification, negotiation, status/header, `HEAD`, abort, commit, fallback 의미는 HTTP가 소유합니다.
 - HTTP response writing은 단일 owner를 가집니다. Framework-managed handler 결과는 runtime이 commit하기 전에 interceptor가 변환할 수 있습니다. Handler나 response helper가 `RequestContext.response`를 commit한 뒤에는 dispatcher가 두 번째 success-response write를 건너뜁니다. `SerializerInterceptor`는 serialization을 우회하고 `next.handle()`에서 받은 값을 그대로 반환하지만, 다른 interceptor는 chain 결과를 계속 변환할 수 있습니다.
 - 런타임 health 모듈은 bootstrap이 ready로 표시하기 전까지 `/ready`를 HTTP 503과 `starting`으로 보고하며, 애플리케이션/컨텍스트 종료가 시작되는 즉시, 종료 시도가 실패하더라도 다시 `starting`으로 내려갑니다.
 - 런타임 health module readiness check는 현재 `RequestContext`를 받으므로, public integration이 internal runtime token을 import하지 않고도 runtime-exposed status provider를 해석할 수 있습니다.
@@ -181,7 +206,7 @@ class UsersModule {}
 - `RuntimeHealthModule`: `HealthModule.forRoot(...)`가 반환하는 module class contract이며 `addReadinessCheck(...)`, `markReady()`, `markStarting()`을 포함합니다.
 - `ReadinessCheck`: runtime health module이 사용하는 function type입니다. Check는 `/ready` request context를 받고 boolean 또는 promise를 반환합니다.
 - `defineModule(cls, metadata)`: 프로그래밍 방식의 모듈 정의 헬퍼입니다.
-- `bootstrapApplication(options)`: 저수준 비동기 부트스트랩 함수입니다.
+- `bootstrapApplication(options)`: 저수준 비동기 부트스트랩 함수입니다. `BootstrapApplicationOptions.errorRepresentation`은 optional HTTP-owned HTML representation provider를 등록하며 `CreateApplicationOptions`는 `FluoFactory.create(...)`에서 같은 field를 노출합니다.
 - `bootstrapModule(...)`: 저수준 module graph bootstrap helper입니다. `BootstrapModuleOptions`에는 opt-in compile-result cache를 위한 `moduleGraphCache`와 authored module identity를 안정적으로 유지하는 testing-only module replacement compilation을 위한 `moduleReplacements` / `ModuleReplacementMap`이 포함됩니다.
 - `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: CLI/support tooling을 위한 runtime 소유 diagnostics snapshot helper입니다. 이 helper들은 기계 읽기 가능한 데이터를 생산하며, Studio가 viewer parsing, graph presentation, Mermaid rendering을 소유합니다.
 - `createRuntimeRouteInspection(...)`, `createRuntimeRouteCatalog(...)`, `createRuntimeInspectionSnapshot(...)`: HTTP route behavior를 변경하지 않고 platform snapshot에 effective compiled route diagnostics를 추가하는 runtime-owned immutable projection입니다.

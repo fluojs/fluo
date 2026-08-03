@@ -108,6 +108,30 @@ const app = await fluoFactory.create(AppModule, {
 });
 ```
 
+### Optional HTML Error Representations
+
+`FluoFactory.create(...)` and `bootstrapApplication(...)` accept `errorRepresentation` and pass it
+unchanged to the HTTP dispatcher. Register an application-owned provider when negotiated browser
+requests should receive complete HTML error or not-found documents while JSON remains canonical:
+
+```typescript
+const app = await fluoFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ port: 3000 }),
+  errorRepresentation: {
+    html: {
+      render({ json }) {
+        return `<!doctype html><main>${json.error.status}: ${json.error.message}</main>`;
+      },
+    },
+  },
+});
+```
+
+Runtime only wires this option. `@fluojs/http` owns error classification, `Accept` negotiation,
+request scope, response status and headers, `HEAD`, abort, commit, and canonical JSON fallback.
+Standalone application contexts do not use the option because they do not create an HTTP dispatcher.
+See the [HTTP package contract](../http#http-error-representations).
+
 ### Framework-Managed and Handler-Owned Responses
 
 The normal request path is framework-managed: a handler returns a value, interceptors may transform it, and the runtime response writer commits it. This is the path where `@fluojs/serialization` can apply `SerializerInterceptor` to a returned DTO.
@@ -155,6 +179,7 @@ class UsersModule {}
 - `@fluojs/runtime/web` multipart parsing uses Web-standard `TextEncoder` and `Uint8Array` primitives without requiring the Node.js `Buffer` global. Uploaded file `buffer` values are `Uint8Array`; Node-only consumers can convert them explicitly with `Buffer.from(file.buffer)` at their application boundary.
 - `createNodeHttpAdapter(...)`, `bootstrapNodeApplication(...)`, and `runNodeApplication(...)` accept `maxBodySize` only as a non-negative integer byte count and fail fast during adapter creation/bootstrap when the value is invalid.
 - Response stream backpressure helpers settle `waitForDrain()` on `drain`, `close`, or `error` so streaming writers do not hang on dead connections.
+- HTTP application bootstrap passes an optional application-owned `errorRepresentation.html` provider to the dispatcher without taking representation ownership. Canonical JSON remains the default; HTTP keeps classification, negotiation, status/header, `HEAD`, abort, commit, and fallback semantics.
 - HTTP response writing is single-owner: framework-managed handler results may be transformed by interceptors before the runtime commits them. Once a handler or response helper commits `RequestContext.response`, the dispatcher skips a second success-response write. `SerializerInterceptor` bypasses serialization and returns the value it received from `next.handle()` unchanged, while other interceptors may still transform the chain result.
 - Runtime health modules report `/ready` as `starting` with HTTP 503 until bootstrap marks them ready, and they return to `starting` as soon as application/context shutdown begins, including failed shutdown attempts.
 - Runtime health module readiness checks receive the current `RequestContext`, allowing public integrations to resolve runtime-exposed status providers without importing internal runtime tokens.
@@ -181,7 +206,7 @@ class UsersModule {}
 - `RuntimeHealthModule`: Module class contract returned by `HealthModule.forRoot(...)`, including `addReadinessCheck(...)`, `markReady()`, and `markStarting()`.
 - `ReadinessCheck`: Function type used by runtime health modules. Checks receive the `/ready` request context and return a boolean or promise.
 - `defineModule(cls, metadata)`: Programmatic module definition helper.
-- `bootstrapApplication(options)`: Lower-level async bootstrap function.
+- `bootstrapApplication(options)`: Lower-level async bootstrap function. `BootstrapApplicationOptions.errorRepresentation` registers the optional HTTP-owned HTML representation provider; `CreateApplicationOptions` exposes the same field through `FluoFactory.create(...)`.
 - `bootstrapModule(...)`: Lower-level module graph bootstrap helper. Its `BootstrapModuleOptions` include `moduleGraphCache` for opt-in compile-result caching and `moduleReplacements` / `ModuleReplacementMap` for testing-only module replacement compilation that keeps authored module identities stable.
 - `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: Runtime-owned diagnostics snapshot helpers for CLI/support tooling. They produce machine-readable data; Studio owns viewer parsing, graph presentation, and Mermaid rendering.
 - `createRuntimeRouteInspection(...)`, `createRuntimeRouteCatalog(...)`, and `createRuntimeInspectionSnapshot(...)`: Runtime-owned immutable projections that add effective compiled route diagnostics to platform snapshots without changing HTTP route behavior.
