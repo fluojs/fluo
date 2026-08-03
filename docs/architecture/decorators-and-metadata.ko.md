@@ -35,8 +35,8 @@
 
 - fluo가 메타데이터 계약을 소유합니다. 런타임 소비자는 컴파일러가 방출한 설계 메타데이터가 아니라 fluo가 정의한 메타데이터 레코드를 읽습니다.
 - 표준 데코레이터 메타데이터는 `Symbol.metadata` 또는 fluo 메타데이터 심벌 폴리필을 통해 TC39 메타데이터 bag에 연결됩니다.
-- `@fluojs/core`는 module, class DI, controller, route, injection, DTO binding, validation 레코드용 메타데이터 헬퍼를 노출합니다.
-- 메타데이터 헬퍼는 공유 가능한 가변 상태 누수를 막기 위해 읽기와 쓰기 경계에서 가변 payload를 복제합니다.
+- `@fluojs/core` 루트는 공개 데코레이터와 에러, `ensureMetadataSymbol()`, read-only `getModuleMetadata()`, 공유 타입을 노출합니다. Request-pipeline 패키지는 DTO validation, binding 및 표준 데코레이터 metadata bag 접근에 문서화된 `@fluojs/core/request-pipeline` seam을 사용하며, 더 넓은 metadata reader/writer, controller/route helper, injection/validation helper, clone utility는 first-party `@fluojs/core/internal` seam에 남습니다.
+- 메타데이터 헬퍼는 문서화된 범위에서 defensive write/read 경계를 유지합니다. `getModuleMetadata()`, `getOwnClassDiMetadata()`, `getInheritedClassDiMetadata()`, `getClassDiMetadata()`는 clone-on-read 동작의 명시적 예외로, frozen immutable snapshot을 반환하고 write 사이에 같은 stable reference를 재사용할 수 있습니다. 다른 metadata reader는 각 reader의 테스트가 stable-reference 재사용을 문서화하지 않는 한 defensive-read 동작을 유지합니다.
 - controller 및 route 메타데이터는 표준 메타데이터 bag 내부에서 `fluo.standard.controller`, `fluo.standard.route` 같은 fluo 소유 심벌로 키잉됩니다.
 - module 및 class DI 메타데이터도 프레임워크 소유 저장소를 통해 함께 유지되므로, 런타임 패키지는 리플렉션 라이브러리에 의존하지 않고 안정적인 계약을 읽을 수 있습니다.
 - 메타데이터 등록은 장식된 클래스, 메서드, 필드가 평가될 때만 발생합니다. import되지 않은 선언은 런타임 그래프에 참여하지 않습니다.

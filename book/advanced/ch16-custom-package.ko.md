@@ -91,7 +91,7 @@ export interface DynamicModule extends ModuleMetadata {
    }
    ```
 4. **팩토리 기반 `forRootAsync`**:
-   사용자가 `useFactory`, `useClass`, 또는 `useExisting` 전략을 제공할 수 있게 하려면 `AsyncModuleOptions`가 필요합니다. `inject` 배열은 팩토리가 실행되기 전에 `ConfigService` 같은 의존성을 해석하는 데 중요합니다.
+   사용자가 필수 `useFactory`를 제공하는 경우 `AsyncModuleOptions`를 사용합니다. 선택적 `inject` 배열에는 팩토리가 실행되기 전에 DI 컨테이너가 해석할 `ConfigService` 같은 의존성을 나열합니다.
 
 ## The exports Field and Visibility Contract
 
@@ -170,12 +170,11 @@ export class FeatureFlagsModule {
   static forRootAsync(options: AsyncModuleOptions<FeatureFlagsOptions>): DynamicModule {
     return {
       module: FeatureFlagsModule,
-      imports: options.imports || [],
       providers: [
         {
           provide: FEATURE_FLAGS_OPTIONS,
           useFactory: options.useFactory,
-          inject: options.inject || [],
+          inject: options.inject,
         },
         FeatureFlagsService,
       ],
