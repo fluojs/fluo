@@ -74,6 +74,8 @@ describe('React Vite SSR starter', () => {
         expect(error.code).toBe('react-starter-entry-incompatible');
         expect(error.message).toContain('src/entry-server.tsx');
         expect(error.message).toContain('src/entry-client.tsx');
+        expect(error.message).toContain('vite.client.config.ts');
+        expect(error.message).toContain('generated build script');
       }
     }
   });

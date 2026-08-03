@@ -13,7 +13,7 @@ export class ReactStarterEntryError extends Error {
     super(
       [
         'The React starter could not match its server and client entries.',
-        'Check src/entry-server.tsx, src/entry-client.tsx, and vite.client.config.ts, then run pnpm build again.',
+        'Check src/entry-server.tsx, src/entry-client.tsx, and vite.client.config.ts, then run the generated build script again.',
         ...diagnostics,
       ].join('\n'),
     );
