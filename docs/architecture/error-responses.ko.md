@@ -61,7 +61,7 @@ interface ErrorResponse {
 | `429` | `TOO_MANY_REQUESTS` | `TooManyRequestsException` |
 | `500` | `INTERNAL_SERVER_ERROR` | `InternalServerErrorException` |
 
-`packages/http/src/dispatch/dispatch-error-policy.ts`의 dispatcher 정규화 규칙은 다음 매핑을 추가합니다.
+`packages/http/src/dispatch/dispatch-error-representation.ts`의 dispatcher 정규화 규칙은 다음 매핑을 추가합니다.
 
 | Input failure | Output code | Output status | Rule |
 | --- | --- | --- | --- |
@@ -69,14 +69,35 @@ interface ErrorResponse {
 | `HandlerNotFoundError` | `NOT_FOUND` | `404` | `NotFoundException`으로 변환됩니다. |
 | 그 외 모든 throw 값 | `INTERNAL_SERVER_ERROR` | `500` | `InternalServerErrorException`으로 변환됩니다. |
 
+## Representation Selection
+
+Application이 `errorRepresentation.html`을 등록해도 위 envelope가 canonical contract로 유지된다. 기존
+`HttpException`과 route miss에 대해 HTTP는 먼저 canonical outcome을 만든 다음 `application/json`과 사용
+가능한 `text/html` provider를 negotiate한다. Provider는 `HttpErrorRepresentationContext`에서 같은
+`ErrorResponse`를 받으므로 HTML document가 status, code, details, metadata, request id를 다시 정의하지
+않고 outcome을 표현할 수 있다.
+
+`Accept`가 없거나 wildcard tie이면 JSON을 선택한다. Quality와 media-range specificity는 deterministic하며,
+specific `q=0` rejection이 해당 representation에 대해 broader wildcard보다 우선한다. 등록된 acceptable
+offer가 없으면 HTML을 재귀 호출하지 않고 canonical JSON `406 NOT_ACCEPTABLE`을 보낸다. `HEAD`는 선택된
+status/header를 보존하지만 render하거나 body를 보내지 않는다. Provider failure는 원래 canonical JSON
+outcome으로 한 번만 fallback한다.
+
+알 수 없는 throw 값은 canonical JSON 500으로 유지되고 HTML representation phase에 들어가지 않는다.
+Configured filter와 `onError`가 계속 우선하며 already-committed 또는 aborted request는 다시 쓰지 않는다.
+전체 ownership 및 React integration 계약은
+[HTTP error representation decision](./http-error-representations.ko.md)을 참고한다.
+
 ## Handling Rules
 
 | Rule | Statement | Source anchor |
 | --- | --- | --- |
 | Serialization boundary | HTTP 클라이언트는 `createErrorResponse(...)`가 만든 `{ error: ... }` envelope를 받습니다. | `packages/http/src/exceptions.ts` |
-| Unknown failure masking | `HttpException`이 아닌 값은 `Internal server error.` 메시지와 `INTERNAL_SERVER_ERROR`로 정규화됩니다. | `packages/http/src/dispatch/dispatch-error-policy.ts` |
-| Route miss mapping | 누락된 handler는 가공되지 않은 런타임 에러가 아니라 `NOT_FOUND`로 노출됩니다. | `packages/http/src/dispatch/dispatch-error-policy.ts` |
-| Response commit guard | 응답이 이미 committed 상태이면 `writeErrorResponse(...)`는 아무 것도 쓰지 않고 반환합니다. | `packages/http/src/dispatch/dispatch-error-policy.ts` |
+| Unknown failure masking | `HttpException`이 아닌 값은 `Internal server error.` 메시지와 `INTERNAL_SERVER_ERROR`로 정규화됩니다. | `packages/http/src/dispatch/dispatch-error-representation.ts` |
+| Route miss mapping | 누락된 handler는 가공되지 않은 런타임 에러가 아니라 `NOT_FOUND`로 노출됩니다. | `packages/http/src/dispatch/dispatch-error-representation.ts` |
+| Response commit guard | 응답이 이미 committed 상태이면 `writeErrorResponse(...)`는 아무 것도 쓰지 않고 반환합니다. | `packages/http/src/dispatch/dispatch-error-representation.ts` |
+| Representation negotiation | HTML provider가 등록된 경우에만 eligible HTTP outcome이 deterministic JSON/HTML selection을 사용합니다. | `packages/http/src/dispatch/dispatch-error-negotiation.ts` |
+| Provider fallback | Pre-commit provider failure는 configured dispatcher logger로 기록되고 원래 JSON outcome으로 한 번만 fallback합니다. | `packages/http/src/dispatch/dispatch-error-representation.ts` |
 | Request correlation | dispatcher는 `requestContext.requestId`를 에러 직렬화에 전달하고, correlation middleware는 가능할 때 inbound header에서 그 값을 채웁니다. | `packages/http/src/dispatch/dispatcher.ts`, `packages/http/src/middleware/correlation.ts` |
 | Binding diagnostics | 누락된 요청 필드, 잘못된 body shape, 위험한 key, 미지원 body field는 구조화된 `details`와 함께 `BAD_REQUEST`를 생성합니다. | `packages/http/src/adapters/binding.ts` |
 | Validation diagnostics | DTO 유효성 검사 실패는 매핑된 issue detail을 포함한 `BadRequestException`으로 변환됩니다. | `packages/http/src/adapters/dto-validation-adapter.ts` |
