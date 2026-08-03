@@ -36,10 +36,19 @@ function registerHostOwnedDenoPortabilitySuite(): void {
         },
       };
     },
+    createErrorRepresentationBootstrapOptions: (options) => options,
     name: 'host-owned Deno fetch handler',
   });
 
   describe('host-owned Deno fetch handler portability', () => {
+    it('supports HTTP-owned error representations', async () => {
+      await harness.assertSupportsHttpErrorRepresentations();
+    });
+
+    it('does not commit an error representation after request abort', async () => {
+      await harness.assertDoesNotCommitAbortedHttpErrorRepresentations();
+    });
+
     it('preserves malformed cookie values', async () => {
       await harness.assertPreservesMalformedCookieValues();
     });
