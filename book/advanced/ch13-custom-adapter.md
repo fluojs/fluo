@@ -178,7 +178,7 @@ export function createFetchStyleHttpAdapterRealtimeCapability(
 }
 ```
 
-The framework uses this information to decide whether to enable modules that need WebSocket or raw-upgrade features, such as a Socket.IO integration, or to show warnings. Managed SSE instead requires the adapter to expose `FrameworkResponse.stream`. To satisfy that HTTP contract, the adapter must preserve request abort on `FrameworkRequest.signal`, expose response-close notifications through `stream.onClose(...)`, report write backpressure, and implement `waitForDrain()` so the dispatcher can stop, drain, and close the stream.
+The framework uses this information to validate modules that need WebSocket or raw-upgrade features, such as a Socket.IO integration, and fails fast with an error when the capability is unsupported or incompatible. Managed SSE instead requires only that the adapter expose `FrameworkResponse.stream`. When the host exposes request cancellation, the adapter should forward either `FrameworkRequest.signal` or `FrameworkRequest.isAborted()`; it should also expose response-close notifications through `stream.onClose(...)` when possible. If `stream.write(...)` reports backpressure, the dispatcher uses the optional `stream.waitForDrain()` hook when available before continuing.
 
 ## 13.8 No-op Adapter: Tests and Custom Runtimes
 

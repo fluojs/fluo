@@ -178,7 +178,7 @@ export function createFetchStyleHttpAdapterRealtimeCapability(
 }
 ```
 
-프레임워크는 이 정보를 바탕으로 WebSocket 또는 raw-upgrade 기능이 필요한 모듈(예: Socket.IO 통합)의 활성화 여부를 결정하거나 경고를 표시합니다. Managed SSE는 그 대신 adapter가 `FrameworkResponse.stream`을 노출해야 합니다. 이 HTTP contract를 만족하려면 adapter가 request abort를 `FrameworkRequest.signal`에 보존하고, `stream.onClose(...)`로 response-close notification을 노출하며, write backpressure를 보고하고 `waitForDrain()`을 구현해야 합니다. 그래야 dispatcher가 stream을 중단하고 drain한 뒤 닫을 수 있습니다.
+프레임워크는 이 정보를 바탕으로 WebSocket 또는 raw-upgrade 기능이 필요한 모듈(예: Socket.IO 통합)을 검증하고, capability가 지원되지 않거나 호환되지 않으면 error로 fail fast합니다. Managed SSE에 필수인 adapter surface는 `FrameworkResponse.stream`뿐입니다. 호스트가 request cancellation을 노출하면 adapter는 `FrameworkRequest.signal` 또는 `FrameworkRequest.isAborted()` 중 하나로 전달해야 하며, 가능한 경우 `stream.onClose(...)`로 response-close notification도 노출해야 합니다. `stream.write(...)`가 backpressure를 보고하면 dispatcher는 optional `stream.waitForDrain()` hook이 있을 때 이를 사용한 뒤 계속 진행합니다.
 
 ## 13.8 No-op 어댑터: 테스트와 커스텀 런타임
 
