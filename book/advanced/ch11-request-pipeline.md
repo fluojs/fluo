@@ -86,7 +86,7 @@ When a single HTTP request arrives, fluo runs the pipeline in the following orde
 
 fluo exposes `runWithRequestContext(...)` and `getCurrentRequestContext()` so deep call sites, such as service or repository layers, can read the current request without passing the request object through every function argument. The isolation guarantee depends on the host's async-context capability; it is not a universal promise that every runtime has `AsyncLocalStorage`.
 
-The root `@fluojs/http` import does not eagerly load Node's async hooks. On first use, the request-context helper prefers an already available `globalThis.AsyncLocalStorage`, and on supported Node.js hosts it can resolve `node:async_hooks` lazily. With either storage implementation, the context follows awaited continuations and overlapping requests stay isolated.
+The root `@fluojs/http` import selects a runtime-specific entrypoint. Node and Bun register the host `AsyncLocalStorage` constructor from `node:async_hooks` during module initialization, while Deno, worker, browser, and default entries remain free of Node built-in imports. The request-local store itself is created lazily on first helper use. When the host provides async-context storage, the context follows awaited continuations and overlapping requests stay isolated.
 
 ```typescript
 runWithRequestContext(context, () => {
@@ -130,11 +130,11 @@ If a client disconnects before receiving the response, such as during a browser 
 ```typescript
 // packages/http/src/dispatch/dispatcher.ts (simplified)
 function isRequestAborted(request: FrameworkRequest): boolean {
-  return request.isAborted?.() ?? request.signal?.aborted === true;
+  return request.signal?.aborted === true || request.isAborted?.() === true;
 }
 ```
 
-The ordinary dispatch pipeline checks this state at entry and, when a handler runs through the general path, again after handler/interceptor work before response writing. Native fast-path dispatch checks at entry. This is a boundary check, not automatic cancellation of every middleware, database query, or arbitrary business operation. Long-running application code must accept and propagate `RequestContext.request.signal` to APIs that support cancellation. Managed SSE additionally reacts to the request signal and response-stream close notifications.
+The dispatcher treats `signal` and `isAborted()` as independent cancellation surfaces: either one can report cancellation, so a `false` probe never masks an aborted signal. The ordinary dispatch pipeline checks this state at entry and, when a handler runs through the general path, again after handler/interceptor work before response writing. Native fast-path dispatch checks at entry. This is a boundary check, not automatic cancellation of every middleware, database query, or arbitrary business operation. Long-running application code must accept and propagate `RequestContext.request.signal` to APIs that support cancellation. Managed SSE additionally reacts to the request signal and response-stream close notifications.
 
 ## 11.6 Pipeline Visualization Diagram
 
