@@ -18,8 +18,20 @@
 10. `invokeControllerHandler(...)`는 request container에서 controller를 해석하고, binder로 선언된 DTO를 바인딩하며, route가 `request` metadata를 선언한 경우 `HttpDtoValidationAdapter`로 DTO 입력을 검증한다.
 11. controller method는 `(input, requestContext)`를 받고 handler 결과를 반환한다.
 12. 성공한 non-SSE 결과는 `writeSuccessResponse(...)`를 통해 기록되며, 여기서 redirect metadata, route header, formatter 선택, 기본 성공 status 규칙이 적용된다. Dispatcher는 handler 실행 전후에 `signal`과 `isAborted()`를 검사하고 어느 cancellation surface든 authoritative하게 처리하므로 `false` probe가 aborted signal을 가리지 않으며 abort된 요청은 뒤늦게 성공 응답을 commit하지 않는다.
-13. 어느 단계에서든 예외가 발생하면 dispatcher는 설정된 경우 `onError`를 실행하고, 그렇지 않으면 `writeErrorResponse(...)`가 기본 에러 응답을 기록한다.
+13. 어느 단계에서든 예외가 발생하면 dispatcher는 설정된 경우 `onError`를 실행한다. 그렇지 않으면 `writeErrorResponse(...)`가 failure를 분류하고 canonical JSON을 기록하거나, eligible `HttpException` 및 route-miss outcome에 대해 configured HTTP-owned error representation negotiation을 수행한다.
 14. dispatcher는 항상 `onRequestFinish`를 호출한다. request scope가 생성되었거나 lazy promotion 되었다면 요청이 끝나기 전에 해당 isolated request-scoped container를 dispose하며, 끝까지 승격되지 않은 singleton-only fast-path 요청은 root container를 dispose하지 않는다.
+
+## Error Representation Boundary
+
+- Canonical JSON은 default error response이며 HTML provider가 등록되지 않으면 유일한 representation이다.
+- Application은 `createDispatcher(...)` 또는 runtime bootstrap의 `errorRepresentation.html`로 optional HTML을 등록한다. Provider는 classified exception, canonical JSON, request, optional matched handler, request id, active request-scope container를 받지만 response mutation authority는 받지 않는다.
+- `HandlerNotFoundError`는 `Accept` negotiation 전에 기존 HTTP 404 outcome으로 변환된다. Middleware, DTO binding/validation, guard, interceptor, handler의 uncommitted `HttpException` failure는 diagnostic phase를 합치지 않고 같은 selection을 사용한다.
+- Unknown failure, React shell failure, post-shell recoverable error, request abort, browser error는 별도 owner를 유지하며 HTML provider path에 들어가지 않는다.
+- HTTP가 deterministic JSON/HTML quality 및 specificity selection, JSON tie-break, JSON 406 response, `Vary: Accept`, status/content type, `HEAD` body suppression, abort check, already-committed response 보호를 소유한다.
+- Provider failure는 negotiation에 다시 진입하지 않고 원래 canonical JSON outcome으로 한 번만 fallback한다.
+
+전체 ownership, negotiation, React adapter, fallback 계약은
+[HTTP error representation decision](./http-error-representations.ko.md)에 기록되어 있다.
 
 ## Request Context Isolation
 

@@ -18,8 +18,20 @@ This document defines the current request execution contract implemented by `@fl
 10. `invokeControllerHandler(...)` resolves the controller from the request container, binds the declared DTO through the binder, and validates DTO input through `HttpDtoValidationAdapter` when the route declares `request` metadata.
 11. The controller method receives `(input, requestContext)` and returns the handler result.
 12. Successful non-SSE results are written through `writeSuccessResponse(...)`, which applies redirect metadata, route headers, formatter selection, and default success status rules. The dispatcher checks `signal` and `isAborted()` before and after handler execution, treating either cancellation surface as authoritative so a `false` probe cannot mask an aborted signal and aborted requests do not commit late success responses.
-13. If any stage throws, the dispatcher runs `onError` when configured, otherwise `writeErrorResponse(...)` writes the default error response.
+13. If any stage throws, the dispatcher runs `onError` when configured. Otherwise `writeErrorResponse(...)` classifies the failure and either writes canonical JSON or, for eligible `HttpException` and route-miss outcomes, performs the configured HTTP-owned error representation negotiation.
 14. The dispatcher always emits `onRequestFinish`. When a request scope was created or lazily promoted, it disposes that isolated request-scoped container before the request ends; singleton-only fast-path requests that never promote do not dispose the root container.
+
+## Error Representation Boundary
+
+- Canonical JSON remains the default error response and the only representation when no HTML provider is registered.
+- Applications register optional HTML through `errorRepresentation.html` on `createDispatcher(...)` or runtime bootstrap. The provider receives the classified exception, canonical JSON, request, optional matched handler, request id, and active request-scope container, but no response mutation authority.
+- `HandlerNotFoundError` is converted to the existing HTTP 404 outcome before `Accept` negotiation. Uncommitted `HttpException` failures from middleware, DTO binding/validation, guards, interceptors, and handlers use the same selection without merging those diagnostic phases.
+- Unknown failures, React shell failures, post-shell recoverable errors, request aborts, and browser errors retain their separate owners and do not enter the HTML provider path.
+- HTTP owns deterministic JSON/HTML quality and specificity selection, JSON tie-breaking, JSON 406 responses, `Vary: Accept`, status/content type, `HEAD` body suppression, abort checks, and already-committed response protection.
+- A provider failure falls back once to the original canonical JSON outcome without re-entering negotiation.
+
+The complete ownership, negotiation, React adapter, and fallback contract is recorded in the
+[HTTP error representation decision](./http-error-representations.md).
 
 ## Request Context Isolation
 
