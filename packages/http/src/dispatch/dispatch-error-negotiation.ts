@@ -3,6 +3,7 @@ import type { RequestContext } from '../types.js';
 const HTML_MEDIA_TYPE = 'text/html';
 const JSON_MEDIA_TYPE = 'application/json';
 
+/** Error representation selected by HTTP content negotiation. */
 export type ErrorRepresentationKind = 'html' | 'json';
 
 type AcceptRange = {
@@ -78,6 +79,12 @@ function bestRangeForMediaType(ranges: readonly AcceptRange[], mediaType: string
     .sort((left, right) => right.specificity - left.specificity || left.order - right.order)[0];
 }
 
+/**
+ * Reads the normalized Accept header from one request context.
+ *
+ * @param context Active HTTP request context.
+ * @returns The normalized header value when present.
+ */
 export function readAcceptHeader(context: RequestContext): string | undefined {
   const raw = context.request.headers.accept ?? context.request.headers.Accept;
   const value = Array.isArray(raw) ? raw.join(',') : raw;
@@ -85,6 +92,12 @@ export function readAcceptHeader(context: RequestContext): string | undefined {
   return normalized ? normalized : undefined;
 }
 
+/**
+ * Determines whether an Accept header permits the HTML representation.
+ *
+ * @param acceptHeader Normalized Accept header value.
+ * @returns Whether HTML has a positive matching quality.
+ */
 export function canNegotiateHtml(acceptHeader: string | undefined): boolean {
   if (acceptHeader === undefined) {
     return false;
@@ -94,6 +107,13 @@ export function canNegotiateHtml(acceptHeader: string | undefined): boolean {
   return range !== undefined && range.quality > 0;
 }
 
+/**
+ * Selects the deterministic error representation for one Accept header.
+ *
+ * @param acceptHeader Normalized Accept header value.
+ * @param htmlAvailable Whether the application HTML provider is available.
+ * @returns The selected representation, or `undefined` when no offer is acceptable.
+ */
 export function selectErrorRepresentation(
   acceptHeader: string | undefined,
   htmlAvailable: boolean,
