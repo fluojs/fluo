@@ -1,0 +1,52 @@
+import {
+  createReactServerEntry,
+  type ReactPageRenderer,
+} from '@fluojs/react';
+import { createReactViteAssetManifest } from '@fluojs/react/vite';
+
+import { ReactAppDocument, REACT_IDENTIFIER_PREFIX } from './react-app';
+
+export class ReactStarterEntryError extends Error {
+  readonly code = 'react-starter-entry-incompatible' as const;
+
+  constructor(readonly diagnostics: readonly string[]) {
+    super(
+      [
+        'The React starter could not match its server and client entries.',
+        'Check src/entry-server.tsx, src/entry-client.tsx, and vite.client.config.ts, then run pnpm build again.',
+        ...diagnostics,
+      ].join('\n'),
+    );
+    this.name = 'ReactStarterEntryError';
+  }
+}
+
+export function createReactPageRenderer(manifest: unknown): ReactPageRenderer {
+  const result = createReactViteAssetManifest({
+    base: '/assets/',
+    entries: {
+      client: 'src/entry-client.tsx',
+      server: 'src/entry-server.tsx',
+    },
+    identifierPrefix: REACT_IDENTIFIER_PREFIX,
+    manifest,
+  });
+
+  if (!result.ok) {
+    throw new ReactStarterEntryError(
+      result.diagnostics.map((diagnostic) => `${diagnostic.code}: ${diagnostic.message}`),
+    );
+  }
+
+  const assets = result.manifest;
+  const renderPage: ReactPageRenderer = (page, context) => createReactServerEntry(
+    <ReactAppDocument
+      page={page}
+      route={{ params: context.request.params, url: context.request.url }}
+      stylesheets={assets.css}
+    />,
+    assets.hydrationOptions,
+  );
+
+  return renderPage;
+}

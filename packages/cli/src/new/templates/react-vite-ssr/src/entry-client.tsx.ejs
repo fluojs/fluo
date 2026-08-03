@@ -1,7 +1,7 @@
 import { hydrateRoot } from 'react-dom/client';
 
-import { REACT_IDENTIFIER_PREFIX } from './hydration';
-import { renderProductDocument } from './page';
+import { ProductPage } from './page';
+import { ReactAppDocument, REACT_IDENTIFIER_PREFIX } from './react-app';
 import './styles.css';
 
 const stylesheets = [...document.querySelectorAll<HTMLLinkElement>('link[data-vite-style]')]
@@ -10,12 +10,21 @@ const stylesheets = [...document.querySelectorAll<HTMLLinkElement>('link[data-vi
 
 hydrateRoot(
   document,
-  renderProductDocument({
-    preview: document.documentElement.dataset.preview === 'true',
-    routeParams: { sku: document.documentElement.dataset.sku ?? '' },
-    routeUrl: `${window.location.pathname}${window.location.search}`,
-    sku: document.documentElement.dataset.sku ?? '',
-    stylesheets,
-  }),
-  { identifierPrefix: REACT_IDENTIFIER_PREFIX },
+  <ReactAppDocument
+    page={<ProductPage />}
+    route={{
+      params: { sku: document.documentElement.dataset.routeSku ?? '' },
+      url: `${window.location.pathname}${window.location.search}`,
+    }}
+    stylesheets={stylesheets}
+  />,
+  {
+    identifierPrefix: REACT_IDENTIFIER_PREFIX,
+    onRecoverableError(error) {
+      console.error(
+        'React hydration did not match. Keep src/entry-client.tsx aligned with src/entry-server.tsx and src/react-app.tsx.',
+        error,
+      );
+    },
+  },
 );

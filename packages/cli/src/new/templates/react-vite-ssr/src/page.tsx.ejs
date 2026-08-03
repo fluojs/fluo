@@ -1,18 +1,10 @@
 import {
   Link,
-  ReactClientRouterProvider,
-  createReactRouteSnapshot,
+  useParams,
   useRouter,
+  useSearchParams,
 } from '@fluojs/react/client';
 import { type ReactElement, useId, useState } from 'react';
-
-export type ProductDocumentProps = {
-  preview: boolean;
-  routeParams: Readonly<Record<string, string>>;
-  routeUrl: string;
-  sku: string;
-  stylesheets: readonly string[];
-};
 
 export function HydratedCounter(): ReactElement {
   const [count, setCount] = useState(0);
@@ -32,42 +24,20 @@ function ProductNavigation(): ReactElement {
   );
 }
 
-function ProductDocument({
-  preview,
-  routeParams,
-  routeUrl,
-  sku,
-  stylesheets,
-}: ProductDocumentProps): ReactElement {
+export function ProductPage(): ReactElement {
   const identifier = useId();
-  const initialSnapshot = createReactRouteSnapshot({ params: routeParams, url: routeUrl });
+  const params = useParams();
+  const searchParams = useSearchParams();
+  const sku = params['sku'] ?? 'unknown';
+  const preview = searchParams.get('preview') === 'true';
 
   return (
-    <ReactClientRouterProvider initialSnapshot={initialSnapshot}>
-      <html data-preview={String(preview)} data-sku={sku} lang='en'>
-        <head>
-          <meta charSet='utf-8' />
-          <meta content='width=device-width, initial-scale=1' name='viewport' />
-          <link href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>' rel='icon' />
-          <title>{`Catalog item ${sku}`}</title>
-          {stylesheets.map((href) => (
-            <link data-vite-style href={href} key={href} rel='stylesheet' />
-          ))}
-        </head>
-        <body>
-          <main>
-            <h1>{`Catalog item ${sku}`}</h1>
-            <p>{preview ? 'Preview mode' : 'Published mode'}</p>
-            <p data-react-identifier id={identifier}>Shared hydration identifier</p>
-            <HydratedCounter />
-            <ProductNavigation />
-          </main>
-        </body>
-      </html>
-    </ReactClientRouterProvider>
+    <main>
+      <h1>{`Catalog item ${sku}`}</h1>
+      <p>{preview ? 'Preview mode' : 'Published mode'}</p>
+      <p data-react-identifier id={identifier}>Shared hydration identifier</p>
+      <HydratedCounter />
+      <ProductNavigation />
+    </main>
   );
-}
-
-export function renderProductDocument(props: ProductDocumentProps): ReactElement {
-  return <ProductDocument {...props} />;
 }

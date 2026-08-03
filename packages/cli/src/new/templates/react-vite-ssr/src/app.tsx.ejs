@@ -15,21 +15,18 @@ import {
   Path,
   ReactModule,
   Router,
-  createReactServerEntry,
   type ReactPageRenderer,
 } from '@fluojs/react';
-import { createReactViteAssetManifest } from '@fluojs/react/vite';
 import { IsIn, IsString, MinLength } from '@fluojs/validation';
 import type { ReactElement } from 'react';
 
-import { REACT_IDENTIFIER_PREFIX } from './hydration';
-import { renderProductDocument } from './page';
+import { ProductPage } from './page';
 
 const ASSET_FILE_PATTERN = /^[a-zA-Z0-9._-]+\.(?:css|js)$/u;
 
 export type ReactViteAppModuleOptions = {
-  clientDirectory: URL;
-  manifest: unknown;
+  readonly clientDirectory: URL;
+  readonly renderPage: ReactPageRenderer;
 };
 
 class ProductPageRequest {
@@ -50,35 +47,12 @@ class AssetRequest {
 }
 
 export function createAppModule(options: ReactViteAppModuleOptions) {
-  const result = createReactViteAssetManifest({
-    base: '/assets/',
-    entries: {
-      client: 'src/entry-client.tsx',
-      server: 'src/entry-server.ts',
-    },
-    identifierPrefix: REACT_IDENTIFIER_PREFIX,
-    manifest: options.manifest,
-  });
-
-  if (!result.ok) {
-    throw new Error(result.diagnostics.map((diagnostic) => diagnostic.message).join('\n'));
-  }
-
-  const assets = result.manifest;
-  const renderPage: ReactPageRenderer = (page) => createReactServerEntry(page, assets.hydrationOptions);
-
   @Router('/products')
   class ProductPageRouter {
     @Path('/:sku')
     @RequestDto(ProductPageRequest)
-    show(input: ProductPageRequest, context: RequestContext): ReactElement {
-      return renderProductDocument({
-        preview: input.preview === 'true',
-        routeParams: context.request.params,
-        routeUrl: context.request.url,
-        sku: input.sku,
-        stylesheets: assets.css,
-      });
+    show(_input: ProductPageRequest): ReactElement {
+      return <ProductPage />;
     }
   }
 
@@ -109,7 +83,7 @@ export function createAppModule(options: ReactViteAppModuleOptions) {
 
   @Module({
     controllers: [ViteAssetController],
-    imports: [ReactModule.forRoot({ controllers: [ProductPageRouter], renderPage })],
+    imports: [ReactModule.forRoot({ controllers: [ProductPageRouter], renderPage: options.renderPage })],
   })
   class AppModule {}
 

@@ -2,19 +2,19 @@ import { createTestApp } from '@fluojs/testing';
 import { describe, expect, it } from 'vitest';
 
 import { createAppModule } from './app';
+import { ReactStarterEntryError, createReactPageRenderer } from './entry-server';
 
 const VITE_MANIFEST = {
   'src/entry-client.tsx': {
     css: ['styles.css'],
     file: 'entry-client.js',
-    imports: ['src/entry-server.ts'],
     isEntry: true,
     src: 'src/entry-client.tsx',
   },
-  'src/entry-server.ts': {
+  'src/entry-server.tsx': {
     file: 'entry-server.js',
     isEntry: true,
-    src: 'src/entry-server.ts',
+    src: 'src/entry-server.tsx',
   },
 } as const;
 
@@ -29,7 +29,7 @@ describe('React Vite SSR starter', () => {
   it('streams an HTTP-owned page with manifest-derived hydration assets', async () => {
     const AppModule = createAppModule({
       clientDirectory: new URL('../dist/client/', import.meta.url),
-      manifest: VITE_MANIFEST,
+      renderPage: createReactPageRenderer(VITE_MANIFEST),
     });
     const app = await createTestApp({ rootModule: AppModule });
 
@@ -52,7 +52,7 @@ describe('React Vite SSR starter', () => {
   it('keeps route validation on the server DTO boundary', async () => {
     const AppModule = createAppModule({
       clientDirectory: new URL('../dist/client/', import.meta.url),
-      manifest: VITE_MANIFEST,
+      renderPage: createReactPageRenderer(VITE_MANIFEST),
     });
     const app = await createTestApp({ rootModule: AppModule });
 
@@ -61,6 +61,20 @@ describe('React Vite SSR starter', () => {
       expect(response.status).toBe(400);
     } finally {
       await app.close();
+    }
+  });
+
+  it('identifies the application entry files when the Vite manifest is incompatible', () => {
+    try {
+      createReactPageRenderer({});
+      throw new TypeError('Expected createReactPageRenderer(...) to reject an incompatible manifest.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ReactStarterEntryError);
+      if (error instanceof ReactStarterEntryError) {
+        expect(error.code).toBe('react-starter-entry-incompatible');
+        expect(error.message).toContain('src/entry-server.tsx');
+        expect(error.message).toContain('src/entry-client.tsx');
+      }
     }
   });
 });
