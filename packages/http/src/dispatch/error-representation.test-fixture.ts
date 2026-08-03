@@ -15,6 +15,7 @@ import {
   type RequestContext,
 } from '../index.js';
 
+/** Mutable framework response used by error-representation dispatch tests. */
 export type TestResponse = FrameworkResponse & { body?: unknown };
 
 @Controller('/failures')
@@ -44,6 +45,14 @@ class FailureController {
   }
 }
 
+/**
+ * Creates an error-representation test request.
+ *
+ * @param path Request path.
+ * @param accept Optional Accept header value.
+ * @param method HTTP method.
+ * @returns A framework request fixture.
+ */
 export function createRequest(
   path: string,
   accept?: string,
@@ -63,6 +72,11 @@ export function createRequest(
   };
 }
 
+/**
+ * Creates a mutable error-representation response recorder.
+ *
+ * @returns A framework response fixture.
+ */
 export function createResponse(): TestResponse {
   return {
     committed: false,
@@ -86,6 +100,14 @@ export function createResponse(): TestResponse {
   };
 }
 
+/**
+ * Creates a dispatcher configured with one HTML error provider.
+ *
+ * @param provider HTML provider under test.
+ * @param overrides Optional dispatcher settings.
+ * @param rootContainer Root DI container.
+ * @returns The dispatcher and root container fixture.
+ */
 export function createTestDispatcher(
   provider: HtmlErrorRepresentationProvider,
   overrides: Partial<CreateDispatcherOptions> = {},

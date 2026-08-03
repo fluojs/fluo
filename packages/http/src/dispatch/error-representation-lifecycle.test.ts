@@ -49,6 +49,26 @@ describe('HTTP error representation lifecycle', () => {
     );
   });
 
+  it('propagates response writer failures without retrying through canonical JSON fallback', async () => {
+    const writerFailure = new Error('response writer failed');
+    const logger = { error: vi.fn() };
+    const { dispatcher } = createTestDispatcher({
+      render() {
+        return '<main>not written</main>';
+      },
+    }, { logger });
+    const response = createResponse();
+    response.send = vi.fn(() => {
+      throw writerFailure;
+    });
+
+    await expect(dispatcher.dispatch(createRequest('/missing', 'text/html'), response)).rejects.toBe(writerFailure);
+
+    expect(response.send).toHaveBeenCalledTimes(1);
+    expect(response.send).toHaveBeenCalledWith('<main>not written</main>');
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
   it('does not merge unknown failures into the HttpException representation phase', async () => {
     const render = vi.fn(() => '<main>unused</main>');
     const { dispatcher } = createTestDispatcher({ render });

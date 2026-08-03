@@ -109,6 +109,14 @@ async function writeCanonicalJson(error: HttpException, requestContext: RequestC
   );
 }
 
+/**
+ * Writes one HTTP-owned error representation when the response remains writable.
+ *
+ * @param error Failure classified by the HTTP dispatch pipeline.
+ * @param requestContext Active request and response context.
+ * @param options Matched-handler, logger, and optional HTML provider settings.
+ * @returns A promise that settles after the selected response is written or skipped.
+ */
 export async function writeErrorResponse(
   error: unknown,
   requestContext: RequestContext,
@@ -159,14 +167,17 @@ export async function writeErrorResponse(
     return;
   }
 
+  let body: string | Uint8Array;
   try {
-    const body = await provider.render(representationContext);
-    await writeBody(requestContext, httpError.status, HTML_CONTENT_TYPE, body);
+    body = await provider.render(representationContext);
   } catch (providerError) {
     if (isRequestAborted(requestContext.request)) {
       return;
     }
     options.logger?.error(PROVIDER_FAILURE_MESSAGE, providerError, 'HttpDispatcher');
     await writeCanonicalJson(httpError, requestContext);
+    return;
   }
+
+  await writeBody(requestContext, httpError.status, HTML_CONTENT_TYPE, body);
 }
