@@ -100,15 +100,16 @@ The tests reinforce this shared ancestry. `path:packages/runtime/src/bootstrap.t
 This shared bootstrap spine is the foundation of this chapter. To understand the rest of the runtime contract, first see that the context, application, and microservice shells are siblings built from one compiled module and container baseline.
 
 ## 9.2 Application context is the adapterless baseline and still runs full lifecycle bootstrap
-`FluoApplicationContext` is defined in `path:packages/runtime/src/bootstrap.ts:531-575`. Its surface is intentionally small. It stores only the `container`, `modules`, `rootModule`, optional bootstrap timing diagnostics, lifecycle instances, and cleanup callbacks.
+`FluoApplicationContext` is defined in `path:packages/runtime/src/bootstrap.ts:808-859`. Its surface is intentionally small. It stores the `container`, `modules`, `rootModule`, optional bootstrap timing diagnostics, lifecycle instances, cleanup callbacks, and the narrow context-resolution cache used by `get()`.
 
 The context shell itself shows that intent. The stored values are the ones needed for the compiled Module baseline and lifecycle cleanup, and the public behavior is DI lookup and close.
 
-`path:packages/runtime/src/bootstrap.ts:531-548`
+`path:packages/runtime/src/bootstrap.ts:808-831`
 ```typescript
 class FluoApplicationContext implements ApplicationContext {
   private closed = false;
   private closingPromise: Promise<void> | undefined;
+  private readonly contextResolutionCache: ContextResolutionCache = new Map();
 
   constructor(
     readonly container: Container,
@@ -117,29 +118,138 @@ class FluoApplicationContext implements ApplicationContext {
     readonly bootstrapTiming: ApplicationContext['bootstrapTiming'],
     private readonly lifecycleInstances: unknown[],
     private readonly runtimeCleanup: Array<() => void>,
-  ) {}
+    private readonly contextCacheableTokens: ContextCacheableTokens,
+  ) {
+    installContextCacheInvalidation(this.container, this.contextResolutionCache, this.contextCacheableTokens);
+  }
 
   async get<T>(token: Token<T>): Promise<T> {
-    return this.container.resolve(token);
+    if (this.closed) {
+      return this.container.resolve(token);
+    }
+
+    return resolveContextToken(this.container, token, this.contextCacheableTokens, this.contextResolutionCache);
   }
 ```
 
-This excerpt has no dispatcher, adapter, or listen state. So a context is not a less bootstrapped application. It is a separate shell that promises only DI and lifecycle behavior.
+This excerpt still has no dispatcher, adapter, or listen state. So a context is not a less bootstrapped application. It is a separate shell that promises only DI and lifecycle behavior. The added cache is not a second DI system: it is a guarded fast path in front of the same container.
 
 The only public methods are `get()` and `close()`. That minimal surface is the point. An application context is the runtime baseline for CLI tasks, workers, migrations, and every DI-driven process that does not need an HTTP listener.
 
-The actual bootstrap path is `FluoFactory.createApplicationContext()` in `path:packages/runtime/src/bootstrap.ts:1059-1153`. Compared with `bootstrapApplication()`, most of the order is the same. It still creates the logger, platform shell, runtime Provider list, compiled Module, runtime context Tokens, lifecycle instances, and timing diagnostics.
+For application-authored Providers, cache eligibility is limited to effective runtime Providers and Providers declared directly on the root Module. Bare classes and class/factory Providers must also be singleton, while aliases, values, and `multi: true` Providers are excluded. Internal runtime Tokens are seeded explicitly. Imported-Module Providers still use the container's own singleton cache, but `ApplicationContext.get()` does not add a second context-cache entry for them.
 
-The key difference is Token registration. In a full application, `registerRuntimeBootstrapTokens()` adds both `HTTP_APPLICATION_ADAPTER` and `PLATFORM_SHELL`. In a context, `registerRuntimeApplicationContextTokens()` adds only `PLATFORM_SHELL`.
+`path:packages/runtime/src/bootstrap.ts:1074-1113`
+```typescript
+function createContextCacheableTokenSet(
+  effectiveProviders: BootstrapEffectiveProviders,
+  runtimeTokens: readonly Token[],
+): Set<Token> {
+  const cacheableTokens = new Set<Token>(runtimeTokens);
 
-The Token registration functions show this difference in the smallest form. The application branch adds the HTTP adapter Token. The context branch adds only the platform shell, then falls through to the shared context Token registration helper.
+  for (const provider of effectiveProviders.runtimeProviders) {
+    if (isDirectSingletonContextProvider(provider)) {
+      cacheableTokens.add(providerToken(provider));
+    }
+  }
 
-`path:packages/runtime/src/bootstrap.ts:783-795`
+  for (const provider of effectiveProviders.rootModuleProviders) {
+    if (isDirectSingletonContextProvider(provider)) {
+      cacheableTokens.add(providerToken(provider));
+    }
+  }
+
+  return cacheableTokens;
+}
+
+function isDirectSingletonContextProvider(provider: Provider): boolean {
+  if (isMultiProvider(provider)) {
+    return false;
+  }
+
+  if (typeof provider === 'function') {
+    return providerScope(provider) === 'singleton';
+  }
+
+  if ('useExisting' in provider || 'useValue' in provider) {
+    return false;
+  }
+
+  return providerScope(provider) === 'singleton';
+}
+```
+
+The resolution helper memoizes the in-flight Promise only for those eligible Tokens and removes failed resolutions. Every other lookup delegates directly to DI, preserving alias target scope, request-scope errors, transient recreation, and fresh multi-provider contribution arrays. `container.override()` clears existing entries and recomputes eligibility for each overridden Token. After `close()`, `get()` deliberately bypasses the context cache and reaches the disposed container, so a previously cached singleton cannot hide the required post-close failure.
+
+`path:packages/runtime/src/bootstrap.ts:1129-1178`
+```typescript
+function installContextCacheInvalidation(
+  container: Container,
+  cache: ContextResolutionCache,
+  cacheableTokens: ContextCacheableTokens,
+): void {
+  const cacheInvalidatingContainer = container as CacheInvalidatingContainer;
+  const override = cacheInvalidatingContainer.override.bind(container);
+
+  cacheInvalidatingContainer.override = (...providers: Provider[]): Container => {
+    const result = override(...providers);
+    cache.clear();
+
+    for (const provider of providers) {
+      const token = providerToken(provider);
+
+      if (isDirectSingletonContextProvider(provider)) {
+        cacheableTokens.add(token);
+      } else {
+        cacheableTokens.delete(token);
+      }
+    }
+
+    return result;
+  };
+}
+
+async function resolveContextToken<T>(
+  container: Container,
+  token: Token<T>,
+  cacheableTokens: ReadonlySet<Token>,
+  cache: ContextResolutionCache,
+): Promise<T> {
+  if (!cacheableTokens.has(token)) {
+    return container.resolve(token);
+  }
+
+  const cached = cache.get(token);
+
+  if (cached) {
+    return cached as Promise<T>;
+  }
+
+  const resolution = container.resolve(token).catch((error: unknown) => {
+    cache.delete(token);
+    throw error;
+  });
+  cache.set(token, resolution);
+
+  return resolution;
+}
+```
+
+The regression coverage makes the boundary executable. `path:packages/runtime/src/bootstrap.test.ts:687-885` covers direct singleton memoization, duplicate-winner eligibility, transient overrides, and multi-provider delegation. `path:packages/runtime/src/application.test.ts:2783-2886` covers transient and request-scoped aliases, singleton override invalidation, and post-close failures for both `ApplicationContext.get()` and `Application.get()`.
+
+The actual bootstrap path is `FluoFactory.createApplicationContext()` in `path:packages/runtime/src/bootstrap.ts:1619-1740`. Compared with `bootstrapApplication()`, most of the order is the same. It still creates the logger, platform shell, runtime Provider list, compiled Module, runtime context Tokens, lifecycle instances, and timing diagnostics.
+
+The key difference is Token registration. In a full application, `registerRuntimeBootstrapTokens()` adds both `HTTP_APPLICATION_ADAPTER` and `PLATFORM_SHELL`. A context registers the same platform, cleanup-registration, bootstrap-ready, container, and compiled-module baseline, but it omits `HTTP_APPLICATION_ADAPTER`.
+
+The Token registration functions show this difference in the smallest form. The application branch adds the HTTP adapter Token alongside the shared lifecycle Tokens. The context branch keeps those lifecycle Tokens but omits the adapter, then both branches fall through to the shared context Token registration helper.
+
+`path:packages/runtime/src/bootstrap.ts:1280-1300`
 ```typescript
 function registerRuntimeBootstrapTokens(
   bootstrapped: BootstrapResult,
   adapter: HttpApplicationAdapter,
   platformShell: RuntimePlatformShell,
+  runtimeCleanup: Array<() => void>,
+  bootstrapReadySignal: BootstrapReadySignal,
 ): void {
   registerRuntimeContextTokens(bootstrapped, {
     provide: HTTP_APPLICATION_ADAPTER,
@@ -147,13 +257,19 @@ function registerRuntimeBootstrapTokens(
   }, {
     provide: PLATFORM_SHELL,
     useValue: platformShell,
+  }, {
+    provide: RUNTIME_CLEANUP_REGISTRATION,
+    useValue: createRuntimeCleanupRegistration(runtimeCleanup),
+  }, {
+    provide: BOOTSTRAP_READY_SIGNAL,
+    useValue: bootstrapReadySignal,
   });
 }
 ```
 
 This first excerpt narrows the full application branch to the fact that it adds the HTTP adapter Token. The shared helper below closes the comparison by showing that the context branch shares the same baseline Tokens while excluding only the adapter Token.
 
-`path:packages/runtime/src/bootstrap.ts:797-816`
+`path:packages/runtime/src/bootstrap.ts:1302-1332`
 ```typescript
 function registerRuntimeContextTokens(bootstrapped: BootstrapResult, ...providers: Provider[]): void {
   bootstrapped.container.register(
@@ -169,36 +285,47 @@ function registerRuntimeContextTokens(bootstrapped: BootstrapResult, ...provider
   );
 }
 
-function registerRuntimeApplicationContextTokens(bootstrapped: BootstrapResult, platformShell: RuntimePlatformShell): void {
+function registerRuntimeApplicationContextTokens(
+  bootstrapped: BootstrapResult,
+  platformShell: RuntimePlatformShell,
+  runtimeCleanup: Array<() => void>,
+  bootstrapReadySignal: BootstrapReadySignal,
+): void {
   registerRuntimeContextTokens(bootstrapped, {
     provide: PLATFORM_SHELL,
     useValue: platformShell,
+  }, {
+    provide: RUNTIME_CLEANUP_REGISTRATION,
+    useValue: createRuntimeCleanupRegistration(runtimeCleanup),
+  }, {
+    provide: BOOTSTRAP_READY_SIGNAL,
+    useValue: bootstrapReadySignal,
   });
 }
 ```
 
 The second excerpt shows the shared helper and the context-specific wrapper together. That matches the claim that both shells have `RUNTIME_CONTAINER` and `COMPILED_MODULES`, but only a full application has `HTTP_APPLICATION_ADAPTER`.
 
-This difference is fixed explicitly by tests. `path:packages/runtime/src/bootstrap.test.ts:523-541` verifies that application service resolution succeeds, `context.get(HTTP_APPLICATION_ADAPTER)` fails with `No provider registered`, and `context.get(PLATFORM_SHELL)` succeeds.
+This difference is fixed explicitly by tests. `path:packages/runtime/src/bootstrap.test.ts:667-685` verifies that application service resolution succeeds, `context.get(HTTP_APPLICATION_ADAPTER)` fails with `No provider registered`, and `context.get(PLATFORM_SHELL)` succeeds.
 
 The important point is subtle. An application context is not a half-bootstrapped state. It is fully bootstrapped for the capabilities it promises. It simply does not promise adapter access.
 
-Lifecycle behavior is also complete. `path:packages/runtime/src/bootstrap.test.ts:543-582` in the same test file shows that context bootstrap runs `onModuleInit()` and `onApplicationBootstrap()`, and later `close()` runs `onModuleDestroy()` and `onApplicationShutdown()`.
+Lifecycle behavior is also complete. `path:packages/runtime/src/bootstrap.test.ts:1090-1129` in the same test file shows that context bootstrap runs `onModuleInit()` and `onApplicationBootstrap()`, and later `close()` runs `onModuleDestroy()` and `onApplicationShutdown()`.
 
 The fact that context and application share lifecycle behavior is visible in the shared helpers. Bootstrap resolves singleton lifecycle instances, runs hooks, starts the platform shell, and marks readiness state.
 
-`path:packages/runtime/src/bootstrap.ts:818-841`
+`path:packages/runtime/src/bootstrap.ts:1334-1358`
 ```typescript
 async function resolveBootstrapLifecycleInstances(
   bootstrapped: BootstrapResult,
-  runtimeProviders: Provider[],
+  resolvedInstances?: unknown[],
 ): Promise<unknown[]> {
   const lifecycleProviders = [
-    ...runtimeProviders,
-    ...bootstrapped.modules.flatMap((compiledModule) => compiledModule.definition.providers ?? []),
+    ...bootstrapped.effectiveProviders.runtimeProviders,
+    ...bootstrapped.effectiveProviders.moduleProviders,
   ];
 
-  return resolveLifecycleInstances(bootstrapped.container, lifecycleProviders);
+  return resolveLifecycleInstances(bootstrapped.container, lifecycleProviders, resolvedInstances);
 }
 
 async function runBootstrapLifecycle(
@@ -206,39 +333,42 @@ async function runBootstrapLifecycle(
   lifecycleInstances: unknown[],
   logger: ApplicationLogger,
   platformShell: RuntimePlatformShell,
+  bootstrapReadySignal: MutableBootstrapReadySignal,
 ): Promise<void> {
 ```
 
 This excerpt shows that the lifecycle target list is built from both runtime Providers and compiled Module Providers. The next excerpt narrows the focus to how that list runs in the actual bootstrap phase.
 
-`path:packages/runtime/src/bootstrap.ts:830-841`
+`path:packages/runtime/src/bootstrap.ts:1346-1358`
 ```typescript
 async function runBootstrapLifecycle(
   modules: CompiledModule[],
   lifecycleInstances: unknown[],
   logger: ApplicationLogger,
   platformShell: RuntimePlatformShell,
+  bootstrapReadySignal: MutableBootstrapReadySignal,
 ): Promise<void> {
   resetReadinessState(modules);
   await runBootstrapHooks(lifecycleInstances);
   await platformShell.start();
   markReadinessState(modules);
+  bootstrapReadySignal.markReady();
   logCompiledModules(logger, modules);
 }
 ```
 
 So context bootstrap also performs platform shell startup and application bootstrap hooks. The difference is the absence of an HTTP adapter surface, not the omission of a lifecycle phase.
 
-That means context bootstrap is not dry-run mode. It eagerly creates singleton Providers that participate in lifecycle hooks and actually performs the same runtime hooks as the full application shell.
+That means context bootstrap is not dry-run mode. It eagerly resolves direct singleton lifecycle candidates and actually performs the same runtime hooks as the full application shell.
 
-Timing diagnostics follow the same pattern. `path:packages/runtime/src/bootstrap.test.ts:584-610` shows that `bootstrapTiming` is absent by default, but available when `diagnostics.timing` is enabled. The runtime does not restrict timing instrumentation to HTTP applications.
+Timing diagnostics follow the same pattern. `path:packages/runtime/src/bootstrap.test.ts:1387-1411` shows that `bootstrapTiming` is absent by default, but available when `diagnostics.timing` is enabled. The runtime does not restrict timing instrumentation to HTTP applications.
 
 The context bootstrap flow can be summarized like this:
 
 ```text
 createApplicationContext(rootModule)
   -> bootstrapModule()
-  -> register RUNTIME_CONTAINER + COMPILED_MODULES + PLATFORM_SHELL
+  -> register context/lifecycle runtime tokens without HTTP_APPLICATION_ADAPTER
   -> resolve singleton lifecycle instances
   -> run bootstrap hooks
   -> return DI-only shell with get() and close()
