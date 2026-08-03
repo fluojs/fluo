@@ -74,6 +74,23 @@ describe('raceWithAbort', () => {
     await raceWithAbort(async () => 'ok', controller.signal);
     expect(removeSpy).toHaveBeenCalledWith('abort', expect.any(Function));
   });
+
+  it('removes the abort listener after fn rejects asynchronously', async () => {
+    const controller = new AbortController();
+    const addSpy = vi.spyOn(controller.signal, 'addEventListener');
+    const removeSpy = vi.spyOn(controller.signal, 'removeEventListener');
+    const originalError = new Error('async rejection');
+
+    const promise = raceWithAbort(async () => {
+      await Promise.resolve();
+      throw originalError;
+    }, controller.signal);
+
+    await expect(promise).rejects.toBe(originalError);
+    expect(addSpy).toHaveBeenCalledTimes(1);
+    const abortListener = addSpy.mock.calls[0]?.[1];
+    expect(removeSpy).toHaveBeenCalledWith('abort', abortListener);
+  });
 });
 
 describe('createAbortError', () => {
