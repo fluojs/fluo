@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { cloneMutableValue } from './metadata/shared.js'
-import { fallbackClone } from './utils.js'
+import { cloneWithFallback, fallbackClone } from './utils.js'
 
 describe('fallbackClone', () => {
   it('preserves circular references, symbol keys, and custom prototypes', () => {
@@ -35,6 +35,66 @@ describe('fallbackClone', () => {
     expect(cloned.child).not.toBe(source.child)
     expect(cloned[marker]).toEqual({ enabled: true })
     expect(cloned[marker]).not.toBe(source[marker])
+  })
+})
+
+describe('cloneWithFallback', () => {
+  it('uses the fallback clone for circular, symbol-keyed, and complex nested values', () => {
+    // Given
+    const marker = Symbol('marker')
+    type CircularFixture = {
+      readonly nested: {
+        readonly createdAt: Date
+        readonly keyed: Map<string, Set<Uint8Array>>
+        readonly matcher: RegExp
+      }
+      self?: CircularFixture
+      readonly [marker]: { readonly enabled: boolean }
+    }
+    const source: CircularFixture = {
+      nested: {
+        createdAt: new Date('2026-01-02T03:04:05.000Z'),
+        keyed: new Map([['payload', new Set([new Uint8Array([3, 1, 4])])]]),
+        matcher: /fallback/gi,
+      },
+      [marker]: { enabled: true },
+    }
+    source.nested.matcher.lastIndex = 2
+    source.self = source
+    const structuredCloneSpy = vi.spyOn(globalThis, 'structuredClone').mockImplementation(() => {
+      throw new DOMException('', 'DataCloneError')
+    })
+
+    try {
+      // When
+      const cloned = cloneWithFallback(source)
+
+      // Then
+      expect(structuredCloneSpy).toHaveBeenCalledTimes(1)
+      expect(cloned).not.toBe(source)
+      expect(cloned.self).toBe(cloned)
+      expect(cloned[marker]).toEqual({ enabled: true })
+      expect(cloned[marker]).not.toBe(source[marker])
+      expect(cloned.nested).not.toBe(source.nested)
+      expect(cloned.nested.createdAt).toEqual(new Date('2026-01-02T03:04:05.000Z'))
+      expect(cloned.nested.createdAt).not.toBe(source.nested.createdAt)
+      expect(cloned.nested.matcher).toEqual(/fallback/gi)
+      expect(cloned.nested.matcher.lastIndex).toBe(2)
+      expect(cloned.nested.matcher).not.toBe(source.nested.matcher)
+      expect(cloned.nested.keyed).not.toBe(source.nested.keyed)
+
+      const clonedSet = cloned.nested.keyed.get('payload')
+      const sourceSet = source.nested.keyed.get('payload')
+      const clonedBytes = clonedSet?.values().next().value
+      const sourceBytes = sourceSet?.values().next().value
+
+      expect(clonedSet).toEqual(new Set([new Uint8Array([3, 1, 4])]))
+      expect(clonedSet).not.toBe(sourceSet)
+      expect(clonedBytes).toEqual(new Uint8Array([3, 1, 4]))
+      expect(clonedBytes).not.toBe(sourceBytes)
+    } finally {
+      structuredCloneSpy.mockRestore()
+    }
   })
 })
 
