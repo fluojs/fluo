@@ -3,6 +3,7 @@ import {
   Get,
   Head,
   type HttpErrorRepresentationOptions,
+  type Middleware,
   NotFoundException,
   type RequestContext,
 } from '@fluojs/http';
@@ -38,6 +39,7 @@ type WebHarnessOptions<TBootstrapOptions extends object, TApp extends WebApp> = 
 export type NetworkHttpErrorRepresentationBootstrapOptions = {
   readonly cors: false;
   readonly errorRepresentation: HttpErrorRepresentationOptions;
+  readonly middleware: Middleware[];
   readonly port: 0;
 };
 
@@ -45,6 +47,7 @@ export type NetworkHttpErrorRepresentationBootstrapOptions = {
 export type WebHttpErrorRepresentationBootstrapOptions = {
   readonly cors: false;
   readonly errorRepresentation: HttpErrorRepresentationOptions;
+  readonly middleware: Middleware[];
 };
 
 type ListenTarget = { readonly url: string };
@@ -156,6 +159,7 @@ function createErrorRepresentationOptions(): WebHttpErrorRepresentationBootstrap
         },
       },
     },
+    middleware: [],
   };
 }
 
@@ -194,9 +198,9 @@ export async function assertNetworkHttpErrorRepresentationPortability<
     createRepresentationFixture(),
     options.createBootstrapOptions({ ...createErrorRepresentationOptions(), port: 0 }),
   );
-  await app.listen();
 
   await closeAfterAssertion(app, options.name, async () => {
+    await app.listen();
     const baseUrl = resolveListeningUrl(app, options.name);
     await assertRepresentationResponses(options.name, {
       committed: await fetch(`${baseUrl}/error-representations/committed`, { headers: { accept: 'text/html' } }),

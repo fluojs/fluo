@@ -1,9 +1,12 @@
 import { Controller, Get, Post, type RequestContext, SseResponse } from '@fluojs/http';
 import { type ApplicationLogger, defineModule, type ModuleType } from '@fluojs/runtime';
+import { assertNetworkHttpErrorRepresentationAbortPortability } from './error-representation-abort-portability.js';
 import {
   assertNetworkHttpErrorRepresentationPortability,
   type NetworkHttpErrorRepresentationBootstrapOptions,
 } from './error-representation-portability.js';
+
+export type { NetworkHttpErrorRepresentationBootstrapOptions } from './error-representation-portability.js';
 
 type AppLike = {
   close(): Promise<void>;
@@ -269,6 +272,20 @@ export class HttpAdapterPortabilityHarness<
     }
 
     await assertNetworkHttpErrorRepresentationPortability({
+      bootstrap: this.options.bootstrap,
+      createBootstrapOptions,
+      name: this.options.name,
+    });
+  }
+
+  /** Verifies client-disconnect abort propagation without an HTML or JSON fallback commit. */
+  async assertDoesNotCommitAbortedHttpErrorRepresentations(): Promise<void> {
+    const createBootstrapOptions = this.options.createErrorRepresentationBootstrapOptions;
+    if (createBootstrapOptions === undefined) {
+      throw new Error(`${this.options.name} adapter portability harness requires createErrorRepresentationBootstrapOptions.`);
+    }
+
+    await assertNetworkHttpErrorRepresentationAbortPortability({
       bootstrap: this.options.bootstrap,
       createBootstrapOptions,
       name: this.options.name,

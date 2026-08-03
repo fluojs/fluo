@@ -58,6 +58,7 @@ JNCDpGwh8us=
 -----END CERTIFICATE-----`;
 
 interface PortabilityAssertions {
+  assertDoesNotCommitAbortedHttpErrorRepresentations(): Promise<void>;
   assertDefaultsMultipartTotalLimitToMaxBodySize(): Promise<void>;
   assertExcludesRawBodyForMultipart(): Promise<void>;
   assertPreservesExactRawBodyBytesForByteSensitivePayloads(): Promise<void>;
@@ -84,6 +85,10 @@ function registerPortabilitySuite(
   describe(`${name} adapter portability`, () => {
     it('supports HTTP-owned JSON and HTML error representations', async () => {
       await harness.assertSupportsHttpErrorRepresentations();
+    });
+
+    it('does not commit an error representation after client disconnect', async () => {
+      await harness.assertDoesNotCommitAbortedHttpErrorRepresentations();
     });
 
     it('preserves malformed cookie values', async () => {
@@ -250,6 +255,63 @@ describe('http adapter portability cleanup reporting', () => {
         throw error;
       }
       expect(error.message).toContain('portability setup failed and app.close() also failed');
+      expect(error.errors).toEqual([listenError, closeError]);
+    }
+  });
+
+  it('closes the error-representation app when network listen fails', async () => {
+    const listenError = new Error('representation listen exploded');
+    const close = vi.fn(async () => {});
+    const harness = createHttpAdapterPortabilityHarness({
+      async bootstrap() {
+        return {
+          close,
+          async listen() {
+            throw listenError;
+          },
+        };
+      },
+      createErrorRepresentationBootstrapOptions: (options) => options,
+      name: 'representation-listen-cleanup',
+      async run() {
+        throw new Error('run should not be used');
+      },
+    });
+
+    await expect(harness.assertSupportsHttpErrorRepresentations()).rejects.toBe(listenError);
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves error-representation listen and cleanup failures', async () => {
+    const listenError = new Error('representation listen exploded');
+    const closeError = new Error('representation close exploded');
+    const harness = createHttpAdapterPortabilityHarness({
+      async bootstrap() {
+        return {
+          async close() {
+            throw closeError;
+          },
+          async listen() {
+            throw listenError;
+          },
+        };
+      },
+      createErrorRepresentationBootstrapOptions: (options) => options,
+      name: 'representation-listen-cleanup-fails',
+      async run() {
+        throw new Error('run should not be used');
+      },
+    });
+
+    try {
+      await harness.assertSupportsHttpErrorRepresentations();
+      throw new Error('Expected representation listen cleanup failure to be reported.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(AggregateError);
+      if (!(error instanceof AggregateError)) {
+        throw error;
+      }
+      expect(error.message).toContain('representation assertion and cleanup both failed');
       expect(error.errors).toEqual([listenError, closeError]);
     }
   });
