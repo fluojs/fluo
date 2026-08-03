@@ -37,15 +37,15 @@
 
 | Scope | Registration rule | Resolution rule |
 | --- | --- | --- |
-| `singleton` | Default for class, value, alias, and factory providers unless overridden. | One instance is shared from the root container cache. A request-local `override()` of a token already visible through the request container's scope chain is cached in that request container instead. |
+| `singleton` | Default for class, value, alias, and factory providers unless overridden. | One instance is shared from the root container cache. When the request container that owns an existing-token `override()` resolves that token directly, it caches the replacement in its own request cache instead. |
 | `request` | Declared with `@Scope('request')` or `scope: 'request'`. | One instance is created per request container created by `createRequestScope()`. |
 | `transient` | Declared with `@Scope('transient')` or `scope: 'transient'`. | A new instance is created for each resolution. |
 
 - A request-scoped provider MUST be resolved from a request container. Resolving it from the root container raises `RequestScopeResolutionError`.
 - A singleton provider MUST NOT depend on a request-scoped provider. That mismatch raises `ScopeMismatchError`.
 - A request-scope container MUST NOT use `register()` to introduce a singleton provider or use `override()` to introduce a singleton provider for a token that is not already visible. Root-level singleton registration happens before request scopes are created.
-- A request-scope container MAY use `override()` to replace a token already visible through its scope chain for that request. The replacement cache belongs to the request container and MUST NOT pollute the root singleton cache; the root and sibling request scopes continue to resolve the root registration.
-- `createRequestScope()` creates a child container that shares the root singleton cache for inherited singleton providers and isolates request-scoped instances and request-local override caches.
+- A request-scope container MAY use `override()` to replace a token already visible through its scope chain for that request. When that owning container resolves the token directly, it caches the replacement in its own request cache rather than the root singleton cache. This cache-isolation guarantee does not extend to resolutions initiated by nested request-scope descendants.
+- `createRequestScope()` creates a child container that shares the root singleton cache for inherited singleton providers and isolates that child's request-scoped instances.
 
 ## Constraints
 
