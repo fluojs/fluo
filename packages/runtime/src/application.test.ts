@@ -1,5 +1,5 @@
 import { request as httpsRequest } from 'node:https';
-import { createServer } from 'node:net';
+import { type AddressInfo, createServer } from 'node:net';
 import { Inject, Scope } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
 import {
@@ -27,7 +27,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapApplication, defineModule, FluoFactory } from './bootstrap.js';
 import { ModuleInjectionMetadataError } from './errors.js';
 import { createHealthModule } from './health/health.js';
-import { bootstrapNodeApplication, createNodeHttpAdapter, runNodeApplication } from './node/node.js';
+import { bootstrapNodeApplication, createNodeHttpAdapter, NodeHttpApplicationAdapter, runNodeApplication } from './node/node.js';
 import { COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from './tokens.js';
 import type { ApplicationLogger, CompiledModule, ExceptionFilterContext, ExceptionFilterHandler, OnApplicationBootstrap, OnModuleInit, RuntimeCleanupRegistration } from './types.js';
 
@@ -1873,34 +1873,48 @@ describe('bootstrapApplication', () => {
       controllers: [SlowController],
     });
 
-    const port = await findAvailablePort();
-    const app = registerAppForCleanup(await bootstrapNodeApplication(AppModule, {
+    const app = await bootstrapNodeApplication(AppModule, {
       cors: false,
-      port,
+      port: 0,
       shutdownTimeoutMs: 1_000,
-    }));
-
-    await app.listen();
-
-    const responsePromise = fetchForTest(`http://127.0.0.1:${String(port)}/slow`);
-    await requestStarted.promise;
-
-    let closeResolved = false;
-    const closePromise = app.close().then(() => {
-      closeResolved = true;
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(closeResolved).toBe(false);
+    try {
+      await app.listen();
 
-    allowResponse.resolve();
+      const adapter = await app.get(HTTP_APPLICATION_ADAPTER);
+      if (!(adapter instanceof NodeHttpApplicationAdapter)) {
+        throw new Error('Expected the runtime Node HTTP application adapter.');
+      }
 
-    const response = await responsePromise;
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ ok: true });
+      const address: AddressInfo | string | null = adapter.getServer().address();
+      if (!address || typeof address === 'string') {
+        throw new Error('Failed to resolve the bound test port.');
+      }
 
-    await closePromise;
-    expect(closeResolved).toBe(true);
+      const responsePromise = fetchForTest(`http://127.0.0.1:${String(address.port)}/slow`);
+      await requestStarted.promise;
+
+      let closeResolved = false;
+      const closePromise = app.close().then(() => {
+        closeResolved = true;
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(closeResolved).toBe(false);
+
+      allowResponse.resolve();
+
+      const response = await responsePromise;
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ ok: true });
+
+      await closePromise;
+      expect(closeResolved).toBe(true);
+    } finally {
+      allowResponse.resolve();
+      await app.close();
+    }
   });
 
   it('forces shutdown when the drain timeout expires', async () => {
