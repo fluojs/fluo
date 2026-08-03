@@ -1,0 +1,39 @@
+import {
+  ReactClientRouterProvider,
+  createReactRouteSnapshot,
+  type ReactRouteSnapshotInput,
+} from '@fluojs/react/client';
+import type { ReactElement } from 'react';
+
+export const REACT_IDENTIFIER_PREFIX = 'fluo-react-vite-' as const;
+
+export type ReactAppDocumentProps = {
+  readonly page: ReactElement;
+  readonly route: ReactRouteSnapshotInput;
+  readonly stylesheets: readonly string[];
+};
+
+export function ReactAppDocument({
+  page,
+  route,
+  stylesheets,
+}: ReactAppDocumentProps): ReactElement {
+  const initialSnapshot = createReactRouteSnapshot(route);
+
+  return (
+    <ReactClientRouterProvider initialSnapshot={initialSnapshot}>
+      <html data-route-sku={initialSnapshot.params['sku'] ?? ''} lang='en'>
+        <head>
+          <meta charSet='utf-8' />
+          <meta content='width=device-width, initial-scale=1' name='viewport' />
+          <link href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>' rel='icon' />
+          <title>Fluo React starter</title>
+          {stylesheets.map((href) => (
+            <link data-vite-style href={href} key={href} rel='stylesheet' />
+          ))}
+        </head>
+        <body>{page}</body>
+      </html>
+    </ReactClientRouterProvider>
+  );
+}

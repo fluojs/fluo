@@ -1,0 +1,54 @@
+// @vitest-environment happy-dom
+
+import { ReactClientRouterProvider, createReactRouteSnapshot } from '@fluojs/react/client';
+import { hydrateRoot } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { HydratedCounter, ProductPage } from './page';
+import { ReactAppDocument } from './react-app';
+
+describe('React Vite SSR app composition', () => {
+  afterEach(() => {
+    document.body.replaceChildren();
+    vi.restoreAllMocks();
+  });
+
+  it('renders the HTTP-owned route snapshot through the shared document', () => {
+    const html = renderToString(
+      <ReactAppDocument
+        page={<ProductPage />}
+        route={{ params: { sku: 'sku-42' }, url: '/products/sku-42?preview=true' }}
+        stylesheets={['/assets/styles.css']}
+      />,
+    );
+
+    expect(html).toContain('Catalog item sku-42');
+    expect(html).toContain('Preview mode');
+    expect(html).toContain('href="/assets/styles.css"');
+    expect(html).toContain('data-route-sku="sku-42"');
+  });
+
+  it('attaches interaction without hydration warnings', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const container = document.createElement('div');
+    const initialSnapshot = createReactRouteSnapshot({ url: '/products/sku-42' });
+    const counter = (
+      <ReactClientRouterProvider initialSnapshot={initialSnapshot}>
+        <HydratedCounter />
+      </ReactClientRouterProvider>
+    );
+    container.innerHTML = renderToString(counter);
+    document.body.append(container);
+
+    const root = hydrateRoot(container, counter);
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    const button = document.querySelector('button');
+    button?.click();
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+
+    expect(button?.textContent).toBe('Count: 1');
+    expect(consoleError).not.toHaveBeenCalled();
+    root.unmount();
+  });
+});
