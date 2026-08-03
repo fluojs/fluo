@@ -21,6 +21,7 @@ import type {
   HandlerDescriptor,
   HandlerMapping,
   HandlerMatch,
+  HttpErrorRepresentationOptions,
   InterceptorLike,
   MiddlewareContext,
   MiddlewareLike,
@@ -72,6 +73,8 @@ export interface CreateDispatcherOptions {
   fastPathDebugHeaders?: boolean;
   /** Optional global error handler. */
   onError?: ErrorHandler;
+  /** Optional application-owned HTML representation for HTTP-classified errors. */
+  errorRepresentation?: HttpErrorRepresentationOptions;
   /** Request-scope optimization hints supplied by runtime bootstrap. */
   requestScope?: {
     /** Global DTO converters used by the default binder. */
@@ -1083,7 +1086,13 @@ async function handleDispatchError(context: DispatchPhaseContext, error: unknown
     logDispatchFailure(context.options.logger, 'Managed SSE iterator cleanup threw an error.', dispatchError);
   }
 
-  await writeErrorResponse(dispatchError, context.response, context.requestContext.requestId);
+  await writeErrorResponse(dispatchError, context.requestContext, {
+    ...(context.matchedHandler === undefined ? {} : { handler: context.matchedHandler }),
+    ...(context.options.logger === undefined ? {} : { logger: context.options.logger }),
+    ...(context.options.errorRepresentation === undefined
+      ? {}
+      : { representation: context.options.errorRepresentation }),
+  });
 }
 
 /**
