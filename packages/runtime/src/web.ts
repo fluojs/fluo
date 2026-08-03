@@ -1,27 +1,27 @@
 import {
   BadRequestException,
   createErrorResponse,
-  HttpException,
-  InternalServerErrorException,
-  PayloadTooLargeException,
   type Dispatcher,
   type FrameworkRequest,
   type FrameworkResponse,
+  HttpException,
+  InternalServerErrorException,
+  PayloadTooLargeException,
 } from '@fluojs/http';
 
+import {
+  dispatchWithRequestResponseFactory,
+  type RequestResponseFactory,
+} from './adapters/request-response-factory.js';
 import {
   attachRuntimeFrameworkRequestNativeRouteHandoff,
   consumeRuntimeRawRequestNativeRouteHandoff,
 } from './internal/http-runtime.js';
 import {
-  parseMultipart,
   type MultipartOptions,
+  parseMultipart,
   type UploadedFile,
 } from './multipart.js';
-import {
-  dispatchWithRequestResponseFactory,
-  type RequestResponseFactory,
-} from './adapters/request-response-factory.js';
 
 const DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
 const TEXT_ENCODER = new TextEncoder();
@@ -35,6 +35,10 @@ export interface CreateWebRequestResponseFactoryOptions {
   consumeOriginalBody?: boolean;
   maxBodySize?: number;
   multipart?: MultipartOptions;
+  /**
+   * @deprecated Retained for adapter compatibility. Web JSON bodies always use the bounded streaming reader,
+   * so this option no longer changes request parsing.
+   */
   preferNativeJsonBodyReader?: boolean;
   rawBody?: boolean;
 }
@@ -286,7 +290,6 @@ export function createWebRequestResponseFactory(
         options.multipart,
         options.maxBodySize ?? DEFAULT_MAX_BODY_SIZE,
         options.rawBody ?? false,
-        options.preferNativeJsonBodyReader ?? false,
         options.consumeOriginalBody ?? false,
       );
     },
@@ -379,7 +382,6 @@ function createDeferredWebFrameworkRequest(
   multipartOptions?: MultipartOptions,
   maxBodySize = DEFAULT_MAX_BODY_SIZE,
   preserveRawBody = false,
-  preferNativeJsonBodyReader = false,
   consumeOriginalBody = false,
 ): FrameworkRequest {
   const url = new URL(request.url);
@@ -421,7 +423,6 @@ function createDeferredWebFrameworkRequest(
       contentType,
       maxBodySize,
       preserveRawBody,
-      preferNativeJsonBodyReader,
     );
     frameworkRequest.body = bodyResult.body;
 
@@ -634,22 +635,11 @@ async function readWebRequestBody(
   contentType: string | undefined,
   maxBodySize = DEFAULT_MAX_BODY_SIZE,
   preserveRawBody = false,
-  preferNativeJsonBodyReader = false,
 ): Promise<{ body: unknown; rawBody?: Uint8Array }> {
   validateWebRequestContentLength(request, maxBodySize);
 
   if (!request.body) {
     return { body: undefined };
-  }
-
-  if (!preserveRawBody && isJsonContentType(contentType) && (preferNativeJsonBodyReader || isContentLengthWithinLimit(request, maxBodySize))) {
-    const rawBody = new Uint8Array(await request.arrayBuffer());
-
-    if (rawBody.byteLength > maxBodySize) {
-      throw new PayloadTooLargeException(REQUEST_BODY_LIMIT_MESSAGE);
-    }
-
-    return parseWebRequestRawBody(rawBody, contentType, preserveRawBody);
   }
 
   return parseWebRequestRawBody(await readByteLimitedStream(request.body, maxBodySize), contentType, preserveRawBody);
@@ -687,17 +677,6 @@ function parseWebRequestRawBody(
   };
 }
 
-function isContentLengthWithinLimit(request: Request, maxBodySize: number): boolean {
-  const contentLength = request.headers.get('content-length');
-
-  if (contentLength === null) {
-    return false;
-  }
-
-  const parsedContentLength = Number(contentLength);
-  return Number.isFinite(parsedContentLength) && parsedContentLength > 0 && parsedContentLength <= maxBodySize;
-}
-
 async function readByteLimitedStream(
   stream: ReadableStream<Uint8Array>,
   maxBodySize: number,
@@ -717,7 +696,10 @@ async function readByteLimitedStream(
       totalSize += value.byteLength;
 
       if (totalSize > maxBodySize) {
-        await reader.cancel(REQUEST_BODY_LIMIT_MESSAGE);
+        const cancellation = new Promise<void>((resolve, reject) => {
+          void reader.cancel(REQUEST_BODY_LIMIT_MESSAGE).then(resolve, reject);
+        });
+        void Promise.allSettled([cancellation]);
         throw new PayloadTooLargeException(REQUEST_BODY_LIMIT_MESSAGE);
       }
 

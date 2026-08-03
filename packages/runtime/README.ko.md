@@ -134,7 +134,8 @@ class UsersModule {}
 
 ## 동작 계약
 
-- 요청 바디 파싱은 Web 표준 요청과 Node 기반 요청 모두에서 바이트가 스트리밍되는 동안 `maxBodySize`를 강제합니다.
+- 요청 바디 파싱은 Web 표준 요청과 Node 기반 요청 모두에서 바이트가 스트리밍되는 동안 `maxBodySize`를 강제합니다. 한도를 넘은 Web 바디는 stream cancellation을 기다리지 않고 HTTP 413으로 완료되며, cancellation 실패도 해당 응답을 가리지 않습니다. 이 계약은 원본 요청을 읽지 않는 기본 cloned-body 경로에도 적용됩니다.
+- `preferNativeJsonBodyReader`는 deprecated adapter compatibility 옵션으로 `@fluojs/runtime/web`에서 계속 허용되지만 더 이상 파싱 동작을 바꾸지 않습니다. Web JSON 바디는 항상 bounded streaming reader를 사용하므로 native whole-body read가 `maxBodySize`를 우회할 수 없습니다.
 - `@fluojs/runtime/node`에서는 Node 요청 바디 파싱 전에 primary `content-type` media type을 normalize한 뒤 JSON 및 멀티파트 여부를 판단하므로, 대소문자가 섞인 JSON/멀티파트 헤더도 문서화된 파서 동작을 그대로 유지합니다.
 - Node 기반 및 Web 표준 요청 wrapper는 바디 파싱 전에 저비용 요청 metadata를 snapshot으로 고정한 뒤 dispatch 경계에서 `body`/`rawBody`를 한 번 materialize하므로 userland는 계속 동기 parsed 값을 관찰합니다.
 - Node 기반 쿠키/쿼리 값과 Web 표준 헤더는 요청 wrapper가 생성되는 시점에 snapshot으로 고정된 뒤 요청별로 lazy하게 normalize되고 memoize됩니다. 이후 upstream 객체가 변경되어도 `FrameworkRequest` view는 바뀌지 않습니다.

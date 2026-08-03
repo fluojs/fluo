@@ -270,7 +270,6 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
       consumeOriginalBody: true,
       maxBodySize: options.maxBodySize,
       multipart: options.multipart,
-      preferNativeJsonBodyReader: true,
       rawBody: options.rawBody,
     });
   }
@@ -453,7 +452,6 @@ export function createBunFetchHandler({
     consumeOriginalBody: true,
     maxBodySize,
     multipart,
-    preferNativeJsonBodyReader: true,
     rawBody,
   });
 
