@@ -17,6 +17,7 @@ Runtime-neutral React integration for fluo applications.
 - [Application Page Renderer](#application-page-renderer)
 - [Render Policy Decorators](#render-policy-decorators)
 - [SSR Diagnostic Phases](#ssr-diagnostic-phases)
+- [HTTP Error Documents](#http-error-documents)
 - [Router and Path Decorators](#router-and-path-decorators)
 - [Bootstrap-Resolved Page Catalog](#bootstrap-resolved-page-catalog)
 - [Path-Only Page Type Generation](#path-only-page-type-generation)
@@ -396,6 +397,46 @@ request outcome. Stable phases and codes are:
 `REACT_SSR_DIAGNOSTIC_PHASES` and `REACT_SSR_DIAGNOSTIC_CODES` expose these values for comparisons.
 The existing `onRecoverableError` entry hook also receives `code` and `phase` in
 `ReactRecoverableErrorContext`.
+
+## HTTP Error Documents
+
+Use `createReactErrorRepresentationProvider(...)` when the application wants React to produce the
+optional HTML bytes selected by the HTTP error representation contract:
+
+```tsx
+import { bootstrapApplication } from '@fluojs/runtime';
+import {
+  createReactErrorRepresentationProvider,
+  createReactServerEntry,
+} from '@fluojs/react';
+
+const html = createReactErrorRepresentationProvider({
+  renderDocument({ json }) {
+    return createReactServerEntry(
+      <html lang="en">
+        <body><main>{json.error.status}: {json.error.message}</main></body>
+      </html>,
+    );
+  },
+});
+
+const app = await bootstrapApplication({
+  errorRepresentation: { html },
+  rootModule: AppModule,
+});
+```
+
+`@fluojs/http` performs route-miss conversion and `Accept` negotiation before this adapter runs.
+The callback receives `HttpErrorRepresentationContext`, including canonical JSON and the active
+request-scope container. It does not receive response mutation authority. The React entry is fully
+buffered before HTTP applies status, `Content-Type`, `Vary`, `HEAD` suppression, and commit.
+
+`ReactServerEntry.status` and `ReactServerEntry.headers` are ignored on this path. The helper never
+calls `ReactPageRenderer`, `PageLayout`, `PageMetadata`, `SuspenseFallback`, or the page catalog, and
+it never matches a URL. A render failure propagates to HTTP's one-shot canonical JSON fallback;
+matched-page pre-commit shell failures remain a separate React SSR diagnostic phase and do not invoke
+the provider. See the
+[HTTP error representation decision](../../docs/architecture/http-error-representations.md).
 
 ## Router and Path Decorators
 
@@ -1098,8 +1139,8 @@ This package currently does **not** provide:
 - Node-only `react-dom/server` pipeable stream root APIs such as `renderToPipeableStream(...)`
 - Next.js-style segment `loading`, `error`, `notFound`, template, or layout ancestry semantics;
   `@SuspenseFallback(...)` is SSR-descendant Suspense metadata only
-- a generic page error-presentation policy or page-local not-found renderer; phase-specific error
-  presentation and any HTTP-owned HTML not-found seam require separate ownership decisions
+- a generic page error-presentation policy or page-local not-found renderer; optional HTML is a
+  global/application HTTP representation and does not add page ancestry or matching semantics
 
 ## Public API
 
@@ -1143,6 +1184,10 @@ This package currently does **not** provide:
 - `ReactSsrDiagnostic`, `ReactSsrDiagnosticCode`, `ReactSsrDiagnosticErrorOptions`,
   `ReactSsrDiagnosticHandler`, and `ReactSsrDiagnosticPhase` — type-only contracts for application
   diagnostics tooling.
+- `createReactErrorRepresentationProvider` — adapts an application React error document renderer to
+  the HTTP-owned HTML provider seam while buffering before commit.
+- `ReactErrorDocumentRenderer` and `ReactErrorRepresentationProviderOptions` — type-only contracts
+  for the application callback, optional availability constraint, and renderer override.
 - `createReactServerEntry` — creates a runtime-neutral React server entry returned by page handlers
   for Web Streams SSR.
 - `renderReactResponse` — renders one React server entry to a fluo HTML response with lazy
@@ -1194,8 +1239,8 @@ This package currently does **not** provide:
 - `@fluojs/core`: Provides the standard `@Module` decorator used by the scaffold.
 - `@fluojs/http`: Provides the controller, route, DTO, guard, interceptor, header, and version
   metadata pipeline reused by `@Router(...)` and `@Path(...)`.
-- `@fluojs/runtime`: Future React integration work is expected to compose with runtime bootstrap
-  contracts without widening the root import boundary.
+- `@fluojs/runtime`: Registers the optional HTTP error representation together with the existing
+  application bootstrap contracts without widening the React root import boundary.
 - `@fluojs/vite`: Owns Vite's TC39 decorator transform boundary. It does not parse React hydration
   manifests; use `@fluojs/react/vite` for React server/client asset mapping.
 - Application-selected Flight renderer: Encodes RSC payloads and consumes renderer-specific build
@@ -1223,6 +1268,8 @@ This package currently does **not** provide:
 - `packages/react/src/decorators.ts`
 - `packages/react/src/server-entry.ts`
 - `packages/react/src/render.ts`
+- `packages/react/src/error-representation.ts`
+- `packages/react/src/error-representation.test.ts`
 - `packages/react/src/module.ts`
 - `packages/react/src/page-renderer.ts`
 - `packages/react/src/render-policy.ts`

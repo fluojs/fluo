@@ -17,6 +17,7 @@ fluo 애플리케이션을 위한 런타임 중립 React 통합입니다.
 - [Application Page Renderer](#application-page-renderer)
 - [Render Policy Decorators](#render-policy-decorators)
 - [SSR Diagnostic Phases](#ssr-diagnostic-phases)
+- [HTTP Error Documents](#http-error-documents)
 - [Router 및 Path Decorators](#router-및-path-decorators)
 - [Bootstrap-Resolved Page Catalog](#bootstrap-resolved-page-catalog)
 - [Path-Only Page Type Generation](#path-only-page-type-generation)
@@ -391,6 +392,45 @@ ReactModule.forRoot({
 `REACT_SSR_DIAGNOSTIC_PHASES`와 `REACT_SSR_DIAGNOSTIC_CODES`는 비교에 사용할 수 있는 이 값을
 노출합니다. 기존 entry `onRecoverableError` hook도 `ReactRecoverableErrorContext`의 `code`와 `phase`를
 받습니다.
+
+## HTTP Error Documents
+
+Application이 HTTP error representation contract가 선택한 optional HTML byte를 React로 만들고 싶다면
+`createReactErrorRepresentationProvider(...)`를 사용한다.
+
+```tsx
+import { bootstrapApplication } from '@fluojs/runtime';
+import {
+  createReactErrorRepresentationProvider,
+  createReactServerEntry,
+} from '@fluojs/react';
+
+const html = createReactErrorRepresentationProvider({
+  renderDocument({ json }) {
+    return createReactServerEntry(
+      <html lang="ko">
+        <body><main>{json.error.status}: {json.error.message}</main></body>
+      </html>,
+    );
+  },
+});
+
+const app = await bootstrapApplication({
+  errorRepresentation: { html },
+  rootModule: AppModule,
+});
+```
+
+`@fluojs/http`가 adapter 실행 전에 route-miss conversion과 `Accept` negotiation을 수행한다. Callback은
+canonical JSON과 active request-scope container를 포함한 `HttpErrorRepresentationContext`를 받지만 response
+mutation authority는 받지 않는다. React entry는 HTTP가 status, `Content-Type`, `Vary`, `HEAD` suppression,
+commit을 적용하기 전에 완전히 buffer된다.
+
+이 path에서는 `ReactServerEntry.status`와 `ReactServerEntry.headers`를 무시한다. Helper는
+`ReactPageRenderer`, `PageLayout`, `PageMetadata`, `SuspenseFallback`, page catalog를 호출하지 않고 URL도
+match하지 않는다. Render failure는 HTTP의 one-shot canonical JSON fallback으로 전달된다. Matched-page
+pre-commit shell failure는 별도 React SSR diagnostic phase로 남으며 provider를 호출하지 않는다. 자세한 계약은
+[HTTP error representation decision](../../docs/architecture/http-error-representations.ko.md)을 참고한다.
 
 ## Router 및 Path Decorators
 
@@ -1083,8 +1123,8 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - `renderToPipeableStream(...)` 같은 Node 전용 `react-dom/server` pipeable stream root API
 - Next.js-style segment `loading`, `error`, `notFound`, template 또는 layout ancestry semantic.
   `@SuspenseFallback(...)`은 SSR-descendant Suspense metadata만 제공합니다.
-- generic page error-presentation policy 또는 page-local not-found renderer. Phase-specific error
-  presentation과 HTTP-owned HTML not-found seam은 별도 ownership decision이 필요합니다.
+- generic page error-presentation policy 또는 page-local not-found renderer. Optional HTML은
+  global/application HTTP representation이며 page ancestry나 matching semantic을 추가하지 않습니다.
 
 ## Public API
 
@@ -1127,6 +1167,10 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - `ReactSsrDiagnostic`, `ReactSsrDiagnosticCode`, `ReactSsrDiagnosticErrorOptions`,
   `ReactSsrDiagnosticHandler`, `ReactSsrDiagnosticPhase` — application diagnostics tooling을 위한
   type-only contract입니다.
+- `createReactErrorRepresentationProvider` — application React error document renderer를 HTTP-owned HTML
+  provider seam에 adapt하고 commit 전에 buffer합니다.
+- `ReactErrorDocumentRenderer`, `ReactErrorRepresentationProviderOptions` — application callback, optional
+  availability constraint, renderer override를 위한 type-only contract입니다.
 - `createReactServerEntry` — page handler가 Web Streams SSR을 위해 반환하는 runtime-neutral React server
   entry를 생성합니다.
 - `renderReactResponse` — lazy `react-dom/server` loading으로 React server entry 하나를 fluo HTML
@@ -1178,7 +1222,8 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - `@fluojs/core`: 스캐폴드가 사용하는 standard `@Module` decorator를 제공합니다.
 - `@fluojs/http`: `@Router(...)`와 `@Path(...)`가 재사용하는 controller, route, DTO, guard,
   interceptor, header, version metadata pipeline을 제공합니다.
-- `@fluojs/runtime`: 향후 React 통합 작업은 root import boundary를 넓히지 않고 runtime bootstrap contract와 합성될 예정입니다.
+- `@fluojs/runtime`: React root import boundary를 넓히지 않고 기존 application bootstrap contract와 함께
+  optional HTTP error representation을 등록합니다.
 - `@fluojs/vite`: Vite TC39 decorator transform boundary를 소유합니다. React hydration manifest를 파싱하지
   않으므로 React server/client asset mapping에는 `@fluojs/react/vite`를 사용하세요.
 - Application-selected Flight renderer: RSC payload를 encode하고 renderer-specific build manifest를
@@ -1206,6 +1251,8 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - `packages/react/src/decorators.ts`
 - `packages/react/src/server-entry.ts`
 - `packages/react/src/render.ts`
+- `packages/react/src/error-representation.ts`
+- `packages/react/src/error-representation.test.ts`
 - `packages/react/src/module.ts`
 - `packages/react/src/page-renderer.ts`
 - `packages/react/src/render-policy.ts`
