@@ -1,27 +1,27 @@
 import {
   BadRequestException,
   createErrorResponse,
-  HttpException,
-  InternalServerErrorException,
-  PayloadTooLargeException,
   type Dispatcher,
   type FrameworkRequest,
   type FrameworkResponse,
+  HttpException,
+  InternalServerErrorException,
+  PayloadTooLargeException,
 } from '@fluojs/http';
 
+import {
+  dispatchWithRequestResponseFactory,
+  type RequestResponseFactory,
+} from './adapters/request-response-factory.js';
 import {
   attachRuntimeFrameworkRequestNativeRouteHandoff,
   consumeRuntimeRawRequestNativeRouteHandoff,
 } from './internal/http-runtime.js';
 import {
-  parseMultipart,
   type MultipartOptions,
+  parseMultipart,
   type UploadedFile,
 } from './multipart.js';
-import {
-  dispatchWithRequestResponseFactory,
-  type RequestResponseFactory,
-} from './adapters/request-response-factory.js';
 
 const DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
 const TEXT_ENCODER = new TextEncoder();
@@ -35,6 +35,10 @@ export interface CreateWebRequestResponseFactoryOptions {
   consumeOriginalBody?: boolean;
   maxBodySize?: number;
   multipart?: MultipartOptions;
+  /**
+   * @deprecated Retained for adapter compatibility. Web JSON bodies always use the bounded streaming reader,
+   * so this option no longer changes request parsing.
+   */
   preferNativeJsonBodyReader?: boolean;
   rawBody?: boolean;
 }
@@ -692,7 +696,10 @@ async function readByteLimitedStream(
       totalSize += value.byteLength;
 
       if (totalSize > maxBodySize) {
-        await reader.cancel(REQUEST_BODY_LIMIT_MESSAGE);
+        const cancellation = new Promise<void>((resolve, reject) => {
+          void reader.cancel(REQUEST_BODY_LIMIT_MESSAGE).then(resolve, reject);
+        });
+        void Promise.allSettled([cancellation]);
         throw new PayloadTooLargeException(REQUEST_BODY_LIMIT_MESSAGE);
       }
 

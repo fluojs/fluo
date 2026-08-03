@@ -1,12 +1,136 @@
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { dispatchWebRequest } from './web.js';
 
 const TEXT_ENCODER = new TextEncoder();
 
 describe('Web JSON body limits', () => {
-  it('cancels streamed JSON when an in-limit Content-Length understates the body size', async () => {
+  it('settles a default cloned request with 413 while the original body remains unread', async () => {
+    // Given
+    const oversizedChunk = TEXT_ENCODER.encode('{"value":"too large"}');
+    const keepStreamOpen = new Promise<void>(() => {});
+    let chunkSent = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (chunkSent) {
+          return keepStreamOpen;
+        }
+
+        chunkSent = true;
+        controller.enqueue(oversizedChunk);
+      },
+    });
+    const requestInit = {
+      body,
+      duplex: 'half',
+      headers: {
+        'content-type': 'application/json',
+      },
+      method: 'POST',
+    } satisfies RequestInit & { duplex: 'half' };
+    const request = new Request('https://runtime.test/json', requestInit);
+
+    try {
+      // When
+      const response = await dispatchWebRequest({
+        dispatcher: {
+          async dispatch() {
+            throw new Error('should not dispatch oversized JSON');
+          },
+        },
+        maxBodySize: oversizedChunk.byteLength - 1,
+        request,
+      });
+
+      // Then
+      expect(response.status).toBe(413);
+      expect(request.bodyUsed).toBe(false);
+    } finally {
+      await request.body?.cancel();
+    }
+  });
+
+  it('preserves the 413 response when stream cancellation rejects', async () => {
+    // Given
+    const oversizedChunk = TEXT_ENCODER.encode('{"value":"too large"}');
+    let cancelCalled = false;
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelCalled = true;
+        return Promise.reject(new Error('cancel failed'));
+      },
+      start(controller) {
+        controller.enqueue(oversizedChunk);
+      },
+    });
+    const requestInit = {
+      body,
+      duplex: 'half',
+      headers: {
+        'content-type': 'application/json',
+      },
+      method: 'POST',
+    } satisfies RequestInit & { duplex: 'half' };
+
+    // When
+    const response = await dispatchWebRequest({
+      consumeOriginalBody: true,
+      dispatcher: {
+        async dispatch() {
+          throw new Error('should not dispatch oversized JSON');
+        },
+      },
+      maxBodySize: oversizedChunk.byteLength - 1,
+      request: new Request('https://runtime.test/json', requestInit),
+    });
+
+    // Then
+    expect(response.status).toBe(413);
+    expect(cancelCalled).toBe(true);
+  });
+
+  it('preserves the 413 response when reader cancellation throws synchronously', async () => {
+    // Given
+    const oversizedChunk = TEXT_ENCODER.encode('{"value":"too large"}');
+    const cancelSpy = vi.spyOn(ReadableStreamDefaultReader.prototype, 'cancel').mockImplementationOnce(() => {
+      throw new Error('cancel threw');
+    });
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(oversizedChunk);
+      },
+    });
+    const requestInit = {
+      body,
+      duplex: 'half',
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    } satisfies RequestInit & { duplex: 'half' };
+    const request = new Request('https://runtime.test/json', requestInit);
+
+    try {
+      // When
+      const response = await dispatchWebRequest({
+        consumeOriginalBody: true,
+        dispatcher: {
+          async dispatch() {
+            throw new Error('should not dispatch oversized JSON');
+          },
+        },
+        maxBodySize: oversizedChunk.byteLength - 1,
+        request,
+      });
+
+      // Then
+      expect(response.status).toBe(413);
+    } finally {
+      cancelSpy.mockRestore();
+      await request.body?.cancel();
+    }
+  });
+
+  it('keeps streaming enforcement when preferNativeJsonBodyReader is enabled', async () => {
     // Given
     const chunks = [
       TEXT_ENCODER.encode('{"value":"'),
@@ -50,6 +174,7 @@ describe('Web JSON body limits', () => {
         },
       },
       maxBodySize: 12,
+      preferNativeJsonBodyReader: true,
       request: new Request('https://runtime.test/json', requestInit),
     });
 
