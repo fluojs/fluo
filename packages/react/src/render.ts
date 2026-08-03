@@ -117,7 +117,7 @@ function hasAssetMap(assetMap: ReactAssetMap): boolean {
 
 function createReactReadableStreamRenderOptions(
   entry: ReactServerEntry,
-  requestContext: ReactRenderContext,
+  requestContext: Pick<ReactRenderContext, 'request'>,
   onError: (error: unknown, errorInfo?: unknown) => void,
 ): ReactReadableStreamRenderOptions {
   return {
@@ -151,6 +151,41 @@ async function defaultRenderToReadableStream(
   const { renderToReadableStream } = await import('react-dom/server');
 
   return renderToReadableStream(node, createReactDomRenderOptions(options));
+}
+
+/**
+ * Buffers a React server entry without mutating or committing a framework response.
+ *
+ * @param entry React server entry whose node and hydration assets are rendered.
+ * @param requestContext HTTP-owned request and abort surfaces.
+ * @param renderToReadableStream Optional Web Streams renderer override.
+ * @returns Complete HTML bytes after the render finishes without errors.
+ */
+export async function renderReactServerEntryToBytes(
+  entry: ReactServerEntry,
+  requestContext: Pick<ReactRenderContext, 'request'>,
+  renderToReadableStream: ReactReadableStreamRenderer = defaultRenderToReadableStream,
+): Promise<Uint8Array> {
+  throwIfReactRequestAborted(requestContext.request);
+  let hasRenderError = false;
+  let renderError: unknown;
+  const stream = await renderToReadableStream(
+    entry.node,
+    createReactReadableStreamRenderOptions(entry, requestContext, (error) => {
+      if (!hasRenderError) {
+        hasRenderError = true;
+        renderError = error;
+      }
+    }),
+  );
+  const body = await collectReadableStream(stream, requestContext.request);
+  throwIfReactRequestAborted(requestContext.request);
+
+  if (hasRenderError) {
+    throw renderError;
+  }
+
+  return body;
 }
 
 /**
