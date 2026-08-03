@@ -117,7 +117,22 @@ Select the official HTTP-first React SSR + Vite application with the named start
 fluo new my-react-app --starter react-vite-ssr
 ```
 
-This starter fixes the schema to Node.js + Fastify HTTP and generates explicit server/client entries, separate Vite client/server configs, `hydrateRoot(...)`, a `@Router(...)` page, an application-owned `ReactPageRenderer`, and direct JSX rendering. `src/main.ts` loads the generated Vite manifest before passing it to `@fluojs/react/vite`; the package does not discover or execute Vite. Generated `Link` output remains a real anchor and `router.push(...)` performs full-document navigation through the HTTP dispatcher. The starter intentionally excludes RSC, Server Functions, file routing, a client route table, SPA document swapping, prefetch, and a data cache.
+This starter fixes the schema to Node.js + Fastify HTTP. Run `pnpm dev`, open
+`/products/sku-42?preview=true`, and edit `src/page.tsx`; page UI no longer needs to carry Vite assets,
+the document shell, or the server/client route snapshot wiring. The explicit `@Router(...)` /
+`@Path(...)` handler in `src/app.tsx` returns that page as one `ReactElement`, so the existing HTTP
+dispatcher remains authoritative.
+
+Generated application wiring stays visible instead of becoming a framework abstraction:
+`src/entry-server.tsx` owns the replaceable `ReactPageRenderer` and `ReactServerEntry` creation,
+`src/react-app.tsx` shares one document and `ReactClientRouterProvider` composition between server and
+client, `src/entry-client.tsx` calls `hydrateRoot(...)`, and `src/main.ts` uses
+`src/load-manifest.ts` to load the generated Vite manifest before `@fluojs/react/vite` parses it.
+Missing build output, incompatible entry selectors, and hydration mismatches identify those exact
+application files and the lifecycle command to rerun. Generated `Link` output remains a real anchor
+and `router.push(...)` performs full-document navigation through the HTTP dispatcher. The starter
+intentionally excludes RSC, Server Functions, file routing, a client route table, SPA document
+swapping, prefetch, and a data cache.
 
 `fluo new` also exposes microservice starter paths. TCP is the default when you omit `--transport`, and the starter matrix includes runnable Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC variants with transport-specific dependencies, env templates, and entrypoints:
 
