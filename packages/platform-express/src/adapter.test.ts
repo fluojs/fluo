@@ -236,6 +236,7 @@ JNCDpGwh8us=
 
 const expressPortabilityHarness = createHttpAdapterPortabilityHarness({
   bootstrap: bootstrapExpressApplication,
+  createErrorRepresentationBootstrapOptions: (options) => options,
   name: 'express',
   run: runExpressApplication,
 });
@@ -263,6 +264,10 @@ describe('@fluojs/platform-express', () => {
   });
 
   describe('adapter portability', () => {
+    it('supports HTTP-owned JSON and HTML error representations', async () => {
+      await expressPortabilityHarness.assertSupportsHttpErrorRepresentations();
+    });
+
     it('preserves malformed cookie values', async () => {
       await expressPortabilityHarness.assertPreservesMalformedCookieValues();
     });
