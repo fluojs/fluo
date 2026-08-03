@@ -35,8 +35,8 @@ This document defines the current fluo decorator and metadata contract. fluo use
 
 - fluo owns the metadata contract. Runtime consumers read fluo-defined metadata records, not compiler-emitted design metadata.
 - Standard decorator metadata is anchored to the TC39 metadata bag through `Symbol.metadata` or the fluo metadata symbol polyfill.
-- `@fluojs/core` exposes metadata helpers for module, class DI, controller, route, injection, DTO binding, and validation records.
-- Metadata helpers clone mutable payloads on read and write boundaries to avoid shared mutable state leaks.
+- The `@fluojs/core` root exposes public decorators and errors, `ensureMetadataSymbol()`, read-only `getModuleMetadata()`, and shared types. Request-pipeline packages use the documented `@fluojs/core/request-pipeline` seam for DTO validation, binding, and standard decorator metadata-bag access; broader metadata readers and writers, controller and route helpers, injection and validation helpers, and clone utilities remain on the first-party `@fluojs/core/internal` seam.
+- Metadata helpers preserve defensive write and read boundaries where documented. `getModuleMetadata()`, `getOwnClassDiMetadata()`, `getInheritedClassDiMetadata()`, and `getClassDiMetadata()` are explicit exceptions to clone-on-read behavior: they return frozen immutable snapshots and may reuse the same stable reference between writes. Other metadata readers retain defensive-read behavior unless their own tests document stable-reference reuse.
 - Controller and route metadata are keyed by fluo-owned symbols such as `fluo.standard.controller` and `fluo.standard.route` inside the standard metadata bag.
 - Module and class DI metadata are also mirrored through framework-owned stores so runtime packages can read a stable contract without relying on reflection libraries.
 - Metadata registration happens only when the decorated class, method, or field is evaluated. Unimported declarations do not participate in the runtime graph.
