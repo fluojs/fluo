@@ -67,13 +67,19 @@ export interface FastPathStats {
 }
 
 /**
- * Symbol used to attach fast path eligibility metadata to handler descriptors.
- * @internal
+ * Public symbol key for fast path eligibility metadata attached to handler descriptors.
+ *
+ * @remarks
+ * Adapter and diagnostics integrations can use this key to inspect the route's
+ * {@link FastPathEligibility} metadata.
  */
 export const FAST_PATH_ELIGIBILITY_SYMBOL = Symbol('fastPathEligibility');
 
 /**
- * Symbol used to attach fast path execution stats to dispatcher.
- * @internal
+ * Public symbol key for fast path execution statistics attached to a dispatcher.
+ *
+ * @remarks
+ * Adapter and diagnostics integrations can use this key to read the same
+ * {@link FastPathStats} value exposed by `getDispatcherFastPathStats(...)`.
  */
 export const FAST_PATH_STATS_SYMBOL = Symbol('fastPathStats');
