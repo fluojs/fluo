@@ -29,13 +29,16 @@ class Deferred {
 
 interface LifecycleControl {
   readonly events: string[];
+  readonly id?: string;
+  readonly startFailureCalls?: readonly number[];
   readonly startFailures?: number;
   readonly startGate?: Promise<void>;
+  readonly stopFailureCalls?: readonly number[];
   readonly stopGate?: Promise<void>;
 }
 
 class ControlledPlatformComponent implements PlatformComponent {
-  readonly id = 'runtime.lifecycle';
+  readonly id: string;
   readonly kind = 'runtime-test';
   readonly startEntered = new Deferred();
   readonly stopEntered = new Deferred();
@@ -46,6 +49,7 @@ class ControlledPlatformComponent implements PlatformComponent {
   private startFailuresRemaining: number;
 
   constructor(private readonly control: LifecycleControl) {
+    this.id = control.id ?? 'runtime.lifecycle';
     this.startFailuresRemaining = control.startFailures ?? 0;
   }
 
@@ -88,6 +92,10 @@ class ControlledPlatformComponent implements PlatformComponent {
       throw new Error('controlled start failure');
     }
 
+    if (this.control.startFailureCalls?.includes(this.startCalls)) {
+      throw new Error('controlled start failure');
+    }
+
     this.currentState = 'ready';
   }
 
@@ -100,6 +108,11 @@ class ControlledPlatformComponent implements PlatformComponent {
     this.control.events.push('stop');
     this.stopEntered.resolve();
     await this.control.stopGate;
+
+    if (this.control.stopFailureCalls?.includes(this.stopCalls)) {
+      throw new Error('controlled stop failure');
+    }
+
     this.currentState = 'stopped';
   }
 
@@ -200,5 +213,63 @@ describe('RuntimePlatformShell lifecycle serialization', () => {
     await expect(shell.start()).resolves.toBeUndefined();
     expect(component.startCalls).toBe(2);
     expect(events).toEqual(['validate', 'start', 'validate', 'start']);
+  });
+
+  it('retries partial cleanup before a start queued behind a failed stop', async () => {
+    // Given
+    const events: string[] = [];
+    const stopGate = new Deferred();
+    const component = new ControlledPlatformComponent({
+      events,
+      stopFailureCalls: [1],
+      stopGate: stopGate.promise,
+    });
+    const shell = RuntimePlatformShell.fromInputs([component]);
+    await shell.start();
+
+    // When
+    const stopping = shell.stop();
+    await component.stopEntered.promise;
+    const restarting = shell.start();
+    stopGate.resolve();
+
+    // Then
+    await expect(stopping).rejects.toThrow('One or more platform components failed to stop cleanly.');
+    await expect(restarting).resolves.toBeUndefined();
+    expect(component.stopCalls).toBe(2);
+    expect(component.startCalls).toBe(2);
+    expect(events).toEqual(['validate', 'start', 'stop', 'stop', 'validate', 'start']);
+  });
+
+  it('retries pending rollback cleanup after a failed restart', async () => {
+    // Given
+    const events: string[] = [];
+    const owner = new ControlledPlatformComponent({
+      events,
+      id: 'runtime.owner',
+      stopFailureCalls: [2],
+    });
+    const dependent = new ControlledPlatformComponent({
+      events,
+      id: 'runtime.dependent',
+      startFailureCalls: [2],
+    });
+    const shell = RuntimePlatformShell.fromInputs([
+      { component: dependent, dependencies: [owner.id] },
+      owner,
+    ]);
+    await shell.start();
+    await shell.stop();
+
+    // When
+    await expect(shell.start()).rejects.toThrow(
+      'Platform component "runtime.dependent" failed to start: controlled start failure',
+    );
+    await shell.stop();
+
+    // Then
+    expect(owner.stopCalls).toBe(3);
+    expect(dependent.stopCalls).toBe(1);
+    expect(owner.state()).toBe('stopped');
   });
 });

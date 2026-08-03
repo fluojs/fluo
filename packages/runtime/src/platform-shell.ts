@@ -165,7 +165,6 @@ interface PlatformHealthResult {
  */
 export class RuntimePlatformShell implements PlatformShell {
   private started = false;
-  private stopped = false;
   private orderedComponents: RegisteredPlatformComponent[] = [];
   private rollbackPendingComponents: RegisteredPlatformComponent[] = [];
   private readonly diagnostics: PlatformDiagnosticIssue[] = [];
@@ -251,7 +250,6 @@ export class RuntimePlatformShell implements PlatformShell {
           await this.stopStartedComponents(startedComponents);
           this.rollbackPendingComponents = [];
         } catch (rollbackError) {
-          this.rollbackPendingComponents = [...startedComponents];
           this.diagnostics.push(createUnknownFailureIssue(component.component.id, 'start-rollback', rollbackError));
         }
 
@@ -260,14 +258,13 @@ export class RuntimePlatformShell implements PlatformShell {
     }
 
     this.started = true;
-    this.stopped = false;
     this.rollbackPendingComponents = [];
   }
 
   private async stopComponents(): Promise<void> {
     const hasRollbackPending = this.rollbackPendingComponents.length > 0;
 
-    if ((!this.started && !hasRollbackPending) || this.stopped) {
+    if (!this.started && !hasRollbackPending) {
       return;
     }
 
@@ -277,10 +274,10 @@ export class RuntimePlatformShell implements PlatformShell {
       ? [...this.orderedComponents]
       : [...this.registeredComponents];
 
+    this.started = false;
+
     await this.stopStartedComponents(toStop);
     this.rollbackPendingComponents = [];
-    this.started = false;
-    this.stopped = true;
   }
 
   async ready(): Promise<PlatformReadinessReport> {
@@ -563,17 +560,20 @@ export class RuntimePlatformShell implements PlatformShell {
 
   private async stopStartedComponents(startedComponents: RegisteredPlatformComponent[]): Promise<void> {
     const errors: unknown[] = [];
+    const pendingComponents: RegisteredPlatformComponent[] = [];
 
     for (const component of [...startedComponents].reverse()) {
       try {
         await component.component.stop();
       } catch (error) {
         errors.push(error);
+        pendingComponents.unshift(component);
         this.diagnostics.push(createUnknownFailureIssue(component.component.id, 'stop', error));
       }
     }
 
     if (errors.length > 0) {
+      this.rollbackPendingComponents = pendingComponents;
       throw new AggregateError(errors, 'One or more platform components failed to stop cleanly.');
     }
   }
