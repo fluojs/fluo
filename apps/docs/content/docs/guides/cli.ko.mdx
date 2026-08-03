@@ -72,7 +72,16 @@ fluo new my-worker-app --shape application --transport http --runtime cloudflare
 fluo new my-react-app --starter react-vite-ssr
 ```
 
-이 starter는 명시적인 client/server entry, 분리된 Vite config, `hydrateRoot(...)`, HTTP-owned page router, application page rendering, direct JSX를 생성합니다. Application은 `src/main.ts`에서 `dist/client/.vite/manifest.json`을 로드한 뒤 `@fluojs/react/vite`가 이를 parse하도록 전달합니다. Link는 real anchor로 남고 client navigation은 full-document request를 수행하므로 HTTP matching과 DTO validation이 계속 authoritative합니다. RSC, Server Functions, file routing, client route table, prefetch, data cache는 포함하지 않습니다.
+`pnpm dev`를 실행하고 `/products/sku-42?preview=true`를 연 뒤 `src/page.tsx`를 편집합니다.
+명시적인 `@Router(...)` / `@Path(...)` handler는 `src/app.tsx`에 남아 해당 page를 하나의
+`ReactElement`로 반환하므로 HTTP matching과 DTO validation이 계속 authoritative합니다. Generated
+wiring은 숨기지 않으면서 첫 편집 path를 작게 유지합니다. `src/entry-server.tsx`는 교체 가능한
+`ReactPageRenderer`를 소유하고, `src/react-app.tsx`는 하나의 document 및
+`ReactClientRouterProvider` composition을 공유하며, `src/entry-client.tsx`는 그 tree를 hydrate합니다.
+`src/main.ts`와 `src/load-manifest.ts`는 Vite manifest loading을 Node.js application boundary에
+유지합니다. Build output 누락, incompatible entry selector, hydration mismatch는 application-owned
+step을 가리킵니다. RSC, Server Functions, file routing, client route table, prefetch, data cache는
+포함하지 않습니다.
 
 Generated non-Deno HTTP starter는 TDD-first Vitest layout을 포함합니다.
 
@@ -81,7 +90,8 @@ Generated non-Deno HTTP starter는 TDD-first Vitest layout을 포함합니다.
 - `src/app.test.ts` app dispatch tests
 - `createTestApp({ rootModule })` 기반 `test/app.e2e.test.ts` default e2e-style tests
 
-React starter는 streamed SSR 및 hydration focused test와 production build를 시작해 asset 누락이나 hydration warning을 거부하는 `pnpm test:browser`를 사용합니다.
+React starter는 streamed SSR, manifest failure, hydration focused test와 production build를 시작해
+asset 누락이나 hydration warning을 거부하는 `pnpm test:browser`를 사용합니다.
 
 ## Microservice and mixed starters
 
