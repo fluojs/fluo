@@ -14,6 +14,54 @@ type TypeEquals<Left, Right> = (<Value>() => Value extends Left ? 1 : 2) extends
 
 type AssertTrue<Condition extends true> = Condition;
 
+const runtimeStaticModuleSpecifierPattern = /(?:^|\n)\s*(?:import|export)\s+(?!type\b)(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]/g;
+const runtimeDynamicModuleSpecifierPattern = /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g;
+
+function readRuntimeModuleSpecifiers(source: string): string[] {
+  return [
+    ...source.matchAll(runtimeStaticModuleSpecifierPattern),
+    ...source.matchAll(runtimeDynamicModuleSpecifierPattern),
+  ].flatMap((match) => {
+    const specifier = match[1];
+    return specifier === undefined ? [] : [specifier];
+  });
+}
+
+function collectRuntimeDependencyGraph(entrypoint: URL) {
+  const pending = [entrypoint];
+  const sourceUrls = new Set<string>();
+  const nodeBuiltinImports: string[] = [];
+
+  while (pending.length > 0) {
+    const sourceUrl = pending.pop();
+
+    if (sourceUrl === undefined || sourceUrls.has(sourceUrl.href)) {
+      continue;
+    }
+
+    sourceUrls.add(sourceUrl.href);
+    const source = readFileSync(sourceUrl, 'utf8');
+
+    for (const specifier of readRuntimeModuleSpecifiers(source)) {
+      if (specifier.startsWith('node:')) {
+        nodeBuiltinImports.push(`${sourceUrl.href}:${specifier}`);
+      }
+
+      if (specifier.startsWith('.')) {
+        const sourceSpecifier = specifier.endsWith('.js')
+          ? `${specifier.slice(0, -3)}.ts`
+          : specifier;
+        pending.push(new URL(sourceSpecifier, sourceUrl));
+      }
+    }
+  }
+
+  return {
+    nodeBuiltinImports,
+    sourceUrls: [...sourceUrls],
+  };
+}
+
 describe('@fluojs/http public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
     expect(httpPublicApi).toHaveProperty('Controller');
@@ -83,6 +131,18 @@ describe('@fluojs/http public API surface', () => {
 
     expect(correlationSource).not.toContain("from 'node:crypto'");
     expect(requestContextSource).not.toContain("from 'node:async_hooks'");
+  });
+
+  it('keeps every reachable portable entrypoint module free of Node built-in import specifiers', () => {
+    // Given
+    const portableEntrypoint = new URL('./index.portable.ts', import.meta.url);
+
+    // When
+    const graph = collectRuntimeDependencyGraph(portableEntrypoint);
+
+    // Then
+    expect(graph.sourceUrls).toContain(new URL('./context/request-context-node-store.ts', import.meta.url).href);
+    expect(graph.nodeBuiltinImports).toEqual([]);
   });
 
   it('keeps the internal subpath limited to the documented exported helpers', () => {
