@@ -94,8 +94,9 @@ representation ownership. Error availability is application-owned through the pr
    metadata, and request id.
 3. Negotiated responses set `Content-Type` and add `Accept` to `Vary` without removing existing
    `Vary` values.
-4. HTML providers return only complete document text or bytes. HTTP applies the classified status
-   and `text/html; charset=utf-8`.
+4. HTML providers return trusted complete document text or bytes. Applications must escape or
+   sanitize request-derived and error-derived content; HTTP applies the classified status and
+   `text/html; charset=utf-8` without rewriting provider output.
 5. `HEAD` keeps the selected status and headers, does not call `render(...)`, and sends no body.
 6. Already-committed responses are never rewritten.
 7. If `canRender(...)` or `render(...)` throws before commit, the configured dispatcher logger
@@ -103,6 +104,8 @@ representation ownership. Error availability is application-owned through the pr
    The fallback bypasses representation selection, so it cannot recurse.
 8. If the request aborts during provider work, HTTP does not log a provider failure or commit a
    fallback response.
+9. Response writer `send(...)` or stream/write failures are not provider failures. They propagate
+   unchanged without retrying the HTML body or canonical JSON fallback.
 
 ## React Integration
 

@@ -91,14 +91,17 @@ Successful-route `@Produces(...)` metadata와 `ContentNegotiationOptions`는 err
 2. JSON write는 status, code, message, details, metadata, request id를 포함한 canonical `ErrorResponse`를
    보존한다.
 3. Negotiated response는 `Content-Type`을 설정하고 기존 `Vary` 값을 제거하지 않은 채 `Accept`를 추가한다.
-4. HTML provider는 complete document text 또는 byte만 반환한다. HTTP가 classified status와
-   `text/html; charset=utf-8`을 적용한다.
+4. HTML provider는 trusted complete document text 또는 byte만 반환한다. Application은 request-derived 및
+   error-derived content를 escape하거나 sanitize해야 한다. HTTP는 provider output을 다시 쓰지 않고 classified
+   status와 `text/html; charset=utf-8`을 적용한다.
 5. `HEAD`는 선택된 status/header를 유지하고 `render(...)`를 호출하지 않으며 body를 보내지 않는다.
 6. 이미 committed된 response는 절대 다시 쓰지 않는다.
 7. `canRender(...)` 또는 `render(...)`가 commit 전에 throw하면 configured dispatcher logger가 provider
    failure를 기록하고 HTTP는 원래 canonical JSON outcome으로 한 번만 fallback한다. Fallback은
    representation selection을 우회하므로 재귀할 수 없다.
 8. Provider work 중 request가 abort되면 provider failure를 log하거나 fallback response를 commit하지 않는다.
+9. Response writer `send(...)` 또는 stream/write failure는 provider failure가 아니다. HTML body나 canonical JSON
+   fallback을 retry하지 않고 그대로 propagate한다.
 
 ## React Integration
 
