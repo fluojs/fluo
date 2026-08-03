@@ -14,7 +14,9 @@ import type { DeepMocked as RootDeepMocked } from './index.js';
 import * as testing from './index.js';
 import type { DeepMocked as MockDeepMocked } from './mock.js';
 import * as mock from './mock.js';
+import type { NetworkHttpErrorRepresentationBootstrapOptions } from './portability/http-adapter-portability.js';
 import * as portability from './portability/http-adapter-portability.js';
+import type { WebHttpErrorRepresentationBootstrapOptions } from './portability/web-runtime-adapter-portability.js';
 import * as webPortability from './portability/web-runtime-adapter-portability.js';
 import type { DeepMocked } from './types.js';
 import * as vitestTooling from './vitest/tooling.js';
@@ -54,6 +56,18 @@ type _RootDeepMockedPreservesVitestMockCompatibility = Assert<
 >;
 type _MockDeepMockedPreservesVitestMockCompatibility = Assert<
   IsAssignable<MockDeepMocked<LegacyDeepMockedConsumerService>['findById'], Mock<(id: string) => Promise<{ id: string }>>>
+>;
+type _NetworkErrorRepresentationOptionsArePublic = Assert<
+  IsAssignable<
+    NetworkHttpErrorRepresentationBootstrapOptions,
+    { readonly cors: false; readonly middleware: readonly unknown[]; readonly port: 0 }
+  >
+>;
+type _WebErrorRepresentationOptionsArePublic = Assert<
+  IsAssignable<
+    WebHttpErrorRepresentationBootstrapOptions,
+    { readonly cors: false; readonly middleware: readonly unknown[] }
+  >
 >;
 
 const packageRoot = new URL('..', import.meta.url);
@@ -468,6 +482,10 @@ describe('@fluojs/testing surface', () => {
     expect(readFileSync(resolve(packageRootPath, 'dist/types.d.ts'), 'utf8')).toContain('type DeepMocked<T>');
     expect(readFileSync(resolve(packageRootPath, 'dist/mock.d.ts'), 'utf8')).toContain('./mock-types.js');
     expect(readFileSync(resolve(packageRootPath, 'dist/index.d.ts'), 'utf8')).not.toContain('TestingMockFunction');
+    expect(readFileSync(resolve(packageRootPath, 'dist/portability/http-adapter-portability.d.ts'), 'utf8'))
+      .toContain('NetworkHttpErrorRepresentationBootstrapOptions');
+    expect(readFileSync(resolve(packageRootPath, 'dist/portability/web-runtime-adapter-portability.d.ts'), 'utf8'))
+      .toContain('WebHttpErrorRepresentationBootstrapOptions');
   }, 300_000);
 
   it('imports every public package subpath through the published export map', async () => {
