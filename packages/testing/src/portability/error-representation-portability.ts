@@ -6,6 +6,7 @@ import {
   type Middleware,
   NotFoundException,
   type RequestContext,
+  type RequestObserver,
 } from '@fluojs/http';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 
@@ -40,6 +41,7 @@ export type NetworkHttpErrorRepresentationBootstrapOptions = {
   readonly cors: false;
   readonly errorRepresentation: HttpErrorRepresentationOptions;
   readonly middleware: Middleware[];
+  readonly observers: RequestObserver[];
   readonly port: 0;
 };
 
@@ -196,7 +198,11 @@ export async function assertNetworkHttpErrorRepresentationPortability<
 >(options: NetworkHarnessOptions<TBootstrapOptions, TApp>): Promise<void> {
   const app = await options.bootstrap(
     createRepresentationFixture(),
-    options.createBootstrapOptions({ ...createErrorRepresentationOptions(), port: 0 }),
+    options.createBootstrapOptions({
+      ...createErrorRepresentationOptions(),
+      observers: [],
+      port: 0,
+    }),
   );
 
   await closeAfterAssertion(app, options.name, async () => {

@@ -60,7 +60,12 @@ type _MockDeepMockedPreservesVitestMockCompatibility = Assert<
 type _NetworkErrorRepresentationOptionsArePublic = Assert<
   IsAssignable<
     NetworkHttpErrorRepresentationBootstrapOptions,
-    { readonly cors: false; readonly middleware: readonly unknown[]; readonly port: 0 }
+    {
+      readonly cors: false;
+      readonly middleware: readonly unknown[];
+      readonly observers: readonly unknown[];
+      readonly port: 0;
+    }
   >
 >;
 type _WebErrorRepresentationOptionsArePublic = Assert<

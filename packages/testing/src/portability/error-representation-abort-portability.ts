@@ -1,6 +1,7 @@
 import type {
   HtmlErrorRepresentationProvider,
   Middleware,
+  RequestObserver,
 } from '@fluojs/http';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 
@@ -42,9 +43,10 @@ type Deferred = {
 
 type AbortProbe = {
   readonly bootstrapOptions: WebHttpErrorRepresentationBootstrapOptions;
-  readonly dispatchSettled: Promise<void>;
   readonly providerAborted: Promise<void>;
   readonly providerStarted: Promise<void>;
+  readonly requestFinished: Promise<void>;
+  readonly requestObserver: RequestObserver;
   assertNoCommit(name: string): void;
 };
 
@@ -60,9 +62,9 @@ function createDeferred(): Deferred {
 }
 
 function createAbortProbe(): AbortProbe {
-  const dispatchSettled = createDeferred();
   const providerAborted = createDeferred();
   const providerStarted = createDeferred();
+  const requestFinished = createDeferred();
   let providerCalls = 0;
   const representationWrites: unknown[] = [];
   const middleware: Middleware = {
@@ -75,11 +77,12 @@ function createAbortProbe(): AbortProbe {
         return send(body);
       };
 
-      try {
-        await next();
-      } finally {
-        dispatchSettled.resolve();
-      }
+      await next();
+    },
+  };
+  const requestObserver: RequestObserver = {
+    onRequestFinish() {
+      requestFinished.resolve();
     },
   };
   const html: HtmlErrorRepresentationProvider = {
@@ -125,9 +128,10 @@ function createAbortProbe(): AbortProbe {
       errorRepresentation: { html },
       middleware: [middleware],
     },
-    dispatchSettled: dispatchSettled.promise,
     providerAborted: providerAborted.promise,
     providerStarted: providerStarted.promise,
+    requestFinished: requestFinished.promise,
+    requestObserver,
   };
 }
 
@@ -207,7 +211,11 @@ export async function assertNetworkHttpErrorRepresentationAbortPortability<
   const probe = createAbortProbe();
   const app = await options.bootstrap(
     createEmptyModule(),
-    options.createBootstrapOptions({ ...probe.bootstrapOptions, port: 0 }),
+    options.createBootstrapOptions({
+      ...probe.bootstrapOptions,
+      observers: [probe.requestObserver],
+      port: 0,
+    }),
   );
 
   await closeAfterAbortAssertion(app, options.name, async () => {
@@ -223,7 +231,7 @@ export async function assertNetworkHttpErrorRepresentationAbortPortability<
       await withTimeout(probe.providerStarted, options.name, 'the HTML error provider to start');
       clientRequest.destroy();
       await withTimeout(probe.providerAborted, options.name, 'the provider request signal to abort');
-      await withTimeout(probe.dispatchSettled, options.name, 'the aborted dispatch to settle');
+      await withTimeout(probe.requestFinished, options.name, 'the aborted request lifecycle to finish');
       probe.assertNoCommit(options.name);
     } finally {
       clientRequest.destroy();
@@ -258,7 +266,6 @@ export async function assertWebHttpErrorRepresentationAbortPortability<
     abortController.abort();
     await withTimeout(probe.providerAborted, options.name, 'the provider request signal to abort');
     await dispatch;
-    await withTimeout(probe.dispatchSettled, options.name, 'the aborted dispatch to settle');
     probe.assertNoCommit(options.name);
   });
 }
