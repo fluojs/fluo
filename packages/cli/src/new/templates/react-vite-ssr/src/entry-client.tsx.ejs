@@ -1,7 +1,11 @@
 import { hydrateRoot } from 'react-dom/client';
 
 import { ProductPage } from './page';
-import { ReactAppDocument, REACT_IDENTIFIER_PREFIX } from './react-app';
+import {
+  ReactAppDocument,
+  REACT_IDENTIFIER_PREFIX,
+  reportReactHydrationMismatch,
+} from './react-app';
 import './styles.css';
 
 const stylesheets = [...document.querySelectorAll<HTMLLinkElement>('link[data-vite-style]')]
@@ -20,11 +24,6 @@ hydrateRoot(
   />,
   {
     identifierPrefix: REACT_IDENTIFIER_PREFIX,
-    onRecoverableError(error) {
-      console.error(
-        'React hydration did not match. Keep src/entry-client.tsx aligned with src/entry-server.tsx and src/react-app.tsx.',
-        error,
-      );
-    },
+    onRecoverableError: reportReactHydrationMismatch,
   },
 );

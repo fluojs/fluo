@@ -6,7 +6,7 @@ import { renderToString } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { HydratedCounter, ProductPage } from './page';
-import { ReactAppDocument } from './react-app';
+import { ReactAppDocument, reportReactHydrationMismatch } from './react-app';
 
 describe('React Vite SSR app composition', () => {
   afterEach(() => {
@@ -27,6 +27,19 @@ describe('React Vite SSR app composition', () => {
     expect(html).toContain('Preview mode');
     expect(html).toContain('href="/assets/styles.css"');
     expect(html).toContain('data-route-sku="sku-42"');
+  });
+
+  it('reports actionable application files when hydration mismatches', () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const mismatch = new Error('Hydration mismatch');
+
+    reportReactHydrationMismatch(mismatch);
+
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('src/entry-client.tsx'), mismatch);
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('src/entry-server.tsx'), mismatch);
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('src/react-app.tsx'), mismatch);
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('vite.client.config.ts'), mismatch);
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('generated build script'), mismatch);
   });
 
   it('attaches interaction without hydration warnings', async () => {

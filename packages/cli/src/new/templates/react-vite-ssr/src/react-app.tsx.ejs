@@ -13,6 +13,13 @@ export type ReactAppDocumentProps = {
   readonly stylesheets: readonly string[];
 };
 
+export function reportReactHydrationMismatch(error: unknown): void {
+  console.error(
+    'React hydration did not match. Compare src/entry-client.tsx, src/entry-server.tsx, and src/react-app.tsx; check vite.client.config.ts, then run the generated build script again.',
+    error,
+  );
+}
+
 export function ReactAppDocument({
   page,
   route,
