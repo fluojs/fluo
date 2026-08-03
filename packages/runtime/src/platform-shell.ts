@@ -1,5 +1,6 @@
 import { InvariantError } from '@fluojs/core';
 
+import { PlatformLifecycleConflictError, type PlatformLifecycleOperation } from './errors.js';
 import type {
   PlatformComponent,
   PlatformComponentInput,
@@ -16,6 +17,10 @@ import type {
 interface RegisteredPlatformComponent {
   component: PlatformComponent;
   dependencies: readonly string[];
+}
+
+interface PlatformLifecycleTransition {
+  readonly operation: PlatformLifecycleOperation;
 }
 
 function isRegistration(value: PlatformComponentInput): value is PlatformComponentRegistration {
@@ -158,10 +163,10 @@ interface PlatformHealthResult {
  */
 export class RuntimePlatformShell implements PlatformShell {
   private started = false;
-  private stopped = false;
   private orderedComponents: RegisteredPlatformComponent[] = [];
   private rollbackPendingComponents: RegisteredPlatformComponent[] = [];
   private readonly diagnostics: PlatformDiagnosticIssue[] = [];
+  private activeLifecycleTransition: PlatformLifecycleTransition | undefined;
 
   constructor(private readonly registeredComponents: RegisteredPlatformComponent[]) {}
 
@@ -179,13 +184,41 @@ export class RuntimePlatformShell implements PlatformShell {
     return this.registeredComponents.length > 0;
   }
 
-  async start(): Promise<void> {
+  start(): Promise<void> {
+    return this.runLifecycleTransition('start', () => this.startComponents());
+  }
+
+  stop(): Promise<void> {
+    return this.runLifecycleTransition('stop', () => this.stopComponents());
+  }
+
+  private runLifecycleTransition(operation: PlatformLifecycleOperation, run: () => Promise<void>): Promise<void> {
+    const activeTransition = this.activeLifecycleTransition;
+    if (activeTransition) {
+      return Promise.reject(new PlatformLifecycleConflictError(activeTransition.operation, operation));
+    }
+
+    const transition: PlatformLifecycleTransition = { operation };
+    this.activeLifecycleTransition = transition;
+    const promise = Promise.resolve(run());
+
+    const clearActiveTransition = (): void => {
+      if (this.activeLifecycleTransition === transition) {
+        this.activeLifecycleTransition = undefined;
+      }
+    };
+    void promise.then(clearActiveTransition, clearActiveTransition);
+
+    return promise;
+  }
+
+  private async startComponents(): Promise<void> {
     if (!this.hasRegisteredComponents() || this.started) {
       return;
     }
 
     if (this.rollbackPendingComponents.length > 0) {
-      await this.stop();
+      await this.stopComponents();
     }
 
     this.validateIdentityAndDependencies();
@@ -215,7 +248,6 @@ export class RuntimePlatformShell implements PlatformShell {
           await this.stopStartedComponents(startedComponents);
           this.rollbackPendingComponents = [];
         } catch (rollbackError) {
-          this.rollbackPendingComponents = [...startedComponents];
           this.diagnostics.push(createUnknownFailureIssue(component.component.id, 'start-rollback', rollbackError));
         }
 
@@ -224,14 +256,13 @@ export class RuntimePlatformShell implements PlatformShell {
     }
 
     this.started = true;
-    this.stopped = false;
     this.rollbackPendingComponents = [];
   }
 
-  async stop(): Promise<void> {
+  private async stopComponents(): Promise<void> {
     const hasRollbackPending = this.rollbackPendingComponents.length > 0;
 
-    if ((!this.started && !hasRollbackPending) || this.stopped) {
+    if (!this.started && !hasRollbackPending) {
       return;
     }
 
@@ -241,10 +272,10 @@ export class RuntimePlatformShell implements PlatformShell {
       ? [...this.orderedComponents]
       : [...this.registeredComponents];
 
+    this.started = false;
+
     await this.stopStartedComponents(toStop);
     this.rollbackPendingComponents = [];
-    this.started = false;
-    this.stopped = true;
   }
 
   async ready(): Promise<PlatformReadinessReport> {
@@ -527,17 +558,20 @@ export class RuntimePlatformShell implements PlatformShell {
 
   private async stopStartedComponents(startedComponents: RegisteredPlatformComponent[]): Promise<void> {
     const errors: unknown[] = [];
+    const pendingComponents: RegisteredPlatformComponent[] = [];
 
     for (const component of [...startedComponents].reverse()) {
       try {
         await component.component.stop();
       } catch (error) {
         errors.push(error);
+        pendingComponents.unshift(component);
         this.diagnostics.push(createUnknownFailureIssue(component.component.id, 'stop', error));
       }
     }
 
     if (errors.length > 0) {
+      this.rollbackPendingComponents = pendingComponents;
       throw new AggregateError(errors, 'One or more platform components failed to stop cleanly.');
     }
   }

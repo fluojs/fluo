@@ -11,6 +11,7 @@ import {
   enforceGraphqlRuntimeBoundaryDiscoverability,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
+  enforcePlatformShellLifecycleContract,
   enforceReactClientSubpathContract,
   enforceReactPageCatalogContract,
   enforceReactServerFunctionContract,
@@ -128,6 +129,12 @@ describe('enforceReactClientSubpathContract', () => {
 describe('enforceReactPageCatalogContract', () => {
   it('keeps compiled React page diagnostics aligned across source and bilingual docs', () => {
     expect(() => enforceReactPageCatalogContract()).not.toThrow();
+  });
+});
+
+describe('enforcePlatformShellLifecycleContract', () => {
+  it('keeps strict lifecycle conflicts synchronized across bilingual public contracts', () => {
+    expect(() => enforcePlatformShellLifecycleContract()).not.toThrow();
   });
 });
 

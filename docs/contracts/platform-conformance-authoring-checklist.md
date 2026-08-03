@@ -17,6 +17,9 @@ Use this checklist when authoring or changing official platform-facing packages 
 - [ ] MUST: Verify `validate()` does not introduce long-lived side effects when side-effect capture is configured.
 - [ ] MUST: Verify `start()` is deterministic across duplicate calls.
 - [ ] MUST: Verify `stop()` is idempotent across duplicate calls.
+- [ ] MUST: Verify all four `start()` / `stop()` overlap pairs reject immediately with `PlatformLifecycleConflictError` while a transition is active, including same-operation overlaps.
+- [ ] MUST: Verify lifecycle callback reentry receives the same conflict synchronously and after arbitrary awaits, without queues, timers, or runtime-specific context tracking.
+- [ ] MUST: Verify active-transition cleanup after success and failure permits explicit retry after settlement while private rollback and cleanup retain dependency ordering and retry behavior.
 - [ ] MUST: Verify `snapshot()` stays callable in degraded and failed states.
 - [ ] MUST: Verify diagnostics keep stable non-empty `code` values.
 - [ ] MUST: Provide `fixHint` for error-severity diagnostics unless the harness configuration explicitly relaxes that requirement.
@@ -42,6 +45,7 @@ Use this checklist when authoring or changing official platform-facing packages 
 - [ ] MUST: Expose typed configuration and validate inputs during bootstrap.
 - [ ] MUST: Distinguish health from readiness in package behavior and package docs.
 - [ ] MUST: Emit stable diagnostic codes for caller-visible failure states.
+- [ ] MUST: Treat `PLATFORM_LIFECYCLE_CONFLICT` metadata as a public error contract when coordinating platform shell lifecycle ownership.
 - [ ] MUST: Declare owned resources such as sockets, file handles, or connections, and release them during shutdown.
 - [ ] MUST NOT: expose credentials, tokens, passwords, or API keys through logs, diagnostics, or snapshots.
 

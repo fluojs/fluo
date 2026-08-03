@@ -80,6 +80,12 @@ await userService.doWork();
 await context.close();
 ```
 
+### PlatformShell lifecycle overlap 마이그레이션
+
+`RuntimePlatformShell.start()`와 `stop()`은 엄격한 exclusive transition입니다. 둘 중 하나가 active인 동안 겹치는 모든 `start()` 또는 `stop()` 호출은 `PlatformLifecycleConflictError`, code `PLATFORM_LIFECYCLE_CONFLICT`, 그리고 error field와 structured `meta` 모두에 있는 `activeOperation` / `requestedOperation`을 담은 즉시 reject된 promise를 반환합니다. Shell은 겹치는 작업을 공유하거나 queue 또는 coalesce하지 않습니다. Settle 이후의 순차 호출은 계속 idempotent하며, 실패한 transition은 exclusive gate를 해제하므로 caller가 명시적으로 retry할 수 있습니다.
+
+`@fluojs/runtime` 2.x에서는 겹치는 `start()` 호출이 같은 component를 두 번 이상 시작할 수 있었고, in-flight startup 중 호출한 `stop()`이 startup settlement보다 먼저 반환하여 resource가 실행 중인 채로 남을 수 있었습니다. 업그레이드할 때는 하나의 application boundary가 각 lifecycle transition의 ownership을 갖게 하세요. 다른 경로가 겹칠 수 있다면 `PlatformLifecycleConflictError`를 catch하고 boundary-owned transition의 settlement를 기다린 다음, 원하는 상태가 여전히 필요할 때만 명시적으로 retry하세요. Callback reentry 주변에 숨은 queue를 다시 만들면 안 됩니다. Component lifecycle callback도 synchronous code 이후 또는 임의의 `await` boundary 이후 동일한 즉시 conflict를 받습니다.
+
 ### Studio Devtools Bridge
 
 `@fluojs/runtime`은 live Studio snapshot과 request trace를 publish할 수 있지만 `process.env`를 직접 읽지 않습니다. `fluo dev --studio`가 애플리케이션 경계에서 sidecar를 시작하고 tokenized Studio config를 만든 뒤, 앱이 runtime을 import하기 전에 해당 명시적 config를 Node 앱 child에 주입합니다. Runtime은 Studio bridge를 생성할 때 주입된 각 field를 한 번씩 읽고 전체 config와 HTTP(S) endpoint를 검증한 뒤 private snapshot으로 freeze합니다. 따라서 writable process-global injection이 나중에 변경되어도 instrumentation input은 바뀌지 않습니다. CLI가 제공한 config가 없거나 잘못되었거나 tokenized endpoint가 없으면 Studio instrumentation은 no-op이며 bootstrap 동작은 바뀌지 않습니다.
@@ -164,6 +170,7 @@ class UsersModule {}
 - Runtime-connected Studio instrumentation은 명시적인 CLI 주입 Studio config로만 활성화되며 runtime package source에서 `process.env`를 직접 읽지 않습니다. Bridge 생성은 알려진 각 field를 한 번씩 읽어 검증되고 freeze된 private snapshot으로 캡처하며 HTTP(S) tokenized endpoint만 허용하므로, 이후 global object mutation이 instrumentation 대상을 바꾸거나 재인증할 수 없습니다. 유효한 config와 tokenized endpoint가 없으면 non-Node 런타임을 포함해 Studio 관점의 runtime bootstrap은 no-op입니다.
 - Studio request trace는 request/response body, cookie, 전체 header를 제외합니다. Trace `url`은 publish 전에 path-only 형태로 sanitize되어 query token과 fragment가 local Studio event history에 남지 않습니다.
 - 플랫폼 component snapshot은 런타임 소유 계약 payload입니다. 각 component는 `readiness`, `health`, dependency id, telemetry tag, diagnostic issue, 그리고 `ownership.ownsResources` / `ownership.externallyManaged`를 통해 리소스 소유권을 보고합니다. Runtime은 shell snapshot에서 이 ownership flag를 보존하므로 adapter와 package integration이 fluo가 종료해야 하는 리소스와 host가 소유한 외부 관리 리소스를 구분할 수 있습니다.
+- `RuntimePlatformShell.start()`와 `stop()`은 하나의 엄격한 exclusive lifecycle transition을 강제합니다. 같은 operation 호출이나 임의의 await 이후 callback reentry를 포함한 모든 겹치는 operation은 shared/queued work 대신 즉시 `PlatformLifecycleConflictError` rejection을 받습니다. Active transition은 component work 시작 전에 publish되고 실패 시 identity 기준으로 해제됩니다. Settlement 이후의 명시적 retry는 sequential idempotency, dependency ordering, private startup rollback, cleanup retry behavior를 보존합니다.
 - 모듈 그래프 컴파일 결과 캐시는 `moduleGraphCache: true`를 통한 opt-in입니다. 캐시 항목은 root module identity, runtime provider, validation token, module replacement pair, core metadata version, compile algorithm version으로 식별되며, 성공한 컴파일만 저장하고 호출자 mutation이 이후 bootstrap을 오염시키지 않도록 격리된 그래프 복사본을 반환합니다.
 - `moduleReplacements`는 `bootstrapModule(...)` / `BootstrapModuleOptions`의 저수준 testing seam입니다. 원래 logical module identity를 보존하면서 replacement module metadata로 컴파일하고, replacement cycle은 일반 module graph validation 경로에서 거부하며, source module metadata를 mutate하지 않습니다.
 - `raceWithAbort(fn, signal)`은 `fn`이 settle된 후 항상 abort listener를 제거합니다. `fn`이 promise를 반환하기 전에 동기적으로 throw하는 경우도 포함합니다. 동기 throw는 settled rejection으로 변환되어 cleanup-dependent `finally` flow가 여전히 실행되고, 반복된 실패 작업에서 listener가 leak되지 않습니다.
@@ -187,6 +194,7 @@ class UsersModule {}
 - `createRuntimeRouteInspection(...)`, `createRuntimeRouteCatalog(...)`, `createRuntimeInspectionSnapshot(...)`: HTTP route behavior를 변경하지 않고 platform snapshot에 effective compiled route diagnostics를 추가하는 runtime-owned immutable projection입니다.
 - `RuntimeRouteInspection`, `RuntimeInspectionSnapshot`: serializable read-only route 및 inspect artifact contract입니다. `RuntimeRouteInspection.params`에는 parameter name만 포함되고 request value는 포함되지 않습니다.
 - `PlatformShell`, `PlatformComponent`, `PlatformShellSnapshot`, `PlatformSnapshot`, `PlatformDiagnosticIssue` 및 관련 platform report 타입: runtime-aware package가 사용하는 공개 lifecycle diagnostics 및 resource-ownership 계약입니다. `RuntimePlatformShell`은 component가 제공한 ownership을 보존하고, consumer가 internal runtime token을 import하지 않아도 validation/readiness/health diagnostics를 내보냅니다.
+- `PlatformLifecycleOperation`, `PlatformLifecycleConflictError`: root-exported lifecycle conflict 계약입니다. Error는 code `PLATFORM_LIFECYCLE_CONFLICT`를 사용하고 일치하는 `activeOperation` / `requestedOperation` field와 structured metadata를 노출합니다.
 - `createRequestAbortContext(...)`, `trackActiveRequestTransaction(...)`, `untrackActiveRequestTransaction(...)`: runtime-aware integration이 사용하는 request abort 및 active transaction helper입니다.
 - `UploadedFile`: 메모리 내 `buffer` payload를 Web 표준 `Uint8Array`로 제공하는 runtime-neutral 멀티파트 파일 descriptor입니다.
 

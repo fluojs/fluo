@@ -28,6 +28,12 @@
 | `health()` | `packages/runtime/src/platform-contract.ts`의 `PlatformShell.health()` 와 `PlatformComponent.health()` | platform-managed component는 component failure를 숨기지 않고 `healthy`, `unhealthy`, `degraded`를 보고해야 한다. |
 | `snapshot()` | `packages/runtime/src/platform-contract.ts`의 `PlatformShell.snapshot()` 와 `PlatformComponent.snapshot()` | platform-managed component는 machine-readable state, ownership, telemetry tag, dependency metadata를 노출해야 한다. |
 
+## Platform Shell Lifecycle Exclusivity
+
+`RuntimePlatformShell.start()`와 `stop()`은 정확히 하나의 active lifecycle transition만 허용한다. 두 operation 중 하나가 active인 동안 겹치는 모든 `start()` 또는 `stop()` 호출은 root-exported `PlatformLifecycleConflictError`를 담은 즉시 reject된 promise를 반환해야 한다. Error code는 `PLATFORM_LIFECYCLE_CONFLICT`이며 `activeOperation`과 `requestedOperation`은 readonly field와 일치하는 structured metadata로 제공된다.
+
+Shell은 겹치는 lifecycle work를 queue하면 안 된다. 또한 공유, coalesce, desired state 기록도 하면 안 된다. Runtime-neutral promise scheduling으로 component work 시작 전에 active transition을 publish하므로 synchronous callback reentry와 임의의 await 이후 reentry 모두 같은 conflict 계약을 관찰한다. Identity-checked cleanup은 성공 또는 실패 뒤 transition을 해제한다. Caller는 settlement 이후에만 명시적으로 retry할 수 있다. Private rollback과 cleanup path는 owning transition 내부에 남아 dependency ordering, diagnostics, rollback retry, sequential idempotency를 보존한다.
+
 ## Conformance Rules
 
 - Platform 패키지는 저장소 정책이 `PlatformAdapter`라고 부르는 adapter seam을 구현해야 하며, 현재 HTTP transport 계약은 `HttpApplicationAdapter`가 담당한다.

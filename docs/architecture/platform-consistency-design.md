@@ -28,6 +28,12 @@ This document defines the current platform adapter contract used by fluo transpo
 | `health()` | `PlatformShell.health()` and `PlatformComponent.health()` in `packages/runtime/src/platform-contract.ts` | Platform-managed components MUST report `healthy`, `unhealthy`, or `degraded` without hiding component failure. |
 | `snapshot()` | `PlatformShell.snapshot()` and `PlatformComponent.snapshot()` in `packages/runtime/src/platform-contract.ts` | Platform-managed components MUST expose machine-readable state, ownership, telemetry tags, and dependency metadata. |
 
+## Platform Shell Lifecycle Exclusivity
+
+`RuntimePlatformShell.start()` and `stop()` allow exactly one active lifecycle transition. While either operation is active, every overlapping `start()` or `stop()` call MUST return an immediately rejected promise with root-exported `PlatformLifecycleConflictError`. The error code is `PLATFORM_LIFECYCLE_CONFLICT`; `activeOperation` and `requestedOperation` are available as readonly fields and matching structured metadata.
+
+The shell MUST NOT queue, share, coalesce, or record a desired state for overlapping lifecycle work. It publishes the active transition before component work begins through runtime-neutral promise scheduling, so synchronous callback reentry and reentry after arbitrary awaits observe the same conflict contract. Identity-checked cleanup releases the transition after success or failure. Callers may retry explicitly only after settlement. Private rollback and cleanup paths stay inside the owning transition so dependency ordering, diagnostics, rollback retry, and sequential idempotency remain intact.
+
 ## Conformance Rules
 
 - Platform packages MUST implement the adapter seam referenced by repository policy as `PlatformAdapter`, with the current HTTP transport contract supplied by `HttpApplicationAdapter`.

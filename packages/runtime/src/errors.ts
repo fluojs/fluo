@@ -1,6 +1,45 @@
 import { FluoError, formatTokenName } from '@fluojs/core';
 
 /**
+ * Public lifecycle operations supported by {@link PlatformLifecycleConflictError}.
+ */
+export type PlatformLifecycleOperation = 'start' | 'stop';
+
+/**
+ * Error returned when a platform shell lifecycle request overlaps an active transition.
+ *
+ * @remarks
+ * Platform shell lifecycle transitions are strictly exclusive. Callers can inspect
+ * {@link PlatformLifecycleConflictError.activeOperation} and
+ * {@link PlatformLifecycleConflictError.requestedOperation}, wait for their own active
+ * operation to settle, and then retry explicitly.
+ */
+export class PlatformLifecycleConflictError extends FluoError {
+  /** Lifecycle operation that currently owns the platform shell transition. */
+  readonly activeOperation: PlatformLifecycleOperation;
+  /** Lifecycle operation rejected because another transition is active. */
+  readonly requestedOperation: PlatformLifecycleOperation;
+
+  /**
+   * Creates a platform lifecycle conflict error.
+   *
+   * @param activeOperation Lifecycle operation that currently owns the transition.
+   * @param requestedOperation Overlapping lifecycle operation that was rejected.
+   */
+  constructor(activeOperation: PlatformLifecycleOperation, requestedOperation: PlatformLifecycleOperation) {
+    super(
+      `Cannot ${requestedOperation} the platform shell while ${activeOperation} is active.`,
+      {
+        code: 'PLATFORM_LIFECYCLE_CONFLICT',
+        meta: { activeOperation, requestedOperation },
+      },
+    );
+    this.activeOperation = activeOperation;
+    this.requestedOperation = requestedOperation;
+  }
+}
+
+/**
  * Structured context for runtime-level errors.
  */
 export interface RuntimeErrorContext {

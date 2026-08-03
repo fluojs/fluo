@@ -17,6 +17,9 @@
 - [ ] MUST: side-effect capture를 설정한 경우 `validate()`가 장기 지속 부수 효과를 만들지 않는지 검증합니다.
 - [ ] MUST: `start()`가 중복 호출에서도 결정론적인지 검증합니다.
 - [ ] MUST: `stop()`이 중복 호출에서도 멱등적인지 검증합니다.
+- [ ] MUST: 같은 operation overlap을 포함한 네 가지 `start()` / `stop()` overlap pair가 transition active 상태에서 즉시 `PlatformLifecycleConflictError`로 reject되는지 검증합니다.
+- [ ] MUST: Lifecycle callback reentry가 queue, timer, runtime-specific context tracking 없이 synchronous 시점과 임의의 await 이후에 동일한 conflict를 받는지 검증합니다.
+- [ ] MUST: 성공 및 실패 이후 active-transition cleanup이 settlement 뒤 명시적 retry를 허용하면서 private rollback과 cleanup의 dependency ordering 및 retry behavior를 유지하는지 검증합니다.
 - [ ] MUST: `snapshot()`이 degraded 상태와 failed 상태에서도 호출 가능한지 검증합니다.
 - [ ] MUST: diagnostics가 비어 있지 않은 안정적인 `code` 값을 유지하는지 검증합니다.
 - [ ] MUST: 하네스 설정에서 완화하지 않는 한 error severity diagnostics에 `fixHint`를 제공합니다.
@@ -42,6 +45,7 @@
 - [ ] MUST: 타입이 있는 구성을 노출하고 bootstrap 중 입력을 검증합니다.
 - [ ] MUST: 패키지 동작과 문서에서 health와 readiness를 구분합니다.
 - [ ] MUST: 호출자에게 보이는 실패 상태에 대해 안정적인 diagnostic code를 제공합니다.
+- [ ] MUST: Platform shell lifecycle ownership을 조정할 때 `PLATFORM_LIFECYCLE_CONFLICT` metadata를 public error contract로 취급합니다.
 - [ ] MUST: 소켓, 파일 핸들, 연결 같은 소유 리소스를 선언하고 shutdown 중 해제합니다.
 - [ ] MUST NOT: 로그, diagnostics, snapshot을 통해 credential, token, password, API key를 노출하지 않습니다.
 

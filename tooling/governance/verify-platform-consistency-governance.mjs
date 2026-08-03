@@ -9,6 +9,7 @@ import {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
 } from './microservices-safety-guidance.mjs';
+import { enforcePlatformShellLifecycleContract } from './platform-shell-lifecycle-contract.mjs';
 import { enforceReactPageCatalogContract } from './react-page-catalog-contract.mjs';
 import { enforceReactRscGraduationGovernance } from './react-rsc-graduation-policy.mjs';
 
@@ -17,6 +18,7 @@ export {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
 } from './microservices-safety-guidance.mjs';
+export { enforcePlatformShellLifecycleContract } from './platform-shell-lifecycle-contract.mjs';
 export { enforceReactPageCatalogContract } from './react-page-catalog-contract.mjs';
 export {
   enforceReactRscGraduationEvidenceUpdates,
@@ -2197,6 +2199,7 @@ export function main() {
   enforceDocsHubOfficialTransportLinks();
   enforceSerializerResponseOwnershipDocsSync();
   enforceCloudflareWorkersLifecycleDocsSync();
+  enforcePlatformShellLifecycleContract();
   enforceConfigNestjsMigrationDocs();
   enforceExpressRuntimeMigrationDocsSync();
   enforceCanonicalRuntimeMatrixReferences();
