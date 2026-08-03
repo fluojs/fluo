@@ -7,7 +7,7 @@ import { defineRuntimeClassDiMetadata, defineRuntimeModuleMetadata } from '../in
 import type { ApplicationLogger } from '../types.js';
 import type { StudioLiveEvent } from './contracts.js';
 import { createStudioLiveSnapshot } from './snapshot.js';
-import { StudioDevtoolsRuntime, createStudioDevtoolsRuntimeFromConfig, createStudioDevtoolsRuntimeFromEnv } from './studio-runtime.js';
+import { createStudioDevtoolsRuntimeFromConfig, createStudioDevtoolsRuntimeFromEnv, StudioDevtoolsRuntime } from './studio-runtime.js';
 
 const logger: ApplicationLogger = {
   debug() {},
@@ -128,7 +128,17 @@ describe('Studio devtools runtime bridge', () => {
     );
   });
 
-  it('emits request lifecycle traces without leaking request bodies', () => {
+  it('emits request lifecycle traces without bodies, cookies, or full headers', () => {
+    // Given
+    const secrets = {
+      cookie: 'studio-cookie-secret',
+      header: 'studio-header-secret',
+      requestBody: 'studio-request-body-secret',
+      responseBody: 'studio-response-body-secret',
+      urlFragment: 'studio-url-fragment-secret',
+      urlQuery: 'studio-url-query-secret',
+    } as const;
+    const forbiddenTraceFields = ['body', 'cookie', 'cookies', 'headers', 'payload', 'rawBody', 'requestBody', 'responseBody'] as const;
     const events: StudioLiveEvent[] = [];
     const runtime = new StudioDevtoolsRuntime({
       appId: 'app-test',
@@ -143,16 +153,20 @@ describe('Studio devtools runtime bridge', () => {
       container: new Container(),
       metadata: {},
       request: {
-        body: { password: 'do-not-send' },
-        cookies: {},
-        headers: { 'x-request-id': 'req-1' },
+        body: { password: secrets.requestBody },
+        cookies: { session: secrets.cookie },
+        headers: {
+          authorization: `Bearer ${secrets.header}`,
+          cookie: `session=${secrets.cookie}`,
+          'x-request-id': 'req-1',
+        },
         method: 'POST',
         params: {},
         path: '/login',
         query: {},
         raw: {},
         requestId: 'req-1',
-        url: '/login?token=do-not-send#fragment',
+        url: `/login?token=${secrets.urlQuery}#${secrets.urlFragment}`,
       },
       response: {
         committed: false,
@@ -165,15 +179,24 @@ describe('Studio devtools runtime bridge', () => {
       },
     } satisfies RequestContext;
 
+    // When
     runtime.requestObserver.onRequestStart?.({ requestContext });
-    runtime.requestObserver.onRequestSuccess?.({ requestContext }, { ok: true });
+    runtime.requestObserver.onRequestSuccess?.({ requestContext }, { accessToken: secrets.responseBody });
     runtime.requestObserver.onRequestFinish?.({ requestContext });
 
+    // Then
     expect(events.map((event) => event.sequence)).toEqual([1, 2]);
     expect(events[0]).toMatchObject({ type: 'request', payload: { requestId: 'req-1', status: 'started' } });
     expect(events[1]).toMatchObject({ type: 'request', payload: { requestId: 'req-1', status: 'succeeded', statusCode: 201 } });
     expect(events[0]?.payload).toMatchObject({ url: '/login' });
-    expect(JSON.stringify(events)).not.toContain('do-not-send');
+    const serializedEvents = JSON.stringify(events);
+    const serializedTracePayloads = JSON.stringify(events.map((event) => event.payload));
+    for (const secret of Object.values(secrets)) {
+      expect(serializedEvents).not.toContain(secret);
+    }
+    for (const field of forbiddenTraceFields) {
+      expect(serializedTracePayloads).not.toContain(`"${field}":`);
+    }
   });
 
   it('auto-instruments bootstrap when fluo dev --studio injects Studio env', async () => {
