@@ -1,6 +1,9 @@
 import { defineConfig } from '@playwright/test';
 
 const BROWSER_TEST_PORT = 43_006;
+const serverCommand = process.env.FLUO_REACT_STARTER_SERVER_COMMAND === 'dev'
+  ? <%= devCommandJson %>
+  : <%= startCommandJson %>;
 
 export default defineConfig({
   fullyParallel: false,
@@ -13,7 +16,7 @@ export default defineConfig({
     headless: true,
   },
   webServer: {
-    command: <%= startCommand %>,
+    command: serverCommand,
     env: { PORT: String(BROWSER_TEST_PORT) },
     reuseExistingServer: false,
     timeout: 30_000,
