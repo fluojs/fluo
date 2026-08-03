@@ -286,7 +286,6 @@ export function createWebRequestResponseFactory(
         options.multipart,
         options.maxBodySize ?? DEFAULT_MAX_BODY_SIZE,
         options.rawBody ?? false,
-        options.preferNativeJsonBodyReader ?? false,
         options.consumeOriginalBody ?? false,
       );
     },
@@ -379,7 +378,6 @@ function createDeferredWebFrameworkRequest(
   multipartOptions?: MultipartOptions,
   maxBodySize = DEFAULT_MAX_BODY_SIZE,
   preserveRawBody = false,
-  preferNativeJsonBodyReader = false,
   consumeOriginalBody = false,
 ): FrameworkRequest {
   const url = new URL(request.url);
@@ -421,7 +419,6 @@ function createDeferredWebFrameworkRequest(
       contentType,
       maxBodySize,
       preserveRawBody,
-      preferNativeJsonBodyReader,
     );
     frameworkRequest.body = bodyResult.body;
 
@@ -634,22 +631,11 @@ async function readWebRequestBody(
   contentType: string | undefined,
   maxBodySize = DEFAULT_MAX_BODY_SIZE,
   preserveRawBody = false,
-  preferNativeJsonBodyReader = false,
 ): Promise<{ body: unknown; rawBody?: Uint8Array }> {
   validateWebRequestContentLength(request, maxBodySize);
 
   if (!request.body) {
     return { body: undefined };
-  }
-
-  if (!preserveRawBody && isJsonContentType(contentType) && (preferNativeJsonBodyReader || isContentLengthWithinLimit(request, maxBodySize))) {
-    const rawBody = new Uint8Array(await request.arrayBuffer());
-
-    if (rawBody.byteLength > maxBodySize) {
-      throw new PayloadTooLargeException(REQUEST_BODY_LIMIT_MESSAGE);
-    }
-
-    return parseWebRequestRawBody(rawBody, contentType, preserveRawBody);
   }
 
   return parseWebRequestRawBody(await readByteLimitedStream(request.body, maxBodySize), contentType, preserveRawBody);
@@ -685,17 +671,6 @@ function parseWebRequestRawBody(
     body: bodyText,
     rawBody: preserveRawBody ? rawBody : undefined,
   };
-}
-
-function isContentLengthWithinLimit(request: Request, maxBodySize: number): boolean {
-  const contentLength = request.headers.get('content-length');
-
-  if (contentLength === null) {
-    return false;
-  }
-
-  const parsedContentLength = Number(contentLength);
-  return Number.isFinite(parsedContentLength) && parsedContentLength > 0 && parsedContentLength <= maxBodySize;
 }
 
 async function readByteLimitedStream(
