@@ -84,7 +84,7 @@ await context.close();
 
 `RuntimePlatformShell.start()`와 `stop()`은 엄격한 exclusive transition입니다. 둘 중 하나가 active인 동안 겹치는 모든 `start()` 또는 `stop()` 호출은 `PlatformLifecycleConflictError`, code `PLATFORM_LIFECYCLE_CONFLICT`, 그리고 error field와 structured `meta` 모두에 있는 `activeOperation` / `requestedOperation`을 담은 즉시 reject된 promise를 반환합니다. Shell은 겹치는 작업을 공유하거나 queue 또는 coalesce하지 않습니다. Settle 이후의 순차 호출은 계속 idempotent하며, 실패한 transition은 exclusive gate를 해제하므로 caller가 명시적으로 retry할 수 있습니다.
 
-`@fluojs/runtime` 2.x에서 업그레이드하는 consumer는 겹치는 호출이 in-flight promise를 공유하거나 `stop()`이 `start()` 뒤에 queue된다는 가정을 제거해야 합니다. 하나의 application boundary가 각 lifecycle transition의 ownership을 갖게 하세요. 다른 경로가 겹칠 수 있다면 `PlatformLifecycleConflictError`를 catch하고 boundary-owned transition의 settlement를 기다린 다음, 원하는 상태가 여전히 필요할 때만 명시적으로 retry하세요. Callback reentry 주변에 숨은 queue를 다시 만들면 안 됩니다. Component lifecycle callback도 synchronous code 이후 또는 임의의 `await` boundary 이후 동일한 즉시 conflict를 받습니다.
+`@fluojs/runtime` 2.x에서는 겹치는 `start()` 호출이 같은 component를 두 번 이상 시작할 수 있었고, in-flight startup 중 호출한 `stop()`이 startup settlement보다 먼저 반환하여 resource가 실행 중인 채로 남을 수 있었습니다. 업그레이드할 때는 하나의 application boundary가 각 lifecycle transition의 ownership을 갖게 하세요. 다른 경로가 겹칠 수 있다면 `PlatformLifecycleConflictError`를 catch하고 boundary-owned transition의 settlement를 기다린 다음, 원하는 상태가 여전히 필요할 때만 명시적으로 retry하세요. Callback reentry 주변에 숨은 queue를 다시 만들면 안 됩니다. Component lifecycle callback도 synchronous code 이후 또는 임의의 `await` boundary 이후 동일한 즉시 conflict를 받습니다.
 
 ### Studio Devtools Bridge
 
