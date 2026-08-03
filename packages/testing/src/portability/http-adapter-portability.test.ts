@@ -67,6 +67,7 @@ interface PortabilityAssertions {
   assertReportsConfiguredHostInStartupLogs(): Promise<void>;
   assertReportsHttpsStartupUrl(https: { cert: string; key: string }): Promise<void>;
   assertSettlesStreamDrainWaitOnClose(): Promise<void>;
+  assertSupportsHttpErrorRepresentations(): Promise<void>;
   assertSupportsSseStreaming(): Promise<void>;
 }
 
@@ -81,6 +82,10 @@ function registerPortabilitySuite(
   options: { exactByteCoverage?: boolean; streamDrainCloseEdge?: boolean } = {},
 ): void {
   describe(`${name} adapter portability`, () => {
+    it('supports HTTP-owned JSON and HTML error representations', async () => {
+      await harness.assertSupportsHttpErrorRepresentations();
+    });
+
     it('preserves malformed cookie values', async () => {
       await harness.assertPreservesMalformedCookieValues();
     });
@@ -325,6 +330,7 @@ registerPortabilitySuite(
   'node',
   createHttpAdapterPortabilityHarness({
     bootstrap: bootstrapNodeApplication,
+    createErrorRepresentationBootstrapOptions: (options) => options,
     name: 'node',
     run: runNodeApplication,
   }),
@@ -337,6 +343,7 @@ registerPortabilitySuite(
   'nodejs-platform',
   createHttpAdapterPortabilityHarness({
     bootstrap: bootstrapNodejsApplication,
+    createErrorRepresentationBootstrapOptions: (options) => options,
     name: 'nodejs-platform',
     run: runNodejsApplication,
   }),
@@ -349,6 +356,7 @@ registerPortabilitySuite(
   'express',
   createHttpAdapterPortabilityHarness({
     bootstrap: bootstrapExpressApplication,
+    createErrorRepresentationBootstrapOptions: (options) => options,
     name: 'express',
     run: runExpressApplication,
   }),
@@ -359,6 +367,7 @@ registerPortabilitySuite(
 
 const fastifyPortabilityHarness = createHttpAdapterPortabilityHarness({
   bootstrap: bootstrapFastifyApplication,
+  createErrorRepresentationBootstrapOptions: (options) => options,
   exactRawBodyByteContentType: 'application/octet-stream',
   name: 'fastify',
   prepareExactRawBodyByteTest(app) {

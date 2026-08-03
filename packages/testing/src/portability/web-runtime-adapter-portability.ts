@@ -1,5 +1,9 @@
 import { Controller, Get, Post, SseResponse, type RequestContext } from '@fluojs/http';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
+import {
+  assertWebHttpErrorRepresentationPortability,
+  type WebHttpErrorRepresentationBootstrapOptions,
+} from './error-representation-portability.js';
 
 type WebRuntimePortabilityAppLike = {
   close(): Promise<void>;
@@ -14,6 +18,10 @@ export interface WebRuntimeHttpAdapterPortabilityHarnessOptions<
   TApp extends WebRuntimePortabilityAppLike = WebRuntimePortabilityAppLike,
 > {
   bootstrap: (rootModule: ModuleType, options: TBootstrapOptions) => Promise<TApp>;
+  /** Adapts the shared error-representation fixture fields to this runtime's bootstrap options. */
+  createErrorRepresentationBootstrapOptions?: (
+    options: WebHttpErrorRepresentationBootstrapOptions,
+  ) => TBootstrapOptions;
   name: string;
 }
 
@@ -65,6 +73,20 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
   TApp extends WebRuntimePortabilityAppLike = WebRuntimePortabilityAppLike,
 > {
   constructor(private readonly options: WebRuntimeHttpAdapterPortabilityHarnessOptions<TBootstrapOptions, TApp>) {}
+
+  /** Verifies JSON, HTML, HEAD, 406, and committed error-response portability. */
+  async assertSupportsHttpErrorRepresentations(): Promise<void> {
+    const createBootstrapOptions = this.options.createErrorRepresentationBootstrapOptions;
+    if (createBootstrapOptions === undefined) {
+      throw new Error(`${this.options.name} adapter portability harness requires createErrorRepresentationBootstrapOptions.`);
+    }
+
+    await assertWebHttpErrorRepresentationPortability({
+      bootstrap: this.options.bootstrap,
+      createBootstrapOptions,
+      name: this.options.name,
+    });
+  }
 
   async assertPreservesQueryArraysAndDecoding(): Promise<void> {
     @Controller('/query')
