@@ -18,6 +18,13 @@ interface RegisteredPlatformComponent {
   dependencies: readonly string[];
 }
 
+type PlatformLifecycleOperation = 'start' | 'stop';
+
+interface PlatformLifecycleTransition {
+  operation: PlatformLifecycleOperation;
+  promise: Promise<void>;
+}
+
 function isRegistration(value: PlatformComponentInput): value is PlatformComponentRegistration {
   return typeof value === 'object' && value !== null && 'component' in value;
 }
@@ -162,6 +169,7 @@ export class RuntimePlatformShell implements PlatformShell {
   private orderedComponents: RegisteredPlatformComponent[] = [];
   private rollbackPendingComponents: RegisteredPlatformComponent[] = [];
   private readonly diagnostics: PlatformDiagnosticIssue[] = [];
+  private pendingLifecycleTransition: PlatformLifecycleTransition | undefined;
 
   constructor(private readonly registeredComponents: RegisteredPlatformComponent[]) {}
 
@@ -179,13 +187,41 @@ export class RuntimePlatformShell implements PlatformShell {
     return this.registeredComponents.length > 0;
   }
 
-  async start(): Promise<void> {
+  start(): Promise<void> {
+    return this.runLifecycleTransition('start', () => this.startComponents());
+  }
+
+  stop(): Promise<void> {
+    return this.runLifecycleTransition('stop', () => this.stopComponents());
+  }
+
+  private runLifecycleTransition(operation: PlatformLifecycleOperation, run: () => Promise<void>): Promise<void> {
+    if (this.pendingLifecycleTransition?.operation === operation) {
+      return this.pendingLifecycleTransition.promise;
+    }
+
+    const previousTransition = this.pendingLifecycleTransition;
+    const promise = previousTransition ? previousTransition.promise.then(run, run) : run();
+    const transition: PlatformLifecycleTransition = { operation, promise };
+    this.pendingLifecycleTransition = transition;
+
+    const clearPendingTransition = (): void => {
+      if (this.pendingLifecycleTransition === transition) {
+        this.pendingLifecycleTransition = undefined;
+      }
+    };
+    void promise.then(clearPendingTransition, clearPendingTransition);
+
+    return promise;
+  }
+
+  private async startComponents(): Promise<void> {
     if (!this.hasRegisteredComponents() || this.started) {
       return;
     }
 
     if (this.rollbackPendingComponents.length > 0) {
-      await this.stop();
+      await this.stopComponents();
     }
 
     this.validateIdentityAndDependencies();
@@ -228,7 +264,7 @@ export class RuntimePlatformShell implements PlatformShell {
     this.rollbackPendingComponents = [];
   }
 
-  async stop(): Promise<void> {
+  private async stopComponents(): Promise<void> {
     const hasRollbackPending = this.rollbackPendingComponents.length > 0;
 
     if ((!this.started && !hasRollbackPending) || this.stopped) {
