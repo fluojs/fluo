@@ -356,13 +356,32 @@ bootstrap-resolved route catalog:
 ```bash
 fluo typegen ./src/app.ts --output ./src/generated/react-pages.ts
 fluo typegen ./src/admin.ts --export AdminModule --output ./src/generated/admin-pages.ts
+fluo typegen ./src/app.ts --output ./src/generated/react-pages.ts --check
+fluo typegen ./src/app.ts --output ./src/generated/react-pages.ts --watch
 ```
 
 `--export` defaults to `AppModule`. The command loads TypeScript source through the CLI loader,
 bootstraps the application, reads `app.dispatcher.describeRoutes()`, calls
 `createReactPageCatalog(...)` and `generateReactPageTypes(...)`, then closes the application. Output
 paths are resolved from the current working directory. A missing file is reported as `CREATE`, stale
-content as `UPDATE`, and byte-identical content as `UNCHANGED`.
+content as `UPDATE`, and byte-identical content as `UNCHANGED`. Writes publish one complete temporary
+file with an atomic rename, and `UNCHANGED` never rewrites the target.
+
+`--check` performs the same authoritative bootstrap and generation but never writes the target. It
+compares exact bytes and reports one stable status. `UNCHANGED` goes to stdout with exit code `0`;
+`MISSING`, `STALE`, `MALFORMED`, and `UNSUPPORTED_VERSION` go to stderr with exit codes `2`, `3`, `4`,
+and `5`. Argument, bootstrap, generation, filesystem, and other command failures use exit code `1`.
+The root package exports `TYPEGEN_EXIT_CODES` for programmatic callers.
+
+`--watch` is the bounded development integration. Startup must generate successfully before the CLI
+installs a recursive watcher for the application module directory and prints `WATCHING <directory>`.
+Filesystem bursts are coalesced for 100 ms, generations are serialized, and events for the output or
+its temporary files are ignored. A regeneration failure prints `ERROR <output>: <message>`, preserves
+the last valid artifact, and waits for a later change. A watcher failure exits with code `1` after
+cleanup. `SIGINT` and `SIGTERM` close the watcher, remove signal handlers, wait for an active
+generation, and exit with code `0`. Files outside the module directory are intentionally outside this
+watch boundary; run the command again or choose a module path at the intended source root instead of
+expecting source scanning or a second route discovery system.
 
 The generated `reactPageRoutes` object keys routes by stable catalog `id`. Its dynamic `href(...)`,
 `link(...)`, `push(...)`, and `replace(...)` methods require all path params and URI-encode each value;
@@ -407,10 +426,11 @@ The package can be used programmatically to trigger CLI actions from within othe
 | `runInspectCommand(argv, options?)` | Programmatic access to inspect orchestration, compiled route JSON/report emission, and Studio Mermaid delegation. |
 | `InspectCommandRuntimeOptions` | Type for `runInspectCommand(...)` and `runCli(...)` inspect runtime overrides such as cwd, streams, prompts, and Studio renderer loading. |
 | `typegenUsage()` | Returns the current `fluo typegen` usage text for help surfaces and tests. |
-| `runTypegenCommand(argv, options?)` | Programmatic access to bootstrap-resolved React page type generation and deterministic artifact writes. |
+| `TYPEGEN_EXIT_CODES` | Stable `SUCCESS`, `ERROR`, `MISSING`, `STALE`, `MALFORMED`, and `UNSUPPORTED_VERSION` process codes used by typegen automation. |
+| `runTypegenCommand(argv, options?)` | Programmatic access to bootstrap-resolved React page generation, non-mutating checks, and bounded watch mode. |
 | `TypegenCommandRuntimeOptions` | Type for `runTypegenCommand(...)` and `runCli(...)` typegen runtime overrides such as cwd, streams, and tooling module loading. |
 
-Programmatic entry points preserve caller process ownership. `runCli(...)`, `runNewCommand(...)`, `runInspectCommand(...)`, and `runTypegenCommand(...)` return numeric exit codes instead of calling `process.exit(...)`; prompt cancellation resolves as exit code `0` through the command runner, and setup actions such as dependency installation or git initialization only run when the resolved `fluo new` options request them. `runGenerateCommand(...)` returns a structured `GenerateResult`; pass `dryRun: true` to preview generated file and module-wiring actions without writing files. Caller-supplied prompt hooks can throw `CliPromptCancelledError` from the public package entrypoint to express normal cancellation without depending on CLI-internal files.
+Programmatic entry points preserve caller process ownership. `runCli(...)`, `runNewCommand(...)`, `runInspectCommand(...)`, and `runTypegenCommand(...)` return numeric exit codes instead of calling `process.exit(...)`; typegen callers can compare those results with `TYPEGEN_EXIT_CODES`. Prompt cancellation resolves as exit code `0` through the command runner, and setup actions such as dependency installation or git initialization only run when the resolved `fluo new` options request them. `runGenerateCommand(...)` returns a structured `GenerateResult`; pass `dryRun: true` to preview generated file and module-wiring actions without writing files. Caller-supplied prompt hooks can throw `CliPromptCancelledError` from the public package entrypoint to express normal cancellation without depending on CLI-internal files.
 
 ## Related Packages
 

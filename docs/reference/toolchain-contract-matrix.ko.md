@@ -27,12 +27,34 @@
 | **개발 watch restart** | 생성된 애플리케이션 프로젝트에서 `fluo dev` 실행 | Node 스타터는 기본적으로 fluo가 소유한 restart runner를 사용합니다. 이 runner는 filesystem burst를 debounce하고, restart 전에 content hash를 비교하며, noisy output/cache/editor 경로를 무시하고, 앱 로그 전용 출력·색상 보존·restart clear/header 동작을 일관되게 유지합니다. 이 동작은 true HMR이 아니라 restart-on-watch입니다. Node 디버깅에는 `fluo dev --raw-watch` 또는 `FLUO_DEV_RAW_WATCH=1`로 runtime-native `node --watch` 명령을 복원할 수 있습니다. Bun/Deno/Workers는 `fluo dev` 추상성을 유지하되 runtime-owned watch/reload 동작(`bun --watch src/main.ts`, `deno run --watch --allow-env --allow-net src/main.ts`, `wrangler dev --show-interactive-dev-session=false`)을 기본값으로 사용하고, fluo 소유 restart runner가 필요하면 `fluo dev --runner fluo` 또는 `FLUO_DEV_RUNNER=fluo`를 사용합니다. |
 | **HTTP starter testing layout** | 생성된 non-Deno HTTP 애플리케이션 starter | 빠른 unit test는 `src/greeting/` 아래에 생성하고, slice/module graph test는 `src/greeting/greeting.slice.test.ts`에 두며, app dispatch test는 `src/app.test.ts`, 기본 e2e 스타일 suite는 `createTestApp({ rootModule })`와 `app.request(...).send()`를 사용하는 `test/app.e2e.test.ts`에 생성합니다. 생성된 Vitest config는 `src/**/*.test.ts`와 `test/**/*.test.ts`를 모두 포함하고, 지원되는 script는 `test`, `test:watch`, `test:cov`, `test:e2e`를 포함합니다. 기존 `src/app.e2e.test.ts` 사용자는 request helper를 바꾸지 않고 해당 test를 `test/app.e2e.test.ts`로 이동할 수 있습니다. |
 | **React starter verification** | 생성된 `react-vite-ssr` project | `typecheck`, `test`, `build`, `start`가 generated project lifecycle을 검증합니다. `test:browser`는 build된 server를 시작해 streamed HTML, generated manifest asset, warning-free hydration, real-anchor navigation, full-document `router.push(...)` navigation을 검증합니다. |
+| **React page type generation** | `fluo typegen <module-path> --output <path>` | Runtime log를 suppress한 상태로 selected module을 bootstrap하고 authoritative compiled `HandlerDescriptor`를 `createReactPageCatalog(...)`로 project한 뒤 versioned artifact를 atomically publish합니다. `CREATE`, `UPDATE`, `UNCHANGED`를 보고하며 identical output은 다시 쓰지 않습니다. |
+| **React page type check** | `fluo typegen <module-path> --output <path> --check` | Target write 없이 같은 bootstrap과 generation을 수행합니다. Exact current byte는 `UNCHANGED`/`0`, missing, stale, malformed, unsupported-version target은 각각 전용 diagnostic과 exit code를 사용합니다. |
+| **React page type watch** | `fluo typegen <module-path> --output <path> --watch` | Ready 전에 generate하고 module directory만 recursively watch하며 100 ms change burst를 coalesce하고 regeneration을 serialize합니다. 자체 output/temp file을 무시하고 generation failure 뒤 마지막 valid artifact를 보존하며 shutdown 또는 setup failure에서 watcher/signal을 해제합니다. |
+| **React consumer testing loop** | Vitest + `createTestApp(...)` + TypeScript compile fixture + Playwright | Render-policy unit, direct page/missing-renderer request dispatch, typed route id/param 및 stale generation, aligned/mismatched hydration, production asset, JavaScript-disabled native form fallback을 검증합니다. 기존 fixture가 real package seam을 compose하므로 React-specific testing helper는 제공하지 않습니다. |
 | **비-Node production lifecycle** | 생성된 Bun, Deno, Cloudflare Workers package script | Bun 생성 프로젝트는 `dev: fluo dev`를 유지한 뒤 `bun build ./src/main.ts --outdir ./dist --target bun`으로 빌드하고 `bun dist/main.js`로 시작합니다. Deno 생성 프로젝트는 `dev: fluo dev`를 유지한 뒤 `deno compile --allow-env --allow-net --output dist/app src/main.ts`로 빌드하고 `./dist/app`을 실행합니다. Cloudflare Workers 생성 프로젝트는 `dev: fluo dev`를 유지하고, `wrangler deploy --dry-run`으로 빌드 검증하며, `preview: wrangler dev --remote --show-interactive-dev-session=false`, `deploy: wrangler deploy`를 노출하고, Wrangler native publish flow를 사용하도록 의도적으로 `start`를 생략합니다. |
 | **리소스 생성** | `fluo g <type>` | 일관된 명명 접미사 (`.service.ts`, `.controller.ts`) 산출. Request DTO는 `fluo g req users CreateUser`처럼 명시적 feature 디렉터리를 대상으로 지정할 수 있습니다. `fluo g module User --with-test`는 `src/users/user.slice.test.ts`를 생성하고, `fluo g resource User --with-slice-test`는 resource-level provider override coverage를 `src/users/user.slice.test.ts`에 생성하며, `fluo g e2e users`는 `createTestApp({ rootModule })` 기반 `test/users.e2e.test.ts`를 생성합니다. |
 | **진단 (JSON)** | `fluo inspect <module-path> --json` | 런타임이 생산한 graph, readiness, health, diagnostics, compiled route inspection data를 JSON 형식으로 내보냅니다. Route entry는 effective path/version과 parameter name을 포함하며 React page는 `kind: 'react-page'`, 일반 handler는 `kind: 'http'`를 사용합니다. 출력 모드를 고르지 않으면 JSON이 기본 출력 모드입니다. `--timing`은 명시적인 `--json` flag 유무와 관계없이 snapshot 옆에 bootstrap timing diagnostics를 포함할 수 있습니다. |
 | **진단 (timing)** | `fluo inspect <module-path> --timing --output artifacts/inspect-with-timing.json` | 기본 JSON snapshot과 bootstrap timing diagnostics를 `{ snapshot, timing }` artifact로 씁니다. `--output`이 없으면 같은 JSON envelope를 stdout에 씁니다. |
 | **진단 report** | `fluo inspect <module-path> --report --output artifacts/inspect-report.json` | 안정적인 요약, 런타임이 생산한 snapshot, diagnostics, bootstrap timing을 포함하는 CI/support triage JSON report를 씁니다. `--output <path>`는 명시적 artifact 경로이며 inspection이 애플리케이션 write를 소유하게 만들지 않습니다. |
 | **진단 (Mermaid)** | `fluo inspect <module-path> --mermaid` | snapshot-to-Mermaid 렌더링을 선택적 `@fluojs/studio` 계약에 위임합니다. CLI는 Studio renderer를 로드하고 Mermaid text를 stdout 또는 `--output <path>`에 쓰며, 그래프 렌더링 의미론을 소유하지 않습니다. |
+
+## React typegen artifact 및 process contract
+
+Generated source는 현재 `@fluojs/react/typegen` artifact version으로 시작하고 completion marker로 끝납니다.
+Check mode는 missing target을 parsing 전에 분류하고 exact byte를 unchanged, incomplete current artifact를
+malformed, 다른 recognized version을 unsupported, byte가 다른 complete current artifact를 stale로 분류합니다.
+Check mode와 failed generation은 target을 쓰지 않습니다.
+
+| mode/result | stdout | stderr | exit code | target mutation |
+| --- | --- | --- | ---: | --- |
+| write `CREATE` / `UPDATE` / `UNCHANGED` | `<ACTION> <absolute-output-path>` | 없음 | `0` | Atomic create/update; unchanged는 write를 생략합니다. |
+| check `UNCHANGED` | `UNCHANGED <absolute-output-path>` | 없음 | `0` | 없음. |
+| check `MISSING` | 없음 | `MISSING <path>: <guidance>` | `2` | 없음. |
+| check `STALE` | 없음 | `STALE <path>: <guidance>` | `3` | 없음. |
+| check `MALFORMED` | 없음 | `MALFORMED <path>: <guidance>` | `4` | 없음. |
+| check `UNSUPPORTED_VERSION` | 없음 | `UNSUPPORTED_VERSION <path>: <version guidance>` | `5` | 없음. |
+| command/setup/bootstrap/filesystem failure | 없음 | failure message | `1` | Partial artifact를 publish하지 않습니다. |
+| watch ready/regeneration | initial action, `WATCHING <module-directory>`, 이후 action | recoverable `ERROR <output>: <message>` | signal shutdown은 `0`, watcher/command failure는 `1` | Complete atomic generation만 반영하며 failed generation은 마지막 valid file을 보존합니다. |
 
 ## inspect artifact output contract
 
