@@ -1,5 +1,4 @@
 import { existsSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { dirname, extname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -21,6 +20,18 @@ export type ReactTypegenArtifactInspection =
   | { readonly status: 'unsupported-version'; readonly version: number }
   | { readonly status: 'valid'; readonly version: number };
 
+type CreateTypegenSourceOptions = {
+  readonly cwd: string;
+  readonly modules: ReactTypegenModules;
+  readonly parsed: ParsedTypegenArgs;
+};
+
+type GenerateTypegenSourceOptions = {
+  readonly application: object;
+  readonly modules: ReactTypegenModules;
+  readonly parsed: ParsedTypegenArgs;
+};
+
 const TYPESCRIPT_MODULE_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts']);
 const TYPEGEN_MODULE_IDS = ['@fluojs/react', '@fluojs/react/typegen', '@fluojs/runtime'] as const;
 const SILENT_APPLICATION_LOGGER = Object.freeze({
@@ -38,25 +49,25 @@ function isModuleNotFoundError(error: unknown): boolean {
     && (error.code === 'MODULE_NOT_FOUND' || error.code === 'ERR_MODULE_NOT_FOUND');
 }
 
-function resolveProjectModuleUrl(moduleId: string, cwd: string): string {
-  const resolvers = [createRequire(resolve(cwd, 'package.json')), createRequire(import.meta.url)];
-  for (const resolver of resolvers) {
-    let modulePath: string;
+async function importProjectModule(moduleId: string, cwd: string, tsconfig: string | false): Promise<object> {
+  const importOptions = [
+    { parentURL: pathToFileURL(resolve(cwd, 'package.json')).href, tsconfig },
+    { parentURL: import.meta.url, tsconfig: false },
+  ] as const;
+  for (const options of importOptions) {
     try {
-      modulePath = resolver.resolve(moduleId);
+      const imported = await tsImport(moduleId, options);
+      if (typeof imported !== 'object' || imported === null) {
+        throw new TypegenCommandError(`Resolved ${moduleId} to an invalid module namespace.`);
+      }
+      return imported;
     } catch (error: unknown) {
       if (!isModuleNotFoundError(error)) {
         throw error;
       }
-      continue;
     }
-    return pathToFileURL(modulePath).href;
   }
   throw new TypegenCommandError(`Unable to resolve ${moduleId} from the inspected project.`);
-}
-
-async function importProjectModule(moduleId: string, cwd: string): Promise<object> {
-  return import(resolveProjectModuleUrl(moduleId, cwd));
 }
 
 async function importTypeScriptApplicationModule(modulePath: string): Promise<object> {
@@ -64,7 +75,7 @@ async function importTypeScriptApplicationModule(modulePath: string): Promise<ob
   const tsconfigPath = resolve(dirname(modulePath), 'tsconfig.json');
   return existsSync(tsconfigPath)
     ? tsImport(moduleUrl, { parentURL: import.meta.url, tsconfig: tsconfigPath })
-    : tsImport(moduleUrl, import.meta.url);
+    : tsImport(moduleUrl, { parentURL: import.meta.url, tsconfig: false });
 }
 
 function requireNamespace(owner: object, name: string): object {
@@ -75,30 +86,12 @@ function requireNamespace(owner: object, name: string): object {
   return value;
 }
 
-async function importNativeTypegenGraph(modulePath: string, cwd: string): Promise<{
-  readonly application: object;
-  readonly modules: ReactTypegenModules;
-}> {
+async function importNativeApplicationModule(modulePath: string): Promise<object> {
   applicationImportSequence += 1;
-  const imports = {
-    application: pathToFileURL(modulePath).href,
-    react: resolveProjectModuleUrl(TYPEGEN_MODULE_IDS[0], cwd),
-    typegen: resolveProjectModuleUrl(TYPEGEN_MODULE_IDS[1], cwd),
-    runtime: resolveProjectModuleUrl(TYPEGEN_MODULE_IDS[2], cwd),
-  } as const;
-  const source = `${Object.entries(imports)
-    .map(([name, url]) => `import * as ${name} from ${JSON.stringify(url)};`)
-    .join('\n')}\nexport { application, react, runtime, typegen };\n`;
+  const source = `import * as application from ${JSON.stringify(pathToFileURL(modulePath).href)};\nexport { application };\n`;
   const graphUrl = `data:text/javascript;charset=utf-8,${encodeURIComponent(source)}#fluo-typegen-${String(applicationImportSequence)}`;
   const graph = await tsImport(graphUrl, import.meta.url);
-  return {
-    application: requireNamespace(graph, 'application'),
-    modules: {
-      react: requireNamespace(graph, 'react'),
-      runtime: requireNamespace(graph, 'runtime'),
-      typegen: requireNamespace(graph, 'typegen'),
-    },
-  };
+  return requireNamespace(graph, 'application');
 }
 
 function requireFunction(owner: object, name: string): (...args: readonly unknown[]) => unknown {
@@ -113,41 +106,47 @@ function requireFunction(owner: object, name: string): (...args: readonly unknow
  * Loads typegen package entrypoints from the consumer project or CLI installation.
  *
  * @param cwd Consumer project directory used for package resolution.
+ * @param tsconfig TypeScript configuration path, or `false` for native package resolution.
  * @returns React, React typegen, and runtime module namespaces.
  */
-export async function loadReactTypegenModules(cwd: string): Promise<ReactTypegenModules> {
-  const [react, typegen, runtime] = await Promise.all(TYPEGEN_MODULE_IDS.map((moduleId) => importProjectModule(moduleId, cwd)));
+export async function loadReactTypegenModules(cwd: string, tsconfig: string | false = false): Promise<ReactTypegenModules> {
+  const [react, typegen, runtime] = await Promise.all(
+    TYPEGEN_MODULE_IDS.map((moduleId) => importProjectModule(moduleId, cwd, tsconfig)),
+  );
   return { react, runtime, typegen };
 }
 
 /**
  * Bootstraps the selected module and generates source from authoritative route descriptors.
  *
- * @param parsed Parsed typegen command options.
- * @param cwd Consumer project directory.
- * @param modules Loaded React and runtime tooling modules.
+ * @param options Parsed command, consumer directory, module namespaces, and native import boundary.
  * @returns Complete deterministic generated source.
  */
-export async function createTypegenSource(
-  parsed: ParsedTypegenArgs,
-  cwd: string,
-  modules: ReactTypegenModules,
-): Promise<string> {
-  const modulePath = resolve(cwd, parsed.modulePath);
-  const imported = TYPESCRIPT_MODULE_EXTENSIONS.has(extname(modulePath))
-    ? {
-        application: await importTypeScriptApplicationModule(modulePath),
-        modules,
-      }
-    : await importNativeTypegenGraph(modulePath, cwd);
-  const importedApplication = imported.application;
-  const generationModules = imported.modules;
-  const rootModule = Reflect.get(importedApplication, parsed.exportName);
+export async function createTypegenSource(options: CreateTypegenSourceOptions): Promise<string> {
+  const modulePath = resolve(options.cwd, options.parsed.modulePath);
+  const importedApplication = TYPESCRIPT_MODULE_EXTENSIONS.has(extname(modulePath))
+    ? await importTypeScriptApplicationModule(modulePath)
+    : await importNativeApplicationModule(modulePath);
+  return generateTypegenSource({
+    application: importedApplication,
+    modules: options.modules,
+    parsed: options.parsed,
+  });
+}
+
+/**
+ * Generates source from one already-imported application and its matching tooling namespaces.
+ *
+ * @param options Application namespace, generation modules, and parsed command selection.
+ * @returns Complete deterministic generated source.
+ */
+export async function generateTypegenSource(options: GenerateTypegenSourceOptions): Promise<string> {
+  const rootModule = Reflect.get(options.application, options.parsed.exportName);
   if (typeof rootModule !== 'function') {
-    throw new TypegenCommandError(`Export "${parsed.exportName}" is not a module class constructor.`);
+    throw new TypegenCommandError(`Export "${options.parsed.exportName}" is not a module class constructor.`);
   }
 
-  const factory = Reflect.get(generationModules.runtime, 'FluoFactory');
+  const factory = Reflect.get(options.modules.runtime, 'FluoFactory');
   if (typeof factory !== 'function') {
     throw new TypegenCommandError('Required runtime FluoFactory is unavailable.');
   }
@@ -169,8 +168,8 @@ export async function createTypegenSource(
     if (!Array.isArray(descriptors)) {
       throw new TypegenCommandError('Runtime route descriptors are unavailable.');
     }
-    const catalog = Reflect.apply(requireFunction(generationModules.react, 'createReactPageCatalog'), undefined, [descriptors]);
-    const source = Reflect.apply(requireFunction(generationModules.typegen, 'generateReactPageTypes'), undefined, [catalog]);
+    const catalog = Reflect.apply(requireFunction(options.modules.react, 'createReactPageCatalog'), undefined, [descriptors]);
+    const source = Reflect.apply(requireFunction(options.modules.typegen, 'generateReactPageTypes'), undefined, [catalog]);
     if (typeof source !== 'string') {
       throw new TypegenCommandError('React page typegen returned an invalid artifact.');
     }

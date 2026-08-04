@@ -24,7 +24,10 @@ type CliStream = {
 export interface TypegenCommandRuntimeOptions {
   /** Current working directory for module and output path resolution. */
   readonly cwd?: string;
-  /** Optional build-tooling module loader override for tests and editor integrations. */
+  /**
+   * Optional build-tooling module loader override for tests and editor integrations.
+   * Supplying it uses the returned namespaces for TypeScript and native module inputs.
+   */
   readonly loadReactTypegenModules?: (cwd: string) => Promise<ReactTypegenModules>;
   /** Custom stream for error output. */
   readonly stderr?: CliStream;
@@ -83,10 +86,11 @@ export async function runTypegenCommand(
     }
 
     const parsed = parseTypegenArgs(argv);
-    const modules = await (runtime.loadReactTypegenModules ?? loadReactTypegenModules)(cwd);
+    const modules = (runtime.loadReactTypegenModules ?? loadReactTypegenModules)(cwd);
     const outputPath = resolve(cwd, parsed.outputPath);
+    const generateSource = async () => createTypegenSource({ cwd, modules: await modules, parsed });
     const generateAndWrite = async () => {
-      const source = await createTypegenSource(parsed, cwd, modules);
+      const source = await generateSource();
       const action = await writeTypegenArtifact(outputPath, source);
       stdout.write(`${action} ${outputPath}\n`);
     };
@@ -104,12 +108,13 @@ export async function runTypegenCommand(
       });
     }
 
-    const source = await createTypegenSource(parsed, cwd, modules);
+    const source = await generateSource();
     if (parsed.check) {
+      const loadedModules = await modules;
       const check = await checkTypegenArtifact(
         outputPath,
         source,
-        (existingSource) => inspectReactTypegenArtifact(modules, existingSource),
+        (existingSource) => inspectReactTypegenArtifact(loadedModules, existingSource),
       );
       return reportCheckResult(check, outputPath, stdout, stderr);
     }
