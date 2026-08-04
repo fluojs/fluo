@@ -16,9 +16,11 @@ function applicationSource(markerPath: string): string {
     "import { Path, ReactModule, Router } from '@fluojs/react';",
     '',
     `writeFileSync(${JSON.stringify(markerPath)}, String(process.pid));`,
-    'export class ProductRouter { show() {} }',
-    "Path('/:productId')(ProductRouter.prototype, 'show', Object.getOwnPropertyDescriptor(ProductRouter.prototype, 'show'));",
-    "Router('/products')(ProductRouter);",
+    "@Router('/products')",
+    'export class ProductRouter {',
+    "  @Path('/:productId')",
+    '  show() {}',
+    '}',
     'export class AppModule {}',
     'defineModule(AppModule, { imports: [ReactModule.forRoot({ controllers: [ProductRouter] })] });',
     '',
@@ -45,12 +47,14 @@ afterEach(async () => {
 
 describe('fluo typegen generation process', () => {
   it('settles every isolated generation process before repeated commands complete', async () => {
-    // Given: one native application generated repeatedly in a long-lived caller process.
+    // Given: one buildless TypeScript application generated repeatedly in a long-lived caller process.
     const cwd = await mkdtemp(join(fixturesDirectory, 'typegen-generation-process-'));
     tempDirectories.push(cwd);
     const markerPath = join(cwd, 'generation.pid');
-    const modulePath = join(cwd, 'app.mjs');
+    const modulePath = join(cwd, 'app.ts');
     const outputPath = join(cwd, 'generated', 'react-pages.ts');
+    const fixtureTsconfig = await readFile(join(fixturesDirectory, 'tsconfig.json'), 'utf8');
+    await writeFile(join(cwd, 'tsconfig.json'), fixtureTsconfig.replaceAll('../../../../', '../../../../../'), 'utf8');
     await writeFile(modulePath, applicationSource(markerPath), 'utf8');
 
     // When: the caller completes many default generations.
