@@ -356,13 +356,42 @@ builder를 생성합니다.
 ```bash
 fluo typegen ./src/app.ts --output ./src/generated/react-pages.ts
 fluo typegen ./src/admin.ts --export AdminModule --output ./src/generated/admin-pages.ts
+fluo typegen ./src/app.ts --output ./src/generated/react-pages.ts --check
+fluo typegen ./src/app.ts --output ./src/generated/react-pages.ts --watch
 ```
 
 `--export` 기본값은 `AppModule`입니다. 명령은 CLI loader로 TypeScript source를 로드하고 application을
 bootstrap한 다음 `app.dispatcher.describeRoutes()`를 읽어 `createReactPageCatalog(...)`와
 `generateReactPageTypes(...)`를 호출하고 application을 닫습니다. Output path는 현재 working
 directory를 기준으로 resolve됩니다. 파일이 없으면 `CREATE`, content가 stale하면 `UPDATE`, byte 단위로
-같으면 `UNCHANGED`를 보고합니다.
+같으면 `UNCHANGED`를 보고합니다. Write는 complete temporary file 하나를 atomic rename으로 publish하며
+`UNCHANGED`는 target을 다시 쓰지 않습니다.
+
+Default generation은 application과 일치하는 tooling namespace를 하나의 short-lived child process에서
+평가하고, 해당 process가 종료된 뒤에만 결과를 check하거나 publish합니다. 따라서 반복되는 watch
+generation이 watcher process에 application module graph나 TypeScript loader resource를 유지하지 않습니다.
+Programmatic caller가 `TypegenCommandRuntimeOptions.loadReactTypegenModules`를 제공하면 의도적으로 caller
+process에서 generation하며, 반환된 namespace가 TypeScript, `.js`, `.mjs` input 모두에 authoritative합니다.
+
+`--check`는 같은 authoritative bootstrap과 generation을 수행하지만 target을 쓰지 않습니다. Exact byte를
+비교해 stable status 하나를 보고합니다. `UNCHANGED`는 stdout과 exit code `0`, `MISSING`, `STALE`,
+`MALFORMED`, `UNSUPPORTED_VERSION`은 stderr와 각각 exit code `2`, `3`, `4`, `5`를 사용합니다. Argument,
+현재 version의 target은 complete canonical generated body여야 합니다. Syntax 또는 structure가 손상되면
+`MALFORMED`, 이전 catalog에서 생성된 complete artifact이면 `STALE`입니다. Argument, bootstrap,
+generation, filesystem 및 그 밖의 command failure는 exit code `1`을 사용합니다. Programmatic caller는
+root package가 export하는 `TYPEGEN_EXIT_CODES`를 사용할 수 있습니다.
+
+`--watch`는 bounded development integration입니다. CLI는 startup generation 전에 application module
+directory의 recursive watcher를 설치합니다. 해당 generation과 그 실행 중 관찰된 change를 한 번으로
+coalesce한 rerun이 모두 성공한 뒤에만 `WATCHING <directory>`를 출력합니다. Readiness 이후 filesystem
+burst는 100 ms 동안 coalesce되고 generation은 serialize되며 output과 그 temporary file event는
+무시됩니다. 각 generation은 authoritative bootstrap 전에 변경된 native `.js`와 `.mjs` dependency를
+포함한 현재 application module graph를 평가합니다. Regeneration failure는 `ERROR <output>: <message>`를
+출력하고 마지막 valid artifact를 보존한 채 다음 change를 기다립니다. Watcher failure는 cleanup 뒤 code
+`1`로 종료됩니다. `SIGINT`와 `SIGTERM`은 watcher를 닫고 signal handler를 제거하며 active generation을
+기다린 뒤 code `0`으로 종료됩니다. Module directory 밖의 파일은 의도적으로 watch boundary 밖에
+있습니다. Source scanner나 두 번째 route discovery system을 기대하지 말고 command를 다시 실행하거나
+의도한 source root의 module path를 선택하세요.
 
 생성된 `reactPageRoutes` object는 stable catalog `id`를 key로 사용합니다. Dynamic `href(...)`,
 `link(...)`, `push(...)`, `replace(...)` method는 모든 path param을 요구하고 각 값을 URI-encode하며
@@ -406,10 +435,11 @@ Catalog만으로는 URI versioning과 header, media-type, custom version strateg
 | `runInspectCommand(argv, options?)` | inspect orchestration, compiled route JSON/report emission, Studio Mermaid delegation에 대한 프로그래밍적 접근을 제공합니다. |
 | `InspectCommandRuntimeOptions` | cwd, stream, prompt, Studio renderer loading 같은 `runInspectCommand(...)`와 `runCli(...)` inspect runtime override 타입입니다. |
 | `typegenUsage()` | help surface와 test에서 사용하는 현재 `fluo typegen` usage text를 반환합니다. |
-| `runTypegenCommand(argv, options?)` | bootstrap-resolved React page type generation과 deterministic artifact write에 대한 프로그래밍적 접근을 제공합니다. |
-| `TypegenCommandRuntimeOptions` | cwd, stream, tooling module loading 같은 `runTypegenCommand(...)`와 `runCli(...)` typegen runtime override 타입입니다. |
+| `TYPEGEN_EXIT_CODES` | Typegen automation이 사용하는 stable `SUCCESS`, `ERROR`, `MISSING`, `STALE`, `MALFORMED`, `UNSUPPORTED_VERSION` process code입니다. |
+| `runTypegenCommand(argv, options?)` | bootstrap-resolved React page generation, non-mutating check, bounded watch mode에 대한 프로그래밍적 접근을 제공합니다. |
+| `TypegenCommandRuntimeOptions` | cwd, stream, tooling module loading 같은 `runTypegenCommand(...)`와 `runCli(...)` typegen runtime override 타입입니다. `loadReactTypegenModules`를 제공하면 해당 namespace를 사용하는 caller-process generation을 선택하고, 생략하면 short-lived generation child를 사용합니다. |
 
-프로그래밍 방식 진입점은 호출자 프로세스의 소유권을 보존합니다. `runCli(...)`, `runNewCommand(...)`, `runInspectCommand(...)`, `runTypegenCommand(...)`는 `process.exit(...)`를 호출하지 않고 숫자 exit code를 반환하며, prompt 취소는 command runner를 통해 exit code `0`으로 해석됩니다. dependency 설치나 git 초기화 같은 setup 작업은 해석된 `fluo new` 옵션이 요청한 경우에만 실행됩니다. `runGenerateCommand(...)`는 구조화된 `GenerateResult`를 반환합니다. 파일 쓰기 없이 생성 파일과 module-wiring action을 미리 보려면 `dryRun: true`를 전달하세요. 호출자가 제공한 prompt hook은 공개 패키지 엔트리포인트의 `CliPromptCancelledError`를 throw해 CLI 내부 파일에 의존하지 않고 정상 취소를 표현할 수 있습니다.
+프로그래밍 방식 진입점은 호출자 프로세스의 소유권을 보존합니다. `runCli(...)`, `runNewCommand(...)`, `runInspectCommand(...)`, `runTypegenCommand(...)`는 `process.exit(...)`를 호출하지 않고 숫자 exit code를 반환하며 typegen caller는 그 결과를 `TYPEGEN_EXIT_CODES`와 비교할 수 있습니다. Prompt 취소는 command runner를 통해 exit code `0`으로 해석됩니다. dependency 설치나 git 초기화 같은 setup 작업은 해석된 `fluo new` 옵션이 요청한 경우에만 실행됩니다. `runGenerateCommand(...)`는 구조화된 `GenerateResult`를 반환합니다. 파일 쓰기 없이 생성 파일과 module-wiring action을 미리 보려면 `dryRun: true`를 전달하세요. 호출자가 제공한 prompt hook은 공개 패키지 엔트리포인트의 `CliPromptCancelledError`를 throw해 CLI 내부 파일에 의존하지 않고 정상 취소를 표현할 수 있습니다.
 
 ## 관련 패키지
 

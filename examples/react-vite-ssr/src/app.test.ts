@@ -1,4 +1,7 @@
+import { Module } from '@fluojs/core';
+import { Path, ReactModule, Router } from '@fluojs/react';
 import { createTestApp } from '@fluojs/testing';
+import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 
 import { createReactViteExampleModule } from './app';
@@ -29,6 +32,42 @@ function readHtml(body: unknown): string {
 }
 
 describe('react-vite-ssr example', () => {
+  it('reports a missing application page renderer through real request dispatch', async () => {
+    // Given: an explicit React page returns one element without configuring renderPage.
+    const diagnostics: string[] = [];
+
+    @Router('/missing-renderer')
+    class MissingRendererRouter {
+      @Path('/')
+      show() {
+        return createElement('main', null, 'Missing renderer');
+      }
+    }
+
+    @Module({
+      imports: [ReactModule.forRoot({
+        controllers: [MissingRendererRouter],
+        onDiagnostic(diagnostic) {
+          diagnostics.push(diagnostic.code);
+        },
+      })],
+    })
+    class MissingRendererModule {}
+
+    const app = await createTestApp({ rootModule: MissingRendererModule });
+
+    try {
+      // When: the virtual HTTP client dispatches the page request.
+      const response = await app.request('GET', '/missing-renderer/').send();
+
+      // Then: HTTP owns the failure response and React emits its stable configuration diagnostic.
+      expect(response.status).toBe(500);
+      expect(diagnostics).toEqual(['react-ssr-missing-page-renderer']);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('streams a DTO-bound page with Vite hydration assets', async () => {
     // Given: a fluo React module backed by a loaded Vite manifest.
     const AppModule = createReactViteExampleModule({

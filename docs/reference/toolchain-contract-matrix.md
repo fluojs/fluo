@@ -27,12 +27,46 @@
 | **Development watch restart** | `fluo dev` in a generated application project | Uses the fluo-owned restart runner by default for Node starters. The runner debounces filesystem bursts, hashes content before restart, ignores noisy output/cache/editor paths, and keeps app-log-only output, color preservation, and restart clear/header behavior consistent. This is restart-on-watch, not true HMR. `fluo dev --raw-watch` or `FLUO_DEV_RAW_WATCH=1` restores the runtime-native `node --watch` command for Node debugging. Bun/Deno/Workers keep the `fluo dev` abstraction but default to runtime-owned watch/reload behavior (`bun --watch src/main.ts`, `deno run --watch --allow-env --allow-net src/main.ts`, or `wrangler dev --show-interactive-dev-session=false`); use `fluo dev --runner fluo` or `FLUO_DEV_RUNNER=fluo` when those projects need the fluo-owned restart runner instead. |
 | **HTTP starter testing layout** | Generated non-Deno HTTP application starters | Generates fast unit tests under `src/greeting/`, a slice/module graph test at `src/greeting/greeting.slice.test.ts`, app dispatch tests in `src/app.test.ts`, and the default e2e-style suite at `test/app.e2e.test.ts` using `createTestApp({ rootModule })` plus `app.request(...).send()`. Generated Vitest config includes both `src/**/*.test.ts` and `test/**/*.test.ts`, while supported scripts include `test`, `test:watch`, `test:cov`, and `test:e2e`. Existing `src/app.e2e.test.ts` users can move those tests to `test/app.e2e.test.ts` without changing the request helper. |
 | **React starter verification** | Generated `react-vite-ssr` project | `typecheck`, `test`, `build`, and `start` cover the generated project lifecycle. `test:browser` starts the built server and verifies streamed HTML, generated manifest assets, warning-free hydration, real-anchor navigation, and full-document `router.push(...)` navigation. |
+| **React page type generation** | `fluo typegen <module-path> --output <path>` | Bootstraps the selected module with runtime logs suppressed in a short-lived generation child, waits for child exit, projects authoritative compiled `HandlerDescriptor` values through `createReactPageCatalog(...)`, and atomically publishes a versioned artifact. Reports `CREATE`, `UPDATE`, or `UNCHANGED`; identical output is not rewritten. |
+| **React page type check** | `fluo typegen <module-path> --output <path> --check` | Performs the same bootstrap and generation without target writes. Exact current bytes return `UNCHANGED`/`0`; missing, stale, malformed, and unsupported-version targets have dedicated diagnostics and exit codes. |
+| **React page type watch** | `fluo typegen <module-path> --output <path> --watch` | Generates before readiness, recursively watches only the module directory, coalesces 100 ms change bursts, serializes regeneration, ignores its own output/temp files, preserves the last valid artifact after generation failure, and releases watchers/signals on shutdown or setup failure. |
+| **React consumer testing loop** | Vitest + `createTestApp(...)` + TypeScript compile fixtures + Playwright | Covers render-policy units, direct page/missing-renderer request dispatch, typed route ids/params and stale generation, aligned and mismatched hydration, production assets, and JavaScript-disabled native form fallback. Existing fixtures compose real package seams; no React-specific testing helper is provided. |
 | **Non-Node production lifecycle** | Generated Bun, Deno, and Cloudflare Workers package scripts | Bun generated projects keep `dev: fluo dev`, then build with `bun build ./src/main.ts --outdir ./dist --target bun` and start with `bun dist/main.js`. Deno generated projects keep `dev: fluo dev`, then build with `deno compile --allow-env --allow-net --output dist/app src/main.ts` and start with `./dist/app`. Cloudflare Workers generated projects keep `dev: fluo dev`, build with `wrangler deploy --dry-run`, expose `preview: wrangler dev --remote --show-interactive-dev-session=false`, expose `deploy: wrangler deploy`, and intentionally omit `start` so deployment uses Wrangler's native publish flow. |
 | **Resource Generation** | `fluo g <type>` | Produces consistent naming suffixes (`.service.ts`, `.controller.ts`). Request DTOs may target an explicit feature directory with `fluo g req users CreateUser`. `fluo g module User --with-test` emits `src/users/user.slice.test.ts`, `fluo g resource User --with-slice-test` emits resource-level provider override coverage in `src/users/user.slice.test.ts`, and `fluo g e2e users` emits `test/users.e2e.test.ts` with `createTestApp({ rootModule })`. |
 | **Diagnostics (JSON)** | `fluo inspect <module-path> --json` | Exports runtime-produced graph, readiness, health, diagnostics, and compiled route inspection data in JSON format. Route entries contain effective path/version and parameter names, with `kind: 'react-page'` for React pages and `kind: 'http'` for ordinary handlers. JSON is also the default output mode when no output mode is selected. `--timing` may be used with or without an explicit `--json` flag to include bootstrap timing diagnostics next to the snapshot. |
 | **Diagnostics (timing)** | `fluo inspect <module-path> --timing --output artifacts/inspect-with-timing.json` | Writes the default JSON snapshot plus bootstrap timing diagnostics as a `{ snapshot, timing }` artifact. Without `--output`, the same JSON envelope is written to stdout. |
 | **Diagnostics report** | `fluo inspect <module-path> --report --output artifacts/inspect-report.json` | Writes a CI/support triage JSON report containing a stable summary, the runtime-produced snapshot, diagnostics, and bootstrap timing. `--output <path>` is an explicit artifact path and does not make inspection own application writes. |
 | **Diagnostics (Mermaid)** | `fluo inspect <module-path> --mermaid` | Delegates snapshot-to-Mermaid rendering to the optional `@fluojs/studio` contract. The CLI loads Studio's renderer, writes the Mermaid text to stdout or `--output <path>`, and does not own graph rendering semantics. |
+
+## React typegen artifact and process contract
+
+Generated source starts with the current `@fluojs/react/typegen` artifact version and ends with a
+completion marker. Check mode classifies a missing target before parsing, exact bytes as unchanged,
+an incomplete current artifact as malformed, a different recognized version as unsupported, and a
+complete current artifact with different bytes as stale. Neither check mode nor a failed generation
+writes the target.
+
+Default write, check, and watch generations co-import the application and tooling namespaces in one
+short-lived child, wait for its exit, and remove parent IPC/error/exit listeners before completing.
+This bounds loader and native module-graph lifetime across repeated watch runs. The explicit
+programmatic `loadReactTypegenModules` override is the compatibility exception: generation remains
+in the caller process and uses those supplied namespaces for TypeScript and native inputs.
+
+| mode/result | stdout | stderr | exit code | target mutation |
+| --- | --- | --- | ---: | --- |
+| write `CREATE` / `UPDATE` / `UNCHANGED` | `<ACTION> <absolute-output-path>` | none | `0` | Atomic create/update; unchanged skips the write. |
+| check `UNCHANGED` | `UNCHANGED <absolute-output-path>` | none | `0` | Never. |
+| check `MISSING` | none | `MISSING <path>: <guidance>` | `2` | Never. |
+| check `STALE` | none | `STALE <path>: <guidance>` | `3` | Never. |
+| check `MALFORMED` | none | `MALFORMED <path>: <guidance>` | `4` | Never. |
+| check `UNSUPPORTED_VERSION` | none | `UNSUPPORTED_VERSION <path>: <version guidance>` | `5` | Never. |
+| command/setup/bootstrap/filesystem failure | none | failure message | `1` | No partial artifact is published. |
+| watch ready/regeneration | initial action and any startup-buffered action, `WATCHING <module-directory>`, then actions | recoverable `ERROR <output>: <message>` | `0` on signal shutdown; `1` on watcher/command failure | The watcher is active before startup generation and readiness follows its buffered rerun. Only complete atomic generations publish; failed generations preserve the last valid file. |
+
+A current-version check target is `MALFORMED` unless its complete body can be reproduced by the
+canonical generator grammar. A complete generated artifact that differs only because its catalog is
+older is `STALE`. Watch generations evaluate current native `.js` and `.mjs` dependency graphs
+without adding a source scanner or another route discovery path.
 
 ## inspect artifact output contract
 

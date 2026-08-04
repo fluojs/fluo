@@ -51,6 +51,22 @@ non-200 response, hydration warning/error, identifier-prefix mismatch, hydrate�
 URL과 server-rendered route state가 일치하지 않는 client navigation, `POST` → `303` → `GET` flow를
 완료하지 못하는 native form이 있으면 실패합니다.
 
+## canonical consumer test map
+
+이 예제는 canonical React consumer loop의 바깥쪽 절반을 담당하고 package 및 CLI fixture는 더 작은 unit과
+generated type을 검증합니다.
+
+| layer | executable evidence |
+| --- | --- |
+| Render-policy unit | `packages/react/src/render-policy.test.ts`가 composition과 diagnostic을 직접 검증합니다. |
+| Real request dispatch | `src/app.test.ts`가 `createTestApp(...)`로 direct page return, DTO failure, guard/interceptor behavior, native mutation response를 검증합니다. |
+| Generated-route compile/check | `packages/cli/src/commands/typegen-navigation.test.ts`가 positive/negative route-id/params fixture를 compile하고 `typegen.test.ts`가 non-mutating stale check를 검증합니다. |
+| Hydration | `src/hydration.test.ts`가 warning-free interaction과 `onRecoverableError` 기반 mismatch reporting을 모두 검증합니다. |
+| Production 및 no JavaScript | `tests/production-hydration.spec.ts`가 build asset과 hydration을 검증한 뒤 `javaScriptEnabled: false`로 native form을 submit합니다. |
+
+React-specific testing helper는 추가하지 않습니다. 일반 fixture가 반복 setup을 제거하는 동안
+`createTestApp(...)`, React DOM, TypeScript, Playwright가 real ownership boundary를 계속 실행합니다.
+
 ## native form mutation workflow
 
 `ProductDocument`는 label, required input, submit button, 일반 route action, 명시적인 multipart encoding을
@@ -111,7 +127,7 @@ examples/react-vite-ssr/
 │   ├── entry-client.ts     # Browser-only hydrateRoot(...) entry
 │   ├── entry-server.ts     # 명시적 Vite server-entry selector
 │   ├── hydration.ts        # server/client 공유 identifierPrefix
-│   ├── hydration.test.ts   # DOM-equivalent hydration interaction 및 warning 검증
+│   ├── hydration.test.ts   # Aligned interaction 및 recoverable mismatch reporting
 │   ├── main.ts             # 생성된 manifest를 로드하고 Fastify 시작
 │   ├── page.ts             # 공유 document, native form, client router, interactive counter
 │   └── recommendations.ts  # Lazy Suspense content

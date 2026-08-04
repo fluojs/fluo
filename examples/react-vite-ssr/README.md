@@ -53,6 +53,23 @@ missing or non-200 bootstrap/style assets, hydration warnings or errors, an iden
 mismatch, a counter that does not hydrate, client navigation whose URL and server-rendered route
 state do not agree, or a native form that cannot complete its `POST` → `303` → `GET` flow.
 
+## canonical consumer test map
+
+This example is the outer half of the canonical React consumer loop, while package and CLI fixtures
+cover the smaller units and generated types:
+
+| layer | executable evidence |
+| --- | --- |
+| Render-policy unit | `packages/react/src/render-policy.test.ts` covers composition and diagnostics directly. |
+| Real request dispatch | `src/app.test.ts` uses `createTestApp(...)` for a direct page return, DTO failures, guard/interceptor behavior, and native mutation responses. |
+| Generated-route compile/check | `packages/cli/src/commands/typegen-navigation.test.ts` compiles positive and negative route-id/params fixtures; `typegen.test.ts` covers non-mutating stale checks. |
+| Hydration | `src/hydration.test.ts` covers both warning-free interaction and mismatch reporting through `onRecoverableError`. |
+| Production and no JavaScript | `tests/production-hydration.spec.ts` verifies built assets and hydration, then submits the native form with `javaScriptEnabled: false`. |
+
+No React-specific testing helper is added. Ordinary fixtures remove repeated setup while
+`createTestApp(...)`, React DOM, TypeScript, and Playwright continue to exercise the real ownership
+boundaries.
+
 ## native form mutation workflow
 
 `ProductDocument` renders a real form with a label, required input, submit button, ordinary route
@@ -114,7 +131,7 @@ examples/react-vite-ssr/
 │   ├── entry-client.ts     # Browser-only hydrateRoot(...) entry
 │   ├── entry-server.ts     # Explicit Vite server-entry selector
 │   ├── hydration.ts        # Shared server/client identifierPrefix
-│   ├── hydration.test.ts   # DOM-equivalent hydration interaction and warning check
+│   ├── hydration.test.ts   # Aligned interaction and recoverable mismatch reporting
 │   ├── main.ts             # Loads the generated manifest and starts Fastify
 │   ├── page.ts             # Shared document, native form, client router, and interactive counter
 │   └── recommendations.ts  # Lazy Suspense content

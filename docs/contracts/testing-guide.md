@@ -52,6 +52,24 @@ Keep manual `FrameworkRequest`/`FrameworkResponse` stubs, `makeRequest(...)`, ra
 
 `@fluojs/testing` declares `engines.node >=20.0.0`. Its mock helpers and `DeepMocked<T>` type intentionally use a Vitest-compatible mock type boundary. `DeepMocked<T>` is available from the root `@fluojs/testing` package, `@fluojs/testing/types`, and `@fluojs/testing/mock`; consumers that do not run Vitest should prefer non-mock entrypoints such as `@fluojs/testing/app`, `@fluojs/testing/module`, or harness subpaths.
 
+## React Consumer Loop
+
+React consumer coverage extends the same ladder without adding a synthetic React test runtime:
+
+1. Unit-test render policies and metadata composition through pure helpers.
+2. Cover direct page returns, missing-renderer diagnostics, DTOs, request scopes, and response
+   ownership with `createTestApp({ rootModule })` and `app.request(...).send()`.
+3. Compile positive and negative generated-route fixtures with TypeScript and run non-mutating
+   `fluo typegen ... --check` in CI.
+4. Cover aligned hydration plus a deliberate mismatch reported through `onRecoverableError`.
+5. Run production Playwright hydration and a JavaScript-disabled native form submission through the
+   ordinary `POST` → `303` → `GET` path.
+
+Keep this evidence distributed at the owning seams: `@fluojs/react` units, `@fluojs/cli` typegen and
+compile fixtures, `@fluojs/testing` request dispatch, and the official React example's hydration and
+browser tests. Repeated setup alone does not justify a React-specific helper when ordinary fixtures
+already compose the real HTTP dispatcher and application renderer.
+
 ## Commands
 
 | Command | Use |

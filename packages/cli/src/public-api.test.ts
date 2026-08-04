@@ -20,6 +20,7 @@ import {
   runInspectCommand,
   runNewCommand,
   runTypegenCommand,
+  TYPEGEN_EXIT_CODES,
   type TypegenCommandRuntimeOptions,
   typegenUsage,
 } from './index.js';
@@ -124,6 +125,14 @@ describe('public CLI package API', () => {
     expect(typeof runGenerateCommand).toBe('function');
     expect(typeof runInspectCommand).toBe('function');
     expect(typeof runTypegenCommand).toBe('function');
+    expect(TYPEGEN_EXIT_CODES).toEqual({
+      ERROR: 1,
+      MALFORMED: 4,
+      MISSING: 2,
+      STALE: 3,
+      SUCCESS: 0,
+      UNSUPPORTED_VERSION: 5,
+    });
     expect(inspectUsage()).toContain('Usage: fluo inspect');
     expect(typegenUsage()).toContain('Usage: fluo typegen');
     expect(result.wiringBehavior).toBe('auto-registered');

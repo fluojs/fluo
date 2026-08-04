@@ -52,6 +52,24 @@ fluo의 테스트 설정은 런타임 모델과 같습니다. 표준 decorator, 
 
 `@fluojs/testing`은 `engines.node >=20.0.0`을 선언합니다. Mock helper와 `DeepMocked<T>` type은 Vitest-compatible mock type boundary를 의도적으로 사용합니다. `DeepMocked<T>`는 root `@fluojs/testing` 패키지, `@fluojs/testing/types`, `@fluojs/testing/mock`에서 사용할 수 있습니다. Vitest를 실행하지 않는 소비자는 `@fluojs/testing/app`, `@fluojs/testing/module`, harness subpath 같은 non-mock entrypoint를 우선 사용하세요.
 
+## React Consumer Loop
+
+React consumer coverage는 synthetic React test runtime을 추가하지 않고 같은 ladder를 확장합니다.
+
+1. Pure helper를 통해 render policy와 metadata composition을 unit test합니다.
+2. Direct page return, missing-renderer diagnostic, DTO, request scope, response ownership을
+   `createTestApp({ rootModule })`와 `app.request(...).send()`로 검증합니다.
+3. Positive/negative generated-route fixture를 TypeScript로 compile하고 CI에서 non-mutating
+   `fluo typegen ... --check`를 실행합니다.
+4. Aligned hydration과 `onRecoverableError`로 보고되는 의도적인 mismatch를 검증합니다.
+5. Production Playwright hydration과 JavaScript-disabled native form submit을 일반
+   `POST` → `303` → `GET` path로 실행합니다.
+
+Evidence는 owning seam에 분산해 유지합니다. `@fluojs/react` unit, `@fluojs/cli` typegen 및 compile fixture,
+`@fluojs/testing` request dispatch, official React example의 hydration/browser test가 각각 자기 boundary를
+검증합니다. 일반 fixture가 이미 real HTTP dispatcher와 application renderer를 compose할 수 있으므로 반복
+setup만으로 React-specific helper를 정당화하지 않습니다.
+
 ## 명령어 (Commands)
 
 | 명령어 | 용도 |
