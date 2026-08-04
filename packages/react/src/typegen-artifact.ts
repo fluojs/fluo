@@ -90,6 +90,12 @@ function parseParams(lines: readonly string[]): ReadonlyMap<string, readonly str
   return paramsById;
 }
 
+/**
+ * Parses the route catalog encoded in one canonical generated React page artifact.
+ *
+ * @param source Generated artifact source to inspect.
+ * @returns Parsed catalog entries, or `undefined` when the artifact body is malformed.
+ */
 export function parseGeneratedReactPageCatalog(source: string): readonly ReactPageCatalogEntry[] | undefined {
   const lines = source.replaceAll('\r\n', '\n').split('\n');
   const paths = parsePaths(lines);
