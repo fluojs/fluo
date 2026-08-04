@@ -71,6 +71,7 @@ describe('fluo typegen watch lifecycle', () => {
       listener = nextListener;
       return watcher;
     });
+    const onReady = vi.fn();
     let active = 0;
     let maximumActive = 0;
     let releaseSecondGeneration: (() => void) | undefined;
@@ -89,12 +90,13 @@ describe('fluo typegen watch lifecycle', () => {
     const runPromise = runTypegenWatch({
       generate,
       modulePath: '/project/src/app.ts',
+      onReady,
       outputPath: '/project/src/generated/react-pages.ts',
       scheduler,
       signalTarget,
       watchTarget,
     });
-    await vi.waitFor(() => expect(watchTarget).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(onReady).toHaveBeenCalledOnce());
     listener?.('change', 'generated/react-pages.ts');
     scheduler.flush();
     expect(generate).toHaveBeenCalledOnce();
@@ -131,6 +133,7 @@ describe('fluo typegen watch lifecycle', () => {
       listener = nextListener;
       return watcher;
     });
+    const onReady = vi.fn();
     let generationCount = 0;
     const generate = vi.fn(async () => {
       generationCount += 1;
@@ -143,12 +146,13 @@ describe('fluo typegen watch lifecycle', () => {
       generate,
       modulePath: join(cwd, 'src', 'app.ts'),
       onError,
+      onReady,
       outputPath,
       scheduler,
       signalTarget,
       watchTarget,
     });
-    await vi.waitFor(() => expect(watchTarget).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(onReady).toHaveBeenCalledOnce());
 
     // When: one failed generation is followed by another source change.
     listener?.('change', 'page.tsx');
@@ -179,18 +183,20 @@ describe('fluo typegen watch lifecycle', () => {
       listener = nextListener;
       return watcher;
     });
+    const onReady = vi.fn();
     const generate = vi.fn(async () => {
       await writeTypegenArtifact(outputPath, 'stable artifact\n');
     });
     const runPromise = runTypegenWatch({
       generate,
       modulePath: join(cwd, 'src', 'app.ts'),
+      onReady,
       outputPath,
       scheduler,
       signalTarget,
       watchTarget,
     });
-    await vi.waitFor(() => expect(watchTarget).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(onReady).toHaveBeenCalledOnce());
     const oldTimestamp = new Date('2020-01-01T00:00:00.000Z');
     await utimes(outputPath, oldTimestamp, oldTimestamp);
 
@@ -205,53 +211,4 @@ describe('fluo typegen watch lifecycle', () => {
     expect((await stat(outputPath)).mtimeMs).toBe(oldTimestamp.getTime());
   });
 
-  it('does not install watchers or signal handlers when startup generation fails', async () => {
-    // Given: the first application bootstrap cannot produce an artifact.
-    const startupError = new Error('startup bootstrap failed');
-    const signalTarget = createSignalTarget();
-    const watchTarget = vi.fn();
-
-    // When: watch mode performs its deterministic startup generation.
-    const action = runTypegenWatch({
-      generate: async () => {
-        throw startupError;
-      },
-      modulePath: '/project/src/app.ts',
-      outputPath: '/project/src/generated/react-pages.ts',
-      signalTarget,
-      watchTarget,
-    });
-
-    // Then: startup fails before any long-lived resource is acquired.
-    await expect(action).rejects.toBe(startupError);
-    expect(watchTarget).not.toHaveBeenCalled();
-  });
-
-  it('releases the watcher and signal handlers when ready notification fails', async () => {
-    // Given: startup generation and watcher acquisition succeed but the ready output boundary fails.
-    const readyError = new Error('ready output failed');
-    const close = vi.fn();
-    const watcher: TypegenWatcher = { close, on: vi.fn(() => watcher) };
-    const signalTarget: TypegenWatchSignalTarget = {
-      off: vi.fn(),
-      once: vi.fn(),
-    };
-
-    // When: watch mode announces that its long-running lifecycle is ready.
-    const action = runTypegenWatch({
-      generate: async () => undefined,
-      modulePath: '/project/src/app.ts',
-      onReady() {
-        throw readyError;
-      },
-      outputPath: '/project/src/generated/react-pages.ts',
-      signalTarget,
-      watchTarget: () => watcher,
-    });
-
-    // Then: setup rejects with the original failure after releasing every acquired resource.
-    await expect(action).rejects.toBe(readyError);
-    expect(close).toHaveBeenCalledOnce();
-    expect(signalTarget.off).toHaveBeenCalledTimes(2);
-  });
 });

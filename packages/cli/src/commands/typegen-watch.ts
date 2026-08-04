@@ -77,14 +77,12 @@ function isOwnArtifactEvent(changedPath: string, outputPath: string): boolean {
 }
 
 /**
- * Runs startup generation and then watches only the application module directory.
+ * Watches the application module directory while generating an initial current artifact.
  *
  * @param options Generation, watcher, scheduler, and signal lifecycle dependencies.
  * @returns Exit code `0` after signal shutdown or `1` after an asynchronous watcher failure.
  */
 export async function runTypegenWatch(options: TypegenWatchOptions): Promise<number> {
-  await options.generate();
-
   const debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS;
   const onError = options.onError ?? (() => undefined);
   const scheduler = options.scheduler ?? createDefaultScheduler();
@@ -99,6 +97,7 @@ export async function runTypegenWatch(options: TypegenWatchOptions): Promise<num
   let stopping = false;
   let stopCode = 0;
   let watcher: TypegenWatcher | undefined;
+  let startupComplete = false;
   let resolveResult: (code: number) => void = () => undefined;
 
   const result = new Promise<number>((resolvePromise) => {
@@ -168,6 +167,10 @@ export async function runTypegenWatch(options: TypegenWatchOptions): Promise<num
     if (stopping || isOwnArtifactEvent(changedPath, options.outputPath)) {
       return;
     }
+    if (!startupComplete) {
+      rerunRequested = true;
+      return;
+    }
     if (restartTimer !== undefined) {
       scheduler.clear(restartTimer);
     }
@@ -198,6 +201,20 @@ export async function runTypegenWatch(options: TypegenWatchOptions): Promise<num
   try {
     signalTarget.once('SIGINT', stopForSignal);
     signalTarget.once('SIGTERM', stopForSignal);
+    activeGeneration = (async () => {
+      do {
+        rerunRequested = false;
+        await options.generate();
+      } while (rerunRequested && !stopping);
+    })().finally(() => {
+      activeGeneration = undefined;
+      settleIfIdle();
+    });
+    await activeGeneration;
+    startupComplete = true;
+    if (stopping) {
+      return result;
+    }
     options.onReady?.(watchRoot);
   } catch (error: unknown) {
     cleanup();
