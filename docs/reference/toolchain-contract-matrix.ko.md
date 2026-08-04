@@ -27,7 +27,7 @@
 | **개발 watch restart** | 생성된 애플리케이션 프로젝트에서 `fluo dev` 실행 | Node 스타터는 기본적으로 fluo가 소유한 restart runner를 사용합니다. 이 runner는 filesystem burst를 debounce하고, restart 전에 content hash를 비교하며, noisy output/cache/editor 경로를 무시하고, 앱 로그 전용 출력·색상 보존·restart clear/header 동작을 일관되게 유지합니다. 이 동작은 true HMR이 아니라 restart-on-watch입니다. Node 디버깅에는 `fluo dev --raw-watch` 또는 `FLUO_DEV_RAW_WATCH=1`로 runtime-native `node --watch` 명령을 복원할 수 있습니다. Bun/Deno/Workers는 `fluo dev` 추상성을 유지하되 runtime-owned watch/reload 동작(`bun --watch src/main.ts`, `deno run --watch --allow-env --allow-net src/main.ts`, `wrangler dev --show-interactive-dev-session=false`)을 기본값으로 사용하고, fluo 소유 restart runner가 필요하면 `fluo dev --runner fluo` 또는 `FLUO_DEV_RUNNER=fluo`를 사용합니다. |
 | **HTTP starter testing layout** | 생성된 non-Deno HTTP 애플리케이션 starter | 빠른 unit test는 `src/greeting/` 아래에 생성하고, slice/module graph test는 `src/greeting/greeting.slice.test.ts`에 두며, app dispatch test는 `src/app.test.ts`, 기본 e2e 스타일 suite는 `createTestApp({ rootModule })`와 `app.request(...).send()`를 사용하는 `test/app.e2e.test.ts`에 생성합니다. 생성된 Vitest config는 `src/**/*.test.ts`와 `test/**/*.test.ts`를 모두 포함하고, 지원되는 script는 `test`, `test:watch`, `test:cov`, `test:e2e`를 포함합니다. 기존 `src/app.e2e.test.ts` 사용자는 request helper를 바꾸지 않고 해당 test를 `test/app.e2e.test.ts`로 이동할 수 있습니다. |
 | **React starter verification** | 생성된 `react-vite-ssr` project | `typecheck`, `test`, `build`, `start`가 generated project lifecycle을 검증합니다. `test:browser`는 build된 server를 시작해 streamed HTML, generated manifest asset, warning-free hydration, real-anchor navigation, full-document `router.push(...)` navigation을 검증합니다. |
-| **React page type generation** | `fluo typegen <module-path> --output <path>` | Runtime log를 suppress한 상태로 selected module을 bootstrap하고 authoritative compiled `HandlerDescriptor`를 `createReactPageCatalog(...)`로 project한 뒤 versioned artifact를 atomically publish합니다. `CREATE`, `UPDATE`, `UNCHANGED`를 보고하며 identical output은 다시 쓰지 않습니다. |
+| **React page type generation** | `fluo typegen <module-path> --output <path>` | Runtime log를 suppress한 short-lived generation child에서 selected module을 bootstrap하고 child exit를 기다린 뒤 authoritative compiled `HandlerDescriptor`를 `createReactPageCatalog(...)`로 project하고 versioned artifact를 atomically publish합니다. `CREATE`, `UPDATE`, `UNCHANGED`를 보고하며 identical output은 다시 쓰지 않습니다. |
 | **React page type check** | `fluo typegen <module-path> --output <path> --check` | Target write 없이 같은 bootstrap과 generation을 수행합니다. Exact current byte는 `UNCHANGED`/`0`, missing, stale, malformed, unsupported-version target은 각각 전용 diagnostic과 exit code를 사용합니다. |
 | **React page type watch** | `fluo typegen <module-path> --output <path> --watch` | Ready 전에 generate하고 module directory만 recursively watch하며 100 ms change burst를 coalesce하고 regeneration을 serialize합니다. 자체 output/temp file을 무시하고 generation failure 뒤 마지막 valid artifact를 보존하며 shutdown 또는 setup failure에서 watcher/signal을 해제합니다. |
 | **React consumer testing loop** | Vitest + `createTestApp(...)` + TypeScript compile fixture + Playwright | Render-policy unit, direct page/missing-renderer request dispatch, typed route id/param 및 stale generation, aligned/mismatched hydration, production asset, JavaScript-disabled native form fallback을 검증합니다. 기존 fixture가 real package seam을 compose하므로 React-specific testing helper는 제공하지 않습니다. |
@@ -44,6 +44,12 @@ Generated source는 현재 `@fluojs/react/typegen` artifact version으로 시작
 Check mode는 missing target을 parsing 전에 분류하고 exact byte를 unchanged, incomplete current artifact를
 malformed, 다른 recognized version을 unsupported, byte가 다른 complete current artifact를 stale로 분류합니다.
 Check mode와 failed generation은 target을 쓰지 않습니다.
+
+Default write, check, watch generation은 application과 tooling namespace를 하나의 short-lived child에서
+함께 import하고, child exit를 기다리며, 완료 전에 parent의 IPC/error/exit listener를 제거합니다. 따라서
+반복 watch 실행에서 loader와 native module graph lifetime이 bounded합니다. 명시적인 programmatic
+`loadReactTypegenModules` override는 compatibility 예외입니다. Generation은 caller process에 남고
+TypeScript 및 native input에 caller가 제공한 namespace를 사용합니다.
 
 | mode/result | stdout | stderr | exit code | target mutation |
 | --- | --- | --- | ---: | --- |
