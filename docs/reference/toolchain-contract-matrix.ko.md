@@ -54,7 +54,12 @@ Check mode와 failed generation은 target을 쓰지 않습니다.
 | check `MALFORMED` | 없음 | `MALFORMED <path>: <guidance>` | `4` | 없음. |
 | check `UNSUPPORTED_VERSION` | 없음 | `UNSUPPORTED_VERSION <path>: <version guidance>` | `5` | 없음. |
 | command/setup/bootstrap/filesystem failure | 없음 | failure message | `1` | Partial artifact를 publish하지 않습니다. |
-| watch ready/regeneration | initial action, `WATCHING <module-directory>`, 이후 action | recoverable `ERROR <output>: <message>` | signal shutdown은 `0`, watcher/command failure는 `1` | Complete atomic generation만 반영하며 failed generation은 마지막 valid file을 보존합니다. |
+| watch ready/regeneration | initial action과 startup-buffered action, `WATCHING <module-directory>`, 이후 action | recoverable `ERROR <output>: <message>` | signal shutdown은 `0`, watcher/command failure는 `1` | Watcher는 startup generation 전에 활성화되고 buffered rerun 뒤 readiness를 보고합니다. Complete atomic generation만 publish하며 failed generation은 마지막 valid file을 보존합니다. |
+
+현재 version의 check target은 complete body를 canonical generator grammar로 재현할 수 있어야 하며 그렇지
+않으면 `MALFORMED`입니다. 이전 catalog 때문에 차이가 나는 complete generated artifact는 `STALE`입니다.
+Watch generation은 source scanner나 별도 route discovery path를 추가하지 않고 현재 native `.js`와 `.mjs`
+dependency graph를 평가합니다.
 
 ## inspect artifact output contract
 

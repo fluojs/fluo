@@ -55,7 +55,12 @@ writes the target.
 | check `MALFORMED` | none | `MALFORMED <path>: <guidance>` | `4` | Never. |
 | check `UNSUPPORTED_VERSION` | none | `UNSUPPORTED_VERSION <path>: <version guidance>` | `5` | Never. |
 | command/setup/bootstrap/filesystem failure | none | failure message | `1` | No partial artifact is published. |
-| watch ready/regeneration | initial action, `WATCHING <module-directory>`, then actions | recoverable `ERROR <output>: <message>` | `0` on signal shutdown; `1` on watcher/command failure | Only complete atomic generations; failed generations preserve the last valid file. |
+| watch ready/regeneration | initial action and any startup-buffered action, `WATCHING <module-directory>`, then actions | recoverable `ERROR <output>: <message>` | `0` on signal shutdown; `1` on watcher/command failure | The watcher is active before startup generation and readiness follows its buffered rerun. Only complete atomic generations publish; failed generations preserve the last valid file. |
+
+A current-version check target is `MALFORMED` unless its complete body can be reproduced by the
+canonical generator grammar. A complete generated artifact that differs only because its catalog is
+older is `STALE`. Watch generations evaluate current native `.js` and `.mjs` dependency graphs
+without adding a source scanner or another route discovery path.
 
 ## inspect artifact output contract
 
