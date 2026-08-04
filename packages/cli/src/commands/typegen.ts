@@ -7,6 +7,7 @@ import {
   type TypegenArtifactCheck,
   writeTypegenArtifact,
 } from './typegen-artifact.js';
+import { runTypegenGenerationProcess } from './typegen-generation-process.js';
 import { parseTypegenArgs, TypegenCommandError } from './typegen-options.js';
 import {
   createTypegenSource,
@@ -26,7 +27,8 @@ export interface TypegenCommandRuntimeOptions {
   readonly cwd?: string;
   /**
    * Optional build-tooling module loader override for tests and editor integrations.
-   * Supplying it uses the returned namespaces for TypeScript and native module inputs.
+   * Supplying it keeps application evaluation in the caller process and uses the returned
+   * namespaces for TypeScript and native modules; omitting it uses isolated generation children.
    */
   readonly loadReactTypegenModules?: (cwd: string) => Promise<ReactTypegenModules>;
   /** Custom stream for error output. */
@@ -86,9 +88,11 @@ export async function runTypegenCommand(
     }
 
     const parsed = parseTypegenArgs(argv);
-    const modules = (runtime.loadReactTypegenModules ?? loadReactTypegenModules)(cwd);
+    const customModules = runtime.loadReactTypegenModules?.(cwd);
     const outputPath = resolve(cwd, parsed.outputPath);
-    const generateSource = async () => createTypegenSource({ cwd, modules: await modules, parsed });
+    const generateSource = async () => customModules === undefined
+      ? runTypegenGenerationProcess({ cwd, exportName: parsed.exportName, modulePath: parsed.modulePath })
+      : createTypegenSource({ cwd, modules: await customModules, parsed });
     const generateAndWrite = async () => {
       const source = await generateSource();
       const action = await writeTypegenArtifact(outputPath, source);
@@ -110,11 +114,13 @@ export async function runTypegenCommand(
 
     const source = await generateSource();
     if (parsed.check) {
-      const loadedModules = await modules;
+      const modules = customModules === undefined
+        ? await loadReactTypegenModules(cwd)
+        : await customModules;
       const check = await checkTypegenArtifact(
         outputPath,
         source,
-        (existingSource) => inspectReactTypegenArtifact(loadedModules, existingSource),
+        (existingSource) => inspectReactTypegenArtifact(modules, existingSource),
       );
       return reportCheckResult(check, outputPath, stdout, stderr);
     }
