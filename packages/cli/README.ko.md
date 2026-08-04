@@ -370,17 +370,22 @@ directory를 기준으로 resolve됩니다. 파일이 없으면 `CREATE`, conten
 `--check`는 같은 authoritative bootstrap과 generation을 수행하지만 target을 쓰지 않습니다. Exact byte를
 비교해 stable status 하나를 보고합니다. `UNCHANGED`는 stdout과 exit code `0`, `MISSING`, `STALE`,
 `MALFORMED`, `UNSUPPORTED_VERSION`은 stderr와 각각 exit code `2`, `3`, `4`, `5`를 사용합니다. Argument,
-bootstrap, generation, filesystem 및 그 밖의 command failure는 exit code `1`을 사용합니다. Programmatic
-caller는 root package가 export하는 `TYPEGEN_EXIT_CODES`를 사용할 수 있습니다.
+현재 version의 target은 complete canonical generated body여야 합니다. Syntax 또는 structure가 손상되면
+`MALFORMED`, 이전 catalog에서 생성된 complete artifact이면 `STALE`입니다. Argument, bootstrap,
+generation, filesystem 및 그 밖의 command failure는 exit code `1`을 사용합니다. Programmatic caller는
+root package가 export하는 `TYPEGEN_EXIT_CODES`를 사용할 수 있습니다.
 
-`--watch`는 bounded development integration입니다. Startup generation이 성공한 뒤에만 CLI가 application
-module directory의 recursive watcher를 설치하고 `WATCHING <directory>`를 출력합니다. Filesystem burst는
-100 ms 동안 coalesce되고 generation은 serialize되며 output과 그 temporary file event는 무시됩니다.
-Regeneration failure는 `ERROR <output>: <message>`를 출력하고 마지막 valid artifact를 보존한 채 다음
-change를 기다립니다. Watcher failure는 cleanup 뒤 code `1`로 종료됩니다. `SIGINT`와 `SIGTERM`은 watcher를
-닫고 signal handler를 제거하며 active generation을 기다린 뒤 code `0`으로 종료됩니다. Module directory
-밖의 파일은 의도적으로 watch boundary 밖에 있습니다. Source scanner나 두 번째 route discovery system을
-기대하지 말고 command를 다시 실행하거나 의도한 source root의 module path를 선택하세요.
+`--watch`는 bounded development integration입니다. CLI는 startup generation 전에 application module
+directory의 recursive watcher를 설치합니다. 해당 generation과 그 실행 중 관찰된 change를 한 번으로
+coalesce한 rerun이 모두 성공한 뒤에만 `WATCHING <directory>`를 출력합니다. Readiness 이후 filesystem
+burst는 100 ms 동안 coalesce되고 generation은 serialize되며 output과 그 temporary file event는
+무시됩니다. 각 generation은 authoritative bootstrap 전에 변경된 native `.js`와 `.mjs` dependency를
+포함한 현재 application module graph를 평가합니다. Regeneration failure는 `ERROR <output>: <message>`를
+출력하고 마지막 valid artifact를 보존한 채 다음 change를 기다립니다. Watcher failure는 cleanup 뒤 code
+`1`로 종료됩니다. `SIGINT`와 `SIGTERM`은 watcher를 닫고 signal handler를 제거하며 active generation을
+기다린 뒤 code `0`으로 종료됩니다. Module directory 밖의 파일은 의도적으로 watch boundary 밖에
+있습니다. Source scanner나 두 번째 route discovery system을 기대하지 말고 command를 다시 실행하거나
+의도한 source root의 module path를 선택하세요.
 
 생성된 `reactPageRoutes` object는 stable catalog `id`를 key로 사용합니다. Dynamic `href(...)`,
 `link(...)`, `push(...)`, `replace(...)` method는 모든 path param을 요구하고 각 값을 URI-encode하며
