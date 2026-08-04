@@ -32,4 +32,23 @@ describe('react-vite-ssr hydration', () => {
     expect(consoleError).not.toHaveBeenCalled();
     root.unmount();
   });
+
+  it('reports a server and client render mismatch through React hydration diagnostics', async () => {
+    // Given: the client tree does not reproduce the server-rendered text.
+    const recoverableErrors: unknown[] = [];
+    const container = document.createElement('div');
+    container.innerHTML = renderToString(createElement('p', null, 'Server catalog'));
+    document.body.append(container);
+
+    // When: React hydrates the mismatched client tree.
+    const root = hydrateRoot(container, createElement('p', null, 'Client catalog'), {
+      onRecoverableError(error) {
+        recoverableErrors.push(error);
+      },
+    });
+
+    // Then: the application-owned hydration boundary receives the mismatch report.
+    await vi.waitFor(() => expect(recoverableErrors.length).toBeGreaterThan(0));
+    root.unmount();
+  });
 });
