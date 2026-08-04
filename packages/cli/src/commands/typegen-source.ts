@@ -38,7 +38,7 @@ function isModuleNotFoundError(error: unknown): boolean {
     && (error.code === 'MODULE_NOT_FOUND' || error.code === 'ERR_MODULE_NOT_FOUND');
 }
 
-async function importProjectModule(moduleId: string, cwd: string): Promise<object> {
+function resolveProjectModuleUrl(moduleId: string, cwd: string): string {
   const resolvers = [createRequire(resolve(cwd, 'package.json')), createRequire(import.meta.url)];
   for (const resolver of resolvers) {
     let modulePath: string;
@@ -50,22 +50,55 @@ async function importProjectModule(moduleId: string, cwd: string): Promise<objec
       }
       continue;
     }
-    return import(pathToFileURL(modulePath).href);
+    return pathToFileURL(modulePath).href;
   }
   throw new TypegenCommandError(`Unable to resolve ${moduleId} from the inspected project.`);
 }
 
-async function importApplicationModule(modulePath: string): Promise<object> {
-  const moduleUrl = pathToFileURL(modulePath).href;
-  if (!TYPESCRIPT_MODULE_EXTENSIONS.has(extname(modulePath))) {
-    applicationImportSequence += 1;
-    return import(`${moduleUrl}?fluo-typegen=${String(applicationImportSequence)}`);
-  }
+async function importProjectModule(moduleId: string, cwd: string): Promise<object> {
+  return import(resolveProjectModuleUrl(moduleId, cwd));
+}
 
+async function importTypeScriptApplicationModule(modulePath: string): Promise<object> {
+  const moduleUrl = pathToFileURL(modulePath).href;
   const tsconfigPath = resolve(dirname(modulePath), 'tsconfig.json');
   return existsSync(tsconfigPath)
     ? tsImport(moduleUrl, { parentURL: import.meta.url, tsconfig: tsconfigPath })
     : tsImport(moduleUrl, import.meta.url);
+}
+
+function requireNamespace(owner: object, name: string): object {
+  const value = Reflect.get(owner, name);
+  if (typeof value !== 'object' || value === null) {
+    throw new TypegenCommandError(`Required typegen namespace ${name} is unavailable.`);
+  }
+  return value;
+}
+
+async function importNativeTypegenGraph(modulePath: string, cwd: string): Promise<{
+  readonly application: object;
+  readonly modules: ReactTypegenModules;
+}> {
+  applicationImportSequence += 1;
+  const imports = {
+    application: pathToFileURL(modulePath).href,
+    react: resolveProjectModuleUrl(TYPEGEN_MODULE_IDS[0], cwd),
+    typegen: resolveProjectModuleUrl(TYPEGEN_MODULE_IDS[1], cwd),
+    runtime: resolveProjectModuleUrl(TYPEGEN_MODULE_IDS[2], cwd),
+  } as const;
+  const source = `${Object.entries(imports)
+    .map(([name, url]) => `import * as ${name} from ${JSON.stringify(url)};`)
+    .join('\n')}\nexport { application, react, runtime, typegen };\n`;
+  const graphUrl = `data:text/javascript;charset=utf-8,${encodeURIComponent(source)}#fluo-typegen-${String(applicationImportSequence)}`;
+  const graph = await tsImport(graphUrl, import.meta.url);
+  return {
+    application: requireNamespace(graph, 'application'),
+    modules: {
+      react: requireNamespace(graph, 'react'),
+      runtime: requireNamespace(graph, 'runtime'),
+      typegen: requireNamespace(graph, 'typegen'),
+    },
+  };
 }
 
 function requireFunction(owner: object, name: string): (...args: readonly unknown[]) => unknown {
@@ -100,13 +133,21 @@ export async function createTypegenSource(
   cwd: string,
   modules: ReactTypegenModules,
 ): Promise<string> {
-  const importedApplication = await importApplicationModule(resolve(cwd, parsed.modulePath));
+  const modulePath = resolve(cwd, parsed.modulePath);
+  const imported = TYPESCRIPT_MODULE_EXTENSIONS.has(extname(modulePath))
+    ? {
+        application: await importTypeScriptApplicationModule(modulePath),
+        modules,
+      }
+    : await importNativeTypegenGraph(modulePath, cwd);
+  const importedApplication = imported.application;
+  const generationModules = imported.modules;
   const rootModule = Reflect.get(importedApplication, parsed.exportName);
   if (typeof rootModule !== 'function') {
     throw new TypegenCommandError(`Export "${parsed.exportName}" is not a module class constructor.`);
   }
 
-  const factory = Reflect.get(modules.runtime, 'FluoFactory');
+  const factory = Reflect.get(generationModules.runtime, 'FluoFactory');
   if (typeof factory !== 'function') {
     throw new TypegenCommandError('Required runtime FluoFactory is unavailable.');
   }
@@ -128,8 +169,8 @@ export async function createTypegenSource(
     if (!Array.isArray(descriptors)) {
       throw new TypegenCommandError('Runtime route descriptors are unavailable.');
     }
-    const catalog = Reflect.apply(requireFunction(modules.react, 'createReactPageCatalog'), undefined, [descriptors]);
-    const source = Reflect.apply(requireFunction(modules.typegen, 'generateReactPageTypes'), undefined, [catalog]);
+    const catalog = Reflect.apply(requireFunction(generationModules.react, 'createReactPageCatalog'), undefined, [descriptors]);
+    const source = Reflect.apply(requireFunction(generationModules.typegen, 'generateReactPageTypes'), undefined, [catalog]);
     if (typeof source !== 'string') {
       throw new TypegenCommandError('React page typegen returned an invalid artifact.');
     }
