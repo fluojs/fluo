@@ -15,6 +15,7 @@ This directory contains governed repository documentation for fluo. The official
 - Package surface: [`reference/package-surface.md`](./reference/package-surface.md)
 - Package chooser: [`reference/package-chooser.md`](./reference/package-chooser.md)
 - Behavioral contracts: [`contracts/behavioral-contract-policy.md`](./contracts/behavioral-contract-policy.md)
+- HTTP error representation decision: [`architecture/http-error-representations.md`](./architecture/http-error-representations.md)
 - React render policy decision: [`architecture/react-render-policy-decorators.md`](./architecture/react-render-policy-decorators.md)
 - React page metadata/error/not-found policy decision: [`architecture/react-page-render-policies.md`](./architecture/react-page-render-policies.md)
 - React RSC graduation policy: [`contracts/react-rsc-graduation.md`](./contracts/react-rsc-graduation.md)

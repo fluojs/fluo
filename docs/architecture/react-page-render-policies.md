@@ -6,6 +6,7 @@
 - Decision date: 2026-07-29
 - Issue: [#2856](https://github.com/fluojs/fluo/issues/2856)
 - Predecessor: [React Render Policy Decorator Decision](./react-render-policy-decorators.md)
+- Successor: [HTTP Error Representation Decision](./http-error-representations.md)
 
 ## Decision Summary
 
@@ -16,7 +17,7 @@ or not-found response path.
 | --- | --- | --- | --- | --- |
 | Page metadata presentation | **Accepted** as `@PageMetadata(factory)` plus typed resolution and React element helpers. | The application `ReactPageRenderer` owns document-head placement. `@fluojs/react` owns only declaration ordering, deterministic data composition, and safe React element creation. | The renderer receives ordered metadata factories in `ReactRenderPolicies` after authoritative HTTP matching and calls `resolveReactPageMetadata(...)` with the active render context. | Runs only after a matched `@Path(...)` handler returns a valid `ReactElement` and before the renderer returns `ReactServerEntry`. Resolution failures remain uncommitted `http-pipeline` failures. |
 | Generic error presentation | **Rejected**. Phase-specific presentation work is **deferred**. | `@fluojs/http`, React SSR diagnostics, the application React tree, and the browser each retain their existing phase. | None. No `@ErrorPresentation(...)` export or placeholder is added. | Handler/HTTP, pre-commit shell, post-shell recoverable, request-abort, and client React failures remain distinct. |
-| Page-local not-found presentation | **Rejected**. An HTTP-owned not-found outcome seam may be reconsidered separately. | The HTTP matcher, `HandlerNotFoundError` conversion, application `onError`, and the HTTP error writer remain authoritative. | None. An unmatched request never selects React page metadata or calls `ReactPageRenderer`. | Route misses and handler-thrown `NotFoundException` values stay on the HTTP error path before any React page response commit. |
+| Page-local not-found presentation | **Rejected**. The later HTTP-owned representation seam is global/application-scoped, not page-local. | The HTTP matcher, `HandlerNotFoundError` conversion, application `onError`, and the HTTP error writer remain authoritative. | None. An unmatched request never selects React page metadata or calls `ReactPageRenderer`; optional React HTML is adapted only after HTTP selects it. | Route misses and handler-thrown `NotFoundException` values stay on the HTTP error path before any React page response commit. |
 
 ## Accepted Metadata Policy
 
@@ -140,10 +141,10 @@ an HTTP exception handled by application `onError` or the normal HTTP error writ
 a successful React page result. No metadata factory, layout, Suspense fallback, or page renderer runs
 for either route-miss case.
 
-Any future HTML not-found presentation must start from an HTTP-owned, typed not-found outcome that is
-available consistently to global error handling and every adapter. It must define content
-negotiation, API versus document selection, filter precedence, request scope, and commit behavior
-before React can be one optional response representation. That is a separate HTTP contract, not a
+The later [HTTP error representation decision](./http-error-representations.md) starts from that
+HTTP-owned typed outcome and defines content negotiation, API versus document selection, filter
+precedence, request scope, and commit behavior before React can become one optional representation.
+It does not change this rejection: the seam is a separate global/application HTTP contract, not a
 page render policy.
 
 ## Preserved Contracts
@@ -151,7 +152,8 @@ page render policy.
 - `PageLayout` order and `SuspenseFallback` nearest-wins behavior are unchanged.
 - `ReactRenderContext` and request-scope container identity are unchanged.
 - HTTP route grammar, matcher precedence, conflicts, params, versioning, DTO binding, middleware,
-  guards, interceptors, filters, not-found conversion, and error writing are unchanged.
+  guards, interceptors, filters, and not-found conversion remain HTTP-owned. The successor decision
+  adds only post-classification representation selection at that owner.
 - Direct `ReactServerEntry` and non-React values still bypass the application page renderer.
 - Success metadata is still resolved only after the matched handler completes, before the renderer
   returns the entry, and before SSR shell creation or response commit.

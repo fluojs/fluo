@@ -236,6 +236,7 @@ JNCDpGwh8us=
 
 const expressPortabilityHarness = createHttpAdapterPortabilityHarness({
   bootstrap: bootstrapExpressApplication,
+  createErrorRepresentationBootstrapOptions: (options) => options,
   name: 'express',
   run: runExpressApplication,
 });
@@ -263,6 +264,14 @@ describe('@fluojs/platform-express', () => {
   });
 
   describe('adapter portability', () => {
+    it('supports HTTP-owned JSON and HTML error representations', async () => {
+      await expressPortabilityHarness.assertSupportsHttpErrorRepresentations();
+    });
+
+    it('does not commit an error representation after client disconnect', async () => {
+      await expressPortabilityHarness.assertDoesNotCommitAbortedHttpErrorRepresentations();
+    });
+
     it('preserves malformed cookie values', async () => {
       await expressPortabilityHarness.assertPreservesMalformedCookieValues();
     });
@@ -371,6 +380,48 @@ describe('@fluojs/platform-express', () => {
       expect(response.headers.get('x-native-middleware')).toBe('active');
       expect(JSON.parse(response.body)).toEqual({ ok: true });
       expect(lifecycle).toEqual(['native', 'fluo', 'handler']);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('preserves native Vary values when HTTP adds error representation negotiation', async () => {
+    const nativeMiddleware: RequestHandler = (_request, response, next) => {
+      response.setHeader('Vary', 'Origin');
+      next();
+    };
+
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const port = await findAvailablePort();
+    const app = await fluoFactory.create(AppModule, {
+      adapter: createExpressAdapter({
+        nativeMiddleware: [nativeMiddleware],
+        port,
+      }),
+      errorRepresentation: {
+        html: {
+          render({ json }) {
+            return `<main>${String(json.error.status)}:${json.error.code}</main>`;
+          },
+        },
+      },
+    });
+
+    await app.listen();
+
+    try {
+      const response = await requestHttp({
+        headers: { accept: 'text/html' },
+        method: 'GET',
+        path: '/native-vary-missing',
+        port,
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.headers.get('vary')).toBe('Origin, Accept');
+      expect(response.body).toBe('<main>404:NOT_FOUND</main>');
     } finally {
       await app.close();
     }

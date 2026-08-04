@@ -1391,6 +1391,9 @@ function createRuntimeDispatcherOptions(
   const converters = options.converters ?? [];
   const dispatcherOptions: ErrorAwareDispatcherOptions = {
     appMiddleware: options.middleware ?? [],
+    ...(options.errorRepresentation === undefined
+      ? {}
+      : { errorRepresentation: options.errorRepresentation }),
     handlerMapping,
     interceptors: options.interceptors ?? [],
     logger,

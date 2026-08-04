@@ -111,12 +111,21 @@ const nodejsPortabilityHarness = createHttpAdapterPortabilityHarness<
   RunNodejsApplicationOptions
 >({
   bootstrap: bootstrapNodejsApplication,
+  createErrorRepresentationBootstrapOptions: (options) => options,
   name: 'nodejs',
   run: runNodejsApplication,
 });
 
 describe('@fluojs/platform-nodejs', () => {
   describe('adapter portability', () => {
+    it('supports HTTP-owned JSON and HTML error representations', async () => {
+      await nodejsPortabilityHarness.assertSupportsHttpErrorRepresentations();
+    });
+
+    it('does not commit an error representation after client disconnect', async () => {
+      await nodejsPortabilityHarness.assertDoesNotCommitAbortedHttpErrorRepresentations();
+    });
+
     it('preserves malformed cookie values', async () => {
       await nodejsPortabilityHarness.assertPreservesMalformedCookieValues();
     });

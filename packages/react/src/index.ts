@@ -17,6 +17,11 @@ export {
   REACT_SSR_DIAGNOSTIC_PHASES,
   ReactSsrDiagnosticError,
 } from './diagnostics.js';
+export type {
+  ReactErrorDocumentRenderer,
+  ReactErrorRepresentationProviderOptions,
+} from './error-representation.js';
+export { createReactErrorRepresentationProvider } from './error-representation.js';
 export type { ReactModuleOptions } from './module.js';
 export { ReactModule } from './module.js';
 export type { ReactPageCatalogEntry } from './page-catalog.js';

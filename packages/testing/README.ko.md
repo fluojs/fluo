@@ -120,7 +120,7 @@ try {
 
 `app.request(...).send()`는 수동 `FrameworkRequest`/`FrameworkResponse` stub 없이 HTTP 의미에 가까운 테스트를 작성하게 해 주고 runtime dispatch와 같은 isolated request-scoped DI boundary를 생성하므로 애플리케이션 개발자의 기본 경로입니다. Assertion 실패가 runtime resource 누수로 이어지지 않도록 반환된 app은 `finally` 블록에서 닫으세요. `app.dispatch(...)`, `makeRequest(...)`, raw `FluoFactory.create(...)` 테스트는 adapter/runtime contract, framework internal, 또는 low-level dispatch boundary 자체를 증명해야 하는 compatibility case에 남겨 둡니다.
 
-`createTestApp(...)`은 runtime HTTP bootstrap과 같은 application bootstrap option을 받습니다. 여기에는 `providers`, `filters`, `converters`, `interceptors`, `middleware`, `observers`, `versioning`, diagnostics option이 포함됩니다. 테스트 헬퍼는 request-context middleware를 앞에 추가하되, 호출자가 넘긴 middleware를 같은 app middleware chain 안에 보존합니다.
+`createTestApp(...)`은 runtime HTTP bootstrap과 같은 application bootstrap option을 받습니다. 여기에는 `providers`, `filters`, `converters`, `interceptors`, `middleware`, `observers`, `versioning`, `errorRepresentation`, diagnostics option이 포함됩니다. 따라서 application test는 같은 virtual request pipeline으로 canonical JSON, negotiated HTML, `HEAD`, 406, provider fallback을 검증할 수 있습니다. 테스트 헬퍼는 request-context middleware를 앞에 추가하되, 호출자가 넘긴 middleware를 같은 app middleware chain 안에 보존합니다.
 
 ### 명시적 서브패스의 mock 헬퍼
 
@@ -145,6 +145,16 @@ const mailer = createDeepMock(MailService);
 `HttpAdapterPortabilityHarness`와 web-runtime portability harness 메서드는 공개 어댑터 계약 체크입니다. 직접 같은 검증을 다시 만들기보다 `assertPreservesMalformedCookieValues()`, `assertSupportsSseStreaming()`, `assertPreservesRawBodyForJsonAndText()`, `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`, `assertExcludesRawBodyForMultipart()`, `assertDefaultsMultipartTotalLimitToMaxBodySize()`, `assertSettlesStreamDrainWaitOnClose()`, `assertReportsConfiguredHostInStartupLogs()`, `assertReportsHttpsStartupUrl(...)`, `assertRemovesShutdownSignalListenersAfterClose()`처럼 초점이 분명한 assertion을 사용하세요.
 
 HTTP 어댑터가 런타임 전반에서 `rawBody`의 byte-sensitive payload byte를 그대로 보존하는지 증명해야 할 때는 `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`를 사용하세요.
+
+JSON, HTML, `HEAD`, unsupported `Accept` 406, already-committed response 동작을 증명하려면
+`assertSupportsHttpErrorRepresentations()`를 사용하세요. Network harness는 shared
+`NetworkHttpErrorRepresentationBootstrapOptions`를 adapt하고 fetch-style harness는
+`WebHttpErrorRepresentationBootstrapOptions`를 adapt합니다. Adapter bootstrap type에 추가 required field가
+있다면 `createErrorRepresentationBootstrapOptions`를 제공하세요. Typed builder는 common fixture field만 받아 cast
+없이 해당 adapter의 complete bootstrap option을 반환합니다.
+`assertDoesNotCommitAbortedHttpErrorRepresentations()`는 HTML provider를 시작한 뒤 adapter의 native request
+surface를 통해 abort하고, cancellation 이후 provider result와 canonical JSON fallback 어느 쪽도 write되지 않음을
+증명합니다.
 
 ## canonical TDD ladder
 
@@ -171,7 +181,7 @@ fluo는 테스트가 명시적인 `rootModule`을 이름으로 지정해야 한�
 
 - **루트 패키지**: `createTestingModule(...)`, `Test.createTestingModule(...)`, `createTestApp(...)`, 모듈 introspection 헬퍼, `DeepMocked<T>`를 포함한 공용 app/module 테스트 타입
 - **서브패스**: `@fluojs/testing/app`, `@fluojs/testing/module`, `@fluojs/testing/http`, `@fluojs/testing/mock` (`DeepMocked<T>` 포함), `@fluojs/testing/types` (`DeepMocked<T>` 포함), `@fluojs/testing/vitest`, `@fluojs/testing/vitest/tooling`
-- **하니스 서브패스**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`
+- **하니스 서브패스**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`. HTTP portability harness는 adapter-owned bootstrap typing을 위해 `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `createErrorRepresentationBootstrapOptions`, `NetworkHttpErrorRepresentationBootstrapOptions`, `WebHttpErrorRepresentationBootstrapOptions`를 노출합니다.
 - **도구 지원**: `@fluojs/testing/vitest`의 `fluoBabelDecoratorsPlugin()` 및 `@fluojs/testing/vitest/tooling`의 Vitest workspace config helper (`vitest`와 `@babel/core`를 함께 요구)
 
 Package manifest는 `engines.node >=20.0.0`을 선언합니다. 문서화된 경우 non-Node runtime 애플리케이션 테스트에서 runtime-native 도구를 사용할 수 있지만, 배포된 `@fluojs/testing` 패키지 자체는 이 Node.js engine floor를 따릅니다.
@@ -187,5 +197,6 @@ Package manifest는 `engines.node >=20.0.0`을 선언합니다. 문서화된 경
 ## 예제 소스
 
 - `packages/testing/src/module.test.ts`
+- `packages/testing/src/portability/error-representation-portability.ts`
 - `examples/minimal/src/app.test.ts`
 - `examples/auth-jwt-passport/src/app.test.ts`

@@ -27,6 +27,7 @@ describe('@fluojs/react root package scaffold', () => {
       'ReactSsrDiagnosticError',
       'Router',
       'SuspenseFallback',
+      'createReactErrorRepresentationProvider',
       'createReactPageCatalog',
       'createReactPageMetadataElements',
       'createReactServerEntry',
@@ -57,6 +58,7 @@ describe('@fluojs/react root package scaffold', () => {
       expect(react).toHaveProperty('REACT_PAGE_RENDERER');
       expect(react).toHaveProperty('Router');
       expect(react).toHaveProperty('SuspenseFallback');
+      expect(react).toHaveProperty('createReactErrorRepresentationProvider');
       expect(react).toHaveProperty('createReactPageCatalog');
       expect(react).toHaveProperty('createReactPageMetadataElements');
       expect(react).toHaveProperty('createReactServerEntry');
@@ -80,6 +82,7 @@ describe('@fluojs/react root package scaffold', () => {
     expect(rootEntrypoint).toContain("from './render-policy.js'");
     expect(rootEntrypoint).toContain("from './decorators.js'");
     expect(rootEntrypoint).toContain("from './diagnostics.js'");
+    expect(rootEntrypoint).toContain("from './error-representation.js'");
     expect(rootEntrypoint).toContain("from './server-entry.js'");
     expect(rootEntrypoint).toContain("from './render.js'");
     expect(rootEntrypoint).not.toContain('react-dom/server');

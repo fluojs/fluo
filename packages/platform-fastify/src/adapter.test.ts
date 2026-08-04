@@ -204,6 +204,7 @@ const fastifyPortabilityHarness = createHttpAdapterPortabilityHarness<
   Application
 >({
   bootstrap: bootstrapFastifyApplication,
+  createErrorRepresentationBootstrapOptions: (options) => options,
   name: 'fastify',
   run: runFastifyApplication,
 });
@@ -214,6 +215,14 @@ interface FastifyReplySerializerHost {
 
 describe('@fluojs/platform-fastify', () => {
   describe('adapter portability', () => {
+    it('supports HTTP-owned JSON and HTML error representations', async () => {
+      await fastifyPortabilityHarness.assertSupportsHttpErrorRepresentations();
+    });
+
+    it('does not commit an error representation after client disconnect', async () => {
+      await fastifyPortabilityHarness.assertDoesNotCommitAbortedHttpErrorRepresentations();
+    });
+
     it('preserves malformed cookie values', async () => {
       await fastifyPortabilityHarness.assertPreservesMalformedCookieValues();
     });

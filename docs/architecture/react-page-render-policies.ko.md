@@ -6,6 +6,7 @@
 - Decision date: 2026-07-29
 - Issue: [#2856](https://github.com/fluojs/fluo/issues/2856)
 - Predecessor: [React Render Policy Decorator Decision](./react-render-policy-decorators.ko.md)
+- Successor: [HTTP Error Representation Decision](./http-error-representations.ko.md)
 
 ## Decision Summary
 
@@ -16,7 +17,7 @@ not-found response path를 추가하지 않는다.
 | --- | --- | --- | --- | --- |
 | Page metadata presentation | Typed resolution과 React element helper를 포함한 `@PageMetadata(factory)`로 **채택**한다. | Application `ReactPageRenderer`가 document-head placement를 소유한다. `@fluojs/react`는 declaration order, deterministic data composition, safe React element creation만 소유한다. | Authoritative HTTP matching 이후 renderer가 `ReactRenderPolicies`의 ordered metadata factory를 받고 active render context와 함께 `resolveReactPageMetadata(...)`를 호출한다. | Matched `@Path(...)` handler가 valid `ReactElement`를 반환한 뒤, renderer가 `ReactServerEntry`를 반환하기 전에만 실행한다. Resolution failure는 uncommitted `http-pipeline` failure로 남는다. |
 | Generic error presentation | **거부**한다. Phase-specific presentation work는 **유예**한다. | `@fluojs/http`, React SSR diagnostic, application React tree, browser가 각자의 기존 phase를 유지한다. | 없음. `@ErrorPresentation(...)` export나 placeholder를 추가하지 않는다. | Handler/HTTP, pre-commit shell, post-shell recoverable, request-abort, client React failure를 계속 구분한다. |
-| Page-local not-found presentation | **거부**한다. HTTP-owned not-found outcome seam은 별도 작업에서 재검토할 수 있다. | HTTP matcher, `HandlerNotFoundError` conversion, application `onError`, HTTP error writer가 authoritative 상태를 유지한다. | 없음. Unmatched request는 React page metadata를 선택하거나 `ReactPageRenderer`를 호출하지 않는다. | Route miss와 handler가 throw한 `NotFoundException`은 React page response commit 전 HTTP error path에 남는다. |
+| Page-local not-found presentation | **거부**한다. 후속 HTTP-owned representation seam은 global/application-scoped이며 page-local이 아니다. | HTTP matcher, `HandlerNotFoundError` conversion, application `onError`, HTTP error writer가 authoritative 상태를 유지한다. | 없음. Unmatched request는 React page metadata를 선택하거나 `ReactPageRenderer`를 호출하지 않는다. Optional React HTML은 HTTP가 선택한 뒤에만 adapt된다. | Route miss와 handler가 throw한 `NotFoundException`은 React page response commit 전 HTTP error path에 남는다. |
 
 ## Accepted Metadata Policy
 
@@ -134,17 +135,18 @@ application `onError` 또는 일반 HTTP error writer가 처리하는 HTTP excep
 result가 되지 않는다. Route miss와 handler-thrown not-found 양쪽 모두 metadata factory, layout, Suspense
 fallback, page renderer를 실행하지 않는다.
 
-향후 HTML not-found presentation은 global error handling과 모든 adapter에 일관되게 제공되는 HTTP-owned
-typed not-found outcome에서 시작해야 한다. React를 optional response representation으로 사용하기 전에
-content negotiation, API/document selection, filter precedence, request scope, commit behavior를 정의해야
-한다. 이는 page render policy가 아니라 별도 HTTP contract다.
+후속 [HTTP error representation decision](./http-error-representations.ko.md)은 이 HTTP-owned typed
+outcome에서 시작하고 React를 optional representation으로 사용하기 전에 content negotiation,
+API/document selection, filter precedence, request scope, commit behavior를 정의한다. 이 rejection은
+바뀌지 않는다. 해당 seam은 page render policy가 아니라 별도 global/application HTTP contract다.
 
 ## Preserved Contracts
 
 - `PageLayout` order와 `SuspenseFallback` nearest-wins behavior는 바뀌지 않는다.
 - `ReactRenderContext`와 request-scope container identity는 바뀌지 않는다.
 - HTTP route grammar, matcher precedence, conflict, param, versioning, DTO binding, middleware, guard,
-  interceptor, filter, not-found conversion, error writing은 바뀌지 않는다.
+  interceptor, filter, not-found conversion은 HTTP-owned 상태를 유지한다. Successor decision은 해당 owner에
+  post-classification representation selection만 추가한다.
 - Direct `ReactServerEntry`와 non-React value는 계속 application page renderer를 우회한다.
 - Success metadata는 matched handler가 완료된 후, renderer가 entry를 반환하기 전, SSR shell creation과
   response commit 전에만 resolve된다.

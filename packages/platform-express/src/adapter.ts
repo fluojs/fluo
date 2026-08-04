@@ -645,9 +645,15 @@ export async function runExpressApplication(
 }
 
 function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkResponse {
+  const headers = Object.fromEntries(
+    Object.entries(response.getHeaders())
+      .filter((entry): entry is [string, string | number | string[]] => entry[1] !== undefined)
+      .map(([name, value]) => [name, typeof value === 'number' ? String(value) : value]),
+  );
+
   return {
     committed: response.headersSent || response.writableEnded,
-    headers: {},
+    headers,
     raw: response,
     stream: createFrameworkResponseStream(response),
     redirect(status: number, location: string) {

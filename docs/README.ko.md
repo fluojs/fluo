@@ -15,6 +15,7 @@
 - 패키지 표면: [`reference/package-surface.ko.md`](./reference/package-surface.ko.md)
 - 패키지 선택기: [`reference/package-chooser.ko.md`](./reference/package-chooser.ko.md)
 - Behavioral contract: [`contracts/behavioral-contract-policy.ko.md`](./contracts/behavioral-contract-policy.ko.md)
+- HTTP error representation decision: [`architecture/http-error-representations.ko.md`](./architecture/http-error-representations.ko.md)
 - React render policy decision: [`architecture/react-render-policy-decorators.ko.md`](./architecture/react-render-policy-decorators.ko.md)
 - React page metadata/error/not-found policy decision: [`architecture/react-page-render-policies.ko.md`](./architecture/react-page-render-policies.ko.md)
 - React RSC graduation policy: [`contracts/react-rsc-graduation.ko.md`](./contracts/react-rsc-graduation.ko.md)

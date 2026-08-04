@@ -1,4 +1,5 @@
 declare module '@fluojs/testing/http-adapter-portability' {
+  import type { HttpErrorRepresentationOptions, Middleware, RequestObserver } from '@fluojs/http';
   import type { ModuleType } from '@fluojs/runtime';
 
   type AppLike = {
@@ -12,6 +13,13 @@ declare module '@fluojs/testing/http-adapter-portability' {
     TApp extends AppLike = AppLike,
   > {
     bootstrap: (rootModule: ModuleType, options: TBootstrapOptions) => Promise<TApp>;
+    createErrorRepresentationBootstrapOptions?: (options: {
+      readonly cors: false;
+      readonly errorRepresentation: HttpErrorRepresentationOptions;
+      readonly middleware: Middleware[];
+      readonly observers: RequestObserver[];
+      readonly port: 0;
+    }) => TBootstrapOptions;
     exactRawBodyByteContentType?: string;
     name: string;
     prepareExactRawBodyByteTest?: (app: TApp) => void | Promise<void>;
@@ -23,6 +31,7 @@ declare module '@fluojs/testing/http-adapter-portability' {
     TRunOptions extends object,
     TApp extends AppLike = AppLike,
   > {
+    assertDoesNotCommitAbortedHttpErrorRepresentations(): Promise<void>;
     assertDefaultsMultipartTotalLimitToMaxBodySize(): Promise<void>;
     assertExcludesRawBodyForMultipart(): Promise<void>;
     assertPreservesExactRawBodyBytesForByteSensitivePayloads(): Promise<void>;
@@ -32,6 +41,7 @@ declare module '@fluojs/testing/http-adapter-portability' {
     assertReportsConfiguredHostInStartupLogs(): Promise<void>;
     assertReportsHttpsStartupUrl(https: { cert: string; key: string }): Promise<void>;
     assertSettlesStreamDrainWaitOnClose(): Promise<void>;
+    assertSupportsHttpErrorRepresentations(): Promise<void>;
     assertSupportsSseStreaming(): Promise<void>;
   }
 

@@ -1,5 +1,6 @@
 import type { Constructor, MaybePromise, MetadataPropertyKey, MetadataSource, Token } from '@fluojs/core';
 import type { RequestScopeContainer } from '@fluojs/di';
+import type { ErrorResponse, HttpException } from './exceptions.js';
 export type { ValidationIssue, Validator } from '@fluojs/validation';
 
 /** HTTP methods understood by Fluo route metadata and dispatcher matching. */
@@ -109,6 +110,53 @@ export interface ResponseFormatter {
 export interface ContentNegotiationOptions {
   defaultMediaType?: string;
   formatters?: ResponseFormatter[];
+}
+
+/**
+ * HTTP-classified failure data passed to an application HTML representation provider.
+ *
+ * @remarks
+ * The context intentionally omits `FrameworkResponse`. Providers may resolve
+ * request-scoped dependencies, but status, headers, body suppression, and
+ * response commit remain owned by the HTTP dispatcher.
+ */
+export interface HttpErrorRepresentationContext {
+  /** Request-scoped dependency container active for the failed dispatch. */
+  readonly container: RequestScopeContainer;
+  /** HTTP exception selected by dispatcher error classification. */
+  readonly error: HttpException;
+  /** Matched handler when the failure happened after route matching. */
+  readonly handler?: HandlerDescriptor;
+  /** Canonical JSON envelope for the selected HTTP outcome. */
+  readonly json: ErrorResponse;
+  /** Adapter-normalized request that produced the failure. */
+  readonly request: FrameworkRequest;
+  /** Optional request identifier preserved from the active request context. */
+  readonly requestId?: string;
+}
+
+/** Application-owned renderer for optional HTML error and not-found documents. */
+export interface HtmlErrorRepresentationProvider {
+  /**
+   * Decides whether HTML is available for one classified HTTP outcome.
+   *
+   * @param context HTTP-owned error outcome and request-scope access.
+   * @returns `true` when this provider can render the outcome; defaults to `true` when omitted.
+   */
+  canRender?(context: HttpErrorRepresentationContext): MaybePromise<boolean>;
+  /**
+   * Renders a complete HTML document before the dispatcher commits the response.
+   *
+   * @param context HTTP-owned error outcome and request-scope access.
+   * @returns Runtime-neutral UTF-8 text or bytes for the HTML representation.
+   */
+  render(context: HttpErrorRepresentationContext): MaybePromise<string | Uint8Array>;
+}
+
+/** Optional error representation providers registered for one HTTP application. */
+export interface HttpErrorRepresentationOptions {
+  /** Application-owned HTML provider; canonical JSON remains framework-owned and always available. */
+  readonly html: HtmlErrorRepresentationProvider;
 }
 
 /** Authenticated caller identity attached to the active request context. */

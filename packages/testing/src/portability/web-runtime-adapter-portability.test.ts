@@ -264,7 +264,9 @@ async function createBunPortabilityApp(
 function registerWebRuntimePortabilitySuite(
   name: string,
   harness: {
+    assertDoesNotCommitAbortedHttpErrorRepresentations(): Promise<void>;
     assertExcludesRawBodyForMultipart(): Promise<void>;
+    assertSupportsHttpErrorRepresentations(): Promise<void>;
     assertPreservesExactRawBodyBytesForByteSensitivePayloads(): Promise<void>;
     assertPreservesQueryArraysAndDecoding(): Promise<void>;
     assertPreservesMalformedCookieValues(): Promise<void>;
@@ -273,6 +275,14 @@ function registerWebRuntimePortabilitySuite(
   },
 ): void {
   describe(`${name} web runtime adapter portability`, () => {
+    it('supports HTTP-owned JSON and HTML error representations', async () => {
+      await harness.assertSupportsHttpErrorRepresentations();
+    });
+
+    it('does not commit an error representation after request abort', async () => {
+      await harness.assertDoesNotCommitAbortedHttpErrorRepresentations();
+    });
+
     it('preserves query arrays and decoding semantics', async () => {
       await harness.assertPreservesQueryArraysAndDecoding();
     });
@@ -305,6 +315,7 @@ registerWebRuntimePortabilitySuite(
     async bootstrap(rootModule, options) {
       return await createBunPortabilityApp(rootModule, options);
     },
+    createErrorRepresentationBootstrapOptions: (options) => options,
     name: 'bun',
   }),
 );
@@ -375,6 +386,7 @@ registerWebRuntimePortabilitySuite(
         },
       };
     },
+    createErrorRepresentationBootstrapOptions: (options) => options,
     name: 'deno',
   }),
 );
@@ -394,6 +406,7 @@ registerWebRuntimePortabilitySuite(
         },
       };
     },
+    createErrorRepresentationBootstrapOptions: (options) => options,
     name: 'cloudflare-workers',
   }),
 );

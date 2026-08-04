@@ -305,10 +305,19 @@ function registerBunWebRuntimePortabilitySuite(): void {
         },
       };
     },
+    createErrorRepresentationBootstrapOptions: (options) => options,
     name: 'Bun',
   });
 
   describe('Bun web-runtime portability conformance', () => {
+    it('supports HTTP-owned error representations through the shared web-runtime harness', async () => {
+      await bunPortabilityHarness.assertSupportsHttpErrorRepresentations();
+    });
+
+    it('does not commit an error representation after request abort', async () => {
+      await bunPortabilityHarness.assertDoesNotCommitAbortedHttpErrorRepresentations();
+    });
+
     it('preserves malformed cookie values through the shared web-runtime harness', async () => {
       await bunPortabilityHarness.assertPreservesMalformedCookieValues();
     });

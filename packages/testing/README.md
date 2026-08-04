@@ -118,7 +118,7 @@ try {
 
 `app.request(...).send()` is the preferred app-developer path because it keeps tests close to HTTP semantics without manual `FrameworkRequest`/`FrameworkResponse` stubs and creates the same isolated request-scoped DI boundary as runtime dispatch. Close the returned app from a `finally` block so assertion failures do not leak runtime resources. Keep `app.dispatch(...)`, `makeRequest(...)`, and raw `FluoFactory.create(...)` tests for adapter/runtime contracts, framework internals, or compatibility cases where the low-level dispatch boundary itself is what the test must prove.
 
-`createTestApp(...)` accepts the same application bootstrap options as the runtime HTTP bootstrap, including `providers`, `filters`, `converters`, `interceptors`, `middleware`, `observers`, `versioning`, and diagnostics options. The testing helper prepends its request-context middleware while preserving caller-provided middleware in the same app middleware chain.
+`createTestApp(...)` accepts the same application bootstrap options as the runtime HTTP bootstrap, including `providers`, `filters`, `converters`, `interceptors`, `middleware`, `observers`, `versioning`, `errorRepresentation`, and diagnostics options. This lets application tests assert canonical JSON, negotiated HTML, `HEAD`, 406, and provider fallback behavior through the same virtual request pipeline. The testing helper prepends its request-context middleware while preserving caller-provided middleware in the same app middleware chain.
 
 ### Mock helpers from explicit subpaths
 
@@ -143,6 +143,16 @@ Portability harness cleanup is part of the contract: if setup, `listen()`, a run
 `HttpAdapterPortabilityHarness` and web-runtime portability harness methods are the public adapter contract checks. Prefer focused assertions such as `assertPreservesMalformedCookieValues()`, `assertSupportsSseStreaming()`, `assertPreservesRawBodyForJsonAndText()`, `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`, `assertExcludesRawBodyForMultipart()`, `assertDefaultsMultipartTotalLimitToMaxBodySize()`, `assertSettlesStreamDrainWaitOnClose()`, `assertReportsConfiguredHostInStartupLogs()`, `assertReportsHttpsStartupUrl(...)`, and `assertRemovesShutdownSignalListenersAfterClose()` instead of hand-rolled equivalents.
 
 Use `assertPreservesExactRawBodyBytesForByteSensitivePayloads()` when an HTTP adapter must prove `rawBody` keeps byte-sensitive payload bytes intact across runtimes.
+
+Use `assertSupportsHttpErrorRepresentations()` to prove JSON, HTML, `HEAD`, unsupported `Accept`
+406, and already-committed response behavior. Network harnesses adapt the shared
+`NetworkHttpErrorRepresentationBootstrapOptions`; fetch-style harnesses adapt
+`WebHttpErrorRepresentationBootstrapOptions`. Supply `createErrorRepresentationBootstrapOptions`
+when an adapter's bootstrap type contains additional required fields—the typed builder receives only
+the common fixture fields and returns that adapter's complete bootstrap options without casts.
+Use `assertDoesNotCommitAbortedHttpErrorRepresentations()` to start an HTML provider, abort through
+the adapter's native request surface, and prove that neither the provider result nor canonical JSON
+fallback is written after cancellation.
 
 ## Canonical TDD Ladder
 
@@ -169,7 +179,7 @@ fluo differs from NestJS by requiring tests to name an explicit `rootModule`. Th
 
 - **Root package**: `createTestingModule(...)`, `Test.createTestingModule(...)`, `createTestApp(...)`, module introspection helpers, and shared app/module testing types including `DeepMocked<T>`
 - **Subpaths**: `@fluojs/testing/app`, `@fluojs/testing/module`, `@fluojs/testing/http`, `@fluojs/testing/mock` (including `DeepMocked<T>`), `@fluojs/testing/types` (including `DeepMocked<T>`), `@fluojs/testing/vitest`, `@fluojs/testing/vitest/tooling`
-- **Harness subpaths**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`
+- **Harness subpaths**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`. The HTTP portability harnesses expose `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `createErrorRepresentationBootstrapOptions`, `NetworkHttpErrorRepresentationBootstrapOptions`, and `WebHttpErrorRepresentationBootstrapOptions` for adapter-owned bootstrap typing.
 - **Tooling**: `@fluojs/testing/vitest` with `fluoBabelDecoratorsPlugin()` and `@fluojs/testing/vitest/tooling` with Vitest workspace config helpers (requires `vitest` and `@babel/core` in the consuming workspace)
 
 The package manifest declares `engines.node >=20.0.0`. Non-Node runtime application tests can still use runtime-native tools where documented, but the published `@fluojs/testing` package itself is governed by that Node.js engine floor.
@@ -185,5 +195,6 @@ The package manifest declares `engines.node >=20.0.0`. Non-Node runtime applicat
 ## Example Sources
 
 - `packages/testing/src/module.test.ts`
+- `packages/testing/src/portability/error-representation-portability.ts`
 - `examples/minimal/src/app.test.ts`
 - `examples/auth-jwt-passport/src/app.test.ts`
