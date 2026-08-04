@@ -367,6 +367,13 @@ paths are resolved from the current working directory. A missing file is reporte
 content as `UPDATE`, and byte-identical content as `UNCHANGED`. Writes publish one complete temporary
 file with an atomic rename, and `UNCHANGED` never rewrites the target.
 
+Default generation evaluates the application and matching tooling namespaces in one short-lived
+child process, waits for that process to exit, and only then checks or publishes the result. Repeated
+watch generations therefore do not retain application module graphs or TypeScript loader resources
+in the watcher process. Programmatic callers that provide
+`TypegenCommandRuntimeOptions.loadReactTypegenModules` intentionally keep generation in the caller
+process; the returned namespaces remain authoritative for TypeScript, `.js`, and `.mjs` inputs.
+
 `--check` performs the same authoritative bootstrap and generation but never writes the target. It
 compares exact bytes and reports one stable status. `UNCHANGED` goes to stdout with exit code `0`;
 `MISSING`, `STALE`, `MALFORMED`, and `UNSUPPORTED_VERSION` go to stderr with exit codes `2`, `3`, `4`,
@@ -433,7 +440,7 @@ The package can be used programmatically to trigger CLI actions from within othe
 | `typegenUsage()` | Returns the current `fluo typegen` usage text for help surfaces and tests. |
 | `TYPEGEN_EXIT_CODES` | Stable `SUCCESS`, `ERROR`, `MISSING`, `STALE`, `MALFORMED`, and `UNSUPPORTED_VERSION` process codes used by typegen automation. |
 | `runTypegenCommand(argv, options?)` | Programmatic access to bootstrap-resolved React page generation, non-mutating checks, and bounded watch mode. |
-| `TypegenCommandRuntimeOptions` | Type for `runTypegenCommand(...)` and `runCli(...)` typegen runtime overrides such as cwd, streams, and tooling module loading. |
+| `TypegenCommandRuntimeOptions` | Type for `runTypegenCommand(...)` and `runCli(...)` typegen runtime overrides such as cwd, streams, and tooling module loading. Supplying `loadReactTypegenModules` selects caller-process generation with those namespaces; omitting it uses short-lived generation children. |
 
 Programmatic entry points preserve caller process ownership. `runCli(...)`, `runNewCommand(...)`, `runInspectCommand(...)`, and `runTypegenCommand(...)` return numeric exit codes instead of calling `process.exit(...)`; typegen callers can compare those results with `TYPEGEN_EXIT_CODES`. Prompt cancellation resolves as exit code `0` through the command runner, and setup actions such as dependency installation or git initialization only run when the resolved `fluo new` options request them. `runGenerateCommand(...)` returns a structured `GenerateResult`; pass `dryRun: true` to preview generated file and module-wiring actions without writing files. Caller-supplied prompt hooks can throw `CliPromptCancelledError` from the public package entrypoint to express normal cancellation without depending on CLI-internal files.
 
