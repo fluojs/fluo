@@ -13,6 +13,7 @@ Node.js 20+ fluo 애플리케이션을 위한 기본 request-level 테스트 헬
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
 - [canonical TDD ladder](#canonical-tdd-ladder)
+- [React Consumer Testing Recipe](#react-consumer-testing-recipe)
 - [공개 API](#공개-api)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -176,6 +177,27 @@ test/
 ```
 
 fluo는 테스트가 명시적인 `rootModule`을 이름으로 지정해야 한다는 점에서 NestJS와 다릅니다. 테스트 유틸리티는 legacy TypeScript design metadata나 reflection flag에서 dependency를 추론하지 않고, 작성자가 만든 module graph를 컴파일합니다.
+
+## React Consumer Testing Recipe
+
+React 애플리케이션은 같은 testing ladder를 유지하고 React-specific testing helper 대신 기존 boundary에
+build/browser evidence를 추가합니다.
+
+1. Render-policy 및 metadata composition을 pure value로 unit test합니다.
+2. Direct page return, missing-renderer diagnostic, DTO validation, request-scope identity, response ownership,
+   guard, interceptor, native mutation route는 `createTestApp({ rootModule })`로 검증하고 `finally`에서 app을
+   닫습니다.
+3. CI에서 `fluo typegen ... --check`를 실행하고 generated-route fixture를 TypeScript로 compile합니다.
+   Positive route-id/params case와 negative unknown-id, missing-param, extra-param, stale-output case를 유지합니다.
+4. React DOM으로 server markup을 hydrate합니다. Aligned tree는 diagnostic 없이 interactive해야 하고,
+   의도적으로 mismatch한 tree 하나는 `onRecoverableError`를 capture해야 합니다.
+5. Production asset을 대상으로 Playwright를 실행한 뒤 별도 `javaScriptEnabled: false` context에서 native
+   form scenario를 반복해 일반 `POST` → `303` → `GET` fallback을 executable 상태로 유지합니다.
+
+Runnable map은 [`@fluojs/react`](../react/README.ko.md#consumer-testing-loop)와
+[`examples/react-vite-ssr`](../../examples/react-vite-ssr/README.ko.md#canonical-consumer-test-map)에
+문서화되어 있습니다. 이 layer들은 이미 real HTTP dispatcher와 application page renderer를 compose하므로
+synthetic React test runtime은 필요한 setup을 줄이기보다 coverage를 약화시킵니다.
 
 ## 공개 API
 

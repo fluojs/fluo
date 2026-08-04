@@ -11,6 +11,7 @@ Node.js 20+ request-level testing helpers, testing module construction, and prov
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
 - [Canonical TDD Ladder](#canonical-tdd-ladder)
+- [React Consumer Testing Recipe](#react-consumer-testing-recipe)
 - [Public API](#public-api)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -174,6 +175,29 @@ test/
 ```
 
 fluo differs from NestJS by requiring tests to name an explicit `rootModule`. The testing utilities compile the module graph you authored instead of inferring dependencies from legacy TypeScript design metadata or reflection flags.
+
+## React Consumer Testing Recipe
+
+React applications keep the same testing ladder and add build/browser evidence at the existing
+boundaries instead of introducing a React-specific testing helper:
+
+1. Unit-test render-policy and metadata composition as pure values.
+2. Use `createTestApp({ rootModule })` for direct page returns, missing-renderer diagnostics, DTO
+   validation, request-scope identity, response ownership, guards, interceptors, and native mutation
+   routes. Close the app in `finally`.
+3. Run `fluo typegen ... --check` in CI and compile generated-route fixtures with TypeScript. Keep
+   positive route-id/params cases and negative unknown-id, missing-param, extra-param, and stale-output
+   cases.
+4. Hydrate server markup with React DOM. Assert an aligned tree is interactive without diagnostics,
+   and capture `onRecoverableError` for one deliberately mismatched tree.
+5. Run Playwright against production assets, then repeat the native form scenario in a separate
+   `javaScriptEnabled: false` context so the ordinary `POST` → `303` → `GET` fallback stays executable.
+
+The runnable map is documented in
+[`@fluojs/react`](../react/README.md#consumer-testing-loop) and
+[`examples/react-vite-ssr`](../../examples/react-vite-ssr/README.md#canonical-consumer-test-map).
+These layers already compose the real HTTP dispatcher and application page renderer, so a synthetic
+React test runtime would reduce coverage rather than remove necessary setup.
 
 ## Public API
 
