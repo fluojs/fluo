@@ -135,6 +135,11 @@ const INSPECT_OPTION_HELP: CommandOptionHelpEntry[] = [
 const TYPEGEN_OPTION_HELP: CommandOptionHelpEntry[] = [
   {
     aliases: [],
+    description: 'Check that the target exactly matches the compiled React page catalog without writing it.',
+    option: '--check',
+  },
+  {
+    aliases: [],
     description: 'Write the generated React page route types to this file.',
     option: '--output <path>',
   },
@@ -142,6 +147,11 @@ const TYPEGEN_OPTION_HELP: CommandOptionHelpEntry[] = [
     aliases: [],
     description: 'Select the exported module symbol name (default: AppModule).',
     option: '--export <name>',
+  },
+  {
+    aliases: [],
+    description: 'Regenerate after coalesced changes under the application module directory.',
+    option: '--watch',
   },
   {
     aliases: ['-h'],

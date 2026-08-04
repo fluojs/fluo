@@ -9,7 +9,7 @@ import { migrateUsage, runMigrateCommand } from './commands/migrate.js';
 import { type NewCommandRuntimeOptions, runNewCommand } from './commands/new.js';
 import { addUsage, runAddCommand, runUpgradeCommand, upgradeUsage } from './commands/package-workflow.js';
 import { runScriptCommand, scriptUsage } from './commands/scripts.js';
-import { type TypegenCommandRuntimeOptions, runTypegenCommand } from './commands/typegen.js';
+import { runTypegenCommand, type TypegenCommandRuntimeOptions } from './commands/typegen.js';
 import { type DevRunnerRuntime, runNodeRestartRunner } from './dev-runner/node-restart-runner.js';
 import { builtInGeneratorCollection, generatorManifest, generatorOptionSchemas, resolveGeneratorKind } from './generators/manifest.js';
 import { renderAliasList, renderHelpTable } from './help.js';
@@ -146,7 +146,7 @@ const TOP_LEVEL_COMMAND_HELP: TopLevelCommandHelpEntry[] = [
   { aliases: [], command: 'add', description: 'Install @fluojs packages with the detected package manager.' },
   { aliases: [], command: 'upgrade', description: 'Report latest CLI state and migration workflow guidance.' },
   { aliases: [], command: 'inspect', description: 'Inspect runtime platform snapshot/diagnostics and emit timing optionally.' },
-  { aliases: [], command: 'typegen', description: 'Generate path-only React page route types and absolute href builders.' },
+  { aliases: [], command: 'typegen', description: 'Generate, check, or watch path-only React page route types.' },
   { aliases: [], command: 'migrate', description: 'Run NestJS-to-fluo codemods (dry-run by default).' },
   { aliases: ['--version', '-v'], command: 'version', description: 'Print the installed fluo CLI version.' },
   { aliases: [], command: 'help', description: 'Show top-level or command-specific help.' },
@@ -485,7 +485,7 @@ function parseCommand(argv: string[]): ParsedCommand {
  *
  * @param argv Argument vector to execute. Defaults to the current process arguments without the node/bin prefix.
  * @param runtime Optional runtime overrides shared by the top-level dispatcher and delegated commands.
- * @returns `0` when the command completes successfully, otherwise `1` after writing the error message to `stderr`.
+ * @returns `0` when the command completes successfully, otherwise the delegated command exit code.
  */
 export async function runCli(
   argv = process.argv.slice(2),
