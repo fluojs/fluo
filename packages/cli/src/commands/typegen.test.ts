@@ -222,7 +222,7 @@ describe('fluo typegen', () => {
     // Given: the target is structurally valid but differs from the authoritative catalog output.
     const fixture = await createFixture();
     await runTypegenCommand([fixtureModulePath, '--output', fixture.outputPath], fixture.runtime);
-    const stale = (await readFile(fixture.outputPath, 'utf8')).replace('/products', '/stale-products');
+    const stale = (await readFile(fixture.outputPath, 'utf8')).replaceAll('/products', '/stale-products');
     await writeFile(fixture.outputPath, stale, 'utf8');
     fixture.stdout.splice(0);
 

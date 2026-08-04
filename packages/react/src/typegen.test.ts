@@ -67,6 +67,20 @@ describe('@fluojs/react/typegen', () => {
     expect(unsupportedInspection).toEqual({ status: 'unsupported-version', version: 99 });
   });
 
+  it('classifies a syntactically malformed current-version body as malformed', () => {
+    // Given: a current-version artifact keeps its banner, sentinels, and footer but has invalid TypeScript syntax.
+    const malformed = generateReactPageTypes(catalog).replace(
+      'export const reactPageRoutes = {',
+      'export const reactPageRoutes = {]',
+    );
+
+    // When: tooling validates the complete generated body.
+    const inspection = inspectReactPageTypeArtifact(malformed);
+
+    // Then: syntax corruption is malformed rather than a valid stale artifact.
+    expect(inspection).toEqual({ status: 'malformed' });
+  });
+
   it('generates absolute paths and href builders with required params', () => {
     // Given
     const pages = catalog;

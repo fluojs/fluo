@@ -123,7 +123,7 @@ describe('fluo typegen process lifecycle', () => {
       'typegen', modulePath, '--output', outputPath, '--no-update-check',
     ], tsconfigPath);
     expect(generated.exitCode).toBe(0);
-    const stale = (await readFile(outputPath, 'utf8')).replace('/products', '/stale-products');
+    const stale = (await readFile(outputPath, 'utf8')).replaceAll('/products', '/stale-products');
     await writeFile(outputPath, stale, 'utf8');
 
     // When: CI invokes the binary-facing check mode.
