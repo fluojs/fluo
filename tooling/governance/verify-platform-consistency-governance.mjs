@@ -622,8 +622,9 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // request-boundary interceptor coverage, CLI
   // public runtime type boundaries plus the documented Node.js runtime floor,
   // and Studio live helper contracts such as deterministic Mermaid rendering,
-  // route-id graph correlation, viewer dependency classification, and Node.js
-  // tooling runtime-floor discoverability, plus Cron distributed-lock
+  // route-id graph correlation, viewer dependency classification, Node.js
+  // tooling runtime-floor discoverability, and CLI-owned active ingestion socket
+  // teardown with one shared close operation, plus Cron distributed-lock
   // lifecycle contracts such as enabled TTL validation before Redis I/O,
   // bounded shutdown lock-release I/O including the shutdown-start deadline reused
   // by post-task release/retry, timeout ownership retention, dynamic
