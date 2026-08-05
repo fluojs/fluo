@@ -1,7 +1,15 @@
 import { Inject } from '@fluojs/core';
-import { type FrameworkRequest, type FrameworkResponse, Get, UseInterceptors } from '@fluojs/http';
+import {
+  type CallHandler,
+  type FrameworkRequest,
+  type FrameworkResponse,
+  Get,
+  type Interceptor,
+  type InterceptorContext,
+  UseInterceptors,
+} from '@fluojs/http';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { MongooseConnection, MongooseModule, MongooseTransactionInterceptor } from './index.js';
 import type { MongooseSessionLike } from './types.js';
@@ -78,6 +86,124 @@ describe('MongooseTransactionInterceptor compatibility', () => {
       expect(response.body).toBe(true);
       expect(events).toEqual(['session:start', 'transaction:start', 'handler', 'transaction:commit', 'session:end']);
     } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects a cancelled routed caller and cleans up the compatibility transaction', async () => {
+    // Given
+    const events: string[] = [];
+    let notifyHandlerStarted: () => void = () => undefined;
+    let releaseHandler: () => void = () => undefined;
+    let notifySessionEnded: () => void = () => undefined;
+    const handlerStarted = new Promise<void>((resolve) => {
+      notifyHandlerStarted = resolve;
+    });
+    const handlerReleased = new Promise<void>((resolve) => {
+      releaseHandler = resolve;
+    });
+    const sessionEnded = new Promise<void>((resolve) => {
+      notifySessionEnded = resolve;
+    });
+    const session: MongooseSessionLike = {
+      abortTransaction() {
+        events.push('transaction:abort');
+      },
+      commitTransaction() {
+        events.push('transaction:commit');
+      },
+      endSession() {
+        events.push('session:end');
+        notifySessionEnded();
+      },
+      startTransaction() {
+        events.push('transaction:start');
+      },
+    };
+    const connection = {
+      async startSession(): Promise<MongooseSessionLike> {
+        events.push('session:start');
+        return session;
+      },
+    };
+
+    class CallerProbeInterceptor implements Interceptor {
+      async intercept(_context: InterceptorContext, next: CallHandler): Promise<unknown> {
+        try {
+          return await next.handle();
+        } catch (error) {
+          events.push(error instanceof Error ? `caller:rejected:${error.message}` : 'caller:rejected:unknown');
+          throw error;
+        }
+      }
+    }
+
+    @Inject(MongooseConnection)
+    class CompatibilityController {
+      constructor(private readonly mongoose: MongooseConnection<typeof connection>) {}
+
+      @Get('/compat')
+      @UseInterceptors(CallerProbeInterceptor, MongooseTransactionInterceptor)
+      async waitForCancellation(): Promise<string> {
+        events.push(`handler:start:${this.mongoose.currentSession() === session}`);
+        notifyHandlerStarted();
+        await handlerReleased;
+        events.push('handler:end');
+
+        return 'late-result';
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [CompatibilityController],
+      imports: [MongooseModule.forRoot({ connection })],
+      providers: [CallerProbeInterceptor],
+    });
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const mongoose = await app.container.resolve(MongooseConnection<typeof connection>);
+    const controller = new AbortController();
+
+    try {
+      const response = createResponse();
+      const dispatch = app.dispatch(createRequest(controller.signal), response);
+      await handlerStarted;
+
+      // When
+      controller.abort(new Error('compatibility caller cancelled'));
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      // Then
+      expect(events).toEqual(['session:start', 'transaction:start', 'handler:start:true']);
+      expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+        details: {
+          activeRequestTransactions: 1,
+          activeSessions: 1,
+        },
+      });
+
+      releaseHandler();
+      await expect(dispatch).resolves.toBeUndefined();
+      await sessionEnded;
+      await vi.waitFor(() => {
+        expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+          details: {
+            activeRequestTransactions: 0,
+            activeSessions: 0,
+          },
+        });
+      });
+      expect(events).toEqual([
+        'session:start',
+        'transaction:start',
+        'handler:start:true',
+        'handler:end',
+        'transaction:abort',
+        'session:end',
+        'caller:rejected:compatibility caller cancelled',
+      ]);
+    } finally {
+      releaseHandler();
       await app.close();
     }
   });
