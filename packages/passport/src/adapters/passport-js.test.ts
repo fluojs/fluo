@@ -164,13 +164,20 @@ describe('PassportJsAuthStrategy terminal actions', () => {
   it('settles once with success when fail follows success', async () => {
     // Given
     vi.useFakeTimers();
+    let challengeMessageReads = 0;
+    const lateChallenge = {
+      get message() {
+        challengeMessageReads += 1;
+        return 'late failure';
+      },
+    };
     class SuccessThenFailStrategy implements PassportJsStrategyLike {
       fail?: (challenge?: unknown, status?: number) => void;
       success?: (user: unknown) => void;
 
       authenticate(): void {
         this.success?.({ id: 'passport-user' });
-        this.fail?.('late failure', 401);
+        this.fail?.(lateChallenge, 401);
       }
     }
     const mapPrincipal = vi.fn(() => ({ claims: {}, subject: 'passport-user' }));
@@ -189,6 +196,7 @@ describe('PassportJsAuthStrategy terminal actions', () => {
     expect(principal).toEqual({ claims: {}, subject: 'passport-user' });
     expect(mapPrincipal).toHaveBeenCalledTimes(1);
     expect(settlement).toHaveBeenCalledTimes(1);
+    expect(challengeMessageReads).toBe(0);
     expect(vi.getTimerCount()).toBe(0);
   });
 
