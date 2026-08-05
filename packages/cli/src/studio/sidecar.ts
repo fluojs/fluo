@@ -54,6 +54,12 @@ type StudioClient = {
   response: ServerResponse;
 };
 
+type StudioSidecarResources = {
+  readonly clients: Set<StudioClient>;
+  readonly heartbeat: NodeJS.Timeout | undefined;
+  readonly ingestionRequests: Set<IncomingMessage>;
+};
+
 const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_HEARTBEAT_MS = 15_000;
 const MAX_EVENT_REPLAY = 1_000;
@@ -379,6 +385,8 @@ export async function startStudioSidecar(options: StudioSidecarOptions = {}): Pr
   const token = createToken();
   const events: StoredStudioEvent[] = [];
   const clients = new Set<StudioClient>();
+  const ingestionRequests = new Set<IncomingMessage>();
+  let acceptingIngestion = true;
   let sequence = 0;
   const startedAt = performance.now();
 
@@ -478,6 +486,11 @@ export async function startStudioSidecar(options: StudioSidecarOptions = {}): Pr
     }
 
     if (request.method === 'POST' && requestUrl.pathname === '/api/runtime/events') {
+      if (!acceptingIngestion) {
+        request.socket.destroy();
+        return;
+      }
+      ingestionRequests.add(request);
       try {
         const body = await readBody(request);
         const parsed = body ? JSON.parse(body) as unknown : {};
@@ -500,6 +513,8 @@ export async function startStudioSidecar(options: StudioSidecarOptions = {}): Pr
         });
       } catch (error) {
         writeJson(response, 400, { error: error instanceof Error ? error.message : String(error) });
+      } finally {
+        ingestionRequests.delete(request);
       }
       return;
     }
@@ -517,7 +532,7 @@ export async function startStudioSidecar(options: StudioSidecarOptions = {}): Pr
 
   const address = server.address();
   if (!address || typeof address === 'string') {
-    await closeServer(server, clients, undefined);
+    await closeServer(server, { clients, heartbeat: undefined, ingestionRequests });
     throw new Error('Failed to resolve Studio sidecar address.');
   }
 
@@ -533,6 +548,8 @@ export async function startStudioSidecar(options: StudioSidecarOptions = {}): Pr
         });
       }, options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS);
   heartbeat?.unref();
+
+  let closePromise: Promise<void> | undefined;
 
   return {
     appId,
@@ -552,23 +569,27 @@ export async function startStudioSidecar(options: StudioSidecarOptions = {}): Pr
     port: address.port,
     token,
     url,
-    async close() {
-      await closeServer(server, clients, heartbeat);
+    close() {
+      if (!closePromise) {
+        acceptingIngestion = false;
+        closePromise = closeServer(server, { clients, heartbeat, ingestionRequests });
+      }
+      return closePromise;
     },
   };
 }
 
-async function closeServer(server: Server, clients: Set<StudioClient>, heartbeat: NodeJS.Timeout | undefined): Promise<void> {
-  if (heartbeat) {
-    clearInterval(heartbeat);
+async function closeServer(server: Server, resources: StudioSidecarResources): Promise<void> {
+  if (resources.heartbeat) {
+    clearInterval(resources.heartbeat);
   }
 
-  for (const client of clients) {
+  for (const client of resources.clients) {
     client.response.end();
   }
-  clients.clear();
+  resources.clients.clear();
 
-  await new Promise<void>((resolve, reject) => {
+  const serverClosed = new Promise<void>((resolve, reject) => {
     server.close((error) => {
       if (error) {
         reject(error);
@@ -577,4 +598,10 @@ async function closeServer(server: Server, clients: Set<StudioClient>, heartbeat
       resolve();
     });
   });
+
+  for (const request of resources.ingestionRequests) {
+    request.socket.destroy();
+  }
+
+  await serverClosed;
 }

@@ -1,11 +1,12 @@
 import { createServer } from 'node:http';
-import { connect, type Socket } from 'node:net';
+import { connect } from 'node:net';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { startStudioSidecar, type StudioSidecar } from './sidecar.js';
+import { type StudioSidecar, startStudioSidecar } from './sidecar.js';
 
 const sidecars: StudioSidecar[] = [];
+const SHUTDOWN_TEST_TIMEOUT_MS = 1_000;
 
 afterEach(async () => {
   while (sidecars.length > 0) {
@@ -301,5 +302,59 @@ describe('Studio sidecar', () => {
     const state = await fetch(`${sidecar.url}/api/state?token=${encodeURIComponent(token)}`);
     const stateJson = await state.json() as { events: Array<{ type: string }> };
     expect(stateJson.events).toHaveLength(0);
+  });
+
+  it('settles repeated shutdown calls while an authenticated ingestion body remains incomplete', async () => {
+    // Given a completed ingestion followed by an incomplete ingestion on the same authenticated socket.
+    const sidecar = await startTestSidecar();
+    const socket = connect(sidecar.port, '127.0.0.1');
+    await new Promise<void>((resolve) => socket.once('connect', () => resolve()));
+    const socketClosed = new Promise<void>((resolve) => socket.once('close', () => resolve()));
+
+    try {
+      const completeBody = JSON.stringify({ payload: { ok: true }, source: { appId: 'test-app', runtime: 'node' }, type: 'snapshot', version: 1 });
+      const partialBody = '{"payload":{"phase":"scheduled"},"source":';
+      await new Promise<void>((resolve, reject) => {
+        socket.write(
+          `POST /api/runtime/events HTTP/1.1\r\n` +
+          `Host: 127.0.0.1:${String(sidecar.port)}\r\n` +
+          `Authorization: Bearer ${sidecar.token}\r\n` +
+          `Content-Type: application/json\r\n` +
+          `Content-Length: ${String(completeBody.length)}\r\n` +
+          `\r\n` +
+          completeBody +
+          `POST /api/runtime/events HTTP/1.1\r\n` +
+          `Host: 127.0.0.1:${String(sidecar.port)}\r\n` +
+          `Authorization: Bearer ${sidecar.token}\r\n` +
+          `Content-Type: application/json\r\n` +
+          `Content-Length: 1000\r\n` +
+          `\r\n` +
+          partialBody,
+          (error) => error ? reject(error) : resolve(),
+        );
+      });
+      const state = await fetch(`${sidecar.url}/api/state?token=${encodeURIComponent(sidecar.token)}`);
+      await expect(state.json()).resolves.toMatchObject({ sequence: 1 });
+
+      // When shutdown starts more than once through the public sidecar interface.
+      let timeout: NodeJS.Timeout | undefined;
+      const result = await Promise.race([
+        Promise.all([sidecar.close(), sidecar.close()]).then(() => 'closed' as const),
+        new Promise<'timed-out'>((resolve) => {
+          timeout = setTimeout(() => resolve('timed-out'), SHUTDOWN_TEST_TIMEOUT_MS);
+        }),
+      ]).finally(() => {
+        if (timeout) {
+          clearTimeout(timeout);
+        }
+      });
+      // Then the sidecar owns socket cleanup and every close call settles deterministically.
+      expect(result).toBe('closed');
+      socket.resume();
+      await expect(socketClosed).resolves.toBeUndefined();
+      await expect(sidecar.close()).resolves.toBeUndefined();
+    } finally {
+      socket.destroy();
+    }
   });
 });
