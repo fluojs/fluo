@@ -8,6 +8,11 @@ const packageSourceRoot = dirname(fileURLToPath(import.meta.url));
 
 const rootImportSurfaceFiles = [
   'index.ts',
+  'errors.ts',
+  'module.ts',
+  'service.ts',
+  'status.ts',
+  'types.ts',
   'signing/jwks.ts',
   'signing/signer.ts',
   'signing/verifier.ts',

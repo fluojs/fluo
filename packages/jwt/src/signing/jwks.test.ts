@@ -71,6 +71,24 @@ describe('JwksClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('refetches on every lookup when cache ttl is zero', async () => {
+    const { publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const jwk = publicKey.export({ format: 'jwk' });
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ keys: [{ ...jwk, kid: 'key-1' }] }), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      }),
+    );
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const client = new JwksClient('https://example.test/.well-known/jwks.json', 0);
+    await client.getSigningKey('key-1');
+    await client.getSigningKey('key-1');
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('refetches after ttl expires', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
