@@ -81,7 +81,7 @@ export interface StudioRouteDescriptor {
   controller: string;
   handler: string;
   id: string;
-  kind?: string;
+  kind?: 'http' | 'react-page';
   method: string;
   module?: string;
   params?: string[];
@@ -378,6 +378,11 @@ function validateStudioRouteDescriptor(value: unknown): StudioRouteDescriptor {
     throw new Error('Invalid Studio live route descriptor payload.');
   }
 
+  const kind = value.kind;
+  if (kind !== undefined && kind !== 'http' && kind !== 'react-page') {
+    throw new Error('Invalid Studio live route descriptor kind payload.');
+  }
+
   const params = value.params;
   if (params !== undefined && !isStringArray(params)) {
     throw new Error('Invalid Studio live route descriptor params payload.');
@@ -387,9 +392,7 @@ function validateStudioRouteDescriptor(value: unknown): StudioRouteDescriptor {
     controller: validateString(value.controller, 'Invalid Studio live route descriptor payload.'),
     handler: validateString(value.handler, 'Invalid Studio live route descriptor payload.'),
     id: validateString(value.id, 'Invalid Studio live route descriptor payload.'),
-    kind: value.kind === undefined
-      ? 'http'
-      : validateString(value.kind, 'Invalid Studio live route descriptor kind payload.'),
+    kind: kind ?? 'http',
     method: validateString(value.method, 'Invalid Studio live route descriptor payload.'),
     params: params === undefined ? [] : [...params],
     path: validateString(value.path, 'Invalid Studio live route descriptor payload.'),

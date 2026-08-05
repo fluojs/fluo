@@ -48,7 +48,7 @@ export interface StudioDashboardState {
 }
 
 type StudioDisplayRouteDescriptor = Omit<StudioRouteDescriptor, 'kind' | 'params'> & {
-  kind: string;
+  kind: NonNullable<StudioRouteDescriptor['kind']>;
   params: string[];
 };
 

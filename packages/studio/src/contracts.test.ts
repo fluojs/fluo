@@ -506,6 +506,40 @@ describe('parseStudioPayload', () => {
     }))).toThrow('Invalid Studio live route descriptor params payload.');
   });
 
+  it('rejects unknown supplied route kinds in static inspect snapshots', () => {
+    expect(() => parseStudioPayload(JSON.stringify({
+      ...snapshotFixture,
+      routes: [
+        {
+          controller: 'ProductRouter',
+          handler: 'show',
+          id: 'GET /products/:productId ProductRouter show',
+          kind: 'unknown',
+          method: 'GET',
+          params: ['productId'],
+          path: '/products/:productId',
+        },
+      ],
+    }))).toThrow('Invalid Studio live route descriptor kind payload.');
+  });
+
+  it('defaults omitted route kinds to http in legacy static inspect snapshots', () => {
+    const parsed = parseStudioPayload(JSON.stringify({
+      ...snapshotFixture,
+      routes: [
+        {
+          controller: 'LegacyController',
+          handler: 'show',
+          id: 'GET /legacy LegacyController show',
+          method: 'GET',
+          path: '/legacy',
+        },
+      ],
+    }));
+
+    expect(parsed.payload.snapshot?.routes?.[0]?.kind).toBe('http');
+  });
+
   it('rejects arbitrary JSON objects that are not Studio inspect artifacts', () => {
     expect(() =>
       parseStudioPayload(
