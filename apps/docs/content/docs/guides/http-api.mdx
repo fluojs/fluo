@@ -86,6 +86,8 @@ Recommended workflow:
 3. Generate or expose OpenAPI docs.
 4. Keep the OpenAPI page linked from package docs and examples.
 
+`@fluojs/openapi` emits OpenAPI 3.1 schemas. Prefer JSON Schema null unions such as `type: ['string', 'null']`; accepted legacy `nullable` input is normalized to an equivalent type or `anyOf` union and is not emitted in the document. See the canonical [`@fluojs/openapi` package contract](https://github.com/fluojs/fluo/blob/main/packages/openapi/README.md#openapi-31-nullable-schemas) for scalar, array, `$ref`, and `documentTransform` behavior.
+
 ## Package map
 
 | Need | Package |
