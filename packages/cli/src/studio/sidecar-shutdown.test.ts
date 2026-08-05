@@ -45,8 +45,9 @@ describe('Studio sidecar shutdown admission', () => {
       // When shutdown starts before an incomplete authenticated ingestion is pipelined.
       const closing = sidecar.close();
       expect(socket.destroyed).toBe(false);
+      socket.write('x');
       socket.write(
-        `xPOST /api/runtime/events HTTP/1.1\r\n` +
+        `POST /api/runtime/events HTTP/1.1\r\n` +
         `Host: 127.0.0.1:${String(sidecar.port)}\r\n` +
         `Authorization: Bearer ${sidecar.token}\r\n` +
         `Content-Type: application/json\r\n` +
