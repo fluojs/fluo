@@ -86,6 +86,53 @@ describe('Studio live event contracts', () => {
     }
   });
 
+  it('rejects unknown supplied route kinds in live snapshots', () => {
+    const event = {
+      ...liveEvents[0],
+      payload: {
+        ...liveEvents[0].payload,
+        routes: [
+          {
+            controller: 'HealthController',
+            handler: 'getHealth',
+            id: 'route:health',
+            kind: 'unknown',
+            method: 'GET',
+            params: [],
+            path: '/health',
+          },
+        ],
+      },
+    };
+
+    expect(isStudioLiveEvent(event)).toBe(false);
+    expect(() => parseStudioLiveEvent(JSON.stringify(event))).toThrow(
+      'Invalid Studio live route descriptor kind payload.',
+    );
+  });
+
+  it('defaults omitted route kinds to http in legacy live snapshots', () => {
+    const event = {
+      ...liveEvents[0],
+      payload: {
+        ...liveEvents[0].payload,
+        routes: [
+          {
+            controller: 'LegacyController',
+            handler: 'getHealth',
+            id: 'route:legacy',
+            method: 'GET',
+            path: '/legacy',
+          },
+        ],
+      },
+    };
+
+    expect(parseStudioLiveEvent(JSON.stringify(event))).toMatchObject({
+      payload: { routes: [{ kind: 'http' }] },
+    });
+  });
+
   it('rejects body-like request fields before Studio state can retain them', () => {
     const bodyLikeFields = ['body', 'headers', 'payload', 'rawBody', 'requestBody', 'responseBody'] as const;
 
