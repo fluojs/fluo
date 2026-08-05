@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   AccountLinkConflictError,
+  type AccountLinkContext,
   AccountLinkRejectedError,
   createConservativeAccountLinkPolicy,
   resolveAccountLinking,
-  type AccountLinkContext,
 } from './account-linking.js';
 
 function createContext(overrides: Partial<AccountLinkContext> = {}): AccountLinkContext {
@@ -47,6 +47,15 @@ describe('resolveAccountLinking', () => {
       accountId: 'account-1',
       reason: 'Identity linked after explicit user confirmation.',
       status: 'linked',
+    });
+  });
+
+  it('creates an account when the conservative policy finds no candidates', async () => {
+    const result = await resolveAccountLinking(createContext(), createConservativeAccountLinkPolicy());
+
+    expect(result).toEqual({
+      reason: 'No matching account candidate found for this external identity.',
+      status: 'create-account',
     });
   });
 
