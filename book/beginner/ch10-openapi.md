@@ -224,6 +224,8 @@ findOne() {
 
 These small additions are a big help to developers trying to understand the API. Practical examples reduce trial and error, which ultimately helps the team build faster.
 
+OpenAPI 3.1 represents nullable values with JSON Schema unions, such as `type: ['string', 'null']`. New explicit schemas should prefer that form. For compatibility with older metadata, `OpenApiSchemaObject` still accepts `nullable: true`, but fluo removes the legacy keyword from generated documents and emits an equivalent null union instead. Scalar and array schemas keep their constraints, `$ref` schemas use `anyOf` with `{ type: 'null' }`, and `nullable: false` is simply omitted. The same rule applies to schemas added by `documentTransform`.
+
 ### Documenting Security Schemas
 
 If an application uses multiple authentication types, such as API keys for some paths and JWT for others, you can define multiple security schemas.
@@ -331,6 +333,7 @@ Following this pattern gives users a clean and organized documentation experienc
 - Documentation Decorators such as `@ApiTag` and `@ApiOperation` provide human context that code alone cannot convey.
 - FluoBlog now exposes machine-readable `/openapi.json` and, because it opts into `ui: true`, a human-readable `/docs` interactive UI; `documentPath` and `uiPath` can separate multiple document instances.
 - Metadata reuse keeps validation rules and DTO shapes synchronized automatically with the documentation.
+- Accepted legacy `nullable` metadata is emitted as valid OpenAPI 3.1 null unions rather than the OpenAPI 3.0-only keyword.
 - Deterministic documentation output helps the API "contract" stay stable and professional.
 - Part 1 is now complete. You have an HTTP API with routing, validation, serialization, protection, and documentation.
 
