@@ -48,6 +48,8 @@ Keep manual `FrameworkRequest`/`FrameworkResponse` stubs, `makeRequest(...)`, ra
 
 `overrideModule(source, replacement)` is a test-only module graph rewrite. It must not mutate the source module's decorator metadata, and the compiled testing module must keep the original `rootModule` and `modules[].type` identities for diagnostics and graph assertions while resolving providers from the replacement module definition.
 
+The testing-module builder owns its internally created container until `compile()` returns a `TestingModuleRef`. If override application, bootstrap lifecycle work, or final singleton synchronization fails, `compile()` disposes that unrecoverable container before rejecting. It rethrows the original compile failure when cleanup succeeds and reports an `AggregateError` containing the original and cleanup failures when disposal also fails. A successfully returned `TestingModuleRef` keeps the existing caller-owned container lifecycle.
+
 `@fluojs/testing/vitest` is the supported Vitest entrypoint for `fluoBabelDecoratorsPlugin()`. Keep it in package export-map and build-surface checks whenever testing package exports change.
 
 `@fluojs/testing` declares `engines.node >=20.0.0`. Its mock helpers and `DeepMocked<T>` type intentionally use a Vitest-compatible mock type boundary. `DeepMocked<T>` is available from the root `@fluojs/testing` package, `@fluojs/testing/types`, and `@fluojs/testing/mock`; consumers that do not run Vitest should prefer non-mock entrypoints such as `@fluojs/testing/app`, `@fluojs/testing/module`, or harness subpaths.

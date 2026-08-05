@@ -1,25 +1,24 @@
 import { getModuleMetadata, type MaybePromise, type Token } from '@fluojs/core';
 import {
-  isForwardRef,
-  isOptionalToken,
   type ClassType,
   type ContainerResolutionState,
   type ForwardRefFn,
+  isForwardRef,
+  isOptionalToken,
   type NormalizedProvider,
   type OptionalToken,
   type Provider,
   RequestScopeResolutionError,
   Scope,
 } from '@fluojs/di';
+import type { Guard, HandlerSource, Interceptor } from '@fluojs/http';
+import { createDispatcher, createHandlerMapping } from '@fluojs/http';
 import type {
   BootstrapModuleOptions,
   BootstrapResult,
   ModuleType,
 } from '@fluojs/runtime';
 import { bootstrapModule } from '@fluojs/runtime';
-
-import { createDispatcher, createHandlerMapping } from '@fluojs/http';
-import type { Guard, HandlerSource, Interceptor } from '@fluojs/http';
 import { createTestRequestContextMiddleware, makeRequest, type TestRequestWithOptions } from './http.js';
 import type { OverrideProviderBuilder, TestingModuleBuilder, TestingModuleOptions, TestingModuleRef } from './types.js';
 
@@ -728,30 +727,38 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
   }
 
   async compile(): Promise<TestingModuleRef> {
-    const bootstrapped = this.bootstrapTestingModule();
-    const syncResolver = createSyncResolver(bootstrapped.container);
-
-    await runTestingBootstrapLifecycle(bootstrapped, this.overrides);
-    await syncResolver.syncFromContainer();
-
-    const resolve = bootstrapped.container.resolve.bind(bootstrapped.container);
-    bootstrapped.container.resolve = async <T>(token: Token<T>): Promise<T> => {
-      const value = await resolve<T>(token);
-      await syncResolver.syncFromContainer();
-      return value;
-    };
-
-    return this.createTestingModuleRef(bootstrapped, syncResolver);
-  }
-
-  private bootstrapTestingModule(): BootstrapResult {
     const bootstrapped = this.bootstrapWithModuleReplacements();
 
-    if (this.overrides.length > 0) {
-      bootstrapped.container.override(...this.overrides);
-    }
+    try {
+      if (this.overrides.length > 0) {
+        bootstrapped.container.override(...this.overrides);
+      }
 
-    return bootstrapped;
+      const syncResolver = createSyncResolver(bootstrapped.container);
+
+      await runTestingBootstrapLifecycle(bootstrapped, this.overrides);
+      await syncResolver.syncFromContainer();
+
+      const resolve = bootstrapped.container.resolve.bind(bootstrapped.container);
+      bootstrapped.container.resolve = async <T>(token: Token<T>): Promise<T> => {
+        const value = await resolve<T>(token);
+        await syncResolver.syncFromContainer();
+        return value;
+      };
+
+      return this.createTestingModuleRef(bootstrapped, syncResolver);
+    } catch (error) {
+      try {
+        await bootstrapped.container.dispose();
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [error, cleanupError],
+          'Testing module compilation and container cleanup both failed.',
+        );
+      }
+
+      throw error;
+    }
   }
 
   private bootstrapWithModuleReplacements(): BootstrapResult {
