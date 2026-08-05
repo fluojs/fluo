@@ -92,6 +92,9 @@ Works with `@fluojs/validation` to derive request schemas from DTO binding and v
 ### OpenAPI 3.1 Exclusive Bounds
 `OpenApiSchemaObject` accepts OpenAPI 3.1 numeric `exclusiveMinimum` and `exclusiveMaximum` values while retaining compatibility with legacy boolean metadata. A `true` flag paired with `minimum` or `maximum` becomes the corresponding numeric exclusive bound in the emitted document, and a `false` flag is omitted while its inclusive bound remains. Finite numeric exclusive bounds pass through unchanged. A `true` flag without a finite paired bound, or a non-finite numeric exclusive bound, fails document generation instead of emitting an invalid OpenAPI 3.1 schema. The same normalization runs after `documentTransform` before the document is exposed.
 
+### OpenAPI 3.1 Nullable Schemas
+`OpenApiSchemaObject` continues to accept the legacy boolean `nullable` keyword as compatibility input, but generated OpenAPI 3.1 documents never emit it. `nullable: true` adds `null` to a declared `type` union while preserving scalar and array constraints; schemas without `type`, including `$ref` schemas, become an `anyOf` union with `{ type: 'null' }`. `nullable: false` is removed without changing the schema. Existing null unions are not duplicated, and the recursive normalization also runs after `documentTransform`.
+
 ### Versioning Support
 Handles URI-based versioning from `@fluojs/http` automatically. Your OpenAPI paths will correctly reflect the resolved versioned routes.
 
@@ -151,7 +154,7 @@ Use `OpenApiModule.forRootAsync(...)` when title/version/source configuration co
 - `getControllerTags`, `getMethodApiMetadata`: Metadata readers for advanced tests and integration tooling.
 - `OpenApiModuleOptions`, `OpenApiAsyncModuleOptions`, `OpenApiRouteOptions`, `OpenApiSwaggerUiAssetsOptions`, `BuildOpenApiDocumentOptions`, `DefaultErrorResponsesPolicy`: Option types for module and builder integrations.
 - `OpenApiDocument`, `OpenApiSecuritySchemeObject`, and related OpenAPI shape types: Typed document surface for tests, tooling, and integrations.
-- `OpenApiSchemaObject`: Typed schema surface for explicit `@ApiBody(...)` and `@ApiResponse(...)` schemas, including OpenAPI 3.1 composition (`allOf`, `oneOf`, `anyOf`), object/array constraints, examples/defaults, and read/write/deprecated annotations.
+- `OpenApiSchemaObject`: Typed schema surface for explicit `@ApiBody(...)` and `@ApiResponse(...)` schemas, including OpenAPI 3.1 composition (`allOf`, `oneOf`, `anyOf`), null unions with legacy `nullable` input compatibility, object/array constraints, examples/defaults, and read/write/deprecated annotations.
 
 ## Related Packages
 
