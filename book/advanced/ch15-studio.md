@@ -231,6 +231,8 @@ This approach catches architecture regressions before they reach production. It 
 
 The current Studio workflow has two supported paths. `fluo dev --studio` opens a runtime-connected local devtool that consumes sidecar events for snapshots, request traces, timing, diagnostics, restart/disconnect lifecycle, and heartbeats. The live MVP is intentionally scoped to the Node dev-runner because the CLI can inject explicit Studio runtime config into the Node app child before `@fluojs/runtime` is imported.
 
+The CLI also owns live sidecar teardown. `StudioSidecar.close()` ends tracked SSE responses as before, closes sockets only while they are serving authenticated runtime ingestion, and shares one deterministic close operation across repeated or concurrent callers. This keeps an ingestion client that leaves its request body incomplete from holding `fluo dev --studio` shutdown open indefinitely without turning teardown into blanket destruction of completed ordinary request sockets.
+
 Bun, Deno, and Cloudflare Workers are migration/static users for this MVP. Until dedicated bridges are implemented and verified, non-Node projects should generate `fluo inspect` JSON, timing, report, or Mermaid artifacts and open them with the packaged Studio viewer instead of expecting live sidecar streams.
 
 Live Studio does not remove the need for inspect artifacts. Teams still need reproducible evidence for CI, support, and governance. File-first reports provide that evidence, while the live devtool gives developers immediate feedback while the app is running.

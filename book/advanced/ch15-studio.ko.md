@@ -231,6 +231,8 @@ Studio artifact는 CI/CD pipeline 안의 architecture guard가 될 수 있습니
 
 현재 Studio workflow에는 두 가지 supported path가 있습니다. `fluo dev --studio`는 snapshot, request trace, timing, diagnostic, restart/disconnect lifecycle, heartbeat를 위한 sidecar event를 소비하는 runtime-connected local devtool을 엽니다. Live MVP는 의도적으로 Node dev-runner에 한정됩니다. CLI가 앱이 `@fluojs/runtime`을 import하기 전에 명시적인 Studio runtime config를 Node 앱 child에 주입할 수 있기 때문입니다.
 
+CLI는 live sidecar teardown도 소유합니다. `StudioSidecar.close()`는 기존처럼 추적 중인 SSE response를 종료하고, 인증된 runtime ingestion을 처리 중인 socket만 닫으며, 반복되거나 동시에 호출된 caller가 하나의 결정적인 close 작업을 공유하게 합니다. 따라서 request body를 완료하지 않은 ingestion client가 `fluo dev --studio` shutdown을 무기한 열어 두지 못하며, teardown이 완료된 일반 요청 socket까지 일괄 파괴하지도 않습니다.
+
 Bun, Deno, Cloudflare Workers는 이번 MVP에서 migration/static 사용자입니다. Dedicated bridge가 구현되고 검증될 때까지 non-Node 프로젝트는 live sidecar stream을 기대하는 대신 `fluo inspect` JSON, timing, report, Mermaid artifact를 만들고 패키징된 Studio viewer로 열어야 합니다.
 
 Live Studio가 inspect artifact의 필요성을 없애지는 않습니다. 팀은 여전히 CI, support, governance를 위한 재현 가능한 증거가 필요합니다. File-first report는 그 증거를 제공하고, live devtool은 앱이 실행되는 동안 개발자에게 즉각적인 피드백을 제공합니다.
