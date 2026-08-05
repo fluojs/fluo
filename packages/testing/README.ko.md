@@ -82,7 +82,7 @@ const service = await module.resolve(UserService);
 
 Testing builder는 route-pipeline 테스트에서 cross-cutting behavior를 교체할 수 있도록 `overrideProviders([[token, value], ...])`, `overrideGuard(...)`, `overrideInterceptor(...)`, `overrideFilter(...)`도 지원합니다. Guard와 interceptor override는 route가 같은 token을 `@UseGuards(...)` 또는 `@UseInterceptors(...)`로 참조할 때 request path에서도 안전하게 검증할 수 있습니다. Filter override는 컴파일된 module graph의 token을 교체하므로, 해당 filter가 runtime app 표면에 등록되는 경우 request-level coverage와 함께 사용하세요.
 
-`compile()`은 lifecycle hook이 있는 singleton provider에 대해 production module bootstrap과 같은 의미를 따릅니다. effective provider graph를 해석하고, testing module을 반환하기 전에 provider 순서대로 각 instance의 `onModuleInit()`을 실행한 뒤 `onApplicationBootstrap()`을 실행합니다. `get()`은 synchronous singleton 및 multi-provider 경로에서도 DI ownership 의미를 보존하므로, 반복 sync read는 같은 singleton contribution을 재사용하고 `module.container.dispose()`가 해당 instance를 계속 정리할 수 있습니다.
+`compile()`은 lifecycle hook이 있는 singleton provider에 대해 production module bootstrap과 같은 의미를 따릅니다. effective provider graph를 해석하고, testing module을 반환하기 전에 provider 순서대로 각 instance의 `onModuleInit()`을 실행한 뒤 `onApplicationBootstrap()`을 실행합니다. Builder는 반환 시점까지 내부에서 생성한 container를 소유합니다. Override 적용, lifecycle hook 실행, resolved singleton 동기화가 실패하면 reject하기 전에 container를 dispose합니다. Cleanup이 성공하면 원래 compile 실패를 그대로 보존하고, cleanup도 실패하면 원래 실패와 cleanup 실패를 `AggregateError`로 함께 보고합니다. 성공한 `TestingModuleRef`의 동작은 바뀌지 않으며 호출자가 `module.container.dispose()`의 소유권을 계속 가집니다. `get()`은 synchronous singleton 및 multi-provider 경로에서도 DI ownership 의미를 보존하므로, 반복 sync read는 같은 singleton contribution을 재사용하고 container가 해당 instance를 계속 정리할 수 있습니다.
 
 ### `overrideModule()` 사용 시 모듈 identity 보존
 
