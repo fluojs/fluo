@@ -102,6 +102,23 @@ describe('PassportJsAuthStrategy action timeout', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('uses the 30,000 ms default and clears the timer after timeout settlement', async () => {
+    // Given
+    vi.useFakeTimers();
+    const strategy = new PassportJsAuthStrategy(new UnsettledStrategy());
+
+    // When
+    const authentication = strategy.authenticate(createGuardContext());
+    const rejection = expect(authentication).rejects.toThrow(AuthenticationRequiredError);
+    await vi.advanceTimersByTimeAsync(29_999);
+
+    // Then
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await rejection;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('clears the pending action timeout after successful strategy settlement', async () => {
     // Given
     vi.useFakeTimers();
@@ -112,7 +129,7 @@ describe('PassportJsAuthStrategy action timeout', () => {
         this.success?.({ id: 'passport-user' });
       }
     }
-    const strategy = new PassportJsAuthStrategy(new SuccessfulStrategy(), { actionTimeoutMs: 1_000 });
+    const strategy = new PassportJsAuthStrategy(new SuccessfulStrategy());
 
     // When
     const principal = await strategy.authenticate(createGuardContext());
@@ -139,6 +156,69 @@ describe('PassportJsAuthStrategy action timeout', () => {
 
     // Then
     await expect(authentication).rejects.toThrow(AuthenticationRequiredError);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('PassportJsAuthStrategy terminal actions', () => {
+  it('settles once with success when fail follows success', async () => {
+    // Given
+    vi.useFakeTimers();
+    class SuccessThenFailStrategy implements PassportJsStrategyLike {
+      fail?: (challenge?: unknown, status?: number) => void;
+      success?: (user: unknown) => void;
+
+      authenticate(): void {
+        this.success?.({ id: 'passport-user' });
+        this.fail?.('late failure', 401);
+      }
+    }
+    const mapPrincipal = vi.fn(() => ({ claims: {}, subject: 'passport-user' }));
+    const strategy = new PassportJsAuthStrategy(new SuccessThenFailStrategy(), {
+      actionTimeoutMs: 1_000,
+      mapPrincipal,
+    });
+
+    // When
+    const authentication = strategy.authenticate(createGuardContext());
+    const settlement = vi.fn();
+    void authentication.then(settlement, settlement);
+    const principal = await authentication;
+
+    // Then
+    expect(principal).toEqual({ claims: {}, subject: 'passport-user' });
+    expect(mapPrincipal).toHaveBeenCalledTimes(1);
+    expect(settlement).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('settles once with failure when success follows fail', async () => {
+    // Given
+    vi.useFakeTimers();
+    class FailThenSuccessStrategy implements PassportJsStrategyLike {
+      fail?: (challenge?: unknown, status?: number) => void;
+      success?: (user: unknown) => void;
+
+      authenticate(): void {
+        this.fail?.('credentials rejected', 401);
+        this.success?.({ id: 'late-user' });
+      }
+    }
+    const mapPrincipal = vi.fn(() => ({ claims: {}, subject: 'late-user' }));
+    const strategy = new PassportJsAuthStrategy(new FailThenSuccessStrategy(), {
+      actionTimeoutMs: 1_000,
+      mapPrincipal,
+    });
+
+    // When
+    const authentication = strategy.authenticate(createGuardContext());
+    const settlement = vi.fn();
+    void authentication.then(settlement, settlement);
+
+    // Then
+    await expect(authentication).rejects.toThrow('credentials rejected');
+    expect(mapPrincipal).not.toHaveBeenCalled();
+    expect(settlement).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
   });
 });
