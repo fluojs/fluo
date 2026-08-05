@@ -2,7 +2,6 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { createRequire } from 'node:module';
-import type { Socket } from 'node:net';
 import { dirname, extname, join, normalize, relative, sep } from 'node:path';
 import { URL } from 'node:url';
 
@@ -58,7 +57,7 @@ type StudioClient = {
 type StudioSidecarResources = {
   readonly clients: Set<StudioClient>;
   readonly heartbeat: NodeJS.Timeout | undefined;
-  readonly ingestionSockets: Set<Socket>;
+  readonly ingestionRequests: Set<IncomingMessage>;
 };
 
 const DEFAULT_HOST = '127.0.0.1';
@@ -386,7 +385,7 @@ export async function startStudioSidecar(options: StudioSidecarOptions = {}): Pr
   const token = createToken();
   const events: StoredStudioEvent[] = [];
   const clients = new Set<StudioClient>();
-  const ingestionSockets = new Set<Socket>();
+  const ingestionRequests = new Set<IncomingMessage>();
   let sequence = 0;
   const startedAt = performance.now();
 
@@ -486,8 +485,7 @@ export async function startStudioSidecar(options: StudioSidecarOptions = {}): Pr
     }
 
     if (request.method === 'POST' && requestUrl.pathname === '/api/runtime/events') {
-      const ingestionSocket = request.socket;
-      ingestionSockets.add(ingestionSocket);
+      ingestionRequests.add(request);
       try {
         const body = await readBody(request);
         const parsed = body ? JSON.parse(body) as unknown : {};
@@ -511,7 +509,7 @@ export async function startStudioSidecar(options: StudioSidecarOptions = {}): Pr
       } catch (error) {
         writeJson(response, 400, { error: error instanceof Error ? error.message : String(error) });
       } finally {
-        ingestionSockets.delete(ingestionSocket);
+        ingestionRequests.delete(request);
       }
       return;
     }
@@ -529,7 +527,7 @@ export async function startStudioSidecar(options: StudioSidecarOptions = {}): Pr
 
   const address = server.address();
   if (!address || typeof address === 'string') {
-    await closeServer(server, { clients, heartbeat: undefined, ingestionSockets });
+    await closeServer(server, { clients, heartbeat: undefined, ingestionRequests });
     throw new Error('Failed to resolve Studio sidecar address.');
   }
 
@@ -567,7 +565,7 @@ export async function startStudioSidecar(options: StudioSidecarOptions = {}): Pr
     token,
     url,
     close() {
-      closePromise ??= closeServer(server, { clients, heartbeat, ingestionSockets });
+      closePromise ??= closeServer(server, { clients, heartbeat, ingestionRequests });
       return closePromise;
     },
   };
@@ -593,8 +591,8 @@ async function closeServer(server: Server, resources: StudioSidecarResources): P
     });
   });
 
-  for (const socket of resources.ingestionSockets) {
-    socket.destroy();
+  for (const request of resources.ingestionRequests) {
+    request.socket.destroy();
   }
 
   await serverClosed;

@@ -305,16 +305,24 @@ describe('Studio sidecar', () => {
   });
 
   it('settles repeated shutdown calls while an authenticated ingestion body remains incomplete', async () => {
-    // Given an authenticated ingestion request whose declared body remains incomplete.
+    // Given a completed ingestion followed by an incomplete ingestion on the same authenticated socket.
     const sidecar = await startTestSidecar();
     const socket = connect(sidecar.port, '127.0.0.1');
     await new Promise<void>((resolve) => socket.once('connect', () => resolve()));
     const socketClosed = new Promise<void>((resolve) => socket.once('close', () => resolve()));
 
     try {
+      const completeBody = JSON.stringify({ payload: { ok: true }, source: { appId: 'test-app', runtime: 'node' }, type: 'snapshot', version: 1 });
       const partialBody = '{"payload":{"phase":"scheduled"},"source":';
       await new Promise<void>((resolve, reject) => {
         socket.write(
+          `POST /api/runtime/events HTTP/1.1\r\n` +
+          `Host: 127.0.0.1:${String(sidecar.port)}\r\n` +
+          `Authorization: Bearer ${sidecar.token}\r\n` +
+          `Content-Type: application/json\r\n` +
+          `Content-Length: ${String(completeBody.length)}\r\n` +
+          `\r\n` +
+          completeBody +
           `POST /api/runtime/events HTTP/1.1\r\n` +
           `Host: 127.0.0.1:${String(sidecar.port)}\r\n` +
           `Authorization: Bearer ${sidecar.token}\r\n` +
@@ -326,7 +334,7 @@ describe('Studio sidecar', () => {
         );
       });
       const state = await fetch(`${sidecar.url}/api/state?token=${encodeURIComponent(sidecar.token)}`);
-      await state.arrayBuffer();
+      await expect(state.json()).resolves.toMatchObject({ sequence: 1 });
 
       // When shutdown starts more than once through the public sidecar interface.
       let timeout: NodeJS.Timeout | undefined;
@@ -340,9 +348,9 @@ describe('Studio sidecar', () => {
           clearTimeout(timeout);
         }
       });
-
       // Then the sidecar owns socket cleanup and every close call settles deterministically.
       expect(result).toBe('closed');
+      socket.resume();
       await expect(socketClosed).resolves.toBeUndefined();
       await expect(sidecar.close()).resolves.toBeUndefined();
     } finally {
