@@ -2,7 +2,7 @@ import { Controller, createHandlerMapping, Post } from '@fluojs/http';
 import { describe, expect, it } from 'vitest';
 
 import { ApiBody, ApiQuery, ApiResponse } from './decorators.js';
-import { buildOpenApiDocument } from './schema-builder.js';
+import { buildOpenApiDocument, type OpenApiSchemaObject } from './schema-builder.js';
 
 describe('OpenAPI 3.1 nullable schemas', () => {
   it('emits null type unions for scalar and array legacy nullable schemas', () => {
@@ -121,5 +121,126 @@ describe('OpenAPI 3.1 nullable schemas', () => {
         { type: 'null' },
       ],
     });
+  });
+
+  it('normalizes transformed nested schemas without duplicating existing null unions', () => {
+    // Given
+    const transformedSchema: OpenApiSchemaObject = {
+      properties: {
+        tags: {
+          items: {
+            nullable: true,
+            type: 'string',
+          },
+          nullable: false,
+          type: 'array',
+        },
+        title: {
+          nullable: true,
+          type: ['string', 'null'],
+        },
+      },
+      type: 'object',
+    };
+
+    // When
+    const document = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors: [],
+      documentTransform: (generatedDocument) => ({
+        ...generatedDocument,
+        components: {
+          schemas: { TransformedPayload: transformedSchema },
+        },
+      }),
+      title: 'Transformed Nullable API',
+      version: '1.0.0',
+    });
+
+    // Then
+    expect(document.components?.schemas?.TransformedPayload).toEqual({
+      properties: {
+        tags: {
+          items: {
+            type: ['string', 'null'],
+          },
+          type: 'array',
+        },
+        title: {
+          type: ['string', 'null'],
+        },
+      },
+      type: 'object',
+    });
+    expect(JSON.stringify(document)).not.toContain('"nullable"');
+  });
+
+  it('preserves a transformed nullable schema self-cycle', () => {
+    // Given
+    const properties: Record<string, OpenApiSchemaObject> = {};
+    const recursiveSchema: OpenApiSchemaObject = {
+      nullable: true,
+      properties,
+      type: 'object',
+    };
+    properties.self = recursiveSchema;
+
+    // When
+    const document = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors: [],
+      documentTransform: (generatedDocument) => ({
+        ...generatedDocument,
+        components: {
+          schemas: { RecursivePayload: recursiveSchema },
+        },
+      }),
+      title: 'Recursive Nullable API',
+      version: '1.0.0',
+    });
+    const normalizedSchema = document.components?.schemas?.RecursivePayload;
+
+    // Then
+    expect(normalizedSchema).toMatchObject({ type: ['object', 'null'] });
+    expect(normalizedSchema?.properties?.self).toBe(normalizedSchema);
+  });
+
+  it('preserves shared nullable schema identity while wrapping references', () => {
+    // Given
+    const sharedReference: OpenApiSchemaObject = {
+      $ref: '#/components/schemas/Result',
+      nullable: true,
+    };
+    const transformedSchema: OpenApiSchemaObject = {
+      properties: {
+        first: sharedReference,
+        second: sharedReference,
+      },
+      type: 'object',
+    };
+
+    // When
+    const document = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors: [],
+      documentTransform: (generatedDocument) => ({
+        ...generatedDocument,
+        components: {
+          schemas: { SharedPayload: transformedSchema },
+        },
+      }),
+      title: 'Shared Nullable API',
+      version: '1.0.0',
+    });
+    const normalizedProperties = document.components?.schemas?.SharedPayload?.properties;
+
+    // Then
+    expect(normalizedProperties?.first).toEqual({
+      anyOf: [
+        { $ref: '#/components/schemas/Result' },
+        { type: 'null' },
+      ],
+    });
+    expect(normalizedProperties?.first).toBe(normalizedProperties?.second);
   });
 });
