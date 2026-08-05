@@ -11,7 +11,12 @@ const sourceRequirements = [
   ['packages/cli/src/commands/inspect.ts', ['createRuntimeInspectionSnapshot', 'describeRoutes']],
   [
     'packages/studio/src/contracts.ts',
-    ['StudioRouteDescriptor', 'kind: value.kind === undefined', "? 'http'", 'params: params === undefined ? []'],
+    [
+      'StudioRouteDescriptor',
+      "kind !== undefined && kind !== 'http' && kind !== 'react-page'",
+      "kind: kind ?? 'http'",
+      'params: params === undefined ? []',
+    ],
   ],
 ];
 
