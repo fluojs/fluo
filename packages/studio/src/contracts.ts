@@ -81,7 +81,7 @@ export interface StudioRouteDescriptor {
   controller: string;
   handler: string;
   id: string;
-  kind?: string;
+  kind?: 'http' | 'react-page';
   method: string;
   module?: string;
   params?: string[];
