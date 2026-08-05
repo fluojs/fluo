@@ -213,6 +213,22 @@ describe('JwtService', () => {
     expect(service.decode('invalid-token')).toBeNull();
   });
 
+  it('decodes invalid-signature claims as unverified input while verify rejects the token', async () => {
+    const service = createJwtService({
+      algorithms: ['HS256'],
+      issuer: 'jwt-service-tests',
+      secret: 'service-secret',
+    });
+    const token = createHs256Token('attacker-secret', {
+      exp: Math.floor(Date.now() / 1000) + 60,
+      iss: 'jwt-service-tests',
+      sub: 'attacker-controlled-user',
+    });
+
+    expect(service.decode(token)).toMatchObject({ sub: 'attacker-controlled-user' });
+    await expect(service.verify(token)).rejects.toBeInstanceOf(JwtInvalidTokenError);
+  });
+
   it('reuses the shared jwks cache when verify options override claim policy', async () => {
     const originalFetch = globalThis.fetch;
     const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
