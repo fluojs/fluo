@@ -386,6 +386,7 @@ export async function startStudioSidecar(options: StudioSidecarOptions = {}): Pr
   const events: StoredStudioEvent[] = [];
   const clients = new Set<StudioClient>();
   const ingestionRequests = new Set<IncomingMessage>();
+  let acceptingIngestion = true;
   let sequence = 0;
   const startedAt = performance.now();
 
@@ -485,6 +486,10 @@ export async function startStudioSidecar(options: StudioSidecarOptions = {}): Pr
     }
 
     if (request.method === 'POST' && requestUrl.pathname === '/api/runtime/events') {
+      if (!acceptingIngestion) {
+        request.socket.destroy();
+        return;
+      }
       ingestionRequests.add(request);
       try {
         const body = await readBody(request);
@@ -565,7 +570,10 @@ export async function startStudioSidecar(options: StudioSidecarOptions = {}): Pr
     token,
     url,
     close() {
-      closePromise ??= closeServer(server, { clients, heartbeat, ingestionRequests });
+      if (!closePromise) {
+        acceptingIngestion = false;
+        closePromise = closeServer(server, { clients, heartbeat, ingestionRequests });
+      }
       return closePromise;
     },
   };
