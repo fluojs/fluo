@@ -165,7 +165,7 @@ describe('PostService', () => {
 비동기 코드는 백엔드 개발의 일반적인 형태입니다. Fluo의 `createTestingModule`과 Vitest의 `async/await` 지원을 사용하면 이러한 작업을 순서대로 테스트할 수 있습니다. 성공적인 완료, 예상된 거부(rejection), 그리고 여러 비동기 작업이 특정 순서대로 완료되어야 하는 타이밍 문제까지 검증할 수 있습니다. `vi.useFakeTimers()`를 사용하면 실제로 시간을 기다리지 않고도 타임아웃이나 재시도 로직을 테스트할 수 있습니다.
 
 ### 20.3.3 Lifecycle Hooks in Tests
-때로는 모듈 그래프가 컴파일될 때 프로바이더가 올바르게 초기화되는지 테스트해야 할 때가 있습니다. `createTestingModule()`은 컴파일 시점의 모듈 연결, 프로바이더 가시성, 프로바이더/가드/인터셉터 교체를 검증하는 슬라이스 테스트 표면입니다. 컴파일된 `TestingModuleRef`는 해결(resolve) 및 디스패치 헬퍼를 제공하지만 별도의 `close()` 라이프사이클 단계는 제공하지 않습니다. 정리(cleanup) 검증은 테스트 대상 프로바이더 안에서 명시적으로 수행하거나, 반환된 앱이 `close()`를 노출하는 `createTestApp()` 기반 요청/애플리케이션 라이프사이클 테스트로 옮기세요.
+때로는 모듈 그래프가 컴파일될 때 프로바이더가 올바르게 초기화되는지 테스트해야 할 때가 있습니다. `createTestingModule()`은 컴파일 시점의 모듈 연결, 프로바이더 가시성, 프로바이더/가드/인터셉터 교체를 검증하는 슬라이스 테스트 표면입니다. 컴파일된 `TestingModuleRef`는 해결(resolve) 및 디스패치 헬퍼를 제공하지만 별도의 `close()` 라이프사이클 단계는 제공하지 않습니다. `compile()`이 해당 reference를 반환할 때까지는 builder가 내부 container를 소유합니다. Override, initialization hook, bootstrap hook, 최종 singleton 동기화가 실패하면 builder는 reject하기 전에 container를 dispose합니다. Cleanup이 성공하면 원래 compile error를 보존하고, cleanup도 실패하면 두 실패를 `AggregateError`로 함께 보고합니다. 성공적으로 컴파일된 module의 cleanup 검증은 테스트 대상 provider 안에서 명시적으로 수행하거나, 반환된 app이 `close()`를 노출하는 `createTestApp()` 기반 request/application lifecycle 테스트로 옮기세요.
 
 ## 20.4 Provider Overrides
 `fluo`는 실제 컴포넌트를 테스트 대역(test double)으로 교체하는 여러 가지 방법을 제공합니다. 이 기능을 사용하면 외부 시스템의 불안정성은 제거하면서도, 테스트하려는 모듈의 DI 연결과 실행 흐름은 그대로 검증할 수 있습니다. Request-facing guard와 interceptor는 `TestingModuleRef.dispatch(...)` 또는 `createTestApp(...)` 기반 request-path assertion을 추가해 애플리케이션이 사용하는 동일한 pipeline에서 override가 검증되도록 하세요.
