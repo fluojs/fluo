@@ -171,6 +171,7 @@ describe('MongooseTransactionInterceptor compatibility', () => {
 
       // When
       controller.abort(new Error('compatibility caller cancelled'));
+      await new Promise<void>((resolve) => setImmediate(resolve));
 
       // Then
       expect(events).toEqual(['session:start', 'transaction:start', 'handler:start:true']);
