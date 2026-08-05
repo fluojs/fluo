@@ -654,7 +654,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // plus OpenAPI's
   // explicit descriptor adoption, response metadata, configurable document/UI
   // route defaults, normalized multi-instance route-collision failures, Swagger
-  // UI assets, and operation collision-precedence boundaries, plus GraphQL's explicit
+  // UI assets, operation collision-precedence boundaries, and legacy nullable
+  // input normalization to OpenAPI 3.1 null unions, plus GraphQL's explicit
   // resolver/provider wiring, root-only operations, output type declarations,
   // Node.js runtime-floor/dependency alignment, unsupported non-Node targets,
   // and server-backed WebSocket migration boundaries, plus JWT refresh-token
@@ -2112,6 +2113,45 @@ export function enforceHttpCatchAllRouteGrammarDecision() {
   );
 }
 
+export function enforceOpenApiNullableNormalizationContract() {
+  const documentationPaths = [
+    'apps/docs/content/docs/guides/http-api.mdx',
+    'apps/docs/content/docs/guides/http-api.ko.mdx',
+    'book/beginner/ch10-openapi.md',
+    'book/beginner/ch10-openapi.ko.md',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'docs/architecture/openapi.md',
+    'docs/architecture/openapi.ko.md',
+    'docs/reference/package-surface.md',
+    'docs/reference/package-surface.ko.md',
+    'packages/openapi/README.md',
+    'packages/openapi/README.ko.md',
+  ];
+
+  for (const documentationPath of documentationPaths) {
+    const documentation = read(documentationPath);
+    assert(
+      documentation.includes('OpenAPI 3.1') && documentation.includes('nullable'),
+      `${documentationPath} must keep OpenAPI 3.1 nullable normalization discoverable.`,
+    );
+  }
+
+  const schemaSurface = read('packages/openapi/src/schema-builder.ts');
+  const normalization = read('packages/openapi/src/schema-bounds.ts');
+  const regression = read('packages/openapi/src/schema-nullable.test.ts');
+
+  assert(schemaSurface.includes('nullable?: boolean;'), 'OpenApiSchemaObject must continue accepting legacy nullable input.');
+  assert(
+    normalization.includes('schema.nullable === true') && normalization.includes("{ type: 'null' }"),
+    'OpenAPI schema normalization must keep emitting OpenAPI 3.1 null unions.',
+  );
+  assert(
+    ['nullable: true', 'nullable: false', "type: 'array'", '$ref:'].every((marker) => regression.includes(marker)),
+    'OpenAPI nullable regression coverage must include true, false, array, and $ref inputs.',
+  );
+}
+
 export function enforceGraphqlRuntimeBoundaryDiscoverability() {
   const expectedNodeEngine = '>=20.16.0';
   const graphqlPackageJson = JSON.parse(read('packages/graphql/package.json'));
@@ -2213,6 +2253,7 @@ export function main() {
   enforceReactServerFunctionContract();
   enforceHttpRuntimeCancellationAndContextIsolation();
   enforceHttpCatchAllRouteGrammarDecision();
+  enforceOpenApiNullableNormalizationContract();
   enforceGraphqlRuntimeBoundaryDiscoverability();
   enforcePersistenceTransactionInterceptorCompatibility();
   enforceMicroservicesSafetyGuidanceParity();
