@@ -202,10 +202,10 @@ export class AuthController {
 
 또한 `@SkipThrottle()`을 컨트롤러 수준에서 적용하여 라우트 그룹 전체를 제외하면서 다른 컨트롤러는 계속 보호할 수 있습니다. 이러한 정밀한 제어를 통해 Fluo는 서로 다른 클라이언트(예: 모바일 앱 vs 서버 측 통합)가 매우 다른 트래픽 패턴과 신뢰 수준을 갖는 복잡하고 이질적인 환경을 지원할 수 있습니다.
 
-### 16.5.3 Dynamic Throttle Limits
-더욱 진보된 시나리오에서는 현재 시스템 부하나 사용자 상태에 따라 스로틀 제한을 동적으로 조정해야 할 수도 있습니다. 지원되는 확장 지점은 configuration입니다. 커스텀 요청자 식별에는 `keyGenerator`를 제공하고, 정책별 카운팅에는 커스텀 `ThrottlerStore`를 제공하거나, 자체 정책 입력을 해석한 뒤 `ThrottlerGuard`를 호출하는 애플리케이션 guard wrapper를 작성하십시오.
+### 16.5.3 Application-Owned Dynamic Throttle Policies
+더욱 진보된 시나리오에서는 현재 시스템 부하나 사용자 상태에 따라 정책을 바꿔야 할 수 있습니다. `@Throttle()`은 요청마다 정책을 선택하는 확장 지점이 아닙니다. `{ ttl, limit }` 값은 데코레이터가 적용될 때 검증되어 정적 decorator metadata에 복사됩니다. 이후 `ThrottlerGuard`는 module, class, method 수준의 우선순위에 따라 handler별 정책을 한 번 해석하고 그 결과를 캐시합니다. 따라서 runtime policy service가 요청마다 서로 다른 `@Throttle()` 설정을 선택하거나 변경할 수는 없습니다.
 
-예를 들어, 애플리케이션이 소유한 policy service가 시스템 상태를 확인하고 데이터베이스 지연 시간이 임계값을 넘으면 더 엄격한 `@Throttle()` 설정이나 guard-wrapper 분기를 선택할 수 있습니다. 또는 사용자의 구독 상태를 확인해 "프리미엄" 회원에게 더 높은 제한을 부여한 뒤 `ThrottlerGuard`에 위임할 수도 있습니다. fluo는 CPU나 cluster telemetry를 보고 limit를 자동 변경하는 built-in adaptive rate limiting을 제공하지 않습니다. 그런 feedback loop가 필요하다면 configuration, custom store, 또는 애플리케이션이 소유한 guard를 통해 연결하십시오.
+적응형 결정은 명시적으로 애플리케이션이 소유하는 확장 지점에 두십시오. Bootstrap 전에 configuration에서 최종 `ThrottlerModule.forRoot(...)` 옵션을 결정하거나, 고정된 `ThrottlerGuard` 정책보다 먼저 또는 그 정책과 함께 runtime 분기를 집행하는 application guard wrapper를 작성하거나, 변화가 카운팅 또는 저장소 알고리즘에 속한다면 custom `ThrottlerStore`를 제공할 수 있습니다. `keyGenerator`는 요청별 식별자를 선택할 수 있지만 해석된 limit를 바꾸지는 않습니다. 예를 들어 guard wrapper는 데이터베이스 상태나 구독 상태를 확인해 애플리케이션의 동적 정책을 집행할 수 있지만, `ThrottlerGuard`에 위임한 부분은 여전히 handler에 캐시된 정적 metadata를 사용합니다. fluo는 CPU나 cluster telemetry를 보고 그 limit를 바꾸는 built-in adaptive rate limiting을 제공하지 않습니다.
 
 ## 16.6 Advanced: Custom Trackers
 때로는 IP 기반 스로틀링만으로는 충분하지 않습니다. 예를 들어, 사무실 건물 내에서는 수백 명의 정당한 사용자가 동일한 공인 IP를 공유할 수 있습니다. 이 경우 `JwtPrincipal`의 subject(사용자 ID)를 기준으로 스로틀링을 수행해야 합니다.
