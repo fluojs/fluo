@@ -263,7 +263,7 @@ class ProductController {
 }
 ```
 
-이렇게 지원되는 HTTP 경로에서는 응답이 성공적으로 commit된 뒤에 캐시를 삭제합니다. `response.send(...)`가 reject되면 지연 eviction을 취소하여 실패한 commit이 이전 캐시된 읽기 결과를 삭제하지 않도록 합니다. 어댑터 경로가 `response.send(...)`를 호출하지 않더라도, 인터셉터는 bounded fallback timer를 통해 성공한 쓰기 이후 stale 엔트리가 무기한 남지 않도록 보장합니다. fallback timer는 response commit 경로가 호출되지 않았을 때만 eviction을 수행하며, `response.send(...)`가 여전히 pending 상태인 동안에는 send 경로가 eviction(성공 시) 또는 취소(실패 시)를 소유하므로 fallback timer가 pending send 하에서 eviction을 실행하지 않습니다. Framework가 생성한 timer는 Node.js에서 unref되고 send 경로가 settle될 때 clear되므로 pending fallback work가 process shutdown을 계속 붙잡지 않습니다. 또한 지연 eviction 실패는 인터셉터 내부에 containment되어 cache key factory나 cache store 삭제 오류가 응답 이후 unhandled promise rejection으로 노출되지 않습니다.
+이렇게 지원되는 HTTP 경로에서는 framework response writer가 성공적으로 settle되고 response가 commit 완료를 보고할 때까지 cache eviction을 지연합니다. Writer가 reject되거나 commit 확인 없이 settle되거나, disconnect 또는 shutdown으로 commit 전에 request가 abort되면 지연 eviction을 취소하여 이전 cached read 결과를 유지합니다. `response.send(...)`를 호출하지 않고 commit하는 adapter 경로도 bounded 5초 fallback을 유지합니다. 이 fallback은 deadline에 `response.committed`가 이미 commit을 확인한 경우에만 eviction을 실행하고, 확인되지 않은 response는 취소하므로 경과 시간만으로 이후의 실패한 commit보다 먼저 cache를 삭제하지 않습니다. Fallback timer는 Node.js에서 unref되고 response writer가 settle되면 clear되므로 pending fallback work가 process shutdown을 계속 붙잡지 않습니다. 또한 지연 eviction 실패는 interceptor 내부에 containment되어 cache key factory나 cache store 삭제 오류가 response 이후 unhandled promise rejection으로 노출되지 않습니다.
 
 ## 공개 API 개요
 

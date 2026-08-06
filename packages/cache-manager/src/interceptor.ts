@@ -215,11 +215,20 @@ export class CacheInterceptor implements Interceptor {
     };
 
     if (context.requestContext.response.committed) {
+      const request = context.requestContext.request;
+      if (request.signal?.aborted === true || request.isAborted?.() === true) {
+        return;
+      }
+
       await runEviction();
       return;
     }
 
-    installDeferredEviction(context.requestContext.response, runEviction);
+    installDeferredEviction(
+      context.requestContext.response,
+      context.requestContext.request,
+      runEviction,
+    );
   }
 
   private async resolveEvictKeys(

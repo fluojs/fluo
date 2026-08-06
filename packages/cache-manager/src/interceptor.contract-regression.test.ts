@@ -1,4 +1,4 @@
-import type { CallHandler, InterceptorContext, RequestContext } from '@fluojs/http';
+import type { CallHandler, Interceptor, InterceptorContext, RequestContext } from '@fluojs/http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CacheEvict, CacheKey } from './decorators.js';
@@ -91,6 +91,7 @@ function createInterceptor(): { readonly cache: CacheService; readonly intercept
 describe('CacheInterceptor contract regressions', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it('uses an empty literal @CacheKey instead of the configured fallback strategy', async () => {
@@ -114,17 +115,17 @@ describe('CacheInterceptor contract regressions', () => {
     await expect(cache.get('/products')).resolves.toBeUndefined();
   });
 
-  it('unrefs the fallback eviction timer and clears it after response commit', async () => {
+  it('preserves cached reads when a resolved sender does not confirm response commit', async () => {
     // Given
     class ProductController {
       @CacheEvict('/products')
       refresh() {}
     }
 
-    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
-    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
-    const { interceptor } = createInterceptor();
+    const { cache, interceptor } = createInterceptor();
+    await cache.set('/products', { version: 'previous' }, 120);
     const requestContext = createRequestContext('POST', '/products/refresh');
+    requestContext.response.send = vi.fn(async () => {});
     const context = createContext(ProductController, 'refresh', requestContext);
     const next: CallHandler = {
       handle: vi.fn(async () => ({ refreshed: true })),
@@ -132,12 +133,149 @@ describe('CacheInterceptor contract regressions', () => {
 
     // When
     const value = await interceptor.intercept(context, next);
-    const fallbackTimer = setTimeoutSpy.mock.results.at(-1)?.value;
-    const keepsProcessAlive = fallbackTimer?.hasRef();
     await requestContext.response.send(value);
 
     // Then
-    expect(keepsProcessAlive).toBe(false);
-    expect(clearTimeoutSpy).toHaveBeenCalledWith(fallbackTimer);
+    await expect(cache.get('/products')).resolves.toEqual({ version: 'previous' });
+  });
+
+  it('preserves cached reads when an outer interceptor delays and then fails response commit', async () => {
+    // Given
+    vi.useFakeTimers();
+    class ProductController {
+      @CacheEvict('/products')
+      refresh() {}
+    }
+
+    const { cache, interceptor } = createInterceptor();
+    await cache.set('/products', { version: 'previous' }, 120);
+    const requestContext = createRequestContext('POST', '/products/refresh');
+    requestContext.response.send = vi.fn(async () => {
+      throw new Error('late response commit failed');
+    });
+    const context = createContext(ProductController, 'refresh', requestContext);
+    const handler: CallHandler = {
+      handle: vi.fn(async () => ({ refreshed: true })),
+    };
+    const cacheLayer: CallHandler = {
+      handle: () => interceptor.intercept(context, handler),
+    };
+    const outerInterceptor: Interceptor = {
+      async intercept(outerContext: InterceptorContext, next: CallHandler) {
+        const value = await next.handle();
+        await vi.advanceTimersByTimeAsync(5_000);
+        await outerContext.requestContext.response.send(value);
+        return value;
+      },
+    };
+
+    // When
+    const dispatch = outerInterceptor.intercept(context, cacheLayer);
+
+    // Then
+    await expect(dispatch).rejects.toThrow('late response commit failed');
+    await expect(cache.get('/products')).resolves.toEqual({ version: 'previous' });
+  });
+
+  it('cancels deferred eviction when request shutdown aborts before response commit', async () => {
+    // Given
+    class ProductController {
+      @CacheEvict('/products')
+      refresh() {}
+    }
+
+    const { cache, interceptor } = createInterceptor();
+    await cache.set('/products', { version: 'previous' }, 120);
+    const requestContext = createRequestContext('POST', '/products/refresh');
+    const shutdown = new AbortController();
+    requestContext.request.signal = shutdown.signal;
+    const context = createContext(ProductController, 'refresh', requestContext);
+    const next: CallHandler = {
+      handle: vi.fn(async () => ({ refreshed: true })),
+    };
+    const value = await interceptor.intercept(context, next);
+
+    // When
+    shutdown.abort(new Error('application shutdown'));
+    await requestContext.response.send(value);
+
+    // Then
+    await expect(cache.get('/products')).resolves.toEqual({ version: 'previous' });
+  });
+
+  it('cancels deferred eviction when an adapter abort probe changes during response commit', async () => {
+    // Given
+    class ProductController {
+      @CacheEvict('/products')
+      refresh() {}
+    }
+
+    const { cache, interceptor } = createInterceptor();
+    await cache.set('/products', { version: 'previous' }, 120);
+    const requestContext = createRequestContext('POST', '/products/refresh');
+    let aborted = false;
+    requestContext.request.isAborted = () => aborted;
+    let resolveSend: () => void = () => {};
+    requestContext.response.send = vi.fn(() => new Promise<void>((resolve) => {
+      resolveSend = () => {
+        requestContext.response.committed = true;
+        resolve();
+      };
+    }));
+    const context = createContext(ProductController, 'refresh', requestContext);
+    const next: CallHandler = {
+      handle: vi.fn(async () => ({ refreshed: true })),
+    };
+    const value = await interceptor.intercept(context, next);
+    const send = requestContext.response.send(value);
+
+    // When
+    aborted = true;
+    resolveSend();
+    await send;
+
+    // Then
+    await expect(cache.get('/products')).resolves.toEqual({ version: 'previous' });
+  });
+
+  it.each([
+    {
+      name: 'AbortSignal',
+      reportAbort(requestContext: RequestContext) {
+        const abortController = new AbortController();
+        abortController.abort();
+        requestContext.request.signal = abortController.signal;
+      },
+    },
+    {
+      name: 'adapter abort probe',
+      reportAbort(requestContext: RequestContext) {
+        requestContext.request.isAborted = () => true;
+      },
+    },
+  ])('preserves cached reads when a pre-committed response reports abort through $name', async ({ reportAbort }) => {
+    // Given
+    class ProductController {
+      @CacheEvict('/products')
+      refresh() {}
+    }
+
+    const { cache, interceptor } = createInterceptor();
+    await cache.set('/products', { version: 'previous' }, 120);
+    const requestContext = createRequestContext('POST', '/products/refresh');
+    const context = createContext(ProductController, 'refresh', requestContext);
+    const next: CallHandler = {
+      handle: vi.fn(async () => {
+        requestContext.response.committed = true;
+        reportAbort(requestContext);
+        return { refreshed: true };
+      }),
+    };
+
+    // When
+    await interceptor.intercept(context, next);
+
+    // Then
+    await expect(cache.get('/products')).resolves.toEqual({ version: 'previous' });
   });
 });

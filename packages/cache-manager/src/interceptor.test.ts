@@ -590,68 +590,7 @@ describe('CacheInterceptor', () => {
     await expect(cacheService.get('/products')).resolves.toBeUndefined();
   });
 
-  it('falls back to timed deferred eviction when a successful write never calls response.send', async () => {
-    vi.useFakeTimers();
-
-    class ProductController {
-      @CacheEvict('GET:/products')
-      refresh() {}
-    }
-
-    const { cacheService, interceptor } = createInterceptor();
-    await cacheService.set('GET:/products', { count: 1 }, 120);
-
-    const requestContext = createRequestContext('POST', '/products/refresh');
-    const context = createContext(ProductController, 'refresh', requestContext, 'POST');
-    const next: CallHandler = {
-      handle: vi.fn(async () => ({ refreshed: true })),
-    };
-
-    await expect(interceptor.intercept(context, next)).resolves.toEqual({ refreshed: true });
-    await expect(cacheService.get('GET:/products')).resolves.toEqual({ count: 1 });
-
-    await vi.advanceTimersByTimeAsync(4_999);
-    await expect(cacheService.get('GET:/products')).resolves.toEqual({ count: 1 });
-
-    await vi.advanceTimersByTimeAsync(1);
-    await expect(cacheService.get('GET:/products')).resolves.toBeUndefined();
-  });
-
-  it('contains fallback-timer deferred eviction failures', async () => {
-    vi.useFakeTimers();
-    const unhandledRejection = vi.fn();
-    process.once('unhandledRejection', unhandledRejection);
-
-    try {
-      class ProductController {
-        @CacheEvict('GET:/products')
-        refresh() {}
-      }
-
-      const { cacheService, interceptor } = createInterceptor();
-      await cacheService.set('GET:/products', { count: 1 }, 120);
-      vi.spyOn(cacheService, 'del').mockRejectedValueOnce(new Error('redis down during fallback eviction'));
-
-      const requestContext = createRequestContext('POST', '/products/refresh');
-      const context = createContext(ProductController, 'refresh', requestContext, 'POST');
-      const next: CallHandler = {
-        handle: vi.fn(async () => ({ refreshed: true })),
-      };
-
-      await expect(interceptor.intercept(context, next)).resolves.toEqual({ refreshed: true });
-      await vi.advanceTimersByTimeAsync(5_000);
-      await Promise.resolve();
-
-      expect(unhandledRejection).not.toHaveBeenCalled();
-      await expect(cacheService.get('GET:/products')).resolves.toEqual({ count: 1 });
-    } finally {
-      process.removeListener('unhandledRejection', unhandledRejection);
-    }
-  });
-
   it('cancels deferred eviction when response.send rejects', async () => {
-    vi.useFakeTimers();
-
     class ProductController {
       @CacheEvict('GET:/products')
       refresh() {}
@@ -672,14 +611,11 @@ describe('CacheInterceptor', () => {
     const value = await interceptor.intercept(context, next);
 
     await expect(requestContext.response.send(value)).rejects.toThrow('send failed');
-    await vi.advanceTimersByTimeAsync(5_000);
 
     await expect(cacheService.get('GET:/products')).resolves.toEqual({ count: 1 });
   });
 
-  it('does not evict via fallback timer while response.send is still pending', async () => {
-    vi.useFakeTimers();
-
+  it('waits for a pending response.send before evicting', async () => {
     class ProductController {
       @CacheEvict('GET:/products')
       refresh() {}
@@ -692,7 +628,10 @@ describe('CacheInterceptor', () => {
     let resolveSend: () => void = () => {};
     requestContext.response.send = vi.fn(() => {
       return new Promise<void>((resolve) => {
-        resolveSend = resolve;
+        resolveSend = () => {
+          requestContext.response.committed = true;
+          resolve();
+        };
       });
     });
     const context = createContext(ProductController, 'refresh', requestContext, 'POST');
@@ -705,10 +644,6 @@ describe('CacheInterceptor', () => {
     // Start response.send(...) but keep it pending.
     const sendPromise = requestContext.response.send(value);
 
-    // Fallback timer fires while send is still pending.
-    await vi.advanceTimersByTimeAsync(5_000);
-
-    // Cache must be preserved because the send path owns eviction/cancellation.
     await expect(cacheService.get('GET:/products')).resolves.toEqual({ count: 1 });
 
     // Complete the send successfully; eviction should now run.
@@ -719,9 +654,7 @@ describe('CacheInterceptor', () => {
     await expect(cacheService.get('GET:/products')).resolves.toBeUndefined();
   });
 
-  it('does not evict via fallback timer when response.send rejects after pending', async () => {
-    vi.useFakeTimers();
-
+  it('preserves cached reads when a pending response.send rejects', async () => {
     class ProductController {
       @CacheEvict('GET:/products')
       refresh() {}
@@ -747,16 +680,11 @@ describe('CacheInterceptor', () => {
     // Start response.send(...) but keep it pending.
     const sendPromise = requestContext.response.send(value);
 
-    // Fallback timer fires while send is still pending.
-    await vi.advanceTimersByTimeAsync(5_000);
-
-    // Cache must be preserved because the send path owns eviction/cancellation.
     await expect(cacheService.get('GET:/products')).resolves.toEqual({ count: 1 });
 
     // Complete the send with a failure; eviction must stay cancelled.
     rejectSend(new Error('send failed'));
     await expect(sendPromise).rejects.toThrow('send failed');
-    await vi.advanceTimersByTimeAsync(5_000);
 
     await expect(cacheService.get('GET:/products')).resolves.toEqual({ count: 1 });
   });
