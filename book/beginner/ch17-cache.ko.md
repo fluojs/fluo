@@ -252,7 +252,7 @@ export class PostsController {
 }
 ```
 
-지원되는 이 route 경로에서는 non-GET handler가 성공하고 HTTP response가 commit된 뒤 eviction이 실행됩니다. Adapter가 `response.send(...)`를 호출하지 않으면 bounded fallback timer가 Node.js process를 계속 붙잡지 않으면서 eviction을 수행하고, send 경로가 실행되면 settle 후 framework-owned timer를 clear합니다. `@CacheEvict(...)`를 controller 경계에 두면 interceptor가 response-aware timing을 담당하고, 성공한 handler 이후의 store 삭제 실패도 내부에 격리합니다. Service layer invalidation은 `CacheService`를 통해 명시적이고 테스트 가능한 형태로 유지됩니다. `await cache.del(...)`에는 HTTP response-commit 경계가 없으며, caller가 catch하거나 retry하지 않으면 store 삭제 실패가 그대로 전파됩니다.
+지원되는 이 route 경로에서는 non-GET handler가 성공하고 `response.send(...)`가 성공적으로 settle되며 response가 commit을 확인한 뒤에만 eviction이 실행됩니다. Disconnect 또는 shutdown 중 send 실패나 request abort가 발생하면 eviction을 취소하고 이전 cached read를 유지합니다. Timer 기반 commit 추론은 없으므로 `response.send(...)`를 호출하지 않는 adapter 또는 outer pipeline은 표준 response lifecycle을 완료하거나 명시적으로 무효화해야 합니다. `@CacheEvict(...)`를 controller 경계에 두면 interceptor가 response-aware timing을 담당하고 성공한 handler 이후의 store 삭제 실패도 내부에 격리합니다. Service layer invalidation은 `CacheService`를 통해 명시적이고 테스트 가능한 형태로 유지됩니다. `await cache.del(...)`에는 HTTP response-commit 경계가 없으며 caller가 catch하거나 retry하지 않으면 store 삭제 실패가 그대로 전파됩니다.
 
 이러한 고급 수동 패턴을 자동 응답 캐싱과 결합하면 Fluo 백엔드의 성능과 신뢰성을 함께 높이는 효율적인 데이터 계층을 만들 수 있습니다. 캐싱의 목표는 사용자에게 가능한 가장 빠른 응답을 제공하는 동시에 기본 데이터 소스의 부하를 줄이는 것임을 항상 기억하십시오. 이 레이어에서 수행하는 모든 최적화는 전반적으로 더 확장 가능하고 복원력 있는 시스템을 만드는 데 기여합니다.
 
