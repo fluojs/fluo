@@ -46,26 +46,29 @@ describe('TerminusModule.forRoot', () => {
       const healthResponse = await app.request('GET', '/health').send();
 
       expect(healthResponse.status).toBe(200);
-      expect(healthResponse.body).toMatchObject({
+      expect(healthResponse.body).toEqual({
+        checkedAt: expect.any(String),
         contributors: {
           down: [],
           up: ['database'],
         },
         details: {
-          database: {
+          database: expect.objectContaining({
             status: 'up',
-          },
+          }),
         },
+        error: {},
         info: {
-          database: {
+          database: expect.objectContaining({
             status: 'up',
-          },
+          }),
         },
         platform: {
           health: {
             status: 'healthy',
           },
           readiness: {
+            critical: false,
             status: 'ready',
           },
         },
@@ -149,15 +152,32 @@ describe('TerminusModule.forRoot', () => {
       const healthResponse = await app.request('GET', '/health').send();
 
       expect(healthResponse.status).toBe(503);
-      expect(healthResponse.body).toMatchObject({
+      expect(healthResponse.body).toEqual({
+        checkedAt: expect.any(String),
         contributors: {
           down: ['redis'],
           up: [],
+        },
+        details: {
+          redis: {
+            message: 'redis down',
+            status: 'down',
+          },
         },
         error: {
           redis: {
             message: 'redis down',
             status: 'down',
+          },
+        },
+        info: {},
+        platform: {
+          health: {
+            status: 'healthy',
+          },
+          readiness: {
+            critical: false,
+            status: 'ready',
           },
         },
         status: 'error',
