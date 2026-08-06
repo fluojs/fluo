@@ -13,17 +13,63 @@ describe('GraphQL SSE lifecycle', () => {
   it('finalizes the AsyncIterable and destroys its request scope once when the client aborts', async () => {
     // Given
     let iteratorFinalizations = 0;
+    let iteratorReturns = 0;
     let providerTeardowns = 0;
     let requestAbortObserved = false;
     const expectExactlyOnceAbortLifecycle = (): void => {
       expect(requestAbortObserved).toBe(true);
       expect(iteratorFinalizations).toBe(1);
+      expect(iteratorReturns).toBe(1);
       expect(providerTeardowns).toBe(1);
     };
-    let releaseResolver: (() => void) | undefined;
-    const resolverRelease = new Promise<void>((resolve) => {
-      releaseResolver = resolve;
-    });
+
+    class BlockingSseIterator implements AsyncIterableIterator<string> {
+      private completed = false;
+      private deliveredFirstEvent = false;
+      private pendingNext: ((result: IteratorResult<string, void>) => void) | undefined;
+
+      [Symbol.asyncIterator](): AsyncIterableIterator<string> {
+        return this;
+      }
+
+      next(): Promise<IteratorResult<string, void>> {
+        if (this.completed) {
+          return Promise.resolve({ done: true, value: undefined });
+        }
+
+        if (!this.deliveredFirstEvent) {
+          this.deliveredFirstEvent = true;
+          return Promise.resolve({ done: false, value: 'connected' });
+        }
+
+        return new Promise((resolve) => {
+          this.pendingNext = resolve;
+        });
+      }
+
+      return(): Promise<IteratorResult<string, void>> {
+        iteratorReturns += 1;
+
+        if (!this.completed) {
+          iteratorFinalizations += 1;
+          this.release();
+        }
+
+        return Promise.resolve({ done: true, value: undefined });
+      }
+
+      release(): void {
+        if (this.completed) {
+          return;
+        }
+
+        this.completed = true;
+        this.pendingNext?.({ done: true, value: undefined });
+        this.pendingNext = undefined;
+      }
+    }
+
+    let activeIterator: BlockingSseIterator | undefined;
 
     @Inject()
     @Scope('request')
@@ -42,32 +88,23 @@ describe('GraphQL SSE lifecycle', () => {
       }
 
       @Subscription()
-      async *blockingEvents(_input: undefined, context: GraphQLContext): AsyncGenerator<string, void, void> {
+      blockingEvents(_input: undefined, context: GraphQLContext): AsyncIterable<string> {
         const requestSignal = context.request.signal;
 
         if (!requestSignal) {
           throw new Error('Expected the Node HTTP request to expose an abort signal.');
         }
 
-        const clientAbort = new Promise<void>((resolve) => {
-          if (requestSignal.aborted) {
-            requestAbortObserved = true;
-            resolve();
-            return;
-          }
-
+        if (requestSignal.aborted) {
+          requestAbortObserved = true;
+        } else {
           requestSignal.addEventListener('abort', () => {
             requestAbortObserved = true;
-            resolve();
           }, { once: true });
-        });
-
-        try {
-          yield 'connected';
-          await Promise.race([clientAbort, resolverRelease]);
-        } finally {
-          iteratorFinalizations += 1;
         }
+
+        activeIterator = new BlockingSseIterator();
+        return activeIterator;
       }
     }
 
@@ -83,6 +120,24 @@ describe('GraphQL SSE lifecycle', () => {
 
     const adapter = createNodeHttpAdapter({ port: 0, shutdownTimeoutMs: 100 });
     const app = await FluoFactory.create(AppModule, { adapter });
+    const clientController = new AbortController();
+    const waitForClientOperation = async <T>(operation: Promise<T>, description: string): Promise<T> => {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const timeoutRejection = new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => {
+          clientController.abort();
+          reject(new Error(`Timed out waiting for ${description}.`));
+        }, 2_000);
+      });
+
+      try {
+        return await Promise.race([operation, timeoutRejection]);
+      } finally {
+        if (timeout) {
+          clearTimeout(timeout);
+        }
+      }
+    };
 
     try {
       await app.listen();
@@ -99,16 +154,18 @@ describe('GraphQL SSE lifecycle', () => {
         throw new Error('Expected the Node HTTP adapter to expose its assigned port.');
       }
 
-      const clientController = new AbortController();
-      const response = await fetch(
-        `http://127.0.0.1:${String(address.port)}/graphql?query=${encodeURIComponent('subscription { blockingEvents }')}`,
-        {
-          headers: {
-            accept: 'text/event-stream',
+      const response = await waitForClientOperation(
+        fetch(
+          `http://127.0.0.1:${String(address.port)}/graphql?query=${encodeURIComponent('subscription { blockingEvents }')}`,
+          {
+            headers: {
+              accept: 'text/event-stream',
+            },
+            method: 'GET',
+            signal: clientController.signal,
           },
-          method: 'GET',
-          signal: clientController.signal,
-        },
+        ),
+        'the GraphQL SSE response',
       );
       const reader = response.body?.getReader();
 
@@ -116,15 +173,27 @@ describe('GraphQL SSE lifecycle', () => {
         throw new Error('Expected the SSE response body to expose a reader.');
       }
 
-      const firstChunk = await reader.read();
+      const decoder = new TextDecoder();
+      const eventBoundary = /\r?\n\r?\n/;
+      let firstEvent = '';
 
-      if (firstChunk.done) {
-        throw new Error('Expected the SSE subscription to remain open after its first event.');
+      while (!eventBoundary.test(firstEvent)) {
+        const chunk = await waitForClientOperation(reader.read(), 'a complete GraphQL SSE event');
+
+        if (chunk.done) {
+          throw new Error('Expected a complete SSE event before the response stream closed.');
+        }
+
+        firstEvent += decoder.decode(chunk.value, { stream: true });
+
+        if (firstEvent.length > 64 * 1024) {
+          throw new Error('Expected the first SSE event to fit within 64 KiB.');
+        }
       }
 
       expect(response.status).toBe(200);
       expect(response.headers.get('content-type')).toContain('text/event-stream');
-      expect(new TextDecoder().decode(firstChunk.value)).toContain('blockingEvents');
+      expect(firstEvent).toContain('blockingEvents');
 
       // When
       clientController.abort();
@@ -132,7 +201,8 @@ describe('GraphQL SSE lifecycle', () => {
       // Then
       await vi.waitFor(expectExactlyOnceAbortLifecycle);
     } finally {
-      releaseResolver?.();
+      clientController.abort();
+      activeIterator?.release();
       await app.close();
     }
 
