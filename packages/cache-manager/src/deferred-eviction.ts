@@ -1,22 +1,22 @@
 import type { InterceptorContext } from '@fluojs/http';
 
-const EVICTION_FALLBACK_TIMEOUT_MS = 5_000;
-
 /**
- * Defers cache eviction until response commit while bounding adapter paths that never send.
+ * Defers cache eviction until the response sender confirms a successful commit.
  *
  * @param response Active framework response whose send path owns commit-aware cleanup.
- * @param evict Cache eviction work to run after a successful commit or fallback timeout.
- * @returns A cleanup function that restores the original response sender and clears the fallback timer.
+ * @param signal Request cancellation signal used to discard eviction during shutdown or disconnect.
+ * @param evict Cache eviction work to run after a successful commit.
+ * @returns A cancellation function that restores the original response sender.
  */
 export function installDeferredEviction(
   response: InterceptorContext['requestContext']['response'],
+  signal: AbortSignal | undefined,
   evict: () => Promise<void>,
 ): () => void {
-  const originalSend = response.send.bind(response);
+  const originalSend = response.send;
   let restored = false;
   let completed = false;
-  let sendInvoked = false;
+  let abortListenerInstalled = false;
 
   const runEviction = () => {
     if (completed) {
@@ -33,36 +33,42 @@ export function installDeferredEviction(
       return;
     }
 
-    clearTimeout(fallbackTimer);
+    if (abortListenerInstalled) {
+      signal?.removeEventListener('abort', cancel);
+    }
     response.send = originalSend;
     restored = true;
   };
 
-  const fallbackTimer = setTimeout(() => {
-    // Run fallback eviction only when no response commit path was invoked.
-    // If response.send(...) is still pending or already completed, the send
-    // path owns eviction (on success) or cancellation (on failure), so the
-    // fallback timer must not evict under a pending send.
-    if (!sendInvoked) {
-      runEviction();
-    }
-
+  const cancel = () => {
+    completed = true;
     restore();
-  }, EVICTION_FALLBACK_TIMEOUT_MS);
-  fallbackTimer.unref();
+  };
 
   response.send = async (body: unknown) => {
-    sendInvoked = true;
     try {
-      await originalSend(body);
-      runEviction();
+      await originalSend.call(response, body);
+      if (response.committed) {
+        runEviction();
+      } else {
+        cancel();
+      }
     } catch (error) {
-      completed = true;
+      cancel();
       throw error;
     } finally {
       restore();
     }
   };
 
-  return restore;
+  if (signal) {
+    signal.addEventListener('abort', cancel, { once: true });
+    abortListenerInstalled = true;
+
+    if (signal.aborted) {
+      cancel();
+    }
+  }
+
+  return cancel;
 }
