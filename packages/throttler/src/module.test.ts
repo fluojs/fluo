@@ -295,22 +295,22 @@ describe('@fluojs/throttler decorators', () => {
   });
 
   it.each([
-    { caseName: 'limit=0', expectedField: /limit/i, options: { limit: 0, ttl: 60 } },
-    { caseName: 'limit=NaN', expectedField: /limit/i, options: { limit: Number.NaN, ttl: 60 } },
+    { caseName: 'limit=0', expectedField: /^Invalid throttler limit:/, options: { limit: 0, ttl: 60 } },
+    { caseName: 'limit=NaN', expectedField: /^Invalid throttler limit:/, options: { limit: Number.NaN, ttl: 60 } },
     {
       caseName: 'limit=Infinity',
-      expectedField: /limit/i,
+      expectedField: /^Invalid throttler limit:/,
       options: { limit: Number.POSITIVE_INFINITY, ttl: 60 },
     },
-    { caseName: 'limit=1.5', expectedField: /limit/i, options: { limit: 1.5, ttl: 60 } },
-    { caseName: 'ttl=0', expectedField: /ttl/i, options: { limit: 1, ttl: 0 } },
-    { caseName: 'ttl=NaN', expectedField: /ttl/i, options: { limit: 1, ttl: Number.NaN } },
+    { caseName: 'limit=1.5', expectedField: /^Invalid throttler limit:/, options: { limit: 1.5, ttl: 60 } },
+    { caseName: 'ttl=0', expectedField: /^Invalid throttler ttl:/, options: { limit: 1, ttl: 0 } },
+    { caseName: 'ttl=NaN', expectedField: /^Invalid throttler ttl:/, options: { limit: 1, ttl: Number.NaN } },
     {
       caseName: 'ttl=Infinity',
-      expectedField: /ttl/i,
+      expectedField: /^Invalid throttler ttl:/,
       options: { limit: 1, ttl: Number.POSITIVE_INFINITY },
     },
-    { caseName: 'ttl=0.5', expectedField: /ttl/i, options: { limit: 1, ttl: 0.5 } },
+    { caseName: 'ttl=0.5', expectedField: /^Invalid throttler ttl:/, options: { limit: 1, ttl: 0.5 } },
   ])(
     'rejects invalid @Throttle options eagerly for $caseName',
     ({ expectedField, options }: { expectedField: RegExp; options: ThrottlerHandlerOptions }) => {
@@ -406,23 +406,23 @@ describe('ThrottlerGuard — in-memory store', () => {
   });
 
   it.each([
-    { caseName: 'limit=0', expectedField: /limit/i, options: { limit: 0, ttl: 60 } },
-    { caseName: 'limit=NaN', expectedField: /limit/i, options: { limit: Number.NaN, ttl: 60 } },
+    { caseName: 'limit=0', expectedField: /^Invalid throttler limit:/, options: { limit: 0, ttl: 60 } },
+    { caseName: 'limit=NaN', expectedField: /^Invalid throttler limit:/, options: { limit: Number.NaN, ttl: 60 } },
     {
       caseName: 'limit=Infinity',
-      expectedField: /limit/i,
+      expectedField: /^Invalid throttler limit:/,
       options: { limit: Number.POSITIVE_INFINITY, ttl: 60 },
     },
-    { caseName: 'limit=1.5', expectedField: /limit/i, options: { limit: 1.5, ttl: 60 } },
-    { caseName: 'ttl=-1', expectedField: /ttl/i, options: { limit: 1, ttl: -1 } },
-    { caseName: 'ttl=0', expectedField: /ttl/i, options: { limit: 1, ttl: 0 } },
-    { caseName: 'ttl=NaN', expectedField: /ttl/i, options: { limit: 1, ttl: Number.NaN } },
+    { caseName: 'limit=1.5', expectedField: /^Invalid throttler limit:/, options: { limit: 1.5, ttl: 60 } },
+    { caseName: 'ttl=-1', expectedField: /^Invalid throttler ttl:/, options: { limit: 1, ttl: -1 } },
+    { caseName: 'ttl=0', expectedField: /^Invalid throttler ttl:/, options: { limit: 1, ttl: 0 } },
+    { caseName: 'ttl=NaN', expectedField: /^Invalid throttler ttl:/, options: { limit: 1, ttl: Number.NaN } },
     {
       caseName: 'ttl=Infinity',
-      expectedField: /ttl/i,
+      expectedField: /^Invalid throttler ttl:/,
       options: { limit: 1, ttl: Number.POSITIVE_INFINITY },
     },
-    { caseName: 'ttl=0.5', expectedField: /ttl/i, options: { limit: 1, ttl: 0.5 } },
+    { caseName: 'ttl=0.5', expectedField: /^Invalid throttler ttl:/, options: { limit: 1, ttl: 0.5 } },
   ])(
     'rejects invalid module-level $caseName before request handling starts',
     ({ expectedField, options }: { expectedField: RegExp; options: ThrottlerModuleOptions }) => {
