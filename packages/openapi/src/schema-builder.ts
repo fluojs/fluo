@@ -69,6 +69,7 @@ export interface OpenApiSchemaObject {
   deprecated?: boolean;
   readOnly?: boolean;
   writeOnly?: boolean;
+  /** Legacy compatibility input normalized to an OpenAPI 3.1 null union before emission. */
   nullable?: boolean;
   minimum?: number;
   maximum?: number;

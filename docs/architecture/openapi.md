@@ -28,6 +28,7 @@ This document defines the current OpenAPI document-generation contract implement
 | Parameter and body metadata | `@ApiParam(...)`, `@ApiQuery(...)`, `@ApiHeader(...)`, `@ApiCookie(...)`, and `@ApiBody(...)` supply explicit parameter and request-body metadata. | `packages/openapi/src/decorators.ts`, `packages/openapi/src/schema-builder.ts` |
 | DTO schema generation | DTO schemas are derived from binding and validation metadata through `getDtoBindingSchema(...)` and `getDtoValidationSchema(...)`, then emitted into `components.schemas`. | `packages/openapi/src/schema-builder.ts` |
 | Exclusive schema bounds | `OpenApiSchemaObject` retains numeric and legacy boolean exclusive-bound inputs. Paired `true` plus `minimum`/`maximum` metadata is emitted as the OpenAPI 3.1 numeric exclusive keyword, `false` is omitted while retaining the inclusive bound, and unnormalizable exclusive values fail document generation. | `packages/openapi/src/schema-bounds.ts`, `packages/openapi/src/schema-builder.ts` |
+| Nullable schemas | `OpenApiSchemaObject` retains the legacy boolean `nullable` input for compatibility but never emits it. `true` adds `null` to declared scalar or array `type` unions, or wraps type-less schemas such as `$ref` in `anyOf`; `false` is removed without changing the schema. | `packages/openapi/src/schema-bounds.ts`, `packages/openapi/src/schema-nullable.test.ts` |
 | Security metadata | `@ApiBearerAuth()` and `@ApiSecurity()` contribute operation-level security requirements. `securitySchemes` options populate `components.securitySchemes`. | `packages/openapi/src/decorators.ts`, `packages/openapi/src/openapi-module.ts`, `packages/openapi/src/schema-builder.ts` |
 
 ## Output Surface
@@ -38,7 +39,7 @@ This document defines the current OpenAPI document-generation contract implement
 | Swagger UI | With `ui: true`, `GET uiPath` renders HTML that points to that module instance's `documentPath`, including under a runtime global prefix. `uiPath` defaults to `/docs`. The default assets use the pinned `swagger-ui-dist` version `5.32.2`; `swaggerUiAssets.cssUrl` and `swaggerUiAssets.jsBundleUrl` can replace those URLs for self-hosted or CSP-controlled deployments. | `packages/openapi/src/openapi-module.ts`, `packages/openapi/src/swagger-ui.ts` |
 | Default error responses | `defaultErrorResponsesPolicy` defaults to `'inject'`. The builder can also omit framework-added defaults when set to `'omit'`. | `packages/openapi/src/schema-builder.ts`, `packages/openapi/src/openapi-module.ts`, `packages/openapi/src/openapi-module.test.ts` |
 | Extra models | `extraModels` lets the module include DTO constructors that are not otherwise discovered from handlers. | `packages/openapi/src/openapi-module.ts`, `packages/openapi/src/schema-builder.ts` |
-| Final transform | `documentTransform(document)` can rewrite the generated document before it is exposed. OpenAPI 3.1 exclusive-bound normalization runs on the transformed result. | `packages/openapi/src/openapi-module.ts`, `packages/openapi/src/schema-bounds.ts` |
+| Final transform | `documentTransform(document)` can rewrite the generated document before it is exposed. OpenAPI 3.1 exclusive-bound and nullable normalization runs on the transformed result. | `packages/openapi/src/openapi-module.ts`, `packages/openapi/src/schema-bounds.ts` |
 
 ## Generation Boundaries
 

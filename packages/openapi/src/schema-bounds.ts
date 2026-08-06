@@ -46,8 +46,30 @@ function normalizeOpenApiSchemaBounds(
     return cachedSchema;
   }
 
+  if (schema.nullable === true && schema.type === undefined) {
+    const nullableUnion: OpenApiSchemaObject = {};
+    const nonNullableSchema: OpenApiSchemaObject = { ...schema };
+    delete nonNullableSchema.nullable;
+    normalizedSchemas.set(schema, nullableUnion);
+    nullableUnion.anyOf = [
+      normalizeOpenApiSchemaBounds(nonNullableSchema, `${path}.anyOf[0]`, normalizedSchemas),
+      { type: 'null' },
+    ];
+    return nullableUnion;
+  }
+
   const normalized: OpenApiSchemaObject = { ...schema };
   normalizedSchemas.set(schema, normalized);
+
+  if (typeof schema.nullable === 'boolean') {
+    delete normalized.nullable;
+  }
+
+  if (schema.nullable === true && schema.type !== undefined) {
+    normalized.type = typeof schema.type === 'string'
+      ? (schema.type === 'null' ? 'null' : [schema.type, 'null'])
+      : (schema.type.includes('null') ? schema.type : [...schema.type, 'null']);
+  }
 
   if (typeof schema.exclusiveMinimum === 'number' && !Number.isFinite(schema.exclusiveMinimum)) {
     throw new TypeError(`OpenAPI schema ${path}.exclusiveMinimum must be a finite number.`);
@@ -207,10 +229,10 @@ function normalizePaths(
 }
 
 /**
- * Normalize legacy boolean exclusive-bound metadata before an OpenAPI 3.1 document is exposed.
+ * Normalize legacy exclusive-bound and nullable metadata before an OpenAPI 3.1 document is exposed.
  *
  * @param document Generated document, including any final caller transform.
- * @returns A detached document whose exclusive bounds use OpenAPI 3.1 numeric keywords.
+ * @returns A detached document whose schema keywords use OpenAPI 3.1 forms.
  */
 export function normalizeOpenApiDocumentSchemaBounds(document: OpenApiDocument): OpenApiDocument {
   const normalizedSchemas: NormalizedSchemaCache = new WeakMap();

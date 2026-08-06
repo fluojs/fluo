@@ -1,7 +1,6 @@
-import { describe, expect, it } from 'vitest';
-
+import { Controller, createHandlerMapping, FromBody, Get, HttpCode, Post, Produces, RequestDto } from '@fluojs/http';
 import { IsArray, IsEnum, IsOptional, IsString, MinLength, ValidateNested } from '@fluojs/validation';
-import { Controller, FromBody, Get, HttpCode, Post, Produces, RequestDto, createHandlerMapping } from '@fluojs/http';
+import { describe, expect, it } from 'vitest';
 
 import { ApiBearerAuth, ApiBody, ApiExcludeEndpoint, ApiOperation, ApiResponse, ApiSecurity, ApiTag } from './decorators.js';
 import { buildOpenApiDocument } from './schema-builder.js';
@@ -843,7 +842,6 @@ describe('buildOpenApiDocument', () => {
               },
               title: {
                 minLength: 1,
-                nullable: true,
                 type: ['string', 'null'],
                 writeOnly: true,
               },
