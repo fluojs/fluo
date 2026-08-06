@@ -221,7 +221,7 @@ export class CacheInterceptor implements Interceptor {
 
     installDeferredEviction(
       context.requestContext.response,
-      context.requestContext.request.signal,
+      context.requestContext.request,
       runEviction,
     );
   }

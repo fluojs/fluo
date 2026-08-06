@@ -202,4 +202,39 @@ describe('CacheInterceptor contract regressions', () => {
     // Then
     await expect(cache.get('/products')).resolves.toEqual({ version: 'previous' });
   });
+
+  it('cancels deferred eviction when an adapter abort probe changes during response commit', async () => {
+    // Given
+    class ProductController {
+      @CacheEvict('/products')
+      refresh() {}
+    }
+
+    const { cache, interceptor } = createInterceptor();
+    await cache.set('/products', { version: 'previous' }, 120);
+    const requestContext = createRequestContext('POST', '/products/refresh');
+    let aborted = false;
+    requestContext.request.isAborted = () => aborted;
+    let resolveSend: () => void = () => {};
+    requestContext.response.send = vi.fn(() => new Promise<void>((resolve) => {
+      resolveSend = () => {
+        requestContext.response.committed = true;
+        resolve();
+      };
+    }));
+    const context = createContext(ProductController, 'refresh', requestContext);
+    const next: CallHandler = {
+      handle: vi.fn(async () => ({ refreshed: true })),
+    };
+    const value = await interceptor.intercept(context, next);
+    const send = requestContext.response.send(value);
+
+    // When
+    aborted = true;
+    resolveSend();
+    await send;
+
+    // Then
+    await expect(cache.get('/products')).resolves.toEqual({ version: 'previous' });
+  });
 });
