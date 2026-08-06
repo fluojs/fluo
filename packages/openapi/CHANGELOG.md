@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## 1.1.1
+
+### Patch Changes
+
+- [#2825](https://github.com/fluojs/fluo/pull/2825) [`70d68be`](https://github.com/fluojs/fluo/commit/70d68beda59f17605076de7b29f598db8867be7f) Thanks [@ayden94](https://github.com/ayden94)! - Emit OpenAPI 3.1 numeric exclusive bounds from compatible boolean metadata instead of forwarding invalid boolean keywords.
+
+- [#2926](https://github.com/fluojs/fluo/pull/2926) [`c8f14e5`](https://github.com/fluojs/fluo/commit/c8f14e5fd0d7c2adada52ffbf3b42027c5501261) Thanks [@ayden94](https://github.com/ayden94)! - Normalize accepted legacy `nullable` schema metadata into valid OpenAPI 3.1 null unions.
+
+- Updated dependencies [[`c6b0af7`](https://github.com/fluojs/fluo/commit/c6b0af7926e1f94b36ead0ed2678dbd984790ac6), [`9b1c3ed`](https://github.com/fluojs/fluo/commit/9b1c3ed648e4c48c24384879cc587aedec1ba00e), [`8e191c2`](https://github.com/fluojs/fluo/commit/8e191c2c9664bf58b402875b7a40b02b5ade012e), [`4f89ac4`](https://github.com/fluojs/fluo/commit/4f89ac4dc77169badb160804d86f78d612989af4), [`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4), [`f6385dc`](https://github.com/fluojs/fluo/commit/f6385dc4623581f47efe8a95c45d4f8f274dc7c2), [`8e79be1`](https://github.com/fluojs/fluo/commit/8e79be1d5520e2144eb16bb40766f3619dfba6a9), [`a7cffb1`](https://github.com/fluojs/fluo/commit/a7cffb16d9f1ba4ad8eea4ffc7d751b2913dd51d), [`ac6e32c`](https://github.com/fluojs/fluo/commit/ac6e32c0e108e236800c497342d8e5e66b9175a9), [`acd28a9`](https://github.com/fluojs/fluo/commit/acd28a962b35f577890c47c9c535e4058f373846)]:
+  - @fluojs/http@2.1.0
+  - @fluojs/runtime@3.0.0
+  - @fluojs/validation@1.0.7
+
 ## 1.1.0
 
 ### Minor Changes

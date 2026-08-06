@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## 1.0.6
+
+### Patch Changes
+
+- [#2840](https://github.com/fluojs/fluo/pull/2840) [`1b44b84`](https://github.com/fluojs/fluo/commit/1b44b8442ed08b559a45cc2059d8324f694f3dea) Thanks [@ayden94](https://github.com/ayden94)! - Wait for bootstrap transport verification to settle before closing factory-owned resources during shutdown and preserve initialization diagnostics when concurrent cleanup also fails.
+
+- Updated dependencies [[`9b1c3ed`](https://github.com/fluojs/fluo/commit/9b1c3ed648e4c48c24384879cc587aedec1ba00e), [`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4), [`f6385dc`](https://github.com/fluojs/fluo/commit/f6385dc4623581f47efe8a95c45d4f8f274dc7c2), [`8e79be1`](https://github.com/fluojs/fluo/commit/8e79be1d5520e2144eb16bb40766f3619dfba6a9), [`a7cffb1`](https://github.com/fluojs/fluo/commit/a7cffb16d9f1ba4ad8eea4ffc7d751b2913dd51d), [`6e4272a`](https://github.com/fluojs/fluo/commit/6e4272afd17ea18177330a4e9de6d2745fb2d6d9), [`fbc2d1b`](https://github.com/fluojs/fluo/commit/fbc2d1b76077079e325b30eca93f36d573f5093d), [`acd28a9`](https://github.com/fluojs/fluo/commit/acd28a962b35f577890c47c9c535e4058f373846), [`0d1aca9`](https://github.com/fluojs/fluo/commit/0d1aca91d45db68861821481c36327e155f829f7)]:
+  - @fluojs/runtime@3.0.0
+  - @fluojs/di@2.0.1
+  - @fluojs/notifications@1.0.4
+
 ## 1.0.5
 
 ### Patch Changes

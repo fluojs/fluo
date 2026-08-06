@@ -2,6 +2,43 @@
 
 ## [Unreleased]
 
+## 0.2.0
+
+### Minor Changes
+
+- [#2848](https://github.com/fluojs/fluo/pull/2848) [`c6b0af7`](https://github.com/fluojs/fluo/commit/c6b0af7926e1f94b36ead0ed2678dbd984790ac6) Thanks [@ayden94](https://github.com/ayden94)! - Add the request-local HTTP response-finalization seam used by React page rendering. Allow `@Path(...)` handlers to return one `ReactElement` through the configured application page renderer, and add stable SSR diagnostic codes and phases for HTTP pipeline failures, pre-commit shell failures, request aborts, and post-shell recoverable errors.
+
+- [#2847](https://github.com/fluojs/fluo/pull/2847) [`5ee4516`](https://github.com/fluojs/fluo/commit/5ee4516c2309579829506ab2e4a89ad851a86557) Thanks [@ayden94](https://github.com/ayden94)! - Add an application-level `ReactPageRenderer` callback that `ReactModule.forRoot(...)` registers for shared document, provider, route-context, hydration, and recoverable-render composition through the existing `ReactServerEntry` response path.
+
+- [#2850](https://github.com/fluojs/fluo/pull/2850) [`d29de3f`](https://github.com/fluojs/fluo/commit/d29de3fd32f3362d8ad92dd718d4187bf3dc9502) Thanks [@ayden94](https://github.com/ayden94)! - Add class- and method-level `PageLayout` and `SuspenseFallback` component-reference policies, pass resolved policies and the active request-scope container to the application page renderer, and reject invalid policy declarations during bootstrap.
+
+  Applications that construct `ReactRenderContext` objects themselves, including custom renderer adapters and test fixtures, must now provide the active request-scope container as `container: requestContext.container` or an equivalent `Container`. Applications that receive the context from fluo's `ReactPageRenderer` callback require no migration.
+
+- [#2851](https://github.com/fluojs/fluo/pull/2851) [`f6385dc`](https://github.com/fluojs/fluo/commit/f6385dc4623581f47efe8a95c45d4f8f274dc7c2) Thanks [@ayden94](https://github.com/ayden94)! - Add immutable React page catalogs and expose compiled route kinds, effective paths, versions, and parameter names through runtime inspection, `fluo inspect`, and Studio diagnostics.
+
+- [#2853](https://github.com/fluojs/fluo/pull/2853) [`44cb5e9`](https://github.com/fluojs/fluo/commit/44cb5e928bb634c91cfbd376fd9b5f3d2f07f753) Thanks [@ayden94](https://github.com/ayden94)! - Add deterministic path-only React page type generation with typed absolute href builders through `@fluojs/react/typegen` and `fluo typegen`.
+
+- [#2859](https://github.com/fluojs/fluo/pull/2859) [`edf47a1`](https://github.com/fluojs/fluo/commit/edf47a1aafb764a82d5eb1b401bc8590685c1678) Thanks [@ayden94](https://github.com/ayden94)! - Generate route-bound real-anchor props and typed `push`/`replace` methods so React page ids and exact path params stay visible through declarative and programmatic HTTP-first navigation.
+
+- [#2860](https://github.com/fluojs/fluo/pull/2860) [`b6acc33`](https://github.com/fluojs/fluo/commit/b6acc33726e380c58c49fa52a5674f348759f9ac) Thanks [@ayden94](https://github.com/ayden94)! - Add synchronous request-aware `PageMetadata` policies with deterministic title, meta, and link composition plus ordinary escaped React element helpers for application-owned page renderers.
+
+- [#2898](https://github.com/fluojs/fluo/pull/2898) [`a7cffb1`](https://github.com/fluojs/fluo/commit/a7cffb16d9f1ba4ad8eea4ffc7d751b2913dd51d) Thanks [@ayden94](https://github.com/ayden94)! - Add an HTTP-owned, content-negotiated error representation seam that preserves canonical JSON by default, optionally renders application-owned HTML for classified errors and route misses, and keeps status, headers, `HEAD`, abort, commit, and one-shot fallback behavior in the dispatcher.
+
+  Expose runtime bootstrap wiring, a buffered React error-document provider adapter, and typed network/fetch-style portability assertions for the new representation contract.
+
+  Preserve existing Express response `Vary` values when HTTP error representation negotiation adds `Accept`.
+
+- [#2900](https://github.com/fluojs/fluo/pull/2900) [`ca5fb8d`](https://github.com/fluojs/fluo/commit/ca5fb8dc19da0703022d33eb07a4b8ec08bd2824) Thanks [@ayden94](https://github.com/ayden94)! - Add deterministic React typegen check and watch workflows with versioned artifact diagnostics, atomic writes, stable exit codes, and a documented consumer testing loop.
+
+### Patch Changes
+
+- [#2841](https://github.com/fluojs/fluo/pull/2841) [`5303aa7`](https://github.com/fluojs/fluo/commit/5303aa734a7ce53c77eeaea6954dc36371c60d57) Thanks [@ayden94](https://github.com/ayden94)! - Cancel unfinished SSR and experimental Flight readers when response sinks close or writes fail, releasing reader locks without masking sink errors.
+
+- Updated dependencies [[`c6b0af7`](https://github.com/fluojs/fluo/commit/c6b0af7926e1f94b36ead0ed2678dbd984790ac6), [`9b1c3ed`](https://github.com/fluojs/fluo/commit/9b1c3ed648e4c48c24384879cc587aedec1ba00e), [`8e191c2`](https://github.com/fluojs/fluo/commit/8e191c2c9664bf58b402875b7a40b02b5ade012e), [`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4), [`f6385dc`](https://github.com/fluojs/fluo/commit/f6385dc4623581f47efe8a95c45d4f8f274dc7c2), [`8e79be1`](https://github.com/fluojs/fluo/commit/8e79be1d5520e2144eb16bb40766f3619dfba6a9), [`a7cffb1`](https://github.com/fluojs/fluo/commit/a7cffb16d9f1ba4ad8eea4ffc7d751b2913dd51d), [`6e4272a`](https://github.com/fluojs/fluo/commit/6e4272afd17ea18177330a4e9de6d2745fb2d6d9), [`fbc2d1b`](https://github.com/fluojs/fluo/commit/fbc2d1b76077079e325b30eca93f36d573f5093d), [`ac6e32c`](https://github.com/fluojs/fluo/commit/ac6e32c0e108e236800c497342d8e5e66b9175a9), [`acd28a9`](https://github.com/fluojs/fluo/commit/acd28a962b35f577890c47c9c535e4058f373846)]:
+  - @fluojs/http@2.1.0
+  - @fluojs/runtime@3.0.0
+  - @fluojs/di@2.0.1
+
 ## 0.1.0
 
 ### Minor Changes

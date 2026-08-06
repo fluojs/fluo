@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## 2.0.1
+
+### Patch Changes
+
+- [#2837](https://github.com/fluojs/fluo/pull/2837) [`58de97b`](https://github.com/fluojs/fluo/commit/58de97bc9773b96b9d63e44012eeb58f0cd38cad) Thanks [@ayden94](https://github.com/ayden94)! - Remove each remote catalog load's internal abort listener after the load succeeds or fails while preserving timeout and caller cancellation behavior.
+
 ## 2.0.0
 
 ### Major Changes

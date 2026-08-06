@@ -6,6 +6,19 @@
 
 - Align websocket runtime contracts, docs, and regression coverage for room service behavior, bounded shutdown cleanup, payload normalization, and runtime-specific upgrade guard typing.
 
+## 1.0.9
+
+### Patch Changes
+
+- [#2818](https://github.com/fluojs/fluo/pull/2818) [`89e99c7`](https://github.com/fluojs/fluo/commit/89e99c70a96db6bd6663afc17b1aef4e7a78d1bf) Thanks [@ayden94](https://github.com/ayden94)! - Keep Bun room broadcasts independent from the Node-only backpressure policy and clarify the lifecycle-service token exported by each WebSocket entrypoint.
+
+- [#2776](https://github.com/fluojs/fluo/pull/2776) [`edf4092`](https://github.com/fluojs/fluo/commit/edf4092030e434ca306735953298d81808b69995) Thanks [@ayden94](https://github.com/ayden94)! - Raise the package-owned `ws` dependency to 8.21.0 or newer for the Node.js WebSocket runtime. Refresh consumer lockfiles when upgrading so the patched runtime is installed.
+
+- Updated dependencies [[`c6b0af7`](https://github.com/fluojs/fluo/commit/c6b0af7926e1f94b36ead0ed2678dbd984790ac6), [`9b1c3ed`](https://github.com/fluojs/fluo/commit/9b1c3ed648e4c48c24384879cc587aedec1ba00e), [`8e191c2`](https://github.com/fluojs/fluo/commit/8e191c2c9664bf58b402875b7a40b02b5ade012e), [`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4), [`f6385dc`](https://github.com/fluojs/fluo/commit/f6385dc4623581f47efe8a95c45d4f8f274dc7c2), [`8e79be1`](https://github.com/fluojs/fluo/commit/8e79be1d5520e2144eb16bb40766f3619dfba6a9), [`a7cffb1`](https://github.com/fluojs/fluo/commit/a7cffb16d9f1ba4ad8eea4ffc7d751b2913dd51d), [`6e4272a`](https://github.com/fluojs/fluo/commit/6e4272afd17ea18177330a4e9de6d2745fb2d6d9), [`fbc2d1b`](https://github.com/fluojs/fluo/commit/fbc2d1b76077079e325b30eca93f36d573f5093d), [`ac6e32c`](https://github.com/fluojs/fluo/commit/ac6e32c0e108e236800c497342d8e5e66b9175a9), [`acd28a9`](https://github.com/fluojs/fluo/commit/acd28a962b35f577890c47c9c535e4058f373846)]:
+  - @fluojs/http@2.1.0
+  - @fluojs/runtime@3.0.0
+  - @fluojs/di@2.0.1
+
 ## 1.0.8
 
 ### Patch Changes

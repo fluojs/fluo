@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## 1.0.7
+
+### Patch Changes
+
+- [#2820](https://github.com/fluojs/fluo/pull/2820) [`4f89ac4`](https://github.com/fluojs/fluo/commit/4f89ac4dc77169badb160804d86f78d612989af4) Thanks [@ayden94](https://github.com/ayden94)! - Hydrate plain nested DTO fields and collection members when materializing existing DTO instances while preserving root and nested DTO identities.
+
 ## 1.0.6
 
 ### Patch Changes
