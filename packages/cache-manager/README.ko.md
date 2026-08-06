@@ -263,7 +263,7 @@ class ProductController {
 }
 ```
 
-이렇게 지원되는 HTTP 경로에서는 `response.send(...)`가 성공적으로 settle되고 response가 commit 완료를 보고할 때까지 cache eviction을 지연합니다. Send가 reject되거나 commit 확인 없이 settle되거나, disconnect 또는 shutdown으로 commit 전에 request가 abort되면 지연 eviction을 취소하여 이전 cached read 결과를 유지합니다. Interceptor는 경과 시간으로 commit을 추론하지 않습니다. 따라서 custom adapter나 outer pipeline이 `response.send(...)`를 호출하지 않으면 자동 eviction도 실행되지 않습니다. 이런 경로는 표준 response lifecycle을 완료하거나 `CacheService.del(...)`로 명시적으로 무효화해야 합니다. 또한 지연 eviction 실패는 interceptor 내부에 containment되어 cache key factory나 cache store 삭제 오류가 response 이후 unhandled promise rejection으로 노출되지 않습니다.
+이렇게 지원되는 HTTP 경로에서는 framework response writer가 성공적으로 settle되고 response가 commit 완료를 보고할 때까지 cache eviction을 지연합니다. Writer가 reject되거나 commit 확인 없이 settle되거나, disconnect 또는 shutdown으로 commit 전에 request가 abort되면 지연 eviction을 취소하여 이전 cached read 결과를 유지합니다. `response.send(...)`를 호출하지 않고 commit하는 adapter 경로도 bounded 5초 fallback을 유지합니다. 이 fallback은 deadline에 `response.committed`가 이미 commit을 확인한 경우에만 eviction을 실행하고, 확인되지 않은 response는 취소하므로 경과 시간만으로 이후의 실패한 commit보다 먼저 cache를 삭제하지 않습니다. Fallback timer는 Node.js에서 unref되고 response writer가 settle되면 clear되므로 pending fallback work가 process shutdown을 계속 붙잡지 않습니다. 또한 지연 eviction 실패는 interceptor 내부에 containment되어 cache key factory나 cache store 삭제 오류가 response 이후 unhandled promise rejection으로 노출되지 않습니다.
 
 ## 공개 API 개요
 
