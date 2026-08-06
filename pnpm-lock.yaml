@@ -640,6 +640,9 @@ importers:
         specifier: ^15.1.3
         version: 15.1.3
     devDependencies:
+      '@fluojs/testing':
+        specifier: workspace:^
+        version: link:../testing
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.15
