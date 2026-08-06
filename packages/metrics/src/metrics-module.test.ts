@@ -487,19 +487,21 @@ describe('MetricsModule', () => {
     const app = await bootstrapApplication({
       rootModule: AppModule,
     });
-    const response = createResponse();
 
-    await app.dispatch(createRequest('/metrics'), response);
+    try {
+      const response = createResponse();
+      await app.dispatch(createRequest('/metrics'), response);
 
-    expect(response.statusCode).toBe(200);
-    expect(String(response.body)).toContain(
-      'fluo_component_ready{component_id="runtime.shell",component_kind="runtime",operation="readiness",result="ready",env="production",instance="api-1"} 1',
-    );
-    expect(String(response.body)).toContain(
-      'fluo_component_health{component_id="runtime.shell",component_kind="runtime",operation="health",result="healthy",env="production",instance="api-1"} 1',
-    );
-
-    await app.close();
+      expect(response.statusCode).toBe(200);
+      expect(String(response.body)).toContain(
+        'fluo_component_ready{component_id="runtime.shell",component_kind="runtime",operation="readiness",result="ready",env="production",instance="api-1"} 1',
+      );
+      expect(String(response.body)).toContain(
+        'fluo_component_health{component_id="runtime.shell",component_kind="runtime",operation="health",result="healthy",env="production",instance="api-1"} 1',
+      );
+    } finally {
+      await app.close();
+    }
   });
 
   it('uses an isolated registry for each forRoot call', async () => {
@@ -516,23 +518,29 @@ describe('MetricsModule', () => {
     const firstApp = await bootstrapApplication({
       rootModule: FirstAppModule,
     });
-    const secondApp = await bootstrapApplication({
-      rootModule: SecondAppModule,
-    });
 
-    const firstResponse = createResponse();
-    const secondResponse = createResponse();
+    try {
+      const secondApp = await bootstrapApplication({
+        rootModule: SecondAppModule,
+      });
 
-    await firstApp.dispatch(createRequest('/metrics-a'), firstResponse);
-    await secondApp.dispatch(createRequest('/metrics-b'), secondResponse);
+      try {
+        const firstResponse = createResponse();
+        const secondResponse = createResponse();
 
-    expect(firstResponse.statusCode).toBe(200);
-    expect(secondResponse.statusCode).toBe(200);
-    expect(String(firstResponse.body)).toContain('process_cpu_seconds_total');
-    expect(String(secondResponse.body)).toContain('process_cpu_seconds_total');
+        await firstApp.dispatch(createRequest('/metrics-a'), firstResponse);
+        await secondApp.dispatch(createRequest('/metrics-b'), secondResponse);
 
-    await firstApp.close();
-    await secondApp.close();
+        expect(firstResponse.statusCode).toBe(200);
+        expect(secondResponse.statusCode).toBe(200);
+        expect(String(firstResponse.body)).toContain('process_cpu_seconds_total');
+        expect(String(secondResponse.body)).toContain('process_cpu_seconds_total');
+      } finally {
+        await secondApp.close();
+      }
+    } finally {
+      await firstApp.close();
+    }
   });
 
   it('records thrown middleware errors with 500 status labels', async () => {
@@ -1546,16 +1554,18 @@ describe('MetricsModule', () => {
       rootModule: AppModule,
     });
 
-    const response = createResponse();
-    await app.dispatch(createRequest('/metrics'), response);
+    try {
+      const response = createResponse();
+      await app.dispatch(createRequest('/metrics'), response);
 
-    const metricsText = String(response.body);
+      const metricsText = String(response.body);
 
-    expect(response.statusCode).toBe(200);
-    expect(metricsText).toContain('app_active_connections');
-    expect(metricsText).toContain('process_cpu_seconds_total');
-
-    await app.close();
+      expect(response.statusCode).toBe(200);
+      expect(metricsText).toContain('app_active_connections');
+      expect(metricsText).toContain('process_cpu_seconds_total');
+    } finally {
+      await app.close();
+    }
   });
 
   it('throws on duplicate metric names when using shared registry with MetricsService', async () => {
@@ -1685,30 +1695,39 @@ describe('MetricsModule', () => {
       imports: [MetricsRuntimeModule],
     });
 
-    const firstApp = await bootstrapApplication({
-      rootModule: AppModule,
-    });
-    const firstMetricsService = (await firstApp.container.resolve(MetricsService)) as MetricsService;
-    const firstRegistry = firstMetricsService.getRegistry();
+    const firstRegistry = await (async () => {
+      const firstApp = await bootstrapApplication({
+        rootModule: AppModule,
+      });
 
-    firstMetricsService.counter({
-      help: 'Counter scoped to the first bootstrap only',
-      name: 'bootstrap_local_counter_total',
-    });
+      try {
+        const firstMetricsService = (await firstApp.container.resolve(MetricsService)) as MetricsService;
+        const registry = firstMetricsService.getRegistry();
 
-    expect(await firstRegistry.metrics()).toContain('bootstrap_local_counter_total');
+        firstMetricsService.counter({
+          help: 'Counter scoped to the first bootstrap only',
+          name: 'bootstrap_local_counter_total',
+        });
 
-    await firstApp.close();
+        expect(await registry.metrics()).toContain('bootstrap_local_counter_total');
+        return registry;
+      } finally {
+        await firstApp.close();
+      }
+    })();
 
     const secondApp = await bootstrapApplication({
       rootModule: AppModule,
     });
-    const secondMetricsService = (await secondApp.container.resolve(MetricsService)) as MetricsService;
-    const secondRegistry = secondMetricsService.getRegistry();
 
-    expect(secondRegistry).not.toBe(firstRegistry);
-    expect(await secondRegistry.metrics()).not.toContain('bootstrap_local_counter_total');
+    try {
+      const secondMetricsService = (await secondApp.container.resolve(MetricsService)) as MetricsService;
+      const secondRegistry = secondMetricsService.getRegistry();
 
-    await secondApp.close();
+      expect(secondRegistry).not.toBe(firstRegistry);
+      expect(await secondRegistry.metrics()).not.toContain('bootstrap_local_counter_total');
+    } finally {
+      await secondApp.close();
+    }
   });
 });
