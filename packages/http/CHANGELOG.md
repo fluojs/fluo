@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+## 2.1.0
+
+### Minor Changes
+
+- [#2898](https://github.com/fluojs/fluo/pull/2898) [`a7cffb1`](https://github.com/fluojs/fluo/commit/a7cffb16d9f1ba4ad8eea4ffc7d751b2913dd51d) Thanks [@ayden94](https://github.com/ayden94)! - Add an HTTP-owned, content-negotiated error representation seam that preserves canonical JSON by default, optionally renders application-owned HTML for classified errors and route misses, and keeps status, headers, `HEAD`, abort, commit, and one-shot fallback behavior in the dispatcher.
+
+  Expose runtime bootstrap wiring, a buffered React error-document provider adapter, and typed network/fetch-style portability assertions for the new representation contract.
+
+  Preserve existing Express response `Vary` values when HTTP error representation negotiation adds `Accept`.
+
+### Patch Changes
+
+- [#2848](https://github.com/fluojs/fluo/pull/2848) [`c6b0af7`](https://github.com/fluojs/fluo/commit/c6b0af7926e1f94b36ead0ed2678dbd984790ac6) Thanks [@ayden94](https://github.com/ayden94)! - Add the request-local HTTP response-finalization seam used by React page rendering. Allow `@Path(...)` handlers to return one `ReactElement` through the configured application page renderer, and add stable SSR diagnostic codes and phases for HTTP pipeline failures, pre-commit shell failures, request aborts, and post-shell recoverable errors.
+
+- [#2885](https://github.com/fluojs/fluo/pull/2885) [`8e191c2`](https://github.com/fluojs/fluo/commit/8e191c2c9664bf58b402875b7a40b02b5ade012e) Thanks [@ayden94](https://github.com/ayden94)! - Correct the public TSDoc classification for the fast-path observability symbols.
+
+- [#2826](https://github.com/fluojs/fluo/pull/2826) [`ac6e32c`](https://github.com/fluojs/fluo/commit/ac6e32c0e108e236800c497342d8e5e66b9175a9) Thanks [@ayden94](https://github.com/ayden94)! - Treat either request abort surface as authoritative and preserve request context through promise-returning callbacks without patching global promise continuations.
+
+- Updated dependencies [[`4f89ac4`](https://github.com/fluojs/fluo/commit/4f89ac4dc77169badb160804d86f78d612989af4), [`6e4272a`](https://github.com/fluojs/fluo/commit/6e4272afd17ea18177330a4e9de6d2745fb2d6d9), [`fbc2d1b`](https://github.com/fluojs/fluo/commit/fbc2d1b76077079e325b30eca93f36d573f5093d)]:
+  - @fluojs/validation@1.0.7
+  - @fluojs/di@2.0.1
+
 ## 2.0.1
 
 ### Patch Changes

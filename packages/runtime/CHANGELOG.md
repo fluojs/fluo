@@ -2,6 +2,36 @@
 
 ## [Unreleased]
 
+## 3.0.0
+
+### Major Changes
+
+- [#2883](https://github.com/fluojs/fluo/pull/2883) [`acd28a9`](https://github.com/fluojs/fluo/commit/acd28a962b35f577890c47c9c535e4058f373846) Thanks [@ayden94](https://github.com/ayden94)! - Replace uncoordinated PlatformShell lifecycle overlap with strict exclusive transitions. Every overlapping `start()` or `stop()` now rejects immediately with `PlatformLifecycleConflictError` and structured `PLATFORM_LIFECYCLE_CONFLICT` metadata.
+
+  In 2.x, overlapping `start()` calls could start the same components more than once, and `stop()` called during an in-flight startup could return before startup settled and leave resources running. Consumers must now give one application boundary ownership of each transition, wait for that owned promise to settle, and retry explicitly when a rejected operation is still required. Lifecycle callbacks receive the same typed conflict after synchronous or arbitrarily awaited reentry.
+
+### Minor Changes
+
+- [#2851](https://github.com/fluojs/fluo/pull/2851) [`f6385dc`](https://github.com/fluojs/fluo/commit/f6385dc4623581f47efe8a95c45d4f8f274dc7c2) Thanks [@ayden94](https://github.com/ayden94)! - Add immutable React page catalogs and expose compiled route kinds, effective paths, versions, and parameter names through runtime inspection, `fluo inspect`, and Studio diagnostics.
+
+- [#2898](https://github.com/fluojs/fluo/pull/2898) [`a7cffb1`](https://github.com/fluojs/fluo/commit/a7cffb16d9f1ba4ad8eea4ffc7d751b2913dd51d) Thanks [@ayden94](https://github.com/ayden94)! - Add an HTTP-owned, content-negotiated error representation seam that preserves canonical JSON by default, optionally renders application-owned HTML for classified errors and route misses, and keeps status, headers, `HEAD`, abort, commit, and one-shot fallback behavior in the dispatcher.
+
+  Expose runtime bootstrap wiring, a buffered React error-document provider adapter, and typed network/fetch-style portability assertions for the new representation contract.
+
+  Preserve existing Express response `Vary` values when HTTP error representation negotiation adds `Accept`.
+
+### Patch Changes
+
+- [#2783](https://github.com/fluojs/fluo/pull/2783) [`9b1c3ed`](https://github.com/fluojs/fluo/commit/9b1c3ed648e4c48c24384879cc587aedec1ba00e) Thanks [@ayden94](https://github.com/ayden94)! - Reject new microservice `send()` and `emit()` calls as soon as shutdown begins, including while `listen()` is still pending, before runtime or transport handoff.
+
+- [#2781](https://github.com/fluojs/fluo/pull/2781) [`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4) Thanks [@ayden94](https://github.com/ayden94)! - Capture CLI-injected Studio configuration once as a validated, immutable runtime bridge snapshot.
+
+- [#2886](https://github.com/fluojs/fluo/pull/2886) [`8e79be1`](https://github.com/fluojs/fluo/commit/8e79be1d5520e2144eb16bb40766f3619dfba6a9) Thanks [@ayden94](https://github.com/ayden94)! - Enforce Web JSON request body limits while streaming even when Content-Length appears safe, settle oversized cloned streams without waiting for cancellation, preserve HTTP 413 when cancellation rejects, and deprecate the compatibility-only `preferNativeJsonBodyReader` option.
+
+- Updated dependencies [[`c6b0af7`](https://github.com/fluojs/fluo/commit/c6b0af7926e1f94b36ead0ed2678dbd984790ac6), [`8e191c2`](https://github.com/fluojs/fluo/commit/8e191c2c9664bf58b402875b7a40b02b5ade012e), [`a7cffb1`](https://github.com/fluojs/fluo/commit/a7cffb16d9f1ba4ad8eea4ffc7d751b2913dd51d), [`6e4272a`](https://github.com/fluojs/fluo/commit/6e4272afd17ea18177330a4e9de6d2745fb2d6d9), [`fbc2d1b`](https://github.com/fluojs/fluo/commit/fbc2d1b76077079e325b30eca93f36d573f5093d), [`ac6e32c`](https://github.com/fluojs/fluo/commit/ac6e32c0e108e236800c497342d8e5e66b9175a9)]:
+  - @fluojs/http@2.1.0
+  - @fluojs/di@2.0.1
+
 ## 2.0.1
 
 ### Patch Changes

@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## 1.1.1
+
+### Patch Changes
+
+- [#2770](https://github.com/fluojs/fluo/pull/2770) [`6edaaa0`](https://github.com/fluojs/fluo/commit/6edaaa05202635a86cc64bd83453983ed239fa12) Thanks [@ayden94](https://github.com/ayden94)! - Type `ExpressHttpApplicationAdapter.getServer()` as its Node HTTP/HTTPS server union.
+
+- [#2898](https://github.com/fluojs/fluo/pull/2898) [`a7cffb1`](https://github.com/fluojs/fluo/commit/a7cffb16d9f1ba4ad8eea4ffc7d751b2913dd51d) Thanks [@ayden94](https://github.com/ayden94)! - Add an HTTP-owned, content-negotiated error representation seam that preserves canonical JSON by default, optionally renders application-owned HTML for classified errors and route misses, and keeps status, headers, `HEAD`, abort, commit, and one-shot fallback behavior in the dispatcher.
+
+  Expose runtime bootstrap wiring, a buffered React error-document provider adapter, and typed network/fetch-style portability assertions for the new representation contract.
+
+  Preserve existing Express response `Vary` values when HTTP error representation negotiation adds `Accept`.
+
+- Updated dependencies [[`c6b0af7`](https://github.com/fluojs/fluo/commit/c6b0af7926e1f94b36ead0ed2678dbd984790ac6), [`9b1c3ed`](https://github.com/fluojs/fluo/commit/9b1c3ed648e4c48c24384879cc587aedec1ba00e), [`8e191c2`](https://github.com/fluojs/fluo/commit/8e191c2c9664bf58b402875b7a40b02b5ade012e), [`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4), [`f6385dc`](https://github.com/fluojs/fluo/commit/f6385dc4623581f47efe8a95c45d4f8f274dc7c2), [`8e79be1`](https://github.com/fluojs/fluo/commit/8e79be1d5520e2144eb16bb40766f3619dfba6a9), [`a7cffb1`](https://github.com/fluojs/fluo/commit/a7cffb16d9f1ba4ad8eea4ffc7d751b2913dd51d), [`ac6e32c`](https://github.com/fluojs/fluo/commit/ac6e32c0e108e236800c497342d8e5e66b9175a9), [`acd28a9`](https://github.com/fluojs/fluo/commit/acd28a962b35f577890c47c9c535e4058f373846)]:
+  - @fluojs/http@2.1.0
+  - @fluojs/runtime@3.0.0
+
 ## 1.1.0
 
 ### Minor Changes

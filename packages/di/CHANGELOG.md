@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## 2.0.1
+
+### Patch Changes
+
+- [#2823](https://github.com/fluojs/fluo/pull/2823) [`6e4272a`](https://github.com/fluojs/fluo/commit/6e4272afd17ea18177330a4e9de6d2745fb2d6d9) Thanks [@ayden94](https://github.com/ayden94)! - Reject cycles across pending singleton and request-scoped resolutions, and prevent request-scope overrides from introducing new singleton providers.
+
+- [#2882](https://github.com/fluojs/fluo/pull/2882) [`fbc2d1b`](https://github.com/fluojs/fluo/commit/fbc2d1b76077079e325b30eca93f36d573f5093d) Thanks [@ayden94](https://github.com/ayden94)! - Reject value providers that declare `inject` metadata instead of silently discarding the invalid dependency declaration.
+
 ## 2.0.0
 
 ### Major Changes

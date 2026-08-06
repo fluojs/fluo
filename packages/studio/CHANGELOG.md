@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## 1.1.0
+
+### Minor Changes
+
+- [#2851](https://github.com/fluojs/fluo/pull/2851) [`f6385dc`](https://github.com/fluojs/fluo/commit/f6385dc4623581f47efe8a95c45d4f8f274dc7c2) Thanks [@ayden94](https://github.com/ayden94)! - Add immutable React page catalogs and expose compiled route kinds, effective paths, versions, and parameter names through runtime inspection, `fluo inspect`, and Studio diagnostics.
+
+### Patch Changes
+
+- [#2917](https://github.com/fluojs/fluo/pull/2917) [`93e91a6`](https://github.com/fluojs/fluo/commit/93e91a6fd9625fbc62212b443f7ac38fe06f00ff) Thanks [@ayden94](https://github.com/ayden94)! - Reject unknown supplied route kinds in static and live Studio artifacts while preserving the legacy `http` default when `kind` is omitted.
+
+- Updated dependencies [[`9b1c3ed`](https://github.com/fluojs/fluo/commit/9b1c3ed648e4c48c24384879cc587aedec1ba00e), [`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4), [`f6385dc`](https://github.com/fluojs/fluo/commit/f6385dc4623581f47efe8a95c45d4f8f274dc7c2), [`8e79be1`](https://github.com/fluojs/fluo/commit/8e79be1d5520e2144eb16bb40766f3619dfba6a9), [`a7cffb1`](https://github.com/fluojs/fluo/commit/a7cffb16d9f1ba4ad8eea4ffc7d751b2913dd51d), [`acd28a9`](https://github.com/fluojs/fluo/commit/acd28a962b35f577890c47c9c535e4058f373846)]:
+  - @fluojs/runtime@3.0.0
+
 ## 1.0.8
 
 ### Patch Changes

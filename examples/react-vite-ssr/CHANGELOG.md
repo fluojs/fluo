@@ -1,5 +1,16 @@
 # @fluojs/example-react-vite-ssr
 
+## 0.0.3
+
+### Patch Changes
+
+- Updated dependencies [[`c6b0af7`](https://github.com/fluojs/fluo/commit/c6b0af7926e1f94b36ead0ed2678dbd984790ac6), [`5ee4516`](https://github.com/fluojs/fluo/commit/5ee4516c2309579829506ab2e4a89ad851a86557), [`d29de3f`](https://github.com/fluojs/fluo/commit/d29de3fd32f3362d8ad92dd718d4187bf3dc9502), [`5303aa7`](https://github.com/fluojs/fluo/commit/5303aa734a7ce53c77eeaea6954dc36371c60d57), [`9b1c3ed`](https://github.com/fluojs/fluo/commit/9b1c3ed648e4c48c24384879cc587aedec1ba00e), [`8e191c2`](https://github.com/fluojs/fluo/commit/8e191c2c9664bf58b402875b7a40b02b5ade012e), [`4f89ac4`](https://github.com/fluojs/fluo/commit/4f89ac4dc77169badb160804d86f78d612989af4), [`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4), [`f6385dc`](https://github.com/fluojs/fluo/commit/f6385dc4623581f47efe8a95c45d4f8f274dc7c2), [`44cb5e9`](https://github.com/fluojs/fluo/commit/44cb5e928bb634c91cfbd376fd9b5f3d2f07f753), [`edf47a1`](https://github.com/fluojs/fluo/commit/edf47a1aafb764a82d5eb1b401bc8590685c1678), [`b6acc33`](https://github.com/fluojs/fluo/commit/b6acc33726e380c58c49fa52a5674f348759f9ac), [`8e79be1`](https://github.com/fluojs/fluo/commit/8e79be1d5520e2144eb16bb40766f3619dfba6a9), [`a7cffb1`](https://github.com/fluojs/fluo/commit/a7cffb16d9f1ba4ad8eea4ffc7d751b2913dd51d), [`ca5fb8d`](https://github.com/fluojs/fluo/commit/ca5fb8dc19da0703022d33eb07a4b8ec08bd2824), [`ac6e32c`](https://github.com/fluojs/fluo/commit/ac6e32c0e108e236800c497342d8e5e66b9175a9), [`acd28a9`](https://github.com/fluojs/fluo/commit/acd28a962b35f577890c47c9c535e4058f373846)]:
+  - @fluojs/http@2.1.0
+  - @fluojs/react@0.2.0
+  - @fluojs/runtime@3.0.0
+  - @fluojs/validation@1.0.7
+  - @fluojs/platform-fastify@1.0.10
+
 ## 0.0.2
 
 ### Patch Changes
