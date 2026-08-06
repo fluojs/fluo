@@ -40,8 +40,22 @@ const teardownCallbacks: Array<() => Promise<void>> = [];
 const explicitlyClosedApps = new WeakSet<TestCloseable>();
 
 async function runTeardownCallbacks(): Promise<void> {
+  const errors: unknown[] = [];
+
   while (teardownCallbacks.length > 0) {
-    await teardownCallbacks.pop()?.();
+    try {
+      await teardownCallbacks.pop()?.();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+
+  if (errors.length > 1) {
+    throw new AggregateError(errors, 'OpenAPI test teardown failed.');
+  }
+
+  if (errors.length === 1) {
+    throw errors[0];
   }
 }
 
@@ -190,6 +204,49 @@ function resolveAssignedPort(adapter: { getServer?: () => unknown }): number {
 }
 
 describe('OpenApiModule', () => {
+  it('runs every cleanup callback before aggregating teardown failures', async () => {
+    // Given
+    const firstError = new Error('first close failed');
+    const secondError = new Error('second close failed');
+    const cleanupOrder: string[] = [];
+    let cleanupFinished = false;
+
+    registerResponseForCleanup(new Response(new ReadableStream({
+      cancel() {
+        cleanupOrder.push('response');
+      },
+    })));
+    registerAppForCleanup({
+      async close() {
+        cleanupOrder.push('second app');
+        if (!cleanupFinished) {
+          throw secondError;
+        }
+      },
+    });
+    registerAppForCleanup({
+      async close() {
+        cleanupOrder.push('first app');
+        throw firstError;
+      },
+    });
+
+    // When
+    let cleanupError: unknown;
+    try {
+      await runTeardownCallbacks();
+    } catch (error) {
+      cleanupError = error;
+    } finally {
+      cleanupFinished = true;
+    }
+
+    // Then
+    expect(cleanupOrder).toEqual(['first app', 'second app', 'response']);
+    expect(cleanupError).toBeInstanceOf(AggregateError);
+    expect(cleanupError).toMatchObject({ errors: [firstError, secondError] });
+  });
+
   it('surfaces app cleanup failures unless the app was explicitly closed', async () => {
     const closingError = new Error('close failed');
     let closeCalls = 0;
