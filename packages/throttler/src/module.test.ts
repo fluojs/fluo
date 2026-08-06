@@ -10,6 +10,7 @@ import { ThrottlerGuard } from './guard.js';
 import type {
   RedisThrottlerClient,
   ThrottlerConsumeInput,
+  ThrottlerHandlerOptions,
   ThrottlerModuleOptions,
   ThrottlerStore,
   ThrottlerStoreEntry,
@@ -293,43 +294,36 @@ describe('@fluojs/throttler decorators', () => {
     expect(bag[Symbol.for('fluo.throttler.class-throttle')]).toEqual({ limit: 100, ttl: 60 });
   });
 
-  it('rejects invalid @Throttle options eagerly', () => {
-    expect(() => {
-      class AuthController {
-        @Throttle({ limit: 0, ttl: 60 })
-        login() {}
-      }
+  it.each([
+    { caseName: 'limit=0', expectedField: /limit/i, options: { limit: 0, ttl: 60 } },
+    { caseName: 'limit=NaN', expectedField: /limit/i, options: { limit: Number.NaN, ttl: 60 } },
+    {
+      caseName: 'limit=Infinity',
+      expectedField: /limit/i,
+      options: { limit: Number.POSITIVE_INFINITY, ttl: 60 },
+    },
+    { caseName: 'limit=1.5', expectedField: /limit/i, options: { limit: 1.5, ttl: 60 } },
+    { caseName: 'ttl=0', expectedField: /ttl/i, options: { limit: 1, ttl: 0 } },
+    { caseName: 'ttl=NaN', expectedField: /ttl/i, options: { limit: 1, ttl: Number.NaN } },
+    {
+      caseName: 'ttl=Infinity',
+      expectedField: /ttl/i,
+      options: { limit: 1, ttl: Number.POSITIVE_INFINITY },
+    },
+    { caseName: 'ttl=0.5', expectedField: /ttl/i, options: { limit: 1, ttl: 0.5 } },
+  ])(
+    'rejects invalid @Throttle options eagerly for $caseName',
+    ({ expectedField, options }: { expectedField: RegExp; options: ThrottlerHandlerOptions }) => {
+      expect(() => {
+        class AuthController {
+          @Throttle(options)
+          login() {}
+        }
 
-      return AuthController;
-    }).toThrow(/limit/i);
-
-    expect(() => {
-      class AuthController {
-        @Throttle({ limit: 1, ttl: Number.NaN })
-        login() {}
-      }
-
-      return AuthController;
-    }).toThrow(/ttl/i);
-
-    expect(() => {
-      class AuthController {
-        @Throttle({ limit: 1.5, ttl: 60 })
-        login() {}
-      }
-
-      return AuthController;
-    }).toThrow(/limit/i);
-
-    expect(() => {
-      class AuthController {
-        @Throttle({ limit: 1, ttl: 0.5 })
-        login() {}
-      }
-
-      return AuthController;
-    }).toThrow(/ttl/i);
-  });
+        return AuthController;
+      }).toThrow(expectedField);
+    },
+  );
 
   it('captures @Throttle options by value to avoid shared mutable metadata', () => {
     const options = { limit: 5, ttl: 60 };
@@ -411,13 +405,30 @@ describe('ThrottlerGuard — in-memory store', () => {
     };
   });
 
-  it('rejects invalid module-level ttl and limit before request handling starts', () => {
-    expect(() => ThrottlerModule.forRoot({ limit: 0, ttl: 60 })).toThrow(/limit/i);
-    expect(() => ThrottlerModule.forRoot({ limit: 1, ttl: -1 })).toThrow(/ttl/i);
-    expect(() => ThrottlerModule.forRoot({ limit: Number.POSITIVE_INFINITY, ttl: 60 })).toThrow(/limit/i);
-    expect(() => ThrottlerModule.forRoot({ limit: 1.5, ttl: 60 })).toThrow(/limit/i);
-    expect(() => ThrottlerModule.forRoot({ limit: 1, ttl: 0.5 })).toThrow(/ttl/i);
-  });
+  it.each([
+    { caseName: 'limit=0', expectedField: /limit/i, options: { limit: 0, ttl: 60 } },
+    { caseName: 'limit=NaN', expectedField: /limit/i, options: { limit: Number.NaN, ttl: 60 } },
+    {
+      caseName: 'limit=Infinity',
+      expectedField: /limit/i,
+      options: { limit: Number.POSITIVE_INFINITY, ttl: 60 },
+    },
+    { caseName: 'limit=1.5', expectedField: /limit/i, options: { limit: 1.5, ttl: 60 } },
+    { caseName: 'ttl=-1', expectedField: /ttl/i, options: { limit: 1, ttl: -1 } },
+    { caseName: 'ttl=0', expectedField: /ttl/i, options: { limit: 1, ttl: 0 } },
+    { caseName: 'ttl=NaN', expectedField: /ttl/i, options: { limit: 1, ttl: Number.NaN } },
+    {
+      caseName: 'ttl=Infinity',
+      expectedField: /ttl/i,
+      options: { limit: 1, ttl: Number.POSITIVE_INFINITY },
+    },
+    { caseName: 'ttl=0.5', expectedField: /ttl/i, options: { limit: 1, ttl: 0.5 } },
+  ])(
+    'rejects invalid module-level $caseName before request handling starts',
+    ({ expectedField, options }: { expectedField: RegExp; options: ThrottlerModuleOptions }) => {
+      expect(() => ThrottlerModule.forRoot(options)).toThrow(expectedField);
+    },
+  );
 
   it('rejects malformed keyGenerator and store.consume options before request handling starts', () => {
     const malformedKeyGeneratorOptions = { keyGenerator: 'api-key', limit: 1, ttl: 60 };
