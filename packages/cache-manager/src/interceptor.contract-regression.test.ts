@@ -237,4 +237,45 @@ describe('CacheInterceptor contract regressions', () => {
     // Then
     await expect(cache.get('/products')).resolves.toEqual({ version: 'previous' });
   });
+
+  it.each([
+    {
+      name: 'AbortSignal',
+      reportAbort(requestContext: RequestContext) {
+        const abortController = new AbortController();
+        abortController.abort();
+        requestContext.request.signal = abortController.signal;
+      },
+    },
+    {
+      name: 'adapter abort probe',
+      reportAbort(requestContext: RequestContext) {
+        requestContext.request.isAborted = () => true;
+      },
+    },
+  ])('preserves cached reads when a pre-committed response reports abort through $name', async ({ reportAbort }) => {
+    // Given
+    class ProductController {
+      @CacheEvict('/products')
+      refresh() {}
+    }
+
+    const { cache, interceptor } = createInterceptor();
+    await cache.set('/products', { version: 'previous' }, 120);
+    const requestContext = createRequestContext('POST', '/products/refresh');
+    const context = createContext(ProductController, 'refresh', requestContext);
+    const next: CallHandler = {
+      handle: vi.fn(async () => {
+        requestContext.response.committed = true;
+        reportAbort(requestContext);
+        return { refreshed: true };
+      }),
+    };
+
+    // When
+    await interceptor.intercept(context, next);
+
+    // Then
+    await expect(cache.get('/products')).resolves.toEqual({ version: 'previous' });
+  });
 });

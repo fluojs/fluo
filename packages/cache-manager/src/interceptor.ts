@@ -215,6 +215,11 @@ export class CacheInterceptor implements Interceptor {
     };
 
     if (context.requestContext.response.committed) {
+      const request = context.requestContext.request;
+      if (request.signal?.aborted === true || request.isAborted?.() === true) {
+        return;
+      }
+
       await runEviction();
       return;
     }
