@@ -568,6 +568,59 @@ describe('@fluojs/drizzle', () => {
     }
   });
 
+  it('rejects nested request transactions after shutdown begins without opening another database transaction', async () => {
+    const nestedAttemptBarrier = createDeferred();
+    const outerWaiting = createDeferred();
+    let transactionCalls = 0;
+    const transactionDatabase = {};
+    const database = {
+      async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
+        transactionCalls += 1;
+        return callback(transactionDatabase);
+      },
+    };
+    const drizzle = new DrizzleDatabase<typeof database, typeof transactionDatabase>(database);
+
+    const outerTransaction = drizzle.transaction(async () => {
+      outerWaiting.resolve();
+      await nestedAttemptBarrier.promise;
+
+      await expect(drizzle.requestTransaction(async () => 'late-nested-request')).rejects.toThrow(
+        'Drizzle request transactions are not available during shutdown.',
+      );
+
+      return 'outer-complete';
+    });
+    let nestedAttemptReleased = false;
+    let shutdown: Promise<void> | undefined;
+
+    try {
+      // Given: one manual database transaction remains active at an explicit checkpoint.
+      await outerWaiting.promise;
+      expect(transactionCalls).toBe(1);
+
+      // When: shutdown closes transaction admission before the nested request attempt continues.
+      shutdown = drizzle.onApplicationShutdown();
+      nestedAttemptReleased = true;
+      nestedAttemptBarrier.resolve();
+
+      // Then: the nested request is rejected and the outer transaction remains the only database boundary.
+      await expect(outerTransaction).resolves.toBe('outer-complete');
+      await shutdown;
+      expect(transactionCalls).toBe(1);
+    } finally {
+      if (!nestedAttemptReleased) {
+        nestedAttemptReleased = true;
+        nestedAttemptBarrier.resolve();
+      }
+
+      await Promise.allSettled([
+        outerTransaction,
+        shutdown ?? drizzle.onApplicationShutdown(),
+      ]);
+    }
+  });
+
   it('waits for transaction runner settlement before reporting late request aborts', async () => {
     const events: string[] = [];
     const transactionDatabase = {};

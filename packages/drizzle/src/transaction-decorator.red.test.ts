@@ -404,6 +404,41 @@ describe('@fluojs/drizzle Transaction decorator — named/accessor contract', ()
     ]);
   });
 
+  it('selects a nested .db target when it is the only transaction-capable host candidate', async () => {
+    const events: string[] = [];
+    const nestedDatabase = {
+      async transaction<T>(callback: () => Promise<T>): Promise<T> {
+        events.push('nested:transaction:start');
+        const result = await callback();
+        events.push('nested:transaction:end');
+        return result;
+      },
+    };
+
+    class NestedDatabaseService {
+      readonly repository = { db: nestedDatabase };
+
+      @Transaction()
+      async run() {
+        events.push('nested:work');
+        return 'nested-result';
+      }
+    }
+
+    // Given: a decorated host whose only transaction-capable candidate is repository.db.
+    const service = new NestedDatabaseService();
+
+    // When: the default transaction decorator resolves its host target.
+    await expect(service.run()).resolves.toBe('nested-result');
+
+    // Then: the nested database owns the complete transaction boundary.
+    expect(events).toEqual([
+      'nested:transaction:start',
+      'nested:work',
+      'nested:transaction:end',
+    ]);
+  });
+
   it('uses explicit accessor to select a specific DrizzleDatabase', async () => {
       const drizzlePackage = await import('./index.js');
     const ExportedTransaction = (drizzlePackage as { Transaction?: unknown }).Transaction;
@@ -475,6 +510,54 @@ describe('@fluojs/drizzle Transaction decorator — named/accessor contract', ()
     expect(primaryEvents).not.toContain('primary:transaction:start');
 
     await app.close();
+  });
+
+  it('routes combined accessor options only to the selected transaction target', async () => {
+    const transactionOptions = {
+      accessMode: 'read only',
+      isolationLevel: 'read committed',
+    } as const;
+    const primaryOptionsCalls: Array<typeof transactionOptions | undefined> = [];
+    const analyticsOptionsCalls: Array<typeof transactionOptions | undefined> = [];
+    const primaryDatabase = {
+      async transaction<T>(
+        callback: () => Promise<T>,
+        options?: typeof transactionOptions,
+      ): Promise<T> {
+        primaryOptionsCalls.push(options);
+        return callback();
+      },
+    };
+    const analyticsDatabase = {
+      async transaction<T>(
+        callback: () => Promise<T>,
+        options?: typeof transactionOptions,
+      ): Promise<T> {
+        analyticsOptionsCalls.push(options);
+        return callback();
+      },
+    };
+
+    class AccessorOptionsService {
+      readonly primaryDb = primaryDatabase;
+      readonly analyticsDb = analyticsDatabase;
+
+      @Transaction((self: AccessorOptionsService) => self.analyticsDb, transactionOptions)
+      async run() {
+        return 'analytics-result';
+      }
+    }
+
+    // Given: two transaction-capable targets and explicit options for the non-default target.
+    const service = new AccessorOptionsService();
+
+    // When: the accessor-and-options decorator form executes.
+    await expect(service.run()).resolves.toBe('analytics-result');
+
+    // Then: only the accessor-selected target receives the exact options object.
+    expect(primaryOptionsCalls).toEqual([]);
+    expect(analyticsOptionsCalls).toHaveLength(1);
+    expect(analyticsOptionsCalls[0]).toBe(transactionOptions);
   });
 
   it('does not confuse two Drizzle databases when only one accessor is decorated', async () => {
