@@ -102,6 +102,9 @@ export function WebSocketGateway(
  * @param event Optional event name filter. When omitted, the runtime treats the handler as a generic message listener.
  * @returns A method decorator that records message-handler metadata for the gateway.
  *
+ * @remarks
+ * Handler return values are awaited and then ignored. Send replies explicitly through the runtime socket argument.
+ *
  * @example
  * ```ts
  * import { OnMessage } from '@fluojs/websockets';
