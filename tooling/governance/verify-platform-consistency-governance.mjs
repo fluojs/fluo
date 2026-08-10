@@ -776,50 +776,50 @@ function enforceDocsHubOfficialTransportLinks() {
   }
 }
 
-const denoManagedStartupCommand = 'deno run --allow-net --allow-signal main.ts';
-const denoNativeDevCommand = 'deno run --watch --allow-env=PORT --allow-net --allow-signal src/main.ts';
-const denoCompileCommand = 'deno compile --allow-env=PORT --allow-net --allow-signal --output dist/app src/main.ts';
-const contradictoryDenoManagedCommandPatterns = [
+const denoManagedStartupCommand = 'deno run --allow-net main.ts';
+const denoNativeDevCommand = 'deno run --watch --allow-env --allow-net src/main.ts';
+const denoCompileCommand = 'deno compile --allow-env --allow-net --output dist/app src/main.ts';
+const invalidDenoPermissionPatterns = [
   /deno run --allow-net --allow-env main\.ts/u,
-  /deno run(?: --watch)? --allow-env --allow-net src\/main\.ts/u,
-  /deno compile --allow-env --allow-net --output dist\/app src\/main\.ts/u,
+  /deno run(?: --watch)? --allow-env=PORT --allow-net src\/main\.ts/u,
+  /deno compile --allow-env=PORT --allow-net --output dist\/app src\/main\.ts/u,
 ];
 const denoPermissionGuidanceRequirements = [
   [
     'packages/platform-deno/README.md',
-    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'does not read environment variables'],
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'does not read environment variables', 'does not require a separate Deno permission'],
   ],
   [
     'packages/platform-deno/README.ko.md',
-    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'environment variable을 읽지 않습니다'],
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'environment variable을 읽지 않습니다', '별도의 Deno permission이 필요하지 않'],
   ],
   [
     'apps/docs/content/docs/guides/runtime-adapters.mdx',
-    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'does not read environment variables'],
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'does not read environment variables', 'does not require a separate Deno permission'],
   ],
   [
     'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
-    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'environment variable을 읽지 않습니다'],
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'environment variable을 읽지 않습니다', '별도의 Deno permission이 필요하지 않'],
   ],
   [
     'book/intermediate/ch23-deno.md',
-    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'does not read environment variables'],
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'does not read environment variables', 'does not require a separate Deno permission'],
   ],
   [
     'book/intermediate/ch23-deno.ko.md',
-    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'environment variable을 읽지 않습니다'],
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'environment variable을 읽지 않습니다', '별도의 Deno permission이 필요하지 않'],
   ],
   [
     'docs/CONTEXT.md',
-    [denoManagedStartupCommand, '--allow-env=<keys>', 'shutdownSignals: false', 'does not require environment access'],
+    [denoManagedStartupCommand, '--allow-env=<keys>', 'shutdownSignals: false', 'does not require environment access', 'does not require a separate Deno permission'],
   ],
   [
     'docs/CONTEXT.ko.md',
-    [denoManagedStartupCommand, '--allow-env=<keys>', 'shutdownSignals: false', 'environment 접근 권한이 필요하지 않'],
+    [denoManagedStartupCommand, '--allow-env=<keys>', 'shutdownSignals: false', 'environment 접근 권한이 필요하지 않', '별도의 Deno permission이 필요하지 않'],
   ],
   [
     'packages/cli/src/new/scaffold.ts',
-    [denoNativeDevCommand, denoCompileCommand, "Deno.env.get('PORT')"],
+    [denoNativeDevCommand, denoCompileCommand, 'Deno.env.toObject()'],
   ],
   ['packages/cli/README.md', [denoNativeDevCommand, denoCompileCommand]],
   ['packages/cli/README.ko.md', [denoNativeDevCommand, denoCompileCommand]],
@@ -841,8 +841,8 @@ export function enforceDenoPermissionGuidance(
       `${relativePath} must keep Deno permission guidance synchronized; missing: ${missingMarkers.join(', ')}.`,
     );
     assert(
-      contradictoryDenoManagedCommandPatterns.every((pattern) => !pattern.test(content)),
-      `${relativePath} must not include contradictory unscoped Deno managed commands.`,
+      invalidDenoPermissionPatterns.every((pattern) => !pattern.test(content)),
+      `${relativePath} must not include invalid Deno permission syntax or narrow generated application env access.`,
     );
   }
 }
