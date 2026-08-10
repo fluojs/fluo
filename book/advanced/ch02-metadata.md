@@ -193,11 +193,35 @@ export function getStandardMetadataBag(target: object): StandardMetadataBag | un
 ```
 This helper resolves the active metadata symbol, prefers the target's own current/native bag, falls back to the target's own fallback-era bag, and then reads inherited bags. When own and inherited bags coexist, `overlayStandardMetadataBag(...)` preserves own-key precedence while leaving inherited records visible. The lower-level own-bag reader performs the `Object.hasOwn` and `Reflect.get` operations described earlier.
 
-Another example of `Reflect` use in Fluo appears inside the `applyDecorators` utility, which manually applies a sequence of Decorators to a target. Here, `Reflect` methods are used to ensure property descriptors and class definitions are processed according to the specification, preserving the integrity of decorated elements. This is especially important when composing Decorators that may modify a method's return value or a property's descriptor.
+Metadata property-map merging follows a separate path and does not call `Reflect.ownKeys`.
+`path:packages/core/src/metadata/shared.ts:369-397`
+```typescript
+export function mergeMetadataPropertyKeys<TStored, TStandard>(
+  stored: ReadonlyMap<MetadataPropertyKey, TStored> | undefined,
+  standard: ReadonlyMap<MetadataPropertyKey, TStandard> | undefined,
+): MetadataPropertyKey[] {
+  const keys: MetadataPropertyKey[] = [];
+  const seen = new Set<MetadataPropertyKey>();
 
-We also use `Reflect.ownKeys` in metadata merge logic. This retrieves every key in the metadata bag, including symbols, so deep merging and deduplication can be performed. By using `Reflect.ownKeys` instead of `Object.keys`, Fluo ensures it does not miss any symbolic metadata that forms the core of Fluo configuration. This thoroughness prevents the framework from missing configuration in complex inheritance or composition scenarios.
+  for (const source of [stored, standard]) {
+    if (!source) {
+      continue;
+    }
 
-This use of `Reflect.ownKeys` is especially valuable in multi-extension scenarios where several packages attach their own Decorators to a single class. For example, in a class with `@Controller` (HTTP), `@ApiTag` (OpenAPI), and `@Inject(TOKEN)` (DI) applied at the same time, Fluo safely collects every metadata key so each subsystem can extract exactly its own data. This is the most standard way to eliminate the overwrite risk that string keys can create.
+    for (const key of source.keys()) {
+      if (!seen.has(key)) {
+        seen.add(key);
+        keys.push(key);
+      }
+    }
+  }
+
+  return keys;
+}
+```
+`mergeMetadataPropertyKeys` examines the explicit Fluo store first and the standard metadata map second. Each map contributes keys in its `Map` insertion order, while `seen` removes duplicates without changing the first occurrence's position. Because `MetadataPropertyKey` includes string and symbol keys, both forms are retained without a reflective object-key scan. This merges ordered key lists; it does not deep-merge metadata bags.
+
+`Reflect.ownKeys` does appear elsewhere in core, in the fallback object-cloning path at `packages/core/src/utils.ts:86-95`. There it preserves every own string and symbol property descriptor while cloning a value. It is not the metadata merge mechanism.
 
 The DI container uses `Reflect.construct` to instantiate Providers. This is preferred over the `new` operator because it respects the target's constructor logic while allowing argument arrays to be passed dynamically. It also enables advanced patterns such as proxied constructors, which are essential for supporting features such as request-scoped Providers or transient lifecycles without exposing implementation details to users.
 

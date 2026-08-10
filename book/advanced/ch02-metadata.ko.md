@@ -193,11 +193,35 @@ export function getStandardMetadataBag(target: object): StandardMetadataBag | un
 ```
 이 helper는 active metadata symbol을 해석하고, target의 own current/native bag, target의 own fallback-era bag, inherited bag 순서로 조회합니다. Own bag과 inherited bag이 함께 있으면 `overlayStandardMetadataBag(...)`이 own-key precedence를 보존하면서 inherited record를 계속 보이게 합니다. 앞서 설명한 `Object.hasOwn`과 `Reflect.get` 연산은 하위 own-bag reader에서 수행합니다.
 
-Fluo에서 `Reflect` 사용의 또 다른 예는 대상에 데코레이터 시퀀스를 수동으로 적용하는 `applyDecorators` 유틸리티 내에 있습니다. 여기서 `Reflect` 메서드는 속성 기술자(descriptor)와 클래스 정의가 명세에 따라 처리되도록 보장하여 데코레이팅된 엘리먼트의 무결성을 유지하는 데 사용됩니다. 이는 메서드의 반환 값이나 속성의 기술자를 수정할 수 있는 데코레이터들을 조합할 때 특히 중요합니다.
+Metadata property map 병합은 별도 경로를 따르며 `Reflect.ownKeys`를 호출하지 않습니다.
+`path:packages/core/src/metadata/shared.ts:369-397`
+```typescript
+export function mergeMetadataPropertyKeys<TStored, TStandard>(
+  stored: ReadonlyMap<MetadataPropertyKey, TStored> | undefined,
+  standard: ReadonlyMap<MetadataPropertyKey, TStandard> | undefined,
+): MetadataPropertyKey[] {
+  const keys: MetadataPropertyKey[] = [];
+  const seen = new Set<MetadataPropertyKey>();
 
-우리는 또한 메타데이터 병합 로직에서 `Reflect.ownKeys`를 사용합니다. 이를 통해 심볼을 포함한 메타데이터 가방의 모든 키를 검색하여 깊은 병합 및 중복 제거를 수행할 수 있습니다. `Object.keys` 대신 `Reflect.ownKeys`를 사용함으로써 Fluo 구성의 핵심을 형성하는 심볼릭 메타데이터를 하나도 놓치지 않도록 보장합니다. 이러한 철저함은 복잡한 상속이나 조합 시나리오에서 프레임워크가 구성을 놓치는 것을 방지합니다.
+  for (const source of [stored, standard]) {
+    if (!source) {
+      continue;
+    }
 
-이러한 `Reflect.ownKeys`의 활용은 특히 여러 패키지가 하나의 클래스에 각자의 데코레이터를 붙이는 다중 확장 시나리오에서 빛을 발합니다. 예를 들어 `@Controller` (HTTP), `@ApiTag` (OpenAPI), `@Inject(TOKEN)` (DI)이 동시에 적용된 클래스에서, Fluo는 모든 메타데이터 키를 안전하게 수집하여 각 서브시스템이 자신의 데이터만 정확히 추출해 갈 수 있도록 보장합니다. 이는 문자열 키를 사용했을 때 발생할 수 있는 덮어쓰기 위험을 원천 차단하는 가장 표준적인 방법입니다.
+    for (const key of source.keys()) {
+      if (!seen.has(key)) {
+        seen.add(key);
+        keys.push(key);
+      }
+    }
+  }
+
+  return keys;
+}
+```
+`mergeMetadataPropertyKeys`는 명시적인 Fluo store를 먼저 확인하고 standard metadata map을 그다음 확인합니다. 각 map은 `Map` insertion order에 따라 key를 제공하고, `seen`은 처음 나타난 위치를 바꾸지 않으면서 중복을 제거합니다. `MetadataPropertyKey`에는 string key와 symbol key가 모두 포함되므로 reflective object-key scan 없이 두 형태를 모두 보존합니다. 이는 정렬된 key list를 병합하는 동작이며 metadata bag을 deep merge하는 동작이 아닙니다.
+
+`Reflect.ownKeys`는 core의 다른 위치인 `packages/core/src/utils.ts:86-95`의 fallback object-cloning 경로에서 사용됩니다. 그곳에서는 값을 clone할 때 모든 own string/symbol property descriptor를 보존합니다. 이는 metadata merge mechanism이 아닙니다.
 
 DI 컨테이너에서는 `Reflect.construct`를 사용하여 프로바이더를 인스턴스화합니다. 이는 대상의 생성자 로직을 존중하면서 인자 배열을 동적으로 전달할 수 있게 해주기 때문에 `new` 연산자보다 선호됩니다. 또한 사용자에게 구현 세부 사항을 노출하지 않고도 요청 범위 프로바이더나 transient 수명 주기와 같은 기능을 지원하는 데 필수적인 "프록시 생성자(proxied constructors)"와 같은 고급 패턴을 가능하게 합니다.
 
