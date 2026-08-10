@@ -41,6 +41,12 @@
 - Request-context helper는 `Promise.prototype`을 patch하지 않으며 한 요청의 context를 관련 없는 promise continuation에 노출하지 않는다.
 - 비동기 컨텍스트 primitive가 없는 host는 awaited work가 재개되기 전에 context를 지우는 synchronous stack fallback을 사용한다.
 
+## Managed SSE Backpressure Cancellation
+
+- Managed SSE는 request abort와 response-stream close notification을 iterator read뿐 아니라 adapter의 `waitForDrain()` backpressure wait에도 적용한다.
+- Drain promise가 settle되지 않은 동안 cancellation이 먼저 완료되면 dispatcher는 해당 promise를 더 기다리지 않고 response stream을 닫으며, source iterator의 `return()`을 정확히 한 번 호출하고 그 cleanup을 기다린 뒤 request-scope disposal을 수행한다.
+- Stream write가 throw하거나 drain promise가 reject하는 경우 cancellation으로 다시 분류하지 않는다. 원래 error가 committed-response observer 및 dispatcher logging boundary를 통해 그대로 전달된다.
+
 ## Routing Rules
 
 | Rule | Current behavior |
