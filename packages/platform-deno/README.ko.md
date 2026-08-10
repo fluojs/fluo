@@ -43,13 +43,13 @@ await runDenoApplication(AppModule, {
 });
 ```
 
-Managed startup 경로는 network listener를 열고 기본적으로 `SIGINT`/`SIGTERM` listener를 등록합니다. 두 권한을 모두 부여해 entrypoint를 실행하세요.
+Managed startup 경로는 network listener를 열고 기본적으로 `SIGINT`/`SIGTERM` listener를 등록합니다. Network 접근 권한을 부여해 entrypoint를 실행하세요.
 
 ```bash
-deno run --allow-net --allow-signal main.ts
+deno run --allow-net main.ts
 ```
 
-Adapter 자체는 environment variable을 읽지 않습니다. 애플리케이션 코드가 해당 key를 읽을 때만 `--allow-env=PORT,DATABASE_URL`처럼 범위를 제한한 권한을 추가하세요. 주변 host가 process signal을 소유한다면 `runDenoApplication(...)`에 `shutdownSignals: false`를 전달하고 `--allow-signal`을 생략하세요. 이 경우 애플리케이션 shutdown 조율은 host 책임입니다.
+Signal listener 등록에는 별도의 Deno permission이 필요하지 않습니다. Adapter 자체는 environment variable을 읽지 않습니다. 애플리케이션 코드가 해당 key를 읽을 때만 `--allow-env=PORT,DATABASE_URL`처럼 범위를 제한한 권한을 추가하세요. 주변 host가 process signal을 소유한다면 `runDenoApplication(...)`에 `shutdownSignals: false`를 전달하세요. 이 옵션은 permission을 변경하는 대신 lifecycle coordination을 host에 맡기며, 이 경우 애플리케이션 shutdown 조율은 host 책임입니다.
 
 ## 주요 패턴
 
