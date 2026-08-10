@@ -2010,6 +2010,7 @@ export function enforceHttpRuntimeCancellationAndContextIsolation() {
   const httpPackage = JSON.parse(read('packages/http/package.json'));
   const cancellationRegression = read('packages/http/src/dispatch/dispatcher-cancellation.test.ts');
   const contextRegression = read('packages/http/src/context/request-context-isolation.test.ts');
+  const fastPathScopeRegression = read('packages/http/src/dispatch/dispatcher-fast-path-scope.test.ts');
 
   assert(
     abortSource.includes('request.isAborted?.() === true || request.signal?.aborted === true'),
@@ -2046,6 +2047,21 @@ export function enforceHttpRuntimeCancellationAndContextIsolation() {
       contextRegression.includes("createContext('request-b')"),
     'HTTP request-context regressions must cover Promise prototype stability, promise-returning callbacks, concurrent requests, and unrelated continuation isolation.',
   );
+  assert(
+    dispatcherSource.includes(
+      'const controller = await context.dispatchScope.container.resolve(handler.controllerToken as Token<object>);',
+    ) &&
+      !dispatcherSource.includes('controllerPromise?: Promise<object>') &&
+      !dispatcherSource.includes('runtimeCache.controller'),
+    'HTTP fast-path dispatch must leave controller lifetime caching to the active DI container.',
+  );
+  assert(
+    fastPathScopeRegression.includes("@ScopeDecorator('transient')") &&
+      fastPathScopeRegression.includes("executionPath: 'fast'") &&
+      fastPathScopeRegression.includes('dependencyId: this.dependency.dependencyId') &&
+      fastPathScopeRegression.includes('controllerId: 2, dependencyId: 2'),
+    'HTTP fast-path regressions must prove transient controller and dependency identity across repeated dispatches.',
+  );
 
   for (const documentationPath of [
     'docs/CONTEXT.md',
@@ -2059,6 +2075,25 @@ export function enforceHttpRuntimeCancellationAndContextIsolation() {
     assert(
       documentation.includes('Promise.prototype') && documentation.includes('isAborted()'),
       `${documentationPath} must document HTTP cancellation and request-context isolation together.`,
+    );
+  }
+
+  for (const documentationPath of [
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'docs/architecture/http-runtime.md',
+    'docs/architecture/http-runtime.ko.md',
+    'packages/http/README.md',
+    'packages/http/README.ko.md',
+    'book/advanced/ch11-request-pipeline.md',
+    'book/advanced/ch11-request-pipeline.ko.md',
+  ]) {
+    const documentation = read(documentationPath).toLowerCase();
+    assert(
+      documentation.includes('fast') &&
+        documentation.includes('controller') &&
+        documentation.includes('transient'),
+      `${documentationPath} must document fast-path transient controller identity preservation.`,
     );
   }
 }

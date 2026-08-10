@@ -19,7 +19,7 @@
 11. controller method는 `(input, requestContext)`를 받고 handler 결과를 반환한다.
 12. 성공한 non-SSE 결과는 `writeSuccessResponse(...)`를 통해 기록되며, 여기서 redirect metadata, route header, formatter 선택, 기본 성공 status 규칙이 적용된다. Dispatcher는 handler 실행 전후에 `signal`과 `isAborted()`를 검사하고 어느 cancellation surface든 authoritative하게 처리하므로 `false` probe가 aborted signal을 가리지 않으며 abort된 요청은 뒤늦게 성공 응답을 commit하지 않는다.
 13. 어느 단계에서든 예외가 발생하면 dispatcher는 설정된 경우 `onError`를 실행한다. 그렇지 않으면 `writeErrorResponse(...)`가 failure를 분류하고 canonical JSON을 기록하거나, eligible `HttpException` 및 route-miss outcome에 대해 configured HTTP-owned error representation negotiation을 수행한다.
-14. dispatcher는 항상 `onRequestFinish`를 호출한다. request scope가 생성되었거나 lazy promotion 되었다면 요청이 끝나기 전에 해당 isolated request-scoped container를 dispose하며, 끝까지 승격되지 않은 singleton-only fast-path 요청은 root container를 dispose하지 않는다.
+14. dispatcher는 항상 `onRequestFinish`를 호출한다. request scope가 생성되었거나 lazy promotion 되었다면 요청이 끝나기 전에 해당 isolated request-scoped container를 dispose하며, graph가 request scope를 필요로 하지 않는 요청은 root container를 dispose하지 않는다. Fast path는 handler metadata만 cache하고 매 dispatch마다 active container를 통해 controller를 resolve하므로, container가 소유하는 singleton 공유와 transient의 resolution별 새 identity가 모두 유지된다.
 
 ## Error Representation Boundary
 

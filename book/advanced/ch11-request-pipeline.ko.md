@@ -183,7 +183,7 @@ Dispatcher는 `signal`과 `isAborted()`를 독립적인 cancellation surface로 
 [End of Request]
 ```
 
-이 다이어그램은 fluo 아키텍처의 핵심인 "보증된 정리(Guaranteed Cleanup)" 원칙을 보여 줍니다. 각 레이어는 독립적이지만, 디스패처는 이를 하나의 흐름으로 묶습니다. 성공, 예상된 에러, 예기치 못한 패닉 중 어떤 경로를 지나도 request-scoped container가 생성된 경우 리소스 해제 단계가 실행되도록 설계되어 있습니다. 끝까지 승격되지 않은 singleton-only fast-path 요청은 root container를 계속 사용하며 이를 dispose하지 않습니다.
+이 다이어그램은 fluo 아키텍처의 핵심인 "보증된 정리(Guaranteed Cleanup)" 원칙을 보여 줍니다. 각 레이어는 독립적이지만, 디스패처는 이를 하나의 흐름으로 묶습니다. 성공, 예상된 에러, 예기치 못한 패닉 중 어떤 경로를 지나도 request-scoped container가 생성된 경우 리소스 해제 단계가 실행되도록 설계되어 있습니다. Graph가 request scope를 필요로 하지 않는 fast-path 요청은 root container를 계속 사용하며 이를 dispose하지 않지만, 매 dispatch의 controller resolution은 transient provider identity를 계속 보존합니다.
 
 ## 11.7 DispatchPhaseContext: 단계별 상태 공유
 
@@ -216,11 +216,11 @@ interface DispatchPhaseContext {
 
 디스패처는 라우트 매칭 시 매번 복잡한 연산을 반복하지 않습니다. 다만 현재 캐시는 `packages/http/src/dispatch/dispatch-routing-policy.ts` 안에 저장된 controller metadata가 아닙니다. 이 policy 파일은 현재 요청에 맞는 handler를 `HandlerMapping`에 질의하고, 해석된 route params를 dispatch request에 다시 기록하는 역할만 합니다.
 
-현재 hot path 작업은 dispatcher와 binding-plan 경로에서 준비됩니다. `createDispatcher(...)`는 모든 `HandlerDescriptor`에 대한 handler execution plan을 컴파일해 dispatcher-local `handlerExecutionPlans` `WeakMap`에 저장하고, 각 handler에 fast-path eligibility를 기록하며, native fast route에서 사용하는 controller/method handle을 위해 dispatcher-local `fastPathRuntimeCache`를 유지합니다. DTO binding은 `packages/http/src/adapters/dto-binding-plan.ts`에 별도 plan cache를 두고, `getCompiledDtoBindingPlan(...)`이 field reader, bound property key, converter 존재 여부, validation filtering을 DTO constructor를 key로 하는 `WeakMap`에 저장합니다. Content negotiation도 dispatcher 생성 시 `resolveContentNegotiation(...)`으로 한 번 미리 계산되어 formatter를 중복 제거하고 default formatter를 선택하며, request-time `Accept` matching에 사용할 normalized media type을 보관합니다. 이런 최적화 덕분에 Fluo는 singleton-only route를 root-container fast path에 유지하면서도, 파이프라인이 request-scoped provider를 필요로 할 때는 isolated request scope로 승격해 높은 처리량(Throughput)을 유지할 수 있습니다.
+현재 hot path 작업은 dispatcher와 binding-plan 경로에서 준비됩니다. `createDispatcher(...)`는 모든 `HandlerDescriptor`에 대한 handler execution plan을 컴파일해 dispatcher-local `handlerExecutionPlans` `WeakMap`에 저장하고, 각 handler에 fast-path eligibility를 기록하며, native fast route에서 사용하는 method handle을 위해 dispatcher-local `fastPathRuntimeCache`를 유지합니다. Active container는 매 dispatch마다 controller를 계속 resolve하므로 singleton 재사용은 DI가 소유하고 transient controller 또는 dependency는 dispatcher-cached instance가 되지 않은 채 resolution마다 새로운 identity를 받습니다. DTO binding은 `packages/http/src/adapters/dto-binding-plan.ts`에 별도 plan cache를 두고, `getCompiledDtoBindingPlan(...)`이 field reader, bound property key, converter 존재 여부, validation filtering을 DTO constructor를 key로 하는 `WeakMap`에 저장합니다. Content negotiation도 dispatcher 생성 시 `resolveContentNegotiation(...)`으로 한 번 미리 계산되어 formatter를 중복 제거하고 default formatter를 선택하며, request-time `Accept` matching에 사용할 normalized media type을 보관합니다. 이런 최적화 덕분에 Fluo는 request-scope-free route를 root-container fast path에 유지하면서도, 파이프라인이 request-scoped provider를 필요로 할 때는 isolated request scope로 승격해 높은 처리량(Throughput)을 유지할 수 있습니다.
 
 ## 11.10 리소스 정리: DI 스코프 소멸
 
-요청 처리가 끝나면 승격된 request-scoped container를 반드시 dispose해야 합니다. 이는 해당 요청 기간 동안 생성된 싱글톤이 아닌 객체(Request-scoped providers)의 `onDispose` 훅을 실행하고 메모리를 해제하여 누수를 막습니다. 요청이 singleton-only로 유지되어 승격이 일어나지 않았다면 cleanup 경로는 root container를 그대로 둡니다.
+요청 처리가 끝나면 승격된 request-scoped container를 반드시 dispose해야 합니다. 이는 해당 요청 기간 동안 생성된 싱글톤이 아닌 객체(Request-scoped providers)의 `onDispose` 훅을 실행하고 메모리를 해제하여 누수를 막습니다. Request graph가 request scope를 필요로 하지 않아 승격이 일어나지 않았다면 cleanup 경로는 root container를 그대로 둡니다.
 
 `packages/http/src/dispatch/dispatcher.ts` (simplified)
 ```typescript
@@ -239,7 +239,7 @@ try {
 }
 ```
 
-이 과정은 `finally` 블록 안에서 수행되어 요청의 성공/실패 여부와 관계없이 항상 cleanup 여부를 확인합니다. `packages/http/src/dispatch/dispatcher.test.ts`는 singleton-only route가 request-scope 생성을 건너뛰는 경우와, request-scoped controller, 활성 middleware, observer, custom binder, DTO converter, 수동 container resolution이 isolated scope를 사용한 뒤 dispatch 후 dispose되는 경우를 모두 검증합니다.
+이 과정은 `finally` 블록 안에서 수행되어 요청의 성공/실패 여부와 관계없이 항상 cleanup 여부를 확인합니다. `packages/http/src/dispatch/dispatcher.test.ts`는 request-scope-free route가 request-scope 생성을 건너뛰는 경우와, request-scoped controller, 활성 middleware, observer, custom binder, DTO converter, 수동 container resolution이 isolated scope를 사용한 뒤 dispatch 후 dispose되는 경우를 모두 검증합니다. `packages/http/src/dispatch/dispatcher-fast-path-scope.test.ts`는 이 최적화가 요청 사이에서 transient controller instance를 재사용하지 않는다는 점을 별도로 검증합니다.
 
 디스패처는 `RequestContext`를 검사해 임의의 임시 파일, database handle, application-owned stream을 자동으로 닫지 않습니다. 이런 resource는 `onDispose`가 있는 request-scoped provider 뒤에 두거나 application `finally` 블록에서 해제하거나 request abort signal에 cleanup을 연결해야 합니다. Managed `SseResponse`/`AsyncIterable` 처리는 문서화된 response-stream lifecycle만 소유하며, 그 밖의 native resource는 adapter와 application code가 계속 소유합니다.
 

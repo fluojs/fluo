@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { enforceHttpRuntimeCancellationAndContextIsolation } from './verify-platform-consistency-governance.mjs';
 
 describe('HTTP runtime isolation governance', () => {
-  it('keeps dual cancellation and request-local context isolation enforced', () => {
+  it('keeps cancellation, request context, and fast-path scope isolation enforced', () => {
     // Given
     const verifyContract = () => enforceHttpRuntimeCancellationAndContextIsolation();
 
