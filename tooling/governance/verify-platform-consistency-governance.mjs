@@ -683,8 +683,9 @@ export function enforceContractCompanionUpdates(changedFiles) {
   );
 
   // Microservices transport ownership, root/subpath export exceptions, lazy-load,
-  // payload clone, TCP 1 MiB frames, port:0 routing, shutdown send guards, and
-  // gRPC abort-listener cleanup docs are also covered by this companion path.
+  // payload clone, TCP 1 MiB frames, port:0 routing, shutdown send guards,
+  // concurrent close-promise sharing, and gRPC abort-listener cleanup docs are
+  // also covered by this companion path.
 }
 
 function enforceAlignmentClaimsBackedByHarness(changedFiles) {
