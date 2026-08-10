@@ -1347,6 +1347,9 @@ export class Container {
         task.failed = true;
       }
     })().finally(() => {
+      const retainedMaterializations = this.materializedCachePromises.filter((promise) => promise !== instancePromise);
+      this.materializedCachePromises.splice(0, this.materializedCachePromises.length, ...retainedMaterializations);
+
       if (!task.failed) {
         for (const observer of observers) {
           observer.staleDisposalTasks.delete(task);

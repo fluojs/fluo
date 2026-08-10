@@ -42,4 +42,54 @@ describe('Container disposal order', () => {
     // Then
     expect(events).toEqual(['dependent', 'dependency']);
   });
+
+  it('releases stale request-cache materializations after ancestor override disposal settles', async () => {
+    // Given
+    const serviceToken = Symbol('service');
+    const events: string[] = [];
+
+    class OriginalService {
+      onDestroy(): void {
+        events.push('original:destroy');
+      }
+    }
+
+    class ReplacementService {}
+
+    const root = new Container().register({
+      provide: serviceToken,
+      scope: 'request',
+      useClass: OriginalService,
+    });
+    const requestContainer = root.createRequestScope();
+    await requestContainer.resolve(serviceToken);
+
+    const requestCache = Reflect.get(requestContainer, 'requestCache');
+    if (!(requestCache instanceof Map)) {
+      expect.unreachable('expected the request cache to be materialized');
+    }
+
+    const stalePromise = requestCache.get(serviceToken);
+    if (!stalePromise) {
+      expect.unreachable('expected the original service promise to be cached');
+    }
+
+    // When
+    root.override({ provide: serviceToken, scope: 'request', useClass: ReplacementService });
+    await requestContainer.resolve(serviceToken);
+
+    // Then
+    const materializedCachePromises = Reflect.get(requestContainer, 'materializedCachePromises');
+    if (!Array.isArray(materializedCachePromises)) {
+      expect.unreachable('expected the materialization ledger to be an array');
+    }
+
+    expect({
+      events,
+      retainsStalePromise: materializedCachePromises.includes(stalePromise),
+    }).toEqual({
+      events: ['original:destroy'],
+      retainsStalePromise: false,
+    });
+  });
 });
