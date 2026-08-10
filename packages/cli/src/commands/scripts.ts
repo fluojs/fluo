@@ -187,7 +187,7 @@ function buildNativeRuntimeDevStep(runtime: ProjectRuntime, passThrough: string[
     case 'bun':
       return { command: 'bun', args: ['--watch', 'src/main.ts', ...passThrough], mode: 'runtime-native-watch' };
     case 'deno':
-      return { command: 'deno', args: ['run', '--watch', '--allow-env=PORT', '--allow-net', '--allow-signal', 'src/main.ts', ...passThrough], mode: 'runtime-native-watch' };
+      return { command: 'deno', args: ['run', '--watch', '--allow-env', '--allow-net', 'src/main.ts', ...passThrough], mode: 'runtime-native-watch' };
     case 'cloudflare-workers':
       return { command: 'wrangler', args: ['dev', '--show-interactive-dev-session=false', ...passThrough], mode: 'runtime-native-watch' };
     default:
@@ -201,7 +201,7 @@ function buildProjectRunner(command: ScriptCommand, runtime: ProjectRuntime, pas
       case 'bun':
         return [{ command: 'bun', args: ['build', './src/main.ts', '--outdir', './dist', '--target', 'bun', ...passThrough] }];
       case 'deno':
-        return [{ command: 'deno', args: ['compile', '--allow-env=PORT', '--allow-net', '--allow-signal', '--output', join('dist', 'app'), 'src/main.ts', ...passThrough] }];
+        return [{ command: 'deno', args: ['compile', '--allow-env', '--allow-net', '--output', join('dist', 'app'), 'src/main.ts', ...passThrough] }];
       case 'cloudflare-workers':
         return [{ command: 'wrangler', args: ['deploy', '--dry-run', ...passThrough] }];
       default:
