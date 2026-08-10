@@ -164,37 +164,42 @@ function createUpgradeRequest(path: string): string {
 }
 
 async function readUpgradeResponse(port: number, request: string): Promise<string> {
-  return await new Promise<string>((resolve, reject) => {
-    const socket = createConnection({ host: '127.0.0.1', port });
-    const chunks: Buffer[] = [];
-    let settled = false;
+  const socket = createConnection({ host: '127.0.0.1', port });
 
-    const settle = (callback: () => void) => {
-      if (settled) {
-        return;
-      }
+  try {
+    return await new Promise<string>((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      let settled = false;
 
-      settled = true;
-      callback();
-    };
+      const settle = (callback: () => void) => {
+        if (settled) {
+          return;
+        }
 
-    socket.once('connect', () => {
-      socket.write(request);
-    });
-    socket.on('data', (chunk) => {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    });
-    socket.once('close', (hadError) => {
-      if (hadError) {
-        return;
-      }
+        settled = true;
+        callback();
+      };
 
-      settle(() => resolve(Buffer.concat(chunks).toString('utf8')));
+      socket.once('connect', () => {
+        socket.write(request);
+      });
+      socket.on('data', (chunk) => {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      });
+      socket.once('close', (hadError) => {
+        if (hadError) {
+          return;
+        }
+
+        settle(() => resolve(Buffer.concat(chunks).toString('utf8')));
+      });
+      socket.once('error', (error) => {
+        settle(() => reject(error));
+      });
     });
-    socket.once('error', (error) => {
-      settle(() => reject(error));
-    });
-  });
+  } finally {
+    socket.destroy();
+  }
 }
 
 function onceCloseDetails(socket: WebSocket): Promise<{ code: number; reason: Buffer }> {
@@ -767,26 +772,32 @@ describe('@fluojs/websockets', () => {
     });
     const state = await app.container.resolve(GatewayState);
 
-    await app.listen();
-    const port = await getApplicationPort(app);
+    try {
+      await app.listen();
+      const port = await getApplicationPort(app);
 
-    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/chat`);
-    await onceOpen(socket);
-    socket.send(JSON.stringify({ event: 'ping', data: { value: 'hello' } }));
+      const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/chat`);
+      try {
+        await onceOpen(socket);
+        socket.send(JSON.stringify({ event: 'ping', data: { value: 'hello' } }));
 
-    const incoming = await onceMessage(socket);
-    expect(JSON.parse(incoming)).toEqual({ event: 'pong', data: { value: 'hello' } });
+        const incoming = await onceMessage(socket);
+        expect(JSON.parse(incoming)).toEqual({ event: 'pong', data: { value: 'hello' } });
 
-    await closeWebSocket(socket);
+        await closeWebSocket(socket);
 
-    await waitForAssertion(() => {
-      expect(state.disconnectCount).toBe(1);
-    });
+        await waitForAssertion(() => {
+          expect(state.disconnectCount).toBe(1);
+        });
 
-    expect(state.connectCount).toBe(1);
-    expect(state.messages).toEqual([{ value: 'hello' }]);
-
-    await app.close();
+        expect(state.connectCount).toBe(1);
+        expect(state.messages).toEqual([{ value: 'hello' }]);
+      } finally {
+        await closeWebSocket(socket);
+      }
+    } finally {
+      await app.close();
+    }
   });
 
   it('boots an Express app, connects websocket client, handles message, and disconnects', async () => {
@@ -830,26 +841,32 @@ describe('@fluojs/websockets', () => {
     });
     const state = await app.container.resolve(GatewayState);
 
-    await app.listen();
-    const port = await getApplicationPort(app);
+    try {
+      await app.listen();
+      const port = await getApplicationPort(app);
 
-    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/chat`);
-    await onceOpen(socket);
-    socket.send(JSON.stringify({ event: 'ping', data: { value: 'hello' } }));
+      const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/chat`);
+      try {
+        await onceOpen(socket);
+        socket.send(JSON.stringify({ event: 'ping', data: { value: 'hello' } }));
 
-    const incoming = await onceMessage(socket);
-    expect(JSON.parse(incoming)).toEqual({ event: 'pong', data: { value: 'hello' } });
+        const incoming = await onceMessage(socket);
+        expect(JSON.parse(incoming)).toEqual({ event: 'pong', data: { value: 'hello' } });
 
-    await closeWebSocket(socket);
+        await closeWebSocket(socket);
 
-    await waitForAssertion(() => {
-      expect(state.disconnectCount).toBe(1);
-    });
+        await waitForAssertion(() => {
+          expect(state.disconnectCount).toBe(1);
+        });
 
-    expect(state.connectCount).toBe(1);
-    expect(state.messages).toEqual([{ value: 'hello' }]);
-
-    await app.close();
+        expect(state.connectCount).toBe(1);
+        expect(state.messages).toEqual([{ value: 'hello' }]);
+      } finally {
+        await closeWebSocket(socket);
+      }
+    } finally {
+      await app.close();
+    }
   });
 
   for (const scenario of serverBackedGatewayScenarios) {
@@ -906,36 +923,42 @@ describe('@fluojs/websockets', () => {
         port: 0,
       });
       const state = await app.container.resolve(GatewayState);
-    const service = await app.container.resolve(WebSocketGatewayLifecycleService) as unknown as NodeWebSocketGatewayLifecycleServiceImplementation;
+      const service = await app.container.resolve(WebSocketGatewayLifecycleService) as unknown as NodeWebSocketGatewayLifecycleServiceImplementation;
 
-      await app.listen();
-      const appPort = await getApplicationPort(app);
-      const websocketPort = getOwnedGatewayPort(service);
+      try {
+        await app.listen();
+        const appPort = await getApplicationPort(app);
+        const websocketPort = getOwnedGatewayPort(service);
 
-      const socket = new WebSocket(`ws://127.0.0.1:${String(websocketPort)}/chat`);
-      await onceOpen(socket);
-      socket.send(JSON.stringify({ event: 'ping', data: { value: scenario.name } }));
+        const socket = new WebSocket(`ws://127.0.0.1:${String(websocketPort)}/chat`);
+        try {
+          await onceOpen(socket);
+          socket.send(JSON.stringify({ event: 'ping', data: { value: scenario.name } }));
 
-      const incoming = await onceMessage(socket);
-      expect(JSON.parse(incoming)).toEqual({ event: 'pong', data: { value: scenario.name } });
+          const incoming = await onceMessage(socket);
+          expect(JSON.parse(incoming)).toEqual({ event: 'pong', data: { value: scenario.name } });
 
-      await closeWebSocket(socket);
+          await closeWebSocket(socket);
 
-      await waitForAssertion(() => {
-        expect(state.disconnectCount).toBe(1);
-      });
+          await waitForAssertion(() => {
+            expect(state.disconnectCount).toBe(1);
+          });
 
-      const healthResponse = await fetch(`http://127.0.0.1:${String(appPort)}/health`);
-      expect(healthResponse.status).toBe(200);
-      await expect(healthResponse.json()).resolves.toEqual({ ok: true });
+          const healthResponse = await fetch(`http://127.0.0.1:${String(appPort)}/health`);
+          expect(healthResponse.status).toBe(200);
+          await expect(healthResponse.json()).resolves.toEqual({ ok: true });
 
-      const mainPortResponse = await fetch(`http://127.0.0.1:${String(appPort)}/chat`);
-      expect(mainPortResponse.status).toBe(404);
+          const mainPortResponse = await fetch(`http://127.0.0.1:${String(appPort)}/chat`);
+          expect(mainPortResponse.status).toBe(404);
 
-      expect(state.connectCount).toBe(1);
-      expect(state.messages).toEqual([{ value: scenario.name }]);
-
-      await app.close();
+          expect(state.connectCount).toBe(1);
+          expect(state.messages).toEqual([{ value: scenario.name }]);
+        } finally {
+          await closeWebSocket(socket);
+        }
+      } finally {
+        await app.close();
+      }
 
       expect((Reflect.get(state, 'disconnectCount') as number)).toBe(1);
     });
@@ -998,6 +1021,23 @@ describe('@fluojs/websockets', () => {
     });
 
     await app.close();
+  });
+
+  it.each([
+    ['true', (): true => true, undefined],
+    ['undefined', (): undefined => undefined, undefined],
+    ['no return value', (): void => {}, undefined],
+    ['false', (): false => false, { body: 'WebSocket upgrade rejected.', status: 403 }],
+  ] as const)('maps a Node guard %s outcome to the documented upgrade decision', async (_outcome, guard, expected) => {
+    const service = createTestLifecycleService({ upgrade: { guard } });
+    const resolveUpgradeRejection = Reflect.get(service, 'resolveUpgradeRejection') as (
+      request: IncomingMessage,
+      path: string,
+    ) => Promise<{ body?: string; status: number } | undefined>;
+
+    const rejection = await resolveUpgradeRejection.call(service, { headers: {} } as IncomingMessage, '/guard-outcome');
+
+    expect(rejection).toEqual(expected);
   });
 
   it('rejects anonymous websocket upgrades before the handshake completes', async () => {
@@ -1628,6 +1668,57 @@ describe('@fluojs/websockets', () => {
     expect(startHeartbeatSpy).toHaveBeenCalledWith(30_000, 30_000);
   });
 
+  it('resolves the documented connection, payload, and shutdown defaults', () => {
+    const service = createTestLifecycleService();
+    const resolveMaxConnectionCount = Reflect.get(service, 'resolveMaxConnectionCount') as () => number;
+    const resolveMaxPayloadBytes = Reflect.get(service, 'resolveMaxPayloadBytes') as () => number;
+    const resolveShutdownTimeoutMs = Reflect.get(service, 'resolveShutdownTimeoutMs') as () => number;
+
+    expect(resolveMaxConnectionCount.call(service)).toBe(1_000);
+    expect(resolveMaxPayloadBytes.call(service)).toBe(1_048_576);
+    expect(resolveShutdownTimeoutMs.call(service)).toBe(5_000);
+  });
+
+  it('keeps the documented default of 256 pending messages per socket', () => {
+    const service = createTestLifecycleService();
+    const { socket } = createMockSocket();
+    const state = createTrackedSocketState('socket-default-buffer');
+    const bufferIncomingMessage = Reflect.get(service, 'bufferIncomingMessage') as (
+      state: ReturnType<typeof createTrackedSocketState>,
+      socket: WebSocket,
+      data: Buffer,
+    ) => void;
+
+    for (let index = 0; index <= 256; index += 1) {
+      bufferIncomingMessage.call(service, state, socket, Buffer.from(`message-${String(index)}`));
+    }
+
+    const retainedMessages = (state.bufferedMessages as Buffer[]).slice(state.bufferedMessagesStartIndex);
+
+    expect(retainedMessages).toHaveLength(256);
+    expect(retainedMessages[0]?.toString('utf8')).toBe('message-1');
+    expect(retainedMessages.at(-1)?.toString('utf8')).toBe('message-256');
+  });
+
+  it('drops Node room broadcasts above the documented default 1 MiB backpressure limit', () => {
+    const service = createTestLifecycleService();
+    const atLimit = createMockSocket();
+    const aboveLimit = createMockSocket();
+    const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, WebSocket>;
+    (atLimit.socket as unknown as { bufferedAmount: number }).bufferedAmount = 1_048_576;
+    (aboveLimit.socket as unknown as { bufferedAmount: number }).bufferedAmount = 1_048_577;
+    socketRegistry.set('socket-at-limit', atLimit.socket);
+    socketRegistry.set('socket-above-limit', aboveLimit.socket);
+    service.joinRoom('socket-at-limit', 'room-default-backpressure');
+    service.joinRoom('socket-above-limit', 'room-default-backpressure');
+
+    service.broadcastToRoom('room-default-backpressure', 'order.updated', { orderId: 'ord_default' });
+
+    expect(atLimit.send).toHaveBeenCalledWith(JSON.stringify({ data: { orderId: 'ord_default' }, event: 'order.updated' }));
+    expect(aboveLimit.send).not.toHaveBeenCalled();
+    expect(aboveLimit.terminate).not.toHaveBeenCalled();
+  });
+
   it('caps ready-state message queue and drops newest queued messages when saturated', async () => {
     const service = createTestLifecycleService({
       buffer: {
@@ -2004,50 +2095,31 @@ describe('@fluojs/websockets', () => {
       port: 0,
     });
 
-    await app.listen();
-    const port = await getApplicationPort(app);
+    try {
+      await app.listen();
+      const port = await getApplicationPort(app);
 
-    const adapter = await app.container.resolve<HttpApplicationAdapter>(HTTP_APPLICATION_ADAPTER);
-    const server = adapter.getServer?.() as {
-      on(event: 'upgrade', listener: (request: IncomingMessage, socket: Duplex) => void): void;
-    };
-    const delegated = createDeferred<void>();
+      const adapter = await app.container.resolve<HttpApplicationAdapter>(HTTP_APPLICATION_ADAPTER);
+      const server = adapter.getServer?.() as {
+        on(event: 'upgrade', listener: (request: IncomingMessage, socket: Duplex) => void): void;
+      };
+      const delegated = createDeferred<void>();
 
-    server.on('upgrade', (request, socket) => {
-      if (request.url === '/missing') {
-        delegated.resolve();
-        socket.write('HTTP/1.1 426 Upgrade Required\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
-        socket.end();
-      }
-    });
-
-    const response = await new Promise<string>((resolve, reject) => {
-      const socket = createConnection({ host: '127.0.0.1', port }, () => {
-        socket.write(
-          'GET /missing HTTP/1.1\r\n'
-            + 'Host: 127.0.0.1\r\n'
-            + 'Connection: Upgrade\r\n'
-            + 'Upgrade: websocket\r\n'
-            + 'Sec-WebSocket-Version: 13\r\n'
-            + 'Sec-WebSocket-Key: dGVzdC1rZXktMDAwMDAw\r\n'
-            + '\r\n',
-        );
+      server.on('upgrade', (request, socket) => {
+        if (request.url === '/missing') {
+          delegated.resolve();
+          socket.write('HTTP/1.1 426 Upgrade Required\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
+          socket.end();
+        }
       });
-      const chunks: Buffer[] = [];
 
-      socket.on('data', (chunk) => {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-      });
-      socket.on('end', () => {
-        resolve(Buffer.concat(chunks).toString('utf8'));
-      });
-      socket.on('error', reject);
-    });
+      const response = await readUpgradeResponse(port, createUpgradeRequest('/missing'));
 
-    await delegated.promise;
-    expect(response).toContain('HTTP/1.1 426 Upgrade Required');
-
-    await app.close();
+      await delegated.promise;
+      expect(response).toContain('HTTP/1.1 426 Upgrade Required');
+    } finally {
+      await app.close();
+    }
   });
 
   it('rejects unmatched websocket upgrade requests with 404 when no later listener handles them', async () => {
@@ -2068,35 +2140,16 @@ describe('@fluojs/websockets', () => {
       port: 0,
     });
 
-    await app.listen();
-    const port = await getApplicationPort(app);
+    try {
+      await app.listen();
+      const port = await getApplicationPort(app);
 
-    const response = await new Promise<string>((resolve, reject) => {
-      const socket = createConnection({ host: '127.0.0.1', port }, () => {
-        socket.write(
-          'GET /missing HTTP/1.1\r\n'
-            + 'Host: 127.0.0.1\r\n'
-            + 'Connection: Upgrade\r\n'
-            + 'Upgrade: websocket\r\n'
-            + 'Sec-WebSocket-Version: 13\r\n'
-            + 'Sec-WebSocket-Key: dGVzdC1rZXktMDAwMDAw\r\n'
-            + '\r\n',
-        );
-      });
-      const chunks: Buffer[] = [];
+      const response = await readUpgradeResponse(port, createUpgradeRequest('/missing'));
 
-      socket.on('data', (chunk) => {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-      });
-      socket.on('end', () => {
-        resolve(Buffer.concat(chunks).toString('utf8'));
-      });
-      socket.on('error', reject);
-    });
-
-    expect(response).toContain('HTTP/1.1 404 Not Found');
-
-    await app.close();
+      expect(response).toContain('HTTP/1.1 404 Not Found');
+    } finally {
+      await app.close();
+    }
   });
 
 
