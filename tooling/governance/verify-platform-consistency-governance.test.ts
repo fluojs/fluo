@@ -434,6 +434,28 @@ describe('changedFilesFromGit', () => {
 });
 
 describe('enforceAdvancedBookCoreBoundaryCompanions', () => {
+  it('keeps the advanced metadata key-merge examples synchronized with core source', () => {
+    // Given: the authoritative core implementation and both localized chapter mirrors.
+    const source = readFileSync(join(repoRoot, 'packages/core/src/metadata/shared.ts'), 'utf8');
+    const english = readFileSync(join(repoRoot, 'book/advanced/ch02-metadata.md'), 'utf8');
+    const korean = readFileSync(join(repoRoot, 'book/advanced/ch02-metadata.ko.md'), 'utf8');
+
+    // When: the implementation and path-anchored documentation examples are extracted.
+    const implementationMatch = /export function mergeMetadataPropertyKeys[\s\S]*?\n\}\n/u.exec(source);
+    const documentedExamplePattern = /`path:packages\/core\/src\/metadata\/shared\.ts:369-397`\n```typescript\n([\s\S]*?)\n```/u;
+    const englishMatch = documentedExamplePattern.exec(english);
+    const koreanMatch = documentedExamplePattern.exec(korean);
+
+    if (!implementationMatch || !englishMatch || !koreanMatch) {
+      throw new TypeError('Expected the core metadata key-merge implementation and both documented examples.');
+    }
+
+    const implementation = implementationMatch[0].trimEnd();
+
+    // Then: each mirror presents the exact ordered Map-key merge implemented by core.
+    expect([englishMatch[1], koreanMatch[1]]).toEqual([implementation, implementation]);
+  });
+
   it('requires advanced metadata chapter EN/KO companions to change together', async () => {
     const { enforceAdvancedBookCoreBoundaryCompanions } = await loadGovernanceInternals();
 
