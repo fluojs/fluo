@@ -1488,19 +1488,19 @@ function enforceCanonicalRuntimeMatrixReferences() {
     fastifyReadme.includes('`shutdownTimeoutMs: 0` starts Fastify close immediately') &&
       fastifyReadme.includes('the wait may time out on the next timer turn') &&
       fastifyReadme.includes('the underlying Fastify close and cleanup continue') &&
-      fastifyReadme.includes('returns a shell prepared with shutdown registration') &&
-      fastifyReadme.includes('the caller still invokes `listen()`') &&
-      fastifyReadme.includes('the caller still invokes `app.listen()`'),
-    'Fastify README must document zero-timeout close ordering and caller-owned listen after run-helper preparation.',
+      fastifyReadme.includes('starts listening before it resolves, installs shutdown registration') &&
+      fastifyReadme.includes('returns the running application shell') &&
+      !fastifyReadme.includes('the caller still invokes'),
+    'Fastify README must document zero-timeout close ordering and run-helper-owned listening.',
   );
   assert(
     fastifyReadmeKo.includes('`shutdownTimeoutMs: 0`은 Fastify close를 즉시 시작') &&
       fastifyReadmeKo.includes('대기는 다음 timer turn에 timeout될 수 있지만') &&
       fastifyReadmeKo.includes('기반 Fastify close와 cleanup은 계속 진행') &&
-      fastifyReadmeKo.includes('shutdown registration이 준비된 shell을 반환') &&
-      fastifyReadmeKo.includes('caller는 여전히 `listen()`을 호출') &&
-      fastifyReadmeKo.includes('caller는 여전히 `app.listen()`을 호출'),
-    'Korean Fastify README must document zero-timeout close ordering and caller-owned listen after run-helper preparation.',
+      fastifyReadmeKo.includes('resolve되기 전에 listening을 시작하고 shutdown registration을 설치') &&
+      fastifyReadmeKo.includes('실행 중인 application shell을 반환') &&
+      !fastifyReadmeKo.includes('caller는 여전히'),
+    'Korean Fastify README must document zero-timeout close ordering and run-helper-owned listening.',
   );
   assert(
     platformBunReadme.includes('synchronously creates the fetch bridge') &&

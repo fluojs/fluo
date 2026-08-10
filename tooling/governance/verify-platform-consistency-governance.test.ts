@@ -1201,16 +1201,16 @@ describe('repository governance contracts', () => {
     expect(fastifyReadme).toContain('`shutdownTimeoutMs: 0` starts Fastify close immediately');
     expect(fastifyReadme).toContain('the wait may time out on the next timer turn');
     expect(fastifyReadme).toContain('the underlying Fastify close and cleanup continue');
-    expect(fastifyReadme).toContain('returns a shell prepared with shutdown registration');
-    expect(fastifyReadme).toContain('the caller still invokes `listen()`');
-    expect(fastifyReadme).toContain('the caller still invokes `app.listen()`');
+    expect(fastifyReadme).toContain('starts listening before it resolves, installs shutdown registration');
+    expect(fastifyReadme).toContain('returns the running application shell');
+    expect(fastifyReadme).not.toContain('the caller still invokes');
 
     expect(fastifyReadmeKo).toContain('`shutdownTimeoutMs: 0`은 Fastify close를 즉시 시작');
     expect(fastifyReadmeKo).toContain('대기는 다음 timer turn에 timeout될 수 있지만');
     expect(fastifyReadmeKo).toContain('기반 Fastify close와 cleanup은 계속 진행');
-    expect(fastifyReadmeKo).toContain('shutdown registration이 준비된 shell을 반환');
-    expect(fastifyReadmeKo).toContain('caller는 여전히 `listen()`을 호출');
-    expect(fastifyReadmeKo).toContain('caller는 여전히 `app.listen()`을 호출');
+    expect(fastifyReadmeKo).toContain('resolve되기 전에 listening을 시작하고 shutdown registration을 설치');
+    expect(fastifyReadmeKo).toContain('실행 중인 application shell을 반환');
+    expect(fastifyReadmeKo).not.toContain('caller는 여전히');
   });
 
   it('keeps Throttler guard activation and backing-store clock docs discoverable across governed docs', () => {
