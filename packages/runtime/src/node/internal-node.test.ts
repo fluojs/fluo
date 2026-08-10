@@ -1,7 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { Server as HttpServer } from 'node:http';
+import { createServer } from 'node:net';
+import type { Dispatcher } from '@fluojs/http';
+import { describe, expect, it, vi } from 'vitest';
 
-import * as internalNodeApi from './internal-node.js';
 import * as publicNodeApi from '../node.js';
+import * as internalNodeApi from './internal-node.js';
+
+function createTextDispatcher(body: string): Dispatcher {
+  return {
+    async dispatch(_request, response) {
+      await response.send(body);
+    },
+  };
+}
 
 describe('runtime internal node seam', () => {
   it('keeps the public runtime/node path focused on supported node helpers', () => {
@@ -11,5 +22,207 @@ describe('runtime internal node seam', () => {
     expect(publicNodeApi.createNodeShutdownSignalRegistration).toBe(internalNodeApi.createNodeShutdownSignalRegistration);
     expect(publicNodeApi).not.toHaveProperty('compressNodeResponse');
     expect(publicNodeApi).not.toHaveProperty('createNodeResponseCompression');
+  });
+
+  it('preserves the admitted dispatcher across overlapping listen and failed close re-entry', async () => {
+    // Given: a first dispatcher owns a pending retry while another startup shares it.
+    const blocker = createServer();
+    await new Promise<void>((resolve, reject) => {
+      blocker.once('error', reject);
+      blocker.listen(0, '127.0.0.1', () => {
+        blocker.removeListener('error', reject);
+        resolve();
+      });
+    });
+    const address = blocker.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Failed to bind a dispatcher ownership test port.');
+    }
+
+    const adapter = internalNodeApi.createNodeHttpAdapter({
+      host: '127.0.0.1',
+      port: address.port,
+      retryDelayMs: 0,
+      retryLimit: 20,
+    });
+    const server = adapter.getServer?.();
+    if (!(server instanceof HttpServer)) {
+      throw new Error('Expected the Node adapter to expose its HTTP server.');
+    }
+    const retryObserved = new Promise<void>((resolve, reject) => {
+      server.once('error', (error: NodeJS.ErrnoException) => {
+        if (error.code !== 'EADDRINUSE') {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    });
+    const ownerListen = adapter.listen(createTextDispatcher('owner'));
+
+    try {
+      await retryObserved;
+      const overlappingListen = adapter.listen(createTextDispatcher('overlap'));
+      await new Promise<void>((resolve, reject) => {
+        blocker.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+      await Promise.all([ownerListen, overlappingListen]);
+
+      // When: close fails while a third dispatcher attempts rejected re-entry.
+      const closeFailure = new Error('forced close failure');
+      const close = vi.spyOn(server, 'close').mockImplementationOnce((callback) => {
+        callback?.(closeFailure);
+        return server;
+      });
+      try {
+        const closeResult = Promise.resolve(adapter.close()).then(
+          () => 'closed' as const,
+          (error: unknown) => error,
+        );
+        const reentryResult = Promise.resolve(adapter.listen(createTextDispatcher('closing'))).then(
+          () => 'listened' as const,
+          (error: unknown) => error,
+        );
+
+        expect(await reentryResult).toBeInstanceOf(Error);
+        expect(await closeResult).toBe(closeFailure);
+      } finally {
+        close.mockRestore();
+      }
+
+      // Then: requests still dispatch through the first admitted owner.
+      const response = await fetch(`http://127.0.0.1:${String(address.port)}`);
+      await expect(response.text()).resolves.toBe('owner');
+    } finally {
+      await adapter.close();
+      if (blocker.listening) {
+        await new Promise<void>((resolve, reject) => {
+          blocker.close((error) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+
+            resolve();
+          });
+        });
+      }
+    }
+  });
+
+  it('rejects cancelled listen settlement re-entry until close completes', async () => {
+    // Given: a real occupied port and a Node adapter waiting to retry that port.
+    const blocker = createServer();
+    await new Promise<void>((resolve, reject) => {
+      blocker.once('error', reject);
+      blocker.listen(0, '127.0.0.1', () => {
+        blocker.removeListener('error', reject);
+        resolve();
+      });
+    });
+    const address = blocker.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Failed to bind a retry cancellation test port.');
+    }
+
+    const adapter = internalNodeApi.createNodeHttpAdapter({
+      host: '127.0.0.1',
+      port: address.port,
+      retryDelayMs: 100,
+      retryLimit: 20,
+    });
+    const server = adapter.getServer?.();
+    if (!(server instanceof HttpServer)) {
+      throw new Error('Expected the Node adapter to expose its HTTP server.');
+    }
+
+    const retryObserved = new Promise<void>((resolve, reject) => {
+      server.once('error', (error: NodeJS.ErrnoException) => {
+        if (error.code !== 'EADDRINUSE') {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    });
+    let markReentryAttempted: () => void;
+    const reentryAttempted = new Promise<void>((resolve) => {
+      markReentryAttempted = resolve;
+    });
+    const listenAttempt = Promise.resolve(adapter.listen({ async dispatch() {} }));
+    const listenResult = listenAttempt.then(
+      () => 'listened' as const,
+      (error: unknown) => error,
+    );
+    const reenteredListenResult = listenAttempt.then(
+      () => 'initial-listened' as const,
+      () => {
+        markReentryAttempted();
+        return Promise.resolve(adapter.listen({ async dispatch() {} })).then(
+          () => 'reentered-listened' as const,
+          (error: unknown) => error,
+        );
+      },
+    );
+
+    try {
+      await retryObserved;
+      const overlappingListenResult = Promise.resolve(adapter.listen({ async dispatch() {} })).then(
+        () => 'listened' as const,
+        (error: unknown) => error,
+      );
+
+      // When: shutdown completes while the retry delay still owns the pending startup.
+      const closeInFlight = adapter.close();
+      await reentryAttempted;
+      await expect(closeInFlight).resolves.toBeUndefined();
+      await new Promise<void>((resolve, reject) => {
+        blocker.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+
+      // Then: releasing the port cannot resurrect the closed adapter.
+      const result = await listenResult;
+      expect(result).toBeInstanceOf(Error);
+      await expect(overlappingListenResult).resolves.toBeInstanceOf(Error);
+      await expect(reenteredListenResult).resolves.toBeInstanceOf(Error);
+      expect(server.listening).toBe(false);
+
+      // Then: an explicit listen after close settlement can bind again.
+      await expect(adapter.listen({ async dispatch() {} })).resolves.toBeUndefined();
+      expect(server.listening).toBe(true);
+    } finally {
+      try {
+        await adapter.close();
+      } finally {
+        if (blocker.listening) {
+          await new Promise<void>((resolve, reject) => {
+            blocker.close((error) => {
+              if (error) {
+                reject(error);
+                return;
+              }
+
+              resolve();
+            });
+          });
+        }
+      }
+    }
   });
 });
