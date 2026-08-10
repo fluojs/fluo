@@ -1204,6 +1204,7 @@ function enforceCanonicalRuntimeMatrixReferences() {
   const i18nReadmeKo = readFileSync(join(repoRoot, 'packages/i18n/README.ko.md'), 'utf8');
   const drizzleReadme = readFileSync(join(repoRoot, 'packages/drizzle/README.md'), 'utf8');
   const drizzleReadmeKo = readFileSync(join(repoRoot, 'packages/drizzle/README.ko.md'), 'utf8');
+  const fastifyAdapterSource = readFileSync(join(repoRoot, 'packages/platform-fastify/src/adapter.ts'), 'utf8');
   const fastifyReadme = readFileSync(join(repoRoot, 'packages/platform-fastify/README.md'), 'utf8');
   const fastifyReadmeKo = readFileSync(join(repoRoot, 'packages/platform-fastify/README.ko.md'), 'utf8');
   const platformBunReadme = readFileSync(join(repoRoot, 'packages/platform-bun/README.md'), 'utf8');
@@ -1483,6 +1484,29 @@ function enforceCanonicalRuntimeMatrixReferences() {
       runtimeAdaptersGuideKo.includes('Node.js `https.ServerOptions`') &&
       runtimeAdaptersGuideKo.includes('infrastructure boundary 뒤에서 Fastify를 일반 HTTP로 실행'),
     'Korean Fastify README, package-surface, package-chooser, docs/CONTEXT.ko.md, book metadata, and website guidance must keep the Node.js 20+ runtime floor and HTTPS/TLS startup boundary discoverable together.',
+  );
+  assert(
+    fastifyReadme.includes('`shutdownTimeoutMs: 0` starts Fastify close immediately') &&
+      fastifyReadme.includes('the wait may time out on the next timer turn') &&
+      fastifyReadme.includes('the underlying Fastify close and cleanup continue') &&
+      fastifyReadme.includes('starts listening before it resolves, installs shutdown registration') &&
+      fastifyReadme.includes('returns the running application shell') &&
+      !fastifyReadme.includes('the caller still invokes') &&
+      fastifyAdapterSource.includes('awaits `listen()`') &&
+      fastifyAdapterSource.includes('only then returns the running application') &&
+      fastifyAdapterSource.includes('@returns A running application shell after listening succeeds and shutdown registration completes.') &&
+      !fastifyAdapterSource.includes('callers only need to invoke `listen()`') &&
+      !fastifyAdapterSource.includes('ready to listen'),
+    'Fastify README and public TSDoc must document zero-timeout close ordering and run-helper-owned listening.',
+  );
+  assert(
+    fastifyReadmeKo.includes('`shutdownTimeoutMs: 0`은 Fastify close를 즉시 시작') &&
+      fastifyReadmeKo.includes('대기는 다음 timer turn에 timeout될 수 있지만') &&
+      fastifyReadmeKo.includes('기반 Fastify close와 cleanup은 계속 진행') &&
+      fastifyReadmeKo.includes('resolve되기 전에 listening을 시작하고 shutdown registration을 설치') &&
+      fastifyReadmeKo.includes('실행 중인 application shell을 반환') &&
+      !fastifyReadmeKo.includes('caller는 여전히'),
+    'Korean Fastify README must document zero-timeout close ordering and run-helper-owned listening.',
   );
   assert(
     platformBunReadme.includes('synchronously creates the fetch bridge') &&

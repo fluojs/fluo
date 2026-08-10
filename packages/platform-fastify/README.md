@@ -50,7 +50,7 @@ const app = await fluoFactory.create(AppModule, {
 await app.listen();
 ```
 
-`createFastifyAdapter()` defaults to port `3000` and does not read `process.env.PORT`; invalid explicit numeric options such as `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs` throw during adapter setup. `maxBodySize` and `shutdownTimeoutMs` are non-negative integer byte/time limits, so `0` is valid: `maxBodySize: 0` allows only empty request bodies, and `shutdownTimeoutMs: 0` asks Fastify to close on the next timer turn.
+`createFastifyAdapter()` defaults to port `3000` and does not read `process.env.PORT`; invalid explicit numeric options such as `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs` throw during adapter setup. `maxBodySize` and `shutdownTimeoutMs` are non-negative integer byte/time limits, so `0` is valid: `maxBodySize: 0` allows only empty request bodies, and `shutdownTimeoutMs: 0` starts Fastify close immediately. The zero value bounds only the wait: if close has not settled, the wait may time out on the next timer turn while the underlying Fastify close and cleanup continue.
 
 ## Common Patterns
 
@@ -74,10 +74,10 @@ await app.listen();
 
 Load certificates from your application configuration or secret-management boundary before constructing the adapter; the package does not read certificate files, `process.env`, or `PORT` by itself. If a load balancer, ingress, or API gateway terminates TLS, leave `https` unset and run the Fastify adapter as plain HTTP behind that infrastructure.
 
-`bootstrapFastifyApplication(...)` and `runFastifyApplication(...)` accept the same `https`, `host`, and `port` options:
+`bootstrapFastifyApplication(...)` and `runFastifyApplication(...)` accept the same `https`, `host`, and `port` options. `runFastifyApplication(...)` starts listening before it resolves, installs shutdown registration, and returns the running application shell:
 
 ```typescript
-await runFastifyApplication(AppModule, {
+const app = await runFastifyApplication(AppModule, {
   host: '127.0.0.1',
   https: {
     cert: tlsCertificate,
@@ -189,13 +189,13 @@ fluo's Fastify adapter significantly outperforms the raw Node.js adapter in high
 
 `packages/platform-fastify/src/adapter.test.ts` is the package-local regression target for the documented Fastify adapter contract. It runs the shared `createHttpAdapterPortabilityHarness(...)` checks for malformed cookie preservation, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body exclusion, multipart total-size defaults, SSE framing, response stream drain settlement, host and HTTPS startup logging, and shutdown signal listener cleanup.
 
-The same file also covers Fastify-specific native route registration with wildcard fallback, duplicate shape route fallback, concurrent and repeated `listen()` idempotency, startup retry cancellation during shutdown, native descriptor refresh on adapter reuse, explicit `OPTIONS` route ownership, middleware/guard/interceptor/observer ordering, CORS ownership, global prefix behavior, malformed cookie preservation, response serialization parity, raw-body pre-parsing behavior, zero-valued body/shutdown limits, case-insensitive multipart detection, and multipart limit handling. Keep README example pointers aligned with that test file and the custom adapter book chapter when changing startup, routing, or adapter portability behavior.
+The same file also covers Fastify-specific native route registration with wildcard fallback, duplicate shape route fallback, concurrent and repeated `listen()` idempotency, startup retry cancellation during shutdown, native descriptor refresh on adapter reuse, explicit `OPTIONS` route ownership, middleware/guard/interceptor/observer ordering, CORS ownership, global prefix behavior, malformed cookie preservation, response serialization parity, raw-body pre-parsing behavior, zero-valued body/shutdown limits, close wait timeouts that leave the underlying Fastify close in flight, case-insensitive multipart detection, and multipart limit handling. Keep README example pointers aligned with that test file and the custom adapter book chapter when changing startup, routing, or adapter portability behavior.
 
 ## Public API Overview
 
 - `createFastifyAdapter(options, multipartOptions?)`: Recommended factory for the Fastify adapter. `options` includes transport startup knobs such as `host`, `port`, and Node.js `https` server options. The optional second argument configures multipart limits such as `maxFileSize`, `maxFiles`, and `maxTotalSize` for direct adapter construction.
 - `bootstrapFastifyApplication(module, options)`: advanced bootstrap without implicit listening; accepts the same Fastify startup options, including `https`, when the host wants to construct the app before binding it.
-- `runFastifyApplication(module, options)`: Quick-start helper with lifecycle management and the same `https` startup surface. On timeout/failure it reports the condition through logging and `process.exitCode`, while leaving final process termination to the surrounding host.
+- `runFastifyApplication(module, options)`: Bootstraps the application, starts listening, installs shutdown registration, and returns the running shell with the same `https` startup surface. On signal-driven shutdown timeout/failure it reports the condition through logging and `process.exitCode`, while leaving final process termination to the surrounding host.
 - `isFastifyMultipartTooLargeError(error)`: Detects multipart limit errors across Fastify error shapes.
 - `FastifyHttpApplicationAdapter`: The core adapter implementation.
 - Option types: `FastifyAdapterOptions`, `BootstrapFastifyApplicationOptions`, `RunFastifyApplicationOptions`, `CorsInput`, `FastifyApplicationSignal`.

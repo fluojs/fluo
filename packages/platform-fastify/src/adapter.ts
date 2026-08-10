@@ -714,14 +714,14 @@ export async function bootstrapFastifyApplication(
 }
 
 /**
- * Bootstrap and prepare a Fastify-backed application with shutdown registration.
+ * Bootstrap and start a Fastify-backed application with shutdown registration.
  *
- * This helper mirrors the README quick-start path: create the adapter, wire the
- * runtime, and attach signal handling so callers only need to invoke `listen()`.
+ * This helper creates the adapter, wires the runtime, awaits `listen()`, installs
+ * the configured shutdown registration, and only then returns the running application.
  *
  * @param rootModule Root application module compiled by the Fluo runtime.
  * @param options Runtime, adapter, and shutdown registration settings.
- * @returns A bootstrapped application shell ready to listen.
+ * @returns A running application shell after listening succeeds and shutdown registration completes.
  */
 export async function runFastifyApplication(
   rootModule: ModuleType,
