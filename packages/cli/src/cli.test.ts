@@ -2173,8 +2173,30 @@ void bootstrap();
     });
 
     expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Would run: deno run --watch --allow-env --allow-net src/main.ts');
+    expect(stdoutBuffer.join('')).toContain('Would run: deno run --watch --allow-env=PORT --allow-net --allow-signal src/main.ts');
     expect(stdoutBuffer.join('')).toContain('Watch mode: runtime-native-watch');
+  });
+
+  it('runs Deno build with scoped PORT and signal permissions in dry-runs', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ dependencies: { '@fluojs/platform-deno': '^1.0.0' }, name: 'test-app', scripts: { build: 'fluo build' } }, null, 2),
+    );
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli(['build', '--dry-run'], {
+      cwd: workspaceDirectory,
+      env: {},
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain(
+      'Would run: deno compile --allow-env=PORT --allow-net --allow-signal --output dist/app src/main.ts',
+    );
   });
 
   it('runs Workers dev through the runtime-native watch loop by default in dry-runs', async () => {
@@ -3166,7 +3188,7 @@ void bootstrap();
   it('uses the same restart runner boundary for Bun, Deno, and Workers app children', async () => {
     const cases: Array<{ args: string[]; command: string; runtime: 'bun' | 'cloudflare-workers' | 'deno' }> = [
       { args: ['src/main.ts', '--port', '4000'], command: 'bun', runtime: 'bun' },
-      { args: ['run', '--allow-env', '--allow-net', 'src/main.ts', '--port', '4000'], command: 'deno', runtime: 'deno' },
+      { args: ['run', '--allow-env=PORT', '--allow-net', '--allow-signal', 'src/main.ts', '--port', '4000'], command: 'deno', runtime: 'deno' },
       { args: ['dev', '--show-interactive-dev-session=false', '--port', '4000'], command: 'wrangler', runtime: 'cloudflare-workers' },
     ];
 
@@ -3429,7 +3451,7 @@ void bootstrap();
     });
 
     expect(exitCode).toBe(0);
-    expect(spawned).toEqual([{ args: ['run', '--watch', '--allow-env', '--allow-net', 'src/main.ts'], command: 'deno', forceColor: '1', prettyTtyColor: '1', stdio: 'pipe' }]);
+    expect(spawned).toEqual([{ args: ['run', '--watch', '--allow-env=PORT', '--allow-net', '--allow-signal', 'src/main.ts'], command: 'deno', forceColor: '1', prettyTtyColor: '1', stdio: 'pipe' }]);
   });
 
   it('passes forced color environment through runtime-native Workers dev runs', async () => {

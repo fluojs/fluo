@@ -347,7 +347,7 @@ function buildAppCommand(runtime: DevRunnerRuntime, env: NodeJS.ProcessEnv, appA
     case 'cloudflare-workers':
       return { command: 'wrangler', args: ['dev', '--show-interactive-dev-session=false', ...appArgs] };
     case 'deno':
-      return { command: 'deno', args: ['run', '--allow-env', '--allow-net', 'src/main.ts', ...appArgs] };
+      return { command: 'deno', args: ['run', '--allow-env=PORT', '--allow-net', '--allow-signal', 'src/main.ts', ...appArgs] };
     default:
       return { command: process.execPath, args: buildNodeAppArgs(env, appArgs) };
   }
