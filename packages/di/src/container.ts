@@ -290,6 +290,7 @@ export class Container {
   private requestCache: Map<Token, Promise<unknown>> | undefined;
   private multiRequestCache: Map<NormalizedProvider, Promise<unknown>> | undefined;
   private readonly multiSingletonCache = new Map<NormalizedProvider, Promise<unknown>>();
+  private readonly materializedCachePromises: Promise<unknown>[] = [];
   private readonly staleDisposalTasks = new Set<StaleDisposalTask>();
   private readonly singletonCache: Map<Token, Promise<unknown>>;
   private readonly forwardRefTokenCache = new WeakMap<ForwardRefFn, Token>();
@@ -517,10 +518,12 @@ export class Container {
       setMultiSingleton: (provider: NormalizedProvider, promise: Promise<unknown>) => {
         this.multiSingletonCache.set(provider, promise);
         multiSingletonCacheSnapshot.set(provider, promise);
+        this.trackCacheMaterialization(promise);
       },
       setSingleton: (token: Token, promise: Promise<unknown>) => {
         this.singletonCache.set(token, promise);
         singletonCacheSnapshot.set(token, promise);
+        this.trackCacheMaterialization(promise);
       },
     });
   }
@@ -948,6 +951,7 @@ export class Container {
 
     trackPendingResolution(promise, activeTokens);
     cache.set(provider, promise);
+    this.trackCacheMaterialization(promise);
 
     return promise;
   }
@@ -994,6 +998,7 @@ export class Container {
 
     trackPendingResolution(promise, activeTokens);
     cache.set(provider.provide, promise);
+    this.trackCacheMaterialization(promise);
 
     return promise;
   }
@@ -1202,16 +1207,22 @@ export class Container {
     const disposables: Disposable[] = [];
     const seenInstances = new Set<unknown>();
     const errors: unknown[] = [];
+    const activePromises = new Set(entries.map(([, promise]) => promise));
 
     const settled = await Promise.allSettled(entries.map(([, p]) => p));
 
     for (const result of settled) {
       if (result.status === 'rejected') {
         errors.push(result.reason);
+      }
+    }
+
+    for (const promise of this.materializedCachePromises) {
+      if (!activePromises.has(promise)) {
         continue;
       }
 
-      const instance = result.value;
+      const instance = await promise;
 
       if (this.isDisposable(instance) && !seenInstances.has(instance)) {
         seenInstances.add(instance);
@@ -1237,6 +1248,8 @@ export class Container {
   }
 
   private clearDisposalCaches(): void {
+    this.materializedCachePromises.length = 0;
+
     if (this.parent) {
       this.requestCache?.clear();
       this.multiRequestCache?.clear();
@@ -1247,6 +1260,13 @@ export class Container {
     this.singletonCache.clear();
     this.multiSingletonCache.clear();
     this.clearResolutionPlanCaches();
+  }
+
+  private trackCacheMaterialization(promise: Promise<unknown>): void {
+    void promise.then(
+      () => this.materializedCachePromises.push(promise),
+      () => undefined,
+    );
   }
 
   private currentLineageRevision(): string {
@@ -1327,6 +1347,9 @@ export class Container {
         task.failed = true;
       }
     })().finally(() => {
+      const retainedMaterializations = this.materializedCachePromises.filter((promise) => promise !== instancePromise);
+      this.materializedCachePromises.splice(0, this.materializedCachePromises.length, ...retainedMaterializations);
+
       if (!task.failed) {
         for (const observer of observers) {
           observer.staleDisposalTasks.delete(task);
