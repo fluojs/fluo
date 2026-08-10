@@ -263,6 +263,40 @@ describe('@fluojs/platform-express', () => {
     expect(migrationGuide).toContain('explicit `nativeMiddleware` option');
   });
 
+  it('separates shared bootstrap options from run-only signal options in both package READMEs', () => {
+    const packageReadme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+    const packageReadmeKo = readFileSync(new URL('../README.ko.md', import.meta.url), 'utf8');
+    const sharedOptionNames = [
+      'cors',
+      'globalPrefix',
+      'globalPrefixExclude',
+      'middleware',
+      'multipart',
+      'nativeMiddleware',
+      'securityHeaders',
+      'logger',
+    ] as const;
+
+    for (const readme of [packageReadme, packageReadmeKo]) {
+      const lines = readme.split('\n');
+      const sharedOptionsLines = lines.filter(
+        (line) => line.includes('`BootstrapExpressApplicationOptions`') && line.includes('`RunExpressApplicationOptions`') && line.includes('`cors`') && line.includes('`logger`'),
+      );
+      const runOnlyOptionsLines = lines.filter(
+        (line) => line.includes('`RunExpressApplicationOptions`') && line.includes('`forceExitTimeoutMs`') && line.includes('`shutdownSignals`'),
+      );
+
+      expect(sharedOptionsLines).toHaveLength(1);
+      for (const optionName of sharedOptionNames) {
+        expect(sharedOptionsLines[0]).toContain(`\`${optionName}\``);
+      }
+      expect(sharedOptionsLines[0]).not.toContain('`forceExitTimeoutMs`');
+      expect(sharedOptionsLines[0]).not.toContain('`shutdownSignals`');
+      expect(runOnlyOptionsLines).toHaveLength(1);
+      expect(runOnlyOptionsLines[0]).not.toContain('`BootstrapExpressApplicationOptions`');
+    }
+  });
+
   describe('adapter portability', () => {
     it('supports HTTP-owned JSON and HTML error representations', async () => {
       await expressPortabilityHarness.assertSupportsHttpErrorRepresentations();
