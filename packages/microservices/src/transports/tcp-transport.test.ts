@@ -146,6 +146,17 @@ describe('TcpMicroserviceTransport', () => {
 
     await closePromise;
   });
+
+  it('shares one close promise when callers shut down concurrently', async () => {
+    const transport = createTransport({ port: 0, requestTimeoutMs: 1_000 });
+    await transport.listen(async () => 'ok');
+
+    const firstClose = transport.close();
+    const secondClose = transport.close();
+
+    expect(secondClose).toBe(firstClose);
+    await expect(firstClose).resolves.toBeUndefined();
+  });
 });
 
 function readTcpBoundPort(transport: TcpMicroserviceTransport): number {
