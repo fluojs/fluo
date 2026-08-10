@@ -236,6 +236,14 @@ await runDenoApplication(AppModule, {
 });
 ```
 
+This managed path opens the network listener and registers `SIGINT`/`SIGTERM` listeners by default, so run it with both permissions:
+
+```bash
+deno run --allow-net --allow-signal main.ts
+```
+
+The adapter does not read environment variables. Add a scoped grant such as `--allow-env=PORT,DATABASE_URL` only when application code reads those keys. If the deployment host owns process signals, set `shutdownSignals: false` in `runDenoApplication(...)` and omit `--allow-signal`; the host must then coordinate application shutdown.
+
 For a host-owned `Deno.serve(...)`, bootstrap without `app.listen()` and create a handler from the public dispatcher.
 
 ```ts
