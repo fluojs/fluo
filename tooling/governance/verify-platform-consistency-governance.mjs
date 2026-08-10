@@ -776,6 +776,61 @@ function enforceDocsHubOfficialTransportLinks() {
   }
 }
 
+const denoManagedStartupCommand = 'deno run --allow-net --allow-signal main.ts';
+const outdatedDenoManagedStartupCommand = 'deno run --allow-net --allow-env main.ts';
+const denoPermissionGuidanceRequirements = [
+  [
+    'packages/platform-deno/README.md',
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'does not read environment variables'],
+  ],
+  [
+    'packages/platform-deno/README.ko.md',
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'environment variable을 읽지 않습니다'],
+  ],
+  [
+    'apps/docs/content/docs/guides/runtime-adapters.mdx',
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'does not read environment variables'],
+  ],
+  [
+    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'environment variable을 읽지 않습니다'],
+  ],
+  [
+    'book/intermediate/ch23-deno.md',
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'does not read environment variables'],
+  ],
+  [
+    'book/intermediate/ch23-deno.ko.md',
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'environment variable을 읽지 않습니다'],
+  ],
+  [
+    'docs/CONTEXT.md',
+    [denoManagedStartupCommand, '--allow-env=<keys>', 'shutdownSignals: false', 'does not require environment access'],
+  ],
+  [
+    'docs/CONTEXT.ko.md',
+    [denoManagedStartupCommand, '--allow-env=<keys>', 'shutdownSignals: false', 'environment 접근 권한이 필요하지 않'],
+  ],
+];
+
+export function enforceDenoPermissionGuidance(
+  readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
+) {
+  for (const [relativePath, requiredMarkers] of denoPermissionGuidanceRequirements) {
+    const content = readText(relativePath);
+    const missingMarkers = requiredMarkers.filter((marker) => !content.includes(marker));
+
+    assert(
+      missingMarkers.length === 0,
+      `${relativePath} must keep Deno permission guidance synchronized; missing: ${missingMarkers.join(', ')}.`,
+    );
+    assert(
+      !content.includes(outdatedDenoManagedStartupCommand),
+      `${relativePath} must not require --allow-env for the managed Deno adapter startup path.`,
+    );
+  }
+}
+
 const cloudflareWorkerFetchEnvMarkers = {
   english: [
     'cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers',
@@ -2238,6 +2293,7 @@ export function main() {
   enforceReleaseGovernancePublishSurfaceSync();
   enforceCanonicalPackageSurfaceSync();
   enforceDocsHubOfficialTransportLinks();
+  enforceDenoPermissionGuidance();
   enforceSerializerResponseOwnershipDocsSync();
   enforceCloudflareWorkersLifecycleDocsSync();
   enforcePlatformShellLifecycleContract();

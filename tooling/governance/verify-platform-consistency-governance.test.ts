@@ -74,6 +74,7 @@ async function loadGovernanceInternals() {
     changedFilesFromGit: (runCommand?: RunCommand, env?: { GITHUB_BASE_REF?: string }) => string[];
     enforceAdvancedBookCoreBoundaryCompanions: (changedFiles: string[]) => void;
     enforceContractCompanionUpdates: (changedFiles: string[]) => void;
+    enforceDenoPermissionGuidance: (readText?: (relativePath: string) => string) => void;
   };
 }
 
@@ -230,6 +231,22 @@ describe('enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices', () => {
         () => 'const encoded = new TextEncoder().encode(payload);\n',
       ),
     ).not.toThrow();
+  });
+});
+
+describe('enforceDenoPermissionGuidance', () => {
+  it('reports the first governed surface when Deno permission guidance is missing', async () => {
+    const { enforceDenoPermissionGuidance } = await loadGovernanceInternals();
+
+    expect(() => enforceDenoPermissionGuidance(() => '')).toThrowError(
+      /packages\/platform-deno\/README\.md/,
+    );
+  });
+
+  it('accepts synchronized managed startup and host-owned signal guidance', async () => {
+    const { enforceDenoPermissionGuidance } = await loadGovernanceInternals();
+
+    expect(() => enforceDenoPermissionGuidance()).not.toThrow();
   });
 });
 
