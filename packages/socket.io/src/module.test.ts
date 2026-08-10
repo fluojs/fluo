@@ -622,6 +622,67 @@ describe('@fluojs/socket.io', () => {
     }
   });
 
+  it.each([
+    {
+      createAdapter: ({ port }: { port: number }) => createNodejsAdapter({ port }),
+      name: 'Node-backed',
+    },
+    {
+      createAdapter: ({ port }: { port: number }) => new TestBunSocketIoAdapter(port),
+      name: 'Bun',
+    },
+  ])('rejects polling on the $name runtime when websocket is the only configured transport', async ({ createAdapter }) => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot({ transports: ['websocket'] })],
+    });
+
+    const adapter = createAdapter({ port: 0 });
+    const app = await FluoFactory.create(AppModule, { adapter });
+    let socket: ClientSocket | undefined;
+
+    try {
+      await app.listen();
+      const port = getBoundPortFromAdapter(adapter);
+
+      const activeSocket = createClient(`http://127.0.0.1:${String(port)}`, {
+        reconnection: false,
+        transports: ['polling'],
+      });
+      socket = activeSocket;
+      const outcome = await new Promise<'connect-error' | 'connected'>((resolve) => {
+        activeSocket.once('connect', () => resolve('connected'));
+        activeSocket.once('connect_error', () => resolve('connect-error'));
+      });
+
+      expect(outcome).toBe('connect-error');
+    } finally {
+      socket?.close();
+      await app.close();
+    }
+  });
+
+  it('rejects Bun polling handshakes whose query claims the websocket transport', async () => {
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot({ transports: ['websocket'] })],
+    });
+
+    const adapter = new TestBunSocketIoAdapter(0);
+    const app = await FluoFactory.create(AppModule, { adapter });
+
+    try {
+      await app.listen();
+      const port = getBoundPortFromAdapter(adapter);
+      const response = await fetch(`http://127.0.0.1:${String(port)}/socket.io/?EIO=4&transport=websocket`);
+
+      await response.arrayBuffer();
+      expect(response.status).toBe(403);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('passes Node-backed handshake request objects to connection and message guards at runtime', async () => {
     let connectionRequest: SocketIoHandshakeRequest | undefined;
     let handlerRequest: SocketIoHandshakeRequest | undefined;

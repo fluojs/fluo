@@ -135,7 +135,7 @@ SocketIoModule.forRoot({
 });
 ```
 
-`cors`를 생략하면 `@fluojs/socket.io`는 `{ credentials: false, origin: false }`를 기본값으로 사용하므로 cross-origin 노출은 명시적 opt-in이 필요합니다. `engine.maxHttpBufferSize`를 생략하면 어댑터가 1 MiB Engine.IO payload 상한을 적용합니다. 기본값에는 `buffer.maxPendingMessagesPerSocket: 128`, `buffer.overflowPolicy: 'drop-oldest'`, `shutdown.timeoutMs: 5000`도 포함됩니다. `buffer` 옵션은 socket 연결 후 connection handler가 준비되기 전에 들어온 inbound event를 제한하며, outbound emit이나 Socket.IO reconnect buffering을 제어하지 않습니다. 명시적인 `engine.maxHttpBufferSize`, `buffer.maxPendingMessagesPerSocket`, `shutdown.timeoutMs` 값은 양의 정수여야 하며, 잘못된 명시 값은 기본값으로 fallback하지 않고 모듈 등록 중 실패합니다.
+`cors`를 생략하면 `@fluojs/socket.io`는 `{ credentials: false, origin: false }`를 기본값으로 사용하므로 cross-origin 노출은 명시적 opt-in이 필요합니다. `engine.maxHttpBufferSize`를 생략하면 어댑터가 1 MiB Engine.IO payload 상한을 적용합니다. 기본값에는 `buffer.maxPendingMessagesPerSocket: 128`, `buffer.overflowPolicy: 'drop-oldest'`, `shutdown.timeoutMs: 5000`도 포함됩니다. `buffer` 옵션은 socket 연결 후 connection handler가 준비되기 전에 들어온 inbound event를 제한하며, outbound emit이나 Socket.IO reconnect buffering을 제어하지 않습니다. 설정한 `transports`는 Node-backed path와 Bun engine path 모두에서 적용되므로 목록에 없는 transport를 사용하는 client는 Engine.IO handshake 중 거부됩니다. 명시적인 `engine.maxHttpBufferSize`, `buffer.maxPendingMessagesPerSocket`, `shutdown.timeoutMs` 값은 양의 정수여야 하며, 잘못된 명시 값은 기본값으로 fallback하지 않고 모듈 등록 중 실패합니다.
 
 정적 `@WebSocketGateway({ path })` namespace는 fluo gateway discovery가 소유하며 Socket.IO dynamic child namespace로 취급하지 않습니다. 어댑터는 이러한 정적 namespace에 대해 Socket.IO의 `cleanupEmptyChildNamespaces` 동작을 비활성화합니다. 애플리케이션 코드가 raw `SOCKETIO_SERVER` 접근으로 dynamic child namespace를 만들면 해당 소유권과 cleanup 정책은 애플리케이션 수준 Socket.IO 통합이 담당합니다.
 
