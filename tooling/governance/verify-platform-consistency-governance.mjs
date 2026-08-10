@@ -777,7 +777,13 @@ function enforceDocsHubOfficialTransportLinks() {
 }
 
 const denoManagedStartupCommand = 'deno run --allow-net --allow-signal main.ts';
-const outdatedDenoManagedStartupCommand = 'deno run --allow-net --allow-env main.ts';
+const denoNativeDevCommand = 'deno run --watch --allow-env=PORT --allow-net --allow-signal src/main.ts';
+const denoCompileCommand = 'deno compile --allow-env=PORT --allow-net --allow-signal --output dist/app src/main.ts';
+const contradictoryDenoManagedCommandPatterns = [
+  /deno run --allow-net --allow-env main\.ts/u,
+  /deno run(?: --watch)? --allow-env --allow-net src\/main\.ts/u,
+  /deno compile --allow-env --allow-net --output dist\/app src\/main\.ts/u,
+];
 const denoPermissionGuidanceRequirements = [
   [
     'packages/platform-deno/README.md',
@@ -811,6 +817,16 @@ const denoPermissionGuidanceRequirements = [
     'docs/CONTEXT.ko.md',
     [denoManagedStartupCommand, '--allow-env=<keys>', 'shutdownSignals: false', 'environment 접근 권한이 필요하지 않'],
   ],
+  [
+    'packages/cli/src/new/scaffold.ts',
+    [denoNativeDevCommand, denoCompileCommand, "Deno.env.get('PORT')"],
+  ],
+  ['packages/cli/README.md', [denoNativeDevCommand, denoCompileCommand]],
+  ['packages/cli/README.ko.md', [denoNativeDevCommand, denoCompileCommand]],
+  ['docs/reference/toolchain-contract-matrix.md', [denoNativeDevCommand, denoCompileCommand]],
+  ['docs/reference/toolchain-contract-matrix.ko.md', [denoNativeDevCommand, denoCompileCommand]],
+  ['docs/architecture/dev-reload-architecture.md', [denoNativeDevCommand]],
+  ['docs/architecture/dev-reload-architecture.ko.md', [denoNativeDevCommand]],
 ];
 
 export function enforceDenoPermissionGuidance(
@@ -825,8 +841,8 @@ export function enforceDenoPermissionGuidance(
       `${relativePath} must keep Deno permission guidance synchronized; missing: ${missingMarkers.join(', ')}.`,
     );
     assert(
-      !content.includes(outdatedDenoManagedStartupCommand),
-      `${relativePath} must not require --allow-env for the managed Deno adapter startup path.`,
+      contradictoryDenoManagedCommandPatterns.every((pattern) => !pattern.test(content)),
+      `${relativePath} must not include contradictory unscoped Deno managed commands.`,
     );
   }
 }

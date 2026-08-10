@@ -243,6 +243,37 @@ describe('enforceDenoPermissionGuidance', () => {
     );
   });
 
+  it('governs CLI starter and toolchain permission surfaces in both locales', async () => {
+    const { enforceDenoPermissionGuidance } = await loadGovernanceInternals();
+    const requestedPaths = new Set<string>();
+
+    enforceDenoPermissionGuidance((relativePath) => {
+      requestedPaths.add(relativePath);
+      return readFileSync(join(repoRoot, relativePath), 'utf8');
+    });
+
+    expect([...requestedPaths]).toEqual(expect.arrayContaining([
+      'packages/cli/README.md',
+      'packages/cli/README.ko.md',
+      'docs/reference/toolchain-contract-matrix.md',
+      'docs/reference/toolchain-contract-matrix.ko.md',
+      'docs/architecture/dev-reload-architecture.md',
+      'docs/architecture/dev-reload-architecture.ko.md',
+    ]));
+  });
+
+  it('rejects contradictory unscoped Deno managed commands', async () => {
+    const { enforceDenoPermissionGuidance } = await loadGovernanceInternals();
+    const targetPath = 'packages/cli/README.md';
+
+    expect(() => enforceDenoPermissionGuidance((relativePath) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === targetPath
+        ? `${content}\n\`deno run --watch --allow-env --allow-net src/main.ts\`\n`
+        : content;
+    })).toThrowError(/packages\/cli\/README\.md.*contradictory/u);
+  });
+
   it('accepts synchronized managed startup and host-owned signal guidance', async () => {
     const { enforceDenoPermissionGuidance } = await loadGovernanceInternals();
 
