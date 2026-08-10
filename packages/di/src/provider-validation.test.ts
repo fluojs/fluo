@@ -22,6 +22,59 @@ function captureRegistrationError(provider: unknown): InvalidProviderError {
 
 describe('provider input validation', () => {
   it.each([
+    ['a number', 1],
+    ['a plain object', {}],
+    ['a non-constructable function', () => undefined],
+  ])('rejects %s as a provide token', (_kind, provide) => {
+    // Given
+    const provider = { provide, useValue: 'ready' };
+
+    // When
+    const error = captureRegistrationError(provider);
+
+    // Then
+    expect(error).toBeInstanceOf(InvalidProviderError);
+    expect(error).toMatchObject({ code: 'INVALID_PROVIDER' });
+    expect(error).toHaveProperty('message', expect.stringContaining('provide token'));
+  });
+
+  it.each([
+    ['a number', 1],
+    ['a plain object', {}],
+    ['a non-constructable function', () => undefined],
+  ])('rejects %s as a useExisting token', (_kind, useExisting) => {
+    // Given
+    const provider = { provide: Symbol('alias'), useExisting };
+
+    // When
+    const error = captureRegistrationError(provider);
+
+    // Then
+    expect(error).toBeInstanceOf(InvalidProviderError);
+    expect(error).toMatchObject({ code: 'INVALID_PROVIDER' });
+    expect(error).toHaveProperty('message', expect.stringContaining('useExisting'));
+  });
+
+  it.each([
+    ['a string', 'service'],
+    ['a symbol', Symbol('service')],
+    ['a constructable class', class Service {}],
+  ])('accepts %s token for provide and useExisting', (_kind, token) => {
+    // Given
+    const alias = Symbol('alias');
+    const container = new Container();
+
+    // When
+    const register = () => container.register(
+      { provide: token, useValue: 'ready' },
+      { provide: alias, useExisting: token },
+    );
+
+    // Then
+    expect(register).not.toThrow();
+  });
+
+  it.each([
     ['an empty array', []],
     ['undefined', undefined],
   ])('rejects a value provider when inject is declared as %s', (_kind, inject) => {
