@@ -76,7 +76,7 @@ const service = await container.resolve(UserService);
 - **request**: `createRequestScope()`마다 새로 생성됩니다.
 - **transient**: resolve할 때마다 새 인스턴스를 만듭니다.
 
-dispose 중에는 각 컨테이너가 자신이 소유한 살아 있는 request scope 자식을 먼저 재귀적으로 정리하므로, 루트가 아닌 request scope를 dispose해도 중첩 request scope를 닫은 뒤 자신의 request cache를 정리합니다. 이후 루트 dispose는 자식 dispose 중 하나 이상이 실패하더라도 루트가 소유한 singleton 정리를 계속 수행합니다. 자식/루트 dispose 실패가 여러 개 발생하면 `dispose()`는 모든 shutdown 실패를 확인할 수 있도록 `AggregateError`로 보고합니다.
+dispose 중에는 각 컨테이너가 single-provider cache와 multi-provider cache 전체에서 성공적으로 materialize된 cached instance를 실제 생성 순서의 역순으로 정리하므로, dependency보다 dependent를 먼저 종료합니다. 각 컨테이너는 자신이 소유한 살아 있는 request scope 자식을 먼저 재귀적으로 정리하므로, 루트가 아닌 request scope를 dispose해도 중첩 request scope를 닫은 뒤 자신의 request cache를 정리합니다. 이후 루트 dispose는 자식 dispose 중 하나 이상이 실패하더라도 루트가 소유한 singleton 정리를 계속 수행합니다. 자식/루트 dispose 실패가 여러 개 발생하면 `dispose()`는 모든 shutdown 실패를 확인할 수 있도록 `AggregateError`로 보고합니다.
 
 ### provider override
 
