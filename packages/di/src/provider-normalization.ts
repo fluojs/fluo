@@ -66,8 +66,8 @@ function isScope(value: unknown): value is Scope {
 }
 
 function assertProviderToken(provider: ProviderObjectInput): asserts provider is ValidatedProviderObject {
-  if (!('provide' in provider) || provider.provide == null) {
-    throw new InvalidProviderError('Provider object must include a non-null provide token.');
+  if (!('provide' in provider) || !isToken(provider.provide)) {
+    throw new InvalidProviderError('Provider object must include a string, symbol, or constructable class provide token.');
   }
 }
 
@@ -238,8 +238,8 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
   }
 
   if ('useExisting' in objectProvider) {
-    if (objectProvider.useExisting == null) {
-      throw new InvalidProviderError('Alias provider useExisting must be a non-null token.', { token: objectProvider.provide });
+    if (!isToken(objectProvider.useExisting)) {
+      throw new InvalidProviderError('Alias provider useExisting must be a string, symbol, or constructable class token.', { token: objectProvider.provide });
     }
 
     return freezeNormalizedProvider({
