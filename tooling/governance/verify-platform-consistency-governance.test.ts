@@ -14,6 +14,7 @@ import {
   enforcePlatformShellLifecycleContract,
   enforceReactClientSubpathContract,
   enforceReactPageCatalogContract,
+  enforceReactPageMetadataIdentityContract,
   enforceReactServerFunctionContract,
   isGovernedPackageSourcePath,
   parsePackageNamesFromFamilyTable,
@@ -130,6 +131,12 @@ describe('enforceReactClientSubpathContract', () => {
 describe('enforceReactPageCatalogContract', () => {
   it('keeps compiled React page diagnostics aligned across source and bilingual docs', () => {
     expect(() => enforceReactPageCatalogContract()).not.toThrow();
+  });
+});
+
+describe('enforceReactPageMetadataIdentityContract', () => {
+  it('keeps metadata replacement identity aligned across source, evidence, and bilingual docs', () => {
+    expect(() => enforceReactPageMetadataIdentityContract()).not.toThrow();
   });
 });
 

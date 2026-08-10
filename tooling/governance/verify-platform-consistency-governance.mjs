@@ -1988,6 +1988,40 @@ export function enforceReactClientSubpathContract() {
   );
 }
 
+export function enforceReactPageMetadataIdentityContract() {
+  const metadataSource = read('packages/react/src/page-metadata.ts');
+  const metadataTest = read('packages/react/src/page-metadata.test.ts');
+  const englishReadme = read('packages/react/README.md');
+  const koreanReadme = read('packages/react/README.ko.md');
+  const englishDecision = read('docs/architecture/react-page-render-policies.md');
+  const koreanDecision = read('docs/architecture/react-page-render-policies.ko.md');
+  const englishContext = read('docs/CONTEXT.md');
+  const koreanContext = read('docs/CONTEXT.ko.md');
+
+  assert(
+    metadataSource.includes("JSON.stringify(['name', meta.name])") &&
+      metadataSource.includes("JSON.stringify(['property', meta.property])"),
+    'React page metadata source must identify meta descriptors by the present name or property value without content.',
+  );
+  assert(
+    metadataTest.includes("{ content: 'base', name: 'description' }") &&
+      metadataTest.includes("{ content: 'base method', name: 'description' }"),
+    'React page metadata tests must cover later content replacing an earlier descriptor with the same name identity.',
+  );
+  assert(
+    englishReadme.includes('same `name` or `property`') &&
+      englishDecision.includes('`content` is not part of identity') &&
+      englishContext.includes('`content` is not part of identity'),
+    'English React metadata docs must identify meta descriptors by name or property and exclude content from identity.',
+  );
+  assert(
+    koreanReadme.includes('같은 `name` 또는 `property` identity') &&
+      koreanDecision.includes('`content`는 identity에 포함하지 않는다') &&
+      koreanContext.includes('`content`는 identity에 포함하지 않으므로'),
+    'Korean React metadata docs must identify meta descriptors by name or property and exclude content from identity.',
+  );
+}
+
 export function enforceReactServerFunctionContract() {
   const rscEntrypoint = read('packages/react/src/experimental/rsc.ts');
   const rootEntrypoint = read('packages/react/src/index.ts');
@@ -2356,6 +2390,7 @@ export function main() {
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices();
   enforceViteToolingDiscoverability();
   enforceReactPageCatalogContract();
+  enforceReactPageMetadataIdentityContract();
   enforceReactClientSubpathContract();
   enforceReactRscGraduationGovernance(changedFiles);
   enforceReactServerFunctionContract();
