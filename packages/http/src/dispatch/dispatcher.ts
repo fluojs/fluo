@@ -123,8 +123,6 @@ interface CompiledHandlerExecutionPlan {
 }
 
 interface FastPathHandlerRuntimeCache {
-  controller?: object;
-  controllerPromise?: Promise<object>;
   method?: (this: object, input: unknown, requestContext: RequestContext) => unknown;
 }
 
@@ -656,26 +654,6 @@ function resolveFastPathHandlerRuntimeCache(
   return compiled;
 }
 
-function resolveFastPathController(
-  handler: HandlerDescriptor,
-  controllerContainer: RequestScopeContainer,
-  runtimeCache: FastPathHandlerRuntimeCache,
-): object | Promise<object> {
-  if (runtimeCache.controller) {
-    return runtimeCache.controller;
-  }
-
-  runtimeCache.controllerPromise ??= controllerContainer.resolve(handler.controllerToken as Token<object>).then((controller) => {
-    runtimeCache.controller = controller;
-    return controller;
-  });
-  return runtimeCache.controllerPromise;
-}
-
-function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
-  return typeof value === 'object' && value !== null && 'then' in value && typeof value.then === 'function';
-}
-
 function isRequestObserver(value: RequestObserverLike): value is RequestObserver {
   return typeof value === 'object' && value !== null;
 }
@@ -962,8 +940,7 @@ async function tryFastPathExecution(
     handler,
     context.fastPathRuntimeCache,
   );
-  const controllerOrPromise = resolveFastPathController(handler, context.dispatchScope.container, runtimeCache);
-  const controller = isPromiseLike(controllerOrPromise) ? await controllerOrPromise : controllerOrPromise;
+  const controller = await context.dispatchScope.container.resolve(handler.controllerToken as Token<object>);
 
   const fastPathResult = await executeFastPath({
     binder: context.options.binder,
