@@ -1152,6 +1152,7 @@ describe('repository governance contracts', () => {
     const customAdapterKo = readFileSync(resolve(repoRoot, 'book/advanced/ch13-custom-adapter.ko.md'), 'utf8');
     const runtimeAdaptersGuide = readFileSync(resolve(repoRoot, 'apps/docs/content/docs/guides/runtime-adapters.mdx'), 'utf8');
     const runtimeAdaptersGuideKo = readFileSync(resolve(repoRoot, 'apps/docs/content/docs/guides/runtime-adapters.ko.mdx'), 'utf8');
+    const fastifyAdapterSource = readFileSync(resolve(repoRoot, 'packages/platform-fastify/src/adapter.ts'), 'utf8');
     const fastifyReadme = readFileSync(resolve(repoRoot, 'packages/platform-fastify/README.md'), 'utf8');
     const fastifyReadmeKo = readFileSync(resolve(repoRoot, 'packages/platform-fastify/README.ko.md'), 'utf8');
 
@@ -1204,6 +1205,11 @@ describe('repository governance contracts', () => {
     expect(fastifyReadme).toContain('starts listening before it resolves, installs shutdown registration');
     expect(fastifyReadme).toContain('returns the running application shell');
     expect(fastifyReadme).not.toContain('the caller still invokes');
+    expect(fastifyAdapterSource).toContain('awaits `listen()`');
+    expect(fastifyAdapterSource).toContain('only then returns the running application');
+    expect(fastifyAdapterSource).toContain('@returns A running application shell after listening succeeds and shutdown registration completes.');
+    expect(fastifyAdapterSource).not.toContain('callers only need to invoke `listen()`');
+    expect(fastifyAdapterSource).not.toContain('ready to listen');
 
     expect(fastifyReadmeKo).toContain('`shutdownTimeoutMs: 0`은 Fastify close를 즉시 시작');
     expect(fastifyReadmeKo).toContain('대기는 다음 timer turn에 timeout될 수 있지만');

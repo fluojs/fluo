@@ -1204,6 +1204,7 @@ function enforceCanonicalRuntimeMatrixReferences() {
   const i18nReadmeKo = readFileSync(join(repoRoot, 'packages/i18n/README.ko.md'), 'utf8');
   const drizzleReadme = readFileSync(join(repoRoot, 'packages/drizzle/README.md'), 'utf8');
   const drizzleReadmeKo = readFileSync(join(repoRoot, 'packages/drizzle/README.ko.md'), 'utf8');
+  const fastifyAdapterSource = readFileSync(join(repoRoot, 'packages/platform-fastify/src/adapter.ts'), 'utf8');
   const fastifyReadme = readFileSync(join(repoRoot, 'packages/platform-fastify/README.md'), 'utf8');
   const fastifyReadmeKo = readFileSync(join(repoRoot, 'packages/platform-fastify/README.ko.md'), 'utf8');
   const platformBunReadme = readFileSync(join(repoRoot, 'packages/platform-bun/README.md'), 'utf8');
@@ -1490,8 +1491,13 @@ function enforceCanonicalRuntimeMatrixReferences() {
       fastifyReadme.includes('the underlying Fastify close and cleanup continue') &&
       fastifyReadme.includes('starts listening before it resolves, installs shutdown registration') &&
       fastifyReadme.includes('returns the running application shell') &&
-      !fastifyReadme.includes('the caller still invokes'),
-    'Fastify README must document zero-timeout close ordering and run-helper-owned listening.',
+      !fastifyReadme.includes('the caller still invokes') &&
+      fastifyAdapterSource.includes('awaits `listen()`') &&
+      fastifyAdapterSource.includes('only then returns the running application') &&
+      fastifyAdapterSource.includes('@returns A running application shell after listening succeeds and shutdown registration completes.') &&
+      !fastifyAdapterSource.includes('callers only need to invoke `listen()`') &&
+      !fastifyAdapterSource.includes('ready to listen'),
+    'Fastify README and public TSDoc must document zero-timeout close ordering and run-helper-owned listening.',
   );
   assert(
     fastifyReadmeKo.includes('`shutdownTimeoutMs: 0`은 Fastify close를 즉시 시작') &&
