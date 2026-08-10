@@ -47,7 +47,8 @@ import { SocketIoModule } from '@fluojs/socket.io';
       },
       engine: {
         maxHttpBufferSize: 1_048_576, // 1 MiB limit
-      }
+      },
+      transports: ['websocket'],
     }),
   ],
   providers: [SupportChatGateway],
@@ -55,7 +56,7 @@ import { SocketIoModule } from '@fluojs/socket.io';
 export class ChatModule {}
 ```
 
-기본적으로 fluo는 CORS를 deny-by-default, 즉 `origin: false` 상태로 유지합니다. Cross-origin 브라우저 클라이언트를 허용하려면 허용된 origin 목록을 명시적으로 작성해야 합니다. `engine` 설정은 Engine.IO에 직접 매핑되며, production 안정성을 위해 payload size를 제한할 수 있게 합니다. Bun에서는 adapter가 같은 `engine.maxHttpBufferSize` 값을 HTTP request body limit와 WebSocket payload limit 양쪽에 매핑합니다. Bun은 이 두 host contract를 별도로 노출하기 때문입니다. 별도로 `buffer.maxPendingMessagesPerSocket`과 `buffer.overflowPolicy`는 socket 연결 후 connection handler가 준비되기 전에 수신한 inbound event를 제한하며, outbound emit이나 Socket.IO reconnect buffering을 제어하지 않습니다. 이런 기본값은 실시간 연결이 브라우저에서 오래 유지되는 특성을 고려한 안전한 출발점입니다.
+기본적으로 fluo는 CORS를 deny-by-default, 즉 `origin: false` 상태로 유지합니다. Cross-origin 브라우저 클라이언트를 허용하려면 허용된 origin 목록을 명시적으로 작성해야 합니다. `engine` 설정은 Engine.IO에 직접 매핑되며, production 안정성을 위해 payload size를 제한할 수 있게 합니다. `transports` allowlist는 Node-backed path와 Bun engine path 모두에서 적용되므로 client가 애플리케이션이 생략한 transport로 fallback할 수 없습니다. Bun에서는 adapter가 같은 `engine.maxHttpBufferSize` 값을 HTTP request body limit와 WebSocket payload limit 양쪽에 매핑합니다. Bun은 이 두 host contract를 별도로 노출하기 때문입니다. 별도로 `buffer.maxPendingMessagesPerSocket`과 `buffer.overflowPolicy`는 socket 연결 후 connection handler가 준비되기 전에 수신한 inbound event를 제한하며, outbound emit이나 Socket.IO reconnect buffering을 제어하지 않습니다. 이런 기본값은 실시간 연결이 브라우저에서 오래 유지되는 특성을 고려한 안전한 출발점입니다.
 
 ## 14.3 Room management with SocketIoRoomService
 

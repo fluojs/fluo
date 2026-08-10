@@ -47,7 +47,8 @@ import { SocketIoModule } from '@fluojs/socket.io';
       },
       engine: {
         maxHttpBufferSize: 1_048_576, // 1 MiB limit
-      }
+      },
+      transports: ['websocket'],
     }),
   ],
   providers: [SupportChatGateway],
@@ -55,7 +56,7 @@ import { SocketIoModule } from '@fluojs/socket.io';
 export class ChatModule {}
 ```
 
-By default, fluo keeps CORS deny by default, meaning `origin: false`. To allow cross origin browser clients, you must explicitly write the allowed origin list. The `engine` configuration maps directly to Engine.IO, letting you limit payload size for production stability. On Bun, the adapter maps the same `engine.maxHttpBufferSize` value into both the HTTP request body limit and the WebSocket payload limit because Bun exposes those host contracts separately. Separately, `buffer.maxPendingMessagesPerSocket` and `buffer.overflowPolicy` bound inbound events received after a socket connects but before its connection handlers become ready; they do not control outbound emits or Socket.IO reconnect buffering. These defaults are a safer starting point because realtime browser connections often stay open for a long time.
+By default, fluo keeps CORS deny by default, meaning `origin: false`. To allow cross origin browser clients, you must explicitly write the allowed origin list. The `engine` configuration maps directly to Engine.IO, letting you limit payload size for production stability. The `transports` allowlist is enforced on both Node-backed and Bun engine paths, so a client cannot fall back to a transport omitted by the application. On Bun, the adapter maps the same `engine.maxHttpBufferSize` value into both the HTTP request body limit and the WebSocket payload limit because Bun exposes those host contracts separately. Separately, `buffer.maxPendingMessagesPerSocket` and `buffer.overflowPolicy` bound inbound events received after a socket connects but before its connection handlers become ready; they do not control outbound emits or Socket.IO reconnect buffering. These defaults are a safer starting point because realtime browser connections often stay open for a long time.
 
 ## 14.3 Room management with SocketIoRoomService
 
