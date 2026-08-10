@@ -237,6 +237,16 @@ describe('RuntimePlatformShell', () => {
 
     await expect(shell.start()).rejects.toThrow('Platform component "queue.default" failed to start: start failed for queue.default');
 
+    const failedSnapshot = await shell.snapshot();
+    expect(failedSnapshot.diagnostics.map(({ cause, message }) => ({ cause, message }))).toEqual([
+      { cause: 'start failed for queue.default', message: 'Platform component failed during start.' },
+      { cause: 'stop failed for redis.default', message: 'Platform component failed during stop.' },
+      {
+        cause: 'One or more platform components failed to stop cleanly.',
+        message: 'Platform component failed during start-rollback.',
+      },
+    ]);
+
     await expect(shell.stop()).resolves.toBeUndefined();
 
     expect(events).toEqual([
