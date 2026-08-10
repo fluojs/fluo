@@ -56,7 +56,8 @@ duplicate는 `react-render-policy-duplicate-page-metadata`를 가진 bootstrap e
 Resolve된 값은 deterministic하게 compose한다.
 
 - 가장 가까운 non-`undefined` `title`이 우선한다.
-- `<meta>` identity는 `name`과 그 값 또는 `property`와 그 값이다.
+- `<meta>` identity는 존재하는 identity attribute(`name` 또는 `property`)와 해당 attribute의 값으로
+  구성하며, `content`는 identity에 포함하지 않는다.
 - `<link>` identity는 정확한 `rel`과 `href` pair다.
 - 같은 identity의 later descriptor는 earlier descriptor를 대체하고 later declaration 위치를 차지한다.
 - 관련 없는 descriptor는 factory 및 array order를 유지한다.
