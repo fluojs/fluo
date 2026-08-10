@@ -1197,6 +1197,20 @@ describe('repository governance contracts', () => {
     expect(runtimeAdaptersGuideKo).toContain('infrastructure boundary 뒤에서 Fastify를 일반 HTTP로 실행');
     expect(docsContext).toContain('apps/docs/content/docs/guides/runtime-adapters.mdx');
     expect(docsContextKo).toContain('apps/docs/content/docs/guides/runtime-adapters.ko.mdx');
+
+    expect(fastifyReadme).toContain('`shutdownTimeoutMs: 0` starts Fastify close immediately');
+    expect(fastifyReadme).toContain('the wait may time out on the next timer turn');
+    expect(fastifyReadme).toContain('the underlying Fastify close and cleanup continue');
+    expect(fastifyReadme).toContain('returns a shell prepared with shutdown registration');
+    expect(fastifyReadme).toContain('the caller still invokes `listen()`');
+    expect(fastifyReadme).toContain('the caller still invokes `app.listen()`');
+
+    expect(fastifyReadmeKo).toContain('`shutdownTimeoutMs: 0`은 Fastify close를 즉시 시작');
+    expect(fastifyReadmeKo).toContain('대기는 다음 timer turn에 timeout될 수 있지만');
+    expect(fastifyReadmeKo).toContain('기반 Fastify close와 cleanup은 계속 진행');
+    expect(fastifyReadmeKo).toContain('shutdown registration이 준비된 shell을 반환');
+    expect(fastifyReadmeKo).toContain('caller는 여전히 `listen()`을 호출');
+    expect(fastifyReadmeKo).toContain('caller는 여전히 `app.listen()`을 호출');
   });
 
   it('keeps Throttler guard activation and backing-store clock docs discoverable across governed docs', () => {
