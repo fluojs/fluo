@@ -158,6 +158,23 @@ describe('PassportJsAuthStrategy action timeout', () => {
     await expect(authentication).rejects.toThrow(AuthenticationRequiredError);
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it('cancels every in-flight authentication when application shutdown starts', async () => {
+    // Given
+    vi.useFakeTimers();
+    const strategy = new PassportJsAuthStrategy(new UnsettledStrategy());
+    const firstAuthentication = strategy.authenticate(createGuardContext());
+    const secondAuthentication = strategy.authenticate(createGuardContext());
+    const firstRejection = expect(firstAuthentication).rejects.toThrow(AuthenticationRequiredError);
+    const secondRejection = expect(secondAuthentication).rejects.toThrow(AuthenticationRequiredError);
+
+    // When
+    strategy.onApplicationShutdown();
+
+    // Then
+    await Promise.all([firstRejection, secondRejection]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });
 
 describe('PassportJsAuthStrategy terminal actions', () => {
