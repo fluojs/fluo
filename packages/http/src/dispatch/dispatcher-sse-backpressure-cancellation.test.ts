@@ -23,6 +23,7 @@ interface CancellationCase {
 }
 
 interface BackpressureResponseOptions {
+  readonly afterFailure?: () => void;
   readonly drainFailure?: Error;
   readonly onDrainStart?: () => void;
   readonly writeFailure?: Error;
@@ -136,13 +137,16 @@ function createBackpressureResponse(options: BackpressureResponseOptions = {}): 
       options.onDrainStart?.();
 
       if (options.drainFailure) {
-        return Promise.reject(options.drainFailure);
+        const rejectedDrain = Promise.reject(options.drainFailure);
+        options.afterFailure?.();
+        return rejectedDrain;
       }
 
       return blockedDrain;
     },
     write() {
       if (options.writeFailure) {
+        queueMicrotask(() => options.afterFailure?.());
         throw options.writeFailure;
       }
 
@@ -184,6 +188,7 @@ describe('managed SSE backpressure cancellation', () => {
       const drainStarted = new Promise<void>((resolve) => {
         startDrain = resolve;
       });
+      const onRequestError = vi.fn();
       const source: AsyncIterable<string> = {
         [Symbol.asyncIterator]() {
           return {
@@ -215,6 +220,7 @@ describe('managed SSE backpressure cancellation', () => {
       const dispatcher = createDispatcher({
         appMiddleware: [middleware],
         handlerMapping: createHandlerMapping([{ controllerToken: ManagedBlockedDrainController }]),
+        observers: [{ onRequestError }],
         rootContainer: root,
       });
       const request = createRequest('/managed-blocked-drain');
@@ -231,12 +237,14 @@ describe('managed SSE backpressure cancellation', () => {
       expect(response.stream.drainCalls).toBe(1);
       expect(response.stream.closeCalls).toBe(1);
       expect(iteratorCleanupCalls).toBe(1);
+      expect(onRequestError).not.toHaveBeenCalled();
       expect(root.requestScopeDisposeCount).toBe(1);
     },
   );
 
-  it.each(FAILURE_CASES)('preserves the original managed SSE $label error', async ({ createOptions, drainCalls, label }) => {
+  it.each(FAILURE_CASES)('preserves the original managed SSE $label error before a later abort', async ({ createOptions, drainCalls, label }) => {
     // Given
+    const abortController = new AbortController();
     const failure = new Error(`${label} failed`);
     const onRequestError = vi.fn();
 
@@ -254,12 +262,18 @@ describe('managed SSE backpressure cancellation', () => {
       observers: [{ onRequestError }],
       rootContainer: root,
     });
-    const response = createBackpressureResponse(createOptions(failure));
+    const request = createRequest('/managed-backpressure-error');
+    request.signal = abortController.signal;
+    const response = createBackpressureResponse({
+      ...createOptions(failure),
+      afterFailure: () => abortController.abort(new Error('client disconnected')),
+    });
 
     // When
-    await dispatcher.dispatch(createRequest('/managed-backpressure-error'), response);
+    await dispatcher.dispatch(request, response);
 
     // Then
+    expect(request.signal.aborted).toBe(true);
     expect(onRequestError).toHaveBeenCalledWith(expect.any(Object), failure);
     expect(response.stream.drainCalls).toBe(drainCalls);
     expect(response.stream.closeCalls).toBe(1);

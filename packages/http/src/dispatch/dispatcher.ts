@@ -139,6 +139,16 @@ class ManagedSseCleanupError extends Error {
   }
 }
 
+class ManagedSseOperationError extends Error {
+  readonly operationError: unknown;
+
+  constructor(operationError: unknown) {
+    super('Managed SSE operation failed.', { cause: operationError });
+    this.name = 'ManagedSseOperationError';
+    this.operationError = operationError;
+  }
+}
+
 function logDispatchFailure(
   logger: DispatcherLogger | undefined,
   message: string,
@@ -619,6 +629,8 @@ async function writeManagedSseIterable(
         }
       }
     }
+  } catch (error) {
+    throw new ManagedSseOperationError(error);
   } finally {
     sse.close();
 
@@ -1045,9 +1057,18 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
 
 async function handleDispatchError(context: DispatchPhaseContext, error: unknown): Promise<void> {
   const managedSseCleanupFailed = error instanceof ManagedSseCleanupError;
-  const dispatchError = managedSseCleanupFailed ? error.cleanupError : error;
+  const managedSseOperationFailed = error instanceof ManagedSseOperationError;
+  const dispatchError = managedSseCleanupFailed
+    ? error.cleanupError
+    : managedSseOperationFailed
+      ? error.operationError
+      : error;
 
-  if (!managedSseCleanupFailed && (error instanceof RequestAbortedError || isRequestAborted(context.requestContext.request))) {
+  if (
+    !managedSseCleanupFailed
+    && !managedSseOperationFailed
+    && (error instanceof RequestAbortedError || isRequestAborted(context.requestContext.request))
+  ) {
     return;
   }
 
