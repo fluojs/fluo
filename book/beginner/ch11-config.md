@@ -329,7 +329,7 @@ Sometimes you may want to provide a feature only when a specific configuration k
 For example, if you have an optional feature called analytics tracking, you can set it to `false` by default in code. Then service layers can always work with a boolean value instead of handling `undefined` or `null` throughout the codebase. This Safe Default pattern simplifies code and makes it more resilient.
 
 ### Environment Variable Interpolation
-Sometimes one configuration value depends on another. For example, `LOG_PATH` may be relative to `APP_ROOT`. The default dotenv-backed parser expands interpolation such as `${APP_ROOT}/logs` inside env files, so simple dotenv-style references work without custom parsing. For more complex derived values, prefer handling the transformation explicitly in a `ConfigModule` factory or validation step. This keeps the logic clear and makes debugging easier.
+Sometimes one configuration value depends on another. For example, `LOG_PATH` may be relative to `APP_ROOT`. The default dotenv-backed parser expands interpolation such as `${APP_ROOT}/logs` inside env files, so simple dotenv-style references work without custom parsing. For more complex derived values, calculate the final values in application-owned bootstrap code before module registration, then pass them to the synchronous `ConfigModule.forRoot(...)` call through `defaults`, `processEnv`, or `runtimeOverrides`. `ConfigModule` does not expose a factory extension point.
 
 Keeping complex interpolation explicit preserves configuration predictability and avoids problems caused by hard-to-debug string replacement rules. Handling those transformations in TypeScript also gives you full type safety and lets you use standard string manipulation functions.
 
@@ -344,7 +344,7 @@ Most configuration is loaded at startup, but some applications may need to chang
 However, dynamic reloading should be used carefully because it can introduce race conditions and make application state harder to reason about. In most cases, rolling restarts of containers are a safer and more predictable way to propagate configuration changes in production.
 
 ### Auditing Configuration Access
-For security-sensitive applications, you may want to audit which services access specific configuration keys, especially secrets. You can implement this by wrapping `ConfigService` or using fluo's internal hooks to record every call to `get` and `getOrThrow`. This provides a clear audit trail for how sensitive data moves through the system.
+For security-sensitive applications, you may want to audit which services access specific configuration keys, especially secrets. Register an application-owned facade or provider that injects `ConfigService`, records approved reads, and delegates to `get` or `getOrThrow`; sensitive consumers should inject that facade instead of reading `ConfigService` directly. `ConfigService` does not expose an internal read-audit hook.
 
 Auditing access to secrets is a core requirement in many regulatory frameworks, such as SOC2 and PCI-DSS. Building this capability into the configuration layer makes those requirements easier to satisfy and helps ensure the long-term security of backend infrastructure.
 
