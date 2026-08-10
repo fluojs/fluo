@@ -50,7 +50,7 @@ const app = await fluoFactory.create(AppModule, {
 await app.listen();
 ```
 
-`createFastifyAdapter()`는 기본 port로 `3000`을 사용하며 `process.env.PORT`를 읽지 않습니다. `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs` 같은 잘못된 explicit numeric option은 adapter setup 중 throw됩니다. `maxBodySize`와 `shutdownTimeoutMs`는 음수가 아닌 정수 byte/time limit이므로 `0`도 유효합니다. `maxBodySize: 0`은 빈 request body만 허용하고, `shutdownTimeoutMs: 0`은 다음 timer turn에 Fastify close가 timeout되도록 요청합니다.
+`createFastifyAdapter()`는 기본 port로 `3000`을 사용하며 `process.env.PORT`를 읽지 않습니다. `port`, `maxBodySize`, `retryDelayMs`, `retryLimit`, `shutdownTimeoutMs` 같은 잘못된 explicit numeric option은 adapter setup 중 throw됩니다. `maxBodySize`와 `shutdownTimeoutMs`는 음수가 아닌 정수 byte/time limit이므로 `0`도 유효합니다. `maxBodySize: 0`은 빈 request body만 허용하고, `shutdownTimeoutMs: 0`은 Fastify close를 즉시 시작합니다. `0`은 대기 시간만 제한하므로 close가 아직 settle되지 않았다면 대기는 다음 timer turn에 timeout될 수 있지만, 기반 Fastify close와 cleanup은 계속 진행됩니다.
 
 ## 주요 패턴
 
@@ -74,10 +74,10 @@ await app.listen();
 
 Adapter를 만들기 전에 certificate는 애플리케이션 configuration 또는 secret-management boundary에서 로드하세요. 이 패키지는 certificate file, `process.env`, `PORT`를 직접 읽지 않습니다. Load balancer, ingress, API gateway가 TLS를 종료한다면 `https`를 설정하지 말고 해당 infrastructure 뒤에서 Fastify adapter를 일반 HTTP로 실행하세요.
 
-`bootstrapFastifyApplication(...)`과 `runFastifyApplication(...)`도 같은 `https`, `host`, `port` option을 받습니다.
+`bootstrapFastifyApplication(...)`과 `runFastifyApplication(...)`도 같은 `https`, `host`, `port` option을 받습니다. `runFastifyApplication(...)`은 shutdown registration이 준비된 shell을 반환하며, caller는 여전히 `listen()`을 호출합니다.
 
 ```typescript
-await runFastifyApplication(AppModule, {
+const app = await runFastifyApplication(AppModule, {
   host: '127.0.0.1',
   https: {
     cert: tlsCertificate,
@@ -85,6 +85,8 @@ await runFastifyApplication(AppModule, {
   },
   port: 3443,
 });
+
+await app.listen();
 ```
 
 ### 멀티파트 및 Raw Body
@@ -189,13 +191,13 @@ fluo의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 어
 
 `packages/platform-fastify/src/adapter.test.ts`는 문서화된 Fastify 어댑터 계약을 위한 package-local regression target입니다. 이 파일은 공유 `createHttpAdapterPortabilityHarness(...)` 검사를 실행하여 malformed cookie 보존, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body 제외, multipart total-size 기본값, SSE framing, response stream drain settlement, host 및 HTTPS startup logging, shutdown signal listener cleanup을 확인합니다.
 
-같은 파일은 Fastify 전용 native route registration과 wildcard fallback, duplicate shape route fallback, concurrent/repeated `listen()` idempotency, shutdown 중 startup retry cancellation, adapter reuse 시 native descriptor refresh, explicit `OPTIONS` route ownership, middleware/guard/interceptor/observer ordering, CORS ownership, global prefix behavior, malformed cookie preservation, response serialization parity, raw-body pre-parsing behavior, zero-valued body/shutdown limit, 대소문자 구분 없는 multipart detection, multipart limit handling도 함께 다룹니다. startup, routing, adapter portability behavior를 변경할 때는 README 예제 포인터를 이 테스트 파일 및 custom adapter book chapter와 맞추어 유지하세요.
+같은 파일은 Fastify 전용 native route registration과 wildcard fallback, duplicate shape route fallback, concurrent/repeated `listen()` idempotency, shutdown 중 startup retry cancellation, adapter reuse 시 native descriptor refresh, explicit `OPTIONS` route ownership, middleware/guard/interceptor/observer ordering, CORS ownership, global prefix behavior, malformed cookie preservation, response serialization parity, raw-body pre-parsing behavior, zero-valued body/shutdown limit, 기반 Fastify close를 계속 in-flight 상태로 두는 close 대기 timeout, 대소문자 구분 없는 multipart detection, multipart limit handling도 함께 다룹니다. startup, routing, adapter portability behavior를 변경할 때는 README 예제 포인터를 이 테스트 파일 및 custom adapter book chapter와 맞추어 유지하세요.
 
 ## 공개 API 개요
 
 - `createFastifyAdapter(options, multipartOptions?)`: Fastify 어댑터를 위한 권장 팩토리입니다. `options`에는 `host`, `port`, Node.js `https` server option 같은 transport startup knob이 포함됩니다. 선택적 두 번째 인자는 직접 어댑터를 생성할 때 `maxFileSize`, `maxFiles`, `maxTotalSize` 같은 multipart 제한을 설정합니다.
 - `bootstrapFastifyApplication(module, options)`: 암시적 리스닝 없이 수행하는 고급 부트스트랩입니다. Host가 bind 전에 앱을 구성해야 할 때 `https`를 포함한 같은 Fastify startup option을 받습니다.
-- `runFastifyApplication(module, options)`: 생명주기 관리를 포함한 빠른 시작 헬퍼이며 같은 `https` startup surface를 제공합니다. timeout/실패 시에는 해당 상태를 로그와 `process.exitCode`로 보고하고, 최종 프로세스 종료는 주변 호스트에 맡깁니다.
+- `runFastifyApplication(module, options)`: shutdown registration과 같은 `https` startup surface가 준비된 bootstrapped application shell을 반환하며, caller는 여전히 `app.listen()`을 호출합니다. Signal 기반 shutdown timeout/실패 시에는 해당 상태를 로그와 `process.exitCode`로 보고하고, 최종 프로세스 종료는 주변 호스트에 맡깁니다.
 - `isFastifyMultipartTooLargeError(error)`: Fastify error shape 전반에서 multipart limit error를 감지합니다.
 - `FastifyHttpApplicationAdapter`: 핵심 어댑터 구현 클래스입니다.
 - Option type: `FastifyAdapterOptions`, `BootstrapFastifyApplicationOptions`, `RunFastifyApplicationOptions`, `CorsInput`, `FastifyApplicationSignal`.
