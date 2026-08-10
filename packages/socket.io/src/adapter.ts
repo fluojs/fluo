@@ -115,6 +115,7 @@ interface BunEngineCorsOptions {
 }
 
 interface BunEngineOptions {
+  allowRequest?: (request: Request) => Promise<void>;
   cors?: BunEngineCorsOptions;
   maxHttpBufferSize?: number;
   path: string;
@@ -619,6 +620,19 @@ export class SocketIoLifecycleService
 
     options.cors = normalizeCorsForBunEngine(this.resolveCorsOptions());
     options.maxHttpBufferSize = this.resolveMaxHttpBufferSize();
+
+    if (this.moduleOptions.transports !== undefined) {
+      const allowedTransports = this.moduleOptions.transports;
+      options.allowRequest = (request) => {
+        const transport = request.headers.has('upgrade') ? 'websocket' : 'polling';
+
+        if (!allowedTransports.includes(transport)) {
+          return Promise.reject(new Error(`Socket.IO transport "${transport}" is disabled by configuration.`));
+        }
+
+        return Promise.resolve();
+      };
+    }
 
     return options;
   }

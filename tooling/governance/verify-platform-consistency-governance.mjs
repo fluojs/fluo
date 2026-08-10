@@ -661,7 +661,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // Node.js runtime-floor/dependency alignment, unsupported non-Node targets,
   // and server-backed WebSocket migration boundaries, plus JWT refresh-token
   // family-scoped reuse revocation, subject-wide compatibility fallback, and
-  // consume-only rotation regression coverage, plus WebSocket room injection
+  // consume-only rotation regression coverage, plus Socket.IO configured-transport
+  // enforcement parity across Node-backed and Bun engine paths, plus WebSocket room injection
   // token discoverability (WebSocketRoomService as a type-only contract injected
   // via @Inject(...) with root WebSocketGatewayLifecycleService, explicit Node
   // NodeWebSocketGatewayLifecycleService, or the matching runtime-subpath token)
