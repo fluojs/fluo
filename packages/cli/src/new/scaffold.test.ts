@@ -656,7 +656,9 @@ describe('scaffoldBootstrapApp', () => {
       '@fluojs/platform-deno': expect.any(String),
       '@fluojs/runtime': expect.any(String),
     });
-    expect(packageJson.scripts?.build).toBe('deno compile --allow-env --allow-net --output dist/app src/main.ts');
+    expect(packageJson.scripts?.build).toBe(
+      'deno compile --allow-env=PORT --allow-net --allow-signal --output dist/app src/main.ts',
+    );
     expect(packageJson.scripts?.dev).toBe('fluo dev');
     expect(packageJson.scripts?.start).toBe('./dist/app');
     expect(packageJson.devDependencies).not.toHaveProperty('vitest');
@@ -664,10 +666,15 @@ describe('scaffoldBootstrapApp', () => {
     expect(readme).toContain('defaulting to Deno\'s native watch loop');
     expect(readme).toContain('fluo dev --runner fluo');
     expect(readme).toContain('Deno-native production commands');
+    expect(readme).toContain('deno run --watch --allow-env=PORT --allow-net --allow-signal src/main.ts');
+    expect(readme).toContain(
+      'deno compile --allow-env=PORT --allow-net --allow-signal --output dist/app src/main.ts',
+    );
     expect(readme).toContain('./dist/app');
     expect(appFile).toContain("Deno.env.toObject()");
     expect(appFile).toContain("'./greeting/greeting.module.ts'");
     expect(mainFile).toContain("import { AppModule } from './app.ts';");
+    expect(mainFile).toContain("Deno.env.get('PORT')");
     expect(appTestFile).toContain('Deno.test');
   });
 
