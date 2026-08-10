@@ -124,6 +124,8 @@ The bridge settles each Passport.js strategy execution exactly once. A strategy 
 
 `actionTimeoutMs` defaults to `30_000` milliseconds and must be a non-negative finite number. Set it to `0` to schedule timeout settlement on the next timer turn. Negative, `NaN`, and infinite values throw `RangeError` when the bridge strategy is constructed instead of disabling the settlement bound.
 
+Application shutdown cancels every in-flight bridge execution, clears its action timeout, and rejects the pending authentication instead of retaining request state through the configured timeout.
+
 ### Cookie Auth Preset
 
 Use `CookieAuthModule.forRoot(...)` when your app authenticates requests from HTTP cookies.

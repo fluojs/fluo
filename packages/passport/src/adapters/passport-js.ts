@@ -2,6 +2,7 @@
 import type { Token } from '@fluojs/core';
 import type { Provider } from '@fluojs/di';
 import type { GuardContext, Principal } from '@fluojs/http';
+import type { OnApplicationShutdown } from '@fluojs/runtime';
 
 import { AuthenticationFailedError, AuthenticationRequiredError } from '../errors.js';
 import { normalizePrincipalScopes } from '../scope.js';
@@ -191,9 +192,10 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
  *
  * @throws {RangeError} When `actionTimeoutMs` is negative or non-finite.
  */
-export class PassportJsAuthStrategy implements AuthStrategy {
+export class PassportJsAuthStrategy implements AuthStrategy, OnApplicationShutdown {
   private readonly actionTimeoutMs: number;
-  private readonly requestState = new WeakMap<PassportJsExecutableStrategy, PassportJsRequestState>();
+  private readonly requestState = new Map<PassportJsExecutableStrategy, PassportJsRequestState>();
+  private acceptingAuthentications = true;
 
   constructor(
     private readonly strategyTemplate: PassportJsStrategyLike,
@@ -209,6 +211,12 @@ export class PassportJsAuthStrategy implements AuthStrategy {
   }
 
   authenticate(context: GuardContext): Promise<Principal | AuthHandledResult> {
+    if (!this.acceptingAuthentications) {
+      return Promise.reject(
+        new AuthenticationRequiredError('Passport strategy authentication was cancelled during application shutdown.'),
+      );
+    }
+
     const response = context.requestContext.response;
     const request = context.requestContext.request.raw ?? context.requestContext.request;
     const strategy = this.createExecutableStrategy();
@@ -266,6 +274,19 @@ export class PassportJsAuthStrategy implements AuthStrategy {
         this.settle(strategy, () => reject(error));
       }
     });
+  }
+
+  /** Cancels every unsettled Passport.js execution when application shutdown starts. */
+  onApplicationShutdown(): void {
+    this.acceptingAuthentications = false;
+
+    for (const strategy of this.requestState.keys()) {
+      this.settle(strategy, (state) => {
+        state.reject(
+          new AuthenticationRequiredError('Passport strategy authentication was cancelled during application shutdown.'),
+        );
+      });
+    }
   }
 
   private createExecutableStrategy(): PassportJsExecutableStrategy {
