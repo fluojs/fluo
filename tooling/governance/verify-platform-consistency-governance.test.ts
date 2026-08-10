@@ -74,6 +74,7 @@ async function loadGovernanceInternals() {
     changedFilesFromGit: (runCommand?: RunCommand, env?: { GITHUB_BASE_REF?: string }) => string[];
     enforceAdvancedBookCoreBoundaryCompanions: (changedFiles: string[]) => void;
     enforceContractCompanionUpdates: (changedFiles: string[]) => void;
+    enforceDenoPermissionGuidance: (readText?: (relativePath: string) => string) => void;
   };
 }
 
@@ -230,6 +231,81 @@ describe('enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices', () => {
         () => 'const encoded = new TextEncoder().encode(payload);\n',
       ),
     ).not.toThrow();
+  });
+});
+
+describe('enforceDenoPermissionGuidance', () => {
+  it('reports the first governed surface when Deno permission guidance is missing', async () => {
+    const { enforceDenoPermissionGuidance } = await loadGovernanceInternals();
+
+    expect(() => enforceDenoPermissionGuidance(() => '')).toThrowError(
+      /packages\/platform-deno\/README\.md/,
+    );
+  });
+
+  it('governs managed and CLI permission surfaces in both locales', async () => {
+    const { enforceDenoPermissionGuidance } = await loadGovernanceInternals();
+    const requestedPaths = new Set<string>();
+
+    enforceDenoPermissionGuidance((relativePath) => {
+      requestedPaths.add(relativePath);
+      return readFileSync(join(repoRoot, relativePath), 'utf8');
+    });
+
+    expect([...requestedPaths]).toEqual(expect.arrayContaining([
+      'packages/platform-deno/README.md',
+      'packages/platform-deno/README.ko.md',
+      'apps/docs/content/docs/guides/runtime-adapters.mdx',
+      'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+      'book/intermediate/ch23-deno.md',
+      'book/intermediate/ch23-deno.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'packages/cli/src/new/scaffold.ts',
+      'packages/cli/README.md',
+      'packages/cli/README.ko.md',
+      'docs/reference/toolchain-contract-matrix.md',
+      'docs/reference/toolchain-contract-matrix.ko.md',
+      'docs/architecture/dev-reload-architecture.md',
+      'docs/architecture/dev-reload-architecture.ko.md',
+    ]));
+  });
+
+  it('rejects the nonexistent Deno signal permission flag', async () => {
+    const { enforceDenoPermissionGuidance } = await loadGovernanceInternals();
+    const targetPath = 'packages/platform-deno/README.md';
+    const nonexistentSignalPermission = ['--allow', 'signal'].join('-');
+
+    expect(() => enforceDenoPermissionGuidance((relativePath) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === targetPath
+        ? content.replace(
+          'deno run --allow-net main.ts',
+          `deno run --allow-net ${nonexistentSignalPermission} main.ts`,
+        )
+        : content;
+    })).toThrowError(/packages\/platform-deno\/README\.md.*permission guidance synchronized/u);
+  });
+
+  it('rejects narrowed environment access for the generated Deno application', async () => {
+    const { enforceDenoPermissionGuidance } = await loadGovernanceInternals();
+    const targetPath = 'packages/cli/README.md';
+
+    expect(() => enforceDenoPermissionGuidance((relativePath) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === targetPath
+        ? content.replace(
+          'deno run --watch --allow-env --allow-net src/main.ts',
+          'deno run --watch --allow-env=PORT --allow-net src/main.ts',
+        )
+        : content;
+    })).toThrowError(/packages\/cli\/README\.md.*permission guidance synchronized/u);
+  });
+
+  it('accepts synchronized managed startup, application env, and host-owned signal guidance', async () => {
+    const { enforceDenoPermissionGuidance } = await loadGovernanceInternals();
+
+    expect(() => enforceDenoPermissionGuidance()).not.toThrow();
   });
 });
 

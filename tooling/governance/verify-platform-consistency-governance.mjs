@@ -776,6 +776,77 @@ function enforceDocsHubOfficialTransportLinks() {
   }
 }
 
+const denoManagedStartupCommand = 'deno run --allow-net main.ts';
+const denoNativeDevCommand = 'deno run --watch --allow-env --allow-net src/main.ts';
+const denoCompileCommand = 'deno compile --allow-env --allow-net --output dist/app src/main.ts';
+const invalidDenoPermissionPatterns = [
+  /deno run --allow-net --allow-env main\.ts/u,
+  /deno run(?: --watch)? --allow-env=PORT --allow-net src\/main\.ts/u,
+  /deno compile --allow-env=PORT --allow-net --output dist\/app src\/main\.ts/u,
+];
+const denoPermissionGuidanceRequirements = [
+  [
+    'packages/platform-deno/README.md',
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'does not read environment variables', 'does not require a separate Deno permission'],
+  ],
+  [
+    'packages/platform-deno/README.ko.md',
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'environment variable을 읽지 않습니다', '별도의 Deno permission이 필요하지 않'],
+  ],
+  [
+    'apps/docs/content/docs/guides/runtime-adapters.mdx',
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'does not read environment variables', 'does not require a separate Deno permission'],
+  ],
+  [
+    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'environment variable을 읽지 않습니다', '별도의 Deno permission이 필요하지 않'],
+  ],
+  [
+    'book/intermediate/ch23-deno.md',
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'does not read environment variables', 'does not require a separate Deno permission'],
+  ],
+  [
+    'book/intermediate/ch23-deno.ko.md',
+    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownSignals: false', 'environment variable을 읽지 않습니다', '별도의 Deno permission이 필요하지 않'],
+  ],
+  [
+    'docs/CONTEXT.md',
+    [denoManagedStartupCommand, '--allow-env=<keys>', 'shutdownSignals: false', 'does not require environment access', 'does not require a separate Deno permission'],
+  ],
+  [
+    'docs/CONTEXT.ko.md',
+    [denoManagedStartupCommand, '--allow-env=<keys>', 'shutdownSignals: false', 'environment 접근 권한이 필요하지 않', '별도의 Deno permission이 필요하지 않'],
+  ],
+  [
+    'packages/cli/src/new/scaffold.ts',
+    [denoNativeDevCommand, denoCompileCommand, 'Deno.env.toObject()'],
+  ],
+  ['packages/cli/README.md', [denoNativeDevCommand, denoCompileCommand]],
+  ['packages/cli/README.ko.md', [denoNativeDevCommand, denoCompileCommand]],
+  ['docs/reference/toolchain-contract-matrix.md', [denoNativeDevCommand, denoCompileCommand]],
+  ['docs/reference/toolchain-contract-matrix.ko.md', [denoNativeDevCommand, denoCompileCommand]],
+  ['docs/architecture/dev-reload-architecture.md', [denoNativeDevCommand]],
+  ['docs/architecture/dev-reload-architecture.ko.md', [denoNativeDevCommand]],
+];
+
+export function enforceDenoPermissionGuidance(
+  readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
+) {
+  for (const [relativePath, requiredMarkers] of denoPermissionGuidanceRequirements) {
+    const content = readText(relativePath);
+    const missingMarkers = requiredMarkers.filter((marker) => !content.includes(marker));
+
+    assert(
+      missingMarkers.length === 0,
+      `${relativePath} must keep Deno permission guidance synchronized; missing: ${missingMarkers.join(', ')}.`,
+    );
+    assert(
+      invalidDenoPermissionPatterns.every((pattern) => !pattern.test(content)),
+      `${relativePath} must not include invalid Deno permission syntax or narrow generated application env access.`,
+    );
+  }
+}
+
 const cloudflareWorkerFetchEnvMarkers = {
   english: [
     'cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers',
@@ -2273,6 +2344,7 @@ export function main() {
   enforceReleaseGovernancePublishSurfaceSync();
   enforceCanonicalPackageSurfaceSync();
   enforceDocsHubOfficialTransportLinks();
+  enforceDenoPermissionGuidance();
   enforceSerializerResponseOwnershipDocsSync();
   enforceCloudflareWorkersLifecycleDocsSync();
   enforcePlatformShellLifecycleContract();
