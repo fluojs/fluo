@@ -102,6 +102,27 @@ describe('@fluojs/i18n/icu MessageFormat subpath', () => {
     ).toBe('2 fallback items');
   });
 
+  it('formats missing-message ICU patterns with requested values and locale', () => {
+    // Given
+    const service = createIcuI18n({
+      defaultLocale: 'en',
+      missingMessage: ({ locale }) =>
+        locale === 'ar'
+          ? '{count, plural, zero {No notifications for {name}} one {One notification for {name}} other {# notifications for {name}}}'
+          : undefined,
+      supportedLocales: ['en', 'ar'],
+    });
+
+    // When
+    const message = service.translate('notifications', {
+      locale: 'ar',
+      values: { count: 0, name: 'Mina' },
+    });
+
+    // Then
+    expect(message).toBe('No notifications for Mina');
+  });
+
   it('formats fallback catalog messages with the locale that supplied the message', () => {
     const service = createIcuI18n({
       catalogs: {
