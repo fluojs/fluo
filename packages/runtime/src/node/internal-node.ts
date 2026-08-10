@@ -193,14 +193,11 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
 
   async close(): Promise<void> {
     const server = this.server;
-    await this.listenLifecycle.cancel();
-
-    if (!server.listening) {
-      this.dispatcher = undefined;
-      return;
-    }
-
-    await closeNodeServerWithDrain(server, this.sockets, this.shutdownTimeoutMs);
+    await this.listenLifecycle.close(async () => {
+      if (server.listening) {
+        await closeNodeServerWithDrain(server, this.sockets, this.shutdownTimeoutMs);
+      }
+    });
 
     this.dispatcher = undefined;
   }

@@ -15,7 +15,7 @@ describe('runtime internal node seam', () => {
     expect(publicNodeApi).not.toHaveProperty('createNodeResponseCompression');
   });
 
-  it('cancels an address-in-use retry when close starts before the port becomes available', async () => {
+  it('rejects cancelled listen settlement re-entry until close completes', async () => {
     // Given: a real occupied port and a Node adapter waiting to retry that port.
     const blocker = createServer();
     await new Promise<void>((resolve, reject) => {
@@ -51,9 +51,24 @@ describe('runtime internal node seam', () => {
         resolve();
       });
     });
-    const listenResult = Promise.resolve(adapter.listen({ async dispatch() {} })).then(
+    let markReentryAttempted: () => void;
+    const reentryAttempted = new Promise<void>((resolve) => {
+      markReentryAttempted = resolve;
+    });
+    const listenAttempt = Promise.resolve(adapter.listen({ async dispatch() {} }));
+    const listenResult = listenAttempt.then(
       () => 'listened' as const,
       (error: unknown) => error,
+    );
+    const reenteredListenResult = listenAttempt.then(
+      () => 'initial-listened' as const,
+      () => {
+        markReentryAttempted();
+        return Promise.resolve(adapter.listen({ async dispatch() {} })).then(
+          () => 'reentered-listened' as const,
+          (error: unknown) => error,
+        );
+      },
     );
 
     try {
@@ -64,7 +79,9 @@ describe('runtime internal node seam', () => {
       );
 
       // When: shutdown completes while the retry delay still owns the pending startup.
-      await expect(adapter.close()).resolves.toBeUndefined();
+      const closeInFlight = adapter.close();
+      await reentryAttempted;
+      await expect(closeInFlight).resolves.toBeUndefined();
       await new Promise<void>((resolve, reject) => {
         blocker.close((error) => {
           if (error) {
@@ -80,7 +97,12 @@ describe('runtime internal node seam', () => {
       const result = await listenResult;
       expect(result).toBeInstanceOf(Error);
       await expect(overlappingListenResult).resolves.toBeInstanceOf(Error);
+      await expect(reenteredListenResult).resolves.toBeInstanceOf(Error);
       expect(server.listening).toBe(false);
+
+      // Then: an explicit listen after close settlement can bind again.
+      await expect(adapter.listen({ async dispatch() {} })).resolves.toBeUndefined();
+      expect(server.listening).toBe(true);
     } finally {
       try {
         await adapter.close();

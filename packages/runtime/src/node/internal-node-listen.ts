@@ -18,8 +18,10 @@ class NodeListenCancelledError extends Error {
   }
 }
 
-/** Owns one Node server's pending listen promise and retry cancellation state. */
+/** Owns one Node server's listen, retry cancellation, and close admission state. */
 export class NodeListenLifecycle {
+  private closeInFlight?: Promise<void>;
+  private closing = false;
   private listenAbortController?: AbortController;
   private listenInFlight?: Promise<void>;
 
@@ -28,7 +30,31 @@ export class NodeListenLifecycle {
     private readonly options: NodeListenRetryOptions,
   ) {}
 
+  close(closeServer: () => Promise<void>): Promise<void> {
+    if (this.closeInFlight) {
+      return this.closeInFlight;
+    }
+
+    this.closing = true;
+    const closeInFlight = (async () => {
+      await this.cancel();
+      await closeServer();
+    })().finally(() => {
+      if (this.closeInFlight === closeInFlight) {
+        this.closeInFlight = undefined;
+        this.closing = false;
+      }
+    });
+    this.closeInFlight = closeInFlight;
+
+    return closeInFlight;
+  }
+
   listen(): Promise<void> {
+    if (this.closing) {
+      return Promise.reject(new NodeListenCancelledError());
+    }
+
     if (this.listenInFlight) {
       return this.listenInFlight;
     }
