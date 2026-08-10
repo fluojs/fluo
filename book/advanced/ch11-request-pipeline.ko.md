@@ -136,6 +136,8 @@ function isRequestAborted(request: FrameworkRequest): boolean {
 
 Dispatcher는 `signal`과 `isAborted()`를 독립적인 cancellation surface로 취급합니다. 어느 하나든 cancellation을 보고할 수 있으므로 `false` probe가 aborted signal을 가리지 않습니다. 일반 dispatch pipeline은 진입 시 이 상태를 확인하고, handler가 general path로 실행되면 handler/interceptor 작업 뒤 response를 쓰기 전에 다시 확인합니다. Native fast-path dispatch는 진입 시 확인합니다. 이것은 모든 middleware, database query, 임의의 business operation을 자동으로 취소하는 기능이 아니라 경계 검사입니다. 오래 실행되는 application code는 `RequestContext.request.signal`을 받아 cancellation을 지원하는 API로 직접 전파해야 합니다. Managed SSE는 request signal과 response-stream close notification에도 반응합니다.
 
+Managed SSE는 iterator read 또는 adapter `waitForDrain()` backpressure wait가 진행 중일 때도 같은 event-driven boundary를 사용합니다. Request abort나 stream close가 settle되지 않은 drain promise보다 먼저 완료되면 dispatcher는 drain을 더 기다리지 않고 response stream을 닫으며, iterator의 `return()`을 정확히 한 번 호출하고 cleanup을 기다린 뒤 request-scope disposal을 수행합니다. Write가 throw하거나 drain promise가 reject하면 원래 error를 유지하며 cancellation이 adapter failure를 대체하지 않습니다.
+
 ## 11.6 파이프라인 시각화 다이어그램
 
 전체 흐름을 시각적으로 정리하면 다음과 같습니다. 각 단계 사이의 화살표는 명시적인 상태 전이를 의미하며, 어느 단계에서든 발생한 예외는 즉시 [Error Handling] 레이어로 전파됩니다.

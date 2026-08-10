@@ -136,6 +136,8 @@ function isRequestAborted(request: FrameworkRequest): boolean {
 
 The dispatcher treats `signal` and `isAborted()` as independent cancellation surfaces: either one can report cancellation, so a `false` probe never masks an aborted signal. The ordinary dispatch pipeline checks this state at entry and, when a handler runs through the general path, again after handler/interceptor work before response writing. Native fast-path dispatch checks at entry. This is a boundary check, not automatic cancellation of every middleware, database query, or arbitrary business operation. Long-running application code must accept and propagate `RequestContext.request.signal` to APIs that support cancellation. Managed SSE additionally reacts to the request signal and response-stream close notifications.
 
+Managed SSE uses that event-driven boundary while either an iterator read or adapter `waitForDrain()` backpressure wait is in flight. If request abort or stream close wins over an unsettled drain promise, the dispatcher stops waiting for the drain, closes the response stream, calls the iterator's `return()` exactly once, and awaits cleanup before request-scope disposal. A write that throws or a drain promise that rejects keeps its original error; cancellation does not replace adapter failures.
+
 ## 11.6 Pipeline Visualization Diagram
 
 The full flow can be visualized as follows. The arrows between stages represent explicit state transitions, and any exception raised at any stage is immediately propagated to the [Error Handling] layer.
