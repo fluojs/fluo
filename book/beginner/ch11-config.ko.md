@@ -329,7 +329,7 @@ Docker나 Kubernetes와 같은 컨테이너 환경에서 fluo를 실행할 때�
 예를 들어, "분석 트래킹"이라는 선택적 기능이 있다면 코드에서 이를 기본적으로 `false`로 설정할 수 있습니다. 이렇게 하면 서비스 레이어 곳곳에서 `undefined`나 `null`을 처리하는 대신 항상 불리언 값을 가지고 작업할 수 있게 됩니다. 이러한 "안전한 기본값(Safe Default)" 패턴은 코드를 단순화하고 더 견고하게 만듭니다.
 
 ### Environment Variable Interpolation
-때때로 하나의 설정값이 다른 설정값에 의존하는 경우가 있습니다. 예를 들어, `LOG_PATH`가 `APP_ROOT`에 상대적일 수 있습니다. 기본 dotenv 기반 parser는 env file 안의 `${APP_ROOT}/logs` 같은 보간을 확장하므로 단순한 dotenv-style 참조는 custom parsing 없이 동작합니다. 더 복잡한 파생 값은 `ConfigModule` 팩토리나 검증 단계에서 명시적으로 처리하는 편이 좋습니다. 이는 로직을 명확하게 하고 디버깅을 쉽게 만듭니다.
+때때로 하나의 설정값이 다른 설정값에 의존하는 경우가 있습니다. 예를 들어, `LOG_PATH`가 `APP_ROOT`에 상대적일 수 있습니다. 기본 dotenv 기반 parser는 env file 안의 `${APP_ROOT}/logs` 같은 보간을 확장하므로 단순한 dotenv-style 참조는 custom parsing 없이 동작합니다. 더 복잡한 파생 값은 module registration 전에 application-owned bootstrap code에서 최종 값으로 계산한 뒤, 동기식 `ConfigModule.forRoot(...)` 호출의 `defaults`, `processEnv`, 또는 `runtimeOverrides`로 전달하세요. `ConfigModule`은 factory extension point를 노출하지 않습니다.
 
 복잡한 보간을 명시적으로 유지하면 설정의 예측 가능성을 지킬 수 있고, 디버깅하기 어려운 문자열 교체 규칙으로 인한 문제를 피할 수 있습니다. TypeScript에서 이런 변환을 처리하면 완전한 타입 안정성을 누리고 표준 문자열 조작 함수를 사용할 수 있는 이점도 얻게 됩니다.
 
@@ -344,7 +344,7 @@ Docker나 Kubernetes와 같은 컨테이너 환경에서 fluo를 실행할 때�
 하지만 동적 리로딩은 경쟁 상태(race conditions)를 유발할 수 있고 애플리케이션의 상태를 추론하기 어렵게 만들 수 있으므로 주의해야 합니다. 대부분의 경우, 컨테이너를 롤링 재시작하는 것이 프로덕션 환경에서 설정 변경을 전파하는 더 안전하고 예측 가능한 방법입니다.
 
 ### Auditing Configuration Access
-보안에 민감한 애플리케이션의 경우, 특정 설정 키(특히 비밀 정보)에 어떤 서비스가 접근하는지 감사하고 싶을 수 있습니다. `ConfigService`를 래핑하거나 fluo의 내부 훅을 사용하여 `get` 및 `getOrThrow`에 대한 모든 호출을 기록함으로써 이를 구현할 수 있습니다. 이는 시스템을 통해 민감한 데이터가 어떻게 이동하는지에 대한 명확한 감사 추적을 제공합니다.
+보안에 민감한 애플리케이션의 경우, 특정 설정 키(특히 비밀 정보)에 어떤 서비스가 접근하는지 감사하고 싶을 수 있습니다. `ConfigService`를 주입하고 승인된 읽기를 기록한 뒤 `get` 또는 `getOrThrow`에 위임하는 application-owned facade나 provider를 등록하세요. 민감한 설정을 사용하는 consumer는 `ConfigService`를 직접 읽는 대신 이 facade를 주입해야 합니다. `ConfigService`는 internal read-audit hook을 노출하지 않습니다.
 
 비밀 정보에 대한 접근 감사는 많은 규제 프레임워크(SOC2, PCI-DSS 등)의 핵심 요구 사항입니다. 이러한 기능을 설정 레이어에 구축함으로써 요구 사항을 더 쉽게 충족하고 백엔드 인프라의 장기적인 보안을 보장할 수 있습니다.
 
