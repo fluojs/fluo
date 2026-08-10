@@ -175,6 +175,26 @@ describe('PassportJsAuthStrategy action timeout', () => {
     await Promise.all([firstRejection, secondRejection]);
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it('rejects authentication without delegation or timers after application shutdown', async () => {
+    // Given
+    vi.useFakeTimers();
+    const authenticate = vi.fn();
+    const strategy = new PassportJsAuthStrategy({ authenticate }, { actionTimeoutMs: 0 });
+    strategy.onApplicationShutdown();
+
+    // When
+    const authentication = strategy.authenticate(createGuardContext());
+    const rejection = expect(authentication).rejects.toThrow(AuthenticationRequiredError);
+    const delegationCount = authenticate.mock.calls.length;
+    const timerCount = vi.getTimerCount();
+    await vi.runAllTimersAsync();
+
+    // Then
+    await rejection;
+    expect(delegationCount).toBe(0);
+    expect(timerCount).toBe(0);
+  });
 });
 
 describe('PassportJsAuthStrategy terminal actions', () => {
