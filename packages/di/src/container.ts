@@ -922,8 +922,10 @@ export class Container {
       return await this.instantiate(provider, chain, activeTokens);
     }
 
-    if (this.shouldResolveMultiProviderFromRoot(provider)) {
-      return await this.root().resolveMultiProviderInstance(provider, chain, activeTokens);
+    const cacheOwner = this.cacheOwnerFor(provider);
+
+    if (cacheOwner !== this) {
+      return await cacheOwner.resolveMultiProviderInstance(provider, chain, activeTokens);
     }
 
     const cache = this.multiCacheFor(provider);
@@ -969,8 +971,10 @@ export class Container {
     chain: Token[],
     activeTokens: Set<Token>,
   ): Promise<unknown> {
-    if (this.shouldResolveFromRoot(provider)) {
-      return await this.root().resolveScopedOrSingletonInstance(provider, chain, activeTokens);
+    const cacheOwner = this.cacheOwnerFor(provider);
+
+    if (cacheOwner !== this) {
+      return await cacheOwner.resolveScopedOrSingletonInstance(provider, chain, activeTokens);
     }
 
     const cache = this.cacheFor(provider);
@@ -1008,19 +1012,25 @@ export class Container {
       return undefined;
     }
 
-    if (this.shouldResolveFromRoot(provider)) {
-      return this.root().getCachedScopedOrSingletonInstance(provider);
+    const cacheOwner = this.cacheOwnerFor(provider);
+
+    if (cacheOwner !== this) {
+      return cacheOwner.getCachedScopedOrSingletonInstance(provider);
     }
 
     return this.cacheFor(provider).get(provider.provide);
   }
 
-  private shouldResolveFromRoot(provider: NormalizedProvider): boolean {
-    return provider.scope === Scope.DEFAULT && this.requestScopeEnabled && !this.registrations.has(provider.provide);
-  }
+  private cacheOwnerFor(provider: NormalizedProvider): Container {
+    if (provider.scope !== Scope.DEFAULT || !this.requestScopeEnabled) {
+      return this;
+    }
 
-  private shouldResolveMultiProviderFromRoot(provider: NormalizedProvider): boolean {
-    return provider.scope === Scope.DEFAULT && this.requestScopeEnabled && !this.hasLocalMultiProvider(provider);
+    if (this.registrations.get(provider.provide) === provider || this.hasLocalMultiProvider(provider)) {
+      return this;
+    }
+
+    return this.parent?.cacheOwnerFor(provider) ?? this;
   }
 
   private async resolveDepToken(
