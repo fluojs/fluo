@@ -58,10 +58,10 @@ await runDenoApplication(AppModule, {
 To run this application, you must explicitly provide the required permissions. In Deno, this permission list becomes part of the operational contract.
 
 ```bash
-deno run --allow-net --allow-signal main.ts
+deno run --allow-net main.ts
 ```
 
-`runDenoApplication(...)` opens the listener and registers `SIGINT`/`SIGTERM` listeners by default, so managed startup needs both `--allow-net` and `--allow-signal`. The adapter does not read environment variables. Add a scoped grant such as `--allow-env=PORT,DATABASE_URL` only when application code reads those keys. If the surrounding host owns process signals, pass `shutdownSignals: false` to `runDenoApplication(...)` and omit `--allow-signal`; the host must then coordinate application shutdown.
+`runDenoApplication(...)` opens the listener and registers `SIGINT`/`SIGTERM` listeners by default, but signal listener registration does not require a separate Deno permission. Managed startup needs `--allow-net`. The adapter does not read environment variables. Add a scoped grant such as `--allow-env=PORT,DATABASE_URL` only when application code reads those keys. If the surrounding host owns process signals, pass `shutdownSignals: false` to `runDenoApplication(...)`; this selects host-owned lifecycle coordination rather than changing permissions, and the host must coordinate application shutdown.
 
 If a required flag is missing, Deno prompts at runtime or exits with a clear error. It is safer to treat missing permissions as configuration problems that should surface before deployment. The run command itself becomes documentation for the resources the application is allowed to access. The canonical starter does not need filesystem access, so it does not grant `--allow-read`. Add a scoped grant such as `--allow-read=./static` only when application code actually reads certificates, configuration files, or static assets from that path.
 
@@ -138,7 +138,6 @@ await runDenoApplication(AppModule, {
 When building microservices on Deno, follow the principle of least privilege. Specify concrete permissions instead of broad flags.
 
 - **`--allow-net=0.0.0.0:3000,database.host:5432`**: Restricts network access to the listener port and a specific database server.
-- **`--allow-signal`**: Allows managed `runDenoApplication(...)` startup to register its default `SIGINT`/`SIGTERM` listeners. Omit it when `shutdownSignals: false` leaves signal ownership to the host.
 - **`--allow-read=./config,./static`**: Restricts file access to specific directories that contain configuration files or static assets.
 - **`--allow-env=PORT,DATABASE_URL`**: Restricts access to only the environment variable keys that application code actually reads; the Deno adapter itself does not require this permission.
 
