@@ -58,10 +58,12 @@ await runDenoApplication(AppModule, {
 이 애플리케이션을 실행하려면 필요한 권한을 명시적으로 제공해야 합니다. Deno에서는 이 권한 목록이 운영 계약의 일부가 됩니다.
 
 ```bash
-deno run --allow-net --allow-env main.ts
+deno run --allow-net --allow-signal main.ts
 ```
 
-플래그를 빠뜨리면 Deno는 실행 시 프롬프트를 띄우거나 명확한 에러와 함께 종료합니다. 권한 누락은 배포 전에 드러나는 설정 문제로 다루는 편이 안전합니다. 따라서 실행 명령 자체가 애플리케이션이 접근할 수 있는 리소스를 설명하는 문서 역할을 합니다. Canonical starter에는 파일 시스템 접근이 필요하지 않으므로 `--allow-read`를 부여하지 않습니다. 애플리케이션 코드가 인증서, 설정 파일, 정적 자산을 실제로 읽을 때만 `--allow-read=./static`처럼 대상 경로를 한정한 권한을 추가하세요.
+`runDenoApplication(...)`은 listener를 열고 기본적으로 `SIGINT`/`SIGTERM` listener를 등록하므로 managed startup에는 `--allow-net`과 `--allow-signal`이 모두 필요합니다. Adapter 자체는 environment variable을 읽지 않습니다. 애플리케이션 코드가 해당 key를 읽을 때만 `--allow-env=PORT,DATABASE_URL`처럼 범위를 제한한 권한을 추가하세요. 주변 host가 process signal을 소유한다면 `runDenoApplication(...)`에 `shutdownSignals: false`를 전달하고 `--allow-signal`을 생략하세요. 이 경우 애플리케이션 shutdown 조율은 host 책임입니다.
+
+필요한 플래그를 빠뜨리면 Deno는 실행 시 프롬프트를 띄우거나 명확한 에러와 함께 종료합니다. 권한 누락은 배포 전에 드러나는 설정 문제로 다루는 편이 안전합니다. 따라서 실행 명령 자체가 애플리케이션이 접근할 수 있는 리소스를 설명하는 문서 역할을 합니다. Canonical starter에는 파일 시스템 접근이 필요하지 않으므로 `--allow-read`를 부여하지 않습니다. 애플리케이션 코드가 인증서, 설정 파일, 정적 자산을 실제로 읽을 때만 `--allow-read=./static`처럼 대상 경로를 한정한 권한을 추가하세요.
 
 ## 23.3 Web Standards and Request Dispatching
 
@@ -136,8 +138,9 @@ await runDenoApplication(AppModule, {
 Deno에서 마이크로서비스를 구축할 때는 최소 권한의 원칙을 따라야 합니다. 광범위한 플래그 대신 구체적인 권한을 지정하세요.
 
 - **`--allow-net=0.0.0.0:3000,database.host:5432`**: 리스너 포트와 특정 데이터베이스 서버로 네트워크 접근을 제한합니다.
+- **`--allow-signal`**: Managed `runDenoApplication(...)` startup이 기본 `SIGINT`/`SIGTERM` listener를 등록하도록 허용합니다. `shutdownSignals: false`로 signal ownership을 host에 맡길 때는 생략하세요.
 - **`--allow-read=./config,./static`**: 설정 파일이나 정적 자산이 포함된 특정 디렉터리로 파일 접근을 제한합니다.
-- **`--allow-env=PORT,DATABASE_URL`**: 애플리케이션에 필요한 환경 변수 키에 대해서만 접근을 제한합니다.
+- **`--allow-env=PORT,DATABASE_URL`**: 애플리케이션 코드가 실제로 읽는 environment variable key로만 접근을 제한합니다. Deno adapter 자체에는 이 권한이 필요하지 않습니다.
 
 `@fluojs/config`를 사용할 때는 Deno 환경 읽기를 애플리케이션 entrypoint에 두세요. 필요한 `--allow-env` key를 허용한 뒤에만 `Deno.env.get(...)`을 호출하고, 그 결과를 `processEnv` 또는 `runtimeOverrides`를 통해 명시적인 map으로 `ConfigModule.forRoot(...)`에 전달합니다. 이 패키지의 env-file, 기본 `.env`, watch 경로는 Node.js 20.16.0+ 계약을 따르므로, Deno 배포 명령은 entrypoint가 in-memory config input으로 매핑할 수 있는 host 값만 문서화합니다.
 
