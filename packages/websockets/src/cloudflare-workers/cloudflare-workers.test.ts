@@ -20,6 +20,7 @@ import {
   type CloudflareWorkerWebSocketBindingHost,
   type CloudflareWorkerWebSocketMessage,
   type CloudflareWorkerWebSocketUpgradeResult,
+  type WebSocketUpgradeGuard,
 } from './cloudflare-workers.js';
 
 type MockSocketListenerMap = {
@@ -32,6 +33,11 @@ const WEBSOCKET_OPEN_READY_STATE = 1;
 const WEBSOCKET_CLOSED_READY_STATE = 3;
 const CLOUDFLARE_WORKERS_WEBSOCKET_CAPABILITY_REASON =
   'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @fluojs/websockets/cloudflare-workers for the official raw websocket binding.';
+const allowedWorkerUpgradeGuardOutcomes = [
+  ['true', () => true],
+  ['undefined', () => undefined],
+  ['no return value', () => {}],
+] as const satisfies readonly (readonly [string, WebSocketUpgradeGuard])[];
 
 class MockWorkerSocket implements CloudflareWorkerWebSocket {
   readonly #listeners: MockSocketListenerMap = {
@@ -383,27 +389,98 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     }
   });
 
-  it('joins, leaves, broadcasts, and reads rooms through the Worker lifecycle service', async () => {
+  it.each(allowedWorkerUpgradeGuardOutcomes)(
+    'allows Worker upgrades when the guard returns %s',
+    async (_label, guard) => {
+      const adapter = new TestWorkerAdapter();
+
+      @WebSocketGateway({ path: '/guard-outcome' })
+      class GuardedGateway {
+        @OnMessage('ping')
+        onPing() {}
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [CloudflareWorkersWebSocketModule.forRoot({ upgrade: { guard } })],
+        providers: [GuardedGateway],
+      });
+
+      const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+      try {
+        await app.listen();
+
+        const response = await adapter.getServer()?.fetch(new Request('https://worker.test/guard-outcome', {
+          headers: { upgrade: 'websocket' },
+        }));
+
+        expect(response?.status).toBe(200);
+        expect(adapter.getServer()?.lastSocket).toBeDefined();
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
+  it('rejects Worker upgrades when the guard returns false', async () => {
     const adapter = new TestWorkerAdapter();
 
-    @WebSocketGateway({ path: '/rooms' })
-    class RoomGateway {
+    @WebSocketGateway({ path: '/false-guard' })
+    class GuardedGateway {
       @OnMessage('ping')
       onPing() {}
     }
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [CloudflareWorkersWebSocketModule.forRoot()],
-      providers: [RoomGateway],
+      imports: [CloudflareWorkersWebSocketModule.forRoot({ upgrade: { guard: () => false } })],
+      providers: [GuardedGateway],
     });
 
     const app = await bootstrapApplication({ adapter, rootModule: AppModule });
-    const service = await app.container.resolve<CloudflareWorkersWebSocketGatewayLifecycleService>(
-      CloudflareWorkersWebSocketGatewayLifecycleService,
-    );
+    try {
+      await app.listen();
+
+      const response = await adapter.getServer()?.fetch(new Request('https://worker.test/false-guard', {
+        headers: { upgrade: 'websocket' },
+      }));
+
+      expect(response?.status).toBe(403);
+      expect(await response?.text()).toBe('WebSocket upgrade rejected.');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('manages room membership and broadcasts through the Worker lifecycle service', async () => {
+    const adapter = new TestWorkerAdapter();
+
+    class GatewayState {
+      socketId?: string;
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/rooms' })
+    class RoomGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnConnect()
+      onConnect(_socket: CloudflareWorkerWebSocket, _request: Request, socketId: string) {
+        this.state.socketId = socketId;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CloudflareWorkersWebSocketModule.forRoot()],
+      providers: [GatewayState, RoomGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
 
     try {
+      const state = await app.container.resolve(GatewayState);
+      const rooms = await app.container.resolve(CloudflareWorkersWebSocketGatewayLifecycleService);
       await app.listen();
       const server = adapter.getServer();
       const upgradeResponse = await server?.fetch(new Request('https://worker.test/rooms', {
@@ -412,64 +489,23 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       await flushAsyncWork();
 
       const socket = server?.lastSocket;
-      const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, CloudflareWorkerWebSocket>;
-      const socketId = socketRegistry.keys().next().value;
+      const socketId = state.socketId;
       expect(upgradeResponse?.status).toBe(200);
-
-      if (!socket || typeof socketId !== 'string') {
-        throw new Error('Expected Worker room test socket registration after websocket upgrade.');
+      if (!socket || !socketId) {
+        throw new Error('Expected Worker room test socket and identifier after websocket upgrade.');
       }
 
-      service.joinRoom(socketId, 'room-a');
-      service.joinRoom(socketId, 'room-b');
+      rooms.joinRoom(socketId, 'room-a');
+      rooms.joinRoom(socketId, 'room-b');
+      expect([...rooms.getRooms(socketId)].sort()).toEqual(['room-a', 'room-b']);
 
-      expect(Array.from(service.getRooms(socketId)).sort()).toEqual(['room-a', 'room-b']);
+      rooms.broadcastToRoom('room-a', 'order.updated', { orderId: 'ord_1' });
+      expect(socket.sentMessages).toEqual(['{"data":{"orderId":"ord_1"},"event":"order.updated"}']);
 
-      service.broadcastToRoom('room-a', 'order.updated', { orderId: 'ord_workers' });
-      service.leaveRoom(socketId, 'room-a');
-      service.broadcastToRoom('room-a', 'order.updated', { orderId: 'ord_after_leave' });
-
-      expect(socket.sentMessages).toEqual([
-        JSON.stringify({ data: { orderId: 'ord_workers' }, event: 'order.updated' }),
-      ]);
-      expect(Array.from(service.getRooms(socketId))).toEqual(['room-b']);
-    } finally {
-      await app.close();
-    }
-  });
-
-  it.each([
-    ['true', (): true => true, 200],
-    ['undefined', (): undefined => undefined, 200],
-    ['no return value', (): void => {}, 200],
-    ['false', (): false => false, 403],
-  ] as const)('maps a Worker guard %s outcome to the documented upgrade decision', async (_outcome, guard, expectedStatus) => {
-    const adapter = new TestWorkerAdapter();
-
-    @WebSocketGateway({ path: '/guard-outcome' })
-    class GuardedGateway {
-      @OnMessage('ping')
-      onPing() {}
-    }
-
-    class AppModule {}
-    defineModule(AppModule, {
-      imports: [CloudflareWorkersWebSocketModule.forRoot({ upgrade: { guard } })],
-      providers: [GuardedGateway],
-    });
-
-    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
-    try {
-      await app.listen();
-
-      const server = adapter.getServer();
-      const response = await server?.fetch(new Request('https://worker.test/guard-outcome', {
-        headers: { upgrade: 'websocket' },
-      }));
-      await flushAsyncWork();
-
-      expect(response?.status).toBe(expectedStatus);
-      expect(server?.lastSocket !== undefined).toBe(expectedStatus === 200);
+      rooms.leaveRoom(socketId, 'room-a');
+      rooms.broadcastToRoom('room-a', 'order.updated', { orderId: 'ord_2' });
+      expect(socket.sentMessages).toHaveLength(1);
+      expect([...rooms.getRooms(socketId)]).toEqual(['room-b']);
     } finally {
       await app.close();
     }

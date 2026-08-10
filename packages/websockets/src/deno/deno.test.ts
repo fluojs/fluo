@@ -15,6 +15,7 @@ import {
   type DenoWebSocketMessage,
   DenoWebSocketModule,
   type DenoWebSocketUpgradeResult,
+  type WebSocketUpgradeGuard,
 } from './deno.js';
 
 type MockDenoSocketListenerMap = {
@@ -27,6 +28,11 @@ const WEBSOCKET_OPEN_READY_STATE = 1;
 const WEBSOCKET_CLOSED_READY_STATE = 3;
 const DENO_WEBSOCKET_CAPABILITY_REASON =
   'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @fluojs/websockets/deno for the official raw websocket binding.';
+const allowedDenoUpgradeGuardOutcomes = [
+  ['true', () => true],
+  ['undefined', () => undefined],
+  ['no return value', () => {}],
+] as const satisfies readonly (readonly [string, WebSocketUpgradeGuard])[];
 
 class MockDenoSocket implements DenoServerWebSocket {
   readonly #listeners: MockDenoSocketListenerMap = {
@@ -396,25 +402,35 @@ describe('@fluojs/websockets/deno', () => {
     }
   });
 
-  it('joins, leaves, broadcasts, and reads rooms through the Deno lifecycle service', async () => {
+  it('manages room membership and broadcasts through the Deno lifecycle service', async () => {
     const adapter = new TestDenoAdapter();
 
+    class GatewayState {
+      socketId?: string;
+    }
+
+    @Inject(GatewayState)
     @WebSocketGateway({ path: '/rooms' })
     class RoomGateway {
-      @OnMessage('ping')
-      onPing() {}
+      constructor(private readonly state: GatewayState) {}
+
+      @OnConnect()
+      onConnect(_socket: DenoServerWebSocket, _request: Request, socketId: string) {
+        this.state.socketId = socketId;
+      }
     }
 
     class AppModule {}
     defineModule(AppModule, {
       imports: [DenoWebSocketModule.forRoot()],
-      providers: [RoomGateway],
+      providers: [GatewayState, RoomGateway],
     });
 
     const app = await bootstrapApplication({ adapter, rootModule: AppModule });
-    const service = await app.container.resolve<DenoWebSocketGatewayLifecycleService>(DenoWebSocketGatewayLifecycleService);
 
     try {
+      const state = await app.container.resolve(GatewayState);
+      const rooms = await app.container.resolve(DenoWebSocketGatewayLifecycleService);
       await app.listen();
       const server = adapter.getServer();
       const upgradeResponse = await server?.fetch(new Request('https://runtime.test/rooms', {
@@ -423,27 +439,23 @@ describe('@fluojs/websockets/deno', () => {
       await flushAsyncWork();
 
       const socket = server?.lastSocket;
-      const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, DenoServerWebSocket>;
-      const socketId = socketRegistry.keys().next().value;
       expect(upgradeResponse?.status).toBe(200);
-
-      if (!socket || typeof socketId !== 'string') {
-        throw new Error('Expected Deno room test socket registration after websocket upgrade.');
+      const socketId = state.socketId;
+      if (!socket || !socketId) {
+        throw new Error('Expected Deno room test socket and identifier after websocket upgrade.');
       }
 
-      service.joinRoom(socketId, 'room-a');
-      service.joinRoom(socketId, 'room-b');
+      rooms.joinRoom(socketId, 'room-a');
+      rooms.joinRoom(socketId, 'room-b');
+      expect([...rooms.getRooms(socketId)].sort()).toEqual(['room-a', 'room-b']);
 
-      expect(Array.from(service.getRooms(socketId)).sort()).toEqual(['room-a', 'room-b']);
+      rooms.broadcastToRoom('room-a', 'order.updated', { orderId: 'ord_1' });
+      expect(socket.sentMessages).toEqual(['{"data":{"orderId":"ord_1"},"event":"order.updated"}']);
 
-      service.broadcastToRoom('room-a', 'order.updated', { orderId: 'ord_deno' });
-      service.leaveRoom(socketId, 'room-a');
-      service.broadcastToRoom('room-a', 'order.updated', { orderId: 'ord_after_leave' });
-
-      expect(socket.sentMessages).toEqual([
-        JSON.stringify({ data: { orderId: 'ord_deno' }, event: 'order.updated' }),
-      ]);
-      expect(Array.from(service.getRooms(socketId))).toEqual(['room-b']);
+      rooms.leaveRoom(socketId, 'room-a');
+      rooms.broadcastToRoom('room-a', 'order.updated', { orderId: 'ord_2' });
+      expect(socket.sentMessages).toHaveLength(1);
+      expect([...rooms.getRooms(socketId)]).toEqual(['room-b']);
     } finally {
       await app.close();
     }
@@ -518,15 +530,43 @@ describe('@fluojs/websockets/deno', () => {
     }
   });
 
-  it.each([
-    ['true', (): true => true, 200],
-    ['undefined', (): undefined => undefined, 200],
-    ['no return value', (): void => {}, 200],
-    ['false', (): false => false, 403],
-  ] as const)('maps a Deno guard %s outcome to the documented upgrade decision', async (_outcome, guard, expectedStatus) => {
+  it.each(allowedDenoUpgradeGuardOutcomes)(
+    'allows Deno upgrades when the guard returns %s',
+    async (_label, guard) => {
+      const adapter = new TestDenoAdapter();
+
+      @WebSocketGateway({ path: '/guard-outcome' })
+      class GuardedGateway {
+        @OnMessage('ping')
+        onPing() {}
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [DenoWebSocketModule.forRoot({ upgrade: { guard } })],
+        providers: [GuardedGateway],
+      });
+
+      const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+      try {
+        await app.listen();
+
+        const response = await adapter.getServer()?.fetch(new Request('https://runtime.test/guard-outcome', {
+          headers: { upgrade: 'websocket' },
+        }));
+
+        expect(response?.status).toBe(200);
+        expect(adapter.getServer()?.lastSocket).toBeDefined();
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
+  it('rejects Deno upgrades when the guard returns false', async () => {
     const adapter = new TestDenoAdapter();
 
-    @WebSocketGateway({ path: '/guard-outcome' })
+    @WebSocketGateway({ path: '/false-guard' })
     class GuardedGateway {
       @OnMessage('ping')
       onPing() {}
@@ -534,7 +574,7 @@ describe('@fluojs/websockets/deno', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [DenoWebSocketModule.forRoot({ upgrade: { guard } })],
+      imports: [DenoWebSocketModule.forRoot({ upgrade: { guard: () => false } })],
       providers: [GuardedGateway],
     });
 
@@ -542,14 +582,12 @@ describe('@fluojs/websockets/deno', () => {
     try {
       await app.listen();
 
-      const server = adapter.getServer();
-      const response = await server?.fetch(new Request('https://runtime.test/guard-outcome', {
+      const response = await adapter.getServer()?.fetch(new Request('https://runtime.test/false-guard', {
         headers: { upgrade: 'websocket' },
       }));
-      await flushAsyncWork();
 
-      expect(response?.status).toBe(expectedStatus);
-      expect(server?.lastSocket !== undefined).toBe(expectedStatus === 200);
+      expect(response?.status).toBe(403);
+      expect(await response?.text()).toBe('WebSocket upgrade rejected.');
     } finally {
       await app.close();
     }
