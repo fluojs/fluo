@@ -19,12 +19,13 @@ import {
   runHttpAdapterApplication,
 } from '../http-adapter-shared.js';
 import { createConsoleApplicationLogger } from '../logging/logger.js';
-import type { MultipartOptions, UploadedFile } from '../multipart.js';
+import type { MultipartOptions } from '../multipart.js';
 import type { Application, ApplicationLogger, CreateApplicationOptions, ModuleType } from '../types.js';
 import {
   compressNodeResponse,
   createNodeResponseCompression,
 } from './internal-node-compression.js';
+import { NodeListenLifecycle } from './internal-node-listen.js';
 import {
   cloneHeaderValue,
   cloneRequestHeaders,
@@ -116,13 +117,6 @@ interface NodeListenTarget {
   url: string;
 }
 
-interface NodeListenRetryOptions {
-  host: string | undefined;
-  port: number;
-  retryDelayMs: number;
-  retryLimit: number;
-}
-
 type NodeServer = ReturnType<typeof createHttpServer> | ReturnType<typeof createHttpsServer>;
 type NodeRequestListener = RequestListener;
 
@@ -131,6 +125,7 @@ type NodeRequestListener = RequestListener;
  */
 export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   private readonly server: NodeServer;
+  private readonly listenLifecycle: NodeListenLifecycle;
   private dispatcher?: Dispatcher;
   private readonly requestResponseFactory: RequestResponseFactory<
     import('node:http').IncomingMessage,
@@ -165,6 +160,12 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
     this.server = createNodeServer(this.httpsOptions, (request, response) => {
       void this.handleRequest(request, response);
     });
+    this.listenLifecycle = new NodeListenLifecycle(this.server, {
+      host: this.host,
+      port: this.port,
+      retryDelayMs: this.retryDelayMs,
+      retryLimit: this.retryLimit,
+    });
     this.server.on('connection', (socket) => {
       this.sockets.add(socket);
       socket.once('close', () => {
@@ -187,16 +188,12 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
 
   async listen(dispatcher: Dispatcher): Promise<void> {
     this.dispatcher = dispatcher;
-    await listenNodeServerWithRetry(this.server, {
-      host: this.host,
-      port: this.port,
-      retryDelayMs: this.retryDelayMs,
-      retryLimit: this.retryLimit,
-    });
+    await this.listenLifecycle.listen();
   }
 
   async close(): Promise<void> {
     const server = this.server;
+    await this.listenLifecycle.cancel();
 
     if (!server.listening) {
       this.dispatcher = undefined;
@@ -361,47 +358,6 @@ function createNodeServer(
   handler: NodeRequestListener,
 ): NodeServer {
   return httpsOptions ? createHttpsServer(httpsOptions, handler) : createHttpServer(handler);
-}
-
-function listenNodeServerWithRetry(server: NodeServer, options: NodeListenRetryOptions): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const tryListen = (attempt: number) => {
-      const onError = (error: NodeJS.ErrnoException) => {
-        server.off('listening', onListening);
-
-        if (error.code === 'EADDRINUSE' && attempt < options.retryLimit) {
-          scheduleNodeListenRetry(server, attempt, options.retryDelayMs, tryListen);
-          return;
-        }
-
-        reject(error);
-      };
-
-      const onListening = () => {
-        server.off('error', onError);
-        resolve();
-      };
-
-      server.once('error', onError);
-      server.once('listening', onListening);
-      server.listen({ host: options.host, port: options.port });
-    };
-
-    tryListen(0);
-  });
-}
-
-function scheduleNodeListenRetry(
-  server: NodeServer,
-  attempt: number,
-  retryDelayMs: number,
-  tryListen: (attempt: number) => void,
-): void {
-  server.close(() => {
-    setTimeout(() => {
-      tryListen(attempt + 1);
-    }, retryDelayMs);
-  });
 }
 
 function closeNodeServerWithDrain(
