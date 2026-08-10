@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import ts from 'typescript';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { I18nError } from './errors.js';
@@ -83,10 +84,6 @@ describe('@fluojs/i18n/typegen', () => {
     expect(output).toContain('export type I18nCatalogKey = "admin/common.cancel" | "admin/common.nested.save" | "app.title";');
     expect(output).toContain('export type I18nCatalogNamespace = "admin/common";');
     expect(output).toContain('readonly "admin/common": "cancel" | "nested.save";');
-    expect(output).toContain('export type I18nCatalogNamespaceKey<Namespace extends I18nCatalogNamespace> = I18nCatalogKeyByNamespace[Namespace];');
-    expect(output).toContain("export type I18nCatalogTypedTranslateOptions = Omit<import('@fluojs/i18n').I18nTranslateOptions, 'namespace'>;");
-    expect(output).toContain('export type I18nCatalogTypedTranslate = <Key extends I18nCatalogKey>(');
-    expect(output).toContain('export interface I18nCatalogTypedService {');
   });
 
   it('reads locale namespace files from disk using deterministic namespace paths', async () => {
@@ -156,6 +153,69 @@ export interface I18nCatalogTypedService {
     expect(output).toContain('readonly translate: AppTypedTranslate;');
     expect(output).toContain('Namespace extends AppI18nNamespace,');
     expect(output).toContain('Key extends AppI18nNamespaceKey<Namespace>,');
+  });
+
+  it('compiles generated declarations for valid callsites and rejects invalid keys', async () => {
+    // Given: valid and invalid consumers import the declaration text emitted by the production type generator.
+    const declarations = generateI18nCatalogTypes([
+      { locale: 'en', messages: { dashboard: { title: 'Dashboard' } }, namespace: 'admin/common' },
+      { locale: 'en', messages: { cancel: 'Cancel' }, namespace: 'common' },
+    ]);
+    const i18nModulePath = join(rootDir, 'i18n-module.d.ts');
+    const validConsumerPath = join(rootDir, 'valid-consumer.ts');
+    const invalidConsumerPath = join(rootDir, 'invalid-consumer.ts');
+    await Promise.all([
+      writeFile(join(rootDir, 'generated-i18n-catalog.d.ts'), declarations, 'utf8'),
+      writeFile(
+        i18nModulePath,
+        "declare module '@fluojs/i18n' { export interface I18nTranslateOptions { readonly locale: string; readonly namespace?: string; } }",
+        'utf8',
+      ),
+      writeFile(
+        validConsumerPath,
+        [
+          "import type { I18nCatalogTypedService } from './generated-i18n-catalog.d.ts';",
+          'declare const typedI18n: I18nCatalogTypedService;',
+          "typedI18n.translate('admin/common.dashboard.title', { locale: 'en' });",
+          "typedI18n.translate('common.cancel', { locale: 'en' });",
+          "typedI18n.translateInNamespace('admin/common', 'dashboard.title', { locale: 'en' });",
+          "typedI18n.translateInNamespace('common', 'cancel', { locale: 'en' });",
+        ].join('\n'),
+        'utf8',
+      ),
+      writeFile(
+        invalidConsumerPath,
+        [
+          "import type { I18nCatalogTypedService } from './generated-i18n-catalog.d.ts';",
+          'declare const typedI18n: I18nCatalogTypedService;',
+          "typedI18n.translate('admin/common.dashboard.missing', { locale: 'en' });",
+          "typedI18n.translateInNamespace('common', 'dashboard.title', { locale: 'en' });",
+        ].join('\n'),
+        'utf8',
+      ),
+    ]);
+
+    // When: one TypeScript program compiles both consumers with that exact generated declaration file.
+    const program = ts.createProgram({
+      options: {
+        lib: ['lib.es5.d.ts'],
+        module: ts.ModuleKind.ESNext,
+        moduleResolution: ts.ModuleResolutionKind.Bundler,
+        noEmit: true,
+        strict: true,
+        target: ts.ScriptTarget.ES2022,
+        types: [],
+        verbatimModuleSyntax: true,
+      },
+      rootNames: [i18nModulePath, validConsumerPath, invalidConsumerPath],
+    });
+    const diagnostics = ts.getPreEmitDiagnostics(program);
+
+    // Then: only invalid fully qualified and namespace-scoped keys produce diagnostics.
+    expect(diagnostics.map((diagnostic) => ({ code: diagnostic.code, file: diagnostic.file?.fileName }))).toEqual([
+      { code: 2345, file: invalidConsumerPath },
+      { code: 2345, file: invalidConsumerPath },
+    ]);
   });
 
   it('keeps generated output stable regardless of input order and duplicate locale leaves', () => {
