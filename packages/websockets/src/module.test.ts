@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import type { IncomingMessage } from 'node:http';
 import { type AddressInfo, createConnection } from 'node:net';
 import type { Duplex } from 'node:stream';
@@ -30,7 +31,7 @@ import {
 import { WebSocketModule } from './module.js';
 import { NodeWebSocketGatewayLifecycleServiceImplementation } from './node/node-service.js';
 import { NodeWebSocketGatewayLifecycleService } from './node/node-service-token.js';
-import type { WebSocketModuleOptions } from './node/node-types.js';
+import type { WebSocketModuleOptions, WebSocketUpgradeGuard } from './node/node-types.js';
 import { WebSocketGatewayLifecycleService } from './service.js';
 
 function createLogger(events: string[]): ApplicationLogger {
@@ -239,6 +240,12 @@ const serverBackedGatewayScenarios: readonly ServerBackedGatewayScenario[] = [
   },
 ];
 
+const allowedNodeUpgradeGuardOutcomes = [
+  ['true', () => true],
+  ['undefined', () => undefined],
+  ['no return value', () => {}],
+] as const satisfies readonly (readonly [string, WebSocketUpgradeGuard])[];
+
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -279,7 +286,7 @@ type MockSocketListeners = {
   pong?: () => void;
 };
 
-function createMockSocket(): {
+function createMockSocket(bufferedAmount = 0): {
   emitClose: (code?: number, reason?: Buffer) => void;
   emitError: (error: Error) => void;
   emitPong: () => void;
@@ -312,7 +319,7 @@ function createMockSocket(): {
     ping,
     readyState: WebSocket.OPEN,
     send,
-    bufferedAmount: 0,
+    bufferedAmount,
     terminate,
   } as unknown as WebSocket;
 
@@ -775,8 +782,8 @@ describe('@fluojs/websockets', () => {
     try {
       await app.listen();
       const port = await getApplicationPort(app);
-
       const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/chat`);
+
       try {
         await onceOpen(socket);
         socket.send(JSON.stringify({ event: 'ping', data: { value: 'hello' } }));
@@ -785,7 +792,6 @@ describe('@fluojs/websockets', () => {
         expect(JSON.parse(incoming)).toEqual({ event: 'pong', data: { value: 'hello' } });
 
         await closeWebSocket(socket);
-
         await waitForAssertion(() => {
           expect(state.disconnectCount).toBe(1);
         });
@@ -844,8 +850,8 @@ describe('@fluojs/websockets', () => {
     try {
       await app.listen();
       const port = await getApplicationPort(app);
-
       const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/chat`);
+
       try {
         await onceOpen(socket);
         socket.send(JSON.stringify({ event: 'ping', data: { value: 'hello' } }));
@@ -854,7 +860,6 @@ describe('@fluojs/websockets', () => {
         expect(JSON.parse(incoming)).toEqual({ event: 'pong', data: { value: 'hello' } });
 
         await closeWebSocket(socket);
-
         await waitForAssertion(() => {
           expect(state.disconnectCount).toBe(1);
         });
@@ -923,14 +928,17 @@ describe('@fluojs/websockets', () => {
         port: 0,
       });
       const state = await app.container.resolve(GatewayState);
-      const service = await app.container.resolve(WebSocketGatewayLifecycleService) as unknown as NodeWebSocketGatewayLifecycleServiceImplementation;
+      const service = await app.container.resolve(WebSocketGatewayLifecycleService);
+      if (!(service instanceof NodeWebSocketGatewayLifecycleServiceImplementation)) {
+        throw new Error('Expected the root websocket lifecycle token to resolve the Node implementation.');
+      }
 
       try {
         await app.listen();
         const appPort = await getApplicationPort(app);
         const websocketPort = getOwnedGatewayPort(service);
-
         const socket = new WebSocket(`ws://127.0.0.1:${String(websocketPort)}/chat`);
+
         try {
           await onceOpen(socket);
           socket.send(JSON.stringify({ event: 'ping', data: { value: scenario.name } }));
@@ -939,7 +947,6 @@ describe('@fluojs/websockets', () => {
           expect(JSON.parse(incoming)).toEqual({ event: 'pong', data: { value: scenario.name } });
 
           await closeWebSocket(socket);
-
           await waitForAssertion(() => {
             expect(state.disconnectCount).toBe(1);
           });
@@ -960,7 +967,7 @@ describe('@fluojs/websockets', () => {
         await app.close();
       }
 
-      expect((Reflect.get(state, 'disconnectCount') as number)).toBe(1);
+      expect(state.disconnectCount).toBe(1);
     });
   }
 
@@ -1023,21 +1030,77 @@ describe('@fluojs/websockets', () => {
     await app.close();
   });
 
-  it.each([
-    ['true', (): true => true, undefined],
-    ['undefined', (): undefined => undefined, undefined],
-    ['no return value', (): void => {}, undefined],
-    ['false', (): false => false, { body: 'WebSocket upgrade rejected.', status: 403 }],
-  ] as const)('maps a Node guard %s outcome to the documented upgrade decision', async (_outcome, guard, expected) => {
-    const service = createTestLifecycleService({ upgrade: { guard } });
-    const resolveUpgradeRejection = Reflect.get(service, 'resolveUpgradeRejection') as (
-      request: IncomingMessage,
-      path: string,
-    ) => Promise<{ body?: string; status: number } | undefined>;
+  it.each(allowedNodeUpgradeGuardOutcomes)(
+    'allows websocket upgrades when the Node guard returns %s',
+    async (_label, guard) => {
+      @WebSocketGateway({ path: '/guard-outcome' })
+      class GuardedGateway {
+        @OnMessage('ping')
+        onPing() {}
+      }
 
-    const rejection = await resolveUpgradeRejection.call(service, { headers: {} } as IncomingMessage, '/guard-outcome');
+      class AppModule {}
+      defineModule(AppModule, {
+        imports: [WebSocketModule.forRoot({ upgrade: { guard } })],
+        providers: [GuardedGateway],
+      });
 
-    expect(rejection).toEqual(expected);
+      const app = await bootstrapNodeApplication(AppModule, {
+        cors: false,
+        port: 0,
+      });
+
+      try {
+        await app.listen();
+        const port = await getApplicationPort(app);
+        const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/guard-outcome`);
+
+        try {
+          await onceOpen(socket);
+          expect(socket.readyState).toBe(WebSocket.OPEN);
+        } finally {
+          await closeWebSocket(socket);
+        }
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
+  it('rejects websocket upgrades when the Node guard returns false', async () => {
+    @WebSocketGateway({ path: '/false-guard' })
+    class GuardedGateway {
+      @OnMessage('ping')
+      onPing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [WebSocketModule.forRoot({
+        upgrade: {
+          guard() {
+            return false;
+          },
+        },
+      })],
+      providers: [GuardedGateway],
+    });
+
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port: 0,
+    });
+
+    try {
+      await app.listen();
+      const port = await getApplicationPort(app);
+      const response = await readUpgradeResponse(port, createUpgradeRequest('/false-guard'));
+
+      expect(response).toContain('HTTP/1.1 403 Forbidden');
+      expect(response).toContain('WebSocket upgrade rejected.');
+    } finally {
+      await app.close();
+    }
   });
 
   it('rejects anonymous websocket upgrades before the handshake completes', async () => {
@@ -1670,53 +1733,76 @@ describe('@fluojs/websockets', () => {
 
   it('resolves the documented connection, payload, and shutdown defaults', () => {
     const service = createTestLifecycleService();
-    const resolveMaxConnectionCount = Reflect.get(service, 'resolveMaxConnectionCount') as () => number;
-    const resolveMaxPayloadBytes = Reflect.get(service, 'resolveMaxPayloadBytes') as () => number;
-    const resolveShutdownTimeoutMs = Reflect.get(service, 'resolveShutdownTimeoutMs') as () => number;
+    const resolveMaxConnectionCount = Reflect.get(service, 'resolveMaxConnectionCount');
+    const resolveMaxPayloadBytes = Reflect.get(service, 'resolveMaxPayloadBytes');
+    const resolveShutdownTimeoutMs = Reflect.get(service, 'resolveShutdownTimeoutMs');
 
-    expect(resolveMaxConnectionCount.call(service)).toBe(1_000);
-    expect(resolveMaxPayloadBytes.call(service)).toBe(1_048_576);
-    expect(resolveShutdownTimeoutMs.call(service)).toBe(5_000);
-  });
-
-  it('keeps the documented default of 256 pending messages per socket', () => {
-    const service = createTestLifecycleService();
-    const { socket } = createMockSocket();
-    const state = createTrackedSocketState('socket-default-buffer');
-    const bufferIncomingMessage = Reflect.get(service, 'bufferIncomingMessage') as (
-      state: ReturnType<typeof createTrackedSocketState>,
-      socket: WebSocket,
-      data: Buffer,
-    ) => void;
-
-    for (let index = 0; index <= 256; index += 1) {
-      bufferIncomingMessage.call(service, state, socket, Buffer.from(`message-${String(index)}`));
+    if (
+      typeof resolveMaxConnectionCount !== 'function'
+      || typeof resolveMaxPayloadBytes !== 'function'
+      || typeof resolveShutdownTimeoutMs !== 'function'
+    ) {
+      throw new Error('Expected Node websocket default resolvers to be available.');
     }
 
-    const retainedMessages = (state.bufferedMessages as Buffer[]).slice(state.bufferedMessagesStartIndex);
-
-    expect(retainedMessages).toHaveLength(256);
-    expect(retainedMessages[0]?.toString('utf8')).toBe('message-1');
-    expect(retainedMessages.at(-1)?.toString('utf8')).toBe('message-256');
+    expect(Reflect.apply(resolveMaxConnectionCount, service, [])).toBe(1_000);
+    expect(Reflect.apply(resolveMaxPayloadBytes, service, [])).toBe(1_048_576);
+    expect(Reflect.apply(resolveShutdownTimeoutMs, service, [])).toBe(5_000);
   });
 
-  it('drops Node room broadcasts above the documented default 1 MiB backpressure limit', () => {
+  it('uses the documented default pending-message capacity and drop-oldest policy', () => {
     const service = createTestLifecycleService();
-    const atLimit = createMockSocket();
-    const aboveLimit = createMockSocket();
-    const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, WebSocket>;
-    (atLimit.socket as unknown as { bufferedAmount: number }).bufferedAmount = 1_048_576;
-    (aboveLimit.socket as unknown as { bufferedAmount: number }).bufferedAmount = 1_048_577;
-    socketRegistry.set('socket-at-limit', atLimit.socket);
-    socketRegistry.set('socket-above-limit', aboveLimit.socket);
-    service.joinRoom('socket-at-limit', 'room-default-backpressure');
-    service.joinRoom('socket-above-limit', 'room-default-backpressure');
+    const { socket, terminate } = createMockSocket();
+    const enqueueMessageDispatch = Reflect.get(service, 'enqueueMessageDispatch');
+    if (typeof enqueueMessageDispatch !== 'function') {
+      throw new Error('Expected the Node websocket message queue dispatcher to be available.');
+    }
 
-    service.broadcastToRoom('room-default-backpressure', 'order.updated', { orderId: 'ord_default' });
+    const state = {
+      enqueuedMessageCount: 255,
+      handlerQueue: Promise.resolve(),
+      processingMessageQueue: true,
+      queuedMessages: Array.from({ length: 255 }, (_value, index) => `queued-${String(index)}`),
+      queuedMessagesStartIndex: 0,
+      resolved: [],
+      socketId: 'socket-default-buffer',
+    };
 
-    expect(atLimit.send).toHaveBeenCalledWith(JSON.stringify({ data: { orderId: 'ord_default' }, event: 'order.updated' }));
-    expect(aboveLimit.send).not.toHaveBeenCalled();
-    expect(aboveLimit.terminate).not.toHaveBeenCalled();
+    Reflect.apply(enqueueMessageDispatch, service, [state, socket, {}, 'latest']);
+
+    const messagesAtCapacity = state.queuedMessages.slice(state.queuedMessagesStartIndex);
+    expect(messagesAtCapacity).toHaveLength(256);
+    expect(messagesAtCapacity[0]).toBe('queued-0');
+    expect(messagesAtCapacity.at(-1)).toBe('latest');
+
+    Reflect.apply(enqueueMessageDispatch, service, [state, socket, {}, 'overflow']);
+
+    const messagesAfterOverflow = state.queuedMessages.slice(state.queuedMessagesStartIndex);
+    expect(messagesAfterOverflow).toHaveLength(256);
+    expect(messagesAfterOverflow[0]).toBe('queued-1');
+    expect(messagesAfterOverflow.at(-1)).toBe('overflow');
+    expect(terminate).not.toHaveBeenCalled();
+  });
+
+  it('uses the documented Node backpressure threshold and drop policy', () => {
+    const service = createTestLifecycleService();
+    const atThreshold = createMockSocket(1_048_576);
+    const overThreshold = createMockSocket(1_048_577);
+    const socketRegistry = Reflect.get(service, 'socketRegistry');
+    if (!(socketRegistry instanceof Map)) {
+      throw new Error('Expected the Node websocket socket registry to be available.');
+    }
+
+    socketRegistry.set('socket-at-threshold', atThreshold.socket);
+    socketRegistry.set('socket-over-threshold', overThreshold.socket);
+    service.joinRoom('socket-at-threshold', 'room-default-backpressure');
+    service.joinRoom('socket-over-threshold', 'room-default-backpressure');
+
+    service.broadcastToRoom('room-default-backpressure', 'order.updated', { orderId: 'ord_1' });
+
+    expect(atThreshold.send).toHaveBeenCalledWith('{"data":{"orderId":"ord_1"},"event":"order.updated"}');
+    expect(overThreshold.send).not.toHaveBeenCalled();
+    expect(overThreshold.terminate).not.toHaveBeenCalled();
   });
 
   it('caps ready-state message queue and drops newest queued messages when saturated', async () => {
@@ -2098,14 +2184,14 @@ describe('@fluojs/websockets', () => {
     try {
       await app.listen();
       const port = await getApplicationPort(app);
-
       const adapter = await app.container.resolve<HttpApplicationAdapter>(HTTP_APPLICATION_ADAPTER);
-      const server = adapter.getServer?.() as {
-        on(event: 'upgrade', listener: (request: IncomingMessage, socket: Duplex) => void): void;
-      };
-      const delegated = createDeferred<void>();
+      const server = adapter.getServer?.();
+      if (!(server instanceof EventEmitter)) {
+        throw new Error('Expected the Node websocket test adapter to expose an upgrade event server.');
+      }
 
-      server.on('upgrade', (request, socket) => {
+      const delegated = createDeferred<void>();
+      server.on('upgrade', (request: IncomingMessage, socket: Duplex) => {
         if (request.url === '/missing') {
           delegated.resolve();
           socket.write('HTTP/1.1 426 Upgrade Required\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
@@ -2143,7 +2229,6 @@ describe('@fluojs/websockets', () => {
     try {
       await app.listen();
       const port = await getApplicationPort(app);
-
       const response = await readUpgradeResponse(port, createUpgradeRequest('/missing'));
 
       expect(response).toContain('HTTP/1.1 404 Not Found');
