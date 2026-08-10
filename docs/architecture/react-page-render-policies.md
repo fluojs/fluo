@@ -56,7 +56,8 @@ inheritance or class/method sites intentionally compose.
 Resolved values compose deterministically:
 
 - the nearest non-`undefined` `title` wins;
-- `<meta>` identity is `name` plus its value or `property` plus its value;
+- `<meta>` identity is the present identity attribute (`name` or `property`) plus that attribute's
+  value; `content` is not part of identity;
 - `<link>` identity is the exact `rel` plus `href` pair;
 - a later descriptor with the same identity replaces the earlier descriptor and occupies the later
   declaration position;
