@@ -227,10 +227,11 @@ SocketIoModule.forRoot({
   engine: {
     maxHttpBufferSize: 65_536,
   },
+  transports: ['websocket'],
 });
 ```
 
-`cors`를 생략하면 Socket.IO는 `{ credentials: false, origin: false }`를 기본값으로 사용하므로 cross-origin exposure는 opt-in입니다. `engine.maxHttpBufferSize`를 생략하면 bounded 1 MiB payload limit이 적용됩니다. 기본값에는 `buffer.maxPendingMessagesPerSocket: 128`, `buffer.overflowPolicy: 'drop-oldest'`, `shutdown.timeoutMs: 5000`도 포함됩니다.
+`cors`를 생략하면 Socket.IO는 `{ credentials: false, origin: false }`를 기본값으로 사용하므로 cross-origin exposure는 opt-in입니다. `engine.maxHttpBufferSize`를 생략하면 bounded 1 MiB payload limit이 적용됩니다. 기본값에는 `buffer.maxPendingMessagesPerSocket: 128`, `buffer.overflowPolicy: 'drop-oldest'`, `shutdown.timeoutMs: 5000`도 포함됩니다. `transports` allowlist는 Node-backed path와 Bun engine path에서 동일하게 적용됩니다.
 
 Guard function은 `true`, `false`, 또는 `message`, optional `data`, optional `disconnect`가 있는 rejection object를 반환할 수 있습니다. Message rejection은 `{ error, data }` 형태의 ACK payload를 사용합니다.
 

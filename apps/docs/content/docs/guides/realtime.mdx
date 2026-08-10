@@ -227,10 +227,11 @@ SocketIoModule.forRoot({
   engine: {
     maxHttpBufferSize: 65_536,
   },
+  transports: ['websocket'],
 });
 ```
 
-When `cors` is omitted, Socket.IO defaults to `{ credentials: false, origin: false }` so cross-origin exposure is opt-in. When `engine.maxHttpBufferSize` is omitted, the adapter applies a bounded 1 MiB payload limit. Defaults also include `buffer.maxPendingMessagesPerSocket: 128`, `buffer.overflowPolicy: 'drop-oldest'`, and `shutdown.timeoutMs: 5000`.
+When `cors` is omitted, Socket.IO defaults to `{ credentials: false, origin: false }` so cross-origin exposure is opt-in. When `engine.maxHttpBufferSize` is omitted, the adapter applies a bounded 1 MiB payload limit. Defaults also include `buffer.maxPendingMessagesPerSocket: 128`, `buffer.overflowPolicy: 'drop-oldest'`, and `shutdown.timeoutMs: 5000`. The `transports` allowlist is enforced consistently on Node-backed and Bun engine paths.
 
 Guard functions may return `true`, `false`, or a rejection object with `message`, optional `data`, and optional `disconnect`. Message rejections use ACK payloads shaped as `{ error, data }`.
 
