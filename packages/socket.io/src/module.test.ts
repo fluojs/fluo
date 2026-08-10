@@ -1303,9 +1303,7 @@ describe('@fluojs/socket.io', () => {
     }
   });
 
-  it('rejects guarded message events without invoking gateway handlers', async () => {
-    const messageHandled = createDeferred<void>();
-
+  it('rejects guarded message events without invoking handlers or emitting implicit client errors', async () => {
     class GatewayState {
       messages: unknown[] = [];
     }
@@ -1316,9 +1314,14 @@ describe('@fluojs/socket.io', () => {
       constructor(private readonly state: GatewayState) {}
 
       @OnMessage('ping')
-      onPing(payload: unknown) {
+      onPing(
+        payload: unknown,
+        _socket: Socket,
+        _request: SocketIoHandshakeRequest,
+        acknowledgement?: (response: unknown) => void,
+      ) {
         this.state.messages.push(payload);
-        messageHandled.resolve();
+        acknowledgement?.({ accepted: true });
       }
     }
 
@@ -1375,10 +1378,17 @@ describe('@fluojs/socket.io', () => {
       expect(falseRejectedAck).toEqual({ data: undefined, error: 'Socket.IO message rejected.' });
       expect(state.messages).toEqual([]);
 
-      activeSocket.emit('ping', 'allowed');
-      await messageHandled.promise;
-      expect(state.messages).toEqual(['allowed']);
+      const clientErrors: unknown[] = [];
+      activeSocket.on('error', (error: unknown) => clientErrors.push(error));
 
+      activeSocket.emit('ping', 'blocked');
+      const allowedAck = await new Promise<unknown>((resolve) => {
+        activeSocket.emit('ping', 'allowed', (response: unknown) => resolve(response));
+      });
+
+      expect(allowedAck).toEqual({ accepted: true });
+      expect(state.messages).toEqual(['allowed']);
+      expect(clientErrors).toEqual([]);
 
       const disconnected = new Promise((resolve) => activeSocket.once('disconnect', resolve));
       const disconnectAck = await new Promise<unknown>((resolve) => {
@@ -1435,29 +1445,34 @@ describe('@fluojs/socket.io', () => {
       providers: [GatewayState, GuardedGateway],
     });
 
-    const errorLog = vi.spyOn(console, 'error').mockImplementation((message: unknown, error?: unknown) => {
-      loggerEvents.push(`${String(message)}:${error instanceof Error ? error.message : 'none'}`);
-      if (stripAnsi(String(message)).includes('[SocketIoLifecycleService] Socket.IO message guard for event ping on socket')) {
-        errorLogged.resolve();
-      }
-    });
     const { adapter, app } = await createNodejsSocketIoApplication(AppModule);
-    const state = await app.container.resolve<GatewayState>(GatewayState);
-
-    await app.listen();
-    const port = getBoundPortFromAdapter(adapter);
-    process.on('unhandledRejection', onUnhandledRejection);
-
-    const socket = createClient(`http://127.0.0.1:${String(port)}/async-message-guard`, {
-      reconnection: false,
-      transports: ['websocket'],
-    });
+    let restoreErrorLog: (() => void) | undefined;
+    let socket: ClientSocket | undefined;
 
     try {
-      await onceConnected(socket);
+      const state = await app.container.resolve<GatewayState>(GatewayState);
+      const errorLog = vi.spyOn(console, 'error');
+      restoreErrorLog = () => errorLog.mockRestore();
+      errorLog.mockImplementation((message: unknown, error?: unknown) => {
+        loggerEvents.push(`${String(message)}:${error instanceof Error ? error.message : 'none'}`);
+        if (stripAnsi(String(message)).includes('[SocketIoLifecycleService] Socket.IO message guard for event ping on socket')) {
+          errorLogged.resolve();
+        }
+      });
+
+      await app.listen();
+      const port = getBoundPortFromAdapter(adapter);
+      process.on('unhandledRejection', onUnhandledRejection);
+
+      const activeSocket = createClient(`http://127.0.0.1:${String(port)}/async-message-guard`, {
+        reconnection: false,
+        transports: ['websocket'],
+      });
+      socket = activeSocket;
+      await onceConnected(activeSocket);
 
       const rejectedAck = await new Promise<unknown>((resolve) => {
-        socket.emit('ping', 'blocked', (response: unknown) => resolve(response));
+        activeSocket.emit('ping', 'blocked', (response: unknown) => resolve(response));
       });
 
       expect(rejectedAck).toEqual({ data: { code: 'AUTH_REQUIRED' }, error: 'Forbidden event.' });
@@ -1471,10 +1486,19 @@ describe('@fluojs/socket.io', () => {
       ).toBe(true);
       expect(loggerEvents.some((event) => event.includes('Forbidden event.'))).toBe(true);
     } finally {
-      errorLog.mockRestore();
-      process.off('unhandledRejection', onUnhandledRejection);
-      socket.close();
-      await app.close();
+      try {
+        restoreErrorLog?.();
+      } finally {
+        try {
+          process.off('unhandledRejection', onUnhandledRejection);
+        } finally {
+          try {
+            socket?.close();
+          } finally {
+            await app.close();
+          }
+        }
+      }
     }
   });
 
