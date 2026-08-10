@@ -124,6 +124,8 @@ export class AuthModule {}
 
 `actionTimeoutMs` 기본값은 `30_000`밀리초이며 0 이상인 유한한 숫자여야 합니다. `0`으로 설정하면 다음 timer turn에 timeout settlement를 예약합니다. 음수, `NaN`, 무한대 값은 settlement 제한을 비활성화하지 않고 bridge strategy 생성 시 `RangeError`를 발생시킵니다.
 
+애플리케이션 종료가 시작되면 진행 중인 모든 bridge 실행을 취소하고 action timeout을 정리한 뒤, 설정된 timeout까지 request state를 유지하지 않고 pending authentication을 reject합니다.
+
 ### 쿠키 인증 프리셋
 
 HTTP 쿠키에서 인증 정보를 읽는 애플리케이션이라면 `CookieAuthModule.forRoot(...)`를 사용합니다.
