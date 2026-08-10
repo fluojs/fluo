@@ -108,8 +108,8 @@ export function WebSocketGateway(
  *
  * class ChatGateway {
  *   @OnMessage('ping')
- *   handlePing(payload: unknown) {
- *     return payload;
+ *   handlePing(payload: unknown, socket: { send(data: string): void }) {
+ *     socket.send(JSON.stringify({ event: 'pong', data: payload }));
  *   }
  * }
  * ```

@@ -325,6 +325,59 @@ describe('@fluojs/websockets/bun', () => {
     }
   });
 
+  it('joins, leaves, broadcasts, and reads rooms through the Bun lifecycle service', async () => {
+    const adapter = new TestBunAdapter();
+
+    @WebSocketGateway({ path: '/rooms' })
+    class RoomGateway {
+      @OnMessage('ping')
+      onPing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [BunWebSocketModule.forRoot()],
+      providers: [RoomGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const service = await app.container.resolve<BunWebSocketGatewayLifecycleService>(BunWebSocketGatewayLifecycleService);
+
+    try {
+      await app.listen();
+      const server = adapter.getServer();
+      const upgradeResponse = await server?.fetch(new Request('http://127.0.0.1:3000/rooms', {
+        headers: { upgrade: 'websocket' },
+      }));
+      await flushAsyncWork();
+
+      const socket = server?.lastSocket;
+      const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, BunServerWebSocket>;
+      const socketId = socketRegistry.keys().next().value;
+      expect(upgradeResponse).toBeUndefined();
+
+      if (!socket || typeof socketId !== 'string') {
+        throw new Error('Expected Bun room test socket registration after websocket upgrade.');
+      }
+
+      service.joinRoom(socketId, 'room-a');
+      service.joinRoom(socketId, 'room-b');
+
+      expect(Array.from(service.getRooms(socketId)).sort()).toEqual(['room-a', 'room-b']);
+
+      service.broadcastToRoom('room-a', 'order.updated', { orderId: 'ord_bun' });
+      service.leaveRoom(socketId, 'room-a');
+      service.broadcastToRoom('room-a', 'order.updated', { orderId: 'ord_after_leave' });
+
+      expect(socket.sentMessages).toEqual([
+        JSON.stringify({ data: { orderId: 'ord_bun' }, event: 'order.updated' }),
+      ]);
+      expect(Array.from(service.getRooms(socketId))).toEqual(['room-b']);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('awaits raw Bun handler return promises before ignoring returned values', async () => {
     const adapter = new TestBunAdapter();
     const handlerGate = createDeferred<void>();
@@ -389,6 +442,43 @@ describe('@fluojs/websockets/bun', () => {
 
       expect(state.messages).toEqual([{ value: 'ignored' }, { value: 'after' }]);
       expect(socket.sentMessages).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it.each([
+    ['true', (): true => true, undefined],
+    ['undefined', (): undefined => undefined, undefined],
+    ['no return value', (): void => {}, undefined],
+    ['false', (): false => false, 403],
+  ] as const)('maps a Bun guard %s outcome to the documented upgrade decision', async (_outcome, guard, expectedStatus) => {
+    const adapter = new TestBunAdapter();
+
+    @WebSocketGateway({ path: '/guard-outcome' })
+    class GuardedGateway {
+      @OnMessage('ping')
+      onPing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [BunWebSocketModule.forRoot({ upgrade: { guard } })],
+      providers: [GuardedGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    try {
+      await app.listen();
+
+      const server = adapter.getServer();
+      const response = await server?.fetch(new Request('http://127.0.0.1:3000/guard-outcome', {
+        headers: { upgrade: 'websocket' },
+      }));
+      await flushAsyncWork();
+
+      expect(response?.status).toBe(expectedStatus);
+      expect(server?.lastSocket !== undefined).toBe(expectedStatus === undefined);
     } finally {
       await app.close();
     }
