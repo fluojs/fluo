@@ -19,7 +19,7 @@ This document defines the current request execution contract implemented by `@fl
 11. The controller method receives `(input, requestContext)` and returns the handler result.
 12. Successful non-SSE results are written through `writeSuccessResponse(...)`, which applies redirect metadata, route headers, formatter selection, and default success status rules. The dispatcher checks `signal` and `isAborted()` before and after handler execution, treating either cancellation surface as authoritative so a `false` probe cannot mask an aborted signal and aborted requests do not commit late success responses.
 13. If any stage throws, the dispatcher runs `onError` when configured. Otherwise `writeErrorResponse(...)` classifies the failure and either writes canonical JSON or, for eligible `HttpException` and route-miss outcomes, performs the configured HTTP-owned error representation negotiation.
-14. The dispatcher always emits `onRequestFinish`. When a request scope was created or lazily promoted, it disposes that isolated request-scoped container before the request ends; singleton-only fast-path requests that never promote do not dispose the root container.
+14. The dispatcher always emits `onRequestFinish`. When a request scope was created or lazily promoted, it disposes that isolated request-scoped container before the request ends; requests whose graphs do not require request scope never dispose the root container. The fast path caches handler metadata only and resolves the controller through the active container for each dispatch, so container-owned singleton sharing and transient fresh-per-resolution identity remain intact.
 
 ## Error Representation Boundary
 
