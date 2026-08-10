@@ -22,6 +22,7 @@ export interface TcpMicroserviceTransportOptions {
 
 const DEFAULT_MAX_FRAME_BYTES = 1_048_576;
 
+// allow: SIZE_OK — TCP framing and lifecycle form one transport state machine; splitting it is outside this focused fix.
 /**
  * Lightweight TCP transport for request-response messages and fire-and-forget events.
  *
@@ -34,6 +35,7 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
 
   private boundPort: number | undefined;
   private closing = false;
+  private closePromise: Promise<void> | undefined;
   private handler: TransportHandler | undefined;
   private listenPromise: Promise<void> | undefined;
   private server: Server | undefined;
@@ -137,49 +139,53 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
    *
    * @returns A promise that resolves once the server is fully closed.
    */
-  async close(): Promise<void> {
+  close(): Promise<void> {
     this.closing = true;
-    let listenError: unknown;
+    this.closePromise ??= (async () => {
+      let listenError: unknown;
 
-    if (this.listenPromise) {
-      try {
-        await this.listenPromise;
-      } catch (error) {
-        listenError = error;
+      if (this.listenPromise) {
+        try {
+          await this.listenPromise;
+        } catch (error) {
+          listenError = error;
+        }
       }
-    }
 
-    for (const socket of this.sockets) {
-      socket.destroy();
-    }
+      for (const socket of this.sockets) {
+        socket.destroy();
+      }
 
-    this.sockets.clear();
+      this.sockets.clear();
 
-    if (!this.server?.listening) {
+      if (!this.server?.listening) {
+        this.boundPort = undefined;
+        if (listenError) {
+          throw listenError;
+        }
+
+        return;
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        this.server?.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+
       this.boundPort = undefined;
+
       if (listenError) {
         throw listenError;
       }
+    })();
 
-      return;
-    }
-
-    await new Promise<void>((resolve, reject) => {
-      this.server?.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve();
-      });
-    });
-
-    this.boundPort = undefined;
-
-    if (listenError) {
-      throw listenError;
-    }
+    return this.closePromise;
   }
 
   private async handleInboundPacket(socket: Socket, packet: TransportPacket): Promise<void> {
