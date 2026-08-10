@@ -154,7 +154,12 @@ To avoid changing documented fluo semantics, overlapping same-shape param routes
 - `ExpressHttpApplicationAdapter`: The core adapter implementation class. `getServer()` exposes the underlying Node HTTP/HTTPS server for narrow platform integrations and returns `ExpressServer`, `getListenTarget()` reports the resolved bind target and public URL after startup, and `getRealtimeCapability()` returns the server-backed capability used by realtime packages. Keep these helpers at infrastructure boundaries instead of threading native server objects through ordinary application code.
 - Option types: `ExpressAdapterOptions`, `BootstrapExpressApplicationOptions`, `RunExpressApplicationOptions`, `ExpressNativeMiddleware`, `CorsInput`, `ExpressApplicationSignal`.
 
-`createExpressAdapter(options, multipartOptions?)` supports `host`, `https`, `maxBodySize`, `nativeMiddleware`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs`. Direct `ExpressHttpApplicationAdapter` construction applies the same numeric validation as the factory. `bootstrapExpressApplication(...)` and `runExpressApplication(...)` also accept `cors`, `globalPrefix`, `globalPrefixExclude`, `middleware`, `multipart`, `nativeMiddleware`, `securityHeaders`, `forceExitTimeoutMs`, `shutdownSignals`, and `logger`; they use the framework console logger by default for startup and shutdown diagnostics and honor an injected `ApplicationLogger` when provided.
+`createExpressAdapter(options, multipartOptions?)` supports `host`, `https`, `maxBodySize`, `nativeMiddleware`, `port`, `rawBody`, `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs`. Direct `ExpressHttpApplicationAdapter` construction applies the same numeric validation as the factory.
+
+- `BootstrapExpressApplicationOptions` and `RunExpressApplicationOptions` share `cors`, `globalPrefix`, `globalPrefixExclude`, `middleware`, `multipart`, `nativeMiddleware`, `securityHeaders`, and `logger` in addition to the adapter options above.
+- `RunExpressApplicationOptions` alone adds `forceExitTimeoutMs` and `shutdownSignals` for signal-driven shutdown.
+
+Both helpers use the framework console logger by default for startup and shutdown diagnostics and honor an injected `ApplicationLogger` when `logger` is provided.
 
 ## Related Packages
 
