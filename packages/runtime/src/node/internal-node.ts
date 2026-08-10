@@ -187,8 +187,9 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
   }
 
   async listen(dispatcher: Dispatcher): Promise<void> {
-    this.dispatcher = dispatcher;
-    await this.listenLifecycle.listen();
+    await this.listenLifecycle.listen(() => {
+      this.dispatcher = dispatcher;
+    });
   }
 
   async close(): Promise<void> {

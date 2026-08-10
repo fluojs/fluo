@@ -50,7 +50,7 @@ export class NodeListenLifecycle {
     return closeInFlight;
   }
 
-  listen(): Promise<void> {
+  listen(onAdmitted: () => void): Promise<void> {
     if (this.closing) {
       return Promise.reject(new NodeListenCancelledError());
     }
@@ -59,6 +59,7 @@ export class NodeListenLifecycle {
       return this.listenInFlight;
     }
 
+    onAdmitted();
     const abortController = new AbortController();
     this.listenAbortController = abortController;
     const listenInFlight = listenNodeServerWithRetry(
