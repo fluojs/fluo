@@ -74,7 +74,7 @@ await app.listen();
 
 Load certificates from your application configuration or secret-management boundary before constructing the adapter; the package does not read certificate files, `process.env`, or `PORT` by itself. If a load balancer, ingress, or API gateway terminates TLS, leave `https` unset and run the Fastify adapter as plain HTTP behind that infrastructure.
 
-`bootstrapFastifyApplication(...)` and `runFastifyApplication(...)` accept the same `https`, `host`, and `port` options. `runFastifyApplication(...)` returns a shell prepared with shutdown registration; the caller still invokes `listen()`:
+`bootstrapFastifyApplication(...)` and `runFastifyApplication(...)` accept the same `https`, `host`, and `port` options. `runFastifyApplication(...)` starts listening before it resolves, installs shutdown registration, and returns the running application shell:
 
 ```typescript
 const app = await runFastifyApplication(AppModule, {
@@ -85,8 +85,6 @@ const app = await runFastifyApplication(AppModule, {
   },
   port: 3443,
 });
-
-await app.listen();
 ```
 
 ### Multipart and Raw Body
@@ -197,7 +195,7 @@ The same file also covers Fastify-specific native route registration with wildca
 
 - `createFastifyAdapter(options, multipartOptions?)`: Recommended factory for the Fastify adapter. `options` includes transport startup knobs such as `host`, `port`, and Node.js `https` server options. The optional second argument configures multipart limits such as `maxFileSize`, `maxFiles`, and `maxTotalSize` for direct adapter construction.
 - `bootstrapFastifyApplication(module, options)`: advanced bootstrap without implicit listening; accepts the same Fastify startup options, including `https`, when the host wants to construct the app before binding it.
-- `runFastifyApplication(module, options)`: Returns a bootstrapped application shell with shutdown registration and the same `https` startup surface; the caller still invokes `app.listen()`. On signal-driven shutdown timeout/failure it reports the condition through logging and `process.exitCode`, while leaving final process termination to the surrounding host.
+- `runFastifyApplication(module, options)`: Bootstraps the application, starts listening, installs shutdown registration, and returns the running shell with the same `https` startup surface. On signal-driven shutdown timeout/failure it reports the condition through logging and `process.exitCode`, while leaving final process termination to the surrounding host.
 - `isFastifyMultipartTooLargeError(error)`: Detects multipart limit errors across Fastify error shapes.
 - `FastifyHttpApplicationAdapter`: The core adapter implementation.
 - Option types: `FastifyAdapterOptions`, `BootstrapFastifyApplicationOptions`, `RunFastifyApplicationOptions`, `CorsInput`, `FastifyApplicationSignal`.
