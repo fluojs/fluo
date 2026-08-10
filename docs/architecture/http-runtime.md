@@ -41,6 +41,12 @@ The complete ownership, negotiation, React adapter, and fallback contract is rec
 - Request-context helpers never patch `Promise.prototype` or expose one request context to unrelated promise continuations.
 - Hosts without an async-context primitive use a synchronous stack fallback that clears the context before awaited work resumes.
 
+## Managed SSE Backpressure Cancellation
+
+- Managed SSE applies request abort and response-stream close notifications to both iterator reads and adapter `waitForDrain()` backpressure waits.
+- If cancellation wins while a drain promise remains unsettled, the dispatcher stops waiting for that promise, closes the response stream, calls the source iterator's `return()` exactly once, and awaits that cleanup before request-scope disposal.
+- A stream write that throws or a drain promise that rejects is not reclassified as cancellation. The original error continues through the committed-response observer and dispatcher logging boundary.
+
 ## Routing Rules
 
 | Rule | Current behavior |

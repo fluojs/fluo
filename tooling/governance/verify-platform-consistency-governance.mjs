@@ -2116,6 +2116,9 @@ export function enforceHttpRuntimeCancellationAndContextIsolation() {
   const cancellationRegression = read('packages/http/src/dispatch/dispatcher-cancellation.test.ts');
   const contextRegression = read('packages/http/src/context/request-context-isolation.test.ts');
   const fastPathScopeRegression = read('packages/http/src/dispatch/dispatcher-fast-path-scope.test.ts');
+  const sseBackpressureRegression = read(
+    'packages/http/src/dispatch/dispatcher-sse-backpressure-cancellation.test.ts',
+  );
 
   assert(
     abortSource.includes('request.isAborted?.() === true || request.signal?.aborted === true'),
@@ -2167,6 +2170,23 @@ export function enforceHttpRuntimeCancellationAndContextIsolation() {
       fastPathScopeRegression.includes('controllerId: 2, dependencyId: 2'),
     'HTTP fast-path regressions must prove transient controller and dependency identity across repeated dispatches.',
   );
+  assert(
+    dispatcherSource.includes(
+      'const drain = await waitForManagedSseOperation(requestContext.request, stream, stream.waitForDrain());',
+    ) &&
+      dispatcherSource.includes("if (drain === 'aborted')") &&
+      dispatcherSource.includes('iteratorCleanup ??= closeAsyncIterator(iterator);'),
+    'Managed SSE backpressure waits must share request-abort and stream-close cancellation with iterator reads.',
+  );
+  assert(
+    sseBackpressureRegression.includes('const blockedDrain') &&
+      sseBackpressureRegression.includes('response.stream.emitClose()') &&
+      sseBackpressureRegression.includes('expect(iteratorCleanupCalls).toBe(1)') &&
+      sseBackpressureRegression.includes('expect(root.requestScopeDisposeCount).toBe(1)') &&
+      sseBackpressureRegression.includes('writeFailure') &&
+      sseBackpressureRegression.includes('drainFailure'),
+    'Managed SSE regressions must cover blocked-drain cancellation, exactly-once iterator cleanup, request-scope disposal, and original stream errors.',
+  );
 
   for (const documentationPath of [
     'docs/CONTEXT.md',
@@ -2199,6 +2219,25 @@ export function enforceHttpRuntimeCancellationAndContextIsolation() {
         documentation.includes('controller') &&
         documentation.includes('transient'),
       `${documentationPath} must document fast-path transient controller identity preservation.`,
+    );
+  }
+
+  for (const documentationPath of [
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'docs/architecture/http-runtime.md',
+    'docs/architecture/http-runtime.ko.md',
+    'packages/http/README.md',
+    'packages/http/README.ko.md',
+    'book/advanced/ch11-request-pipeline.md',
+    'book/advanced/ch11-request-pipeline.ko.md',
+  ]) {
+    const documentation = read(documentationPath).toLowerCase();
+    assert(
+      documentation.includes('waitfordrain()') &&
+        documentation.includes('iterator') &&
+        documentation.includes('scope'),
+      `${documentationPath} must document managed SSE backpressure cancellation through iterator cleanup and request-scope disposal.`,
     );
   }
 }
