@@ -54,6 +54,23 @@ function createDeferred<T>() {
   return { promise, reject, resolve };
 }
 
+async function waitForSettlement<T>(promise: Promise<T>, timeoutMs = 1_000): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(new Error(`Timed out waiting for test settlement after ${String(timeoutMs)}ms.`));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutHandle !== undefined) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+}
+
 function installMockBun(options: { version?: string } = {}): MockBun {
   const mockBun = {} as MockBun;
   mockBun.version = options.version ?? '1.2.3';
@@ -1904,6 +1921,74 @@ describe('@fluojs/platform-bun', () => {
     await expect(responsePromise).resolves.toMatchObject({ status: 202 });
     await closePromise;
     expect(closeSettled).toBe(true);
+  });
+
+  it('drains an accepted request through a delayed websocket upgrade without HTTP fallback', async () => {
+    const mockBun = installMockBun();
+    const adapter = new BunHttpApplicationAdapter();
+    const bindingStarted = createDeferred<void>();
+    const bindingRelease = createDeferred<void>();
+    const dispatcher = {
+      dispatch: vi.fn(async (_request: FrameworkRequest, response: FrameworkResponse) => {
+        response.setStatus(200);
+        await response.send({ fallback: 'http' });
+      }),
+    };
+    let closeSettled = false;
+    let closePromise: Promise<void> | undefined;
+    let responsePromise: Promise<Response | undefined> | undefined;
+
+    adapter.configureRealtimeBinding({
+      fetch: async (request, server) => {
+        bindingStarted.resolve();
+        await bindingRelease.promise;
+        server.upgrade(request, { data: { path: '/chat' } });
+        return undefined;
+      },
+      websocket: {},
+    });
+
+    await adapter.listen(dispatcher);
+
+    const server = mockBun.lastServer;
+
+    try {
+      if (!server) {
+        throw new TypeError('Expected the Bun adapter test server to be available after listen().');
+      }
+
+      const acceptedResponsePromise = Promise.resolve(server.fetch(new Request('http://127.0.0.1:3000/chat', {
+        headers: { upgrade: 'websocket' },
+      })));
+      responsePromise = acceptedResponsePromise;
+      await waitForSettlement(bindingStarted.promise);
+
+      closePromise = adapter.close().then(() => {
+        closeSettled = true;
+      });
+      await waitForSettlement(new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      }));
+
+      expect(closeSettled).toBe(false);
+      expect(server.upgrade).not.toHaveBeenCalled();
+      expect(dispatcher.dispatch).not.toHaveBeenCalled();
+
+      bindingRelease.resolve();
+
+      await expect(waitForSettlement(acceptedResponsePromise)).resolves.toBeUndefined();
+      await waitForSettlement(closePromise);
+      expect(closeSettled).toBe(true);
+      expect(server.upgrade).toHaveBeenCalledTimes(1);
+      expect(server.upgrade).toHaveReturnedWith(true);
+      expect(dispatcher.dispatch).not.toHaveBeenCalled();
+    } finally {
+      bindingRelease.resolve();
+      await waitForSettlement(Promise.allSettled([
+        responsePromise ?? Promise.resolve(undefined),
+        closePromise ?? adapter.close(),
+      ]));
+    }
   });
 
   it('preserves HTTP fallback when close begins during asynchronous realtime binding work', async () => {
