@@ -963,7 +963,7 @@ export class CloudflareWorkersWebSocketGatewayLifecycleService
       try {
         socket.send(message);
       } catch (error) {
-        this.unregisterSocket(socketId);
+        this.unregisterTrackedSocketWithDeferredStateCleanup(socketId);
         this.logger.warn(
           `WebSocket connection ${socketId} failed to send a room broadcast and was removed. ${error instanceof Error ? error.message : 'Unknown error.'}`,
           LIFECYCLE_LOG_CONTEXT,
