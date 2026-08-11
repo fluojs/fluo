@@ -1,4 +1,5 @@
-import type { GuardContext, HandlerDescriptor, RequestContext } from '@fluojs/http';
+import { defineControllerMetadata, defineRouteMetadata } from '@fluojs/core/internal';
+import { createHandlerMapping, type GuardContext, type HandlerDescriptor, type RequestContext } from '@fluojs/http';
 import { describe, expect, it, vi } from 'vitest';
 import { ThrottlerGuard } from './guard.js';
 import type { ThrottlerConsumeInput, ThrottlerStore } from './types.js';
@@ -62,16 +63,42 @@ function createGuardContext(
   };
 }
 
-function createEquivalentHandlerTypes() {
-  class SharedModule {}
-
+function createEquivalentController(): HandlerDescriptor['controllerToken'] {
   class SharedController {
     action() {
       return 'shared';
     }
   }
 
-  return { controllerToken: SharedController, moduleType: SharedModule };
+  defineControllerMetadata(SharedController, { basePath: '' });
+  defineRouteMetadata(SharedController.prototype, 'action', {
+    method: 'GET',
+    path: '/shared',
+  });
+
+  return SharedController;
+}
+
+function compileHandler(
+  controllerToken: HandlerDescriptor['controllerToken'],
+  withPrecedingSource: boolean,
+): HandlerDescriptor {
+  class PrecedingController {}
+
+  const sources = withPrecedingSource
+    ? [{ controllerToken: PrecedingController }, { controllerToken }]
+    : [{ controllerToken }];
+  const handler = createHandlerMapping(sources).descriptors[0];
+
+  if (!handler) {
+    throw new TypeError('Expected the test route compiler to produce one handler descriptor.');
+  }
+
+  return handler;
+}
+
+function createCompiledGuardContext(handler: HandlerDescriptor, requestContext: RequestContext): GuardContext {
+  return { handler, requestContext };
 }
 
 describe('ThrottlerGuard route bucket keys', () => {
@@ -112,7 +139,7 @@ describe('ThrottlerGuard route bucket keys', () => {
     expect(publicKey).not.toBe(adminKey);
   });
 
-  it('keeps route buckets isolated when compiled handlers have the same display names', async () => {
+  it('keeps route buckets isolated for identical-source handlers with distinct compiled identities', async () => {
     // Given
     const counts = new Map<string, number>();
     const store: ThrottlerStore = {
@@ -126,29 +153,11 @@ describe('ThrottlerGuard route bucket keys', () => {
         };
       }),
     };
-    const FirstModule = class SharedModule {};
-    const SecondModule = class SharedModule {};
-    const FirstController = class SharedController {
-      action() {
-        return 'first';
-      }
-    };
-    const SecondController = class SharedController {
-      action() {
-        return 'second';
-      }
-    };
+    const firstHandler = compileHandler(createEquivalentController(), true);
+    const secondHandler = compileHandler(createEquivalentController(), false);
     const guard = new ThrottlerGuard({ limit: 1, store, ttl: 60 });
-    const firstContext = createGuardContext(
-      FirstController,
-      createRequestContext('2001:db8::2'),
-      FirstModule,
-    );
-    const secondContext = createGuardContext(
-      SecondController,
-      createRequestContext('2001:db8::2'),
-      SecondModule,
-    );
+    const firstContext = createCompiledGuardContext(firstHandler, createRequestContext('2001:db8::2'));
+    const secondContext = createCompiledGuardContext(secondHandler, createRequestContext('2001:db8::2'));
     await guard.canActivate(firstContext);
 
     // When
@@ -173,20 +182,12 @@ describe('ThrottlerGuard route bucket keys', () => {
         };
       }),
     };
-    const firstTypes = createEquivalentHandlerTypes();
-    const secondTypes = createEquivalentHandlerTypes();
+    const firstHandler = compileHandler(createEquivalentController(), true);
+    const secondHandler = compileHandler(createEquivalentController(), true);
     const firstGuard = new ThrottlerGuard({ limit: 1, store, ttl: 60 });
     const secondGuard = new ThrottlerGuard({ limit: 1, store, ttl: 60 });
-    const firstContext = createGuardContext(
-      firstTypes.controllerToken,
-      createRequestContext('2001:db8::3'),
-      firstTypes.moduleType,
-    );
-    const secondContext = createGuardContext(
-      secondTypes.controllerToken,
-      createRequestContext('2001:db8::3'),
-      secondTypes.moduleType,
-    );
+    const firstContext = createCompiledGuardContext(firstHandler, createRequestContext('2001:db8::3'));
+    const secondContext = createCompiledGuardContext(secondHandler, createRequestContext('2001:db8::3'));
     await firstGuard.canActivate(firstContext);
 
     // When

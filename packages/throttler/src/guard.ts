@@ -1,9 +1,7 @@
-import { createHash } from 'node:crypto';
-
 import { Inject } from '@fluojs/core';
 import { getStandardMetadataBag } from '@fluojs/core/internal';
 import { type Guard, type GuardContext, type MiddlewareContext, TooManyRequestsException } from '@fluojs/http';
-import { resolveClientIdentity } from '@fluojs/http/internal';
+import { getCompiledRouteIdentity, resolveClientIdentity } from '@fluojs/http/internal';
 
 import {
   getClassSkipThrottleMetadata,
@@ -53,36 +51,11 @@ function buildStoreKey(encodedHandlerKey: string, clientKey: string): string {
   return `throttler:${encodedHandlerKey}:${encodedClientKey}`;
 }
 
-function functionSource(value: Function): string {
-  return Function.prototype.toString.call(value);
-}
-
-function buildCompiledHandlerFingerprint(handler: GuardContext['handler']): string {
-  const compiledHandler: unknown = Reflect.get(handler.controllerToken.prototype, handler.methodName);
-
-  if (typeof compiledHandler !== 'function') {
-    throw new TypeError(`Compiled throttler handler "${handler.methodName}" is not callable.`);
-  }
-
-  const sources = [
-    handler.metadata.moduleType ? functionSource(handler.metadata.moduleType) : '<moduleless>',
-    functionSource(handler.controllerToken),
-    functionSource(compiledHandler),
-  ] as const;
-  const hash = createHash('sha256');
-
-  for (const source of sources) {
-    hash.update(`${source.length}:`);
-    hash.update(source);
-  }
-
-  return hash.digest('base64url');
-}
-
 function buildHandlerKey(handler: GuardContext['handler']): string {
   const version = handler.route.version ?? handler.metadata.effectiveVersion ?? 'unversioned';
   const moduleName = handler.metadata.moduleType?.name || '<moduleless>';
   const controllerName = handler.controllerToken.name || '<anonymous-controller>';
+  const compiledRouteIdentity = getCompiledRouteIdentity(handler) ?? '<uncompiled>';
 
   return [
     `module:${encodeURIComponent(moduleName)}`,
@@ -91,7 +64,7 @@ function buildHandlerKey(handler: GuardContext['handler']): string {
     `path:${encodeURIComponent(handler.route.path)}`,
     `version:${encodeURIComponent(version)}`,
     `handler:${encodeURIComponent(handler.methodName)}`,
-    `compiled:${buildCompiledHandlerFingerprint(handler)}`,
+    `compiled:${encodeURIComponent(compiledRouteIdentity)}`,
   ].join('|');
 }
 
