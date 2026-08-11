@@ -107,6 +107,8 @@ WebSocketModule.forRoot({
 
 When omitted, WebSocket defaults are bounded: `maxConnections: 1000`, `maxPayloadBytes: 1 MiB`, `buffer.maxPendingMessagesPerSocket: 256`, `shutdown.timeoutMs: 5000`, Node heartbeat interval `30s`, and Node backpressure `maxBufferedAmountBytes: 1 MiB` with drop behavior.
 
+Shutdown is terminal for upgrade admission: the Node runtime rechecks the shutdown gate immediately before `ws` accepts a matching request, even when no upgrade guard is configured. If a socket close has already queued `@OnDisconnect()` cleanup when shutdown starts, its lifecycle state remains in the same bounded drain until cleanup settles or `shutdown.timeoutMs` expires. Bun, Deno, and Workers preserve this disconnect-drain guarantee on their fetch-style bindings.
+
 Gateway message handlers receive one normalized payload contract across runtimes. Text frames are parsed as JSON when possible and otherwise delivered as strings. Binary frames are decoded as UTF-8 before the same dispatch step. Oversized accepted sockets are closed with close code `1009`.
 
 ## Runtime-specific WebSocket modules

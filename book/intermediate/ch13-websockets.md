@@ -101,6 +101,8 @@ The root `WebSocketModule` and `@fluojs/websockets/node` use Node's `IncomingMes
 
 If the Guard fails, the connection is rejected immediately. It is a boundary that stops the server from allocating resources for unauthenticated clients.
 
+Shutdown closes that admission boundary terminally. The Node runtime checks the shutdown gate again immediately before handing a matching request to `ws`, including paths without an `upgrade.guard`, so a request cannot cross from authorization into acceptance after shutdown starts. Across Node, Bun, Deno, and Workers, a close event that has already queued `@OnDisconnect()` remains tracked until its cleanup settles; if application shutdown overlaps that cleanup, it joins the same `shutdown.timeoutMs` bounded drain instead of escaping teardown.
+
 ## 13.5 Integrating with FluoShop events
 
 A Gateway itself is closer to a pipe. To turn it into a useful realtime feature, you need to connect it to the FluoShop event bus. When an `OrderShippedEvent` occurs in the backend, the gateway should read that internal event and push a status-change message to the relevant client.
@@ -234,6 +236,7 @@ This flow reduces repeated polling by users and gives them an experience where t
 - Runtime-specific subpaths ensure realtime logic stays portable across Node, Bun, Deno, and Cloudflare Workers.
 - `WebSocketRoomService` gives gateways a documented room membership and broadcast contract; inject `WebSocketGatewayLifecycleService` from the root entrypoint, `NodeWebSocketGatewayLifecycleService` from the explicit Node subpath, or the matching `*WebSocketGatewayLifecycleService` from another runtime subpath with `@Inject(...)`, and type the parameter as `WebSocketRoomService`.
 - Text and binary payloads are normalized before `@OnMessage()` handlers run.
+- Shutdown closes upgrade admission before acceptance and keeps already queued disconnect cleanup inside the bounded drain.
 - Heartbeat and bounded defaults prevent resource leaks and ghost connections.
 
 The practical lesson is that WebSockets should be just as structured as REST APIs.

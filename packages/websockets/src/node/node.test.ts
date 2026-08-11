@@ -29,6 +29,24 @@ function getAdapterPort(adapter: { getServer?: () => unknown }): number {
   return getBoundPort(adapter.getServer?.());
 }
 
+function hasUpgradeEventListener(server: unknown): server is {
+  once(event: 'upgrade', listener: () => void): unknown;
+} {
+  return typeof server === 'object'
+    && server !== null
+    && 'once' in server
+    && typeof server.once === 'function';
+}
+
+function hasApplicationShutdown(service: unknown): service is {
+  onApplicationShutdown(): Promise<void>;
+} {
+  return typeof service === 'object'
+    && service !== null
+    && 'onApplicationShutdown' in service
+    && typeof service.onApplicationShutdown === 'function';
+}
+
 function onceOpen(socket: WebSocket): Promise<void> {
   return new Promise((resolve, reject) => {
     socket.once('open', () => resolve());
@@ -242,6 +260,70 @@ describe('@fluojs/websockets/node', () => {
         await waitForAssertion(() => {
           expect(state.messages).toEqual([{ value: 'buffer-node' }]);
         });
+      } finally {
+        if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+          socket.close();
+        }
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects a no-guard Node upgrade when shutdown starts immediately before acceptance', async () => {
+    @WebSocketGateway({ path: '/shutdown-admission-race' })
+    class ShutdownGateway {}
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [NodeWebSocketModule.forRoot({ shutdown: { timeoutMs: 500 } })],
+      providers: [ShutdownGateway],
+    });
+
+    const adapter = createNodeHttpAdapter({ port: 0 });
+    const app = await bootstrapApplication({
+      adapter,
+      rootModule: AppModule,
+    });
+    const service = await app.container.resolve(NodeWebSocketGatewayLifecycleService);
+    let shutdownPromise: Promise<void> | undefined;
+
+    try {
+      await app.listen();
+      const server = adapter.getServer?.();
+
+      if (!hasUpgradeEventListener(server)) {
+        throw new Error('Expected Node test server to be available after application listen.');
+      }
+
+      if (!hasApplicationShutdown(service)) {
+        throw new Error('Expected Node websocket lifecycle service to expose application shutdown.');
+      }
+
+      server.once('upgrade', () => {
+        shutdownPromise = service.onApplicationShutdown();
+      });
+
+      const port = getAdapterPort(adapter);
+      const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/shutdown-admission-race`);
+
+      try {
+        const upgradeOutcome = await new Promise<number | 'accepted'>((resolve, reject) => {
+          socket.once('open', () => resolve('accepted'));
+          socket.once('unexpected-response', (_request, response) => {
+            response.resume();
+            resolve(response.statusCode ?? 0);
+          });
+          socket.once('error', reject);
+        });
+
+        expect(upgradeOutcome).toBe(503);
+
+        if (!shutdownPromise) {
+          throw new Error('Expected websocket shutdown to start during upgrade admission.');
+        }
+
+        await shutdownPromise;
       } finally {
         if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
           socket.close();

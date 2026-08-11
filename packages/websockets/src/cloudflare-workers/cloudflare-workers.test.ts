@@ -1025,6 +1025,146 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     expect(state.disconnectCount).toBe(1);
   });
 
+  it('waits for Worker disconnect cleanup already queued when shutdown starts', async () => {
+    const adapter = new TestWorkerAdapter();
+    const connected = createDeferred<void>();
+    const disconnectStarted = createDeferred<void>();
+    const disconnectRelease = createDeferred<void>();
+
+    @WebSocketGateway({ path: '/shutdown-queued-disconnect' })
+    class ShutdownGateway {
+      @OnConnect()
+      onConnect() {
+        connected.resolve();
+      }
+
+      @OnDisconnect()
+      async onDisconnect() {
+        disconnectStarted.resolve();
+        await disconnectRelease.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CloudflareWorkersWebSocketModule.forRoot({ shutdown: { timeoutMs: 200 } })],
+      providers: [ShutdownGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+
+    try {
+      await app.listen();
+      const server = adapter.getServer();
+
+      await server?.fetch(new Request('https://worker.test/shutdown-queued-disconnect', {
+        headers: { upgrade: 'websocket' },
+      }));
+      await flushAsyncWork();
+      await connected.promise;
+
+      const socket = server?.lastSocket;
+
+      if (!socket) {
+        throw new Error('Expected Worker test socket to be available after websocket upgrade.');
+      }
+
+      socket.close(1000, 'Client closed');
+      await disconnectStarted.promise;
+
+      let closed = false;
+      const closePromise = app.close().then(() => {
+        closed = true;
+      });
+
+      await flushAsyncWork();
+
+      expect(closed).toBe(false);
+
+      disconnectRelease.resolve();
+      await closePromise;
+    } finally {
+      disconnectRelease.resolve();
+      await app.close();
+    }
+  });
+
+  it('waits for Worker disconnect cleanup queued after a room broadcast send failure', async () => {
+    const adapter = new TestWorkerAdapter();
+    const connected = createDeferred<void>();
+    const disconnectStarted = createDeferred<void>();
+    const disconnectRelease = createDeferred<void>();
+
+    @WebSocketGateway({ path: '/shutdown-broadcast-failure' })
+    class ShutdownGateway {
+      @OnConnect()
+      onConnect() {
+        connected.resolve();
+      }
+
+      @OnDisconnect()
+      async onDisconnect() {
+        disconnectStarted.resolve();
+        await disconnectRelease.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CloudflareWorkersWebSocketModule.forRoot({ shutdown: { timeoutMs: 200 } })],
+      providers: [ShutdownGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const service = await app.container.resolve<CloudflareWorkersWebSocketGatewayLifecycleService>(
+      CloudflareWorkersWebSocketGatewayLifecycleService,
+    );
+    let closePromise: Promise<void> | undefined;
+
+    try {
+      await app.listen();
+      const server = adapter.getServer();
+
+      await server?.fetch(new Request('https://worker.test/shutdown-broadcast-failure', {
+        headers: { upgrade: 'websocket' },
+      }));
+      await flushAsyncWork();
+      await connected.promise;
+
+      const socket = server?.lastSocket;
+      const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, CloudflareWorkerWebSocket>;
+      const socketId = socketRegistry.keys().next().value;
+
+      if (!socket || typeof socketId !== 'string') {
+        throw new Error('Expected Worker broadcast failure test socket registration after websocket upgrade.');
+      }
+
+      service.joinRoom(socketId, 'shutdown-room');
+      socket.send = () => {
+        throw new Error('Broadcast failed.');
+      };
+      service.broadcastToRoom('shutdown-room', 'shutdown.test', undefined);
+      socket.close(1000, 'Client closed');
+      await disconnectStarted.promise;
+
+      let closed = false;
+      closePromise = app.close().then(() => {
+        closed = true;
+      });
+
+      await flushAsyncWork();
+
+      expect(closed).toBe(false);
+
+      disconnectRelease.resolve();
+      await closePromise;
+    } finally {
+      disconnectRelease.resolve();
+      await closePromise;
+      await app.close();
+    }
+  });
+
   it('bounds Worker disconnect cleanup waits by shutdown.timeoutMs', async () => {
     const adapter = new TestWorkerAdapter();
     const connected = createDeferred<void>();

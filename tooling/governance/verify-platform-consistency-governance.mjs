@@ -668,7 +668,9 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // via @Inject(...) with root WebSocketGatewayLifecycleService, explicit Node
   // NodeWebSocketGatewayLifecycleService, or the matching runtime-subpath token)
   // and room broadcast backpressure runtime limits (Node.js-backed adapter only;
-  // fetch-style runtimes do not apply a backpressure policy to room broadcasts).
+  // fetch-style runtimes do not apply a backpressure policy to room broadcasts),
+  // plus terminal Node upgrade admission and retained disconnect lifecycle state
+  // across the bounded cross-runtime shutdown drain.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
@@ -1790,13 +1792,17 @@ function enforceCanonicalRuntimeMatrixReferences() {
       packageSurface.includes('ignored raw handler return values') &&
       packageSurface.includes('thrown HTTP exceptions') &&
       packageSurface.includes('token-only root `WebSocketGatewayLifecycleService`') &&
+      packageSurface.includes('terminal Node shutdown admission gate') &&
+      packageSurface.includes('retained per-connection lifecycle state') &&
       docsContext.includes('packages/websockets/README.md') &&
       docsContext.includes('@fluojs/websockets/cloudflare-workers') &&
       docsContext.includes('metadata authoring primitives') &&
       docsContext.includes('thrown HTTP exceptions') &&
       docsContext.includes('ignored raw WebSocket handler return values') &&
-      docsContext.includes('token-only `WebSocketGatewayLifecycleService`'),
-    'docs/CONTEXT.md must keep WebSockets runtime subpaths, shared authoring primitives, guard rejection modes, ignored returns, and token-only lifecycle service discoverable when package-surface.md documents them.',
+      docsContext.includes('token-only `WebSocketGatewayLifecycleService`') &&
+      docsContext.includes('terminal Node shutdown admission') &&
+      docsContext.includes('retained per-connection lifecycle state'),
+    'docs/CONTEXT.md must keep WebSockets runtime subpaths, shared authoring primitives, guard rejection modes, ignored returns, token-only lifecycle service, terminal upgrade admission, and retained disconnect drain state discoverable when package-surface.md documents them.',
   );
   assert(
     packageSurfaceKo.includes('@fluojs/websockets/bun') &&
@@ -1804,13 +1810,17 @@ function enforceCanonicalRuntimeMatrixReferences() {
       packageSurfaceKo.includes('await 완료 뒤 무시되는 raw handler return value') &&
       packageSurfaceKo.includes('throw된 HTTP exception') &&
       packageSurfaceKo.includes('token-only root `WebSocketGatewayLifecycleService`') &&
+      packageSurfaceKo.includes('upgrade accept 직전에') &&
+      packageSurfaceKo.includes('connection별 lifecycle state retention') &&
       docsContextKo.includes('packages/websockets/README.ko.md') &&
       docsContextKo.includes('@fluojs/websockets/cloudflare-workers') &&
       docsContextKo.includes('metadata authoring primitive') &&
       docsContextKo.includes('throw된 HTTP exception') &&
       docsContextKo.includes('raw WebSocket handler return value') &&
-      docsContextKo.includes('token-only `WebSocketGatewayLifecycleService`'),
-    'docs/CONTEXT.ko.md must keep WebSockets runtime subpaths, shared authoring primitives, guard rejection modes, ignored returns, and token-only lifecycle service discoverable when package-surface.ko.md documents them.',
+      docsContextKo.includes('token-only `WebSocketGatewayLifecycleService`') &&
+      docsContextKo.includes('upgrade accept 직전에') &&
+      docsContextKo.includes('connection별 lifecycle state retention'),
+    'docs/CONTEXT.ko.md must keep WebSockets runtime subpaths, shared authoring primitives, guard rejection modes, ignored returns, token-only lifecycle service, terminal upgrade admission, and retained disconnect drain state discoverable when package-surface.ko.md documents them.',
   );
   assert(
     packageSurface.includes('legacy standalone timing diagnostics') &&

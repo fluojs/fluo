@@ -101,6 +101,8 @@ Root `WebSocketModule`과 `@fluojs/websockets/node`는 Node의 `IncomingMessage`
 
 Guard가 실패하면 connection은 즉시 거부됩니다. 서버가 인증되지 않은 client를 위해 리소스를 할당하지 않도록 막는 경계입니다.
 
+Shutdown은 이 admission boundary를 terminal하게 닫습니다. Node runtime은 `upgrade.guard`가 없는 경로까지 포함해 일치하는 request를 `ws`에 넘기기 직전에 shutdown gate를 다시 확인하므로, shutdown 시작 뒤 request가 authorization에서 acceptance로 넘어갈 수 없습니다. Node, Bun, Deno, Workers 모두 close event가 이미 queue한 `@OnDisconnect()`를 cleanup이 settle될 때까지 추적합니다. Application shutdown이 해당 cleanup과 겹치면 teardown을 벗어나지 않고 같은 `shutdown.timeoutMs` bounded drain에 포함됩니다.
+
 ## 13.5 Integrating with FluoShop events
 
 Gateway 자체는 파이프에 가깝습니다. 이를 유용한 실시간 기능으로 만들려면 FluoShop event bus에 연결해야 합니다. Backend에서 `OrderShippedEvent`가 발생하면 gateway는 그 내부 event를 읽고, 관련 client에게 상태 변경 메시지를 push해야 합니다.
@@ -234,6 +236,7 @@ WebSocket이 도입되면서 주문 흐름은 더 직접적인 실시간 계약�
 - Runtime-specific subpath는 실시간 로직이 Node, Bun, Deno, Cloudflare Workers 간에 이식 가능하도록 보장합니다.
 - `WebSocketRoomService`는 gateway에 문서화된 room membership 및 broadcast contract를 제공합니다. Root entrypoint의 `WebSocketGatewayLifecycleService`, 명시적 Node subpath의 `NodeWebSocketGatewayLifecycleService`, 또는 다른 runtime subpath의 해당 `*WebSocketGatewayLifecycleService` token을 `@Inject(...)`로 주입하고 parameter를 `WebSocketRoomService`로 type 지정하세요.
 - Text 및 binary payload는 `@OnMessage()` handler가 실행되기 전에 정규화됩니다.
+- Shutdown은 accept 전에 upgrade admission을 닫고 이미 queue된 disconnect cleanup을 bounded drain 안에 유지합니다.
 - Heartbeat와 bounded default는 리소스 누수와 ghost connection을 방지합니다.
 
 실무적 교훈은 WebSocket도 REST API만큼 구조화되어야 한다는 점입니다.
