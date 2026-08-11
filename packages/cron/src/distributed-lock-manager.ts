@@ -368,8 +368,8 @@ export class CronDistributedLockManager {
   private async releaseLease(lease: DistributedLockLease, timeoutMs?: number): Promise<boolean> {
     const redis = this.redisClient;
 
-    if (!redis) {
-      return true;
+    if (!redis || (timeoutMs !== undefined && timeoutMs <= 0)) {
+      return redis === undefined;
     }
 
     try {
