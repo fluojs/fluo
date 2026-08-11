@@ -1,10 +1,10 @@
-import { type Constructor, type MetadataPropertyKey } from '@fluojs/core';
+import type { Constructor, MetadataPropertyKey } from '@fluojs/core';
 import { getControllerMetadata, getRouteMetadata } from '@fluojs/core/internal';
 
+import { attachCompiledRouteIdentity } from './compiled-route-identity.js';
 import { getRouteProducesMetadata } from './decorators.js';
 import { RouteConflictError } from './errors.js';
 import { extractRoutePathParams, normalizeRoutePath, parseRoutePath, type RoutePathSegment } from './route-path.js';
-import { VersioningType } from './types.js';
 import type {
   FrameworkRequest,
   GuardLike,
@@ -12,11 +12,12 @@ import type {
   HandlerMapping,
   HandlerMatch,
   HandlerSource,
-  InterceptorLike,
   HttpMethod,
+  InterceptorLike,
   VersioningExtractor,
   VersioningOptions,
 } from './types.js';
+import { VersioningType } from './types.js';
 
 interface ResolvedVersioning {
   extractor: VersioningExtractor;
@@ -309,11 +310,15 @@ function matchParameterizedRoute(
   return params;
 }
 
-function createHandlerDescriptors(source: HandlerSource, versioning: ResolvedVersioning): HandlerDescriptor[] {
+function createHandlerDescriptors(
+  source: HandlerSource,
+  versioning: ResolvedVersioning,
+  sourceIndex: number,
+): HandlerDescriptor[] {
   const controllerMetadata = getControllerMetadata(source.controllerToken) ?? { basePath: '' };
   const descriptors: HandlerDescriptor[] = [];
 
-  for (const propertyKey of getControllerMethodNames(source.controllerToken)) {
+  for (const [methodIndex, propertyKey] of getControllerMethodNames(source.controllerToken).entries()) {
     const routeMetadata = getRouteMetadata(source.controllerToken.prototype, propertyKey);
 
     if (!routeMetadata) {
@@ -325,7 +330,7 @@ function createHandlerDescriptors(source: HandlerSource, versioning: ResolvedVer
     const effectivePath = versioning.type === VersioningType.URI ? applyVersionPrefix(routePath, effectiveVersion) : routePath;
     const produces = getRouteProducesMetadata(source.controllerToken, propertyKey);
 
-    descriptors.push({
+    descriptors.push(attachCompiledRouteIdentity({
       controllerToken: source.controllerToken,
         metadata: {
           controllerPath: controllerMetadata.basePath,
@@ -350,14 +355,15 @@ function createHandlerDescriptors(source: HandlerSource, versioning: ResolvedVer
         path: effectivePath,
         version: effectiveVersion,
       },
-    });
+    }, `v1:${sourceIndex}:${methodIndex}`));
   }
 
   return descriptors;
 }
 
 function buildDescriptorList(sources: HandlerSource[], versioning: ResolvedVersioning): HandlerDescriptor[] {
-  const descriptors = sources.flatMap((source) => createHandlerDescriptors(source, versioning));
+  const descriptors = sources.flatMap((source, sourceIndex) =>
+    createHandlerDescriptors(source, versioning, sourceIndex));
   const seen = new Set<string>();
 
   for (const descriptor of descriptors) {
