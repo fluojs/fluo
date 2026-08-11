@@ -169,6 +169,7 @@ export class PrismaService<
   private readonly transactions = createTransactionContextStore<TTransactionClient>();
   private readonly activeRequestTransactions = new Set<ActiveRequestTransaction>();
   private readonly activeTransactionBoundaries = new Set<ActiveTransactionBoundary>();
+  private connectTransition?: Promise<void>;
   private transactionAbortSignalSupport: TransactionAbortSignalSupport = 'unknown';
   private lifecycleState: 'created' | 'ready' | 'shutting-down' | 'stopped' = 'created';
 
@@ -288,10 +289,13 @@ export class PrismaService<
 
   async onModuleInit(): Promise<void> {
     if (typeof this.client.$connect === 'function') {
-      await this.client.$connect();
+      this.connectTransition = Promise.resolve(this.client.$connect());
+      await this.connectTransition;
     }
 
-    this.lifecycleState = 'ready';
+    if (this.lifecycleState === 'created') {
+      this.lifecycleState = 'ready';
+    }
   }
 
   async onApplicationShutdown(): Promise<void> {
@@ -303,6 +307,10 @@ export class PrismaService<
 
     await Promise.allSettled(Array.from(this.activeRequestTransactions, (transaction) => transaction.settled));
     await Promise.allSettled(Array.from(this.activeTransactionBoundaries, (transaction) => transaction.settled));
+
+    if (this.connectTransition) {
+      await Promise.allSettled([this.connectTransition]);
+    }
 
     if (typeof this.client.$disconnect === 'function') {
       await this.client.$disconnect();
