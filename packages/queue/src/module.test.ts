@@ -55,6 +55,8 @@ const bullmqState = vi.hoisted(() => {
   const failQueueCreation = new Set<string>();
   const failWorkerCreation = new Set<string>();
   const failWorkerRun = new Set<string>();
+  const forceCloseHangs = new Set<string>();
+  const pendingForceCloses = new Map<string, () => void>();
 
   function attemptsFor(job: MockQueueJob): number {
     if (typeof job.opts.attempts === 'number' && Number.isFinite(job.opts.attempts) && job.opts.attempts > 0) {
@@ -111,6 +113,11 @@ const bullmqState = vi.hoisted(() => {
       failQueueCreation.clear();
       failWorkerCreation.clear();
       failWorkerRun.clear();
+      forceCloseHangs.clear();
+      for (const resolve of pendingForceCloses.values()) {
+        resolve();
+      }
+      pendingForceCloses.clear();
       sequence = 0;
     },
     createQueue(name: string) {
@@ -152,6 +159,12 @@ const bullmqState = vi.hoisted(() => {
     failQueueCreation,
     failWorkerCreation,
     failWorkerRun,
+    forceCloseHangs,
+    releaseForceClose(name: string): void {
+      forceCloseHangs.delete(name);
+      pendingForceCloses.get(name)?.();
+      pendingForceCloses.delete(name);
+    },
     queues,
     workers,
     async dispatch(name: string, job: MockQueueJob) {
@@ -166,6 +179,15 @@ const bullmqState = vi.hoisted(() => {
       }
 
       return Promise.all(queue.jobs.map((job) => dispatch(worker.name, job))).then(() => undefined);
+    },
+    waitForForceClose(name: string): Promise<void> {
+      if (!forceCloseHangs.has(name)) {
+        return Promise.resolve();
+      }
+
+      return new Promise<void>((resolve) => {
+        pendingForceCloses.set(name, resolve);
+      });
     },
   };
 });
@@ -239,7 +261,9 @@ vi.mock('bullmq', () => ({
 
       this.worker.closeCalls += 1;
 
-      if (!force) {
+      if (force) {
+        await bullmqState.waitForForceClose(this.worker.name);
+      } else {
         await Promise.allSettled(Array.from(this.worker.active));
       }
 
@@ -2165,6 +2189,62 @@ describe('@fluojs/queue', () => {
     expect(redis.quitCalls).toEqual([]);
     expect(redis.disconnectCalls).toEqual([]);
     expect(loggerEvents.some((event) => event.includes('Failed to close queue worker within shutdown timeout.'))).toBe(true);
+  });
+
+  it('bounds a hanging force-close and continues owned resource cleanup', async () => {
+    vi.useFakeTimers();
+    const loggerEvents: string[] = [];
+
+    // Given
+    class HangingForceCloseJob {
+      constructor(public readonly id: string) {}
+    }
+
+    @QueueWorker(HangingForceCloseJob, { jobName: 'hanging-force-close-job' })
+    class HangingForceCloseWorker {
+      async handle(_job: HangingForceCloseJob): Promise<void> {
+        await new Promise<void>(() => undefined);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [QueueModule.forRoot({ workerShutdownTimeoutMs: 25 })],
+      providers: [HangingForceCloseWorker],
+    });
+
+    const redis = new MockRedisClient();
+    const app = await bootstrapApplication({
+      logger: createLogger(loggerEvents),
+      providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      rootModule: AppModule,
+    });
+    const queue = await app.container.resolve<Queue>(QUEUE);
+    await vi.advanceTimersByTimeAsync(0);
+
+    void queue.enqueue(new HangingForceCloseJob('job-1'));
+    await Promise.resolve();
+    bullmqState.forceCloseHangs.add('hanging-force-close-job');
+
+    // When
+    const closePromise = app.close();
+
+    try {
+      await vi.advanceTimersByTimeAsync(25);
+      expect(bullmqState.workers.get('hanging-force-close-job')?.closeCalls).toBe(2);
+      expect(bullmqState.queues.get('hanging-force-close-job')?.closeCalls).toBe(0);
+
+      await vi.advanceTimersByTimeAsync(25);
+
+      // Then
+      expect(bullmqState.queues.get('hanging-force-close-job')?.closeCalls).toBe(1);
+      await closePromise;
+      expect(redis.duplicates.every((connection) => connection.status === 'end')).toBe(true);
+      expect(loggerEvents.some((event) => event.includes('Failed to force close queue worker during shutdown.'))).toBe(true);
+    } finally {
+      bullmqState.releaseForceClose('hanging-force-close-job');
+      await closePromise;
+    }
   });
 
   it('keeps the public QueueModule.forRoot() worker shutdown timeout default at 30_000ms', async () => {

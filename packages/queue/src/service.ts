@@ -827,7 +827,11 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
       this.logger.error('Failed to close queue worker within shutdown timeout.', error, 'QueueLifecycleService');
 
       try {
-        await worker.close(true);
+        await withTimeout(
+          worker.close(true),
+          this.options.workerShutdownTimeoutMs,
+          () => new Error('queue worker force close timed out'),
+        );
       } catch (forceCloseError) {
         this.logger.error('Failed to force close queue worker during shutdown.', forceCloseError, 'QueueLifecycleService');
       }
