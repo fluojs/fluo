@@ -237,7 +237,9 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
     await this.moduleOptions.transport.emit(pattern, cloneWithFallback(payload));
   }
 
-  private assertTransportIngressOpen(operation: 'emit' | 'listen' | 'send'): void {
+  private assertTransportIngressOpen(
+    operation: 'bidiStream' | 'clientStream' | 'emit' | 'listen' | 'send' | 'serverStream',
+  ): void {
     if (this.closeStarted) {
       throw new InvariantError(`Microservice cannot ${operation} after shutdown has started.`);
     }
@@ -251,9 +253,10 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
    * @param signal Optional abort signal passed to the transport.
    * @returns An async iterable of stream messages.
    *
-   * @throws {Error} When the configured transport does not implement `serverStream()`.
+   * @throws {Error} When shutdown has started or the configured transport does not implement `serverStream()`.
    */
   serverStream(pattern: string, payload: unknown, signal?: AbortSignal): AsyncIterable<unknown> {
+    this.assertTransportIngressOpen('serverStream');
     const transport = this.moduleOptions.transport;
 
     if (!transport.serverStream) {
@@ -270,9 +273,10 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
    * @param signal Optional abort signal passed to the transport.
    * @returns A writer for request chunks plus a promise for the final response.
    *
-   * @throws {Error} When the configured transport does not implement `clientStream()`.
+   * @throws {Error} When shutdown has started or the configured transport does not implement `clientStream()`.
    */
   clientStream(pattern: string, signal?: AbortSignal): { writer: ServerStreamWriter; result: Promise<unknown> } {
+    this.assertTransportIngressOpen('clientStream');
     const transport = this.moduleOptions.transport;
 
     if (!transport.clientStream) {
@@ -289,9 +293,10 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
    * @param signal Optional abort signal passed to the transport.
    * @returns A reader for response chunks and a writer for outbound chunks.
    *
-   * @throws {Error} When the configured transport does not implement `bidiStream()`.
+   * @throws {Error} When shutdown has started or the configured transport does not implement `bidiStream()`.
    */
   bidiStream(pattern: string, signal?: AbortSignal): { reader: AsyncIterable<unknown>; writer: ServerStreamWriter } {
+    this.assertTransportIngressOpen('bidiStream');
     const transport = this.moduleOptions.transport;
 
     if (!transport.bidiStream) {

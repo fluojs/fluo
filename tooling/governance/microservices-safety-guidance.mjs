@@ -49,6 +49,27 @@ const ingressGuidanceAnchors = [
   'transport handoff',
 ];
 
+const streamIngressGuidancePaths = [
+  'packages/microservices/README.md',
+  'packages/microservices/README.ko.md',
+  'book/intermediate/ch01-microservices-intro.md',
+  'book/intermediate/ch01-microservices-intro.ko.md',
+  'book/intermediate/ch08-grpc.md',
+  'book/intermediate/ch08-grpc.ko.md',
+  'docs/CONTEXT.md',
+  'docs/CONTEXT.ko.md',
+  'docs/architecture/lifecycle-and-shutdown.md',
+  'docs/architecture/lifecycle-and-shutdown.ko.md',
+  'docs/reference/package-surface.md',
+  'docs/reference/package-surface.ko.md',
+];
+
+const streamIngressGuidanceAnchors = [
+  '`serverStream()`',
+  '`clientStream()`',
+  '`bidiStream()`',
+];
+
 const ingressRegressionClaims = [
   [
     'packages/runtime/src/microservice-application.lifecycle.test.ts',
@@ -66,6 +87,17 @@ const ingressRegressionClaims = [
       'rejects facade emit before transport admission when close races with listen',
       'keeps facade send and emit rejected after a failed close attempt',
       'rejects resolved lifecycle facade send and emit while shell listen is still pending',
+    ],
+  ],
+  [
+    'packages/microservices/src/stream-shutdown-regression.test.ts',
+    [
+      "name: 'serverStream'",
+      "name: 'clientStream'",
+      "name: 'bidiStream'",
+      'rejects a new facade $name after close starts',
+      'expect(openAfterCloseStarted).toThrow(errorMessage)',
+      'expect(events).not.toContain',
     ],
   ],
 ];
@@ -180,6 +212,14 @@ const runtimeEvidence = [
     ],
   ],
   [
+    'packages/microservices/src/service.ts',
+    [
+      "this.assertTransportIngressOpen('serverStream');",
+      "this.assertTransportIngressOpen('clientStream');",
+      "this.assertTransportIngressOpen('bidiStream');",
+    ],
+  ],
+  [
     'packages/microservices/src/transports/grpc-transport.ts',
     [
       'const cleanupAbortListeners = () =>',
@@ -246,6 +286,14 @@ export function enforceMicroservicesSafetyGuidanceParity() {
 
     for (const anchor of ingressGuidanceAnchors) {
       assert(markdown.includes(anchor), `${relativePath} must keep the Microservices ingress anchor ${anchor}.`);
+    }
+  }
+
+  for (const relativePath of streamIngressGuidancePaths) {
+    const markdown = read(relativePath);
+
+    for (const anchor of streamIngressGuidanceAnchors) {
+      assert(markdown.includes(anchor), `${relativePath} must keep the Microservices stream ingress anchor ${anchor}.`);
     }
   }
 

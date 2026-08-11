@@ -112,7 +112,7 @@ fluo의 gRPC는 이벤트 스타일의 unary 호출도 발행할 수 있습니�
 - `@ClientStreamPattern`
 - `@BidiStreamPattern`
 
-회귀 테스트는 서버 스트리밍의 `end()` 완료, `ServerStreamWriter.error()` 전파, 서버 스트림 outbound 취소를 검증합니다. 별도 테스트는 서버, 클라이언트, 양방향 스트리밍 호출의 `AbortSignal` listener cleanup을 검증합니다. `ServerStreamWriter.write()`는 `void`를 반환하며, `GrpcMicroserviceTransport`는 하부 gRPC `write()` boolean을 버리고 backpressure 또는 drain 계약을 노출하지 않습니다. `write()`를 전달 완료나 flow-control 승인으로 해석해서는 안 됩니다.
+회귀 테스트는 서버 스트리밍의 `end()` 완료, `ServerStreamWriter.error()` 전파, 서버 스트림 outbound 취소를 검증합니다. 별도 테스트는 서버, 클라이언트, 양방향 스트리밍 호출의 `AbortSignal` listener cleanup을 검증합니다. Programmatic `Microservice` facade는 `close()`가 시작되는 즉시 새 `serverStream()`, `clientStream()`, `bidiStream()` 호출을 gRPC transport handoff 전에 거부합니다. `ServerStreamWriter.write()`는 `void`를 반환하며, `GrpcMicroserviceTransport`는 하부 gRPC `write()` boolean을 버리고 backpressure 또는 drain 계약을 노출하지 않습니다. `write()`를 전달 완료나 flow-control 승인으로 해석해서는 안 됩니다.
 
 ### 8.4.1 Server-streaming order tracking
 
