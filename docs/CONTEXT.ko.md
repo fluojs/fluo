@@ -154,7 +154,7 @@ Cron NestJS migration surface는 NestJS `timeZone`을 fluo `timezone`으로 바�
 
 ## Cron Scheduler Handle Retention
 
-Cron dynamic scheduling contract는 `packages/cron/README.ko.md`, [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md), [`book/intermediate/ch12-cron.ko.md`](../book/intermediate/ch12-cron.ko.md)에서 정렬됩니다. Task를 disable 또는 remove할 때 scheduler handle은 `stop()`이 성공한 뒤에만 지워집니다. Stop failure는 log와 `false` result로 관찰할 수 있고 retry를 위해 handle을 registry에 유지합니다. 실패한 disable은 logically disabled 상태를 유지하고, 실패한 removal은 registry에 남습니다.
+Cron dynamic scheduling contract는 `packages/cron/README.ko.md`, [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md), [`book/intermediate/ch12-cron.ko.md`](../book/intermediate/ch12-cron.ko.md)에서 정렬됩니다. Task를 disable 또는 remove할 때 scheduler handle은 `stop()`이 성공한 뒤에만 지워집니다. Stop failure는 log와 `false` result로 관찰할 수 있고 retry를 위해 handle을 registry에 유지합니다. 실패한 disable은 logically disabled 상태를 유지하고, 실패한 removal은 registry에 남습니다. Shutdown도 같은 ownership 규칙을 따르므로 첫 shutdown cleanup 시도 뒤에 남은 handle은 다음 shutdown lifecycle hook에서 재시도하고 성공한 뒤에만 지웁니다.
 
 ## Cron Post-Task Release Deadline
 
