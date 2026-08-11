@@ -630,7 +630,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // bounded shutdown lock-release I/O including the shutdown-start deadline reused
   // by post-task release/retry, timeout ownership retention, dynamic
   // blank-name rejection, immutable registry descriptor snapshots, failed-stop
-  // scheduler handle retention for retryable registry disable/removal, and
+  // scheduler handle retention for retryable registry disable/removal and
+  // subsequent shutdown-hook cleanup, and
   // microservices facade shutdown signal forwarding plus transport-owned
   // cancellation cleanup docs/tests, Queue's package-level Node.js runtime
   // floor discoverability and Queue migration from NestJS/Bull processor metadata

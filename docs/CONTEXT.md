@@ -154,7 +154,7 @@ The Cron NestJS migration surfaces record that NestJS `timeZone` becomes fluo `t
 
 ## Cron Scheduler Handle Retention
 
-The Cron dynamic scheduling contract is aligned across `packages/cron/README.md`, [`docs/reference/package-surface.md`](./reference/package-surface.md), and [`book/intermediate/ch12-cron.md`](../book/intermediate/ch12-cron.md): disabling or removing a task clears its scheduler handle only after `stop()` succeeds. A stop failure remains observable through logging and a `false` result, keeps the handle registered for retry, leaves a failed disable logically disabled, and keeps a failed removal registered.
+The Cron dynamic scheduling contract is aligned across `packages/cron/README.md`, [`docs/reference/package-surface.md`](./reference/package-surface.md), and [`book/intermediate/ch12-cron.md`](../book/intermediate/ch12-cron.md): disabling or removing a task clears its scheduler handle only after `stop()` succeeds. A stop failure remains observable through logging and a `false` result, keeps the handle registered for retry, leaves a failed disable logically disabled, and keeps a failed removal registered. Shutdown follows the same ownership rule, so a handle retained after the first shutdown cleanup attempt is retried by the next shutdown lifecycle hook and cleared only after success.
 
 ## Cron Post-Task Release Deadline
 
