@@ -170,7 +170,7 @@ Transport bootstrap은 unique event channel마다 한 번만 subscribe합니다.
 | --- | --- | --- |
 | Redis Pub/Sub 트랜스포트 | `@fluojs/event-bus/redis` | `RedisEventBusTransport`, `RedisEventBusTransportOptions` |
 
-`RedisEventBusTransport`는 명시적인 `@fluojs/event-bus/redis` 서브패스에만 유지되어 루트 `@fluojs/event-bus` 진입점이 모듈 등록, 로컬 발행, 데코레이터, 타입 전용 계약에 집중하도록 합니다. 이 Redis adapter는 inbound Redis message를 JSON decode하고 잘못된 JSON은 handler dispatch 전에 버립니다. 이 parsing 규칙은 임의의 `EventBusTransport` 구현에는 적용되지 않습니다. Shutdown 중 adapter는 자신이 등록한 채널을 unsubscribe하고 message listener를 분리하지만, `close()`는 호출자가 소유한 `publishClient` 또는 `subscribeClient`를 disconnect하지 않습니다. 애플리케이션 또는 client-owning module이 event-bus teardown 후 해당 client를 별도로 닫아야 합니다.
+`RedisEventBusTransport`는 명시적인 `@fluojs/event-bus/redis` 서브패스에만 유지되어 루트 `@fluojs/event-bus` 진입점이 모듈 등록, 로컬 발행, 데코레이터, 타입 전용 계약에 집중하도록 합니다. 이 Redis adapter는 inbound Redis message를 JSON decode하고 잘못된 JSON은 handler dispatch 전에 버립니다. 이 parsing 규칙은 임의의 `EventBusTransport` 구현에는 적용되지 않습니다. Shutdown 중 adapter는 자신이 등록한 채널을 unsubscribe하고 message listener를 분리하지만, `close()`는 호출자가 소유한 `publishClient` 또는 `subscribeClient`를 disconnect하지 않습니다. Unsubscribe가 실패하면 `close()`는 listener를 계속 분리하면서 등록된 채널을 유지하므로 이후 `close()`가 동일한 cleanup을 다시 시도합니다. 애플리케이션 또는 client-owning module이 event-bus teardown 후 해당 client를 별도로 닫아야 합니다.
 
 ## 관련 패키지
 
