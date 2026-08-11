@@ -115,6 +115,8 @@ QueueModule.forRoot({ clientName: 'jobs' })
 
 애플리케이션이 non-global queue 등록을 둘 이상 가져오면 명시적인 `scope`를 사용하세요. Scope 이름은 trim되며, 비어 있으면 안 되고, 컴파일된 module graph 안에서 고유해야 합니다. `QueueModule.forRoot({ global: false })`를 두 번 가져오는 duplicate default scoped registration이나 `QueueModule.forRoot({ global: false, scope: 'jobs' })`를 두 번 가져오는 duplicate explicit scope는 bootstrap 중 결정적인 오류로 실패합니다.
 
+Scope는 DI ownership을 격리하지만 Redis에 저장되는 BullMQ queue를 namespace하지는 않습니다. Queue는 bootstrap 중 같은 Redis client를 resolve하면서 동일한 `jobName`의 worker를 발견하는 두 scope를 거부합니다. 그렇지 않으면 두 worker가 같은 BullMQ queue를 소비하기 때문입니다. 각 owner에 서로 다른 `clientName` 또는 `jobName`을 설정하세요. Scope 사이에서 `jobName`을 재사용할 수 있는 경우는 각 scope가 서로 다른 named Redis registration을 resolve할 때뿐입니다.
+
 ```typescript
 import { Inject, Module } from '@fluojs/core';
 import { getQueueLifecycleServiceToken, getQueueToken, QueueModule, type Queue } from '@fluojs/queue';
@@ -209,6 +211,7 @@ Queue는 `new ProcessOrderJob(id)` 같은 class instance를 포함한 job object
 
 - `global`: queue module 등록을 global로 만들지 여부입니다. 기본값은 `true`이며, queue provider를 importing module graph 안에만 scope하고 싶으면 `false`를 지정합니다.
 - `scope`: 고유한 non-empty queue registration scope입니다. 하나의 앱에 non-global queue registration이 여러 개 있으면 필요합니다.
+- Cross-scope ownership: 같은 Redis client를 resolve하는 registration은 서로 다른 worker `jobName`을 사용해야 하며, collision은 BullMQ resource가 생성되기 전 bootstrap 중 실패합니다.
 - `workerShutdownTimeoutMs`: 종료 중 active worker processor를 기다리는 최대 시간입니다. 시간이 지나면 BullMQ worker를 force-close합니다. 기본값은 `30_000`입니다.
 - `defaultDeadLetterMaxEntries`: job별로 유지할 dead-letter record의 최대 개수이며, trimming을 끄려면 `false`를 지정합니다. 기본값은 `1_000`입니다.
 

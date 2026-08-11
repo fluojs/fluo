@@ -155,6 +155,8 @@ QueueModule.forRoot({ clientName: 'jobs' })
 
 이것은 code-style trick이 아니라 deployment decision입니다. workload isolation은 noisy-neighbor effect를 줄이고 capacity planning을 더 명확하게 만듭니다.
 
+Queue registration의 `scope` 값은 DI visibility를 격리하지만 Redis queue name을 namespace하지는 않습니다. 두 scope가 같은 Redis dependency를 사용하면서 동일한 `jobName`의 worker를 발견하면, 한 scope가 다른 scope의 job을 소비하지 못하도록 BullMQ resource 생성 전 bootstrap이 실패합니다. 서로 다른 `jobName`을 지정하거나, 의도적으로 job name을 재사용해야 한다면 `clientName`으로 각 scope를 서로 다른 named Redis registration에 연결하세요.
+
 ## 11.7 Queue flow in FluoShop
 
 v2.0.0에서 대표적인 background flow는 다음과 같습니다.
@@ -194,6 +196,7 @@ v2.0.0으로 넘어가면서 FluoShop은 더 이상 event-aware 수준에 머무
 - NestJS migration에는 `handle(job)`을 가진 명시적 singleton `@QueueWorker(JobClass)` provider, module-graph reachability, 애플리케이션이 검증한 `jobName`/payload cutover가 필요하며 legacy processor metadata는 compatibility surface가 아닙니다.
 - job은 invoice generation, email batch, catalog sync처럼 느리거나 failure-prone한 작업을 위한 durable handoff입니다.
 - retry attempt와 backoff strategy는 무비판적으로 복사하지 말고 workload별로 선택해야 합니다.
+- Queue scope는 BullMQ queue identity를 namespace하지 않으므로 같은 Redis dependency와 `jobName`을 서로 다른 scope의 worker가 함께 소유할 수 없습니다.
 - dead-letter list는 bounded retention policy 아래에서 반복 실패 job의 별도 record를 보존하며, BullMQ job 자체를 소유하거나 옮기지는 않습니다. Read-only inspection API는 Queue의 Redis key 형식을 노출하지 않고 최신순 typed metadata를 반환합니다.
 - Queue는 bootstrap-ready handoff 이후 processor를 시작합니다. Queue가 `started`이고 탐색된 모든 processor가 ready인 동안에만 pending dead-letter write가 readiness를 `ready`로 유지하고 health를 `degraded`로 만들며, `stopping`은 not-ready/degraded, `stopped`는 not-ready/unhealthy입니다. 종료는 각 write의 `5_000ms` drain과 stuck processor를 위한 `workerShutdownTimeoutMs`로 제한됩니다.
 - FluoShop v2.0.0은 이제 post-order의 expensive work를 customer request path를 늘리는 대신 queue boundary 뒤로 이동시킵니다.

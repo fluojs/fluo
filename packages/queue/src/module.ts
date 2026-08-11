@@ -1,18 +1,18 @@
 import type { Token } from '@fluojs/core';
-import type { Provider } from '@fluojs/di';
-import type { Container } from '@fluojs/di';
+import type { Container, Provider } from '@fluojs/di';
 import { getRedisClientToken } from '@fluojs/redis';
-import { defineModule, type ApplicationLogger, type CompiledModule, type ModuleType } from '@fluojs/runtime';
+import { type ApplicationLogger, type CompiledModule, defineModule, type ModuleType } from '@fluojs/runtime';
+import type { BootstrapReadySignal } from '@fluojs/runtime/internal';
 import {
   APPLICATION_LOGGER,
   BOOTSTRAP_READY_SIGNAL,
   COMPILED_MODULES,
   RUNTIME_CONTAINER,
 } from '@fluojs/runtime/internal';
-import type { BootstrapReadySignal } from '@fluojs/runtime/internal';
 
 import { normalizePositiveInteger, normalizePositiveIntegerOrFalse, normalizeRateLimiter } from './helpers.js';
 import { QueueLifecycleService } from './service.js';
+import type { QueueModuleContext, QueueRegistrationContext } from './tokens.js';
 import {
   getQueueLifecycleServiceToken,
   getQueueModuleContextToken,
@@ -21,13 +21,14 @@ import {
   getQueueToken,
   normalizeQueueScope,
   QUEUE,
+  QUEUE_MODULE_CONTEXT_MARKER,
 } from './tokens.js';
-import type { QueueModuleContext } from './tokens.js';
 import type {
   NormalizedQueueModuleOptions,
   QueueDeadLetterInspectionOptions,
   QueueModuleOptions,
 } from './types.js';
+import { assertUniqueQueueWorkerOwnership } from './worker-ownership.js';
 
 interface QueueModuleRedisClient {
   duplicate(options?: { maxRetriesPerRequest: null }): QueueModuleRedisConnection;
@@ -128,8 +129,11 @@ function formatQueueScope(scope: string | undefined): string {
   return scope ?? 'default';
 }
 
-function createQueueProviders(normalizedOptions: NormalizedQueueModuleOptions, moduleType: ModuleType): Provider[] {
-  const tokens = getQueueProviderTokens(normalizedOptions.scope);
+function createQueueProviders(
+  normalizedOptions: NormalizedQueueModuleOptions,
+  moduleType: ModuleType,
+  tokens: QueueProviderTokens,
+): Provider[] {
   const providers: Provider[] = [
     {
       provide: tokens.optionsToken,
@@ -137,7 +141,13 @@ function createQueueProviders(normalizedOptions: NormalizedQueueModuleOptions, m
     },
     {
       provide: tokens.moduleContextToken,
-      useValue: { moduleType, scope: formatQueueScope(normalizedOptions.scope) } satisfies QueueModuleContext,
+      useValue: {
+        [QUEUE_MODULE_CONTEXT_MARKER]: true,
+        moduleType,
+        options: normalizedOptions,
+        registrationTokens: [QueueLifecycleService, QUEUE, tokens.lifecycleServiceToken, tokens.queueToken],
+        scope: formatQueueScope(normalizedOptions.scope),
+      } satisfies QueueRegistrationContext,
     },
     {
       inject: [tokens.optionsToken, RUNTIME_CONTAINER, COMPILED_MODULES, tokens.moduleContextToken],
@@ -187,6 +197,7 @@ function createQueueProviders(normalizedOptions: NormalizedQueueModuleOptions, m
       provide: tokens.lifecycleServiceToken,
       useFactory: (...deps: unknown[]) => {
         const typedDeps = deps as QueueLifecycleServiceFactoryDeps;
+        assertUniqueQueueWorkerOwnership(typedDeps[3]);
 
         return new QueueLifecycleService(...typedDeps);
       },
@@ -247,7 +258,7 @@ export class QueueModule {
         ? [QueueLifecycleService, tokens.lifecycleServiceToken, QUEUE]
         : [tokens.lifecycleServiceToken, tokens.queueToken],
       global: normalizedOptions.global,
-      providers: createQueueProviders(normalizedOptions, QueueModuleDefinition),
+      providers: createQueueProviders(normalizedOptions, QueueModuleDefinition, tokens),
     });
   }
 }

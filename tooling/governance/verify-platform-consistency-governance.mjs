@@ -633,7 +633,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // microservices facade shutdown signal forwarding plus transport-owned
   // cancellation cleanup docs/tests, Queue's package-level Node.js runtime
   // floor discoverability and Queue migration from NestJS/Bull processor metadata
-  // to explicit singleton worker registration, jobName/payload cutover, and
+  // to explicit singleton worker registration, jobName/payload cutover,
+  // cross-scope Redis/jobName ownership collision rejection, and
   // bootstrap-ready/bounded-shutdown ownership, notifications queue opt-in, status
   // details, and generated identity diagnostics contracts, plus Slack singleton
   // provider discoverability and owned transport cleanup serialization docs/tests,
@@ -2435,6 +2436,52 @@ export function enforcePersistenceTransactionInterceptorCompatibility() {
   }
 }
 
+export function enforceQueueWorkerOwnershipContract() {
+  const contractPaths = [
+    'packages/queue/README.md',
+    'packages/queue/README.ko.md',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'docs/reference/package-surface.md',
+    'docs/reference/package-surface.ko.md',
+    'book/intermediate/ch11-queue.md',
+    'book/intermediate/ch11-queue.ko.md',
+  ];
+
+  for (const contractPath of contractPaths) {
+    const contract = read(contractPath);
+    assert(
+      contract.includes('scope') && contract.includes('Redis') && contract.includes('jobName'),
+      `${contractPath} must keep cross-scope Redis and jobName ownership discoverable.`,
+    );
+  }
+
+  const ownershipSource = read('packages/queue/src/worker-ownership.ts');
+  const moduleSource = read('packages/queue/src/module.ts');
+  const regressionSource = read('packages/queue/src/worker-ownership.test.ts');
+
+  assert(
+    ownershipSource.includes('getRedisClientToken(moduleContext.options.clientName)') &&
+      ownershipSource.includes('Cross-scope @fluojs/queue worker ownership collision') &&
+      ownershipSource.includes('createQueueDiscoveryModuleFilter(compiledModules, moduleContext)'),
+    'Queue ownership validation must compare the effective Redis dependency and discovered jobName inside each registration boundary.',
+  );
+  assert(
+    moduleSource.includes('assertUniqueQueueWorkerOwnership(typedDeps[3])') &&
+      moduleSource.indexOf('assertUniqueQueueWorkerOwnership(typedDeps[3])') <
+        moduleSource.indexOf('new QueueLifecycleService(...typedDeps)'),
+    'Queue lifecycle provider creation must reject ownership collisions before BullMQ bootstrap creates worker resources.',
+  );
+  assert(
+    regressionSource.includes('rejects the same Redis dependency and jobName across distinct queue scopes') &&
+      regressionSource.includes('allows the same jobName across scopes backed by distinct Redis dependencies') &&
+      regressionSource.includes('expect(bullmqState.queueNames).toEqual([])'),
+    'Queue ownership regressions must cover collision rejection before resource creation and the distinct-Redis allowance.',
+  );
+}
+
 export function main() {
   const changedFiles = changedFilesFromGit();
 
@@ -2464,6 +2511,7 @@ export function main() {
   enforceOpenApiNullableNormalizationContract();
   enforceGraphqlRuntimeBoundaryDiscoverability();
   enforcePersistenceTransactionInterceptorCompatibility();
+  enforceQueueWorkerOwnershipContract();
   enforceMicroservicesSafetyGuidanceParity();
   enforceMicroservicesSafetyRuntimeEvidence();
   enforceAdvancedBookCoreBoundaryCompanions(changedFiles);

@@ -115,6 +115,8 @@ When `QueueModule.forRoot({ global: false })` is used, each queue registration o
 
 Use an explicit `scope` when an application imports more than one non-global queue registration. Scope names are trimmed, must be non-empty, and must be unique per compiled module graph. Duplicate default scoped registrations such as two `QueueModule.forRoot({ global: false })` imports, or duplicate explicit scopes such as two `QueueModule.forRoot({ global: false, scope: 'jobs' })` imports, fail deterministically during bootstrap.
 
+A scope isolates DI ownership; it does not namespace the BullMQ queue stored in Redis. During bootstrap, Queue rejects two scopes that resolve the same Redis client and discover workers with the same `jobName`, because both workers would otherwise consume the same BullMQ queue. Configure a distinct `clientName` or `jobName` for each owner. Reusing a `jobName` across scopes is supported only when those scopes resolve distinct named Redis registrations.
+
 ```typescript
 import { Inject, Module } from '@fluojs/core';
 import { getQueueLifecycleServiceToken, getQueueToken, QueueModule, type Queue } from '@fluojs/queue';
@@ -209,6 +211,7 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 
 - `global`: whether the queue module registration is global. Defaults to `true`; set `false` when queue providers should stay scoped to the importing module graph.
 - `scope`: unique non-empty queue registration scope. Required when multiple non-global queue registrations exist in one app.
+- Cross-scope ownership: registrations that resolve the same Redis client must use distinct worker `jobName` values; collisions fail during bootstrap before BullMQ resources are created.
 - `workerShutdownTimeoutMs`: maximum time to wait for active worker processors during shutdown before force-closing the BullMQ worker. Defaults to `30_000`.
 - `defaultDeadLetterMaxEntries`: maximum retained dead-letter records per job, or `false` to disable trimming. Defaults to `1_000`.
 

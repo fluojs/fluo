@@ -4,10 +4,20 @@ import type { ModuleType } from '@fluojs/runtime';
 import type { QueueLifecycleService } from './service.js';
 import type { NormalizedQueueModuleOptions, Queue } from './types.js';
 
+/** Internal marker that distinguishes queue registration metadata from application value providers. */
+export const QUEUE_MODULE_CONTEXT_MARKER = Symbol('fluo.queue.module-context.marker');
+
 /** Runtime metadata that binds one queue registration to its compiled module graph. */
 export interface QueueModuleContext {
   readonly moduleType: ModuleType;
   readonly scope: string;
+}
+
+/** Internal queue registration metadata used for graph-wide worker ownership validation. */
+export interface QueueRegistrationContext extends QueueModuleContext {
+  readonly [QUEUE_MODULE_CONTEXT_MARKER]: true;
+  readonly options: NormalizedQueueModuleOptions;
+  readonly registrationTokens: readonly Token[];
 }
 
 const scopedQueueTokens = new Map<string, Token<Queue>>();
