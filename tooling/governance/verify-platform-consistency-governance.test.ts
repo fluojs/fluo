@@ -12,6 +12,7 @@ import {
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
   enforcePlatformShellLifecycleContract,
+  enforceQueueWorkerOwnershipContract,
   enforceReactClientSubpathContract,
   enforceReactPageCatalogContract,
   enforceReactPageMetadataIdentityContract,
@@ -2096,6 +2097,10 @@ describe('Queue lifecycle and migration discoverability', () => {
       expect(content).toContain('bootstrap-ready');
       expect(content).toContain('workerShutdownTimeoutMs');
     }
+  });
+
+  it('keeps cross-scope Redis and jobName ownership rejection aligned across source, regressions, and docs', () => {
+    expect(() => enforceQueueWorkerOwnershipContract()).not.toThrow();
   });
 
   it('keeps explicit NestJS worker migration and persisted-job cutover limits in Queue-specific regions', () => {
