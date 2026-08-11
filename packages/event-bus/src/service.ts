@@ -227,14 +227,13 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
   }
 
   private async drainActiveDispatches(): Promise<void> {
-    const activeDispatches = Array.from(this.activeDispatches);
     const timeoutMs = this.resolveShutdownDrainTimeoutMs();
-    const drained = await this.awaitShutdownDrain(activeDispatches, timeoutMs);
+    const drained = await this.awaitShutdownDrain(timeoutMs);
 
     if (!drained) {
       this.shutdownDrainTimeouts += 1;
       this.logger.warn(
-        `Event bus shutdown drain exceeded ${String(timeoutMs)}ms with ${String(activeDispatches.length)} active dispatch workflow(s); continuing shutdown.`,
+        `Event bus shutdown drain exceeded ${String(timeoutMs)}ms with ${String(this.activeDispatches.size)} active dispatch workflow(s); continuing shutdown.`,
         'EventBusLifecycleService',
       );
     }
@@ -263,16 +262,23 @@ export class EventBusLifecycleService implements EventBus, OnApplicationBootstra
     return dispatchWork;
   }
 
-  private async awaitShutdownDrain(activePublishes: Promise<void>[], timeoutMs: number): Promise<boolean> {
+  private async awaitShutdownDrain(timeoutMs: number): Promise<boolean> {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<false>((resolve) => {
       timeoutId = setTimeout(() => resolve(false), timeoutMs);
     });
 
-    const drain = Promise.allSettled(activePublishes).then(() => true);
-
     try {
-      return await Promise.race([drain, timeout]);
+      while (this.activeDispatches.size > 0) {
+        const activeDispatches = Array.from(this.activeDispatches);
+        const drained = await Promise.race([Promise.allSettled(activeDispatches).then(() => true), timeout]);
+
+        if (!drained) {
+          return false;
+        }
+      }
+
+      return true;
     } finally {
       if (timeoutId) {
         clearTimeout(timeoutId);

@@ -110,7 +110,7 @@ export class CheckoutService {
 }
 ```
 
-이렇게 하면 write path가 명시적으로 유지됩니다. 서비스는 상태 변화를 계속 소유하고, side effect는 위임됩니다. `EventPublishOptions`는 일치하는 local handler 작업과 구성된 transport publication을 모두 제한합니다. `waitForHandlers`의 기본값이 `true`이므로 위 코드처럼 await한 publish는 두 종류의 작업이 `signal` 및 `timeoutMs` bound 안에서 settle된 뒤에 완료됩니다. 이미 abort된 signal은 아직 시작하지 않은 작업을 건너뛰고, 작업이 시작된 뒤 발생한 cancellation이나 timeout은 호출자에게 보이는 wait를 settle하지만 shutdown이 추적하는 underlying work를 종료하지는 않습니다. 의도적으로 background reaction이 필요할 때만 `waitForHandlers: false`를 사용하세요. 이 옵션은 두 종류의 작업을 scheduling한 뒤 반환하고 `timeoutMs`를 무시하며, 해당 작업을 shutdown drain 추적에 유지합니다.
+이렇게 하면 write path가 명시적으로 유지됩니다. 서비스는 상태 변화를 계속 소유하고, side effect는 위임됩니다. `EventPublishOptions`는 일치하는 local handler 작업과 구성된 transport publication을 모두 제한합니다. `waitForHandlers`의 기본값이 `true`이므로 위 코드처럼 await한 publish는 두 종류의 작업이 `signal` 및 `timeoutMs` bound 안에서 settle된 뒤에 완료됩니다. 이미 abort된 signal은 아직 시작하지 않은 작업을 건너뛰고, 작업이 시작된 뒤 발생한 cancellation이나 timeout은 호출자에게 보이는 wait를 settle하지만 shutdown이 추적하는 underlying work를 종료하지는 않습니다. 의도적으로 background reaction이 필요할 때만 `waitForHandlers: false`를 사용하세요. 이 옵션은 두 종류의 작업을 scheduling한 뒤 반환하고 `timeoutMs`를 무시하며, 해당 작업을 shutdown drain 추적에 유지합니다. Shutdown은 하나의 absolute deadline 아래에서 해당 live work set을 quiescence까지 다시 확인하므로 이전 snapshot 뒤에 등록된 handler 또는 transport 작업까지 settle한 후 transport close를 진행합니다.
 
 ### 9.3.2 Why this is better than chained service calls
 

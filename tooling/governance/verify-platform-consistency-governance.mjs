@@ -642,8 +642,9 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // provider discoverability and owned transport cleanup serialization docs/tests,
   // plus CQRS provider-token fan-out, private immutable dispatch topology state,
   // full handler/saga/delegated pipeline ordering, and shutdown authorization,
-  // plus event-bus background handler/transport shutdown drain, inbound timeout,
-  // stable eventKey migration, and CQRS responsibility-boundary docs/tests,
+  // plus event-bus background handler/transport shutdown drain to live-set
+  // quiescence under one deadline, inbound timeout, stable eventKey migration,
+  // and CQRS responsibility-boundary docs/tests,
   // plus React Router/Path facade-over-HTTP metadata, ReactModule.forRoot
   // registration contract discoverability, inherited class/method render-policy
   // ordering, nearest Suspense fallback selection, request-scope renderer context,
