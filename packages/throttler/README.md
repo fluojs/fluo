@@ -97,7 +97,7 @@ You can also pass any object that implements the `ThrottlerStore` contract throu
 
 By default, the throttler resolves client identity from the raw socket `remoteAddress` only. If your deployment sits behind a trusted reverse proxy that rewrites `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`, opt in with `trustProxyHeaders: true`. If no trusted socket or proxy identity is available, it throws instead of collapsing unrelated callers into a shared bucket. You can also customize this to use API keys, user IDs, or other identifiers.
 
-Counters are scoped by route identity and client identity. The route portion includes module, controller, method, path, version, and a SHA-256 fingerprint of the compiled module/controller/handler sources so different compiled route-handler boundaries do not share buckets when their display names match. Identical build artifacts produce the same fingerprint across application instances, preserving distributed bucket sharing. When a request is rejected, `ThrottlerGuard` returns `429` and sets `Retry-After`.
+Counters are scoped by route identity and client identity. The route portion includes module, controller, method, path, version, and the deterministic source/method position assigned by the HTTP route compiler. Distinct compiled handlers therefore remain isolated even when their display names and emitted source match, while identical artifact layouts produce the same identity across application instances for distributed bucket sharing. When a request is rejected, `ThrottlerGuard` returns `429` and sets `Retry-After`.
 
 ```typescript
 ThrottlerModule.forRoot({
