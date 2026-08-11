@@ -1,5 +1,6 @@
 ---
+"@fluojs/http": patch
 "@fluojs/throttler": patch
 ---
 
-Prevent distinct compiled route handlers with matching display names from sharing rate-limit buckets while keeping identical deployments deterministic.
+Assign deterministic compiler-owned route identities and prevent distinct compiled handlers with matching display names or source from sharing rate-limit buckets.
