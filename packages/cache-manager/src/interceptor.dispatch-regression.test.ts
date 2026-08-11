@@ -57,6 +57,7 @@ function createSimpleJsonResponse(): SimpleJsonDispatchResponse {
 
 describe('CacheInterceptor response dispatch regressions', () => {
   afterEach(() => {
+    vi.unstubAllGlobals();
     vi.useRealTimers();
   });
 
@@ -170,6 +171,80 @@ describe('CacheInterceptor response dispatch regressions', () => {
       // Then
       await expect(cache.get('/products')).resolves.toBeUndefined();
     } finally {
+      await app.close();
+    }
+  });
+
+  it('keeps deferred eviction portable when setTimeout returns a Web or Deno numeric handle', async () => {
+    // Given
+    @Controller('/products')
+    @UseInterceptors(CacheInterceptor)
+    class ProductController {
+      @Post('/refresh')
+      @CacheEvict('/products')
+      refresh() {
+        return { refreshed: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [ProductController],
+      imports: [CacheModule.forRoot({ store: 'memory' })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const cache = await app.container.resolve(CacheService);
+      await cache.set('/products', { version: 'previous' }, 120);
+      const response = createSimpleJsonResponse();
+      vi.stubGlobal('setTimeout', vi.fn(() => 1));
+
+      // When
+      await app.dispatch(createRequest('/products/refresh'), response);
+
+      // Then
+      expect(response.body).toEqual({ refreshed: true });
+      await expect(cache.get('/products')).resolves.toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+      await app.close();
+    }
+  });
+
+  it('unreferences deferred eviction timers when the runtime exposes a Node timer handle', async () => {
+    // Given
+    @Controller('/products')
+    @UseInterceptors(CacheInterceptor)
+    class ProductController {
+      @Post('/refresh')
+      @CacheEvict('/products')
+      refresh() {
+        return { refreshed: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [ProductController],
+      imports: [CacheModule.forRoot({ store: 'memory' })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+
+    try {
+      const unref = vi.fn();
+      const response = createSimpleJsonResponse();
+      vi.stubGlobal('setTimeout', vi.fn(() => ({ unref })));
+
+      // When
+      await app.dispatch(createRequest('/products/refresh'), response);
+
+      // Then
+      expect(unref).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
       await app.close();
     }
   });

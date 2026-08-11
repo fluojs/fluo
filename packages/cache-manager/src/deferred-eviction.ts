@@ -95,7 +95,7 @@ export function installDeferredEviction(
 
     restore();
   }, EVICTION_FALLBACK_TIMEOUT_MS);
-  fallbackTimer.unref();
+  fallbackTimer.unref?.();
 
   if (signal) {
     signal.addEventListener('abort', cancel, { once: true });
