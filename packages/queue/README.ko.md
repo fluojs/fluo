@@ -91,11 +91,11 @@ NestJS queue integration에서 이동하는 consumer는 metadata 기반 processo
 2. `@Processor(...)`, `@Process(...)` 또는 그 밖의 NestJS/Bull provider metadata를 TC39 표준 class decorator인 `@QueueWorker(JobClass, options?)`로 바꿉니다. 각 worker는 호출 가능한 `handle(job)` 메서드를 노출해야 합니다.
 3. Decorated worker class를 singleton으로 `@Module({ providers: [...] })`에 추가합니다. Queue는 compiled provider/controller registration을 scan하며, `@Injectable()` metadata, emit된 constructor type, 임의로 import된 class는 scan하지 않습니다. Constructor dependency는 `@Inject(...)`로 명시적으로 선언합니다.
 4. Worker가 queue registration에서 도달 가능하도록 유지합니다. 기본 global `QueueModule.forRoot()`는 compiled application graph 전체의 singleton worker를 discovery할 수 있습니다. `global: false`에서는 authored imports/exports를 통해 해당 registration에 도달할 수 있는 module로 discovery가 제한되며, 일치하는 Redis provider도 같은 module tree에서 도달 가능해야 합니다.
-5. Queue lifecycle ownership과 중복되는 worker 소유 start/stop hook을 제거합니다. Queue는 application bootstrap 중 resource를 만들고 application bootstrap-ready handoff 이후에만 BullMQ processor를 시작하며, shutdown이 시작된 뒤에는 새 enqueue를 거부하고 active processor shutdown을 `workerShutdownTimeoutMs`로 제한한 다음 force-close를 요청합니다.
+5. Queue lifecycle ownership과 중복되는 worker 소유 start/stop hook을 제거합니다. Queue는 application bootstrap 중 resource를 만들고 application bootstrap-ready handoff 이후에만 BullMQ processor를 시작하며, shutdown이 시작된 뒤에는 새 enqueue를 거부하고 graceful close와 필요한 force-close에 각각 `workerShutdownTimeoutMs` budget을 적용합니다.
 
 Cutover 전에는 persistence identity 차이를 반영하세요. NestJS Bull/BullMQ는 하나의 `queueName` 아래 여러 named job 값을 영속화할 수 있습니다. 반면 fluo는 job type마다 queue/worker pair 하나를 만들면서 worker의 `jobName`을 BullMQ queue name과 named job 양쪽에 사용합니다. 따라서 `jobName`만 설정해서는 여러 named job이 하나의 `queueName`을 공유하는 legacy topology를 보존할 수 없고, `@fluojs/queue`는 NestJS decorator metadata를 해석하거나 기존 serialized payload를 자동 변환하지 않습니다.
 
-애플리케이션이 persisted-job cutover 방식을 선택해야 합니다. Producer를 전환하기 전에 기존 worker로 legacy queue를 drain하거나, 호환 payload를 변환해 fluo의 job별 queue로 다시 enqueue하거나, legacy worker가 이전 작업을 drain하는 동안 fluo에 별도 queue name을 사용하세요. 어떤 경로든 payload class shape, retry/backoff 설정, shutdown budget을 검증한 뒤 producer와 singleton `@QueueWorker(JobClass)` provider를 같은 `QueueModule.forRoot(...)` graph에 배포해야 합니다. `global: false`에서는 worker와 Redis reachability를 보존하고, 처리는 bootstrap-ready handoff 이후에만 시작하며 shutdown은 `workerShutdownTimeoutMs`로 제한된다는 점을 기억하세요.
+애플리케이션이 persisted-job cutover 방식을 선택해야 합니다. Producer를 전환하기 전에 기존 worker로 legacy queue를 drain하거나, 호환 payload를 변환해 fluo의 job별 queue로 다시 enqueue하거나, legacy worker가 이전 작업을 drain하는 동안 fluo에 별도 queue name을 사용하세요. 어떤 경로든 payload class shape, retry/backoff 설정, shutdown budget을 검증한 뒤 producer와 singleton `@QueueWorker(JobClass)` provider를 같은 `QueueModule.forRoot(...)` graph에 배포해야 합니다. `global: false`에서는 worker와 Redis reachability를 보존하고, 처리는 bootstrap-ready handoff 이후에만 시작하며 graceful 또는 forced worker close phase 각각이 `workerShutdownTimeoutMs`로 제한된다는 점을 기억하세요.
 
 ## 일반적인 패턴
 
@@ -142,7 +142,7 @@ export class EmailQueueModule {}
 
 Queue는 애플리케이션 부트스트랩 중 worker를 탐색하고 Queue가 소유하는 BullMQ 리소스를 만들지만, BullMQ worker processor는 runtime이 전체 애플리케이션 bootstrap/readiness sequence 완료를 표시한 뒤에만 시작합니다. 다른 `onApplicationBootstrap()` hook에서 enqueue한 job은 Queue 서비스가 초기화된 뒤에는 받을 수 있으며, processor는 뒤에 실행되는 async bootstrap hook이나 애플리케이션 readiness보다 앞서 실행되지 않고 bootstrap-ready handoff 이후 실행됩니다. Queue status는 해당 BullMQ processor가 실제로 시작될 때까지 degraded readiness를 보고합니다. Processor 시작에 실패하면 lifecycle이 `failed`로 이동하고, status snapshot은 worker를 ready로 숨기지 않고 실패를 노출합니다.
 
-애플리케이션 종료가 시작되면 Queue는 상태를 `stopping`으로 바꾸고 새 enqueue를 거부한 다음 Queue 소유 worker/queue/connection을 닫고 pending dead-letter write의 drain을 시도합니다. Queue가 각 pending dead-letter write를 기다리는 시간은 최대 `5_000ms`입니다. 이 대기가 timeout되면 Queue는 timeout을 기록하고 해당 write를 pending count에서 제외한 뒤, record가 Redis에 도달했다는 보장 없이 종료를 계속합니다. Worker 종료에는 별도로 `workerShutdownTimeoutMs` bounded wait가 적용되므로 끝나지 않는 active processor가 애플리케이션 종료를 무기한 막을 수 없습니다. 이 timeout이 지나면 Queue는 로그를 남기고 BullMQ worker에 force-close를 요청한 뒤 나머지 리소스 정리를 계속합니다.
+애플리케이션 종료가 시작되면 Queue는 상태를 `stopping`으로 바꾸고 새 enqueue를 거부한 다음 Queue 소유 worker/queue/connection을 닫고 pending dead-letter write의 drain을 시도합니다. Queue가 각 pending dead-letter write를 기다리는 시간은 최대 `5_000ms`입니다. 이 대기가 timeout되면 Queue는 timeout을 기록하고 해당 write를 pending count에서 제외한 뒤, record가 Redis에 도달했다는 보장 없이 종료를 계속합니다. Queue는 graceful worker close와 필요한 경우의 force-close attempt에 각각 최대 `workerShutdownTimeoutMs`를 적용합니다. 어느 close phase든 실패하거나 timeout되면 Queue는 실패를 기록하고 남은 queue, connection, dead-letter cleanup을 계속하므로 unresolved BullMQ force-close가 애플리케이션 종료를 무기한 막을 수 없습니다.
 
 ### 분산 재시도 (Distributed Retries)
 
@@ -212,7 +212,7 @@ Queue는 `new ProcessOrderJob(id)` 같은 class instance를 포함한 job object
 - `global`: queue module 등록을 global로 만들지 여부입니다. 기본값은 `true`이며, queue provider를 importing module graph 안에만 scope하고 싶으면 `false`를 지정합니다.
 - `scope`: 고유한 non-empty queue registration scope입니다. 하나의 앱에 non-global queue registration이 여러 개 있으면 필요합니다.
 - Cross-scope ownership: 같은 Redis client를 resolve하는 registration은 서로 다른 worker `jobName`을 사용해야 하며, collision은 BullMQ resource가 생성되기 전 bootstrap 중 실패합니다.
-- `workerShutdownTimeoutMs`: 종료 중 active worker processor를 기다리는 최대 시간입니다. 시간이 지나면 BullMQ worker를 force-close합니다. 기본값은 `30_000`입니다.
+- `workerShutdownTimeoutMs`: 각 BullMQ worker close phase에 허용되는 최대 시간입니다. Graceful close를 먼저 시도하고, 이 단계가 실패하거나 timeout되면 force-close에 같은 budget을 적용합니다. 기본값은 `30_000`입니다.
 - `defaultDeadLetterMaxEntries`: job별로 유지할 dead-letter record의 최대 개수이며, trimming을 끄려면 `false`를 지정합니다. 기본값은 `1_000`입니다.
 
 `QueueLifecycleService.createPlatformStatusSnapshot()`은 `createQueuePlatformStatusSnapshot(...)`과 같은 공개 snapshot 계약을 사용합니다. Queue가 `started`에 도달하고 탐색된 모든 BullMQ worker processor가 시작된 뒤에만 readiness를 `ready`로 보고합니다. 이 조건이 유지되는 동안 pending dead-letter write가 있어도 readiness는 `ready`를 유지하지만, pending count가 0으로 돌아올 때까지 health는 degraded입니다. Processor가 아직 pending인 `started` resource와 `starting`은 degraded readiness, `stopping`은 not-ready/degraded, `stopped`는 not-ready/unhealthy, worker-start failure는 `workerStartFailures`와 `lastWorkerStartFailure` details를 포함해 not-ready/unhealthy로 보고합니다. Snapshot details에는 Redis dependency id, lifecycle state, ready/discovered worker 수, pending dead-letter write 수, `5_000ms` dead-letter drain timeout, `workerShutdownTimeoutMs`가 포함됩니다.
