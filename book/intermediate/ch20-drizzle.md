@@ -73,7 +73,7 @@ import { Pool } from 'pg';
 export class PersistenceModule {}
 ```
 
-`strictTransactions: true` is recommended for FluoShop's production order service because checkout needs rollback guarantees. If the registered Drizzle handle does not expose `database.transaction(...)` and `strictTransactions` is left at its default `false`, fluo fails open: `transaction(...)` and `requestTransaction(...)` run the callback directly against the root handle. That keeps local fakes and migration scaffolds usable, but it is not atomic and should not be treated as a real transaction.
+`strictTransactions: true` is recommended for FluoShop's production order service because checkout needs rollback guarantees. If the registered Drizzle handle does not expose `database.transaction(...)` and `strictTransactions` is left at its default `false`, fluo fails open: `transaction(...)` and `requestTransaction(...)` run the callback directly against the root handle. That keeps local fakes and migration scaffolds usable, but it is not atomic and should not be treated as a real transaction. Fluo still binds that root handle into the fallback ALS context, so nested request helpers preserve the ambient abort signal and the owning shutdown drain without creating a real database transaction.
 
 ## 20.4 Repositories and Connection Management
 

@@ -73,7 +73,7 @@ import { Pool } from 'pg';
 export class PersistenceModule {}
 ```
 
-FluoShop production 주문 서비스에는 `strictTransactions: true`를 권장합니다. checkout에는 rollback 보장이 필요하기 때문입니다. 등록된 Drizzle handle이 `database.transaction(...)`을 노출하지 않고 `strictTransactions`를 기본값 `false`로 두면 fluo는 fail-open합니다. 즉 `transaction(...)`과 `requestTransaction(...)`이 callback을 root handle에서 직접 실행합니다. 이 동작은 local fake와 migration scaffold를 계속 사용할 수 있게 하지만 원자적이지 않으므로 실제 transaction으로 취급하면 안 됩니다.
+FluoShop production 주문 서비스에는 `strictTransactions: true`를 권장합니다. checkout에는 rollback 보장이 필요하기 때문입니다. 등록된 Drizzle handle이 `database.transaction(...)`을 노출하지 않고 `strictTransactions`를 기본값 `false`로 두면 fluo는 fail-open합니다. 즉 `transaction(...)`과 `requestTransaction(...)`이 callback을 root handle에서 직접 실행합니다. 이 동작은 local fake와 migration scaffold를 계속 사용할 수 있게 하지만 원자적이지 않으므로 실제 transaction으로 취급하면 안 됩니다. Fluo는 이 root handle을 fallback ALS context에도 바인딩하므로, 중첩 request helper는 실제 database transaction을 만들지 않으면서도 ambient abort signal과 소유 shutdown drain을 보존합니다.
 
 ## 20.4 Repositories and Connection Management
 
