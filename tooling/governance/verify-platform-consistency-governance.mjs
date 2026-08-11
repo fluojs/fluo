@@ -608,7 +608,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // drain, concurrent multi-container context isolation, explicit request signal
   // forwarding, facade/wrapper responsibility, fail-open rollback limits, and
   // non-contract replica routing/transaction telemetry claims, Drizzle shutdown-drain
-  // coverage for fail-open manual transactions, Drizzle decorated-instance
+  // coverage for fail-open manual transactions and root-handle ALS fallback nesting
+  // that preserves ambient abort/drain ownership without atomicity, Drizzle decorated-instance
   // transaction target fallback discoverability, Mongoose ALS session/request
   // tracking, fail-open manual transaction drain, plus runtime-boundary docs,
   // raw Node.js adapter type/runtime-floor and retry/body-limit/shutdown
