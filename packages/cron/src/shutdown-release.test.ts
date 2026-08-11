@@ -180,7 +180,7 @@ describe('Cron distributed release during shutdown', () => {
     expect(Date.now() - elapsedShutdownDeadlineMs).toBeLessThanOrEqual(1);
   });
 
-  it('retries stopped-state release separately after task-finally release using the shutdown-start deadline', async () => {
+  it('does not start Redis release I/O after the shutdown deadline has elapsed', async () => {
     // Given
     vi.useFakeTimers();
     const scenario = await createShutdownReleaseScenario();
@@ -193,11 +193,11 @@ describe('Cron distributed release during shutdown', () => {
     await scenario.tickPromise;
 
     // Then
-    expect(scenario.getReleaseAttempts()).toBe(2);
+    expect(scenario.getReleaseAttempts()).toBe(0);
     expect(Date.now() - elapsedShutdownDeadlineMs).toBeLessThanOrEqual(1);
   });
 
-  it('retains unresolved ownership when task-finally lock release reaches the shutdown timeout', async () => {
+  it('retains unresolved ownership when the task settles after the shutdown deadline', async () => {
     // Given
     vi.useFakeTimers();
     const scenario = await createShutdownReleaseScenario();
