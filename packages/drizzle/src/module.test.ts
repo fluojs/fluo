@@ -989,6 +989,92 @@ describe('@fluojs/drizzle', () => {
     }
   });
 
+  it('links nested fail-open request transactions to the ambient request abort signal', async () => {
+    const database = {};
+    const drizzle = new DrizzleDatabase<typeof database>(database);
+    const controller = new AbortController();
+    const nestedStarted = createDeferred();
+    const nestedBarrier = createDeferred();
+    let nestedTransaction: Promise<string> | undefined;
+
+    // Given: a nested request transaction running inside a fail-open request boundary.
+    const requestTransaction = drizzle.requestTransaction(async () => {
+      nestedTransaction = drizzle.requestTransaction(async () => {
+        nestedStarted.resolve();
+        controller.abort(new Error('ambient fallback request aborted'));
+        await nestedBarrier.promise;
+        return 'unreachable';
+      });
+
+      return nestedTransaction;
+    }, controller.signal);
+
+    try {
+      await nestedStarted.promise;
+      const observedNestedTransaction = nestedTransaction;
+
+      if (!observedNestedTransaction) {
+        throw new Error('Nested request transaction did not start.');
+      }
+
+      // When: direct execution settles after the outer request signal aborts.
+      nestedBarrier.resolve();
+
+      // Then: both callers observe the ambient abort instead of the nested fallback resolving independently.
+      await expect(observedNestedTransaction).rejects.toThrow('ambient fallback request aborted');
+      await expect(requestTransaction).rejects.toThrow('ambient fallback request aborted');
+    } finally {
+      nestedBarrier.resolve();
+      await Promise.allSettled([
+        requestTransaction,
+        nestedTransaction ?? Promise.resolve('not-started'),
+      ]);
+    }
+  });
+
+  it('keeps nested fail-open request work in one shutdown drain boundary', async () => {
+    const events: string[] = [];
+    const database = {};
+    const nestedStarted = createDeferred();
+    const nestedBarrier = createDeferred();
+    const drizzle = new DrizzleDatabase<typeof database>(database, () => {
+      events.push('dispose');
+    });
+
+    // Given: nested fail-open request work that remains pending inside its outer request boundary.
+    const requestTransaction = drizzle.requestTransaction(async () =>
+      drizzle.requestTransaction(async () => {
+        events.push('nested:start');
+        nestedStarted.resolve();
+        await nestedBarrier.promise;
+        events.push('nested:end');
+      }),
+    );
+    let shutdown: Promise<void> | undefined;
+
+    try {
+      await nestedStarted.promise;
+      expect(drizzle.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(1);
+
+      // When: shutdown aborts the ambient request while nested direct execution is still pending.
+      shutdown = drizzle.onApplicationShutdown();
+      await Promise.resolve();
+
+      // Then: disposal waits for the single fail-open drain boundary and all nested direct work behind it.
+      expect(events).toEqual(['nested:start']);
+      nestedBarrier.resolve();
+      await expect(requestTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+      await shutdown;
+      expect(events).toEqual(['nested:start', 'nested:end', 'dispose']);
+    } finally {
+      nestedBarrier.resolve();
+      await Promise.allSettled([
+        requestTransaction,
+        shutdown ?? drizzle.onApplicationShutdown(),
+      ]);
+    }
+  });
+
   it('runs nested request and service transactions through a single transaction boundary', async () => {
     let transactionCalls = 0;
     const transactionDatabase = {

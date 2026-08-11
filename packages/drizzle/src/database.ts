@@ -49,9 +49,10 @@ type DrizzleRuntimeOptions = {
   strictTransactions: boolean;
 };
 
-type TransactionContext<TTransactionDatabase> = {
-  database: TTransactionDatabase;
+type TransactionContext<TDatabase, TTransactionDatabase> = {
+  database: TDatabase | TTransactionDatabase;
   deferredRequestTransactionSettlements?: Set<ActiveRequestTransactionHandle>;
+  fallbackRequestCallbackSettlements?: Set<Promise<void>>;
   requestAbortSignal?: AbortSignal;
 };
 
@@ -134,7 +135,7 @@ export class DrizzleDatabase<
   TTransactionOptions = unknown,
 > implements DrizzleHandleProvider<TDatabase, TTransactionDatabase, TTransactionOptions>, OnApplicationShutdown
 {
-  private readonly transactions = new AsyncLocalStorage<TransactionContext<TTransactionDatabase>>();
+  private readonly transactions = new AsyncLocalStorage<TransactionContext<TDatabase, TTransactionDatabase>>();
   private readonly activeRequestTransactions = new Set<ActiveRequestTransaction>();
   private readonly activeTransactionScopes = new Set<ActiveTransactionScope>();
   private activeRequestTransactionStatusCount = 0;
@@ -297,13 +298,21 @@ export class DrizzleDatabase<
     options: TTransactionOptions | undefined,
   ): Promise<T> {
     const deferredRequestTransactionSettlements = new Set<ActiveRequestTransactionHandle>();
+    const fallbackRequestCallbackSettlements = new Set<Promise<void>>();
     const activeTransactionScope = this.trackAvailableTransactionScope();
 
     try {
       const transactionRunner = this.resolveTransactionRunner();
 
       if (!transactionRunner) {
-        return await fn();
+        return await this.transactions.run(
+          {
+            database: this.database,
+            deferredRequestTransactionSettlements,
+            fallbackRequestCallbackSettlements,
+          },
+          fn,
+        );
       }
 
       return await transactionRunner(
@@ -315,6 +324,8 @@ export class DrizzleDatabase<
         options,
       );
     } finally {
+      await this.drainFallbackRequestCallbacks(fallbackRequestCallbackSettlements);
+
       for (const handle of deferredRequestTransactionSettlements) {
         this.untrackActiveRequestTransaction(handle);
       }
@@ -354,15 +365,28 @@ export class DrizzleDatabase<
   }
 
   private async executeNestedRequestTransaction<T>(
-    current: TransactionContext<TTransactionDatabase>,
+    current: TransactionContext<TDatabase, TTransactionDatabase>,
     fn: () => Promise<T>,
     signal?: AbortSignal,
   ): Promise<T> {
+    const runCallback = () => {
+      const callback = fn();
+
+      current.fallbackRequestCallbackSettlements?.add(
+        callback.then(
+          () => undefined,
+          () => undefined,
+        ),
+      );
+
+      return callback;
+    };
+
     if (current.requestAbortSignal) {
       const abortSignalView = createRequestAbortSignalView(current.requestAbortSignal, signal);
 
       try {
-        const result = await raceWithAbort(fn, abortSignalView.signal);
+        const result = await raceWithAbort(runCallback, abortSignalView.signal);
 
         this.throwIfRequestAborted(abortSignalView.signal);
 
@@ -380,8 +404,12 @@ export class DrizzleDatabase<
 
     try {
       const result = await this.transactions.run(
-        { database: current.database, requestAbortSignal: abortContext.signal },
-        () => raceWithAbort(fn, abortContext.signal),
+        {
+          database: current.database,
+          fallbackRequestCallbackSettlements: current.fallbackRequestCallbackSettlements,
+          requestAbortSignal: abortContext.signal,
+        },
+        () => raceWithAbort(runCallback, abortContext.signal),
       );
 
       this.throwIfRequestAborted(abortContext.signal);
@@ -410,12 +438,25 @@ export class DrizzleDatabase<
     }
 
     const active = this.trackActiveRequestTransaction(abortContext.controller);
+    const fallbackRequestCallbackSettlements = new Set<Promise<void>>();
 
     try {
       const result = await raceWithAbort(() => {
-        const callback = new Promise<T>((resolve) => resolve(fn()));
+        const callback = new Promise<T>((resolve) =>
+          resolve(
+            this.transactions.run(
+              {
+                database: this.database,
+                fallbackRequestCallbackSettlements,
+                requestAbortSignal: abortContext.signal,
+              },
+              fn,
+            ),
+          ),
+        );
 
-        return callback.finally(() => {
+        return callback.finally(async () => {
+          await this.drainFallbackRequestCallbacks(fallbackRequestCallbackSettlements);
           this.untrackActiveRequestTransaction(active);
         });
       }, abortContext.signal);
@@ -425,6 +466,16 @@ export class DrizzleDatabase<
       return result;
     } finally {
       abortContext.cleanup();
+    }
+  }
+
+  private async drainFallbackRequestCallbacks(callbackSettlements: Set<Promise<void>>): Promise<void> {
+    let drainedCallbackCount = 0;
+
+    while (drainedCallbackCount < callbackSettlements.size) {
+      const callbacks = Array.from(callbackSettlements).slice(drainedCallbackCount);
+      drainedCallbackCount += callbacks.length;
+      await Promise.all(callbacks);
     }
   }
 
