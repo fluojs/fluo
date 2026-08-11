@@ -94,30 +94,25 @@ export class RedisEventBusTransport implements EventBusTransport {
 
   /**
    * Unsubscribes all tracked channels and detaches the Redis message listener.
+   * A failed unsubscribe retains the tracked channels so a later close can retry cleanup.
    * The caller-owned publish and subscribe clients remain connected for their owner to close.
    *
    * @returns A promise that resolves once the transport cleanup finishes.
    */
   async close(): Promise<void> {
-    let closeError: unknown;
     const channels = [...this.handlersByChannel.keys()];
 
     try {
       if (channels.length > 0) {
         await this.subscribeClient.unsubscribe(...channels);
       }
-    } catch (error) {
-      closeError = error;
-    } finally {
+
       this.handlersByChannel.clear();
+    } finally {
       if (this.messageListenerAttached) {
         this.subscribeClient.off('message', this.onMessage);
         this.messageListenerAttached = false;
       }
-    }
-
-    if (closeError) {
-      throw closeError;
     }
   }
 }

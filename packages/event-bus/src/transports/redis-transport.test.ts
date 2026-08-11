@@ -133,25 +133,35 @@ describe('RedisEventBusTransport', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it('still detaches listeners when unsubscribe fails during close', async () => {
+  it('still detaches listeners and retries channels when unsubscribe fails during close', async () => {
+    // Given
     const publishClient = new MockRedisClient();
     const subscribeClient = new MockRedisClient();
+    const closeError = new Error('unsubscribe failed');
+    const unsubscribeAttempts: string[][] = [];
     const transport = new RedisEventBusTransport({
       publishClient: publishClient as never,
       subscribeClient: subscribeClient as never,
     });
 
-    subscribeClient.unsubscribe = vi.fn(async () => {
-      throw new Error('unsubscribe failed');
-    });
+    subscribeClient.unsubscribe = async (...channels: string[]) => {
+      unsubscribeAttempts.push(channels);
+      if (unsubscribeAttempts.length === 1) {
+        throw closeError;
+      }
+    };
 
     await transport.subscribe('AuditEvent', async () => undefined);
 
-    await expect(transport.close()).rejects.toThrow('unsubscribe failed');
+    // When
+    await expect(transport.close()).rejects.toBe(closeError);
+    await transport.close();
 
+    // Then
     expect(publishClient.disconnectCalls).toBe(0);
     expect(subscribeClient.disconnectCalls).toBe(0);
     expect(subscribeClient.offCalls).toBe(1);
     expect(subscribeClient.messageListeners).toHaveLength(0);
+    expect(unsubscribeAttempts).toEqual([['AuditEvent'], ['AuditEvent']]);
   });
 });
