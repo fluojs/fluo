@@ -970,7 +970,12 @@ export class BunWebSocketGatewayLifecycleService
       const result = socket.send(message);
 
       if (result === 0) {
-        this.unregisterSocket(socketId);
+        const state = this.socketStates.get(socketId);
+        if (state) {
+          this.unregisterSocketWithDeferredStateCleanup(state);
+        } else {
+          this.unregisterSocket(socketId);
+        }
         this.logger.warn(
           `WebSocket connection ${socketId} dropped a room broadcast because the socket was unavailable.`,
           LIFECYCLE_LOG_CONTEXT,

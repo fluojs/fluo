@@ -934,6 +934,78 @@ describe('@fluojs/websockets/bun', () => {
     }
   });
 
+  it('waits for Bun disconnect cleanup queued after a room broadcast send failure', async () => {
+    const adapter = new TestBunAdapter();
+    const connected = createDeferred<void>();
+    const disconnectStarted = createDeferred<void>();
+    const disconnectRelease = createDeferred<void>();
+
+    @WebSocketGateway({ path: '/shutdown-broadcast-failure' })
+    class ShutdownGateway {
+      @OnConnect()
+      onConnect() {
+        connected.resolve();
+      }
+
+      @OnDisconnect()
+      async onDisconnect() {
+        disconnectStarted.resolve();
+        await disconnectRelease.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [BunWebSocketModule.forRoot({ shutdown: { timeoutMs: 200 } })],
+      providers: [ShutdownGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const service = await app.container.resolve<BunWebSocketGatewayLifecycleService>(BunWebSocketGatewayLifecycleService);
+    let closePromise: Promise<void> | undefined;
+
+    try {
+      await app.listen();
+      const server = adapter.getServer();
+
+      await server?.fetch(new Request('http://127.0.0.1:3000/shutdown-broadcast-failure', {
+        headers: { upgrade: 'websocket' },
+      }));
+      await flushAsyncWork();
+      await connected.promise;
+
+      const socket = server?.lastSocket;
+      const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, BunServerWebSocket>;
+      const socketId = socketRegistry.keys().next().value;
+
+      if (!socket || typeof socketId !== 'string') {
+        throw new Error('Expected Bun broadcast failure test socket registration after websocket upgrade.');
+      }
+
+      service.joinRoom(socketId, 'shutdown-room');
+      socket.send = () => 0;
+      service.broadcastToRoom('shutdown-room', 'shutdown.test', undefined);
+      socket.close(1000, 'Client closed');
+      await disconnectStarted.promise;
+
+      let closed = false;
+      closePromise = app.close().then(() => {
+        closed = true;
+      });
+
+      await flushAsyncWork();
+
+      expect(closed).toBe(false);
+
+      disconnectRelease.resolve();
+      await closePromise;
+    } finally {
+      disconnectRelease.resolve();
+      await closePromise;
+      await app.close();
+    }
+  });
+
   it('bounds Bun disconnect cleanup waits by shutdown.timeoutMs', async () => {
     const adapter = new TestBunAdapter();
     const connected = createDeferred<void>();
