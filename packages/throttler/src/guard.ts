@@ -1,7 +1,7 @@
 import { Inject } from '@fluojs/core';
 import { getStandardMetadataBag } from '@fluojs/core/internal';
 import { type Guard, type GuardContext, type MiddlewareContext, TooManyRequestsException } from '@fluojs/http';
-import { resolveClientIdentity } from '@fluojs/http/internal';
+import { getCompiledRouteIdentity, resolveClientIdentity } from '@fluojs/http/internal';
 
 import {
   getClassSkipThrottleMetadata,
@@ -55,6 +55,7 @@ function buildHandlerKey(handler: GuardContext['handler']): string {
   const version = handler.route.version ?? handler.metadata.effectiveVersion ?? 'unversioned';
   const moduleName = handler.metadata.moduleType?.name || '<moduleless>';
   const controllerName = handler.controllerToken.name || '<anonymous-controller>';
+  const compiledRouteIdentity = getCompiledRouteIdentity(handler) ?? '<uncompiled>';
 
   return [
     `module:${encodeURIComponent(moduleName)}`,
@@ -63,6 +64,7 @@ function buildHandlerKey(handler: GuardContext['handler']): string {
     `path:${encodeURIComponent(handler.route.path)}`,
     `version:${encodeURIComponent(version)}`,
     `handler:${encodeURIComponent(handler.methodName)}`,
+    `compiled:${encodeURIComponent(compiledRouteIdentity)}`,
   ].join('|');
 }
 
@@ -84,7 +86,7 @@ function resolveRetryAfterSeconds(entry: ThrottlerStoreEntry, now: number): numb
 export class ThrottlerGuard implements Guard {
   private readonly options: ThrottlerModuleOptions;
 
-  private readonly resolvedPolicies = new WeakMap<Function, Map<string, ResolvedHandlerPolicy>>();
+  private readonly resolvedPolicies = new WeakMap<GuardContext['handler'], ResolvedHandlerPolicy>();
 
   private readonly store: ThrottlerStore;
 
@@ -96,23 +98,7 @@ export class ThrottlerGuard implements Guard {
   }
 
   private getResolvedPolicy(handler: GuardContext['handler']): ResolvedHandlerPolicy {
-    let controllerPolicies = this.resolvedPolicies.get(handler.controllerToken);
-
-    if (!controllerPolicies) {
-      controllerPolicies = new Map<string, ResolvedHandlerPolicy>();
-      this.resolvedPolicies.set(handler.controllerToken, controllerPolicies);
-    }
-
-    const version = handler.route.version ?? handler.metadata.effectiveVersion ?? 'unversioned';
-    const cacheKey = [
-      handler.metadata.moduleType?.name || '<moduleless>',
-      handler.controllerToken.name || '<anonymous-controller>',
-      handler.methodName,
-      handler.route.method,
-      handler.route.path,
-      version,
-    ].join('\u0000');
-    const cachedPolicy = controllerPolicies.get(cacheKey);
+    const cachedPolicy = this.resolvedPolicies.get(handler);
 
     if (cachedPolicy) {
       return cachedPolicy;
@@ -136,7 +122,7 @@ export class ThrottlerGuard implements Guard {
       ttlSeconds: resolvedThrottle.ttl,
     };
 
-    controllerPolicies.set(cacheKey, policy);
+    this.resolvedPolicies.set(handler, policy);
 
     return policy;
   }

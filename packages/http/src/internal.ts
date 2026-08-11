@@ -4,12 +4,13 @@ export {
 } from './adapter.js';
 export { DefaultBinder } from './adapters/binding.js';
 export { resolveClientIdentity } from './client-identity.js';
-export type { Dispatcher } from './types.js';
+export { getCompiledRouteIdentity } from './compiled-route-identity.js';
 export {
   attachFrameworkRequestNativeRouteHandoff,
   bindRawRequestNativeRouteHandoff,
   consumeRawRequestNativeRouteHandoff,
   isRoutePathNormalizationSensitive,
-  readFrameworkRequestNativeRouteHandoff,
   type NativeRouteHandoff,
+  readFrameworkRequestNativeRouteHandoff,
 } from './dispatch/native-route-handoff.js';
+export type { Dispatcher } from './types.js';
