@@ -190,6 +190,10 @@ type ExpressMultipartLikeError = Error & {
   type?: unknown;
 };
 
+function isExpressResponseTerminated(response: ExpressResponse): boolean {
+  return response.writableEnded || response.destroyed;
+}
+
 /**
  * Represents the express http application adapter.
  */
@@ -241,6 +245,10 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
     this.server = createExpressServer(this.httpsOptions, this.app);
     this.app.use(this.router);
     this.app.use((request: ExpressRequest, response: ExpressResponse) => {
+      if (isExpressResponseTerminated(response)) {
+        return;
+      }
+
       void this.handleRequest(request, response);
     });
     this.server.on('connection', (socket) => {
@@ -368,6 +376,10 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
 
     for (const route of nativeRoutes) {
       this.router.all(route.path, (request: ExpressRequest, response: ExpressResponse, next: () => void) => {
+        if (isExpressResponseTerminated(response)) {
+          return;
+        }
+
         if (!route.methods.includes(request.method.toUpperCase() as ExpressNativeRouteMethod)) {
           next();
           return;

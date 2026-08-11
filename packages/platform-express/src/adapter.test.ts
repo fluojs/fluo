@@ -461,10 +461,11 @@ describe('@fluojs/platform-express', () => {
     }
   });
 
-  it('lets native Express middleware terminate a response without entering fluo dispatch', async () => {
+  it('stops catch-all dispatch when native Express middleware ends the response before next', async () => {
     const dispatch = vi.fn();
-    const nativeMiddleware: RequestHandler = (_request, response) => {
+    const nativeMiddleware: RequestHandler = (_request, response, next) => {
       response.status(202).json({ owner: 'express' });
+      next();
     };
     const port = await findAvailablePort();
     const adapter = createExpressAdapter({
@@ -484,6 +485,51 @@ describe('@fluojs/platform-express', () => {
       expect(response.statusCode).toBe(202);
       expect(JSON.parse(response.body)).toEqual({ owner: 'express' });
       expect(dispatch).not.toHaveBeenCalled();
+    } finally {
+      await adapter.close();
+    }
+  });
+
+  it('stops native route dispatch when native Express middleware ends the response before next', async () => {
+    const nativeMiddleware: RequestHandler = (_request, response, next) => {
+      response.status(202).json({ owner: 'express' });
+      next();
+    };
+
+    @Controller('/native-response')
+    class NativeResponseController {
+      @Get('/route')
+      route() {
+        return { owner: 'fluo' };
+      }
+    }
+
+    const root = new Container().register(NativeResponseController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: NativeResponseController }]),
+      rootContainer: root,
+    });
+    const nativeDispatch = vi.spyOn(dispatcher, 'dispatchNativeRoute');
+    const fullDispatch = vi.spyOn(dispatcher, 'dispatch');
+    const port = await findAvailablePort();
+    const adapter = createExpressAdapter({
+      nativeMiddleware: [nativeMiddleware],
+      port,
+    }) as ExpressHttpApplicationAdapter;
+
+    await adapter.listen(dispatcher);
+
+    try {
+      const response = await requestHttp({
+        method: 'GET',
+        path: '/native-response/route',
+        port,
+      });
+
+      expect(response.statusCode).toBe(202);
+      expect(JSON.parse(response.body)).toEqual({ owner: 'express' });
+      expect(nativeDispatch).not.toHaveBeenCalled();
+      expect(fullDispatch).not.toHaveBeenCalled();
     } finally {
       await adapter.close();
     }
