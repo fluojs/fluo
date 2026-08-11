@@ -488,6 +488,7 @@ export class CronLifecycleService
   private async shutdown(): Promise<void> {
     if (this.shutdownPromise) {
       await this.shutdownPromise;
+      this.stopAllScheduledTasks();
       await this.retryReleasedDistributedLocksAfterShutdown();
       return;
     }
