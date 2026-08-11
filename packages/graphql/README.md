@@ -252,7 +252,8 @@ GraphqlModule.forRoot({
 - `graphiql` defaults to `false`. `introspection` follows `graphiql` unless set explicitly, so production apps stay private by default while local GraphiQL sessions can opt in.
 - `limits` accepts request validation budgets or `false`; use `false` only when equivalent controls exist outside fluo.
 - Streaming GraphQL responses cancel the upstream fetch body when the downstream response stream closes or errors, so SSE subscription resources are released promptly.
-- Bootstrap failures after GraphQL schema resolution restore the package's temporary `graphql/jsutils/instanceOf` patch before rethrowing, so failed startups do not leak process-wide GraphQL behavior into later app attempts.
+- Bootstrap failures after GraphQL schema resolution remove only the failed service's cross-realm GraphQL object allowlist before rethrowing. The package restores its process-wide `graphql/jsutils/instanceOf` patch only when no other active GraphQL application remains.
+- Each active GraphQL application owns its cross-realm GraphQL object allowlist. Shutdown follows the same release rule, so another running application retains the process-wide `instanceOf` patch and only its own objects remain allowed.
 - WebSocket subscriptions use separate transport budgets by default: `100` concurrent connections, `64 KiB` maximum payload size, and `25` active operations per connection.
 - `subscriptions.websocket.enabled` defaults to `false`; enabling it requires a Node HTTP/S adapter with upgrade support. `connectionInitWaitTimeoutMs` is forwarded to `graphql-ws` for connection initialization, and `keepAliveMs` controls websocket keepalive pings when configured.
 - Set `subscriptions.websocket.limits = false` only when you intentionally need unbounded websocket behavior and can enforce equivalent controls elsewhere.
