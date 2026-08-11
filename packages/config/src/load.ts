@@ -93,6 +93,7 @@ type ConfigSchemaSuccessResult = {
 
 const reloadFailureReasons = new WeakMap<object, ConfigReloadReason>();
 const nodeBuiltinRuntimeRequirement = 'Node.js 20.16.0 or newer is required when @fluojs/config loads env files or starts watch mode.';
+const watchEventDebounceMs = 100;
 let requireNodeBuiltin: NodeBuiltinRequire | undefined;
 
 function resolveRequireNodeBuiltin(): NodeBuiltinRequire {
@@ -568,6 +569,7 @@ type ReloaderState = {
   pendingReloadReason: ConfigReloadReason | undefined;
   reloading: boolean;
   watchedEnvFileHash: string | undefined;
+  watchReloadTimer: ReturnType<typeof setTimeout> | undefined;
   watcher: ConfigFileWatcher | undefined;
 };
 
@@ -688,17 +690,25 @@ function startReloaderWatcher(
       return;
     }
 
-    try {
-      const nextEnvFileHash = hashEnvFileContent(envFile);
-      if (nextEnvFileHash === state.watchedEnvFileHash) {
-        return;
-      }
-
-      applyReload(normalized, state, listeners, 'watch');
-      state.watchedEnvFileHash = nextEnvFileHash;
-    } catch (error: unknown) {
-      notifyReloadErrorListeners(errorListeners, error, getReloadFailureReason(error) ?? 'watch');
+    if (state.watchReloadTimer !== undefined) {
+      clearTimeout(state.watchReloadTimer);
     }
+
+    state.watchReloadTimer = setTimeout(() => {
+      state.watchReloadTimer = undefined;
+
+      try {
+        const nextEnvFileHash = hashEnvFileContent(envFile);
+        if (nextEnvFileHash === state.watchedEnvFileHash) {
+          return;
+        }
+
+        applyReload(normalized, state, listeners, 'watch');
+        state.watchedEnvFileHash = nextEnvFileHash;
+      } catch (error: unknown) {
+        notifyReloadErrorListeners(errorListeners, error, getReloadFailureReason(error) ?? 'watch');
+      }
+    }, watchEventDebounceMs);
   });
 }
 
@@ -707,6 +717,11 @@ function closeReloader(
   listeners: Set<ConfigReloadListener>,
   errorListeners: Set<ConfigReloadErrorListener>,
 ): void {
+  if (state.watchReloadTimer !== undefined) {
+    clearTimeout(state.watchReloadTimer);
+    state.watchReloadTimer = undefined;
+  }
+
   if (state.watcher) {
     state.watcher.close();
     state.watcher = undefined;
@@ -744,6 +759,7 @@ export function createConfigReloader(options: ConfigLoadOptions): ConfigReloader
     pendingReloadReason: undefined,
     reloading: false,
     watchedEnvFileHash: normalized.envFile === undefined ? undefined : hashEnvFileContent(normalized.envFile),
+    watchReloadTimer: undefined,
     watcher: undefined,
   };
   const listeners = new Set<ConfigReloadListener>();

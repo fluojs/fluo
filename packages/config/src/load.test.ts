@@ -890,6 +890,45 @@ describe('loadConfig', () => {
     }
   });
 
+  it('keeps the committed snapshot when a watch burst changes and reverts the env file', async () => {
+    vi.useFakeTimers();
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-watch-reverted-burst-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const reloader = createConfigReloader({
+      cwd,
+      envFile: envPath,
+      processEnv: {},
+      watch: true,
+    });
+
+    try {
+      // Given: a subscriber observing the committed watch snapshot.
+      const updates: string[] = [];
+      reloader.subscribe((snapshot, reason) => {
+        if (reason === 'watch') {
+          updates.push(String(snapshot['PORT']));
+        }
+      });
+
+      // When: separate watch events report an intermediate change and its immediate revert.
+      writeFileSync(envPath, 'PORT=4100\n');
+      emitWatchChange();
+      writeFileSync(envPath, 'PORT=4000\n');
+      emitWatchChange();
+      await vi.runAllTimersAsync();
+
+      // Then: only the burst's final content is considered, so the committed state stays untouched.
+      expect(updates).toEqual([]);
+      expect(reloader.current()['PORT']).toBe('4000');
+    } finally {
+      reloader.close();
+      vi.useRealTimers();
+    }
+  });
+
   it('starts watch mode even when the env file is created after startup', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-watch-missing-startup-'));
     const envPath = join(cwd, '.env.dev');
@@ -1065,7 +1104,7 @@ describe('loadConfig', () => {
     }
   });
 
-  it('restores the previous snapshot, reports the error, and drops queued reloads when a watch listener fails', () => {
+  it('restores the previous snapshot, reports the error, and drops queued reloads when a watch listener fails', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-reload-serialized-rollback-'));
     const envPath = join(cwd, '.env.dev');
 
@@ -1099,6 +1138,7 @@ describe('loadConfig', () => {
 
       writeFileSync(envPath, 'PORT=4100\n');
       emitWatchChange();
+      await waitForCondition(() => errors.length > 0);
 
       expect(errors).toEqual(['watch:listener failed after nested reload']);
       expect(updates).toEqual(['watch:4100']);
@@ -1108,7 +1148,7 @@ describe('loadConfig', () => {
     }
   });
 
-  it('reports queued manual reload failures with the manual reason during watch reloads', () => {
+  it('reports queued manual reload failures with the manual reason during watch reloads', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-watch-manual-error-reason-'));
     const envPath = join(cwd, '.env.dev');
 
@@ -1143,6 +1183,7 @@ describe('loadConfig', () => {
 
       writeFileSync(envPath, 'PORT=4100\n');
       emitWatchChange();
+      await waitForCondition(() => errorReasons.length > 0);
 
       expect(errorReasons).toEqual(['manual']);
       expect(reloader.current()['PORT']).toBe('4100');
