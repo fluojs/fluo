@@ -117,9 +117,9 @@ NestJS/Bull worker class를 import하기만 해서는 fluo worker가 되지 않�
 2. `@Processor(...)`, `@Process(...)`, emit된 provider metadata를 TC39 표준 `@QueueWorker(GenerateInvoiceJob, options)` class decorator와 `handle(job)` 메서드로 바꿉니다.
 3. Worker를 singleton scope로 `@Module({ providers: [...] })`에 넣고 constructor dependency를 `@Inject(...)`로 선언합니다. Queue는 compiled singleton provider/controller registration을 scan하며, request/transient worker와 import만 된 class는 등록하지 않습니다.
 4. Worker와 Redis provider가 queue registration에서 도달 가능하도록 유지합니다. 이는 discovery가 해당 registration에 도달할 수 있는 authored imports/exports graph 안에 머무는 `QueueModule.forRoot({ global: false })`에서 특히 중요합니다.
-5. Queue lifecycle ownership과 경쟁하는 processor start/stop hook을 제거합니다. Queue는 application bootstrap-ready handoff 이후 processor를 시작하고, stuck worker에 BullMQ force-close를 요청하기 전에 `workerShutdownTimeoutMs`로 shutdown을 제한합니다.
+5. Queue lifecycle ownership과 경쟁하는 processor start/stop hook을 제거합니다. Queue는 application bootstrap-ready handoff 이후 processor를 시작하고, graceful close와 필요한 BullMQ force-close에 각각 `workerShutdownTimeoutMs` budget을 적용합니다.
 
-기존 영속 Bull/BullMQ data에는 애플리케이션이 소유하는 cutover plan이 필요합니다. NestJS integration은 하나의 `queueName` 아래 여러 named job 값을 둘 수 있지만, fluo는 job type마다 queue/worker pair 하나를 만들고 `jobName`을 BullMQ queue name과 named job 양쪽에 사용합니다. 따라서 `jobName`만 설정해서는 legacy shared-queue topology를 보존할 수 없고, fluo는 NestJS metadata를 소비하거나 serialized payload를 자동 변환하지 않습니다. Producer 전환 전에 legacy queue를 drain하거나, 호환 payload를 변환해 fluo의 job별 queue로 다시 enqueue하거나, 기존 worker가 drain하는 동안 별도 queue name을 사용하세요. 그다음 payload class shape와 retry policy를 검증하고, singleton `@QueueWorker(JobClass)`를 같은 `QueueModule.forRoot(...)` graph에 등록하며(`global: false`에서는 worker/Redis reachability 포함), bootstrap-ready 시작과 `workerShutdownTimeoutMs` shutdown bound를 반영하세요.
+기존 영속 Bull/BullMQ data에는 애플리케이션이 소유하는 cutover plan이 필요합니다. NestJS integration은 하나의 `queueName` 아래 여러 named job 값을 둘 수 있지만, fluo는 job type마다 queue/worker pair 하나를 만들고 `jobName`을 BullMQ queue name과 named job 양쪽에 사용합니다. 따라서 `jobName`만 설정해서는 legacy shared-queue topology를 보존할 수 없고, fluo는 NestJS metadata를 소비하거나 serialized payload를 자동 변환하지 않습니다. Producer 전환 전에 legacy queue를 drain하거나, 호환 payload를 변환해 fluo의 job별 queue로 다시 enqueue하거나, 기존 worker가 drain하는 동안 별도 queue name을 사용하세요. 그다음 payload class shape와 retry policy를 검증하고, singleton `@QueueWorker(JobClass)`를 같은 `QueueModule.forRoot(...)` graph에 등록하며(`global: false`에서는 worker/Redis reachability 포함), bootstrap-ready 시작과 close phase별 `workerShutdownTimeoutMs` shutdown bound를 반영하세요.
 
 ## 11.4 Retry and backoff strategy
 
@@ -176,7 +176,7 @@ v2.0.0에서 대표적인 background flow는 다음과 같습니다.
 
 Queue lifecycle 동작은 운영 계약의 일부입니다. 애플리케이션 부트스트랩 중 Queue는 자신이 소유하는 BullMQ queue, worker, Redis duplicate connection을 만들 수 있지만, worker processor는 Queue가 bootstrap-ready handoff에 도달한 뒤에만 시작합니다. 따라서 background processor가 아직 `onApplicationBootstrap()`을 실행 중인 provider보다 앞서 실행되는 race를 피합니다. Queue가 `started`이고 탐색된 모든 processor가 ready인 상태에서는 pending dead-letter write가 있어도 readiness가 실패하지 않습니다. Readiness는 `ready`를 유지하고, 해당 write가 pending set에서 빠질 때까지 health만 `degraded`가 됩니다.
 
-Shutdown은 반대 규칙을 따릅니다. 종료가 시작되면 Queue는 `stopping`을 보고하므로 readiness는 `not-ready`, health는 `degraded`가 됩니다. 그다음 새 enqueue를 거부하고 Queue 소유 리소스를 닫은 뒤 pending dead-letter write의 drain을 시도합니다. 각 pending write가 settle할 수 있는 시간은 최대 `5_000ms`입니다. Timeout되면 Queue는 실패를 기록하고 해당 write를 pending count에서 제외한 뒤, dead-letter record가 Redis에 도달했다는 보장 없이 종료를 계속합니다. `workerShutdownTimeoutMs`는 별도로 active processor를 기다리는 시간을 제한하며, 시간이 지나면 Queue가 timeout을 기록하고 BullMQ worker를 force-close합니다. 이 두 bounded wait 덕분에 멈춘 processor나 Redis write가 전체 애플리케이션 종료를 영원히 막지 못합니다.
+Shutdown은 반대 규칙을 따릅니다. 종료가 시작되면 Queue는 `stopping`을 보고하므로 readiness는 `not-ready`, health는 `degraded`가 됩니다. 그다음 새 enqueue를 거부하고 Queue 소유 리소스를 닫은 뒤 pending dead-letter write의 drain을 시도합니다. 각 pending write가 settle할 수 있는 시간은 최대 `5_000ms`입니다. Timeout되면 Queue는 실패를 기록하고 해당 write를 pending count에서 제외한 뒤, dead-letter record가 Redis에 도달했다는 보장 없이 종료를 계속합니다. Queue는 graceful worker close와 필요한 force-close에 각각 최대 `workerShutdownTimeoutMs`를 적용합니다. Force-close도 실패하거나 timeout되면 Queue는 실패를 기록하고 queue, connection, dead-letter cleanup을 계속합니다. 이 bounded phase들 덕분에 멈춘 processor, unresolved BullMQ close, Redis write가 전체 애플리케이션 종료를 영원히 막지 못합니다.
 
 ## 11.8 Queue workers are not a second hidden application
 
@@ -198,7 +198,7 @@ v2.0.0으로 넘어가면서 FluoShop은 더 이상 event-aware 수준에 머무
 - retry attempt와 backoff strategy는 무비판적으로 복사하지 말고 workload별로 선택해야 합니다.
 - Queue scope는 BullMQ queue identity를 namespace하지 않으므로 같은 Redis dependency와 `jobName`을 서로 다른 scope의 worker가 함께 소유할 수 없습니다.
 - dead-letter list는 bounded retention policy 아래에서 반복 실패 job의 별도 record를 보존하며, BullMQ job 자체를 소유하거나 옮기지는 않습니다. Read-only inspection API는 Queue의 Redis key 형식을 노출하지 않고 최신순 typed metadata를 반환합니다.
-- Queue는 bootstrap-ready handoff 이후 processor를 시작합니다. Queue가 `started`이고 탐색된 모든 processor가 ready인 동안에만 pending dead-letter write가 readiness를 `ready`로 유지하고 health를 `degraded`로 만들며, `stopping`은 not-ready/degraded, `stopped`는 not-ready/unhealthy입니다. 종료는 각 write의 `5_000ms` drain과 stuck processor를 위한 `workerShutdownTimeoutMs`로 제한됩니다.
+- Queue는 bootstrap-ready handoff 이후 processor를 시작합니다. Queue가 `started`이고 탐색된 모든 processor가 ready인 동안에만 pending dead-letter write가 readiness를 `ready`로 유지하고 health를 `degraded`로 만들며, `stopping`은 not-ready/degraded, `stopped`는 not-ready/unhealthy입니다. 종료는 각 write의 `5_000ms` drain과 graceful 또는 forced worker close phase별 `workerShutdownTimeoutMs`로 제한됩니다.
 - FluoShop v2.0.0은 이제 post-order의 expensive work를 customer request path를 늘리는 대신 queue boundary 뒤로 이동시킵니다.
 
 실무적 기준은 분명합니다. 작업이 느리고, retry 가능하며, 운영적으로 구별되어야 한다면, 메인 플로의 또 다른 synchronous callback보다 queue가 더 적합할 가능성이 큽니다.
