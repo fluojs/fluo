@@ -174,7 +174,7 @@ export class AppModule {}
 이렇게 등록하면 Fluo는 애플리케이션이 시작될 때 데이터베이스에 자동으로 연결하고, 애플리케이션이 정상적으로 종료될 때 연결을 해제합니다.
 
 ### Advanced Lifecycle Management
-`PrismaModule`은 공개 수명 주기 계약을 의도적으로 작게 유지합니다. 제공된 클라이언트에 Prisma의 기본 `$connect()`와 `$disconnect()` 메서드가 있으면 시작 시 연결하고 정상 종료 시 연결을 해제하지만, 그 외의 연결 전(pre-connection)·연결 해제 후(post-disconnection) 훅을 별도로 노출하지는 않습니다. 시작 시 헬스 체크나 종료 시 텔레메트리 전송이 필요하다면 문서화되지 않은 모듈 콜백을 기대하기보다 Prisma 클라이언트 주변에 자체 provider 로직을 조합해 처리하세요.
+`PrismaModule`은 공개 수명 주기 계약을 의도적으로 작게 유지합니다. 제공된 클라이언트에 Prisma의 기본 `$connect()`와 `$disconnect()` 메서드가 있으면 시작 시 연결하고 정상 종료 시 연결을 해제하지만, 그 외의 연결 전(pre-connection)·연결 해제 후(post-disconnection) 훅을 별도로 노출하지는 않습니다. Shutdown이 startup과 겹치면 진행 중인 `$connect()`를 기다린 뒤 연결을 해제하며, 늦게 완료된 connect가 모듈을 다시 ready 상태로 만들거나 새 transaction work를 허용하지 않습니다. 시작 시 헬스 체크나 종료 시 텔레메트리 전송이 필요하다면 문서화되지 않은 모듈 콜백을 기대하기보다 Prisma 클라이언트 주변에 자체 provider 로직을 조합해 처리하세요.
 
 ### Configuring Connection Pooling
 트래픽이 많은 환경에서는 데이터베이스 연결을 효율적으로 관리하는 것이 중요합니다. Prisma는 대부분의 작업을 자동으로 처리하지만, 대규모 애플리케이션에서는 `new PrismaClient(...)`를 만들 때 연결 동작을 세밀하게 조정하고 싶을 수 있습니다. `PrismaModule.forRoot(...)`는 그렇게 구성된 클라이언트를 받아 fluo 안에서 수명 주기만 관리하며, 세부적인 풀·datasource 튜닝 자체는 Prisma Client 구성에 속합니다.
