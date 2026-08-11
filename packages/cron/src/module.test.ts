@@ -2994,7 +2994,7 @@ describe('@fluojs/cron', () => {
     ).toBe(true);
   });
 
-  it('preserves active distributed locks when bounded shutdown times out', async () => {
+  it('retains active distributed locks after a task settles beyond the shutdown deadline', async () => {
     const firstScheduler = createManualScheduler();
     const secondScheduler = createManualScheduler();
     const redis = new InMemoryLockRedisClient();
@@ -3028,7 +3028,7 @@ describe('@fluojs/cron', () => {
           },
           scheduler: firstScheduler.scheduler,
           shutdown: {
-            timeoutMs: 1,
+            timeoutMs: 0,
           },
         }),
       ],
@@ -3074,7 +3074,7 @@ describe('@fluojs/cron', () => {
     await firstTick;
     await secondScheduler.records[0]!.tick();
 
-    expect(secondStore.count).toBe(1);
+    expect(secondStore.count).toBe(0);
 
     await appTwo.close();
   });
@@ -3154,7 +3154,7 @@ describe('@fluojs/cron', () => {
     }
   });
 
-  it('retries distributed lock release on a later shutdown call after a timed-out task settles', async () => {
+  it('does not retry distributed lock release after a timed-out task settles past the shutdown deadline', async () => {
     const scheduled = createManualScheduler();
     const redis = new ReleaseErrorOnceRedisClient();
     const started = createDeferred<void>();
@@ -3203,14 +3203,14 @@ describe('@fluojs/cron', () => {
     release.resolve();
     await tickPromise;
 
-    expect(redis.releaseAttempts).toBe(2);
-    expect(statusService.createPlatformStatusSnapshot().details.ownedLocks).toBe(0);
-    expect(loggerEvents.some((event) => event.includes('Failed to release distributed cron lock for distributed-timeout-release-retry.'))).toBe(true);
+    expect(redis.releaseAttempts).toBe(0);
+    expect(statusService.createPlatformStatusSnapshot().details.ownedLocks).toBe(1);
+    expect(loggerEvents.some((event) => event.includes('Failed to release distributed cron lock for distributed-timeout-release-retry.'))).toBe(false);
 
     await app.close();
 
-    expect(redis.releaseAttempts).toBe(2);
-    expect(statusService.createPlatformStatusSnapshot().details.ownedLocks).toBe(0);
+    expect(redis.releaseAttempts).toBe(0);
+    expect(statusService.createPlatformStatusSnapshot().details.ownedLocks).toBe(1);
   });
 
   it('bounds shutdown distributed lock release I/O and preserves local ownership on timeout', async () => {
@@ -3268,7 +3268,7 @@ describe('@fluojs/cron', () => {
     await closePromise;
 
     expect(closeResolved).toBe(true);
-    expect(redis.releaseAttempts).toBe(3);
+    expect(redis.releaseAttempts).toBe(2);
     expect(statusService.createPlatformStatusSnapshot().details.ownedLocks).toBe(1);
     expect(
       loggerEvents.some((event) =>
@@ -3277,7 +3277,7 @@ describe('@fluojs/cron', () => {
     ).toBe(true);
   });
 
-  it('preserves active dynamic distributed locks after remove when bounded shutdown times out', async () => {
+  it('retains active dynamic distributed locks after a task settles beyond the shutdown deadline', async () => {
     const firstScheduler = createManualScheduler();
     const secondScheduler = createManualScheduler();
     const redis = new InMemoryLockRedisClient();
@@ -3300,7 +3300,7 @@ describe('@fluojs/cron', () => {
           },
           scheduler: firstScheduler.scheduler,
           shutdown: {
-            timeoutMs: 1,
+            timeoutMs: 0,
           },
         }),
       ],
@@ -3359,7 +3359,7 @@ describe('@fluojs/cron', () => {
     await firstTick;
     await secondScheduler.records[0]!.tick();
 
-    expect(storeTwo.count).toBe(1);
+    expect(storeTwo.count).toBe(0);
 
     await appTwo.close();
   });

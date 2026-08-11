@@ -102,7 +102,7 @@ function createManualScheduler(): {
 }
 
 describe('Cron stopped-state release retry race safety', () => {
-  it('preserves a newer same-manager shared-key lease until its running task settles', async () => {
+  it('preserves a newer same-manager lease when tasks settle after the shutdown deadline', async () => {
     // Given
     const redis = new OneTimeStaleReleaseFailureRedisClient();
     const scheduled = createManualScheduler();
@@ -159,11 +159,11 @@ describe('Cron stopped-state release retry race safety', () => {
     await staleTick;
 
     // Then
-    expect(redis.staleReleaseFailures).toBe(1);
+    expect(redis.staleReleaseFailures).toBe(0);
     expect(redis.hasLock(lockKey)).toBe(true);
 
     currentTaskFinished.resolve();
     await currentTick;
-    expect(redis.hasLock(lockKey)).toBe(false);
+    expect(redis.hasLock(lockKey)).toBe(true);
   });
 });

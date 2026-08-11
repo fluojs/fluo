@@ -165,7 +165,7 @@ describe('Cron distributed lease race safety', () => {
         CronModule.forRoot({
           distributed: { enabled: true, keyPrefix: 'lease-race', lockTtlMs: 60_000, ownerId: 'shared-owner' },
           scheduler: firstScheduler.scheduler,
-          shutdown: { timeoutMs: 0 },
+          shutdown: { timeoutMs: 50 },
         }),
       ],
     });
@@ -200,11 +200,13 @@ describe('Cron distributed lease race safety', () => {
 
     const firstTick = requireValue(firstScheduler.callbacks[0], 'Expected the first cron callback.')();
     await firstTaskStarted.promise;
-    await firstApp.close();
+    const closePromise = firstApp.close();
+    await Promise.resolve();
     firstTaskFinished.resolve();
     await redis.waitForFirstRelease();
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(50);
     await firstTick;
+    await closePromise;
     redis.expire(lockKey);
 
     const secondTick = requireValue(secondScheduler.callbacks[0], 'Expected the second cron callback.')();
