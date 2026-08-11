@@ -208,7 +208,7 @@ await this.prisma.transaction(async () => {
 
 ### 종료와 status 계약
 
-`PrismaService.requestTransaction(...)`은 정상 serving 전과 중에는 사용할 수 있지만, 애플리케이션 shutdown이 시작된 뒤에는 새 요청 범위 트랜잭션을 거부합니다. 새 outer 수동 `transaction(...)` 및 서비스 `@Transaction()` boundary도 shutdown 시작 후에는 거부됩니다. 이미 열린 boundary는 `$disconnect()` 전에 drain되므로 shutdown이 활성 Prisma transaction과 경합하지 않습니다. 종료 중에는 열린 요청 트랜잭션을 abort하고, 가장 바깥 transaction boundary가 settle될 때까지 추적한 다음 `$disconnect()` 실행 전에 drain합니다. 기존 수동 `transaction(...)` boundary 안에서 열린 중첩 `requestTransaction(...)` 호출도 동일합니다. 해당 호출은 ambient Prisma transaction client를 재사용하고, 바깥 boundary가 끝날 때까지 `details.activeRequestTransactions`에 표시되며, 두 번째 Prisma transaction을 열지 않습니다.
+`PrismaService.requestTransaction(...)`은 정상 serving 전과 중에는 사용할 수 있지만, 애플리케이션 shutdown이 시작된 뒤에는 새 요청 범위 트랜잭션을 거부합니다. 새 outer 수동 `transaction(...)` 및 서비스 `@Transaction()` boundary도 shutdown 시작 후에는 거부됩니다. 이미 열린 boundary는 `$disconnect()` 전에 drain되므로 shutdown이 활성 Prisma transaction과 경합하지 않습니다. Shutdown은 진행 중인 `$connect()`가 settle될 때까지 기다린 뒤 `$disconnect()`를 실행하며, shutdown 시작 뒤 늦게 완료된 connect는 ready 상태를 복원하거나 새 transaction work를 허용할 수 없습니다. 종료 중에는 열린 요청 트랜잭션을 abort하고, 가장 바깥 transaction boundary가 settle될 때까지 추적한 다음 `$disconnect()` 실행 전에 drain합니다. 기존 수동 `transaction(...)` boundary 안에서 열린 중첩 `requestTransaction(...)` 호출도 동일합니다. 해당 호출은 ambient Prisma transaction client를 재사용하고, 바깥 boundary가 끝날 때까지 `details.activeRequestTransactions`에 표시되며, 두 번째 Prisma transaction을 열지 않습니다.
 
 `createPrismaPlatformStatusSnapshot(...)`와 `PrismaService.createPlatformStatusSnapshot()`은 같은 라이프사이클 계약을 진단 surface에 노출합니다.
 
