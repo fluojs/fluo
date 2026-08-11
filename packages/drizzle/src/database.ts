@@ -49,10 +49,16 @@ type DrizzleRuntimeOptions = {
   strictTransactions: boolean;
 };
 
+type FallbackTransactionOwner = {
+  closed: boolean;
+  readonly requestCallbackSettlements: Set<Promise<void>>;
+  readonly requestTransactionSettlements: Set<ActiveRequestTransactionHandle>;
+};
+
 type TransactionContext<TDatabase, TTransactionDatabase> = {
   database: TDatabase | TTransactionDatabase;
   deferredRequestTransactionSettlements?: Set<ActiveRequestTransactionHandle>;
-  fallbackRequestCallbackSettlements?: Set<Promise<void>>;
+  fallbackTransactionOwner?: FallbackTransactionOwner;
   requestAbortSignal?: AbortSignal;
 };
 
@@ -298,7 +304,11 @@ export class DrizzleDatabase<
     options: TTransactionOptions | undefined,
   ): Promise<T> {
     const deferredRequestTransactionSettlements = new Set<ActiveRequestTransactionHandle>();
-    const fallbackRequestCallbackSettlements = new Set<Promise<void>>();
+    const fallbackTransactionOwner: FallbackTransactionOwner = {
+      closed: false,
+      requestCallbackSettlements: new Set(),
+      requestTransactionSettlements: new Set(),
+    };
     const activeTransactionScope = this.trackAvailableTransactionScope();
 
     try {
@@ -308,8 +318,7 @@ export class DrizzleDatabase<
         return await this.transactions.run(
           {
             database: this.database,
-            deferredRequestTransactionSettlements,
-            fallbackRequestCallbackSettlements,
+            fallbackTransactionOwner,
           },
           fn,
         );
@@ -324,7 +333,11 @@ export class DrizzleDatabase<
         options,
       );
     } finally {
-      await this.drainFallbackRequestCallbacks(fallbackRequestCallbackSettlements);
+      await this.closeFallbackTransactionOwner(fallbackTransactionOwner);
+
+      for (const handle of fallbackTransactionOwner.requestTransactionSettlements) {
+        this.untrackActiveRequestTransaction(handle);
+      }
 
       for (const handle of deferredRequestTransactionSettlements) {
         this.untrackActiveRequestTransaction(handle);
@@ -369,16 +382,31 @@ export class DrizzleDatabase<
     fn: () => Promise<T>,
     signal?: AbortSignal,
   ): Promise<T> {
+    const fallbackTransactionOwner = current.fallbackTransactionOwner;
+
+    if (fallbackTransactionOwner?.closed) {
+      if (current.requestAbortSignal) {
+        const abortSignalView = createRequestAbortSignalView(current.requestAbortSignal, signal);
+
+        try {
+          return await this.executeRequestFallback(fn, abortSignalView.signal);
+        } finally {
+          abortSignalView.cleanup();
+        }
+      }
+
+      return this.executeRequestFallback(fn, signal);
+    }
+
     const runCallback = () => {
       const callback = fn();
-      const callbackSettlements = current.fallbackRequestCallbackSettlements;
 
-      if (callbackSettlements) {
+      if (fallbackTransactionOwner) {
         const removeSettlement = () => {
-          callbackSettlements.delete(settlement);
+          fallbackTransactionOwner.requestCallbackSettlements.delete(settlement);
         };
         const settlement = callback.then(removeSettlement, removeSettlement);
-        callbackSettlements.add(settlement);
+        fallbackTransactionOwner.requestCallbackSettlements.add(settlement);
       }
 
       return callback;
@@ -402,13 +430,21 @@ export class DrizzleDatabase<
 
     const abortContext = createRequestAbortContext(signal);
     const active = this.trackActiveRequestTransaction(abortContext.controller);
-    current.deferredRequestTransactionSettlements?.add(active);
+    let ownerDefersSettlement = false;
+
+    if (fallbackTransactionOwner) {
+      fallbackTransactionOwner.requestTransactionSettlements.add(active);
+      ownerDefersSettlement = true;
+    } else if (current.deferredRequestTransactionSettlements) {
+      current.deferredRequestTransactionSettlements.add(active);
+      ownerDefersSettlement = true;
+    }
 
     try {
       const result = await this.transactions.run(
         {
           database: current.database,
-          fallbackRequestCallbackSettlements: current.fallbackRequestCallbackSettlements,
+          fallbackTransactionOwner,
           requestAbortSignal: abortContext.signal,
         },
         () => raceWithAbort(runCallback, abortContext.signal),
@@ -420,7 +456,7 @@ export class DrizzleDatabase<
     } finally {
       abortContext.cleanup();
 
-      if (current.deferredRequestTransactionSettlements) {
+      if (ownerDefersSettlement) {
         this.markRequestTransactionInactiveForStatus(active);
       } else {
         this.untrackActiveRequestTransaction(active);
@@ -440,7 +476,11 @@ export class DrizzleDatabase<
     }
 
     const active = this.trackActiveRequestTransaction(abortContext.controller);
-    const fallbackRequestCallbackSettlements = new Set<Promise<void>>();
+    const fallbackTransactionOwner: FallbackTransactionOwner = {
+      closed: false,
+      requestCallbackSettlements: new Set(),
+      requestTransactionSettlements: new Set(),
+    };
 
     try {
       const result = await raceWithAbort(() => {
@@ -449,7 +489,7 @@ export class DrizzleDatabase<
             this.transactions.run(
               {
                 database: this.database,
-                fallbackRequestCallbackSettlements,
+                fallbackTransactionOwner,
                 requestAbortSignal: abortContext.signal,
               },
               fn,
@@ -458,7 +498,12 @@ export class DrizzleDatabase<
         );
 
         return callback.finally(async () => {
-          await this.drainFallbackRequestCallbacks(fallbackRequestCallbackSettlements);
+          await this.closeFallbackTransactionOwner(fallbackTransactionOwner);
+
+          for (const handle of fallbackTransactionOwner.requestTransactionSettlements) {
+            this.untrackActiveRequestTransaction(handle);
+          }
+
           this.untrackActiveRequestTransaction(active);
         });
       }, abortContext.signal);
@@ -471,10 +516,12 @@ export class DrizzleDatabase<
     }
   }
 
-  private async drainFallbackRequestCallbacks(callbackSettlements: Set<Promise<void>>): Promise<void> {
-    while (callbackSettlements.size > 0) {
-      await Promise.all(callbackSettlements);
+  private async closeFallbackTransactionOwner(owner: FallbackTransactionOwner): Promise<void> {
+    while (owner.requestCallbackSettlements.size > 0) {
+      await Promise.all(owner.requestCallbackSettlements);
     }
+
+    owner.closed = true;
   }
 
   private assertRequestTransactionsAvailable(): void {

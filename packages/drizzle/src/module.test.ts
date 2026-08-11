@@ -460,6 +460,67 @@ describe('@fluojs/drizzle', () => {
     }
   });
 
+  it('drains late request descendants after a fail-open manual transaction owner settles', async () => {
+    const events: string[] = [];
+    const database = {};
+    const descendantStarted = createDeferred();
+    const descendantBarrier = createDeferred();
+    const drizzle = new DrizzleDatabase<typeof database>(database, () => {
+      events.push('dispose');
+    });
+    let lateRequestTransaction: Promise<void> | undefined;
+    let shutdown: Promise<void> | undefined;
+
+    // Given: a fail-open transaction schedules work that inherits its ALS context after the owner returns.
+    const outerTransaction = drizzle.transaction(async () => {
+      setImmediate(() => {
+        lateRequestTransaction = drizzle.requestTransaction(async () => {
+          events.push('descendant:start');
+          descendantStarted.resolve();
+          await descendantBarrier.promise;
+          events.push('descendant:end');
+        });
+      });
+      events.push('outer:end');
+    });
+
+    try {
+      await outerTransaction;
+      await descendantStarted.promise;
+      const observedLateRequestTransaction = lateRequestTransaction;
+
+      if (!observedLateRequestTransaction) {
+        throw new Error('Late request transaction did not start.');
+      }
+
+      const lateRequestRejection = expect(observedLateRequestTransaction).rejects.toThrow(
+        'Application shutdown interrupted an open request transaction.',
+      );
+
+      // When: shutdown starts after the descendant becomes independently active.
+      shutdown = drizzle.onApplicationShutdown();
+      await Promise.resolve();
+      expect(events).toEqual(['outer:end', 'descendant:start']);
+
+      descendantBarrier.resolve();
+      await lateRequestRejection;
+      const shutdownOutcome = await Promise.race([
+        shutdown.then(() => 'settled'),
+        new Promise<'pending'>((resolve) => setImmediate(() => resolve('pending'))),
+      ]);
+
+      // Then: shutdown drains the late callback and disposes without waiting on stale owner state.
+      expect(shutdownOutcome).toBe('settled');
+      expect(events).toEqual(['outer:end', 'descendant:start', 'descendant:end', 'dispose']);
+    } finally {
+      descendantBarrier.resolve();
+      await Promise.allSettled([
+        outerTransaction,
+        lateRequestTransaction ?? Promise.resolve(),
+      ]);
+    }
+  });
+
   it('rejects new manual transactions once shutdown begins', async () => {
     const events: string[] = [];
     const disposeBarrier = createDeferred();
