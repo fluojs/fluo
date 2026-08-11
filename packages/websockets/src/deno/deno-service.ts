@@ -35,6 +35,7 @@ interface ConnectionHandlerState {
   bufferedDisconnect: BufferedDisconnectEvent | undefined;
   bufferedMessages: DenoWebSocketMessage[];
   bufferedMessagesStartIndex: number;
+  cleanupScheduled: boolean;
   connectLifecycleSettled: boolean;
   connectLifecyclePromise: Promise<void>;
   descriptors: readonly WebSocketGatewayDescriptor[];
@@ -220,7 +221,7 @@ export class DenoWebSocketGatewayLifecycleService
     }
 
     void this.trackPendingUpgradeOperation(this.bindConnectionHandlers(socket, request, descriptors)).catch((error) => {
-      this.unregisterSocket(this.findSocketId(socket));
+      this.unregisterTrackedSocketWithDeferredStateCleanup(this.findSocketId(socket));
       this.logger.error('WebSocket gateway open lifecycle failed.', error, LIFECYCLE_LOG_CONTEXT);
       socket.close(1011, 'Internal server error');
     });
@@ -287,6 +288,7 @@ export class DenoWebSocketGatewayLifecycleService
       bufferedDisconnect: undefined,
       bufferedMessages: [],
       bufferedMessagesStartIndex: 0,
+      cleanupScheduled: false,
       connectLifecycleSettled: false,
       connectLifecyclePromise: connectLifecycle.promise,
       descriptors,
@@ -343,12 +345,12 @@ export class DenoWebSocketGatewayLifecycleService
     });
 
     socket.addEventListener('error', (event: Event) => {
-      this.unregisterSocket(state.socketId);
+      this.unregisterSocketWithDeferredStateCleanup(state);
       this.logger.error('WebSocket gateway socket emitted an error.', event, LIFECYCLE_LOG_CONTEXT);
     });
 
     socket.addEventListener('close', (event: CloseEvent) => {
-      this.unregisterSocket(state.socketId);
+      this.unregisterSocketWithDeferredStateCleanup(state);
 
       const disconnectEvent: BufferedDisconnectEvent = {
         code: event.code,
@@ -458,7 +460,7 @@ export class DenoWebSocketGatewayLifecycleService
       if (policy === 'close') {
         socket.close(1013, 'Ready-state message queue limit exceeded');
         this.clearQueuedMessages(state);
-        this.unregisterSocket(state.socketId);
+        this.unregisterSocketWithDeferredStateCleanup(state);
         this.logger.warn(
           `WebSocket connection ${state.socketId} exceeded ready-state message queue limit (${String(limit)}). Connection closed.`,
           LIFECYCLE_LOG_CONTEXT,
@@ -851,14 +853,7 @@ export class DenoWebSocketGatewayLifecycleService
 
   private async closeActiveSockets(timeoutMs: number): Promise<void> {
     const activeSockets = [...this.socketRegistry.entries()];
-
-    if (activeSockets.length === 0) {
-      return;
-    }
-
-    const activeStates = activeSockets
-      .map(([socketId]) => this.socketStates.get(socketId))
-      .filter((state): state is ConnectionHandlerState => state !== undefined);
+    const activeStates = [...this.socketStates.values()];
 
     for (const [, socket] of activeSockets) {
       if (socket.readyState === WEBSOCKET_OPEN_READY_STATE) {
@@ -867,6 +862,17 @@ export class DenoWebSocketGatewayLifecycleService
     }
 
     await this.awaitHandlerQueueDrain(activeStates, timeoutMs);
+  }
+
+  private scheduleSocketStateCleanup(state: ConnectionHandlerState): void {
+    if (state.cleanupScheduled) {
+      return;
+    }
+
+    state.cleanupScheduled = true;
+    void Promise.all([state.connectLifecyclePromise, state.disconnectLifecyclePromise]).finally(() => {
+      this.socketStates.delete(state.socketId);
+    });
   }
 
   private async awaitHandlerQueueDrain(
@@ -990,13 +996,31 @@ export class DenoWebSocketGatewayLifecycleService
     return new Set<string>(rooms);
   }
 
-  private unregisterSocket(socketId: string): void {
+  private unregisterSocketWithDeferredStateCleanup(state: ConnectionHandlerState): void {
+    this.unregisterSocket(state.socketId, { deleteState: false });
+    this.scheduleSocketStateCleanup(state);
+  }
+
+  private unregisterTrackedSocketWithDeferredStateCleanup(socketId: string): void {
+    const state = this.socketStates.get(socketId);
+
+    if (!state) {
+      this.unregisterSocket(socketId);
+      return;
+    }
+
+    this.unregisterSocketWithDeferredStateCleanup(state);
+  }
+
+  private unregisterSocket(socketId: string, options: { deleteState?: boolean } = {}): void {
     if (!socketId) {
       return;
     }
 
     this.socketRegistry.delete(socketId);
-    this.socketStates.delete(socketId);
+    if (options.deleteState !== false) {
+      this.socketStates.delete(socketId);
+    }
 
     const rooms = this.socketRooms.get(socketId);
     if (rooms) {

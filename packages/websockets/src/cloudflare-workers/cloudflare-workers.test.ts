@@ -1025,6 +1025,70 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     expect(state.disconnectCount).toBe(1);
   });
 
+  it('waits for Worker disconnect cleanup already queued when shutdown starts', async () => {
+    const adapter = new TestWorkerAdapter();
+    const connected = createDeferred<void>();
+    const disconnectStarted = createDeferred<void>();
+    const disconnectRelease = createDeferred<void>();
+
+    @WebSocketGateway({ path: '/shutdown-queued-disconnect' })
+    class ShutdownGateway {
+      @OnConnect()
+      onConnect() {
+        connected.resolve();
+      }
+
+      @OnDisconnect()
+      async onDisconnect() {
+        disconnectStarted.resolve();
+        await disconnectRelease.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CloudflareWorkersWebSocketModule.forRoot({ shutdown: { timeoutMs: 200 } })],
+      providers: [ShutdownGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+
+    try {
+      await app.listen();
+      const server = adapter.getServer();
+
+      await server?.fetch(new Request('https://worker.test/shutdown-queued-disconnect', {
+        headers: { upgrade: 'websocket' },
+      }));
+      await flushAsyncWork();
+      await connected.promise;
+
+      const socket = server?.lastSocket;
+
+      if (!socket) {
+        throw new Error('Expected Worker test socket to be available after websocket upgrade.');
+      }
+
+      socket.close(1000, 'Client closed');
+      await disconnectStarted.promise;
+
+      let closed = false;
+      const closePromise = app.close().then(() => {
+        closed = true;
+      });
+
+      await flushAsyncWork();
+
+      expect(closed).toBe(false);
+
+      disconnectRelease.resolve();
+      await closePromise;
+    } finally {
+      disconnectRelease.resolve();
+      await app.close();
+    }
+  });
+
   it('bounds Worker disconnect cleanup waits by shutdown.timeoutMs', async () => {
     const adapter = new TestWorkerAdapter();
     const connected = createDeferred<void>();

@@ -107,6 +107,8 @@ WebSocketModule.forRoot({
 
 설정을 생략해도 WebSocket default는 bounded입니다. `maxConnections: 1000`, `maxPayloadBytes: 1 MiB`, `buffer.maxPendingMessagesPerSocket: 256`, `shutdown.timeoutMs: 5000`, Node heartbeat interval `30s`, Node backpressure `maxBufferedAmountBytes: 1 MiB` with drop behavior가 적용됩니다.
 
+Shutdown은 upgrade admission에 대해 terminal입니다. Node runtime은 upgrade guard가 없는 경우에도 일치하는 request를 `ws`가 accept하기 직전에 shutdown gate를 다시 확인합니다. Shutdown이 시작될 때 socket close가 이미 `@OnDisconnect()` cleanup을 queue했다면 해당 lifecycle state는 cleanup이 settle되거나 `shutdown.timeoutMs`가 만료될 때까지 같은 bounded drain에 남습니다. Bun, Deno, Workers도 fetch-style binding에서 이 disconnect-drain 보장을 유지합니다.
+
 Gateway message handler는 runtime 전반에서 하나의 normalized payload contract를 받습니다. Text frame은 가능하면 JSON으로 parse되고 아니면 string으로 전달됩니다. Binary frame은 같은 dispatch 단계 전에 UTF-8로 decode됩니다. Limit을 초과한 accepted socket은 close code `1009`로 닫힙니다.
 
 ## Runtime-specific WebSocket modules

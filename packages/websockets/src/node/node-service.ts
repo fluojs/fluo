@@ -524,6 +524,15 @@ export class NodeWebSocketGatewayLifecycleServiceImplementation
       return;
     }
 
+    if (this.isShuttingDown) {
+      this.releaseUpgradeReservation();
+      rejectUpgradeRequestWithStatus(socket, {
+        body: 'WebSocket server is shutting down.',
+        status: 503,
+      });
+      return;
+    }
+
     try {
       attachment.server.handleUpgrade(request, socket, head, (websocket: WebSocket) => {
         attachment.server.emit('connection', websocket, request);

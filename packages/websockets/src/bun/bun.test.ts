@@ -877,6 +877,63 @@ describe('@fluojs/websockets/bun', () => {
     expect(state.disconnectCount).toBe(1);
   });
 
+  it('waits for Bun disconnect cleanup already queued when shutdown starts', async () => {
+    const adapter = new TestBunAdapter();
+    const connected = createDeferred<void>();
+    const disconnectStarted = createDeferred<void>();
+    const disconnectRelease = createDeferred<void>();
+
+    @WebSocketGateway({ path: '/shutdown-queued-disconnect' })
+    class ShutdownGateway {
+      @OnConnect()
+      onConnect() {
+        connected.resolve();
+      }
+
+      @OnDisconnect()
+      async onDisconnect() {
+        disconnectStarted.resolve();
+        await disconnectRelease.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [BunWebSocketModule.forRoot({ shutdown: { timeoutMs: 200 } })],
+      providers: [ShutdownGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+
+    try {
+      await app.listen();
+      const server = adapter.getServer();
+
+      await server?.fetch(new Request('http://127.0.0.1:3000/shutdown-queued-disconnect', {
+        headers: { upgrade: 'websocket' },
+      }));
+      await flushAsyncWork();
+      await connected.promise;
+      await server?.emitClose(1000, 'Client closed');
+      await disconnectStarted.promise;
+
+      let closed = false;
+      const closePromise = app.close().then(() => {
+        closed = true;
+      });
+
+      await flushAsyncWork();
+
+      expect(closed).toBe(false);
+
+      disconnectRelease.resolve();
+      await closePromise;
+    } finally {
+      disconnectRelease.resolve();
+      await app.close();
+    }
+  });
+
   it('bounds Bun disconnect cleanup waits by shutdown.timeoutMs', async () => {
     const adapter = new TestBunAdapter();
     const connected = createDeferred<void>();
