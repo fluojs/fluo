@@ -1013,6 +1013,80 @@ describe('@fluojs/websockets/deno', () => {
     }
   });
 
+  it('waits for Deno disconnect cleanup queued after a room broadcast send failure', async () => {
+    const adapter = new TestDenoAdapter();
+    const connected = createDeferred<void>();
+    const disconnectStarted = createDeferred<void>();
+    const disconnectRelease = createDeferred<void>();
+
+    @WebSocketGateway({ path: '/shutdown-broadcast-failure' })
+    class ShutdownGateway {
+      @OnConnect()
+      onConnect() {
+        connected.resolve();
+      }
+
+      @OnDisconnect()
+      async onDisconnect() {
+        disconnectStarted.resolve();
+        await disconnectRelease.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [DenoWebSocketModule.forRoot({ shutdown: { timeoutMs: 200 } })],
+      providers: [ShutdownGateway],
+    });
+
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const service = await app.container.resolve<DenoWebSocketGatewayLifecycleService>(DenoWebSocketGatewayLifecycleService);
+    let closePromise: Promise<void> | undefined;
+
+    try {
+      await app.listen();
+      const server = adapter.getServer();
+
+      await server?.fetch(new Request('https://runtime.test/shutdown-broadcast-failure', {
+        headers: { upgrade: 'websocket' },
+      }));
+      await flushAsyncWork();
+      await connected.promise;
+
+      const socket = server?.lastSocket;
+      const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, DenoServerWebSocket>;
+      const socketId = socketRegistry.keys().next().value;
+
+      if (!socket || typeof socketId !== 'string') {
+        throw new Error('Expected Deno broadcast failure test socket registration after websocket upgrade.');
+      }
+
+      service.joinRoom(socketId, 'shutdown-room');
+      socket.send = () => {
+        throw new Error('Broadcast failed.');
+      };
+      service.broadcastToRoom('shutdown-room', 'shutdown.test', undefined);
+      socket.close(1000, 'Client closed');
+      await disconnectStarted.promise;
+
+      let closed = false;
+      closePromise = app.close().then(() => {
+        closed = true;
+      });
+
+      await flushAsyncWork();
+
+      expect(closed).toBe(false);
+
+      disconnectRelease.resolve();
+      await closePromise;
+    } finally {
+      disconnectRelease.resolve();
+      await closePromise;
+      await app.close();
+    }
+  });
+
   it('bounds Deno disconnect cleanup waits by shutdown.timeoutMs', async () => {
     const adapter = new TestDenoAdapter();
     const connected = createDeferred<void>();
