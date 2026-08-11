@@ -371,13 +371,15 @@ export class DrizzleDatabase<
   ): Promise<T> {
     const runCallback = () => {
       const callback = fn();
+      const callbackSettlements = current.fallbackRequestCallbackSettlements;
 
-      current.fallbackRequestCallbackSettlements?.add(
-        callback.then(
-          () => undefined,
-          () => undefined,
-        ),
-      );
+      if (callbackSettlements) {
+        const removeSettlement = () => {
+          callbackSettlements.delete(settlement);
+        };
+        const settlement = callback.then(removeSettlement, removeSettlement);
+        callbackSettlements.add(settlement);
+      }
 
       return callback;
     };
@@ -470,12 +472,8 @@ export class DrizzleDatabase<
   }
 
   private async drainFallbackRequestCallbacks(callbackSettlements: Set<Promise<void>>): Promise<void> {
-    let drainedCallbackCount = 0;
-
-    while (drainedCallbackCount < callbackSettlements.size) {
-      const callbacks = Array.from(callbackSettlements).slice(drainedCallbackCount);
-      drainedCallbackCount += callbacks.length;
-      await Promise.all(callbacks);
+    while (callbackSettlements.size > 0) {
+      await Promise.all(callbackSettlements);
     }
   }
 
