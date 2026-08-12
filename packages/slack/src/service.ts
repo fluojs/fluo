@@ -82,6 +82,7 @@ function assertMessageContent(message: NormalizedSlackMessage): void {
 @Inject(SLACK_OPTIONS)
 export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown {
   private readonly inFlightDeliveries = new Set<Promise<unknown>>();
+  private initializationPromise: Promise<void> | undefined;
   private lifecycleState: SlackServiceLifecycleState = 'created';
   private ownedTransportCleanupPromise: Promise<void> | undefined;
   private resolvedTransport: SlackTransport | undefined;
@@ -108,6 +109,15 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
 
   private async closeOwnedTransport(): Promise<void> {
     try {
+      const initializationPromise = this.initializationPromise;
+
+      if (initializationPromise) {
+        await initializationPromise.then(
+          () => undefined,
+          () => undefined,
+        );
+      }
+
       await this.drainInFlightDeliveries();
       await this.closeOwnedTransportResources();
       this.lifecycleState = 'stopped';
@@ -152,13 +162,27 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
     );
   }
 
-  async onModuleInit(): Promise<void> {
+  onModuleInit(): Promise<void> {
     if (this.lifecycleState === 'stopping' || this.lifecycleState === 'stopped') {
-      return;
+      return Promise.resolve();
     }
 
-    this.lifecycleState = 'starting';
+    if (!this.initializationPromise) {
+      let resolveInitialization = (): void => undefined;
+      let rejectInitialization = (_reason: unknown): void => undefined;
 
+      this.lifecycleState = 'starting';
+      this.initializationPromise = new Promise<void>((resolve, reject) => {
+        resolveInitialization = resolve;
+        rejectInitialization = reject;
+      });
+      void this.initializeTransport().then(resolveInitialization, rejectInitialization);
+    }
+
+    return this.initializationPromise;
+  }
+
+  private async initializeTransport(): Promise<void> {
     try {
       const transport = await this.ensureTransport();
 
