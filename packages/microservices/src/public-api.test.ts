@@ -50,6 +50,7 @@ describe('@fluojs/microservices public API surface', () => {
     expectTypeOf<MicroserviceTransport>().toHaveProperty('send');
     expectTypeOf<MicroserviceTransport>().toHaveProperty('emit');
     expectTypeOf<MicroserviceTransport>().toHaveProperty('ownsResources');
+    expectTypeOf<MicroserviceTransport>().toHaveProperty('resourceOwnership');
     expectTypeOf<Microservice>().toHaveProperty('listen');
     expectTypeOf<MicroserviceModuleOptions>().toMatchTypeOf<{ transport: MicroserviceTransport }>();
     expectTypeOf<MicroserviceModuleOptions>().toHaveProperty('module');

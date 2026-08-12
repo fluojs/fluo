@@ -95,6 +95,13 @@ export interface MicroserviceTransport {
   listenServerStreaming?(handler: TransportServerStreamHandler): void;
   /** Whether this transport closes or destroys runtime resources it creates. */
   readonly ownsResources?: boolean;
+  /** Per-resource ownership details when one transport mixes caller- and framework-owned resources. */
+  readonly resourceOwnership?: {
+    /** Ownership of cached outbound transport clients. */
+    readonly outboundClients?: 'caller' | 'framework';
+    /** Ownership of the inbound transport server. */
+    readonly server?: 'caller' | 'framework';
+  };
   setLogger?(logger: MicroserviceTransportLogger): void;
   send(pattern: string, payload: unknown, signal?: AbortSignal): Promise<unknown>;
   serverStream?(pattern: string, payload: unknown, signal?: AbortSignal): AsyncIterable<unknown>;
