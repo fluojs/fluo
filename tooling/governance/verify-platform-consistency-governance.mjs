@@ -639,7 +639,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // cross-scope Redis/jobName ownership collision rejection, and
   // bootstrap-ready/bounded-shutdown ownership, notifications queue opt-in, status
   // details, and generated identity diagnostics contracts, plus Slack singleton
-  // provider discoverability and owned transport cleanup serialization docs/tests,
+  // provider discoverability, bootstrap verification settlement before shutdown,
+  // and owned transport cleanup serialization docs/tests,
   // plus CQRS provider-token fan-out, private immutable dispatch topology state,
   // full handler/saga/delegated pipeline ordering, and shutdown authorization,
   // plus event-bus background handler/transport shutdown drain to live-set
