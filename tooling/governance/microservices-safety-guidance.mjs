@@ -193,6 +193,35 @@ const overclaimedGrpcStreamingGuidance = [
   ],
 ];
 
+const grpcMixedOwnershipEvidence = [
+  [
+    'packages/microservices/src/transports/grpc-transport.ts',
+    [
+      "outboundClients: 'framework'",
+      "server: this.ownsServer ? 'framework' : 'caller'",
+      'service.client.close?.()',
+      'if (this.resolvedServer && this.ownsServer)',
+    ],
+  ],
+  [
+    'packages/microservices/src/transports/grpc-transport.test.ts',
+    [
+      'does not shut down caller-supplied gRPC servers during close()',
+      'expect(runtime.clientCloseCount).toBe(1)',
+      "outboundClients: 'framework'",
+      "server: 'caller'",
+    ],
+  ],
+  [
+    'packages/microservices/src/status.test.ts',
+    [
+      'reports caller-owned server and framework-owned outbound clients separately',
+      'externallyManaged: true',
+      'ownsResources: true',
+    ],
+  ],
+];
+
 const runtimeEvidence = [
   [
     'packages/microservices/src/types.ts',
@@ -344,6 +373,14 @@ export function enforceMicroservicesSafetyRuntimeEvidence() {
 
     for (const anchor of evidenceAnchors) {
       assert(source.includes(anchor), `${relativePath} must keep the Microservices safety evidence ${anchor}.`);
+    }
+  }
+
+  for (const [relativePath, evidenceAnchors] of grpcMixedOwnershipEvidence) {
+    const source = read(relativePath);
+
+    for (const anchor of evidenceAnchors) {
+      assert(source.includes(anchor), `${relativePath} must keep the mixed gRPC ownership evidence ${anchor}.`);
     }
   }
 }
