@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs.mjs';
+import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 import {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
@@ -14,6 +15,7 @@ import { enforceReactPageCatalogContract } from './react-page-catalog-contract.m
 import { enforceReactRscGraduationGovernance } from './react-rsc-graduation-policy.mjs';
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
+export { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 export {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
@@ -2505,6 +2507,7 @@ export function main() {
   enforceCanonicalPackageSurfaceSync();
   enforceDocsHubOfficialTransportLinks();
   enforceDenoPermissionGuidance();
+  enforceEmailLifecycleDocsContract();
   enforceSerializerResponseOwnershipDocsSync();
   enforceCloudflareWorkersLifecycleDocsSync();
   enforcePlatformShellLifecycleContract();
