@@ -90,7 +90,7 @@ SlackModule.forRoot({
 });
 ```
 
-Status snapshots include `verifiedOnModuleInit` so your readiness dashboard can show whether this startup gate was requested. If `verify()` fails, the Slack lifecycle moves to `failed` and readiness remains not ready instead of deferring discovery to the first production alert. During shutdown, Slack rejects new deliveries, waits for active deliveries to settle, and only then closes factory-owned transports.
+Status snapshots include `verifiedOnModuleInit` so your readiness dashboard can show whether this startup gate was requested. If `verify()` fails, the Slack lifecycle moves to `failed` and readiness remains not ready instead of deferring discovery to the first production alert. During shutdown, Slack rejects new deliveries, waits for the shared bootstrap initialization promise and active deliveries to settle, and only then closes factory-owned transports. This keeps the transport alive for the full `verify()` call and serializes bootstrap-failure cleanup with shutdown.
 
 ### Discord Registration
 ```typescript
@@ -112,7 +112,7 @@ export class AppModule {}
 
 Discord registration is also global by default: `DiscordModule.forRoot(...)` and `DiscordModule.forRootAsync(...)` export `DiscordService`, `DiscordChannel`, `DISCORD`, and `DISCORD_CHANNEL` with `global: options.global ?? true`. Use the fluo option `global?: boolean`—not NestJS `isGlobal`—and set `global: false` only when the migrated module must keep Discord providers local to modules that explicitly import it. Async registration supports the fluo injected factory shape only: `DiscordModule.forRootAsync({ inject, useFactory, global? })`. Move NestJS `imports`, `useClass`, or `useExisting` patterns into app-owned providers before returning final Discord options, and wrap the module facade instead of importing private provider helpers such as `createDiscordProviders(...)`, `DISCORD_OPTIONS`, or `NormalizedDiscordModuleOptions`.
 
-When `verifyOnModuleInit` is enabled, shutdown waits for in-flight verification to settle before closing a factory-owned transport exactly once; directly supplied app-owned transports remain caller-owned. If verification and the subsequent owned cleanup both fail, Discord keeps the first `initialization` phase in status diagnostics instead of reclassifying it as `shutdown-cleanup`. Notification rendering is lifecycle-gated and receives the same `AbortSignal` as transport delivery, so stopped services reject before renderer work begins and renderers can cooperate with cancellation.
+Both Slack and Discord keep factory-owned transports open until in-flight verification settles, then close them exactly once; directly supplied app-owned transports remain caller-owned. If verification and the subsequent owned cleanup both fail, Discord keeps the first `initialization` phase in status diagnostics instead of reclassifying it as `shutdown-cleanup`. Notification rendering is lifecycle-gated and receives the same `AbortSignal` as transport delivery, so stopped services reject before renderer work begins and renderers can cooperate with cancellation.
 
 ## 17.3 Standalone Usage: SlackService & DiscordService
 
