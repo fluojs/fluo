@@ -19,6 +19,9 @@ fluo를 위한 인프로세스(In-process) 이벤트 발행 및 구독 패키지
 
 ```bash
 npm install @fluojs/event-bus
+
+# @fluojs/event-bus/redis 사용 시 optional peer도 함께 설치
+npm install @fluojs/event-bus ioredis
 ```
 
 ## 사용 시점
@@ -83,18 +86,26 @@ export class AppModule {}
 
 ### 분산 팬아웃 (Redis)
 
-트랜스포트 어댑터를 연결하여 이벤트 버스를 다른 프로세스로 확장할 수 있습니다.
+트랜스포트 어댑터를 연결하여 이벤트 버스를 다른 프로세스로 확장할 수 있습니다. Redis 서브패스는 optional `ioredis` peer를 사용하므로 transport를 생성하는 애플리케이션에 이를 설치해야 합니다.
 
 ```typescript
+import { EventBusModule } from '@fluojs/event-bus';
 import { RedisEventBusTransport } from '@fluojs/event-bus/redis';
+import Redis from 'ioredis';
+
+const redisOptions = { host: 'localhost', port: 6379 };
+const publishClient = new Redis(redisOptions);
+const subscribeClient = new Redis(redisOptions);
 
 EventBusModule.forRoot({
-  transport: new RedisEventBusTransport({ 
-    publishClient: redis, 
-    subscribeClient: redisSubscriber 
+  transport: new RedisEventBusTransport({
+    publishClient,
+    subscribeClient,
   }),
-})
+});
 ```
+
+Transport 전용 `publishClient`와 `subscribeClient`를 서로 다른 instance로 생성하세요. Redis는 구독 연결을 Pub/Sub mode로 전환하므로 subscriber를 publish나 일반 command에도 사용하면 안 됩니다. 두 client는 모두 caller-owned입니다. `RedisEventBusTransport.close()`는 transport의 subscription과 listener를 제거하지만 어느 client도 disconnect하지 않습니다. Event bus teardown이 끝난 뒤 각 lifecycle owner가 해당 client를 닫아야 합니다.
 
 Redis Pub/Sub은 durable work queue가 아니라 fan-out transport입니다. 여러 애플리케이션 인스턴스가 같은 이벤트 채널을 구독하면 각 인스턴스가 같은 published fact를 볼 수 있습니다. 따라서 상태를 변경하거나 알림을 보내거나 외부 시스템을 호출하는 handler는 idempotent해야 합니다. Payload에 안정적인 event identifier 또는 business key를 담고, 이미 적용한 reaction을 기록하며, 반복 전달이 side effect를 두 번 실행하는 대신 같은 결과로 수렴하도록 만드세요.
 
@@ -170,7 +181,7 @@ Transport bootstrap은 unique event channel마다 한 번만 subscribe합니다.
 | --- | --- | --- |
 | Redis Pub/Sub 트랜스포트 | `@fluojs/event-bus/redis` | `RedisEventBusTransport`, `RedisEventBusTransportOptions` |
 
-`RedisEventBusTransport`는 명시적인 `@fluojs/event-bus/redis` 서브패스에만 유지되어 루트 `@fluojs/event-bus` 진입점이 모듈 등록, 로컬 발행, 데코레이터, 타입 전용 계약에 집중하도록 합니다. 이 Redis adapter는 inbound Redis message를 JSON decode하고 잘못된 JSON은 handler dispatch 전에 버립니다. 이 parsing 규칙은 임의의 `EventBusTransport` 구현에는 적용되지 않습니다. Shutdown 중 adapter는 자신이 등록한 채널을 unsubscribe하고 message listener를 분리하지만, `close()`는 호출자가 소유한 `publishClient` 또는 `subscribeClient`를 disconnect하지 않습니다. Unsubscribe가 실패하면 `close()`는 listener를 계속 분리하면서 등록된 채널을 유지하므로 이후 `close()`가 동일한 cleanup을 다시 시도합니다. 애플리케이션 또는 client-owning module이 event-bus teardown 후 해당 client를 별도로 닫아야 합니다.
+`RedisEventBusTransport`는 명시적인 `@fluojs/event-bus/redis` 서브패스에만 유지되어 루트 `@fluojs/event-bus` 진입점이 모듈 등록, 로컬 발행, 데코레이터, 타입 전용 계약에 집중하도록 합니다. 이 서브패스를 사용하는 애플리케이션은 optional `ioredis` peer를 설치하고 transport 전용 `publishClient`와 `subscribeClient`를 서로 다른 instance로 제공해야 합니다. 이 Redis adapter는 inbound Redis message를 JSON decode하고 잘못된 JSON은 handler dispatch 전에 버립니다. 이 parsing 규칙은 임의의 `EventBusTransport` 구현에는 적용되지 않습니다. Shutdown 중 adapter는 자신이 등록한 채널을 unsubscribe하고 message listener를 분리하지만, `close()`는 caller-owned client를 disconnect하지 않습니다. Unsubscribe가 실패하면 `close()`는 listener를 계속 분리하면서 등록된 채널을 유지하므로 이후 `close()`가 동일한 cleanup을 다시 시도합니다. 애플리케이션 또는 client-owning module이 event-bus teardown 후 해당 client를 별도로 닫아야 합니다.
 
 ## 관련 패키지
 
