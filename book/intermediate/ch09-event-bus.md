@@ -55,17 +55,28 @@ This event key becomes part of the contract. It gives operators and downstream s
 
 The default event bus is in-process. That is enough for many module boundaries. FluoShop, however, also needs optional cross-process fan-out between horizontally scaled services. The package README documents Redis transport support for this case.
 
+Install the optional `ioredis` peer with the event-bus package before importing the Redis transport:
+
+```bash
+npm install @fluojs/event-bus ioredis
+```
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { EventBusModule } from '@fluojs/event-bus';
 import { RedisEventBusTransport } from '@fluojs/event-bus/redis';
+import Redis from 'ioredis';
+
+const redisOptions = { host: 'localhost', port: 6379 };
+const publishClient = new Redis(redisOptions);
+const subscribeClient = new Redis(redisOptions);
 
 @Module({
   imports: [
     EventBusModule.forRoot({
       transport: new RedisEventBusTransport({
-        publishClient: redis,
-        subscribeClient: redisSubscriber,
+        publishClient,
+        subscribeClient,
       }),
     }),
   ],
@@ -78,7 +89,7 @@ import { RedisEventBusTransport } from '@fluojs/event-bus/redis';
 export class OrderEventsModule {}
 ```
 
-This boundary matters. The event bus API stays the same, and only the transport behind it changes. That continuity matches the fluo design philosophy we saw in earlier chapters.
+This boundary matters. The event bus API stays the same, and only the transport behind it changes. The example creates dedicated, separate publisher and subscriber clients because Redis puts a subscribed connection into Pub/Sub mode; `subscribeClient` must not also publish or run ordinary commands. That continuity matches the fluo design philosophy we saw in earlier chapters.
 
 The Redis adapter owns message decoding but not the Redis client lifecycle. `RedisEventBusTransport` JSON-decodes inbound Redis Pub/Sub messages and drops malformed JSON before handler dispatch; this is a Redis-specific rule, not a guarantee for every `EventBusTransport`. Its `close()` path unsubscribes the channels it registered and detaches its message listener, but it does not disconnect the caller-owned `publishClient` or `subscribeClient`. The FluoShop lifecycle that created those clients must close them separately after event-bus transport teardown.
 
@@ -235,7 +246,8 @@ Part 1 organized how FluoShop communicates across boundaries. This chapter cover
 - Stable `eventKey` values help preserve routing contracts across refactors.
 - In-process publish and subscribe is the default, while Redis transport extends the same model beyond process boundaries.
 - `EventPublishOptions` applies caller-facing bounds to both local handlers and transport publication.
-- Only the Redis adapter drops malformed JSON, and the application remains responsible for closing its Redis clients.
+- The Redis subpath requires the optional `ioredis` peer plus dedicated, separate `publishClient` and `subscribeClient` instances.
+- Only the Redis adapter drops malformed JSON, and the application remains responsible for closing its Redis clients after event-bus teardown.
 - Redis fan-out requires idempotent handlers, and slow or retryable reactions should hand durable work to Queue.
 - FluoShop v1.8.0 now publishes order and fulfillment facts that multiple modules can react to independently.
 
