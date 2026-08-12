@@ -1,5 +1,7 @@
 import type { PlatformHealthReport, PlatformReadinessReport, PlatformSnapshot } from '@fluojs/runtime';
 
+import type { MicroserviceTransport } from './types.js';
+
 /**
  * Defines the microservice lifecycle state type.
  */
@@ -37,6 +39,8 @@ export interface MicroserviceStatusAdapterInput {
   transportCapabilities: MicroserviceTransportCapabilities;
   /** Whether the configured transport owns listener/client resources it must close. */
   transportOwnsResources?: boolean;
+  /** Per-resource ownership details for transports that mix caller and framework ownership. */
+  transportResourceOwnership?: NonNullable<MicroserviceTransport['resourceOwnership']>;
 }
 
 /**
@@ -125,7 +129,12 @@ function createHealth(input: MicroserviceStatusAdapterInput): PlatformHealthRepo
 export function createMicroservicePlatformStatusSnapshot(
   input: MicroserviceStatusAdapterInput,
 ): MicroservicePlatformStatusSnapshot {
-  const transportOwnsResources = input.transportOwnsResources ?? false;
+  const transportResourceOwnership = input.transportResourceOwnership;
+  const resourceOwners = transportResourceOwnership ? Object.values(transportResourceOwnership) : [];
+  const transportOwnsResources = input.transportOwnsResources ?? resourceOwners.includes('framework');
+  const hasExternallyManagedResources = resourceOwners.length > 0
+    ? resourceOwners.includes('caller')
+    : !transportOwnsResources;
 
   return {
     details: {
@@ -138,11 +147,12 @@ export function createMicroservicePlatformStatusSnapshot(
       transportCapabilities: {
         ...input.transportCapabilities,
       },
+      ...(transportResourceOwnership ? { transportResourceOwnership: { ...transportResourceOwnership } } : {}),
       transportOwnsResources,
     },
     health: createHealth(input),
     ownership: {
-      externallyManaged: !transportOwnsResources,
+      externallyManaged: hasExternallyManagedResources,
       ownsResources: transportOwnsResources,
     },
     readiness: createReadiness(input),

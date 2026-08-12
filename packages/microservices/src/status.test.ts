@@ -71,6 +71,26 @@ describe('createMicroservicePlatformStatusSnapshot', () => {
     expect(snapshot.details.transportOwnsResources).toBe(true);
   });
 
+  it('reports caller-owned server and framework-owned outbound clients separately', () => {
+    const snapshot = createMicroservicePlatformStatusSnapshot(createStatusInput({
+      lifecycleState: 'ready',
+      transportOwnsResources: true,
+      transportResourceOwnership: {
+        outboundClients: 'framework',
+        server: 'caller',
+      },
+    }));
+
+    expect(snapshot.ownership).toEqual({
+      externallyManaged: true,
+      ownsResources: true,
+    });
+    expect(snapshot.details.transportResourceOwnership).toEqual({
+      outboundClients: 'framework',
+      server: 'caller',
+    });
+  });
+
   it('marks failed listener state as not-ready/unhealthy', () => {
     const snapshot = createMicroservicePlatformStatusSnapshot(createStatusInput({
       lastListenError: 'bind EADDRINUSE',

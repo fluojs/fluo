@@ -869,6 +869,10 @@ describe('@fluojs/microservices', () => {
       async emit() {},
       async listen() {},
       ownsResources: true,
+      resourceOwnership: {
+        outboundClients: 'framework',
+        server: 'caller',
+      },
       async send() {
         return undefined;
       },
@@ -883,8 +887,12 @@ describe('@fluojs/microservices', () => {
     const lifecycleService = await microservice.container.resolve(MicroserviceLifecycleService);
 
     expect(lifecycleService.createPlatformStatusSnapshot().ownership).toEqual({
-      externallyManaged: false,
+      externallyManaged: true,
       ownsResources: true,
+    });
+    expect(lifecycleService.createPlatformStatusSnapshot().details.transportResourceOwnership).toEqual({
+      outboundClients: 'framework',
+      server: 'caller',
     });
 
     await microservice.close();
