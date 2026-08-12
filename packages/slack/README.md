@@ -141,7 +141,7 @@ Behavioral contract notes:
 - `SlackService.send(...)`, `SlackService.sendMany(...)`, and `SlackService.sendNotification(...)` honor already-aborted signals before provider handoff. An aborted signal or a transport `AbortError` takes precedence over `continueOnError`, and the same signal is propagated through notification channels to transport calls.
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources during application shutdown.
 - Direct and notification-backed delivery require the lifecycle to be `ready`; calls before `onModuleInit()` finishes, after initialization failure, or during shutdown fail with `SlackLifecycleError` instead of lazily creating or reusing transports.
-- Shutdown rejects new deliveries, waits for active deliveries and any in-flight factory-owned transport creation to settle, and then closes the owned transport before completion.
+- Shutdown rejects new deliveries, waits for the shared bootstrap initialization promise—including any in-flight factory-owned transport creation and `verify()` call—to settle, drains active deliveries, and then closes the owned transport before completion.
 - Factory-owned transport cleanup is serialized across bootstrap-failure cleanup and application shutdown, so the same owned transport is closed at most once even when those paths race.
 - `SlackService.createPlatformStatusSnapshot()` reports lifecycle, readiness, and transport ownership without requiring callers to reach into internal options.
 - The package never reads `process.env` directly. All configuration must enter through explicit options or DI.
@@ -208,6 +208,7 @@ Behavioral contract notes:
 
 - `verifyOnModuleInit` is optional and defaults to `false`.
 - Verification is capability-based: only transports that expose `verify()` are called, so webhook-only or app-owned transports do not have to add a no-op verifier.
+- Bootstrap initialization and verification share one promise with shutdown, so a factory-owned transport remains open until an in-flight `verify()` call settles and is then closed at most once.
 - If `transport.verify()` rejects, bootstrap fails with `SlackLifecycleError` wrapping the initialization failure, the service lifecycle moves to `failed`, readiness/status snapshots report the provider as not ready, and factory-owned transports that were already resolved are closed before the error is rethrown. If shutdown starts while that cleanup is still in progress, both callers await the same close work.
 - `SlackService.createPlatformStatusSnapshot()` includes `verifiedOnModuleInit` so health/readiness tooling can tell whether bootstrap verification was requested.
 
@@ -405,5 +406,6 @@ These limitations are part of the package contract so runtime choice, provider c
 ## Example Sources
 
 - `packages/slack/src/module.test.ts`: Module registration, `createSlackProviders(...)` helper coverage, async wiring, webhook transport, and notifications integration examples.
+- `packages/slack/src/lifecycle-regression.test.ts`: Bootstrap verification and shutdown ordering regression coverage.
 - `packages/slack/src/public-surface.test.ts`: Public export and TypeScript contract verification.
 - `packages/slack/src/status.test.ts`: Health/readiness contract examples.
