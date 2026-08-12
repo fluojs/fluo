@@ -90,7 +90,7 @@ SlackModule.forRoot({
 });
 ```
 
-상태 스냅샷은 `verifiedOnModuleInit`을 포함하므로 readiness dashboard에서 이 startup gate가 요청되었는지 확인할 수 있습니다. `verify()`가 실패하면 Slack lifecycle은 `failed`로 이동하고 readiness는 not ready로 남아, 첫 운영 알림이 실패한 뒤에야 문제를 발견하는 상황을 줄입니다. shutdown 중에는 Slack이 새 전달을 거부하고 활성 전달이 settle될 때까지 기다린 뒤에만 factory-owned transport를 닫습니다.
+상태 스냅샷은 `verifiedOnModuleInit`을 포함하므로 readiness dashboard에서 이 startup gate가 요청되었는지 확인할 수 있습니다. `verify()`가 실패하면 Slack lifecycle은 `failed`로 이동하고 readiness는 not ready로 남아, 첫 운영 알림이 실패한 뒤에야 문제를 발견하는 상황을 줄입니다. shutdown 중에는 Slack이 새 전달을 거부하고 공유 bootstrap initialization promise와 활성 전달이 settle될 때까지 기다린 뒤에만 factory-owned transport를 닫습니다. 따라서 transport는 `verify()` 호출 전체 동안 열린 상태를 유지하며 bootstrap 실패 cleanup과 shutdown도 직렬화됩니다.
 
 ### Discord Registration
 ```typescript
@@ -112,7 +112,7 @@ export class AppModule {}
 
 Discord registration도 기본적으로 global입니다. `DiscordModule.forRoot(...)`와 `DiscordModule.forRootAsync(...)`는 `global: options.global ?? true`로 `DiscordService`, `DiscordChannel`, `DISCORD`, `DISCORD_CHANNEL`을 export합니다. fluo 옵션은 NestJS `isGlobal`이 아니라 `global?: boolean`이며, migrated module이 Discord provider를 명시적으로 import한 module 안에만 유지해야 할 때만 `global: false`를 설정합니다. Async registration은 fluo injected factory 형태인 `DiscordModule.forRootAsync({ inject, useFactory, global? })`만 지원합니다. NestJS `imports`, `useClass`, `useExisting` 패턴은 최종 Discord option을 반환하기 전에 app-owned provider로 옮기고, `createDiscordProviders(...)`, `DISCORD_OPTIONS`, `NormalizedDiscordModuleOptions` 같은 private provider helper를 import하지 말고 module facade를 감싸세요.
 
-`verifyOnModuleInit`을 사용하면 shutdown은 진행 중인 verification이 settle될 때까지 기다린 뒤 factory-owned transport를 정확히 한 번 닫고, 직접 전달한 app-owned transport는 caller ownership으로 유지합니다. Verification과 후속 owned cleanup이 모두 실패하면 Discord는 이를 `shutdown-cleanup`으로 재분류하지 않고 최초 `initialization` phase를 status diagnostics에 유지합니다. Notification rendering은 lifecycle gate 뒤에서 실행되며 transport delivery와 같은 `AbortSignal`을 받으므로, stopped service는 renderer 작업 전에 요청을 거부하고 renderer는 cancellation에 협력할 수 있습니다.
+Slack과 Discord는 모두 진행 중인 verification이 settle될 때까지 factory-owned transport를 열린 상태로 유지한 뒤 정확히 한 번 닫고, 직접 전달한 app-owned transport는 caller ownership으로 유지합니다. Verification과 후속 owned cleanup이 모두 실패하면 Discord는 이를 `shutdown-cleanup`으로 재분류하지 않고 최초 `initialization` phase를 status diagnostics에 유지합니다. Notification rendering은 lifecycle gate 뒤에서 실행되며 transport delivery와 같은 `AbortSignal`을 받으므로, stopped service는 renderer 작업 전에 요청을 거부하고 renderer는 cancellation에 협력할 수 있습니다.
 
 ## 17.3 Standalone Usage: SlackService & DiscordService
 

@@ -141,7 +141,7 @@ Behavioral contract 메모:
 - `SlackService.send(...)`, `SlackService.sendMany(...)`, `SlackService.sendNotification(...)`은 provider handoff 전에 이미 abort된 signal을 존중합니다. Abort된 signal 또는 transport의 `AbortError`는 `continueOnError`보다 우선하며, 같은 signal은 notification channel을 거쳐 transport 호출까지 전달됩니다.
 - 서비스는 모듈 bootstrap 시 transport를 초기화하고, factory가 소유한 리소스만 애플리케이션 shutdown 시 닫습니다.
 - 직접 전달과 notifications 기반 전달은 lifecycle이 `ready`일 때만 허용됩니다. `onModuleInit()`이 끝나기 전, 초기화 실패 뒤, 또는 shutdown 중 호출하면 transport를 lazy 생성하거나 재사용하지 않고 `SlackLifecycleError`로 실패합니다.
-- shutdown은 새 전달을 거부하고, 활성 전달과 진행 중인 factory 소유 transport 생성을 모두 settle한 뒤 소유한 transport를 닫고 완료됩니다.
+- shutdown은 새 전달을 거부하고, 진행 중인 factory 소유 transport 생성과 `verify()` 호출을 포함하는 공유 bootstrap initialization promise가 settle되기를 기다린 뒤 활성 전달을 drain하고, 소유한 transport를 닫고 완료됩니다.
 - factory 소유 transport cleanup은 bootstrap 실패 cleanup과 application shutdown 사이에서 직렬화되므로, 두 경로가 경합해도 같은 owned transport는 최대 한 번만 닫힙니다.
 - `SlackService.createPlatformStatusSnapshot()`은 호출자가 내부 옵션에 접근하지 않아도 lifecycle, readiness, transport 소유권을 보고합니다.
 - 이 패키지는 절대로 `process.env`를 직접 읽지 않습니다. 모든 설정은 명시적인 옵션 또는 DI를 통해 들어와야 합니다.
@@ -208,6 +208,7 @@ Behavioral contract 메모:
 
 - `verifyOnModuleInit`은 선택 사항이며 기본값은 `false`입니다.
 - 검증은 capability 기반입니다. `verify()`를 노출하는 transport만 호출하므로 webhook-only 또는 애플리케이션이 소유한 transport가 no-op verifier를 추가할 필요는 없습니다.
+- Bootstrap initialization과 verification은 shutdown과 하나의 promise를 공유하므로, factory 소유 transport는 진행 중인 `verify()`가 settle될 때까지 열린 상태를 유지하고 이후 최대 한 번만 닫힙니다.
 - `transport.verify()`가 reject되면 bootstrap은 초기화 실패를 감싼 `SlackLifecycleError`로 실패하고, service lifecycle은 `failed`로 이동하며, readiness/status snapshot은 provider를 not ready로 보고하고, 이미 해석된 factory 소유 transport는 오류를 다시 던지기 전에 닫습니다. 그 cleanup이 진행 중일 때 shutdown이 시작되면 두 호출자는 같은 close 작업을 기다립니다.
 - `SlackService.createPlatformStatusSnapshot()`은 bootstrap 검증 요청 여부를 health/readiness tooling이 확인할 수 있도록 `verifiedOnModuleInit`을 포함합니다.
 
@@ -405,5 +406,6 @@ Slack 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 ## 예제 소스
 
 - `packages/slack/src/module.test.ts`: 모듈 등록, `createSlackProviders(...)` helper coverage, async wiring, webhook transport, notifications integration 예제.
+- `packages/slack/src/lifecycle-regression.test.ts`: Bootstrap verification과 shutdown 순서의 regression coverage.
 - `packages/slack/src/public-surface.test.ts`: 공개 export와 TypeScript 계약 검증 예제.
 - `packages/slack/src/status.test.ts`: health/readiness 계약 예제.

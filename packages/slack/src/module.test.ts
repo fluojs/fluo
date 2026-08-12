@@ -2141,9 +2141,9 @@ describe('SlackModule', () => {
     await verifyStarted;
     const shutdown = service.onApplicationShutdown();
 
-    await shutdown;
     resolveVerify();
     await bootstrap;
+    await shutdown;
 
     expect(service.createPlatformStatusSnapshot()).toMatchObject({
       details: { lifecycleState: 'stopped' },
