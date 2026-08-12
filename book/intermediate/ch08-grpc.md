@@ -155,6 +155,8 @@ The transport supports `requestTimeoutMs` for unary-style requests, defaulting t
 - How to map client-side cancellation, meaning HTTP/2 stream close, to backend cleanup logic
 - How to observe logger-based event failures, since `GrpcMicroserviceTransport` doesn't use a `console.error` fallback
 
+When an application supplies `GrpcMicroserviceTransportOptions.server`, that server remains caller-owned and fluo never shuts it down. The transport still creates, caches, and closes outbound service clients. `createPlatformStatusSnapshot()` therefore reports both `ownership.externallyManaged: true` and `ownership.ownsResources: true`, with `details.transportResourceOwnership` identifying the server as `caller` and outbound clients as `framework`. This is a diagnostic correction only; shutdown keeps the same server/client cleanup boundary.
+
 gRPC increases contract precision, but it doesn't replace operational judgment.
 
 ## 8.6 FluoShop v1.7.0 architecture

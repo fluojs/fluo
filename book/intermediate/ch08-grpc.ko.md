@@ -155,6 +155,8 @@ transport는 unary 스타일 요청에 대해 `requestTimeoutMs`(기본값 3,000
 - 클라이언트 측의 취소(HTTP/2 스트림 닫기)를 백엔드 정리 로직에 어떻게 매핑할 것인가
 - 로거 기반의 이벤트 실패를 어떻게 관측할 것인가 (`GrpcMicroserviceTransport`는 `console.error` 폴백을 사용하지 않음)
 
+애플리케이션이 `GrpcMicroserviceTransportOptions.server`를 전달하면 해당 server는 caller-owned로 유지되며 fluo가 shutdown하지 않습니다. Transport는 이 경우에도 outbound service client를 생성하고 cache한 뒤 close합니다. 따라서 `createPlatformStatusSnapshot()`은 `ownership.externallyManaged: true`와 `ownership.ownsResources: true`를 함께 보고하고, `details.transportResourceOwnership`에서 server는 `caller`, outbound client는 `framework`로 구분합니다. 이는 diagnostics correction일 뿐이며 shutdown의 server/client cleanup 경계는 바뀌지 않습니다.
+
 gRPC는 계약의 정밀도를 높여 주지만, 운영상의 판단을 대신하지는 않습니다.
 
 ## 8.6 FluoShop v1.7.0 architecture
