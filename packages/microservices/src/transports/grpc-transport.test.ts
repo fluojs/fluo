@@ -215,6 +215,7 @@ class FakeGrpcRuntime {
   createdServerBindError: Error | undefined;
   readonly Metadata = FakeGrpcMetadata;
   readonly Server: new () => FakeGrpcServer;
+  clientCloseCount = 0;
   shutdownGate: Promise<void> | undefined;
   unaryDispatchCount = 0;
 
@@ -395,7 +396,7 @@ class FakeGrpcRuntime {
       }
 
       close(): void {
-        return;
+        runtime.clientCloseCount += 1;
       }
     };
   }
@@ -611,20 +612,30 @@ describe('GrpcMicroserviceTransport', () => {
   });
 
   it('does not shut down caller-supplied gRPC servers during close()', async () => {
-    const { server, transport } = createGrpcTransport({ useSuppliedServer: true });
+    const { runtime, server, transport } = createGrpcTransport({ useSuppliedServer: true });
 
-    expect(transport.ownsResources).toBe(false);
+    expect(transport.ownsResources).toBe(true);
+    expect(transport.resourceOwnership).toEqual({
+      outboundClients: 'framework',
+      server: 'caller',
+    });
 
-    await transport.listen(async () => undefined);
+    await transport.listen(async () => 'ok');
+    await expect(transport.send('MathService.Sum', { a: 1, b: 1 })).resolves.toBe('ok');
     await transport.close();
 
     expect(server?.shutdownCount).toBe(0);
+    expect(runtime.clientCloseCount).toBe(1);
   });
 
   it('uses tryShutdown() for internally-created gRPC servers during close()', async () => {
     const { runtime, transport } = createGrpcTransport();
 
     expect(transport.ownsResources).toBe(true);
+    expect(transport.resourceOwnership).toEqual({
+      outboundClients: 'framework',
+      server: 'framework',
+    });
 
     await transport.listen(async () => undefined);
     await transport.close();

@@ -138,8 +138,10 @@ export interface GrpcMicroserviceTransportOptions {
  * and exposes matching unary/server-stream/client-stream/bidi-stream client calls through one transport surface.
  */
 export class GrpcMicroserviceTransport implements MicroserviceTransport {
-  /** Indicates whether gRPC owns server shutdown in addition to cached client cleanup. */
-  readonly ownsResources: boolean;
+  /** Indicates that gRPC closes the cached outbound clients it creates. */
+  readonly ownsResources = true;
+  /** Reports server and cached outbound client ownership independently. */
+  readonly resourceOwnership: NonNullable<MicroserviceTransport['resourceOwnership']>;
 
   private bidiStreamHandler: TransportBidiStreamHandler | undefined;
   private clientStreamHandler: TransportClientStreamHandler | undefined;
@@ -168,7 +170,10 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
     this.requestTimeoutMs = options.requestTimeoutMs ?? 3_000;
     this.server = options.server;
     this.ownsServer = !options.server;
-    this.ownsResources = this.ownsServer;
+    this.resourceOwnership = {
+      outboundClients: 'framework',
+      server: this.ownsServer ? 'framework' : 'caller',
+    };
   }
 
   setLogger(logger: MicroserviceTransportLogger): void {
