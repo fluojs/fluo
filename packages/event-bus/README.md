@@ -19,6 +19,9 @@ In-process event publishing and subscription for fluo. It features decorator-bas
 
 ```bash
 npm install @fluojs/event-bus
+
+# Include the optional peer when using @fluojs/event-bus/redis
+npm install @fluojs/event-bus ioredis
 ```
 
 ## When to Use
@@ -83,18 +86,26 @@ export class AppModule {}
 
 ### Distributed Fan-out (Redis)
 
-Extend the event bus to other processes by plugging in a transport adapter.
+Extend the event bus to other processes by plugging in a transport adapter. The Redis subpath uses the optional `ioredis` peer, so install it in the application that creates the transport.
 
 ```typescript
+import { EventBusModule } from '@fluojs/event-bus';
 import { RedisEventBusTransport } from '@fluojs/event-bus/redis';
+import Redis from 'ioredis';
+
+const redisOptions = { host: 'localhost', port: 6379 };
+const publishClient = new Redis(redisOptions);
+const subscribeClient = new Redis(redisOptions);
 
 EventBusModule.forRoot({
-  transport: new RedisEventBusTransport({ 
-    publishClient: redis, 
-    subscribeClient: redisSubscriber 
+  transport: new RedisEventBusTransport({
+    publishClient,
+    subscribeClient,
   }),
-})
+});
 ```
+
+Create dedicated, separate `publishClient` and `subscribeClient` instances for the transport. Redis puts a subscribed connection into Pub/Sub mode, so the subscriber must not also publish or run ordinary commands. Both clients remain caller-owned: `RedisEventBusTransport.close()` removes the transport subscriptions and listener but does not disconnect either client. Close them from their lifecycle owner after the event bus has finished teardown.
 
 Redis Pub/Sub is a fan-out transport, not a durable work queue. When multiple application instances subscribe to the same event channel, each instance can see the same published fact. Handlers that mutate state, send notifications, or call external systems should therefore be idempotent: carry a stable event identifier or business key in the payload, record which reactions have already been applied, and make repeat deliveries converge to the same result instead of performing the side effect twice.
 
@@ -170,7 +181,7 @@ Transport bootstrap subscribes once per unique event channel. `eventKey` control
 | --- | --- | --- |
 | Redis Pub/Sub transport | `@fluojs/event-bus/redis` | `RedisEventBusTransport`, `RedisEventBusTransportOptions` |
 
-`RedisEventBusTransport` stays on the explicit `@fluojs/event-bus/redis` subpath so the root `@fluojs/event-bus` entrypoint remains focused on module registration, local publishing, decorators, and type-only contracts. This Redis adapter JSON-decodes inbound Redis messages and drops malformed JSON before handler dispatch; that parsing rule does not apply to arbitrary `EventBusTransport` implementations. During shutdown, the adapter unsubscribes the channels it registered and detaches its message listener, but `close()` does not disconnect the caller-owned `publishClient` or `subscribeClient`. If unsubscribe fails, `close()` still detaches the listener while retaining the registered channels so a later `close()` retries the same cleanup. The application or client-owning module must close those clients separately after event-bus teardown.
+`RedisEventBusTransport` stays on the explicit `@fluojs/event-bus/redis` subpath so the root `@fluojs/event-bus` entrypoint remains focused on module registration, local publishing, decorators, and type-only contracts. Applications using this subpath must install the optional `ioredis` peer and supply dedicated, separate `publishClient` and `subscribeClient` instances. This Redis adapter JSON-decodes inbound Redis messages and drops malformed JSON before handler dispatch; that parsing rule does not apply to arbitrary `EventBusTransport` implementations. During shutdown, the adapter unsubscribes the channels it registered and detaches its message listener, but `close()` does not disconnect the caller-owned clients. If unsubscribe fails, `close()` still detaches the listener while retaining the registered channels so a later `close()` retries the same cleanup. The application or client-owning module must close those clients separately after event-bus teardown.
 
 ## Related Packages
 
