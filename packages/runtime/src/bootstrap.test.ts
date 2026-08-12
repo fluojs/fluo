@@ -1412,10 +1412,22 @@ describe('FluoFactory.createApplicationContext', () => {
     await context.close();
   });
 
-  it('surfaces shutdown hook failures from application context close()', async () => {
+  it('retries only incomplete application context shutdown phases', async () => {
+    const events: string[] = [];
+    let failShutdown = true;
+
     class AppService {
+      onModuleDestroy() {
+        events.push('module:destroy');
+      }
+
       onApplicationShutdown() {
-        throw new Error('context shutdown failed');
+        events.push('app:shutdown');
+
+        if (failShutdown) {
+          failShutdown = false;
+          throw new Error('context shutdown failed');
+        }
       }
     }
 
@@ -1424,10 +1436,22 @@ describe('FluoFactory.createApplicationContext', () => {
       providers: [AppService],
     });
 
-    const context = await FluoFactory.createApplicationContext(AppModule, {
-    });
+    const context = await FluoFactory.createApplicationContext(AppModule);
+    await context.get(AppService);
 
+    // Given: a context whose shutdown hook fails after module destroy completes.
+    // When: the first close attempt reports the hook failure.
     await expect(context.close('SIGTERM')).rejects.toThrow('context shutdown failed');
+
+    // Then: retry runs only the incomplete hook and reaches a stable closed context.
+    await expect(context.get(AppService)).rejects.toThrow('Container has been disposed');
+    await expect(context.close('SIGTERM')).resolves.toBeUndefined();
+    expect(events).toEqual([
+      'module:destroy',
+      'app:shutdown',
+      'module:destroy',
+      'app:shutdown',
+    ]);
   });
 });
 

@@ -234,7 +234,7 @@ describe('bootstrapApplication', () => {
     expect(app.state).toBe('closed');
   });
 
-  it('allows close to be retried after an adapter shutdown failure', async () => {
+  it('keeps failed shutdown terminal while retrying only incomplete cleanup', async () => {
     const events: string[] = [];
     let failClose = true;
 
@@ -252,21 +252,46 @@ describe('bootstrapApplication', () => {
       },
     };
 
+    class AppService {
+      onApplicationShutdown(signal?: string) {
+        events.push(`app:shutdown:${signal ?? 'none'}`);
+      }
+
+      onModuleDestroy() {
+        events.push('module:destroy');
+      }
+    }
+
     class AppModule {}
-    defineModule(AppModule, {});
+    defineModule(AppModule, {
+      providers: [AppService],
+    });
 
     const app = registerAppForCleanup(await bootstrapApplication({
       adapter,
       rootModule: AppModule,
     }));
 
+    // Given: a ready application whose adapter fails its first shutdown attempt.
     await app.listen();
-    await expect(app.close('SIGTERM')).rejects.toThrow('close failed');
-    expect(app.state).toBe('ready');
+    await app.get(AppService);
 
+    // When: shutdown tears down lifecycle resources but adapter cleanup fails.
+    await expect(app.close('SIGTERM')).rejects.toThrow('close failed');
+
+    // Then: normal use stays terminal and retry runs only the incomplete adapter phase.
+    expect(app.state).toBe('closed');
+    await expect(app.listen()).rejects.toThrow('Application cannot listen after it has been closed.');
+    await expect(app.get(AppService)).rejects.toThrow('Container has been disposed');
     await expect(app.close('SIGTERM')).resolves.toBeUndefined();
     expect(app.state).toBe('closed');
-    expect(events).toEqual(['adapter:listen', 'adapter:close:SIGTERM', 'adapter:close:SIGTERM']);
+    expect(events).toEqual([
+      'adapter:listen',
+      'module:destroy',
+      'app:shutdown:SIGTERM',
+      'adapter:close:SIGTERM',
+      'adapter:close:SIGTERM',
+    ]);
   });
 
   it('shares the same in-flight startup across overlapping listen() calls', async () => {
@@ -375,12 +400,31 @@ describe('bootstrapApplication', () => {
     expect(events).toEqual(['runtime:cleanup']);
   });
 
-  it('surfaces shutdown hook failures from close() instead of masking them as success', async () => {
+  it('retries only a failed shutdown hook without repeating completed adapter cleanup', async () => {
+    const events: string[] = [];
+    let failShutdown = true;
+
     class AppService {
+      onModuleDestroy() {
+        events.push('module:destroy');
+      }
+
       onApplicationShutdown() {
-        throw new Error('shutdown hook failed');
+        events.push('app:shutdown');
+
+        if (failShutdown) {
+          failShutdown = false;
+          throw new Error('shutdown hook failed');
+        }
       }
     }
+
+    const adapter: HttpApplicationAdapter = {
+      async close() {
+        events.push('adapter:close');
+      },
+      async listen() {},
+    };
 
     class AppModule {}
     defineModule(AppModule, {
@@ -388,11 +432,25 @@ describe('bootstrapApplication', () => {
     });
 
     const app = registerAppForCleanup(await bootstrapApplication({
+      adapter,
       rootModule: AppModule,
     }));
 
+    // Given: a shutdown hook that fails before later teardown phases complete.
+    // When: the first close attempt reports the hook failure.
     await expect(app.close('SIGTERM')).rejects.toThrow('shutdown hook failed');
-    expect(app.state).toBe('bootstrapped');
+
+    // Then: the application remains terminal and retry runs only the failed hook.
+    expect(app.state).toBe('closed');
+    await expect(app.listen()).rejects.toThrow('Application cannot listen after it has been closed.');
+    await expect(app.close('SIGTERM')).resolves.toBeUndefined();
+    expect(events).toEqual([
+      'module:destroy',
+      'app:shutdown',
+      'adapter:close',
+      'module:destroy',
+      'app:shutdown',
+    ]);
   });
 
   it('preserves the original startup failure when adapter close also fails during bootstrap cleanup', async () => {
