@@ -863,12 +863,14 @@ describe('@fluojs/microservices', () => {
     });
   });
 
-  it('propagates transport resource ownership into platform status snapshots', async () => {
+  it('derives framework ownership from granular transport resources', async () => {
     const transport: MicroserviceTransport = {
       async close() {},
       async emit() {},
       async listen() {},
-      ownsResources: true,
+      resourceOwnership: {
+        outboundClients: 'framework',
+      },
       async send() {
         return undefined;
       },
@@ -885,6 +887,75 @@ describe('@fluojs/microservices', () => {
     expect(lifecycleService.createPlatformStatusSnapshot().ownership).toEqual({
       externallyManaged: false,
       ownsResources: true,
+    });
+    expect(lifecycleService.createPlatformStatusSnapshot().details.transportResourceOwnership).toEqual({
+      outboundClients: 'framework',
+    });
+
+    await microservice.close();
+  });
+
+  it('propagates mixed transport resource ownership into platform status snapshots', async () => {
+    const transport: MicroserviceTransport = {
+      async close() {},
+      async emit() {},
+      async listen() {},
+      ownsResources: true,
+      resourceOwnership: {
+        outboundClients: 'framework',
+        server: 'caller',
+      },
+      async send() {
+        return undefined;
+      },
+    };
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [MicroservicesModule.forRoot({ transport })],
+    });
+
+    const microservice = await FluoFactory.createMicroservice(AppModule);
+    const lifecycleService = await microservice.container.resolve(MicroserviceLifecycleService);
+
+    expect(lifecycleService.createPlatformStatusSnapshot().ownership).toEqual({
+      externallyManaged: true,
+      ownsResources: true,
+    });
+    expect(lifecycleService.createPlatformStatusSnapshot().details.transportResourceOwnership).toEqual({
+      outboundClients: 'framework',
+      server: 'caller',
+    });
+
+    await microservice.close();
+  });
+
+  it('preserves explicit aggregate false with granular transport ownership', async () => {
+    const transport: MicroserviceTransport = {
+      async close() {},
+      async emit() {},
+      async listen() {},
+      ownsResources: false,
+      resourceOwnership: {
+        outboundClients: 'framework',
+        server: 'caller',
+      },
+      async send() {
+        return undefined;
+      },
+    };
+
+    class AppModule {}
+    defineModuleMetadata(AppModule, {
+      imports: [MicroservicesModule.forRoot({ transport })],
+    });
+
+    const microservice = await FluoFactory.createMicroservice(AppModule);
+    const lifecycleService = await microservice.container.resolve(MicroserviceLifecycleService);
+
+    expect(lifecycleService.createPlatformStatusSnapshot().ownership).toEqual({
+      externallyManaged: true,
+      ownsResources: false,
     });
 
     await microservice.close();
