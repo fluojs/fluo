@@ -879,6 +879,7 @@ describe('dispatcher runtime', () => {
     await dispatcher.dispatch(createRequest('/fast-json-head', 'HEAD'), response);
 
     expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('application/json; charset=utf-8');
     expect(response.simpleJsonBody).toBeUndefined();
     expect(response.body).toBeUndefined();
     expect(response.committed).toBe(true);
@@ -967,6 +968,7 @@ describe('dispatcher runtime', () => {
     expect(optionsResponse.body).toEqual({ allow: ['GET', 'HEAD', 'OPTIONS'] });
     expect(headResponse.statusCode).toBe(202);
     expect(headResponse.headers['x-head-contract']).toBe('preserved');
+    expect(headResponse.headers['Content-Type']).toBe('application/json; charset=utf-8');
     expect(headResponse.body).toBeUndefined();
     expect(headResponse.committed).toBe(true);
   });
@@ -1401,6 +1403,12 @@ describe('dispatcher runtime', () => {
       head() {
         return { ok: true };
       }
+
+      @Produces('text/plain')
+      @Get('/formatted')
+      get() {
+        return { ok: true };
+      }
     }
 
     const root = new Container().register(NegotiationHeadController);
@@ -1418,12 +1426,63 @@ describe('dispatcher runtime', () => {
       handlerMapping: createHandlerMapping([{ controllerToken: NegotiationHeadController }]),
       rootContainer: root,
     });
+    const getResponse = createResponse();
+    const headResponse = createResponse();
+
+    await dispatcher.dispatch(createRequest('/negotiation-head/formatted', 'GET', { accept: 'text/plain' }), getResponse);
+    await dispatcher.dispatch(createRequest('/negotiation-head/formatted', 'HEAD', { accept: 'text/plain' }), headResponse);
+
+    expect(getResponse.body).toBe('plain:{"ok":true}');
+    expect(headResponse.statusCode).toBe(200);
+    expect(headResponse.headers['Content-Type']).toBe(getResponse.headers['Content-Type']);
+    expect(headResponse.body).toBeUndefined();
+    expect(headResponse.committed).toBe(true);
+  });
+
+  it('preserves the implicit text content type while suppressing framework-managed HEAD bodies', async () => {
+    @Controller('/plain-head')
+    class PlainHeadController {
+      @Head('/')
+      head() {
+        return 'plain response';
+      }
+    }
+
+    const root = new Container().register(PlainHeadController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: PlainHeadController }]),
+      rootContainer: root,
+    });
     const response = createResponse();
 
-    await dispatcher.dispatch(createRequest('/negotiation-head/formatted', 'HEAD', { accept: 'text/plain' }), response);
+    await dispatcher.dispatch(createRequest('/plain-head', 'HEAD'), response);
 
     expect(response.statusCode).toBe(200);
-    expect(response.headers['Content-Type']).toBe('text/plain');
+    expect(response.headers['Content-Type']).toBe('text/plain; charset=utf-8');
+    expect(response.body).toBeUndefined();
+    expect(response.committed).toBe(true);
+  });
+
+  it('preserves the implicit binary content type while suppressing framework-managed HEAD bodies', async () => {
+    @Controller('/binary-head')
+    class BinaryHeadController {
+      @Head('/')
+      head() {
+        return new Uint8Array([1, 2, 3]);
+      }
+    }
+
+    const root = new Container().register(BinaryHeadController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: BinaryHeadController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/binary-head', 'HEAD'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('application/octet-stream');
     expect(response.body).toBeUndefined();
     expect(response.committed).toBe(true);
   });
