@@ -95,7 +95,9 @@ function contradictionMessage(content, locale) {
       };
 
   for (const clause of clauses(content)) {
-    const connectivePropositions = clause.split(/(?:,\s*|\s+)(?:but|however|yet)\s+|(?<=지만)\s*/iu);
+    const connectivePropositions = clause.split(
+      /(?:,\s*|\s+)(?:and|but|however|yet)\s+|(?<=지만)\s*|(?<=않으며)\s*/iu,
+    );
     const propositions = connectivePropositions.flatMap((proposition) =>
       languagePatterns.negative.test(proposition) && languagePatterns.positive.test(proposition)
         ? proposition.split(/,\s*/u)
@@ -129,7 +131,7 @@ function contradictionMessage(content, locale) {
 export function enforceExpressApplicationOwnershipDocs(
   readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
 ) {
-  enforceAdapterOwnedApplicationSource(readText(adapterSourcePath), adapterSourcePath);
+  enforceAdapterOwnedApplicationSource(readText(adapterSourcePath), adapterSourcePath, readText);
 
   for (const [relativePath, locale] of governedDocuments) {
     const content = readText(relativePath);

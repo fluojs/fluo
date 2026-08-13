@@ -40,6 +40,14 @@ const compoundContradictions = [
     'packages/platform-express/README.ko.md',
     'post-bootstrap `use(...)` mutation은 지원하지 않지만, caller는 bootstrap 이후 `use(...)`를 호출해 native middleware를 추가할 수 있습니다.',
   ],
+  [
+    'packages/platform-express/README.md',
+    'Adoption is unsupported and the adapter can reuse an existing Express application.',
+  ],
+  [
+    'packages/platform-express/README.ko.md',
+    '기존 application 채택은 지원하지 않으며 adapter는 기존 Express application을 재사용할 수 있습니다.',
+  ],
 ] as const;
 
 const negativeOnlyGuidance = [
