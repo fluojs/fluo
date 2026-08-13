@@ -90,6 +90,59 @@ describe('CQRS dispatch topology contracts', () => {
     }
   });
 
+  it('rejects nested different-event dispatch before re-entering the same saga token', async () => {
+    // Given
+    let activeHandles = 0;
+    let maximumActiveHandles = 0;
+    const handledEvents: string[] = [];
+
+    class FirstEvent implements IEvent {}
+
+    class SecondEvent implements IEvent {}
+
+    @Inject(EVENT_BUS)
+    @Saga([FirstEvent, SecondEvent])
+    class MultiRouteSaga implements ISaga<FirstEvent | SecondEvent> {
+      constructor(private readonly eventBus: CqrsEventBus) {}
+
+      async handle(event: FirstEvent | SecondEvent, context?: CqrsDispatchContext): Promise<void> {
+        activeHandles += 1;
+        maximumActiveHandles = Math.max(maximumActiveHandles, activeHandles);
+        handledEvents.push(event.constructor.name);
+
+        try {
+          if (event instanceof FirstEvent) {
+            await this.eventBus.publish(new SecondEvent(), context);
+          }
+        } finally {
+          activeHandles -= 1;
+        }
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [MultiRouteSaga],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+
+    try {
+      // When
+      const publishing = eventBus.publish(new FirstEvent());
+
+      // Then
+      await expect(publishing).rejects.toBeInstanceOf(SagaTopologyError);
+      await expect(publishing).rejects.toThrow('nested re-entry of its provider token');
+      expect(handledEvents).toEqual(['FirstEvent']);
+      expect(maximumActiveHandles).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('enforces the depth limit after attempted depth mutation', async () => {
     // Given
     type EventConstructor = new () => IEvent;

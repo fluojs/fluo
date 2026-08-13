@@ -165,11 +165,6 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   private async dispatchWithOrdering<TEvent extends IEvent>(descriptor: SagaDescriptor, event: TEvent, activeContext?: CqrsDispatchContext): Promise<void> {
     const topology = enterSagaTopology(activeContext, descriptor);
 
-    if (topology.reentrantToken) {
-      await this.invokeSaga(descriptor, event, topology.context);
-      return;
-    }
-
     const previous = this.executionChains.get(descriptor.token) ?? Promise.resolve();
     const current = previous.then(async () => {
       await this.invokeSaga(descriptor, event, topology.context);

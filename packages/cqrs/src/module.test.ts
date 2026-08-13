@@ -1,6 +1,6 @@
 import { Inject, InvariantError } from '@fluojs/core';
 import { Container } from '@fluojs/di';
-import { type EventBus, EVENT_BUS as FLUO_EVENT_BUS, type EventBusTransport, OnEvent } from '@fluojs/event-bus';
+import { type EventBus, type EventBusTransport, EVENT_BUS as FLUO_EVENT_BUS, OnEvent } from '@fluojs/event-bus';
 import { type ApplicationLogger, bootstrapApplication, defineModule, type OnApplicationShutdown, type RuntimeCleanupRegistration } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 import { CommandBusLifecycleService } from './buses/command-bus.js';
@@ -912,30 +912,44 @@ describe('@fluojs/cqrs', () => {
     }
 
     @Inject(COMMAND_BUS, ProcessStore)
-    @Saga([OrderSubmittedEvent, PaymentAuthorizedEvent, InventoryReservedEvent])
-    class OrderFulfillmentSaga implements ISaga<IEvent> {
+    @Saga(OrderSubmittedEvent)
+    class OrderSubmittedSaga implements ISaga<OrderSubmittedEvent> {
       constructor(
         private readonly commandBus: CommandBus,
         private readonly store: ProcessStore,
       ) {}
 
-      async handle(event: IEvent, context?: CqrsDispatchContext): Promise<void> {
-        if (event instanceof OrderSubmittedEvent) {
-          this.store.sagaLog.push(`submitted:${event.orderId}`);
-          await this.commandBus.execute(new StartPaymentCommand(event.orderId), context);
-          return;
-        }
+      async handle(event: OrderSubmittedEvent, context?: CqrsDispatchContext): Promise<void> {
+        this.store.sagaLog.push(`submitted:${event.orderId}`);
+        await this.commandBus.execute(new StartPaymentCommand(event.orderId), context);
+      }
+    }
 
-        if (event instanceof PaymentAuthorizedEvent) {
-          this.store.sagaLog.push(`payment-authorized:${event.orderId}`);
-          await this.commandBus.execute(new ReserveInventoryCommand(event.orderId), context);
-          return;
-        }
+    @Inject(COMMAND_BUS, ProcessStore)
+    @Saga(PaymentAuthorizedEvent)
+    class PaymentAuthorizedSaga implements ISaga<PaymentAuthorizedEvent> {
+      constructor(
+        private readonly commandBus: CommandBus,
+        private readonly store: ProcessStore,
+      ) {}
 
-        if (event instanceof InventoryReservedEvent) {
-          this.store.sagaLog.push(`inventory-reserved:${event.orderId}`);
-          await this.commandBus.execute(new CompleteOrderCommand(event.orderId), context);
-        }
+      async handle(event: PaymentAuthorizedEvent, context?: CqrsDispatchContext): Promise<void> {
+        this.store.sagaLog.push(`payment-authorized:${event.orderId}`);
+        await this.commandBus.execute(new ReserveInventoryCommand(event.orderId), context);
+      }
+    }
+
+    @Inject(COMMAND_BUS, ProcessStore)
+    @Saga(InventoryReservedEvent)
+    class InventoryReservedSaga implements ISaga<InventoryReservedEvent> {
+      constructor(
+        private readonly commandBus: CommandBus,
+        private readonly store: ProcessStore,
+      ) {}
+
+      async handle(event: InventoryReservedEvent, context?: CqrsDispatchContext): Promise<void> {
+        this.store.sagaLog.push(`inventory-reserved:${event.orderId}`);
+        await this.commandBus.execute(new CompleteOrderCommand(event.orderId), context);
       }
     }
 
@@ -947,7 +961,9 @@ describe('@fluojs/cqrs', () => {
         StartPaymentHandler,
         ReserveInventoryHandler,
         CompleteOrderHandler,
-        OrderFulfillmentSaga,
+        OrderSubmittedSaga,
+        PaymentAuthorizedSaga,
+        InventoryReservedSaga,
       ],
     });
 
