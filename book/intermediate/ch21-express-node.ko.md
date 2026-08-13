@@ -16,7 +16,7 @@
 
 ## Prerequisites
 - Chapter 18, Chapter 19, Chapter 20 완료.
-- `@fluojs/platform-express`와 `@fluojs/platform-nodejs` 모두 Node.js 20 이상.
+- `@fluojs/platform-express`와 `@fluojs/platform-nodejs` 모두 Node.js 20.19.3 이상.
 - Node.js HTTP 서버와 Express 미들웨어 기본 이해.
 - 애플리케이션 진입점과 런타임 어댑터 설정을 읽을 수 있는 TypeScript 감각.
 
@@ -24,7 +24,7 @@
 
 Express는 Node.js 생태계에서 여전히 가장 널리 쓰이는 프레임워크입니다. 기존 Express 인프라가 운영 경로에 들어 있거나 레거시 Express 앱을 fluo로 단계적으로 옮겨야 한다면, `@fluojs/platform-express`가 현실적인 진입점이 됩니다.
 
-Express adapter는 Node.js 20 이상을 대상으로 하며 package manifest는 `engines.node >=20.0.0`을 선언합니다.
+Express adapter는 Node.js 20.19.3 이상을 대상으로 하며 listener-level RFC `QUERY`가 Express와 fluo dispatch에 도달하도록 package manifest는 `engines.node >=20.19.3`을 선언합니다.
 
 ### 21.1.1 Installation
 
@@ -112,7 +112,7 @@ const adapter = createExpressAdapter({
 
 풋프린트를 최대한 줄이거나 Node.js 표준 라이브러리 위에서 직접 운영 경계를 설계해야 할 때는 `@fluojs/platform-nodejs`가 적합합니다. 이 어댑터는 프레임워크 계층을 최소화한 HTTP/HTTPS 브리지를 제공합니다.
 
-`@fluojs/platform-nodejs`는 Node.js 20 이상을 대상으로 합니다. Package manifest는 `engines.node >=20.0.0`을 선언하므로, host가 Bun, Deno, Cloudflare Workers라면 대신 fetch-style runtime adapter 중 하나를 사용하세요.
+`@fluojs/platform-nodejs`는 Node.js 20.19.3 이상을 대상으로 합니다. Listener-level RFC `QUERY`가 fluo dispatch에 도달하도록 package manifest는 `engines.node >=20.19.3`을 선언합니다. Host가 Bun, Deno, Cloudflare Workers라면 대신 fetch-style runtime adapter 중 하나를 사용하세요.
 
 ### 21.2.1 Why Go Raw?
 
