@@ -10,6 +10,44 @@ function read(relativePath: string): string {
 }
 
 describe('NestJS i18n migration documentation', () => {
+  it('keeps async catalog loading outside synchronous root registration', () => {
+    // Given
+    const moduleSource = read('packages/i18n/src/module.ts');
+    const englishReadme = read('packages/i18n/README.md');
+    const koreanReadme = read('packages/i18n/README.ko.md');
+    const englishMigration = read('docs/getting-started/migrate-from-nestjs.md');
+    const koreanMigration = read('docs/getting-started/migrate-from-nestjs.ko.md');
+    const englishBridgeDecision = read('docs/reference/i18n-ecosystem-bridges.md');
+    const koreanBridgeDecision = read('docs/reference/i18n-ecosystem-bridges.ko.md');
+
+    // When
+    const englishGuidance = [englishReadme, englishMigration] as const;
+    const koreanGuidance = [koreanReadme, koreanMigration] as const;
+
+    // Then
+    expect(moduleSource).toContain('static forRoot(options?: I18nModuleOptions)');
+    expect(moduleSource).not.toContain('static forRootAsync(');
+
+    for (const guidance of englishGuidance) {
+      expect(guidance).toContain('application-owned bootstrap boundary');
+      expect(guidance).toContain('before `I18nModule.forRoot(...)`');
+      expect(guidance).toContain('synchronous');
+      expect(guidance).toContain('framework-agnostic root contract');
+      expect(guidance).toContain('runtime bridge');
+    }
+
+    for (const guidance of koreanGuidance) {
+      expect(guidance).toContain('application-owned bootstrap boundary');
+      expect(guidance).toContain('`I18nModule.forRoot(...)` 전에');
+      expect(guidance).toContain('동기');
+      expect(guidance).toContain('framework-agnostic root contract');
+      expect(guidance).toContain('runtime bridge');
+    }
+
+    expect(englishBridgeDecision).toContain('No new runtime subpath');
+    expect(koreanBridgeDecision).toContain('새 runtime subpath를 추가하지 않습니다');
+  });
+
   it('maps NestJS i18n to the public fluo locale and validation APIs in both locales', () => {
     // Given
     const englishMigration = read('docs/getting-started/migrate-from-nestjs.md');
