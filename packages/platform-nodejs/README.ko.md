@@ -22,7 +22,7 @@ fluo 런타임을 위한 raw Node.js HTTP 어댑터 패키지입니다.
 npm install @fluojs/platform-nodejs
 ```
 
-이 패키지는 Node.js 20 이상을 대상으로 합니다. 게시된 package manifest는 `engines.node >=20.0.0`을 선언하며, raw 어댑터는 비 Node fetch-style host가 아니라 Node.js `http`/`https` server primitive에 의존합니다.
+이 패키지는 Node.js 20.19.3 이상을 대상으로 합니다. 이전 Node 20 릴리스는 listener-level RFC `QUERY` 요청을 request event로 올바르게 변환하지 못하므로 게시된 package manifest는 `engines.node >=20.19.3`을 선언합니다. Raw 어댑터는 비 Node fetch-style host가 아니라 Node.js `http`/`https` server primitive에 의존합니다.
 
 ## 사용 시점
 
