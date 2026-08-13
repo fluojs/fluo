@@ -77,6 +77,11 @@ await app.listen(3000);
 ### 자동 명세 생성
 fluo는 `sources`와 `descriptors`로 전달된 controller 및 handler descriptor만 조사하여 OpenAPI 3.1.0 문서를 작성합니다. 이 명시적 입력 집합의 경로, 메서드, 파라미터, 요청 바디가 포함되며, controller를 application module에 import하는 것만으로는 자동 추가되지 않습니다.
 
+### OpenAPI 3.1 Path Item 검증
+Builder는 표준 Path Item operation인 `get`, `put`, `post`, `delete`, `options`, `head`, `patch`만 생성합니다. Fluo catch-all `ALL` descriptor는 runtime routing 입력이지 OpenAPI operation이 아니므로, 비표준 `all` key로 직렬화하지 않고 문서 생성을 거부합니다. 지원하지 않는 다른 descriptor method도 같은 path-specific error로 실패합니다.
+
+`documentTransform` 이후에는 모든 Path Item을 다시 검증합니다. Transform은 OpenAPI 3.1 operation(`trace` 포함), fixed field(`$ref`, `summary`, `description`, `servers`, `parameters`), `x-*` specification extension을 사용할 수 있습니다. `all`, `query` 또는 기타 알 수 없는 key는 문서가 노출되기 전에 생성을 실패시킵니다.
+
 ### 응답 미디어 타입
 HTTP 핸들러가 `@fluojs/http`의 `@Produces(...)`를 선언하면, 생성된 OpenAPI 응답은 해당 미디어 타입을 response `content` 키로 사용합니다. 예를 들어 `@ApiResponse(...)` 스키마가 있는 핸들러에 `@Produces('application/json', 'application/problem+json')`를 붙이면, `application/json`만으로 되돌아가지 않고 두 미디어 타입 모두 같은 응답 스키마로 방출합니다.
 
