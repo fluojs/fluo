@@ -50,17 +50,80 @@ describe('NestJS runtime lifecycle migration documentation', () => {
   });
 
   it.each([
-    ['packages/runtime/src/types.ts'],
-    ['packages/runtime/src/bootstrap.ts'],
-  ] as const)('rejects beforeApplicationShutdown additions to %s', (relativePath) => {
+    ['packages/runtime/README.md', 'fluo supports `beforeApplicationShutdown()` as a runtime lifecycle hook.'],
+    ['docs/getting-started/migrate-from-nestjs.md', '`beforeApplicationShutdown()` is a supported hook in fluo.'],
+    ['packages/runtime/README.ko.md', 'fluo는 `beforeApplicationShutdown()`을 runtime lifecycle hook으로 지원합니다.'],
+    ['docs/getting-started/migrate-from-nestjs.ko.md', 'fluo가 지원하는 lifecycle hook은 `beforeApplicationShutdown()`입니다.'],
+  ] as const)('rejects reordered positive compatibility claims in %s', (relativePath, contradiction) => {
+    // Given
+    const readWithContradiction = (requestedPath: string): string =>
+      requestedPath === relativePath ? `${read(requestedPath)}\n${contradiction}` : read(requestedPath);
+
+    // When
+    const runGovernanceGuard = () => enforceRuntimeLifecycleNestjsMigrationDocs(readWithContradiction);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(/beforeApplicationShutdown/);
+  });
+
+  it.each([
+    ['packages/runtime/README.md', 'Do not claim that `beforeApplicationShutdown()` is supported.'],
+    ['packages/runtime/README.ko.md', '`beforeApplicationShutdown()`이 지원됩니다라고 주장하지 마세요.'],
+  ] as const)('accepts explicit negation in %s', (relativePath, negatedGuidance) => {
+    // Given
+    const readWithNegatedGuidance = (requestedPath: string): string =>
+      requestedPath === relativePath ? `${read(requestedPath)}\n${negatedGuidance}` : read(requestedPath);
+
+    // When
+    const runGovernanceGuard = () => enforceRuntimeLifecycleNestjsMigrationDocs(readWithNegatedGuidance);
+
+    // Then
+    expect(runGovernanceGuard).not.toThrow();
+  });
+
+  it.each([
+    [
+      'packages/runtime/src/types.ts',
+      'export interface BeforeApplicationShutdown {\n  beforeApplicationShutdown(signal?: string): MaybePromise<void>;\n}',
+    ],
+    [
+      'packages/runtime/src/bootstrap.ts',
+      "function isBeforeApplicationShutdown(value: unknown): boolean {\n  return hasMethod(value, 'beforeApplicationShutdown');\n}",
+    ],
+  ] as const)('rejects beforeApplicationShutdown additions to %s', (relativePath, unsupportedHookSource) => {
     // Given
     const readWithUnsupportedRuntimeHook = (requestedPath: string): string =>
-      requestedPath === relativePath ? `${read(requestedPath)}\nbeforeApplicationShutdown` : read(requestedPath);
+      requestedPath === relativePath ? `${read(requestedPath)}\n${unsupportedHookSource}` : read(requestedPath);
 
     // When
     const runGovernanceGuard = () => enforceRuntimeLifecycleNestjsMigrationDocs(readWithUnsupportedRuntimeHook);
 
     // Then
-    expect(runGovernanceGuard).toThrow(/must not add beforeApplicationShutdown/);
+    expect(runGovernanceGuard).toThrow(/[Bb]eforeApplicationShutdown/);
+  });
+
+  it.each([
+    [
+      'packages/runtime/src/types.ts',
+      'export interface OnApplicationDraining {\n  onApplicationDraining(signal?: string): MaybePromise<void>;\n}',
+    ],
+    [
+      'packages/runtime/src/bootstrap.ts',
+      "function isOnApplicationDraining(value: unknown): boolean {\n  return hasMethod(value, 'onApplicationDraining');\n}",
+    ],
+    [
+      'packages/runtime/src/bootstrap.ts',
+      'async function runApplicationDrainingHook(instance: { onApplicationDraining(): Promise<void> }) {\n  await instance.onApplicationDraining();\n}',
+    ],
+  ] as const)('rejects a fifth lifecycle hook added to %s', (relativePath, fifthHookSource) => {
+    // Given
+    const readWithFifthLifecycleHook = (requestedPath: string): string =>
+      requestedPath === relativePath ? `${read(requestedPath)}\n${fifthHookSource}` : read(requestedPath);
+
+    // When
+    const runGovernanceGuard = () => enforceRuntimeLifecycleNestjsMigrationDocs(readWithFifthLifecycleHook);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(/[Oo]nApplicationDraining/);
   });
 });
