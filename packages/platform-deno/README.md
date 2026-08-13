@@ -76,7 +76,7 @@ try {
 }
 ```
 
-The surrounding host must stop `server`, coordinate process signals, and decide whether websocket upgrades are handled separately. Use the managed `runDenoApplication(...)` or `app.listen()` path when fluo should own those lifecycle seams. `adapter.handle(...)` remains available only after the managed adapter's `listen(dispatcher)` binding has completed.
+The surrounding host must stop `server`, coordinate process signals, and decide whether websocket upgrades are handled separately. Use `app.listen()` when fluo should own the managed server lifecycle, or `runDenoApplication(...)` when fluo should additionally install shutdown signal listeners. `adapter.handle(...)` remains available only after the managed adapter's `listen(dispatcher)` binding has completed.
 
 ### Direct Adapter Construction
 Application code should usually prefer `createDenoAdapter(options)`, `bootstrapDenoApplication(...)`, or `runDenoApplication(...)` so adapter setup stays explicit. Custom orchestration and tests may use `new DenoHttpApplicationAdapter(options?)` directly; the constructor accepts the same optional public `DenoAdapterOptions` as the factory, applies the default port when options are omitted, preserves `hostname` over the portable `host` alias, and rejects invalid `port` or `maxBodySize` values during setup.

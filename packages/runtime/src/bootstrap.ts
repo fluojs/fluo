@@ -22,6 +22,11 @@ import { RuntimeDefaultBinder } from './internal/http-runtime.js';
 import { createDefaultApplicationLogger } from './logging/default-logger.js';
 import { compileModuleGraph, providerToken } from './module-graph.js';
 import { createRuntimePlatformShell, type RuntimePlatformShell } from './platform-shell.js';
+import {
+  createLifecycleCloseError,
+  createRetryableShutdownState,
+  type RetryableShutdownState,
+} from './retryable-shutdown.js';
 import type { BootstrapReadySignal } from './tokens.js';
 import { APPLICATION_LOGGER, BOOTSTRAP_READY_SIGNAL, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from './tokens.js';
 import type {
@@ -108,18 +113,6 @@ async function disposeContainer(container: Container): Promise<void> {
   await container.dispose();
 }
 
-function toError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
-}
-
-function createLifecycleCloseError(errors: unknown[]): Error {
-  if (errors.length === 1) {
-    return toError(errors[0]);
-  }
-
-  return new AggregateError(errors, 'Application close failed for one or more shutdown steps.');
-}
-
 async function runCleanupCallbacks(cleanups: readonly (() => void)[]): Promise<unknown[]> {
   const errors: unknown[] = [];
 
@@ -167,38 +160,59 @@ function createBootstrapReadySignal(): MutableBootstrapReadySignal {
   };
 }
 
+type RuntimeShutdownPhase = 'adapter' | 'container' | 'hooks' | 'readiness' | 'runtime-cleanup';
+
 async function closeRuntimeResources(options: {
   adapter?: HttpApplicationAdapter;
   container: Container;
   lifecycleInstances: readonly unknown[];
   modules: CompiledModule[];
   runtimeCleanup: readonly (() => void)[];
+  shutdownState: RetryableShutdownState<RuntimeShutdownPhase>;
   signal?: string;
 }): Promise<void> {
   const errors: unknown[] = [];
 
-  resetReadinessState(options.modules);
-
-  errors.push(...(await runCleanupCallbacks(options.runtimeCleanup)));
-
-  try {
-    await runShutdownHooks(options.lifecycleInstances, options.signal);
-  } catch (error) {
-    errors.push(error);
+  if (!options.shutdownState.isComplete('readiness')) {
+    resetReadinessState(options.modules);
+    options.shutdownState.complete('readiness');
   }
 
-  if (options.adapter) {
+  if (!options.shutdownState.isComplete('runtime-cleanup')) {
+    const cleanupErrors = await runCleanupCallbacks(options.runtimeCleanup);
+
+    if (cleanupErrors.length === 0) {
+      options.shutdownState.complete('runtime-cleanup');
+    } else {
+      errors.push(...cleanupErrors);
+    }
+  }
+
+  if (!options.shutdownState.isComplete('hooks')) {
     try {
-      await options.adapter.close(options.signal);
+      await runShutdownHooks(options.lifecycleInstances, options.signal);
+      options.shutdownState.complete('hooks');
     } catch (error) {
       errors.push(error);
     }
   }
 
-  try {
-    await disposeContainer(options.container);
-  } catch (error) {
-    errors.push(error);
+  if (!options.shutdownState.isComplete('adapter')) {
+    try {
+      await options.adapter?.close(options.signal);
+      options.shutdownState.complete('adapter');
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+
+  if (!options.shutdownState.isComplete('container')) {
+    try {
+      await disposeContainer(options.container);
+      options.shutdownState.complete('container');
+    } catch (error) {
+      errors.push(error);
+    }
   }
 
   if (errors.length > 0) {
@@ -585,8 +599,11 @@ export function bootstrapModule(rootModule: ModuleType, options: BootstrapModule
 class FluoApplication implements Application {
   private applicationState: ApplicationState = 'bootstrapped';
   private closed = false;
+  private closeStarted = false;
   private closingPromise: Promise<void> | undefined;
   private listenPromise: Promise<void> | undefined;
+  private connectedMicroservicesClosed = false;
+  private readonly runtimeShutdownState = createRetryableShutdownState<RuntimeShutdownPhase>();
   private readonly contextResolutionCache: ContextResolutionCache = new Map();
   private readonly lifecycleInstances: unknown[];
   private readonly connectedMicroservices: MicroserviceApplication[] = [];
@@ -618,7 +635,16 @@ class FluoApplication implements Application {
       return this.container.resolve(token);
     }
 
-    return resolveContextToken(this.container, token, this.contextCacheableTokens, this.contextResolutionCache);
+    this.assertProviderResolutionAllowed();
+    const resolved = await resolveContextToken(
+      this.container,
+      token,
+      this.contextCacheableTokens,
+      this.contextResolutionCache,
+    );
+    this.assertProviderResolutionAllowed();
+
+    return resolved;
   }
 
   /**
@@ -633,8 +659,10 @@ class FluoApplication implements Application {
   }
 
   async connectMicroservice(options: CreateMicroserviceOptions = {}): Promise<MicroserviceApplication> {
+    this.assertApplicationOperationAllowed('connect a microservice');
     const microserviceToken = options.microserviceToken ?? DEFAULT_MICROSERVICE_TOKEN;
     const runtime = await this.container.resolve<unknown>(microserviceToken);
+    this.assertApplicationOperationAllowed('connect a microservice');
 
     if (!isMicroserviceRuntime(runtime)) {
       throw new InvariantError('Resolved microservice token does not implement listen().');
@@ -647,10 +675,12 @@ class FluoApplication implements Application {
   }
 
   async startAllMicroservices(): Promise<void> {
+    this.assertApplicationOperationAllowed('start microservices');
     const startedMicroservices: MicroserviceApplication[] = [];
 
     for (const microservice of this.connectedMicroservices) {
       try {
+        this.assertApplicationOperationAllowed('start microservices');
         await microservice.listen();
         startedMicroservices.push(microservice);
       } catch (error) {
@@ -690,11 +720,23 @@ class FluoApplication implements Application {
     }
   }
 
+  private assertApplicationOperationAllowed(operation: 'connect a microservice' | 'start microservices'): void {
+    if (this.closeStarted) {
+      throw new InvariantError(`Application cannot ${operation} after shutdown has started.`);
+    }
+  }
+
+  private assertProviderResolutionAllowed(): void {
+    if (this.closeStarted) {
+      throw new InvariantError('Application cannot resolve providers after shutdown has started.');
+    }
+  }
+
   /**
    * 준비 검사를 통과한 뒤 어댑터에 바인딩을 위임하고 상태를 `ready`로 전이한다.
    */
   async listen(): Promise<void> {
-    if (this.closed || this.closingPromise || this.applicationState === 'closed') {
+    if (this.closeStarted) {
       throw new InvariantError('Application cannot listen after it has been closed.');
     }
 
@@ -717,7 +759,7 @@ class FluoApplication implements Application {
   }
 
   private async startListening(): Promise<void> {
-    if (this.closed || this.closingPromise || this.applicationState === 'closed') {
+    if (this.closeStarted) {
       throw new InvariantError('Application cannot listen after it has been closed.');
     }
 
@@ -735,7 +777,7 @@ class FluoApplication implements Application {
       throw error;
     }
 
-    if (this.closed || this.closingPromise) {
+    if (this.closeStarted) {
       throw new InvariantError('Application startup was interrupted by shutdown.');
     }
 
@@ -760,6 +802,8 @@ class FluoApplication implements Application {
       return;
     }
 
+    this.closeStarted = true;
+
     this.closingPromise = (async () => {
       const errors: unknown[] = [];
 
@@ -769,10 +813,13 @@ class FluoApplication implements Application {
         } catch {}
       }
 
-      try {
-        await this.closeConnectedMicroservices(signal);
-      } catch (error) {
-        errors.push(error);
+      if (!this.connectedMicroservicesClosed) {
+        try {
+          await this.closeConnectedMicroservices(signal);
+          this.connectedMicroservicesClosed = true;
+        } catch (error) {
+          errors.push(error);
+        }
       }
 
       try {
@@ -782,6 +829,7 @@ class FluoApplication implements Application {
           lifecycleInstances: this.lifecycleInstances,
           modules: this.modules,
           runtimeCleanup: this.runtimeCleanup,
+          shutdownState: this.runtimeShutdownState,
           signal,
         });
       } catch (error) {
@@ -807,8 +855,10 @@ class FluoApplication implements Application {
 
 class FluoApplicationContext implements ApplicationContext {
   private closed = false;
+  private closeStarted = false;
   private closingPromise: Promise<void> | undefined;
   private readonly contextResolutionCache: ContextResolutionCache = new Map();
+  private readonly runtimeShutdownState = createRetryableShutdownState<RuntimeShutdownPhase>();
 
   constructor(
     readonly container: Container,
@@ -827,7 +877,22 @@ class FluoApplicationContext implements ApplicationContext {
       return this.container.resolve(token);
     }
 
-    return resolveContextToken(this.container, token, this.contextCacheableTokens, this.contextResolutionCache);
+    this.assertProviderResolutionAllowed();
+    const resolved = await resolveContextToken(
+      this.container,
+      token,
+      this.contextCacheableTokens,
+      this.contextResolutionCache,
+    );
+    this.assertProviderResolutionAllowed();
+
+    return resolved;
+  }
+
+  private assertProviderResolutionAllowed(): void {
+    if (this.closeStarted) {
+      throw new InvariantError('Application context cannot resolve providers after shutdown has started.');
+    }
   }
 
   async close(signal?: string): Promise<void> {
@@ -840,12 +905,14 @@ class FluoApplicationContext implements ApplicationContext {
       return;
     }
 
+    this.closeStarted = true;
     this.closingPromise = (async () => {
       await closeRuntimeResources({
         container: this.container,
         lifecycleInstances: this.lifecycleInstances,
         modules: this.modules,
         runtimeCleanup: this.runtimeCleanup,
+        shutdownState: this.runtimeShutdownState,
         signal,
       });
       this.closed = true;
