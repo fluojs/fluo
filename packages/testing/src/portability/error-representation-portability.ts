@@ -1,14 +1,12 @@
+import type { HttpErrorRepresentationOptions, Middleware, RequestObserver } from '@fluojs/http';
+import type { ModuleType } from '@fluojs/runtime';
 import {
-  Controller,
-  Get,
-  Head,
-  type HttpErrorRepresentationOptions,
-  type Middleware,
-  NotFoundException,
-  type RequestContext,
-  type RequestObserver,
-} from '@fluojs/http';
-import { defineModule, type ModuleType } from '@fluojs/runtime';
+  assertProviderlessHeadResponse,
+  assertRepresentationResponses,
+  createErrorRepresentationOptions,
+  createProviderlessErrorRepresentationOptions,
+  createRepresentationFixture,
+} from './error-representation-portability-fixture.js';
 
 type NetworkApp = {
   close(): Promise<void>;
@@ -39,7 +37,7 @@ type WebHarnessOptions<TBootstrapOptions extends object, TApp extends WebApp> = 
 /** Adapter bootstrap fields required by the network error-representation portability scenario. */
 export type NetworkHttpErrorRepresentationBootstrapOptions = {
   readonly cors: false;
-  readonly errorRepresentation: HttpErrorRepresentationOptions;
+  readonly errorRepresentation: HttpErrorRepresentationOptions | undefined;
   readonly middleware: Middleware[];
   readonly observers: RequestObserver[];
   readonly port: 0;
@@ -48,7 +46,7 @@ export type NetworkHttpErrorRepresentationBootstrapOptions = {
 /** Adapter bootstrap fields required by the Web error-representation portability scenario. */
 export type WebHttpErrorRepresentationBootstrapOptions = {
   readonly cors: false;
-  readonly errorRepresentation: HttpErrorRepresentationOptions;
+  readonly errorRepresentation: HttpErrorRepresentationOptions | undefined;
   readonly middleware: Middleware[];
 };
 
@@ -68,101 +66,6 @@ function resolveListeningUrl(app: NetworkApp, name: string): string {
     throw new Error(`${name} error representation portability check could not resolve its listener URL.`);
   }
   return adapter.getListenTarget().url;
-}
-
-function hasErrorCode(value: unknown, code: string): boolean {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-  const error: unknown = Reflect.get(value, 'error');
-  return typeof error === 'object' && error !== null && Reflect.get(error, 'code') === code;
-}
-
-function assertStatus(response: Response, expected: number, name: string, scenario: string): void {
-  if (response.status !== expected) {
-    throw new Error(`${name} changed ${scenario} status: expected ${String(expected)}, received ${String(response.status)}.`);
-  }
-}
-
-async function assertRepresentationResponses(
-  name: string,
-  responses: {
-    readonly committed: Response;
-    readonly head: Response;
-    readonly html: Response;
-    readonly json: Response;
-    readonly unsupported: Response;
-  },
-): Promise<void> {
-  assertStatus(responses.html, 404, name, 'HTML error representation');
-  assertStatus(responses.json, 404, name, 'JSON error representation');
-  assertStatus(responses.head, 404, name, 'HEAD error representation');
-  assertStatus(responses.unsupported, 406, name, 'unsupported error representation');
-  assertStatus(responses.committed, 202, name, 'already-committed response');
-
-  const [html, json, head, unsupported, committed] = await Promise.all([
-    responses.html.text(),
-    responses.json.json(),
-    responses.head.text(),
-    responses.unsupported.json(),
-    responses.committed.text(),
-  ]);
-
-  if (!responses.html.headers.get('content-type')?.includes('text/html') || !html.includes('404:NOT_FOUND')) {
-    throw new Error(`${name} changed negotiated HTML error representation semantics.`);
-  }
-  if (!hasErrorCode(json, 'NOT_FOUND')) {
-    throw new Error(`${name} changed canonical JSON error representation semantics.`);
-  }
-  if (!responses.head.headers.get('content-type')?.includes('text/html') || head !== '') {
-    throw new Error(`${name} changed HEAD error representation body suppression.`);
-  }
-  if (!hasErrorCode(unsupported, 'NOT_ACCEPTABLE')) {
-    throw new Error(`${name} changed unsupported error representation fallback semantics.`);
-  }
-  if (committed !== 'handler-owned') {
-    throw new Error(`${name} rewrote an already-committed response through the error provider.`);
-  }
-}
-
-function createRepresentationFixture(): ModuleType {
-  @Controller('/error-representations')
-  class ErrorRepresentationController {
-    @Get('/json')
-    json(): never {
-      throw new NotFoundException('Matched resource missing.');
-    }
-
-    @Head('/head')
-    head(): never {
-      throw new NotFoundException('HEAD resource missing.');
-    }
-
-    @Get('/committed')
-    async committed(_input: undefined, context: RequestContext): Promise<never> {
-      context.response.setStatus(202);
-      await context.response.send('handler-owned');
-      throw new NotFoundException('Committed response must not be replaced.');
-    }
-  }
-
-  class AppModule {}
-  defineModule(AppModule, { controllers: [ErrorRepresentationController] });
-  return AppModule;
-}
-
-function createErrorRepresentationOptions(): WebHttpErrorRepresentationBootstrapOptions {
-  return {
-    cors: false,
-    errorRepresentation: {
-      html: {
-        render({ json }: { readonly json: { readonly error: { readonly code: string; readonly status: number } } }) {
-          return `<html><body>${String(json.error.status)}:${json.error.code}</body></html>`;
-        },
-      },
-    },
-    middleware: [],
-  };
 }
 
 async function closeAfterAssertion(app: NetworkApp | WebApp, name: string, assertion: () => Promise<void>): Promise<void> {
@@ -213,8 +116,29 @@ export async function assertNetworkHttpErrorRepresentationPortability<
       head: await fetch(`${baseUrl}/error-representations/head`, { headers: { accept: 'text/html' }, method: 'HEAD' }),
       html: await fetch(`${baseUrl}/not-registered`, { headers: { accept: 'text/html' } }),
       json: await fetch(`${baseUrl}/error-representations/json`, { headers: { accept: 'application/json' } }),
+      jsonHead: await fetch(`${baseUrl}/error-representations/head`, { headers: { accept: 'application/json' }, method: 'HEAD' }),
+      successHead: await fetch(`${baseUrl}/error-representations/success-head`, { method: 'HEAD' }),
       unsupported: await fetch(`${baseUrl}/not-registered`, { headers: { accept: 'image/avif' } }),
+      unsupportedHead: await fetch(`${baseUrl}/not-registered`, { headers: { accept: 'image/avif' }, method: 'HEAD' }),
     });
+  });
+
+  const providerlessApp = await options.bootstrap(
+    createRepresentationFixture(),
+    options.createBootstrapOptions({
+      ...createProviderlessErrorRepresentationOptions(),
+      observers: [],
+      port: 0,
+    }),
+  );
+
+  await closeAfterAssertion(providerlessApp, options.name, async () => {
+    await providerlessApp.listen();
+    const baseUrl = resolveListeningUrl(providerlessApp, options.name);
+    await assertProviderlessHeadResponse(
+      options.name,
+      await fetch(`${baseUrl}/not-registered`, { method: 'HEAD' }),
+    );
   });
 }
 
@@ -243,7 +167,22 @@ export async function assertWebHttpErrorRepresentationPortability<
       head: await app.dispatch(request('/error-representations/head', 'text/html', 'HEAD')),
       html: await app.dispatch(request('/not-registered', 'text/html')),
       json: await app.dispatch(request('/error-representations/json', 'application/json')),
+      jsonHead: await app.dispatch(request('/error-representations/head', 'application/json', 'HEAD')),
+      successHead: await app.dispatch(request('/error-representations/success-head', '*/*', 'HEAD')),
       unsupported: await app.dispatch(request('/not-registered', 'image/avif')),
+      unsupportedHead: await app.dispatch(request('/not-registered', 'image/avif', 'HEAD')),
     });
+  });
+
+  const providerlessApp = await options.bootstrap(
+    createRepresentationFixture(),
+    options.createBootstrapOptions(createProviderlessErrorRepresentationOptions()),
+  );
+
+  await closeAfterAssertion(providerlessApp, options.name, async () => {
+    await assertProviderlessHeadResponse(
+      options.name,
+      await providerlessApp.dispatch(new Request('https://runtime.test/not-registered', { method: 'HEAD' })),
+    );
   });
 }
