@@ -216,11 +216,11 @@ Pass `CqrsDispatchContext` unchanged whenever that next command or a nested even
 
 ### 10.7.2 Reserve inventory, then dispatch shipment
 
-A Saga can continue through additional event types. `InventoryReservedEvent` can cause `DispatchShipmentCommand`. `ShipmentDispatchedEvent` can cause `SendShipmentNotificationCommand`. The important design point is that each step crosses an event boundary. That lets FluoShop observe, retry, and reschedule at each boundary instead of treating the entire fulfillment flow as one invisible block.
+A saga flow can continue through additional event types. `InventoryReservedEvent` can cause `DispatchShipmentCommand`. `ShipmentDispatchedEvent` can cause `SendShipmentNotificationCommand`. Each nested in-process stage belongs to a distinct singleton saga provider token: one provider may listen to multiple event types across separate publications, but it cannot re-enter another of its routes while its current `handle(...)` call is active. The important design point is that each step crosses an explicit event and ownership boundary. That lets FluoShop observe, retry, and reschedule at each boundary instead of treating the entire fulfillment flow as one invisible block.
 
 ## 10.8 Saga topology limits
 
-The package README includes an operationally important rule. If an in-process publish chain re-enters the same saga route cyclically or exceeds 32 nested saga hops, saga execution fails immediately with `SagaTopologyError`. This is not an implementation detail. It is an architecture guide. FluoShop must keep its in-process saga graph acyclic. If a workflow is intentionally cyclic or becomes too long-running, it should move behind a different boundary. That boundary might be an external transport. It might be a queue. It might be a scheduler. But it should not remain an endlessly re-entering in-process saga chain.
+The package README includes an operationally important rule. If an in-process publish chain tries to enter any route owned by an already active saga provider token, or exceeds 32 nested saga hops, saga execution fails immediately with `SagaTopologyError`. The same-token rule covers both same-event cycles and nested different-event routes, preserving one execution owner for each singleton saga instance. This is not an implementation detail. It is an architecture guide. FluoShop must keep its in-process saga graph acyclic and assign nested stages to distinct provider tokens. If a workflow is intentionally cyclic or becomes too long-running, it should move behind a different boundary. That boundary might be an external transport. It might be a queue. It might be a scheduler. But it should not remain an endlessly re-entering in-process saga chain.
 
 ### 10.8.1 What this means for FluoShop
 
