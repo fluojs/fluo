@@ -644,7 +644,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // provider discoverability, bootstrap verification settlement before shutdown,
   // and owned transport cleanup serialization docs/tests,
   // plus CQRS provider-token fan-out, private immutable dispatch topology state,
-  // full handler/saga/delegated pipeline ordering, and shutdown authorization,
+  // single-owner same-token nested saga rejection, full handler/saga/delegated
+  // pipeline ordering, and shutdown authorization,
   // plus event-bus background handler/transport shutdown drain to live-set
   // quiescence under one deadline, inbound timeout, stable eventKey migration,
   // and CQRS responsibility-boundary docs/tests,

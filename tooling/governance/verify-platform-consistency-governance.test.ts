@@ -1773,6 +1773,9 @@ describe('package surface CQRS responsibility discoverability', () => {
       expect(markdown).toContain('CqrsDispatchContext');
       expect(markdown).toContain('opaque');
       expect(markdown).toContain('CqrsModule.forRoot(...)');
+      expect(markdown).toContain('SagaTopologyError');
+      expect(markdown).toContain('provider token');
+      expect(markdown.toLowerCase()).toContain('nested');
     }
 
     for (const markdown of [englishArchitecture, koreanArchitecture]) {
