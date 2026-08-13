@@ -98,6 +98,8 @@ export class AppModule {}
 
 `sources`에서 발견한 descriptor와 explicit `descriptors` 항목이 같은 OpenAPI path 및 HTTP method로 해석되면 나중 descriptor가 우선합니다. `OpenApiModule`은 discovered source를 먼저, explicit descriptor를 나중에 합성하므로 충돌 시 explicit descriptor가 의도적인 override 지점입니다.
 
+OpenAPI Path Item은 Fluo의 runtime 전용 `@All(...)` catch-all을 하나의 operation으로 표현할 수 없습니다. 문서화할 endpoint가 여러 method를 지원한다면 explicit standard-method handler를 선언하세요. Builder는 잘못된 OpenAPI 3.1 출력을 만들지 않도록 `ALL`과 기타 unsupported descriptor method를 거부합니다. `documentTransform`은 standard Path Item field, `trace`, `x-*` extension을 추가할 수 있지만 `all`, `query` 같은 알 수 없는 key는 문서를 제공하기 전에 거부됩니다.
+
 ## 10.3 Adding Documentation Decorators to FluoBlog
 
 모듈 등록이 끝나면 API의 "뼈대"는 이미 문서화됩니다. 하지만 operation summary나 구체적인 응답 설명 같은 인간 친화적인 디테일은 부족할 것입니다. 이를 위해 문서화 데코레이터를 사용합니다.
@@ -334,6 +336,7 @@ fluo는 HTTP route rule로 이 path들을 정규화합니다. 두 OpenAPI module
 - FluoBlog은 이제 기계가 읽는 `/openapi.json`과, `ui: true`로 opt-in했기 때문에 인간이 읽는 `/docs` 인터랙티브 UI를 노출하며, `documentPath`와 `uiPath`로 여러 document instance를 분리할 수 있습니다.
 - 메타데이터 재사용 덕분에 유효성 검사 규칙과 DTO 형태가 문서와 자동으로 동기화됩니다.
 - 허용되는 legacy `nullable` metadata는 OpenAPI 3.0 전용 keyword가 아니라 유효한 OpenAPI 3.1 null union으로 생성됩니다.
+- Descriptor method와 transform된 Path Item key를 검증하여 runtime 전용 `ALL` 또는 알 수 없는 field가 OpenAPI 3.1 문서에 들어가지 못하게 합니다.
 - 결정론적인 문서 출력은 API "계약"이 안정적이고 전문적으로 유지되도록 돕습니다.
 - 이제 Part 1이 끝났습니다. 라우팅, 검증, 직렬화, 보호, 문서화가 완료된 HTTP API를 갖게 되었습니다.
 

@@ -98,6 +98,8 @@ This explicitness matches the rest of the framework's philosophy. **Important th
 
 If a descriptor discovered from `sources` and an explicit entry in `descriptors` resolve to the same OpenAPI path and HTTP method, the later descriptor wins. `OpenApiModule` composes discovered sources first and explicit descriptors second, so the explicit descriptor is the intentional override point for a collision.
 
+OpenAPI Path Items cannot represent Fluo's runtime-only `@All(...)` catch-all as one operation. If a documented endpoint supports several methods, declare explicit standard-method handlers instead. The builder rejects `ALL` and other unsupported descriptor methods rather than producing invalid OpenAPI 3.1 output. A `documentTransform` may add standard Path Item fields, `trace`, or `x-*` extensions, but unknown keys such as `all` and `query` are rejected before serving the document.
+
 ## 10.3 Adding Documentation Decorators to FluoBlog
 
 Once the Module is registered, the API's "skeleton" is already documented. It will still lack human-friendly details such as operation summaries or specific response descriptions. Documentation Decorators fill that gap.
@@ -334,6 +336,7 @@ Following this pattern gives users a clean and organized documentation experienc
 - FluoBlog now exposes machine-readable `/openapi.json` and, because it opts into `ui: true`, a human-readable `/docs` interactive UI; `documentPath` and `uiPath` can separate multiple document instances.
 - Metadata reuse keeps validation rules and DTO shapes synchronized automatically with the documentation.
 - Accepted legacy `nullable` metadata is emitted as valid OpenAPI 3.1 null unions rather than the OpenAPI 3.0-only keyword.
+- Descriptor methods and transformed Path Item keys are validated so runtime-only `ALL` or unknown fields cannot escape into the OpenAPI 3.1 document.
 - Deterministic documentation output helps the API "contract" stay stable and professional.
 - Part 1 is now complete. You have an HTTP API with routing, validation, serialization, protection, and documentation.
 
