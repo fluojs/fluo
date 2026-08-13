@@ -217,7 +217,26 @@ function normalizePaths(
   for (const [path, pathItem] of Object.entries(paths)) {
     const normalizedPathItem: OpenApiPathItemObject = {};
 
+    if (pathItem.parameters) {
+      normalizedPathItem.parameters = pathItem.parameters.map((parameter, index) => (
+        'schema' in parameter
+          ? {
+              ...parameter,
+              schema: normalizeOpenApiSchemaBounds(
+                parameter.schema,
+                `paths.${path}.parameters[${String(index)}].schema`,
+                normalizedSchemas,
+              ),
+            }
+          : { ...parameter }
+      ));
+    }
+
     for (const [key, value] of Object.entries(pathItem)) {
+      if (key === 'parameters') {
+        continue;
+      }
+
       if (isOpenApiOperationMethod(key)) {
         normalizedPathItem[key] = value
           ? normalizeOperation(value, `paths.${path}.${key}`, normalizedSchemas)

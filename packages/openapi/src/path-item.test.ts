@@ -20,6 +20,32 @@ const DOCUMENT_OPTIONS = {
   version: '1.0.0',
 };
 
+function resolveLocalJsonPointerTarget(value: unknown, pointer: string): unknown {
+  if (!pointer.startsWith('#/')) {
+    return undefined;
+  }
+
+  return decodeURIComponent(pointer.slice(2)).split('/').reduce<unknown>((current, token) => {
+    if (typeof current !== 'object' || current === null) {
+      return undefined;
+    }
+
+    return Reflect.get(current, token.replaceAll('~1', '/').replaceAll('~0', '~'));
+  }, value);
+}
+
+function collectLocalJsonReferences(value: unknown): string[] {
+  if (typeof value !== 'object' || value === null) {
+    return [];
+  }
+
+  const reference = Reflect.get(value, '$ref');
+  return [
+    ...(typeof reference === 'string' && reference.startsWith('#/') ? [reference] : []),
+    ...Object.values(value).flatMap(collectLocalJsonReferences),
+  ];
+}
+
 describe('OpenAPI Path Item validation', () => {
   it('rejects ALL descriptors instead of emitting a nonstandard operation', () => {
     // Given
@@ -106,6 +132,41 @@ describe('OpenAPI Path Item validation', () => {
     expect(buildDocument).toThrow(`OpenAPI Path Item for path "/health" contains unsupported key "${key}".`);
   });
 
+  it('normalizes schemas in transformed Path Item parameters', () => {
+    // Given
+    const descriptors: readonly [] = [];
+
+    // When
+    const document = buildOpenApiDocument({
+      ...DOCUMENT_OPTIONS,
+      descriptors,
+      documentTransform: (generatedDocument) => ({
+        ...generatedDocument,
+        paths: {
+          '/scores': {
+            parameters: [{
+              in: 'query',
+              name: 'minimum-score',
+              schema: {
+                exclusiveMinimum: true,
+                minimum: 0,
+                nullable: true,
+                type: 'number',
+              },
+            }],
+          },
+        },
+      }),
+    });
+
+    // Then
+    expect(document.paths['/scores']?.parameters).toEqual([{
+      in: 'query',
+      name: 'minimum-score',
+      schema: { exclusiveMinimum: 0, type: ['number', 'null'] },
+    }]);
+  });
+
   it('preserves transformed trace, fixed fields, and specification extensions', () => {
     // Given
     @Controller('/health')
@@ -127,13 +188,16 @@ describe('OpenAPI Path Item validation', () => {
           ...generatedDocument,
           paths: {
             '/health': {
-              $ref: '#/components/pathItems/Health',
               description: 'Health operations',
+              get: operation,
               parameters: [{ in: 'header', name: 'x-request-id', schema: { type: 'string' } }],
               servers: [{ url: 'https://api.example.com' }],
               summary: 'Health',
               trace: { ...operation, operationId: 'traceHealth' },
               'x-owner': 'platform',
+            },
+            '/health-reference': {
+              $ref: '#/paths/~1health',
             },
           },
         };
@@ -142,14 +206,37 @@ describe('OpenAPI Path Item validation', () => {
 
     // Then
     expect(document.paths['/health']).toEqual({
-      $ref: '#/components/pathItems/Health',
       description: 'Health operations',
+      get: expect.objectContaining({ responses: { 200: { description: 'OK' } } }),
       parameters: [{ in: 'header', name: 'x-request-id', schema: { type: 'string' } }],
       servers: [{ url: 'https://api.example.com' }],
       summary: 'Health',
       trace: expect.objectContaining({ operationId: 'traceHealth' }),
       'x-owner': 'platform',
     });
-    expect(JSON.parse(JSON.stringify(document))).toMatchObject({ openapi: '3.1.0' });
+    expect(document.paths['/health-reference']).toEqual({ $ref: '#/paths/~1health' });
+    const serializedDocument: unknown = JSON.parse(JSON.stringify(document));
+    expect(serializedDocument).toMatchObject({
+      info: {
+        title: 'Path Item API',
+        version: '1.0.0',
+      },
+      openapi: '3.1.0',
+      paths: {
+        '/health': {
+          get: { responses: { 200: { description: 'OK' } } },
+          trace: { responses: { 200: { description: 'OK' } } },
+        },
+        '/health-reference': { $ref: '#/paths/~1health' },
+      },
+    });
+    const localReferences = collectLocalJsonReferences(serializedDocument);
+    expect(localReferences).toEqual(['#/paths/~1health']);
+    expect(localReferences.filter((reference) => resolveLocalJsonPointerTarget(serializedDocument, reference) === undefined))
+      .toEqual([]);
+    expect(resolveLocalJsonPointerTarget(serializedDocument, '#/paths/~1health')).toMatchObject({
+      get: { responses: { 200: { description: 'OK' } } },
+      trace: { responses: { 200: { description: 'OK' } } },
+    });
   });
 });
