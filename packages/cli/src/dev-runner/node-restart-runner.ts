@@ -1,6 +1,6 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, statSync, watch, type FSWatcher } from 'node:fs';
+import { existsSync, type FSWatcher, readdirSync, readFileSync, statSync, watch } from 'node:fs';
 import { basename, dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createStudioDevtoolsNodeImport } from '../studio/runtime-config.js';
@@ -409,6 +409,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
   let restartTimer: RestartSchedulerHandle | undefined;
   let restarting = false;
   let stopping = false;
+  let terminalExitCode: number | undefined;
 
   const startChild = (resolveExitCode: (code: number) => void, cleanup: () => void) => {
     ensureStudioEpoch(env);
@@ -450,7 +451,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
           reason: 'fluo dev runner stopped',
         });
         cleanup();
-        resolveExitCode(code ?? 0);
+        resolveExitCode(terminalExitCode ?? code ?? 0);
         return;
       }
       publishStudioLifecycleEvent(env, runnerRuntime, 'disconnect', {
@@ -577,6 +578,30 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
       signalTarget.off('SIGTERM', stop);
     };
 
+    const failFromWatcher = (target: string, error: Error) => {
+      if (stopping || resolved) {
+        return;
+      }
+
+      terminalExitCode = 1;
+      stopping = true;
+      stderr.write(`[fluo] watcher failed for ${target}: ${error.message}\n`);
+      cleanup();
+
+      const stoppingChild = child;
+      if (!stoppingChild || stoppingChild.exitCode !== null) {
+        resolveOnce(terminalExitCode);
+        return;
+      }
+
+      stopChild(stoppingChild, childShutdownTimeoutMs);
+    };
+
+    const registerWatcher = (target: string, watcher: FSWatcher) => {
+      watchers.push(watcher);
+      watcher.on?.('error', (error) => failFromWatcher(target, error));
+    };
+
     startChild(resolveExitCode, cleanup);
 
     const watchedFallbackDirectories = new Set<string>();
@@ -598,7 +623,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
       };
 
       try {
-        watchers.push(watchTarget(directoryPath, listener));
+        registerWatcher(directoryPath, watchTarget(directoryPath, listener));
       } catch (error: unknown) {
         watchedFallbackDirectories.delete(directoryPath);
         stderr.write(`[fluo] unable to watch ${directoryPath}: ${error instanceof Error ? error.message : String(error)}\n`);
@@ -614,7 +639,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
           scheduleRestart(stats.isDirectory() ? join(target, fileName) : target, resolveExitCode, cleanup);
         };
         try {
-          watchers.push(watchTarget(target, watchOptions, listener));
+          registerWatcher(target, watchTarget(target, watchOptions, listener));
         } catch (error: unknown) {
           if (!stats.isDirectory()) {
             throw error;
