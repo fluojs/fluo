@@ -204,6 +204,7 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
   private listenAbortController?: AbortController;
   private listenInFlight?: Promise<void>;
   private readonly app: Express;
+  private readonly nativeRouteDescriptors = new Map<string, HandlerDescriptor>();
   private nativeRoutesReady = false;
   private readonly requestResponseFactory: RequestResponseFactory<
     ExpressRequest,
@@ -330,6 +331,7 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
       this.closing = false;
       this.closeInFlight = undefined;
       this.dispatcher = undefined;
+      this.nativeRouteDescriptors.clear();
     });
     this.closeInFlight = closeInFlight;
     void closeInFlight.catch(() => {});
@@ -367,11 +369,23 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
   }
 
   private registerNativeRoutes(dispatcher: Dispatcher): void {
+    const nativeRoutes = createExpressNativeRoutes(resolveDispatcherRouteDescriptors(dispatcher));
+    this.nativeRouteDescriptors.clear();
+
+    for (const route of nativeRoutes) {
+      for (const method of route.methods) {
+        const descriptor = route.descriptorsByMethod[method];
+
+        if (descriptor) {
+          this.nativeRouteDescriptors.set(`${method}:${route.path}`, descriptor);
+        }
+      }
+    }
+
     if (this.nativeRoutesReady) {
       return;
     }
 
-    const nativeRoutes = createExpressNativeRoutes(resolveDispatcherRouteDescriptors(dispatcher));
     Reflect.set(this.router, '__fluoNativeRoutes', nativeRoutes);
 
     for (const route of nativeRoutes) {
@@ -387,7 +401,7 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
 
         const nativeMethod = request.method.toUpperCase() as ExpressNativeRouteMethod;
         const requestPath = splitRawRequestUrl(request.originalUrl || request.url || '/').path;
-        const descriptor = route.descriptorsByMethod[nativeMethod];
+        const descriptor = this.nativeRouteDescriptors.get(`${nativeMethod}:${route.path}`);
         const params = normalizeNativeRouteParams(request.params);
 
         if (descriptor && !isRoutePathNormalizationSensitive(requestPath) && !hasNativeRouteParamSeparators(params)) {
