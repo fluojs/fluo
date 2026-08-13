@@ -76,7 +76,7 @@ try {
 }
 ```
 
-주변 host는 `server` 중지와 process signal 조율을 소유하고 websocket upgrade를 별도로 처리할지 결정해야 합니다. fluo가 해당 lifecycle seam을 소유해야 한다면 managed `runDenoApplication(...)` 또는 `app.listen()` 경로를 사용하세요. `adapter.handle(...)`은 managed adapter의 `listen(dispatcher)` binding이 끝난 뒤에만 사용할 수 있습니다.
+주변 host는 `server` 중지와 process signal 조율을 소유하고 websocket upgrade를 별도로 처리할지 결정해야 합니다. Fluo가 managed server lifecycle을 소유해야 한다면 `app.listen()`을 사용하고, shutdown signal listener까지 추가로 설치해야 한다면 `runDenoApplication(...)`을 사용하세요. `adapter.handle(...)`은 managed adapter의 `listen(dispatcher)` binding이 끝난 뒤에만 사용할 수 있습니다.
 
 ### 직접 어댑터 생성
 애플리케이션 코드는 보통 `createDenoAdapter(options)`, `bootstrapDenoApplication(...)`, `runDenoApplication(...)`을 사용해 adapter setup 경계를 명확히 유지하는 편을 권장합니다. 커스텀 orchestration이나 테스트에서는 `new DenoHttpApplicationAdapter(options?)`를 직접 사용할 수 있으며, constructor는 factory와 같은 optional public `DenoAdapterOptions`를 받고 options가 생략되면 기본 port를 적용하며, portable `host` alias보다 `hostname`을 우선하고, 잘못된 `port` 또는 `maxBodySize` 값은 setup 시점에 거절합니다.
