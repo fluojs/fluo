@@ -1126,59 +1126,59 @@ export function enforceCloudflareWorkersLifecycleDocsSync(
 const expressRuntimeMigrationDocRequirements = [
   [
     'packages/platform-express/README.md',
-    ['Node.js 20 or newer', 'engines.node >=20.0.0', 'TC39 standard decorators', 'explicit module/provider registration'],
+    ['Node.js 20.19.3 or newer', 'engines.node >=20.19.3', 'TC39 standard decorators', 'explicit module/provider registration'],
   ],
   [
     'packages/platform-express/README.ko.md',
-    ['Node.js 20 이상', 'engines.node >=20.0.0', 'TC39 표준 데코레이터', '명시적 module/provider registration'],
+    ['Node.js 20.19.3 이상', 'engines.node >=20.19.3', 'TC39 표준 데코레이터', '명시적 module/provider registration'],
   ],
   [
     'docs/reference/package-surface.md',
-    ['Node.js 20+', 'engines.node >=20.0.0', 'TC39 standard decorator', 'explicit DI/module wiring'],
+    ['Node.js 20.19.3+', 'engines.node >=20.19.3', 'TC39 standard decorator', 'explicit DI/module wiring'],
   ],
   [
     'docs/reference/package-surface.ko.md',
-    ['Node.js 20+', 'engines.node >=20.0.0', 'TC39 표준 데코레이터', '명시적 DI/module wiring'],
+    ['Node.js 20.19.3+', 'engines.node >=20.19.3', 'TC39 표준 데코레이터', '명시적 DI/module wiring'],
   ],
   [
     'docs/reference/package-chooser.md',
-    ['Node.js 20+', 'engines.node >=20.0.0', 'TC39 standard decorators', 'explicit DI/module wiring'],
+    ['Node.js 20.19.3+', 'engines.node >=20.19.3', 'TC39 standard decorators', 'explicit DI/module wiring'],
   ],
   [
     'docs/reference/package-chooser.ko.md',
-    ['Node.js 20+', 'engines.node >=20.0.0', 'TC39 표준 데코레이터', '명시적 DI/module wiring'],
+    ['Node.js 20.19.3+', 'engines.node >=20.19.3', 'TC39 표준 데코레이터', '명시적 DI/module wiring'],
   ],
   [
     'docs/getting-started/migrate-from-nestjs.md',
-    ['Node.js 20+', 'TC39 standard decorators', 'class-level `@Inject(...)`', 'explicit module/provider registration'],
+    ['Node.js 20.19.3+', 'TC39 standard decorators', 'class-level `@Inject(...)`', 'explicit module/provider registration'],
   ],
   [
     'docs/getting-started/migrate-from-nestjs.ko.md',
-    ['Node.js 20+', 'TC39 표준 데코레이터', 'class-level `@Inject(...)`', '명시적 module/provider registration'],
+    ['Node.js 20.19.3+', 'TC39 표준 데코레이터', 'class-level `@Inject(...)`', '명시적 module/provider registration'],
   ],
   [
     'book/intermediate/ch21-express-node.md',
-    ['Node.js 20 or newer', 'engines.node >=20.0.0', 'getListenTarget()', 'explicit DI/module wiring'],
+    ['Node.js 20.19.3 or newer', 'engines.node >=20.19.3', 'getListenTarget()', 'explicit DI/module wiring'],
   ],
   [
     'book/intermediate/ch21-express-node.ko.md',
-    ['Node.js 20 이상', 'engines.node >=20.0.0', 'getListenTarget()', '명시적 DI/module wiring'],
+    ['Node.js 20.19.3 이상', 'engines.node >=20.19.3', 'getListenTarget()', '명시적 DI/module wiring'],
   ],
   [
     'apps/docs/content/docs/guides/runtime-adapters.mdx',
-    ['Node.js 20 or newer', 'engines.node >=20.0.0', 'getListenTarget()', 'explicit DI/module wiring'],
+    ['Node.js 20.19.3 or newer', 'engines.node >=20.19.3', 'getListenTarget()', 'explicit DI/module wiring'],
   ],
   [
     'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
-    ['Node.js 20 이상', 'engines.node >=20.0.0', 'getListenTarget()', '명시적 DI/module wiring'],
+    ['Node.js 20.19.3 이상', 'engines.node >=20.19.3', 'getListenTarget()', '명시적 DI/module wiring'],
   ],
   [
     'docs/CONTEXT.md',
-    ['Node.js 20+', 'engines.node >=20.0.0', 'getListenTarget()', 'explicit DI/module wiring'],
+    ['Node.js 20.19.3+', 'engines.node >=20.19.3', 'getListenTarget()', 'explicit DI/module wiring'],
   ],
   [
     'docs/CONTEXT.ko.md',
-    ['Node.js 20+', 'engines.node >=20.0.0', 'getListenTarget()', '명시적 DI/module wiring'],
+    ['Node.js 20.19.3+', 'engines.node >=20.19.3', 'getListenTarget()', '명시적 DI/module wiring'],
   ],
 ];
 
@@ -1508,7 +1508,7 @@ function enforceCanonicalRuntimeMatrixReferences() {
     'Korean Express platform docs must keep host compatibility, native middleware limits, explicit registration, and infrastructure helper boundaries discoverable together.',
   );
   assert(
-    fastifyReadme.includes('engines.node >=20.0.0') &&
+    fastifyReadme.includes('engines.node >=20.19.3') &&
       fastifyReadme.includes('Node.js `https.ServerOptions`') &&
       fastifyReadme.includes('createFastifyAdapter(...)') &&
       fastifyReadme.includes('bootstrapFastifyApplication(...)') &&
@@ -1518,8 +1518,8 @@ function enforceCanonicalRuntimeMatrixReferences() {
       packageChooser.includes('plain HTTP behind that boundary') &&
       docsContext.includes('Fastify adapter discoverability') &&
       docsContext.includes('apps/docs/content/docs/guides/runtime-adapters.mdx') &&
-      docsContext.includes('engines.node >=20.0.0') &&
-      beginnerIntro.includes('Node.js 20 or newer') &&
+      docsContext.includes('engines.node >=20.19.3') &&
+      beginnerIntro.includes('Node.js 20.19.3 or newer') &&
       beginnerCliSetup.includes('plain HTTP for local development') &&
       beginnerProduction.includes('Fastify adapter `https` option') &&
       beginnerProduction.startsWith('<!-- packages: @fluojs/core, @fluojs/http, @fluojs/platform-fastify -->') &&
@@ -1530,7 +1530,7 @@ function enforceCanonicalRuntimeMatrixReferences() {
     'Fastify README, package-surface, package-chooser, docs/CONTEXT.md, book metadata, and website guidance must keep the Node.js 20+ runtime floor and HTTPS/TLS startup boundary discoverable together.',
   );
   assert(
-    fastifyReadmeKo.includes('engines.node >=20.0.0') &&
+    fastifyReadmeKo.includes('engines.node >=20.19.3') &&
       fastifyReadmeKo.includes('Node.js `https.ServerOptions`') &&
       fastifyReadmeKo.includes('createFastifyAdapter(...)') &&
       fastifyReadmeKo.includes('bootstrapFastifyApplication(...)') &&
@@ -1540,8 +1540,8 @@ function enforceCanonicalRuntimeMatrixReferences() {
       packageChooserKo.includes('일반 HTTP로 유지하세요') &&
       docsContextKo.includes('Fastify adapter discoverability') &&
       docsContextKo.includes('apps/docs/content/docs/guides/runtime-adapters.ko.mdx') &&
-      docsContextKo.includes('engines.node >=20.0.0') &&
-      beginnerIntroKo.includes('Node.js 20 버전 이상') &&
+      docsContextKo.includes('engines.node >=20.19.3') &&
+      beginnerIntroKo.includes('Node.js 20.19.3 이상') &&
       beginnerCliSetupKo.includes('일반 HTTP로 실행') &&
       beginnerProductionKo.includes('Fastify adapter `https` option') &&
       beginnerProductionKo.startsWith('<!-- packages: @fluojs/core, @fluojs/http, @fluojs/platform-fastify -->') &&
@@ -2392,6 +2392,21 @@ export function enforceHttpCatchAllRouteGrammarDecision() {
 }
 
 export function enforceHttpCustomMethodContract() {
+  const expectedNodeListenerEngine = '>=20.19.3';
+  const nodeListenerManifestPaths = [
+    'package.json',
+    'packages/graphql/package.json',
+    'packages/platform-express/package.json',
+    'packages/platform-fastify/package.json',
+    'packages/platform-nodejs/package.json',
+    'packages/runtime/package.json',
+    'packages/testing/package.json',
+  ];
+  const portableAdapterManifestPaths = [
+    'packages/platform-bun/package.json',
+    'packages/platform-cloudflare-workers/package.json',
+    'packages/platform-deno/package.json',
+  ];
   const documentationPaths = [
     'docs/CONTEXT.md',
     'docs/CONTEXT.ko.md',
@@ -2415,6 +2430,22 @@ export function enforceHttpCustomMethodContract() {
     );
   }
 
+  for (const manifestPath of nodeListenerManifestPaths) {
+    const manifest = JSON.parse(read(manifestPath));
+    assert(
+      manifest.engines?.node === expectedNodeListenerEngine,
+      `${manifestPath} must declare Node.js ${expectedNodeListenerEngine} so listener-level QUERY requests reach fluo dispatch.`,
+    );
+  }
+
+  for (const manifestPath of portableAdapterManifestPaths) {
+    const manifest = JSON.parse(read(manifestPath));
+    assert(
+      manifest.engines?.node === undefined,
+      `${manifestPath} must not acquire a Node.js engine floor for fetch-style custom-method dispatch.`,
+    );
+  }
+
   const decorators = read('packages/http/src/decorators.ts');
   const mappingRegression = read('packages/http/src/mapping.test.ts');
   const dispatcherRegression = read('packages/http/src/dispatch/custom-route-methods.test.ts');
@@ -2422,6 +2453,7 @@ export function enforceHttpCustomMethodContract() {
   const webHarness = read('packages/testing/src/portability/web-runtime-adapter-portability.ts');
   const fastifyAdapter = read('packages/platform-fastify/src/adapter.ts');
   const bunAdapter = read('packages/platform-bun/src/adapter.ts');
+  const scaffold = read('packages/cli/src/new/scaffold.ts');
 
   assert(
     decorators.includes('normalizeHttpRouteMethod') &&
@@ -2448,6 +2480,15 @@ export function enforceHttpCustomMethodContract() {
       bunAdapter.includes("case 'HEAD':") &&
       bunAdapter.includes('return undefined;'),
     'Fastify and Bun adapters must preserve the documented custom-method fallback boundary.',
+  );
+  assert(
+    scaffold.includes(`const NODE_HTTP_LISTENER_ENGINE = '${expectedNodeListenerEngine}';`) &&
+      scaffold.includes("case 'application-node-fastify-http':") &&
+      scaffold.includes("case 'application-node-fastify-react-vite-ssr':") &&
+      scaffold.includes("case 'application-node-express-http':") &&
+      scaffold.includes("case 'application-node-nodejs-http':") &&
+      scaffold.includes("case 'mixed-node-fastify-tcp':"),
+    `Generated Node HTTP listener projects must declare Node.js ${expectedNodeListenerEngine}.`,
   );
 }
 
@@ -2491,7 +2532,7 @@ export function enforceOpenApiNullableNormalizationContract() {
 }
 
 export function enforceGraphqlRuntimeBoundaryDiscoverability() {
-  const expectedNodeEngine = '>=20.16.0';
+  const expectedNodeEngine = '>=20.19.3';
   const graphqlPackageJson = JSON.parse(read('packages/graphql/package.json'));
   const runtimePackageJson = JSON.parse(read('packages/runtime/package.json'));
   const configPackageJson = JSON.parse(read('packages/config/package.json'));
@@ -2505,8 +2546,8 @@ export function enforceGraphqlRuntimeBoundaryDiscoverability() {
     'packages/runtime/package.json must keep the mandatory @fluojs/config dependency edge covered by the GraphQL runtime contract.',
   );
   assert(
-    configPackageJson.engines?.node === expectedNodeEngine,
-    `packages/config/package.json must keep the Node.js ${expectedNodeEngine} floor covered by the GraphQL runtime contract.`,
+    configPackageJson.engines?.node === '>=20.16.0',
+    'packages/config/package.json must keep its direct process.getBuiltinModule Node.js >=20.16.0 floor documented independently.',
   );
 
   const contractPaths = [

@@ -1221,12 +1221,12 @@ describe('repository governance contracts', () => {
 
     for (const source of [docsContext, packageSurface, packageChooser, beginnerIntro, beginnerCliSetup, beginnerProduction, fastifyReadme]) {
       expect(source).toContain('Node.js 20');
-      expect(source).toContain('engines.node >=20.0.0');
+      expect(source).toContain('engines.node >=20.19.3');
     }
 
     for (const source of [docsContextKo, packageSurfaceKo, packageChooserKo, beginnerIntroKo, beginnerCliSetupKo, beginnerProductionKo, fastifyReadmeKo]) {
       expect(source).toContain('Node.js 20');
-      expect(source).toContain('engines.node >=20.0.0');
+      expect(source).toContain('engines.node >=20.19.3');
     }
 
     for (const source of [docsContext, packageSurface, packageChooser, beginnerCliSetup, beginnerProduction, fastifyReadme]) {
@@ -2062,12 +2062,12 @@ describe('GraphQL runtime boundary discoverability', () => {
     const koreanFinalChapter = readFileSync(join(repoRoot, 'book/intermediate/ch25-final.ko.md'), 'utf8');
 
     for (const content of [englishReadme, englishContext, englishChapter]) {
-      expect(content).toContain('Node.js `>=20.16.0`');
+      expect(content).toContain('Node.js `>=20.19.3`');
       expect(content).toContain('Bun');
       expect(content).toContain('Deno');
     }
     for (const content of [koreanReadme, koreanContext, koreanChapter]) {
-      expect(content).toContain('Node.js `>=20.16.0`');
+      expect(content).toContain('Node.js `>=20.19.3`');
       expect(content).toContain('Bun');
       expect(content).toContain('Deno');
     }
