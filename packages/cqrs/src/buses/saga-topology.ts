@@ -4,12 +4,15 @@ import {
 } from '../dispatch-context.js';
 import { SagaTopologyError } from '../errors.js';
 import type { CqrsDispatchContext, SagaDescriptor } from '../types.js';
+import type { SagaContinuationScope } from './saga-continuation.js';
 
 const MAX_NESTED_SAGA_DEPTH = 32;
 
 /** Result of entering one guarded saga route. */
 export interface SagaTopologyEntry {
+  readonly continuationScope: SagaContinuationScope;
   readonly context: CqrsDispatchContext;
+  readonly ownsContinuationScope: boolean;
   readonly reentrantToken: boolean;
 }
 
@@ -18,7 +21,7 @@ export interface SagaTopologyEntry {
  *
  * @param context Opaque context passed through the active CQRS pipeline.
  * @param descriptor Saga route selected for the current event.
- * @returns The next opaque context and whether the same provider token is already active.
+ * @returns The next opaque context.
  */
 export function enterSagaTopology(
   context: CqrsDispatchContext | undefined,
@@ -30,6 +33,7 @@ export function enterSagaTopology(
   const reenteredRoute = activeTopology?.activeRoutes.some(
     (route) => route.token === descriptor.token && route.eventType === descriptor.eventType,
   );
+  const reentrantToken = activeTopology?.activeRoutes.some((route) => route.token === descriptor.token) ?? false;
 
   if (reenteredRoute) {
     throw new SagaTopologyError(
@@ -45,15 +49,20 @@ export function enterSagaTopology(
     );
   }
 
+  const continuationScope = internalState?.sagaContinuationScope ?? { queue: [] };
+
   return {
+    continuationScope,
     context: createInternalCqrsDispatchContext({
       publishDrainToken: internalState?.publishDrainToken,
+      sagaContinuationScope: continuationScope,
       sagaTopology: {
         activeRoutes: [...(activeTopology?.activeRoutes ?? []), { eventType: descriptor.eventType, token: descriptor.token }],
         depth: (activeTopology?.depth ?? 0) + 1,
         path: [...(activeTopology?.path ?? []), routeLabel],
       },
     }),
-    reentrantToken: activeTopology?.activeRoutes.some((route) => route.token === descriptor.token) ?? false,
+    ownsContinuationScope: internalState?.sagaContinuationScope === undefined,
+    reentrantToken,
   };
 }

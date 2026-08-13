@@ -216,11 +216,11 @@ export class OrderFulfillmentSaga implements ISaga<OrderPlacedEvent> {
 
 ### 10.7.2 Reserve inventory, then dispatch shipment
 
-Saga는 추가 event type을 통해 계속 이어질 수 있습니다. `InventoryReservedEvent`는 `DispatchShipmentCommand`를 유발할 수 있습니다. `ShipmentDispatchedEvent`는 `SendShipmentNotificationCommand`를 유발할 수 있습니다. 중요한 설계 포인트는 각 단계가 event boundary를 지난다는 점입니다. 그래서 FluoShop은 fulfillment flow 전체를 하나의 보이지 않는 블록으로 다루지 않고, 각 경계에서 observe, retry, reschedule할 수 있습니다.
+Saga flow는 추가 event type을 통해 계속 이어질 수 있습니다. `InventoryReservedEvent`는 `DispatchShipmentCommand`를 유발할 수 있습니다. `ShipmentDispatchedEvent`는 `SendShipmentNotificationCommand`를 유발할 수 있습니다. 하나의 singleton saga provider가 이런 여러 route를 소유할 수 있습니다. 활성 `handle(...)`이 다음 route를 publish하면 CQRS는 그 route를 serialized continuation으로 queue하고 현재 호출이 반환된 뒤 실행합니다. 중요한 설계 포인트는 각 단계가 명시적인 event boundary를 지난다는 점입니다. 그래서 FluoShop은 fulfillment flow 전체를 하나의 보이지 않는 블록으로 다루지 않고, 각 경계에서 observe, retry, reschedule할 수 있습니다.
 
 ## 10.8 Saga topology limits
 
-패키지 README는 운영상 중요한 규칙을 포함합니다. in-process publish chain이 같은 saga route를 순환적으로 다시 진입하거나 32개의 nested saga hop을 넘으면 `SagaTopologyError`와 함께 saga execution이 즉시 실패합니다. 이것은 구현 세부사항이 아니라 아키텍처 가이드입니다. FluoShop은 in-process saga graph를 acyclic하게 유지해야 합니다. 워크플로가 의도적으로 cyclic하거나 너무 long-running해지면 다른 boundary 뒤로 보내야 합니다. 그 boundary는 external transport일 수도 있습니다. queue일 수도 있습니다. scheduler일 수도 있습니다. 하지만 끝없이 재진입하는 in-process saga chain으로 남겨두면 안 됩니다.
+패키지 README는 운영상 중요한 두 가지 규칙을 포함합니다. 활성 saga provider token의 nested different-event route는 continuation으로 직렬화하므로 하나의 `handle(...)` 호출만 활성 상태를 유지하고 nested publication이 deadlock하지 않습니다. 이미 활성 상태인 provider-token/event route로 다시 진입하거나 32개의 nested saga hop을 넘으면 `SagaTopologyError`와 함께 saga execution이 즉시 실패합니다. 이것은 구현 세부사항이 아니라 아키텍처 가이드입니다. FluoShop은 in-process saga graph를 acyclic하게 유지해야 합니다. 워크플로가 의도적으로 cyclic하거나 너무 long-running해지면 다른 boundary 뒤로 보내야 합니다. 그 boundary는 external transport일 수도 있습니다. queue일 수도 있습니다. scheduler일 수도 있습니다. 하지만 끝없이 재진입하는 in-process saga chain으로 남겨두면 안 됩니다.
 
 ### 10.8.1 What this means for FluoShop
 
