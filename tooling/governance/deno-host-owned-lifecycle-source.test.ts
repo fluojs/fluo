@@ -46,6 +46,36 @@ describe('Deno host-owned lifecycle source contract', () => {
     expect(runGovernanceGuard).toThrow(/must not invoke server startup/);
   });
 
+  it('rejects server startup from an unshadowed Deno global', () => {
+    // Given
+    const readWithDenoServe = overrideFile('packages/platform-deno/src/fetch-handler.ts', (content) =>
+      content.replace(
+        "  validateNonNegativeIntegerOption('maxBodySize', maxBodySize);",
+        "  Deno.serve({ port: 3000 }, async () => new Response());\n  validateNonNegativeIntegerOption('maxBodySize', maxBodySize);",
+      ));
+
+    // When
+    const runGovernanceGuard = () => enforceDenoHostOwnedLifecycleSource(readWithDenoServe);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(/must not invoke server startup/);
+  });
+
+  it('accepts an imported binding shadowing the Deno global', () => {
+    // Given
+    const readWithImportedDeno = overrideFile('packages/platform-deno/src/fetch-handler.ts', (content) =>
+      `import { Deno } from './unrelated-runtime.ts';\n${content.replace(
+        "  validateNonNegativeIntegerOption('maxBodySize', maxBodySize);",
+        "  Deno.serve();\n  validateNonNegativeIntegerOption('maxBodySize', maxBodySize);",
+      )}`);
+
+    // When
+    const runGovernanceGuard = () => enforceDenoHostOwnedLifecycleSource(readWithImportedDeno);
+
+    // Then
+    expect(runGovernanceGuard).not.toThrow();
+  });
+
   it.each([
     [
       'server startup through call alias',
@@ -130,6 +160,22 @@ describe('Deno host-owned lifecycle source contract', () => {
     [
       'a local object shadowing the Deno global',
       'const Deno = { serve() {} };\n  Deno.serve();',
+    ],
+    [
+      'a class declaration shadowing the Deno global',
+      'Deno.serve();\n  class Deno {\n    static serve() {}\n  }',
+    ],
+    [
+      'a function declaration shadowing the Deno global',
+      'Deno.serve();\n  function Deno() {}',
+    ],
+    [
+      'a parameter shadowing the Deno global',
+      'function startUnrelated(Deno: { serve: () => void }) {\n    Deno.serve();\n  }',
+    ],
+    [
+      'a variable declaration shadowing the Deno global before initialization',
+      'Deno.serve();\n  const Deno = { serve() {} };',
     ],
     [
       'signal-like destructuring from an unrelated object',

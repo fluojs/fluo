@@ -1,6 +1,7 @@
 import ts from 'typescript';
 
 import { cloneLifecycleScopes, mergeLifecycleBranches } from './deno-lifecycle-branch-flow.mjs';
+import { shadowLifecycleScopeDeclarations } from './deno-lifecycle-scope.mjs';
 
 const receiverStates = {
   application: { kind: 'receiver', receiver: 'application' },
@@ -183,10 +184,7 @@ function invokedCapability(call, scopes) {
 }
 
 function initialBindings(initialProvenance) {
-  const bindings = new Map([
-    ['Deno', receiverStates.deno],
-    ['globalThis', receiverStates.globalThis],
-  ]);
+  const bindings = new Map();
   for (const [name, receiver] of Object.entries(initialProvenance.receivers ?? {})) {
     bindings.set(name, receiverStates[receiver] ?? null);
   }
@@ -202,8 +200,9 @@ function initialBindings(initialProvenance) {
 function visitFunction(node, scopes, calls, visit) {
   const localScopes = scopes.map((scope) => new Map(scope));
   localScopes.push(new Map());
+  if (node.name && ts.isIdentifier(node.name)) localScopes.at(-1).set(node.name.text, null);
   for (const parameter of node.parameters) {
-    const initialState = scopes.length === 1 && ts.isIdentifier(parameter.name)
+    const initialState = scopes.length === 1 && ts.isIdentifier(parameter.name) && parameter.name.text !== 'Deno'
       ? lookup(scopes, parameter.name.text)
       : undefined;
     writePattern(parameter.name, stateFromType(parameter.type) ?? initialState, localScopes, true);
@@ -220,6 +219,7 @@ export function collectLifecycleCallsWithProvenance(node, initialProvenance = {}
     }
     if (ts.isBlock(current)) {
       scopes.push(new Map());
+      shadowLifecycleScopeDeclarations(current.statements, scopes.at(-1));
       for (const statement of current.statements) visit(statement, scopes);
       scopes.pop();
       return;
@@ -250,6 +250,12 @@ export function collectLifecycleCallsWithProvenance(node, initialProvenance = {}
     }
     ts.forEachChild(current, (child) => visit(child, scopes));
   }
-  visit(node, [initialBindings(initialProvenance)]);
+  const rootScope = new Map();
+  const sourceFile = node.getSourceFile();
+  if (sourceFile !== node) shadowLifecycleScopeDeclarations(sourceFile.statements, rootScope);
+  if (!rootScope.has('Deno')) rootScope.set('Deno', receiverStates.deno);
+  if (!rootScope.has('globalThis')) rootScope.set('globalThis', receiverStates.globalThis);
+  for (const [name, state] of initialBindings(initialProvenance)) rootScope.set(name, state);
+  visit(node, [rootScope]);
   return calls;
 }
