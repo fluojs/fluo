@@ -3,9 +3,9 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  enforcePassportBridgeExampleAst,
   enforcePassportBridgeSourceAst,
 } from './passport-js-bridge-ast.mjs';
+import { enforcePassportBridgeExample } from './passport-js-bridge-example.mjs';
 import { collectUnsupportedPassportBridgeClaims } from './passport-js-bridge-propositions.mjs';
 
 export { collectUnsupportedPassportBridgeClaims } from './passport-js-bridge-propositions.mjs';
@@ -57,7 +57,7 @@ export function enforcePassportJsBridgeNestjsMigration(
     enforceDocument(relativePath, readText(relativePath));
   }
   for (const relativePath of [...migrationDocuments, ...bookDocuments]) {
-    enforcePassportBridgeExampleAst(relativePath, readText(relativePath));
+    enforcePassportBridgeExample(relativePath, readText(relativePath));
   }
   enforcePassportBridgeSourceAst(readText);
 }

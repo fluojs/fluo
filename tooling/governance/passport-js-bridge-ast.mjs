@@ -15,97 +15,19 @@ function parseSource(relativePath, sourceText) {
   return source;
 }
 
-function callName(node) {
-  if (!ts.isCallExpression(node)) {
-    return undefined;
-  }
-  if (ts.isIdentifier(node.expression)) {
-    return node.expression.text;
-  }
-  return ts.isPropertyAccessExpression(node.expression)
-    ? `${node.expression.expression.getText()}.${node.expression.name.text}`
-    : undefined;
-}
-
-function findCall(source, expectedName) {
-  let result;
-  function visit(node) {
-    if (callName(node) === expectedName) {
-      result = node;
-    }
-    ts.forEachChild(node, visit);
-  }
-  visit(source);
-  return result;
-}
-
 function propertyInitializer(object, name) {
   const property = object.properties.find((candidate) =>
     ts.isPropertyAssignment(candidate) && candidate.name.getText() === name);
   return property && ts.isPropertyAssignment(property) ? property.initializer : undefined;
 }
 
-function isNamedPropertyAccess(node, receiver, name) {
-  return ts.isPropertyAccessExpression(node) &&
-    ts.isIdentifier(node.expression) &&
-    node.expression.text === receiver &&
-    node.name.text === name;
+function isIdentifierNamed(node, name) {
+  return node !== undefined && ts.isIdentifier(node) && node.text === name;
 }
 
-function extractBridgeFence(relativePath, markdown) {
-  const fence = [...markdown.matchAll(/```(?:ts|typescript)\r?\n([\s\S]*?)```/gu)]
-    .map((match) => match[1] ?? '')
-    .find((candidate) => candidate.includes('createPassportJsStrategyBridge'));
-  if (!fence) {
-    fail(relativePath, 'must include a TypeScript createPassportJsStrategyBridge example');
-  }
-  return fence;
-}
-
-export function enforcePassportBridgeExampleAst(relativePath, markdown) {
-  const source = parseSource(relativePath, extractBridgeFence(relativePath, markdown));
-  const bridgeDeclaration = source.statements
-    .filter(ts.isVariableStatement)
-    .flatMap((statement) => [...statement.declarationList.declarations])
-    .find((declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === 'googleBridge');
-  const bridgeCall = bridgeDeclaration?.initializer;
-  if (!bridgeCall || !ts.isCallExpression(bridgeCall) || callName(bridgeCall) !== 'createPassportJsStrategyBridge') {
-    fail(relativePath, 'must assign createPassportJsStrategyBridge(...) to googleBridge');
-  }
-  const [nameArgument, tokenArgument, optionsArgument] = bridgeCall.arguments;
-  if (!nameArgument || !ts.isStringLiteral(nameArgument) || nameArgument.text !== 'google') {
-    fail(relativePath, 'must register the google strategy name');
-  }
-  if (!tokenArgument || !ts.isIdentifier(tokenArgument) || tokenArgument.text !== 'GoogleStrategy') {
-    fail(relativePath, 'must pass GoogleStrategy as the bridge provider token');
-  }
-  if (!optionsArgument || !ts.isObjectLiteralExpression(optionsArgument) || !propertyInitializer(optionsArgument, 'mapPrincipal')) {
-    fail(relativePath, 'must define mapPrincipal(...) in the bridge options');
-  }
-
-  const moduleCall = findCall(source, 'Module');
-  const moduleMetadata = moduleCall?.arguments[0];
-  if (!moduleMetadata || !ts.isObjectLiteralExpression(moduleMetadata)) {
-    fail(relativePath, 'must define @Module metadata');
-  }
-  const providers = propertyInitializer(moduleMetadata, 'providers');
-  if (!providers || !ts.isArrayLiteralExpression(providers)) {
-    fail(relativePath, 'must define the module providers list');
-  }
-  const hasStrategyProvider = providers.elements.some((element) =>
-    ts.isIdentifier(element) && element.text === 'GoogleStrategy');
-  const hasBridgeProviders = providers.elements.some((element) =>
-    ts.isSpreadElement(element) && isNamedPropertyAccess(element.expression, 'googleBridge', 'providers'));
-  if (!hasStrategyProvider || !hasBridgeProviders) {
-    fail(relativePath, 'must register GoogleStrategy and ...googleBridge.providers together');
-  }
-
-  const passportCall = findCall(source, 'PassportModule.forRoot');
-  const registrations = passportCall?.arguments[1];
-  if (!registrations || !ts.isArrayLiteralExpression(registrations) ||
-    !registrations.elements.some((element) => isNamedPropertyAccess(element, 'googleBridge', 'strategy'))) {
-    fail(relativePath, 'must register googleBridge.strategy with PassportModule.forRoot(...)');
-  }
+function isOptionsValue(node) {
+  return node !== undefined && ts.isObjectLiteralExpression(node) && node.properties.some((property) =>
+    ts.isSpreadAssignment(property) && isIdentifierNamed(property.expression, 'options'));
 }
 
 function findReturnedObject(functionDeclaration) {
@@ -131,23 +53,35 @@ export function enforcePassportBridgeSourceAst(readText) {
   }
   const providers = propertyInitializer(returnedBridge, 'providers');
   const strategy = propertyInitializer(returnedBridge, 'strategy');
-  const hasAdapterProvider = providers && ts.isArrayLiteralExpression(providers) && providers.elements.some((element) => {
-    if (!ts.isObjectLiteralExpression(element)) {
+  const providerElements = providers && ts.isArrayLiteralExpression(providers)
+    ? providers.elements.filter(ts.isObjectLiteralExpression)
+    : [];
+  const hasOptionsProvider = providerElements.some((element) =>
+    isIdentifierNamed(propertyInitializer(element, 'provide'), 'optionsToken') &&
+    isOptionsValue(propertyInitializer(element, 'useValue')));
+  const hasAdapterProvider = providerElements.some((element) => {
+    if (!isIdentifierNamed(propertyInitializer(element, 'provide'), 'adapterToken')) {
       return false;
     }
     const inject = propertyInitializer(element, 'inject');
     return inject && ts.isArrayLiteralExpression(inject) &&
-      inject.elements.some((dependency) => ts.isIdentifier(dependency) && dependency.text === 'strategyToken') &&
-      inject.elements.some((dependency) => ts.isIdentifier(dependency) && dependency.text === 'optionsToken') &&
+      inject.elements.some((dependency) => isIdentifierNamed(dependency, 'strategyToken')) &&
+      inject.elements.some((dependency) => isIdentifierNamed(dependency, 'optionsToken')) &&
       propertyInitializer(element, 'useFactory') !== undefined;
   });
   const strategyName = strategy && ts.isObjectLiteralExpression(strategy) && strategy.properties.some((property) =>
     ts.isShorthandPropertyAssignment(property) && property.name.text === 'name');
   const strategyToken = strategy && ts.isObjectLiteralExpression(strategy) && strategy.properties.some((property) =>
     ts.isPropertyAssignment(property) && property.name.getText() === 'token' &&
-    ts.isIdentifier(property.initializer) && property.initializer.text === 'adapterToken');
-  if (!hasAdapterProvider || !strategyName || !strategyToken) {
-    fail(bridgePath, 'must return injectable bridge providers and the matching named adapter registration');
+    isIdentifierNamed(property.initializer, 'adapterToken'));
+  if (!hasOptionsProvider) {
+    fail(bridgePath, 'must expose an optionsToken value provider');
+  }
+  if (!hasAdapterProvider) {
+    fail(bridgePath, 'must expose an adapterToken provider injected with strategyToken and optionsToken');
+  }
+  if (!strategyName || !strategyToken) {
+    fail(bridgePath, 'must return the matching named adapter registration');
   }
 
   const modulePath = 'packages/passport/src/module.ts';
