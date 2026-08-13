@@ -400,4 +400,156 @@ describe('Drizzle inherited transaction continuations', () => {
     }
   });
 
+  it('keeps a non-awaited nested request inside its active real manual owner', async () => {
+    // Given: a real manual transaction starts request work without awaiting it.
+    const events: string[] = [];
+    const nestedStarted = createDeferred();
+    const nestedRelease = createDeferred();
+    const transactionDatabase = { id: 'transaction' as const };
+    const database = {
+      async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
+        events.push('transaction:start');
+
+        try {
+          return await callback(transactionDatabase);
+        } finally {
+          events.push('transaction:end');
+        }
+      },
+    };
+    const drizzle = new DrizzleDatabase<typeof database, typeof transactionDatabase>(database, () => {
+      events.push('dispose');
+    });
+    let nested: Promise<void> | undefined;
+    const outer = drizzle.transaction(async () => {
+      nested = drizzle.requestTransaction(async () => {
+        events.push(`nested:current:start:${drizzle.current() === transactionDatabase}`);
+        nestedStarted.resolve();
+        await nestedRelease.promise;
+        events.push(`nested:current:end:${drizzle.current() === transactionDatabase}`);
+      });
+      void nested.catch((error: unknown) => {
+        events.push(`nested:abort:${error instanceof Error ? error.message : String(error)}`);
+      });
+      events.push('outer:callback:end');
+    });
+    let shutdown: Promise<void> | undefined;
+
+    try {
+      await nestedStarted.promise;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      // When: shutdown aborts the nested request while its raw callback remains pending.
+      shutdown = drizzle.onApplicationShutdown();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      // Then: abort is visible, but the transaction owner and disposal still wait for callback settlement.
+      expect(events).toEqual([
+        'transaction:start',
+        'nested:current:start:true',
+        'outer:callback:end',
+        'nested:abort:Application shutdown interrupted an open request transaction.',
+      ]);
+
+      nestedRelease.resolve();
+      await expect(nested).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+      await outer;
+      await shutdown;
+      events.push(`outside:current:root:${drizzle.current() === database}`);
+      expect(events).toEqual([
+        'transaction:start',
+        'nested:current:start:true',
+        'outer:callback:end',
+        'nested:abort:Application shutdown interrupted an open request transaction.',
+        'nested:current:end:true',
+        'transaction:end',
+        'dispose',
+        'outside:current:root:true',
+      ]);
+    } finally {
+      nestedRelease.resolve();
+      await Promise.allSettled([
+        outer,
+        nested ?? Promise.resolve(),
+        shutdown ?? drizzle.onApplicationShutdown(),
+      ]);
+    }
+  });
+
+  it('keeps a non-awaited nested request inside its active real request owner', async () => {
+    // Given: a real request transaction starts nested request work without awaiting it.
+    const events: string[] = [];
+    const nestedStarted = createDeferred();
+    const nestedRelease = createDeferred();
+    const transactionDatabase = { id: 'request' as const };
+    const database = {
+      async transaction<T>(callback: (value: typeof transactionDatabase) => Promise<T>): Promise<T> {
+        events.push('transaction:start');
+
+        try {
+          return await callback(transactionDatabase);
+        } finally {
+          events.push('transaction:end');
+        }
+      },
+    };
+    const drizzle = new DrizzleDatabase<typeof database, typeof transactionDatabase>(database, () => {
+      events.push('dispose');
+    });
+    let nested: Promise<void> | undefined;
+    const outer = drizzle.requestTransaction(async () => {
+      nested = drizzle.requestTransaction(async () => {
+        events.push(`nested:current:start:${drizzle.current() === transactionDatabase}`);
+        nestedStarted.resolve();
+        await nestedRelease.promise;
+        events.push(`nested:current:end:${drizzle.current() === transactionDatabase}`);
+      });
+      void nested.catch((error: unknown) => {
+        events.push(`nested:abort:${error instanceof Error ? error.message : String(error)}`);
+      });
+      events.push('outer:callback:end');
+    });
+    let shutdown: Promise<void> | undefined;
+
+    try {
+      await nestedStarted.promise;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      // When: shutdown aborts the ambient request while the nested callback remains pending.
+      shutdown = drizzle.onApplicationShutdown();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      // Then: both callers observe abort without closing the real transaction or disposing early.
+      expect(events).toEqual([
+        'transaction:start',
+        'nested:current:start:true',
+        'outer:callback:end',
+        'nested:abort:Application shutdown interrupted an open request transaction.',
+      ]);
+
+      nestedRelease.resolve();
+      await expect(nested).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+      await expect(outer).rejects.toThrow('Application shutdown interrupted an open request transaction.');
+      await shutdown;
+      events.push(`outside:current:root:${drizzle.current() === database}`);
+      expect(events).toEqual([
+        'transaction:start',
+        'nested:current:start:true',
+        'outer:callback:end',
+        'nested:abort:Application shutdown interrupted an open request transaction.',
+        'nested:current:end:true',
+        'transaction:end',
+        'dispose',
+        'outside:current:root:true',
+      ]);
+    } finally {
+      nestedRelease.resolve();
+      await Promise.allSettled([
+        outer,
+        nested ?? Promise.resolve(),
+        shutdown ?? drizzle.onApplicationShutdown(),
+      ]);
+    }
+  });
+
 });

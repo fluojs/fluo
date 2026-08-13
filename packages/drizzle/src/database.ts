@@ -496,14 +496,12 @@ export class DrizzleDatabase<
 
     const runCallback = () => {
       const callback = fn();
-
-      if (fallbackTransactionOwner) {
-        const removeSettlement = () => {
-          fallbackTransactionOwner.callbackSettlements.delete(settlement);
-        };
-        const settlement = callback.then(removeSettlement, removeSettlement);
-        fallbackTransactionOwner.callbackSettlements.add(settlement);
-      }
+      const transactionBoundaryOwner = current.transactionBoundaryOwner;
+      const removeSettlement = () => {
+        transactionBoundaryOwner.callbackSettlements.delete(settlement);
+      };
+      const settlement = callback.then(removeSettlement, removeSettlement);
+      transactionBoundaryOwner.callbackSettlements.add(settlement);
 
       return callback;
     };
