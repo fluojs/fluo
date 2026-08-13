@@ -97,9 +97,8 @@ export function compileFastPathEligibility(
   const hasContentNegotiation = options.contentNegotiation?.formatters !== undefined && options.contentNegotiation.formatters.length > 0;
   const isSseRoute = handler.route.produces?.some((mediaType) => mediaType.toLowerCase().startsWith('text/event-stream')) === true;
 
-  const eligibility: FastPathEligibility = {
+  const eligibilityBase = {
     adapter,
-    executionPath: 'full',
     hasAdapterPluginInfluence: false,
     hasCustomBodyParser: options.binder !== undefined,
     hasCustomErrorFilter: options.onError !== undefined,
@@ -110,29 +109,29 @@ export function compileFastPathEligibility(
     hasPipe,
     hasRequestScopedDI,
     routeId,
-  };
+  } satisfies Omit<FastPathEligibility, 'executionPath' | 'fallbackReason'>;
 
   const blockingReasons: string[] = [];
 
-  if (eligibility.hasGuard) {
+  if (eligibilityBase.hasGuard) {
     blockingReasons.push('guards');
   }
-  if (eligibility.hasInterceptor) {
+  if (eligibilityBase.hasInterceptor) {
     blockingReasons.push('interceptors');
   }
-  if (eligibility.hasRequestScopedDI) {
+  if (eligibilityBase.hasRequestScopedDI) {
     blockingReasons.push('request-scoped DI');
   }
-  if (eligibility.hasMiddleware) {
+  if (eligibilityBase.hasMiddleware) {
     blockingReasons.push('middleware');
   }
-  if (eligibility.hasGlobalHook) {
+  if (eligibilityBase.hasGlobalHook) {
     blockingReasons.push('request observers');
   }
-  if (eligibility.hasCustomErrorFilter) {
+  if (eligibilityBase.hasCustomErrorFilter) {
     blockingReasons.push('custom error filter');
   }
-  if (eligibility.hasCustomBodyParser) {
+  if (eligibilityBase.hasCustomBodyParser) {
     blockingReasons.push('custom binder');
   }
   if (hasContentNegotiation) {
@@ -144,11 +143,13 @@ export function compileFastPathEligibility(
 
   const isEligible = blockingReasons.length === 0;
 
-  if (!isEligible) {
-    eligibility.fallbackReason = `Full path required due to: ${blockingReasons.join(', ')}`;
-  } else {
-    eligibility.executionPath = 'fast';
-  }
+  const eligibility: FastPathEligibility = Object.freeze({
+    ...eligibilityBase,
+    executionPath: isEligible ? 'fast' : 'full',
+    ...(isEligible
+      ? {}
+      : { fallbackReason: `Full path required due to: ${blockingReasons.join(', ')}` }),
+  });
 
   return { eligibility, isEligible };
 }
@@ -177,8 +178,12 @@ export function setHandlerFastPathEligibility(
   handler: HandlerDescriptor,
   eligibility: FastPathEligibility,
 ): void {
-  (handler as unknown as Record<symbol, FastPathEligibility>)[FAST_PATH_ELIGIBILITY_SYMBOL] =
-    eligibility;
+  Object.defineProperty(handler, FAST_PATH_ELIGIBILITY_SYMBOL, {
+    configurable: false,
+    enumerable: false,
+    value: Object.freeze({ ...eligibility }),
+    writable: false,
+  });
 }
 
 /** Options shared by fast-path executor helpers. */
