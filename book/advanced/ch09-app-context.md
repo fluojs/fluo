@@ -100,14 +100,15 @@ The tests reinforce this shared ancestry. `path:packages/runtime/src/bootstrap.t
 This shared bootstrap spine is the foundation of this chapter. To understand the rest of the runtime contract, first see that the context, application, and microservice shells are siblings built from one compiled module and container baseline.
 
 ## 9.2 Application context is the adapterless baseline and still runs full lifecycle bootstrap
-`FluoApplicationContext` is defined in `path:packages/runtime/src/bootstrap.ts:808-859`. Its surface is intentionally small. It stores the `container`, `modules`, `rootModule`, optional bootstrap timing diagnostics, lifecycle instances, cleanup callbacks, and the narrow context-resolution cache used by `get()`.
+`FluoApplicationContext` is defined in `path:packages/runtime/src/bootstrap.ts:856-928`. Its surface is intentionally small. It stores the `container`, `modules`, `rootModule`, optional bootstrap timing diagnostics, lifecycle instances, cleanup callbacks, and the narrow context-resolution cache used by `get()`.
 
 The context shell itself shows that intent. The stored values are the ones needed for the compiled Module baseline and lifecycle cleanup, and the public behavior is DI lookup and close.
 
-`path:packages/runtime/src/bootstrap.ts:808-831`
+`path:packages/runtime/src/bootstrap.ts:856-896`
 ```typescript
 class FluoApplicationContext implements ApplicationContext {
   private closed = false;
+  private closeStarted = false;
   private closingPromise: Promise<void> | undefined;
   private readonly contextResolutionCache: ContextResolutionCache = new Map();
 
@@ -128,7 +129,22 @@ class FluoApplicationContext implements ApplicationContext {
       return this.container.resolve(token);
     }
 
-    return resolveContextToken(this.container, token, this.contextCacheableTokens, this.contextResolutionCache);
+    this.assertProviderResolutionAllowed();
+    const resolved = await resolveContextToken(
+      this.container,
+      token,
+      this.contextCacheableTokens,
+      this.contextResolutionCache,
+    );
+    this.assertProviderResolutionAllowed();
+
+    return resolved;
+  }
+
+  private assertProviderResolutionAllowed(): void {
+    if (this.closeStarted) {
+      throw new InvariantError('Application context cannot resolve providers after shutdown has started.');
+    }
   }
 ```
 
@@ -429,19 +445,38 @@ The first contract to inspect is `ready()` in `path:packages/runtime/src/bootstr
 
 So in Fluo, readiness is not synonymous with "the server socket has been bound." It is a pre-listen gate based on the platform shell. Transport startup is allowed only if critical platform components report that they are ready.
 
-`listen()` in `path:packages/runtime/src/bootstrap.ts:466-491` layers adapter behavior on top of that readiness gate. It throws if the app is closed, returns immediately if it is already ready, and throws an invariant error if there is no adapter, telling the user to provide `options.adapter` or use `createApplicationContext()`.
+`listen()` in `path:packages/runtime/src/bootstrap.ts:738-786` layers adapter behavior on top of that readiness gate. It rejects from the private shutdown-start gate, returns immediately if it is already ready, and throws an invariant error if there is no adapter, telling the user to provide `options.adapter` or use `createApplicationContext()`.
 
 Then `listen()` applies the adapter policy. Adapterless application bootstrap is allowed, but listening without an adapter is blocked by this guard.
 
-`path:packages/runtime/src/bootstrap.ts:466-491`
+`path:packages/runtime/src/bootstrap.ts:738-786`
 ```typescript
   async listen(): Promise<void> {
-    if (this.applicationState === 'closed') {
+    if (this.closeStarted) {
       throw new InvariantError('Application cannot listen after it has been closed.');
     }
 
     if (this.applicationState === 'ready') {
       return;
+    }
+
+    if (this.listenPromise) {
+      await this.listenPromise;
+      return;
+    }
+
+    this.listenPromise = this.startListening();
+
+    try {
+      await this.listenPromise;
+    } finally {
+      this.listenPromise = undefined;
+    }
+  }
+
+  private async startListening(): Promise<void> {
+    if (this.closeStarted) {
+      throw new InvariantError('Application cannot listen after it has been closed.');
     }
 
     if (!this.hasHttpAdapter) {
@@ -458,8 +493,12 @@ Then `listen()` applies the adapter policy. Adapterless application bootstrap is
       throw error;
     }
 
+    if (this.closeStarted) {
+      throw new InvariantError('Application startup was interrupted by shutdown.');
+    }
+
     this.applicationState = 'ready';
-      this.logger.log('fluo application successfully started.', 'FluoApplication');
+    this.logger.log('fluo application successfully started.', 'FluoApplication');
   }
 ```
 
@@ -520,7 +559,7 @@ The model implemented by the source is exactly this. An application shell is not
 ## 9.4 Shutdown and failure cleanup are first-class runtime contracts, not afterthoughts
 The application context and application shell use two separate shutdown concepts: a public lifecycle state and a private terminal operation gate. Keeping them separate preserves the documented `bootstrapped | ready | closed` state contract while preventing new work from entering teardown.
 
-`Application.close()` sets `closeStarted` synchronously before it creates the teardown promise. From that point, `listen()`, `get()`, `connectMicroservice()`, and `startAllMicroservices()` reject. `ApplicationContext.close()` applies the same rule to context `get()`. These gates remain closed after a failed close attempt, including while teardown is still pending. Successful teardown alone changes the public application state to `closed`; a pending or failed attempt leaves the previous public state observable.
+`Application.close()` sets `closeStarted` synchronously before it creates the teardown promise. From that point, `Application.listen()`, `Application.get()`, `connectMicroservice()`, and `startAllMicroservices()` reject. `ApplicationContext.close()` applies the same rule to `ApplicationContext.get()`. These gates remain closed after a failed close attempt, including while teardown is still pending. Successful teardown alone changes the public application state to `closed`; a pending or failed attempt leaves the previous public state observable. Both `get()` implementations recheck the gate after awaited provider resolution, so a lookup admitted immediately before close cannot return a provider after shutdown starts.
 
 The connect path checks the gate both before and after asynchronous runtime resolution. The start-all path checks before iteration and again before each child listen. Those rechecks prevent an operation admitted just before shutdown from attaching or starting a child after shutdown has begun.
 
@@ -555,7 +594,9 @@ The executable evidence is intentionally split by shell and race:
 | --- | --- |
 | Failed application close remains operation-terminal and retries only incomplete teardown phases | `path:packages/runtime/src/application.test.ts` — `keeps failed shutdown terminal while retrying only incomplete cleanup` |
 | `Application.get()` rejects from shutdown start while teardown is pending | `path:packages/runtime/src/application.test.ts` — `rejects Application.get() as soon as shutdown starts while teardown is pending` |
+| A provider lookup admitted before application shutdown cannot return after async resolution | `path:packages/runtime/src/application.test.ts` — `rejects Application.get() when shutdown starts during provider resolution` |
 | `ApplicationContext.get()` rejects from shutdown start while teardown is pending | `path:packages/runtime/src/bootstrap.test.ts` — `rejects ApplicationContext.get() as soon as shutdown starts while teardown is pending` |
+| A provider lookup admitted before context shutdown cannot return after async resolution | `path:packages/runtime/src/bootstrap.test.ts` — `rejects ApplicationContext.get() when shutdown starts during provider resolution` |
 | Parent connect/start operations reject while child close is pending | `path:packages/runtime/src/bootstrap.test.ts` — `rejects connect and start operations while application close is pending` |
 | A connect admitted before shutdown cannot attach after async runtime resolution | `path:packages/runtime/src/bootstrap.test.ts` — `rejects connectMicroservice() when shutdown starts during runtime resolution` |
 | Context retry skips completed phases and retries the incomplete hook phase | `path:packages/runtime/src/bootstrap.test.ts` — `retries only incomplete application context shutdown phases` |

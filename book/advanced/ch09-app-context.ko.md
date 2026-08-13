@@ -100,14 +100,15 @@ bootstrap graph + container + lifecycle baseline
 이 공유 bootstrap spine이 이 장의 기반입니다. runtime contract의 나머지 부분을 이해하려면, 먼저 context, application, microservice shell이 하나의 compiled module/container baseline 위에서 만들어지는 형제라는 사실을 봐야 합니다.
 
 ## 9.2 Application context is the adapterless baseline and still runs full lifecycle bootstrap
-`FluoApplicationContext`는 `path:packages/runtime/src/bootstrap.ts:808-859`에 정의되어 있습니다. 표면은 의도적으로 작습니다. `container`, `modules`, `rootModule`, optional bootstrap timing diagnostics, lifecycle instance, cleanup callback, 그리고 `get()`이 사용하는 좁은 context-resolution cache를 저장합니다.
+`FluoApplicationContext`는 `path:packages/runtime/src/bootstrap.ts:856-928`에 정의되어 있습니다. 표면은 의도적으로 작습니다. `container`, `modules`, `rootModule`, optional bootstrap timing diagnostics, lifecycle instance, cleanup callback, 그리고 `get()`이 사용하는 좁은 context-resolution cache를 저장합니다.
 
 context shell 자체도 그 의도를 그대로 드러냅니다. 저장하는 값은 compiled module baseline과 lifecycle cleanup에 필요한 값이고, public 동작은 DI lookup과 close입니다.
 
-`path:packages/runtime/src/bootstrap.ts:808-831`
+`path:packages/runtime/src/bootstrap.ts:856-896`
 ```typescript
 class FluoApplicationContext implements ApplicationContext {
   private closed = false;
+  private closeStarted = false;
   private closingPromise: Promise<void> | undefined;
   private readonly contextResolutionCache: ContextResolutionCache = new Map();
 
@@ -128,7 +129,22 @@ class FluoApplicationContext implements ApplicationContext {
       return this.container.resolve(token);
     }
 
-    return resolveContextToken(this.container, token, this.contextCacheableTokens, this.contextResolutionCache);
+    this.assertProviderResolutionAllowed();
+    const resolved = await resolveContextToken(
+      this.container,
+      token,
+      this.contextCacheableTokens,
+      this.contextResolutionCache,
+    );
+    this.assertProviderResolutionAllowed();
+
+    return resolved;
+  }
+
+  private assertProviderResolutionAllowed(): void {
+    if (this.closeStarted) {
+      throw new InvariantError('Application context cannot resolve providers after shutdown has started.');
+    }
   }
 ```
 
@@ -429,19 +445,38 @@ class FluoApplication implements Application {
 
 즉 Fluo에서 readiness는 "server socket이 bind되었다"의 동의어가 아닙니다. platform shell에 기반한 pre-listen gate입니다. critical platform component가 ready라고 보고해야만 transport startup이 허용됩니다.
 
-`path:packages/runtime/src/bootstrap.ts:466-491`의 `listen()`은 그 readiness gate 위에 adapter behavior를 얹습니다. app이 closed면 throw하고, 이미 ready면 바로 return하며, adapter가 없으면 `options.adapter`를 제공하거나 `createApplicationContext()`를 쓰라는 invariant error를 던집니다.
+`path:packages/runtime/src/bootstrap.ts:738-786`의 `listen()`은 그 readiness gate 위에 adapter behavior를 얹습니다. private shutdown-start gate가 닫혔으면 reject하고, 이미 ready면 바로 return하며, adapter가 없으면 `options.adapter`를 제공하거나 `createApplicationContext()`를 쓰라는 invariant error를 던집니다.
 
 그 다음 `listen()`이 adapter 정책을 적용합니다. adapter 없는 application bootstrap은 허용되지만, adapter 없이 listen하는 것은 이 guard에서 막힙니다.
 
-`path:packages/runtime/src/bootstrap.ts:466-491`
+`path:packages/runtime/src/bootstrap.ts:738-786`
 ```typescript
   async listen(): Promise<void> {
-    if (this.applicationState === 'closed') {
+    if (this.closeStarted) {
       throw new InvariantError('Application cannot listen after it has been closed.');
     }
 
     if (this.applicationState === 'ready') {
       return;
+    }
+
+    if (this.listenPromise) {
+      await this.listenPromise;
+      return;
+    }
+
+    this.listenPromise = this.startListening();
+
+    try {
+      await this.listenPromise;
+    } finally {
+      this.listenPromise = undefined;
+    }
+  }
+
+  private async startListening(): Promise<void> {
+    if (this.closeStarted) {
+      throw new InvariantError('Application cannot listen after it has been closed.');
     }
 
     if (!this.hasHttpAdapter) {
@@ -458,8 +493,12 @@ class FluoApplication implements Application {
       throw error;
     }
 
+    if (this.closeStarted) {
+      throw new InvariantError('Application startup was interrupted by shutdown.');
+    }
+
     this.applicationState = 'ready';
-      this.logger.log('fluo application successfully started.', 'FluoApplication');
+    this.logger.log('fluo application successfully started.', 'FluoApplication');
   }
 ```
 
@@ -520,7 +559,7 @@ source가 구현하는 모델도 정확히 이것입니다. application shell은
 ## 9.4 Shutdown and failure cleanup are first-class runtime contracts, not afterthoughts
 Application context와 application shell은 public lifecycle state와 private terminal operation gate라는 두 shutdown 개념을 사용합니다. 둘을 분리하면 문서화된 `bootstrapped | ready | closed` state 계약을 보존하면서 teardown에 새 작업이 진입하지 못하게 할 수 있습니다.
 
-`Application.close()`는 teardown promise를 만들기 전에 `closeStarted`를 동기적으로 설정합니다. 그 시점부터 `listen()`, `get()`, `connectMicroservice()`, `startAllMicroservices()`는 reject됩니다. `ApplicationContext.close()`도 context `get()`에 같은 규칙을 적용합니다. 이 gate는 teardown이 pending인 동안은 물론 close 시도가 실패한 뒤에도 닫힌 상태를 유지합니다. 성공한 teardown만 public application state를 `closed`로 바꾸며, pending 또는 failed 시도는 이전 public state를 그대로 노출합니다.
+`Application.close()`는 teardown promise를 만들기 전에 `closeStarted`를 동기적으로 설정합니다. 그 시점부터 `Application.listen()`, `Application.get()`, `connectMicroservice()`, `startAllMicroservices()`는 reject됩니다. `ApplicationContext.close()`도 `ApplicationContext.get()`에 같은 규칙을 적용합니다. 이 gate는 teardown이 pending인 동안은 물론 close 시도가 실패한 뒤에도 닫힌 상태를 유지합니다. 성공한 teardown만 public application state를 `closed`로 바꾸며, pending 또는 failed 시도는 이전 public state를 그대로 노출합니다. 두 `get()` 구현은 awaited provider resolution 뒤 gate를 다시 검사하므로 close 직전에 admission된 lookup도 shutdown 시작 뒤 provider를 반환할 수 없습니다.
 
 Connect 경로는 asynchronous runtime resolution 전후에 gate를 검사합니다. Start-all 경로는 iteration 전과 각 child listen 직전에 다시 검사합니다. 이 재검사는 shutdown 직전에 admission된 작업이 shutdown 시작 뒤 child를 attach하거나 start하지 못하게 합니다.
 
@@ -555,7 +594,9 @@ Executable evidence는 shell과 race별로 의도적으로 분리되어 있습�
 | --- | --- |
 | 실패한 application close는 operation-terminal 상태를 유지하고 incomplete teardown phase만 재시도합니다. | `path:packages/runtime/src/application.test.ts` — `keeps failed shutdown terminal while retrying only incomplete cleanup` |
 | `Application.get()`은 teardown이 pending이어도 shutdown 시작부터 reject됩니다. | `path:packages/runtime/src/application.test.ts` — `rejects Application.get() as soon as shutdown starts while teardown is pending` |
+| Application shutdown 전에 admission된 provider lookup은 async resolution 뒤 값을 반환할 수 없습니다. | `path:packages/runtime/src/application.test.ts` — `rejects Application.get() when shutdown starts during provider resolution` |
 | `ApplicationContext.get()`은 teardown이 pending이어도 shutdown 시작부터 reject됩니다. | `path:packages/runtime/src/bootstrap.test.ts` — `rejects ApplicationContext.get() as soon as shutdown starts while teardown is pending` |
+| Context shutdown 전에 admission된 provider lookup은 async resolution 뒤 값을 반환할 수 없습니다. | `path:packages/runtime/src/bootstrap.test.ts` — `rejects ApplicationContext.get() when shutdown starts during provider resolution` |
 | Parent connect/start operation은 child close가 pending인 동안 reject됩니다. | `path:packages/runtime/src/bootstrap.test.ts` — `rejects connect and start operations while application close is pending` |
 | Shutdown 전에 admission된 connect도 async runtime resolution 뒤 child를 attach할 수 없습니다. | `path:packages/runtime/src/bootstrap.test.ts` — `rejects connectMicroservice() when shutdown starts during runtime resolution` |
 | Context retry는 완료된 phase를 건너뛰고 incomplete hook phase를 재시도합니다. | `path:packages/runtime/src/bootstrap.test.ts` — `retries only incomplete application context shutdown phases` |
