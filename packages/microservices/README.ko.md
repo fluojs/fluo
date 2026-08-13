@@ -122,7 +122,7 @@ Kafka와 RabbitMQ는 일치한 handler와 request response publication이 settle
 
 ### 전달 안전 기본값
 
-- TCP 프레임은 기본적으로 newline-delimited 메시지당 1 MiB로 제한되며, 한도를 넘는 프레임은 요청 버퍼를 무한히 키우는 대신 소켓을 종료합니다.
+- TCP 프레임은 raw byte로 버퍼링하고 구분한 뒤 완성된 각 프레임을 UTF-8로 한 번만 디코딩합니다. 따라서 여러 socket chunk에 걸쳐 분할된 multibyte code point도 그대로 유지됩니다. 프레임은 기본적으로 newline-delimited 메시지당 1 MiB로 제한되며, 한도를 넘는 프레임은 요청 버퍼를 무한히 키우는 대신 소켓을 종료합니다.
 - Redis Streams는 요청/이벤트 엔트리를 핸들러 처리가 끝난 뒤에만 ACK합니다. 실패한 이벤트는 조기 ACK로 유실하지 않고 broker 복구/재전달 경로에 남겨 둡니다.
 - Kafka와 RabbitMQ는 inbound event/request 처리와 response publish가 끝날 때까지 consumer delivery completion을 pending 상태로 유지합니다. Event-handler와 response-publish 실패는 consumer callback을 reject해 broker adapter가 ACK를 보류하거나 재시도할 수 있게 하며, request-handler 오류는 error response를 publish할 수 있으면 기존처럼 호출자에게 전달합니다.
 - Redis Streams는 기본적으로 live request/event stream에 publish-time trimming을 적용하지 않으므로, pending 엔트리가 `xack` 또는 consumer-group 복구 경로가 끝나기 전에 잘리지 않습니다. ACK가 끝난 request/reply 엔트리는 정리되고, 인스턴스별 response stream은 기본적으로 bounded retention(`responseRetentionMaxLen: 1_000`)을 유지한 뒤 `close()` 중 삭제됩니다.
