@@ -919,6 +919,12 @@ export class BunWebSocketGatewayLifecycleService
   }
 
   joinRoom(socketId: string, room: string): void {
+    const socket = this.socketRegistry.get(socketId);
+
+    if (!socket || socket.readyState !== 1) {
+      return;
+    }
+
     let rooms = this.socketRooms.get(socketId);
 
     if (!rooms) {

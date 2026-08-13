@@ -13,6 +13,7 @@ import {
 import { enforcePlatformShellLifecycleContract } from './platform-shell-lifecycle-contract.mjs';
 import { enforceReactPageCatalogContract } from './react-page-catalog-contract.mjs';
 import { enforceReactRscGraduationGovernance } from './react-rsc-graduation-policy.mjs';
+import { enforceRuntimeLifecycleNestjsMigrationDocs } from './runtime-lifecycle-nestjs-migration-docs.mjs';
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 export { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
@@ -27,6 +28,7 @@ export {
   enforceReactRscGraduationGovernance,
   enforceReactRscGraduationPolicy,
 } from './react-rsc-graduation-policy.mjs';
+export { enforceRuntimeLifecycleNestjsMigrationDocs } from './runtime-lifecycle-nestjs-migration-docs.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDirectory, '..', '..');
@@ -303,6 +305,58 @@ function assert(condition, message) {
 
 function read(relativePath) {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
+}
+
+function hasOneArgumentGuardContextContract(markdown) {
+  const guardCodeBlocks = [...markdown.matchAll(/```(?:typescript|ts)\s*\n([\s\S]*?)```/gu)]
+    .map((match) => match[1] ?? '')
+    .filter((code) => /\bcanActivate\s*\(/u.test(code));
+
+  return guardCodeBlocks.length > 0 && guardCodeBlocks.every((code) => {
+    const signatures = [...code.matchAll(/\bcanActivate\s*\(([^)]*)\)/gu)];
+    return code.includes('type GuardContext') && signatures.length > 0 && signatures.every((signature) => {
+      const parameter = /^\s*([A-Za-z_$][\w$]*)\s*:\s*GuardContext\s*$/u.exec(signature[1] ?? '');
+      return parameter !== null && code.includes(`${parameter[1]}.requestContext.request`);
+    });
+  });
+}
+
+function hasRequestContextSecondArgumentGuidance(markdown) {
+  return markdown.split(/\n\s*\n/gu).some((paragraph) =>
+    paragraph.includes('`@RequestDto(...)`') &&
+    paragraph.includes('`@FromBody(...)`') &&
+    paragraph.includes('`@FromHeader(...)`') &&
+    paragraph.includes('`RequestContext`') &&
+    /controller/iu.test(paragraph) &&
+    /(?:second\s+(?:controller\s+)?argument|두 번째\s+인자)/iu.test(paragraph));
+}
+
+export function enforceHttpBookRequestContracts(readText = read) {
+  const guardChapterPaths = [
+    'book/beginner/ch09-guards-interceptors.md',
+    'book/beginner/ch09-guards-interceptors.ko.md',
+  ];
+  const bunChapterPaths = [
+    'book/intermediate/ch22-bun.md',
+    'book/intermediate/ch22-bun.ko.md',
+  ];
+
+  for (const chapterPath of guardChapterPaths) {
+    assert(
+      hasOneArgumentGuardContextContract(readText(chapterPath)),
+      `${chapterPath} must use a one-argument GuardContext signature and read request data through that context's requestContext.`,
+    );
+  }
+
+  for (const chapterPath of bunChapterPaths) {
+    const chapter = readText(chapterPath);
+    assert(
+      hasRequestContextSecondArgumentGuidance(chapter) &&
+        !chapter.includes('`@Body()`') &&
+        !chapter.includes('`@Headers()`'),
+      `${chapterPath} must keep fluo DTO field binding and explicit RequestContext as the second controller argument instead of NestJS parameter decorators.`,
+    );
+  }
 }
 
 function hasChanged(changedFiles, path) {
@@ -644,7 +698,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // provider discoverability, bootstrap verification settlement before shutdown,
   // and owned transport cleanup serialization docs/tests,
   // plus CQRS provider-token fan-out, private immutable dispatch topology state,
-  // full handler/saga/delegated pipeline ordering, and shutdown authorization,
+  // single-owner same-token nested saga continuation, full handler/saga/delegated
+  // pipeline ordering, and shutdown authorization,
   // plus event-bus background handler/transport shutdown drain to live-set
   // quiescence under one deadline, inbound timeout, stable eventKey migration,
   // and CQRS responsibility-boundary docs/tests,
@@ -2512,8 +2567,10 @@ export function main() {
   enforceCloudflareWorkersLifecycleDocsSync();
   enforcePlatformShellLifecycleContract();
   enforceConfigNestjsMigrationDocs();
+  enforceRuntimeLifecycleNestjsMigrationDocs();
   enforceExpressRuntimeMigrationDocsSync();
   enforceCanonicalRuntimeMatrixReferences();
+  enforceHttpBookRequestContracts();
   enforceRemovedRuntimeFactoryNamesNotUsedInDocs();
   enforceNoDirectProcessEnvInOrdinaryPackageSource();
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices();

@@ -383,7 +383,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     }
   });
 
-  it('joins, leaves, broadcasts, and reads rooms through the Worker lifecycle service', async () => {
+  it('manages rooms and rejects stale joins through the Worker lifecycle service', async () => {
     const adapter = new TestWorkerAdapter();
 
     @WebSocketGateway({ path: '/rooms' })
@@ -402,6 +402,8 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     const service = await app.container.resolve<CloudflareWorkersWebSocketGatewayLifecycleService>(
       CloudflareWorkersWebSocketGatewayLifecycleService,
     );
+    service.joinRoom('socket-unknown', 'room-stale');
+    expect(Array.from(service.getRooms('socket-unknown'))).toEqual([]);
 
     try {
       await app.listen();
@@ -433,6 +435,18 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
         JSON.stringify({ data: { orderId: 'ord_workers' }, event: 'order.updated' }),
       ]);
       expect(Array.from(service.getRooms(socketId))).toEqual(['room-b']);
+
+      const closeDelivery = createDeferred<void>();
+      socket.delayCloseUntil(closeDelivery.promise);
+      socket.close(1000, 'done');
+      service.joinRoom(socketId, 'room-stale');
+      const roomsWhileCloseDeliveryIsPending = Array.from(service.getRooms(socketId));
+      closeDelivery.resolve();
+      await flushAsyncWork();
+      service.joinRoom(socketId, 'room-stale');
+
+      expect(roomsWhileCloseDeliveryIsPending).toEqual(['room-b']);
+      expect(Array.from(service.getRooms(socketId))).toEqual([]);
     } finally {
       await app.close();
     }

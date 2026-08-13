@@ -86,6 +86,12 @@ await context.close();
 
 `@fluojs/runtime` 2.x에서는 겹치는 `start()` 호출이 같은 component를 두 번 이상 시작할 수 있었고, in-flight startup 중 호출한 `stop()`이 startup settlement보다 먼저 반환하여 resource가 실행 중인 채로 남을 수 있었습니다. 업그레이드할 때는 하나의 application boundary가 각 lifecycle transition의 ownership을 갖게 하세요. 다른 경로가 겹칠 수 있다면 `PlatformLifecycleConflictError`를 catch하고 boundary-owned transition의 settlement를 기다린 다음, 원하는 상태가 여전히 필요할 때만 명시적으로 retry하세요. Callback reentry 주변에 숨은 queue를 다시 만들면 안 됩니다. Component lifecycle callback도 synchronous code 이후 또는 임의의 `await` boundary 이후 동일한 즉시 conflict를 받습니다.
 
+### NestJS 라이프사이클 훅 마이그레이션
+
+공개 runtime lifecycle 계약에는 네 개의 hook만 있습니다. Startup은 `onModuleInit()` 다음 `onApplicationBootstrap()`을 실행하고, shutdown은 lifecycle instance 역순으로 `onModuleDestroy()` 다음 `onApplicationShutdown(signal?)`을 실행합니다. NestJS `beforeApplicationShutdown`은 지원하지 않으며 fluo가 탐지하거나 호출하지 않습니다.
+
+종료 준비 작업은 소유하는 문서화된 phase로 옮기세요. Application-wide signal phase보다 먼저 끝나야 하는 module resource teardown에는 `onModuleDestroy()`를 사용하고, signal-aware application cleanup에는 `onApplicationShutdown(signal?)`을 사용합니다. `@fluojs/runtime`은 `beforeApplicationShutdown` compatibility shim, alias, fallback 또는 추가 runtime hook을 제공하지 않습니다.
+
 ### Studio Devtools Bridge
 
 `@fluojs/runtime`은 live Studio snapshot과 request trace를 publish할 수 있지만 `process.env`를 직접 읽지 않습니다. `fluo dev --studio`가 애플리케이션 경계에서 sidecar를 시작하고 tokenized Studio config를 만든 뒤, 앱이 runtime을 import하기 전에 해당 명시적 config를 Node 앱 child에 주입합니다. Runtime은 Studio bridge를 생성할 때 주입된 각 field를 한 번씩 읽고 전체 config와 HTTP(S) endpoint를 검증한 뒤 private snapshot으로 freeze합니다. 따라서 writable process-global injection이 나중에 변경되어도 instrumentation input은 바뀌지 않습니다. CLI가 제공한 config가 없거나 잘못되었거나 tokenized endpoint가 없으면 Studio instrumentation은 no-op이며 bootstrap 동작은 바뀌지 않습니다.
@@ -175,6 +181,7 @@ class UsersModule {}
 
 ## 동작 계약
 
+- Runtime lifecycle은 네 hook 계약을 유지합니다. Startup은 provider order의 `onModuleInit()` phase를 끝낸 뒤 `onApplicationBootstrap()`을 실행하고, shutdown은 lifecycle instance 역순으로 `onModuleDestroy()` 다음 `onApplicationShutdown(signal?)`을 실행합니다. NestJS `beforeApplicationShutdown`은 지원하지 않으며 compatibility shim도 없습니다.
 - 요청 바디 파싱은 Web 표준 요청과 Node 기반 요청 모두에서 바이트가 스트리밍되는 동안 `maxBodySize`를 강제합니다. 한도를 넘은 Web 바디는 stream cancellation을 기다리지 않고 HTTP 413으로 완료되며, cancellation 실패도 해당 응답을 가리지 않습니다. 이 계약은 원본 요청을 읽지 않는 기본 cloned-body 경로에도 적용됩니다.
 - `preferNativeJsonBodyReader`는 deprecated adapter compatibility 옵션으로 `@fluojs/runtime/web`에서 계속 허용되지만 더 이상 파싱 동작을 바꾸지 않습니다. Web JSON 바디는 항상 bounded streaming reader를 사용하므로 native whole-body read가 `maxBodySize`를 우회할 수 없습니다.
 - `@fluojs/runtime/node`에서는 Node 요청 바디 파싱 전에 primary `content-type` media type을 normalize한 뒤 JSON 및 멀티파트 여부를 판단하므로, 대소문자가 섞인 JSON/멀티파트 헤더도 문서화된 파서 동작을 그대로 유지합니다.

@@ -1,32 +1,32 @@
 import { randomUUID } from 'node:crypto';
-import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
 import type { IncomingMessage } from 'node:http';
+import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { Duplex } from 'node:stream';
 
 import { Inject } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
+import type { HttpApplicationAdapter } from '@fluojs/http';
 import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
-import type { HttpApplicationAdapter } from '@fluojs/http';
-import { WebSocket, WebSocketServer, type RawData } from 'ws';
+import { type RawData, WebSocket, WebSocketServer } from 'ws';
 
 import {
+  discoverGatewayDescriptors,
   dispatchGatewayDisconnect,
   dispatchGatewayMessage,
-  discoverGatewayDescriptors,
   isFinitePositiveInteger,
   normalizeGatewayPath,
+  type ResolvedGatewayInstance,
   resolveGatewayInstance,
   runGatewayHandlers,
-  type ResolvedGatewayInstance,
 } from '../internal/shared.js';
 import { WEBSOCKET_OPTIONS_INTERNAL } from '../options-token.internal.js';
 import type {
   WebSocketGatewayDescriptor,
   WebSocketGatewayServerBackedOptions,
-  WebSocketUpgradeRejection,
   WebSocketRoomService,
+  WebSocketUpgradeRejection,
 } from '../types.js';
 import { NodeWebSocketGatewayLifecycleService } from './node-service-token.js';
 import type { WebSocketModuleOptions } from './node-types.js';
@@ -1429,12 +1429,19 @@ export class NodeWebSocketGatewayLifecycleServiceImplementation
   }
 
   /**
-   * Adds one socket to an in-memory room membership set.
+   * Adds one currently open, runtime-registered socket to an in-memory room membership set.
+   * Unknown or already closed socket identifiers are ignored.
    *
    * @param socketId Socket identifier to add.
    * @param room Room identifier to join.
    */
   joinRoom(socketId: string, room: string): void {
+    const socket = this.socketRegistry.get(socketId);
+
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
     let rooms = this.socketRooms.get(socketId);
 
     if (!rooms) {

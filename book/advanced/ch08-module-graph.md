@@ -784,6 +784,8 @@ It does not run both hooks for one instance together. It finishes all Module ini
 
 Shutdown ordering is the mirror image. `runShutdownHooks()` at `path:packages/runtime/src/bootstrap.ts:1200-1212` walks the provider-ordered instances in reverse, first running all `onModuleDestroy()` hooks, then all `onApplicationShutdown()` hooks.
 
+This two-phase shutdown is also the NestJS migration boundary. NestJS `beforeApplicationShutdown` is unsupported: fluo neither probes nor invokes it. Put preparation that must precede the application-wide signal phase in `onModuleDestroy()`, or put signal-aware cleanup in `onApplicationShutdown(signal?)`. There is no compatibility shim, fallback, alias, or fifth runtime hook, so the four-hook ordering shown here remains authoritative.
+
 Shutdown hooks keep the same phase separation while reversing only the instance order.
 
 `path:packages/runtime/src/bootstrap.ts:1200-1212`

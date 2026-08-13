@@ -396,7 +396,7 @@ describe('@fluojs/websockets/deno', () => {
     }
   });
 
-  it('joins, leaves, broadcasts, and reads rooms through the Deno lifecycle service', async () => {
+  it('manages rooms and rejects stale joins through the Deno lifecycle service', async () => {
     const adapter = new TestDenoAdapter();
 
     @WebSocketGateway({ path: '/rooms' })
@@ -413,6 +413,8 @@ describe('@fluojs/websockets/deno', () => {
 
     const app = await bootstrapApplication({ adapter, rootModule: AppModule });
     const service = await app.container.resolve<DenoWebSocketGatewayLifecycleService>(DenoWebSocketGatewayLifecycleService);
+    service.joinRoom('socket-unknown', 'room-stale');
+    expect(Array.from(service.getRooms('socket-unknown'))).toEqual([]);
 
     try {
       await app.listen();
@@ -444,6 +446,18 @@ describe('@fluojs/websockets/deno', () => {
         JSON.stringify({ data: { orderId: 'ord_deno' }, event: 'order.updated' }),
       ]);
       expect(Array.from(service.getRooms(socketId))).toEqual(['room-b']);
+
+      const closeDelivery = createDeferred<void>();
+      socket.delayCloseUntil(closeDelivery.promise);
+      socket.close(1000, 'done');
+      service.joinRoom(socketId, 'room-stale');
+      const roomsWhileCloseDeliveryIsPending = Array.from(service.getRooms(socketId));
+      closeDelivery.resolve();
+      await flushAsyncWork();
+      service.joinRoom(socketId, 'room-stale');
+
+      expect(roomsWhileCloseDeliveryIsPending).toEqual(['room-b']);
+      expect(Array.from(service.getRooms(socketId))).toEqual([]);
     } finally {
       await app.close();
     }

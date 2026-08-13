@@ -680,6 +680,12 @@ function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkRes
         return;
       }
 
+      if (body === undefined && response.req.method.toUpperCase() === 'HEAD') {
+        this.committed = true;
+        response.end();
+        return;
+      }
+
       const existingContentType = response.getHeader('content-type');
       const serialized = serializeResponseBody(body, typeof existingContentType === 'string' ? existingContentType : undefined);
 

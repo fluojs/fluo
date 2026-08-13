@@ -926,6 +926,12 @@ export class DenoWebSocketGatewayLifecycleService
   }
 
   joinRoom(socketId: string, room: string): void {
+    const socket = this.socketRegistry.get(socketId);
+
+    if (!socket || socket.readyState !== WEBSOCKET_OPEN_READY_STATE) {
+      return;
+    }
+
     let rooms = this.socketRooms.get(socketId);
 
     if (!rooms) {

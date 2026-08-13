@@ -8,10 +8,17 @@ import {
   getMethodApiMetadata,
   type MethodApiMetadata,
 } from './decorators.js';
+import {
+  type OpenApiOperationMethod,
+  type OpenApiPathItemObject,
+  resolveDescriptorOperationMethod,
+  validateOpenApiPathItemKeys,
+} from './path-item.js';
+
+export type { OpenApiPathItemObject } from './path-item.js';
+
 import { normalizeOpenApiDocumentSchemaBounds } from './schema-bounds.js';
 import { cloneSnapshotValue } from './snapshot.js';
-
-type OpenApiOperationMethod = Lowercase<HttpMethod>;
 
 /**
  * JSON Schema primitive type names accepted by OpenAPI 3.1 schema objects.
@@ -170,13 +177,6 @@ export interface OpenApiOperationObject {
   responses: Record<string, OpenApiResponseObject>;
   requestBody?: OpenApiRequestBodyObject;
   security?: OpenApiSecurityRequirementObject[];
-}
-
-/**
- * OpenAPI path-item object containing one or more HTTP method operations.
- */
-export interface OpenApiPathItemObject {
-  [method: string]: OpenApiOperationObject | undefined;
 }
 
 /**
@@ -1192,13 +1192,13 @@ function buildOperationEntry(
   usedOperationIds: Set<string>,
 ): BuiltOperationEntry | undefined {
   const openApiPath = expressPathToOpenApi(descriptor.route.path);
-  const method = descriptor.route.method.toLowerCase() as OpenApiOperationMethod;
   const methodMeta = getMethodApiMetadata(descriptor.controllerToken, descriptor.methodName);
 
   if (methodMeta?.excludeEndpoint === true) {
     return undefined;
   }
 
+  const method = resolveDescriptorOperationMethod(descriptor.route.method, openApiPath);
   const responses = createOperationResponses(
     descriptor,
     methodMeta,
@@ -1322,5 +1322,7 @@ export function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): Open
     paths,
   };
 
-  return normalizeOpenApiDocumentSchemaBounds(options.documentTransform ? options.documentTransform(document) : document);
+  const transformedDocument = options.documentTransform ? options.documentTransform(document) : document;
+  validateOpenApiPathItemKeys(transformedDocument.paths);
+  return normalizeOpenApiDocumentSchemaBounds(transformedDocument);
 }

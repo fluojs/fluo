@@ -172,7 +172,8 @@ export type WebSocketUpgradeGuard<TRequest = Request> = (
  */
 export interface WebSocketRoomService {
   /**
-   * Adds one socket to a room.
+   * Adds one currently open, runtime-registered socket to a room.
+   * Unknown or already closed socket identifiers are ignored.
    *
    * @param socketId Socket identifier to add.
    * @param room Room identifier to join.
