@@ -21,7 +21,7 @@ Express-backed HTTP adapter for the fluo runtime.
 npm install @fluojs/platform-express express
 ```
 
-`@fluojs/platform-express` requires Node.js 20 or newer. Its package manifest declares `engines.node >=20.0.0`; choose a fetch-style adapter instead when the deployment host is Bun, Deno, or Cloudflare Workers.
+`@fluojs/platform-express` requires Node.js 20.19.3 or newer. Its package manifest declares `engines.node >=20.19.3` so listener-level RFC `QUERY` requests reach Express and fluo dispatch; choose a fetch-style adapter instead when the deployment host is Bun, Deno, or Cloudflare Workers.
 
 ## When to Use
 
