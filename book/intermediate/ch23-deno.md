@@ -213,7 +213,7 @@ import { Client } from "https://deno.land/x/postgres/mod.ts";
 
 ## 23.9 Testing in Deno
 
-Deno's built-in test runner can be used without separate Jest or Vitest dependencies. The published `@fluojs/testing` package declares `engines.node >=20.19.3`, so do not import it into the Deno test path. Instead, combine `Deno.test`, Deno's standard assertion library, and the public Deno fetch handler to exercise the real Web `Request` to `Response` boundary without starting a server.
+Deno's built-in test runner can be used without separate Jest or Vitest dependencies. The published `@fluojs/testing` package declares `engines.node >=20.19.3 <21 || >=22.2.0 <27`, so do not import it into the Deno test path. Instead, combine `Deno.test`, Deno's standard assertion library, and the public Deno fetch handler to exercise the real Web `Request` to `Response` boundary without starting a server.
 
 ```typescript
 import { assertEquals } from "jsr:@std/assert";
