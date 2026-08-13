@@ -131,7 +131,7 @@ await runDenoApplication(AppModule, {
 });
 ```
 
-`runDenoApplication(...)`은 Deno signal API를 사용할 수 있을 때 기본적으로 `SIGINT`와 `SIGTERM` listener를 등록합니다. Host가 process signal을 직접 소유한다면 `shutdownSignals: false`를 사용하고, 배포 profile이 더 좁은 lifecycle contract를 요구한다면 custom signal list를 전달하세요. 한 signal listener를 이미 연결한 뒤 다음 signal 등록이 실패하면 fluo는 실패를 전달하기 전에 앞서 연결한 listener를 제거합니다. Close 중에는 새 유입을 중단하고 active handler가 최대 10초 동안 drain되도록 기다린 다음, shutdown이 아직 끝나지 않았으면 underlying Deno serve signal을 abort합니다.
+`runDenoApplication(...)`은 Deno signal API를 사용할 수 있을 때 기본적으로 `SIGINT`와 `SIGTERM` listener를 등록합니다. Host가 process signal을 직접 소유한다면 `shutdownSignals: false`를 사용하고, 배포 profile이 더 좁은 lifecycle contract를 요구한다면 custom signal list를 전달하세요. 한 signal listener를 이미 연결한 뒤 다음 signal 등록이 실패하면 fluo는 실패를 전달하기 전에 앞서 연결한 listener를 제거합니다. Close 중에는 새 유입을 중단하고 active handler가 최대 10초 동안 drain되도록 기다린 다음, shutdown이 아직 끝나지 않았으면 underlying Deno serve signal을 abort합니다. Graceful shutdown이 reject되면 adapter는 `server.finished`가 settle될 때까지 active server controller를 유지한 뒤 lifecycle state를 해제하고 원래 shutdown error를 다시 throw합니다.
 
 ## 23.5 Handling Deno Permissions in FluoShop
 
