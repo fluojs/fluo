@@ -43,10 +43,10 @@ export interface FastPathEligibility {
   readonly hasAdapterPluginInfluence: boolean;
 
   /** Resolved execution path, either 'fast' or 'full'. */
-  executionPath: 'fast' | 'full';
+  readonly executionPath: 'fast' | 'full';
 
   /** Explanation for full-path fallback when fast path is not selected. */
-  fallbackReason?: string;
+  readonly fallbackReason?: string;
 }
 
 /**
@@ -54,24 +54,24 @@ export interface FastPathEligibility {
  */
 export interface FastPathStats {
   /** Total number of routes analyzed. */
-  totalRoutes: number;
+  readonly totalRoutes: number;
 
   /** Number of routes eligible for fast path. */
-  fastPathRoutes: number;
+  readonly fastPathRoutes: number;
 
   /** Number of routes using full path. */
-  fullPathRoutes: number;
+  readonly fullPathRoutes: number;
 
   /** Per-route eligibility details. */
-  routes: ReadonlyArray<Readonly<FastPathEligibility>>;
+  readonly routes: readonly Readonly<FastPathEligibility>[];
 }
 
 /**
- * Public symbol key for fast path eligibility metadata attached to handler descriptors.
+ * Public symbol key for fast path eligibility metadata attached to dispatcher route snapshots.
  *
  * @remarks
  * Adapter and diagnostics integrations can use this key to inspect the route's
- * {@link FastPathEligibility} metadata.
+ * frozen {@link FastPathEligibility} metadata without accessing dispatcher-owned state.
  */
 export const FAST_PATH_ELIGIBILITY_SYMBOL = Symbol('fastPathEligibility');
 

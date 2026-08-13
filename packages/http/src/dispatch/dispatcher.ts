@@ -35,17 +35,13 @@ import { type ResolvedContentNegotiation, resolveContentNegotiation, writeErrorR
 import { matchHandlerOrThrow, updateRequestParams } from './dispatch-routing-policy.js';
 import {
   addPathDebugHeader,
-  compileFastPathEligibility,
-  createFastPathStats,
   createPathDebugInfo,
   executeFastPath,
   FAST_PATH_STATS_SYMBOL,
-  type FastPathEligibility,
   type FastPathStats,
-  getHandlerFastPathEligibility,
-  setHandlerFastPathEligibility,
   shouldUseFastPathForRequest,
 } from './fast-path/index.js';
+import { createDispatcherFastPathState, type DispatcherFastPathState } from './fast-path/dispatcher-state.js';
 import { attachFrameworkRequestNativeRouteHandoff, readFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
 import { isRequestAborted } from './request-abort.js';
 
@@ -201,33 +197,6 @@ function createDispatchRequest(request: FrameworkRequest): FrameworkRequest {
   return nativeRouteHandoff
     ? attachFrameworkRequestNativeRouteHandoff(dispatchRequest, nativeRouteHandoff)
     : dispatchRequest;
-}
-
-function cloneHandlerDescriptor(descriptor: HandlerDescriptor): HandlerDescriptor {
-  const cloned = {
-    ...descriptor,
-    metadata: {
-      ...descriptor.metadata,
-      moduleMiddleware: [...descriptor.metadata.moduleMiddleware],
-      pathParams: [...descriptor.metadata.pathParams],
-    },
-    route: {
-      ...descriptor.route,
-      guards: descriptor.route.guards ? [...descriptor.route.guards] : undefined,
-      headers: descriptor.route.headers?.map((header) => ({ ...header })),
-      interceptors: descriptor.route.interceptors ? [...descriptor.route.interceptors] : undefined,
-      produces: descriptor.route.produces ? [...descriptor.route.produces] : undefined,
-      redirect: descriptor.route.redirect ? { ...descriptor.route.redirect } : undefined,
-    },
-  };
-
-  const eligibility = getHandlerFastPathEligibility(descriptor);
-
-  if (eligibility) {
-    setHandlerFastPathEligibility(cloned, eligibility);
-  }
-
-  return cloned;
 }
 
 function readRequestId(request: FrameworkRequest): string | undefined {
@@ -812,9 +781,10 @@ async function dispatchNativeFastRoute(
   response: FrameworkResponse,
   options: CreateDispatcherOptions,
   contentNegotiation: ResolvedContentNegotiation | undefined,
+  fastPathState: DispatcherFastPathState,
   fastPathRuntimeCache: WeakMap<HandlerDescriptor, FastPathHandlerRuntimeCache>,
 ): Promise<boolean> {
-  const eligibility = getHandlerFastPathEligibility(match.descriptor);
+  const eligibility = fastPathState.getEligibility(match.descriptor);
 
   if (!shouldUseFastPathForRequest(eligibility, request)) {
     return false;
@@ -841,6 +811,7 @@ async function dispatchNativeFastRoute(
   phaseContext = {
     contentNegotiation,
     dispatchScope,
+    fastPathState,
     fastPathRuntimeCache,
     handlerExecutionPlans: EMPTY_NATIVE_FAST_PATH_HANDLER_EXECUTION_PLANS,
     observers: EMPTY_NATIVE_FAST_PATH_OBSERVERS,
@@ -883,6 +854,7 @@ async function dispatchNativeFastRoute(
 interface DispatchPhaseContext {
   contentNegotiation: ResolvedContentNegotiation | undefined;
   dispatchScope: DispatchScope;
+  fastPathState: DispatcherFastPathState;
   fastPathRuntimeCache: WeakMap<HandlerDescriptor, FastPathHandlerRuntimeCache>;
   handlerExecutionPlans: WeakMap<HandlerDescriptor, CompiledHandlerExecutionPlan>;
   matchedHandler?: HandlerDescriptor;
@@ -943,7 +915,7 @@ async function tryFastPathExecution(
   handler: HandlerDescriptor,
   context: DispatchPhaseContext,
 ): Promise<boolean> {
-  const eligibility = getHandlerFastPathEligibility(handler);
+  const eligibility = context.fastPathState.getEligibility(handler);
 
   if (!eligibility || eligibility.executionPath !== 'fast') {
     return false;
@@ -1002,7 +974,7 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
     context.matchedHandler = match.descriptor;
     updateRequestParams(context.requestContext, match.params);
 
-    const eligibility = getHandlerFastPathEligibility(match.descriptor);
+    const eligibility = context.fastPathState.getEligibility(match.descriptor);
 
     if (context.options.fastPathDebugHeaders === true && eligibility && !context.response.committed) {
       const debugInfo = createPathDebugInfo(eligibility);
@@ -1112,24 +1084,26 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
   const fastPathRuntimeCache = new WeakMap<HandlerDescriptor, FastPathHandlerRuntimeCache>();
   const handlerExecutionPlans = new WeakMap<HandlerDescriptor, CompiledHandlerExecutionPlan>();
   const adapter = options.adapter ?? 'default';
-  const fastPathEligibilities: FastPathEligibility[] = [];
+  const fastPathState = createDispatcherFastPathState(options.handlerMapping.descriptors, options, adapter);
 
   for (const descriptor of options.handlerMapping.descriptors) {
     handlerExecutionPlans.set(descriptor, compileHandlerExecutionPlan(descriptor, options));
-
-    const { eligibility } = compileFastPathEligibility(descriptor, options, adapter);
-    setHandlerFastPathEligibility(descriptor, eligibility);
-    fastPathEligibilities.push(eligibility);
   }
-
-  const fastPathStats = createFastPathStats(fastPathEligibilities);
 
   const dispatcher = {
     describeRoutes() {
-      return options.handlerMapping.descriptors.map((descriptor) => cloneHandlerDescriptor(descriptor));
+      return fastPathState.describeRoutes();
     },
     async dispatchNativeRoute(match: HandlerMatch, request: FrameworkRequest, response: FrameworkResponse): Promise<boolean> {
-      return dispatchNativeFastRoute(match, request, response, options, contentNegotiation, fastPathRuntimeCache);
+      return dispatchNativeFastRoute(
+        match,
+        request,
+        response,
+        options,
+        contentNegotiation,
+        fastPathState,
+        fastPathRuntimeCache,
+      );
     },
     async dispatch(request: FrameworkRequest, response: FrameworkResponse): Promise<void> {
       const dispatchRequest = createDispatchRequest(request);
@@ -1150,6 +1124,7 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
       phaseContext = {
         contentNegotiation,
         dispatchScope,
+        fastPathState,
         fastPathRuntimeCache,
         handlerExecutionPlans,
         observers,
@@ -1188,7 +1163,12 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
     },
   };
 
-  (dispatcher as unknown as Record<symbol, FastPathStats>)[FAST_PATH_STATS_SYMBOL] = fastPathStats;
+  Object.defineProperty(dispatcher, FAST_PATH_STATS_SYMBOL, {
+    configurable: false,
+    enumerable: false,
+    value: fastPathState.stats,
+    writable: false,
+  });
 
   return dispatcher as Dispatcher;
 }
