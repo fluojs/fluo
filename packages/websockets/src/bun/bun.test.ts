@@ -325,7 +325,7 @@ describe('@fluojs/websockets/bun', () => {
     }
   });
 
-  it('joins, leaves, broadcasts, and reads rooms through the Bun lifecycle service', async () => {
+  it('manages rooms and rejects stale joins through the Bun lifecycle service', async () => {
     const adapter = new TestBunAdapter();
 
     @WebSocketGateway({ path: '/rooms' })
@@ -342,6 +342,8 @@ describe('@fluojs/websockets/bun', () => {
 
     const app = await bootstrapApplication({ adapter, rootModule: AppModule });
     const service = await app.container.resolve<BunWebSocketGatewayLifecycleService>(BunWebSocketGatewayLifecycleService);
+    service.joinRoom('socket-unknown', 'room-stale');
+    expect(Array.from(service.getRooms('socket-unknown'))).toEqual([]);
 
     try {
       await app.listen();
@@ -373,6 +375,18 @@ describe('@fluojs/websockets/bun', () => {
         JSON.stringify({ data: { orderId: 'ord_bun' }, event: 'order.updated' }),
       ]);
       expect(Array.from(service.getRooms(socketId))).toEqual(['room-b']);
+
+      const closeDelivery = createDeferred<void>();
+      server.closeDeliveryPromise = closeDelivery.promise;
+      socket.close(1000, 'done');
+      service.joinRoom(socketId, 'room-stale');
+      const roomsWhileCloseDeliveryIsPending = Array.from(service.getRooms(socketId));
+      closeDelivery.resolve();
+      await flushAsyncWork();
+      service.joinRoom(socketId, 'room-stale');
+
+      expect(roomsWhileCloseDeliveryIsPending).toEqual(['room-b']);
+      expect(Array.from(service.getRooms(socketId))).toEqual([]);
     } finally {
       await app.close();
     }
