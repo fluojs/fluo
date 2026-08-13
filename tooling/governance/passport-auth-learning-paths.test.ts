@@ -13,6 +13,8 @@ import type {
 import {
   canHaveDecorators,
   createSourceFile,
+  DiagnosticCategory,
+  flattenDiagnosticMessageText,
   forEachChild,
   getDecorators,
   isArrayLiteralExpression,
@@ -25,9 +27,11 @@ import {
   isPropertyAssignment,
   isSpreadElement,
   isStringLiteral,
+  ModuleKind,
   ScriptKind,
   ScriptTarget,
   SyntaxKind,
+  transpileModule,
 } from 'typescript';
 import { describe, expect, it } from 'vitest';
 
@@ -60,7 +64,31 @@ function requireTypeScriptFence(markdown: string, governedIdentifier: string): s
 }
 
 function parseFence(fence: string): SourceFile {
+  const diagnostics = transpileModule(fence, {
+    compilerOptions: {
+      module: ModuleKind.ESNext,
+      target: ScriptTarget.Latest,
+    },
+    fileName: 'passport-learning-path.ts',
+    reportDiagnostics: true,
+  }).diagnostics?.filter((diagnostic) => diagnostic.category === DiagnosticCategory.Error) ?? [];
+
+  if (diagnostics.length > 0) {
+    throw new TypeError(
+      `Invalid TypeScript fence: ${diagnostics
+        .map((diagnostic) => flattenDiagnosticMessageText(diagnostic.messageText, '\n'))
+        .join('; ')}`,
+    );
+  }
+
   return createSourceFile('passport-learning-path.ts', fence, ScriptTarget.Latest, true, ScriptKind.TS);
+}
+
+function isNamedPropertyAccess(node: Node, receiver: string, name: string): boolean {
+  return isPropertyAccessExpression(node)
+    && isIdentifier(node.expression)
+    && node.expression.text === receiver
+    && node.name.text === name;
 }
 
 function getCallName(node: Node): string | undefined {
@@ -228,6 +256,7 @@ describe('Passport authentication learning paths', () => {
 
     // Then
     expect(isStringLiteral(bridgeCall.arguments[0]) && bridgeCall.arguments[0].text).toBe('google');
+    expect(isIdentifier(bridgeCall.arguments[1]) && bridgeCall.arguments[1].text).toBe('GoogleStrategy');
     expect(
       bridgeOptions !== undefined
         && isObjectLiteralExpression(bridgeOptions)
@@ -237,13 +266,18 @@ describe('Passport authentication learning paths', () => {
       providers !== undefined
         && isArrayLiteralExpression(providers)
         && providers.elements.some(
-          (element) => isSpreadElement(element) && element.expression.getText() === 'googleBridge.providers',
+          (element) => isIdentifier(element) && element.text === 'GoogleStrategy',
+        )
+        && providers.elements.some(
+          (element) => isSpreadElement(element)
+            && isNamedPropertyAccess(element.expression, 'googleBridge', 'providers'),
         ),
     ).toBe(true);
     expect(
       registrations !== undefined
         && isArrayLiteralExpression(registrations)
-        && registrations.elements.some((element) => element.getText() === 'googleBridge.strategy'),
+        && registrations.elements.some((element) =>
+          isNamedPropertyAccess(element, 'googleBridge', 'strategy')),
     ).toBe(true);
   });
 
