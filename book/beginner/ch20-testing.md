@@ -55,7 +55,7 @@ Install the required dependencies:
 pnpm add -D @fluojs/testing vitest @babel/core
 ```
 
-Install `vitest` as a project dev dependency instead of a global binary. `@fluojs/testing` declares Vitest as a peer dependency for its mock helpers and `@fluojs/testing/vitest` entrypoint, so each consuming workspace must provide the local version used by its tests. `@babel/core` is required because `@fluojs/testing/vitest` uses a Babel plugin to process standard Decorators during test execution. TypeScript handles types, while Babel makes sure tests use the same standard Decorator behavior as the runtime. The package itself declares a Node.js 20+ engine floor; runtime-native Deno/Bun test examples should follow their own adapter chapters when they are not executing through Node/Vitest.
+Install `vitest` as a project dev dependency instead of a global binary. `@fluojs/testing` declares Vitest as a peer dependency for its mock helpers and `@fluojs/testing/vitest` entrypoint, so each consuming workspace must provide the local version used by its tests. `@babel/core` is required because `@fluojs/testing/vitest` uses a Babel plugin to process standard Decorators during test execution. TypeScript handles types, while Babel makes sure tests use the same standard Decorator behavior as the runtime. The package itself declares `engines.node >=20.19.3 <21 || >=22.2.0 <27`; Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded because the public portability harness exercises listener-level RFC `QUERY`. Runtime-native Deno/Bun test examples should follow their own adapter chapters when they are not executing through Node/Vitest.
 
 ### Vitest Configuration
 Create a `vitest.config.ts` file at the project root:
