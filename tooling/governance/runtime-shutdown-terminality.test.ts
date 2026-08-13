@@ -31,12 +31,27 @@ function paragraph(content: string, prefix: string): string {
   return match;
 }
 
+function sourceExample(content: string, sourceMarker: string): string {
+  const sourceStart = content.indexOf(sourceMarker);
+  const fence = '```typescript\n';
+  const fenceStart = content.indexOf(fence, sourceStart);
+  const codeStart = fenceStart + fence.length;
+  const codeEnd = content.indexOf('\n```', codeStart);
+
+  if (sourceStart < 0 || fenceStart < 0 || codeEnd < 0) {
+    throw new Error(`Missing governed source example for ${sourceMarker}.`);
+  }
+
+  return content.slice(codeStart, codeEnd);
+}
+
 function expectLifecycleStateAndOperationGate(content: string): void {
   expect(content).toContain('bootstrapped');
   expect(content).toContain('ready');
   expect(content).toContain('closed');
   expect(content).toContain('Application.get()');
   expect(content).toContain('ApplicationContext.get()');
+  expect(content).toContain('Application.listen()');
   expect(content).toContain('connectMicroservice()');
   expect(content).toContain('startAllMicroservices()');
 }
@@ -76,9 +91,28 @@ describe('runtime shutdown terminality documentation', () => {
     expect(content).toContain(
       'rejects ApplicationContext.get() as soon as shutdown starts while teardown is pending',
     );
+    expect(content).toContain('rejects Application.get() when shutdown starts during provider resolution');
+    expect(content).toContain('rejects ApplicationContext.get() when shutdown starts during provider resolution');
     expect(content).toContain('rejects connect and start operations while application close is pending');
     expect(content).toContain('rejects connectMicroservice() when shutdown starts during runtime resolution');
     expect(content).toContain('retries only incomplete application context shutdown phases');
+  });
+
+  it.each([
+    'book/advanced/ch09-app-context.md',
+    'book/advanced/ch09-app-context.ko.md',
+  ])('keeps Chapter 9 context get and application listen examples aligned with shutdown admission in %s', (relativePath) => {
+    const content = read(relativePath);
+    const contextGet = sourceExample(content, 'path:packages/runtime/src/bootstrap.ts:856-896');
+    const applicationListen = sourceExample(content, 'path:packages/runtime/src/bootstrap.ts:738-786');
+
+    expect(contextGet).toContain('private closeStarted = false;');
+    expect(contextGet.match(/this\.assertProviderResolutionAllowed\(\);/gu)).toHaveLength(2);
+    expect(contextGet).not.toContain('return resolveContextToken(');
+    expect(applicationListen).toContain('if (this.closeStarted)');
+    expect(applicationListen).toContain('this.listenPromise = this.startListening();');
+    expect(applicationListen).toContain('Application startup was interrupted by shutdown.');
+    expect(applicationListen).not.toContain("if (this.applicationState === 'closed')");
   });
 
   it('requires the runtime regressions behind the documented terminal and retry concepts', () => {
@@ -89,8 +123,12 @@ describe('runtime shutdown terminality documentation', () => {
     expect(applicationTests).toContain(
       'rejects Application.get() as soon as shutdown starts while teardown is pending',
     );
+    expect(applicationTests).toContain('rejects Application.get() when shutdown starts during provider resolution');
     expect(bootstrapTests).toContain(
       'rejects ApplicationContext.get() as soon as shutdown starts while teardown is pending',
+    );
+    expect(bootstrapTests).toContain(
+      'rejects ApplicationContext.get() when shutdown starts during provider resolution',
     );
     expect(bootstrapTests).toContain('rejects connect and start operations while application close is pending');
     expect(bootstrapTests).toContain(
