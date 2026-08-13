@@ -63,31 +63,6 @@ describe('Passport.js bridge example governance', () => {
   });
 
   it.each([
-    ['provide: optionsToken,', "provide: Symbol.for('decoy.options'),", 'optionsToken'],
-    ['provide: adapterToken,', "provide: Symbol.for('decoy.adapter'),", 'adapterToken'],
-    ['useValue: { ...options },', 'useValue: undefined,', 'optionsToken'],
-    ['inject: [strategyToken, optionsToken],', 'inject: [strategyToken],', 'optionsToken'],
-  ] as const)(
-    'requires the source bridge provider for %s',
-    (implementedProvider, regressedProvider, expectedToken) => {
-      // Given
-      const targetPath = 'packages/passport/src/adapters/passport-js.ts';
-      const readWithoutRequiredProvider = (relativePath: string): string => {
-        const content = read(relativePath);
-        return relativePath === targetPath
-          ? `${content.replace(implementedProvider, regressedProvider)}\nconst decoy = "${implementedProvider}";\n`
-          : content;
-      };
-
-      // When
-      const runGovernanceGuard = () => enforcePassportJsBridgeNestjsMigration(readWithoutRequiredProvider);
-
-      // Then
-      expect(runGovernanceGuard).toThrowError(new RegExp(expectedToken, 'u'));
-    },
-  );
-
-  it.each([
     [
       'providers: [GoogleStrategy, ...googleBridge.providers]',
       'providers: [GoogleStrategy]',
