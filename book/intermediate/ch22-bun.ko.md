@@ -156,7 +156,7 @@ Bun의 장점은 HTTP 처리에만 머물지 않습니다. 네이티브 sqlite �
 
 Drizzle과 함께 쓰면 Node 기반 Postgres 구성과 Bun 기반 SQLite 구성을 같은 저장소 패턴 안에서 비교할 수 있습니다. fluo에서는 드라이버별 로직을 프로바이더 경계에 두고, 도메인 서비스가 스키마와 쿼리 계약에 집중하도록 설계하는 것이 중요합니다.
 
-Bun 어댑터의 핵심 책임은 Bun의 `Request` 및 `Response` 객체를 fluo 내부 컨텍스트로 변환하는 것입니다. 이 경계 덕분에 `@Body()` 및 `@Headers()` 같은 데코레이터는 런타임이 바뀌어도 같은 의미를 유지합니다. 성능을 판단할 때는 변환 계층의 비용과 실제 비즈니스 로직의 비용을 함께 측정해야 합니다.
+Bun 어댑터의 핵심 책임은 Bun의 `Request` 및 `Response` 객체를 fluo 내부 컨텍스트로 변환하는 것입니다. 이 경계는 런타임이 바뀌어도 fluo의 request binding 계약을 유지합니다. `@RequestDto(...)`가 controller input DTO를 선택하고, `@FromBody(...)`와 `@FromHeader(...)` 같은 field decorator가 request 값을 binding합니다. Controller에서 low-level request data가 필요하면 두 번째 인자로 명시적인 `RequestContext`를 받으세요. 성능을 판단할 때는 변환 계층의 비용과 실제 비즈니스 로직의 비용을 함께 측정해야 합니다.
 
 Bun은 서버 측 로직에서도 `fetch` API를 중심에 둡니다. fluo는 내부 디스패처를 웹 표준 `Request` 및 `Response` 객체와 맞춰 이 모델을 자연스럽게 사용합니다. 그 결과 Bun 이식은 단순한 성능 실험이 아니라 표준 기반 런타임 경계를 검증하는 과정이 됩니다.
 

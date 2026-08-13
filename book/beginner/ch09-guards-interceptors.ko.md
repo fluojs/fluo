@@ -53,12 +53,12 @@ FluoBlog가 읽기 라우트는 공개하지만 쓰기 라우트는 간단한 ad
 guard의 역할을 설명하기에 적절한 상황입니다.
 
 ```typescript
-import { ForbiddenException, type RequestContext } from '@fluojs/http';
+import { ForbiddenException, type GuardContext } from '@fluojs/http';
 
 export class AdminGuard {
-  // input은 (있는 경우) 검증된 요청 본문입니다.
-  canActivate(input: unknown, ctx: RequestContext) {
-    const role = ctx.request.headers['x-role'];
+  // Guard는 request DTO binding 전에 실행되므로 request context를 직접 확인합니다.
+  canActivate(context: GuardContext) {
+    const role = context.requestContext.request.headers['x-role'];
 
     if (role !== 'admin') {
       // 8장에서 배운 구조화된 예외를 던집니다.
@@ -71,6 +71,8 @@ export class AdminGuard {
   }
 }
 ```
+
+Guard는 binding된 controller DTO가 아니라 하나의 `GuardContext`를 받습니다. Guard는 `@RequestDto(...)` binding과 validation 전에 실행되므로 header나 다른 request metadata는 `requestContext`에서 확인하세요.
 
 그다음 이 guard를 컨트롤러나 특정 메서드에 적용합니다.
 
