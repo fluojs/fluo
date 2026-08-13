@@ -55,7 +55,7 @@
 pnpm add -D @fluojs/testing vitest @babel/core
 ```
 
-`vitest`는 global binary가 아니라 프로젝트 dev dependency로 설치하세요. `@fluojs/testing`은 mock 헬퍼와 `@fluojs/testing/vitest` 엔트리포인트를 위해 Vitest를 peer dependency로 선언하므로, 각 consuming workspace가 테스트에 사용할 로컬 버전을 제공해야 합니다. `@babel/core`가 필요한 이유는 `@fluojs/testing/vitest`가 테스트 실행 중에 표준 데코레이터를 처리하기 위해 Babel 플러그인을 사용하기 때문입니다. TypeScript가 타입을 처리하는 동안 Babel은 테스트 중에도 런타임과 동일한 표준 데코레이터 동작을 보장합니다. 이 패키지 자체는 Node.js 20+ engine floor를 선언합니다. Node/Vitest 경로로 실행하지 않는 runtime-native Deno/Bun 테스트 예제는 각 어댑터 장의 지침을 따르세요.
+`vitest`는 global binary가 아니라 프로젝트 dev dependency로 설치하세요. `@fluojs/testing`은 mock 헬퍼와 `@fluojs/testing/vitest` 엔트리포인트를 위해 Vitest를 peer dependency로 선언하므로, 각 consuming workspace가 테스트에 사용할 로컬 버전을 제공해야 합니다. `@babel/core`가 필요한 이유는 `@fluojs/testing/vitest`가 테스트 실행 중에 표준 데코레이터를 처리하기 위해 Babel 플러그인을 사용하기 때문입니다. TypeScript가 타입을 처리하는 동안 Babel은 테스트 중에도 런타임과 동일한 표준 데코레이터 동작을 보장합니다. 이 패키지 자체는 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. Public portability harness가 listener-level RFC `QUERY`를 검증하므로 Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상은 제외됩니다. Node/Vitest 경로로 실행하지 않는 runtime-native Deno/Bun 테스트 예제는 각 어댑터 장의 지침을 따르세요.
 
 ### Vitest Configuration
 프로젝트 루트에 `vitest.config.ts` 파일을 생성합니다:

@@ -213,7 +213,7 @@ import { Client } from "https://deno.land/x/postgres/mod.ts";
 
 ## 23.9 Testing in Deno
 
-Deno의 내장 테스트 러너는 별도 Jest나 Vitest 의존성 없이 사용할 수 있습니다. 배포된 `@fluojs/testing` 패키지는 `engines.node >=20.0.0`을 선언하므로 Deno 테스트 경로에서 import하지 마세요. 대신 `Deno.test`, Deno 표준 assertion 라이브러리, public Deno fetch handler를 조합하면 서버를 시작하지 않고 실제 Web `Request`에서 `Response`까지의 경계를 검증할 수 있습니다.
+Deno의 내장 테스트 러너는 별도 Jest나 Vitest 의존성 없이 사용할 수 있습니다. 배포된 `@fluojs/testing` 패키지는 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언하므로 Deno 테스트 경로에서 import하지 마세요. 대신 `Deno.test`, Deno 표준 assertion 라이브러리, public Deno fetch handler를 조합하면 서버를 시작하지 않고 실제 Web `Request`에서 `Response`까지의 경계를 검증할 수 있습니다.
 
 ```typescript
 import { assertEquals } from "jsr:@std/assert";

@@ -82,6 +82,33 @@ records the evaluated syntaxes, provisional precedence and params shape, OpenAPI
 adapter native fast-path constraints, and the evidence required before this HTTP contract can be
 revisited. No syntax described there is active route behavior.
 
+### Custom HTTP method contract
+
+Use `@Query(path)` for RFC `QUERY`, or `@Route(method, path)` for another HTTP extension method such as `PURGE` or WebDAV `PROPFIND`:
+
+```ts
+import { Controller, Query, Route } from '@fluojs/http';
+
+@Controller('/operations')
+export class OperationsController {
+  @Query('/search')
+  search() {
+    return { method: 'QUERY' };
+  }
+
+  @Route('purge', '/cache')
+  purgeCache() {
+    return { method: 'PURGE' };
+  }
+}
+```
+
+`@Route(...)` accepts a non-empty HTTP token, canonicalizes it to uppercase before metadata registration, and rejects whitespace, separators, control characters, and non-ASCII token characters with `InvalidHttpMethodError`. `ALL` is reserved for the framework-owned `@All(...)` wildcard and is rejected by `@Route(...)`. Method-specific routes, including custom methods, take precedence over `@All(...)`, participate in duplicate detection and route versioning, and use the ordinary DTO binding, validation, guard, interceptor, and response pipeline. Unless status metadata says otherwise, successful `QUERY` and extension-method handlers default to `200`.
+
+Adapter wire support is an explicit portability contract. Supported Node listeners, Fastify and Express wildcard fallbacks, and Bun, Deno, and Cloudflare Workers fetch dispatch execute `QUERY` and representative extension methods without converting them into ordinary methods. Custom methods stay off Bun native `routes` acceleration, while Fastify registers their method names only so its wildcard fallback can receive them; neither path creates a native fluo route handoff. `CONNECT` remains outside ordinary controller-route conformance.
+
+Custom runtime methods do not become OpenAPI Path Item operations automatically. `@fluojs/openapi` continues to accept only its documented standard operation methods, so exclude custom-method descriptors from OpenAPI input or document those endpoints through an application-owned extension.
+
 ## Common Patterns
 
 ### Guards and interceptors
@@ -263,14 +290,14 @@ Response content negotiation formatters must return `string` or `Uint8Array` fro
 
 ## Public API
 
-- **Routing decorators**: `Controller`, `Get`, `Sse`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
+- **Routing decorators**: `Controller`, `Get`, `Sse`, `Query`, `Route`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
 - **Binding decorators**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`, `Optional`, `Convert`
 - **Execution decorators**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
 - **Request/response and context types**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
 - **Dispatcher, routing, and negotiation types**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `HttpErrorRepresentationContext`, `HtmlErrorRepresentationProvider`, `HttpErrorRepresentationOptions`, `FastPathEligibility`, `FastPathStats`
 - **Pipeline contract types**: `Middleware`, `MiddlewareLike`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardLike`, `GuardContext`, `Interceptor`, `InterceptorLike`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `RequestObserverLike`, `RequestObservationContext`, `ArgumentResolverContext`, `Binder`, `Converter`, `ConverterLike`, `ConverterTarget`, `ValidationIssue`, `Validator`
 - **Adapter API**: `HttpApplicationAdapter`, `HttpAdapterRealtimeCapability`, `ServerBackedHttpAdapterRealtimeCapability`, `FetchStyleHttpAdapterRealtimeCapability`, `UnsupportedHttpAdapterRealtimeCapability`, `createNoopHttpApplicationAdapter`, `createServerBackedHttpAdapterRealtimeCapability`, `createUnsupportedHttpAdapterRealtimeCapability`, `createFetchStyleHttpAdapterRealtimeCapability`
-- **Exceptions and errors**: `HttpExceptionDetail`, `HttpExceptionOptions`, `ErrorResponse`, `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `HandlerNotFoundError`, `RequestAbortedError`
+- **Exceptions and errors**: `HttpExceptionDetail`, `HttpExceptionOptions`, `ErrorResponse`, `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `InvalidHttpMethodError`, `HandlerNotFoundError`, `RequestAbortedError`
 - **Helpers**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
 - **Option and store types**: `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStoreEntry`, `SecurityHeadersOptions`, `SseSendOptions`
 

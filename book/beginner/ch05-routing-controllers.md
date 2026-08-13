@@ -59,6 +59,27 @@ fluo recommends using standard HTTP methods for their intended purposes.
 
 Following these standards from day one helps other developers understand your API intuitively, and it also works well with many HTTP tools and caches.
 
+When a protocol requires a method outside those convenience decorators, use `@Query(path)` for RFC `QUERY` or `@Route(method, path)` for an extension method:
+
+```typescript
+import { Controller, Query, Route } from '@fluojs/http';
+
+@Controller('/posts')
+export class PostsController {
+  @Query('/search')
+  search() {
+    return [];
+  }
+
+  @Route('purge', '/cache')
+  purgeCache() {
+    return { purged: true };
+  }
+}
+```
+
+`@Route(...)` validates an HTTP method token and records it in uppercase, so this example owns `PURGE /posts/cache`. Do not pass `ALL`; the wildcard sentinel belongs only to `@All(...)`. Exact method routes are checked before `@All(...)`, and custom methods keep the same DTO binding, validation, versioning, and default `200` success behavior as ordinary non-`POST` routes. Adapter support is explicit, `CONNECT` is not an ordinary controller-route target, and a custom runtime method is not automatically an OpenAPI Path Item operation.
+
 ### Semantic URLs and Hierarchy
 
 Good routing is not only about technical correctness. Semantic clarity matters too. A URL like `/posts/1/comments` clearly communicates that you are accessing comments that belong to a specific post. fluo does not provide a parent/child Controller nesting API. Express the hierarchy directly in one route path, for example with `@Controller('/posts')` and `@Get('/:postId/comments')`, or give a separate comments Controller the full base path `@Controller('/posts/:postId/comments')`. Modules can group those Controllers, but they do not prepend another route path.

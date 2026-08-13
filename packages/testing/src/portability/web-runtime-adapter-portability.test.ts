@@ -1,6 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
-
-import { bootstrapBunApplication, type BunServeOptions, type BunServerLike } from '@fluojs/platform-bun';
+import { type BunServeOptions, type BunServerLike, bootstrapBunApplication } from '@fluojs/platform-bun';
 import {
   bootstrapCloudflareWorkerApplication,
   type CloudflareWorkerExecutionContext,
@@ -11,6 +9,7 @@ import {
   type DenoServeHandler,
   type DenoServeOptions,
 } from '@fluojs/platform-deno';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createWebRuntimeHttpAdapterPortabilityHarness } from './web-runtime-adapter-portability.js';
 
@@ -267,6 +266,7 @@ function registerWebRuntimePortabilitySuite(
     assertDoesNotCommitAbortedHttpErrorRepresentations(): Promise<void>;
     assertExcludesRawBodyForMultipart(): Promise<void>;
     assertSupportsHttpErrorRepresentations(): Promise<void>;
+    assertSupportsCustomHttpRouteMethods(): Promise<void>;
     assertPreservesExactRawBodyBytesForByteSensitivePayloads(): Promise<void>;
     assertPreservesQueryArraysAndDecoding(): Promise<void>;
     assertPreservesMalformedCookieValues(): Promise<void>;
@@ -275,6 +275,10 @@ function registerWebRuntimePortabilitySuite(
   },
 ): void {
   describe(`${name} web runtime adapter portability`, () => {
+    it('executes QUERY and extension methods through fetch dispatch', async () => {
+      await harness.assertSupportsCustomHttpRouteMethods();
+    });
+
     it('supports HTTP-owned JSON and HTML error representations', async () => {
       await harness.assertSupportsHttpErrorRepresentations();
     });

@@ -20,10 +20,12 @@ import {
   type MiddlewareContext,
   Options,
   Post,
+  Query,
   Redirect,
   type RequestContext,
   type RequestObservationContext,
   type RequestObserver,
+  Route,
   SseResponse,
   UseGuards,
   UseInterceptors,
@@ -1070,9 +1072,22 @@ describe('@fluojs/platform-fastify', () => {
       }
     }
 
+    @Controller('/custom-fallback')
+    class CustomFallbackController {
+      @Query('/query')
+      query(_input: undefined, context: RequestContext) {
+        return { method: context.request.method, route: 'query' };
+      }
+
+      @Route('PURGE', '/purge')
+      purge(_input: undefined, context: RequestContext) {
+        return { method: context.request.method, route: 'purge' };
+      }
+    }
+
     class AppModule {}
     defineModule(AppModule, {
-      controllers: [UsersController, VersionedController, ErrorsController, FallbackController],
+      controllers: [UsersController, VersionedController, ErrorsController, FallbackController, CustomFallbackController],
     });
 
     const adapter = createFastifyAdapter({ port: 0 }) as FastifyHttpApplicationAdapter;
@@ -1097,6 +1112,8 @@ describe('@fluojs/platform-fastify', () => {
       expect(fastifyApp.hasRoute({ method: 'GET', url: '/users/:id' })).toBe(true);
       expect(fastifyApp.hasRoute({ method: 'PATCH', url: '/fallback' })).toBe(false);
       expect(fastifyApp.hasRoute({ method: 'GET', url: '/versions' })).toBe(false);
+      expect(fastifyApp.hasRoute({ method: 'QUERY', url: '/custom-fallback/query' })).toBe(false);
+      expect(fastifyApp.hasRoute({ method: 'PURGE', url: '/custom-fallback/purge' })).toBe(false);
       expect(fastifyApp.printRoutes()).toContain('*');
 
       lifecycle.length = 0;
@@ -1150,6 +1167,15 @@ describe('@fluojs/platform-fastify', () => {
       });
       expect(allResponse.statusCode).toBe(200);
       expect(JSON.parse(allResponse.body)).toEqual({ method: 'PATCH', route: 'all' });
+
+      const [queryResponse, purgeResponse] = await Promise.all([
+        requestHttp({ method: 'QUERY', path: '/custom-fallback/query', port }),
+        requestHttp({ method: 'PURGE', path: '/custom-fallback/purge', port }),
+      ]);
+      expect(queryResponse.statusCode).toBe(200);
+      expect(purgeResponse.statusCode).toBe(200);
+      expect(JSON.parse(queryResponse.body)).toEqual({ method: 'QUERY', route: 'query' });
+      expect(JSON.parse(purgeResponse.body)).toEqual({ method: 'PURGE', route: 'purge' });
 
       lifecycle.length = 0;
       const errorResponse = await requestHttp({

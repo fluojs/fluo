@@ -59,6 +59,27 @@ fluo에서는 표준 HTTP 메서드를 의도된 목적에 맞게 사용할 것�
 
 첫날부터 이러한 표준을 따르면 다른 개발자가 API를 직관적으로 이해할 수 있으며, 다양한 HTTP 도구 및 캐시와도 잘 호환됩니다.
 
+Protocol이 convenience decorator 범위 밖의 method를 요구한다면 RFC `QUERY`에는 `@Query(path)`를, extension method에는 `@Route(method, path)`를 사용합니다.
+
+```typescript
+import { Controller, Query, Route } from '@fluojs/http';
+
+@Controller('/posts')
+export class PostsController {
+  @Query('/search')
+  search() {
+    return [];
+  }
+
+  @Route('purge', '/cache')
+  purgeCache() {
+    return { purged: true };
+  }
+}
+```
+
+`@Route(...)`는 HTTP method token을 검증하고 uppercase로 기록하므로 이 예제는 `PURGE /posts/cache`를 소유합니다. `ALL`은 전달하지 마세요. Wildcard sentinel은 `@All(...)`만 소유합니다. Exact method route는 `@All(...)`보다 먼저 확인되며 custom method도 일반 non-`POST` route와 같은 DTO binding, validation, versioning, 기본 `200` success behavior를 유지합니다. Adapter support는 명시적이며 `CONNECT`는 일반 controller-route target이 아니고, custom runtime method가 자동으로 OpenAPI Path Item operation이 되는 것도 아닙니다.
+
 ### Semantic URLs and Hierarchy
 
 좋은 라우팅은 단순히 기술적인 정확성만을 의미하지 않습니다. 시맨틱(semantic)한 명확성도 중요합니다. `/posts/1/comments`와 같은 URL은 특정 게시글에 속한 댓글에 접근하고 있음을 명확하게 전달합니다. fluo는 부모/자식 Controller를 중첩하는 API를 제공하지 않습니다. 대신 `@Controller('/posts')`와 `@Get('/:postId/comments')`를 조합하거나, 별도 comments Controller에 전체 base path인 `@Controller('/posts/:postId/comments')`를 선언해 계층을 route path에 직접 표현하세요. Module은 이런 Controller를 그룹화할 수 있지만 route path를 추가로 prepend하지는 않습니다.

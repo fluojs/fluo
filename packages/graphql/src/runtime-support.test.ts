@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-const nodeEngineFloorPattern = /"engines"\s*:\s*\{\s*"node"\s*:\s*">=(\d+)\.(\d+)\.(\d+)"/u;
+const nodeEngineFloorPattern = /"engines"\s*:\s*\{\s*"node"\s*:\s*">=(\d+)\.(\d+)\.(\d+)(?=\s|")/u;
+const nodeListenerEngine = '>=20.19.3 <21 || >=22.2.0 <27';
 const mandatoryFluoDependencyManifests = [
   '../../core/package.json',
   '../../config/package.json',
@@ -46,10 +47,10 @@ describe('@fluojs/graphql runtime support metadata', () => {
     expect(manifest).toContain('"ws": "^8.21.0"');
   });
 
-  it('declares the Node.js floor required by the published package contract', () => {
+  it('declares the Node.js range required by the published package contract', () => {
     const manifest = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
 
-    expect(extractNodeEngineFloor(manifest)).toEqual([20, 16, 0]);
+    expect(JSON.parse(manifest)).toMatchObject({ engines: { node: nodeListenerEngine } });
   });
 
   it('covers the highest Node.js floor in the mandatory fluo dependency graph', () => {
