@@ -1192,13 +1192,13 @@ function buildOperationEntry(
   usedOperationIds: Set<string>,
 ): BuiltOperationEntry | undefined {
   const openApiPath = expressPathToOpenApi(descriptor.route.path);
-  const method = resolveDescriptorOperationMethod(descriptor.route.method, openApiPath);
   const methodMeta = getMethodApiMetadata(descriptor.controllerToken, descriptor.methodName);
 
   if (methodMeta?.excludeEndpoint === true) {
     return undefined;
   }
 
+  const method = resolveDescriptorOperationMethod(descriptor.route.method, openApiPath);
   const responses = createOperationResponses(
     descriptor,
     methodMeta,
