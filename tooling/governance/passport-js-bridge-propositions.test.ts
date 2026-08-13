@@ -46,6 +46,36 @@ describe('Passport.js bridge unsupported propositions', () => {
   });
 
   it.each([
+    [
+      'host-middleware-ownership',
+      'The bridge does not install middleware and owns host middleware.',
+    ],
+    [
+      'host-middleware-ownership-ko',
+      '브리지는 Passport 미들웨어를 설치하지 않고 호스트 미들웨어를 소유합니다.',
+    ],
+  ] as const)('inherits the bridge actor across the compound %s proposition', (claimName, claim) => {
+    // Given / When
+    const detectedClaims = collectUnsupportedPassportBridgeClaims(claim);
+
+    // Then
+    expect(detectedClaims).toContain(claimName);
+  });
+
+  it.each([
+    'The bridge supports applications that install Passport middleware.',
+    'The bridge provides a way for hosts to manage sessions.',
+    '브리지는 Passport 미들웨어를 설치하는 애플리케이션을 지원합니다.',
+    '브리지는 호스트가 세션을 관리할 수 있는 방법을 제공합니다.',
+  ] as const)('accepts external-actor ownership guidance: %s', (guidance) => {
+    // Given / When
+    const detectedClaims = collectUnsupportedPassportBridgeClaims(guidance);
+
+    // Then
+    expect(detectedClaims).toEqual([]);
+  });
+
+  it.each([
     'The bridge never installs Passport middleware, even when configured.',
     'Sessions and serializers remain application-owned; the bridge cannot configure them.',
     'The bridge does not provide automatic strategy discovery.',

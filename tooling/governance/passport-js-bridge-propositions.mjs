@@ -38,21 +38,33 @@ const governedCapabilities = [
   },
   {
     id: 'host-middleware-ownership',
-    positive: /(?:control|manage|own|provide|support)\w*[^\n;]*host\s+middleware|host\s+middleware[^\n;]*(?:controlled|managed|owned|provided|supported)|host\s+middleware[^\n;]*(?:관리|소유|지원|제공|통제)|(?:관리|소유|지원|제공|통제)[^\n;]*host\s+middleware/iu,
+    positive: /(?:control|manage|own|provide|support)\w*[^\n;]*(?:host\s+middleware|호스트\s+미들웨어)|(?:host\s+middleware|호스트\s+미들웨어)[^\n;]*(?:controlled|managed|owned|provided|supported)|(?:host\s+middleware|호스트\s+미들웨어)[^\n;]*(?:관리|소유|지원|제공|통제)|(?:관리|소유|지원|제공|통제)[^\n;]*(?:host\s+middleware|호스트\s+미들웨어)/iu,
     target: /host\s+middleware|호스트\s+미들웨어/iu,
   },
 ];
 
 const bridgeActorPattern = /\bbridge\b|브리지/u;
-const externalActorPattern = /\b(?:applications?|hosts?)\b|애플리케이션|호스트/iu;
+const bridgeSubjectPattern = /^(?:the\s+)?bridge\b|^(?:이\s+)?(?:bridge|브리지)(?:는|은|이|가)?/iu;
+const externalSubjectPattern = /^(?:the\s+)?(?:applications?|hosts?)\b|^(?:애플리케이션|호스트)(?:는|은|이|가)/iu;
+const delegatedExternalActorPattern = /\b(?:applications?|hosts?)\b\s+(?:(?:that|which)\s+|to\s+)?(?:configure|enable|install|manage|mount|own|register)\w*|(?:애플리케이션|호스트)(?:는|은|이|가|에서)[^\n;]*(?:구성|관리|마운트|설치|소유|등록|활성화)|(?:구성|관리|마운트|설치|소유|등록|활성화)(?:하|해|할|한|하는|할\s+수\s+있는)[^\n;]*(?:애플리케이션|호스트)(?:을|를|에게|는|은|이|가)/iu;
 const negationPattern = /\b(?:cannot|can't|disabled|does?\s+not|never|no|not|outside\s+the\s+bridge|unsupported|without|won't)\b|(?:application-owned|꺼져|남(?:기|긴|고|는다|습니다)|못|비활성화|아니|않|없|외부|지원하지|제공하지|설치하지|관리하지|등록하지|소유하지)/iu;
 const hangulPattern = /[가-힣]/u;
 
 function splitPropositions(sentence) {
   return sentence
-    .split(/\s*(?:\||;|,?\s+(?:but|however|nevertheless|while|whereas|yet)\s+|(?:그렇지만|그러나|다만|반면|하지만)|지만)\s*/iu)
+    .split(/\s*(?:\||;|,?\s+(?:and|but|however|nevertheless|while|whereas|yet)\s+|\s+(?:그리고|그렇지만|그러나|다만|반면|하지만|않고|않으며)\s+|지만)\s*/iu)
     .map((clause) => clause.trim())
     .filter(Boolean);
+}
+
+function propositionActor(clause, inheritedActor) {
+  if (externalSubjectPattern.test(clause)) {
+    return 'external';
+  }
+  if (bridgeSubjectPattern.test(clause) || bridgeActorPattern.test(clause)) {
+    return 'bridge';
+  }
+  return inheritedActor;
 }
 
 function hasUnsupportedProposition(sentence, capability) {
@@ -60,14 +72,22 @@ function hasUnsupportedProposition(sentence, capability) {
     return false;
   }
 
+  let actor;
   return splitPropositions(sentence).some((clause, index) => {
+    actor = propositionActor(clause, actor);
     if (negationPattern.test(clause)) {
       return false;
     }
-    if (bridgeActorPattern.test(clause)) {
-      return capability.positive.test(clause);
+    if (delegatedExternalActorPattern.test(clause)) {
+      return false;
     }
-    return index > 0 && !externalActorPattern.test(clause) && capability.abbreviated?.test(clause);
+    if (actor === 'external') {
+      return false;
+    }
+    if (actor === 'bridge') {
+      return capability.positive.test(clause) || capability.abbreviated?.test(clause) === true;
+    }
+    return index > 0 && capability.abbreviated?.test(clause) === true;
   });
 }
 
