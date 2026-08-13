@@ -41,15 +41,63 @@ Fluo에서 가드는 특정 계층 구조에 따라 실행됩니다:
 여러 수준에 가드가 있는 경우 위에서 아래로(전역 -> 컨트롤러 -> 메서드) 실행됩니다. 이러한 계층적 실행을 통해 애플리케이션 수준에서 광범위한 보안 기본값을 설정하는 동시에 특정 엔드포인트에 대한 특수 규칙을 제공할 수 있습니다. 또한 전역 가드가 접근을 거부하면 더 구체적이고(잠재적으로 리소스 집약적인) 컨트롤러나 메서드 가드가 아예 실행되지 않도록 하여 애플리케이션의 성능을 더욱 최적화합니다.
 
 ## 15.2 Introduction to @fluojs/passport
-`fluo`는 인증 전략을 처음부터 다시 만들지 않습니다. 대신 전 세계적으로 유명한 **Passport.js** 생태계를 "표준 우선(Standard-First)" 방식으로 감싼 `@fluojs/passport` 패키지를 제공합니다. 이를 통해 Fluo의 깔끔한 데코레이터 기반 개발자 경험을 유지하면서 수백 개의 검증된 전략(JWT, OAuth2, SAML 등)을 사용할 수 있습니다.
+`fluo`는 모든 인증 전략을 처음부터 다시 만들지 않습니다. `@fluojs/passport`는 native `AuthStrategy`/`AuthGuard` core와 개별 **Passport.js** strategy를 adapt하는 명시적 bridge를 제공합니다. 이 bridge로 구성된 JWT, OAuth2, SAML strategy를 재사용할 수 있지만 해당 strategy 주변의 더 넓은 Passport 또는 NestJS Passport runtime까지 설치하지는 않습니다.
 
 ### 15.2.1 Why Passport?
 Passport가 Node.js용 인증 미들웨어로 널리 쓰이는 이유는 모듈화에 있습니다. 인증 메커니즘(Strategy)을 애플리케이션 라우트와 분리함으로써, Passport는 코드 변경을 최소화하면서 인증 방법을 교체하거나 새로 추가할 수 있게 해줍니다. 나중에 "Google로 로그인"을 추가하기로 결정했다면 새로운 Passport 전략을 추가하고, 기존 가드는 대부분 그대로 유지할 수 있습니다.
 
-이러한 모듈성은 Fluo의 아키텍처와 잘 맞습니다. "어떻게 인증하는가"와 "무엇을 보호하는가"를 분리하기 때문입니다. Passport 커뮤니티는 이미 수천 개의 아이덴티티 공급자의 세부 사항을 다뤄 왔으므로, 새 인증 방식을 붙일 때마다 암호화나 프로토콜 수준의 세부 사항을 직접 다시 설계할 필요가 없습니다. Fluo는 이 산업 표준을 받아들이되, 애플리케이션 코드는 명시적인 provider와 guard 경계 안에 두도록 정리합니다.
+이러한 모듈성은 Fluo의 아키텍처와 잘 맞습니다. "어떻게 인증하는가"와 "무엇을 보호하는가"를 분리하기 때문입니다. Passport 커뮤니티는 이미 여러 identity provider의 세부 사항을 다뤄 왔으므로, 새 인증 방식을 붙일 때마다 프로토콜 수준의 세부 사항을 직접 다시 설계할 필요가 없습니다. Fluo는 선택한 strategy만 명시적 provider, named registration, principal mapping, guard 경계를 통해 재사용합니다.
 
 ### 15.2.2 The Principal Object
 Passport 용어에서 사용자가 인증되면 요청에 첨부된 "user" 객체로 표현됩니다. Fluo에서는 이를 **Principal**이라고 부릅니다. JWT Principal은 필수 `subject` 식별자, 검증된 `claims` bag, 선택적인 `roles`와 `scopes`를 포함하는 정규화된 객체입니다. 모든 전략에서 Principal을 표준화하면 비즈니스 로직이 특정 인증 방법과 분리됩니다. 예를 들어 `ProfileService`는 사용자가 JWT로 로그인했는지 Facebook으로 로그인했는지 상관하지 않고 `principal.subject`에서 canonical 사용자 식별자를 읽습니다.
+
+### 15.2.3 Migrating a NestJS Passport.js Strategy
+
+NestJS Passport 사용자는 재사용할 Passport.js strategy를 각각 명시적으로 wiring해야 합니다. Bridge를 만들고 provider bundle을 등록하고 `PassportModule.forRoot(...)`로 named strategy를 등록한 뒤 Passport user를 fluo principal contract로 map합니다.
+
+```typescript
+import { Module } from '@fluojs/core';
+import type { Principal } from '@fluojs/http';
+import {
+  createPassportJsStrategyBridge,
+  PassportModule,
+} from '@fluojs/passport';
+
+import { GoogleStrategy } from './google.strategy.js';
+
+function mapGoogleUser(user: unknown): Principal {
+  if (
+    typeof user !== 'object'
+    || user === null
+    || !('id' in user)
+    || typeof user.id !== 'string'
+    || user.id.length === 0
+  ) {
+    throw new TypeError('Google strategy returned a user without a string id.');
+  }
+
+  return { claims: { ...user }, subject: user.id };
+}
+
+const googleBridge = createPassportJsStrategyBridge('google', GoogleStrategy, {
+  mapPrincipal: ({ user }) => mapGoogleUser(user),
+});
+
+@Module({
+  imports: [
+    PassportModule.forRoot(
+      { defaultStrategy: 'google' },
+      [googleBridge.strategy],
+    ),
+  ],
+  providers: [GoogleStrategy, ...googleBridge.providers],
+})
+export class AuthModule {}
+```
+
+순서가 중요합니다. `GoogleStrategy`를 application provider로 구성하고, `createPassportJsStrategyBridge(...)`를 호출하고, 같은 module에 `googleBridge.providers`를 spread하고, `googleBridge.strategy`를 named registration으로 전달한 다음 `@UseAuth('google')`를 사용합니다. `mapPrincipal(...)`은 strategy의 `user`를 검증하고 문서화된 유일한 request augmentation인 `Principal`을 반환하며, `AuthGuard`가 이를 `requestContext.principal`에 기록합니다.
+
+이 bridge는 full NestJS Passport compatibility가 아닙니다. Passport middleware, sessions, serializers, deserializers, automatic strategy discovery를 설치하지 않으며 implicit guards 또는 host middleware ownership도 제공하지 않습니다. Session과 serializer/deserializer migration은 application-owned 상태로 남습니다. Bridge shim을 추가하지 말고 bootstrap 및 request-host boundary에서 해당 책임을 구성하세요.
 
 ## 15.3 Implementing the JWT AuthStrategy
 FluoBlog에서 가장 흔히 쓰이는 전략은 Bearer 토큰을 읽어 `JwtPrincipal`로 정규화하는 커스텀 `AuthStrategy`입니다. "표준 우선(Standard-First)" 철학을 따르면 JWT 구현이 RFC 7519와 같은 산업 표준과 어긋나지 않도록 설계하기 쉽습니다.

@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type {
+  CallExpression,
   ClassDeclaration,
   MethodDeclaration,
   Node,
@@ -22,6 +23,8 @@ import {
   isObjectLiteralExpression,
   isPropertyAccessExpression,
   isPropertyAssignment,
+  isSpreadElement,
+  isStringLiteral,
   ScriptKind,
   ScriptTarget,
   SyntaxKind,
@@ -98,6 +101,26 @@ function requireObjectArgument(source: SourceFile, callName: string): ObjectLite
   }
 
   return objectArgument;
+}
+
+function requireCall(source: SourceFile, callName: string): CallExpression {
+  let call: CallExpression | undefined;
+
+  function visit(node: Node): void {
+    if (getCallName(node) === callName && isCallExpression(node)) {
+      call = node;
+    }
+
+    forEachChild(node, visit);
+  }
+
+  visit(source);
+
+  if (call === undefined) {
+    throw new TypeError(`Missing call ${callName}`);
+  }
+
+  return call;
 }
 
 function getPropertyInitializer(object: ObjectLiteralExpression, name: string): Node | undefined {
@@ -188,6 +211,40 @@ describe('Passport authentication learning paths', () => {
     // Then
     expect(methodDecorators).toEqual(expect.arrayContaining(['UseAuth', 'RequireScopes']));
     expect(getDecoratorNames(controller)).not.toContain('UseAuth');
+  });
+
+  it.each(passportChapters)('%s registers the explicit Passport.js bridge bundle', (relativePath) => {
+    // Given
+    const markdown = read(relativePath);
+
+    // When
+    const source = parseFence(requireTypeScriptFence(markdown, 'createPassportJsStrategyBridge'));
+    const bridgeCall = requireCall(source, 'createPassportJsStrategyBridge');
+    const bridgeOptions = bridgeCall.arguments[2];
+    const moduleMetadata = requireObjectArgument(source, 'Module');
+    const providers = getPropertyInitializer(moduleMetadata, 'providers');
+    const passportCall = requireCall(source, 'PassportModule.forRoot');
+    const registrations = passportCall.arguments[1];
+
+    // Then
+    expect(isStringLiteral(bridgeCall.arguments[0]) && bridgeCall.arguments[0].text).toBe('google');
+    expect(
+      bridgeOptions !== undefined
+        && isObjectLiteralExpression(bridgeOptions)
+        && getPropertyInitializer(bridgeOptions, 'mapPrincipal') !== undefined,
+    ).toBe(true);
+    expect(
+      providers !== undefined
+        && isArrayLiteralExpression(providers)
+        && providers.elements.some(
+          (element) => isSpreadElement(element) && element.expression.getText() === 'googleBridge.providers',
+        ),
+    ).toBe(true);
+    expect(
+      registrations !== undefined
+        && isArrayLiteralExpression(registrations)
+        && registrations.elements.some((element) => element.getText() === 'googleBridge.strategy'),
+    ).toBe(true);
   });
 
   it.each(passportChapters)('%s omits unsupported guard identifiers', (relativePath) => {
