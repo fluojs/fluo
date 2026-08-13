@@ -50,6 +50,27 @@ describe('NestJS runtime lifecycle migration documentation', () => {
   });
 
   it.each([
+    [
+      'packages/runtime/README.md',
+      '`beforeApplicationShutdown()` is unsupported by default but remains available.',
+    ],
+    [
+      'packages/runtime/README.ko.md',
+      '`beforeApplicationShutdown()`은 기본적으로 지원되지 않지만 계속 사용할 수 있습니다.',
+    ],
+  ] as const)('rejects a negative-then-positive compatibility claim in %s', (relativePath, conflictingClaim) => {
+    // Given
+    const readWithConflictingClaim = (requestedPath: string): string =>
+      requestedPath === relativePath ? `${read(requestedPath)}\n${conflictingClaim}` : read(requestedPath);
+
+    // When
+    const runGovernanceGuard = () => enforceRuntimeLifecycleNestjsMigrationDocs(readWithConflictingClaim);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(/beforeApplicationShutdown/);
+  });
+
+  it.each([
     ['packages/runtime/README.md', 'fluo supports `beforeApplicationShutdown()` as a runtime lifecycle hook.'],
     ['docs/getting-started/migrate-from-nestjs.md', '`beforeApplicationShutdown()` is a supported hook in fluo.'],
     ['packages/runtime/README.ko.md', 'fluo는 `beforeApplicationShutdown()`을 runtime lifecycle hook으로 지원합니다.'],
@@ -157,6 +178,20 @@ describe('NestJS runtime lifecycle migration documentation', () => {
 
     // When
     const runGovernanceGuard = () => enforceRuntimeLifecycleNestjsMigrationDocs(readWithQuotedMethod);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(/beforeApplicationShutdown/);
+  });
+
+  it('rejects a computed lifecycle interface method', () => {
+    // Given
+    const readWithComputedMethod = (requestedPath: string): string =>
+      requestedPath === 'packages/runtime/src/types.ts'
+        ? `${read(requestedPath)}\nexport interface BeforeApplicationShutdown {\n  ['beforeApplicationShutdown'](): MaybePromise<void>;\n}`
+        : read(requestedPath);
+
+    // When
+    const runGovernanceGuard = () => enforceRuntimeLifecycleNestjsMigrationDocs(readWithComputedMethod);
 
     // Then
     expect(runGovernanceGuard).toThrow(/beforeApplicationShutdown/);

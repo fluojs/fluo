@@ -73,7 +73,7 @@ const documentationRequirements = [
 
 const unsupportedHookPattern = /beforeApplicationShutdown(?:\s*\([^)]*\))?/iu;
 const positiveSupportPattern =
-  /\b(?:supports?|supported|available|exposed|invoked)\b|(?:지원(?:됩니다|합니다|한다|하는|하지만|함|됨)|제공(?:됩니다|합니다|한다|하는|하지만|함|됨)|호출(?:됩니다|합니다|한다|하는|하지만|함|됨))/iu;
+  /\b(?:supports?|supported|available|exposed|invoked)\b|(?:지원(?:됩니다|합니다|한다|하는|하지만|함|됨)|제공(?:됩니다|합니다|한다|하는|하지만|함|됨)|호출(?:됩니다|합니다|한다|하는|하지만|함|됨)|사용할\s+수\s+있|(?:사용|이용)\s*가능)/iu;
 const positiveProvisionPattern = /\b(?:provides?|provided)\b/iu;
 const compatibilityPattern = /\b(?:shim|fallback|alias)\b/iu;
 const compatibilityActionPattern = /\b(?:use|enable|install|provide)\w*\b|(?:사용|활성화|설치|제공)/iu;
@@ -89,18 +89,21 @@ function contradictionMessage(content) {
     if (!unsupportedHookPattern.test(clause)) {
       continue;
     }
-    const hasCompatibilityTerms = compatibilityPattern.test(clause);
-    const hasPositiveSupport =
-      positiveSupportPattern.test(clause) || (!hasCompatibilityTerms && positiveProvisionPattern.test(clause));
-    if (hasPositiveSupport && !negatedSupportPropositionPattern.test(clause)) {
-      return 'must not claim that beforeApplicationShutdown is supported';
-    }
-    if (
-      hasCompatibilityTerms &&
-      compatibilityActionPattern.test(clause) &&
-      !negatedCompatibilityPropositionPattern.test(clause)
-    ) {
-      return 'must not imply a beforeApplicationShutdown compatibility shim';
+    for (const proposition of clause.split(/(?:,\s*|\s+)(?:but|however|yet)\s+|(?<=지만)\s*/iu)) {
+      const hasCompatibilityTerms = compatibilityPattern.test(proposition);
+      const hasPositiveSupport =
+        positiveSupportPattern.test(proposition) ||
+        (!hasCompatibilityTerms && positiveProvisionPattern.test(proposition));
+      if (hasPositiveSupport && !negatedSupportPropositionPattern.test(proposition)) {
+        return 'must not claim that beforeApplicationShutdown is supported';
+      }
+      if (
+        hasCompatibilityTerms &&
+        compatibilityActionPattern.test(proposition) &&
+        !negatedCompatibilityPropositionPattern.test(proposition)
+      ) {
+        return 'must not imply a beforeApplicationShutdown compatibility shim';
+      }
     }
   }
 
@@ -130,7 +133,8 @@ function assertExactNames({ relativePath, kind, actualNames, allowedNames }) {
 }
 
 function staticName(node) {
-  return node && (ts.isIdentifier(node) || ts.isStringLiteralLike(node)) ? node.text : undefined;
+  const nameNode = node && ts.isComputedPropertyName(node) ? node.expression : node;
+  return nameNode && (ts.isIdentifier(nameNode) || ts.isStringLiteralLike(nameNode)) ? nameNode.text : undefined;
 }
 
 function unwrapExpression(node) {
