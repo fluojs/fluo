@@ -1,9 +1,11 @@
-import {
-  type Constructor,
-  type MetadataPropertyKey,
-  type MetadataSource,
+import type {
+  Constructor,
+  MetadataPropertyKey,
+  MetadataSource,
 } from '@fluojs/core';
 import {
+  type ControllerMetadata,
+  type DtoFieldBindingMetadata,
   defineControllerMetadata,
   defineDtoFieldBindingMetadata,
   defineRouteMetadata,
@@ -11,12 +13,10 @@ import {
   getControllerMetadata,
   getDtoFieldBindingMetadata,
   getRouteMetadata,
-  getStandardMetadataBag as readStandardMetadataBag,
-  type ControllerMetadata,
-  type DtoFieldBindingMetadata,
   type RouteMetadata,
+  getStandardMetadataBag as readStandardMetadataBag,
 } from '@fluojs/core/internal';
-
+import { InvalidHttpMethodError } from './errors.js';
 import { validateRoutePath } from './route-path.js';
 import type { ConverterLike, GuardLike, HttpMethod, InterceptorLike } from './types.js';
 
@@ -38,6 +38,7 @@ const standardDtoBindingMetadataKey = Symbol.for('fluo.standard.dto-binding');
 
 const legacyRouteMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, StandardRouteMetadataRecord>>();
 const legacyDtoBindingMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, Partial<DtoFieldBindingMetadata>>>();
+const httpMethodTokenPattern = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 
 ensureMetadataSymbol();
 
@@ -65,6 +66,19 @@ function normalizeProducesMediaTypes(mediaTypes: readonly string[]): string[] {
     }
 
     normalized.push(value);
+  }
+
+  return normalized;
+}
+
+function normalizeHttpRouteMethod(method: string): HttpMethod {
+  if (!httpMethodTokenPattern.test(method)) {
+    throw new InvalidHttpMethodError(`HTTP route method "${method}" must be a non-empty HTTP token.`);
+  }
+
+  const normalized = method.toUpperCase();
+  if (normalized === 'ALL') {
+    throw new InvalidHttpMethodError('HTTP route method "ALL" is reserved for the @All() wildcard decorator.');
   }
 
   return normalized;
@@ -431,6 +445,29 @@ export const Get = createRouteDecorator('GET');
  * Handlers may return `SseResponse` for manual control or `AsyncIterable<SseMessage<T> | T>` for managed dispatcher streaming.
  */
 export const Sse = createRouteDecorator('GET', ['text/event-stream']);
+/**
+ * Registers a route handler for one validated HTTP method token.
+ *
+ * @param method HTTP method token, canonicalized to uppercase before metadata registration.
+ * @param path Route path relative to the controller base path.
+ * @returns A method decorator that registers the method-specific handler mapping.
+ *
+ * @throws {InvalidHttpMethodError} When `method` is empty, contains non-token characters, or is the reserved `ALL` sentinel.
+ *
+ * @remarks
+ * Adapter wire support remains runtime-specific. `CONNECT` is outside ordinary routing conformance,
+ * and custom methods are not implied to be OpenAPI Path Item operations.
+ */
+export function Route(method: string, path: string): MethodDecoratorLike {
+  return createRouteDecorator(normalizeHttpRouteMethod(method))(path);
+}
+/**
+ * Registers an RFC `QUERY` route handler.
+ *
+ * @param path Route path relative to the controller base path.
+ * @returns A method decorator that registers a `QUERY` handler mapping.
+ */
+export const Query = (path: string): MethodDecoratorLike => Route('QUERY', path);
 /**
  * Registers a `POST` route handler.
  *

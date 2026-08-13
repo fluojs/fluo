@@ -1,5 +1,3 @@
-import { describe, expect, it, vi } from 'vitest';
-
 import {
   getClassValidationRules,
   getControllerMetadata,
@@ -7,29 +5,30 @@ import {
   getDtoValidationSchema,
   getRouteMetadata,
 } from '@fluojs/core/internal';
-
+import { IntersectionType, IsString, MinLength, OmitType, PartialType, PickType, ValidateClass } from '@fluojs/validation';
+import { describe, expect, it, vi } from 'vitest';
 import {
-  Convert,
   Controller,
+  Convert,
   FromBody,
   FromPath,
   FromQuery,
   Get,
+  getRouteProducesMetadata,
   Header,
+  HttpCode,
   Optional,
   Produces,
-  RequestDto,
-  Sse,
-  HttpCode,
+  Query,
   Redirect,
+  RequestDto,
+  Route,
+  Sse,
   UseGuards,
   UseInterceptors,
   Version,
-  getRouteProducesMetadata,
 } from './decorators.js';
-import { InvalidRoutePathError } from './errors.js';
-import { IntersectionType, OmitType, PartialType, PickType } from '@fluojs/validation';
-import { IsString, MinLength, ValidateClass } from '@fluojs/validation';
+import { InvalidHttpMethodError, InvalidRoutePathError } from './errors.js';
 
 class NoopTestConverter {
   convert(value: unknown) {
@@ -310,6 +309,45 @@ describe('http decorators', () => {
       path: '/events',
     });
     expect(getRouteProducesMetadata(LegacySseController, 'streamEvents')).toEqual(['text/event-stream']);
+  });
+
+  it('canonicalizes generic route methods and builds Query on the same metadata primitive', () => {
+    @Controller('/search')
+    class SearchController {
+      @Route('purge', '/cache')
+      purgeCache() {
+        return { ok: true };
+      }
+
+      @Query('/')
+      search() {
+        return { ok: true };
+      }
+    }
+
+    expect(getRouteMetadata(SearchController.prototype, 'purgeCache')).toEqual({
+      method: 'PURGE',
+      path: '/cache',
+    });
+    expect(getRouteMetadata(SearchController.prototype, 'search')).toEqual({
+      method: 'QUERY',
+      path: '/',
+    });
+  });
+
+  it.each([
+    '',
+    ' ',
+    'QUERY METHOD',
+    'QUERY/METHOD',
+    'QUERY,METHOD',
+    'QUERY\tMETHOD',
+    'QUERY\u0000',
+    'méthode',
+    'ALL',
+    'all',
+  ])('rejects invalid or reserved generic route method %j deterministically', (method) => {
+    expect(() => Route(method, '/search')).toThrow(InvalidHttpMethodError);
   });
 
   it('rejects unsupported controller and route path syntax at decoration time', () => {

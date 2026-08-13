@@ -18,6 +18,13 @@ export class InvalidRoutePathError extends FluoError {
   }
 }
 
+/** Error thrown when a generic route method is not a valid HTTP token or uses the reserved `ALL` sentinel. */
+export class InvalidHttpMethodError extends FluoError {
+  constructor(message: string) {
+    super(message, { code: 'INVALID_HTTP_METHOD' });
+  }
+}
+
 /**
  * Error thrown when no handler matches the incoming request path or method.
  */
