@@ -21,6 +21,8 @@ The assembly layer that compiles a module graph and wires DI and HTTP into a run
 npm install @fluojs/runtime
 ```
 
+The published package declares `engines.node >=20.19.3`. This floor keeps the `@fluojs/runtime/node` raw HTTP listener truthful for RFC `QUERY`; the Web-standard helpers remain available through `@fluojs/runtime/web` for supported fetch-style hosts.
+
 ## When to Use
 
 Use this package when you need to:

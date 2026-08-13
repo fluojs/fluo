@@ -21,6 +21,8 @@
 npm install @fluojs/runtime
 ```
 
+배포된 package는 `engines.node >=20.19.3`을 선언합니다. 이 하한은 RFC `QUERY`에 대한 `@fluojs/runtime/node` raw HTTP listener 계약을 정확하게 유지하며, Web 표준 helper는 지원되는 fetch-style host에서 `@fluojs/runtime/web`을 통해 계속 사용할 수 있습니다.
+
 ## 사용 시점
 
 다음과 같은 경우에 이 패키지를 사용합니다:
