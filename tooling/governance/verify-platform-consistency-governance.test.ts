@@ -1775,6 +1775,7 @@ describe('package surface CQRS responsibility discoverability', () => {
       expect(markdown).toContain('CqrsModule.forRoot(...)');
       expect(markdown).toContain('SagaTopologyError');
       expect(markdown).toContain('provider token');
+      expect(markdown.toLowerCase()).toContain('continuation');
       expect(markdown.toLowerCase()).toContain('nested');
     }
 
