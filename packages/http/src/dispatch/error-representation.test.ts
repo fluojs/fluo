@@ -117,6 +117,7 @@ describe('HTTP-owned error representations', () => {
       await dispatcher.dispatch(createRequest(path, undefined, 'HEAD'), response);
 
       expect(response.statusCode).toBe(404);
+      expect(response.headers['Content-Type']).toBe('application/json; charset=utf-8');
       expect(response.body).toBeUndefined();
       expect(response.committed).toBe(true);
       expect(render).not.toHaveBeenCalled();
