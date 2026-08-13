@@ -147,6 +147,15 @@ function writePattern(pattern, source, scopes, declaration) {
     }
     return;
   }
+  if (ts.isObjectLiteralExpression(pattern)) {
+    for (const property of pattern.properties) {
+      if (ts.isPropertyAssignment(property)) {
+        writePattern(property.initializer, memberState(source, staticName(property.name)), scopes, declaration);
+      } else if (ts.isShorthandPropertyAssignment(property)) {
+        write(scopes, property.name.text, memberState(source, property.name.text), declaration);
+      }
+    }
+  }
 }
 
 function invokedCapability(call, scopes) {
@@ -209,6 +218,11 @@ export function collectLifecycleCallsWithProvenance(node, initialProvenance = {}
       if (current.initializer) visit(current.initializer, scopes);
       const state = current.initializer ? expressionState(current.initializer, scopes) : stateFromType(current.type);
       writePattern(current.name, state, scopes, true);
+      return;
+    }
+    if (ts.isBinaryExpression(current) && current.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      visit(current.right, scopes);
+      writePattern(current.left, expressionState(current.right, scopes), scopes, false);
       return;
     }
     if (ts.isCallExpression(current)) {

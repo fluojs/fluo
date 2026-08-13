@@ -73,6 +73,16 @@ describe('Deno host-owned lifecycle source contract', () => {
       'server shutdown',
     ],
     [
+      'server shutdown through assignment transfer',
+      'function stopController(controller: DenoServeController) {\n    let stopServer = () => undefined;\n    stopServer = controller.shutdown;\n    stopServer();\n  }',
+      'server shutdown',
+    ],
+    [
+      'server shutdown through destructuring assignment transfer',
+      'function stopController(controller: DenoServeController) {\n    let stopServer = () => undefined;\n    ({ shutdown: stopServer } = controller);\n    stopServer();\n  }',
+      'server shutdown',
+    ],
+    [
       'application close through identifier alias',
       'function closeManagedApplication(application: Application) {\n    const closeApplication = application.close;\n    closeApplication();\n  }',
       'server shutdown',
@@ -110,6 +120,14 @@ describe('Deno host-owned lifecycle source contract', () => {
       'signal-like destructuring from an unrelated object',
       "function registerSignal(signalRegistry: { addSignalListener: (signal: string, handler: () => void) => void }) {\n    const { addSignalListener } = signalRegistry;\n    addSignalListener('SIGTERM', () => {});\n  }",
     ],
+    [
+      'a stale shutdown alias after direct reassignment',
+      'function invokeCallback(server: DenoServeController) {\n    let stop = server.shutdown;\n    stop = () => undefined;\n    stop();\n  }',
+    ],
+    [
+      'a stale shutdown alias after destructuring reassignment',
+      'function invokeCallback(server: DenoServeController) {\n    let { shutdown: stop } = server;\n    ({ shutdown: stop } = { shutdown: () => undefined });\n    stop();\n  }',
+    ],
   ] as const)('accepts %s in the host-owned handler', (_caseName, sourceSnippet) => {
     // Given
     const readWithUnrelatedCall = overrideFile('packages/platform-deno/src/fetch-handler.ts', (content) =>
@@ -123,6 +141,21 @@ describe('Deno host-owned lifecycle source contract', () => {
 
     // Then
     expect(runGovernanceGuard).not.toThrow();
+  });
+
+  it('rejects a retained shutdown alias from a proven server controller', () => {
+    // Given
+    const readWithRetainedAlias = overrideFile('packages/platform-deno/src/fetch-handler.ts', (content) =>
+      content.replace(
+        "  validateNonNegativeIntegerOption('maxBodySize', maxBodySize);",
+        '  function stopController(server: DenoServeController) {\n    let stop = server.shutdown;\n    const retainedStop = stop;\n    stop = () => undefined;\n    retainedStop();\n  }\n  validateNonNegativeIntegerOption(\'maxBodySize\', maxBodySize);',
+      ));
+
+    // When
+    const runGovernanceGuard = () => enforceDenoHostOwnedLifecycleSource(readWithRetainedAlias);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(/must not invoke server shutdown/);
   });
 
   it('rejects shutdown signal registration from managed app.listen', () => {
