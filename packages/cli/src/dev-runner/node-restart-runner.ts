@@ -594,7 +594,10 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
         return;
       }
 
-      stopChild(stoppingChild, childShutdownTimeoutMs);
+      stoppingChild.once('close', () => resolveOnce(1));
+      if (!restarting) {
+        stopChild(stoppingChild, childShutdownTimeoutMs);
+      }
     };
 
     const registerWatcher = (target: string, watcher: FSWatcher) => {

@@ -33,11 +33,14 @@ function createMockChild(signals: Array<NodeJS.Signals | undefined>): ChildProce
   child.kill = (signal?: NodeJS.Signals) => {
     signals.push(signal);
     Object.defineProperty(child, 'killed', { configurable: true, value: true, writable: true });
-    Object.defineProperty(child, 'exitCode', { configurable: true, value: 0, writable: true });
-    queueMicrotask(() => child.emit('close', 0));
     return true;
   };
   return child;
+}
+
+function closeMockChild(child: ChildProcess, code: number): void {
+  Object.defineProperty(child, 'exitCode', { configurable: true, value: code, writable: true });
+  child.emit('close', code);
 }
 
 function createSignalTarget(): {
@@ -98,7 +101,7 @@ afterEach(() => {
 });
 
 describe('Node restart runner watcher failures', () => {
-  it('routes a primary watcher error through terminal runner cleanup', async () => {
+  it('routes a primary watcher error through terminal cleanup during an active restart', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-watcher-'));
     createdDirectories.push(workspaceDirectory);
     const sourceDirectory = join(workspaceDirectory, 'src');
@@ -135,19 +138,28 @@ describe('Node restart runner watcher failures', () => {
 
     writeFileSync(sourceFile, 'console.log("two");\n');
     listeners.get(sourceDirectory)?.('change', 'main.ts');
+    scheduler.flush();
+    listeners.get(sourceDirectory)?.('change', 'main.ts');
+    expect(children).toHaveLength(1);
+    expect(signals).toEqual(['SIGTERM']);
     watchers.get(sourceDirectory)?.emit('error', new Error('primary watcher failed'));
+    const activeChild = children[0];
+    if (!activeChild) {
+      throw new Error('Expected the active app child');
+    }
+    closeMockChild(activeChild, 0);
 
     await expect(runPromise).resolves.toBe(1);
     scheduler.flush();
     expect(children).toHaveLength(1);
-    expect(scheduler.clearCalls).toEqual([0]);
+    expect(scheduler.clearCalls).toEqual([1]);
     expect([...watchers.values()].every((watcher) => watcher.closed)).toBe(true);
     expect(signalTarget.offCalls).toEqual(['SIGINT', 'SIGTERM']);
     expect(signals).toEqual(['SIGTERM']);
     expect(stderr.join('')).toContain(`[fluo] watcher failed for ${sourceDirectory}: primary watcher failed`);
   });
 
-  it('routes a fallback watcher error through the same terminal cleanup', async () => {
+  it('routes a fallback watcher error through terminal cleanup during an active restart', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-watcher-'));
     createdDirectories.push(workspaceDirectory);
     const sourceDirectory = join(workspaceDirectory, 'src');
@@ -155,15 +167,24 @@ describe('Node restart runner watcher failures', () => {
     mkdirSync(nestedDirectory, { recursive: true });
     writeFileSync(join(nestedDirectory, 'feature.ts'), 'export const feature = true;\n');
     const fallbackWatchers = new Map<string, TestWatcher>();
+    const listeners = new Map<string, (event: string, filename: string | Buffer | null) => void>();
     const signals: Array<NodeJS.Signals | undefined> = [];
     const signalTarget = createSignalTarget();
+    const scheduler = createManualRestartScheduler();
     const stderr: string[] = [];
+    const children: ChildProcess[] = [];
 
     const runPromise = runNodeRestartRunner({
+      debounceMs: 1,
       env: {},
       projectDirectory: workspaceDirectory,
+      restartScheduler: scheduler,
       signalTarget: signalTarget.target,
-      spawnChild: () => createMockChild(signals),
+      spawnChild: () => {
+        const child = createMockChild(signals);
+        children.push(child);
+        return child;
+      },
       stderr: { write: (message) => stderr.push(message) },
       watchTarget: (target, optionsOrListener) => {
         if (typeof optionsOrListener !== 'function') {
@@ -171,13 +192,28 @@ describe('Node restart runner watcher failures', () => {
         }
         const watcher = new TestWatcher();
         fallbackWatchers.set(target, watcher);
+        listeners.set(target, optionsOrListener);
         return watcher;
       },
     });
 
+    writeFileSync(join(nestedDirectory, 'feature.ts'), 'export const feature = false;\n');
+    listeners.get(nestedDirectory)?.('change', 'feature.ts');
+    scheduler.flush();
+    listeners.get(nestedDirectory)?.('change', 'feature.ts');
+    expect(children).toHaveLength(1);
+    expect(signals).toEqual(['SIGTERM']);
     fallbackWatchers.get(nestedDirectory)?.emit('error', new Error('fallback watcher failed'));
+    const activeChild = children[0];
+    if (!activeChild) {
+      throw new Error('Expected the active app child');
+    }
+    closeMockChild(activeChild, 0);
 
     await expect(runPromise).resolves.toBe(1);
+    scheduler.flush();
+    expect(children).toHaveLength(1);
+    expect(scheduler.clearCalls).toEqual([1]);
     expect([...fallbackWatchers.values()].every((watcher) => watcher.closed)).toBe(true);
     expect(signalTarget.offCalls).toEqual(['SIGINT', 'SIGTERM']);
     expect(signals).toEqual(['SIGTERM']);
