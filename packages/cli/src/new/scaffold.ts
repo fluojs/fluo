@@ -40,7 +40,7 @@ const PUBLISHED_RUNTIME_DEPENDENCIES = {
   'react-dom': '^19.2.6',
 } as const;
 
-const NODE_HTTP_LISTENER_ENGINE = '>=20.19.3';
+const NODE_HTTP_LISTENER_ENGINE = '>=20.19.3 <21 || >=22.2.0 <27';
 
 const PUBLISHED_INTERNAL_DEPENDENCIES = {
   '@fluojs/config': '^1.0.0',

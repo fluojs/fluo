@@ -294,7 +294,7 @@ describe('scaffoldBootstrapApp', () => {
     const cliManifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as { version: string };
 
     expect(packageJson.devDependencies?.typescript).toBe('^6.0.2');
-    expect(packageJson.engines?.node).toBe('>=20.19.3');
+    expect(packageJson.engines?.node).toBe('>=20.19.3 <21 || >=22.2.0 <27');
     expect(packageJson.dependencies).toMatchObject({
       '@fluojs/config': '^1.0.0',
       '@fluojs/core': '^1.0.0',
@@ -521,7 +521,7 @@ describe('scaffoldBootstrapApp', () => {
       '@fluojs/platform-express': expect.any(String),
       '@fluojs/runtime': expect.any(String),
     });
-    expect(packageJson.engines?.node).toBe('>=20.19.3');
+    expect(packageJson.engines?.node).toBe('>=20.19.3 <21 || >=22.2.0 <27');
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-fastify');
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-nodejs');
     expect(readme).toContain('Node.js runtime + Express HTTP via `runExpressApplication(...)`');
@@ -620,7 +620,7 @@ describe('scaffoldBootstrapApp', () => {
       '@fluojs/platform-nodejs': expect.any(String),
       '@fluojs/runtime': expect.any(String),
     });
-    expect(packageJson.engines?.node).toBe('>=20.19.3');
+    expect(packageJson.engines?.node).toBe('>=20.19.3 <21 || >=22.2.0 <27');
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-fastify');
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-express');
     expect(readme).toContain('Node.js runtime + raw Node.js HTTP via `runNodejsApplication(...)`');
@@ -1111,7 +1111,7 @@ describe('scaffoldBootstrapApp', () => {
       '@fluojs/platform-fastify': expect.any(String),
       '@fluojs/runtime': expect.any(String),
     });
-    expect(packageJson.engines?.node).toBe('>=20.19.3');
+    expect(packageJson.engines?.node).toBe('>=20.19.3 <21 || >=22.2.0 <27');
     expect(packageJson.scripts?.build).toBe('fluo build');
     expect(packageJson.scripts?.dev).toBe('fluo dev');
     expect(packageJson.scripts?.start).toBe('fluo start');
