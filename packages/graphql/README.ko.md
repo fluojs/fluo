@@ -24,7 +24,7 @@ pnpm add @fluojs/graphql graphql graphql-yoga
 
 `@fluojs/graphql`은 선택적 GraphQL-over-WebSocket subscription을 위해 `ws@^8.21.0`을 포함합니다. 업그레이드할 때 application lockfile을 갱신해 패치된 package-owned WebSocket runtime이 설치되도록 하세요. 애플리케이션이 `ws`를 직접 import하지 않는 한 별도로 추가할 필요는 없습니다.
 
-`@fluojs/graphql`은 Node.js `>=20.19.3`을 지원하며, 이 유효 하한을 `engines.node`로 선언합니다. 필수 dependency graph는 RFC `QUERY` 계약에 Node.js `>=20.19.3`을 요구하는 Node listener-capable `@fluojs/runtime`에 도달하며, `@fluojs/config`는 독립적인 더 낮은 Node.js `>=20.16.0` 하한을 유지합니다. HTTP query/mutation과 기본 SSE subscription 경로는 내부적으로 Web-standard request/response primitive를 사용하지만, 이 구현 세부 사항이 Bun, Deno, Cloudflare Workers에 대한 package 지원을 의미하지는 않습니다. 전체 dependency metadata와 native runtime suite가 완전한 GraphQL 계약을 입증하기 전까지 해당 runtime은 지원하지 않습니다. 선택적 WebSocket subscription에는 server-backed Node HTTP/S upgrade 표면을 노출하는 adapter도 필요합니다.
+`@fluojs/graphql`은 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 지원하며, 이 정확한 범위를 `engines.node`로 선언합니다. 필수 dependency graph는 Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상을 제외하는 RFC `QUERY` 계약의 Node listener-capable `@fluojs/runtime`에 도달하며, `@fluojs/config`는 독립적인 더 낮은 Node.js `>=20.16.0` 하한을 유지합니다. HTTP query/mutation과 기본 SSE subscription 경로는 내부적으로 Web-standard request/response primitive를 사용하지만, 이 구현 세부 사항이 Bun, Deno, Cloudflare Workers에 대한 package 지원을 의미하지는 않습니다. 전체 dependency metadata와 native runtime suite가 완전한 GraphQL 계약을 입증하기 전까지 해당 runtime은 지원하지 않습니다. 선택적 WebSocket subscription에는 server-backed Node HTTP/S upgrade 표면을 노출하는 adapter도 필요합니다.
 
 ## 사용 시점
 
@@ -226,7 +226,7 @@ class RequestResolver {
 - **SSE**: Server-Sent Events를 통한 구독(기본값).
 - **WebSockets**: 활성 adapter가 upgrade listener를 지원하는 Node HTTP/S 서버를 노출할 때(예: Node HTTP adapter) 사용할 수 있는 선택적 `graphql-ws` 실시간 구독 지원.
 
-지원되는 Node.js `>=20.19.3` runtime에서 HTTP query/mutation과 기본 SSE subscription 경로는 fluo의 Web-standard HTTP 추상화를 통해 실행됩니다. 이 내부 transport seam은 Bun, Deno, Cloudflare Workers 지원 보장이 아닙니다. 선택적 WebSocket transport는 server-backed Node HTTP/S adapter 표면도 필요하므로 지원 범위가 더 좁습니다.
+지원되는 Node.js `>=20.19.3 <21 || >=22.2.0 <27` runtime 범위에서 HTTP query/mutation과 기본 SSE subscription 경로는 fluo의 Web-standard HTTP 추상화를 통해 실행됩니다. 이 내부 transport seam은 Bun, Deno, Cloudflare Workers 지원 보장이 아닙니다. 선택적 WebSocket transport는 server-backed Node HTTP/S adapter 표면도 필요하므로 지원 범위가 더 좁습니다.
 
 ```typescript
 GraphqlModule.forRoot({
