@@ -279,6 +279,7 @@ describe('scaffoldBootstrapApp', () => {
     const packageJson = JSON.parse(readFileSync(join(targetDirectory, 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>;
       devDependencies?: Record<string, string>;
+      engines?: Record<string, string>;
       scripts?: Record<string, string>;
     };
     const tsconfig = readFileSync(join(targetDirectory, 'tsconfig.json'), 'utf8');
@@ -293,6 +294,7 @@ describe('scaffoldBootstrapApp', () => {
     const cliManifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as { version: string };
 
     expect(packageJson.devDependencies?.typescript).toBe('^6.0.2');
+    expect(packageJson.engines?.node).toBe('>=20.19.3');
     expect(packageJson.dependencies).toMatchObject({
       '@fluojs/config': '^1.0.0',
       '@fluojs/core': '^1.0.0',
@@ -510,6 +512,7 @@ describe('scaffoldBootstrapApp', () => {
 
     const packageJson = JSON.parse(readFileSync(join(targetDirectory, 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>;
+      engines?: Record<string, string>;
     };
     const readme = readFileSync(join(targetDirectory, 'README.md'), 'utf8');
     const mainFile = readFileSync(join(targetDirectory, 'src', 'main.ts'), 'utf8');
@@ -518,6 +521,7 @@ describe('scaffoldBootstrapApp', () => {
       '@fluojs/platform-express': expect.any(String),
       '@fluojs/runtime': expect.any(String),
     });
+    expect(packageJson.engines?.node).toBe('>=20.19.3');
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-fastify');
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-nodejs');
     expect(readme).toContain('Node.js runtime + Express HTTP via `runExpressApplication(...)`');
@@ -550,6 +554,7 @@ describe('scaffoldBootstrapApp', () => {
     const packageJson = JSON.parse(readFileSync(join(targetDirectory, 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>;
       devDependencies?: Record<string, string>;
+      engines?: Record<string, string>;
       scripts?: Record<string, string>;
     };
     const readme = readFileSync(join(targetDirectory, 'README.md'), 'utf8');
@@ -563,6 +568,7 @@ describe('scaffoldBootstrapApp', () => {
       '@fluojs/platform-bun': expect.any(String),
       '@fluojs/runtime': expect.any(String),
     });
+    expect(packageJson.engines).toEqual({ bun: '>=1.2.5' });
     expect(packageJson.devDependencies).toMatchObject({
       '@types/bun': '^1.2.5',
     });
@@ -605,6 +611,7 @@ describe('scaffoldBootstrapApp', () => {
 
     const packageJson = JSON.parse(readFileSync(join(targetDirectory, 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>;
+      engines?: Record<string, string>;
     };
     const readme = readFileSync(join(targetDirectory, 'README.md'), 'utf8');
     const mainFile = readFileSync(join(targetDirectory, 'src', 'main.ts'), 'utf8');
@@ -613,6 +620,7 @@ describe('scaffoldBootstrapApp', () => {
       '@fluojs/platform-nodejs': expect.any(String),
       '@fluojs/runtime': expect.any(String),
     });
+    expect(packageJson.engines?.node).toBe('>=20.19.3');
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-fastify');
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-express');
     expect(readme).toContain('Node.js runtime + raw Node.js HTTP via `runNodejsApplication(...)`');
@@ -750,6 +758,7 @@ describe('scaffoldBootstrapApp', () => {
 
     const packageJson = JSON.parse(readFileSync(join(targetDirectory, 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>;
+      engines?: Record<string, string>;
       scripts?: Record<string, string>;
     };
     const readme = readFileSync(join(targetDirectory, 'README.md'), 'utf8');
@@ -763,6 +772,7 @@ describe('scaffoldBootstrapApp', () => {
       '@fluojs/microservices': expect.any(String),
       '@fluojs/runtime': expect.any(String),
     });
+    expect(packageJson.engines?.node).toBe('>=20.0.0');
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/http');
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-fastify');
     expect(packageJson.scripts?.build).toBe('fluo build');
@@ -1086,6 +1096,7 @@ describe('scaffoldBootstrapApp', () => {
 
     const packageJson = JSON.parse(readFileSync(join(targetDirectory, 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>;
+      engines?: Record<string, string>;
       scripts?: Record<string, string>;
     };
     const readme = readFileSync(join(targetDirectory, 'README.md'), 'utf8');
@@ -1100,6 +1111,7 @@ describe('scaffoldBootstrapApp', () => {
       '@fluojs/platform-fastify': expect.any(String),
       '@fluojs/runtime': expect.any(String),
     });
+    expect(packageJson.engines?.node).toBe('>=20.19.3');
     expect(packageJson.scripts?.build).toBe('fluo build');
     expect(packageJson.scripts?.dev).toBe('fluo dev');
     expect(packageJson.scripts?.start).toBe('fluo start');

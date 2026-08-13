@@ -31,7 +31,7 @@ pnpm dlx @fluojs/cli new my-app
 ## 릴리스 계약
 
 - `@fluojs/cli`는 intended publish surface에 포함되는 공개 패키지입니다.
-- `@fluojs/cli`는 Node.js `>=20.0.0`을 요구합니다. 생성된 Bun, Deno, Cloudflare Workers starter가 비 Node runtime을 대상으로 할 수는 있지만 CLI process 자체는 Node.js에서 실행됩니다.
+- `@fluojs/cli`는 Node.js `>=20.0.0`을 요구합니다. 생성된 Bun, Deno, Cloudflare Workers starter가 비 Node runtime을 대상으로 할 수는 있지만 CLI process 자체는 Node.js에서 실행됩니다. 생성된 Node HTTP 및 mixed 프로젝트는 listener-level RFC `QUERY`가 framework dispatch에 도달하도록 Node.js `>=20.19.3`을 선언하고, Node microservice-only 프로젝트는 독립적인 `>=20.0.0` 하한을 유지합니다.
 - CLI와 생성된 Node.js starter toolchain은 `tsx@^4.23.1`을 사용하며, 생성된 gRPC starter는 `@grpc/grpc-js@^1.14.4`를 요구합니다. 이 패치된 floor를 적용할 때 기존 project lockfile을 갱신하세요.
 - 지원되는 설치 경로는 전역 패키지(`npm install -g @fluojs/cli`, `pnpm add -g @fluojs/cli`, `bun add -g @fluojs/cli`, `yarn global add @fluojs/cli`)와 무설치 실행 경로(`pnpm dlx @fluojs/cli ...`)입니다.
 - 배포되는 `fluo` bin은 `package.json`에 선언된 `./bin/fluo.mjs` wrapper이며, 이 wrapper가 dist 빌드 CLI 엔트리포인트인 `../dist/cli.js`를 로드합니다.
