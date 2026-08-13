@@ -1,14 +1,14 @@
 import ts from 'typescript';
 
 import {
+  collectStaticStrings,
   containsNamedTypeReference,
   containsSyntax,
-  expressionReferences,
   isExported,
-  isThisMember,
   staticName,
   unwrapExpression,
 } from './express-application-ownership-ast.mjs';
+import { inspectConstructorExecution } from './express-application-ownership-execution.mjs';
 import { createApplicationTypeInspector } from './express-application-ownership-types.mjs';
 
 const adapterClassName = 'ExpressHttpApplicationAdapter';
@@ -88,50 +88,6 @@ function isFunctionValuedProperty(member) {
   );
 }
 
-function collectMountPositions(constructor, nativeParameterNames) {
-  const nativeMounts = [];
-  const routerMounts = [];
-
-  function visit(node, nativeBindings = nativeParameterNames) {
-    let bindings = nativeBindings;
-    if (ts.isForOfStatement(node) && expressionReferences(node.expression, nativeParameterNames)) {
-      bindings = new Set(nativeBindings);
-      if (ts.isVariableDeclarationList(node.initializer)) {
-        for (const declaration of node.initializer.declarations) {
-          if (ts.isIdentifier(declaration.name)) {
-            bindings.add(declaration.name.text);
-          }
-        }
-      }
-    }
-    if (ts.isCallExpression(node)) {
-      const target = unwrapExpression(node.expression);
-      const methodName =
-        ts.isPropertyAccessExpression(target)
-          ? target.name.text
-          : ts.isElementAccessExpression(target)
-            ? staticName(target.argumentExpression)
-            : undefined;
-      const receiver =
-        ts.isPropertyAccessExpression(target) || ts.isElementAccessExpression(target)
-          ? target.expression
-          : undefined;
-      if (methodName === 'use' && receiver && isThisMember(receiver, 'app')) {
-        if (node.arguments.some((argument) => isThisMember(argument, 'router'))) {
-          routerMounts.push(node.getStart());
-        }
-        if (node.arguments.some((argument) => expressionReferences(argument, bindings))) {
-          nativeMounts.push(node.getStart());
-        }
-      }
-    }
-    ts.forEachChild(node, (child) => visit(child, bindings));
-  }
-
-  visit(constructor.body);
-  return { nativeMounts, routerMounts };
-}
-
 export function enforceAdapterOwnedApplicationSource(content, adapterSourcePath) {
   const sourceFile = ts.createSourceFile(
     adapterSourcePath,
@@ -169,8 +125,9 @@ export function enforceAdapterOwnedApplicationSource(content, adapterSourcePath)
     `${adapterSourcePath} constructor must not accept an existing Express application.`,
   );
 
+  const staticStrings = collectStaticStrings(sourceFile);
   const publicUseSurface = adapterClass.members.some((member) => {
-    if (staticName(member.name) !== 'use') {
+    if (staticName(member.name, staticStrings) !== 'use') {
       return false;
     }
     const isPrivate = member.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.PrivateKeyword) ?? false;
@@ -182,28 +139,6 @@ export function enforceAdapterOwnedApplicationSource(content, adapterSourcePath)
   );
 
   const helperNames = collectOwnedFactoryNames(sourceFile);
-  const ownedLocals = new Set();
-  const appAssignments = [];
-  function inspectConstructor(node) {
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-      if (isExpressFactoryCall(node.initializer, helperNames) || (ts.isIdentifier(node.initializer) && ownedLocals.has(node.initializer.text))) {
-        ownedLocals.add(node.name.text);
-      }
-    }
-    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && isThisMember(node.left, 'app')) {
-      const value = unwrapExpression(node.right);
-      appAssignments.push(
-        isExpressFactoryCall(value, helperNames) || (ts.isIdentifier(value) && ownedLocals.has(value.text)),
-      );
-    }
-    ts.forEachChild(node, inspectConstructor);
-  }
-  inspectConstructor(constructor.body);
-  assert(
-    appAssignments.length > 0 && appAssignments.every(Boolean),
-    `${adapterSourcePath} must construct its own Express application during adapter initialization.`,
-  );
-
   const nativeParameterNames = new Set(
     constructor.parameters
       .filter((parameter) =>
@@ -212,7 +147,17 @@ export function enforceAdapterOwnedApplicationSource(content, adapterSourcePath)
       )
       .flatMap((parameter) => (ts.isIdentifier(parameter.name) ? [parameter.name.text] : [])),
   );
-  const { nativeMounts, routerMounts } = collectMountPositions(constructor, nativeParameterNames);
+  const { appAssignments, nativeMounts, routerMounts } = inspectConstructorExecution({
+    constructor,
+    helperNames,
+    isOwnedFactoryCall: isExpressFactoryCall,
+    nativeParameterNames,
+  });
+  assert(
+    appAssignments.length > 0 && appAssignments.every(Boolean),
+    `${adapterSourcePath} must construct its own Express application during adapter initialization.`,
+  );
+
   assert(
     nativeMounts.length > 0 &&
       routerMounts.length > 0 &&

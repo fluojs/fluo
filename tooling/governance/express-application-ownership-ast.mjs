@@ -1,10 +1,33 @@
 import ts from 'typescript';
 
-export function staticName(node) {
-  const nameNode = node && ts.isComputedPropertyName(node) ? node.expression : node;
-  return nameNode && (ts.isIdentifier(nameNode) || ts.isStringLiteralLike(nameNode))
-    ? nameNode.text
+export function staticName(node, staticStrings = new Map()) {
+  const computed = node && ts.isComputedPropertyName(node);
+  const nameNode = computed ? node.expression : node;
+  if (nameNode && ts.isStringLiteralLike(nameNode)) {
+    return nameNode.text;
+  }
+  return nameNode && ts.isIdentifier(nameNode)
+    ? (computed ? staticStrings.get(nameNode.text) : undefined) ?? nameNode.text
     : undefined;
+}
+
+export function collectStaticStrings(sourceFile) {
+  const strings = new Map();
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement) || !(statement.declarationList.flags & ts.NodeFlags.Const)) {
+      continue;
+    }
+    for (const declaration of statement.declarationList.declarations) {
+      if (
+        ts.isIdentifier(declaration.name) &&
+        declaration.initializer &&
+        ts.isStringLiteralLike(declaration.initializer)
+      ) {
+        strings.set(declaration.name.text, declaration.initializer.text);
+      }
+    }
+  }
+  return strings;
 }
 
 export function entityName(node) {

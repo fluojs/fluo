@@ -95,6 +95,22 @@ describe('Express application ownership source contract', () => {
     );
   });
 
+  it('rejects a statically named computed public use surface', () => {
+    const readFixture = withAdapterSource((source) =>
+      source.replace(
+        'export class ExpressHttpApplicationAdapter',
+        "const methodName = 'use';\n\nexport class ExpressHttpApplicationAdapter",
+      ).replace(
+        '  getServer(): ExpressServer {',
+        '  [methodName] = (_middleware: ExpressNativeMiddleware): void => {};\n\n  getServer(): ExpressServer {',
+      ),
+    );
+
+    expect(() => enforceExpressApplicationOwnershipDocs(readFixture)).toThrow(
+      /post-bootstrap native stack mutation surface/,
+    );
+  });
+
   it('rejects assignment from a module-scoped Express application', () => {
     const readFixture = withAdapterSource((source) =>
       source
@@ -123,6 +139,45 @@ describe('Express application ownership source contract', () => {
     );
   });
 
+  it('rejects native middleware mounts in an unreachable branch', () => {
+    const readFixture = withAdapterSource((source) =>
+      source.replace(
+        '    for (const middleware of nativeMiddleware) {\n      this.app.use(middleware);\n    }',
+        '    if (false) {\n      for (const middleware of nativeMiddleware) {\n        this.app.use(middleware);\n      }\n    }',
+      ),
+    );
+
+    expect(() => enforceExpressApplicationOwnershipDocs(readFixture)).toThrow(
+      /mount nativeMiddleware before its router/,
+    );
+  });
+
+  it('rejects native middleware mounts in an uncalled closure', () => {
+    const readFixture = withAdapterSource((source) =>
+      source.replace(
+        '    for (const middleware of nativeMiddleware) {\n      this.app.use(middleware);\n    }',
+        '    const mountNative = () => {\n      for (const middleware of nativeMiddleware) {\n        this.app.use(middleware);\n      }\n    };',
+      ),
+    );
+
+    expect(() => enforceExpressApplicationOwnershipDocs(readFixture)).toThrow(
+      /mount nativeMiddleware before its router/,
+    );
+  });
+
+  it('rejects native middleware mounts deferred through a callback', () => {
+    const readFixture = withAdapterSource((source) =>
+      source.replace(
+        '    for (const middleware of nativeMiddleware) {\n      this.app.use(middleware);\n    }',
+        '    setTimeout(() => {\n      for (const middleware of nativeMiddleware) {\n        this.app.use(middleware);\n      }\n    }, 0);',
+      ),
+    );
+
+    expect(() => enforceExpressApplicationOwnershipDocs(readFixture)).toThrow(
+      /mount nativeMiddleware before its router/,
+    );
+  });
+
   it('rejects native middleware mounted after router setup', () => {
     const readFixture = withAdapterSource((source) =>
       source.replace(
@@ -141,6 +196,17 @@ describe('Express application ownership source contract', () => {
       source.replace(
         '    this.app = express();',
         '    const ownedApplication = express();\n    this.app = ownedApplication; // this.app = express();',
+      ),
+    );
+
+    expect(() => enforceExpressApplicationOwnershipDocs(readFixture)).not.toThrow();
+  });
+
+  it('accepts a directly invoked constructor-local native mount helper', () => {
+    const readFixture = withAdapterSource((source) =>
+      source.replace(
+        '    for (const middleware of nativeMiddleware) {\n      this.app.use(middleware);\n    }',
+        '    const mountNative = () => {\n      for (const middleware of nativeMiddleware) {\n        this.app.use(middleware);\n      }\n    };\n    mountNative();',
       ),
     );
 
