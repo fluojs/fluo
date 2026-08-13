@@ -1444,7 +1444,9 @@ describe('FluoFactory.createApplicationContext', () => {
     await expect(context.close('SIGTERM')).rejects.toThrow('context shutdown failed');
 
     // Then: retry runs only the incomplete hook and reaches a stable closed context.
-    await expect(context.get(AppService)).rejects.toThrow('Container has been disposed');
+    await expect(context.get(AppService)).rejects.toThrow(
+      'Application context cannot resolve providers after shutdown has started.',
+    );
     await expect(context.close('SIGTERM')).resolves.toBeUndefined();
     expect(events).toEqual([
       'module:destroy',
@@ -1452,6 +1454,40 @@ describe('FluoFactory.createApplicationContext', () => {
       'module:destroy',
       'app:shutdown',
     ]);
+  });
+
+  it('rejects ApplicationContext.get() as soon as shutdown starts while teardown is pending', async () => {
+    const shutdownCanFinish = createDeferred<void>();
+
+    class AppService {
+      async onModuleDestroy(): Promise<void> {
+        await shutdownCanFinish.promise;
+      }
+    }
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [AppService],
+    });
+
+    const context = await FluoFactory.createApplicationContext(AppModule);
+    await context.get(AppService);
+
+    // Given: context teardown is blocked after close has started.
+    const closePromise = context.close('SIGTERM');
+
+    // When: a caller resolves an already-cached provider during pending teardown.
+    const resolution = context.get(AppService);
+
+    // Then: shutdown admission rejects the lookup before teardown settles.
+    try {
+      await expect(resolution).rejects.toThrow(
+        'Application context cannot resolve providers after shutdown has started.',
+      );
+    } finally {
+      shutdownCanFinish.resolve();
+      await closePromise;
+    }
   });
 });
 
@@ -1893,6 +1929,98 @@ describe('FluoFactory.createMicroservice', () => {
     expect(events).toEqual(['micro:listen']);
 
     await app.close();
+  });
+
+  it('rejects connect and start operations while application close is pending', async () => {
+    const closeCanFinish = createDeferred<void>();
+    const events: string[] = [];
+    const MICROSERVICE_TOKEN = Symbol.for('fluo.microservices.service');
+
+    class StubMicroserviceRuntime implements MicroserviceRuntime {
+      async close(): Promise<void> {
+        events.push('micro:close:start');
+        await closeCanFinish.promise;
+        events.push('micro:close:end');
+      }
+
+      async listen(): Promise<void> {
+        events.push('micro:listen');
+      }
+    }
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [
+        {
+          provide: MICROSERVICE_TOKEN,
+          useClass: StubMicroserviceRuntime,
+        },
+      ],
+    });
+
+    const app = await FluoFactory.create(AppModule);
+    await app.connectMicroservice();
+
+    // Given: parent shutdown is waiting for an already-connected child to close.
+    const closePromise = app.close('SIGTERM');
+    await vi.waitFor(() => {
+      expect(events).toEqual(['micro:close:start']);
+    });
+    expect(app.state).toBe('bootstrapped');
+
+    // When: callers try to add or start child microservices during pending teardown.
+    const connect = app.connectMicroservice();
+    const start = app.startAllMicroservices();
+
+    // Then: the parent admission gate rejects both operations before transport startup.
+    try {
+      await expect(connect).rejects.toThrow('Application cannot connect a microservice after shutdown has started.');
+      await expect(start).rejects.toThrow('Application cannot start microservices after shutdown has started.');
+      expect(events).toEqual(['micro:close:start']);
+    } finally {
+      closeCanFinish.resolve();
+      await closePromise;
+    }
+    expect(events).toEqual(['micro:close:start', 'micro:close:end']);
+  });
+
+  it('rejects connectMicroservice() when shutdown starts during runtime resolution', async () => {
+    const resolutionStarted = createDeferred<void>();
+    const runtimeCanResolve = createDeferred<void>();
+    const MICROSERVICE_TOKEN = Symbol('delayed-microservice');
+
+    class StubMicroserviceRuntime implements MicroserviceRuntime {
+      async listen(): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [
+        {
+          provide: MICROSERVICE_TOKEN,
+          scope: 'transient',
+          useFactory: async () => {
+            resolutionStarted.resolve();
+            await runtimeCanResolve.promise;
+            return new StubMicroserviceRuntime();
+          },
+        },
+      ],
+    });
+
+    const app = await FluoFactory.create(AppModule);
+
+    // Given: connectMicroservice() is resolving a runtime before attaching the child.
+    const connect = app.connectMicroservice({ microserviceToken: MICROSERVICE_TOKEN });
+    await resolutionStarted.promise;
+
+    // When: parent shutdown starts before runtime resolution settles.
+    const closePromise = app.close('SIGTERM');
+    runtimeCanResolve.resolve();
+
+    // Then: the post-resolution admission check rejects the child attachment.
+    await expect(connect).rejects.toThrow('Application cannot connect a microservice after shutdown has started.');
+    await expect(closePromise).resolves.toBeUndefined();
   });
 
   it('closes connected microservices before parent application resources', async () => {

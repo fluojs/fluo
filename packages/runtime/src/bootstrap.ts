@@ -631,8 +631,12 @@ class FluoApplication implements Application {
   }
 
   async get<T>(token: Token<T>): Promise<T> {
-    if (this.closeStarted) {
+    if (this.closed) {
       return this.container.resolve(token);
+    }
+
+    if (this.closeStarted) {
+      throw new InvariantError('Application cannot resolve providers after shutdown has started.');
     }
 
     return resolveContextToken(this.container, token, this.contextCacheableTokens, this.contextResolutionCache);
@@ -650,8 +654,10 @@ class FluoApplication implements Application {
   }
 
   async connectMicroservice(options: CreateMicroserviceOptions = {}): Promise<MicroserviceApplication> {
+    this.assertApplicationOperationAllowed('connect a microservice');
     const microserviceToken = options.microserviceToken ?? DEFAULT_MICROSERVICE_TOKEN;
     const runtime = await this.container.resolve<unknown>(microserviceToken);
+    this.assertApplicationOperationAllowed('connect a microservice');
 
     if (!isMicroserviceRuntime(runtime)) {
       throw new InvariantError('Resolved microservice token does not implement listen().');
@@ -664,10 +670,12 @@ class FluoApplication implements Application {
   }
 
   async startAllMicroservices(): Promise<void> {
+    this.assertApplicationOperationAllowed('start microservices');
     const startedMicroservices: MicroserviceApplication[] = [];
 
     for (const microservice of this.connectedMicroservices) {
       try {
+        this.assertApplicationOperationAllowed('start microservices');
         await microservice.listen();
         startedMicroservices.push(microservice);
       } catch (error) {
@@ -704,6 +712,12 @@ class FluoApplication implements Application {
 
     if (errors.length > 0) {
       throw createLifecycleCloseError(errors);
+    }
+  }
+
+  private assertApplicationOperationAllowed(operation: 'connect a microservice' | 'start microservices'): void {
+    if (this.closeStarted) {
+      throw new InvariantError(`Application cannot ${operation} after shutdown has started.`);
     }
   }
 
@@ -778,7 +792,6 @@ class FluoApplication implements Application {
     }
 
     this.closeStarted = true;
-    this.applicationState = 'closed';
 
     this.closingPromise = (async () => {
       const errors: unknown[] = [];
@@ -817,6 +830,7 @@ class FluoApplication implements Application {
       }
 
       this.closed = true;
+      this.applicationState = 'closed';
     })();
 
     try {
@@ -848,8 +862,12 @@ class FluoApplicationContext implements ApplicationContext {
   }
 
   async get<T>(token: Token<T>): Promise<T> {
-    if (this.closeStarted) {
+    if (this.closed) {
       return this.container.resolve(token);
+    }
+
+    if (this.closeStarted) {
+      throw new InvariantError('Application context cannot resolve providers after shutdown has started.');
     }
 
     return resolveContextToken(this.container, token, this.contextCacheableTokens, this.contextResolutionCache);

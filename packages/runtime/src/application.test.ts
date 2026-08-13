@@ -280,9 +280,11 @@ describe('bootstrapApplication', () => {
     await expect(app.close('SIGTERM')).rejects.toThrow('close failed');
 
     // Then: normal use stays terminal and retry runs only the incomplete adapter phase.
-    expect(app.state).toBe('closed');
+    expect(app.state).toBe('ready');
     await expect(app.listen()).rejects.toThrow('Application cannot listen after it has been closed.');
-    await expect(app.get(AppService)).rejects.toThrow('Container has been disposed');
+    await expect(app.get(AppService)).rejects.toThrow(
+      'Application cannot resolve providers after shutdown has started.',
+    );
     await expect(app.close('SIGTERM')).resolves.toBeUndefined();
     expect(app.state).toBe('closed');
     expect(events).toEqual([
@@ -292,6 +294,43 @@ describe('bootstrapApplication', () => {
       'adapter:close:SIGTERM',
       'adapter:close:SIGTERM',
     ]);
+  });
+
+  it('rejects Application.get() as soon as shutdown starts while teardown is pending', async () => {
+    const closeCanFinish = createDeferred<void>();
+    const adapter: HttpApplicationAdapter = {
+      async close() {
+        await closeCanFinish.promise;
+      },
+      async listen() {},
+    };
+
+    class AppService {}
+    class AppModule {}
+    defineModule(AppModule, {
+      providers: [AppService],
+    });
+
+    const app = registerAppForCleanup(await bootstrapApplication({
+      adapter,
+      rootModule: AppModule,
+    }));
+    await app.get(AppService);
+
+    // Given: application teardown is blocked after close has started.
+    const closePromise = app.close('SIGTERM');
+    expect(app.state).toBe('bootstrapped');
+
+    // When: a caller resolves an already-cached provider during pending teardown.
+    const resolution = app.get(AppService);
+
+    // Then: shutdown admission rejects the lookup before teardown settles.
+    try {
+      await expect(resolution).rejects.toThrow('Application cannot resolve providers after shutdown has started.');
+    } finally {
+      closeCanFinish.resolve();
+      await closePromise;
+    }
   });
 
   it('shares the same in-flight startup across overlapping listen() calls', async () => {
@@ -441,7 +480,7 @@ describe('bootstrapApplication', () => {
     await expect(app.close('SIGTERM')).rejects.toThrow('shutdown hook failed');
 
     // Then: the application remains terminal and retry runs only the failed hook.
-    expect(app.state).toBe('closed');
+    expect(app.state).toBe('bootstrapped');
     await expect(app.listen()).rejects.toThrow('Application cannot listen after it has been closed.');
     await expect(app.close('SIGTERM')).resolves.toBeUndefined();
     expect(events).toEqual([
