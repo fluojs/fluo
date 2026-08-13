@@ -79,7 +79,7 @@ USER node
 CMD ["node", "dist/main.js"]
 ```
 
-Keep the base image on Node.js 20 or newer. The default Fastify adapter path uses `@fluojs/platform-fastify`, whose package manifest declares `engines.node >=20.0.0`.
+Keep the base image on Node.js 20.19.3 or newer. The default Fastify adapter path uses `@fluojs/platform-fastify`, whose package manifest declares `engines.node >=20.19.3`.
 
 ### Docker Compose
 For local production simulation or a small deployment:
