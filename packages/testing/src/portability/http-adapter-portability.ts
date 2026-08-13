@@ -1,4 +1,4 @@
-import { Controller, Get, Post, type RequestContext, SseResponse } from '@fluojs/http';
+import { Controller, Get, Post, Query, type RequestContext, Route, SseResponse } from '@fluojs/http';
 import { type ApplicationLogger, defineModule, type ModuleType } from '@fluojs/runtime';
 import { assertNetworkHttpErrorRepresentationAbortPortability } from './error-representation-abort-portability.js';
 import {
@@ -140,6 +140,50 @@ async function requestHttps(url: string): Promise<{ body: string; statusCode: nu
 
     request.on('error', reject);
     request.end();
+  });
+}
+
+async function requestCustomHttpMethod(
+  url: string,
+  method: string,
+  body: string,
+): Promise<{ body: string; statusCode: number }> {
+  const [{ Buffer }, { request: httpRequest }] = await Promise.all([
+    import('node:buffer'),
+    import('node:http'),
+  ]);
+  const target = new URL(url);
+  const hostname = target.hostname.startsWith('[') && target.hostname.endsWith(']')
+    ? target.hostname.slice(1, -1)
+    : target.hostname;
+
+  return await new Promise((resolve, reject) => {
+    const request = httpRequest({
+      headers: {
+        'content-length': String(Buffer.byteLength(body)),
+        'content-type': 'application/json',
+      },
+      hostname,
+      method,
+      path: `${target.pathname}${target.search}`,
+      port: target.port,
+    }, (response) => {
+      const chunks: Buffer[] = [];
+
+      response.on('data', (chunk) => {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      });
+      response.on('end', () => {
+        resolve({
+          body: Buffer.concat(chunks).toString('utf8'),
+          statusCode: response.statusCode ?? 0,
+        });
+      });
+      response.on('error', reject);
+    });
+
+    request.on('error', reject);
+    request.end(body);
   });
 }
 
@@ -341,6 +385,58 @@ export class HttpAdapterPortabilityHarness<
         Object.keys(body as Record<string, unknown>).length !== 2
       ) {
         throw new Error(`${this.options.name} adapter changed malformed-cookie normalization.`);
+      }
+    });
+  }
+
+  /** Verifies `QUERY` and extension-method execution through the adapter's real listener fallback. */
+  async assertSupportsCustomHttpRouteMethods(): Promise<void> {
+    @Controller('/custom-methods')
+    class CustomMethodController {
+      @Query('/query')
+      query(_input: undefined, context: RequestContext) {
+        return { body: context.request.body, method: context.request.method };
+      }
+
+      @Route('PURGE', '/purge')
+      purge(_input: undefined, context: RequestContext) {
+        return { body: context.request.body, method: context.request.method };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [CustomMethodController],
+    });
+
+    const app = await this.options.bootstrap(AppModule, {
+      cors: false,
+      port: 0,
+    } as TBootstrapOptions);
+
+    await prepareAndListenWithCleanup(app, this.options.name);
+
+    await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
+      for (const method of ['QUERY', 'PURGE']) {
+        const body = JSON.stringify({ value: method.toLowerCase() });
+        const response = await requestCustomHttpMethod(
+          `${baseUrl}/custom-methods/${method.toLowerCase()}`,
+          method,
+          body,
+        );
+
+        if (response.statusCode !== 200) {
+          throw new Error(
+            `${this.options.name} adapter changed ${method} response status semantics: received ${String(response.statusCode)}.`,
+          );
+        }
+
+        if (JSON.stringify(JSON.parse(response.body)) !== JSON.stringify({
+          body: { value: method.toLowerCase() },
+          method,
+        })) {
+          throw new Error(`${this.options.name} adapter changed ${method} method or body semantics.`);
+        }
       }
     });
   }
