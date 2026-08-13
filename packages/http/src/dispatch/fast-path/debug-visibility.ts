@@ -29,13 +29,14 @@ export function addPathDebugHeader(
 
 export function createFastPathStats(eligibilities: readonly FastPathEligibility[]): FastPathStats {
   const fastPathRoutes = eligibilities.filter((e) => e.executionPath === 'fast').length;
+  const routes = Object.freeze(eligibilities.map((eligibility) => Object.freeze({ ...eligibility })));
 
-  return {
+  return Object.freeze({
     fastPathRoutes,
     fullPathRoutes: eligibilities.length - fastPathRoutes,
-    routes: eligibilities,
+    routes,
     totalRoutes: eligibilities.length,
-  };
+  });
 }
 
 /**

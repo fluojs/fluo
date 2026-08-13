@@ -264,7 +264,7 @@ Framework integration이 명시적인 request context boundary나 typed per-requ
 
 ### Fast-path observability
 
-Dispatcher는 adapter와 diagnostics를 위해 `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`, `formatFastPathStats(...)`, `getDispatcherFastPathStats(...)`로 fast-path observability를 노출합니다.
+Dispatcher는 adapter와 diagnostics를 위해 `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`, `formatFastPathStats(...)`, `getDispatcherFastPathStats(...)`로 fast-path observability를 노출합니다. Eligibility 결정은 shared `HandlerMapping`이 아니라 dispatcher instance에 속합니다. 따라서 여러 dispatcher가 서로 다른 middleware, observer, interceptor, binder, adapter option으로 하나의 mapping을 재사용해도 서로의 결정을 덮어쓰지 않습니다. `describeRoutes()`는 cloned descriptor에 frozen eligibility snapshot을 노출하며 dispatcher statistics와 그 route entry도 frozen observability value입니다.
 
 ### Bun decorator bundling compatibility
 

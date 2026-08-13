@@ -270,7 +270,7 @@ Use `runWithRequestContext(...)`, `assertRequestContext()`, `createRequestContex
 
 ### Fast-path observability
 
-The dispatcher exposes fast-path observability for adapters and diagnostics through `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`, `formatFastPathStats(...)`, and `getDispatcherFastPathStats(...)`.
+The dispatcher exposes fast-path observability for adapters and diagnostics through `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`, `formatFastPathStats(...)`, and `getDispatcherFastPathStats(...)`. Eligibility decisions belong to the dispatcher instance rather than the shared `HandlerMapping`: dispatchers may reuse one mapping with different middleware, observer, interceptor, binder, or adapter options without overwriting one another. `describeRoutes()` exposes frozen eligibility snapshots on its cloned descriptors, and dispatcher statistics plus their route entries are frozen observability values.
 
 ### Bun decorator bundling compatibility
 
