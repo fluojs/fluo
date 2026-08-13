@@ -77,6 +77,11 @@ When a prebuilt descriptor and a discovered source resolve to the same OpenAPI p
 ### Automated Specification Generation
 fluo inspects only the controllers and handler descriptors supplied through `sources` and `descriptors` to build an OpenAPI 3.1.0 document. This includes paths, methods, parameters, and request bodies for that explicit input set; importing a controller into an application module does not add it automatically.
 
+### OpenAPI 3.1 Path Item Validation
+The builder emits only standard Path Item operations: `get`, `put`, `post`, `delete`, `options`, `head`, and `patch`. Fluo catch-all `ALL` descriptors are runtime routing inputs, not OpenAPI operations, so document generation rejects them instead of serializing a nonstandard `all` key. Unsupported descriptor methods fail with the same path-specific error.
+
+After `documentTransform`, every Path Item is validated again. Transforms may use the OpenAPI 3.1 operations (including `trace`), fixed fields (`$ref`, `summary`, `description`, `servers`, and `parameters`), and `x-*` specification extensions. Keys such as `all`, `query`, or other unknown fields fail document generation before the document is exposed.
+
 ### Response Media Types
 When an HTTP handler declares `@Produces(...)` from `@fluojs/http`, generated OpenAPI responses use those media types as the response `content` keys. For example, `@Produces('application/json', 'application/problem+json')` on a handler with an `@ApiResponse(...)` schema emits both media types with the same response schema instead of silently falling back to only `application/json`.
 

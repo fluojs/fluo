@@ -22,6 +22,7 @@ This document defines the current OpenAPI document-generation contract implement
 | --- | --- | --- |
 | Base document version | `buildOpenApiDocument(...)` always emits `openapi: '3.1.0'`. | `packages/openapi/src/schema-builder.ts` |
 | HTTP route metadata | Paths, HTTP methods, handler names, and resolved URI-versioned routes come from fluo HTTP handler descriptors. Express-style `:id` path segments are converted to `{id}` in the final document. | `packages/openapi/src/schema-builder.ts` |
+| Descriptor method validation | Descriptor operations are limited to OpenAPI Path Item methods that fluo can author: `GET`, `PUT`, `POST`, `DELETE`, `OPTIONS`, `HEAD`, and `PATCH`. Runtime-only `ALL` and any future or custom unsupported method fail generation before operation emission. | `packages/openapi/src/path-item.ts`, `packages/openapi/src/schema-builder.ts`, `packages/openapi/src/path-item.test.ts` |
 | Controller tags | `@ApiTag(...)` defines controller tags. If absent, the controller class name becomes the default tag. | `packages/openapi/src/decorators.ts`, `packages/openapi/src/schema-builder.ts` |
 | Operation metadata | `@ApiOperation(...)` stores `summary`, `description`, and `deprecated` flags per handler. | `packages/openapi/src/decorators.ts` |
 | Response metadata | `@ApiResponse(...)` stores explicit status/description/schema/type metadata. DTO `type` values become component schema references. Handler return values and TypeScript return types are not inspected. Without `@ApiResponse(...)`, the builder emits only a method-derived or `@HttpCode(...)` success status with description `OK`, not an inferred response schema. | `packages/openapi/src/decorators.ts`, `packages/openapi/src/schema-builder.ts` |
@@ -39,12 +40,13 @@ This document defines the current OpenAPI document-generation contract implement
 | Swagger UI | With `ui: true`, `GET uiPath` renders HTML that points to that module instance's `documentPath`, including under a runtime global prefix. `uiPath` defaults to `/docs`. The default assets use the pinned `swagger-ui-dist` version `5.32.2`; `swaggerUiAssets.cssUrl` and `swaggerUiAssets.jsBundleUrl` can replace those URLs for self-hosted or CSP-controlled deployments. | `packages/openapi/src/openapi-module.ts`, `packages/openapi/src/swagger-ui.ts` |
 | Default error responses | `defaultErrorResponsesPolicy` defaults to `'inject'`. The builder can also omit framework-added defaults when set to `'omit'`. | `packages/openapi/src/schema-builder.ts`, `packages/openapi/src/openapi-module.ts`, `packages/openapi/src/openapi-module.test.ts` |
 | Extra models | `extraModels` lets the module include DTO constructors that are not otherwise discovered from handlers. | `packages/openapi/src/openapi-module.ts`, `packages/openapi/src/schema-builder.ts` |
-| Final transform | `documentTransform(document)` can rewrite the generated document before it is exposed. OpenAPI 3.1 exclusive-bound and nullable normalization runs on the transformed result. | `packages/openapi/src/openapi-module.ts`, `packages/openapi/src/schema-bounds.ts` |
+| Final transform | `documentTransform(document)` can rewrite the generated document before it is exposed. Its Path Items are validated against OpenAPI 3.1 operations (including `trace`), fixed fields (`$ref`, `summary`, `description`, `servers`, `parameters`), and `x-*` extensions; unknown keys fail generation. Exclusive-bound and nullable normalization then runs on the validated transformed result. | `packages/openapi/src/openapi-module.ts`, `packages/openapi/src/path-item.ts`, `packages/openapi/src/schema-bounds.ts` |
 
 ## Generation Boundaries
 
 - `@ApiExcludeEndpoint()` removes one handler from generated `paths`, but it does not change the runtime route itself.
 - OpenAPI generation is descriptor-driven. Controllers or handlers not represented in `sources` or `descriptors` are outside the generated document boundary.
+- `@All(...)` remains an `@fluojs/http` runtime matching feature and cannot be represented as one OpenAPI operation. Split documented behavior into explicit standard-method handlers or leave the catch-all descriptor outside the OpenAPI input.
 - Response generation is metadata-driven rather than return-value-driven. Use `@ApiResponse(...)` with `schema` or `type` when clients need response content in the document.
 - The package documents the HTTP surface only. It does not generate contracts for non-HTTP transports.
 - Swagger UI is optional and runtime-served; the OpenAPI JSON document remains available even when UI support is disabled.
