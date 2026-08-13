@@ -15,7 +15,7 @@ This chapter explains the local development environment, verification loop, revi
 
 ## Prerequisites
 - Completion of Chapter 16.
-- A local development environment with Node.js 20.19.3 or later, pnpm, and git installed.
+- A local development environment with Node.js `>=20.19.3 <21 || >=22.2.0 <27`, pnpm, and git installed.
 - Basic understanding of monorepo workflows and package level test execution.
 - Basic experience reading and fixing verification failures from tests and type checks.
 
