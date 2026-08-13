@@ -131,7 +131,7 @@ await runDenoApplication(AppModule, {
 });
 ```
 
-`runDenoApplication(...)` registers `SIGINT` and `SIGTERM` listeners by default when the Deno signal APIs are available. Use `shutdownSignals: false` for hosts that own process signals themselves, or pass a custom signal list when a deployment profile needs a narrower lifecycle contract. If one signal registration fails after another listener was already attached, fluo removes the earlier listener before surfacing the failure. During close, the adapter stops new ingress, lets active handlers drain for up to 10 seconds, and then aborts the underlying Deno serve signal if shutdown has not settled.
+`runDenoApplication(...)` registers `SIGINT` and `SIGTERM` listeners by default when the Deno signal APIs are available. Use `shutdownSignals: false` for hosts that own process signals themselves, or pass a custom signal list when a deployment profile needs a narrower lifecycle contract. If one signal registration fails after another listener was already attached, fluo removes the earlier listener before surfacing the failure. During close, the adapter stops new ingress, lets active handlers drain for up to 10 seconds, and then aborts the underlying Deno serve signal if shutdown has not settled. If graceful shutdown rejects, the adapter retains its active server controller until `server.finished` settles before releasing lifecycle state and rethrowing the original shutdown error.
 
 ## 23.5 Handling Deno Permissions in FluoShop
 
