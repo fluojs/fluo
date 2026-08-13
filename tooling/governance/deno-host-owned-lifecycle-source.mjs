@@ -19,8 +19,8 @@ function assert(condition, message) {
   }
 }
 
-function capabilities(node) {
-  return new Set(collectLifecycleCalls(node).map((call) => call.capability));
+function capabilities(node, initialProvenance) {
+  return new Set(collectLifecycleCalls(node, initialProvenance).map((call) => call.capability));
 }
 
 function requireFunction(sourceFile, relativePath, name) {
@@ -69,7 +69,9 @@ function enforceHandlerSource(readText) {
 function enforceManagedAdapterSource(readText) {
   const sourceFile = parseDenoSource(adapterSourcePath, readText(adapterSourcePath));
   const listen = requireMethod(sourceFile, adapterSourcePath, 'listen');
-  const listenCapabilities = capabilities(listen);
+  const listenCapabilities = capabilities(listen, {
+    capabilityFactories: { resolveServe: 'server startup' },
+  });
   assert(listenCapabilities.has('server startup'), `${adapterSourcePath} managed listen() must invoke server startup.`);
   assert(
     !listenCapabilities.has('signal registration') && !listenCapabilities.has('signal removal'),
@@ -90,15 +92,25 @@ function enforceManagedAdapterSource(readText) {
 
   const handle = requireMethod(sourceFile, adapterSourcePath, 'handle');
   assert(
-    capabilities(handle).has('websocket upgrades'),
+    capabilities(handle, {
+      capabilityFactories: { resolveUpgradeWebSocket: 'websocket upgrades' },
+    }).has('websocket upgrades'),
     `${adapterSourcePath} managed handle() must invoke websocket upgrades through the resolved upgrade seam.`,
   );
 
   enforceRunHelperSource(sourceFile);
   const registration = requireFunction(sourceFile, adapterSourcePath, 'createDenoShutdownSignalRegistration');
-  assert(capabilities(registration).has('signal registration'), 'Deno signal registration must invoke addSignalListener(...).');
+  assert(
+    capabilities(registration, {
+      receiverFactories: { resolveDenoSignalGlobal: 'deno' },
+    }).has('signal registration'),
+    'Deno signal registration must invoke addSignalListener(...).',
+  );
   const removal = requireFunction(sourceFile, adapterSourcePath, 'removeDenoSignalBindings');
-  assert(capabilities(removal).has('signal removal'), 'Deno signal cleanup must invoke removeSignalListener(...).');
+  assert(
+    capabilities(removal, { receivers: { denoGlobal: 'deno' } }).has('signal removal'),
+    'Deno signal cleanup must invoke removeSignalListener(...).',
+  );
 }
 
 function enforceRunHelperSource(sourceFile) {

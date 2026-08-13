@@ -58,13 +58,23 @@ describe('Deno host-owned lifecycle source contract', () => {
       'signal registration',
     ],
     [
+      'signal registration through Deno destructuring',
+      "const { addSignalListener: registerSignal } = Deno;\n  registerSignal('SIGTERM', () => {});",
+      'signal registration',
+    ],
+    [
       'server shutdown through bound method',
-      'const controller = { finished: Promise.resolve(), shutdown: () => undefined };\n  const stopServer = controller.shutdown.bind(controller);\n  stopServer();',
+      'function stopController(controller: DenoServeController) {\n    const stopServer = controller.shutdown.bind(controller);\n    stopServer();\n  }',
+      'server shutdown',
+    ],
+    [
+      'server shutdown through destructuring',
+      'function stopController(controller: DenoServeController) {\n    const { shutdown: stopServer } = controller;\n    stopServer();\n  }',
       'server shutdown',
     ],
     [
       'application close through identifier alias',
-      'const application = { close: () => undefined };\n  const closeApplication = application.close;\n  closeApplication();',
+      'function closeManagedApplication(application: Application) {\n    const closeApplication = application.close;\n    closeApplication();\n  }',
       'server shutdown',
     ],
     [
@@ -85,6 +95,34 @@ describe('Deno host-owned lifecycle source contract', () => {
 
     // Then
     expect(runGovernanceGuard).toThrow(new RegExp(`must not invoke ${ownership}`));
+  });
+
+  it.each([
+    [
+      'unrelated receiver methods',
+      'const utility = { close() {}, serve() {}, shutdown() {}, upgradeWebSocket() {} };\n  utility.close();\n  utility.serve();\n  utility.shutdown();\n  utility.upgradeWebSocket();',
+    ],
+    [
+      'a local object shadowing the Deno global',
+      'const Deno = { serve() {} };\n  Deno.serve();',
+    ],
+    [
+      'signal-like destructuring from an unrelated object',
+      "function registerSignal(signalRegistry: { addSignalListener: (signal: string, handler: () => void) => void }) {\n    const { addSignalListener } = signalRegistry;\n    addSignalListener('SIGTERM', () => {});\n  }",
+    ],
+  ] as const)('accepts %s in the host-owned handler', (_caseName, sourceSnippet) => {
+    // Given
+    const readWithUnrelatedCall = overrideFile('packages/platform-deno/src/fetch-handler.ts', (content) =>
+      content.replace(
+        "  validateNonNegativeIntegerOption('maxBodySize', maxBodySize);",
+        `  ${sourceSnippet}\n  validateNonNegativeIntegerOption('maxBodySize', maxBodySize);`,
+      ));
+
+    // When
+    const runGovernanceGuard = () => enforceDenoHostOwnedLifecycleSource(readWithUnrelatedCall);
+
+    // Then
+    expect(runGovernanceGuard).not.toThrow();
   });
 
   it('rejects shutdown signal registration from managed app.listen', () => {
