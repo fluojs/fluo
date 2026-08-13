@@ -107,4 +107,36 @@ describe('HTTP-owned error representations', () => {
     expect(render).not.toHaveBeenCalled();
   });
 
+  it.each(['/missing', '/failures/head'])(
+    'suppresses provider-less canonical JSON bodies for HEAD request %s',
+    async (path) => {
+      const render = vi.fn(() => '<main>unused</main>');
+      const { dispatcher } = createTestDispatcher({ render }, { errorRepresentation: undefined });
+      const response = createResponse();
+
+      await dispatcher.dispatch(createRequest(path, undefined, 'HEAD'), response);
+
+      expect(response.statusCode).toBe(404);
+      expect(response.headers['Content-Type']).toBe('application/json; charset=utf-8');
+      expect(response.body).toBeUndefined();
+      expect(response.committed).toBe(true);
+      expect(render).not.toHaveBeenCalled();
+    },
+  );
+
+  it('suppresses canonical JSON bodies for HEAD 406 outcomes', async () => {
+    const render = vi.fn(() => '<main>unused</main>');
+    const { dispatcher } = createTestDispatcher({ render });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/missing', 'image/avif', 'HEAD'), response);
+
+    expect(response.statusCode).toBe(406);
+    expect(response.headers['Content-Type']).toBe('application/json; charset=utf-8');
+    expect(response.headers.Vary).toBe('Accept');
+    expect(response.body).toBeUndefined();
+    expect(response.committed).toBe(true);
+    expect(render).not.toHaveBeenCalled();
+  });
+
 });
