@@ -173,6 +173,8 @@ console.log(`Listening on ${url} (${bindTarget})`);
 
 `createExpressAdapter()` intentionally exposes the shared `HttpApplicationAdapter` return type. Narrow it with the exported `ExpressHttpApplicationAdapter` class before resolving the Express-only `getListenTarget()` helper after startup. Keep that helper, `getServer()`, and `getRealtimeCapability()` at infrastructure boundaries instead of passing native host details into application providers.
 
+The adapter constructs and owns its Express application. Adopting or reusing an existing Express application is unsupported. Supply native Express handlers through construction-time `nativeMiddleware`; after bootstrap, calling `use(...)` to append to the native stack is not a supported surface. Prefer rewriting portable behavior as fluo `Middleware`.
+
 Express supports the shared SSE and streaming response contract.
 
 ```ts
@@ -404,6 +406,7 @@ export class WorkerBindingsModule {}
 | Treating raw body as available for multipart requests | Multipart requests do not expose `rawBody`; use multipart APIs and limits. |
 | Letting platform helpers terminate the process directly | Helpers report shutdown failure through logs/exit code; host process owns final termination. |
 | Depending on Node globals in portable app code | Keep runtime-specific behavior inside adapter/bootstrap code. |
+| Existing Express application adoption or post-bootstrap `use(...)` mutation | Let the adapter construct the Express application, pass unavoidable native handlers through construction-time `nativeMiddleware`, and rewrite portable behavior as fluo `Middleware`. |
 
 ## Related reading
 
