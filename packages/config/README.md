@@ -80,7 +80,7 @@ class MyService {
 
 ### NestJS Registration Migration
 
-`ConfigModule.forRoot(...)` is the only module registration API in `@fluojs/config`; the package does not provide `ConfigModule.forRootAsync(...)`. When migrating from `@nestjs/config`:
+`ConfigModule` exposes only synchronous `forRoot(...)` registration and has no `ConfigModule.forRootAsync(...)` counterpart. When migrating from `@nestjs/config`:
 
 - Resolve remote secrets and other asynchronous sources at the application-owned bootstrap boundary before defining the module graph, then pass their final values to the synchronous registration call.
 - Replace NestJS `load` factories with nested plain objects in `defaults` or `runtimeOverrides`; keep the nesting intact for deep merging and dot-path `ConfigService` access.

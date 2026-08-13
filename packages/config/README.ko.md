@@ -77,7 +77,7 @@ class MyService {
 
 ### NestJS 등록 마이그레이션
 
-`ConfigModule.forRoot(...)`는 `@fluojs/config`의 유일한 module registration API이며, 이 패키지는 `ConfigModule.forRootAsync(...)`를 제공하지 않습니다. `@nestjs/config`에서 마이그레이션할 때는 다음 경계를 따르세요.
+`ConfigModule`은 동기 `forRoot(...)` registration만 노출하며 `ConfigModule.forRootAsync(...)`에 대응하는 API는 없습니다. `@nestjs/config`에서 마이그레이션할 때는 다음 경계를 따르세요.
 
 - Remote secret과 다른 비동기 source는 module graph를 정의하기 전에 application-owned bootstrap boundary에서 resolve한 뒤, 최종 값을 동기 registration call에 전달합니다.
 - NestJS `load` factory는 `defaults` 또는 `runtimeOverrides`의 nested plain object로 옮깁니다. Deep merge와 dot-path `ConfigService` 접근을 위해 nesting을 그대로 유지하세요.
