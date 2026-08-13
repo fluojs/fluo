@@ -3,7 +3,7 @@
   "private": true,
   "packageManager": "pnpm@10.4.1",
   "engines": {
-    "node": ">=20.19.3"
+    "node": ">=20.19.3 <21 || >=22.2.0 <27"
   },
   "devDependencies": {
     "@babel/cli": "^7.26.4",
