@@ -8,6 +8,38 @@ import { assignSafeOwnEnumerableProperties, isPlainObject } from './object-utils
 export interface NestedTraversalContext {
   readonly active: WeakSet<object>;
   readonly hydrateExistingInstances?: boolean;
+  readonly materialized?: WeakMap<object, WeakMap<Constructor, object>>;
+}
+
+function getMaterializedInstance(
+  rawValue: object,
+  target: Constructor,
+  context?: NestedTraversalContext,
+): object | undefined {
+  return context?.materialized?.get(rawValue)?.get(target);
+}
+
+function rememberMaterializedInstance(
+  rawValue: object,
+  target: Constructor,
+  instance: object,
+  context?: NestedTraversalContext,
+): void {
+  if (!context?.materialized) {
+    return;
+  }
+
+  let instancesByTarget = context.materialized.get(rawValue);
+  if (!instancesByTarget) {
+    instancesByTarget = new WeakMap<Constructor, object>();
+    context.materialized.set(rawValue, instancesByTarget);
+  }
+
+  instancesByTarget.set(target, instance);
+}
+
+function canMaterialize<T>(value: unknown, target: Constructor<T>): value is object {
+  return value instanceof target || isPlainObject(value);
 }
 
 export function enterTraversal(value: unknown, context?: NestedTraversalContext): boolean {
@@ -40,11 +72,22 @@ export function createNestedDtoInstance<T>(
     return rawValue as T;
   }
 
-  if (!(rawValue instanceof target) && !isPlainObject(rawValue)) {
+  if (!canMaterialize(rawValue, target)) {
+    return rawValue as T;
+  }
+
+  const rawObject: object = rawValue;
+  const rememberedInstance = getMaterializedInstance(rawObject, target, context);
+  if (rememberedInstance) {
+    return rememberedInstance as T;
+  }
+
+  if (context?.active.has(rawObject)) {
     return rawValue as T;
   }
 
   const instance = (rawValue instanceof target ? rawValue : new target()) as Record<PropertyKey, unknown>;
+  rememberMaterializedInstance(rawObject, target, instance, context);
 
   if (!enterTraversal(rawValue, context)) {
     return rawValue as T;

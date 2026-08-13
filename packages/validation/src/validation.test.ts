@@ -4,7 +4,7 @@ import { email, object, pipe, string } from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import { ArrayContains, ArrayMaxSize, ArrayMinSize, ArrayNotContains, ArrayNotEmpty, ArrayUnique, Contains, Equals, IsAlphanumeric, IsAlpha, IsArray, IsAscii, IsBase64, IsBoolean, IsBooleanString, IsCurrency, IsDataURI, IsDate, IsDateString, IsDecimal, IsDefined, IsDivisibleBy, IsEmail, IsEmpty, IsEnum, IsFQDN, IsHexadecimal, IsHexColor, IsIn, IsInt, IsIP, IsISBN, IsISO8601, IsISSN, IsJSON, IsJWT, IsLatitude, IsLatLong, IsLocale, IsLongitude, IsLowercase, IsMagnetURI, IsMimeType, IsMobilePhone, IsMongoId, IsNegative, IsNotEmpty, IsNotIn, IsNumber, IsNumberString, IsObject, IsOptional, IsPort, IsPositive, IsPostalCode, IsRFC3339, IsRgbColor, IsSemVer, IsString, IsUppercase, IsUrl, IsUUID, Length, Matches, Max, MaxDate, MaxLength, Min, MinDate, MinLength, NotContains, NotEquals, Validate, ValidateClass, ValidateIf, ValidateNested } from './decorators.js';
+import { ArrayContains, ArrayMaxSize, ArrayMinSize, ArrayNotContains, ArrayNotEmpty, ArrayUnique, Contains, Equals, IsAlpha, IsAlphanumeric, IsArray, IsAscii, IsBase64, IsBoolean, IsBooleanString, IsCurrency, IsDataURI, IsDate, IsDateString, IsDecimal, IsDefined, IsDivisibleBy, IsEmail, IsEmpty, IsEnum, IsFQDN, IsHexadecimal, IsHexColor, IsIn, IsInt, IsIP, IsISBN, IsISO8601, IsISSN, IsJSON, IsJWT, IsLatitude, IsLatLong, IsLocale, IsLongitude, IsLowercase, IsMagnetURI, IsMimeType, IsMobilePhone, IsMongoId, IsNegative, IsNotEmpty, IsNotIn, IsNumber, IsNumberString, IsObject, IsOptional, IsPort, IsPositive, IsPostalCode, IsRFC3339, IsRgbColor, IsSemVer, IsString, IsUppercase, IsUrl, IsUUID, Length, Matches, Max, MaxDate, MaxLength, Min, MinDate, MinLength, NotContains, NotEquals, Validate, ValidateClass, ValidateIf, ValidateNested } from './decorators.js';
 import { DtoValidationError } from './errors.js';
 import type { StandardSchemaV1Like } from './index.js';
 import { DefaultValidator } from './validation.js';
@@ -1076,7 +1076,7 @@ describe('DefaultValidator', () => {
     await expect(
       validator.materialize<NodeDto>(payload, NodeDto),
     ).rejects.toMatchObject({
-      issues: [{ code: 'INVALID_NESTED', field: 'child.child', message: 'child.child contains invalid nested data.' }],
+      issues: [{ code: 'INVALID_NESTED', field: 'child', message: 'child contains invalid nested data.' }],
     });
   });
 
