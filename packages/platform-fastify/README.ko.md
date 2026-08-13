@@ -28,7 +28,7 @@ npm install @fluojs/platform-fastify
 
 ## 런타임 요구 사항
 
-`@fluojs/platform-fastify`는 Node.js HTTP adapter이며 `engines.node >=20.0.0`을 선언합니다. 이 패키지가 HTTP 서버를 소유하는 로컬 개발, CI, 컨테이너, 프로덕션 호스트는 Node.js 20 이상에서 실행해야 합니다. 비 Node 런타임에서는 이 Node 전용 adapter를 import하지 말고 `@fluojs/platform-bun`, `@fluojs/platform-deno`, 또는 `@fluojs/platform-cloudflare-workers`를 사용하세요.
+`@fluojs/platform-fastify`는 Node.js HTTP adapter이며 `engines.node >=20.19.3`을 선언합니다. Listener-level RFC `QUERY` 요청이 Fastify wildcard fallback과 fluo dispatch에 도달하도록 이 패키지가 HTTP 서버를 소유하는 로컬 개발, CI, 컨테이너, 프로덕션 호스트는 Node.js 20.19.3 이상에서 실행해야 합니다. 비 Node 런타임에서는 이 Node 전용 adapter를 import하지 말고 `@fluojs/platform-bun`, `@fluojs/platform-deno`, 또는 `@fluojs/platform-cloudflare-workers`를 사용하세요.
 
 어댑터는 Fastify 기반 Node `http` 또는 `https` listener를 소유합니다. 포트, 인증서 material, hostname 같은 process-specific value는 애플리케이션 경계에 두고, 최종 option만 adapter에 명시적으로 전달하세요.
 
@@ -209,7 +209,7 @@ fluo의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 어
 - **로깅 (Logging)**: 로그 스트림 중복을 방지하기 위해 Fastify의 네이티브 로거가 비활성화됩니다. `runFastifyApplication`과 `bootstrapFastifyApplication`은 framework console logger를 기본으로 선택하며, host나 test가 주입된 `ApplicationLogger`를 사용해야 할 때 `logger`를 받습니다.
 - **글로벌 접두사 (Global Prefix)**: 내부 경로 또는 헬스 체크 엔드포인트에 접두사가 붙지 않도록 `globalPrefixExclude`를 적절히 설정하세요.
 - **Malformed Cookie**: 잘못된 cookie header는 request 실패로 이어지지 않고 보존됩니다.
-- **HTTPS 시작**: Fastify 프로세스가 TLS를 소유한다면 Node.js 20 이상에서 adapter `https` option 아래에 certificate material을 전달하세요. Infrastructure가 TLS를 종료한다면 해당 경계 뒤에서 adapter를 일반 HTTP로 유지하세요.
+- **HTTPS 시작**: Fastify 프로세스가 TLS를 소유한다면 Node.js 20.19.3 이상에서 adapter `https` option 아래에 certificate material을 전달하세요. Infrastructure가 TLS를 종료한다면 해당 경계 뒤에서 adapter를 일반 HTTP로 유지하세요.
 
 ## 관련 패키지
 

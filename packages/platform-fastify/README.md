@@ -28,7 +28,7 @@ npm install @fluojs/platform-fastify
 
 ## Runtime Requirements
 
-`@fluojs/platform-fastify` is a Node.js HTTP adapter and declares `engines.node >=20.0.0`. Run local development, CI, containers, and production hosts on Node.js 20 or newer when this package owns the HTTP server. Use `@fluojs/platform-bun`, `@fluojs/platform-deno`, or `@fluojs/platform-cloudflare-workers` for non-Node runtimes instead of importing this Node-specific adapter.
+`@fluojs/platform-fastify` is a Node.js HTTP adapter and declares `engines.node >=20.19.3`. Run local development, CI, containers, and production hosts on Node.js 20.19.3 or newer when this package owns the HTTP server so listener-level RFC `QUERY` requests reach Fastify wildcard fallback and fluo dispatch. Use `@fluojs/platform-bun`, `@fluojs/platform-deno`, or `@fluojs/platform-cloudflare-workers` for non-Node runtimes instead of importing this Node-specific adapter.
 
 The adapter owns a Fastify-backed Node `http` or `https` listener. Keep process-specific values such as ports, certificate material, and hostnames at the application boundary, then pass the final options into the adapter explicitly.
 
@@ -209,7 +209,7 @@ The same file also covers Fastify-specific native route registration with wildca
 - **Logging**: The native Fastify logger is disabled to prevent duplicate log streams. `runFastifyApplication` and `bootstrapFastifyApplication` select the framework console logger by default and accept `logger` for hosts or tests that need an injected `ApplicationLogger`.
 - **Global Prefix**: Use `globalPrefixExclude` to prevent the prefix from being applied to internal routes or health check endpoints.
 - **Malformed Cookies**: Malformed cookie headers are preserved rather than failing the request.
-- **HTTPS startup**: Use Node.js 20+ and pass certificate material under the adapter `https` option when the Fastify process owns TLS. If TLS is terminated by infrastructure, keep the adapter on plain HTTP behind that boundary.
+- **HTTPS startup**: Use Node.js 20.19.3+ and pass certificate material under the adapter `https` option when the Fastify process owns TLS. If TLS is terminated by infrastructure, keep the adapter on plain HTTP behind that boundary.
 
 ## Related Packages
 
