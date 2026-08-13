@@ -1,6 +1,15 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  createSourceFile,
+  forEachChild,
+  isCallExpression,
+  isFunctionDeclaration,
+  isIdentifier,
+  ScriptKind,
+  ScriptTarget,
+} from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -11,6 +20,7 @@ import {
   enforceGraphqlRuntimeBoundaryDiscoverability,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
+  enforcePassportJsBridgeNestjsMigration,
   enforcePlatformShellLifecycleContract,
   enforceQueueWorkerOwnershipContract,
   enforceReactClientSubpathContract,
@@ -145,6 +155,41 @@ describe('enforceReactPageMetadataIdentityContract', () => {
 describe('enforcePlatformShellLifecycleContract', () => {
   it('keeps strict lifecycle conflicts synchronized across bilingual public contracts', () => {
     expect(() => enforcePlatformShellLifecycleContract()).not.toThrow();
+  });
+});
+
+describe('enforcePassportJsBridgeNestjsMigration', () => {
+  it('keeps the current Passport.js bridge migration contract valid', () => {
+    expect(() => enforcePassportJsBridgeNestjsMigration()).not.toThrow();
+  });
+
+  it('is called by the central platform consistency governance main path', () => {
+    // Given
+    const source = createSourceFile(
+      'verify-platform-consistency-governance.mjs',
+      readFileSync(join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'), 'utf8'),
+      ScriptTarget.Latest,
+      true,
+      ScriptKind.JS,
+    );
+    let mainCallsPassportGuard = false;
+
+    // When
+    for (const statement of source.statements) {
+      if (!isFunctionDeclaration(statement) || statement.name?.text !== 'main' || statement.body === undefined) {
+        continue;
+      }
+      forEachChild(statement.body, function visit(node): void {
+        if (isCallExpression(node) && isIdentifier(node.expression)
+          && node.expression.text === 'enforcePassportJsBridgeNestjsMigration') {
+          mainCallsPassportGuard = true;
+        }
+        forEachChild(node, visit);
+      });
+    }
+
+    // Then
+    expect(mainCallsPassportGuard).toBe(true);
   });
 });
 
