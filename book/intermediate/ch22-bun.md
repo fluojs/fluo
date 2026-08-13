@@ -156,7 +156,7 @@ Bun's advantages are not limited to HTTP processing. With the native sqlite modu
 
 When used with Drizzle, you can compare Node-based Postgres configuration and Bun-based SQLite configuration inside the same repository pattern. In fluo, it is important to keep driver-specific logic at Provider boundaries and design domain services to focus on schema and query contracts.
 
-The Bun adapter's core responsibility is converting Bun's `Request` and `Response` objects into fluo's internal context. Thanks to this boundary, Decorators such as `@Body()` and `@Headers()` keep the same meaning even when the runtime changes. When evaluating performance, measure both the cost of the conversion layer and the cost of the actual business logic.
+The Bun adapter's core responsibility is converting Bun's `Request` and `Response` objects into fluo's internal context. This boundary preserves fluo's request binding contract when the runtime changes: `@RequestDto(...)` selects the controller input DTO, while field decorators such as `@FromBody(...)` and `@FromHeader(...)` bind request values. When a controller needs low-level request data, receive an explicit `RequestContext` as its second argument. When evaluating performance, measure both the cost of the conversion layer and the cost of the actual business logic.
 
 Bun also centers the `fetch` API in server-side logic. fluo naturally uses this model by aligning its internal Dispatcher with Web-standard `Request` and `Response` objects. As a result, porting to Bun is not just a performance experiment; it is a process for validating standard-based runtime boundaries.
 
