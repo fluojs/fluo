@@ -32,6 +32,77 @@ describe('DTO materialization cycle guards', () => {
     expect(constructorRuns).toBe(1);
   });
 
+  it('rejects a raw root self-cycle at its first different-constructor re-entry', async () => {
+    // Given
+    let childConstructorRuns = 0;
+
+    class RootDto {
+      @ValidateNested(() => ChildDto)
+      child?: ChildDto;
+    }
+
+    class ChildDto {
+      @MinLength(1)
+      name = '';
+
+      constructor() {
+        childConstructorRuns += 1;
+      }
+    }
+
+    const payload: { child?: unknown; name: string } = { name: 'root' };
+    payload.child = payload;
+
+    // When / Then
+    await expect(
+      new DefaultValidator().materialize(payload, RootDto),
+    ).rejects.toMatchObject({
+      issues: [{ code: 'INVALID_NESTED', field: 'child', message: 'child contains invalid nested data.' }],
+    });
+    expect(childConstructorRuns).toBe(0);
+  });
+
+  it('rejects a mutual raw cycle at its different-constructor re-entry', async () => {
+    // Given
+    let alternateParentConstructorRuns = 0;
+
+    class ParentDto {
+      @ValidateNested(() => ChildDto)
+      child?: ChildDto;
+    }
+
+    class ChildDto {
+      @ValidateNested(() => AlternateParentDto)
+      parent?: AlternateParentDto;
+    }
+
+    class AlternateParentDto {
+      @MinLength(1)
+      name = '';
+
+      constructor() {
+        alternateParentConstructorRuns += 1;
+      }
+    }
+
+    type ParentPayload = { child?: unknown; name: string };
+
+    const parent: ParentPayload = { name: 'parent' };
+    parent.child = { name: 'child', parent };
+
+    // When / Then
+    await expect(
+      new DefaultValidator().materialize(parent, ParentDto),
+    ).rejects.toMatchObject({
+      issues: [{
+        code: 'INVALID_NESTED',
+        field: 'child.parent',
+        message: 'child.parent contains invalid nested data.',
+      }],
+    });
+    expect(alternateParentConstructorRuns).toBe(0);
+  });
+
   it('keeps raw-to-existing-DTO cycles guarded across materialization and validation', async () => {
     // Given
     let childConstructorRuns = 0;
@@ -135,5 +206,36 @@ describe('DTO materialization cycle guards', () => {
     expect(result.left).toBeInstanceOf(ChildDto);
     expect(result.right).toBeInstanceOf(ChildDto);
     expect(result.left).toBe(result.right);
+  });
+
+  it('preserves constructor-specific identity for non-cyclic shared raw references', async () => {
+    // Given
+    class LeftChildDto {
+      @MinLength(1)
+      name = '';
+    }
+
+    class RightChildDto {
+      @MinLength(1)
+      name = '';
+    }
+
+    class ParentDto {
+      @ValidateNested(() => LeftChildDto)
+      left?: LeftChildDto;
+
+      @ValidateNested(() => RightChildDto)
+      right?: RightChildDto;
+    }
+
+    const shared = { name: 'shared' };
+
+    // When
+    const result = await new DefaultValidator().materialize<ParentDto>({ left: shared, right: shared }, ParentDto);
+
+    // Then
+    expect(result.left).toBeInstanceOf(LeftChildDto);
+    expect(result.right).toBeInstanceOf(RightChildDto);
+    expect(result.left).not.toBe(result.right);
   });
 });

@@ -5,11 +5,16 @@ import type { ValidationIssue } from '../types.js';
 import { getCachedDtoMetadata } from './dto-metadata-cache.js';
 import { assignSafeOwnEnumerableProperties, isPlainObject } from './object-utils.js';
 
+/**
+ * Carries invocation-local DTO traversal state across materialization and validation.
+ */
 export interface NestedTraversalContext {
   readonly active: WeakSet<object>;
   readonly hydrateExistingInstances?: boolean;
   readonly materialized?: WeakMap<object, WeakMap<Constructor, object>>;
 }
+
+const materializationCycleTarget: Constructor = class {};
 
 function getMaterializedInstance(
   rawValue: object,
@@ -42,6 +47,13 @@ function canMaterialize<T>(value: unknown, target: Constructor<T>): value is obj
   return value instanceof target || isPlainObject(value);
 }
 
+/**
+ * Enters a traversal value when it is not already active.
+ *
+ * @param value Candidate traversal value.
+ * @param context Invocation-local traversal state.
+ * @returns Whether traversal may continue for the value.
+ */
 export function enterTraversal(value: unknown, context?: NestedTraversalContext): boolean {
   if (!context || typeof value !== 'object' || value === null) {
     return true;
@@ -55,14 +67,32 @@ export function enterTraversal(value: unknown, context?: NestedTraversalContext)
   return true;
 }
 
+/**
+ * Releases a traversal value after materialization or validation completes.
+ *
+ * @param value Traversal value to release.
+ * @param context Invocation-local traversal state.
+ */
 export function exitTraversal(value: unknown, context?: NestedTraversalContext): void {
   if (!context || typeof value !== 'object' || value === null) {
+    return;
+  }
+
+  if (context.materialized?.get(value)?.has(materializationCycleTarget)) {
     return;
   }
 
   context.active.delete(value);
 }
 
+/**
+ * Creates or reuses a nested DTO instance for a raw value.
+ *
+ * @param target Nested DTO constructor.
+ * @param rawValue Raw nested value.
+ * @param context Invocation-local traversal state.
+ * @returns The materialized DTO value or the original unsupported value.
+ */
 export function createNestedDtoInstance<T>(
   target: Constructor<T>,
   rawValue: unknown,
@@ -83,6 +113,7 @@ export function createNestedDtoInstance<T>(
   }
 
   if (context?.active.has(rawObject)) {
+    rememberMaterializedInstance(rawObject, materializationCycleTarget, rawObject, context);
     return rawValue as T;
   }
 
@@ -160,6 +191,12 @@ function buildInvalidRootIssue(): ValidationIssue {
   };
 }
 
+/**
+ * Asserts that a root value can be validated as the requested DTO.
+ *
+ * @param value Root value to validate.
+ * @param target Requested DTO constructor.
+ */
 export function assertValidRootValue(value: unknown, target: Constructor): void {
   if (value instanceof target || isPlainObject(value)) {
     return;
