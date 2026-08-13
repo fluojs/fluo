@@ -2,7 +2,7 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-Node.js 20+ fluo 애플리케이션을 위한 기본 request-level 테스트 헬퍼, 모듈 구성, 프로바이더 오버라이드 유틸리티입니다.
+Node.js 20.19.3+ fluo 애플리케이션을 위한 기본 request-level 테스트 헬퍼, 모듈 구성, 프로바이더 오버라이드 유틸리티입니다.
 
 `@fluojs/testing`은 fluo 애플리케이션 테스트를 위한 공식적인 기준(Baseline)을 제공합니다. 격리된 테스트 환경을 구축하고, 의존성을 가짜(Fake)나 목(Mock)으로 교체하며, 모듈 그래프에서 직접 컴포넌트를 resolve하거나 `createTestApp(...).request(...).send()`로 가상 HTTP 요청을 실행하여 e2e 스타일 테스트를 수행할 수 있게 합니다.
 
@@ -208,7 +208,7 @@ synthetic React test runtime은 필요한 setup을 줄이기보다 coverage를 �
 - **하니스 서브패스**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`. HTTP portability harness는 adapter-owned bootstrap typing을 위해 `assertSupportsCustomHttpRouteMethods()`, `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `createErrorRepresentationBootstrapOptions`, `NetworkHttpErrorRepresentationBootstrapOptions`, `WebHttpErrorRepresentationBootstrapOptions`를 노출합니다.
 - **도구 지원**: `@fluojs/testing/vitest`의 `fluoBabelDecoratorsPlugin()` 및 `@fluojs/testing/vitest/tooling`의 Vitest workspace config helper (`vitest`와 `@babel/core`를 함께 요구)
 
-Package manifest는 `engines.node >=20.0.0`을 선언합니다. 문서화된 경우 non-Node runtime 애플리케이션 테스트에서 runtime-native 도구를 사용할 수 있지만, 배포된 `@fluojs/testing` 패키지 자체는 이 Node.js engine floor를 따릅니다.
+Package manifest는 public body-bearing RFC `QUERY` portability assertion이 사용하는 최소 Node listener 릴리스와 일치하도록 `engines.node >=20.19.3`을 선언합니다. 문서화된 경우 non-Node runtime 애플리케이션 테스트에서 runtime-native 도구를 사용할 수 있지만, 배포된 `@fluojs/testing` 패키지 자체는 이 Node.js engine floor를 따릅니다.
 
 `@fluojs/testing/vitest/tooling`은 각 package의 공개 `exports`에 선언된 entrypoint만 workspace alias로 매핑합니다. Private source file, internal helper, export되지 않은 source entrypoint는 의도적으로 제외하므로 테스트가 published package 소비자에게 제공되는 import boundary와 같은 경계를 검증합니다.
 
