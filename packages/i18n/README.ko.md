@@ -70,6 +70,8 @@ class AppModule {}
 
 `I18nModule.forRoot(...)`는 기본적으로 `I18nService`를 global provider로 export하므로 root package를 한 번 import한 뒤 sibling module에서도 shared service를 inject할 수 있습니다. Service를 i18n module을 import한 module 안에만 보이게 하려면 `global: false`를 전달하세요.
 
+`I18nModule.forRoot(...)`는 module graph가 정의될 때 최종 option을 capture하는 동기 registration입니다. 비동기 catalog 또는 configuration loading은 `I18nModule.forRoot(...)` 전에 application-owned bootstrap boundary에서 완료하고, resolve된 catalog와 option을 해당 registration call에 전달하세요. 이 방식은 framework-agnostic root contract를 유지하며 NestJS dynamic-module runtime bridge나 `forRootAsync(...)` compatibility surface를 제공하지 않습니다.
+
 ## 코어 번역
 
 `I18nService`는 결정론적인 번역 조회를 제공합니다.
