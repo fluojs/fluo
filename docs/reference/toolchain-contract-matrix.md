@@ -11,7 +11,7 @@
 | **Vite** | `v6.2+` | Root workspace pins `vite` `^6.2.1` for dev bundling and build orchestration. |
 | **@fluojs/vite** | `v1.0+`; Node.js `>=20.0.0` | Generated non-Deno Vite config files import `fluoDecoratorsPlugin()` from `@fluojs/vite`; the React SSR starter applies it at the server-build boundary. The plugin owns Vite application-file decorator transforms, requires Vite `>=6.2.0`, and keeps Babel peer loading lazy until an eligible transform runs. |
 | **Vitest** | `v3.0+` | Root workspace pins `vitest` `^3.0.8`; package-local configs commonly use `^3.2.4`. |
-| **Node.js** | `>=20.19.3` for the root workspace and Node HTTP listeners | Minimum listener baseline required for RFC `QUERY` to reach fluo dispatch. Generated Node HTTP and mixed starters use the same floor; Node microservice-only starters and the CLI process retain their independently documented tooling floors. Bun, Deno, and Cloudflare Workers adapters intentionally omit `engines.node` so their package metadata matches their non-Node runtime contracts. |
+| **Node.js** | `>=20.19.3 <21 || >=22.2.0 <27` for the root workspace and Node HTTP listeners | Verified listener windows required for RFC `QUERY` to reach fluo dispatch. Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded. Generated Node HTTP and mixed starters use the same range; Node microservice-only starters and the CLI process retain their independently documented tooling floors. Bun, Deno, and Cloudflare Workers adapters intentionally omit `engines.node` so their package metadata matches their non-Node runtime contracts. |
 
 ## CLI & scaffolding contracts
 
