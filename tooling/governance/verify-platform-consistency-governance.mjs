@@ -1248,6 +1248,8 @@ function enforceCanonicalRuntimeMatrixReferences() {
   const beginnerIntroKo = readFileSync(join(repoRoot, 'book/beginner/ch00-introduction.ko.md'), 'utf8');
   const beginnerCliSetup = readFileSync(join(repoRoot, 'book/beginner/ch02-cli-setup.md'), 'utf8');
   const beginnerCliSetupKo = readFileSync(join(repoRoot, 'book/beginner/ch02-cli-setup.ko.md'), 'utf8');
+  const beginnerGuards = readFileSync(join(repoRoot, 'book/beginner/ch09-guards-interceptors.md'), 'utf8');
+  const beginnerGuardsKo = readFileSync(join(repoRoot, 'book/beginner/ch09-guards-interceptors.ko.md'), 'utf8');
   const beginnerProduction = readFileSync(join(repoRoot, 'book/beginner/ch21-production.md'), 'utf8');
   const beginnerProductionKo = readFileSync(join(repoRoot, 'book/beginner/ch21-production.ko.md'), 'utf8');
   const customAdapter = readFileSync(join(repoRoot, 'book/advanced/ch13-custom-adapter.md'), 'utf8');
@@ -1544,6 +1546,38 @@ function enforceCanonicalRuntimeMatrixReferences() {
       migrateFromNestjsKo.includes('manual host는 shutdown, websocket upgrade, native `routes` acceleration을 직접 소유') &&
       docsContextKo.includes('동기 `createBunFetchHandler(...)` 사용법'),
     'Korean Bun adapter docs must keep synchronous manual fetch hosting, pre-listen realtime binding, and signal-driven shutdown ownership discoverable together.',
+  );
+  assert(
+    beginnerGuards.includes('type GuardContext') &&
+      beginnerGuards.includes('canActivate(context: GuardContext)') &&
+      beginnerGuards.includes("context.requestContext.request.headers['x-role']") &&
+      !beginnerGuards.includes('canActivate(input: unknown, ctx: RequestContext)'),
+    'The English guards chapter must use the one-argument GuardContext contract and read request data before DTO binding through requestContext.',
+  );
+  assert(
+    beginnerGuardsKo.includes('type GuardContext') &&
+      beginnerGuardsKo.includes('canActivate(context: GuardContext)') &&
+      beginnerGuardsKo.includes("context.requestContext.request.headers['x-role']") &&
+      !beginnerGuardsKo.includes('canActivate(input: unknown, ctx: RequestContext)'),
+    'The Korean guards chapter must use the one-argument GuardContext contract and read request data before DTO binding through requestContext.',
+  );
+  assert(
+    bunChapter.includes('`@RequestDto(...)`') &&
+      bunChapter.includes('`@FromBody(...)`') &&
+      bunChapter.includes('`@FromHeader(...)`') &&
+      bunChapter.includes('`RequestContext`') &&
+      !bunChapter.includes('`@Body()`') &&
+      !bunChapter.includes('`@Headers()`'),
+    'The English Bun chapter must document fluo DTO field binding and explicit RequestContext instead of NestJS parameter decorators.',
+  );
+  assert(
+    bunChapterKo.includes('`@RequestDto(...)`') &&
+      bunChapterKo.includes('`@FromBody(...)`') &&
+      bunChapterKo.includes('`@FromHeader(...)`') &&
+      bunChapterKo.includes('`RequestContext`') &&
+      !bunChapterKo.includes('`@Body()`') &&
+      !bunChapterKo.includes('`@Headers()`'),
+    'The Korean Bun chapter must document fluo DTO field binding and explicit RequestContext instead of NestJS parameter decorators.',
   );
   assert(
     docsContext.includes('docs/reference/package-chooser.md') && docsContext.includes('@fluojs/i18n'),
