@@ -52,7 +52,7 @@ Express나 NestJS에서 익힌 패턴이 있다면 fluo의 명시성이 처음�
 이 책을 따라가려면 다음이 필요합니다.
 
 - **기초적인 JavaScript/TypeScript 지식**: 클래스, `async/await`, 기본적인 타입 선언에 익숙해야 합니다.
-- **Node.js 설치**: fluo는 많은 런타임을 지원하지만, 우리는 Node.js 20 버전 이상과 `pnpm`을 기본 개발 환경으로 사용합니다. 입문 Node.js 경로는 `engines.node >=20.0.0`을 선언한 Fastify adapter package를 사용합니다.
+- **Node.js 설치**: fluo는 많은 런타임을 지원하지만, 우리는 Node.js 20.19.3 이상과 `pnpm`을 기본 개발 환경으로 사용합니다. 입문 Node.js 경로는 RFC `QUERY`가 listener에 도달하도록 `engines.node >=20.19.3`을 선언한 Fastify adapter package를 사용합니다.
 - **터미널과 코드 에디터**: TypeScript 확장이 설치된 VS Code를 권장합니다.
 
 NestJS, Express 또는 다른 백엔드 프레임워크에 대한 사전 경험은 **필요하지 않습니다**. 다른 프레임워크를 경험했다면 fluo의 명시성이 더 뚜렷하게 보일 수 있습니다. 이 책은 웹이 어떻게 동작하는지에 대한 기초 지식 외에는 별도 백엔드 경험이 없다고 보고 개념을 설명합니다.
