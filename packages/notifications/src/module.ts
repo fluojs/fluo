@@ -33,6 +33,17 @@ function normalizeNotificationsModuleOptions(
     seenChannelNames.add(channel.channel);
   }
 
+  if (
+    options.queue?.bulkThreshold !== undefined &&
+    (!Number.isFinite(options.queue.bulkThreshold) ||
+      !Number.isInteger(options.queue.bulkThreshold) ||
+      options.queue.bulkThreshold <= 0)
+  ) {
+    throw new NotificationsConfigurationError(
+      'Notifications queue bulkThreshold must be a finite positive integer.',
+    );
+  }
+
   return {
     channels: Object.freeze(channels),
     events: options.events
@@ -44,7 +55,7 @@ function normalizeNotificationsModuleOptions(
     queue: options.queue
       ? {
           adapter: options.queue.adapter,
-          bulkThreshold: Math.max(1, options.queue.bulkThreshold ?? DEFAULT_BULK_QUEUE_THRESHOLD),
+          bulkThreshold: options.queue.bulkThreshold ?? DEFAULT_BULK_QUEUE_THRESHOLD,
         }
       : undefined,
   };
@@ -127,6 +138,7 @@ export class NotificationsModule {
    *
    * @param options Static notifications module options including channels and optional queue/event integrations.
    * @returns A global module definition that exports {@link NotificationsService}, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS`.
+   * @throws {NotificationsConfigurationError} When channel registrations are duplicated or `queue.bulkThreshold` is not a finite positive integer.
    *
    * @example
    * ```ts
@@ -144,6 +156,7 @@ export class NotificationsModule {
    *
    * @param options Async module options that resolve channels and optional integration seams.
    * @returns A global module definition that memoizes async options resolution per module instance.
+   * @throws {NotificationsConfigurationError} During options resolution when channel registrations are duplicated or `queue.bulkThreshold` is not a finite positive integer.
    *
    * @example
    * ```ts
