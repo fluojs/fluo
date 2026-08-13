@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { findExportedApplicationOptions } from './express-application-ownership-exports.mjs';
 import { enforceAdapterOwnedApplicationSource } from './express-application-ownership-source.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -131,7 +132,17 @@ function contradictionMessage(content, locale) {
 export function enforceExpressApplicationOwnershipDocs(
   readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
 ) {
-  enforceAdapterOwnedApplicationSource(readText(adapterSourcePath), adapterSourcePath, readText);
+  const adapterSource = readText(adapterSourcePath);
+  const exposedOptions = findExportedApplicationOptions({
+    content: adapterSource,
+    readText,
+    sourcePath: adapterSourcePath,
+  });
+  assert(
+    exposedOptions.length === 0,
+    `${adapterSourcePath} must not expose existing Express application adoption options; found ${exposedOptions.join(', ')}.`,
+  );
+  enforceAdapterOwnedApplicationSource(adapterSource, adapterSourcePath);
 
   for (const [relativePath, locale] of governedDocuments) {
     const content = readText(relativePath);
