@@ -162,6 +162,41 @@ describe('NatsMicroserviceTransport request callback boundary', () => {
     expect(client.closeCalled).toBe(false);
   });
 
+  it('contains logger failures when the request callback boundary reports a malformed frame', async () => {
+    // Given
+    const client = new RequestCallbackNatsClient();
+    const loggerError = new Error('logger failed');
+    const logger = {
+      error: vi.fn(() => {
+        throw loggerError;
+      }),
+    };
+    const transport = new NatsMicroserviceTransport({ client, codec });
+    transport.setLogger(logger);
+    await transport.listen(async () => undefined);
+    const unhandledRejection = vi.fn();
+
+    process.on('unhandledRejection', unhandledRejection);
+    try {
+      // When
+      client.dispatchRequest(codec.encode('{not-json'), () => undefined);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // Then
+      expect(logger.error).toHaveBeenCalledWith(
+        'Request callback failed.',
+        expect.any(Error),
+        'NatsMicroserviceTransport',
+      );
+      expect(unhandledRejection).not.toHaveBeenCalled();
+      expect(client.closeCalled).toBe(false);
+    } finally {
+      process.off('unhandledRejection', unhandledRejection);
+      await transport.close();
+      expect(client.closeCalled).toBe(false);
+    }
+  });
+
   it('does not fall back to console.error when a request callback fails without a logger', async () => {
     // Given
     const client = new RequestCallbackNatsClient();

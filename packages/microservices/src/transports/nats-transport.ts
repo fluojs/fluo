@@ -76,8 +76,22 @@ export class NatsMicroserviceTransport implements MicroserviceTransport {
 
   private handleRequestMessageSafely(message: NatsMessageLike): void {
     void this.handleRequestMessage(message).catch((error: unknown) => {
-      this.logger?.error('Request callback failed.', error, 'NatsMicroserviceTransport');
+      this.logRequestCallbackFailure(error);
     });
+  }
+
+  private logRequestCallbackFailure(error: unknown): void {
+    const logger = this.logger;
+
+    if (!logger) {
+      return;
+    }
+
+    try {
+      logger.error('Request callback failed.', error, 'NatsMicroserviceTransport');
+    } catch (loggerError) {
+      void loggerError;
+    }
   }
 
   /**
