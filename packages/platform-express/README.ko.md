@@ -21,7 +21,7 @@ fluo 런타임을 위한 Express 기반 HTTP 어댑터 패키지입니다.
 npm install @fluojs/platform-express express
 ```
 
-`@fluojs/platform-express`는 Node.js 20.19.3 이상이 필요합니다. Listener-level RFC `QUERY` 요청이 Express와 fluo dispatch에 도달하도록 package manifest는 `engines.node >=20.19.3`을 선언합니다. Deployment host가 Bun, Deno, Cloudflare Workers라면 fetch-style adapter를 선택하세요.
+`@fluojs/platform-express`는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`이 필요합니다. Listener-level RFC `QUERY` 요청이 Express와 fluo dispatch에 도달하도록 package manifest는 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상은 제외됩니다. Deployment host가 Bun, Deno, Cloudflare Workers라면 fetch-style adapter를 선택하세요.
 
 ## 사용 시점
 
