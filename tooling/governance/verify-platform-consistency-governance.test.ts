@@ -1797,6 +1797,40 @@ describe('package surface microservices transport discoverability', () => {
       expect(markdown).toContain('caller-owned');
     }
   });
+
+  it('keeps byte-safe TCP framing discoverable and backed by split-codepoint regression evidence', () => {
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+    const englishSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.md'), 'utf8');
+    const koreanSurface = readFileSync(join(repoRoot, 'docs/reference/package-surface.ko.md'), 'utf8');
+    const englishReadme = readFileSync(join(repoRoot, 'packages/microservices/README.md'), 'utf8');
+    const koreanReadme = readFileSync(join(repoRoot, 'packages/microservices/README.ko.md'), 'utf8');
+    const englishChapter = readFileSync(join(repoRoot, 'book/intermediate/ch02-tcp.md'), 'utf8');
+    const koreanChapter = readFileSync(join(repoRoot, 'book/intermediate/ch02-tcp.ko.md'), 'utf8');
+    const regression = readFileSync(
+      join(repoRoot, 'packages/microservices/src/transports/tcp-transport.utf8-framing.test.ts'),
+      'utf8',
+    );
+
+    for (const markdown of [englishContext, koreanContext, englishSurface, koreanSurface]) {
+      expect(markdown).toContain('UTF-8');
+      expect(markdown).toContain('byte');
+    }
+
+    for (const context of [englishContext, koreanContext]) {
+      expect(context).toContain('tcp-transport.utf8-framing.test.ts');
+    }
+
+    for (const markdown of [englishReadme, koreanReadme, englishChapter, koreanChapter]) {
+      expect(markdown).toContain('UTF-8');
+      expect(markdown).toContain('byte');
+      expect(markdown).toContain('multibyte');
+    }
+
+    expect(regression).toContain("it('preserves a request payload");
+    expect(regression).toContain("it('preserves a response payload");
+    expect(regression).toContain("it('preserves an event payload");
+  });
 });
 
 describe('package surface CQRS responsibility discoverability', () => {
