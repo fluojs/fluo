@@ -56,6 +56,10 @@ The complete ownership, negotiation, React adapter, and fallback contract is rec
 | Unsupported syntax | Wildcards, regex-like tokens, inline modifiers, and mixed segments such as `user-:id` or `:id.json` are rejected by route validation. |
 | Catch-all decision | Catch-all grammar is deferred; see the [HTTP catch-all route grammar decision](./http-catch-all-route-grammar.md). No candidate syntax is active. |
 | Param naming | Route param names MUST match `/[a-zA-Z_][a-zA-Z0-9_]*/`. |
+| Method authoring | `@Query(path)` registers `QUERY`. `@Route(method, path)` accepts a non-empty HTTP token, canonicalizes it to uppercase, and rejects invalid tokens plus the reserved `ALL` sentinel. `@All(path)` remains the only wildcard authoring API. |
+| Method precedence | An exact method route is selected before an `ALL` route for the same normalized path. Custom methods use the same duplicate detection and version-selection rules as built-in methods. |
+| Adapter boundary | Supported listeners and fetch dispatch preserve `QUERY` and extension methods. Custom methods stay on adapter fallback dispatch rather than native fluo route handoff, and `CONNECT` remains outside ordinary routing conformance. |
+| OpenAPI boundary | Custom runtime methods do not become OpenAPI Path Item operations. `@fluojs/openapi` retains its documented standard-operation allowlist. |
 | Match shape | `matchRoutePath(...)` matches only when the registered path and incoming path have the same segment count. |
 | Handler lookup | `HandlerMapping.match(request)` returns one `HandlerMatch` containing the descriptor and extracted params, or `undefined` when no route matches. |
 | Missing route behavior | `matchHandlerOrThrow(...)` throws `HandlerNotFoundError` for unmatched method and path combinations. |
