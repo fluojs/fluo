@@ -20,6 +20,24 @@ describe('Microservices safety guidance governance', () => {
     expect(() => enforceMicroservicesSafetyRuntimeEvidence()).not.toThrow();
   });
 
+  it('pins all-attempt, retained-retry, and aggregate NATS subscription cleanup evidence', () => {
+    // Given
+    const governanceSource = readFileSync(
+      resolve(repoRoot, 'tooling/governance/microservices-safety-guidance.mjs'),
+      'utf8',
+    );
+
+    // When / Then
+    for (const requiredEvidence of [
+      'const retainedSubscriptions: NatsSubscriptionLike[] = [];',
+      'retainedSubscriptions.push(subscription);',
+      'retries only subscriptions whose cleanup failed',
+      'aggregates evidence when multiple subscription cleanup attempts fail',
+    ]) {
+      expect(governanceSource).toContain(requiredEvidence);
+    }
+  });
+
   it('keeps the gRPC streaming writer example aligned with the non-generic public contract', () => {
     // Given
     const writerContract = readFileSync(

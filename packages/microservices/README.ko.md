@@ -122,7 +122,7 @@ Kafka와 RabbitMQ는 일치한 handler와 request response publication이 settle
 
 ### 전달 안전 기본값
 
-- TCP 프레임은 기본적으로 newline-delimited 메시지당 1 MiB로 제한되며, 한도를 넘는 프레임은 요청 버퍼를 무한히 키우는 대신 소켓을 종료합니다.
+- TCP 프레임은 raw byte로 버퍼링하고 구분한 뒤 완성된 각 프레임을 UTF-8로 한 번만 디코딩합니다. 따라서 여러 socket chunk에 걸쳐 분할된 multibyte code point도 그대로 유지됩니다. 프레임은 기본적으로 newline-delimited 메시지당 1 MiB로 제한되며, 한도를 넘는 프레임은 요청 버퍼를 무한히 키우는 대신 소켓을 종료합니다.
 - Redis Streams는 요청/이벤트 엔트리를 핸들러 처리가 끝난 뒤에만 ACK합니다. 실패한 이벤트는 조기 ACK로 유실하지 않고 broker 복구/재전달 경로에 남겨 둡니다.
 - Kafka와 RabbitMQ는 inbound event/request 처리와 response publish가 끝날 때까지 consumer delivery completion을 pending 상태로 유지합니다. Event-handler와 response-publish 실패는 consumer callback을 reject해 broker adapter가 ACK를 보류하거나 재시도할 수 있게 하며, request-handler 오류는 error response를 publish할 수 있으면 기존처럼 호출자에게 전달합니다.
 - Redis Streams는 기본적으로 live request/event stream에 publish-time trimming을 적용하지 않으므로, pending 엔트리가 `xack` 또는 consumer-group 복구 경로가 끝나기 전에 잘리지 않습니다. ACK가 끝난 request/reply 엔트리는 정리되고, 인스턴스별 response stream은 기본적으로 bounded retention(`responseRetentionMaxLen: 1_000`)을 유지한 뒤 `close()` 중 삭제됩니다.
@@ -131,6 +131,7 @@ Kafka와 RabbitMQ는 일치한 handler와 request response publication이 settle
 - RabbitMQ 요청-응답은 기본적으로 인스턴스별 response queue를 사용합니다. 공유 reply topology를 의도적으로 운영할 때만 `responseQueue`를 명시적으로 지정하세요.
 - caller-owned broker collaborator는 shutdown 중에도 caller-owned로 유지됩니다. NATS, Kafka, RabbitMQ transport는 subscription/consumer를 분리하고 in-flight 요청을 reject하지만, 애플리케이션이 넘긴 client, producer, consumer, publisher, 외부 connection 객체를 close/disconnect하지 않습니다.
 - NATS subscription setup이 `listen()` 중 실패하면 transport는 해당 시도에서 이미 생성한 subscription을 setup의 역순으로 unsubscribe하고 caller-owned NATS client는 열어 둡니다.
+- NATS shutdown 중에는 하나의 unsubscribe가 실패해도 모든 subscription cleanup을 시도하고, 실패한 subscription reference를 이후 `close()` 재시도를 위해 유지합니다. 단일 실패는 그대로 보고하고 여러 실패는 `AggregateError`로 보고하며, 이미 성공한 subscription cleanup은 반복하지 않습니다. 유지된 cleanup이 성공하기 전에는 `listen()`을 다시 시작할 수 없습니다.
 - `AbortSignal`을 받는 요청-응답 transport는 이미 abort된 send를 publish 전에 reject하고, deferred broker/RPC dispatch 직전 cancellation을 다시 확인하며, 나중에 abort된 in-flight send도 reject합니다. `close()`가 시작되면 programmatic `Microservice` facade의 terminal ingress gate가 `listen()`이 아직 pending 상태여도 transport handoff 전에 새 `send()`, `emit()`, `serverStream()`, `clientStream()`, `bidiStream()` 호출을 reject하고, runtime shell은 같은 terminal gate를 `send()`와 `emit()`에 적용합니다. Transport adapter는 자체 shutdown guard를 계속 유지하고, 동시 `listen()` 호출은 아직 진행 중인 shutdown 상태를 reset할 수 없으며, 동시에 또는 반복해서 호출된 TCP `close()`는 첫 shutdown promise를 공유해 listener와 socket cleanup을 한 번만 수행합니다.
 - Programmatic `Microservice` facade는 런타임 shutdown hook이 종료를 시작한 signal을 전달할 수 있도록 `close(signal?: string)`을 받습니다. `MicroserviceLifecycleService.close(signal)`은 이 lifecycle-compatible facade 계약을 유지하면서도 현재 설정된 transport에는 기존 `close(): Promise<void>` 계약으로 호출합니다. 각 transport는 자체 문서가 signal-aware shutdown을 명시하지 않는 한 계속 인자를 받지 않는 shutdown adapter입니다.
 - Root `@fluojs/microservices` barrel import와 `TcpMicroserviceTransport` 생성은 `node:net`을 load하지 않습니다. TCP는 `listen()`이 server를 시작하거나 outbound `send()`/`emit()`이 socket을 생성하는 경로에서만 Node networking을 lazy-load합니다. `close()`가 in-flight listen 시도를 기다리는 중 startup이 실패해도 microservice shutdown은 캡처한 listen error를 다시 surface하기 전에 transport cleanup을 시도합니다.

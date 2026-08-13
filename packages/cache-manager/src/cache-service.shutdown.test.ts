@@ -36,6 +36,74 @@ function createDeferred<T>(): Deferred<T> {
 }
 
 describe('CacheService shutdown ordering', () => {
+  it('shares teardown completion across concurrent and repeated close callers', async () => {
+    // Given
+    const closeDeferred = createDeferred<void>();
+    const close = vi.fn(() => closeDeferred.promise);
+    const store: CacheStore = {
+      close,
+      async del() {},
+      async get() {
+        return undefined;
+      },
+      async reset() {},
+      async set() {},
+    };
+    const cache = new CacheService(store, cacheOptions);
+
+    // When
+    const firstClose = cache.close();
+    const concurrentLifecycleClose = cache.onModuleDestroy();
+
+    await vi.waitFor(() => {
+      expect(close).toHaveBeenCalledTimes(1);
+    });
+    const sharedConcurrentCompletion = concurrentLifecycleClose === firstClose;
+    closeDeferred.resolve();
+    await Promise.all([firstClose, concurrentLifecycleClose]);
+    const repeatedClose = cache.close();
+
+    // Then
+    expect(sharedConcurrentCompletion).toBe(true);
+    expect(repeatedClose).toBe(firstClose);
+    await expect(repeatedClose).resolves.toBeUndefined();
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares teardown failure across concurrent and repeated close callers', async () => {
+    // Given
+    const failure = new Error('store close failed');
+    const close = vi.fn(async () => {
+      throw failure;
+    });
+    const store: CacheStore = {
+      close,
+      async del() {},
+      async get() {
+        return undefined;
+      },
+      async reset() {},
+      async set() {},
+    };
+    const cache = new CacheService(store, cacheOptions);
+
+    // When
+    const firstClose = cache.close();
+    const concurrentLifecycleClose = cache.onModuleDestroy();
+    const concurrentResults = await Promise.allSettled([firstClose, concurrentLifecycleClose]);
+    const repeatedClose = cache.close();
+
+    // Then
+    expect(concurrentLifecycleClose).toBe(firstClose);
+    expect(concurrentResults).toEqual([
+      { status: 'rejected', reason: failure },
+      { status: 'rejected', reason: failure },
+    ]);
+    expect(repeatedClose).toBe(firstClose);
+    await expect(repeatedClose).rejects.toBe(failure);
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
   it('waits for an in-flight store get before closing the store exactly once', async () => {
     // Given
     const events: string[] = [];
