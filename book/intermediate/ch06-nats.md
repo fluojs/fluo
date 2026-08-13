@@ -97,6 +97,8 @@ Keep `MicroservicesModule`, `MICROSERVICE`, and the `Microservice` type on root 
 - `await microservice.emit(...)` settles when the caller-provided client's publish operation accepts/completes the outbound frame. It does not wait for a remote event handler or add durability beyond that client contract.
 - `await microservice.close()` unsubscribes transport-created subscriptions and rejects pending requests, but it does not close or drain the caller-owned NATS client. During shutdown, close the facade first, then drain or close that client from the bootstrap layer.
 
+If one subscription cleanup fails, `close()` still attempts the others and reports the failure after every attempt. A later `close()` retries only the failed subscriptions, while successfully detached subscriptions remain cleared. `listen()` cannot resume while failed cleanup remains. Resolve that transport cleanup before draining or closing the caller-owned client.
+
 ## 6.3 Fast request-reply for inventory control
 
 NATS naturally supports request-reply.

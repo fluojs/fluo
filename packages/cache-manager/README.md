@@ -216,7 +216,7 @@ CacheModule.forRoot({
 
 Avoid sharing a Redis cache prefix with non-cache data. `del(key)` removes the exact cache key resolved by this package, while `reset()` removes only the store-owned cache namespace described above.
 
-When the application closes, `CacheService` stops new store reads/writes, waits for already-started store operations, and then forwards shutdown to custom stores that expose `close()` or `dispose()`. Use one of those optional hooks when a store owns sockets, pools, timers, or other external resources.
+When the application closes, `CacheService` stops new store reads/writes, waits for already-started store operations, and then forwards shutdown to custom stores that expose `close()` or `dispose()`. Concurrent and repeated `close()` or lifecycle-hook calls share that first teardown completion and failure, so every caller observes the same shutdown boundary while store teardown runs once. Use one of those optional hooks when a store owns sockets, pools, timers, or other external resources.
 
 Custom stores can be passed directly through `store` when they implement the `CacheStore` contract. This is the right option for in-process LRU stores, remote caches other than Redis, or test doubles that need to observe cache operations.
 
@@ -276,7 +276,7 @@ On that supported HTTP path, eviction is deferred until a framework response wri
 - `NormalizedCacheModuleOptions`: Compatibility-only type export matching the normalized configuration shape after defaults are applied. Prefer `CacheModuleOptions` for application code; this type remains public so consumers that referenced the previously shipped declaration surface can keep compiling.
 
 ### Services
-- `CacheService`: Main API for manual cache operations (`get`, `set`, `del`, `remember`, `reset`, `close`). Application shutdown calls the same `close()` path, which forwards teardown to custom stores exposing `close()` or `dispose()`.
+- `CacheService`: Main API for manual cache operations (`get`, `set`, `del`, `remember`, `reset`, `close`). Application shutdown calls the same `close()` path, which forwards teardown to custom stores exposing `close()` or `dispose()` and shares the first teardown completion across concurrent or repeated callers.
 
 ### Decorators
 - `@CacheTTL(seconds)`: Sets the TTL for a specific handler.

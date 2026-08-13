@@ -216,7 +216,7 @@ CacheModule.forRoot({
 
 Redis cache prefix를 cache가 아닌 데이터와 공유하지 마세요. `del(key)`은 이 패키지가 해석한 정확한 캐시 키를 삭제하고, `reset()`은 위에서 설명한 store 소유 캐시 namespace만 삭제합니다.
 
-애플리케이션이 종료될 때 `CacheService`는 새 store read/write를 중단하고 이미 시작된 store 작업을 기다린 뒤, `close()` 또는 `dispose()`를 노출하는 custom store로 shutdown을 전달합니다. store가 socket, pool, timer 또는 기타 외부 리소스를 소유한다면 이 optional hook 중 하나를 사용하세요.
+애플리케이션이 종료될 때 `CacheService`는 새 store read/write를 중단하고 이미 시작된 store 작업을 기다린 뒤, `close()` 또는 `dispose()`를 노출하는 custom store로 shutdown을 전달합니다. 동시에 또는 반복해서 호출된 `close()`와 lifecycle hook은 첫 teardown의 완료 및 실패를 공유하므로, store teardown은 한 번만 실행되고 모든 호출자가 같은 shutdown 경계를 관찰합니다. store가 socket, pool, timer 또는 기타 외부 리소스를 소유한다면 이 optional hook 중 하나를 사용하세요.
 
 `CacheStore` 계약을 구현한 custom store는 `store` 옵션에 직접 전달할 수 있습니다. in-process LRU store, Redis 외 원격 캐시, 또는 cache operation을 관찰해야 하는 테스트 더블에 적합합니다.
 
@@ -276,7 +276,7 @@ class ProductController {
 - `NormalizedCacheModuleOptions`: 기본값이 적용된 정규화 설정 모양과 일치하는 compatibility-only type export입니다. 애플리케이션 코드에서는 `CacheModuleOptions`를 우선 사용하세요. 이 타입은 이전에 배포된 declaration surface를 참조한 소비자가 계속 컴파일되도록 공개 상태를 유지합니다.
 
 ### 서비스
-- `CacheService`: 수동 캐시 작업(`get`, `set`, `del`, `remember`, `reset`, `close`)을 위한 기본 API입니다. 애플리케이션 shutdown은 같은 `close()` 경로를 호출하며, 이 경로는 `close()` 또는 `dispose()`를 노출하는 custom store로 teardown을 전달합니다.
+- `CacheService`: 수동 캐시 작업(`get`, `set`, `del`, `remember`, `reset`, `close`)을 위한 기본 API입니다. 애플리케이션 shutdown은 같은 `close()` 경로를 호출하며, 이 경로는 `close()` 또는 `dispose()`를 노출하는 custom store로 teardown을 전달하고 동시에 또는 반복해서 호출한 caller가 첫 teardown 완료를 공유하도록 합니다.
 
 ### 데코레이터
 - `@CacheTTL(seconds)`: 특정 핸들러의 TTL을 설정합니다.

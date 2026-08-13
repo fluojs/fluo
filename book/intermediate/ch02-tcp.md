@@ -107,7 +107,7 @@ fluo's TCP transport uses NDJSON for framing. Each JSON object is followed by a 
 {"kind":"message","pattern":"catalog.get","payload":{"productId":"123"},"requestId":"abc-123"}\n
 ```
 
-On the receiving side, fluo buffers incoming data until it sees a newline character. At that point, it parses the buffered bytes as JSON and dispatches the packet to the appropriate handler. You can see this mechanism in `TcpMicroserviceTransport.bindSocketParser`, where the buffer is split on each `\n`. If a single line exceeds `maxFrameBytes` (1 MiB), the socket is destroyed to prevent memory exhaustion attacks.
+On the receiving side, fluo buffers raw bytes until it sees a newline byte. It locates frame boundaries and applies `maxFrameBytes` to that byte buffer before decoding each complete frame exactly once as UTF-8, parsing it as JSON, and dispatching the packet to the appropriate handler. You can see this mechanism in `TcpMicroserviceTransport.bindSocketParser`, where the byte buffer is split on each `\n`. Keeping incomplete frames byte-based matters because TCP may split one multibyte character across arbitrary chunks; decoding each chunk separately would replace that otherwise valid character before JSON parsing. If a single line exceeds `maxFrameBytes` (1 MiB), the socket is destroyed to prevent memory exhaustion attacks.
 
 The benefits are clear.
 

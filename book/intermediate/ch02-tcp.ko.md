@@ -107,7 +107,7 @@ fluo의 TCP 트랜스포트는 프레이밍을 위해 NDJSON을 사용합니다.
 {"kind":"message","pattern":"catalog.get","payload":{"productId":"123"},"requestId":"abc-123"}\n
 ```
 
-수신 측에서 fluo는 개행 문자를 만날 때까지 들어온 데이터를 버퍼링합니다. 그 시점에 버퍼된 바이트를 JSON으로 파싱하고, 적절한 핸들러로 패킷을 디스패치합니다. 이 메커니즘은 `TcpMicroserviceTransport.bindSocketParser`에서 확인할 수 있는데, 여기서 버퍼는 각 `\n`을 기준으로 잘립니다. 단일 라인이 `maxFrameBytes`(1 MiB)를 초과하면 메모리 소진 공격을 방지하기 위해 소켓을 파괴합니다.
+수신 측에서 fluo는 개행 byte를 만날 때까지 raw byte를 버퍼링합니다. 프레임 경계를 찾고 byte buffer에 `maxFrameBytes`를 적용한 뒤, 완성된 각 프레임을 UTF-8로 정확히 한 번 디코딩하고 JSON으로 파싱해 적절한 핸들러로 디스패치합니다. 이 메커니즘은 `TcpMicroserviceTransport.bindSocketParser`에서 확인할 수 있는데, 여기서 byte buffer는 각 `\n`을 기준으로 잘립니다. TCP는 하나의 multibyte 문자를 임의의 chunk 경계에서 나눌 수 있으므로, 불완전한 프레임을 byte 상태로 유지해야 합니다. 각 chunk를 따로 디코딩하면 JSON 파싱 전에 정상 문자가 replacement character로 바뀔 수 있습니다. 단일 라인이 `maxFrameBytes`(1 MiB)를 초과하면 메모리 소진 공격을 방지하기 위해 소켓을 파괴합니다.
 
 장점은 분명합니다.
 
