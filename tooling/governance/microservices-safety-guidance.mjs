@@ -222,6 +222,29 @@ const grpcMixedOwnershipEvidence = [
   ],
 ];
 
+const natsCleanupEvidence = [
+  [
+    'packages/microservices/src/transports/nats-transport.ts',
+    [
+      'const cleanupErrors: unknown[] = [];',
+      'const retainedSubscriptions: NatsSubscriptionLike[] = [];',
+      'retainedSubscriptions.push(subscription);',
+      'this.subscriptions = retainedSubscriptions;',
+      'throw new AggregateError(',
+      'NATS subscription cleanup is incomplete. Call close() again before listen().',
+    ],
+  ],
+  [
+    'packages/microservices/src/transports/nats-transport.cleanup.test.ts',
+    [
+      'attempts every subscription when one cleanup fails',
+      'retries only subscriptions whose cleanup failed',
+      'does not resume listening while failed subscription cleanup remains',
+      'aggregates evidence when multiple subscription cleanup attempts fail',
+    ],
+  ],
+];
+
 const runtimeEvidence = [
   [
     'packages/microservices/src/types.ts',
@@ -381,6 +404,14 @@ export function enforceMicroservicesSafetyRuntimeEvidence() {
 
     for (const anchor of evidenceAnchors) {
       assert(source.includes(anchor), `${relativePath} must keep the mixed gRPC ownership evidence ${anchor}.`);
+    }
+  }
+
+  for (const [relativePath, evidenceAnchors] of natsCleanupEvidence) {
+    const source = read(relativePath);
+
+    for (const anchor of evidenceAnchors) {
+      assert(source.includes(anchor), `${relativePath} must keep the NATS cleanup evidence ${anchor}.`);
     }
   }
 }
