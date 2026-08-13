@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs.mjs';
+import { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 import { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 import {
@@ -17,6 +18,7 @@ import { enforceReactRscGraduationGovernance } from './react-rsc-graduation-poli
 import { enforceRuntimeLifecycleNestjsMigrationDocs } from './runtime-lifecycle-nestjs-migration-docs.mjs';
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
+export { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 export { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 export { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 export {
@@ -2563,6 +2565,7 @@ export function main() {
   enforceReleaseGovernancePublishSurfaceSync();
   enforceCanonicalPackageSurfaceSync();
   enforceDocsHubOfficialTransportLinks();
+  enforceDenoHostOwnedLifecycleContract();
   enforceDenoPermissionGuidance();
   enforceEmailLifecycleDocsContract();
   enforceSerializerResponseOwnershipDocsSync();
