@@ -1,0 +1,143 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+
+import { enforceDenoHostOwnedLifecycleSource } from './deno-host-owned-lifecycle-source.mjs';
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+function read(relativePath: string): string {
+  return readFileSync(join(repoRoot, relativePath), 'utf8');
+}
+
+function overrideFile(
+  relativePath: string,
+  transform: (content: string) => string,
+): (requestedPath: string) => string {
+  return (requestedPath) => requestedPath === relativePath ? transform(read(requestedPath)) : read(requestedPath);
+}
+
+describe('Deno host-owned lifecycle source contract', () => {
+  it('rejects lifecycle ownership options on the host-owned handler', () => {
+    // Given
+    const readWithSignalOption = overrideFile('packages/platform-deno/src/fetch-handler.ts', (content) =>
+      content.replace('  readonly rawBody?: boolean;', '  readonly rawBody?: boolean;\n  readonly shutdownSignals?: boolean;'));
+
+    // When
+    const runGovernanceGuard = () => enforceDenoHostOwnedLifecycleSource(readWithSignalOption);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(/must not expose server, shutdown, signal, or websocket ownership options/);
+  });
+
+  it('rejects server startup from the host-owned handler implementation', () => {
+    // Given
+    const readWithServeCall = overrideFile('packages/platform-deno/src/fetch-handler.ts', (content) =>
+      content.replace(
+        '  validateNonNegativeIntegerOption',
+        '  globalThis.Deno?.serve({ port: 3000 }, async () => new Response());\n  validateNonNegativeIntegerOption',
+      ));
+
+    // When
+    const runGovernanceGuard = () => enforceDenoHostOwnedLifecycleSource(readWithServeCall);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(/must not invoke server startup/);
+  });
+
+  it.each([
+    [
+      'server startup through call alias',
+      'const startServer = globalThis.Deno?.serve;\n  startServer?.call(globalThis.Deno, { port: 3000 }, async () => new Response());',
+      'server startup',
+    ],
+    [
+      'signal registration through destructuring',
+      "const { addSignalListener: registerSignal } = globalThis.Deno ?? {};\n  registerSignal?.('SIGTERM', () => {});",
+      'signal registration',
+    ],
+    [
+      'server shutdown through bound method',
+      'const controller = { finished: Promise.resolve(), shutdown: () => undefined };\n  const stopServer = controller.shutdown.bind(controller);\n  stopServer();',
+      'server shutdown',
+    ],
+    [
+      'application close through identifier alias',
+      'const application = { close: () => undefined };\n  const closeApplication = application.close;\n  closeApplication();',
+      'server shutdown',
+    ],
+    [
+      'websocket upgrade through identifier alias',
+      "const upgradeSocket = globalThis.Deno?.upgradeWebSocket;\n  upgradeSocket?.(new Request('http://localhost'));",
+      'websocket upgrades',
+    ],
+  ] as const)('rejects %s in the host-owned handler', (_caseName, sourceSnippet, ownership) => {
+    // Given
+    const readWithLifecycleAlias = overrideFile('packages/platform-deno/src/fetch-handler.ts', (content) =>
+      content.replace(
+        "  validateNonNegativeIntegerOption('maxBodySize', maxBodySize);",
+        `  ${sourceSnippet}\n  validateNonNegativeIntegerOption('maxBodySize', maxBodySize);`,
+      ));
+
+    // When
+    const runGovernanceGuard = () => enforceDenoHostOwnedLifecycleSource(readWithLifecycleAlias);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(new RegExp(`must not invoke ${ownership}`));
+  });
+
+  it('rejects shutdown signal registration from managed app.listen', () => {
+    // Given
+    const readWithListenSignalAlias = overrideFile('packages/platform-deno/src/adapter.ts', (content) =>
+      content.replace(
+        '    try {\n      const serve = resolveServe(this.options.serve);',
+        "    try {\n      const { addSignalListener: registerSignal } = globalThis.Deno ?? {};\n      registerSignal?.('SIGTERM', () => {});\n      const serve = resolveServe(this.options.serve);",
+      ));
+
+    // When
+    const runGovernanceGuard = () => enforceDenoHostOwnedLifecycleSource(readWithListenSignalAlias);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(/managed listen\(\) must not install shutdown signal handlers/);
+  });
+
+  it('requires runDenoApplication to pass signal registration through the runtime shutdownRegistration seam', () => {
+    // Given
+    const readWithoutShutdownRegistrationProperty = overrideFile('packages/platform-deno/src/adapter.ts', (content) =>
+      content.replace('    shutdownRegistration: options.shutdownSignals === false', '    ignoredRegistration: options.shutdownSignals === false'));
+
+    // When
+    const runGovernanceGuard = () => enforceDenoHostOwnedLifecycleSource(readWithoutShutdownRegistrationProperty);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(/runDenoApplication\(\.\.\.\) must pass Deno signal registration as shutdownRegistration/);
+  });
+
+  it('requires the managed close helper to invoke server shutdown before drain', () => {
+    // Given
+    const readWithoutServerShutdown = overrideFile('packages/platform-deno/src/adapter.ts', (content) =>
+      content.replace('      await server.shutdown();', '      await server.finished;'));
+
+    // When
+    const runGovernanceGuard = () => enforceDenoHostOwnedLifecycleSource(readWithoutServerShutdown);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(/closeDenoServerWithDrain\(\.\.\.\) must invoke server shutdown/);
+  });
+
+  it('requires the managed websocket path to invoke the resolved upgrade function', () => {
+    // Given
+    const readWithoutWebSocketUpgrade = overrideFile('packages/platform-deno/src/adapter.ts', (content) =>
+      content.replace(
+        '          upgrade: (upgradeRequest) => upgradeWebSocket(upgradeRequest),',
+        '          upgrade: () => new Response(null, { status: 501 }),',
+      ));
+
+    // When
+    const runGovernanceGuard = () => enforceDenoHostOwnedLifecycleSource(readWithoutWebSocketUpgrade);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(/managed handle\(\) must invoke websocket upgrades/);
+  });
+});
