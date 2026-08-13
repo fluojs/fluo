@@ -802,6 +802,8 @@ async function runBootstrapHooks(instances: unknown[]): Promise<void> {
 
 shutdown ordering은 거울상입니다. `path:packages/runtime/src/bootstrap.ts:1200-1212`의 `runShutdownHooks()`는 provider order가 유지된 instance를 역순으로 순회하면서, 먼저 모든 `onModuleDestroy()`를 실행하고 그 다음 모든 `onApplicationShutdown()`을 실행합니다.
 
+이 two-phase shutdown은 NestJS migration boundary이기도 합니다. NestJS `beforeApplicationShutdown`은 지원하지 않으며 fluo가 탐지하거나 호출하지 않습니다. Application-wide signal phase보다 먼저 끝나야 하는 준비 작업은 `onModuleDestroy()`에 두고, signal-aware cleanup은 `onApplicationShutdown(signal?)`에 둡니다. compatibility shim, fallback, alias 또는 다섯 번째 runtime hook은 없으므로 여기에 표시한 네 hook ordering이 authoritative contract입니다.
+
 종료 hook은 같은 phase 분리를 유지하되 instance 순서만 뒤집습니다.
 
 `path:packages/runtime/src/bootstrap.ts:1200-1212`
