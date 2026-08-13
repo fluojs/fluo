@@ -386,6 +386,7 @@ The application shell constructor shows directly what is added on top of the con
 class FluoApplication implements Application {
   private applicationState: ApplicationState = 'bootstrapped';
   private closed = false;
+  private closeStarted = false;
   private closingPromise: Promise<void> | undefined;
   private readonly lifecycleInstances: unknown[];
   private readonly connectedMicroservices: MicroserviceApplication[] = [];
@@ -409,7 +410,7 @@ class FluoApplication implements Application {
 
 Because of this structure, the application shell includes context functionality while also managing HTTP adapter and dispatcher state. It uses the same baseline as a context, but it is not the same contract.
 
-`ApplicationState` is declared in `path:packages/runtime/src/types.ts:91-92`. The allowed values are `'bootstrapped'`, `'ready'`, and `'closed'`. This state is not HTTP-only. It expresses runtime lifecycle progression for application and microservice shells.
+`ApplicationState` is declared in `path:packages/runtime/src/types.ts`. The allowed values remain `'bootstrapped'`, `'ready'`, and `'closed'`. `closeStarted` is a private admission gate rather than a new public state: pending or failed teardown preserves the previous public state, while normal application operations reject from shutdown start. The public state becomes `closed` only after teardown completes successfully.
 
 The first contract to inspect is `ready()` in `path:packages/runtime/src/bootstrap.ts:437-443`. This method does not call `adapter.listen()`. It only checks that the application is not already closed, then delegates to `platformShell.assertCriticalReadiness()`.
 
@@ -517,150 +518,63 @@ Application = ApplicationContext
 The model implemented by the source is exactly this. An application shell is not a totally different bootstrap universe. It is the context baseline with transport-facing capabilities added.
 
 ## 9.4 Shutdown and failure cleanup are first-class runtime contracts, not afterthoughts
-The application context and application shell both implement careful close semantics. This is one of the more mature parts of the runtime design.
+The application context and application shell use two separate shutdown concepts: a public lifecycle state and a private terminal operation gate. Keeping them separate preserves the documented `bootstrapped | ready | closed` state contract while preventing new work from entering teardown.
 
-The shared cleanup primitive is `closeRuntimeResources()` in `path:packages/runtime/src/bootstrap.ts:119-153`. The order is explicit. It first runs runtime cleanup callbacks, then shutdown hooks, then adapter close if an adapter exists, and finally container disposal. If needed, it accumulates errors and rethrows them as one error.
+`Application.close()` sets `closeStarted` synchronously before it creates the teardown promise. From that point, `listen()`, `get()`, `connectMicroservice()`, and `startAllMicroservices()` reject. `ApplicationContext.close()` applies the same rule to context `get()`. These gates remain closed after a failed close attempt, including while teardown is still pending. Successful teardown alone changes the public application state to `closed`; a pending or failed attempt leaves the previous public state observable.
 
-The application and context share the cleanup primitive, but the adapter is optional. Because of that structure, context close uses the same shutdown hooks and container disposal while skipping HTTP adapter close.
+The connect path checks the gate both before and after asynchronous runtime resolution. The start-all path checks before iteration and again before each child listen. Those rechecks prevent an operation admitted just before shutdown from attaching or starting a child after shutdown has begun.
 
-`path:packages/runtime/src/bootstrap.ts:119-153`
+The shared `closeRuntimeResources()` helper executes readiness reset, runtime cleanup callbacks, lifecycle hooks, optional adapter close, and container disposal in order. Each phase has a completion bit in `RetryableShutdownState`. The current close attempt still tries later phases and aggregates failures. A later `close()` skips completed phases and retries each incomplete phase as a unit. Because lifecycle hooks are one phase, a partial hook failure retries the hook phase rather than pretending individual hooks completed transactionally.
+
+`path:packages/runtime/src/retryable-shutdown.ts`
 ```typescript
-async function closeRuntimeResources(options: {
-  adapter?: HttpApplicationAdapter;
-  container: Container;
-  lifecycleInstances: readonly unknown[];
-  runtimeCleanup: readonly (() => void)[];
-  signal?: string;
-}): Promise<void> {
-  const errors: unknown[] = [];
+export type RetryableShutdownState<TPhase> = {
+  complete(phase: TPhase): void;
+  isComplete(phase: TPhase): boolean;
+};
 
-  errors.push(...(await runCleanupCallbacks(options.runtimeCleanup)));
+export function createRetryableShutdownState<TPhase>(): RetryableShutdownState<TPhase> {
+  const completedPhases = new Set<TPhase>();
 
-  try {
-    await runShutdownHooks(options.lifecycleInstances, options.signal);
-  } catch (error) {
-    errors.push(error);
-  }
-```
-
-The first cleanup excerpt shows that runtime cleanup callbacks and shutdown hooks run before the adapter. The next excerpt continues into the branch that closes the adapter only when it exists, then finishes with container disposal and error aggregation.
-
-`path:packages/runtime/src/bootstrap.ts:136-153`
-```typescript
-  if (options.adapter) {
-    try {
-      await options.adapter.close(options.signal);
-    } catch (error) {
-      errors.push(error);
-    }
-  }
-
-  try {
-    await disposeContainer(options.container);
-  } catch (error) {
-    errors.push(error);
-  }
-
-  if (errors.length > 0) {
-    throw createLifecycleCloseError(errors);
-  }
+  return {
+    complete(phase) {
+      completedPhases.add(phase);
+    },
+    isComplete(phase) {
+      return completedPhases.has(phase);
+    },
+  };
 }
 ```
 
-Failure-path cleanup is owned by the sibling helper `runBootstrapFailureCleanup()` in `path:packages/runtime/src/bootstrap.ts:155-189`. Even if bootstrap fails after creating some lifecycle instances or resources, the runtime still tries to clean them up. Cleanup failures are logged, while the original bootstrap error is preserved.
+Concurrent close callers share `closingPromise`. A successful close makes later calls idempotent. A failed close clears only that in-flight promise, not the terminal gate or completed-phase ledger, so the next explicit close can resume cleanup without reopening application operations.
 
-Failure cleanup uses the same rollback principle with a different scope label. Application failure and application context failure leave different messages, but they share the attempt to run lifecycle hooks and clean up the container.
+The executable evidence is intentionally split by shell and race:
 
-`path:packages/runtime/src/bootstrap.ts:155-172`
-```typescript
-async function runBootstrapFailureCleanup(options: {
-  container?: Container;
-  lifecycleInstances: readonly unknown[];
-  logger: ApplicationLogger;
-  runtimeCleanup: readonly (() => void)[];
-  scope: 'application' | 'application context';
-}): Promise<void> {
-  const errors: unknown[] = [];
+| Contract | Regression evidence |
+| --- | --- |
+| Failed application close remains operation-terminal and retries only incomplete teardown phases | `path:packages/runtime/src/application.test.ts` — `keeps failed shutdown terminal while retrying only incomplete cleanup` |
+| `Application.get()` rejects from shutdown start while teardown is pending | `path:packages/runtime/src/application.test.ts` — `rejects Application.get() as soon as shutdown starts while teardown is pending` |
+| `ApplicationContext.get()` rejects from shutdown start while teardown is pending | `path:packages/runtime/src/bootstrap.test.ts` — `rejects ApplicationContext.get() as soon as shutdown starts while teardown is pending` |
+| Parent connect/start operations reject while child close is pending | `path:packages/runtime/src/bootstrap.test.ts` — `rejects connect and start operations while application close is pending` |
+| A connect admitted before shutdown cannot attach after async runtime resolution | `path:packages/runtime/src/bootstrap.test.ts` — `rejects connectMicroservice() when shutdown starts during runtime resolution` |
+| Context retry skips completed phases and retries the incomplete hook phase | `path:packages/runtime/src/bootstrap.test.ts` — `retries only incomplete application context shutdown phases` |
 
-  errors.push(...(await runCleanupCallbacks(options.runtimeCleanup)));
-
-  if (options.lifecycleInstances.length > 0) {
-    try {
-      await runShutdownHooks(options.lifecycleInstances, 'bootstrap-failed');
-    } catch (error) {
-      errors.push(error);
-    }
-  }
-```
-
-This first failure-cleanup excerpt shows that the runtime tries to call lifecycle shutdown hooks even after bootstrap failure. The following excerpt separates container disposal from cleanup failure logging.
-
-`path:packages/runtime/src/bootstrap.ts:174-189`
-```typescript
-  if (options.container) {
-    try {
-      await disposeContainer(options.container);
-    } catch (error) {
-      errors.push(error);
-    }
-  }
-
-  for (const error of errors) {
-    options.logger.error(
-      `Failed to clean up after ${options.scope} bootstrap failure.`,
-      error,
-      'FluoFactory',
-    );
-  }
-}
-```
-
-This excerpt shows that cleanup is a runtime contract, not best effort in the casual sense. If lifecycle instances have already been created, the failure path tries to run shutdown hooks.
-
-This is not just defensive coding. It is a necessary rollback path because bootstrap has multiple phases. Failure is possible after Provider resolution, after platform start, or just before dispatcher creation.
-
-Tests make this guarantee concrete. `path:packages/runtime/src/application.test.ts:237-270` proves that `close()` can be retried after an adapter shutdown failure. `path:packages/runtime/src/application.test.ts:272-290` shows that shutdown hook failure is surfaced rather than silently swallowed. `path:packages/runtime/src/application.test.ts:292-320` verifies that the original startup failure is preserved even when cleanup also fails.
-
-Close idempotency is also intentional. Both `FluoApplication.close()` and `FluoApplicationContext.close()` memoize `closingPromise`. If close is already in progress, a later caller waits for the same promise. If close succeeds, later calls return immediately. If close fails, the promise is cleared so a retry is allowed.
-
-Lifecycle hook ordering is handled by `runShutdownHooks()` in `path:packages/runtime/src/bootstrap.ts:710-722`. It walks instances in reverse order, first running every `onModuleDestroy()`, then running every `onApplicationShutdown(signal)`. You can read this as an ordering that unwinds the startup dependency direction as much as possible.
-
-Shutdown hook ordering is fixed in a separate helper. Both hook families run in reverse order, so singleton lifecycle instances created during startup are cleaned up in the opposite direction.
-
-`path:packages/runtime/src/bootstrap.ts:710-722`
-```typescript
-async function runShutdownHooks(instances: readonly unknown[], signal?: string): Promise<void> {
-  for (const instance of [...instances].reverse()) {
-    if (isOnModuleDestroy(instance)) {
-      await instance.onModuleDestroy();
-    }
-  }
-
-  for (const instance of [...instances].reverse()) {
-    if (isOnApplicationShutdown(instance)) {
-      await instance.onApplicationShutdown(signal);
-    }
-  }
-}
-```
-
-The same guarantee applies to the context-only shell. `path:packages/runtime/src/bootstrap.test.ts:612-628` shows that context shutdown failure is surfaced through `context.close()`.
-
-The cleanup flow is:
+The resulting flow is:
 
 ```text
 close()
-  -> if already closed, return
-  -> if closing in progress, await existing promise
-  -> run cleanup callbacks
-  -> run reverse-order shutdown hooks
-  -> close adapter if present
-  -> dispose container
-  -> mark closed on success
-  -> allow retry on failure
+  -> if successfully closed, return
+  -> if close is in progress, await the existing promise
+  -> synchronously close the terminal operation gate
+  -> close connected microservices
+  -> run every incomplete teardown phase in order
+  -> record each successful phase
+  -> set public state to closed only after complete success
+  -> on failure, keep the gate closed and allow an explicit cleanup retry
 ```
 
-This design matters to advanced users because the runtime lifecycle is not only startup convenience. Fluo treats resource retirement as part of the runtime contract.
+Bootstrap-failure cleanup remains a separate rollback path. It runs available cleanup callbacks and lifecycle hooks, attempts container disposal, logs cleanup errors, and preserves the original bootstrap error. Normal close retry state is not reused for a shell that never completed bootstrap.
 
 ## 9.5 The platform shell and adapter seams define what the runtime may assume about the host
 Now we can separate two different contracts inside runtime bootstrap. One is the platform shell. The other is the HTTP adapter. They interact, but they answer different questions.

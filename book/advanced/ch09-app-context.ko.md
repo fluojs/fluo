@@ -386,6 +386,7 @@ application shell의 constructor는 context baseline 위에 무엇이 추가되�
 class FluoApplication implements Application {
   private applicationState: ApplicationState = 'bootstrapped';
   private closed = false;
+  private closeStarted = false;
   private closingPromise: Promise<void> | undefined;
   private readonly lifecycleInstances: unknown[];
   private readonly connectedMicroservices: MicroserviceApplication[] = [];
@@ -409,7 +410,7 @@ class FluoApplication implements Application {
 
 이 구조 때문에 application shell은 context 기능을 포함하면서도 HTTP adapter와 dispatcher state를 관리합니다. context와 같은 baseline을 쓰지만, 같은 contract는 아닙니다.
 
-`ApplicationState`는 `path:packages/runtime/src/types.ts:91-92`에 선언되어 있습니다. 허용 값은 `'bootstrapped'`, `'ready'`, `'closed'`입니다. 이 state는 HTTP 전용이 아닙니다. application과 microservice shell의 runtime lifecycle progression을 표현합니다.
+`ApplicationState`는 `path:packages/runtime/src/types.ts`에 선언되어 있습니다. 허용 값은 계속 `'bootstrapped'`, `'ready'`, `'closed'`입니다. `closeStarted`는 새 public state가 아니라 private admission gate입니다. Pending 또는 failed teardown은 이전 public state를 유지하지만 일반 application operation은 shutdown 시작부터 reject됩니다. Public state는 teardown이 성공적으로 완료된 뒤에만 `closed`가 됩니다.
 
 가장 먼저 볼 계약은 `path:packages/runtime/src/bootstrap.ts:437-443`의 `ready()`입니다. 이 메서드는 `adapter.listen()`을 호출하지 않습니다. application이 이미 닫혀 있지 않은지만 확인한 뒤, `platformShell.assertCriticalReadiness()`에 위임합니다.
 
@@ -517,150 +518,63 @@ Application = ApplicationContext
 source가 구현하는 모델도 정확히 이것입니다. application shell은 totally different bootstrap universe가 아니라, context baseline에 transport-facing capability를 더한 형태입니다.
 
 ## 9.4 Shutdown and failure cleanup are first-class runtime contracts, not afterthoughts
-application context와 application shell은 모두 신중한 close semantics를 구현합니다. 이 부분은 runtime에서 특히 성숙한 설계 중 하나입니다.
+Application context와 application shell은 public lifecycle state와 private terminal operation gate라는 두 shutdown 개념을 사용합니다. 둘을 분리하면 문서화된 `bootstrapped | ready | closed` state 계약을 보존하면서 teardown에 새 작업이 진입하지 못하게 할 수 있습니다.
 
-공유 cleanup primitive는 `path:packages/runtime/src/bootstrap.ts:119-153`의 `closeRuntimeResources()`입니다. 순서는 명시적입니다. 먼저 runtime cleanup callback을 실행하고, 그 다음 shutdown hook, 그 다음 adapter가 있으면 adapter close, 마지막으로 container disposal을 수행합니다. 필요하면 에러를 누적한 뒤 하나로 다시 던집니다.
+`Application.close()`는 teardown promise를 만들기 전에 `closeStarted`를 동기적으로 설정합니다. 그 시점부터 `listen()`, `get()`, `connectMicroservice()`, `startAllMicroservices()`는 reject됩니다. `ApplicationContext.close()`도 context `get()`에 같은 규칙을 적용합니다. 이 gate는 teardown이 pending인 동안은 물론 close 시도가 실패한 뒤에도 닫힌 상태를 유지합니다. 성공한 teardown만 public application state를 `closed`로 바꾸며, pending 또는 failed 시도는 이전 public state를 그대로 노출합니다.
 
-cleanup primitive는 application과 context가 공유하지만, adapter는 optional로 처리합니다. 이 구조 때문에 context close는 같은 shutdown hook과 container disposal을 쓰면서도 HTTP adapter close를 건너뜁니다.
+Connect 경로는 asynchronous runtime resolution 전후에 gate를 검사합니다. Start-all 경로는 iteration 전과 각 child listen 직전에 다시 검사합니다. 이 재검사는 shutdown 직전에 admission된 작업이 shutdown 시작 뒤 child를 attach하거나 start하지 못하게 합니다.
 
-`path:packages/runtime/src/bootstrap.ts:119-153`
+공유 `closeRuntimeResources()` helper는 readiness reset, runtime cleanup callback, lifecycle hook, optional adapter close, container disposal을 순서대로 실행합니다. 각 phase는 `RetryableShutdownState`에 completion bit를 가집니다. 현재 close 시도는 에러가 있어도 뒤 phase를 계속 시도하고 실패를 aggregate합니다. 이후 `close()`는 완료된 phase를 건너뛰고 각 incomplete phase를 하나의 단위로 재시도합니다. Lifecycle hook은 하나의 phase이므로 일부 hook이 실패하면 개별 hook이 transaction처럼 완료되었다고 가정하지 않고 hook phase 전체를 재시도합니다.
+
+`path:packages/runtime/src/retryable-shutdown.ts`
 ```typescript
-async function closeRuntimeResources(options: {
-  adapter?: HttpApplicationAdapter;
-  container: Container;
-  lifecycleInstances: readonly unknown[];
-  runtimeCleanup: readonly (() => void)[];
-  signal?: string;
-}): Promise<void> {
-  const errors: unknown[] = [];
+export type RetryableShutdownState<TPhase> = {
+  complete(phase: TPhase): void;
+  isComplete(phase: TPhase): boolean;
+};
 
-  errors.push(...(await runCleanupCallbacks(options.runtimeCleanup)));
+export function createRetryableShutdownState<TPhase>(): RetryableShutdownState<TPhase> {
+  const completedPhases = new Set<TPhase>();
 
-  try {
-    await runShutdownHooks(options.lifecycleInstances, options.signal);
-  } catch (error) {
-    errors.push(error);
-  }
-```
-
-첫 cleanup 발췌는 runtime cleanup callback과 shutdown hook이 adapter보다 먼저 실행된다는 순서를 보여 줍니다. 다음 발췌는 adapter가 있을 때만 close하고, 마지막에 container disposal과 error aggregation으로 마무리하는 branch를 이어서 보여 줍니다.
-
-`path:packages/runtime/src/bootstrap.ts:136-153`
-```typescript
-  if (options.adapter) {
-    try {
-      await options.adapter.close(options.signal);
-    } catch (error) {
-      errors.push(error);
-    }
-  }
-
-  try {
-    await disposeContainer(options.container);
-  } catch (error) {
-    errors.push(error);
-  }
-
-  if (errors.length > 0) {
-    throw createLifecycleCloseError(errors);
-  }
+  return {
+    complete(phase) {
+      completedPhases.add(phase);
+    },
+    isComplete(phase) {
+      return completedPhases.has(phase);
+    },
+  };
 }
 ```
 
-failure-path cleanup은 형제 helper인 `path:packages/runtime/src/bootstrap.ts:155-189`의 `runBootstrapFailureCleanup()`이 담당합니다. bootstrap이 일부 lifecycle instance나 resource를 만든 뒤 실패하더라도, runtime은 여전히 cleanup을 시도하고, cleanup failure는 로그로 남기면서, 원래의 bootstrap error는 보존합니다.
+Concurrent close caller는 `closingPromise`를 공유합니다. 성공한 close 이후 호출은 멱등입니다. 실패한 close는 in-flight promise만 지우고 terminal gate나 completed-phase ledger는 지우지 않으므로, 다음 explicit close는 application operation을 다시 열지 않고 cleanup을 이어갈 수 있습니다.
 
-failure cleanup도 scope label만 다르고 같은 rollback 원칙을 씁니다. application 실패와 application context 실패가 서로 다른 메시지를 남기되, lifecycle hook과 container cleanup 시도는 공유됩니다.
+Executable evidence는 shell과 race별로 의도적으로 분리되어 있습니다.
 
-`path:packages/runtime/src/bootstrap.ts:155-172`
-```typescript
-async function runBootstrapFailureCleanup(options: {
-  container?: Container;
-  lifecycleInstances: readonly unknown[];
-  logger: ApplicationLogger;
-  runtimeCleanup: readonly (() => void)[];
-  scope: 'application' | 'application context';
-}): Promise<void> {
-  const errors: unknown[] = [];
+| Contract | Regression evidence |
+| --- | --- |
+| 실패한 application close는 operation-terminal 상태를 유지하고 incomplete teardown phase만 재시도합니다. | `path:packages/runtime/src/application.test.ts` — `keeps failed shutdown terminal while retrying only incomplete cleanup` |
+| `Application.get()`은 teardown이 pending이어도 shutdown 시작부터 reject됩니다. | `path:packages/runtime/src/application.test.ts` — `rejects Application.get() as soon as shutdown starts while teardown is pending` |
+| `ApplicationContext.get()`은 teardown이 pending이어도 shutdown 시작부터 reject됩니다. | `path:packages/runtime/src/bootstrap.test.ts` — `rejects ApplicationContext.get() as soon as shutdown starts while teardown is pending` |
+| Parent connect/start operation은 child close가 pending인 동안 reject됩니다. | `path:packages/runtime/src/bootstrap.test.ts` — `rejects connect and start operations while application close is pending` |
+| Shutdown 전에 admission된 connect도 async runtime resolution 뒤 child를 attach할 수 없습니다. | `path:packages/runtime/src/bootstrap.test.ts` — `rejects connectMicroservice() when shutdown starts during runtime resolution` |
+| Context retry는 완료된 phase를 건너뛰고 incomplete hook phase를 재시도합니다. | `path:packages/runtime/src/bootstrap.test.ts` — `retries only incomplete application context shutdown phases` |
 
-  errors.push(...(await runCleanupCallbacks(options.runtimeCleanup)));
-
-  if (options.lifecycleInstances.length > 0) {
-    try {
-      await runShutdownHooks(options.lifecycleInstances, 'bootstrap-failed');
-    } catch (error) {
-      errors.push(error);
-    }
-  }
-```
-
-이 첫 failure-cleanup 발췌는 bootstrap 실패 후에도 lifecycle shutdown hook을 호출하려고 시도한다는 점을 보여 줍니다. 이어지는 발췌는 container disposal과 cleanup failure logging을 분리해서 보여 줍니다.
-
-`path:packages/runtime/src/bootstrap.ts:174-189`
-```typescript
-  if (options.container) {
-    try {
-      await disposeContainer(options.container);
-    } catch (error) {
-      errors.push(error);
-    }
-  }
-
-  for (const error of errors) {
-    options.logger.error(
-      `Failed to clean up after ${options.scope} bootstrap failure.`,
-      error,
-      'FluoFactory',
-    );
-  }
-}
-```
-
-이 발췌는 cleanup이 best effort가 아니라 runtime contract임을 보여 줍니다. 이미 만든 lifecycle instance가 있다면 실패 경로에서도 shutdown hook을 실행하려고 시도합니다.
-
-이것은 단순한 방어 코딩이 아닙니다. bootstrap이 multi-phase이기 때문에 반드시 필요한 rollback path입니다. provider resolution 이후, platform start 이후, 혹은 dispatcher creation 직전에도 실패가 가능하기 때문입니다.
-
-테스트가 이 보장을 구체화합니다. `path:packages/runtime/src/application.test.ts:237-270`은 adapter shutdown failure 후에도 `close()`를 재시도할 수 있음을 증명합니다. `path:packages/runtime/src/application.test.ts:272-290`은 shutdown hook failure가 조용히 묻히지 않고 surface된다는 것을 보여 줍니다. `path:packages/runtime/src/application.test.ts:292-320`은 cleanup도 실패하더라도 original startup failure를 보존한다는 점을 검증합니다.
-
-close idempotency도 의도적인 설계입니다. `FluoApplication.close()`와 `FluoApplicationContext.close()`는 모두 `closingPromise`를 memoize합니다. close가 이미 진행 중이면, 뒤늦은 호출자는 같은 promise를 기다립니다. close가 성공하면 이후 호출은 즉시 return합니다. close가 실패하면 promise를 비워 재시도를 허용합니다.
-
-lifecycle hook ordering은 `path:packages/runtime/src/bootstrap.ts:710-722`의 `runShutdownHooks()`가 담당합니다. instance를 역순으로 순회하고, 먼저 `onModuleDestroy()`를 모두 실행한 뒤, 그 다음 `onApplicationShutdown(signal)`을 실행합니다. 가능한 한 startup dependency 방향을 거꾸로 되돌리는 ordering이라고 볼 수 있습니다.
-
-shutdown hook ordering은 별도 helper로 고정되어 있습니다. 두 hook family 모두 reverse order로 처리되므로, startup 때 만들어진 singleton lifecycle instance를 반대 방향으로 정리합니다.
-
-`path:packages/runtime/src/bootstrap.ts:710-722`
-```typescript
-async function runShutdownHooks(instances: readonly unknown[], signal?: string): Promise<void> {
-  for (const instance of [...instances].reverse()) {
-    if (isOnModuleDestroy(instance)) {
-      await instance.onModuleDestroy();
-    }
-  }
-
-  for (const instance of [...instances].reverse()) {
-    if (isOnApplicationShutdown(instance)) {
-      await instance.onApplicationShutdown(signal);
-    }
-  }
-}
-```
-
-context-only shell에도 같은 보장이 적용됩니다. `path:packages/runtime/src/bootstrap.test.ts:612-628`은 context shutdown failure가 `context.close()`를 통해 그대로 surface됨을 보여 줍니다.
-
-cleanup flow는 다음과 같습니다.
+결과 flow는 다음과 같습니다.
 
 ```text
 close()
-  -> if already closed, return
-  -> if closing in progress, await existing promise
-  -> run cleanup callbacks
-  -> run reverse-order shutdown hooks
-  -> close adapter if present
-  -> dispose container
-  -> mark closed on success
-  -> allow retry on failure
+  -> if successfully closed, return
+  -> if close is in progress, await the existing promise
+  -> synchronously close the terminal operation gate
+  -> close connected microservices
+  -> run every incomplete teardown phase in order
+  -> record each successful phase
+  -> set public state to closed only after complete success
+  -> on failure, keep the gate closed and allow an explicit cleanup retry
 ```
 
-고급 사용자에게 이 설계가 중요한 이유는 runtime lifecycle이 startup convenience만 다루지 않기 때문입니다. Fluo는 resource retirement까지 runtime contract의 일부로 취급합니다.
+Bootstrap-failure cleanup은 별도의 rollback path로 유지됩니다. 가능한 cleanup callback과 lifecycle hook을 실행하고 container disposal을 시도하며, cleanup error를 로그로 남긴 뒤 원래 bootstrap error를 보존합니다. Bootstrap을 완료하지 못한 shell에는 normal close retry state를 재사용하지 않습니다.
 
 ## 9.5 The platform shell and adapter seams define what the runtime may assume about the host
 이제 runtime bootstrap 안의 두 가지 다른 contract를 분리해서 볼 수 있습니다. 하나는 platform shell이고, 다른 하나는 HTTP adapter입니다. 둘은 상호작용하지만, 답하는 질문이 다릅니다.
