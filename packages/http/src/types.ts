@@ -1,10 +1,11 @@
 import type { Constructor, MaybePromise, MetadataPropertyKey, MetadataSource, Token } from '@fluojs/core';
 import type { RequestScopeContainer } from '@fluojs/di';
 import type { ErrorResponse, HttpException } from './exceptions.js';
+
 export type { ValidationIssue, Validator } from '@fluojs/validation';
 
-/** HTTP methods understood by Fluo route metadata and dispatcher matching. */
-export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD' | 'ALL';
+/** Canonical uppercase HTTP method token or Fluo's reserved `ALL` wildcard sentinel. */
+export type HttpMethod = string;
 
 /** Strategies that decide how versioned HTTP routes are selected for one request. */
 export enum VersioningType {

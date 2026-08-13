@@ -395,11 +395,11 @@ export function createHandlerMapping(sources: HandlerSource[], options?: CreateH
   return {
     descriptors,
     match(request: FrameworkRequest): HandlerMatch | undefined {
-      const method = request.method.toUpperCase() as HttpMethod;
+      const method = request.method.toUpperCase();
       const requestVersion = versioning.type === VersioningType.URI ? undefined : resolveRequestVersion(request, versioning);
       const normalizedPath = normalizeRoutePath(request.path);
       const methodStaticDescriptors = descriptorIndex.static.get(method)?.get(normalizedPath);
-      const allStaticDescriptors = descriptorIndex.static.get('ALL' as HttpMethod)?.get(normalizedPath);
+      const allStaticDescriptors = descriptorIndex.static.get('ALL')?.get(normalizedPath);
       const directStaticMatch = findStaticMatch(
         [methodStaticDescriptors, allStaticDescriptors],
         requestVersion,
@@ -413,7 +413,7 @@ export function createHandlerMapping(sources: HandlerSource[], options?: CreateH
       const incomingSegments = normalizedPath.split('/').filter(Boolean);
       const candidates = [
         ...(descriptorIndex.param.get(method)?.get(incomingSegments.length) ?? []),
-        ...(descriptorIndex.param.get('ALL' as HttpMethod)?.get(incomingSegments.length) ?? []),
+        ...(descriptorIndex.param.get('ALL')?.get(incomingSegments.length) ?? []),
       ];
       let firstUnversionedMatch: HandlerMatch | undefined;
 
