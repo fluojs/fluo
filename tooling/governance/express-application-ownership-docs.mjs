@@ -2,16 +2,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import ts from 'typescript';
+import { enforceAdapterOwnedApplicationSource } from './express-application-ownership-source.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const adapterSourcePath = 'packages/platform-express/src/adapter.ts';
-const forbiddenApplicationOptionNames = new Set([
-  'app',
-  'application',
-  'expressApp',
-  'expressApplication',
-]);
 const governedDocuments = [
   ['packages/platform-express/README.md', 'en'],
   ['packages/platform-express/README.ko.md', 'ko'],
@@ -32,78 +26,6 @@ const governedDocuments = [
 function assert(condition, message) {
   if (!condition) {
     throw new Error(`Express application ownership contract check failed: ${message}`);
-  }
-}
-
-function staticName(node) {
-  const nameNode = node && ts.isComputedPropertyName(node) ? node.expression : node;
-  return nameNode && (ts.isIdentifier(nameNode) || ts.isStringLiteralLike(nameNode))
-    ? nameNode.text
-    : undefined;
-}
-
-function parseAdapterSource(content) {
-  const sourceFile = ts.createSourceFile(
-    adapterSourcePath,
-    content,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TS,
-  );
-  assert(sourceFile.parseDiagnostics.length === 0, `${adapterSourcePath} must remain valid TypeScript.`);
-  return sourceFile;
-}
-
-function enforceAdapterOwnedApplicationSource(content) {
-  const sourceFile = parseAdapterSource(content);
-  let adapterClass;
-  const exposedApplicationOptions = [];
-
-  for (const statement of sourceFile.statements) {
-    if (ts.isInterfaceDeclaration(statement) && /ExpressApplicationOptions$|ExpressAdapterOptions$/u.test(statement.name.text)) {
-      for (const member of statement.members) {
-        if (!ts.isPropertySignature(member)) {
-          continue;
-        }
-        const propertyName = staticName(member.name);
-        if (propertyName && forbiddenApplicationOptionNames.has(propertyName)) {
-          exposedApplicationOptions.push(`${statement.name.text}.${propertyName}`);
-        }
-      }
-    }
-    if (ts.isClassDeclaration(statement) && statement.name?.text === 'ExpressHttpApplicationAdapter') {
-      adapterClass = statement;
-    }
-  }
-
-  assert(
-    exposedApplicationOptions.length === 0,
-    `${adapterSourcePath} must not expose existing Express application adoption options; found ${exposedApplicationOptions.join(', ')}.`,
-  );
-  assert(adapterClass, `${adapterSourcePath} must define ExpressHttpApplicationAdapter.`);
-
-  const publicUseMethod = adapterClass.members.find(
-    (member) => ts.isMethodDeclaration(member) && staticName(member.name) === 'use',
-  );
-  assert(
-    !publicUseMethod,
-    `${adapterSourcePath} must not expose use(...) as a post-bootstrap native stack mutation surface.`,
-  );
-
-  const constructionMarkers = [
-    'this.app = express();',
-    'for (const middleware of nativeMiddleware)',
-    'this.app.use(middleware);',
-    'this.app.use(this.router);',
-  ];
-  let previousIndex = -1;
-  for (const marker of constructionMarkers) {
-    const markerIndex = content.indexOf(marker);
-    assert(
-      markerIndex > previousIndex,
-      `${adapterSourcePath} must construct its own Express application and mount nativeMiddleware before its router; missing or reordered ${marker}.`,
-    );
-    previousIndex = markerIndex;
   }
 }
 
@@ -207,7 +129,7 @@ function contradictionMessage(content, locale) {
 export function enforceExpressApplicationOwnershipDocs(
   readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
 ) {
-  enforceAdapterOwnedApplicationSource(readText(adapterSourcePath));
+  enforceAdapterOwnedApplicationSource(readText(adapterSourcePath), adapterSourcePath);
 
   for (const [relativePath, locale] of governedDocuments) {
     const content = readText(relativePath);
