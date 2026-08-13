@@ -173,6 +173,8 @@ console.log(`Listening on ${url} (${bindTarget})`);
 
 `createExpressAdapter()`는 의도적으로 공유 `HttpApplicationAdapter` return type을 노출합니다. startup 이후 Express 전용 `getListenTarget()` helper를 해석하기 전에 export된 `ExpressHttpApplicationAdapter` class로 narrow하세요. 이 helper와 `getServer()`, `getRealtimeCapability()`는 native host detail을 application provider에 전달하지 말고 infrastructure boundary에만 두세요.
 
+Adapter는 Express application을 직접 생성하고 소유하므로 기존 Express application을 채택하거나 재사용하는 방식은 지원하지 않습니다. Native Express handler는 construction-time `nativeMiddleware`로 제공해야 하며, bootstrap 이후 `use(...)`로 native stack에 middleware를 추가하는 방식은 지원하지 않습니다. 이식 가능한 동작은 fluo `Middleware`로 재작성하는 방식을 우선하세요.
+
 Express는 shared SSE/streaming response contract를 지원합니다.
 
 ```ts
@@ -404,6 +406,7 @@ export class WorkerBindingsModule {}
 | Multipart request에서 raw body를 기대함 | Multipart request는 `rawBody`를 노출하지 않습니다. Multipart API와 limit을 사용하세요. |
 | Platform helper가 process를 직접 종료한다고 가정함 | Helper는 shutdown failure를 log/exit code로 보고하고 최종 termination은 host가 소유합니다. |
 | Portable app code에서 Node global에 의존함 | Runtime-specific behavior는 adapter/bootstrap code에만 두세요. |
+| 기존 Express application 채택 또는 post-bootstrap `use(...)` mutation | Adapter가 Express application을 생성하게 두고, 불가피한 native handler는 construction-time `nativeMiddleware`로 전달하며, 이식 가능한 동작은 fluo `Middleware`로 재작성하세요. |
 
 ## 관련 문서
 

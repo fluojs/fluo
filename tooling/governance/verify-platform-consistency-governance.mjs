@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs.mjs';
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
+import { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 import {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
@@ -17,6 +18,7 @@ import { enforceRuntimeLifecycleNestjsMigrationDocs } from './runtime-lifecycle-
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 export { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
+export { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 export {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
@@ -748,9 +750,9 @@ export function enforceContractCompanionUpdates(changedFiles) {
   );
 
   // Microservices transport ownership, root/subpath export exceptions, lazy-load,
-  // payload clone, TCP 1 MiB frames, port:0 routing, shutdown send guards,
-  // concurrent close-promise sharing, and gRPC abort-listener cleanup docs are
-  // also covered by this companion path.
+  // payload clone, byte-safe TCP UTF-8 framing, TCP 1 MiB frames, port:0 routing,
+  // shutdown send guards, concurrent close-promise sharing, and gRPC abort-listener
+  // cleanup docs are also covered by this companion path.
 }
 
 function enforceAlignmentClaimsBackedByHarness(changedFiles) {
@@ -2669,6 +2671,7 @@ export function main() {
   enforcePlatformShellLifecycleContract();
   enforceConfigNestjsMigrationDocs();
   enforceRuntimeLifecycleNestjsMigrationDocs();
+  enforceExpressApplicationOwnershipDocs();
   enforceExpressRuntimeMigrationDocsSync();
   enforceCanonicalRuntimeMatrixReferences();
   enforceHttpBookRequestContracts();

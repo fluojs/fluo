@@ -379,31 +379,24 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
   }
 
   private bindSocketParser<TPacket>(socket: Socket, onPacket: (packet: TPacket) => void): void {
-    let buffer = '';
-    let bufferBytes = 0;
+    let buffer: Buffer = Buffer.alloc(0);
 
     socket.on('data', (chunk: Buffer | string) => {
-      const chunkString = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
-      buffer += chunkString;
-      bufferBytes += Buffer.byteLength(chunkString, 'utf8');
+      const chunkBuffer = typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk;
+      buffer = buffer.length === 0 ? chunkBuffer : Buffer.concat([buffer, chunkBuffer]);
 
-      if (bufferBytes > this.maxFrameBytes) {
-        socket.destroy();
-        return;
-      }
-
-      let newLineIndex = buffer.indexOf('\n');
+      let newLineIndex = buffer.indexOf(0x0a);
 
       while (newLineIndex >= 0) {
-        const rawLine = buffer.slice(0, newLineIndex);
-        const line = rawLine.trim();
-        buffer = buffer.slice(newLineIndex + 1);
-        bufferBytes = Buffer.byteLength(buffer, 'utf8');
+        const rawLine = buffer.subarray(0, newLineIndex);
+        buffer = buffer.subarray(newLineIndex + 1);
 
-        if (Buffer.byteLength(rawLine, 'utf8') > this.maxFrameBytes) {
+        if (rawLine.length > this.maxFrameBytes) {
           socket.destroy();
           return;
         }
+
+        const line = rawLine.toString('utf8').trim();
 
         if (line.length > 0) {
           try {
@@ -414,7 +407,11 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
           }
         }
 
-        newLineIndex = buffer.indexOf('\n');
+        newLineIndex = buffer.indexOf(0x0a);
+      }
+
+      if (buffer.length > this.maxFrameBytes) {
+        socket.destroy();
       }
     });
   }

@@ -69,6 +69,8 @@ bootstrap();
 
 `createExpressAdapter()` intentionally exposes the shared `HttpApplicationAdapter` return type. Narrow it with the exported `ExpressHttpApplicationAdapter` class before accessing the Express-only `getListenTarget()` helper. The helper reports the resolved bind target and public URL after startup. `getServer()` returns the adapter-owned `node:http` `Server` or `node:https` `Server` union. Keep it, `getListenTarget()`, and `getRealtimeCapability()` at infrastructure boundaries such as startup logging, probes, or realtime integration; ordinary controllers and providers should stay on portable fluo contracts.
 
+The adapter constructs and owns its Express application rather than adopting or reusing an existing Express application; existing-app adoption is unsupported. Supply native handlers through construction-time `nativeMiddleware`. After bootstrap, calling `use(...)` to append to the native stack is not a supported surface. Prefer rewriting portable behavior as fluo `Middleware`.
+
 ### 21.1.3 Handling Middleware
 
 One of the biggest reasons to choose Express is its proven operational ecosystem. In fluo, that compatibility is an adapter and hosting boundary: Express owns the underlying Node.js request listener, but the application pipeline remains dispatcher-owned. fluo's application-level `middleware` option still expects fluo middleware: an object or provider that implements `handle(context, next)` over the shared `MiddlewareContext`. Do not pass an Express/Connect `(req, res, next)` function such as `compression()` directly to `fluoFactory.create(...)`; wrap that behavior behind the fluo contract or keep it in an Express-owned integration layer.
@@ -279,6 +281,7 @@ This helper wires process signals to the standard fluo shutdown lifecycle and he
 
 - fluo uses **Adapters** to interface with different HTTP engines.
 - `@fluojs/platform-express` lets you continue using the existing Express ecosystem and operational assets.
+- The adapter constructs its own Express application; it cannot adopt an existing Express application or append native middleware through post-bootstrap `use(...)`. Native handlers belong in construction-time `nativeMiddleware`, while portable behavior should be rewritten as fluo `Middleware`.
 - `nativeMiddleware` is a migration-only Express boundary with native continuation, termination, error, and resource-ownership semantics; it is not portable fluo middleware.
 - `@fluojs/platform-nodejs` provides a minimal HTTP layer without a framework.
 - Most fluo code (Controllers, Providers, Modules) does not need to know which adapter is running at all.

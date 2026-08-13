@@ -69,6 +69,8 @@ bootstrap();
 
 `createExpressAdapter()`는 의도적으로 공유 `HttpApplicationAdapter` return type을 노출합니다. Express 전용 `getListenTarget()` helper에 접근하기 전에 export된 `ExpressHttpApplicationAdapter` class로 narrow하세요. 이 helper는 startup 이후 해석된 bind target과 public URL을 보고합니다. `getServer()`는 adapter가 소유한 `node:http` `Server` 또는 `node:https` `Server` union을 반환합니다. 이 helper와 `getServer()`, `getRealtimeCapability()`는 startup logging, probe, realtime integration 같은 infrastructure boundary에만 두고, 일반 controller와 provider는 portable fluo 계약을 유지하세요.
 
+Adapter는 기존 Express application을 채택하거나 재사용하지 않고 Express application을 직접 생성하고 소유합니다. Existing-app adoption은 지원하지 않습니다. Native handler는 construction-time `nativeMiddleware`로 제공해야 합니다. bootstrap 이후 `use(...)`로 native stack에 middleware를 추가하는 방식은 지원하지 않습니다. 이식 가능한 동작은 fluo `Middleware`로 재작성하는 방식을 우선하세요.
+
 ### 21.1.3 Handling Middleware
 
 Express를 선택하는 가장 큰 이유 중 하나는 이미 검증된 운영 생태계입니다. fluo에서 이 호환성은 adapter와 hosting boundary입니다. Express는 underlying Node.js request listener를 소유하지만 application pipeline은 계속 dispatcher가 소유합니다. fluo의 애플리케이션 레벨 `middleware` 옵션은 여전히 공유 `MiddlewareContext` 위에서 `handle(context, next)`를 구현한 fluo 미들웨어 객체나 provider를 기대합니다. `compression()` 같은 Express/Connect `(req, res, next)` 함수는 `fluoFactory.create(...)`에 직접 전달하지 마세요. 해당 동작을 fluo 계약 뒤에 감싸거나 Express가 소유하는 통합 계층에 두어야 합니다.
@@ -279,6 +281,7 @@ await runExpressApplication(AppModule, {
 
 - fluo는 **어댑터(Adapters)**를 사용하여 다양한 HTTP 엔진과 인터페이스합니다.
 - `@fluojs/platform-express`를 사용하면 기존 Express 생태계와 운영 자산을 이어서 사용할 수 있습니다.
+- Adapter는 자체 Express application을 생성하므로 기존 Express application을 채택할 수 없고 post-bootstrap `use(...)`로 native middleware를 추가할 수도 없습니다. Native handler는 construction-time `nativeMiddleware`에 두고, 이식 가능한 동작은 fluo `Middleware`로 재작성하세요.
 - `nativeMiddleware`는 native continuation, termination, error, resource ownership semantics를 유지하는 migration 전용 Express boundary이며 portable fluo middleware가 아닙니다.
 - `@fluojs/platform-nodejs`는 최소한의 프레임워크 없는 HTTP 레이어를 제공합니다.
 - 대부분의 fluo 코드(컨트롤러, 프로바이더, 모듈)는 어떤 어댑터가 실행 중인지 전혀 알 필요가 없습니다.

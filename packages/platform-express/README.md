@@ -83,6 +83,8 @@ const adapter = createExpressAdapter(
 ### Express/Connect Middleware Boundary
 The Express adapter preserves Express as the host HTTP engine, but request pipeline middleware remains dispatcher-owned. Register portable middleware through the fluo `Middleware` contract:
 
+The adapter constructs and owns its Express application. Adopting or reusing an existing Express application is unsupported. Native Express handlers must be supplied through construction-time `nativeMiddleware`; after bootstrap, calling `use(...)` to append to the native stack is not a supported surface. Prefer rewriting portable behavior as fluo `Middleware`.
+
 ```typescript
 import type { Middleware } from '@fluojs/http';
 
@@ -134,6 +136,7 @@ To avoid changing documented fluo semantics, overlapping same-shape param routes
 ## Adapter Contract
 
 - **Shared dispatcher ownership**: Native Express Router matches still hand off to the shared fluo dispatcher, so middleware, guards, interceptors, observers, params, and error envelopes remain framework-defined.
+- **Express application ownership**: The adapter constructs and owns its Express application. It does not adopt an existing Express application, and it does not expose post-bootstrap `use(...)` mutation. Supply unavoidable native handlers through construction-time `nativeMiddleware`; prefer rewriting portable behavior as fluo `Middleware`.
 - **Host engine boundary**: Express is the host/platform HTTP engine, but fluo does not reinterpret native Express/Connect middleware as fluo middleware; application-level middleware must implement the shared `Middleware` contract, while the platform-specific `nativeMiddleware` option mounts native handlers before routing.
 - **Native middleware ownership**: Native handlers run in declared order and retain Express continuation, response termination, and error-chain semantics. Adapter shutdown closes the listener and connections but does not dispose resources owned by those handlers.
 - **Safe fallback scope**: `@All(...)` handlers and overlapping same-shape param routes intentionally stay on the catch-all fallback path instead of being force-registered through Express Router.
