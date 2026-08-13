@@ -119,6 +119,10 @@ Order Service는 짧은 지연 안에서 답을 얻습니다. 나중에 durable 
 
 transport는 기본적으로 3초 request timeout을 사용하며 이 값은 재정의할 수 있습니다. FluoShop에서는 control-plane check에 대해 더 짧은 예산을 둡니다. inventory preview가 빨리 오지 않는다면 게이트웨이는 고객 여정을 오래 멈추기보다 우아하게 degrade 해야 합니다. advisory lookup에서는 빠른 실패가 길고 불확실한 대기보다 운영적으로 낫습니다. v1.5.0에서는 부하가 높은 상황에서도 사용자 경험이 민첩하게 유지되도록 `requestTimeoutMs`를 1,500ms로 설정합니다.
 
+### 6.3.3 Request callback failure ownership
+
+NATS collaborator는 request subscription callback을 동기적으로 호출하지만 decode, handler 실행, response encode, reply publication은 async boundary를 건넙니다. Transport가 이 boundary를 소유하므로 malformed request frame, response encoding 실패, 예외를 던지는 `respond()` callback은 process-level unhandled rejection으로 빠져나가지 않고 격리되어 설정된 transport logger로 보고됩니다. Caller-owned NATS client는 열린 상태를 유지합니다. Transport logger가 설정되지 않았으면 fluo는 raw `console.error` fallback을 추가하지 않습니다. Request-handler 오류는 encode와 reply publication이 성공하는 한 기존처럼 상관관계가 유지된 error response가 됩니다.
+
 ## 6.4 Event fan-out and logger-driven failures
 
 NATS는 가벼운 event delivery를 위한 `emit()`도 지원합니다. 이 경로는 cache invalidation이나 policy refresh notice에 잘 맞습니다. 예를 들어 Catalog가 restricted-item rule을 업데이트하면 여러 서비스가 로컬 read model을 갱신해야 할 수 있고, 그 신호는 빨라야 합니다. 모든 환경에서 Kafka 수준의 historical replay가 필요한 것은 아닙니다.
