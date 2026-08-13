@@ -1456,6 +1456,38 @@ describe('FluoFactory.createApplicationContext', () => {
     ]);
   });
 
+  it('does not retry container-managed onDestroy hooks on a second application context close', async () => {
+    const failedOnDestroy = vi.fn(() => {
+      throw new Error('container destroy failed');
+    });
+    const siblingOnDestroy = vi.fn();
+
+    class FailingResource {
+      onDestroy = failedOnDestroy;
+    }
+
+    class SiblingResource {
+      onDestroy = siblingOnDestroy;
+    }
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [FailingResource, SiblingResource],
+    });
+
+    const context = await FluoFactory.createApplicationContext(AppModule);
+    await context.get(FailingResource);
+    await context.get(SiblingResource);
+
+    await expect(context.close()).rejects.toThrow('container destroy failed');
+    await expect(context.get(FailingResource)).rejects.toThrow(
+      'Application context cannot resolve providers after shutdown has started.',
+    );
+    await expect(context.close()).resolves.toBeUndefined();
+    expect(failedOnDestroy).toHaveBeenCalledOnce();
+    expect(siblingOnDestroy).toHaveBeenCalledOnce();
+  });
+
   it('rejects ApplicationContext.get() as soon as shutdown starts while teardown is pending', async () => {
     const shutdownCanFinish = createDeferred<void>();
 
