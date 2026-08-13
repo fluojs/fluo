@@ -86,6 +86,12 @@ await context.close();
 
 In `@fluojs/runtime` 2.x, overlapping `start()` calls could start the same components more than once, and `stop()` called during an in-flight startup could return before startup settled and leave resources running. When upgrading, give one application boundary ownership of each lifecycle transition. If another path can overlap, catch `PlatformLifecycleConflictError`, wait for the boundary-owned transition to settle, and retry explicitly only if the desired state is still required. Do not recreate a hidden queue around callback reentry; component lifecycle callbacks receive the same immediate conflict after synchronous code or arbitrary `await` boundaries.
 
+### Migrating NestJS Lifecycle Hooks
+
+The public runtime lifecycle contract has four hooks: startup runs `onModuleInit()` and then `onApplicationBootstrap()`, while shutdown runs `onModuleDestroy()` and then `onApplicationShutdown(signal?)` in reverse lifecycle-instance order. NestJS `beforeApplicationShutdown` is unsupported and is not probed or invoked by fluo.
+
+Move shutdown preparation into the documented phase that owns it. Use `onModuleDestroy()` for module-resource teardown that must finish before the application-wide signal phase, or `onApplicationShutdown(signal?)` for signal-aware application cleanup. `@fluojs/runtime` provides no `beforeApplicationShutdown` compatibility shim, alias, fallback, or additional runtime hook.
+
 ### Studio Devtools Bridge
 
 `@fluojs/runtime` can publish live Studio snapshots and request traces, but it does not read `process.env` directly. `fluo dev --studio` is the application boundary that starts the sidecar, creates the tokenized Studio config, and injects that explicit config into the Node app child before the app imports runtime. Runtime reads each injected field once when it creates the Studio bridge, validates the complete config and its HTTP(S) endpoint, and keeps a frozen private snapshot, so later mutation of the writable process-global injection cannot change instrumentation inputs. If that CLI-provided config is absent, malformed, or missing a tokenized endpoint, Studio instrumentation is a no-op and bootstrap behavior remains unchanged.
@@ -175,6 +181,7 @@ class UsersModule {}
 
 ## Behavioral Contracts
 
+- Runtime lifecycle remains a four-hook contract. Startup completes the provider-ordered `onModuleInit()` phase before `onApplicationBootstrap()`; shutdown reverses lifecycle-instance order for `onModuleDestroy()` and then `onApplicationShutdown(signal?)`. NestJS `beforeApplicationShutdown` is unsupported and has no compatibility shim.
 - Request body parsing enforces `maxBodySize` while bytes are still streaming for both Web-standard and Node-backed requests. Oversized Web bodies settle as HTTP 413 without waiting for stream cancellation, and cancellation failures do not mask that response, including on the default cloned-body path where the original request remains unread.
 - `preferNativeJsonBodyReader` remains accepted by `@fluojs/runtime/web` as a deprecated adapter compatibility option, but it no longer changes parsing. Web JSON bodies always use the bounded streaming reader so native whole-body reads cannot bypass `maxBodySize`.
 - On `@fluojs/runtime/node`, Node request body parsing normalizes the primary `content-type` media type before JSON and multipart detection, so mixed-case JSON and multipart headers preserve the documented parser behavior.
