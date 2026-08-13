@@ -19,6 +19,7 @@ export class CacheService {
   private readonly pendingInvalidations = new Map<string, number>();
   private readonly invalidatedInflight = new Set<string>();
   private closed = false;
+  private closePromise: Promise<void> | undefined;
   private resetVersion = 0;
   private storeOperationTail: Promise<void> = Promise.resolve();
 
@@ -239,11 +240,13 @@ export class CacheService {
   /**
    * Close the configured store when it exposes an optional teardown hook.
    *
+   * Concurrent and repeated calls share the first teardown completion and failure.
+   *
    * @returns A promise that resolves after store teardown completes.
    */
-  async close(): Promise<void> {
-    if (this.closed) {
-      return;
+  close(): Promise<void> {
+    if (this.closePromise) {
+      return this.closePromise;
     }
 
     this.closed = true;
@@ -253,7 +256,7 @@ export class CacheService {
     this.pendingInvalidations.clear();
     this.invalidatedInflight.clear();
 
-    await this.runStoreOperation(async () => {
+    this.closePromise = this.runStoreOperation(async () => {
       if (this.store.close) {
         await this.store.close();
         return;
@@ -263,6 +266,8 @@ export class CacheService {
         await this.store.dispose();
       }
     });
+
+    return this.closePromise;
   }
 
   private async deleteFromStore(key: string): Promise<void> {
