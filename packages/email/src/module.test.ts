@@ -910,11 +910,12 @@ describe('EmailModule', () => {
     });
   });
 
-  it('rejects blank recipients before transport delivery', async () => {
+  it('rejects blank recipients before lazy transport initialization', async () => {
+    const create = vi.fn(async (): Promise<EmailTransport> => new RecordingTransport('invalid-message'));
     const container = new Container();
     const moduleType = EmailModule.forRoot({
       defaultFrom: 'noreply@example.com',
-      transport: createRecordingTransportFactory(),
+      transport: { create },
     });
 
     container.register(...moduleProviders(moduleType));
@@ -927,6 +928,7 @@ describe('EmailModule', () => {
         to: ['   '],
       }),
     ).rejects.toThrowError(new EmailMessageValidationError('Email messages require non-empty recipients in `to`.'));
+    expect(create).not.toHaveBeenCalled();
     expect(transportState.sent).toHaveLength(0);
   });
 

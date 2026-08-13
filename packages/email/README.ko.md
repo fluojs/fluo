@@ -192,6 +192,7 @@ Behavioral contract 메모:
 
 - `EmailService.send(...)`는 전달 전에 `defaultFrom`과 `defaultReplyTo`를 해석합니다.
 - `EmailService.send(...)`는 빈 `to` 수신자를 transport handoff 전에 거부하므로 transport가 빈 전달 대상을 받지 않습니다.
+- `EmailService.send(...)`는 lazy transport를 획득하기 전에 메시지를 normalize하고 검증하므로, 잘못된 입력이 transport 리소스를 초기화하지 않습니다.
 - `EmailService.send(...)`와 `EmailService.sendNotification(...)`은 이미 abort된 `AbortSignal`을 템플릿 렌더링 또는 transport handoff 전에 반영합니다.
 - `EmailService.send(...)`는 `accepted`, `pending`, `rejected` 수신자를 분리해 보존하므로 provider의 부분 실패가 호출자에게 그대로 보입니다.
 - `EmailService.sendMany(...)`는 기본적으로 fail-fast입니다. 실패를 batch result에 수집하려면 `continueOnError: true`를 전달합니다.
