@@ -118,6 +118,7 @@ NotificationsModule.forRoot({
 
 Behavioral contract 메모:
 
+- `bulkThreshold`를 생략하면 기본값 `10`을 사용합니다. 명시적 값은 유한한 양의 정수여야 하며, 잘못된 값은 notification service provider가 생성되기 전에 module option 해석을 `NotificationsConfigurationError`로 실패시킵니다.
 - 알림 개수가 `bulkThreshold` 이상이면 대량 큐 위임이 시작되며, `dispatchMany(..., { queue: true })`는 batch가 threshold보다 작아도 queue-backed delivery를 명시적으로 강제합니다.
 - `dispatch()`는 queue adapter가 구성되어 있어도 기본적으로 직접 전달을 유지합니다. 단건 알림을 큐로 보내려면 `dispatch(..., { queue: true })`를 사용합니다.
 - queue adapter가 있어도 직접 전달을 강제하려면 `dispatch(..., { queue: false })`를 사용합니다.

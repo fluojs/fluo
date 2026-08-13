@@ -134,6 +134,7 @@ export interface NotificationsEventPublisher {
 /** Queue configuration for optional bulk-delivery offloading. */
 export interface NotificationsQueueOptions {
   adapter: NotificationsQueueAdapter;
+  /** Finite positive integer batch size that activates queue-backed bulk delivery. Defaults to `10`. */
   bulkThreshold?: number;
 }
 
