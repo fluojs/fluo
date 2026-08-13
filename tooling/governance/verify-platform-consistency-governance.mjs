@@ -752,7 +752,7 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // route defaults, normalized multi-instance route-collision failures, Swagger
   // UI assets, operation collision-precedence boundaries, and legacy nullable
   // input normalization to OpenAPI 3.1 null unions, plus GraphQL's explicit
-  // resolver/provider wiring, root-only operations, output type declarations,
+  // resolver/provider wiring, root and object-field resolver boundaries, output type declarations,
   // Node.js runtime-floor/dependency alignment, unsupported non-Node targets,
   // and server-backed WebSocket migration boundaries, plus JWT refresh-token
   // family-scoped reuse revocation, subject-wide compatibility fallback, and
