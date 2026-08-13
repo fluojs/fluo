@@ -1,10 +1,10 @@
 import { HandlerNotFoundError } from '../errors.js';
 import {
+  createErrorResponse,
   HttpException,
   InternalServerErrorException,
   NotAcceptableException,
   NotFoundException,
-  createErrorResponse,
 } from '../exceptions.js';
 import type {
   DispatcherLogger,
@@ -131,7 +131,10 @@ export async function writeErrorResponse(
 
   if (provider === undefined || !isHttpRepresentationEligible(error)) {
     requestContext.response.setStatus(httpError.status);
-    await requestContext.response.send(createErrorResponse(httpError, requestContext.requestId));
+    const body = requestContext.request.method.toUpperCase() === 'HEAD'
+      ? undefined
+      : createErrorResponse(httpError, requestContext.requestId);
+    await requestContext.response.send(body);
     return;
   }
 
