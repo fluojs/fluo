@@ -210,7 +210,7 @@ export function createTestRequestContextMiddleware(): Middleware {
 }
 
 function buildFrameworkRequest(req: TestRequestWithOptions): FrameworkTestRequest {
-  const method = (req.method ?? 'GET').toUpperCase() as HttpMethod;
+  const method: HttpMethod = (req.method ?? 'GET').toUpperCase();
   const queryString = req.query
     ? `?${new URLSearchParams(
         Object.entries(req.query).flatMap(([key, value]) =>

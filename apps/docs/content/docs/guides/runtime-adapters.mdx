@@ -146,7 +146,7 @@ If shutdown times out or fails, the helper logs the condition and sets `process.
 
 ## Express
 
-Use the Express adapter when integrating with an existing Express-oriented environment. `@fluojs/platform-express` requires Node.js 20 or newer and declares `engines.node >=20.0.0`.
+Use the Express adapter when integrating with an existing Express-oriented environment. `@fluojs/platform-express` requires Node.js `>=20.19.3 <21 || >=22.2.0 <27` and declares that exact `engines.node` range so listener-level RFC `QUERY` reaches Express and fluo dispatch. Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded.
 
 An Express host swap does not retain NestJS legacy decorator or reflection-metadata semantics. Migrate controllers and providers to TC39 standard decorators, class-level `@Inject(...)`, and explicit DI/module wiring before changing the HTTP host.
 

@@ -21,10 +21,12 @@ import {
   type InterceptorContext,
   type MiddlewareContext,
   Post,
+  Query,
   Redirect,
   type RequestContext,
   type RequestObservationContext,
   type RequestObserver,
+  Route,
   SseResponse,
   UseGuards,
   UseInterceptors,
@@ -42,8 +44,8 @@ import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapte
 import type {
   ErrorRequestHandler,
   Request as ExpressRequest,
-  RequestHandler,
   Response as ExpressResponse,
+  RequestHandler,
 } from 'express';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -1566,9 +1568,22 @@ describe('@fluojs/platform-express', () => {
       }
     }
 
+    @Controller('/custom-fallback')
+    class CustomFallbackController {
+      @Query('/query')
+      query(_input: undefined, context: RequestContext) {
+        return { method: context.request.method, route: 'query' };
+      }
+
+      @Route('PURGE', '/purge')
+      purge(_input: undefined, context: RequestContext) {
+        return { method: context.request.method, route: 'purge' };
+      }
+    }
+
     class AppModule {}
     defineModule(AppModule, {
-      controllers: [UsersController, VersionedController, ErrorsController, FallbackController],
+      controllers: [UsersController, VersionedController, ErrorsController, FallbackController, CustomFallbackController],
     });
 
     const port = await findAvailablePort();
@@ -1594,6 +1609,8 @@ describe('@fluojs/platform-express', () => {
       expect(nativeRoutes).not.toContain('GET:/versions');
       expect(nativeRoutes).toContain('GET:/errors');
       expect(nativeRoutes).not.toContain('PATCH:/fallback');
+      expect(nativeRoutes).not.toContain('QUERY:/custom-fallback/query');
+      expect(nativeRoutes).not.toContain('PURGE:/custom-fallback/purge');
 
       lifecycle.length = 0;
       const userResponse = await requestHttp({
@@ -1646,6 +1663,15 @@ describe('@fluojs/platform-express', () => {
       });
       expect(allResponse.statusCode).toBe(200);
       expect(JSON.parse(allResponse.body)).toEqual({ method: 'PATCH', route: 'all' });
+
+      const [queryResponse, purgeResponse] = await Promise.all([
+        requestHttp({ method: 'QUERY', path: '/custom-fallback/query', port }),
+        requestHttp({ method: 'PURGE', path: '/custom-fallback/purge', port }),
+      ]);
+      expect(queryResponse.statusCode).toBe(200);
+      expect(purgeResponse.statusCode).toBe(200);
+      expect(JSON.parse(queryResponse.body)).toEqual({ method: 'QUERY', route: 'query' });
+      expect(JSON.parse(purgeResponse.body)).toEqual({ method: 'PURGE', route: 'purge' });
 
       const optionsFallbackResponse = await requestHttp({
         method: 'OPTIONS',

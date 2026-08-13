@@ -1,4 +1,4 @@
-import { Controller, Get, Post, SseResponse, type RequestContext } from '@fluojs/http';
+import { Controller, Get, Post, Query, type RequestContext, Route, SseResponse } from '@fluojs/http';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { assertWebHttpErrorRepresentationAbortPortability } from './error-representation-abort-portability.js';
 import {
@@ -142,6 +142,58 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
         JSON.stringify((body as Record<string, unknown>).tag) !== JSON.stringify(['one', 'two'])
       ) {
         throw new Error(`${this.options.name} adapter changed query decoding semantics.`);
+      }
+    });
+  }
+
+  /** Verifies `QUERY` and extension-method execution through the runtime's fetch dispatch seam. */
+  async assertSupportsCustomHttpRouteMethods(): Promise<void> {
+    @Controller('/custom-methods')
+    class CustomMethodController {
+      @Query('/query')
+      query(_input: undefined, context: RequestContext) {
+        return { body: context.request.body, method: context.request.method };
+      }
+
+      @Route('PURGE', '/purge')
+      purge(_input: undefined, context: RequestContext) {
+        return { body: context.request.body, method: context.request.method };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [CustomMethodController],
+    });
+
+    const app = await this.options.bootstrap(AppModule, {
+      cors: false,
+    } as TBootstrapOptions);
+
+    await runWithCleanup(app, this.options.name, async () => {
+      for (const method of ['QUERY', 'PURGE']) {
+        const response = await app.dispatch(new Request(
+          `https://runtime.test/custom-methods/${method.toLowerCase()}`,
+          {
+            body: JSON.stringify({ value: method.toLowerCase() }),
+            headers: { 'content-type': 'application/json' },
+            method,
+          },
+        ));
+
+        if (response.status !== 200) {
+          throw new Error(
+            `${this.options.name} adapter changed ${method} response status semantics: received ${String(response.status)}.`,
+          );
+        }
+
+        const body = await response.json();
+        if (JSON.stringify(body) !== JSON.stringify({
+          body: { value: method.toLowerCase() },
+          method,
+        })) {
+          throw new Error(`${this.options.name} adapter changed ${method} method or body semantics.`);
+        }
       }
     });
   }

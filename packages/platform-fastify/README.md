@@ -28,7 +28,7 @@ npm install @fluojs/platform-fastify
 
 ## Runtime Requirements
 
-`@fluojs/platform-fastify` is a Node.js HTTP adapter and declares `engines.node >=20.0.0`. Run local development, CI, containers, and production hosts on Node.js 20 or newer when this package owns the HTTP server. Use `@fluojs/platform-bun`, `@fluojs/platform-deno`, or `@fluojs/platform-cloudflare-workers` for non-Node runtimes instead of importing this Node-specific adapter.
+`@fluojs/platform-fastify` is a Node.js HTTP adapter and declares `engines.node >=20.19.3 <21 || >=22.2.0 <27`. Run local development, CI, containers, and production hosts on a version in that exact range when this package owns the HTTP server so listener-level RFC `QUERY` requests reach Fastify wildcard fallback and fluo dispatch. Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded. Use `@fluojs/platform-bun`, `@fluojs/platform-deno`, or `@fluojs/platform-cloudflare-workers` for non-Node runtimes instead of importing this Node-specific adapter.
 
 The adapter owns a Fastify-backed Node `http` or `https` listener. Keep process-specific values such as ports, certificate material, and hostnames at the application boundary, then pass the final options into the adapter explicitly.
 
@@ -170,6 +170,8 @@ When fluo route metadata can be translated directly, the adapter registers Fasti
 
 When multiple routes share the same method and normalized param shape (for example `/:id` and `/:slug`), use `@All(...)`, depend on non-URI versioning, or arrive through duplicate-slash / trailing-slash variants, the adapter intentionally leaves those requests on the wildcard fallback path so Fastify registration cannot boot-fail or narrow fluo's matching semantics. If app middleware rewrites the framework request method or path after a native handoff was attached, the dispatcher ignores that stale handoff and rematches the rewritten request.
 
+Validated custom methods such as `QUERY` and `PURGE` also stay on wildcard fallback dispatch instead of receiving native fluo route handoffs. Fastify must know a method name before its wildcard route can accept that request, so the adapter registers descriptor custom methods with Fastify as body-bearing methods while still leaving route selection to fluo. `ALL` is never registered as a wire method, and `CONNECT` remains outside ordinary controller routing conformance.
+
 The adapter keeps a wildcard fallback route for unmatched paths and portability-sensitive cases, including multipart requests that must preserve the shared body/materialization path, and enables Fastify trailing-slash / duplicate-slash normalization so native selection stays aligned with fluo's documented route path contract. CORS handling remains owned by fluo's shared middleware path rather than Fastify plugins, and unsupported methods such as `OPTIONS` continue through the fallback dispatcher path unless a fluo route explicitly owns them.
 
 Concurrent `listen()` calls share one startup promise and preserve the dispatcher from the first call. After startup, repeated `listen()` calls are no-ops that keep the live listener and dispatcher unchanged. A `listen()` call made while `close()` is in flight waits for shutdown to settle, starts a fresh listener, and resolves only after that listener is ready. Calling `close()` while startup is retrying a busy port cancels the retry loop and waits for it to settle before reporting shutdown completion, so a closed adapter cannot bind later after the caller believes shutdown finished. If an adapter instance is listened again after close, native route handlers refresh their dispatcher descriptors before serving traffic so request handoff metadata cannot point at a previous application graph.
@@ -187,7 +189,7 @@ fluo's Fastify adapter significantly outperforms the raw Node.js adapter in high
 
 ## Conformance Coverage
 
-`packages/platform-fastify/src/adapter.test.ts` is the package-local regression target for the documented Fastify adapter contract. It runs the shared `createHttpAdapterPortabilityHarness(...)` checks for malformed cookie preservation, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body exclusion, multipart total-size defaults, SSE framing, response stream drain settlement, host and HTTPS startup logging, and shutdown signal listener cleanup.
+`packages/platform-fastify/src/adapter.test.ts` is the package-local regression target for the documented Fastify adapter contract. It runs the shared `createHttpAdapterPortabilityHarness(...)` checks for custom `QUERY`/extension-method fallback, malformed cookie preservation, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body exclusion, multipart total-size defaults, SSE framing, response stream drain settlement, host and HTTPS startup logging, and shutdown signal listener cleanup.
 
 The same file also covers Fastify-specific native route registration with wildcard fallback, duplicate shape route fallback, concurrent and repeated `listen()` idempotency, startup retry cancellation during shutdown, native descriptor refresh on adapter reuse, explicit `OPTIONS` route ownership, middleware/guard/interceptor/observer ordering, CORS ownership, global prefix behavior, malformed cookie preservation, response serialization parity, raw-body pre-parsing behavior, zero-valued body/shutdown limits, close wait timeouts that leave the underlying Fastify close in flight, case-insensitive multipart detection, and multipart limit handling. Keep README example pointers aligned with that test file and the custom adapter book chapter when changing startup, routing, or adapter portability behavior.
 
@@ -207,7 +209,7 @@ The same file also covers Fastify-specific native route registration with wildca
 - **Logging**: The native Fastify logger is disabled to prevent duplicate log streams. `runFastifyApplication` and `bootstrapFastifyApplication` select the framework console logger by default and accept `logger` for hosts or tests that need an injected `ApplicationLogger`.
 - **Global Prefix**: Use `globalPrefixExclude` to prevent the prefix from being applied to internal routes or health check endpoints.
 - **Malformed Cookies**: Malformed cookie headers are preserved rather than failing the request.
-- **HTTPS startup**: Use Node.js 20+ and pass certificate material under the adapter `https` option when the Fastify process owns TLS. If TLS is terminated by infrastructure, keep the adapter on plain HTTP behind that boundary.
+- **HTTPS startup**: Use Node.js `>=20.19.3 <21 || >=22.2.0 <27` and pass certificate material under the adapter `https` option when the Fastify process owns TLS. If TLS is terminated by infrastructure, keep the adapter on plain HTTP behind that boundary.
 
 ## Related Packages
 

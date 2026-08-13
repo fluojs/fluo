@@ -79,7 +79,7 @@ USER node
 CMD ["node", "dist/main.js"]
 ```
 
-Base image는 Node.js 20 이상으로 유지하세요. 기본 Fastify adapter 경로는 `engines.node >=20.0.0`을 선언한 `@fluojs/platform-fastify`를 사용합니다.
+Base image는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`로 유지하세요. 기본 Fastify adapter 경로는 이 정확한 `engines.node` 범위를 선언한 `@fluojs/platform-fastify`를 사용합니다. Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상을 선택하지 마세요.
 
 ### Docker Compose
 로컬 프로덕션 시뮬레이션이나 소규모 배포를 위해:

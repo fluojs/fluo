@@ -56,6 +56,10 @@
 | Unsupported syntax | wildcard, regex-like token, inline modifier, `user-:id` 또는 `:id.json` 같은 mixed segment는 route validation에서 거부된다. |
 | Catch-all decision | Catch-all grammar 도입은 유예되어 있다. [HTTP catch-all route grammar 결정](./http-catch-all-route-grammar.ko.md)을 참고한다. Candidate syntax는 현재 활성화되지 않는다. |
 | Param naming | Route param 이름은 `/[a-zA-Z_][a-zA-Z0-9_]*/`를 만족해야 한다. |
+| Method authoring | `@Query(path)`는 `QUERY`를 등록한다. `@Route(method, path)`는 비어 있지 않은 HTTP token을 받고 uppercase로 canonicalize하며 invalid token과 reserved `ALL` sentinel을 거부한다. `@All(path)`은 유일한 wildcard authoring API로 유지된다. |
+| Method precedence | 같은 normalized path에서는 exact method route가 `ALL` route보다 먼저 선택된다. Custom method도 built-in method와 같은 duplicate detection 및 version-selection rule을 사용한다. |
+| Adapter boundary | 지원되는 listener와 fetch dispatch는 `QUERY`와 extension method를 보존한다. Custom method는 native fluo route handoff가 아니라 adapter fallback dispatch에 남고, `CONNECT`는 일반 routing conformance 범위 밖에 유지된다. |
+| OpenAPI boundary | Custom runtime method가 OpenAPI Path Item operation으로 자동 변환되지는 않는다. `@fluojs/openapi`는 문서화된 standard-operation allowlist를 유지한다. |
 | Match shape | `matchRoutePath(...)`는 등록된 경로와 incoming 경로의 segment 개수가 같을 때만 매칭한다. |
 | Handler lookup | `HandlerMapping.match(request)`는 descriptor와 추출된 params를 담은 하나의 `HandlerMatch`를 반환하거나, 매칭이 없으면 `undefined`를 반환한다. |
 | Missing route behavior | `matchHandlerOrThrow(...)`는 매칭되지 않은 method 와 path 조합에 대해 `HandlerNotFoundError`를 던진다. |

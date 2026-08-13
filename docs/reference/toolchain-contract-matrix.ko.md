@@ -11,7 +11,7 @@
 | **Vite** | `v6.2+` | 루트 워크스페이스는 개발 번들링 및 빌드 오케스트레이션용 `vite` `^6.2.1`을 고정합니다. |
 | **@fluojs/vite** | `v1.0+`; Node.js `>=20.0.0` | 생성된 non-Deno Vite config 파일은 `@fluojs/vite`에서 `fluoDecoratorsPlugin()`을 import하며 React SSR starter는 server-build boundary에 이를 적용합니다. 이 플러그인은 Vite 애플리케이션 파일 데코레이터 변환을 소유하고, Vite `>=6.2.0`을 요구하며, eligible transform이 실행될 때까지 Babel peer loading을 lazy하게 유지합니다. |
 | **Vitest** | `v3.0+` | 루트 워크스페이스는 `vitest` `^3.0.8`을 고정하며, 패키지 로컬 설정은 주로 `^3.2.4`를 사용합니다. |
-| **Node.js** | `v20+` | 루트 워크스페이스와 배포 패키지 매니페스트(manifest)가 선언하는 Node 기반 어댑터의 최소 지원 런타임 기준선. Bun, Deno, Cloudflare Workers 어댑터는 패키지 메타데이터가 비-Node 런타임 계약과 일치하도록 `engines.node`를 의도적으로 생략합니다. |
+| **Node.js** | 루트 워크스페이스 및 Node HTTP listener는 `>=20.19.3 <21 || >=22.2.0 <27` | RFC `QUERY`가 fluo dispatch에 도달하는 데 필요한 검증된 listener window입니다. Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상은 제외됩니다. 생성된 Node HTTP 및 mixed starter도 같은 범위를 사용하며, Node microservice-only starter와 CLI process는 독립적으로 문서화된 tooling floor를 유지합니다. Bun, Deno, Cloudflare Workers 어댑터는 패키지 메타데이터가 비-Node 런타임 계약과 일치하도록 `engines.node`를 의도적으로 생략합니다. |
 
 ## CLI 및 스캐폴딩 계약
 
