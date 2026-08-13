@@ -73,23 +73,33 @@ const documentationRequirements = [
 
 const unsupportedHookPattern = /beforeApplicationShutdown(?:\s*\([^)]*\))?/iu;
 const positiveSupportPattern =
-  /\b(?:supports?|supported|available|exposed|invoked|provides?|provided)\b|(?:지원(?:됩니다|합니다|한다|하는|함|됨)|제공(?:됩니다|합니다|한다|하는|함|됨)|호출(?:됩니다|합니다|한다|하는|함|됨))/iu;
+  /\b(?:supports?|supported|available|exposed|invoked)\b|(?:지원(?:됩니다|합니다|한다|하는|하지만|함|됨)|제공(?:됩니다|합니다|한다|하는|하지만|함|됨)|호출(?:됩니다|합니다|한다|하는|하지만|함|됨))/iu;
+const positiveProvisionPattern = /\b(?:provides?|provided)\b/iu;
 const compatibilityPattern = /\b(?:shim|fallback|alias)\b/iu;
 const compatibilityActionPattern = /\b(?:use|enable|install|provide)\w*\b|(?:사용|활성화|설치|제공)/iu;
-const explicitNegationPattern =
-  /\b(?:not|no|never|without|unsupported|unavailable|forbidden|cannot)\b|\b\w+n't\b|(?:않|아니|없|금지|불가|마세요|하지)/iu;
+const negatedSupportPropositionPattern =
+  /\b(?:do|does)\s+not\s+(?:claim|say|state|imply)\b[^\n.!?;]*(?:supports?|supported|available|exposed|invoked|provides?|provided)\b|\b(?:does?\s+not|cannot|never)\s+(?:support|provide|expose|invoke)\b|\b(?:is|remains)\s+(?:unsupported|(?:not|never)\b[^,\n.!?;]*(?:supported|available|exposed|invoked|provided))\b|\bprovides?\s+no\b|(?:지원|제공|호출)(?:하지(?!만)|되지)|(?:지원됩니다|지원합니다|제공됩니다|제공합니다|호출됩니다|호출합니다)[^\n.!?;]*(?:주장하지|말하지|마세요)/iu;
+const negatedCompatibilityPropositionPattern =
+  /\b(?:does?\s+not|cannot|never)\s+(?:use|enable|install|provide)\b|\b(?:provides?|offers?)\s+no\b|\b(?:no|without)\s+(?:compatibility\s+)?(?:shim|fallback|alias)\b|(?:사용|활성화|설치|제공)(?:하지|되지)|(?:shim|fallback|alias)[^\n.!?;]*(?:없|금지|불가)/iu;
 
 function contradictionMessage(content) {
   const clauses = content.split(/[\n.!?;。！？；]+/u);
 
   for (const clause of clauses) {
-    if (!unsupportedHookPattern.test(clause) || explicitNegationPattern.test(clause)) {
+    if (!unsupportedHookPattern.test(clause)) {
       continue;
     }
-    if (positiveSupportPattern.test(clause)) {
+    const hasCompatibilityTerms = compatibilityPattern.test(clause);
+    const hasPositiveSupport =
+      positiveSupportPattern.test(clause) || (!hasCompatibilityTerms && positiveProvisionPattern.test(clause));
+    if (hasPositiveSupport && !negatedSupportPropositionPattern.test(clause)) {
       return 'must not claim that beforeApplicationShutdown is supported';
     }
-    if (compatibilityPattern.test(clause) && compatibilityActionPattern.test(clause)) {
+    if (
+      hasCompatibilityTerms &&
+      compatibilityActionPattern.test(clause) &&
+      !negatedCompatibilityPropositionPattern.test(clause)
+    ) {
       return 'must not imply a beforeApplicationShutdown compatibility shim';
     }
   }
@@ -119,6 +129,23 @@ function assertExactNames({ relativePath, kind, actualNames, allowedNames }) {
   }
 }
 
+function staticName(node) {
+  return node && (ts.isIdentifier(node) || ts.isStringLiteralLike(node)) ? node.text : undefined;
+}
+
+function unwrapExpression(node) {
+  while (
+    ts.isParenthesizedExpression(node) ||
+    ts.isAsExpression(node) ||
+    ts.isTypeAssertionExpression(node) ||
+    ts.isSatisfiesExpression(node) ||
+    ts.isNonNullExpression(node)
+  ) {
+    node = node.expression;
+  }
+  return node;
+}
+
 function enforceLifecycleTypeAllowlist(relativePath, content) {
   const sourceFile = parseRuntimeSource(relativePath, content);
   const interfaceNames = new Set();
@@ -133,8 +160,7 @@ function enforceLifecycleTypeAllowlist(relativePath, content) {
       const hookMethodNames = statement.members
         .filter(ts.isMethodSignature)
         .map((member) => member.name)
-        .filter(ts.isIdentifier)
-        .map((identifier) => identifier.text)
+        .map(staticName)
         .filter((methodName) => lifecycleMethodNamePattern.test(methodName));
       if (hookMethodNames.length === 0) {
         continue;
@@ -148,17 +174,17 @@ function enforceLifecycleTypeAllowlist(relativePath, content) {
     if (ts.isTypeAliasDeclaration(statement) && statement.name.text === 'LifecycleHooks') {
       const unionTypes = ts.isUnionTypeNode(statement.type) ? statement.type.types : [statement.type];
       lifecycleUnionNames = new Set(
-        unionTypes
-          .filter(ts.isTypeReferenceNode)
-          .map((typeNode) => typeNode.typeName)
-          .filter(ts.isIdentifier)
-          .map((identifier) => identifier.text),
+        unionTypes.map((typeNode) =>
+          ts.isTypeReferenceNode(typeNode) && ts.isIdentifier(typeNode.typeName)
+            ? typeNode.typeName.text
+            : `unrecognized ${typeNode.getText(sourceFile)}`,
+        ),
       );
     }
   }
 
-  assertExactNames({ relativePath, kind: 'interface declarations', actualNames: interfaceNames, allowedNames: lifecycleInterfaceNames });
   assertExactNames({ relativePath, kind: 'interface methods', actualNames: interfaceMethodNames, allowedNames: lifecycleMethodNames });
+  assertExactNames({ relativePath, kind: 'interface declarations', actualNames: interfaceNames, allowedNames: lifecycleInterfaceNames });
   assertExactNames({ relativePath, kind: 'LifecycleHooks union', actualNames: lifecycleUnionNames, allowedNames: lifecycleInterfaceNames });
 }
 
@@ -169,22 +195,32 @@ function enforceLifecycleBootstrapAllowlist(relativePath, content) {
 
   function visit(node) {
     if (ts.isCallExpression(node)) {
+      const probeName = staticName(node.arguments[1]);
       if (
         ts.isIdentifier(node.expression) &&
         node.expression.text === 'hasMethod' &&
-        node.arguments.length >= 2 &&
-        ts.isStringLiteral(node.arguments[1]) &&
-        lifecycleMethodNamePattern.test(node.arguments[1].text)
+        probeName &&
+        lifecycleMethodNamePattern.test(probeName)
       ) {
-        probedMethodNames.add(node.arguments[1].text);
+        probedMethodNames.add(probeName);
       }
+      const receiver =
+        ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression)
+          ? unwrapExpression(node.expression.expression)
+          : undefined;
+      const invokedName = ts.isPropertyAccessExpression(node.expression)
+        ? node.expression.name.text
+        : ts.isElementAccessExpression(node.expression)
+          ? staticName(node.expression.argumentExpression)
+          : undefined;
       if (
-        ts.isPropertyAccessExpression(node.expression) &&
-        ts.isIdentifier(node.expression.expression) &&
-        node.expression.expression.text === 'instance' &&
-        lifecycleMethodNamePattern.test(node.expression.name.text)
+        receiver &&
+        ts.isIdentifier(receiver) &&
+        receiver.text === 'instance' &&
+        invokedName &&
+        lifecycleMethodNamePattern.test(invokedName)
       ) {
-        invokedMethodNames.add(node.expression.name.text);
+        invokedMethodNames.add(invokedName);
       }
     }
     ts.forEachChild(node, visit);

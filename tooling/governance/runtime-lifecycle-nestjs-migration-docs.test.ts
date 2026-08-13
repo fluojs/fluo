@@ -83,6 +83,27 @@ describe('NestJS runtime lifecycle migration documentation', () => {
 
   it.each([
     [
+      'packages/runtime/README.md',
+      'fluo supports `beforeApplicationShutdown()`, but does not recommend it.',
+    ],
+    [
+      'packages/runtime/README.ko.md',
+      'fluo는 `beforeApplicationShutdown()`을 지원하지만 사용을 권장하지 않습니다.',
+    ],
+  ] as const)('rejects positive support despite unrelated negation in %s', (relativePath, mixedClaim) => {
+    // Given
+    const readWithMixedClaim = (requestedPath: string): string =>
+      requestedPath === relativePath ? `${read(requestedPath)}\n${mixedClaim}` : read(requestedPath);
+
+    // When
+    const runGovernanceGuard = () => enforceRuntimeLifecycleNestjsMigrationDocs(readWithMixedClaim);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(/beforeApplicationShutdown/);
+  });
+
+  it.each([
+    [
       'packages/runtime/src/types.ts',
       'export interface BeforeApplicationShutdown {\n  beforeApplicationShutdown(signal?: string): MaybePromise<void>;\n}',
     ],
@@ -125,5 +146,65 @@ describe('NestJS runtime lifecycle migration documentation', () => {
 
     // Then
     expect(runGovernanceGuard).toThrow(/[Oo]nApplicationDraining/);
+  });
+
+  it('rejects a quoted lifecycle interface method', () => {
+    // Given
+    const readWithQuotedMethod = (requestedPath: string): string =>
+      requestedPath === 'packages/runtime/src/types.ts'
+        ? `${read(requestedPath)}\nexport interface BeforeApplicationShutdown {\n  'beforeApplicationShutdown'(): MaybePromise<void>;\n}`
+        : read(requestedPath);
+
+    // When
+    const runGovernanceGuard = () => enforceRuntimeLifecycleNestjsMigrationDocs(readWithQuotedMethod);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(/beforeApplicationShutdown/);
+  });
+
+  it.each([
+    ['  | { beforeApplicationShutdown(): MaybePromise<void> };', /beforeApplicationShutdown/],
+    ['  | string;', /unrecognized/],
+  ] as const)('rejects an unrecognized LifecycleHooks union member %s', (unionMember, expectedError) => {
+    // Given
+    const readWithUnionMember = (requestedPath: string): string =>
+      requestedPath === 'packages/runtime/src/types.ts'
+        ? read(requestedPath).replace('  | OnApplicationShutdown;', `  | OnApplicationShutdown\n${unionMember}`)
+        : read(requestedPath);
+
+    // When
+    const runGovernanceGuard = () => enforceRuntimeLifecycleNestjsMigrationDocs(readWithUnionMember);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(expectedError);
+  });
+
+  it.each([
+    [
+      'template-literal probe',
+      'function isBeforeApplicationShutdown(value: unknown): boolean {\n  return hasMethod(value, `beforeApplicationShutdown`);\n}',
+    ],
+    [
+      'element-access invocation',
+      "async function runBeforeApplicationShutdown(instance: Record<string, () => Promise<void>>) {\n  await instance['beforeApplicationShutdown']();\n}",
+    ],
+    [
+      'parenthesized receiver invocation',
+      'async function runBeforeApplicationShutdown(instance: { beforeApplicationShutdown(): Promise<void> }) {\n  await (instance).beforeApplicationShutdown();\n}',
+    ],
+    [
+      'asserted receiver invocation',
+      'async function runBeforeApplicationShutdown(instance: unknown) {\n  await (instance as { beforeApplicationShutdown(): Promise<void> }).beforeApplicationShutdown();\n}',
+    ],
+  ] as const)('rejects a lifecycle bootstrap %s', (_caseName, bypassSource) => {
+    // Given
+    const readWithBypass = (requestedPath: string): string =>
+      requestedPath === 'packages/runtime/src/bootstrap.ts' ? `${read(requestedPath)}\n${bypassSource}` : read(requestedPath);
+
+    // When
+    const runGovernanceGuard = () => enforceRuntimeLifecycleNestjsMigrationDocs(readWithBypass);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(/beforeApplicationShutdown/);
   });
 });
