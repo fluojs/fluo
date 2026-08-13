@@ -25,7 +25,7 @@
 | 애플리케이션 상태 모델 | 공개 런타임 상태는 `bootstrapped`, `ready`, `closed`입니다. | `packages/runtime/src/types.ts:91-92` |
 | listen 이전 readiness 게이트 | `Application.listen()`은 `ready()`를 호출하고, `ready()`는 `platformShell.assertCriticalReadiness()`에 위임합니다. 이 검사가 통과하기 전에는 어댑터 bind가 시작되지 않습니다. | `packages/runtime/src/bootstrap.ts:437-489` |
 | ready 전이 | `Application.listen()`은 `adapter.listen(this.dispatcher)`가 성공적으로 끝난 뒤에만 애플리케이션 상태를 `ready`로 설정합니다. | `packages/runtime/src/bootstrap.ts:481-490` |
-| closed 전이 | `Application.close()`는 readiness 표시 reset, 런타임 정리, 라이프사이클 종료 훅, 어댑터 종료, 컨테이너 해제가 모두 오류 없이 끝난 뒤에만 상태를 `closed`로 설정합니다. | `packages/runtime/src/bootstrap.ts:500-528` |
+| closed 전이 | `Application.close()`는 teardown이 pending인 동안 기존 공개 상태를 유지하고 teardown이 성공적으로 완료된 뒤에만 `closed`로 설정합니다. Shutdown admission은 공개 상태와 별도로 추적합니다. | `packages/runtime/src/application.test.ts` (`keeps failed shutdown terminal while retrying only incomplete cleanup`) |
 
 이 보장들은 부트스트랩 완료와 리스너 바인딩을 분리합니다. 컴파일된 애플리케이션은 트래픽을 받기 전에 `bootstrapped` 상태로 존재할 수 있습니다.
 
@@ -34,8 +34,8 @@
 | 영역 | 보장 | 경계 |
 | --- | --- | --- |
 | 훅 순서 | `runShutdownHooks(...)`는 라이프사이클 인스턴스의 역순으로 `onModuleDestroy()`를 실행한 뒤, 다시 역순으로 `onApplicationShutdown(signal?)`를 실행합니다. | `packages/runtime/src/bootstrap.ts:710-722` |
-| 종료 경로 순서 | `closeRuntimeResources(...)`는 먼저 런타임 정리 콜백을 실행하고, 그다음 종료 훅, 그다음 `adapter.close(signal)`, 마지막으로 컨테이너 해제를 수행합니다. | `packages/runtime/src/bootstrap.ts:119-153` |
-| 멱등 close 진입 | `Application.close()`와 `ApplicationContext.close()`는 진행 중인 closing promise를 재사용하며, 첫 번째 close가 성공한 뒤에는 즉시 반환합니다. | `packages/runtime/src/bootstrap.ts:500-528`, `packages/runtime/src/bootstrap.ts:548-576` |
+| 종료 경로 순서 | Application과 context teardown은 readiness reset, 런타임 정리 콜백, 종료 훅, `adapter.close(signal)`, 컨테이너 해제 순서로 실행됩니다. 재시도는 완료된 runtime phase를 건너뛰고 incomplete adapter 또는 lifecycle-hook stage를 해당 stage의 retry contract에 따라 다시 실행합니다. Container disposal은 terminal best-effort입니다. Materialize된 container-managed `onDestroy()` hook을 모두 한 번씩 시도하며, 개별 실패 hook은 이후 application 또는 context close에서 재시도하지 않습니다. | `packages/runtime/src/bootstrap.ts`, `packages/runtime/src/retryable-shutdown.ts`, `packages/runtime/src/bootstrap.test.ts` (`does not retry container-managed onDestroy hooks on a second application context close`) |
+| 멱등 close 진입 | `Application.close()`와 `ApplicationContext.close()`는 진행 중인 closing promise를 재사용하며, 첫 번째 close가 성공한 뒤에는 즉시 반환합니다. Teardown이 실패하면 이후 close는 완료된 runtime phase를 건너뛰고 incomplete stage가 소유한 작업을 재개하되 adapter 또는 lifecycle-stage retry ownership은 변경하지 않습니다. 별도의 terminal operation gate는 shutdown 시작부터 provider resolution, application listen, child microservice connect/start를 거부하며, 이 거부는 teardown이 pending이거나 실패한 뒤에도 유지됩니다. | `packages/runtime/src/application.test.ts` (`rejects Application.get() as soon as shutdown starts while teardown is pending`), `packages/runtime/src/bootstrap.test.ts` (`rejects ApplicationContext.get() as soon as shutdown starts while teardown is pending`, `rejects connect and start operations while application close is pending`) |
 | 부트스트랩 실패 정리 | 시작 도중 라이프사이클 인스턴스가 이미 생성된 뒤 실패하면, 런타임은 `bootstrap-failed` 신호로 같은 종료 훅을 실행하고 컨테이너 해제를 시도합니다. | `packages/runtime/src/bootstrap.ts:155-189` |
 | Microservice ownership | `Application.connectMicroservice()`로 연결한 microservice는 해당 애플리케이션이 소유하는 child입니다. `startAllMicroservices()`는 뒤쪽 child 시작 실패 시 이미 시작된 child를 `bootstrap-failed`로 rollback하며, `Application.close(signal)`은 부모 runtime cleanup, lifecycle hook, adapter close, container dispose보다 먼저 연결된 microservice를 닫습니다. | `packages/runtime/src/bootstrap.ts` |
 | Microservice ingress | Microservice close 시작은 terminal ingress gate를 동기적으로 설정합니다. 겹친 `listen()`이 settle되는 동안 새 facade `send()`, `emit()`, `serverStream()`, `clientStream()`, `bidiStream()` 호출은 transport handoff 전에 reject됩니다. Runtime shell은 같은 gate를 `send()`와 `emit()`에 적용하며, close 시도가 실패해도 ingress는 다시 열리지 않습니다. | `packages/runtime/src/bootstrap.ts`, `packages/microservices/src/service.ts` |
