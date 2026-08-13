@@ -112,11 +112,16 @@ export async function assertNetworkHttpErrorRepresentationPortability<
     await app.listen();
     const baseUrl = resolveListeningUrl(app, options.name);
     await assertRepresentationResponses(options.name, {
+      binary: await fetch(`${baseUrl}/error-representations/binary-head`),
+      binaryHead: await fetch(`${baseUrl}/error-representations/binary-head`, { method: 'HEAD' }),
       committed: await fetch(`${baseUrl}/error-representations/committed`, { headers: { accept: 'text/html' } }),
       head: await fetch(`${baseUrl}/error-representations/head`, { headers: { accept: 'text/html' }, method: 'HEAD' }),
       html: await fetch(`${baseUrl}/not-registered`, { headers: { accept: 'text/html' } }),
       json: await fetch(`${baseUrl}/error-representations/json`, { headers: { accept: 'application/json' } }),
       jsonHead: await fetch(`${baseUrl}/error-representations/head`, { headers: { accept: 'application/json' }, method: 'HEAD' }),
+      plain: await fetch(`${baseUrl}/error-representations/plain-head`),
+      plainHead: await fetch(`${baseUrl}/error-representations/plain-head`, { method: 'HEAD' }),
+      success: await fetch(`${baseUrl}/error-representations/success-head`),
       successHead: await fetch(`${baseUrl}/error-representations/success-head`, { method: 'HEAD' }),
       unsupported: await fetch(`${baseUrl}/not-registered`, { headers: { accept: 'image/avif' } }),
       unsupportedHead: await fetch(`${baseUrl}/not-registered`, { headers: { accept: 'image/avif' }, method: 'HEAD' }),
@@ -163,11 +168,16 @@ export async function assertWebHttpErrorRepresentationPortability<
       method,
     });
     await assertRepresentationResponses(options.name, {
+      binary: await app.dispatch(request('/error-representations/binary-head', '*/*')),
+      binaryHead: await app.dispatch(request('/error-representations/binary-head', '*/*', 'HEAD')),
       committed: await app.dispatch(request('/error-representations/committed', 'text/html')),
       head: await app.dispatch(request('/error-representations/head', 'text/html', 'HEAD')),
       html: await app.dispatch(request('/not-registered', 'text/html')),
       json: await app.dispatch(request('/error-representations/json', 'application/json')),
       jsonHead: await app.dispatch(request('/error-representations/head', 'application/json', 'HEAD')),
+      plain: await app.dispatch(request('/error-representations/plain-head', '*/*')),
+      plainHead: await app.dispatch(request('/error-representations/plain-head', '*/*', 'HEAD')),
+      success: await app.dispatch(request('/error-representations/success-head', '*/*')),
       successHead: await app.dispatch(request('/error-representations/success-head', '*/*', 'HEAD')),
       unsupported: await app.dispatch(request('/not-registered', 'image/avif')),
       unsupportedHead: await app.dispatch(request('/not-registered', 'image/avif', 'HEAD')),
