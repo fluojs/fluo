@@ -23,6 +23,32 @@ const governedDocuments = [
   ['docs/CONTEXT.ko.md', 'bootstrap 후 caller가 `use(...)`로 native middleware stack을 변경할 수 있습니다.'],
 ] as const;
 
+const compoundContradictions = [
+  [
+    'packages/platform-express/README.md',
+    'Although adoption is unsupported, the adapter can reuse an existing Express application.',
+  ],
+  [
+    'packages/platform-express/README.ko.md',
+    '기존 application 채택은 지원하지 않지만, adapter는 기존 Express application을 재사용할 수 있습니다.',
+  ],
+  [
+    'packages/platform-express/README.md',
+    'Although post-bootstrap `use(...)` mutation is unsupported, callers can call `use(...)` after bootstrap to append native middleware.',
+  ],
+  [
+    'packages/platform-express/README.ko.md',
+    'post-bootstrap `use(...)` mutation은 지원하지 않지만, caller는 bootstrap 이후 `use(...)`를 호출해 native middleware를 추가할 수 있습니다.',
+  ],
+] as const;
+
+const negativeOnlyGuidance = [
+  ['packages/platform-express/README.md', 'Adopting an existing Express application is unsupported.'],
+  ['packages/platform-express/README.ko.md', '기존 Express application을 채택하는 방식은 지원하지 않습니다.'],
+  ['packages/platform-express/README.md', 'Calling `use(...)` after bootstrap is unsupported.'],
+  ['packages/platform-express/README.ko.md', 'bootstrap 이후 `use(...)`를 호출하는 방식은 지원하지 않습니다.'],
+] as const;
+
 function read(relativePath: string): string {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
 }
@@ -46,6 +72,33 @@ describe('Express application ownership migration documentation', () => {
 
     // Then
     expect(runGovernanceGuard).toThrow(/Express application ownership contract check failed/);
+  });
+
+  it.each(compoundContradictions)(
+    'rejects a positive ownership claim after a negative proposition in %s',
+    (relativePath, contradiction) => {
+      // Given
+      const readWithContradiction = (requestedPath: string): string =>
+        requestedPath === relativePath ? `${read(requestedPath)}\n${contradiction}` : read(requestedPath);
+
+      // When
+      const runGovernanceGuard = () => enforceExpressApplicationOwnershipDocs(readWithContradiction);
+
+      // Then
+      expect(runGovernanceGuard).toThrow(/Express application ownership contract check failed/);
+    },
+  );
+
+  it.each(negativeOnlyGuidance)('accepts direct negative-only ownership guidance in %s', (relativePath, guidance) => {
+    // Given
+    const readWithNegativeGuidance = (requestedPath: string): string =>
+      requestedPath === relativePath ? `${read(requestedPath)}\n${guidance}` : read(requestedPath);
+
+    // When
+    const runGovernanceGuard = () => enforceExpressApplicationOwnershipDocs(readWithNegativeGuidance);
+
+    // Then
+    expect(runGovernanceGuard).not.toThrow();
   });
 
   it('rejects an existing application adoption option in the adapter source', () => {
@@ -82,4 +135,5 @@ describe('Express application ownership migration documentation', () => {
     // Then
     expect(runGovernanceGuard).toThrow(/post-bootstrap native stack mutation surface/);
   });
+
 });

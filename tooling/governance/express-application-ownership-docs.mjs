@@ -173,23 +173,31 @@ function contradictionMessage(content, locale) {
       };
 
   for (const clause of clauses(content)) {
-    const isNegative = languagePatterns.negative.test(clause);
-    if (
-      existingApplication.test(clause) &&
-      languagePatterns.adoptionAction.test(clause) &&
-      languagePatterns.positive.test(clause) &&
-      !isNegative
-    ) {
-      return 'must not claim that an existing Express application can be adopted.';
-    }
-    if (
-      /(?:\b(?:after\s+bootstrap|post-bootstrap)\b|bootstrap (?:이후|후))/iu.test(clause) &&
-      /`?use\(\.\.\.\)`?/u.test(clause) &&
-      languagePatterns.lateAction.test(clause) &&
-      languagePatterns.positive.test(clause) &&
-      !isNegative
-    ) {
-      return 'must not claim that native middleware can be appended after bootstrap through use(...).';
+    const connectivePropositions = clause.split(/(?:,\s*|\s+)(?:but|however|yet)\s+|(?<=지만)\s*/iu);
+    const propositions = connectivePropositions.flatMap((proposition) =>
+      languagePatterns.negative.test(proposition) && languagePatterns.positive.test(proposition)
+        ? proposition.split(/,\s*/u)
+        : [proposition],
+    );
+    for (const proposition of propositions) {
+      const isNegative = languagePatterns.negative.test(proposition);
+      if (
+        existingApplication.test(proposition) &&
+        languagePatterns.adoptionAction.test(proposition) &&
+        languagePatterns.positive.test(proposition) &&
+        !isNegative
+      ) {
+        return 'must not claim that an existing Express application can be adopted.';
+      }
+      if (
+        /(?:\b(?:after\s+bootstrap|post-bootstrap)\b|bootstrap (?:이후|후))/iu.test(proposition) &&
+        /`?use\(\.\.\.\)`?/u.test(proposition) &&
+        languagePatterns.lateAction.test(proposition) &&
+        languagePatterns.positive.test(proposition) &&
+        !isNegative
+      ) {
+        return 'must not claim that native middleware can be appended after bootstrap through use(...).';
+      }
     }
   }
 
