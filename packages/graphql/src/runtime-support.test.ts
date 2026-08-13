@@ -49,7 +49,7 @@ describe('@fluojs/graphql runtime support metadata', () => {
   it('declares the Node.js floor required by the published package contract', () => {
     const manifest = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
 
-    expect(extractNodeEngineFloor(manifest)).toEqual([20, 16, 0]);
+    expect(extractNodeEngineFloor(manifest)).toEqual([20, 19, 3]);
   });
 
   it('covers the highest Node.js floor in the mandatory fluo dependency graph', () => {

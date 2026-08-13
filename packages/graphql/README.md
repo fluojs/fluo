@@ -24,7 +24,7 @@ pnpm add @fluojs/graphql graphql graphql-yoga
 
 `@fluojs/graphql` includes `ws@^8.21.0` for optional GraphQL-over-WebSocket subscriptions. Refresh the application lockfile when upgrading so the patched package-owned WebSocket runtime is installed; applications do not need to add `ws` directly unless they import it themselves.
 
-`@fluojs/graphql` supports Node.js `>=20.16.0` and declares that effective floor through `engines.node`. Its mandatory dependency graph reaches `@fluojs/config` through `@fluojs/runtime`; `@fluojs/config` also requires Node.js `>=20.16.0`, while the lower floors declared by other mandatory first-party dependencies remain compatible. HTTP queries/mutations and the default SSE subscription path use Web-standard request/response primitives internally, but that implementation detail does not establish package support for Bun, Deno, or Cloudflare Workers. Those runtimes remain unsupported until the complete dependency metadata and native runtime suites prove the full GraphQL contract. Optional WebSocket subscriptions additionally require an adapter that exposes a server-backed Node HTTP/S upgrade surface.
+`@fluojs/graphql` supports Node.js `>=20.19.3` and declares that effective floor through `engines.node`. Its mandatory dependency graph reaches the Node listener-capable `@fluojs/runtime`, whose RFC `QUERY` contract requires Node.js `>=20.19.3`; `@fluojs/config` independently retains its lower Node.js `>=20.16.0` floor. HTTP queries/mutations and the default SSE subscription path use Web-standard request/response primitives internally, but that implementation detail does not establish package support for Bun, Deno, or Cloudflare Workers. Those runtimes remain unsupported until the complete dependency metadata and native runtime suites prove the full GraphQL contract. Optional WebSocket subscriptions additionally require an adapter that exposes a server-backed Node HTTP/S upgrade surface.
 
 ## When to Use
 
@@ -226,7 +226,7 @@ class RequestResolver {
 - **SSE**: Subscriptions over Server-Sent Events (default).
 - **WebSockets**: Optional `graphql-ws` support for real-time subscriptions when the active adapter exposes a Node HTTP/S server with upgrade listeners (for example, the Node HTTP adapter).
 
-On the supported Node.js `>=20.16.0` runtime, HTTP queries/mutations and the default SSE subscription path run through fluo's Web-standard HTTP abstraction. This internal transport seam is not a Bun, Deno, or Cloudflare Workers support guarantee. The optional websocket transport is narrower still because it requires a server-backed Node HTTP/S adapter surface.
+On the supported Node.js `>=20.19.3` runtime, HTTP queries/mutations and the default SSE subscription path run through fluo's Web-standard HTTP abstraction. This internal transport seam is not a Bun, Deno, or Cloudflare Workers support guarantee. The optional websocket transport is narrower still because it requires a server-backed Node HTTP/S adapter surface.
 
 ```typescript
 GraphqlModule.forRoot({
