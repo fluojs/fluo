@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 import { CqrsSagaLifecycleService } from './buses/saga-bus.js';
 import { Saga } from './decorators.js';
-import { SagaTopologyError } from './errors.js';
+import { SagaExecutionError, SagaTopologyError } from './errors.js';
 import { CqrsModule } from './module.js';
 import { EVENT_BUS } from './tokens.js';
 import type { CqrsDispatchContext, CqrsEventBus, IEvent, ISaga } from './types.js';
@@ -90,7 +90,7 @@ describe('CQRS dispatch topology contracts', () => {
     }
   });
 
-  it('rejects nested different-event dispatch before re-entering the same saga token', async () => {
+  it('serializes nested different-event dispatch for the same saga token without deadlocking', async () => {
     // Given
     let activeHandles = 0;
     let maximumActiveHandles = 0;
@@ -108,13 +108,14 @@ describe('CQRS dispatch topology contracts', () => {
       async handle(event: FirstEvent | SecondEvent, context?: CqrsDispatchContext): Promise<void> {
         activeHandles += 1;
         maximumActiveHandles = Math.max(maximumActiveHandles, activeHandles);
-        handledEvents.push(event.constructor.name);
+        handledEvents.push(`${event.constructor.name}:start`);
 
         try {
           if (event instanceof FirstEvent) {
             await this.eventBus.publish(new SecondEvent(), context);
           }
         } finally {
+          handledEvents.push(`${event.constructor.name}:end`);
           activeHandles -= 1;
         }
       }
@@ -131,12 +132,144 @@ describe('CQRS dispatch topology contracts', () => {
 
     try {
       // When
-      const publishing = eventBus.publish(new FirstEvent());
+      await eventBus.publish(new FirstEvent());
 
       // Then
-      await expect(publishing).rejects.toBeInstanceOf(SagaTopologyError);
-      await expect(publishing).rejects.toThrow('nested re-entry of its provider token');
-      expect(handledEvents).toEqual(['FirstEvent']);
+      expect(handledEvents).toEqual([
+        'FirstEvent:start',
+        'FirstEvent:end',
+        'SecondEvent:start',
+        'SecondEvent:end',
+      ]);
+      expect(maximumActiveHandles).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('serializes inherited nested event routes that resolve to the same saga token', async () => {
+    // Given
+    let activeHandles = 0;
+    let maximumActiveHandles = 0;
+    const handledEvents: string[] = [];
+
+    class TriggerEvent implements IEvent {}
+
+    class ParentEvent implements IEvent {}
+
+    class ChildEvent extends ParentEvent {}
+
+    @Inject(EVENT_BUS)
+    @Saga([TriggerEvent, ParentEvent, ChildEvent])
+    class InheritedRouteSaga implements ISaga<TriggerEvent | ParentEvent | ChildEvent> {
+      constructor(private readonly eventBus: CqrsEventBus) {}
+
+      async handle(
+        event: TriggerEvent | ParentEvent | ChildEvent,
+        context?: CqrsDispatchContext,
+      ): Promise<void> {
+        activeHandles += 1;
+        maximumActiveHandles = Math.max(maximumActiveHandles, activeHandles);
+        handledEvents.push(`${event.constructor.name}:start`);
+
+        try {
+          if (event instanceof TriggerEvent) {
+            await this.eventBus.publish(new ChildEvent(), context);
+          }
+
+          await Promise.resolve();
+        } finally {
+          handledEvents.push(`${event.constructor.name}:end`);
+          activeHandles -= 1;
+        }
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [InheritedRouteSaga],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+
+    try {
+      // When
+      await eventBus.publish(new TriggerEvent());
+
+      // Then
+      expect(handledEvents).toEqual([
+        'TriggerEvent:start',
+        'TriggerEvent:end',
+        'ParentEvent:start',
+        'ParentEvent:end',
+        'ChildEvent:start',
+        'ChildEvent:end',
+      ]);
+      expect(maximumActiveHandles).toBe(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('cleans same-token continuation state after a nested saga failure', async () => {
+    // Given
+    let activeHandles = 0;
+    let maximumActiveHandles = 0;
+    const handledEvents: string[] = [];
+
+    class ParentEvent implements IEvent {}
+
+    class FailingContinuationEvent implements IEvent {}
+
+    class RecoveryEvent implements IEvent {}
+
+    @Inject(EVENT_BUS)
+    @Saga([ParentEvent, FailingContinuationEvent, RecoveryEvent])
+    class RecoverableSaga implements ISaga<ParentEvent | FailingContinuationEvent | RecoveryEvent> {
+      constructor(private readonly eventBus: CqrsEventBus) {}
+
+      async handle(
+        event: ParentEvent | FailingContinuationEvent | RecoveryEvent,
+        context?: CqrsDispatchContext,
+      ): Promise<void> {
+        activeHandles += 1;
+        maximumActiveHandles = Math.max(maximumActiveHandles, activeHandles);
+        handledEvents.push(event.constructor.name);
+
+        try {
+          if (event instanceof ParentEvent) {
+            await this.eventBus.publish(new FailingContinuationEvent(), context);
+          }
+
+          if (event instanceof FailingContinuationEvent) {
+            throw new Error('continuation failed');
+          }
+        } finally {
+          activeHandles -= 1;
+        }
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [RecoverableSaga],
+    });
+
+    const app = await bootstrapApplication({ rootModule: AppModule });
+    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+
+    try {
+      // When
+      const failedPublishing = eventBus.publish(new ParentEvent());
+
+      // Then
+      await expect(failedPublishing).rejects.toBeInstanceOf(SagaExecutionError);
+      await expect(eventBus.publish(new RecoveryEvent())).resolves.toBeUndefined();
+      expect(handledEvents).toEqual(['ParentEvent', 'FailingContinuationEvent', 'RecoveryEvent']);
+      expect(activeHandles).toBe(0);
       expect(maximumActiveHandles).toBe(1);
     } finally {
       await app.close();

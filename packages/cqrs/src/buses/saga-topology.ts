@@ -4,12 +4,16 @@ import {
 } from '../dispatch-context.js';
 import { SagaTopologyError } from '../errors.js';
 import type { CqrsDispatchContext, SagaDescriptor } from '../types.js';
+import type { SagaContinuationScope } from './saga-continuation.js';
 
 const MAX_NESTED_SAGA_DEPTH = 32;
 
 /** Result of entering one guarded saga route. */
 export interface SagaTopologyEntry {
+  readonly continuationScope: SagaContinuationScope;
   readonly context: CqrsDispatchContext;
+  readonly ownsContinuationScope: boolean;
+  readonly reentrantToken: boolean;
 }
 
 /**
@@ -26,20 +30,15 @@ export function enterSagaTopology(
   const internalState = getInternalCqrsDispatchContextState(context);
   const activeTopology = internalState?.sagaTopology;
   const routeLabel = `${descriptor.targetType.name}(${descriptor.eventType.name})`;
-  const reenteredTokenRoute = activeTopology?.activeRoutes.find((route) => route.token === descriptor.token);
+  const reenteredRoute = activeTopology?.activeRoutes.some(
+    (route) => route.token === descriptor.token && route.eventType === descriptor.eventType,
+  );
+  const reentrantToken = activeTopology?.activeRoutes.some((route) => route.token === descriptor.token) ?? false;
 
-  if (reenteredTokenRoute?.eventType === descriptor.eventType) {
+  if (reenteredRoute) {
     throw new SagaTopologyError(
       `Saga ${descriptor.targetType.name} re-entered an unsafe cycle while handling ${descriptor.eventType.name}. `
         + `Active saga path: ${[...(activeTopology?.path ?? []), routeLabel].join(' -> ')}.`,
-    );
-  }
-
-  if (reenteredTokenRoute) {
-    throw new SagaTopologyError(
-      `Saga ${descriptor.targetType.name} attempted nested re-entry of its provider token while handling ${descriptor.eventType.name}. `
-        + `Active saga path: ${[...(activeTopology?.path ?? []), routeLabel].join(' -> ')}. `
-        + 'Use distinct singleton provider tokens or an external boundary for nested saga stages.',
     );
   }
 
@@ -50,14 +49,20 @@ export function enterSagaTopology(
     );
   }
 
+  const continuationScope = internalState?.sagaContinuationScope ?? { queue: [] };
+
   return {
+    continuationScope,
     context: createInternalCqrsDispatchContext({
       publishDrainToken: internalState?.publishDrainToken,
+      sagaContinuationScope: continuationScope,
       sagaTopology: {
         activeRoutes: [...(activeTopology?.activeRoutes ?? []), { eventType: descriptor.eventType, token: descriptor.token }],
         depth: (activeTopology?.depth ?? 0) + 1,
         path: [...(activeTopology?.path ?? []), routeLabel],
       },
     }),
+    ownsContinuationScope: internalState?.sagaContinuationScope === undefined,
+    reentrantToken,
   };
 }

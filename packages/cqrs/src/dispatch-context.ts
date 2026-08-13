@@ -1,5 +1,6 @@
 import type { Token } from '@fluojs/core';
 
+import type { SagaContinuationScope } from './buses/saga-continuation.js';
 import type { CqrsDispatchContext, CqrsEventType } from './types.js';
 
 /** One active saga route retained in private CQRS dispatch state. */
@@ -18,6 +19,7 @@ export interface CqrsSagaTopologyState {
 /** Private state carried by an internally created dispatch context. */
 export interface InternalCqrsDispatchContextState {
   readonly publishDrainToken: symbol | undefined;
+  readonly sagaContinuationScope: SagaContinuationScope | undefined;
   readonly sagaTopology: CqrsSagaTopologyState | undefined;
 }
 
@@ -45,6 +47,7 @@ export function createInternalCqrsDispatchContext(state: InternalCqrsDispatchCon
     context,
     Object.freeze({
       publishDrainToken: state.publishDrainToken,
+      sagaContinuationScope: state.sagaContinuationScope,
       sagaTopology: state.sagaTopology ? freezeSagaTopology(state.sagaTopology) : undefined,
     }),
   );

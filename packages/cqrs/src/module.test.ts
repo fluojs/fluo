@@ -912,44 +912,30 @@ describe('@fluojs/cqrs', () => {
     }
 
     @Inject(COMMAND_BUS, ProcessStore)
-    @Saga(OrderSubmittedEvent)
-    class OrderSubmittedSaga implements ISaga<OrderSubmittedEvent> {
+    @Saga([OrderSubmittedEvent, PaymentAuthorizedEvent, InventoryReservedEvent])
+    class OrderFulfillmentSaga implements ISaga<IEvent> {
       constructor(
         private readonly commandBus: CommandBus,
         private readonly store: ProcessStore,
       ) {}
 
-      async handle(event: OrderSubmittedEvent, context?: CqrsDispatchContext): Promise<void> {
-        this.store.sagaLog.push(`submitted:${event.orderId}`);
-        await this.commandBus.execute(new StartPaymentCommand(event.orderId), context);
-      }
-    }
+      async handle(event: IEvent, context?: CqrsDispatchContext): Promise<void> {
+        if (event instanceof OrderSubmittedEvent) {
+          this.store.sagaLog.push(`submitted:${event.orderId}`);
+          await this.commandBus.execute(new StartPaymentCommand(event.orderId), context);
+          return;
+        }
 
-    @Inject(COMMAND_BUS, ProcessStore)
-    @Saga(PaymentAuthorizedEvent)
-    class PaymentAuthorizedSaga implements ISaga<PaymentAuthorizedEvent> {
-      constructor(
-        private readonly commandBus: CommandBus,
-        private readonly store: ProcessStore,
-      ) {}
+        if (event instanceof PaymentAuthorizedEvent) {
+          this.store.sagaLog.push(`payment-authorized:${event.orderId}`);
+          await this.commandBus.execute(new ReserveInventoryCommand(event.orderId), context);
+          return;
+        }
 
-      async handle(event: PaymentAuthorizedEvent, context?: CqrsDispatchContext): Promise<void> {
-        this.store.sagaLog.push(`payment-authorized:${event.orderId}`);
-        await this.commandBus.execute(new ReserveInventoryCommand(event.orderId), context);
-      }
-    }
-
-    @Inject(COMMAND_BUS, ProcessStore)
-    @Saga(InventoryReservedEvent)
-    class InventoryReservedSaga implements ISaga<InventoryReservedEvent> {
-      constructor(
-        private readonly commandBus: CommandBus,
-        private readonly store: ProcessStore,
-      ) {}
-
-      async handle(event: InventoryReservedEvent, context?: CqrsDispatchContext): Promise<void> {
-        this.store.sagaLog.push(`inventory-reserved:${event.orderId}`);
-        await this.commandBus.execute(new CompleteOrderCommand(event.orderId), context);
+        if (event instanceof InventoryReservedEvent) {
+          this.store.sagaLog.push(`inventory-reserved:${event.orderId}`);
+          await this.commandBus.execute(new CompleteOrderCommand(event.orderId), context);
+        }
       }
     }
 
@@ -961,9 +947,7 @@ describe('@fluojs/cqrs', () => {
         StartPaymentHandler,
         ReserveInventoryHandler,
         CompleteOrderHandler,
-        OrderSubmittedSaga,
-        PaymentAuthorizedSaga,
-        InventoryReservedSaga,
+        OrderFulfillmentSaga,
       ],
     });
 
@@ -1418,6 +1402,9 @@ describe('@fluojs/cqrs', () => {
   });
 
   it('processes saga events in a deterministic order under concurrent publish calls', async () => {
+    let activeHandles = 0;
+    let maximumActiveHandles = 0;
+
     class SequenceStore {
       seen: number[] = [];
     }
@@ -1435,8 +1422,15 @@ describe('@fluojs/cqrs', () => {
       constructor(private readonly store: SequenceStore) {}
 
       async handle(event: SequencedEvent): Promise<void> {
-        await delay(event.waitMs);
-        this.store.seen.push(event.index);
+        activeHandles += 1;
+        maximumActiveHandles = Math.max(maximumActiveHandles, activeHandles);
+
+        try {
+          await delay(event.waitMs);
+          this.store.seen.push(event.index);
+        } finally {
+          activeHandles -= 1;
+        }
       }
     }
 
@@ -1457,6 +1451,7 @@ describe('@fluojs/cqrs', () => {
     ]);
 
     expect(store.seen).toEqual([1, 2, 3]);
+    expect(maximumActiveHandles).toBe(1);
 
     await app.close();
   });
