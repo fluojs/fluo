@@ -216,11 +216,11 @@ export class OrderFulfillmentSaga implements ISaga<OrderPlacedEvent> {
 
 ### 10.7.2 Reserve inventory, then dispatch shipment
 
-Saga flow는 추가 event type을 통해 계속 이어질 수 있습니다. `InventoryReservedEvent`는 `DispatchShipmentCommand`를 유발할 수 있습니다. `ShipmentDispatchedEvent`는 `SendShipmentNotificationCommand`를 유발할 수 있습니다. 각 nested in-process stage는 서로 다른 singleton saga provider token에 속해야 합니다. 하나의 provider는 별도 publication에서 여러 event type을 수신할 수 있지만 현재 `handle(...)` 호출이 활성 상태인 동안 자신의 다른 route로 재진입할 수 없습니다. 중요한 설계 포인트는 각 단계가 명시적인 event와 ownership boundary를 지난다는 점입니다. 그래서 FluoShop은 fulfillment flow 전체를 하나의 보이지 않는 블록으로 다루지 않고, 각 경계에서 observe, retry, reschedule할 수 있습니다.
+Saga flow는 추가 event type을 통해 계속 이어질 수 있습니다. `InventoryReservedEvent`는 `DispatchShipmentCommand`를 유발할 수 있습니다. `ShipmentDispatchedEvent`는 `SendShipmentNotificationCommand`를 유발할 수 있습니다. 하나의 singleton saga provider가 이런 여러 route를 소유할 수 있습니다. 활성 `handle(...)`이 다음 route를 publish하면 CQRS는 그 route를 serialized continuation으로 queue하고 현재 호출이 반환된 뒤 실행합니다. 중요한 설계 포인트는 각 단계가 명시적인 event boundary를 지난다는 점입니다. 그래서 FluoShop은 fulfillment flow 전체를 하나의 보이지 않는 블록으로 다루지 않고, 각 경계에서 observe, retry, reschedule할 수 있습니다.
 
 ## 10.8 Saga topology limits
 
-패키지 README는 운영상 중요한 규칙을 포함합니다. in-process publish chain이 이미 활성 상태인 saga provider token이 소유한 어떤 route로든 진입하려 하거나 32개의 nested saga hop을 넘으면 `SagaTopologyError`와 함께 saga execution이 즉시 실패합니다. Same-token 규칙은 같은 event의 cycle과 nested different-event route를 모두 포함하며 각 singleton saga instance에 하나의 execution owner만 유지합니다. 이것은 구현 세부사항이 아니라 아키텍처 가이드입니다. FluoShop은 in-process saga graph를 acyclic하게 유지하고 nested stage를 서로 다른 provider token에 할당해야 합니다. 워크플로가 의도적으로 cyclic하거나 너무 long-running해지면 다른 boundary 뒤로 보내야 합니다. 그 boundary는 external transport일 수도 있습니다. queue일 수도 있습니다. scheduler일 수도 있습니다. 하지만 끝없이 재진입하는 in-process saga chain으로 남겨두면 안 됩니다.
+패키지 README는 운영상 중요한 두 가지 규칙을 포함합니다. 활성 saga provider token의 nested different-event route는 continuation으로 직렬화하므로 하나의 `handle(...)` 호출만 활성 상태를 유지하고 nested publication이 deadlock하지 않습니다. 이미 활성 상태인 provider-token/event route로 다시 진입하거나 32개의 nested saga hop을 넘으면 `SagaTopologyError`와 함께 saga execution이 즉시 실패합니다. 이것은 구현 세부사항이 아니라 아키텍처 가이드입니다. FluoShop은 in-process saga graph를 acyclic하게 유지해야 합니다. 워크플로가 의도적으로 cyclic하거나 너무 long-running해지면 다른 boundary 뒤로 보내야 합니다. 그 boundary는 external transport일 수도 있습니다. queue일 수도 있습니다. scheduler일 수도 있습니다. 하지만 끝없이 재진입하는 in-process saga chain으로 남겨두면 안 됩니다.
 
 ### 10.8.1 What this means for FluoShop
 
