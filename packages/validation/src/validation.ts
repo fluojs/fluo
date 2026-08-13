@@ -270,11 +270,13 @@ export class DefaultValidator implements Validator {
   async materialize<T>(value: unknown, target: Constructor<T>): Promise<T> {
     assertValidRootValue(value, target);
 
-    const instance = createNestedDtoInstance(target, value, {
+    const traversal: NestedTraversalContext = {
       active: new WeakSet<object>(),
       hydrateExistingInstances: true,
-    });
-    const issues = await collectValidationIssues(target, instance);
+      materialized: new WeakMap<object, WeakMap<Constructor, object>>(),
+    };
+    const instance = createNestedDtoInstance(target, value, traversal);
+    const issues = await collectValidationIssuesInternal(target, instance, {}, traversal);
 
     if (issues.length > 0) {
       throw new DtoValidationError('Validation failed.', issues);
