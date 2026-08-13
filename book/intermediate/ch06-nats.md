@@ -125,6 +125,10 @@ The Order Service gets an answer within a short latency window. If a durable bus
 
 The transport uses a 3-second request timeout by default, and you can override this value. In FluoShop, control-plane checks use a shorter budget. If the inventory preview does not arrive quickly, the gateway should degrade gracefully instead of stopping the customer journey for too long. For advisory lookups, failing fast is operationally better than a long, uncertain wait. In v1.5.0, `requestTimeoutMs` is set to 1,500ms so the user experience stays responsive even under high load.
 
+### 6.3.3 Request callback failure ownership
+
+The NATS collaborator invokes request subscription callbacks synchronously, while decoding, handler execution, response encoding, and reply publication cross an async boundary. The transport owns that boundary: malformed request frames, response encoding failures, and throwing `respond()` callbacks are contained and reported through the configured transport logger instead of escaping as process-level unhandled rejections. The caller-owned NATS client remains open. If no transport logger is configured, fluo does not introduce a raw `console.error` fallback. A request-handler error still becomes a correlated error response whenever encoding and reply publication succeed.
+
 ## 6.4 Event fan-out and logger-driven failures
 
 NATS also supports `emit()` for lightweight event delivery. This path fits cache invalidation or policy refresh notices well. For example, when Catalog updates a restricted-item rule, several services may need to refresh local read models, and that signal needs to be fast. Not every environment needs Kafka-level historical replay.
