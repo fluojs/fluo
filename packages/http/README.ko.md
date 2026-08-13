@@ -80,6 +80,33 @@ syntax, provisional precedence 및 params shape, OpenAPI 제한, adapter native 
 contract를 재검토하기 전에 필요한 evidence를 기록합니다. 해당 문서의 syntax는 현재 활성 route behavior가
 아닙니다.
 
+### Custom HTTP method 계약
+
+RFC `QUERY`에는 `@Query(path)`를 사용하고, `PURGE` 또는 WebDAV `PROPFIND` 같은 다른 HTTP extension method에는 `@Route(method, path)`를 사용합니다.
+
+```ts
+import { Controller, Query, Route } from '@fluojs/http';
+
+@Controller('/operations')
+export class OperationsController {
+  @Query('/search')
+  search() {
+    return { method: 'QUERY' };
+  }
+
+  @Route('purge', '/cache')
+  purgeCache() {
+    return { method: 'PURGE' };
+  }
+}
+```
+
+`@Route(...)`는 비어 있지 않은 HTTP token을 받고 metadata 등록 전에 uppercase로 canonicalize하며, whitespace, separator, control character, non-ASCII token character가 들어오면 `InvalidHttpMethodError`로 거부합니다. `ALL`은 framework-owned `@All(...)` wildcard 전용이므로 `@Route(...)`에서 거부됩니다. Custom method를 포함한 method-specific route는 `@All(...)`보다 먼저 매칭되고 duplicate detection과 route versioning에 참여하며, 일반 DTO binding, validation, guard, interceptor, response pipeline을 그대로 사용합니다. Status metadata가 별도로 지정되지 않으면 성공한 `QUERY` 및 extension-method handler는 `200`을 기본값으로 사용합니다.
+
+Adapter wire support는 명시적인 portability contract입니다. 지원되는 Node listener, Fastify와 Express wildcard fallback, Bun, Deno, Cloudflare Workers fetch dispatch는 `QUERY`와 대표 extension method를 일반 method로 바꾸지 않고 실행합니다. Custom method는 Bun native `routes` 가속 대상에서 제외되며, Fastify는 wildcard fallback이 해당 요청을 받을 수 있도록 method 이름만 등록합니다. 두 경로 모두 native fluo route handoff를 만들지 않습니다. `CONNECT`는 일반 controller-route conformance 범위 밖에 남습니다.
+
+Custom runtime method가 자동으로 OpenAPI Path Item operation이 되는 것은 아닙니다. `@fluojs/openapi`는 계속 문서화된 standard operation method만 받으므로 custom-method descriptor를 OpenAPI input에서 제외하거나 application-owned extension으로 해당 endpoint를 문서화해야 합니다.
+
 ## 주요 패턴
 
 ### 가드와 인터셉터
@@ -257,14 +284,14 @@ Multipart upload를 parse하는 어댑터는 shared HTTP contract를 adapter-spe
 
 ## 공개 API
 
-- **라우팅 데코레이터**: `Controller`, `Get`, `Sse`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
+- **라우팅 데코레이터**: `Controller`, `Get`, `Sse`, `Query`, `Route`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
 - **바인딩 데코레이터**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`, `Optional`, `Convert`
 - **실행 데코레이터**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
 - **요청/응답 및 컨텍스트 타입**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
 - **디스패처, 라우팅, 협상 타입**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `HttpErrorRepresentationContext`, `HtmlErrorRepresentationProvider`, `HttpErrorRepresentationOptions`, `FastPathEligibility`, `FastPathStats`
 - **파이프라인 계약 타입**: `Middleware`, `MiddlewareLike`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardLike`, `GuardContext`, `Interceptor`, `InterceptorLike`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `RequestObserverLike`, `RequestObservationContext`, `ArgumentResolverContext`, `Binder`, `Converter`, `ConverterLike`, `ConverterTarget`, `ValidationIssue`, `Validator`
 - **Adapter API**: `HttpApplicationAdapter`, `HttpAdapterRealtimeCapability`, `ServerBackedHttpAdapterRealtimeCapability`, `FetchStyleHttpAdapterRealtimeCapability`, `UnsupportedHttpAdapterRealtimeCapability`, `createNoopHttpApplicationAdapter`, `createServerBackedHttpAdapterRealtimeCapability`, `createUnsupportedHttpAdapterRealtimeCapability`, `createFetchStyleHttpAdapterRealtimeCapability`
-- **예외와 오류**: `HttpExceptionDetail`, `HttpExceptionOptions`, `ErrorResponse`, `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `HandlerNotFoundError`, `RequestAbortedError`
+- **예외와 오류**: `HttpExceptionDetail`, `HttpExceptionOptions`, `ErrorResponse`, `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `InvalidHttpMethodError`, `HandlerNotFoundError`, `RequestAbortedError`
 - **헬퍼**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
 - **Option 및 store type**: `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStoreEntry`, `SecurityHeadersOptions`, `SseSendOptions`
 
