@@ -168,7 +168,7 @@ class UserSaga implements ISaga<UserCreatedEvent> {
 }
 ```
 
-Saga 실행은 같은 프로세스 안에서 동일 provider-token/event route로 순환 재진입하거나 중첩 hop 수가 32를 넘으면 `SagaTopologyError`로 즉시 실패합니다. 같은 decorated saga class를 사용하는 서로 다른 singleton token은 별도의 fan-out route로 유지됩니다. 서로 다른 이벤트 단계를 순차 처리하는 multi-stage saga는 계속 허용되지만, in-process saga graph 전체는 비순환(acyclic) 구조를 유지해야 하며, 의도적인 순환/피드백 루프나 더 긴 체인은 외부 transport, scheduler, 또는 다른 bounded boundary 뒤로 이동해야 합니다.
+Saga 실행은 in-process publish chain이 동일한 활성 provider token이 소유한 어떤 route로든 nested re-entry를 시도하거나 중첩 hop 수가 32를 넘으면 `SagaTopologyError`로 즉시 실패합니다. 여기에는 같은 event의 cycle뿐 아니라 하나의 saga provider가 선언한 서로 다른 event route도 포함됩니다. 하나의 singleton saga는 별도 publication에서 여러 event type에 계속 반응할 수 있지만 실행 owner는 하나입니다. 현재 `handle(...)` 호출이 활성 상태인 동안 context를 보존한 nested publish는 해당 token에 다시 진입할 수 없습니다. 비순환 multi-stage in-process flow에는 서로 다른 singleton saga token을 사용하고, 의도적인 순환/피드백 루프나 더 긴 체인은 외부 transport, scheduler, 또는 다른 bounded boundary 뒤로 이동해야 합니다.
 
 Saga, command handler, query handler, event handler 안에서 다시 CQRS `execute(...)`, `publish(...)`, `publishAll(...)`를 호출할 때는 optional `CqrsDispatchContext` 인자를 그대로 전달하세요. CQRS는 이 명시적인 runtime-agnostic context로 Node.js async-local API에 의존하지 않고 nested dispatch 전반의 saga topology check를 유지합니다. 이 context는 opaque, frozen fieldless pass-through value이며, 신뢰하는 topology와 shutdown-drain state는 CQRS 내부에 비공개로 유지됩니다. Caller-shaped object와 복사된 값은 신뢰된 runtime state를 운반하지 않으므로 context를 직접 생성, 복제, 검사, mutate하지 마세요.
 
@@ -221,7 +221,7 @@ class TokenInjectedService {
 - `DuplicateCommandHandlerError`, `DuplicateQueryHandlerError`: 서로 다른 singleton provider가 같은 command 또는 query type을 claim할 때 발생합니다.
 - `DuplicateEventHandlerError`: 호환성을 위해서만 export가 유지되며, event-handler discovery는 이 오류를 throw하거나 중복 registration을 failure로 취급하지 않습니다. 같은 provider token과 event route가 반복 discovery되면 조용히 deduplicate하고, 서로 다른 singleton provider token은 discovery 순서대로 fan-out되는 유효한 route로 유지합니다.
 - `SagaExecutionError`: 예상하지 못한 non-Fluo saga 실패를 감쌉니다.
-- `SagaTopologyError`: 자기 트리거, 순환, 또는 과도하게 깊은 in-process saga graph를 감지했을 때 발생합니다.
+- `SagaTopologyError`: 활성 provider-token 재진입, 순환 route, 또는 과도하게 깊은 in-process saga graph를 감지했을 때 발생합니다.
 
 ### status와 metadata
 - `createCqrsPlatformStatusSnapshot(...)`: diagnostics와 health surface를 위한 CQRS status snapshot을 생성합니다.
