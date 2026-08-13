@@ -202,6 +202,10 @@ export function writeSuccessResponse(
 
   applySuccessResponseMetadata({ formatter, handler, response, value: responseValue });
 
+  if (request.method.toUpperCase() === 'HEAD') {
+    return response.send(undefined);
+  }
+
   if (!formatter && hasSimpleJsonResponseWriter(response) && canUseSimpleJsonFastPath(response, responseValue)) {
     return response.sendSimpleJson(responseValue);
   }

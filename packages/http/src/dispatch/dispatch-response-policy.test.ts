@@ -5,12 +5,13 @@ import {
   Controller,
   createDispatcher,
   createHandlerMapping,
-    type FrameworkRequest,
-    type FrameworkResponse,
-    Get,
-    Header,
-    type MiddlewareContext,
-    type Next,
+  type FrameworkRequest,
+  type FrameworkResponse,
+  Get,
+  Head,
+  Header,
+  type MiddlewareContext,
+  type Next,
 } from '../index.js';
 
 type CustomResponseWriterContext = {
@@ -43,12 +44,16 @@ function createResponse(): FrameworkResponse & { body?: unknown } {
   };
 }
 
-function createRequest(path: string, headers: FrameworkRequest['headers'] = {}): FrameworkRequest {
+function createRequest(
+  path: string,
+  headers: FrameworkRequest['headers'] = {},
+  method: FrameworkRequest['method'] = 'GET',
+): FrameworkRequest {
   return {
     body: undefined,
     cookies: {},
     headers,
-    method: 'GET',
+    method,
     params: {},
     path,
     query: {},
@@ -102,6 +107,40 @@ describe('dispatch response policy', () => {
     expect(response.headers['x-react-route']).toBe('html');
     expect(response.headers['Content-Type']).toBe('text/html; charset=utf-8');
     expect(response.body).toBe('<main>React SSR</main>');
+  });
+
+  it('preserves application-owned custom response writer behavior for HEAD', async () => {
+    const htmlEntry = { html: '<main>Application-owned HEAD body</main>' };
+
+    Object.defineProperty(htmlEntry, Symbol.for('fluo.http.responseWriter'), {
+      enumerable: false,
+      value(context: CustomResponseWriterContext) {
+        context.applySuccessResponseMetadata();
+        context.response.setHeader('Content-Type', 'text/html; charset=utf-8');
+        return context.response.send(htmlEntry.html);
+      },
+    });
+
+    @Controller('/custom-writer-head')
+    class CustomWriterHeadController {
+      @Head('/')
+      head() {
+        return htmlEntry;
+      }
+    }
+
+    const root = new Container().register(CustomWriterHeadController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: CustomWriterHeadController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/custom-writer-head', {}, 'HEAD'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('text/html; charset=utf-8');
+    expect(response.body).toBe('<main>Application-owned HEAD body</main>');
   });
 
   it('finalizes an integration-owned handler value before selecting its response writer', async () => {
