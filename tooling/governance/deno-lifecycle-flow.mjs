@@ -1,5 +1,7 @@
 import ts from 'typescript';
 
+import { cloneLifecycleScopes, mergeLifecycleBranches } from './deno-lifecycle-branch-flow.mjs';
+
 const receiverStates = {
   application: { kind: 'receiver', receiver: 'application' },
   deno: { kind: 'receiver', receiver: 'deno' },
@@ -56,9 +58,17 @@ function memberParts(node) {
 }
 
 function sameState(left, right) {
+  if (!left || !right) return left === right;
   return left?.kind === right?.kind &&
     left?.receiver === right?.receiver &&
     left?.capability === right?.capability;
+}
+
+function mergeBranchState(left, right) {
+  if (sameState(left, right)) return left;
+  if (left == null) return right;
+  if (right == null) return left;
+  return null;
 }
 
 function lookup(scopes, name) {
@@ -212,6 +222,15 @@ export function collectLifecycleCallsWithProvenance(node, initialProvenance = {}
       scopes.push(new Map());
       for (const statement of current.statements) visit(statement, scopes);
       scopes.pop();
+      return;
+    }
+    if (ts.isIfStatement(current)) {
+      visit(current.expression, scopes);
+      const thenScopes = cloneLifecycleScopes(scopes);
+      const elseScopes = cloneLifecycleScopes(scopes);
+      visit(current.thenStatement, thenScopes);
+      if (current.elseStatement) visit(current.elseStatement, elseScopes);
+      mergeLifecycleBranches(scopes, [thenScopes, elseScopes], mergeBranchState);
       return;
     }
     if (ts.isVariableDeclaration(current)) {

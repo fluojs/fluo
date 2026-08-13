@@ -83,6 +83,21 @@ describe('Deno host-owned lifecycle source contract', () => {
       'server shutdown',
     ],
     [
+      'server shutdown retained across a conditional reassignment',
+      'function stopController(controller: DenoServeController, condition: boolean) {\n    let stopServer = controller.shutdown;\n    if (condition) stopServer = () => undefined;\n    stopServer();\n  }',
+      'server shutdown',
+    ],
+    [
+      'server shutdown retained by one if/else branch',
+      'function stopController(controller: DenoServeController, condition: boolean) {\n    let stopServer = controller.shutdown;\n    if (condition) stopServer = controller.shutdown;\n    else stopServer = () => undefined;\n    stopServer();\n  }',
+      'server shutdown',
+    ],
+    [
+      'server shutdown retained across nested conditionals',
+      'function stopController(controller: DenoServeController, outer: boolean, inner: boolean) {\n    let stopServer = controller.shutdown;\n    if (outer) {\n      if (inner) stopServer = () => undefined;\n    }\n    stopServer();\n  }',
+      'server shutdown',
+    ],
+    [
       'application close through identifier alias',
       'function closeManagedApplication(application: Application) {\n    const closeApplication = application.close;\n    closeApplication();\n  }',
       'server shutdown',
@@ -127,6 +142,10 @@ describe('Deno host-owned lifecycle source contract', () => {
     [
       'a stale shutdown alias after destructuring reassignment',
       'function invokeCallback(server: DenoServeController) {\n    let { shutdown: stop } = server;\n    ({ shutdown: stop } = { shutdown: () => undefined });\n    stop();\n  }',
+    ],
+    [
+      'a shutdown alias killed by both if/else branches',
+      'function invokeCallback(server: DenoServeController, condition: boolean) {\n    let stop = server.shutdown;\n    if (condition) stop = () => undefined;\n    else stop = () => undefined;\n    stop();\n  }',
     ],
   ] as const)('accepts %s in the host-owned handler', (_caseName, sourceSnippet) => {
     // Given
