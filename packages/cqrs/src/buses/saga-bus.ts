@@ -140,13 +140,19 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     const continuationEntry = entries.find((entry) => entry.topology.reentrantToken);
 
     if (continuationEntry) {
-      continuationEntry.topology.continuationScope.queue.push(async () => {
-        await runSerializedSagaContinuationTasks(entries.map((entry) => ({
-          run: () => entry.topology.reentrantToken
-            ? this.invokeSaga(entry.descriptor, event, entry.topology.context)
-            : this.dispatchWithOrdering(entry.descriptor, event, entry.topology),
+      const continuationTasks = entries.map((entry) => {
+        const scheduledDispatch = entry.topology.reentrantToken
+          ? this.dispatchWithOrdering(entry.descriptor, event, entry.topology)
+          : undefined;
+
+        return {
+          run: () => scheduledDispatch ?? this.dispatchWithOrdering(entry.descriptor, event, entry.topology),
           token: entry.descriptor.token,
-        })));
+        };
+      });
+
+      continuationEntry.topology.continuationScope.queue.push(async () => {
+        await runSerializedSagaContinuationTasks(continuationTasks);
 
         await options.afterSagas?.();
       });
@@ -190,13 +196,7 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     topology: SagaTopologyEntry,
   ): Promise<void> {
     const previous = this.executionChains.get(descriptor.token) ?? Promise.resolve();
-    const current = previous.then(async () => {
-      await this.invokeSaga(descriptor, event, topology.context);
-
-      if (topology.ownsContinuationScope) {
-        await drainSagaContinuations(topology.continuationScope);
-      }
-    });
+    const current = previous.then(async () => this.invokeSaga(descriptor, event, topology.context));
     const settled = current.catch(() => undefined);
 
     this.executionChains.set(descriptor.token, settled);
@@ -204,6 +204,10 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
 
     try {
       await current;
+
+      if (topology.ownsContinuationScope) {
+        await drainSagaContinuations(topology.continuationScope);
+      }
     } finally {
       this.pendingDispatches.delete(current);
 
