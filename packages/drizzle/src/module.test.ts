@@ -1192,11 +1192,12 @@ describe('@fluojs/drizzle', () => {
     });
     const drizzle = await app.container.resolve(DrizzleDatabase<typeof database, typeof transactionDatabase>);
     const nestedStarted = createDeferred();
+    const nestedBarrier = createDeferred();
 
     const openTransaction = drizzle.transaction(async () =>
       drizzle.requestTransaction(async () => {
         nestedStarted.resolve();
-        return new Promise<never>(() => undefined);
+        await nestedBarrier.promise;
       }),
     );
     let shutdownPromise: Promise<void> | undefined;
@@ -1206,6 +1207,7 @@ describe('@fluojs/drizzle', () => {
       expect(drizzle.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(1);
 
       shutdownPromise = app.close();
+      nestedBarrier.resolve();
 
       await expect(openTransaction).rejects.toThrow('Application shutdown interrupted an open request transaction.');
       await shutdownPromise;
@@ -1216,6 +1218,7 @@ describe('@fluojs/drizzle', () => {
         'dispose',
       ]);
     } finally {
+      nestedBarrier.resolve();
       await Promise.allSettled([
         openTransaction,
         shutdownPromise ?? app.close(),
@@ -1262,10 +1265,11 @@ describe('@fluojs/drizzle', () => {
     const app = await bootstrapApplication({ rootModule: AppModule });
     const drizzle = await app.container.resolve(DrizzleDatabase<typeof database, typeof transactionDatabase>);
     const nestedStarted = createDeferred();
+    const nestedBarrier = createDeferred();
     const outerTransaction = drizzle.transaction(async () =>
       drizzle.requestTransaction(async () => {
         nestedStarted.resolve();
-        return new Promise<never>(() => undefined);
+        await nestedBarrier.promise;
       }),
     );
     let rollbackReleased = false;
@@ -1276,6 +1280,7 @@ describe('@fluojs/drizzle', () => {
       expect(drizzle.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(1);
 
       shutdown = app.close();
+      nestedBarrier.resolve();
       await rollbackPending.promise;
 
       expect(events).toContain('transaction:rollback:pending');
@@ -1296,6 +1301,8 @@ describe('@fluojs/drizzle', () => {
       ]);
       expect(drizzle.createPlatformStatusSnapshot().details.activeRequestTransactions).toBe(0);
     } finally {
+      nestedBarrier.resolve();
+
       if (!rollbackReleased) {
         rollbackReleased = true;
         rollbackBarrier.resolve();
@@ -1370,6 +1377,7 @@ describe('@fluojs/drizzle', () => {
     );
 
     try {
+      nestedBarrier.resolve();
       await expect(requestTransaction).rejects.toThrow('ambient request aborted');
       expect(transactionCalls).toBe(1);
     } finally {
