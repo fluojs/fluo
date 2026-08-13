@@ -2,4 +2,4 @@
 '@fluojs/cqrs': patch
 ---
 
-Reject nested saga dispatch that would re-enter an active singleton provider token through a different event route, preserving serialized saga ownership without deadlocking the in-process publish chain.
+Serialize nested different-event saga continuations for the same singleton provider token without concurrent `handle(...)` entry or publish deadlocks, while preserving cycle and depth protections.
