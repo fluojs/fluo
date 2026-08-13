@@ -74,6 +74,12 @@ export class NatsMicroserviceTransport implements MicroserviceTransport {
     });
   }
 
+  private handleRequestMessageSafely(message: NatsMessageLike): void {
+    void this.handleRequestMessage(message).catch((error: unknown) => {
+      this.logger?.error('Request callback failed.', error, 'NatsMicroserviceTransport');
+    });
+  }
+
   /**
    * Creates a NATS transport using a client and codec supplied by the application.
    *
@@ -119,7 +125,7 @@ export class NatsMicroserviceTransport implements MicroserviceTransport {
         this.handleEventMessageSafely(message);
       }));
       this.subscriptions.push(this.options.client.subscribe(this.messageSubject, (message) => {
-        void this.handleRequestMessage(message);
+        this.handleRequestMessageSafely(message);
       }));
     } catch (error) {
       for (const subscription of this.subscriptions.reverse()) {
@@ -348,17 +354,23 @@ export class NatsMicroserviceTransport implements MicroserviceTransport {
       return;
     }
 
+    let response: NatsTransportResponse;
+
     try {
-      const payload = await this.handler({
-        kind: 'message',
-        pattern: packet.pattern,
-        payload: packet.payload,
-      });
-      message.respond(this.encode({ payload } satisfies NatsTransportResponse));
+      response = {
+        payload: await this.handler({
+          kind: 'message',
+          pattern: packet.pattern,
+          payload: packet.payload,
+        }),
+      };
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unhandled microservice error';
-      message.respond(this.encode({ error: errorMessage } satisfies NatsTransportResponse));
+      response = {
+        error: error instanceof Error ? error.message : 'Unhandled microservice error',
+      };
     }
+
+    message.respond(this.encode(response));
   }
 
   private decode<T>(data: Uint8Array): T {
