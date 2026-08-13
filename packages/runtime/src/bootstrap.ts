@@ -635,11 +635,16 @@ class FluoApplication implements Application {
       return this.container.resolve(token);
     }
 
-    if (this.closeStarted) {
-      throw new InvariantError('Application cannot resolve providers after shutdown has started.');
-    }
+    this.assertProviderResolutionAllowed();
+    const resolved = await resolveContextToken(
+      this.container,
+      token,
+      this.contextCacheableTokens,
+      this.contextResolutionCache,
+    );
+    this.assertProviderResolutionAllowed();
 
-    return resolveContextToken(this.container, token, this.contextCacheableTokens, this.contextResolutionCache);
+    return resolved;
   }
 
   /**
@@ -718,6 +723,12 @@ class FluoApplication implements Application {
   private assertApplicationOperationAllowed(operation: 'connect a microservice' | 'start microservices'): void {
     if (this.closeStarted) {
       throw new InvariantError(`Application cannot ${operation} after shutdown has started.`);
+    }
+  }
+
+  private assertProviderResolutionAllowed(): void {
+    if (this.closeStarted) {
+      throw new InvariantError('Application cannot resolve providers after shutdown has started.');
     }
   }
 
@@ -866,11 +877,22 @@ class FluoApplicationContext implements ApplicationContext {
       return this.container.resolve(token);
     }
 
+    this.assertProviderResolutionAllowed();
+    const resolved = await resolveContextToken(
+      this.container,
+      token,
+      this.contextCacheableTokens,
+      this.contextResolutionCache,
+    );
+    this.assertProviderResolutionAllowed();
+
+    return resolved;
+  }
+
+  private assertProviderResolutionAllowed(): void {
     if (this.closeStarted) {
       throw new InvariantError('Application context cannot resolve providers after shutdown has started.');
     }
-
-    return resolveContextToken(this.container, token, this.contextCacheableTokens, this.contextResolutionCache);
   }
 
   async close(signal?: string): Promise<void> {

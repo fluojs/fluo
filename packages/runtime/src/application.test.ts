@@ -333,6 +333,56 @@ describe('bootstrapApplication', () => {
     }
   });
 
+  it('rejects Application.get() when shutdown starts during provider resolution', async () => {
+    const resolutionStarted = createDeferred<void>();
+    const providerCanResolve = createDeferred<void>();
+    const closeCanFinish = createDeferred<void>();
+    const SERVICE_TOKEN = Symbol('delayed-application-service');
+    const service = { status: 'resolved' };
+    const adapter: HttpApplicationAdapter = {
+      async close() {
+        await closeCanFinish.promise;
+      },
+      async listen() {},
+    };
+
+    class AppModule {}
+    defineModule(AppModule, {
+      providers: [
+        {
+          provide: SERVICE_TOKEN,
+          scope: 'transient',
+          useFactory: async () => {
+            resolutionStarted.resolve();
+            await providerCanResolve.promise;
+            return service;
+          },
+        },
+      ],
+    });
+
+    const app = registerAppForCleanup(await bootstrapApplication({
+      adapter,
+      rootModule: AppModule,
+    }));
+
+    // Given: provider resolution was admitted before application shutdown.
+    const resolution = app.get(SERVICE_TOKEN);
+    await resolutionStarted.promise;
+
+    // When: shutdown starts before the provider settles.
+    const closePromise = app.close('SIGTERM');
+    providerCanResolve.resolve();
+
+    // Then: the post-resolution admission check rejects the stale result.
+    try {
+      await expect(resolution).rejects.toThrow('Application cannot resolve providers after shutdown has started.');
+    } finally {
+      closeCanFinish.resolve();
+      await closePromise;
+    }
+  });
+
   it('shares the same in-flight startup across overlapping listen() calls', async () => {
     const listenCanFinish = createDeferred<void>();
     const events: string[] = [];

@@ -1489,6 +1489,56 @@ describe('FluoFactory.createApplicationContext', () => {
       await closePromise;
     }
   });
+
+  it('rejects ApplicationContext.get() when shutdown starts during provider resolution', async () => {
+    const resolutionStarted = createDeferred<void>();
+    const providerCanResolve = createDeferred<void>();
+    const shutdownCanFinish = createDeferred<void>();
+    const SERVICE_TOKEN = Symbol('delayed-context-service');
+    const service = { status: 'resolved' };
+
+    class ShutdownBlocker {
+      async onModuleDestroy(): Promise<void> {
+        await shutdownCanFinish.promise;
+      }
+    }
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [
+        ShutdownBlocker,
+        {
+          provide: SERVICE_TOKEN,
+          scope: 'transient',
+          useFactory: async () => {
+            resolutionStarted.resolve();
+            await providerCanResolve.promise;
+            return service;
+          },
+        },
+      ],
+    });
+
+    const context = await FluoFactory.createApplicationContext(AppModule);
+
+    // Given: provider resolution was admitted before context shutdown.
+    const resolution = context.get(SERVICE_TOKEN);
+    await resolutionStarted.promise;
+
+    // When: shutdown starts before the provider settles.
+    const closePromise = context.close('SIGTERM');
+    providerCanResolve.resolve();
+
+    // Then: the post-resolution admission check rejects the stale result.
+    try {
+      await expect(resolution).rejects.toThrow(
+        'Application context cannot resolve providers after shutdown has started.',
+      );
+    } finally {
+      shutdownCanFinish.resolve();
+      await closePromise;
+    }
+  });
 });
 
 describe('FluoFactory.create HTTP dispatch request scopes', () => {
