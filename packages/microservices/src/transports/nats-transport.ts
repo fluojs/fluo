@@ -101,6 +101,10 @@ export class NatsMicroserviceTransport implements MicroserviceTransport {
         throw new Error('NATS microservice transport is closing. Wait for close() to complete before listen().');
       }
 
+      if (this.subscriptions.length > 0) {
+        throw new Error('NATS subscription cleanup is incomplete. Call close() again before listen().');
+      }
+
       this.closing = false;
     }
 
@@ -272,27 +276,35 @@ export class NatsMicroserviceTransport implements MicroserviceTransport {
 
     this.closing = true;
     this.closePromise = (async () => {
-      let closeError: unknown;
+      const cleanupErrors: unknown[] = [];
+      const retainedSubscriptions: NatsSubscriptionLike[] = [];
 
-      try {
-        for (const subscription of this.subscriptions) {
+      for (const subscription of this.subscriptions) {
+        try {
           subscription.unsubscribe();
-        }
-
-      } catch (error) {
-        closeError = error;
-      } finally {
-        this.subscriptions = [];
-        this.listening = false;
-        this.handler = undefined;
-
-        for (const pending of [...this.pending.values()]) {
-          pending.reject(new Error('NATS microservice transport closed before response.'));
+        } catch (error) {
+          cleanupErrors.push(error);
+          retainedSubscriptions.push(subscription);
         }
       }
 
-      if (closeError) {
-        throw closeError;
+      this.subscriptions = retainedSubscriptions;
+      this.listening = false;
+      this.handler = undefined;
+
+      for (const pending of [...this.pending.values()]) {
+        pending.reject(new Error('NATS microservice transport closed before response.'));
+      }
+
+      if (cleanupErrors.length === 1) {
+        throw cleanupErrors[0];
+      }
+
+      if (cleanupErrors.length > 1) {
+        throw new AggregateError(
+          cleanupErrors,
+          'NATS subscription cleanup failed for multiple subscriptions.',
+        );
       }
     })();
 

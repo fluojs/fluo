@@ -95,6 +95,8 @@ export class InventoryCoordinationModule {}
 - `await microservice.emit(...)`은 caller-provided client의 publish 연산이 outbound frame을 accept/complete할 때 settle합니다. 원격 event handler를 기다리거나 해당 client 계약을 넘어선 durability를 추가하지는 않습니다.
 - `await microservice.close()`는 transport가 생성한 subscription을 unsubscribe하고 pending request를 reject하지만 caller-owned NATS client를 close 또는 drain하지 않습니다. Shutdown 시 facade를 먼저 닫은 뒤 bootstrap layer에서 client를 drain 또는 close하세요.
 
+하나의 subscription cleanup이 실패해도 `close()`는 나머지 cleanup을 모두 시도한 뒤 실패를 보고합니다. 이후 `close()`는 실패한 subscription만 다시 시도하며, 이미 성공적으로 detach한 subscription은 정리된 상태를 유지합니다. 실패한 cleanup이 남아 있는 동안에는 `listen()`을 다시 시작할 수 없습니다. Caller-owned client를 drain 또는 close하기 전에 이 transport cleanup을 해결하세요.
+
 ## 6.3 Fast request-reply for inventory control
 
 NATS는 request-reply를 자연스럽게 지원합니다. fluo transport는 `send()`를 timeout이 있는 `client.request(...)`에 매핑합니다. 이 덕분에 경로는 직접 호출처럼 빠르게 동작하면서도 마이크로서비스 추상화는 유지됩니다. NATS가 **Inbox** 생성과 reply-to 상관관계(correlation)를 처리하므로, 개발자는 Kafka 장에서 보았던 고유 응답 토픽을 직접 관리할 필요가 없습니다.
