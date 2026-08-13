@@ -52,7 +52,7 @@ The testing-module builder owns its internally created container until `compile(
 
 `@fluojs/testing/vitest` is the supported Vitest entrypoint for `fluoBabelDecoratorsPlugin()`. Keep it in package export-map and build-surface checks whenever testing package exports change.
 
-`@fluojs/testing` declares `engines.node >=20.0.0`. Its mock helpers and `DeepMocked<T>` type intentionally use a Vitest-compatible mock type boundary. `DeepMocked<T>` is available from the root `@fluojs/testing` package, `@fluojs/testing/types`, and `@fluojs/testing/mock`; consumers that do not run Vitest should prefer non-mock entrypoints such as `@fluojs/testing/app`, `@fluojs/testing/module`, or harness subpaths.
+`@fluojs/testing` declares `engines.node >=20.19.3`, matching the minimum listener runtime used by its public body-bearing RFC `QUERY` portability assertion. Its mock helpers and `DeepMocked<T>` type intentionally use a Vitest-compatible mock type boundary. `DeepMocked<T>` is available from the root `@fluojs/testing` package, `@fluojs/testing/types`, and `@fluojs/testing/mock`; consumers that do not run Vitest should prefer non-mock entrypoints such as `@fluojs/testing/app`, `@fluojs/testing/module`, or harness subpaths.
 
 ## React Consumer Loop
 

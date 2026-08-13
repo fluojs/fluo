@@ -52,7 +52,7 @@ Testing-module builder는 `compile()`이 `TestingModuleRef`를 반환할 때까�
 
 `@fluojs/testing/vitest`는 `fluoBabelDecoratorsPlugin()`을 위한 지원 Vitest 엔트리포인트입니다. testing package export가 바뀔 때는 package export-map과 build surface 검증에 이 엔트리포인트를 계속 포함하세요.
 
-`@fluojs/testing`은 `engines.node >=20.0.0`을 선언합니다. Mock helper와 `DeepMocked<T>` type은 Vitest-compatible mock type boundary를 의도적으로 사용합니다. `DeepMocked<T>`는 root `@fluojs/testing` 패키지, `@fluojs/testing/types`, `@fluojs/testing/mock`에서 사용할 수 있습니다. Vitest를 실행하지 않는 소비자는 `@fluojs/testing/app`, `@fluojs/testing/module`, harness subpath 같은 non-mock entrypoint를 우선 사용하세요.
+`@fluojs/testing`은 public body-bearing RFC `QUERY` portability assertion이 사용하는 최소 listener runtime과 일치하도록 `engines.node >=20.19.3`을 선언합니다. Mock helper와 `DeepMocked<T>` type은 Vitest-compatible mock type boundary를 의도적으로 사용합니다. `DeepMocked<T>`는 root `@fluojs/testing` 패키지, `@fluojs/testing/types`, `@fluojs/testing/mock`에서 사용할 수 있습니다. Vitest를 실행하지 않는 소비자는 `@fluojs/testing/app`, `@fluojs/testing/module`, harness subpath 같은 non-mock entrypoint를 우선 사용하세요.
 
 ## React Consumer Loop
 
