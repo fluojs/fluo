@@ -19,6 +19,7 @@
 | `NestFactory.create(AppModule)` | `@fluojs/runtime`의 `FluoFactory.create(AppModule, { adapter })` | HTTP listen에는 `createFastifyAdapter()` 같은 명시적 platform adapter가 필요하다. `FluoFactory.create(AppModule)`은 adapterless application shell도 만들 수 있지만 그 shell은 `listen()`을 호출할 수 없다. |
 | NestJS `beforeApplicationShutdown(signal?)` | 직접 대응 없음; `@fluojs/runtime`의 `onModuleDestroy()` 또는 `onApplicationShutdown(signal?)` 사용 | `beforeApplicationShutdown`은 지원하지 않는다. Application-wide signal phase보다 먼저 수행할 shutdown preparation은 `onModuleDestroy()`에 두고, signal이 필요한 cleanup은 `onApplicationShutdown(signal?)`에 둔다. fluo는 compatibility shim이나 추가 runtime hook을 제공하지 않는다. |
 | `@nestjs/config` `ConfigModule.forRoot(...)`, `forRootAsync(...)`, `load`, `validate`, `isGlobal` | `@fluojs/config`의 `ConfigModule.forRoot({ processEnv, schema, global? })` | fluo registration은 동기 방식이다. 명시적 `processEnv` snapshot을 전달하고 동기 Standard Schema validator를 사용하며 visibility에는 기본값이 `true`인 `global?: boolean`을 사용한다. Async factory는 module registration 전에 resolve하되 nested object를 deep merge와 dot-path access를 위해 보존하고, 하나의 validated snapshot을 `ConfigModule`과 HTTP adapter input에 함께 사용한다. |
+| `@nestjs/passport` `PassportModule.register(...)`, `PassportStrategy(...)`, named `AuthGuard(...)`, session, serializer | `@fluojs/passport`의 `createPassportJsStrategyBridge(...)`, `PassportModule.forRoot(...)`, 명시적 bridge provider/named registration, `mapPrincipal(...)` | 명시적으로 제공한 Passport.js strategy를 한 번에 하나씩 adapt한다. `bridge.providers`를 등록하고 `bridge.strategy`를 fluo registry에 전달한 뒤 Passport user를 fluo principal로 map한다. Middleware, sessions, serializers/deserializers, strategy discovery, host integration은 bridge 외부에 남는다. |
 | Cloudflare Workers로 이동할 때의 NestJS HTTP server lifecycle hook 또는 late WebSocket server mutation | `@fluojs/platform-cloudflare-workers`와 `@fluojs/websockets/cloudflare-workers`의 `CloudflareWorkersWebSocketModule.forRoot()` | Workers는 server socket 대신 host-owned `fetch(request, env, ctx)` boundary를 노출합니다. `listen()`은 fluo dispatcher만 binding합니다. Application graph에 Worker WebSocket module을 등록하여 bootstrap이 해당 listen boundary 전에 binding을 구성하도록 하세요. 수락된 각 request는 `ctx.waitUntil(...)`로 추적됩니다. Bootstrap에는 미리 선언한 root module과 option만 전달되고 request `env`는 dispatch 중에 연결되므로, `env`는 `ConfigModule.forRoot(...)` 또는 singleton bootstrap provider를 구성할 수 없습니다. 별도로 사용할 수 있는 pre-registration 값만 bootstrap configuration에 두세요. `RequestContext`에서 선택한 fetch-time binding을 읽고 검증하고 좁힌 뒤 application-shaped 값으로 provider method에 전달하세요. |
 | `@Injectable()` 프로바이더 마커 | `@Module(...).providers`에 등록된 프로바이더 클래스 또는 provider definition | fluo는 필수 프로바이더 등록 단계로 `@Injectable()`을 사용하지 않는다. |
 | `emitDecoratorMetadata`를 통한 생성자 타입 리플렉션 | `@fluojs/core`의 `@Inject(TokenA, TokenB)` | 생성자 의존성은 데코레이터 인자 순서대로 명시한다. |
@@ -64,6 +65,7 @@
 - Response ownership을 직접 가진 뒤에도 `ClassSerializerInterceptor`처럼 후처리될 것이라고 기대하면 안 된다. `SerializerInterceptor`가 DTO를 shaping해야 한다면 response를 commit하지 말고 DTO를 반환한다. Migrated code가 `RequestContext.response.send(...)`, `redirect(...)`, 또는 수동 streaming helper를 호출한다면 commit 전에 안전한 최종 payload를 만들어야 한다. 이후 `SerializerInterceptor`는 serialization을 우회하고 `next.handle()`에서 받은 값을 그대로 반환하지만, 다른 interceptor는 chain 결과를 계속 변환할 수 있다. Dispatcher는 이와 별개로 두 번째 success-response write를 건너뛴다.
 - `ValidationPipe`의 whitelist/forbid 가정이나 class-validator group 실행을 그대로 옮기지 않는다. 일반 fluo validator는 `null`과 `undefined`를 건너뛰므로 필수 field에는 `@IsDefined()`를 추가한다. 입력이 plain 객체일 때 `materialize()`는 안전한 own enumerable 추가 속성을 제거하거나 거부하지 않고 유지하며, 이 filtering 보장은 이미 생성된 DTO 인스턴스를 설명하지 않는다. Decorator option은 `groups`와 `always`를 지원하지 않는다. Workflow별 규칙에는 명시적 input shaping과 별도 DTO, mapped DTO, `@ValidateIf(...)`, class-level validator를 사용한다.
 - NestJS i18n request-scoped context와 resolver discovery는 그대로 옮겨지지 않는다. Application-owned request boundary에서 ordered resolver list와 함께 `resolveHttpLocale(...)`을 실행하고, `getHttpLocale(...)`로 해당 `RequestContext`에 저장된 metadata만 읽은 뒤, 그 `locale`을 각 `I18nService` 또는 `localizeDtoValidationError(...)` 호출에 전달한다. Validation helper는 request state나 global locale을 암묵적으로 읽지 않는다.
+- NestJS Passport migration은 full NestJS Passport compatibility가 아니다. Passport.js bridge는 명시적으로 등록한 strategy 실행 하나를 fluo `AuthStrategy`로 adapt할 뿐 Passport middleware, sessions, serializers/deserializers, automatic strategy discovery를 설치하지 않는다. Implicit guards, 문서화된 `requestContext.principal` mapping을 넘어서는 request augmentation, host middleware ownership도 추가하지 않는다. Session과 serializer/deserializer migration은 application-owned 상태로 남는다.
 - OpenAPI migration은 reflection-driven `SwaggerModule` 치환이 아니다. `OpenApiModule`에는 `title`과 `version`이 필요하며, 문서화할 operation은 명시적 `sources`, 명시적 `descriptors`, 또는 둘 모두에서 와야 한다. Application `controllers`는 자동 추론되지 않는다. Handler 반환값과 TypeScript 반환 타입은 response schema를 만들지 않는다. `@ApiResponse(...)`가 없으면 생성된 success response에는 method-derived 또는 `@HttpCode(...)` status와 `OK` description만 포함된다. Response content가 필요하면 `@ApiResponse(...)`에 `schema` 또는 `type`을 제공한다. 같은 OpenAPI path/method operation이 겹치면 나중 descriptor가 우선하며, module composition은 explicit `descriptors`를 discovered `sources` 뒤에 두므로 충돌 시 explicit descriptor가 이긴다.
 - 컨트롤러 데코레이터는 반드시 `@fluojs/http`에서 가져오고, `@Module` 같은 구조 데코레이터는 `@fluojs/core`에서 가져온다.
 - Observable을 반환하는 NestJS `@Sse()` 핸들러는 반드시 `SseResponse`를 만들거나 `AsyncIterable`을 반환하도록 재작성해야 한다. 수동 `SseResponse` stream은 `send(...)` 또는 `comment(...)`를 호출하고 request abort 또는 application cleanup 경로에서 닫아야 하며, managed async iterable은 request abort 또는 response stream close 시 dispatcher가 닫는다.
@@ -231,6 +233,58 @@ Downstream translation 또는 validation-error handling 전에 application-owned
 
 `localizeDtoValidationError(...)`은 명시적 locale을 사용한 issue message를 포함하는 새 error를 반환한다. 기본 namespace는 `validation`이고 candidate key는 `source.field.code`에서 `code` 순서로 해석되며, `fallbackToIssueMessage: false`를 선택하지 않으면 missing translation은 원래 issue message를 보존한다. 이 helper는 transport-agnostic 상태를 유지한다. 여기서는 HTTP가 locale을 선택하지만 validation localization 자체는 HTTP state를 읽지 않는다.
 
+### Passport.js Bridge Migration
+
+Reflection으로 discovery되는 Passport runtime을 그대로 옮기지 말고 각 NestJS `PassportStrategy(...)`를 독립적으로 migration한다. 다음 순서를 사용한다.
+
+1. Concrete Passport.js strategy를 명시적인 application provider로 구성한다.
+2. Stable strategy name, 해당 provider token, `mapPrincipal(...)` mapping으로 `createPassportJsStrategyBridge(...)`를 호출한다.
+3. 같은 authored module의 `providers` 배열에 `bridge.providers`를 추가한다.
+4. `bridge.strategy`를 `PassportModule.forRoot(...)`에 명시적 named strategy registration으로 전달한다.
+5. 인증이 필요한 곳에 fluo `@UseAuth('name')`를 적용하고 `requestContext.principal`에서 mapping된 identity를 읽는다.
+
+```typescript
+import { Module } from '@fluojs/core';
+import type { Principal } from '@fluojs/http';
+import {
+  createPassportJsStrategyBridge,
+  PassportModule,
+} from '@fluojs/passport';
+
+import { GoogleStrategy } from './google.strategy.js';
+
+function mapGoogleUser(user: unknown): Principal {
+  if (
+    typeof user !== 'object'
+    || user === null
+    || !('id' in user)
+    || typeof user.id !== 'string'
+    || user.id.length === 0
+  ) {
+    throw new TypeError('Google strategy returned a user without a string id.');
+  }
+
+  return { claims: { ...user }, subject: user.id };
+}
+
+const googleBridge = createPassportJsStrategyBridge('google', GoogleStrategy, {
+  mapPrincipal: ({ user }) => mapGoogleUser(user),
+});
+
+@Module({
+  imports: [
+    PassportModule.forRoot(
+      { defaultStrategy: 'google' },
+      [googleBridge.strategy],
+    ),
+  ],
+  providers: [GoogleStrategy, ...googleBridge.providers],
+})
+export class AuthModule {}
+```
+
+`mapPrincipal(...)`은 문서화된 유일한 request-identity handoff다. Passport.js `user`를 검증하고 비어 있지 않은 `subject`와 object `claims`를 가진 fluo `Principal`을 반환하면 `AuthGuard`가 이를 `requestContext.principal`에 할당한다. Bridge는 Passport middleware, sessions, serializers, deserializers, automatic strategy discovery를 설치하지 않는다. Full NestJS Passport compatibility, implicit guards, 해당 principal mapping을 넘어서는 request augmentation, host middleware ownership도 제공하지 않는다. Session과 serializer/deserializer migration은 bootstrap 및 request-host boundary에서 application-owned 상태로 남는다.
+
 ### Prisma Request-Wide Transaction Migration
 
 일반적인 비즈니스 원자성은 서비스 `@Transaction()` 메서드에 두세요. 하나의 서비스 boundary로 표현할 수 없는 작업 전체를 migrated controller에서 정말 하나의 transaction으로 묶어야 한다면 wrapper `PrismaService<TClient>`를 주입하고 `requestTransaction(...)`을 명시적으로 호출하며 request cancellation signal을 전달하세요.
@@ -339,6 +393,7 @@ Kafka와 RabbitMQ는 handler 실행과 request response publication이 settle할
 - 기본 프로바이더 마커로서의 `@Injectable()`. 프로바이더 등록은 모듈의 `providers` 배열에서 수행된다.
 - `reflect-metadata`를 통한 리플렉션 기반 생성자 해석.
 - NestJS provider 또는 emit된 design metadata를 통한 reflection-driven microservice handler discovery.
+- Passport.js bridge가 NestJS Passport runtime을 재현한다고 가정하는 방식. fluo는 명시적 bridge provider, named strategy registration, route guard metadata, principal mapping을 요구하고 middleware, session, serializer/deserializer, host ownership은 애플리케이션에 남긴다.
 - emit된 디자인 타임 타입에 기대는 암묵적 DI.
 - 프레임워크 요구 사항으로서의 레거시 데코레이터 컴파일러 모드.
 - 생성된 `@fluojs/vite` 애플리케이션 transform과 `@fluojs/testing/vitest` 테스트 transform을 하나의 파일 경계로 합치는 방식.
