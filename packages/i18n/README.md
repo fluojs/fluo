@@ -70,6 +70,8 @@ class AppModule {}
 
 `I18nModule.forRoot(...)` exports `I18nService` as a global provider by default so sibling modules can inject the shared service after the root package is imported once. Pass `global: false` when the service should stay visible only to the module that imports the i18n module.
 
+`I18nModule.forRoot(...)` is synchronous and captures final options when the module graph is defined. Finish asynchronous catalog or configuration loading at the application-owned bootstrap boundary before `I18nModule.forRoot(...)`, then pass the resolved catalogs and options into that registration call. This preserves the framework-agnostic root contract; it does not provide a NestJS dynamic-module runtime bridge or a `forRootAsync(...)` compatibility surface.
+
 ## Core Translation
 
 The `I18nService` provides deterministic translation lookup.

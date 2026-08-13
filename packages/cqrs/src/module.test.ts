@@ -1,6 +1,6 @@
 import { Inject, InvariantError } from '@fluojs/core';
 import { Container } from '@fluojs/di';
-import { type EventBus, EVENT_BUS as FLUO_EVENT_BUS, type EventBusTransport, OnEvent } from '@fluojs/event-bus';
+import { type EventBus, type EventBusTransport, EVENT_BUS as FLUO_EVENT_BUS, OnEvent } from '@fluojs/event-bus';
 import { type ApplicationLogger, bootstrapApplication, defineModule, type OnApplicationShutdown, type RuntimeCleanupRegistration } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 import { CommandBusLifecycleService } from './buses/command-bus.js';
@@ -1402,6 +1402,9 @@ describe('@fluojs/cqrs', () => {
   });
 
   it('processes saga events in a deterministic order under concurrent publish calls', async () => {
+    let activeHandles = 0;
+    let maximumActiveHandles = 0;
+
     class SequenceStore {
       seen: number[] = [];
     }
@@ -1419,8 +1422,15 @@ describe('@fluojs/cqrs', () => {
       constructor(private readonly store: SequenceStore) {}
 
       async handle(event: SequencedEvent): Promise<void> {
-        await delay(event.waitMs);
-        this.store.seen.push(event.index);
+        activeHandles += 1;
+        maximumActiveHandles = Math.max(maximumActiveHandles, activeHandles);
+
+        try {
+          await delay(event.waitMs);
+          this.store.seen.push(event.index);
+        } finally {
+          activeHandles -= 1;
+        }
       }
     }
 
@@ -1441,6 +1451,7 @@ describe('@fluojs/cqrs', () => {
     ]);
 
     expect(store.seen).toEqual([1, 2, 3]);
+    expect(maximumActiveHandles).toBe(1);
 
     await app.close();
   });

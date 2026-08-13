@@ -601,7 +601,73 @@ The executable evidence is intentionally split by shell and race:
 | A connect admitted before shutdown cannot attach after async runtime resolution | `path:packages/runtime/src/bootstrap.test.ts` — `rejects connectMicroservice() when shutdown starts during runtime resolution` |
 | Context retry skips completed phases and retries the incomplete hook phase | `path:packages/runtime/src/bootstrap.test.ts` — `retries only incomplete application context shutdown phases` |
 
-The resulting flow is:
+  errors.push(...(await runCleanupCallbacks(options.runtimeCleanup)));
+
+  if (options.lifecycleInstances.length > 0) {
+    try {
+      await runShutdownHooks(options.lifecycleInstances, 'bootstrap-failed');
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+```
+
+This first failure-cleanup excerpt shows that the runtime tries to call lifecycle shutdown hooks even after bootstrap failure. The following excerpt separates container disposal from cleanup failure logging.
+
+`path:packages/runtime/src/bootstrap.ts:174-189`
+```typescript
+  if (options.container) {
+    try {
+      await disposeContainer(options.container);
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+
+  for (const error of errors) {
+    options.logger.error(
+      `Failed to clean up after ${options.scope} bootstrap failure.`,
+      error,
+      'FluoFactory',
+    );
+  }
+}
+```
+
+This excerpt shows that cleanup is a runtime contract, not best effort in the casual sense. If lifecycle instances have already been created, the failure path tries to run shutdown hooks.
+
+This is not just defensive coding. It is a necessary rollback path because bootstrap has multiple phases. Failure is possible after Provider resolution, after platform start, or just before dispatcher creation.
+
+Tests make this guarantee concrete. `path:packages/runtime/src/application.test.ts:237-270` proves that `close()` can be retried after an adapter shutdown failure. `path:packages/runtime/src/application.test.ts:272-290` shows that shutdown hook failure is surfaced rather than silently swallowed. `path:packages/runtime/src/application.test.ts:292-320` verifies that the original startup failure is preserved even when cleanup also fails.
+
+Close idempotency is also intentional. Both `FluoApplication.close()` and `FluoApplicationContext.close()` memoize `closingPromise`. If close is already in progress, a later caller waits for the same promise. If close succeeds, later calls return immediately. If close fails, the promise is cleared so a retry is allowed.
+
+Lifecycle hook ordering is handled by `runShutdownHooks()` in `path:packages/runtime/src/bootstrap.ts:710-722`. It walks instances in reverse order, first running every `onModuleDestroy()`, then running every `onApplicationShutdown(signal)`. You can read this as an ordering that unwinds the startup dependency direction as much as possible.
+
+NestJS `beforeApplicationShutdown` is unsupported and does not create an intermediate phase in this flow. Move preparation that must happen before application-wide signal cleanup into `onModuleDestroy()`, or use `onApplicationShutdown(signal?)` when cleanup depends on the signal. The application context does not install a compatibility shim, alias, fallback, or extra runtime hook.
+
+Shutdown hook ordering is fixed in a separate helper. Both hook families run in reverse order, so singleton lifecycle instances created during startup are cleaned up in the opposite direction.
+
+`path:packages/runtime/src/bootstrap.ts:710-722`
+```typescript
+async function runShutdownHooks(instances: readonly unknown[], signal?: string): Promise<void> {
+  for (const instance of [...instances].reverse()) {
+    if (isOnModuleDestroy(instance)) {
+      await instance.onModuleDestroy();
+    }
+  }
+
+  for (const instance of [...instances].reverse()) {
+    if (isOnApplicationShutdown(instance)) {
+      await instance.onApplicationShutdown(signal);
+    }
+  }
+}
+```
+
+The same guarantee applies to the context-only shell. `path:packages/runtime/src/bootstrap.test.ts:612-628` shows that context shutdown failure is surfaced through `context.close()`.
+
+The resulting cleanup flow is:
 
 ```text
 close()

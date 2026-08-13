@@ -15,6 +15,9 @@ import { writeErrorResponse } from './dispatch-error-policy.js';
 type SimpleJsonResponseBody = Record<string, unknown> | unknown[];
 const responseWriterKey = Symbol.for('fluo.http.responseWriter');
 const responseValueFinalizerKey = Symbol.for('fluo.http.responseValueFinalizer');
+const BINARY_CONTENT_TYPE = 'application/octet-stream';
+const JSON_CONTENT_TYPE = 'application/json; charset=utf-8';
+const TEXT_CONTENT_TYPE = 'text/plain; charset=utf-8';
 
 type FrameworkResponseWriterContext = {
   readonly applySuccessResponseMetadata: () => void;
@@ -141,6 +144,19 @@ function applySuccessResponseMetadata(context: SuccessResponseMetadataContext): 
   }
 }
 
+function applyImplicitHeadContentType(response: FrameworkResponse, value: unknown): void {
+  if (readHeader(response.headers, 'content-type') !== undefined || value === undefined) {
+    return;
+  }
+
+  if (value instanceof Uint8Array || value instanceof ArrayBuffer) {
+    response.setHeader('Content-Type', BINARY_CONTENT_TYPE);
+    return;
+  }
+
+  response.setHeader('Content-Type', typeof value === 'string' ? TEXT_CONTENT_TYPE : JSON_CONTENT_TYPE);
+}
+
 /**
  * Write success response.
  *
@@ -201,6 +217,11 @@ export function writeSuccessResponse(
     : undefined;
 
   applySuccessResponseMetadata({ formatter, handler, response, value: responseValue });
+
+  if (request.method.toUpperCase() === 'HEAD') {
+    applyImplicitHeadContentType(response, responseValue);
+    return response.send(undefined);
+  }
 
   if (!formatter && hasSimpleJsonResponseWriter(response) && canUseSimpleJsonFastPath(response, responseValue)) {
     return response.sendSimpleJson(responseValue);

@@ -163,8 +163,14 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
       await instance.handle(createIsolatedEvent(descriptor.eventType as CqrsEventType<TEvent>, event), context);
     }
 
-    await this.sagaService.dispatch(event, context, CQRS_SAGA_DRAIN_AUTHORIZATION);
-    await this.eventBus.publish(event);
+    await this.sagaService.dispatch(
+      event,
+      context,
+      {
+        afterSagas: async () => this.eventBus.publish(event),
+        drainAuthorization: CQRS_SAGA_DRAIN_AUTHORIZATION,
+      },
+    );
   }
 
   private async runPublishAllPipeline<TEvent extends IEvent>(events: readonly TEvent[], context: CqrsDispatchContext): Promise<void> {
@@ -204,6 +210,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     return {
       context: createInternalCqrsDispatchContext({
         publishDrainToken: drainToken,
+        sagaContinuationScope: internalState?.sagaContinuationScope,
         sagaTopology: internalState?.sagaTopology,
       }),
       drainToken,

@@ -77,6 +77,7 @@ async function loadGovernanceInternals() {
     enforceAdvancedBookCoreBoundaryCompanions: (changedFiles: string[]) => void;
     enforceContractCompanionUpdates: (changedFiles: string[]) => void;
     enforceDenoPermissionGuidance: (readText?: (relativePath: string) => string) => void;
+    enforceHttpBookRequestContracts: (readText?: (relativePath: string) => string) => void;
   };
 }
 
@@ -315,6 +316,53 @@ describe('enforceDenoPermissionGuidance', () => {
 
     expect(() => enforceDenoPermissionGuidance()).not.toThrow();
   });
+});
+
+describe('enforceHttpBookRequestContracts', () => {
+  const guardRegressionCases = [
+    'book/beginner/ch09-guards-interceptors.md',
+    'book/beginner/ch09-guards-interceptors.ko.md',
+  ] as const;
+  const bunRegressionCases = [
+    'book/intermediate/ch22-bun.md',
+    'book/intermediate/ch22-bun.ko.md',
+  ] as const;
+
+  it('accepts the current bilingual Guard and Bun request-binding examples', async () => {
+    const { enforceHttpBookRequestContracts } = await loadGovernanceInternals();
+
+    expect(() => enforceHttpBookRequestContracts()).not.toThrow();
+  });
+
+  it.each(guardRegressionCases)('rejects an additional two-argument Guard signature in %s', async (targetPath) => {
+    const { enforceHttpBookRequestContracts } = await loadGovernanceInternals();
+
+    expect(() => enforceHttpBookRequestContracts((relativePath) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === targetPath
+        ? `${content}\n\n\`\`\`typescript\ncanActivate(input, ctx) {\n  return ctx.requestContext.request.headers['x-role'];\n}\n\`\`\`\n`
+        : content;
+    })).toThrowError(/one-argument GuardContext signature/u);
+  });
+
+  it.each(bunRegressionCases)(
+    'rejects decoy RequestContext text when second controller argument guidance is removed from %s',
+    async (targetPath) => {
+      const { enforceHttpBookRequestContracts } = await loadGovernanceInternals();
+
+      expect(() => enforceHttpBookRequestContracts((relativePath) => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === targetPath
+          ? content.split(/\n\s*\n/gu).map((paragraph) =>
+            paragraph.includes('`@RequestDto(...)`') &&
+              paragraph.includes('`@FromBody(...)`') &&
+              paragraph.includes('`@FromHeader(...)`')
+              ? '`@RequestDto(...)`, `@FromBody(...)`, and `@FromHeader(...)` stay portable. `RequestContext` is public.'
+              : paragraph).join('\n\n')
+          : content;
+      })).toThrowError(/second controller argument/u);
+    },
+  );
 });
 
 describe('enforceCloudflareWorkersLifecycleDocsSync', () => {
@@ -1773,6 +1821,10 @@ describe('package surface CQRS responsibility discoverability', () => {
       expect(markdown).toContain('CqrsDispatchContext');
       expect(markdown).toContain('opaque');
       expect(markdown).toContain('CqrsModule.forRoot(...)');
+      expect(markdown).toContain('SagaTopologyError');
+      expect(markdown).toContain('provider token');
+      expect(markdown.toLowerCase()).toContain('continuation');
+      expect(markdown.toLowerCase()).toContain('nested');
     }
 
     for (const markdown of [englishArchitecture, koreanArchitecture]) {

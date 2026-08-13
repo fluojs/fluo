@@ -6,6 +6,7 @@ import type {
   CallHandler,
   FrameworkRequest,
   FrameworkResponse,
+  FrameworkResponseStream,
   GuardContext,
   InterceptorContext,
   Middleware,
@@ -13,7 +14,6 @@ import type {
   Next,
   RequestContext,
   RequestObservationContext,
-  FrameworkResponseStream,
 } from '../index.js';
 import {
   type assertRequestContext,
@@ -22,15 +22,15 @@ import {
   createCorrelationMiddleware,
   createDispatcher,
   createHandlerMapping,
-  formatFastPathStats,
   FromBody,
   FromPath,
   FromQuery,
+  formatFastPathStats,
   Get,
-  getDispatcherFastPathStats,
   getCurrentRequestContext,
-  Header,
+  getDispatcherFastPathStats,
   Head,
+  Header,
   HttpCode,
   Options,
   Post,
@@ -860,6 +860,31 @@ describe('dispatcher runtime', () => {
     expect(arrayResponse.body).toBeUndefined();
   });
 
+  it('bypasses the simple JSON fast writer body for framework-managed HEAD responses', async () => {
+    @Controller('/fast-json-head')
+    class FastJsonHeadController {
+      @Head('/')
+      head() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(FastJsonHeadController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: FastJsonHeadController }]),
+      rootContainer: root,
+    });
+    const response = createFastPathResponse();
+
+    await dispatcher.dispatch(createRequest('/fast-json-head', 'HEAD'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('application/json; charset=utf-8');
+    expect(response.simpleJsonBody).toBeUndefined();
+    expect(response.body).toBeUndefined();
+    expect(response.committed).toBe(true);
+  });
+
   it('exposes automatic fast-path stats without emitting debug headers by default', async () => {
     @Controller('/fast-path-visibility')
     class FastPathVisibilityController {
@@ -921,6 +946,8 @@ describe('dispatcher runtime', () => {
       }
 
       @Head('/')
+      @Header('x-head-contract', 'preserved')
+      @HttpCode(202)
       head() {
         return { ok: true };
       }
@@ -939,8 +966,11 @@ describe('dispatcher runtime', () => {
 
     expect(optionsResponse.statusCode).toBe(200);
     expect(optionsResponse.body).toEqual({ allow: ['GET', 'HEAD', 'OPTIONS'] });
-    expect(headResponse.statusCode).toBe(200);
-    expect(headResponse.body).toEqual({ ok: true });
+    expect(headResponse.statusCode).toBe(202);
+    expect(headResponse.headers['x-head-contract']).toBe('preserved');
+    expect(headResponse.headers['Content-Type']).toBe('application/json; charset=utf-8');
+    expect(headResponse.body).toBeUndefined();
+    expect(headResponse.committed).toBe(true);
   });
 
   it('falls back to full path when route capabilities are not fast-path safe', async () => {
@@ -1363,6 +1393,98 @@ describe('dispatcher runtime', () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers['Content-Type']).toBe('text/plain');
     expect(response.body).toBe('plain:{"ok":true}');
+  });
+
+  it('keeps negotiated formatter headers while suppressing HEAD bodies', async () => {
+    @Controller('/negotiation-head')
+    class NegotiationHeadController {
+      @Produces('text/plain')
+      @Head('/formatted')
+      head() {
+        return { ok: true };
+      }
+
+      @Produces('text/plain')
+      @Get('/formatted')
+      get() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationHeadController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        formatters: [
+          {
+            format(body) {
+              return `plain:${JSON.stringify(body)}`;
+            },
+            mediaType: 'text/plain',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationHeadController }]),
+      rootContainer: root,
+    });
+    const getResponse = createResponse();
+    const headResponse = createResponse();
+
+    await dispatcher.dispatch(createRequest('/negotiation-head/formatted', 'GET', { accept: 'text/plain' }), getResponse);
+    await dispatcher.dispatch(createRequest('/negotiation-head/formatted', 'HEAD', { accept: 'text/plain' }), headResponse);
+
+    expect(getResponse.body).toBe('plain:{"ok":true}');
+    expect(headResponse.statusCode).toBe(200);
+    expect(headResponse.headers['Content-Type']).toBe(getResponse.headers['Content-Type']);
+    expect(headResponse.body).toBeUndefined();
+    expect(headResponse.committed).toBe(true);
+  });
+
+  it('preserves the implicit text content type while suppressing framework-managed HEAD bodies', async () => {
+    @Controller('/plain-head')
+    class PlainHeadController {
+      @Head('/')
+      head() {
+        return 'plain response';
+      }
+    }
+
+    const root = new Container().register(PlainHeadController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: PlainHeadController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/plain-head', 'HEAD'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('text/plain; charset=utf-8');
+    expect(response.body).toBeUndefined();
+    expect(response.committed).toBe(true);
+  });
+
+  it('preserves the implicit binary content type while suppressing framework-managed HEAD bodies', async () => {
+    @Controller('/binary-head')
+    class BinaryHeadController {
+      @Head('/')
+      head() {
+        return new Uint8Array([1, 2, 3]);
+      }
+    }
+
+    const root = new Container().register(BinaryHeadController);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: BinaryHeadController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/binary-head', 'HEAD'), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('application/octet-stream');
+    expect(response.body).toBeUndefined();
+    expect(response.committed).toBe(true);
   });
 
   it('returns 406 when Accept does not match available formatters', async () => {

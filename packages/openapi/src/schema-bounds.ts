@@ -1,3 +1,4 @@
+import { isOpenApiOperationMethod } from './path-item.js';
 import type {
   OpenApiDocument,
   OpenApiMediaTypeObject,
@@ -216,10 +217,34 @@ function normalizePaths(
   for (const [path, pathItem] of Object.entries(paths)) {
     const normalizedPathItem: OpenApiPathItemObject = {};
 
-    for (const [method, operation] of Object.entries(pathItem)) {
-      normalizedPathItem[method] = operation
-        ? normalizeOperation(operation, `paths.${path}.${method}`, normalizedSchemas)
-        : undefined;
+    if (pathItem.parameters) {
+      normalizedPathItem.parameters = pathItem.parameters.map((parameter, index) => (
+        'schema' in parameter
+          ? {
+              ...parameter,
+              schema: normalizeOpenApiSchemaBounds(
+                parameter.schema,
+                `paths.${path}.parameters[${String(index)}].schema`,
+                normalizedSchemas,
+              ),
+            }
+          : { ...parameter }
+      ));
+    }
+
+    for (const [key, value] of Object.entries(pathItem)) {
+      if (key === 'parameters') {
+        continue;
+      }
+
+      if (isOpenApiOperationMethod(key)) {
+        normalizedPathItem[key] = value
+          ? normalizeOperation(value, `paths.${path}.${key}`, normalizedSchemas)
+          : undefined;
+        continue;
+      }
+
+      Reflect.set(normalizedPathItem, key, value);
     }
 
     normalizedPaths[path] = normalizedPathItem;

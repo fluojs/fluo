@@ -19,6 +19,8 @@ describe('NestJS config migration documentation', () => {
     const moduleSource = read('packages/config/src/module.ts');
     const serviceSource = read('packages/config/src/service.ts');
     const typesSource = read('packages/config/src/types.ts');
+    const englishReadme = read('packages/config/README.md');
+    const koreanReadme = read('packages/config/README.ko.md');
     const runtimeSource = read('packages/runtime/src/bootstrap.ts');
     const englishMigration = read('docs/getting-started/migrate-from-nestjs.md');
     const koreanMigration = read('docs/getting-started/migrate-from-nestjs.ko.md');
@@ -36,6 +38,20 @@ describe('NestJS config migration documentation', () => {
     expect(typesSource).toContain('processEnv?: NodeJS.ProcessEnv');
     expect(typesSource).toContain('schema?: ConfigSchema');
     expect(typesSource).toContain('global?: boolean');
+    expect(englishReadme).toContain('### NestJS Registration Migration');
+    expect(englishReadme).toContain('ConfigModule.forRootAsync(...)');
+    expect(englishReadme).toContain('NestJS `load` factories');
+    expect(englishReadme).toContain('explicit `processEnv` snapshot');
+    expect(englishReadme).toContain('synchronous Standard Schema');
+    expect(englishReadme).toContain('`global`, not NestJS `isGlobal`');
+    expect(englishReadme).toContain('../../docs/getting-started/migrate-from-nestjs.md');
+    expect(koreanReadme).toContain('### NestJS 등록 마이그레이션');
+    expect(koreanReadme).toContain('ConfigModule.forRootAsync(...)');
+    expect(koreanReadme).toContain('NestJS `load` factory');
+    expect(koreanReadme).toContain('명시적 `processEnv` snapshot');
+    expect(koreanReadme).toContain('동기 Standard Schema');
+    expect(koreanReadme).toContain('NestJS `isGlobal`이 아니라 `global`');
+    expect(koreanReadme).toContain('../../docs/getting-started/migrate-from-nestjs.ko.md');
     expect(runtimeSource).toContain('const hasHttpAdapter = effectiveOptions.adapter !== undefined;');
     expect(runtimeSource).toContain('Application cannot listen without an HTTP adapter.');
 

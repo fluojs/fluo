@@ -8,9 +8,10 @@ import { createIsolatedEvent } from '../event-clone.js';
 import type { CqrsModuleOptions } from '../module.js';
 import { CQRS_MODULE_OPTIONS } from '../tokens.js';
 import type { CqrsDispatchContext, CqrsEventType, IEvent, ISaga, SagaDescriptor } from '../types.js';
+import { drainSagaContinuations, runSerializedSagaContinuationTasks, type SagaDispatchOptions } from './saga-continuation.js';
 import { discoverSagaDescriptors } from './saga-discovery.js';
 import { drainPendingSagaDispatches } from './saga-drain.js';
-import { enterSagaTopology } from './saga-topology.js';
+import { enterSagaTopology, type SagaTopologyEntry } from './saga-topology.js';
 
 const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 5000;
 
@@ -121,18 +122,45 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   async dispatch<TEvent extends IEvent>(
     event: TEvent,
     context?: CqrsDispatchContext,
-    drainAuthorization?: typeof CQRS_SAGA_DRAIN_AUTHORIZATION,
+    options: SagaDispatchOptions<typeof CQRS_SAGA_DRAIN_AUTHORIZATION> = {},
   ): Promise<void> {
-    this.assertAcceptingNewWork(drainAuthorization);
+    this.assertAcceptingNewWork(options.drainAuthorization);
     await this.ensureDiscovered();
 
-    const descriptors = this.matchSagaDescriptors(event);
+    const entries = this.matchSagaDescriptors(event).map((descriptor) => ({
+      descriptor,
+      topology: enterSagaTopology(context, descriptor),
+    }));
 
-    if (descriptors.length === 0) {
+    if (entries.length === 0) {
+      await options.afterSagas?.();
       return;
     }
 
-    await Promise.all(descriptors.map((descriptor) => this.dispatchWithOrdering(descriptor, event, context)));
+    const continuationEntry = entries.find((entry) => entry.topology.reentrantToken);
+
+    if (continuationEntry) {
+      const continuationTasks = entries.map((entry) => {
+        const scheduledDispatch = entry.topology.reentrantToken
+          ? this.dispatchWithOrdering(entry.descriptor, event, entry.topology)
+          : undefined;
+
+        return {
+          run: () => scheduledDispatch ?? this.dispatchWithOrdering(entry.descriptor, event, entry.topology),
+          token: entry.descriptor.token,
+        };
+      });
+
+      continuationEntry.topology.continuationScope.queue.push(async () => {
+        await runSerializedSagaContinuationTasks(continuationTasks);
+
+        await options.afterSagas?.();
+      });
+      return;
+    }
+
+    await Promise.all(entries.map((entry) => this.dispatchWithOrdering(entry.descriptor, event, entry.topology)));
+    await options.afterSagas?.();
   }
 
   private assertAcceptingNewWork(drainAuthorization: symbol | undefined): void {
@@ -162,26 +190,30 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     return descriptors;
   }
 
-  private async dispatchWithOrdering<TEvent extends IEvent>(descriptor: SagaDescriptor, event: TEvent, activeContext?: CqrsDispatchContext): Promise<void> {
-    const topology = enterSagaTopology(activeContext, descriptor);
-
-    if (topology.reentrantToken) {
-      await this.invokeSaga(descriptor, event, topology.context);
-      return;
-    }
-
+  private async dispatchWithOrdering<TEvent extends IEvent>(
+    descriptor: SagaDescriptor,
+    event: TEvent,
+    topology: SagaTopologyEntry,
+  ): Promise<void> {
     const previous = this.executionChains.get(descriptor.token) ?? Promise.resolve();
-    const current = previous.then(async () => {
-      await this.invokeSaga(descriptor, event, topology.context);
-    });
+    const current = previous.then(async () => this.invokeSaga(descriptor, event, topology.context));
+    const settled = current.catch(() => undefined);
 
-    this.executionChains.set(descriptor.token, current.catch(() => undefined));
+    this.executionChains.set(descriptor.token, settled);
     this.pendingDispatches.add(current);
 
     try {
       await current;
+
+      if (topology.ownsContinuationScope) {
+        await drainSagaContinuations(topology.continuationScope);
+      }
     } finally {
       this.pendingDispatches.delete(current);
+
+      if (this.executionChains.get(descriptor.token) === settled) {
+        this.executionChains.delete(descriptor.token);
+      }
     }
   }
 

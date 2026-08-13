@@ -601,7 +601,73 @@ Executable evidence는 shell과 race별로 의도적으로 분리되어 있습�
 | Shutdown 전에 admission된 connect도 async runtime resolution 뒤 child를 attach할 수 없습니다. | `path:packages/runtime/src/bootstrap.test.ts` — `rejects connectMicroservice() when shutdown starts during runtime resolution` |
 | Context retry는 완료된 phase를 건너뛰고 incomplete hook phase를 재시도합니다. | `path:packages/runtime/src/bootstrap.test.ts` — `retries only incomplete application context shutdown phases` |
 
-결과 flow는 다음과 같습니다.
+  errors.push(...(await runCleanupCallbacks(options.runtimeCleanup)));
+
+  if (options.lifecycleInstances.length > 0) {
+    try {
+      await runShutdownHooks(options.lifecycleInstances, 'bootstrap-failed');
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+```
+
+이 첫 failure-cleanup 발췌는 bootstrap 실패 후에도 lifecycle shutdown hook을 호출하려고 시도한다는 점을 보여 줍니다. 이어지는 발췌는 container disposal과 cleanup failure logging을 분리해서 보여 줍니다.
+
+`path:packages/runtime/src/bootstrap.ts:174-189`
+```typescript
+  if (options.container) {
+    try {
+      await disposeContainer(options.container);
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+
+  for (const error of errors) {
+    options.logger.error(
+      `Failed to clean up after ${options.scope} bootstrap failure.`,
+      error,
+      'FluoFactory',
+    );
+  }
+}
+```
+
+이 발췌는 cleanup이 best effort가 아니라 runtime contract임을 보여 줍니다. 이미 만든 lifecycle instance가 있다면 실패 경로에서도 shutdown hook을 실행하려고 시도합니다.
+
+이것은 단순한 방어 코딩이 아닙니다. bootstrap이 multi-phase이기 때문에 반드시 필요한 rollback path입니다. provider resolution 이후, platform start 이후, 혹은 dispatcher creation 직전에도 실패가 가능하기 때문입니다.
+
+테스트가 이 보장을 구체화합니다. `path:packages/runtime/src/application.test.ts:237-270`은 adapter shutdown failure 후에도 `close()`를 재시도할 수 있음을 증명합니다. `path:packages/runtime/src/application.test.ts:272-290`은 shutdown hook failure가 조용히 묻히지 않고 surface된다는 것을 보여 줍니다. `path:packages/runtime/src/application.test.ts:292-320`은 cleanup도 실패하더라도 original startup failure를 보존한다는 점을 검증합니다.
+
+close idempotency도 의도적인 설계입니다. `FluoApplication.close()`와 `FluoApplicationContext.close()`는 모두 `closingPromise`를 memoize합니다. close가 이미 진행 중이면, 뒤늦은 호출자는 같은 promise를 기다립니다. close가 성공하면 이후 호출은 즉시 return합니다. close가 실패하면 promise를 비워 재시도를 허용합니다.
+
+lifecycle hook ordering은 `path:packages/runtime/src/bootstrap.ts:710-722`의 `runShutdownHooks()`가 담당합니다. instance를 역순으로 순회하고, 먼저 `onModuleDestroy()`를 모두 실행한 뒤, 그 다음 `onApplicationShutdown(signal)`을 실행합니다. 가능한 한 startup dependency 방향을 거꾸로 되돌리는 ordering이라고 볼 수 있습니다.
+
+NestJS `beforeApplicationShutdown`은 지원하지 않으며 이 flow에 중간 phase를 만들지 않습니다. Application-wide signal cleanup보다 먼저 수행해야 하는 준비 작업은 `onModuleDestroy()`로 옮기고, signal에 의존하는 cleanup에는 `onApplicationShutdown(signal?)`을 사용합니다. Application context는 compatibility shim, alias, fallback 또는 추가 runtime hook을 설치하지 않습니다.
+
+shutdown hook ordering은 별도 helper로 고정되어 있습니다. 두 hook family 모두 reverse order로 처리되므로, startup 때 만들어진 singleton lifecycle instance를 반대 방향으로 정리합니다.
+
+`path:packages/runtime/src/bootstrap.ts:710-722`
+```typescript
+async function runShutdownHooks(instances: readonly unknown[], signal?: string): Promise<void> {
+  for (const instance of [...instances].reverse()) {
+    if (isOnModuleDestroy(instance)) {
+      await instance.onModuleDestroy();
+    }
+  }
+
+  for (const instance of [...instances].reverse()) {
+    if (isOnApplicationShutdown(instance)) {
+      await instance.onApplicationShutdown(signal);
+    }
+  }
+}
+```
+
+context-only shell에도 같은 보장이 적용됩니다. `path:packages/runtime/src/bootstrap.test.ts:612-628`은 context shutdown failure가 `context.close()`를 통해 그대로 surface됨을 보여 줍니다.
+
+결과 cleanup flow는 다음과 같습니다.
 
 ```text
 close()

@@ -22,6 +22,7 @@
 | --- | --- | --- |
 | 기본 문서 버전 | `buildOpenApiDocument(...)`는 항상 `openapi: '3.1.0'`을 생성합니다. | `packages/openapi/src/schema-builder.ts` |
 | HTTP 라우트 메타데이터 | 경로, HTTP 메서드, 핸들러 이름, 해석된 URI 버전 경로는 fluo HTTP handler descriptor에서 옵니다. Express 스타일 `:id` 경로 세그먼트는 최종 문서에서 `{id}`로 변환됩니다. | `packages/openapi/src/schema-builder.ts` |
+| Descriptor method 검증 | Descriptor operation은 fluo가 작성할 수 있는 OpenAPI Path Item method인 `GET`, `PUT`, `POST`, `DELETE`, `OPTIONS`, `HEAD`, `PATCH`로 제한됩니다. Runtime 전용 `ALL` 및 향후 또는 custom unsupported method는 operation을 생성하기 전에 문서 생성을 실패시킵니다. | `packages/openapi/src/path-item.ts`, `packages/openapi/src/schema-builder.ts`, `packages/openapi/src/path-item.test.ts` |
 | 컨트롤러 태그 | `@ApiTag(...)`가 컨트롤러 태그를 정의합니다. 없으면 컨트롤러 클래스 이름이 기본 태그가 됩니다. | `packages/openapi/src/decorators.ts`, `packages/openapi/src/schema-builder.ts` |
 | 오퍼레이션 메타데이터 | `@ApiOperation(...)`는 핸들러별 `summary`, `description`, `deprecated` 플래그를 저장합니다. | `packages/openapi/src/decorators.ts` |
 | 응답 메타데이터 | `@ApiResponse(...)`는 명시적 status/description/schema/type 메타데이터를 저장합니다. DTO `type` 값은 component schema reference로 변환됩니다. Handler 반환값과 TypeScript 반환 타입은 검사하지 않습니다. `@ApiResponse(...)`가 없으면 builder는 추론된 response schema가 아니라 method-derived 또는 `@HttpCode(...)` success status와 `OK` description만 생성합니다. | `packages/openapi/src/decorators.ts`, `packages/openapi/src/schema-builder.ts` |
@@ -39,12 +40,13 @@
 | Swagger UI | `ui: true`일 때 `GET uiPath`는 runtime global prefix 아래에서도 해당 module instance의 `documentPath`를 가리키는 HTML을 렌더링합니다. `uiPath`의 기본값은 `/docs`입니다. 기본 asset은 고정된 `swagger-ui-dist` 버전 `5.32.2`를 사용하며, self-hosted 또는 CSP-controlled deployment에서는 `swaggerUiAssets.cssUrl`과 `swaggerUiAssets.jsBundleUrl`로 URL을 교체할 수 있습니다. | `packages/openapi/src/openapi-module.ts`, `packages/openapi/src/swagger-ui.ts` |
 | 기본 오류 응답 | `defaultErrorResponsesPolicy`의 기본값은 `'inject'`입니다. `'omit'`으로 설정하면 builder가 프레임워크 기본 오류 응답을 추가하지 않을 수 있습니다. | `packages/openapi/src/schema-builder.ts`, `packages/openapi/src/openapi-module.ts`, `packages/openapi/src/openapi-module.test.ts` |
 | 추가 모델 | `extraModels`를 사용하면 핸들러에서 직접 발견되지 않는 DTO 생성자도 포함할 수 있습니다. | `packages/openapi/src/openapi-module.ts`, `packages/openapi/src/schema-builder.ts` |
-| 최종 변환 | `documentTransform(document)`는 생성된 문서를 노출 전에 다시 쓸 수 있습니다. OpenAPI 3.1 배타적 경계 및 nullable 정규화는 변환된 결과에 실행됩니다. | `packages/openapi/src/openapi-module.ts`, `packages/openapi/src/schema-bounds.ts` |
+| 최종 변환 | `documentTransform(document)`는 생성된 문서를 노출 전에 다시 쓸 수 있습니다. Path Item은 OpenAPI 3.1 operation(`trace` 포함), fixed field(`$ref`, `summary`, `description`, `servers`, `parameters`), `x-*` extension을 기준으로 검증되며 알 수 없는 key는 생성을 실패시킵니다. 그 뒤 검증된 transform 결과에 배타적 경계 및 nullable 정규화를 실행합니다. | `packages/openapi/src/openapi-module.ts`, `packages/openapi/src/path-item.ts`, `packages/openapi/src/schema-bounds.ts` |
 
 ## 생성 경계
 
 - `@ApiExcludeEndpoint()`는 생성된 `paths`에서 특정 핸들러를 제거하지만, 런타임 라우트 자체를 바꾸지는 않습니다.
 - OpenAPI 생성은 descriptor 기반입니다. `sources`나 `descriptors`에 표현되지 않은 컨트롤러 또는 핸들러는 생성 문서 경계 밖입니다.
+- `@All(...)`은 계속 `@fluojs/http` runtime matching 기능이며 하나의 OpenAPI operation으로 표현할 수 없습니다. 문서화할 동작은 explicit standard-method handler로 나누거나 catch-all descriptor를 OpenAPI 입력에서 제외하세요.
 - Response 생성은 return-value-driven 방식이 아니라 metadata-driven 방식입니다. Client가 문서에서 response content를 확인해야 하면 `@ApiResponse(...)`에 `schema` 또는 `type`을 사용합니다.
 - 이 패키지는 HTTP 표면만 문서화합니다. 비HTTP 전송에 대한 계약은 생성하지 않습니다.
 - Swagger UI는 선택적이며 런타임에서 제공됩니다. UI 지원이 비활성화되어도 OpenAPI JSON 문서는 계속 제공됩니다.

@@ -168,7 +168,7 @@ class UserSaga implements ISaga<UserCreatedEvent> {
 }
 ```
 
-Saga execution fails fast with `SagaTopologyError` when an in-process publish chain re-enters the same provider-token/event route cyclically or exceeds 32 nested saga hops. Distinct singleton tokens that use the same decorated saga class remain distinct fan-out routes. Multi-stage sagas may still react to different event types in sequence, but in-process saga graphs must stay acyclic overall; move intentionally cyclic or long-running feedback loops behind an external transport, scheduler, or other bounded boundary.
+Saga execution keeps one active `handle(...)` call per singleton provider token. When a saga publishes a different event route owned by that same token, CQRS records a serialized continuation on the token's global FIFO execution chain, lets the current `handle(...)` call finish, and then runs queued work in enqueue order. This shared ordering covers nested continuations, external publications, and publications from awaited delegated `@OnEvent(...)` subscribers, so default `waitForHandlers` re-entry does not deadlock and work already enqueued for the token is not overtaken. The nested `publish(...)` resolves without awaiting the blocked token, while the outer publication still waits for the continuation and delegated event publication to settle. Re-entering an already active provider-token/event route still fails fast with `SagaTopologyError`, as does exceeding 32 nested saga hops. Move intentionally cyclic or long-running feedback loops behind an external transport, scheduler, or other bounded boundary.
 
 When a saga, command handler, query handler, or event handler performs another CQRS `execute(...)`, `publish(...)`, or `publishAll(...)` call, pass the optional `CqrsDispatchContext` argument through unchanged. CQRS uses this explicit runtime-agnostic context to keep saga topology checks intact across nested dispatch without relying on Node.js async-local APIs. The context is an opaque, frozen fieldless pass-through value; trusted topology and shutdown-drain state remains private to CQRS. Do not construct, clone, inspect, or mutate it because caller-shaped objects and copied values do not carry trusted runtime state.
 
@@ -221,7 +221,7 @@ class TokenInjectedService {
 - `DuplicateCommandHandlerError`, `DuplicateQueryHandlerError`: Raised when different singleton providers claim the same command or query type.
 - `DuplicateEventHandlerError`: Retained only as a compatibility export; event-handler discovery does not throw it or treat duplicate registrations as failures. Repeated discovery of the same provider token and event route is silently deduplicated, while distinct singleton provider tokens remain valid fan-out routes in discovery order.
 - `SagaExecutionError`: Wraps unexpected non-Fluo saga failures.
-- `SagaTopologyError`: Raised when saga orchestration detects a self-triggering, cyclic, or over-deep in-process saga graph.
+- `SagaTopologyError`: Raised when saga orchestration detects an active provider-token/event-route cycle or an over-deep in-process saga graph.
 
 ### Status and metadata
 - `createCqrsPlatformStatusSnapshot(...)`: Creates CQRS status snapshots for diagnostics and health surfaces.

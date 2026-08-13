@@ -1961,24 +1961,32 @@ describe('@fluojs/websockets', () => {
     expect(Array.from(service.getRooms('socket-2'))).toEqual(['room-b']);
   });
 
-  it('removes stale room membership when a tracked socket is unregistered before later broadcasts', () => {
+  it('removes stale room membership and rejects joins for inactive sockets', () => {
     const service = createTestLifecycleService();
     const first = createMockSocket();
     const second = createMockSocket();
     const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, WebSocket>;
     const unregisterSocket = Reflect.get(service, 'unregisterSocket') as (socketId: string) => void;
+    const closed = createMockSocket();
+    (closed.socket as unknown as { readyState: number }).readyState = WebSocket.CLOSED;
 
     socketRegistry.set('socket-1', first.socket);
     socketRegistry.set('socket-2', second.socket);
+    socketRegistry.set('socket-closed', closed.socket);
+    service.joinRoom('socket-unknown', 'room-stale');
     service.joinRoom('socket-1', 'room-a');
     service.joinRoom('socket-2', 'room-a');
 
     unregisterSocket.call(service, 'socket-1');
+    service.joinRoom('socket-1', 'room-stale');
+    service.joinRoom('socket-closed', 'room-stale');
     service.broadcastToRoom('room-a', 'order.updated', { orderId: 'ord_3' });
 
     expect(first.send).not.toHaveBeenCalled();
     expect(second.send).toHaveBeenCalledWith(JSON.stringify({ data: { orderId: 'ord_3' }, event: 'order.updated' }));
+    expect(Array.from(service.getRooms('socket-unknown'))).toEqual([]);
     expect(Array.from(service.getRooms('socket-1'))).toEqual([]);
+    expect(Array.from(service.getRooms('socket-closed'))).toEqual([]);
   });
 
   it('terminates sockets on backpressure when policy is close', async () => {
@@ -2016,6 +2024,9 @@ describe('@fluojs/websockets', () => {
 
   it('returns room snapshots so external mutation cannot corrupt internal room indexes', () => {
     const service = createTestLifecycleService();
+    const { socket } = createMockSocket();
+    const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, WebSocket>;
+    socketRegistry.set('socket-1', socket);
 
     service.joinRoom('socket-1', 'room-a');
     service.joinRoom('socket-1', 'room-b');
