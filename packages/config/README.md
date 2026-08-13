@@ -78,6 +78,18 @@ class MyService {
 
 ## Key Capabilities
 
+### NestJS Registration Migration
+
+`ConfigModule.forRoot(...)` is the only module registration API in `@fluojs/config`; the package does not provide `ConfigModule.forRootAsync(...)`. When migrating from `@nestjs/config`:
+
+- Resolve remote secrets and other asynchronous sources at the application-owned bootstrap boundary before defining the module graph, then pass their final values to the synchronous registration call.
+- Replace NestJS `load` factories with nested plain objects in `defaults` or `runtimeOverrides`; keep the nesting intact for deep merging and dot-path `ConfigService` access.
+- Pass an explicit `processEnv` snapshot because `@fluojs/config` does not scan ambient environment variables.
+- Replace NestJS `validate` callbacks with a synchronous Standard Schema passed as `schema`; asynchronous schema results are rejected.
+- Use `global`, not NestJS `isGlobal`. Visibility is global by default, and `global: false` opts into module-local visibility.
+
+See the canonical [NestJS configuration migration guide](../../docs/getting-started/migrate-from-nestjs.md) for the shared validated-snapshot bootstrap pattern and HTTP adapter boundary.
+
 ### Source Precedence
 Configuration is merged in the following order (highest precedence wins):
 1. **Runtime Overrides**: Values passed explicitly via `runtimeOverrides`.

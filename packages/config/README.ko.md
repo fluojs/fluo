@@ -75,6 +75,18 @@ class MyService {
 
 ## 주요 기능
 
+### NestJS 등록 마이그레이션
+
+`ConfigModule.forRoot(...)`는 `@fluojs/config`의 유일한 module registration API이며, 이 패키지는 `ConfigModule.forRootAsync(...)`를 제공하지 않습니다. `@nestjs/config`에서 마이그레이션할 때는 다음 경계를 따르세요.
+
+- Remote secret과 다른 비동기 source는 module graph를 정의하기 전에 application-owned bootstrap boundary에서 resolve한 뒤, 최종 값을 동기 registration call에 전달합니다.
+- NestJS `load` factory는 `defaults` 또는 `runtimeOverrides`의 nested plain object로 옮깁니다. Deep merge와 dot-path `ConfigService` 접근을 위해 nesting을 그대로 유지하세요.
+- `@fluojs/config`는 ambient environment variable을 scan하지 않으므로 명시적 `processEnv` snapshot을 전달합니다.
+- NestJS `validate` callback은 `schema`에 전달하는 동기 Standard Schema로 바꿉니다. 비동기 schema 결과는 거부됩니다.
+- NestJS `isGlobal`이 아니라 `global`을 사용합니다. Visibility는 기본적으로 global이며, `global: false`로 module-local visibility를 선택합니다.
+
+공유 validated snapshot bootstrap pattern과 HTTP adapter boundary는 canonical [NestJS configuration migration guide](../../docs/getting-started/migrate-from-nestjs.ko.md)를 참고하세요.
+
 ### 명확한 소스 우선순위
 
 설정은 `runtimeOverrides` → `processEnv` 옵션으로 전달한 환경 스냅샷 → env 파일 → `defaults` 순서로 병합됩니다.
