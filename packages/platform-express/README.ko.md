@@ -83,6 +83,8 @@ const adapter = createExpressAdapter(
 ### Express/Connect Middleware 경계
 Express adapter는 Express를 host HTTP engine으로 보존하지만 request pipeline middleware는 dispatcher가 소유합니다. Portable middleware는 fluo `Middleware` 계약으로 등록하세요.
 
+Adapter는 Express application을 직접 생성하고 소유하므로 기존 Express application을 채택하거나 재사용하는 방식은 지원하지 않습니다. Native Express handler는 construction-time `nativeMiddleware`로 제공해야 하며, bootstrap 이후 `use(...)`로 native stack에 middleware를 추가하는 방식은 지원하지 않습니다. 이식 가능한 동작은 fluo `Middleware`로 재작성하는 방식을 우선하세요.
+
 ```typescript
 import type { Middleware } from '@fluojs/http';
 
@@ -134,6 +136,7 @@ Native stack은 adapter 생성 시 고정됩니다. Adapter는 Node HTTP/S liste
 ## 어댑터 계약
 
 - **공유 dispatcher 소유권 유지**: Native Express Router 매치 이후에도 실제 요청은 공유 fluo dispatcher가 처리하므로 middleware, guards, interceptors, observers, params, error envelope 계약은 그대로 유지됩니다.
+- **Express application 소유권**: Adapter가 Express application을 생성하고 소유합니다. 기존 Express application을 채택하지 않고 post-bootstrap `use(...)` mutation도 노출하지 않습니다. 불가피한 native handler는 construction-time `nativeMiddleware`로 제공하고, 이식 가능한 동작은 fluo `Middleware`로 재작성하세요.
 - **Host engine 경계**: Express는 host/platform HTTP engine이지만 fluo는 native Express/Connect middleware를 fluo middleware로 재해석하지 않습니다. Application-level middleware는 공유 `Middleware` 계약을 구현하고, platform-specific `nativeMiddleware` 옵션은 routing 전에 native handler를 mount합니다.
 - **Native middleware 소유권**: Native handler는 선언 순서대로 실행되며 Express continuation, response termination, error-chain semantics를 유지합니다. Adapter shutdown은 listener와 connection을 닫지만 handler가 소유한 resource는 dispose하지 않습니다.
 - **안전한 fallback 범위**: `@All(...)` 핸들러와 shape가 겹치는 파라미터 라우트는 Express Router에 강제 등록하지 않고 의도적으로 catch-all fallback 경로에 둡니다.
