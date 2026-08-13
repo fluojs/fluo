@@ -162,7 +162,7 @@ describe('NatsMicroserviceTransport request callback boundary', () => {
     expect(client.closeCalled).toBe(false);
   });
 
-  it('contains logger failures when the request callback boundary reports a malformed frame', async () => {
+  it('contains logger-throw regressions when the request callback boundary reports a malformed frame', async () => {
     // Given
     const client = new RequestCallbackNatsClient();
     const loggerError = new Error('logger failed');

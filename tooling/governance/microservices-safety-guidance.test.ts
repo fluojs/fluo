@@ -49,10 +49,13 @@ describe('Microservices safety guidance governance', () => {
     for (const requiredEvidence of [
       'private handleRequestMessageSafely(message: NatsMessageLike): void {',
       'void this.handleRequestMessage(message).catch((error: unknown) => {',
-      "this.logger?.error('Request callback failed.', error, 'NatsMicroserviceTransport');",
+      'this.logRequestCallbackFailure(error);',
+      'private logRequestCallbackFailure(error: unknown): void {',
+      "logger.error('Request callback failed.', error, 'NatsMicroserviceTransport');",
       'contains malformed request frames and reports the decode failure through the transport logger',
       'contains throwing request responses and reports the response failure through the transport logger',
       'contains response encoding failures and reports them through the transport logger',
+      'contains logger-throw regressions when the request callback boundary reports a malformed frame',
       'does not fall back to console.error when a request callback fails without a logger',
       'expect(client.closeCalled).toBe(false)',
     ]) {
