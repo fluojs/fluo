@@ -99,6 +99,23 @@ describe('runtime shutdown terminality documentation', () => {
   });
 
   it.each([
+    ['packages/runtime/README.md', 'individual failed hook is not retried'],
+    ['packages/runtime/README.ko.md', '개별 실패 hook은 이후 application 또는 context `close()`에서 재시도하지 않습니다'],
+    ['docs/architecture/lifecycle-and-shutdown.md', 'individual failed hook is not retried'],
+    ['docs/architecture/lifecycle-and-shutdown.ko.md', '개별 실패 hook은 이후 application 또는 context close에서 재시도하지 않습니다'],
+    ['docs/CONTEXT.md', 'individual failed hook is not retried'],
+    ['docs/CONTEXT.ko.md', '개별 실패 hook은 이후 application 또는 context close에서 재시도하지 않는다'],
+    ['book/advanced/ch09-app-context.md', 'does not retry an individual failed hook'],
+    ['book/advanced/ch09-app-context.ko.md', '개별 실패 hook은 이후 application 또는 context close에서 재시도하지 않습니다'],
+  ])('guards terminal best-effort container teardown ownership in %s', (relativePath, noRetryContract) => {
+    const content = read(relativePath);
+
+    expect(content).toContain('onDestroy()');
+    expect(content).toContain('terminal best-effort');
+    expect(content).toContain(noRetryContract);
+  });
+
+  it.each([
     'book/advanced/ch09-app-context.md',
     'book/advanced/ch09-app-context.ko.md',
   ])('keeps Chapter 9 context get and application listen examples aligned with shutdown admission in %s', (relativePath) => {
@@ -135,5 +152,8 @@ describe('runtime shutdown terminality documentation', () => {
       'rejects connectMicroservice() when shutdown starts during runtime resolution',
     );
     expect(bootstrapTests).toContain('retries only incomplete application context shutdown phases');
+    expect(bootstrapTests).toContain(
+      'does not retry container-managed onDestroy hooks on a second application context close',
+    );
   });
 });
