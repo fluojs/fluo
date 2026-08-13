@@ -601,6 +601,22 @@ The executable evidence is intentionally split by shell and race:
 | A connect admitted before shutdown cannot attach after async runtime resolution | `path:packages/runtime/src/bootstrap.test.ts` — `rejects connectMicroservice() when shutdown starts during runtime resolution` |
 | Context retry skips completed phases and retries the incomplete hook phase | `path:packages/runtime/src/bootstrap.test.ts` — `retries only incomplete application context shutdown phases` |
 
+Failure-path cleanup is owned by `runBootstrapFailureCleanup()`. Even after bootstrap creates lifecycle instances or runtime resources, the runtime resets readiness and attempts every cleanup phase while preserving the original bootstrap error.
+
+`path:packages/runtime/src/bootstrap.ts:223-243`
+```typescript
+async function runBootstrapFailureCleanup(options: {
+  container?: Container;
+  lifecycleInstances: readonly unknown[];
+  logger: ApplicationLogger;
+  modules: CompiledModule[];
+  runtimeCleanup: readonly (() => void)[];
+  scope: 'application' | 'application context';
+}): Promise<void> {
+  const errors: unknown[] = [];
+
+  resetReadinessState(options.modules);
+
   errors.push(...(await runCleanupCallbacks(options.runtimeCleanup)));
 
   if (options.lifecycleInstances.length > 0) {
@@ -614,7 +630,7 @@ The executable evidence is intentionally split by shell and race:
 
 This first failure-cleanup excerpt shows that the runtime tries to call lifecycle shutdown hooks even after bootstrap failure. The following excerpt separates container disposal from cleanup failure logging.
 
-`path:packages/runtime/src/bootstrap.ts:174-189`
+`path:packages/runtime/src/bootstrap.ts:245-260`
 ```typescript
   if (options.container) {
     try {
@@ -642,13 +658,13 @@ Tests make this guarantee concrete. `path:packages/runtime/src/application.test.
 
 Close idempotency is also intentional. Both `FluoApplication.close()` and `FluoApplicationContext.close()` memoize `closingPromise`. If close is already in progress, a later caller waits for the same promise. If close succeeds, later calls return immediately. If close fails, the promise is cleared so a retry is allowed.
 
-Lifecycle hook ordering is handled by `runShutdownHooks()` in `path:packages/runtime/src/bootstrap.ts:710-722`. It walks instances in reverse order, first running every `onModuleDestroy()`, then running every `onApplicationShutdown(signal)`. You can read this as an ordering that unwinds the startup dependency direction as much as possible.
+Lifecycle hook ordering is handled by `runShutdownHooks()` in `path:packages/runtime/src/bootstrap.ts:1267-1279`. It walks instances in reverse order, first running every `onModuleDestroy()`, then running every `onApplicationShutdown(signal)`. You can read this as an ordering that unwinds the startup dependency direction as much as possible.
 
 NestJS `beforeApplicationShutdown` is unsupported and does not create an intermediate phase in this flow. Move preparation that must happen before application-wide signal cleanup into `onModuleDestroy()`, or use `onApplicationShutdown(signal?)` when cleanup depends on the signal. The application context does not install a compatibility shim, alias, fallback, or extra runtime hook.
 
 Shutdown hook ordering is fixed in a separate helper. Both hook families run in reverse order, so singleton lifecycle instances created during startup are cleaned up in the opposite direction.
 
-`path:packages/runtime/src/bootstrap.ts:710-722`
+`path:packages/runtime/src/bootstrap.ts:1267-1279`
 ```typescript
 async function runShutdownHooks(instances: readonly unknown[], signal?: string): Promise<void> {
   for (const instance of [...instances].reverse()) {

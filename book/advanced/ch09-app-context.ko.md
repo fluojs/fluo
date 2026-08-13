@@ -601,6 +601,22 @@ Executable evidence는 shell과 race별로 의도적으로 분리되어 있습�
 | Shutdown 전에 admission된 connect도 async runtime resolution 뒤 child를 attach할 수 없습니다. | `path:packages/runtime/src/bootstrap.test.ts` — `rejects connectMicroservice() when shutdown starts during runtime resolution` |
 | Context retry는 완료된 phase를 건너뛰고 incomplete hook phase를 재시도합니다. | `path:packages/runtime/src/bootstrap.test.ts` — `retries only incomplete application context shutdown phases` |
 
+Failure-path cleanup은 `runBootstrapFailureCleanup()`이 소유합니다. Bootstrap이 lifecycle instance나 runtime resource를 만든 뒤 실패하더라도, runtime은 readiness를 reset하고 모든 cleanup phase를 시도하면서 원래 bootstrap error를 보존합니다.
+
+`path:packages/runtime/src/bootstrap.ts:223-243`
+```typescript
+async function runBootstrapFailureCleanup(options: {
+  container?: Container;
+  lifecycleInstances: readonly unknown[];
+  logger: ApplicationLogger;
+  modules: CompiledModule[];
+  runtimeCleanup: readonly (() => void)[];
+  scope: 'application' | 'application context';
+}): Promise<void> {
+  const errors: unknown[] = [];
+
+  resetReadinessState(options.modules);
+
   errors.push(...(await runCleanupCallbacks(options.runtimeCleanup)));
 
   if (options.lifecycleInstances.length > 0) {
@@ -614,7 +630,7 @@ Executable evidence는 shell과 race별로 의도적으로 분리되어 있습�
 
 이 첫 failure-cleanup 발췌는 bootstrap 실패 후에도 lifecycle shutdown hook을 호출하려고 시도한다는 점을 보여 줍니다. 이어지는 발췌는 container disposal과 cleanup failure logging을 분리해서 보여 줍니다.
 
-`path:packages/runtime/src/bootstrap.ts:174-189`
+`path:packages/runtime/src/bootstrap.ts:245-260`
 ```typescript
   if (options.container) {
     try {
@@ -642,13 +658,13 @@ Executable evidence는 shell과 race별로 의도적으로 분리되어 있습�
 
 close idempotency도 의도적인 설계입니다. `FluoApplication.close()`와 `FluoApplicationContext.close()`는 모두 `closingPromise`를 memoize합니다. close가 이미 진행 중이면, 뒤늦은 호출자는 같은 promise를 기다립니다. close가 성공하면 이후 호출은 즉시 return합니다. close가 실패하면 promise를 비워 재시도를 허용합니다.
 
-lifecycle hook ordering은 `path:packages/runtime/src/bootstrap.ts:710-722`의 `runShutdownHooks()`가 담당합니다. instance를 역순으로 순회하고, 먼저 `onModuleDestroy()`를 모두 실행한 뒤, 그 다음 `onApplicationShutdown(signal)`을 실행합니다. 가능한 한 startup dependency 방향을 거꾸로 되돌리는 ordering이라고 볼 수 있습니다.
+lifecycle hook ordering은 `path:packages/runtime/src/bootstrap.ts:1267-1279`의 `runShutdownHooks()`가 담당합니다. instance를 역순으로 순회하고, 먼저 `onModuleDestroy()`를 모두 실행한 뒤, 그 다음 `onApplicationShutdown(signal)`을 실행합니다. 가능한 한 startup dependency 방향을 거꾸로 되돌리는 ordering이라고 볼 수 있습니다.
 
 NestJS `beforeApplicationShutdown`은 지원하지 않으며 이 flow에 중간 phase를 만들지 않습니다. Application-wide signal cleanup보다 먼저 수행해야 하는 준비 작업은 `onModuleDestroy()`로 옮기고, signal에 의존하는 cleanup에는 `onApplicationShutdown(signal?)`을 사용합니다. Application context는 compatibility shim, alias, fallback 또는 추가 runtime hook을 설치하지 않습니다.
 
 shutdown hook ordering은 별도 helper로 고정되어 있습니다. 두 hook family 모두 reverse order로 처리되므로, startup 때 만들어진 singleton lifecycle instance를 반대 방향으로 정리합니다.
 
-`path:packages/runtime/src/bootstrap.ts:710-722`
+`path:packages/runtime/src/bootstrap.ts:1267-1279`
 ```typescript
 async function runShutdownHooks(instances: readonly unknown[], signal?: string): Promise<void> {
   for (const instance of [...instances].reverse()) {
