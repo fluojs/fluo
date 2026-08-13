@@ -1888,6 +1888,124 @@ describe('@fluojs/platform-express', () => {
     }
   });
 
+  it('refreshes native route descriptors when the adapter is reused after close', async () => {
+    @Controller('/reuse')
+    class FirstController {
+      @Get('/:id')
+      getFirst(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id, route: 'first' };
+      }
+    }
+
+    @Controller('/reuse')
+    class SecondController {
+      @Get('/:id')
+      getSecond(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id, route: 'second' };
+      }
+    }
+
+    const firstRoot = new Container().register(FirstController);
+    const firstMapping = createHandlerMapping([{ controllerToken: FirstController }]);
+    const firstDispatcher = createDispatcher({
+      handlerMapping: firstMapping,
+      rootContainer: firstRoot,
+    });
+    const secondRoot = new Container().register(SecondController);
+    const secondMapping = createHandlerMapping([{ controllerToken: SecondController }]);
+    const secondDispatcher = createDispatcher({
+      handlerMapping: secondMapping,
+      rootContainer: secondRoot,
+    });
+    const adapter = createExpressAdapter({ port: 0 }) as ExpressHttpApplicationAdapter;
+
+    await adapter.listen(firstDispatcher);
+    const firstPort = getBoundPort(adapter.getServer());
+
+    try {
+      const firstResponse = await requestHttp({
+        method: 'GET',
+        path: '/reuse/one',
+        port: firstPort,
+      });
+
+      expect(firstResponse.statusCode).toBe(200);
+      expect(JSON.parse(firstResponse.body)).toEqual({ id: 'one', route: 'first' });
+    } finally {
+      await adapter.close();
+    }
+
+    await adapter.listen(secondDispatcher);
+    const secondPort = getBoundPort(adapter.getServer());
+
+    try {
+      const secondResponse = await requestHttp({
+        method: 'GET',
+        path: '/reuse/two',
+        port: secondPort,
+      });
+
+      expect(secondResponse.statusCode).toBe(200);
+      expect(JSON.parse(secondResponse.body)).toEqual({ id: 'two', route: 'second' });
+    } finally {
+      await adapter.close();
+    }
+  });
+
+  it('falls back to the current dispatcher when reuse changes the native route graph', async () => {
+    @Controller('/first')
+    class FirstController {
+      @Get('/:id')
+      getFirst(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id, route: 'first' };
+      }
+    }
+
+    @Controller('/second')
+    class SecondController {
+      @Get('/:id')
+      getSecond(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id, route: 'second' };
+      }
+    }
+
+    const firstRoot = new Container().register(FirstController);
+    const firstDispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: FirstController }]),
+      rootContainer: firstRoot,
+    });
+    const secondRoot = new Container().register(SecondController);
+    const secondDispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: SecondController }]),
+      rootContainer: secondRoot,
+    });
+    const adapter = createExpressAdapter({ port: 0 }) as ExpressHttpApplicationAdapter;
+
+    await adapter.listen(firstDispatcher);
+    await adapter.close();
+    await adapter.listen(secondDispatcher);
+    const port = getBoundPort(adapter.getServer());
+
+    try {
+      const staleResponse = await requestHttp({
+        method: 'GET',
+        path: '/first/one',
+        port,
+      });
+      const currentResponse = await requestHttp({
+        method: 'GET',
+        path: '/second/two',
+        port,
+      });
+
+      expect(staleResponse.statusCode).toBe(404);
+      expect(currentResponse.statusCode).toBe(200);
+      expect(JSON.parse(currentResponse.body)).toEqual({ id: 'two', route: 'second' });
+    } finally {
+      await adapter.close();
+    }
+  });
+
   it('keeps normalization-sensitive native route requests on the full dispatcher path', async () => {
     @Controller('/normalization')
     class NormalizationController {
