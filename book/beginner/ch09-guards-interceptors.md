@@ -53,12 +53,12 @@ Suppose FluoBlog keeps read routes public but requires a simple admin header for
 This is a good situation for explaining the role of a Guard.
 
 ```typescript
-import { ForbiddenException, type RequestContext } from '@fluojs/http';
+import { ForbiddenException, type GuardContext } from '@fluojs/http';
 
 export class AdminGuard {
-  // input is the validated request body, if one exists.
-  canActivate(input: unknown, ctx: RequestContext) {
-    const role = ctx.request.headers['x-role'];
+  // Guards run before request DTO binding, so inspect the request context directly.
+  canActivate(context: GuardContext) {
+    const role = context.requestContext.request.headers['x-role'];
 
     if (role !== 'admin') {
       // Throw the structured exception learned in Chapter 8.
@@ -71,6 +71,8 @@ export class AdminGuard {
   }
 }
 ```
+
+A Guard receives one `GuardContext`, not a bound controller DTO. Use its `requestContext` to inspect headers or other request metadata because Guards run before `@RequestDto(...)` binding and validation.
 
 Then apply this Guard to a Controller or to a specific method.
 
