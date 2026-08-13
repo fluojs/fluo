@@ -16,7 +16,7 @@ This chapter explains how to choose between the Express and raw Node.js adapters
 
 ## Prerequisites
 - Completion of Chapter 18, Chapter 19, and Chapter 20.
-- Node.js 20 or newer for both `@fluojs/platform-express` and `@fluojs/platform-nodejs`.
+- Node.js `>=20.19.3 <21 || >=22.2.0 <27` for both `@fluojs/platform-express` and `@fluojs/platform-nodejs`.
 - Basic understanding of Node.js HTTP servers and Express middleware.
 - TypeScript familiarity with reading application entrypoints and runtime adapter configuration.
 
@@ -24,7 +24,7 @@ This chapter explains how to choose between the Express and raw Node.js adapters
 
 Express is still the most widely used framework in the Node.js ecosystem. If existing Express infrastructure is part of your operational path, or if you need to move a legacy Express app into fluo gradually, `@fluojs/platform-express` is a practical entry point.
 
-The Express adapter targets Node.js 20 or newer and its package manifest declares `engines.node >=20.0.0`.
+The Express adapter targets Node.js `>=20.19.3 <21 || >=22.2.0 <27` and its package manifest declares that exact `engines.node` range so listener-level RFC `QUERY` reaches Express and fluo dispatch. Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded.
 
 ### 21.1.1 Installation
 
@@ -114,7 +114,7 @@ Handlers in `nativeMiddleware` run in array order before Express Router and the 
 
 When you need to minimize footprint as much as possible, or when you need to design operational boundaries directly on top of the Node.js standard library, `@fluojs/platform-nodejs` is the right fit. This adapter provides an HTTP/HTTPS bridge with the framework layer kept minimal.
 
-`@fluojs/platform-nodejs` targets Node.js 20 or newer. Its package manifest declares `engines.node >=20.0.0`, so use one of the fetch-style runtime adapters instead when the host is Bun, Deno, or Cloudflare Workers.
+`@fluojs/platform-nodejs` targets Node.js `>=20.19.3 <21 || >=22.2.0 <27`. Its package manifest declares that exact `engines.node` range so listener-level RFC `QUERY` reaches fluo dispatch; use one of the fetch-style runtime adapters instead when the host is Bun, Deno, or Cloudflare Workers.
 
 ### 21.2.1 Why Go Raw?
 

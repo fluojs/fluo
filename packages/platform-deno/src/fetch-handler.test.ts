@@ -41,6 +41,10 @@ function registerHostOwnedDenoPortabilitySuite(): void {
   });
 
   describe('host-owned Deno fetch handler portability', () => {
+    it('executes QUERY and extension methods', async () => {
+      await harness.assertSupportsCustomHttpRouteMethods();
+    });
+
     it('supports HTTP-owned error representations', async () => {
       await harness.assertSupportsHttpErrorRepresentations();
     });

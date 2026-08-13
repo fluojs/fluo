@@ -1,8 +1,7 @@
+import { defineControllerMetadata, defineRouteMetadata } from '@fluojs/core/internal';
 import { describe, expect, it } from 'vitest';
 
-import { defineControllerMetadata, defineRouteMetadata } from '@fluojs/core/internal';
-
-import { Controller, Get, Version } from './decorators.js';
+import { All, Controller, Get, Query, Route, Version } from './decorators.js';
 import { InvalidRoutePathError, RouteConflictError } from './errors.js';
 import { createHandlerMapping } from './mapping.js';
 import { VersioningType } from './types.js';
@@ -73,6 +72,23 @@ describe('handler mapping', () => {
         { controllerToken: DuplicateHealthController },
       ]),
     ).toThrow(RouteConflictError);
+  });
+
+  it('detects duplicates after custom method canonicalization', () => {
+    @Controller('/search')
+    class SearchController {
+      @Query('/')
+      first() {
+        return { route: 'query' };
+      }
+
+      @Route('query', '/')
+      second() {
+        return { route: 'custom' };
+      }
+    }
+
+    expect(() => createHandlerMapping([{ controllerToken: SearchController }])).toThrow(RouteConflictError);
   });
 
   it('rejects unsupported syntax in imperatively defined route metadata', () => {
@@ -402,6 +418,89 @@ describe('handler mapping', () => {
     expect(match?.params).toEqual({ id: '42' });
   });
 
+  it.each(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD']) (
+    'prefers an existing explicit %s route before ALL',
+    (method) => {
+      class ExplicitController {
+        handle() {
+          return { route: 'explicit' };
+        }
+      }
+
+      class AllController {
+        handle() {
+          return { route: 'all' };
+        }
+      }
+
+      defineControllerMetadata(ExplicitController, { basePath: '/precedence' });
+      defineRouteMetadata(ExplicitController.prototype, 'handle', { method, path: '/' });
+      defineControllerMetadata(AllController, { basePath: '/precedence' });
+      defineRouteMetadata(AllController.prototype, 'handle', { method: 'ALL', path: '/' });
+
+      const mapping = createHandlerMapping([
+        { controllerToken: AllController },
+        { controllerToken: ExplicitController },
+      ]);
+      const match = mapping.match({
+        body: undefined,
+        cookies: {},
+        headers: {},
+        method,
+        params: {},
+        path: '/precedence',
+        query: {},
+        raw: {},
+        url: '/precedence',
+      });
+
+      expect(match?.descriptor.controllerToken).toBe(ExplicitController);
+      expect(match?.descriptor.route.method).toBe(method);
+    },
+  );
+
+  it('preserves custom method version selection, exact precedence, and ALL fallback', () => {
+    @Controller('/search')
+    class SearchController {
+      @Version('1')
+      @Query('/:scope')
+      queryV1() {
+        return { route: 'query-v1' };
+      }
+
+      @Version('2')
+      @Route('purge', '/:scope')
+      purgeV2() {
+        return { route: 'purge-v2' };
+      }
+
+      @All('/:scope')
+      fallback() {
+        return { route: 'all' };
+      }
+    }
+
+    const mapping = createHandlerMapping(
+      [{ controllerToken: SearchController }],
+      { versioning: { header: 'x-api-version', type: VersioningType.HEADER } },
+    );
+    const request = (method: string, version?: string) => mapping.match({
+      body: undefined,
+      cookies: {},
+      headers: version === undefined ? {} : { 'x-api-version': version },
+      method,
+      params: {},
+      path: '/search/cache',
+      query: {},
+      raw: {},
+      url: '/search/cache',
+    });
+
+    expect(request('query', '1')?.descriptor.methodName).toBe('queryV1');
+    expect(request('PURGE', '2')?.descriptor.methodName).toBe('purgeV2');
+    expect(request('BREW')?.descriptor.methodName).toBe('fallback');
+  });
+
   it('prefers method-specific static routes before ALL fallbacks on the same path', () => {
     @Controller('/health')
     class HealthController {
@@ -421,7 +520,7 @@ describe('handler mapping', () => {
     defineRouteMetadata(AnyMethodController.prototype, 'any', {
       method: 'ALL',
       path: '/',
-    } as any);
+    });
 
     const mapping = createHandlerMapping([
       { controllerToken: AnyMethodController },
@@ -464,7 +563,7 @@ describe('handler mapping', () => {
       method: 'ALL',
       path: '/',
       version: '2',
-    } as any);
+    });
 
     const mapping = createHandlerMapping(
       [

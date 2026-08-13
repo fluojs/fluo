@@ -21,10 +21,12 @@ import {
   type InterceptorContext,
   type MiddlewareContext,
   Post,
+  Query,
   Redirect,
   type RequestContext,
   type RequestObservationContext,
   type RequestObserver,
+  Route,
   SseResponse,
   UseGuards,
   UseInterceptors,
@@ -42,8 +44,8 @@ import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapte
 import type {
   ErrorRequestHandler,
   Request as ExpressRequest,
-  RequestHandler,
   Response as ExpressResponse,
+  RequestHandler,
 } from 'express';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -1566,9 +1568,22 @@ describe('@fluojs/platform-express', () => {
       }
     }
 
+    @Controller('/custom-fallback')
+    class CustomFallbackController {
+      @Query('/query')
+      query(_input: undefined, context: RequestContext) {
+        return { method: context.request.method, route: 'query' };
+      }
+
+      @Route('PURGE', '/purge')
+      purge(_input: undefined, context: RequestContext) {
+        return { method: context.request.method, route: 'purge' };
+      }
+    }
+
     class AppModule {}
     defineModule(AppModule, {
-      controllers: [UsersController, VersionedController, ErrorsController, FallbackController],
+      controllers: [UsersController, VersionedController, ErrorsController, FallbackController, CustomFallbackController],
     });
 
     const port = await findAvailablePort();
@@ -1594,6 +1609,8 @@ describe('@fluojs/platform-express', () => {
       expect(nativeRoutes).not.toContain('GET:/versions');
       expect(nativeRoutes).toContain('GET:/errors');
       expect(nativeRoutes).not.toContain('PATCH:/fallback');
+      expect(nativeRoutes).not.toContain('QUERY:/custom-fallback/query');
+      expect(nativeRoutes).not.toContain('PURGE:/custom-fallback/purge');
 
       lifecycle.length = 0;
       const userResponse = await requestHttp({
@@ -1646,6 +1663,15 @@ describe('@fluojs/platform-express', () => {
       });
       expect(allResponse.statusCode).toBe(200);
       expect(JSON.parse(allResponse.body)).toEqual({ method: 'PATCH', route: 'all' });
+
+      const [queryResponse, purgeResponse] = await Promise.all([
+        requestHttp({ method: 'QUERY', path: '/custom-fallback/query', port }),
+        requestHttp({ method: 'PURGE', path: '/custom-fallback/purge', port }),
+      ]);
+      expect(queryResponse.statusCode).toBe(200);
+      expect(purgeResponse.statusCode).toBe(200);
+      expect(JSON.parse(queryResponse.body)).toEqual({ method: 'QUERY', route: 'query' });
+      expect(JSON.parse(purgeResponse.body)).toEqual({ method: 'PURGE', route: 'purge' });
 
       const optionsFallbackResponse = await requestHttp({
         method: 'OPTIONS',
@@ -1883,6 +1909,124 @@ describe('@fluojs/platform-express', () => {
 
       expect(response.statusCode).toBe(200);
       expect(JSON.parse(response.body)).toEqual({ dispatcher: 'first' });
+    } finally {
+      await adapter.close();
+    }
+  });
+
+  it('refreshes native route descriptors when the adapter is reused after close', async () => {
+    @Controller('/reuse')
+    class FirstController {
+      @Get('/:id')
+      getFirst(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id, route: 'first' };
+      }
+    }
+
+    @Controller('/reuse')
+    class SecondController {
+      @Get('/:id')
+      getSecond(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id, route: 'second' };
+      }
+    }
+
+    const firstRoot = new Container().register(FirstController);
+    const firstMapping = createHandlerMapping([{ controllerToken: FirstController }]);
+    const firstDispatcher = createDispatcher({
+      handlerMapping: firstMapping,
+      rootContainer: firstRoot,
+    });
+    const secondRoot = new Container().register(SecondController);
+    const secondMapping = createHandlerMapping([{ controllerToken: SecondController }]);
+    const secondDispatcher = createDispatcher({
+      handlerMapping: secondMapping,
+      rootContainer: secondRoot,
+    });
+    const adapter = createExpressAdapter({ port: 0 }) as ExpressHttpApplicationAdapter;
+
+    await adapter.listen(firstDispatcher);
+    const firstPort = getBoundPort(adapter.getServer());
+
+    try {
+      const firstResponse = await requestHttp({
+        method: 'GET',
+        path: '/reuse/one',
+        port: firstPort,
+      });
+
+      expect(firstResponse.statusCode).toBe(200);
+      expect(JSON.parse(firstResponse.body)).toEqual({ id: 'one', route: 'first' });
+    } finally {
+      await adapter.close();
+    }
+
+    await adapter.listen(secondDispatcher);
+    const secondPort = getBoundPort(adapter.getServer());
+
+    try {
+      const secondResponse = await requestHttp({
+        method: 'GET',
+        path: '/reuse/two',
+        port: secondPort,
+      });
+
+      expect(secondResponse.statusCode).toBe(200);
+      expect(JSON.parse(secondResponse.body)).toEqual({ id: 'two', route: 'second' });
+    } finally {
+      await adapter.close();
+    }
+  });
+
+  it('falls back to the current dispatcher when reuse changes the native route graph', async () => {
+    @Controller('/first')
+    class FirstController {
+      @Get('/:id')
+      getFirst(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id, route: 'first' };
+      }
+    }
+
+    @Controller('/second')
+    class SecondController {
+      @Get('/:id')
+      getSecond(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id, route: 'second' };
+      }
+    }
+
+    const firstRoot = new Container().register(FirstController);
+    const firstDispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: FirstController }]),
+      rootContainer: firstRoot,
+    });
+    const secondRoot = new Container().register(SecondController);
+    const secondDispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: SecondController }]),
+      rootContainer: secondRoot,
+    });
+    const adapter = createExpressAdapter({ port: 0 }) as ExpressHttpApplicationAdapter;
+
+    await adapter.listen(firstDispatcher);
+    await adapter.close();
+    await adapter.listen(secondDispatcher);
+    const port = getBoundPort(adapter.getServer());
+
+    try {
+      const staleResponse = await requestHttp({
+        method: 'GET',
+        path: '/first/one',
+        port,
+      });
+      const currentResponse = await requestHttp({
+        method: 'GET',
+        path: '/second/two',
+        port,
+      });
+
+      expect(staleResponse.statusCode).toBe(404);
+      expect(currentResponse.statusCode).toBe(200);
+      expect(JSON.parse(currentResponse.body)).toEqual({ id: 'two', route: 'second' });
     } finally {
       await adapter.close();
     }

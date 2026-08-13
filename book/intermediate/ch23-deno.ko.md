@@ -131,7 +131,7 @@ await runDenoApplication(AppModule, {
 });
 ```
 
-`runDenoApplication(...)`은 Deno signal API를 사용할 수 있을 때 기본적으로 `SIGINT`와 `SIGTERM` listener를 등록합니다. Host가 process signal을 직접 소유한다면 `shutdownSignals: false`를 사용하고, 배포 profile이 더 좁은 lifecycle contract를 요구한다면 custom signal list를 전달하세요. 한 signal listener를 이미 연결한 뒤 다음 signal 등록이 실패하면 fluo는 실패를 전달하기 전에 앞서 연결한 listener를 제거합니다. Close 중에는 새 유입을 중단하고 active handler가 최대 10초 동안 drain되도록 기다린 다음, shutdown이 아직 끝나지 않았으면 underlying Deno serve signal을 abort합니다.
+`runDenoApplication(...)`은 Deno signal API를 사용할 수 있을 때 기본적으로 `SIGINT`와 `SIGTERM` listener를 등록합니다. Host가 process signal을 직접 소유한다면 `shutdownSignals: false`를 사용하고, 배포 profile이 더 좁은 lifecycle contract를 요구한다면 custom signal list를 전달하세요. 한 signal listener를 이미 연결한 뒤 다음 signal 등록이 실패하면 fluo는 실패를 전달하기 전에 앞서 연결한 listener를 제거합니다. Close 중에는 새 유입을 중단하고 active handler가 최대 10초 동안 drain되도록 기다린 다음, shutdown이 아직 끝나지 않았으면 underlying Deno serve signal을 abort합니다. Graceful shutdown이 reject되면 adapter는 `server.finished`가 settle될 때까지 active server controller를 유지한 뒤 lifecycle state를 해제하고 원래 shutdown error를 다시 throw합니다.
 
 ## 23.5 Handling Deno Permissions in FluoShop
 
@@ -213,7 +213,7 @@ import { Client } from "https://deno.land/x/postgres/mod.ts";
 
 ## 23.9 Testing in Deno
 
-Deno의 내장 테스트 러너는 별도 Jest나 Vitest 의존성 없이 사용할 수 있습니다. 배포된 `@fluojs/testing` 패키지는 `engines.node >=20.0.0`을 선언하므로 Deno 테스트 경로에서 import하지 마세요. 대신 `Deno.test`, Deno 표준 assertion 라이브러리, public Deno fetch handler를 조합하면 서버를 시작하지 않고 실제 Web `Request`에서 `Response`까지의 경계를 검증할 수 있습니다.
+Deno의 내장 테스트 러너는 별도 Jest나 Vitest 의존성 없이 사용할 수 있습니다. 배포된 `@fluojs/testing` 패키지는 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언하므로 Deno 테스트 경로에서 import하지 마세요. 대신 `Deno.test`, Deno 표준 assertion 라이브러리, public Deno fetch handler를 조합하면 서버를 시작하지 않고 실제 Web `Request`에서 `Response`까지의 경계를 검증할 수 있습니다.
 
 ```typescript
 import { assertEquals } from "jsr:@std/assert";

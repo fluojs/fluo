@@ -538,14 +538,28 @@ function closeDenoServerWithDrain(
   waitForDrain: () => Promise<void>,
 ): Promise<void> {
   return (async () => {
+    let closeFailure: { readonly error: unknown } | undefined;
+
     try {
       await server.shutdown();
       await waitForDrain();
+    } catch (error: unknown) {
+      closeFailure = { error };
     } finally {
       abortController?.abort();
     }
 
-    await server.finished;
+    try {
+      await server.finished;
+    } catch (error: unknown) {
+      if (!closeFailure) {
+        throw error;
+      }
+    }
+
+    if (closeFailure) {
+      throw closeFailure.error;
+    }
   })();
 }
 

@@ -118,6 +118,7 @@ NotificationsModule.forRoot({
 
 Behavioral contract notes:
 
+- `bulkThreshold` defaults to `10` when omitted. Explicit values must be finite positive integers; invalid values cause module options resolution to throw `NotificationsConfigurationError` before notification service providers can be constructed.
 - Bulk queue delegation starts when the notification count reaches `bulkThreshold`, and `dispatchMany(..., { queue: true })` explicitly forces queue-backed delivery even when the batch is below that threshold.
 - `dispatch()` stays direct by default even when a queue adapter is configured. Use `dispatch(..., { queue: true })` to opt one single notification into queue-backed delivery.
 - Use `dispatch(..., { queue: false })` to force direct delivery even when a queue adapter exists.

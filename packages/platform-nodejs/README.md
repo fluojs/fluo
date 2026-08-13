@@ -22,7 +22,7 @@ Raw Node.js HTTP adapter package for the fluo runtime.
 npm install @fluojs/platform-nodejs
 ```
 
-This package targets Node.js 20 or newer. The published package manifest declares `engines.node >=20.0.0`, and the raw adapter relies on the Node.js `http`/`https` server primitives rather than a non-Node fetch-style host.
+This package targets Node.js `>=20.19.3 <21 || >=22.2.0 <27`. The published package manifest declares that exact `engines.node` range because Node 20 before 20.19.3, Node 21, and Node 22 before 22.2.0 do not consistently expose listener-level RFC `QUERY` through the request event; unverified Node 27+ is not advertised. The raw adapter relies on the Node.js `http`/`https` server primitives rather than a non-Node fetch-style host.
 
 ## When to Use
 

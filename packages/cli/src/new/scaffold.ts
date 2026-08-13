@@ -40,6 +40,8 @@ const PUBLISHED_RUNTIME_DEPENDENCIES = {
   'react-dom': '^19.2.6',
 } as const;
 
+const NODE_HTTP_LISTENER_ENGINE = '>=20.19.3 <21 || >=22.2.0 <27';
+
 const PUBLISHED_INTERNAL_DEPENDENCIES = {
   '@fluojs/config': '^1.0.0',
   '@fluojs/core': '^1.0.0',
@@ -265,6 +267,12 @@ function createProjectEngines(bootstrapPlan: ResolvedBootstrapPlan): Record<stri
       return { bun: '>=1.2.5' };
     case 'application-deno-deno-http':
       return { deno: '>=2.0.0' };
+    case 'application-node-fastify-http':
+    case 'application-node-fastify-react-vite-ssr':
+    case 'application-node-express-http':
+    case 'application-node-nodejs-http':
+    case 'mixed-node-fastify-tcp':
+      return { node: NODE_HTTP_LISTENER_ENGINE };
     default:
       return { node: '>=20.0.0' };
   }

@@ -122,6 +122,9 @@ describe('@fluojs/http public API surface', () => {
     expect(httpPublicApi).toHaveProperty('Get');
     expect(httpPublicApi).toHaveProperty('Sse');
     expect(httpPublicApi).toHaveProperty('Post');
+    expect(httpPublicApi).toHaveProperty('Query');
+    expect(httpPublicApi).toHaveProperty('Route');
+    expect(httpPublicApi).toHaveProperty('InvalidHttpMethodError');
     expect(httpPublicApi).toHaveProperty('Put');
     expect(httpPublicApi).toHaveProperty('Patch');
     expect(httpPublicApi).toHaveProperty('Delete');

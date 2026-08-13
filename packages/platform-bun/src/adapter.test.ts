@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { All, Controller, createDispatcher, createHandlerMapping, type FrameworkRequest, type FrameworkRequestFile, type FrameworkResponse, Get, Header, HttpCode, type Middleware, type MiddlewareContext, type Next, Post, Redirect, type RequestContext, SseResponse, Version, VersioningType } from '@fluojs/http';
+import { All, Controller, createDispatcher, createHandlerMapping, type FrameworkRequest, type FrameworkRequestFile, type FrameworkResponse, Get, Header, HttpCode, type Middleware, type MiddlewareContext, type Next, Post, Query, Redirect, type RequestContext, Route, SseResponse, Version, VersioningType } from '@fluojs/http';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
 import { createWebRuntimeHttpAdapterPortabilityHarness } from '@fluojs/testing/web-runtime-adapter-portability';
@@ -913,6 +913,47 @@ describe('@fluojs/platform-bun', () => {
       await expect(postResponse?.json()).resolves.toEqual({ id: 'write', method: 'POST' });
     } finally {
       await adapter.close();
+    }
+  });
+
+  it('keeps custom methods on Bun fetch fallback without native route registration', async () => {
+    const mockBun = installMockBun();
+
+    @Controller('/custom-fallback')
+    class CustomFallbackController {
+      @Query('/query')
+      query(_input: undefined, context: RequestContext) {
+        return { method: context.request.method, route: 'query' };
+      }
+
+      @Route('PURGE', '/purge')
+      purge(_input: undefined, context: RequestContext) {
+        return { method: context.request.method, route: 'purge' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [CustomFallbackController] });
+
+    const app = await runBunApplication(AppModule, {
+      hostname: '127.0.0.1',
+      port: 4328,
+    });
+
+    try {
+      expect(mockBun.lastOptions?.routes).toBeUndefined();
+
+      const [queryResponse, purgeResponse] = await Promise.all([
+        mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4328/custom-fallback/query', { method: 'QUERY' })),
+        mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4328/custom-fallback/purge', { method: 'PURGE' })),
+      ]);
+
+      expect(queryResponse?.status).toBe(200);
+      expect(purgeResponse?.status).toBe(200);
+      await expect(queryResponse?.json()).resolves.toEqual({ method: 'QUERY', route: 'query' });
+      await expect(purgeResponse?.json()).resolves.toEqual({ method: 'PURGE', route: 'purge' });
+    } finally {
+      await app.close();
     }
   });
 

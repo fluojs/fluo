@@ -199,11 +199,21 @@ describe('runtime matrix docs contract', () => {
     ]);
   });
 
-  it('keeps book setup prerequisites aligned to the Node.js 20 baseline', () => {
-    expect(read('book/beginner/ch02-cli-setup.md')).toContain('Node.js 20 or later');
-    expect(read('book/beginner/ch02-cli-setup.ko.md')).toContain('Node.js 20 이상');
-    expect(read('book/advanced/ch17-contributing.md')).toContain('Node.js 20 or later');
-    expect(read('book/advanced/ch17-contributing.ko.md')).toContain('Node.js 20 이상');
+  it('keeps book setup prerequisites aligned to the Node.js listener baseline', () => {
+    const nodeListenerEngine = '>=20.19.3 <21 || >=22.2.0 <27';
+
+    for (const path of [
+      'book/README.md',
+      'book/README.ko.md',
+      'book/beginner/ch02-cli-setup.md',
+      'book/beginner/ch02-cli-setup.ko.md',
+      'book/beginner/ch20-testing.md',
+      'book/beginner/ch20-testing.ko.md',
+      'book/advanced/ch17-contributing.md',
+      'book/advanced/ch17-contributing.ko.md',
+    ]) {
+      expect(read(path)).toContain(nodeListenerEngine);
+    }
   });
 
   it('keeps contract matrix and example docs aligned to the published starter split', () => {

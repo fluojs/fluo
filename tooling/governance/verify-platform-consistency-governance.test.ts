@@ -18,6 +18,7 @@ import {
   enforceCloudflareWorkersLifecycleDocsSync,
   enforceExpressRuntimeMigrationDocsSync,
   enforceGraphqlRuntimeBoundaryDiscoverability,
+  enforceHttpCustomMethodContract,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
   enforcePassportJsBridgeNestjsMigration,
@@ -28,6 +29,7 @@ import {
   enforceReactPageMetadataIdentityContract,
   enforceReactServerFunctionContract,
   isGovernedPackageSourcePath,
+  isSupportedNodeListenerVersion,
   parsePackageNamesFromFamilyTable,
 } from './verify-platform-consistency-governance.mjs';
 
@@ -35,6 +37,7 @@ type GitResult = { status: number; stdout: string };
 type RunCommand = (command: string, args: string[], options?: { allowFailure?: boolean }) => GitResult;
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const nodeListenerEngineRange = '>=20.19.3 <21 || >=22.2.0 <27';
 const removedRuntimeModuleFactoryNames = [
   'createMicroservicesModule',
   'createCqrsModule',
@@ -190,6 +193,22 @@ describe('enforcePassportJsBridgeNestjsMigration', () => {
 
     // Then
     expect(mainCallsPassportGuard).toBe(true);
+  });
+});
+
+describe('enforceHttpCustomMethodContract', () => {
+  it('keeps custom method authoring, adapter fallback, and portability evidence synchronized', () => {
+    expect(() => enforceHttpCustomMethodContract()).not.toThrow();
+  });
+
+  it('admits only the verified even-major Node listener ranges', () => {
+    for (const version of ['20.19.3', '20.20.0', '22.2.0', '22.21.0', '23.0.0', '24.0.0', '25.0.0', '26.0.0']) {
+      expect(isSupportedNodeListenerVersion(version)).toBe(true);
+    }
+
+    for (const version of ['20.19.2', '21.7.3', '22.0.0', '22.1.0', '27.0.0']) {
+      expect(isSupportedNodeListenerVersion(version)).toBe(false);
+    }
   });
 });
 
@@ -1258,13 +1277,11 @@ describe('repository governance contracts', () => {
     const fastifyReadmeKo = readFileSync(resolve(repoRoot, 'packages/platform-fastify/README.ko.md'), 'utf8');
 
     for (const source of [docsContext, packageSurface, packageChooser, beginnerIntro, beginnerCliSetup, beginnerProduction, fastifyReadme]) {
-      expect(source).toContain('Node.js 20');
-      expect(source).toContain('engines.node >=20.0.0');
+      expect(source).toContain(nodeListenerEngineRange);
     }
 
     for (const source of [docsContextKo, packageSurfaceKo, packageChooserKo, beginnerIntroKo, beginnerCliSetupKo, beginnerProductionKo, fastifyReadmeKo]) {
-      expect(source).toContain('Node.js 20');
-      expect(source).toContain('engines.node >=20.0.0');
+      expect(source).toContain(nodeListenerEngineRange);
     }
 
     for (const source of [docsContext, packageSurface, packageChooser, beginnerCliSetup, beginnerProduction, fastifyReadme]) {
@@ -2134,12 +2151,12 @@ describe('GraphQL runtime boundary discoverability', () => {
     const koreanFinalChapter = readFileSync(join(repoRoot, 'book/intermediate/ch25-final.ko.md'), 'utf8');
 
     for (const content of [englishReadme, englishContext, englishChapter]) {
-      expect(content).toContain('Node.js `>=20.16.0`');
+      expect(content).toContain(`Node.js \`${nodeListenerEngineRange}\``);
       expect(content).toContain('Bun');
       expect(content).toContain('Deno');
     }
     for (const content of [koreanReadme, koreanContext, koreanChapter]) {
-      expect(content).toContain('Node.js `>=20.16.0`');
+      expect(content).toContain(`Node.js \`${nodeListenerEngineRange}\``);
       expect(content).toContain('Bun');
       expect(content).toContain('Deno');
     }

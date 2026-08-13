@@ -21,7 +21,7 @@ fluo 런타임을 위한 Express 기반 HTTP 어댑터 패키지입니다.
 npm install @fluojs/platform-express express
 ```
 
-`@fluojs/platform-express`는 Node.js 20 이상이 필요합니다. Package manifest는 `engines.node >=20.0.0`을 선언하므로 deployment host가 Bun, Deno, Cloudflare Workers라면 fetch-style adapter를 선택하세요.
+`@fluojs/platform-express`는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`이 필요합니다. Listener-level RFC `QUERY` 요청이 Express와 fluo dispatch에 도달하도록 package manifest는 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상은 제외됩니다. Deployment host가 Bun, Deno, Cloudflare Workers라면 fetch-style adapter를 선택하세요.
 
 ## 사용 시점
 
@@ -133,6 +133,8 @@ Native stack은 adapter 생성 시 고정됩니다. Adapter는 Node HTTP/S liste
 ### Startup Retry와 Shutdown
 `listen()`은 adapter가 열린 상태인 동안에만 `retryDelayMs` 및 `retryLimit`에 따라 `EADDRINUSE`를 재시도합니다. 동시에 호출된 `listen()`은 서로 겹치는 retry loop를 시작하지 않고 첫 호출자의 in-flight startup lifecycle과 dispatcher를 공유합니다. Startup이 retry loop에서 대기 중일 때 `close()`가 호출되면, underlying Node server가 아직 listening 상태에 도달하지 않았더라도 adapter는 공유 listen attempt를 abort하고 그 작업이 settle될 때까지 기다린 뒤 `close()`를 완료합니다. `close()` 진행 중 호출된 `listen()`은 reject되며 `close()`가 resolve된 뒤 다시 시도할 수 있습니다. `close()`가 resolve된 뒤 막혀 있던 port를 해제해도 adapter가 나중에 bind되지 않으며, 다시 시작하려면 호출자가 명시적으로 `listen()`을 다시 호출해야 합니다.
 
+같은 adapter instance를 close 후 다시 listen하면 traffic을 받기 전에 native route descriptor registry를 새 dispatcher에서 갱신합니다. 유지된 Express Router layer는 현재 descriptor만 resolve하고 그 밖의 경우 full dispatcher matching으로 fallback하므로 native handoff metadata가 이전 application graph를 가리키지 않습니다.
+
 ## 어댑터 계약
 
 - **공유 dispatcher 소유권 유지**: Native Express Router 매치 이후에도 실제 요청은 공유 fluo dispatcher가 처리하므로 middleware, guards, interceptors, observers, params, error envelope 계약은 그대로 유지됩니다.
@@ -145,7 +147,7 @@ Native stack은 adapter 생성 시 고정됩니다. Adapter는 Node HTTP/S liste
 - **버저닝 parity**: Express Router가 최초 path match를 하더라도 header/media-type/custom version 선택은 계속 dispatcher가 최종 결정합니다.
 - **Middleware rewrite parity**: App middleware가 method/path를 rewrite하면 native handoff는 무효화되고 rewrite된 요청을 기준으로 다시 매칭합니다.
 - **응답 serialization parity**: String response는 기본적으로 `text/plain`, object/array는 JSON, binary payload는 `application/octet-stream`으로 serialize되며 `set-cookie` 값은 병합됩니다.
-- **Startup과 shutdown**: 어댑터는 HTTP/HTTPS startup, adapter가 열린 상태에서 `retryLimit` 소진 전까지 retry option에 따른 `EADDRINUSE` 재시도, 동시 startup 호출자의 단일 in-flight listen lifecycle 및 dispatcher 재사용, `close()` 중 해당 공유 retry loop를 abort 및 join한 뒤 shutdown 완료 보고, close 진행 중 `listen()` reject, 이미 시작된 adapter에 대한 중복 `listen()` 호출의 idempotent 처리와 live dispatcher 보존, 정상 close 시 idle keep-alive socket drain, 동시에 들어온 `close()` 호출의 단일 in-flight close lifecycle 재사용, shutdown timeout 이후 force-close를 지원하며, `shutdownTimeoutMs`가 `0`이면 즉시 force-close합니다.
+- **Startup과 shutdown**: 어댑터는 HTTP/HTTPS startup, adapter가 열린 상태에서 `retryLimit` 소진 전까지 retry option에 따른 `EADDRINUSE` 재시도, 동시 startup 호출자의 단일 in-flight listen lifecycle 및 dispatcher 재사용, `close()` 중 해당 공유 retry loop를 abort 및 join한 뒤 shutdown 완료 보고, close 진행 중 `listen()` reject, 이미 시작된 adapter에 대한 중복 `listen()` 호출의 idempotent 처리와 live dispatcher 보존, close 후 adapter를 다시 listen할 때 native route descriptor 갱신, 정상 close 시 idle keep-alive socket drain, 동시에 들어온 `close()` 호출의 단일 in-flight close lifecycle 재사용, shutdown timeout 이후 force-close를 지원하며, `shutdownTimeoutMs`가 `0`이면 즉시 force-close합니다.
 
 ## 공개 API 개요
 
@@ -173,4 +175,4 @@ Native stack은 adapter 생성 시 고정됩니다. Adapter는 Node HTTP/S liste
 ## 예제 소스
 
 - `packages/platform-express/src/adapter.test.ts`
-- 이 패키지는 아직 전용 `examples/platform-express` 앱을 제공하지 않습니다. Express bootstrap 형태는 이 README의 빠른 시작 및 native middleware scenario를 사용하고, native middleware ordering/termination/error propagation, SSE framing, native-route fallback parity, duplicate listen idempotency, retry exhaustion, shutdown 중 startup retry cancellation, idle keep-alive drain, forced shutdown을 포함한 실행 가능한 Express adapter coverage는 `packages/platform-express/src/adapter.test.ts`를 사용하세요. `examples/minimal/src/main.ts`는 Fastify 기반이므로 Express 예제 소스로 취급하지 않아야 합니다.
+- 이 패키지는 아직 전용 `examples/platform-express` 앱을 제공하지 않습니다. Express bootstrap 형태는 이 README의 빠른 시작 및 native middleware scenario를 사용하고, native middleware ordering/termination/error propagation, SSE framing, native-route fallback parity, close/relisten 후 native descriptor 갱신, duplicate listen idempotency, retry exhaustion, shutdown 중 startup retry cancellation, idle keep-alive drain, forced shutdown을 포함한 실행 가능한 Express adapter coverage는 `packages/platform-express/src/adapter.test.ts`를 사용하세요. `examples/minimal/src/main.ts`는 Fastify 기반이므로 Express 예제 소스로 취급하지 않아야 합니다.

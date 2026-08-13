@@ -28,7 +28,7 @@ npm install @fluojs/platform-fastify
 
 ## 런타임 요구 사항
 
-`@fluojs/platform-fastify`는 Node.js HTTP adapter이며 `engines.node >=20.0.0`을 선언합니다. 이 패키지가 HTTP 서버를 소유하는 로컬 개발, CI, 컨테이너, 프로덕션 호스트는 Node.js 20 이상에서 실행해야 합니다. 비 Node 런타임에서는 이 Node 전용 adapter를 import하지 말고 `@fluojs/platform-bun`, `@fluojs/platform-deno`, 또는 `@fluojs/platform-cloudflare-workers`를 사용하세요.
+`@fluojs/platform-fastify`는 Node.js HTTP adapter이며 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. Listener-level RFC `QUERY` 요청이 Fastify wildcard fallback과 fluo dispatch에 도달하도록 이 패키지가 HTTP 서버를 소유하는 로컬 개발, CI, 컨테이너, 프로덕션 호스트는 이 정확한 범위의 Node.js에서 실행해야 합니다. Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상은 제외됩니다. 비 Node 런타임에서는 이 Node 전용 adapter를 import하지 말고 `@fluojs/platform-bun`, `@fluojs/platform-deno`, 또는 `@fluojs/platform-cloudflare-workers`를 사용하세요.
 
 어댑터는 Fastify 기반 Node `http` 또는 `https` listener를 소유합니다. 포트, 인증서 material, hostname 같은 process-specific value는 애플리케이션 경계에 두고, 최종 option만 adapter에 명시적으로 전달하세요.
 
@@ -170,6 +170,8 @@ fluo 라우트 메타데이터를 Fastify 경로로 그대로 옮길 수 있는 
 
 여러 라우트가 같은 method와 정규화된 param shape를 공유하는 경우(예: `/:id` 와 `/:slug`), `@All(...)`을 사용하는 경우, non-URI versioning에 의존하는 경우, 또는 duplicate slash / trailing slash 변형으로 들어온 경우에는 어댑터가 해당 요청을 의도적으로 와일드카드 fallback 경로에 남겨 둡니다. 이렇게 해서 Fastify 등록 단계에서 부팅 실패가 나거나 fluo의 등록 순서 기반 매칭 의미론이 좁아지지 않도록 보장합니다. app middleware가 native handoff 이후 framework request의 method 또는 path를 rewrite하면 dispatcher는 stale handoff를 무시하고 rewrite된 요청을 다시 매칭합니다.
 
+`QUERY`, `PURGE` 같은 검증된 custom method도 native fluo route handoff를 받지 않고 wildcard fallback dispatch에 남습니다. Fastify wildcard route가 요청을 받으려면 method 이름을 미리 알아야 하므로 adapter는 descriptor의 custom method를 body-bearing Fastify method로 등록하되 route selection은 계속 fluo에 맡깁니다. `ALL`은 wire method로 등록하지 않으며 `CONNECT`는 일반 controller routing conformance 범위 밖에 유지됩니다.
+
 어댑터는 매칭되지 않은 경로와 이식성에 민감한 경우, 그리고 공유 body/materialization 경로를 보존해야 하는 multipart request를 위해 와일드카드 fallback 라우트를 계속 유지하며, Fastify의 trailing slash / duplicate slash 정규화를 켜서 네이티브 선택 경로도 fluo의 문서화된 route path 계약과 맞추어 동작하도록 합니다. CORS 처리는 Fastify 플러그인이 아니라 fluo의 공유 middleware 경로가 계속 소유하고, `OPTIONS` 같은 미지원 메서드는 fluo route가 명시적으로 소유하지 않는 한 fallback dispatcher 경로로 흐릅니다.
 
 동시에 호출된 `listen()`은 하나의 startup promise를 공유하고 첫 번째 호출의 dispatcher를 유지합니다. Startup 이후 반복되는 `listen()` 호출은 live listener와 dispatcher를 변경하지 않는 no-op입니다. `close()`가 진행 중일 때 호출된 `listen()`은 shutdown이 settle될 때까지 기다린 뒤 새 listener를 시작하며, 해당 listener가 준비된 후에만 resolve됩니다. 바쁜 port 때문에 startup retry 중인 상태에서 `close()`를 호출하면 retry loop를 취소하고 해당 작업이 settle될 때까지 기다린 뒤 shutdown 완료를 보고하므로, caller가 shutdown이 끝났다고 믿은 뒤 닫힌 adapter가 나중에 bind되는 일이 없습니다. Adapter instance를 close 이후 다시 listen하면 native route handler가 traffic을 처리하기 전에 dispatcher descriptor를 새로 반영하므로 request handoff metadata가 이전 application graph를 가리키지 않습니다.
@@ -187,7 +189,7 @@ fluo의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 어
 
 ## 적합성 커버리지
 
-`packages/platform-fastify/src/adapter.test.ts`는 문서화된 Fastify 어댑터 계약을 위한 package-local regression target입니다. 이 파일은 공유 `createHttpAdapterPortabilityHarness(...)` 검사를 실행하여 malformed cookie 보존, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body 제외, multipart total-size 기본값, SSE framing, response stream drain settlement, host 및 HTTPS startup logging, shutdown signal listener cleanup을 확인합니다.
+`packages/platform-fastify/src/adapter.test.ts`는 문서화된 Fastify 어댑터 계약을 위한 package-local regression target입니다. 이 파일은 공유 `createHttpAdapterPortabilityHarness(...)` 검사를 실행하여 custom `QUERY`/extension-method fallback, malformed cookie 보존, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body 제외, multipart total-size 기본값, SSE framing, response stream drain settlement, host 및 HTTPS startup logging, shutdown signal listener cleanup을 확인합니다.
 
 같은 파일은 Fastify 전용 native route registration과 wildcard fallback, duplicate shape route fallback, concurrent/repeated `listen()` idempotency, shutdown 중 startup retry cancellation, adapter reuse 시 native descriptor refresh, explicit `OPTIONS` route ownership, middleware/guard/interceptor/observer ordering, CORS ownership, global prefix behavior, malformed cookie preservation, response serialization parity, raw-body pre-parsing behavior, zero-valued body/shutdown limit, 기반 Fastify close를 계속 in-flight 상태로 두는 close 대기 timeout, 대소문자 구분 없는 multipart detection, multipart limit handling도 함께 다룹니다. startup, routing, adapter portability behavior를 변경할 때는 README 예제 포인터를 이 테스트 파일 및 custom adapter book chapter와 맞추어 유지하세요.
 
@@ -207,7 +209,7 @@ fluo의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 어
 - **로깅 (Logging)**: 로그 스트림 중복을 방지하기 위해 Fastify의 네이티브 로거가 비활성화됩니다. `runFastifyApplication`과 `bootstrapFastifyApplication`은 framework console logger를 기본으로 선택하며, host나 test가 주입된 `ApplicationLogger`를 사용해야 할 때 `logger`를 받습니다.
 - **글로벌 접두사 (Global Prefix)**: 내부 경로 또는 헬스 체크 엔드포인트에 접두사가 붙지 않도록 `globalPrefixExclude`를 적절히 설정하세요.
 - **Malformed Cookie**: 잘못된 cookie header는 request 실패로 이어지지 않고 보존됩니다.
-- **HTTPS 시작**: Fastify 프로세스가 TLS를 소유한다면 Node.js 20 이상에서 adapter `https` option 아래에 certificate material을 전달하세요. Infrastructure가 TLS를 종료한다면 해당 경계 뒤에서 adapter를 일반 HTTP로 유지하세요.
+- **HTTPS 시작**: Fastify 프로세스가 TLS를 소유한다면 Node.js `>=20.19.3 <21 || >=22.2.0 <27`에서 adapter `https` option 아래에 certificate material을 전달하세요. Infrastructure가 TLS를 종료한다면 해당 경계 뒤에서 adapter를 일반 HTTP로 유지하세요.
 
 ## 관련 패키지
 

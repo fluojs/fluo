@@ -305,7 +305,9 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
       this.app.addHook('preParsing', captureRawBodyPreParsingHook);
     }
 
-    this.registerNativeRoutes(resolveDispatcherRouteDescriptors(dispatcher));
+    const descriptors = resolveDispatcherRouteDescriptors(dispatcher);
+    this.registerCustomHttpMethods(descriptors);
+    this.registerNativeRoutes(descriptors);
     this.registerWildcardFallbackRoute();
 
     this.pluginsReady = true;
@@ -337,6 +339,17 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
         method: route.method,
         url: route.path,
       });
+    }
+  }
+
+  private registerCustomHttpMethods(descriptors: readonly HandlerDescriptor[]): void {
+    for (const descriptor of descriptors) {
+      const method = descriptor.route.method;
+      if (method === 'ALL' || method === 'CONNECT' || this.app.supportedMethods.includes(method)) {
+        continue;
+      }
+
+      this.app.addHttpMethod(method, { hasBody: true });
     }
   }
 
