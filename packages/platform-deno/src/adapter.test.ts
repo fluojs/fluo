@@ -1011,8 +1011,10 @@ describe('@fluojs/platform-deno', () => {
     await closePromise;
   });
 
-  it('aborts the Deno serve signal when graceful shutdown rejects', async () => {
+  it('retains the Deno server until termination after graceful shutdown rejects', async () => {
+    // Given: graceful shutdown fails before the server termination lifecycle settles.
     const shutdownError = new Error('shutdown failed');
+    const finishedDeferred = createDeferred<void>();
     let serveSignal: AbortSignal | undefined;
     const adapter = new DenoHttpApplicationAdapter({
       hostname: '0.0.0.0',
@@ -1021,7 +1023,7 @@ describe('@fluojs/platform-deno', () => {
         serveSignal = options.signal;
 
         return {
-          finished: Promise.resolve(),
+          finished: finishedDeferred.promise,
           shutdown: vi.fn(async () => {
             throw shutdownError;
           }),
@@ -1035,8 +1037,24 @@ describe('@fluojs/platform-deno', () => {
       },
     });
 
-    await expect(adapter.close()).rejects.toBe(shutdownError);
-    expect(serveSignal?.aborted).toBe(true);
+    const server = adapter.getServer();
+    let closeSettled = false;
+
+    // When: close aborts ingress while server.finished is still pending.
+    const closeResult = adapter.close().catch((error: unknown) => error).finally(() => {
+      closeSettled = true;
+    });
+
+    // Then: the adapter retains ownership until termination, then reports the original failure.
+    await vi.waitFor(() => {
+      expect(serveSignal?.aborted).toBe(true);
+    });
+
+    expect(closeSettled).toBe(false);
+    expect(adapter.getServer()).toBe(server);
+
+    finishedDeferred.resolve();
+    await expect(closeResult).resolves.toBe(shutdownError);
     expect(adapter.getServer()).toBeUndefined();
   });
 
