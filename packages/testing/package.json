@@ -18,7 +18,7 @@
     "directory": "packages/testing"
   },
   "engines": {
-    "node": ">=20.19.3"
+    "node": ">=20.19.3 <21 || >=22.2.0 <27"
   },
   "publishConfig": {
     "access": "public"
