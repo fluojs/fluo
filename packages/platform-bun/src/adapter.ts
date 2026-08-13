@@ -41,7 +41,7 @@ type BunRouteHandler = (
   request: BunRequestLike,
   server: BunServerLike,
 ) => Response | Promise<Response> | undefined | Promise<Response | undefined>;
-type BunRouteMethod = Exclude<HttpMethod, 'ALL'>;
+type BunRouteMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD';
 type BunRouteMethodMap = Partial<Record<BunRouteMethod, BunRouteHandler | Response>>;
 type BunRouteValue = BunRouteHandler | Response | BunRouteMethodMap;
 
@@ -845,7 +845,18 @@ function collectVersionSensitiveRouteKeys(descriptors: readonly HandlerDescripto
 }
 
 function toBunRouteMethod(method: HttpMethod): BunRouteMethod | undefined {
-  return method === 'ALL' ? undefined : method;
+  switch (method) {
+    case 'GET':
+    case 'POST':
+    case 'PUT':
+    case 'PATCH':
+    case 'DELETE':
+    case 'OPTIONS':
+    case 'HEAD':
+      return method;
+    default:
+      return undefined;
+  }
 }
 
 function closeBunServerWithDrain(
