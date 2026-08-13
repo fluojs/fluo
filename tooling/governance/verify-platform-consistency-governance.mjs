@@ -2391,6 +2391,66 @@ export function enforceHttpCatchAllRouteGrammarDecision() {
   );
 }
 
+export function enforceHttpCustomMethodContract() {
+  const documentationPaths = [
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'docs/architecture/http-runtime.md',
+    'docs/architecture/http-runtime.ko.md',
+    'packages/http/README.md',
+    'packages/http/README.ko.md',
+    'book/beginner/ch05-routing-controllers.md',
+    'book/beginner/ch05-routing-controllers.ko.md',
+  ];
+
+  for (const documentationPath of documentationPaths) {
+    const documentation = read(documentationPath);
+    assert(
+      documentation.includes('QUERY') &&
+        documentation.includes('Route') &&
+        documentation.includes('ALL') &&
+        documentation.includes('CONNECT') &&
+        documentation.includes('OpenAPI'),
+      `${documentationPath} must keep custom HTTP method authoring, wildcard, CONNECT, and OpenAPI boundaries discoverable.`,
+    );
+  }
+
+  const decorators = read('packages/http/src/decorators.ts');
+  const mappingRegression = read('packages/http/src/mapping.test.ts');
+  const dispatcherRegression = read('packages/http/src/dispatch/custom-route-methods.test.ts');
+  const networkHarness = read('packages/testing/src/portability/http-adapter-portability.ts');
+  const webHarness = read('packages/testing/src/portability/web-runtime-adapter-portability.ts');
+  const fastifyAdapter = read('packages/platform-fastify/src/adapter.ts');
+  const bunAdapter = read('packages/platform-bun/src/adapter.ts');
+
+  assert(
+    decorators.includes('normalizeHttpRouteMethod') &&
+      decorators.includes("normalized === 'ALL'") &&
+      decorators.includes("Route('QUERY', path)"),
+    'HTTP decorators must validate custom method tokens, reserve ALL, and build Query on Route.',
+  );
+  assert(
+    mappingRegression.includes('preserves custom method version selection, exact precedence, and ALL fallback') &&
+      dispatcherRegression.includes('default 200 semantics') &&
+      dispatcherRegression.includes('canonical validation errors'),
+    'HTTP regressions must cover custom-method precedence, versioning, DTO validation, and default status.',
+  );
+  assert(
+    networkHarness.includes('assertSupportsCustomHttpRouteMethods') &&
+      webHarness.includes('assertSupportsCustomHttpRouteMethods') &&
+      networkHarness.includes("['QUERY', 'PURGE']") &&
+      webHarness.includes("['QUERY', 'PURGE']"),
+    'HTTP portability harnesses must execute QUERY and a representative extension method.',
+  );
+  assert(
+    fastifyAdapter.includes("method === 'CONNECT'") &&
+      fastifyAdapter.includes('this.app.addHttpMethod(method, { hasBody: true })') &&
+      bunAdapter.includes("case 'HEAD':") &&
+      bunAdapter.includes('return undefined;'),
+    'Fastify and Bun adapters must preserve the documented custom-method fallback boundary.',
+  );
+}
+
 export function enforceOpenApiNullableNormalizationContract() {
   const documentationPaths = [
     'apps/docs/content/docs/guides/http-api.mdx',
@@ -2581,6 +2641,7 @@ export function main() {
   enforceReactRscGraduationGovernance(changedFiles);
   enforceReactServerFunctionContract();
   enforceHttpRuntimeCancellationAndContextIsolation();
+  enforceHttpCustomMethodContract();
   enforceHttpCatchAllRouteGrammarDecision();
   enforceOpenApiNullableNormalizationContract();
   enforceGraphqlRuntimeBoundaryDiscoverability();

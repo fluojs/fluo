@@ -43,6 +43,7 @@ export function enforceReactRscGraduationPolicy(readText?: (relativePath: string
 export function enforceReactServerFunctionContract(): void;
 export function enforceHttpRuntimeCancellationAndContextIsolation(): void;
 export function enforceHttpCatchAllRouteGrammarDecision(): void;
+export function enforceHttpCustomMethodContract(): void;
 export function enforceCloudflareWorkersLifecycleDocsSync(
   readText?: (relativePath: string) => string,
 ): void;

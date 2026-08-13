@@ -9,6 +9,7 @@ import {
   enforceCloudflareWorkersLifecycleDocsSync,
   enforceExpressRuntimeMigrationDocsSync,
   enforceGraphqlRuntimeBoundaryDiscoverability,
+  enforceHttpCustomMethodContract,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
   enforcePlatformShellLifecycleContract,
@@ -145,6 +146,12 @@ describe('enforceReactPageMetadataIdentityContract', () => {
 describe('enforcePlatformShellLifecycleContract', () => {
   it('keeps strict lifecycle conflicts synchronized across bilingual public contracts', () => {
     expect(() => enforcePlatformShellLifecycleContract()).not.toThrow();
+  });
+});
+
+describe('enforceHttpCustomMethodContract', () => {
+  it('keeps custom method authoring, adapter fallback, and portability evidence synchronized', () => {
+    expect(() => enforceHttpCustomMethodContract()).not.toThrow();
   });
 });
 
