@@ -245,6 +245,55 @@ const natsCleanupEvidence = [
   ],
 ];
 
+const natsRequestCallbackEvidence = [
+  [
+    'packages/microservices/src/transports/nats-transport.ts',
+    [
+      'private handleRequestMessageSafely(message: NatsMessageLike): void {',
+      'void this.handleRequestMessage(message).catch((error: unknown) => {',
+      'this.logRequestCallbackFailure(error);',
+      'private logRequestCallbackFailure(error: unknown): void {',
+      "logger.error('Request callback failed.', error, 'NatsMicroserviceTransport');",
+      'let response: NatsTransportResponse;',
+      'message.respond(this.encode(response));',
+    ],
+  ],
+  [
+    'packages/microservices/src/transports/nats-transport.request-callback.test.ts',
+    [
+      'contains malformed request frames and reports the decode failure through the transport logger',
+      'contains throwing request responses and reports the response failure through the transport logger',
+      'contains response encoding failures and reports them through the transport logger',
+      'contains logger-throw regressions when the request callback boundary reports a malformed frame',
+      'does not fall back to console.error when a request callback fails without a logger',
+      'expect(client.closeCalled).toBe(false)',
+    ],
+  ],
+];
+
+const natsRequestCallbackGuidance = [
+  [
+    [
+      'packages/microservices/README.md',
+      'book/intermediate/ch06-nats.md',
+      'docs/CONTEXT.md',
+      'docs/architecture/lifecycle-and-shutdown.md',
+      'docs/reference/package-surface.md',
+    ],
+    ['malformed', '`respond()`', 'transport logger', 'caller-owned NATS client'],
+  ],
+  [
+    [
+      'packages/microservices/README.ko.md',
+      'book/intermediate/ch06-nats.ko.md',
+      'docs/CONTEXT.ko.md',
+      'docs/architecture/lifecycle-and-shutdown.ko.md',
+      'docs/reference/package-surface.ko.md',
+    ],
+    ['malformed', '`respond()`', 'transport logger', 'caller-owned NATS client'],
+  ],
+];
+
 const runtimeEvidence = [
   [
     'packages/microservices/src/types.ts',
@@ -388,6 +437,19 @@ export function enforceMicroservicesSafetyGuidanceParity() {
       `${relativePath} must not overclaim cross-mode gRPC streaming error propagation.`,
     );
   }
+
+  for (const [relativePaths, requiredClaims] of natsRequestCallbackGuidance) {
+    for (const relativePath of relativePaths) {
+      const markdown = read(relativePath);
+
+      for (const requiredClaim of requiredClaims) {
+        assert(
+          markdown.includes(requiredClaim),
+          `${relativePath} must keep the NATS request callback guidance ${requiredClaim}.`,
+        );
+      }
+    }
+  }
 }
 
 export function enforceMicroservicesSafetyRuntimeEvidence() {
@@ -412,6 +474,14 @@ export function enforceMicroservicesSafetyRuntimeEvidence() {
 
     for (const anchor of evidenceAnchors) {
       assert(source.includes(anchor), `${relativePath} must keep the NATS cleanup evidence ${anchor}.`);
+    }
+  }
+
+  for (const [relativePath, evidenceAnchors] of natsRequestCallbackEvidence) {
+    const source = read(relativePath);
+
+    for (const anchor of evidenceAnchors) {
+      assert(source.includes(anchor), `${relativePath} must keep the NATS request callback evidence ${anchor}.`);
     }
   }
 }

@@ -38,6 +38,58 @@ describe('Microservices safety guidance governance', () => {
     }
   });
 
+  it('pins caught NATS request callback failures and caller-owned client evidence', () => {
+    // Given
+    const governanceSource = readFileSync(
+      resolve(repoRoot, 'tooling/governance/microservices-safety-guidance.mjs'),
+      'utf8',
+    );
+
+    // When / Then
+    for (const requiredEvidence of [
+      'private handleRequestMessageSafely(message: NatsMessageLike): void {',
+      'void this.handleRequestMessage(message).catch((error: unknown) => {',
+      'this.logRequestCallbackFailure(error);',
+      'private logRequestCallbackFailure(error: unknown): void {',
+      "logger.error('Request callback failed.', error, 'NatsMicroserviceTransport');",
+      'contains malformed request frames and reports the decode failure through the transport logger',
+      'contains throwing request responses and reports the response failure through the transport logger',
+      'contains response encoding failures and reports them through the transport logger',
+      'contains logger-throw regressions when the request callback boundary reports a malformed frame',
+      'does not fall back to console.error when a request callback fails without a logger',
+      'expect(client.closeCalled).toBe(false)',
+    ]) {
+      expect(governanceSource).toContain(requiredEvidence);
+    }
+  });
+
+  it('keeps NATS request callback failure ownership discoverable in governed companions', () => {
+    // Given
+    const englishPaths = [
+      'packages/microservices/README.md',
+      'book/intermediate/ch06-nats.md',
+      'docs/CONTEXT.md',
+      'docs/architecture/lifecycle-and-shutdown.md',
+      'docs/reference/package-surface.md',
+    ];
+    const koreanPaths = [
+      'packages/microservices/README.ko.md',
+      'book/intermediate/ch06-nats.ko.md',
+      'docs/CONTEXT.ko.md',
+      'docs/architecture/lifecycle-and-shutdown.ko.md',
+      'docs/reference/package-surface.ko.md',
+    ];
+
+    // When / Then
+    for (const relativePath of [...englishPaths, ...koreanPaths]) {
+      const companion = readFileSync(resolve(repoRoot, relativePath), 'utf8');
+      expect(companion).toContain('malformed');
+      expect(companion).toContain('`respond()`');
+      expect(companion).toContain('transport logger');
+      expect(companion).toContain('caller-owned NATS client');
+    }
+  });
+
   it('keeps the gRPC streaming writer example aligned with the non-generic public contract', () => {
     // Given
     const writerContract = readFileSync(
