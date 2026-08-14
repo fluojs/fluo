@@ -1,5 +1,7 @@
 import ts from 'typescript';
 
+import { collectDeclarations, validateJwtAsyncOptions } from './jwt-async-registration-type-surface.mjs';
+
 const coreTypesPath = 'packages/core/src/types.ts';
 const configModulePath = 'packages/config/src/module.ts';
 const jwtModulePath = 'packages/jwt/src/module.ts';
@@ -33,108 +35,6 @@ function propertyName(node) {
     return node.text;
   }
   return node.getText();
-}
-
-function collectDeclarations(sources) {
-  const declarations = new Map();
-  for (const source of sources) {
-    for (const statement of source.statements) {
-      if (!ts.isInterfaceDeclaration(statement) && !ts.isTypeAliasDeclaration(statement)) {
-        continue;
-      }
-      const existing = declarations.get(statement.name.text) ?? [];
-      existing.push(statement);
-      declarations.set(statement.name.text, existing);
-    }
-  }
-  return declarations;
-}
-
-function addMembers(members, surface, relativePath) {
-  for (const member of members) {
-    assert(ts.isPropertySignature(member), relativePath, 'async options must use explicit property signatures only');
-    const name = propertyName(member.name);
-    assert(name !== undefined, relativePath, 'async options must use named properties');
-    const existing = surface.get(name) ?? [];
-    existing.push(member);
-    surface.set(name, existing);
-  }
-}
-
-function collectNamedSurface(name, state) {
-  const namedDeclarations = state.declarations.get(name);
-  assert(namedDeclarations?.length > 0, jwtModulePath, `must resolve async options type ${name}`);
-  for (const declaration of namedDeclarations) {
-    if (state.seen.has(declaration)) {
-      continue;
-    }
-    state.seen.add(declaration);
-    if (ts.isTypeAliasDeclaration(declaration)) {
-      collectTypeSurface(declaration.type, state);
-      continue;
-    }
-    addMembers(declaration.members, state.surface, jwtModulePath);
-    for (const clause of declaration.heritageClauses ?? []) {
-      for (const heritageType of clause.types) {
-        collectNamedSurface(heritageType.expression.getText(), state);
-      }
-    }
-  }
-}
-
-function collectTypeSurface(typeNode, state) {
-  if (ts.isParenthesizedTypeNode(typeNode)) {
-    collectTypeSurface(typeNode.type, state);
-    return;
-  }
-  if (ts.isIntersectionTypeNode(typeNode)) {
-    for (const memberType of typeNode.types) {
-      collectTypeSurface(memberType, state);
-    }
-    return;
-  }
-  if (ts.isTypeLiteralNode(typeNode)) {
-    addMembers(typeNode.members, state.surface, jwtModulePath);
-    return;
-  }
-  assert(ts.isTypeReferenceNode(typeNode), jwtModulePath, 'must use resolvable async options type composition');
-  collectNamedSurface(typeNode.typeName.getText(), state);
-}
-
-function referencesJwtAsyncOptions(typeNode, declarations, seen = new Set()) {
-  if (ts.isParenthesizedTypeNode(typeNode)) {
-    return referencesJwtAsyncOptions(typeNode.type, declarations, seen);
-  }
-  if (ts.isIntersectionTypeNode(typeNode)) {
-    return typeNode.types.some((memberType) => referencesJwtAsyncOptions(memberType, declarations, seen));
-  }
-  if (!ts.isTypeReferenceNode(typeNode)) {
-    return false;
-  }
-  return referencesNamedJwtAsyncOptions(typeNode.typeName.getText(), typeNode.typeArguments, declarations, seen);
-}
-
-function referencesNamedJwtAsyncOptions(name, typeArguments, declarations, seen) {
-  if (name === 'AsyncModuleOptions') {
-    return typeArguments?.[0]?.getText() === 'JwtVerifierOptions';
-  }
-  const namedDeclarations = declarations.get(name) ?? [];
-  return namedDeclarations.some((declaration) => {
-    if (seen.has(declaration)) {
-      return false;
-    }
-    seen.add(declaration);
-    if (ts.isTypeAliasDeclaration(declaration)) {
-      return referencesJwtAsyncOptions(declaration.type, declarations, seen);
-    }
-    return (declaration.heritageClauses ?? []).some((clause) => clause.types.some((heritageType) =>
-      referencesNamedJwtAsyncOptions(
-        heritageType.expression.getText(),
-        heritageType.typeArguments,
-        declarations,
-        seen,
-      )));
-  });
 }
 
 function propertyInitializer(object, name) {
@@ -184,27 +84,7 @@ export function enforceJwtAsyncRegistrationSourceContract(readText) {
   assert(forRootAsync && ts.isMethodDeclaration(forRootAsync), jwtModulePath, 'must declare JwtModule.forRootAsync(...)');
   const optionsType = forRootAsync.parameters[0]?.type;
   assert(optionsType, jwtModulePath, 'must type JwtModule.forRootAsync(...) options');
-  assert(
-    referencesJwtAsyncOptions(optionsType, declarations),
-    jwtModulePath,
-    'must keep useFactory returning final JwtVerifierOptions',
-  );
-
-  const surface = new Map();
-  collectTypeSurface(optionsType, { declarations, seen: new Set(), surface });
-  const optionNames = [...surface.keys()].sort();
-  assert(
-    optionNames.join(',') === 'global,inject,useFactory',
-    jwtModulePath,
-    `async options must contain exactly global, inject, and useFactory; found ${optionNames.join(', ')}`,
-  );
-  const globalMembers = surface.get('global') ?? [];
-  assert(
-    globalMembers.length > 0 && globalMembers.every((member) =>
-      member.questionToken !== undefined && member.type?.kind === ts.SyntaxKind.BooleanKeyword),
-    jwtModulePath,
-    'global must remain an optional top-level boolean',
-  );
+  validateJwtAsyncOptions(optionsType, declarations, assert, jwtModulePath);
 
   const returnStatement = forRootAsync.body?.statements.find(ts.isReturnStatement);
   const createModuleCall = returnStatement?.expression && ts.isCallExpression(returnStatement.expression)

@@ -50,6 +50,42 @@ describe('JWT async registration source contract', () => {
     expect(runGovernanceGuard).toThrow(/exactly global, inject, and useFactory/);
   });
 
+  it.each([
+    [
+      'rejects an inject narrowing in an intersection constituent',
+      (source: string) => source.replace(
+        '{ global?: boolean }',
+        '{ global?: boolean } & { inject?: never }',
+      ),
+    ],
+    [
+      'rejects an inject narrowing inherited by the accepted options type',
+      (source: string) => source
+        .replace(
+          'export class JwtModule {',
+          [
+            'type JwtAsyncOptionsBase = AsyncModuleOptions<JwtVerifierOptions> & { global?: boolean };',
+            'interface JwtAsyncOptions extends JwtAsyncOptionsBase { inject?: never; }',
+            '',
+            'export class JwtModule {',
+          ].join('\n'),
+        )
+        .replace(
+          'options: AsyncModuleOptions<JwtVerifierOptions> & { global?: boolean }',
+          'options: JwtAsyncOptions & AsyncModuleOptions<JwtVerifierOptions>',
+        ),
+    ],
+  ])('%s', (_name, transform) => {
+    // Given
+    const readWithNarrowedInject = withJwtModule(transform);
+
+    // When
+    const runGovernanceGuard = () => enforceJwtAsyncRegistrationSourceContract(readWithNarrowedInject);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(/inject must remain an optional InjectionToken\[\]/);
+  });
+
   it('rejects an unread field inherited by the accepted options type', () => {
     // Given
     const readWithUseExisting = withJwtModule((source) => source
