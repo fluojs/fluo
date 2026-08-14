@@ -1,6 +1,7 @@
 import ts from 'typescript';
 
 const coreTypesPath = 'packages/core/src/types.ts';
+const configModulePath = 'packages/config/src/module.ts';
 const jwtModulePath = 'packages/jwt/src/module.ts';
 
 function fail(relativePath, message) {
@@ -144,6 +145,7 @@ function propertyInitializer(object, name) {
 
 export function enforceJwtAsyncRegistrationSourceContract(readText) {
   const coreTypes = parseSource(coreTypesPath, readText(coreTypesPath));
+  const configModuleSource = parseSource(configModulePath, readText(configModulePath));
   const jwtModuleSource = parseSource(jwtModulePath, readText(jwtModulePath));
   const declarations = collectDeclarations([coreTypes, jwtModuleSource]);
   const asyncOptions = declarations.get('AsyncModuleOptions')?.find(ts.isInterfaceDeclaration);
@@ -153,6 +155,26 @@ export function enforceJwtAsyncRegistrationSourceContract(readText) {
     useFactoryMember?.type?.getText().includes('MaybePromise<T>'),
     coreTypesPath,
     'must keep useFactory responsible for returning the final typed module options',
+  );
+
+  const configModule = configModuleSource.statements.find((statement) =>
+    ts.isClassDeclaration(statement) && statement.name?.text === 'ConfigModule');
+  const configForRoot = configModule?.members.find((member) =>
+    ts.isMethodDeclaration(member) && propertyName(member.name) === 'forRoot');
+  const configMetadataStatement = configForRoot?.body?.statements.find((statement) =>
+    ts.isExpressionStatement(statement)
+    && ts.isCallExpression(statement.expression)
+    && statement.expression.expression.getText() === 'defineModuleMetadata');
+  const configMetadata = configMetadataStatement && ts.isExpressionStatement(configMetadataStatement)
+    && ts.isCallExpression(configMetadataStatement.expression)
+    ? configMetadataStatement.expression.arguments[1]
+    : undefined;
+  assert(
+    configMetadata && ts.isObjectLiteralExpression(configMetadata)
+      && propertyInitializer(configMetadata, 'global')?.getText() === 'loadOptions.global ?? true'
+      && propertyInitializer(configMetadata, 'exports')?.getText().includes('ConfigService'),
+    configModulePath,
+    'must export ConfigService globally by default for async module factories',
   );
 
   const jwtModule = jwtModuleSource.statements.find((statement) =>

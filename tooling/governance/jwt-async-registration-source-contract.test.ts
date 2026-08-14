@@ -6,17 +6,36 @@ import { describe, expect, it } from 'vitest';
 import { enforceJwtAsyncRegistrationSourceContract } from './jwt-async-registration-source-contract.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const configModulePath = 'packages/config/src/module.ts';
 const jwtModulePath = 'packages/jwt/src/module.ts';
 
 function read(relativePath: string): string {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
 }
 
+function withSource(relativePath: string, transform: (source: string) => string): (path: string) => string {
+  return (path) => path === relativePath ? transform(read(path)) : read(path);
+}
+
 function withJwtModule(transform: (source: string) => string): (relativePath: string) => string {
-  return (relativePath) => relativePath === jwtModulePath ? transform(read(relativePath)) : read(relativePath);
+  return withSource(jwtModulePath, transform);
 }
 
 describe('JWT async registration source contract', () => {
+  it('requires ConfigService to remain globally exported for async JWT factories', () => {
+    // Given
+    const readWithoutConfigGlobal = withSource(configModulePath, (source) => source.replace(
+      'global: loadOptions.global ?? true,',
+      'global: false,',
+    ));
+
+    // When
+    const runGovernanceGuard = () => enforceJwtAsyncRegistrationSourceContract(readWithoutConfigGlobal);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(/must export ConfigService globally by default/);
+  });
+
   it('rejects an unread field accepted through the top-level intersection', () => {
     // Given
     const readWithImports = withJwtModule((source) => source.replace(
