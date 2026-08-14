@@ -84,6 +84,8 @@ export class AuthModule {}
 ### Dynamic Registration with ConfigService
 A hardcoded example quickly shows the shape of the configuration, but it must not become the production approach. In production, never hardcode secret keys. Instead, use the `ConfigService` you learned about in Chapter 11.
 
+The example assumes the application root has already registered `ConfigModule.forRoot(...)`, so `ConfigService` is available in the application module graph before `JwtModule` resolves its injected factory.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { JwtModule } from '@fluojs/jwt';
@@ -107,6 +109,8 @@ import { ConfigService } from '@fluojs/config';
 })
 export class AuthModule {}
 ```
+
+The supported contract is `JwtModule.forRootAsync({ inject, useFactory })`: dependencies named by `inject` must already be registered in the application module graph before the JWT options provider resolves, and `useFactory` returns the final JWT options. `JwtModule.forRootAsync(...)` does not accept NestJS dynamic-module `imports`, `useClass`, or `useExisting`; those fields are outside its options shape, not accepted-and-ignored compatibility fields. `JwtModule.forRootAsync(...)` performs no implicit module or provider discovery.
 
 ### Advanced Configuration Options
 Beyond a simple secret key, `JwtModule` supports explicit configuration for algorithms, issuer, audience, clock skew, key material, JWKS lookup, and token lifetimes. Always provide at least one supported algorithm, and keep `accessTokenTtlSeconds` as a positive finite number so misconfiguration fails before a token is issued.
