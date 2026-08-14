@@ -67,10 +67,16 @@ describe('Passport.js bridge unsupported propositions', () => {
     'The bridge provides a way for hosts to manage sessions.',
     'The bridge supports applications where Passport middleware is installed by the host.',
     'The bridge supports applications where Passport sessions are managed by the application.',
+    'The bridge supports applications where Passport middleware is installed by applications.',
+    'The bridge supports an application where Passport middleware is installed by an application.',
+    'The bridge supports hosts where sessions are managed by hosts.',
+    'The bridge supports a host where sessions are managed by a host.',
     '브리지는 Passport 미들웨어를 설치하는 애플리케이션을 지원합니다.',
     '브리지는 호스트가 세션을 관리할 수 있는 방법을 제공합니다.',
     '브리지는 호스트에 의해 Passport 미들웨어가 설치되는 애플리케이션을 지원합니다.',
     '브리지는 애플리케이션에서 세션이 관리되는 구성을 지원합니다.',
+    '브리지는 애플리케이션들에 의해 Passport 미들웨어가 설치되는 애플리케이션을 지원합니다.',
+    '브리지는 호스트들에 의해 세션이 관리되는 호스트 구성을 지원합니다.',
   ] as const)('accepts external-actor ownership guidance: %s', (guidance) => {
     // Given / When
     const detectedClaims = collectUnsupportedPassportBridgeClaims(guidance);
@@ -82,8 +88,12 @@ describe('Passport.js bridge unsupported propositions', () => {
   it.each([
     ['middleware-installation', 'The bridge installs application-owned Passport middleware.'],
     ['session-ownership', 'The bridge manages application-owned Passport sessions.'],
+    ['session-ownership', 'The bridge manages sessions that are configured by the application.'],
+    ['middleware-installation', 'The bridge installs middleware that is managed by the host.'],
     ['middleware-installation-ko', '브리지는 애플리케이션 소유의 Passport 미들웨어를 설치합니다.'],
     ['session-ownership-ko', '브리지는 애플리케이션 소유의 Passport 세션을 관리합니다.'],
+    ['session-ownership-ko', '브리지는 애플리케이션에 의해 구성되는 세션을 관리합니다.'],
+    ['middleware-installation-ko', '브리지는 호스트에 의해 관리되는 미들웨어를 설치합니다.'],
   ] as const)('rejects bridge-owned action despite external ownership wording: %s', (claimName, claim) => {
     // Given / When
     const detectedClaims = collectUnsupportedPassportBridgeClaims(claim);

@@ -47,7 +47,8 @@ const bridgeActorPattern = /\bbridge\b|브리지/u;
 const bridgeSubjectPattern = /^(?:the\s+)?bridge\b|^(?:이\s+)?(?:bridge|브리지)(?:는|은|이|가)?/iu;
 const externalSubjectPattern = /^(?:the\s+)?(?:applications?|hosts?)\b|^(?:애플리케이션|호스트)(?:는|은|이|가)/iu;
 const externalActionPattern = /\b(?:applications?|hosts?)\b\s+(?:(?:that|which)\s+|to\s+)?(?:configure|enable|install|manage|mount|own|register)\w*|(?:애플리케이션|호스트)(?:는|은|이|가)[^\n;]*(?:구성|관리|마운트|설치|소유|등록|활성화)|(?:구성|관리|마운트|설치|소유|등록|활성화)(?:하|해|할|한|하는|할\s+수\s+있는)[^\n;]*(?:애플리케이션|호스트)(?:을|를|에게|는|은|이|가)/iu;
-const externalPassiveActionPattern = /(?:middleware|sessions?)[^\n;]*(?:is|are)\s+(?:configured|enabled|installed|managed|mounted|owned|registered)\s+by\s+(?:the\s+)?(?:application|host)|(?:애플리케이션|호스트)(?:에\s*의해|에서)[^\n;]*(?:middleware|sessions?|미들웨어|세션)[^\n;]*(?:구성|관리|마운트|설치|소유|등록|활성화)(?:되|되는|됩니다)/iu;
+const englishExternalPassiveActionPattern = /(?:middleware|sessions?)[^\n;]*(?:is|are)\s+(?:configured|enabled|installed|managed|mounted|owned|registered)\s+by\s+(?:(?:an?|the)\s+)?(?:applications?|hosts?)/iu;
+const koreanExternalPassiveActionPattern = /(?:애플리케이션|호스트)(?:들)?(?:에\s*의해|에서)[^\n;]*?(?:(?:Passport(?:\.js)?\s+)?(?:middleware|sessions?)|미들웨어|세션)(?:이|가)?\s*(?:구성|관리|마운트|설치|소유|등록|활성화)(?:되는|됩니다)/iu;
 const negationPattern = /\b(?:cannot|can't|disabled|does?\s+not|never|no|not|outside\s+the\s+bridge|unsupported|without|won't)\b|(?:꺼져|남(?:기|긴|고|는다|습니다)|못|비활성화|아니|않|없|외부|지원하지|제공하지|설치하지|관리하지|등록하지|소유하지)/iu;
 const hangulPattern = /[가-힣]/u;
 
@@ -68,8 +69,19 @@ function propositionActor(clause, inheritedActor) {
   return inheritedActor;
 }
 
-function hasExternalActionOwner(clause) {
-  return externalActionPattern.test(clause) || externalPassiveActionPattern.test(clause);
+function outerAction(clause) {
+  const relativeBoundary = clause.search(/\b(?:that|where|which)\b/iu);
+  const outerClause = relativeBoundary === -1 ? clause : clause.slice(0, relativeBoundary);
+  return outerClause.replace(koreanExternalPassiveActionPattern, '');
+}
+
+function hasBridgeCapabilityAction(clause, capability) {
+  const action = outerAction(clause);
+  return capability.target.test(action) && capability.positive.test(action);
+}
+
+function hasExternalPassiveActionOwner(clause) {
+  return englishExternalPassiveActionPattern.test(clause) || koreanExternalPassiveActionPattern.test(clause);
 }
 
 function hasUnsupportedProposition(sentence, capability) {
@@ -83,7 +95,13 @@ function hasUnsupportedProposition(sentence, capability) {
     if (negationPattern.test(clause)) {
       return false;
     }
-    if (hasExternalActionOwner(clause)) {
+    if (externalActionPattern.test(clause)) {
+      return false;
+    }
+    if (actor === 'bridge' && hasBridgeCapabilityAction(clause, capability)) {
+      return true;
+    }
+    if (hasExternalPassiveActionOwner(clause)) {
       return false;
     }
     if (actor === 'external') {
