@@ -7,13 +7,13 @@ const governedCapabilities = [
   {
     abbreviated: /\bcan\b[^\n;]*(?:enabled|install|mount|register)|(?:설치|마운트|등록|활성화)[^\n;]*수\s+있/iu,
     id: 'middleware-installation',
-    positive: /(?:install|mount|register|provide|support|manage|own)\w*[^\n;]*(?:Passport(?:\.js)?\s+)?middleware|(?:Passport(?:\.js)?\s+)?middleware[^\n;]*(?:available|can\s+be\s+(?:installed|mounted|registered)|provided|supported)|middleware[^\n;]*(?:설치|마운트|등록|제공|지원|관리|소유|활성화)|(?:설치|마운트|등록|제공|지원|관리|소유|활성화)[^\n;]*middleware/iu,
-    target: /Passport(?:\.js)?\s+middleware|middleware/iu,
+    positive: /(?:install|mount|register|provide|support|manage|own)\w*[^\n;]*(?:(?:Passport(?:\.js)?\s+)?middleware|미들웨어)|(?:(?:Passport(?:\.js)?\s+)?middleware|미들웨어)[^\n;]*(?:available|can\s+be\s+(?:installed|mounted|registered)|provided|supported)|(?:middleware|미들웨어)[^\n;]*(?:설치|마운트|등록|제공|지원|관리|소유|활성화)|(?:설치|마운트|등록|제공|지원|관리|소유|활성화)[^\n;]*(?:middleware|미들웨어)/iu,
+    target: /Passport(?:\.js)?\s+middleware|middleware|미들웨어/iu,
   },
   {
     abbreviated: /\b(?:available|configured|enabled|supported)\b|(?:session\s+)?support\s+becomes\s+available|(?:session|세션)[^\n;]*(?:구성|지원|활성화)/iu,
     id: 'session-ownership',
-    positive: /(?:configure|enable|include|manage|own|provide|support)\w*[^\n;]*(?:Passport(?:\.js)?\s+)?sessions?|(?:Passport(?:\.js)?\s+)?sessions?[^\n;]*(?:available|configured|enabled|managed|provided|supported)|sessions?[^\n;]*(?:구성|관리|소유|지원|제공|포함|활성화)|(?:구성|관리|소유|지원|제공|포함|활성화)[^\n;]*sessions?/iu,
+    positive: /(?:configure|enable|include|manage|own|provide|support)\w*[^\n;]*(?:(?:Passport(?:\.js)?\s+)?sessions?|세션)|(?:(?:Passport(?:\.js)?\s+)?sessions?|세션)[^\n;]*(?:available|configured|enabled|managed|provided|supported)|(?:sessions?|세션)[^\n;]*(?:구성|관리|소유|지원|제공|포함|활성화)|(?:구성|관리|소유|지원|제공|포함|활성화)[^\n;]*(?:sessions?|세션)/iu,
     target: /Passport(?:\.js)?\s+sessions?|sessions?|세션/iu,
   },
   {
@@ -46,8 +46,9 @@ const governedCapabilities = [
 const bridgeActorPattern = /\bbridge\b|브리지/u;
 const bridgeSubjectPattern = /^(?:the\s+)?bridge\b|^(?:이\s+)?(?:bridge|브리지)(?:는|은|이|가)?/iu;
 const externalSubjectPattern = /^(?:the\s+)?(?:applications?|hosts?)\b|^(?:애플리케이션|호스트)(?:는|은|이|가)/iu;
-const delegatedExternalActorPattern = /\b(?:applications?|hosts?)\b\s+(?:(?:that|which)\s+|to\s+)?(?:configure|enable|install|manage|mount|own|register)\w*|(?:애플리케이션|호스트)(?:는|은|이|가|에서)[^\n;]*(?:구성|관리|마운트|설치|소유|등록|활성화)|(?:구성|관리|마운트|설치|소유|등록|활성화)(?:하|해|할|한|하는|할\s+수\s+있는)[^\n;]*(?:애플리케이션|호스트)(?:을|를|에게|는|은|이|가)/iu;
-const negationPattern = /\b(?:cannot|can't|disabled|does?\s+not|never|no|not|outside\s+the\s+bridge|unsupported|without|won't)\b|(?:application-owned|꺼져|남(?:기|긴|고|는다|습니다)|못|비활성화|아니|않|없|외부|지원하지|제공하지|설치하지|관리하지|등록하지|소유하지)/iu;
+const externalActionPattern = /\b(?:applications?|hosts?)\b\s+(?:(?:that|which)\s+|to\s+)?(?:configure|enable|install|manage|mount|own|register)\w*|(?:애플리케이션|호스트)(?:는|은|이|가)[^\n;]*(?:구성|관리|마운트|설치|소유|등록|활성화)|(?:구성|관리|마운트|설치|소유|등록|활성화)(?:하|해|할|한|하는|할\s+수\s+있는)[^\n;]*(?:애플리케이션|호스트)(?:을|를|에게|는|은|이|가)/iu;
+const externalPassiveActionPattern = /(?:middleware|sessions?)[^\n;]*(?:is|are)\s+(?:configured|enabled|installed|managed|mounted|owned|registered)\s+by\s+(?:the\s+)?(?:application|host)|(?:애플리케이션|호스트)(?:에\s*의해|에서)[^\n;]*(?:middleware|sessions?|미들웨어|세션)[^\n;]*(?:구성|관리|마운트|설치|소유|등록|활성화)(?:되|되는|됩니다)/iu;
+const negationPattern = /\b(?:cannot|can't|disabled|does?\s+not|never|no|not|outside\s+the\s+bridge|unsupported|without|won't)\b|(?:꺼져|남(?:기|긴|고|는다|습니다)|못|비활성화|아니|않|없|외부|지원하지|제공하지|설치하지|관리하지|등록하지|소유하지)/iu;
 const hangulPattern = /[가-힣]/u;
 
 function splitPropositions(sentence) {
@@ -67,6 +68,10 @@ function propositionActor(clause, inheritedActor) {
   return inheritedActor;
 }
 
+function hasExternalActionOwner(clause) {
+  return externalActionPattern.test(clause) || externalPassiveActionPattern.test(clause);
+}
+
 function hasUnsupportedProposition(sentence, capability) {
   if (!bridgeActorPattern.test(sentence) || !capability.target.test(sentence)) {
     return false;
@@ -78,7 +83,7 @@ function hasUnsupportedProposition(sentence, capability) {
     if (negationPattern.test(clause)) {
       return false;
     }
-    if (delegatedExternalActorPattern.test(clause)) {
+    if (hasExternalActionOwner(clause)) {
       return false;
     }
     if (actor === 'external') {
