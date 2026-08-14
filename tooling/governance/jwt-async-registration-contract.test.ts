@@ -170,11 +170,82 @@ describe('JWT async registration contract', () => {
   });
 
   it.each([
+    [
+      'packages/jwt/README.md',
+      '`JwtModule.forRootAsync(...)` accepts `imports` because those fields are not unsupported.',
+    ],
+    [
+      'packages/jwt/README.ko.md',
+      '`JwtModule.forRootAsync(...)`의 `imports`는 지원하지 않는 것은 아닙니다.',
+    ],
+    [
+      'docs/getting-started/migrate-from-nestjs.md',
+      '`JwtModule.forRootAsync(...)`: neither `imports` nor `useClass` nor `useExisting` is unsupported.',
+    ],
+    [
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      '`JwtModule.forRootAsync(...)`의 `imports`, `useClass`, `useExisting` 중 어느 것도 지원하지 않는 것은 아닙니다.',
+    ],
+  ] as const)('rejects unsupported-field double negation in %s', (targetPath, contradiction) => {
+    // Given
+    const readWithContradiction = (relativePath: string): string =>
+      relativePath === targetPath ? `${read(relativePath)}\n${contradiction}` : read(relativePath);
+
+    // When
+    const runGovernanceGuard = () => enforceJwtAsyncRegistrationContract(readWithContradiction);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(/must not claim that NestJS imports\/useClass\/useExisting fields are accepted/);
+  });
+
+  it.each([
+    [
+      'book/beginner/ch14-jwt.md',
+      '`JwtModule.forRootAsync(...)` can inject a provider local only to its parent module providers.',
+    ],
+    [
+      'book/beginner/ch14-jwt.ko.md',
+      '`JwtModule.forRootAsync(...)`는 부모 module providers에만 local인 provider를 주입할 수 있습니다.',
+    ],
+  ] as const)('rejects parent-local JWT option providers in %s', (targetPath, contradiction) => {
+    // Given
+    const readWithContradiction = (relativePath: string): string =>
+      relativePath === targetPath ? `${read(relativePath)}\n${contradiction}` : read(relativePath);
+
+    // When
+    const runGovernanceGuard = () => enforceJwtAsyncRegistrationContract(readWithContradiction);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(/must not claim parent-local providers are visible to the JWT options provider/);
+  });
+
+  it.each([
     ['packages/jwt/README.md', '<!-- `JwtModule.forRootAsync(...)` supports `inject` and `useFactory`. -->'],
     ['packages/jwt/README.ko.md', '<!-- `JwtModule.forRootAsync(...)`는 `inject`와 `useFactory`를 지원합니다. -->'],
     ['docs/getting-started/migrate-from-nestjs.md', '```md\n`JwtModule.forRootAsync(...)` supports `inject` and `useFactory`.\n```'],
     ['docs/getting-started/migrate-from-nestjs.ko.md', '```md\n`JwtModule.forRootAsync(...)`는 `inject`와 `useFactory`를 지원합니다.\n```'],
   ] as const)('does not accept hidden guidance in %s', (targetPath, hiddenGuidance) => {
+    // Given
+    const readWithHiddenOnly = (relativePath: string): string =>
+      relativePath === targetPath ? hiddenGuidance : read(relativePath);
+
+    // When
+    const runGovernanceGuard = () => enforceJwtAsyncRegistrationContract(readWithHiddenOnly);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(targetPath);
+  });
+
+  it.each([
+    [
+      'packages/jwt/README.md',
+      '````md\n```md\n`JwtModule.forRootAsync({ inject, useFactory, global? })` registers dependencies in the application module graph before the factory resolves, and `useFactory` returns final `JwtVerifierOptions`. The top-level `global?` controls module visibility and is distinct from the final `JwtVerifierOptions` returned by `useFactory`. `imports`, `useClass`, and `useExisting` are not part of the supported typed configuration, and automatic provider discovery is unsupported. Register dependencies through a global module or a module that exports them; a provider local only to a parent module\'s providers is not visible.\n```\n````',
+    ],
+    [
+      'packages/jwt/README.ko.md',
+      '````md\n```md\n`JwtModule.forRootAsync({ inject, useFactory, global? })`는 factory가 resolve되기 전에 application module graph에 의존성을 등록하며 `useFactory`는 최종 `JwtVerifierOptions`를 반환합니다. 최상위 `global?`은 module 가시성을 제어하며 `useFactory`가 반환하는 최종 `JwtVerifierOptions`와는 별개입니다. `imports`, `useClass`, `useExisting`은 지원되는 typed configuration의 일부가 아니며 자동 provider discovery도 지원하지 않습니다. 의존성은 global module 또는 export하는 module로 등록해야 하며 parent module providers에만 local인 provider는 보이지 않습니다.\n```\n````',
+    ],
+  ] as const)('does not accept guidance hidden by a longer fenced block in %s', (targetPath, hiddenGuidance) => {
     // Given
     const readWithHiddenOnly = (relativePath: string): string =>
       relativePath === targetPath ? hiddenGuidance : read(relativePath);

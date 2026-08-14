@@ -34,9 +34,25 @@ function clauses(content) {
 }
 
 function visibleMarkdown(content) {
-  return content
-    .replace(/<!--[\s\S]*?-->/gu, '')
-    .replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/gu, '');
+  const visibleLines = [];
+  let fence;
+
+  for (const line of content.split(/\r?\n/u)) {
+    const marker = /^(?: {0,3})(`{3,}|~{3,})/u.exec(line)?.[1];
+    if (fence === undefined) {
+      if (marker === undefined) {
+        visibleLines.push(line);
+      } else {
+        fence = marker;
+      }
+      continue;
+    }
+    if (marker?.[0] === fence[0] && marker.length >= fence.length) {
+      fence = undefined;
+    }
+  }
+
+  return visibleLines.join('\n').replace(/<!--[\s\S]*?-->/gu, '');
 }
 
 function hasAll(value, patterns) {
@@ -80,13 +96,23 @@ function requiredGuidance(content, locale) {
       localePatterns.graphTiming,
     ])),
     rejectedNestjsFields: documentClauses.some((clause) => hasAll(clause, [
-      actor,
       /imports/u,
       /useClass/u,
       /useExisting/u,
       localePatterns.negative,
     ])),
     supportedShape: documentClauses.some((clause) => hasAll(clause, [actor, /inject/u, /useFactory/u, /global\?/u])),
+    dependencyVisibility: documentClauses.some((clause) => locale === 'en'
+      ? hasAll(clause, [
+          /(?:global module|module that exports?)/iu,
+          /parent module(?:'s)? providers?/iu,
+          /(?:not visible|cannot inject)/iu,
+        ])
+      : hasAll(clause, [
+          /(?:global module|export.*module|module.*export)/iu,
+          /parent module providers?/iu,
+          /(?:보이지 않|주입할 수 없)/u,
+        ])),
     globalBoundary: documentClauses.some((clause) => hasAll(clause, [
       /global\?/u,
       /(?:top-level|최상위)/iu,
@@ -98,6 +124,19 @@ function requiredGuidance(content, locale) {
   };
 }
 
+function unsupportedFieldsAreSupported(proposition, locale, patterns) {
+  if (locale === 'en') {
+    return (
+      patterns.positive.test(proposition) && !patterns.negative.test(proposition)
+    ) || /\b(?:is|are)\s+not\s+unsupported\b/iu.test(proposition)
+      || /\bneither\b[\s\S]*\b(?:is|are)\s+unsupported\b/iu.test(proposition);
+  }
+
+  return (
+    patterns.positive.test(proposition) && !patterns.negative.test(proposition)
+  ) || /지원하지\s*않는\s*것은\s*아닙니다?/u.test(proposition);
+}
+
 function contradictionMessage(content, locale) {
   const languagePatterns = locale === 'en'
     ? {
@@ -106,7 +145,7 @@ function contradictionMessage(content, locale) {
       }
     : {
         negative: /(?:지원하지|허용하지|받지|사용할 수 없|포함되지|아니|없|금지|거부)/u,
-      positive: /(?:지원|허용|받는다|사용할 수 있|유효|무시)/u,
+      positive: /(?:지원합니다|지원한다|지원됩니다|허용합니다|받는다|사용할 수 있|유효|무시)/u,
       };
   const actor = /(?:JwtModule\.forRootAsync|fluo JWT async registration|JWT async registration)/iu;
   const forbiddenField = /(?:imports|useClass|useExisting)/u;
@@ -128,8 +167,15 @@ function contradictionMessage(content, locale) {
 
     for (const proposition of propositions) {
       const isNegative = languagePatterns.negative.test(proposition);
-      if (forbiddenField.test(proposition) && languagePatterns.positive.test(proposition) && !isNegative) {
+      if (forbiddenField.test(proposition) && unsupportedFieldsAreSupported(proposition, locale, languagePatterns)) {
         return 'must not claim that NestJS imports/useClass/useExisting fields are accepted, usable, or ignored.';
+      }
+      const parentLocalProvider = locale === 'en'
+        ? /parent module(?:'s)? providers?/iu.test(proposition)
+          && (/can inject/iu.test(proposition) || (/\bvisible\b/iu.test(proposition) && !/\bnot visible\b/iu.test(proposition)))
+        : /부모 module providers?/u.test(proposition) && /(?:주입할 수 있|보입니다|보인다)/u.test(proposition);
+      if (parentLocalProvider) {
+        return 'must not claim parent-local providers are visible to the JWT options provider.';
       }
       const doubleNegativeDiscovery = locale === 'en'
         ? /\b(?:does not|do not)\s+(?:disable|prevent|block|stop)\b/iu.test(proposition)
