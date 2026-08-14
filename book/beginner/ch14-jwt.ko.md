@@ -84,15 +84,18 @@ export class AuthModule {}
 ### Dynamic Registration with ConfigService
 하드코딩된 예시는 설정의 형태를 빠르게 보여 주지만, 실제 운영 방식으로 이어지면 안 됩니다. 프로덕션 환경에서는 비밀 키를 절대 하드코딩해서는 안 됩니다. 대신 Chapter 11에서 배운 `ConfigService`를 사용하세요.
 
-이 예시는 application root가 `ConfigModule.forRoot(...)`를 이미 등록하여 `JwtModule`이 injected factory를 resolve하기 전에 `ConfigService`를 application module graph에서 사용할 수 있다고 가정합니다.
+이 예시는 application root에 `ConfigModule.forRoot(...)`를 등록합니다. 이 module은 기본으로 `ConfigService`를 global export하므로 `JwtRuntimeModule`이 injected factory 의존성을 resolve할 수 있습니다. `AuthModule.providers`에만 local인 provider는 그 imported module에서 보이지 않습니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
+import { ConfigModule, ConfigService } from '@fluojs/config';
 import { JwtModule } from '@fluojs/jwt';
-import { ConfigService } from '@fluojs/config';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      processEnv: { JWT_SECRET: process.env.JWT_SECRET },
+    }),
     JwtModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
@@ -110,7 +113,7 @@ import { ConfigService } from '@fluojs/config';
 export class AuthModule {}
 ```
 
-지원되는 계약은 `JwtModule.forRootAsync({ inject, useFactory, global? })`입니다. `JwtModule.forRootAsync(...)`의 `inject`에 지정한 의존성은 JWT options provider가 resolve되기 전에 application module graph에 먼저 등록해야 하며, `useFactory`는 최종 `JwtVerifierOptions`를 반환합니다. 최상위 `global?`은 반환된 module의 가시성을 제어하며, `useFactory`가 반환하는 최종 `JwtVerifierOptions`와는 별개입니다. `JwtModule.forRootAsync(...)`는 NestJS dynamic-module `imports`, `useClass`, `useExisting`를 지원하지 않습니다. 이 field들은 받아서 무시하는 compatibility option이 아니라 options shape에 포함되지 않는 field입니다. `JwtModule.forRootAsync(...)`는 암묵적 module 또는 provider discovery를 지원하지 않습니다.
+지원되는 계약은 `JwtModule.forRootAsync({ inject, useFactory, global? })`입니다. `JwtModule.forRootAsync(...)`의 `inject`에 지정한 의존성은 JWT options provider가 resolve되기 전에 application module graph에 먼저 등록해야 하며, `useFactory`는 최종 `JwtVerifierOptions`를 반환합니다. 최상위 `global?`은 반환된 module의 가시성을 제어하며, `useFactory`가 반환하는 최종 `JwtVerifierOptions`와는 별개입니다. NestJS dynamic-module `imports`, `useClass`, `useExisting`은 지원되는 typed configuration의 일부가 아니며 dynamic-module 의미도 없습니다. 추가 JavaScript object property는 runtime에서 읽지 않을 뿐 validate하거나 reject하지 않습니다. `JwtModule.forRootAsync(...)`에서는 global module 또는 `JwtRuntimeModule`의 application graph에 export하는 module로 의존성을 등록해야 하며, parent module providers에만 local인 provider는 JWT options provider에서 보이지 않습니다. `JwtModule.forRootAsync(...)`는 암묵적 module 또는 provider discovery를 지원하지 않습니다.
 
 ### Advanced Configuration Options
 `JwtModule`은 단순한 비밀 키 외에도 알고리즘, 발급자, 대상, 클록 스큐, 키 자료, JWKS 조회, 토큰 수명에 대한 명시적 설정을 지원합니다. 지원되는 알고리즘을 하나 이상 제공하고, `accessTokenTtlSeconds`는 양의 유한 숫자로 유지하여 잘못된 설정이 토큰 발행 전에 실패하도록 하세요.

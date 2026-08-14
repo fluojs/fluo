@@ -84,15 +84,18 @@ export class AuthModule {}
 ### Dynamic Registration with ConfigService
 A hardcoded example quickly shows the shape of the configuration, but it must not become the production approach. In production, never hardcode secret keys. Instead, use the `ConfigService` you learned about in Chapter 11.
 
-The example assumes the application root has already registered `ConfigModule.forRoot(...)`, so `ConfigService` is available in the application module graph before `JwtModule` resolves its injected factory.
+The example registers `ConfigModule.forRoot(...)` in the application root. It exports `ConfigService` globally by default, so `JwtRuntimeModule` can resolve the injected factory dependency; a provider local only to `AuthModule.providers` is not visible to that imported module.
 
 ```typescript
 import { Module } from '@fluojs/core';
+import { ConfigModule, ConfigService } from '@fluojs/config';
 import { JwtModule } from '@fluojs/jwt';
-import { ConfigService } from '@fluojs/config';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      processEnv: { JWT_SECRET: process.env.JWT_SECRET },
+    }),
     JwtModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
@@ -110,7 +113,7 @@ import { ConfigService } from '@fluojs/config';
 export class AuthModule {}
 ```
 
-The supported contract is `JwtModule.forRootAsync({ inject, useFactory, global? })`: dependencies named by `inject` must already be registered in the application module graph before the JWT options provider resolves, and `useFactory` returns the final `JwtVerifierOptions`. The top-level `global?` controls returned module visibility and is distinct from the final `JwtVerifierOptions` returned by `useFactory`. `JwtModule.forRootAsync(...)` does not accept NestJS dynamic-module `imports`, `useClass`, or `useExisting`; those fields are outside its options shape, not accepted-and-ignored compatibility fields. `JwtModule.forRootAsync(...)` performs no implicit module or provider discovery.
+The supported contract is `JwtModule.forRootAsync({ inject, useFactory, global? })`: dependencies named by `inject` must already be registered in the application module graph before the JWT options provider resolves, and `useFactory` returns the final `JwtVerifierOptions`. The top-level `global?` controls returned module visibility and is distinct from the final `JwtVerifierOptions` returned by `useFactory`. NestJS dynamic-module `imports`, `useClass`, and `useExisting` are not part of the supported typed configuration and have no dynamic-module semantics; extra JavaScript object properties are unread at runtime, not validated or rejected. For `JwtModule.forRootAsync(...)`, register dependencies through a global module or a module that exports them into `JwtRuntimeModule`'s application graph; a provider local only to a parent module's providers is not visible to the JWT options provider. `JwtModule.forRootAsync(...)` performs no implicit module or provider discovery.
 
 ### Advanced Configuration Options
 Beyond a simple secret key, `JwtModule` supports explicit configuration for algorithms, issuer, audience, clock skew, key material, JWKS lookup, and token lifetimes. Always provide at least one supported algorithm, and keep `accessTokenTtlSeconds` as a positive finite number so misconfiguration fails before a token is issued.
