@@ -61,6 +61,8 @@ Async registration exports the same JWT provider surface as the synchronous path
 
 `forRootAsync(...)` resolves one module-level `JwtVerifierOptions` object from the providers listed in `inject`. It does not receive per-request state. For tenant-specific secrets or identity providers, keep tenant lookup in your application auth layer and use token metadata such as `kid` with configured `keys[]`, `jwksUri`, or `secretOrKeyProvider` to select verification material during token verification.
 
+The supported contract is `JwtModule.forRootAsync({ inject, useFactory })`: dependencies named by `inject` must already be registered in the application module graph before the JWT options provider resolves, and `useFactory` returns the final JWT options. `JwtModule.forRootAsync(...)` does not accept NestJS dynamic-module `imports`, `useClass`, or `useExisting`; those fields are outside its options shape, not accepted-and-ignored compatibility fields. `JwtModule.forRootAsync(...)` performs no implicit module or provider discovery.
+
 ```typescript
 import { Module, type Token } from '@fluojs/core';
 import { JwtModule } from '@fluojs/jwt';
@@ -92,6 +94,8 @@ const JWT_SETTINGS = Symbol('jwt-settings');
 })
 export class AuthModule {}
 ```
+
+Here, the surrounding `AuthModule.providers` registration makes `JWT_SETTINGS` available in the application graph before the injected factory resolves it.
 
 ### Sign and Verify Tokens
 
