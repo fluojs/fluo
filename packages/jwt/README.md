@@ -61,41 +61,34 @@ Async registration exports the same JWT provider surface as the synchronous path
 
 `forRootAsync(...)` resolves one module-level `JwtVerifierOptions` object from the providers listed in `inject`. It does not receive per-request state. For tenant-specific secrets or identity providers, keep tenant lookup in your application auth layer and use token metadata such as `kid` with configured `keys[]`, `jwksUri`, or `secretOrKeyProvider` to select verification material during token verification.
 
-The supported contract is `JwtModule.forRootAsync({ inject, useFactory, global? })`: dependencies named by `inject` must already be registered in the application module graph before the JWT options provider resolves, and `useFactory` returns the final `JwtVerifierOptions`. The top-level `global?` controls returned module visibility and is distinct from the final `JwtVerifierOptions` returned by `useFactory`. `JwtModule.forRootAsync(...)` does not accept NestJS dynamic-module `imports`, `useClass`, or `useExisting`; those fields are outside its options shape, not accepted-and-ignored compatibility fields. `JwtModule.forRootAsync(...)` performs no implicit module or provider discovery.
+The supported contract is `JwtModule.forRootAsync({ inject, useFactory, global? })`: dependencies named by `inject` must already be registered in the application module graph before the JWT options provider resolves, and `useFactory` returns the final `JwtVerifierOptions`. The top-level `global?` controls returned module visibility and is distinct from the final `JwtVerifierOptions` returned by `useFactory`. NestJS dynamic-module `imports`, `useClass`, and `useExisting` are not part of the supported typed configuration and have no dynamic-module semantics; extra JavaScript object properties are unread at runtime, not validated or rejected. For `JwtModule.forRootAsync(...)`, register dependencies through a global module or a module that exports them into `JwtRuntimeModule`'s application graph; a provider local only to a parent module's providers is not visible to the JWT options provider. `JwtModule.forRootAsync(...)` performs no implicit module or provider discovery.
 
 ```typescript
-import { Module, type Token } from '@fluojs/core';
+import { Module } from '@fluojs/core';
+import { ConfigModule, ConfigService } from '@fluojs/config';
 import { JwtModule } from '@fluojs/jwt';
-
-const JWT_SETTINGS = Symbol('jwt-settings');
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      processEnv: { JWT_SECRET: process.env.JWT_SECRET },
+    }),
     JwtModule.forRootAsync({
-      inject: [JWT_SETTINGS],
-      useFactory: async (settings) => ({
+      inject: [ConfigService],
+      useFactory: async (config: ConfigService) => ({
         accessTokenTtlSeconds: 900,
         algorithms: ['HS256'],
         audience: 'my-app',
-        issuer: settings.issuer,
-        secret: settings.secret,
+        issuer: 'my-api',
+        secret: config.getOrThrow('JWT_SECRET'),
       }),
     }),
-  ],
-  providers: [
-    {
-      provide: JWT_SETTINGS as Token<{ issuer: string; secret: string }>,
-      useValue: {
-        issuer: 'my-api',
-        secret: 'your-secure-secret',
-      },
-    },
   ],
 })
 export class AuthModule {}
 ```
 
-Here, the surrounding `AuthModule.providers` registration makes `JWT_SETTINGS` available in the application graph before the injected factory resolves it.
+Here, `ConfigModule.forRoot(...)` exports `ConfigService` globally by default, so the `JwtRuntimeModule` options provider can resolve it. A provider declared only in `AuthModule.providers` is not visible to that imported module.
 
 ### Sign and Verify Tokens
 
