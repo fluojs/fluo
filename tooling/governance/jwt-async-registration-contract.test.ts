@@ -34,7 +34,7 @@ describe('JWT async registration contract', () => {
     const runGovernanceGuard = () => enforceJwtAsyncRegistrationContract(readWithImports);
 
     // Then
-    expect(runGovernanceGuard).toThrow(/limited to inject and useFactory/);
+    expect(runGovernanceGuard).toThrow(/exactly global, inject, and useFactory/);
   });
 
   it('rejects JwtModule source that forwards a discovery-shaped field instead of inject', () => {
@@ -48,7 +48,7 @@ describe('JWT async registration contract', () => {
     const runGovernanceGuard = () => enforceJwtAsyncRegistrationContract(readWithImports);
 
     // Then
-    expect(runGovernanceGuard).toThrow(/read only inject\/useFactory/);
+    expect(runGovernanceGuard).toThrow(/must forward inject and useFactory/);
   });
 
   it.each([
@@ -113,5 +113,76 @@ describe('JWT async registration contract', () => {
 
     // Then
     expect(runGovernanceGuard).toThrow(expectedError);
+  });
+
+  it.each([
+    [
+      'packages/jwt/README.md',
+      '`JwtModule.forRootAsync(...)` does not disable automatic provider discovery.',
+      /must not claim implicit module or provider discovery/,
+    ],
+    [
+      'packages/jwt/README.ko.md',
+      '`JwtModule.forRootAsync(...)`는 자동 provider discovery를 비활성화하지 않습니다.',
+      /must not claim implicit module or provider discovery/,
+    ],
+    [
+      'docs/getting-started/migrate-from-nestjs.md',
+      '`JwtModule.forRootAsync(...)` rejects `imports`; however, it supports `useClass`.',
+      /must not claim that NestJS imports\/useClass\/useExisting fields are accepted/,
+    ],
+    [
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      '`JwtModule.forRootAsync(...)`는 `imports`를 거부하지만 `useClass`는 지원합니다.',
+      /must not claim that NestJS imports\/useClass\/useExisting fields are accepted/,
+    ],
+  ] as const)('rejects a compound contradiction in %s', (targetPath, contradiction, expectedError) => {
+    // Given
+    const readWithContradiction = (relativePath: string): string =>
+      relativePath === targetPath ? `${read(relativePath)}\n${contradiction}` : read(relativePath);
+
+    // When
+    const runGovernanceGuard = () => enforceJwtAsyncRegistrationContract(readWithContradiction);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(expectedError);
+  });
+
+  it.each([
+    [
+      'book/beginner/ch14-jwt.md',
+      '`JwtModule.forRootAsync(...)` supports applications whose providers are registered before the factory resolves. Neither `imports` nor `useClass` nor `useExisting` is supported.',
+    ],
+    [
+      'book/beginner/ch14-jwt.ko.md',
+      '`JwtModule.forRootAsync(...)`는 factory가 resolve되기 전에 provider를 등록한 애플리케이션을 지원합니다. `imports`, `useClass`, `useExisting` 중 어느 것도 지원하지 않습니다.',
+    ],
+  ] as const)('accepts a supported external configuration and rejected options in %s', (targetPath, guidance) => {
+    // Given
+    const readWithGuidance = (relativePath: string): string =>
+      relativePath === targetPath ? `${read(relativePath)}\n${guidance}` : read(relativePath);
+
+    // When
+    const runGovernanceGuard = () => enforceJwtAsyncRegistrationContract(readWithGuidance);
+
+    // Then
+    expect(runGovernanceGuard).not.toThrow();
+  });
+
+  it.each([
+    ['packages/jwt/README.md', '<!-- `JwtModule.forRootAsync(...)` supports `inject` and `useFactory`. -->'],
+    ['packages/jwt/README.ko.md', '<!-- `JwtModule.forRootAsync(...)`는 `inject`와 `useFactory`를 지원합니다. -->'],
+    ['docs/getting-started/migrate-from-nestjs.md', '```md\n`JwtModule.forRootAsync(...)` supports `inject` and `useFactory`.\n```'],
+    ['docs/getting-started/migrate-from-nestjs.ko.md', '```md\n`JwtModule.forRootAsync(...)`는 `inject`와 `useFactory`를 지원합니다.\n```'],
+  ] as const)('does not accept hidden guidance in %s', (targetPath, hiddenGuidance) => {
+    // Given
+    const readWithHiddenOnly = (relativePath: string): string =>
+      relativePath === targetPath ? hiddenGuidance : read(relativePath);
+
+    // When
+    const runGovernanceGuard = () => enforceJwtAsyncRegistrationContract(readWithHiddenOnly);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(targetPath);
   });
 });
