@@ -8,6 +8,7 @@ import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs
 import { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 import { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
+import { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
 import {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
@@ -22,6 +23,7 @@ export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-
 export { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 export { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 export { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
+export { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
 export {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
@@ -2704,6 +2706,7 @@ export function main() {
   enforceCloudflareWorkersLifecycleDocsSync();
   enforcePlatformShellLifecycleContract();
   enforceConfigNestjsMigrationDocs();
+  enforceJwtAsyncRegistrationContract();
   enforceRuntimeLifecycleNestjsMigrationDocs();
   enforcePassportJsBridgeNestjsMigration();
   enforceExpressApplicationOwnershipDocs();

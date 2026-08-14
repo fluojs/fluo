@@ -63,6 +63,9 @@ export function enforcePassportJsBridgeNestjsMigration(
 export function enforceEmailLifecycleDocsContract(
   readText?: (relativePath: string) => string,
 ): void;
+export function enforceJwtAsyncRegistrationContract(
+  readText?: (relativePath: string) => string,
+): void;
 export function enforceGraphqlRuntimeBoundaryDiscoverability(): void;
 export function enforceMicroservicesSafetyGuidanceParity(): void;
 export function enforceMicroservicesSafetyRuntimeEvidence(): void;
