@@ -90,10 +90,12 @@ describe('Passport.js bridge unsupported propositions', () => {
     ['session-ownership', 'The bridge manages application-owned Passport sessions.'],
     ['session-ownership', 'The bridge manages sessions that are configured by the application.'],
     ['middleware-installation', 'The bridge installs middleware that is managed by the host.'],
+    ['middleware-installation', 'The bridge installs middleware for hosts that do not manage sessions.'],
     ['middleware-installation-ko', '브리지는 애플리케이션 소유의 Passport 미들웨어를 설치합니다.'],
     ['session-ownership-ko', '브리지는 애플리케이션 소유의 Passport 세션을 관리합니다.'],
     ['session-ownership-ko', '브리지는 애플리케이션에 의해 구성되는 세션을 관리합니다.'],
     ['middleware-installation-ko', '브리지는 호스트에 의해 관리되는 미들웨어를 설치합니다.'],
+    ['middleware-installation-ko', '브리지는 세션을 관리하지 않는 호스트를 위해 미들웨어를 설치합니다.'],
   ] as const)('rejects a bridge-owned governed action despite external ownership wording: %s', (claimName, claim) => {
     // Given / When
     const detectedClaims = collectUnsupportedPassportBridgeClaims(claim);
@@ -104,13 +106,16 @@ describe('Passport.js bridge unsupported propositions', () => {
 
   it.each([
     'The bridge never installs Passport middleware, even when configured.',
+    'The bridge does not install middleware.',
     'Sessions and serializers remain application-owned; the bridge cannot configure them.',
     'The bridge does not provide automatic strategy discovery.',
     'The bridge does not install middleware; applications can install it at the host boundary.',
     'bridge는 설정하더라도 Passport middleware를 설치하지 않습니다.',
+    '브리지는 미들웨어를 설치하지 않습니다.',
     'Session과 serializer는 application-owned 상태로 남고 bridge가 관리하지 않습니다.',
     'bridge는 automatic strategy discovery를 제공하지 않습니다.',
     'bridge는 middleware를 설치하지 않으며 애플리케이션이 host boundary에서 직접 설치할 수 있습니다.',
+    'fluo는 명시적 bridge provider, named strategy registration, route guard metadata, principal mapping을 요구하고 middleware, session, serializer/deserializer, host ownership은 애플리케이션에 남긴다.',
   ] as const)('accepts direct negative-only guidance: %s', (guidance) => {
     // Given / When
     const detectedClaims = collectUnsupportedPassportBridgeClaims(guidance);
