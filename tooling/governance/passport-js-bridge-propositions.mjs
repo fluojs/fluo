@@ -43,11 +43,13 @@ const governedCapabilities = [
   },
 ];
 
-const bridgeActorPattern = /\bbridge\b|브리지/u;
+const bridgeActorPattern = /\bbridge\b|브리지/iu;
 const bridgeSubjectPattern = /^(?:the\s+)?bridge\b|^(?:이\s+)?(?:bridge|브리지)(?:는|은|이|가)?/iu;
 const externalSubjectPattern = /^(?:the\s+)?(?:applications?|hosts?)\b|^(?:애플리케이션|호스트)(?:는|은|이|가)/iu;
 const externalActionPattern = /\b(?:applications?|hosts?)\b\s+(?:(?:that|which)\s+|to\s+)?(?:configure|enable|install|manage|mount|own|register)\w*|(?:애플리케이션|호스트)(?:는|은|이|가)[^\n;]*(?:구성|관리|마운트|설치|소유|등록|활성화)|(?:구성|관리|마운트|설치|소유|등록|활성화)(?:하|해|할|한|하는|할\s+수\s+있는)[^\n;]*(?:애플리케이션|호스트)(?:을|를|에게|는|은|이|가)/iu;
-const englishExternalPassiveActionPattern = /(?:middleware|sessions?)[^\n;]*(?:is|are)\s+(?:configured|enabled|installed|managed|mounted|owned|registered)\s+by\s+(?:(?:an?|the)\s+)?(?:applications?|hosts?)/iu;
+const englishExternalPassiveActionPattern = /(?:middleware|sessions?)[^\n;]*(?:(?:is|are)\s+)?(?:configured|enabled|installed|managed|mounted|owned|registered)\s+by\s+(?:(?:an?|the)\s+)?(?:applications?|hosts?)/iu;
+const englishBridgePassiveActionPattern = /(?:(?:Passport(?:\.js)?\s+)?(?:middleware|sessions?)|(?:de)?serializers?)[^\n;]*(?:is|are)\s+(?:configured|enabled|installed|managed|mounted|owned|registered)\s+by\s+(?:the\s+)?bridge\b/iu;
+const bridgeExternalGuidancePattern = /^(?:the\s+)?bridge\s+(?:offers?|provides?|supports?)\b|^(?:이\s+)?(?:bridge|브리지)(?:는|은|이|가)?[^\n;]*(?:방법을\s+제공|구성을\s+지원)/iu;
 const koreanExternalPassiveActionPattern = /(?:애플리케이션|호스트)(?:들)?(?:에\s*의해|에서)[^\n;]*?(?:(?:Passport(?:\.js)?\s+)?(?:middleware|sessions?)|미들웨어|세션)(?:이|가)?\s*(?:구성|관리|마운트|설치|소유|등록|활성화)(?:되는|됩니다)/iu;
 const koreanExternalNegatedQualifierPattern = /(?:(?:Passport(?:\.js)?\s+)?(?:middleware|sessions?)|미들웨어|세션)(?:을|를|이|가)?\s*(?:구성|관리|마운트|설치|소유|등록|활성화)하지\s+않는\s+(?:애플리케이션|호스트)(?:(?:을|를)\s*위해|을|를|은|는|이|가)?/iu;
 const negationPattern = /\b(?:cannot|can't|disabled|does?\s+not|never|no|not|outside\s+the\s+bridge|unsupported|without|won't)\b|(?:꺼져|남(?:기|긴|고|는다|습니다)|못|비활성화|아니|않|없|외부|지원하지|제공하지|설치하지|관리하지|등록하지|소유하지)/iu;
@@ -89,6 +91,26 @@ function hasExternalPassiveActionOwner(clause) {
   return englishExternalPassiveActionPattern.test(clause) || koreanExternalPassiveActionPattern.test(clause);
 }
 
+function hasBridgePassiveActionOwner(clause, capability) {
+  return capability.target.test(clause) && englishBridgePassiveActionPattern.test(clause);
+}
+
+function hasGovernedActionNegation(action, capability) {
+  const negation = negationPattern.exec(action);
+  if (!negation) {
+    return false;
+  }
+  const negatedScope = action.slice(negation.index);
+  if (/^without\b/iu.test(negation[0])) {
+    return capability.target.test(negatedScope);
+  }
+  if (capability.target.test(negatedScope)) {
+    return true;
+  }
+  return !governedCapabilities.some((otherCapability) =>
+    otherCapability !== capability && otherCapability.target.test(negatedScope));
+}
+
 function hasUnsupportedProposition(sentence, capability) {
   if (!bridgeActorPattern.test(sentence) || !capability.target.test(sentence)) {
     return false;
@@ -99,14 +121,20 @@ function hasUnsupportedProposition(sentence, capability) {
     actor = propositionActor(clause, actor);
     if (actor === 'bridge') {
       const action = outerAction(clause);
-      if (negationPattern.test(action)) {
+      if (hasGovernedActionNegation(action, capability)) {
+        return false;
+      }
+      if (hasExternalPassiveActionOwner(clause) && bridgeExternalGuidancePattern.test(clause)) {
         return false;
       }
       if (hasBridgeCapabilityAction(action, capability)) {
         return true;
       }
+      if (hasBridgePassiveActionOwner(clause, capability)) {
+        return true;
+      }
     }
-    if (negationPattern.test(clause)) {
+    if (hasGovernedActionNegation(clause, capability)) {
       return false;
     }
     if (externalActionPattern.test(clause)) {

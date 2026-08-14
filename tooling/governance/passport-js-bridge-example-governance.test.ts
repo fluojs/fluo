@@ -62,6 +62,31 @@ describe('Passport.js bridge example governance', () => {
     expect(runGovernanceGuard).toThrowError(/defaultStrategy|type-check|string/iu);
   });
 
+  it.each(bookDocuments)('accepts the public mapper context contract in %s', (targetPath) => {
+    // Given
+    const readWithContextMapper = (relativePath: string): string => {
+      const content = read(relativePath);
+      return relativePath === targetPath
+        ? content.replace(
+          'mapPrincipal: ({ user }) => mapGoogleUser(user),',
+          `mapPrincipal: ({ context, user }) => {
+    const principal = mapGoogleUser(user);
+    return {
+      ...principal,
+      claims: { ...principal.claims, requestMethod: context.requestContext.request.method },
+    };
+  },`,
+        )
+        : content;
+    };
+
+    // When
+    const runGovernanceGuard = () => enforcePassportJsBridgeNestjsMigration(readWithContextMapper);
+
+    // Then
+    expect(runGovernanceGuard).not.toThrow();
+  });
+
   it.each([
     [
       'providers: [GoogleStrategy, ...googleBridge.providers]',
