@@ -229,15 +229,16 @@ export class EmailService implements Email, OnModuleInit, OnApplicationShutdown 
    */
   async send(message: EmailMessage, options: EmailSendOptions = {}): Promise<EmailSendResult> {
     assertNotAborted(options.signal);
+    this.assertCanDeliver();
+
+    const normalized = this.normalizeMessage(message);
+    assertMessageContent(normalized);
+
     if (this.options.verifyOnModuleInit) {
       await this.ensureReadyForDelivery();
-    } else {
-      this.assertCanDeliver();
     }
 
     const transport = await this.ensureTransport();
-    const normalized = this.normalizeMessage(message);
-    assertMessageContent(normalized);
     assertNotAborted(options.signal);
     if (this.options.verifyOnModuleInit) {
       await this.ensureReadyForDelivery();

@@ -192,6 +192,7 @@ Behavioral contract notes:
 
 - `EmailService.send(...)` resolves `defaultFrom` and `defaultReplyTo` before delivery.
 - `EmailService.send(...)` rejects blank `to` recipients before handoff so transports never receive an empty delivery target.
+- `EmailService.send(...)` normalizes and validates messages before acquiring a lazy transport, so invalid input does not initialize transport resources.
 - `EmailService.send(...)` and `EmailService.sendNotification(...)` honor an already-aborted `AbortSignal` before template rendering or transport handoff.
 - `EmailService.send(...)` preserves `accepted`, `pending`, and `rejected` recipients separately so partial provider failures stay caller-visible.
 - `EmailService.sendMany(...)` is fail-fast by default; pass `continueOnError: true` to collect failures in a batch result.
