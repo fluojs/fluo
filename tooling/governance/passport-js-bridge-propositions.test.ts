@@ -94,7 +94,7 @@ describe('Passport.js bridge unsupported propositions', () => {
     ['session-ownership-ko', '브리지는 애플리케이션 소유의 Passport 세션을 관리합니다.'],
     ['session-ownership-ko', '브리지는 애플리케이션에 의해 구성되는 세션을 관리합니다.'],
     ['middleware-installation-ko', '브리지는 호스트에 의해 관리되는 미들웨어를 설치합니다.'],
-  ] as const)('rejects bridge-owned action despite external ownership wording: %s', (claimName, claim) => {
+  ] as const)('rejects a bridge-owned governed action despite external ownership wording: %s', (claimName, claim) => {
     // Given / When
     const detectedClaims = collectUnsupportedPassportBridgeClaims(claim);
 

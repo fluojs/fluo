@@ -70,9 +70,12 @@ function propositionActor(clause, inheritedActor) {
 }
 
 function outerAction(clause) {
-  const relativeBoundary = clause.search(/\b(?:that|where|which)\b/iu);
-  const outerClause = relativeBoundary === -1 ? clause : clause.slice(0, relativeBoundary);
-  return outerClause.replace(koreanExternalPassiveActionPattern, '');
+  const boundaries = [
+    clause.search(/\b(?:that|where|which)\b/iu),
+    clause.search(externalActionPattern),
+    clause.search(koreanExternalPassiveActionPattern),
+  ].filter((boundary) => boundary >= 0);
+  return boundaries.length === 0 ? clause : clause.slice(0, Math.min(...boundaries));
 }
 
 function hasBridgeCapabilityAction(clause, capability) {
@@ -95,11 +98,11 @@ function hasUnsupportedProposition(sentence, capability) {
     if (negationPattern.test(clause)) {
       return false;
     }
-    if (externalActionPattern.test(clause)) {
-      return false;
-    }
     if (actor === 'bridge' && hasBridgeCapabilityAction(clause, capability)) {
       return true;
+    }
+    if (externalActionPattern.test(clause)) {
+      return false;
     }
     if (hasExternalPassiveActionOwner(clause)) {
       return false;
