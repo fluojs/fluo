@@ -12,6 +12,7 @@ import {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
 } from './microservices-safety-guidance.mjs';
+import { enforcePassportJsBridgeNestjsMigration } from './passport-js-bridge-nestjs-migration.mjs';
 import { enforcePlatformShellLifecycleContract } from './platform-shell-lifecycle-contract.mjs';
 import { enforceReactPageCatalogContract } from './react-page-catalog-contract.mjs';
 import { enforceReactRscGraduationGovernance } from './react-rsc-graduation-policy.mjs';
@@ -25,6 +26,7 @@ export {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
 } from './microservices-safety-guidance.mjs';
+export { enforcePassportJsBridgeNestjsMigration } from './passport-js-bridge-nestjs-migration.mjs';
 export { enforcePlatformShellLifecycleContract } from './platform-shell-lifecycle-contract.mjs';
 export { enforceReactPageCatalogContract } from './react-page-catalog-contract.mjs';
 export {
@@ -2703,6 +2705,7 @@ export function main() {
   enforcePlatformShellLifecycleContract();
   enforceConfigNestjsMigrationDocs();
   enforceRuntimeLifecycleNestjsMigrationDocs();
+  enforcePassportJsBridgeNestjsMigration();
   enforceExpressApplicationOwnershipDocs();
   enforceExpressRuntimeMigrationDocsSync();
   enforceCanonicalRuntimeMatrixReferences();

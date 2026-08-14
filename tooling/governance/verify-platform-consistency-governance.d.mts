@@ -57,6 +57,9 @@ export function enforceExpressRuntimeMigrationDocsSync(
 export function enforcePlatformShellLifecycleContract(
   readText?: (relativePath: string) => string,
 ): void;
+export function enforcePassportJsBridgeNestjsMigration(
+  readText?: (relativePath: string) => string,
+): void;
 export function enforceEmailLifecycleDocsContract(
   readText?: (relativePath: string) => string,
 ): void;

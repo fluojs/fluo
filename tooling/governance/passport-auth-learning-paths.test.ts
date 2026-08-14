@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type {
+  CallExpression,
   ClassDeclaration,
   MethodDeclaration,
   Node,
@@ -12,6 +13,8 @@ import type {
 import {
   canHaveDecorators,
   createSourceFile,
+  DiagnosticCategory,
+  flattenDiagnosticMessageText,
   forEachChild,
   getDecorators,
   isArrayLiteralExpression,
@@ -22,9 +25,13 @@ import {
   isObjectLiteralExpression,
   isPropertyAccessExpression,
   isPropertyAssignment,
+  isSpreadElement,
+  isStringLiteral,
+  ModuleKind,
   ScriptKind,
   ScriptTarget,
   SyntaxKind,
+  transpileModule,
 } from 'typescript';
 import { describe, expect, it } from 'vitest';
 
@@ -57,7 +64,31 @@ function requireTypeScriptFence(markdown: string, governedIdentifier: string): s
 }
 
 function parseFence(fence: string): SourceFile {
+  const diagnostics = transpileModule(fence, {
+    compilerOptions: {
+      module: ModuleKind.ESNext,
+      target: ScriptTarget.Latest,
+    },
+    fileName: 'passport-learning-path.ts',
+    reportDiagnostics: true,
+  }).diagnostics?.filter((diagnostic) => diagnostic.category === DiagnosticCategory.Error) ?? [];
+
+  if (diagnostics.length > 0) {
+    throw new TypeError(
+      `Invalid TypeScript fence: ${diagnostics
+        .map((diagnostic) => flattenDiagnosticMessageText(diagnostic.messageText, '\n'))
+        .join('; ')}`,
+    );
+  }
+
   return createSourceFile('passport-learning-path.ts', fence, ScriptTarget.Latest, true, ScriptKind.TS);
+}
+
+function isNamedPropertyAccess(node: Node, receiver: string, name: string): boolean {
+  return isPropertyAccessExpression(node)
+    && isIdentifier(node.expression)
+    && node.expression.text === receiver
+    && node.name.text === name;
 }
 
 function getCallName(node: Node): string | undefined {
@@ -98,6 +129,26 @@ function requireObjectArgument(source: SourceFile, callName: string): ObjectLite
   }
 
   return objectArgument;
+}
+
+function requireCall(source: SourceFile, callName: string): CallExpression {
+  let call: CallExpression | undefined;
+
+  function visit(node: Node): void {
+    if (getCallName(node) === callName && isCallExpression(node)) {
+      call = node;
+    }
+
+    forEachChild(node, visit);
+  }
+
+  visit(source);
+
+  if (call === undefined) {
+    throw new TypeError(`Missing call ${callName}`);
+  }
+
+  return call;
 }
 
 function getPropertyInitializer(object: ObjectLiteralExpression, name: string): Node | undefined {
@@ -188,6 +239,46 @@ describe('Passport authentication learning paths', () => {
     // Then
     expect(methodDecorators).toEqual(expect.arrayContaining(['UseAuth', 'RequireScopes']));
     expect(getDecoratorNames(controller)).not.toContain('UseAuth');
+  });
+
+  it.each(passportChapters)('%s registers the explicit Passport.js bridge bundle', (relativePath) => {
+    // Given
+    const markdown = read(relativePath);
+
+    // When
+    const source = parseFence(requireTypeScriptFence(markdown, 'createPassportJsStrategyBridge'));
+    const bridgeCall = requireCall(source, 'createPassportJsStrategyBridge');
+    const bridgeOptions = bridgeCall.arguments[2];
+    const moduleMetadata = requireObjectArgument(source, 'Module');
+    const providers = getPropertyInitializer(moduleMetadata, 'providers');
+    const passportCall = requireCall(source, 'PassportModule.forRoot');
+    const registrations = passportCall.arguments[1];
+
+    // Then
+    expect(isStringLiteral(bridgeCall.arguments[0]) && bridgeCall.arguments[0].text).toBe('google');
+    expect(isIdentifier(bridgeCall.arguments[1]) && bridgeCall.arguments[1].text).toBe('GoogleStrategy');
+    expect(
+      bridgeOptions !== undefined
+        && isObjectLiteralExpression(bridgeOptions)
+        && getPropertyInitializer(bridgeOptions, 'mapPrincipal') !== undefined,
+    ).toBe(true);
+    expect(
+      providers !== undefined
+        && isArrayLiteralExpression(providers)
+        && providers.elements.some(
+          (element) => isIdentifier(element) && element.text === 'GoogleStrategy',
+        )
+        && providers.elements.some(
+          (element) => isSpreadElement(element)
+            && isNamedPropertyAccess(element.expression, 'googleBridge', 'providers'),
+        ),
+    ).toBe(true);
+    expect(
+      registrations !== undefined
+        && isArrayLiteralExpression(registrations)
+        && registrations.elements.some((element) =>
+          isNamedPropertyAccess(element, 'googleBridge', 'strategy')),
+    ).toBe(true);
   });
 
   it.each(passportChapters)('%s omits unsupported guard identifiers', (relativePath) => {

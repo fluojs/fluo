@@ -19,6 +19,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 | `NestFactory.create(AppModule)` | `FluoFactory.create(AppModule, { adapter })` from `@fluojs/runtime` | HTTP listening requires an explicit platform adapter such as `createFastifyAdapter()`. `FluoFactory.create(AppModule)` can still build an adapterless application shell, but that shell cannot call `listen()`. |
 | NestJS `beforeApplicationShutdown(signal?)` | no direct replacement; use `onModuleDestroy()` or `onApplicationShutdown(signal?)` from `@fluojs/runtime` | `beforeApplicationShutdown` is unsupported. Put shutdown preparation in `onModuleDestroy()` when it belongs before the application-wide signal phase, or in `onApplicationShutdown(signal?)` when cleanup needs the signal. fluo provides no compatibility shim or additional runtime hook. |
 | `@nestjs/config` `ConfigModule.forRoot(...)`, `forRootAsync(...)`, `load`, `validate`, and `isGlobal` | `ConfigModule.forRoot({ processEnv, schema, global? })` from `@fluojs/config` | fluo registration is synchronous: pass an explicit `processEnv` snapshot, use a synchronous Standard Schema validator, and use `global?: boolean` (`true` by default) for visibility. Resolve async factories before module registration, preserve their nested objects for deep merging and dot-path access, and share one validated snapshot with both `ConfigModule` and any HTTP adapter inputs. |
+| `@nestjs/passport` `PassportModule.register(...)`, `PassportStrategy(...)`, named `AuthGuard(...)`, sessions, and serializers | `createPassportJsStrategyBridge(...)`, `PassportModule.forRoot(...)`, explicit bridge providers/named registration, and `mapPrincipal(...)` from `@fluojs/passport` | Adapt one explicitly provided Passport.js strategy at a time. Register `bridge.providers`, pass `bridge.strategy` to the fluo registry, and map the Passport user to a fluo principal. Middleware, sessions, serializers/deserializers, strategy discovery, and host integration remain outside the bridge. |
 | NestJS HTTP server lifecycle hooks or late WebSocket server mutation when moving to Cloudflare Workers | `@fluojs/platform-cloudflare-workers` plus `CloudflareWorkersWebSocketModule.forRoot()` from `@fluojs/websockets/cloudflare-workers` | Workers expose a host-owned `fetch(request, env, ctx)` boundary rather than a server socket. `listen()` only binds the fluo dispatcher; register the Worker WebSocket module in the application graph so bootstrap configures its binding before that listen boundary. Each accepted request is tracked through `ctx.waitUntil(...)`. Bootstrap receives only the predeclared root module and options; request `env` is attached during dispatch, so it cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers. Keep independently available pre-registration values in bootstrap configuration. Read, validate, and narrow selected fetch-time bindings from `RequestContext`, then pass application-shaped values into provider methods. |
 | `@Injectable()` provider marker | provider class or provider definition listed in `@Module(...).providers` | fluo does not use `@Injectable()` as a required provider registration step. |
 | constructor type reflection via `emitDecoratorMetadata` | `@Inject(TokenA, TokenB)` from `@fluojs/core` | Constructor dependencies are declared explicitly in decorator argument order. |
@@ -64,6 +65,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 - Do not expect `ClassSerializerInterceptor`-style post-processing after taking direct response ownership. Return DTOs without committing the response when `SerializerInterceptor` should shape them. If migrated code calls `RequestContext.response.send(...)`, `redirect(...)`, or a manual streaming helper, it must produce the final safe payload before that commit. Afterward, `SerializerInterceptor` bypasses serialization and returns the value it received from `next.handle()` unchanged; other interceptors may still transform the chain result. The dispatcher independently skips a second success-response write.
 - Do not carry over `ValidationPipe` whitelist/forbid assumptions or class-validator group execution. Ordinary fluo validators skip `null` and `undefined`, so add `@IsDefined()` for required fields. When its input is a plain object, `materialize()` retains safe own enumerable extra properties rather than stripping or rejecting them; this filtering guarantee does not describe already-created DTO instances. Decorator options do not support `groups` or `always`. Use explicit input shaping and separate DTOs, mapped DTOs, `@ValidateIf(...)`, or class-level validators for workflow-specific rules.
 - NestJS i18n request-scoped context and resolver discovery do not carry over. Run `resolveHttpLocale(...)` with an ordered resolver list at an application-owned request boundary, read only the metadata stored on that `RequestContext` with `getHttpLocale(...)`, and pass its `locale` to each `I18nService` or `localizeDtoValidationError(...)` call. The validation helper does not read request state or a global locale implicitly.
+- NestJS Passport migration is not full NestJS Passport compatibility. The Passport.js bridge adapts one explicitly registered strategy execution to fluo `AuthStrategy`; it does not install Passport middleware, sessions, serializers/deserializers, or automatic strategy discovery. It adds no implicit guards, request augmentation beyond the documented `requestContext.principal` mapping, or host middleware ownership. Session and serializer/deserializer migration remains application-owned.
 - OpenAPI migration is not a reflection-driven `SwaggerModule` replacement. `OpenApiModule` requires `title` and `version`, and documented operations must come from explicit `sources`, explicit `descriptors`, or both; application `controllers` are not inferred. Handler return values and TypeScript return types do not produce response schemas. Without `@ApiResponse(...)`, the generated success response contains only the method-derived or `@HttpCode(...)` status and an `OK` description; provide `schema` or `type` to `@ApiResponse(...)` for response content. Duplicate OpenAPI path/method operations use later-descriptor precedence, and module composition places explicit `descriptors` after discovered `sources`, so explicit descriptors win collisions.
 - Controller decorators MUST be imported from `@fluojs/http`, while structural decorators such as `@Module` come from `@fluojs/core`.
 - NestJS `@Sse()` handlers that return Observables MUST be rewritten to construct `SseResponse` or return an `AsyncIterable`. Manual `SseResponse` streams should call `send(...)` or `comment(...)` and close from request abort or application cleanup paths; managed async iterables are closed by the dispatcher when the request aborts or the response stream closes.
@@ -231,6 +233,58 @@ Invoke `bindRequestLocale(...)` from application-owned middleware or another req
 
 `localizeDtoValidationError(...)` returns a new error whose issue messages use the explicit locale. Its default namespace is `validation`, candidate keys run from `source.field.code` through `code`, and missing translations preserve the original issue message unless `fallbackToIssueMessage: false` is selected. The helper remains transport-agnostic: HTTP chooses the locale here, but validation localization never reads HTTP state itself.
 
+### Passport.js Bridge Migration
+
+Migrate each NestJS `PassportStrategy(...)` independently instead of carrying over a reflection-discovered Passport runtime. Use this sequence:
+
+1. Configure the concrete Passport.js strategy as an explicit application provider.
+2. Call `createPassportJsStrategyBridge(...)` with a stable strategy name, that provider token, and a `mapPrincipal(...)` mapping.
+3. Add `bridge.providers` to the same authored module's `providers` array.
+4. Pass `bridge.strategy` to `PassportModule.forRoot(...)` as the explicit named strategy registration.
+5. Apply fluo `@UseAuth('name')` where authentication is required and read the mapped identity from `requestContext.principal`.
+
+```typescript
+import { Module } from '@fluojs/core';
+import type { Principal } from '@fluojs/http';
+import {
+  createPassportJsStrategyBridge,
+  PassportModule,
+} from '@fluojs/passport';
+
+import { GoogleStrategy } from './google.strategy.js';
+
+function mapGoogleUser(user: unknown): Principal {
+  if (
+    typeof user !== 'object'
+    || user === null
+    || !('id' in user)
+    || typeof user.id !== 'string'
+    || user.id.length === 0
+  ) {
+    throw new TypeError('Google strategy returned a user without a string id.');
+  }
+
+  return { claims: { ...user }, subject: user.id };
+}
+
+const googleBridge = createPassportJsStrategyBridge('google', GoogleStrategy, {
+  mapPrincipal: ({ user }) => mapGoogleUser(user),
+});
+
+@Module({
+  imports: [
+    PassportModule.forRoot(
+      { defaultStrategy: 'google' },
+      [googleBridge.strategy],
+    ),
+  ],
+  providers: [GoogleStrategy, ...googleBridge.providers],
+})
+export class AuthModule {}
+```
+
+`mapPrincipal(...)` is the only documented request-identity handoff: validate the Passport.js `user`, return a fluo `Principal` with a non-empty `subject` and object `claims`, and let `AuthGuard` assign it to `requestContext.principal`. The bridge does not install Passport middleware, sessions, serializers, deserializers, or automatic strategy discovery. It does not provide full NestJS Passport compatibility, implicit guards, request augmentation beyond that principal mapping, or host middleware ownership. Session and serializer/deserializer migration remains application-owned at the bootstrap and request-host boundaries.
+
 ### Prisma Request-Wide Transaction Migration
 
 Keep ordinary business atomicity on service `@Transaction()` methods. If a migrated controller genuinely needs one transaction around work that cannot be expressed as a single service boundary, inject the wrapper `PrismaService<TClient>`, call `requestTransaction(...)` explicitly, and forward the request cancellation signal:
@@ -339,6 +393,7 @@ Kafka and RabbitMQ keep inbound consumer callbacks pending until handler executi
 - `@Injectable()` as the default provider marker. Provider registration happens through the module `providers` array.
 - Reflection-driven constructor resolution through `reflect-metadata`.
 - Reflection-driven microservice handler discovery from NestJS provider or emitted design metadata.
+- Assuming a Passport.js bridge recreates the NestJS Passport runtime. fluo requires explicit bridge providers, named strategy registration, route guard metadata, and principal mapping while the application retains middleware, session, serializer/deserializer, and host ownership.
 - Implicit DI based on emitted design-time types.
 - Legacy decorator compiler mode as a framework requirement.
 - Collapsing the generated `@fluojs/vite` application transform and `@fluojs/testing/vitest` test transform into one file boundary.

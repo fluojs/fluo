@@ -41,15 +41,63 @@ In Fluo, Guards run according to a specific hierarchy:
 When Guards exist at multiple levels, they run from top to bottom, global to controller to method. This hierarchical execution lets you set broad security defaults at the application level while still providing specialized rules for specific endpoints. It also improves application performance because if a Global Guard denies access, more specific and potentially more resource-intensive Controller or Method Guards do not run at all.
 
 ## 15.2 Introduction to @fluojs/passport
-`fluo` does not rebuild Authentication strategies from scratch. Instead, it provides the `@fluojs/passport` package, which wraps the globally popular **Passport.js** ecosystem in a "Standard-First" way. This lets you use hundreds of proven strategies, including JWT, OAuth2, and SAML, while keeping Fluo's clean decorator-based developer experience.
+`fluo` does not rebuild every Authentication strategy from scratch. `@fluojs/passport` provides a native `AuthStrategy`/`AuthGuard` core plus an explicit bridge for adapting individual **Passport.js** strategies. The bridge can reuse a configured JWT, OAuth2, or SAML strategy, but it does not install the wider Passport or NestJS Passport runtime around that strategy.
 
 ### 15.2.1 Why Passport?
 Passport is widely used as Authentication middleware for Node.js because of its modularity. By separating the Authentication mechanism, or Strategy, from application routes, Passport lets you swap Authentication methods or add new ones with minimal code changes. If you later decide to add "Sign in with Google", you can add a new Passport strategy while leaving most existing Guards intact.
 
-This modularity fits Fluo's architecture well because it separates "how to authenticate" from "what to protect". The Passport community has already handled the details of thousands of identity providers, so you do not need to redesign cryptographic or protocol-level details every time you add a new Authentication method. Fluo adopts this industry standard while keeping application code inside explicit Provider and Guard boundaries.
+This modularity fits Fluo's architecture well because it separates "how to authenticate" from "what to protect". The Passport community has already handled the details of many identity providers, so you do not need to redesign protocol-level details every time you add a new Authentication method. Fluo reuses a selected strategy only through explicit Provider, named registration, principal mapping, and Guard boundaries.
 
 ### 15.2.2 The Principal Object
 In Passport terminology, an authenticated user is represented as a "user" object attached to the request. In Fluo, we call this a **Principal**. A JWT Principal is a normalized object with a required `subject` identifier, the verified `claims` bag, and optional `roles` and `scopes`. By standardizing the Principal across every strategy, business logic stays decoupled from the specific Authentication method used. For example, `ProfileService` does not care whether the user signed in with JWT or Facebook. It reads the user's canonical identifier from `principal.subject`.
+
+### 15.2.3 Migrating a NestJS Passport.js Strategy
+
+NestJS Passport users must wire each reused Passport.js strategy explicitly. Create the bridge, register its provider bundle, register its named strategy with `PassportModule.forRoot(...)`, and map the Passport user to the fluo principal contract:
+
+```typescript
+import { Module } from '@fluojs/core';
+import type { Principal } from '@fluojs/http';
+import {
+  createPassportJsStrategyBridge,
+  PassportModule,
+} from '@fluojs/passport';
+
+import { GoogleStrategy } from './google.strategy.js';
+
+function mapGoogleUser(user: unknown): Principal {
+  if (
+    typeof user !== 'object'
+    || user === null
+    || !('id' in user)
+    || typeof user.id !== 'string'
+    || user.id.length === 0
+  ) {
+    throw new TypeError('Google strategy returned a user without a string id.');
+  }
+
+  return { claims: { ...user }, subject: user.id };
+}
+
+const googleBridge = createPassportJsStrategyBridge('google', GoogleStrategy, {
+  mapPrincipal: ({ user }) => mapGoogleUser(user),
+});
+
+@Module({
+  imports: [
+    PassportModule.forRoot(
+      { defaultStrategy: 'google' },
+      [googleBridge.strategy],
+    ),
+  ],
+  providers: [GoogleStrategy, ...googleBridge.providers],
+})
+export class AuthModule {}
+```
+
+The order is significant: configure `GoogleStrategy` as an application provider, call `createPassportJsStrategyBridge(...)`, spread `googleBridge.providers` into the same module, pass `googleBridge.strategy` as the named registration, then use `@UseAuth('google')`. `mapPrincipal(...)` validates the strategy's `user` and returns the only documented request augmentation, the `Principal` that `AuthGuard` writes to `requestContext.principal`.
+
+This bridge is not full NestJS Passport compatibility. It does not install Passport middleware, sessions, serializers, deserializers, or automatic strategy discovery, and it supplies no implicit guards or host middleware ownership. Session and serializer/deserializer migration remains application-owned; configure those concerns at your bootstrap and request-host boundaries rather than adding shims to the bridge.
 
 ## 15.3 Implementing the JWT AuthStrategy
 The most common strategy in FluoBlog is a custom `AuthStrategy` that reads a Bearer token and normalizes it into a `JwtPrincipal`. Following the "Standard-First" philosophy makes it easier to design the JWT implementation so it stays aligned with industry standards such as RFC 7519.
