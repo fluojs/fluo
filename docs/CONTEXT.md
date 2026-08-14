@@ -243,7 +243,7 @@ re-export for the documented deprecation window.
 | Bootstrap path or startup sequence facts | `docs/getting-started/quick-start.md` | `docs/architecture/lifecycle-and-shutdown.md` |
 | Human learning flow or tutorial material | `book/README.md` | relevant chapters under `book/` |
 
-JWT async-registration clarification: `JwtModule.forRootAsync({ inject, useFactory, global? })` accepts only its supported typed configuration; NestJS `imports`, `useClass`, and `useExisting` have no dynamic-module semantics, while extra JavaScript object properties are unread at runtime rather than validated or rejected. Register injected dependencies through a global module or a module that exports them into `JwtRuntimeModule`'s application graph; a provider local only to a parent module's providers is not visible to the JWT options provider.
+JWT async-registration clarification: `JwtModule.forRootAsync({ inject, useFactory, global? })` accepts only its supported typed configuration; NestJS `imports`, `useClass`, and `useExisting` have no dynamic-module semantics, while extra JavaScript object properties are unread at runtime rather than validated or rejected. Dependencies must come from a globally visible module export or bootstrap runtime providers in the application graph that `JwtRuntimeModule` can resolve. An ordinary sibling or parent module export alone, and a provider local only to `AuthModule.providers`, are not visible to the JWT options provider.
 
 ## Anti-Patterns at a Glance
 

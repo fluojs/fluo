@@ -242,7 +242,7 @@ HTTP route 및 #2506 navigation ownership, dual-import test, bilingual docs, Cha
 | 부트스트랩 경로나 시작 순서 사실 확인 | `docs/getting-started/quick-start.md` | `docs/architecture/lifecycle-and-shutdown.md` |
 | 사람용 학습 흐름이나 튜토리얼 자료 확인 | `book/README.md` | `book/` 아래 관련 챕터 |
 
-JWT async-registration 정정: `JwtModule.forRootAsync({ inject, useFactory, global? })`는 지원되는 typed configuration만 받으며 NestJS `imports`, `useClass`, `useExisting`에는 dynamic-module 의미가 없습니다. 추가 JavaScript object property는 runtime에서 읽지 않을 뿐 validate하거나 reject하지 않습니다. injected dependency는 global module 또는 `JwtRuntimeModule`의 application graph에 export하는 module로 등록해야 하며, parent module providers에만 local인 provider는 JWT options provider에서 보이지 않습니다.
+JWT async-registration 정정: `JwtModule.forRootAsync({ inject, useFactory, global? })`는 지원되는 typed configuration만 받으며 NestJS `imports`, `useClass`, `useExisting`에는 dynamic-module 의미가 없습니다. 추가 JavaScript object property는 runtime에서 읽지 않을 뿐 validate하거나 reject하지 않습니다. injected dependency는 global로 visible한 module export 또는 `JwtRuntimeModule`이 resolve할 수 있는 application graph의 bootstrap runtime provider에서 와야 합니다. ordinary sibling 또는 parent module의 export만으로는 충분하지 않으며, `AuthModule.providers`에만 local인 provider는 JWT options provider에서 보이지 않습니다.
 
 ## Anti-Patterns at a Glance
 
