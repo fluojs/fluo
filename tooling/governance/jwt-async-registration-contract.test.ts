@@ -183,6 +183,10 @@ describe('JWT async registration contract', () => {
       '`JwtModule.forRootAsync(...)`: neither `imports` nor `useClass` nor `useExisting` is unsupported.',
     ],
     [
+      'docs/getting-started/migrate-from-nestjs.md',
+      '`JwtModule.forRootAsync(...)` `imports` are supported.',
+    ],
+    [
       'docs/getting-started/migrate-from-nestjs.ko.md',
       '`JwtModule.forRootAsync(...)`의 `imports`, `useClass`, `useExisting` 중 어느 것도 지원하지 않는 것은 아닙니다.',
     ],
@@ -206,8 +210,14 @@ describe('JWT async registration contract', () => {
     [
       'book/beginner/ch14-jwt.ko.md',
       '`JwtModule.forRootAsync(...)`는 부모 module providers에만 local인 provider를 주입할 수 있습니다.',
+      /must not claim parent-local providers are visible to the JWT options provider/,
     ],
-  ] as const)('rejects parent-local JWT option providers in %s', (targetPath, contradiction) => {
+    [
+      'docs/getting-started/migrate-from-nestjs.md',
+      '`JwtModule.forRootAsync(...)` allows an ordinary sibling or parent module export alone that is visible to the JWT options provider.',
+      /must not claim ordinary sibling or parent module exports are visible to the JWT options provider/,
+    ],
+  ] as const)('rejects unavailable JWT option dependencies in %s', (targetPath, contradiction, expectedError = /must not claim parent-local providers are visible to the JWT options provider/) => {
     // Given
     const readWithContradiction = (relativePath: string): string =>
       relativePath === targetPath ? `${read(relativePath)}\n${contradiction}` : read(relativePath);
@@ -216,7 +226,7 @@ describe('JWT async registration contract', () => {
     const runGovernanceGuard = () => enforceJwtAsyncRegistrationContract(readWithContradiction);
 
     // Then
-    expect(runGovernanceGuard).toThrow(/must not claim parent-local providers are visible to the JWT options provider/);
+    expect(runGovernanceGuard).toThrow(expectedError);
   });
 
   it.each([
@@ -244,6 +254,10 @@ describe('JWT async registration contract', () => {
     [
       'packages/jwt/README.ko.md',
       '````md\n```md\n`JwtModule.forRootAsync({ inject, useFactory, global? })`는 factory가 resolve되기 전에 application module graph에 의존성을 등록하며 `useFactory`는 최종 `JwtVerifierOptions`를 반환합니다. 최상위 `global?`은 module 가시성을 제어하며 `useFactory`가 반환하는 최종 `JwtVerifierOptions`와는 별개입니다. `imports`, `useClass`, `useExisting`은 지원되는 typed configuration의 일부가 아니며 자동 provider discovery도 지원하지 않습니다. 의존성은 global module 또는 export하는 module로 등록해야 하며 parent module providers에만 local인 provider는 보이지 않습니다.\n```\n````',
+    ],
+    [
+      'docs/getting-started/migrate-from-nestjs.md',
+      '````md\n````typescript\n`JwtModule.forRootAsync({ inject, useFactory, global? })` registers dependencies in the application module graph before the factory resolves, and `useFactory` returns final `JwtVerifierOptions`. The top-level `global?` controls module visibility and is distinct from the final `JwtVerifierOptions` returned by `useFactory`. `imports`, `useClass`, and `useExisting` are not part of the supported typed configuration, and automatic provider discovery is unsupported. Register dependencies through a global module or a module that exports them; a provider local only to a parent module\'s providers is not visible.\n````',
     ],
   ] as const)('does not accept guidance hidden by a longer fenced block in %s', (targetPath, hiddenGuidance) => {
     // Given

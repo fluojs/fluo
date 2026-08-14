@@ -47,7 +47,8 @@ function visibleMarkdown(content) {
       }
       continue;
     }
-    if (marker?.[0] === fence[0] && marker.length >= fence.length) {
+    const closingMarker = /^(?: {0,3})(`{3,}|~{3,})[ \t]*$/u.exec(line)?.[1];
+    if (closingMarker?.[0] === fence[0] && closingMarker.length >= fence.length) {
       fence = undefined;
     }
   }
@@ -102,15 +103,21 @@ function requiredGuidance(content, locale) {
       localePatterns.negative,
     ])),
     supportedShape: documentClauses.some((clause) => hasAll(clause, [actor, /inject/u, /useFactory/u, /global\?/u])),
-    dependencyVisibility: documentClauses.some((clause) => locale === 'en'
-      ? hasAll(clause, [
-          /(?:global module|module that exports?)/iu,
-          /parent module(?:'s)? providers?/iu,
+    dependencyVisibility: locale === 'en'
+      ? documentClauses.some((clause) => hasAll(clause, [
+          /globally visible module export/iu,
+          /bootstrap runtime providers?/iu,
+          /JwtRuntimeModule/u,
+        ])) && documentClauses.some((clause) => hasAll(clause, [
+          /ordinary sibling or parent module export alone/iu,
           /(?:not visible|cannot inject)/iu,
-        ])
-      : hasAll(clause, [
-          /(?:global module|export.*module|module.*export)/iu,
-          /parent module providers?/iu,
+        ]))
+      : documentClauses.some((clause) => hasAll(clause, [
+          /global.*visible.*module export/iu,
+          /bootstrap runtime provider/u,
+          /JwtRuntimeModule/u,
+        ])) && documentClauses.some((clause) => hasAll(clause, [
+          /ordinary sibling.*parent module.*export/u,
           /(?:보이지 않|주입할 수 없)/u,
         ])),
     globalBoundary: documentClauses.some((clause) => hasAll(clause, [
@@ -141,7 +148,7 @@ function contradictionMessage(content, locale) {
   const languagePatterns = locale === 'en'
     ? {
         negative: /\b(?:cannot|does not|do not|never|no|neither|nor|not accepted|not supported|unsupported|outside)\b/iu,
-        positive: /\b(?:accept(?:s|ed)?|allows?|supports?|permits?|takes?|valid|available|can use|may use|ignored)\b/iu,
+        positive: /\b(?:accept(?:s|ed)?|allows?|supports?|supported|permits?|takes?|valid|available|can use|may use|ignored)\b/iu,
       }
     : {
         negative: /(?:지원하지|허용하지|받지|사용할 수 없|포함되지|아니|없|금지|거부)/u,
@@ -176,6 +183,16 @@ function contradictionMessage(content, locale) {
         : /부모 module providers?/u.test(proposition) && /(?:주입할 수 있|보입니다|보인다)/u.test(proposition);
       if (parentLocalProvider) {
         return 'must not claim parent-local providers are visible to the JWT options provider.';
+      }
+      const ordinaryModuleExport = locale === 'en'
+        ? /ordinary sibling or parent module export/iu.test(proposition)
+          && /(?:can inject|(?:is|are) visible)/iu.test(proposition)
+          && !/not visible/iu.test(proposition)
+        : /ordinary sibling.*parent module.*export/u.test(proposition)
+          && /(?:주입할 수 있|보입니다|보인다)/u.test(proposition)
+          && !/보이지 않/u.test(proposition);
+      if (ordinaryModuleExport) {
+        return 'must not claim ordinary sibling or parent module exports are visible to the JWT options provider.';
       }
       const doubleNegativeDiscovery = locale === 'en'
         ? /\b(?:does not|do not)\s+(?:disable|prevent|block|stop)\b/iu.test(proposition)
