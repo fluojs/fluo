@@ -110,7 +110,7 @@ import { ConfigService } from '@fluojs/config';
 export class AuthModule {}
 ```
 
-지원되는 계약은 `JwtModule.forRootAsync({ inject, useFactory })`입니다. `JwtModule.forRootAsync(...)`의 `inject`에 지정한 의존성은 JWT options provider가 resolve되기 전에 application module graph에 먼저 등록해야 하며, `useFactory`는 final JWT options를 반환합니다. `JwtModule.forRootAsync(...)`는 NestJS dynamic-module `imports`, `useClass`, `useExisting`를 지원하지 않습니다. 이 field들은 받아서 무시하는 compatibility option이 아니라 options shape에 포함되지 않는 field입니다. `JwtModule.forRootAsync(...)`는 암묵적 module 또는 provider discovery를 지원하지 않습니다.
+지원되는 계약은 `JwtModule.forRootAsync({ inject, useFactory, global? })`입니다. `JwtModule.forRootAsync(...)`의 `inject`에 지정한 의존성은 JWT options provider가 resolve되기 전에 application module graph에 먼저 등록해야 하며, `useFactory`는 최종 `JwtVerifierOptions`를 반환합니다. 최상위 `global?`은 반환된 module의 가시성을 제어하며, `useFactory`가 반환하는 최종 `JwtVerifierOptions`와는 별개입니다. `JwtModule.forRootAsync(...)`는 NestJS dynamic-module `imports`, `useClass`, `useExisting`를 지원하지 않습니다. 이 field들은 받아서 무시하는 compatibility option이 아니라 options shape에 포함되지 않는 field입니다. `JwtModule.forRootAsync(...)`는 암묵적 module 또는 provider discovery를 지원하지 않습니다.
 
 ### Advanced Configuration Options
 `JwtModule`은 단순한 비밀 키 외에도 알고리즘, 발급자, 대상, 클록 스큐, 키 자료, JWKS 조회, 토큰 수명에 대한 명시적 설정을 지원합니다. 지원되는 알고리즘을 하나 이상 제공하고, `accessTokenTtlSeconds`는 양의 유한 숫자로 유지하여 잘못된 설정이 토큰 발행 전에 실패하도록 하세요.

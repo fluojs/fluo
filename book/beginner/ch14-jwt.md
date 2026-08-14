@@ -110,7 +110,7 @@ import { ConfigService } from '@fluojs/config';
 export class AuthModule {}
 ```
 
-The supported contract is `JwtModule.forRootAsync({ inject, useFactory })`: dependencies named by `inject` must already be registered in the application module graph before the JWT options provider resolves, and `useFactory` returns the final JWT options. `JwtModule.forRootAsync(...)` does not accept NestJS dynamic-module `imports`, `useClass`, or `useExisting`; those fields are outside its options shape, not accepted-and-ignored compatibility fields. `JwtModule.forRootAsync(...)` performs no implicit module or provider discovery.
+The supported contract is `JwtModule.forRootAsync({ inject, useFactory, global? })`: dependencies named by `inject` must already be registered in the application module graph before the JWT options provider resolves, and `useFactory` returns the final `JwtVerifierOptions`. The top-level `global?` controls returned module visibility and is distinct from the final `JwtVerifierOptions` returned by `useFactory`. `JwtModule.forRootAsync(...)` does not accept NestJS dynamic-module `imports`, `useClass`, or `useExisting`; those fields are outside its options shape, not accepted-and-ignored compatibility fields. `JwtModule.forRootAsync(...)` performs no implicit module or provider discovery.
 
 ### Advanced Configuration Options
 Beyond a simple secret key, `JwtModule` supports explicit configuration for algorithms, issuer, audience, clock skew, key material, JWKS lookup, and token lifetimes. Always provide at least one supported algorithm, and keep `accessTokenTtlSeconds` as a positive finite number so misconfiguration fails before a token is issued.
