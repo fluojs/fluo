@@ -17,6 +17,13 @@ const virtualSources = new Map([
       (value: Function, context: ClassDecoratorContext) => void;
   `],
   ['/passport-bridge/http.d.ts', `
+    export interface GuardContext {
+      requestContext: {
+        request: {
+          method: string;
+        };
+      };
+    }
     export interface Principal {
       subject: string;
       issuer?: string;
@@ -27,7 +34,7 @@ const virtualSources = new Map([
     }
   `],
   ['/passport-bridge/passport.d.ts', `
-    import type { Principal } from '@fluojs/http';
+    import type { GuardContext, Principal } from '@fluojs/http';
     export interface PassportJsStrategyLike {
       authenticate(request: unknown, options?: unknown): unknown;
     }
@@ -39,11 +46,16 @@ const virtualSources = new Map([
       providers: readonly import('@fluojs/core').Provider[];
       strategy: AuthStrategyRegistration;
     }
+    export interface PassportJsPrincipalMapperInput {
+      context: GuardContext;
+      info?: unknown;
+      user: unknown;
+    }
     export function createPassportJsStrategyBridge(
       name: string,
       strategyToken: new (...dependencies: never[]) => PassportJsStrategyLike,
       options?: {
-        mapPrincipal?: (input: { user: unknown; info?: unknown }) => Principal;
+        mapPrincipal?: (input: PassportJsPrincipalMapperInput) => Principal;
       },
     ): PassportJsStrategyBridge;
     export const PassportModule: {
