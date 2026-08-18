@@ -33,6 +33,11 @@ base branch 기본값은 lane ledger의 `base_branch`이며, ledger에 없을 �
 6. **merge approval gate** — `/pr-to-merge` verdict, checks, ledger authority, 사용자 승인을 모두 확인한 뒤에만 merge를 고려한다.
 7. **cleanup/root sync gate** — PR merge 및 linked issue close 확인 후 명시 authority가 있는 command-owned worktree/branch만 정리한다.
 8. **release handoff** — release/publish issue는 OpenCode 실행 loop에서 처리하지 않고 GitHub Actions Changesets release workflow handoff로 기록한다.
+9. **ledger validator gate** — preflight와 최종 ledger 갱신 후에 아래 명령을 실행한다. 어느 단계든 실패하면 ledger에는 canonical `needs-human-check-terminal`을 기록하고, 사용자-facing 결과는 `needs-human-check`로 보고하며 side effect 또는 최종 보고를 진행하지 않는다.
+
+   ```bash
+   pnpm verify:lane-ledger -- .omo/lanes/<lane-id>.json
+   ```
 
 이 커맨드가 소유하지 않는 것:
 
@@ -56,9 +61,11 @@ base branch 기본값은 lane ledger의 `base_branch`이며, ledger에 없을 �
 - `confirmed_issues`와 lane queue가 일치한다.
 - 실행 중인 worker/reviewer background task가 ledger에 남아 있으면 먼저 결과 수집 또는 상태 확인을 한다.
 
+위 preflight validator는 worker dispatch, merge, cleanup, root sync보다 먼저 실행한다. 실패한 ledger를 유효한 상태로 가장하지 않는다.
+
 ### Canonical version 1 progress contract
 
-version 1은 이 command가 소비하고 갱신하는 canonical ledger contract다. `issue_progress`의 key는 `confirmed_issues`와 lane queue에 모두 속한 issue number의 문자열이어야 한다. 각 issue progress object는 다음 durable fields를 사용한다.
+version 1은 이 command가 소비하고 갱신하는 canonical ledger contract다. root status는 `ready`, `running`, `done`, `blocked-terminal`, `needs-human-check-terminal`, `blocked-budget-exhausted`, `blocked-maintainer-decision`, `blocked-child-contract-error`, `blocked-ledger-conflict` 중 하나다. lane/progress status는 각각 `queued`, `running`, `in_review`, `merged`, `done`, `blocked-terminal`, `needs-human-check-terminal`, `blocked-budget-exhausted`, `blocked-maintainer-decision`, `blocked-child-contract-error`, `blocked-ledger-conflict` 중 하나다. `issue_progress`의 key는 `confirmed_issues`와 lane queue에 모두 속한 issue number의 문자열이어야 한다. 기존 v1 `ready` ledger가 completion history 없이 `issue_progress`를 생략한 경우에는 read compatibility로 소비할 수 있지만, 새 ledger는 `create-lane`이 `{}`로 초기화한다. 각 issue progress object는 다음 durable fields를 사용한다.
 
 - `status`: `queued`, `running`, `in_review`, `merged`, `done` 또는 terminal blocker 상태
 - `branch`: issue branch
@@ -75,16 +82,20 @@ version 1은 이 command가 소비하고 갱신하는 canonical ledger contract�
 
 `completed_issues`는 `issue_progress`에서 `status`가 `merged` 또는 `done`인 key와 정확히 같은 issue number 집합이어야 한다. 완료 issue는 confirmed lane queue 밖에 둘 수 없다.
 
+lane queue와 progress mapping은 중복 없이 1대1이어야 한다. PR은 positive integer 또는 정확히 `https://github.com/fluojs/fluo/pull/<number>` 형식의 canonical URL만 허용한다. 하나의 canonical PR identity는 동일 issue에 대한 lane-level `lane.pr`와 `issue_progress[*].pr` 사이에서 미러링할 수 있지만, 다른 issue에 재사용하거나 매핑하면 validator가 거부한다. `branch`는 safe branch name이어야 하고 `worktree`는 relative `.worktrees/<branch>` 또는 primary repository의 absolute `.worktrees/<branch>`만 허용한다.
+
 ### State transitions and cleanup
 
 각 issue 처리 결과는 다음 순서로 ledger에 기록한다.
 
 1. `issue_progress[String(issue)]`에 branch, worktree, PR, verification, retry, review, blocker evidence를 기록한다.
 2. issue가 `merged` 또는 `done`이면 해당 issue를 `completed_issues`에 추가한다. `merged`는 아직 cleanup 전인 active progress 상태다.
-3. 같은 lane queue에서 다음 active queue item으로 `current_issue`를 전진시킨다.
+3. 같은 lane queue에서 다음 active queue item으로 `current_issue`를 전진시킨다. `queued`, `running`, `in_review` lane은 `completed_issues`에 없는 queue의 첫 issue를 cursor로 사용한다.
 4. lane이 terminal 상태가 되면 모든 경우에 `current_issue: null`을 기록한다.
 
 `done`은 PR merge와 linked issue close를 확인한 뒤에만 사용할 수 있다. `authority_scope.cleanup_command_worktrees`가 `true`이면 cleanup을 완료하고 `cleanup: done`을 기록한다. 권한이 없으면 cleanup을 실행하지 않고 `cleanup: skipped-authority`를 기록한 뒤 `done`으로 전환한다. `merged`는 이 cleanup 판단 전의 상태로 유지한다. terminal lane에는 legacy lane-level `pr`, `review`, `merge`, `cleanup` evidence를 기록하지 않는다. 해당 evidence가 남아 있으면 `issue_progress`로 옮기도록 안내하고 ledger를 거부한다.
+
+root `status: done`은 모든 lane이 `done`이어야 한다. `root_main_sync.status: done`은 모든 lane이 terminal이고 `root_main_sync_ff_only: true` 및 40자리 SHA가 있을 때만 허용한다. root sync 전제가 충족되지 않으면 root branch를 바꾸지 않는다. cleanup은 `done` issue에서만 허용하며 `merged` cursor는 cleanup 전 상태다.
 
 ## Execution loop invariant
 
@@ -99,6 +110,14 @@ version 1은 이 command가 소비하고 갱신하는 canonical ledger contract�
 3. 각 lane은 항상 queue의 head issue만 실행한다.
 4. `/pr-to-merge`의 `block`은 먼저 fix-back 입력으로 취급한다.
 5. 모든 lane이 `done` 또는 진짜 terminal 상태이고 ledger가 현재 GitHub/repo 상태와 일치할 때만 최종 보고한다.
+
+최종 ledger 갱신을 마친 뒤 최종 보고 전에 validator를 다시 실행한다.
+
+```bash
+pnpm verify:lane-ledger -- .omo/lanes/<lane-id>.json
+```
+
+실패하면 ledger에 canonical `needs-human-check-terminal`을 기록하고 최종 결과를 `needs-human-check`로 보고한다. 이 상태에서 유효한 `done`, merge, cleanup 또는 root sync 상태를 만들어 보고하지 않는다.
 
 ### Per-lane progress, no global batch barrier
 
@@ -194,6 +213,8 @@ merge는 아래 조건을 모두 만족할 때만 고려한다.
 6. ledger `pr_merge_method`가 `squash`이고 repository merge policy와 일치한다.
 
 `merge_policy: "developer-final"`은 `authority_scope.pr_merge=true`를 유지하더라도 자동 merge 권한이 아니다. 이 정책에서는 위 gate를 모두 통과한 뒤에도 사용자 또는 상위 harness의 명시 human-final approval 없이는 `gh pr merge`를 실행하지 않는다.
+
+ledger authority는 필요한 configuration이지만 live GitHub와 repository 확인을 대체하지 않는다. PR, branch, worktree, checks, issue state와 merge 결과는 실행 시 실제 상태를 다시 확인한다.
 
 금지:
 

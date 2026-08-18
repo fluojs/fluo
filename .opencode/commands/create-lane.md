@@ -34,11 +34,18 @@ base branch 기본값은 `main`이다.
 4. **Suggested additions gate** — 같이 처리하면 좋은 issue를 confirmed set과 분리해 제안하고, 명시 승인된 항목만 포함한다.
 5. **Merge/cleanup authority 계획** — 실제 merge/cleanup 권한을 행사하지 않지만, lane ledger에 후속 실행의 PR merge authority와 merge method를 고정하고 cleanup 권한은 별도로 기록한다.
 6. **semantic lane planning** — issue를 logical lane에 배치하고 dependency/order를 정한다.
-7. **lane ledger 생성** — `.omo/lanes/<lane-id>.json`을 생성하고 다음 `/execute-lane <lane-id>` handoff를 출력한다.
+7. **lane ledger 생성** — `.omo/lanes/<lane-id>.json`을 생성한다.
+8. **생성 후 검증 gate** — 파일을 쓴 직후, handoff를 출력하기 전에 실행한다.
 
-`create-lane`은 canonical version 1 ledger만 생성한다. `issue_progress`는 빈 객체로 초기화하며, 생성 이후의 issue별 evidence 갱신은 `/execute-lane`이 소유한다. `queued`, `running`, `in_review`, `merged` 상태의 active lane은 queue에 포함된 positive integer `current_issue`로 시작해야 한다. terminal lane은 `current_issue: null`로 생성하거나 전환한다.
+   ```bash
+   pnpm verify:lane-ledger -- .omo/lanes/<lane-id>.json
+   ```
 
-version이 없거나 알 수 없는 version은 생성하거나 소비하지 않고 fail closed 한다. legacy terminal lane-level `pr`, `review`, `merge`, `cleanup` evidence는 자동 migration하지 않으며, completion evidence를 `issue_progress`로 기록하도록 안내하고 거부한다. `completed_issues`는 `issue_progress`에서 `status`가 `merged` 또는 `done`인 issue key와 같은 집합으로 유지한다.
+   검증이 실패하면 handoff를 출력하지 않고 `needs-human-check`로 보고한다.
+
+`create-lane`은 canonical version 1 ledger만 생성한다. `created_by`는 `create-lane`이고 authority 필드는 boolean이어야 한다. `issue_progress`는 `{}`로 초기화하며, 생성 이후의 issue별 evidence 갱신은 `/execute-lane`이 소유한다. 기존 v1 `ready` ledger가 completion history 없이 `issue_progress`를 생략한 경우에는 read compatibility로 허용할 수 있지만 새 ledger는 항상 `{}`를 기록한다. `queued`, `running`, `in_review`, `merged` 상태의 active lane은 queue에 포함된 positive integer `current_issue`로 시작해야 한다. `queued`, `running`, `in_review`에서는 `completed_issues`에 없는 queue의 첫 issue가 cursor여야 한다. `merged`는 cleanup 전 cursor를 보존할 수 있다. terminal lane은 `current_issue: null`로 생성하거나 전환한다.
+
+version이 없거나 알 수 없는 version은 생성하거나 소비하지 않고 fail closed 한다. legacy terminal lane-level `pr`, `review`, `merge`, `cleanup` evidence는 자동 migration하지 않으며, completion evidence를 `issue_progress`로 기록하도록 안내하고 거부한다. `completed_issues`는 `issue_progress`에서 `status`가 `merged` 또는 `done`인 issue key와 같은 집합으로 유지한다. 하나의 canonical PR identity는 동일 issue에 대한 lane-level `lane.pr`와 `issue_progress[*].pr` 사이에서만 미러링할 수 있으며, 다른 issue에 재사용하면 validator가 거부한다. PR URL은 `https://github.com/fluojs/fluo/pull/<number>` 형식만 canonical URL로 사용한다.
 
 이 커맨드가 소유하지 않는 것:
 
