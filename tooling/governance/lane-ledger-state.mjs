@@ -103,6 +103,35 @@ function validateLaneProgressRelationship(lanePath, lane, validation) {
   }
 }
 
+function classifyQueueEntry(lane, index, completedIssues) {
+  if (lane.status === 'done') {
+    return 'done';
+  }
+  const currentIndex = activeStatuses.has(lane.status)
+    ? lane.queue.indexOf(lane.current_issue)
+    : lane.queue.findIndex((issue) => !completedIssues.has(issue));
+  if (index < currentIndex) {
+    return 'previous';
+  }
+  return index === currentIndex ? 'current' : 'later';
+}
+
+function validateSequentialProgress(lanePath, lane, validation) {
+  for (const [index, issue] of lane.queue.entries()) {
+    const position = classifyQueueEntry(lane, index, validation.completedIssues);
+    const progress = validation.progressByIssue.get(issue);
+    if (position === 'done') {
+      assert(progress?.status === 'done', lanePath, 'done lane queue issues must have done issue_progress');
+    } else if (position === 'previous') {
+      assert(progress?.status === 'done', lanePath, 'queue entries before current must have done issue progress');
+    } else if (position === 'current' && lane.status === 'merged') {
+      assert(validation.completedIssues.has(issue), lanePath, 'merged lane current_issue must appear in completed_issues');
+    } else if (position === 'later') {
+      assert(progress === undefined || progress.status === 'queued', lanePath, 'queue entries after current must be absent or queued');
+    }
+  }
+}
+
 export function validateLedger(path, ledger) {
   validateLedgerShape(path, ledger);
   const confirmedIssues = new Set(ledger.confirmed_issues);
@@ -145,6 +174,7 @@ export function validateLedger(path, ledger) {
   const relationshipValidation = { completedIssues, progressByIssue };
   for (const [index, lane] of ledger.lanes.entries()) {
     validateLaneProgressRelationship(`${path}:lanes[${index}]`, lane, relationshipValidation);
+    validateSequentialProgress(`${path}:lanes[${index}]`, lane, relationshipValidation);
     if (lane.status === 'done') {
       for (const issue of lane.queue) {
         assert(completedIssues.has(issue), `${path}:lanes[${index}]`, 'done lane queue issues must appear in completed_issues');

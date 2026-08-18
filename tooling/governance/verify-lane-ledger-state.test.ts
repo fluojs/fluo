@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 // allow: SIZE_OK - state relationship matrix cases stay co-located at the verifier seam.
 import type { LaneLedgerFixture } from './verify-lane-ledger.test-support';
 import {
+  completedCleanupFixture,
   requireIssueProgress,
   requireRootMainSync,
   runMutatedCompletedLedger,
@@ -32,6 +33,33 @@ function setTerminalSecondIssue(ledger: LaneLedgerFixture, laneStatus: string, p
   const progress = requireIssueProgress(ledger, '102');
   progress.status = progressStatus;
   delete progress.cleanup;
+}
+
+function addLaterIssue(ledger: LaneLedgerFixture, status?: string): void {
+  ledger.confirmed_issues.push(103);
+  ledger.lanes[0].queue.push(103);
+  ledger.dependency_graph['103'] = [];
+  if (status === undefined) {
+    return;
+  }
+  const progress = { ...requireIssueProgress(ledger, '102') };
+  Object.assign(progress, {
+    status,
+    branch: 'issue-103-runtime-gamma',
+    worktree: '.worktrees/issue-103-runtime-gamma',
+    pr: 'https://github.com/fluojs/fluo/pull/503',
+    retry_count: 0,
+  });
+  if (status !== 'done' && status !== 'merged') {
+    delete progress.cleanup;
+  }
+  if (status === 'done') {
+    progress.cleanup = { ...completedCleanupFixture };
+  }
+  if (status === 'done' || status === 'merged') {
+    ledger.completed_issues.push(103);
+  }
+  ledger.issue_progress = { ...ledger.issue_progress, '103': progress };
 }
 
 describe('verify-lane-ledger canonical v1 completion contract', () => {
@@ -350,6 +378,38 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
         requireIssueProgress(ledger, '102').retry_count = 2;
       }),
     ).toContain('terminal lane retry_count must match first unfinished issue progress');
+  });
+
+  it('rejects merged progress before the current queue entry', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setActiveSecondIssue(ledger, 'running');
+        const previousProgress = requireIssueProgress(ledger, '101');
+        previousProgress.status = 'merged';
+        delete previousProgress.cleanup;
+      }),
+    ).toContain('queue entries before current must have done issue progress');
+  });
+
+  it.each(['running', 'in_review', 'merged', 'done', 'blocked-terminal'])(
+    'rejects later queue progress in status %s',
+    (status) => {
+      expect(
+        runMutatedCompletedLedger((ledger) => {
+          setActiveSecondIssue(ledger, 'running');
+          addLaterIssue(ledger, status);
+        }),
+      ).toContain('queue entries after current must be absent or queued');
+    },
+  );
+
+  it.each([undefined, 'queued'])('accepts later queue progress status %s', (status) => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setActiveSecondIssue(ledger, 'running');
+        addLaterIssue(ledger, status);
+      }, runValidatorPath),
+    ).toContain('Lane ledger check passed for 1 file(s).');
   });
 
   it('requires merged lane to have matching merged progress', () => {
