@@ -53,7 +53,7 @@ Make the lane workflow command architecture responsibility-complete and mechanic
 - `pnpm verify:lane-ledger -- <invalid fixture>` fails with a specific invariant error in test coverage.
 - `pnpm exec biome check tooling/governance/verify-lane-ledger.mjs package.json` passes.
 - `pnpm vitest run tooling/governance/verify-lane-ledger.test.ts` passes.
-- `pnpm verify:lane-ledger -- .sisyphus/lane-supervisor/lane-2026-05-31-011905.json` passes during migration compatibility.
+- `pnpm verify:lane-ledger -- tooling/governance/fixtures/lane-ledger/valid-ready.json tooling/governance/fixtures/lane-ledger/valid-completed-multi-issue.json` passes as the reproducible gate. When `.omo/lanes/lane-2026-08-05-persistence-a.json` is available, read-only verification of that local real completed artifact is a conditional supplementary check.
 
 ### Must Have
 - `search-issue` is the only stage allowed to create GitHub issues.
@@ -144,22 +144,31 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
   **Parallelization**: Can Parallel: NO | Wave 1 | Blocks: [5, 6, 7] | Blocked By: [1]
 
   **References**:
-  - Pattern: `.sisyphus/lane-supervisor/lane-2026-05-31-011905.json` - migration fixture.
+  - Fixture: `tooling/governance/fixtures/lane-ledger/valid-completed-multi-issue.json` - valid completed multi-issue fixture.
+  - Real artifact: `.omo/lanes/lane-2026-08-05-persistence-a.json` - conditional, read-only completed-ledger verification evidence when available; committed valid fixtures remain the reproducible gate.
   - Pattern: `tooling/governance/verify-lane-ledger.mjs` - current validator behavior.
 
   **Acceptance Criteria**:
-  - [ ] Schema docs include `version`.
+  - [ ] Schema docs require `version: 1`; version 1 remains canonical because both ready and deployed completed artifacts declare v1. Version 2 is reserved for a future incompatible format with explicit producer and migration support.
   - [ ] `create-lane` output is `status: ready`.
   - [ ] `execute-lane` accepts only `ready`, `running`, or terminal-resume ledgers.
-  - [ ] Old `.sisyphus/lane-supervisor/*.json` ledgers are explicitly migration-compatible or rejected with a clear message.
+  - [ ] Active lanes require an integer `current_issue`; terminal lanes require a `null` `current_issue` and move completion evidence to `issue_progress`.
+  - [ ] Completed ledgers require per-issue `issue_progress` evidence, and `completed_issues` must contain exactly the same issue numbers as completed `issue_progress` entries.
+  - [ ] Old `.sisyphus/lane-supervisor/*.json` ledgers are explicitly rejected with migration guidance; no migration ledger is a canonical passing fixture.
 
   **QA Scenarios**:
   ```text
-  Scenario: Valid ready lane schema is documented
+  Scenario: Canonical v1 lane schema is documented
     Tool: bash
-    Steps: grep -RIn "status: ready\\|version:\\|.sisyphus/lane/" .codex/commands plans
-    Expected: all three tokens appear in schema documentation.
+    Steps: grep -RIn "status: ready\\|version: 1\\|current_issue\\|issue_progress\\|completed_issues" .codex/commands plans
+    Expected: ready status, canonical version 1, active integer cursor, terminal null cursor, issue_progress evidence, and completed-set consistency appear in schema documentation.
     Evidence: evidence/task-2-schema-doc.txt
+
+  Scenario: Legacy lane ledger is explicitly rejected
+    Tool: bash
+    Steps: grep -RIn "lane-supervisor.*reject\\|rejected.*migration\\|migration guidance" plans/three-stage-lane-workflow.md
+    Expected: legacy lane-supervisor ledgers are documented as rejected with migration guidance, not as passing fixtures.
+    Evidence: evidence/task-2-legacy-rejection.txt
 
   Scenario: Execution cannot change issue selection
     Tool: bash
@@ -316,7 +325,7 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
 
 - [ ] 7. Genericize Lane Ledger Validator
 
-  **What to do**: Finish generic `tooling/governance/verify-lane-ledger.mjs` coverage. Add fixtures and tests for ready lane, done lane, blocked child contract error, duplicate PR mapping, invalid squash method, cleanup without merge, and stale done lane missing completed issue.
+  **What to do**: Finish generic `tooling/governance/verify-lane-ledger.mjs` coverage for canonical v1. Cover active integer cursors, terminal null cursors, issue_progress-based multi-issue completion evidence, completed-set consistency, legacy terminal lane-level evidence rejection with migration guidance, duplicate PR mapping, invalid squash method, cleanup without merge, and valid ready and completed fixtures. Require the entire focused validator suite to pass.
 
   **Must NOT do**: Do not weaken existing validation for merged/cleanup states.
 
@@ -325,7 +334,8 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
   **References**:
   - Current script: `tooling/governance/verify-lane-ledger.mjs`.
   - Current script alias: `package.json`.
-  - Existing migration ledger: `.sisyphus/lane-supervisor/lane-2026-05-31-011905.json`.
+  - Valid completed fixture: `tooling/governance/fixtures/lane-ledger/valid-completed-multi-issue.json`.
+  - Real completed artifact for conditional, read-only verification when available: `.omo/lanes/lane-2026-08-05-persistence-a.json`.
 
   **Acceptance Criteria**:
   - [ ] `pnpm verify:lane-ledger -- <valid fixture>` passes.
@@ -335,11 +345,29 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
 
   **QA Scenarios**:
   ```text
-  Scenario: Valid fixture passes
+  Scenario: Valid v1 fixtures pass the reproducible gate
     Tool: bash
-    Steps: pnpm verify:lane-ledger -- tooling/governance/fixtures/lane-ledger/valid-ready.json
-    Expected: exit 0 and "Lane ledger check passed".
+    Steps: pnpm verify:lane-ledger -- tooling/governance/fixtures/lane-ledger/valid-ready.json tooling/governance/fixtures/lane-ledger/valid-completed-multi-issue.json
+    Expected: exit 0 and "Lane ledger check passed" for both committed valid fixtures; both declare version 1.
     Evidence: evidence/task-7-valid-ledger.txt
+
+  Scenario: Available real completed artifact is checked read-only
+    Tool: bash
+    Steps: if test -f .omo/lanes/lane-2026-08-05-persistence-a.json; then pnpm verify:lane-ledger -- .omo/lanes/lane-2026-08-05-persistence-a.json; fi
+    Expected: when available, the local real completed artifact passes a read-only supplementary check; absence does not fail the reproducible fixture gate.
+    Evidence: evidence/task-7-real-ledger-optional.txt
+
+  Scenario: Legacy terminal lane evidence is rejected
+    Tool: bash
+    Steps: pnpm vitest run tooling/governance/verify-lane-ledger.test.ts -t "terminal lane with an integer cursor"
+    Expected: exit 0 and test assertion proves legacy lane-level terminal evidence is rejected with migration guidance.
+    Evidence: evidence/task-7-legacy-rejection.txt
+
+  Scenario: Canonical validator suite remains aligned
+    Tool: bash
+    Steps: pnpm vitest run tooling/governance/verify-lane-ledger.test.ts
+    Expected: the entire focused validator suite passes.
+    Evidence: evidence/task-7-test-suite.txt
 
   Scenario: Invalid cleanup fixture fails
     Tool: bash
@@ -397,7 +425,8 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
 - [ ] F2. Contract Reference Audit
   - Run `grep -RIn "lane-supervisor\\|search-to-issue\\|Source choice" .codex/commands .codex/agents tooling package.json` and classify every remaining match as migration artifact, validator compatibility, or defect.
 - [ ] F3. Validator Audit
-  - Run `pnpm verify:lane-ledger -- <current valid fixtures>` and `pnpm vitest run tooling/governance/verify-lane-ledger.test.ts`.
+  - Run `pnpm verify:lane-ledger -- tooling/governance/fixtures/lane-ledger/valid-ready.json tooling/governance/fixtures/lane-ledger/valid-completed-multi-issue.json` as the reproducible fixture gate; confirm active cursors are integers, terminal cursors are null, completion evidence is issue_progress-based, completed sets are consistent, and legacy terminal lane-level evidence is rejected with migration guidance. When `.omo/lanes/lane-2026-08-05-persistence-a.json` is available, run a separate read-only supplementary check.
+  - Run `pnpm vitest run tooling/governance/verify-lane-ledger.test.ts`; the entire focused validator suite must pass.
 - [ ] F4. Manual Pipeline QA
   - Use `tmux` to run a dry documentation walkthrough:
     ```bash
