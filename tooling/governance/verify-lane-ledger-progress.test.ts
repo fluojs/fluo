@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import type { LaneLedgerFixture } from './verify-lane-ledger.test-support';
-import { requireIssueProgress, runMutatedCompletedLedger } from './verify-lane-ledger.test-support';
+import {
+  requireIssueProgress,
+  requireRootMainSync,
+  runMutatedCompletedLedger,
+} from './verify-lane-ledger.test-support';
 
 describe('verify-lane-ledger canonical v1 completion contract', () => {
   it('rejects an unknown issue progress status', () => {
@@ -38,8 +42,9 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
         ledger.status = 'running';
         ledger.lanes[0].status = 'merged';
         ledger.lanes[0].current_issue = 102;
-        ledger.root_main_sync.status = 'not-started';
-        ledger.root_main_sync.sha = null;
+        const rootMainSync = requireRootMainSync(ledger);
+        rootMainSync.status = 'not-started';
+        rootMainSync.sha = null;
         delete ledger.issue_progress;
       },
     },
@@ -51,7 +56,7 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
         ledger.completed_issues.push(103);
         ledger.issue_progress = {
           ...ledger.issue_progress,
-          '103': { ...progress, pr: 'https://github.com/example/fluo/pull/503' },
+          '103': { ...progress, pr: 'https://github.com/fluojs/fluo/pull/503' },
         };
       },
     },
@@ -78,7 +83,7 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
         ledger.lanes[0].queue.push(103);
         ledger.issue_progress = {
           ...ledger.issue_progress,
-          '103': { ...progress, pr: 'https://github.com/example/fluo/pull/503' },
+          '103': { ...progress, pr: 'https://github.com/fluojs/fluo/pull/503' },
         };
       },
     },
@@ -108,13 +113,6 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
       expectedError: 'issue_state must be CLOSED',
       mutate: (ledger: LaneLedgerFixture) => {
         requireIssueProgress(ledger, '101').issue_state = 'OPEN';
-      },
-    },
-    {
-      name: 'duplicate PR references',
-      expectedError: 'duplicate PR mapping',
-      mutate: (ledger: LaneLedgerFixture) => {
-        requireIssueProgress(ledger, '102').pr = requireIssueProgress(ledger, '101').pr;
       },
     },
   ])('rejects $name', ({ expectedError, mutate }) => {

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { LaneLedgerFixture } from './verify-lane-ledger.test-support';
 import {
   requireIssueProgress,
+  requireRootMainSync,
   runMutatedCompletedLedger,
   runValidator,
   runValidatorPath,
@@ -47,8 +48,9 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
       ledger.status = 'running';
       ledger.lanes[0].status = 'merged';
       ledger.lanes[0].current_issue = 102;
-      ledger.root_main_sync.status = 'not-started';
-      ledger.root_main_sync.sha = null;
+      const rootMainSync = requireRootMainSync(ledger);
+      rootMainSync.status = 'not-started';
+      rootMainSync.sha = null;
       const progress = requireIssueProgress(ledger, '102');
       progress.status = 'merged';
       delete progress.cleanup;
@@ -98,6 +100,22 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
         ledger.authority_scope.root_main_sync_ff_only = false;
       }),
     ).toContain('root_main_sync done requires root_main_sync_ff_only authority');
+  });
+
+  it('rejects a missing root_main_sync object', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        delete ledger.root_main_sync;
+      }),
+    ).toContain('root_main_sync is required');
+  });
+
+  it('rejects an unknown root_main_sync status', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        requireRootMainSync(ledger).status = 'mystery';
+      }),
+    ).toContain('invalid root_main_sync.status: mystery');
   });
 
   it('accepts terminal root sync with authority and a 40-character SHA', () => {

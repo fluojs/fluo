@@ -1,22 +1,38 @@
 import {
   assert,
+  isMatchingWorktree,
   isNonEmptyString,
   isObject,
   isPositiveInteger,
-  isPullRequest,
+  isSafeBranchName,
   isSha,
+  parsePullRequest,
   progressStatuses,
+  registerPullRequest,
 } from './lane-ledger-contract.mjs';
 
 function validateCompletedProgress(path, progress, cleanupAuthority) {
-  assert(isNonEmptyString(progress.branch), path, 'branch is required');
-  assert(isNonEmptyString(progress.worktree), path, 'worktree is required');
+  assert(isSafeBranchName(progress.branch), path, 'issue progress branch must be a safe non-empty branch name');
+  assert(isMatchingWorktree(progress.worktree, progress.branch), path, 'worktree must match the completed progress branch under .worktrees');
   assert(isNonEmptyString(progress.verification), path, 'verification is required');
-  assert(Number.isInteger(progress.retry_count) && progress.retry_count >= 0, path, 'retry_count must be a non-negative integer');
-  assert(isPullRequest(progress.pr), path, 'pr must be a positive integer or GitHub pull URL');
+  assert(Number.isSafeInteger(progress.retry_count) && progress.retry_count >= 0, path, 'retry_count must be a non-negative safe integer');
+  assert(parsePullRequest(progress.pr) !== null, path, 'pr must be a positive integer or canonical fluojs/fluo pull URL');
   assert(progress.review_verdict === 'merge', path, 'review_verdict must be merge');
   assert(isSha(progress.merge_commit), path, 'merge_commit must be a 40-character SHA');
   assert(progress.issue_state === 'CLOSED', path, 'issue_state must be CLOSED');
+
+  if (progress.reviewed_head !== undefined) {
+    assert(isSha(progress.reviewed_head), path, 'reviewed_head must be a 40-character SHA when present');
+  }
+  if (progress.commits !== undefined) {
+    assert(
+      Array.isArray(progress.commits) &&
+        progress.commits.length > 0 &&
+        progress.commits.every((commit) => typeof commit === 'string' && /^[a-f0-9]{7,40}$/u.test(commit)),
+      path,
+      'commits must contain non-empty 7-40 character lowercase hex entries when present',
+    );
+  }
 
   if (progress.status === 'done') {
     if (cleanupAuthority) {
@@ -41,7 +57,7 @@ function validateCompletedProgress(path, progress, cleanupAuthority) {
   }
 }
 
-export function validateIssueProgress(path, ledger) {
+export function validateIssueProgress(path, ledger, prAssignments) {
   const hasDoneLane = ledger.lanes.some((lane) => lane.status === 'done');
   const issueProgress = ledger.issue_progress;
   if (hasDoneLane || ledger.status === 'done') {
@@ -54,12 +70,30 @@ export function validateIssueProgress(path, ledger) {
   const queuedIssues = new Set(ledger.lanes.flatMap((lane) => lane.queue));
   const progressByIssue = new Map();
   const completedProgressIssues = new Set();
-  const seenPrs = new Set();
   for (const [issueKey, progress] of Object.entries(issueProgress ?? {})) {
     const progressPath = `${path}:issue_progress[${issueKey}]`;
+    const issue = Number(issueKey);
     assert(/^[1-9]\d*$/u.test(issueKey) && isPositiveInteger(Number(issueKey)), progressPath, 'issue_progress key must be a positive integer issue number');
     assert(isObject(progress), progressPath, 'issue progress must be an object');
     assert(progressStatuses.has(progress.status), progressPath, `invalid issue_progress.status: ${String(progress.status)}`);
+    if (progress.branch !== undefined) {
+      assert(isSafeBranchName(progress.branch), progressPath, 'issue progress branch must be a safe non-empty branch name');
+    }
+    if (progress.worktree !== undefined) {
+      assert(isSafeBranchName(progress.branch), progressPath, 'issue progress worktree requires a safe branch');
+      const worktreeMessage =
+        progress.status === 'done' || progress.status === 'merged'
+          ? 'worktree must match the completed progress branch under .worktrees'
+          : 'worktree must match the progress branch under .worktrees';
+      assert(isMatchingWorktree(progress.worktree, progress.branch), progressPath, worktreeMessage);
+    }
+    if (progress.retry_count !== undefined) {
+      assert(
+        Number.isSafeInteger(progress.retry_count) && progress.retry_count >= 0,
+        progressPath,
+        'retry_count must be a non-negative safe integer',
+      );
+    }
     assert(progress.status === 'done' || progress.cleanup !== 'done', progressPath, 'cleanup done is only valid for done issue_progress');
     assert(
       progress.status === 'done' || progress.cleanup !== 'skipped-authority',
@@ -72,13 +106,11 @@ export function validateIssueProgress(path, ledger) {
       'issue_progress issue must belong to confirmed_issues and a lane queue',
     );
     if (progress.pr !== undefined) {
-      assert(isPullRequest(progress.pr), progressPath, 'pr must be a positive integer or GitHub pull URL');
-      assert(!seenPrs.has(progress.pr), progressPath, `duplicate PR mapping: ${String(progress.pr)}`);
-      seenPrs.add(progress.pr);
+      registerPullRequest(prAssignments, progress.pr, issue, progressPath);
     }
-    progressByIssue.set(Number(issueKey), progress);
+    progressByIssue.set(issue, progress);
     if (progress.status === 'done' || progress.status === 'merged') {
-      completedProgressIssues.add(Number(issueKey));
+      completedProgressIssues.add(issue);
     }
   }
 

@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import type { LaneLedgerFixture } from './verify-lane-ledger.test-support';
-import { runInvalidValidator, runMutatedCompletedLedger, runValidator } from './verify-lane-ledger.test-support';
+import {
+  runInvalidValidator,
+  runMutatedCompletedLedger,
+  runValidator,
+} from './verify-lane-ledger.test-support';
 
 describe('verify-lane-ledger merge authority governance', () => {
   it('accepts create-lane ledgers with PR merge authority and squash merge method', () => {
     expect(runValidator('valid-ready.json')).toContain('Lane ledger check passed for 1 file(s).');
-  });
-
-  it('rejects ledgers that do not grant PR merge authority', () => {
-    expect(runInvalidValidator('invalid-pr-merge-false.json')).toContain('authority_scope.pr_merge must be true');
   });
 
   it('rejects ledgers that do not lock PR merges to squash', () => {

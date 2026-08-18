@@ -4,9 +4,15 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+export { primaryRepoRoot } from './lane-ledger-contract.mjs';
+
 export type IssueProgressFixture = {
   status: string;
+  branch: string;
+  worktree: string;
   pr: string | number;
+  verification: string;
+  retry_count: number;
   review_verdict: string;
   reviewers?: {
     contract: string;
@@ -25,24 +31,31 @@ export type LaneFixture = {
   queue: number[];
   current_issue: number | null;
   status: string;
+  branch?: string | null;
+  worktree?: string | null;
+  pr?: string | number | null;
+};
+
+export type RootMainSyncFixture = {
+  status: string;
+  sha: string | null;
 };
 
 export type LaneLedgerFixture = {
   version?: number;
+  created_by?: string;
+  base_branch?: string;
   status: string;
   authority_scope: {
-    cleanup_command_worktrees: boolean;
-    root_main_sync_ff_only: boolean;
+    cleanup_command_worktrees: boolean | string | null;
+    root_main_sync_ff_only: boolean | string | null;
     [key: string]: unknown;
   };
   lanes: [LaneFixture, ...LaneFixture[]];
   confirmed_issues: number[];
   completed_issues: number[];
   issue_progress?: Record<string, IssueProgressFixture>;
-  root_main_sync: {
-    status: string;
-    sha: string | null;
-  };
+  root_main_sync?: RootMainSyncFixture;
 };
 
 export const currentDir = dirname(fileURLToPath(import.meta.url));
@@ -50,7 +63,6 @@ export const repoRoot = resolve(currentDir, '../..');
 export const validatorPath = resolve(repoRoot, 'tooling/governance/verify-lane-ledger.mjs');
 export const fixtureDir = resolve(repoRoot, 'tooling/governance/fixtures/lane-ledger');
 export const completedFixturePath = resolve(fixtureDir, 'valid-completed-multi-issue.json');
-
 export function runValidatorPath(ledgerPath: string): string {
   return execFileSync(process.execPath, [validatorPath, ledgerPath], {
     cwd: repoRoot,
@@ -86,6 +98,14 @@ export function requireIssueProgress(ledger: LaneLedgerFixture, issue: string): 
     throw new Error(`completed fixture is missing issue_progress for ${issue}`);
   }
   return progress;
+}
+
+export function requireRootMainSync(ledger: LaneLedgerFixture): RootMainSyncFixture {
+  const rootMainSync = ledger.root_main_sync;
+  if (!rootMainSync) {
+    throw new Error('completed fixture is missing root_main_sync');
+  }
+  return rootMainSync;
 }
 
 export function runMutatedCompletedLedger(

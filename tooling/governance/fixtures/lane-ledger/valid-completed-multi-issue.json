@@ -47,17 +47,11 @@
       "status": "done",
       "branch": "issue-101-runtime-alpha",
       "worktree": ".worktrees/issue-101-runtime-alpha",
-      "pr": "https://github.com/example/fluo/pull/501",
-      "commits": ["1111111111111111111111111111111111111111"],
+      "pr": "https://github.com/fluojs/fluo/pull/501",
+      "commits": ["1111111"],
       "verification": "focused tests passed",
       "retry_count": 0,
       "review_verdict": "merge",
-      "reviewers": {
-        "contract": "PASS",
-        "code": "PASS",
-        "verification": "PASS"
-      },
-      "reviewed_head": "1111111111111111111111111111111111111111",
       "merge_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "cleanup": "done",
       "issue_state": "CLOSED"
@@ -66,7 +60,7 @@
       "status": "done",
       "branch": "issue-102-runtime-beta",
       "worktree": ".worktrees/issue-102-runtime-beta",
-      "pr": "https://github.com/example/fluo/pull/502",
+      "pr": "https://github.com/fluojs/fluo/pull/502",
       "commits": ["2222222222222222222222222222222222222222"],
       "verification": "focused tests passed",
       "retry_count": 0,
