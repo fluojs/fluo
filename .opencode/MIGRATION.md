@@ -86,7 +86,7 @@ Use the matching slash command instead.
 
 Fail closed for missing `run_id`, `lane_id`, or `source`; unknown root, source, lane, progress, root-sync, reviewer, blocker, or cleanup keys; nested legacy evidence; non-prefix queues; one-sided branch/worktree/PR identity; non-normalized PR values; unequal retry counts; cleanup on non-done progress; and completed or merged release handoffs. `existing-issues` requires null search fields, while `search-issue` requires the exact `.sisyphus/search-issue/<id>.json` path. Queued without progress requires null branch, worktree, and PR and retry count 0. Release handoffs use a dedicated single-issue lane, queued without progress when ready, then `blocked-maintainer-decision` in both lane and progress, never completed, merged, or done.
 
-The focused gate is five files and exactly 278 tests, including `lane-ledger-schema.mjs` and `verify-lane-ledger-schema.test.ts`. Producer provenance is inside exact-key validation, not outside it.
+The focused suite has exactly five TEST files and 278 tests, including `verify-lane-ledger-schema.test.ts`. `lane-ledger-schema.mjs` owns strict shape validation but is not counted as a test file. Producer provenance is inside exact-key validation, not outside it.
 
 ### lane-supervisor
 - **From**: Monolithic procedural skill and later high-level command.

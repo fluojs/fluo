@@ -132,7 +132,7 @@ find .opencode/skills -name SKILL.md
 
 ## 5. Strict v1 focused gate
 
-The focused gate is exactly five files and 278 tests. It includes `lane-ledger-schema.mjs` ownership and `verify-lane-ledger-schema.test.ts`:
+The focused suite has exactly five TEST files and 278 tests, including `verify-lane-ledger-schema.test.ts`. `lane-ledger-schema.mjs` owns strict shape validation but is not counted as a test file:
 
 ```bash
 pnpm exec vitest run tooling/governance/verify-lane-ledger.test.ts tooling/governance/verify-lane-ledger-state.test.ts tooling/governance/verify-lane-ledger-progress.test.ts tooling/governance/verify-lane-ledger-identity.test.ts tooling/governance/verify-lane-ledger-schema.test.ts
