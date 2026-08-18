@@ -47,7 +47,7 @@ base branch 기본값은 lane ledger의 `base_branch`이며, ledger에 없을 �
 실행 전 반드시 확인한다.
 
 - ledger path가 `.omo/lanes/` 아래이거나 명시된 lane ledger path다.
-- `created_by`가 `create-lane`이거나 호환 가능한 migration marker가 있다.
+- `created_by`가 `create-lane`이다. ledger `version`은 반드시 `1`이어야 하며, version이 없거나 알 수 없는 version이면 fail closed 한다. legacy terminal lane-level evidence는 자동 migration하지 않고 `issue_progress`로 옮기라는 guidance와 함께 거부한다.
 - `base_branch`가 invocation과 충돌하지 않는다.
 - root worktree status를 확인하고 dirty이면 root sync는 금지한다.
 - lane status와 GitHub/repo 상태가 충돌하지 않는다.
@@ -55,6 +55,36 @@ base branch 기본값은 lane ledger의 `base_branch`이며, ledger에 없을 �
 - `authority_scope.publish_via_github_actions`는 release handoff와 별개이며, 이 커맨드는 값과 무관하게 publish를 실행하지 않는다.
 - `confirmed_issues`와 lane queue가 일치한다.
 - 실행 중인 worker/reviewer background task가 ledger에 남아 있으면 먼저 결과 수집 또는 상태 확인을 한다.
+
+### Canonical version 1 progress contract
+
+version 1은 이 command가 소비하고 갱신하는 canonical ledger contract다. `issue_progress`의 key는 `confirmed_issues`와 lane queue에 모두 속한 issue number의 문자열이어야 한다. 각 issue progress object는 다음 durable fields를 사용한다.
+
+- `status`: `queued`, `running`, `in_review`, `merged`, `done` 또는 terminal blocker 상태
+- `branch`: issue branch
+- `worktree`: dedicated worktree path
+- `pr`: positive integer PR number 또는 GitHub PR URL
+- `verification`: verification summary
+- `retry_count`: non-negative integer
+- `review_verdict`: `merge`, `block` 또는 `needs-human-check`
+- `reviewers`: optional reviewer results object
+- `blockers`: optional blocker list
+- `merge_commit`: merged commit SHA
+- `cleanup`: cleanup result, including `done` or `skipped-authority`
+- `issue_state`: linked GitHub issue state, including `CLOSED` for completed progress
+
+`completed_issues`는 `issue_progress`에서 `status`가 `merged` 또는 `done`인 key와 정확히 같은 issue number 집합이어야 한다. 완료 issue는 confirmed lane queue 밖에 둘 수 없다.
+
+### State transitions and cleanup
+
+각 issue 처리 결과는 다음 순서로 ledger에 기록한다.
+
+1. `issue_progress[String(issue)]`에 branch, worktree, PR, verification, retry, review, blocker evidence를 기록한다.
+2. issue가 `merged` 또는 `done`이면 해당 issue를 `completed_issues`에 추가한다. `merged`는 아직 cleanup 전인 active progress 상태다.
+3. 같은 lane queue에서 다음 active queue item으로 `current_issue`를 전진시킨다.
+4. lane이 terminal 상태가 되면 모든 경우에 `current_issue: null`을 기록한다.
+
+`done`은 PR merge와 linked issue close를 확인한 뒤에만 사용할 수 있다. `authority_scope.cleanup_command_worktrees`가 `true`이면 cleanup을 완료하고 `cleanup: done`을 기록한다. 권한이 없으면 cleanup을 실행하지 않고 `cleanup: skipped-authority`를 기록한 뒤 `done`으로 전환한다. `merged`는 이 cleanup 판단 전의 상태로 유지한다. terminal lane에는 legacy lane-level `pr`, `review`, `merge`, `cleanup` evidence를 기록하지 않는다. 해당 evidence가 남아 있으면 `issue_progress`로 옮기도록 안내하고 ledger를 거부한다.
 
 ## Execution loop invariant
 

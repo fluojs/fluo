@@ -36,6 +36,10 @@ base branch 기본값은 `main`이다.
 6. **semantic lane planning** — issue를 logical lane에 배치하고 dependency/order를 정한다.
 7. **lane ledger 생성** — `.omo/lanes/<lane-id>.json`을 생성하고 다음 `/execute-lane <lane-id>` handoff를 출력한다.
 
+`create-lane`은 canonical version 1 ledger만 생성한다. `issue_progress`는 빈 객체로 초기화하며, 생성 이후의 issue별 evidence 갱신은 `/execute-lane`이 소유한다. `queued`, `running`, `in_review`, `merged` 상태의 active lane은 queue에 포함된 positive integer `current_issue`로 시작해야 한다. terminal lane은 `current_issue: null`로 생성하거나 전환한다.
+
+version이 없거나 알 수 없는 version은 생성하거나 소비하지 않고 fail closed 한다. legacy terminal lane-level `pr`, `review`, `merge`, `cleanup` evidence는 자동 migration하지 않으며, completion evidence를 `issue_progress`로 기록하도록 안내하고 거부한다. `completed_issues`는 `issue_progress`에서 `status`가 `merged` 또는 `done`인 issue key와 같은 집합으로 유지한다.
+
 이 커맨드가 소유하지 않는 것:
 
 - package audit, issue draft, issue creation: `/search-issue`
@@ -134,6 +138,7 @@ base branch 기본값은 `main`이다.
   "confirmed_issues": [123],
   "suggested_but_excluded": [124],
   "backlog_candidates": [],
+  "issue_progress": {},
   "lanes": [
     {
       "name": "runtime",
