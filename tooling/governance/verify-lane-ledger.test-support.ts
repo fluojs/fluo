@@ -4,8 +4,6 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export { primaryRepoRoot } from './lane-ledger-contract.mjs';
-
 export type IssueProgressFixture = {
   status: string;
   branch: string;
@@ -60,6 +58,13 @@ export type LaneLedgerFixture = {
 
 export const currentDir = dirname(fileURLToPath(import.meta.url));
 export const repoRoot = resolve(currentDir, '../..');
+export const expectedPrimaryRepoRoot = dirname(
+  execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    env: { ...process.env, GIT_MASTER: '1' },
+  }).trim(),
+);
 export const validatorPath = resolve(repoRoot, 'tooling/governance/verify-lane-ledger.mjs');
 export const fixtureDir = resolve(repoRoot, 'tooling/governance/fixtures/lane-ledger');
 export const completedFixturePath = resolve(fixtureDir, 'valid-completed-multi-issue.json');

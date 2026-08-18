@@ -54,7 +54,13 @@ export function isNonEmptyString(value) {
 }
 
 export function isSafeBranchName(value) {
-  if (!isNonEmptyString(value) || value.includes('..') || value.includes('@{')) {
+  if (
+    !isNonEmptyString(value) ||
+    value === 'HEAD' ||
+    value.startsWith('refs/') ||
+    value.includes('..') ||
+    value.includes('@{')
+  ) {
     return false;
   }
   return value.split('/').every(

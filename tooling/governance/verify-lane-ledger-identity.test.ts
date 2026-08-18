@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
+// allow: SIZE_OK - identity contract cases stay co-located at the verifier seam.
 import type { IssueProgressFixture, LaneLedgerFixture } from './verify-lane-ledger.test-support';
 import {
-  primaryRepoRoot,
+  expectedPrimaryRepoRoot,
+  repoRoot,
   requireIssueProgress,
   requireRootMainSync,
   runInvalidValidator,
@@ -50,6 +52,8 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
     'feature.',
     'feature.lock',
     'safe/.lock',
+    'HEAD',
+    'refs/heads/main',
   ])('rejects unsafe base branch %s', (baseBranch) => {
     expect(
       runMutatedCompletedLedger((ledger) => {
@@ -58,9 +62,9 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
     ).toContain('base_branch must be a safe non-empty branch name');
   });
 
-  it('accepts a safe slash-delimited base branch', () => {
+  it.each(['main', 'release/2026-08'])('accepts safe base branch %s', (baseBranch) => {
     const output = runMutatedCompletedLedger((ledger) => {
-      ledger.base_branch = 'release/2026-08';
+      ledger.base_branch = baseBranch;
     }, runValidatorPath);
 
     expect(output).toContain('Lane ledger check passed for 1 file(s).');
@@ -155,11 +159,23 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
   it('accepts the primary repository absolute worktree path', () => {
     const output = runMutatedCompletedLedger((ledger) => {
       const progress = requireIssueProgress(ledger, '101');
-      progress.worktree = `${primaryRepoRoot}/.worktrees/${progress.branch}`;
+      progress.worktree = `${expectedPrimaryRepoRoot}/.worktrees/${progress.branch}`;
     }, runValidatorPath);
 
     expect(output).toContain('Lane ledger check passed for 1 file(s).');
   });
+
+  it.runIf(repoRoot !== expectedPrimaryRepoRoot)(
+    'rejects an absolute worktree path rooted under the current linked worktree',
+    () => {
+      expect(
+        runMutatedCompletedLedger((ledger) => {
+          const progress = requireIssueProgress(ledger, '101');
+          progress.worktree = `${repoRoot}/.worktrees/${progress.branch}`;
+        }),
+      ).toContain('worktree must match the completed progress branch under .worktrees');
+    },
+  );
 
   it.each(['.worktrees/other-branch', '/tmp/issue-101-runtime-alpha'])(
     'rejects mismatched worktree evidence %s',
