@@ -52,8 +52,8 @@ Make the lane workflow command architecture responsibility-complete and mechanic
 - `pnpm verify:lane-ledger -- <valid fixture>` passes.
 - `pnpm verify:lane-ledger -- <invalid fixture>` fails with a specific invariant error in test coverage.
 - `pnpm exec biome check tooling/governance/lane-ledger-contract.mjs tooling/governance/lane-ledger-progress.mjs tooling/governance/lane-ledger-state.mjs tooling/governance/verify-lane-ledger.mjs package.json` passes.
-- `pnpm exec vitest run tooling/governance/verify-lane-ledger.test.ts tooling/governance/verify-lane-ledger-state.test.ts tooling/governance/verify-lane-ledger-progress.test.ts tooling/governance/verify-lane-ledger-identity.test.ts` passes.
-- The focused lane workflow verification surface has 211 expected checks; any previous 93-check total is stale.
+- `pnpm exec vitest run tooling/governance/verify-lane-ledger.test.ts tooling/governance/verify-lane-ledger-state.test.ts tooling/governance/verify-lane-ledger-progress.test.ts tooling/governance/verify-lane-ledger-identity.test.ts tooling/governance/verify-lane-ledger-schema.test.ts` passes with exactly 278 tests.
+- The focused strict v1 lane workflow verification surface is exactly five files and 278 tests. The five files include `lane-ledger-schema.mjs` and `verify-lane-ledger-schema.test.ts`; any previous 93, 211, or four-file wording is stale.
 - Command-doc verifier gates check that `.opencode/commands/create-lane.md` and `.opencode/commands/execute-lane.md` document the canonical schema, status, cursor, root-sync, authority, and cleanup prerequisites.
 - `pnpm verify:lane-ledger -- tooling/governance/fixtures/lane-ledger/valid-ready.json tooling/governance/fixtures/lane-ledger/valid-completed-multi-issue.json` passes as the reproducible gate. The raw real ledger `.omo/lanes/lane-2026-08-05-persistence-a.json`, when present, is an expected nonzero strict-v1 migration failure and is never a passing compatibility fixture.
 
@@ -139,7 +139,7 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
   **What to do**: Define the handoff artifacts:
   - `.sisyphus/search-issue/<run-id>.json`
   - `.omo/lanes/<lane-id>.json`
-  Include the producer fields from the canonical `create-lane` example: `version`, `run_id`, `status`, `lane_id`, `created_by`, `base_branch`, `source`, `merge_policy`, `pr_merge_method`, `authority_scope`, `retry_policy`, `execution`, `confirmed_issues`, `suggested_but_excluded`, `backlog_candidates`, `release_handoffs`, `completed_issues`, `issue_progress`, `lanes`, `dependency_graph`, and `root_main_sync`. These are producer-written provenance/planning fields; the pure validator enforces only its documented structural and evidence core, not exact-key equality for these optional/provenance fields.
+Include the exact root keys `version`, `run_id`, `lane_id`, `status`, `created_by`, `base_branch`, `source`, `merge_policy`, `pr_merge_method`, `authority_scope`, `retry_policy`, `execution`, `confirmed_issues`, `suggested_but_excluded`, `backlog_candidates`, `release_handoffs`, `completed_issues`, `issue_progress`, `lanes`, `dependency_graph`, and `root_main_sync`, with only optional `created_at`. The strict validator enforces exact-key equality, not an external provenance exemption.
 
   **Must NOT do**: Do not let `execute-lane` mutate issue selection or lane grouping.
 
