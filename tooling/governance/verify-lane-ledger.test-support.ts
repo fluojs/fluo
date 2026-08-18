@@ -12,15 +12,25 @@ export type IssueProgressFixture = {
   verification: string;
   retry_count: number;
   review_verdict: string;
-  reviewers?: {
+  checks: string;
+  reviewers: {
     contract: string;
     code: string;
     verification: string;
+    [key: string]: unknown;
   };
   reviewed_head?: string;
   commits?: string[];
   merge_commit: string;
-  cleanup?: string;
+  cleanup?:
+    | string
+    | {
+        status: string;
+        worktree_removed?: boolean;
+        local_branch_deleted?: boolean;
+        remote_branch_deleted?: boolean;
+        [key: string]: unknown;
+      };
   issue_state: string;
   [key: string]: unknown;
 };
@@ -78,6 +88,20 @@ export type LaneLedgerFixture = {
   release_handoffs: number[];
   root_main_sync?: RootMainSyncFixture;
 };
+
+export const completedCleanupFixture = {
+  status: 'done',
+  worktree_removed: true,
+  local_branch_deleted: true,
+  remote_branch_deleted: true,
+} as const;
+
+export function setSkippedCleanup(ledger: LaneLedgerFixture): void {
+  ledger.authority_scope.cleanup_command_worktrees = false;
+  for (const progress of Object.values(ledger.issue_progress ?? {})) {
+    progress.cleanup = { status: 'skipped-authority' };
+  }
+}
 
 export const currentDir = dirname(fileURLToPath(import.meta.url));
 export const repoRoot = resolve(currentDir, '../..');

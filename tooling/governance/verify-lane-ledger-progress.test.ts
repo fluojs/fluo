@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import type { LaneLedgerFixture } from './verify-lane-ledger.test-support';
 import {
+  completedCleanupFixture,
   requireIssueProgress,
   requireRootMainSync,
   runMutatedCompletedLedger,
+  runValidatorPath,
+  setSkippedCleanup,
 } from './verify-lane-ledger.test-support';
 
 describe('verify-lane-ledger canonical v1 completion contract', () => {
@@ -117,5 +120,143 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
     },
   ])('rejects $name', ({ expectedError, mutate }) => {
     expect(runMutatedCompletedLedger(mutate)).toContain(expectedError);
+  });
+
+  it.each([
+    {
+      name: 'missing checks',
+      expectedError: 'checks must be PASS',
+      mutate: (progress: ReturnType<typeof requireIssueProgress>) => Reflect.deleteProperty(progress, 'checks'),
+    },
+    {
+      name: 'failed checks',
+      expectedError: 'checks must be PASS',
+      mutate: (progress: ReturnType<typeof requireIssueProgress>) => {
+        progress.checks = 'FAIL';
+      },
+    },
+    {
+      name: 'missing reviewers',
+      expectedError: 'reviewers must contain exactly contract/code/verification',
+      mutate: (progress: ReturnType<typeof requireIssueProgress>) => Reflect.deleteProperty(progress, 'reviewers'),
+    },
+    {
+      name: 'failed contract reviewer',
+      expectedError: 'reviewers must all be PASS',
+      mutate: (progress: ReturnType<typeof requireIssueProgress>) => {
+        progress.reviewers.contract = 'FAIL';
+      },
+    },
+    {
+      name: 'an extra reviewer',
+      expectedError: 'reviewers must contain exactly contract/code/verification',
+      mutate: (progress: ReturnType<typeof requireIssueProgress>) => {
+        progress.reviewers.security = 'PASS';
+      },
+    },
+  ])('rejects completion evidence with $name', ({ expectedError, mutate }) => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        mutate(requireIssueProgress(ledger, '101'));
+      }),
+    ).toContain(expectedError);
+  });
+
+  it('rejects legacy cleanup string evidence with migration guidance', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        requireIssueProgress(ledger, '101').cleanup = 'done';
+      }),
+    ).toContain('migrate legacy completion evidence to canonical issue_progress');
+  });
+
+  it.each(['worktree_removed', 'local_branch_deleted', 'remote_branch_deleted'])(
+    'rejects false cleanup evidence %s',
+    (field) => {
+      expect(
+        runMutatedCompletedLedger((ledger) => {
+          requireIssueProgress(ledger, '101').cleanup = {
+            ...completedCleanupFixture,
+            [field]: false,
+          };
+        }),
+      ).toContain(`cleanup done requires ${field}=true`);
+    },
+  );
+
+  it.each(['status', 'worktree_removed', 'local_branch_deleted', 'remote_branch_deleted'])(
+    'rejects cleanup missing canonical field %s',
+    (field) => {
+      expect(
+        runMutatedCompletedLedger((ledger) => {
+          const cleanup = { ...completedCleanupFixture };
+          Reflect.deleteProperty(cleanup, field);
+          requireIssueProgress(ledger, '101').cleanup = cleanup;
+        }),
+      ).toContain(
+        field === 'status'
+          ? 'cleanup must be done when cleanup authority is true'
+          : 'cleanup done must contain exactly status/worktree_removed/local_branch_deleted/remote_branch_deleted',
+      );
+    },
+  );
+
+  it('rejects extra completed cleanup evidence', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        requireIssueProgress(ledger, '101').cleanup = {
+          ...completedCleanupFixture,
+          unexpected: true,
+        };
+      }),
+    ).toContain('cleanup done must contain exactly status/worktree_removed/local_branch_deleted/remote_branch_deleted');
+  });
+
+  it('accepts exact skipped-authority cleanup without cleanup authority', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setSkippedCleanup(ledger);
+      }, runValidatorPath),
+    ).toContain('Lane ledger check passed for 1 file(s).');
+  });
+
+  it('rejects skipped cleanup with cleanup authority', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        requireIssueProgress(ledger, '101').cleanup = { status: 'skipped-authority' };
+      }),
+    ).toContain('cleanup must be done when cleanup authority is true');
+  });
+
+  it('rejects completed cleanup without cleanup authority', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        ledger.authority_scope.cleanup_command_worktrees = false;
+      }),
+    ).toContain('cleanup must be skipped-authority when cleanup authority is false');
+  });
+
+  it('rejects extra skipped-authority cleanup evidence', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setSkippedCleanup(ledger);
+        requireIssueProgress(ledger, '101').cleanup = { status: 'skipped-authority', unexpected: true };
+      }),
+    ).toContain('cleanup skipped-authority must contain exactly status');
+  });
+
+  it('accepts merged progress before cleanup', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        ledger.status = 'running';
+        Object.assign(ledger.lanes[0], { status: 'merged', current_issue: 102 });
+        Object.assign(requireRootMainSync(ledger), { status: 'not-started', sha: null });
+        const progress = requireIssueProgress(ledger, '102');
+        progress.status = 'merged';
+        Reflect.deleteProperty(progress, 'cleanup');
+        ledger.lanes[0].branch = progress.branch;
+        ledger.lanes[0].worktree = progress.worktree;
+      }, runValidatorPath),
+    ).toContain('Lane ledger check passed for 1 file(s).');
   });
 });

@@ -11,15 +11,54 @@ import {
   registerPullRequest,
 } from './lane-ledger-contract.mjs';
 
+const reviewerKeys = ['contract', 'code', 'verification'];
+const completedCleanupKeys = ['status', 'worktree_removed', 'local_branch_deleted', 'remote_branch_deleted'];
+const skippedCleanupKeys = ['status'];
+const migrationGuidance = 'migrate legacy completion evidence to canonical issue_progress';
+
+function hasExactKeys(value, expectedKeys) {
+  const keys = Object.keys(value);
+  return keys.length === expectedKeys.length && expectedKeys.every((key) => Object.hasOwn(value, key));
+}
+
+function validateDoneCleanup(path, cleanup, cleanupAuthority) {
+  const expectedStatus = cleanupAuthority ? 'done' : 'skipped-authority';
+  assert(isObject(cleanup), path, `cleanup must be ${expectedStatus} when cleanup authority is ${String(cleanupAuthority)}; ${migrationGuidance}`);
+  assert(cleanup.status === expectedStatus, path, `cleanup must be ${expectedStatus} when cleanup authority is ${String(cleanupAuthority)}`);
+  if (cleanupAuthority) {
+    assert(
+      hasExactKeys(cleanup, completedCleanupKeys),
+      path,
+      'cleanup done must contain exactly status/worktree_removed/local_branch_deleted/remote_branch_deleted',
+    );
+    assert(cleanup.worktree_removed === true, path, 'cleanup done requires worktree_removed=true');
+    assert(cleanup.local_branch_deleted === true, path, 'cleanup done requires local_branch_deleted=true');
+    assert(cleanup.remote_branch_deleted === true, path, 'cleanup done requires remote_branch_deleted=true');
+  } else {
+    assert(hasExactKeys(cleanup, skippedCleanupKeys), path, 'cleanup skipped-authority must contain exactly status');
+  }
+}
+
 function validateCompletedProgress(path, progress, cleanupAuthority) {
   assert(isSafeBranchName(progress.branch), path, 'issue progress branch must be a safe non-empty branch name');
   assert(isMatchingWorktree(progress.worktree, progress.branch), path, 'worktree must match the completed progress branch under .worktrees');
   assert(isNonEmptyString(progress.verification), path, 'verification is required');
   assert(Number.isSafeInteger(progress.retry_count) && progress.retry_count >= 0, path, 'retry_count must be a non-negative safe integer');
   assert(parsePullRequest(progress.pr) !== null, path, 'pr must be a positive integer or canonical fluojs/fluo pull URL');
-  assert(progress.review_verdict === 'merge', path, 'review_verdict must be merge');
-  assert(isSha(progress.merge_commit), path, 'merge_commit must be a 40-character SHA');
-  assert(progress.issue_state === 'CLOSED', path, 'issue_state must be CLOSED');
+  assert(progress.review_verdict === 'merge', path, `review_verdict must be merge; ${migrationGuidance}`);
+  assert(progress.checks === 'PASS', path, `checks must be PASS; ${migrationGuidance}`);
+  assert(
+    isObject(progress.reviewers) && hasExactKeys(progress.reviewers, reviewerKeys),
+    path,
+    `reviewers must contain exactly contract/code/verification; ${migrationGuidance}`,
+  );
+  assert(
+    progress.reviewers.contract === 'PASS' && progress.reviewers.code === 'PASS' && progress.reviewers.verification === 'PASS',
+    path,
+    `reviewers must all be PASS; ${migrationGuidance}`,
+  );
+  assert(isSha(progress.merge_commit), path, `merge_commit must be a 40-character SHA; ${migrationGuidance}`);
+  assert(progress.issue_state === 'CLOSED', path, `issue_state must be CLOSED; ${migrationGuidance}`);
 
   if (progress.reviewed_head !== undefined) {
     assert(isSha(progress.reviewed_head), path, 'reviewed_head must be a 40-character SHA when present');
@@ -35,20 +74,7 @@ function validateCompletedProgress(path, progress, cleanupAuthority) {
   }
 
   if (progress.status === 'done') {
-    if (cleanupAuthority) {
-      assert(progress.cleanup === 'done', path, 'cleanup must be done when cleanup authority is true');
-    } else {
-      assert(progress.cleanup === 'skipped-authority', path, 'cleanup must be skipped-authority when cleanup authority is false');
-    }
-  }
-
-  if (progress.reviewers !== undefined) {
-    assert(isObject(progress.reviewers), path, 'reviewers must be an object when present');
-    assert(
-      progress.reviewers.contract === 'PASS' && progress.reviewers.code === 'PASS' && progress.reviewers.verification === 'PASS',
-      path,
-      'reviewers must all be PASS',
-    );
+    validateDoneCleanup(path, progress.cleanup, cleanupAuthority);
   }
 
   if (progress.blockers !== undefined) {
@@ -94,9 +120,10 @@ export function validateIssueProgress(path, ledger, prAssignments) {
         'retry_count must be a non-negative safe integer',
       );
     }
-    assert(progress.status === 'done' || progress.cleanup !== 'done', progressPath, 'cleanup done is only valid for done issue_progress');
+    const cleanupStatus = isObject(progress.cleanup) ? progress.cleanup.status : progress.cleanup;
+    assert(progress.status === 'done' || cleanupStatus !== 'done', progressPath, 'cleanup done is only valid for done issue_progress');
     assert(
-      progress.status === 'done' || progress.cleanup !== 'skipped-authority',
+      progress.status === 'done' || cleanupStatus !== 'skipped-authority',
       progressPath,
       'cleanup skipped-authority is only valid for done issue_progress',
     );
