@@ -21,6 +21,8 @@ function activateIssue102(ledger: LaneLedgerFixture, status = 'running'): IssueP
   const progress = requireIssueProgress(ledger, '102');
   progress.status = status;
   delete progress.cleanup;
+  ledger.lanes[0].branch = progress.branch;
+  ledger.lanes[0].worktree = progress.worktree;
   return progress;
 }
 
@@ -114,6 +116,8 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
       progress.status = 'merged';
       progress.pr = 'https://github.com/fluojs/fluo/pull/502';
       delete progress.cleanup;
+      ledger.lanes[0].branch = progress.branch;
+      ledger.lanes[0].worktree = progress.worktree;
     }, runValidatorPath);
 
     expect(output).toContain('Lane ledger check passed for 1 file(s).');
@@ -132,6 +136,8 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
         const progress = requireIssueProgress(ledger, '102');
         progress.status = 'merged';
         delete progress.cleanup;
+        ledger.lanes[0].branch = progress.branch;
+        ledger.lanes[0].worktree = progress.worktree;
       }),
     ).toContain('duplicate PR mapping: 501');
   });
@@ -248,8 +254,9 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
   it('accepts an active lane branch before worktree evidence exists', () => {
     expect(
       runMutatedCompletedLedger((ledger) => {
-        activateIssue102(ledger);
-        ledger.lanes[0].branch = 'issue-102-runtime-beta';
+        const progress = activateIssue102(ledger);
+        ledger.lanes[0].worktree = undefined;
+        Reflect.deleteProperty(progress, 'worktree');
       }, runValidatorPath),
     ).toContain('Lane ledger check passed for 1 file(s).');
   });
@@ -280,6 +287,44 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
     expect(runMutatedCompletedLedger((ledger) => activateIssue102(ledger), runValidatorPath)).toContain(
       'Lane ledger check passed for 1 file(s).',
     );
+  });
+
+  it('rejects a current progress branch absent from the lane identity', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        activateIssue102(ledger);
+        ledger.lanes[0].branch = undefined;
+        ledger.lanes[0].worktree = undefined;
+      }),
+    ).toContain('current lane and issue progress branch must both be absent or exactly equal');
+  });
+
+  it('rejects a current lane branch that differs from progress', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        activateIssue102(ledger);
+        ledger.lanes[0].branch = 'issue-102-other';
+        ledger.lanes[0].worktree = '.worktrees/issue-102-other';
+      }),
+    ).toContain('current lane and issue progress branch must both be absent or exactly equal');
+  });
+
+  it('rejects a current progress worktree absent from the lane identity', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        activateIssue102(ledger);
+        ledger.lanes[0].worktree = undefined;
+      }),
+    ).toContain('current lane and issue progress worktree must both be absent or exactly equal');
+  });
+
+  it('rejects equivalent but non-identical current worktree paths', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        const progress = activateIssue102(ledger);
+        progress.worktree = `${expectedPrimaryRepoRoot}/.worktrees/${progress.branch}`;
+      }),
+    ).toContain('current lane and issue progress worktree must both be absent or exactly equal');
   });
 
   it('rejects duplicate PR references', () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+// allow: SIZE_OK - state relationship matrix cases stay co-located at the verifier seam.
 import type { LaneLedgerFixture } from './verify-lane-ledger.test-support';
 import {
   requireIssueProgress,
@@ -9,6 +10,28 @@ import {
   runValidator,
   runValidatorPath,
 } from './verify-lane-ledger.test-support';
+
+function setActiveSecondIssue(ledger: LaneLedgerFixture, laneStatus: string, progressStatus = laneStatus): void {
+  ledger.status = 'running';
+  ledger.completed_issues = [101];
+  Object.assign(ledger.lanes[0], { status: laneStatus, current_issue: 102 });
+  Object.assign(requireRootMainSync(ledger), { status: 'not-started', sha: null });
+  const progress = requireIssueProgress(ledger, '102');
+  progress.status = progressStatus;
+  delete progress.cleanup;
+  ledger.lanes[0].branch = progress.branch;
+  ledger.lanes[0].worktree = progress.worktree;
+}
+
+function setTerminalSecondIssue(ledger: LaneLedgerFixture, laneStatus: string, progressStatus = laneStatus): void {
+  ledger.status = 'running';
+  ledger.completed_issues = [101];
+  Object.assign(ledger.lanes[0], { status: laneStatus, current_issue: null, branch: null, worktree: null });
+  Object.assign(requireRootMainSync(ledger), { status: 'not-started', sha: null });
+  const progress = requireIssueProgress(ledger, '102');
+  progress.status = progressStatus;
+  delete progress.cleanup;
+}
 
 describe('verify-lane-ledger canonical v1 completion contract', () => {
   it('rejects an unknown root status', () => {
@@ -55,6 +78,8 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
       const progress = requireIssueProgress(ledger, '102');
       progress.status = 'merged';
       delete progress.cleanup;
+      ledger.lanes[0].branch = progress.branch;
+      ledger.lanes[0].worktree = progress.worktree;
     }, runValidatorPath);
 
     expect(output).toContain('Lane ledger check passed for 1 file(s).');
@@ -235,6 +260,201 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
       runMutatedCompletedLedger((ledger) => {
         ledger.status = 'running';
         ledger.execution.status = 'running';
+      }, runValidatorPath),
+    ).toContain('Lane ledger check passed for 1 file(s).');
+  });
+
+  it.each([
+    {
+      name: 'a non-queued lane',
+      mutate: (ledger: LaneLedgerFixture) => {
+        ledger.lanes[0].status = 'running';
+      },
+      error: 'ready ledger requires every lane to be queued',
+    },
+    {
+      name: 'completed issues',
+      mutate: (ledger: LaneLedgerFixture) => {
+        ledger.completed_issues = [1];
+      },
+      error: 'ready ledger requires empty completed_issues and issue_progress',
+    },
+    {
+      name: 'issue progress',
+      mutate: (ledger: LaneLedgerFixture) => {
+        Object.assign(ledger.issue_progress ?? {}, { '1': { status: 'queued' } });
+      },
+      error: 'ready ledger requires empty completed_issues and issue_progress',
+    },
+    {
+      name: 'started root sync',
+      mutate: (ledger: LaneLedgerFixture) => {
+        requireRootMainSync(ledger).status = 'skipped-authority';
+      },
+      error: 'ready ledger requires root_main_sync not-started',
+    },
+  ])('rejects ready ledger with $name', ({ error, mutate }) => {
+    expect(runMutatedReadyLedger(mutate)).toContain(error);
+  });
+
+  it.each([
+    ['running', 'queued'],
+    ['in_review', 'running'],
+  ])('requires %s lane to have matching current progress', (laneStatus, progressStatus) => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setActiveSecondIssue(ledger, laneStatus, progressStatus);
+      }),
+    ).toContain(`${laneStatus} lane requires matching current issue_progress`);
+  });
+
+  it('requires queued progress to match when present', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setActiveSecondIssue(ledger, 'queued', 'running');
+      }),
+    ).toContain('queued lane issue_progress must be absent or queued');
+  });
+
+  it('accepts a queued lane without current progress', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setActiveSecondIssue(ledger, 'queued');
+        Reflect.deleteProperty(ledger.issue_progress ?? {}, '102');
+      }, runValidatorPath),
+    ).toContain('Lane ledger check passed for 1 file(s).');
+  });
+
+  it('requires merged lane to have matching merged progress', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setActiveSecondIssue(ledger, 'merged', 'running');
+      }),
+    ).toContain('merged lane requires matching merged issue_progress');
+  });
+
+  it('requires merged lane to have current issue progress', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setActiveSecondIssue(ledger, 'merged');
+        Reflect.deleteProperty(ledger.issue_progress ?? {}, '102');
+      }),
+    ).toContain('merged lane requires matching current issue_progress');
+  });
+
+  it('requires a merged current issue in completed_issues', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setActiveSecondIssue(ledger, 'merged');
+      }),
+    ).toContain('merged lane current_issue must appear in completed_issues');
+  });
+
+  it.each([
+    ['blocked-terminal', 'needs-human-check-terminal'],
+    ['blocked-maintainer-decision', 'blocked-terminal'],
+  ])('requires non-done terminal lane %s to match first unfinished progress', (laneStatus, progressStatus) => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setTerminalSecondIssue(ledger, laneStatus, progressStatus);
+      }),
+    ).toContain('non-done terminal lane requires matching terminal progress for the first unfinished issue');
+  });
+
+  it('rejects non-done terminal lane without first unfinished progress', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setTerminalSecondIssue(ledger, 'blocked-terminal');
+        Reflect.deleteProperty(ledger.issue_progress ?? {}, '102');
+      }),
+    ).toContain('non-done terminal lane requires matching terminal progress for the first unfinished issue');
+  });
+
+  it('allows a running root to contain an already-terminal lane', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setTerminalSecondIssue(ledger, 'blocked-terminal');
+      }, runValidatorPath),
+    ).toContain('Lane ledger check passed for 1 file(s).');
+  });
+
+  it('rejects done root with root sync not-started', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        Object.assign(requireRootMainSync(ledger), { status: 'not-started', sha: null });
+      }),
+    ).toContain('done ledger requires root_main_sync to leave not-started');
+  });
+
+  it('requires null SHA while root sync is not-started', () => {
+    expect(
+      runMutatedReadyLedger((ledger) => {
+        requireRootMainSync(ledger).sha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+      }),
+    ).toContain('root_main_sync not-started must record null sha');
+  });
+
+  it.each([
+    ['skipped-authority', true, 'root_main_sync skipped-authority requires root_main_sync_ff_only authority false'],
+    ['blocked-dirty', false, 'root_main_sync blocked-dirty requires root_main_sync_ff_only authority true'],
+  ])('enforces authority for root sync %s', (status, authority, error) => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        Object.assign(requireRootMainSync(ledger), { status, sha: null });
+        ledger.authority_scope.root_main_sync_ff_only = authority;
+      }),
+    ).toContain(error);
+  });
+
+  it.each(['skipped-authority', 'blocked-dirty'])('requires null SHA for root sync %s', (status) => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        Object.assign(requireRootMainSync(ledger), {
+          status,
+          sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        });
+        ledger.authority_scope.root_main_sync_ff_only = status === 'blocked-dirty';
+      }),
+    ).toContain(`root_main_sync ${status} must record null sha`);
+  });
+
+  it.each(['skipped-authority', 'blocked-dirty'])('requires terminal lanes for root sync %s', (status) => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setActiveSecondIssue(ledger, 'merged');
+        ledger.completed_issues = [101, 102];
+        Object.assign(requireRootMainSync(ledger), { status, sha: null });
+        ledger.authority_scope.root_main_sync_ff_only = status === 'blocked-dirty';
+      }),
+    ).toContain(`root_main_sync ${status} requires every lane to be terminal`);
+  });
+
+  it.each([
+    ['skipped-authority', false],
+    ['blocked-dirty', true],
+  ])('accepts canonical root sync %s', (status, authority) => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        Object.assign(requireRootMainSync(ledger), { status, sha: null });
+        ledger.authority_scope.root_main_sync_ff_only = authority;
+      }, runValidatorPath),
+    ).toContain('Lane ledger check passed for 1 file(s).');
+  });
+
+  it('rejects release-handoff as a root status', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        ledger.status = 'release-handoff';
+      }),
+    ).toContain('invalid ledger.status: release-handoff');
+  });
+
+  it('represents a release handoff with blocked-maintainer-decision', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setTerminalSecondIssue(ledger, 'blocked-maintainer-decision');
+        ledger.status = 'blocked-maintainer-decision';
+        ledger.release_handoffs = [102];
       }, runValidatorPath),
     ).toContain('Lane ledger check passed for 1 file(s).');
   });
