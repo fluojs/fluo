@@ -10,6 +10,7 @@ import {
   runMutatedReadyLedger,
   runValidator,
   runValidatorPath,
+  setNonCompletionProgress,
 } from './verify-lane-ledger.test-support';
 
 function setActiveSecondIssue(ledger: LaneLedgerFixture, laneStatus: string, progressStatus = laneStatus): void {
@@ -18,8 +19,7 @@ function setActiveSecondIssue(ledger: LaneLedgerFixture, laneStatus: string, pro
   Object.assign(ledger.lanes[0], { status: laneStatus, current_issue: 102 });
   Object.assign(requireRootMainSync(ledger), { status: 'not-started', sha: null });
   const progress = requireIssueProgress(ledger, '102');
-  progress.status = progressStatus;
-  delete progress.cleanup;
+  setNonCompletionProgress(progress, progressStatus);
   ledger.lanes[0].branch = progress.branch;
   ledger.lanes[0].worktree = progress.worktree;
   ledger.lanes[0].pr = progress.pr;
@@ -31,8 +31,7 @@ function setTerminalSecondIssue(ledger: LaneLedgerFixture, laneStatus: string, p
   Object.assign(ledger.lanes[0], { status: laneStatus, current_issue: null, branch: null, worktree: null });
   Object.assign(requireRootMainSync(ledger), { status: 'not-started', sha: null });
   const progress = requireIssueProgress(ledger, '102');
-  progress.status = progressStatus;
-  delete progress.cleanup;
+  setNonCompletionProgress(progress, progressStatus);
 }
 
 function addLaterIssue(ledger: LaneLedgerFixture, status?: string): void {
@@ -42,7 +41,7 @@ function addLaterIssue(ledger: LaneLedgerFixture, status?: string): void {
   if (status === undefined) {
     return;
   }
-  const progress = { ...requireIssueProgress(ledger, '102') };
+  const progress = { ...requireIssueProgress(ledger, '101') };
   Object.assign(progress, {
     status,
     branch: 'issue-103-runtime-gamma',
@@ -51,10 +50,13 @@ function addLaterIssue(ledger: LaneLedgerFixture, status?: string): void {
     retry_count: 0,
   });
   if (status !== 'done' && status !== 'merged') {
-    delete progress.cleanup;
+    setNonCompletionProgress(progress, status);
   }
   if (status === 'done') {
     progress.cleanup = { ...completedCleanupFixture };
+  }
+  if (status === 'merged') {
+    Reflect.deleteProperty(progress, 'cleanup');
   }
   if (status === 'done' || status === 'merged') {
     ledger.completed_issues.push(103);
@@ -89,8 +91,10 @@ function setBlockedReleaseHandoff(ledger: LaneLedgerFixture): void {
     },
   ];
   const progress = requireIssueProgress(ledger, '102');
-  progress.status = 'blocked-maintainer-decision';
-  delete progress.cleanup;
+  setNonCompletionProgress(progress, 'blocked-maintainer-decision');
+  Reflect.deleteProperty(progress, 'branch');
+  Reflect.deleteProperty(progress, 'worktree');
+  Reflect.deleteProperty(progress, 'pr');
 }
 
 describe('verify-lane-ledger canonical v1 completion contract', () => {
@@ -574,6 +578,24 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
         setBlockedReleaseHandoff(ledger);
       }, runValidatorPath),
     ).toContain('Lane ledger check passed for 1 file(s).');
+  });
+
+  it.each([
+    ['branch', 'issue-102-release'],
+    ['worktree', '.worktrees/issue-102-release'],
+    ['pr', 502],
+  ])('rejects release handoff progress dispatch identity %s', (field, value) => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setBlockedReleaseHandoff(ledger);
+        const progress = requireIssueProgress(ledger, '102');
+        if (field === 'worktree') {
+          Object.assign(progress, { branch: 'issue-102-release', worktree: value });
+        } else {
+          Object.assign(progress, { [field]: value });
+        }
+      }),
+    ).toContain('release handoff must not record branch, worktree, or PR evidence');
   });
 
   it('requires a dedicated single-issue lane for a release handoff', () => {

@@ -148,6 +148,11 @@ function validateReleaseHandoffs(path, ledger, progressByIssue) {
       path,
       'release handoff must never be completed, merged, or done',
     );
+    assert(
+      lane.branch == null && lane.worktree == null && lane.pr == null && progress?.branch == null && progress?.worktree == null && progress?.pr == null,
+      path,
+      'release handoff must not record branch, worktree, or PR evidence',
+    );
     if (ledger.status === 'ready') {
       assert(lane.status === 'queued' && progress === undefined, path, 'ready release handoff must remain queued without issue progress');
     } else {
