@@ -210,7 +210,7 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
     },
     {
       name: 'a done ledger without issue_progress',
-      expectedError: 'issue_progress must be an object',
+      expectedError: 'migrate legacy completion evidence to canonical issue_progress',
       mutate: (ledger: LaneLedgerFixture) => {
         delete ledger.issue_progress;
       },
@@ -247,6 +247,13 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
       expectedError: 'review_verdict must be merge',
       mutate: (ledger: LaneLedgerFixture) => {
         requireIssueProgress(ledger, '101').review_verdict = 'needs-human-check';
+      },
+    },
+    {
+      name: 'missing verification evidence',
+      expectedError: 'migrate legacy completion evidence to canonical issue_progress',
+      mutate: (ledger: LaneLedgerFixture) => {
+        Reflect.deleteProperty(requireIssueProgress(ledger, '101'), 'verification');
       },
     },
     {

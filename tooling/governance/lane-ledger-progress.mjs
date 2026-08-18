@@ -36,11 +36,27 @@ function validateDoneCleanup(path, cleanup, cleanupAuthority) {
 }
 
 function validateCompletedProgress(path, progress, cleanupAuthority) {
-  assert(isSafeBranchName(progress.branch), path, 'issue progress branch must be a safe non-empty branch name');
-  assert(isMatchingWorktree(progress.worktree, progress.branch), path, 'worktree must match the completed progress branch under .worktrees');
-  assert(isNonEmptyString(progress.verification), path, 'verification is required');
-  assert(Number.isSafeInteger(progress.retry_count) && progress.retry_count >= 0, path, 'retry_count must be a non-negative safe integer');
-  assert(parsePullRequest(progress.pr) !== null, path, 'pr must be a positive integer or canonical fluojs/fluo pull URL');
+  assert(
+    isSafeBranchName(progress.branch),
+    path,
+    `issue progress branch must be a safe non-empty branch name; ${migrationGuidance}`,
+  );
+  assert(
+    isMatchingWorktree(progress.worktree, progress.branch),
+    path,
+    `worktree must match the completed progress branch under .worktrees; ${migrationGuidance}`,
+  );
+  assert(isNonEmptyString(progress.verification), path, `verification is required; ${migrationGuidance}`);
+  assert(
+    Number.isSafeInteger(progress.retry_count) && progress.retry_count >= 0,
+    path,
+    `retry_count must be a non-negative safe integer; ${migrationGuidance}`,
+  );
+  assert(
+    parsePullRequest(progress.pr) !== null,
+    path,
+    `pr must be a positive integer or canonical fluojs/fluo pull URL; ${migrationGuidance}`,
+  );
   assert(progress.review_verdict === 'merge', path, `review_verdict must be merge; ${migrationGuidance}`);
   assert(progress.checks === 'PASS', path, `checks must be PASS; ${migrationGuidance}`);
   assert(
