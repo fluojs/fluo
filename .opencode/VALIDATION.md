@@ -129,3 +129,13 @@ find .opencode/skills -name SKILL.md
 ```
 
 검증 결과와 migration evidence는 명령 실행 결과, candidate snapshot, 또는 검증 시스템이 지정한 read-only 산출물로 남긴다. 존재하지 않는 별도 notepad 경로를 만들거나 안내하지 않는다.
+
+## 5. Strict v1 focused gate
+
+The focused gate is exactly five files and 278 tests. It includes `lane-ledger-schema.mjs` ownership and `verify-lane-ledger-schema.test.ts`:
+
+```bash
+pnpm exec vitest run tooling/governance/verify-lane-ledger.test.ts tooling/governance/verify-lane-ledger-state.test.ts tooling/governance/verify-lane-ledger-progress.test.ts tooling/governance/verify-lane-ledger-identity.test.ts tooling/governance/verify-lane-ledger-schema.test.ts
+```
+
+Migration fails closed for missing identity/source, unknown keys, nested legacy evidence, non-prefix queues, one-sided identity or retry values, non-done cleanup, and completed or merged release handoffs. Do not describe producer provenance as exempt from exact-key validation.

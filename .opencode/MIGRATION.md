@@ -28,6 +28,8 @@ The former `lane-supervisor` command was removed because it combined discovery, 
 
 ## Canonical v1 completion evidence
 
+The strict v1 root has exactly 21 required keys: `version`, `run_id`, `lane_id`, `status`, `created_by`, `base_branch`, `source`, `merge_policy`, `pr_merge_method`, `authority_scope`, `retry_policy`, `execution`, `confirmed_issues`, `suggested_but_excluded`, `backlog_candidates`, `release_handoffs`, `completed_issues`, `issue_progress`, `lanes`, `dependency_graph`, and `root_main_sync`. Only `created_at` is optional. `run_id === lane_id`, both identities are path-safe basenames, lanes and queues are non-empty, and optional `created_at` is strict UTC.
+
 The lane ledger contract is now strict canonical v1. There is no version bump and no compatibility shim for incomplete v1 data. A legacy ledger that reaches completion without canonical evidence is rejected with `migrate legacy completion evidence to canonical issue_progress` and must be migrated before execution can continue.
 
 Migration is an explicit, read-only review of the existing evidence followed by a complete rewrite of the completion record. It must produce a flat `issue_progress` entry for every completed issue with:
@@ -79,6 +81,12 @@ The following directories no longer contain `SKILL.md` entrypoints and should no
 Use the matching slash command instead.
 
 ## Key Changes by Skill
+
+### Strict v1 migration rejection list
+
+Fail closed for missing `run_id`, `lane_id`, or `source`; unknown root, source, lane, progress, root-sync, reviewer, blocker, or cleanup keys; nested legacy evidence; non-prefix queues; one-sided branch/worktree/PR identity; non-normalized PR values; unequal retry counts; cleanup on non-done progress; and completed or merged release handoffs. `existing-issues` requires null search fields, while `search-issue` requires the exact `.sisyphus/search-issue/<id>.json` path. Queued without progress requires null branch, worktree, and PR and retry count 0. Release handoffs use a dedicated single-issue lane, queued without progress when ready, then `blocked-maintainer-decision` in both lane and progress, never completed, merged, or done.
+
+The focused gate is five files and exactly 278 tests, including `lane-ledger-schema.mjs` and `verify-lane-ledger-schema.test.ts`. Producer provenance is inside exact-key validation, not outside it.
 
 ### lane-supervisor
 - **From**: Monolithic procedural skill and later high-level command.
