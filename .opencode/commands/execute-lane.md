@@ -26,7 +26,7 @@ root status는 `ready`, `running`, `done`, `blocked-terminal`, `needs-human-chec
 | prior entries | `done` |
 | current entry | lane status와 progress status가 일치 |
 | later entries | absent 또는 `queued` |
-| merged cursor | 이전 `merged` item은 insufficient하며 cursor가 전진하기 전에 progress가 `done`이 되어야 한다 |
+| merged cursor | current issue가 `completed_issues`에 있고 matching progress가 `merged` |
 | done lane | 모든 queue issue가 `done` progress |
 | previous merged entry | `completed_issues`나 `merged` progress만으로는 부족하며 cursor 전진 전에 `done` progress가 필요 |
 
