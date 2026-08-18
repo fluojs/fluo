@@ -26,6 +26,23 @@ The former `lane-supervisor` command was removed because it combined discovery, 
 
 `/search-issue` must not create lane ledgers. `/create-lane` must not implement or review PRs. `/execute-lane` must not discover/register new issues or rewrite lane scope.
 
+## Canonical v1 completion evidence
+
+The lane ledger contract is now strict canonical v1. There is no version bump and no compatibility shim for incomplete v1 data. A legacy ledger that reaches completion without canonical evidence is rejected with `migrate legacy completion evidence to canonical issue_progress` and must be migrated before execution can continue.
+
+Migration is an explicit, read-only review of the existing evidence followed by a complete rewrite of the completion record. It must produce a flat `issue_progress` entry for every completed issue with:
+
+- `review_verdict: merge`, `checks: PASS`, and exact `reviewers` values of `contract: PASS`, `code: PASS`, and `verification: PASS`.
+- `merge_commit` set to the verified 40-character lowercase SHA.
+- `issue_state: CLOSED`.
+- `cleanup` set to exactly `{status: done, worktree_removed: true, local_branch_deleted: true, remote_branch_deleted: true}` when cleanup authority is granted, or exactly `{status: skipped-authority}` without that authority.
+
+There are no nested merge or issue records in canonical v1 `issue_progress`. Live execution gates verify realpath, repository/worktree membership, and dirty state; those checks are not cleanup object fields.
+
+The migration must preserve the original issue, PR, branch, worktree, retry, authority, execution, and release handoff facts. Do not infer PASS, MERGED, CLOSED, or cleanup success from a missing field. Do not weaken the exact status values or replace a missing decision with a default.
+
+The real persistence ledger is intentionally failing migration evidence. It is never modified automatically. Use a read-only copy or an explicitly supplied candidate path for migration work, then validate the candidate independently. The committed lane-ledger fixtures remain the passing source of truth for the v1 shape. A standalone verifier may receive any arbitrary read-only ledger path, not only a repository fixture or a canonical repository location.
+
 ## Staging & Compatibility Strategy
 
 ### Phase 1: Coexistence (Complete)

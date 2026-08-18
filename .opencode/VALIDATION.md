@@ -1,6 +1,6 @@
 # OpenCode Validation & Dry-Run Guide
 
-본 문서는 fluo 저장소의 OpenCode 에이전트, 커맨드, 스킬 구조가 프로젝트 불변 정책(Shared Invariants)을 준수하는지 검증하기 위한 가이드를 제공한다.
+본 문서는 fluo 저장소의 OpenCode 에이전트, 커맨드, 스킬 구조가 프로젝트 불변 정책(Shared Invariants)과 strict canonical v1 lane ledger 계약을 준수하는지 검증하기 위한 가이드를 제공한다.
 
 ## 1. 정적 검증 (Static Checks)
 
@@ -56,8 +56,33 @@ release/publish 자체가 목표인 lane item은 OpenCode command가 publish를 
 
 여러 lane을 동시에 dispatch하는 경우에도 모든 `/issue-to-pr` child 완료를 기다리는 전역 barrier가 없어야 한다. 먼저 완료된 lane item은 해당 lane item 단위로 ledger에 반영되고 즉시 `/pr-to-merge`로 넘어가야 한다.
 
-- `.opencode/commands/execute-lane.md`와 `.codex/commands/execute-lane.md`에 `Per-lane progress, no global batch barrier` 섹션이 있는지 확인한다.
+- `.opencode/commands/execute-lane.md`에 `Per-lane progress, no global batch barrier` 섹션이 있는지 확인한다.
 - `Child completion barrier`는 해당 child/lane item의 완료 보고를 요구하는 lane-local barrier로만 해석되고, 전체 lane batch join으로 해석되지 않는지 확인한다.
+
+### 2.6 Canonical v1 ledger validation
+
+검증은 실행 전에 immutable preflight로 시작한다. 원본 persistence ledger를 읽기 전용으로 열고 candidate snapshot을 별도 경로에 만든 뒤, 원본과 candidate의 identity 및 변경 여부를 기록한다. 원본 ledger, persistence store, 또는 실제 작업 상태를 자동으로 수정하는 migration은 검증으로 인정하지 않는다.
+
+Preflight는 다음을 모두 확인한다.
+
+- ledger `version`이 `1`이고, `run_id`, `merge_policy`, `authority_scope`, `confirmed_issues`, `completed_issues`, `lanes`가 존재한다.
+- `authority_scope.pr_merge`가 정확히 `true`이고 `pr_merge_method`가 정확히 `squash`다. 누락되거나 다른 값이면 merge를 추정하지 않는다.
+- `retry_policy`, `execution`, `release_handoffs`, `root_main_sync` metadata가 모두 필수이며 이름, 값, status를 그대로 보존한다. retry count, authority, execution status, release handoff status를 migration 중에 재설정하지 않는다.
+- candidate snapshot과 모든 ledger, worktree 경로의 symlink를 확인하고 `realpath`를 계산한다. path 문자열만으로 동일성을 주장하지 않는다.
+- branch와 worktree가 실제 repository membership에 속하고 ledger의 branch/path와 일치하는지 확인한다. command-owned가 아닌 worktree는 삭제 대상으로 취급하지 않는다.
+- root worktree의 `git symbolic-ref --short HEAD`가 ledger의 base branch와 일치하는지 확인한다. dirty root에서는 root sync를 수행하지 않는다.
+- completed issue마다 flat `issue_progress` evidence가 있고, `review_verdict: merge`, `checks: PASS`, exact reviewer `reviewers.contract: PASS`, `reviewers.code: PASS`, `reviewers.verification: PASS`, 40-character lowercase `merge_commit`, `issue_state: CLOSED`가 모두 확인된다. Nested merge or issue records are invalid.
+- `cleanup`은 authority가 있을 때 정확히 `{status: done, worktree_removed: true, local_branch_deleted: true, remote_branch_deleted: true}`, authority가 없을 때 정확히 `{status: skipped-authority}`만 허용한다. realpath, repository/worktree membership, dirty-state는 live execution gates이며 cleanup object fields가 아니다.
+
+Legacy completion evidence가 이 shape를 충족하지 않으면 `migrate legacy completion evidence to canonical issue_progress`로 실패해야 한다. 이는 버전 bump나 legacy compatibility shim을 허용하지 않는 의도된 실패다. 실제 persistence ledger는 migration evidence로 일부러 failing 상태를 유지하며 자동 수정하지 않는다.
+
+Committed fixtures under `tooling/governance/fixtures/lane-ledger/` are the passing source of truth. Run the standalone verifier with any arbitrary read-only path, including a copied candidate outside the repository:
+
+```bash
+node tooling/governance/verify-lane-ledger.mjs -- /absolute/path/to/candidate.json
+```
+
+The verifier must not require a repository-relative path, mutate the input, or write a migration result.
 
 ---
 
@@ -103,4 +128,4 @@ find .opencode/skills -name SKILL.md
 # .opencode/ 내의 모든 markdown 파일에 에러가 없는지 확인한다.
 ```
 
-검증 중 발견된 특이 사항이나 아키텍처 결정은 `.sisyphus/notepads/` 아래 적절한 파일에 기록한다.
+검증 결과와 migration evidence는 명령 실행 결과, candidate snapshot, 또는 검증 시스템이 지정한 read-only 산출물로 남긴다. 존재하지 않는 별도 notepad 경로를 만들거나 안내하지 않는다.
