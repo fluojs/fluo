@@ -62,6 +62,37 @@ function addLaterIssue(ledger: LaneLedgerFixture, status?: string): void {
   ledger.issue_progress = { ...ledger.issue_progress, '103': progress };
 }
 
+function setBlockedReleaseHandoff(ledger: LaneLedgerFixture): void {
+  ledger.status = 'blocked-maintainer-decision';
+  ledger.completed_issues = [101];
+  ledger.release_handoffs = [102];
+  ledger.lanes = [
+    {
+      name: 'runtime-completed',
+      queue: [101],
+      current_issue: null,
+      status: 'done',
+      branch: null,
+      worktree: null,
+      pr: null,
+      retry_count: 0,
+    },
+    {
+      name: 'release-handoff',
+      queue: [102],
+      current_issue: null,
+      status: 'blocked-maintainer-decision',
+      branch: null,
+      worktree: null,
+      pr: null,
+      retry_count: 0,
+    },
+  ];
+  const progress = requireIssueProgress(ledger, '102');
+  progress.status = 'blocked-maintainer-decision';
+  delete progress.cleanup;
+}
+
 describe('verify-lane-ledger canonical v1 completion contract', () => {
   it('rejects an unknown root status', () => {
     expect(
@@ -539,10 +570,66 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
   it('represents a release handoff with blocked-maintainer-decision', () => {
     expect(
       runMutatedCompletedLedger((ledger) => {
-        setTerminalSecondIssue(ledger, 'blocked-maintainer-decision');
-        ledger.status = 'blocked-maintainer-decision';
-        ledger.release_handoffs = [102];
+        setBlockedReleaseHandoff(ledger);
       }, runValidatorPath),
     ).toContain('Lane ledger check passed for 1 file(s).');
+  });
+
+  it('requires a dedicated single-issue lane for a release handoff', () => {
+    expect(
+      runMutatedReadyLedger((ledger) => {
+        ledger.release_handoffs = [1];
+        ledger.confirmed_issues.push(2);
+        ledger.lanes[0].queue.push(2);
+      }),
+    ).toContain('release handoff must occupy a dedicated single-issue lane');
+  });
+
+  it('requires blocked maintainer progress after execution starts', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setBlockedReleaseHandoff(ledger);
+        Reflect.deleteProperty(ledger.issue_progress ?? {}, '102');
+      }),
+    ).toContain('non-ready release handoff requires blocked-maintainer-decision lane and progress');
+  });
+
+  it('requires blocked maintainer lane status after execution starts', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setBlockedReleaseHandoff(ledger);
+        ledger.lanes[1].status = 'blocked-terminal';
+      }),
+    ).toContain('non-ready release handoff requires blocked-maintainer-decision lane and progress');
+  });
+
+  it('rejects a completed release handoff', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        ledger.lanes = [
+          {
+            name: 'runtime-completed',
+            queue: [101],
+            current_issue: null,
+            status: 'done',
+            branch: null,
+            worktree: null,
+            pr: null,
+            retry_count: 0,
+          },
+          {
+            name: 'release-completed',
+            queue: [102],
+            current_issue: null,
+            status: 'done',
+            branch: null,
+            worktree: null,
+            pr: null,
+            retry_count: 0,
+          },
+        ];
+        ledger.release_handoffs = [102];
+      }),
+    ).toContain('release handoff must never be completed, merged, or done');
   });
 });

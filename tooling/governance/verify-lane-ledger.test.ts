@@ -268,8 +268,8 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
 
   it('accepts a unique confirmed release handoff', () => {
     expect(
-      runMutatedCompletedLedger((ledger) => {
-        ledger.release_handoffs = [102];
+      runMutatedReadyLedger((ledger) => {
+        ledger.release_handoffs = [1];
       }, runValidatorPath),
     ).toContain('Lane ledger check passed for 1 file(s).');
   });

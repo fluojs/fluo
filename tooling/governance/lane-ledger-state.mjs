@@ -132,6 +132,29 @@ function validateSequentialProgress(lanePath, lane, validation) {
   }
 }
 
+function validateReleaseHandoffs(path, ledger, progressByIssue) {
+  const completedIssues = new Set(ledger.completed_issues);
+  for (const issue of ledger.release_handoffs) {
+    const lane = ledger.lanes.find((candidate) => candidate.queue.includes(issue));
+    assert(lane?.queue.length === 1, path, 'release handoff must occupy a dedicated single-issue lane');
+    const progress = progressByIssue.get(issue);
+    assert(
+      !completedIssues.has(issue) && progress?.status !== 'merged' && progress?.status !== 'done' && lane.status !== 'merged' && lane.status !== 'done',
+      path,
+      'release handoff must never be completed, merged, or done',
+    );
+    if (ledger.status === 'ready') {
+      assert(lane.status === 'queued' && progress === undefined, path, 'ready release handoff must remain queued without issue progress');
+    } else {
+      assert(
+        lane.status === 'blocked-maintainer-decision' && progress?.status === 'blocked-maintainer-decision',
+        path,
+        'non-ready release handoff requires blocked-maintainer-decision lane and progress',
+      );
+    }
+  }
+}
+
 export function validateLedger(path, ledger) {
   validateLedgerShape(path, ledger);
   const confirmedIssues = new Set(ledger.confirmed_issues);
@@ -172,6 +195,7 @@ export function validateLedger(path, ledger) {
   const progressByIssue = validateIssueProgress(path, ledger, prAssignments);
   assert(isObject(ledger.issue_progress), path, 'issue_progress must be an object');
   const relationshipValidation = { completedIssues, progressByIssue };
+  validateReleaseHandoffs(path, ledger, progressByIssue);
   for (const [index, lane] of ledger.lanes.entries()) {
     validateLaneProgressRelationship(`${path}:lanes[${index}]`, lane, relationshipValidation);
     validateSequentialProgress(`${path}:lanes[${index}]`, lane, relationshipValidation);
