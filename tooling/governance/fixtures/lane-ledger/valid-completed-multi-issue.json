@@ -21,6 +21,12 @@
     "root_main_sync_ff_only": true,
     "publish_via_github_actions": false
   },
+  "retry_policy": {
+    "retry_count_is_terminal": true,
+    "max_same_failure_repeats": 3,
+    "max_wall_clock_minutes": 180,
+    "stop_on_child_contract_error": true
+  },
   "confirmed_issues": [101, 102],
   "suggested_but_excluded": [],
   "backlog_candidates": [],
