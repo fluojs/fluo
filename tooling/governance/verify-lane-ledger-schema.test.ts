@@ -79,6 +79,12 @@ describe('lane ledger canonical schema', () => {
     expect(runMutatedReadyLedger((ledger) => (ledger.created_at = createdAt))).toContain('created_at must be a strict UTC ISO-8601 timestamp');
   });
 
+  it('guides migration for legacy non-UTC created_at evidence', () => {
+    expect(runMutatedReadyLedger((ledger) => (ledger.created_at = '2026-08-05T19:34:18+09:00'))).toContain(
+      'migrate legacy completion evidence to canonical issue_progress',
+    );
+  });
+
   it.each([
     ['missing source key', (ledger: LaneLedgerFixture) => Reflect.deleteProperty(ledger.source, 'search_ledger')],
     ['extra source key', (ledger: LaneLedgerFixture) => Object.assign(ledger.source, { artifact: null })],

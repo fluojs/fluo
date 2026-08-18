@@ -55,6 +55,7 @@ const rootKeys = [
 const sourceKeys = ['type', 'search_run_id', 'search_ledger'];
 const laneKeys = ['name', 'queue', 'current_issue', 'status', 'branch', 'worktree', 'pr', 'retry_count'];
 const blockerKeys = ['signature', 'evidence'];
+const migrationGuidance = 'migrate legacy completion evidence to canonical issue_progress';
 
 function isSafeBasename(value) {
   return (
@@ -135,7 +136,11 @@ export function validateLedgerShape(path, ledger) {
     'run_id and lane_id must be matching path-safe basenames',
   );
   if (ledger.created_at !== undefined) {
-    assert(isUtcIsoTimestamp(ledger.created_at), path, 'created_at must be a strict UTC ISO-8601 timestamp');
+    assert(
+      isUtcIsoTimestamp(ledger.created_at),
+      path,
+      `created_at must be a strict UTC ISO-8601 timestamp; ${migrationGuidance}`,
+    );
   }
   assert(ledger.created_by === 'create-lane', path, 'created_by must be create-lane');
   assert(isSafeBranchName(ledger.base_branch), path, 'base_branch must be a safe non-empty branch name');
