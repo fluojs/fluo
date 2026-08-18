@@ -53,8 +53,9 @@ Make the lane workflow command architecture responsibility-complete and mechanic
 - `pnpm verify:lane-ledger -- <invalid fixture>` fails with a specific invariant error in test coverage.
 - `pnpm exec biome check tooling/governance/lane-ledger-contract.mjs tooling/governance/lane-ledger-progress.mjs tooling/governance/lane-ledger-state.mjs tooling/governance/verify-lane-ledger.mjs package.json` passes.
 - `pnpm exec vitest run tooling/governance/verify-lane-ledger.test.ts tooling/governance/verify-lane-ledger-state.test.ts tooling/governance/verify-lane-ledger-progress.test.ts tooling/governance/verify-lane-ledger-identity.test.ts` passes.
+- The focused lane workflow verification surface has 211 expected checks; any previous 93-check total is stale.
 - Command-doc verifier gates check that `.opencode/commands/create-lane.md` and `.opencode/commands/execute-lane.md` document the canonical schema, status, cursor, root-sync, authority, and cleanup prerequisites.
-- `pnpm verify:lane-ledger -- tooling/governance/fixtures/lane-ledger/valid-ready.json tooling/governance/fixtures/lane-ledger/valid-completed-multi-issue.json` passes as the reproducible gate. When `.omo/lanes/lane-2026-08-05-persistence-a.json` is available, read-only verification of that local real completed artifact is a conditional supplementary check.
+- `pnpm verify:lane-ledger -- tooling/governance/fixtures/lane-ledger/valid-ready.json tooling/governance/fixtures/lane-ledger/valid-completed-multi-issue.json` passes as the reproducible gate. The raw real ledger `.omo/lanes/lane-2026-08-05-persistence-a.json`, when present, is an expected nonzero strict-v1 migration failure and is never a passing compatibility fixture.
 
 ### Must Have
 - `search-issue` is the only stage allowed to create GitHub issues.
@@ -138,7 +139,7 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
   **What to do**: Define the handoff artifacts:
   - `.sisyphus/search-issue/<run-id>.json`
   - `.omo/lanes/<lane-id>.json`
-  Include `selected_issues`, `confirmed_issues`, `lanes`, `authority_scope`, `merge_policy`, `retry_policy`, `completed_issues`, `root_main_sync`, and `version`.
+  Include the producer fields from the canonical `create-lane` example: `version`, `run_id`, `status`, `lane_id`, `created_by`, `base_branch`, `source`, `merge_policy`, `pr_merge_method`, `authority_scope`, `retry_policy`, `execution`, `confirmed_issues`, `suggested_but_excluded`, `backlog_candidates`, `release_handoffs`, `completed_issues`, `issue_progress`, `lanes`, `dependency_graph`, and `root_main_sync`. These are producer-written provenance/planning fields; the pure validator enforces only its documented structural and evidence core, not exact-key equality for these optional/provenance fields.
 
   **Must NOT do**: Do not let `execute-lane` mutate issue selection or lane grouping.
 
@@ -146,7 +147,7 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
 
   **References**:
   - Fixture: `tooling/governance/fixtures/lane-ledger/valid-completed-multi-issue.json` - valid completed multi-issue fixture.
-  - Real artifact: `.omo/lanes/lane-2026-08-05-persistence-a.json` - conditional, read-only completed-ledger verification evidence when available; committed valid fixtures remain the reproducible gate.
+  - Real artifact: `.omo/lanes/lane-2026-08-05-persistence-a.json` - raw legacy persistence ledger, expected to fail strict v1 migration validation when available.
   - Pattern: `tooling/governance/verify-lane-ledger.mjs` - current validator behavior.
 
   **Acceptance Criteria**:
@@ -156,6 +157,14 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
   - [ ] Active lanes require an integer `current_issue`; terminal lanes require a `null` `current_issue` and move completion evidence to `issue_progress`.
   - [ ] Completed ledgers require per-issue `issue_progress` evidence, and `completed_issues` must contain exactly the same issue numbers as completed `issue_progress` entries.
   - [ ] Old `.sisyphus/lane-supervisor/*.json` ledgers are explicitly rejected with migration guidance; no migration ledger is a canonical passing fixture.
+
+  **Final strict v1 contract**:
+  - Root identity is `run_id` plus `lane_id`, with `created_by: create-lane`, `base_branch`, and `source`; each lane identity is its queue item, `current_issue`, branch, worktree, PR, and retry count.
+  - `authority_scope` explicitly gates issue creation, PR creation, PR merge, command-owned cleanup, root main fast-forward sync, and GitHub Actions publishing. Missing or false cleanup/root-sync authority skips the side effect rather than inferring permission.
+  - `retry_policy` and `execution` are persisted fields. Fix-back reuses the same PR, branch, and worktree, and terminal escalation follows the recorded retry policy.
+  - Progress is lane-local: a child completion barrier applies only to that lane item. There is no global batch barrier; completed items proceed immediately to collection, review, fix-back, or merge gates.
+  - Strict completion evidence requires terminal lane states, current PR/linked-issue identity, reviewer/check evidence, merge evidence, authorized cleanup evidence, and authorized root-sync evidence. Final reporting is forbidden while non-terminal work or stale evidence remains.
+  - Root sync is allowed only on a clean root worktree via `git pull --ff-only origin <base-branch>`; reset, rebase, merge, or dirty-root cleanup is forbidden.
 
   **QA Scenarios**:
   ```text
@@ -269,8 +278,8 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
   - [ ] `.opencode/commands/execute-lane.md` exists.
   - [ ] It accepts only lane run-id/path and optional resume/authority flags.
   - [ ] It states merge method is always squash.
-  - [ ] It includes child completion barrier.
-  - [ ] It includes after-fixback same-reviewer recheck.
+  - [ ] Its `Loop and gates` section enforces a lane-local head barrier without a global batch barrier.
+  - [ ] Its `Loop and gates` section requires bounded fix-back on the same branch, worktree, and PR, with retry policy applied before completion evidence is accepted.
   - [ ] It runs lane ledger validator before final report.
 
   **QA Scenarios**:
@@ -336,7 +345,7 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
   - Current script: `tooling/governance/verify-lane-ledger.mjs`.
   - Current script alias: `package.json`.
   - Valid completed fixture: `tooling/governance/fixtures/lane-ledger/valid-completed-multi-issue.json`.
-  - Real completed artifact for conditional, read-only verification when available: `.omo/lanes/lane-2026-08-05-persistence-a.json`.
+  - Raw real completed artifact, expected strict-v1 migration failure when available: `.omo/lanes/lane-2026-08-05-persistence-a.json`.
 
   **Acceptance Criteria**:
   - [ ] `pnpm verify:lane-ledger -- <valid fixture>` passes.
@@ -352,11 +361,11 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
     Expected: exit 0 and "Lane ledger check passed" for both committed valid fixtures; both declare version 1.
     Evidence: evidence/task-7-valid-ledger.txt
 
-  Scenario: Available real completed artifact is checked read-only
+  Scenario: Available real legacy artifact fails migration validation
     Tool: bash
-    Steps: if test -f .omo/lanes/lane-2026-08-05-persistence-a.json; then pnpm verify:lane-ledger -- .omo/lanes/lane-2026-08-05-persistence-a.json; fi
-    Expected: when available, the local real completed artifact passes a read-only supplementary check; absence does not fail the reproducible fixture gate.
-    Evidence: evidence/task-7-real-ledger-optional.txt
+    Steps: if test -f .omo/lanes/lane-2026-08-05-persistence-a.json; then ! pnpm verify:lane-ledger -- .omo/lanes/lane-2026-08-05-persistence-a.json; fi
+    Expected: when available, the raw real artifact exits nonzero with migration guidance; absence does not fail the reproducible fixture gate.
+    Evidence: evidence/task-7-real-ledger-migration-failure.txt
 
   Scenario: State, progress, and identity invariants remain covered
     Tool: bash
@@ -432,9 +441,10 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
 - [ ] F2. Contract Reference Audit
   - Run `grep -RIn "lane-supervisor\\|search-to-issue\\|Source choice" .opencode/commands .opencode/agents tooling package.json` and classify every remaining match as migration artifact, validator compatibility, or defect.
 - [ ] F3. Validator Audit
-  - Run `pnpm verify:lane-ledger -- tooling/governance/fixtures/lane-ledger/valid-ready.json tooling/governance/fixtures/lane-ledger/valid-completed-multi-issue.json` as the reproducible fixture gate; confirm allowed root/progress statuses, active first-unfinished integer cursors, terminal null cursors, issue_progress-based completion evidence, completed-set consistency, cleanup-before-done rejection, root-sync authority and terminal prerequisites, canonical `fluojs/fluo` PR identity, same-issue canonical PR mirroring allowed, cross-issue PR reuse rejected, and `created_by`/base/worktree rules. Legacy terminal lane-level evidence must be rejected with migration guidance. When `.omo/lanes/lane-2026-08-05-persistence-a.json` is available, run a separate read-only supplementary check.
+  - Run `pnpm verify:lane-ledger -- tooling/governance/fixtures/lane-ledger/valid-ready.json tooling/governance/fixtures/lane-ledger/valid-completed-multi-issue.json` as the reproducible fixture gate; confirm allowed root/progress statuses, active first-unfinished integer cursors, terminal null cursors, issue_progress-based completion evidence, completed-set consistency, cleanup-before-done rejection, root-sync authority and terminal prerequisites, canonical `fluojs/fluo` PR identity, same-issue canonical PR mirroring allowed, cross-issue PR reuse rejected, and `created_by`/base/worktree rules. Legacy terminal lane-level evidence must be rejected with migration guidance. If `.omo/lanes/lane-2026-08-05-persistence-a.json` is available, assert a separate read-only check exits nonzero.
   - Run `pnpm exec vitest run tooling/governance/verify-lane-ledger.test.ts tooling/governance/verify-lane-ledger-state.test.ts tooling/governance/verify-lane-ledger-progress.test.ts tooling/governance/verify-lane-ledger-identity.test.ts`; the entire focused validator suite must pass.
   - Run explicit command-doc verifier gates against `.opencode/commands/create-lane.md` and `.opencode/commands/execute-lane.md` for schema, statuses, cursors, root-sync authority and terminal prerequisites, and cleanup ordering.
+  - Keep the pure validator structural and mutating harness live Git/filesystem checks separate; the validator must not perform live identity, cleanup, or root-sync checks.
 - [ ] F4. Manual Pipeline QA
   - Use `tmux` to run a dry documentation walkthrough:
     ```bash
