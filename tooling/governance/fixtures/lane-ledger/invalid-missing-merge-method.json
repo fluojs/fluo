@@ -24,6 +24,7 @@
     "stop_on_child_contract_error": true
   },
   "confirmed_issues": [1],
+  "issue_progress": {},
   "lanes": [
     {
       "name": "runtime",
