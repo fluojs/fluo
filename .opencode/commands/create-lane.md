@@ -82,7 +82,7 @@ release handoff issue는 반드시 단일 issue 전용 lane이어야 한다. `re
 
 1. primary repository의 `.omo/lanes` 아래 target만 해석하고 symlink와 기존 target을 거부한다.
 2. 사용자 승인 전에는 side effect를 만들지 않는다.
-3. candidate를 strict validator로 검증한다. `lane-ledger-schema.mjs`와 `verify-lane-ledger-schema.test.ts`를 포함한 focused five-file gate는 정확히 278 tests다.
+3. candidate를 strict validator로 검증한다. Focused suite는 정확히 five TEST files와 278 tests이며 `verify-lane-ledger-schema.test.ts`를 포함한다. `lane-ledger-schema.mjs`가 strict shape validation을 담당한다.
 4. validation 성공 때만 target을 atomic create한다. 실패 시 파일을 만들지 않고 외부 결과만 `needs-human-check`로 보고한다.
 
 ## Must NOT

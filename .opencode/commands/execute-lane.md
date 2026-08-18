@@ -48,7 +48,7 @@ ledger branch/worktree values는 live state를 대체하지 않는다. worktree�
 
 같은 lane에서는 head issue만 dispatch한다. 전역 batch barrier는 없다. child 완료 즉시 output을 수집하고, candidate에 issue/branch/worktree/PR/verification/blocker를 기록한 뒤 strict validator, `/pr-to-merge`, verdict, same branch/worktree/PR fix-back and retry gate를 진행한다. 모든 lane과 progress가 terminal이고 stale evidence가 없을 때만 final report를 낸다.
 
-Focused validation은 `lane-ledger-schema.mjs`와 `verify-lane-ledger-schema.test.ts`를 포함한 five-file gate이며 exactly 278 tests다.
+Focused suite는 정확히 five TEST files와 278 tests이며 `verify-lane-ledger-schema.test.ts`를 포함한다. `lane-ledger-schema.mjs`가 strict shape validation을 담당한다.
 
 ## Must NOT
 
