@@ -75,7 +75,13 @@ describe('lane ledger canonical schema', () => {
     );
   });
 
-  it.each(['2026-08-01', '2026-08-01T00:00:00+00:00', '2026-02-30T00:00:00Z'])('rejects malformed created_at %s', (createdAt) => {
+  it.each([
+    '2026-08-01',
+    '2026-08-01T00:00:00+00:00',
+    '2026-02-30T00:00:00Z',
+    '2026-13-01T00:00:00Z',
+    '2026-00-01T00:00:00Z',
+  ])('rejects malformed created_at %s with a canonical validation error', (createdAt) => {
     expect(runMutatedReadyLedger((ledger) => (ledger.created_at = createdAt))).toContain('created_at must be a strict UTC ISO-8601 timestamp');
   });
 
@@ -103,6 +109,41 @@ describe('lane ledger canonical schema', () => {
         };
       }, runValidatorPath),
     ).toContain('Lane ledger check passed for 1 file(s).');
+  });
+
+  it('accepts a persisted search-issue source with a timezone offset in its ID', () => {
+    expect(
+      runMutatedReadyLedger((ledger) => {
+        ledger.source = {
+          type: 'search-issue',
+          search_run_id: '20260805T193026+0900-persistence-comprehensive',
+          search_ledger: '.sisyphus/search-issue/20260805T193026+0900-persistence-comprehensive.json',
+        };
+      }, runValidatorPath),
+    ).toContain('Lane ledger check passed for 1 file(s).');
+  });
+
+  it.each(['+leading', 'nested/source', 'nested\\source', 'source value', 'source%2Fvalue', '검색']) (
+    'rejects unsafe search-issue source ID %s',
+    (searchRunId) => {
+      expect(
+        runMutatedReadyLedger((ledger) => {
+          ledger.source = {
+            type: 'search-issue',
+            search_run_id: searchRunId,
+            search_ledger: `.sisyphus/search-issue/${searchRunId}.json`,
+          };
+        }),
+      ).toContain('source must match a canonical source variant');
+    },
+  );
+
+  it.each(['review', 'merge', 'cleanup'])('guides migration for terminal lane legacy key %s', (field) => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        Object.assign(ledger.lanes[0], { [field]: null });
+      }),
+    ).toContain('migrate legacy completion evidence to canonical issue_progress');
   });
 
   it.each([

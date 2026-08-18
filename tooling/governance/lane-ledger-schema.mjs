@@ -66,11 +66,24 @@ function isSafeBasename(value) {
   );
 }
 
+function isSafeSearchBasename(value) {
+  return (
+    isNonEmptyString(value) &&
+    /^[A-Za-z0-9][A-Za-z0-9+._-]*$/u.test(value) &&
+    !value.endsWith('.') &&
+    !value.endsWith('.lock')
+  );
+}
+
 function isUtcIsoTimestamp(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u.test(value)) {
     return false;
   }
-  const canonical = new Date(value).toISOString();
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+  const canonical = date.toISOString();
   return value === canonical || value === canonical.replace('.000Z', 'Z');
 }
 
@@ -79,7 +92,7 @@ function validateSource(path, source) {
   const isExistingIssues = source.type === 'existing-issues' && source.search_run_id === null && source.search_ledger === null;
   const isSearchIssue =
     source.type === 'search-issue' &&
-    isSafeBasename(source.search_run_id) &&
+    isSafeSearchBasename(source.search_run_id) &&
     source.search_ledger === `.sisyphus/search-issue/${source.search_run_id}.json`;
   assert(isExistingIssues || isSearchIssue, path, 'source must match a canonical source variant');
 }
@@ -157,7 +170,11 @@ export function validateLedgerShape(path, ledger) {
   assert(ledger.completed_issues.every(isPositiveInteger), path, 'completed_issues must contain positive integer issue numbers');
   assert(Array.isArray(ledger.suggested_but_excluded), path, 'suggested_but_excluded must be an array');
   assert(Array.isArray(ledger.backlog_candidates), path, 'backlog_candidates must be an array');
-  assert(isObject(ledger.issue_progress), path, 'issue_progress must be an object');
+  const issueProgressMessage =
+    ledger.status === 'ready'
+      ? 'issue_progress must be an object'
+      : `issue_progress must be an object; ${migrationGuidance}`;
+  assert(isObject(ledger.issue_progress), path, issueProgressMessage);
   assert(isObject(ledger.dependency_graph), path, 'dependency_graph must be an object');
   assert(Array.isArray(ledger.lanes) && ledger.lanes.length > 0, path, 'lanes must be a non-empty array');
   assert(isObject(ledger.root_main_sync), path, 'root_main_sync is required');
@@ -178,6 +195,14 @@ export function validateLaneShape(lanePath, lane, validation) {
   const isActive = activeStatuses.has(lane.status);
   const isTerminal = terminalStatuses.has(lane.status);
   assert(isActive || isTerminal, lanePath, `invalid lane.status: ${String(lane.status)}`);
+  if (isTerminal) {
+    const hasLegacyEvidence = ['review', 'merge', 'cleanup'].some((key) => Object.hasOwn(lane, key));
+    assert(
+      !hasLegacyEvidence,
+      lanePath,
+      `terminal lane must move legacy completion evidence to issue_progress; ${migrationGuidance}`,
+    );
+  }
   const expectedLaneKeys = lane.status === 'blocked-child-contract-error' ? [...laneKeys, 'current_blocker'] : laneKeys;
   assert(hasExactKeys(lane, expectedLaneKeys), lanePath, 'lane must contain exactly the canonical keys for its status');
   assert(Number.isSafeInteger(lane.retry_count) && lane.retry_count >= 0, lanePath, 'lane retry_count must be a non-negative safe integer');
