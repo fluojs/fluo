@@ -7,10 +7,60 @@ import {
   requireRootMainSync,
   runMutatedCompletedLedger,
   runValidatorPath,
+  setNonCompletionProgress,
   setSkippedCleanup,
 } from './verify-lane-ledger.test-support';
 
+const completionEvidenceCases = [
+  ['review_verdict', 'merge'],
+  ['checks', 'PASS'],
+  ['reviewers', { contract: 'PASS', code: 'PASS', verification: 'PASS' }],
+  ['reviewed_head', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
+  ['commits', ['aaaaaaa']],
+  ['merge_commit', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
+  ['issue_state', 'CLOSED'],
+] as const;
+
+function setIssue102State(ledger: LaneLedgerFixture, status: string): ReturnType<typeof requireIssueProgress> {
+  ledger.status = 'running';
+  ledger.completed_issues = [101];
+  Object.assign(requireRootMainSync(ledger), { status: 'not-started', sha: null });
+  const progress = requireIssueProgress(ledger, '102');
+  setNonCompletionProgress(progress, status);
+  if (['queued', 'running', 'in_review'].includes(status)) {
+    Object.assign(ledger.lanes[0], {
+      status,
+      current_issue: 102,
+      branch: progress.branch,
+      worktree: progress.worktree,
+      pr: progress.pr,
+      retry_count: progress.retry_count,
+    });
+  } else {
+    Object.assign(ledger.lanes[0], {
+      status,
+      current_issue: null,
+      branch: null,
+      worktree: null,
+      pr: null,
+      retry_count: progress.retry_count,
+    });
+  }
+  return progress;
+}
+
 describe('verify-lane-ledger canonical v1 completion contract', () => {
+  it.each(['queued', 'running', 'in_review', 'blocked-terminal', 'blocked-maintainer-decision'].flatMap((status) =>
+    completionEvidenceCases.map(([field, value]) => [status, field, value] as const),
+  ))('rejects completion evidence %s.%s outside merged and done progress', (status, field, value) => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        const progress = setIssue102State(ledger, status);
+        Object.assign(progress, { [field]: value });
+      }),
+    ).toContain('migrate legacy completion evidence to canonical issue_progress');
+  });
+
   it.each(['legacy', 'review', 'merge', 'issue'])('rejects unknown issue progress key %s', (field) => {
     expect(
       runMutatedCompletedLedger((ledger) => {
@@ -78,7 +128,9 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
   it('rejects cleanup done on running progress', () => {
     expect(
       runMutatedCompletedLedger((ledger) => {
-        requireIssueProgress(ledger, '102').status = 'running';
+        const progress = requireIssueProgress(ledger, '102');
+        setNonCompletionProgress(progress, 'running');
+        progress.cleanup = { ...completedCleanupFixture };
       }),
     ).toContain('cleanup done is only valid for done issue_progress');
   });
@@ -87,7 +139,7 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
     expect(
       runMutatedCompletedLedger((ledger) => {
         const progress = requireIssueProgress(ledger, '102');
-        progress.status = 'blocked-terminal';
+        setNonCompletionProgress(progress, 'blocked-terminal');
         progress.cleanup = 'skipped-authority';
       }),
     ).toContain('cleanup skipped-authority is only valid for done issue_progress');
@@ -101,7 +153,7 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
         Object.assign(ledger.lanes[0], { status: 'running', current_issue: 102 });
         Object.assign(requireRootMainSync(ledger), { status: 'not-started', sha: null });
         const progress = requireIssueProgress(ledger, '102');
-        progress.status = 'running';
+        setNonCompletionProgress(progress, 'running');
         progress.cleanup = { status: 'pending' };
         ledger.lanes[0].branch = progress.branch;
         ledger.lanes[0].worktree = progress.worktree;
@@ -124,7 +176,7 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
         });
         Object.assign(requireRootMainSync(ledger), { status: 'not-started', sha: null });
         const progress = requireIssueProgress(ledger, '102');
-        progress.status = 'blocked-terminal';
+        setNonCompletionProgress(progress, 'blocked-terminal');
         progress.cleanup = { status: 'pending' };
       }),
     ).toContain('cleanup evidence is only valid for done issue_progress');
