@@ -172,6 +172,11 @@ export function validateIssueProgress(path, ledger, prAssignments) {
       'cleanup skipped-authority is only valid for done issue_progress',
     );
     assert(
+      progress.status === 'done' || progress.cleanup === undefined,
+      progressPath,
+      'cleanup evidence is only valid for done issue_progress',
+    );
+    assert(
       confirmedIssues.has(Number(issueKey)) && queuedIssues.has(Number(issueKey)),
       progressPath,
       'issue_progress issue must belong to confirmed_issues and a lane queue',

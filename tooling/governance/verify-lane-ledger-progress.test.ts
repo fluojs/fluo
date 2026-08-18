@@ -93,6 +93,43 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
     ).toContain('cleanup skipped-authority is only valid for done issue_progress');
   });
 
+  it('rejects arbitrary cleanup evidence on active progress', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        ledger.status = 'running';
+        ledger.completed_issues = [101];
+        Object.assign(ledger.lanes[0], { status: 'running', current_issue: 102 });
+        Object.assign(requireRootMainSync(ledger), { status: 'not-started', sha: null });
+        const progress = requireIssueProgress(ledger, '102');
+        progress.status = 'running';
+        progress.cleanup = { status: 'pending' };
+        ledger.lanes[0].branch = progress.branch;
+        ledger.lanes[0].worktree = progress.worktree;
+        ledger.lanes[0].pr = progress.pr;
+      }),
+    ).toContain('cleanup evidence is only valid for done issue_progress');
+  });
+
+  it('rejects arbitrary cleanup evidence on terminal non-done progress', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        ledger.status = 'running';
+        ledger.completed_issues = [101];
+        Object.assign(ledger.lanes[0], {
+          status: 'blocked-terminal',
+          current_issue: null,
+          branch: null,
+          worktree: null,
+          pr: null,
+        });
+        Object.assign(requireRootMainSync(ledger), { status: 'not-started', sha: null });
+        const progress = requireIssueProgress(ledger, '102');
+        progress.status = 'blocked-terminal';
+        progress.cleanup = { status: 'pending' };
+      }),
+    ).toContain('cleanup evidence is only valid for done issue_progress');
+  });
+
   it.each([
     {
       name: 'active completion history without issue progress',
