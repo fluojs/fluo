@@ -11,6 +11,62 @@ import {
 } from './verify-lane-ledger.test-support';
 
 describe('verify-lane-ledger canonical v1 completion contract', () => {
+  it.each(['legacy', 'review', 'merge', 'issue'])('rejects unknown issue progress key %s', (field) => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        requireIssueProgress(ledger, '101')[field] = {};
+      }),
+    ).toContain('issue progress contains an unknown key');
+  });
+
+  it.each(['reviewer', 'signature', 'evidence', 'fix_back_eligible', 'status'])('rejects blocker missing %s', (field) => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        const blocker = {
+          reviewer: 'code',
+          signature: 'src/example.ts:incorrect-state',
+          evidence: 'focused test failure',
+          fix_back_eligible: true,
+          status: 'remediated',
+        };
+        Reflect.deleteProperty(blocker, field);
+        requireIssueProgress(ledger, '101').blockers = [blocker];
+      }),
+    ).toContain('blocker must contain exactly reviewer/signature/evidence/fix_back_eligible/status');
+  });
+
+  it('rejects an unknown blocker reviewer', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        requireIssueProgress(ledger, '101').blockers = [
+          {
+            reviewer: 'security',
+            signature: 'policy:decision',
+            evidence: 'review output',
+            fix_back_eligible: false,
+            status: 'remediated',
+          },
+        ];
+      }),
+    ).toContain('blocker reviewer must be contract, code, or verification');
+  });
+
+  it('accepts exact remediated blocker evidence', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        requireIssueProgress(ledger, '101').blockers = [
+          {
+            reviewer: 'verification',
+            signature: 'test:queue-prefix',
+            evidence: 'focused suite passes',
+            fix_back_eligible: true,
+            status: 'remediated',
+          },
+        ];
+      }, runValidatorPath),
+    ).toContain('Lane ledger check passed for 1 file(s).');
+  });
+
   it('rejects an unknown issue progress status', () => {
     expect(
       runMutatedCompletedLedger((ledger) => {
