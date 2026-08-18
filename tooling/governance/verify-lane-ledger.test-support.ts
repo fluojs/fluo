@@ -30,10 +30,19 @@ export type LaneFixture = {
 export type LaneLedgerFixture = {
   version?: number;
   status: string;
+  authority_scope: {
+    cleanup_command_worktrees: boolean;
+    root_main_sync_ff_only: boolean;
+    [key: string]: unknown;
+  };
   lanes: [LaneFixture, ...LaneFixture[]];
   confirmed_issues: number[];
   completed_issues: number[];
   issue_progress?: Record<string, IssueProgressFixture>;
+  root_main_sync: {
+    status: string;
+    sha: string | null;
+  };
 };
 
 export const currentDir = dirname(fileURLToPath(import.meta.url));

@@ -4,14 +4,42 @@ import type { LaneLedgerFixture } from './verify-lane-ledger.test-support';
 import { requireIssueProgress, runMutatedCompletedLedger } from './verify-lane-ledger.test-support';
 
 describe('verify-lane-ledger canonical v1 completion contract', () => {
+  it('rejects an unknown issue progress status', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        requireIssueProgress(ledger, '102').status = 'mystery';
+      }),
+    ).toContain('invalid issue_progress.status: mystery');
+  });
+
+  it('rejects cleanup done on running progress', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        requireIssueProgress(ledger, '102').status = 'running';
+      }),
+    ).toContain('cleanup done is only valid for done issue_progress');
+  });
+
+  it('rejects cleanup skipped-authority on non-done progress', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        const progress = requireIssueProgress(ledger, '102');
+        progress.status = 'blocked-terminal';
+        progress.cleanup = 'skipped-authority';
+      }),
+    ).toContain('cleanup skipped-authority is only valid for done issue_progress');
+  });
+
   it.each([
     {
       name: 'active completion history without issue progress',
       expectedError: 'completed_issues and issue_progress must contain the same issue numbers',
       mutate: (ledger: LaneLedgerFixture) => {
         ledger.status = 'running';
-        ledger.lanes[0].status = 'running';
+        ledger.lanes[0].status = 'merged';
         ledger.lanes[0].current_issue = 102;
+        ledger.root_main_sync.status = 'not-started';
+        ledger.root_main_sync.sha = null;
         delete ledger.issue_progress;
       },
     },

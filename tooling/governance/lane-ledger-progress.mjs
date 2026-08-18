@@ -5,6 +5,7 @@ import {
   isPositiveInteger,
   isPullRequest,
   isSha,
+  progressStatuses,
 } from './lane-ledger-contract.mjs';
 
 function validateCompletedProgress(path, progress, cleanupAuthority) {
@@ -58,6 +59,13 @@ export function validateIssueProgress(path, ledger) {
     const progressPath = `${path}:issue_progress[${issueKey}]`;
     assert(/^[1-9]\d*$/u.test(issueKey) && isPositiveInteger(Number(issueKey)), progressPath, 'issue_progress key must be a positive integer issue number');
     assert(isObject(progress), progressPath, 'issue progress must be an object');
+    assert(progressStatuses.has(progress.status), progressPath, `invalid issue_progress.status: ${String(progress.status)}`);
+    assert(progress.status === 'done' || progress.cleanup !== 'done', progressPath, 'cleanup done is only valid for done issue_progress');
+    assert(
+      progress.status === 'done' || progress.cleanup !== 'skipped-authority',
+      progressPath,
+      'cleanup skipped-authority is only valid for done issue_progress',
+    );
     assert(
       confirmedIssues.has(Number(issueKey)) && queuedIssues.has(Number(issueKey)),
       progressPath,

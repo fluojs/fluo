@@ -9,6 +9,8 @@ export const terminalStatuses = new Set([
 ]);
 
 export const activeStatuses = new Set(['queued', 'running', 'in_review', 'merged']);
+export const rootStatuses = new Set(['ready', 'running', ...terminalStatuses]);
+export const progressStatuses = new Set(['queued', 'running', 'in_review', 'merged', ...terminalStatuses]);
 export const allowedMergePolicies = new Set([
   'developer-final',
   'supervisor-auto',
