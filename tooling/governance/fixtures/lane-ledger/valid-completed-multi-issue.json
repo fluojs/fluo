@@ -58,8 +58,19 @@
       "verification": "focused tests passed",
       "retry_count": 0,
       "review_verdict": "merge",
+      "checks": "PASS",
+      "reviewers": {
+        "contract": "PASS",
+        "code": "PASS",
+        "verification": "PASS"
+      },
       "merge_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "cleanup": "done",
+      "cleanup": {
+        "status": "done",
+        "worktree_removed": true,
+        "local_branch_deleted": true,
+        "remote_branch_deleted": true
+      },
       "issue_state": "CLOSED"
     },
     "102": {
@@ -71,6 +82,7 @@
       "verification": "focused tests passed",
       "retry_count": 0,
       "review_verdict": "merge",
+      "checks": "PASS",
       "reviewers": {
         "contract": "PASS",
         "code": "PASS",
@@ -78,7 +90,12 @@
       },
       "reviewed_head": "2222222222222222222222222222222222222222",
       "merge_commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-      "cleanup": "done",
+      "cleanup": {
+        "status": "done",
+        "worktree_removed": true,
+        "local_branch_deleted": true,
+        "remote_branch_deleted": true
+      },
       "issue_state": "CLOSED"
     }
   },
