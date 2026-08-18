@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "run_id": "lane-test-invalid-merge-method",
+  "run_id": "lane-test-valid-ready",
   "status": "ready",
   "created_by": "create-lane",
   "base_branch": "main",
@@ -11,8 +11,8 @@
   "merge_policy": "supervisor-auto",
   "pr_merge_method": "merge",
   "authority_scope": {
-    "issue_selection": false,
     "issue_creation": false,
+    "pr_creation": true,
     "pr_merge": true,
     "publish_via_github_actions": false,
     "cleanup_command_worktrees": false,
@@ -44,5 +44,10 @@
   "root_main_sync": {
     "status": "not-started",
     "sha": null
+  },
+  "execution": {
+    "status": "not-started",
+    "last_command": null,
+    "last_updated": null
   }
 }
