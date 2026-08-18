@@ -1,5 +1,6 @@
 import {
   assert,
+  hasExactKeys,
   isMatchingWorktree,
   isNonEmptyString,
   isObject,
@@ -15,11 +16,6 @@ const reviewerKeys = ['contract', 'code', 'verification'];
 const completedCleanupKeys = ['status', 'worktree_removed', 'local_branch_deleted', 'remote_branch_deleted'];
 const skippedCleanupKeys = ['status'];
 const migrationGuidance = 'migrate legacy completion evidence to canonical issue_progress';
-
-function hasExactKeys(value, expectedKeys) {
-  const keys = Object.keys(value);
-  return keys.length === expectedKeys.length && expectedKeys.every((key) => Object.hasOwn(value, key));
-}
 
 function validateDoneCleanup(path, cleanup, cleanupAuthority) {
   const expectedStatus = cleanupAuthority ? 'done' : 'skipped-authority';

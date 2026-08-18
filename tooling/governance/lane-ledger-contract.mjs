@@ -41,6 +41,11 @@ export function isObject(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+export function hasExactKeys(value, expectedKeys) {
+  const keys = Object.keys(value);
+  return keys.length === expectedKeys.length && expectedKeys.every((key) => Object.hasOwn(value, key));
+}
+
 export function isSha(value) {
   return typeof value === 'string' && /^[a-f0-9]{40}$/u.test(value);
 }

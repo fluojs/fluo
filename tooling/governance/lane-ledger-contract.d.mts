@@ -43,6 +43,7 @@ export function assert(condition: boolean, path: string, message: string): asser
 export function isObject(
   value: LaneLedgerContractValue,
 ): value is LaneLedgerContractObject;
+export function hasExactKeys(value: LaneLedgerContractObject, expectedKeys: readonly string[]): boolean;
 export function isSha(value: LaneLedgerContractValue): value is string;
 export function isPositiveInteger(value: LaneLedgerContractValue): value is number;
 export function isNonEmptyString(value: LaneLedgerContractValue): value is string;
