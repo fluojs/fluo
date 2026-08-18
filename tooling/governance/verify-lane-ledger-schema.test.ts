@@ -31,6 +31,12 @@ function structuralDiff(left: unknown, right: unknown, path = ''): string[] {
   return [path];
 }
 
+function setReadyIssues(ledger: LaneLedgerFixture, issues: number[]): void {
+  ledger.confirmed_issues = issues;
+  ledger.lanes[0].queue = issues;
+  ledger.lanes[0].current_issue = issues[0] ?? null;
+}
+
 describe('lane ledger invalid fixture isolation', () => {
   const validReady = readFixture('valid-ready.json');
 
@@ -44,6 +50,43 @@ describe('lane ledger invalid fixture isolation', () => {
 });
 
 describe('lane ledger canonical schema', () => {
+  it.each([
+    ['empty', [1], {}],
+    ['full', [1], { '1': [] }],
+    ['sparse', [1, 2, 3], { '2': [1] }],
+    ['external prerequisite', [1], { '1': [999] }],
+  ])('accepts %s dependency graph', (_name, issues, dependencyGraph) => {
+    expect(
+      runMutatedReadyLedger((ledger) => {
+        setReadyIssues(ledger, issues);
+        ledger.dependency_graph = dependencyGraph;
+      }, runValidatorPath),
+    ).toContain('Lane ledger check passed for 1 file(s).');
+  });
+
+  it.each([
+    ['non-object root', [1], []],
+    ['non-numeric key', [1], { legacy: [] }],
+    ['key outside confirmed issues', [1], { '2': [] }],
+    ['scalar dependency list', [1], { '1': 99 }],
+    ['string dependency', [1], { '1': ['99'] }],
+    ['zero dependency', [1], { '1': [0] }],
+    ['negative dependency', [1], { '1': [-1] }],
+    ['fractional dependency', [1], { '1': [1.5] }],
+    ['unsafe dependency', [1], { '1': [Number.MAX_SAFE_INTEGER + 1] }],
+    ['duplicate dependency', [1], { '1': [99, 99] }],
+    ['self dependency', [1], { '1': [1] }],
+    ['two-node cycle', [1, 2], { '1': [2], '2': [1] }],
+    ['longer cycle', [1, 2, 3], { '1': [2], '2': [3], '3': [1] }],
+  ])('rejects %s in dependency graph', (_name, issues, dependencyGraph) => {
+    expect(
+      runMutatedReadyLedger((ledger) => {
+        setReadyIssues(ledger, issues);
+        Object.assign(ledger, { dependency_graph: dependencyGraph });
+      }),
+    ).toContain('dependency_graph');
+  });
+
   it.each([
     ['lane_id', 'run_id and lane_id must be matching path-safe basenames', (ledger: LaneLedgerFixture) => Reflect.deleteProperty(ledger, 'lane_id')],
     ['source', 'source must match a canonical source variant', (ledger: LaneLedgerFixture) => Reflect.deleteProperty(ledger, 'source')],

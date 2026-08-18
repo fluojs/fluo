@@ -13,6 +13,7 @@ import {
   rootStatuses,
   terminalStatuses,
 } from './lane-ledger-contract.mjs';
+import { validateDependencyGraph } from './lane-ledger-dependency.mjs';
 
 const authorityScopeKeys = [
   'issue_creation',
@@ -176,6 +177,7 @@ export function validateLedgerShape(path, ledger) {
       : `issue_progress must be an object; ${migrationGuidance}`;
   assert(isObject(ledger.issue_progress), path, issueProgressMessage);
   assert(isObject(ledger.dependency_graph), path, 'dependency_graph must be an object');
+  validateDependencyGraph(path, ledger.dependency_graph, new Set(ledger.confirmed_issues));
   assert(Array.isArray(ledger.lanes) && ledger.lanes.length > 0, path, 'lanes must be a non-empty array');
   assert(isObject(ledger.root_main_sync), path, 'root_main_sync is required');
   assert(hasExactKeys(ledger.root_main_sync, ['status', 'sha']), path, 'root_main_sync must contain exactly status/sha');
