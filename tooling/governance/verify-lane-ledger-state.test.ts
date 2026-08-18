@@ -381,6 +381,7 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
     expect(
       runMutatedCompletedLedger((ledger) => {
         setActiveSecondIssue(ledger, 'queued');
+        Object.assign(ledger.lanes[0], { branch: null, worktree: null, pr: null });
         Reflect.deleteProperty(ledger.issue_progress ?? {}, '102');
       }, runValidatorPath),
     ).toContain('Lane ledger check passed for 1 file(s).');

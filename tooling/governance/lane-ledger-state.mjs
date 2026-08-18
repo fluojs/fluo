@@ -62,6 +62,11 @@ function validateLaneProgressRelationship(lanePath, lane, validation) {
       assert(progress === undefined || progress.status === 'queued', lanePath, 'queued lane issue_progress must be absent or queued');
       if (progress === undefined) {
         assert(lane.retry_count === 0, lanePath, 'queued lane without issue progress requires retry_count 0');
+        assert(
+          lane.branch == null && lane.worktree == null && lane.pr == null,
+          lanePath,
+          'queued lane without issue progress requires null branch, worktree, and PR',
+        );
       }
     } else {
       assert(progress?.status === lane.status, lanePath, `${String(lane.status)} lane requires matching current issue_progress`);

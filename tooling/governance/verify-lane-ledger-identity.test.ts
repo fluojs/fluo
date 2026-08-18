@@ -27,6 +27,12 @@ function activateIssue102(ledger: LaneLedgerFixture, status = 'running'): IssueP
   return progress;
 }
 
+function queueIssue102WithoutProgress(ledger: LaneLedgerFixture): void {
+  activateIssue102(ledger, 'queued');
+  Object.assign(ledger.lanes[0], { branch: null, worktree: null, pr: null, retry_count: 0 });
+  Reflect.deleteProperty(ledger.issue_progress ?? {}, '102');
+}
+
 describe('verify-lane-ledger canonical v1 completion contract', () => {
   it('rejects ledgers that do not grant PR merge authority', () => {
     expect(runInvalidValidator('invalid-pr-merge-false.json')).toContain('authority_scope.pr_merge must be true');
@@ -317,6 +323,25 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
         activateIssue102(ledger).retry_count = 1;
       }),
     ).toContain('current lane and issue progress retry_count must be equal');
+  });
+
+  it.each([
+    ['branch', (ledger: LaneLedgerFixture) => (ledger.lanes[0].branch = 'issue-102-runtime-beta')],
+    [
+      'worktree',
+      (ledger: LaneLedgerFixture) => {
+        ledger.lanes[0].branch = 'issue-102-runtime-beta';
+        ledger.lanes[0].worktree = '.worktrees/issue-102-runtime-beta';
+      },
+    ],
+    ['pr', (ledger: LaneLedgerFixture) => (ledger.lanes[0].pr = 502)],
+  ])('rejects queued lane %s evidence without current progress', (_field, mutate) => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        queueIssue102WithoutProgress(ledger);
+        mutate(ledger);
+      }),
+    ).toContain('queued lane without issue progress requires null branch, worktree, and PR');
   });
 
   it.each(['.worktrees/other', '/tmp/issue-102-runtime-beta'])(
