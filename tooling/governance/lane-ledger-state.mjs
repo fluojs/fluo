@@ -50,7 +50,7 @@ function validateAuthorityScope(path, authorityScope) {
 }
 
 function validateRetryPolicy(path, retryPolicy, mergePolicy) {
-  assert(isObject(retryPolicy), path, 'retry_policy is required');
+  assert(isObject(retryPolicy), path, 'retry_policy is required; migrate legacy completion evidence to canonical issue_progress');
   assert(hasExactKeys(retryPolicy, retryPolicyKeys), path, 'retry_policy must contain exactly the canonical keys');
   assert(typeof retryPolicy.retry_count_is_terminal === 'boolean', path, 'retry_policy.retry_count_is_terminal must be a boolean');
   assert(typeof retryPolicy.stop_on_child_contract_error === 'boolean', path, 'retry_policy.stop_on_child_contract_error must be a boolean');

@@ -47,6 +47,14 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
     expect(runMutatedCompletedLedger(mutate)).toContain(expectedError);
   });
 
+  it('guides migration for a completed ledger missing retry_policy', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        Reflect.deleteProperty(ledger, 'retry_policy');
+      }),
+    ).toContain('migrate legacy completion evidence to canonical issue_progress');
+  });
+
   it.each([
     {
       name: 'a missing issue_progress object on ready',
