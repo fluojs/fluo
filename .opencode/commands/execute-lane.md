@@ -26,9 +26,9 @@ root status는 `ready`, `running`, `done`, `blocked-terminal`, `needs-human-chec
 | prior entries | `done` |
 | current entry | lane status와 progress status가 일치 |
 | later entries | absent 또는 `queued` |
-| merged cursor | `completed_issues`에 있고 progress가 `merged` |
+| merged cursor | 이전 `merged` item은 insufficient하며 cursor가 전진하기 전에 progress가 `done`이 되어야 한다 |
 | done lane | 모든 queue issue가 `done` progress |
-| previous merged entry | `completed_issues`만으로는 부족하며 matching progress가 필요 |
+| previous merged entry | `completed_issues`나 `merged` progress만으로는 부족하며 cursor 전진 전에 `done` progress가 필요 |
 
 Queued lane에 progress가 없으면 `branch`, `worktree`, `pr`는 null이고 `retry_count`는 0이어야 한다. progress가 있으면 lane과 branch/worktree는 양쪽 모두 absent 또는 exact equal이어야 하고, PR은 canonical normalization 후 exact equal이어야 하며 retry count도 같다. running은 PR이 null일 수 있다. `in_review`와 `merged`는 matching PR이 필수다. canonical PR은 positive integer 또는 `https://github.com/fluojs/fluo/pull/<number>`뿐이다.
 

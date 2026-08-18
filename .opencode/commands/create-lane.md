@@ -72,7 +72,7 @@ Standalone verifier는 arbitrary read-only path를 허용하지만 mutation auth
 
 ## Lane, progress, and sync shapes
 
-일반 lane은 정확히 `name`, `queue`, `current_issue`, `status`, `branch`, `worktree`, `pr`, `retry_count`를 가진다. `blocked-child-contract-error` lane에만 `current_blocker`를 추가하며, 그 object는 정확히 non-empty `signature`, `evidence`다. terminal lane의 cursor와 lane-level `pr`, `review`, `merge`, `cleanup` evidence는 모두 null 또는 absent다.
+일반 lane은 정확히 `name`, `queue`, `current_issue`, `status`, `branch`, `worktree`, `pr`, `retry_count`를 가진다. `blocked-child-contract-error` lane에만 `current_blocker`를 추가하며, 그 object는 정확히 non-empty `signature`, `evidence`다. terminal lane은 `current_issue: null`과 canonical lane `pr: null`을 가지며, legacy `review`, `merge`, `cleanup` key는 null이어도 허용하지 않고 반드시 absent여야 한다. Legacy evidence keys는 모두 forbidden이며, extra exact-schema keys를 null로 채우지 않는다.
 
 허용 progress key는 `status`, `branch`, `worktree`, `pr`, `verification`, `retry_count`, `review_verdict`, `checks`, `reviewers`, `reviewed_head`, `commits`, `merge_commit`, `cleanup`, `issue_state`, `blockers`다. `reviewers`는 정확히 `contract`, `code`, `verification`을 가진다. blocker는 정확히 `reviewer`, `signature`, `evidence`, `fix_back_eligible`, `status`를 가진다. unknown key와 nested legacy evidence는 거부한다. root sync는 정확히 `{status, sha}`이며 status는 `not-started`, `done`, `skipped-authority`, `blocked-dirty`뿐이다.
 
