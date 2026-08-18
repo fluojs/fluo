@@ -5,33 +5,35 @@ argument-hint: "<issue-url|issue-number... | search-run-id | search-ledger-path>
 
 # create-lane
 
-`create-lane`은 실행 전에 issue 집합과 lane 계획을 고정하는 producer다. 실행, merge, cleanup, root sync, publish는 수행하지 않는다. 생성 대상은 primary repository의 `.omo/lanes/<lane-id>.json`뿐이다.
+`create-lane`은 canonical v1 lane ledger의 유일한 producer다. issue를 read-only로 확인하고, 승인된 issue 집합과 lane 계획을 `.omo/lanes/<lane-id>.json`에 atomic create한다. 실행, PR, merge, cleanup, root sync, publish는 수행하지 않는다.
 
-## 사용법
+## Producer and consumer envelope
 
-```text
-/create-lane <issue-url|issue-number... | search-run-id | search-ledger-path> [base-branch]
-```
+세 단계의 envelope는 다음 하나뿐이다.
 
-입력 issue를 read-only로 조회하고, 사용자가 confirmed issue, suggested additions, lane 순서, dependency, authority scope를 승인한 뒤 ledger를 만든다. 기존 파일은 덮어쓰지 않는다.
+1. `/search-issue`는 선택된 issue와 `search_run_id`를 `.sisyphus/search-issue/<id>.json`에 기록한다.
+2. `/create-lane`은 issue list 또는 그 search artifact를 읽어 `.omo/lanes/<lane-id>.json`을 만든다.
+3. `/execute-lane`은 그 ledger를 strict preflight한 뒤 같은 lane queue를 소비한다. source, confirmed issue, queue, lane grouping을 재작성하지 않는다.
 
-## Canonical v1 schema
+Standalone verifier는 arbitrary read-only path를 허용하지만 mutation authority는 canonical `.omo/lanes` 경로에만 있다.
 
-새 ledger는 다음 필드를 모두 기록한다. `version`은 `1`, `created_by`는 `create-lane`, `status`는 `ready`다.
+## Canonical v1 root
+
+필수 root key는 정확히 다음 21개다. `created_at`만 optional이며, 다른 unknown key는 fail closed다.
+
+`version`, `run_id`, `lane_id`, `status`, `created_by`, `base_branch`, `source`, `merge_policy`, `pr_merge_method`, `authority_scope`, `retry_policy`, `execution`, `confirmed_issues`, `suggested_but_excluded`, `backlog_candidates`, `release_handoffs`, `completed_issues`, `issue_progress`, `lanes`, `dependency_graph`, `root_main_sync`
+
+`version`은 `1`, `created_by`는 `create-lane`, 새 ledger `status`는 `ready`다. `run_id === lane_id`이며 둘 다 path-safe basename이어야 한다. basename은 비어 있지 않고 `[A-Za-z0-9][A-Za-z0-9._-]*`이며 `.`, `.lock`으로 끝나지 않는다. `created_at`이 있으면 strict UTC ISO timestamp인 `Z` 형식이어야 한다.
 
 ```json
 {
   "version": 1,
-  "run_id": "lane-2026-06-01-runtime-a",
+  "run_id": "lane-2026-08-18-runtime-a",
+  "lane_id": "lane-2026-08-18-runtime-a",
   "status": "ready",
-  "lane_id": "lane-2026-06-01-runtime-a",
   "created_by": "create-lane",
   "base_branch": "main",
-  "source": {
-    "type": "search-issue|existing-issues",
-    "search_run_id": null,
-    "search_ledger": null
-  },
+  "source": { "type": "existing-issues", "search_run_id": null, "search_ledger": null },
   "merge_policy": "supervisor-auto",
   "pr_merge_method": "squash",
   "authority_scope": {
@@ -50,54 +52,41 @@ argument-hint: "<issue-url|issue-number... | search-run-id | search-ledger-path>
   },
   "execution": { "status": "not-started", "last_command": null, "last_updated": null },
   "confirmed_issues": [123],
-  "suggested_but_excluded": [124],
+  "suggested_but_excluded": [],
   "backlog_candidates": [],
   "release_handoffs": [],
   "completed_issues": [],
   "issue_progress": {},
   "lanes": [{
-    "name": "runtime",
-    "queue": [123],
-    "current_issue": 123,
-    "status": "queued",
-    "branch": null,
-    "worktree": null,
-    "pr": null,
-    "retry_count": 0
+    "name": "runtime", "queue": [123], "current_issue": 123, "status": "queued",
+    "branch": null, "worktree": null, "pr": null, "retry_count": 0
   }],
   "dependency_graph": {},
   "root_main_sync": { "status": "not-started", "sha": null }
 }
 ```
 
-`authority_scope`는 위 6개 key만 허용한다. `issue_creation`은 `false`, `pr_creation`과 `pr_merge`는 `true`, `publish_via_github_actions`는 `false`여야 한다. cleanup과 root sync key만 boolean 선택값이다.
+`source`는 정확히 `type`, `search_run_id`, `search_ledger`만 가진다. `existing-issues` variant는 두 search field가 모두 `null`이다. `search-issue` variant는 path-safe `search_run_id`와 정확히 `.sisyphus/search-issue/<search_run_id>.json`인 `search_ledger`를 가진다. producer provenance를 exact-key 검증 밖에 둔다는 설명은 더 이상 유효하지 않다.
 
-`retry_policy`는 위 4개 key만 허용한다. `max_same_failure_repeats`와 `max_wall_clock_minutes`는 positive safe integer, 두 나머지는 boolean이다. `merge_policy`가 `supervisor-full-auto`이면 `retry_count_is_terminal`은 `false`, 그 외 정책이면 `true`다. 허용 정책은 `developer-final`, `supervisor-auto`, `supervisor-with-human-escalation`, `supervisor-full-auto`뿐이다. `pr_merge_method`는 항상 `squash`다.
+`authority_scope`와 `retry_policy`도 각각 위 exact key만 허용한다. `pr_merge_method`는 항상 `squash`다. `merge_policy`가 `supervisor-full-auto`일 때만 `retry_count_is_terminal`이 `false`일 수 있고, 그 밖에는 `true`다. `lanes`와 각 `queue`는 비어 있을 수 없다. `confirmed_issues`와 queue는 중복 없는 동일한 issue 집합이어야 한다.
 
-`release_handoffs`는 release-only issue number의 배열이다. 각 값은 positive integer이고 `confirmed_issues`에 속해야 하며 중복할 수 없다. release-only issue는 `release-handoffs` 같은 status로 기록하지 않는다. 실행 단계에서 `blocked-maintainer-decision`과 이 배열로만 handoff를 표현한다.
+## Lane, progress, and sync shapes
 
-`issue_progress`는 새 `ready` ledger에서 반드시 `{}`다. 실행 후에는 key가 confirmed issue와 lane queue에 모두 속하는 문자열 issue number여야 한다. 기존 progress entry는 unique해야 하며, queued issue는 실행 전까지 progress entry가 없어도 된다. `confirmed_issues`와 lane queue는 중복 없는 동일한 issue 집합이어야 한다. 완료된 issue는 반드시 progress entry를 가져야 하고 `completed_issues`는 `status`가 `merged` 또는 `done`인 progress key의 집합과 정확히 같아야 한다.
+일반 lane은 정확히 `name`, `queue`, `current_issue`, `status`, `branch`, `worktree`, `pr`, `retry_count`를 가진다. `blocked-child-contract-error` lane에만 `current_blocker`를 추가하며, 그 object는 정확히 non-empty `signature`, `evidence`다. terminal lane의 cursor와 lane-level `pr`, `review`, `merge`, `cleanup` evidence는 모두 null 또는 absent다.
 
-허용 root status는 `ready`, `running`, `done`, `blocked-terminal`, `needs-human-check-terminal`, `blocked-budget-exhausted`, `blocked-maintainer-decision`, `blocked-child-contract-error`, `blocked-ledger-conflict`다. lane과 progress에는 `queued`, `running`, `in_review`, `merged` 및 위 terminal status만 사용한다. root sync status는 `not-started`, `done`, `skipped-authority`, `blocked-dirty`뿐이다. 다른 status, version 생략, legacy evidence, `missing issue_progress` compatibility는 허용하지 않는다.
+허용 progress key는 `status`, `branch`, `worktree`, `pr`, `verification`, `retry_count`, `review_verdict`, `checks`, `reviewers`, `reviewed_head`, `commits`, `merge_commit`, `cleanup`, `issue_state`, `blockers`다. `reviewers`는 정확히 `contract`, `code`, `verification`을 가진다. blocker는 정확히 `reviewer`, `signature`, `evidence`, `fix_back_eligible`, `status`를 가진다. unknown key와 nested legacy evidence는 거부한다. root sync는 정확히 `{status, sha}`이며 status는 `not-started`, `done`, `skipped-authority`, `blocked-dirty`뿐이다.
 
-## 생성 gate와 불변성
+release handoff issue는 반드시 단일 issue 전용 lane이어야 한다. `ready`에서는 progress 없이 queued로 남고, 실행 후에는 lane과 progress가 모두 `blocked-maintainer-decision`이어야 한다. release handoff는 절대 `completed`, `merged`, `done`이 되지 않는다.
 
-1. lane ID는 primary `.omo/lanes` 아래에서만 해석한다. path는 명시된 execute path가 아니며, symlink를 통과해 다른 위치로 나갈 수 없다.
-2. 사용자 승인 전에는 파일, branch, worktree, issue, PR에 side effect를 만들지 않는다.
-3. target path를 `lstat`로 확인한다. target이 이미 존재하면 기존 ledger를 읽거나 대체하지 않고 외부 결과만 `needs-human-check`로 보고한다.
-4. target이 존재하지 않을 때만 승인한 계획으로 candidate snapshot을 메모리에서 만든다.
-5. candidate를 `pnpm verify:lane-ledger -- .omo/lanes/<lane-id>.json`과 동일한 strict validator로 메모리에서 검증한다.
-6. validation 성공 때만 target을 atomic create한다. create 실패나 validation 실패 시 ledger 파일을 만들지 않고 외부 결과만 `needs-human-check`로 보고한다.
+## Creation gates
 
-standalone verifier는 arbitrary path boundary를 지원하는 read-only tooling이다. 이를 `create-lane`의 mutation authority나 primary lane path 우회 수단으로 사용하지 않는다.
-
-## Output
-
-최종 보고는 한국어로 작성하고 `result`, `lane id`, `ledger`, `base branch`, `merge policy`, `confirmed issues`, `release handoffs`, `lanes`, `dependency graph`, `next command`를 포함한다. validator 실패 결과는 `needs-human-check`이며 ledger에 unsupported status를 쓰지 않는다.
+1. primary repository의 `.omo/lanes` 아래 target만 해석하고 symlink와 기존 target을 거부한다.
+2. 사용자 승인 전에는 side effect를 만들지 않는다.
+3. candidate를 strict validator로 검증한다. `lane-ledger-schema.mjs`와 `verify-lane-ledger-schema.test.ts`를 포함한 focused five-file gate는 정확히 278 tests다.
+4. validation 성공 때만 target을 atomic create한다. 실패 시 파일을 만들지 않고 외부 결과만 `needs-human-check`로 보고한다.
 
 ## Must NOT
 
-- issue를 명시 승인 없이 confirmed set에 넣지 않는다.
-- 기존 ledger를 덮어쓰거나 legacy completion evidence를 migration/shim으로 소비하지 않는다.
-- 승인된 candidate가 strict validation을 통과한 경우에만 target ledger를 atomic create한다. target 이외의 file/path, branch, worktree, commit, push, PR, merge, cleanup, root sync, publish는 mutation하지 않는다.
-- `release-handoff` status나 새 version/status를 발명하지 않는다.
+- issue scope, lane queue, source provenance를 execute 단계에서 확장하거나 재작성하지 않는다.
+- legacy completion evidence를 compatibility shim으로 소비하지 않는다.
+- target 이외의 file/path, branch, worktree, commit, push, PR, merge, cleanup, root sync, publish를 mutation하지 않는다.
