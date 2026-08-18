@@ -1,12 +1,14 @@
 {
   "version": 1,
   "run_id": "lane-test-valid-ready",
+  "lane_id": "lane-test-valid-ready",
   "status": "ready",
   "created_by": "create-lane",
   "base_branch": "main",
   "source": {
-    "type": "issues",
-    "artifact": null
+    "type": "existing-issues",
+    "search_run_id": null,
+    "search_ledger": null
   },
   "merge_policy": "supervisor-auto",
   "authority_scope": {
@@ -24,6 +26,10 @@
     "stop_on_child_contract_error": true
   },
   "confirmed_issues": [1],
+  "suggested_but_excluded": [],
+  "backlog_candidates": [],
+  "release_handoffs": [],
+  "completed_issues": [],
   "issue_progress": {},
   "lanes": [
     {
@@ -38,8 +44,6 @@
     }
   ],
   "dependency_graph": {},
-  "completed_issues": [],
-  "release_handoffs": [],
   "root_main_sync": {
     "status": "not-started",
     "sha": null

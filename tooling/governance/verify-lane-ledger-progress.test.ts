@@ -40,7 +40,7 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
   it.each([
     {
       name: 'active completion history without issue progress',
-      expectedError: 'completed_issues and issue_progress must contain the same issue numbers',
+      expectedError: 'issue_progress must be an object',
       mutate: (ledger: LaneLedgerFixture) => {
         ledger.status = 'running';
         ledger.lanes[0].status = 'merged';
@@ -65,7 +65,7 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
     },
     {
       name: 'a done ledger without issue_progress',
-      expectedError: 'done ledger must record issue_progress',
+      expectedError: 'issue_progress must be an object',
       mutate: (ledger: LaneLedgerFixture) => {
         delete ledger.issue_progress;
       },

@@ -237,7 +237,7 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
   });
 
   it.each([
-    [undefined, '.worktrees/issue-102-runtime-beta', 'lane worktree requires a safe branch'],
+    [null, '.worktrees/issue-102-runtime-beta', 'lane worktree requires a safe branch'],
     ['-danger', '.worktrees/issue-102-runtime-beta', 'lane branch must be a safe non-empty branch name'],
     ['issue-102-runtime-beta', '.worktrees/other', 'lane worktree must match lane branch under .worktrees'],
     ['issue-102-runtime-beta', '/tmp/issue-102-runtime-beta', 'lane worktree must match lane branch under .worktrees'],
@@ -255,7 +255,7 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
     expect(
       runMutatedCompletedLedger((ledger) => {
         const progress = activateIssue102(ledger);
-        ledger.lanes[0].worktree = undefined;
+        ledger.lanes[0].worktree = null;
         Reflect.deleteProperty(progress, 'worktree');
       }, runValidatorPath),
     ).toContain('Lane ledger check passed for 1 file(s).');
@@ -293,8 +293,8 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
     expect(
       runMutatedCompletedLedger((ledger) => {
         activateIssue102(ledger);
-        ledger.lanes[0].branch = undefined;
-        ledger.lanes[0].worktree = undefined;
+        ledger.lanes[0].branch = null;
+        ledger.lanes[0].worktree = null;
       }),
     ).toContain('current lane and issue progress branch must both be absent or exactly equal');
   });
@@ -313,7 +313,7 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
     expect(
       runMutatedCompletedLedger((ledger) => {
         activateIssue102(ledger);
-        ledger.lanes[0].worktree = undefined;
+        ledger.lanes[0].worktree = null;
       }),
     ).toContain('current lane and issue progress worktree must both be absent or exactly equal');
   });

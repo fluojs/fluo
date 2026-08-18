@@ -36,12 +36,15 @@ export type IssueProgressFixture = {
 };
 
 export type LaneFixture = {
+  name: string;
   queue: number[];
   current_issue: number | null;
   status: string;
   branch?: string | null;
   worktree?: string | null;
   pr?: string | number | null;
+  retry_count: number;
+  current_blocker?: Record<string, unknown>;
 };
 
 export type RootMainSyncFixture = {
@@ -66,10 +69,15 @@ export type ExecutionFixture = {
 
 export type LaneLedgerFixture = {
   version?: number;
+  run_id: string;
+  lane_id: string;
+  created_at?: string;
   created_by?: string;
   base_branch?: string;
   status: string;
   merge_policy: string;
+  pr_merge_method: string;
+  source: Record<string, unknown>;
   authority_scope: {
     issue_creation: boolean | string | null;
     pr_creation: boolean | string | null;
@@ -87,6 +95,10 @@ export type LaneLedgerFixture = {
   execution: ExecutionFixture;
   release_handoffs: number[];
   root_main_sync?: RootMainSyncFixture;
+  suggested_but_excluded: unknown[];
+  backlog_candidates: unknown[];
+  dependency_graph: Record<string, unknown>;
+  [key: string]: unknown;
 };
 
 export const completedCleanupFixture = {

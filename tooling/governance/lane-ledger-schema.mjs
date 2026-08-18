@@ -29,6 +29,59 @@ const retryPolicyKeys = [
   'stop_on_child_contract_error',
 ];
 const executionKeys = ['status', 'last_command', 'last_updated'];
+const rootKeys = [
+  'version',
+  'run_id',
+  'lane_id',
+  'status',
+  'created_by',
+  'base_branch',
+  'source',
+  'merge_policy',
+  'pr_merge_method',
+  'authority_scope',
+  'retry_policy',
+  'execution',
+  'confirmed_issues',
+  'suggested_but_excluded',
+  'backlog_candidates',
+  'release_handoffs',
+  'completed_issues',
+  'issue_progress',
+  'lanes',
+  'dependency_graph',
+  'root_main_sync',
+];
+const sourceKeys = ['type', 'search_run_id', 'search_ledger'];
+const laneKeys = ['name', 'queue', 'current_issue', 'status', 'branch', 'worktree', 'pr', 'retry_count'];
+const blockerKeys = ['signature', 'evidence'];
+
+function isSafeBasename(value) {
+  return (
+    isNonEmptyString(value) &&
+    /^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(value) &&
+    !value.endsWith('.') &&
+    !value.endsWith('.lock')
+  );
+}
+
+function isUtcIsoTimestamp(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u.test(value)) {
+    return false;
+  }
+  const canonical = new Date(value).toISOString();
+  return value === canonical || value === canonical.replace('.000Z', 'Z');
+}
+
+function validateSource(path, source) {
+  assert(isObject(source) && hasExactKeys(source, sourceKeys), path, 'source must match a canonical source variant');
+  const isExistingIssues = source.type === 'existing-issues' && source.search_run_id === null && source.search_ledger === null;
+  const isSearchIssue =
+    source.type === 'search-issue' &&
+    isSafeBasename(source.search_run_id) &&
+    source.search_ledger === `.sisyphus/search-issue/${source.search_run_id}.json`;
+  assert(isExistingIssues || isSearchIssue, path, 'source must match a canonical source variant');
+}
 
 function validateAuthorityScope(path, authorityScope) {
   assert(isObject(authorityScope), path, 'authority_scope is required');
@@ -76,9 +129,17 @@ export function validateLedgerShape(path, ledger) {
   assert(ledger.version !== undefined, path, 'version is required');
   assert(ledger.version === 1, path, `unsupported ledger version: ${String(ledger.version)}`);
   assert(rootStatuses.has(ledger.status), path, `invalid ledger.status: ${String(ledger.status)}`);
-  assert(typeof ledger.run_id === 'string' && ledger.run_id.length > 0, path, 'run_id is required');
+  assert(
+    isSafeBasename(ledger.run_id) && ledger.run_id === ledger.lane_id,
+    path,
+    'run_id and lane_id must be matching path-safe basenames',
+  );
+  if (ledger.created_at !== undefined) {
+    assert(isUtcIsoTimestamp(ledger.created_at), path, 'created_at must be a strict UTC ISO-8601 timestamp');
+  }
   assert(ledger.created_by === 'create-lane', path, 'created_by must be create-lane');
   assert(isSafeBranchName(ledger.base_branch), path, 'base_branch must be a safe non-empty branch name');
+  validateSource(path, ledger.source);
   assert(allowedMergePolicies.has(ledger.merge_policy), path, `invalid merge_policy: ${String(ledger.merge_policy)}`);
   assert(ledger.pr_merge_method === 'squash', path, 'pr_merge_method must be squash');
   validateAuthorityScope(path, ledger.authority_scope);
@@ -89,18 +150,32 @@ export function validateLedgerShape(path, ledger) {
   assert(Array.isArray(ledger.release_handoffs), path, 'release_handoffs must be an array');
   assert(Array.isArray(ledger.completed_issues), path, 'completed_issues must be an array');
   assert(ledger.completed_issues.every(isPositiveInteger), path, 'completed_issues must contain positive integer issue numbers');
-  assert(Array.isArray(ledger.lanes), path, 'lanes must be an array');
+  assert(Array.isArray(ledger.suggested_but_excluded), path, 'suggested_but_excluded must be an array');
+  assert(Array.isArray(ledger.backlog_candidates), path, 'backlog_candidates must be an array');
+  assert(isObject(ledger.issue_progress), path, 'issue_progress must be an object');
+  assert(isObject(ledger.dependency_graph), path, 'dependency_graph must be an object');
+  assert(Array.isArray(ledger.lanes) && ledger.lanes.length > 0, path, 'lanes must be a non-empty array');
   assert(isObject(ledger.root_main_sync), path, 'root_main_sync is required');
+  assert(hasExactKeys(ledger.root_main_sync, ['status', 'sha']), path, 'root_main_sync must contain exactly status/sha');
   assert(rootMainSyncStatuses.has(ledger.root_main_sync.status), path, `invalid root_main_sync.status: ${String(ledger.root_main_sync.status)}`);
+  const expectedRootKeys = ledger.created_at === undefined ? rootKeys : [...rootKeys, 'created_at'];
+  assert(hasExactKeys(ledger, expectedRootKeys), path, 'ledger must contain exactly the canonical root keys');
 }
 
 export function validateLaneShape(lanePath, lane, validation) {
   assert(isObject(lane), lanePath, 'lane must be an object');
   assert(typeof lane.name === 'string' && lane.name.length > 0, lanePath, 'lane.name is required');
-  assert(Array.isArray(lane.queue) && lane.queue.every(isPositiveInteger), lanePath, 'lane.queue must contain positive integer issue numbers');
+  assert(
+    Array.isArray(lane.queue) && lane.queue.length > 0 && lane.queue.every(isPositiveInteger),
+    lanePath,
+    'lane.queue must contain at least one positive integer issue number',
+  );
   const isActive = activeStatuses.has(lane.status);
   const isTerminal = terminalStatuses.has(lane.status);
   assert(isActive || isTerminal, lanePath, `invalid lane.status: ${String(lane.status)}`);
+  const expectedLaneKeys = lane.status === 'blocked-child-contract-error' ? [...laneKeys, 'current_blocker'] : laneKeys;
+  assert(hasExactKeys(lane, expectedLaneKeys), lanePath, 'lane must contain exactly the canonical keys for its status');
+  assert(Number.isSafeInteger(lane.retry_count) && lane.retry_count >= 0, lanePath, 'lane retry_count must be a non-negative safe integer');
   if (lane.branch !== undefined && lane.branch !== null) {
     assert(isSafeBranchName(lane.branch), lanePath, 'lane branch must be a safe non-empty branch name');
   }
@@ -126,5 +201,12 @@ export function validateLaneShape(lanePath, lane, validation) {
   }
   if (lane.status === 'blocked-child-contract-error') {
     assert(isObject(lane.current_blocker), lanePath, 'blocked-child-contract-error must record current_blocker');
+    assert(
+      hasExactKeys(lane.current_blocker, blockerKeys) &&
+        isNonEmptyString(lane.current_blocker.signature) &&
+        isNonEmptyString(lane.current_blocker.evidence),
+      lanePath,
+      'current_blocker must contain exactly non-empty signature/evidence',
+    );
   }
 }
