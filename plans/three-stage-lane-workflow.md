@@ -3,8 +3,8 @@
 ## TL;DR
 > **Summary**: Replace the mixed `lane-supervisor` command with a three-stage pipeline: `search-issue` discovers/registers GitHub issues, `create-lane` turns existing issues into an executable lane ledger, and `execute-lane` drains that ledger through implementation, review, squash merge, cleanup, and main sync.
 > **Deliverables**:
-> - New command contracts for `.codex/commands/search-issue.md`, `.codex/commands/create-lane.md`, `.codex/commands/execute-lane.md`
-> - Removal of `.codex/commands/lane-supervisor.md`
+> - New command contracts for `.opencode/commands/search-issue.md`, `.opencode/commands/create-lane.md`, `.opencode/commands/execute-lane.md`
+> - Removal of `.opencode/commands/lane-supervisor.md`
 > - Updated references in `issue-to-pr`, `pr-to-merge`, and `fluo-issue-implementer`
 > - Generic lane ledger validator and fixtures
 > **Effort**: Medium
@@ -39,20 +39,21 @@ The current `lane-supervisor` should stop asking whether to use GitHub issues or
 Make the lane workflow command architecture responsibility-complete and mechanically enforceable as a three-stage pipeline.
 
 ### Deliverables
-- `.codex/commands/search-issue.md`: issue discovery/registration command contract.
-- `.codex/commands/create-lane.md`: GitHub issue set to lane ledger command contract.
-- `.codex/commands/execute-lane.md`: lane ledger execution/drain command contract.
-- Delete `.codex/commands/lane-supervisor.md`; old invocations must fail instead of silently redirecting.
+- `.opencode/commands/search-issue.md`: issue discovery/registration command contract.
+- `.opencode/commands/create-lane.md`: GitHub issue set to lane ledger command contract.
+- `.opencode/commands/execute-lane.md`: lane ledger execution/drain command contract.
+- Delete `.opencode/commands/lane-supervisor.md`; old invocations must fail instead of silently redirecting.
 - Updated dependent command/agent references.
 - Generic lane ledger validator script and package script.
 - Positive/negative fixture coverage for lane ledger validation.
 
 ### Definition of Done
-- `grep -RIn "Source choice\\|search-to-issue를 먼저 실행\\|source_mode: search-to-issue" .codex/commands .codex/agents` returns no live workflow contract references.
+- `grep -RIn "Source choice\\|search-to-issue를 먼저 실행\\|source_mode: search-to-issue" .opencode/commands .opencode/agents` returns no live workflow contract references.
 - `pnpm verify:lane-ledger -- <valid fixture>` passes.
 - `pnpm verify:lane-ledger -- <invalid fixture>` fails with a specific invariant error in test coverage.
-- `pnpm exec biome check tooling/governance/verify-lane-ledger.mjs package.json` passes.
-- `pnpm vitest run tooling/governance/verify-lane-ledger.test.ts` passes.
+- `pnpm exec biome check tooling/governance/lane-ledger-contract.mjs tooling/governance/lane-ledger-progress.mjs tooling/governance/lane-ledger-state.mjs tooling/governance/verify-lane-ledger.mjs package.json` passes.
+- `pnpm exec vitest run tooling/governance/verify-lane-ledger.test.ts tooling/governance/verify-lane-ledger-state.test.ts tooling/governance/verify-lane-ledger-progress.test.ts tooling/governance/verify-lane-ledger-identity.test.ts` passes.
+- Command-doc verifier gates check that `.opencode/commands/create-lane.md` and `.opencode/commands/execute-lane.md` document the canonical schema, status, cursor, root-sync, authority, and cleanup prerequisites.
 - `pnpm verify:lane-ledger -- tooling/governance/fixtures/lane-ledger/valid-ready.json tooling/governance/fixtures/lane-ledger/valid-completed-multi-issue.json` passes as the reproducible gate. When `.omo/lanes/lane-2026-08-05-persistence-a.json` is available, read-only verification of that local real completed artifact is a conditional supplementary check.
 
 ### Must Have
@@ -105,10 +106,10 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
   **Parallelization**: Can Parallel: NO | Wave 1 | Blocks: [2, 3, 4, 5] | Blocked By: []
 
   **References**:
-  - Pattern: `.codex/commands/search-to-issue.md` - reuse audit and issue creation responsibilities.
-  - Historical source: `git show HEAD:.codex/commands/lane-supervisor.md` - split old lane planning from execution loop before deleting the command.
-  - Pattern: `.codex/commands/issue-to-pr.md` - preserve child completion barrier.
-  - Pattern: `.codex/commands/pr-to-merge.md` - preserve read-only review gate.
+  - Pattern: `.opencode/commands/search-issue.md` - reuse audit and issue creation responsibilities.
+  - Historical source: run `git log --all --oneline -- .opencode/commands/lane-supervisor.md`, then use `git show <commit>:.opencode/commands/lane-supervisor.md` with the selected historical commit to inspect the deleted lane planning and execution loop.
+  - Pattern: `.opencode/commands/issue-to-pr.md` - preserve child completion barrier.
+  - Pattern: `.opencode/commands/pr-to-merge.md` - preserve read-only review gate.
 
   **Acceptance Criteria**:
   - [ ] A responsibility table exists in the command docs or migration doc.
@@ -119,24 +120,24 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
   ```text
   Scenario: Responsibility table is complete
     Tool: bash
-    Steps: grep -RIn "search-issue.*create-lane.*execute-lane\\|Allowed\\|Forbidden\\|Inputs\\|Outputs" .codex/commands plans
+    Steps: grep -RIn "search-issue.*create-lane.*execute-lane\\|Allowed\\|Forbidden\\|Inputs\\|Outputs" .opencode/commands plans
     Expected: output contains all three command names and all four responsibility headings.
     Evidence: evidence/task-1-responsibility-table.txt
 
   Scenario: Execution stage has no discovery responsibility
     Tool: bash
-    Steps: grep -RIn "search-to-issue를 먼저 실행\\|Source choice\\|Suggested additions" .codex/commands/execute-lane.md
+    Steps: grep -RIn "search-to-issue를 먼저 실행\\|Source choice\\|Suggested additions" .opencode/commands/execute-lane.md
     Expected: command exits non-zero with no matches.
     Evidence: evidence/task-1-no-execute-discovery.txt
   ```
 
-  **Commit**: YES | Message: `docs(commands): define three-stage lane workflow` | Files: `.codex/commands/*.md`
+  **Commit**: YES | Message: `docs(commands): define three-stage lane workflow` | Files: `.opencode/commands/*.md`
 
 - [ ] 2. Define Lane Artifact and Ledger Schema
 
   **What to do**: Define the handoff artifacts:
   - `.sisyphus/search-issue/<run-id>.json`
-  - `.sisyphus/lane/<run-id>.json`
+  - `.omo/lanes/<lane-id>.json`
   Include `selected_issues`, `confirmed_issues`, `lanes`, `authority_scope`, `merge_policy`, `retry_policy`, `completed_issues`, `root_main_sync`, and `version`.
 
   **Must NOT do**: Do not let `execute-lane` mutate issue selection or lane grouping.
@@ -160,8 +161,8 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
   ```text
   Scenario: Canonical v1 lane schema is documented
     Tool: bash
-    Steps: grep -RIn "status: ready\\|version: 1\\|current_issue\\|issue_progress\\|completed_issues" .codex/commands plans
-    Expected: ready status, canonical version 1, active integer cursor, terminal null cursor, issue_progress evidence, and completed-set consistency appear in schema documentation.
+    Steps: grep -RIn "status: ready\\|version: 1\\|current_issue\\|issue_progress\\|completed_issues" .opencode/commands plans
+    Expected: ready status, allowed root/progress statuses, canonical version 1, first-unfinished integer cursor, terminal null cursor, issue_progress evidence, and completed-set consistency appear in schema documentation.
     Evidence: evidence/task-2-schema-doc.txt
 
   Scenario: Legacy lane ledger is explicitly rejected
@@ -172,27 +173,27 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
 
   Scenario: Execution cannot change issue selection
     Tool: bash
-    Steps: grep -RIn "confirmed_issues.*mutate\\|issue selection.*forbidden\\|never expands issue scope" .codex/commands/execute-lane.md
+    Steps: grep -RIn "confirmed_issues.*mutate\\|issue selection.*forbidden\\|never expands issue scope" .opencode/commands/execute-lane.md
     Expected: output contains explicit prohibition.
     Evidence: evidence/task-2-no-scope-mutation.txt
   ```
 
-  **Commit**: YES | Message: `docs(commands): define lane ledger schema` | Files: `.codex/commands/create-lane.md`, `.codex/commands/execute-lane.md`
+  **Commit**: YES | Message: `docs(commands): define lane ledger schema` | Files: `.opencode/commands/create-lane.md`, `.opencode/commands/execute-lane.md`
 
 - [ ] 3. Replace Search Command Contract
 
-  **What to do**: Introduce `.codex/commands/search-issue.md`. Move or copy the current `search-to-issue` responsibilities, then add explicit artifact output. Decide whether `.codex/commands/search-to-issue.md` becomes a deprecated alias or is removed.
+  **What to do**: Introduce `.opencode/commands/search-issue.md`. Move the issue discovery and registration responsibilities into it, then add explicit artifact output.
 
   **Must NOT do**: Do not let `search-issue` create lanes or run implementation.
 
   **Parallelization**: Can Parallel: YES | Wave 2 | Blocks: [6] | Blocked By: [1]
 
   **References**:
-  - Source: `.codex/commands/search-to-issue.md` - existing question-only audit contract.
+  - Source: `.opencode/commands/search-issue.md` - active issue discovery and registration contract.
   - Policy: `AGENTS.md` - side-effect gates for issue creation.
 
   **Acceptance Criteria**:
-  - [ ] `.codex/commands/search-issue.md` exists.
+  - [ ] `.opencode/commands/search-issue.md` exists.
   - [ ] It states GitHub issue creation is its only high-impact side effect.
   - [ ] It outputs selected issue numbers and a search artifact path.
   - [ ] It forbids lane planning and PR work.
@@ -201,35 +202,35 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
   ```text
   Scenario: Search stage outputs issue artifact
     Tool: bash
-    Steps: grep -RIn ".sisyphus/search-issue/.*selected_issues" .codex/commands/search-issue.md
+    Steps: grep -RIn ".sisyphus/search-issue/.*selected_issues" .opencode/commands/search-issue.md
     Expected: artifact path and selected_issues appear.
     Evidence: evidence/task-3-search-artifact.txt
 
   Scenario: Search stage forbids lane execution
     Tool: bash
-    Steps: grep -RIn "lane planning.*금지\\|PR 생성.*금지\\|merge.*금지" .codex/commands/search-issue.md
+    Steps: grep -RIn "lane planning.*금지\\|PR 생성.*금지\\|merge.*금지" .opencode/commands/search-issue.md
     Expected: explicit prohibitions appear.
     Evidence: evidence/task-3-search-forbidden.txt
   ```
 
-  **Commit**: YES | Message: `docs(commands): add search-issue stage` | Files: `.codex/commands/search-issue.md`, `.codex/commands/search-to-issue.md`
+  **Commit**: YES | Message: `docs(commands): add search-issue stage` | Files: `.opencode/commands/search-issue.md`
 
 - [ ] 4. Add Create-Lane Command Contract
 
-  **What to do**: Add `.codex/commands/create-lane.md`. It accepts issue numbers or a search artifact, validates GitHub issues read-only, groups lanes, sets merge policy, writes a ready lane ledger, and runs lane ledger validation.
+  **What to do**: Add `.opencode/commands/create-lane.md`. It accepts issue numbers or a search artifact, validates GitHub issues read-only, groups lanes, sets merge policy, writes a ready lane ledger, and runs lane ledger validation.
 
   **Must NOT do**: Do not dispatch workers, create branches, create PRs, merge PRs, or cleanup worktrees.
 
   **Parallelization**: Can Parallel: YES | Wave 2 | Blocks: [6] | Blocked By: [1]
 
   **References**:
-  - Historical planning logic: `git show HEAD:.codex/commands/lane-supervisor.md` lane planning section.
+  - Historical planning logic: run `git log --all --oneline -- .opencode/commands/lane-supervisor.md`, then use `git show <commit>:.opencode/commands/lane-supervisor.md` with the selected historical commit to inspect the deleted lane planning section.
   - Validator: `tooling/governance/verify-lane-ledger.mjs`.
 
   **Acceptance Criteria**:
-  - [ ] `.codex/commands/create-lane.md` exists.
+  - [ ] `.opencode/commands/create-lane.md` exists.
   - [ ] Inputs are issue list or search artifact only.
-  - [ ] It writes `.sisyphus/lane/<run-id>.json`.
+  - [ ] It writes `.omo/lanes/<lane-id>.json`.
   - [ ] It records merge policy and authority scope.
   - [ ] It explicitly forbids implementation and PR side effects.
 
@@ -237,35 +238,35 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
   ```text
   Scenario: Create-lane has no implementation verbs
     Tool: bash
-    Steps: grep -RIn "issue-to-pr\\|gh pr create\\|gh pr merge\\|git worktree add" .codex/commands/create-lane.md
+    Steps: grep -RIn "issue-to-pr\\|gh pr create\\|gh pr merge\\|git worktree add" .opencode/commands/create-lane.md
     Expected: no matches except in explicit Must NOT text.
     Evidence: evidence/task-4-create-lane-no-exec.txt
 
   Scenario: Create-lane records authority upfront
     Tool: bash
-    Steps: grep -RIn "merge_policy\\|authority_scope\\|cleanup_command_worktrees" .codex/commands/create-lane.md
+    Steps: grep -RIn "merge_policy\\|authority_scope\\|cleanup_command_worktrees" .opencode/commands/create-lane.md
     Expected: all authority fields appear.
     Evidence: evidence/task-4-authority.txt
   ```
 
-  **Commit**: YES | Message: `docs(commands): add create-lane stage` | Files: `.codex/commands/create-lane.md`
+  **Commit**: YES | Message: `docs(commands): add create-lane stage` | Files: `.opencode/commands/create-lane.md`
 
 - [ ] 5. Add Execute-Lane Command Contract
 
-  **What to do**: Add `.codex/commands/execute-lane.md`. Move the old `lane-supervisor` drain loop into it: worker dispatch, PR collection, child completion barrier, review gate, fix-back loop, squash merge, issue close verification, cleanup, root main sync, and ledger validation.
+  **What to do**: Add `.opencode/commands/execute-lane.md`. Move the old `lane-supervisor` drain loop into it: worker dispatch, PR collection, child completion barrier, review gate, fix-back loop, squash merge, issue close verification, cleanup, root main sync, and ledger validation.
 
   **Must NOT do**: Do not include source choice, search handoff, suggested additions, or issue selection expansion.
 
   **Parallelization**: Can Parallel: YES | Wave 2 | Blocks: [7] | Blocked By: [1, 2]
 
   **References**:
-  - Historical drain loop: `git show HEAD:.codex/commands/lane-supervisor.md`.
-  - Implementation command: `.codex/commands/issue-to-pr.md`.
-  - Review command: `.codex/commands/pr-to-merge.md`.
-  - Release handoff: `.codex/commands/package-publish.md`.
+  - Historical drain loop: run `git log --all --oneline -- .opencode/commands/lane-supervisor.md`, then use `git show <commit>:.opencode/commands/lane-supervisor.md` with the selected historical commit to inspect the deleted drain loop.
+  - Implementation command: `.opencode/commands/issue-to-pr.md`.
+  - Review command: `.opencode/commands/pr-to-merge.md`.
+  - Release boundary: `.opencode/commands/execute-lane.md` is the active execution contract; package publishing remains outside this workflow.
 
   **Acceptance Criteria**:
-  - [ ] `.codex/commands/execute-lane.md` exists.
+  - [ ] `.opencode/commands/execute-lane.md` exists.
   - [ ] It accepts only lane run-id/path and optional resume/authority flags.
   - [ ] It states merge method is always squash.
   - [ ] It includes child completion barrier.
@@ -276,33 +277,33 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
   ```text
   Scenario: Execute-lane has drain loop but no discovery
     Tool: bash
-    Steps: grep -RIn "Source choice\\|Suggested additions\\|search-to-issue를 먼저 실행" .codex/commands/execute-lane.md
+    Steps: grep -RIn "Source choice\\|Suggested additions\\|search-to-issue를 먼저 실행" .opencode/commands/execute-lane.md
     Expected: no matches.
     Evidence: evidence/task-5-no-discovery.txt
 
   Scenario: Execute-lane enforces squash and cleanup
     Tool: bash
-    Steps: grep -RIn "gh pr merge .*--squash\\|cleanup\\|linked issue.*CLOSED" .codex/commands/execute-lane.md
+    Steps: grep -RIn "gh pr merge .*--squash\\|cleanup\\|linked issue.*CLOSED" .opencode/commands/execute-lane.md
     Expected: squash merge, cleanup, and issue close checks appear.
     Evidence: evidence/task-5-merge-cleanup.txt
   ```
 
-  **Commit**: YES | Message: `docs(commands): add execute-lane stage` | Files: `.codex/commands/execute-lane.md`
+  **Commit**: YES | Message: `docs(commands): add execute-lane stage` | Files: `.opencode/commands/execute-lane.md`
 
 - [ ] 6. Deprecate Lane-Supervisor and Update Caller References
 
-  **What to do**: Delete `.codex/commands/lane-supervisor.md` entirely. Update `issue-to-pr`, `pr-to-merge`, and `fluo-issue-implementer` references from `lane-supervisor` to `execute-lane` or “lane execution harness”.
+  **What to do**: Delete `.opencode/commands/lane-supervisor.md` entirely. Update `issue-to-pr`, `pr-to-merge`, and `fluo-issue-implementer` references from `lane-supervisor` to `execute-lane` or “lane execution harness”.
 
   **Must NOT do**: Do not leave old examples that invoke source-choice supervisor flows.
 
   **Parallelization**: Can Parallel: YES | Wave 3 | Blocks: [8] | Blocked By: [3, 4, 5]
 
   **References**:
-  - Stale refs: `.codex/commands/issue-to-pr.md`, `.codex/commands/pr-to-merge.md`, `.codex/agents/fluo-issue-implementer.toml`.
-  - Old command to remove: `.codex/commands/lane-supervisor.md`.
+  - Stale refs: `.opencode/commands/issue-to-pr.md`, `.opencode/commands/pr-to-merge.md`, `.opencode/agents/fluo-issue-implementer.md`.
+  - Old command to remove: `.opencode/commands/lane-supervisor.md`.
 
   **Acceptance Criteria**:
-  - [ ] `.codex/commands/lane-supervisor.md` no longer exists.
+  - [ ] `.opencode/commands/lane-supervisor.md` no longer exists.
   - [ ] No live command contract says lane-supervisor may call search-to-issue.
   - [ ] Caller references point to `execute-lane` or generic lane execution harness.
 
@@ -310,18 +311,18 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
   ```text
   Scenario: No old source-choice examples remain
     Tool: bash
-    Steps: grep -RIn "이 문제를 issue로 나누고\\|search-to-issue를 먼저 실행\\|Source choice" .codex/commands .codex/agents
+    Steps: grep -RIn "이 문제를 issue로 나누고\\|search-to-issue를 먼저 실행\\|Source choice" .opencode/commands .opencode/agents
     Expected: no matches in live command contracts.
     Evidence: evidence/task-6-no-old-source-choice.txt
 
   Scenario: Fix-back caller names are updated
     Tool: bash
-    Steps: grep -RIn "execute-lane\\|lane execution harness" .codex/commands/issue-to-pr.md .codex/commands/pr-to-merge.md .codex/agents/fluo-issue-implementer.toml
+    Steps: grep -RIn "execute-lane\\|lane execution harness" .opencode/commands/issue-to-pr.md .opencode/commands/pr-to-merge.md .opencode/agents/fluo-issue-implementer.md
     Expected: all three files contain updated caller naming.
     Evidence: evidence/task-6-caller-refs.txt
   ```
 
-  **Commit**: YES | Message: `docs(commands): remove lane-supervisor` | Files: `.codex/commands/lane-supervisor.md`, `.codex/commands/issue-to-pr.md`, `.codex/commands/pr-to-merge.md`, `.codex/agents/fluo-issue-implementer.toml`
+  **Commit**: YES | Message: `docs(commands): remove lane-supervisor` | Files: `.opencode/commands/lane-supervisor.md`, `.opencode/commands/issue-to-pr.md`, `.opencode/commands/pr-to-merge.md`, `.opencode/agents/fluo-issue-implementer.md`
 
 - [ ] 7. Genericize Lane Ledger Validator
 
@@ -357,23 +358,29 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
     Expected: when available, the local real completed artifact passes a read-only supplementary check; absence does not fail the reproducible fixture gate.
     Evidence: evidence/task-7-real-ledger-optional.txt
 
-  Scenario: Legacy terminal lane evidence is rejected
+  Scenario: State, progress, and identity invariants remain covered
     Tool: bash
-    Steps: pnpm vitest run tooling/governance/verify-lane-ledger.test.ts -t "terminal lane with an integer cursor"
-    Expected: exit 0 and test assertion proves legacy lane-level terminal evidence is rejected with migration guidance.
-    Evidence: evidence/task-7-legacy-rejection.txt
+    Steps: pnpm exec vitest run tooling/governance/verify-lane-ledger-state.test.ts tooling/governance/verify-lane-ledger-progress.test.ts tooling/governance/verify-lane-ledger-identity.test.ts
+    Expected: exit 0 and assertions cover allowed root/progress statuses, first-unfinished cursor, cleanup-before-done rejection, root-sync authority and terminal prerequisites, canonical fluojs/fluo PR identity, same-issue canonical PR mirroring allowed, cross-issue PR reuse rejected, and created_by/base/worktree rules.
+    Evidence: evidence/task-7-state-progress-identity.txt
 
   Scenario: Canonical validator suite remains aligned
     Tool: bash
-    Steps: pnpm vitest run tooling/governance/verify-lane-ledger.test.ts
+    Steps: pnpm exec vitest run tooling/governance/verify-lane-ledger.test.ts tooling/governance/verify-lane-ledger-state.test.ts tooling/governance/verify-lane-ledger-progress.test.ts tooling/governance/verify-lane-ledger-identity.test.ts
     Expected: the entire focused validator suite passes.
     Evidence: evidence/task-7-test-suite.txt
 
   Scenario: Invalid cleanup fixture fails
     Tool: bash
-    Steps: pnpm vitest run tooling/governance/verify-lane-ledger.test.ts -t "rejects cleanup without merge"
-    Expected: exit 0 and test assertion proves validator rejects cleanup without merge.
+    Steps: pnpm exec vitest run tooling/governance/verify-lane-ledger-progress.test.ts -t "rejects cleanup done on running progress"
+    Expected: exit 0 and test assertion proves validator rejects cleanup before progress is done.
     Evidence: evidence/task-7-invalid-cleanup.txt
+
+  Scenario: Command-doc verifier gates are explicit
+    Tool: bash
+    Steps: grep -RIn "root_main_sync\\|authority\\|cleanup\\|current_issue\\|issue_progress" .opencode/commands/create-lane.md .opencode/commands/execute-lane.md
+    Expected: command docs expose schema, state, root-sync authority and terminal prerequisites, and cleanup ordering checks.
+    Evidence: evidence/task-7-command-doc-gates.txt
   ```
 
   **Commit**: YES | Message: `test(governance): validate lane ledger invariants` | Files: `tooling/governance/*`, `package.json`
@@ -394,7 +401,7 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
 
   **References**:
   - New command files from Tasks 3-5.
-  - Deprecated stub from Task 6.
+  - `.opencode/MIGRATION.md` - active migration note documenting removal of `lane-supervisor` and the canonical replacement flow.
   - Validator from Task 7.
 
   **Acceptance Criteria**:
@@ -406,32 +413,33 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
   ```text
   Scenario: Canonical pipeline appears
     Tool: bash
-    Steps: grep -RIn "/search-issue\\|/create-lane\\|/execute-lane" .codex/commands
+    Steps: grep -RIn "/search-issue\\|/create-lane\\|/execute-lane" .opencode/commands
     Expected: all three commands appear in the canonical migration docs.
     Evidence: evidence/task-8-canonical-pipeline.txt
 
   Scenario: No bypass path remains
     Tool: bash
-    Steps: grep -RIn "/execute-lane .*2046\\|execute-lane.*issue list\\|lane-supervisor .*execute" .codex/commands
+    Steps: grep -RIn "/execute-lane .*2046\\|execute-lane.*issue list\\|lane-supervisor .*execute" .opencode/commands
     Expected: no live command contract allows issue-list direct execution without a lane ledger.
     Evidence: evidence/task-8-no-bypass.txt
   ```
 
-  **Commit**: YES | Message: `docs(commands): document lane pipeline migration` | Files: `.codex/commands/*.md`
+  **Commit**: YES | Message: `docs(commands): document lane pipeline migration` | Files: `.opencode/commands/*.md`
 
 ## Final Verification Wave
 - [ ] F1. Plan Compliance Audit
   - Verify all three stages have one owner each for issue creation, lane creation, and execution side effects.
 - [ ] F2. Contract Reference Audit
-  - Run `grep -RIn "lane-supervisor\\|search-to-issue\\|Source choice" .codex/commands .codex/agents tooling package.json` and classify every remaining match as migration artifact, validator compatibility, or defect.
+  - Run `grep -RIn "lane-supervisor\\|search-to-issue\\|Source choice" .opencode/commands .opencode/agents tooling package.json` and classify every remaining match as migration artifact, validator compatibility, or defect.
 - [ ] F3. Validator Audit
-  - Run `pnpm verify:lane-ledger -- tooling/governance/fixtures/lane-ledger/valid-ready.json tooling/governance/fixtures/lane-ledger/valid-completed-multi-issue.json` as the reproducible fixture gate; confirm active cursors are integers, terminal cursors are null, completion evidence is issue_progress-based, completed sets are consistent, and legacy terminal lane-level evidence is rejected with migration guidance. When `.omo/lanes/lane-2026-08-05-persistence-a.json` is available, run a separate read-only supplementary check.
-  - Run `pnpm vitest run tooling/governance/verify-lane-ledger.test.ts`; the entire focused validator suite must pass.
+  - Run `pnpm verify:lane-ledger -- tooling/governance/fixtures/lane-ledger/valid-ready.json tooling/governance/fixtures/lane-ledger/valid-completed-multi-issue.json` as the reproducible fixture gate; confirm allowed root/progress statuses, active first-unfinished integer cursors, terminal null cursors, issue_progress-based completion evidence, completed-set consistency, cleanup-before-done rejection, root-sync authority and terminal prerequisites, canonical `fluojs/fluo` PR identity, same-issue canonical PR mirroring allowed, cross-issue PR reuse rejected, and `created_by`/base/worktree rules. Legacy terminal lane-level evidence must be rejected with migration guidance. When `.omo/lanes/lane-2026-08-05-persistence-a.json` is available, run a separate read-only supplementary check.
+  - Run `pnpm exec vitest run tooling/governance/verify-lane-ledger.test.ts tooling/governance/verify-lane-ledger-state.test.ts tooling/governance/verify-lane-ledger-progress.test.ts tooling/governance/verify-lane-ledger-identity.test.ts`; the entire focused validator suite must pass.
+  - Run explicit command-doc verifier gates against `.opencode/commands/create-lane.md` and `.opencode/commands/execute-lane.md` for schema, statuses, cursors, root-sync authority and terminal prerequisites, and cleanup ordering.
 - [ ] F4. Manual Pipeline QA
   - Use `tmux` to run a dry documentation walkthrough:
     ```bash
     tmux new-session -d -s ulw-qa-lane-pipeline
-    tmux send-keys -t ulw-qa-lane-pipeline 'grep -RIn "/search-issue\\|/create-lane\\|/execute-lane" .codex/commands && pnpm verify:lane-ledger -- tooling/governance/fixtures/lane-ledger/valid-ready.json' C-m
+    tmux send-keys -t ulw-qa-lane-pipeline 'grep -RIn "/search-issue\\|/create-lane\\|/execute-lane" .opencode/commands && pnpm verify:lane-ledger -- tooling/governance/fixtures/lane-ledger/valid-ready.json' C-m
     tmux capture-pane -pS -200 -t ulw-qa-lane-pipeline > evidence/final-pipeline-qa.txt
     tmux kill-session -t ulw-qa-lane-pipeline
     ```
@@ -449,5 +457,5 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
 - The old `lane-supervisor` mixed source-choice command is no longer the live orchestration entrypoint.
 - `search-issue`, `create-lane`, and `execute-lane` each have single-purpose command contracts.
 - Issue creation, lane creation, and execution/merge/cleanup authority are split across the three stages.
-- Lane ledger validation prevents stale issue/PR/worktree/merge/cleanup state.
+- Lane ledger validation enforces JSON structure and internal evidence consistency; live GitHub, repository, and dirty-worktree checks belong to `execute-lane` runtime gates.
 - Existing downstream commands (`issue-to-pr`, `pr-to-merge`) refer to `execute-lane` or a generic lane execution harness, not the old supervisor.
