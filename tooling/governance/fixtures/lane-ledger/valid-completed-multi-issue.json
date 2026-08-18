@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "run_id": "lane-test-completed-multi-issue",
+  "status": "done",
+  "lane_id": "lane-test-completed-multi-issue",
+  "created_by": "create-lane",
+  "created_at": "2026-08-01T00:00:00Z",
+  "base_branch": "main",
+  "source": {
+    "type": "existing-issues",
+    "search_run_id": null,
+    "search_ledger": null
+  },
+  "merge_policy": "supervisor-auto",
+  "pr_merge_method": "squash",
+  "authority_scope": {
+    "issue_creation": false,
+    "pr_creation": true,
+    "pr_merge": true,
+    "cleanup_command_worktrees": true,
+    "root_main_sync_ff_only": true,
+    "publish_via_github_actions": false
+  },
+  "confirmed_issues": [101, 102],
+  "suggested_but_excluded": [],
+  "backlog_candidates": [],
+  "lanes": [
+    {
+      "name": "runtime",
+      "queue": [101, 102],
+      "current_issue": null,
+      "status": "done",
+      "branch": null,
+      "worktree": null,
+      "pr": null,
+      "retry_count": 0
+    }
+  ],
+  "dependency_graph": {
+    "101": [],
+    "102": []
+  },
+  "release_handoffs": [],
+  "completed_issues": [101, 102],
+  "issue_progress": {
+    "101": {
+      "status": "done",
+      "branch": "issue-101-runtime-alpha",
+      "worktree": ".worktrees/issue-101-runtime-alpha",
+      "pr": "https://github.com/example/fluo/pull/501",
+      "commits": ["1111111111111111111111111111111111111111"],
+      "verification": "focused tests passed",
+      "retry_count": 0,
+      "review_verdict": "merge",
+      "reviewers": {
+        "contract": "PASS",
+        "code": "PASS",
+        "verification": "PASS"
+      },
+      "reviewed_head": "1111111111111111111111111111111111111111",
+      "merge_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "cleanup": "done",
+      "issue_state": "CLOSED"
+    },
+    "102": {
+      "status": "done",
+      "branch": "issue-102-runtime-beta",
+      "worktree": ".worktrees/issue-102-runtime-beta",
+      "pr": "https://github.com/example/fluo/pull/502",
+      "commits": ["2222222222222222222222222222222222222222"],
+      "verification": "focused tests passed",
+      "retry_count": 0,
+      "review_verdict": "merge",
+      "reviewers": {
+        "contract": "PASS",
+        "code": "PASS",
+        "verification": "PASS"
+      },
+      "reviewed_head": "2222222222222222222222222222222222222222",
+      "merge_commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "cleanup": "done",
+      "issue_state": "CLOSED"
+    }
+  },
+  "root_main_sync": {
+    "status": "done",
+    "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "execution": {
+    "status": "done",
+    "last_command": "execute-lane lane-test-completed-multi-issue",
+    "last_updated": "2026-08-01T01:00:00Z"
+  }
+}
