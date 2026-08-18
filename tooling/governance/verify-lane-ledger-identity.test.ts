@@ -10,6 +10,7 @@ import {
   runInvalidValidator,
   runMutatedCompletedLedger,
   runValidatorPath,
+  setNonCompletionProgress,
 } from './verify-lane-ledger.test-support';
 
 function activateIssue102(ledger: LaneLedgerFixture, status = 'running'): IssueProgressFixture {
@@ -19,8 +20,7 @@ function activateIssue102(ledger: LaneLedgerFixture, status = 'running'): IssueP
   const rootMainSync = requireRootMainSync(ledger);
   Object.assign(rootMainSync, { status: 'not-started', sha: null });
   const progress = requireIssueProgress(ledger, '102');
-  progress.status = status;
-  delete progress.cleanup;
+  setNonCompletionProgress(progress, status);
   ledger.lanes[0].branch = progress.branch;
   ledger.lanes[0].worktree = progress.worktree;
   ledger.lanes[0].pr = progress.pr;

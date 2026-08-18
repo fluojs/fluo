@@ -108,6 +108,24 @@ export const completedCleanupFixture = {
   remote_branch_deleted: true,
 } as const;
 
+const completionEvidenceKeys = [
+  'review_verdict',
+  'checks',
+  'reviewers',
+  'reviewed_head',
+  'commits',
+  'merge_commit',
+  'cleanup',
+  'issue_state',
+] as const;
+
+export function setNonCompletionProgress(progress: IssueProgressFixture, status: string): void {
+  progress.status = status;
+  for (const key of completionEvidenceKeys) {
+    Reflect.deleteProperty(progress, key);
+  }
+}
+
 export function setSkippedCleanup(ledger: LaneLedgerFixture): void {
   ledger.authority_scope.cleanup_command_worktrees = false;
   for (const progress of Object.values(ledger.issue_progress ?? {})) {
