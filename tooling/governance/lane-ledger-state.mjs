@@ -4,6 +4,7 @@ import {
   isObject,
   isPositiveInteger,
   isSha,
+  parsePullRequest,
   terminalStatuses,
 } from './lane-ledger-contract.mjs';
 import { validateIssueProgress } from './lane-ledger-progress.mjs';
@@ -59,6 +60,9 @@ function validateLaneProgressRelationship(lanePath, lane, validation) {
     const progress = validation.progressByIssue.get(lane.current_issue);
     if (lane.status === 'queued') {
       assert(progress === undefined || progress.status === 'queued', lanePath, 'queued lane issue_progress must be absent or queued');
+      if (progress === undefined) {
+        assert(lane.retry_count === 0, lanePath, 'queued lane without issue progress requires retry_count 0');
+      }
     } else {
       assert(progress?.status === lane.status, lanePath, `${String(lane.status)} lane requires matching current issue_progress`);
     }
@@ -73,14 +77,29 @@ function validateLaneProgressRelationship(lanePath, lane, validation) {
         lanePath,
         'current lane and issue progress worktree must both be absent or exactly equal',
       );
+      const lanePullRequest = lane.pr === null ? null : parsePullRequest(lane.pr);
+      const progressPullRequest = progress.pr === undefined || progress.pr === null ? null : parsePullRequest(progress.pr);
+      assert(
+        lanePullRequest === progressPullRequest,
+        lanePath,
+        'current lane and issue progress PR must both be absent or normalize to the same pull request',
+      );
+      if (lane.status === 'in_review' || lane.status === 'merged') {
+        assert(lanePullRequest !== null, lanePath, `${lane.status} lane requires matching canonical PR evidence`);
+      }
+      assert(lane.retry_count === progress.retry_count, lanePath, 'current lane and issue progress retry_count must be equal');
     }
   } else if (lane.status !== 'done') {
     const firstUnfinishedIssue = lane.queue.find((issue) => !validation.completedIssues.has(issue));
+    const progress = validation.progressByIssue.get(firstUnfinishedIssue);
     assert(
-      firstUnfinishedIssue !== undefined && validation.progressByIssue.get(firstUnfinishedIssue)?.status === lane.status,
+      firstUnfinishedIssue !== undefined && progress?.status === lane.status,
       lanePath,
       'non-done terminal lane requires matching terminal progress for the first unfinished issue',
     );
+    assert(lane.retry_count === progress.retry_count, lanePath, 'terminal lane retry_count must match first unfinished issue progress');
+  } else {
+    assert(lane.retry_count === 0, lanePath, 'done lane requires retry_count 0');
   }
 }
 

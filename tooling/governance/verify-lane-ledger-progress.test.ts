@@ -312,6 +312,7 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
         Reflect.deleteProperty(progress, 'cleanup');
         ledger.lanes[0].branch = progress.branch;
         ledger.lanes[0].worktree = progress.worktree;
+        ledger.lanes[0].pr = progress.pr;
       }, runValidatorPath),
     ).toContain('Lane ledger check passed for 1 file(s).');
   });

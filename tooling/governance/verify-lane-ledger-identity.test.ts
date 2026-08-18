@@ -23,6 +23,7 @@ function activateIssue102(ledger: LaneLedgerFixture, status = 'running'): IssueP
   delete progress.cleanup;
   ledger.lanes[0].branch = progress.branch;
   ledger.lanes[0].worktree = progress.worktree;
+  ledger.lanes[0].pr = progress.pr;
   return progress;
 }
 
@@ -270,6 +271,52 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
         ledger.lanes[0].pr = 502;
       }, runValidatorPath),
     ).toContain('Lane ledger check passed for 1 file(s).');
+  });
+
+  it('rejects normalized current PR mismatches', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        activateIssue102(ledger).pr = 'https://github.com/fluojs/fluo/pull/502';
+        ledger.lanes[0].pr = 503;
+      }),
+    ).toContain('current lane and issue progress PR must both be absent or normalize to the same pull request');
+  });
+
+  it('rejects one-sided current PR evidence', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        activateIssue102(ledger);
+        ledger.lanes[0].pr = null;
+      }),
+    ).toContain('current lane and issue progress PR must both be absent or normalize to the same pull request');
+  });
+
+  it('accepts null PR evidence while running', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        const progress = activateIssue102(ledger);
+        ledger.lanes[0].pr = null;
+        progress.pr = null;
+      }, runValidatorPath),
+    ).toContain('Lane ledger check passed for 1 file(s).');
+  });
+
+  it('requires canonical PR evidence while in review', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        const progress = activateIssue102(ledger, 'in_review');
+        ledger.lanes[0].pr = null;
+        progress.pr = null;
+      }),
+    ).toContain('in_review lane requires matching canonical PR evidence');
+  });
+
+  it('rejects current retry count mismatches', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        activateIssue102(ledger).retry_count = 1;
+      }),
+    ).toContain('current lane and issue progress retry_count must be equal');
   });
 
   it.each(['.worktrees/other', '/tmp/issue-102-runtime-beta'])(

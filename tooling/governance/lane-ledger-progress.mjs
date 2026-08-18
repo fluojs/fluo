@@ -176,7 +176,7 @@ export function validateIssueProgress(path, ledger, prAssignments) {
       progressPath,
       'issue_progress issue must belong to confirmed_issues and a lane queue',
     );
-    if (progress.pr !== undefined) {
+    if (progress.pr !== undefined && progress.pr !== null) {
       registerPullRequest(prAssignments, progress.pr, issue, progressPath);
     }
     progressByIssue.set(issue, progress);

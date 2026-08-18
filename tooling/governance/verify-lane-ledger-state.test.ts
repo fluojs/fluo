@@ -21,6 +21,7 @@ function setActiveSecondIssue(ledger: LaneLedgerFixture, laneStatus: string, pro
   delete progress.cleanup;
   ledger.lanes[0].branch = progress.branch;
   ledger.lanes[0].worktree = progress.worktree;
+  ledger.lanes[0].pr = progress.pr;
 }
 
 function setTerminalSecondIssue(ledger: LaneLedgerFixture, laneStatus: string, progressStatus = laneStatus): void {
@@ -80,6 +81,7 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
       delete progress.cleanup;
       ledger.lanes[0].branch = progress.branch;
       ledger.lanes[0].worktree = progress.worktree;
+      ledger.lanes[0].pr = progress.pr;
     }, runValidatorPath);
 
     expect(output).toContain('Lane ledger check passed for 1 file(s).');
@@ -323,6 +325,31 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
         Reflect.deleteProperty(ledger.issue_progress ?? {}, '102');
       }, runValidatorPath),
     ).toContain('Lane ledger check passed for 1 file(s).');
+  });
+
+  it('requires zero retries for a queued lane without current progress', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setActiveSecondIssue(ledger, 'queued');
+        Reflect.deleteProperty(ledger.issue_progress ?? {}, '102');
+        ledger.lanes[0].retry_count = 1;
+      }),
+    ).toContain('queued lane without issue progress requires retry_count 0');
+  });
+
+  it('requires zero retries for a done lane', () => {
+    expect(runMutatedCompletedLedger((ledger) => (ledger.lanes[0].retry_count = 1))).toContain(
+      'done lane requires retry_count 0',
+    );
+  });
+
+  it('requires terminal retry count to match the first unfinished progress', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setTerminalSecondIssue(ledger, 'blocked-terminal');
+        requireIssueProgress(ledger, '102').retry_count = 2;
+      }),
+    ).toContain('terminal lane retry_count must match first unfinished issue progress');
   });
 
   it('requires merged lane to have matching merged progress', () => {

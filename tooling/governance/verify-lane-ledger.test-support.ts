@@ -8,7 +8,7 @@ export type IssueProgressFixture = {
   status: string;
   branch: string;
   worktree: string;
-  pr: string | number;
+  pr?: string | number | null;
   verification: string;
   retry_count: number;
   review_verdict: string;
