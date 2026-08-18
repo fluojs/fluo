@@ -5,6 +5,7 @@ import {
   requireIssueProgress,
   requireRootMainSync,
   runMutatedCompletedLedger,
+  runMutatedReadyLedger,
   runValidator,
   runValidatorPath,
 } from './verify-lane-ledger.test-support';
@@ -140,5 +141,101 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
     },
   ])('rejects $name', ({ expectedError, mutate }) => {
     expect(runMutatedCompletedLedger(mutate)).toContain(expectedError);
+  });
+
+  it.each([
+    {
+      name: 'a missing execution object',
+      mutate: (ledger: LaneLedgerFixture) => {
+        Reflect.deleteProperty(ledger, 'execution');
+      },
+    },
+    {
+      name: 'a non-object execution value',
+      mutate: (ledger: LaneLedgerFixture) => {
+        Object.assign(ledger, { execution: [] });
+      },
+    },
+  ])('rejects $name', ({ mutate }) => {
+    expect(runMutatedReadyLedger(mutate)).toContain('execution is required');
+  });
+
+  it.each(['status', 'last_command', 'last_updated'])('rejects execution missing canonical key %s', (field) => {
+    expect(
+      runMutatedReadyLedger((ledger) => {
+        Reflect.deleteProperty(ledger.execution, field);
+      }),
+    ).toContain('execution must contain exactly the canonical keys');
+  });
+
+  it('rejects unknown execution keys', () => {
+    expect(
+      runMutatedReadyLedger((ledger) => {
+        ledger.execution.worker = 'legacy';
+      }),
+    ).toContain('execution must contain exactly the canonical keys');
+  });
+
+  it('requires not-started execution for a ready ledger', () => {
+    expect(
+      runMutatedReadyLedger((ledger) => {
+        ledger.execution.status = 'running';
+        ledger.execution.last_command = 'execute-lane lane-test-valid-ready';
+        ledger.execution.last_updated = '2026-08-01T00:01:00Z';
+      }),
+    ).toContain('execution.status must be not-started for ledger status ready');
+  });
+
+  it.each([
+    'running',
+    'done',
+    'blocked-terminal',
+    'needs-human-check-terminal',
+    'blocked-budget-exhausted',
+    'blocked-maintainer-decision',
+    'blocked-child-contract-error',
+    'blocked-ledger-conflict',
+  ])('maps execution status to non-ready root status %s', (status) => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        ledger.status = status;
+        ledger.execution.status = 'not-started';
+        ledger.execution.last_command = null;
+        ledger.execution.last_updated = null;
+      }),
+    ).toContain(`execution.status must be ${status} for ledger status ${status}`);
+  });
+
+  it.each([
+    ['last_command', 'execute-lane lane-test-valid-ready'],
+    ['last_updated', '2026-08-01T00:01:00Z'],
+  ])('requires null execution.%s for not-started execution', (field, value) => {
+    expect(
+      runMutatedReadyLedger((ledger) => {
+        ledger.execution[field] = value;
+      }),
+    ).toContain('not-started execution must record null last_command and last_updated');
+  });
+
+  it.each([
+    ['last_command', null],
+    ['last_command', ''],
+    ['last_updated', null],
+    ['last_updated', ''],
+  ])('requires non-empty execution.%s for non-ready execution', (field, value) => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        ledger.execution[field] = value;
+      }),
+    ).toContain('non-ready execution must record non-empty last_command and last_updated');
+  });
+
+  it('accepts running execution metadata mapped to a running root', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        ledger.status = 'running';
+        ledger.execution.status = 'running';
+      }, runValidatorPath),
+    ).toContain('Lane ledger check passed for 1 file(s).');
   });
 });
