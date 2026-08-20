@@ -67,10 +67,11 @@ structured `question` surface를 사용할 수 없으면 `.omo/lanes/`에 쓰지
 1. `pr_merge_method`는 항상 `squash`다.
 2. 기본 `merge_policy`는 `supervisor-auto`이며 `authority_scope.pr_merge`는 strict schema상 항상 `true`다.
 3. `developer-final`을 선택해도 `authority_scope.pr_merge`를 낮추지 않는다. 대신 `/execute-lane`이 `gh pr merge` 직전에 사용자 또는 상위 harness의 별도 human-final approval을 요구한다.
-4. `supervisor-full-auto`는 retry policy를 변경할 수 있지만 review, checks, dependency, squash, dirty-state, release, security, legal gate를 우회하지 않는다.
-5. cleanup과 root fast-forward sync authority는 PR merge authority와 별개로 review한다.
-6. `publish_via_github_actions`는 `false`이며 이 커맨드는 publish authority를 행사하지 않는다.
-7. lane plan review에서 선택한 authority를 보여주지만 `create-lane` 자체는 merge, cleanup, sync를 실행하지 않는다.
+4. `supervisor-with-human-escalation`은 자동으로 해결할 수 없는 verdict와 policy 판단을 human gate로 보낸다.
+5. `supervisor-full-auto`는 retry policy를 변경할 수 있지만 review, checks, dependency, squash, dirty-state, release, security, legal gate를 우회하지 않는다.
+6. cleanup과 root fast-forward sync authority는 PR merge authority와 별개로 review한다.
+7. `publish_via_github_actions`는 `false`이며 이 커맨드는 publish authority를 행사하지 않는다.
+8. lane plan review에서 선택한 authority를 보여주지만 `create-lane` 자체는 merge, cleanup, sync를 실행하지 않는다.
 
 ## Lane planning rules
 
@@ -191,7 +192,7 @@ lane id: <lane-id>
 ledger: .omo/lanes/<lane-id>.json
 base branch: <base-branch>
 source: <existing-issues|search-issue>
-merge policy: <supervisor-auto|supervisor-full-auto|developer-final>
+merge policy: <developer-final|supervisor-auto|supervisor-with-human-escalation|supervisor-full-auto>
 merge method: squash
 authority scope: <pr merge, cleanup, root sync summary>
 confirmed issues: [<issue-number>]
