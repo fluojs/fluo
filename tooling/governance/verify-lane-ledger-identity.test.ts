@@ -149,6 +149,84 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
     ).toContain('duplicate PR mapping: 501');
   });
 
+  it('rejects one branch identity mapped to different issues', () => {
+    expect(() =>
+      runMutatedCompletedLedger((ledger) => {
+        const issue101 = requireIssueProgress(ledger, '101');
+        const issue102 = requireIssueProgress(ledger, '102');
+        issue102.branch = issue101.branch;
+        issue102.worktree = `${expectedPrimaryRepoRoot}/.worktrees/${issue101.branch}`;
+      }, runValidatorPath),
+    ).toThrow('duplicate branch mapping: issue-101-runtime-alpha');
+
+    expect(() =>
+      runMutatedCompletedLedger((ledger) => {
+        const issue101 = requireIssueProgress(ledger, '101');
+        ledger.lanes[0].branch = issue101.branch;
+        ledger.lanes[0].worktree = `${expectedPrimaryRepoRoot}/.worktrees/${issue101.branch}`;
+      }, runValidatorPath),
+    ).toThrow('duplicate branch mapping: issue-101-runtime-alpha');
+
+    expect(() =>
+      runMutatedCompletedLedger((ledger) => {
+        ledger.lanes[0].queue = [101];
+        Object.assign(ledger.lanes[0], {
+          branch: 'shared-terminal-branch',
+          worktree: '.worktrees/shared-terminal-branch',
+        });
+        ledger.lanes.push({
+          name: 'terminal-peer',
+          queue: [102],
+          current_issue: null,
+          status: 'done',
+          branch: 'shared-terminal-branch',
+          worktree: `${expectedPrimaryRepoRoot}/.worktrees/shared-terminal-branch`,
+          pr: null,
+          retry_count: 0,
+        });
+      }, runValidatorPath),
+    ).toThrow('duplicate branch mapping: shared-terminal-branch');
+  });
+
+  it('rejects one worktree identity mapped to different issues', () => {
+    expect(() =>
+      runMutatedCompletedLedger((ledger) => {
+        const issue101 = requireIssueProgress(ledger, '101');
+        const issue102 = requireIssueProgress(ledger, '102');
+        issue102.branch = issue101.branch;
+        issue102.worktree = issue101.worktree;
+      }, runValidatorPath),
+    ).toThrow('duplicate worktree mapping: .worktrees/issue-101-runtime-alpha');
+
+    expect(() =>
+      runMutatedCompletedLedger((ledger) => {
+        const issue101 = requireIssueProgress(ledger, '101');
+        ledger.lanes[0].branch = issue101.branch;
+        ledger.lanes[0].worktree = issue101.worktree;
+      }, runValidatorPath),
+    ).toThrow('duplicate worktree mapping: .worktrees/issue-101-runtime-alpha');
+
+    expect(() =>
+      runMutatedCompletedLedger((ledger) => {
+        ledger.lanes[0].queue = [101];
+        Object.assign(ledger.lanes[0], {
+          branch: 'shared-terminal-worktree',
+          worktree: '.worktrees/shared-terminal-worktree',
+        });
+        ledger.lanes.push({
+          name: 'terminal-peer',
+          queue: [102],
+          current_issue: null,
+          status: 'done',
+          branch: 'shared-terminal-worktree',
+          worktree: '.worktrees/shared-terminal-worktree',
+          pr: null,
+          retry_count: 0,
+        });
+      }, runValidatorPath),
+    ).toThrow('duplicate worktree mapping: .worktrees/shared-terminal-worktree');
+  });
+
   it.each(['-danger', 'feature bad', 'feature..bad', 'feature@{bad', 'safe/.lock'])(
     'rejects unsafe progress branch %s',
     (branch) => {
@@ -258,14 +336,26 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
     ).toContain(error);
   });
 
-  it('accepts an active lane branch before worktree evidence exists', () => {
-    expect(
+  it('rejects a running lane before branch evidence exists', () => {
+    expect(() =>
+      runMutatedCompletedLedger((ledger) => {
+        const progress = activateIssue102(ledger);
+        ledger.lanes[0].branch = null;
+        ledger.lanes[0].worktree = null;
+        Reflect.deleteProperty(progress, 'branch');
+        Reflect.deleteProperty(progress, 'worktree');
+      }, runValidatorPath),
+    ).toThrow('running lane requires matching branch evidence');
+  });
+
+  it('rejects a running lane before worktree evidence exists', () => {
+    expect(() =>
       runMutatedCompletedLedger((ledger) => {
         const progress = activateIssue102(ledger);
         ledger.lanes[0].worktree = null;
         Reflect.deleteProperty(progress, 'worktree');
       }, runValidatorPath),
-    ).toContain('Lane ledger check passed for 1 file(s).');
+    ).toThrow('running lane requires matching worktree evidence');
   });
 
   it('accepts mirrored active lane and canonical progress identity evidence', () => {
@@ -315,6 +405,36 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
         progress.pr = null;
       }),
     ).toContain('in_review lane requires matching canonical PR evidence');
+  });
+
+  it('requires branch evidence while in review', () => {
+    expect(() =>
+      runMutatedCompletedLedger((ledger) => {
+        const progress = activateIssue102(ledger, 'in_review');
+        ledger.lanes[0].branch = null;
+        ledger.lanes[0].worktree = null;
+        Reflect.deleteProperty(progress, 'branch');
+        Reflect.deleteProperty(progress, 'worktree');
+      }, runValidatorPath),
+    ).toThrow('in_review lane requires matching branch evidence');
+  });
+
+  it('requires worktree evidence while in review', () => {
+    expect(() =>
+      runMutatedCompletedLedger((ledger) => {
+        const progress = activateIssue102(ledger, 'in_review');
+        ledger.lanes[0].worktree = null;
+        Reflect.deleteProperty(progress, 'worktree');
+      }, runValidatorPath),
+    ).toThrow('in_review lane requires matching worktree evidence');
+  });
+
+  it('requires non-empty verification evidence while in review', () => {
+    expect(() =>
+      runMutatedCompletedLedger((ledger) => {
+        activateIssue102(ledger, 'in_review').verification = '';
+      }, runValidatorPath),
+    ).toThrow('in_review lane requires non-empty verification evidence');
   });
 
   it('rejects current retry count mismatches', () => {

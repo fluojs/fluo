@@ -19,11 +19,16 @@ const completionKeys = [
 const reviewerKeys = ['contract', 'code', 'verification'];
 const blockerKeys = ['reviewer', 'signature', 'evidence', 'fix_back_eligible', 'status'];
 const blockerReviewers = new Set(['contract', 'code', 'verification']);
+const blockerStatuses = new Set(['unresolved', 'remediated']);
 const baseKeySet = new Set(baseKeys);
 const mergedKeySet = new Set([...baseKeys, ...completionKeys]);
 const doneKeySet = new Set([...mergedKeySet, 'cleanup']);
 const completionKeySet = new Set([...completionKeys, 'cleanup']);
 const migrationGuidance = 'migrate legacy completion evidence to canonical issue_progress';
+
+export function isPostMergeCleanupFailureProgress(progress) {
+  return progress?.status === 'blocked-terminal' && completionKeys.some((key) => Object.hasOwn(progress, key));
+}
 
 function validateBlockers(path, blockers) {
   assert(Array.isArray(blockers), path, 'blockers must be an array when present');
@@ -36,7 +41,7 @@ function validateBlockers(path, blockers) {
     assert(blockerReviewers.has(blocker.reviewer), path, 'blocker reviewer must be contract, code, or verification');
     assert(isNonEmptyString(blocker.signature) && isNonEmptyString(blocker.evidence), path, 'blocker signature and evidence must be non-empty');
     assert(typeof blocker.fix_back_eligible === 'boolean', path, 'blocker fix_back_eligible must be boolean');
-    assert(isNonEmptyString(blocker.status), path, 'blocker status must be non-empty');
+    assert(blockerStatuses.has(blocker.status), path, 'blocker status must be unresolved or remediated');
   }
 }
 
@@ -45,6 +50,9 @@ function forbiddenKeyMessage(progress, key) {
     return completionKeySet.has(key)
       ? `${String(progress.status)} progress must not contain completion evidence; ${migrationGuidance}`
       : 'issue progress contains an unknown key';
+  }
+  if (isPostMergeCleanupFailureProgress(progress)) {
+    return 'post-merge blocked-terminal progress must not contain cleanup evidence';
   }
   const cleanupStatus = isObject(progress.cleanup) ? progress.cleanup.status : progress.cleanup;
   if (cleanupStatus === 'done') {
@@ -58,7 +66,12 @@ function forbiddenKeyMessage(progress, key) {
 
 export function validateProgressShape(path, progress) {
   assert(progressStatuses.has(progress.status), path, `invalid issue_progress.status: ${String(progress.status)}`);
-  const allowedKeys = progress.status === 'done' ? doneKeySet : progress.status === 'merged' ? mergedKeySet : baseKeySet;
+  const allowedKeys =
+    progress.status === 'done'
+      ? doneKeySet
+      : progress.status === 'merged' || isPostMergeCleanupFailureProgress(progress)
+        ? mergedKeySet
+        : baseKeySet;
   const forbiddenKey = Object.keys(progress).find((key) => !allowedKeys.has(key));
   assert(forbiddenKey === undefined, path, forbiddenKeyMessage(progress, forbiddenKey));
   if (progress.reviewers !== undefined) {

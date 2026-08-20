@@ -49,6 +49,32 @@ function setIssue102State(ledger: LaneLedgerFixture, status: string): ReturnType
   return progress;
 }
 
+function setTerminalPostMergeCleanupFailure(ledger: LaneLedgerFixture): ReturnType<typeof requireIssueProgress> {
+  ledger.status = 'blocked-terminal';
+  ledger.completed_issues = [101, 102];
+  Object.assign(ledger.lanes[0], {
+    status: 'blocked-terminal',
+    current_issue: null,
+    branch: null,
+    worktree: null,
+    pr: null,
+  });
+  Object.assign(requireRootMainSync(ledger), { status: 'not-started', sha: null });
+  const progress = requireIssueProgress(ledger, '102');
+  progress.status = 'blocked-terminal';
+  Reflect.deleteProperty(progress, 'cleanup');
+  progress.blockers = [
+    {
+      reviewer: 'verification',
+      signature: 'cleanup:worktree-removal-failed',
+      evidence: 'merged pull request cleanup failed',
+      fix_back_eligible: false,
+      status: 'unresolved',
+    },
+  ];
+  return progress;
+}
+
 describe('verify-lane-ledger canonical v1 completion contract', () => {
   it.each(['queued', 'running', 'in_review', 'blocked-terminal', 'blocked-maintainer-decision'].flatMap((status) =>
     completionEvidenceCases.map(([field, value]) => [status, field, value] as const),
@@ -411,5 +437,96 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
         ledger.lanes[0].pr = progress.pr;
       }, runValidatorPath),
     ).toContain('Lane ledger check passed for 1 file(s).');
+  });
+
+  it('accepts terminal post-merge cleanup failure only with cleanup authority', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setTerminalPostMergeCleanupFailure(ledger);
+      }, runValidatorPath),
+    ).toContain('Lane ledger check passed for 1 file(s).');
+
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setSkippedCleanup(ledger);
+        setTerminalPostMergeCleanupFailure(ledger);
+      }),
+    ).toContain('post-merge cleanup failure requires cleanup_command_worktrees authority');
+  });
+
+  it('rejects terminal post-merge cleanup failure with partial completion evidence', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        const progress = setTerminalPostMergeCleanupFailure(ledger);
+        Reflect.deleteProperty(progress, 'merge_commit');
+      }),
+    ).toContain('post-merge blocked-terminal progress must preserve complete merged evidence');
+  });
+
+  it('rejects cleanup evidence on terminal post-merge cleanup failure', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        const progress = setTerminalPostMergeCleanupFailure(ledger);
+        progress.cleanup = { ...completedCleanupFixture };
+      }),
+    ).toContain('post-merge blocked-terminal progress must not contain cleanup evidence');
+  });
+
+  it('rejects terminal post-merge cleanup failure without blockers', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        const progress = setTerminalPostMergeCleanupFailure(ledger);
+        progress.blockers = [];
+      }),
+    ).toContain('post-merge blocked-terminal progress requires at least one unresolved blocker');
+  });
+
+  it('rejects terminal post-merge cleanup failure without an unresolved canonical blocker', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        const progress = setTerminalPostMergeCleanupFailure(ledger);
+        progress.blockers = [
+          {
+            reviewer: 'verification',
+            signature: 'cleanup:worktree-removal-failed',
+            evidence: 'cleanup failure was remediated',
+            fix_back_eligible: false,
+            status: 'remediated',
+          },
+        ];
+      }),
+    ).toContain('post-merge blocked-terminal progress requires at least one unresolved blocker');
+
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        const progress = setTerminalPostMergeCleanupFailure(ledger);
+        progress.blockers = [
+          {
+            reviewer: 'verification',
+            signature: 'cleanup:worktree-removal-failed',
+            evidence: 'cleanup remains pending',
+            fix_back_eligible: false,
+            status: 'pending',
+          },
+        ];
+      }),
+    ).toContain('blocker status must be unresolved or remediated');
+  });
+
+  it('rejects fix-back-eligible unresolved post-merge cleanup blockers', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        const progress = setTerminalPostMergeCleanupFailure(ledger);
+        progress.blockers = [
+          {
+            reviewer: 'verification',
+            signature: 'cleanup:worktree-removal-failed',
+            evidence: 'merged pull request cleanup failed',
+            fix_back_eligible: true,
+            status: 'unresolved',
+          },
+        ];
+      }),
+    ).toContain('unresolved post-merge cleanup blockers must set fix_back_eligible false');
   });
 });

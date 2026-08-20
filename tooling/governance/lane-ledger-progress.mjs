@@ -10,11 +10,23 @@ import {
   parsePullRequest,
   registerPullRequest,
 } from './lane-ledger-contract.mjs';
-import { validateProgressShape } from './lane-ledger-progress-schema.mjs';
+import { isPostMergeCleanupFailureProgress, validateProgressShape } from './lane-ledger-progress-schema.mjs';
 
 const reviewerKeys = ['contract', 'code', 'verification'];
 const completedCleanupKeys = ['status', 'worktree_removed', 'local_branch_deleted', 'remote_branch_deleted'];
 const skippedCleanupKeys = ['status'];
+const requiredMergedEvidenceKeys = [
+  'branch',
+  'worktree',
+  'pr',
+  'verification',
+  'retry_count',
+  'review_verdict',
+  'checks',
+  'reviewers',
+  'merge_commit',
+  'issue_state',
+];
 const migrationGuidance = 'migrate legacy completion evidence to canonical issue_progress';
 
 function validateDoneCleanup(path, cleanup, cleanupAuthority) {
@@ -88,10 +100,33 @@ function validateCompletedProgress(path, progress, cleanupAuthority) {
   if (progress.status === 'done') {
     validateDoneCleanup(path, progress.cleanup, cleanupAuthority);
   }
+}
 
+function validateRemediatedBlockers(path, progress) {
   if (progress.blockers !== undefined) {
     assert(progress.blockers.every((blocker) => blocker.status === 'remediated'), path, 'blockers must all be remediated');
   }
+}
+
+function validatePostMergeCleanupFailure(path, progress, cleanupAuthority) {
+  assert(cleanupAuthority, path, 'post-merge cleanup failure requires cleanup_command_worktrees authority');
+  assert(
+    requiredMergedEvidenceKeys.every((key) => Object.hasOwn(progress, key)),
+    path,
+    `post-merge blocked-terminal progress must preserve complete merged evidence; ${migrationGuidance}`,
+  );
+  validateCompletedProgress(path, progress, cleanupAuthority);
+  const unresolvedBlockers = progress.blockers?.filter((blocker) => blocker.status === 'unresolved') ?? [];
+  assert(
+    unresolvedBlockers.length > 0,
+    path,
+    'post-merge blocked-terminal progress requires at least one unresolved blocker',
+  );
+  assert(
+    unresolvedBlockers.every((blocker) => blocker.fix_back_eligible === false),
+    path,
+    'unresolved post-merge cleanup blockers must set fix_back_eligible false',
+  );
 }
 
 export function validateIssueProgress(path, ledger, prAssignments) {
@@ -107,6 +142,26 @@ export function validateIssueProgress(path, ledger, prAssignments) {
   const queuedIssues = new Set(ledger.lanes.flatMap((lane) => lane.queue));
   const progressByIssue = new Map();
   const completedProgressIssues = new Set();
+  const postMergeCleanupFailureIssues = new Set();
+  const branchAssignments = new Map();
+  const worktreeAssignments = new Map();
+  for (const [index, lane] of ledger.lanes.entries()) {
+    if (lane.status === 'blocked-terminal' && lane.queue.some((issue) => isPostMergeCleanupFailureProgress(issueProgress?.[String(issue)]))) {
+      continue;
+    }
+    const lanePath = `${path}:lanes[${String(index)}]`;
+    const assignment = lane.current_issue === null ? `lane:${String(index)}` : `issue:${String(lane.current_issue)}`;
+    if (lane.worktree != null) {
+      const assignedOwner = worktreeAssignments.get(lane.worktree);
+      assert(assignedOwner === undefined || assignedOwner === assignment, lanePath, `duplicate worktree mapping: ${lane.worktree}`);
+      worktreeAssignments.set(lane.worktree, assignment);
+    }
+    if (lane.branch != null) {
+      const assignedOwner = branchAssignments.get(lane.branch);
+      assert(assignedOwner === undefined || assignedOwner === assignment, lanePath, `duplicate branch mapping: ${lane.branch}`);
+      branchAssignments.set(lane.branch, assignment);
+    }
+  }
   for (const [issueKey, progress] of Object.entries(issueProgress ?? {})) {
     const progressPath = `${path}:issue_progress[${issueKey}]`;
     const issue = Number(issueKey);
@@ -140,24 +195,63 @@ export function validateIssueProgress(path, ledger, prAssignments) {
       registerPullRequest(prAssignments, progress.pr, issue, progressPath);
     }
     progressByIssue.set(issue, progress);
-    if (progress.status === 'done' || progress.status === 'merged') {
+    if (isPostMergeCleanupFailureProgress(progress)) {
+      validatePostMergeCleanupFailure(
+        progressPath,
+        progress,
+        ledger.authority_scope.cleanup_command_worktrees === true,
+      );
+      completedProgressIssues.add(issue);
+      postMergeCleanupFailureIssues.add(issue);
+    } else if (progress.status === 'done' || progress.status === 'merged') {
       completedProgressIssues.add(issue);
     }
   }
 
   const completedIssues = new Set(ledger.completed_issues);
+  for (const issue of postMergeCleanupFailureIssues) {
+    assert(completedIssues.has(issue), path, 'post-merge cleanup failure issue must remain in completed_issues');
+  }
   const sameCompletedIssues =
     completedIssues.size === ledger.completed_issues.length &&
     completedIssues.size === completedProgressIssues.size &&
     [...completedIssues].every((issue) => completedProgressIssues.has(issue));
   assert(sameCompletedIssues, path, 'completed_issues and issue_progress must contain the same issue numbers');
 
+  for (const [issue, progress] of progressByIssue.entries()) {
+    const progressPath = `${path}:issue_progress[${String(issue)}]`;
+    const assignment = `issue:${String(issue)}`;
+    if (progress.status === 'running' || progress.status === 'in_review') {
+      assert(isSafeBranchName(progress.branch), progressPath, `${progress.status} lane requires matching branch evidence`);
+      assert(
+        isMatchingWorktree(progress.worktree, progress.branch),
+        progressPath,
+        `${progress.status} lane requires matching worktree evidence`,
+      );
+    }
+    if (progress.status === 'in_review') {
+      assert(parsePullRequest(progress.pr) !== null, progressPath, 'in_review lane requires matching canonical PR evidence');
+      assert(isNonEmptyString(progress.verification), progressPath, 'in_review lane requires non-empty verification evidence');
+    }
+    if (progress.worktree !== undefined) {
+      const assignedOwner = worktreeAssignments.get(progress.worktree);
+      assert(assignedOwner === undefined || assignedOwner === assignment, progressPath, `duplicate worktree mapping: ${progress.worktree}`);
+      worktreeAssignments.set(progress.worktree, assignment);
+    }
+    if (progress.branch !== undefined) {
+      const assignedOwner = branchAssignments.get(progress.branch);
+      assert(assignedOwner === undefined || assignedOwner === assignment, progressPath, `duplicate branch mapping: ${progress.branch}`);
+      branchAssignments.set(progress.branch, assignment);
+    }
+  }
+
   for (const issue of completedProgressIssues) {
-    validateCompletedProgress(
-      `${path}:issue_progress[${String(issue)}]`,
-      progressByIssue.get(issue),
-      ledger.authority_scope.cleanup_command_worktrees === true,
-    );
+    const progress = progressByIssue.get(issue);
+    if (progress.status === 'done' || progress.status === 'merged') {
+      const progressPath = `${path}:issue_progress[${String(issue)}]`;
+      validateCompletedProgress(progressPath, progress, ledger.authority_scope.cleanup_command_worktrees === true);
+      validateRemediatedBlockers(progressPath, progress);
+    }
   }
 
   return progressByIssue;
