@@ -18,6 +18,7 @@
 - [ ] **Command Harness**: 사용자가 직접 실행하는 `gh issue create`, `gh pr merge`, `npm publish` 등이 하네스 로직에 의해 보호되거나 금지되어 있는가?
 - [ ] **명시적 승인/Authority**: high-impact side-effect 실행 시 command harness `authority` gate, registration triage, 또는 사용자 컨펌 단계를 거치는가?
 - [ ] **Full-auto 권한**: `execute-lane --full-auto`처럼 full-auto mode가 있다면 lane ledger에 `authority_scope.pr_merge=true`와 `pr_merge_method="squash"`를 기록하고, child command `block`/unresolved `needs-human-check`, local publish, dirty cleanup/root sync를 우회하지 않는가?
+- [ ] **Developer-final 권한**: `merge_policy: developer-final`이면 `authority_scope.pr_merge=true`여도 `gh pr merge` 직전 사용자 또는 상위 harness의 explicit approval을 요구하고, 없으면 `needs-human-check-terminal`로 멈추는가?
 - [ ] **Lane-local progress**: `execute-lane`이 여러 unlocked lane을 dispatch하더라도 global batch barrier 없이 먼저 완료된 lane item부터 PR collection, `/pr-to-merge`, fix-back/merge gate를 진행한다고 명시하고, 완료 알림 수신 시 `background_output` 수집 → ledger item 업데이트 → `/pr-to-merge` → verdict 처리 → fix-back/merge gate 순서를 즉시 수행하도록 고정하는가?
 
 ### 1.3 불변 정책 준수 (root AGENTS.md)
@@ -57,6 +58,8 @@ release/publish 자체가 목표인 lane item은 OpenCode command가 publish를 
 여러 lane을 동시에 dispatch하는 경우에도 모든 `/issue-to-pr` child 완료를 기다리는 전역 barrier가 없어야 한다. 먼저 완료된 lane item은 해당 lane item 단위로 ledger에 반영되고 즉시 `/pr-to-merge`로 넘어가야 한다.
 
 - `.opencode/commands/execute-lane.md`에 `Per-lane progress, no global batch barrier` 섹션이 있는지 확인한다.
+- `.opencode/commands/execute-lane.md`에 `Execution loop invariant`, `Background completion event handling`, `developer-final approval gate` 섹션이 정확한 heading으로 있는지 확인한다.
+- `.opencode/commands/create-lane.md`에 `Human gates`, `Merge authority and method`, `Lane planning rules`, `Creation gates`, `Output contract` 섹션이 있는지 확인한다.
 - `Child completion barrier`는 해당 child/lane item의 완료 보고를 요구하는 lane-local barrier로만 해석되고, 전체 lane batch join으로 해석되지 않는지 확인한다.
 
 ### 2.6 Canonical v1 ledger validation
@@ -68,10 +71,14 @@ Preflight는 다음을 모두 확인한다.
 - ledger `version`이 `1`이고, `run_id`, `merge_policy`, `authority_scope`, `confirmed_issues`, `completed_issues`, `lanes`가 존재한다.
 - `authority_scope.pr_merge`가 정확히 `true`이고 `pr_merge_method`가 정확히 `squash`다. 누락되거나 다른 값이면 merge를 추정하지 않는다.
 - `retry_policy`, `execution`, `release_handoffs`, `root_main_sync` metadata가 모두 필수이며 이름, 값, status를 그대로 보존한다. retry count, authority, execution status, release handoff status를 migration 중에 재설정하지 않는다.
+- `source`가 exact `{type, search_run_id, search_ledger}`인지 확인한다. `search-issue`의 `search_run_id`는 source-only grammar `[A-Za-z0-9][A-Za-z0-9+._-]*`를 사용해 내부 `+`를 허용하고, `search_ledger`는 exact `.sisyphus/search-issue/<search_run_id>.json`이어야 한다. `run_id`와 `lane_id`에는 `+`를 허용하지 않는다.
+- `dependency_graph` key는 confirmed positive-safe-integer issue이고 value는 unique positive-safe-integer prerequisite array인지 확인한다. External prerequisite는 value에 허용하지만 duplicate, self dependency, cycle은 거부한다.
 - candidate snapshot과 모든 ledger, worktree 경로의 symlink를 확인하고 `realpath`를 계산한다. path 문자열만으로 동일성을 주장하지 않는다.
 - branch와 worktree가 실제 repository membership에 속하고 ledger의 branch/path와 일치하는지 확인한다. command-owned가 아닌 worktree는 삭제 대상으로 취급하지 않는다.
 - root worktree의 `git symbolic-ref --short HEAD`가 ledger의 base branch와 일치하는지 확인한다. dirty root에서는 root sync를 수행하지 않는다.
 - completed issue마다 flat `issue_progress` evidence가 있고, `review_verdict: merge`, `checks: PASS`, exact reviewer `reviewers.contract: PASS`, `reviewers.code: PASS`, `reviewers.verification: PASS`, 40-character lowercase `merge_commit`, `issue_state: CLOSED`가 모두 확인된다. Nested merge or issue records are invalid.
+- non-completion progress는 `status`, `branch`, `worktree`, `pr`, `verification`, `retry_count`, `blockers`만 허용한다. `merged`는 completion evidence를 추가하지만 cleanup은 금지하고, `done`만 cleanup을 추가한다.
+- release handoff는 ready일 때 dedicated single-issue queued lane과 absent progress를 사용하고, non-ready일 때 lane/progress가 모두 `blocked-maintainer-decision`이며 branch/worktree/PR dispatch identity가 없어야 한다.
 - `cleanup`은 authority가 있을 때 정확히 `{status: done, worktree_removed: true, local_branch_deleted: true, remote_branch_deleted: true}`, authority가 없을 때 정확히 `{status: skipped-authority}`만 허용한다. realpath, repository/worktree membership, dirty-state는 live execution gates이며 cleanup object fields가 아니다.
 
 Legacy completion evidence가 이 shape를 충족하지 않으면 `migrate legacy completion evidence to canonical issue_progress`로 실패해야 한다. 이는 버전 bump나 legacy compatibility shim을 허용하지 않는 의도된 실패다. 실제 persistence ledger는 migration evidence로 일부러 failing 상태를 유지하며 자동 수정하지 않는다.
@@ -132,10 +139,10 @@ find .opencode/skills -name SKILL.md
 
 ## 5. Strict v1 focused gate
 
-The focused suite has exactly five TEST files and 278 tests, including `verify-lane-ledger-schema.test.ts`. `lane-ledger-schema.mjs` owns strict shape validation but is not counted as a test file:
+The focused suite has exactly five TEST files and 346 tests, including `verify-lane-ledger-schema.test.ts`. `lane-ledger-schema.mjs` owns root/source/lane shape validation, `lane-ledger-progress-schema.mjs` owns status-specific progress key validation, and `lane-ledger-dependency.mjs` owns dependency graph validation. These implementation modules are not counted as test files:
 
 ```bash
 pnpm exec vitest run tooling/governance/verify-lane-ledger.test.ts tooling/governance/verify-lane-ledger-state.test.ts tooling/governance/verify-lane-ledger-progress.test.ts tooling/governance/verify-lane-ledger-identity.test.ts tooling/governance/verify-lane-ledger-schema.test.ts
 ```
 
-Migration fails closed for missing identity/source, unknown keys, nested legacy evidence, non-prefix queues, one-sided identity or retry values, non-done cleanup, and completed or merged release handoffs. Do not describe producer provenance as exempt from exact-key validation.
+Migration fails closed for missing identity/source, unknown keys, nested legacy evidence, non-prefix queues, one-sided identity or retry values, status-incompatible completion evidence, invalid dependency graphs, non-done cleanup, and completed or merged release handoffs. Do not describe producer provenance as exempt from exact-key validation.

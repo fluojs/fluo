@@ -28,7 +28,7 @@ The former `lane-supervisor` command was removed because it combined discovery, 
 
 ## Canonical v1 completion evidence
 
-The strict v1 root has exactly 21 required keys: `version`, `run_id`, `lane_id`, `status`, `created_by`, `base_branch`, `source`, `merge_policy`, `pr_merge_method`, `authority_scope`, `retry_policy`, `execution`, `confirmed_issues`, `suggested_but_excluded`, `backlog_candidates`, `release_handoffs`, `completed_issues`, `issue_progress`, `lanes`, `dependency_graph`, and `root_main_sync`. Only `created_at` is optional. `run_id === lane_id`, both identities are path-safe basenames, lanes and queues are non-empty, and optional `created_at` is strict UTC.
+The strict v1 root has exactly 21 required keys: `version`, `run_id`, `lane_id`, `status`, `created_by`, `base_branch`, `source`, `merge_policy`, `pr_merge_method`, `authority_scope`, `retry_policy`, `execution`, `confirmed_issues`, `suggested_but_excluded`, `backlog_candidates`, `release_handoffs`, `completed_issues`, `issue_progress`, `lanes`, `dependency_graph`, and `root_main_sync`. Only `created_at` is optional. `run_id === lane_id`, both identities are path-safe basenames without `+`, lanes and queues are non-empty, and optional `created_at` is strict UTC. A `search-issue` source uses the source-only basename grammar `[A-Za-z0-9][A-Za-z0-9+._-]*`, preserving internal `+` characters from timezone-bearing producer IDs, and requires the exact `.sisyphus/search-issue/<search_run_id>.json` path.
 
 The lane ledger contract is now strict canonical v1. There is no version bump and no compatibility shim for incomplete v1 data. A legacy ledger that reaches completion without canonical evidence is rejected with `migrate legacy completion evidence to canonical issue_progress` and must be migrated before execution can continue.
 
@@ -38,6 +38,10 @@ Migration is an explicit, read-only review of the existing evidence followed by 
 - `merge_commit` set to the verified 40-character lowercase SHA.
 - `issue_state: CLOSED`.
 - `cleanup` set to exactly `{status: done, worktree_removed: true, local_branch_deleted: true, remote_branch_deleted: true}` when cleanup authority is granted, or exactly `{status: skipped-authority}` without that authority.
+
+Progress evidence is status-specific. Non-completion statuses allow only `status`, `branch`, `worktree`, `pr`, `verification`, `retry_count`, and `blockers`. `merged` adds review, check, reviewer, provenance, merge SHA, and CLOSED issue evidence but never cleanup. `done` adds cleanup. Migration must not move completion fields into queued, running, in-review, or terminal-blocker entries to make incomplete evidence appear valid.
+
+`dependency_graph` is sparse: keys are confirmed positive-safe-integer issues and values are unique positive-safe-integer prerequisite arrays. External prerequisite issue numbers may appear in values, but duplicate, self, and cyclic dependencies are invalid. Migration preserves the graph and never infers or removes prerequisites from execution history.
 
 There are no nested merge or issue records in canonical v1 `issue_progress`. Live execution gates verify realpath, repository/worktree membership, and dirty state; those checks are not cleanup object fields.
 
@@ -84,9 +88,9 @@ Use the matching slash command instead.
 
 ### Strict v1 migration rejection list
 
-Fail closed for missing `run_id`, `lane_id`, or `source`; unknown root, source, lane, progress, root-sync, reviewer, blocker, or cleanup keys; nested legacy evidence; non-prefix queues; one-sided branch/worktree/PR identity; non-normalized PR values; unequal retry counts; cleanup on non-done progress; and completed or merged release handoffs. `existing-issues` requires null search fields, while `search-issue` requires the exact `.sisyphus/search-issue/<id>.json` path. Queued without progress requires null branch, worktree, and PR and retry count 0. Release handoffs use a dedicated single-issue lane, queued without progress when ready, then `blocked-maintainer-decision` in both lane and progress, never completed, merged, or done.
+Fail closed for missing `run_id`, `lane_id`, or `source`; unknown root, source, lane, progress, root-sync, reviewer, blocker, or cleanup keys; nested legacy evidence; non-prefix queues; one-sided branch/worktree/PR identity; non-normalized PR values; unequal retry counts; status-incompatible completion evidence; invalid dependency keys/edges; cleanup on non-done progress; and completed or merged release handoffs. `existing-issues` requires null search fields, while `search-issue` preserves source IDs with internal `+` and requires the exact `.sisyphus/search-issue/<search_run_id>.json` path. Queued without progress requires null branch, worktree, and PR and retry count 0. Release handoffs use a dedicated single-issue lane, queued without progress when ready, then `blocked-maintainer-decision` in both lane and progress without branch/worktree/PR dispatch identity, never completed, merged, or done.
 
-The focused suite has exactly five TEST files and 278 tests, including `verify-lane-ledger-schema.test.ts`. `lane-ledger-schema.mjs` owns strict shape validation but is not counted as a test file. Producer provenance is inside exact-key validation, not outside it.
+The focused suite has exactly five TEST files and 346 tests, including `verify-lane-ledger-schema.test.ts`. `lane-ledger-schema.mjs` owns root/source/lane shape validation, `lane-ledger-progress-schema.mjs` owns status-specific progress key validation, and `lane-ledger-dependency.mjs` owns dependency graph validation. These implementation modules are not counted as test files. Producer provenance is inside exact-key validation, not outside it.
 
 ### lane-supervisor
 - **From**: Monolithic procedural skill and later high-level command.
