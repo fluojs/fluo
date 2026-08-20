@@ -76,11 +76,12 @@ root status는 `ready`, `running`, `done`, `blocked-terminal`, `needs-human-chec
 | current entry | lane status와 matching progress status |
 | later entry | absent 또는 `queued` |
 | merged cursor | current issue가 `completed_issues`에 있고 matching `merged` progress |
+| post-merge cleanup failure | cleanup authority가 true일 때만 terminal `blocked-terminal` progress가 merged evidence를 보존하고 later entry는 absent 또는 `queued` |
 | done lane | 모든 queue issue가 `done` progress |
 
-active lane의 `current_issue`는 positive integer이며 queue에서 `completed_issues`에 없는 첫 issue다. terminal lane은 `current_issue: null`, canonical lane `pr: null`이다. 같은 lane 다음 issue는 이전 issue가 `done` progress가 되기 전 dispatch하지 않는다. `completed_issues`와 `merged|done` progress issue 집합은 exact equal이어야 한다.
+active lane의 `current_issue`는 positive integer이며 queue에서 `completed_issues`에 없는 첫 issue다. terminal lane은 `current_issue: null`, canonical lane `pr: null`이다. 같은 lane 다음 issue는 이전 issue가 `done` progress가 되기 전 dispatch하지 않는다. `completed_issues`는 merge-completed issue 집합이며 `merged`, `done`, post-merge cleanup failure progress issue와 exact equal이어야 한다.
 
-queued lane에 progress가 없으면 branch/worktree/PR은 null이고 retry count는 0이다. progress가 있으면 lane과 progress의 branch/worktree는 양쪽 모두 absent 또는 exact equal이고, PR은 canonical normalization 후 equal이며 retry count도 같다. `in_review`와 `merged`는 canonical `fluojs/fluo` PR identity가 필수다.
+queued lane에 progress가 없으면 branch/worktree/PR은 null이고 retry count는 0이다. progress가 있으면 lane과 progress의 branch/worktree는 양쪽 모두 absent 또는 exact equal이고, PR은 canonical normalization 후 equal이며 retry count도 같다. `running`은 safe branch와 matching worktree가 필수지만 PR은 null일 수 있다. `in_review`는 branch/worktree, canonical `fluojs/fluo` PR, non-empty verification이 필수다. `merged`도 canonical PR identity가 필수다. 서로 다른 issue의 non-null branch와 worktree는 각각 globally unique해야 한다.
 
 일반 lane key는 exact `name`, `queue`, `current_issue`, `status`, `branch`, `worktree`, `pr`, `retry_count`다. `blocked-child-contract-error`만 exact `current_blocker: {signature, evidence}`를 추가한다.
 
@@ -89,10 +90,11 @@ status별 `issue_progress` key allowlist는 다음과 같다.
 - non-completion (`queued`, `running`, `in_review`, terminal blocker statuses): `status`, `branch`, `worktree`, `pr`, `verification`, `retry_count`, `blockers`만 허용한다.
 - `merged`: base key에 `review_verdict`, `checks`, `reviewers`, `reviewed_head`, `commits`, `merge_commit`, `issue_state`를 추가한다. `cleanup`은 없다.
 - `done`: merged key에 `cleanup`을 추가한다.
+- post-merge cleanup failure는 `blocked-terminal`에 한해 complete merged key를 보존할 수 있지만 `cleanup`은 금지한다.
 
-`reviewers`는 exact `contract`, `code`, `verification`이다. blocker는 exact `reviewer`, `signature`, `evidence`, `fix_back_eligible`, `status`다. merged/done evidence는 `review_verdict: merge`, `checks: PASS`, three reviewer PASS, 40-character `merge_commit`, `issue_state: CLOSED`를 요구한다. Legacy nested merge/issue/cleanup evidence와 status에 맞지 않는 completion evidence는 fail closed다.
+`reviewers`는 exact `contract`, `code`, `verification`이다. blocker는 exact `reviewer`, `signature`, `evidence`, `fix_back_eligible`, `status`이며 blocker `status`는 정확히 `unresolved | remediated`다. merged/done evidence는 `review_verdict: merge`, `checks: PASS`, three reviewer PASS, 40-character `merge_commit`, `issue_state: CLOSED`를 요구한다. Legacy nested merge/issue/cleanup evidence와 status에 맞지 않는 completion evidence는 fail closed다.
 
-cleanup authority가 true인 done progress는 exact `{status: done, worktree_removed: true, local_branch_deleted: true, remote_branch_deleted: true}`다. authority가 false이면 exact `{status: skipped-authority}`다.
+cleanup authority가 true인 done progress는 exact `{status: done, worktree_removed: true, local_branch_deleted: true, remote_branch_deleted: true}`다. authority가 false이면 cleanup failure를 만들 수 없고 즉시 `done` progress로 전환해 exact `{status: skipped-authority}`를 기록한다.
 
 ## Dependency and release contract
 
@@ -106,7 +108,7 @@ side effect 전에 다음 순서로 preflight한다.
 
 1. lane id 또는 path를 primary `<repo-root>/.omo/lanes/<lane-id>.json`으로 canonicalize한다. path escape, symlink, mismatched filename/identity, non-primary mutation target을 거부한다.
 2. 원본 bytes와 identity를 보존한 채 candidate를 별도 snapshot으로 만들고 pure validator를 실행한다.
-3. focused gate는 정확히 five TEST files와 346 tests다. `lane-ledger-schema.mjs`, `lane-ledger-progress-schema.mjs`, `lane-ledger-dependency.mjs`는 implementation module이며 test file 수에 포함하지 않는다.
+3. focused gate는 정확히 five TEST files와 363 tests다. `lane-ledger-schema.mjs`, `lane-ledger-progress-schema.mjs`, `lane-ledger-dependency.mjs`는 implementation module이며 test file 수에 포함하지 않는다.
 4. root worktree가 registered primary checkout인지, exact base branch인지, clean한지 확인한다. dirty root에서는 merge 후 sync를 실행하지 않는다.
 5. 각 persisted worktree가 registered이고 `.worktrees/<branch>` realpath containment, symlink-free path, exact checked-out branch, clean state를 만족하는지 확인한다.
 6. live PR의 head/base, linked issue, state, checks, reviewed head가 ledger와 일치하는지 확인한다. stale child/reviewer 결과는 사용하지 않는다.
@@ -123,7 +125,7 @@ Authority 누락, false, ambiguous state를 사용자 승인으로 추정해 보
 2. unlocked lane은 병렬 dispatch할 수 있지만 각 lane의 state transition은 독립적이다.
 3. `block` verdict는 terminal 결과가 아니라 먼저 same-PR fix-back input이다.
 4. queued/running/in_review/merged lane, retry 여지가 있는 blocker, pending/stale evidence, unlock된 후속 issue가 남으면 final report를 내지 않는다.
-5. 모든 lane이 `done` 또는 terminal blocker status이고 strict ledger와 live state가 일치할 때만 final report를 낸다.
+5. 모든 lane이 `done` 또는 terminal blocker status이고 strict ledger와 live state가 일치할 때만 final report를 낸다. Strict post-merge cleanup failure는 terminal `blocked-terminal`로 보고할 수 있다.
 
 ### Per-lane progress, no global batch barrier
 
@@ -205,10 +207,12 @@ cleanup은 merge와 별도 safety gate다.
 
 1. PR `MERGED`와 linked issue `CLOSED`를 live 재확인한다.
 2. path가 exact command-owned registered `.worktrees/<branch>`이고 branch parity와 realpath containment를 만족하는지 확인한다.
-3. worktree가 dirty, symlinked, unregistered, detached, mismatched이면 force cleanup하지 않는다. 해당 item을 terminal blocker로 남기며 invalid cleanup object를 쓰지 않는다.
+3. cleanup authority가 true이고 worktree가 dirty, symlinked, unregistered, detached, mismatched이면 force cleanup하지 않는다. 해당 item을 terminal blocker로 남기며 invalid cleanup object를 쓰지 않는다.
 4. `cleanup_command_worktrees: true`일 때만 worktree, local branch, remote branch를 안전한 순서로 제거하고 모두 성공한 후 done cleanup object를 기록한다.
-5. authority가 false면 삭제하지 않고 done progress에 exact `{status: skipped-authority}`를 기록한다.
+5. authority가 false면 cleanup failure 또는 `blocked-terminal`을 만들지 않는다. 삭제 없이 곧바로 `done` progress에 exact `{status: skipped-authority}`를 기록한다.
 6. `merged` progress에는 cleanup을 기록하지 않는다. cleanup evidence가 완성된 후에만 `done`으로 전환한다.
+7. authority가 true인 cleanup이 dirty, symlinked, unregistered, detached, mismatched state로 실패할 때만 lane/progress를 `blocked-terminal`로 전환한다. lane cursor, branch, worktree, PR은 null이며 progress는 complete flat merged evidence, no `cleanup`, exact unresolved non-fix-back blocker를 보존한다. 이 blocker는 exact blocker key를 가지며 `status: unresolved`, `fix_back_eligible: false`여야 한다.
+8. cleanup failure issue는 `completed_issues`에 남고 같은 lane의 다음 issue는 absent 또는 `queued`로 잠근다. Resume은 순서대로 live merge evidence를 다시 검증하고, 같은 issue의 cleanup을 재시도하고, canonical done cleanup을 기록하고, 해당 blocker를 `remediated`로 바꾸고, candidate strict validation을 통과시킨 뒤에만 later issue를 dispatch한다.
 
 root sync는 모든 lane이 terminal인 뒤에만 수행한다.
 
