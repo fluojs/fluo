@@ -24,6 +24,14 @@ argument-hint: "<issue-url|issue-number... | search-run-id | search-ledger-path>
 
 base branch 기본값은 `main`이다. issue 목록, search run id, search ledger path 중 정확히 한 종류의 입력만 허용한다. 입력이 비었거나 여러 종류가 섞여 해석할 수 없으면 side effect 없이 올바른 형식을 안내하고 멈춘다.
 
+Canonical pipeline:
+
+```text
+/search-issue
+/create-lane .sisyphus/search-issue/<search_run_id>.json main
+/execute-lane <lane-id> main
+```
+
 ## 책임 경계
 
 이 커맨드가 소유하는 것:
@@ -47,10 +55,26 @@ base branch 기본값은 `main`이다. issue 목록, search run id, search ledge
 ## 입력 규칙
 
 1. search run id는 `.sisyphus/search-issue/<search_run_id>.json`을 가리켜야 한다.
-2. search ledger는 canonical `.sisyphus/search-issue/` artifact여야 한다. 기존 `.omo/lanes/` ledger를 입력받아 덮어쓰거나 재생성하지 않는다.
+2. search ledger는 canonical `.sisyphus/search-issue/` artifact여야 한다. filename, artifact의 `search_run_id`, canonical path가 정확히 일치해야 한다. 기존 `.omo/lanes/` ledger를 입력받아 덮어쓰거나 재생성하지 않는다.
 3. issue 목록은 각 issue의 title, labels, package/surface, linked PR 상태를 read-only로 요약한다.
 4. closed issue, 다른 repository issue, 존재하지 않는 issue, 이미 active PR에 할당된 issue는 lane plan review 전에 명시한다.
 5. 한 invocation은 하나의 새 lane ledger만 생성한다.
+
+Search artifact는 exact 3-key object다.
+
+```json
+{
+  "version": 1,
+  "search_run_id": "search-2026-08-18T10+09-runtime",
+  "selected_issues": [2046, 2045, 2041]
+}
+```
+
+- root key는 정확히 `version`, `search_run_id`, `selected_issues`다. `version`은 `1`이며 unknown key는 fail closed다.
+- `search_run_id`는 `[A-Za-z0-9][A-Za-z0-9+._-]*`인 safe basename이다. `.` 또는 `.lock`으로 끝나면 안 되며 `.sisyphus/search-issue/<search_run_id>.json`의 basename과 정확히 일치해야 한다.
+- `selected_issues`는 중복 없는 positive safe integer의 non-empty array다.
+- malformed, empty, duplicate, path/id mismatch, mixed input form은 lane candidate나 target을 생성하기 전에 거부한다.
+- artifact를 수정하지 않는다. `selected_issues`는 Confirmed issue gate에 제시할 candidate일 뿐이며 자동 confirmed set 또는 lane plan이 아니다.
 
 ## Human gates
 
@@ -165,8 +189,11 @@ structured `question` surface를 사용할 수 없으면 `.omo/lanes/`에 쓰지
 - non-completion (`queued`, `running`, `in_review`, terminal blocker statuses): `status`, `branch`, `worktree`, `pr`, `verification`, `retry_count`, `blockers`만 허용한다.
 - `merged`: base key에 `review_verdict`, `checks`, `reviewers`, `reviewed_head`, `commits`, `merge_commit`, `issue_state`를 추가한다. `cleanup`은 금지한다.
 - `done`: merged key에 `cleanup`을 추가한다.
+- post-merge cleanup failure는 기존 `blocked-terminal` status를 사용한다. lane cursor, branch, worktree, PR은 null이며 progress는 complete merged evidence와 unresolved non-fix-back blocker를 보존하고 `cleanup`을 포함하지 않는다.
 
 `reviewers`는 exact `contract`, `code`, `verification`이며 blocker는 exact `reviewer`, `signature`, `evidence`, `fix_back_eligible`, `status`다. nested legacy evidence와 unknown key는 금지한다.
+
+`running` progress는 safe branch와 matching worktree가 필수이며 PR은 null일 수 있다. `in_review`는 branch/worktree에 canonical PR과 non-empty verification을 추가로 요구한다. 서로 다른 issue는 같은 non-null branch 또는 worktree를 공유할 수 없다. lane과 현재 issue progress가 같은 identity를 mirror하는 것은 중복 assignment가 아니다.
 
 release handoff는 dedicated single-issue lane이다. ready ledger에서는 progress 없이 `queued`이며, 실행 후 lane/progress가 모두 `blocked-maintainer-decision`이다. branch, worktree, PR identity를 기록하지 않고 절대 completed, merged, done이 되지 않는다.
 
@@ -178,7 +205,7 @@ release handoff는 dedicated single-issue lane이다. ready ledger에서는 prog
 2. `.omo/lanes`와 target의 realpath containment를 확인하고 symlink, path escape, existing target을 거부한다.
 3. 세 human gate가 모두 통과하기 전에는 candidate나 target을 쓰지 않는다.
 4. approved plan으로 별도 candidate snapshot을 만들고 strict validator를 실행한다.
-5. focused gate는 정확히 five TEST files와 346 tests다. `lane-ledger-schema.mjs`, `lane-ledger-progress-schema.mjs`, `lane-ledger-dependency.mjs`는 validator implementation module이며 test file 수에 포함하지 않는다.
+5. focused gate는 정확히 five TEST files와 363 tests다. `lane-ledger-schema.mjs`, `lane-ledger-progress-schema.mjs`, `lane-ledger-dependency.mjs`는 validator implementation module이며 test file 수에 포함하지 않는다.
 6. validation이 성공하고 target 부재를 다시 확인한 경우에만 target을 atomic create한다.
 7. validation 또는 atomic create가 실패하면 target은 absent 상태여야 하고 기존 ledger는 변경하지 않는다. 결과만 `needs-human-check`로 보고한다.
 
