@@ -6,6 +6,8 @@ import {
   completedCleanupFixture,
   requireIssueProgress,
   requireRootMainSync,
+  runCompletedLedgerSequence,
+  runInvalidValidatorPath,
   runMutatedCompletedLedger,
   runMutatedReadyLedger,
   runValidator,
@@ -32,6 +34,32 @@ function setTerminalSecondIssue(ledger: LaneLedgerFixture, laneStatus: string, p
   Object.assign(requireRootMainSync(ledger), { status: 'not-started', sha: null });
   const progress = requireIssueProgress(ledger, '102');
   setNonCompletionProgress(progress, progressStatus);
+}
+
+function setTerminalPostMergeCleanupFailure(ledger: LaneLedgerFixture): ReturnType<typeof requireIssueProgress> {
+  ledger.status = 'blocked-terminal';
+  ledger.completed_issues = [101, 102];
+  Object.assign(ledger.lanes[0], {
+    status: 'blocked-terminal',
+    current_issue: null,
+    branch: null,
+    worktree: null,
+    pr: null,
+  });
+  Object.assign(requireRootMainSync(ledger), { status: 'not-started', sha: null });
+  const progress = requireIssueProgress(ledger, '102');
+  progress.status = 'blocked-terminal';
+  Reflect.deleteProperty(progress, 'cleanup');
+  progress.blockers = [
+    {
+      reviewer: 'verification',
+      signature: 'cleanup:worktree-removal-failed',
+      evidence: 'merged pull request cleanup failed',
+      fix_back_eligible: false,
+      status: 'unresolved',
+    },
+  ];
+  return progress;
 }
 
 function addLaterIssue(ledger: LaneLedgerFixture, status?: string): void {
@@ -148,6 +176,154 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
     }, runValidatorPath);
 
     expect(output).toContain('Lane ledger check passed for 1 file(s).');
+  });
+
+  it('accepts a terminal post-merge cleanup failure with a null lane cursor and identity', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setTerminalPostMergeCleanupFailure(ledger);
+      }, runValidatorPath),
+    ).toContain('Lane ledger check passed for 1 file(s).');
+  });
+
+  it('rejects terminal post-merge cleanup failure with lane dispatch identity', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setTerminalPostMergeCleanupFailure(ledger);
+        Object.assign(ledger.lanes[0], {
+          branch: 'issue-102-runtime-beta',
+          worktree: '.worktrees/issue-102-runtime-beta',
+        });
+      }),
+    ).toContain('terminal post-merge cleanup failure requires null lane cursor and dispatch identity');
+  });
+
+  it('requires the merged issue to remain in completed_issues after terminal cleanup failure', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setTerminalPostMergeCleanupFailure(ledger);
+        ledger.completed_issues = [101];
+      }),
+    ).toContain('post-merge cleanup failure issue must remain in completed_issues');
+  });
+
+  it('rejects later same-lane dispatch while post-merge cleanup remains blocked', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setTerminalPostMergeCleanupFailure(ledger);
+        addLaterIssue(ledger, 'running');
+      }),
+    ).toContain('terminal post-merge cleanup failure must not dispatch a later same-lane issue');
+  });
+
+  it('carries blocked cleanup through done before advancing the next queued issue', () => {
+    runCompletedLedgerSequence([
+      {
+        mutate: (ledger) => {
+          addLaterIssue(ledger, 'queued');
+          setTerminalPostMergeCleanupFailure(ledger);
+        },
+        validate: runValidatorPath,
+        assert: (ledger, output) => {
+          const blockedProgress = requireIssueProgress(ledger, '102');
+          expect(output).toContain('Lane ledger check passed for 1 file(s).');
+          expect(ledger.status).toBe('blocked-terminal');
+          expect(ledger.lanes[0].status).toBe('blocked-terminal');
+          expect(blockedProgress.status).toBe('blocked-terminal');
+          expect(blockedProgress.cleanup).toBeUndefined();
+          expect(blockedProgress.blockers).toEqual([
+            {
+              reviewer: 'verification',
+              signature: 'cleanup:worktree-removal-failed',
+              evidence: 'merged pull request cleanup failed',
+              fix_back_eligible: false,
+              status: 'unresolved',
+            },
+          ]);
+          expect(requireIssueProgress(ledger, '103').status).toBe('queued');
+        },
+      },
+      {
+        mutate: (ledger) => {
+          setNonCompletionProgress(requireIssueProgress(ledger, '103'), 'running');
+        },
+        validate: runInvalidValidatorPath,
+        assert: (ledger, output) => {
+          expect(output).toContain('terminal post-merge cleanup failure must not dispatch a later same-lane issue');
+          expect(requireIssueProgress(ledger, '102').status).toBe('blocked-terminal');
+          expect(requireIssueProgress(ledger, '103').status).toBe('running');
+        },
+      },
+      {
+        mutate: (ledger) => {
+          const completedProgress = requireIssueProgress(ledger, '102');
+          completedProgress.status = 'done';
+          completedProgress.cleanup = { ...completedCleanupFixture };
+          completedProgress.blockers = [
+            {
+              reviewer: 'verification',
+              signature: 'cleanup:worktree-removal-failed',
+              evidence: 'cleanup completed during resume',
+              fix_back_eligible: false,
+              status: 'remediated',
+            },
+          ];
+          const nextProgress = requireIssueProgress(ledger, '103');
+          setNonCompletionProgress(nextProgress, 'queued');
+          ledger.status = 'running';
+          Object.assign(requireRootMainSync(ledger), { status: 'not-started', sha: null });
+          Object.assign(ledger.lanes[0], {
+            status: 'queued',
+            current_issue: 103,
+            branch: nextProgress.branch,
+            worktree: nextProgress.worktree,
+            pr: nextProgress.pr,
+            retry_count: nextProgress.retry_count,
+          });
+        },
+        validate: runValidatorPath,
+        assert: (ledger, output) => {
+          const completedProgress = requireIssueProgress(ledger, '102');
+          expect(output).toContain('Lane ledger check passed for 1 file(s).');
+          expect(completedProgress.status).toBe('done');
+          expect(completedProgress.cleanup).toEqual(completedCleanupFixture);
+          expect(completedProgress.blockers).toEqual([
+            {
+              reviewer: 'verification',
+              signature: 'cleanup:worktree-removal-failed',
+              evidence: 'cleanup completed during resume',
+              fix_back_eligible: false,
+              status: 'remediated',
+            },
+          ]);
+          expect(ledger.lanes[0]).toMatchObject({ status: 'queued', current_issue: 103 });
+          expect(requireIssueProgress(ledger, '103').status).toBe('queued');
+        },
+      },
+      {
+        mutate: (ledger) => {
+          const nextProgress = requireIssueProgress(ledger, '103');
+          setNonCompletionProgress(nextProgress, 'running');
+          Object.assign(ledger.lanes[0], {
+            status: 'running',
+            branch: nextProgress.branch,
+            worktree: nextProgress.worktree,
+            pr: nextProgress.pr,
+          });
+        },
+        validate: runValidatorPath,
+        assert: (ledger, output) => {
+          expect(output).toContain('Lane ledger check passed for 1 file(s).');
+          expect(requireIssueProgress(ledger, '102')).toMatchObject({
+            status: 'done',
+            cleanup: completedCleanupFixture,
+            blockers: [{ status: 'remediated' }],
+          });
+          expect(ledger.lanes[0]).toMatchObject({ status: 'running', current_issue: 103 });
+          expect(requireIssueProgress(ledger, '103').status).toBe('running');
+        },
+      },
+    ]);
   });
 
   it.each(['queued', 'running', 'in_review'])('rejects %s lane whose cursor skips the first unfinished issue', (status) => {

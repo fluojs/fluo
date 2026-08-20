@@ -8,6 +8,7 @@ import {
   terminalStatuses,
 } from './lane-ledger-contract.mjs';
 import { validateIssueProgress } from './lane-ledger-progress.mjs';
+import { isPostMergeCleanupFailureProgress } from './lane-ledger-progress-schema.mjs';
 import { validateLaneShape, validateLedgerShape } from './lane-ledger-schema.mjs';
 
 function validateRootRelationship(path, ledger) {
@@ -55,6 +56,10 @@ function validateRootMainSync(path, ledger) {
   }
 }
 
+function findTerminalIssue(lane, progressByIssue) {
+  return lane.queue.find((issue) => progressByIssue.get(issue)?.status === lane.status);
+}
+
 function validateLaneProgressRelationship(lanePath, lane, validation) {
   if (activeStatuses.has(lane.status)) {
     const progress = validation.progressByIssue.get(lane.current_issue);
@@ -95,26 +100,33 @@ function validateLaneProgressRelationship(lanePath, lane, validation) {
       assert(lane.retry_count === progress.retry_count, lanePath, 'current lane and issue progress retry_count must be equal');
     }
   } else if (lane.status !== 'done') {
-    const firstUnfinishedIssue = lane.queue.find((issue) => !validation.completedIssues.has(issue));
-    const progress = validation.progressByIssue.get(firstUnfinishedIssue);
+    const terminalIssue = findTerminalIssue(lane, validation.progressByIssue);
+    const progress = validation.progressByIssue.get(terminalIssue);
     assert(
-      firstUnfinishedIssue !== undefined && progress?.status === lane.status,
+      terminalIssue !== undefined && progress?.status === lane.status,
       lanePath,
       'non-done terminal lane requires matching terminal progress for the first unfinished issue',
     );
+    if (isPostMergeCleanupFailureProgress(progress)) {
+      assert(
+        lane.current_issue === null && lane.branch == null && lane.worktree == null && lane.pr == null,
+        lanePath,
+        'terminal post-merge cleanup failure requires null lane cursor and dispatch identity',
+      );
+    }
     assert(lane.retry_count === progress.retry_count, lanePath, 'terminal lane retry_count must match first unfinished issue progress');
   } else {
     assert(lane.retry_count === 0, lanePath, 'done lane requires retry_count 0');
   }
 }
 
-function classifyQueueEntry(lane, index, completedIssues) {
+function classifyQueueEntry(lane, index, validation) {
   if (lane.status === 'done') {
     return 'done';
   }
   const currentIndex = activeStatuses.has(lane.status)
     ? lane.queue.indexOf(lane.current_issue)
-    : lane.queue.findIndex((issue) => !completedIssues.has(issue));
+    : lane.queue.indexOf(findTerminalIssue(lane, validation.progressByIssue));
   if (index < currentIndex) {
     return 'previous';
   }
@@ -123,7 +135,7 @@ function classifyQueueEntry(lane, index, completedIssues) {
 
 function validateSequentialProgress(lanePath, lane, validation) {
   for (const [index, issue] of lane.queue.entries()) {
-    const position = classifyQueueEntry(lane, index, validation.completedIssues);
+    const position = classifyQueueEntry(lane, index, validation);
     const progress = validation.progressByIssue.get(issue);
     if (position === 'done') {
       assert(progress?.status === 'done', lanePath, 'done lane queue issues must have done issue_progress');
@@ -132,7 +144,17 @@ function validateSequentialProgress(lanePath, lane, validation) {
     } else if (position === 'current' && lane.status === 'merged') {
       assert(validation.completedIssues.has(issue), lanePath, 'merged lane current_issue must appear in completed_issues');
     } else if (position === 'later') {
-      assert(progress === undefined || progress.status === 'queued', lanePath, 'queue entries after current must be absent or queued');
+      const terminalIssue = activeStatuses.has(lane.status)
+        ? undefined
+        : findTerminalIssue(lane, validation.progressByIssue);
+      const terminalProgress = validation.progressByIssue.get(terminalIssue);
+      assert(
+        progress === undefined || progress.status === 'queued',
+        lanePath,
+        isPostMergeCleanupFailureProgress(terminalProgress)
+          ? 'terminal post-merge cleanup failure must not dispatch a later same-lane issue'
+          : 'queue entries after current must be absent or queued',
+      );
     }
   }
 }

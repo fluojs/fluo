@@ -32,7 +32,16 @@ export type IssueProgressFixture = {
         [key: string]: unknown;
       };
   issue_state: string;
+  blockers?: BlockerFixture[];
   [key: string]: unknown;
+};
+
+export type BlockerFixture = {
+  reviewer: string;
+  signature: string;
+  evidence: string;
+  fix_back_eligible: boolean;
+  status: string;
 };
 
 export type LaneFixture = {
@@ -209,6 +218,33 @@ function runMutatedLedger(
     }
     writeFileSync(temporaryLedgerPath, `${JSON.stringify(ledger, null, 2)}\n`);
     return validate(temporaryLedgerPath);
+  } finally {
+    rmSync(temporaryDir, { recursive: true, force: true });
+  }
+}
+
+export type CompletedLedgerSequenceStep = {
+  readonly mutate: (ledger: LaneLedgerFixture) => void;
+  readonly validate: (ledgerPath: string) => string;
+  readonly assert: (ledger: LaneLedgerFixture, output: string) => void;
+};
+
+export function runCompletedLedgerSequence(steps: readonly CompletedLedgerSequenceStep[]): void {
+  const temporaryDir = mkdtempSync(join(tmpdir(), 'fluo-lane-ledger-sequence-'));
+  const temporaryLedgerPath = join(temporaryDir, 'ledger.json');
+
+  try {
+    const ledger: LaneLedgerFixture = JSON.parse(readFileSync(completedFixturePath, 'utf8'));
+    for (const step of steps) {
+      const initialRootStatus = ledger.status;
+      const initialExecutionStatus = ledger.execution.status;
+      step.mutate(ledger);
+      if (ledger.status !== initialRootStatus && ledger.execution.status === initialExecutionStatus) {
+        ledger.execution.status = ledger.status === 'ready' ? 'not-started' : ledger.status;
+      }
+      writeFileSync(temporaryLedgerPath, `${JSON.stringify(ledger, null, 2)}\n`);
+      step.assert(ledger, step.validate(temporaryLedgerPath));
+    }
   } finally {
     rmSync(temporaryDir, { recursive: true, force: true });
   }
