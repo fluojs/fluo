@@ -72,14 +72,27 @@ Preflight는 다음을 모두 확인한다.
 - `authority_scope.pr_merge`가 정확히 `true`이고 `pr_merge_method`가 정확히 `squash`다. 누락되거나 다른 값이면 merge를 추정하지 않는다.
 - `retry_policy`, `execution`, `release_handoffs`, `root_main_sync` metadata가 모두 필수이며 이름, 값, status를 그대로 보존한다. retry count, authority, execution status, release handoff status를 migration 중에 재설정하지 않는다.
 - `source`가 exact `{type, search_run_id, search_ledger}`인지 확인한다. `search-issue`의 `search_run_id`는 source-only grammar `[A-Za-z0-9][A-Za-z0-9+._-]*`를 사용해 내부 `+`를 허용하고, `search_ledger`는 exact `.sisyphus/search-issue/<search_run_id>.json`이어야 한다. `run_id`와 `lane_id`에는 `+`를 허용하지 않는다.
+- search artifact가 exact `{version: 1, search_run_id, selected_issues}`인지 확인한다. ID와 `.sisyphus/search-issue/<search_run_id>.json` path가 일치하고 `selected_issues`가 non-empty unique positive-safe-integer array인지 검증한다. Producer는 complete sibling temporary file을 검증한 뒤 exclusive same-filesystem atomic create를 사용하며 existing target을 덮어쓰지 않는다.
 - `dependency_graph` key는 confirmed positive-safe-integer issue이고 value는 unique positive-safe-integer prerequisite array인지 확인한다. External prerequisite는 value에 허용하지만 duplicate, self dependency, cycle은 거부한다.
 - candidate snapshot과 모든 ledger, worktree 경로의 symlink를 확인하고 `realpath`를 계산한다. path 문자열만으로 동일성을 주장하지 않는다.
 - branch와 worktree가 실제 repository membership에 속하고 ledger의 branch/path와 일치하는지 확인한다. command-owned가 아닌 worktree는 삭제 대상으로 취급하지 않는다.
 - root worktree의 `git symbolic-ref --short HEAD`가 ledger의 base branch와 일치하는지 확인한다. dirty root에서는 root sync를 수행하지 않는다.
 - completed issue마다 flat `issue_progress` evidence가 있고, `review_verdict: merge`, `checks: PASS`, exact reviewer `reviewers.contract: PASS`, `reviewers.code: PASS`, `reviewers.verification: PASS`, 40-character lowercase `merge_commit`, `issue_state: CLOSED`가 모두 확인된다. Nested merge or issue records are invalid.
-- non-completion progress는 `status`, `branch`, `worktree`, `pr`, `verification`, `retry_count`, `blockers`만 허용한다. `merged`는 completion evidence를 추가하지만 cleanup은 금지하고, `done`만 cleanup을 추가한다.
+- non-completion progress는 `status`, `branch`, `worktree`, `pr`, `verification`, `retry_count`, `blockers`만 허용한다. `merged`는 completion evidence를 추가하지만 cleanup은 금지하고, `done`만 cleanup을 추가한다. Post-merge cleanup failure의 `blocked-terminal`만 complete merged evidence를 보존할 수 있다.
 - release handoff는 ready일 때 dedicated single-issue queued lane과 absent progress를 사용하고, non-ready일 때 lane/progress가 모두 `blocked-maintainer-decision`이며 branch/worktree/PR dispatch identity가 없어야 한다.
 - `cleanup`은 authority가 있을 때 정확히 `{status: done, worktree_removed: true, local_branch_deleted: true, remote_branch_deleted: true}`, authority가 없을 때 정확히 `{status: skipped-authority}`만 허용한다. realpath, repository/worktree membership, dirty-state는 live execution gates이며 cleanup object fields가 아니다.
+
+Status evidence matrix:
+
+| status | required evidence | queue effect |
+| --- | --- | --- |
+| `running` | safe branch와 matching worktree; PR은 null 가능 | current issue만 active |
+| `in_review` | running identity, canonical PR, non-empty verification | current issue만 active |
+| `merged` | complete merged evidence, no cleanup | issue는 completed지만 next issue는 locked |
+| post-merge `blocked-terminal` | null lane dispatch identity, complete merged evidence, no cleanup, unresolved non-fix-back blocker | issue는 completed에 남고 later issue는 absent/queued |
+| `done` | complete merged evidence와 exact cleanup variant | next issue advance 가능 |
+
+서로 다른 issue는 같은 non-null branch, worktree, PR identity를 공유할 수 없다. 같은 current issue의 lane/progress mirror는 동일 assignment로 취급한다.
 
 Legacy completion evidence가 이 shape를 충족하지 않으면 `migrate legacy completion evidence to canonical issue_progress`로 실패해야 한다. 이는 버전 bump나 legacy compatibility shim을 허용하지 않는 의도된 실패다. 실제 persistence ledger는 migration evidence로 일부러 failing 상태를 유지하며 자동 수정하지 않는다.
 
@@ -139,7 +152,7 @@ find .opencode/skills -name SKILL.md
 
 ## 5. Strict v1 focused gate
 
-The focused suite has exactly five TEST files and 346 tests, including `verify-lane-ledger-schema.test.ts`. `lane-ledger-schema.mjs` owns root/source/lane shape validation, `lane-ledger-progress-schema.mjs` owns status-specific progress key validation, and `lane-ledger-dependency.mjs` owns dependency graph validation. These implementation modules are not counted as test files:
+The focused suite has exactly five TEST files and 363 tests, including `verify-lane-ledger-schema.test.ts`. `lane-ledger-schema.mjs` owns root/source/lane shape validation, `lane-ledger-progress-schema.mjs` owns status-specific progress key validation, and `lane-ledger-dependency.mjs` owns dependency graph validation. These implementation modules are not counted as test files:
 
 ```bash
 pnpm exec vitest run tooling/governance/verify-lane-ledger.test.ts tooling/governance/verify-lane-ledger-state.test.ts tooling/governance/verify-lane-ledger-progress.test.ts tooling/governance/verify-lane-ledger-identity.test.ts tooling/governance/verify-lane-ledger-schema.test.ts
