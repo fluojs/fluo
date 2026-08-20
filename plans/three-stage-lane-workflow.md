@@ -52,8 +52,8 @@ Make the lane workflow command architecture responsibility-complete and mechanic
 - `pnpm verify:lane-ledger -- <valid fixture>` passes.
 - `pnpm verify:lane-ledger -- <invalid fixture>` fails with a specific invariant error in test coverage.
 - `pnpm exec biome check tooling/governance/lane-ledger-contract.mjs tooling/governance/lane-ledger-contract.d.mts tooling/governance/lane-ledger-schema.mjs tooling/governance/lane-ledger-progress-schema.mjs tooling/governance/lane-ledger-dependency.mjs tooling/governance/lane-ledger-progress.mjs tooling/governance/lane-ledger-state.mjs tooling/governance/verify-lane-ledger.mjs package.json` passes.
-- `pnpm exec vitest run tooling/governance/verify-lane-ledger.test.ts tooling/governance/verify-lane-ledger-state.test.ts tooling/governance/verify-lane-ledger-progress.test.ts tooling/governance/verify-lane-ledger-identity.test.ts tooling/governance/verify-lane-ledger-schema.test.ts` passes with exactly 346 tests.
-- The focused strict v1 suite has exactly five test files and 346 tests, including `verify-lane-ledger-schema.test.ts`. `lane-ledger-schema.mjs` owns root/source/lane shape validation, `lane-ledger-progress-schema.mjs` owns status-specific progress key validation, and `lane-ledger-dependency.mjs` owns dependency graph validation. These implementation modules are not test files; any previous 93, 211, or four-file wording is stale.
+- `pnpm exec vitest run tooling/governance/verify-lane-ledger.test.ts tooling/governance/verify-lane-ledger-state.test.ts tooling/governance/verify-lane-ledger-progress.test.ts tooling/governance/verify-lane-ledger-identity.test.ts tooling/governance/verify-lane-ledger-schema.test.ts` passes with exactly 363 tests.
+- The focused strict v1 suite has exactly five test files and 363 tests, including `verify-lane-ledger-schema.test.ts`. `lane-ledger-schema.mjs` owns root/source/lane shape validation, `lane-ledger-progress-schema.mjs` owns status-specific progress key validation, and `lane-ledger-dependency.mjs` owns dependency graph validation. These implementation modules are not test files; any previous 93, 211, or four-file wording is stale.
 - Command-doc verifier gates check that `.opencode/commands/create-lane.md` and `.opencode/commands/execute-lane.md` document the canonical schema, status, cursor, root-sync, authority, and cleanup prerequisites.
 - `pnpm verify:lane-ledger -- tooling/governance/fixtures/lane-ledger/valid-ready.json tooling/governance/fixtures/lane-ledger/valid-completed-multi-issue.json` passes as the reproducible gate. The raw real ledger `.omo/lanes/lane-2026-08-05-persistence-a.json`, when present, is an expected nonzero strict-v1 migration failure and is never a passing compatibility fixture.
 
@@ -155,7 +155,7 @@ Include the exact root keys `version`, `run_id`, `lane_id`, `status`, `created_b
   - [ ] `create-lane` output is `status: ready`.
   - [ ] `execute-lane` accepts only `ready`, `running`, or terminal-resume ledgers.
   - [ ] Active lanes require an integer `current_issue`; terminal lanes require a `null` `current_issue` and move completion evidence to `issue_progress`.
-  - [ ] Completed ledgers require per-issue `issue_progress` evidence, and `completed_issues` must contain exactly the same issue numbers as completed `issue_progress` entries.
+  - [ ] Completed ledgers require per-issue `issue_progress` evidence, and `completed_issues` must contain exactly the same issue numbers as merge-completed `merged`, `done`, or post-merge cleanup-failure entries. Queue advancement still requires `done`.
   - [ ] Legacy-shaped contents from old `.sisyphus/lane-supervisor/*.json` ledgers are explicitly rejected with migration guidance; rejection is based on invalid legacy contents, not solely on an arbitrary read-only path. No migration ledger is a canonical passing fixture.
 
   **Final strict v1 contract**:
@@ -164,7 +164,7 @@ Include the exact root keys `version`, `run_id`, `lane_id`, `status`, `created_b
   - `authority_scope` explicitly gates issue creation, PR creation, PR merge, command-owned cleanup, root main fast-forward sync, and GitHub Actions publishing. Missing or false cleanup/root-sync authority skips the side effect rather than inferring permission.
   - `retry_policy` and `execution` are persisted fields. Fix-back reuses the same PR, branch, and worktree, and terminal escalation follows the recorded retry policy.
   - `dependency_graph` is sparse. Confirmed positive-safe-integer issue keys map to unique positive-safe-integer prerequisites; external prerequisites are allowed in values, while duplicate, self, and cyclic edges fail closed.
-  - Non-completion progress contains only base execution identity, verification, retry, and blocker fields. `merged` adds completion evidence without cleanup; `done` adds cleanup. Release handoffs never carry branch/worktree/PR dispatch identity and never become completed, merged, or done.
+  - Non-completion progress contains only base execution identity, verification, retry, and blocker fields. `running` requires branch/worktree, `in_review` additionally requires canonical PR and verification, and non-null branch/worktree assignments are globally unique across issues. `merged` adds completion evidence without cleanup; `done` adds cleanup. Post-merge cleanup failure uses `blocked-terminal`, null lane dispatch identity, complete merged evidence, no cleanup, and unresolved non-fix-back blockers. Release handoffs never carry branch/worktree/PR dispatch identity and never become completed, merged, or done.
   - Progress is lane-local: a child completion barrier applies only to that lane item. There is no global batch barrier; completed items proceed immediately to collection, review, fix-back, or merge gates.
   - Strict completion evidence requires terminal lane states, current PR/linked-issue identity, reviewer/check evidence, merge evidence, authorized cleanup evidence, and authorized root-sync evidence. Final reporting is forbidden while non-terminal work or stale evidence remains.
   - Root sync is allowed only on a clean root worktree via `git pull --ff-only origin <base-branch>`; reset, rebase, merge, or dirty-root cleanup is forbidden.
@@ -208,6 +208,7 @@ Include the exact root keys `version`, `run_id`, `lane_id`, `status`, `created_b
   - [ ] `.opencode/commands/search-issue.md` exists.
   - [ ] It states GitHub issue creation is its only high-impact side effect.
   - [ ] It outputs selected issue numbers and a search artifact path.
+  - [ ] The artifact has exactly `version: 1`, `search_run_id`, and non-empty unique positive-safe-integer `selected_issues`, with filename/ID binding and exclusive atomic no-overwrite publication.
   - [ ] It forbids lane planning and PR work.
 
   **QA Scenarios**:
@@ -281,8 +282,8 @@ Include the exact root keys `version`, `run_id`, `lane_id`, `status`, `created_b
   - [ ] `.opencode/commands/execute-lane.md` exists.
   - [ ] It accepts only lane run-id/path and optional resume/authority flags.
   - [ ] It states merge method is always squash.
-  - [ ] Its `Loop and gates` section enforces a lane-local head barrier without a global batch barrier.
-  - [ ] Its `Loop and gates` section requires bounded fix-back on the same branch, worktree, and PR, with retry policy applied before completion evidence is accepted.
+  - [ ] Its `Execution loop invariant` and `Per-lane progress, no global batch barrier` sections enforce a lane-local head barrier without a global batch barrier.
+  - [ ] Its `Bounded fix-back loop` section requires bounded fix-back on the same branch, worktree, and PR, with retry policy applied before completion evidence is accepted.
   - [ ] It runs lane ledger validator before final report.
 
   **QA Scenarios**:
@@ -401,10 +402,10 @@ Include the exact root keys `version`, `run_id`, `lane_id`, `status`, `created_b
 - [ ] 8. End-to-End Pipeline Documentation and Migration Verification
 
   **What to do**: Add an end-to-end command sequence to the command docs:
-  ```bash
+  ```text
   /search-issue
-  /create-lane 2046 2045 2041 --merge-policy supervisor-auto
-  /execute-lane lane-...
+  /create-lane .sisyphus/search-issue/<search_run_id>.json main
+  /execute-lane <lane-id> main
   ```
   Include migration notes that old `lane-supervisor` usage is removed, and verify no stale live references remain.
 
@@ -446,7 +447,7 @@ Include the exact root keys `version`, `run_id`, `lane_id`, `status`, `created_b
   - Run `grep -RIn "lane-supervisor\\|search-to-issue\\|Source choice" .opencode/commands .opencode/agents tooling package.json` and classify every remaining match as migration artifact, validator compatibility, or defect.
 - [ ] F3. Validator Audit
   - Run `pnpm verify:lane-ledger -- tooling/governance/fixtures/lane-ledger/valid-ready.json tooling/governance/fixtures/lane-ledger/valid-completed-multi-issue.json` as the reproducible fixture gate; confirm allowed root/progress statuses, active first-unfinished integer cursors, terminal null cursors, issue_progress-based completion evidence, completed-set consistency, cleanup-before-done rejection, root-sync authority and terminal prerequisites, canonical `fluojs/fluo` PR identity, same-issue canonical PR mirroring allowed, cross-issue PR reuse rejected, and `created_by`/base/worktree rules. Legacy terminal lane-level evidence must be rejected with migration guidance. If `.omo/lanes/lane-2026-08-05-persistence-a.json` is available, assert a separate read-only check exits nonzero.
-  - Run `pnpm exec vitest run tooling/governance/verify-lane-ledger.test.ts tooling/governance/verify-lane-ledger-state.test.ts tooling/governance/verify-lane-ledger-progress.test.ts tooling/governance/verify-lane-ledger-identity.test.ts tooling/governance/verify-lane-ledger-schema.test.ts`; the entire focused validator suite must pass with exactly 346 tests.
+  - Run `pnpm exec vitest run tooling/governance/verify-lane-ledger.test.ts tooling/governance/verify-lane-ledger-state.test.ts tooling/governance/verify-lane-ledger-progress.test.ts tooling/governance/verify-lane-ledger-identity.test.ts tooling/governance/verify-lane-ledger-schema.test.ts`; the entire focused validator suite must pass with exactly 363 tests.
   - Run explicit command-doc verifier gates against `.opencode/commands/create-lane.md` and `.opencode/commands/execute-lane.md` for schema, statuses, cursors, root-sync authority and terminal prerequisites, and cleanup ordering.
   - Keep the pure validator structural and mutating harness live Git/filesystem checks separate; the validator must not perform live identity, cleanup, or root-sync checks.
 - [ ] F4. Manual Pipeline QA
