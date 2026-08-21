@@ -89,7 +89,7 @@ export class AuthModule {}
 ```typescript
 import { Module } from '@fluojs/core';
 import { ConfigModule, ConfigService } from '@fluojs/config';
-import { JwtModule } from '@fluojs/jwt';
+import { JwtModule, type JwtVerifierOptions } from '@fluojs/jwt';
 
 @Module({
   imports: [
@@ -98,15 +98,27 @@ import { JwtModule } from '@fluojs/jwt';
     }),
     JwtModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        algorithms: ['HS256'],
-        // 강력하고 환경별로 고유한 비밀 키를 사용하세요.
-        secret: config.get('JWT_SECRET'),
-        issuer: 'fluoblog-api',
-        audience: 'fluoblog-client',
-        // 보안을 위해 액세스 토큰은 수명이 짧아야 합니다.
-        accessTokenTtlSeconds: 900, // 15분
-      }),
+      useFactory: async (...deps: unknown[]): Promise<JwtVerifierOptions> => {
+        const [config] = deps;
+        if (!(config instanceof ConfigService)) {
+          throw new TypeError('ConfigService dependency is required');
+        }
+
+        const secret = config.snapshot()['JWT_SECRET'];
+        if (typeof secret !== 'string') {
+          throw new TypeError('JWT_SECRET must be a string');
+        }
+
+        return {
+          algorithms: ['HS256'],
+          // 강력하고 환경별로 고유한 비밀 키를 사용하세요.
+          secret,
+          issuer: 'fluoblog-api',
+          audience: 'fluoblog-client',
+          // 보안을 위해 액세스 토큰은 수명이 짧아야 합니다.
+          accessTokenTtlSeconds: 900, // 15분
+        };
+      },
     }),
   ],
 })

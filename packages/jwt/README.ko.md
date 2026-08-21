@@ -66,7 +66,7 @@ JWT 설정이 다른 provider에서 와야 한다면, `JwtModule.forRootAsync(..
 ```typescript
 import { Module } from '@fluojs/core';
 import { ConfigModule, ConfigService } from '@fluojs/config';
-import { JwtModule } from '@fluojs/jwt';
+import { JwtModule, type JwtVerifierOptions } from '@fluojs/jwt';
 
 @Module({
   imports: [
@@ -75,13 +75,25 @@ import { JwtModule } from '@fluojs/jwt';
     }),
     JwtModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: async (config: ConfigService) => ({
-        accessTokenTtlSeconds: 900,
-        algorithms: ['HS256'],
-        audience: 'my-app',
-        issuer: 'my-api',
-        secret: config.getOrThrow('JWT_SECRET'),
-      }),
+      useFactory: async (...deps: unknown[]): Promise<JwtVerifierOptions> => {
+        const [config] = deps;
+        if (!(config instanceof ConfigService)) {
+          throw new TypeError('ConfigService dependency is required');
+        }
+
+        const secret = config.snapshot()['JWT_SECRET'];
+        if (typeof secret !== 'string') {
+          throw new TypeError('JWT_SECRET must be a string');
+        }
+
+        return {
+          accessTokenTtlSeconds: 900,
+          algorithms: ['HS256'],
+          audience: 'my-app',
+          issuer: 'my-api',
+          secret,
+        };
+      },
     }),
   ],
 })
