@@ -121,6 +121,7 @@ describe('GraphQL SSE lifecycle', () => {
     const adapter = createNodeHttpAdapter({ port: 0, shutdownTimeoutMs: 100 });
     const app = await FluoFactory.create(AppModule, { adapter });
     const clientController = new AbortController();
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     const waitForClientOperation = async <T>(operation: Promise<T>, description: string): Promise<T> => {
       let timeout: ReturnType<typeof setTimeout> | undefined;
       const timeoutRejection = new Promise<never>((_resolve, reject) => {
@@ -167,7 +168,7 @@ describe('GraphQL SSE lifecycle', () => {
         ),
         'the GraphQL SSE response',
       );
-      const reader = response.body?.getReader();
+      reader = response.body?.getReader();
 
       if (!reader) {
         throw new Error('Expected the SSE response body to expose a reader.');
@@ -175,25 +176,40 @@ describe('GraphQL SSE lifecycle', () => {
 
       const decoder = new TextDecoder();
       const eventBoundary = /\r?\n\r?\n/;
-      let firstEvent = '';
+      let buffer = '';
+      let dataFrame: string | undefined;
 
-      while (!eventBoundary.test(firstEvent)) {
-        const chunk = await waitForClientOperation(reader.read(), 'a complete GraphQL SSE event');
+      while (!dataFrame) {
+        const chunk = await waitForClientOperation(reader.read(), 'a complete GraphQL SSE data frame');
 
         if (chunk.done) {
-          throw new Error('Expected a complete SSE event before the response stream closed.');
+          throw new Error('Expected a GraphQL SSE data frame before the response stream closed.');
         }
 
-        firstEvent += decoder.decode(chunk.value, { stream: true });
+        buffer += decoder.decode(chunk.value, { stream: true });
 
-        if (firstEvent.length > 64 * 1024) {
-          throw new Error('Expected the first SSE event to fit within 64 KiB.');
+        if (buffer.length > 64 * 1024) {
+          throw new Error('Expected buffered GraphQL SSE frames to fit within 64 KiB.');
+        }
+
+        let boundary = eventBoundary.exec(buffer);
+
+        while (boundary) {
+          const frame = buffer.slice(0, boundary.index);
+          buffer = buffer.slice(boundary.index + boundary[0].length);
+
+          if (frame.split(/\r?\n/).some((line) => line.startsWith('data:'))) {
+            dataFrame = frame;
+            break;
+          }
+
+          boundary = eventBoundary.exec(buffer);
         }
       }
 
       expect(response.status).toBe(200);
       expect(response.headers.get('content-type')).toContain('text/event-stream');
-      expect(firstEvent).toContain('blockingEvents');
+      expect(dataFrame).toContain('blockingEvents');
 
       // When
       clientController.abort();
@@ -201,9 +217,15 @@ describe('GraphQL SSE lifecycle', () => {
       // Then
       await vi.waitFor(expectExactlyOnceAbortLifecycle);
     } finally {
-      clientController.abort();
-      activeIterator?.release();
-      await app.close();
+      try {
+        if (!clientController.signal.aborted) {
+          await reader?.cancel();
+        }
+      } finally {
+        clientController.abort();
+        activeIterator?.release();
+        await app.close();
+      }
     }
 
     expectExactlyOnceAbortLifecycle();

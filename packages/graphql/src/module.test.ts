@@ -97,10 +97,6 @@ function createGuardrailSchema(): GraphQLSchema {
   });
 }
 
-function decodeChunk(value: Uint8Array): string {
-  return Buffer.from(value).toString('utf8');
-}
-
 type GraphqlWebSocketMessage = {
   id?: string;
   payload?: {
@@ -1142,36 +1138,74 @@ describe('@fluojs/graphql', () => {
       port,
     });
 
-    await app.listen();
-
     const controller = new AbortController();
-    const response = await fetch(
-      `http://127.0.0.1:${String(port)}/graphql?query=${encodeURIComponent('subscription { pingStream }')}`,
-      {
-        headers: {
-          accept: 'text/event-stream',
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+
+    try {
+      await app.listen();
+
+      const response = await fetch(
+        `http://127.0.0.1:${String(port)}/graphql?query=${encodeURIComponent('subscription { pingStream }')}`,
+        {
+          headers: {
+            accept: 'text/event-stream',
+          },
+          method: 'GET',
+          signal: controller.signal,
         },
-        method: 'GET',
-        signal: controller.signal,
-      },
-    );
+      );
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get('content-type')).toContain('text/event-stream');
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-type')).toContain('text/event-stream');
 
-    const reader = response.body?.getReader();
+      reader = response.body?.getReader();
 
-    if (!reader) {
-      throw new Error('Expected SSE response body reader.');
+      if (!reader) {
+        throw new Error('Expected SSE response body reader.');
+      }
+
+      const decoder = new TextDecoder();
+      const eventBoundary = /\r?\n\r?\n/;
+      let buffer = '';
+      let dataFrame: string | undefined;
+
+      while (!dataFrame) {
+        const chunk = await reader.read();
+
+        if (chunk.done) {
+          throw new Error('Expected a GraphQL SSE data frame before the response stream closed.');
+        }
+
+        buffer += decoder.decode(chunk.value, { stream: true });
+
+        if (buffer.length > 64 * 1024) {
+          throw new Error('Expected buffered GraphQL SSE frames to fit within 64 KiB.');
+        }
+
+        let boundary = eventBoundary.exec(buffer);
+
+        while (boundary) {
+          const frame = buffer.slice(0, boundary.index);
+          buffer = buffer.slice(boundary.index + boundary[0].length);
+
+          if (frame.split(/\r?\n/).some((line) => line.startsWith('data:'))) {
+            dataFrame = frame;
+            break;
+          }
+
+          boundary = eventBoundary.exec(buffer);
+        }
+      }
+
+      expect(dataFrame).toContain('pingStream');
+    } finally {
+      try {
+        await reader?.cancel();
+      } finally {
+        controller.abort();
+        await app.close();
+      }
     }
-
-    const firstChunk = await reader.read();
-    controller.abort();
-
-    expect(firstChunk.done).toBe(false);
-    expect(decodeChunk(firstChunk.value!)).toContain('pingStream');
-
-    await app.close();
   });
 
   it('streams subscriptions over graphql-ws when websocket transport is enabled', async () => {
