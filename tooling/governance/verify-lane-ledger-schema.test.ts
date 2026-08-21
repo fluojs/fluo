@@ -148,7 +148,7 @@ describe('lane ledger canonical schema', () => {
         ledger.source = {
           type: 'search-issue',
           search_run_id: 'search-2026-08-18',
-          search_ledger: '.sisyphus/search-issue/search-2026-08-18.json',
+          search_ledger: '.opencode/search-issue/search-2026-08-18.json',
         };
       }, runValidatorPath),
     ).toContain('Lane ledger check passed for 1 file(s).');
@@ -160,10 +160,22 @@ describe('lane ledger canonical schema', () => {
         ledger.source = {
           type: 'search-issue',
           search_run_id: '20260805T193026+0900-persistence-comprehensive',
-          search_ledger: '.sisyphus/search-issue/20260805T193026+0900-persistence-comprehensive.json',
+          search_ledger: '.opencode/search-issue/20260805T193026+0900-persistence-comprehensive.json',
         };
       }, runValidatorPath),
     ).toContain('Lane ledger check passed for 1 file(s).');
+  });
+
+  it('rejects the legacy .sisyphus search artifact path', () => {
+    expect(
+      runMutatedReadyLedger((ledger) => {
+        ledger.source = {
+          type: 'search-issue',
+          search_run_id: 'search-2026-08-18',
+          search_ledger: '.sisyphus/search-issue/search-2026-08-18.json',
+        };
+      }),
+    ).toContain('source must match a canonical source variant');
   });
 
   it.each(['+leading', 'nested/source', 'nested\\source', 'source value', 'source%2Fvalue', '검색']) (
@@ -174,7 +186,7 @@ describe('lane ledger canonical schema', () => {
           ledger.source = {
             type: 'search-issue',
             search_run_id: searchRunId,
-            search_ledger: `.sisyphus/search-issue/${searchRunId}.json`,
+            search_ledger: `.opencode/search-issue/${searchRunId}.json`,
           };
         }),
       ).toContain('source must match a canonical source variant');

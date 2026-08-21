@@ -71,8 +71,8 @@ Preflight는 다음을 모두 확인한다.
 - ledger `version`이 `1`이고, `run_id`, `merge_policy`, `authority_scope`, `confirmed_issues`, `completed_issues`, `lanes`가 존재한다.
 - `authority_scope.pr_merge`가 정확히 `true`이고 `pr_merge_method`가 정확히 `squash`다. 누락되거나 다른 값이면 merge를 추정하지 않는다.
 - `retry_policy`, `execution`, `release_handoffs`, `root_main_sync` metadata가 모두 필수이며 이름, 값, status를 그대로 보존한다. retry count, authority, execution status, release handoff status를 migration 중에 재설정하지 않는다.
-- `source`가 exact `{type, search_run_id, search_ledger}`인지 확인한다. `search-issue`의 `search_run_id`는 source-only grammar `[A-Za-z0-9][A-Za-z0-9+._-]*`를 사용해 내부 `+`를 허용하고, `search_ledger`는 exact `.sisyphus/search-issue/<search_run_id>.json`이어야 한다. `run_id`와 `lane_id`에는 `+`를 허용하지 않는다.
-- search artifact가 exact `{version: 1, search_run_id, selected_issues}`인지 확인한다. ID와 `.sisyphus/search-issue/<search_run_id>.json` path가 일치하고 `selected_issues`가 non-empty unique positive-safe-integer array인지 검증한다. Producer는 complete sibling temporary file을 검증한 뒤 exclusive same-filesystem atomic create를 사용하며 existing target을 덮어쓰지 않는다.
+- `source`가 exact `{type, search_run_id, search_ledger}`인지 확인한다. `search-issue`의 `search_run_id`는 source-only grammar `[A-Za-z0-9][A-Za-z0-9+._-]*`를 사용해 내부 `+`를 허용하고, `search_ledger`는 exact `.opencode/search-issue/<search_run_id>.json`이어야 한다. `run_id`와 `lane_id`에는 `+`를 허용하지 않는다.
+- search artifact가 exact `{version: 1, search_run_id, selected_issues}`인지 확인한다. ID와 `.opencode/search-issue/<search_run_id>.json` path가 일치하고 `selected_issues`가 non-empty unique positive-safe-integer array인지 검증한다. Producer는 complete sibling temporary file을 검증한 뒤 exclusive same-filesystem atomic create를 사용하며 existing target을 덮어쓰지 않는다.
 - `dependency_graph` key는 confirmed positive-safe-integer issue이고 value는 unique positive-safe-integer prerequisite array인지 확인한다. External prerequisite는 value에 허용하지만 duplicate, self dependency, cycle은 거부한다.
 - candidate snapshot과 모든 ledger, worktree 경로의 symlink를 확인하고 `realpath`를 계산한다. path 문자열만으로 동일성을 주장하지 않는다.
 - branch와 worktree가 실제 repository membership에 속하고 ledger의 branch/path와 일치하는지 확인한다. command-owned가 아닌 worktree는 삭제 대상으로 취급하지 않는다.
@@ -152,7 +152,7 @@ find .opencode/skills -name SKILL.md
 
 ## 5. Strict v1 focused gate
 
-The focused suite has exactly five TEST files and 363 tests, including `verify-lane-ledger-schema.test.ts`. `lane-ledger-schema.mjs` owns root/source/lane shape validation, `lane-ledger-progress-schema.mjs` owns status-specific progress key validation, and `lane-ledger-dependency.mjs` owns dependency graph validation. These implementation modules are not counted as test files:
+The focused suite has exactly five TEST files and 364 tests, including `verify-lane-ledger-schema.test.ts`. `lane-ledger-schema.mjs` owns root/source/lane shape validation, `lane-ledger-progress-schema.mjs` owns status-specific progress key validation, and `lane-ledger-dependency.mjs` owns dependency graph validation. These implementation modules are not counted as test files:
 
 ```bash
 pnpm exec vitest run tooling/governance/verify-lane-ledger.test.ts tooling/governance/verify-lane-ledger-state.test.ts tooling/governance/verify-lane-ledger-progress.test.ts tooling/governance/verify-lane-ledger-identity.test.ts tooling/governance/verify-lane-ledger-schema.test.ts

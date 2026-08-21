@@ -57,7 +57,7 @@ JSON parse 후 root는 다음 21개 required key와 optional `created_at`만 허
 `source`는 exact `{type, search_run_id, search_ledger}`다.
 
 - `existing-issues`는 두 search field가 `null`이다.
-- `search-issue`의 `search_run_id`는 `[A-Za-z0-9][A-Za-z0-9+._-]*`이며 내부 `+`를 허용한다. `search_ledger`는 정확히 `.sisyphus/search-issue/<search_run_id>.json`이다.
+- `search-issue`의 `search_run_id`는 `[A-Za-z0-9][A-Za-z0-9+._-]*`이며 내부 `+`를 허용한다. `search_ledger`는 정확히 `.opencode/search-issue/<search_run_id>.json`이다.
 - `run_id`와 `lane_id`에는 `+`를 허용하지 않는다.
 
 `authority_scope`는 exact `issue_creation`, `pr_creation`, `pr_merge`, `cleanup_command_worktrees`, `root_main_sync_ff_only`, `publish_via_github_actions`다. 값은 각각 `false`, `true`, `true`, boolean, boolean, `false`다.
@@ -108,7 +108,7 @@ side effect 전에 다음 순서로 preflight한다.
 
 1. lane id 또는 path를 primary `<repo-root>/.omo/lanes/<lane-id>.json`으로 canonicalize한다. path escape, symlink, mismatched filename/identity, non-primary mutation target을 거부한다.
 2. 원본 bytes와 identity를 보존한 채 candidate를 별도 snapshot으로 만들고 pure validator를 실행한다.
-3. focused gate는 정확히 five TEST files와 363 tests다. `lane-ledger-schema.mjs`, `lane-ledger-progress-schema.mjs`, `lane-ledger-dependency.mjs`는 implementation module이며 test file 수에 포함하지 않는다.
+3. focused gate는 정확히 five TEST files와 364 tests다. `lane-ledger-schema.mjs`, `lane-ledger-progress-schema.mjs`, `lane-ledger-dependency.mjs`는 implementation module이며 test file 수에 포함하지 않는다.
 4. root worktree가 registered primary checkout인지, exact base branch인지, clean한지 확인한다. dirty root에서는 merge 후 sync를 실행하지 않는다.
 5. 각 persisted worktree가 registered이고 `.worktrees/<branch>` realpath containment, symlink-free path, exact checked-out branch, clean state를 만족하는지 확인한다.
 6. live PR의 head/base, linked issue, state, checks, reviewed head가 ledger와 일치하는지 확인한다. stale child/reviewer 결과는 사용하지 않는다.
