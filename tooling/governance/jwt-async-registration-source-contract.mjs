@@ -39,8 +39,25 @@ function propertyName(node) {
 
 function propertyInitializer(object, name) {
   const property = object.properties.find((candidate) =>
-    ts.isPropertyAssignment(candidate) && propertyName(candidate.name) === name);
-  return property && ts.isPropertyAssignment(property) ? property.initializer : undefined;
+    (ts.isPropertyAssignment(candidate) || ts.isShorthandPropertyAssignment(candidate))
+    && propertyName(candidate.name) === name);
+  if (property && ts.isPropertyAssignment(property)) {
+    return property.initializer;
+  }
+  return property && ts.isShorthandPropertyAssignment(property) ? property.name : undefined;
+}
+
+function moduleMetadataInitializer(body, targetName) {
+  const statement = body?.statements.find((candidate) =>
+    ts.isExpressionStatement(candidate)
+    && ts.isCallExpression(candidate.expression)
+    && candidate.expression.expression.getText() === 'defineModuleMetadata'
+    && ts.isIdentifier(candidate.expression.arguments[0])
+    && candidate.expression.arguments[0].text === targetName);
+
+  return statement && ts.isExpressionStatement(statement) && ts.isCallExpression(statement.expression)
+    ? statement.expression.arguments[1]
+    : undefined;
 }
 
 export function enforceJwtAsyncRegistrationSourceContract(readText) {
@@ -61,18 +78,15 @@ export function enforceJwtAsyncRegistrationSourceContract(readText) {
     ts.isClassDeclaration(statement) && statement.name?.text === 'ConfigModule');
   const configForRoot = configModule?.members.find((member) =>
     ts.isMethodDeclaration(member) && propertyName(member.name) === 'forRoot');
-  const configMetadataStatement = configForRoot?.body?.statements.find((statement) =>
-    ts.isExpressionStatement(statement)
-    && ts.isCallExpression(statement.expression)
-    && statement.expression.expression.getText() === 'defineModuleMetadata');
-  const configMetadata = configMetadataStatement && ts.isExpressionStatement(configMetadataStatement)
-    && ts.isCallExpression(configMetadataStatement.expression)
-    ? configMetadataStatement.expression.arguments[1]
+  const configMetadata = moduleMetadataInitializer(configForRoot?.body, 'ConfigModuleImpl');
+  const configExports = configMetadata && ts.isObjectLiteralExpression(configMetadata)
+    ? propertyInitializer(configMetadata, 'exports')
     : undefined;
   assert(
     configMetadata && ts.isObjectLiteralExpression(configMetadata)
       && propertyInitializer(configMetadata, 'global')?.getText() === 'loadOptions.global ?? true'
-      && propertyInitializer(configMetadata, 'exports')?.getText().includes('ConfigService'),
+      && configExports && ts.isArrayLiteralExpression(configExports)
+      && configExports.elements.some((element) => ts.isIdentifier(element) && element.text === 'ConfigService'),
     configModulePath,
     'must export ConfigService globally by default for async module factories',
   );
@@ -113,5 +127,15 @@ export function enforceJwtAsyncRegistrationSourceContract(readText) {
     createModuleCall.arguments[5]?.getText() === 'options.global ?? false',
     jwtModulePath,
     'must forward top-level global to module visibility',
+  );
+
+  const createModule = jwtModule?.members.find((member) =>
+    ts.isMethodDeclaration(member) && propertyName(member.name) === 'createModule');
+  const jwtRuntimeMetadata = moduleMetadataInitializer(createModule?.body, 'JwtRuntimeModule');
+  assert(
+    jwtRuntimeMetadata && ts.isObjectLiteralExpression(jwtRuntimeMetadata)
+      && propertyInitializer(jwtRuntimeMetadata, 'global')?.getText() === 'global',
+    jwtModulePath,
+    'must propagate the createModule global parameter to JwtRuntimeModule metadata',
   );
 }
