@@ -157,14 +157,54 @@ describe('Studio sidecar', () => {
     const response = await fetch(`${sidecar.url}/api/events?token=${encodeURIComponent(sidecar.token)}`);
     expect(response.status).toBe(200);
     const reader = response.body?.getReader();
-    expect(reader).toBeDefined();
-    const chunk = await reader!.read();
-    await reader!.cancel();
-    const text = new TextDecoder().decode(chunk.value);
 
-    expect(text).toContain(': fluo studio stream ready');
-    expect(text).toContain(`id: ${sidecar.epoch}:1`);
-    expect(text).toContain('event: snapshot');
+    if (!reader) {
+      throw new Error('Expected the Studio SSE response body to expose a reader.');
+    }
+
+    try {
+      const decoder = new TextDecoder();
+      const eventBoundary = /\r?\n\r?\n/;
+      let buffer = '';
+      let readinessFrame: string | undefined;
+      let replayFrame: string | undefined;
+
+      while (!readinessFrame || !replayFrame) {
+        const chunk = await reader.read();
+
+        if (chunk.done) {
+          throw new Error('Expected Studio readiness and replay frames before the response stream closed.');
+        }
+
+        buffer += decoder.decode(chunk.value, { stream: true });
+
+        if (buffer.length > 64 * 1024) {
+          throw new Error('Expected buffered Studio SSE frames to fit within 64 KiB.');
+        }
+
+        let boundary = eventBoundary.exec(buffer);
+
+        while (boundary) {
+          const frame = buffer.slice(0, boundary.index);
+          buffer = buffer.slice(boundary.index + boundary[0].length);
+          const lines = frame.split(/\r?\n/);
+
+          if (!readinessFrame && lines.every((line) => line.startsWith(':'))) {
+            readinessFrame = frame;
+          } else if (!replayFrame && lines.some((line) => line.startsWith('data:'))) {
+            replayFrame = frame;
+          }
+
+          boundary = eventBoundary.exec(buffer);
+        }
+      }
+
+      expect(readinessFrame).toContain(': fluo studio stream ready');
+      expect(replayFrame).toContain(`id: ${sidecar.epoch}:1`);
+      expect(replayFrame).toContain('event: snapshot');
+    } finally {
+      await reader.cancel();
+    }
   });
 
   it('serves the Studio UI shell with injected sidecar URLs', async () => {

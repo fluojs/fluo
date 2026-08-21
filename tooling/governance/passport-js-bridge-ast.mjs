@@ -42,6 +42,38 @@ function findReturnedObject(functionDeclaration) {
   return returnedObject;
 }
 
+function returnedIdentifier(functionDeclaration) {
+  const returnStatements = functionDeclaration.body?.statements.filter(ts.isReturnStatement) ?? [];
+  const expression = returnStatements.length === 1 ? returnStatements[0].expression : undefined;
+  return expression && ts.isIdentifier(expression) ? expression : undefined;
+}
+
+function isStrategyLoop(node) {
+  if (!ts.isForOfStatement(node) || !isIdentifierNamed(node.expression, 'strategies') ||
+    !ts.isVariableDeclarationList(node.initializer)) {
+    return false;
+  }
+  const [declaration] = node.initializer.declarations;
+  return node.initializer.declarations.length === 1 && isIdentifierNamed(declaration?.name, 'strategy');
+}
+
+function hasRegistryAssignment(strategyLoop, registryName) {
+  let found = false;
+  function visit(node) {
+    if (ts.isFunctionLike(node)) {
+      return;
+    }
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isElementAccessExpression(node.left) && isIdentifierNamed(node.left.expression, registryName) &&
+      node.left.argumentExpression.getText() === 'strategy.name' && node.right.getText() === 'strategy.token') {
+      found = true;
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(strategyLoop.statement);
+  return found;
+}
+
 export function enforcePassportBridgeSourceAst(readText) {
   const bridgePath = 'packages/passport/src/adapters/passport-js.ts';
   const bridgeSource = parseSource(bridgePath, readText(bridgePath));
@@ -86,17 +118,11 @@ export function enforcePassportBridgeSourceAst(readText) {
 
   const modulePath = 'packages/passport/src/module.ts';
   const moduleSource = parseSource(modulePath, readText(modulePath));
-  let hasRegistryAssignment = false;
-  function visit(node) {
-    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-      ts.isElementAccessExpression(node.left) && node.left.expression.getText() === 'registry' &&
-      node.left.argumentExpression.getText() === 'strategy.name' && node.right.getText() === 'strategy.token') {
-      hasRegistryAssignment = true;
-    }
-    ts.forEachChild(node, visit);
-  }
-  visit(moduleSource);
-  if (!hasRegistryAssignment) {
+  const registryFactory = moduleSource.statements.find((statement) =>
+    ts.isFunctionDeclaration(statement) && statement.name?.text === 'createStrategyRegistry');
+  const registry = registryFactory && returnedIdentifier(registryFactory);
+  const strategyLoop = registryFactory?.body?.statements.find(isStrategyLoop);
+  if (!registry || !strategyLoop || !hasRegistryAssignment(strategyLoop, registry.text)) {
     fail(modulePath, 'must map each named strategy to its provider token');
   }
 }

@@ -522,11 +522,31 @@ gh issue create --title "<draft title>" --body "<draft body>" --label "source:pa
 
 등록 전 `gh label list` 결과에 없는 label은 제거하거나 보류 사유로 보고한다. label을 임의 생성하지 않는다. `fluo-package-issue-registration-reviewer`가 `security-private`, `support-discussion`, duplicate, low-confidence, 또는 label mismatch로 `defer`/`reject`한 draft는 등록하지 않는다.
 
-## 14. Create-lane Handoff Recommendation
+## 14. Search Artifact and Create-lane Handoff
 
-등록 후 이 커맨드는 구현 순서를 직접 lane으로 확정하지 않는다. 생성된 issue 목록과 보류/중복 후보를 요약하고, 사람이 다음 단계에서 `/create-lane`으로 실행 범위를 확정할 수 있도록 handoff command를 제안한다.
+등록 후 이 커맨드는 구현 순서를 lane으로 확정하지 않는다. 생성된 issue 목록과 보류/중복 후보를 요약하고, 사람이 다음 단계에서 `/create-lane`으로 실행 범위를 확정할 수 있도록 handoff artifact와 command를 제공한다.
 
-Search ledger를 생성한 경우 `.sisyphus/search-issue/<run-id>.json` 경로와 `search_run_id`를 최종 출력에 포함한다. Ledger를 생성하지 않은 단순 issue-number handoff라면 `search_run_id: none`을 명시하고 `/create-lane <created issue numbers> <base-branch>` 형태만 제안한다.
+등록된 issue가 하나 이상이면 exact 3-key search artifact를 `.opencode/search-issue/<search_run_id>.json`에 생성한다.
+
+```json
+{
+  "version": 1,
+  "search_run_id": "search-2026-08-18T10+09-runtime",
+  "selected_issues": [2046, 2045, 2041]
+}
+```
+
+Artifact contract:
+
+1. root key는 정확히 `version`, `search_run_id`, `selected_issues`다. unknown key와 lane planning field는 금지한다.
+2. `version`은 정확히 `1`이다.
+3. `search_run_id`는 `[A-Za-z0-9][A-Za-z0-9+._-]*`인 safe basename이다. `.` 또는 `.lock`으로 끝나면 안 되며 artifact path의 basename과 정확히 일치해야 한다.
+4. `selected_issues`는 중복 없는 positive safe integer의 non-empty array다. registration triage에서 `register`로 판정되어 실제 등록에 성공했고 handoff 대상으로 선택된 issue만 포함한다. deferred, rejected, duplicate candidate는 포함하지 않는다.
+5. 등록된 issue가 0개면 artifact를 생성하지 않고 `search_run_id: none`을 보고한다.
+
+Publication 전에 canonical primary repository root를 resolve하고 target을 exact `<primary-root>/.opencode/search-issue/<search_run_id>.json`으로 bind한다. Canonical path containment로 target이 primary root 내부인지 확인하며 string-prefix 비교로 대체하지 않는다. 기존 `.opencode`와 `search-issue` path component는 각각 `lstat`으로 확인하고 symbolic link면 publication을 거부한다.
+
+Artifact는 target과 같은 filesystem의 sibling temporary file에 완전한 JSON으로 작성하고 위 contract를 검증한 뒤 exclusive no-replace atomic create로 publish한다. Existing target collision은 기존 target을 byte-for-byte 보존하고 temporary file만 제거한다. Current attempt가 target을 생성하기 전 validation 또는 publication이 실패하면 target은 absent 상태여야 하고 temporary file을 제거한다. Failure cleanup은 current attempt가 생성하지 않은 target을 절대 제거하지 않는다.
 
 정렬 기준:
 
@@ -535,7 +555,7 @@ Search ledger를 생성한 경우 `.sisyphus/search-issue/<run-id>.json` 경로�
 3. 기반 layer 우선: `foundation` → `http-runtime` / `request-pipeline` / `ui` / `auth` → `infra-messaging` / `persistence` / `protocol-adapters` → `cli`
 4. 계약 risk 우선: `breaking` / `behavior-change` > `doc-only` / `none`
 
-정렬은 `/create-lane` 입력 제안일 뿐이며, 실제 lane queue와 dependency graph는 `/create-lane`의 사용자 gate를 통과한 뒤에만 확정된다.
+정렬과 `selected_issues`는 `/create-lane` 입력 후보일 뿐이다. 실제 confirmed issue, lane queue, dependency graph는 `/create-lane`의 human gate를 통과한 뒤에만 확정된다.
 
 ## 15. Output Contract
 
@@ -549,6 +569,6 @@ Search ledger를 생성한 경우 `.sisyphus/search-issue/<run-id>.json` 경로�
 - draft ID → issue title 매핑 표
 - 등록된 이슈 표
 - 보류/중복 표
-- search ledger path 또는 `search_run_id: none`
-- `/create-lane <created issue numbers> <base-branch>` handoff command
+- search artifact path와 `selected_issues`, 또는 `search_run_id: none`
+- `/create-lane .opencode/search-issue/<search_run_id>.json <base-branch>` 또는 `/create-lane <created issue numbers> <base-branch>` handoff command
 - handoff 정렬 근거와 `/create-lane`에서 다시 확인해야 할 suggested additions

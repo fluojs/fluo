@@ -1,237 +1,277 @@
 ---
-description: execute-lane — create-lane이 만든 lane ledger를 기준으로 issue 구현, PR 리뷰, fix-back, gated merge/cleanup을 진행하는 fluo execution harness.
+description: execute-lane — canonical v1 lane ledger를 strict preflight와 live Git gates 아래에서 drain하는 execution harness.
 argument-hint: "<lane-id|lane-ledger-path> [resume|--full-auto] [base-branch]"
 ---
 
 # execute-lane
 
-이 커맨드는 `/create-lane`이 생성한 `.omo/lanes/<lane-id>.json`을 실행하는 **execution harness**다. source discovery나 lane planning을 다시 하지 않고, ledger에 고정된 lane head issue만 순서대로 `/issue-to-pr`, `/pr-to-merge`에 위임한다.
+`execute-lane`은 `/create-lane`이 만든 canonical v1 ledger의 유일한 consumer다. source discovery, issue selection, lane grouping을 다시 하지 않고 ledger에 고정된 unlocked head issue를 `/issue-to-pr`와 `/pr-to-merge`에 위임한다.
+
+Standalone verifier는 arbitrary read-only path를 검증할 수 있다. mutation authority는 primary repository의 canonical `.omo/lanes/<lane-id>.json`에만 있으며, candidate가 strict validation을 통과하기 전에는 마지막 valid ledger를 교체하지 않는다.
 
 ## 사용법
 
-```
+```text
 /execute-lane <lane-id|lane-ledger-path> [resume|--full-auto] [base-branch]
 ```
 
 예시:
 
-- `/execute-lane lane-2026-06-01-runtime-a main`
-- `/execute-lane .omo/lanes/lane-2026-06-01-runtime-a.json resume main`
-- `/execute-lane lane-2026-06-01-runtime-a --full-auto main`
+- `/execute-lane lane-2026-08-18-runtime-a main`
+- `/execute-lane .omo/lanes/lane-2026-08-18-runtime-a.json resume main`
+- `/execute-lane lane-2026-08-18-runtime-a --full-auto main`
 
-base branch 기본값은 lane ledger의 `base_branch`이며, ledger에 없을 때만 `main`을 사용한다. invocation의 base branch가 ledger와 다르면 실행하지 말고 `needs-human-check`로 멈춘다.
+base branch 기본값은 ledger의 `base_branch`다. invocation에 base branch를 주면 ledger와 exact equal이어야 하며, 다르면 side effect 없이 `needs-human-check-terminal`로 멈춘다.
+
+`resume`은 persisted status와 live GitHub/repository state를 재검증한 뒤 같은 queue를 계속 drain한다. source, confirmed issue, suggested exclusion, backlog, release handoff, queue, lane grouping, dependency graph를 재작성하지 않는다. `--full-auto`는 `supervisor-full-auto` ledger만 소비하며 authority, review, dependency, dirty-state, security, legal, release gate를 우회하지 않는다.
 
 ## 책임 경계
 
 이 커맨드가 소유하는 것:
 
-1. **ledger 로드/검증** — lane id 또는 path를 해석하고 `.omo/lanes/<lane-id>.json`의 schema, base branch, authority scope, lane 상태를 확인한다.
-2. **lane head dispatch** — unlocked lane의 head issue만 `/issue-to-pr <issue> <base-branch>`로 위임한다.
-3. **PR collection** — issue, branch, worktree, PR URL, verification summary를 ledger에 기록한다.
-4. **central review gate** — 각 PR에 `/pr-to-merge <pr> <issue> <base-branch>`를 호출한다.
-5. **bounded fix-back loop** — `block` verdict의 fixable blocker를 같은 PR/branch/worktree에 `/issue-to-pr --fix-back`으로 되돌린다.
-6. **merge approval gate** — `/pr-to-merge` verdict, checks, ledger authority, 사용자 승인을 모두 확인한 뒤에만 merge를 고려한다.
-7. **cleanup/root sync gate** — PR merge 및 linked issue close 확인 후 명시 authority가 있는 command-owned worktree/branch만 정리한다.
-8. **release handoff** — release/publish issue는 OpenCode 실행 loop에서 처리하지 않고 GitHub Actions Changesets release workflow handoff로 기록한다.
+1. canonical ledger path/identity 해석과 immutable strict preflight.
+2. persisted ledger와 live branch/worktree/PR/check/issue 상태 parity 확인.
+3. unlocked lane head의 `/issue-to-pr` dispatch와 결과 수집.
+4. 각 PR의 read-only `/pr-to-merge` central gate.
+5. 같은 PR/branch/worktree에서 bounded fix-back과 재검토.
+6. merge policy, authority, checks, dependency, approval을 통과한 squash merge.
+7. MERGED/CLOSED 확인 후 command-owned worktree cleanup과 optional root fast-forward sync.
+8. release-only issue의 maintainer handoff와 terminal output.
 
 이 커맨드가 소유하지 않는 것:
 
-- issue 발굴/등록: `/search-issue`
-- lane plan 생성/수정/suggested additions: `/create-lane`
-- 구현 세부: `/issue-to-pr`와 `fluo-issue-implementer`
-- PR review 세부: `/pr-to-merge`와 reviewer agents
-- local publish: 절대 금지, release/publish는 GitHub Actions Changesets workflow 경계를 따른다.
+- issue discovery/audit/registration: `/search-issue`
+- issue selection/lane planning/ledger creation: `/create-lane`
+- 구현 세부: `/issue-to-pr`와 `@fluo-issue-implementer`
+- review 세부: read-only `/pr-to-merge`와 three reviewers
+- package version/publish: Changesets와 `.github/workflows/release.yml`
+
+## Strict root and source contract
+
+JSON parse 후 root는 다음 21개 required key와 optional `created_at`만 허용한다.
+
+`version`, `run_id`, `lane_id`, `status`, `created_by`, `base_branch`, `source`, `merge_policy`, `pr_merge_method`, `authority_scope`, `retry_policy`, `execution`, `confirmed_issues`, `suggested_but_excluded`, `backlog_candidates`, `release_handoffs`, `completed_issues`, `issue_progress`, `lanes`, `dependency_graph`, `root_main_sync`
+
+`version: 1`, `created_by: create-lane`, `run_id === lane_id`, path-safe lane identity, safe `base_branch`, strict UTC optional `created_at`이 필요하다. Unknown root key, producer migration marker, nested legacy evidence, missing identity는 fail closed다.
+
+`source`는 exact `{type, search_run_id, search_ledger}`다.
+
+- `existing-issues`는 두 search field가 `null`이다.
+- `search-issue`의 `search_run_id`는 `[A-Za-z0-9][A-Za-z0-9+._-]*`이며 내부 `+`를 허용한다. `search_ledger`는 정확히 `.opencode/search-issue/<search_run_id>.json`이다.
+- `run_id`와 `lane_id`에는 `+`를 허용하지 않는다.
+
+`authority_scope`는 exact `issue_creation`, `pr_creation`, `pr_merge`, `cleanup_command_worktrees`, `root_main_sync_ff_only`, `publish_via_github_actions`다. 값은 각각 `false`, `true`, `true`, boolean, boolean, `false`다.
+
+`retry_policy`는 exact `retry_count_is_terminal`, `max_same_failure_repeats`, `max_wall_clock_minutes`, `stop_on_child_contract_error`다. `supervisor-full-auto`만 `retry_count_is_terminal: false`이며 나머지 merge policy는 `true`다.
+
+`execution`은 exact `status`, `last_command`, `last_updated`다. ready ledger는 `not-started`와 null command/timestamp를 사용하고, 그 외에는 root status와 일치하는 status 및 non-empty command/timestamp를 기록한다.
+
+## Status, queue, and progress contract
+
+root status는 `ready`, `running`, `done`, `blocked-terminal`, `needs-human-check-terminal`, `blocked-budget-exhausted`, `blocked-maintainer-decision`, `blocked-child-contract-error`, `blocked-ledger-conflict`다. lane/progress는 active `queued`, `running`, `in_review`, `merged`와 같은 terminal status를 사용한다.
+
+| queue position | required progress |
+| --- | --- |
+| prior entry | `done` |
+| current entry | lane status와 matching progress status |
+| later entry | absent 또는 `queued` |
+| merged cursor | current issue가 `completed_issues`에 있고 matching `merged` progress |
+| post-merge cleanup failure | cleanup authority가 true일 때만 terminal `blocked-terminal` progress가 merged evidence를 보존하고 later entry는 absent 또는 `queued` |
+| done lane | 모든 queue issue가 `done` progress |
+
+active lane의 `current_issue`는 positive integer이며 queue에서 `completed_issues`에 없는 첫 issue다. terminal lane은 `current_issue: null`, canonical lane `pr: null`이다. 같은 lane 다음 issue는 이전 issue가 `done` progress가 되기 전 dispatch하지 않는다. `completed_issues`는 merge-completed issue 집합이며 `merged`, `done`, post-merge cleanup failure progress issue와 exact equal이어야 한다.
+
+queued lane에 progress가 없으면 branch/worktree/PR은 null이고 retry count는 0이다. progress가 있으면 lane과 progress의 branch/worktree는 양쪽 모두 absent 또는 exact equal이고, PR은 canonical normalization 후 equal이며 retry count도 같다. `running`은 safe branch와 matching worktree가 필수지만 PR은 null일 수 있다. `in_review`는 branch/worktree, canonical `fluojs/fluo` PR, non-empty verification이 필수다. `merged`도 canonical PR identity가 필수다. 서로 다른 issue의 non-null branch와 worktree는 각각 globally unique해야 한다.
+
+일반 lane key는 exact `name`, `queue`, `current_issue`, `status`, `branch`, `worktree`, `pr`, `retry_count`다. `blocked-child-contract-error`만 exact `current_blocker: {signature, evidence}`를 추가한다.
+
+status별 `issue_progress` key allowlist는 다음과 같다.
+
+- non-completion (`queued`, `running`, `in_review`, terminal blocker statuses): `status`, `branch`, `worktree`, `pr`, `verification`, `retry_count`, `blockers`만 허용한다.
+- `merged`: base key에 `review_verdict`, `checks`, `reviewers`, `reviewed_head`, `commits`, `merge_commit`, `issue_state`를 추가한다. `cleanup`은 없다.
+- `done`: merged key에 `cleanup`을 추가한다.
+- post-merge cleanup failure는 `blocked-terminal`에 한해 complete merged key를 보존할 수 있지만 `cleanup`은 금지한다.
+
+`reviewers`는 exact `contract`, `code`, `verification`이다. blocker는 exact `reviewer`, `signature`, `evidence`, `fix_back_eligible`, `status`이며 blocker `status`는 정확히 `unresolved | remediated`다. merged/done evidence는 `review_verdict: merge`, `checks: PASS`, three reviewer PASS, 40-character `merge_commit`, `issue_state: CLOSED`를 요구한다. Legacy nested merge/issue/cleanup evidence와 status에 맞지 않는 completion evidence는 fail closed다.
+
+cleanup authority가 true인 done progress는 exact `{status: done, worktree_removed: true, local_branch_deleted: true, remote_branch_deleted: true}`다. authority가 false이면 cleanup failure를 만들 수 없고 즉시 `done` progress로 전환해 exact `{status: skipped-authority}`를 기록한다.
+
+## Dependency and release contract
+
+`dependency_graph`는 sparse object다. key는 confirmed positive-safe-integer issue이며 value는 unique positive-safe-integer prerequisite array다. external prerequisite는 value에 허용되지만 duplicate, self dependency, cycle은 금지한다. dispatch와 merge 직전에 모든 prerequisite의 current GitHub/repository completion evidence를 확인한다.
+
+release handoff issue는 dedicated single-issue lane이다. ready ledger에서는 progress 없이 queued다. 실행 후 lane/progress는 `blocked-maintainer-decision`이며 branch, worktree, PR identity가 없어야 한다. release handoff를 `/issue-to-pr`로 dispatch하거나 completed, merged, done으로 기록하지 않는다.
 
 ## Ledger preflight
 
-실행 전 반드시 확인한다.
+side effect 전에 다음 순서로 preflight한다.
 
-- ledger path가 `.omo/lanes/` 아래이거나 명시된 lane ledger path다.
-- `created_by`가 `create-lane`이거나 호환 가능한 migration marker가 있다.
-- `base_branch`가 invocation과 충돌하지 않는다.
-- root worktree status를 확인하고 dirty이면 root sync는 금지한다.
-- lane status와 GitHub/repo 상태가 충돌하지 않는다.
-- `authority_scope.cleanup_command_worktrees`와 `authority_scope.root_main_sync_ff_only`를 정확한 boolean으로 확인한다. 필드가 누락되었거나 `false`이거나 해석할 수 없으면 해당 side effect는 금지하고 `skipped-authority`로 기록한다.
-- `authority_scope.publish_via_github_actions`는 release handoff와 별개이며, 이 커맨드는 값과 무관하게 publish를 실행하지 않는다.
-- `confirmed_issues`와 lane queue가 일치한다.
-- 실행 중인 worker/reviewer background task가 ledger에 남아 있으면 먼저 결과 수집 또는 상태 확인을 한다.
+1. lane id 또는 path를 primary `<repo-root>/.omo/lanes/<lane-id>.json`으로 canonicalize한다. path escape, symlink, mismatched filename/identity, non-primary mutation target을 거부한다.
+2. 원본 bytes와 identity를 보존한 채 candidate를 별도 snapshot으로 만들고 pure validator를 실행한다.
+3. focused gate는 정확히 five TEST files와 364 tests다. `lane-ledger-schema.mjs`, `lane-ledger-progress-schema.mjs`, `lane-ledger-dependency.mjs`는 implementation module이며 test file 수에 포함하지 않는다.
+4. root worktree가 registered primary checkout인지, exact base branch인지, clean한지 확인한다. dirty root에서는 merge 후 sync를 실행하지 않는다.
+5. 각 persisted worktree가 registered이고 `.worktrees/<branch>` realpath containment, symlink-free path, exact checked-out branch, clean state를 만족하는지 확인한다.
+6. live PR의 head/base, linked issue, state, checks, reviewed head가 ledger와 일치하는지 확인한다. stale child/reviewer 결과는 사용하지 않는다.
+7. lane cursor, dependency, release identity, authority, retry, execution, root sync relationship을 확인한다.
+8. candidate update마다 strict validation 성공 후에만 atomic replace한다. 실패하면 마지막 valid ledger를 유지하고 `blocked-ledger-conflict`로 멈춘다.
+
+Authority 누락, false, ambiguous state를 사용자 승인으로 추정해 보충하지 않는다. Side effect별 authority를 exact boolean으로 확인하고 fail closed한다.
 
 ## Execution loop invariant
 
-`execute-lane`은 단발성 dispatch command가 아니라 **lane drain loop**다. 실행을 시작했다면 아래 불변식을 지킨다.
+`execute-lane`은 단발 dispatch가 아니라 모든 lane을 terminal까지 drain하는 loop다.
 
-1. 최종 보고 금지 조건:
-   - `queued`, `running`, `in_review`, `merged` 상태 lane이 남아 있음
-   - `block` verdict를 받았지만 retry policy상 fix-back 여지가 남아 있음
-   - 선행 issue merge 이후 unlock된 후속 issue가 남아 있음
-   - evidence/check 상태가 pending, skipped, stale, in_progress임
-2. 진짜 terminal 상태는 `done`, `blocked-terminal`, `needs-human-check-terminal`, `blocked-budget-exhausted`, `blocked-maintainer-decision`, `blocked-child-contract-error`, `blocked-ledger-conflict`뿐이다.
-3. 각 lane은 항상 queue의 head issue만 실행한다.
-4. `/pr-to-merge`의 `block`은 먼저 fix-back 입력으로 취급한다.
-5. 모든 lane이 `done` 또는 진짜 terminal 상태이고 ledger가 현재 GitHub/repo 상태와 일치할 때만 최종 보고한다.
+1. 각 lane은 queue의 head issue 하나만 실행한다.
+2. unlocked lane은 병렬 dispatch할 수 있지만 각 lane의 state transition은 독립적이다.
+3. `block` verdict는 terminal 결과가 아니라 먼저 same-PR fix-back input이다.
+4. queued/running/in_review/merged lane, retry 여지가 있는 blocker, pending/stale evidence, unlock된 후속 issue가 남으면 final report를 내지 않는다.
+5. 모든 lane이 `done` 또는 terminal blocker status이고 strict ledger와 live state가 일치할 때만 final report를 낸다. Strict post-merge cleanup failure는 terminal `blocked-terminal`로 보고할 수 있다.
 
 ### Per-lane progress, no global batch barrier
 
-Lane 간 진행 판단은 독립적이다. 여러 unlocked lane head issue를 동시에 dispatch한 경우에도, 먼저 완료된 lane item은 다른 lane worker 완료를 기다리지 않고 즉시 PR collection → `/pr-to-merge` → fix-back/merge gate로 진행해야 한다.
+먼저 완료된 lane item은 다른 worker를 기다리지 않고 PR collection, strict candidate update, `/pr-to-merge`, fix-back 또는 merge gate로 즉시 진행한다.
 
-- 허용되는 barrier는 **같은 lane 내부**의 head issue barrier뿐이다. 같은 lane의 다음 issue는 현재 head issue가 merge되어 `completed_issues`에 기록되기 전까지 dispatch하지 않는다.
-- 금지되는 barrier는 **전체 lane batch barrier**다. 예를 들어 6개 lane을 dispatch했다면 6개 `/issue-to-pr`가 모두 끝날 때까지 기다린 뒤 한꺼번에 PR collection 또는 `/pr-to-merge`를 시작하지 않는다.
-- child completion barrier는 해당 child/lane item의 완료 보고 없이 그 item의 PR 생성, fix-back 완료, merge gate를 진행하지 말라는 뜻이다. 다른 lane item의 완료를 막는 전역 join 조건으로 해석하지 않는다.
-- PR URL 또는 명시적 blocker가 수집된 lane item은 다른 dispatched item 상태와 무관하게 즉시 다음 gate를 평가한다.
-- runner는 background child 완료 이벤트 또는 수집 가능한 완료 보고를 발견할 때마다 해당 lane item만 ledger에 반영하고, 그 lane item의 다음 gate를 즉시 평가한다.
+- child completion barrier는 해당 lane item의 완료 보고 없이는 그 item의 다음 gate로 가지 않는다는 lane-local barrier다.
+- 같은 lane의 다음 issue는 current issue가 `done` progress가 되기 전 dispatch하지 않는다.
+- 여러 lane worker를 모두 join한 뒤 일괄 review하는 global batch barrier는 금지한다.
+- PR URL 또는 explicit blocker가 수집되면 남은 worker 수와 무관하게 해당 item을 처리한다.
 
 #### Background completion event handling
 
-완료 알림을 받은 순간에는 남은 worker 수를 이유로 대기하거나 상태 보고만 하고 멈추지 않는다. 해당 알림이 가리키는 lane item에 대해 아래 순서를 즉시 수행한다.
+완료 알림을 받으면 다음을 즉시 수행한다.
 
-1. `background_output(<task_id>)`로 완료 보고를 수집한다.
-2. 보고된 PR URL/branch/worktree/verifier summary 또는 blocker를 해당 lane item에 기록한다.
-3. PR URL이 있으면 즉시 `/pr-to-merge <pr> <issue> <base-branch>`를 호출한다.
-4. `merge | block | needs-human-check` verdict를 해당 lane item에 기록한다.
-5. `block`이면 같은 PR/branch/worktree로 fix-back loop를 시작하고, `merge`이면 merge approval gate를 평가하며, `needs-human-check`이면 terminal 여부를 판단한다.
-6. 이 전체 흐름은 다른 lane worker 완료 여부와 독립적으로 진행한다.
-
-금지 예시: “3 tasks still in progress” 같은 알림 문구를 근거로 완료된 lane item의 PR collection, `/pr-to-merge`, fix-back/merge gate를 뒤로 미루지 않는다.
+1. `background_output(<task_id>)`으로 해당 child 결과를 수집한다.
+2. issue, branch, worktree, PR, verification 또는 blocker를 candidate의 해당 progress에 기록한다.
+3. candidate를 strict validate하고 성공한 경우에만 ledger를 atomic replace한다.
+4. PR이 있으면 즉시 `/pr-to-merge <pr> <issue> <base-branch>`를 호출한다.
+5. exact `merge | block | needs-human-check` verdict를 schema가 허용하는 형태로 처리한다. `block`은 `blockers`에 기록할 수 있지만, `merge` verdict의 completion fields는 PR이 실제 MERGED가 되기 전 `in_review` progress에 쓰지 않고 harness-local gate state로 유지한다.
+6. `block`은 same-PR fix-back, `merge`는 merge execution contract, `needs-human-check`는 policy와 terminal escalation을 평가하고, persisted candidate는 매 transition마다 다시 strict validate한다.
+7. 다른 lane worker가 남았다는 이유로 이 흐름을 미루지 않는다.
 
 ## Worker dispatch
 
-각 unlocked lane head issue에 대해 `/issue-to-pr <issue-number|url> <base-branch>`를 호출한다.
+unlocked head issue는 `/issue-to-pr <issue> <base-branch>`로 위임한다. 신규 작업은 dedicated `.worktrees/<branch>`를 사용하고 fix-back은 기존 PR/branch/worktree를 재사용한다.
 
-worker prompt에는 반드시 다음을 포함한다.
+`/issue-to-pr` harness는 명시 authority 아래 branch/worktree 준비, push, PR 생성/갱신을 조율할 수 있다. scoped implementer child는 할당 worktree에서 구현·검증·commit만 수행하며 직접 push, PR 생성, merge, issue close, cleanup, publish를 하지 않는다. 어떤 child도 merge/cleanup/publish authority를 갖지 않는다.
 
-```md
-Use /issue-to-pr for this issue.
-Rules:
-- fresh dedicated worktree only under .worktrees/
-- respect existing docs/contract guardrails
-- create PR only; do not merge, close issue, push cleanup, or remove worktree/branch
-- report issue, branch, worktree, PR URL, verification summary, remaining risks
-```
-
-PR URL이나 verification summary가 불명확하면 terminal로 끝내지 말고 같은 worker session에 1회 이상 “PR URL/branch/worktree/verification 또는 blocker를 반드시 보고하라”고 재지시한다. 재지시 후에도 결과가 없고 repo/GitHub read-only 확인에서 worktree/branch/PR이 없으면 `blocked-child-contract-error`로 표시한다.
+결과는 issue, branch, worktree, PR URL, verification summary, remaining risks를 포함해야 한다. 누락되면 같은 child session에 정확히 한 번 contract-complete report를 재요청한다. 재요청 후에도 결과가 없고 read-only repo/GitHub 확인으로 복구할 수 없으면 lane/progress를 `blocked-child-contract-error`로 기록하고 exact blocker evidence를 남긴다.
 
 ## Central review gate
 
-PR마다 `/pr-to-merge <pr-url|number> <linked-issue> <base-branch>`를 호출한다.
+각 PR은 read-only `/pr-to-merge <pr> <issue> <base-branch>`로 검토한다. contract, code, verification reviewer가 모두 실행되어야 하며 허용 verdict는 정확히 다음 셋이다.
 
-허용 verdict는 정확히 다음 셋이다.
-
-```
+```text
 merge | block | needs-human-check
 ```
 
-`/pr-to-merge`는 read-only gate이므로 branch/worktree/PR state를 바꾸지 않는다. 실제 merge 판단과 실행은 이 커맨드의 merge gate와 명시 authority를 별도로 통과해야 한다.
+`/pr-to-merge`는 파일, branch, worktree, PR state를 변경하지 않는다. `merge` verdict도 실제 merge authority가 아니며, blocker는 stable signature, evidence, fix-back eligibility를 제공해야 한다.
 
 ## Bounded fix-back loop
 
-`/pr-to-merge` verdict가 `block`이면 같은 branch / 같은 worktree / 같은 PR로 fix-back을 지시한다. 새 PR을 만들지 않는다.
+`block`이면 `/issue-to-pr --fix-back`에 같은 issue, PR, branch, worktree와 exact blocker만 전달한다. 새 branch/worktree/PR은 만들지 않는다.
 
-- `retry_count`는 PR/lane item별로 증가한다.
-- `retry_count <= 2`: 같은 `/issue-to-pr` worker 컨텍스트에 좁은 blocker 해결만 재지시한다.
-- `retry_count >= 3`: 기본 interactive mode에서는 `needs-human-check-terminal`로 escalate한다.
-- `--full-auto`: `retry_count >= 3`만으로 멈추지 않되 같은 blocker signature가 3회 반복되거나 child command contract error가 있으면 `blocked-*` 상태로 멈춘다.
-- fix-back 이후에는 반드시 동일 PR에 대해 `/pr-to-merge`를 재실행한다.
-- maintainer-only decision, legal/security disclosure, release policy exception처럼 자동 수정으로 판단할 수 없는 경우에만 terminal escalation으로 전환한다.
-
-fix-back prompt에는 반드시 다음을 포함한다.
-
-```md
-Use /issue-to-pr fix-back mode for the existing PR.
-ISSUE: <issue-number>
-PR: <pr-url>
-BRANCH: <existing-branch>
-WORKTREE: <existing-worktree>
-BLOCKERS:
-- <exact blocker from /pr-to-merge>
-Rules:
-- Work only inside the existing WORKTREE.
-- Reuse the existing branch and PR; do not create a new branch or PR.
-- Fix only listed blockers and directly required verification/doc evidence.
-- Run changed-file diagnostics and the verifier that failed or was incomplete.
-- Commit on the existing branch; do not push unless the command harness has explicit push authority.
-- Report updated commit(s), verification, remaining risks, and whether a push is required.
-```
+- 매 시도마다 lane/progress `retry_count`를 함께 증가시킨다.
+- `retry_count <= 2`: fixable blocker를 최소 수정하고 같은 PR을 재검토한다.
+- `retry_count >= 3`: 기본 mode와 terminal retry policy에서는 `needs-human-check-terminal`로 escalate한다.
+- `supervisor-full-auto`: count만으로 멈추지 않지만 같은 blocker signature가 `max_same_failure_repeats`에 도달하거나 wall-clock budget이 끝나면 `blocked-budget-exhausted`로 멈춘다.
+- child contract error는 policy가 요구하면 즉시 `blocked-child-contract-error`다.
+- maintainer-only decision, scope 재정의, security/privacy/legal 판단, release ambiguity는 자동 수정하지 않고 `needs-human-check-terminal` 또는 `blocked-maintainer-decision`으로 보낸다.
+- remediation 후 반드시 동일 PR에 `/pr-to-merge`를 다시 실행한다. stale reviewed head를 재사용하지 않는다.
 
 ## Merge execution contract
 
-merge는 아래 조건을 모두 만족할 때만 고려한다.
+다음 조건을 모두 만족해야 merge를 고려한다.
 
-1. `/pr-to-merge` verdict가 `merge`다.
-2. ledger `authority_scope.pr_merge`가 true다. 사용자 명시 승인은 누락된 ledger authority를 대체하지 않으며, 필요한 경우 별도 정책 gate로만 추가된다.
-3. CI/checks/diagnostics/tests/build/typecheck가 해당 변경 성격에 맞게 실제 통과했다.
-4. dependency graph 상 선행 issue가 완료 상태다.
-5. PR head branch, worktree, linked issue, base branch가 ledger와 현재 GitHub/repo 상태 모두에서 일치한다.
-6. ledger `pr_merge_method`가 `squash`이고 repository merge policy와 일치한다.
+1. 최신 `/pr-to-merge` verdict가 `merge`다.
+2. `authority_scope.pr_merge === true`다.
+3. live PR head/base/linked issue가 ledger와 일치하고 PR이 mergeable하다.
+4. required CI/checks/diagnostics/tests/build/typecheck가 실제 PASS다.
+5. reviewed head가 current PR head와 일치하고 blocker가 모두 remediated다.
+6. dependency prerequisite가 완료됐다.
+7. `pr_merge_method === squash`이며 실제 명령도 squash다.
+8. release/security/legal/maintainer escalation이 남아 있지 않다.
 
-`merge_policy: "developer-final"`은 `authority_scope.pr_merge=true`를 유지하더라도 자동 merge 권한이 아니다. 이 정책에서는 위 gate를 모두 통과한 뒤에도 사용자 또는 상위 harness의 명시 human-final approval 없이는 `gh pr merge`를 실행하지 않는다.
+조건 통과 직전에 live state를 다시 읽는다. merge 후 PR `MERGED`, linked issue `CLOSED`, merge commit SHA를 확인한 뒤에만 `merged` progress와 `completed_issues`를 기록한다. 검증되지 않은 결과로 ledger를 먼저 진행시키지 않는다.
 
-금지:
+### developer-final approval gate
 
-- `/pr-to-merge`의 `merge` verdict만 보고 checks/current PR state 재확인 없이 merge하지 않는다.
-- ledger `pr_merge_method`가 없거나 `squash`가 아니면 임의로 `--squash`, `--merge`, `--rebase` 중 하나를 선택하지 않고 `needs-human-check-terminal`로 멈춘다.
-- PR이 merge되지 않았거나 linked issue close 상태가 확인되지 않은 상태에서 cleanup하지 않는다.
-- command-owned 여부가 불명확한 branch/worktree를 삭제하지 않는다.
+`merge_policy: developer-final`은 `authority_scope.pr_merge=true`여도 자동 merge가 아니다. 위 조건을 모두 통과한 직후, `gh pr merge` 바로 전에 사용자 또는 상위 harness의 explicit human-final approval을 받아야 한다.
+
+approval receipt가 없거나 stale하면 merge하지 않고 `needs-human-check-terminal`로 기록한다. `--full-auto`와 이전 lane-plan approval은 이 gate를 우회하거나 대체하지 않는다.
+
+`supervisor-with-human-escalation`도 unresolved human verdict를 자동 승인하지 않는다. 승인된 merge만 `gh pr merge <pr> --squash`로 실행하며 merge/rebase method를 임의 선택하지 않는다.
 
 ## Cleanup and root sync
 
-cleanup은 merge의 부속 단계지만 별도 safety gate다.
+cleanup은 merge와 별도 safety gate다.
 
-1. `authority_scope.cleanup_command_worktrees`가 정확히 `true`일 때만 cleanup을 고려한다. 누락 또는 `false`이면 worktree/local branch/remote branch를 삭제하지 않고 `cleanup: skipped-authority`로 기록한다.
-2. PR merge state가 `MERGED`인지 재확인한다.
-3. linked issue close state가 `CLOSED`인지 확인한다.
-4. ledger의 worktree path가 `<repo-root>/.worktrees/<branch>`이고 해당 worktree가 ledger branch를 checkout 중인지 확인한다.
-5. worktree가 dirty이면 `git worktree remove --force`를 실행하지 않고 `cleanup: blocked-dirty-worktree`로 기록한다.
-6. local/remote branch cleanup은 cleanup authority와 command-owned 확인이 모두 있을 때만 수행한다.
-7. `authority_scope.root_main_sync_ff_only`가 정확히 `true`일 때만 root main sync를 고려한다. 누락 또는 `false`이면 root branch를 변경하지 않고 `root_main_sync.status = skipped-authority`로 기록한다.
-8. root worktree가 dirty이면 `git pull --ff-only origin <base-branch>`를 시도하지 않고 `root_main_sync.status = blocked-dirty`로 기록한다.
-9. root main sync는 clean root worktree에서 `git pull --ff-only origin <base-branch>`만 허용한다. 강제 checkout, reset, rebase, merge commit 또는 dirty-root 자동 정리는 금지한다.
+1. PR `MERGED`와 linked issue `CLOSED`를 live 재확인한다.
+2. path가 exact command-owned registered `.worktrees/<branch>`이고 branch parity와 realpath containment를 만족하는지 확인한다.
+3. cleanup authority가 true이고 worktree가 dirty, symlinked, unregistered, detached, mismatched이면 force cleanup하지 않는다. 해당 item을 terminal blocker로 남기며 invalid cleanup object를 쓰지 않는다.
+4. `cleanup_command_worktrees: true`일 때만 worktree, local branch, remote branch를 안전한 순서로 제거하고 모두 성공한 후 done cleanup object를 기록한다.
+5. authority가 false면 cleanup failure 또는 `blocked-terminal`을 만들지 않는다. 삭제 없이 곧바로 `done` progress에 exact `{status: skipped-authority}`를 기록한다.
+6. `merged` progress에는 cleanup을 기록하지 않는다. cleanup evidence가 완성된 후에만 `done`으로 전환한다.
+7. authority가 true인 cleanup이 dirty, symlinked, unregistered, detached, mismatched state로 실패할 때만 lane/progress를 `blocked-terminal`로 전환한다. lane cursor, branch, worktree, PR은 null이며 progress는 complete flat merged evidence, no `cleanup`, exact unresolved non-fix-back blocker를 보존한다. 이 blocker는 exact blocker key를 가지며 `status: unresolved`, `fix_back_eligible: false`여야 한다.
+8. cleanup failure issue는 `completed_issues`에 남고 같은 lane의 다음 issue는 absent 또는 `queued`로 잠근다. Resume은 순서대로 live merge evidence를 다시 검증하고, 같은 issue의 cleanup을 재시도하고, canonical done cleanup을 기록하고, 해당 blocker를 `remediated`로 바꾸고, candidate strict validation을 통과시킨 뒤에만 later issue를 dispatch한다.
+
+root sync는 모든 lane이 terminal인 뒤에만 수행한다.
+
+- `root_main_sync_ff_only: false`면 exact `{status: skipped-authority, sha: null}`다.
+- authority가 true여도 primary root가 dirty이면 exact `{status: blocked-dirty, sha: null}`다.
+- authority가 true이고 registered primary checkout이 clean하며 exact base branch일 때만 `git pull --ff-only origin <base-branch>`를 실행하고 40-character SHA와 `done`을 기록한다.
+- reset, rebase, merge commit, forced checkout, dirty-root 자동 정리는 금지한다.
 
 ## Release handoff
 
-lane item이 package release 준비/배포 자체를 다루거나 Version Packages PR/publish workflow 판단이 핵심이면 `/issue-to-pr`를 실행하지 않는다. 이 커맨드는 lane item을 `release-handoff` 상태로 기록하고, 사용자가 GitHub Actions Changesets release workflow와 repository release docs를 기준으로 별도 처리하도록 안내한다.
+`release_handoffs` issue는 worker dispatch, branch/worktree, PR, merge, cleanup, done transition을 하지 않는다. target package/version/dist-tag, prerelease intent, pending changesets, Version Packages PR 상태, required verifier, lane id를 maintainer에게 보고하고 lane/progress를 `blocked-maintainer-decision`으로 기록한다.
 
-handoff payload에는 target package, target version, dist-tag, release_prerelease, pending changeset, Version Packages PR 상태, required verifier, lane ledger id를 포함한다. 이 커맨드는 package publish, Version Packages PR merge, GitHub Actions workflow trigger/rerun, tag/release 생성을 수행하지 않는다.
+이 커맨드는 Version Packages PR merge, workflow dispatch/rerun, package publish, tag/release 생성을 실행하지 않는다. release는 Changesets와 `.github/workflows/release.yml`만 수행한다.
 
 ## Output contract
 
-최종 보고는 한국어로 작성하고 아래 항목을 포함한다.
+최종 보고는 한국어로 작성하고 다음 값을 포함한다.
 
 ```yaml
 result: 진행 PR <M>건, 머지 <K>건, 보류 <L>건
 lane id: <lane-id>
 ledger: .omo/lanes/<lane-id>.json
 base branch: <base-branch>
+merge policy: <policy>
+approval: <not-required|approved|missing|stale>
 lanes:
   - name: <lane-name>
     status: <status>
     queue: [<issue-number>]
 mapping:
-  - issue: <issue-number|url>
+  - issue: <issue-number>
     PR: <pr-number|url|null>
     branch: <branch|null>
     worktree: <worktree|null>
-merge/cleanup/main sync:
+merge/cleanup/root sync:
   merge: <done|skipped|blocked>
-  cleanup: <done|skipped|blocked>
-  main sync: <done|skipped|blocked-dirty>
-authority scope: <interactive|full-auto scope summary>
-retry/remediation: <retry counts and unresolved blocker signatures>
+  cleanup: <done|skipped-authority|blocked>
+  root sync: <done|skipped-authority|blocked-dirty>
+authority scope: <summary>
+retry/remediation: <counts and unresolved blocker signatures>
 remaining backlog: [<issue-number>]
+release handoffs: [<issue-number>]
 next recommended step: <text>
 ```
 
+final report 전 candidate strict validation, live PR/issue/worktree parity, terminal lane/progress, non-stale evidence, root sync terminal state를 다시 확인한다.
+
 ## Must NOT
 
-- source discovery, issue search, package audit, issue draft, issue creation을 수행하지 않는다.
-- `/create-lane`이 확정한 lane queue를 임의 재작성하거나 새 issue를 자동 추가하지 않는다.
-- `/search-issue`, `/issue-to-pr`, `/pr-to-merge`의 내부 workflow를 복제하지 않는다.
-- package publish, Version Packages PR merge, GitHub Actions workflow trigger/rerun, tag/release 생성을 수행하지 않는다.
-- `/issue-to-pr` worker에게 merge/cleanup/issue close를 맡기지 않는다.
-- `/pr-to-merge` verdict만으로 merge하지 않는다.
-- `block` verdict를 최종 보고 사유로 즉시 사용하지 않는다. 먼저 bounded fix-back loop를 수행한다.
-- 여러 lane의 `/issue-to-pr` 완료를 모두 기다리는 global batch barrier를 만들지 않는다. 먼저 끝난 lane item은 즉시 PR collection과 `/pr-to-merge`로 진행한다.
-- PR merge 및 linked issue close 확인 없이 worktree/local branch/remote branch를 cleanup하지 않는다.
-- `queued`, `running`, `in_review`, non-terminal `blocked` lane이 남아 있는데 최종 보고하지 않는다.
-- `--full-auto`에서도 child verdict가 `block` 또는 unresolved `needs-human-check`인 상태로 merge/publish하지 않는다.
-- root worktree가 dirty인 상태에서 main sync를 시도하지 않는다.
-- 로컬 `npm publish` 또는 `pnpm changeset publish`를 실행하거나 권장하지 않는다.
+- issue search/audit/creation, source choice, suggested additions, scope expansion, queue/grouping/dependency rewrite를 수행하지 않는다.
+- invalid ledger 또는 candidate로 마지막 valid ledger를 덮어쓰지 않는다.
+- 모든 lane child 완료를 기다리는 global batch barrier를 만들지 않는다.
+- child에게 merge, issue close, cleanup, root sync, publish를 위임하지 않는다.
+- read-only `/pr-to-merge` verdict만으로 checks/authority/dependency/approval 재확인 없이 merge하지 않는다.
+- `block`을 fix-back 전에 terminal completion으로 보고하지 않는다.
+- same-PR fix-back에서 새 branch/worktree/PR을 만들지 않는다.
+- `developer-final` approval을 full-auto 또는 이전 승인으로 추정하지 않는다.
+- MERGED/CLOSED 확인 전 cleanup하거나 dirty worktree를 force remove하지 않는다.
+- dirty/wrong-branch root를 reset, rebase, merge, forced checkout으로 자동 복구하지 않는다.
+- missing progress, legacy evidence, version/status/authority를 compatibility shim 또는 default로 보충하지 않는다.
+- release handoff를 `release-handoff`, completed, merged, done status로 기록하지 않는다.
+- local `npm publish`, `pnpm changeset publish`, Version Packages PR merge, workflow dispatch/rerun을 실행하거나 권장하지 않는다.

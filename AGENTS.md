@@ -8,7 +8,7 @@ This file defines the always-on project rules and behavioral contracts for all O
 - **No Translation for Logs**: Raw command output, log output, and quoted source text must not be translated.
 
 ## Agent Persona & Identity
-- **Prefix**: All custom agents created for this project must use the `fluo-` prefix (e.g., `fluo-lane-supervisor`).
+- **Prefix**: All custom agents created for this project must use the `fluo-` prefix (e.g., `fluo-code-reviewer`).
 - **Reviewer Default**: Unless explicitly granted execution authority, agents act as read-only reviewers for central gates.
 - **No Co-Authored-By**: Do not include `Co-Authored-By` trailers in commit messages.
 
@@ -31,9 +31,9 @@ This file defines the always-on project rules and behavioral contracts for all O
   - Package publishing
 - **Behavioral Contract Precedence**: Implementation must adhere to documented behavioral contracts in `README.md` and `docs/contracts/` before proceeding with changes.
 
-## Project-Local Codex Assets
-- **Local Scope**: Fluo-specific Codex assets live under `.codex/` in this repository. Use them only for work inside this repository; do not promote them to global Codex config unless explicitly requested.
-- **Skills**: For Fluo governance, audit, documentation, or release work, inspect `.codex/skills/*/SKILL.md` before relying on generic guidance.
-- **Agent Roles**: Fluo role definitions live in `.codex/agents/*.toml`. These are project-local role prompts, not globally registered agent types by default. When a task mentions a `fluo-*` reviewer, guardian, auditor, or implementer, read the matching TOML and use its `developer_instructions` as the delegated role prompt.
-- **Command Harnesses**: Fluo command-like workflows live in `.codex/commands/*.md`. Treat these as entrypoint harness references for requests such as `pr-to-merge`, `issue-to-pr`, `search-to-issue`, `docs-sync-guardian`, `package-publish`, and `lane-supervisor`.
-- **Boundary Preservation**: OpenCode permission frontmatter was migrated as behavioral constraints, not as a Codex runtime sandbox. Preserve the same boundaries manually: reviewer/auditor/guardian roles stay read-only; implementer roles work only inside assigned `.worktrees/<branch>` paths; release and GitHub side effects still require the explicit gates above.
+## Project-Local OpenCode Assets
+- **Local Scope**: Fluo-specific OpenCode assets live under `.opencode/` in this repository. Use them only for work inside this repository; do not promote them to global OpenCode config unless explicitly requested.
+- **Skills**: For Fluo governance, audit, documentation, or release work, inspect `.opencode/skills/*/SKILL.md` before relying on generic guidance.
+- **Agent Roles**: Fluo role definitions live in `.opencode/agents/*.md`. These are project-local role prompts, not globally registered agent types by default. When a task mentions a `fluo-*` reviewer, guardian, auditor, or implementer, read the matching agent file and use its instructions as the delegated role prompt.
+- **Command Harnesses**: Fluo command-like workflows live in `.opencode/commands/*.md`. Treat these as entrypoint harness references for requests such as `search-issue`, `create-lane`, `execute-lane`, `issue-to-pr`, `pr-to-merge`, and `docs-sync-guardian`.
+- **Boundary Preservation**: OpenCode permission frontmatter defines behavioral constraints, not a general runtime sandbox. Preserve the same boundaries manually: reviewer/auditor/guardian roles stay read-only; implementer roles work only inside assigned `.worktrees/<branch>` paths; release and GitHub side effects still require the explicit gates above.
