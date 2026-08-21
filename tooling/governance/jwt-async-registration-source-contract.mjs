@@ -48,15 +48,15 @@ function propertyInitializer(object, name) {
 }
 
 function moduleMetadataInitializer(body, targetName) {
-  const statement = body?.statements.find((candidate) =>
+  const statements = body?.statements.filter((candidate) =>
     ts.isExpressionStatement(candidate)
     && ts.isCallExpression(candidate.expression)
     && candidate.expression.expression.getText() === 'defineModuleMetadata'
     && ts.isIdentifier(candidate.expression.arguments[0])
     && candidate.expression.arguments[0].text === targetName);
 
-  return statement && ts.isExpressionStatement(statement) && ts.isCallExpression(statement.expression)
-    ? statement.expression.arguments[1]
+  return statements?.length === 1 && ts.isCallExpression(statements[0].expression)
+    ? statements[0].expression.arguments[1]
     : undefined;
 }
 

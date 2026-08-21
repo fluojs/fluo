@@ -50,6 +50,20 @@ describe('JWT async registration source guard decoys', () => {
     expect(runGovernanceGuard).toThrow(/must export ConfigService globally by default/);
   });
 
+  it('rejects a trailing same-target ConfigModule metadata overwrite', () => {
+    // Given
+    const readWithTrailingMetadataOverwrite = withSource(configModulePath, (source) => source.replace(
+      '    return ConfigModuleImpl;',
+      '    defineModuleMetadata(ConfigModuleImpl, { global: false });\n\n    return ConfigModuleImpl;',
+    ));
+
+    // When
+    const runGovernanceGuard = () => enforceJwtAsyncRegistrationSourceContract(readWithTrailingMetadataOverwrite);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(/must export ConfigService globally by default/);
+  });
+
   it('rejects FakeConfigService as a substring decoy in ConfigModule exports', () => {
     // Given
     const readWithFakeConfigService = withSource(configModulePath, (source) => source
@@ -75,6 +89,20 @@ describe('JWT async registration source guard decoys', () => {
 
     // When
     const runGovernanceGuard = () => enforceJwtAsyncRegistrationSourceContract(readWithBrokenFinalMetadata);
+
+    // Then
+    expect(runGovernanceGuard).toThrow(/must propagate the createModule global parameter to JwtRuntimeModule metadata/);
+  });
+
+  it('rejects a trailing same-target JwtRuntimeModule metadata overwrite', () => {
+    // Given
+    const readWithTrailingMetadataOverwrite = withSource(jwtModulePath, (source) => source.replace(
+      '    return JwtRuntimeModule;',
+      '    defineModuleMetadata(JwtRuntimeModule, { global: false });\n\n    return JwtRuntimeModule;',
+    ));
+
+    // When
+    const runGovernanceGuard = () => enforceJwtAsyncRegistrationSourceContract(readWithTrailingMetadataOverwrite);
 
     // Then
     expect(runGovernanceGuard).toThrow(/must propagate the createModule global parameter to JwtRuntimeModule metadata/);
