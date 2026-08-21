@@ -61,37 +61,46 @@ JWT 설정이 다른 provider에서 와야 한다면, `JwtModule.forRootAsync(..
 
 `forRootAsync(...)`는 `inject`에 나열된 provider에서 module-level `JwtVerifierOptions` 객체 하나를 resolve합니다. 이 factory는 요청별 상태를 받지 않습니다. 테넌트별 secret이나 identity provider가 필요한 경우 tenant lookup은 애플리케이션의 auth layer에 두고, token verification 중에는 `kid` 같은 token metadata와 미리 구성한 `keys[]`, `jwksUri`, 또는 `secretOrKeyProvider`를 사용해 검증 material을 선택하세요.
 
-```typescript
-import { Module, type Token } from '@fluojs/core';
-import { JwtModule } from '@fluojs/jwt';
+지원되는 계약은 `JwtModule.forRootAsync({ inject, useFactory, global? })`입니다. `JwtModule.forRootAsync(...)`의 `inject`에 지정한 의존성은 JWT options provider가 resolve되기 전에 application module graph에 먼저 등록해야 하며, `useFactory`는 최종 `JwtVerifierOptions`를 반환합니다. 최상위 `global?`은 반환된 module의 가시성을 제어하며, `useFactory`가 반환하는 최종 `JwtVerifierOptions`와는 별개입니다. NestJS dynamic-module `imports`, `useClass`, `useExisting`은 지원되는 typed configuration의 일부가 아니며 dynamic-module 의미도 없습니다. 추가 JavaScript object property는 runtime에서 읽지 않을 뿐 validate하거나 reject하지 않습니다. `JwtModule.forRootAsync(...)`의 의존성은 global로 visible한 module export 또는 `JwtRuntimeModule`이 resolve할 수 있는 application graph의 bootstrap runtime provider에서 와야 합니다. ordinary sibling 또는 parent module의 export만으로는 충분하지 않으며, `AuthModule.providers`에만 local인 provider는 JWT options provider에서 보이지 않습니다. `JwtModule.forRootAsync(...)`는 암묵적 module 또는 provider discovery를 지원하지 않습니다.
 
-const JWT_SETTINGS = Symbol('jwt-settings');
+```typescript
+import { Module } from '@fluojs/core';
+import { ConfigModule, ConfigService } from '@fluojs/config';
+import { JwtModule, type JwtVerifierOptions } from '@fluojs/jwt';
 
 @Module({
   imports: [
-    JwtModule.forRootAsync({
-      inject: [JWT_SETTINGS],
-      useFactory: async (settings) => ({
-        accessTokenTtlSeconds: 900,
-        algorithms: ['HS256'],
-        audience: 'my-app',
-        issuer: settings.issuer,
-        secret: settings.secret,
-      }),
+    ConfigModule.forRoot({
+      processEnv: { JWT_SECRET: process.env.JWT_SECRET },
     }),
-  ],
-  providers: [
-    {
-      provide: JWT_SETTINGS as Token<{ issuer: string; secret: string }>,
-      useValue: {
-        issuer: 'my-api',
-        secret: 'your-secure-secret',
+    JwtModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: async (...deps: unknown[]): Promise<JwtVerifierOptions> => {
+        const [config] = deps;
+        if (!(config instanceof ConfigService)) {
+          throw new TypeError('ConfigService dependency is required');
+        }
+
+        const secret = config.snapshot()['JWT_SECRET'];
+        if (typeof secret !== 'string') {
+          throw new TypeError('JWT_SECRET must be a string');
+        }
+
+        return {
+          accessTokenTtlSeconds: 900,
+          algorithms: ['HS256'],
+          audience: 'my-app',
+          issuer: 'my-api',
+          secret,
+        };
       },
-    },
+    }),
   ],
 })
 export class AuthModule {}
 ```
+
+여기서는 `ConfigModule.forRoot(...)`가 기본으로 `ConfigService`를 global export하므로 `JwtRuntimeModule` options provider가 이를 resolve할 수 있습니다. `AuthModule.providers`에만 선언한 provider는 그 imported module에서 보이지 않습니다.
 
 ### 토큰 서명 및 검증
 

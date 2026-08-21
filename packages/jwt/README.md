@@ -61,37 +61,46 @@ Async registration exports the same JWT provider surface as the synchronous path
 
 `forRootAsync(...)` resolves one module-level `JwtVerifierOptions` object from the providers listed in `inject`. It does not receive per-request state. For tenant-specific secrets or identity providers, keep tenant lookup in your application auth layer and use token metadata such as `kid` with configured `keys[]`, `jwksUri`, or `secretOrKeyProvider` to select verification material during token verification.
 
-```typescript
-import { Module, type Token } from '@fluojs/core';
-import { JwtModule } from '@fluojs/jwt';
+The supported contract is `JwtModule.forRootAsync({ inject, useFactory, global? })`: dependencies named by `inject` must already be registered in the application module graph before the JWT options provider resolves, and `useFactory` returns the final `JwtVerifierOptions`. The top-level `global?` controls returned module visibility and is distinct from the final `JwtVerifierOptions` returned by `useFactory`. NestJS dynamic-module `imports`, `useClass`, and `useExisting` are not part of the supported typed configuration and have no dynamic-module semantics; extra JavaScript object properties are unread at runtime, not validated or rejected. For `JwtModule.forRootAsync(...)`, dependencies must come from a globally visible module export or bootstrap runtime providers in the application graph that `JwtRuntimeModule` can resolve. An ordinary sibling or parent module export alone, and a provider local only to `AuthModule.providers`, are not visible to the JWT options provider. `JwtModule.forRootAsync(...)` performs no implicit module or provider discovery.
 
-const JWT_SETTINGS = Symbol('jwt-settings');
+```typescript
+import { Module } from '@fluojs/core';
+import { ConfigModule, ConfigService } from '@fluojs/config';
+import { JwtModule, type JwtVerifierOptions } from '@fluojs/jwt';
 
 @Module({
   imports: [
-    JwtModule.forRootAsync({
-      inject: [JWT_SETTINGS],
-      useFactory: async (settings) => ({
-        accessTokenTtlSeconds: 900,
-        algorithms: ['HS256'],
-        audience: 'my-app',
-        issuer: settings.issuer,
-        secret: settings.secret,
-      }),
+    ConfigModule.forRoot({
+      processEnv: { JWT_SECRET: process.env.JWT_SECRET },
     }),
-  ],
-  providers: [
-    {
-      provide: JWT_SETTINGS as Token<{ issuer: string; secret: string }>,
-      useValue: {
-        issuer: 'my-api',
-        secret: 'your-secure-secret',
+    JwtModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: async (...deps: unknown[]): Promise<JwtVerifierOptions> => {
+        const [config] = deps;
+        if (!(config instanceof ConfigService)) {
+          throw new TypeError('ConfigService dependency is required');
+        }
+
+        const secret = config.snapshot()['JWT_SECRET'];
+        if (typeof secret !== 'string') {
+          throw new TypeError('JWT_SECRET must be a string');
+        }
+
+        return {
+          accessTokenTtlSeconds: 900,
+          algorithms: ['HS256'],
+          audience: 'my-app',
+          issuer: 'my-api',
+          secret,
+        };
       },
-    },
+    }),
   ],
 })
 export class AuthModule {}
 ```
+
+Here, `ConfigModule.forRoot(...)` exports `ConfigService` globally by default, so the `JwtRuntimeModule` options provider can resolve it. A provider declared only in `AuthModule.providers` is not visible to that imported module.
 
 ### Sign and Verify Tokens
 

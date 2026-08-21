@@ -84,29 +84,48 @@ export class AuthModule {}
 ### Dynamic Registration with ConfigService
 A hardcoded example quickly shows the shape of the configuration, but it must not become the production approach. In production, never hardcode secret keys. Instead, use the `ConfigService` you learned about in Chapter 11.
 
+The example registers `ConfigModule.forRoot(...)` in the application root. It exports `ConfigService` globally by default, so `JwtRuntimeModule` can resolve the injected factory dependency; a provider local only to `AuthModule.providers` is not visible to that imported module.
+
 ```typescript
 import { Module } from '@fluojs/core';
-import { JwtModule } from '@fluojs/jwt';
-import { ConfigService } from '@fluojs/config';
+import { ConfigModule, ConfigService } from '@fluojs/config';
+import { JwtModule, type JwtVerifierOptions } from '@fluojs/jwt';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({
+      processEnv: { JWT_SECRET: process.env.JWT_SECRET },
+    }),
     JwtModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        algorithms: ['HS256'],
-        // Use a strong, environment-specific secret key.
-        secret: config.get('JWT_SECRET'),
-        issuer: 'fluoblog-api',
-        audience: 'fluoblog-client',
-        // Access tokens should be short lived for security.
-        accessTokenTtlSeconds: 900, // 15 minutes
-      }),
+      useFactory: async (...deps: unknown[]): Promise<JwtVerifierOptions> => {
+        const [config] = deps;
+        if (!(config instanceof ConfigService)) {
+          throw new TypeError('ConfigService dependency is required');
+        }
+
+        const secret = config.snapshot()['JWT_SECRET'];
+        if (typeof secret !== 'string') {
+          throw new TypeError('JWT_SECRET must be a string');
+        }
+
+        return {
+          algorithms: ['HS256'],
+          // Use a strong, environment-specific secret key.
+          secret,
+          issuer: 'fluoblog-api',
+          audience: 'fluoblog-client',
+          // Access tokens should be short lived for security.
+          accessTokenTtlSeconds: 900, // 15 minutes
+        };
+      },
     }),
   ],
 })
 export class AuthModule {}
 ```
+
+The supported contract is `JwtModule.forRootAsync({ inject, useFactory, global? })`: dependencies named by `inject` must already be registered in the application module graph before the JWT options provider resolves, and `useFactory` returns the final `JwtVerifierOptions`. The top-level `global?` controls returned module visibility and is distinct from the final `JwtVerifierOptions` returned by `useFactory`. NestJS dynamic-module `imports`, `useClass`, and `useExisting` are not part of the supported typed configuration and have no dynamic-module semantics; extra JavaScript object properties are unread at runtime, not validated or rejected. For `JwtModule.forRootAsync(...)`, dependencies must come from a globally visible module export or bootstrap runtime providers in the application graph that `JwtRuntimeModule` can resolve. An ordinary sibling or parent module export alone, and a provider local only to `AuthModule.providers`, are not visible to the JWT options provider. `JwtModule.forRootAsync(...)` performs no implicit module or provider discovery.
 
 ### Advanced Configuration Options
 Beyond a simple secret key, `JwtModule` supports explicit configuration for algorithms, issuer, audience, clock skew, key material, JWKS lookup, and token lifetimes. Always provide at least one supported algorithm, and keep `accessTokenTtlSeconds` as a positive finite number so misconfiguration fails before a token is issued.
