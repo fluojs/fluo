@@ -52,8 +52,8 @@ Make the lane workflow command architecture responsibility-complete and mechanic
 - `pnpm verify:lane-ledger -- <valid fixture>` passes.
 - `pnpm verify:lane-ledger -- <invalid fixture>` fails with a specific invariant error in test coverage.
 - `pnpm exec biome check tooling/governance/lane-ledger-contract.mjs tooling/governance/lane-ledger-contract.d.mts tooling/governance/lane-ledger-schema.mjs tooling/governance/lane-ledger-progress-schema.mjs tooling/governance/lane-ledger-dependency.mjs tooling/governance/lane-ledger-progress.mjs tooling/governance/lane-ledger-state.mjs tooling/governance/verify-lane-ledger.mjs package.json` passes.
-- `pnpm exec vitest run tooling/governance/verify-lane-ledger.test.ts tooling/governance/verify-lane-ledger-state.test.ts tooling/governance/verify-lane-ledger-progress.test.ts tooling/governance/verify-lane-ledger-identity.test.ts tooling/governance/verify-lane-ledger-schema.test.ts` passes with exactly 363 tests.
-- The focused strict v1 suite has exactly five test files and 363 tests, including `verify-lane-ledger-schema.test.ts`. `lane-ledger-schema.mjs` owns root/source/lane shape validation, `lane-ledger-progress-schema.mjs` owns status-specific progress key validation, and `lane-ledger-dependency.mjs` owns dependency graph validation. These implementation modules are not test files; any previous 93, 211, or four-file wording is stale.
+- `pnpm exec vitest run tooling/governance/verify-lane-ledger.test.ts tooling/governance/verify-lane-ledger-state.test.ts tooling/governance/verify-lane-ledger-progress.test.ts tooling/governance/verify-lane-ledger-identity.test.ts tooling/governance/verify-lane-ledger-schema.test.ts` passes with exactly 364 tests.
+- The focused strict v1 suite has exactly five test files and 364 tests, including `verify-lane-ledger-schema.test.ts`. `lane-ledger-schema.mjs` owns root/source/lane shape validation, `lane-ledger-progress-schema.mjs` owns status-specific progress key validation, and `lane-ledger-dependency.mjs` owns dependency graph validation. These implementation modules are not test files; any previous 93, 211, or four-file wording is stale.
 - Command-doc verifier gates check that `.opencode/commands/create-lane.md` and `.opencode/commands/execute-lane.md` document the canonical schema, status, cursor, root-sync, authority, and cleanup prerequisites.
 - `pnpm verify:lane-ledger -- tooling/governance/fixtures/lane-ledger/valid-ready.json tooling/governance/fixtures/lane-ledger/valid-completed-multi-issue.json` passes as the reproducible gate. The raw real ledger `.omo/lanes/lane-2026-08-05-persistence-a.json`, when present, is an expected nonzero strict-v1 migration failure and is never a passing compatibility fixture.
 
@@ -137,7 +137,7 @@ Wave 3: Tasks 6, 7, 8 after command contracts and validator exist.
 - [ ] 2. Define Lane Artifact and Ledger Schema
 
   **What to do**: Define the handoff artifacts:
-  - `.sisyphus/search-issue/<run-id>.json`
+  - `.opencode/search-issue/<run-id>.json`
   - `.omo/lanes/<lane-id>.json`
 Include the exact root keys `version`, `run_id`, `lane_id`, `status`, `created_by`, `base_branch`, `source`, `merge_policy`, `pr_merge_method`, `authority_scope`, `retry_policy`, `execution`, `confirmed_issues`, `suggested_but_excluded`, `backlog_candidates`, `release_handoffs`, `completed_issues`, `issue_progress`, `lanes`, `dependency_graph`, and `root_main_sync`, with only optional `created_at`. The strict validator enforces exact-key equality, not an external provenance exemption.
 
@@ -160,7 +160,7 @@ Include the exact root keys `version`, `run_id`, `lane_id`, `status`, `created_b
 
   **Final strict v1 contract**:
   - Root identity is `run_id` plus `lane_id`, with `created_by: create-lane`, `base_branch`, and `source`; each lane identity is its queue item, `current_issue`, branch, worktree, PR, and retry count.
-  - `run_id` and `lane_id` use path-safe basenames without `+`. A `search-issue` source uses the source-only grammar `[A-Za-z0-9][A-Za-z0-9+._-]*`, preserves internal `+`, and requires exact `.sisyphus/search-issue/<search_run_id>.json` provenance.
+  - `run_id` and `lane_id` use path-safe basenames without `+`. A `search-issue` source uses the source-only grammar `[A-Za-z0-9][A-Za-z0-9+._-]*`, preserves internal `+`, and requires exact `.opencode/search-issue/<search_run_id>.json` provenance.
   - `authority_scope` explicitly gates issue creation, PR creation, PR merge, command-owned cleanup, root main fast-forward sync, and GitHub Actions publishing. Missing or false cleanup/root-sync authority skips the side effect rather than inferring permission.
   - `retry_policy` and `execution` are persisted fields. Fix-back reuses the same PR, branch, and worktree, and terminal escalation follows the recorded retry policy.
   - `dependency_graph` is sparse. Confirmed positive-safe-integer issue keys map to unique positive-safe-integer prerequisites; external prerequisites are allowed in values, while duplicate, self, and cyclic edges fail closed.
@@ -215,7 +215,7 @@ Include the exact root keys `version`, `run_id`, `lane_id`, `status`, `created_b
   ```text
   Scenario: Search stage outputs issue artifact
     Tool: bash
-    Steps: grep -RIn ".sisyphus/search-issue/.*selected_issues" .opencode/commands/search-issue.md
+    Steps: grep -RIn ".opencode/search-issue/.*selected_issues" .opencode/commands/search-issue.md
     Expected: artifact path and selected_issues appear.
     Evidence: evidence/task-3-search-artifact.txt
 
@@ -404,7 +404,7 @@ Include the exact root keys `version`, `run_id`, `lane_id`, `status`, `created_b
   **What to do**: Add an end-to-end command sequence to the command docs:
   ```text
   /search-issue
-  /create-lane .sisyphus/search-issue/<search_run_id>.json main
+  /create-lane .opencode/search-issue/<search_run_id>.json main
   /execute-lane <lane-id> main
   ```
   Include migration notes that old `lane-supervisor` usage is removed, and verify no stale live references remain.
@@ -447,7 +447,7 @@ Include the exact root keys `version`, `run_id`, `lane_id`, `status`, `created_b
   - Run `grep -RIn "lane-supervisor\\|search-to-issue\\|Source choice" .opencode/commands .opencode/agents tooling package.json` and classify every remaining match as migration artifact, validator compatibility, or defect.
 - [ ] F3. Validator Audit
   - Run `pnpm verify:lane-ledger -- tooling/governance/fixtures/lane-ledger/valid-ready.json tooling/governance/fixtures/lane-ledger/valid-completed-multi-issue.json` as the reproducible fixture gate; confirm allowed root/progress statuses, active first-unfinished integer cursors, terminal null cursors, issue_progress-based completion evidence, completed-set consistency, cleanup-before-done rejection, root-sync authority and terminal prerequisites, canonical `fluojs/fluo` PR identity, same-issue canonical PR mirroring allowed, cross-issue PR reuse rejected, and `created_by`/base/worktree rules. Legacy terminal lane-level evidence must be rejected with migration guidance. If `.omo/lanes/lane-2026-08-05-persistence-a.json` is available, assert a separate read-only check exits nonzero.
-  - Run `pnpm exec vitest run tooling/governance/verify-lane-ledger.test.ts tooling/governance/verify-lane-ledger-state.test.ts tooling/governance/verify-lane-ledger-progress.test.ts tooling/governance/verify-lane-ledger-identity.test.ts tooling/governance/verify-lane-ledger-schema.test.ts`; the entire focused validator suite must pass with exactly 363 tests.
+  - Run `pnpm exec vitest run tooling/governance/verify-lane-ledger.test.ts tooling/governance/verify-lane-ledger-state.test.ts tooling/governance/verify-lane-ledger-progress.test.ts tooling/governance/verify-lane-ledger-identity.test.ts tooling/governance/verify-lane-ledger-schema.test.ts`; the entire focused validator suite must pass with exactly 364 tests.
   - Run explicit command-doc verifier gates against `.opencode/commands/create-lane.md` and `.opencode/commands/execute-lane.md` for schema, statuses, cursors, root-sync authority and terminal prerequisites, and cleanup ordering.
   - Keep the pure validator structural and mutating harness live Git/filesystem checks separate; the validator must not perform live identity, cleanup, or root-sync checks.
 - [ ] F4. Manual Pipeline QA

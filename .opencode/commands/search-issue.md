@@ -526,7 +526,7 @@ gh issue create --title "<draft title>" --body "<draft body>" --label "source:pa
 
 등록 후 이 커맨드는 구현 순서를 lane으로 확정하지 않는다. 생성된 issue 목록과 보류/중복 후보를 요약하고, 사람이 다음 단계에서 `/create-lane`으로 실행 범위를 확정할 수 있도록 handoff artifact와 command를 제공한다.
 
-등록된 issue가 하나 이상이면 exact 3-key search artifact를 `.sisyphus/search-issue/<search_run_id>.json`에 생성한다.
+등록된 issue가 하나 이상이면 exact 3-key search artifact를 `.opencode/search-issue/<search_run_id>.json`에 생성한다.
 
 ```json
 {
@@ -544,7 +544,7 @@ Artifact contract:
 4. `selected_issues`는 중복 없는 positive safe integer의 non-empty array다. registration triage에서 `register`로 판정되어 실제 등록에 성공했고 handoff 대상으로 선택된 issue만 포함한다. deferred, rejected, duplicate candidate는 포함하지 않는다.
 5. 등록된 issue가 0개면 artifact를 생성하지 않고 `search_run_id: none`을 보고한다.
 
-Publication 전에 canonical primary repository root를 resolve하고 target을 exact `<primary-root>/.sisyphus/search-issue/<search_run_id>.json`으로 bind한다. Canonical path containment로 target이 primary root 내부인지 확인하며 string-prefix 비교로 대체하지 않는다. 기존 `.sisyphus`와 `search-issue` path component는 각각 `lstat`으로 확인하고 symbolic link면 publication을 거부한다.
+Publication 전에 canonical primary repository root를 resolve하고 target을 exact `<primary-root>/.opencode/search-issue/<search_run_id>.json`으로 bind한다. Canonical path containment로 target이 primary root 내부인지 확인하며 string-prefix 비교로 대체하지 않는다. 기존 `.opencode`와 `search-issue` path component는 각각 `lstat`으로 확인하고 symbolic link면 publication을 거부한다.
 
 Artifact는 target과 같은 filesystem의 sibling temporary file에 완전한 JSON으로 작성하고 위 contract를 검증한 뒤 exclusive no-replace atomic create로 publish한다. Existing target collision은 기존 target을 byte-for-byte 보존하고 temporary file만 제거한다. Current attempt가 target을 생성하기 전 validation 또는 publication이 실패하면 target은 absent 상태여야 하고 temporary file을 제거한다. Failure cleanup은 current attempt가 생성하지 않은 target을 절대 제거하지 않는다.
 
@@ -570,5 +570,5 @@ Artifact는 target과 같은 filesystem의 sibling temporary file에 완전한 J
 - 등록된 이슈 표
 - 보류/중복 표
 - search artifact path와 `selected_issues`, 또는 `search_run_id: none`
-- `/create-lane .sisyphus/search-issue/<search_run_id>.json <base-branch>` 또는 `/create-lane <created issue numbers> <base-branch>` handoff command
+- `/create-lane .opencode/search-issue/<search_run_id>.json <base-branch>` 또는 `/create-lane <created issue numbers> <base-branch>` handoff command
 - handoff 정렬 근거와 `/create-lane`에서 다시 확인해야 할 suggested additions

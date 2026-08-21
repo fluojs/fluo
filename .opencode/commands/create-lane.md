@@ -20,7 +20,7 @@ argument-hint: "<issue-url|issue-number... | search-run-id | search-ledger-path>
 - `/create-lane 123 124 125 main`
 - `/create-lane https://github.com/fluojs/fluo/issues/123 https://github.com/fluojs/fluo/issues/124`
 - `/create-lane search-2026-08-18T10+09-runtime main`
-- `/create-lane .sisyphus/search-issue/search-2026-08-18T10+09-runtime.json main`
+- `/create-lane .opencode/search-issue/search-2026-08-18T10+09-runtime.json main`
 
 base branch 기본값은 `main`이다. issue 목록, search run id, search ledger path 중 정확히 한 종류의 입력만 허용한다. 입력이 비었거나 여러 종류가 섞여 해석할 수 없으면 side effect 없이 올바른 형식을 안내하고 멈춘다.
 
@@ -28,7 +28,7 @@ Canonical pipeline:
 
 ```text
 /search-issue
-/create-lane .sisyphus/search-issue/<search_run_id>.json main
+/create-lane .opencode/search-issue/<search_run_id>.json main
 /execute-lane <lane-id> main
 ```
 
@@ -54,8 +54,8 @@ Canonical pipeline:
 
 ## 입력 규칙
 
-1. search run id는 `.sisyphus/search-issue/<search_run_id>.json`을 가리켜야 한다.
-2. search ledger는 canonical `.sisyphus/search-issue/` artifact여야 한다. filename, artifact의 `search_run_id`, canonical path가 정확히 일치해야 한다. 기존 `.omo/lanes/` ledger를 입력받아 덮어쓰거나 재생성하지 않는다.
+1. search run id는 `.opencode/search-issue/<search_run_id>.json`을 가리켜야 한다.
+2. search ledger는 canonical `.opencode/search-issue/` artifact여야 한다. filename, artifact의 `search_run_id`, canonical path가 정확히 일치해야 한다. 기존 `.omo/lanes/` ledger를 입력받아 덮어쓰거나 재생성하지 않는다.
 3. issue 목록은 각 issue의 title, labels, package/surface, linked PR 상태를 read-only로 요약한다.
 4. closed issue, 다른 repository issue, 존재하지 않는 issue, 이미 active PR에 할당된 issue는 lane plan review 전에 명시한다.
 5. 한 invocation은 하나의 새 lane ledger만 생성한다.
@@ -71,7 +71,7 @@ Search artifact는 exact 3-key object다.
 ```
 
 - root key는 정확히 `version`, `search_run_id`, `selected_issues`다. `version`은 `1`이며 unknown key는 fail closed다.
-- `search_run_id`는 `[A-Za-z0-9][A-Za-z0-9+._-]*`인 safe basename이다. `.` 또는 `.lock`으로 끝나면 안 되며 `.sisyphus/search-issue/<search_run_id>.json`의 basename과 정확히 일치해야 한다.
+- `search_run_id`는 `[A-Za-z0-9][A-Za-z0-9+._-]*`인 safe basename이다. `.` 또는 `.lock`으로 끝나면 안 되며 `.opencode/search-issue/<search_run_id>.json`의 basename과 정확히 일치해야 한다.
 - `selected_issues`는 중복 없는 positive safe integer의 non-empty array다.
 - malformed, empty, duplicate, path/id mismatch, mixed input form은 lane candidate나 target을 생성하기 전에 거부한다.
 - artifact를 수정하지 않는다. `selected_issues`는 Confirmed issue gate에 제시할 candidate일 뿐이며 자동 confirmed set 또는 lane plan이 아니다.
@@ -165,7 +165,7 @@ structured `question` surface를 사용할 수 없으면 `.omo/lanes/`에 쓰지
 `source`는 정확히 `type`, `search_run_id`, `search_ledger`만 가진다.
 
 - `existing-issues`: 두 search field가 모두 `null`이다.
-- `search-issue`: `search_run_id`는 `[A-Za-z0-9][A-Za-z0-9+._-]*`인 safe basename이다. 내부 `+`는 timezone-bearing producer ID를 보존하기 위해 source ID에만 허용된다. `search_ledger`는 정확히 `.sisyphus/search-issue/<search_run_id>.json`이다.
+- `search-issue`: `search_run_id`는 `[A-Za-z0-9][A-Za-z0-9+._-]*`인 safe basename이다. 내부 `+`는 timezone-bearing producer ID를 보존하기 위해 source ID에만 허용된다. `search_ledger`는 정확히 `.opencode/search-issue/<search_run_id>.json`이다.
 
 `authority_scope`, `retry_policy`, `execution`도 example의 exact key만 허용한다. `merge_policy`가 `supervisor-full-auto`일 때만 `retry_count_is_terminal`은 `false`이고 그 밖에는 `true`다.
 
@@ -205,7 +205,7 @@ release handoff는 dedicated single-issue lane이다. ready ledger에서는 prog
 2. `.omo/lanes`와 target의 realpath containment를 확인하고 symlink, path escape, existing target을 거부한다.
 3. 세 human gate가 모두 통과하기 전에는 candidate나 target을 쓰지 않는다.
 4. approved plan으로 별도 candidate snapshot을 만들고 strict validator를 실행한다.
-5. focused gate는 정확히 five TEST files와 363 tests다. `lane-ledger-schema.mjs`, `lane-ledger-progress-schema.mjs`, `lane-ledger-dependency.mjs`는 validator implementation module이며 test file 수에 포함하지 않는다.
+5. focused gate는 정확히 five TEST files와 364 tests다. `lane-ledger-schema.mjs`, `lane-ledger-progress-schema.mjs`, `lane-ledger-dependency.mjs`는 validator implementation module이며 test file 수에 포함하지 않는다.
 6. validation이 성공하고 target 부재를 다시 확인한 경우에만 target을 atomic create한다.
 7. validation 또는 atomic create가 실패하면 target은 absent 상태여야 하고 기존 ledger는 변경하지 않는다. 결과만 `needs-human-check`로 보고한다.
 
