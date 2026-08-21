@@ -194,6 +194,12 @@ function contradictionMessage(content, locale) {
       if (ordinaryModuleExport) {
         return 'must not claim ordinary sibling or parent module exports are visible to the JWT options provider.';
       }
+      const moduleExportIntoRuntimeGraph = locale === 'en'
+        ? /module that exports? (?:them|dependencies?) into `?JwtRuntimeModule`?'?s application graph/iu.test(proposition)
+        : /`?JwtRuntimeModule`?의 application graph에 export하는 module(?:로|에서)/u.test(proposition);
+      if (moduleExportIntoRuntimeGraph) {
+        return "must not claim a module export alone enters JwtRuntimeModule's application graph.";
+      }
       const doubleNegativeDiscovery = locale === 'en'
         ? /\b(?:does not|do not)\s+(?:disable|prevent|block|stop)\b/iu.test(proposition)
         : /(?:비활성화하지|막지|차단하지|방지하지)\s*않/u.test(proposition);
