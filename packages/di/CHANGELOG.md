@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+## 3.0.0
+
+### Major Changes
+
+- [#3094](https://github.com/fluojs/fluo/pull/3094) [`152a25e`](https://github.com/fluojs/fluo/commit/152a25e986eaad51634c0ef77cbe2f12b86807c7) Thanks [@ayden94](https://github.com/ayden94)! - Change container-managed shutdown from one-shot failed cleanup to retryable failed-hook disposal. In 2.x, a failed `onDestroy()` hook was attempted once. After upgrading to 3.x, a later explicit `Container.dispose()` call or application/application-context `close()` retries only failed hooks, while hooks that completed successfully remain exactly-once. Consumers must make failing cleanup hooks safe to attempt again.
+
+  Direct child disposal now detaches the child from its parent after the attempt settles, including failed attempts. A caller that retains the child reference may retry its failed hooks. Parent- or root-started failures remain owned by the parent hierarchy until cleanup succeeds or a later direct child attempt settles.
+
+### Patch Changes
+
+- [#3011](https://github.com/fluojs/fluo/pull/3011) [`01aaf36`](https://github.com/fluojs/fluo/commit/01aaf368394bfab437eea90304b5e84c1ef2d406) Thanks [@ayden94](https://github.com/ayden94)! - Keep nested request-scope overrides owned and cached by their nearest request scope instead of leaking request-local instances into root singleton caches.
+
+- [#2977](https://github.com/fluojs/fluo/pull/2977) [`1e06150`](https://github.com/fluojs/fluo/commit/1e0615082fd6b9a449a20adeced131eeea856faf) Thanks [@ayden94](https://github.com/ayden94)! - Dispose cached single and multi-provider instances together in reverse materialization order so dependents shut down before their dependencies.
+
+- [#2823](https://github.com/fluojs/fluo/pull/2823) [`6e4272a`](https://github.com/fluojs/fluo/commit/6e4272afd17ea18177330a4e9de6d2745fb2d6d9) Thanks [@ayden94](https://github.com/ayden94)! - Reject cycles across pending singleton and request-scoped resolutions, and prevent request-scope overrides from introducing new singleton providers.
+
+- [#2980](https://github.com/fluojs/fluo/pull/2980) [`1ba9703`](https://github.com/fluojs/fluo/commit/1ba970357e404638f513a84a45da7358ea7384b4) Thanks [@ayden94](https://github.com/ayden94)! - Reject malformed `provide` and `useExisting` provider tokens during registration with `InvalidProviderError`.
+
+- [#2882](https://github.com/fluojs/fluo/pull/2882) [`fbc2d1b`](https://github.com/fluojs/fluo/commit/fbc2d1b76077079e325b30eca93f36d573f5093d) Thanks [@ayden94](https://github.com/ayden94)! - Reject value providers that declare `inject` metadata instead of silently discarding the invalid dependency declaration.
+
+- Updated dependencies [[`7b61b03`](https://github.com/fluojs/fluo/commit/7b61b03239f2f4f7bc9692fbf430731798909317)]:
+  - @fluojs/core@1.1.1
+
 ## 2.0.0
 
 ### Major Changes

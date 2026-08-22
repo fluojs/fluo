@@ -9,7 +9,7 @@
     "migration",
     "diagnostics"
   ],
-  "version": "2.0.1",
+  "version": "3.0.0",
   "private": false,
   "license": "MIT",
   "repository": {

@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## 2.0.2
+
+### Patch Changes
+
+- [#2788](https://github.com/fluojs/fluo/pull/2788) [`f481552`](https://github.com/fluojs/fluo/commit/f481552eed76c795003c93252c09c38227bb045b) Thanks [@ayden94](https://github.com/ayden94)! - Bound post-task distributed lock release and its immediate shutdown retry to one `shutdown.timeoutMs` deadline while preserving unresolved local ownership visibility.
+
+- [#2827](https://github.com/fluojs/fluo/pull/2827) [`88fc44a`](https://github.com/fluojs/fluo/commit/88fc44ad9ca975bd5154e4da3eaac5a7c28e194a) Thanks [@ayden94](https://github.com/ayden94)! - Prevent late ticks from entering shutdown, fence distributed releases with per-acquisition lease tokens, and keep replacement schedules inactive until their previous handles stop successfully.
+
+- [#2780](https://github.com/fluojs/fluo/pull/2780) [`8a0639d`](https://github.com/fluojs/fluo/commit/8a0639deea1d5122b73ddd88a0ac7043dbd14c70) Thanks [@ayden94](https://github.com/ayden94)! - Retain scheduler handles when stopping a task fails so dynamic disable and removal report failure and can retry without losing lifecycle ownership.
+
+- [#3022](https://github.com/fluojs/fluo/pull/3022) [`ba07e9b`](https://github.com/fluojs/fluo/commit/ba07e9b2ed019a8d36f2ed299830d33628bc0426) Thanks [@ayden94](https://github.com/ayden94)! - Retry retained Cron scheduler handles on the next shutdown lifecycle hook after a stop failure, clearing lifecycle ownership only once scheduler cleanup succeeds.
+
+- [#3024](https://github.com/fluojs/fluo/pull/3024) [`039fd69`](https://github.com/fluojs/fluo/commit/039fd6940a6a876a7c95bcb6ba7105aad9d747db) Thanks [@ayden94](https://github.com/ayden94)! - Skip Redis lock release I/O after the Cron shutdown deadline expires while retaining unresolved local ownership for status reporting.
+
+- Updated dependencies [[`45f8fbd`](https://github.com/fluojs/fluo/commit/45f8fbd8f5302558369eb6e9697e64c4ecd7e2a1), [`91c7b32`](https://github.com/fluojs/fluo/commit/91c7b3245b7d168b49eeff551be06998cb20b8cd), [`9b1c3ed`](https://github.com/fluojs/fluo/commit/9b1c3ed648e4c48c24384879cc587aedec1ba00e), [`01aaf36`](https://github.com/fluojs/fluo/commit/01aaf368394bfab437eea90304b5e84c1ef2d406), [`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4), [`f6385dc`](https://github.com/fluojs/fluo/commit/f6385dc4623581f47efe8a95c45d4f8f274dc7c2), [`8e79be1`](https://github.com/fluojs/fluo/commit/8e79be1d5520e2144eb16bb40766f3619dfba6a9), [`a7cffb1`](https://github.com/fluojs/fluo/commit/a7cffb16d9f1ba4ad8eea4ffc7d751b2913dd51d), [`8131ce1`](https://github.com/fluojs/fluo/commit/8131ce135cbcef8ba3d9b2eb7628176ab850c36b), [`1e06150`](https://github.com/fluojs/fluo/commit/1e0615082fd6b9a449a20adeced131eeea856faf), [`6e4272a`](https://github.com/fluojs/fluo/commit/6e4272afd17ea18177330a4e9de6d2745fb2d6d9), [`1ba9703`](https://github.com/fluojs/fluo/commit/1ba970357e404638f513a84a45da7358ea7384b4), [`fbc2d1b`](https://github.com/fluojs/fluo/commit/fbc2d1b76077079e325b30eca93f36d573f5093d), [`152a25e`](https://github.com/fluojs/fluo/commit/152a25e986eaad51634c0ef77cbe2f12b86807c7), [`acd28a9`](https://github.com/fluojs/fluo/commit/acd28a962b35f577890c47c9c535e4058f373846), [`7b61b03`](https://github.com/fluojs/fluo/commit/7b61b03239f2f4f7bc9692fbf430731798909317)]:
+  - @fluojs/runtime@3.0.0
+  - @fluojs/di@3.0.0
+  - @fluojs/core@1.1.1
+
 ## 2.0.1
 
 ### Patch Changes
