@@ -60,10 +60,21 @@ function requireParagraph(path: string, markdown: string, prefix: string): strin
   return matches.at(0) ?? '';
 }
 
+function requireMethodBody(source: string, signature: string): string {
+  const methodStart = source.indexOf(signature);
+  const bodyStart = source.indexOf('{', methodStart);
+  const bodyEnd = source.indexOf('\n  private ', bodyStart);
+  expect([methodStart, bodyStart, bodyEnd], `${signature} method body must exist`).not.toContain(-1);
+  return source.slice(bodyStart + 1, bodyEnd);
+}
+
 function assertMarkers(path: string, context: string, content: string, markers: readonly string[]): void {
   for (const marker of markers) {
     expect(content, `${path} [${context}] must contain semantic anchor ${marker}`).toContain(marker);
   }
+  expect(content, `${path} [${context}] must not contradict fail-soft listener isolation`).not.toMatch(
+    /\b(?:listener|handler) failures?\s+(?:alone\s+)?(?:rejects?|fails?[- ]fast|(?:are|will be|must be)\s+aggregated|produce(?:s)?\s+an?\s+AggregateError)\b|(?:listener|handler) 실패(?:만으로)?[^\n]*(?:reject(?:한다|합니다|된다|됩니다)|fail-fast|AggregateError|집계(?:한다|합니다|된다|됩니다))/iu,
+  );
 }
 
 function readProperty(value: unknown, key: string): unknown {
@@ -182,6 +193,35 @@ ioredis publishClient subscribeClient
 });
 
 describe('Event Bus handler failure isolation documentation', () => {
+  it.each([
+    { language: 'English', content: 'A listener failure rejects `publish(...)` immediately.' },
+    { language: 'Korean', content: 'listener 실패만으로 `publish(...)`를 즉시 reject합니다.' },
+  ])('rejects contradictory fail-soft wording in $language governed content', ({ content }) => {
+    expect(() => assertMarkers('fixture.md', 'listener boundary', content, ['listener'])).toThrowError(
+      /fixture\.md.*listener boundary/u,
+    );
+  });
+
+  it.each([
+    {
+      context: 'local listener settlement',
+      signature: 'private async executePublish(',
+      markers: ['const invocationTasks = this.createInvocationTasks', 'await Promise.allSettled'],
+    },
+    {
+      context: 'inbound listener settlement',
+      signature: 'private async dispatchIncomingTransportMessage(',
+      markers: ['const invocationTasks = channelDescriptors.map', 'await Promise.allSettled'],
+    },
+  ])('rejects $context anchors outside the intended method', ({ context, signature, markers }) => {
+    const source = `  ${signature}\n  {}\n  private decoy(): void {\n${markers.join('\n')}\n  }`;
+    const methodBody = requireMethodBody(source, signature);
+
+    expect(() => assertMarkers('fixture.ts', context, methodBody, markers)).toThrowError(
+      /fixture\.ts.*listener settlement/u,
+    );
+  });
+
   it('keeps the fail-soft listener boundary explicit in every English and Korean surface', () => {
     // Given
     const englishParagraphs = [
@@ -222,21 +262,15 @@ describe('Event Bus handler failure isolation documentation', () => {
     ] as const;
 
     // When / Then
-    for (const [path, prefix] of englishParagraphs) {
+    for (const [path, prefix] of [...englishParagraphs, ...koreanParagraphs]) {
       const paragraph = requireParagraph(path, readDocument(path), prefix);
-      assertMarkers(path, `paragraph: ${prefix}`, paragraph, englishMarkers);
+      const markers = path.endsWith('.ko.md') ? koreanMarkers : englishMarkers;
+      assertMarkers(path, `paragraph: ${prefix}`, paragraph, markers);
     }
-    for (const [path, prefix] of englishListItems) {
+    for (const [path, prefix] of [...englishListItems, ...koreanListItems]) {
       const item = requireListItem(path, readDocument(path), prefix);
-      assertMarkers(path, `list item: ${prefix}`, item, englishMarkers);
-    }
-    for (const [path, prefix] of koreanParagraphs) {
-      const paragraph = requireParagraph(path, readDocument(path), prefix);
-      assertMarkers(path, `paragraph: ${prefix}`, paragraph, koreanMarkers);
-    }
-    for (const [path, prefix] of koreanListItems) {
-      const item = requireListItem(path, readDocument(path), prefix);
-      assertMarkers(path, `list item: ${prefix}`, item, koreanMarkers);
+      const markers = path.endsWith('.ko.md') ? koreanMarkers : englishMarkers;
+      assertMarkers(path, `list item: ${prefix}`, item, markers);
     }
   });
 
@@ -244,16 +278,17 @@ describe('Event Bus handler failure isolation documentation', () => {
     // Given
     const servicePath = 'packages/event-bus/src/service.ts';
     const serviceSource = readDocument(servicePath);
+    const localBody = requireMethodBody(serviceSource, 'private async executePublish(');
+    const inboundBody = requireMethodBody(serviceSource, 'private async dispatchIncomingTransportMessage(');
     const testsPath = 'packages/event-bus/src/module.test.ts';
     const testSource = readDocument(testsPath);
 
     // When / Then
-    assertMarkers(servicePath, 'local listener settlement', serviceSource, [
+    assertMarkers(servicePath, 'local listener settlement', localBody, [
       'const invocationTasks = this.createInvocationTasks',
       'await Promise.allSettled([...invocationTasks, transportPublish]);',
     ]);
-    assertMarkers(servicePath, 'inbound listener settlement', serviceSource, [
-      'private async dispatchIncomingTransportMessage(',
+    assertMarkers(servicePath, 'inbound listener settlement', inboundBody, [
       'await Promise.allSettled(invocationTasks);',
     ]);
     assertMarkers(testsPath, 'listener failure regression titles', testSource, [
