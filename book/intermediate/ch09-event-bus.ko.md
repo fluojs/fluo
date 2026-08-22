@@ -123,6 +123,8 @@ export class CheckoutService {
 
 이렇게 하면 write path가 명시적으로 유지됩니다. 서비스는 상태 변화를 계속 소유하고, side effect는 위임됩니다. `EventPublishOptions`는 일치하는 local handler 작업과 구성된 transport publication을 모두 제한합니다. `waitForHandlers`의 기본값이 `true`이므로 위 코드처럼 await한 publish는 두 종류의 작업이 `signal` 및 `timeoutMs` bound 안에서 settle된 뒤에 완료됩니다. 이미 abort된 signal은 아직 시작하지 않은 작업을 건너뛰고, 작업이 시작된 뒤 발생한 cancellation이나 timeout은 호출자에게 보이는 wait를 settle하지만 shutdown이 추적하는 underlying work를 종료하지는 않습니다. 의도적으로 background reaction이 필요할 때만 `waitForHandlers: false`를 사용하세요. 이 옵션은 두 종류의 작업을 scheduling한 뒤 반환하고 `timeoutMs`를 무시하며, 해당 작업을 shutdown drain 추적에 유지합니다. Shutdown은 하나의 absolute deadline 아래에서 해당 live work set을 quiescence까지 다시 확인하므로 이전 snapshot 뒤에 등록된 handler 또는 transport 작업까지 settle한 후 transport close를 진행합니다.
 
+`publish(...)` completion은 dispatch completion boundary입니다. 일치하는 local listener 실패는 log되고 격리되며, 다른 matching listener는 계속 실행됩니다. Local listener 실패만으로 `publish(...)`를 reject하지 않습니다. Inbound transport listener에는 같은 isolation 규칙이 적용되므로 inbound callback completion은 격리된 listener 실패를 외부로 드러내지 않습니다. Publisher completion은 모든 listener가 성공했음을 증명하지 않습니다. Timeout, cancellation, transport publication, bootstrap 및 그 밖의 publisher 실패는 이 listener-failure 계약의 범위 밖에 있습니다. 해당 실패는 각각 별도로 문서화된 동작을 유지합니다.
+
 ### 9.3.2 Why this is better than chained service calls
 
 이벤트가 없다면 Checkout는 Notifications를 직접 호출할 수 있습니다. 그다음 Analytics를 호출하고, 다시 Audit를 호출할 수 있습니다. 새로운 관심사가 추가될 때마다 write path는 더 길어집니다. 각 의존성은 실패 처리와 테스트를 더 복잡하게 만듭니다. 이벤트를 쓰면 Checkout는 하나의 사실만 진술하고 나머지 시스템은 독립적으로 반응합니다. intent를 숨기지 않으면서 coupling을 낮추는 방식입니다.
@@ -246,6 +248,7 @@ Part 1은 FluoShop이 boundary를 넘어 통신하는 방법을 정리했습니�
 - stable `eventKey` 값은 refactor를 넘어 routing contract를 유지하는 데 도움이 됩니다.
 - in-process publish and subscribe가 기본이며, Redis transport는 같은 모델을 process boundary 너머로 확장합니다.
 - `EventPublishOptions`는 local handler와 transport publication 모두에 호출자 관점의 bound를 적용합니다.
+- Local 및 inbound transport listener 실패는 log되고 격리되며, 다른 matching listener는 계속 실행됩니다. Local listener 실패만으로 `publish(...)`를 reject하지 않으며, inbound callback completion은 격리된 listener 실패를 외부로 드러내지 않습니다. Publisher completion은 모든 listener가 성공했음을 증명하지 않습니다. Timeout, cancellation, transport publication, bootstrap 및 그 밖의 publisher 실패는 이 listener-failure 계약의 범위 밖에 있습니다. 해당 실패는 각각 별도로 문서화된 동작을 유지합니다.
 - Redis 서브패스에는 optional `ioredis` peer와 transport 전용 `publishClient`, `subscribeClient` instance가 각각 필요합니다.
 - 잘못된 JSON을 버리는 동작은 Redis adapter에만 해당하며, 애플리케이션은 event-bus teardown 후 자신의 Redis client를 닫을 책임을 계속 가집니다.
 - Redis fan-out에는 idempotent handler가 필요하며, 느리거나 retry 가능한 reaction은 durable work를 Queue로 넘겨야 합니다.

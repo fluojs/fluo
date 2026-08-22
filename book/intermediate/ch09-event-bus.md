@@ -123,6 +123,8 @@ export class CheckoutService {
 
 This keeps the write path explicit. The service still owns the state change, while side effects are delegated. `EventPublishOptions` bounds both matching local handler work and configured transport publication. Because `waitForHandlers` defaults to `true`, this awaited publish completes only after both kinds of work settle within the `signal` and `timeoutMs` bounds. A signal that is already aborted skips work that has not started; cancellation or timeout after work starts settles the caller-facing wait but does not terminate the underlying shutdown-tracked work. Use `waitForHandlers: false` only for deliberately background reactions. It returns after scheduling both kinds of work, ignores `timeoutMs`, and keeps the work in shutdown drain tracking. Shutdown rechecks that live work set to quiescence under one absolute deadline, including handler or transport work registered after an earlier snapshot, before transport close proceeds.
 
+`publish(...)` completion is a dispatch completion boundary. Matching local listener failures are logged and isolated, while other matching listeners continue. A local listener failure alone does not reject `publish(...)`. Inbound transport listeners follow the same isolation rule, so inbound callback completion does not surface isolated listener failures. Publisher completion does not prove that every listener succeeded. Timeout, cancellation, transport publication, bootstrap, and other publisher failures are outside this listener-failure contract. Those failures retain their own separately documented behavior.
+
 ### 9.3.2 Why this is better than chained service calls
 
 Without events, Checkout could call Notifications directly. Then it could call Analytics, and then Audit. Every time a new concern is added, the write path gets longer. Each dependency makes failure handling and testing more complex. With events, Checkout states a single fact and the rest of the system reacts independently. This lowers coupling without hiding intent.
@@ -246,6 +248,7 @@ Part 1 organized how FluoShop communicates across boundaries. This chapter cover
 - Stable `eventKey` values help preserve routing contracts across refactors.
 - In-process publish and subscribe is the default, while Redis transport extends the same model beyond process boundaries.
 - `EventPublishOptions` applies caller-facing bounds to both local handlers and transport publication.
+- Local and inbound transport listener failures are logged and isolated, while other matching listeners continue. A local listener failure alone does not reject `publish(...)`, and inbound callback completion does not surface isolated listener failures. Publisher completion does not prove that every listener succeeded. Timeout, cancellation, transport publication, bootstrap, and other publisher failures are outside this listener-failure contract. Those failures retain their own separately documented behavior.
 - The Redis subpath requires the optional `ioredis` peer plus dedicated, separate `publishClient` and `subscribeClient` instances.
 - Only the Redis adapter drops malformed JSON, and the application remains responsible for closing its Redis clients after event-bus teardown.
 - Redis fan-out requires idempotent handlers, and slow or retryable reactions should hand durable work to Queue.

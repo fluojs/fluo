@@ -60,10 +60,21 @@ function requireParagraph(path: string, markdown: string, prefix: string): strin
   return matches.at(0) ?? '';
 }
 
+function requireMethodBody(source: string, signature: string): string {
+  const methodStart = source.indexOf(signature);
+  const bodyStart = source.indexOf('{', methodStart);
+  const bodyEnd = source.indexOf('\n  private ', bodyStart);
+  expect([methodStart, bodyStart, bodyEnd], `${signature} method body must exist`).not.toContain(-1);
+  return source.slice(bodyStart + 1, bodyEnd);
+}
+
 function assertMarkers(path: string, context: string, content: string, markers: readonly string[]): void {
   for (const marker of markers) {
     expect(content, `${path} [${context}] must contain semantic anchor ${marker}`).toContain(marker);
   }
+  expect(content, `${path} [${context}] must not contradict fail-soft listener isolation`).not.toMatch(
+    /\b(?:listener|handler) failures?\s+(?:alone\s+)?(?:rejects?|fails?[- ]fast|(?:are|will be|must be)\s+aggregated|produce(?:s)?\s+an?\s+AggregateError)\b|(?:listener|handler) 실패(?:만으로)?[^\n]*(?:reject(?:한다|합니다|된다|됩니다)|fail-fast|AggregateError|집계(?:한다|합니다|된다|됩니다))/iu,
+  );
 }
 
 function readProperty(value: unknown, key: string): unknown {
@@ -178,5 +189,111 @@ ioredis publishClient subscribeClient
       const item = requireListItem(path, readDocument(path), prefix);
       assertMarkers(path, `list item: ${prefix}`, item, markers);
     }
+  });
+});
+
+describe('Event Bus handler failure isolation documentation', () => {
+  it.each([
+    { language: 'English', content: 'A listener failure rejects `publish(...)` immediately.' },
+    { language: 'Korean', content: 'listener 실패만으로 `publish(...)`를 즉시 reject합니다.' },
+  ])('rejects contradictory fail-soft wording in $language governed content', ({ content }) => {
+    expect(() => assertMarkers('fixture.md', 'listener boundary', content, ['listener'])).toThrowError(
+      /fixture\.md.*listener boundary/u,
+    );
+  });
+
+  it.each([
+    {
+      context: 'local listener settlement',
+      signature: 'private async executePublish(',
+      markers: ['const invocationTasks = this.createInvocationTasks', 'await Promise.allSettled'],
+    },
+    {
+      context: 'inbound listener settlement',
+      signature: 'private async dispatchIncomingTransportMessage(',
+      markers: ['const invocationTasks = channelDescriptors.map', 'await Promise.allSettled'],
+    },
+  ])('rejects $context anchors outside the intended method', ({ context, signature, markers }) => {
+    const source = `  ${signature}\n  {}\n  private decoy(): void {\n${markers.join('\n')}\n  }`;
+    const methodBody = requireMethodBody(source, signature);
+
+    expect(() => assertMarkers('fixture.ts', context, methodBody, markers)).toThrowError(
+      /fixture\.ts.*listener settlement/u,
+    );
+  });
+
+  it('keeps the fail-soft listener boundary explicit in every English and Korean surface', () => {
+    // Given
+    const englishParagraphs = [
+      ['packages/event-bus/README.md', 'Handler failure isolation'],
+      ['book/intermediate/ch09-event-bus.md', '`publish(...)` completion'],
+      ['docs/CONTEXT.md', 'Event-bus package-surface discoverability'],
+    ] as const;
+    const englishListItems = [
+      ['book/intermediate/ch09-event-bus.md', '- Local and inbound transport listener failures'],
+      ['docs/getting-started/migrate-from-nestjs.md', '- Event-bus publisher completion'],
+    ] as const;
+    const koreanParagraphs = [
+      ['packages/event-bus/README.ko.md', 'Handler failure isolation'],
+      ['book/intermediate/ch09-event-bus.ko.md', '`publish(...)` completion'],
+      ['docs/CONTEXT.ko.md', 'Event-bus package-surface discoverability'],
+    ] as const;
+    const koreanListItems = [
+      ['book/intermediate/ch09-event-bus.ko.md', '- Local 및 inbound transport listener 실패'],
+      ['docs/getting-started/migrate-from-nestjs.ko.md', '- Event-bus publisher completion'],
+    ] as const;
+    const englishMarkers = [
+      'listener failures are logged and isolated',
+      'other matching listeners continue',
+      'local listener failure alone does not reject `publish(...)`',
+      'inbound callback completion does not surface isolated listener failures',
+      'completion does not prove that every listener succeeded',
+      'Timeout, cancellation, transport publication, bootstrap, and other publisher failures are outside this listener-failure contract.',
+      'Those failures retain their own separately documented behavior.',
+    ] as const;
+    const koreanMarkers = [
+      'listener 실패는 log되고 격리',
+      '다른 matching listener는 계속 실행',
+      'listener 실패만으로 `publish(...)`를 reject하지 않',
+      'inbound callback completion은 격리된 listener 실패를 외부로 드러내지 않',
+      'completion은 모든 listener가 성공했음을 증명하지 않',
+      'Timeout, cancellation, transport publication, bootstrap 및 그 밖의 publisher 실패는 이 listener-failure 계약의 범위 밖에 있',
+      '해당 실패는 각각 별도로 문서화된 동작을 유지',
+    ] as const;
+
+    // When / Then
+    for (const [path, prefix] of [...englishParagraphs, ...koreanParagraphs]) {
+      const paragraph = requireParagraph(path, readDocument(path), prefix);
+      const markers = path.endsWith('.ko.md') ? koreanMarkers : englishMarkers;
+      assertMarkers(path, `paragraph: ${prefix}`, paragraph, markers);
+    }
+    for (const [path, prefix] of [...englishListItems, ...koreanListItems]) {
+      const item = requireListItem(path, readDocument(path), prefix);
+      const markers = path.endsWith('.ko.md') ? koreanMarkers : englishMarkers;
+      assertMarkers(path, `list item: ${prefix}`, item, markers);
+    }
+  });
+
+  it('anchors the listener boundary to local and inbound executable evidence', () => {
+    // Given
+    const servicePath = 'packages/event-bus/src/service.ts';
+    const serviceSource = readDocument(servicePath);
+    const localBody = requireMethodBody(serviceSource, 'private async executePublish(');
+    const inboundBody = requireMethodBody(serviceSource, 'private async dispatchIncomingTransportMessage(');
+    const testsPath = 'packages/event-bus/src/module.test.ts';
+    const testSource = readDocument(testsPath);
+
+    // When / Then
+    assertMarkers(servicePath, 'local listener settlement', localBody, [
+      'const invocationTasks = this.createInvocationTasks',
+      'await Promise.allSettled([...invocationTasks, transportPublish]);',
+    ]);
+    assertMarkers(servicePath, 'inbound listener settlement', inboundBody, [
+      'await Promise.allSettled(invocationTasks);',
+    ]);
+    assertMarkers(testsPath, 'listener failure regression titles', testSource, [
+      'dispatches to multiple handlers and isolates handler failures without propagating to publisher',
+      'isolates and logs handler failures for incoming transport messages',
+    ]);
   });
 });
