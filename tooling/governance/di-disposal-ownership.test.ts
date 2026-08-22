@@ -1,0 +1,109 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+function read(relativePath: string): string {
+  return readFileSync(resolve(repoRoot, relativePath), 'utf8');
+}
+
+const englishOwnershipClaims = [
+  'public `child.dispose()` directly detaches the request child',
+  'retained child reference can call `dispose()` again',
+  'first reached through parent or root disposal remains parent-tracked after failure',
+  'caller that starts the shared attempt sets its direct or parent ownership',
+  'later direct retry detaches a parent-retained child after settlement',
+] as const;
+
+const koreanOwnershipClaims = [
+  'public `child.dispose()`를 직접 호출하면 request child는 active attempt가 settle된 뒤 parent graph에서 분리됩니다',
+  '분리된 child 참조를 유지한 caller는 `dispose()`를 다시 호출할 수 있습니다',
+  'parent 또는 root disposal이 먼저 진입한 child는 실패 후에도 parent가 계속 추적합니다',
+  'shared attempt를 시작한 caller가 direct 또는 parent ownership을 결정합니다',
+  'parent가 유지한 child를 나중에 `child.dispose()`로 직접 재시도하면',
+] as const;
+
+const ownershipEvidenceTitles = [
+  'does not let root disposal retry a directly disposed failed child while root cleanup runs',
+  'lets a retained caller retry a detached failed child without replaying successful siblings',
+  'keeps direct-first ownership when parent disposal joins the active attempt',
+  'keeps parent-first ownership when direct disposal joins the active attempt',
+  'detaches a retained child after a later direct retry fails',
+] as const;
+
+describe('DI disposal ownership governance', () => {
+  it('keeps all five ownership guarantees in the English package and advanced book', () => {
+    // Given
+    const companions = [read('packages/di/README.md'), read('book/advanced/ch05-scopes.md')];
+
+    // When / Then
+    for (const companion of companions) {
+      for (const claim of englishOwnershipClaims) {
+        expect(companion).toContain(claim);
+      }
+    }
+  });
+
+  it('keeps all five ownership guarantees in the Korean package and advanced book', () => {
+    // Given
+    const companions = [read('packages/di/README.ko.md'), read('book/advanced/ch05-scopes.ko.md')];
+
+    // When / Then
+    for (const companion of companions) {
+      for (const claim of koreanOwnershipClaims) {
+        expect(companion).toContain(claim);
+      }
+    }
+  });
+
+  it('keeps current origin-aware source excerpts and executable evidence discoverable', () => {
+    // Given
+    const chapters = [read('book/advanced/ch05-scopes.md'), read('book/advanced/ch05-scopes.ko.md')];
+    const packageReadmes = [read('packages/di/README.md'), read('packages/di/README.ko.md')];
+    const containerSource = read('packages/di/src/container.ts');
+    const ownershipEvidence = read('packages/di/src/container-disposal-ownership.test.ts');
+    const retryEvidence = read('packages/di/src/container-disposal-retry.test.ts');
+
+    // When / Then
+    for (const chapter of chapters) {
+      for (const marker of [
+        'path:packages/di/src/container.ts:616-640',
+        'path:packages/di/src/container.ts:642-672',
+        'path:packages/di/src/container.ts:1197-1213',
+        'path:packages/di/src/container.ts:1215-1286',
+        'path:packages/di/src/container.ts:1403-1411',
+      ]) {
+        expect(chapter).toContain(marker);
+      }
+
+      expect(chapter).not.toContain('if (completed && this.parent && this.trackedByParent)');
+      expect(chapter).not.toContain('Array.from(this.childScopes).map((child) => child.dispose()),');
+    }
+
+    for (const companion of [...packageReadmes, ...chapters]) {
+      expect(companion).toContain('packages/di/src/container-disposal-ownership.test.ts');
+      expect(companion).toContain('packages/di/src/container-disposal-retry.test.ts');
+    }
+
+    for (const marker of [
+      "type DisposalAttemptOrigin = 'direct' | 'parent';",
+      "await this.disposeWithOrigin('direct');",
+      'private async disposeFromParent(): Promise<void> {',
+      "await this.disposeWithOrigin('parent');",
+      "if ((completed || origin === 'direct') && this.parent && this.trackedByParent) {",
+      'disposed child owns its remaining retries after that attempt settles',
+      'parent-started failed attempt remains owned by the parent hierarchy',
+    ]) {
+      expect(containerSource).toContain(marker);
+    }
+
+    for (const title of ownershipEvidenceTitles) {
+      expect(ownershipEvidence).toContain(title);
+    }
+
+    expect(retryEvidence).toContain('retries only failed hooks in reverse creation order');
+    expect(retryEvidence).toContain('retries nested request scopes before their parent and root');
+  });
+});
