@@ -1456,9 +1456,14 @@ describe('FluoFactory.createApplicationContext', () => {
     ]);
   });
 
-  it('does not retry container-managed onDestroy hooks on a second application context close', async () => {
+  it('retries only failed container-managed onDestroy hooks on a second application context close', async () => {
+    let failedAttempts = 0;
     const failedOnDestroy = vi.fn(() => {
-      throw new Error('container destroy failed');
+      failedAttempts += 1;
+
+      if (failedAttempts === 1) {
+        throw new Error('container destroy failed');
+      }
     });
     const siblingOnDestroy = vi.fn();
 
@@ -1484,7 +1489,7 @@ describe('FluoFactory.createApplicationContext', () => {
       'Application context cannot resolve providers after shutdown has started.',
     );
     await expect(context.close()).resolves.toBeUndefined();
-    expect(failedOnDestroy).toHaveBeenCalledOnce();
+    expect(failedOnDestroy).toHaveBeenCalledTimes(2);
     expect(siblingOnDestroy).toHaveBeenCalledOnce();
   });
 

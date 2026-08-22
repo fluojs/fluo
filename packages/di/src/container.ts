@@ -291,6 +291,7 @@ export class Container {
   private multiRequestCache: Map<NormalizedProvider, Promise<unknown>> | undefined;
   private readonly multiSingletonCache = new Map<NormalizedProvider, Promise<unknown>>();
   private readonly materializedCachePromises: Promise<unknown>[] = [];
+  private readonly pendingDisposables: Disposable[] = [];
   private readonly staleDisposalTasks = new Set<StaleDisposalTask>();
   private readonly singletonCache: Map<Token, Promise<unknown>>;
   private readonly forwardRefTokenCache = new WeakMap<ForwardRefFn, Token>();
@@ -600,6 +601,11 @@ export class Container {
   /**
    * Disposes cached instances and nested request scopes.
    *
+   * Concurrent callers share the active disposal attempt. After a failed attempt,
+   * a later explicit call retries only `onDestroy()` hooks that did not complete;
+   * successfully completed hooks are never repeated. Disposal remains terminal
+   * for registration, resolution, overrides, and child-scope creation.
+   *
    * @returns A promise that settles after all cached disposable instances are torn down.
    * @throws {Error} Propagates one or more disposal errors (`AggregateError` when multiple failures occur).
    */
@@ -623,6 +629,7 @@ export class Container {
 
   private async disposeAll(): Promise<void> {
     const errors: unknown[] = [];
+    let completed = false;
 
     try {
       // Dispose all live request-scope children before tearing down this scope's cache.
@@ -635,7 +642,6 @@ export class Container {
           }
         }
 
-        this.childScopes.clear();
       }
 
       try {
@@ -645,8 +651,9 @@ export class Container {
       }
 
       this.throwDisposalErrors(errors);
+      completed = true;
     } finally {
-      if (this.parent && this.trackedByParent) {
+      if (completed && this.parent && this.trackedByParent) {
         this.parent.childScopes?.delete(this);
         this.trackedByParent = false;
       }
@@ -1202,7 +1209,13 @@ export class Container {
       this.collectDisposalError(error, errors);
     }
 
-    const { disposables, errors: resolutionErrors } = await this.collectDisposableInstances(entries);
+    const {
+      disposables: materializedDisposables,
+      errors: resolutionErrors,
+    } = await this.collectDisposableInstances(entries);
+    const disposables = this.pendingDisposables.length > 0
+      ? this.pendingDisposables
+      : materializedDisposables;
 
     errors.push(...resolutionErrors);
     errors.push(...(await this.disposeInstancesInReverseOrder(disposables)));
@@ -1245,15 +1258,18 @@ export class Container {
 
   private async disposeInstancesInReverseOrder(disposables: readonly Disposable[]): Promise<unknown[]> {
     const errors: unknown[] = [];
+    const pendingDisposables: Disposable[] = [];
 
     for (const instance of [...disposables].reverse()) {
       try {
         await instance.onDestroy();
       } catch (error) {
         errors.push(error);
+        pendingDisposables.unshift(instance);
       }
     }
 
+    this.pendingDisposables.splice(0, this.pendingDisposables.length, ...pendingDisposables);
     return errors;
   }
 
