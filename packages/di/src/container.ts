@@ -35,6 +35,8 @@ interface StaleDisposalTask {
   promise: Promise<void>;
 }
 
+type DisposalAttemptOrigin = 'direct' | 'parent';
+
 /**
  * Controlled cache adoption seam for framework-owned testing and tooling that
  * need synchronous helpers to preserve container-owned singleton disposal.
@@ -604,12 +606,22 @@ export class Container {
    * Concurrent callers share the active disposal attempt. After a failed attempt,
    * a later explicit call retries only `onDestroy()` hooks that did not complete;
    * successfully completed hooks are never repeated. Disposal remains terminal
-   * for registration, resolution, overrides, and child-scope creation.
+   * for registration, resolution, overrides, and child-scope creation. A directly
+   * disposed child owns its remaining retries after that attempt settles, while a
+   * parent-started failed attempt remains owned by the parent hierarchy.
    *
    * @returns A promise that settles after all cached disposable instances are torn down.
    * @throws {Error} Propagates one or more disposal errors (`AggregateError` when multiple failures occur).
    */
   async dispose(): Promise<void> {
+    await this.disposeWithOrigin('direct');
+  }
+
+  private async disposeFromParent(): Promise<void> {
+    await this.disposeWithOrigin('parent');
+  }
+
+  private async disposeWithOrigin(origin: DisposalAttemptOrigin): Promise<void> {
     if (this.disposePromise) {
       await this.disposePromise;
       return;
@@ -617,7 +629,7 @@ export class Container {
 
     this.disposed = true;
     this.advanceGraphRevision();
-    this.disposePromise = this.disposeAll();
+    this.disposePromise = this.disposeAll(origin);
 
     try {
       await this.disposePromise;
@@ -627,14 +639,14 @@ export class Container {
     }
   }
 
-  private async disposeAll(): Promise<void> {
+  private async disposeAll(origin: DisposalAttemptOrigin): Promise<void> {
     const errors: unknown[] = [];
     let completed = false;
 
     try {
       // Dispose all live request-scope children before tearing down this scope's cache.
       if (this.childScopes && this.childScopes.size > 0) {
-        const childResults = await Promise.allSettled(Array.from(this.childScopes).map((child) => child.dispose()));
+        const childResults = await Promise.allSettled(Array.from(this.childScopes).map((child) => child.disposeFromParent()));
 
         for (const result of childResults) {
           if (result.status === 'rejected') {
@@ -653,7 +665,7 @@ export class Container {
       this.throwDisposalErrors(errors);
       completed = true;
     } finally {
-      if (completed && this.parent && this.trackedByParent) {
+      if ((completed || origin === 'direct') && this.parent && this.trackedByParent) {
         this.parent.childScopes?.delete(this);
         this.trackedByParent = false;
       }
