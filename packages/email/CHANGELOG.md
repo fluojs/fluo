@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## 3.0.0
+
+### Major Changes
+
+- [#2776](https://github.com/fluojs/fluo/pull/2776) [`edf4092`](https://github.com/fluojs/fluo/commit/edf4092030e434ca306735953298d81808b69995) Thanks [@ayden94](https://github.com/ayden94)! - Require Nodemailer 9.0.1 or newer for the Node SMTP subpath. Upgrade Nodemailer 6, 7, or 8 consumers to `nodemailer@^9.0.1`, refresh the application lockfile, and validate provider-specific SMTP options before adopting this release; the fluo transport factory API is unchanged.
+
+### Patch Changes
+
+- [#3088](https://github.com/fluojs/fluo/pull/3088) [`3bb6c02`](https://github.com/fluojs/fluo/commit/3bb6c029eb4a3221e55976cad5b0d573c4fd3651) Thanks [@ayden94](https://github.com/ayden94)! - Validate email messages before acquiring lazy transports so invalid delivery input cannot initialize provider resources.
+
+- Updated dependencies [[`45f8fbd`](https://github.com/fluojs/fluo/commit/45f8fbd8f5302558369eb6e9697e64c4ecd7e2a1), [`91c7b32`](https://github.com/fluojs/fluo/commit/91c7b3245b7d168b49eeff551be06998cb20b8cd), [`9b1c3ed`](https://github.com/fluojs/fluo/commit/9b1c3ed648e4c48c24384879cc587aedec1ba00e), [`01aaf36`](https://github.com/fluojs/fluo/commit/01aaf368394bfab437eea90304b5e84c1ef2d406), [`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4), [`f6385dc`](https://github.com/fluojs/fluo/commit/f6385dc4623581f47efe8a95c45d4f8f274dc7c2), [`8e79be1`](https://github.com/fluojs/fluo/commit/8e79be1d5520e2144eb16bb40766f3619dfba6a9), [`a7cffb1`](https://github.com/fluojs/fluo/commit/a7cffb16d9f1ba4ad8eea4ffc7d751b2913dd51d), [`8131ce1`](https://github.com/fluojs/fluo/commit/8131ce135cbcef8ba3d9b2eb7628176ab850c36b), [`1e06150`](https://github.com/fluojs/fluo/commit/1e0615082fd6b9a449a20adeced131eeea856faf), [`6e4272a`](https://github.com/fluojs/fluo/commit/6e4272afd17ea18177330a4e9de6d2745fb2d6d9), [`1ba9703`](https://github.com/fluojs/fluo/commit/1ba970357e404638f513a84a45da7358ea7384b4), [`fbc2d1b`](https://github.com/fluojs/fluo/commit/fbc2d1b76077079e325b30eca93f36d573f5093d), [`152a25e`](https://github.com/fluojs/fluo/commit/152a25e986eaad51634c0ef77cbe2f12b86807c7), [`acd28a9`](https://github.com/fluojs/fluo/commit/acd28a962b35f577890c47c9c535e4058f373846), [`0d1aca9`](https://github.com/fluojs/fluo/commit/0d1aca91d45db68861821481c36327e155f829f7), [`7b61b03`](https://github.com/fluojs/fluo/commit/7b61b03239f2f4f7bc9692fbf430731798909317), [`7255c0d`](https://github.com/fluojs/fluo/commit/7255c0dc96d465d61eead1a3d6c30f5a2e1fadce)]:
+  - @fluojs/runtime@3.0.0
+  - @fluojs/di@3.0.0
+  - @fluojs/notifications@1.0.4
+  - @fluojs/core@1.1.1
+
 ## 2.0.0
 
 ### Major Changes

@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+## 2.0.0
+
+### Major Changes
+
+- [#2776](https://github.com/fluojs/fluo/pull/2776) [`edf4092`](https://github.com/fluojs/fluo/commit/edf4092030e434ca306735953298d81808b69995) Thanks [@ayden94](https://github.com/ayden94)! - Require `@grpc/grpc-js` 1.14.4 or newer for the optional gRPC transport. Upgrade the peer and refresh consumer lockfiles so the proto-loader chain resolves `protobufjs` 7.6.5 or newer; the fluo transport API is unchanged.
+
+### Patch Changes
+
+- [#2783](https://github.com/fluojs/fluo/pull/2783) [`9b1c3ed`](https://github.com/fluojs/fluo/commit/9b1c3ed648e4c48c24384879cc587aedec1ba00e) Thanks [@ayden94](https://github.com/ayden94)! - Reject new microservice `send()` and `emit()` calls as soon as shutdown begins, including while `listen()` is still pending, before runtime or transport handoff.
+
+- [#3081](https://github.com/fluojs/fluo/pull/3081) [`ec03145`](https://github.com/fluojs/fluo/commit/ec03145199e92d629f0e78f90fdb568344c7f33b) Thanks [@ayden94](https://github.com/ayden94)! - Contain malformed NATS request frames and response publication failures at the subscription callback boundary, reporting them through the configured transport logger without closing the caller-owned client.
+
+- [#3010](https://github.com/fluojs/fluo/pull/3010) [`831372d`](https://github.com/fluojs/fluo/commit/831372d86c84efe8f1eb3537083c4b1375a0cc75) Thanks [@ayden94](https://github.com/ayden94)! - Share concurrent TCP transport shutdown through one close promise so listener and socket cleanup runs once.
+
+- [#3077](https://github.com/fluojs/fluo/pull/3077) [`0f96f20`](https://github.com/fluojs/fluo/commit/0f96f20d2cc8da9dff9830a1103d2e6a7c42fb57) Thanks [@ayden94](https://github.com/ayden94)! - Preserve UTF-8 request, response, and event payloads when TCP splits a multibyte code point across socket chunks.
+
+- [#3028](https://github.com/fluojs/fluo/pull/3028) [`77be463`](https://github.com/fluojs/fluo/commit/77be463c8e67a215253356c9d392d83aaf353ec8) Thanks [@ayden94](https://github.com/ayden94)! - Reject new server-, client-, and bidirectional-stream requests at the `Microservice` facade as soon as shutdown starts.
+
+- [#3031](https://github.com/fluojs/fluo/pull/3031) [`cce202c`](https://github.com/fluojs/fluo/commit/cce202c9f3cad2296d1445aeda37c8c4ec03edd1) Thanks [@ayden94](https://github.com/ayden94)! - Report caller-owned gRPC servers and framework-owned cached outbound clients separately in platform status snapshots without changing shutdown behavior.
+
+- [#3079](https://github.com/fluojs/fluo/pull/3079) [`a919d60`](https://github.com/fluojs/fluo/commit/a919d60121a7e13d378a4421ce34e35e74890642) Thanks [@ayden94](https://github.com/ayden94)! - Attempt every NATS subscription cleanup, preserve all failure evidence, and retain failed subscriptions for retry without repeating successful teardown.
+
+- Updated dependencies [[`45f8fbd`](https://github.com/fluojs/fluo/commit/45f8fbd8f5302558369eb6e9697e64c4ecd7e2a1), [`91c7b32`](https://github.com/fluojs/fluo/commit/91c7b3245b7d168b49eeff551be06998cb20b8cd), [`9b1c3ed`](https://github.com/fluojs/fluo/commit/9b1c3ed648e4c48c24384879cc587aedec1ba00e), [`01aaf36`](https://github.com/fluojs/fluo/commit/01aaf368394bfab437eea90304b5e84c1ef2d406), [`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4), [`f6385dc`](https://github.com/fluojs/fluo/commit/f6385dc4623581f47efe8a95c45d4f8f274dc7c2), [`8e79be1`](https://github.com/fluojs/fluo/commit/8e79be1d5520e2144eb16bb40766f3619dfba6a9), [`a7cffb1`](https://github.com/fluojs/fluo/commit/a7cffb16d9f1ba4ad8eea4ffc7d751b2913dd51d), [`8131ce1`](https://github.com/fluojs/fluo/commit/8131ce135cbcef8ba3d9b2eb7628176ab850c36b), [`1e06150`](https://github.com/fluojs/fluo/commit/1e0615082fd6b9a449a20adeced131eeea856faf), [`6e4272a`](https://github.com/fluojs/fluo/commit/6e4272afd17ea18177330a4e9de6d2745fb2d6d9), [`1ba9703`](https://github.com/fluojs/fluo/commit/1ba970357e404638f513a84a45da7358ea7384b4), [`fbc2d1b`](https://github.com/fluojs/fluo/commit/fbc2d1b76077079e325b30eca93f36d573f5093d), [`152a25e`](https://github.com/fluojs/fluo/commit/152a25e986eaad51634c0ef77cbe2f12b86807c7), [`acd28a9`](https://github.com/fluojs/fluo/commit/acd28a962b35f577890c47c9c535e4058f373846), [`7b61b03`](https://github.com/fluojs/fluo/commit/7b61b03239f2f4f7bc9692fbf430731798909317)]:
+  - @fluojs/runtime@3.0.0
+  - @fluojs/di@3.0.0
+  - @fluojs/core@1.1.1
+
 ## 1.0.5
 
 ### Patch Changes

@@ -2,6 +2,43 @@
 
 ## [Unreleased]
 
+## 3.0.0
+
+### Major Changes
+
+- [#3078](https://github.com/fluojs/fluo/pull/3078) [`7b61b03`](https://github.com/fluojs/fluo/commit/7b61b03239f2f4f7bc9692fbf430731798909317) Thanks [@ayden94](https://github.com/ayden94)! - Add validated uppercase custom HTTP route authoring with `Route(method, path)` and first-class RFC `Query(path)` support while preserving exact-method precedence, versioning, DTO validation, and default response semantics.
+
+  Widen the internal route metadata method declaration so HTTP integrations can carry custom tokens, keep custom methods on Bun fetch fallback, and let Fastify wildcard fallback receive registered custom method names without creating native fluo route handoffs.
+
+  Expose shared network and fetch-style portability assertions for body-bearing `QUERY` and extension-method routes across supported adapters.
+
+  Require Node.js `>=20.19.3 <21 || >=22.2.0 <27` for published Node listener paths and generated Node HTTP starters so RFC `QUERY` reaches framework dispatch. Upgrade existing Node listener deployments and regenerated Node HTTP projects to a release in that exact range. Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded; Bun, Deno, and Cloudflare Workers fetch-style adapter contracts are unchanged.
+
+### Minor Changes
+
+- [#2852](https://github.com/fluojs/fluo/pull/2852) [`d2b1bc6`](https://github.com/fluojs/fluo/commit/d2b1bc6eb48e767578b887bbe35464826fbae84e) Thanks [@ayden94](https://github.com/ayden94)! - Add the official `fluo new --starter react-vite-ssr` application with explicit Vite client/server builds, HTTP-owned React pages, manifest-fed hydration, full-document navigation, and generated SSR, hydration, and production browser tests.
+
+- [#2851](https://github.com/fluojs/fluo/pull/2851) [`f6385dc`](https://github.com/fluojs/fluo/commit/f6385dc4623581f47efe8a95c45d4f8f274dc7c2) Thanks [@ayden94](https://github.com/ayden94)! - Add immutable React page catalogs and expose compiled route kinds, effective paths, versions, and parameter names through runtime inspection, `fluo inspect`, and Studio diagnostics.
+
+- [#2853](https://github.com/fluojs/fluo/pull/2853) [`44cb5e9`](https://github.com/fluojs/fluo/commit/44cb5e928bb634c91cfbd376fd9b5f3d2f07f753) Thanks [@ayden94](https://github.com/ayden94)! - Add deterministic path-only React page type generation with typed absolute href builders through `@fluojs/react/typegen` and `fluo typegen`.
+
+- [#2859](https://github.com/fluojs/fluo/pull/2859) [`edf47a1`](https://github.com/fluojs/fluo/commit/edf47a1aafb764a82d5eb1b401bc8590685c1678) Thanks [@ayden94](https://github.com/ayden94)! - Generate route-bound real-anchor props and typed `push`/`replace` methods so React page ids and exact path params stay visible through declarative and programmatic HTTP-first navigation.
+
+- [#2895](https://github.com/fluojs/fluo/pull/2895) [`26b5b75`](https://github.com/fluojs/fluo/commit/26b5b75c2c8e50529680c50fa83bf228d88ff0e0) Thanks [@ayden94](https://github.com/ayden94)! - Simplify the generated React SSR + Vite starter so the first editable page is isolated from manifest, renderer, document, route-snapshot, and hydration wiring while preserving explicit HTTP routes and replaceable application-owned server/client composition.
+
+- [#2900](https://github.com/fluojs/fluo/pull/2900) [`ca5fb8d`](https://github.com/fluojs/fluo/commit/ca5fb8dc19da0703022d33eb07a4b8ec08bd2824) Thanks [@ayden94](https://github.com/ayden94)! - Add deterministic React typegen check and watch workflows with versioned artifact diagnostics, atomic writes, stable exit codes, and a documented consumer testing loop.
+
+### Patch Changes
+
+- [#2929](https://github.com/fluojs/fluo/pull/2929) [`1bca3e9`](https://github.com/fluojs/fluo/commit/1bca3e994fa4123c325a04bc21e68ffa6f4b1808) Thanks [@ayden94](https://github.com/ayden94)! - Bound Studio sidecar teardown by closing active authenticated ingestion sockets and sharing repeated close calls across one deterministic shutdown operation.
+
+- [#3052](https://github.com/fluojs/fluo/pull/3052) [`cb57982`](https://github.com/fluojs/fluo/commit/cb57982dcc058f84b95e0be2de6686f3eabb811a) Thanks [@ayden94](https://github.com/ayden94)! - Route primary and fallback development watcher errors through the restart runner's bounded terminal cleanup so app children and sibling watchers are not left running.
+
+- [#2776](https://github.com/fluojs/fluo/pull/2776) [`edf4092`](https://github.com/fluojs/fluo/commit/edf4092030e434ca306735953298d81808b69995) Thanks [@ayden94](https://github.com/ayden94)! - Raise the CLI and generated Node.js starter `tsx` floor to 4.23.1, and generate gRPC starters with `@grpc/grpc-js` 1.14.4 or newer. Refresh existing project lockfiles when adopting these patched toolchain floors.
+
+- Updated dependencies [[`45f8fbd`](https://github.com/fluojs/fluo/commit/45f8fbd8f5302558369eb6e9697e64c4ecd7e2a1), [`91c7b32`](https://github.com/fluojs/fluo/commit/91c7b3245b7d168b49eeff551be06998cb20b8cd), [`9b1c3ed`](https://github.com/fluojs/fluo/commit/9b1c3ed648e4c48c24384879cc587aedec1ba00e), [`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4), [`f6385dc`](https://github.com/fluojs/fluo/commit/f6385dc4623581f47efe8a95c45d4f8f274dc7c2), [`8e79be1`](https://github.com/fluojs/fluo/commit/8e79be1d5520e2144eb16bb40766f3619dfba6a9), [`a7cffb1`](https://github.com/fluojs/fluo/commit/a7cffb16d9f1ba4ad8eea4ffc7d751b2913dd51d), [`8131ce1`](https://github.com/fluojs/fluo/commit/8131ce135cbcef8ba3d9b2eb7628176ab850c36b), [`acd28a9`](https://github.com/fluojs/fluo/commit/acd28a962b35f577890c47c9c535e4058f373846), [`7b61b03`](https://github.com/fluojs/fluo/commit/7b61b03239f2f4f7bc9692fbf430731798909317)]:
+  - @fluojs/runtime@3.0.0
+
 ## 2.0.1
 
 ### Patch Changes

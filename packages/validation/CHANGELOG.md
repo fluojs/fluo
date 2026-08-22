@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## 1.0.7
+
+### Patch Changes
+
+- [#2820](https://github.com/fluojs/fluo/pull/2820) [`4f89ac4`](https://github.com/fluojs/fluo/commit/4f89ac4dc77169badb160804d86f78d612989af4) Thanks [@ayden94](https://github.com/ayden94)! - Hydrate plain nested DTO fields and collection members when materializing existing DTO instances while preserving root and nested DTO identities.
+
+- [#3064](https://github.com/fluojs/fluo/pull/3064) [`5e59219`](https://github.com/fluojs/fluo/commit/5e59219c5346d9fa3d70719f7204fcf5e9f602f6) Thanks [@ayden94](https://github.com/ayden94)! - Preserve cycle guards across DTO materialization and nested validation without rejecting shared raw references.
+
+- Updated dependencies [[`7b61b03`](https://github.com/fluojs/fluo/commit/7b61b03239f2f4f7bc9692fbf430731798909317)]:
+  - @fluojs/core@1.1.1
+
 ## 1.0.6
 
 ### Patch Changes

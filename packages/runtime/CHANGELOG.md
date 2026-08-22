@@ -2,6 +2,52 @@
 
 ## [Unreleased]
 
+## 3.0.0
+
+### Major Changes
+
+- [#2883](https://github.com/fluojs/fluo/pull/2883) [`acd28a9`](https://github.com/fluojs/fluo/commit/acd28a962b35f577890c47c9c535e4058f373846) Thanks [@ayden94](https://github.com/ayden94)! - Replace uncoordinated PlatformShell lifecycle overlap with strict exclusive transitions. Every overlapping `start()` or `stop()` now rejects immediately with `PlatformLifecycleConflictError` and structured `PLATFORM_LIFECYCLE_CONFLICT` metadata.
+
+  In 2.x, overlapping `start()` calls could start the same components more than once, and `stop()` called during an in-flight startup could return before startup settled and leave resources running. Consumers must now give one application boundary ownership of each transition, wait for that owned promise to settle, and retry explicitly when a rejected operation is still required. Lifecycle callbacks receive the same typed conflict after synchronous or arbitrarily awaited reentry.
+
+- [#3078](https://github.com/fluojs/fluo/pull/3078) [`7b61b03`](https://github.com/fluojs/fluo/commit/7b61b03239f2f4f7bc9692fbf430731798909317) Thanks [@ayden94](https://github.com/ayden94)! - Add validated uppercase custom HTTP route authoring with `Route(method, path)` and first-class RFC `Query(path)` support while preserving exact-method precedence, versioning, DTO validation, and default response semantics.
+
+  Widen the internal route metadata method declaration so HTTP integrations can carry custom tokens, keep custom methods on Bun fetch fallback, and let Fastify wildcard fallback receive registered custom method names without creating native fluo route handoffs.
+
+  Expose shared network and fetch-style portability assertions for body-bearing `QUERY` and extension-method routes across supported adapters.
+
+  Require Node.js `>=20.19.3 <21 || >=22.2.0 <27` for published Node listener paths and generated Node HTTP starters so RFC `QUERY` reaches framework dispatch. Upgrade existing Node listener deployments and regenerated Node HTTP projects to a release in that exact range. Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded; Bun, Deno, and Cloudflare Workers fetch-style adapter contracts are unchanged.
+
+### Minor Changes
+
+- [#2851](https://github.com/fluojs/fluo/pull/2851) [`f6385dc`](https://github.com/fluojs/fluo/commit/f6385dc4623581f47efe8a95c45d4f8f274dc7c2) Thanks [@ayden94](https://github.com/ayden94)! - Add immutable React page catalogs and expose compiled route kinds, effective paths, versions, and parameter names through runtime inspection, `fluo inspect`, and Studio diagnostics.
+
+- [#2898](https://github.com/fluojs/fluo/pull/2898) [`a7cffb1`](https://github.com/fluojs/fluo/commit/a7cffb16d9f1ba4ad8eea4ffc7d751b2913dd51d) Thanks [@ayden94](https://github.com/ayden94)! - Add an HTTP-owned, content-negotiated error representation seam that preserves canonical JSON by default, optionally renders application-owned HTML for classified errors and route misses, and keeps status, headers, `HEAD`, abort, commit, and one-shot fallback behavior in the dispatcher.
+
+  Expose runtime bootstrap wiring, a buffered React error-document provider adapter, and typed network/fetch-style portability assertions for the new representation contract.
+
+  Preserve existing Express response `Vary` values when HTTP error representation negotiation adds `Accept`.
+
+### Patch Changes
+
+- [#2990](https://github.com/fluojs/fluo/pull/2990) [`45f8fbd`](https://github.com/fluojs/fluo/commit/45f8fbd8f5302558369eb6e9697e64c4ecd7e2a1) Thanks [@ayden94](https://github.com/ayden94)! - Bound repeated PlatformShell readiness, health, and snapshot probe diagnostics to the latest failure per component and probe phase while preserving distinct lifecycle failures.
+
+- [#2973](https://github.com/fluojs/fluo/pull/2973) [`91c7b32`](https://github.com/fluojs/fluo/commit/91c7b3245b7d168b49eeff551be06998cb20b8cd) Thanks [@ayden94](https://github.com/ayden94)! - Cancel pending raw Node `EADDRINUSE` listen retries during adapter shutdown so a closed listener cannot bind again after close completes.
+
+- [#2783](https://github.com/fluojs/fluo/pull/2783) [`9b1c3ed`](https://github.com/fluojs/fluo/commit/9b1c3ed648e4c48c24384879cc587aedec1ba00e) Thanks [@ayden94](https://github.com/ayden94)! - Reject new microservice `send()` and `emit()` calls as soon as shutdown begins, including while `listen()` is still pending, before runtime or transport handoff.
+
+- [#2781](https://github.com/fluojs/fluo/pull/2781) [`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4) Thanks [@ayden94](https://github.com/ayden94)! - Capture CLI-injected Studio configuration once as a validated, immutable runtime bridge snapshot.
+
+- [#2886](https://github.com/fluojs/fluo/pull/2886) [`8e79be1`](https://github.com/fluojs/fluo/commit/8e79be1d5520e2144eb16bb40766f3619dfba6a9) Thanks [@ayden94](https://github.com/ayden94)! - Enforce Web JSON request body limits while streaming even when Content-Length appears safe, settle oversized cloned streams without waiting for cancellation, preserve HTTP 413 when cancellation rejects, and deprecate the compatibility-only `preferNativeJsonBodyReader` option.
+
+- [#3050](https://github.com/fluojs/fluo/pull/3050) [`8131ce1`](https://github.com/fluojs/fluo/commit/8131ce135cbcef8ba3d9b2eb7628176ab850c36b) Thanks [@ayden94](https://github.com/ayden94)! - Preserve the documented application lifecycle state transitions and terminal operation gate, reject provider and child microservice operations once shutdown starts, and resume incomplete adapter or lifecycle-hook stages without repeating completed runtime phases. Container-managed `onDestroy()` hooks remain terminal best-effort cleanup and individual failed hooks are not retried by a later application close.
+
+- Updated dependencies [[`c6b0af7`](https://github.com/fluojs/fluo/commit/c6b0af7926e1f94b36ead0ed2678dbd984790ac6), [`eb0ee7f`](https://github.com/fluojs/fluo/commit/eb0ee7fc97bb174607fa87f2deeb93ebd46d6340), [`fa3a990`](https://github.com/fluojs/fluo/commit/fa3a9904f53c543ddc9fbf6f0fdf635731d07ffa), [`8e191c2`](https://github.com/fluojs/fluo/commit/8e191c2c9664bf58b402875b7a40b02b5ade012e), [`1ecaea2`](https://github.com/fluojs/fluo/commit/1ecaea2bfe3f9fa5c229fe5707e2b6c94378136b), [`b6343ea`](https://github.com/fluojs/fluo/commit/b6343ea89db7d7131aded2d3b829425046e70a1b), [`01aaf36`](https://github.com/fluojs/fluo/commit/01aaf368394bfab437eea90304b5e84c1ef2d406), [`a7cffb1`](https://github.com/fluojs/fluo/commit/a7cffb16d9f1ba4ad8eea4ffc7d751b2913dd51d), [`1e06150`](https://github.com/fluojs/fluo/commit/1e0615082fd6b9a449a20adeced131eeea856faf), [`44125db`](https://github.com/fluojs/fluo/commit/44125db098f68fc751bc5300c5abe7036a403736), [`6e4272a`](https://github.com/fluojs/fluo/commit/6e4272afd17ea18177330a4e9de6d2745fb2d6d9), [`1ba9703`](https://github.com/fluojs/fluo/commit/1ba970357e404638f513a84a45da7358ea7384b4), [`fbc2d1b`](https://github.com/fluojs/fluo/commit/fbc2d1b76077079e325b30eca93f36d573f5093d), [`ac6e32c`](https://github.com/fluojs/fluo/commit/ac6e32c0e108e236800c497342d8e5e66b9175a9), [`152a25e`](https://github.com/fluojs/fluo/commit/152a25e986eaad51634c0ef77cbe2f12b86807c7), [`7b61b03`](https://github.com/fluojs/fluo/commit/7b61b03239f2f4f7bc9692fbf430731798909317), [`19a1abe`](https://github.com/fluojs/fluo/commit/19a1abe728bda9dae7c2eb90b4174ca4e2b15cf8)]:
+  - @fluojs/http@2.1.0
+  - @fluojs/config@1.0.5
+  - @fluojs/di@3.0.0
+  - @fluojs/core@1.1.1
+
 ## 2.0.1
 
 ### Patch Changes

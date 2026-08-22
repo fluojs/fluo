@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+## 2.0.0
+
+### Major Changes
+
+- [#2776](https://github.com/fluojs/fluo/pull/2776) [`edf4092`](https://github.com/fluojs/fluo/commit/edf4092030e434ca306735953298d81808b69995) Thanks [@ayden94](https://github.com/ayden94)! - Require Drizzle ORM 0.45.2 or newer. Consumers using an older Drizzle ORM release must upgrade the peer, refresh their lockfile, and run driver-specific query and migration tests before adopting this release; the fluo integration API is unchanged.
+
+### Patch Changes
+
+- [#2817](https://github.com/fluojs/fluo/pull/2817) [`fe20982`](https://github.com/fluojs/fluo/commit/fe2098252d6ed29a0eaae2b755f44593fab07bbb) Thanks [@ayden94](https://github.com/ayden94)! - Keep aborted fail-open request transaction callbacks in the shutdown drain until their direct execution settles, and preserve the root-handle ALS context so nested request work inherits ambient cancellation and drain ownership without becoming atomic.
+
+- [#3049](https://github.com/fluojs/fluo/pull/3049) [`9d91b0e`](https://github.com/fluojs/fluo/commit/9d91b0e1ed02e2f8db1676e67ba1dd655f8311b2) Thanks [@ayden94](https://github.com/ayden94)! - Track transaction boundaries started by inherited async continuations after their original Drizzle owner settles, so they use a fresh root and drain before database disposal.
+
+- Updated dependencies [[`45f8fbd`](https://github.com/fluojs/fluo/commit/45f8fbd8f5302558369eb6e9697e64c4ecd7e2a1), [`91c7b32`](https://github.com/fluojs/fluo/commit/91c7b3245b7d168b49eeff551be06998cb20b8cd), [`9b1c3ed`](https://github.com/fluojs/fluo/commit/9b1c3ed648e4c48c24384879cc587aedec1ba00e), [`01aaf36`](https://github.com/fluojs/fluo/commit/01aaf368394bfab437eea90304b5e84c1ef2d406), [`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4), [`f6385dc`](https://github.com/fluojs/fluo/commit/f6385dc4623581f47efe8a95c45d4f8f274dc7c2), [`8e79be1`](https://github.com/fluojs/fluo/commit/8e79be1d5520e2144eb16bb40766f3619dfba6a9), [`a7cffb1`](https://github.com/fluojs/fluo/commit/a7cffb16d9f1ba4ad8eea4ffc7d751b2913dd51d), [`8131ce1`](https://github.com/fluojs/fluo/commit/8131ce135cbcef8ba3d9b2eb7628176ab850c36b), [`1e06150`](https://github.com/fluojs/fluo/commit/1e0615082fd6b9a449a20adeced131eeea856faf), [`6e4272a`](https://github.com/fluojs/fluo/commit/6e4272afd17ea18177330a4e9de6d2745fb2d6d9), [`1ba9703`](https://github.com/fluojs/fluo/commit/1ba970357e404638f513a84a45da7358ea7384b4), [`fbc2d1b`](https://github.com/fluojs/fluo/commit/fbc2d1b76077079e325b30eca93f36d573f5093d), [`152a25e`](https://github.com/fluojs/fluo/commit/152a25e986eaad51634c0ef77cbe2f12b86807c7), [`acd28a9`](https://github.com/fluojs/fluo/commit/acd28a962b35f577890c47c9c535e4058f373846), [`7b61b03`](https://github.com/fluojs/fluo/commit/7b61b03239f2f4f7bc9692fbf430731798909317)]:
+  - @fluojs/runtime@3.0.0
+  - @fluojs/di@3.0.0
+  - @fluojs/core@1.1.1
+
 ## 1.1.1
 
 ### Patch Changes

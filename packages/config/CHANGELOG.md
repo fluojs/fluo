@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## 1.0.5
+
+### Patch Changes
+
+- [#3014](https://github.com/fluojs/fluo/pull/3014) [`fa3a990`](https://github.com/fluojs/fluo/commit/fa3a9904f53c543ddc9fbf6f0fdf635731d07ffa) Thanks [@ayden94](https://github.com/ayden94)! - Coalesce rapid env-file watch events before reloading so change-then-revert bursts preserve the committed config snapshot and do not notify reload listeners.
+
+- Updated dependencies [[`7b61b03`](https://github.com/fluojs/fluo/commit/7b61b03239f2f4f7bc9692fbf430731798909317)]:
+  - @fluojs/core@1.1.1
+
 ## 1.0.4
 
 ### Patch Changes

@@ -1,5 +1,15 @@
 # @fluojs/example-openapi-multiple-documents
 
+## 0.0.3
+
+### Patch Changes
+
+- Updated dependencies [[`45f8fbd`](https://github.com/fluojs/fluo/commit/45f8fbd8f5302558369eb6e9697e64c4ecd7e2a1), [`91c7b32`](https://github.com/fluojs/fluo/commit/91c7b3245b7d168b49eeff551be06998cb20b8cd), [`9b1c3ed`](https://github.com/fluojs/fluo/commit/9b1c3ed648e4c48c24384879cc587aedec1ba00e), [`70d68be`](https://github.com/fluojs/fluo/commit/70d68beda59f17605076de7b29f598db8867be7f), [`e9971be`](https://github.com/fluojs/fluo/commit/e9971be5b0dc30acec10b86f0de128b202fb91a4), [`f6385dc`](https://github.com/fluojs/fluo/commit/f6385dc4623581f47efe8a95c45d4f8f274dc7c2), [`8e79be1`](https://github.com/fluojs/fluo/commit/8e79be1d5520e2144eb16bb40766f3619dfba6a9), [`a7cffb1`](https://github.com/fluojs/fluo/commit/a7cffb16d9f1ba4ad8eea4ffc7d751b2913dd51d), [`8131ce1`](https://github.com/fluojs/fluo/commit/8131ce135cbcef8ba3d9b2eb7628176ab850c36b), [`c8f14e5`](https://github.com/fluojs/fluo/commit/c8f14e5fd0d7c2adada52ffbf3b42027c5501261), [`589258e`](https://github.com/fluojs/fluo/commit/589258ee628c1d43ed1ebf3d41bd4f707d2dd81c), [`acd28a9`](https://github.com/fluojs/fluo/commit/acd28a962b35f577890c47c9c535e4058f373846), [`8453bc9`](https://github.com/fluojs/fluo/commit/8453bc93308f9d6ebff82eeab8ec0bcbdd401c37), [`7b61b03`](https://github.com/fluojs/fluo/commit/7b61b03239f2f4f7bc9692fbf430731798909317)]:
+  - @fluojs/runtime@3.0.0
+  - @fluojs/openapi@1.1.1
+  - @fluojs/core@1.1.1
+  - @fluojs/platform-fastify@2.0.0
+
 ## 0.0.2
 
 ### Patch Changes
