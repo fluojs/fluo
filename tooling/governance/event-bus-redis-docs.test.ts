@@ -182,7 +182,7 @@ ioredis publishClient subscribeClient
 });
 
 describe('Event Bus handler failure isolation documentation', () => {
-  it('keeps local and inbound listener failure boundaries discoverable in English and Korean', () => {
+  it('keeps the fail-soft listener boundary explicit in every English and Korean surface', () => {
     // Given
     const englishParagraphs = [
       ['packages/event-bus/README.md', 'Handler failure isolation'],
@@ -190,6 +190,7 @@ describe('Event Bus handler failure isolation documentation', () => {
       ['docs/CONTEXT.md', 'Event-bus package-surface discoverability'],
     ] as const;
     const englishListItems = [
+      ['book/intermediate/ch09-event-bus.md', '- Local and inbound transport listener failures'],
       ['docs/getting-started/migrate-from-nestjs.md', '- Event-bus publisher completion'],
     ] as const;
     const koreanParagraphs = [
@@ -198,33 +199,26 @@ describe('Event Bus handler failure isolation documentation', () => {
       ['docs/CONTEXT.ko.md', 'Event-bus package-surface discoverability'],
     ] as const;
     const koreanListItems = [
+      ['book/intermediate/ch09-event-bus.ko.md', '- Local 및 inbound transport listener 실패'],
       ['docs/getting-started/migrate-from-nestjs.ko.md', '- Event-bus publisher completion'],
     ] as const;
     const englishMarkers = [
-      'publish(...)',
-      'callback completion',
-      'isolated',
-      'other matching listeners',
-      'every listener succeeded',
-      'listener-only',
-      'timeout',
-      'cancellation',
-      'transport publication',
-      'bootstrap',
+      'listener failures are logged and isolated',
+      'other matching listeners continue',
+      'local listener failure alone does not reject `publish(...)`',
+      'inbound callback completion does not surface isolated listener failures',
+      'completion does not prove that every listener succeeded',
+      'Timeout, cancellation, transport publication, bootstrap, and other publisher failures are outside this listener-failure contract.',
+      'Those failures retain their own separately documented behavior.',
     ] as const;
     const koreanMarkers = [
-      'publish(...)',
-      'listener',
-      'transport',
-      'callback completion',
-      '격리',
-      '다른 matching listener',
-      '모든 listener',
-      'listener-only',
-      'timeout',
-      'cancellation',
-      'transport publication',
-      'bootstrap',
+      'listener 실패는 log되고 격리',
+      '다른 matching listener는 계속 실행',
+      'listener 실패만으로 `publish(...)`를 reject하지 않',
+      'inbound callback completion은 격리된 listener 실패를 외부로 드러내지 않',
+      'completion은 모든 listener가 성공했음을 증명하지 않',
+      'Timeout, cancellation, transport publication, bootstrap 및 그 밖의 publisher 실패는 이 listener-failure 계약의 범위 밖에 있',
+      '해당 실패는 각각 별도로 문서화된 동작을 유지',
     ] as const;
 
     // When / Then
@@ -244,5 +238,27 @@ describe('Event Bus handler failure isolation documentation', () => {
       const item = requireListItem(path, readDocument(path), prefix);
       assertMarkers(path, `list item: ${prefix}`, item, koreanMarkers);
     }
+  });
+
+  it('anchors the listener boundary to local and inbound executable evidence', () => {
+    // Given
+    const servicePath = 'packages/event-bus/src/service.ts';
+    const serviceSource = readDocument(servicePath);
+    const testsPath = 'packages/event-bus/src/module.test.ts';
+    const testSource = readDocument(testsPath);
+
+    // When / Then
+    assertMarkers(servicePath, 'local listener settlement', serviceSource, [
+      'const invocationTasks = this.createInvocationTasks',
+      'await Promise.allSettled([...invocationTasks, transportPublish]);',
+    ]);
+    assertMarkers(servicePath, 'inbound listener settlement', serviceSource, [
+      'private async dispatchIncomingTransportMessage(',
+      'await Promise.allSettled(invocationTasks);',
+    ]);
+    assertMarkers(testsPath, 'listener failure regression titles', testSource, [
+      'dispatches to multiple handlers and isolates handler failures without propagating to publisher',
+      'isolates and logs handler failures for incoming transport messages',
+    ]);
   });
 });
