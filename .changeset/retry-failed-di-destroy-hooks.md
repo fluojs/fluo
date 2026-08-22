@@ -2,4 +2,4 @@
 '@fluojs/di': patch
 ---
 
-Retain failed container-managed `onDestroy()` hooks for a later explicit disposal retry while never repeating hooks that already completed successfully.
+Retry only failed container-managed `onDestroy()` hooks when disposal is called again, without repeating hooks that already completed successfully. Release a directly disposed request child from its parent after the active attempt settles, including failed attempts, while allowing a caller with the retained child reference to retry its remaining failed hooks.
