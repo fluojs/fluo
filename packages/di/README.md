@@ -91,6 +91,12 @@ Disposal retries follow five ownership rules:
 
 Executable evidence lives in `packages/di/src/container-disposal-ownership.test.ts` for graph ownership and `packages/di/src/container-disposal-retry.test.ts` for failed-hook ordering and idempotency.
 
+### Migrating disposal from 2.x to 3.x
+
+In `@fluojs/di` 2.x, a failed container-managed `onDestroy()` hook was attempted once. In 3.x, a later explicit `Container.dispose()` call or application/application-context `close()` that reaches the same container retries only hooks that failed. Hooks that already completed successfully remain exactly-once. Before upgrading, make cleanup hooks that can fail safe to attempt again: preserve enough state to finish partial cleanup, tolerate resources that were already released, and surface a repeated failure to the shutdown caller.
+
+Direct `child.dispose()` now detaches the request child from its parent after the attempt settles, including a failed attempt. Retain the child reference when the direct caller must inspect or retry that failure. A failure from parent- or root-started disposal remains owned by the parent hierarchy until cleanup succeeds or a later direct child attempt settles. When direct and parent callers overlap, the caller that starts the shared attempt owns those detach and retry semantics.
+
 ### Provider Overrides
 
 Use `override(...providers)` when a test or request-local boundary needs to replace existing registrations deliberately. Overrides replace the current provider set for each token, invalidate cached instances in the current container and already-materialized request-scope descendants, and dispose stale instances before the next replacement resolution continues. Multi-provider overrides replace the full multi-provider set for that token, so pass every replacement provider together; mixing single and multi replacements for the same token in one override call is rejected as ambiguous.

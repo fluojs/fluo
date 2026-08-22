@@ -92,6 +92,12 @@ Disposal 재시도는 다음 다섯 ownership 규칙을 따릅니다.
 
 실행 가능한 근거는 graph ownership을 검증하는 `packages/di/src/container-disposal-ownership.test.ts`와 failed-hook ordering 및 idempotency를 검증하는 `packages/di/src/container-disposal-retry.test.ts`에 있습니다.
 
+### 2.x에서 3.x로 disposal 마이그레이션
+
+`@fluojs/di` 2.x에서는 실패한 container-managed `onDestroy()` hook을 한 번만 시도했습니다. 3.x에서는 이후 명시적 `Container.dispose()` 호출이나 동일한 컨테이너에 도달하는 application/application-context `close()`가 실패한 hook만 재시도합니다. 이미 성공적으로 완료된 hook은 exactly-once를 유지합니다. 업그레이드하기 전에 실패할 수 있는 cleanup hook이 다시 시도되어도 안전하도록 만드세요. 부분 cleanup을 끝내는 데 필요한 상태를 보존하고, 이미 해제된 resource를 허용하며, 반복된 실패를 shutdown caller에게 전달해야 합니다.
+
+direct `child.dispose()`는 이제 실패한 attempt를 포함해 attempt가 settle된 뒤 request child를 parent에서 분리합니다. direct caller가 해당 실패를 확인하거나 재시도해야 한다면 child 참조를 유지하세요. parent 또는 root가 시작한 disposal의 실패는 cleanup이 성공하거나 이후 direct child attempt가 settle될 때까지 parent hierarchy가 소유합니다. direct caller와 parent caller가 겹치면 shared attempt를 시작한 caller가 detach와 retry semantics를 소유합니다.
+
 ### provider override
 
 테스트나 request-local 경계에서 기존 등록을 의도적으로 교체해야 할 때는 `override(...providers)`를 사용합니다. override는 각 토큰의 현재 provider set을 교체하고 현재 컨테이너와 이미 materialize된 request-scope 자식의 cached instance를 무효화하며, 다음 replacement resolution이 계속되기 전에 오래된 instance의 dispose가 끝나도록 보장합니다. multi provider override는 해당 토큰의 전체 multi-provider set을 교체하므로 필요한 replacement provider를 한 번에 모두 전달하세요. 같은 토큰에 single replacement와 multi replacement를 한 override 호출에서 섞으면 모호한 교체로 보고 거부합니다.
