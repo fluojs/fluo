@@ -180,3 +180,69 @@ ioredis publishClient subscribeClient
     }
   });
 });
+
+describe('Event Bus handler failure isolation documentation', () => {
+  it('keeps local and inbound listener failure boundaries discoverable in English and Korean', () => {
+    // Given
+    const englishParagraphs = [
+      ['packages/event-bus/README.md', 'Handler failure isolation'],
+      ['book/intermediate/ch09-event-bus.md', '`publish(...)` completion'],
+      ['docs/CONTEXT.md', 'Event-bus package-surface discoverability'],
+    ] as const;
+    const englishListItems = [
+      ['docs/getting-started/migrate-from-nestjs.md', '- Event-bus publisher completion'],
+    ] as const;
+    const koreanParagraphs = [
+      ['packages/event-bus/README.ko.md', 'Handler failure isolation'],
+      ['book/intermediate/ch09-event-bus.ko.md', '`publish(...)` completion'],
+      ['docs/CONTEXT.ko.md', 'Event-bus package-surface discoverability'],
+    ] as const;
+    const koreanListItems = [
+      ['docs/getting-started/migrate-from-nestjs.ko.md', '- Event-bus publisher completion'],
+    ] as const;
+    const englishMarkers = [
+      'publish(...)',
+      'callback completion',
+      'isolated',
+      'other matching listeners',
+      'every listener succeeded',
+      'listener-only',
+      'timeout',
+      'cancellation',
+      'transport publication',
+      'bootstrap',
+    ] as const;
+    const koreanMarkers = [
+      'publish(...)',
+      'listener',
+      'transport',
+      'callback completion',
+      '격리',
+      '다른 matching listener',
+      '모든 listener',
+      'listener-only',
+      'timeout',
+      'cancellation',
+      'transport publication',
+      'bootstrap',
+    ] as const;
+
+    // When / Then
+    for (const [path, prefix] of englishParagraphs) {
+      const paragraph = requireParagraph(path, readDocument(path), prefix);
+      assertMarkers(path, `paragraph: ${prefix}`, paragraph, englishMarkers);
+    }
+    for (const [path, prefix] of englishListItems) {
+      const item = requireListItem(path, readDocument(path), prefix);
+      assertMarkers(path, `list item: ${prefix}`, item, englishMarkers);
+    }
+    for (const [path, prefix] of koreanParagraphs) {
+      const paragraph = requireParagraph(path, readDocument(path), prefix);
+      assertMarkers(path, `paragraph: ${prefix}`, paragraph, koreanMarkers);
+    }
+    for (const [path, prefix] of koreanListItems) {
+      const item = requireListItem(path, readDocument(path), prefix);
+      assertMarkers(path, `list item: ${prefix}`, item, koreanMarkers);
+    }
+  });
+});
