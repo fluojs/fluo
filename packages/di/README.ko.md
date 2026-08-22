@@ -78,6 +78,26 @@ const service = await container.resolve(UserService);
 
 dispose 중에는 각 컨테이너가 single-provider cache와 multi-provider cache 전체에서 성공적으로 materialize된 cached instance를 실제 생성 순서의 역순으로 정리하므로, dependency보다 dependent를 먼저 종료합니다. 각 컨테이너는 자신이 소유한 살아 있는 request scope 자식을 먼저 재귀적으로 정리하므로, 루트가 아닌 request scope를 dispose해도 중첩 request scope를 닫은 뒤 자신의 request cache를 정리합니다. 이후 루트 dispose는 자식 dispose 중 하나 이상이 실패하더라도 루트가 소유한 singleton 정리를 계속 수행합니다. 자식/루트 dispose 실패가 여러 개 발생하면 `dispose()`는 모든 shutdown 실패를 확인할 수 있도록 `AggregateError`로 보고합니다.
 
+`dispose()` 시작은 `resolve()`, `register()`, `override()`, `createRequestScope()`에 대해 terminal입니다. 동시 caller는 active disposal 시도를 공유합니다. `onDestroy()` hook이 실패하면 컨테이너는 실패한 hook만 이후 명시적 `dispose()` 재시도를 위해 유지하면서 child-before-parent/root 순서와 생성 역순을 보존합니다. 성공적으로 완료된 hook은 다시 실행하지 않으며, 유지된 hook이 모두 성공한 뒤 disposal은 멱등입니다.
+
+#### disposal 재시도 ownership
+
+Disposal 재시도는 다음 다섯 ownership 규칙을 따릅니다.
+
+1. public `child.dispose()`를 직접 호출하면 request child는 active attempt가 settle된 뒤 parent graph에서 분리됩니다. 유지된 `onDestroy()` hook이 실패해도 분리됩니다.
+2. 분리된 child 참조를 유지한 caller는 `dispose()`를 다시 호출할 수 있습니다. 이 호출은 해당 child의 실패한 hook만 재시도하며 성공한 sibling hook은 반복하지 않습니다.
+3. parent 또는 root disposal이 먼저 진입한 child는 실패 후에도 parent가 계속 추적합니다. 이후 parent 또는 root `dispose()`는 parent나 root가 유지한 hook보다 그 child를 먼저 재시도합니다.
+4. 동시 direct caller와 parent caller는 하나의 active attempt를 공유합니다. shared attempt를 시작한 caller가 direct 또는 parent ownership을 결정합니다. 나중에 참여한 caller는 이를 바꿀 수 없습니다.
+5. parent가 유지한 child를 나중에 `child.dispose()`로 직접 재시도하면 해당 direct attempt가 settle된 뒤 child를 분리합니다. direct 재시도가 다시 실패해도 분리됩니다.
+
+실행 가능한 근거는 graph ownership을 검증하는 `packages/di/src/container-disposal-ownership.test.ts`와 failed-hook ordering 및 idempotency를 검증하는 `packages/di/src/container-disposal-retry.test.ts`에 있습니다.
+
+### 2.x에서 3.x로 disposal 마이그레이션
+
+`@fluojs/di` 2.x에서는 실패한 container-managed `onDestroy()` hook을 한 번만 시도했습니다. 3.x에서는 이후 명시적 `Container.dispose()` 호출이나 동일한 컨테이너에 도달하는 application/application-context `close()`가 실패한 hook만 재시도합니다. 이미 성공적으로 완료된 hook은 exactly-once를 유지합니다. 업그레이드하기 전에 실패할 수 있는 cleanup hook이 다시 시도되어도 안전하도록 만드세요. 부분 cleanup을 끝내는 데 필요한 상태를 보존하고, 이미 해제된 resource를 허용하며, 반복된 실패를 shutdown caller에게 전달해야 합니다.
+
+direct `child.dispose()`는 이제 실패한 attempt를 포함해 attempt가 settle된 뒤 request child를 parent에서 분리합니다. direct caller가 해당 실패를 확인하거나 재시도해야 한다면 child 참조를 유지하세요. parent 또는 root가 시작한 disposal의 실패는 cleanup이 성공하거나 이후 direct child attempt가 settle될 때까지 parent hierarchy가 소유합니다. direct caller와 parent caller가 겹치면 shared attempt를 시작한 caller가 detach와 retry semantics를 소유합니다.
+
 ### provider override
 
 테스트나 request-local 경계에서 기존 등록을 의도적으로 교체해야 할 때는 `override(...providers)`를 사용합니다. override는 각 토큰의 현재 provider set을 교체하고 현재 컨테이너와 이미 materialize된 request-scope 자식의 cached instance를 무효화하며, 다음 replacement resolution이 계속되기 전에 오래된 instance의 dispose가 끝나도록 보장합니다. multi provider override는 해당 토큰의 전체 multi-provider set을 교체하므로 필요한 replacement provider를 한 번에 모두 전달하세요. 같은 토큰에 single replacement와 multi replacement를 한 override 호출에서 섞으면 모호한 교체로 보고 거부합니다.
@@ -187,7 +207,7 @@ it('uses a mock database', async () => {
 | `container.createRequestScope()` | `Container` instance method | 요청 스코프 의존성을 위한 자식 컨테이너를 생성합니다. |
 | `container.has(token)` | `Container` instance method | 컨테이너나 부모에 토큰이 등록되어 있는지 확인합니다. |
 | `container.hasRequestScopedDependency(token)` | `Container` instance method | 토큰 해석 시 provider 그래프에 request-scoped 의존성이나 순환이 있어 request-scope 컨테이너가 필요할 수 있는지 확인합니다. |
-| `container.dispose()` | `Container` instance method | request child와 루트가 소유한 singleton instance를 정리합니다. |
+| `container.dispose()` | `Container` instance method | parent/root cache보다 request child를 먼저 정리하고 active 시도를 공유하며, 이후 명시적 호출에서 실패한 `onDestroy()` hook만 재시도합니다. |
 | `forwardRef(fn)` | 선언 순서 문제를 위해 조회를 지연하는 토큰 래퍼를 반환합니다. 실제 생성자 순환을 해석 가능하게 만들지는 않습니다. |
 | `isForwardRef(value)` | `forwardRef(...)`가 만든 값인지 확인하는 type guard입니다. 커스텀 provider tooling이 DI token wrapper와 통합될 때 사용할 수 있습니다. |
 | `optional(token)` | 하나의 의존성을 optional로 표시하는 토큰 래퍼를 반환합니다. 누락된 optional dependency는 `undefined`로 해석됩니다. |

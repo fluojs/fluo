@@ -563,7 +563,7 @@ The application context and application shell use two separate shutdown concepts
 
 The connect path checks the gate both before and after asynchronous runtime resolution. The start-all path checks before iteration and again before each child listen. Those rechecks prevent an operation admitted just before shutdown from attaching or starting a child after shutdown has begun.
 
-The shared `closeRuntimeResources()` helper executes readiness reset, runtime cleanup callbacks, lifecycle hooks, optional adapter close, and container disposal in order. Each phase has a completion bit in `RetryableShutdownState`. The current close attempt still tries later phases and aggregates failures. A later `close()` skips completed runtime phases and re-enters incomplete adapter or lifecycle-hook stages according to their own retry contracts. Because lifecycle hooks are one phase, a partial hook failure retries the hook phase rather than pretending individual hooks completed transactionally. Container disposal has a narrower terminal best-effort contract: it attempts every materialized container-managed `onDestroy()` hook once, clears the disposal cache after that attempt, and does not retry an individual failed hook on a later application or context close.
+The shared `closeRuntimeResources()` helper executes readiness reset, runtime cleanup callbacks, lifecycle hooks, optional adapter close, and container disposal in order. Each phase has a completion bit in `RetryableShutdownState`. The current close attempt still tries later phases and aggregates failures. A later `close()` skips completed runtime phases and re-enters incomplete adapter or lifecycle-hook stages according to their own retry contracts. Because lifecycle hooks are one phase, a partial hook failure retries the hook phase rather than pretending individual hooks completed transactionally. Container disposal has a narrower terminal best-effort contract: it attempts every materialized container-managed `onDestroy()` hook, retains only failed hooks after clearing the ordinary disposal caches, and retries those failed hooks on a later explicit application or context close without rerunning successful hooks.
 
 `path:packages/runtime/src/retryable-shutdown.ts`
 ```typescript
@@ -600,7 +600,7 @@ The executable evidence is intentionally split by shell and race:
 | Parent connect/start operations reject while child close is pending | `path:packages/runtime/src/bootstrap.test.ts` — `rejects connect and start operations while application close is pending` |
 | A connect admitted before shutdown cannot attach after async runtime resolution | `path:packages/runtime/src/bootstrap.test.ts` — `rejects connectMicroservice() when shutdown starts during runtime resolution` |
 | Context retry skips completed phases and retries the incomplete hook phase | `path:packages/runtime/src/bootstrap.test.ts` — `retries only incomplete application context shutdown phases` |
-| Context close does not retry individual failed container-managed hooks | `path:packages/runtime/src/bootstrap.test.ts` — `does not retry container-managed onDestroy hooks on a second application context close` |
+| Context close retries only failed container-managed hooks | `path:packages/runtime/src/bootstrap.test.ts` — `retries only failed container-managed onDestroy hooks on a second application context close` |
 
 Failure-path cleanup is owned by `runBootstrapFailureCleanup()`. Even after bootstrap creates lifecycle instances or runtime resources, the runtime resets readiness and attempts every cleanup phase while preserving the original bootstrap error.
 
@@ -694,7 +694,7 @@ close()
   -> close connected microservices
   -> run every incomplete runtime teardown phase in order
   -> record each successful phase
-  -> treat container-managed onDestroy hooks as terminal best-effort, not individually retryable
+  -> retain and retry only failed container-managed onDestroy hooks
   -> set public state to closed only after complete success
   -> on failure, keep the gate closed and allow an explicit cleanup retry
 ```

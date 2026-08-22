@@ -77,6 +77,26 @@ fluo DI supports four provider shapes:
 
 During disposal, each container tears down successfully materialized cached instances in reverse creation order across single-provider and multi-provider caches, so dependents are destroyed before their dependencies. Each container first recursively tears down live request-scope children it owns, so disposing a non-root request scope also closes nested request scopes before its own request cache. Root disposal then continues with root-owned singleton cleanup even if one or more child disposals fail. When multiple child/root disposals fail, `dispose()` reports an `AggregateError` so callers can inspect every shutdown failure without losing cleanup progress.
 
+Starting `dispose()` is terminal for `resolve()`, `register()`, `override()`, and `createRequestScope()`. Concurrent callers share the active disposal attempt. If an `onDestroy()` hook fails, the container retains only that failed hook for a later explicit `dispose()` retry, preserving child-before-parent/root and reverse-creation ordering. Hooks that completed successfully are never run again, and disposal becomes idempotent after every retained hook succeeds.
+
+#### Disposal retry ownership
+
+Disposal retries follow five ownership rules:
+
+1. Calling public `child.dispose()` directly detaches the request child from its parent graph after the active attempt settles, even when retained `onDestroy()` hooks failed.
+2. A retained child reference can call `dispose()` again to retry only that child's failed hooks. Successful sibling hooks are not repeated.
+3. A child first reached through parent or root disposal remains parent-tracked after failure, so a later parent or root `dispose()` retries it before retained hooks in the parent or root.
+4. Concurrent direct and parent callers share one active attempt. The caller that starts the shared attempt sets its direct or parent ownership, and later callers cannot change it.
+5. A later direct retry detaches a parent-retained child after settlement, even when that retry fails.
+
+Executable evidence lives in `packages/di/src/container-disposal-ownership.test.ts` for graph ownership and `packages/di/src/container-disposal-retry.test.ts` for failed-hook ordering and idempotency.
+
+### Migrating disposal from 2.x to 3.x
+
+In `@fluojs/di` 2.x, a failed container-managed `onDestroy()` hook was attempted once. In 3.x, a later explicit `Container.dispose()` call or application/application-context `close()` that reaches the same container retries only hooks that failed. Hooks that already completed successfully remain exactly-once. Before upgrading, make cleanup hooks that can fail safe to attempt again: preserve enough state to finish partial cleanup, tolerate resources that were already released, and surface a repeated failure to the shutdown caller.
+
+Direct `child.dispose()` now detaches the request child from its parent after the attempt settles, including a failed attempt. Retain the child reference when the direct caller must inspect or retry that failure. A failure from parent- or root-started disposal remains owned by the parent hierarchy until cleanup succeeds or a later direct child attempt settles. When direct and parent callers overlap, the caller that starts the shared attempt owns those detach and retry semantics.
+
 ### Provider Overrides
 
 Use `override(...providers)` when a test or request-local boundary needs to replace existing registrations deliberately. Overrides replace the current provider set for each token, invalidate cached instances in the current container and already-materialized request-scope descendants, and dispose stale instances before the next replacement resolution continues. Multi-provider overrides replace the full multi-provider set for that token, so pass every replacement provider together; mixing single and multi replacements for the same token in one override call is rejected as ambiguous.
@@ -187,7 +207,7 @@ Ensure all required providers are registered in the container. If you use `creat
 | `container.createRequestScope()` | `Container` instance method | Creates a child container for request-scoped dependencies. |
 | `container.has(token)` | `Container` instance method | Checks if a token is registered in the container or its parents. |
 | `container.hasRequestScopedDependency(token)` | `Container` instance method | Checks whether resolving a token may require a request-scope container because its provider graph contains request-scoped dependencies or is cyclic. |
-| `container.dispose()` | `Container` instance method | Disposes request children and root-owned singleton instances. |
+| `container.dispose()` | `Container` instance method | Disposes request children before parent/root caches, shares an active attempt, and retries only failed `onDestroy()` hooks on a later explicit call. |
 | `forwardRef(fn)` | Returns a token wrapper that defers lookup for declaration-order issues; it does not make constructor dependency cycles resolvable. |
 | `isForwardRef(value)` | Type guard for values produced by `forwardRef(...)`; useful when integrating custom provider tooling with DI token wrappers. |
 | `optional(token)` | Returns a token wrapper that marks one dependency as optional; missing optional dependencies resolve to `undefined`. |

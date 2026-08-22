@@ -689,20 +689,29 @@ console.log(stale instanceof FirstCache, fresh instanceof SecondCache, events);
 ## 5.6 Disposal order, child scopes, and shutdown guarantees
 마지막 scope 질문은 인스턴스가 어떻게 죽느냐입니다. Fluo의 답은 deterministic teardown이며, root singleton과 request child를 명확히 분리합니다.
 
-공개 진입점은 `path:packages/di/src/container.ts:292-307`의 `dispose()`입니다. 이 메서드는 `disposePromise`를 memoize하고, 컨테이너를 disposed 상태로 표시한 뒤, `disposeAll()`을 실행합니다. 그리고 disposal이 실패한 경우에만 promise를 초기화합니다. 그래서 성공적인 `dispose()`는 사실상 idempotent합니다.
+public `dispose()` entrypoint와 origin-aware helper는 `path:packages/di/src/container.ts:616-640`에 있습니다. public 호출은 direct ownership으로 진입하고 parent traversal은 private `disposeFromParent()` entrypoint를 사용합니다. 두 경로 모두 `disposeWithOrigin(...)`을 호출합니다.
 
-dispose entrypoint는 재진입과 실패 재시도를 함께 다룹니다.
+shared helper는 재진입, 실패 재시도, active attempt의 origin을 함께 다룹니다.
 
-`path:packages/di/src/container.ts:292-307`
+`path:packages/di/src/container.ts:616-640`
 ```typescript
 async dispose(): Promise<void> {
+  await this.disposeWithOrigin('direct');
+}
+
+private async disposeFromParent(): Promise<void> {
+  await this.disposeWithOrigin('parent');
+}
+
+private async disposeWithOrigin(origin: DisposalAttemptOrigin): Promise<void> {
   if (this.disposePromise) {
     await this.disposePromise;
     return;
   }
 
   this.disposed = true;
-  this.disposePromise = this.disposeAll();
+  this.advanceGraphRevision();
+  this.disposePromise = this.disposeAll(origin);
 
   try {
     await this.disposePromise;
@@ -713,47 +722,74 @@ async dispose(): Promise<void> {
 }
 ```
 
-성공한 dispose는 같은 promise를 재사용하므로 두 번 호출해도 중복 teardown이 일어나지 않습니다. 실패한 경우에만 promise를 비워 다음 호출이 다시 정리할 기회를 갖습니다.
+동시 caller는 active promise를 기다리므로 겹치는 caller가 teardown을 중복 실행하지 않습니다. 첫 caller는 나중 caller가 참여하기 전에 이미 direct 또는 parent ownership을 선택합니다. 성공한 attempt는 settle된 promise를 유지해 이후 호출을 멱등으로 만듭니다. 실패하면 settlement 뒤 promise를 비워 이후 명시적 호출이 재시도할 수 있습니다. Terminal `disposed` gate는 재시도 중과 이후에도 닫힌 상태를 유지합니다.
 
-`path:packages/di/src/container.ts:309-323`의 `disposeAll()`은 root에서 호출된 경우,
-먼저 살아 있는 request-scope child를 전부 dispose합니다. 그다음 현재 tier의 cache entry를 정리합니다. 이 순서가 중요한 이유는 request-scoped instance가 root singleton에 의존할 수는 있어도, 그 반대는 허용되지 않기 때문입니다.
+`path:packages/di/src/container.ts:642-672`의 `disposeAll()`은 추적 중인 모든 request child에 `disposeFromParent()`로 진입한 뒤 현재 tier를 정리합니다. 마지막 detach 조건은 성공한 parent-owned attempt와 settle된 모든 direct attempt를 구분합니다.
 
-root와 child의 정리 순서는 `finally`까지 포함해야 정확합니다.
+origin-aware child traversal과 detach 규칙은 이 동작의 핵심입니다.
 
-`path:packages/di/src/container.ts:309-323`
+`path:packages/di/src/container.ts:642-672`
 ```typescript
-private async disposeAll(): Promise<void> {
+private async disposeAll(origin: DisposalAttemptOrigin): Promise<void> {
+  const errors: unknown[] = [];
+  let completed = false;
+
   try {
-    // Dispose all live request-scope children first (root only)
-    if (!this.parent && this.childScopes.size > 0) {
-      await Promise.all(Array.from(this.childScopes).map((child) => child.dispose()));
-      this.childScopes.clear();
+    if (this.childScopes && this.childScopes.size > 0) {
+      const childResults = await Promise.allSettled(
+        Array.from(this.childScopes).map((child) =>
+          child.disposeFromParent(),
+        ),
+      );
+
+      for (const result of childResults) {
+        if (result.status === 'rejected') {
+          this.collectDisposalError(result.reason, errors);
+        }
+      }
     }
 
-    await this.disposeCache(this.disposalCacheEntries());
+    try {
+      await this.disposeCache(this.disposalCacheEntries());
+    } catch (error) {
+      this.collectDisposalError(error, errors);
+    }
+
+    this.throwDisposalErrors(errors);
+    completed = true;
   } finally {
-    if (this.parent) {
-      this.root().childScopes.delete(this);
+    if ((completed || origin === 'direct') && this.parent && this.trackedByParent) {
+      this.parent.childScopes?.delete(this);
+      this.trackedByParent = false;
     }
   }
 }
 ```
 
-root dispose는 child scope를 먼저 닫고, child dispose는 root registry에서 자신을 제거합니다. 이 조합이 request boundary의 생존 기간을 root가 추적하게 만듭니다.
+Disposal 재시도는 다음 다섯 ownership 규칙을 따릅니다.
+
+1. public `child.dispose()`를 직접 호출하면 request child는 active attempt가 settle된 뒤 parent graph에서 분리됩니다. 유지된 `onDestroy()` hook이 실패해도 분리됩니다.
+2. 분리된 child 참조를 유지한 caller는 `dispose()`를 다시 호출할 수 있습니다. 이 호출은 해당 child의 실패한 hook만 재시도하며 성공한 sibling hook은 반복하지 않습니다.
+3. parent 또는 root disposal이 먼저 진입한 child는 실패 후에도 parent가 계속 추적합니다. 이후 parent 또는 root `dispose()`는 parent나 root가 유지한 hook보다 그 child를 먼저 재시도합니다.
+4. 동시 direct caller와 parent caller는 하나의 active attempt를 공유합니다. shared attempt를 시작한 caller가 direct 또는 parent ownership을 결정합니다. 나중에 참여한 caller는 이를 바꿀 수 없습니다.
+5. parent가 유지한 child를 나중에 `child.dispose()`로 직접 재시도하면 해당 direct attempt가 settle된 뒤 child를 분리합니다. direct 재시도가 다시 실패해도 분리됩니다.
+
+모든 child attempt는 parent tier가 시작되기 전에 settle됩니다. Parent와 root는 같은 호출에서 자신의 cleanup도 시도하고 해당 attempt의 모든 실패를 aggregate합니다.
 
 cache entry 선택도 root와 child로 나뉩니다.
-`path:packages/di/src/container.ts:674-690`의 `disposalCacheEntries()`는 child container에서는 request cache와 multi request cache만 반환하고,
+`path:packages/di/src/container.ts:1197-1213`의 `disposalCacheEntries()`는 child container에서는 request cache와 multi request cache만 반환하고,
 root에서는 singleton cache와 multi singleton cache를 반환합니다. 즉 request child 하나를 dispose해도 root singleton은 파괴되지 않습니다.
 
 tier별 cache ownership은 disposal 대상 목록에서도 반복됩니다.
 
-`path:packages/di/src/container.ts:674-690`
+`path:packages/di/src/container.ts:1197-1213`
 ```typescript
 private disposalCacheEntries(): Array<[NormalizedProvider | Token, Promise<unknown>]> {
   if (this.parent) {
-    const entries: Array<[NormalizedProvider | Token, Promise<unknown>]> = Array.from(this.requestCache.entries());
+    const entries: Array<[NormalizedProvider | Token, Promise<unknown>]> =
+      Array.from(this.requestCache?.entries() ?? []);
 
-    for (const [provider, promise] of this.multiRequestCache.entries()) {
+    for (const [provider, promise] of this.multiRequestCache?.entries() ?? []) {
       entries.push([provider, promise]);
     }
 
@@ -770,49 +806,53 @@ private disposalCacheEntries(): Array<[NormalizedProvider | Token, Promise<unkno
 
 이 발췌는 request child disposal이 root singleton을 건드리지 않는 이유를 직접 보여 줍니다. child는 request cache만 내놓고, root만 singleton cache를 내놓습니다.
 
-실제 instance 수집은 `path:packages/di/src/container.ts:705-729`의 `collectDisposableInstances()`에서 `Promise.allSettled`로 수행됩니다. 이 점이 중요합니다. provider promise 하나가 reject되어도, 컨테이너는 다른 disposable instance들을 계속 모을 수 있습니다. 이후 `path:packages/di/src/container.ts:731-743`의 `disposeInstancesInReverseOrder()`가 `onDestroy()`를 생성 역순으로 호출합니다.
+실제 instance 수집은 `path:packages/di/src/container.ts:1239-1269`의 `collectDisposableInstances()`에서 `Promise.allSettled`로 수행됩니다. 이 점이 중요합니다. provider promise 하나가 reject되어도, 컨테이너는 다른 disposable instance들을 계속 모을 수 있습니다. 첫 시도에서는 `disposeInstancesInReverseOrder()`가 `onDestroy()`를 생성 역순으로 호출합니다. 실패한 instance만 원래 생성 순서로 다시 저장하므로 다음 명시적 시도는 그 유지 목록을 다시 뒤집어 같은 destruction order를 지키면서 성공한 hook을 다시 방문하지 않습니다.
 
 수집과 호출은 일부 실패를 견디도록 분리되어 있습니다.
 
-`path:packages/di/src/container.ts:712-743`
+`path:packages/di/src/container.ts:1215-1286`
 ```typescript
-const settled = await Promise.allSettled(entries.map(([, p]) => p));
+const {
+  disposables: materializedDisposables,
+  errors: resolutionErrors,
+} = await this.collectDisposableInstances(entries);
+const disposables = this.pendingDisposables.length > 0
+  ? this.pendingDisposables
+  : materializedDisposables;
 
-for (const result of settled) {
-  if (result.status === 'rejected') {
-    errors.push(result.reason);
-    continue;
-  }
+errors.push(...resolutionErrors);
+errors.push(...(await this.disposeInstancesInReverseOrder(disposables)));
 
-  const instance = result.value;
-
-  if (this.isDisposable(instance) && !seenInstances.has(instance)) {
-    seenInstances.add(instance);
-    disposables.push(instance);
-  }
-}
-
-return { disposables, errors };
-}
+this.clearDisposalCaches();
+this.throwDisposalErrors(errors);
 
 private async disposeInstancesInReverseOrder(disposables: readonly Disposable[]): Promise<unknown[]> {
   const errors: unknown[] = [];
+  const pendingDisposables: Disposable[] = [];
 
   for (const instance of [...disposables].reverse()) {
     try {
       await instance.onDestroy();
     } catch (error) {
       errors.push(error);
+      pendingDisposables.unshift(instance);
     }
   }
+
+  this.pendingDisposables.splice(0, this.pendingDisposables.length, ...pendingDisposables);
+  return errors;
+}
 ```
 
-`Promise.allSettled`와 reverse loop가 함께 보이므로 이 발췌는 실패 격리와 생성 역순 정리라는 두 보장을 동시에 설명합니다.
+수집, 유지된 ownership, reverse loop가 함께 보이므로 이 발췌는 실패 격리, 생성 역순 정리, 성공한 hook의 exactly-once completion이라는 세 보장을 동시에 설명합니다.
 
 테스트는 보장을 명확하게 설명합니다.
-`path:packages/di/src/container.test.ts:753-776`은 reverse-order singleton disposal을 검증합니다.
-`path:packages/di/src/container.test.ts:778-809`는 request child disposal이 request instance만 제거하고 root singleton은 root dispose까지 살려 둠을 증명합니다.
-`path:packages/di/src/container.test.ts:811-820`는 dispose된 request scope가 root child registry에서 제거됨을 보여 줍니다.
+`path:packages/di/src/container.test.ts:1625-1647`은 reverse-order singleton disposal을 검증합니다.
+`path:packages/di/src/container.test.ts:1649-1680`은 request child disposal이 request instance만 제거하고 root singleton은 root dispose까지 살려 둠을 증명합니다.
+`path:packages/di/src/container-disposal-retry.test.ts`는 failed-only retry order, nested child-before-parent/root retry, active-attempt 공유, terminal operation 거부, 성공한 disposal의 멱등성을 증명합니다.
+`path:packages/di/src/container-disposal-ownership.test.ts`는 direct detach, caller-retained retry, parent-retained retry, first-starter ownership, 이후 direct detach를 증명합니다.
+
+실행 가능한 근거는 graph ownership을 검증하는 `packages/di/src/container-disposal-ownership.test.ts`와 failed-hook ordering 및 idempotency를 검증하는 `packages/di/src/container-disposal-retry.test.ts`에 있습니다.
 
 request child와 root singleton의 분리는 테스트가 더 읽기 쉽습니다.
 
@@ -851,22 +891,27 @@ it('disposes only the request cache for request-scoped containers', async () => 
 이 테스트는 child dispose 시점과 root dispose 시점의 event 배열을 나눠 보여 줍니다. 그래서 implementation-only proof보다 reader-facing lifecycle 보장이 더 선명합니다.
 
 failure handling도 의도적입니다.
-`path:packages/di/src/container.ts:782-790`의 `throwDisposalErrors()`는 에러가 하나면 그대로 던지고,
+`path:packages/di/src/container.ts:1403-1411`의 `throwDisposalErrors()`는 에러가 하나면 그대로 던지고,
 여러 개면 `AggregateError`를 던집니다.
-`path:packages/di/src/container.test.ts:880-903`은 `onDestroy()` 하나가 실패해도 나머지 인스턴스 disposal은 계속 진행됨을 보여 줍니다.
+`path:packages/di/src/container.test.ts:1793-1928`은 현재 tier 또는 child tier의 hook이 실패해도 나머지 instance와 root cleanup을 계속 수행함을 보여 줍니다.
 
 shutdown pipeline은 이렇게 표현할 수 있습니다.
 
 ```text
-dispose(container):
-  if root:
-    dispose all live request children first
+dispose(container, origin):
+  if another disposal attempt is active, await it without changing origin
+  close the terminal operation gate
+  enter all live request children with parent origin first
   collect relevant cached promises for this container tier
   await stale disposal tasks
-  gather resolved disposable instances
+  use retained failed hooks, or gather first-attempt disposable instances
   call onDestroy in reverse order
+  retain only hooks that failed, preserving creation order
   clear caches
   throw aggregated disposal errors if any
+  detach a direct child after settlement, even on failure
+  detach a parent-entered child only after successful cleanup
+  after every retained hook succeeds, reuse the successful promise idempotently
 ```
 
 ```typescript

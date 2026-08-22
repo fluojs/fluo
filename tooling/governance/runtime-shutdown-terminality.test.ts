@@ -99,20 +99,20 @@ describe('runtime shutdown terminality documentation', () => {
   });
 
   it.each([
-    ['packages/runtime/README.md', 'individual failed hook is not retried'],
-    ['packages/runtime/README.ko.md', '개별 실패 hook은 이후 application 또는 context `close()`에서 재시도하지 않습니다'],
-    ['docs/architecture/lifecycle-and-shutdown.md', 'individual failed hook is not retried'],
-    ['docs/architecture/lifecycle-and-shutdown.ko.md', '개별 실패 hook은 이후 application 또는 context close에서 재시도하지 않습니다'],
-    ['docs/CONTEXT.md', 'individual failed hook is not retried'],
-    ['docs/CONTEXT.ko.md', '개별 실패 hook은 이후 application 또는 context close에서 재시도하지 않는다'],
-    ['book/advanced/ch09-app-context.md', 'does not retry an individual failed hook'],
-    ['book/advanced/ch09-app-context.ko.md', '개별 실패 hook은 이후 application 또는 context close에서 재시도하지 않습니다'],
-  ])('guards terminal best-effort container teardown ownership in %s', (relativePath, noRetryContract) => {
+    ['packages/runtime/README.md', 'failed hooks are retried by a later explicit'],
+    ['packages/runtime/README.ko.md', '실패한 hook만 이후 명시적'],
+    ['docs/architecture/lifecycle-and-shutdown.md', 'retains only failed hooks for a later explicit'],
+    ['docs/architecture/lifecycle-and-shutdown.ko.md', '실패한 hook만 이후 명시적'],
+    ['docs/CONTEXT.md', 'failed hooks are retried by a later explicit'],
+    ['docs/CONTEXT.ko.md', '실패한 hook만 이후 명시적'],
+    ['book/advanced/ch09-app-context.md', 'retries those failed hooks on a later explicit'],
+    ['book/advanced/ch09-app-context.ko.md', '이후 명시적 application 또는 context close에서 실패한 hook만 재시도합니다'],
+  ])('guards terminal best-effort failed-hook retry ownership in %s', (relativePath, retryContract) => {
     const content = read(relativePath);
 
     expect(content).toContain('onDestroy()');
     expect(content).toContain('terminal best-effort');
-    expect(content).toContain(noRetryContract);
+    expect(content).toContain(retryContract);
   });
 
   it.each([
@@ -153,7 +153,7 @@ describe('runtime shutdown terminality documentation', () => {
     );
     expect(bootstrapTests).toContain('retries only incomplete application context shutdown phases');
     expect(bootstrapTests).toContain(
-      'does not retry container-managed onDestroy hooks on a second application context close',
+      'retries only failed container-managed onDestroy hooks on a second application context close',
     );
   });
 });
