@@ -563,7 +563,7 @@ Application context와 application shell은 public lifecycle state와 private te
 
 Connect 경로는 asynchronous runtime resolution 전후에 gate를 검사합니다. Start-all 경로는 iteration 전과 각 child listen 직전에 다시 검사합니다. 이 재검사는 shutdown 직전에 admission된 작업이 shutdown 시작 뒤 child를 attach하거나 start하지 못하게 합니다.
 
-공유 `closeRuntimeResources()` helper는 readiness reset, runtime cleanup callback, lifecycle hook, optional adapter close, container disposal을 순서대로 실행합니다. 각 phase는 `RetryableShutdownState`에 completion bit를 가집니다. 현재 close 시도는 에러가 있어도 뒤 phase를 계속 시도하고 실패를 aggregate합니다. 이후 `close()`는 완료된 runtime phase를 건너뛰고 incomplete adapter 또는 lifecycle-hook stage를 각자의 retry contract에 따라 다시 실행합니다. Lifecycle hook은 하나의 phase이므로 일부 hook이 실패하면 개별 hook이 transaction처럼 완료되었다고 가정하지 않고 hook phase 전체를 재시도합니다. Container disposal은 더 좁은 terminal best-effort contract를 가집니다. Materialize된 container-managed `onDestroy()` hook을 모두 한 번씩 시도하고 그 뒤 disposal cache를 비우며, 개별 실패 hook은 이후 application 또는 context close에서 재시도하지 않습니다.
+공유 `closeRuntimeResources()` helper는 readiness reset, runtime cleanup callback, lifecycle hook, optional adapter close, container disposal을 순서대로 실행합니다. 각 phase는 `RetryableShutdownState`에 completion bit를 가집니다. 현재 close 시도는 에러가 있어도 뒤 phase를 계속 시도하고 실패를 aggregate합니다. 이후 `close()`는 완료된 runtime phase를 건너뛰고 incomplete adapter 또는 lifecycle-hook stage를 각자의 retry contract에 따라 다시 실행합니다. Lifecycle hook은 하나의 phase이므로 일부 hook이 실패하면 개별 hook이 transaction처럼 완료되었다고 가정하지 않고 hook phase 전체를 재시도합니다. Container disposal은 더 좁은 terminal best-effort contract를 가집니다. Materialize된 container-managed `onDestroy()` hook을 모두 시도하고 ordinary disposal cache를 비운 뒤 실패한 hook만 유지하며, 성공한 hook은 다시 실행하지 않고 이후 명시적 application 또는 context close에서 실패한 hook만 재시도합니다.
 
 `path:packages/runtime/src/retryable-shutdown.ts`
 ```typescript
@@ -600,7 +600,7 @@ Executable evidence는 shell과 race별로 의도적으로 분리되어 있습�
 | Parent connect/start operation은 child close가 pending인 동안 reject됩니다. | `path:packages/runtime/src/bootstrap.test.ts` — `rejects connect and start operations while application close is pending` |
 | Shutdown 전에 admission된 connect도 async runtime resolution 뒤 child를 attach할 수 없습니다. | `path:packages/runtime/src/bootstrap.test.ts` — `rejects connectMicroservice() when shutdown starts during runtime resolution` |
 | Context retry는 완료된 phase를 건너뛰고 incomplete hook phase를 재시도합니다. | `path:packages/runtime/src/bootstrap.test.ts` — `retries only incomplete application context shutdown phases` |
-| Context close는 개별 실패 container-managed hook을 재시도하지 않습니다. | `path:packages/runtime/src/bootstrap.test.ts` — `does not retry container-managed onDestroy hooks on a second application context close` |
+| Context close는 실패한 container-managed hook만 재시도합니다. | `path:packages/runtime/src/bootstrap.test.ts` — `retries only failed container-managed onDestroy hooks on a second application context close` |
 
 Failure-path cleanup은 `runBootstrapFailureCleanup()`이 소유합니다. Bootstrap이 lifecycle instance나 runtime resource를 만든 뒤 실패하더라도, runtime은 readiness를 reset하고 모든 cleanup phase를 시도하면서 원래 bootstrap error를 보존합니다.
 
@@ -694,7 +694,7 @@ close()
   -> close connected microservices
   -> run every incomplete runtime teardown phase in order
   -> record each successful phase
-  -> treat container-managed onDestroy hooks as terminal best-effort, not individually retryable
+  -> retain and retry only failed container-managed onDestroy hooks
   -> set public state to closed only after complete success
   -> on failure, keep the gate closed and allow an explicit cleanup retry
 ```
