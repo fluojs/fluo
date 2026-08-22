@@ -77,6 +77,8 @@ fluo DI supports four provider shapes:
 
 During disposal, each container tears down successfully materialized cached instances in reverse creation order across single-provider and multi-provider caches, so dependents are destroyed before their dependencies. Each container first recursively tears down live request-scope children it owns, so disposing a non-root request scope also closes nested request scopes before its own request cache. Root disposal then continues with root-owned singleton cleanup even if one or more child disposals fail. When multiple child/root disposals fail, `dispose()` reports an `AggregateError` so callers can inspect every shutdown failure without losing cleanup progress.
 
+Starting `dispose()` is terminal for `resolve()`, `register()`, `override()`, and `createRequestScope()`. Concurrent callers share the active disposal attempt. If an `onDestroy()` hook fails, the container retains only that failed hook for a later explicit `dispose()` retry, preserving child-before-parent/root and reverse-creation ordering. Hooks that completed successfully are never run again, and disposal becomes idempotent after every retained hook succeeds.
+
 ### Provider Overrides
 
 Use `override(...providers)` when a test or request-local boundary needs to replace existing registrations deliberately. Overrides replace the current provider set for each token, invalidate cached instances in the current container and already-materialized request-scope descendants, and dispose stale instances before the next replacement resolution continues. Multi-provider overrides replace the full multi-provider set for that token, so pass every replacement provider together; mixing single and multi replacements for the same token in one override call is rejected as ambiguous.
@@ -187,7 +189,7 @@ Ensure all required providers are registered in the container. If you use `creat
 | `container.createRequestScope()` | `Container` instance method | Creates a child container for request-scoped dependencies. |
 | `container.has(token)` | `Container` instance method | Checks if a token is registered in the container or its parents. |
 | `container.hasRequestScopedDependency(token)` | `Container` instance method | Checks whether resolving a token may require a request-scope container because its provider graph contains request-scoped dependencies or is cyclic. |
-| `container.dispose()` | `Container` instance method | Disposes request children and root-owned singleton instances. |
+| `container.dispose()` | `Container` instance method | Disposes request children before parent/root caches, shares an active attempt, and retries only failed `onDestroy()` hooks on a later explicit call. |
 | `forwardRef(fn)` | Returns a token wrapper that defers lookup for declaration-order issues; it does not make constructor dependency cycles resolvable. |
 | `isForwardRef(value)` | Type guard for values produced by `forwardRef(...)`; useful when integrating custom provider tooling with DI token wrappers. |
 | `optional(token)` | Returns a token wrapper that marks one dependency as optional; missing optional dependencies resolve to `undefined`. |
