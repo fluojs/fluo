@@ -80,6 +80,18 @@ dispose 중에는 각 컨테이너가 single-provider cache와 multi-provider ca
 
 `dispose()` 시작은 `resolve()`, `register()`, `override()`, `createRequestScope()`에 대해 terminal입니다. 동시 caller는 active disposal 시도를 공유합니다. `onDestroy()` hook이 실패하면 컨테이너는 실패한 hook만 이후 명시적 `dispose()` 재시도를 위해 유지하면서 child-before-parent/root 순서와 생성 역순을 보존합니다. 성공적으로 완료된 hook은 다시 실행하지 않으며, 유지된 hook이 모두 성공한 뒤 disposal은 멱등입니다.
 
+#### disposal 재시도 ownership
+
+Disposal 재시도는 다음 다섯 ownership 규칙을 따릅니다.
+
+1. public `child.dispose()`를 직접 호출하면 request child는 active attempt가 settle된 뒤 parent graph에서 분리됩니다. 유지된 `onDestroy()` hook이 실패해도 분리됩니다.
+2. 분리된 child 참조를 유지한 caller는 `dispose()`를 다시 호출할 수 있습니다. 이 호출은 해당 child의 실패한 hook만 재시도하며 성공한 sibling hook은 반복하지 않습니다.
+3. parent 또는 root disposal이 먼저 진입한 child는 실패 후에도 parent가 계속 추적합니다. 이후 parent 또는 root `dispose()`는 parent나 root가 유지한 hook보다 그 child를 먼저 재시도합니다.
+4. 동시 direct caller와 parent caller는 하나의 active attempt를 공유합니다. shared attempt를 시작한 caller가 direct 또는 parent ownership을 결정합니다. 나중에 참여한 caller는 이를 바꿀 수 없습니다.
+5. parent가 유지한 child를 나중에 `child.dispose()`로 직접 재시도하면 해당 direct attempt가 settle된 뒤 child를 분리합니다. direct 재시도가 다시 실패해도 분리됩니다.
+
+실행 가능한 근거는 graph ownership을 검증하는 `packages/di/src/container-disposal-ownership.test.ts`와 failed-hook ordering 및 idempotency를 검증하는 `packages/di/src/container-disposal-retry.test.ts`에 있습니다.
+
 ### provider override
 
 테스트나 request-local 경계에서 기존 등록을 의도적으로 교체해야 할 때는 `override(...providers)`를 사용합니다. override는 각 토큰의 현재 provider set을 교체하고 현재 컨테이너와 이미 materialize된 request-scope 자식의 cached instance를 무효화하며, 다음 replacement resolution이 계속되기 전에 오래된 instance의 dispose가 끝나도록 보장합니다. multi provider override는 해당 토큰의 전체 multi-provider set을 교체하므로 필요한 replacement provider를 한 번에 모두 전달하세요. 같은 토큰에 single replacement와 multi replacement를 한 override 호출에서 섞으면 모호한 교체로 보고 거부합니다.

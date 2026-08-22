@@ -689,13 +689,21 @@ For advanced users building test harnesses or hot-reload-like flows, the lesson 
 ## 5.6 Disposal order, child scopes, and shutdown guarantees
 The final scope question is how instances die. Fluo's answer is deterministic teardown, with a clear split between root singletons and request children.
 
-The public entrypoint is `dispose()` in `path:packages/di/src/container.ts:607-628`. This method memoizes `disposePromise`, marks the container as disposed, then runs `disposeAll()`. It resets the promise only when disposal fails. That makes a successful `dispose()` idempotent while allowing a later explicit call to retry failed cleanup.
+The public `dispose()` entrypoint and its origin-aware helper live in `path:packages/di/src/container.ts:616-640`. A public call enters with direct ownership, while parent traversal uses the private `disposeFromParent()` entrypoint. Both paths call `disposeWithOrigin(...)`.
 
-The dispose entrypoint handles both reentry and failure retry.
+The shared helper handles reentry, failure retry, and the origin of the active attempt.
 
-`path:packages/di/src/container.ts:607-628`
+`path:packages/di/src/container.ts:616-640`
 ```typescript
 async dispose(): Promise<void> {
+  await this.disposeWithOrigin('direct');
+}
+
+private async disposeFromParent(): Promise<void> {
+  await this.disposeWithOrigin('parent');
+}
+
+private async disposeWithOrigin(origin: DisposalAttemptOrigin): Promise<void> {
   if (this.disposePromise) {
     await this.disposePromise;
     return;
@@ -703,7 +711,7 @@ async dispose(): Promise<void> {
 
   this.disposed = true;
   this.advanceGraphRevision();
-  this.disposePromise = this.disposeAll();
+  this.disposePromise = this.disposeAll(origin);
 
   try {
     await this.disposePromise;
@@ -714,22 +722,24 @@ async dispose(): Promise<void> {
 }
 ```
 
-A concurrent dispose awaits the active promise, so overlapping callers do not duplicate teardown. A successful dispose keeps the settled promise and makes later calls idempotent. Only a failure clears the promise after settlement and gives a later explicit call a chance to retry. The terminal `disposed` gate is never reopened, so `resolve()`, `register()`, `override()`, and `createRequestScope()` remain rejected throughout and after retry.
+A concurrent caller awaits the active promise, so overlapping callers do not duplicate teardown. The first caller has already selected direct or parent ownership before a later caller joins. A successful attempt keeps the settled promise and makes later calls idempotent. A failure clears the promise after settlement so a later explicit call can retry. The terminal `disposed` gate remains closed throughout and after retry.
 
-When `disposeAll()` in `path:packages/di/src/container.ts:630-661` runs, it first disposes every live request-scope child, then cleans up cache entries for the current tier. This order matters because request-scoped instances may depend on parent or root instances, but the reverse is not allowed.
+`disposeAll()` in `path:packages/di/src/container.ts:642-672` enters every tracked request child through `disposeFromParent()`, then cleans the current tier. Its final detach condition distinguishes a successful parent-owned attempt from any settled direct attempt.
 
-The root and child cleanup order is only retry-safe if a failed child remains tracked until its own disposal succeeds.
+The origin-aware child traversal and detach rule are the load-bearing lines.
 
-`path:packages/di/src/container.ts:630-661`
+`path:packages/di/src/container.ts:642-672`
 ```typescript
-private async disposeAll(): Promise<void> {
+private async disposeAll(origin: DisposalAttemptOrigin): Promise<void> {
   const errors: unknown[] = [];
   let completed = false;
 
   try {
     if (this.childScopes && this.childScopes.size > 0) {
       const childResults = await Promise.allSettled(
-        Array.from(this.childScopes).map((child) => child.dispose()),
+        Array.from(this.childScopes).map((child) =>
+          child.disposeFromParent(),
+        ),
       );
 
       for (const result of childResults) {
@@ -748,7 +758,7 @@ private async disposeAll(): Promise<void> {
     this.throwDisposalErrors(errors);
     completed = true;
   } finally {
-    if (completed && this.parent && this.trackedByParent) {
+    if ((completed || origin === 'direct') && this.parent && this.trackedByParent) {
       this.parent.childScopes?.delete(this);
       this.trackedByParent = false;
     }
@@ -756,21 +766,30 @@ private async disposeAll(): Promise<void> {
 }
 ```
 
-Every child attempt settles before the parent tier begins. Successful children remove themselves from their direct parent registry. Failed children remain tracked, so a later parent/root `dispose()` descends through them again before retrying that parent's retained hooks. The parent and root still attempt their own cleanup and aggregate every failure from the current attempt.
+Disposal retries follow five ownership rules:
+
+1. Calling public `child.dispose()` directly detaches the request child from its parent graph after the active attempt settles, even when retained `onDestroy()` hooks failed.
+2. A retained child reference can call `dispose()` again to retry only that child's failed hooks. Successful sibling hooks are not repeated.
+3. A child first reached through parent or root disposal remains parent-tracked after failure, so a later parent or root `dispose()` retries it before retained hooks in the parent or root.
+4. Concurrent direct and parent callers share one active attempt. The caller that starts the shared attempt sets its direct or parent ownership, and later callers cannot change it.
+5. A later direct retry detaches a parent-retained child after settlement, even when that retry fails.
+
+Every child attempt still settles before the parent tier begins. Parent and root containers attempt their own cleanup during the same call and aggregate every failure from that attempt.
 
 Cache entry selection is split between root and child too.
-`disposalCacheEntries()` in `path:packages/di/src/container.ts:674-690` returns only the request cache and multi request cache for a child container,
+`disposalCacheEntries()` in `path:packages/di/src/container.ts:1197-1213` returns only the request cache and multi request cache for a child container,
 and returns singleton cache and multi singleton cache for the root. So disposing one request child does not destroy root singletons.
 
 Tiered cache ownership appears again in the disposal target list.
 
-`path:packages/di/src/container.ts:674-690`
+`path:packages/di/src/container.ts:1197-1213`
 ```typescript
 private disposalCacheEntries(): Array<[NormalizedProvider | Token, Promise<unknown>]> {
   if (this.parent) {
-    const entries: Array<[NormalizedProvider | Token, Promise<unknown>]> = Array.from(this.requestCache.entries());
+    const entries: Array<[NormalizedProvider | Token, Promise<unknown>]> =
+      Array.from(this.requestCache?.entries() ?? []);
 
-    for (const [provider, promise] of this.multiRequestCache.entries()) {
+    for (const [provider, promise] of this.multiRequestCache?.entries() ?? []) {
       entries.push([provider, promise]);
     }
 
@@ -787,11 +806,11 @@ private disposalCacheEntries(): Array<[NormalizedProvider | Token, Promise<unkno
 
 This excerpt directly shows why request child disposal does not touch root singletons. The child exposes only request cache, and only the root exposes singleton cache.
 
-Actual instance collection happens in `collectDisposableInstances()` in `path:packages/di/src/container.ts:1228-1258` using `Promise.allSettled`. This matters. Even if one provider promise rejects, the container can keep collecting the other disposable instances. On the first attempt, `disposeInstancesInReverseOrder()` calls `onDestroy()` in reverse creation order. It stores only failed instances back in original creation order, so the next explicit attempt reverses that retained list into the same destruction order without revisiting successful hooks.
+Actual instance collection happens in `collectDisposableInstances()` in `path:packages/di/src/container.ts:1239-1269` using `Promise.allSettled`. This matters. Even if one provider promise rejects, the container can keep collecting the other disposable instances. On the first attempt, `disposeInstancesInReverseOrder()` calls `onDestroy()` in reverse creation order. It stores only failed instances back in original creation order, so the next explicit attempt reverses that retained list into the same destruction order without revisiting successful hooks.
 
 Collection and invocation are separated to tolerate some failures.
 
-`path:packages/di/src/container.ts:1212-1275`
+`path:packages/di/src/container.ts:1215-1286`
 ```typescript
 const {
   disposables: materializedDisposables,
@@ -803,7 +822,9 @@ const disposables = this.pendingDisposables.length > 0
 
 errors.push(...resolutionErrors);
 errors.push(...(await this.disposeInstancesInReverseOrder(disposables)));
+
 this.clearDisposalCaches();
+this.throwDisposalErrors(errors);
 
 private async disposeInstancesInReverseOrder(disposables: readonly Disposable[]): Promise<unknown[]> {
   const errors: unknown[] = [];
@@ -829,6 +850,9 @@ Tests state the guarantees clearly.
 `path:packages/di/src/container.test.ts:1625-1647` verifies reverse-order singleton disposal.
 `path:packages/di/src/container.test.ts:1649-1680` proves that request child disposal removes only request instances and keeps root singletons alive until root dispose.
 `path:packages/di/src/container-disposal-retry.test.ts` proves failed-only retry order, nested child-before-parent/root retry, active-attempt sharing, terminal operation rejection, and successful idempotency.
+`path:packages/di/src/container-disposal-ownership.test.ts` proves direct detachment, caller-retained retry, parent-retained retry, first-starter ownership, and later direct detachment.
+
+Executable evidence lives in `packages/di/src/container-disposal-ownership.test.ts` for graph ownership and `packages/di/src/container-disposal-retry.test.ts` for failed-hook ordering and idempotency.
 
 The split between request children and root singletons is easier to read in the test.
 
@@ -867,17 +891,17 @@ it('disposes only the request cache for request-scoped containers', async () => 
 This test separates the event array at child dispose time and root dispose time. That makes the reader-facing lifecycle guarantee clearer than an implementation-only proof.
 
 Failure handling is intentional too.
-`throwDisposalErrors()` in `path:packages/di/src/container.ts:1392-1400` throws the error directly when there is one,
+`throwDisposalErrors()` in `path:packages/di/src/container.ts:1403-1411` throws the error directly when there is one,
 and throws `AggregateError` when there are several.
 `path:packages/di/src/container.test.ts:1793-1928` shows that disposal continues for remaining instances and root cleanup even when hooks in the current tier or child tiers fail.
 
 The shutdown pipeline can be represented like this.
 
 ```text
-dispose(container):
-  if another disposal attempt is active, await it
+dispose(container, origin):
+  if another disposal attempt is active, await it without changing origin
   close the terminal operation gate
-  dispose all live request children first
+  enter all live request children with parent origin first
   collect relevant cached promises for this container tier
   await stale disposal tasks
   use retained failed hooks, or gather first-attempt disposable instances
@@ -885,6 +909,8 @@ dispose(container):
   retain only hooks that failed, preserving creation order
   clear caches
   throw aggregated disposal errors if any
+  detach a direct child after settlement, even on failure
+  detach a parent-entered child only after successful cleanup
   after every retained hook succeeds, reuse the successful promise idempotently
 ```
 
