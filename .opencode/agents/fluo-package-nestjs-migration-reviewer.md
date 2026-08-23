@@ -1,7 +1,7 @@
 ---
 description: fluo-package-nestjs-migration-reviewer audits a single package for unsupported NestJS assumptions and migration gaps read-only and returns schema-compliant findings only.
 mode: subagent
-model: openai/gpt-5.6-terra
+model: openai/gpt-5.6-terra-fast
 options:
   reasoningEffort: high
   reasoningSummary: auto

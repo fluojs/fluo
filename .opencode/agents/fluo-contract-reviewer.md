@@ -1,7 +1,7 @@
 ---
 description: fluo-contract-reviewer reviews a PR's contract intent, documentation alignment, and release governance compliance read-only and reports only real risk
 mode: subagent
-model: openai/gpt-5.6-sol
+model: openai/gpt-5.6-sol-fast
 options:
   reasoningEffort: high
   reasoningSummary: auto

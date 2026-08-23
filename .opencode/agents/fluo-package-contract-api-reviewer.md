@@ -1,7 +1,7 @@
 ---
 description: fluo-package-contract-api-reviewer audits a single package's README, public API surface, docs/contracts, docs/CONTEXT, and book/tutorial impact. Read-only. Returns schema-compliant findings only.
 mode: subagent
-model: openai/gpt-5.6-terra
+model: openai/gpt-5.6-terra-fast
 options:
   reasoningEffort: high
   reasoningSummary: auto
