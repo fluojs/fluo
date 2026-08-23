@@ -1,5 +1,48 @@
 {
   "version": 1,
+  "intake": {
+    "target_modes": [
+      {
+        "id": "all",
+        "label": "전체 패키지",
+        "description": "모든 public @fluojs/* 패키지를 감사합니다."
+      },
+      {
+        "id": "group",
+        "label": "특정 패키지군",
+        "description": "하나 이상의 패키지군을 선택합니다."
+      },
+      {
+        "id": "package",
+        "label": "특정 패키지",
+        "description": "하나 이상의 개별 패키지를 선택합니다."
+      }
+    ],
+    "group_descriptions": {
+      "foundation": "핵심 설정, DI, 국제화, runtime",
+      "http-runtime": "HTTP 추상화와 platform adapter",
+      "request-pipeline": "요청 검증, 직렬화, API schema",
+      "auth": "인증과 authorization 연동",
+      "infra-messaging": "인프라, 작업 처리, 메시징",
+      "protocol-adapters": "WebSocket protocol adapter",
+      "persistence": "데이터베이스 integration",
+      "operations": "관측성, health, throttling",
+      "ui": "React integration",
+      "cli": "CLI, Studio, testing, Vite 도구"
+    },
+    "purpose_descriptions": {
+      "bug-finding": "재현 가능한 correctness 결함과 edge case를 찾습니다.",
+      "refactoring": "복잡도, 책임 경계, 유지보수성 문제를 찾습니다.",
+      "feature-addition": "추가할 기능의 근거, 범위, 선행 조건을 조사합니다.",
+      "contract-api": "public API, type, runtime contract 불일치를 찾습니다.",
+      "architecture-boundary": "package 책임과 dependency boundary를 감사합니다.",
+      "tests-edge": "누락된 실패 경로, 비결정성, 회귀 방어를 찾습니다.",
+      "docs-book-sync": "README, API docs, book과 실제 동작의 차이를 찾습니다.",
+      "release-impact": "changeset, 호환성, 배포 준비 상태를 감사합니다.",
+      "nestjs-migration-gap": "NestJS migration과 parity 차이를 찾습니다.",
+      "comprehensive": "contract, architecture, correctness를 함께 감사합니다."
+    }
+  },
   "packages": [
     "core",
     "config",

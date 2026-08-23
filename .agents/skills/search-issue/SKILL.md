@@ -9,11 +9,50 @@ Use this skill only inside the Fluo repository. It is the native OMO workflow
 for package issue discovery, draft triage, authorized registration, and
 create-lane handoff.
 
-## First action
+## Intake
 
-Your first tool action must be one structured question call containing both the
-package scope and audit-purpose questions. Do not read package files, create a
-goal or todo, write a ledger, start tasks, or access GitHub before valid intake.
+Resolve intake in three ordered steps. Never ask the user to remember package
+names, package groups, or purpose identifiers.
+
+### 1. Ask only for the target mode
+
+Present these choices before asking for package names or purposes:
+
+1. 전체 패키지 대상
+2. 특정 패키지군 대상
+3. 특정 패키지 대상
+
+Use a registered structured selection tool when the runtime actually exposes
+one. Use single-select for this question. The current OMO runtime may not expose
+`ask_question`; never claim that it exists or attempt to call an unavailable
+tool. Fall back to the numbered plain-text choices above.
+
+### 2. Resolve the package scope
+
+- For `전체 패키지 대상`, resolve every package without a follow-up.
+- For `특정 패키지군 대상` or `특정 패키지 대상`, run
+  `node .agents/skills/search-issue/scripts/intake.mjs packages`. Tool output is
+  not user-facing presentation because OMO may collapse it. Copy the complete
+  stdout table, including every row, into the response immediately before the
+  selection question. Never replace the table with an ID-only bullet list. Then
+  ask for one or more group IDs or package names. Use multi-select when a
+  structured selection tool is available; otherwise accept comma-separated
+  text.
+- Resolve the answer through
+  `node .agents/skills/search-issue/scripts/intake.mjs resolve <mode> [selection...]`.
+
+### 3. Ask for audit purposes
+
+Run `node .agents/skills/search-issue/scripts/intake.mjs purposes`, show the
+complete purpose table without truncation, and ask for one or more purpose IDs.
+Copy every stdout row into the response immediately before the question; do not
+rely on collapsed tool output or replace descriptions with an ID-only list. Use
+multi-select when available; otherwise accept comma-separated text.
+
+Treat valid values supplied in the leading invocation as already answered and
+continue at the first missing step. Do not create a goal or todo, write a
+ledger, inspect package code, start reviewer tasks, or access GitHub until all
+three intake steps are valid.
 
 ## Native assets
 
@@ -25,6 +64,7 @@ After intake, read only the assets in this skill package:
 - `references/reviewers/common.md`
 - the specialist reviewer references selected by `domain.json`
 - `references/reviewers/registration-triage.md` after draft creation
+- `scripts/intake.mjs` for target choices, catalogs, and scope resolution
 
 Do not load legacy OpenCode commands, skills, agents, permission blocks, or
 runtime paths. They are not dependencies of this workflow.

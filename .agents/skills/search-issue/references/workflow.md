@@ -6,15 +6,36 @@ projections of it.
 
 ## Intake
 
-The first tool action is one structured question call containing:
+Intake is a mode-first state machine. Values explicitly supplied with the
+leading invocation count as answered; begin at the first missing state.
 
-1. package scope: direct packages, one package group, or all public packages
-2. one or more purposes from `domain.json`
+1. `target_mode`
+   - Ask only whether the target is all packages, one or more package groups, or
+     one or more direct packages.
+   - Use runtime structured single-select only when that tool is registered.
+     Otherwise show numbered plain-text choices.
+2. `package_scope`
+   - `all` resolves every package and needs no follow-up.
+   - `group` and `package` first render the complete package-group/package table
+     from `node scripts/intake.mjs packages`.
+   - Bash output may be collapsed in OMO. Copy every table row into the
+     user-facing response immediately before asking; an ID-only list is not a
+     valid substitute.
+   - Ask for one or more group IDs or package names. Use multi-select when
+     available, otherwise comma-separated text.
+   - Resolve the immutable package list through
+     `node scripts/intake.mjs resolve <mode> [selection...]`.
+3. `purposes`
+   - Render the complete purpose/description/reviewer table from
+     `node scripts/intake.mjs purposes`.
+   - Copy every rendered row into the user-facing response immediately before
+     asking. Never rely on collapsed tool output or omit the descriptions.
+   - Ask for one or more purpose IDs using multi-select when available or
+     comma-separated text otherwise.
 
-Ask one immediate follow-up only when direct package names or the group name are
-missing. Empty, cancelled, or unsupported answers stop before repository
-discovery, goal creation, todo creation, ledger creation, reviewer tasks, or
-GitHub access.
+Never open with a free-form request for package names or purpose memory. Empty,
+cancelled, or unsupported answers stop before repository discovery, goal
+creation, todo creation, ledger creation, reviewer tasks, or GitHub access.
 
 An explicit leading `$search-issue` invocation records
 `explicit_harness_invocation: true`. If the user explicitly requests
