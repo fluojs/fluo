@@ -44,6 +44,7 @@
     "verify:public-export-tsdoc": "node tooling/governance/verify-public-export-tsdoc.mjs",
     "verify:public-export-tsdoc:baseline": "node tooling/governance/verify-public-export-tsdoc.mjs --mode=full",
     "verify:platform-consistency-governance": "node tooling/governance/verify-platform-consistency-governance.mjs",
+    "verify:search-issue-native": "vitest run tooling/governance/search-issue-native.test.ts",
     "verify:lane-ledger": "node tooling/governance/verify-lane-ledger.mjs"
   },
   "pnpm": {

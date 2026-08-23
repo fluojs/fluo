@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "run_id": "search-native-full-registration",
+  "authority": {
+    "explicit_harness_invocation": true,
+    "investigation_only": false
+  },
+  "intake": {
+    "scope_mode": "packages",
+    "packages": ["runtime", "http"],
+    "purposes": ["tests-edge", "feature-addition"]
+  },
+  "reviewer_results": [
+    {
+      "invocation_id": "package:runtime/reviewer:tests-edge",
+      "package": "runtime",
+      "reviewer": "tests-edge",
+      "result_type": "audit_finding",
+      "status": "completed",
+      "records": [
+        {
+          "severity": "P1",
+          "evidence": ["packages/runtime/src/runtime.ts:42"],
+          "problem": "Runtime cleanup leaves a rejected path unobserved.",
+          "contract_impact": "behavior-change",
+          "affected_surfaces": ["package", "docs"],
+          "confidence": "high",
+          "preserve_contract_fix": "Observe the rejected cleanup path without changing the public API.",
+          "contract_change_needed": false
+        }
+      ]
+    },
+    {
+      "invocation_id": "package:runtime/reviewer:feature-rd",
+      "package": "runtime",
+      "reviewer": "feature-rd",
+      "result_type": "rd_brief",
+      "status": "completed",
+      "records": [
+        {
+          "purpose": "feature-addition",
+          "user_problem": "Users want runtime cleanup telemetry.",
+          "evidence_basis": ["packages/runtime/README.md:88"],
+          "current_surface": "Cleanup has no telemetry hook.",
+          "recommended_option": "Evaluate a non-public diagnostic hook.",
+          "contract_impact": "none",
+          "tests_docs_release_plan": "Research only.",
+          "issue_eligibility": "reject",
+          "anti_speculation_reason": "No confirmed user demand."
+        }
+      ]
+    },
+    {
+      "invocation_id": "package:http/reviewer:tests-edge",
+      "package": "http",
+      "reviewer": "tests-edge",
+      "result_type": "audit_finding",
+      "status": "completed",
+      "records": [
+        {
+          "severity": "P2",
+          "evidence": ["packages/http/src/router.ts:77"],
+          "problem": "Malformed wildcard routes lack a regression case.",
+          "contract_impact": "none",
+          "affected_surfaces": ["package"],
+          "confidence": "medium",
+          "preserve_contract_fix": "Add a regression case for malformed wildcard routes.",
+          "contract_change_needed": false
+        }
+      ]
+    },
+    {
+      "invocation_id": "package:http/reviewer:feature-rd",
+      "package": "http",
+      "reviewer": "feature-rd",
+      "result_type": "rd_brief",
+      "status": "completed",
+      "records": []
+    }
+  ],
+  "registration_triage": [
+    {
+      "draft_id": "D1",
+      "decision": "register",
+      "reason": "High-confidence runtime behavior finding.",
+      "labels": ["source:package-audit", "priority:p1", "area:foundation", "bug"],
+      "duplicate_of": null,
+      "safety_route": "public-issue",
+      "confidence": "high"
+    },
+    {
+      "draft_id": "D2",
+      "decision": "defer",
+      "reason": "P2 test gap needs maintainer confirmation.",
+      "labels": ["source:package-audit", "priority:p2", "area:http-runtime", "tech-debt"],
+      "duplicate_of": null,
+      "safety_route": "public-issue",
+      "confidence": "medium"
+    }
+  ],
+  "fake_issue_numbers": {
+    "D1": 4101
+  }
+}

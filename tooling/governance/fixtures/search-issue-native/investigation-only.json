@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "run_id": "search-native-investigation-only",
+  "authority": {
+    "explicit_harness_invocation": true,
+    "investigation_only": true
+  },
+  "intake": {
+    "scope_mode": "packages",
+    "packages": ["runtime"],
+    "purposes": ["tests-edge"]
+  },
+  "reviewer_results": [
+    {
+      "invocation_id": "package:runtime/reviewer:tests-edge",
+      "package": "runtime",
+      "reviewer": "tests-edge",
+      "result_type": "audit_finding",
+      "status": "completed",
+      "records": [
+        {
+          "severity": "P1",
+          "evidence": ["packages/runtime/src/runtime.ts:42"],
+          "problem": "Runtime cleanup leaves a rejected path unobserved.",
+          "contract_impact": "behavior-change",
+          "affected_surfaces": ["package"],
+          "confidence": "high",
+          "preserve_contract_fix": "Observe cleanup rejection without changing public API.",
+          "contract_change_needed": false
+        }
+      ]
+    }
+  ],
+  "registration_triage": [
+    {
+      "draft_id": "D1",
+      "decision": "register",
+      "reason": "High-confidence runtime behavior finding.",
+      "labels": ["source:package-audit", "priority:p1", "area:foundation", "bug"],
+      "duplicate_of": null,
+      "safety_route": "public-issue",
+      "confidence": "high"
+    }
+  ],
+  "fake_issue_numbers": {
+    "D1": 4201
+  }
+}

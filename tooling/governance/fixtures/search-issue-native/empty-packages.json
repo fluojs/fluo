@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "run_id": "search-native-empty-packages",
+  "authority": {
+    "explicit_harness_invocation": true,
+    "investigation_only": false
+  },
+  "intake": {
+    "scope_mode": "packages",
+    "packages": [],
+    "purposes": ["tests-edge"]
+  },
+  "reviewer_results": [],
+  "registration_triage": [],
+  "fake_issue_numbers": {}
+}

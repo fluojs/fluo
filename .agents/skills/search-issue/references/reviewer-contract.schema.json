@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fluo.dev/schemas/search-issue/reviewer-contract.schema.json",
+  "title": "Search issue reviewer result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "invocation_id",
+    "package",
+    "reviewer",
+    "result_type",
+    "status",
+    "records",
+    "stop_reason",
+    "verification"
+  ],
+  "properties": {
+    "contract_version": { "const": 1 },
+    "invocation_id": {
+      "type": "string",
+      "pattern": "^package:[a-z0-9.-]+/reviewer:[a-z0-9-]+$"
+    },
+    "package": { "type": "string", "minLength": 1 },
+    "reviewer": { "type": "string", "minLength": 1 },
+    "result_type": {
+      "enum": ["audit_finding", "rd_brief", "registration_triage"]
+    },
+    "status": { "enum": ["completed", "blocked"] },
+    "records": { "type": "array", "items": { "type": "object" } },
+    "stop_reason": { "type": "string", "minLength": 1 },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["checked_paths", "evidence_complete"],
+      "properties": {
+        "checked_paths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "evidence_complete": { "type": "boolean" }
+      }
+    }
+  }
+}
