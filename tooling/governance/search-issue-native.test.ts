@@ -56,6 +56,7 @@ const runScenario = (fixtureName: string): ScenarioRun => {
       process.execPath,
       [
         scenarioRunner,
+        '--fixture-only',
         '--scenario',
         resolve(fixtureRoot, fixtureName),
         '--out',
@@ -79,6 +80,34 @@ const runRejectedIntake = (...arguments_: readonly string[]) => {
 };
 
 describe('$search-issue native registration workflow', () => {
+  it('requires the explicit fixture-only boundary for synthetic scenarios', () => {
+    const outputDirectory = mkdtempSync(resolve(tmpdir(), 'fluo-search-issue-'));
+    try {
+      const result = spawnSync(
+        process.execPath,
+        [
+          scenarioRunner,
+          '--scenario',
+          resolve(fixtureRoot, 'full-registration.json'),
+          '--out',
+          outputDirectory,
+        ],
+        { encoding: 'utf8' },
+      );
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        'Synthetic scenarios require --fixture-only.',
+      );
+      expect(existsSync(resolve(outputDirectory, 'ledger.json'))).toBe(false);
+      expect(
+        existsSync(resolve(outputDirectory, '.omo/search-issue/artifacts')),
+      ).toBe(false);
+    } finally {
+      rmSync(outputDirectory, { recursive: true, force: true });
+    }
+  });
+
   it('publishes a v2 artifact directly under the canonical native path', () => {
     // Given
     const runId = 'search-2026-08-23T210013+0900-jwt';

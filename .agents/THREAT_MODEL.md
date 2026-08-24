@@ -27,10 +27,11 @@ are not signatures against that trusted operator.
 
 ## Fixture boundary
 
-Files under a skill's `scripts/fixtures/` directory are deterministic contract
-exercisers. They require `--fixture-only`, accept synthetic observations, and
-must never be invoked as a production approval or side-effect authority path.
-Their receipts and events are test evidence only.
+Files under a skill's `scripts/fixtures/` directory and
+`search-issue/scripts/run-scenario.mjs` are deterministic contract exercisers.
+They require `--fixture-only`, accept synthetic observations, and must never be
+invoked as a production approval or side-effect authority path. Their
+artifacts, receipts, and events are test evidence only.
 
 ## Filesystem controls
 
