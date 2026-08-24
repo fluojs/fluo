@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fluo.dev/schemas/omo/blocker.schema.json",
+  "title": "OMO canonical blocker",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["reviewer", "signature", "evidence", "fix_back_eligible", "status"],
+  "properties": {
+    "reviewer": { "enum": ["contract", "code", "verification"] },
+    "signature": { "type": "string", "minLength": 1 },
+    "evidence": { "type": "string", "minLength": 1 },
+    "fix_back_eligible": { "type": "boolean" },
+    "status": { "enum": ["unresolved", "remediated"] }
+  }
+}

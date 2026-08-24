@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fluo.dev/schemas/omo/lane-ledger-v2.schema.json",
+  "title": "OMO lane ledger v2 identity",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "lane_id", "source", "issue_number", "branch", "worktree", "head_sha"],
+  "properties": {
+    "version": { "const": 2 },
+    "lane_id": {
+      "type": "string",
+      "pattern": "^(?!.*(?:\\.|\\.lock)$)[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "sha256"],
+      "properties": {
+        "artifact_id": { "type": "string", "pattern": "^search:[A-Za-z0-9][A-Za-z0-9+._-]*$" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "issue_number": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "branch": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*$"
+    },
+    "worktree": {
+      "type": "string",
+      "pattern": "^\\.worktrees/[A-Za-z0-9][A-Za-z0-9._/-]*$"
+    },
+    "head_sha": { "type": "string", "pattern": "^[a-f0-9]{40}$" }
+  }
+}

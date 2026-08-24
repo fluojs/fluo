@@ -1,7 +1,7 @@
 import { lstatSync, mkdirSync, realpathSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 
-import { publishJsonExclusive } from './publication.mjs';
+import { publishJsonExclusive, searchArtifact } from './publication.mjs';
 
 const args = process.argv.slice(2);
 const valueAfter = (flag) => {
@@ -27,8 +27,8 @@ const assertDirectoryIsNotSymlink = (path) => {
 };
 
 const runId = valueAfter('--run-id');
-if (!/^[a-z0-9][a-z0-9-]{0,127}$/.test(runId)) {
-  throw new TypeError('run_id must be a safe lowercase identifier.');
+if (!/^(?!.*(?:\.|\.lock)$)[A-Za-z0-9][A-Za-z0-9+._-]*$/u.test(runId)) {
+  throw new TypeError('run_id must be a safe artifact basename.');
 }
 
 const issueNumbers = valueAfter('--issues')
@@ -44,29 +44,24 @@ if (
 
 const repositoryRoot = realpathSync(valueAfter('--root'));
 const omoDirectory = resolve(repositoryRoot, '.omo');
-const artifactDirectory = resolve(omoDirectory, 'search-issue');
-assertDirectoryIsNotSymlink(omoDirectory);
-assertDirectoryIsNotSymlink(artifactDirectory);
+const searchDirectory = resolve(omoDirectory, 'search-issue');
+const artifactDirectory = resolve(searchDirectory, 'artifacts');
+for (const directory of [omoDirectory, searchDirectory, artifactDirectory]) {
+  assertDirectoryIsNotSymlink(directory);
+}
 mkdirSync(artifactDirectory, { recursive: true });
 
 const target = resolve(artifactDirectory, `${runId}.json`);
 const targetRelative = relative(repositoryRoot, target);
-if (
-  targetRelative.startsWith('..') ||
-  isAbsolute(targetRelative)
-) {
+if (targetRelative.startsWith('..') || isAbsolute(targetRelative)) {
   throw new TypeError('Artifact target escaped the repository root.');
 }
 
-publishJsonExclusive(target, {
-  version: 1,
-  search_run_id: runId,
-  selected_issues: issueNumbers,
-});
+publishJsonExclusive(target, searchArtifact(runId, issueNumbers));
 
 process.stdout.write(
   `${JSON.stringify({
-    artifact_path: `.omo/search-issue/${runId}.json`,
+    artifact_path: `.omo/search-issue/artifacts/${runId}.json`,
     selected_issues: issueNumbers,
   })}\n`,
 );

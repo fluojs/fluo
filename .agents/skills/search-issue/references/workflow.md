@@ -21,8 +21,10 @@ leading invocation count as answered; begin at the first missing state.
    - Bash output may be collapsed in OMO. Copy every table row into the
      user-facing response immediately before asking; an ID-only list is not a
      valid substitute.
-   - Ask for one or more group IDs or package names. Use multi-select when
-     available, otherwise comma-separated text.
+   - Ask for one or more visible names, selection numbers, or canonical slugs.
+     Use multi-select when available, otherwise comma-separated text. Never
+     expose an unexplained internal ID. A bare token that names both a group
+     and package is ambiguous and must be clarified, not guessed.
    - Resolve the immutable package list through
      `node scripts/intake.mjs resolve <mode> [selection...]`.
 3. `purposes`
@@ -30,8 +32,10 @@ leading invocation count as answered; begin at the first missing state.
      `node scripts/intake.mjs purposes`.
    - Copy every rendered row into the user-facing response immediately before
      asking. Never rely on collapsed tool output or omit the descriptions.
-   - Ask for one or more purpose IDs using multi-select when available or
-     comma-separated text otherwise.
+   - Ask for one or more visible purpose names, selection numbers, or canonical
+     slugs using multi-select when available or comma-separated text otherwise.
+   - Resolve the response through
+     `node scripts/intake.mjs resolve-purposes [selection...]`.
 
 Never open with a free-form request for package names or purpose memory. Empty,
 cancelled, or unsupported answers stop before repository discovery, goal
@@ -136,17 +140,23 @@ node .agents/skills/search-issue/scripts/publish-search-artifact.mjs \
 
 The helper validates a safe run ID, unique positive issue numbers, repository
 containment, symlink safety, and exclusive same-filesystem publication. It
-creates exactly:
+creates the v2 identity at `.omo/search-issue/artifacts/<run-id>.json`. The
+`sha256` is the digest of the canonical JSON identity fields (`version`,
+`artifact_id`, `search_run_id`, and `selected_issues`) before the digest field
+is inserted:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
+  "artifact_id": "search:search-run-id",
+  "sha256": "<64 lowercase hexadecimal characters>",
   "search_run_id": "search-run-id",
   "selected_issues": [4101]
 }
 ```
 
-Emit `$create-lane .omo/search-issue/<run-id>.json main`.
+Emit `$create-lane .omo/search-issue/artifacts/<run-id>.json main`. Do not emit
+or retain an active `.opencode` handoff.
 
 When zero issues are created, create no search artifact and report
 `search_run_id: none`.

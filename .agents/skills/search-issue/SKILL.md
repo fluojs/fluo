@@ -11,8 +11,9 @@ create-lane handoff.
 
 ## Intake
 
-Resolve intake in three ordered steps. Never ask the user to remember package
-names, package groups, or purpose identifiers.
+Resolve intake in three ordered steps. Every choice shown to the user includes
+a visible Korean name, a selection number, and its canonical slug. Accept any of
+those forms; never ask the user to remember or enter an unexplained internal ID.
 
 ### 1. Ask only for the target mode
 
@@ -35,19 +36,22 @@ tool. Fall back to the numbered plain-text choices above.
   not user-facing presentation because OMO may collapse it. Copy the complete
   stdout table, including every row, into the response immediately before the
   selection question. Never replace the table with an ID-only bullet list. Then
-  ask for one or more group IDs or package names. Use multi-select when a
+  ask for one or more visible names, numbers, or slugs. Use multi-select when a
   structured selection tool is available; otherwise accept comma-separated
-  text.
+  text. If a bare token such as `cli` names both a group and package, ask the
+  user to choose the displayed group or package option instead of guessing.
 - Resolve the answer through
   `node .agents/skills/search-issue/scripts/intake.mjs resolve <mode> [selection...]`.
 
 ### 3. Ask for audit purposes
 
 Run `node .agents/skills/search-issue/scripts/intake.mjs purposes`, show the
-complete purpose table without truncation, and ask for one or more purpose IDs.
-Copy every stdout row into the response immediately before the question; do not
-rely on collapsed tool output or replace descriptions with an ID-only list. Use
-multi-select when available; otherwise accept comma-separated text.
+complete purpose table without truncation, and ask for one or more visible
+purpose names, numbers, or slugs. Copy every stdout row into the response
+immediately before the question; do not rely on collapsed tool output or
+replace descriptions with an ID-only list. Resolve the answer with
+`node .agents/skills/search-issue/scripts/intake.mjs resolve-purposes [selection...]`.
+Use multi-select when available; otherwise accept comma-separated text.
 
 Treat valid values supplied in the leading invocation as already answered and
 continue at the first missing step. Do not create a goal or todo, write a
@@ -83,8 +87,9 @@ Follow `references/workflow.md` end to end:
 7. Run one read-only registration-triage task.
 8. Automatically register only approved drafts when explicit harness authority
    is present and investigation-only mode is false.
-9. Publish the exact minimal search artifact and emit the native
-   `$create-lane` handoff.
+9. Publish the canonical v2 search artifact under
+   `.omo/search-issue/artifacts/` and emit the native `$create-lane` handoff.
+   Never emit or maintain an active `.opencode` handoff.
 
 The lead is the only ledger writer and the only owner of GitHub mutations.
 Reviewers are independent and read-only, so do not create a persistent team for

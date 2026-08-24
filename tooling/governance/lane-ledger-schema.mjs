@@ -94,7 +94,8 @@ function validateSource(path, source) {
   const isSearchIssue =
     source.type === 'search-issue' &&
     isSafeSearchBasename(source.search_run_id) &&
-    source.search_ledger === `.opencode/search-issue/${source.search_run_id}.json`;
+    source.search_ledger ===
+      `.omo/search-issue/artifacts/${source.search_run_id}.json`;
   assert(isExistingIssues || isSearchIssue, path, 'source must match a canonical source variant');
 }
 

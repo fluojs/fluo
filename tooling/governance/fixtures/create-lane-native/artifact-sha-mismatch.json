@@ -1,0 +1,26 @@
+{
+  "inputs": [".omo/search-issue/artifacts/search-native-runtime.json"],
+  "artifacts": {
+    ".omo/search-issue/artifacts/search-native-runtime.json": {
+      "version": 2,
+      "artifact_id": "search:search-native-runtime",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "search_run_id": "search-native-runtime",
+      "selected_issues": [4101]
+    }
+  },
+  "approvals": [
+    { "gate": "confirmed-issues", "approval_id": "approval-confirmed-4101", "approved": true, "issue_numbers": [4101] },
+    { "gate": "suggested-additions", "approval_id": "approval-suggestions-4101", "approved": true, "issue_numbers": [] },
+    { "gate": "lane-plan", "approval_id": "approval-plan-4101", "approved": true }
+  ],
+  "plan": {
+    "version": 2,
+    "lane_id": "lane-4101-runtime",
+    "source": { "artifact_id": "search:search-native-runtime", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
+    "issue_number": 4101,
+    "branch": "issue-4101-runtime",
+    "worktree": ".worktrees/issue-4101-runtime",
+    "head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  }
+}
