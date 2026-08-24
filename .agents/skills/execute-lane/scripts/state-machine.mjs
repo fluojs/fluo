@@ -15,6 +15,7 @@ import {
   appendEvent,
   initialiseExecution,
   progressFor,
+  setRootStatus,
   terminalize,
 } from './transition-application.mjs';
 import {
@@ -129,9 +130,27 @@ export const runReplay = (input, persisted) => {
         applyCleanup(step, snapshot, identity, receipts, events);
       } else if (
         step.kind === 'root-sync' &&
-        snapshot.lanes.every((candidate) => candidate.status === 'done')
+        snapshot.lanes.every(
+          (candidate) =>
+            candidate.status === 'done' ||
+            terminalStatuses.has(candidate.status),
+        )
       ) {
-        applyRootSync(step, snapshot, identity, receipts, events);
+        const blockedLane = snapshot.lanes.find(
+          (candidate) => candidate.status !== 'done',
+        );
+        if (blockedLane === undefined) {
+          applyRootSync(step, snapshot, identity, receipts, events);
+        } else {
+          setRootStatus(snapshot, blockedLane.status);
+          appendEvent(
+            events,
+            identity.lane_id,
+            'root.blocked',
+            snapshot.base_branch,
+            { lane_status: blockedLane.status },
+          );
+        }
       } else {
         terminalize(snapshot, identity, 'blocked-child-contract-error');
         appendEvent(events, identity.lane_id, 'step.invalid', identity.lane_id, {

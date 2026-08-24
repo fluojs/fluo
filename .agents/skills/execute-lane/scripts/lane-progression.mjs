@@ -32,7 +32,15 @@ export const unmetDependencies = (scenario, snapshot, identity) => {
 
 export const parkReleaseHandoff = (snapshot, identity, events) => {
   const lane = snapshot.lanes[identity.lane_index];
-  setRootStatus(snapshot, 'blocked-maintainer-decision');
+  const siblingIsActive = snapshot.lanes.some(
+    (candidate, index) =>
+      index !== identity.lane_index &&
+      ['queued', 'running', 'in_review', 'merged'].includes(candidate.status),
+  );
+  setRootStatus(
+    snapshot,
+    siblingIsActive ? 'running' : 'blocked-maintainer-decision',
+  );
   Object.assign(lane, {
     status: 'blocked-maintainer-decision',
     current_issue: null,

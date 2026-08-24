@@ -20,6 +20,19 @@ if (
 const assertContract = loaded['assertContract'];
 const assertEventChain = loaded['assertEventChain'];
 const hashEvent = loaded['hashEvent'];
+const transitionModule: unknown = await import(
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/transition-application.mjs',
+  )
+);
+if (
+  !isRecord(transitionModule) ||
+  typeof transitionModule['appendEvent'] !== 'function'
+) {
+  throw new TypeError('Expected the native event appender.');
+}
+const appendEvent = transitionModule['appendEvent'];
 
 const eventWithoutHash = (
   sequence: number,
@@ -75,5 +88,26 @@ describe('OMO native append-only events', () => {
     expect(() =>
       assertEventChain([first, eventWithHash(2, 'f'.repeat(64))]),
     ).toThrow(/previous_hash/u);
+  });
+
+  it('keeps canonical timestamps after event 59', () => {
+    const events: Readonly<Record<string, unknown>>[] = [];
+    for (let sequence = 1; sequence <= 60; sequence += 1) {
+      appendEvent(
+        events,
+        'lane-4101-runtime',
+        'receipt.recorded',
+        `receipt-${String(sequence)}`,
+        { sequence },
+      );
+    }
+
+    expect(() => assertEventChain(events)).not.toThrow();
+    const occurredAt = events[59]?.['occurred_at'];
+    expect(typeof occurredAt).toBe('string');
+    if (typeof occurredAt !== 'string') {
+      throw new TypeError('Expected event 60 timestamp.');
+    }
+    expect(new Date(occurredAt).toISOString()).toBe(occurredAt);
   });
 });

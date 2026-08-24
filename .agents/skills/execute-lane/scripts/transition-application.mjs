@@ -23,7 +23,9 @@ export const appendEvent = (
     subject_id: subjectId,
     payload,
     payload_sha256: payloadDigest(payload),
-    occurred_at: `2026-08-24T00:00:${String(sequence).padStart(2, '0')}.000Z`,
+    occurred_at: new Date(
+      Date.UTC(2026, 7, 24) + sequence * 1000,
+    ).toISOString(),
   };
   event.event_hash = hashEvent(event);
   assertContract('event', event);
@@ -76,7 +78,12 @@ export const terminalize = (
 ) => {
   const lane = snapshot.lanes[identity.lane_index];
   const progress = progressFor(snapshot, identity);
-  setRootStatus(snapshot, status);
+  const siblingIsActive = snapshot.lanes.some(
+    (candidate, index) =>
+      index !== identity.lane_index &&
+      ['queued', 'running', 'in_review', 'merged'].includes(candidate.status),
+  );
+  setRootStatus(snapshot, siblingIsActive ? 'running' : status);
   lane.status = status;
   lane.current_issue = null;
   lane.branch = null;
