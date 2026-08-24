@@ -5,12 +5,14 @@ ledger. The artifact and shared workflow contracts are authoritative.
 
 ## Intake
 
-1. Accept exactly one path under `.omo/search-issue/artifacts/`.
+1. Accept exactly one direct path under `.omo/search-issue/artifacts/`, or one
+   importer-owned path under `.omo/search-issue/artifacts/legacy/`.
 2. Require the filename stem to equal `search_run_id`.
 3. Validate `search-artifact-v2`, including recomputed canonical `artifact_id`
    and `sha256`, before asking for or recording a plan.
-4. Reject mixed forms, legacy paths, malformed JSON, unknown keys, duplicate or
-   empty issue sets, and path/ID mismatches without filesystem writes.
+4. Reject mixed forms, archived `.opencode` paths, deeper or noncanonical
+   artifact paths, malformed JSON, unknown keys, duplicate or empty issue sets,
+   and path/ID mismatches without filesystem writes.
 
 ## Approval sequence
 

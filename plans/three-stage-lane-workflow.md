@@ -70,7 +70,9 @@ skills never load archived command or role definitions.
 
 ## Create-lane invariants
 
-1. Input is exactly one `.omo/search-issue/artifacts/*.json` v2 artifact.
+1. Input is exactly one v2 artifact at
+   `.omo/search-issue/artifacts/<search-run-id>.json` or
+   `.omo/search-issue/artifacts/legacy/<search-run-id>.json`.
 2. Artifact ID and SHA-256 are recomputed from canonical content.
 3. Confirmed issues exactly match the artifact selection.
 4. Suggested additions are separately approved and may extend the issue set.

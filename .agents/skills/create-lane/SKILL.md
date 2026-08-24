@@ -11,10 +11,12 @@ contracts in `.agents/workflow-contracts`.
 
 ## Boundary
 
-Accept exactly one `.omo/search-issue/artifacts/<search-run-id>.json` input.
-Reject issue-number and artifact mixtures, legacy `.opencode` paths, malformed
-artifacts, path/ID disagreement, and existing lane targets without writing a
-candidate, lock, or ledger.
+Accept exactly one canonical v2 artifact from either
+`.omo/search-issue/artifacts/<search-run-id>.json` or the importer-owned
+`.omo/search-issue/artifacts/legacy/<search-run-id>.json` path. Reject
+issue-number and artifact mixtures, archived `.opencode` paths, deeper or
+noncanonical artifact paths, malformed artifacts, path/ID disagreement, and
+existing lane targets without writing a candidate, lock, or ledger.
 
 Direct issue-number input is intentionally retired by the v2 provenance
 contract. Preserve that use case by first publishing a bound artifact:
