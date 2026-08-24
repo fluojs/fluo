@@ -110,7 +110,7 @@ export const planIsCanonical = (plan, artifact) => {
   );
 };
 
-export const readyLedger = (plan, artifact) => ({
+export const readyLedger = (plan, artifact, artifactPath) => ({
   version: 2,
   run_id: plan.lane_id,
   lane_id: plan.lane_id,
@@ -120,7 +120,7 @@ export const readyLedger = (plan, artifact) => ({
   source: {
     type: 'search-issue',
     search_run_id: artifact.search_run_id,
-    search_ledger: `.omo/search-issue/artifacts/${artifact.search_run_id}.json`,
+    search_ledger: artifactPath,
     artifact_id: artifact.artifact_id,
     sha256: artifact.sha256,
   },

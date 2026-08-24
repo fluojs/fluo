@@ -67,7 +67,7 @@
         },
         "search_ledger": {
           "type": "string",
-          "pattern": "^\\.omo/search-issue/artifacts/[A-Za-z0-9][A-Za-z0-9+._-]*\\.json$"
+          "pattern": "^\\.omo/search-issue/artifacts/(?:legacy/)?[A-Za-z0-9][A-Za-z0-9+._-]*\\.json$"
         },
         "artifact_id": {
           "type": "string",

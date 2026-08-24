@@ -11,7 +11,7 @@ import { validateApprovals } from './approval-contracts.mjs';
 import { planIsCanonical, readyLedger } from './plan-contracts.mjs';
 
 const nativeArtifactPattern =
-  /^\.omo\/search-issue\/artifacts\/([A-Za-z0-9][A-Za-z0-9+._-]*)\.json$/u;
+  /^\.omo\/search-issue\/artifacts\/(?:legacy\/)?([A-Za-z0-9][A-Za-z0-9+._-]*)\.json$/u;
 
 const isRecord = (value) =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -73,7 +73,7 @@ export const prepareScenario = (scenarioPath) => {
   if (approvalFailure !== null) {
     return rejected(approvalFailure);
   }
-  const ledger = readyLedger(plan, artifact);
+  const ledger = readyLedger(plan, artifact, input);
   try {
     assertLaneSourceBinding(ledger, artifact);
     validateLedger('lane-ledger-v2', ledger);

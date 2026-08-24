@@ -69,10 +69,13 @@ const assertLaneLedgerSemantics = (value) => {
   if (value.run_id !== value.lane_id) {
     fail('lane-ledger-v2', 'run_id and lane_id must match');
   }
+  const artifactPaths = [
+    `.omo/search-issue/artifacts/${value.source.search_run_id}.json`,
+    `.omo/search-issue/artifacts/legacy/${value.source.search_run_id}.json`,
+  ];
   if (
     value.source.artifact_id !== `search:${value.source.search_run_id}` ||
-    value.source.search_ledger !==
-      `.omo/search-issue/artifacts/${value.source.search_run_id}.json`
+    !artifactPaths.includes(value.source.search_ledger)
   ) {
     fail('lane-ledger-v2.source', 'source identity and artifact path must match');
   }

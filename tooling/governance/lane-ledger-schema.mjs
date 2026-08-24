@@ -14,6 +14,7 @@ import {
   terminalStatuses,
 } from './lane-ledger-contract.mjs';
 import { validateDependencyGraph } from './lane-ledger-dependency.mjs';
+import { validateSource } from './lane-ledger-source.mjs';
 
 const authorityScopeKeys = [
   'issue_creation',
@@ -53,8 +54,6 @@ const rootKeys = [
   'dependency_graph',
   'root_main_sync',
 ];
-const sourceV1Keys = ['type', 'search_run_id', 'search_ledger'];
-const sourceV2Keys = [...sourceV1Keys, 'artifact_id', 'sha256'];
 const laneKeys = ['name', 'queue', 'current_issue', 'status', 'branch', 'worktree', 'pr', 'retry_count'];
 const blockerKeys = ['signature', 'evidence'];
 const migrationGuidance = 'migrate legacy completion evidence to canonical issue_progress';
@@ -63,15 +62,6 @@ function isSafeBasename(value) {
   return (
     isNonEmptyString(value) &&
     /^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(value) &&
-    !value.endsWith('.') &&
-    !value.endsWith('.lock')
-  );
-}
-
-function isSafeSearchBasename(value) {
-  return (
-    isNonEmptyString(value) &&
-    /^[A-Za-z0-9][A-Za-z0-9+._-]*$/u.test(value) &&
     !value.endsWith('.') &&
     !value.endsWith('.lock')
   );
@@ -87,31 +77,6 @@ function isUtcIsoTimestamp(value) {
   }
   const canonical = date.toISOString();
   return value === canonical || value === canonical.replace('.000Z', 'Z');
-}
-
-function validateSource(path, source, version) {
-  const sourceKeys = version === 2 ? sourceV2Keys : sourceV1Keys;
-  assert(isObject(source) && hasExactKeys(source, sourceKeys), path, 'source must match a canonical source variant');
-  const isExistingIssues = source.type === 'existing-issues' && source.search_run_id === null && source.search_ledger === null;
-  const searchLedger =
-    version === 1
-      ? `.opencode/search-issue/${source.search_run_id}.json`
-      : `.omo/search-issue/artifacts/${source.search_run_id}.json`;
-  const migratedSearchLedger = `.omo/search-issue/artifacts/${source.search_run_id}.json`, sourceMatches = source.search_ledger === searchLedger || (version === 1 && source.search_ledger === migratedSearchLedger);
-  const isSearchIssue =
-    source.type === 'search-issue' &&
-    isSafeSearchBasename(source.search_run_id) &&
-    sourceMatches;
-  const hasV2Binding =
-    version !== 2 ||
-    (source.artifact_id === `search:${String(source.search_run_id)}` &&
-      typeof source.sha256 === 'string' &&
-      /^[a-f0-9]{64}$/u.test(source.sha256));
-  assert(
-    (version === 1 && isExistingIssues) || (isSearchIssue && hasV2Binding),
-    path,
-    'source must match a canonical source variant',
-  );
 }
 
 function validateAuthorityScope(path, authorityScope) {
