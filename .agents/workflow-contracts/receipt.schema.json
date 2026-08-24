@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fluo.dev/schemas/omo/receipt.schema.json",
+  "title": "OMO side-effect receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "receipt_id", "lane_id", "issue_number", "side_effect", "status", "head_sha", "target", "evidence"],
+  "properties": {
+    "version": { "const": 1 },
+    "receipt_id": { "type": "string", "minLength": 1 },
+    "lane_id": { "type": "string", "minLength": 1 },
+    "issue_number": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "side_effect": {
+      "enum": ["issue.create", "pr.create", "pr.merge", "worktree.remove", "branch.delete", "root.sync", "artifact.publish"]
+    },
+    "status": { "enum": ["succeeded", "failed", "skipped"] },
+    "head_sha": {
+      "oneOf": [
+        { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        { "type": "null" }
+      ]
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "url"],
+      "properties": {
+        "kind": {
+          "enum": ["issue", "pull-request", "worktree", "branch", "repository", "artifact"]
+        },
+        "id": { "type": "string", "minLength": 1 },
+        "url": {
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "evidence": { "type": "string", "minLength": 1 }
+  }
+}

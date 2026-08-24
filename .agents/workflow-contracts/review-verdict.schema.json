@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fluo.dev/schemas/omo/review-verdict.schema.json",
+  "title": "OMO same-head review verdict",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "lane_id", "issue_number", "reviewer", "verdict", "head_sha", "blockers"],
+  "properties": {
+    "version": { "const": 1 },
+    "lane_id": { "type": "string", "minLength": 1 },
+    "issue_number": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "reviewer": { "enum": ["contract", "code", "verification"] },
+    "verdict": { "enum": ["pass", "block"] },
+    "head_sha": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reviewer", "signature", "evidence", "fix_back_eligible", "status"],
+        "properties": {
+          "reviewer": { "enum": ["contract", "code", "verification"] },
+          "signature": { "type": "string", "minLength": 1 },
+          "evidence": { "type": "string", "minLength": 1 },
+          "fix_back_eligible": { "type": "boolean" },
+          "status": { "enum": ["unresolved", "remediated"] }
+        }
+      }
+    }
+  }
+}

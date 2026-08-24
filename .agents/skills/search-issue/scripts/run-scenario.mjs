@@ -1,6 +1,10 @@
 import { prepareScenario } from './contracts.mjs';
 
 const args = process.argv.slice(2);
+if (!args.includes('--fixture-only')) {
+  throw new TypeError('Synthetic scenarios require --fixture-only.');
+}
+
 const valueAfter = (flag) => {
   const index = args.indexOf(flag);
   const value = index === -1 ? undefined : args[index + 1];

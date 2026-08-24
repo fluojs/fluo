@@ -1,0 +1,129 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+import { describe, expect, it } from 'vitest';
+
+type SkillKind = 'entrypoint' | 'knowledge';
+
+type SkillManifestEntry = {
+  readonly kind: SkillKind;
+  readonly name: string;
+  readonly path: string;
+};
+
+type NativeAssetManifest = {
+  readonly schemaVersion: number;
+  readonly skills: readonly SkillManifestEntry[];
+  readonly shippedContractPaths: readonly string[];
+};
+
+const repoRoot = resolve(import.meta.dirname, '..', '..');
+const read = (relativePath: string): string =>
+  readFileSync(resolve(repoRoot, relativePath), 'utf8');
+
+function parseFrontmatter(source: string): Readonly<Record<string, string>> {
+  const match = /^---\n([\s\S]*?)\n---(?:\n|$)/u.exec(source);
+  expect(match, 'SKILL.md must start with YAML frontmatter').not.toBeNull();
+
+  return Object.fromEntries(
+    (match?.[1] ?? '')
+      .split('\n')
+      .filter((line) => /^[A-Za-z][A-Za-z0-9_-]*:\s*\S/u.test(line))
+      .map((line) => {
+        const separator = line.indexOf(':');
+        return [line.slice(0, separator), line.slice(separator + 1).trim()];
+      }),
+  );
+}
+
+function parseNativeAssetManifest(): NativeAssetManifest {
+  const readme = read('.agents/README.md');
+  const match = /```json omo-native-assets\n([\s\S]*?)\n```/u.exec(readme);
+  expect(match, '.agents/README.md must contain the native asset manifest').not.toBeNull();
+  return JSON.parse(match?.[1] ?? '{}') as NativeAssetManifest;
+}
+
+const expectedEntrypoints = [
+  'create-lane',
+  'docs-sync-guardian',
+  'execute-lane',
+  'issue-to-pr',
+  'pr-to-merge',
+  'search-issue',
+] as const;
+const expectedKnowledgeSkills = [
+  'fluo-contract-governance',
+  'fluo-docs-governance',
+  'fluo-package-audit',
+  'fluo-release-operations',
+] as const;
+const requiredShippedContractPaths = [
+  '.agents/MIGRATION.md',
+  '.agents/README.md',
+  '.agents/THREAT_MODEL.md',
+  '.agents/VALIDATION.md',
+  '.agents/skills/docs-sync-guardian/SKILL.md',
+  '.agents/skills/docs-sync-guardian/references/guardian.md',
+  '.agents/skills/docs-sync-guardian/references/workflow.md',
+  '.agents/workflow-contracts/blocker.schema.json',
+  '.agents/workflow-contracts/contracts.mjs',
+  '.agents/workflow-contracts/event.schema.json',
+  '.agents/workflow-contracts/lane-ledger-v2.schema.json',
+  '.agents/workflow-contracts/receipt.schema.json',
+  '.agents/workflow-contracts/review-verdict.schema.json',
+  '.agents/workflow-contracts/schema-validator.mjs',
+  '.agents/workflow-contracts/search-artifact-v2.schema.json',
+] as const;
+
+describe('OMO native asset manifest', () => {
+  it('declares exactly six entrypoint skills and four knowledge skills', () => {
+    const manifest = parseNativeAssetManifest();
+    const namesFor = (kind: SkillKind): string[] =>
+      manifest.skills
+        .filter((skill) => skill.kind === kind)
+        .map((skill) => skill.name)
+        .sort((left, right) => left.localeCompare(right));
+
+    expect(manifest.schemaVersion).toBe(1);
+    expect(namesFor('entrypoint')).toEqual([...expectedEntrypoints]);
+    expect(namesFor('knowledge')).toEqual([...expectedKnowledgeSkills]);
+    expect(new Set(manifest.skills.map((skill) => skill.path)).size).toBe(10);
+  });
+
+  it('binds every manifest skill to matching required frontmatter', () => {
+    const manifest = parseNativeAssetManifest();
+
+    for (const skill of manifest.skills) {
+      expect(skill.path).toBe(`.agents/skills/${skill.name}/SKILL.md`);
+      expect(existsSync(resolve(repoRoot, skill.path)), `${skill.path} must exist`).toBe(true);
+      const frontmatter = parseFrontmatter(read(skill.path));
+      expect(frontmatter['name']).toBe(skill.name);
+      expect(frontmatter['description']).toBeTruthy();
+      if (skill.kind === 'knowledge') {
+        expect(frontmatter['compatibility']).toBe('omo');
+      }
+    }
+  });
+
+  it('ships every declared workflow contract and operating document', () => {
+    const manifest = parseNativeAssetManifest();
+
+    expect([...manifest.shippedContractPaths].sort()).toEqual(
+      [...requiredShippedContractPaths].sort(),
+    );
+    for (const path of manifest.shippedContractPaths) {
+      expect(existsSync(resolve(repoRoot, path)), `${path} must exist`).toBe(true);
+    }
+  });
+
+  it('keeps the active lane plan on native contracts instead of the read-only archive', () => {
+    const plan = read('plans/three-stage-lane-workflow.md');
+
+    expect(plan).not.toContain('.opencode-backup/commands/');
+    expect(plan).toContain('.agents/skills/search-issue/SKILL.md');
+    expect(plan).toContain('.agents/skills/create-lane/SKILL.md');
+    expect(plan).toContain('.agents/skills/execute-lane/SKILL.md');
+    expect(plan).toContain('.omo/search-issue/artifacts/');
+    expect(plan).toContain('.omo/lanes/');
+  });
+});

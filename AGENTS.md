@@ -31,9 +31,11 @@ This file defines the always-on project rules and behavioral contracts for all O
   - Package publishing
 - **Behavioral Contract Precedence**: Implementation must adhere to documented behavioral contracts in `README.md` and `docs/contracts/` before proceeding with changes.
 
-## Project-Local OpenCode Assets
-- **Local Scope**: Fluo-specific OpenCode assets live under `.opencode/` in this repository. Use them only for work inside this repository; do not promote them to global OpenCode config unless explicitly requested.
-- **Skills**: For Fluo governance, audit, documentation, or release work, inspect `.opencode/skills/*/SKILL.md` before relying on generic guidance.
-- **Agent Roles**: Fluo role definitions live in `.opencode/agents/*.md`. These are project-local role prompts, not globally registered agent types by default. When a task mentions a `fluo-*` reviewer, guardian, auditor, or implementer, read the matching agent file and use its instructions as the delegated role prompt.
-- **Command Harnesses**: Fluo command-like workflows live in `.opencode/commands/*.md`. Treat these as entrypoint harness references for requests such as `search-issue`, `create-lane`, `execute-lane`, `issue-to-pr`, `pr-to-merge`, and `docs-sync-guardian`.
-- **Boundary Preservation**: OpenCode permission frontmatter defines behavioral constraints, not a general runtime sandbox. Preserve the same boundaries manually: reviewer/auditor/guardian roles stay read-only; implementer roles work only inside assigned `.worktrees/<branch>` paths; release and GitHub side effects still require the explicit gates above.
+## Project-Local OMO+Senpi Assets
+- **Local Scope**: Fluo-specific native assets live under `.agents/` and runtime state lives under `.omo/`. Use them only inside this repository; do not promote them to global configuration unless explicitly requested.
+- **Skills**: For Fluo workflow, governance, audit, documentation, or release work, inspect `.agents/skills/*/SKILL.md` before relying on generic guidance.
+- **Role Prompts**: Specialized reviewer, guardian, auditor, and implementer prompts live under the owning skill's `references/` directory. They are project-local prompt references, not globally registered `subagent_type` values. Read the matching reference and include it in a self-contained category-routed task.
+- **Workflow Entry Points**: Native entrypoints are `$search-issue`, `$create-lane`, `$execute-lane`, `$issue-to-pr`, `$pr-to-merge`, and `$docs-sync-guardian`.
+- **Runtime Truth**: Canonical run artifacts, lane snapshots, and append-only event evidence live under `.omo/`. Goal, todo, task, and DAG state are projections and never replace persisted workflow evidence.
+- **Legacy Archive**: Former OpenCode assets are preserved read-only under `.opencode-backup/`. Native workflows must not load that archive as an active runtime fallback.
+- **Boundary Preservation**: Reviewer/auditor/guardian roles stay read-only; implementers work only inside assigned `.worktrees/<branch>` paths; release and GitHub side effects still require the explicit gates above.

@@ -164,14 +164,14 @@ export function validateIssueProgress(path, ledger, prAssignments) {
   }
   for (const [issueKey, progress] of Object.entries(issueProgress ?? {})) {
     const progressPath = `${path}:issue_progress[${issueKey}]`;
-    const issue = Number(issueKey);
+    const issue = Number(issueKey), isReleaseHandoff = ledger.release_handoffs.includes(issue);
     assert(/^[1-9]\d*$/u.test(issueKey) && isPositiveInteger(Number(issueKey)), progressPath, 'issue_progress key must be a positive integer issue number');
     assert(isObject(progress), progressPath, 'issue progress must be an object');
     validateProgressShape(progressPath, progress);
-    if (progress.branch !== undefined) {
+    if (progress.branch !== undefined && !isReleaseHandoff) {
       assert(isSafeBranchName(progress.branch), progressPath, 'issue progress branch must be a safe non-empty branch name');
     }
-    if (progress.worktree !== undefined) {
+    if (progress.worktree !== undefined && !isReleaseHandoff) {
       assert(isSafeBranchName(progress.branch), progressPath, 'issue progress worktree requires a safe branch');
       const worktreeMessage =
         progress.status === 'done' || progress.status === 'merged'
@@ -194,6 +194,11 @@ export function validateIssueProgress(path, ledger, prAssignments) {
     if (progress.pr !== undefined && progress.pr !== null) {
       registerPullRequest(prAssignments, progress.pr, issue, progressPath);
     }
+    assert(
+      progress.head_sha === undefined || isSha(progress.head_sha),
+      progressPath,
+      'head_sha must be a 40-character SHA when present',
+    );
     progressByIssue.set(issue, progress);
     if (isPostMergeCleanupFailureProgress(progress)) {
       validatePostMergeCleanupFailure(

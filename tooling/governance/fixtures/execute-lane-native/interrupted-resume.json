@@ -1,0 +1,79 @@
+{
+  "lane_id": "lane-4101-runtime",
+  "issue_number": 4101,
+  "branch": "issue-4101-runtime",
+  "worktree": ".worktrees/issue-4101-runtime",
+  "pr": {
+    "number": 5101,
+    "url": "https://github.com/fluojs/fluo/pull/5101",
+    "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "steps": [
+    {
+      "kind": "resume",
+      "live": {
+        "branch": "issue-4101-runtime",
+        "worktree": ".worktrees/issue-4101-runtime",
+        "pr_number": 5101,
+        "pr_url": "https://github.com/fluojs/fluo/pull/5101",
+        "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "merged": false
+      }
+    },
+    {
+      "kind": "review",
+      "reviews": [
+        {
+          "reviewer": "contract",
+          "reviewed_head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "verdict_signal": "PASS",
+          "blockers": []
+        },
+        {
+          "reviewer": "code",
+          "reviewed_head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "verdict_signal": "PASS",
+          "blockers": []
+        },
+        {
+          "reviewer": "verification",
+          "reviewed_head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "verdict_signal": "PASS",
+          "blockers": []
+        }
+      ],
+      "merge_observation": {
+        "authority": "lead",
+        "action": "pr.merge",
+        "pr_number": 5101,
+        "pr_url": "https://github.com/fluojs/fluo/pull/5101",
+        "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "merge_method": "squash",
+        "merged": true,
+        "issue_state": "CLOSED",
+        "merge_commit_sha": "cccccccccccccccccccccccccccccccccccccccc"
+      }
+    },
+    {
+      "kind": "cleanup",
+      "observation": {
+        "authority": "lead",
+        "branch": "issue-4101-runtime",
+        "worktree": ".worktrees/issue-4101-runtime",
+        "worktree_removed": true,
+        "local_branch_deleted": true,
+        "remote_branch_deleted": true
+      }
+    },
+    {
+      "kind": "root-sync",
+      "observation": {
+        "authority": "lead",
+        "base_branch": "main",
+        "ff_only": true,
+        "status": "done",
+        "sha": "cccccccccccccccccccccccccccccccccccccccc"
+      }
+    }
+  ]
+}

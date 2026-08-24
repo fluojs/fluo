@@ -14,6 +14,7 @@ import {
   terminalStatuses,
 } from './lane-ledger-contract.mjs';
 import { validateDependencyGraph } from './lane-ledger-dependency.mjs';
+import { validateSource } from './lane-ledger-source.mjs';
 
 const authorityScopeKeys = [
   'issue_creation',
@@ -53,7 +54,6 @@ const rootKeys = [
   'dependency_graph',
   'root_main_sync',
 ];
-const sourceKeys = ['type', 'search_run_id', 'search_ledger'];
 const laneKeys = ['name', 'queue', 'current_issue', 'status', 'branch', 'worktree', 'pr', 'retry_count'];
 const blockerKeys = ['signature', 'evidence'];
 const migrationGuidance = 'migrate legacy completion evidence to canonical issue_progress';
@@ -62,15 +62,6 @@ function isSafeBasename(value) {
   return (
     isNonEmptyString(value) &&
     /^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(value) &&
-    !value.endsWith('.') &&
-    !value.endsWith('.lock')
-  );
-}
-
-function isSafeSearchBasename(value) {
-  return (
-    isNonEmptyString(value) &&
-    /^[A-Za-z0-9][A-Za-z0-9+._-]*$/u.test(value) &&
     !value.endsWith('.') &&
     !value.endsWith('.lock')
   );
@@ -86,16 +77,6 @@ function isUtcIsoTimestamp(value) {
   }
   const canonical = date.toISOString();
   return value === canonical || value === canonical.replace('.000Z', 'Z');
-}
-
-function validateSource(path, source) {
-  assert(isObject(source) && hasExactKeys(source, sourceKeys), path, 'source must match a canonical source variant');
-  const isExistingIssues = source.type === 'existing-issues' && source.search_run_id === null && source.search_ledger === null;
-  const isSearchIssue =
-    source.type === 'search-issue' &&
-    isSafeSearchBasename(source.search_run_id) &&
-    source.search_ledger === `.opencode/search-issue/${source.search_run_id}.json`;
-  assert(isExistingIssues || isSearchIssue, path, 'source must match a canonical source variant');
 }
 
 function validateAuthorityScope(path, authorityScope) {
@@ -142,7 +123,7 @@ function validateExecution(path, execution, ledgerStatus) {
 export function validateLedgerShape(path, ledger) {
   assert(isObject(ledger), path, 'ledger must be an object');
   assert(ledger.version !== undefined, path, 'version is required');
-  assert(ledger.version === 1, path, `unsupported ledger version: ${String(ledger.version)}`);
+  assert(ledger.version === 1 || ledger.version === 2, path, `unsupported ledger version: ${String(ledger.version)}`);
   assert(rootStatuses.has(ledger.status), path, `invalid ledger.status: ${String(ledger.status)}`);
   assert(
     isSafeBasename(ledger.run_id) && ledger.run_id === ledger.lane_id,
@@ -158,7 +139,7 @@ export function validateLedgerShape(path, ledger) {
   }
   assert(ledger.created_by === 'create-lane', path, 'created_by must be create-lane');
   assert(isSafeBranchName(ledger.base_branch), path, 'base_branch must be a safe non-empty branch name');
-  validateSource(path, ledger.source);
+  validateSource(path, ledger.source, ledger.version);
   assert(allowedMergePolicies.has(ledger.merge_policy), path, `invalid merge_policy: ${String(ledger.merge_policy)}`);
   assert(ledger.pr_merge_method === 'squash', path, 'pr_merge_method must be squash');
   validateAuthorityScope(path, ledger.authority_scope);

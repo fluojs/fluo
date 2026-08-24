@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "migrated_at": "2026-08-24T00:00:00.000Z",
+  "source_root": ".opencode-backup/search-issue",
+  "target_root": ".omo/search-issue/artifacts/legacy",
+  "artifacts": [
+    {
+      "filename": "search-2026-08-23T210013+0900-jwt.json",
+      "source_sha256": "1909637f2b630cf4b711a240c9db5453bd6446514bef53f39827e26094ddfb17",
+      "target_artifact_id": "search:search-2026-08-23T210013+0900-jwt",
+      "target_sha256": "b859db587594ec297f70edd6de71d891c659888f6268017b86b579e49e4ec2d6"
+    },
+    {
+      "filename": "search-2026-08-23T215327+0900-mongoose.json",
+      "source_sha256": "2ad3f16e1782df15d0bb51e603dc2ea6cc5609f0d1311ccce99dda27e1b367bd",
+      "target_artifact_id": "search:search-2026-08-23T215327+0900-mongoose",
+      "target_sha256": "48c016167ca4f1baba79efab8b7c50bcb335b6c6d3cf10db6cb5d4940767066f"
+    },
+    {
+      "filename": "search-2026-08-23T215910+0900-notifications.json",
+      "source_sha256": "d27ed49615aa6ec022cb658596db70f049893f9b373b884fd49351b22a7a479e",
+      "target_artifact_id": "search:search-2026-08-23T215910+0900-notifications",
+      "target_sha256": "5aa0251c98bd0169631485dcdd78db38289dedeb3a98e8e2bddce9b82e6ed1a0"
+    },
+    {
+      "filename": "search-2026-08-23T223216+0900-redis.json",
+      "source_sha256": "e2b7b791b2a474cd96df750b15c5baa319231aa06b7d62e6ed3b8b1e6e14236c",
+      "target_artifact_id": "search:search-2026-08-23T223216+0900-redis",
+      "target_sha256": "5013e587a1ec6e977a306e756a4f2a0f3e00678b535af4f738427a1fdd728bef"
+    },
+    {
+      "filename": "search-2026-08-23T234937+0900-throttler.json",
+      "source_sha256": "fa7d4e32f06f1b4e191cae71460e145ef80a6b1f25d89330326b653f85910a47",
+      "target_artifact_id": "search:search-2026-08-23T234937+0900-throttler",
+      "target_sha256": "7fa4a99630f15b0eb3a2cfe2ed76c1b8b15dc1aa4428af491565995809c6f607"
+    },
+    {
+      "filename": "search-2026-08-23T234956+0900-terminus.json",
+      "source_sha256": "0c301a7cebf33d72e9deacebd309951d11d630e3b817a385933641d7f8c4398a",
+      "target_artifact_id": "search:search-2026-08-23T234956+0900-terminus",
+      "target_sha256": "577f7020a8354d1210fe4e5c4d4640c15a60f3ed85ec3288420835217b7c9af1"
+    },
+    {
+      "filename": "search-2026-08-23T235415+0900-runtime.json",
+      "source_sha256": "7527a9ef2084b88d28e892c2cbe77873f643211ac0acb2dc5f66735b54d04adf",
+      "target_artifact_id": "search:search-2026-08-23T235415+0900-runtime",
+      "target_sha256": "7280564db263a3da65ca9f99d74ca9b7f0c9c14f5dad68fe654d8f7660d98f02"
+    },
+    {
+      "filename": "search-2026-08-24T094852+0900-i18n.json",
+      "source_sha256": "703870cd7e614a70303d3f825825c2cce2cebfa681cb7133a23572af97474a5e",
+      "target_artifact_id": "search:search-2026-08-24T094852+0900-i18n",
+      "target_sha256": "e46b01d8f6fe6b52450b5dc68041db05489ce48298256d9d7111ec91cd6156de"
+    },
+    {
+      "filename": "search-20260823T223040+0900-prisma.json",
+      "source_sha256": "0794b508b9c24fde08465ea2d3aa7cd9a7ac1b3713d98a0a627764e5c4d0acf9",
+      "target_artifact_id": "search:search-20260823T223040+0900-prisma",
+      "target_sha256": "ecef8bcdbc092aa07867b0a581bd4643075adb7a903c78d4625bc50cd32bc405"
+    }
+  ]
+}

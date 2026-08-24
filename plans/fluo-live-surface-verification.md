@@ -355,8 +355,8 @@ Wave 4: Tasks 6, 7, 8
   **References**:
   - Pattern: `examples/README.md` and `examples/README.ko.md` - examples index tone and structure.
   - Contract: `docs/CONTEXT.md` - package responsibility context.
-  - Governance: `.opencode/skills/fluo-release-operations/SKILL.md` - changesets only for public package impact.
-  - Governance: `.opencode/skills/fluo-docs-governance/SKILL.md` - EN/KO parity expectation.
+  - Governance: `.agents/skills/fluo-release-operations/SKILL.md` - changesets only for public package impact.
+  - Governance: `.agents/skills/fluo-docs-governance/SKILL.md` - EN/KO parity expectation.
 
   **Acceptance Criteria**:
   - [ ] English and Korean README files describe identical commands and scope.

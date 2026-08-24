@@ -18,6 +18,18 @@
         "description": "하나 이상의 개별 패키지를 선택합니다."
       }
     ],
+    "group_labels": {
+      "foundation": "기반 기능",
+      "http-runtime": "HTTP 런타임",
+      "request-pipeline": "요청 파이프라인",
+      "auth": "인증",
+      "infra-messaging": "인프라와 메시징",
+      "protocol-adapters": "프로토콜 어댑터",
+      "persistence": "영속성",
+      "operations": "운영",
+      "ui": "UI",
+      "cli": "CLI와 도구"
+    },
     "group_descriptions": {
       "foundation": "핵심 설정, DI, 국제화, runtime",
       "http-runtime": "HTTP 추상화와 platform adapter",
@@ -29,6 +41,18 @@
       "operations": "관측성, health, throttling",
       "ui": "React integration",
       "cli": "CLI, Studio, testing, Vite 도구"
+    },
+    "purpose_labels": {
+      "bug-finding": "버그 찾기",
+      "refactoring": "리팩터링 후보",
+      "feature-addition": "신기능 추가",
+      "contract-api": "계약/API 정합성",
+      "architecture-boundary": "아키텍처/패키지 경계",
+      "tests-edge": "테스트/엣지 케이스",
+      "docs-book-sync": "문서/북 동기화",
+      "release-impact": "릴리스 영향",
+      "nestjs-migration-gap": "NestJS 차이/마이그레이션",
+      "comprehensive": "종합 감사"
     },
     "purpose_descriptions": {
       "bug-finding": "재현 가능한 correctness 결함과 edge case를 찾습니다.",
@@ -178,9 +202,48 @@
     "source:package-audit"
   ],
   "package_area": {
+    "core": "area:foundation",
+    "config": "area:foundation",
+    "di": "area:foundation",
+    "i18n": "area:foundation",
     "runtime": "area:foundation",
     "http": "area:http-runtime",
-    "react": "area:http-runtime"
+    "platform-fastify": "area:http-runtime",
+    "platform-nodejs": "area:http-runtime",
+    "platform-express": "area:http-runtime",
+    "platform-bun": "area:http-runtime",
+    "platform-deno": "area:http-runtime",
+    "platform-cloudflare-workers": "area:http-runtime",
+    "validation": "area:request-pipeline",
+    "serialization": "area:request-pipeline",
+    "openapi": "area:request-pipeline",
+    "graphql": "area:request-pipeline",
+    "cache-manager": "area:request-pipeline",
+    "jwt": "area:auth",
+    "passport": "area:auth",
+    "redis": "area:infra-messaging",
+    "queue": "area:infra-messaging",
+    "cron": "area:infra-messaging",
+    "cqrs": "area:infra-messaging",
+    "event-bus": "area:infra-messaging",
+    "microservices": "area:infra-messaging",
+    "notifications": "area:infra-messaging",
+    "email": "area:infra-messaging",
+    "slack": "area:infra-messaging",
+    "discord": "area:infra-messaging",
+    "websockets": "area:protocol-adapters",
+    "socket.io": "area:protocol-adapters",
+    "prisma": "area:persistence",
+    "drizzle": "area:persistence",
+    "mongoose": "area:persistence",
+    "metrics": "area:http-runtime",
+    "terminus": "area:http-runtime",
+    "throttler": "area:request-pipeline",
+    "react": "area:http-runtime",
+    "cli": "area:cli",
+    "studio": "area:cli",
+    "testing": "area:cli",
+    "vite": "area:cli"
   },
   "max_parallel_tasks": 16
 }

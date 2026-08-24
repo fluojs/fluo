@@ -1,0 +1,59 @@
+{
+  "version": 2,
+  "run_id": "lane-4101-runtime",
+  "lane_id": "lane-4101-runtime",
+  "status": "ready",
+  "created_by": "create-lane",
+  "base_branch": "main",
+  "source": {
+    "type": "search-issue",
+    "search_run_id": "search-native-runtime",
+    "search_ledger": ".omo/search-issue/artifacts/search-native-runtime.json",
+    "artifact_id": "search:search-native-runtime",
+    "sha256": "f412d5b2fcbb0cf092215c44d7974159a5f7777720bcf92ca5eb95c37115bcfb"
+  },
+  "merge_policy": "supervisor-auto",
+  "pr_merge_method": "squash",
+  "authority_scope": {
+    "issue_creation": false,
+    "pr_creation": true,
+    "pr_merge": true,
+    "cleanup_command_worktrees": true,
+    "root_main_sync_ff_only": true,
+    "publish_via_github_actions": false
+  },
+  "retry_policy": {
+    "retry_count_is_terminal": true,
+    "max_same_failure_repeats": 3,
+    "max_wall_clock_minutes": 180,
+    "stop_on_child_contract_error": true
+  },
+  "execution": {
+    "status": "not-started",
+    "last_command": null,
+    "last_updated": null
+  },
+  "confirmed_issues": [4101],
+  "suggested_but_excluded": [],
+  "backlog_candidates": [],
+  "release_handoffs": [],
+  "completed_issues": [],
+  "issue_progress": {},
+  "lanes": [
+    {
+      "name": "runtime",
+      "queue": [4101],
+      "current_issue": 4101,
+      "status": "queued",
+      "branch": null,
+      "worktree": null,
+      "pr": null,
+      "retry_count": 0
+    }
+  ],
+  "dependency_graph": {},
+  "root_main_sync": {
+    "status": "not-started",
+    "sha": null
+  }
+}
