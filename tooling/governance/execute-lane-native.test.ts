@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 
 const root = process.cwd();
 const skillRoot = resolve(root, '.agents/skills/execute-lane');
-const replayCli = resolve(skillRoot, 'scripts/run-replay.mjs');
+const replayCli = resolve(skillRoot, 'scripts/fixtures/run-replay.mjs');
 const ledgerVerifier = resolve(
   root,
   'tooling/governance/verify-lane-ledger.mjs',
@@ -53,6 +53,7 @@ const runScenarioPath = (
     process.execPath,
     [
       replayCli,
+      '--fixture-only',
       '--scenario',
       scenarioPath,
       '--ledger',
@@ -206,7 +207,7 @@ describe('$execute-lane shipped native assets', () => {
         'references/workflow.md',
         'scripts/state-machine.mjs',
         'scripts/state-store.mjs',
-        'scripts/run-replay.mjs',
+        'scripts/fixtures/run-replay.mjs',
       ].filter((path) => existsSync(resolve(skillRoot, path))),
     ).toHaveLength(5);
   });

@@ -215,11 +215,30 @@ export const assertIssueToPrResult = (input, result) => {
   }
   assertCanonicalBlockers(result.addressed_blockers, 'issue-to-pr typed output.addressed_blockers');
   assertCanonicalBlockers(result.remaining_blockers, 'issue-to-pr typed output.remaining_blockers');
+  assertBlockerReconciliation(
+    input.blockers,
+    result.addressed_blockers,
+    result.remaining_blockers,
+  );
+  const expectedFixBackResult = input.mode === 'fix-back' ? 'remediated' : 'not-applicable';
+  if (result.fix_back_result !== expectedFixBackResult) {
+    fail('issue-to-pr typed output', 'completion requires the canonical mode result');
+  }
+};
+
+export const assertBlockerReconciliation = (
+  inputBlockers,
+  addressedBlockers,
+  remainingBlockers,
+) => {
+  assertCanonicalBlockers(inputBlockers, 'input blockers');
+  assertCanonicalBlockers(addressedBlockers, 'addressed blockers');
+  assertCanonicalBlockers(remainingBlockers, 'remaining blockers');
   const addressedMatchesInput =
-    result.addressed_blockers.length === input.blockers.length &&
-    input.blockers.every(
+    addressedBlockers.length === inputBlockers.length &&
+    inputBlockers.every(
       (inputBlocker) =>
-        result.addressed_blockers.filter(
+        addressedBlockers.filter(
           (addressed) =>
             addressed.reviewer === inputBlocker.reviewer &&
             addressed.signature === inputBlocker.signature &&
@@ -230,13 +249,17 @@ export const assertIssueToPrResult = (input, result) => {
     );
   if (!addressedMatchesInput) {
     fail(
-      'issue-to-pr typed output.addressed_blockers',
+      'addressed blockers',
       'must contain every input blocker exactly once as remediated',
     );
   }
-  const hasUnremediatedAddressedBlocker = result.addressed_blockers.some((item) => item.status !== 'remediated');
-  const expectedFixBackResult = input.mode === 'fix-back' ? 'remediated' : 'not-applicable';
-  if (hasUnremediatedAddressedBlocker || result.fix_back_result !== expectedFixBackResult || result.remaining_blockers.length !== 0) {
-    fail('issue-to-pr typed output', 'completion requires the mode result and no remaining blockers');
+  if (
+    addressedBlockers.some((item) => item.status !== 'remediated') ||
+    remainingBlockers.length !== 0
+  ) {
+    fail(
+      'blocker reconciliation',
+      'completion requires remediated addressed blockers and no remaining blockers',
+    );
   }
 };

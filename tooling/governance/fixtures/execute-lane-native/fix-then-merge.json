@@ -44,7 +44,13 @@
       "kind": "fix",
       "new_head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "addressed_blockers": [
-        "runtime:code:worker:abort-path"
+        {
+          "reviewer": "code",
+          "signature": "runtime:code:worker:abort-path",
+          "evidence": "packages/runtime/src/worker.ts:42",
+          "fix_back_eligible": true,
+          "status": "remediated"
+        }
       ]
     },
     {

@@ -65,6 +65,41 @@ export const identityFrom = (scenario, snapshot) => {
     throw new TypeError('scenario issue must belong to one lane queue.');
   }
   const existingProgress = snapshot.issue_progress[String(issueNumber)];
+  if (
+    isRecord(existingProgress) &&
+    existingProgress.branch !== null &&
+    existingProgress.worktree !== null &&
+    existingProgress.pr !== null
+  ) {
+    const persistedBranch = requireString(
+      existingProgress.branch,
+      'snapshot branch',
+    );
+    const persistedWorktree = requireString(
+      existingProgress.worktree,
+      'snapshot worktree',
+    );
+    const persistedPrUrl = requireString(existingProgress.pr, 'snapshot PR');
+    const persistedPrMatch = canonicalPrUrl.exec(persistedPrUrl);
+    if (persistedPrMatch === null) {
+      throw new TypeError('snapshot PR must use the canonical repository URL.');
+    }
+    return {
+      lane_id: laneId,
+      issue_number: issueNumber,
+      branch: persistedBranch,
+      worktree: persistedWorktree,
+      pr_number: Number(persistedPrMatch[1]),
+      pr_url: persistedPrUrl,
+      head_sha: requireSha(existingProgress.head_sha, 'snapshot head_sha'),
+      lane_index: laneIndex,
+      conflict:
+        branch !== persistedBranch ||
+        worktree !== persistedWorktree ||
+        prNumber !== Number(persistedPrMatch[1]) ||
+        prUrl !== persistedPrUrl,
+    };
+  }
   const headSha =
     isRecord(existingProgress) && existingProgress.head_sha !== undefined
       ? requireSha(existingProgress.head_sha, 'snapshot head_sha')
@@ -78,6 +113,7 @@ export const identityFrom = (scenario, snapshot) => {
     pr_url: prUrl,
     head_sha: headSha,
     lane_index: laneIndex,
+    conflict: false,
   };
 };
 

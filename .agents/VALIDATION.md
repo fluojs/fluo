@@ -9,6 +9,10 @@
 - Native runtime paths do not depend on `.opencode` or
   `.opencode-backup/`.
 - Shared JSON schemas reject unknown keys.
+- `.agents/THREAT_MODEL.md` separates trusted lead authority from synthetic
+  fixture evidence.
+- `.agents/THREAT_MODEL.md` separates trusted lead authority from synthetic
+  fixture evidence.
 
 ## Behavioral gates
 
@@ -20,10 +24,12 @@ tooling/governance/omo-native-events.test.ts
 tooling/governance/search-issue-native.test.ts
 tooling/governance/search-artifact-migration.test.ts
 tooling/governance/create-lane-native.test.ts
+tooling/governance/create-lane-multi.test.ts
 tooling/governance/issue-to-pr-native.test.ts
 tooling/governance/pr-to-merge-native.test.ts
 tooling/governance/execute-lane-native.test.ts
 tooling/governance/execute-lane-persistence.test.ts
+tooling/governance/execute-lane-resilience.test.ts
 tooling/governance/omo-native-assets.test.ts
 ```
 

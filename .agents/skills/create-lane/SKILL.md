@@ -43,6 +43,11 @@ If structured questions are unavailable, present the gate and wait for a
 separate plain-text response. Never infer a later approval from an earlier
 response.
 
+Approval IDs and binding hashes are replay/corruption controls, not identity
+signatures. Production approval exists only when the trusted lead observes
+three separate native user responses. `scripts/fixtures/run-scenario.mjs`
+accepts synthetic approvals for tests and is forbidden in production.
+
 ## Production
 
 Build a v2 lane value, bind `source.artifact_id` and `source.sha256` exactly to
@@ -56,7 +61,8 @@ rolls back newly linked receipts. Refuse symlinked output directories.
 For deterministic contract exercises, run:
 
 ```text
-node .agents/skills/create-lane/scripts/run-scenario.mjs --scenario <fixture.json> --out <repository-root>
+node .agents/skills/create-lane/scripts/fixtures/run-scenario.mjs \
+  --fixture-only --scenario <fixture.json> --out <repository-root>
 ```
 
 On success, emit the ledger path and `$execute-lane

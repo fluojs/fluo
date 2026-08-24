@@ -51,10 +51,10 @@ const hasCanonicalDependencies = (graph, issues) => {
     const dependencies = graph[String(issue)] ?? [];
     if (
       !isIssueArray(dependencies) ||
-      dependencies.some(
-        (dependency) => dependency === issue || !issueSet.has(dependency),
-      ) ||
-      !dependencies.every(visit)
+      dependencies.includes(issue) ||
+      !dependencies
+        .filter((dependency) => issueSet.has(dependency))
+        .every(visit)
     ) {
       return false;
     }

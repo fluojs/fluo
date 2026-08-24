@@ -9,11 +9,16 @@ import {
 } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { prepareScenario } from './contracts.mjs';
+import { prepareScenario } from '../contracts.mjs';
 
 class UnsafeOutputPathError extends TypeError {}
 
 const args = process.argv.slice(2);
+if (!args.includes('--fixture-only')) {
+  throw new TypeError(
+    'run-scenario.mjs is a fixture-only contract exerciser; production approvals come from the trusted lead.',
+  );
+}
 const valueAfter = (flag) => {
   const index = args.indexOf(flag);
   const value = index === -1 ? undefined : args[index + 1];

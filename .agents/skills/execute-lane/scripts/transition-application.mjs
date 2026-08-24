@@ -43,10 +43,10 @@ export const progressFor = (snapshot, identity) =>
   snapshot.issue_progress[String(identity.issue_number)];
 
 export const initialiseExecution = (snapshot, identity, events) => {
-  if (snapshot.status !== 'ready') {
+  const lane = snapshot.lanes[identity.lane_index];
+  if (snapshot.status !== 'ready' && lane.status !== 'queued') {
     return;
   }
-  const lane = snapshot.lanes[identity.lane_index];
   setRootStatus(snapshot, 'running');
   lane.status = 'in_review';
   lane.branch = identity.branch;
@@ -108,12 +108,12 @@ const mergeReceipt = (identity) =>
     evidence: `observed squash merge of ${identity.head_sha}`,
   });
 
-export const cleanupReceipts = (identity) => [
+export const cleanupReceipts = (identity, status = 'succeeded') => [
   receipt({
     identity,
     receiptId: `${identity.lane_id}:worktree.remove`,
     sideEffect: 'worktree.remove',
-    status: 'succeeded',
+    status,
     target: { kind: 'worktree', id: identity.worktree, url: null },
     evidence: 'observed worktree removal',
   }),
@@ -121,7 +121,7 @@ export const cleanupReceipts = (identity) => [
     identity,
     receiptId: `${identity.lane_id}:branch.delete:local`,
     sideEffect: 'branch.delete',
-    status: 'succeeded',
+    status,
     target: { kind: 'branch', id: `local:${identity.branch}`, url: null },
     evidence: 'observed local branch deletion',
   }),
@@ -129,7 +129,7 @@ export const cleanupReceipts = (identity) => [
     identity,
     receiptId: `${identity.lane_id}:branch.delete:remote`,
     sideEffect: 'branch.delete',
-    status: 'succeeded',
+    status,
     target: { kind: 'branch', id: `origin:${identity.branch}`, url: null },
     evidence: 'observed remote branch deletion',
   }),
@@ -139,12 +139,13 @@ export const rootSyncReceipt = (
   identity,
   baseBranch,
   syncedSha,
+  status = 'succeeded',
 ) =>
   receipt({
     identity: { ...identity, head_sha: syncedSha },
     receiptId: `${identity.lane_id}:root.sync`,
     sideEffect: 'root.sync',
-    status: 'succeeded',
+    status,
     target: { kind: 'branch', id: baseBranch, url: null },
     evidence: `observed ff-only sync to ${syncedSha}`,
   });

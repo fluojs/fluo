@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest';
 const repositoryRoot = process.cwd();
 const scenarioRunner = resolve(
   repositoryRoot,
-  '.agents/skills/create-lane/scripts/run-scenario.mjs',
+  '.agents/skills/create-lane/scripts/fixtures/run-scenario.mjs',
 );
 const fixtureRoot = resolve(
   repositoryRoot,
@@ -53,6 +53,7 @@ const runScenarioPath = (
     process.execPath,
     [
       scenarioRunner,
+      '--fixture-only',
       '--scenario',
       scenarioPath,
       '--out',
@@ -118,30 +119,6 @@ describe('$create-lane native v2 producer', () => {
           retry_count: 0,
         },
       ]);
-      expect(
-        execFileSync(process.execPath, [ledgerVerifier, ledgerPath], {
-          encoding: 'utf8',
-        }),
-      ).toContain('Lane ledger check passed for 1 file(s).');
-    } finally {
-      rmSync(run.outputRoot, { recursive: true, force: true });
-    }
-  });
-
-  it('creates a multi-issue lane plan with approved additions and dependencies', () => {
-    // Given / When
-    const run = runScenario('valid-multi-issue.json');
-
-    try {
-      // Then
-      const ledgerPath = resolve(
-        run.outputRoot,
-        '.omo/lanes/lane-4101-4103-runtime.json',
-      );
-      const ledger = parseRecord(readFileSync(ledgerPath, 'utf8'));
-      expect(ledger['confirmed_issues']).toEqual([4101, 4102, 4103]);
-      expect(ledger['dependency_graph']).toEqual({ '4103': [4101] });
-      expect(ledger['lanes']).toHaveLength(2);
       expect(
         execFileSync(process.execPath, [ledgerVerifier, ledgerPath], {
           encoding: 'utf8',

@@ -44,6 +44,7 @@
         "done",
         "needs-human-check-terminal",
         "blocked-budget-exhausted",
+        "blocked-maintainer-decision",
         "blocked-child-contract-error",
         "blocked-ledger-conflict",
         "blocked-terminal"
@@ -188,6 +189,7 @@
               "done",
               "needs-human-check-terminal",
               "blocked-budget-exhausted",
+              "blocked-maintainer-decision",
               "blocked-child-contract-error",
               "blocked-ledger-conflict",
               "blocked-terminal"

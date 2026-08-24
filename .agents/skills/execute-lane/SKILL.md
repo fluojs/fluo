@@ -16,6 +16,11 @@ Read `references/workflow.md` before execution. Use `$issue-to-pr` for new PR
 and same-PR fix-back contracts and `$pr-to-merge` for the read-only same-head
 review triad.
 
+Production execution never uses `scripts/fixtures/run-replay.mjs`. The lead
+performs or observes each authorized Git/GitHub action, reads fresh raw output,
+then writes the target-bound receipt and transition. Synthetic observation JSON
+is fixture evidence only.
+
 Stop only when every lane is `done` or has an explicit terminal blocker and
 cleanup/root-sync state is terminal. Exactly one contract, code, and
 verification result must bind the current head. A derived `merge` verdict is

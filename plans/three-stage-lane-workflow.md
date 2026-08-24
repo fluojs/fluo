@@ -107,10 +107,14 @@ skills never load archived command or role definitions.
 ```bash
 pnpm exec vitest run \
   tooling/governance/omo-native-contracts.test.ts \
+  tooling/governance/omo-native-events.test.ts \
   tooling/governance/search-issue-native.test.ts \
   tooling/governance/search-artifact-migration.test.ts \
   tooling/governance/create-lane-native.test.ts \
+  tooling/governance/create-lane-multi.test.ts \
   tooling/governance/execute-lane-native.test.ts \
+  tooling/governance/execute-lane-persistence.test.ts \
+  tooling/governance/execute-lane-resilience.test.ts \
   tooling/governance/issue-to-pr-native.test.ts \
   tooling/governance/pr-to-merge-native.test.ts \
   tooling/governance/omo-native-assets.test.ts \
@@ -124,3 +128,6 @@ pnpm exec vitest run \
 Manual QA must exercise valid and malformed search/create inputs plus happy,
 fix-back, human-check, budget, malformed-child, persisted-resume, cleanup-block,
 and root-sync execute transitions.
+
+The scripts under `scripts/fixtures/` are deterministic contract exercisers.
+They never constitute production approval or live side-effect evidence.

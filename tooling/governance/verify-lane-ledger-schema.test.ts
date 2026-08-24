@@ -67,6 +67,18 @@ describe('lane ledger canonical schema', () => {
     ).toContain('Lane ledger check passed for 1 file(s).');
   });
 
+  it('preserves a v1 search source on its canonical legacy state path', () => {
+    expect(
+      runMutatedReadyLedger((ledger) => {
+        ledger.source = {
+          type: 'search-issue',
+          search_run_id: 'search-legacy-runtime',
+          search_ledger: '.opencode/search-issue/search-legacy-runtime.json',
+        };
+      }, runValidatorPath),
+    ).toContain('Lane ledger check passed for 1 file(s).');
+  });
+
   it.each([
     ['empty', [1], {}],
     ['full', [1], { '1': [] }],

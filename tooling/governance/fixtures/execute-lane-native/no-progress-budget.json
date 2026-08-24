@@ -42,7 +42,16 @@
     },
     {
       "kind": "fix",
-      "new_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      "new_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "addressed_blockers": [
+        {
+          "reviewer": "verification",
+          "signature": "runtime:verification:worker:no-progress",
+          "evidence": "runtime test still fails",
+          "fix_back_eligible": true,
+          "status": "remediated"
+        }
+      ]
     }
   ]
 }

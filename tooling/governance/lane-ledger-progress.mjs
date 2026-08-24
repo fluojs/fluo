@@ -164,14 +164,14 @@ export function validateIssueProgress(path, ledger, prAssignments) {
   }
   for (const [issueKey, progress] of Object.entries(issueProgress ?? {})) {
     const progressPath = `${path}:issue_progress[${issueKey}]`;
-    const issue = Number(issueKey);
+    const issue = Number(issueKey), isReleaseHandoff = ledger.release_handoffs.includes(issue);
     assert(/^[1-9]\d*$/u.test(issueKey) && isPositiveInteger(Number(issueKey)), progressPath, 'issue_progress key must be a positive integer issue number');
     assert(isObject(progress), progressPath, 'issue progress must be an object');
     validateProgressShape(progressPath, progress);
-    if (progress.branch !== undefined) {
+    if (progress.branch !== undefined && !isReleaseHandoff) {
       assert(isSafeBranchName(progress.branch), progressPath, 'issue progress branch must be a safe non-empty branch name');
     }
-    if (progress.worktree !== undefined) {
+    if (progress.worktree !== undefined && !isReleaseHandoff) {
       assert(isSafeBranchName(progress.branch), progressPath, 'issue progress worktree requires a safe branch');
       const worktreeMessage =
         progress.status === 'done' || progress.status === 'merged'

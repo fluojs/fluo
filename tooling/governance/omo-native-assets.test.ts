@@ -60,6 +60,7 @@ const expectedKnowledgeSkills = [
 const requiredShippedContractPaths = [
   '.agents/MIGRATION.md',
   '.agents/README.md',
+  '.agents/THREAT_MODEL.md',
   '.agents/VALIDATION.md',
   '.agents/skills/docs-sync-guardian/SKILL.md',
   '.agents/skills/docs-sync-guardian/references/guardian.md',

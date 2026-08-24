@@ -19,7 +19,20 @@ import {
 } from '../../../workflow-contracts/contracts.mjs';
 import { validateLedger } from '../../../../tooling/governance/lane-ledger-state.mjs';
 
-const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
+const assertRegularFile = (path) => {
+  if (!existsSync(path)) {
+    return;
+  }
+  const stat = lstatSync(path);
+  if (stat.isSymbolicLink() || !stat.isFile()) {
+    throw new TypeError(`${path} must be a real regular file.`);
+  }
+};
+
+const readJson = (path) => {
+  assertRegularFile(path);
+  return JSON.parse(readFileSync(path, 'utf8'));
+};
 
 const ensureStateDirectory = (path) => {
   if (!existsSync(path)) {
@@ -32,6 +45,7 @@ const ensureStateDirectory = (path) => {
 };
 
 const writeAtomic = (path, value) => {
+  assertRegularFile(path);
   const candidate = `${path}.${randomUUID()}.tmp`;
   writeFileSync(candidate, `${JSON.stringify(value, null, 2)}\n`, {
     encoding: 'utf8',
@@ -50,21 +64,14 @@ const readEvents = (path) => {
   if (!existsSync(path)) {
     return [];
   }
+  assertRegularFile(path);
   const content = readFileSync(path, 'utf8').trim();
   return content === ''
     ? []
     : content.split('\n').map((line) => JSON.parse(line));
 };
 
-export const loadState = (stateDirectory, ledgerPath) => {
-  ensureStateDirectory(stateDirectory);
-  const snapshotPath = resolve(stateDirectory, 'snapshot.json');
-  const snapshot = existsSync(snapshotPath)
-    ? readJson(snapshotPath)
-    : readJson(ledgerPath);
-  const events = readEvents(resolve(stateDirectory, 'events.jsonl'));
-  const receiptsPath = resolve(stateDirectory, 'receipts.json');
-  const receipts = existsSync(receiptsPath) ? readJson(receiptsPath) : [];
+const validateState = ({ snapshot, events, receipts }) => {
   assertContract('lane-ledger-v2', snapshot);
   validateLedger('lane-ledger-v2', snapshot);
   if (events.length > 0) {
@@ -76,7 +83,65 @@ export const loadState = (stateDirectory, ledgerPath) => {
   for (const receipt of receipts) {
     assertContract('receipt', receipt);
   }
-  return { snapshot, events, receipts };
+};
+
+const assertEventPrefix = (prefix, events) => {
+  const matches =
+    prefix.length <= events.length &&
+    prefix.every(
+      (event, index) => event.event_hash === events[index]?.event_hash,
+    );
+  if (!matches) {
+    throw new TypeError('persisted event history must remain an exact prefix.');
+  }
+};
+
+const applyTransaction = (stateDirectory, transaction) => {
+  if (
+    transaction?.version !== 1 ||
+    !Array.isArray(transaction.events) ||
+    !Array.isArray(transaction.receipts)
+  ) {
+    throw new TypeError('transaction.json has an invalid shape.');
+  }
+  validateState(transaction);
+  const eventsPath = resolve(stateDirectory, 'events.jsonl');
+  const existingEvents = readEvents(eventsPath);
+  assertEventPrefix(existingEvents, transaction.events);
+  const missingEvents = transaction.events.slice(existingEvents.length);
+  if (missingEvents.length > 0) {
+    appendFileSync(
+      eventsPath,
+      `${missingEvents.map((event) => JSON.stringify(event)).join('\n')}\n`,
+      'utf8',
+    );
+  }
+  writeAtomic(resolve(stateDirectory, 'snapshot.json'), transaction.snapshot);
+  writeAtomic(resolve(stateDirectory, 'receipts.json'), transaction.receipts);
+};
+
+const recoverTransaction = (stateDirectory) => {
+  const path = resolve(stateDirectory, 'transaction.json');
+  if (!existsSync(path)) {
+    return;
+  }
+  applyTransaction(stateDirectory, readJson(path));
+  unlinkSync(path);
+};
+
+export const loadState = (stateDirectory, ledgerPath) => {
+  ensureStateDirectory(stateDirectory);
+  recoverTransaction(stateDirectory);
+  const snapshotPath = resolve(stateDirectory, 'snapshot.json');
+  const snapshot = existsSync(snapshotPath)
+    ? readJson(snapshotPath)
+    : readJson(ledgerPath);
+  const events = readEvents(resolve(stateDirectory, 'events.jsonl'));
+  const receiptsPath = resolve(stateDirectory, 'receipts.json');
+  const receipts = existsSync(receiptsPath) ? readJson(receiptsPath) : [];
+  const state = { snapshot, events, receipts };
+  validateState(state);
+  return state;
 };
 
 export const acquireLease = (stateDirectory, laneId) => {
@@ -106,29 +171,15 @@ export const acquireLease = (stateDirectory, laneId) => {
 };
 
 export const persistState = (stateDirectory, previous, next) => {
-  assertContract('lane-ledger-v2', next.snapshot);
-  validateLedger('lane-ledger-v2', next.snapshot);
-  assertEventChain(next.events);
-  for (const receipt of next.receipts) {
-    assertContract('receipt', receipt);
-  }
-  const prefixMatches =
-    previous.events.length <= next.events.length &&
-    previous.events.every(
-      (event, index) =>
-        event.event_hash === next.events[index]?.event_hash,
-    );
-  if (!prefixMatches) {
-    throw new TypeError('persisted event history must remain an exact prefix.');
-  }
-  const newEvents = next.events.slice(previous.events.length);
-  if (newEvents.length > 0) {
-    appendFileSync(
-      resolve(stateDirectory, 'events.jsonl'),
-      `${newEvents.map((event) => JSON.stringify(event)).join('\n')}\n`,
-      'utf8',
-    );
-  }
-  writeAtomic(resolve(stateDirectory, 'snapshot.json'), next.snapshot);
-  writeAtomic(resolve(stateDirectory, 'receipts.json'), next.receipts);
+  validateState(next);
+  assertEventPrefix(previous.events, next.events);
+  const transactionPath = resolve(stateDirectory, 'transaction.json');
+  writeAtomic(transactionPath, {
+    version: 1,
+    snapshot: next.snapshot,
+    events: next.events,
+    receipts: next.receipts,
+  });
+  applyTransaction(stateDirectory, readJson(transactionPath));
+  unlinkSync(transactionPath);
 };

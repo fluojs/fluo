@@ -93,11 +93,15 @@ function validateSource(path, source, version) {
   const sourceKeys = version === 2 ? sourceV2Keys : sourceV1Keys;
   assert(isObject(source) && hasExactKeys(source, sourceKeys), path, 'source must match a canonical source variant');
   const isExistingIssues = source.type === 'existing-issues' && source.search_run_id === null && source.search_ledger === null;
+  const searchLedger =
+    version === 1
+      ? `.opencode/search-issue/${source.search_run_id}.json`
+      : `.omo/search-issue/artifacts/${source.search_run_id}.json`;
+  const migratedSearchLedger = `.omo/search-issue/artifacts/${source.search_run_id}.json`, sourceMatches = source.search_ledger === searchLedger || (version === 1 && source.search_ledger === migratedSearchLedger);
   const isSearchIssue =
     source.type === 'search-issue' &&
     isSafeSearchBasename(source.search_run_id) &&
-    source.search_ledger ===
-      `.omo/search-issue/artifacts/${source.search_run_id}.json`;
+    sourceMatches;
   const hasV2Binding =
     version !== 2 ||
     (source.artifact_id === `search:${String(source.search_run_id)}` &&

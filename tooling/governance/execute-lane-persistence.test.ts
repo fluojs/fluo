@@ -1,8 +1,12 @@
 import { execFileSync } from 'node:child_process';
 import {
+  appendFileSync,
+  cpSync,
+  existsSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
@@ -16,7 +20,7 @@ const fixtureRoot = resolve(
 );
 const replayCli = resolve(
   root,
-  '.agents/skills/execute-lane/scripts/run-replay.mjs',
+  '.agents/skills/execute-lane/scripts/fixtures/run-replay.mjs',
 );
 const ledgerVerifier = resolve(
   root,
@@ -45,6 +49,7 @@ const runScenario = (
       process.execPath,
       [
         replayCli,
+        '--fixture-only',
         '--scenario',
         resolve(fixtureRoot, `${fixtureName}.json`),
         '--ledger',
@@ -115,6 +120,56 @@ describe('$execute-lane persisted files', () => {
       expect(resumedEvents.length).toBeGreaterThan(existingEvents.length);
     } finally {
       rmSync(state, { recursive: true, force: true });
+    }
+  });
+
+  it('recovers a transaction after events append but before snapshot replacement', () => {
+    const state = mkdtempSync(resolve(tmpdir(), 'fluo-execute-lane-'));
+    const expectedState = mkdtempSync(
+      resolve(tmpdir(), 'fluo-execute-expected-'),
+    );
+    try {
+      runScenario('interrupted-start', state);
+      cpSync(state, expectedState, { recursive: true });
+      runScenario('interrupted-resume', expectedState);
+
+      const expectedEvents = eventLines(expectedState);
+      const currentEvents = eventLines(state);
+      const missingEvents = expectedEvents.slice(currentEvents.length);
+      const firstMissing = missingEvents[0];
+      if (firstMissing === undefined) {
+        throw new TypeError('Expected a transition event to recover.');
+      }
+      appendFileSync(resolve(state, 'events.jsonl'), `${firstMissing}\n`, 'utf8');
+      writeFileSync(
+        resolve(state, 'transaction.json'),
+        `${JSON.stringify(
+          {
+            version: 1,
+            snapshot: JSON.parse(
+              readFileSync(resolve(expectedState, 'snapshot.json'), 'utf8'),
+            ),
+            events: expectedEvents.map((line) => JSON.parse(line)),
+            receipts: JSON.parse(
+              readFileSync(resolve(expectedState, 'receipts.json'), 'utf8'),
+            ),
+          },
+          null,
+          2,
+        )}\n`,
+        'utf8',
+      );
+
+      const recovered = runScenario('interrupted-resume', state);
+      expect(recovered['status']).toBe('done');
+      expect(eventLines(state)).toEqual(expectedEvents);
+      expect(
+        readFileSync(resolve(state, 'snapshot.json'), 'utf8'),
+      ).toBe(readFileSync(resolve(expectedState, 'snapshot.json'), 'utf8'));
+      expect(existsSync(resolve(state, 'transaction.json'))).toBe(false);
+    } finally {
+      rmSync(state, { recursive: true, force: true });
+      rmSync(expectedState, { recursive: true, force: true });
     }
   });
 });
