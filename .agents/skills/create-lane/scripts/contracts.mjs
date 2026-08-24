@@ -6,6 +6,7 @@ import {
   assertContract,
   assertLaneSourceBinding,
 } from '../../../workflow-contracts/contracts.mjs';
+import { validateLedger } from '../../../../tooling/governance/lane-ledger-state.mjs';
 import { validateApprovals } from './approval-contracts.mjs';
 import { planIsCanonical, readyLedger } from './plan-contracts.mjs';
 
@@ -75,8 +76,9 @@ export const prepareScenario = (scenarioPath) => {
   const ledger = readyLedger(plan, artifact);
   try {
     assertLaneSourceBinding(ledger, artifact);
+    validateLedger('lane-ledger-v2', ledger);
   } catch (error) {
-    if (error instanceof WorkflowContractError) {
+    if (error instanceof Error) {
       return rejected('invalid_artifact');
     }
     throw error;

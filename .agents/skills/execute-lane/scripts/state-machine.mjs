@@ -2,6 +2,7 @@ import {
   assertContract,
   assertEventChain,
 } from '../../../workflow-contracts/contracts.mjs';
+import { validateLedger } from '../../../../tooling/governance/lane-ledger-state.mjs';
 import {
   applyReview,
   appendEvent,
@@ -131,6 +132,7 @@ export const runReplay = (input, persisted) => {
   const events = structuredClone(persisted.events);
   const receipts = structuredClone(persisted.receipts);
   assertContract('lane-ledger-v2', snapshot);
+  validateLedger('lane-ledger-v2', snapshot);
   const identity = identityFrom(scenario, snapshot);
   initialiseExecution(snapshot, identity, events);
   const steps = scenario.steps;
@@ -206,6 +208,7 @@ export const runReplay = (input, persisted) => {
     }
   }
   assertContract('lane-ledger-v2', snapshot);
+  validateLedger('lane-ledger-v2', snapshot);
   assertEventChain(events);
   return {
     lane_id: identity.lane_id,

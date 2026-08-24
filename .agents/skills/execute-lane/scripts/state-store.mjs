@@ -17,6 +17,7 @@ import {
   assertContract,
   assertEventChain,
 } from '../../../workflow-contracts/contracts.mjs';
+import { validateLedger } from '../../../../tooling/governance/lane-ledger-state.mjs';
 
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
 
@@ -65,6 +66,7 @@ export const loadState = (stateDirectory, ledgerPath) => {
   const receiptsPath = resolve(stateDirectory, 'receipts.json');
   const receipts = existsSync(receiptsPath) ? readJson(receiptsPath) : [];
   assertContract('lane-ledger-v2', snapshot);
+  validateLedger('lane-ledger-v2', snapshot);
   if (events.length > 0) {
     assertEventChain(events);
   }
@@ -105,6 +107,7 @@ export const acquireLease = (stateDirectory, laneId) => {
 
 export const persistState = (stateDirectory, previous, next) => {
   assertContract('lane-ledger-v2', next.snapshot);
+  validateLedger('lane-ledger-v2', next.snapshot);
   assertEventChain(next.events);
   for (const receipt of next.receipts) {
     assertContract('receipt', receipt);

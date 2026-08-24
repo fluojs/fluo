@@ -144,6 +144,7 @@ const assertSemanticContract = (name, value) => {
       if (
         value.side_effect === 'pr.merge' &&
         (value.target.kind !== 'pull-request' ||
+          !/^[1-9]\d*$/u.test(value.target.id) ||
           value.target.url !==
             `https://github.com/fluojs/fluo/pull/${value.target.id}`)
       ) {
