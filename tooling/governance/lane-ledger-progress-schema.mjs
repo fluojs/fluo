@@ -6,7 +6,16 @@ import {
   progressStatuses,
 } from './lane-ledger-contract.mjs';
 
-const baseKeys = ['status', 'branch', 'worktree', 'pr', 'verification', 'retry_count', 'blockers'];
+const baseKeys = [
+  'status',
+  'branch',
+  'worktree',
+  'pr',
+  'head_sha',
+  'verification',
+  'retry_count',
+  'blockers',
+];
 const completionKeys = [
   'review_verdict',
   'checks',

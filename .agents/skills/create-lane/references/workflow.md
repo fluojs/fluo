@@ -7,8 +7,8 @@ ledger. The artifact and shared workflow contracts are authoritative.
 
 1. Accept exactly one path under `.omo/search-issue/artifacts/`.
 2. Require the filename stem to equal `search_run_id`.
-3. Validate `search-artifact-v2`, including canonical `artifact_id` and
-   `sha256` shape, before asking for or recording a plan.
+3. Validate `search-artifact-v2`, including recomputed canonical `artifact_id`
+   and `sha256`, before asking for or recording a plan.
 4. Reject mixed forms, legacy paths, malformed JSON, unknown keys, duplicate or
    empty issue sets, and path/ID mismatches without filesystem writes.
 
@@ -19,10 +19,12 @@ Show the artifact candidates and obtain three separate approvals:
 1. Confirmed issues approval chooses the exact artifact issue set.
 2. Suggested additions approval independently accepts additions; unapproved
    suggestions do not enter the lane.
-3. Lane plan approval accepts the final identity, branch, worktree, and head.
+3. Lane plan approval accepts the final grouping, dependency graph, release
+   handoffs, merge/retry policy, authority scope, and lane identity.
 
-Each gate has a distinct approval identity and interaction. Missing, denied,
-out-of-order, or reused approvals stop before publication.
+Each gate has a distinct approval identity and interaction. Its digest binds
+the complete plan and source artifact. Persist consumed IDs so missing, denied,
+out-of-order, substituted, or replayed approvals stop before publication.
 
 ## Validation and publication
 
@@ -32,11 +34,13 @@ cross-contract source binding through
 `.agents/workflow-contracts/contracts.mjs`.
 
 After validation, calculate `.omo/lanes/<lane-id>.json` beneath the primary
-repository root and create it exclusively. Never overwrite an existing target.
-Do not leave candidate or lock files on validation failure or collision.
+repository root and publish the ledger plus approval receipts exclusively.
+Never overwrite a target, follow a symlinked output directory, or leave
+candidate/receipt files on failure or collision.
 
 ## Result
 
 Success returns `status: ready` and the relative ledger path. Rejection returns
 `status: rejected` with a stable reason. The next workflow is
-`$execute-lane <lane-id>`; create-lane itself performs no execution side effect.
+`$execute-lane .omo/lanes/<lane-id>.json`; create-lane itself performs no
+execution side effect.

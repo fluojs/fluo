@@ -16,6 +16,14 @@ Reject issue-number and artifact mixtures, legacy `.opencode` paths, malformed
 artifacts, path/ID disagreement, and existing lane targets without writing a
 candidate, lock, or ledger.
 
+Direct issue-number input is intentionally retired by the v2 provenance
+contract. Preserve that use case by first publishing a bound artifact:
+
+```bash
+node .agents/skills/search-issue/scripts/publish-search-artifact.mjs \
+  --run-id manual-<id> --issues <n1,n2> --root .
+```
+
 This skill performs read-only issue verification and lane planning. It does not
 create issues, implement code, create branches or worktrees, open or merge PRs,
 clean up worktrees, sync the root checkout, or publish packages.
@@ -26,19 +34,24 @@ Obtain these approvals in order from three distinct user interactions:
 
 1. `confirmed-issues`: the exact selected issue set.
 2. `suggested-additions`: additions are separately accepted or excluded.
-3. `lane-plan`: the final issue, lane ID, branch, worktree, and current head.
+3. `lane-plan`: the final multi-issue grouping, dependencies, lane ID, merge
+   policy, retry policy, release handoffs, and authority scope.
 
-An approval response cannot satisfy more than one gate. If structured questions
-are unavailable, present the gate and wait for a separate plain-text response.
-Never infer a later approval from an earlier response.
+Each persisted approval binds the complete plan plus artifact ID/SHA and is
+consumed exactly once. An approval response cannot satisfy more than one gate.
+If structured questions are unavailable, present the gate and wait for a
+separate plain-text response. Never infer a later approval from an earlier
+response.
 
 ## Production
 
 Build a v2 lane value, bind `source.artifact_id` and `source.sha256` exactly to
 the accepted artifact, and validate both values with
 `.agents/workflow-contracts/contracts.mjs`. Only after all gates and validation
-succeed, exclusively create `.omo/lanes/<lane-id>.json`. A collision is terminal
-and preserves the existing file.
+succeed, exclusively create `.omo/lanes/<lane-id>.json` and the three consumed
+approval receipts. Lane queues must partition every approved issue exactly
+once. A target/approval collision is terminal, preserves existing files, and
+rolls back newly linked receipts. Refuse symlinked output directories.
 
 For deterministic contract exercises, run:
 
@@ -46,5 +59,6 @@ For deterministic contract exercises, run:
 node .agents/skills/create-lane/scripts/run-scenario.mjs --scenario <fixture.json> --out <repository-root>
 ```
 
-On success, emit the ledger path and `$execute-lane <lane-id>` handoff. On any
-rejection, report the named reason and emit no handoff.
+On success, emit the ledger path and `$execute-lane
+.omo/lanes/<lane-id>.json` handoff. On rejection, report the named reason and
+emit no handoff.

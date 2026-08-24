@@ -70,6 +70,7 @@ const requiredShippedContractPaths = [
   '.agents/workflow-contracts/lane-ledger-v2.schema.json',
   '.agents/workflow-contracts/receipt.schema.json',
   '.agents/workflow-contracts/review-verdict.schema.json',
+  '.agents/workflow-contracts/schema-validator.mjs',
   '.agents/workflow-contracts/search-artifact-v2.schema.json',
 ] as const;
 
@@ -112,5 +113,16 @@ describe('OMO native asset manifest', () => {
     for (const path of manifest.shippedContractPaths) {
       expect(existsSync(resolve(repoRoot, path)), `${path} must exist`).toBe(true);
     }
+  });
+
+  it('keeps the active lane plan on native contracts instead of the read-only archive', () => {
+    const plan = read('plans/three-stage-lane-workflow.md');
+
+    expect(plan).not.toContain('.opencode-backup/commands/');
+    expect(plan).toContain('.agents/skills/search-issue/SKILL.md');
+    expect(plan).toContain('.agents/skills/create-lane/SKILL.md');
+    expect(plan).toContain('.agents/skills/execute-lane/SKILL.md');
+    expect(plan).toContain('.omo/search-issue/artifacts/');
+    expect(plan).toContain('.omo/lanes/');
   });
 });

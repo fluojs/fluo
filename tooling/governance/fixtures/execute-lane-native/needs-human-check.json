@@ -11,8 +11,26 @@
   "steps": [
     {
       "kind": "review",
-      "verdict": "needs-human-check",
-      "reviewed_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      "reviews": [
+        {
+          "reviewer": "contract",
+          "reviewed_head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "verdict_signal": "PASS",
+          "blockers": []
+        },
+        {
+          "reviewer": "code",
+          "reviewed_head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "verdict_signal": "NEEDS-HUMAN-CHECK",
+          "blockers": []
+        },
+        {
+          "reviewer": "verification",
+          "reviewed_head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "verdict_signal": "PASS",
+          "blockers": []
+        }
+      ]
     }
   ]
 }

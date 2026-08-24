@@ -1,8 +1,17 @@
 import { randomUUID } from 'node:crypto';
-import { linkSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  linkSync,
+  lstatSync,
+  mkdirSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { resolve } from 'node:path';
 
 import { prepareScenario } from './contracts.mjs';
+
+class UnsafeOutputPathError extends TypeError {}
 
 const args = process.argv.slice(2);
 const valueAfter = (flag) => {
@@ -14,35 +23,118 @@ const valueAfter = (flag) => {
   return value;
 };
 
-const prepared = prepareScenario(valueAfter('--scenario'));
-if (prepared.kind === 'rejected') {
-  process.stdout.write(`${JSON.stringify(prepared.result)}\n`);
-} else {
-  const outputRoot = resolve(valueAfter('--out'));
-  const relativeTarget = `.omo/lanes/${prepared.plan.lane_id}.json`;
-  const laneDirectory = resolve(outputRoot, '.omo/lanes');
-  const target = resolve(outputRoot, relativeTarget);
-  const candidate = resolve(
-    laneDirectory,
-    `.${prepared.plan.lane_id}.${randomUUID()}.tmp`,
-  );
-  mkdirSync(laneDirectory, { recursive: true });
-  writeFileSync(candidate, `${JSON.stringify(prepared.plan, null, 2)}\n`, {
+const ensureDirectory = (path) => {
+  if (!existsSync(path)) {
+    mkdirSync(path);
+  }
+  const stat = lstatSync(path);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new UnsafeOutputPathError(`${path} must be a real directory.`);
+  }
+};
+
+const ensureOutputDirectories = (outputRoot) => {
+  ensureDirectory(outputRoot);
+  const omoDirectory = resolve(outputRoot, '.omo');
+  const laneDirectory = resolve(omoDirectory, 'lanes');
+  const approvalDirectory = resolve(omoDirectory, 'approvals');
+  ensureDirectory(omoDirectory);
+  ensureDirectory(laneDirectory);
+  ensureDirectory(approvalDirectory);
+  return { laneDirectory, approvalDirectory };
+};
+
+const writeCandidate = (directory, name, value) => {
+  const path = resolve(directory, `.${name}.${randomUUID()}.tmp`);
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, {
     encoding: 'utf8',
     flag: 'wx',
   });
-  let result;
+  return path;
+};
+
+const safeUnlink = (path) => {
+  if (existsSync(path)) {
+    unlinkSync(path);
+  }
+};
+
+const publishReadyLane = (outputRoot, prepared) => {
+  let directories;
   try {
-    linkSync(candidate, target);
-    result = { status: 'ready', ledger: relativeTarget };
+    directories = ensureOutputDirectories(outputRoot);
   } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'EEXIST') {
-      result = { status: 'rejected', reason: 'target_collision' };
-    } else {
+    if (error instanceof UnsafeOutputPathError) {
+      return { status: 'rejected', reason: 'unsafe_output_path' };
+    }
+    throw error;
+  }
+
+  const relativeTarget = `.omo/lanes/${prepared.ledger.lane_id}.json`;
+  const target = resolve(outputRoot, relativeTarget);
+  const ledgerCandidate = writeCandidate(
+    directories.laneDirectory,
+    prepared.ledger.lane_id,
+    prepared.ledger,
+  );
+  const approvalCandidates = prepared.approvals.map((approval) => ({
+    candidate: writeCandidate(
+      directories.approvalDirectory,
+      approval.approval_id,
+      {
+        version: 1,
+        approval_id: approval.approval_id,
+        gate: approval.gate,
+        binding_sha256: approval.binding_sha256,
+        lane_id: prepared.ledger.lane_id,
+      },
+    ),
+    target: resolve(
+      directories.approvalDirectory,
+      `${approval.approval_id}.json`,
+    ),
+  }));
+  const linkedApprovals = [];
+  let published = false;
+
+  try {
+    for (const approval of approvalCandidates) {
+      try {
+        linkSync(approval.candidate, approval.target);
+        linkedApprovals.push(approval.target);
+      } catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'EEXIST') {
+          return { status: 'rejected', reason: 'approval_replayed' };
+        }
+        throw error;
+      }
+    }
+    try {
+      linkSync(ledgerCandidate, target);
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'EEXIST') {
+        return { status: 'rejected', reason: 'target_collision' };
+      }
       throw error;
     }
+    published = true;
+    return { status: 'ready', ledger: relativeTarget };
   } finally {
-    unlinkSync(candidate);
+    if (!published) {
+      for (const approvalTarget of linkedApprovals) {
+        safeUnlink(approvalTarget);
+      }
+    }
+    safeUnlink(ledgerCandidate);
+    for (const approval of approvalCandidates) {
+      safeUnlink(approval.candidate);
+    }
   }
-  process.stdout.write(`${JSON.stringify(result)}\n`);
-}
+};
+
+const prepared = prepareScenario(valueAfter('--scenario'));
+const result =
+  prepared.kind === 'rejected'
+    ? prepared.result
+    : publishReadyLane(resolve(valueAfter('--out')), prepared);
+process.stdout.write(`${JSON.stringify(result)}\n`);

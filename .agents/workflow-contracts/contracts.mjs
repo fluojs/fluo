@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { isRecord, schemaFailure } from './schema-validator.mjs';
+
 export const contractNames = [
   'search-artifact-v2',
   'lane-ledger-v2',
@@ -27,105 +29,24 @@ export class WorkflowContractError extends TypeError {
   }
 }
 
-const isRecord = (value) =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
-const valueTypeMatches = (type, value) => {
-  switch (type) {
-    case 'object':
-      return isRecord(value);
-    case 'array':
-      return Array.isArray(value);
-    case 'string':
-      return typeof value === 'string';
-    case 'integer':
-      return Number.isSafeInteger(value);
-    case 'boolean':
-      return typeof value === 'boolean';
-    case 'null':
-      return value === null;
-    default:
-      return false;
-  }
-};
-
-const schemaFailure = (schema, value, path) => {
-  if (schema.oneOf !== undefined) {
-    const matches = schema.oneOf.filter((candidate) => schemaFailure(candidate, value, path) === null);
-    return matches.length === 1 ? null : `${path} must match exactly one variant`;
-  }
-  if (schema.const !== undefined && !Object.is(value, schema.const)) {
-    return `${path} must equal ${JSON.stringify(schema.const)}`;
-  }
-  if (schema.enum !== undefined && !schema.enum.some((item) => Object.is(item, value))) {
-    return `${path} must be one of ${schema.enum.join(', ')}`;
-  }
-  if (schema.type !== undefined && !valueTypeMatches(schema.type, value)) {
-    return `${path} must be ${schema.type}`;
-  }
-  if (typeof value === 'string') {
-    if (schema.minLength !== undefined && value.length < schema.minLength) {
-      return `${path} must not be empty`;
-    }
-    if (schema.pattern !== undefined && !new RegExp(schema.pattern, 'u').test(value)) {
-      return `${path} does not match its canonical pattern`;
-    }
-  }
-  if (Number.isSafeInteger(value)) {
-    if (schema.minimum !== undefined && value < schema.minimum) {
-      return `${path} is below its minimum`;
-    }
-    if (schema.maximum !== undefined && value > schema.maximum) {
-      return `${path} is above its maximum`;
-    }
-  }
-  if (Array.isArray(value)) {
-    if (schema.minItems !== undefined && value.length < schema.minItems) {
-      return `${path} must contain at least ${String(schema.minItems)} item(s)`;
-    }
-    if (schema.uniqueItems === true) {
-      const encoded = value.map((item) => JSON.stringify(item));
-      if (new Set(encoded).size !== encoded.length) {
-        return `${path} must contain unique items`;
-      }
-    }
-    if (schema.items !== undefined) {
-      for (const [index, item] of value.entries()) {
-        const failure = schemaFailure(schema.items, item, `${path}[${String(index)}]`);
-        if (failure !== null) {
-          return failure;
-        }
-      }
-    }
-  }
-  if (isRecord(value)) {
-    for (const key of schema.required ?? []) {
-      if (!Object.hasOwn(value, key)) {
-        return `${path}.${key} is required`;
-      }
-    }
-    const properties = schema.properties ?? {};
-    if (schema.additionalProperties === false) {
-      const unknownKey = Object.keys(value).find((key) => !Object.hasOwn(properties, key));
-      if (unknownKey !== undefined) {
-        return `${path} has unknown key ${unknownKey}`;
-      }
-    }
-    for (const [key, propertySchema] of Object.entries(properties)) {
-      if (Object.hasOwn(value, key)) {
-        const failure = schemaFailure(propertySchema, value[key], `${path}.${key}`);
-        if (failure !== null) {
-          return failure;
-        }
-      }
-    }
-  }
-  return null;
-};
-
 const fail = (path, reason) => {
   throw new WorkflowContractError(path, reason);
 };
+
+export const payloadDigest = (value) =>
+  createHash('sha256').update(JSON.stringify(value)).digest('hex');
+
+export const searchArtifactDigest = (artifact) =>
+  createHash('sha256')
+    .update(
+      JSON.stringify({
+        version: artifact.version,
+        artifact_id: artifact.artifact_id,
+        search_run_id: artifact.search_run_id,
+        selected_issues: artifact.selected_issues,
+      }),
+    )
+    .digest('hex');
 
 const assertSafeBranch = (branch) => {
   const safe =
@@ -144,18 +65,69 @@ const assertSafeBranch = (branch) => {
   }
 };
 
+const assertLaneLedgerSemantics = (value) => {
+  if (value.run_id !== value.lane_id) {
+    fail('lane-ledger-v2', 'run_id and lane_id must match');
+  }
+  if (
+    value.source.artifact_id !== `search:${value.source.search_run_id}` ||
+    value.source.search_ledger !==
+      `.omo/search-issue/artifacts/${value.source.search_run_id}.json`
+  ) {
+    fail('lane-ledger-v2.source', 'source identity and artifact path must match');
+  }
+  const queuedIssues = value.lanes.flatMap((lane) => lane.queue);
+  if (
+    queuedIssues.length !== value.confirmed_issues.length ||
+    new Set(queuedIssues).size !== queuedIssues.length ||
+    !value.confirmed_issues.every((issue) => queuedIssues.includes(issue))
+  ) {
+    fail(
+      'lane-ledger-v2.lanes',
+      'lane queues must partition confirmed_issues exactly once',
+    );
+  }
+  for (const lane of value.lanes) {
+    if (lane.current_issue !== null && !lane.queue.includes(lane.current_issue)) {
+      fail('lane-ledger-v2.lanes', 'current_issue must appear in its lane queue');
+    }
+    if (lane.branch !== null) {
+      assertSafeBranch(lane.branch);
+    }
+    if (
+      (lane.branch === null) !== (lane.worktree === null) ||
+      (lane.branch !== null && lane.worktree !== `.worktrees/${lane.branch}`)
+    ) {
+      fail(
+        'lane-ledger-v2.lanes',
+        'worktree must exactly match its branch under .worktrees',
+      );
+    }
+    if (
+      (lane.status === 'blocked-child-contract-error') !==
+      Object.hasOwn(lane, 'current_blocker')
+    ) {
+      fail(
+        'lane-ledger-v2.lanes',
+        'blocked-child-contract-error alone must carry current_blocker',
+      );
+    }
+  }
+};
+
 const assertSemanticContract = (name, value) => {
   switch (name) {
     case 'search-artifact-v2':
       if (value.artifact_id !== `search:${value.search_run_id}`) {
         fail(name, 'artifact_id must be canonically derived from search_run_id');
       }
+      if (value.sha256 !== searchArtifactDigest(value)) {
+        fail(name, 'sha256 must match the canonical artifact content');
+      }
       return;
     case 'lane-ledger-v2':
-      assertSafeBranch(value.branch);
-      if (value.worktree !== `.worktrees/${value.branch}`) {
-        fail(name, 'worktree must exactly match branch under .worktrees');
-      }
+      assertSafeBranch(value.base_branch);
+      assertLaneLedgerSemantics(value);
       return;
     case 'review-verdict':
       if (value.verdict === 'pass' && value.blockers.length !== 0) {
@@ -169,6 +141,14 @@ const assertSemanticContract = (name, value) => {
       if (value.status === 'succeeded' && value.head_sha === null) {
         fail(name, 'succeeded receipt must bind head_sha');
       }
+      if (
+        value.side_effect === 'pr.merge' &&
+        (value.target.kind !== 'pull-request' ||
+          value.target.url !==
+            `https://github.com/fluojs/fluo/pull/${value.target.id}`)
+      ) {
+        fail(name, 'PR merge receipt must bind a canonical pull-request target');
+      }
       return;
     case 'event': {
       const timestamp = new Date(value.occurred_at);
@@ -177,6 +157,9 @@ const assertSemanticContract = (name, value) => {
       }
       if (value.event_hash !== hashEvent(value)) {
         fail(name, 'event_hash does not match the canonical event content');
+      }
+      if (value.payload_sha256 !== payloadDigest(value.payload)) {
+        fail(name, 'payload_sha256 does not match the canonical payload');
       }
       return;
     }
@@ -210,8 +193,12 @@ export const assertLaneSourceBinding = (lane, artifact) => {
 export const assertSameHeadReview = (verdict, lane) => {
   assertContract('review-verdict', verdict);
   assertContract('lane-ledger-v2', lane);
+  const issueProgress = lane.issue_progress[String(verdict.issue_number)];
   if (
-    verdict.lane_id !== lane.lane_id || verdict.issue_number !== lane.issue_number || verdict.head_sha !== lane.head_sha
+    verdict.lane_id !== lane.lane_id ||
+    !lane.confirmed_issues.includes(verdict.issue_number) ||
+    !isRecord(issueProgress) ||
+    issueProgress.head_sha !== verdict.head_sha
   ) {
     fail('review-verdict', 'review must bind the same head and lane identity');
   }

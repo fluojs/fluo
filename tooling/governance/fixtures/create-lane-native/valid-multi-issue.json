@@ -1,0 +1,76 @@
+{
+  "inputs": [".omo/search-issue/artifacts/search-native-multi.json"],
+  "artifacts": {
+    ".omo/search-issue/artifacts/search-native-multi.json": {
+      "version": 2,
+      "artifact_id": "search:search-native-multi",
+      "sha256": "79d13a3613b9ff27ff5e91ba43865d2c083e33820f608f6e3a8dd2b87778d138",
+      "search_run_id": "search-native-multi",
+      "selected_issues": [4101, 4102]
+    }
+  },
+  "approvals": [
+    {
+      "gate": "confirmed-issues",
+      "approval_id": "approval-confirmed-multi",
+      "approved": true,
+      "issue_numbers": [4101, 4102],
+      "binding_sha256": "718e0ab089ea64e606ec19c9686a9c2f0f10e2718771ab4a21f9bd622fb5e948"
+    },
+    {
+      "gate": "suggested-additions",
+      "approval_id": "approval-suggestions-multi",
+      "approved": true,
+      "issue_numbers": [4103],
+      "binding_sha256": "e87919654666996c5e6c635096411013fd3f858a4808d3473fcd80b7266d6d7b"
+    },
+    {
+      "gate": "lane-plan",
+      "approval_id": "approval-plan-multi",
+      "approved": true,
+      "binding_sha256": "44bce400153575c91e93a55ade19d2df3ad9cd5b2bfcbf33c40ffb6686f40648"
+    }
+  ],
+  "plan": {
+    "version": 2,
+    "lane_id": "lane-4101-4103-runtime",
+    "base_branch": "main",
+    "source": {
+      "artifact_id": "search:search-native-multi",
+      "sha256": "79d13a3613b9ff27ff5e91ba43865d2c083e33820f608f6e3a8dd2b87778d138"
+    },
+    "merge_policy": "supervisor-auto",
+    "pr_merge_method": "squash",
+    "authority_scope": {
+      "issue_creation": false,
+      "pr_creation": true,
+      "pr_merge": true,
+      "publish_via_github_actions": false,
+      "cleanup_command_worktrees": true,
+      "root_main_sync_ff_only": true
+    },
+    "retry_policy": {
+      "retry_count_is_terminal": true,
+      "max_same_failure_repeats": 3,
+      "max_wall_clock_minutes": 180,
+      "stop_on_child_contract_error": true
+    },
+    "confirmed_issues": [4101, 4102, 4103],
+    "suggested_but_excluded": [],
+    "backlog_candidates": [],
+    "release_handoffs": [],
+    "lanes": [
+      {
+        "name": "runtime",
+        "queue": [4101, 4102]
+      },
+      {
+        "name": "validation",
+        "queue": [4103]
+      }
+    ],
+    "dependency_graph": {
+      "4103": [4101]
+    }
+  }
+}

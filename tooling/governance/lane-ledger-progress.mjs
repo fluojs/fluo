@@ -194,6 +194,11 @@ export function validateIssueProgress(path, ledger, prAssignments) {
     if (progress.pr !== undefined && progress.pr !== null) {
       registerPullRequest(prAssignments, progress.pr, issue, progressPath);
     }
+    assert(
+      progress.head_sha === undefined || isSha(progress.head_sha),
+      progressPath,
+      'head_sha must be a 40-character SHA when present',
+    );
     progressByIssue.set(issue, progress);
     if (isPostMergeCleanupFailureProgress(progress)) {
       validatePostMergeCleanupFailure(

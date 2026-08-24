@@ -23,28 +23,25 @@ describe('verify-lane-ledger merge authority governance', () => {
   });
 });
 
-describe('verify-lane-ledger canonical v1 completion contract', () => {
+describe('verify-lane-ledger canonical versioned completion contract', () => {
   it('accepts a completed multi-issue ledger with durable per-issue evidence', () => {
     expect(runValidator('valid-completed-multi-issue.json')).toContain('Lane ledger check passed for 1 file(s).');
   });
 
-  it.each([
-    {
-      name: 'a missing version',
-      expectedError: 'version is required',
-      mutate: (ledger: LaneLedgerFixture) => {
+  it('rejects a missing version', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
         delete ledger.version;
-      },
-    },
-    {
-      name: 'an unsupported version',
-      expectedError: 'unsupported ledger version: 2',
-      mutate: (ledger: LaneLedgerFixture) => {
-        ledger.version = 2;
-      },
-    },
-  ])('rejects $name', ({ expectedError, mutate }) => {
-    expect(runMutatedCompletedLedger(mutate)).toContain(expectedError);
+      }),
+    ).toContain('version is required');
+  });
+
+  it('rejects an unsupported version', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        ledger.version = 3;
+      }),
+    ).toContain('unsupported ledger version: 3');
   });
 
   it('guides migration for a completed ledger missing retry_policy', () => {

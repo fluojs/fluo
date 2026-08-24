@@ -11,15 +11,32 @@
   "steps": [
     {
       "kind": "review",
-      "verdict": "block",
-      "reviewed_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "blockers": [
+      "reviews": [
+        {
+          "reviewer": "contract",
+          "reviewed_head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "verdict_signal": "PASS",
+          "blockers": []
+        },
+        {
+          "reviewer": "code",
+          "reviewed_head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "verdict_signal": "PASS",
+          "blockers": []
+        },
         {
           "reviewer": "verification",
-          "signature": "runtime:verification:worker:no-progress",
-          "evidence": "runtime test still fails",
-          "fix_back_eligible": true,
-          "status": "unresolved"
+          "reviewed_head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "verdict_signal": "BLOCK",
+          "blockers": [
+            {
+              "reviewer": "verification",
+              "signature": "runtime:verification:worker:no-progress",
+              "evidence": "runtime test still fails",
+              "fix_back_eligible": true,
+              "status": "unresolved"
+            }
+          ]
         }
       ]
     },

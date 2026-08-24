@@ -16,11 +16,14 @@ Run the dedicated tests:
 
 ```text
 tooling/governance/omo-native-contracts.test.ts
+tooling/governance/omo-native-events.test.ts
 tooling/governance/search-issue-native.test.ts
+tooling/governance/search-artifact-migration.test.ts
 tooling/governance/create-lane-native.test.ts
 tooling/governance/issue-to-pr-native.test.ts
 tooling/governance/pr-to-merge-native.test.ts
 tooling/governance/execute-lane-native.test.ts
+tooling/governance/execute-lane-persistence.test.ts
 tooling/governance/omo-native-assets.test.ts
 ```
 

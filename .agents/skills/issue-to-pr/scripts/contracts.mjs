@@ -136,6 +136,12 @@ export const assertIssueToPrInput = (value) => {
   if (value.existing_pr.head_branch !== value.branch || value.blockers.length === 0) {
     fail('issue-to-pr input', 'fix-back PR identity and at least one blocker are required');
   }
+  if (value.blockers.some((blocker) => blocker.fix_back_eligible !== true)) {
+    fail(
+      'issue-to-pr input.blockers',
+      'fix-back requires every blocker to set fix_back_eligible true; route others to human resolution',
+    );
+  }
   if (!Number.isSafeInteger(value.fix_back_attempt) || value.fix_back_attempt < 1 || value.fix_back_attempt > 3) {
     fail('issue-to-pr input.fix_back_attempt', 'must be an integer from 1 through 3');
   }
@@ -209,6 +215,25 @@ export const assertIssueToPrResult = (input, result) => {
   }
   assertCanonicalBlockers(result.addressed_blockers, 'issue-to-pr typed output.addressed_blockers');
   assertCanonicalBlockers(result.remaining_blockers, 'issue-to-pr typed output.remaining_blockers');
+  const addressedMatchesInput =
+    result.addressed_blockers.length === input.blockers.length &&
+    input.blockers.every(
+      (inputBlocker) =>
+        result.addressed_blockers.filter(
+          (addressed) =>
+            addressed.reviewer === inputBlocker.reviewer &&
+            addressed.signature === inputBlocker.signature &&
+            addressed.evidence === inputBlocker.evidence &&
+            addressed.fix_back_eligible === inputBlocker.fix_back_eligible &&
+            addressed.status === 'remediated',
+        ).length === 1,
+    );
+  if (!addressedMatchesInput) {
+    fail(
+      'issue-to-pr typed output.addressed_blockers',
+      'must contain every input blocker exactly once as remediated',
+    );
+  }
   const hasUnremediatedAddressedBlocker = result.addressed_blockers.some((item) => item.status !== 'remediated');
   const expectedFixBackResult = input.mode === 'fix-back' ? 'remediated' : 'not-applicable';
   if (hasUnremediatedAddressedBlocker || result.fix_back_result !== expectedFixBackResult || result.remaining_blockers.length !== 0) {

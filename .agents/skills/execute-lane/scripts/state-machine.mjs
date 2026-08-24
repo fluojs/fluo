@@ -1,12 +1,26 @@
-import { createHash } from 'node:crypto';
-
 import {
   assertContract,
   assertEventChain,
-  hashEvent,
 } from '../../../workflow-contracts/contracts.mjs';
+import {
+  applyReview,
+  appendEvent,
+  cleanupReceipts,
+  initialiseExecution,
+  progressFor,
+  rootSyncReceipt,
+  setRootStatus,
+  terminalize,
+} from './transition-application.mjs';
+import {
+  cleanupSucceeded,
+  identityFrom,
+  requireRecord,
+  requireSha,
+  resumeMatches,
+  rootSyncObservation,
+} from './transition-contracts.mjs';
 
-const shaPattern = /^[a-f0-9]{40}$/u;
 const terminalStatuses = new Set([
   'done',
   'needs-human-check-terminal',
@@ -15,220 +29,208 @@ const terminalStatuses = new Set([
   'blocked-ledger-conflict',
   'blocked-terminal',
 ]);
-const occurredAt = '2026-08-24T00:00:00.000Z';
 
-const isRecord = (value) =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
-const requireRecord = (value, name) => {
-  if (!isRecord(value)) {
-    throw new TypeError(`${name} must be an object.`);
+const applyFix = (step, snapshot, identity, events) => {
+  const lane = snapshot.lanes[identity.lane_index];
+  const progress = progressFor(snapshot, identity);
+  const newHead = requireSha(step.new_head, 'fix.new_head');
+  const unresolved = progress.blockers
+    .filter((blocker) => blocker.status === 'unresolved')
+    .map((blocker) => blocker.signature);
+  if (
+    !Array.isArray(step.addressed_blockers) ||
+    step.addressed_blockers.length !== unresolved.length ||
+    !unresolved.every((signature) =>
+      step.addressed_blockers.includes(signature),
+    ) ||
+    newHead === identity.head_sha
+  ) {
+    terminalize(snapshot, identity, 'blocked-budget-exhausted');
+    appendEvent(events, identity.lane_id, 'fix.noprogress', identity.pr_url, {
+      head_sha: identity.head_sha,
+    });
+    return;
   }
-  return value;
+  progress.blockers = progress.blockers.map((blocker) => ({
+    ...blocker,
+    status: 'remediated',
+  }));
+  identity.head_sha = newHead;
+  progress.head_sha = newHead;
+  progress.status = 'in_review';
+  progress.retry_count += 1;
+  lane.status = 'in_review';
+  lane.retry_count = progress.retry_count;
+  appendEvent(events, identity.lane_id, 'fix.completed', identity.pr_url, {
+    head_sha: newHead,
+  });
 };
 
-const requireString = (value, name) => {
-  if (typeof value !== 'string' || value.length === 0) {
-    throw new TypeError(`${name} must be a non-empty string.`);
+const applyCleanup = (step, snapshot, identity, receipts, events) => {
+  const lane = snapshot.lanes[identity.lane_index];
+  const progress = progressFor(snapshot, identity);
+  if (cleanupSucceeded(step, identity)) {
+    Object.assign(progress, {
+      status: 'done',
+      cleanup: {
+        status: 'done',
+        worktree_removed: true,
+        local_branch_deleted: true,
+        remote_branch_deleted: true,
+      },
+    });
+    Object.assign(lane, {
+      status: 'done',
+      current_issue: null,
+      branch: null,
+      worktree: null,
+      pr: null,
+      retry_count: 0,
+    });
+    receipts.push(...cleanupReceipts(identity));
+    appendEvent(events, identity.lane_id, 'cleanup.observed', identity.lane_id, {
+      status: 'done',
+    });
+    return;
   }
-  return value;
+  progress.status = 'blocked-terminal';
+  progress.blockers = [
+    {
+      reviewer: 'verification',
+      signature: 'cleanup:observed:incomplete',
+      evidence: identity.worktree,
+      fix_back_eligible: false,
+      status: 'unresolved',
+    },
+  ];
+  terminalize(snapshot, identity, 'blocked-terminal', progress.blockers);
+  snapshot.root_main_sync = { status: 'blocked-dirty', sha: null };
+  appendEvent(events, identity.lane_id, 'cleanup.blocked', identity.lane_id, {
+    status: 'blocked-terminal',
+  });
 };
 
-const requireSha = (value, name) => {
-  const sha = requireString(value, name);
-  if (!shaPattern.test(sha)) {
-    throw new TypeError(`${name} must be a 40-character lowercase SHA.`);
-  }
-  return sha;
+const applyRootSync = (step, snapshot, identity, receipts, events) => {
+  const progress = progressFor(snapshot, identity);
+  const syncedSha = rootSyncObservation(
+    step,
+    snapshot,
+    progress.merge_commit,
+  );
+  snapshot.root_main_sync = { status: 'done', sha: syncedSha };
+  setRootStatus(snapshot, 'done');
+  receipts.push(rootSyncReceipt(identity, snapshot.base_branch, syncedSha));
+  appendEvent(events, identity.lane_id, 'root.sync', snapshot.base_branch, {
+    sha: syncedSha,
+  });
 };
 
-const payloadHash = (value) =>
-  createHash('sha256').update(JSON.stringify(value)).digest('hex');
-
-const identityFrom = (scenario) => {
-  const pr = requireRecord(scenario.pr, 'scenario.pr');
-  const issueNumber = scenario.issue_number;
-  const prNumber = pr.number;
-  if (!Number.isSafeInteger(issueNumber) || issueNumber <= 0) {
-    throw new TypeError('scenario.issue_number must be a positive integer.');
-  }
-  if (!Number.isSafeInteger(prNumber) || prNumber <= 0) {
-    throw new TypeError('scenario.pr.number must be a positive integer.');
-  }
-  return {
-    lane_id: requireString(scenario.lane_id, 'scenario.lane_id'),
-    issue_number: issueNumber,
-    branch: requireString(scenario.branch, 'scenario.branch'),
-    worktree: requireString(scenario.worktree, 'scenario.worktree'),
-    pr_number: prNumber,
-    pr_url: requireString(pr.url, 'scenario.pr.url'),
-    head_sha: requireSha(pr.head_sha, 'scenario.pr.head_sha'),
-  };
-};
-
-const eventAppender = (streamId, subjectId, events) => (eventType, payload) => {
-  const event = {
-    version: 1,
-    stream_id: streamId,
-    sequence: events.length + 1,
-    previous_hash: events.at(-1)?.event_hash ?? null,
-    event_hash: '',
-    event_type: eventType,
-    subject_id: subjectId,
-    payload_sha256: payloadHash(payload),
-    occurred_at: occurredAt,
-  };
-  event.event_hash = hashEvent(event);
-  assertContract('event', event);
-  events.push(event);
-};
-
-const mergeReceipt = (identity, status) => {
-  const receipt = {
-    version: 1,
-    receipt_id: `${identity.lane_id}:pr.merge:1`,
-    lane_id: identity.lane_id,
-    issue_number: identity.issue_number,
-    side_effect: 'pr.merge',
-    status,
-    head_sha: identity.head_sha,
-    evidence: `PR #${String(identity.pr_number)} at ${identity.head_sha}`,
-  };
-  assertContract('receipt', receipt);
-  return receipt;
-};
-
-const blockerIsFixable = (blocker) =>
-  isRecord(blocker) &&
-  blocker.status === 'unresolved' &&
-  blocker.fix_back_eligible === true;
-
-export const runReplay = (input) => {
+export const runReplay = (input, persisted) => {
   const scenario = requireRecord(input, 'scenario');
-  const identity = identityFrom(scenario);
+  const snapshot = structuredClone(persisted.snapshot);
+  const events = structuredClone(persisted.events);
+  const receipts = structuredClone(persisted.receipts);
+  assertContract('lane-ledger-v2', snapshot);
+  const identity = identityFrom(scenario, snapshot);
+  initialiseExecution(snapshot, identity, events);
   const steps = scenario.steps;
   if (!Array.isArray(steps) || steps.length === 0) {
     throw new TypeError('scenario.steps must be a non-empty array.');
   }
-
-  const events = [];
-  const receipts = [];
-  const append = eventAppender(identity.lane_id, identity.lane_id, events);
-  let status = scenario.start_state === 'interrupted' ? 'interrupted' : 'pr-ready';
-  let mergeCount = 0;
-  let fixAttempts = 0;
-
-  append('lane.started', { status, head_sha: identity.head_sha });
+  let interrupted = false;
 
   for (const rawStep of steps) {
-    if (terminalStatuses.has(status)) {
+    if (terminalStatuses.has(snapshot.status)) {
       break;
     }
     const step = requireRecord(rawStep, 'scenario step');
-    const kind = requireString(step.kind, 'scenario step.kind');
-
-    if (kind === 'malformed-review') {
-      status = 'blocked-child-contract-error';
-      append('review.malformed', { status });
+    if (step.kind === 'interrupt') {
+      appendEvent(events, identity.lane_id, 'lane.interrupted', identity.lane_id, {
+        head_sha: identity.head_sha,
+      });
+      interrupted = true;
+      break;
+    }
+    if (step.kind === 'malformed-review') {
+      terminalize(snapshot, identity, 'blocked-child-contract-error');
+      appendEvent(events, identity.lane_id, 'review.malformed', identity.pr_url, {});
       continue;
     }
-
-    if (kind === 'resume') {
-      const liveHead = requireSha(step.live_head, 'resume.live_head');
-      if (liveHead !== identity.head_sha) {
-        status = 'blocked-ledger-conflict';
-        append('resume.conflict', { live_head: liveHead });
-      } else {
-        status = 'pr-ready';
-        append('resume.reconciled', { head_sha: liveHead });
+    if (step.kind === 'resume') {
+      if (!resumeMatches(step, identity)) {
+        terminalize(snapshot, identity, 'blocked-ledger-conflict');
       }
+      appendEvent(events, identity.lane_id, 'resume.reconciled', identity.pr_url, {
+        matched: snapshot.status !== 'blocked-ledger-conflict',
+        head_sha: identity.head_sha,
+      });
       continue;
     }
-
-    if (kind === 'review') {
-      const reviewedHead = requireSha(step.reviewed_head, 'review.reviewed_head');
-      if (reviewedHead !== identity.head_sha) {
-        status = 'blocked-ledger-conflict';
-        append('review.stale', { reviewed_head: reviewedHead });
-        continue;
-      }
-      if (step.verdict === 'merge') {
-        mergeCount += 1;
-        status = 'merged';
-        receipts.push(mergeReceipt(identity, 'succeeded'));
-        append('review.merge', { head_sha: identity.head_sha });
-        continue;
-      }
-      if (step.verdict === 'needs-human-check') {
-        status = 'needs-human-check-terminal';
-        append('review.human', { head_sha: identity.head_sha });
-        continue;
-      }
-      if (step.verdict === 'block' && Array.isArray(step.blockers)) {
-        for (const blocker of step.blockers) {
-          assertContract('blocker', blocker);
-        }
-        status = step.blockers.every(blockerIsFixable)
-          ? 'fix-requested'
-          : 'needs-human-check-terminal';
-        append('review.block', { blockers: step.blockers.length, status });
-        continue;
-      }
-      status = 'blocked-child-contract-error';
-      append('review.malformed', { status });
+    if (step.kind === 'review') {
+      applyReview(step, snapshot, identity, receipts, events);
       continue;
     }
-
-    if (kind === 'fix' && status === 'fix-requested') {
-      fixAttempts += 1;
-      const newHead = requireSha(step.new_head, 'fix.new_head');
-      if (newHead === identity.head_sha || fixAttempts > 6) {
-        status = 'blocked-budget-exhausted';
-        append('fix.noprogress', { attempts: fixAttempts });
-      } else {
-        identity.head_sha = newHead;
-        status = 'pr-ready';
-        append('fix.completed', { attempts: fixAttempts, head_sha: newHead });
-      }
+    const lane = snapshot.lanes[identity.lane_index];
+    const progress = progressFor(snapshot, identity);
+    if (step.kind === 'fix' && progress.status === 'running') {
+      applyFix(step, snapshot, identity, events);
       continue;
     }
-
-    if (kind === 'cleanup' && status === 'merged') {
-      status = step.result === 'done' ? 'done' : 'blocked-terminal';
-      append('cleanup.completed', { result: step.result, status });
+    if (step.kind === 'cleanup' && progress.status === 'merged') {
+      applyCleanup(step, snapshot, identity, receipts, events);
       continue;
     }
-
-    status = 'blocked-child-contract-error';
-    append('step.invalid', { kind, status });
+    if (
+      step.kind === 'root-sync' &&
+      snapshot.lanes.every((candidate) => candidate.status === 'done')
+    ) {
+      applyRootSync(step, snapshot, identity, receipts, events);
+      continue;
+    }
+    terminalize(snapshot, identity, 'blocked-child-contract-error');
+    appendEvent(events, identity.lane_id, 'step.invalid', identity.lane_id, {
+      kind: step.kind,
+    });
   }
 
-  if (!terminalStatuses.has(status)) {
-    status = status === 'fix-requested' ? 'blocked-budget-exhausted' : status;
-    append('lane.terminal', { status });
+  if (!interrupted) {
+    const progress = progressFor(snapshot, identity);
+    if (
+      !terminalStatuses.has(snapshot.status) &&
+      progress.status === 'running'
+    ) {
+      terminalize(snapshot, identity, 'blocked-budget-exhausted');
+      appendEvent(events, identity.lane_id, 'lane.terminal', identity.lane_id, {
+        status: snapshot.status,
+      });
+    }
   }
+  assertContract('lane-ledger-v2', snapshot);
   assertEventChain(events);
-
   return {
-    ...identity,
-    status,
-    merge_count: mergeCount,
+    lane_id: identity.lane_id,
+    issue_number: identity.issue_number,
+    branch: identity.branch,
+    worktree: identity.worktree,
+    pr_number: identity.pr_number,
+    pr_url: identity.pr_url,
+    head_sha: identity.head_sha,
+    status: snapshot.status,
+    merge_count: receipts.filter(
+      (item) =>
+        item.side_effect === 'pr.merge' && item.status === 'succeeded',
+    ).length,
     events,
-    snapshot: {
-      version: 2,
-      lane_id: identity.lane_id,
-      issue_number: identity.issue_number,
-      status,
-      head_sha: identity.head_sha,
-      lease: { holder: 'execute-lane', status: 'released' },
-      receipts,
-    },
+    receipts,
+    snapshot,
   };
 };
 
-export const runLaneBatch = (scenarios) => {
-  if (!Array.isArray(scenarios)) {
-    throw new TypeError('scenarios must be an array.');
+export const runLaneBatch = (entries) => {
+  if (!Array.isArray(entries)) {
+    throw new TypeError('entries must be an array.');
   }
-  return scenarios.map(runReplay);
+  return entries.map(({ scenario, persisted }) =>
+    runReplay(scenario, persisted),
+  );
 };

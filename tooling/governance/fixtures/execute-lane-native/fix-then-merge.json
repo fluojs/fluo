@@ -11,27 +11,96 @@
   "steps": [
     {
       "kind": "review",
-      "verdict": "block",
-      "reviewed_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "blockers": [
+      "reviews": [
+        {
+          "reviewer": "contract",
+          "reviewed_head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "verdict_signal": "PASS",
+          "blockers": []
+        },
         {
           "reviewer": "code",
-          "signature": "runtime:code:worker:abort-path",
-          "evidence": "packages/runtime/src/worker.ts:42",
-          "fix_back_eligible": true,
-          "status": "unresolved"
+          "reviewed_head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "verdict_signal": "BLOCK",
+          "blockers": [
+            {
+              "reviewer": "code",
+              "signature": "runtime:code:worker:abort-path",
+              "evidence": "packages/runtime/src/worker.ts:42",
+              "fix_back_eligible": true,
+              "status": "unresolved"
+            }
+          ]
+        },
+        {
+          "reviewer": "verification",
+          "reviewed_head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "verdict_signal": "PASS",
+          "blockers": []
         }
       ]
     },
     {
       "kind": "fix",
-      "new_head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      "new_head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "addressed_blockers": [
+        "runtime:code:worker:abort-path"
+      ]
     },
     {
       "kind": "review",
-      "verdict": "merge",
-      "reviewed_head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      "reviews": [
+        {
+          "reviewer": "contract",
+          "reviewed_head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "verdict_signal": "PASS",
+          "blockers": []
+        },
+        {
+          "reviewer": "code",
+          "reviewed_head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "verdict_signal": "PASS",
+          "blockers": []
+        },
+        {
+          "reviewer": "verification",
+          "reviewed_head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "verdict_signal": "PASS",
+          "blockers": []
+        }
+      ],
+      "merge_observation": {
+        "authority": "lead",
+        "action": "pr.merge",
+        "pr_number": 5101,
+        "pr_url": "https://github.com/fluojs/fluo/pull/5101",
+        "head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "merge_method": "squash",
+        "merged": true,
+        "issue_state": "CLOSED",
+        "merge_commit_sha": "dddddddddddddddddddddddddddddddddddddddd"
+      }
     },
-    { "kind": "cleanup", "result": "done" }
+    {
+      "kind": "cleanup",
+      "observation": {
+        "authority": "lead",
+        "branch": "issue-4101-runtime",
+        "worktree": ".worktrees/issue-4101-runtime",
+        "worktree_removed": true,
+        "local_branch_deleted": true,
+        "remote_branch_deleted": true
+      }
+    },
+    {
+      "kind": "root-sync",
+      "observation": {
+        "authority": "lead",
+        "base_branch": "main",
+        "ff_only": true,
+        "status": "done",
+        "sha": "dddddddddddddddddddddddddddddddddddddddd"
+      }
+    }
   ]
 }

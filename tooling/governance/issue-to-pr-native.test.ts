@@ -140,6 +140,19 @@ describe('$issue-to-pr native input and identity contract', () => {
       }),
     ).toThrow(/identity|PR/u);
   });
+
+  it('rejects fix-back input containing a blocker that requires human resolution', () => {
+    // Given
+    const api = requireContracts();
+
+    // When / Then
+    expect(() =>
+      api.assertIssueToPrInput({
+        ...fixBackInput,
+        blockers: [{ ...blocker, fix_back_eligible: false }],
+      }),
+    ).toThrow(/fix_back_eligible|human/u);
+  });
 });
 
 describe('$issue-to-pr authority and typed output contract', () => {
@@ -189,6 +202,31 @@ describe('$issue-to-pr authority and typed output contract', () => {
         unexpected: true,
       }),
     ).toThrow(/unknown key|typed output/u);
+  });
+
+  it('requires every input blocker to appear exactly once as remediated output', () => {
+    // Given
+    const api = requireContracts();
+
+    // When / Then
+    expect(() =>
+      api.assertIssueToPrResult(fixBackInput, {
+        ...completedResult,
+        addressed_blockers: [],
+      }),
+    ).toThrow(/addressed_blockers|input blocker/u);
+    expect(() =>
+      api.assertIssueToPrResult(fixBackInput, {
+        ...completedResult,
+        addressed_blockers: [
+          {
+            ...blocker,
+            signature: 'different-blocker',
+            status: 'remediated',
+          },
+        ],
+      }),
+    ).toThrow(/addressed_blockers|input blocker/u);
   });
 });
 

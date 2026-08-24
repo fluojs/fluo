@@ -36,5 +36,29 @@ cutover. Native workflows must not read that archive as a runtime fallback.
 4. Atomically preserve `.opencode` as `.opencode-backup/`.
 5. Confirm active runtime references use only `.agents/**` and `.omo/**`.
 
+The explicit one-time importer is:
+
+```bash
+node .agents/skills/search-issue/scripts/migrate-legacy-artifacts.mjs \
+  --source .opencode-backup/search-issue \
+  --target .omo/search-issue/artifacts/legacy \
+  --migrated-at 2026-08-24T00:00:00.000Z
+```
+
+It is the only native asset allowed to read archived search state, and only
+during explicit migration. Runtime search/create/execute entrypoints never
+load archived commands, roles, or state as a fallback.
+
+Direct issue-list lane creation is intentionally replaced by:
+
+```bash
+node .agents/skills/search-issue/scripts/publish-search-artifact.mjs \
+  --run-id manual-<id> --issues <n1,n2> --root .
+$create-lane .omo/search-issue/artifacts/manual-<id>.json main
+```
+
+This preserves existing-issue workflows while making artifact ID and digest
+provenance mandatory.
+
 Rollback restores the control plane only. Remote GitHub issues, PRs, and merges
 are reconciled into the restored ledger; they are never silently undone.

@@ -32,6 +32,7 @@ Runtime state belongs under `.omo/`; skills and memory are not run-state stores.
     ".agents/workflow-contracts/lane-ledger-v2.schema.json",
     ".agents/workflow-contracts/receipt.schema.json",
     ".agents/workflow-contracts/review-verdict.schema.json",
+    ".agents/workflow-contracts/schema-validator.mjs",
     ".agents/workflow-contracts/search-artifact-v2.schema.json"
   ]
 }

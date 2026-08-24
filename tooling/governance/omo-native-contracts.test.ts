@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -14,24 +15,94 @@ const contractNames = [
 ] as const;
 const modulePath = resolve(contractRoot, 'contracts.mjs');
 
-const artifact = {
+const artifactDigest = (
+  value: Readonly<{
+    version: number;
+    artifact_id: string;
+    search_run_id: string;
+    selected_issues: readonly number[];
+  }>,
+): string =>
+  createHash('sha256')
+    .update(
+      JSON.stringify({
+        version: value.version,
+        artifact_id: value.artifact_id,
+        search_run_id: value.search_run_id,
+        selected_issues: value.selected_issues,
+      }),
+    )
+    .digest('hex');
+
+const artifactIdentity = {
   version: 2,
   artifact_id: 'search:search-2026-08-runtime',
-  sha256: 'a'.repeat(64),
   search_run_id: 'search-2026-08-runtime',
   selected_issues: [4101],
+} as const;
+const artifact = {
+  ...artifactIdentity,
+  sha256: artifactDigest(artifactIdentity),
 };
+const issueNumber = 4101;
+const headSha = 'b'.repeat(40);
 const lane = {
   version: 2,
+  run_id: 'lane-4101-runtime',
   lane_id: 'lane-4101-runtime',
+  status: 'running',
+  created_by: 'create-lane',
+  base_branch: 'main',
   source: {
+    type: 'search-issue',
+    search_run_id: artifact.search_run_id,
+    search_ledger: `.omo/search-issue/artifacts/${artifact.search_run_id}.json`,
     artifact_id: artifact.artifact_id,
     sha256: artifact.sha256,
   },
-  issue_number: 4101,
-  branch: 'issue-4101-runtime',
-  worktree: '.worktrees/issue-4101-runtime',
-  head_sha: 'b'.repeat(40),
+  merge_policy: 'supervisor-auto',
+  pr_merge_method: 'squash',
+  authority_scope: {
+    issue_creation: false,
+    pr_creation: true,
+    pr_merge: true,
+    cleanup_command_worktrees: true,
+    root_main_sync_ff_only: true,
+    publish_via_github_actions: false,
+  },
+  retry_policy: {
+    retry_count_is_terminal: true,
+    max_same_failure_repeats: 3,
+    max_wall_clock_minutes: 180,
+    stop_on_child_contract_error: true,
+  },
+  execution: {
+    status: 'running',
+    last_command: '$execute-lane lane-4101-runtime',
+    last_updated: '2026-08-24T00:00:00.000Z',
+  },
+  confirmed_issues: [issueNumber],
+  suggested_but_excluded: [],
+  backlog_candidates: [],
+  release_handoffs: [],
+  completed_issues: [],
+  issue_progress: {
+    [String(issueNumber)]: { head_sha: headSha },
+  },
+  lanes: [
+    {
+      name: 'runtime',
+      queue: [issueNumber],
+      current_issue: issueNumber,
+      status: 'in_review',
+      branch: 'issue-4101-runtime',
+      worktree: '.worktrees/issue-4101-runtime',
+      pr: 'https://github.com/fluojs/fluo/pull/4101',
+      retry_count: 0,
+    },
+  ],
+  dependency_graph: {},
+  root_main_sync: { status: 'not-started', sha: null },
 };
 const blocker = {
   reviewer: 'code',
@@ -43,20 +114,25 @@ const blocker = {
 const reviewVerdict = {
   version: 1,
   lane_id: lane.lane_id,
-  issue_number: lane.issue_number,
+  issue_number: issueNumber,
   reviewer: 'code',
   verdict: 'block',
-  head_sha: lane.head_sha,
+  head_sha: headSha,
   blockers: [blocker],
 };
 const receipt = {
   version: 1,
   receipt_id: 'receipt-4101-merge',
   lane_id: lane.lane_id,
-  issue_number: lane.issue_number,
+  issue_number: issueNumber,
   side_effect: 'pr.merge',
   status: 'succeeded',
-  head_sha: lane.head_sha,
+  head_sha: headSha,
+  target: {
+    kind: 'pull-request',
+    id: '4101',
+    url: 'https://github.com/fluojs/fluo/pull/4101',
+  },
   evidence: 'https://github.com/fluojs/fluo/pull/4101',
 };
 
@@ -79,29 +155,6 @@ const requireContracts = (): ContractsModule => {
     throw new TypeError('contracts.mjs is unavailable');
   }
   return contracts;
-};
-
-const eventWithoutHash = (
-  sequence: number,
-  previous_hash: string | null,
-): Readonly<Record<string, unknown>> => ({
-  version: 1,
-  stream_id: lane.lane_id,
-  sequence,
-  previous_hash,
-  event_type: 'receipt.recorded',
-  subject_id: receipt.receipt_id,
-  payload_sha256: 'c'.repeat(64),
-  occurred_at: `2026-08-24T00:00:0${String(sequence)}.000Z`,
-});
-
-const eventWithHash = (
-  api: ContractsModule,
-  sequence: number,
-  previous_hash: string | null,
-): Readonly<Record<string, unknown>> => {
-  const event = eventWithoutHash(sequence, previous_hash);
-  return { ...event, event_hash: api.hashEvent(event) };
 };
 
 describe('OMO native workflow JSON schemas', () => {
@@ -137,6 +190,17 @@ describe('OMO native workflow JSON schemas', () => {
 });
 
 describe('OMO native cross-contract invariants', () => {
+  it('rejects a search artifact whose canonical content does not match sha256', () => {
+    // Given
+    const api = requireContracts();
+    const tamperedArtifact = { ...artifact, selected_issues: [9999] };
+
+    // When / Then
+    expect(() =>
+      api.assertContract('search-artifact-v2', tamperedArtifact),
+    ).toThrow(/sha256.*canonical/u);
+  });
+
   it('binds a lane source to both artifact_id and sha256', () => {
     // Given
     const api = requireContracts();
@@ -151,7 +215,7 @@ describe('OMO native cross-contract invariants', () => {
     ).toThrow(/source binding/u);
   });
 
-  it('requires lane v2 branch, worktree, and issue identity to agree', () => {
+  it('requires each lane v2 worktree to match its branch', () => {
     // Given
     const api = requireContracts();
 
@@ -160,7 +224,12 @@ describe('OMO native cross-contract invariants', () => {
     expect(() =>
       api.assertContract('lane-ledger-v2', {
         ...lane,
-        worktree: '.worktrees/issue-999-other',
+        lanes: [
+          {
+            ...lane.lanes[0],
+            worktree: '.worktrees/issue-999-other',
+          },
+        ],
       }),
     ).toThrow(/worktree.*branch/u);
   });
@@ -201,27 +270,4 @@ describe('OMO native cross-contract invariants', () => {
     ).toThrow(/succeeded receipt.*head_sha/u);
   });
 
-  it('accepts only sequenced, content-hashed, hash-linked events', () => {
-    // Given
-    const api = requireContracts();
-    const first = eventWithHash(api, 1, null);
-    const firstHash = first['event_hash'];
-    expect(typeof firstHash).toBe('string');
-    const second = eventWithHash(api, 2, typeof firstHash === 'string' ? firstHash : null);
-
-    // When / Then
-    expect(() => api.assertContract('event', first)).not.toThrow();
-    expect(() => api.assertEventChain([first, second])).not.toThrow();
-    expect(() =>
-      api.assertEventChain([{ ...first, subject_id: 'tampered' }, second]),
-    ).toThrow(/event_hash/u);
-    const skippedSequence = eventWithHash(
-      api,
-      3,
-      typeof firstHash === 'string' ? firstHash : null,
-    );
-    expect(() => api.assertEventChain([first, skippedSequence])).toThrow(/sequence/u);
-    const brokenLink = eventWithHash(api, 2, 'f'.repeat(64));
-    expect(() => api.assertEventChain([first, brokenLink])).toThrow(/previous_hash/u);
-  });
 });

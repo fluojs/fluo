@@ -1,6 +1,7 @@
-import { createHash } from 'node:crypto';
 import { linkSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+
+import { searchArtifactDigest } from '../../../workflow-contracts/contracts.mjs';
 
 const safeRunId = /^(?!.*(?:\.|\.lock)$)[A-Za-z0-9][A-Za-z0-9+._-]*$/u;
 
@@ -14,7 +15,7 @@ export const searchArtifact = (runId, selectedIssues) => {
   return {
     version: identity.version,
     artifact_id: identity.artifact_id,
-    sha256: createHash('sha256').update(JSON.stringify(identity)).digest('hex'),
+    sha256: searchArtifactDigest(identity),
     search_run_id: identity.search_run_id,
     selected_issues: identity.selected_issues,
   };

@@ -1,136 +1,213 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
 const root = process.cwd();
 const skillRoot = resolve(root, '.agents/skills/execute-lane');
-const stateMachinePath = resolve(skillRoot, 'scripts/state-machine.mjs');
+const replayCli = resolve(skillRoot, 'scripts/run-replay.mjs');
+const ledgerVerifier = resolve(
+  root,
+  'tooling/governance/verify-lane-ledger.mjs',
+);
 const fixtureRoot = resolve(
   root,
   'tooling/governance/fixtures/execute-lane-native',
 );
+const initialLedger = resolve(fixtureRoot, 'ready-ledger-v2.json');
 
-type ReplayResult = {
-  readonly branch: string;
-  readonly events: readonly unknown[];
-  readonly head_sha: string;
-  readonly lane_id: string;
-  readonly merge_count: number;
-  readonly pr_number: number;
-  readonly status: string;
-  readonly worktree: string;
+type ScenarioRun = {
+  readonly stateDirectory: string;
+  readonly result: Readonly<Record<string, unknown>>;
 };
 
-type ReplayApi = {
-  readonly runLaneBatch: (
-    scenarios: readonly Record<string, unknown>[],
-  ) => readonly ReplayResult[];
-  readonly runReplay: (scenario: Record<string, unknown>) => ReplayResult;
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const parseRecord = (value: string): Readonly<Record<string, unknown>> => {
+  const parsed: unknown = JSON.parse(value);
+  if (!isRecord(parsed)) {
+    throw new TypeError('Expected a JSON object.');
+  }
+  return parsed;
 };
 
-const readFixture = (name: string): Record<string, unknown> =>
-  JSON.parse(readFileSync(resolve(fixtureRoot, `${name}.json`), 'utf8')) as Record<
-    string,
-    unknown
-  >;
+const readFixture = (name: string): Readonly<Record<string, unknown>> =>
+  parseRecord(readFileSync(resolve(fixtureRoot, `${name}.json`), 'utf8'));
 
-const loadApi = async (): Promise<ReplayApi> => {
-  expect(existsSync(stateMachinePath), 'execute state machine must exist').toBe(
-    true,
+const runScenarioPath = (
+  scenarioPath: string,
+  stateDirectory?: string,
+): ScenarioRun => {
+  const state =
+    stateDirectory ?? mkdtempSync(resolve(tmpdir(), 'fluo-execute-lane-'));
+  const stdout = execFileSync(
+    process.execPath,
+    [
+      replayCli,
+      '--scenario',
+      scenarioPath,
+      '--ledger',
+      initialLedger,
+      '--state-dir',
+      state,
+    ],
+    { encoding: 'utf8' },
   );
-  const loaded: Partial<ReplayApi> = existsSync(stateMachinePath)
-    ? ((await import(stateMachinePath)) as Partial<ReplayApi>)
-    : {};
-  expect(loaded.runReplay, 'runReplay must be exported').toBeTypeOf('function');
-  expect(loaded.runLaneBatch, 'runLaneBatch must be exported').toBeTypeOf(
-    'function',
-  );
-  return loaded as ReplayApi;
+  return { stateDirectory: state, result: parseRecord(stdout) };
 };
 
-const expectIdentity = (result: ReplayResult): void => {
-  expect(result.lane_id).toBe('lane-4101-runtime');
-  expect(result.branch).toBe('issue-4101-runtime');
-  expect(result.worktree).toBe('.worktrees/issue-4101-runtime');
-  expect(result.pr_number).toBe(5101);
+const runScenario = (
+  fixtureName: string,
+  stateDirectory?: string,
+): ScenarioRun =>
+  runScenarioPath(resolve(fixtureRoot, `${fixtureName}.json`), stateDirectory);
+
+const runScenarioValue = (
+  scenario: Readonly<Record<string, unknown>>,
+): ScenarioRun => {
+  const scenarioRoot = mkdtempSync(resolve(tmpdir(), 'fluo-execute-input-'));
+  const scenarioPath = resolve(scenarioRoot, 'scenario.json');
+  try {
+    writeFileSync(scenarioPath, `${JSON.stringify(scenario, null, 2)}\n`, 'utf8');
+    return runScenarioPath(scenarioPath);
+  } finally {
+    rmSync(scenarioRoot, { recursive: true, force: true });
+  }
 };
 
-describe('$execute-lane native replay state machine', () => {
+const expectIdentity = (
+  result: Readonly<Record<string, unknown>>,
+): void => {
+  expect(result['lane_id']).toBe('lane-4101-runtime');
+  expect(result['branch']).toBe('issue-4101-runtime');
+  expect(result['worktree']).toBe('.worktrees/issue-4101-runtime');
+  expect(result['pr_number']).toBe(5101);
+};
+
+describe('$execute-lane persisted native state machine', () => {
   it.each([
     ['happy', 'done', 1],
     ['fix-then-merge', 'done', 1],
     ['needs-human-check', 'needs-human-check-terminal', 0],
     ['no-progress-budget', 'blocked-budget-exhausted', 0],
     ['malformed-child', 'blocked-child-contract-error', 0],
-    ['interrupted-resume', 'done', 1],
     ['cleanup-block', 'blocked-terminal', 1],
   ] as const)(
     'replays %s to %s without unauthorized merges',
-    async (fixtureName, status, mergeCount) => {
-      const api = await loadApi();
-      const result = api.runReplay(readFixture(fixtureName));
-
-      expect(result.status).toBe(status);
-      expect(result.merge_count).toBe(mergeCount);
-      expect(result.events.length).toBeGreaterThan(0);
-      expectIdentity(result);
+    (fixtureName, status, mergeCount) => {
+      const run = runScenario(fixtureName);
+      try {
+        expect(run.result['status']).toBe(status);
+        expect(run.result['merge_count']).toBe(mergeCount);
+        expectIdentity(run.result);
+        expect(
+          execFileSync(
+            process.execPath,
+            [ledgerVerifier, resolve(run.stateDirectory, 'snapshot.json')],
+            { encoding: 'utf8' },
+          ),
+        ).toContain('Lane ledger check passed for 1 file(s).');
+      } finally {
+        rmSync(run.stateDirectory, { recursive: true, force: true });
+      }
     },
   );
 
-  it('keeps fix-back on the same PR and requires a new head', async () => {
-    const api = await loadApi();
-    const result = api.runReplay(readFixture('fix-then-merge'));
-
-    expectIdentity(result);
-    expect(result.head_sha).toBe('b'.repeat(40));
+  it('rejects an incomplete reviewer triad without creating a merge receipt', () => {
+    const scenario = readFixture('happy');
+    const steps = scenario['steps'];
+    if (!Array.isArray(steps) || !isRecord(steps[0])) {
+      throw new TypeError('happy fixture must contain a review step');
+    }
+    const reviews = steps[0]['reviews'];
+    if (!Array.isArray(reviews)) {
+      throw new TypeError('happy review step must contain reviews');
+    }
+    const run = runScenarioValue({
+      ...scenario,
+      steps: [{ ...steps[0], reviews: reviews.slice(0, 2) }],
+    });
+    try {
+      expect(run.result['status']).toBe('blocked-child-contract-error');
+      expect(run.result['merge_count']).toBe(0);
+    } finally {
+      rmSync(run.stateDirectory, { recursive: true, force: true });
+    }
   });
 
-  it('progresses independent lanes without a global barrier', async () => {
-    const api = await loadApi();
-    const waiting = {
-      ...readFixture('needs-human-check'),
-      lane_id: 'lane-4102-human',
-      issue_number: 4102,
-      branch: 'issue-4102-human',
-      worktree: '.worktrees/issue-4102-human',
-      pr: {
-        number: 5102,
-        url: 'https://github.com/fluojs/fluo/pull/5102',
-        head_sha: 'c'.repeat(40),
-      },
+  it('rejects a merge observation that does not bind the live PR identity', () => {
+    const scenario = readFixture('happy');
+    const steps = scenario['steps'];
+    if (!Array.isArray(steps) || !isRecord(steps[0])) {
+      throw new TypeError('happy fixture must contain a review step');
+    }
+    const observation = steps[0]['merge_observation'];
+    if (!isRecord(observation)) {
+      throw new TypeError('happy review step must contain merge observation');
+    }
+    const run = runScenarioValue({
+      ...scenario,
       steps: [
         {
-          kind: 'review',
-          verdict: 'needs-human-check',
-          reviewed_head: 'c'.repeat(40),
+          ...steps[0],
+          merge_observation: {
+            ...observation,
+            pr_url: 'https://evil.invalid/pull/5101',
+          },
         },
       ],
-    };
-    const results = api.runLaneBatch([waiting, readFixture('happy')]);
+    });
+    try {
+      expect(run.result['status']).toBe('blocked-child-contract-error');
+      expect(run.result['merge_count']).toBe(0);
+    } finally {
+      rmSync(run.stateDirectory, { recursive: true, force: true });
+    }
+  });
 
-    expect(results.map((result) => result.status)).toEqual([
-      'needs-human-check-terminal',
-      'done',
-    ]);
-    expect(results[1]?.merge_count).toBe(1);
+  it('keeps fix-back on the same PR and requires a new head', () => {
+    const run = runScenario('fix-then-merge');
+    try {
+      expectIdentity(run.result);
+      expect(run.result['head_sha']).toBe('b'.repeat(40));
+    } finally {
+      rmSync(run.stateDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('does not impose a global barrier between independent lane states', () => {
+    const waiting = runScenario('needs-human-check');
+    const completed = runScenario('happy');
+    try {
+      expect(waiting.result['status']).toBe('needs-human-check-terminal');
+      expect(completed.result['status']).toBe('done');
+      expect(completed.result['merge_count']).toBe(1);
+    } finally {
+      rmSync(waiting.stateDirectory, { recursive: true, force: true });
+      rmSync(completed.stateDirectory, { recursive: true, force: true });
+    }
   });
 });
 
 describe('$execute-lane shipped native assets', () => {
-  it('ships the skill, workflow, state machine, and replay CLI', () => {
+  it('ships the skill, workflow, state machine, store, and replay CLI', () => {
     expect(
       [
         'SKILL.md',
         'references/workflow.md',
         'scripts/state-machine.mjs',
+        'scripts/state-store.mjs',
         'scripts/run-replay.mjs',
       ].filter((path) => existsSync(resolve(skillRoot, path))),
-    ).toEqual([
-      'SKILL.md',
-      'references/workflow.md',
-      'scripts/state-machine.mjs',
-      'scripts/run-replay.mjs',
-    ]);
+    ).toHaveLength(5);
   });
 });
