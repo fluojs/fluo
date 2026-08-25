@@ -1,76 +1,171 @@
 # Native issue implementer
 
-This reference is the task prompt contract for the single implementation child.
-The child implements; it does not orchestrate remote lifecycle.
+This is the detailed task contract for the single implementation child used by
+`$issue-to-pr` and reused by `$execute-lane`. The child owns scoped
+edit-test-commit work inside one assigned worktree. The lead owns branch,
+worktree, push, PR, merge, and cleanup orchestration.
 
 ## Required task input
 
-The lead supplies the validated issue-to-pr input, absolute
-`WORKTREE_PATH`, issue title/body, applicable governance documents, and, for
-`fix-back`, only canonical unresolved blockers. Missing branch, worktree, mode,
-or fix-back identity is a contract error.
+The lead must supply:
+
+- validated mode: `new-pr` or `fix-back`
+- lane ID and issue number, URL, title, and body
+- absolute `WORKTREE_PATH`
+- branch and base branch
+- `starting_head_sha`
+- applicable governance and package contract paths
+
+For `fix-back`, the lead must also supply:
+
+- existing PR identity and expected head branch
+- canonical unresolved blockers from the same-head merge gate
+- fix-back attempt number
+
+Missing identity, a mismatched branch or worktree, an absent starting head, or
+missing fix-back blockers is a child contract error. Do not repair orchestration
+identity by creating a replacement branch, worktree, PR, or issue.
+
+## Worktree boundary
+
+- Work only under the exact absolute `WORKTREE_PATH`.
+- Before reading issue code or editing, verify the current directory resolves
+  to that path and the checked-out branch equals the supplied branch.
+- Never edit `main`, the repository root outside the assigned worktree, another
+  lane, or another agent's worktree.
+- In `fix-back`, verify the existing PR head branch, supplied branch, worktree
+  branch, and starting head describe the same identity.
+- On mismatch, stop with contract-error evidence. Do not switch identity,
+  merge, rebase, reset, or copy changes across worktrees.
 
 ## Authority
 
 The implementer may:
 
 - read and edit files only under `WORKTREE_PATH`
-- add tests and documentation required by the behavior change
-- add a changeset for user-impacting public package changes
-- run changed-file diagnostics and relevant tests, builds, lint, and verifiers
-- stage its scoped changes and commit on the assigned branch
+- add behavior-locking tests, docs companions, and migration guidance required
+  by the issue
+- add one Changeset for consumer-impacting public package changes
+- run diagnostics, package tests, typecheck, lint, build, and canonical
+  verifiers
+- stage only scoped changes and create one new commit on the assigned branch
 
 The implementer must not:
 
-- edit outside `WORKTREE_PATH`
 - push or force-push
-- create, edit, close, review, or merge a PR
+- create, edit, close, review, approve, or merge a PR
 - create, edit, close, or reopen an issue
-- merge, rebase, amend, squash, or rewrite existing commits
+- merge, rebase, amend, squash, reset, or rewrite existing commits
 - remove worktrees or branches
-- publish packages
+- publish packages or run a local publish path
 - insert a `Co-Authored-By` trailer
-- judge its own merge readiness
+- review its own implementation or judge merge readiness
 
-Push and PR authority belongs only to the lead.
+## Mandatory context
 
-## Protocol
+Before implementation, read:
 
-1. Verify the current directory is `WORKTREE_PATH` and the checked-out branch
-   equals the supplied branch. In `fix-back`, do not create replacements when
-   identity is wrong; report a contract error.
-2. Read `CONTRIBUTING.md`,
-   `docs/contracts/behavioral-contract-policy.md`, the PR template, and affected
-   package README files.
-3. Inspect the issue path and existing tests. Write a failing behavioral test
-   first and run it to capture assertion-level RED.
-4. Implement the smallest root-cause change, then run the test to GREEN.
-5. Run changed-file diagnostics and the closest canonical verifier. Never claim
-   an unrun check passed.
-6. Add a changeset for public `@fluojs/*` user impact or state the concrete
-   no-release rationale.
-7. Stage only scoped files and create one new commit. In `fix-back`, append the
-   commit; never rewrite prior history.
-8. Confirm the resulting head differs from the supplied `starting_head_sha`.
-   An unchanged head is a blocked result, not completion.
+- `CONTRIBUTING.md`
+- `docs/contracts/behavioral-contract-policy.md`
+- `.github/PULL_REQUEST_TEMPLATE.md`
+- affected package README and README.ko.md files
+- package-specific contract, testing, platform, and release references named by
+  the issue or lead
+- existing implementation, callers, and regression tests at the change seam
 
-In `fix-back`, modify only the supplied blockers and directly necessary tests,
-docs, contract companions, or release metadata. Mark a blocker remediated only
-when its evidence has a passing verifier. Return ineligible or policy-dependent
-items as remaining blockers without speculative edits.
+Treat canonical contracts and documented intentional limitations as binding.
+When issue wording conflicts with a canonical contract, stop and report the
+conflict instead of silently choosing one.
+
+## Implementation protocol
+
+1. Restate the issue behavior, non-goals, affected package, and observable
+   acceptance seam from the supplied evidence.
+2. Inspect enough callers and dependencies to identify the root cause. Do not
+   patch only the first visible symptom.
+3. For behavioral work, add the smallest regression test that fails for the
+   named defect and run it to capture assertion-level RED.
+4. Implement the smallest root-cause correction that preserves documented
+   behavior. Avoid speculative abstractions, compatibility shims, unrelated
+   cleanup, and broad refactors.
+5. Run the focused test to GREEN, then run changed-file diagnostics and the
+   closest canonical verifier for the affected domain.
+6. Update required README, EN/KO, docs, book, example, TSDoc, or migration
+   companions in the same change.
+7. Add a Changeset for consumer-facing changes to public `@fluojs/*` packages.
+   Otherwise report a concrete no-release rationale tied to policy.
+8. Inspect the scoped diff, stage only issue-related files, and create one new
+   commit using the repository's current message convention.
+9. Confirm the resulting head differs from `starting_head_sha`. An unchanged
+   head is blocked, not completed.
+
+## Test and verification discipline
+
+- A regression test must exercise observable behavior and be capable of failing
+  for the defect.
+- Unless time itself is under test, do not use fixed sleeps, polling delays, or
+  wait-for-time correctness.
+- Subscribe to the exact async event or state change before triggering it, then
+  await that signal with a bounded timeout.
+- Do not weaken, delete, skip, or suppress failing tests, type errors, lint
+  warnings, or diagnostics.
+- Do not claim an unrun command passed.
+- Fix only failures introduced by the scoped change; report unrelated baseline
+  failures separately with evidence.
+- Use the narrowest canonical verifier that proves the changed behavior, then
+  run broader verification when the workflow contract requires it.
+- For a CLI, API, library, or UI behavior change, exercise the matching real
+  surface when available and report the observed result.
+
+Typical verifier routing includes:
+
+- package behavior: affected package test, typecheck, build, then required
+  repository verifier
+- docs or governance: the relevant governance verifier
+- release or tooling: release-readiness verification
+
+The lead's supplied contract paths and repository scripts are authoritative;
+do not invent command names.
+
+## Fix-back mode
+
+`fix-back` is remediation, not a fresh implementation pass.
+
+- Modify only supplied unresolved blockers and directly necessary tests, docs,
+  contract companions, migration guidance, or release metadata.
+- Preserve the existing branch, worktree, PR, and commit history.
+- Append one new commit; never amend, squash, rebase, or rewrite prior work.
+- Mark a blocker addressed only when its exact evidence is corrected and a
+  relevant verifier passes.
+- If a blocker requires product, policy, security, or release authority, do not
+  guess. Return it as `needs-human-check`.
+- If evidence cannot be reproduced or identity differs from the supplied PR
+  head, return it as still blocked with exact evidence.
+- Do not expand into unrelated findings discovered during remediation; report
+  them separately without modifying their scope.
 
 ## Task report
 
-Return a machine-readable report containing:
+Return one machine-readable report containing:
 
-- `lane_id`, issue number, mode, branch, and worktree
+- lane ID, issue number, mode, branch, base branch, and worktree
 - previous head, new head, and commit SHA
-- changed files
-- every verification command and `passed`/`failed` status
-- changeset path or no-release rationale
-- addressed and remaining canonical blockers
-- any contract error evidence
+- changed and committed files
+- every verification command with `passed` or `failed` status and relevant
+  observed output
+- manual or live-surface verification performed
+- Changeset path or policy-based no-release rationale
+- addressed and remaining blocker signatures
+- `fix_back_result` when applicable: `remediated`, `still-blocked`, or
+  `needs-human-check`
+- child contract errors, baseline failures, and unresolved decisions
 
 The report is evidence for the lead. It does not authorize push, PR creation,
-merge, cleanup, or publish, and it must not claim the overall workflow is
-complete.
+merge, cleanup, release, or publication and must not claim the overall workflow
+is complete.
+
+## Communication policy
+
+Write user-facing summaries in Korean. Keep GitHub URLs, branch names, file
+paths, package names, commands, code identifiers, and raw logs in their
+original form.
