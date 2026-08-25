@@ -1866,10 +1866,10 @@ function enforceCanonicalRuntimeMatrixReferences() {
       docsContext.includes('packages/socket.io/README.md') &&
       docsContext.includes('SocketIoHandshakeRequest') &&
       docsContext.includes('guard acceptance for `true` / `undefined` / no return') &&
-      docsContext.includes('Node.js 20+ server-backed') &&
-      docsContext.includes('Bun static CORS plus no-`serverBacked` gateway caveats') &&
+      docsContext.includes('Node.js `>=20.19.3 <21 || >=22.2.0 <27` server-backed') &&
+      docsContext.includes('all-runtime no-`serverBacked` gateway caveats') &&
       docsContext.includes('explicit ACK callback handling') &&
-      docsContext.includes('force-disconnect/retry semantics'),
+      docsContext.includes('bounded accepted-work drain plus force-disconnect/retry semantics'),
     'docs/CONTEXT.md must keep Socket.IO runtime limits, public guard request typing, ACK, guard, Bun caveat, and shutdown retry guidance discoverable when package-surface.md documents them.',
   );
   assert(
@@ -1878,10 +1878,10 @@ function enforceCanonicalRuntimeMatrixReferences() {
       docsContextKo.includes('packages/socket.io/README.ko.md') &&
       docsContextKo.includes('SocketIoHandshakeRequest') &&
       docsContextKo.includes('return 없음은 허용') &&
-      docsContextKo.includes('Node.js 20+ server-backed') &&
-      docsContextKo.includes('Bun static CORS') &&
+      docsContextKo.includes('Node.js `>=20.19.3 <21 || >=22.2.0 <27` server-backed') &&
+      docsContextKo.includes('모든 runtime의 no-`serverBacked` gateway caveat') &&
       docsContextKo.includes('명시적 ACK callback') &&
-      docsContextKo.includes('force-disconnect/retry semantic'),
+      docsContextKo.includes('bounded accepted-work drain과 force-disconnect/retry semantic'),
     'docs/CONTEXT.ko.md must keep Socket.IO runtime limits, public guard request typing, ACK, guard, Bun caveat, and shutdown retry guidance discoverable when package-surface.ko.md documents them.',
   );
   assert(

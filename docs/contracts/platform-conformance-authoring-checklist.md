@@ -37,7 +37,7 @@ Use this checklist when authoring or changing official platform-facing packages 
 - [ ] MUST: Support HTTPS startup and report the HTTPS listen URL.
 - [ ] MUST: Remove registered shutdown signal listeners after `close()`.
 - [ ] MUST: For fetch-style websocket adapters, run `createFetchStyleWebSocketConformanceHarness(...)` from `@fluojs/testing/fetch-style-websocket-conformance`.
-- [ ] MUST: Keep fetch-style websocket capability fields stable: `kind`, `contract`, `mode`, `version`, `support`, and `reason`.
+- [ ] MUST: Keep fetch-style websocket capability fields stable: `kind`, `contract`, `mode`, `version`, `support`, and `reason`. Version 2 capabilities also expose versioned `bindingInstallation` for protocol bindings that must be installed before adapter `listen()`.
 
 ## Package Contract Requirements
 

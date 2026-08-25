@@ -22,7 +22,7 @@ export interface UnsupportedHttpAdapterRealtimeCapability {
 /**
  * Describes the fetch style http adapter realtime capability contract.
  */
-export interface FetchStyleHttpAdapterRealtimeCapability {
+export interface FetchStyleHttpAdapterRealtimeCapabilityV1 {
   contract: 'raw-websocket-expansion';
   kind: 'fetch-style';
   mode: 'request-upgrade';
@@ -30,6 +30,32 @@ export interface FetchStyleHttpAdapterRealtimeCapability {
   support: 'contract-only' | 'supported';
   version: 1;
 }
+
+/**
+ * Versioned host installation seam for protocol-owned fetch-style realtime bindings.
+ */
+export interface HttpAdapterRealtimeBindingInstallation {
+  install(binding: unknown | undefined): void;
+  version: 1;
+}
+
+/**
+ * Describes a fetch-style realtime host that can install a protocol binding before listen.
+ */
+export interface FetchStyleHttpAdapterRealtimeCapabilityV2 {
+  bindingInstallation: HttpAdapterRealtimeBindingInstallation;
+  contract: 'raw-websocket-expansion';
+  kind: 'fetch-style';
+  mode: 'request-upgrade';
+  reason: string;
+  support: 'contract-only' | 'supported';
+  version: 2;
+}
+
+/** Describes every supported version of the fetch-style realtime capability. */
+export type FetchStyleHttpAdapterRealtimeCapability =
+  | FetchStyleHttpAdapterRealtimeCapabilityV1
+  | FetchStyleHttpAdapterRealtimeCapabilityV2;
 
 /**
  * Defines the http adapter realtime capability type.
@@ -80,16 +106,32 @@ export function createUnsupportedHttpAdapterRealtimeCapability(
 export function createFetchStyleHttpAdapterRealtimeCapability(
   reason: string,
   options: {
+    bindingInstallation?: Omit<HttpAdapterRealtimeBindingInstallation, 'version'>;
     support?: FetchStyleHttpAdapterRealtimeCapability['support'];
   } = {},
 ): FetchStyleHttpAdapterRealtimeCapability {
-  return {
-    contract: 'raw-websocket-expansion',
-    kind: 'fetch-style',
-    mode: 'request-upgrade',
+  const common = {
+    contract: 'raw-websocket-expansion' as const,
+    kind: 'fetch-style' as const,
+    mode: 'request-upgrade' as const,
     reason,
     support: options.support ?? 'contract-only',
-    version: 1,
+  };
+
+  if (options.bindingInstallation === undefined) {
+    return {
+      ...common,
+      version: 1,
+    };
+  }
+
+  return {
+    ...common,
+    bindingInstallation: {
+      install: options.bindingInstallation.install,
+      version: 1,
+    },
+    version: 2,
   };
 }
 

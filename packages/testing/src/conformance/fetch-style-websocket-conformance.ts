@@ -9,6 +9,7 @@ export interface FetchStyleWebSocketConformanceHarnessOptions<
   createAdapter: () => TAdapter;
   expectedReason: string;
   expectedSupport?: FetchStyleHttpAdapterRealtimeCapability['support'];
+  expectedVersion?: FetchStyleHttpAdapterRealtimeCapability['version'];
   name: string;
 }
 
@@ -42,7 +43,7 @@ export class FetchStyleWebSocketConformanceHarness<
       throw new Error(`${this.options.name} adapter changed the fetch-style raw websocket upgrade mode.`);
     }
 
-    if (capability.version !== 1) {
+    if (capability.version !== (this.options.expectedVersion ?? 1)) {
       throw new Error(`${this.options.name} adapter changed the fetch-style raw websocket contract version.`);
     }
 

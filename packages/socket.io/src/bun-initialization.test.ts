@@ -67,7 +67,12 @@ class TestBunAdapter implements HttpApplicationAdapter {
   getRealtimeCapability() {
     return createFetchStyleHttpAdapterRealtimeCapability(
       'Test adapter supports Bun-style Socket.IO binding.',
-      { support: 'supported' },
+      {
+        bindingInstallation: {
+          install: (binding) => this.configureRealtimeBinding(binding),
+        },
+        support: 'supported',
+      },
     );
   }
 

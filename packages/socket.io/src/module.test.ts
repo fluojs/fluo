@@ -156,6 +156,10 @@ interface BunRealtimeBinding {
   websocket?: unknown;
 }
 
+function isBunRealtimeBinding(value: unknown): value is BunRealtimeBinding {
+  return typeof value === 'object' && value !== null && typeof Reflect.get(value, 'fetch') === 'function';
+}
+
 class TestBunServer {
   readonly hostname = '127.0.0.1';
   readonly url: URL;
@@ -202,8 +206,17 @@ class TestBunSocketIoAdapter implements HttpApplicationAdapter {
       mode: 'request-upgrade' as const,
       reason:
         'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/socket.io for the official Bun engine binding.',
+      bindingInstallation: {
+        install: (binding: unknown | undefined) => {
+          if (binding !== undefined && !isBunRealtimeBinding(binding)) {
+            throw new TypeError('Expected a Bun realtime binding.');
+          }
+          this.configureRealtimeBinding(binding);
+        },
+        version: 1 as const,
+      },
       support: 'supported' as const,
-      version: 1 as const,
+      version: 2 as const,
     };
   }
 
@@ -480,6 +493,27 @@ describe('@fluojs/socket.io', () => {
     ).rejects.toThrow('Socket.IO bootstrap requires a server-backed realtime capability');
   });
 
+  it('rejects serverBacked gateway opt-in on the Node Socket.IO path', async () => {
+    @WebSocketGateway({ path: '/chat', serverBacked: { port: 4101 } })
+    class ChatGateway {
+      @OnMessage('ping')
+      handlePing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot()],
+      providers: [ChatGateway],
+    });
+
+    await expect(
+      bootstrapApplication({
+        adapter: createNodejsAdapter({ port: 0 }),
+        rootModule: AppModule,
+      }),
+    ).rejects.toThrow('@WebSocketGateway({ serverBacked }) is not supported on @fluojs/socket.io');
+  });
+
   it('rejects serverBacked gateway opt-in on the Bun Socket.IO engine path', async () => {
     const adapter = new TestBunSocketIoAdapter(0);
 
@@ -500,7 +534,7 @@ describe('@fluojs/socket.io', () => {
         adapter,
         rootModule: AppModule,
       }),
-    ).rejects.toThrow('@WebSocketGateway({ serverBacked }) is not supported on @fluojs/socket.io when using @fluojs/platform-bun');
+    ).rejects.toThrow('@WebSocketGateway({ serverBacked }) is not supported on @fluojs/socket.io');
   });
 
   it('boots a Bun-style Socket.IO app through the official Bun engine path', async () => {

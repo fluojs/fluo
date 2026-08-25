@@ -21,7 +21,7 @@
 | `listen(dispatcher)` | `packages/http/src/adapter.ts`의 `HttpApplicationAdapter.listen(dispatcher)` | host listener를 시작하고 모든 incoming request를 제공된 dispatcher에 연결해야 한다. |
 | `close(signal?)` | `packages/http/src/adapter.ts`의 `HttpApplicationAdapter.close(signal?)` | shutdown 동안 host listener를 멈추고 transport resource를 해제해야 한다. |
 | `getServer?()` | `packages/http/src/adapter.ts`의 optional method | host runtime이 제공할 때 transport-native server object를 노출할 수 있다. |
-| `getRealtimeCapability?()` | `packages/http/src/adapter.ts`의 optional method | 문서화된 adapter capability union을 통해 server-backed, fetch-style, unsupported realtime capability를 설명할 수 있다. |
+| `getRealtimeCapability?()` | `packages/http/src/adapter.ts`의 optional method | 문서화된 adapter capability union을 통해 server-backed, fetch-style, unsupported realtime capability를 설명할 수 있다. Fetch-style version 2는 `listen()` 전에 realtime binding을 설치하는 protocol-neutral `bindingInstallation` seam을 추가한다. |
 | `start()` | `packages/runtime/src/platform-contract.ts`의 `PlatformShell.start()` 와 `PlatformComponent.start()` | runtime platform shell에 등록된 platform-managed component는 dependency 순서대로 시작되어야 한다. |
 | `stop()` | `packages/runtime/src/platform-contract.ts`의 `PlatformShell.stop()` 와 `PlatformComponent.stop()` | platform-managed component는 소유 resource를 누수시키지 않고 clean shutdown과 rollback 경로를 지원해야 한다. |
 | `ready()` | `packages/runtime/src/platform-contract.ts`의 `PlatformShell.ready()` 와 `PlatformComponent.ready()` | platform-managed component는 non-ready 상태에 대해 안정적인 reason과 함께 `ready`, `not-ready`, `degraded`를 보고해야 한다. |

@@ -245,6 +245,14 @@ type BunAdapterInternalOptions = BunAdapterOptions & {
   [BUN_ADAPTER_CLOSE_TIMEOUT_MS]?: number;
 };
 
+function isBunWebSocketBinding(value: unknown): value is BunWebSocketBinding<unknown> {
+  return typeof value === 'object'
+    && value !== null
+    && typeof Reflect.get(value, 'fetch') === 'function'
+    && typeof Reflect.get(value, 'websocket') === 'object'
+    && Reflect.get(value, 'websocket') !== null;
+}
+
 /** HTTP application adapter backed by native `Bun.serve()`. */
 export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWebSocketBindingHost {
   private closeInFlight?: Promise<void>;
@@ -297,8 +305,26 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
   getRealtimeCapability() {
     return createFetchStyleHttpAdapterRealtimeCapability(
       BUN_WEBSOCKET_SUPPORT_REASON,
-      { support: 'supported' },
+      {
+        bindingInstallation: {
+          install: (binding) => this.installRealtimeBinding(binding),
+        },
+        support: 'supported',
+      },
     );
+  }
+
+  private installRealtimeBinding(binding: unknown | undefined): void {
+    if (binding === undefined) {
+      this.configureRealtimeBinding(undefined);
+      return;
+    }
+
+    if (!isBunWebSocketBinding(binding)) {
+      throw new TypeError('Bun realtime binding installation requires fetch and websocket host contracts.');
+    }
+
+    this.configureRealtimeBinding(binding);
   }
 
   /** Configures the official realtime binding before the Bun server starts. */

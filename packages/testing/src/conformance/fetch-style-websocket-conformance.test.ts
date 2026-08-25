@@ -35,6 +35,7 @@ describe('official fetch-style runtime websocket contract', () => {
       expectedSupport: 'supported',
       expectedReason:
         'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/websockets/bun for the official raw websocket binding.',
+      expectedVersion: 2,
       name: 'bun',
     });
 

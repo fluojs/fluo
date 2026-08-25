@@ -10,6 +10,7 @@ Socket.IO v4 gateway adapter for the fluo runtime.
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+- [Namespace, Engine.IO path, and gateway scope](#namespace-engineio-path-and-gateway-scope)
 - [Public API Overview](#public-api-overview)
 - [Supported Platforms](#supported-platforms)
 - [Example Sources](#example-sources)
@@ -20,13 +21,13 @@ Socket.IO v4 gateway adapter for the fluo runtime.
 npm install @fluojs/core @fluojs/socket.io @fluojs/websockets socket.io@^4.8.3
 ```
 
-`@fluojs/socket.io` declares a Node.js 20+ package floor for Node-backed adapters. Install the `@fluojs/websockets` companion as well: Socket.IO gateway authoring reuses `@WebSocketGateway`, `@OnMessage`, and lifecycle decorators from that package.
+`@fluojs/socket.io` supports Node.js `>=20.19.3 <21 || >=22.2.0 <27` for Node-backed adapters, matching its mandatory `@fluojs/runtime` dependency. Install the `@fluojs/websockets` companion as well: Socket.IO gateway authoring reuses `@WebSocketGateway`, `@OnMessage`, and lifecycle decorators from that package.
 
 `@fluojs/socket.io` requires Socket.IO `^4.8.3`. Consumers using an older Socket.IO v4 release must upgrade the peer and refresh their lockfile before adopting this major `@fluojs/socket.io` release. The refreshed Engine.IO chain must resolve its patched WebSocket runtime; the fluo adapter API is unchanged.
 
 ## When to Use
 
-Use this package when you need advanced real-time features like rooms, namespaces, broadcasting, and automatic reconnection provided by [Socket.IO](https://socket.io/). This adapter integrates Socket.IO v4 into fluo's decorator-based architecture, sharing the same `@WebSocketGateway` core as raw websockets. It targets Node.js 20+ server-backed adapters and the official Bun engine path; Deno and Workers are not supported by this Socket.IO adapter.
+Use this package when you need advanced real-time features like rooms, namespaces, broadcasting, and automatic reconnection provided by [Socket.IO](https://socket.io/). This adapter integrates Socket.IO v4 into fluo's decorator-based architecture, sharing the same `@WebSocketGateway` core as raw websockets. It targets Node.js `>=20.19.3 <21 || >=22.2.0 <27` server-backed adapters and the official Bun engine path; Deno and Workers are not supported by this Socket.IO adapter.
 
 ## Quick Start
 
@@ -137,19 +138,23 @@ SocketIoModule.forRoot({
 });
 ```
 
-When `cors` is omitted, `@fluojs/socket.io` defaults to `{ credentials: false, origin: false }` so cross-origin exposure stays opt-in. When `engine.maxHttpBufferSize` is omitted, the adapter applies a bounded 1 MiB Engine.IO payload limit. Defaults also include `buffer.maxPendingMessagesPerSocket: 128`, `buffer.overflowPolicy: 'drop-oldest'`, and `shutdown.timeoutMs: 5000`. The `buffer` options bound inbound events that arrive after a socket connects but before its connection handlers become ready; they do not control outbound emits or Socket.IO reconnect buffering. Configured `transports` are enforced on both Node-backed and Bun engine paths, so clients that use an unlisted transport are rejected during the Engine.IO handshake. Explicit `engine.maxHttpBufferSize`, `buffer.maxPendingMessagesPerSocket`, and `shutdown.timeoutMs` values must be positive integers; invalid explicit values fail during module registration instead of falling back to defaults.
+When `cors` is omitted, `@fluojs/socket.io` defaults to `{ credentials: false, origin: false }` so cross-origin exposure stays opt-in. When `engine.maxHttpBufferSize` is omitted, the adapter applies a bounded 1 MiB Engine.IO payload limit. Defaults also include `buffer.maxPendingMessagesPerSocket: 128`, `buffer.overflowPolicy: 'drop-oldest'`, and `shutdown.timeoutMs: 5000`. Set `buffer.overflowPolicy` to `'drop-oldest'` to retain the newest pending events, `'drop-newest'` to preserve the already queued events, or `'close'` to disconnect a socket that exceeds the bound. The `buffer` options bound inbound events that arrive after a socket connects but before its connection handlers become ready; they do not control outbound emits or Socket.IO reconnect buffering. Configured `transports` are enforced on both Node-backed and Bun engine paths, so clients that use an unlisted transport are rejected during the Engine.IO handshake. Explicit `engine.maxHttpBufferSize`, `buffer.maxPendingMessagesPerSocket`, and `shutdown.timeoutMs` values must be positive integers; invalid explicit values fail during module registration instead of falling back to defaults.
 
 Static `@WebSocketGateway({ path })` namespaces are owned by fluo's gateway discovery and are not treated as Socket.IO dynamic child namespaces. The adapter keeps Socket.IO's `cleanupEmptyChildNamespaces` behavior disabled for those static namespaces. If application code creates dynamic child namespaces through raw `SOCKETIO_SERVER` access, that ownership and cleanup policy stays with the application-level Socket.IO integration.
 
-During application shutdown, Socket.IO owns cleanup for connected Socket.IO clients, but the underlying HTTP server remains owned by the platform adapter or shared HTTP server integration that supplied it. The adapter detaches that HTTP server reference before `io.close(...)`, so client cleanup still runs while Socket.IO does not close adapter-owned/shared HTTP listeners. If graceful Socket.IO close exceeds `shutdown.timeoutMs`, the adapter force-disconnects managed Socket.IO clients before clearing lifecycle state; if that force cleanup fails, the managed server reference and registries are retained for shutdown retry. Do not add a second manual socket-disconnect path around the same managed Socket.IO instance.
+During application shutdown, Socket.IO owns cleanup for connected Socket.IO clients, but the underlying HTTP server remains owned by the platform adapter or shared HTTP server integration that supplied it. The adapter detaches that HTTP server reference before `io.close(...)`, so client cleanup still runs while Socket.IO does not close adapter-owned/shared HTTP listeners. Accepted gateway connection, message, and disconnect work drains before managed namespace and socket state is cleared, within the same `shutdown.timeoutMs` bound. If graceful Socket.IO close exceeds that bound, the adapter force-disconnects managed Socket.IO clients; if force cleanup fails or accepted gateway work does not drain, the managed server reference and registries are retained for shutdown retry. Do not add a second manual socket-disconnect path around the same managed Socket.IO instance.
 
 ### Guard contracts
 
 `auth.connection` receives `SocketIoConnectionGuardContext` before namespace connect handlers run. `auth.message` receives `SocketIoMessageGuardContext` before message handlers run. Guards accept by returning `true`, `undefined`, or no value. They reject by returning `false` or a `SocketIoGuardRejection` with `message`, optional `data`, and optional `disconnect`. Connection rejection uses Socket.IO's namespace connection error path. Message rejection is reported only through an acknowledgement callback supplied with that event, using an ACK payload shaped as `{ error, data }`; without an ACK callback, fluo emits no implicit client error event. An explicit `disconnect: true` still disconnects the socket. `SocketIoHandshakeRequest` stays runtime-neutral at the root export: Node-backed adapters provide a structurally typed HTTP handshake request and Bun provides a Web-standard `Request`.
 
+### Namespace, Engine.IO path, and gateway scope
+
+`@WebSocketGateway({ path: '/chat' })` maps `path` to the Socket.IO namespace `/chat`; it does not change the Engine.IO HTTP request path, which remains `/socket.io/`. This differs from NestJS configurations that use a gateway `path` option for Engine.IO. `@WebSocketGateway({ serverBacked })` is rejected on every Socket.IO runtime because Socket.IO gateways share the application listener. Register gateways as singleton providers or controllers; request- and transient-scoped migrated gateways are warned and skipped rather than instantiated.
+
 ### Bun-specific notes
 
-The Bun path supports Socket.IO through `@socket.io/bun-engine`, but it requires static CORS shapes: no CORS delegate functions and no boolean entries inside `cors.origin` arrays. `@WebSocketGateway({ serverBacked })` is not supported on Bun. Bun's HTTP request body limit (`maxRequestBodySize`) and WebSocket frame limit (`websocket.maxPayloadLength`) are separate host contracts; the adapter maps both from `engine.maxHttpBufferSize` so polling requests and websocket frames share the configured inbound payload bound.
+The Bun path supports Socket.IO through `@socket.io/bun-engine` and the HTTP adapter's versioned realtime binding capability, but it requires static CORS shapes: no CORS delegate functions and no boolean entries inside `cors.origin` arrays. `@WebSocketGateway({ serverBacked })` is not supported. Bun's HTTP request body limit (`maxRequestBodySize`) and WebSocket frame limit (`websocket.maxPayloadLength`) are separate host contracts; the adapter maps both from `engine.maxHttpBufferSize` so polling requests and websocket frames share the configured inbound payload bound.
 
 ### Module registration
 Register Socket.IO with `SocketIoModule.forRoot(...)`.
@@ -166,19 +171,21 @@ Register Socket.IO through module imports in the owning module so namespace/mess
 - `SocketIoLifecycleService`: Lifecycle-backed implementation behind the server and room-service tokens; application code should usually inject `SOCKETIO_SERVER` or `SOCKETIO_ROOM_SERVICE` instead.
 - Types: `SocketIoModuleOptions`, `SocketIoHandshakeRequest`, `SocketIoConnectionGuardContext`, `SocketIoConnectionGuard`, `SocketIoMessageGuardContext`, `SocketIoMessageGuard`, `SocketIoGuardRejection`.
 
-`SocketIoModuleOptions` covers `global`, `auth`, `buffer`, `cors`, `engine`, `shutdown`, and `transports`. `global` defaults to `true`, which keeps `SOCKETIO_SERVER` and `SOCKETIO_ROOM_SERVICE` visible across the app; set it to `false` when you want module-local provider visibility. A supported Node.js 20+ server-backed runtime adapter or the official Bun engine host is required; unsupported/noop adapters fail fast during bootstrap. Bun requires static CORS shapes and does not support `@WebSocketGateway({ serverBacked })`.
+`SocketIoModuleOptions` covers `global`, `auth`, `buffer`, `cors`, `engine`, `shutdown`, and `transports`. `global` defaults to `true`, which keeps `SOCKETIO_SERVER` and `SOCKETIO_ROOM_SERVICE` visible across the app; set it to `false` when you want module-local provider visibility. A supported Node.js `>=20.19.3 <21 || >=22.2.0 <27` server-backed runtime adapter or the official Bun engine host is required; unsupported/noop adapters fail fast during bootstrap. Socket.IO rejects `@WebSocketGateway({ serverBacked })` on every runtime, and Bun additionally requires static CORS shapes.
 
 ## Supported Platforms
 
 | Platform | Support | Note |
 | --- | --- | --- |
-| Node.js (Raw/Express/Fastify) | ✅ Full | Node.js 20+ server-backed mode |
+| Node.js (Raw/Express/Fastify) | ✅ Full | Node.js `>=20.19.3 <21 || >=22.2.0 <27`; shared application listener |
 | Bun | ✅ Full | Via `@socket.io/bun-engine`; static CORS only, no `serverBacked` gateways |
 | Deno | ❌ None | Not currently supported |
 | Workers | ❌ None | Not currently supported |
 
 ## Example Sources
 
+- `packages/socket.io/src/bun-initialization.test.ts`
 - `packages/socket.io/src/config.internal.test.ts`
 - `packages/socket.io/src/module.test.ts`
 - `packages/socket.io/src/public-surface.test.ts`
+- `packages/socket.io/src/shutdown-lifecycle.test.ts`
