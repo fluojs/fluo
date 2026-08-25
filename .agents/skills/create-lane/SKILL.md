@@ -39,20 +39,22 @@ Obtain these approvals in order from three distinct user interactions:
 3. `lane-plan`: the final multi-issue grouping, dependencies, lane ID, merge
    policy, retry policy, release handoffs, and authority scope.
 
-Unless the user explicitly chooses different bounds, propose and persist this
-retry policy in the final lane plan:
+Unless the user explicitly chooses a legacy bounded policy, propose and persist
+this adaptive retry policy in the final lane plan:
 
 ```json
 {
-  "retry_count_is_terminal": true,
-  "max_same_failure_repeats": 5,
-  "max_wall_clock_minutes": 360,
+  "retry_count_is_terminal": false,
+  "max_same_failure_repeats": null,
+  "max_wall_clock_minutes": null,
   "stop_on_child_contract_error": true
 }
 ```
 
-The values are part of the approved immutable plan. Never rewrite an existing
-lane ledger to adopt a newer default.
+Retry count and elapsed time remain observable telemetry but do not terminate
+fixable work. The policy is part of the approved immutable plan. Never rewrite
+an existing lane ledger to adopt a newer default; previously approved bounded
+policies retain their original limits.
 
 `release_handoffs` is reserved for issues whose core task is a release or
 publish decision that must stop at `blocked-maintainer-decision`. A public

@@ -1,6 +1,6 @@
 ---
 name: execute-lane
-description: Drain one canonical Fluo lane through implementation, same-head review, bounded fix-back, merge authority, cleanup, and resumable evidence.
+description: Drain one canonical Fluo lane through implementation, same-head review, adaptive fix-back, merge authority, cleanup, and resumable evidence.
 ---
 
 # Execute lane
@@ -41,7 +41,7 @@ observation may create a merge receipt.
 
 After each one-node run settles, validate and import its terminal evidence
 before recomputing eligibility. Native task completion is never dependency
-success. `needs-human-check`, policy, budget, cleanup, malformed-output, and
+success. `needs-human-check`, policy, external, cleanup, malformed-output, and
 ledger terminal states do not release dependents; the parent records their
 dependent lanes as terminal blockers only after fresh issue-store, branch,
 worktree, task, and PR absence observations, without creating those artifacts.

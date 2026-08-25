@@ -89,9 +89,9 @@ describe('$create-lane multi-issue planning', () => {
       throw new TypeError('multi fixture must contain plan and approvals');
     }
     const bindings = [
-      'd8bb3a86338d389c5e3d3281cf07c571c87f5c124e04d6c9efea6c16ccac0f18',
-      '312c45422399c776fb5c1aac620dd8b18c4a92d311354ed06de85e13d7828ced',
-      '84bd2930027e872b65fa04c337c9fe71b2f2087cb27bd37e30c636d49937b87f',
+      '2651ce0f27de175c359c93dd385225c897e840456b12b309179d08832032dc84',
+      '85a2504925c8dacc099e3015d9f6866ad67172421e7f4b5b6a1c7fab700f29d1',
+      'fe1f72c55424d816876e9c2981e3a404d8f8a577a7b3791a49cfb58a41d2e680',
     ];
     const run = runValue({
       ...fixture,

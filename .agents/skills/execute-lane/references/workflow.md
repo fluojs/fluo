@@ -82,7 +82,7 @@ ready-for-push -> observed push -> ci-pending
 ci-pending + PASS -> merge-ready
 merge-ready -> observed squash merge -> merged
 merged -> observed cleanup -> done
-human, external CI, policy, malformed output, or exhausted budget
+human, external CI, policy, or malformed output
   -> explicit terminal blocker
 ```
 
@@ -98,8 +98,16 @@ external failures enter human review without code mutation. A CI PASS on the
 same reviewed head produces `merge-ready`; a fresh issue-supervisor observation
 then performs and proves the merge.
 
-No-progress, identical blocker repetition, total attempts, elapsed time,
-malformed child output, stale approval, and ledger conflicts stop fail-closed.
+New lanes use adaptive retry: attempt count and elapsed time are telemetry, not
+terminal limits. Every fixable blocker returns through implementation, a new
+head, and the complete local triad until success. Repeated blocker signatures
+require a materially different remediation strategy, but repetition alone does
+not terminalize the supervisor. Existing ledgers with an approved bounded
+policy retain their original count and wall-clock terminal behavior.
+
+A claimed fix that produces no new head is malformed child output rather than
+progress. Non-fixable review blockers, external CI, stale approval, malformed
+child output, and ledger conflicts stop fail-closed.
 
 ## Side effects
 

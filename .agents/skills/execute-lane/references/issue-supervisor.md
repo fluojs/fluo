@@ -33,6 +33,13 @@ contract, code, and verification result against that head. A head change
 invalidates the complete triad. `ready-for-pr` and `ready-for-push` authorize
 only the next issue-bound remote observation; neither is a merge verdict.
 
+New lanes use adaptive retry. The supervisor records attempt count and elapsed
+time as telemetry and keeps every `fix_back_eligible: true` blocker in this
+loop until success. Repeated blocker signatures require a materially different
+implementation strategy, not numeric-budget terminalization. A
+`fix_back_eligible: false` blocker parks at `needs-human-check-terminal`.
+Existing persisted lanes with an approved bounded policy retain those limits.
+
 ## PR and CI loop
 
 At `ready-for-pr`, push the reviewed head and create one PR. At
@@ -79,5 +86,5 @@ performing a mutation.
 ## Stop
 
 Stop with `done` only after observed merge and cleanup. Otherwise stop with one
-explicit terminal blocker. Never report success merely because the DAG node or
-a child task returned.
+explicit human, policy, external, cleanup, child-contract, or ledger blocker.
+Never report success merely because the DAG node or a child task returned.

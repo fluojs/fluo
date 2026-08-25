@@ -180,7 +180,7 @@ describe('verify-lane-ledger canonical versioned completion contract', () => {
       runMutatedCompletedLedger((ledger) => {
         ledger.retry_policy[field] = value;
       }),
-    ).toContain(`retry_policy.${field} must be a positive safe integer`);
+    ).toContain(`retry_policy.${field} must be a positive safe integer or null`);
   });
 
   it.each(['retry_count_is_terminal', 'stop_on_child_contract_error'])(

@@ -51,7 +51,10 @@ const localReview = (state, step) => {
     state.status = readyVerdict;
     state.blockers = [];
   } else if (outcome.verdict === 'block') {
-    state.status = 'implementing';
+    const fixable = outcome.blockers.every(
+      (blocker) => blocker.fix_back_eligible === true,
+    );
+    state.status = fixable ? 'implementing' : 'needs-human-check-terminal';
     state.blockers = outcome.blockers;
   } else {
     state.status = 'needs-human-check-terminal';
@@ -78,8 +81,9 @@ const completeImplementation = (state, step) => {
     );
     const elapsed = Date.parse(observedAt) - Date.parse(state.started_at);
     if (
-      state.attempt >= state.retry_policy.max_same_failure_repeats ||
-      elapsed > state.retry_policy.max_wall_clock_minutes * 60_000
+      state.retry_policy.max_same_failure_repeats !== null &&
+      (state.attempt >= state.retry_policy.max_same_failure_repeats ||
+        elapsed > state.retry_policy.max_wall_clock_minutes * 60_000)
     ) {
       state.status = 'blocked-budget-exhausted';
       return;

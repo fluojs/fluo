@@ -82,23 +82,43 @@ export const requireAuthorityScope = (value) => {
 export const requireRetryPolicy = (value) => {
   const policy = requireRecord(value, 'issue supervisor retry_policy');
   if (
-    policy.retry_count_is_terminal !== true ||
+    typeof policy.retry_count_is_terminal !== 'boolean' ||
     policy.stop_on_child_contract_error !== true
   ) {
     throw new TypeError(
-      'retry policy requires terminal retry count and child contract errors.',
+      'retry policy requires an explicit retry mode and terminal child contract errors.',
+    );
+  }
+  const maxSameFailureRepeats =
+    policy.max_same_failure_repeats === null
+      ? null
+      : requirePositiveInteger(
+          policy.max_same_failure_repeats,
+          'retry_policy.max_same_failure_repeats',
+        );
+  const maxWallClockMinutes =
+    policy.max_wall_clock_minutes === null
+      ? null
+      : requirePositiveInteger(
+          policy.max_wall_clock_minutes,
+          'retry_policy.max_wall_clock_minutes',
+        );
+  const hasBoundedLimits =
+    maxSameFailureRepeats !== null && maxWallClockMinutes !== null;
+  const hasAdaptiveLimits =
+    maxSameFailureRepeats === null && maxWallClockMinutes === null;
+  if (
+    (!hasBoundedLimits && !hasAdaptiveLimits) ||
+    (policy.retry_count_is_terminal && !hasBoundedLimits)
+  ) {
+    throw new TypeError(
+      'retry policy limits must be positive terminal bounds or null adaptive telemetry.',
     );
   }
   return {
-    retry_count_is_terminal: true,
-    max_same_failure_repeats: requirePositiveInteger(
-      policy.max_same_failure_repeats,
-      'retry_policy.max_same_failure_repeats',
-    ),
-    max_wall_clock_minutes: requirePositiveInteger(
-      policy.max_wall_clock_minutes,
-      'retry_policy.max_wall_clock_minutes',
-    ),
+    retry_count_is_terminal: policy.retry_count_is_terminal,
+    max_same_failure_repeats: maxSameFailureRepeats,
+    max_wall_clock_minutes: maxWallClockMinutes,
     stop_on_child_contract_error: true,
   };
 };
@@ -141,7 +161,8 @@ export const assertIssueSupervisorState = (input) => {
   if (
     !Number.isSafeInteger(state.attempt) ||
     state.attempt < 0 ||
-    state.attempt > retryPolicy.max_same_failure_repeats
+    (retryPolicy.max_same_failure_repeats !== null &&
+      state.attempt > retryPolicy.max_same_failure_repeats)
   ) {
     throw new TypeError('issue supervisor state invariant failed: attempt.');
   }

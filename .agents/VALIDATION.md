@@ -34,6 +34,7 @@ tooling/governance/execute-lane-dag-binding-v2.test.ts
 tooling/governance/execute-lane-dependency-cleanup-gate.test.ts
 tooling/governance/execute-lane-dependency-assets.test.ts
 tooling/governance/execute-lane-dispatch-intent.test.ts
+tooling/governance/execute-lane-adaptive-retry.test.ts
 tooling/governance/execute-lane-persistence.test.ts
 tooling/governance/execute-lane-resilience.test.ts
 tooling/governance/execute-lane-authority.test.ts
@@ -63,6 +64,11 @@ Task completion, merge without cleanup, `CLOSED` observations, and terminal
 blockers must never create a downstream issue store, branch, worktree, task, or
 PR. Terminalizing blocked dependents requires fresh absence observations for
 all six artifact classes.
+
+For new adaptive lanes, require null count and wall-clock limits, preserve
+attempt/time telemetry, and keep every fixable blocker active beyond legacy
+numeric budgets. Non-fixable blockers must park for human resolution. Existing
+bounded ledgers must continue to validate and retain their approved behavior.
 
 For non-empty `release_handoffs`, derive the consumed lane-plan receipt from
 the canonical repository approval directory. Recompute its approval binding

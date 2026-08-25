@@ -15,21 +15,21 @@
       "approval_id": "approval-lane-4101-runtime-confirmed-issues",
       "approved": true,
       "issue_numbers": [4101],
-      "binding_sha256": "58be23c1d87b655ed19c22c8d385a0d337084888618b39e31857de76bb035114"
+      "binding_sha256": "8b32135b56ad44c9d129a1d7a778b2707ee16c38e42d3bff05afe853ababa019"
     },
     {
       "gate": "suggested-additions",
       "approval_id": "approval-lane-4101-runtime-suggested-additions",
       "approved": true,
       "issue_numbers": [],
-      "binding_sha256": "2052509b56b18f30f34d819830ba3735d1329a90aee7c76b85f98cd9e66f1d72"
+      "binding_sha256": "07d28a4ceb2e6e94dbc989dcc0f6d0492ec03d6e6e675601aed17d062c84716c"
     },
     {
       "gate": "lane-plan",
       "approval_id": "approval-lane-4101-runtime-lane-plan",
       "approved": true,
       "release_handoff_attestations": [],
-      "binding_sha256": "792738fe4aeeb42c1d22b5c272a562c16c1b108b578035bff484088f639e494b"
+      "binding_sha256": "ac939bed807266dde94212a08f0fb6abc26efda652839ae79f202fd6d945db5e"
     }
   ],
   "plan": {
@@ -51,9 +51,9 @@
       "root_main_sync_ff_only": true
     },
     "retry_policy": {
-      "retry_count_is_terminal": true,
-      "max_same_failure_repeats": 3,
-      "max_wall_clock_minutes": 180,
+      "retry_count_is_terminal": false,
+      "max_same_failure_repeats": null,
+      "max_wall_clock_minutes": null,
       "stop_on_child_contract_error": true
     },
     "confirmed_issues": [4101],
