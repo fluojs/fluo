@@ -30,6 +30,7 @@ const ENCODER = new TextEncoder();
 /** Incremental multipart parser that exposes ordered parts and backpressure-aware file streams. */
 export class StreamingMultipartParser {
   private activeFileDone: Promise<void> | undefined;
+  private rejectActiveFileDone: ((error: unknown) => void) | undefined;
   private finalBoundary = false;
   private fileCount = 0;
   private fieldCount = 0;
@@ -42,6 +43,8 @@ export class StreamingMultipartParser {
   private readonly maxHeaderSize: number;
   private readonly maxHeaders: number;
   private readonly reader: MultipartByteReader;
+  private readonly signal: AbortSignal | undefined;
+  private readonly abortListener: (() => void) | undefined;
 
   constructor(input: StreamingMultipartInput) {
     const boundary = parseBoundary(input.contentType);
@@ -53,14 +56,37 @@ export class StreamingMultipartParser {
     this.maxFiles = options.maxFiles ?? DEFAULT_MAX_FILES;
     this.maxHeaders = options.maxHeaders ?? DEFAULT_MAX_HEADERS;
     this.maxHeaderSize = options.maxHeaderSize ?? DEFAULT_MAX_HEADER_SIZE;
+    this.signal = input.signal;
     this.reader = new MultipartByteReader(
       toReadableStream(input.body),
       options.maxTotalSize ?? DEFAULT_MAX_TOTAL_SIZE,
       input.signal,
     );
+    this.abortListener = input.signal
+      ? () => {
+          const reason = input.signal?.reason
+            ?? new DOMException('The request was aborted.', 'AbortError');
+          void this.cancel(reason);
+        }
+      : undefined;
+
+    if (input.signal?.aborted) {
+      this.abortListener?.();
+    } else if (this.abortListener) {
+      input.signal?.addEventListener('abort', this.abortListener, { once: true });
+    }
   }
 
   async cancel(reason?: unknown): Promise<void> {
+    this.removeAbortListener();
+    const cancellationError = reason instanceof Error
+      ? reason
+      : new DOMException(
+          reason === undefined ? 'Multipart parsing was cancelled.' : String(reason),
+          'AbortError',
+        );
+    this.rejectActiveFileDone?.(cancellationError);
+    this.rejectActiveFileDone = undefined;
     await this.reader.cancel(reason);
   }
 
@@ -154,12 +180,14 @@ export class StreamingMultipartParser {
       resolveDone = resolve;
       rejectDone = reject;
     });
+    this.rejectActiveFileDone = rejectDone;
     void this.activeFileDone.catch(() => {});
 
     const stream = new ReadableStream<Uint8Array>({
       cancel: async () => {
         try {
           await this.drainFilePart(fieldname, size);
+          this.rejectActiveFileDone = undefined;
           resolveDone();
         } catch (error: unknown) {
           await this.cancel(error);
@@ -185,6 +213,7 @@ export class StreamingMultipartParser {
           if (chunk.boundary) {
             await this.finishBoundary();
             controller.close();
+            this.rejectActiveFileDone = undefined;
             resolveDone();
           }
         } catch (error: unknown) {
@@ -249,9 +278,16 @@ export class StreamingMultipartParser {
     if (suffix[0] === 45 && suffix[1] === 45) {
       this.finalBoundary = true;
       await this.reader.complete();
+      this.removeAbortListener();
       return;
     }
 
     throw new BadRequestException('Multipart boundary has an invalid terminator.');
+  }
+
+  private removeAbortListener(): void {
+    if (this.abortListener) {
+      this.signal?.removeEventListener('abort', this.abortListener);
+    }
   }
 }

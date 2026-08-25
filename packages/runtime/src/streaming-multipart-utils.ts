@@ -108,7 +108,7 @@ export function toReadableStream(
       const result = await iterator.next();
       result.done ? controller.close() : controller.enqueue(result.value);
     },
-  });
+  }, { highWaterMark: 0 });
 }
 
 /**

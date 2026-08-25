@@ -1,6 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-
 import { PayloadTooLargeException } from '@fluojs/http';
+import { describe, expect, it, vi } from 'vitest';
 
 import { parseMultipart } from './multipart.js';
 
@@ -214,5 +213,52 @@ describe('parseMultipart', () => {
     );
     expect(cancel).toHaveBeenCalledOnce();
     expect(body.locked).toBe(false);
+  });
+
+  it('does not prefetch another async-iterator chunk before overflow cleanup', async () => {
+    let releaseFirstChunk!: (result: IteratorResult<Uint8Array>) => void;
+    const firstChunk = new Promise<IteratorResult<Uint8Array>>((resolve) => {
+      releaseFirstChunk = resolve;
+    });
+    const returnIterator = vi.fn(async () => ({
+      done: true as const,
+      value: undefined,
+    }));
+    let nextCalls = 0;
+    const body: AsyncIterable<Uint8Array> = {
+      [Symbol.asyncIterator]() {
+        return {
+          next: async () => {
+            nextCalls += 1;
+
+            if (nextCalls === 1) {
+              return firstChunk;
+            }
+
+            return new Promise<IteratorResult<Uint8Array>>(() => {});
+          },
+          return: returnIterator,
+        };
+      },
+    };
+    const result = parseMultipart({
+      body,
+      headers: {
+        'content-type': 'multipart/form-data; boundary=fluo-limit',
+      },
+      method: 'POST',
+      url: 'http://localhost/uploads',
+    }, { maxTotalSize: 4 });
+
+    releaseFirstChunk({
+      done: false as const,
+      value: new TextEncoder().encode('overflow'),
+    });
+
+    await expect(result).rejects.toThrow(
+      'Multipart body exceeds the maximum size of 4 bytes.',
+    );
+    expect(nextCalls).toBe(1);
+    expect(returnIterator).toHaveBeenCalledOnce();
   });
 });

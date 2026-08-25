@@ -1,6 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-
 import { PayloadTooLargeException } from '@fluojs/http';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createStreamingMultipart } from './streaming-multipart.js';
 
@@ -341,6 +340,42 @@ describe('createStreamingMultipart', () => {
     expect(tracked.cancel).toHaveBeenCalledWith('handler completed');
     expect(tracked.body.locked).toBe(false);
   });
+
+  it.each(['public cancellation', 'request abort'] as const)(
+    'settles a pending next-part read after %s with an unconsumed file',
+    async (cancellation) => {
+      const abortController = new AbortController();
+      const tracked = createTrackedBody(createMultipartChunks([
+        `--${BOUNDARY}\r\nContent-Disposition: form-data; name="payload"; filename="payload.txt"\r\n\r\n`,
+        'hello',
+        `\r\n--${BOUNDARY}--\r\n`,
+      ]));
+      const multipart = createStreamingMultipart({
+        body: tracked.body,
+        contentType: `multipart/form-data; boundary=${BOUNDARY}`,
+        signal: abortController.signal,
+      });
+      const reader = multipart.consume().getReader();
+      const part = await reader.read();
+
+      if (part.done || part.value.kind !== 'file') {
+        throw new Error('Expected a streaming multipart file part.');
+      }
+
+      const nextPart = reader.read();
+      const reason = new Error(`${cancellation} completed`);
+
+      if (cancellation === 'public cancellation') {
+        await multipart.cancel(reason);
+      } else {
+        abortController.abort(reason);
+      }
+
+      await expect(nextPart).rejects.toBe(reason);
+      expect(tracked.cancel).toHaveBeenCalledOnce();
+      expect(tracked.body.locked).toBe(false);
+    },
+  );
 
   it('joins concurrent abort, iterator return, and dispatch cleanup on one source cancellation', async () => {
     let resolveCancelStarted!: (reason: unknown) => void;

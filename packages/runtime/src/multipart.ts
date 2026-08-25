@@ -256,7 +256,7 @@ function createReadableStreamFromAsyncIterable(source: AsyncIterable<Uint8Array>
 
       controller.enqueue(value);
     },
-  });
+  }, { highWaterMark: 0 });
 }
 
 async function readStreamBytes(

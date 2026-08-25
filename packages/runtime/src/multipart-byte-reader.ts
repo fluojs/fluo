@@ -72,13 +72,14 @@ export class MultipartByteReader {
   }
 
   async complete(): Promise<void> {
-    this.signal?.removeEventListener('abort', this.abortListener);
+    this.buffer = EMPTY_BYTES;
 
     while (!this.cancelled) {
-      const result = await this.readSource();
+      const result = await this.readSource(false);
 
       if (result.done) {
         this.completed = true;
+        this.signal?.removeEventListener('abort', this.abortListener);
         this.releaseReader();
         return;
       }
@@ -205,7 +206,7 @@ export class MultipartByteReader {
     return this.buffer[offset + 3] === 10;
   }
 
-  private async readSource(): Promise<ReadableStreamReadResult<Uint8Array>> {
+  private async readSource(appendToBuffer = true): Promise<ReadableStreamReadResult<Uint8Array>> {
     this.throwIfFailed();
     const result = await this.reader.read();
     this.throwIfFailed();
@@ -225,7 +226,10 @@ export class MultipartByteReader {
       throw error;
     }
 
-    this.buffer = concatBytes(this.buffer, result.value);
+    if (appendToBuffer) {
+      this.buffer = concatBytes(this.buffer, result.value);
+    }
+
     return result;
   }
 
