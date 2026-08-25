@@ -208,6 +208,34 @@ describe('$create-lane native v2 producer', () => {
     }
   });
 
+  it('rejects a release handoff without an explicit release-core decision', () => {
+    // Given
+    const fixture = parseRecord(
+      readFileSync(resolve(fixtureRoot, 'valid-native-artifact.json'), 'utf8'),
+    );
+    const plan = fixture['plan'];
+    if (!isRecord(plan)) {
+      throw new TypeError('valid fixture plan must be an object');
+    }
+
+    // When
+    const run = runScenarioValue({
+      ...fixture,
+      plan: { ...plan, release_handoffs: [4101] },
+    });
+
+    try {
+      // Then
+      expect(run.result).toEqual({
+        status: 'rejected',
+        reason: 'invalid_artifact',
+      });
+      expect(allFiles(run.outputRoot)).toEqual([]);
+    } finally {
+      rmSync(run.outputRoot, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     ['mixed-input.json', 'mixed_input'],
     ['malformed-artifact.json', 'invalid_artifact'],

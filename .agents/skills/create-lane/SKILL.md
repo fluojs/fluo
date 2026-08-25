@@ -39,6 +39,13 @@ Obtain these approvals in order from three distinct user interactions:
 3. `lane-plan`: the final multi-issue grouping, dependencies, lane ID, merge
    policy, retry policy, release handoffs, and authority scope.
 
+`release_handoffs` is reserved for issues whose core task is a release or
+publish decision that must stop at `blocked-maintainer-decision`. A public
+package change that merely requires a Changeset is normal implementation work
+and must not enter `release_handoffs`. Every planned handoff must bind the
+explicit reason `release-or-publish-is-core` and occupy a dedicated
+single-issue lane.
+
 Each persisted approval binds the complete plan plus artifact ID/SHA and is
 consumed exactly once. An approval response cannot satisfy more than one gate.
 If structured questions are unavailable, present the gate and wait for a

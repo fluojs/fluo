@@ -12,6 +12,12 @@ Acquire a per-ledger lease, validate the v2 snapshot and event hash chain, and
 reconcile live branch, worktree, PR, head, checks, and issue identity before
 resuming.
 
+`release_handoffs` does not mean “Changeset required.” It contains only issues
+whose core task is release or publishing. Those issues are never dispatched to
+implementation and terminally park at `blocked-maintainer-decision`. When
+multiple handoffs exist, already parked items may coexist with untouched queued
+handoffs while the root status remains `running`.
+
 ## Attempt loop
 
 ```text

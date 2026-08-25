@@ -24,6 +24,16 @@ Show the artifact candidates and obtain three separate approvals:
 3. Lane plan approval accepts the final grouping, dependency graph, release
    handoffs, merge/retry policy, authority scope, and lane identity.
 
+In the approval presentation, distinguish release metadata from execution
+handoffs:
+
+- Changeset requirements stay implementation and verification obligations.
+- `release_handoffs` contains only issues whose core task is release or
+  publishing and therefore terminally parks for a maintainer decision.
+- Each handoff is represented in the approved plan as
+  `{ "issue_number": <n>, "reason": "release-or-publish-is-core" }` and must
+  occupy a dedicated single-issue lane.
+
 Each gate has a distinct approval identity and interaction. Its digest binds
 the complete plan and source artifact. Persist consumed IDs so missing, denied,
 out-of-order, substituted, or replayed approvals stop before publication.

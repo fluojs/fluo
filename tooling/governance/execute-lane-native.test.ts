@@ -46,6 +46,7 @@ const readFixture = (name: string): Readonly<Record<string, unknown>> =>
 const runScenarioPath = (
   scenarioPath: string,
   stateDirectory?: string,
+  ledgerPath = initialLedger,
 ): ScenarioRun => {
   const state =
     stateDirectory ?? mkdtempSync(resolve(tmpdir(), 'fluo-execute-lane-'));
@@ -57,7 +58,7 @@ const runScenarioPath = (
       '--scenario',
       scenarioPath,
       '--ledger',
-      initialLedger,
+      ledgerPath,
       '--state-dir',
       state,
     ],
@@ -195,6 +196,41 @@ describe('$execute-lane persisted native state machine', () => {
     } finally {
       rmSync(waiting.stateDirectory, { recursive: true, force: true });
       rmSync(completed.stateDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('parks one release handoff while another remains queued', () => {
+    const fixtureDirectory = mkdtempSync(
+      resolve(tmpdir(), 'fluo-execute-release-handoffs-'),
+    );
+    const ledgerPath = resolve(fixtureDirectory, 'ledger.json');
+    const scenarioPath = resolve(fixtureRoot, 'interrupted-start.json');
+    const ledger = readFixture('ready-ledger-two-lanes-v2');
+    writeFileSync(
+      ledgerPath,
+      `${JSON.stringify(
+        { ...ledger, release_handoffs: [4101, 4102] },
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    );
+
+    const run = runScenarioPath(scenarioPath, undefined, ledgerPath);
+    try {
+      const snapshot = run.result['snapshot'];
+      if (!isRecord(snapshot)) {
+        throw new TypeError('result snapshot must be an object');
+      }
+      const lanes = snapshot['lanes'];
+      expect(run.result['status']).toBe('running');
+      expect(Array.isArray(lanes) ? lanes.map((lane) => lane['status']) : []).toEqual([
+        'blocked-maintainer-decision',
+        'queued',
+      ]);
+    } finally {
+      rmSync(run.stateDirectory, { recursive: true, force: true });
+      rmSync(fixtureDirectory, { recursive: true, force: true });
     }
   });
 });

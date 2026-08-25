@@ -33,6 +33,26 @@ const isIssueArray = (value) =>
   value.every((issue) => Number.isSafeInteger(issue) && issue > 0) &&
   new Set(value).size === value.length;
 
+const releaseHandoffIssues = (value) => {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const issues = [];
+  for (const handoff of value) {
+    if (
+      !isRecord(handoff) ||
+      !hasExactKeys(handoff, ['issue_number', 'reason']) ||
+      !Number.isSafeInteger(handoff.issue_number) ||
+      handoff.issue_number <= 0 ||
+      handoff.reason !== 'release-or-publish-is-core'
+    ) {
+      return null;
+    }
+    issues.push(handoff.issue_number);
+  }
+  return new Set(issues).size === issues.length ? issues : null;
+};
+
 const hasCanonicalDependencies = (graph, issues) => {
   if (!isRecord(graph)) {
     return false;
@@ -69,6 +89,7 @@ const hasCanonicalDependencies = (graph, issues) => {
 };
 
 export const planIsCanonical = (plan, artifact) => {
+  const handoffIssues = releaseHandoffIssues(plan?.release_handoffs);
   if (
     !isRecord(plan) ||
     !hasExactKeys(plan, planKeys) ||
@@ -83,7 +104,7 @@ export const planIsCanonical = (plan, artifact) => {
     !isIssueArray(plan.confirmed_issues) ||
     !Array.isArray(plan.suggested_but_excluded) ||
     !Array.isArray(plan.backlog_candidates) ||
-    !Array.isArray(plan.release_handoffs) ||
+    handoffIssues === null ||
     !Array.isArray(plan.lanes) ||
     plan.lanes.length === 0
   ) {
@@ -106,6 +127,13 @@ export const planIsCanonical = (plan, artifact) => {
     queues.length === plan.confirmed_issues.length &&
     new Set(queues).size === queues.length &&
     plan.confirmed_issues.every((issue) => queues.includes(issue)) &&
+    handoffIssues.every(
+      (issue) =>
+        plan.confirmed_issues.includes(issue) &&
+        plan.lanes.some(
+          (lane) => lane.queue.length === 1 && lane.queue[0] === issue,
+        ),
+    ) &&
     hasCanonicalDependencies(plan.dependency_graph, plan.confirmed_issues)
   );
 };
@@ -136,7 +164,9 @@ export const readyLedger = (plan, artifact, artifactPath) => ({
   confirmed_issues: plan.confirmed_issues,
   suggested_but_excluded: plan.suggested_but_excluded,
   backlog_candidates: plan.backlog_candidates,
-  release_handoffs: plan.release_handoffs,
+  release_handoffs: plan.release_handoffs.map(
+    (handoff) => handoff.issue_number,
+  ),
   completed_issues: [],
   issue_progress: {},
   lanes: plan.lanes.map((lane) => ({
