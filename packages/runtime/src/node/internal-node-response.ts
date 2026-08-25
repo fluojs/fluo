@@ -37,12 +37,6 @@ export function createNodeEarlyHintsCapability(
 ): FrameworkResponseEarlyHints {
   return {
     write(headers: EarlyHintsHeaders): Promise<void> {
-      if (!hasNonEmptyLink(headers?.link)) {
-        return Promise.reject(new EarlyHintsWriteError(
-          'HTTP 103 Early Hints requires at least one non-empty link value.',
-        ));
-      }
-
       if (isCommitted() || response.headersSent || response.writableEnded) {
         return Promise.reject(new EarlyHintsWriteError(
           'Cannot write HTTP 103 Early Hints after the final response is committed.',
@@ -62,6 +56,12 @@ export function createNodeEarlyHintsCapability(
         return Promise.reject(new EarlyHintsWriteError(
           'HTTP 103 Early Hints contains an invalid header name or value.',
           { cause },
+        ));
+      }
+
+      if (!hasNonEmptyLink(nativeHeaders.link)) {
+        return Promise.reject(new EarlyHintsWriteError(
+          'HTTP 103 Early Hints requires at least one non-empty link value.',
         ));
       }
 

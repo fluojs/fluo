@@ -117,6 +117,35 @@ describe('createFrameworkResponse', () => {
     expect(writeEarlyHints).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [
+      'an inherited',
+      Object.create({
+        link: '</inherited.css>; rel=preload; as=style',
+      }),
+    ],
+    [
+      'a non-enumerable',
+      Object.defineProperty(
+        { link: '</hidden.css>; rel=preload; as=style' },
+        'link',
+        { enumerable: false },
+      ),
+    ],
+  ])('rejects %s link before the native Early Hints write', async (_kind, headers) => {
+    const rawResponse = createMockServerResponse();
+    rawResponse.writeEarlyHints = vi.fn();
+    const frameworkResponse = createFrameworkResponse(rawResponse);
+
+    const write = frameworkResponse.earlyHints?.write(headers);
+    rawResponse.emit('close');
+
+    await expect(write).rejects.toBeInstanceOf(EarlyHintsWriteError);
+    expect(rawResponse.writeEarlyHints).not.toHaveBeenCalled();
+    expect(rawResponse.listenerCount('close')).toBe(0);
+    expect(rawResponse.listenerCount('error')).toBe(0);
+  });
+
   it('wraps native Early Hints failures and removes terminal listeners', async () => {
     const rawResponse = createMockServerResponse();
     const nativeError = new Error('Socket write failed');
