@@ -81,6 +81,40 @@ const observeCi = (state, step) => {
   ];
 };
 
+const observePrConflict = (state, step) => {
+  requireStatus(state, 'ci-pending');
+  const receipt = requireTargetReceipt(
+    state,
+    step.receipt,
+    'pr-conflict',
+  );
+  requirePrIdentity(receipt, state.pr);
+  if (
+    receipt.remote_head_sha !== state.head_sha ||
+    receipt.pr_head_sha !== state.head_sha ||
+    (receipt.pr_mergeable !== 'CONFLICTING' &&
+      receipt.pr_merge_state_status !== 'DIRTY')
+  ) {
+    throw new TypeError(
+      'PR conflict receipt must bind the current head and a conflicting PR.',
+    );
+  }
+  const evidence = requireString(
+    receipt.evidence,
+    'PR conflict receipt evidence',
+  );
+  state.status = 'ci-fix-back';
+  state.blockers = [
+    {
+      reviewer: 'verification',
+      signature: 'pr:merge-conflict',
+      evidence,
+      fix_back_eligible: true,
+      status: 'unresolved',
+    },
+  ];
+};
+
 const observeMerge = (state, step) => {
   requireStatus(state, 'merge-ready');
   if (!state.authority_scope.pr_merge) {
@@ -144,6 +178,9 @@ export const applyRemoteTransition = (state, step) => {
       return true;
     case 'ci-observed':
       observeCi(state, step);
+      return true;
+    case 'pr-conflict-observed':
+      observePrConflict(state, step);
       return true;
     case 'merge-observed':
       observeMerge(state, step);

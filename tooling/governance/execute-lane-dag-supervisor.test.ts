@@ -442,6 +442,63 @@ describe('execute-lane issue supervisor lifecycle', () => {
     expect(state.status).toBe('done');
   });
 
+  it('returns a merge-conflicting PR through fix-back before waiting for CI', () => {
+    // Given
+    const transitions = [
+      {
+        kind: 'implementation-completed',
+        new_head: headA,
+        verification: 'pnpm test --filter runtime passed',
+      },
+      {
+        kind: 'local-review',
+        reviews: passReviews(headA),
+      },
+      {
+        kind: 'pr-observed',
+        action: 'create',
+        receipt: prReceipt('pr-create', headA),
+      },
+      {
+        kind: 'pr-conflict-observed',
+        receipt: {
+          ...observationBase(headA),
+          kind: 'pr-conflict',
+          pr_number: 5101,
+          pr_url: 'https://github.com/fluojs/fluo/pull/5101',
+          remote_head_sha: headA,
+          pr_head_sha: headA,
+          pr_mergeable: 'CONFLICTING',
+          pr_merge_state_status: 'DIRTY',
+          evidence: 'mergeable=CONFLICTING mergeStateStatus=DIRTY',
+        },
+      },
+    ];
+
+    // When
+    const persisted = persistedLifecycle(identity, transitions);
+
+    // Then
+    expect(persisted.snapshot.status).toBe('ci-fix-back');
+    expect(persisted.snapshot.ci).toBeNull();
+    expect(persisted.snapshot.blockers).toEqual([
+      {
+        reviewer: 'verification',
+        signature: 'pr:merge-conflict',
+        evidence: 'mergeable=CONFLICTING mergeStateStatus=DIRTY',
+        fix_back_eligible: true,
+        status: 'unresolved',
+      },
+    ]);
+    expect(persisted.receipts).toContainEqual(
+      expect.objectContaining({
+        kind: 'pr-conflict',
+        pr_mergeable: 'CONFLICTING',
+        pr_merge_state_status: 'DIRTY',
+      }),
+    );
+  });
+
   it('adopts an existing open PR after a same-head local triad', () => {
     const transitions = [
       {

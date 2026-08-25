@@ -17,6 +17,8 @@ SCOPE:
 - Delegate implementation and each contract/code/verification review to separate children.
 - Reach READY_FOR_PR locally before the lead pushes or creates the PR.
 - After PR creation, observe required CI on the exact reviewed head.
+- Refresh PR mergeability immediately and while CI is pending. A GitHub
+  CONFLICTING/DIRTY observation enters CI fix-back without waiting for checks.
 - On a fixable CI failure, return to implementation, create a new head, rerun the full local triad, push, and observe CI again.
 - The issue supervisor owns issue-bound push, PR mutation, merge, cleanup, and
   issue-local evidence only under immutable lane authority.
@@ -31,6 +33,8 @@ SCOPE:
 
 VERIFY:
 - Bind every local review, PR observation, CI result, merge, and cleanup action to the current head.
+- Query PR state with mergeable and mergeStateStatus fields before waiting for
+  CI, and persist a head-bound pr-conflict receipt when either proves conflict.
 - Adopt an existing OPEN PR only after a same-head local triad and persist a
   pr-adopt receipt whose local, remote, and PR heads are identical.
 - Persist every transition and receipt through issue-supervisor-store.mjs.

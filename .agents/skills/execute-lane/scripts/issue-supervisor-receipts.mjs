@@ -61,9 +61,15 @@ export const assertPersistedReceipt = (supervisor, value) => {
   const historicalState = { ...supervisor, head_sha: receipt.head_sha };
   requireTargetReceipt(historicalState, receipt, receipt.kind);
   if (
-    !['pr-adopt', 'pr-create', 'pr-update', 'ci', 'merge', 'cleanup'].includes(
-      receipt.kind,
-    )
+    ![
+      'pr-adopt',
+      'pr-create',
+      'pr-update',
+      'pr-conflict',
+      'ci',
+      'merge',
+      'cleanup',
+    ].includes(receipt.kind)
   ) {
     throw new TypeError('persisted supervisor receipt kind is invalid.');
   }
@@ -85,6 +91,15 @@ export const assertPersistedReceipt = (supervisor, value) => {
     throw new TypeError(
       'persisted adopted PR must match the supervisor branch.',
     );
+  }
+  if (
+    receipt.kind === 'pr-conflict' &&
+    (receipt.remote_head_sha !== receipt.head_sha ||
+      receipt.pr_head_sha !== receipt.head_sha ||
+      (receipt.pr_mergeable !== 'CONFLICTING' &&
+        receipt.pr_merge_state_status !== 'DIRTY'))
+  ) {
+    throw new TypeError('persisted PR conflict receipt is invalid.');
   }
   if (
     receipt.kind === 'merge' &&
