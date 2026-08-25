@@ -242,6 +242,7 @@ describe('verify-lane-ledger canonical versioned completion contract', () => {
       name: 'a non-positive release handoff',
       mutate: (ledger: LaneLedgerFixture) => {
         ledger.release_handoffs = [0];
+        ledger.lane_plan_approval_sha256 = 'a'.repeat(64);
       },
       expectedError: 'release_handoffs must contain unique positive issue numbers from confirmed_issues',
     },
@@ -249,6 +250,7 @@ describe('verify-lane-ledger canonical versioned completion contract', () => {
       name: 'a duplicate release handoff',
       mutate: (ledger: LaneLedgerFixture) => {
         ledger.release_handoffs = [101, 101];
+        ledger.lane_plan_approval_sha256 = 'a'.repeat(64);
       },
       expectedError: 'release_handoffs must contain unique positive issue numbers from confirmed_issues',
     },
@@ -256,6 +258,7 @@ describe('verify-lane-ledger canonical versioned completion contract', () => {
       name: 'an unconfirmed release handoff',
       mutate: (ledger: LaneLedgerFixture) => {
         ledger.release_handoffs = [103];
+        ledger.lane_plan_approval_sha256 = 'a'.repeat(64);
       },
       expectedError: 'release_handoffs must contain unique positive issue numbers from confirmed_issues',
     },
@@ -267,7 +270,18 @@ describe('verify-lane-ledger canonical versioned completion contract', () => {
     expect(
       runMutatedReadyLedger((ledger) => {
         ledger.release_handoffs = [1];
+        ledger.lane_plan_approval_sha256 = 'a'.repeat(64);
       }, runValidatorPath),
     ).toContain('Lane ledger check passed for 1 file(s).');
+  });
+
+  it('rejects a release handoff without an approval binding', () => {
+    expect(
+      runMutatedReadyLedger((ledger) => {
+        ledger.release_handoffs = [1];
+      }),
+    ).toContain(
+      'non-empty release_handoffs require lane_plan_approval_sha256',
+    );
   });
 });

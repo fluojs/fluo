@@ -358,6 +358,57 @@ describe('$execute-lane persisted native state machine', () => {
     }
   });
 
+  it('rejects removing approved handoffs from a bound ledger', () => {
+    const repositoryRoot = mkdtempSync(
+      resolve(tmpdir(), 'fluo-execute-release-removal-'),
+    );
+    const ledgerPath = resolve(
+      repositoryRoot,
+      '.omo/lanes/lane-4101-runtime.json',
+    );
+    const approvalPath = resolve(
+      repositoryRoot,
+      '.omo/approvals/approval-lane-4101-runtime-lane-plan.json',
+    );
+    const artifactPath = resolve(
+      repositoryRoot,
+      '.omo/search-issue/artifacts/search-native-release.json',
+    );
+    mkdirSync(dirname(ledgerPath), { recursive: true });
+    mkdirSync(dirname(approvalPath), { recursive: true });
+    mkdirSync(dirname(artifactPath), { recursive: true });
+    const ledger = structuredClone(
+      readFixture('ready-ledger-release-v2'),
+    ) as Record<string, unknown>;
+    ledger['release_handoffs'] = [];
+    for (const [path, value] of [
+      [ledgerPath, ledger],
+      [approvalPath, readFixture('release-handoff-approval')],
+      [artifactPath, readFixture('search-native-release')],
+    ] as const) {
+      writeFileSync(
+        path,
+        `${JSON.stringify(value, null, 2)}\n`,
+        'utf8',
+      );
+    }
+
+    try {
+      expect(() =>
+        runScenarioPath(
+          resolve(fixtureRoot, 'interrupted-start.json'),
+          undefined,
+          ledgerPath,
+          repositoryRoot,
+        ),
+      ).toThrow(
+        /release handoffs do not match their lane-plan approval receipt/u,
+      );
+    } finally {
+      rmSync(repositoryRoot, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     [
       'binding',
@@ -478,5 +529,13 @@ describe('$execute-lane shipped native assets', () => {
         'scripts/fixtures/run-replay.mjs',
       ].filter((path) => existsSync(resolve(skillRoot, path))),
     ).toHaveLength(6);
+  });
+
+  it.each([
+    'ready-ledger-release-v2.json',
+    'ready-ledger-two-lanes-v2.json',
+  ])('serializes one lane-plan approval binding in %s', (fixture) => {
+    const source = readFileSync(resolve(fixtureRoot, fixture), 'utf8');
+    expect(source.match(/"lane_plan_approval_sha256"/gu)).toHaveLength(1);
   });
 });

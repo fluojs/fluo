@@ -3,7 +3,6 @@
   "run_id": "lane-4101-runtime",
   "lane_id": "lane-4101-runtime",
   "lane_plan_approval_sha256": "081555fbe6264263afaddb6abd468874493c0d330c38d26ae2f2992a719b390a",
-  "lane_plan_approval_sha256": "081555fbe6264263afaddb6abd468874493c0d330c38d26ae2f2992a719b390a",
   "status": "ready",
   "created_by": "create-lane",
   "base_branch": "main",

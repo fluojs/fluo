@@ -156,6 +156,14 @@ export function validateLedgerShape(path, ledger) {
   assert(Array.isArray(ledger.confirmed_issues), path, 'confirmed_issues must be an array');
   assert(ledger.confirmed_issues.every(isPositiveInteger), path, 'confirmed_issues must contain positive integer issue numbers');
   assert(Array.isArray(ledger.release_handoffs), path, 'release_handoffs must be an array');
+  if (ledger.release_handoffs.length > 0) {
+    assert(
+      typeof ledger.lane_plan_approval_sha256 === 'string' &&
+        /^[a-f0-9]{64}$/u.test(ledger.lane_plan_approval_sha256),
+      path,
+      'non-empty release_handoffs require lane_plan_approval_sha256',
+    );
+  }
   assert(Array.isArray(ledger.completed_issues), path, 'completed_issues must be an array');
   assert(ledger.completed_issues.every(isPositiveInteger), path, 'completed_issues must contain positive integer issue numbers');
   assert(Array.isArray(ledger.suggested_but_excluded), path, 'suggested_but_excluded must be an array');

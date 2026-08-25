@@ -96,6 +96,7 @@ function setBlockedReleaseHandoff(ledger: LaneLedgerFixture): void {
   ledger.status = 'blocked-maintainer-decision';
   ledger.completed_issues = [101];
   ledger.release_handoffs = [102];
+  ledger.lane_plan_approval_sha256 = 'a'.repeat(64);
   ledger.lanes = [
     {
       name: 'runtime-completed',
@@ -778,6 +779,7 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
     expect(
       runMutatedReadyLedger((ledger) => {
         ledger.release_handoffs = [1];
+        ledger.lane_plan_approval_sha256 = 'a'.repeat(64);
         ledger.confirmed_issues.push(2);
         ledger.lanes[0].queue.push(2);
       }),
@@ -828,6 +830,7 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
           },
         ];
         ledger.release_handoffs = [102];
+        ledger.lane_plan_approval_sha256 = 'a'.repeat(64);
       }),
     ).toContain('release handoff must never be completed, merged, or done');
   });

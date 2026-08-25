@@ -23,7 +23,10 @@ const hasExactKeys = (record, keys) => {
 };
 
 export const assertReleaseHandoffApproval = (ledger, receipt) => {
-  if (ledger.release_handoffs.length === 0) {
+  if (
+    ledger.release_handoffs.length === 0 &&
+    ledger.lane_plan_approval_sha256 === undefined
+  ) {
     return;
   }
   if (
@@ -121,7 +124,10 @@ export const assertReleaseHandoffBinding = (
   artifact,
   artifactPath,
 ) => {
-  if (ledger.release_handoffs.length === 0) {
+  if (
+    ledger.release_handoffs.length === 0 &&
+    ledger.lane_plan_approval_sha256 === undefined
+  ) {
     return;
   }
   assertReleaseHandoffApproval(ledger, receipt);

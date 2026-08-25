@@ -43,7 +43,10 @@ const readJson = (path) => {
 };
 
 const releaseHandoffContext = (repositoryRoot, ledger) => {
-  if (ledger.release_handoffs.length === 0) {
+  if (
+    ledger.release_handoffs.length === 0 &&
+    ledger.lane_plan_approval_sha256 === undefined
+  ) {
     return null;
   }
   const omoDirectory = resolve(repositoryRoot, '.omo');
@@ -236,7 +239,10 @@ export const acquireLease = (stateDirectory, laneId) => {
 export const persistState = (stateDirectory, previous, next) => {
   validateState(next);
   const context = previous.handoffContext;
-  if (next.snapshot.release_handoffs.length > 0) {
+  if (
+    next.snapshot.release_handoffs.length > 0 ||
+    next.snapshot.lane_plan_approval_sha256 !== undefined
+  ) {
     if (context === null || context === undefined) {
       throw new TypeError('release handoff approval context is missing');
     }
