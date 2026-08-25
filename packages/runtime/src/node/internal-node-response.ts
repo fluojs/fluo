@@ -128,6 +128,9 @@ function cloneEarlyHintsHeaders(
   for (const [name, value] of Object.entries(headers)) {
     validateHeaderName(name);
     const normalizedName = name.toLowerCase();
+    if (normalizedName === 'content-length' || normalizedName === 'transfer-encoding') {
+      throw new TypeError(`Header is not permitted in HTTP 103 Early Hints: ${name}`);
+    }
     if (names.has(normalizedName)) {
       throw new TypeError(`Duplicate Early Hints header name: ${name}`);
     }

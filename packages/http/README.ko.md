@@ -192,7 +192,7 @@ async function render(_input: undefined, context: RequestContext) {
 }
 ```
 
-각 `write(...)`는 하나의 `103`을 emit하므로 final response 전에 여러 write를 순서대로 await할 수 있습니다. 모든 write에는 비어 있지 않은 `link` value가 하나 이상 필요하며 유효한 HTTP name과 value를 사용하는 추가 informational field를 포함할 수 있습니다. Header name은 대소문자를 구분하지 않으며 casing만 다른 이름을 중복해서 사용할 수 없습니다. Early field는 `response.headers`를 채우거나 status를 바꾸거나 `committed`를 설정하지 않으며 final-response header로 복사되지도 않습니다.
+각 `write(...)`는 하나의 `103`을 emit하므로 final response 전에 여러 write를 순서대로 await할 수 있습니다. 모든 write에는 비어 있지 않은 `link` value가 하나 이상 필요하며 유효한 HTTP name과 value를 사용하는 추가 informational field를 포함할 수 있습니다. Header name은 대소문자를 구분하지 않으며 casing만 다른 이름을 중복해서 사용할 수 없습니다. Status상 금지된 framing field(`content-length`, `transfer-encoding`)는 native write 전에 reject됩니다. Early field는 `response.headers`를 채우거나 status를 바꾸거나 `committed`를 설정하지 않으며 final-response header로 복사되지도 않습니다.
 
 Node.js, Express, Fastify는 이 capability를 노출합니다. Fetch-style Web, Bun, Deno, Cloudflare Workers response는 해당 `Response` API로 final response 이전 informational response를 표현할 수 없으므로 capability를 생략합니다. Final commit 이후 write 또는 native validation/write 실패는 `EarlyHintsWriteError`(`EARLY_HINTS_WRITE_FAILED`)로 reject되고, settlement 전에 연결이 끊기면 `RequestAbortedError`(`REQUEST_ABORTED`)로 reject됩니다.
 

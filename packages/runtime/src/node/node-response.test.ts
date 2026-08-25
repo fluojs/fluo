@@ -99,6 +99,22 @@ describe('createFrameworkResponse', () => {
     expect(writeEarlyHints).not.toHaveBeenCalled();
   });
 
+  it.each(['content-length', 'transfer-encoding'] as const)(
+    'rejects status-forbidden %s before the native Early Hints write',
+    async (headerName) => {
+      const rawResponse = createMockServerResponse();
+      const writeEarlyHints = vi.spyOn(rawResponse, 'writeEarlyHints');
+      const frameworkResponse = createFrameworkResponse(rawResponse);
+
+      await expect(frameworkResponse.earlyHints?.write({
+        link: '</styles.css>; rel=preload; as=style',
+        [headerName]: '1',
+      })).rejects.toBeInstanceOf(EarlyHintsWriteError);
+
+      expect(writeEarlyHints).not.toHaveBeenCalled();
+    },
+  );
+
   it('maps malformed Early Hints input to a rejected write promise', async () => {
     const rawResponse = createMockServerResponse();
     const writeEarlyHints = vi.spyOn(rawResponse, 'writeEarlyHints');
