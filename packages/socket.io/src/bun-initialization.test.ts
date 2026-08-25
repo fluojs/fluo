@@ -38,6 +38,10 @@ class TestBunAdapter implements HttpApplicationAdapter {
 
   close(): void {}
 
+  getServer(): undefined {
+    return undefined;
+  }
+
   configureRealtimeBinding(binding: unknown | undefined): void {
     if (binding === undefined) {
       if (this.binding !== undefined) {

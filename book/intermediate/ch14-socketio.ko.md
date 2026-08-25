@@ -167,7 +167,7 @@ handleTicketStatus(
 
 fluo는 선택한 HTTP adapter 계약을 통해 Bun의 고성능 WebSocket 구현을 지원합니다. Socket.IO는 보통 Node.js에서 `ws` 패키지를 사용하지만, Bun에서는 활성 platform adapter가 Socket.IO adapter에 필요한 fetch-style realtime binding을 제공할 때 `@socket.io/bun-engine`을 사용할 수 있습니다. 따라서 FluoShop은 runtime auto-switching에 의존하지 말고 Bun 호환 platform adapter를 명시적으로 선택해야 합니다. 이 방식은 realtime boundary를 감사 가능한 상태로 유지하면서도 표준 Node.js 프로세스보다 낮은 메모리 오버헤드로 많은 동시 지원 채팅을 처리할 수 있게 합니다.
 
-Socket.IO 패키지에는 명시적인 runtime gate가 있습니다. Node-backed deployment는 Node.js 22.12.0 이상을 요구하며 shared application listener를 사용합니다. Bun은 static CORS shape를 요구합니다. CORS delegate function과 `cors.origin` array 내부의 boolean entry는 사용할 수 없습니다. Socket.IO는 모든 runtime에서 `@WebSocketGateway({ serverBacked })`를 거부합니다. 기존 설정은 해당 option을 제거하고 shared application listener를 사용해야 하며, dedicated listener가 필요하면 `@fluojs/websockets/node`로 마이그레이션하거나 `SocketIoModule` 밖에서 별도 Socket.IO server를 직접 소유하세요. Deno와 Workers는 `@fluojs/socket.io`에서 지원하지 않으므로, 해당 런타임에서는 runtime-specific `@fluojs/websockets/*` subpath로 raw WebSocket gateway를 작성하세요.
+Socket.IO 패키지에는 명시적인 runtime gate가 있습니다. Node-backed deployment는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 요구하며 shared application listener를 사용합니다. Bun은 static CORS shape를 요구합니다. CORS delegate function과 `cors.origin` array 내부의 boolean entry는 사용할 수 없습니다. Socket.IO는 모든 runtime에서 `@WebSocketGateway({ serverBacked })`를 거부합니다. 기존 설정은 해당 option을 제거하고 shared application listener를 사용해야 하며, dedicated listener가 필요하면 `@fluojs/websockets/node`로 마이그레이션하거나 `SocketIoModule` 밖에서 별도 Socket.IO server를 직접 소유하세요. Deno와 Workers는 `@fluojs/socket.io`에서 지원하지 않으므로, 해당 런타임에서는 runtime-specific `@fluojs/websockets/*` subpath로 raw WebSocket gateway를 작성하세요.
 
 ## 14.7 여러 room으로 브로드캐스트하기
 

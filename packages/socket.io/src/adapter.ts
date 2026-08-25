@@ -340,7 +340,6 @@ export class SocketIoLifecycleService
   implements OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy, SocketIoRoomService
 {
   private attachments: NamespaceAttachment[] = [];
-  private applicationBootstrapCompleted = false;
   private bunEngine: BunEngineServer | undefined;
   private readonly inFlightGatewayWork = new Set<Promise<void>>();
   private io: Server | undefined;
@@ -348,8 +347,9 @@ export class SocketIoLifecycleService
   private namespaceContextPromise: Promise<AsyncLocalStorage<string>> | undefined;
   private realtimeBindingInstallation: HttpAdapterRealtimeBindingInstallation | undefined;
   private readonly socketRegistry = new Map<string, Socket>();
+  private retryShutdownPromise: Promise<void> | undefined;
+  private runtimeShutdownPromise: Promise<void> | undefined;
   private serverInitializationPromise: Promise<Server> | undefined;
-  private shutdownPromise: Promise<void> | undefined;
   private shutdownStarted = false;
   private wired = false;
 
@@ -460,7 +460,6 @@ export class SocketIoLifecycleService
 
     if (descriptors.length === 0) {
       await this.ensureBunRealtimeBindingForRawServerAccess();
-      this.applicationBootstrapCompleted = true;
       return;
     }
 
@@ -474,7 +473,6 @@ export class SocketIoLifecycleService
     }
 
     this.attachments = attachments;
-    this.applicationBootstrapCompleted = true;
     this.wired = true;
   }
 
@@ -490,6 +488,31 @@ export class SocketIoLifecycleService
    */
   async onModuleDestroy(): Promise<void> {
     await this.shutdown();
+  }
+
+  /**
+   * Deliberately retries retained Socket.IO shutdown state after the runtime lifecycle attempt has settled.
+   *
+   * @returns A promise that resolves when this retry attempt completes.
+   */
+  async retryShutdown(): Promise<void> {
+    await this.shutdown();
+
+    if (!this.io) {
+      return;
+    }
+
+    if (this.retryShutdownPromise) {
+      await this.retryShutdownPromise;
+      return;
+    }
+
+    this.retryShutdownPromise = this.runShutdownLifecycle();
+    try {
+      await this.retryShutdownPromise;
+    } finally {
+      this.retryShutdownPromise = undefined;
+    }
   }
 
   /**
@@ -1177,18 +1200,12 @@ export class SocketIoLifecycleService
   }
 
   private async shutdown(): Promise<void> {
-    if (this.shutdownPromise) {
-      await this.shutdownPromise;
-      return;
+    if (!this.runtimeShutdownPromise) {
+      this.shutdownStarted = true;
+      this.runtimeShutdownPromise = this.runShutdownLifecycle();
     }
 
-    this.shutdownStarted = true;
-    this.shutdownPromise = this.runShutdownLifecycle();
-    try {
-      await this.shutdownPromise;
-    } finally {
-      this.shutdownPromise = undefined;
-    }
+    await this.runtimeShutdownPromise;
   }
 
   private async runShutdownLifecycle(): Promise<void> {
@@ -1271,15 +1288,17 @@ export class SocketIoLifecycleService
   }
 
   private clearManagedState(): void {
-    const clearPartialRealtimeBinding = !this.applicationBootstrapCompleted;
+    const clearPreListenRealtimeBinding =
+      this.realtimeBindingInstallation !== undefined
+      && typeof this.adapter.getServer === 'function'
+      && this.adapter.getServer() === undefined;
 
-    this.applicationBootstrapCompleted = false;
     this.wired = false;
     this.io = undefined;
     this.bunEngine = undefined;
     this.attachments = [];
 
-    if (clearPartialRealtimeBinding) {
+    if (clearPreListenRealtimeBinding) {
       this.realtimeBindingInstallation?.install(undefined);
     }
 

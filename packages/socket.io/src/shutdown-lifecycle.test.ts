@@ -153,7 +153,7 @@ describe('SocketIoLifecycleService shutdown state retention', () => {
     ]);
   });
 
-  it('clears retained managed state when a later shutdown retry succeeds on the same service', async () => {
+  it('shares one terminal timeout attempt across both runtime shutdown hooks', async () => {
     vi.useFakeTimers();
     const loggerEvents: string[] = [];
     const service = new SocketIoLifecycleService(
@@ -189,28 +189,73 @@ describe('SocketIoLifecycleService shutdown state retention', () => {
     Reflect.set(service, 'attachments', [{ path: '/chat' }]);
     (Reflect.get(service, 'socketRegistry') as Map<string, unknown>).set('socket-1', retainedSocket);
 
-    const firstClose = service.onApplicationShutdown();
+    const moduleDestroy = service.onModuleDestroy();
     await vi.advanceTimersByTimeAsync(25);
-    await firstClose;
+    await moduleDestroy;
 
+    const applicationShutdown = service.onApplicationShutdown();
+    await vi.advanceTimersByTimeAsync(25);
+    await applicationShutdown;
+
+    expect(closeCallbacks).toHaveLength(1);
     expect(Reflect.get(service, 'io')).toBe(io);
     expect(Reflect.get(service, 'socketRegistry')).toEqual(new Map([['socket-1', retainedSocket]]));
-
-    const secondClose = service.onApplicationShutdown();
-    expect(closeCallbacks).toHaveLength(2);
-    const retryCloseCallback = closeCallbacks[1];
-    if (!retryCloseCallback) {
-      throw new Error('Expected the retry close callback to be registered.');
-    }
-
-    retryCloseCallback();
-    await secondClose;
-
-    expect(Reflect.get(service, 'io')).toBeUndefined();
-    expect(Reflect.get(service, 'attachments')).toEqual([]);
-    expect(Reflect.get(service, 'socketRegistry')).toEqual(new Map());
     expect(loggerEvents).toEqual([
       'Failed to close Socket.IO server within 25ms; retaining managed Socket.IO state for shutdown retry.',
     ]);
+  });
+
+  it('clears retained managed state through a deliberate later retry attempt', async () => {
+    vi.useFakeTimers();
+    const service = new SocketIoLifecycleService(
+      {} as never,
+      [] as never,
+      createLogger([]) as never,
+      {
+        async close() {},
+        getRealtimeCapability() {
+          return { kind: 'server-backed', server: {} };
+        },
+      } as never,
+      { shutdown: { timeoutMs: 25 } },
+    );
+    const closeCallbacks: Array<() => void> = [];
+    const retryCloseRegistered = createDeferred();
+    let forceCleanupShouldFail = true;
+    const io = {
+      close(callback?: () => void) {
+        if (callback) {
+          closeCallbacks.push(callback);
+          if (closeCallbacks.length === 2) {
+            retryCloseRegistered.resolve();
+          }
+        }
+      },
+      disconnectSockets() {
+        if (forceCleanupShouldFail) {
+          forceCleanupShouldFail = false;
+          throw new Error('force disconnect failed');
+        }
+      },
+    };
+
+    Reflect.set(service, 'io', io);
+
+    const runtimeShutdown = service.onModuleDestroy();
+    await vi.advanceTimersByTimeAsync(25);
+    await runtimeShutdown;
+
+    const retry = service.retryShutdown();
+    await retryCloseRegistered.promise;
+    const retryCloseCallback = closeCallbacks[1];
+    if (!retryCloseCallback) {
+      throw new Error('Expected the deliberate retry close callback to be registered.');
+    }
+
+    retryCloseCallback();
+    await retry;
+
+    expect(Reflect.get(service, 'io')).toBeUndefined();
+    expect(closeCallbacks).toHaveLength(2);
   });
 });
