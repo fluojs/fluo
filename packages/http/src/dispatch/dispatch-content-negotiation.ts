@@ -1,4 +1,5 @@
 import { NotAcceptableException } from '../exceptions.js';
+import { getRequestHeader } from '../header-helpers.js';
 import type {
   ContentNegotiationOptions,
   FrameworkRequest,
@@ -28,7 +29,7 @@ function normalizeMediaType(value: string): string {
 }
 
 function readAcceptHeader(request: FrameworkRequest): string | undefined {
-  const raw = request.headers.accept ?? request.headers.Accept;
+  const raw = getRequestHeader(request, 'accept');
   const value = Array.isArray(raw) ? raw.join(',') : raw;
   const normalized = value?.trim();
 
