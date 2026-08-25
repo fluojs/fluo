@@ -1,3 +1,4 @@
+import { appendVaryHeader, Controller, Get, getRequestHeader, type RequestContext } from '@fluojs/http';
 import { type BunServeOptions, type BunServerLike, bootstrapBunApplication } from '@fluojs/platform-bun';
 import {
   bootstrapCloudflareWorkerApplication,
@@ -9,6 +10,7 @@ import {
   type DenoServeHandler,
   type DenoServeOptions,
 } from '@fluojs/platform-deno';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createWebRuntimeHttpAdapterPortabilityHarness } from './web-runtime-adapter-portability.js';
@@ -122,6 +124,16 @@ type BunBootstrapApp = {
   close(): Promise<void>;
   listen(): Promise<void>;
 };
+
+type WebRuntimePortabilityApp = {
+  close(): Promise<void>;
+  dispatch(request: Request): Promise<Response>;
+};
+
+type WebRuntimeBootstrap = (
+  rootModule: ModuleType,
+  options: { cors: false },
+) => Promise<WebRuntimePortabilityApp>;
 
 type BunBootstrap = (
   rootModule: Parameters<typeof bootstrapBunApplication>[0],
@@ -313,6 +325,51 @@ function registerWebRuntimePortabilitySuite(
   });
 }
 
+function registerWebRuntimeHeaderHelperPortabilitySuite(
+  name: string,
+  bootstrap: WebRuntimeBootstrap,
+): void {
+  describe(`${name} request header helper portability`, () => {
+    it('reads mixed-case request headers and preserves wildcard Vary responses', async () => {
+      @Controller('/headers')
+      class HeaderController {
+        @Get('/')
+        read(_input: undefined, context: RequestContext) {
+          context.response.setHeader('vary', '*, Accept-Encoding');
+          appendVaryHeader(context.response, 'Accept');
+
+          return {
+            requestId: getRequestHeader(context.request, 'x-request-id'),
+          };
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        controllers: [HeaderController],
+      });
+
+      const app = await bootstrap(AppModule, { cors: false });
+
+      try {
+        const response = await app.dispatch(new Request('https://runtime.test/headers', {
+          headers: {
+            'X-REQUEST-ID': 'req-portability',
+          },
+        }));
+
+        expect(response.status).toBe(200);
+        expect(response.headers.get('vary')).toBe('*');
+        await expect(response.json()).resolves.toEqual({
+          requestId: 'req-portability',
+        });
+      } finally {
+        await app.close();
+      }
+    });
+  });
+}
+
 registerWebRuntimePortabilitySuite(
   'bun',
   createWebRuntimeHttpAdapterPortabilityHarness({
@@ -323,6 +380,8 @@ registerWebRuntimePortabilitySuite(
     name: 'bun',
   }),
 );
+registerWebRuntimeHeaderHelperPortabilitySuite('bun', async (rootModule, options) =>
+  await createBunPortabilityApp(rootModule, options));
 
 describe('bun web runtime adapter cleanup', () => {
   it('restores mocked Bun when bootstrap throws before listen', async () => {
@@ -394,6 +453,24 @@ registerWebRuntimePortabilitySuite(
     name: 'deno',
   }),
 );
+registerWebRuntimeHeaderHelperPortabilitySuite('deno', async (rootModule, options) => {
+  const server = createServeStub();
+  const app = await bootstrapDenoApplication(rootModule, {
+    ...options,
+    serve: server.serve,
+  });
+
+  await app.listen();
+
+  return {
+    close() {
+      return app.close();
+    },
+    async dispatch(request: Request) {
+      return await server.handler!(request);
+    },
+  };
+});
 
 registerWebRuntimePortabilitySuite(
   'cloudflare-workers',
@@ -414,3 +491,15 @@ registerWebRuntimePortabilitySuite(
     name: 'cloudflare-workers',
   }),
 );
+registerWebRuntimeHeaderHelperPortabilitySuite('cloudflare-workers', async (rootModule, options) => {
+  const worker = await bootstrapCloudflareWorkerApplication(rootModule, options);
+
+  return {
+    close() {
+      return worker.close();
+    },
+    async dispatch(request: Request) {
+      return await worker.fetch(request, {}, createExecutionContext());
+    },
+  };
+});

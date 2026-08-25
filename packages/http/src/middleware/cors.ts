@@ -1,3 +1,4 @@
+import { appendVaryHeader, getRequestHeader } from '../header-helpers.js';
 import type { Middleware } from '../types.js';
 
 /**
@@ -57,7 +58,7 @@ export function createCorsMiddleware(options: CorsOptions = {}): Middleware {
 
   return {
     async handle(context, next) {
-      const requestOriginHeader = context.request.headers.origin;
+      const requestOriginHeader = getRequestHeader(context.request, 'origin');
       const requestOrigin = Array.isArray(requestOriginHeader) ? requestOriginHeader[0] : requestOriginHeader;
       const origin = resolveOrigin(options, requestOrigin);
 
@@ -85,15 +86,10 @@ export function createCorsMiddleware(options: CorsOptions = {}): Middleware {
       );
 
       if (origin && origin !== '*') {
-        const existingVary = context.response.headers['vary'] ?? context.response.headers['Vary'];
-        const varyValues = existingVary ? (Array.isArray(existingVary) ? existingVary : String(existingVary).split(',').map((v) => v.trim())) : [];
-        if (!varyValues.some((v) => v.toLowerCase() === 'origin')) {
-          varyValues.push('Origin');
-        }
-        context.response.setHeader('Vary', varyValues.join(', '));
+        appendVaryHeader(context.response, 'Origin');
       }
 
-      const requestedPreflightMethod = context.request.headers['access-control-request-method'];
+      const requestedPreflightMethod = getRequestHeader(context.request, 'access-control-request-method');
       const hasPreflightMethod = Array.isArray(requestedPreflightMethod)
         ? requestedPreflightMethod.length > 0
         : requestedPreflightMethod !== undefined;

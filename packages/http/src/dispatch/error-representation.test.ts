@@ -139,4 +139,16 @@ describe('HTTP-owned error representations', () => {
     expect(render).not.toHaveBeenCalled();
   });
 
+  it('preserves wildcard vary headers when negotiated responses add Accept', async () => {
+    const render = vi.fn(() => '<main>unused</main>');
+    const { dispatcher } = createTestDispatcher({ render });
+    const response = createResponse();
+    response.setHeader('vary', '*, Accept-Encoding');
+
+    await dispatcher.dispatch(createRequest('/missing', 'application/json'), response);
+
+    expect(response.headers.vary).toBe('*');
+    expect(response.headers['Content-Type']).toBe('application/json; charset=utf-8');
+  });
+
 });

@@ -205,6 +205,32 @@ describe('DefaultBinder', () => {
     expect(bound.nickname).toBeUndefined();
   });
 
+  it('binds header fields case-insensitively while preserving multi-value arrays', async () => {
+    class HeaderBoundRequest {
+      @FromHeader('x-request-id')
+      requestId = '';
+
+      @FromHeader('x-role')
+      roles: string[] = [];
+    }
+
+    const binder = new DefaultBinder();
+    const bound = (await binder.bind(
+      HeaderBoundRequest,
+      createContext(
+        createRequest({
+          headers: {
+            'X-Request-Id': 'req-123',
+            'X-Role': ['admin', 'editor'],
+          },
+        }),
+      ),
+    )) as HeaderBoundRequest;
+
+    expect(bound.requestId).toBe('req-123');
+    expect(bound.roles).toEqual(['admin', 'editor']);
+  });
+
   it('preserves single-element arrays for query bindings', async () => {
     class SearchUsersRequest {
       @FromQuery('tag')

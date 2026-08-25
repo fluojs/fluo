@@ -4,6 +4,7 @@ import { getControllerMetadata, getRouteMetadata } from '@fluojs/core/internal';
 import { attachCompiledRouteIdentity } from './compiled-route-identity.js';
 import { getRouteProducesMetadata } from './decorators.js';
 import { RouteConflictError } from './errors.js';
+import { getRequestHeader } from './header-helpers.js';
 import { extractRoutePathParams, normalizeRoutePath, parseRoutePath, type RoutePathSegment } from './route-path.js';
 import type {
   FrameworkRequest,
@@ -64,25 +65,14 @@ function normalizeVersionValue(version: string): string {
 }
 
 function readHeaderValue(request: FrameworkRequest, headerName: string): string | undefined {
-  const normalizedHeaderName = headerName.trim().toLowerCase();
+  const raw = getRequestHeader(request, headerName);
+  const values = Array.isArray(raw) ? raw : [raw];
 
-  if (!normalizedHeaderName) {
-    return undefined;
-  }
+  for (const value of values) {
+    const normalized = value?.trim();
 
-  for (const [key, raw] of Object.entries(request.headers)) {
-    if (key.toLowerCase() !== normalizedHeaderName) {
-      continue;
-    }
-
-    const values = Array.isArray(raw) ? raw : [raw];
-
-    for (const value of values) {
-      const normalized = value?.trim();
-
-      if (normalized) {
-        return normalized;
-      }
+    if (normalized) {
+      return normalized;
     }
   }
 

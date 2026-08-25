@@ -192,6 +192,44 @@ describe('createCorsMiddleware', () => {
     expect(response.headers.Vary).toBe('Accept-Encoding, Origin');
   });
 
+  it('preserves lowercase vary header names when appending Origin', async () => {
+    const middleware = createCorsMiddleware({
+      allowOrigin: ['https://app.example.com'],
+    });
+    const response = createResponse();
+    response.setHeader('vary', 'Accept-Encoding');
+
+    await middleware.handle(
+      {
+        request: createRequest('GET', 'https://app.example.com'),
+        requestContext: {} as never,
+        response,
+      },
+      async () => {},
+    );
+
+    expect(response.headers.vary).toBe('Accept-Encoding, Origin');
+  });
+
+  it('preserves wildcard Vary responses without appending Origin', async () => {
+    const middleware = createCorsMiddleware({
+      allowOrigin: ['https://app.example.com'],
+    });
+    const response = createResponse();
+    response.setHeader('Vary', '*, Accept-Encoding');
+
+    await middleware.handle(
+      {
+        request: createRequest('GET', 'https://app.example.com'),
+        requestContext: {} as never,
+        response,
+      },
+      async () => {},
+    );
+
+    expect(response.headers.Vary).toBe('*');
+  });
+
   it('does not emit allow-origin for unlisted origins while continuing the request', async () => {
     const middleware = createCorsMiddleware({
       allowOrigin: ['https://trusted.example.com'],

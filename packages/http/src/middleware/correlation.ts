@@ -1,10 +1,11 @@
+import { getRequestHeader } from '../header-helpers.js';
 import type { Middleware } from '../types.js';
 
 const REQUEST_ID_HEADER = 'x-request-id';
 const CORRELATION_ID_HEADER = 'x-correlation-id';
 
-function resolveInboundRequestId(headers: Readonly<Record<string, string | string[] | undefined>>): string {
-  const requestId = headers[REQUEST_ID_HEADER] ?? headers[CORRELATION_ID_HEADER];
+function resolveInboundRequestId(request: { headers: Readonly<Record<string, string | string[] | undefined>> }): string {
+  const requestId = getRequestHeader(request as never, REQUEST_ID_HEADER) ?? getRequestHeader(request as never, CORRELATION_ID_HEADER);
   const value = Array.isArray(requestId) ? requestId[0] : requestId;
 
   return value ?? createRequestId();
@@ -29,7 +30,7 @@ export function createCorrelationMiddleware(): Middleware {
   return {
     async handle(context, next) {
       if (!context.requestContext.requestId) {
-        context.requestContext.requestId = resolveInboundRequestId(context.request.headers);
+        context.requestContext.requestId = resolveInboundRequestId(context.request);
       }
 
       context.response.setHeader(REQUEST_ID_HEADER, context.requestContext.requestId);
