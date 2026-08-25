@@ -13,6 +13,7 @@ The HTTP execution layer that turns route metadata into a request pipeline with 
 - [Realtime Adapter Capabilities](#realtime-adapter-capabilities)
 - [HTTP Error Representations](#http-error-representations)
 - [Request Cleanup and Portability](#request-cleanup-and-portability)
+- [Streaming Multipart Requests](#streaming-multipart-requests)
 - [Public API](#public-api)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -317,6 +318,12 @@ Adapters should pass an `AbortSignal` on `FrameworkRequest.signal` when the plat
 Adapters that parse multipart uploads should attach runtime-neutral `FrameworkRequestFile` values to `FrameworkRequest.files` rather than augmenting the shared HTTP contract with adapter-specific file types. The seam intentionally models the portable fields every HTTP adapter can provide (`fieldname`, `originalname`, `mimetype`, `buffer`, and `size`); platform packages may keep richer native file objects on their raw request surfaces, but guards, binders, middleware, interceptors, and controllers should read files through `RequestContext.request.files` when they need cross-runtime behavior.
 
 Response content negotiation formatters must return `string` or `Uint8Array` from `ResponseFormatter.format(...)`. Node.js `Buffer` values remain assignable because `Buffer` implements `Uint8Array`, but formatter contracts should rely only on runtime-neutral byte behavior.
+
+## Streaming Multipart Requests
+
+Streaming multipart mode exposes `FrameworkRequest.multipart` instead of populating buffered `body` and `files`. Call `consume()` exactly once and read the ordered `FrameworkMultipartFieldPart | FrameworkMultipartFilePart` stream. File parts expose a portable `ReadableStream<Uint8Array>` and never expose adapter-native upload objects.
+
+`consume()` fails clearly after the first claim. Request aborts, parser failures, limit failures, and dispatch completion cancel active file streams and parser work. Conforming adapters report `{ contract: 'portable-multipart', modes: ['buffered', 'streaming'], version: 1 }` through `getMultipartCapability()`.
 
 ## Public API
 

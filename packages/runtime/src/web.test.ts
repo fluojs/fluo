@@ -500,4 +500,68 @@ describe('createWebFrameworkRequest', () => {
 
     expect(rawFormData.get('title')).toBe('before');
   });
+
+  it('selects streaming multipart per request without cloning or buffering files', async () => {
+    const formData = new FormData();
+    formData.set('title', 'streamed');
+    formData.set('payload', new Blob(['chunked-file'], { type: 'text/plain' }), 'payload.txt');
+    const request = new Request('https://runtime.test/uploads/stream', {
+      body: formData,
+      method: 'POST',
+    });
+    const originalClone = request.clone.bind(request);
+    let cloneCalls = 0;
+
+    Object.defineProperty(request, 'clone', {
+      value: () => {
+        cloneCalls += 1;
+        return originalClone();
+      },
+    });
+
+    const factory = createWebRequestResponseFactory({
+      multipart: {
+        mode: ({ url }) => url === '/uploads/stream' ? 'streaming' : 'buffered',
+      },
+    });
+    const frameworkRequest = await factory.createRequest(request, new AbortController().signal);
+
+    await factory.materializeRequest?.(frameworkRequest);
+
+    expect(cloneCalls).toBe(0);
+    expect(frameworkRequest.body).toBeUndefined();
+    expect(frameworkRequest.files).toBeUndefined();
+    expect(frameworkRequest.multipart?.mode).toBe('streaming');
+
+    const parts = frameworkRequest.multipart?.consume().getReader();
+    await expect(parts?.read()).resolves.toMatchObject({
+      done: false,
+      value: {
+        fieldname: 'title',
+        kind: 'field',
+        value: 'streamed',
+      },
+    });
+
+    const file = await parts?.read();
+    expect(file).toMatchObject({
+      done: false,
+      value: {
+        fieldname: 'payload',
+        kind: 'file',
+        mimetype: 'text/plain',
+        originalname: 'payload.txt',
+      },
+    });
+
+    if (!file || file.done || file.value.kind !== 'file') {
+      throw new Error('Expected a portable streaming file part.');
+    }
+
+    await expect(new Response(file.value.stream).text()).resolves.toBe('chunked-file');
+    await expect(parts?.read()).resolves.toEqual({ done: true, value: undefined });
+    expect(() => frameworkRequest.multipart?.consume()).toThrow(
+      'Streaming multipart body can only be consumed once.',
+    );
+  });
 });

@@ -12,6 +12,7 @@ Cloudflare Workers HTTP adapter for the fluo runtime, optimized for the edge.
 - [Common Patterns](#common-patterns)
 - [Lifecycle and Public Seam Notes](#lifecycle-and-public-seam-notes)
 - [Conformance Coverage](#conformance-coverage)
+- [Streaming Multipart Capability](#streaming-multipart-capability)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -120,6 +121,10 @@ The listen, shutdown, SSE drain, and websocket binding rules above are public li
 `packages/platform-cloudflare-workers/src/adapter.test.ts` and `packages/platform-cloudflare-workers/src/adapter-lifecycle.test.ts` are the package-local regression targets for the documented Worker contract. They cover shared Web dispatch delegation, Worker `env` request attachment, `executionContext.waitUntil(...)` SSE (`text/event-stream`) body tracking, body-cancellation and synchronous setup-failure drains, websocket upgrade binding, upgraded server-socket close tracking, pre-listen HTTP and websocket lifecycle guards, websocket binding freeze after the listen boundary, lazy entrypoint reuse and timeout recovery, shutdown gating, drain-time `listen()` rejection, JSON `503` responses while closing and after close for both HTTP and websocket upgrades, reliable fake-timer cleanup, public seam source imports, README parity, and the bounded 10-second close timeout.
 
 The shared edge portability suite in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` exercises Cloudflare Workers beside Bun and Deno for malformed cookie preservation, query decoding, JSON/text raw-body capture, multipart raw-body exclusion, and SSE framing. The README parity assertion in the package test keeps these documented edge-runtime coverage claims synchronized with the Korean mirror.
+
+## Streaming Multipart Capability
+
+Cloudflare Workers supports buffered and portable streaming multipart modes through the shared Web parser. Streaming file parts remain runtime-neutral, request abort and Worker lifecycle cleanup cancel parser work, and the package smoke fixture verifies equivalent typed-part behavior. `getMultipartCapability()` reports `portable-multipart` v1.
 
 ## Public API Overview
 

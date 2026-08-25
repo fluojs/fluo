@@ -355,6 +355,10 @@ function registerBunWebRuntimePortabilitySuite(): void {
       await bunPortabilityHarness.assertExcludesRawBodyForMultipart();
     });
 
+    it('streams portable multipart parts through the shared web-runtime harness', async () => {
+      await bunPortabilityHarness.assertStreamsPortableMultipartParts();
+    });
+
     it('supports SSE streaming through the shared web-runtime harness', async () => {
       await bunPortabilityHarness.assertSupportsSseStreaming();
     });

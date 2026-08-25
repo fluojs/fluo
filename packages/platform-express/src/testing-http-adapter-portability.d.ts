@@ -37,6 +37,7 @@ declare module '@fluojs/testing/http-adapter-portability' {
     assertPreservesExactRawBodyBytesForByteSensitivePayloads(): Promise<void>;
     assertPreservesMalformedCookieValues(): Promise<void>;
     assertPreservesRawBodyForJsonAndText(): Promise<void>;
+    assertStreamsPortableMultipartParts(): Promise<void>;
     assertRemovesShutdownSignalListenersAfterClose(): Promise<void>;
     assertReportsConfiguredHostInStartupLogs(): Promise<void>;
     assertReportsHttpsStartupUrl(https: { cert: string; key: string }): Promise<void>;

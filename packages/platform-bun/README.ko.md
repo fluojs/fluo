@@ -10,6 +10,7 @@
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
+- [Streaming Multipart Capability](#streaming-multipart-capability)
 - [공개 API 개요](#공개-api-개요)
 - [어댑터 계약](#어댑터-계약)
 - [Conformance 커버리지](#conformance-커버리지)
@@ -88,6 +89,10 @@ Bun `>=1.2.3`에서는 어댑터가 의미 보존이 가능한 static/param fluo
 Native handoff가 붙은 뒤 app middleware가 framework request의 method 또는 path를 rewrite하면 dispatcher는 stale handoff를 버리고 rewrite된 요청을 다시 매칭합니다. `OPTIONS` 같은 미지원 메서드와 CORS preflight 동작은 fluo route가 명시적으로 소유하지 않는 한 공유 dispatcher/middleware 경로가 계속 소유합니다.
 
 `QUERY`, `PURGE` 같은 검증된 custom route는 Bun native `routes` 가속을 사용할 수 있어도 의도적으로 fetch fallback에 남습니다. Bun은 `Request`를 통해 원래 method와 body를 전달하고 shared dispatcher가 `ALL`보다 exact method를 먼저 매칭합니다. `CONNECT`는 일반 controller routing conformance 범위 밖에 유지됩니다.
+
+## Streaming Multipart Capability
+
+Bun은 shared Web request factory를 통해 buffered mode와 portable streaming multipart mode를 지원합니다. Streaming은 original request body를 한 번만 소비하고 portable file stream을 노출하며 shared limit, abort propagation, cleanup을 적용합니다. `getMultipartCapability()`는 `portable-multipart` v1을 보고합니다.
 
 ## 공개 API 개요
 

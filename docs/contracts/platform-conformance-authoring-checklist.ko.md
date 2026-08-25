@@ -41,6 +41,10 @@
 
 ## Package Contract Requirements
 
+- [ ] MUST: `getMultipartCapability()`로 portable streaming multipart 지원을 보고하고 `contract`, `kind`, `modes`, `version`을 안정적으로 유지합니다.
+- [ ] MUST: Streaming 지원을 보고하는 모든 adapter에서 동일한 typed field/file, portable file stream, limit, abort, cleanup, single-consumption fixture를 실행합니다.
+- [ ] MUST: Buffered multipart를 기본값으로 유지하고 하나의 request body를 buffered mode와 streaming mode에서 함께 소비하지 않습니다.
+
 - [ ] MUST: 공식 플랫폼 패키지는 저장소 정책상 `PlatformAdapter`라고 부르는 접점을 구현합니다. HTTP 플랫폼 패키지는 `@fluojs/http`의 `HttpApplicationAdapter`로 이 접점을 충족합니다.
 - [ ] MUST: 타입이 있는 구성을 노출하고 bootstrap 중 입력을 검증합니다.
 - [ ] MUST: 패키지 동작과 문서에서 health와 readiness를 구분합니다.

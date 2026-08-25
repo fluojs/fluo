@@ -7,6 +7,7 @@ import type {
   MiddlewareLike,
   SecurityHeadersOptions,
 } from '@fluojs/http';
+import { createPortableHttpAdapterMultipartCapability } from '@fluojs/http';
 import {
   bindRawRequestNativeRouteHandoff,
   createFetchStyleHttpAdapterRealtimeCapability,
@@ -312,6 +313,10 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
         support: 'supported',
       },
     );
+  }
+
+  getMultipartCapability() {
+    return createPortableHttpAdapterMultipartCapability();
   }
 
   private installRealtimeBinding(binding: unknown | undefined): void {

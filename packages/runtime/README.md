@@ -11,6 +11,7 @@ The assembly layer that compiles a module graph and wires DI and HTTP into a run
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
 - [Behavioral Contracts](#behavioral-contracts)
+- [Streaming Multipart Requests](#streaming-multipart-requests)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -221,6 +222,38 @@ class UsersModule {}
 - Module graph compile-result caching is opt-in through `moduleGraphCache: true`; it keys entries by root module identity, runtime providers, validation tokens, module replacement pairs, core metadata versions, and the compile algorithm version, caches only successful compilations, and returns isolated graph copies so caller mutations cannot poison later bootstraps.
 - `moduleReplacements` is a low-level testing seam on `bootstrapModule(...)` / `BootstrapModuleOptions`. It compiles replacement module metadata while preserving the original logical module identity, rejects replacement cycles through the normal module graph validation path, and does not mutate source module metadata.
 - `raceWithAbort(fn, signal)` always removes its abort listener once `fn` settles, including when `fn` throws synchronously before returning a promise. The synchronous throw is converted into a settled rejection so the cleanup-dependent `finally` flow still runs and the listener is not leaked across repeated failed operations.
+
+## Streaming Multipart Requests
+
+Buffered multipart parsing remains the default. Select streaming globally or per method/URL route with `MultipartOptions.mode`:
+
+```typescript
+const options = {
+  multipart: {
+    mode: ({ method, url }) =>
+      method === 'POST' && url === '/uploads' ? 'streaming' : 'buffered',
+    maxFileSize: 50 * 1024 * 1024,
+    maxFiles: 4,
+    maxFields: 20,
+    maxHeaders: 32,
+    maxHeaderSize: 8 * 1024,
+    maxTotalSize: 60 * 1024 * 1024,
+  },
+};
+```
+
+In streaming mode, `context.request.multipart.consume()` returns an ordered `ReadableStream` of typed field and file parts. Each file carries a portable `ReadableStream<Uint8Array>` driven by downstream pulls; complete file payloads are not materialized. The body is single-consumer: buffered and streaming modes never consume the same request, and a second `consume()` fails.
+
+All limits are terminal. Per-file, encoded total-size, field-count, file-count, header-count, and header-size violations cancel the source and active file stream. Request aborts and parser failures use the same cleanup path. Unconsumed multipart work is cancelled when dispatch completes.
+
+| Adapter | Buffered | Streaming | Portable capability |
+| --- | --- | --- | --- |
+| Node.js | Supported | Supported | `portable-multipart` v1 |
+| Express | Supported | Supported | `portable-multipart` v1 |
+| Fastify | Supported | Supported | `portable-multipart` v1 |
+| Bun | Supported | Supported | `portable-multipart` v1 |
+| Deno | Supported | Supported | `portable-multipart` v1 |
+| Cloudflare Workers | Supported | Supported | `portable-multipart` v1 |
 
 ## Public API Overview
 

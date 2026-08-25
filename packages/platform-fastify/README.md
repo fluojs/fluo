@@ -13,6 +13,7 @@ Fastify-backed HTTP adapter for the fluo runtime.
 - [Common Patterns](#common-patterns)
 - [Performance](#performance)
 - [Conformance Coverage](#conformance-coverage)
+- [Streaming Multipart Capability](#streaming-multipart-capability)
 - [Public API Overview](#public-api-overview)
 - [Troubleshooting](#troubleshooting)
 - [Related Packages](#related-packages)
@@ -192,6 +193,10 @@ fluo's Fastify adapter significantly outperforms the raw Node.js adapter in high
 `packages/platform-fastify/src/adapter.test.ts` is the package-local regression target for the documented Fastify adapter contract. It runs the shared `createHttpAdapterPortabilityHarness(...)` checks for custom `QUERY`/extension-method fallback, malformed cookie preservation, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body exclusion, multipart total-size defaults, SSE framing, response stream drain settlement, host and HTTPS startup logging, and shutdown signal listener cleanup.
 
 The same file also covers Fastify-specific native route registration with wildcard fallback, duplicate shape route fallback, concurrent and repeated `listen()` idempotency, startup retry cancellation during shutdown, native descriptor refresh on adapter reuse, explicit `OPTIONS` route ownership, middleware/guard/interceptor/observer ordering, CORS ownership, global prefix behavior, malformed cookie preservation, response serialization parity, raw-body pre-parsing behavior, zero-valued body/shutdown limits, close wait timeouts that leave the underlying Fastify close in flight, case-insensitive multipart detection, and multipart limit handling. Keep README example pointers aligned with that test file and the custom adapter book chapter when changing startup, routing, or adapter portability behavior.
+
+## Streaming Multipart Capability
+
+Fastify supports buffered and portable streaming multipart modes. Streaming uses the raw request byte source through the shared parser rather than `part.toBuffer()`, preserving backpressure and the same limits, abort, single-consumer, and cleanup behavior as the other adapters. `getMultipartCapability()` reports `portable-multipart` v1.
 
 ## Public API Overview
 

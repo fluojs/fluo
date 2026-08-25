@@ -15,6 +15,7 @@ import {
   BadRequestException,
   type CorsOptions,
   createErrorResponse,
+  createPortableHttpAdapterMultipartCapability,
   createServerBackedHttpAdapterRealtimeCapability,
   type Dispatcher,
   type FrameworkRequest,
@@ -41,6 +42,10 @@ import type {
   ModuleType,
   MultipartOptions,
   UploadedFile,
+} from '@fluojs/runtime';
+import {
+  createStreamingMultipart,
+  resolveMultipartMode,
 } from '@fluojs/runtime';
 import {
   bootstrapHttpAdapterApplication,
@@ -273,6 +278,10 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
     return createServerBackedHttpAdapterRealtimeCapability(this.server);
   }
 
+  getMultipartCapability() {
+    return createPortableHttpAdapterMultipartCapability();
+  }
+
   getListenTarget(): ExpressListenTarget {
     return resolveListenTarget(this.server.address() ?? null, this.port, this.host, this.httpsOptions !== undefined);
   }
@@ -432,6 +441,12 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
     request: ExpressRequest,
     response: ExpressResponse,
   ): Promise<void> {
+    if (normalizePrimaryContentType(request.headers['content-type']) === 'multipart/form-data') {
+      bindRawRequestNativeRouteHandoff(request, { descriptor, params });
+      await this.handleRequest(request, response);
+      return;
+    }
+
     const dispatcher = this.dispatcher;
 
     if (!dispatcher?.dispatchNativeRoute) {
@@ -811,6 +826,33 @@ async function createFrameworkRequest(
   };
   const materializeBody = createMemoizedAsyncValue(async () => {
     if (isMultipart) {
+      const multipartContentType = Array.isArray(headers['content-type'])
+        ? headers['content-type'][0]
+        : headers['content-type'];
+      const mode = resolveMultipartMode(multipartOptions, {
+        headers,
+        method: request.method,
+        url: rawUrl,
+      });
+
+      if (mode === 'streaming') {
+        if (!multipartContentType) {
+          throw new BadRequestException('Multipart request is missing a content type.');
+        }
+
+        frameworkRequest.multipart = createStreamingMultipart({
+          body: request,
+          contentType: multipartContentType,
+          options: {
+            ...multipartOptions,
+            maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
+          },
+          signal,
+        });
+        frameworkRequest.body = undefined;
+        return;
+      }
+
       const parsed = await parseMultipartRequest(request, {
         ...multipartOptions,
         maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,

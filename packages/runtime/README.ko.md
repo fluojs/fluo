@@ -11,6 +11,7 @@
 - [퀵 스타트](#퀵-스타트)
 - [주요 패턴](#주요-패턴)
 - [동작 계약](#동작-계약)
+- [Streaming Multipart 요청](#streaming-multipart-요청)
 - [공개 API 개요](#공개-api-개요)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -221,6 +222,38 @@ class UsersModule {}
 - 모듈 그래프 컴파일 결과 캐시는 `moduleGraphCache: true`를 통한 opt-in입니다. 캐시 항목은 root module identity, runtime provider, validation token, module replacement pair, core metadata version, compile algorithm version으로 식별되며, 성공한 컴파일만 저장하고 호출자 mutation이 이후 bootstrap을 오염시키지 않도록 격리된 그래프 복사본을 반환합니다.
 - `moduleReplacements`는 `bootstrapModule(...)` / `BootstrapModuleOptions`의 저수준 testing seam입니다. 원래 logical module identity를 보존하면서 replacement module metadata로 컴파일하고, replacement cycle은 일반 module graph validation 경로에서 거부하며, source module metadata를 mutate하지 않습니다.
 - `raceWithAbort(fn, signal)`은 `fn`이 settle된 후 항상 abort listener를 제거합니다. `fn`이 promise를 반환하기 전에 동기적으로 throw하는 경우도 포함합니다. 동기 throw는 settled rejection으로 변환되어 cleanup-dependent `finally` flow가 여전히 실행되고, 반복된 실패 작업에서 listener가 leak되지 않습니다.
+
+## Streaming Multipart 요청
+
+Buffered multipart parsing은 계속 기본값입니다. `MultipartOptions.mode`로 application 전체 또는 method/URL route별 streaming mode를 선택할 수 있습니다.
+
+```typescript
+const options = {
+  multipart: {
+    mode: ({ method, url }) =>
+      method === 'POST' && url === '/uploads' ? 'streaming' : 'buffered',
+    maxFileSize: 50 * 1024 * 1024,
+    maxFiles: 4,
+    maxFields: 20,
+    maxHeaders: 32,
+    maxHeaderSize: 8 * 1024,
+    maxTotalSize: 60 * 1024 * 1024,
+  },
+};
+```
+
+Streaming mode에서 `context.request.multipart.consume()`은 순서가 보존된 typed field/file part `ReadableStream`을 반환합니다. 각 file은 downstream pull로 구동되는 이식 가능한 `ReadableStream<Uint8Array>`를 가지며 complete file payload를 materialize하지 않습니다. Body는 single-consumer입니다. Buffered mode와 streaming mode가 같은 request를 함께 소비하지 않으며 두 번째 `consume()`은 실패합니다.
+
+모든 limit 위반은 terminal입니다. Per-file, encoded total-size, field-count, file-count, header-count, header-size limit 위반은 source와 active file stream을 취소합니다. Request abort와 parser failure도 같은 cleanup path를 사용합니다. 소비하지 않은 multipart 작업은 dispatch 완료 시 취소됩니다.
+
+| Adapter | Buffered | Streaming | Portable capability |
+| --- | --- | --- | --- |
+| Node.js | 지원 | 지원 | `portable-multipart` v1 |
+| Express | 지원 | 지원 | `portable-multipart` v1 |
+| Fastify | 지원 | 지원 | `portable-multipart` v1 |
+| Bun | 지원 | 지원 | `portable-multipart` v1 |
+| Deno | 지원 | 지원 | `portable-multipart` v1 |
+| Cloudflare Workers | 지원 | 지원 | `portable-multipart` v1 |
 
 ## 공개 API 개요
 

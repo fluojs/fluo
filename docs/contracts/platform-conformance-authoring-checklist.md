@@ -41,6 +41,10 @@ Use this checklist when authoring or changing official platform-facing packages 
 
 ## Package Contract Requirements
 
+- [ ] MUST: Report portable streaming multipart support with `getMultipartCapability()` and keep `contract`, `kind`, `modes`, and `version` stable.
+- [ ] MUST: Run equivalent typed field/file, portable file-stream, limits, abort, cleanup, and single-consumption fixtures for every adapter that reports streaming support.
+- [ ] MUST: Keep buffered multipart as the default and never consume one request body in both buffered and streaming modes.
+
 - [ ] MUST: Implement the repository policy seam named `PlatformAdapter`; HTTP platform packages satisfy that seam through `HttpApplicationAdapter` from `@fluojs/http`.
 - [ ] MUST: Expose typed configuration and validate inputs during bootstrap.
 - [ ] MUST: Distinguish health from readiness in package behavior and package docs.

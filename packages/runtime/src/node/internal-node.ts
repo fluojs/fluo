@@ -4,6 +4,7 @@ import type { AddressInfo, Socket } from 'node:net';
 
 import {
   type CorsOptions,
+  createPortableHttpAdapterMultipartCapability,
   createServerBackedHttpAdapterRealtimeCapability,
   type Dispatcher,
   type HttpApplicationAdapter,
@@ -180,6 +181,10 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
 
   getRealtimeCapability() {
     return createServerBackedHttpAdapterRealtimeCapability(this.server);
+  }
+
+  getMultipartCapability() {
+    return createPortableHttpAdapterMultipartCapability();
   }
 
   getListenTarget(): NodeListenTarget {

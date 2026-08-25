@@ -5,8 +5,10 @@ import { Transform } from 'node:stream';
 
 import multipart from '@fastify/multipart';
 import {
+  BadRequestException,
   type CorsOptions,
   createErrorResponse,
+  createPortableHttpAdapterMultipartCapability,
   createServerBackedHttpAdapterRealtimeCapability,
   type Dispatcher,
   type FrameworkRequest,
@@ -33,6 +35,10 @@ import type {
   ModuleType,
   MultipartOptions,
   UploadedFile,
+} from '@fluojs/runtime';
+import {
+  createStreamingMultipart,
+  resolveMultipartMode,
 } from '@fluojs/runtime';
 import {
   bootstrapHttpAdapterApplication,
@@ -203,6 +209,10 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
 
   getRealtimeCapability() {
     return createServerBackedHttpAdapterRealtimeCapability(this.app.server);
+  }
+
+  getMultipartCapability() {
+    return createPortableHttpAdapterMultipartCapability();
   }
 
   getListenTarget(): FastifyListenTarget {
@@ -928,6 +938,33 @@ function createDeferredFrameworkRequest(
     let files: UploadedFile[] | undefined;
 
     if (isMultipart) {
+      const multipartContentType = Array.isArray(headerSnapshot['content-type'])
+        ? headerSnapshot['content-type'][0]
+        : headerSnapshot['content-type'];
+      const mode = resolveMultipartMode(multipartOptions, {
+        headers: headerSnapshot,
+        method: request.method,
+        url: rawUrl,
+      });
+
+      if (mode === 'streaming') {
+        if (!multipartContentType) {
+          throw new BadRequestException('Multipart request is missing a content type.');
+        }
+
+        frameworkRequest.multipart = createStreamingMultipart({
+          body: request.raw,
+          contentType: multipartContentType,
+          options: {
+            ...multipartOptions,
+            maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
+          },
+          signal,
+        });
+        frameworkRequest.body = undefined;
+        return;
+      }
+
       const parsed = await parseMultipartRequest(request, {
         ...multipartOptions,
         maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,

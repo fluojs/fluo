@@ -10,6 +10,7 @@ Bun-backed HTTP adapter for the fluo runtime, built on native `Bun.serve()`.
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+- [Streaming Multipart Capability](#streaming-multipart-capability)
 - [Public API Overview](#public-api-overview)
 - [Adapter Contract](#adapter-contract)
 - [Conformance Coverage](#conformance-coverage)
@@ -88,6 +89,10 @@ For semantically safe unversioned routes, Bun hands the pre-matched descriptor a
 If app middleware rewrites the framework request method or path after a Bun native handoff is attached, the dispatcher discards that stale handoff and rematches the rewritten request. Unsupported methods such as `OPTIONS` and CORS preflight behavior remain owned by the shared dispatcher/middleware path unless a fluo route explicitly owns them.
 
 Validated custom routes such as `QUERY` and `PURGE` intentionally remain on the fetch fallback even when Bun native `routes` acceleration is available. Bun receives the original method and body through `Request`, and the shared dispatcher performs exact-method matching before `ALL`. `CONNECT` remains outside ordinary controller routing conformance.
+
+## Streaming Multipart Capability
+
+Bun supports buffered and portable streaming multipart modes through the shared Web request factory. Streaming consumes the original request body once, exposes portable file streams, enforces shared limits, and propagates abort and cleanup. `getMultipartCapability()` reports `portable-multipart` v1.
 
 ## Public API Overview
 

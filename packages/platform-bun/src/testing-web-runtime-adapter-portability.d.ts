@@ -34,6 +34,7 @@ declare module '@fluojs/testing/web-runtime-adapter-portability' {
     assertPreservesMalformedCookieValues(): Promise<void>;
     assertPreservesQueryArraysAndDecoding(): Promise<void>;
     assertPreservesRawBodyForJsonAndText(): Promise<void>;
+    assertStreamsPortableMultipartParts(): Promise<void>;
     assertSupportsHttpErrorRepresentations(): Promise<void>;
     assertSupportsSseStreaming(): Promise<void>;
   }

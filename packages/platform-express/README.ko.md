@@ -11,6 +11,7 @@ fluo 런타임을 위한 Express 기반 HTTP 어댑터 패키지입니다.
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
 - [어댑터 계약](#어댑터-계약)
+- [Streaming Multipart Capability](#streaming-multipart-capability)
 - [공개 API 개요](#공개-api-개요)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -148,6 +149,10 @@ Native stack은 adapter 생성 시 고정됩니다. Adapter는 Node HTTP/S liste
 - **Middleware rewrite parity**: App middleware가 method/path를 rewrite하면 native handoff는 무효화되고 rewrite된 요청을 기준으로 다시 매칭합니다.
 - **응답 serialization parity**: String response는 기본적으로 `text/plain`, object/array는 JSON, binary payload는 `application/octet-stream`으로 serialize되며 `set-cookie` 값은 병합됩니다.
 - **Startup과 shutdown**: 어댑터는 HTTP/HTTPS startup, adapter가 열린 상태에서 `retryLimit` 소진 전까지 retry option에 따른 `EADDRINUSE` 재시도, 동시 startup 호출자의 단일 in-flight listen lifecycle 및 dispatcher 재사용, `close()` 중 해당 공유 retry loop를 abort 및 join한 뒤 shutdown 완료 보고, close 진행 중 `listen()` reject, 이미 시작된 adapter에 대한 중복 `listen()` 호출의 idempotent 처리와 live dispatcher 보존, close 후 adapter를 다시 listen할 때 native route descriptor 갱신, 정상 close 시 idle keep-alive socket drain, 동시에 들어온 `close()` 호출의 단일 in-flight close lifecycle 재사용, shutdown timeout 이후 force-close를 지원하며, `shutdownTimeoutMs`가 `0`이면 즉시 force-close합니다.
+
+## Streaming Multipart Capability
+
+Express는 native middleware가 소비하지 않은 request body를 fluo에 넘긴 뒤 buffered mode와 portable streaming multipart mode를 지원합니다. Streaming file part는 `ReadableStream<Uint8Array>`를 사용하고 portable limit/cleanup 계약을 공유하며 Node.js, Fastify와 같은 network conformance fixture를 통과합니다. `getMultipartCapability()`는 `portable-multipart` v1을 보고합니다.
 
 ## 공개 API 개요
 

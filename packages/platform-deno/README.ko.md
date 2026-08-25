@@ -12,6 +12,7 @@
 - [주요 패턴](#주요-패턴)
 - [HTTPS와 런타임 이식성](#https와-런타임-이식성)
 - [Conformance 커버리지](#conformance-커버리지)
+- [Streaming Multipart Capability](#streaming-multipart-capability)
 - [공개 API 개요](#공개-api-개요)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -128,6 +129,10 @@ Advanced option에는 test 또는 non-hosted runtime을 위한 injectable `serve
 `packages/platform-deno/src/adapter.test.ts`는 managed Deno 계약을 검증하는 package-local regression 대상입니다. 이 파일은 shared Web dispatch delegation, `listen(dispatcher)` 이후 direct `adapter.handle(...)` success-path dispatch, 직접 constructor/factory option normalization, HTTPS startup forwarding, `Deno.serve(...)` bind target과 startup log에 대한 `host` alias 및 `hostname` 우선순위, 중복 `listen(...)` no-op dispatcher 보존, 기본 `SIGINT`/`SIGTERM` signal listener 등록, `shutdownSignals: false`, partial signal-registration failure 이후 listener rollback, websocket upgrade binding 및 no-binding HTTP fallback, websocket listen 전 bootstrap gating, global Deno serve/upgrade fallback seam, listen 전 `500` 처리, shutdown 중 `503` 처리, serve-signal abort 전 in-flight request drain, `server.finished`까지 shutdown failure ownership 유지, bounded 10초 close timeout을 검증합니다. `packages/platform-deno/src/fetch-handler.test.ts`는 host-owned handler에 shared web-runtime portability harness를 적용하여 cookie/query decoding, JSON/text와 byte-exact raw body, multipart exclusion, SSE framing, dispatch가 `Deno.serve(...)`를 호출하지 않는다는 사실을 검증합니다. `packages/platform-deno/src/declaration-surface.test.ts`는 package를 다시 build하고 manifest가 export하는 declaration을 검증합니다.
 
 공유 edge portability suite인 `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`는 Deno를 Bun 및 Cloudflare Workers와 함께 실행해 malformed cookie 보존, query decoding, JSON/text raw-body capture, multipart raw-body 제외, SSE framing을 검증합니다. 패키지 테스트의 README parity assertion은 이 edge-runtime 커버리지 문서가 한국어 mirror와 계속 동기화되도록 확인합니다.
+
+## Streaming Multipart Capability
+
+Deno와 host-owned `createDenoFetchHandler(...)` 경로는 shared Web parser를 통해 buffered mode와 portable streaming multipart mode를 지원합니다. Streaming은 body를 한 번만 소비하고 동일한 typed part, limit, abort propagation, cleanup을 적용합니다. `getMultipartCapability()`는 `portable-multipart` v1을 보고합니다.
 
 ## 공개 API 개요
 

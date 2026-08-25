@@ -13,6 +13,7 @@
 - [Realtime Adapter Capabilities](#realtime-adapter-capabilities)
 - [HTTP Error Representations](#http-error-representations)
 - [요청 정리와 런타임 이식성](#요청-정리와-런타임-이식성)
+- [Streaming Multipart 요청](#streaming-multipart-요청)
 - [공개 API](#공개-api)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -311,6 +312,12 @@ Fluo의 HTTP 데코레이터는 TC39 표준 데코레이터이며, runtime 또�
 Multipart upload를 parse하는 어댑터는 shared HTTP contract를 adapter-specific file type으로 augment하지 말고 runtime-neutral `FrameworkRequestFile` 값을 `FrameworkRequest.files`에 붙여야 합니다. 이 seam은 모든 HTTP adapter가 제공할 수 있는 portable field(`fieldname`, `originalname`, `mimetype`, `buffer`, `size`)만 의도적으로 모델링합니다. Platform package는 더 풍부한 native file object를 raw request surface에 유지할 수 있지만, guard, binder, middleware, interceptor, controller가 cross-runtime 동작을 필요로 하면 `RequestContext.request.files`를 통해 파일을 읽어야 합니다.
 
 응답 content negotiation formatter는 `ResponseFormatter.format(...)`에서 `string` 또는 `Uint8Array`를 반환해야 합니다. Node.js `Buffer` 값은 `Buffer`가 `Uint8Array`를 구현하므로 계속 할당 가능하지만, formatter contract는 runtime-neutral byte 동작에만 의존해야 합니다.
+
+## Streaming Multipart 요청
+
+Streaming multipart mode는 buffered `body`와 `files`를 채우는 대신 `FrameworkRequest.multipart`를 노출합니다. `consume()`을 정확히 한 번 호출하고 순서가 보존된 `FrameworkMultipartFieldPart | FrameworkMultipartFilePart` stream을 읽으세요. File part는 이식 가능한 `ReadableStream<Uint8Array>`를 노출하며 adapter-native upload object는 노출하지 않습니다.
+
+첫 claim 이후의 `consume()`은 명확하게 실패합니다. Request abort, parser failure, limit failure, dispatch 완료는 active file stream과 parser 작업을 취소합니다. Conforming adapter는 `getMultipartCapability()`로 `{ contract: 'portable-multipart', modes: ['buffered', 'streaming'], version: 1 }`을 보고합니다.
 
 ## 공개 API
 

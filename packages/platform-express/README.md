@@ -11,6 +11,7 @@ Express-backed HTTP adapter for the fluo runtime.
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
 - [Adapter Contract](#adapter-contract)
+- [Streaming Multipart Capability](#streaming-multipart-capability)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -148,6 +149,10 @@ If the same adapter instance is listened again after close, its native route des
 - **Middleware rewrite parity**: App middleware that rewrites method or path invalidates native handoff and rematches the rewritten request.
 - **Response serialization parity**: String responses default to `text/plain`, objects/arrays serialize as JSON, binary payloads default to `application/octet-stream`, and `set-cookie` values are merged.
 - **Startup and shutdown**: The adapter supports HTTP/HTTPS startup, retries `EADDRINUSE` according to retry options until `retryLimit` is exhausted while the adapter is open, reuses one in-flight listen lifecycle and its dispatcher for concurrent startup callers, aborts and joins that shared retry loop during `close()` before shutdown completion is reported, rejects `listen()` while close is in progress, treats duplicate `listen()` calls on an already-started adapter as idempotent without replacing the live dispatcher, refreshes native route descriptors when the adapter is listened again after close, drains idle keep-alive sockets on normal close, reuses one in-flight close lifecycle for concurrent `close()` calls, and can force-close connections after shutdown timeout, including immediate force-close when `shutdownTimeoutMs` is `0`.
+
+## Streaming Multipart Capability
+
+Express supports buffered and portable streaming multipart modes after native middleware yields the untouched request body to fluo. Streaming file parts use `ReadableStream<Uint8Array>`, share the portable limits and cleanup contract, and pass the same network conformance fixture as Node.js and Fastify. `getMultipartCapability()` reports `portable-multipart` v1.
 
 ## Public API Overview
 

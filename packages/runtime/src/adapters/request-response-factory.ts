@@ -46,9 +46,10 @@ export async function dispatchWithRequestResponseFactory<
 }: DispatchWithRequestResponseFactoryOptions<RawRequest, RawResponse, Response>): Promise<Response> {
   const frameworkResponse = factory.createResponse(rawResponse, rawRequest);
   const signal = factory.createRequestSignal(rawResponse);
+  let frameworkRequest: FrameworkRequest | undefined;
 
   try {
-    const frameworkRequest = await factory.createRequest(rawRequest, signal);
+    frameworkRequest = await factory.createRequest(rawRequest, signal);
     const materializeRequest = factory.materializeRequest;
 
     if (materializeRequest) {
@@ -73,5 +74,7 @@ export async function dispatchWithRequestResponseFactory<
 
     await factory.writeErrorResponse(error, frameworkResponse, factory.resolveRequestId(rawRequest));
     return frameworkResponse;
+  } finally {
+    await frameworkRequest?.multipart?.cancel('Request dispatch completed.');
   }
 }

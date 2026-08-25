@@ -14,9 +14,11 @@ import {
 
 import {
   parseMultipart,
+  resolveMultipartMode,
   type MultipartOptions,
   type UploadedFile,
 } from '../multipart.js';
+import { createStreamingMultipart } from '../streaming-multipart.js';
 
 type NodeFrameworkRequest = FrameworkRequest & {
   files?: UploadedFile[];
@@ -119,10 +121,37 @@ export function createDeferredFrameworkRequest(
   const urlParts = splitRawRequestUrl(rawUrl);
   const headers = cloneRequestHeaders(request.headers);
   const contentType = normalizePrimaryContentType(headers['content-type']);
+  const multipartContentType = Array.isArray(headers['content-type'])
+    ? headers['content-type'][0]
+    : headers['content-type'];
   const isMultipart = contentType === 'multipart/form-data';
   let frameworkRequest!: NodeFrameworkRequest;
   const materializeBody = createMemoizedAsyncValue(async () => {
     if (isMultipart) {
+      const mode = resolveMultipartMode(multipartOptions, {
+        headers,
+        method: request.method ?? 'POST',
+        url: rawUrl,
+      });
+
+      if (mode === 'streaming') {
+        if (!multipartContentType) {
+          throw new BadRequestException('Multipart request is missing a content type.');
+        }
+
+        frameworkRequest.multipart = createStreamingMultipart({
+          body: request,
+          contentType: multipartContentType,
+          options: {
+            ...multipartOptions,
+            maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
+          },
+          signal,
+        });
+        frameworkRequest.body = undefined;
+        return;
+      }
+
       const result = await parseMultipart(
         {
           body: Readable.toWeb(request),

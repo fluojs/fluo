@@ -33,6 +33,8 @@ export interface FrameworkRequest {
   body?: unknown;
   /** Adapter-provided multipart files exposed through the runtime-neutral request seam. */
   files?: readonly FrameworkRequestFile[];
+  /** Portable single-consumer multipart stream exposed when streaming mode is selected. */
+  multipart?: FrameworkRequestMultipart;
   /** Adapter-snapshotted inbound request id used without forcing header normalization. */
   requestId?: string;
   rawBody?: Uint8Array;
@@ -54,6 +56,51 @@ export interface FrameworkRequestFile {
   buffer: Uint8Array;
   /** File size in bytes. */
   size: number;
+}
+
+/** String-valued multipart field emitted by the portable streaming parser. */
+export interface FrameworkMultipartFieldPart {
+  /** Multipart form field name. */
+  fieldname: string;
+  /** Lowercase multipart part headers. */
+  headers: Readonly<Record<string, string>>;
+  /** Discriminator for field parts. */
+  kind: 'field';
+  /** UTF-8 decoded field value. */
+  value: string;
+}
+
+/** File-valued multipart part whose payload is consumed with backpressure. */
+export interface FrameworkMultipartFilePart {
+  /** Multipart form field name. */
+  fieldname: string;
+  /** Lowercase multipart part headers. */
+  headers: Readonly<Record<string, string>>;
+  /** Discriminator for file parts. */
+  kind: 'file';
+  /** Client-reported media type, or `application/octet-stream` when omitted. */
+  mimetype: string;
+  /** Client-provided original filename. */
+  originalname: string;
+  /** Portable byte stream for the file payload. */
+  stream: ReadableStream<Uint8Array>;
+}
+
+/** Discriminated multipart part emitted by a streaming request body. */
+export type FrameworkMultipartPart = FrameworkMultipartFieldPart | FrameworkMultipartFilePart;
+
+/** Portable, adapter-neutral streaming multipart request body. */
+export interface FrameworkRequestMultipart {
+  /** Cancels active parser and file-stream work and releases the request body. */
+  cancel(reason?: unknown): Promise<void>;
+  /**
+   * Claims the multipart body and returns its ordered part stream.
+   *
+   * @throws {TypeError} When the multipart body has already been claimed.
+   */
+  consume(): ReadableStream<FrameworkMultipartPart>;
+  /** Identifies this request body as the streaming multipart mode. */
+  mode: 'streaming';
 }
 
 /**

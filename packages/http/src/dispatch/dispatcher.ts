@@ -172,6 +172,7 @@ function createDispatchRequest(request: FrameworkRequest): FrameworkRequest {
     },
     body: request.body,
     method: request.method,
+    multipart: request.multipart,
     params: { ...request.params },
     path: request.path,
     raw: request.raw,

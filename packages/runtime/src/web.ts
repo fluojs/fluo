@@ -20,8 +20,10 @@ import {
 import {
   type MultipartOptions,
   parseMultipart,
+  resolveMultipartMode,
   type UploadedFile,
 } from './multipart.js';
+import { createStreamingMultipart } from './streaming-multipart.js';
 
 const DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
 const TEXT_ENCODER = new TextEncoder();
@@ -395,6 +397,30 @@ function createDeferredWebFrameworkRequest(
   const hasRequestBody = request.body !== null;
   const materializeBody = hasRequestBody ? createMemoizedAsyncValue(async () => {
     if (isMultipart) {
+      const mode = resolveMultipartMode(multipartOptions, {
+        headers: requestHeaders,
+        method,
+        url: url.pathname + url.search,
+      });
+
+      if (mode === 'streaming') {
+        if (!request.body || !contentType) {
+          throw new BadRequestException('Multipart request is missing a body or content type.');
+        }
+
+        frameworkRequest.multipart = createStreamingMultipart({
+          body: request.body,
+          contentType,
+          options: {
+            ...multipartOptions,
+            maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
+          },
+          signal,
+        });
+        frameworkRequest.body = undefined;
+        return;
+      }
+
       const materializedRequest = request.clone();
       const result = await parseMultipart(createRequestWithSnapshotMetadata(
         materializedRequest,

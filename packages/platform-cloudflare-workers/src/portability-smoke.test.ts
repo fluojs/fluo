@@ -177,6 +177,97 @@ describe('Cloudflare Workers adapter portability smoke tests', () => {
     }
   });
 
+  it('streams portable multipart parts', async () => {
+    @Controller('/uploads')
+    class UploadController {
+      @Post('/')
+      async upload(_input: undefined, context: RequestContext) {
+        const multipart = context.request.multipart;
+
+        if (!multipart) {
+          throw new Error('Expected streaming multipart mode.');
+        }
+
+        const reader = multipart.consume().getReader();
+        const parts: Array<Record<string, unknown>> = [];
+
+        for (;;) {
+          const result = await reader.read();
+
+          if (result.done) {
+            break;
+          }
+
+          if (result.value.kind === 'field') {
+            parts.push({
+              fieldname: result.value.fieldname,
+              kind: result.value.kind,
+              value: result.value.value,
+            });
+            continue;
+          }
+
+          parts.push({
+            fieldname: result.value.fieldname,
+            kind: result.value.kind,
+            mimetype: result.value.mimetype,
+            originalname: result.value.originalname,
+            value: await new Response(result.value.stream).text(),
+          });
+        }
+
+        return { parts };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [UploadController],
+    });
+
+    const worker = await bootstrapCloudflareWorkerApplication(AppModule, {
+      cors: false,
+      multipart: {
+        mode: 'streaming',
+      },
+    });
+
+    try {
+      const form = new FormData();
+      form.set('name', 'Ada');
+      form.set('payload', new Blob(['streamed-file'], { type: 'text/plain' }), 'payload.txt');
+
+      const response = await worker.fetch(
+        new Request('https://worker.test/uploads', {
+          body: form,
+          method: 'POST',
+        }),
+        {},
+        createExecutionContext(),
+      );
+
+      expect(response.status).toBe(201);
+      await expect(response.json()).resolves.toEqual({
+        parts: [
+          {
+            fieldname: 'name',
+            kind: 'field',
+            value: 'Ada',
+          },
+          {
+            fieldname: 'payload',
+            kind: 'file',
+            mimetype: 'text/plain',
+            originalname: 'payload.txt',
+            value: 'streamed-file',
+          },
+        ],
+      });
+    } finally {
+      await worker.close();
+    }
+  });
+
   it('supports SSE streaming with event-stream content type and stable framing', async () => {
     @Controller('/events')
     class EventsController {

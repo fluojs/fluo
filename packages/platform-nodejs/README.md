@@ -12,6 +12,7 @@ Raw Node.js HTTP adapter package for the fluo runtime.
 - [Common Patterns](#common-patterns)
 - [Behavioral Contracts](#behavioral-contracts)
 - [Conformance Coverage](#conformance-coverage)
+- [Streaming Multipart Capability](#streaming-multipart-capability)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -103,6 +104,10 @@ await app.listen();
 This package exposes an `HttpApplicationAdapter`; it is not a runtime-managed `PlatformComponent` registered under `platform.components`. Therefore the generic `createPlatformConformanceHarness(...)` component lifecycle checks are outside this package's supported contract, while `createHttpAdapterPortabilityHarness(...)` is the applicable shared harness.
 
 The same regression targets also cover the package-specific public surface, type aliases, adapter-first startup, lifecycle option validation, observed listen retries, active-request bounded drain, normal and failed signal-driven shutdown, `process.env.PORT` isolation, zero and default `maxBodySize` boundaries, idle keep-alive shutdown, mixed-case JSON and multipart content-type parsing, `x-correlation-id` request ID fallback, and server-backed realtime capability exposure. Keep README example pointers aligned with those test files and the Node.js chapter examples below when changing startup behavior.
+
+## Streaming Multipart Capability
+
+The Node.js adapter supports both buffered and portable streaming multipart modes. Streaming reads directly from the request async iterator, propagates cancellation without buffering complete files, enforces the shared limits, and passes the common network conformance fixture. `getMultipartCapability()` reports `portable-multipart` v1.
 
 ## Public API Overview
 

@@ -200,4 +200,63 @@ describe('dispatchWithRequestResponseFactory', () => {
     expect(frameworkResponse.committed).toBe(true);
     expect(events).toEqual(['response', 'signal', 'request', 'dispatch:/fast-path', 'send']);
   });
+
+  it('cancels unconsumed streaming multipart work after dispatch', async () => {
+    const cancel = vi.fn(async () => {});
+    const response: FrameworkResponse = {
+      committed: false,
+      headers: {},
+      redirect() {},
+      async send() {
+        response.committed = true;
+      },
+      setHeader() {},
+      setStatus() {},
+    };
+    const request: FrameworkRequest = {
+      cookies: {},
+      headers: {},
+      method: 'POST',
+      multipart: {
+        cancel,
+        consume() {
+          throw new Error('The dispatcher must not consume an ignored multipart body.');
+        },
+        mode: 'streaming',
+      },
+      params: {},
+      path: '/upload',
+      query: {},
+      raw: {},
+      url: '/upload',
+    };
+    const factory: RequestResponseFactory<object, object> = {
+      async createRequest() {
+        return request;
+      },
+      createRequestSignal() {
+        return new AbortController().signal;
+      },
+      createResponse() {
+        return response;
+      },
+      resolveRequestId() {
+        return undefined;
+      },
+      async writeErrorResponse() {},
+    };
+
+    await dispatchWithRequestResponseFactory({
+      dispatcher: {
+        async dispatch() {},
+      },
+      dispatcherNotReadyMessage: 'not ready',
+      factory,
+      rawRequest: {},
+      rawResponse: {},
+    });
+
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(cancel).toHaveBeenCalledWith('Request dispatch completed.');
+  });
 });

@@ -12,6 +12,7 @@ fluo 런타임을 위한 raw Node.js HTTP 어댑터 패키지입니다.
 - [주요 패턴](#주요-패턴)
 - [동작 계약](#동작-계약)
 - [Conformance 커버리지](#conformance-커버리지)
+- [Streaming Multipart Capability](#streaming-multipart-capability)
 - [공개 API 개요](#공개-api-개요)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -103,6 +104,10 @@ await app.listen();
 이 패키지는 `HttpApplicationAdapter`를 노출하며 `platform.components`에 등록되는 runtime-managed `PlatformComponent`가 아닙니다. 따라서 generic `createPlatformConformanceHarness(...)` component lifecycle 검사는 이 패키지의 지원 계약 범위에 포함되지 않고, `createHttpAdapterPortabilityHarness(...)`가 적용되는 공유 harness입니다.
 
 같은 regression target들은 package-specific public surface, type alias, adapter-first startup, lifecycle option validation, 실제로 관찰되는 listen retry, active-request bounded drain, 정상 및 실패 signal-driven shutdown, `process.env.PORT` isolation, zero/default `maxBodySize` boundary, idle keep-alive shutdown, 대소문자가 섞인 JSON 및 multipart content-type parsing, `x-correlation-id` request ID fallback, server-backed realtime capability 노출도 함께 다룹니다. Startup behavior를 바꿀 때는 README 예제 포인터를 아래 테스트 파일 및 Node.js 챕터 예제와 맞춰 유지하세요.
+
+## Streaming Multipart Capability
+
+Node.js adapter는 buffered mode와 portable streaming multipart mode를 모두 지원합니다. Streaming은 request async iterator에서 직접 읽고 complete file을 buffering하지 않은 채 cancellation을 전파하며 shared limit와 공통 network conformance fixture를 통과합니다. `getMultipartCapability()`는 `portable-multipart` v1을 보고합니다.
 
 ## 공개 API 개요
 

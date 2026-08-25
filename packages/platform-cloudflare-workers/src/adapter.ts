@@ -11,6 +11,7 @@ import type {
   MiddlewareLike,
   SecurityHeadersOptions,
 } from '@fluojs/http';
+import { createPortableHttpAdapterMultipartCapability } from '@fluojs/http';
 import type {
   Application,
   CreateApplicationOptions,
@@ -185,6 +186,10 @@ export class CloudflareWorkerHttpApplicationAdapter
       'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @fluojs/websockets/cloudflare-workers for the official raw websocket binding.',
       { support: 'supported' },
     );
+  }
+
+  getMultipartCapability() {
+    return createPortableHttpAdapterMultipartCapability();
   }
 
   configureWebSocketBinding(binding: CloudflareWorkerWebSocketBinding | undefined): void {

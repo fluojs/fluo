@@ -13,6 +13,7 @@ fluo 런타임을 위한 Fastify 기반 HTTP 어댑터 패키지입니다.
 - [주요 패턴](#주요-패턴)
 - [성능](#성능)
 - [적합성 커버리지](#적합성-커버리지)
+- [Streaming Multipart Capability](#streaming-multipart-capability)
 - [공개 API 개요](#공개-api-개요)
 - [트러블슈팅](#트러블슈팅)
 - [관련 패키지](#관련-패키지)
@@ -192,6 +193,10 @@ fluo의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 어
 `packages/platform-fastify/src/adapter.test.ts`는 문서화된 Fastify 어댑터 계약을 위한 package-local regression target입니다. 이 파일은 공유 `createHttpAdapterPortabilityHarness(...)` 검사를 실행하여 custom `QUERY`/extension-method fallback, malformed cookie 보존, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body 제외, multipart total-size 기본값, SSE framing, response stream drain settlement, host 및 HTTPS startup logging, shutdown signal listener cleanup을 확인합니다.
 
 같은 파일은 Fastify 전용 native route registration과 wildcard fallback, duplicate shape route fallback, concurrent/repeated `listen()` idempotency, shutdown 중 startup retry cancellation, adapter reuse 시 native descriptor refresh, explicit `OPTIONS` route ownership, middleware/guard/interceptor/observer ordering, CORS ownership, global prefix behavior, malformed cookie preservation, response serialization parity, raw-body pre-parsing behavior, zero-valued body/shutdown limit, 기반 Fastify close를 계속 in-flight 상태로 두는 close 대기 timeout, 대소문자 구분 없는 multipart detection, multipart limit handling도 함께 다룹니다. startup, routing, adapter portability behavior를 변경할 때는 README 예제 포인터를 이 테스트 파일 및 custom adapter book chapter와 맞추어 유지하세요.
+
+## Streaming Multipart Capability
+
+Fastify는 buffered mode와 portable streaming multipart mode를 지원합니다. Streaming은 `part.toBuffer()` 대신 shared parser를 통해 raw request byte source를 사용하므로 backpressure와 다른 adapter와 같은 limit, abort, single-consumer, cleanup 동작을 보존합니다. `getMultipartCapability()`는 `portable-multipart` v1을 보고합니다.
 
 ## 공개 API 개요
 

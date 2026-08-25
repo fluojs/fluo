@@ -12,6 +12,7 @@ Deno-backed HTTP adapter for the fluo runtime, built on native `Deno.serve`.
 - [Common Patterns](#common-patterns)
 - [HTTPS and Runtime Portability](#https-and-runtime-portability)
 - [Conformance Coverage](#conformance-coverage)
+- [Streaming Multipart Capability](#streaming-multipart-capability)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -128,6 +129,10 @@ Advanced options include injectable `serve` and `upgradeWebSocket` seams for tes
 `packages/platform-deno/src/adapter.test.ts` is the package-local regression target for the managed Deno contract. It covers shared Web dispatch delegation, direct `adapter.handle(...)` success-path dispatch after `listen(dispatcher)`, direct constructor/factory option normalization, HTTPS startup forwarding, `host` alias and `hostname` precedence for the `Deno.serve(...)` bind target and startup log, duplicate `listen(...)` no-op dispatcher preservation, default `SIGINT`/`SIGTERM` signal listener registration, `shutdownSignals: false`, listener rollback after partial signal-registration failure, websocket upgrade binding and no-binding HTTP fallback, websocket pre-listen bootstrap gating, global Deno serve/upgrade fallback seams, pre-listen `500` handling, shutdown `503` handling, in-flight request drain before serve-signal abort, shutdown-failure ownership until `server.finished`, and the bounded 10-second close timeout. `packages/platform-deno/src/fetch-handler.test.ts` applies the shared web-runtime portability harness to the host-owned handler, covering cookies/query decoding, JSON/text and byte-exact raw bodies, multipart exclusion, SSE framing, and proof that dispatch does not call `Deno.serve(...)`. `packages/platform-deno/src/declaration-surface.test.ts` rebuilds the package and verifies the manifest-exported declarations.
 
 The shared edge portability suite in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` exercises Deno beside Bun and Cloudflare Workers for malformed cookie preservation, query decoding, JSON/text raw-body capture, multipart raw-body exclusion, and SSE framing. The README parity assertion in the package test keeps these documented edge-runtime coverage claims synchronized with the Korean mirror.
+
+## Streaming Multipart Capability
+
+Deno and the host-owned `createDenoFetchHandler(...)` path support buffered and portable streaming multipart modes through the shared Web parser. Streaming consumes the body once and applies equivalent typed parts, limits, abort propagation, and cleanup. `getMultipartCapability()` reports `portable-multipart` v1.
 
 ## Public API Overview
 

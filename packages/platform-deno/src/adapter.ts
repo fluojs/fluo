@@ -1,4 +1,9 @@
-import { createFetchStyleHttpAdapterRealtimeCapability, type Dispatcher, type HttpApplicationAdapter } from '@fluojs/http/internal';
+import {
+  createPortableHttpAdapterMultipartCapability,
+  type Dispatcher,
+  type HttpApplicationAdapter,
+} from '@fluojs/http';
+import { createFetchStyleHttpAdapterRealtimeCapability } from '@fluojs/http/internal';
 import type { Application, ApplicationLogger, ModuleType, MultipartOptions } from '@fluojs/runtime';
 import {
   type BootstrapHttpAdapterApplicationOptions,
@@ -179,6 +184,10 @@ export class DenoHttpApplicationAdapter implements HttpApplicationAdapter {
       'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @fluojs/websockets/deno for the official raw websocket binding.',
       { support: 'supported' },
     );
+  }
+
+  getMultipartCapability() {
+    return createPortableHttpAdapterMultipartCapability();
   }
 
   configureWebSocketBinding<TSocket extends DenoServerWebSocket>(

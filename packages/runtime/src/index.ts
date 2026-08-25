@@ -15,11 +15,19 @@ export {
 } from './health/diagnostics.js';
 export * from './health/health.js';
 export type {
+  MultipartMode,
+  MultipartModeSelectionContext,
+  MultipartModeSelector,
   MultipartOptions,
   MultipartRequestLike,
   MultipartResult,
   UploadedFile,
 } from './multipart.js';
+export { resolveMultipartMode } from './multipart.js';
+export {
+  createStreamingMultipart,
+  type StreamingMultipartInput,
+} from './streaming-multipart.js';
 export type {
   PersistencePlatformStatusSnapshot,
   PlatformCheckResult,

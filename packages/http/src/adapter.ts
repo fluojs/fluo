@@ -48,6 +48,33 @@ export type HttpAdapterRealtimeCapability =
   | FetchStyleHttpAdapterRealtimeCapability
   | UnsupportedHttpAdapterRealtimeCapability;
 
+/** Portable multipart capability shared by conforming HTTP adapters. */
+export interface PortableHttpAdapterMultipartCapability {
+  /** Versioned portable multipart contract identifier. */
+  contract: 'portable-multipart';
+  /** Capability discriminator. */
+  kind: 'multipart';
+  /** Explicitly selectable multipart consumption modes. */
+  modes: readonly ['buffered', 'streaming'];
+  /** Multipart capability contract version. */
+  version: 1;
+}
+
+/** Unsupported multipart capability reported by lifecycle-only adapters. */
+export interface UnsupportedHttpAdapterMultipartCapability {
+  /** Capability discriminator. */
+  kind: 'unsupported';
+  /** Human-readable explanation for the missing multipart transport. */
+  reason: string;
+  /** Multipart capability contract version. */
+  version: 1;
+}
+
+/** Multipart capability reported by an HTTP application adapter. */
+export type HttpAdapterMultipartCapability =
+  | PortableHttpAdapterMultipartCapability
+  | UnsupportedHttpAdapterMultipartCapability;
+
 /**
  * Create server backed http adapter realtime capability.
  *
@@ -116,6 +143,36 @@ export function createFetchStyleHttpAdapterRealtimeCapability(
 }
 
 /**
+ * Creates the portable buffered-and-streaming multipart capability.
+ *
+ * @returns Versioned portable multipart capability metadata.
+ */
+export function createPortableHttpAdapterMultipartCapability(): PortableHttpAdapterMultipartCapability {
+  return {
+    contract: 'portable-multipart',
+    kind: 'multipart',
+    modes: ['buffered', 'streaming'],
+    version: 1,
+  };
+}
+
+/**
+ * Creates an unsupported multipart capability.
+ *
+ * @param reason - Explanation for the missing multipart transport.
+ * @returns Versioned unsupported multipart capability metadata.
+ */
+export function createUnsupportedHttpAdapterMultipartCapability(
+  reason: string,
+): UnsupportedHttpAdapterMultipartCapability {
+  return {
+    kind: 'unsupported',
+    reason,
+    version: 1,
+  };
+}
+
+/**
  * Minimal HTTP adapter contract that binds the application lifecycle to a transport implementation.
  */
 export interface HttpApplicationAdapter {
@@ -127,6 +184,9 @@ export interface HttpApplicationAdapter {
   getServer?(): unknown;
 
   getRealtimeCapability?(): HttpAdapterRealtimeCapability;
+
+  /** Reports portable multipart modes supported by this adapter. */
+  getMultipartCapability?(): HttpAdapterMultipartCapability;
 
   /**
    * Starts the adapter and binds request dispatching to the framework dispatcher.
@@ -156,6 +216,11 @@ export function createNoopHttpApplicationAdapter(): HttpApplicationAdapter {
     getRealtimeCapability() {
       return createUnsupportedHttpAdapterRealtimeCapability(
         'No-op HTTP adapter does not expose a server-backed realtime capability.',
+      );
+    },
+    getMultipartCapability() {
+      return createUnsupportedHttpAdapterMultipartCapability(
+        'No-op HTTP adapter does not consume request bodies.',
       );
     },
     async listen() {},

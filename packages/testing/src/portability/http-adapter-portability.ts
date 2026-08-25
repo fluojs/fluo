@@ -663,6 +663,113 @@ export class HttpAdapterPortabilityHarness<
     });
   }
 
+  async assertStreamsPortableMultipartParts(): Promise<void> {
+    @Controller('/uploads')
+    class UploadController {
+      @Post('/')
+      async upload(_input: undefined, context: RequestContext) {
+        const multipart = context.request.multipart;
+
+        if (!multipart) {
+          throw new Error('Expected streaming multipart mode.');
+        }
+
+        const reader = multipart.consume().getReader();
+        const parts: Array<Record<string, unknown>> = [];
+
+        for (;;) {
+          const result = await reader.read();
+
+          if (result.done) {
+            break;
+          }
+
+          if (result.value.kind === 'field') {
+            parts.push({
+              fieldname: result.value.fieldname,
+              kind: result.value.kind,
+              value: result.value.value,
+            });
+            continue;
+          }
+
+          parts.push({
+            fieldname: result.value.fieldname,
+            kind: result.value.kind,
+            mimetype: result.value.mimetype,
+            originalname: result.value.originalname,
+            value: await new Response(result.value.stream).text(),
+          });
+        }
+
+        return {
+          bodyAbsent: context.request.body === undefined,
+          filesAbsent: context.request.files === undefined,
+          parts,
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [UploadController],
+    });
+
+    const app = await this.options.bootstrap(AppModule, {
+      cors: false,
+      multipart: {
+        mode: 'streaming',
+      },
+      port: 0,
+    } as TBootstrapOptions);
+
+    await prepareAndListenWithCleanup(app, this.options.name);
+
+    await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
+      const form = new FormData();
+      form.set('name', 'Ada');
+      form.set('payload', new Blob(['streamed-file'], { type: 'text/plain' }), 'payload.txt');
+
+      const response = await fetch(`${baseUrl}/uploads`, {
+        body: form,
+        method: 'POST',
+      });
+      const responseText = await response.text();
+
+      if (response.status !== 201) {
+        throw new Error(
+          `${this.options.name} adapter returned ${String(response.status)} for streaming multipart: ${responseText}`,
+        );
+      }
+
+      const body: unknown = JSON.parse(responseText);
+      const expected = {
+        bodyAbsent: true,
+        filesAbsent: true,
+        parts: [
+          {
+            fieldname: 'name',
+            kind: 'field',
+            value: 'Ada',
+          },
+          {
+            fieldname: 'payload',
+            kind: 'file',
+            mimetype: 'text/plain',
+            originalname: 'payload.txt',
+            value: 'streamed-file',
+          },
+        ],
+      };
+
+      if (JSON.stringify(body) !== JSON.stringify(expected)) {
+        throw new Error(
+          `${this.options.name} adapter changed portable streaming multipart semantics: ${JSON.stringify(body)}`,
+        );
+      }
+    });
+  }
+
   async assertSupportsSseStreaming(): Promise<void> {
     @Controller('/events')
     class EventsController {
