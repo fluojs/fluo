@@ -150,6 +150,8 @@ SocketIoModule.forRoot({
 
 `@WebSocketGateway({ path: '/chat' })`의 `path`는 Socket.IO namespace `/chat`에 매핑되며 Engine.IO HTTP request path를 바꾸지 않습니다. Engine.IO path는 `/socket.io/`로 유지됩니다. 이는 gateway `path` option을 Engine.IO path로 사용하는 NestJS configuration과 다릅니다. Socket.IO gateway는 application listener를 공유하므로 모든 runtime에서 `@WebSocketGateway({ serverBacked })`를 거부합니다. Gateway는 singleton provider 또는 controller로 등록하세요. Request/transient scope로 migration된 gateway는 instantiate되지 않고 warning 후 skip됩니다.
 
+**Major migration:** 기존 Socket.IO gateway가 `serverBacked`를 선언한다면 upgrade 전에 해당 option을 제거하고 application HTTP listener를 통해 namespace를 노출하세요. Dedicated port를 보존하는 Socket.IO module option은 없습니다. 별도 listener가 필요하면 dedicated `serverBacked` listener를 지원하는 raw `@fluojs/websockets/node` adapter로 gateway를 migration하거나 `SocketIoModule` 밖에서 별도 Socket.IO server를 직접 생성하고 소유해야 합니다.
+
 ### Bun 전용 참고
 
 Bun path는 `@socket.io/bun-engine`과 HTTP adapter의 versioned realtime binding capability를 통해 Socket.IO를 지원하지만 static CORS shape가 필요합니다. CORS delegate function과 `cors.origin` array 안의 boolean entry는 지원하지 않습니다. `@WebSocketGateway({ serverBacked })`는 지원하지 않습니다. Bun의 HTTP request body limit(`maxRequestBodySize`)과 WebSocket frame limit(`websocket.maxPayloadLength`)은 별도 host contract입니다. 어댑터는 polling request와 websocket frame이 같은 inbound payload bound를 따르도록 두 값을 모두 `engine.maxHttpBufferSize`에서 매핑합니다.

@@ -771,11 +771,18 @@ export class SocketIoLifecycleService
   private bindNamespaceHandlers(attachment: NamespaceAttachment): void {
     if (this.moduleOptions.auth?.connection) {
       attachment.namespace.use((socket: Socket, next: (error?: Error) => void) => {
-        void this.runConnectionGuard(attachment.path, socket)
-          .then(() => next())
+        const admission = this.runConnectionGuard(attachment.path, socket)
+          .then(() => {
+            if (this.shutdownStarted) {
+              throw new Error('Socket.IO connection rejected because application shutdown has started.');
+            }
+
+            next();
+          })
           .catch((error) => {
             next(error instanceof Error ? error : new Error('Socket.IO connection rejected.'));
           });
+        void this.trackGatewayWork(admission);
       });
     }
 

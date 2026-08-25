@@ -2432,6 +2432,127 @@ describe('@fluojs/socket.io', () => {
     expect(events.filter((event) => event.startsWith('error:SocketIoLifecycleService'))).toEqual([]);
   });
 
+  it('waits for a pending connection guard and rejects admission after shutdown starts', async () => {
+    const guardStarted = createDeferred<void>();
+    const guardRelease = createDeferred<void>();
+
+    class GatewayState {
+      connects = 0;
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/guard-shutdown' })
+    class GuardShutdownGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnConnect()
+      onConnect() {
+        this.state.connects += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot({
+        auth: {
+          async connection() {
+            guardStarted.resolve();
+            await guardRelease.promise;
+            return true;
+          },
+        },
+        transports: ['websocket'],
+      })],
+      providers: [GatewayState, GuardShutdownGateway],
+    });
+
+    const { adapter, app } = await createNodejsSocketIoApplication(AppModule);
+    const state = await app.container.resolve(GatewayState);
+    let socket: ClientSocket | undefined;
+
+    try {
+      await app.listen();
+      const port = getBoundPortFromAdapter(adapter);
+      socket = createClient(`http://127.0.0.1:${String(port)}/guard-shutdown`, {
+        reconnection: false,
+        transports: ['websocket'],
+      });
+      await guardStarted.promise;
+
+      const close = app.close();
+
+      guardRelease.resolve();
+      await close;
+
+      expect(state.connects).toBe(0);
+      expect(socket.connected).toBe(false);
+    } finally {
+      guardRelease.resolve();
+      socket?.close();
+      await app.close();
+    }
+  });
+
+  it('waits for an asynchronous disconnect handler triggered by application shutdown', async () => {
+    const disconnectStarted = createDeferred<void>();
+    const disconnectRelease = createDeferred<void>();
+
+    class GatewayState {
+      disconnects = 0;
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/async-shutdown-disconnect' })
+    class AsyncShutdownGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnDisconnect()
+      async onDisconnect() {
+        disconnectStarted.resolve();
+        await disconnectRelease.promise;
+        this.state.disconnects += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot({ transports: ['websocket'] })],
+      providers: [GatewayState, AsyncShutdownGateway],
+    });
+
+    const { adapter, app } = await createNodejsSocketIoApplication(AppModule);
+    const state = await app.container.resolve(GatewayState);
+    let socket: ClientSocket | undefined;
+
+    try {
+      await app.listen();
+      const port = getBoundPortFromAdapter(adapter);
+      socket = createClient(`http://127.0.0.1:${String(port)}/async-shutdown-disconnect`, {
+        reconnection: false,
+        transports: ['websocket'],
+      });
+      await onceConnected(socket);
+
+      let closeSettled = false;
+      const close = app.close().then(() => {
+        closeSettled = true;
+      });
+      await disconnectStarted.promise;
+
+      expect(closeSettled).toBe(false);
+      expect(state.disconnects).toBe(0);
+
+      disconnectRelease.resolve();
+      await close;
+
+      expect(state.disconnects).toBe(1);
+    } finally {
+      disconnectRelease.resolve();
+      socket?.close();
+      await app.close();
+    }
+  });
+
   for (const scenario of supportedSocketIoAdapterScenarios) {
     it(`closes active socket.io clients during ${scenario.name} application shutdown`, async () => {
     @WebSocketGateway({ path: '/shutdown' })

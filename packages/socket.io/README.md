@@ -152,6 +152,8 @@ During application shutdown, Socket.IO owns cleanup for connected Socket.IO clie
 
 `@WebSocketGateway({ path: '/chat' })` maps `path` to the Socket.IO namespace `/chat`; it does not change the Engine.IO HTTP request path, which remains `/socket.io/`. This differs from NestJS configurations that use a gateway `path` option for Engine.IO. `@WebSocketGateway({ serverBacked })` is rejected on every Socket.IO runtime because Socket.IO gateways share the application listener. Register gateways as singleton providers or controllers; request- and transient-scoped migrated gateways are warned and skipped rather than instantiated.
 
+**Major migration:** before upgrading an existing Socket.IO gateway that declares `serverBacked`, remove that option and expose the namespace through the application HTTP listener. There is no Socket.IO module option that preserves the dedicated port. If a separate listener is required, migrate that gateway to the raw `@fluojs/websockets/node` adapter, which supports dedicated `serverBacked` listeners, or create and own a separate Socket.IO server outside `SocketIoModule`.
+
 ### Bun-specific notes
 
 The Bun path supports Socket.IO through `@socket.io/bun-engine` and the HTTP adapter's versioned realtime binding capability, but it requires static CORS shapes: no CORS delegate functions and no boolean entries inside `cors.origin` arrays. `@WebSocketGateway({ serverBacked })` is not supported. Bun's HTTP request body limit (`maxRequestBodySize`) and WebSocket frame limit (`websocket.maxPayloadLength`) are separate host contracts; the adapter maps both from `engine.maxHttpBufferSize` so polling requests and websocket frames share the configured inbound payload bound.

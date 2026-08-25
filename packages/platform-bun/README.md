@@ -64,7 +64,7 @@ Bun.serve({
 ```
 
 ### Native WebSocket Upgrade
-The adapter supports Bun's native `server.upgrade()` through the `@fluojs/websockets/bun` binding. Import `BunWebSocketModule.forRoot(...)` into the application module before `app.listen()` so the runtime can install that binding and discover the registered gateways.
+The adapter supports Bun's native `server.upgrade()` through the `@fluojs/websockets/bun` binding. `getRealtimeCapability()` returns fetch-style capability version 2 with versioned `bindingInstallation`; first-party WebSocket and Socket.IO modules use that protocol-neutral installer before `app.listen()`, and the adapter parses the installed value into its Bun binding contract. Import `BunWebSocketModule.forRoot(...)` into the application module before `app.listen()` so the runtime can install that binding and discover the registered gateways.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -98,7 +98,7 @@ Validated custom routes such as `QUERY` and `PURGE` intentionally remain on the 
 
 The adapter also exports the typed Bun integration seams used by realtime packages:
 
-- `BunHttpApplicationAdapter`: `HttpApplicationAdapter` implementation backed by `Bun.serve()`.
+- `BunHttpApplicationAdapter`: `HttpApplicationAdapter` implementation backed by `Bun.serve()`; its `getRealtimeCapability()` returns fetch-style capability version 2 with `bindingInstallation`.
 - `BunAdapterOptions`: host, port, TLS, raw-body, multipart, and shutdown options accepted by `createBunAdapter()`.
 - `BootstrapBunApplicationOptions` and `RunBunApplicationOptions`: application bootstrap/run options for Bun-hosted apps.
 - `BunWebSocketBinding`, `BunWebSocketUpgradeHost`, and `BunRealtimeBindingHost`: binding contracts used by `@fluojs/websockets/bun` before normal HTTP dispatch. Bindings receive only an upgrade-capable host, not the adapter-owned Bun server lifecycle or raw fetch handler.
@@ -115,7 +115,7 @@ The adapter also exports the typed Bun integration seams used by realtime packag
 - **Startup target**: `hostname`, `port`, and `tls` are forwarded to `Bun.serve()`. Startup logs report the configured HTTP or HTTPS listen URL.
 - **Lifecycle guards**: `listen()` is idempotent for an already-started adapter and keeps the original live dispatcher binding. Realtime/websocket bindings must be configured before `listen()` starts; later attempts to set or clear the binding fail fast instead of being accepted without affecting live wiring.
 - **Shutdown ownership**: `close()` stops new HTTP and websocket-upgrade ingress with a `503` shutdown response, waits for every accepted request from realtime binding evaluation through HTTP response or upgrade completion, clears adapter state after drain settles, and removes signal listeners registered by `runBunApplication()`.
-- **Realtime seam**: Bun websocket bindings must be configured before `listen()` starts the server. Upgrade requests are offered to the configured binding before falling back to HTTP dispatch while the adapter is accepting new ingress; an accepted request keeps its dispatcher available if shutdown begins during asynchronous binding evaluation, and HTTP fallback is suppressed only after the binding returns a response or successfully upgrades the request. The binding host exposes only `upgrade(...)`, so adapter-owned `stop()` and raw `fetch()` control remain outside the realtime seam.
+- **Realtime seam**: `getRealtimeCapability()` exposes fetch-style version 2 and its version 1 `bindingInstallation` contract. Bun websocket bindings must be configured before `listen()` starts the server. The capability installer is the canonical configuration path for protocol packages; it rejects values without `fetch` and `websocket` host contracts, and installation or cleanup after startup fails fast. Upgrade requests are offered to the configured binding before falling back to HTTP dispatch while the adapter is accepting new ingress; an accepted request keeps its dispatcher available if shutdown begins during asynchronous binding evaluation, and HTTP fallback is suppressed only after the binding returns a response or successfully upgrades the request. The binding host exposes only `upgrade(...)`, so adapter-owned `stop()` and raw `fetch()` control remain outside the realtime seam.
 - **Adapter instance helpers**: `BunHttpApplicationAdapter` exposes `getServer()`, `getListenTarget()`, `getRealtimeCapability()`, `configureRealtimeBinding()`, `configureWebSocketBinding()`, `listen()`, and `close()`.
 
 ## Conformance Coverage
