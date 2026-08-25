@@ -1,0 +1,7 @@
+{
+  "version": 2,
+  "artifact_id": "search:search-native-two-lanes",
+  "sha256": "a84d89513201c9fde69a627164a50ecf9551d462408a854621f1cd8c3398c42f",
+  "search_run_id": "search-native-two-lanes",
+  "selected_issues": [4101, 4102]
+}

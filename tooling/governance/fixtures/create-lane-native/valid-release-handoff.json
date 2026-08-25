@@ -15,21 +15,28 @@
       "approval_id": "approval-lane-4101-runtime-confirmed-issues",
       "approved": true,
       "issue_numbers": [4101],
-      "binding_sha256": "58be23c1d87b655ed19c22c8d385a0d337084888618b39e31857de76bb035114"
+      "binding_sha256": "fd2f64f6ab50054d1be88f3ad76cf4baeb9a0ad458c6c8df997d7761c813ded7"
     },
     {
       "gate": "suggested-additions",
       "approval_id": "approval-lane-4101-runtime-suggested-additions",
       "approved": true,
       "issue_numbers": [],
-      "binding_sha256": "2052509b56b18f30f34d819830ba3735d1329a90aee7c76b85f98cd9e66f1d72"
+      "binding_sha256": "4aacefe7b03ae858b8bac2ecfef25446234d15f8f05128c7805aa90a8dc446f2"
     },
     {
       "gate": "lane-plan",
       "approval_id": "approval-lane-4101-runtime-lane-plan",
       "approved": true,
-      "release_handoff_attestations": [],
-      "binding_sha256": "792738fe4aeeb42c1d22b5c272a562c16c1b108b578035bff484088f639e494b"
+      "release_handoff_attestations": [
+        {
+          "issue_number": 4101,
+          "issue_evidence_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "decision": "release-or-publish-is-core",
+          "changeset_only": false
+        }
+      ],
+      "binding_sha256": "7dc4d858813666d0b9ae9eb3b68da6bb2d5080422e859b45fc13e6d75e1e6e3e"
     }
   ],
   "plan": {
@@ -59,7 +66,13 @@
     "confirmed_issues": [4101],
     "suggested_but_excluded": [],
     "backlog_candidates": [],
-    "release_handoffs": [],
+    "release_handoffs": [
+      {
+        "issue_number": 4101,
+        "reason": "release-or-publish-is-core",
+        "issue_evidence_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    ],
     "lanes": [
       {
         "name": "runtime",

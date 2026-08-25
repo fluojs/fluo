@@ -11,13 +11,14 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
 
 import {
   assertContract,
   assertEventChain,
 } from '../../../workflow-contracts/contracts.mjs';
 import { validateLedger } from '../../../../tooling/governance/lane-ledger-state.mjs';
+import { assertReleaseHandoffBinding } from './release-handoff-approval.mjs';
 
 const assertRegularFile = (path) => {
   if (!existsSync(path)) {
@@ -29,9 +30,94 @@ const assertRegularFile = (path) => {
   }
 };
 
+const assertRealDirectory = (path) => {
+  const stat = lstatSync(path);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new TypeError(`${path} must be a real directory.`);
+  }
+};
+
 const readJson = (path) => {
   assertRegularFile(path);
   return JSON.parse(readFileSync(path, 'utf8'));
+};
+
+const releaseHandoffContext = (repositoryRoot, ledger, canonicalLedger) => {
+  const canonicalRequiresApproval =
+    canonicalLedger.release_handoffs.length > 0 ||
+    canonicalLedger.lane_plan_approval_sha256 !== undefined;
+  const snapshotRequiresApproval =
+    ledger.release_handoffs.length > 0 ||
+    ledger.lane_plan_approval_sha256 !== undefined;
+  if (
+    !canonicalRequiresApproval &&
+    !snapshotRequiresApproval
+  ) {
+    return null;
+  }
+  if (
+    canonicalRequiresApproval &&
+    ledger.lane_plan_approval_sha256 !==
+      canonicalLedger.lane_plan_approval_sha256
+  ) {
+    throw new TypeError(
+      'persisted lane-plan approval binding does not match the canonical ledger',
+    );
+  }
+  const evidenceLedger = canonicalRequiresApproval
+    ? canonicalLedger
+    : ledger;
+  const omoDirectory = resolve(repositoryRoot, '.omo');
+  const approvalDirectory = resolve(omoDirectory, 'approvals');
+  const searchDirectory = resolve(omoDirectory, 'search-issue');
+  const artifactDirectory = resolve(searchDirectory, 'artifacts');
+  for (const directory of [
+    repositoryRoot,
+    omoDirectory,
+    approvalDirectory,
+    searchDirectory,
+    artifactDirectory,
+  ]) {
+    assertRealDirectory(directory);
+  }
+  if (evidenceLedger.source.search_ledger.includes('/legacy/')) {
+    assertRealDirectory(resolve(artifactDirectory, 'legacy'));
+  }
+  const approvalPath = resolve(
+    approvalDirectory,
+    `approval-${evidenceLedger.lane_id}-lane-plan.json`,
+  );
+  const artifactPath = resolve(
+    repositoryRoot,
+    evidenceLedger.source.search_ledger,
+  );
+  for (const path of [approvalPath, artifactPath]) {
+    const pathFromRoot = relative(repositoryRoot, path);
+    if (pathFromRoot.startsWith('..') || resolve(repositoryRoot, pathFromRoot) !== path) {
+      throw new TypeError('release handoff evidence escaped the repository root');
+    }
+  }
+  if (!existsSync(approvalPath)) {
+    throw new TypeError(
+      'release handoffs require their consumed lane-plan approval receipt',
+    );
+  }
+  if (!existsSync(artifactPath)) {
+    throw new TypeError('release handoff source artifact is missing');
+  }
+  const receipt = readJson(approvalPath);
+  const artifact = readJson(artifactPath);
+  assertReleaseHandoffBinding(
+    ledger,
+    receipt,
+    artifact,
+    evidenceLedger.source.search_ledger,
+  );
+  return {
+    receipt,
+    artifact,
+    artifactPath: evidenceLedger.source.search_ledger,
+  };
 };
 
 const ensureStateDirectory = (path) => {
@@ -129,19 +215,34 @@ const recoverTransaction = (stateDirectory) => {
   unlinkSync(path);
 };
 
-export const loadState = (stateDirectory, ledgerPath) => {
+export const loadState = (
+  stateDirectory,
+  ledgerPath,
+  repositoryRoot = resolve(dirname(ledgerPath), '../..'),
+) => {
   ensureStateDirectory(stateDirectory);
   recoverTransaction(stateDirectory);
+  const canonicalSnapshot = readJson(ledgerPath);
   const snapshotPath = resolve(stateDirectory, 'snapshot.json');
   const snapshot = existsSync(snapshotPath)
     ? readJson(snapshotPath)
-    : readJson(ledgerPath);
+    : canonicalSnapshot;
   const events = readEvents(resolve(stateDirectory, 'events.jsonl'));
   const receiptsPath = resolve(stateDirectory, 'receipts.json');
   const receipts = existsSync(receiptsPath) ? readJson(receiptsPath) : [];
   const state = { snapshot, events, receipts };
+  validateState({
+    snapshot: canonicalSnapshot,
+    events: [],
+    receipts: [],
+  });
   validateState(state);
-  return state;
+  const handoffContext = releaseHandoffContext(
+    repositoryRoot,
+    snapshot,
+    canonicalSnapshot,
+  );
+  return { ...state, handoffContext };
 };
 
 export const acquireLease = (stateDirectory, laneId) => {
@@ -172,6 +273,22 @@ export const acquireLease = (stateDirectory, laneId) => {
 
 export const persistState = (stateDirectory, previous, next) => {
   validateState(next);
+  const context = previous.handoffContext;
+  if (
+    (context !== null && context !== undefined) ||
+    next.snapshot.release_handoffs.length > 0 ||
+    next.snapshot.lane_plan_approval_sha256 !== undefined
+  ) {
+    if (context === null || context === undefined) {
+      throw new TypeError('release handoff approval context is missing');
+    }
+    assertReleaseHandoffBinding(
+      next.snapshot,
+      context.receipt,
+      context.artifact,
+      context.artifactPath,
+    );
+  }
   assertEventPrefix(previous.events, next.events);
   const transactionPath = resolve(stateDirectory, 'transaction.json');
   writeAtomic(transactionPath, {

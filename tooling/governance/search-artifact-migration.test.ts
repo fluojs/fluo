@@ -170,20 +170,21 @@ describe('legacy search artifact migration', () => {
       const approvals = [
         {
           gate: 'confirmed-issues',
-          approval_id: 'approval-legacy-confirmed',
+          approval_id: 'approval-lane-legacy-runtime-confirmed-issues',
           approved: true,
           issue_numbers: issues,
         },
         {
           gate: 'suggested-additions',
-          approval_id: 'approval-legacy-suggestions',
+          approval_id: 'approval-lane-legacy-runtime-suggested-additions',
           approved: true,
           issue_numbers: [],
         },
         {
           gate: 'lane-plan',
-          approval_id: 'approval-legacy-plan',
+          approval_id: 'approval-lane-legacy-runtime-lane-plan',
           approved: true,
+          release_handoff_attestations: [],
         },
       ].map((approval) => ({
         ...approval,

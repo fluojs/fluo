@@ -1,13 +1,14 @@
 import { execFileSync } from 'node:child_process';
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
@@ -46,21 +47,27 @@ const readFixture = (name: string): Readonly<Record<string, unknown>> =>
 const runScenarioPath = (
   scenarioPath: string,
   stateDirectory?: string,
+  ledgerPath = initialLedger,
+  repositoryRoot?: string,
 ): ScenarioRun => {
   const state =
     stateDirectory ?? mkdtempSync(resolve(tmpdir(), 'fluo-execute-lane-'));
+  const command = [
+    replayCli,
+    '--fixture-only',
+    '--scenario',
+    scenarioPath,
+    '--ledger',
+    ledgerPath,
+    '--state-dir',
+    state,
+  ];
+  if (repositoryRoot !== undefined) {
+    command.push('--repository-root', repositoryRoot);
+  }
   const stdout = execFileSync(
     process.execPath,
-    [
-      replayCli,
-      '--fixture-only',
-      '--scenario',
-      scenarioPath,
-      '--ledger',
-      initialLedger,
-      '--state-dir',
-      state,
-    ],
+    command,
     { encoding: 'utf8' },
   );
   return { stateDirectory: state, result: parseRecord(stdout) };
@@ -197,6 +204,381 @@ describe('$execute-lane persisted native state machine', () => {
       rmSync(completed.stateDirectory, { recursive: true, force: true });
     }
   });
+
+  it('parks one release handoff while another remains queued', () => {
+    const fixtureDirectory = mkdtempSync(
+      resolve(tmpdir(), 'fluo-execute-release-handoffs-'),
+    );
+    const ledgerPath = resolve(
+      fixtureDirectory,
+      '.omo/lanes/lane-4101-runtime.json',
+    );
+    const approvalReceiptPath = resolve(
+      fixtureDirectory,
+      '.omo/approvals/approval-lane-4101-runtime-lane-plan.json',
+    );
+    const artifactPath = resolve(
+      fixtureDirectory,
+      '.omo/search-issue/artifacts/search-native-two-lanes.json',
+    );
+    const scenarioPath = resolve(fixtureRoot, 'interrupted-start.json');
+    const secondScenarioPath = resolve(fixtureDirectory, 'second.json');
+    const ledger = readFixture('ready-ledger-two-lanes-v2');
+    mkdirSync(dirname(ledgerPath), { recursive: true });
+    mkdirSync(dirname(approvalReceiptPath), { recursive: true });
+    mkdirSync(dirname(artifactPath), { recursive: true });
+    writeFileSync(
+      ledgerPath,
+      `${JSON.stringify(
+        { ...ledger, release_handoffs: [4101, 4102] },
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    );
+    writeFileSync(
+      approvalReceiptPath,
+      `${JSON.stringify(
+        readFixture('release-handoff-two-lanes-approval'),
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    );
+    writeFileSync(
+      artifactPath,
+      `${JSON.stringify(
+        readFixture('search-native-two-lanes'),
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    );
+    writeFileSync(
+      secondScenarioPath,
+      `${JSON.stringify(
+        {
+          lane_id: 'lane-4101-runtime',
+          issue_number: 4102,
+          branch: 'issue-4102-runtime',
+          worktree: '.worktrees/issue-4102-runtime',
+          pr: {
+            number: 5102,
+            url: 'https://github.com/fluojs/fluo/pull/5102',
+            head_sha: 'b'.repeat(40),
+          },
+          steps: [{ kind: 'interrupt' }],
+        },
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    );
+
+    const run = runScenarioPath(
+      scenarioPath,
+      undefined,
+      ledgerPath,
+      fixtureDirectory,
+    );
+    try {
+      const snapshot = run.result['snapshot'];
+      if (!isRecord(snapshot)) {
+        throw new TypeError('result snapshot must be an object');
+      }
+      const lanes = snapshot['lanes'];
+      expect(run.result['status']).toBe('running');
+      expect(Array.isArray(lanes) ? lanes.map((lane) => lane['status']) : []).toEqual([
+        'blocked-maintainer-decision',
+        'queued',
+      ]);
+      const completed = runScenarioPath(
+        secondScenarioPath,
+        run.stateDirectory,
+        ledgerPath,
+        fixtureDirectory,
+      );
+      const completedSnapshot = completed.result['snapshot'];
+      expect(completed.result['status']).toBe('blocked-maintainer-decision');
+      expect(
+        isRecord(completedSnapshot) &&
+          Array.isArray(completedSnapshot['lanes'])
+          ? completedSnapshot['lanes'].map((lane) => lane['status'])
+          : [],
+      ).toEqual([
+        'blocked-maintainer-decision',
+        'blocked-maintainer-decision',
+      ]);
+    } finally {
+      rmSync(run.stateDirectory, { recursive: true, force: true });
+      rmSync(fixtureDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a release handoff without its consumed approval receipt', () => {
+    const fixtureDirectory = mkdtempSync(
+      resolve(tmpdir(), 'fluo-execute-release-approval-'),
+    );
+    const ledgerPath = resolve(
+      fixtureDirectory,
+      '.omo/lanes/lane-4101-runtime.json',
+    );
+    const artifactPath = resolve(
+      fixtureDirectory,
+      '.omo/search-issue/artifacts/search-native-release.json',
+    );
+    const ledger = readFixture('ready-ledger-release-v2');
+    mkdirSync(dirname(ledgerPath), { recursive: true });
+    mkdirSync(
+      resolve(fixtureDirectory, '.omo/approvals'),
+      { recursive: true },
+    );
+    mkdirSync(dirname(artifactPath), { recursive: true });
+    writeFileSync(
+      ledgerPath,
+      `${JSON.stringify(ledger, null, 2)}\n`,
+      'utf8',
+    );
+    writeFileSync(
+      artifactPath,
+      `${JSON.stringify(readFixture('search-native-release'), null, 2)}\n`,
+      'utf8',
+    );
+
+    try {
+      expect(() =>
+        runScenarioPath(
+          resolve(fixtureRoot, 'interrupted-start.json'),
+          undefined,
+          ledgerPath,
+        ),
+      ).toThrow(/release handoffs require their consumed lane-plan approval receipt/u);
+    } finally {
+      rmSync(fixtureDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects removing approved handoffs from a bound ledger', () => {
+    const repositoryRoot = mkdtempSync(
+      resolve(tmpdir(), 'fluo-execute-release-removal-'),
+    );
+    const ledgerPath = resolve(
+      repositoryRoot,
+      '.omo/lanes/lane-4101-runtime.json',
+    );
+    const approvalPath = resolve(
+      repositoryRoot,
+      '.omo/approvals/approval-lane-4101-runtime-lane-plan.json',
+    );
+    const artifactPath = resolve(
+      repositoryRoot,
+      '.omo/search-issue/artifacts/search-native-release.json',
+    );
+    const stateDirectory = resolve(repositoryRoot, 'state');
+    mkdirSync(dirname(ledgerPath), { recursive: true });
+    mkdirSync(dirname(approvalPath), { recursive: true });
+    mkdirSync(dirname(artifactPath), { recursive: true });
+    const ledger = structuredClone(
+      readFixture('ready-ledger-release-v2'),
+    ) as Record<string, unknown>;
+    for (const [path, value] of [
+      [ledgerPath, ledger],
+      [approvalPath, readFixture('release-handoff-approval')],
+      [artifactPath, readFixture('search-native-release')],
+    ] as const) {
+      writeFileSync(
+        path,
+        `${JSON.stringify(value, null, 2)}\n`,
+        'utf8',
+      );
+    }
+    const downgradedSnapshot = structuredClone(ledger);
+    downgradedSnapshot['release_handoffs'] = [];
+    Reflect.deleteProperty(
+      downgradedSnapshot,
+      'lane_plan_approval_sha256',
+    );
+    mkdirSync(stateDirectory);
+    writeFileSync(
+      resolve(stateDirectory, 'snapshot.json'),
+      `${JSON.stringify(downgradedSnapshot, null, 2)}\n`,
+      'utf8',
+    );
+
+    try {
+      expect(() =>
+        runScenarioPath(
+          resolve(fixtureRoot, 'interrupted-start.json'),
+          stateDirectory,
+          ledgerPath,
+          repositoryRoot,
+        ),
+      ).toThrow(
+        /persisted lane-plan approval binding does not match the canonical ledger/u,
+      );
+    } finally {
+      rmSync(repositoryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects persisting a bound snapshot as legacy', () => {
+    const stateDirectory = mkdtempSync(
+      resolve(tmpdir(), 'fluo-execute-persist-downgrade-'),
+    );
+    const probe = `
+      import { readFileSync } from 'node:fs';
+      import { persistState } from ${JSON.stringify(
+        resolve(skillRoot, 'scripts/state-store.mjs'),
+      )};
+      const read = (name) => JSON.parse(
+        readFileSync(${JSON.stringify(fixtureRoot)} + '/' + name + '.json', 'utf8'),
+      );
+      const ledger = read('ready-ledger-release-v2');
+      const downgradedSnapshot = structuredClone(ledger);
+      downgradedSnapshot.release_handoffs = [];
+      delete downgradedSnapshot.lane_plan_approval_sha256;
+      persistState(
+        ${JSON.stringify(stateDirectory)},
+        {
+          snapshot: ledger,
+          events: [],
+          receipts: [],
+          handoffContext: {
+            receipt: read('release-handoff-approval'),
+            artifact: read('search-native-release'),
+            artifactPath:
+              '.omo/search-issue/artifacts/search-native-release.json',
+          },
+        },
+        {
+          snapshot: downgradedSnapshot,
+          events: [],
+          receipts: [],
+        },
+      );
+    `;
+
+    try {
+      expect(() =>
+        execFileSync(
+          process.execPath,
+          ['--input-type=module', '--eval', probe],
+          { encoding: 'utf8' },
+        ),
+      ).toThrow(
+        /release handoff receipt binding does not match the ledger/u,
+      );
+    } finally {
+      rmSync(stateDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    [
+      'binding',
+      (receipt: Record<string, unknown>) => {
+        receipt['binding_sha256'] = 'c'.repeat(64);
+      },
+      /release handoff approval binding does not match/u,
+    ],
+    [
+      'evidence digest',
+      (receipt: Record<string, unknown>) => {
+        const attestations = receipt['release_handoff_attestations'];
+        if (!Array.isArray(attestations) || !isRecord(attestations[0])) {
+          throw new TypeError('release approval attestations must be objects');
+        }
+        attestations[0] = {
+          ...attestations[0],
+          issue_evidence_sha256: 'c'.repeat(64),
+        };
+      },
+      /release handoff attestations do not match the approved plan/u,
+    ],
+    [
+      'self-consistent approval ID',
+      (receipt: Record<string, unknown>) => {
+        receipt['approval_id'] = 'approval-forged-lane-plan';
+        receipt['binding_sha256'] =
+          '091dc0f20c97675db7ea0a0675a3aec817d8f511487fb6a17dce7df36c558203';
+      },
+      /release handoffs require their consumed lane-plan approval receipt/u,
+    ],
+    [
+      'fully self-consistent evidence digest',
+      (receipt: Record<string, unknown>) => {
+        const attestations = receipt['release_handoff_attestations'];
+        const plan = receipt['plan'];
+        const handoffs = isRecord(plan) ? plan['release_handoffs'] : undefined;
+        if (
+          !Array.isArray(attestations) ||
+          !isRecord(attestations[0]) ||
+          !Array.isArray(handoffs) ||
+          !isRecord(handoffs[0])
+        ) {
+          throw new TypeError('release approval attestations must be objects');
+        }
+        attestations[0] = {
+          ...attestations[0],
+          issue_evidence_sha256: 'c'.repeat(64),
+        };
+        handoffs[0] = {
+          ...handoffs[0],
+          issue_evidence_sha256: 'c'.repeat(64),
+        };
+        receipt['binding_sha256'] =
+          'c2d14b0a464ca206669e9c32791f8eda3326406158a8896bad79c8c65fac5247';
+      },
+      /release handoff receipt binding does not match the ledger/u,
+    ],
+  ])('rejects a substituted release handoff %s', (_, mutate, error) => {
+    const repositoryRoot = mkdtempSync(
+      resolve(tmpdir(), 'fluo-execute-release-substitution-'),
+    );
+    const ledgerPath = resolve(
+      repositoryRoot,
+      '.omo/lanes/lane-4101-runtime.json',
+    );
+    const approvalPath = resolve(
+      repositoryRoot,
+      '.omo/approvals/approval-lane-4101-runtime-lane-plan.json',
+    );
+    const artifactPath = resolve(
+      repositoryRoot,
+      '.omo/search-issue/artifacts/search-native-release.json',
+    );
+    mkdirSync(dirname(ledgerPath), { recursive: true });
+    mkdirSync(dirname(approvalPath), { recursive: true });
+    mkdirSync(dirname(artifactPath), { recursive: true });
+    const receipt = structuredClone(
+      readFixture('release-handoff-approval'),
+    ) as Record<string, unknown>;
+    mutate(receipt);
+    for (const [path, value] of [
+      [ledgerPath, readFixture('ready-ledger-release-v2')],
+      [approvalPath, receipt],
+      [artifactPath, readFixture('search-native-release')],
+    ] as const) {
+      writeFileSync(
+        path,
+        `${JSON.stringify(value, null, 2)}\n`,
+        'utf8',
+      );
+    }
+
+    try {
+      expect(() =>
+        runScenarioPath(
+          resolve(fixtureRoot, 'interrupted-start.json'),
+          undefined,
+          ledgerPath,
+          repositoryRoot,
+        ),
+      ).toThrow(error);
+    } finally {
+      rmSync(repositoryRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('$execute-lane shipped native assets', () => {
@@ -207,8 +589,17 @@ describe('$execute-lane shipped native assets', () => {
         'references/workflow.md',
         'scripts/state-machine.mjs',
         'scripts/state-store.mjs',
+        'scripts/release-handoff-approval.mjs',
         'scripts/fixtures/run-replay.mjs',
       ].filter((path) => existsSync(resolve(skillRoot, path))),
-    ).toHaveLength(5);
+    ).toHaveLength(6);
+  });
+
+  it.each([
+    'ready-ledger-release-v2.json',
+    'ready-ledger-two-lanes-v2.json',
+  ])('serializes one lane-plan approval binding in %s', (fixture) => {
+    const source = readFileSync(resolve(fixtureRoot, fixture), 'utf8');
+    expect(source.match(/"lane_plan_approval_sha256"/gu)).toHaveLength(1);
   });
 });

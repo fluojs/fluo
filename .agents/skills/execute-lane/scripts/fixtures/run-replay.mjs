@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
 import { runReplay } from '../state-machine.mjs';
 import {
@@ -26,6 +26,11 @@ const valueAfter = (flag) => {
 const scenarioPath = resolve(valueAfter('--scenario'));
 const ledgerPath = resolve(valueAfter('--ledger'));
 const stateDirectory = resolve(valueAfter('--state-dir'));
+const repositoryRootIndex = args.indexOf('--repository-root');
+const repositoryRoot =
+  repositoryRootIndex === -1
+    ? resolve(dirname(ledgerPath), '../..')
+    : resolve(valueAfter('--repository-root'));
 const scenario = JSON.parse(readFileSync(scenarioPath, 'utf8'));
 if (
   typeof scenario !== 'object' ||
@@ -38,7 +43,11 @@ if (
 
 let result;
 for (const step of scenario.steps) {
-  const previous = loadState(stateDirectory, ledgerPath);
+  const previous = loadState(
+    stateDirectory,
+    ledgerPath,
+    repositoryRoot,
+  );
   const lease = acquireLease(stateDirectory, previous.snapshot.lane_id);
   try {
     result = runReplay({ ...scenario, steps: [step] }, previous);
