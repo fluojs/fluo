@@ -97,7 +97,9 @@ skills never load archived command or role definitions.
    planning fields with the snapshot.
    Require that binding to equal the independent
    `lane_plan_approval_sha256` in the ledger, and reconcile whenever the field
-   exists so removing the handoff array cannot bypass provenance checks.
+   exists so removing the handoff array cannot bypass provenance checks. Use
+   the canonical published ledger as the marker when validating persisted
+   snapshots so removing both fields cannot impersonate a legacy ledger.
 5. Dispatch implementation through `.agents/skills/issue-to-pr/SKILL.md`.
 6. Aggregate exactly one contract, code, and verification result through
    `.agents/skills/pr-to-merge/SKILL.md`.

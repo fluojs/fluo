@@ -55,4 +55,6 @@ from the retained plan and source artifact, then compare every immutable plan
 field with the execution snapshot before parking an issue.
 Require the recomputed binding to equal `lane_plan_approval_sha256` in the
 ledger. When that field is present, always reconcile it even if a resumed
-snapshot has an empty handoff array.
+snapshot has an empty handoff array. Anchor this decision to the canonical
+published ledger so a persisted snapshot cannot remove both fields and
+downgrade itself to legacy compatibility.

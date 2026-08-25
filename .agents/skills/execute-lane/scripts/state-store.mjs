@@ -42,13 +42,31 @@ const readJson = (path) => {
   return JSON.parse(readFileSync(path, 'utf8'));
 };
 
-const releaseHandoffContext = (repositoryRoot, ledger) => {
+const releaseHandoffContext = (repositoryRoot, ledger, canonicalLedger) => {
+  const canonicalRequiresApproval =
+    canonicalLedger.release_handoffs.length > 0 ||
+    canonicalLedger.lane_plan_approval_sha256 !== undefined;
+  const snapshotRequiresApproval =
+    ledger.release_handoffs.length > 0 ||
+    ledger.lane_plan_approval_sha256 !== undefined;
   if (
-    ledger.release_handoffs.length === 0 &&
-    ledger.lane_plan_approval_sha256 === undefined
+    !canonicalRequiresApproval &&
+    !snapshotRequiresApproval
   ) {
     return null;
   }
+  if (
+    canonicalRequiresApproval &&
+    ledger.lane_plan_approval_sha256 !==
+      canonicalLedger.lane_plan_approval_sha256
+  ) {
+    throw new TypeError(
+      'persisted lane-plan approval binding does not match the canonical ledger',
+    );
+  }
+  const evidenceLedger = canonicalRequiresApproval
+    ? canonicalLedger
+    : ledger;
   const omoDirectory = resolve(repositoryRoot, '.omo');
   const approvalDirectory = resolve(omoDirectory, 'approvals');
   const searchDirectory = resolve(omoDirectory, 'search-issue');
@@ -62,14 +80,17 @@ const releaseHandoffContext = (repositoryRoot, ledger) => {
   ]) {
     assertRealDirectory(directory);
   }
-  if (ledger.source.search_ledger.includes('/legacy/')) {
+  if (evidenceLedger.source.search_ledger.includes('/legacy/')) {
     assertRealDirectory(resolve(artifactDirectory, 'legacy'));
   }
   const approvalPath = resolve(
     approvalDirectory,
-    `approval-${ledger.lane_id}-lane-plan.json`,
+    `approval-${evidenceLedger.lane_id}-lane-plan.json`,
   );
-  const artifactPath = resolve(repositoryRoot, ledger.source.search_ledger);
+  const artifactPath = resolve(
+    repositoryRoot,
+    evidenceLedger.source.search_ledger,
+  );
   for (const path of [approvalPath, artifactPath]) {
     const pathFromRoot = relative(repositoryRoot, path);
     if (pathFromRoot.startsWith('..') || resolve(repositoryRoot, pathFromRoot) !== path) {
@@ -90,9 +111,13 @@ const releaseHandoffContext = (repositoryRoot, ledger) => {
     ledger,
     receipt,
     artifact,
-    ledger.source.search_ledger,
+    evidenceLedger.source.search_ledger,
   );
-  return { receipt, artifact, artifactPath: ledger.source.search_ledger };
+  return {
+    receipt,
+    artifact,
+    artifactPath: evidenceLedger.source.search_ledger,
+  };
 };
 
 const ensureStateDirectory = (path) => {
@@ -197,16 +222,26 @@ export const loadState = (
 ) => {
   ensureStateDirectory(stateDirectory);
   recoverTransaction(stateDirectory);
+  const canonicalSnapshot = readJson(ledgerPath);
   const snapshotPath = resolve(stateDirectory, 'snapshot.json');
   const snapshot = existsSync(snapshotPath)
     ? readJson(snapshotPath)
-    : readJson(ledgerPath);
+    : canonicalSnapshot;
   const events = readEvents(resolve(stateDirectory, 'events.jsonl'));
   const receiptsPath = resolve(stateDirectory, 'receipts.json');
   const receipts = existsSync(receiptsPath) ? readJson(receiptsPath) : [];
   const state = { snapshot, events, receipts };
+  validateState({
+    snapshot: canonicalSnapshot,
+    events: [],
+    receipts: [],
+  });
   validateState(state);
-  const handoffContext = releaseHandoffContext(repositoryRoot, snapshot);
+  const handoffContext = releaseHandoffContext(
+    repositoryRoot,
+    snapshot,
+    canonicalSnapshot,
+  );
   return { ...state, handoffContext };
 };
 
@@ -240,6 +275,7 @@ export const persistState = (stateDirectory, previous, next) => {
   validateState(next);
   const context = previous.handoffContext;
   if (
+    (context !== null && context !== undefined) ||
     next.snapshot.release_handoffs.length > 0 ||
     next.snapshot.lane_plan_approval_sha256 !== undefined
   ) {

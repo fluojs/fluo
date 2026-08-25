@@ -374,13 +374,13 @@ describe('$execute-lane persisted native state machine', () => {
       repositoryRoot,
       '.omo/search-issue/artifacts/search-native-release.json',
     );
+    const stateDirectory = resolve(repositoryRoot, 'state');
     mkdirSync(dirname(ledgerPath), { recursive: true });
     mkdirSync(dirname(approvalPath), { recursive: true });
     mkdirSync(dirname(artifactPath), { recursive: true });
     const ledger = structuredClone(
       readFixture('ready-ledger-release-v2'),
     ) as Record<string, unknown>;
-    ledger['release_handoffs'] = [];
     for (const [path, value] of [
       [ledgerPath, ledger],
       [approvalPath, readFixture('release-handoff-approval')],
@@ -392,17 +392,29 @@ describe('$execute-lane persisted native state machine', () => {
         'utf8',
       );
     }
+    const downgradedSnapshot = structuredClone(ledger);
+    downgradedSnapshot['release_handoffs'] = [];
+    Reflect.deleteProperty(
+      downgradedSnapshot,
+      'lane_plan_approval_sha256',
+    );
+    mkdirSync(stateDirectory);
+    writeFileSync(
+      resolve(stateDirectory, 'snapshot.json'),
+      `${JSON.stringify(downgradedSnapshot, null, 2)}\n`,
+      'utf8',
+    );
 
     try {
       expect(() =>
         runScenarioPath(
           resolve(fixtureRoot, 'interrupted-start.json'),
-          undefined,
+          stateDirectory,
           ledgerPath,
           repositoryRoot,
         ),
       ).toThrow(
-        /release handoffs do not match their lane-plan approval receipt/u,
+        /persisted lane-plan approval binding does not match the canonical ledger/u,
       );
     } finally {
       rmSync(repositoryRoot, { recursive: true, force: true });
