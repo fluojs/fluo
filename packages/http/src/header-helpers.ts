@@ -50,6 +50,21 @@ function parseHeaderTokens(values: readonly string[]): string[] {
   return tokens;
 }
 
+function readJoinedNonEmptyHeaderValue(
+  value: string | string[] | undefined,
+): string | undefined {
+  if (Array.isArray(value)) {
+    const normalizedValues = value
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+
+    return normalizedValues.length > 0 ? normalizedValues.join(',') : undefined;
+  }
+
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
+}
+
 /**
  * Reads one request header without flattening multi-value arrays.
  *
@@ -62,6 +77,37 @@ export function getRequestHeader(
   name: string,
 ): string | string[] | undefined {
   return findCaseInsensitiveHeaderEntry(request.headers, name)?.[1];
+}
+
+/**
+ * Reads the first non-empty request header value across duplicate case variants.
+ *
+ * @param request Adapter-normalized request carrying the inbound headers map.
+ * @param name Header name to resolve case-insensitively.
+ * @returns The first trimmed scalar or joined array value that is not blank.
+ */
+export function readFirstNonEmptyRequestHeaderValue(
+  request: FrameworkRequest,
+  name: string,
+): string | undefined {
+  const normalizedHeaderName = normalizeHeaderName(name);
+
+  if (!normalizedHeaderName) {
+    return undefined;
+  }
+
+  for (const [headerName, value] of Object.entries(request.headers)) {
+    if (headerName.toLowerCase() !== normalizedHeaderName) {
+      continue;
+    }
+
+    const normalizedValue = readJoinedNonEmptyHeaderValue(value);
+    if (normalizedValue !== undefined) {
+      return normalizedValue;
+    }
+  }
+
+  return undefined;
 }
 
 /**

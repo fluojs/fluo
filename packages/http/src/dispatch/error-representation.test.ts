@@ -67,6 +67,28 @@ describe('HTTP-owned error representations', () => {
     expect(render).toHaveBeenCalledTimes(1);
   });
 
+  it('negotiates HTML from blank-first duplicate-case Accept headers', async () => {
+    const render = vi.fn(async ({ error }: HttpErrorRepresentationContext) => `<main>${error.code}</main>`);
+    const { dispatcher } = createTestDispatcher({ render });
+    const response = createResponse();
+
+    await dispatcher.dispatch(
+      {
+        ...createRequest('/missing'),
+        headers: {
+          Accept: '   ',
+          aCcEpT: 'text/html',
+        },
+      },
+      response,
+    );
+
+    expect(response.statusCode).toBe(404);
+    expect(response.headers['Content-Type']).toBe('text/html; charset=utf-8');
+    expect(response.body).toBe('<main>NOT_FOUND</main>');
+    expect(render).toHaveBeenCalledTimes(1);
+  });
+
   it('does not consult the HTML provider when a specific q=0 range rejects HTML', async () => {
     const canRender = vi.fn(() => true);
     const render = vi.fn(() => '<main>unused</main>');

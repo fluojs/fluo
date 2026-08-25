@@ -1,5 +1,5 @@
 import type { RequestContext } from '../types.js';
-import { getRequestHeader } from '../header-helpers.js';
+import { readFirstNonEmptyRequestHeaderValue } from '../header-helpers.js';
 
 const HTML_MEDIA_TYPE = 'text/html';
 const JSON_MEDIA_TYPE = 'application/json';
@@ -87,10 +87,7 @@ function bestRangeForMediaType(ranges: readonly AcceptRange[], mediaType: string
  * @returns The normalized header value when present.
  */
 export function readAcceptHeader(context: RequestContext): string | undefined {
-  const raw = getRequestHeader(context.request, 'accept');
-  const value = Array.isArray(raw) ? raw.join(',') : raw;
-  const normalized = value?.trim();
-  return normalized ? normalized : undefined;
+  return readFirstNonEmptyRequestHeaderValue(context.request, 'accept');
 }
 
 /**

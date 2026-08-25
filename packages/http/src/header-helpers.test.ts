@@ -62,6 +62,15 @@ describe('getRequestHeader', () => {
     expect(getRequestHeader(request, '   ')).toBeUndefined();
     expect(getRequestHeader(request, 'x-missing')).toBeUndefined();
   });
+
+  it('preserves the first stored duplicate-case header value for public lookups', () => {
+    const request = createRequest({
+      Accept: '   ',
+      aCcEpT: 'text/html',
+    });
+
+    expect(getRequestHeader(request, 'accept')).toBe('   ');
+  });
 });
 
 describe('appendVaryHeader', () => {
