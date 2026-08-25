@@ -183,7 +183,7 @@ describe('$search-issue native registration workflow', () => {
         drafts: [{ draft_id: 'D1' }, { draft_id: 'D2' }],
         handoff: {
           artifact_path: artifactPath,
-          command: `$create-lane ${artifactPath} main`,
+          command: `$create-lane ${artifactPath}`,
         },
       });
       expect(ghCalls).toEqual([{ draft_id: 'D1', issue_number: 4101 }]);
