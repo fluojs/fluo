@@ -43,8 +43,10 @@ function defineStandardHandlerMetadata(
   handlerMetadata: WebSocketGatewayHandlerMetadata,
 ): void {
   const bag = getStandardMetadataBag(metadata);
-  const current = bag[webSocketHandlerMetadataSymbol] as Map<string | symbol, WebSocketGatewayHandlerMetadata> | undefined;
-  const map = current ?? new Map<string | symbol, WebSocketGatewayHandlerMetadata>();
+  const inherited = bag[webSocketHandlerMetadataSymbol] as Map<string | symbol, WebSocketGatewayHandlerMetadata> | undefined;
+  const map = Object.hasOwn(bag, webSocketHandlerMetadataSymbol)
+    ? inherited ?? new Map<string | symbol, WebSocketGatewayHandlerMetadata>()
+    : new Map<string | symbol, WebSocketGatewayHandlerMetadata>(inherited);
 
   map.set(propertyKey, {
     event: handlerMetadata.event,

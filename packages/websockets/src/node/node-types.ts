@@ -4,19 +4,20 @@ import type { WebSocket } from 'ws';
 
 import type {
   WebSocketModuleOptions as SharedWebSocketModuleOptions,
-  WebSocketUpgradeContext,
   WebSocketUpgradeGuard as SharedWebSocketUpgradeGuard,
+  WebSocketUpgradeContext,
   WebSocketUpgradeRejection,
 } from '../types.js';
 
 /**
  * Strongly typed message handler signature for the Node websocket runtime.
  */
-export type TypedOnMessageHandler<TEvents extends Record<string, unknown>, K extends keyof TEvents> = (
-  payload: TEvents[K],
-  socket: WebSocket,
-  request: IncomingMessage,
-) => void | Promise<void>;
+export type TypedOnMessageHandler<TEvents extends Record<string, unknown>, K extends keyof TEvents> = import('../types.js').TypedOnMessageHandler<
+  TEvents,
+  K,
+  WebSocket,
+  IncomingMessage
+>;
 
 /**
  * Request and socket context passed to Node websocket gateway handlers.

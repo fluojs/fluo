@@ -1888,6 +1888,8 @@ function enforceCanonicalRuntimeMatrixReferences() {
     packageSurface.includes('@fluojs/websockets/bun') &&
       packageSurface.includes('shared decorator and metadata authoring primitives') &&
       packageSurface.includes('ignored raw handler return values') &&
+      packageSurface.includes('(payload, socket, request, socketId)') &&
+      packageSurface.includes("replies: { mode: 'event-envelope' }") &&
       packageSurface.includes('thrown HTTP exceptions') &&
       packageSurface.includes('token-only root `WebSocketGatewayLifecycleService`') &&
       packageSurface.includes('terminal Node shutdown admission gate') &&
@@ -1897,6 +1899,8 @@ function enforceCanonicalRuntimeMatrixReferences() {
       docsContext.includes('metadata authoring primitives') &&
       docsContext.includes('thrown HTTP exceptions') &&
       docsContext.includes('ignored raw WebSocket handler return values') &&
+      docsContext.includes('(payload, socket, request, socketId)') &&
+      docsContext.includes("replies: { mode: 'event-envelope' }") &&
       docsContext.includes('token-only `WebSocketGatewayLifecycleService`') &&
       docsContext.includes('terminal Node shutdown admission') &&
       docsContext.includes('retained per-connection lifecycle state'),
@@ -1906,6 +1910,8 @@ function enforceCanonicalRuntimeMatrixReferences() {
     packageSurfaceKo.includes('@fluojs/websockets/bun') &&
       packageSurfaceKo.includes('metadata authoring primitive') &&
       packageSurfaceKo.includes('await 완료 뒤 무시되는 raw handler return value') &&
+      packageSurfaceKo.includes('(payload, socket, request, socketId)') &&
+      packageSurfaceKo.includes("replies: { mode: 'event-envelope' }") &&
       packageSurfaceKo.includes('throw된 HTTP exception') &&
       packageSurfaceKo.includes('token-only root `WebSocketGatewayLifecycleService`') &&
       packageSurfaceKo.includes('upgrade accept 직전에') &&
@@ -1915,6 +1921,8 @@ function enforceCanonicalRuntimeMatrixReferences() {
       docsContextKo.includes('metadata authoring primitive') &&
       docsContextKo.includes('throw된 HTTP exception') &&
       docsContextKo.includes('raw WebSocket handler return value') &&
+      docsContextKo.includes('(payload, socket, request, socketId)') &&
+      docsContextKo.includes("replies: { mode: 'event-envelope' }") &&
       docsContextKo.includes('token-only `WebSocketGatewayLifecycleService`') &&
       docsContextKo.includes('upgrade accept 직전에') &&
       docsContextKo.includes('connection별 lifecycle state retention'),

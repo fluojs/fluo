@@ -104,7 +104,7 @@ WebSocketModule.forRoot({
 });
 ```
 
-When omitted, `@fluojs/websockets` applies bounded defaults for concurrent connections, inbound payload size, pending message buffers, and shutdown cleanup. Default settings are `maxConnections: 1000`, `maxPayloadBytes: 1 MiB`, `buffer.maxPendingMessagesPerSocket: 256`, `shutdown.timeoutMs: 5000`, Node heartbeat interval `30s`, and Node backpressure `maxBufferedAmountBytes: 1 MiB` with drop behavior. Server-backed Node listeners enable heartbeat timers unless you explicitly set `heartbeat.enabled` to `false`. Node shutdown establishes a terminal admission gate, rechecks it immediately before handing a matching upgrade to `ws` even when no upgrade guard is configured, and will close tracked websocket clients during application shutdown. It gives `@OnDisconnect()` cleanup a bounded chance to finish within `shutdown.timeoutMs`; unresolved cleanup is logged and bounded by that timeout instead of blocking shutdown indefinitely. All runtimes retain per-connection lifecycle state until queued disconnect cleanup settles, so a client close that queues `@OnDisconnect()` immediately before shutdown still enters the same bounded drain. The official fetch-style runtime modules (`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers`) expose `Request`-typed upgrade guards and provide the same bounded close and disconnect cleanup behavior during application shutdown. During Cloudflare Workers application shutdown, the worker subpath keeps the adapter-owned binding installed and rejects new upgrade attempts with a JSON `503` shutdown response instead of falling through to HTTP dispatch.
+When omitted, `@fluojs/websockets` applies bounded defaults for concurrent connections, inbound payload size, pending message buffers, and shutdown cleanup. Default settings are `maxConnections: 1000`, `maxPayloadBytes: 1 MiB`, `buffer.maxPendingMessagesPerSocket: 256`, `shutdown.timeoutMs: 5000`, Node heartbeat interval `30s`, and Node backpressure `maxBufferedAmountBytes: 1 MiB` with drop behavior. Server-backed Node listeners enable heartbeat timers unless you explicitly set `heartbeat.enabled` to `false`. Node shutdown establishes a terminal admission gate, rechecks it immediately before handing a matching upgrade to `ws` even when no upgrade guard is configured, and will close tracked websocket clients during application shutdown. It gives `@OnDisconnect()` cleanup a bounded chance to finish within `shutdown.timeoutMs`; unresolved cleanup is logged and bounded by that timeout instead of blocking shutdown indefinitely. All runtimes retain per-connection lifecycle state until queued disconnect cleanup settles, so a client close that queues `@OnDisconnect()` immediately before shutdown still enters the same bounded drain. The official fetch-style runtime modules (`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, and `@fluojs/websockets/cloudflare-workers`) expose `Request`-typed upgrade guards and provide the same bounded close and disconnect cleanup behavior during application shutdown. Bun, Deno, and Cloudflare Workers keep the adapter-owned binding installed during shutdown so the host retains request routing ownership while new upgrades receive the runtime's terminal response. Fetch-style sockets are closed with code `1011` and complete `@OnDisconnect()` cleanup after terminal socket errors or failed room-broadcast sends. During Cloudflare Workers application shutdown, new upgrade attempts receive a JSON `503` shutdown response instead of falling through to HTTP dispatch.
 
 The root `@fluojs/websockets` / `@fluojs/websockets/node` guard receives Node's `IncomingMessage`. Fetch-style subpaths receive a Web-standard `Request`, so choose the subpath-specific `WebSocketModuleOptions` type when authoring reusable option objects. Guards may allow an upgrade with `true`, `undefined`, or no return value; reject with `false` or a `{ status, body? }` `WebSocketUpgradeRejection`; or throw an `HttpException`-like error such as `UnauthorizedException`. Thrown HTTP exceptions are converted to the same pre-handshake rejection response before any socket is accepted.
 
@@ -131,7 +131,18 @@ class OrderStatusPublisher {
 
 Gateway `@OnMessage()` handlers receive one normalized payload contract across supported runtimes. Text frames are parsed as JSON when possible and otherwise delivered as strings. Binary frames are decoded as UTF-8 before the same JSON/event dispatch step, whether the runtime surfaces them as Node `Buffer`/typed arrays, Bun `ArrayBuffer`/views, Deno `ArrayBuffer`/views/`Blob`, or Cloudflare Workers `ArrayBuffer`/views/`Blob`. The `limits.maxPayloadBytes` check uses byte length for every representation and closes oversized accepted sockets with close code `1009`.
 
-Handler return values are awaited for completion and then ignored across Node, Bun, Deno, and Cloudflare Workers. Send replies explicitly through the runtime socket argument, for example `socket.send(JSON.stringify({ event: 'pong', data }))`, instead of returning an event object from a raw WebSocket handler.
+Message handlers receive `(payload, socket, request, socketId)`. The stable `socketId` is the same connection identity accepted by `WebSocketRoomService`, so a handler can join its current connection to a room without adapter-specific socket inspection.
+
+Handler return values are awaited for completion and then ignored across Node, Bun, Deno, and Cloudflare Workers by default. Send replies explicitly through the runtime socket argument, for example `socket.send(JSON.stringify({ event: 'pong', data }))`. To opt into return-based replies, configure `replies: { mode: 'event-envelope' }`; then a valid `{ event: string, data?: unknown }` return is serialized and sent after the handler settles. Invalid returns remain ignored, and omitting `replies` preserves the default behavior.
+
+```typescript
+WebSocketModule.forRoot({ replies: { mode: 'event-envelope' } });
+
+@OnMessage('ping')
+handlePing(payload, _socket, _request, socketId) {
+  return { event: 'pong', data: { payload, socketId } };
+}
+```
 
 ## Public API Overview
 
@@ -140,7 +151,7 @@ Handler return values are awaited for completion and then ignored across Node, B
 - `@OnMessage(event?)`: Decorator for inbound message handlers.
 - `@OnDisconnect()`: Decorator for disconnection handlers.
 - `WebSocketModule`: Root module for WebSocket integration.
-- `WebSocketModule.forRoot({ upgrade, limits, backpressure, buffer, heartbeat, shutdown })`: Configures pre-upgrade guards and bounded runtime defaults.
+- `WebSocketModule.forRoot({ upgrade, limits, backpressure, buffer, heartbeat, replies, shutdown })`: Configures pre-upgrade guards, bounded runtime defaults, and optional event-envelope replies.
 - `WebSocketGatewayLifecycleService`: Root alias for `NodeWebSocketGatewayLifecycleService`, the default Node.js-backed lifecycle service token. It is a DI token placeholder, not a concrete class to instantiate directly; resolve it from the application container after `WebSocketModule.forRoot(...)` wires the lazy Node implementation.
 - `WebSocketRoomService`: Room management contract implemented by runtime lifecycle services for joining, leaving, broadcasting to, and inspecting websocket rooms.
 - Typed runtime seams: `WebSocketUpgradeContext`, `WebSocketUpgradeGuard`, `WebSocketUpgradeRejection`, `WebSocketGatewayDescriptor`, and `WebSocketGatewayHandlerDescriptor`, plus runtime socket/binding types from the Node, Bun, Deno, and Cloudflare Workers subpaths.

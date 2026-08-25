@@ -104,7 +104,7 @@ WebSocketModule.forRoot({
 });
 ```
 
-옵션을 생략하면 `@fluojs/websockets`는 동시 연결 수, inbound payload 크기, pending message buffer, shutdown cleanup에 bounded default를 적용합니다. 기본값은 `maxConnections: 1000`, `maxPayloadBytes: 1 MiB`, `buffer.maxPendingMessagesPerSocket: 256`, `shutdown.timeoutMs: 5000`, Node heartbeat interval `30s`, Node backpressure `maxBufferedAmountBytes: 1 MiB`와 drop behavior입니다. 또한 server-backed Node listener는 `heartbeat.enabled`를 명시적으로 `false`로 두지 않는 한 heartbeat timer를 활성화합니다. Node shutdown은 terminal admission gate를 설정하고 upgrade guard가 없는 경우까지 포함해 일치하는 upgrade를 `ws`에 넘기기 직전에 gate를 다시 확인합니다. 애플리케이션 shutdown 시 추적 중인 websocket 클라이언트를 닫고, `shutdown.timeoutMs` 범위 안에서 `@OnDisconnect()` cleanup이 마무리될 수 있도록 bounded 기회를 제공합니다. 해결되지 않은 cleanup은 shutdown을 무기한 막지 않고 해당 timeout 안에서 로그로 남습니다. 모든 runtime은 queue된 disconnect cleanup이 settle될 때까지 connection별 lifecycle state를 유지하므로, shutdown 직전에 client close가 queue한 `@OnDisconnect()`도 같은 bounded drain에 포함됩니다. 공식 fetch-style runtime module(`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`)은 `Request` typed upgrade guard를 노출하며, 애플리케이션 shutdown 중 동일한 bounded close와 disconnect cleanup 동작을 제공합니다. Cloudflare Workers 애플리케이션 shutdown 중에는 worker subpath가 adapter-owned binding을 유지하고, 새 upgrade 시도를 HTTP dispatch로 넘기지 않고 JSON `503` shutdown response로 거절합니다.
+옵션을 생략하면 `@fluojs/websockets`는 동시 연결 수, inbound payload 크기, pending message buffer, shutdown cleanup에 bounded default를 적용합니다. 기본값은 `maxConnections: 1000`, `maxPayloadBytes: 1 MiB`, `buffer.maxPendingMessagesPerSocket: 256`, `shutdown.timeoutMs: 5000`, Node heartbeat interval `30s`, Node backpressure `maxBufferedAmountBytes: 1 MiB`와 drop behavior입니다. 또한 server-backed Node listener는 `heartbeat.enabled`를 명시적으로 `false`로 두지 않는 한 heartbeat timer를 활성화합니다. Node shutdown은 terminal admission gate를 설정하고 upgrade guard가 없는 경우까지 포함해 일치하는 upgrade를 `ws`에 넘기기 직전에 gate를 다시 확인합니다. 애플리케이션 shutdown 시 추적 중인 websocket 클라이언트를 닫고, `shutdown.timeoutMs` 범위 안에서 `@OnDisconnect()` cleanup이 마무리될 수 있도록 bounded 기회를 제공합니다. 해결되지 않은 cleanup은 shutdown을 무기한 막지 않고 해당 timeout 안에서 로그로 남습니다. 모든 runtime은 queue된 disconnect cleanup이 settle될 때까지 connection별 lifecycle state를 유지하므로, shutdown 직전에 client close가 queue한 `@OnDisconnect()`도 같은 bounded drain에 포함됩니다. 공식 fetch-style runtime module(`@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers`)은 `Request` typed upgrade guard를 노출하며, 애플리케이션 shutdown 중 동일한 bounded close와 disconnect cleanup 동작을 제공합니다. Bun, Deno, Cloudflare Workers는 shutdown 중에도 adapter-owned binding을 유지하므로 host가 request routing 소유권을 보존하고 새 upgrade에는 runtime의 terminal response를 반환합니다. Terminal socket error 또는 room broadcast send 실패가 발생하면 fetch-style socket을 code `1011`로 닫고 `@OnDisconnect()` cleanup을 완료합니다. Cloudflare Workers 애플리케이션 shutdown 중 새 upgrade 시도는 HTTP dispatch로 넘어가지 않고 JSON `503` shutdown response로 거절됩니다.
 
 Root `@fluojs/websockets` / `@fluojs/websockets/node` guard는 Node의 `IncomingMessage`를 받습니다. Fetch-style subpath는 Web standard `Request`를 받으므로, 재사용 가능한 옵션 객체를 작성할 때는 subpath별 `WebSocketModuleOptions` 타입을 선택하세요. Guard는 `true`, `undefined`, 또는 return 없음으로 upgrade를 허용하고, `false` 또는 `{ status, body? }` 형태의 `WebSocketUpgradeRejection`으로 거절하거나 `UnauthorizedException` 같은 `HttpException` 계열 오류를 throw할 수 있습니다. Throw된 HTTP exception은 socket이 accept되기 전에 동일한 pre-handshake rejection response로 변환됩니다.
 
@@ -131,7 +131,18 @@ class OrderStatusPublisher {
 
 Gateway `@OnMessage()` handler는 지원 런타임 전반에서 하나의 정규화된 payload contract를 받습니다. Text frame은 가능한 경우 JSON으로 파싱하고, 그렇지 않으면 string으로 전달합니다. Binary frame은 런타임이 Node `Buffer`/typed array, Bun `ArrayBuffer`/view, Deno `ArrayBuffer`/view/`Blob`, Cloudflare Workers `ArrayBuffer`/view/`Blob` 중 어떤 형태로 노출하더라도 UTF-8로 디코딩한 뒤 동일한 JSON/event dispatch 단계를 거칩니다. `limits.maxPayloadBytes` 검사는 모든 표현에 byte length를 사용하며, 허용된 socket에서 oversized payload가 들어오면 close code `1009`로 닫습니다.
 
-Handler return value는 Node, Bun, Deno, Cloudflare Workers 전반에서 완료될 때까지 await된 뒤 무시됩니다. Raw WebSocket handler에서 event object를 반환하지 말고, `socket.send(JSON.stringify({ event: 'pong', data }))`처럼 runtime socket argument를 통해 명시적으로 reply를 보내세요.
+Message handler는 `(payload, socket, request, socketId)`를 받습니다. 안정적인 `socketId`는 `WebSocketRoomService`가 받는 connection identity와 같으므로, handler가 adapter별 socket 내부를 조사하지 않고 현재 connection을 room에 추가할 수 있습니다.
+
+기본적으로 handler return value는 Node, Bun, Deno, Cloudflare Workers 전반에서 완료될 때까지 await된 뒤 무시됩니다. `socket.send(JSON.stringify({ event: 'pong', data }))`처럼 runtime socket argument를 통해 명시적으로 reply를 보낼 수 있습니다. Return 기반 reply를 opt-in하려면 `replies: { mode: 'event-envelope' }`를 설정하세요. 그러면 올바른 `{ event: string, data?: unknown }` return이 handler settle 후 serialize되어 전송됩니다. 올바르지 않은 return은 계속 무시되며, `replies`를 생략하면 기존 기본 동작이 유지됩니다.
+
+```typescript
+WebSocketModule.forRoot({ replies: { mode: 'event-envelope' } });
+
+@OnMessage('ping')
+handlePing(payload, _socket, _request, socketId) {
+  return { event: 'pong', data: { payload, socketId } };
+}
+```
 
 ## 공개 API 개요
 
@@ -140,7 +151,7 @@ Handler return value는 Node, Bun, Deno, Cloudflare Workers 전반에서 완료�
 - `@OnMessage(event?)`: 인바운드 메시지 핸들러를 위한 데코레이터입니다.
 - `@OnDisconnect()`: 연결 해제 핸들러를 위한 데코레이터입니다.
 - `WebSocketModule`: WebSocket 통합을 위한 루트 모듈입니다.
-- `WebSocketModule.forRoot({ upgrade, limits, backpressure, buffer, heartbeat, shutdown })`: pre-upgrade guard와 bounded runtime default를 구성합니다.
+- `WebSocketModule.forRoot({ upgrade, limits, backpressure, buffer, heartbeat, replies, shutdown })`: pre-upgrade guard, bounded runtime default, optional event-envelope reply를 구성합니다.
 - `WebSocketGatewayLifecycleService`: 기본 Node.js 기반 lifecycle service token인 `NodeWebSocketGatewayLifecycleService`의 루트 alias입니다. 직접 instantiate하는 concrete class가 아니라 DI token placeholder이며, `WebSocketModule.forRoot(...)`가 lazy Node implementation을 연결한 뒤 application container에서 resolve해야 합니다.
 - `WebSocketRoomService`: websocket room join, leave, broadcast, 조회를 위해 runtime lifecycle service가 구현하는 Room management contract입니다.
 - Typed runtime seam: `WebSocketUpgradeContext`, `WebSocketUpgradeGuard`, `WebSocketUpgradeRejection`, `WebSocketGatewayDescriptor`, `WebSocketGatewayHandlerDescriptor`, 그리고 Node, Bun, Deno, Cloudflare Workers subpath의 runtime socket/binding type.

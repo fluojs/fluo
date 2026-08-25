@@ -103,7 +103,7 @@ export class NotificationGateway {
 export class RealtimeModule {}
 ```
 
-Internally, the Bun-specific websocket binding handles Bun's `server.upgrade(request)` call through the adapter's configured realtime seam. Application code stays inside the gateway contract, and upgrade details remain at the adapter boundary. Bun upgrade guards receive a Web-standard `Request` and may reject with `false`, a structured `WebSocketUpgradeRejection`, or a thrown HTTP exception before Bun accepts the socket. If a binding declines or cannot complete the native upgrade, the adapter keeps the request on the normal HTTP dispatch fallback path instead of treating the upgrade as handled. Raw gateway return values are awaited and ignored, so replies still need explicit `socket.send(...)` calls.
+Internally, the Bun-specific websocket binding handles Bun's `server.upgrade(request)` call through the adapter's configured realtime seam. Application code stays inside the gateway contract, and upgrade details remain at the adapter boundary. Bun upgrade guards receive a Web-standard `Request` and may reject with `false`, a structured `WebSocketUpgradeRejection`, or a thrown HTTP exception before Bun accepts the socket. If a binding declines or cannot complete the native upgrade, the adapter keeps the request on the normal HTTP dispatch fallback path instead of treating the upgrade as handled. Raw gateway return values are awaited and ignored by default, so explicit `socket.send(...)` remains the standard reply path. Configure `BunWebSocketModule.forRoot({ replies: { mode: 'event-envelope' } })` to opt into serialized `{ event, data? }` handler-return replies.
 
 ## 22.4 Manual Fetch Handling
 
