@@ -131,6 +131,30 @@ export function markLanguageVariance(context: RequestContext): void {
 }
 ```
 
+### 성공 응답 Content Negotiation
+
+`createDispatcher(...)` 또는 runtime bootstrap에서 `ContentNegotiationOptions.formatters`를
+설정하세요. `ResponseFormatter.mediaType`은 representation을 식별하고 `format(...)`은 최종
+`string` 또는 `Uint8Array` body를 반환합니다. `@Produces(...)`가 없는 route는 configured
+formatter를 모두 사용합니다. `@Produces(...)`가 있는 route는 metadata가 지정한 exact media
+type과 일치하는 configured formatter만 사용하며 intersection이 비면 `406`을 반환합니다.
+
+`Accept` header가 없으면 `defaultMediaType`을 선택하고 valid한 default가 설정되지 않았으면 첫
+번째 unique configured formatter를 선택합니다. `*/*`도 같은 default tie-break를 사용합니다.
+Header가 있으면 representation별로 exact range, `application/*+json` 같은 structured-suffix
+wildcard, `type/*`, `*/*` 순으로 우선합니다. 가장 specific한 matching range가 `q=0`을 포함한
+해당 representation의 quality를 제어하므로 더 넓은 positive wildcard가 specific exclusion을
+다시 활성화할 수 없습니다. 남은 candidate는 quality, specificity, header order, configured
+default, formatter order 순으로 선택합니다.
+
+Malformed media range와 malformed quality는 추측하거나 clamp하지 않고 무시합니다. Valid token이
+남지 않거나, matching representation이 모두 `q=0`으로 제외되거나, configured formatter가
+하나도 match하지 않으면 dispatcher가 canonical JSON `406`을 반환합니다. Formatter를 선택한 모든
+성공 framework-managed response는 `appendVaryHeader(...)`를 통해 `Vary`에 `Accept`를 추가하여
+기존 field, wildcard semantics, case-insensitive deduplication을 보존합니다. Formatter 선택 전에
+response ownership을 가져가는 custom response writer에는 이 variance를 추가하지 않습니다.
+Adapter-native fast route와 fallback dispatch는 같은 negotiation engine을 호출합니다.
+
 ## 주요 패턴
 
 ### 가드와 인터셉터

@@ -9,6 +9,7 @@ import type {
 
 interface AcceptToken {
   mediaRange: string;
+  order: number;
   quality: number;
   specificity: number;
 }
@@ -23,6 +24,7 @@ export interface ResolvedContentNegotiation {
 }
 
 const NO_ACCEPTABLE_REPRESENTATION_MESSAGE = 'No acceptable response representation found.';
+const MEDIA_TYPE_TOKEN_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 
 function normalizeMediaType(value: string): string {
   return value.split(';')[0]?.trim().toLowerCase() ?? '';
@@ -32,22 +34,12 @@ function readAcceptHeader(request: FrameworkRequest): string | undefined {
   return readFirstNonEmptyRequestHeaderValue(request, 'accept');
 }
 
-function parseQuality(value: string | undefined): number {
-  if (!value) {
-    return 1;
+function parseQuality(value: string | undefined): number | undefined {
+  if (value === undefined || !/^(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/.test(value)) {
+    return undefined;
   }
 
-  const parsed = Number(value);
-
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return 0;
-  }
-
-  if (parsed > 1) {
-    return 1;
-  }
-
-  return parsed;
+  return Number(value);
 }
 
 function getMediaRangeSpecificity(mediaRange: string): number {
@@ -59,49 +51,83 @@ function getMediaRangeSpecificity(mediaRange: string): number {
     return 1;
   }
 
-  return 2;
+  const [, subtype] = mediaRange.split('/');
+  return subtype?.startsWith('*+') === true ? 2 : 3;
 }
 
 function parseAcceptHeader(acceptHeader: string): AcceptToken[] {
   const tokens: AcceptToken[] = [];
 
-  for (const token of acceptHeader.split(',')) {
+  for (const [order, token] of acceptHeader.split(',').entries()) {
     const [rawMediaRange, ...parameterParts] = token.trim().split(';');
     const mediaRange = normalizeMediaType(rawMediaRange ?? '');
 
-    if (!mediaRange || !mediaRange.includes('/')) {
+    if (!isValidMediaRange(mediaRange)) {
       continue;
     }
 
     let quality = 1;
+    let qualitySeen = false;
+    let malformed = false;
 
     for (const parameterPart of parameterParts) {
       const [name, value] = parameterPart.trim().split('=');
 
       if (name?.toLowerCase() === 'q') {
-        quality = parseQuality(value?.trim());
-        break;
+        const parsedQuality = parseQuality(value?.trim());
+        if (qualitySeen || parsedQuality === undefined) {
+          malformed = true;
+          break;
+        }
+        quality = parsedQuality;
+        qualitySeen = true;
       }
     }
 
-    if (quality <= 0) {
+    if (malformed) {
       continue;
     }
 
     tokens.push({
       mediaRange,
+      order,
       quality,
       specificity: getMediaRangeSpecificity(mediaRange),
     });
   }
 
-  return tokens.sort((left, right) => {
-    if (right.quality !== left.quality) {
-      return right.quality - left.quality;
-    }
+  return tokens;
+}
 
-    return right.specificity - left.specificity;
-  });
+function isValidMediaRange(mediaRange: string): boolean {
+  const parts = mediaRange.split('/');
+  if (parts.length !== 2) {
+    return false;
+  }
+
+  const [type, subtype] = parts;
+  if (!type || !subtype) {
+    return false;
+  }
+
+  if (type === '*') {
+    return subtype === '*';
+  }
+
+  if (!MEDIA_TYPE_TOKEN_PATTERN.test(type)) {
+    return false;
+  }
+
+  if (subtype === '*') {
+    return true;
+  }
+
+  if (subtype.startsWith('*+')) {
+    const suffix = subtype.slice(2);
+    return suffix.length > 0 && MEDIA_TYPE_TOKEN_PATTERN.test(suffix);
+  }
+
+  return !subtype.includes('*') && MEDIA_TYPE_TOKEN_PATTERN.test(subtype);
 }
 
 function matchesMediaRange(mediaRange: string, mediaType: string): boolean {
@@ -120,7 +146,51 @@ function matchesMediaRange(mediaRange: string, mediaType: string): boolean {
     return false;
   }
 
-  return rangeSubtype === '*' || rangeSubtype === mediaTypeSubtype;
+  if (rangeSubtype === '*') {
+    return true;
+  }
+
+  if (rangeSubtype.startsWith('*+')) {
+    return mediaTypeSubtype.endsWith(rangeSubtype.slice(1));
+  }
+
+  return rangeSubtype === mediaTypeSubtype;
+}
+
+interface FormatterCandidate {
+  formatter: ResponseFormatter;
+  formatterIndex: number;
+  token: AcceptToken;
+}
+
+function selectPreferredCandidate(
+  current: FormatterCandidate | undefined,
+  candidate: FormatterCandidate,
+  defaultFormatter: ResponseFormatter,
+): FormatterCandidate {
+  if (!current) {
+    return candidate;
+  }
+
+  if (candidate.token.quality !== current.token.quality) {
+    return candidate.token.quality > current.token.quality ? candidate : current;
+  }
+
+  if (candidate.token.specificity !== current.token.specificity) {
+    return candidate.token.specificity > current.token.specificity ? candidate : current;
+  }
+
+  if (candidate.token.order !== current.token.order) {
+    return candidate.token.order < current.token.order ? candidate : current;
+  }
+
+  const candidateIsDefault = candidate.formatter === defaultFormatter;
+  const currentIsDefault = current.formatter === defaultFormatter;
+  if (candidateIsDefault !== currentIsDefault) {
+    return candidateIsDefault ? candidate : current;
+  }
+
+  return candidate.formatterIndex < current.formatterIndex ? candidate : current;
 }
 
 /**
@@ -232,23 +302,41 @@ export function selectResponseFormatter(
     throw new NotAcceptableException(NO_ACCEPTABLE_REPRESENTATION_MESSAGE);
   }
 
-  for (const token of acceptTokens) {
-    if (token.mediaRange === '*/*') {
-      return defaultFormatter;
-    }
+  let selected: FormatterCandidate | undefined;
 
-    let matchedFormatter: ResponseFormatter | undefined;
+  for (let formatterIndex = 0; formatterIndex < allowedFormatters.length; formatterIndex++) {
+    const formatter = allowedFormatters[formatterIndex]!;
+    const normalizedMediaType = allowedNormalizedMediaTypes[formatterIndex]!;
+    let controllingToken: AcceptToken | undefined;
 
-    for (let i = 0; i < allowedFormatters.length; i++) {
-      if (matchesMediaRange(token.mediaRange, allowedNormalizedMediaTypes[i]!)) {
-        matchedFormatter = allowedFormatters[i];
-        break;
+    for (const token of acceptTokens) {
+      if (!matchesMediaRange(token.mediaRange, normalizedMediaType)) {
+        continue;
+      }
+
+      if (
+        controllingToken === undefined
+        || token.specificity > controllingToken.specificity
+        || (
+          token.specificity === controllingToken.specificity
+          && token.order < controllingToken.order
+        )
+      ) {
+        controllingToken = token;
       }
     }
 
-    if (matchedFormatter) {
-      return matchedFormatter;
+    if (controllingToken && controllingToken.quality > 0) {
+      selected = selectPreferredCandidate(
+        selected,
+        { formatter, formatterIndex, token: controllingToken },
+        defaultFormatter,
+      );
     }
+  }
+
+  if (selected) {
+    return selected.formatter;
   }
 
   throw new NotAcceptableException(NO_ACCEPTABLE_REPRESENTATION_MESSAGE);

@@ -122,6 +122,48 @@ const app = await fluoFactory.create(AppModule, {
 });
 ```
 
+### Successful Response Content Negotiation
+
+`FluoFactory.create(...)` and `bootstrapApplication(...)` accept `contentNegotiation` and forward the
+same formatter set to the HTTP dispatcher. Route-level `@Produces(...)` metadata narrows that set:
+
+```typescript
+import { Controller, Get, Produces } from '@fluojs/http';
+
+@Controller('/reports')
+class ReportsController {
+  @Produces('application/json', 'text/plain')
+  @Get('/daily')
+  daily() {
+    return { total: 42 };
+  }
+}
+
+const app = await fluoFactory.create(AppModule, {
+  contentNegotiation: {
+    defaultMediaType: 'application/json',
+    formatters: [
+      {
+        mediaType: 'application/json',
+        format: (body) => JSON.stringify(body),
+      },
+      {
+        mediaType: 'text/plain',
+        format: (body) => `total=${String((body as { total: number }).total)}`,
+      },
+    ],
+  },
+});
+```
+
+An absent `Accept` header and `*/*` select `defaultMediaType` (or the first configured formatter).
+For present headers, exact ranges take precedence over structured-suffix ranges such as
+`application/*+json`, then `type/*`, then `*/*`. The controlling range supplies the quality, so an
+exact `q=0` exclusion is not bypassed by a broader positive wildcard. Malformed entries are ignored;
+when no valid acceptable formatter remains, HTTP returns `406`. Successful framework-managed
+negotiated responses append one case-insensitively deduplicated `Accept` field to `Vary`. Native
+fast-route handoff and fallback dispatch use the same selection policy.
+
 ### Optional HTML Error Representations
 
 `FluoFactory.create(...)` and `bootstrapApplication(...)` accept `errorRepresentation` and pass it
@@ -235,7 +277,7 @@ class UsersModule {}
 - `RuntimeHealthModule`: Module class contract returned by `HealthModule.forRoot(...)`, including `addReadinessCheck(...)`, `markReady()`, and `markStarting()`.
 - `ReadinessCheck`: Function type used by runtime health modules. Checks receive the `/ready` request context and return a boolean or promise.
 - `defineModule(cls, metadata)`: Programmatic module definition helper.
-- `bootstrapApplication(options)`: Lower-level async bootstrap function. `BootstrapApplicationOptions.errorRepresentation` registers the optional HTTP-owned HTML representation provider; `CreateApplicationOptions` exposes the same field through `FluoFactory.create(...)`.
+- `bootstrapApplication(options)`: Lower-level async bootstrap function. `BootstrapApplicationOptions.contentNegotiation` configures successful-response formatters and `BootstrapApplicationOptions.errorRepresentation` registers the optional HTTP-owned HTML representation provider; `CreateApplicationOptions` exposes both fields through `FluoFactory.create(...)`.
 - `bootstrapModule(...)`: Lower-level module graph bootstrap helper. Its `BootstrapModuleOptions` include `moduleGraphCache` for opt-in compile-result caching and `moduleReplacements` / `ModuleReplacementMap` for testing-only module replacement compilation that keeps authored module identities stable.
 - `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: Runtime-owned diagnostics snapshot helpers for CLI/support tooling. They produce machine-readable data; Studio owns viewer parsing, graph presentation, and Mermaid rendering.
 - `createRuntimeRouteInspection(...)`, `createRuntimeRouteCatalog(...)`, and `createRuntimeInspectionSnapshot(...)`: Runtime-owned immutable projections that add effective compiled route diagnostics to platform snapshots without changing HTTP route behavior.

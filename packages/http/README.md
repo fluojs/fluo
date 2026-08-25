@@ -133,6 +133,30 @@ export function markLanguageVariance(context: RequestContext): void {
 }
 ```
 
+### Successful response content negotiation
+
+Configure `ContentNegotiationOptions.formatters` on `createDispatcher(...)` or runtime bootstrap.
+`ResponseFormatter.mediaType` identifies the representation and `format(...)` returns its final
+`string` or `Uint8Array` body. A route without `@Produces(...)` uses every configured formatter; a
+route with `@Produces(...)` uses only the exact configured media types named by that metadata and
+returns `406` when the intersection is empty.
+
+For a missing `Accept` header, the selected formatter is `defaultMediaType`, or the first unique
+configured formatter when no valid default is configured. `*/*` has the same default tie-break.
+Present headers are evaluated per representation: exact ranges outrank structured-suffix wildcards
+such as `application/*+json`, which outrank `type/*`, which outrank `*/*`. The most specific matching
+range controls that representation's quality, including `q=0`; a broader positive wildcard therefore
+cannot re-enable a specifically excluded representation. Remaining candidates are selected by
+quality, specificity, header order, configured default, and formatter order.
+
+Malformed media ranges and malformed qualities are ignored rather than guessed or clamped. If no
+valid token remains, every matching representation is excluded by `q=0`, or no configured formatter
+matches, the dispatcher returns canonical JSON `406`. Every successful framework-managed response
+that selected a formatter adds `Accept` to `Vary` through `appendVaryHeader(...)`, preserving existing
+fields, wildcard semantics, and case-insensitive deduplication. Custom response writers that take
+response ownership before formatter selection do not gain this variance. Adapter-native fast routes
+and fallback dispatch call the same negotiation engine.
+
 ## Common Patterns
 
 ### Guards and interceptors

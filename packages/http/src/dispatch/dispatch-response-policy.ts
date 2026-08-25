@@ -1,3 +1,4 @@
+import { appendVaryHeader } from '../header-helpers.js';
 import type {
   FrameworkRequest,
   FrameworkResponse,
@@ -217,6 +218,10 @@ export function writeSuccessResponse(
     : undefined;
 
   applySuccessResponseMetadata({ formatter, handler, response, value: responseValue });
+
+  if (formatter) {
+    appendVaryHeader(response, 'Accept');
+  }
 
   if (request.method.toUpperCase() === 'HEAD') {
     applyImplicitHeadContentType(response, responseValue);

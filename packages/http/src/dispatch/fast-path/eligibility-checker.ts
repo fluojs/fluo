@@ -7,7 +7,7 @@ import type {
   MiddlewareLike,
 } from '../../types.js';
 import type { CreateDispatcherOptions } from '../dispatcher.js';
-import { type FastPathEligibility, FAST_PATH_ELIGIBILITY_SYMBOL } from './eligibility.js';
+import { FAST_PATH_ELIGIBILITY_SYMBOL, type FastPathEligibility } from './eligibility.js';
 
 interface RequestScopeInspector {
   hasRequestScopedDependency(token: unknown): boolean;
@@ -94,7 +94,6 @@ export function compileFastPathEligibility(
   const hasPipe = handler.route.request !== undefined;
   const hasRequestScopedDI = determineRequestScopeRequirement(handler, options);
   const hasMiddleware = determineMiddlewareRequirement(handler, options.appMiddleware ?? []);
-  const hasContentNegotiation = options.contentNegotiation?.formatters !== undefined && options.contentNegotiation.formatters.length > 0;
   const isSseRoute = handler.route.produces?.some((mediaType) => mediaType.toLowerCase().startsWith('text/event-stream')) === true;
 
   const eligibilityBase = {
@@ -133,9 +132,6 @@ export function compileFastPathEligibility(
   }
   if (eligibilityBase.hasCustomBodyParser) {
     blockingReasons.push('custom binder');
-  }
-  if (hasContentNegotiation) {
-    blockingReasons.push('content negotiation');
   }
   if (isSseRoute) {
     blockingReasons.push('SSE streaming');

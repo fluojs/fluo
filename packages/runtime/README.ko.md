@@ -122,6 +122,48 @@ const app = await fluoFactory.create(AppModule, {
 });
 ```
 
+### 성공 응답 Content Negotiation
+
+`FluoFactory.create(...)`와 `bootstrapApplication(...)`은 `contentNegotiation`을 받아 같은 formatter
+set을 HTTP dispatcher로 전달합니다. Route-level `@Produces(...)` metadata는 이 set을 좁힙니다.
+
+```typescript
+import { Controller, Get, Produces } from '@fluojs/http';
+
+@Controller('/reports')
+class ReportsController {
+  @Produces('application/json', 'text/plain')
+  @Get('/daily')
+  daily() {
+    return { total: 42 };
+  }
+}
+
+const app = await fluoFactory.create(AppModule, {
+  contentNegotiation: {
+    defaultMediaType: 'application/json',
+    formatters: [
+      {
+        mediaType: 'application/json',
+        format: (body) => JSON.stringify(body),
+      },
+      {
+        mediaType: 'text/plain',
+        format: (body) => `total=${String((body as { total: number }).total)}`,
+      },
+    ],
+  },
+});
+```
+
+`Accept` header가 없거나 `*/*`이면 `defaultMediaType`(또는 첫 번째 configured formatter)을
+선택합니다. Header가 있으면 exact range, `application/*+json` 같은 structured-suffix range,
+`type/*`, `*/*` 순으로 우선합니다. Controlling range가 quality를 제공하므로 exact `q=0`
+exclusion을 더 넓은 positive wildcard가 우회하지 못합니다. Malformed entry는 무시하며 valid하고
+acceptable한 formatter가 남지 않으면 HTTP가 `406`을 반환합니다. 성공한 framework-managed
+negotiated response는 `Vary`에 case-insensitive하게 deduplicate된 `Accept` field 하나를 추가합니다.
+Native fast-route handoff와 fallback dispatch는 같은 selection policy를 사용합니다.
+
 ### Optional HTML Error Representations
 
 `FluoFactory.create(...)`와 `bootstrapApplication(...)`은 `errorRepresentation`을 받아 HTTP dispatcher에
@@ -235,7 +277,7 @@ class UsersModule {}
 - `RuntimeHealthModule`: `HealthModule.forRoot(...)`가 반환하는 module class contract이며 `addReadinessCheck(...)`, `markReady()`, `markStarting()`을 포함합니다.
 - `ReadinessCheck`: runtime health module이 사용하는 function type입니다. Check는 `/ready` request context를 받고 boolean 또는 promise를 반환합니다.
 - `defineModule(cls, metadata)`: 프로그래밍 방식의 모듈 정의 헬퍼입니다.
-- `bootstrapApplication(options)`: 저수준 비동기 부트스트랩 함수입니다. `BootstrapApplicationOptions.errorRepresentation`은 optional HTTP-owned HTML representation provider를 등록하며 `CreateApplicationOptions`는 `FluoFactory.create(...)`에서 같은 field를 노출합니다.
+- `bootstrapApplication(options)`: 저수준 비동기 부트스트랩 함수입니다. `BootstrapApplicationOptions.contentNegotiation`은 성공 응답 formatter를 설정하고 `BootstrapApplicationOptions.errorRepresentation`은 optional HTTP-owned HTML representation provider를 등록하며 `CreateApplicationOptions`는 `FluoFactory.create(...)`에서 두 field를 모두 노출합니다.
 - `bootstrapModule(...)`: 저수준 module graph bootstrap helper입니다. `BootstrapModuleOptions`에는 opt-in compile-result cache를 위한 `moduleGraphCache`와 authored module identity를 안정적으로 유지하는 testing-only module replacement compilation을 위한 `moduleReplacements` / `ModuleReplacementMap`이 포함됩니다.
 - `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: CLI/support tooling을 위한 runtime 소유 diagnostics snapshot helper입니다. 이 helper들은 기계 읽기 가능한 데이터를 생산하며, Studio가 viewer parsing, graph presentation, Mermaid rendering을 소유합니다.
 - `createRuntimeRouteInspection(...)`, `createRuntimeRouteCatalog(...)`, `createRuntimeInspectionSnapshot(...)`: HTTP route behavior를 변경하지 않고 platform snapshot에 effective compiled route diagnostics를 추가하는 runtime-owned immutable projection입니다.
