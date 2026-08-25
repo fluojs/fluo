@@ -16,6 +16,15 @@ Acquire a per-ledger lease, validate the v2 snapshot and event hash chain, and
 reconcile live branch, worktree, PR, head, checks, and issue identity before
 resuming.
 
+Before acquiring the lease, require the exact canonical
+`.omo/lanes/<lane-id>.json` path with a matching filename and reject symlinked
+or repository-escaping evidence. Re-read the source search artifact and the
+`confirmed-issues`, `suggested-additions`, and `lane-plan` approval receipts.
+Recompute every approval binding, require the artifact ID/SHA and approved plan
+to reproduce the ledger's immutable fields, and reject a resumed snapshot when
+its source, authority, retry policy, issue set, lane queues, dependencies, or
+release handoffs differ from that canonical plan.
+
 `release_handoffs` does not mean “Changeset required.” It contains only issues
 whose core task is release or publishing. Those issues are never dispatched to
 implementation and terminally park at `blocked-maintainer-decision`. When
