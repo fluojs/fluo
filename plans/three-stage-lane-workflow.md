@@ -33,6 +33,8 @@ The shared source of truth is `.agents/workflow-contracts/`:
 
 - `search-artifact-v2.schema.json`
 - `lane-ledger-v2.schema.json`
+- `lane-dag-binding.schema.json`
+- `local-review-verdict.schema.json`
 - `review-verdict.schema.json`
 - `blocker.schema.json`
 - `receipt.schema.json`
@@ -100,19 +102,25 @@ skills never load archived command or role definitions.
    exists so removing the handoff array cannot bypass provenance checks. Use
    the canonical published ledger as the marker when validating persisted
    snapshots so removing both fields cannot impersonate a legacy ledger.
-5. Dispatch implementation through `.agents/skills/issue-to-pr/SKILL.md`.
-6. Aggregate exactly one contract, code, and verification result through
-   `.agents/skills/pr-to-merge/SKILL.md`.
-7. Fix eligible blockers on the same branch, worktree, and PR, and require a
-   new head plus exact blocker reconciliation.
-8. Record merge success only from a lead-owned observed squash merge bound to
-   the current PR and head, with the linked issue observed `CLOSED`.
-9. Cleanup only after merge observation; retain a terminal blocker when any
+5. Compile one native DAG issue-supervisor node per approved issue and mirror
+   the canonical dependency graph through `dependsOn`.
+6. Implement and locally verify one commit head, then aggregate exactly one
+   contract, code, and verification result before any push or PR creation.
+7. Treat the successful local verdict as `ready-for-pr`, not `merge`. Fix local
+   blockers on the same branch and worktree, requiring a new head and a fresh
+   complete triad.
+8. After PR creation, bind required CI to the reviewed PR head. A fixable CI
+   failure returns to implementation and the local triad before the next push.
+9. Record merge success only after CI PASS and an issue-supervisor-owned live
+   squash merge observation bound to the reviewed PR head, with the linked
+   issue observed `CLOSED`.
+10. Cleanup only after merge observation; retain a terminal blocker when any
    worktree/local-branch/remote-branch removal is incomplete.
-10. Sync the clean root with a lead-owned `git pull --ff-only` observation.
-11. Append events, atomically replace the snapshot, record target-bound
-    receipts, and release the lease after every transition.
-12. Run the canonical ledger verifier before final reporting.
+11. Sync the clean root with a parent-lead `git pull --ff-only` observation
+    only after every issue-supervisor DAG node is terminal.
+12. Append events, atomically replace the snapshot, record target-bound
+   receipts, and release the lease after every transition.
+13. Run the canonical ledger verifier before final reporting.
 
 ## Verification
 
@@ -125,6 +133,7 @@ pnpm exec vitest run \
   tooling/governance/create-lane-native.test.ts \
   tooling/governance/create-lane-multi.test.ts \
   tooling/governance/execute-lane-native.test.ts \
+  tooling/governance/execute-lane-dag-supervisor.test.ts \
   tooling/governance/execute-lane-persistence.test.ts \
   tooling/governance/execute-lane-resilience.test.ts \
   tooling/governance/execute-lane-authority.test.ts \

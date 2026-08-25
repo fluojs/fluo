@@ -24,6 +24,12 @@ Show the artifact candidates and obtain three separate approvals:
 3. Lane plan approval accepts the final grouping, dependency graph, release
    handoffs, merge/retry policy, authority scope, and lane identity.
 
+Present `max_same_failure_repeats: 5` and
+`max_wall_clock_minutes: 360` as the default retry bounds unless the user
+explicitly selects different values. Persist the complete approved retry
+policy in the new ledger. Existing ledgers remain immutable and continue with
+their originally approved bounds.
+
 In the approval presentation, distinguish release metadata from execution
 handoffs:
 

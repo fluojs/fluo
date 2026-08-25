@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fluo.dev/schemas/omo/local-review-verdict.schema.json",
+  "title": "OMO local pre-PR review verdict",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "lane_id",
+    "issue_number",
+    "verdict",
+    "head_sha",
+    "reviewers",
+    "blockers"
+  ],
+  "properties": {
+    "version": { "const": 1 },
+    "lane_id": { "type": "string", "minLength": 1 },
+    "issue_number": { "type": "integer", "minimum": 1 },
+    "verdict": {
+      "enum": ["ready-for-pr", "ready-for-push", "block", "needs-human-check"]
+    },
+    "head_sha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "reviewers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "code", "verification"],
+      "properties": {
+        "contract": { "enum": ["PASS", "BLOCK", "NEEDS-HUMAN-CHECK"] },
+        "code": { "enum": ["PASS", "BLOCK", "NEEDS-HUMAN-CHECK"] },
+        "verification": {
+          "enum": ["PASS", "BLOCK", "NEEDS-HUMAN-CHECK"]
+        }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reviewer",
+          "signature",
+          "evidence",
+          "fix_back_eligible",
+          "status"
+        ],
+        "properties": {
+          "reviewer": { "enum": ["contract", "code", "verification"] },
+          "signature": { "type": "string", "minLength": 1 },
+          "evidence": { "type": "string", "minLength": 1 },
+          "fix_back_eligible": { "type": "boolean" },
+          "status": { "const": "unresolved" }
+        }
+      }
+    }
+  }
+}

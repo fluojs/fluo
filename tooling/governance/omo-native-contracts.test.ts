@@ -8,6 +8,8 @@ const contractRoot = resolve(process.cwd(), '.agents/workflow-contracts');
 const contractNames = [
   'search-artifact-v2',
   'lane-ledger-v2',
+  'lane-dag-binding',
+  'local-review-verdict',
   'review-verdict',
   'blocker',
   'receipt',
@@ -104,6 +106,28 @@ const lane = {
   dependency_graph: {},
   root_main_sync: { status: 'not-started', sha: null },
 };
+const laneDagBinding = {
+  version: 1,
+  lane_id: lane.lane_id,
+  dag_key: `fluo:lane:${lane.lane_id}:issue-supervisors:v1`,
+  run_id: 'run_lane_4101',
+  definition_sha256: 'd'.repeat(64),
+  snapshot_event_hash: null,
+  status: 'attached',
+};
+const localReviewVerdict = {
+  version: 1,
+  lane_id: lane.lane_id,
+  issue_number: issueNumber,
+  verdict: 'ready-for-pr',
+  head_sha: headSha,
+  reviewers: {
+    contract: 'PASS',
+    code: 'PASS',
+    verification: 'PASS',
+  },
+  blockers: [],
+};
 const blocker = {
   reviewer: 'code',
   signature: 'missing-abort-path',
@@ -174,6 +198,8 @@ describe('OMO native workflow JSON schemas', () => {
   it.each([
     ['search-artifact-v2', artifact],
     ['lane-ledger-v2', lane],
+    ['lane-dag-binding', laneDagBinding],
+    ['local-review-verdict', localReviewVerdict],
     ['review-verdict', reviewVerdict],
     ['blocker', blocker],
     ['receipt', receipt],

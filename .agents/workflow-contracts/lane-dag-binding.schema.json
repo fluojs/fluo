@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fluo.dev/schemas/omo/lane-dag-binding.schema.json",
+  "title": "OMO lane DAG run binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "lane_id",
+    "dag_key",
+    "run_id",
+    "definition_sha256",
+    "snapshot_event_hash",
+    "status"
+  ],
+  "properties": {
+    "version": { "const": 1 },
+    "lane_id": {
+      "type": "string",
+      "pattern": "^(?!.*(?:\\.|\\.lock)$)[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "dag_key": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "definition_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "snapshot_event_hash": {
+      "oneOf": [
+        { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        { "type": "null" }
+      ]
+    },
+    "status": { "const": "attached" }
+  }
+}

@@ -82,7 +82,13 @@ cannot be established, stop as `blocked-child-contract-error`.
 
 ## Lead remote phase
 
-Only after the child result gate passes may the lead push.
+For a direct `$issue-to-pr` invocation, only after the child result gate passes
+may the lead push.
+
+For an `$execute-lane` issue supervisor, return the validated local head before
+this phase. The supervisor runs a fresh local contract/code/verification triad.
+Only `ready-for-pr` or `ready-for-push` on that exact head may re-enter this
+remote phase.
 
 For `new-pr`:
 
@@ -97,8 +103,10 @@ For `fix-back`:
 2. do not create or edit a PR
 3. query the existing PR and confirm it now observes the new head
 
-The lead may push and create a new PR; the implementer may not. Neither actor
-may merge, close, clean up, or publish in this workflow.
+The lead or authority-bound issue supervisor may push and create/update the
+single canonical PR; the implementer may not. Direct `$issue-to-pr` does not
+merge, close, clean up, or publish. The issue supervisor performs merge and
+cleanup only after exact-head CI PASS under `$execute-lane`.
 
 ## Typed completion
 

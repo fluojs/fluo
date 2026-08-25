@@ -44,6 +44,19 @@ const fixBackInput = {
   blockers: [blocker],
   fix_back_attempt: 1,
 };
+const localNewInput = {
+  ...newPrInput,
+  mode: 'local-new',
+};
+const localFixBackInput = {
+  ...fixBackInput,
+  mode: 'local-fix-back',
+  existing_pr: null,
+};
+const ciFixBackInput = {
+  ...fixBackInput,
+  mode: 'ci-fix-back',
+};
 const identity = {
   branch: baseInput.branch,
   worktree: baseInput.worktree,
@@ -104,6 +117,9 @@ describe('$issue-to-pr native input and identity contract', () => {
     // When / Then
     expect(() => api.assertIssueToPrInput(newPrInput)).not.toThrow();
     expect(() => api.assertIssueToPrInput(fixBackInput)).not.toThrow();
+    expect(() => api.assertIssueToPrInput(localNewInput)).not.toThrow();
+    expect(() => api.assertIssueToPrInput(localFixBackInput)).not.toThrow();
+    expect(() => api.assertIssueToPrInput(ciFixBackInput)).not.toThrow();
     expect(source).toMatch(
       /from ['"]\.\.\/\.\.\/\.\.\/workflow-contracts\/contracts\.mjs['"]/u,
     );
@@ -183,6 +199,19 @@ describe('$issue-to-pr authority and typed output contract', () => {
 
     // When / Then
     expect(() => api.assertIssueToPrResult(fixBackInput, completedResult)).not.toThrow();
+    expect(() =>
+      api.assertIssueToPrResult(localFixBackInput, {
+        ...completedResult,
+        mode: 'local-fix-back',
+        pr: null,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      api.assertIssueToPrResult(ciFixBackInput, {
+        ...completedResult,
+        mode: 'ci-fix-back',
+      }),
+    ).not.toThrow();
     expect(() =>
       api.assertIssueToPrResult(fixBackInput, {
         ...completedResult,

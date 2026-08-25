@@ -1,30 +1,33 @@
 # Native issue implementer
 
-This is the detailed task contract for the single implementation child used by
-`$issue-to-pr` and reused by `$execute-lane`. The child owns scoped
-edit-test-commit work inside one assigned worktree. The lead owns branch,
-worktree, push, PR, merge, and cleanup orchestration.
+This is the detailed task contract for an implementation child used by
+`$issue-to-pr` and by an `$execute-lane` issue supervisor. The child owns scoped
+edit-test-commit work inside one assigned worktree. It never reviews or
+publishes its own result. The caller owns orchestration and remote authority.
 
 ## Required task input
 
 The lead must supply:
 
-- validated mode: `new-pr` or `fix-back`
+- validated mode: `new-pr`, `local-new`, `fix-back`, `local-fix-back`, or
+  `ci-fix-back`
 - lane ID and issue number, URL, title, and body
 - absolute `WORKTREE_PATH`
 - branch and base branch
 - `starting_head_sha`
 - applicable governance and package contract paths
 
-For `fix-back`, the lead must also supply:
+For `fix-back` or `ci-fix-back`, the caller must also supply:
 
 - existing PR identity and expected head branch
-- canonical unresolved blockers from the same-head merge gate
+- canonical unresolved blockers from the same-head local or CI gate
 - fix-back attempt number
 
-Missing identity, a mismatched branch or worktree, an absent starting head, or
-missing fix-back blockers is a child contract error. Do not repair orchestration
-identity by creating a replacement branch, worktree, PR, or issue.
+`local-fix-back` occurs before a PR exists and requires local reviewer blockers
+instead of PR identity. Missing required identity, a mismatched branch or
+worktree, an absent starting head, or missing fix-back blockers is a child
+contract error. Do not repair orchestration identity by creating a replacement
+branch, worktree, PR, or issue.
 
 ## Worktree boundary
 
@@ -33,7 +36,7 @@ identity by creating a replacement branch, worktree, PR, or issue.
   to that path and the checked-out branch equals the supplied branch.
 - Never edit `main`, the repository root outside the assigned worktree, another
   lane, or another agent's worktree.
-- In `fix-back`, verify the existing PR head branch, supplied branch, worktree
+- When a PR exists, verify its head branch, the supplied branch, worktree
   branch, and starting head describe the same identity.
 - On mismatch, stop with contract-error evidence. Do not switch identity,
   merge, rebase, reset, or copy changes across worktrees.
@@ -129,18 +132,18 @@ do not invent command names.
 
 ## Fix-back mode
 
-`fix-back` is remediation, not a fresh implementation pass.
+Every fix-back mode is remediation, not a fresh implementation pass.
 
-- Modify only supplied unresolved blockers and directly necessary tests, docs,
+- Modify only supplied local-review or CI blockers and directly necessary tests, docs,
   contract companions, migration guidance, or release metadata.
-- Preserve the existing branch, worktree, PR, and commit history.
+- Preserve the existing branch, worktree, optional PR, and commit history.
 - Append one new commit; never amend, squash, rebase, or rewrite prior work.
 - Mark a blocker addressed only when its exact evidence is corrected and a
   relevant verifier passes.
 - If a blocker requires product, policy, security, or release authority, do not
   guess. Return it as `needs-human-check`.
-- If evidence cannot be reproduced or identity differs from the supplied PR
-  head, return it as still blocked with exact evidence.
+- If evidence cannot be reproduced or identity differs from the supplied local
+  or PR head, return it as still blocked with exact evidence.
 - Do not expand into unrelated findings discovered during remediation; report
   them separately without modifying their scope.
 
@@ -160,9 +163,10 @@ Return one machine-readable report containing:
   `needs-human-check`
 - child contract errors, baseline failures, and unresolved decisions
 
-The report is evidence for the lead. It does not authorize push, PR creation,
-merge, cleanup, release, or publication and must not claim the overall workflow
-is complete.
+The report is evidence for the caller. The issue supervisor must run a fresh
+three-axis local review against `new head` before any push. The report does not
+authorize push, PR creation, merge, cleanup, release, or publication and must
+not claim the overall workflow is complete.
 
 ## Communication policy
 
