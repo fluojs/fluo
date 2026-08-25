@@ -187,8 +187,17 @@ export const assertIssueSupervisorState = (input) => {
       state.pr.receipt?.kind,
     );
     requirePrIdentity(prReceipt, state.pr);
+    if (prReceipt.kind === 'pr-adopt' && prReceipt.pr_state !== 'OPEN') {
+      throw new TypeError('adopted PR must be OPEN.');
+    }
     if (
-      !['pr-create', 'pr-update'].includes(prReceipt.kind) ||
+      prReceipt.kind === 'pr-adopt' &&
+      prReceipt.pr_head_ref_name !== state.branch
+    ) {
+      throw new TypeError('adopted PR must match the supervisor branch.');
+    }
+    if (
+      !['pr-adopt', 'pr-create', 'pr-update'].includes(prReceipt.kind) ||
       (['ci-pending', 'ci-fix-back', 'merge-ready', 'merged', 'done'].includes(
         state.status,
       ) &&

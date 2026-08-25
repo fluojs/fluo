@@ -63,6 +63,9 @@ returns only `attach`; it never authorizes a duplicate start.
 Legacy v1 lane-wide bindings remain immutable evidence only. Do not overwrite,
 amend, or resume them as the production scheduler. Reconcile their issue stores
 and live state, then require a new approved lane identity for unfinished work.
+The successor may reuse a reconciled canonical issue branch, worktree, and OPEN
+PR. It must rerun the same-head local triad and persist a fresh `pr-adopt`
+receipt under the successor lane identity before observing CI.
 
 Each dispatched node initialises `scripts/issue-supervisor-store.mjs` under its
 issue runtime directory. Every local review, remote observation, receipt, and

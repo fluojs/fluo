@@ -247,13 +247,19 @@ const observationBase = (head: string) => ({
   observed_at: observedAt,
 });
 
-const prReceipt = (kind: 'pr-create' | 'pr-update', head: string) => ({
+const prReceipt = (
+  kind: 'pr-adopt' | 'pr-create' | 'pr-update',
+  head: string,
+) => ({
   ...observationBase(head),
   kind,
   pr_number: 5101,
   pr_url: 'https://github.com/fluojs/fluo/pull/5101',
   remote_head_sha: head,
   pr_head_sha: head,
+  ...(kind === 'pr-adopt'
+    ? { pr_head_ref_name: identity.branch, pr_state: 'OPEN' }
+    : {}),
 });
 
 const passReviews = (head: string) =>
@@ -434,6 +440,153 @@ describe('execute-lane issue supervisor lifecycle', () => {
     });
 
     expect(state.status).toBe('done');
+  });
+
+  it('adopts an existing open PR after a same-head local triad', () => {
+    const transitions = [
+      {
+        kind: 'implementation-completed',
+        new_head: headA,
+        verification: 'pnpm test --filter runtime passed',
+      },
+      {
+        kind: 'local-review',
+        reviews: passReviews(headA),
+      },
+      {
+        kind: 'pr-observed',
+        action: 'adopt',
+        receipt: prReceipt('pr-adopt', headA),
+      },
+    ];
+    let state = createIssueSupervisor(identity);
+    for (const transition of transitions) {
+      state = transitionIssueSupervisor(state, transition);
+    }
+
+    expect(state.status).toBe('ci-pending');
+    expect(state.pr).toMatchObject({
+      number: 5101,
+      url: 'https://github.com/fluojs/fluo/pull/5101',
+      receipt: {
+        kind: 'pr-adopt',
+        head_sha: headA,
+        pr_head_ref_name: identity.branch,
+        pr_state: 'OPEN',
+      },
+    });
+
+    const persisted = persistedLifecycle(identity, transitions);
+    expect(persisted.snapshot).toEqual(state);
+    expect(persisted.receipts).toEqual([
+      expect.objectContaining({
+        kind: 'pr-adopt',
+        pr_number: 5101,
+        pr_state: 'OPEN',
+      }),
+    ]);
+  });
+
+  it('rejects adoption of a closed or mismatched-branch PR', () => {
+    let state = createIssueSupervisor(identity);
+    state = transitionIssueSupervisor(state, {
+      kind: 'implementation-completed',
+      new_head: headA,
+      verification: 'pnpm test --filter runtime passed',
+    });
+    state = transitionIssueSupervisor(state, {
+      kind: 'local-review',
+      reviews: passReviews(headA),
+    });
+
+    expect(() =>
+      transitionIssueSupervisor(state, {
+        kind: 'pr-observed',
+        action: 'adopt',
+        receipt: {
+          ...prReceipt('pr-adopt', headA),
+          pr_state: 'CLOSED',
+        },
+      }),
+    ).toThrow(/adopted PR must be OPEN/u);
+
+    expect(() =>
+      transitionIssueSupervisor(state, {
+        kind: 'pr-observed',
+        action: 'adopt',
+        receipt: {
+          ...prReceipt('pr-adopt', headA),
+          pr_head_ref_name: 'issue-4102-runtime',
+        },
+      }),
+    ).toThrow(/adopted PR must match the supervisor branch/u);
+  });
+
+  it('rejects forged adopted-PR snapshots and missing receipts on reload', () => {
+    const directory = mkdtempSync(
+      join(realpathSync(tmpdir()), 'fluo-adopted-pr-forgery-'),
+    );
+    const runtimeRoot = join(directory, 'lane-runs');
+    try {
+      let bundle = initialiseIssueSupervisorStore(runtimeRoot, identity);
+      for (const transition of [
+        {
+          kind: 'implementation-completed',
+          new_head: headA,
+          verification: 'pnpm test --filter runtime passed',
+        },
+        {
+          kind: 'local-review',
+          reviews: passReviews(headA),
+        },
+        {
+          kind: 'pr-observed',
+          action: 'adopt',
+          receipt: prReceipt('pr-adopt', headA),
+        },
+      ]) {
+        bundle = applyIssueSupervisorTransition(
+          runtimeRoot,
+          identity.lane_id,
+          identity.issue_number,
+          transition,
+        );
+      }
+      const issuePath = resolve(
+        runtimeRoot,
+        identity.lane_id,
+        'issues',
+        String(identity.issue_number),
+      );
+      const snapshotPath = resolve(issuePath, 'snapshot.json');
+      const receiptsPath = resolve(issuePath, 'receipts.json');
+      const snapshotText = `${JSON.stringify(bundle.snapshot, null, 2)}\n`;
+
+      writeFileSync(
+        snapshotPath,
+        snapshotText.replace('"pr_state": "OPEN"', '"pr_state": "CLOSED"'),
+        'utf8',
+      );
+      expect(() =>
+        loadIssueSupervisorStore(
+          runtimeRoot,
+          identity.lane_id,
+          identity.issue_number,
+        ),
+      ).toThrow(/adopted PR must be OPEN/u);
+
+      writeFileSync(snapshotPath, snapshotText, 'utf8');
+      writeFileSync(receiptsPath, '[]\n', 'utf8');
+      expect(() =>
+        loadIssueSupervisorStore(
+          runtimeRoot,
+          identity.lane_id,
+          identity.issue_number,
+        ),
+      ).toThrow(/state-bound receipt/u);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it('fails closed on forged state, missing authority, and exhausted retries', () => {

@@ -6,6 +6,7 @@ import {
 } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { payloadDigest } from '../../../workflow-contracts/contracts.mjs';
 import {
   createIssueSupervisor,
   transitionIssueSupervisor,
@@ -40,6 +41,24 @@ const assertBundle = (bundle) => {
   bundle.receipts.forEach((receipt) =>
     assertPersistedReceipt(bundle.snapshot, receipt),
   );
+  const stateReceipts = [
+    bundle.snapshot.pr?.receipt,
+    bundle.snapshot.ci,
+    bundle.snapshot.merge?.receipt,
+    bundle.snapshot.cleanup?.receipt,
+  ].filter((receipt) => receipt !== undefined && receipt !== null);
+  for (const receipt of stateReceipts) {
+    const digest = payloadDigest(receipt);
+    if (
+      bundle.receipts.filter(
+        (persistedReceipt) => payloadDigest(persistedReceipt) === digest,
+      ).length !== 1
+    ) {
+      throw new TypeError(
+        'issue supervisor state-bound receipt must exist exactly once.',
+      );
+    }
+  }
 };
 
 export const assertIssueSupervisorBundle = assertBundle;

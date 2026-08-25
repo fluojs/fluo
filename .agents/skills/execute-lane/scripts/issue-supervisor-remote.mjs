@@ -18,13 +18,27 @@ const observePr = (state, step) => {
     throw new TypeError('authority_scope.pr_creation is required.');
   }
   const expectedKind =
-    state.status === 'ready-for-pr' ? 'pr-create' : 'pr-update';
+    state.status === 'ready-for-push'
+      ? 'pr-update'
+      : step.action === 'adopt'
+        ? 'pr-adopt'
+        : 'pr-create';
   const receipt = requireTargetReceipt(state, step.receipt, expectedKind);
   if (
-    (state.status === 'ready-for-pr' && step.action !== 'create') ||
+    (state.status === 'ready-for-pr' &&
+      !['adopt', 'create'].includes(step.action)) ||
     (state.status === 'ready-for-push' && step.action !== 'update')
   ) {
     throw new TypeError('PR observation action does not match local readiness.');
+  }
+  if (step.action === 'adopt' && receipt.pr_state !== 'OPEN') {
+    throw new TypeError('adopted PR must be OPEN.');
+  }
+  if (
+    step.action === 'adopt' &&
+    receipt.pr_head_ref_name !== state.branch
+  ) {
+    throw new TypeError('adopted PR must match the supervisor branch.');
   }
   if (
     receipt.remote_head_sha !== state.head_sha ||

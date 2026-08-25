@@ -13,6 +13,8 @@ Return one typed terminal report for lane ${lane.lane_id} and issue ${String(iss
 SCOPE:
 - Consume the canonical lane ledger at .omo/lanes/${lane.lane_id}.json.
 - Use one isolated issue branch and worktree.
+- Reconcile and reuse an existing canonical issue branch, worktree, and OPEN PR
+  when their live identities and heads match; never create duplicates.
 - Delegate implementation and each contract/code/verification review to separate children.
 - Reach READY_FOR_PR locally before the lead pushes or creates the PR.
 - After PR creation, observe required CI on the exact reviewed head.
@@ -25,6 +27,8 @@ SCOPE:
 
 VERIFY:
 - Bind every local review, PR observation, CI result, merge, and cleanup action to the current head.
+- Adopt an existing OPEN PR only after a same-head local triad and persist a
+  pr-adopt receipt whose local, remote, and PR heads are identical.
 - Persist every transition and receipt through issue-supervisor-store.mjs.
 - Treat node completion as a claim until the parent validates persisted evidence and live Git/GitHub state.
 - Never reuse a reviewer PASS after the head changes.

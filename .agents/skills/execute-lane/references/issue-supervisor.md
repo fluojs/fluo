@@ -47,6 +47,12 @@ At `ready-for-pr`, push the reviewed head and create one PR. At
 that the remote branch, PR `headRefOid`, and reviewed local head are identical
 before entering `ci-pending`.
 
+When a successor lane reconciles an existing canonical branch, worktree, and
+OPEN PR, reuse those identities instead of creating duplicates. Rerun the full
+local triad against the observed head, then persist a `pr-adopt` receipt binding
+the local, remote, and PR heads before entering `ci-pending`. A closed PR, stale
+head, mismatched issue branch, or noncanonical worktree fails closed.
+
 Classify required CI on that exact head:
 
 - `pass` -> `merge-ready`;
