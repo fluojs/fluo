@@ -87,7 +87,8 @@ export interface FrameworkResponse {
  *
  * @remarks
  * Node-backed transports require at least one non-empty `link` value. Additional
- * informational header fields remain subject to the native HTTP implementation.
+ * informational header fields must use valid HTTP names and values. Header names
+ * are case-insensitive and cannot be repeated with different casing.
  */
 export type EarlyHintsHeaders = Readonly<Record<string, string | readonly string[]>> & {
   readonly link: string | readonly string[];

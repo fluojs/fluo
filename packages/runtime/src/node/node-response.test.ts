@@ -1,9 +1,7 @@
-import type { ServerResponse } from 'node:http';
 import { EventEmitter } from 'node:events';
-
-import { describe, expect, it, vi } from 'vitest';
-
+import type { ServerResponse } from 'node:http';
 import { EarlyHintsWriteError, RequestAbortedError } from '@fluojs/http';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createFrameworkResponse } from './node-response.js';
 
@@ -80,9 +78,48 @@ describe('createFrameworkResponse', () => {
     });
   });
 
-  it('wraps native Early Hints validation failures and removes terminal listeners', async () => {
+  it('rejects unsafe or ambiguous Early Hints headers before the native write', async () => {
     const rawResponse = createMockServerResponse();
-    const nativeError = new TypeError('Invalid character in header content');
+    const writeEarlyHints = vi.spyOn(rawResponse, 'writeEarlyHints');
+    const frameworkResponse = createFrameworkResponse(rawResponse);
+
+    await expect(frameworkResponse.earlyHints?.write({
+      link: '</styles.css>; rel=preload; as=style',
+      'x-trace': 'ok\r\nset-cookie: injected=1',
+    })).rejects.toMatchObject({
+      code: 'EARLY_HINTS_WRITE_FAILED',
+    });
+    await expect(frameworkResponse.earlyHints?.write({
+      link: '</styles.css>; rel=preload; as=style',
+      Link: '</override.css>; rel=preload; as=style',
+    })).rejects.toMatchObject({
+      code: 'EARLY_HINTS_WRITE_FAILED',
+    });
+
+    expect(writeEarlyHints).not.toHaveBeenCalled();
+  });
+
+  it('maps malformed Early Hints input to a rejected write promise', async () => {
+    const rawResponse = createMockServerResponse();
+    const writeEarlyHints = vi.spyOn(rawResponse, 'writeEarlyHints');
+    const frameworkResponse = createFrameworkResponse(rawResponse);
+
+    let write: Promise<void> | undefined;
+    expect(() => {
+      write = frameworkResponse.earlyHints?.write(null as unknown as {
+        readonly link: string;
+      });
+    }).not.toThrow();
+
+    await expect(write).rejects.toMatchObject({
+      code: 'EARLY_HINTS_WRITE_FAILED',
+    });
+    expect(writeEarlyHints).not.toHaveBeenCalled();
+  });
+
+  it('wraps native Early Hints failures and removes terminal listeners', async () => {
+    const rawResponse = createMockServerResponse();
+    const nativeError = new Error('Socket write failed');
     rawResponse.writeEarlyHints = vi.fn(() => {
       throw nativeError;
     });
@@ -90,7 +127,6 @@ describe('createFrameworkResponse', () => {
 
     await expect(frameworkResponse.earlyHints?.write({
       link: '</styles.css>; rel=preload; as=style',
-      'x-invalid': 'line\nbreak',
     })).rejects.toMatchObject({
       cause: nativeError,
       code: 'EARLY_HINTS_WRITE_FAILED',

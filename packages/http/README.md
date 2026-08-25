@@ -194,7 +194,7 @@ async function render(_input: undefined, context: RequestContext) {
 }
 ```
 
-Each `write(...)` emits one `103`, so callers may await multiple writes before the final response. Every write requires at least one non-empty `link` value and may include additional informational fields accepted by the native Node HTTP implementation. Early fields do not populate `response.headers`, change status, set `committed`, or become final-response headers.
+Each `write(...)` emits one `103`, so callers may await multiple writes before the final response. Every write requires at least one non-empty `link` value and may include additional informational fields with valid HTTP names and values. Header names are case-insensitive and cannot be repeated with different casing. Early fields do not populate `response.headers`, change status, set `committed`, or become final-response headers.
 
 Node.js, Express, and Fastify expose this capability. Fetch-style Web, Bun, Deno, and Cloudflare Workers responses omit it because their `Response` APIs cannot represent an informational response before the final response. A write after final commitment or a native validation/write failure rejects with `EarlyHintsWriteError` (`EARLY_HINTS_WRITE_FAILED`); a disconnect before settlement rejects with `RequestAbortedError` (`REQUEST_ABORTED`).
 
