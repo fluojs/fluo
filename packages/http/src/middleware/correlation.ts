@@ -4,11 +4,22 @@ import type { Middleware } from '../types.js';
 const REQUEST_ID_HEADER = 'x-request-id';
 const CORRELATION_ID_HEADER = 'x-correlation-id';
 
-function resolveInboundRequestId(request: { headers: Readonly<Record<string, string | string[] | undefined>> }): string {
-  const requestId = getRequestHeader(request as never, REQUEST_ID_HEADER) ?? getRequestHeader(request as never, CORRELATION_ID_HEADER);
-  const value = Array.isArray(requestId) ? requestId[0] : requestId;
+function readInboundHeaderValue(
+  request: { headers: Readonly<Record<string, string | string[] | undefined>> },
+  headerName: string,
+): string | undefined {
+  const rawHeaderValue = getRequestHeader(request as never, headerName);
+  const value = Array.isArray(rawHeaderValue) ? rawHeaderValue[0] : rawHeaderValue;
+  const normalized = value?.trim();
 
-  return value ?? createRequestId();
+  return normalized ? normalized : undefined;
+}
+
+function resolveInboundRequestId(request: { headers: Readonly<Record<string, string | string[] | undefined>> }): string {
+  const requestId = readInboundHeaderValue(request, REQUEST_ID_HEADER);
+  const correlationId = readInboundHeaderValue(request, CORRELATION_ID_HEADER);
+
+  return requestId ?? correlationId ?? createRequestId();
 }
 
 function createRequestId(): string {

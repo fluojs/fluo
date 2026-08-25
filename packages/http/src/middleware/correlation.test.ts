@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { FrameworkRequest, FrameworkResponse } from '../types.js';
 import { createCorrelationMiddleware } from './correlation.js';
@@ -60,5 +60,30 @@ describe('createCorrelationMiddleware', () => {
 
     expect(requestContext.requestId).toBe('req-upper');
     expect(response.headers['x-request-id']).toBe('req-upper');
+  });
+
+  it('ignores mixed-case blank inbound request ids before generating a new one', async () => {
+    const middleware = createCorrelationMiddleware();
+    const response = createResponse();
+    const requestContext: { requestId?: string } = {};
+    const randomUuid = vi
+      .spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValue('11111111-1111-4111-8111-111111111111');
+
+    try {
+      await middleware.handle(
+        {
+          request: createRequest({ 'X-REQUEST-ID': '   ' }),
+          requestContext: requestContext as never,
+          response,
+        },
+        async () => {},
+      );
+    } finally {
+      randomUuid.mockRestore();
+    }
+
+    expect(requestContext.requestId).toBe('11111111-1111-4111-8111-111111111111');
+    expect(response.headers['x-request-id']).toBe('11111111-1111-4111-8111-111111111111');
   });
 });
