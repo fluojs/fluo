@@ -796,6 +796,13 @@ export function enforceContractCompanionUpdates(changedFiles) {
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
     'contract-governing doc updates must include docs/CONTEXT.md and docs/CONTEXT.ko.md discoverability updates.',
   );
+  const docsContext = read('docs/CONTEXT.md');
+  const docsContextKo = read('docs/CONTEXT.ko.md');
+  assert(
+    docsContext.includes('docs/contracts/platform-conformance-authoring-checklist.md')
+      && docsContextKo.includes('docs/contracts/platform-conformance-authoring-checklist.ko.md'),
+    'platform conformance contract changes must remain discoverable from both docs context indexes.',
+  );
   assert(
     includesAny(changedFiles, (path) => path.startsWith('.github/workflows/')) ||
       includesAny(changedFiles, (path) => path.startsWith('tooling/')),

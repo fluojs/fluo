@@ -27,6 +27,7 @@ const HEADER_END = new Uint8Array([13, 10, 13, 10]);
 const DECODER = new TextDecoder();
 const ENCODER = new TextEncoder();
 
+/** Incremental multipart parser that exposes ordered parts and backpressure-aware file streams. */
 export class StreamingMultipartParser {
   private activeFileDone: Promise<void> | undefined;
   private finalBoundary = false;

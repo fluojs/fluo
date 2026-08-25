@@ -155,4 +155,40 @@ describe('parseMultipart', () => {
     await expect(result).rejects.toBeInstanceOf(PayloadTooLargeException);
     await expect(result).rejects.toThrow('Multipart body exceeds the maximum size of 10 bytes.');
   });
+
+  it('enforces total size while reading without calling arrayBuffer', async () => {
+    const chunks = [
+      new TextEncoder().encode('12345678'),
+      new TextEncoder().encode('abcdefgh'),
+    ];
+    let index = 0;
+    const request = new Request('http://localhost/uploads', {
+      body: new ReadableStream<Uint8Array>({
+        pull(controller) {
+          const chunk = chunks[index];
+          index += 1;
+
+          if (chunk) {
+            controller.enqueue(chunk);
+            return;
+          }
+
+          controller.close();
+        },
+      }, { highWaterMark: 0 }),
+      duplex: 'half',
+      headers: {
+        'content-type': 'multipart/form-data; boundary=fluo-limit',
+      },
+      method: 'POST',
+    } as RequestInit & { duplex: 'half' });
+    const arrayBuffer = vi.spyOn(request, 'arrayBuffer').mockImplementation(() => {
+      throw new Error('Buffered multipart must not allocate through Request.arrayBuffer().');
+    });
+
+    await expect(parseMultipart(request, { maxTotalSize: 10 })).rejects.toThrow(
+      'Multipart body exceeds the maximum size of 10 bytes.',
+    );
+    expect(arrayBuffer).not.toHaveBeenCalled();
+  });
 });

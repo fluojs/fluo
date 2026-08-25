@@ -32,16 +32,21 @@ declare module '@fluojs/testing/http-adapter-portability' {
     TApp extends AppLike = AppLike,
   > {
     assertDoesNotCommitAbortedHttpErrorRepresentations(): Promise<void>;
+    assertAbortsAndCleansStreamingMultipart(): Promise<void>;
     assertDefaultsMultipartTotalLimitToMaxBodySize(): Promise<void>;
+    assertEnforcesStreamingMultipartLimits(): Promise<void>;
+    assertEnforcesBufferedMultipartExtendedLimits(): Promise<void>;
     assertExcludesRawBodyForMultipart(): Promise<void>;
     assertPreservesExactRawBodyBytesForByteSensitivePayloads(): Promise<void>;
     assertPreservesMalformedCookieValues(): Promise<void>;
     assertPreservesRawBodyForJsonAndText(): Promise<void>;
+    assertRejectsSecondStreamingMultipartConsumption(): Promise<void>;
     assertStreamsPortableMultipartParts(): Promise<void>;
     assertRemovesShutdownSignalListenersAfterClose(): Promise<void>;
     assertReportsConfiguredHostInStartupLogs(): Promise<void>;
     assertReportsHttpsStartupUrl(https: { cert: string; key: string }): Promise<void>;
     assertSettlesStreamDrainWaitOnClose(): Promise<void>;
+    assertStreamingMultipartConformance(): Promise<void>;
     assertSupportsHttpErrorRepresentations(): Promise<void>;
     assertSupportsSseStreaming(): Promise<void>;
   }

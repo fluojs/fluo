@@ -29,11 +29,15 @@ declare module '@fluojs/testing/web-runtime-adapter-portability' {
     TApp extends WebRuntimePortabilityAppLike = WebRuntimePortabilityAppLike,
   > {
     assertDoesNotCommitAbortedHttpErrorRepresentations(): Promise<void>;
+    assertAbortsAndCleansStreamingMultipart(): Promise<void>;
+    assertEnforcesStreamingMultipartLimits(): Promise<void>;
     assertExcludesRawBodyForMultipart(): Promise<void>;
     assertPreservesExactRawBodyBytesForByteSensitivePayloads(): Promise<void>;
     assertPreservesMalformedCookieValues(): Promise<void>;
     assertPreservesQueryArraysAndDecoding(): Promise<void>;
     assertPreservesRawBodyForJsonAndText(): Promise<void>;
+    assertRejectsSecondStreamingMultipartConsumption(): Promise<void>;
+    assertStreamingMultipartConformance(): Promise<void>;
     assertStreamsPortableMultipartParts(): Promise<void>;
     assertSupportsHttpErrorRepresentations(): Promise<void>;
     assertSupportsSseStreaming(): Promise<void>;

@@ -2,6 +2,12 @@ import { BadRequestException, PayloadTooLargeException } from '@fluojs/http';
 
 const DECODER = new TextDecoder();
 
+/**
+ * Extracts the declared multipart boundary from a content type header.
+ *
+ * @param contentType - Full multipart content type header.
+ * @returns The unquoted multipart boundary.
+ */
 export function parseBoundary(contentType: string): string {
   const match = /(?:^|;)\s*boundary=(?:"([^"]+)"|([^;\s]+))/i.exec(contentType);
   const boundary = match?.[1] ?? match?.[2];
@@ -13,6 +19,13 @@ export function parseBoundary(contentType: string): string {
   return boundary;
 }
 
+/**
+ * Parses and normalizes one bounded multipart header block.
+ *
+ * @param bytes - Encoded header bytes without the terminating empty line.
+ * @param maxHeaders - Maximum allowed header line count.
+ * @returns Lowercase multipart part headers.
+ */
 export function parseHeaders(
   bytes: Uint8Array,
   maxHeaders: number,
@@ -43,6 +56,12 @@ export function parseHeaders(
   return headers;
 }
 
+/**
+ * Parses form-data name and optional filename parameters.
+ *
+ * @param value - Content-Disposition header value.
+ * @returns Parsed field name and optional original filename.
+ */
 export function parseContentDisposition(
   value: string | undefined,
 ): { filename?: string; name: string } {
@@ -67,6 +86,12 @@ export function parseContentDisposition(
   return filename === undefined ? { name } : { filename, name };
 }
 
+/**
+ * Adapts a portable async byte iterable to a Web readable stream.
+ *
+ * @param body - Existing Web stream or async byte iterable.
+ * @returns A cancellation-aware Web byte stream.
+ */
 export function toReadableStream(
   body: AsyncIterable<Uint8Array> | ReadableStream<Uint8Array>,
 ): ReadableStream<Uint8Array> {
@@ -86,11 +111,24 @@ export function toReadableStream(
   });
 }
 
+/**
+ * Compares two byte arrays for exact equality.
+ *
+ * @param left - First byte array.
+ * @param right - Second byte array.
+ * @returns `true` when both arrays contain identical bytes.
+ */
 export function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
   return left.byteLength === right.byteLength
     && left.every((value, index) => value === right[index]);
 }
 
+/**
+ * Concatenates buffered byte chunks in encounter order.
+ *
+ * @param chunks - Byte chunks to concatenate.
+ * @returns One contiguous byte array.
+ */
 export function concatChunks(chunks: readonly Uint8Array[]): Uint8Array {
   const result = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.byteLength, 0));
   let offset = 0;

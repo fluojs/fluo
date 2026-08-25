@@ -73,8 +73,8 @@ function registerHostOwnedDenoPortabilitySuite(): void {
       await harness.assertExcludesRawBodyForMultipart();
     });
 
-    it('streams portable multipart parts', async () => {
-      await harness.assertStreamsPortableMultipartParts();
+    it('executes complete streaming multipart conformance', async () => {
+      await harness.assertStreamingMultipartConformance();
     });
 
     it('preserves SSE framing', async () => {

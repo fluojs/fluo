@@ -510,6 +510,244 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
     });
   }
 
+  async assertStreamingMultipartConformance(): Promise<void> {
+    await this.assertStreamsPortableMultipartParts();
+    await this.assertEnforcesStreamingMultipartLimits();
+    await this.assertRejectsSecondStreamingMultipartConsumption();
+    await this.assertAbortsAndCleansStreamingMultipart();
+  }
+
+  async assertEnforcesStreamingMultipartLimits(): Promise<void> {
+    @Controller('/uploads')
+    class UploadController {
+      @Post('/')
+      async upload(_input: undefined, context: RequestContext) {
+        const multipart = context.request.multipart;
+
+        if (!multipart) {
+          throw new Error('Expected streaming multipart mode.');
+        }
+
+        const reader = multipart.consume().getReader();
+
+        for (;;) {
+          const result = await reader.read();
+
+          if (result.done) {
+            return { consumed: true };
+          }
+
+          if (result.value.kind === 'file') {
+            await new Response(result.value.stream).arrayBuffer();
+          }
+        }
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [UploadController] });
+
+    const app = await this.options.bootstrap(AppModule, {
+      cors: false,
+      multipart: {
+        maxFields: 1,
+        maxFileSize: 4,
+        maxFiles: 1,
+        maxHeaders: 2,
+        maxHeaderSize: 128,
+        maxTotalSize: 2048,
+        mode: 'streaming',
+      },
+    } as TBootstrapOptions);
+
+    await runWithCleanup(app, this.options.name, async () => {
+      for (const current of createStreamingMultipartLimitCases()) {
+        const response = await app.dispatch(new Request('https://runtime.test/uploads', {
+          body: current.body,
+          headers: {
+            'content-type': `multipart/form-data; boundary=${current.boundary}`,
+          },
+          method: 'POST',
+        }));
+        const body = await response.json() as { error?: { code?: unknown } };
+
+        if (response.status !== 413 || body.error?.code !== 'PAYLOAD_TOO_LARGE') {
+          throw new Error(
+            `${this.options.name} adapter did not enforce streaming multipart ${current.name}.`,
+          );
+        }
+      }
+    });
+  }
+
+  async assertRejectsSecondStreamingMultipartConsumption(): Promise<void> {
+    @Controller('/uploads')
+    class UploadController {
+      @Post('/')
+      upload(_input: undefined, context: RequestContext) {
+        const multipart = context.request.multipart;
+
+        if (!multipart) {
+          throw new Error('Expected streaming multipart mode.');
+        }
+
+        const first = multipart.consume();
+
+        try {
+          multipart.consume();
+          return { rejected: false };
+        } catch (error: unknown) {
+          void first.cancel('Second-consume conformance completed.');
+          return {
+            message: error instanceof Error ? error.message : String(error),
+            name: error instanceof Error ? error.name : typeof error,
+            rejected: true,
+          };
+        }
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [UploadController] });
+
+    const app = await this.options.bootstrap(AppModule, {
+      cors: false,
+      multipart: { mode: 'streaming' },
+    } as TBootstrapOptions);
+
+    await runWithCleanup(app, this.options.name, async () => {
+      const form = new FormData();
+      form.set('name', 'Ada');
+      const response = await app.dispatch(new Request('https://runtime.test/uploads', {
+        body: form,
+        method: 'POST',
+      }));
+      const body = await response.json();
+
+      if (
+        response.status !== 201
+        || JSON.stringify(body) !== JSON.stringify({
+          message: 'Streaming multipart body can only be consumed once.',
+          name: 'TypeError',
+          rejected: true,
+        })
+      ) {
+        throw new Error(`${this.options.name} adapter changed multipart second-consume rejection.`);
+      }
+    });
+  }
+
+  async assertAbortsAndCleansStreamingMultipart(): Promise<void> {
+    const handlerReady = createDeferred<void>();
+    const abortObserved = createDeferred<{ error: unknown; signalReason: unknown }>();
+    const sourceCancelled = createDeferred<unknown>();
+
+    @Controller('/uploads')
+    class UploadController {
+      @Post('/')
+      async upload(_input: undefined, context: RequestContext) {
+        const multipart = context.request.multipart;
+
+        if (!multipart || !context.request.signal) {
+          throw new Error('Expected streaming multipart mode with an abort signal.');
+        }
+
+        const part = await multipart.consume().getReader().read();
+
+        if (part.done || part.value.kind !== 'file') {
+          throw new Error('Expected a streaming multipart file part.');
+        }
+
+        const fileReader = part.value.stream.getReader();
+        const first = await fileReader.read();
+
+        if (first.done || first.value.byteLength === 0) {
+          throw new Error('Expected the first streaming multipart file chunk.');
+        }
+
+        handlerReady.resolve();
+
+        try {
+          await fileReader.read();
+          throw new Error('Expected the active multipart file stream to abort.');
+        } catch (error: unknown) {
+          abortObserved.resolve({
+            error,
+            signalReason: context.request.signal.reason,
+          });
+          throw error;
+        }
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [UploadController] });
+
+    const app = await this.options.bootstrap(AppModule, {
+      cors: false,
+      multipart: { mode: 'streaming' },
+    } as TBootstrapOptions);
+
+    await runWithCleanup(app, this.options.name, async () => {
+      const abortController = new AbortController();
+      const boundary = 'fluo-abort-boundary';
+      const prefix = [
+        `--${boundary}`,
+        'Content-Disposition: form-data; name="payload"; filename="payload.txt"',
+        'Content-Type: text/plain',
+        '',
+        'x'.repeat(256),
+      ].join('\r\n');
+      const requestBody = new ReadableStream<Uint8Array>({
+        cancel(reason) {
+          sourceCancelled.resolve(reason);
+        },
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(prefix));
+        },
+      });
+      const dispatchPromise = app.dispatch(new Request('https://runtime.test/uploads', {
+        body: requestBody,
+        duplex: 'half',
+        headers: {
+          'content-type': `multipart/form-data; boundary=${boundary}`,
+        },
+        method: 'POST',
+        signal: abortController.signal,
+      } as RequestInit & { duplex: 'half' }));
+
+      await withTimeout(
+        handlerReady.promise,
+        5_000,
+        `${this.options.name} adapter did not enter the multipart handler before abort.`,
+      );
+      abortController.abort(new Error('multipart client aborted'));
+
+      const [observed] = await Promise.all([
+        withTimeout(
+          abortObserved.promise,
+          5_000,
+          `${this.options.name} adapter did not surface multipart abort to the active file stream.`,
+        ),
+        withTimeout(
+          sourceCancelled.promise,
+          5_000,
+          `${this.options.name} adapter did not cancel the multipart request source.`,
+        ),
+      ]);
+
+      try {
+        await dispatchPromise;
+      } catch {
+        // An aborted host-owned dispatch may reject instead of returning a response.
+      }
+
+      if (!(observed.error instanceof Error) || observed.error !== observed.signalReason) {
+        throw new Error(`${this.options.name} adapter did not propagate multipart request abort.`);
+      }
+    });
+  }
+
   async assertSupportsSseStreaming(): Promise<void> {
     @Controller('/events')
     class EventsController {
@@ -571,4 +809,77 @@ export function createWebRuntimeHttpAdapterPortabilityHarness<
   options: WebRuntimeHttpAdapterPortabilityHarnessOptions<TBootstrapOptions, TApp>,
 ): WebRuntimeHttpAdapterPortabilityHarness<TBootstrapOptions, TApp> {
   return new WebRuntimeHttpAdapterPortabilityHarness(options);
+}
+
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve(value?: T): void;
+}
+
+interface StreamingMultipartLimitCase {
+  body: string;
+  boundary: string;
+  name: string;
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolve!: (value?: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = (value) => resolvePromise(value as T);
+  });
+  return { promise, resolve };
+}
+
+function createStreamingMultipartLimitCases(): StreamingMultipartLimitCase[] {
+  return [
+    createStreamingMultipartLimitCase('file-size', [
+      'Content-Disposition: form-data; name="payload"; filename="payload.txt"\r\n'
+        + 'Content-Type: text/plain\r\n\r\nhello',
+    ]),
+    createStreamingMultipartLimitCase('field-count', [
+      'Content-Disposition: form-data; name="first"\r\n\r\none',
+      'Content-Disposition: form-data; name="second"\r\n\r\ntwo',
+    ]),
+    createStreamingMultipartLimitCase('file-count', [
+      'Content-Disposition: form-data; name="first"; filename="1.txt"\r\n\r\n1',
+      'Content-Disposition: form-data; name="second"; filename="2.txt"\r\n\r\n2',
+    ]),
+    createStreamingMultipartLimitCase('header-count', [
+      'Content-Disposition: form-data; name="field"\r\n'
+        + 'X-First: one\r\n'
+        + 'X-Second: two\r\n\r\nvalue',
+    ]),
+    createStreamingMultipartLimitCase('header-size', [
+      `Content-Disposition: form-data; name="${'field'.repeat(30)}"\r\n\r\nvalue`,
+    ]),
+    createStreamingMultipartLimitCase('total-size', [
+      `Content-Disposition: form-data; name="field"\r\n\r\n${'x'.repeat(4096)}`,
+    ]),
+  ];
+}
+
+function createStreamingMultipartLimitCase(
+  name: string,
+  parts: readonly string[],
+): StreamingMultipartLimitCase {
+  const boundary = `fluo-${name}-boundary`;
+  return {
+    body: parts.map((part) => `--${boundary}\r\n${part}\r\n`).join('')
+      + `--${boundary}--\r\n`,
+    boundary,
+    name,
+  };
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+
+  return await Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+  });
 }

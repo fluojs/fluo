@@ -43,7 +43,13 @@ const networkHarnesses = [
 ] as const;
 
 describe.each(networkHarnesses)('%s streaming multipart network conformance', (_name, harness) => {
-  it('streams equivalent portable field and file parts', async () => {
-    await harness.assertStreamsPortableMultipartParts();
+  it('executes the complete portable streaming multipart contract', async () => {
+    await harness.assertStreamingMultipartConformance();
+  });
+});
+
+describe('Fastify buffered multipart conformance', () => {
+  it('enforces field, file, header, and raw encoded total limits', async () => {
+    await networkHarnesses[2][1].assertEnforcesBufferedMultipartExtendedLimits();
   });
 });

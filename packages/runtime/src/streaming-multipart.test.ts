@@ -109,6 +109,29 @@ describe('createStreamingMultipart', () => {
     await expect(reader.read()).resolves.toEqual({ done: true, value: undefined });
   });
 
+  it('preserves boundary-like file bytes without a legal delimiter suffix', async () => {
+    const tracked = createTrackedBody(createMultipartChunks([
+      `--${BOUNDARY}\r\nContent-Disposition: form-data; name="payload"; filename="payload.txt"\r\n\r\n`,
+      `before\r\n--${BOUNDARY}Xafter\r\n--fluo-`,
+      `boundary-after\r\n--${BOUNDARY}--\r\n`,
+    ]));
+    const multipart = createStreamingMultipart({
+      body: tracked.body,
+      contentType: `multipart/form-data; boundary=${BOUNDARY}`,
+    });
+    const reader = multipart.consume().getReader();
+    const part = await reader.read();
+
+    if (part.done || part.value.kind !== 'file') {
+      throw new Error('Expected a streaming multipart file part.');
+    }
+
+    await expect(readText(part.value.stream)).resolves.toBe(
+      `before\r\n--${BOUNDARY}Xafter\r\n--${BOUNDARY}-after`,
+    );
+    await expect(reader.read()).resolves.toEqual({ done: true, value: undefined });
+  });
+
   it('fails clearly when the body is consumed more than once', () => {
     const tracked = createTrackedBody(createMultipartChunks([
       `--${BOUNDARY}--\r\n`,

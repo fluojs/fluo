@@ -8,9 +8,11 @@ import {
   type RequestContext,
 } from '@fluojs/http';
 import { defineModule } from '@fluojs/runtime';
+import { createWebRuntimeHttpAdapterPortabilityHarness } from '@fluojs/testing/web-runtime-adapter-portability';
 
 import {
   bootstrapCloudflareWorkerApplication,
+  type BootstrapCloudflareWorkerApplicationOptions,
   type CloudflareWorkerExecutionContext,
 } from './adapter.js';
 
@@ -24,7 +26,23 @@ function decodeUtf8(input: Uint8Array | undefined): string {
   return new TextDecoder().decode(input ?? new Uint8Array());
 }
 
+const cloudflarePortabilityHarness =
+  createWebRuntimeHttpAdapterPortabilityHarness<BootstrapCloudflareWorkerApplicationOptions>({
+    async bootstrap(rootModule, options) {
+      const worker = await bootstrapCloudflareWorkerApplication(rootModule, options);
+      return {
+        close: () => worker.close(),
+        dispatch: (request: Request) => worker.fetch(request, {}, createExecutionContext()),
+      };
+    },
+    name: 'Cloudflare Workers',
+  });
+
 describe('Cloudflare Workers adapter portability smoke tests', () => {
+  it('executes complete streaming multipart conformance', async () => {
+    await cloudflarePortabilityHarness.assertStreamingMultipartConformance();
+  });
+
   it('preserves malformed cookie values without crashing or normalizing them away', async () => {
     @Controller('/cookies')
     class CookieController {

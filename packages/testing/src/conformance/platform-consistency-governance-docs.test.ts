@@ -108,6 +108,10 @@ describe('platform consistency governance docs', () => {
 
     expect(docsContext).toContain('docs/contracts/behavioral-contract-policy.md');
     expect(docsContextKo).toContain('docs/contracts/behavioral-contract-policy.md');
+    expect(docsContext).toContain('docs/contracts/platform-conformance-authoring-checklist.md');
+    expect(docsContextKo).toContain('docs/contracts/platform-conformance-authoring-checklist.ko.md');
+    expect(docsContext).toContain('docs/contracts/platform-conformance-authoring-checklist.md');
+    expect(docsContextKo).toContain('docs/contracts/platform-conformance-authoring-checklist.md');
     expect(docsContext).toContain('docs/contracts/release-governance.md');
     expect(docsContextKo).toContain('docs/contracts/release-governance.md');
     expect(docsContext).toContain('docs/contracts/public-export-tsdoc-baseline.md');

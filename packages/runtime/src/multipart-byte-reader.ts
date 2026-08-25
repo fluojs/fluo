@@ -3,11 +3,12 @@ import { BadRequestException, PayloadTooLargeException } from '@fluojs/http';
 const EMPTY_BYTES = new Uint8Array();
 const TOTAL_LIMIT_MESSAGE = 'Multipart body exceeds the maximum size of';
 
-export interface MultipartBodyChunk {
+interface MultipartBodyChunk {
   boundary: boolean;
   bytes: Uint8Array;
 }
 
+/** Pull-driven byte reader that bounds multipart lookbehind and total encoded size. */
 export class MultipartByteReader {
   private buffer: Uint8Array = EMPTY_BYTES;
   private cancelled = false;
@@ -119,6 +120,24 @@ export class MultipartByteReader {
       const index = findBytes(this.buffer, delimiter);
 
       if (index >= 0) {
+        const suffixOffset = index + delimiter.byteLength;
+
+        while (this.buffer.byteLength < suffixOffset + 2) {
+          const result = await this.readSource();
+
+          if (result.done) {
+            const bytes = this.buffer.slice(0, index + 1);
+            this.buffer = this.buffer.slice(index + 1);
+            return { boundary: false, bytes };
+          }
+        }
+
+        if (!hasLegalBoundarySuffix(this.buffer, suffixOffset)) {
+          const bytes = this.buffer.slice(0, index + 1);
+          this.buffer = this.buffer.slice(index + 1);
+          return { boundary: false, bytes };
+        }
+
         const bytes = this.buffer.slice(0, index);
         this.buffer = this.buffer.slice(index + delimiter.byteLength);
         return { boundary: true, bytes };
@@ -204,6 +223,12 @@ function findBytes(haystack: Uint8Array, needle: Uint8Array): number {
   }
 
   return -1;
+}
+
+function hasLegalBoundarySuffix(bytes: Uint8Array, offset: number): boolean {
+  const first = bytes[offset];
+  const second = bytes[offset + 1];
+  return (first === 13 && second === 10) || (first === 45 && second === 45);
 }
 
 function throwHeaderLimit(maxHeaderSize: number): never {

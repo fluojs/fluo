@@ -107,11 +107,7 @@ export async function parseMultipart(
     throwMultipartTotalLimit(maxTotalSize);
   }
 
-  const bufferedBody = new Uint8Array(await webRequest.arrayBuffer());
-
-  if (bufferedBody.byteLength > maxTotalSize) {
-    throwMultipartTotalLimit(maxTotalSize);
-  }
+  const bufferedBody = await readStreamBytes(webRequest.body, maxTotalSize);
 
   const parserRequest = new Request(webRequest.url, {
     body: bufferedBody,
@@ -244,7 +240,10 @@ function createReadableStreamFromAsyncIterable(source: AsyncIterable<Uint8Array>
   });
 }
 
-async function readStreamBytes(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
+async function readStreamBytes(
+  stream: ReadableStream<Uint8Array>,
+  maxSize?: number,
+): Promise<Uint8Array<ArrayBuffer>> {
   const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
@@ -258,9 +257,14 @@ async function readStreamBytes(stream: ReadableStream<Uint8Array>): Promise<Uint
 
     chunks.push(result.value);
     size += result.value.byteLength;
+
+    if (maxSize !== undefined && size > maxSize) {
+      await drainStreamReader(reader);
+      throwMultipartTotalLimit(maxSize);
+    }
   }
 
-  const bytes = new Uint8Array(size);
+  const bytes: Uint8Array<ArrayBuffer> = new Uint8Array(size);
   let offset = 0;
 
   for (const chunk of chunks) {
@@ -269,6 +273,18 @@ async function readStreamBytes(stream: ReadableStream<Uint8Array>): Promise<Uint
   }
 
   return bytes;
+}
+
+async function drainStreamReader(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+): Promise<void> {
+  for (;;) {
+    const result = await reader.read();
+
+    if (result.done) {
+      return;
+    }
+  }
 }
 
 function normalizeRequestHeaders(
