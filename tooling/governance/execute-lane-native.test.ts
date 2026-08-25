@@ -1,13 +1,14 @@
 import { execFileSync } from 'node:child_process';
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
@@ -47,7 +48,7 @@ const runScenarioPath = (
   scenarioPath: string,
   stateDirectory?: string,
   ledgerPath = initialLedger,
-  approvalReceiptPath?: string,
+  repositoryRoot?: string,
 ): ScenarioRun => {
   const state =
     stateDirectory ?? mkdtempSync(resolve(tmpdir(), 'fluo-execute-lane-'));
@@ -61,8 +62,8 @@ const runScenarioPath = (
     '--state-dir',
     state,
   ];
-  if (approvalReceiptPath !== undefined) {
-    command.push('--approval-receipt', approvalReceiptPath);
+  if (repositoryRoot !== undefined) {
+    command.push('--repository-root', repositoryRoot);
   }
   const stdout = execFileSync(
     process.execPath,
@@ -208,14 +209,24 @@ describe('$execute-lane persisted native state machine', () => {
     const fixtureDirectory = mkdtempSync(
       resolve(tmpdir(), 'fluo-execute-release-handoffs-'),
     );
-    const ledgerPath = resolve(fixtureDirectory, 'ledger.json');
+    const ledgerPath = resolve(
+      fixtureDirectory,
+      '.omo/lanes/lane-4101-runtime.json',
+    );
     const approvalReceiptPath = resolve(
       fixtureDirectory,
-      'lane-plan-approval.json',
+      '.omo/approvals/approval-lane-4101-runtime-lane-plan.json',
+    );
+    const artifactPath = resolve(
+      fixtureDirectory,
+      '.omo/search-issue/artifacts/search-native-two-lanes.json',
     );
     const scenarioPath = resolve(fixtureRoot, 'interrupted-start.json');
     const secondScenarioPath = resolve(fixtureDirectory, 'second.json');
     const ledger = readFixture('ready-ledger-two-lanes-v2');
+    mkdirSync(dirname(ledgerPath), { recursive: true });
+    mkdirSync(dirname(approvalReceiptPath), { recursive: true });
+    mkdirSync(dirname(artifactPath), { recursive: true });
     writeFileSync(
       ledgerPath,
       `${JSON.stringify(
@@ -228,21 +239,16 @@ describe('$execute-lane persisted native state machine', () => {
     writeFileSync(
       approvalReceiptPath,
       `${JSON.stringify(
-        {
-          version: 1,
-          approval_id: 'approval-lane-4101-runtime-lane-plan',
-          gate: 'lane-plan',
-          binding_sha256: 'a'.repeat(64),
-          lane_id: 'lane-4101-runtime',
-          release_handoff_attestations: [4101, 4102].map(
-            (issue_number) => ({
-              issue_number,
-              issue_evidence_sha256: 'b'.repeat(64),
-              decision: 'release-or-publish-is-core',
-              changeset_only: false,
-            }),
-          ),
-        },
+        readFixture('release-handoff-two-lanes-approval'),
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    );
+    writeFileSync(
+      artifactPath,
+      `${JSON.stringify(
+        readFixture('search-native-two-lanes'),
         null,
         2,
       )}\n`,
@@ -273,7 +279,7 @@ describe('$execute-lane persisted native state machine', () => {
       scenarioPath,
       undefined,
       ledgerPath,
-      approvalReceiptPath,
+      fixtureDirectory,
     );
     try {
       const snapshot = run.result['snapshot'];
@@ -290,7 +296,7 @@ describe('$execute-lane persisted native state machine', () => {
         secondScenarioPath,
         run.stateDirectory,
         ledgerPath,
-        approvalReceiptPath,
+        fixtureDirectory,
       );
       const completedSnapshot = completed.result['snapshot'];
       expect(completed.result['status']).toBe('blocked-maintainer-decision');
@@ -313,11 +319,29 @@ describe('$execute-lane persisted native state machine', () => {
     const fixtureDirectory = mkdtempSync(
       resolve(tmpdir(), 'fluo-execute-release-approval-'),
     );
-    const ledgerPath = resolve(fixtureDirectory, 'ledger.json');
+    const ledgerPath = resolve(
+      fixtureDirectory,
+      '.omo/lanes/lane-4101-runtime.json',
+    );
+    const artifactPath = resolve(
+      fixtureDirectory,
+      '.omo/search-issue/artifacts/search-native-release.json',
+    );
     const ledger = readFixture('ready-ledger-release-v2');
+    mkdirSync(dirname(ledgerPath), { recursive: true });
+    mkdirSync(
+      resolve(fixtureDirectory, '.omo/approvals'),
+      { recursive: true },
+    );
+    mkdirSync(dirname(artifactPath), { recursive: true });
     writeFileSync(
       ledgerPath,
       `${JSON.stringify(ledger, null, 2)}\n`,
+      'utf8',
+    );
+    writeFileSync(
+      artifactPath,
+      `${JSON.stringify(readFixture('search-native-release'), null, 2)}\n`,
       'utf8',
     );
 
@@ -331,6 +355,77 @@ describe('$execute-lane persisted native state machine', () => {
       ).toThrow(/release handoffs require their consumed lane-plan approval receipt/u);
     } finally {
       rmSync(fixtureDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    [
+      'binding',
+      (receipt: Record<string, unknown>) => {
+        receipt['binding_sha256'] = 'c'.repeat(64);
+      },
+      /release handoff approval binding does not match/u,
+    ],
+    [
+      'evidence digest',
+      (receipt: Record<string, unknown>) => {
+        const attestations = receipt['release_handoff_attestations'];
+        if (!Array.isArray(attestations) || !isRecord(attestations[0])) {
+          throw new TypeError('release approval attestations must be objects');
+        }
+        attestations[0] = {
+          ...attestations[0],
+          issue_evidence_sha256: 'c'.repeat(64),
+        };
+      },
+      /release handoff approval binding does not match/u,
+    ],
+  ])('rejects a substituted release handoff %s', (_, mutate, error) => {
+    const repositoryRoot = mkdtempSync(
+      resolve(tmpdir(), 'fluo-execute-release-substitution-'),
+    );
+    const ledgerPath = resolve(
+      repositoryRoot,
+      '.omo/lanes/lane-4101-runtime.json',
+    );
+    const approvalPath = resolve(
+      repositoryRoot,
+      '.omo/approvals/approval-lane-4101-runtime-lane-plan.json',
+    );
+    const artifactPath = resolve(
+      repositoryRoot,
+      '.omo/search-issue/artifacts/search-native-release.json',
+    );
+    mkdirSync(dirname(ledgerPath), { recursive: true });
+    mkdirSync(dirname(approvalPath), { recursive: true });
+    mkdirSync(dirname(artifactPath), { recursive: true });
+    const receipt = structuredClone(
+      readFixture('release-handoff-approval'),
+    ) as Record<string, unknown>;
+    mutate(receipt);
+    for (const [path, value] of [
+      [ledgerPath, readFixture('ready-ledger-release-v2')],
+      [approvalPath, receipt],
+      [artifactPath, readFixture('search-native-release')],
+    ] as const) {
+      writeFileSync(
+        path,
+        `${JSON.stringify(value, null, 2)}\n`,
+        'utf8',
+      );
+    }
+
+    try {
+      expect(() =>
+        runScenarioPath(
+          resolve(fixtureRoot, 'interrupted-start.json'),
+          undefined,
+          ledgerPath,
+          repositoryRoot,
+        ),
+      ).toThrow(error);
+    } finally {
+      rmSync(repositoryRoot, { recursive: true, force: true });
     }
   });
 });

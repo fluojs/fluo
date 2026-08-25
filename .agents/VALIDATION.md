@@ -48,3 +48,8 @@ target-bound receipt. Publishing remains GitHub Actions-only.
 Validate the lane snapshot, event hash chain, lease, live branch/worktree/PR
 identity, current head, checks, and approval freshness before resuming. Never
 fill missing persisted fields with compatibility defaults.
+
+For non-empty `release_handoffs`, derive the consumed lane-plan receipt from
+the canonical repository approval directory. Recompute its approval binding
+from the retained plan and source artifact, then compare every immutable plan
+field with the execution snapshot before parking an issue.

@@ -96,6 +96,7 @@ const publishReadyLane = (outputRoot, prepared) => {
           ? {
               release_handoff_attestations:
                 approval.release_handoff_attestations,
+              plan: prepared.plan,
             }
           : {}),
       },

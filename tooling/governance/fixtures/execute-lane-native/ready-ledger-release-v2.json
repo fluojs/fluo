@@ -10,7 +10,7 @@
     "search_run_id": "search-native-release",
     "search_ledger": ".omo/search-issue/artifacts/search-native-release.json",
     "artifact_id": "search:search-native-release",
-    "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    "sha256": "b0169f5a9482fe7700f607c1676277af40591509a4c630e074c0be11d8e8a1a5"
   },
   "merge_policy": "supervisor-with-human-escalation",
   "pr_merge_method": "squash",

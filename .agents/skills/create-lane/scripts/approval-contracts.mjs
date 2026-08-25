@@ -131,6 +131,15 @@ export const validateApprovals = (approvals, artifact, plan) => {
   if (approvalIds.size !== approvalGates.length) {
     return 'approval_not_distinct';
   }
+  if (
+    approvals.some(
+      (approval) =>
+        approval.approval_id !==
+        `approval-${plan.lane_id}-${approval.gate}`,
+    )
+  ) {
+    return 'approval_binding_mismatch';
+  }
   const confirmed = approvals[0].issue_numbers;
   const suggested = approvals[1].issue_numbers;
   if (

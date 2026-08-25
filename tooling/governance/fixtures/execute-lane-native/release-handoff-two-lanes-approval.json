@@ -2,11 +2,17 @@
   "version": 1,
   "approval_id": "approval-lane-4101-runtime-lane-plan",
   "gate": "lane-plan",
-  "binding_sha256": "23c6b347d16e8ca2dc5f243a94231652b0e7b6573603c6fb1e7ea98cfb1803d5",
+  "binding_sha256": "081555fbe6264263afaddb6abd468874493c0d330c38d26ae2f2992a719b390a",
   "lane_id": "lane-4101-runtime",
   "release_handoff_attestations": [
     {
       "issue_number": 4101,
+      "issue_evidence_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "decision": "release-or-publish-is-core",
+      "changeset_only": false
+    },
+    {
+      "issue_number": 4102,
       "issue_evidence_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "decision": "release-or-publish-is-core",
       "changeset_only": false
@@ -17,8 +23,8 @@
     "lane_id": "lane-4101-runtime",
     "base_branch": "main",
     "source": {
-      "artifact_id": "search:search-native-release",
-      "sha256": "b0169f5a9482fe7700f607c1676277af40591509a4c630e074c0be11d8e8a1a5"
+      "artifact_id": "search:search-native-two-lanes",
+      "sha256": "a84d89513201c9fde69a627164a50ecf9551d462408a854621f1cd8c3398c42f"
     },
     "merge_policy": "supervisor-with-human-escalation",
     "pr_merge_method": "squash",
@@ -36,7 +42,7 @@
       "max_wall_clock_minutes": 180,
       "stop_on_child_contract_error": true
     },
-    "confirmed_issues": [4101],
+    "confirmed_issues": [4101, 4102],
     "suggested_but_excluded": [],
     "backlog_candidates": [],
     "release_handoffs": [
@@ -44,12 +50,21 @@
         "issue_number": 4101,
         "reason": "release-or-publish-is-core",
         "issue_evidence_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      {
+        "issue_number": 4102,
+        "reason": "release-or-publish-is-core",
+        "issue_evidence_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
       }
     ],
     "lanes": [
       {
-        "name": "release",
+        "name": "runtime",
         "queue": [4101]
+      },
+      {
+        "name": "validation",
+        "queue": [4102]
       }
     ],
     "dependency_graph": {}

@@ -80,8 +80,10 @@ skills never load archived command or role definitions.
    dependencies.
 6. All three approval records bind the artifact and complete plan and are
    consumed once.
-7. Ledger and approval receipts publish exclusively without overwrite.
-8. Output directories must be real directories, never symlink redirects.
+7. A release handoff additionally binds live issue evidence and an explicit
+   per-issue lane-plan attestation with `changeset_only: false`.
+8. Ledger and approval receipts publish exclusively without overwrite.
+9. Output directories must be real directories, never symlink redirects.
 
 ## Execute-lane invariants
 
@@ -90,6 +92,9 @@ skills never load archived command or role definitions.
 2. Reconcile the persisted branch, worktree, PR, and head with live state.
 3. Progress each lane independently; there is no global batch barrier.
 4. Preserve lane-local dependency order and dedicated release-handoff lanes.
+   Before parking one, derive its canonical consumed lane-plan receipt,
+   recompute the artifact/plan approval binding, and reconcile all immutable
+   planning fields with the snapshot.
 5. Dispatch implementation through `.agents/skills/issue-to-pr/SKILL.md`.
 6. Aggregate exactly one contract, code, and verification result through
    `.agents/skills/pr-to-merge/SKILL.md`.

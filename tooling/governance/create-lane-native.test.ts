@@ -27,6 +27,14 @@ const ledgerVerifier = resolve(
   repositoryRoot,
   'tooling/governance/verify-lane-ledger.mjs',
 );
+const executeReplay = resolve(
+  repositoryRoot,
+  '.agents/skills/execute-lane/scripts/fixtures/run-replay.mjs',
+);
+const executeFixtureRoot = resolve(
+  repositoryRoot,
+  'tooling/governance/fixtures/execute-lane-native',
+);
 
 type ScenarioRun = {
   readonly outputRoot: string;
@@ -288,7 +296,7 @@ describe('$create-lane native v2 producer', () => {
         readFileSync(
           resolve(
             run.outputRoot,
-            '.omo/approvals/approval-plan-4101.json',
+            '.omo/approvals/approval-lane-4101-runtime-lane-plan.json',
           ),
           'utf8',
         ),
@@ -308,6 +316,64 @@ describe('$create-lane native v2 producer', () => {
       ]);
     } finally {
       rmSync(run.outputRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('executes a handoff from its exact producer receipt and artifact', () => {
+    // Given
+    const run = runScenario('valid-release-handoff.json');
+    const state = mkdtempSync(resolve(tmpdir(), 'fluo-release-e2e-'));
+    const fixture = parseRecord(
+      readFileSync(resolve(fixtureRoot, 'valid-release-handoff.json'), 'utf8'),
+    );
+    const artifact = isRecord(fixture['artifacts'])
+      ? fixture['artifacts'][
+          '.omo/search-issue/artifacts/search-native-runtime.json'
+        ]
+      : undefined;
+    const artifactPath = resolve(
+      run.outputRoot,
+      '.omo/search-issue/artifacts/search-native-runtime.json',
+    );
+    mkdirSync(resolve(run.outputRoot, '.omo/search-issue/artifacts'), {
+      recursive: true,
+    });
+    writeFileSync(
+      artifactPath,
+      `${JSON.stringify(artifact, null, 2)}\n`,
+      'utf8',
+    );
+
+    try {
+      // When
+      const result = parseRecord(
+        execFileSync(
+          process.execPath,
+          [
+            executeReplay,
+            '--fixture-only',
+            '--scenario',
+            resolve(executeFixtureRoot, 'interrupted-start.json'),
+            '--ledger',
+            resolve(
+              run.outputRoot,
+              '.omo/lanes/lane-4101-runtime.json',
+            ),
+            '--state-dir',
+            state,
+            '--repository-root',
+            run.outputRoot,
+          ],
+          { encoding: 'utf8' },
+        ),
+      );
+
+      // Then
+      expect(result['status']).toBe('blocked-maintainer-decision');
+      expect(result['merge_count']).toBe(0);
+    } finally {
+      rmSync(run.outputRoot, { recursive: true, force: true });
+      rmSync(state, { recursive: true, force: true });
     }
   });
 

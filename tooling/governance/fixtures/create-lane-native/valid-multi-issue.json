@@ -12,24 +12,24 @@
   "approvals": [
     {
       "gate": "confirmed-issues",
-      "approval_id": "approval-confirmed-multi",
+      "approval_id": "approval-lane-4101-4103-runtime-confirmed-issues",
       "approved": true,
       "issue_numbers": [4101, 4102],
-      "binding_sha256": "718e0ab089ea64e606ec19c9686a9c2f0f10e2718771ab4a21f9bd622fb5e948"
+      "binding_sha256": "7fa00b0658d40fac376ac211f3c144e6abdd6124dbd13ae5b43118cce1b113d1"
     },
     {
       "gate": "suggested-additions",
-      "approval_id": "approval-suggestions-multi",
+      "approval_id": "approval-lane-4101-4103-runtime-suggested-additions",
       "approved": true,
       "issue_numbers": [4103],
-      "binding_sha256": "e87919654666996c5e6c635096411013fd3f858a4808d3473fcd80b7266d6d7b"
+      "binding_sha256": "3e881250dd106fe17b5c8318193295a90a720330b5ae65f4528dd1665f455c72"
     },
     {
       "gate": "lane-plan",
-      "approval_id": "approval-plan-multi",
+      "approval_id": "approval-lane-4101-4103-runtime-lane-plan",
       "approved": true,
       "release_handoff_attestations": [],
-      "binding_sha256": "44bce400153575c91e93a55ade19d2df3ad9cd5b2bfcbf33c40ffb6686f40648"
+      "binding_sha256": "a383119d947463a51d0d1213af1ac5c8714e953ce48f604b79a83bab4e40db60"
     }
   ],
   "plan": {

@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import {
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -7,7 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
@@ -40,7 +41,7 @@ const runScenarioPath = (
   scenarioPath: string,
   ledgerPath: string,
   state: string,
-  approvalReceiptPath?: string,
+  repositoryRoot?: string,
 ): Readonly<Record<string, unknown>> => {
   const command = [
     replayCli,
@@ -52,8 +53,8 @@ const runScenarioPath = (
     '--state-dir',
     state,
   ];
-  if (approvalReceiptPath !== undefined) {
-    command.push('--approval-receipt', approvalReceiptPath);
+  if (repositoryRoot !== undefined) {
+    command.push('--repository-root', repositoryRoot);
   }
   return parseRecord(
     execFileSync(process.execPath, command, { encoding: 'utf8' }),
@@ -64,7 +65,7 @@ const runScenarioValue = (
   scenario: Readonly<Record<string, unknown>>,
   ledgerName: string,
   state: string,
-  approvalReceiptName?: string,
+  repositoryRoot?: string,
 ): Readonly<Record<string, unknown>> => {
   const inputRoot = mkdtempSync(resolve(tmpdir(), 'fluo-execute-input-'));
   const scenarioPath = resolve(inputRoot, 'scenario.json');
@@ -74,9 +75,7 @@ const runScenarioValue = (
       scenarioPath,
       resolve(fixtureRoot, ledgerName),
       state,
-      approvalReceiptName === undefined
-        ? undefined
-        : resolve(fixtureRoot, approvalReceiptName),
+      repositoryRoot,
     );
   } finally {
     rmSync(inputRoot, { recursive: true, force: true });
@@ -135,12 +134,41 @@ describe('$execute-lane multi-issue and trust boundaries', () => {
 
   it('parks a release handoff for explicit maintainer decision without side effects', () => {
     const state = mkdtempSync(resolve(tmpdir(), 'fluo-execute-release-'));
+    const repositoryRoot = mkdtempSync(
+      resolve(tmpdir(), 'fluo-execute-release-root-'),
+    );
+    const ledgerPath = resolve(
+      repositoryRoot,
+      '.omo/lanes/lane-4101-runtime.json',
+    );
+    const approvalPath = resolve(
+      repositoryRoot,
+      '.omo/approvals/approval-lane-4101-runtime-lane-plan.json',
+    );
+    const artifactPath = resolve(
+      repositoryRoot,
+      '.omo/search-issue/artifacts/search-native-release.json',
+    );
+    mkdirSync(dirname(ledgerPath), { recursive: true });
+    mkdirSync(dirname(approvalPath), { recursive: true });
+    mkdirSync(dirname(artifactPath), { recursive: true });
+    for (const [path, fixture] of [
+      [ledgerPath, 'ready-ledger-release-v2'],
+      [approvalPath, 'release-handoff-approval'],
+      [artifactPath, 'search-native-release'],
+    ] as const) {
+      writeFileSync(
+        path,
+        `${JSON.stringify(readFixture(fixture), null, 2)}\n`,
+        'utf8',
+      );
+    }
     try {
       const result = runScenarioValue(
         readFixture('happy'),
-        'ready-ledger-release-v2.json',
+        ledgerPath,
         state,
-        'release-handoff-approval.json',
+        repositoryRoot,
       );
       expect(result['status']).toBe('blocked-maintainer-decision');
       expect(result['merge_count']).toBe(0);
@@ -153,6 +181,7 @@ describe('$execute-lane multi-issue and trust boundaries', () => {
       ).toContain('Lane ledger check passed for 1 file(s).');
     } finally {
       rmSync(state, { recursive: true, force: true });
+      rmSync(repositoryRoot, { recursive: true, force: true });
     }
   });
 

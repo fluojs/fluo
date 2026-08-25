@@ -106,6 +106,7 @@ export const planIsCanonical = (plan, artifact) => {
     typeof plan.base_branch !== 'string' ||
     plan.base_branch.length === 0 ||
     !isRecord(plan.source) ||
+    !hasExactKeys(plan.source, ['artifact_id', 'sha256']) ||
     plan.source.artifact_id !== artifact.artifact_id ||
     plan.source.sha256 !== artifact.sha256 ||
     !isIssueArray(plan.confirmed_issues) ||

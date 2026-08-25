@@ -83,5 +83,10 @@ export const prepareScenario = (scenarioPath) => {
     }
     throw error;
   }
-  return { kind: 'ready', ledger, approvals: scenario.approvals };
+  return {
+    kind: 'ready',
+    ledger,
+    approvals: scenario.approvals,
+    plan,
+  };
 };
