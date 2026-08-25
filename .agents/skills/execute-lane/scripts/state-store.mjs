@@ -142,9 +142,21 @@ const loadStateInternal = ({
   repositoryRoot,
   canonicalBoundary,
 }) => {
+  const canonicalSnapshot = readJson(ledgerPath);
+  validateState({
+    snapshot: canonicalSnapshot,
+    events: [],
+    receipts: [],
+  });
+  const canonicalContext = canonicalBoundary
+    ? loadCanonicalHandoffContext(
+        repositoryRoot,
+        ledgerPath,
+        canonicalSnapshot,
+      )
+    : null;
   ensureStateDirectory(stateDirectory);
   recoverTransaction(stateDirectory);
-  const canonicalSnapshot = readJson(ledgerPath);
   const snapshotPath = resolve(stateDirectory, 'snapshot.json');
   const snapshot = existsSync(snapshotPath)
     ? readJson(snapshotPath)
@@ -153,19 +165,10 @@ const loadStateInternal = ({
   const receiptsPath = resolve(stateDirectory, 'receipts.json');
   const receipts = existsSync(receiptsPath) ? readJson(receiptsPath) : [];
   const state = { snapshot, events, receipts };
-  validateState({
-    snapshot: canonicalSnapshot,
-    events: [],
-    receipts: [],
-  });
   validateState(state);
-  const handoffContext = canonicalBoundary
-    ? loadCanonicalHandoffContext(
-        repositoryRoot,
-        ledgerPath,
-        canonicalSnapshot,
-      )
-    : loadFixtureHandoffContext(
+  const handoffContext =
+    canonicalContext ??
+    loadFixtureHandoffContext(
         repositoryRoot,
         snapshot,
         canonicalSnapshot,

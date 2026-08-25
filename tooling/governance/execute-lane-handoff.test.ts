@@ -149,12 +149,17 @@ describe('$execute-lane canonical handoff boundary', () => {
     // Given
     const handoff = createProducerOutput();
     const noncanonicalPath = resolve(handoff.root, 'lane.json');
+    const rejectedStateDirectory = resolve(
+      handoff.root,
+      '.omo/lane-runs/rejected',
+    );
     copyFileSync(handoff.ledgerPath, noncanonicalPath);
 
     // When / Then
     expect(() =>
-      loadState(handoff.stateDirectory, noncanonicalPath, handoff.root),
+      loadState(rejectedStateDirectory, noncanonicalPath, handoff.root),
     ).toThrow(/canonical lane path/u);
+    expect(existsSync(rejectedStateDirectory)).toBe(false);
   });
 
   it('rejects a normal lane whose source artifact was changed', () => {
