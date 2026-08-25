@@ -13,6 +13,7 @@ export class MultipartByteReader {
   private buffer: Uint8Array = EMPTY_BYTES;
   private cancelled = false;
   private completed = false;
+  private cancellation: Promise<void> | undefined;
   private fatalError: unknown;
   private released = false;
   private totalSize = 0;
@@ -39,7 +40,12 @@ export class MultipartByteReader {
   }
 
   async cancel(reason?: unknown): Promise<void> {
-    if (this.cancelled || this.completed) {
+    if (this.completed) {
+      return;
+    }
+
+    if (this.cancellation) {
+      await this.cancellation;
       return;
     }
 
@@ -51,7 +57,11 @@ export class MultipartByteReader {
 
     this.cancelled = true;
     this.signal?.removeEventListener('abort', this.abortListener);
+    this.cancellation = this.cancelReader(reason);
+    await this.cancellation;
+  }
 
+  private async cancelReader(reason?: unknown): Promise<void> {
     try {
       await this.reader.cancel(reason);
     } catch {
@@ -132,7 +142,7 @@ export class MultipartByteReader {
           }
         }
 
-        if (!hasLegalBoundarySuffix(this.buffer, suffixOffset)) {
+        if (!await this.hasLegalBoundarySuffix(suffixOffset)) {
           const bytes = this.buffer.slice(0, index + 1);
           this.buffer = this.buffer.slice(index + 1);
           return { boundary: false, bytes };
@@ -158,6 +168,41 @@ export class MultipartByteReader {
         throw new BadRequestException('Multipart body ended before the closing boundary.');
       }
     }
+  }
+
+  private async hasLegalBoundarySuffix(offset: number): Promise<boolean> {
+    const first = this.buffer[offset];
+    const second = this.buffer[offset + 1];
+
+    if (first === 13 && second === 10) {
+      return true;
+    }
+
+    if (first !== 45 || second !== 45) {
+      return false;
+    }
+
+    if (this.buffer.byteLength === offset + 2) {
+      const result = await this.readSource();
+
+      if (result.done) {
+        return true;
+      }
+    }
+
+    if (this.buffer[offset + 2] !== 13) {
+      return false;
+    }
+
+    while (this.buffer.byteLength < offset + 4) {
+      const result = await this.readSource();
+
+      if (result.done) {
+        return false;
+      }
+    }
+
+    return this.buffer[offset + 3] === 10;
   }
 
   private async readSource(): Promise<ReadableStreamReadResult<Uint8Array>> {
@@ -223,12 +268,6 @@ function findBytes(haystack: Uint8Array, needle: Uint8Array): number {
   }
 
   return -1;
-}
-
-function hasLegalBoundarySuffix(bytes: Uint8Array, offset: number): boolean {
-  const first = bytes[offset];
-  const second = bytes[offset + 1];
-  return (first === 13 && second === 10) || (first === 45 && second === 45);
 }
 
 function throwHeaderLimit(maxHeaderSize: number): never {

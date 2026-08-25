@@ -146,6 +146,10 @@ describe('@fluojs/platform-nodejs', () => {
       await nodejsPortabilityHarness.assertDefaultsMultipartTotalLimitToMaxBodySize();
     });
 
+    it('executes complete streaming multipart conformance', async () => {
+      await nodejsPortabilityHarness.assertStreamingMultipartConformance();
+    });
+
     it('supports SSE streaming', async () => {
       await nodejsPortabilityHarness.assertSupportsSseStreaming();
     });

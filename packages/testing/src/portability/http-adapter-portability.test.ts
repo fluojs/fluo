@@ -70,6 +70,7 @@ interface PortabilityAssertions {
   assertReportsConfiguredHostInStartupLogs(): Promise<void>;
   assertReportsHttpsStartupUrl(https: { cert: string; key: string }): Promise<void>;
   assertSettlesStreamDrainWaitOnClose(): Promise<void>;
+  assertStreamingMultipartConformance(): Promise<void>;
   assertSupportsHttpErrorRepresentations(): Promise<void>;
   assertSupportsCustomHttpRouteMethods(): Promise<void>;
   assertSupportsSseStreaming(): Promise<void>;
@@ -195,6 +196,10 @@ function registerPortabilitySuite(
 
     it('defaults multipart.maxTotalSize to maxBodySize', async () => {
       await harness.assertDefaultsMultipartTotalLimitToMaxBodySize();
+    });
+
+    it('executes complete streaming multipart conformance', async () => {
+      await harness.assertStreamingMultipartConformance();
     });
 
     it('supports SSE streaming', async () => {

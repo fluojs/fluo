@@ -564,4 +564,38 @@ describe('createWebFrameworkRequest', () => {
       'Streaming multipart body can only be consumed once.',
     );
   });
+
+  it('matches mixed-case multipart media types for streaming requests', async () => {
+    const boundary = 'fluo-mixed-case';
+    const request = new Request('http://localhost/uploads', {
+      body: [
+        `--${boundary}\r\n`,
+        'Content-Disposition: form-data; name="title"\r\n\r\n',
+        `Ada\r\n--${boundary}--\r\n`,
+      ].join(''),
+      headers: {
+        'content-type': `Multipart/Form-Data; boundary=${boundary}`,
+      },
+      method: 'POST',
+    });
+    const frameworkRequest = await createWebFrameworkRequest(
+      request,
+      new AbortController().signal,
+      { mode: 'streaming' },
+    );
+    const parts = frameworkRequest.multipart?.consume().getReader();
+
+    await expect(parts?.read()).resolves.toEqual({
+      done: false,
+      value: {
+        fieldname: 'title',
+        headers: {
+          'content-disposition': 'form-data; name="title"',
+        },
+        kind: 'field',
+        value: 'Ada',
+      },
+    });
+    await expect(parts?.read()).resolves.toEqual({ done: true, value: undefined });
+  });
 });

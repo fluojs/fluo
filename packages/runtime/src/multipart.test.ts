@@ -133,21 +133,19 @@ describe('parseMultipart', () => {
   });
 
   it('rejects multipart payloads that exceed the configured total size limit', async () => {
-    const form = new FormData();
-    form.append('name', 'Ada Lovelace');
-    form.append('payload', new Blob(['hello'], { type: 'text/plain' }), 'payload.txt');
-
-    const request = new Request('http://localhost/uploads', {
-      body: form,
-      method: 'POST',
-    });
-
     const result = parseMultipart(
       {
-        body: request.body,
-        headers: Object.fromEntries(request.headers.entries()),
-        method: request.method,
-        url: request.url,
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('12345678901'));
+            controller.close();
+          },
+        }),
+        headers: {
+          'content-type': 'multipart/form-data; boundary=fluo-limit',
+        },
+        method: 'POST',
+        url: 'http://localhost/uploads',
       },
       { maxTotalSize: 10 },
     );
@@ -190,5 +188,31 @@ describe('parseMultipart', () => {
       'Multipart body exceeds the maximum size of 10 bytes.',
     );
     expect(arrayBuffer).not.toHaveBeenCalled();
+  });
+
+  it('cancels total-size overflow promptly and releases the reader after cleanup', async () => {
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      cancel,
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('overflow'));
+      },
+      pull() {
+        // Intentionally never closes: overflow cleanup must cancel instead of drain.
+      },
+    }, { highWaterMark: 0 });
+
+    await expect(parseMultipart({
+      body,
+      headers: {
+        'content-type': 'multipart/form-data; boundary=fluo-limit',
+      },
+      method: 'POST',
+      url: 'http://localhost/uploads',
+    }, { maxTotalSize: 4 })).rejects.toThrow(
+      'Multipart body exceeds the maximum size of 4 bytes.',
+    );
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(body.locked).toBe(false);
   });
 });

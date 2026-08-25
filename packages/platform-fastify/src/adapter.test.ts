@@ -245,6 +245,10 @@ describe('@fluojs/platform-fastify', () => {
       await fastifyPortabilityHarness.assertDefaultsMultipartTotalLimitToMaxBodySize();
     });
 
+    it('executes complete streaming multipart conformance', async () => {
+      await fastifyPortabilityHarness.assertStreamingMultipartConformance();
+    });
+
     it('supports SSE streaming', async () => {
       await fastifyPortabilityHarness.assertSupportsSseStreaming();
     });

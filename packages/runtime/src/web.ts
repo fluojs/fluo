@@ -393,7 +393,8 @@ function createDeferredWebFrameworkRequest(
   const cookies = createMemoizedValue(() => parseCookieHeader(requestHeaders.get('cookie') ?? undefined));
   const query = createMemoizedValue(() => parseQueryString(url.search));
   const contentType = requestHeaders.get('content-type') ?? undefined;
-  const isMultipart = typeof contentType === 'string' && contentType.includes('multipart/form-data');
+  const isMultipart = typeof contentType === 'string'
+    && contentType.toLowerCase().includes('multipart/form-data');
   const hasRequestBody = request.body !== null;
   const materializeBody = hasRequestBody ? createMemoizedAsyncValue(async () => {
     if (isMultipart) {

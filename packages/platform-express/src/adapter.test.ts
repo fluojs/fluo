@@ -328,6 +328,10 @@ describe('@fluojs/platform-express', () => {
       await expressPortabilityHarness.assertDefaultsMultipartTotalLimitToMaxBodySize();
     });
 
+    it('executes complete streaming multipart conformance', async () => {
+      await expressPortabilityHarness.assertStreamingMultipartConformance();
+    });
+
     it('supports SSE streaming', async () => {
       await expressPortabilityHarness.assertSupportsSseStreaming();
     });

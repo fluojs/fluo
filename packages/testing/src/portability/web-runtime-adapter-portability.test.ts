@@ -283,6 +283,7 @@ function registerWebRuntimePortabilitySuite(
     assertPreservesQueryArraysAndDecoding(): Promise<void>;
     assertPreservesMalformedCookieValues(): Promise<void>;
     assertPreservesRawBodyForJsonAndText(): Promise<void>;
+    assertStreamingMultipartConformance(): Promise<void>;
     assertSupportsSseStreaming(): Promise<void>;
   },
 ): void {
@@ -317,6 +318,10 @@ function registerWebRuntimePortabilitySuite(
 
     it('does not preserve rawBody for multipart requests', async () => {
       await harness.assertExcludesRawBodyForMultipart();
+    });
+
+    it('executes complete streaming multipart conformance', async () => {
+      await harness.assertStreamingMultipartConformance();
     });
 
     it('supports SSE streaming', async () => {

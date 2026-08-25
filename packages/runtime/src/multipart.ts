@@ -63,6 +63,13 @@ export interface MultipartRequestLike {
   [Symbol.asyncIterator]?(): AsyncIterator<Uint8Array>;
 }
 
+interface StreamingMultipartRequest {
+  body: ReadableStream<Uint8Array> | null;
+  headers: Headers;
+  method: string;
+  url: string;
+}
+
 /**
  * Resolves the configured multipart mode for one normalized request.
  *
@@ -177,15 +184,27 @@ function appendMultipartField(fields: Record<string, string | string[]>, name: s
   fields[name] = [existing, value];
 }
 
-function toStreamingRequest(request: Request | MultipartRequestLike): Request {
+function toStreamingRequest(request: Request | MultipartRequestLike): StreamingMultipartRequest {
   if (request instanceof Request) {
     return request;
   }
 
   const method = request.method ?? 'POST';
   const body = supportsRequestBody(method) ? resolveRequestBody(request) : undefined;
+  const headers = normalizeRequestHeaders(request.headers);
+  const url = request.url ?? 'http://localhost/';
+
+  if (body instanceof ReadableStream) {
+    return {
+      body,
+      headers,
+      method,
+      url,
+    };
+  }
+
   const init: RequestInit & { duplex?: 'half' } = {
-    headers: normalizeRequestHeaders(request.headers),
+    headers,
     method,
   };
 
@@ -197,10 +216,10 @@ function toStreamingRequest(request: Request | MultipartRequestLike): Request {
     }
   }
 
-  return new Request(request.url ?? 'http://localhost/', init);
+  return new Request(url, init);
 }
 
-function resolveRequestBody(request: MultipartRequestLike): AsyncIterable<Uint8Array> | BodyInit | null | undefined {
+function resolveRequestBody(request: MultipartRequestLike): BodyInit | null | undefined {
   if (request.body !== undefined) {
     return isAsyncIterableBody(request.body) ? createReadableStreamFromAsyncIterable(request.body) : request.body;
   }
@@ -248,42 +267,43 @@ async function readStreamBytes(
   const chunks: Uint8Array[] = [];
   let size = 0;
 
-  for (;;) {
-    const result = await reader.read();
+  try {
+    for (;;) {
+      const result = await reader.read();
 
-    if (result.done) {
-      break;
+      if (result.done) {
+        break;
+      }
+
+      chunks.push(result.value);
+      size += result.value.byteLength;
+
+      if (maxSize !== undefined && size > maxSize) {
+        const error = new PayloadTooLargeException(
+          `${MULTIPART_BODY_LIMIT_MESSAGE} ${String(maxSize)} bytes.`,
+        );
+
+        try {
+          await reader.cancel(error);
+        } catch {
+          // Preserve the total-size failure while still awaiting source cleanup.
+        }
+
+        throw error;
+      }
     }
 
-    chunks.push(result.value);
-    size += result.value.byteLength;
+    const bytes: Uint8Array<ArrayBuffer> = new Uint8Array(size);
+    let offset = 0;
 
-    if (maxSize !== undefined && size > maxSize) {
-      await drainStreamReader(reader);
-      throwMultipartTotalLimit(maxSize);
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
     }
-  }
 
-  const bytes: Uint8Array<ArrayBuffer> = new Uint8Array(size);
-  let offset = 0;
-
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-
-  return bytes;
-}
-
-async function drainStreamReader(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-): Promise<void> {
-  for (;;) {
-    const result = await reader.read();
-
-    if (result.done) {
-      return;
-    }
+    return bytes;
+  } finally {
+    reader.releaseLock();
   }
 }
 

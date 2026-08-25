@@ -109,12 +109,24 @@ describe('createStreamingMultipart', () => {
     await expect(reader.read()).resolves.toEqual({ done: true, value: undefined });
   });
 
-  it('preserves boundary-like file bytes without a legal delimiter suffix', async () => {
-    const tracked = createTrackedBody(createMultipartChunks([
-      `--${BOUNDARY}\r\nContent-Disposition: form-data; name="payload"; filename="payload.txt"\r\n\r\n`,
-      `before\r\n--${BOUNDARY}Xafter\r\n--fluo-`,
-      `boundary-after\r\n--${BOUNDARY}--\r\n`,
-    ]));
+  it.each([
+    {
+      chunks: [
+        `--${BOUNDARY}\r\nContent-Disposition: form-data; name="payload"; filename="payload.txt"\r\n\r\n`,
+        `before\r\n--${BOUNDARY}Xafter\r\n--${BOUNDARY}--not-a-delimiter`,
+        `\r\n--${BOUNDARY}--\r\n`,
+      ],
+    },
+    {
+      chunks: [
+        `--${BOUNDARY}\r\nContent-Disposition: form-data; name="payload"; filename="payload.txt"\r\n\r\n`,
+        `before\r\n--${BOUNDARY}Xafter\r\n--${BOUNDARY}--`,
+        `not-a-delimiter\r\n--${BOUNDARY}--\r`,
+        '\n',
+      ],
+    },
+  ])('preserves boundary-like file bytes unless the full delimiter grammar matches', async ({ chunks }) => {
+    const tracked = createTrackedBody(createMultipartChunks(chunks));
     const multipart = createStreamingMultipart({
       body: tracked.body,
       contentType: `multipart/form-data; boundary=${BOUNDARY}`,
@@ -127,7 +139,7 @@ describe('createStreamingMultipart', () => {
     }
 
     await expect(readText(part.value.stream)).resolves.toBe(
-      `before\r\n--${BOUNDARY}Xafter\r\n--${BOUNDARY}-after`,
+      `before\r\n--${BOUNDARY}Xafter\r\n--${BOUNDARY}--not-a-delimiter`,
     );
     await expect(reader.read()).resolves.toEqual({ done: true, value: undefined });
   });
@@ -328,5 +340,59 @@ describe('createStreamingMultipart', () => {
 
     expect(tracked.cancel).toHaveBeenCalledWith('handler completed');
     expect(tracked.body.locked).toBe(false);
+  });
+
+  it('joins concurrent abort, iterator return, and dispatch cleanup on one source cancellation', async () => {
+    let resolveCancelStarted!: (reason: unknown) => void;
+    let resolveCleanup!: () => void;
+    const cancelStarted = new Promise<unknown>((resolve) => {
+      resolveCancelStarted = resolve;
+    });
+    const cleanup = new Promise<void>((resolve) => {
+      resolveCleanup = resolve;
+    });
+    const cancel = vi.fn(async (reason: unknown) => {
+      resolveCancelStarted(reason);
+      await cleanup;
+    });
+    const body = new ReadableStream<Uint8Array>({
+      cancel,
+      start(controller) {
+        controller.enqueue(ENCODER.encode(
+          `--${BOUNDARY}\r\nContent-Disposition: form-data; name="payload"; filename="payload.txt"\r\n\r\n`,
+        ));
+      },
+    }, { highWaterMark: 0 });
+    const abortController = new AbortController();
+    const multipart = createStreamingMultipart({
+      body,
+      contentType: `multipart/form-data; boundary=${BOUNDARY}`,
+      signal: abortController.signal,
+    });
+    const parts = multipart.consume();
+    const iteratorReturn = parts.cancel('iterator returned');
+
+    await expect(cancelStarted).resolves.toBe('iterator returned');
+    abortController.abort(new Error('request aborted'));
+    const dispatchCleanup = multipart.cancel('dispatch finished');
+    let resolveEarlyCheck!: () => void;
+    const earlyCheck = new Promise<void>((resolve) => {
+      resolveEarlyCheck = resolve;
+    });
+    const cleanupState = Promise.race([
+      dispatchCleanup.then(() => 'settled'),
+      earlyCheck.then(() => 'pending'),
+    ]);
+
+    resolveEarlyCheck();
+    await expect(cleanupState).resolves.toBe('pending');
+    expect(cancel).toHaveBeenCalledOnce();
+
+    resolveCleanup();
+    await expect(Promise.all([iteratorReturn, dispatchCleanup])).resolves.toEqual([
+      undefined,
+      undefined,
+    ]);
+    expect(body.locked).toBe(false);
   });
 });
