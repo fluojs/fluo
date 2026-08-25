@@ -124,12 +124,6 @@ export const assertReleaseHandoffBinding = (
   artifact,
   artifactPath,
 ) => {
-  if (
-    ledger.release_handoffs.length === 0 &&
-    ledger.lane_plan_approval_sha256 === undefined
-  ) {
-    return;
-  }
   assertReleaseHandoffApproval(ledger, receipt);
   assertContract('search-artifact-v2', artifact);
   assertLaneSourceBinding(ledger, artifact);

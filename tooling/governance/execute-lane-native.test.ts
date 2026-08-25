@@ -421,6 +421,58 @@ describe('$execute-lane persisted native state machine', () => {
     }
   });
 
+  it('rejects persisting a bound snapshot as legacy', () => {
+    const stateDirectory = mkdtempSync(
+      resolve(tmpdir(), 'fluo-execute-persist-downgrade-'),
+    );
+    const probe = `
+      import { readFileSync } from 'node:fs';
+      import { persistState } from ${JSON.stringify(
+        resolve(skillRoot, 'scripts/state-store.mjs'),
+      )};
+      const read = (name) => JSON.parse(
+        readFileSync(${JSON.stringify(fixtureRoot)} + '/' + name + '.json', 'utf8'),
+      );
+      const ledger = read('ready-ledger-release-v2');
+      const downgradedSnapshot = structuredClone(ledger);
+      downgradedSnapshot.release_handoffs = [];
+      delete downgradedSnapshot.lane_plan_approval_sha256;
+      persistState(
+        ${JSON.stringify(stateDirectory)},
+        {
+          snapshot: ledger,
+          events: [],
+          receipts: [],
+          handoffContext: {
+            receipt: read('release-handoff-approval'),
+            artifact: read('search-native-release'),
+            artifactPath:
+              '.omo/search-issue/artifacts/search-native-release.json',
+          },
+        },
+        {
+          snapshot: downgradedSnapshot,
+          events: [],
+          receipts: [],
+        },
+      );
+    `;
+
+    try {
+      expect(() =>
+        execFileSync(
+          process.execPath,
+          ['--input-type=module', '--eval', probe],
+          { encoding: 'utf8' },
+        ),
+      ).toThrow(
+        /release handoff receipt binding does not match the ledger/u,
+      );
+    } finally {
+      rmSync(stateDirectory, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     [
       'binding',
