@@ -18,8 +18,9 @@ This document defines the current request execution contract implemented by `@fl
 10. `invokeControllerHandler(...)` resolves the controller from the request container, binds the declared DTO through the binder, and validates DTO input through `HttpDtoValidationAdapter` when the route declares `request` metadata.
 11. The controller method receives `(input, requestContext)` and returns the handler result.
 12. Successful non-SSE results are written through `writeSuccessResponse(...)`, which applies redirect metadata, route headers, formatter selection, and default success status rules. The dispatcher checks `signal` and `isAborted()` before and after handler execution, treating either cancellation surface as authoritative so a `false` probe cannot mask an aborted signal and aborted requests do not commit late success responses.
-13. If any stage throws, the dispatcher runs `onError` when configured. Otherwise `writeErrorResponse(...)` classifies the failure and either writes canonical JSON or, for eligible `HttpException` and route-miss outcomes, performs the configured HTTP-owned error representation negotiation.
-14. The dispatcher always emits `onRequestFinish`. When a request scope was created or lazily promoted, it disposes that isolated request-scoped container before the request ends; requests whose graphs do not require request scope never dispose the root container. The fast path caches handler metadata only and resolves the controller through the active container for each dispatch, so container-owned singleton sharing and transient fresh-per-resolution identity remain intact.
+13. After module-level and application-level middleware have fully settled, including their work after `await next()`, the dispatcher emits `onRequestSuccess` with the handler result.
+14. If any stage throws, including middleware work after `next()` returns, the dispatcher emits `onRequestError` without a preceding success notification, then runs `onError` when configured. Otherwise `writeErrorResponse(...)` classifies the failure and either writes canonical JSON or, for eligible `HttpException` and route-miss outcomes, performs the configured HTTP-owned error representation negotiation.
+15. The dispatcher always emits `onRequestFinish`. When a request scope was created or lazily promoted, it disposes that isolated request-scoped container before the request ends; requests whose graphs do not require request scope never dispose the root container. The fast path caches handler metadata only and resolves the controller through the active container for each dispatch, so container-owned singleton sharing and transient fresh-per-resolution identity remain intact.
 
 ## Error Representation Boundary
 
@@ -73,5 +74,6 @@ The complete ownership, negotiation, React adapter, and fallback contract is rec
 - Global application middleware runs before handler matching. Module middleware for the matched handler runs after handler matching and before guards.
 - Middleware resolution uses the request-scoped container, so request-scoped dependencies remain available during middleware execution.
 - Middleware MAY commit the response early. When `response.committed` is already `true`, later routing and handler stages do not continue.
+- A handled request is observed as successful only after both module and application middleware chains return. An after-`next()` middleware failure follows the request error observer path instead.
 - Guards and interceptors are not middleware. Guards enforce preconditions through `canActivate(...)`, and interceptors wrap handler execution through `intercept(...)`.
 - Middleware MUST NOT redefine route matching, DTO validation, controller invocation, or response serialization rules owned by the dispatcher policies.

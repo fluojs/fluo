@@ -711,11 +711,9 @@ async function dispatchMatchedHandler(
   executionPlan: CompiledHandlerExecutionPlan,
   requestContext: RequestContext,
   controllerContainer: RequestScopeContainer,
-  observers: RequestObserverLike[],
   contentNegotiation: ResolvedContentNegotiation | undefined,
   binder: Binder | undefined,
-  logger: DispatcherLogger | undefined,
-): Promise<void> {
+): Promise<{ readonly result: unknown } | undefined> {
   const routeGuards = executionPlan.routeGuards;
   if (routeGuards.length > 0) {
     const guardContext: GuardContext = {
@@ -749,15 +747,7 @@ async function dispatchMatchedHandler(
     await writeSuccessResponse(handler, requestContext.request, requestContext.response, result, contentNegotiation, requestContext);
   }
 
-  await notifyObserversSafely(
-    observers,
-    requestContext,
-    async (observer, context) => {
-      await observer.onRequestSuccess?.(context, result);
-    },
-    logger,
-    handler,
-  );
+  return { result };
 }
 
 function resolveHandlerExecutionPlan(
@@ -888,6 +878,18 @@ async function notifyHandlerMatched(context: DispatchPhaseContext, descriptor: H
   );
 }
 
+async function notifyRequestSuccess(context: DispatchPhaseContext, result: unknown): Promise<void> {
+  await notifyObserversSafely(
+    context.observers,
+    context.requestContext,
+    async (observer, observationContext) => {
+      await observer.onRequestSuccess?.(observationContext, result);
+    },
+    context.options.logger,
+    context.matchedHandler,
+  );
+}
+
 async function notifyRequestError(context: DispatchPhaseContext, error: unknown): Promise<void> {
   await notifyObserversSafely(
     context.observers,
@@ -957,6 +959,7 @@ async function tryFastPathExecution(
 
 async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void> {
   ensureRequestNotAborted(context.requestContext.request);
+  let handlerResult: { readonly result: unknown } | undefined;
 
   const appMiddlewareContext: MiddlewareContext = {
     request: context.requestContext.request,
@@ -1005,15 +1008,13 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
     };
 
     await runMiddlewareChain(match.descriptor.metadata.moduleMiddleware ?? [], moduleMiddlewareContext, async () => {
-      await dispatchMatchedHandler(
+      handlerResult = await dispatchMatchedHandler(
         match.descriptor,
         executionPlan,
         context.requestContext,
         context.dispatchScope.container,
-        context.observers,
         context.contentNegotiation,
         context.options.binder,
-        context.options.logger,
       );
     });
   };
@@ -1022,10 +1023,13 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
 
   if (appMiddleware.length === 0) {
     await dispatchMatchedRoute();
-    return;
+  } else {
+    await runMiddlewareChain(appMiddleware, appMiddlewareContext, dispatchMatchedRoute);
   }
 
-  await runMiddlewareChain(appMiddleware, appMiddlewareContext, dispatchMatchedRoute);
+  if (handlerResult) {
+    await notifyRequestSuccess(context, handlerResult.result);
+  }
 }
 
 async function handleDispatchError(context: DispatchPhaseContext, error: unknown): Promise<void> {

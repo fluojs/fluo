@@ -80,7 +80,7 @@ When a single HTTP request arrives, fluo runs the pipeline in the following orde
 7.  **Interceptors (Before)**: Runs the `intercept()` methods in the Interceptor chain. This starts in `dispatcher.ts:L181`. Logic that transforms request data or measures execution time belongs here.
 8.  **Handler Execution**: Calls the real Controller method after DTO binding and validation. `invokeControllerHandler` performs this role, and `packages/http/src/dispatch/dispatcher.test.ts:L541-L619` focuses on testing parameter mapping for this stage.
 9.  **Interceptors (After)**: Processes the result returned by the handler, or the error it threw. The reverse-order chain in `interceptors.ts` completes here and normalizes the final response object.
-10. **Response Writing**: Serializes the final result into an HTTP response and sends it to the client. `writeSuccessResponse` is called in `dispatcher.ts:L188`. `Content-Type` negotiation is finalized at this point.
+10. **Response Writing and Success Observation**: Serializes the final result into an HTTP response and sends it to the client. `Content-Type` negotiation is finalized at this point, but `onRequestSuccess` is deferred until both module and application middleware have completed their work after `await next()`. If that after-`next()` work throws, the request follows the error observer path without a preceding success notification.
 
 ## 11.3 RequestContext and Runtime-Dependent Async Isolation
 
@@ -121,7 +121,7 @@ async function notifyObservers(
 }
 ```
 
-This structure lets you record global performance metrics or audit logs without changing business logic. `packages/http/src/dispatch/dispatcher.test.ts:L898-L997` proves the fault-tolerant behavior where the whole pipeline can still complete even if an observer throws at a specific stage.
+This structure lets you record global performance metrics or audit logs without changing business logic. Success observers see only a fully settled middleware pipeline: module and application middleware after-`next()` work completes first, while a failure in that work produces `onRequestError` without an earlier `onRequestSuccess`. `packages/http/src/dispatch/dispatcher.test.ts:L898-L997` proves the fault-tolerant behavior where the whole pipeline can still complete even if an observer throws at a specific stage.
 
 ## 11.5 Precise Handling of Aborted Requests
 
