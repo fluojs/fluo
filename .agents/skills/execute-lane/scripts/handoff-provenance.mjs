@@ -28,8 +28,23 @@ const hasExactKeys = (record, keys) => {
   );
 };
 
+const canonicalValue = (value) => {
+  if (Array.isArray(value)) {
+    return value.map(canonicalValue);
+  }
+  if (!isRecord(value)) {
+    return value;
+  }
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .map((key) => [key, canonicalValue(value[key])]),
+  );
+};
+
 const sameValue = (left, right) =>
-  JSON.stringify(left) === JSON.stringify(right);
+  JSON.stringify(canonicalValue(left)) ===
+  JSON.stringify(canonicalValue(right));
 
 const assertReceipt = (receipt, ledger, stage) => {
   const stageKeys =

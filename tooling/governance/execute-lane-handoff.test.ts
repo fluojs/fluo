@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import {
   copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -24,8 +25,11 @@ const createLaneFixture = resolve(
 const ledgerRelativePath = '.omo/lanes/lane-4101-runtime.json';
 const artifactRelativePath =
   '.omo/search-issue/artifacts/search-native-runtime.json';
-const confirmedReceiptRelativePath =
-  '.omo/approvals/approval-lane-4101-runtime-confirmed-issues.json';
+const receiptRelativePaths = [
+  '.omo/approvals/approval-lane-4101-runtime-confirmed-issues.json',
+  '.omo/approvals/approval-lane-4101-runtime-suggested-additions.json',
+  '.omo/approvals/approval-lane-4101-runtime-lane-plan.json',
+];
 const temporaryRoots: string[] = [];
 
 const { loadState } = (await import(
@@ -38,6 +42,17 @@ const { loadState } = (await import(
     stateDirectory: string,
     ledgerPath: string,
     root?: string,
+  ) => Readonly<Record<string, unknown>>;
+};
+const { acquireLease } = (await import(
+  resolve(
+    repositoryRoot,
+    '.agents/skills/execute-lane/scripts/lane-lease.mjs',
+  )
+)) as {
+  acquireLease: (
+    stateDirectory: string,
+    laneId: string,
   ) => Readonly<Record<string, unknown>>;
 };
 
@@ -66,7 +81,7 @@ const createProducerOutput = (): Readonly<{
   root: string;
   ledgerPath: string;
   artifactPath: string;
-  confirmedReceiptPath: string;
+  receiptPaths: readonly string[];
   stateDirectory: string;
 }> => {
   const root = mkdtempSync(resolve(tmpdir(), 'fluo-lane-handoff-'));
@@ -103,7 +118,7 @@ const createProducerOutput = (): Readonly<{
     root,
     ledgerPath: resolve(root, ledgerRelativePath),
     artifactPath,
-    confirmedReceiptPath: resolve(root, confirmedReceiptRelativePath),
+    receiptPaths: receiptRelativePaths.map((path) => resolve(root, path)),
     stateDirectory,
   };
 };
@@ -160,12 +175,41 @@ describe('$execute-lane canonical handoff boundary', () => {
     ).toThrow();
   });
 
-  it('rejects a normal lane whose approval receipt was changed', () => {
+  it.each(receiptRelativePaths)(
+    'rejects a normal lane whose %s receipt was changed',
+    (receiptRelativePath) => {
+      // Given
+      const handoff = createProducerOutput();
+      const receiptPath = resolve(handoff.root, receiptRelativePath);
+      writeRecord(receiptPath, {
+        ...parseRecord(receiptPath),
+        binding_sha256: '0'.repeat(64),
+      });
+
+      // When / Then
+      expect(() =>
+        loadState(
+          handoff.stateDirectory,
+          handoff.ledgerPath,
+          handoff.root,
+        ),
+      ).toThrow(/approval binding/u);
+    },
+  );
+
+  it('accepts a resumed snapshot with reordered immutable object keys', () => {
     // Given
     const handoff = createProducerOutput();
-    writeRecord(handoff.confirmedReceiptPath, {
-      ...parseRecord(handoff.confirmedReceiptPath),
-      binding_sha256: '0'.repeat(64),
+    const ledger = parseRecord(handoff.ledgerPath);
+    const authority = ledger['authority_scope'];
+    if (!isRecord(authority)) {
+      throw new TypeError('Lane ledger must contain authority_scope.');
+    }
+    writeRecord(resolve(handoff.stateDirectory, 'snapshot.json'), {
+      ...ledger,
+      authority_scope: Object.fromEntries(
+        Object.entries(authority).reverse(),
+      ),
     });
 
     // When / Then
@@ -175,7 +219,7 @@ describe('$execute-lane canonical handoff boundary', () => {
         handoff.ledgerPath,
         handoff.root,
       ),
-    ).toThrow(/approval binding/u);
+    ).not.toThrow();
   });
 
   it('rejects a resumed snapshot with a changed immutable authority', () => {
@@ -202,5 +246,20 @@ describe('$execute-lane canonical handoff boundary', () => {
         handoff.root,
       ),
     ).toThrow(/immutable plan/u);
+  });
+
+  it('removes the lock when lease initialization fails', () => {
+    // Given
+    const stateDirectory = mkdtempSync(
+      resolve(tmpdir(), 'fluo-lane-lease-'),
+    );
+    temporaryRoots.push(stateDirectory);
+    mkdirSync(resolve(stateDirectory, 'lease.json'));
+
+    // When / Then
+    expect(() =>
+      acquireLease(stateDirectory, 'lane-4101-runtime'),
+    ).toThrow();
+    expect(existsSync(resolve(stateDirectory, 'lease.lock'))).toBe(false);
   });
 });

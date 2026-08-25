@@ -41,16 +41,20 @@ export const acquireLease = (stateDirectory, laneId) => {
   const descriptor = openSync(lockPath, 'wx');
   const token = randomUUID();
   const leasePath = resolve(stateDirectory, 'lease.json');
-  writeAtomic(leasePath, {
-    version: 1,
-    lane_id: laneId,
-    holder: `execute-lane:${token}`,
-    status: 'active',
-  });
+  try {
+    writeAtomic(leasePath, {
+      version: 1,
+      lane_id: laneId,
+      holder: `execute-lane:${token}`,
+      status: 'active',
+    });
+  } catch (error) {
+    closeSync(descriptor);
+    unlinkSync(lockPath);
+    throw error;
+  }
   return {
     release(outcome) {
-      closeSync(descriptor);
-      unlinkSync(lockPath);
       writeAtomic(leasePath, {
         version: 1,
         lane_id: laneId,
@@ -58,6 +62,8 @@ export const acquireLease = (stateDirectory, laneId) => {
         status: 'released',
         outcome,
       });
+      closeSync(descriptor);
+      unlinkSync(lockPath);
     },
   };
 };
