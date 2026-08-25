@@ -110,11 +110,20 @@ export const planIsCanonical = (plan, artifact) => {
     plan.source.artifact_id !== artifact.artifact_id ||
     plan.source.sha256 !== artifact.sha256 ||
     !isIssueArray(plan.confirmed_issues) ||
-    !Array.isArray(plan.suggested_but_excluded) ||
-    !Array.isArray(plan.backlog_candidates) ||
+    !isIssueArray(plan.suggested_but_excluded) ||
+    !isIssueArray(plan.backlog_candidates) ||
     handoffIssues === null ||
     !Array.isArray(plan.lanes) ||
     plan.lanes.length === 0
+  ) {
+    return false;
+  }
+  const confirmedIssues = new Set(plan.confirmed_issues);
+  if (
+    plan.suggested_but_excluded.some((issue) =>
+      confirmedIssues.has(issue),
+    ) ||
+    plan.backlog_candidates.some((issue) => confirmedIssues.has(issue))
   ) {
     return false;
   }

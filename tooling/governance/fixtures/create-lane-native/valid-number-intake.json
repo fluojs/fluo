@@ -1,16 +1,8 @@
 {
   "intake": {
-    "mode": "artifact",
-    "artifact_path": ".omo/search-issue/artifacts/search-native-runtime.json"
-  },
-  "artifacts": {
-    ".omo/search-issue/artifacts/search-native-runtime.json": {
-      "version": 2,
-      "artifact_id": "search:search-native-runtime",
-      "sha256": "f412d5b2fcbb0cf092215c44d7974159a5f7777720bcf92ca5eb95c37115bcfb",
-      "search_run_id": "search-native-runtime",
-      "selected_issues": [4101]
-    }
+    "mode": "issue-numbers",
+    "issue_numbers": [4101],
+    "search_run_id": "search-native-runtime"
   },
   "recommended_issue_numbers": [],
   "approvals": [

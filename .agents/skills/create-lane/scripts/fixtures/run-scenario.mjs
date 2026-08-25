@@ -9,6 +9,7 @@ import {
 } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { publishSearchArtifact } from '../../../search-issue/scripts/publish-search-artifact.mjs';
 import { prepareScenario } from '../contracts.mjs';
 
 class UnsafeOutputPathError extends TypeError {}
@@ -98,7 +99,7 @@ const publishReadyLane = (outputRoot, prepared) => {
                 approval.release_handoff_attestations,
               plan: prepared.plan,
             }
-          : {}),
+          : { issue_numbers: approval.issue_numbers }),
       },
     ),
     target: resolve(
@@ -145,8 +146,40 @@ const publishReadyLane = (outputRoot, prepared) => {
 };
 
 const prepared = prepareScenario(valueAfter('--scenario'));
-const result =
-  prepared.kind === 'rejected'
-    ? prepared.result
-    : publishReadyLane(resolve(valueAfter('--out')), prepared);
+const outputRoot = resolve(valueAfter('--out'));
+let result;
+if (prepared.kind === 'rejected') {
+  result = prepared.result;
+} else {
+  if (prepared.publishArtifact) {
+    try {
+      const published = publishSearchArtifact({
+        repositoryRoot: outputRoot,
+        runId: prepared.artifact.search_run_id,
+        issueNumbers: prepared.artifact.selected_issues,
+      });
+      if (
+        published.artifact_path !== prepared.artifactPath ||
+        JSON.stringify(published.artifact) !==
+          JSON.stringify(prepared.artifact)
+      ) {
+        throw new TypeError(
+          'Published artifact does not match normalized intake.',
+        );
+      }
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'EEXIST') {
+        result = { status: 'rejected', reason: 'artifact_collision' };
+      } else if (
+        error instanceof TypeError &&
+        /symbolic-link|symlink/u.test(error.message)
+      ) {
+        result = { status: 'rejected', reason: 'unsafe_output_path' };
+      } else {
+        throw error;
+      }
+    }
+  }
+  result ??= publishReadyLane(outputRoot, prepared);
+}
 process.stdout.write(`${JSON.stringify(result)}\n`);

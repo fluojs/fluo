@@ -1,6 +1,6 @@
 ---
 name: create-lane
-description: Native OMO lane planning invoked with leading $create-lane. Consumes one canonical search artifact, obtains three independent approvals, and atomically creates one source-bound v2 lane ledger.
+description: Native OMO lane planning invoked with leading $create-lane. Accepts a canonical search artifact, bulk issue numbers, or a verbal issue-collection request; asks at most one normal additions question and atomically creates one source-bound v2 lane ledger.
 ---
 
 # Create lane
@@ -11,33 +11,54 @@ contracts in `.agents/workflow-contracts`.
 
 ## Boundary
 
-Accept exactly one canonical v2 artifact from either
-`.omo/search-issue/artifacts/<search-run-id>.json` or the importer-owned
-`.omo/search-issue/artifacts/legacy/<search-run-id>.json` path. Reject
-issue-number and artifact mixtures, archived `.opencode` paths, deeper or
-noncanonical artifact paths, malformed artifacts, path/ID disagreement, and
-existing lane targets without writing a candidate, lock, or ledger.
+Accept exactly one of these intake forms:
 
-Direct issue-number input is intentionally retired by the v2 provenance
-contract. Preserve that use case by first publishing a bound artifact:
-
-```bash
-node .agents/skills/search-issue/scripts/publish-search-artifact.mjs \
-  --run-id manual-<id> --issues <n1,n2> --root .
+```text
+$create-lane .omo/search-issue/artifacts/<search-run-id>.json
+$create-lane 4101 4102 4103
+$create-lane collect the open runtime cleanup issues into one lane
 ```
+
+Artifact intake accepts canonical native or importer-owned legacy paths. Bulk
+numbers are unique positive issue numbers supplied by the invocation. Verbal
+intake resolves the description through fresh read-only GitHub observations.
+Clarification needed to identify the intended issue set is collection, not an
+approval gate. Do not ask the user to reconfirm the resulting initial set.
+
+Verify every direct or collected issue read-only, generate a safe
+`create-lane-issues-*` or `create-lane-verbal-*` run ID, publish the exact
+ordered set through `publishSearchArtifact()`, then re-read and validate the
+canonical `search-artifact-v2`. All three forms enter the same artifact
+boundary before recommendation or planning. Reject empty, duplicate,
+non-positive, mixed-mode, unresolved, noncanonical, or path/ID-mismatched
+inputs before lane publication.
 
 This skill performs read-only issue verification and lane planning. It does not
 create issues, implement code, create branches or worktrees, open or merge PRs,
 clean up worktrees, sync the root checkout, or publish packages.
 
-## Required gates
+## Interaction and receipts
 
-Obtain these approvals in order from three distinct user interactions:
+The invocation or validated artifact selects the initial issue set. Search for
+related issues that may belong in the same lane. If there are recommendations,
+ask exactly one question:
 
-1. `confirmed-issues`: the exact selected issue set.
-2. `suggested-additions`: additions are separately accepted or excluded.
-3. `lane-plan`: the final multi-issue grouping, dependencies, lane ID, merge
-   policy, retry policy, release handoffs, and authority scope.
+```text
+Recommended additions: #4103, #4104.
+Include all, none, or list the issue numbers to include.
+```
+
+The response must partition recommendations into included and excluded issues.
+Included issues append to the initial artifact order; excluded issues become
+`suggested_but_excluded`. If there are no recommendations, ask nothing. Build
+the final grouping, dependencies, lane ID, merge policy, retry policy, and
+authority scope deterministically without a normal lane-plan question.
+
+Persist the existing `confirmed-issues`, `suggested-additions`, and `lane-plan`
+receipt identities as plan/source-bound machine evidence. The first and third
+normal receipts are derived from validated state; the second records the sole
+additions response or an empty derived decision. Three receipts do not mean
+three user interactions.
 
 Unless the user explicitly chooses a legacy bounded policy, propose and persist
 this adaptive retry policy in the final lane plan:
@@ -52,7 +73,7 @@ this adaptive retry policy in the final lane plan:
 ```
 
 Retry count and elapsed time remain observable telemetry but do not terminate
-fixable work. The policy is part of the approved immutable plan. Never rewrite
+fixable work. The policy is part of the immutable plan. Never rewrite
 an existing lane ledger to adopt a newer default; previously approved bounded
 policies retain their original limits.
 
@@ -61,30 +82,36 @@ publish decision that must stop at `blocked-maintainer-decision`. A public
 package change that merely requires a Changeset is normal implementation work
 and must not enter `release_handoffs`. Every planned handoff must occupy a
 dedicated single-issue lane and bind `release-or-publish-is-core` to a SHA-256
-digest of the lead's live issue observation. The `lane-plan` response must
-separately attest to the same issue/digest with `changeset_only: false`;
-planner-controlled text alone never authorizes a handoff.
-
-Each persisted approval binds the complete plan plus artifact ID/SHA and is
-consumed exactly once. An approval response cannot satisfy more than one gate.
-If structured questions are unavailable, present the gate and wait for a
-separate plain-text response. Never infer a later approval from an earlier
-response.
+digest of the lead's live issue observation. An exceptional trusted-lead
+release-authority response must separately attest to the same issue/digest with
+`changeset_only: false`; planner-controlled text or a derived receipt never
+authorizes a handoff. This extra interaction occurs only when release or
+publishing is the issue's core task.
 
 Approval IDs and binding hashes are replay/corruption controls, not identity
-signatures. Production approval exists only when the trusted lead observes
-three separate native user responses. `scripts/fixtures/run-scenario.mjs`
-accepts synthetic approvals for tests and is forbidden in production.
+signatures. Production additions approval exists only when the trusted lead
+observes the one native response, and release authority exists only when the
+trusted lead observes its separate exceptional response.
+`scripts/fixtures/run-scenario.mjs` accepts synthetic receipts for tests and is
+forbidden in production.
 
 ## Production
 
+For generated intake, exclusively publish the canonical artifact before
+recommendation and planning. An artifact collision preserves the existing file
+and returns its stable recovery path; never overwrite it. If planning is
+cancelled or lane publication later collides, retain the generated artifact so
+artifact-path mode can resume.
+
 Build a v2 lane value, bind `source.artifact_id` and `source.sha256` exactly to
-the accepted artifact, and validate both values with
-`.agents/workflow-contracts/contracts.mjs`. Only after all gates and validation
-succeed, exclusively create `.omo/lanes/<lane-id>.json` and the three consumed
-approval receipts. Lane queues must partition every approved issue exactly
-once. A target/approval collision is terminal, preserves existing files, and
-rolls back newly linked receipts. Refuse symlinked output directories.
+the accepted or generated artifact, and validate both values with
+`.agents/workflow-contracts/contracts.mjs`. Normal lanes omit
+`lane_plan_approval_sha256`; release handoffs bind it to the exceptional
+authority receipt. Exclusively create `.omo/lanes/<lane-id>.json` and the three
+stage receipts as one atomic unit. Lane queues must partition every included
+issue exactly once. A target/receipt collision is terminal, preserves existing
+files, and rolls back newly linked receipts without deleting generated
+provenance. Refuse symlinked output directories.
 
 For deterministic contract exercises, run:
 

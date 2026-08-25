@@ -1,5 +1,8 @@
 {
-  "inputs": [".omo/search-issue/artifacts/search-native-multi.json"],
+  "intake": {
+    "mode": "artifact",
+    "artifact_path": ".omo/search-issue/artifacts/search-native-multi.json"
+  },
   "artifacts": {
     ".omo/search-issue/artifacts/search-native-multi.json": {
       "version": 2,
@@ -9,6 +12,7 @@
       "selected_issues": [4101, 4102]
     }
   },
+  "recommended_issue_numbers": [4103],
   "approvals": [
     {
       "gate": "confirmed-issues",
