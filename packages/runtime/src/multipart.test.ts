@@ -67,6 +67,33 @@ describe('parseMultipart', () => {
     });
   });
 
+  it('parses a buffered multipart body with an RFC preamble', async () => {
+    // Given
+    const boundary = 'fluo-preamble';
+    const request = new Request('http://localhost/uploads', {
+      body: [
+        'This preamble must be ignored by multipart recipients.\r\n',
+        `--${boundary}\r\n`,
+        'Content-Disposition: form-data; name="name"\r\n\r\n',
+        'Ada\r\n',
+        `--${boundary}--\r\n`,
+      ].join(''),
+      headers: {
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+      },
+      method: 'POST',
+    });
+
+    // When
+    const result = parseMultipart(request);
+
+    // Then
+    await expect(result).resolves.toEqual({
+      fields: { name: 'Ada' },
+      files: [],
+    });
+  });
+
   it('parses multipart input from request-like compatibility wrappers', async () => {
     const form = new FormData();
     form.append('name', 'Ada');

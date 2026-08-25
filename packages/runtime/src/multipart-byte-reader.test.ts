@@ -3,6 +3,45 @@ import { describe, expect, it, vi } from 'vitest';
 import { MultipartByteReader } from './multipart-byte-reader.js';
 
 describe('MultipartByteReader', () => {
+  it('discards a chunked multipart preamble while scanning for the first boundary', async () => {
+    const boundary = 'fluo-preamble';
+    const initialBoundary = new TextEncoder().encode(`--${boundary}`);
+    const bodyBoundary = new TextEncoder().encode(`\r\n--${boundary}`);
+    const chunks = [
+      ...Array.from({ length: 128 }, () => new Uint8Array(1024)),
+      new TextEncoder().encode(`\r\n--${boundary}\r\n`),
+    ];
+    const retainedSizes: number[] = [];
+    let index = 0;
+    let reader: MultipartByteReader | undefined;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (!reader) {
+          throw new Error('Expected the multipart byte reader before source pull.');
+        }
+
+        retainedSizes.push(reader['buffer'].byteLength);
+        const chunk = chunks[index];
+        index += 1;
+
+        if (chunk) {
+          controller.enqueue(chunk);
+          return;
+        }
+
+        controller.close();
+      },
+    }, { highWaterMark: 0 });
+    reader = new MultipartByteReader(body, 256 * 1024);
+
+    await reader.skipPreamble(initialBoundary, bodyBoundary);
+
+    expect(Math.max(...retainedSizes)).toBeLessThanOrEqual(bodyBoundary.byteLength - 1);
+    await expect(reader.readBytes(2)).resolves.toEqual(new Uint8Array([13, 10]));
+    await reader.cancel();
+    expect(body.locked).toBe(false);
+  });
+
   it('keeps abort cancellation active while draining the multipart epilogue', async () => {
     let markPullStarted!: () => void;
     const pullStarted = new Promise<void>((resolve) => {

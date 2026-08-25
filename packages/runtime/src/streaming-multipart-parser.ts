@@ -119,12 +119,7 @@ export class StreamingMultipartParser {
     }
 
     if (!this.initialized) {
-      const initial = await this.reader.readBytes(this.initialBoundary.byteLength);
-
-      if (!bytesEqual(initial, this.initialBoundary)) {
-        throw new BadRequestException('Multipart body does not start with the declared boundary.');
-      }
-
+      await this.reader.skipPreamble(this.initialBoundary, this.bodyBoundary);
       this.initialized = true;
       await this.finishBoundary();
 

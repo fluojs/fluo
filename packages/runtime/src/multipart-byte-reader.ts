@@ -100,6 +100,35 @@ export class MultipartByteReader {
     return bytes;
   }
 
+  async skipPreamble(
+    initialBoundary: Uint8Array,
+    bodyBoundary: Uint8Array,
+  ): Promise<void> {
+    while (this.buffer.byteLength < initialBoundary.byteLength + 2) {
+      const result = await this.readSource();
+
+      if (result.done) {
+        throw new BadRequestException('Multipart body ended before the initial boundary.');
+      }
+    }
+
+    if (
+      findBytes(this.buffer, initialBoundary) === 0
+      && await this.hasLegalBoundarySuffix(initialBoundary.byteLength)
+    ) {
+      this.buffer = this.buffer.slice(initialBoundary.byteLength);
+      return;
+    }
+
+    for (;;) {
+      const chunk = await this.readBodyChunk(bodyBoundary);
+
+      if (chunk.boundary) {
+        return;
+      }
+    }
+  }
+
   async readUntil(delimiter: Uint8Array, maxLength?: number): Promise<Uint8Array> {
     for (;;) {
       const index = findBytes(this.buffer, delimiter);
