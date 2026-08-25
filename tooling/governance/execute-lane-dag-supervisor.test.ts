@@ -230,8 +230,8 @@ const identity = {
   },
   retry_policy: {
     retry_count_is_terminal: true,
-    max_same_failure_repeats: 3,
-    max_wall_clock_minutes: 180,
+    max_same_failure_repeats: 5,
+    max_wall_clock_minutes: 360,
     stop_on_child_contract_error: true,
   },
 } as const;
