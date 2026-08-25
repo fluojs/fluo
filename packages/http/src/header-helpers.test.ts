@@ -83,6 +83,18 @@ describe('appendVaryHeader', () => {
     expect(response.headers.Vary).toBe('Accept-Encoding, Origin, Accept');
   });
 
+  it('merges duplicate-case vary entries into one canonical header', () => {
+    const response = createResponse();
+    response.headers.Vary = 'Accept-Encoding';
+    response.headers.vary = 'Origin';
+
+    appendVaryHeader(response, 'Accept');
+
+    expect(response.headers).toEqual({
+      Vary: 'Accept-Encoding, Origin, Accept',
+    });
+  });
+
   it('preserves a wildcard vary response without appending extra fields', () => {
     const response = createResponse();
     response.setHeader('vary', '*, Accept-Encoding');

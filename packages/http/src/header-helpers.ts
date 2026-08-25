@@ -121,9 +121,11 @@ export function appendVaryHeader(
   response: FrameworkResponse,
   ...fields: string[]
 ): void {
-  const existingEntry = findCaseInsensitiveHeaderEntry(response.headers, 'vary');
+  const existingEntries = Object.entries(response.headers).filter(
+    ([name]) => name.toLowerCase() === 'vary',
+  );
   const existingTokens = parseHeaderTokens(
-    Array.isArray(existingEntry?.[1]) ? existingEntry[1] : existingEntry?.[1] === undefined ? [] : [existingEntry[1]],
+    existingEntries.flatMap(([, value]) => (Array.isArray(value) ? value : [value])),
   );
   const appendedTokens = parseHeaderTokens(fields);
   const mergedTokens = [...existingTokens, ...appendedTokens];
@@ -132,8 +134,14 @@ export function appendVaryHeader(
     return;
   }
 
+  const canonicalHeaderName = existingEntries[0]?.[0] ?? 'Vary';
+
+  for (const [name] of existingEntries.slice(1)) {
+    delete response.headers[name];
+  }
+
   if (mergedTokens.some((token) => token === '*')) {
-    response.setHeader(existingEntry?.[0] ?? 'Vary', '*');
+    response.setHeader(canonicalHeaderName, '*');
     return;
   }
 
@@ -152,6 +160,6 @@ export function appendVaryHeader(
   }
 
   if (dedupedTokens.length > 0) {
-    response.setHeader(existingEntry?.[0] ?? 'Vary', dedupedTokens.join(', '));
+    response.setHeader(canonicalHeaderName, dedupedTokens.join(', '));
   }
 }
