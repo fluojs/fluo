@@ -17,7 +17,7 @@ fluo는 두 가지 공식 realtime path를 제공합니다.
 | Raw WebSocket protocol control | `@fluojs/websockets` | 작은 protocol surface와 runtime-specific subpath를 제공합니다. |
 | Node, Bun, Deno, Workers portability | `@fluojs/websockets` | 공식 subpath가 runtime-specific module을 노출합니다. |
 | Room, namespace, broadcasting, Socket.IO clients | `@fluojs/socket.io` | fluo gateway decorator를 공유하면서 Socket.IO v4를 사용합니다. |
-| Node/Fastify/Express server-backed realtime | 둘 다 가능 | WebSockets는 server-backed gateway를 지원하고 Socket.IO도 server-backed mode를 지원합니다. |
+| Node/Fastify/Express dedicated realtime listener | `@fluojs/websockets/node` | Raw WebSockets는 `serverBacked`를 지원하지만 Socket.IO gateway는 항상 application listener를 공유합니다. |
 | Deno 또는 Workers Socket.IO | 지원하지 않음 | Socket.IO 문서는 현재 Node와 Bun만 지원합니다. |
 
 ## Raw WebSocket gateways
@@ -241,12 +241,14 @@ Guard function은 `true`, `false`, 또는 `message`, optional `data`, optional `
 
 | Platform | Support | Note |
 | --- | --- | --- |
-| Node.js, Express, Fastify | Supported | Server-backed mode |
+| Node.js, Express, Fastify | Supported | Shared application listener; Socket.IO는 `serverBacked`를 거부함 |
 | Bun | Supported | `@socket.io/bun-engine` 사용; CORS shape은 static이어야 함 |
 | Deno | Not supported | Raw WebSockets 사용 |
 | Cloudflare Workers | Not supported | Raw WebSockets 사용 |
 
 Shutdown 중 Socket.IO는 연결된 Socket.IO client를 cleanup하지만, underlying HTTP server는 platform adapter 또는 shared HTTP server integration이 소유합니다. 같은 managed Socket.IO instance 주변에 두 번째 manual disconnect path를 추가하지 마세요.
+
+Socket.IO는 모든 runtime에서 `@WebSocketGateway({ serverBacked })`를 거부합니다. 기존 설정은 해당 option을 제거하고 shared application listener를 사용해야 합니다. Dedicated listener가 필요하면 gateway를 `@fluojs/websockets/node`로 마이그레이션하거나 `SocketIoModule` 밖에서 별도 Socket.IO server를 직접 소유하세요.
 
 ## Public API summary
 
@@ -261,7 +263,8 @@ Shutdown 중 Socket.IO는 연결된 Socket.IO client를 cleanup하지만, underl
 | --- | --- |
 | Raw WebSocket으로 충분한데 Socket.IO부터 사용함 | Room/namespace/client compatibility가 필요할 때만 `@fluojs/socket.io`를 선택하세요. |
 | 모든 upgrade를 허용하고 나중에 인증함 | Pre-upgrade guard 또는 Socket.IO connection guard를 사용하세요. |
-| Fetch-style runtime이 `serverBacked` gateway를 지원한다고 가정함 | Runtime subpath module을 사용하고 Bun/Deno/Workers WebSocket path에서 server-backed option을 피하세요. |
+| Socket.IO가 어떤 runtime에서든 `serverBacked`를 지원한다고 가정함 | Shared application listener를 사용하거나 `@fluojs/websockets/node`로 마이그레이션하거나 별도 Socket.IO server를 직접 소유하세요. |
+| Fetch-style raw WebSocket runtime이 `serverBacked`를 지원한다고 가정함 | Runtime subpath module을 사용하고 Bun/Deno/Workers raw WebSocket path에서 server-backed option을 피하세요. |
 | CORS를 기본 open 상태로 둠 | Socket.IO에서 허용 origin을 명시적으로 설정하세요. |
 | Payload bound를 무시함 | `maxPayloadBytes` 또는 `engine.maxHttpBufferSize`를 bounded하게 유지하세요. |
 | Socket.IO cleanup에서 shared HTTP listener를 직접 닫음 | HTTP server ownership은 platform adapter에 맡기세요. |

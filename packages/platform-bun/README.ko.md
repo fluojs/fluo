@@ -64,7 +64,7 @@ Bun.serve({
 ```
 
 ### 네이티브 WebSocket 업그레이드
-어댑터는 `@fluojs/websockets/bun` 바인딩을 통해 Bun의 네이티브 `server.upgrade()`를 지원합니다. 런타임이 해당 바인딩을 설치하고 등록된 게이트웨이를 찾을 수 있도록 `app.listen()` 전에 application module에서 `BunWebSocketModule.forRoot(...)`를 import하세요.
+어댑터는 `@fluojs/websockets/bun` 바인딩을 통해 Bun의 네이티브 `server.upgrade()`를 지원합니다. `getRealtimeCapability()`는 fetch-style capability version 1을 보존하면서 optional versioned `bindingInstallation` extension을 추가합니다. First-party WebSocket 및 Socket.IO module은 `app.listen()` 전에 이 protocol-neutral installer를 사용하고 adapter는 설치된 값을 Bun binding contract로 parse합니다. 런타임이 해당 바인딩을 설치하고 등록된 게이트웨이를 찾을 수 있도록 `app.listen()` 전에 application module에서 `BunWebSocketModule.forRoot(...)`를 import하세요.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -98,7 +98,7 @@ Native handoff가 붙은 뒤 app middleware가 framework request의 method 또�
 
 어댑터는 realtime 패키지가 사용하는 타입 지정 Bun 통합 seam도 함께 내보냅니다.
 
-- `BunHttpApplicationAdapter`: `Bun.serve()`를 기반으로 동작하는 `HttpApplicationAdapter` 구현체입니다.
+- `BunHttpApplicationAdapter`: `Bun.serve()`를 기반으로 동작하는 `HttpApplicationAdapter` 구현체이며 `getRealtimeCapability()`는 fetch-style capability version 1을 보존하면서 optional `bindingInstallation`을 포함합니다.
 - `BunAdapterOptions`: `createBunAdapter()`가 받는 host, port, TLS, raw-body, multipart, shutdown 옵션입니다.
 - `BootstrapBunApplicationOptions` 및 `RunBunApplicationOptions`: Bun 호스팅 애플리케이션의 bootstrap/run 옵션입니다.
 - `BunWebSocketBinding`, `BunWebSocketUpgradeHost` 및 `BunRealtimeBindingHost`: 일반 HTTP dispatch 전에 `@fluojs/websockets/bun`이 사용하는 binding 계약입니다. Binding은 upgrade 가능한 host만 받으며 adapter가 소유하는 Bun server lifecycle이나 raw fetch handler는 받지 않습니다.
@@ -115,7 +115,7 @@ Native handoff가 붙은 뒤 app middleware가 framework request의 method 또�
 - **시작 target**: `hostname`, `port`, `tls`는 `Bun.serve()`로 전달됩니다. 시작 로그는 설정된 HTTP 또는 HTTPS listen URL을 보고합니다.
 - **Lifecycle guard**: 이미 시작된 adapter에서 `listen()`을 다시 호출해도 원래 live dispatcher binding을 유지합니다. Realtime/websocket binding은 `listen()`이 시작되기 전에만 구성할 수 있으며, 이후 binding을 설정하거나 지우려는 시도는 live wiring에 영향을 주지 않은 채 수락되지 않고 빠르게 실패합니다.
 - **종료 소유권**: `close()`는 새 HTTP 및 websocket-upgrade 유입을 `503` shutdown 응답으로 중단하고, 수락된 모든 요청을 realtime binding 평가부터 HTTP 응답 또는 upgrade 완료까지 기다린 뒤, drain이 끝나면 adapter state를 정리하며 `runBunApplication()`이 등록한 signal listener를 제거합니다.
-- **Realtime seam**: Bun websocket binding은 서버를 시작하는 `listen()` 전에 구성해야 합니다. Adapter가 새 유입을 받는 동안 Upgrade 요청은 HTTP dispatch로 넘어가기 전에 구성된 binding에 먼저 전달되며, 비동기 binding 평가 도중 shutdown이 시작되어도 이미 수락된 요청에는 dispatcher가 유지되고, binding이 response를 반환하거나 요청 업그레이드에 성공한 경우에만 HTTP fallback을 억제합니다. Binding host는 `upgrade(...)`만 노출하므로 adapter가 소유하는 `stop()`과 raw `fetch()` 제어는 realtime seam 밖에 남습니다.
+- **Realtime seam**: `getRealtimeCapability()`는 fetch-style version 1을 보존하면서 optional version 1 `bindingInstallation` contract를 노출합니다. Bun websocket binding은 서버를 시작하는 `listen()` 전에 구성해야 합니다. Capability installer는 protocol package를 위한 canonical configuration path이며 `fetch` 및 `websocket` host contract가 없는 값을 거부합니다. Startup 이후 live server의 binding은 고정되고 adapter `close()` boundary가 drain 후 retained binding state를 정리합니다. Adapter가 새 유입을 받는 동안 Upgrade 요청은 HTTP dispatch로 넘어가기 전에 구성된 binding에 먼저 전달되며, 비동기 binding 평가 도중 shutdown이 시작되어도 이미 수락된 요청에는 dispatcher가 유지되고, binding이 response를 반환하거나 요청 업그레이드에 성공한 경우에만 HTTP fallback을 억제합니다. Binding host는 `upgrade(...)`만 노출하므로 adapter가 소유하는 `stop()`과 raw `fetch()` 제어는 realtime seam 밖에 남습니다.
 - **Adapter instance helper**: `BunHttpApplicationAdapter`는 `getServer()`, `getListenTarget()`, `getRealtimeCapability()`, `configureRealtimeBinding()`, `configureWebSocketBinding()`, `listen()`, `close()`를 노출합니다.
 
 ## Conformance 커버리지

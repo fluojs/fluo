@@ -2166,6 +2166,7 @@ describe('@fluojs/platform-bun', () => {
       expectedReason:
         'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/websockets/bun for the official raw websocket binding.',
       expectedSupport: 'supported',
+      expectedVersion: 1,
       name: 'bun',
     });
 
@@ -2189,8 +2190,9 @@ describe('@fluojs/platform-bun', () => {
 
       return undefined;
     });
+    const capability = adapter.getRealtimeCapability();
 
-    adapter.configureWebSocketBinding({
+    capability.bindingInstallation?.install({
       fetch: bindingFetch,
       websocket: {},
     });

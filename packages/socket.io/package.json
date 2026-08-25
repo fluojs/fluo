@@ -18,7 +18,7 @@
     "directory": "packages/socket.io"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.19.3 <21 || >=22.2.0 <27"
   },
   "publishConfig": {
     "access": "public"
@@ -55,6 +55,7 @@
   },
   "devDependencies": {
     "@fluojs/platform-express": "workspace:^",
+    "@fluojs/platform-bun": "workspace:^",
     "@fluojs/platform-fastify": "workspace:^",
     "@fluojs/platform-nodejs": "workspace:^",
     "socket.io": "^4.8.3",

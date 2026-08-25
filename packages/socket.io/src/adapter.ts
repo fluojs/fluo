@@ -1,8 +1,13 @@
 import type { AsyncLocalStorage } from 'node:async_hooks';
 
-import { Inject, type MetadataPropertyKey, type Token } from '@fluojs/core';
-import type { Container, Provider } from '@fluojs/di';
-import type { HttpAdapterRealtimeCapability, HttpApplicationAdapter } from '@fluojs/http';
+import { Inject, type MetadataPropertyKey } from '@fluojs/core';
+import type { Container } from '@fluojs/di';
+import type {
+  FetchStyleHttpAdapterRealtimeCapability,
+  HttpAdapterRealtimeBindingInstallation,
+  HttpAdapterRealtimeCapability,
+  HttpApplicationAdapter,
+} from '@fluojs/http';
 import type {
   ApplicationLogger,
   CompiledModule,
@@ -13,16 +18,17 @@ import type {
 import {
   APPLICATION_LOGGER,
   COMPILED_MODULES,
-  getRuntimeClassDiMetadata,
   HTTP_APPLICATION_ADAPTER,
   RUNTIME_CONTAINER,
 } from '@fluojs/runtime/internal';
-import {
-  getWebSocketGatewayMetadata,
-  getWebSocketHandlerMetadataEntries,
-  type WebSocketGatewayDescriptor,
-  type WebSocketGatewayHandlerDescriptor,
+import type {
+  WebSocketGatewayDescriptor,
+  WebSocketGatewayHandlerDescriptor,
 } from '@fluojs/websockets';
+import {
+  discoverGatewayDescriptors,
+  resolveGatewayInstance,
+} from '@fluojs/websockets/internal';
 import type { Server as BunEngineServer } from '@socket.io/bun-engine';
 import { type Namespace, Server, type ServerOptions, type Socket } from 'socket.io';
 import {
@@ -32,20 +38,17 @@ import {
   resolveSocketIoShutdownTimeoutMs,
 } from './config.internal.js';
 import { SOCKETIO_OPTIONS_INTERNAL } from './options-token.internal.js';
-import { closeSocketIoServerWithTimeout, type SocketIoCloseResult } from './shutdown.internal.js';
+import {
+  closeSocketIoServerWithTimeout,
+  type SocketIoCloseResult,
+  SocketIoShutdownTimeoutError,
+} from './shutdown.internal.js';
 import type {
   SocketIoGuardRejection,
   SocketIoHandshakeRequest,
   SocketIoModuleOptions,
   SocketIoRoomService,
 } from './types.js';
-
-interface DiscoveryCandidate {
-  moduleName: string;
-  scope: 'request' | 'singleton' | 'transient';
-  targetType: Function;
-  token: Token;
-}
 
 interface NamespaceAttachment {
   descriptors: WebSocketGatewayDescriptor[];
@@ -70,27 +73,12 @@ interface ConnectionHandlerState {
   handlersReady: boolean;
 }
 
-interface ClassProviderLike {
-  provide: Token;
-  scope?: 'request' | 'singleton' | 'transient';
-  useClass: new (...args: unknown[]) => unknown;
-}
-
 interface NodeHttpServerLike {
   close(callback?: (error?: Error) => void): unknown;
   emit(eventName: string | symbol, ...args: unknown[]): boolean;
   listeners(eventName: string | symbol): Function[];
   on(eventName: string | symbol, listener: (...args: unknown[]) => void): unknown;
   removeAllListeners(eventName?: string | symbol): unknown;
-}
-
-interface FetchStyleRealtimeCapability {
-  contract: 'raw-websocket-expansion';
-  kind: 'fetch-style';
-  mode: 'request-upgrade';
-  reason: string;
-  support: 'contract-only' | 'supported';
-  version: 1;
 }
 
 interface BunRealtimeBinding {
@@ -130,18 +118,15 @@ interface BunHandshakeRequestReference {
   readonly url: string;
 }
 
-interface BunRealtimeBindingHost {
-  configureRealtimeBinding(binding: BunRealtimeBinding | undefined): void;
-}
-
 type SocketIoBootstrapRuntime =
   | {
       capability: Extract<HttpAdapterRealtimeCapability, { kind: 'server-backed' }>;
       kind: 'server-backed';
     }
   | {
-      bindingHost: BunRealtimeBindingHost;
-      capability: FetchStyleRealtimeCapability;
+      capability: FetchStyleHttpAdapterRealtimeCapability & {
+        bindingInstallation: HttpAdapterRealtimeBindingInstallation;
+      };
       kind: 'bun';
     };
 
@@ -194,27 +179,6 @@ function normalizeRejectedGuardError(error: unknown, defaultMessage: string): So
   }
 
   return { message: defaultMessage };
-}
-
-function scopeFromProvider(provider: Provider): 'request' | 'singleton' | 'transient' {
-  if (typeof provider === 'function') {
-    return getRuntimeClassDiMetadata(provider)?.scope ?? 'singleton';
-  }
-
-  if ('useClass' in provider) {
-    const classProvider = provider as ClassProviderLike;
-    return classProvider.scope ?? getRuntimeClassDiMetadata(classProvider.useClass)?.scope ?? 'singleton';
-  }
-
-  return 'scope' in provider ? provider.scope ?? 'singleton' : 'singleton';
-}
-
-function methodKeyToName(methodKey: MetadataPropertyKey): string {
-  return typeof methodKey === 'symbol' ? methodKey.toString() : methodKey;
-}
-
-function isClassProvider(provider: Provider): provider is ClassProviderLike {
-  return typeof provider === 'object' && provider !== null && 'useClass' in provider;
 }
 
 function normalizeGatewayPath(path: string): string {
@@ -277,13 +241,9 @@ function normalizeCorsForBunEngine(cors: SocketIoModuleOptions['cors']): BunEngi
   };
 }
 
-function hasBunRealtimeBindingHost(adapter: HttpApplicationAdapter): adapter is HttpApplicationAdapter & BunRealtimeBindingHost {
-  return 'configureRealtimeBinding' in adapter && typeof adapter.configureRealtimeBinding === 'function';
-}
-
 function isFetchStyleRealtimeCapability(
   capability: HttpAdapterRealtimeCapability,
-): capability is FetchStyleRealtimeCapability {
+): capability is Extract<HttpAdapterRealtimeCapability, { kind: 'fetch-style' }> {
   return capability.kind === 'fetch-style' && capability.contract === 'raw-websocket-expansion';
 }
 
@@ -339,15 +299,17 @@ function resolveSocketIoBootstrapRuntime(
     );
   }
 
-  if (!hasBunRealtimeBindingHost(adapter)) {
+  if (capability.bindingInstallation === undefined) {
     throw new Error(
-      'Socket.IO Bun bootstrap requires the selected adapter to expose Bun realtime binding configuration. Use @fluojs/platform-bun for the official Bun engine path.',
+      'Socket.IO Bun bootstrap requires the fetch-style realtime binding installation extension. Use a current @fluojs/platform-bun adapter.',
     );
   }
 
   return {
-    bindingHost: adapter,
-    capability,
+    capability: {
+      ...capability,
+      bindingInstallation: capability.bindingInstallation,
+    },
     kind: 'bun',
   };
 }
@@ -379,12 +341,15 @@ export class SocketIoLifecycleService
 {
   private attachments: NamespaceAttachment[] = [];
   private bunEngine: BunEngineServer | undefined;
+  private readonly inFlightGatewayWork = new Set<Promise<void>>();
   private io: Server | undefined;
   private namespaceContext: AsyncLocalStorage<string> | undefined;
   private namespaceContextPromise: Promise<AsyncLocalStorage<string>> | undefined;
+  private realtimeBindingInstallation: HttpAdapterRealtimeBindingInstallation | undefined;
   private readonly socketRegistry = new Map<string, Socket>();
+  private retryShutdownPromise: Promise<void> | undefined;
+  private runtimeShutdownPromise: Promise<void> | undefined;
   private serverInitializationPromise: Promise<Server> | undefined;
-  private shutdownPromise: Promise<void> | undefined;
   private shutdownStarted = false;
   private wired = false;
 
@@ -452,7 +417,7 @@ export class SocketIoLifecycleService
         this.bunEngine = undefined;
 
         const cleanupResults = await Promise.allSettled([
-          Promise.resolve().then(() => runtime.bindingHost.configureRealtimeBinding(undefined)),
+          Promise.resolve().then(() => runtime.capability.bindingInstallation.install(undefined)),
           this.closeServerWithTimeout(io, this.resolveShutdownTimeoutMs()),
         ]);
         const cleanupErrors = cleanupResults.flatMap((result) =>
@@ -487,7 +452,11 @@ export class SocketIoLifecycleService
       return;
     }
 
-    const descriptors = this.discoverGatewayDescriptors();
+    const descriptors = discoverGatewayDescriptors(
+      this.compiledModules,
+      this.logger,
+      'SocketIoLifecycleService',
+    );
 
     if (descriptors.length === 0) {
       await this.ensureBunRealtimeBindingForRawServerAccess();
@@ -519,6 +488,31 @@ export class SocketIoLifecycleService
    */
   async onModuleDestroy(): Promise<void> {
     await this.shutdown();
+  }
+
+  /**
+   * Deliberately retries retained Socket.IO shutdown state after the runtime lifecycle attempt has settled.
+   *
+   * @returns A promise that resolves when this retry attempt completes.
+   */
+  async retryShutdown(): Promise<void> {
+    await this.shutdown();
+
+    if (!this.io) {
+      return;
+    }
+
+    if (this.retryShutdownPromise) {
+      await this.retryShutdownPromise;
+      return;
+    }
+
+    this.retryShutdownPromise = this.runShutdownLifecycle();
+    try {
+      await this.retryShutdownPromise;
+    } finally {
+      this.retryShutdownPromise = undefined;
+    }
   }
 
   /**
@@ -653,7 +647,8 @@ export class SocketIoLifecycleService
     const BunEngineServer = await loadBunEngineServer();
     const engine = new BunEngineServer(this.createBunEngineOptions());
     io.bind(engine);
-    runtime.bindingHost.configureRealtimeBinding(this.createBunSocketIoBinding(engine));
+    runtime.capability.bindingInstallation.install(this.createBunSocketIoBinding(engine));
+    this.realtimeBindingInstallation = runtime.capability.bindingInstallation;
     this.bunEngine = engine;
   }
 
@@ -705,12 +700,6 @@ export class SocketIoLifecycleService
   }
 
   private assertNoServerBackedGatewayOptIn(descriptors: readonly WebSocketGatewayDescriptor[]): void {
-    const runtime = resolveSocketIoBootstrapRuntime(this.adapter);
-
-    if (runtime.kind !== 'bun') {
-      return;
-    }
-
     const descriptor = descriptors.find((entry) => entry.serverBacked !== undefined);
 
     if (!descriptor) {
@@ -718,7 +707,7 @@ export class SocketIoLifecycleService
     }
 
     throw new Error(
-      `@WebSocketGateway({ serverBacked }) is not supported on @fluojs/socket.io when using @fluojs/platform-bun. Gateway path ${descriptor.path} must use the official Bun engine host instead.`,
+      `@WebSocketGateway({ serverBacked }) is not supported on @fluojs/socket.io. Gateway namespace ${descriptor.path} must use the application HTTP listener and the fixed ${DEFAULT_SOCKETIO_ENGINE_PATH} Engine.IO request path.`,
     );
   }
 
@@ -813,16 +802,23 @@ export class SocketIoLifecycleService
   private bindNamespaceHandlers(attachment: NamespaceAttachment): void {
     if (this.moduleOptions.auth?.connection) {
       attachment.namespace.use((socket: Socket, next: (error?: Error) => void) => {
-        void this.runConnectionGuard(attachment.path, socket)
-          .then(() => next())
+        const admission = this.runConnectionGuard(attachment.path, socket)
+          .then(() => {
+            if (this.shutdownStarted) {
+              throw new Error('Socket.IO connection rejected because application shutdown has started.');
+            }
+
+            next();
+          })
           .catch((error) => {
             next(error instanceof Error ? error : new Error('Socket.IO connection rejected.'));
           });
+        void this.trackGatewayWork(admission);
       });
     }
 
     attachment.namespace.on('connection', (socket: Socket) => {
-      void this.bindConnectionHandlers(attachment.descriptors, socket);
+      void this.trackGatewayWork(this.bindConnectionHandlers(attachment.descriptors, socket));
     });
   }
 
@@ -851,11 +847,12 @@ export class SocketIoLifecycleService
 
   private async bindConnectionHandlers(descriptors: WebSocketGatewayDescriptor[], socket: Socket): Promise<void> {
     const request = this.resolveHandshakeRequest(socket);
-    const resolved = await this.resolveConnectionGateways(descriptors);
+    const resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }> = [];
     const state = this.createConnectionHandlerState();
 
     this.socketRegistry.set(socket.id, socket);
     this.attachConnectionListeners(state, resolved, socket, request);
+    resolved.push(...await this.resolveConnectionGateways(descriptors));
     await this.runConnectHandlers(resolved, socket, request);
     state.handlersReady = true;
     await this.replayBufferedConnectionEvents(state, resolved, socket, request);
@@ -931,7 +928,7 @@ export class SocketIoLifecycleService
         return;
       }
 
-      void this.handleMessage(resolved, socket, request, event, extractPayload(args), ack);
+      void this.trackGatewayWork(this.handleMessage(resolved, socket, request, event, extractPayload(args), ack));
     });
 
     socket.on('error', (error: Error) => {
@@ -944,10 +941,12 @@ export class SocketIoLifecycleService
         return;
       }
 
-      void this.handleDisconnect(resolved, socket, reason, description)
-        .finally(() => {
-          this.socketRegistry.delete(socket.id);
-        });
+      void this.trackGatewayWork(
+        this.handleDisconnect(resolved, socket, reason, description)
+          .finally(() => {
+            this.socketRegistry.delete(socket.id);
+          }),
+      );
     });
   }
 
@@ -1010,7 +1009,10 @@ export class SocketIoLifecycleService
     payload: unknown,
     acknowledgement?: (...callbackArgs: unknown[]) => void,
   ): Promise<void> {
-    const hasMatchingHandlers = resolved.some(({ descriptor }) => this.selectMessageHandlers(descriptor, event).length > 0);
+    const hasMatchingHandlers = resolved.some(
+      ({ descriptor }) => descriptor.wildcardMessageHandlers.length > 0
+        || (descriptor.messageHandlersByEvent.get(event)?.length ?? 0) > 0,
+    );
 
     if (!hasMatchingHandlers) {
       return;
@@ -1096,11 +1098,11 @@ export class SocketIoLifecycleService
   private selectMessageHandlers(
     descriptor: WebSocketGatewayDescriptor,
     event: string,
-  ): WebSocketGatewayHandlerDescriptor[] {
-    return descriptor.handlers.filter(
-      (handler: WebSocketGatewayHandlerDescriptor) =>
-        handler.type === 'message' && (handler.event === undefined || handler.event === event),
-    );
+  ): readonly WebSocketGatewayHandlerDescriptor[] {
+    return [
+      ...descriptor.wildcardMessageHandlers,
+      ...(descriptor.messageHandlersByEvent.get(event) ?? []),
+    ];
   }
 
   private async handleDisconnect(
@@ -1120,7 +1122,7 @@ export class SocketIoLifecycleService
     type: WebSocketGatewayHandlerDescriptor['type'],
     ...args: unknown[]
   ): Promise<void> {
-    const handlers = descriptor.handlers.filter((handler: WebSocketGatewayHandlerDescriptor) => handler.type === type);
+    const handlers = type === 'connect' ? descriptor.connectHandlers : descriptor.disconnectHandlers;
 
     for (const handler of handlers) {
       await this.invokeGatewayMethod(instance, descriptor, handler, args);
@@ -1177,114 +1179,21 @@ export class SocketIoLifecycleService
     return this.namespaceContextPromise;
   }
 
-  private async resolveGatewayInstance(descriptor: WebSocketGatewayDescriptor): Promise<unknown | undefined> {
-    try {
-      return await this.runtimeContainer.resolve(descriptor.token);
-    } catch (error) {
-      this.logger.error(
-        `Failed to resolve Socket.IO gateway ${descriptor.targetName} from module ${descriptor.moduleName}.`,
-        error,
-        'SocketIoLifecycleService',
-      );
-      return undefined;
-    }
+  private resolveGatewayInstance(descriptor: WebSocketGatewayDescriptor): Promise<unknown | undefined> {
+    return resolveGatewayInstance(
+      this.runtimeContainer,
+      descriptor,
+      this.logger,
+      'SocketIoLifecycleService',
+    );
   }
 
-  private discoverGatewayDescriptors(): WebSocketGatewayDescriptor[] {
-    const seenTargets = new Set<Function>();
-    const descriptors: WebSocketGatewayDescriptor[] = [];
-
-    for (const candidate of this.discoveryCandidates()) {
-      const gatewayMetadata = getWebSocketGatewayMetadata(candidate.targetType);
-
-      if (!gatewayMetadata) {
-        continue;
-      }
-
-      if (this.shouldSkipGatewayCandidate(candidate, seenTargets)) {
-        continue;
-      }
-
-      seenTargets.add(candidate.targetType);
-      descriptors.push(this.createGatewayDescriptor(candidate, gatewayMetadata.path));
-    }
-
-    return descriptors;
-  }
-
-  private shouldSkipGatewayCandidate(candidate: DiscoveryCandidate, seenTargets: Set<Function>): boolean {
-    if (candidate.scope !== 'singleton') {
-      this.logger.warn(
-        `${candidate.targetType.name} in module ${candidate.moduleName} declares @WebSocketGateway() but is registered with ${candidate.scope} scope. Socket.IO gateways are registered only for singleton providers.`,
-        'SocketIoLifecycleService',
-      );
-      return true;
-    }
-
-    return seenTargets.has(candidate.targetType);
-  }
-
-  private createGatewayDescriptor(candidate: DiscoveryCandidate, path: string): WebSocketGatewayDescriptor {
-    const metadata = getWebSocketGatewayMetadata(candidate.targetType);
-    const entries = getWebSocketHandlerMetadataEntries(candidate.targetType.prototype);
-    const handlers = entries.map((entry: (typeof entries)[number]) => ({
-      event: entry.metadata.event,
-      methodKey: entry.propertyKey,
-      methodName: methodKeyToName(entry.propertyKey),
-      type: entry.metadata.type,
-    }));
-    const handlerIndex = createGatewayHandlerIndex(handlers);
-
-    return {
-      connectHandlers: handlerIndex.connectHandlers,
-      disconnectHandlers: handlerIndex.disconnectHandlers,
-      handlers,
-      messageHandlersByEvent: handlerIndex.messageHandlersByEvent,
-      wildcardMessageHandlers: handlerIndex.wildcardMessageHandlers,
-      moduleName: candidate.moduleName,
-      path: normalizeGatewayPath(path),
-      serverBacked: metadata?.serverBacked,
-      targetName: candidate.targetType.name,
-      token: candidate.token,
-    };
-  }
-
-  private discoveryCandidates(): DiscoveryCandidate[] {
-    const candidates: DiscoveryCandidate[] = [];
-
-    for (const compiledModule of this.compiledModules) {
-      for (const provider of compiledModule.definition.providers ?? []) {
-        if (typeof provider === 'function') {
-          candidates.push({
-            moduleName: compiledModule.type.name,
-            scope: scopeFromProvider(provider),
-            targetType: provider,
-            token: provider as Token,
-          });
-          continue;
-        }
-
-        if (isClassProvider(provider)) {
-          candidates.push({
-            moduleName: compiledModule.type.name,
-            scope: scopeFromProvider(provider),
-            targetType: provider.useClass,
-            token: provider.provide,
-          });
-        }
-      }
-
-      for (const controller of compiledModule.definition.controllers ?? []) {
-        candidates.push({
-          moduleName: compiledModule.type.name,
-          scope: scopeFromProvider(controller),
-          targetType: controller,
-          token: controller,
-        });
-      }
-    }
-
-    return candidates;
+  private trackGatewayWork(work: Promise<void>): Promise<void> {
+    const tracked = work.finally(() => {
+      this.inFlightGatewayWork.delete(tracked);
+    });
+    this.inFlightGatewayWork.add(tracked);
+    return tracked;
   }
 
   private resolveShutdownTimeoutMs(): number {
@@ -1292,18 +1201,12 @@ export class SocketIoLifecycleService
   }
 
   private async shutdown(): Promise<void> {
-    if (this.shutdownPromise) {
-      await this.shutdownPromise;
-      return;
+    if (!this.runtimeShutdownPromise) {
+      this.shutdownStarted = true;
+      this.runtimeShutdownPromise = this.runShutdownLifecycle();
     }
 
-    this.shutdownStarted = true;
-    this.shutdownPromise = this.runShutdownLifecycle();
-    try {
-      await this.shutdownPromise;
-    } finally {
-      this.shutdownPromise = undefined;
-    }
+    await this.runtimeShutdownPromise;
   }
 
   private async runShutdownLifecycle(): Promise<void> {
@@ -1321,12 +1224,19 @@ export class SocketIoLifecycleService
 
     let shouldClearManagedState = false;
     const timeoutMs = this.resolveShutdownTimeoutMs();
+    const deadline = Date.now() + timeoutMs;
 
     try {
       const result = await this.closeServerWithTimeout(io, timeoutMs);
-      shouldClearManagedState = true;
+      shouldClearManagedState = await this.drainGatewayWork(deadline);
 
-      if (result.kind === 'forced') {
+      if (!shouldClearManagedState) {
+        this.logger.error(
+          `Socket.IO gateway work did not drain within ${String(timeoutMs)}ms; retaining managed Socket.IO state for shutdown retry.`,
+          new SocketIoShutdownTimeoutError(timeoutMs),
+          'SocketIoLifecycleService',
+        );
+      } else if (result.kind === 'forced') {
         this.logger.error(
           `Failed to close Socket.IO server within ${String(timeoutMs)}ms; force-disconnected managed Socket.IO clients before clearing lifecycle state.`,
           result.timeoutError,
@@ -1350,54 +1260,50 @@ export class SocketIoLifecycleService
     return closeSocketIoServerWithTimeout(io, timeoutMs);
   }
 
+  private async drainGatewayWork(deadline: number): Promise<boolean> {
+    while (this.inFlightGatewayWork.size > 0) {
+      const remainingMs = deadline - Date.now();
+
+      if (remainingMs <= 0) {
+        return false;
+      }
+
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const drained = await Promise.race([
+        Promise.allSettled([...this.inFlightGatewayWork]).then(() => true),
+        new Promise<false>((resolve) => {
+          timeout = setTimeout(() => resolve(false), remainingMs);
+        }),
+      ]);
+
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+      }
+
+      if (!drained) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   private clearManagedState(): void {
+    const clearPreListenRealtimeBinding =
+      this.realtimeBindingInstallation !== undefined
+      && typeof this.adapter.getServer === 'function'
+      && this.adapter.getServer() === undefined;
+
     this.wired = false;
     this.io = undefined;
     this.bunEngine = undefined;
     this.attachments = [];
-    if (hasBunRealtimeBindingHost(this.adapter)) {
-      this.adapter.configureRealtimeBinding(undefined);
+
+    if (clearPreListenRealtimeBinding) {
+      this.realtimeBindingInstallation?.install(undefined);
     }
+
+    this.realtimeBindingInstallation = undefined;
     this.socketRegistry.clear();
   }
-}
-
-function createGatewayHandlerIndex(handlers: readonly WebSocketGatewayHandlerDescriptor[]): {
-  connectHandlers: readonly WebSocketGatewayHandlerDescriptor[];
-  disconnectHandlers: readonly WebSocketGatewayHandlerDescriptor[];
-  messageHandlersByEvent: ReadonlyMap<string, readonly WebSocketGatewayHandlerDescriptor[]>;
-  wildcardMessageHandlers: readonly WebSocketGatewayHandlerDescriptor[];
-} {
-  const connectHandlers: WebSocketGatewayHandlerDescriptor[] = [];
-  const disconnectHandlers: WebSocketGatewayHandlerDescriptor[] = [];
-  const messageHandlersByEvent = new Map<string, WebSocketGatewayHandlerDescriptor[]>();
-  const wildcardMessageHandlers: WebSocketGatewayHandlerDescriptor[] = [];
-
-  for (const handler of handlers) {
-    if (handler.type === 'connect') {
-      connectHandlers.push(handler);
-      continue;
-    }
-
-    if (handler.type === 'disconnect') {
-      disconnectHandlers.push(handler);
-      continue;
-    }
-
-    if (handler.event === undefined) {
-      wildcardMessageHandlers.push(handler);
-      continue;
-    }
-
-    const eventHandlers = messageHandlersByEvent.get(handler.event) ?? [];
-    eventHandlers.push(handler);
-    messageHandlersByEvent.set(handler.event, eventHandlers);
-  }
-
-  return {
-    connectHandlers,
-    disconnectHandlers,
-    messageHandlersByEvent,
-    wildcardMessageHandlers,
-  };
 }

@@ -23,11 +23,20 @@ export interface UnsupportedHttpAdapterRealtimeCapability {
  * Describes the fetch style http adapter realtime capability contract.
  */
 export interface FetchStyleHttpAdapterRealtimeCapability {
+  bindingInstallation?: HttpAdapterRealtimeBindingInstallation;
   contract: 'raw-websocket-expansion';
   kind: 'fetch-style';
   mode: 'request-upgrade';
   reason: string;
   support: 'contract-only' | 'supported';
+  version: 1;
+}
+
+/**
+ * Versioned host installation seam for protocol-owned fetch-style realtime bindings.
+ */
+export interface HttpAdapterRealtimeBindingInstallation {
+  install(binding: unknown | undefined): void;
   version: 1;
 }
 
@@ -80,16 +89,29 @@ export function createUnsupportedHttpAdapterRealtimeCapability(
 export function createFetchStyleHttpAdapterRealtimeCapability(
   reason: string,
   options: {
+    bindingInstallation?: Omit<HttpAdapterRealtimeBindingInstallation, 'version'>;
     support?: FetchStyleHttpAdapterRealtimeCapability['support'];
   } = {},
 ): FetchStyleHttpAdapterRealtimeCapability {
-  return {
+  const capability: FetchStyleHttpAdapterRealtimeCapability = {
     contract: 'raw-websocket-expansion',
     kind: 'fetch-style',
     mode: 'request-upgrade',
     reason,
     support: options.support ?? 'contract-only',
     version: 1,
+  };
+
+  if (options.bindingInstallation === undefined) {
+    return capability;
+  }
+
+  return {
+    ...capability,
+    bindingInstallation: {
+      install: options.bindingInstallation.install,
+      version: 1,
+    },
   };
 }
 

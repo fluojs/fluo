@@ -44,6 +44,10 @@
     "./node": {
       "types": "./dist/node.d.ts",
       "import": "./dist/node.js"
+    },
+    "./internal": {
+      "types": "./dist/internal.d.ts",
+      "import": "./dist/internal.js"
     }
   },
   "main": "./dist/index.js",
@@ -61,6 +65,9 @@
       ],
       "node": [
         "./dist/node.d.ts"
+      ],
+      "internal": [
+        "./dist/internal.d.ts"
       ]
     }
   },

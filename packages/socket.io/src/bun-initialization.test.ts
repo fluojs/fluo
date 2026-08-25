@@ -38,6 +38,10 @@ class TestBunAdapter implements HttpApplicationAdapter {
 
   close(): void {}
 
+  getServer(): undefined {
+    return undefined;
+  }
+
   configureRealtimeBinding(binding: unknown | undefined): void {
     if (binding === undefined) {
       if (this.binding !== undefined) {
@@ -67,7 +71,12 @@ class TestBunAdapter implements HttpApplicationAdapter {
   getRealtimeCapability() {
     return createFetchStyleHttpAdapterRealtimeCapability(
       'Test adapter supports Bun-style Socket.IO binding.',
-      { support: 'supported' },
+      {
+        bindingInstallation: {
+          install: (binding) => this.configureRealtimeBinding(binding),
+        },
+        support: 'supported',
+      },
     );
   }
 

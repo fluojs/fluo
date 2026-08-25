@@ -1046,6 +1046,9 @@ importers:
         specifier: ^0.1.0
         version: 0.1.0(typescript@6.0.2)
     devDependencies:
+      '@fluojs/platform-bun':
+        specifier: workspace:^
+        version: link:../platform-bun
       '@fluojs/platform-express':
         specifier: workspace:^
         version: link:../platform-express

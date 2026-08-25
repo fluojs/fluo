@@ -156,6 +156,10 @@ interface BunRealtimeBinding {
   websocket?: unknown;
 }
 
+function isBunRealtimeBinding(value: unknown): value is BunRealtimeBinding {
+  return typeof value === 'object' && value !== null && typeof Reflect.get(value, 'fetch') === 'function';
+}
+
 class TestBunServer {
   readonly hostname = '127.0.0.1';
   readonly url: URL;
@@ -188,7 +192,7 @@ class TestBunSocketIoAdapter implements HttpApplicationAdapter {
   }
 
   configureRealtimeBinding(binding: BunRealtimeBinding | undefined): void {
-    if (this.server && binding !== undefined) {
+    if (this.server) {
       throw new Error('Test Bun Socket.IO binding must be configured before listen().');
     }
 
@@ -202,6 +206,15 @@ class TestBunSocketIoAdapter implements HttpApplicationAdapter {
       mode: 'request-upgrade' as const,
       reason:
         'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/socket.io for the official Bun engine binding.',
+      bindingInstallation: {
+        install: (binding: unknown | undefined) => {
+          if (binding !== undefined && !isBunRealtimeBinding(binding)) {
+            throw new TypeError('Expected a Bun realtime binding.');
+          }
+          this.configureRealtimeBinding(binding);
+        },
+        version: 1 as const,
+      },
       support: 'supported' as const,
       version: 1 as const,
     };
@@ -252,6 +265,7 @@ class TestBunSocketIoAdapter implements HttpApplicationAdapter {
 
     this.server = undefined;
     this.bunServer = undefined;
+    this.binding = undefined;
 
     if (!server) {
       return;
@@ -480,6 +494,27 @@ describe('@fluojs/socket.io', () => {
     ).rejects.toThrow('Socket.IO bootstrap requires a server-backed realtime capability');
   });
 
+  it('rejects serverBacked gateway opt-in on the Node Socket.IO path', async () => {
+    @WebSocketGateway({ path: '/chat', serverBacked: { port: 4101 } })
+    class ChatGateway {
+      @OnMessage('ping')
+      handlePing() {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot()],
+      providers: [ChatGateway],
+    });
+
+    await expect(
+      bootstrapApplication({
+        adapter: createNodejsAdapter({ port: 0 }),
+        rootModule: AppModule,
+      }),
+    ).rejects.toThrow('@WebSocketGateway({ serverBacked }) is not supported on @fluojs/socket.io');
+  });
+
   it('rejects serverBacked gateway opt-in on the Bun Socket.IO engine path', async () => {
     const adapter = new TestBunSocketIoAdapter(0);
 
@@ -500,7 +535,7 @@ describe('@fluojs/socket.io', () => {
         adapter,
         rootModule: AppModule,
       }),
-    ).rejects.toThrow('@WebSocketGateway({ serverBacked }) is not supported on @fluojs/socket.io when using @fluojs/platform-bun');
+    ).rejects.toThrow('@WebSocketGateway({ serverBacked }) is not supported on @fluojs/socket.io');
   });
 
   it('boots a Bun-style Socket.IO app through the official Bun engine path', async () => {
@@ -2396,6 +2431,192 @@ describe('@fluojs/socket.io', () => {
 
     expect(joinedRooms).toEqual(['socket-1:race-room', 'socket-2:race-room']);
     expect(events.filter((event) => event.startsWith('error:SocketIoLifecycleService'))).toEqual([]);
+  });
+
+  it('waits for a pending connection guard and rejects admission after shutdown starts', async () => {
+    const guardStarted = createDeferred<void>();
+    const guardRelease = createDeferred<void>();
+
+    class GatewayState {
+      connects = 0;
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/guard-shutdown' })
+    class GuardShutdownGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnConnect()
+      onConnect() {
+        this.state.connects += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot({
+        auth: {
+          async connection() {
+            guardStarted.resolve();
+            await guardRelease.promise;
+            return true;
+          },
+        },
+        transports: ['websocket'],
+      })],
+      providers: [GatewayState, GuardShutdownGateway],
+    });
+
+    const { adapter, app } = await createNodejsSocketIoApplication(AppModule);
+    const state = await app.container.resolve(GatewayState);
+    let socket: ClientSocket | undefined;
+
+    try {
+      await app.listen();
+      const port = getBoundPortFromAdapter(adapter);
+      socket = createClient(`http://127.0.0.1:${String(port)}/guard-shutdown`, {
+        reconnection: false,
+        transports: ['websocket'],
+      });
+      await guardStarted.promise;
+
+      const close = app.close();
+
+      guardRelease.resolve();
+      await close;
+
+      expect(state.connects).toBe(0);
+      expect(socket.connected).toBe(false);
+    } finally {
+      guardRelease.resolve();
+      socket?.close();
+      await app.close();
+    }
+  });
+
+  it('preserves one disconnect during shutdown while gateway singleton resolution is pending', async () => {
+    const resolutionStarted = createDeferred<void>();
+    const resolutionRelease = createDeferred<void>();
+
+    class GatewayState {
+      disconnects = 0;
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/resolving-shutdown-disconnect' })
+    class ResolvingShutdownGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnDisconnect()
+      onDisconnect() {
+        this.state.disconnects += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot({ transports: ['websocket'] })],
+      providers: [GatewayState, ResolvingShutdownGateway],
+    });
+
+    const { adapter, app } = await createNodejsSocketIoApplication(AppModule);
+    const state = await app.container.resolve(GatewayState);
+    app.container.override({
+      inject: [GatewayState],
+      provide: ResolvingShutdownGateway,
+      scope: 'singleton',
+      useFactory: async (...dependencies: unknown[]) => {
+        resolutionStarted.resolve();
+        await resolutionRelease.promise;
+        return new ResolvingShutdownGateway(dependencies[0] as GatewayState);
+      },
+    });
+    let socket: ClientSocket | undefined;
+
+    try {
+      await app.listen();
+      const port = getBoundPortFromAdapter(adapter);
+      socket = createClient(`http://127.0.0.1:${String(port)}/resolving-shutdown-disconnect`, {
+        reconnection: false,
+        transports: ['websocket'],
+      });
+      await Promise.all([onceConnected(socket), resolutionStarted.promise]);
+
+      const disconnected = onceDisconnected(socket);
+      const close = app.close();
+      await disconnected;
+
+      expect(state.disconnects).toBe(0);
+
+      resolutionRelease.resolve();
+      await close;
+
+      expect(state.disconnects).toBe(1);
+    } finally {
+      resolutionRelease.resolve();
+      socket?.close();
+      await app.close();
+    }
+  });
+
+  it('waits for an asynchronous disconnect handler triggered by application shutdown', async () => {
+    const disconnectStarted = createDeferred<void>();
+    const disconnectRelease = createDeferred<void>();
+
+    class GatewayState {
+      disconnects = 0;
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/async-shutdown-disconnect' })
+    class AsyncShutdownGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnDisconnect()
+      async onDisconnect() {
+        disconnectStarted.resolve();
+        await disconnectRelease.promise;
+        this.state.disconnects += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot({ transports: ['websocket'] })],
+      providers: [GatewayState, AsyncShutdownGateway],
+    });
+
+    const { adapter, app } = await createNodejsSocketIoApplication(AppModule);
+    const state = await app.container.resolve(GatewayState);
+    let socket: ClientSocket | undefined;
+
+    try {
+      await app.listen();
+      const port = getBoundPortFromAdapter(adapter);
+      socket = createClient(`http://127.0.0.1:${String(port)}/async-shutdown-disconnect`, {
+        reconnection: false,
+        transports: ['websocket'],
+      });
+      await onceConnected(socket);
+
+      let closeSettled = false;
+      const close = app.close().then(() => {
+        closeSettled = true;
+      });
+      await disconnectStarted.promise;
+
+      expect(closeSettled).toBe(false);
+      expect(state.disconnects).toBe(0);
+
+      disconnectRelease.resolve();
+      await close;
+
+      expect(state.disconnects).toBe(1);
+    } finally {
+      disconnectRelease.resolve();
+      socket?.close();
+      await app.close();
+    }
   });
 
   for (const scenario of supportedSocketIoAdapterScenarios) {

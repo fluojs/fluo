@@ -91,6 +91,7 @@ async function loadGovernanceInternals() {
     enforceContractCompanionUpdates: (changedFiles: string[]) => void;
     enforceDenoPermissionGuidance: (readText?: (relativePath: string) => string) => void;
     enforceHttpBookRequestContracts: (readText?: (relativePath: string) => string) => void;
+    enforceSocketIoNodeEngineAlignment: (readText?: (relativePath: string) => string) => void;
   };
 }
 
@@ -193,6 +194,32 @@ describe('enforcePassportJsBridgeNestjsMigration', () => {
 
     // Then
     expect(mainCallsPassportGuard).toBe(true);
+  });
+});
+
+describe('enforceSocketIoNodeEngineAlignment', () => {
+  it('aligns the Socket.IO engine range with canonical runtime manifests', async () => {
+    const { enforceSocketIoNodeEngineAlignment } = await loadGovernanceInternals();
+
+    expect(() => enforceSocketIoNodeEngineAlignment()).not.toThrow();
+  });
+
+  it('rejects Socket.IO engine drift and remains wired into central governance', async () => {
+    const { enforceSocketIoNodeEngineAlignment } = await loadGovernanceInternals();
+    const readText = (relativePath: string) => {
+      if (relativePath === 'packages/socket.io/package.json') {
+        return JSON.stringify({ engines: { node: '>=22.0.0' } });
+      }
+
+      return readFileSync(join(repoRoot, relativePath), 'utf8');
+    };
+    const governanceSource = readFileSync(
+      join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'),
+      'utf8',
+    );
+
+    expect(() => enforceSocketIoNodeEngineAlignment(readText)).toThrow(/@fluojs\/socket\.io engines\.node/u);
+    expect(governanceSource).toContain('enforceSocketIoNodeEngineAlignment();');
   });
 });
 
