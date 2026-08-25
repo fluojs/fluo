@@ -273,17 +273,19 @@ export async function resolveGatewayInstance(
  * @param data The data.
  * @param socketId Stable connection identity passed to message handlers.
  * @param replyMode Optional policy for serializing valid handler return envelopes.
+ * @param sendReply Runtime-owned reply sender that reports terminal send failures.
  * @param logger The logger.
  * @param loggerContext The logger context.
  * @returns The dispatch gateway message result.
  */
-export async function dispatchGatewayMessage<TSocket extends { send(data: string): unknown }, TRequest>(
+export async function dispatchGatewayMessage<TSocket, TRequest>(
   resolved: readonly ResolvedGatewayInstance[],
   socket: TSocket,
   request: TRequest,
   data: SharedWebSocketIncomingMessage,
   socketId: string,
   replyMode: WebSocketReplyMode | undefined,
+  sendReply: (message: string) => boolean,
   logger: ApplicationLogger,
   loggerContext: string,
 ): Promise<void> {
@@ -299,7 +301,9 @@ export async function dispatchGatewayMessage<TSocket extends { send(data: string
         logger,
         loggerContext,
       );
-      sendHandlerReply(socket, result, replyMode);
+      if (!sendHandlerReply(result, replyMode, sendReply)) {
+        return;
+      }
     }
 
     if (parsed.event === undefined) {
@@ -317,21 +321,23 @@ export async function dispatchGatewayMessage<TSocket extends { send(data: string
         logger,
         loggerContext,
       );
-      sendHandlerReply(socket, result, replyMode);
+      if (!sendHandlerReply(result, replyMode, sendReply)) {
+        return;
+      }
     }
   }
 }
 
 function sendHandlerReply(
-  socket: { send(data: string): unknown },
   result: unknown,
   replyMode: WebSocketReplyMode | undefined,
-): void {
+  sendReply: (message: string) => boolean,
+): boolean {
   if (replyMode !== 'event-envelope' || !isWebSocketEventEnvelope(result)) {
-    return;
+    return true;
   }
 
-  socket.send(JSON.stringify(result));
+  return sendReply(JSON.stringify(result));
 }
 
 function isWebSocketEventEnvelope(value: unknown): value is WebSocketEventEnvelope {

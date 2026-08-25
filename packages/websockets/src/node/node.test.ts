@@ -356,8 +356,6 @@ describe('@fluojs/websockets/node', () => {
           appCloseSettled = true;
         });
 
-        await Promise.resolve();
-
         expect(appCloseSettled).toBe(false);
 
         disconnectRelease.resolve();

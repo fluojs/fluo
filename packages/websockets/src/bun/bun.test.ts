@@ -187,10 +187,6 @@ function createMockSocket(
   return socket;
 }
 
-async function settleMicrotasks(): Promise<void> {
-  await new Promise<void>((resolve) => setImmediate(resolve));
-}
-
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -258,6 +254,9 @@ describe('@fluojs/websockets/bun', () => {
 
   it('preserves Bun-backed websocket behavior through the explicit bun seam', async () => {
     const adapter = new TestBunAdapter();
+    const connected = createDeferred<void>();
+    const handled = createDeferred<void>();
+    const disconnected = createDeferred<void>();
 
     class GatewayState {
       connectCount = 0;
@@ -273,17 +272,20 @@ describe('@fluojs/websockets/bun', () => {
       @OnConnect()
       onConnect() {
         this.state.connectCount += 1;
+        connected.resolve();
       }
 
       @OnMessage('ping')
       onPing(payload: unknown, socket: BunServerWebSocket) {
         this.state.messages.push(payload);
         socket.send(JSON.stringify({ event: 'pong', data: payload }));
+        handled.resolve();
       }
 
       @OnDisconnect()
       onDisconnect() {
         this.state.disconnectCount += 1;
+        disconnected.resolve();
       }
     }
 
@@ -307,8 +309,6 @@ describe('@fluojs/websockets/bun', () => {
         headers: { upgrade: 'websocket' },
       }));
 
-      await settleMicrotasks();
-
       const socket = server?.lastSocket;
       expect(upgradeResponse).toBeUndefined();
       expect(socket).toBeDefined();
@@ -317,11 +317,12 @@ describe('@fluojs/websockets/bun', () => {
         throw new Error('Expected Bun test server and socket to be available after websocket upgrade.');
       }
 
+      await connected.promise;
       await server.emitMessage(JSON.stringify({ event: 'ping', data: { value: 'hello' } }));
-      await settleMicrotasks();
+      await handled.promise;
 
       await server.emitClose(1000, 'done');
-      await settleMicrotasks();
+      await disconnected.promise;
 
       expect(state.connectCount).toBe(1);
       expect(state.messages).toEqual([{ value: 'hello' }]);
@@ -334,11 +335,17 @@ describe('@fluojs/websockets/bun', () => {
 
   it('manages rooms and rejects stale joins through the Bun lifecycle service', async () => {
     const adapter = new TestBunAdapter();
+    const connected = createDeferred<void>();
+    const disconnected = createDeferred<void>();
 
     @WebSocketGateway({ path: '/rooms' })
     class RoomGateway {
+      @OnConnect()
+      onConnect(): void { connected.resolve(); }
       @OnMessage('ping')
       onPing() {}
+      @OnDisconnect()
+      onDisconnect(): void { disconnected.resolve(); }
     }
 
     class AppModule {}
@@ -358,7 +365,6 @@ describe('@fluojs/websockets/bun', () => {
       const upgradeResponse = await server?.fetch(new Request('http://127.0.0.1:3000/rooms', {
         headers: { upgrade: 'websocket' },
       }));
-      await settleMicrotasks();
 
       const socket = server?.lastSocket;
       const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, BunServerWebSocket>;
@@ -369,6 +375,7 @@ describe('@fluojs/websockets/bun', () => {
         throw new Error('Expected Bun room test socket registration after websocket upgrade.');
       }
 
+      await connected.promise;
       service.joinRoom(socketId, 'room-a');
       service.joinRoom(socketId, 'room-b');
 
@@ -389,7 +396,7 @@ describe('@fluojs/websockets/bun', () => {
       service.joinRoom(socketId, 'room-stale');
       const roomsWhileCloseDeliveryIsPending = Array.from(service.getRooms(socketId));
       closeDelivery.resolve();
-      await settleMicrotasks();
+      await disconnected.promise;
       service.joinRoom(socketId, 'room-stale');
 
       expect(roomsWhileCloseDeliveryIsPending).toEqual(['room-b']);
@@ -401,7 +408,10 @@ describe('@fluojs/websockets/bun', () => {
 
   it('awaits raw Bun handler return promises before ignoring returned values', async () => {
     const adapter = new TestBunAdapter();
+    const connected = createDeferred<void>();
+    const firstStarted = createDeferred<void>();
     const handlerGate = createDeferred<void>();
+    const secondHandled = createDeferred<void>();
 
     class GatewayState {
       messages: unknown[] = [];
@@ -412,8 +422,12 @@ describe('@fluojs/websockets/bun', () => {
     class ReturnOnlyGateway {
       constructor(private readonly state: GatewayState) {}
 
+      @OnConnect()
+      onConnect(): void { connected.resolve(); }
+
       @OnMessage('first')
       async onFirst(payload: unknown) {
+        firstStarted.resolve();
         await handlerGate.promise;
         this.state.messages.push(payload);
         return { event: 'pong', data: payload };
@@ -422,6 +436,7 @@ describe('@fluojs/websockets/bun', () => {
       @OnMessage('second')
       onSecond(payload: unknown) {
         this.state.messages.push(payload);
+        secondHandled.resolve();
       }
     }
 
@@ -441,7 +456,6 @@ describe('@fluojs/websockets/bun', () => {
       const upgradeResponse = await server?.fetch(new Request('http://127.0.0.1:3000/ignored-return', {
         headers: { upgrade: 'websocket' },
       }));
-      await settleMicrotasks();
 
       const socket = server?.lastSocket;
       expect(upgradeResponse).toBeUndefined();
@@ -451,15 +465,16 @@ describe('@fluojs/websockets/bun', () => {
         throw new Error('Expected Bun test server and socket to be available after websocket upgrade.');
       }
 
+      await connected.promise;
       await server.emitMessage(JSON.stringify({ event: 'first', data: { value: 'ignored' } }));
+      await firstStarted.promise;
       await server.emitMessage(JSON.stringify({ event: 'second', data: { value: 'after' } }));
-      await settleMicrotasks();
 
       expect(state.messages).toEqual([]);
       expect(socket.sentMessages).toEqual([]);
 
       handlerGate.resolve();
-      await settleMicrotasks();
+      await secondHandled.promise;
 
       expect(state.messages).toEqual([{ value: 'ignored' }, { value: 'after' }]);
       expect(socket.sentMessages).toEqual([]);
@@ -496,7 +511,6 @@ describe('@fluojs/websockets/bun', () => {
       const response = await server?.fetch(new Request('http://127.0.0.1:3000/guard-outcome', {
         headers: { upgrade: 'websocket' },
       }));
-      await settleMicrotasks();
 
       expect(response?.status).toBe(expectedStatus);
       expect(server?.lastSocket !== undefined).toBe(expectedStatus === undefined);
@@ -649,8 +663,6 @@ describe('@fluojs/websockets/bun', () => {
       headers: { upgrade: 'websocket' },
     }));
 
-    await settleMicrotasks();
-
     const secondUpgrade = await server?.fetch(new Request('http://127.0.0.1:3000/limited-race', {
       headers: { upgrade: 'websocket' },
     }));
@@ -694,8 +706,6 @@ describe('@fluojs/websockets/bun', () => {
     const upgradePromise = server?.fetch(new Request('http://127.0.0.1:3000/shutdown-guard-race', {
       headers: { upgrade: 'websocket' },
     }));
-
-    await settleMicrotasks();
 
     const closePromise = app.close();
 
@@ -754,8 +764,6 @@ describe('@fluojs/websockets/bun', () => {
       headers: { upgrade: 'websocket' },
     }));
 
-    await settleMicrotasks();
-
     const socket = server?.lastSocket;
     expect(upgradeResponse).toBeUndefined();
 
@@ -765,7 +773,6 @@ describe('@fluojs/websockets/bun', () => {
 
     await connected.promise;
     await app.close();
-    await settleMicrotasks();
 
     expect(socket.closeCalls).toEqual([{ code: 1001, reason: 'Server shutting down' }]);
     expect(socket.readyState).toBe(WEBSOCKET_CLOSED_READY_STATE);
@@ -813,7 +820,6 @@ describe('@fluojs/websockets/bun', () => {
     await server?.fetch(new Request('http://127.0.0.1:3000/shutdown-async-close', {
       headers: { upgrade: 'websocket' },
     }));
-    await settleMicrotasks();
 
     if (!server) {
       throw new Error('Expected Bun test server to be available after websocket upgrade.');
@@ -827,8 +833,6 @@ describe('@fluojs/websockets/bun', () => {
       closed = true;
     });
 
-    await settleMicrotasks();
-
     expect(closed).toBe(false);
     expect(state.disconnectCount).toBe(0);
 
@@ -841,6 +845,7 @@ describe('@fluojs/websockets/bun', () => {
   it('waits for asynchronous Bun disconnect cleanup before finishing shutdown', async () => {
     const adapter = new TestBunAdapter();
     const connected = createDeferred<void>();
+    const disconnectStarted = createDeferred<void>();
     const disconnectGate = createDeferred<void>();
 
     class GatewayState {
@@ -859,6 +864,7 @@ describe('@fluojs/websockets/bun', () => {
 
       @OnDisconnect()
       async onDisconnect() {
+        disconnectStarted.resolve();
         await disconnectGate.promise;
         this.state.disconnectCount += 1;
       }
@@ -878,7 +884,6 @@ describe('@fluojs/websockets/bun', () => {
     await server?.fetch(new Request('http://127.0.0.1:3000/shutdown-async-disconnect', {
       headers: { upgrade: 'websocket' },
     }));
-    await settleMicrotasks();
 
     await connected.promise;
 
@@ -886,8 +891,7 @@ describe('@fluojs/websockets/bun', () => {
     const closePromise = app.close().then(() => {
       closed = true;
     });
-
-    await settleMicrotasks();
+    await disconnectStarted.promise;
 
     expect(closed).toBe(false);
     expect(state.disconnectCount).toBe(0);
@@ -933,7 +937,6 @@ describe('@fluojs/websockets/bun', () => {
       await server?.fetch(new Request('http://127.0.0.1:3000/shutdown-queued-disconnect', {
         headers: { upgrade: 'websocket' },
       }));
-      await settleMicrotasks();
       await connected.promise;
       await server?.emitClose(1000, 'Client closed');
       await disconnectStarted.promise;
@@ -942,8 +945,6 @@ describe('@fluojs/websockets/bun', () => {
       const closePromise = app.close().then(() => {
         closed = true;
       });
-
-      await settleMicrotasks();
 
       expect(closed).toBe(false);
 
@@ -992,7 +993,6 @@ describe('@fluojs/websockets/bun', () => {
       await server?.fetch(new Request('http://127.0.0.1:3000/shutdown-broadcast-failure', {
         headers: { upgrade: 'websocket' },
       }));
-      await settleMicrotasks();
       await connected.promise;
 
       const socket = server?.lastSocket;
@@ -1017,8 +1017,6 @@ describe('@fluojs/websockets/bun', () => {
       closePromise = app.close().then(() => {
         closed = true;
       });
-
-      await settleMicrotasks();
 
       expect(closed).toBe(false);
 
@@ -1071,7 +1069,6 @@ describe('@fluojs/websockets/bun', () => {
     await server?.fetch(new Request('http://127.0.0.1:3000/shutdown-disconnect-timeout', {
       headers: { upgrade: 'websocket' },
     }));
-    await settleMicrotasks();
 
     await connected.promise;
 
@@ -1080,7 +1077,6 @@ describe('@fluojs/websockets/bun', () => {
       closed = true;
     });
 
-    await Promise.resolve();
     await closePromise;
 
     expect(closed).toBe(true);
@@ -1089,6 +1085,7 @@ describe('@fluojs/websockets/bun', () => {
 
   it('waits for in-flight Bun connect handlers to replay buffered disconnects during shutdown', async () => {
     const adapter = new TestBunAdapter();
+    const connectStarted = createDeferred<void>();
     const connectGate = createDeferred<void>();
 
     class GatewayState {
@@ -1103,6 +1100,7 @@ describe('@fluojs/websockets/bun', () => {
 
       @OnConnect()
       async onConnect() {
+        connectStarted.resolve();
         await connectGate.promise;
         this.state.connectCount += 1;
       }
@@ -1127,14 +1125,12 @@ describe('@fluojs/websockets/bun', () => {
     await server?.fetch(new Request('http://127.0.0.1:3000/shutdown-connect-in-flight', {
       headers: { upgrade: 'websocket' },
     }));
-    await settleMicrotasks();
+    await connectStarted.promise;
 
     let closed = false;
     const closePromise = app.close().then(() => {
       closed = true;
     });
-
-    await settleMicrotasks();
 
     expect(closed).toBe(false);
     expect(state.connectCount).toBe(0);
@@ -1208,15 +1204,12 @@ describe('@fluojs/websockets/bun', () => {
       closed = true;
     });
 
-    await settleMicrotasks();
-
     expect(closed).toBe(false);
     expect(socket.closeCalls).toEqual([]);
     expect((Reflect.get(service, 'socketRegistry') as Map<string, MockSocket>).size).toBe(0);
 
     openGate.resolve();
     await closePromise;
-    await settleMicrotasks();
 
     expect(closed).toBe(true);
     expect(socket.closeCalls).toEqual([{ code: 1001, reason: 'Server shutting down' }]);
@@ -1262,7 +1255,6 @@ describe('@fluojs/websockets/bun', () => {
     await server?.fetch(new Request('http://127.0.0.1:3000/payload', {
       headers: { upgrade: 'websocket' },
     }));
-    await settleMicrotasks();
 
     const socket = server?.lastSocket;
 
@@ -1271,7 +1263,6 @@ describe('@fluojs/websockets/bun', () => {
     }
 
     await server.emitMessage('hello');
-    await settleMicrotasks();
 
     expect(socket.closeCalls).toEqual([{ code: 1009, reason: 'Payload too large' }]);
     expect(state.messages).toEqual([]);
@@ -1315,7 +1306,6 @@ describe('@fluojs/websockets/bun', () => {
     await server?.fetch(new Request('http://127.0.0.1:3000/binary-payload', {
       headers: { upgrade: 'websocket' },
     }));
-    await settleMicrotasks();
 
     const socket = server?.lastSocket;
 
@@ -1324,7 +1314,6 @@ describe('@fluojs/websockets/bun', () => {
     }
 
     await server.emitMessage(new Uint8Array([1, 2, 3, 4, 5]));
-    await settleMicrotasks();
 
     expect(socket.closeCalls).toEqual([{ code: 1009, reason: 'Payload too large' }]);
     expect(state.messages).toEqual([]);
@@ -1334,6 +1323,7 @@ describe('@fluojs/websockets/bun', () => {
 
   it('receives binary payloads under the configured limit', async () => {
     const adapter = new TestBunAdapter();
+    const handled = createDeferred<void>();
 
     class GatewayState {
       messages: unknown[] = [];
@@ -1347,6 +1337,7 @@ describe('@fluojs/websockets/bun', () => {
       @OnMessage()
       onMessage(payload: unknown) {
         this.state.messages.push(payload);
+        handled.resolve();
       }
     }
 
@@ -1368,7 +1359,6 @@ describe('@fluojs/websockets/bun', () => {
     await server?.fetch(new Request('http://127.0.0.1:3000/binary-ok', {
       headers: { upgrade: 'websocket' },
     }));
-    await settleMicrotasks();
 
     const socket = server?.lastSocket;
 
@@ -1377,7 +1367,7 @@ describe('@fluojs/websockets/bun', () => {
     }
 
     await server.emitMessage(new Uint8Array([1, 2, 3, 4]));
-    await settleMicrotasks();
+    await handled.promise;
 
     expect(socket.closeCalls).toEqual([]);
     expect(state.messages).toEqual(['\x01\x02\x03\x04']);
@@ -1387,6 +1377,7 @@ describe('@fluojs/websockets/bun', () => {
 
   it('receives Bun ArrayBuffer payloads under the configured limit', async () => {
     const adapter = new TestBunAdapter();
+    const handled = createDeferred<void>();
 
     class GatewayState {
       messages: unknown[] = [];
@@ -1400,6 +1391,7 @@ describe('@fluojs/websockets/bun', () => {
       @OnMessage('ping')
       onPing(payload: unknown) {
         this.state.messages.push(payload);
+        handled.resolve();
       }
     }
 
@@ -1421,7 +1413,6 @@ describe('@fluojs/websockets/bun', () => {
     await server?.fetch(new Request('http://127.0.0.1:3000/array-buffer-ok', {
       headers: { upgrade: 'websocket' },
     }));
-    await settleMicrotasks();
 
     const socket = server?.lastSocket;
 
@@ -1436,7 +1427,7 @@ describe('@fluojs/websockets/bun', () => {
     ) as ArrayBuffer;
 
     await server.emitMessage(arrayBufferPayload);
-    await settleMicrotasks();
+    await handled.promise;
 
     expect(socket.closeCalls).toEqual([]);
     expect(state.messages).toEqual([{ value: 'array-buffer' }]);
@@ -1532,6 +1523,56 @@ describe('@fluojs/websockets/bun', () => {
     expect(socketIds).toHaveLength(1);
     expect(socketIds[0]).not.toBe('');
     expect(socket.sentMessages).toContain(JSON.stringify({ data: 'value', event: 'pong' }));
+  });
+
+  it('closes Bun sockets when an opt-in handler reply send fails', async () => {
+    // Given
+    const adapter = new TestBunAdapter();
+    const connected = createDeferred();
+    const disconnected = createDeferred();
+    let disconnectCount = 0;
+    @WebSocketGateway({ path: '/reply-failure' })
+    class ReplyGateway {
+      @OnConnect()
+      onConnect(): void { connected.resolve(); }
+      @OnMessage('ping')
+      onPing() { return { event: 'pong' }; }
+      @OnDisconnect()
+      onDisconnect(): void {
+        disconnectCount += 1;
+        disconnected.resolve();
+      }
+    }
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [BunWebSocketModule.forRoot({ replies: { mode: 'event-envelope' } })],
+      providers: [ReplyGateway],
+    });
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const service = await app.container.resolve(BunWebSocketGatewayLifecycleService);
+    await app.listen();
+    const server = adapter.getServer();
+    await server?.fetch(new Request('http://127.0.0.1:3000/reply-failure', { headers: { upgrade: 'websocket' } }));
+    await connected.promise;
+    const socket = server?.lastSocket;
+    const state = [...(Reflect.get(service, 'socketStates') as Map<string, {
+      connectLifecyclePromise: Promise<void>;
+      handlerQueue: Promise<void>;
+    }>).values()][0];
+    if (!server || !socket || !state) throw new Error('Expected an open Bun reply-failure socket.');
+    await state.connectLifecyclePromise;
+    socket.send = () => 0;
+
+    // When
+    await server.emitMessage(JSON.stringify({ event: 'ping' }));
+    await state.handlerQueue;
+
+    // Then
+    expect(socket.closeCalls).toEqual([{ code: 1011, reason: 'Send failed' }]);
+    expect((Reflect.get(service, 'socketRegistry') as Map<string, MockSocket>).size).toBe(0);
+    await disconnected.promise;
+    await app.close();
+    expect(disconnectCount).toBe(1);
   });
 
   it.each([

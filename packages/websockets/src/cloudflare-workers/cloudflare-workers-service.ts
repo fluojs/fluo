@@ -521,6 +521,15 @@ export class CloudflareWorkersWebSocketGatewayLifecycleService
         normalizedMessage,
         state.socketId,
         this.moduleOptions.replies?.mode,
+        (message) => {
+          try {
+            socket.send(message);
+            return true;
+          } catch {
+            this.closeSocketAfterTerminalFailure(state, socket, 'Send failed');
+            return false;
+          }
+        },
         this.logger,
         LIFECYCLE_LOG_CONTEXT,
       );

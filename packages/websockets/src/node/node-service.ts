@@ -785,6 +785,10 @@ export class NodeWebSocketGatewayLifecycleServiceImplementation
       data,
       socketId,
       this.moduleOptions.replies?.mode,
+      (message) => {
+        socket.send(message);
+        return true;
+      },
       this.logger,
       'WebSocketGatewayLifecycleService',
     );

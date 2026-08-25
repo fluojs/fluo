@@ -541,6 +541,14 @@ export class BunWebSocketGatewayLifecycleService
         nextMessage,
         state.socketId,
         this.moduleOptions.replies?.mode,
+        (message) => {
+          if (socket.send(message) !== 0) {
+            return true;
+          }
+
+          this.closeSocketAfterTerminalFailure(state, socket, 'Send failed');
+          return false;
+        },
         this.logger,
         LIFECYCLE_LOG_CONTEXT,
       );

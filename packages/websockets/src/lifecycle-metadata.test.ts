@@ -78,6 +78,7 @@ describe('websocket lifecycle metadata contracts', () => {
       JSON.stringify({ data: 'payload', event: 'ping' }),
       'socket-1',
       undefined,
+      () => true,
       logger,
       'Test',
     );
@@ -99,11 +100,15 @@ describe('websocket lifecycle metadata contracts', () => {
     // When
     await dispatchGatewayMessage(
       [{ descriptor, instance }],
-      { send(message: string) { sent.push(message); } },
+      {},
       new Request('https://test.invalid'),
       JSON.stringify({ event: 'ping' }),
       'socket-1',
       undefined,
+      (message) => {
+        sent.push(message);
+        return true;
+      },
       logger,
       'Test',
     );
@@ -125,11 +130,15 @@ describe('websocket lifecycle metadata contracts', () => {
     // When
     await dispatchGatewayMessage(
       [{ descriptor, instance }],
-      { send(message: string) { sent.push(message); } },
+      {},
       new Request('https://test.invalid'),
       JSON.stringify({ event: 'ping' }),
       'socket-1',
       'event-envelope',
+      (message) => {
+        sent.push(message);
+        return true;
+      },
       logger,
       'Test',
     );
