@@ -112,7 +112,7 @@ export class MyGateway {
 export class RealtimeModule {}
 ```
 
-Gateway return values are awaited and ignored by the WebSocket dispatcher. Send replies explicitly through the runtime socket passed to the handler, as shown above. Deno upgrade guards receive Web-standard `Request` values and can reject before `Deno.upgradeWebSocket(...)` accepts a socket by returning `false`, returning a structured `WebSocketUpgradeRejection`, or throwing an HTTP exception.
+Gateway return values are awaited and ignored by default. Send replies explicitly through the runtime socket passed to the handler, as shown above, or configure `DenoWebSocketModule.forRoot({ replies: { mode: 'event-envelope' } })` to opt into serialized `{ event, data? }` handler-return replies. Deno upgrade guards receive Web-standard `Request` values and can reject before `Deno.upgradeWebSocket(...)` accepts a socket by returning `false`, returning a structured `WebSocketUpgradeRejection`, or throwing an HTTP exception.
 
 If `DenoWebSocketModule.forRoot()` is not configured, an HTTP request that carries `Upgrade: websocket` is not upgraded implicitly. It continues through normal HTTP dispatch, which keeps gateway activation explicit and prevents platform-native websocket behavior from appearing before the application opts into the Deno websocket binding.
 

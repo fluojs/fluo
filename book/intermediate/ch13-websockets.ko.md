@@ -72,7 +72,7 @@ export class OrderStatusGateway {
 
 `@OnConnect`, `@OnMessage`, `@OnDisconnect` decorator는 WebSocket lifecycle에 직접 매핑됩니다. 이 구조는 기존 fluo handler 모델과 같은 결을 가지며, HTTP `@Get`과 Event `@OnEvent` handler에서 사용했던 declarative pattern을 그대로 따릅니다. 덕분에 실시간 연결을 다루더라도 코드는 익숙한 fluo 방식으로 읽힙니다.
 
-NestJS에서 마이그레이션한다면 legacy message, body, connected-socket decorator의 일대일 대응물을 찾지 마세요. fluo는 handler contract를 명시적으로 유지합니다. `@OnMessage(event?)`가 event를 선택하고, runtime은 method를 `(payload, socket, request)` positional argument로 호출합니다. 이렇게 하면 legacy parameter metadata 없이도 gateway input이 코드에 드러납니다.
+NestJS에서 마이그레이션한다면 legacy message, body, connected-socket decorator의 일대일 대응물을 찾지 마세요. fluo는 handler contract를 명시적으로 유지합니다. `@OnMessage(event?)`가 event를 선택하고, runtime은 method를 `(payload, socket, request, socketId)` positional argument로 호출합니다. 안정적인 `socketId`는 `WebSocketRoomService` room operation에서 사용할 수 있습니다. 이렇게 하면 legacy parameter metadata 없이도 gateway input이 코드에 드러납니다.
 
 ## 13.4 Bounded defaults and guards
 
@@ -173,7 +173,7 @@ fluo는 이식성을 전제로 설계되었습니다. 기본 `WebSocketModule`�
 
 Root 및 Node entrypoint는 upgrade guard를 Node의 `IncomingMessage`로 type 지정합니다. Bun, Deno, Cloudflare Workers subpath는 Web standard `Request` guard를 사용합니다. Guard는 `true` 또는 return 없음으로 upgrade를 허용하고, `false`나 structured `WebSocketUpgradeRejection`으로 거절하거나 `UnauthorizedException` 같은 HTTP exception을 throw할 수 있습니다. fluo는 socket을 accept하기 전에 이런 실패를 pre-handshake rejection response로 변환합니다. Text frame은 JSON event envelope로 parse할 수 없으면 string으로 전달되고, binary frame은 동일한 dispatch 단계 전에 UTF-8로 decode되므로 지원 runtime 전반에서 payload 처리 방식이 일관됩니다.
 
-Raw WebSocket handler return value는 await된 뒤 무시됩니다. `@OnMessage()`에서 값을 반환하지 말고, `socket.send(JSON.stringify({ event: 'pong', data }))`처럼 runtime socket argument로 client reply를 명시적으로 보내세요.
+Raw WebSocket handler return value는 기본적으로 await된 뒤 무시됩니다. `socket.send(JSON.stringify({ event: 'pong', data }))`처럼 runtime socket argument로 client reply를 명시적으로 보낼 수 있습니다. Return 기반 reply를 선호하는 application은 `WebSocketModule.forRoot({ replies: { mode: 'event-envelope' } })`로 opt-in할 수 있으며, 이 mode에서는 올바른 `{ event, data? }` handler return이 완료 후 serialize되어 Node, Bun, Deno, Cloudflare Workers 전반에서 전송됩니다.
 
 Low-level integration에서는 public seam 이름을 code review에서 드러나게 유지하세요. `WebSocketUpgradeContext`, `WebSocketUpgradeGuard`, `WebSocketUpgradeRejection`, gateway descriptor type, runtime socket/binding type은 import한 package 또는 runtime subpath에 속합니다. Root `WebSocketGatewayLifecycleService` 이름은 lazy Node implementation을 위한 DI token alias이므로 application code가 직접 생성하지 않고 container에서 resolve합니다.
 

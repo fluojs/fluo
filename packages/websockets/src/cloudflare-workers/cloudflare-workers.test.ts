@@ -1165,8 +1165,12 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       socket.send = () => {
         throw new Error('Broadcast failed.');
       };
+
+      // When
       service.broadcastToRoom('shutdown-room', 'shutdown.test', undefined);
-      socket.close(1000, 'Client closed');
+
+      // Then
+      expect(socket.closeCalls).toEqual([{ code: 1011, reason: 'Send failed' }]);
       await disconnectStarted.promise;
 
       let closed = false;

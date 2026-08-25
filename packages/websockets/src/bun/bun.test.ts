@@ -1005,8 +1005,12 @@ describe('@fluojs/websockets/bun', () => {
 
       service.joinRoom(socketId, 'shutdown-room');
       socket.send = () => 0;
+
+      // When
       service.broadcastToRoom('shutdown-room', 'shutdown.test', undefined);
-      socket.close(1000, 'Client closed');
+
+      // Then
+      expect(socket.closeCalls).toEqual([{ code: 1011, reason: 'Send failed' }]);
       await disconnectStarted.promise;
 
       let closed = false;
