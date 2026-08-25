@@ -108,6 +108,29 @@ Adapter wire support는 명시적인 portability contract입니다. 지원되는
 
 Custom runtime method가 자동으로 OpenAPI Path Item operation이 되는 것은 아닙니다. `@fluojs/openapi`는 계속 문서화된 standard operation method만 받으므로 custom-method descriptor를 OpenAPI input에서 제외하거나 application-owned extension으로 해당 endpoint를 문서화해야 합니다.
 
+### 이식 가능한 헤더 helper
+
+미들웨어, versioning, DTO binding, controller 코드가 adapter가 넘긴 `string | string[] | undefined`
+header 값을 납작하게 만들지 않으면서 case-insensitive lookup을 해야 하면
+`getRequestHeader(request, name)`를 사용하세요.
+
+응답 negotiation이나 cache 로직이 case variant를 중복하지 않고 `Vary` 필드를 추가해야 하거나,
+comma list를 매번 수동으로 파싱하고 싶지 않거나, 기존 `Vary: *` contract를 실수로 확장하면 안
+될 때는 `appendVaryHeader(response, ...fields)`를 사용하세요.
+
+```ts
+import { appendVaryHeader, getRequestHeader, type RequestContext } from '@fluojs/http';
+
+export function readLanguage(context: RequestContext): string | undefined {
+  const acceptLanguage = getRequestHeader(context.request, 'accept-language');
+  return Array.isArray(acceptLanguage) ? acceptLanguage[0] : acceptLanguage;
+}
+
+export function markLanguageVariance(context: RequestContext): void {
+  appendVaryHeader(context.response, 'Accept-Language', 'Origin');
+}
+```
+
 ## 주요 패턴
 
 ### 가드와 인터셉터
@@ -299,7 +322,7 @@ Multipart upload를 parse하는 어댑터는 shared HTTP contract를 adapter-spe
 - **파이프라인 계약 타입**: `Middleware`, `MiddlewareLike`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardLike`, `GuardContext`, `Interceptor`, `InterceptorLike`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `RequestObserverLike`, `RequestObservationContext`, `ArgumentResolverContext`, `Binder`, `Converter`, `ConverterLike`, `ConverterTarget`, `ValidationIssue`, `Validator`
 - **Adapter API**: `HttpApplicationAdapter`, `HttpAdapterRealtimeCapability`, `ServerBackedHttpAdapterRealtimeCapability`, `FetchStyleHttpAdapterRealtimeCapability`, `HttpAdapterRealtimeBindingInstallation`, `UnsupportedHttpAdapterRealtimeCapability`, `createNoopHttpApplicationAdapter`, `createServerBackedHttpAdapterRealtimeCapability`, `createUnsupportedHttpAdapterRealtimeCapability`, `createFetchStyleHttpAdapterRealtimeCapability`
 - **예외와 오류**: `HttpExceptionDetail`, `HttpExceptionOptions`, `ErrorResponse`, `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `InvalidHttpMethodError`, `HandlerNotFoundError`, `RequestAbortedError`
-- **헬퍼**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
+- **헬퍼**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `getRequestHeader`, `appendVaryHeader`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
 - **Option 및 store type**: `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStoreEntry`, `SecurityHeadersOptions`, `SseSendOptions`
 
 ## 내부 서브경로 (`@fluojs/http/internal`)

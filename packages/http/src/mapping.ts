@@ -63,19 +63,38 @@ function normalizeVersionValue(version: string): string {
   return version.trim().replace(/^v/i, '');
 }
 
-function readHeaderValue(request: FrameworkRequest, headerName: string): string | undefined {
-  const normalizedHeaderName = headerName.trim().toLowerCase();
+function normalizeHeaderName(headerName: string): string | undefined {
+  const normalized = headerName.trim().toLowerCase();
+
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function getMatchingRequestHeaderValues(
+  request: FrameworkRequest,
+  headerName: string,
+): readonly (string | string[] | undefined)[] {
+  const normalizedHeaderName = normalizeHeaderName(headerName);
 
   if (!normalizedHeaderName) {
-    return undefined;
+    return [];
   }
 
-  for (const [key, raw] of Object.entries(request.headers)) {
-    if (key.toLowerCase() !== normalizedHeaderName) {
-      continue;
-    }
+  const matches: Array<string | string[] | undefined> = [];
 
-    const values = Array.isArray(raw) ? raw : [raw];
+  for (const [name, value] of Object.entries(request.headers)) {
+    if (name.toLowerCase() === normalizedHeaderName) {
+      matches.push(value);
+    }
+  }
+
+  return matches;
+}
+
+function readHeaderValue(request: FrameworkRequest, headerName: string): string | undefined {
+  const matches = getMatchingRequestHeaderValues(request, headerName);
+
+  for (const match of matches) {
+    const values = Array.isArray(match) ? match : [match];
 
     for (const value of values) {
       const normalized = value?.trim();
@@ -89,12 +108,34 @@ function readHeaderValue(request: FrameworkRequest, headerName: string): string 
   return undefined;
 }
 
+function readCombinedHeaderValue(
+  request: FrameworkRequest,
+  headerName: string,
+): string | undefined {
+  const matches = getMatchingRequestHeaderValues(request, headerName);
+  const values: string[] = [];
+
+  for (const match of matches) {
+    const entries = Array.isArray(match) ? match : [match];
+
+    for (const entry of entries) {
+      const normalized = entry?.trim();
+
+      if (normalized) {
+        values.push(normalized);
+      }
+    }
+  }
+
+  return values.length > 0 ? values.join(',') : undefined;
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function extractVersionFromMediaType(request: FrameworkRequest, key: string): string | undefined {
-  const accept = readHeaderValue(request, 'accept');
+  const accept = readCombinedHeaderValue(request, 'accept');
 
   if (!accept) {
     return undefined;

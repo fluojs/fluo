@@ -1,3 +1,4 @@
+import { appendVaryHeader, Controller, Get, getRequestHeader, type RequestContext } from '@fluojs/http';
 import { bootstrapExpressApplication, runExpressApplication } from '@fluojs/platform-express';
 import {
   bootstrapFastifyApplication,
@@ -5,6 +6,7 @@ import {
   runFastifyApplication,
 } from '@fluojs/platform-fastify';
 import { bootstrapNodejsApplication, runNodejsApplication } from '@fluojs/platform-nodejs';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { bootstrapNodeApplication, runNodeApplication } from '@fluojs/runtime/node';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -76,6 +78,83 @@ interface PortabilityAssertions {
 interface CleanupTrackedApp {
   close(): Promise<void>;
   listen(): Promise<void>;
+}
+
+type BootstrapHttpAdapterApp = {
+  close(): Promise<void>;
+  listen(): Promise<void>;
+};
+
+type BootstrapHttpAdapter = (
+  rootModule: ModuleType,
+  options: { cors: false; port: number },
+) => Promise<BootstrapHttpAdapterApp>;
+
+function resolveListeningUrl(app: BootstrapHttpAdapterApp): string {
+  const adapter = Reflect.get(app, 'adapter');
+
+  if (
+    typeof adapter !== 'object' ||
+    adapter === null ||
+    !('getListenTarget' in adapter) ||
+    typeof adapter.getListenTarget !== 'function'
+  ) {
+    throw new Error('Failed to resolve portability helper test listen target.');
+  }
+
+  const target = adapter.getListenTarget();
+
+  if (typeof target !== 'object' || target === null || typeof target.url !== 'string' || target.url.length === 0) {
+    throw new Error('Failed to resolve portability helper test listener URL.');
+  }
+
+  return target.url;
+}
+
+function registerHeaderHelperPortabilitySuite(
+  name: string,
+  bootstrap: BootstrapHttpAdapter,
+): void {
+  describe(`${name} request header helper portability`, () => {
+    it('reads mixed-case request headers and preserves wildcard Vary responses', async () => {
+      @Controller('/headers')
+      class HeaderController {
+        @Get('/')
+        read(_input: undefined, context: RequestContext) {
+          context.response.setHeader('vary', '*, Accept-Encoding');
+          appendVaryHeader(context.response, 'Accept');
+
+          return {
+            requestId: getRequestHeader(context.request, 'x-request-id'),
+          };
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, {
+        controllers: [HeaderController],
+      });
+
+      const app = await bootstrap(AppModule, { cors: false, port: 0 });
+
+      try {
+        await app.listen();
+        const response = await fetch(`${resolveListeningUrl(app)}/headers`, {
+          headers: {
+            'X-REQUEST-ID': 'req-portability',
+          },
+        });
+
+        expect(response.status).toBe(200);
+        expect(response.headers.get('vary')).toBe('*');
+        await expect(response.json()).resolves.toEqual({
+          requestId: 'req-portability',
+        });
+      } finally {
+        await app.close();
+      }
+    });
+  });
 }
 
 function registerPortabilitySuite(
@@ -405,6 +484,7 @@ registerPortabilitySuite(
     streamDrainCloseEdge: true,
   },
 );
+registerHeaderHelperPortabilitySuite('node', bootstrapNodeApplication);
 
 registerPortabilitySuite(
   'nodejs-platform',
@@ -418,6 +498,7 @@ registerPortabilitySuite(
     streamDrainCloseEdge: true,
   },
 );
+registerHeaderHelperPortabilitySuite('nodejs-platform', bootstrapNodejsApplication);
 
 registerPortabilitySuite(
   'express',
@@ -431,6 +512,7 @@ registerPortabilitySuite(
     streamDrainCloseEdge: true,
   },
 );
+registerHeaderHelperPortabilitySuite('express', bootstrapExpressApplication);
 
 const fastifyPortabilityHarness = createHttpAdapterPortabilityHarness({
   bootstrap: bootstrapFastifyApplication,
@@ -457,3 +539,4 @@ const fastifyPortabilityHarness = createHttpAdapterPortabilityHarness({
 registerPortabilitySuite('fastify', fastifyPortabilityHarness, {
   streamDrainCloseEdge: true,
 });
+registerHeaderHelperPortabilitySuite('fastify', bootstrapFastifyApplication);

@@ -159,6 +159,9 @@ describe('@fluojs/http public API surface', () => {
     expect(httpPublicApi).toHaveProperty('createCorsMiddleware');
     expect(httpPublicApi).toHaveProperty('createRateLimitMiddleware');
     expect(httpPublicApi).toHaveProperty('createSecurityHeadersMiddleware');
+    expect(httpPublicApi).toHaveProperty('appendVaryHeader');
+    expect(httpPublicApi).toHaveProperty('getRequestHeader');
+    expect(httpPublicApi).not.toHaveProperty('readFirstNonEmptyRequestHeaderValue');
     expect(httpPublicApi).toHaveProperty('SseResponse');
     expect(httpPublicApi).toHaveProperty('encodeSseComment');
     expect(httpPublicApi).toHaveProperty('encodeSseMessage');
