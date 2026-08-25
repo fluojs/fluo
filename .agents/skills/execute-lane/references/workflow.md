@@ -93,6 +93,7 @@ queued -> implementing -> local-review
 local-review + fixable BLOCK -> implementing -> new head -> local-review
 local-review + all PASS -> ready-for-pr
 ready-for-pr -> observed push and PR creation -> ci-pending
+ci-pending + PR CONFLICTING/DIRTY -> ci-fix-back -> new head -> local-review
 ci-pending + fixable failure -> ci-fix-back -> new head -> local-review
 local-review + all PASS and existing PR -> ready-for-push
 ready-for-push -> observed push -> ci-pending
@@ -150,7 +151,7 @@ executes root-state checks. Nested child output and fixture JSON are not live
 evidence:
 
 ```bash
-gh pr view <pr> --json number,url,state,headRefName,headRefOid,mergeCommit,mergedAt
+gh pr view <pr> --json number,url,state,headRefName,headRefOid,mergeable,mergeStateStatus,mergeCommit,mergedAt
 gh issue view <issue> --json number,state,url
 git worktree list --porcelain
 git show-ref --verify refs/heads/<branch>
