@@ -378,7 +378,32 @@ describe('$execute-lane persisted native state machine', () => {
           issue_evidence_sha256: 'c'.repeat(64),
         };
       },
-      /release handoff approval binding does not match/u,
+      /release handoff attestations do not match the approved plan/u,
+    ],
+    [
+      'self-consistent approval ID',
+      (receipt: Record<string, unknown>) => {
+        receipt['approval_id'] = 'approval-forged-lane-plan';
+        receipt['binding_sha256'] =
+          '091dc0f20c97675db7ea0a0675a3aec817d8f511487fb6a17dce7df36c558203';
+      },
+      /release handoffs require their consumed lane-plan approval receipt/u,
+    ],
+    [
+      'self-consistent evidence digest',
+      (receipt: Record<string, unknown>) => {
+        const attestations = receipt['release_handoff_attestations'];
+        if (!Array.isArray(attestations) || !isRecord(attestations[0])) {
+          throw new TypeError('release approval attestations must be objects');
+        }
+        attestations[0] = {
+          ...attestations[0],
+          issue_evidence_sha256: 'c'.repeat(64),
+        };
+        receipt['binding_sha256'] =
+          '7ee06bb74ca22b749df2905b97096895ef5d0365198132c59e457f2885390268';
+      },
+      /release handoff attestations do not match the approved plan/u,
     ],
   ])('rejects a substituted release handoff %s', (_, mutate, error) => {
     const repositoryRoot = mkdtempSync(

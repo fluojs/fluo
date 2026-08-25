@@ -40,8 +40,8 @@ export const assertReleaseHandoffApproval = (ledger, receipt) => {
     receipt.version !== 1 ||
     receipt.gate !== 'lane-plan' ||
     receipt.lane_id !== ledger.lane_id ||
-    typeof receipt.approval_id !== 'string' ||
-    receipt.approval_id.length === 0 ||
+    receipt.approval_id !==
+      `approval-${ledger.lane_id}-lane-plan` ||
     !Array.isArray(receipt.release_handoff_attestations) ||
     !isRecord(receipt.plan)
   ) {
@@ -129,6 +129,25 @@ export const assertReleaseHandoffBinding = (
   assertLaneSourceBinding(ledger, artifact);
   if (!planIsCanonical(receipt.plan, artifact)) {
     throw new TypeError('release handoff receipt plan is not canonical');
+  }
+  const plannedHandoffs = receipt.plan.release_handoffs;
+  if (
+    plannedHandoffs.length !==
+      receipt.release_handoff_attestations.length ||
+    !plannedHandoffs.every((handoff, index) => {
+      const attestation = receipt.release_handoff_attestations[index];
+      return (
+        handoff.issue_number === attestation.issue_number &&
+        handoff.issue_evidence_sha256 ===
+          attestation.issue_evidence_sha256 &&
+        handoff.reason === attestation.decision &&
+        attestation.changeset_only === false
+      );
+    })
+  ) {
+    throw new TypeError(
+      'release handoff attestations do not match the approved plan',
+    );
   }
   const approval = {
     gate: 'lane-plan',
