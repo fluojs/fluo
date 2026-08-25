@@ -308,6 +308,45 @@ describe('handler mapping', () => {
     expect(v2Match?.descriptor.methodName).toBe('listV2');
   });
 
+  it('scans duplicate-case Accept headers until a non-empty media type version is found', () => {
+    @Controller('/users')
+    class UsersController {
+      @Version('1')
+      @Get('/')
+      listV1() {
+        return [{ id: '1' }];
+      }
+
+      @Version('2')
+      @Get('/')
+      listV2() {
+        return [{ id: '2' }];
+      }
+    }
+
+    const mapping = createHandlerMapping(
+      [{ controllerToken: UsersController }],
+      { versioning: { key: 'v=', type: VersioningType.MEDIA_TYPE } },
+    );
+
+    const v2Match = mapping.match({
+      body: undefined,
+      cookies: {},
+      headers: {
+        accept: '   ',
+        Accept: 'application/json; v=2',
+      },
+      method: 'GET',
+      params: {},
+      path: '/users',
+      query: {},
+      raw: {},
+      url: '/users',
+    });
+
+    expect(v2Match?.descriptor.methodName).toBe('listV2');
+  });
+
   it('resolves versions from custom extractor functions', () => {
     @Controller('/users')
     class UsersController {

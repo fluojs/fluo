@@ -4,7 +4,6 @@ import { getControllerMetadata, getRouteMetadata } from '@fluojs/core/internal';
 import { attachCompiledRouteIdentity } from './compiled-route-identity.js';
 import { getRouteProducesMetadata } from './decorators.js';
 import { RouteConflictError } from './errors.js';
-import { getRequestHeader } from './header-helpers.js';
 import { extractRoutePathParams, normalizeRoutePath, parseRoutePath, type RoutePathSegment } from './route-path.js';
 import type {
   FrameworkRequest,
@@ -64,15 +63,45 @@ function normalizeVersionValue(version: string): string {
   return version.trim().replace(/^v/i, '');
 }
 
+function normalizeHeaderName(headerName: string): string | undefined {
+  const normalized = headerName.trim().toLowerCase();
+
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function getMatchingRequestHeaderValues(
+  request: FrameworkRequest,
+  headerName: string,
+): readonly (string | string[] | undefined)[] {
+  const normalizedHeaderName = normalizeHeaderName(headerName);
+
+  if (!normalizedHeaderName) {
+    return [];
+  }
+
+  const matches: Array<string | string[] | undefined> = [];
+
+  for (const [name, value] of Object.entries(request.headers)) {
+    if (name.toLowerCase() === normalizedHeaderName) {
+      matches.push(value);
+    }
+  }
+
+  return matches;
+}
+
 function readHeaderValue(request: FrameworkRequest, headerName: string): string | undefined {
-  const raw = getRequestHeader(request, headerName);
-  const values = Array.isArray(raw) ? raw : [raw];
+  const matches = getMatchingRequestHeaderValues(request, headerName);
 
-  for (const value of values) {
-    const normalized = value?.trim();
+  for (const match of matches) {
+    const values = Array.isArray(match) ? match : [match];
 
-    if (normalized) {
-      return normalized;
+    for (const value of values) {
+      const normalized = value?.trim();
+
+      if (normalized) {
+        return normalized;
+      }
     }
   }
 
