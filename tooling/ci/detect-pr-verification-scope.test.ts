@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
-import { shouldVerifyIsolatedHttpBenchmark } from './detect-pr-verification-scope.mjs';
+import {
+  shouldForceFullVerificationByPath,
+  shouldVerifyIsolatedHttpBenchmark,
+} from './detect-pr-verification-scope.mjs';
+
+describe('shouldForceFullVerificationByPath', () => {
+  it('treats changeset files as neutral when a package changes', () => {
+    const changedFiles = ['packages/http/src/index.ts', '.changeset/quiet-pandas-smile.md'];
+
+    const result = shouldForceFullVerificationByPath(changedFiles);
+
+    expect(result).toBeUndefined();
+  });
+});
 
 describe('shouldVerifyIsolatedHttpBenchmark', () => {
   it('returns true when the isolated HTTP benchmark graph changes', () => {

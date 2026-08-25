@@ -193,7 +193,13 @@ describe('legacy search artifact migration', () => {
       writeFileSync(
         scenarioPath,
         `${JSON.stringify(
-          { inputs: [input], artifacts: { [input]: artifact }, approvals, plan },
+          {
+            intake: { mode: 'artifact', artifact_path: input },
+            artifacts: { [input]: artifact },
+            approvals,
+            recommended_issue_numbers: [],
+            plan,
+          },
           null,
           2,
         )}\n`,
