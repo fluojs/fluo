@@ -128,6 +128,10 @@ class AdminController {
 }
 ```
 
+### Request observers
+
+`onRequestSuccess` runs only after the matched handler and all module-level and application-level middleware have settled, including work after `await next()`. If middleware throws after `next()` returns, observers receive `onRequestError` without a preceding success notification. `onRequestFinish` still runs after either outcome.
+
 ### Async request context
 
 ```ts

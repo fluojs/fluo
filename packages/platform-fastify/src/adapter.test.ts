@@ -1139,9 +1139,9 @@ describe('@fluojs/platform-fastify', () => {
       expect(lifecycle.indexOf('observer:matched:GET:/users/:id')).toBeLessThan(lifecycle.indexOf('guard:/users/:id:123'));
       expect(lifecycle.indexOf('guard:/users/:id:123')).toBeLessThan(lifecycle.indexOf('interceptor:before:/users/:id'));
       expect(lifecycle.indexOf('interceptor:before:/users/:id')).toBeLessThan(lifecycle.indexOf('interceptor:after:/users/:id'));
-      expect(lifecycle.indexOf('interceptor:after:/users/:id')).toBeLessThan(lifecycle.indexOf('observer:success:user'));
-      expect(lifecycle.indexOf('observer:success:user')).toBeLessThan(lifecycle.indexOf('middleware:after:GET'));
-      expect(lifecycle.indexOf('middleware:after:GET')).toBeLessThan(lifecycle.indexOf('observer:finish:GET'));
+      expect(lifecycle.indexOf('interceptor:after:/users/:id')).toBeLessThan(lifecycle.indexOf('middleware:after:GET'));
+      expect(lifecycle.indexOf('middleware:after:GET')).toBeLessThan(lifecycle.indexOf('observer:success:user'));
+      expect(lifecycle.indexOf('observer:success:user')).toBeLessThan(lifecycle.indexOf('observer:finish:GET'));
 
       const versionedResponse = await requestHttp({
         headers: { 'x-api-version': '1' },

@@ -126,6 +126,10 @@ class AdminController {
 }
 ```
 
+### Request observer
+
+`onRequestSuccess`는 매칭된 handler와 모든 module-level 및 application-level middleware가 완전히 settle된 뒤에만 호출되며, 여기에는 `await next()` 이후의 작업도 포함됩니다. Middleware가 `next()` 반환 뒤 예외를 던지면 observer는 앞선 success 알림 없이 `onRequestError`를 받습니다. `onRequestFinish`는 어느 outcome에서든 그 뒤에 호출됩니다.
+
 ### 비동기 요청 컨텍스트
 
 ```ts

@@ -2823,8 +2823,8 @@ describe('dispatcher runtime', () => {
       'interceptor:before:/native/:id',
       'handler:123',
       'interceptor:after:/native/:id',
-      'observer:success:123',
       'middleware:after:/native/123',
+      'observer:success:123',
       'observer:finish:123',
     ]);
   });
