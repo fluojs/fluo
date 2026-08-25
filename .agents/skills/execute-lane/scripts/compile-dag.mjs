@@ -34,7 +34,8 @@ SCOPE:
 VERIFY:
 - Bind every local review, PR observation, CI result, merge, and cleanup action to the current head.
 - Query PR state with mergeable and mergeStateStatus fields before waiting for
-  CI, and persist a head-bound pr-conflict receipt when either proves conflict.
+  CI, and persist an OPEN, head-bound pr-conflict receipt when either proves
+  conflict.
 - Adopt an existing OPEN PR only after a same-head local triad and persist a
   pr-adopt receipt whose local, remote, and PR heads are identical.
 - Persist every transition and receipt through issue-supervisor-store.mjs.

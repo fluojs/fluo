@@ -96,6 +96,7 @@ export const assertPersistedReceipt = (supervisor, value) => {
     receipt.kind === 'pr-conflict' &&
     (receipt.remote_head_sha !== receipt.head_sha ||
       receipt.pr_head_sha !== receipt.head_sha ||
+      receipt.pr_state !== 'OPEN' ||
       (receipt.pr_mergeable !== 'CONFLICTING' &&
         receipt.pr_merge_state_status !== 'DIRTY'))
   ) {

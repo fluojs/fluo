@@ -92,6 +92,7 @@ const observePrConflict = (state, step) => {
   if (
     receipt.remote_head_sha !== state.head_sha ||
     receipt.pr_head_sha !== state.head_sha ||
+    receipt.pr_state !== 'OPEN' ||
     (receipt.pr_mergeable !== 'CONFLICTING' &&
       receipt.pr_merge_state_status !== 'DIRTY')
   ) {

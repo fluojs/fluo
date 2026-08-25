@@ -270,6 +270,24 @@ const passReviews = (head: string) =>
     blockers: [],
   }));
 
+const createCiPendingState = () => {
+  let state = createIssueSupervisor(identity);
+  state = transitionIssueSupervisor(state, {
+    kind: 'implementation-completed',
+    new_head: headA,
+    verification: 'pnpm test --filter runtime passed',
+  });
+  state = transitionIssueSupervisor(state, {
+    kind: 'local-review',
+    reviews: passReviews(headA),
+  });
+  return transitionIssueSupervisor(state, {
+    kind: 'pr-observed',
+    action: 'create',
+    receipt: prReceipt('pr-create', headA),
+  });
+};
+
 describe('execute-lane issue supervisor lifecycle', () => {
   it('rejects non-canonical issue branch and worktree identity', () => {
     expect(() =>
@@ -468,6 +486,7 @@ describe('execute-lane issue supervisor lifecycle', () => {
           pr_url: 'https://github.com/fluojs/fluo/pull/5101',
           remote_head_sha: headA,
           pr_head_sha: headA,
+          pr_state: 'OPEN',
           pr_mergeable: 'CONFLICTING',
           pr_merge_state_status: 'DIRTY',
           evidence: 'mergeable=CONFLICTING mergeStateStatus=DIRTY',
@@ -493,10 +512,72 @@ describe('execute-lane issue supervisor lifecycle', () => {
     expect(persisted.receipts).toContainEqual(
       expect.objectContaining({
         kind: 'pr-conflict',
+        pr_state: 'OPEN',
         pr_mergeable: 'CONFLICTING',
         pr_merge_state_status: 'DIRTY',
       }),
     );
+  });
+
+  it.each([
+    {
+      pr_mergeable: 'CONFLICTING',
+      pr_merge_state_status: 'UNKNOWN',
+    },
+    {
+      pr_mergeable: 'UNKNOWN',
+      pr_merge_state_status: 'DIRTY',
+    },
+  ])(
+    'accepts an independent $pr_mergeable/$pr_merge_state_status conflict signal',
+    ({ pr_mergeable, pr_merge_state_status }) => {
+      // Given
+      const state = createCiPendingState();
+
+      // When
+      const result = transitionIssueSupervisor(state, {
+        kind: 'pr-conflict-observed',
+        receipt: {
+          ...observationBase(headA),
+          kind: 'pr-conflict',
+          pr_number: 5101,
+          pr_url: 'https://github.com/fluojs/fluo/pull/5101',
+          remote_head_sha: headA,
+          pr_head_sha: headA,
+          pr_state: 'OPEN',
+          pr_mergeable,
+          pr_merge_state_status,
+          evidence: 'fresh GitHub conflict observation',
+        },
+      });
+
+      // Then
+      expect(result.status).toBe('ci-fix-back');
+    },
+  );
+
+  it('rejects a merge conflict receipt for a non-open PR', () => {
+    // Given
+    const state = createCiPendingState();
+
+    // When / Then
+    expect(() =>
+      transitionIssueSupervisor(state, {
+        kind: 'pr-conflict-observed',
+        receipt: {
+          ...observationBase(headA),
+          kind: 'pr-conflict',
+          pr_number: 5101,
+          pr_url: 'https://github.com/fluojs/fluo/pull/5101',
+          remote_head_sha: headA,
+          pr_head_sha: headA,
+          pr_state: 'MERGED',
+          pr_mergeable: 'CONFLICTING',
+          pr_merge_state_status: 'DIRTY',
+          evidence: 'stale merged PR observation',
+        },
+      }),
+    ).toThrow();
   });
 
   it('adopts an existing open PR after a same-head local triad', () => {

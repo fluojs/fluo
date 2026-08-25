@@ -49,8 +49,9 @@ before entering `ci-pending`.
 Immediately after entering `ci-pending`, and on every fresh PR observation
 while checks are pending, query `mergeable` and `mergeStateStatus`. A
 `CONFLICTING` or `DIRTY` result is a fixable PR conflict: persist a head-bound
-`pr-conflict` receipt and enter `ci-fix-back` without waiting for CI. Conflict
-resolution must produce a new head and rerun the complete local triad.
+`pr-conflict` receipt that proves the PR remains `OPEN`, then enter
+`ci-fix-back` without waiting for CI. Conflict resolution must produce a new
+head and rerun the complete local triad.
 
 When a successor lane reconciles an existing canonical branch, worktree, and
 OPEN PR, reuse those identities instead of creating duplicates. Rerun the full
