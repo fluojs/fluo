@@ -123,18 +123,30 @@ export const assertIssueToPrInput = (value) => {
   assertSha(value.starting_head_sha, 'issue-to-pr input.starting_head_sha');
   assertUnresolvedInputBlockers(value.blockers, 'issue-to-pr input.blockers');
 
-  if (value.mode === 'new-pr') {
+  if (value.mode === 'new-pr' || value.mode === 'local-new') {
     if (value.existing_pr !== null || value.blockers.length !== 0 || value.fix_back_attempt !== null) {
-      fail('issue-to-pr input', 'new-pr must not carry PR, blockers, or fix-back attempt');
+      fail('issue-to-pr input', 'new modes must not carry PR, blockers, or fix-back attempt');
     }
     return;
   }
-  if (value.mode !== 'fix-back') {
-    fail('issue-to-pr input.mode', 'must be new-pr or fix-back');
+  if (!['fix-back', 'local-fix-back', 'ci-fix-back'].includes(value.mode)) {
+    fail(
+      'issue-to-pr input.mode',
+      'must be new-pr, local-new, fix-back, local-fix-back, or ci-fix-back',
+    );
   }
-  assertPr(value.existing_pr, 'issue-to-pr input.existing_pr');
-  if (value.existing_pr.head_branch !== value.branch || value.blockers.length === 0) {
-    fail('issue-to-pr input', 'fix-back PR identity and at least one blocker are required');
+  if (value.mode === 'local-fix-back') {
+    if (value.existing_pr !== null || value.blockers.length === 0) {
+      fail(
+        'issue-to-pr input',
+        'local-fix-back requires blockers and must not carry PR identity',
+      );
+    }
+  } else {
+    assertPr(value.existing_pr, 'issue-to-pr input.existing_pr');
+    if (value.existing_pr.head_branch !== value.branch || value.blockers.length === 0) {
+      fail('issue-to-pr input', 'remote fix-back PR identity and blockers are required');
+    }
   }
   if (value.blockers.some((blocker) => blocker.fix_back_eligible !== true)) {
     fail(
@@ -154,9 +166,9 @@ export const assertIssueToPrIdentity = (input, identity) => {
   if (identity.branch !== input.branch || identity.worktree !== input.worktree || identity.checked_out_branch !== input.branch) {
     fail('issue-to-pr identity', 'branch, worktree, and checked-out branch must match input');
   }
-  if (input.mode === 'new-pr') {
+  if (['new-pr', 'local-new', 'local-fix-back'].includes(input.mode)) {
     if (identity.pr !== null) {
-      fail('issue-to-pr identity.PR', 'new-pr must not reuse a PR');
+      fail('issue-to-pr identity.PR', 'local or new implementation must not reuse a PR');
     }
     return;
   }
@@ -184,12 +196,23 @@ export const assertIssueToPrResult = (input, result) => {
   ) {
     fail('issue-to-pr typed output identity', 'lane, issue, branch, and worktree must match input');
   }
-  assertPr(result.pr, 'issue-to-pr typed output.pr');
-  if (result.pr.head_branch !== input.branch) {
-    fail('issue-to-pr typed output identity', 'PR head branch must match input branch');
-  }
-  if (input.mode === 'fix-back' && (result.pr.number !== input.existing_pr.number || result.pr.url !== input.existing_pr.url)) {
-    fail('issue-to-pr typed output identity', 'fix-back must retain the existing PR');
+  const localMode = ['local-new', 'local-fix-back'].includes(input.mode);
+  if (localMode) {
+    if (result.pr !== null) {
+      fail('issue-to-pr typed output.pr', 'local modes must return before PR creation');
+    }
+  } else {
+    assertPr(result.pr, 'issue-to-pr typed output.pr');
+    if (result.pr.head_branch !== input.branch) {
+      fail('issue-to-pr typed output identity', 'PR head branch must match input branch');
+    }
+    if (
+      ['fix-back', 'ci-fix-back'].includes(input.mode) &&
+      (result.pr.number !== input.existing_pr.number ||
+        result.pr.url !== input.existing_pr.url)
+    ) {
+      fail('issue-to-pr typed output identity', 'remote fix-back must retain the existing PR');
+    }
   }
   assertSha(result.previous_head_sha, 'issue-to-pr typed output.previous_head_sha');
   assertSha(result.head_sha, 'issue-to-pr typed output.head_sha');
@@ -220,7 +243,13 @@ export const assertIssueToPrResult = (input, result) => {
     result.addressed_blockers,
     result.remaining_blockers,
   );
-  const expectedFixBackResult = input.mode === 'fix-back' ? 'remediated' : 'not-applicable';
+  const expectedFixBackResult = [
+    'fix-back',
+    'local-fix-back',
+    'ci-fix-back',
+  ].includes(input.mode)
+    ? 'remediated'
+    : 'not-applicable';
   if (result.fix_back_result !== expectedFixBackResult) {
     fail('issue-to-pr typed output', 'completion requires the canonical mode result');
   }

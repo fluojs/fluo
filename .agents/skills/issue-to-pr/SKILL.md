@@ -16,6 +16,9 @@ Accept one typed input defined by `scripts/contracts.mjs`:
 - `mode: new-pr` starts from an issue with no existing PR or blockers.
 - `mode: fix-back` requires the existing PR identity, one or more canonical
   unresolved blockers, and `fix_back_attempt` from 1 through 3.
+- `mode: local-new` returns the first verified local head before PR creation.
+- `mode: local-fix-back` remediates local reviewer blockers without PR identity.
+- `mode: ci-fix-back` remediates CI blockers while preserving the existing PR.
 - Both modes bind `lane_id`, issue identity, base branch,
   `issue-<number>-<short-title>`, `.worktrees/<branch>`, and the starting head.
 
@@ -50,11 +53,19 @@ Follow `references/workflow.md` end to end:
    `references/implementer.md`.
 5. Validate the child report and repository identity. Completion requires a
    commit that advances the assigned branch to a new head.
-6. The lead runs or confirms the closest canonical verification, pushes the new
-   head, then creates a PR for `new-pr` or confirms the existing PR received the
-   fix-back head.
-7. Validate the final typed output with `assertIssueToPrResult` before reporting
+6. The lead runs or confirms the closest canonical verification.
+7. For a direct `$issue-to-pr` invocation, the lead pushes the new head, then
+   creates a PR for `new-pr` or confirms the existing PR received the fix-back
+   head.
+8. Validate the final typed output with `assertIssueToPrResult` before reporting
    completion.
+
+When called by an `$execute-lane` issue supervisor, use `local-new`,
+`local-fix-back`, or `ci-fix-back` and stop the local phase after step 6. The
+supervisor must run one same-head contract/code/verification triad and reach
+`ready-for-pr` or `ready-for-push` before the supervisor-owned remote phase.
+A local reviewer or CI blocker reuses the implementation child contract but
+never skips the fresh local triad.
 
 Use one native task, not a persistent team. A missing task result may be
 re-requested once from the same child session. Missing, malformed, unchanged-

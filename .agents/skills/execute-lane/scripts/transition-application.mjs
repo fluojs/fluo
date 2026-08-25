@@ -101,7 +101,7 @@ export const terminalize = (
   progress.blockers = blockers;
 };
 
-const mergeReceipt = (identity) =>
+export const mergeReceipt = (identity) =>
   receipt({
     identity,
     receiptId: `${identity.lane_id}:pr.merge:${identity.head_sha}`,

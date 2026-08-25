@@ -2,10 +2,13 @@
 
 ## Trust boundary
 
-The authenticated top-level OMO lead and the repository owner's local
-filesystem are trusted. Search artifacts, child-task output, GitHub API
-responses, persisted state read after interruption, and live Git/GitHub state
-are untrusted until validated or reconciled.
+The authenticated top-level OMO lead, authority-bound issue-supervisor DAG
+nodes, and the repository owner's local filesystem are trusted. A supervisor is
+trusted only for its immutable lane/issue/branch/worktree/PR identity and
+`authority_scope`; its implementer and reviewer children remain untrusted.
+Search artifacts, nested child-task output, GitHub API responses, persisted
+state read after interruption, and live Git/GitHub state are untrusted until
+validated or reconciled.
 
 The workflow does not claim to resist a malicious local repository owner who
 can rewrite code, state, credentials, and history together. Event hashes detect
@@ -18,12 +21,17 @@ are not signatures against that trusted operator.
   the trusted lead. Approval-binding digests prevent accidental plan
   substitution and consumed IDs prevent replay; neither is an authentication
   signature.
-- Only the lead may execute GitHub issue/PR mutations, merge, cleanup, or root
-  synchronization after the user grants the applicable side-effect authority.
+- The parent lead owns shared lane state and root synchronization. An
+  issue-supervisor node may execute push, canonical PR create/update, merge, and
+  cleanup only for its bound issue after the user grants the applicable lane
+  authority. Nested implementers and reviewers never receive that authority.
 - Successful receipts are written only from fresh live Git/GitHub command
   output bound to lane, issue, branch, worktree, PR, and head.
-- Child tasks and caller-authored JSON can request or report work but never
-  prove approval or a completed side effect.
+- The supervisor persists target-bound observations in its issue-local atomic
+  state. The parent revalidates those receipts and live identity before
+  importing terminal evidence into the shared lane ledger.
+- Nested child tasks and unvalidated caller-authored JSON can request or report
+  work but never prove approval or a completed side effect.
 
 ## Fixture boundary
 
@@ -36,7 +44,8 @@ artifacts, receipts, and events are test evidence only.
 ## Filesystem controls
 
 Native publishers reject symlinked output directories and exclusive-write
-collisions. The lane state store rejects symlinked state files, writes a
-transaction journal before each transition, recovers incomplete transactions,
-requires exact append-only event prefixes, and atomically replaces snapshots
-and receipt sets.
+collisions. Lane and issue-supervisor state stores reject symlinked state
+paths, write transaction journals before transitions, recover incomplete
+transactions, preserve append-only event hashes, and atomically replace
+snapshots and receipt sets. DAG bindings are first-write exclusive and bind the
+lane, native run, graph definition, and snapshot event anchor.

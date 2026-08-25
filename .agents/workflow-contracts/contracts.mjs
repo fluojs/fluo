@@ -7,6 +7,8 @@ import { isRecord, schemaFailure } from './schema-validator.mjs';
 export const contractNames = [
   'search-artifact-v2',
   'lane-ledger-v2',
+  'lane-dag-binding',
+  'local-review-verdict',
   'review-verdict',
   'blocker',
   'receipt',
@@ -131,6 +133,32 @@ const assertSemanticContract = (name, value) => {
     case 'lane-ledger-v2':
       assertSafeBranch(value.base_branch);
       assertLaneLedgerSemantics(value);
+      return;
+    case 'lane-dag-binding':
+      if (
+        value.dag_key !==
+        `fluo:lane:${value.lane_id}:issue-supervisors:v1`
+      ) {
+        fail(name, 'dag_key must be canonical for lane_id');
+      }
+      return;
+    case 'local-review-verdict':
+      if (
+        ['ready-for-pr', 'ready-for-push'].includes(value.verdict) &&
+        (value.blockers.length !== 0 ||
+          Object.values(value.reviewers).some((signal) => signal !== 'PASS'))
+      ) {
+        fail(name, 'ready verdict requires all reviewers PASS and no blockers');
+      }
+      if (value.verdict === 'block' && value.blockers.length === 0) {
+        fail(name, 'block verdict must contain at least one blocker');
+      }
+      if (
+        value.verdict === 'needs-human-check' &&
+        !Object.values(value.reviewers).includes('NEEDS-HUMAN-CHECK')
+      ) {
+        fail(name, 'needs-human-check requires one reviewer escalation');
+      }
       return;
     case 'review-verdict':
       if (value.verdict === 'pass' && value.blockers.length !== 0) {

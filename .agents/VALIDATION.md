@@ -28,6 +28,7 @@ tooling/governance/create-lane-multi.test.ts
 tooling/governance/issue-to-pr-native.test.ts
 tooling/governance/pr-to-merge-native.test.ts
 tooling/governance/execute-lane-native.test.ts
+tooling/governance/execute-lane-dag-supervisor.test.ts
 tooling/governance/execute-lane-persistence.test.ts
 tooling/governance/execute-lane-resilience.test.ts
 tooling/governance/execute-lane-authority.test.ts

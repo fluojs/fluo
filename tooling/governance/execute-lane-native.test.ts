@@ -582,17 +582,28 @@ describe('$execute-lane persisted native state machine', () => {
 });
 
 describe('$execute-lane shipped native assets', () => {
-  it('ships the skill, workflow, state machine, store, and replay CLI', () => {
+  it('ships the workflow, issue supervisor, DAG projection, store, and replay CLI', () => {
     expect(
       [
         'SKILL.md',
         'references/workflow.md',
+        'references/issue-supervisor.md',
+        'scripts/compile-dag.mjs',
+        'scripts/dag-binding.mjs',
+        'scripts/issue-supervisor.mjs',
+        'scripts/issue-supervisor-contracts.mjs',
+        'scripts/issue-supervisor-files.mjs',
+        'scripts/issue-supervisor-history.mjs',
+        'scripts/issue-supervisor-receipts.mjs',
+        'scripts/issue-supervisor-remote.mjs',
+        'scripts/issue-supervisor-store.mjs',
+        'scripts/supervisor-terminal.mjs',
         'scripts/state-machine.mjs',
         'scripts/state-store.mjs',
         'scripts/release-handoff-approval.mjs',
         'scripts/fixtures/run-replay.mjs',
       ].filter((path) => existsSync(resolve(skillRoot, path))),
-    ).toHaveLength(6);
+    ).toHaveLength(17);
   });
 
   it.each([
