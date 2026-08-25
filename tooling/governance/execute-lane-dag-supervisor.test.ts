@@ -32,7 +32,7 @@ type DagBinding = Readonly<{
   dag_key: string;
   run_id: string;
   definition_sha256: string;
-  snapshot_event_hash: string | null;
+  dispatch_event_hash: string;
   status: string;
 }>;
 type SupervisorState = Readonly<{
@@ -65,13 +65,13 @@ const {
     transition: unknown,
   ) => SupervisorState;
 };
-const { compileLegacyLaneSupervisorDag } = (await import(
+const { compileLaneSupervisorDag } = (await import(
   resolve(
     process.cwd(),
     '.agents/skills/execute-lane/scripts/compile-dag.mjs',
   )
 )) as {
-  compileLegacyLaneSupervisorDag: (ledger: unknown) => DagDefinition;
+  compileLaneSupervisorDag: (ledger: unknown) => DagDefinition;
 };
 const {
   assertDagBindingMatches,
@@ -90,14 +90,14 @@ const {
       definition: DagDefinition;
       lane_id: string;
       run_id: string;
-      snapshot_event_hash: string | null;
+      dispatch_event_hash: string;
     },
   ) => void;
   createDagBinding: (input: {
     definition: DagDefinition;
     lane_id: string;
     run_id: string;
-    snapshot_event_hash: string | null;
+    dispatch_event_hash: string;
   }) => DagBinding;
   loadDagBinding: (runtimeRoot: string, laneId: string) => DagBinding | null;
   persistDagBinding: (runtimeRoot: string, binding: DagBinding) => void;
@@ -1153,9 +1153,9 @@ describe('execute-lane issue supervisor lifecycle', () => {
         'utf8',
       ),
     );
-    const definition = compileLegacyLaneSupervisorDag(ledger);
+    const definition = compileLaneSupervisorDag(ledger);
 
-    expect(definition.key).toBe('fluo:lane:lane-4101-runtime:issue-supervisors:v1');
+    expect(definition.key).toBe('fluo:lane:lane-4101-runtime:issue-supervisors:v2');
     expect(definition.nodes).toHaveLength(2);
     expect(definition.nodes[0]).toMatchObject({
       id: 'issue-4101-supervisor',
@@ -1169,13 +1169,13 @@ describe('execute-lane issue supervisor lifecycle', () => {
     });
     expect(definition.nodes[0].prompt).toContain('STOP WHEN:');
     expect(() =>
-      compileLegacyLaneSupervisorDag({
+      compileLaneSupervisorDag({
         ...ledger,
         dependency_graph: { 4102: [9999] },
       }),
     ).toThrow(/dependency|confirmed issue/u);
     expect(() =>
-      compileLegacyLaneSupervisorDag({
+      compileLaneSupervisorDag({
         ...ledger,
         dependency_graph: { 4101: [4102], 4102: [4101] },
       }),
@@ -1189,7 +1189,7 @@ describe('execute-lane issue supervisor lifecycle', () => {
         'utf8',
       ),
     );
-    const releaseDefinition = compileLegacyLaneSupervisorDag(releaseLedger);
+    const releaseDefinition = compileLaneSupervisorDag(releaseLedger);
     expect(releaseDefinition.nodes).toHaveLength(1);
     expect(releaseDefinition.nodes[0]).toMatchObject({
       category: 'quick',
@@ -1203,14 +1203,15 @@ describe('execute-lane issue supervisor lifecycle', () => {
       definition,
       lane_id: ledger.lane_id,
       run_id: 'run_lane_4101',
-      snapshot_event_hash: null,
+      dispatch_event_hash: 'c'.repeat(64),
     });
+    expect(binding.version).toBe(3);
     expect(() =>
       createDagBinding({
-        definition: { ...definition, key: 'fluo:lane:other:issue-supervisors:v1' },
+        definition: { ...definition, key: 'fluo:lane:other:issue-supervisors:v2' },
         lane_id: ledger.lane_id,
         run_id: 'run_lane_4101',
-        snapshot_event_hash: null,
+        dispatch_event_hash: 'c'.repeat(64),
       }),
     ).toThrow(/canonical for its lane/u);
     const directory = mkdtempSync(
@@ -1226,7 +1227,7 @@ describe('execute-lane issue supervisor lifecycle', () => {
           definition,
           lane_id: binding.lane_id,
           run_id: binding.run_id,
-          snapshot_event_hash: binding.snapshot_event_hash,
+          dispatch_event_hash: binding.dispatch_event_hash,
         }),
       ).not.toThrow();
       expect(() =>
@@ -1234,7 +1235,7 @@ describe('execute-lane issue supervisor lifecycle', () => {
           definition: { ...definition, name: 'tampered definition' },
           lane_id: binding.lane_id,
           run_id: binding.run_id,
-          snapshot_event_hash: binding.snapshot_event_hash,
+          dispatch_event_hash: binding.dispatch_event_hash,
         }),
       ).toThrow(/definition digest/u);
       expect(() =>
@@ -1252,7 +1253,7 @@ describe('execute-lane issue supervisor lifecycle', () => {
         persistDagBinding(redirectedRoot, {
           ...binding,
           lane_id: 'lane-symlink',
-          dag_key: 'fluo:lane:lane-symlink:issue-supervisors:v1',
+          dag_key: 'fluo:lane:lane-symlink:issue-supervisors:v2',
         }),
       ).toThrow(/real directory/u);
     } finally {

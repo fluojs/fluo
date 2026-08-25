@@ -20,15 +20,14 @@ type DependencyGate = Readonly<{
   unsatisfied_dependencies: readonly number[];
 }>;
 
-const { compileIssueSupervisorDag } = (await import(
+const { compileLaneSupervisorDag } = (await import(
   resolve(
     process.cwd(),
     '.agents/skills/execute-lane/scripts/compile-dag.mjs',
   )
 )) as {
-  compileIssueSupervisorDag: (
+  compileLaneSupervisorDag: (
     ledger: Readonly<Record<string, unknown>>,
-    issueNumber: number,
   ) => DagDefinition;
 };
 const { dependencyGate, dispatchableIssueNumbers } = (await import(
@@ -47,7 +46,6 @@ const { dependencyGate, dispatchableIssueNumbers } = (await import(
 };
 
 const headA = 'a'.repeat(40);
-const headB = 'b'.repeat(40);
 
 const isRecord = (
   value: unknown,
@@ -75,70 +73,6 @@ const readyLedger = (): Readonly<Record<string, unknown>> => {
     },
   };
 };
-
-const completedPredecessorLedger = (): Readonly<
-  Record<string, unknown>
-> => ({
-  ...readyLedger(),
-  status: 'running',
-  execution: {
-    status: 'running',
-    last_command: '$execute-lane lane-4101-runtime',
-    last_updated: '2026-08-25T00:00:00.000Z',
-  },
-  completed_issues: [4101],
-  issue_progress: {
-    '4101': {
-      status: 'done',
-      branch: 'issue-4101-runtime',
-      worktree: '.worktrees/issue-4101-runtime',
-      pr: 'https://github.com/fluojs/fluo/pull/5101',
-      head_sha: headA,
-      verification: 'all required checks passed',
-      retry_count: 0,
-      blockers: [],
-      review_verdict: 'merge',
-      checks: 'PASS',
-      reviewers: {
-        contract: 'PASS',
-        code: 'PASS',
-        verification: 'PASS',
-      },
-      reviewed_head: headA,
-      commits: [headA],
-      merge_commit: headB,
-      issue_state: 'CLOSED',
-      cleanup: {
-        status: 'done',
-        worktree_removed: true,
-        local_branch_deleted: true,
-        remote_branch_deleted: true,
-      },
-    },
-  },
-  lanes: [
-    {
-      name: 'runtime',
-      queue: [4101],
-      current_issue: null,
-      status: 'done',
-      branch: null,
-      worktree: null,
-      pr: null,
-      retry_count: 0,
-    },
-    {
-      name: 'validation',
-      queue: [4102],
-      current_issue: 4102,
-      status: 'queued',
-      branch: null,
-      worktree: null,
-      pr: null,
-      retry_count: 0,
-    },
-  ],
-});
 
 const blockedPredecessorLedger = (): Readonly<Record<string, unknown>> => ({
   ...readyLedger(),
@@ -223,24 +157,65 @@ describe('execute-lane DAG dependency scheduling', () => {
     expect(dispatchableIssueNumbers(ledger)).toEqual([]);
   });
 
-  it('compiles one dependency-free node after its predecessor is done', () => {
+  it('compiles every issue into one lane DAG with explicit dependencies', () => {
     // Given
-    const ledger = completedPredecessorLedger();
+    const ledger = readyLedger();
 
     // When
-    const definition = compileIssueSupervisorDag(ledger, 4102);
+    const definition = compileLaneSupervisorDag(ledger);
 
     // Then
-    expect(dispatchableIssueNumbers(ledger)).toEqual([4102]);
     expect(definition.key).toBe(
-      'fluo:lane:lane-4101-runtime:issue-4102:supervisor:v2',
+      'fluo:lane:lane-4101-runtime:issue-supervisors:v2',
     );
+    expect(definition.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'issue-4101-supervisor',
+          dependsOn: [],
+        }),
+        expect.objectContaining({
+          id: 'issue-4102-supervisor',
+          dependsOn: ['issue-4101-supervisor'],
+        }),
+      ]),
+    );
+    expect(definition.nodes).toHaveLength(2);
+    expect(compileLaneSupervisorDag(ledger)).toEqual(definition);
+  });
+
+  it('preserves lane queue order as DAG dependencies', () => {
+    // Given
+    const ledger = {
+      ...readyLedger(),
+      dependency_graph: { '4101': [], '4102': [] },
+      lanes: [
+        {
+          name: 'runtime',
+          queue: [4101, 4102],
+          current_issue: 4101,
+          status: 'queued',
+          branch: null,
+          worktree: null,
+          pr: null,
+          retry_count: 0,
+        },
+      ],
+    };
+
+    // When
+    const definition = compileLaneSupervisorDag(ledger);
+
+    // Then
     expect(definition.nodes).toEqual([
       expect.objectContaining({
-        id: 'issue-4102-supervisor',
+        id: 'issue-4101-supervisor',
         dependsOn: [],
       }),
+      expect.objectContaining({
+        id: 'issue-4102-supervisor',
+        dependsOn: ['issue-4101-supervisor'],
+      }),
     ]);
-    expect(compileIssueSupervisorDag(ledger, 4102)).toEqual(definition);
   });
 });

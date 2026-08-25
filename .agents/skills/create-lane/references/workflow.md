@@ -69,5 +69,6 @@ candidate/receipt files on failure or collision.
 
 Success returns `status: ready` and the relative ledger path. Rejection returns
 `status: rejected` with a stable reason. The next workflow is
-`$execute-lane .omo/lanes/<lane-id>.json`; create-lane itself performs no
-execution side effect.
+`$execute-lane .omo/lanes/<lane-id>.json`. That consumer compiles one immutable
+ledger into one resumable native DAG with one supervisor node per approved
+issue; create-lane itself performs no execution side effect.

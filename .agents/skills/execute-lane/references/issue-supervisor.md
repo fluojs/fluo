@@ -1,10 +1,9 @@
 # Native issue supervisor
 
-One single-node DAG owns one issue from initial implementation through merge
-and cleanup. Parent-owned dispatch may start independent eligible issues
-concurrently. A dependent node is not created until every canonical dependency
-is already shared `done`; native DAG ordering is never used as success
-evidence.
+One lane DAG contains one supervisor node per approved issue. Each node owns
+its issue from initial implementation through merge and cleanup. Independent
+nodes run concurrently; explicit dependencies and queue predecessors are
+native `dependsOn` edges. Native ordering is never treated as success evidence.
 
 ## Role separation
 
@@ -83,11 +82,14 @@ resume from the issue state and live observations rather than repeating the
 last claimed action. The node returns typed transition evidence and receipts;
 the parent validates them before updating the shared lane ledger.
 
-Before creating a child, branch, or worktree, re-read the shared snapshot and
-require the issue to remain its lane's queued cursor with every dependency
-present in `completed_issues` and `issue_progress.status === 'done'`. If that
-precondition changed after dispatch, return a ledger-conflict terminal without
-performing a mutation.
+Before creating a child, branch, worktree, or PR, load every compiled
+predecessor's isolated issue store and validate it through
+`supervisor-terminal.mjs`. Proceed only when every terminal is canonical
+`done`, including observed merge, CLOSED issue, and cleanup. Missing, malformed,
+or blocked predecessor evidence returns a typed dependency blocker without
+performing a mutation. The shared snapshot may still name an earlier queue
+cursor while the lane DAG runs because the parent imports settled terminals in
+topological order after the DAG settles.
 
 ## Stop
 

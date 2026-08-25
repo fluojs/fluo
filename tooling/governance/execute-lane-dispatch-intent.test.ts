@@ -10,46 +10,32 @@ type PersistedState = Readonly<{
   receipts: readonly Readonly<Record<string, unknown>>[];
 }>;
 
-const { prepareIssueSupervisorDispatch } = (await import(
-  resolve(
-    process.cwd(),
-    '.agents/skills/execute-lane/scripts/dependency-gate.mjs',
-  )
-)) as {
-  prepareIssueSupervisorDispatch: (
-    persisted: PersistedState,
-    issueNumber: number,
-  ) => PersistedState & { dispatch_event_hash: string };
-};
-const { compileIssueSupervisorDag } = (await import(
+const { compileLaneSupervisorDag } = (await import(
   resolve(
     process.cwd(),
     '.agents/skills/execute-lane/scripts/compile-dag.mjs',
   )
 )) as {
-  compileIssueSupervisorDag: (
+  compileLaneSupervisorDag: (
     snapshot: Readonly<Record<string, unknown>>,
-    issueNumber: number,
   ) => Readonly<Record<string, unknown>>;
 };
-const { attachIssueSupervisorRun, reconcileIssueSupervisorDispatch } =
+const { attachLaneSupervisorRun, reconcileLaneSupervisorDispatch } =
   (await import(
     resolve(
       process.cwd(),
-      '.agents/skills/execute-lane/scripts/issue-dispatch.mjs',
+      '.agents/skills/execute-lane/scripts/lane-dispatch.mjs',
     )
   )) as {
-    attachIssueSupervisorRun: (input: {
+    attachLaneSupervisorRun: (input: {
       persisted: PersistedState & { dispatch_event_hash: string };
       runtime_root: string;
-      issue_number: number;
       definition: Readonly<Record<string, unknown>>;
       run_id: string;
     }) => Readonly<Record<string, unknown>>;
-    reconcileIssueSupervisorDispatch: (input: {
+    reconcileLaneSupervisorDispatch: (input: {
       persisted: PersistedState;
       runtime_root: string;
-      issue_number: number;
       definition: Readonly<Record<string, unknown>>;
     }) => Readonly<Record<string, unknown>>;
   };
@@ -85,90 +71,94 @@ const readyState = (): PersistedState => {
   };
 };
 
-describe('execute-lane issue dispatch intent', () => {
-  it('persists intent before an eligible issue supervisor starts', () => {
+describe('execute-lane lane DAG dispatch intent', () => {
+  it('persists one lane intent before the DAG starts', () => {
     // Given
     const persisted = readyState();
-
-    // When
-    const prepared = prepareIssueSupervisorDispatch(persisted, 4101);
-
-    // Then
-    expect(prepared.snapshot).toEqual(persisted.snapshot);
-    expect(prepared.receipts).toEqual([]);
-    expect(prepared.events).toEqual([
-      expect.objectContaining({
-        event_type: 'supervisor.dispatch.intent',
-        subject_id: '4101',
-        payload: { dependencies: [] },
-      }),
-    ]);
-    expect(prepared.dispatch_event_hash).toBe(
-      prepared.events[0]?.event_hash,
+    const definition = compileLaneSupervisorDag(persisted.snapshot);
+    const directory = mkdtempSync(
+      join(realpathSync(tmpdir()), 'fluo-lane-intent-'),
     );
+
+    try {
+      // When
+      const result = reconcileLaneSupervisorDispatch({
+        persisted,
+        runtime_root: join(directory, 'lane-runs'),
+        definition,
+      });
+
+      // Then
+      expect(result).toMatchObject({ action: 'persist-intent' });
+      const prepared = result.persisted as PersistedState & {
+        dispatch_event_hash: string;
+      };
+      expect(prepared.snapshot).toEqual(persisted.snapshot);
+      expect(prepared.receipts).toEqual([]);
+      expect(prepared.events).toEqual([
+        expect.objectContaining({
+          event_type: 'lane.dag.dispatch.intent',
+          subject_id: 'lane-4101-runtime',
+          payload: {
+            dag_key: 'fluo:lane:lane-4101-runtime:issue-supervisors:v2',
+          },
+        }),
+      ]);
+      expect(prepared.dispatch_event_hash).toBe(
+        prepared.events[0]?.event_hash,
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
-  it('rejects unmet dependencies and duplicate dispatch intent', () => {
-    // Given
-    const persisted = readyState();
-    const prepared = prepareIssueSupervisorDispatch(persisted, 4101);
-
-    // When / Then
-    expect(() =>
-      prepareIssueSupervisorDispatch(persisted, 4102),
-    ).toThrow(/dependency gate/u);
-    expect(() =>
-      prepareIssueSupervisorDispatch(prepared, 4101),
-    ).toThrow(/dispatch intent already exists/u);
-  });
-
-  it('fails closed on an unbound intent and attaches one exact run', () => {
+  it('fails closed on a crash window and attaches one exact lane run', () => {
     // Given
     const directory = mkdtempSync(
-      join(realpathSync(tmpdir()), 'fluo-issue-dispatch-'),
+      join(realpathSync(tmpdir()), 'fluo-lane-dispatch-'),
     );
     const runtimeRoot = join(directory, 'lane-runs');
     const persisted = readyState();
-    const definition = compileIssueSupervisorDag(persisted.snapshot, 4101);
-    const prepared = prepareIssueSupervisorDispatch(persisted, 4101);
+    const definition = compileLaneSupervisorDag(persisted.snapshot);
+    const prepared = reconcileLaneSupervisorDispatch({
+      persisted,
+      runtime_root: runtimeRoot,
+      definition,
+    }).persisted as PersistedState & { dispatch_event_hash: string };
 
     try {
       // When / Then
       expect(
-        reconcileIssueSupervisorDispatch({
+        reconcileLaneSupervisorDispatch({
           persisted: prepared,
           runtime_root: runtimeRoot,
-          issue_number: 4101,
           definition,
         }),
       ).toMatchObject({ action: 'blocked-ledger-conflict' });
 
-      const binding = attachIssueSupervisorRun({
+      const binding = attachLaneSupervisorRun({
         persisted: prepared,
         runtime_root: runtimeRoot,
-        issue_number: 4101,
         definition,
-        run_id: 'run_issue_4101',
+        run_id: 'run_lane_4101',
       });
       expect(
-        reconcileIssueSupervisorDispatch({
+        reconcileLaneSupervisorDispatch({
           persisted: prepared,
           runtime_root: runtimeRoot,
-          issue_number: 4101,
           definition,
         }),
       ).toMatchObject({
         action: 'attach',
-        run_id: 'run_issue_4101',
+        run_id: 'run_lane_4101',
         binding,
       });
       expect(() =>
-        attachIssueSupervisorRun({
+        attachLaneSupervisorRun({
           persisted: prepared,
           runtime_root: runtimeRoot,
-          issue_number: 4101,
           definition: { ...definition, name: 'tampered' },
-          run_id: 'run_issue_4101',
+          run_id: 'run_lane_4101',
         }),
       ).toThrow(/definition digest/u);
     } finally {

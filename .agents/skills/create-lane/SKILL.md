@@ -95,4 +95,6 @@ node .agents/skills/create-lane/scripts/fixtures/run-scenario.mjs \
 
 On success, emit the ledger path and `$execute-lane
 .omo/lanes/<lane-id>.json` handoff. On rejection, report the named reason and
-emit no handoff.
+emit no handoff. One published lane ledger is one execution identity:
+`$execute-lane` compiles it into exactly one resumable native DAG whose issue
+supervisor nodes preserve the approved dependency graph and lane queue order.
