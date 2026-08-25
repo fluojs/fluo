@@ -1,4 +1,5 @@
 const safeIdentifier = /^(?!.*(?:\.|\.lock)$)[A-Za-z0-9][A-Za-z0-9._-]*$/u;
+const sha256 = /^[a-f0-9]{64}$/u;
 const planKeys = [
   'version',
   'lane_id',
@@ -41,10 +42,16 @@ const releaseHandoffIssues = (value) => {
   for (const handoff of value) {
     if (
       !isRecord(handoff) ||
-      !hasExactKeys(handoff, ['issue_number', 'reason']) ||
+      !hasExactKeys(handoff, [
+        'issue_number',
+        'reason',
+        'issue_evidence_sha256',
+      ]) ||
       !Number.isSafeInteger(handoff.issue_number) ||
       handoff.issue_number <= 0 ||
-      handoff.reason !== 'release-or-publish-is-core'
+      handoff.reason !== 'release-or-publish-is-core' ||
+      typeof handoff.issue_evidence_sha256 !== 'string' ||
+      !sha256.test(handoff.issue_evidence_sha256)
     ) {
       return null;
     }

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "approval_id": "approval-lane-4101-runtime-lane-plan",
+  "gate": "lane-plan",
+  "binding_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "lane_id": "lane-4101-runtime",
+  "release_handoff_attestations": [
+    {
+      "issue_number": 4101,
+      "issue_evidence_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "decision": "release-or-publish-is-core",
+      "changeset_only": false
+    }
+  ]
+}

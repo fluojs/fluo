@@ -47,21 +47,26 @@ const runScenarioPath = (
   scenarioPath: string,
   stateDirectory?: string,
   ledgerPath = initialLedger,
+  approvalReceiptPath?: string,
 ): ScenarioRun => {
   const state =
     stateDirectory ?? mkdtempSync(resolve(tmpdir(), 'fluo-execute-lane-'));
+  const command = [
+    replayCli,
+    '--fixture-only',
+    '--scenario',
+    scenarioPath,
+    '--ledger',
+    ledgerPath,
+    '--state-dir',
+    state,
+  ];
+  if (approvalReceiptPath !== undefined) {
+    command.push('--approval-receipt', approvalReceiptPath);
+  }
   const stdout = execFileSync(
     process.execPath,
-    [
-      replayCli,
-      '--fixture-only',
-      '--scenario',
-      scenarioPath,
-      '--ledger',
-      ledgerPath,
-      '--state-dir',
-      state,
-    ],
+    command,
     { encoding: 'utf8' },
   );
   return { stateDirectory: state, result: parseRecord(stdout) };
@@ -204,7 +209,12 @@ describe('$execute-lane persisted native state machine', () => {
       resolve(tmpdir(), 'fluo-execute-release-handoffs-'),
     );
     const ledgerPath = resolve(fixtureDirectory, 'ledger.json');
+    const approvalReceiptPath = resolve(
+      fixtureDirectory,
+      'lane-plan-approval.json',
+    );
     const scenarioPath = resolve(fixtureRoot, 'interrupted-start.json');
+    const secondScenarioPath = resolve(fixtureDirectory, 'second.json');
     const ledger = readFixture('ready-ledger-two-lanes-v2');
     writeFileSync(
       ledgerPath,
@@ -215,8 +225,56 @@ describe('$execute-lane persisted native state machine', () => {
       )}\n`,
       'utf8',
     );
+    writeFileSync(
+      approvalReceiptPath,
+      `${JSON.stringify(
+        {
+          version: 1,
+          approval_id: 'approval-lane-4101-runtime-lane-plan',
+          gate: 'lane-plan',
+          binding_sha256: 'a'.repeat(64),
+          lane_id: 'lane-4101-runtime',
+          release_handoff_attestations: [4101, 4102].map(
+            (issue_number) => ({
+              issue_number,
+              issue_evidence_sha256: 'b'.repeat(64),
+              decision: 'release-or-publish-is-core',
+              changeset_only: false,
+            }),
+          ),
+        },
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    );
+    writeFileSync(
+      secondScenarioPath,
+      `${JSON.stringify(
+        {
+          lane_id: 'lane-4101-runtime',
+          issue_number: 4102,
+          branch: 'issue-4102-runtime',
+          worktree: '.worktrees/issue-4102-runtime',
+          pr: {
+            number: 5102,
+            url: 'https://github.com/fluojs/fluo/pull/5102',
+            head_sha: 'b'.repeat(40),
+          },
+          steps: [{ kind: 'interrupt' }],
+        },
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    );
 
-    const run = runScenarioPath(scenarioPath, undefined, ledgerPath);
+    const run = runScenarioPath(
+      scenarioPath,
+      undefined,
+      ledgerPath,
+      approvalReceiptPath,
+    );
     try {
       const snapshot = run.result['snapshot'];
       if (!isRecord(snapshot)) {
@@ -228,8 +286,50 @@ describe('$execute-lane persisted native state machine', () => {
         'blocked-maintainer-decision',
         'queued',
       ]);
+      const completed = runScenarioPath(
+        secondScenarioPath,
+        run.stateDirectory,
+        ledgerPath,
+        approvalReceiptPath,
+      );
+      const completedSnapshot = completed.result['snapshot'];
+      expect(completed.result['status']).toBe('blocked-maintainer-decision');
+      expect(
+        isRecord(completedSnapshot) &&
+          Array.isArray(completedSnapshot['lanes'])
+          ? completedSnapshot['lanes'].map((lane) => lane['status'])
+          : [],
+      ).toEqual([
+        'blocked-maintainer-decision',
+        'blocked-maintainer-decision',
+      ]);
     } finally {
       rmSync(run.stateDirectory, { recursive: true, force: true });
+      rmSync(fixtureDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a release handoff without its consumed approval receipt', () => {
+    const fixtureDirectory = mkdtempSync(
+      resolve(tmpdir(), 'fluo-execute-release-approval-'),
+    );
+    const ledgerPath = resolve(fixtureDirectory, 'ledger.json');
+    const ledger = readFixture('ready-ledger-release-v2');
+    writeFileSync(
+      ledgerPath,
+      `${JSON.stringify(ledger, null, 2)}\n`,
+      'utf8',
+    );
+
+    try {
+      expect(() =>
+        runScenarioPath(
+          resolve(fixtureRoot, 'interrupted-start.json'),
+          undefined,
+          ledgerPath,
+        ),
+      ).toThrow(/release handoffs require their consumed lane-plan approval receipt/u);
+    } finally {
       rmSync(fixtureDirectory, { recursive: true, force: true });
     }
   });
@@ -243,8 +343,9 @@ describe('$execute-lane shipped native assets', () => {
         'references/workflow.md',
         'scripts/state-machine.mjs',
         'scripts/state-store.mjs',
+        'scripts/release-handoff-approval.mjs',
         'scripts/fixtures/run-replay.mjs',
       ].filter((path) => existsSync(resolve(skillRoot, path))),
-    ).toHaveLength(5);
+    ).toHaveLength(6);
   });
 });

@@ -236,6 +236,113 @@ describe('$create-lane native v2 producer', () => {
     }
   });
 
+  it('rejects a self-attested release handoff without issue evidence', () => {
+    // Given
+    const fixture = parseRecord(
+      readFileSync(resolve(fixtureRoot, 'valid-native-artifact.json'), 'utf8'),
+    );
+    const plan = fixture['plan'];
+    if (!isRecord(plan)) {
+      throw new TypeError('valid fixture plan must be an object');
+    }
+
+    // When
+    const run = runScenarioValue({
+      ...fixture,
+      plan: {
+        ...plan,
+        release_handoffs: [
+          {
+            issue_number: 4101,
+            reason: 'release-or-publish-is-core',
+          },
+        ],
+      },
+    });
+
+    try {
+      // Then
+      expect(run.result).toEqual({
+        status: 'rejected',
+        reason: 'invalid_artifact',
+      });
+      expect(allFiles(run.outputRoot)).toEqual([]);
+    } finally {
+      rmSync(run.outputRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('publishes an evidence-bound release handoff and its attestation', () => {
+    // Given / When
+    const run = runScenario('valid-release-handoff.json');
+
+    try {
+      // Then
+      const ledger = parseRecord(
+        readFileSync(
+          resolve(run.outputRoot, '.omo/lanes/lane-4101-runtime.json'),
+          'utf8',
+        ),
+      );
+      const receipt = parseRecord(
+        readFileSync(
+          resolve(
+            run.outputRoot,
+            '.omo/approvals/approval-plan-4101.json',
+          ),
+          'utf8',
+        ),
+      );
+      expect(run.result).toEqual({
+        status: 'ready',
+        ledger: '.omo/lanes/lane-4101-runtime.json',
+      });
+      expect(ledger['release_handoffs']).toEqual([4101]);
+      expect(receipt['release_handoff_attestations']).toEqual([
+        {
+          issue_number: 4101,
+          issue_evidence_sha256: 'a'.repeat(64),
+          decision: 'release-or-publish-is-core',
+          changeset_only: false,
+        },
+      ]);
+    } finally {
+      rmSync(run.outputRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a handoff without a matching lane-plan attestation', () => {
+    // Given
+    const fixture = parseRecord(
+      readFileSync(resolve(fixtureRoot, 'valid-release-handoff.json'), 'utf8'),
+    );
+    const approvals = fixture['approvals'];
+    if (!Array.isArray(approvals) || !isRecord(approvals[2])) {
+      throw new TypeError('release handoff fixture approvals must be objects');
+    }
+
+    // When
+    const run = runScenarioValue({
+      ...fixture,
+      approvals: approvals.map((approval, index) =>
+        index === 2 && isRecord(approval)
+          ? { ...approval, release_handoff_attestations: [] }
+          : approval,
+      ),
+    });
+
+    try {
+      // Then
+      expect(run.result).toEqual({
+        status: 'rejected',
+        reason: 'release_handoff_attestation_mismatch',
+      });
+      expect(allFiles(run.outputRoot)).toEqual([]);
+    } finally {
+      rmSync(run.outputRoot, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     ['mixed-input.json', 'mixed_input'],
     ['malformed-artifact.json', 'invalid_artifact'],

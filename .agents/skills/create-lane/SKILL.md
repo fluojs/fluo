@@ -42,9 +42,11 @@ Obtain these approvals in order from three distinct user interactions:
 `release_handoffs` is reserved for issues whose core task is a release or
 publish decision that must stop at `blocked-maintainer-decision`. A public
 package change that merely requires a Changeset is normal implementation work
-and must not enter `release_handoffs`. Every planned handoff must bind the
-explicit reason `release-or-publish-is-core` and occupy a dedicated
-single-issue lane.
+and must not enter `release_handoffs`. Every planned handoff must occupy a
+dedicated single-issue lane and bind `release-or-publish-is-core` to a SHA-256
+digest of the lead's live issue observation. The `lane-plan` response must
+separately attest to the same issue/digest with `changeset_only: false`;
+planner-controlled text alone never authorizes a handoff.
 
 Each persisted approval binds the complete plan plus artifact ID/SHA and is
 consumed exactly once. An approval response cannot satisfy more than one gate.

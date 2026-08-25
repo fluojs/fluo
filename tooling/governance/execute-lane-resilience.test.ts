@@ -40,28 +40,31 @@ const runScenarioPath = (
   scenarioPath: string,
   ledgerPath: string,
   state: string,
-): Readonly<Record<string, unknown>> =>
-  parseRecord(
-    execFileSync(
-      process.execPath,
-      [
-        replayCli,
-        '--fixture-only',
-        '--scenario',
-        scenarioPath,
-        '--ledger',
-        ledgerPath,
-        '--state-dir',
-        state,
-      ],
-      { encoding: 'utf8' },
-    ),
+  approvalReceiptPath?: string,
+): Readonly<Record<string, unknown>> => {
+  const command = [
+    replayCli,
+    '--fixture-only',
+    '--scenario',
+    scenarioPath,
+    '--ledger',
+    ledgerPath,
+    '--state-dir',
+    state,
+  ];
+  if (approvalReceiptPath !== undefined) {
+    command.push('--approval-receipt', approvalReceiptPath);
+  }
+  return parseRecord(
+    execFileSync(process.execPath, command, { encoding: 'utf8' }),
   );
+};
 
 const runScenarioValue = (
   scenario: Readonly<Record<string, unknown>>,
   ledgerName: string,
   state: string,
+  approvalReceiptName?: string,
 ): Readonly<Record<string, unknown>> => {
   const inputRoot = mkdtempSync(resolve(tmpdir(), 'fluo-execute-input-'));
   const scenarioPath = resolve(inputRoot, 'scenario.json');
@@ -71,6 +74,9 @@ const runScenarioValue = (
       scenarioPath,
       resolve(fixtureRoot, ledgerName),
       state,
+      approvalReceiptName === undefined
+        ? undefined
+        : resolve(fixtureRoot, approvalReceiptName),
     );
   } finally {
     rmSync(inputRoot, { recursive: true, force: true });
@@ -134,6 +140,7 @@ describe('$execute-lane multi-issue and trust boundaries', () => {
         readFixture('happy'),
         'ready-ledger-release-v2.json',
         state,
+        'release-handoff-approval.json',
       );
       expect(result['status']).toBe('blocked-maintainer-decision');
       expect(result['merge_count']).toBe(0);

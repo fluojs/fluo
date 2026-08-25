@@ -15,21 +15,28 @@
       "approval_id": "approval-confirmed-4101",
       "approved": true,
       "issue_numbers": [4101],
-      "binding_sha256": "1b133b5e0d6aff005b88bfe654abe4cf678df09ea5399a9735fce23908dcbe0f"
+      "binding_sha256": "e7774c39c5af695719d876cbccbaefdedaaf44f9b6592b543b87fc34f0733edd"
     },
     {
       "gate": "suggested-additions",
       "approval_id": "approval-suggestions-4101",
       "approved": true,
       "issue_numbers": [],
-      "binding_sha256": "638298eed32346c641a04077dbcfc4296632c1370ace6db930108908977c417f"
+      "binding_sha256": "5b91c0dc39cfe53c16b35c2bbb9451ec9ca275b855a342f95bc31dcd5e52c1ab"
     },
     {
       "gate": "lane-plan",
       "approval_id": "approval-plan-4101",
       "approved": true,
-      "release_handoff_attestations": [],
-      "binding_sha256": "f398b28f7cca4d49d00a36efbe2bbda54861dbfa46794720b135965830a1c0f9"
+      "release_handoff_attestations": [
+        {
+          "issue_number": 4101,
+          "issue_evidence_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "decision": "release-or-publish-is-core",
+          "changeset_only": false
+        }
+      ],
+      "binding_sha256": "127404c3d76e5681f77cf8f0c698c3d9fef6f0d128abb85c76261400b737ac44"
     }
   ],
   "plan": {
@@ -59,7 +66,13 @@
     "confirmed_issues": [4101],
     "suggested_but_excluded": [],
     "backlog_candidates": [],
-    "release_handoffs": [],
+    "release_handoffs": [
+      {
+        "issue_number": 4101,
+        "reason": "release-or-publish-is-core",
+        "issue_evidence_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    ],
     "lanes": [
       {
         "name": "runtime",

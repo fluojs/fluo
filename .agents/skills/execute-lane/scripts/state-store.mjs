@@ -18,6 +18,7 @@ import {
   assertEventChain,
 } from '../../../workflow-contracts/contracts.mjs';
 import { validateLedger } from '../../../../tooling/governance/lane-ledger-state.mjs';
+import { assertReleaseHandoffApproval } from './release-handoff-approval.mjs';
 
 const assertRegularFile = (path) => {
   if (!existsSync(path)) {
@@ -129,7 +130,11 @@ const recoverTransaction = (stateDirectory) => {
   unlinkSync(path);
 };
 
-export const loadState = (stateDirectory, ledgerPath) => {
+export const loadState = (
+  stateDirectory,
+  ledgerPath,
+  approvalReceiptPath = null,
+) => {
   ensureStateDirectory(stateDirectory);
   recoverTransaction(stateDirectory);
   const snapshotPath = resolve(stateDirectory, 'snapshot.json');
@@ -141,7 +146,10 @@ export const loadState = (stateDirectory, ledgerPath) => {
   const receipts = existsSync(receiptsPath) ? readJson(receiptsPath) : [];
   const state = { snapshot, events, receipts };
   validateState(state);
-  return state;
+  const releaseHandoffApproval =
+    approvalReceiptPath === null ? null : readJson(approvalReceiptPath);
+  assertReleaseHandoffApproval(snapshot, releaseHandoffApproval);
+  return { ...state, releaseHandoffApproval };
 };
 
 export const acquireLease = (stateDirectory, laneId) => {
@@ -172,6 +180,10 @@ export const acquireLease = (stateDirectory, laneId) => {
 
 export const persistState = (stateDirectory, previous, next) => {
   validateState(next);
+  assertReleaseHandoffApproval(
+    next.snapshot,
+    previous.releaseHandoffApproval ?? null,
+  );
   assertEventPrefix(previous.events, next.events);
   const transactionPath = resolve(stateDirectory, 'transaction.json');
   writeAtomic(transactionPath, {

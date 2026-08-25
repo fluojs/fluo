@@ -92,6 +92,12 @@ const publishReadyLane = (outputRoot, prepared) => {
         gate: approval.gate,
         binding_sha256: approval.binding_sha256,
         lane_id: prepared.ledger.lane_id,
+        ...(approval.gate === 'lane-plan'
+          ? {
+              release_handoff_attestations:
+                approval.release_handoff_attestations,
+            }
+          : {}),
       },
     ),
     target: resolve(

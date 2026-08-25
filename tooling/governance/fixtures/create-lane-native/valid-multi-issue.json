@@ -28,6 +28,7 @@
       "gate": "lane-plan",
       "approval_id": "approval-plan-multi",
       "approved": true,
+      "release_handoff_attestations": [],
       "binding_sha256": "44bce400153575c91e93a55ade19d2df3ad9cd5b2bfcbf33c40ffb6686f40648"
     }
   ],

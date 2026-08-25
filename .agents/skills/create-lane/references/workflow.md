@@ -31,8 +31,14 @@ handoffs:
 - `release_handoffs` contains only issues whose core task is release or
   publishing and therefore terminally parks for a maintainer decision.
 - Each handoff is represented in the approved plan as
-  `{ "issue_number": <n>, "reason": "release-or-publish-is-core" }` and must
-  occupy a dedicated single-issue lane.
+  `{ "issue_number": <n>, "reason": "release-or-publish-is-core",
+  "issue_evidence_sha256": "<sha256>" }` and must occupy a dedicated
+  single-issue lane.
+- Calculate `issue_evidence_sha256` from the canonical live GitHub observation
+  `{ issue_number, issue_url, title, body, labels, updated_at }`.
+- The lane-plan approval must repeat each issue number and evidence digest with
+  `decision: "release-or-publish-is-core"` and `changeset_only: false`.
+  Empty handoffs require an explicit empty attestation list.
 
 Each gate has a distinct approval identity and interaction. Its digest binds
 the complete plan and source artifact. Persist consumed IDs so missing, denied,

@@ -238,12 +238,12 @@ export function validateIssueProgress(path, ledger, prAssignments) {
       assert(parsePullRequest(progress.pr) !== null, progressPath, 'in_review lane requires matching canonical PR evidence');
       assert(isNonEmptyString(progress.verification), progressPath, 'in_review lane requires non-empty verification evidence');
     }
-    if (progress.worktree !== undefined) {
+    if (progress.worktree != null) {
       const assignedOwner = worktreeAssignments.get(progress.worktree);
       assert(assignedOwner === undefined || assignedOwner === assignment, progressPath, `duplicate worktree mapping: ${progress.worktree}`);
       worktreeAssignments.set(progress.worktree, assignment);
     }
-    if (progress.branch !== undefined) {
+    if (progress.branch != null) {
       const assignedOwner = branchAssignments.get(progress.branch);
       assert(assignedOwner === undefined || assignedOwner === assignment, progressPath, `duplicate branch mapping: ${progress.branch}`);
       branchAssignments.set(progress.branch, assignment);

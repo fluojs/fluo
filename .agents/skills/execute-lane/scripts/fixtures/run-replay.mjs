@@ -26,6 +26,11 @@ const valueAfter = (flag) => {
 const scenarioPath = resolve(valueAfter('--scenario'));
 const ledgerPath = resolve(valueAfter('--ledger'));
 const stateDirectory = resolve(valueAfter('--state-dir'));
+const approvalReceiptIndex = args.indexOf('--approval-receipt');
+const approvalReceiptPath =
+  approvalReceiptIndex === -1
+    ? null
+    : resolve(valueAfter('--approval-receipt'));
 const scenario = JSON.parse(readFileSync(scenarioPath, 'utf8'));
 if (
   typeof scenario !== 'object' ||
@@ -38,7 +43,11 @@ if (
 
 let result;
 for (const step of scenario.steps) {
-  const previous = loadState(stateDirectory, ledgerPath);
+  const previous = loadState(
+    stateDirectory,
+    ledgerPath,
+    approvalReceiptPath,
+  );
   const lease = acquireLease(stateDirectory, previous.snapshot.lane_id);
   try {
     result = runReplay({ ...scenario, steps: [step] }, previous);

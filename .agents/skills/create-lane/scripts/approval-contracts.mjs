@@ -6,6 +6,7 @@ const approvalGates = [
   'lane-plan',
 ];
 const safeIdentifier = /^(?!.*(?:\.|\.lock)$)[A-Za-z0-9][A-Za-z0-9._-]*$/u;
+const sha256 = /^[a-f0-9]{64}$/u;
 
 const isRecord = (value) =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -23,6 +24,37 @@ const isIssueArray = (value) =>
   Array.isArray(value) &&
   value.every((issue) => Number.isSafeInteger(issue) && issue > 0) &&
   new Set(value).size === value.length;
+
+const releaseHandoffAttestations = (value) => {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const attestations = [];
+  for (const attestation of value) {
+    if (
+      !isRecord(attestation) ||
+      !hasExactKeys(attestation, [
+        'issue_number',
+        'issue_evidence_sha256',
+        'decision',
+        'changeset_only',
+      ]) ||
+      !Number.isSafeInteger(attestation.issue_number) ||
+      attestation.issue_number <= 0 ||
+      typeof attestation.issue_evidence_sha256 !== 'string' ||
+      !sha256.test(attestation.issue_evidence_sha256) ||
+      attestation.decision !== 'release-or-publish-is-core' ||
+      attestation.changeset_only !== false
+    ) {
+      return null;
+    }
+    attestations.push(attestation);
+  }
+  return new Set(attestations.map(({ issue_number }) => issue_number)).size ===
+    attestations.length
+    ? attestations
+    : null;
+};
 
 const canonicalValue = (value) => {
   if (Array.isArray(value)) {
@@ -49,6 +81,13 @@ export const approvalBinding = (approval, artifact, plan) =>
           artifact_id: artifact.artifact_id,
           artifact_sha256: artifact.sha256,
           issue_numbers: approval.issue_numbers ?? [],
+          ...(Array.isArray(approval.release_handoff_attestations) &&
+          approval.release_handoff_attestations.length > 0
+            ? {
+                release_handoff_attestations:
+                  approval.release_handoff_attestations,
+              }
+            : {}),
           plan,
         }),
       ),
@@ -63,7 +102,13 @@ export const validateApprovals = (approvals, artifact, plan) => {
   for (const [index, approval] of approvals.entries()) {
     const keys =
       approvalGates[index] === 'lane-plan'
-        ? ['gate', 'approval_id', 'approved', 'binding_sha256']
+        ? [
+            'gate',
+            'approval_id',
+            'approved',
+            'release_handoff_attestations',
+            'binding_sha256',
+          ]
         : [
             'gate',
             'approval_id',
@@ -103,6 +148,27 @@ export const validateApprovals = (approvals, artifact, plan) => {
     !finalIssues.every((issue, index) => issue === plan.confirmed_issues[index])
   ) {
     return 'approval_not_distinct';
+  }
+  const planHandoffs = Array.isArray(plan.release_handoffs)
+    ? plan.release_handoffs
+    : [];
+  const attestations = releaseHandoffAttestations(
+    approvals[2].release_handoff_attestations,
+  );
+  if (
+    attestations === null ||
+    attestations.length !== planHandoffs.length ||
+    !attestations.every((attestation, index) => {
+      const handoff = planHandoffs[index];
+      return (
+        isRecord(handoff) &&
+        attestation.issue_number === handoff.issue_number &&
+        attestation.issue_evidence_sha256 ===
+          handoff.issue_evidence_sha256
+      );
+    })
+  ) {
+    return 'release_handoff_attestation_mismatch';
   }
   return approvals.some(
     (approval) =>
