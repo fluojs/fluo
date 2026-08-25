@@ -6,8 +6,10 @@ import type { ApplicationLogger, CompiledModule } from '@fluojs/runtime';
 
 import { getWebSocketGatewayMetadata, getWebSocketHandlerMetadataEntries } from '../metadata.js';
 import type {
+  WebSocketEventEnvelope,
   WebSocketGatewayDescriptor,
   WebSocketGatewayHandlerDescriptor,
+  WebSocketReplyMode,
 } from '../types.js';
 
 const textDecoder = new TextDecoder();
@@ -269,15 +271,19 @@ export async function resolveGatewayInstance(
  * @param socket The socket.
  * @param request The request.
  * @param data The data.
+ * @param socketId Stable connection identity passed to message handlers.
+ * @param replyMode Optional policy for serializing valid handler return envelopes.
  * @param logger The logger.
  * @param loggerContext The logger context.
  * @returns The dispatch gateway message result.
  */
-export async function dispatchGatewayMessage<TSocket, TRequest>(
+export async function dispatchGatewayMessage<TSocket extends { send(data: string): unknown }, TRequest>(
   resolved: readonly ResolvedGatewayInstance[],
   socket: TSocket,
   request: TRequest,
   data: SharedWebSocketIncomingMessage,
+  socketId: string,
+  replyMode: WebSocketReplyMode | undefined,
   logger: ApplicationLogger,
   loggerContext: string,
 ): Promise<void> {
@@ -285,7 +291,15 @@ export async function dispatchGatewayMessage<TSocket, TRequest>(
 
   for (const { descriptor, instance } of resolved) {
     for (const handler of descriptor.wildcardMessageHandlers) {
-      await invokeGatewayMethod(instance, descriptor, handler, [parsed.payload, socket, request], logger, loggerContext);
+      const result = await invokeGatewayMethod(
+        instance,
+        descriptor,
+        handler,
+        [parsed.payload, socket, request, socketId],
+        logger,
+        loggerContext,
+      );
+      sendHandlerReply(socket, result, replyMode);
     }
 
     if (parsed.event === undefined) {
@@ -295,9 +309,36 @@ export async function dispatchGatewayMessage<TSocket, TRequest>(
     const eventHandlers = descriptor.messageHandlersByEvent.get(parsed.event) ?? [];
 
     for (const handler of eventHandlers) {
-      await invokeGatewayMethod(instance, descriptor, handler, [parsed.payload, socket, request], logger, loggerContext);
+      const result = await invokeGatewayMethod(
+        instance,
+        descriptor,
+        handler,
+        [parsed.payload, socket, request, socketId],
+        logger,
+        loggerContext,
+      );
+      sendHandlerReply(socket, result, replyMode);
     }
   }
+}
+
+function sendHandlerReply(
+  socket: { send(data: string): unknown },
+  result: unknown,
+  replyMode: WebSocketReplyMode | undefined,
+): void {
+  if (replyMode !== 'event-envelope' || !isWebSocketEventEnvelope(result)) {
+    return;
+  }
+
+  socket.send(JSON.stringify(result));
+}
+
+function isWebSocketEventEnvelope(value: unknown): value is WebSocketEventEnvelope {
+  return typeof value === 'object'
+    && value !== null
+    && 'event' in value
+    && typeof value.event === 'string';
 }
 
 /**
@@ -359,7 +400,7 @@ async function invokeGatewayMethod(
   args: unknown[],
   logger: ApplicationLogger,
   loggerContext: string,
-): Promise<void> {
+): Promise<unknown> {
   const value = (instance as Record<MetadataPropertyKey, unknown>)[handler.methodKey];
 
   if (typeof value !== 'function') {
@@ -367,17 +408,18 @@ async function invokeGatewayMethod(
       `WebSocket gateway handler ${descriptor.targetName}.${handler.methodName} is not callable and was skipped.`,
       loggerContext,
     );
-    return;
+    return undefined;
   }
 
   try {
-    await Promise.resolve((value as (this: unknown, ...handlerArgs: unknown[]) => unknown).call(instance, ...args));
+    return await Promise.resolve((value as (this: unknown, ...handlerArgs: unknown[]) => unknown).call(instance, ...args));
   } catch (error) {
     logger.error(
       `WebSocket gateway handler ${descriptor.targetName}.${handler.methodName} failed.`,
       error,
       loggerContext,
     );
+    return undefined;
   }
 }
 

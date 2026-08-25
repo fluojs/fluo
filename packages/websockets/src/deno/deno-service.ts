@@ -41,6 +41,7 @@ interface ConnectionHandlerState {
   descriptors: readonly WebSocketGatewayDescriptor[];
   disconnectLifecycleSettled: boolean;
   disconnectLifecyclePromise: Promise<void>;
+  disconnectDispatchScheduled: boolean;
   enqueuedMessageCount: number;
   handlerQueue: Promise<void>;
   handlersReady: boolean;
@@ -294,6 +295,7 @@ export class DenoWebSocketGatewayLifecycleService
       descriptors,
       disconnectLifecycleSettled: false,
       disconnectLifecyclePromise: disconnectLifecycle.promise,
+      disconnectDispatchScheduled: false,
       enqueuedMessageCount: 0,
       handlerQueue: Promise.resolve(),
       handlersReady: false,
@@ -345,7 +347,7 @@ export class DenoWebSocketGatewayLifecycleService
     });
 
     socket.addEventListener('error', (event: Event) => {
-      this.unregisterSocketWithDeferredStateCleanup(state);
+      this.closeSocketAfterTerminalFailure(state, socket, 'Socket error');
       this.logger.error('WebSocket gateway socket emitted an error.', event, LIFECYCLE_LOG_CONTEXT);
     });
 
@@ -517,7 +519,16 @@ export class DenoWebSocketGatewayLifecycleService
       }
 
       const normalizedMessage = await this.normalizeMessage(nextMessage);
-      await dispatchGatewayMessage(state.resolved, socket, request, normalizedMessage, this.logger, LIFECYCLE_LOG_CONTEXT);
+      await dispatchGatewayMessage(
+        state.resolved,
+        socket,
+        request,
+        normalizedMessage,
+        state.socketId,
+        this.moduleOptions.replies?.mode,
+        this.logger,
+        LIFECYCLE_LOG_CONTEXT,
+      );
     }
 
     this.clearQueuedMessages(state);
@@ -536,6 +547,11 @@ export class DenoWebSocketGatewayLifecycleService
     socket: DenoServerWebSocket,
     disconnectEvent: BufferedDisconnectEvent,
   ): void {
+    if (state.disconnectDispatchScheduled) {
+      return;
+    }
+
+    state.disconnectDispatchScheduled = true;
     state.handlerQueue = state.handlerQueue
       .then(async () => {
         await dispatchGatewayDisconnect(
@@ -766,10 +782,6 @@ export class DenoWebSocketGatewayLifecycleService
   private async runShutdownLifecycle(): Promise<void> {
     this.isShuttingDown = true;
 
-    if (hasDenoWebSocketBindingHost(this.adapter)) {
-      this.adapter.configureWebSocketBinding(undefined);
-    }
-
     const shutdownTimeoutMs = this.resolveShutdownTimeoutMs();
 
     await this.awaitPendingUpgradeOperations(shutdownTimeoutMs);
@@ -983,7 +995,13 @@ export class DenoWebSocketGatewayLifecycleService
       try {
         socket.send(message);
       } catch (error) {
-        this.unregisterTrackedSocketWithDeferredStateCleanup(socketId);
+        const state = this.socketStates.get(socketId);
+        if (state) {
+          this.closeSocketAfterTerminalFailure(state, socket, 'Send failed');
+        } else {
+          socket.close(1011, 'Send failed');
+          this.unregisterSocket(socketId);
+        }
         this.logger.warn(
           `WebSocket connection ${socketId} failed to send a room broadcast and was removed. ${error instanceof Error ? error.message : 'Unknown error.'}`,
           LIFECYCLE_LOG_CONTEXT,
@@ -1000,6 +1018,23 @@ export class DenoWebSocketGatewayLifecycleService
     }
 
     return new Set<string>(rooms);
+  }
+
+  private closeSocketAfterTerminalFailure(
+    state: ConnectionHandlerState,
+    socket: DenoServerWebSocket,
+    reason: string,
+  ): void {
+    this.unregisterSocketWithDeferredStateCleanup(state);
+    socket.close(1011, reason);
+
+    const disconnectEvent = { code: 1011, reason };
+    if (!state.handlersReady) {
+      state.bufferedDisconnect ??= disconnectEvent;
+      return;
+    }
+
+    this.enqueueDisconnectDispatch(state, socket, disconnectEvent);
   }
 
   private unregisterSocketWithDeferredStateCleanup(state: ConnectionHandlerState): void {

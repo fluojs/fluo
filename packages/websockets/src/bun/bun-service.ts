@@ -45,6 +45,7 @@ interface ConnectionHandlerState {
   descriptors: readonly WebSocketGatewayDescriptor[];
   disconnectLifecycleSettled: boolean;
   disconnectLifecyclePromise: Promise<void>;
+  disconnectDispatchScheduled: boolean;
   enqueuedMessageCount: number;
   handlerQueue: Promise<void>;
   handlersReady: boolean;
@@ -172,7 +173,7 @@ export class BunWebSocketGatewayLifecycleService
           this.handleSocketClose(socket, code, reason);
         },
         error: (socket, error) => {
-          this.unregisterSocketWithDeferredStateCleanup(socket.data.state);
+          this.closeSocketAfterTerminalFailure(socket.data.state, socket, 'Socket error');
           this.logger.error('WebSocket gateway socket emitted an error.', error, LIFECYCLE_LOG_CONTEXT);
         },
         idleTimeout: this.resolveIdleTimeoutSeconds(),
@@ -313,6 +314,7 @@ export class BunWebSocketGatewayLifecycleService
       descriptors,
       disconnectLifecycleSettled: false,
       disconnectLifecyclePromise: disconnectLifecycle.promise,
+      disconnectDispatchScheduled: false,
       enqueuedMessageCount: 0,
       handlerQueue: Promise.resolve(),
       handlersReady: false,
@@ -532,7 +534,16 @@ export class BunWebSocketGatewayLifecycleService
         continue;
       }
 
-      await dispatchGatewayMessage(state.resolved, socket, state.request, nextMessage, this.logger, LIFECYCLE_LOG_CONTEXT);
+      await dispatchGatewayMessage(
+        state.resolved,
+        socket,
+        state.request,
+        nextMessage,
+        state.socketId,
+        this.moduleOptions.replies?.mode,
+        this.logger,
+        LIFECYCLE_LOG_CONTEXT,
+      );
     }
 
     this.clearQueuedMessages(state);
@@ -543,6 +554,11 @@ export class BunWebSocketGatewayLifecycleService
     socket: BunServerWebSocket<BunSocketData>,
     disconnectEvent: BufferedDisconnectEvent,
   ): void {
+    if (state.disconnectDispatchScheduled) {
+      return;
+    }
+
+    state.disconnectDispatchScheduled = true;
     state.handlerQueue = state.handlerQueue
       .then(async () => {
         await dispatchGatewayDisconnect(
@@ -768,11 +784,6 @@ export class BunWebSocketGatewayLifecycleService
   private async runShutdownLifecycle(): Promise<void> {
     this.isShuttingDown = true;
 
-    if (hasBunWebSocketBindingHost(this.adapter)) {
-      const bunAdapter = this.adapter as HttpApplicationAdapter & BunWebSocketBindingHost;
-      bunAdapter.configureWebSocketBinding(undefined);
-    }
-
     const shutdownTimeoutMs = this.resolveShutdownTimeoutMs();
 
     await this.awaitPendingUpgradeOperations(shutdownTimeoutMs);
@@ -978,8 +989,9 @@ export class BunWebSocketGatewayLifecycleService
       if (result === 0) {
         const state = this.socketStates.get(socketId);
         if (state) {
-          this.unregisterSocketWithDeferredStateCleanup(state);
+          this.closeSocketAfterTerminalFailure(state, socket, 'Send failed');
         } else {
+          socket.close(1011, 'Send failed');
           this.unregisterSocket(socketId);
         }
         this.logger.warn(
@@ -998,6 +1010,23 @@ export class BunWebSocketGatewayLifecycleService
     }
 
     return new Set<string>(rooms);
+  }
+
+  private closeSocketAfterTerminalFailure(
+    state: ConnectionHandlerState,
+    socket: BunServerWebSocket<BunSocketData>,
+    reason: string,
+  ): void {
+    this.unregisterSocketWithDeferredStateCleanup(state);
+    socket.close(1011, reason);
+
+    const disconnectEvent = { code: 1011, reason };
+    if (!state.handlersReady) {
+      state.bufferedDisconnect ??= disconnectEvent;
+      return;
+    }
+
+    this.enqueueDisconnectDispatch(state, socket, disconnectEvent);
   }
 
   private unregisterSocketWithDeferredStateCleanup(state: ConnectionHandlerState): void {

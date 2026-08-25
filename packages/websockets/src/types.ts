@@ -6,19 +6,45 @@ import type { MetadataPropertyKey, Token } from '@fluojs/core';
 export type WebSocketEventMap = Record<string, unknown>;
 
 /**
+ * Event envelope that a message handler can return when event-envelope replies are enabled.
+ */
+export interface WebSocketEventEnvelope {
+  /** Reply payload sent as the envelope `data` field. */
+  data?: unknown;
+
+  /** Reply event name sent as the envelope `event` field. */
+  event: string;
+}
+
+/**
+ * Opt-in policy for processing message handler return values.
+ */
+export type WebSocketReplyMode = 'event-envelope';
+
+/**
  * Runtime-neutral message handler signature resolved from one {@link WebSocketEventMap} entry.
  *
  * @typeParam TEvents Event-name-to-payload map used by the gateway.
  * @typeParam K Event key handled by this callback.
  * @typeParam TSocket Socket shape surfaced by the selected runtime subpath.
  * @typeParam TRequest Request shape surfaced by the selected runtime subpath.
+ * @param payload Parsed payload for the decorated event.
+ * @param socket Accepted runtime socket.
+ * @param request Upgrade request associated with the connection.
+ * @param socketId Stable connection identity used by room operations.
+ * @returns An optional event envelope. Returns are ignored unless `replies.mode` is `event-envelope`.
  */
 export type TypedOnMessageHandler<
   TEvents extends WebSocketEventMap,
   K extends keyof TEvents,
   TSocket = unknown,
   TRequest = Request,
-> = (payload: TEvents[K], socket: TSocket, request: TRequest) => void | Promise<void>;
+> = (
+  payload: TEvents[K],
+  socket: TSocket,
+  request: TRequest,
+  socketId: string,
+) => Promise<WebSocketEventEnvelope | void> | WebSocketEventEnvelope | void;
 
 /**
  * Dedicated listener configuration for runtimes that can host a standalone WebSocket server.
@@ -239,6 +265,11 @@ export interface WebSocketModuleOptions<TRequest = Request> {
     enabled?: boolean;
     intervalMs?: number;
     timeoutMs?: number;
+  };
+  /** Opt-in processing for message handler return values. Returns are ignored when omitted. */
+  replies?: {
+    /** Sends valid `{ event, data? }` handler returns through the accepted socket. */
+    mode: WebSocketReplyMode;
   };
   shutdown?: {
     timeoutMs?: number;

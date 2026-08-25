@@ -764,6 +764,7 @@ export class NodeWebSocketGatewayLifecycleServiceImplementation
         socket,
         request,
         nextMessage,
+        state.socketId,
       );
     }
 
@@ -775,12 +776,15 @@ export class NodeWebSocketGatewayLifecycleServiceImplementation
     socket: WebSocket,
     request: IncomingMessage,
     data: RawData,
+    socketId: string,
   ): Promise<void> {
     await dispatchGatewayMessage(
       resolved,
       socket,
       request,
       data,
+      socketId,
+      this.moduleOptions.replies?.mode,
       this.logger,
       'WebSocketGatewayLifecycleService',
     );

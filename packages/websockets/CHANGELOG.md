@@ -4,7 +4,8 @@
 
 ### Patch Changes
 
-- Align websocket runtime contracts, docs, and regression coverage for room service behavior, bounded shutdown cleanup, payload normalization, and runtime-specific upgrade guard typing.
+- Raise the package-owned Node.js `ws` runtime to `^8.21.0`.
+- Preserve fetch-style host binding ownership and terminal disconnect cleanup, isolate inherited handler metadata, expose message-handler connection IDs, and add opt-in event-envelope replies without changing the default ignored-return behavior.
 
 ## 1.0.8
 

@@ -1,7 +1,7 @@
 import type {
   WebSocketModuleOptions as SharedWebSocketModuleOptions,
-  WebSocketUpgradeContext,
   WebSocketUpgradeGuard as SharedWebSocketUpgradeGuard,
+  WebSocketUpgradeContext,
   WebSocketUpgradeRejection,
 } from '../types.js';
 
@@ -59,11 +59,12 @@ export interface CloudflareWorkerWebSocketBindingHost {
 /**
  * Defines the typed on message handler type.
  */
-export type TypedOnMessageHandler<TEvents extends Record<string, unknown>, K extends keyof TEvents> = (
-  payload: TEvents[K],
-  socket: CloudflareWorkerWebSocket,
-  request: Request,
-) => void | Promise<void>;
+export type TypedOnMessageHandler<TEvents extends Record<string, unknown>, K extends keyof TEvents> = import('../types.js').TypedOnMessageHandler<
+  TEvents,
+  K,
+  CloudflareWorkerWebSocket,
+  Request
+>;
 
 /**
  * Describes the web socket gateway context contract.
