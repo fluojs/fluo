@@ -306,6 +306,9 @@ describe('$create-lane native v2 producer', () => {
         ledger: '.omo/lanes/lane-4101-runtime.json',
       });
       expect(ledger['release_handoffs']).toEqual([4101]);
+      expect(ledger['lane_plan_approval_sha256']).toBe(
+        receipt['binding_sha256'],
+      );
       expect(receipt['release_handoff_attestations']).toEqual([
         {
           issue_number: 4101,

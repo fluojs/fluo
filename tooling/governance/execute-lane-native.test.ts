@@ -390,20 +390,31 @@ describe('$execute-lane persisted native state machine', () => {
       /release handoffs require their consumed lane-plan approval receipt/u,
     ],
     [
-      'self-consistent evidence digest',
+      'fully self-consistent evidence digest',
       (receipt: Record<string, unknown>) => {
         const attestations = receipt['release_handoff_attestations'];
-        if (!Array.isArray(attestations) || !isRecord(attestations[0])) {
+        const plan = receipt['plan'];
+        const handoffs = isRecord(plan) ? plan['release_handoffs'] : undefined;
+        if (
+          !Array.isArray(attestations) ||
+          !isRecord(attestations[0]) ||
+          !Array.isArray(handoffs) ||
+          !isRecord(handoffs[0])
+        ) {
           throw new TypeError('release approval attestations must be objects');
         }
         attestations[0] = {
           ...attestations[0],
           issue_evidence_sha256: 'c'.repeat(64),
         };
+        handoffs[0] = {
+          ...handoffs[0],
+          issue_evidence_sha256: 'c'.repeat(64),
+        };
         receipt['binding_sha256'] =
-          '7ee06bb74ca22b749df2905b97096895ef5d0365198132c59e457f2885390268';
+          'c2d14b0a464ca206669e9c32791f8eda3326406158a8896bad79c8c65fac5247';
       },
-      /release handoff attestations do not match the approved plan/u,
+      /release handoff receipt binding does not match the ledger/u,
     ],
   ])('rejects a substituted release handoff %s', (_, mutate, error) => {
     const repositoryRoot = mkdtempSync(

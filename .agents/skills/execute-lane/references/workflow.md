@@ -22,6 +22,8 @@ Before accepting any non-empty handoff set, load the consumed `lane-plan`
 approval receipt and require its issue numbers to match the ledger exactly.
 Each receipt attestation must retain the approved issue evidence digest,
 `decision: "release-or-publish-is-core"`, and `changeset_only: false`.
+Recompute the receipt binding and require it to equal the independent
+`lane_plan_approval_sha256` stored in the ready ledger.
 
 ## Attempt loop
 

@@ -43,6 +43,8 @@ handoffs:
 Each gate has a distinct approval identity and interaction. Its digest binds
 the complete plan and source artifact. Persist consumed IDs so missing, denied,
 out-of-order, substituted, or replayed approvals stop before publication.
+The ready ledger also stores the lane-plan approval binding independently so
+execute-lane can reject a self-consistent forged receipt.
 
 ## Validation and publication
 

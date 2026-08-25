@@ -146,10 +146,18 @@ export const planIsCanonical = (plan, artifact) => {
   );
 };
 
-export const readyLedger = (plan, artifact, artifactPath) => ({
+export const readyLedger = (
+  plan,
+  artifact,
+  artifactPath,
+  lanePlanApprovalSha256,
+) => ({
   version: 2,
   run_id: plan.lane_id,
   lane_id: plan.lane_id,
+  ...(lanePlanApprovalSha256 === undefined
+    ? {}
+    : { lane_plan_approval_sha256: lanePlanApprovalSha256 }),
   status: 'ready',
   created_by: 'create-lane',
   base_branch: plan.base_branch,

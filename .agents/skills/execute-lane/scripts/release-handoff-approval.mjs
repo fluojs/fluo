@@ -162,6 +162,11 @@ export const assertReleaseHandoffBinding = (
   ) {
     throw new TypeError('release handoff approval binding does not match');
   }
+  if (ledger.lane_plan_approval_sha256 !== receipt.binding_sha256) {
+    throw new TypeError(
+      'release handoff receipt binding does not match the ledger',
+    );
+  }
   const expected = readyLedger(receipt.plan, artifact, artifactPath);
   const expectedPlan = immutableLedgerPlan({
     ...expected,

@@ -137,6 +137,14 @@ export function validateLedgerShape(path, ledger) {
       `created_at must be a strict UTC ISO-8601 timestamp; ${migrationGuidance}`,
     );
   }
+  if (ledger.lane_plan_approval_sha256 !== undefined) {
+    assert(
+      typeof ledger.lane_plan_approval_sha256 === 'string' &&
+        /^[a-f0-9]{64}$/u.test(ledger.lane_plan_approval_sha256),
+      path,
+      'lane_plan_approval_sha256 must be a lowercase SHA-256 digest',
+    );
+  }
   assert(ledger.created_by === 'create-lane', path, 'created_by must be create-lane');
   assert(isSafeBranchName(ledger.base_branch), path, 'base_branch must be a safe non-empty branch name');
   validateSource(path, ledger.source, ledger.version);
@@ -163,7 +171,13 @@ export function validateLedgerShape(path, ledger) {
   assert(isObject(ledger.root_main_sync), path, 'root_main_sync is required');
   assert(hasExactKeys(ledger.root_main_sync, ['status', 'sha']), path, 'root_main_sync must contain exactly status/sha');
   assert(rootMainSyncStatuses.has(ledger.root_main_sync.status), path, `invalid root_main_sync.status: ${String(ledger.root_main_sync.status)}`);
-  const expectedRootKeys = ledger.created_at === undefined ? rootKeys : [...rootKeys, 'created_at'];
+  const optionalRootKeys = [
+    ...(ledger.created_at === undefined ? [] : ['created_at']),
+    ...(ledger.lane_plan_approval_sha256 === undefined
+      ? []
+      : ['lane_plan_approval_sha256']),
+  ];
+  const expectedRootKeys = [...rootKeys, ...optionalRootKeys];
   assert(hasExactKeys(ledger, expectedRootKeys), path, 'ledger must contain exactly the canonical root keys');
 }
 
