@@ -108,12 +108,34 @@ function readHeaderValue(request: FrameworkRequest, headerName: string): string 
   return undefined;
 }
 
+function readCombinedHeaderValue(
+  request: FrameworkRequest,
+  headerName: string,
+): string | undefined {
+  const matches = getMatchingRequestHeaderValues(request, headerName);
+  const values: string[] = [];
+
+  for (const match of matches) {
+    const entries = Array.isArray(match) ? match : [match];
+
+    for (const entry of entries) {
+      const normalized = entry?.trim();
+
+      if (normalized) {
+        values.push(normalized);
+      }
+    }
+  }
+
+  return values.length > 0 ? values.join(',') : undefined;
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function extractVersionFromMediaType(request: FrameworkRequest, key: string): string | undefined {
-  const accept = readHeaderValue(request, 'accept');
+  const accept = readCombinedHeaderValue(request, 'accept');
 
   if (!accept) {
     return undefined;

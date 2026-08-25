@@ -40,7 +40,7 @@ export {
 export type { FastPathEligibility, FastPathStats } from './dispatch/fast-path/index.js';
 export * from './errors.js';
 export * from './exceptions.js';
-export * from './header-helpers.js';
+export { appendVaryHeader, getRequestHeader } from './header-helpers.js';
 export * from './mapping.js';
 export * from './middleware/correlation.js';
 export * from './middleware/cors.js';
