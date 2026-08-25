@@ -10,6 +10,7 @@
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
+- [Early Hints](#early-hints)
 - [Realtime Adapter Capabilities](#realtime-adapter-capabilities)
 - [HTTP Error Representations](#http-error-representations)
 - [요청 정리와 런타임 이식성](#요청-정리와-런타임-이식성)
@@ -165,6 +166,35 @@ function someDeepHelper() {
 ```
 
 `runWithRequestContext(...)`는 호스트가 `globalThis.AsyncLocalStorage` 또는 `node:async_hooks` 모듈로 `AsyncLocalStorage`를 제공할 때 활성 컨텍스트를 `await` 이후까지 보존합니다. 루트 `@fluojs/http` export는 async-context storage를 probe하거나 instantiate하지 않고 runtime-specific entrypoint를 선택합니다. Node와 Bun은 module initialization 중 host constructor를 등록하고, Deno, worker, browser, default entry는 Node built-in import 없이 유지됩니다. Request-local store 자체는 첫 사용 시점에 계속 lazy하게 생성됩니다. Promise를 반환하는 non-async callback은 동기 호출, 반환, throw 동작을 유지하고, 반환한 promise가 settle될 때까지 continuation에서 바인딩된 context를 보존합니다. Helper는 `Promise.prototype.then`을 교체하지 않으므로 관련 없는 promise continuation이 request를 capture하지 않습니다. 비동기 컨텍스트 primitive가 없는 호스트는 awaited work가 재개되기 전에 context를 지우는 synchronous-only fallback을 사용합니다.
+
+## Early Hints
+
+`FrameworkResponse.earlyHints`는 HTTP `103` informational response를 위한 optional request-scoped capability입니다. 사용 전에 property 존재 여부를 확인하세요. Property가 없으면 active adapter가 Early Hints를 emit할 수 없다는 뜻입니다. 필수 `FrameworkResponse.writeEarlyHints()` method는 없으며 unsupported adapter가 write를 조용히 무시하지도 않습니다.
+
+```ts
+import type { RequestContext } from '@fluojs/http';
+
+async function render(_input: undefined, context: RequestContext) {
+  const earlyHints = context.response.earlyHints;
+
+  if (earlyHints) {
+    await earlyHints.write({
+      link: [
+        '</styles.css>; rel=preload; as=style',
+        '</app.js>; rel=modulepreload',
+      ],
+      'x-trace-id': 'render-1',
+    });
+  }
+
+  context.response.setHeader('link', '</final.css>; rel=stylesheet');
+  return { ok: true };
+}
+```
+
+각 `write(...)`는 하나의 `103`을 emit하므로 final response 전에 여러 write를 순서대로 await할 수 있습니다. 모든 write에는 비어 있지 않은 `link` value가 하나 이상 필요하며 native Node HTTP implementation이 허용하는 추가 informational field를 포함할 수 있습니다. Early field는 `response.headers`를 채우거나 status를 바꾸거나 `committed`를 설정하지 않으며 final-response header로 복사되지도 않습니다.
+
+Node.js, Express, Fastify는 이 capability를 노출합니다. Fetch-style Web, Bun, Deno, Cloudflare Workers response는 해당 `Response` API로 final response 이전 informational response를 표현할 수 없으므로 capability를 생략합니다. Final commit 이후 write 또는 native validation/write 실패는 `EarlyHintsWriteError`(`EARLY_HINTS_WRITE_FAILED`)로 reject되고, settlement 전에 연결이 끊기면 `RequestAbortedError`(`REQUEST_ABORTED`)로 reject됩니다.
 
 ## Realtime Adapter Capabilities
 

@@ -2,10 +2,14 @@ import type { ServerResponse } from 'node:http';
 
 import {
   createErrorResponse,
+  EarlyHintsWriteError,
   HttpException,
   InternalServerErrorException,
+  RequestAbortedError,
+  type EarlyHintsHeaders,
   type FrameworkResponseCompression,
   type FrameworkResponse,
+  type FrameworkResponseEarlyHints,
   type FrameworkResponseStream,
 } from '@fluojs/http';
 
@@ -15,6 +19,103 @@ import {
 export type MutableFrameworkResponse = FrameworkResponse & { statusSet?: boolean };
 
 type FrameworkResponseCompressionFactory = () => FrameworkResponseCompression | undefined;
+
+/**
+ * Create the request-scoped Early Hints writer shared by Node-backed adapters.
+ *
+ * @param response Native Node response that emits HTTP 103 informational responses.
+ * @param isCommitted Probe for facade-level final response ownership.
+ * @returns An Early Hints capability that settles on native write, error, or disconnect.
+ */
+export function createNodeEarlyHintsCapability(
+  response: ServerResponse,
+  isCommitted: () => boolean,
+): FrameworkResponseEarlyHints {
+  return {
+    write(headers: EarlyHintsHeaders): Promise<void> {
+      if (!hasNonEmptyLink(headers.link)) {
+        return Promise.reject(new EarlyHintsWriteError(
+          'HTTP 103 Early Hints requires at least one non-empty link value.',
+        ));
+      }
+
+      if (isCommitted() || response.headersSent || response.writableEnded) {
+        return Promise.reject(new EarlyHintsWriteError(
+          'Cannot write HTTP 103 Early Hints after the final response is committed.',
+        ));
+      }
+
+      if (response.destroyed || response.socket?.destroyed) {
+        return Promise.reject(new RequestAbortedError(
+          'Request aborted before HTTP 103 Early Hints could be written.',
+        ));
+      }
+
+      const nativeHeaders = cloneEarlyHintsHeaders(headers);
+
+      return new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const cleanup = () => {
+          response.removeListener('close', onClose);
+          response.removeListener('error', onError);
+        };
+        const settle = (action: () => void) => {
+          if (settled) {
+            return;
+          }
+
+          settled = true;
+          cleanup();
+          action();
+        };
+        const onClose = () => {
+          settle(() => reject(new RequestAbortedError(
+            'Request aborted while HTTP 103 Early Hints were being written.',
+          )));
+        };
+        const onError = (cause: Error) => {
+          settle(() => reject(new EarlyHintsWriteError(
+            'Native HTTP transport failed to write HTTP 103 Early Hints.',
+            { cause },
+          )));
+        };
+        const onWritten = () => {
+          settle(resolve);
+        };
+
+        response.once('close', onClose);
+        response.once('error', onError);
+
+        try {
+          response.writeEarlyHints(nativeHeaders, onWritten);
+        } catch (cause: unknown) {
+          settle(() => reject(new EarlyHintsWriteError(
+            'Native HTTP transport rejected HTTP 103 Early Hints.',
+            { cause },
+          )));
+        }
+      });
+    },
+  };
+}
+
+function hasNonEmptyLink(link: EarlyHintsHeaders['link']): boolean {
+  return typeof link === 'string'
+    ? link.length > 0
+    : link.length > 0 && link.every((value) => value.length > 0);
+}
+
+function cloneEarlyHintsHeaders(
+  headers: EarlyHintsHeaders,
+): Record<string, string | string[]> {
+  const cloned: Record<string, string | string[]> = {};
+
+  for (const [name, value] of Object.entries(headers)) {
+    cloned[name] = typeof value === 'string' ? value : [...value];
+  }
+
+  return cloned;
+}
 
 function createFrameworkResponseStream(response: ServerResponse): FrameworkResponseStream {
   return {
@@ -108,8 +209,10 @@ export function createFrameworkResponse(
     return merged.length === 1 ? merged[0] : merged;
   };
 
-  const frameworkResponse: MutableFrameworkResponse & { raw: ServerResponse } = {
+  let frameworkResponse: MutableFrameworkResponse & { raw: ServerResponse };
+  frameworkResponse = {
     committed: response.headersSent || response.writableEnded,
+    earlyHints: createNodeEarlyHintsCapability(response, () => frameworkResponse.committed),
     headers: {},
     raw: response,
     get stream() {

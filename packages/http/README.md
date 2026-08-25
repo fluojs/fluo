@@ -10,6 +10,7 @@ The HTTP execution layer that turns route metadata into a request pipeline with 
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+- [Early Hints](#early-hints)
 - [Realtime Adapter Capabilities](#realtime-adapter-capabilities)
 - [HTTP Error Representations](#http-error-representations)
 - [Request Cleanup and Portability](#request-cleanup-and-portability)
@@ -167,6 +168,35 @@ function someDeepHelper() {
 ```
 
 `runWithRequestContext(...)` preserves the active context across awaited work when the host provides `AsyncLocalStorage` through `globalThis.AsyncLocalStorage` or the `node:async_hooks` module. The root `@fluojs/http` export selects a runtime-specific entrypoint without probing or instantiating async-context storage: Node and Bun register the host constructor during module initialization, while Deno, worker, browser, and default entries remain free of Node built-in imports. The request-local store itself is still created lazily on first use. Promise-returning non-async callbacks keep synchronous invocation, return, and throw behavior, and their continuations retain the bound context until the returned promise settles. The helpers never replace `Promise.prototype.then`, so unrelated promise continuations cannot capture a request. Hosts without an async-context primitive use a synchronous-only fallback that clears the context before awaited work resumes.
+
+## Early Hints
+
+`FrameworkResponse.earlyHints` is an optional, request-scoped capability for HTTP `103` informational responses. Check for property presence before use; property absence means the active adapter cannot emit Early Hints. There is no required `FrameworkResponse.writeEarlyHints()` method and unsupported adapters never silently ignore a write.
+
+```ts
+import type { RequestContext } from '@fluojs/http';
+
+async function render(_input: undefined, context: RequestContext) {
+  const earlyHints = context.response.earlyHints;
+
+  if (earlyHints) {
+    await earlyHints.write({
+      link: [
+        '</styles.css>; rel=preload; as=style',
+        '</app.js>; rel=modulepreload',
+      ],
+      'x-trace-id': 'render-1',
+    });
+  }
+
+  context.response.setHeader('link', '</final.css>; rel=stylesheet');
+  return { ok: true };
+}
+```
+
+Each `write(...)` emits one `103`, so callers may await multiple writes before the final response. Every write requires at least one non-empty `link` value and may include additional informational fields accepted by the native Node HTTP implementation. Early fields do not populate `response.headers`, change status, set `committed`, or become final-response headers.
+
+Node.js, Express, and Fastify expose this capability. Fetch-style Web, Bun, Deno, and Cloudflare Workers responses omit it because their `Response` APIs cannot represent an informational response before the final response. A write after final commitment or a native validation/write failure rejects with `EarlyHintsWriteError` (`EARLY_HINTS_WRITE_FAILED`); a disconnect before settlement rejects with `RequestAbortedError` (`REQUEST_ABORTED`).
 
 ## Realtime Adapter Capabilities
 

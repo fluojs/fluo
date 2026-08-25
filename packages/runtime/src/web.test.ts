@@ -9,6 +9,21 @@ import {
 } from './web.js';
 
 describe('dispatchWebRequest', () => {
+  it('exposes Early Hints as unsupported on Web response facades', async () => {
+    const response = await dispatchWebRequest({
+      dispatcher: {
+        async dispatch(_request: FrameworkRequest, frameworkResponse: FrameworkResponse) {
+          expect(frameworkResponse.earlyHints).toBeUndefined();
+          await frameworkResponse.send({ ok: true });
+        },
+      },
+      request: new Request('https://runtime.test/early-hints'),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true });
+  });
+
   it('serializes simple JSON responses while preserving non-JSON response semantics', async () => {
     const responseFor = (path: string) => dispatchWebRequest({
       dispatcher: {

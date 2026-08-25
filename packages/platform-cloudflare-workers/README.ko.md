@@ -68,6 +68,10 @@ export default {
 
 ## 주요 패턴
 
+### Early Hints 미지원
+
+Workers `Response` API는 final response 이전 informational response를 request handler에서 write하는 primitive를 제공하지 않으므로 `context.response.earlyHints`가 없습니다. 사용 전에 capability 존재 여부를 확인하세요. Early Hints를 생성할 수 있는 Cloudflare deployment/cache feature는 host configuration이며 Fluo response writer로 노출되지 않습니다.
+
 ### WebSocketPair 활용
 어댑터는 `@fluojs/websockets/cloudflare-workers` 바인딩을 통해 실시간 통신을 위한 Cloudflare의 네이티브 `WebSocketPair`를 지원합니다. Upgrade handling은 해당 binding을 통한 opt-in이며, non-hosted runtime test에서는 `createWebSocketPair`를 주입할 수 있습니다. Binding은 `listen()`이 Worker dispatch boundary를 시작하기 전에 설정하세요. `listen()`이 한 번 실행된 뒤에는 해당 adapter instance의 binding identity가 frozen됩니다. 이미 public listen boundary를 지난 isolate 아래에서 upgrade ownership이 바뀌지 않도록, `close()` 이후에도 binding을 교체하거나 해제하려는 시도는 reject됩니다.
 

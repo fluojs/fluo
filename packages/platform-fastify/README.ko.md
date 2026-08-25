@@ -54,6 +54,10 @@ await app.listen();
 
 ## 주요 패턴
 
+### Early Hints
+
+Fastify response는 `reply.raw`를 통해 optional `context.response.earlyHints` capability를 노출합니다. `103` 하나마다 `write(...)`를 await하면 독립적으로 설정된 final response보다 먼저 여러 informational response가 전송됩니다. Early field는 Fastify final header를 채우거나 Fluo facade를 committed 상태로 만들지 않습니다. Late/native failure와 client disconnect는 결정적으로 reject됩니다.
+
 ### HTTPS/TLS 시작
 Fastify 프로세스가 TLS를 직접 소유할 때는 Node.js `https.ServerOptions`를 `createFastifyAdapter(...)`, `bootstrapFastifyApplication(...)`, 또는 `runFastifyApplication(...)`의 `https` option으로 전달하세요. Adapter는 Fastify를 HTTPS listener로 시작하며 startup log는 `https://host:port` URL을 보고합니다.
 

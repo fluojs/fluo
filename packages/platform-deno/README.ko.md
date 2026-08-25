@@ -53,6 +53,10 @@ Signal listener 등록에는 별도의 Deno permission이 필요하지 않습니
 
 ## 주요 패턴
 
+### Early Hints 미지원
+
+Deno의 Fetch `Response`는 final response 이전 informational response를 표현할 수 없으므로 `context.response.earlyHints`가 없습니다. 사용 전에 capability 존재 여부를 확인하세요. Adapter는 요청된 `103`을 silent no-op 또는 final-response header로 바꾸지 않습니다.
+
 ### Host-Owned Deno.serve
 애플리케이션이 `Deno.serve(...)`를 소유한다면 `app.listen()`을 호출하지 않고 fluo 애플리케이션을 bootstrap한 뒤 public dispatcher로 request handler를 만드세요. `createDenoFetchHandler(...)`는 request 변환과 dispatch만 수행하며 server를 시작하거나 shutdown, signal, websocket upgrade를 소유하지 않습니다.
 

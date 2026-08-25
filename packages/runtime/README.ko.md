@@ -66,6 +66,10 @@ await app.listen();
 
 ## 주요 패턴
 
+### Optional Early Hints capability
+
+Runtime은 adapter가 소유하는 optional `context.response.earlyHints` capability를 보존하면서 이를 필수 response method surface로 만들지 않습니다. Node.js, Express, Fastify response는 writer를 제공하고 Web 표준 response factory는 이를 생략하므로 Bun, Deno, Workers, custom Fetch host가 unsupported임을 사용 전에 감지할 수 있습니다. Early write는 final status, header, body, commit ownership과 독립적입니다. 자세한 내용은 [`@fluojs/http` Early Hints 계약](../http/README.ko.md#early-hints)을 참고하세요.
+
 ### 애플리케이션 컨텍스트 (HTTP 제외)
 
 백그라운드 워커나 스크립트의 경우, `createApplicationContext`를 사용하여 HTTP 설정을 건너뛸 수 있습니다.
