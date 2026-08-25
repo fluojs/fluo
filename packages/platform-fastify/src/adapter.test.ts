@@ -1423,6 +1423,83 @@ describe('@fluojs/platform-fastify', () => {
     }
   });
 
+  it('closes incomplete chunked multipart requests after total-size rejection', async () => {
+    @Controller('/uploads')
+    class UploadController {
+      @Post('/')
+      upload() {
+        return { accepted: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [UploadController],
+    });
+
+    const app = await bootstrapFastifyApplication(AppModule, {
+      cors: false,
+      multipart: {
+        maxTotalSize: 64,
+      },
+      port: 0,
+    });
+    const port = await listenOnEphemeralPort(app);
+    const responseReceived = createDeferred<{
+      headers: IncomingHttpHeaders;
+      statusCode: number;
+    }>();
+    const socketClosed = createDeferred<void>();
+    let responseStarted = false;
+    let appClosed = false;
+    const request = httpRequest({
+      headers: {
+        'content-type': 'multipart/form-data; boundary=fluo-incomplete',
+      },
+      host: '127.0.0.1',
+      method: 'POST',
+      path: '/uploads',
+      port,
+    }, (response) => {
+      responseStarted = true;
+      response.on('data', () => {});
+      response.on('end', () => {
+        responseReceived.resolve({
+          headers: response.headers,
+          statusCode: response.statusCode ?? 0,
+        });
+      });
+      response.on('error', responseReceived.reject);
+    });
+    request.on('error', (error) => {
+      if (!responseStarted) {
+        responseReceived.reject(error);
+      }
+    });
+    request.on('socket', (socket) => {
+      socket.once('close', () => {
+        socketClosed.resolve();
+      });
+    });
+
+    try {
+      request.write('x'.repeat(128));
+
+      const response = await responseReceived.promise;
+      expect(response.statusCode).toBe(413);
+      expect(response.headers.connection).toBe('close');
+      await socketClosed.promise;
+      await app.close();
+      appClosed = true;
+    } finally {
+      request.destroy();
+
+      if (!appClosed) {
+        await app.close();
+      }
+    }
+  });
+
   it('honors direct createFastifyAdapter multipart options', async () => {
     @Controller('/uploads')
     class UploadController {

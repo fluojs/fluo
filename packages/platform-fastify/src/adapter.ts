@@ -591,6 +591,11 @@ function createFastifyRequestResponseFactory(
     },
     async writeErrorResponse(error: unknown, response: FastifyFrameworkResponse, requestId?: string) {
       const httpError = toHttpException(error);
+
+      if (!response.raw.raw.req.complete) {
+        response.setHeader('Connection', 'close');
+      }
+
       response.setStatus(httpError.status);
       await response.send(createErrorResponse(httpError, requestId));
     },

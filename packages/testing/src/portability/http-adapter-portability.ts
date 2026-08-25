@@ -885,7 +885,6 @@ export class HttpAdapterPortabilityHarness<
           body,
           duplex: body instanceof ReadableStream ? 'half' : undefined,
           headers: {
-            connection: 'close',
             'content-type': `multipart/form-data; boundary=${current.boundary}`,
           },
           method: 'POST',
