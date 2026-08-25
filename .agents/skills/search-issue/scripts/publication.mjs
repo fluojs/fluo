@@ -52,7 +52,7 @@ export const publishRun = ({ ghCalls, ledger, outputDirectory, runId }) => {
         ? null
         : {
             artifact_path: artifactPath,
-            command: `$create-lane ${artifactPath} main`,
+            command: `$create-lane ${artifactPath}`,
           },
   };
 

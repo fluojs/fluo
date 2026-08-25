@@ -155,7 +155,7 @@ is inserted:
 }
 ```
 
-Emit `$create-lane .omo/search-issue/artifacts/<run-id>.json main`. Do not emit
+Emit `$create-lane .omo/search-issue/artifacts/<run-id>.json`. Do not emit
 or retain an active `.opencode` handoff.
 
 When zero issues are created, create no search artifact and report
