@@ -29,6 +29,11 @@ tooling/governance/issue-to-pr-native.test.ts
 tooling/governance/pr-to-merge-native.test.ts
 tooling/governance/execute-lane-native.test.ts
 tooling/governance/execute-lane-dag-supervisor.test.ts
+tooling/governance/execute-lane-dag-scheduling.test.ts
+tooling/governance/execute-lane-dag-binding-v2.test.ts
+tooling/governance/execute-lane-dependency-cleanup-gate.test.ts
+tooling/governance/execute-lane-dependency-assets.test.ts
+tooling/governance/execute-lane-dispatch-intent.test.ts
 tooling/governance/execute-lane-persistence.test.ts
 tooling/governance/execute-lane-resilience.test.ts
 tooling/governance/execute-lane-authority.test.ts
@@ -49,6 +54,15 @@ target-bound receipt. Publishing remains GitHub Actions-only.
 Validate the lane snapshot, event hash chain, lease, live branch/worktree/PR
 identity, current head, checks, and approval freshness before resuming. Never
 fill missing persisted fields with compatibility defaults.
+
+Before each issue dispatch, require canonical `done` for every dependency,
+reconcile intent/binding state, persist `supervisor.dispatch.intent`, and create
+one immutable issue v2 binding. Intent without binding must fail closed; exact
+binding must attach without another start.
+Task completion, merge without cleanup, `CLOSED` observations, and terminal
+blockers must never create a downstream issue store, branch, worktree, task, or
+PR. Terminalizing blocked dependents requires fresh absence observations for
+all six artifact classes.
 
 For non-empty `release_handoffs`, derive the consumed lane-plan receipt from
 the canonical repository approval directory. Recompute its approval binding

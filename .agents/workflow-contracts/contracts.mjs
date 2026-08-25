@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 
 import { isRecord, schemaFailure } from './schema-validator.mjs';
 
+// allow: SIZE_OK — central shared contract registry and cross-contract invariants.
 export const contractNames = [
   'search-artifact-v2',
   'lane-ledger-v2',
@@ -135,11 +136,36 @@ const assertSemanticContract = (name, value) => {
       assertLaneLedgerSemantics(value);
       return;
     case 'lane-dag-binding':
+      if (value.version === 1) {
+        if (
+          !Object.hasOwn(value, 'snapshot_event_hash') ||
+          Object.hasOwn(value, 'issue_number') ||
+          Object.hasOwn(value, 'dependencies') ||
+          Object.hasOwn(value, 'dispatch_event_hash')
+        ) {
+          fail(name, 'version 1 must contain only lane-wide binding fields');
+        }
+        if (
+          value.dag_key !==
+          `fluo:lane:${value.lane_id}:issue-supervisors:v1`
+        ) {
+          fail(name, 'dag_key must be canonical for lane_id');
+        }
+        return;
+      }
+      if (
+        !Object.hasOwn(value, 'issue_number') ||
+        !Object.hasOwn(value, 'dependencies') ||
+        !Object.hasOwn(value, 'dispatch_event_hash') ||
+        Object.hasOwn(value, 'snapshot_event_hash')
+      ) {
+        fail(name, 'version 2 must contain only per-issue binding fields');
+      }
       if (
         value.dag_key !==
-        `fluo:lane:${value.lane_id}:issue-supervisors:v1`
+        `fluo:lane:${value.lane_id}:issue-${String(value.issue_number)}:supervisor:v2`
       ) {
-        fail(name, 'dag_key must be canonical for lane_id');
+        fail(name, 'dag_key must be canonical for lane_id and issue_number');
       }
       return;
     case 'local-review-verdict':

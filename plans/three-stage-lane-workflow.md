@@ -102,8 +102,13 @@ skills never load archived command or role definitions.
    exists so removing the handoff array cannot bypass provenance checks. Use
    the canonical published ledger as the marker when validating persisted
    snapshots so removing both fields cannot impersonate a legacy ledger.
-5. Compile one native DAG issue-supervisor node per approved issue and mirror
-   the canonical dependency graph through `dependsOn`.
+5. Compute eligibility from the shared ledger, persist a dispatch intent, then
+   reconcile and bind one single-node native DAG per eligible issue. Independent
+   eligible issues may run concurrently. Intent without an exact binding fails
+   closed; an exact binding attaches without another start. A dependent issue
+   is not compiled or spawned until every predecessor is shared `done`; native
+   task completion, merge before cleanup, CLOSED observations, and terminal
+   blockers do not unlock it.
 6. Implement and locally verify one commit head, then aggregate exactly one
    contract, code, and verification result before any push or PR creation.
 7. Treat the successful local verdict as `ready-for-pr`, not `merge`. Fix local
@@ -116,8 +121,9 @@ skills never load archived command or role definitions.
    issue observed `CLOSED`.
 10. Cleanup only after merge observation; retain a terminal blocker when any
    worktree/local-branch/remote-branch removal is incomplete.
-11. Sync the clean root with a parent-lead `git pull --ff-only` observation
-    only after every issue-supervisor DAG node is terminal.
+11. Recompute eligibility only after each issue terminal is validated and
+    imported. Sync the clean root with a parent-lead `git pull --ff-only`
+    observation only after every lane is done or explicitly terminal.
 12. Append events, atomically replace the snapshot, record target-bound
    receipts, and release the lease after every transition.
 13. Run the canonical ledger verifier before final reporting.
@@ -134,6 +140,11 @@ pnpm exec vitest run \
   tooling/governance/create-lane-multi.test.ts \
   tooling/governance/execute-lane-native.test.ts \
   tooling/governance/execute-lane-dag-supervisor.test.ts \
+  tooling/governance/execute-lane-dag-scheduling.test.ts \
+  tooling/governance/execute-lane-dag-binding-v2.test.ts \
+  tooling/governance/execute-lane-dependency-cleanup-gate.test.ts \
+  tooling/governance/execute-lane-dependency-assets.test.ts \
+  tooling/governance/execute-lane-dispatch-intent.test.ts \
   tooling/governance/execute-lane-persistence.test.ts \
   tooling/governance/execute-lane-resilience.test.ts \
   tooling/governance/execute-lane-authority.test.ts \

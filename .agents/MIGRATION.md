@@ -13,8 +13,8 @@ $search-issue -> $create-lane -> $execute-lane
 - Skills define inputs, procedure, outputs, authority, and stop conditions.
 - The top-level lead is the only canonical ledger writer.
 - Background tasks implement or review one typed assignment.
-- DAG nodes schedule acyclic attempts; the persisted ledger remains resume
-  truth.
+- The parent dispatches eligible issues as independent single-node DAG runs;
+  the persisted ledger remains dependency and resume truth.
 - Goal and todo state are user-facing projections.
 - Memory stores durable preferences and decisions, never issue/PR/retry state.
 
@@ -62,3 +62,7 @@ provenance mandatory.
 
 Rollback restores the control plane only. Remote GitHub issues, PRs, and merges
 are reconciled into the restored ledger; they are never silently undone.
+
+Legacy lane-wide v1 DAG bindings are not upgraded in place. Quiesce their run,
+reconcile terminal issue stores and live state, and carry unfinished issues
+through a newly approved lane identity before using per-issue v2 dispatch.

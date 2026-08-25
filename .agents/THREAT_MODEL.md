@@ -24,7 +24,10 @@ are not signatures against that trusted operator.
 - The parent lead owns shared lane state and root synchronization. An
   issue-supervisor node may execute push, canonical PR create/update, merge, and
   cleanup only for its bound issue after the user grants the applicable lane
-  authority. Nested implementers and reviewers never receive that authority.
+  authority. The parent persists a dispatch intent, starts one issue run, then
+  immediately binds the observed run ID. Reconciliation refuses an intent
+  without a binding and attaches an exact binding without starting a duplicate.
+  Nested implementers and reviewers never receive that authority.
 - Successful receipts are written only from fresh live Git/GitHub command
   output bound to lane, issue, branch, worktree, PR, and head.
 - The supervisor persists target-bound observations in its issue-local atomic
@@ -48,4 +51,7 @@ collisions. Lane and issue-supervisor state stores reject symlinked state
 paths, write transaction journals before transitions, recover incomplete
 transactions, preserve append-only event hashes, and atomically replace
 snapshots and receipt sets. DAG bindings are first-write exclusive and bind the
-lane, native run, graph definition, and snapshot event anchor.
+lane, issue, native run, one-node definition, canonical dependencies, and
+dispatch event anchor. Legacy lane-wide v1 bindings remain immutable fences.
+Blocked dependent terminalization requires fresh absence observations for its
+issue store, local/remote branch, worktree, native task, and PR.

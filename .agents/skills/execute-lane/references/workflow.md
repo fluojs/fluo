@@ -7,7 +7,9 @@
 - Events: `.omo/lane-runs/<lane-id>/events.jsonl`
 - Receipts: `.omo/lane-runs/<lane-id>/receipts.json`
 - Lease: `.omo/lane-runs/<lane-id>/lease.json`
-- DAG binding: `.omo/lane-runs/<lane-id>/dag-binding.json`
+- Issue DAG bindings:
+  `.omo/lane-runs/<lane-id>/dag-bindings/issue-<number>.json`
+- Legacy lane-wide binding: `.omo/lane-runs/<lane-id>/dag-binding.json`
 - Issue runtime: `.omo/lane-runs/<lane-id>/issues/<issue-number>/`
 
 Acquire a per-ledger lease, validate the v2 snapshot and event hash chain, and
@@ -27,26 +29,45 @@ Each receipt attestation must retain the approved issue evidence digest,
 Recompute the receipt binding and require it to equal the independent
 `lane_plan_approval_sha256` stored in the ready ledger.
 
-## DAG projection
+## Parent-owned incremental dispatch
 
-Compile the validated lane through `scripts/compile-dag.mjs`. The definition
-contains one `issue-<number>-supervisor` node per confirmed issue, and
-`dependsOn` exactly mirrors `dependency_graph`. Every executable node owns a
-disjoint issue worktree and the complete issue lifecycle. Approval-bound
-release handoff nodes perform no implementation and park at
-`blocked-maintainer-decision`.
+Native `dependsOn` expresses task ordering, not predecessor success. Production
+therefore never starts the legacy full-lane definition. The parent repeatedly:
 
-Start the definition with the native DAG tool, then atomically persist its key,
-run ID, definition digest, and current event hash through
-`scripts/dag-binding.mjs`. On restart, reconcile Fluo state and live identities
-first, require the stored definition digest to match, and only then attach the
-recorded run. A missing or conflicting run fails closed; DAG journal state never
-overrides the lane ledger.
+1. reconciles existing issue bindings, stores, and live identities;
+2. imports validated terminal supervisor evidence;
+3. compiles one issue through `compileIssueSupervisorDag()` and calls
+   `reconcileIssueSupervisorDispatch()`;
+4. persists the returned `supervisor.dispatch.intent` candidate;
+5. starts a single-node native DAG whose node has `dependsOn: []`;
+6. immediately attaches the observed run with
+   `attachIssueSupervisorRun()`;
+7. persists its immutable v2 binding under
+   `dag-bindings/issue-<number>.json`.
 
-Each node initialises `scripts/issue-supervisor-store.mjs` under its issue
-runtime directory. Every local review, remote observation, receipt, and status
-transition is transactionally persisted there. The parent imports only a
-validated terminal supervisor state through `scripts/supervisor-terminal.mjs`.
+Independent issues returned by the gate may be dispatched concurrently. A
+dependency succeeds only when it appears in `completed_issues` and its shared
+`issue_progress.status` is `done`, preserving merge, CLOSED issue, and cleanup
+evidence. Merge alone, a CLOSED observation, native task completion, or any
+terminal blocker does not release a dependent.
+
+After a one-node run settles, the parent validates and imports it before
+computing the next eligible set. A blocked dependency terminalizes unreachable
+dependent lanes only after fresh absence observations prove no issue store,
+branch, worktree, task, or PR exists. Those observations are recorded in the
+`dependency.blocked` event. An existing dispatch intent without an exact issue
+binding is an ambiguous crash window and
+`reconcileIssueSupervisorDispatch()` fails closed. An existing exact binding
+returns only `attach`; it never authorizes a duplicate start.
+
+Legacy v1 lane-wide bindings remain immutable evidence only. Do not overwrite,
+amend, or resume them as the production scheduler. Reconcile their issue stores
+and live state, then require a new approved lane identity for unfinished work.
+
+Each dispatched node initialises `scripts/issue-supervisor-store.mjs` under its
+issue runtime directory. Every local review, remote observation, receipt, and
+status transition is transactionally persisted there. The parent imports only
+a validated terminal supervisor state through `scripts/supervisor-terminal.mjs`.
 
 ## Issue supervisor loop
 
@@ -115,14 +136,17 @@ git rev-parse HEAD
 git rev-parse origin/<base-branch>
 ```
 
-Before first push and every update, the issue supervisor verifies the complete
-local triad against the commit head. Before merge, it verifies the reviewed
+Before dispatch and again before first mutation, the parent and issue
+supervisor require the issue to remain the queued lane cursor with every
+dependency at canonical `done`. Before first push and every update, the issue
+supervisor verifies the complete local triad against the commit head. Before
+merge, it verifies the reviewed
 head, remote branch, `headRefOid`, and CI head are identical. After merge, it
 requires `state: MERGED`, a non-null merge commit, and the linked issue
 `state: CLOSED`. Cleanup receipts require the worktree and local/remote branch
-queries to prove absence. The parent performs root sync only after all DAG nodes
-are terminal; its receipt requires a clean primary checkout, successful
-`pull --ff-only`, and equal local/remote base-branch SHAs.
+queries to prove absence. The parent performs root sync only after every lane is
+done or explicitly terminal; its receipt requires a clean primary checkout,
+successful `pull --ff-only`, and equal local/remote base-branch SHAs.
 
 `scripts/fixtures/run-replay.mjs --fixture-only` is a deterministic transition
 exerciser and never grants or observes production side-effect authority.

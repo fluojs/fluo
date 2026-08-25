@@ -12,23 +12,10 @@ import {
   requireSha,
   rootSyncObservation,
 } from './transition-contracts.mjs';
+import { dependencyGate } from './dependency-gate.mjs';
 
-export const unmetDependencies = (scenario, snapshot, identity) => {
-  const dependencies =
-    snapshot.dependency_graph[String(identity.issue_number)] ?? [];
-  const observations = Array.isArray(scenario.dependency_observations)
-    ? scenario.dependency_observations
-    : [];
-  return dependencies.filter(
-    (dependency) =>
-      !snapshot.completed_issues.includes(dependency) &&
-      !observations.some(
-        (observation) =>
-          observation?.issue_number === dependency &&
-          observation?.status === 'CLOSED',
-      ),
-  );
-};
+export const unmetDependencies = (_scenario, snapshot, identity) =>
+  dependencyGate(snapshot, identity.issue_number).unsatisfied_dependencies;
 
 export const parkReleaseHandoff = (snapshot, identity, events) => {
   const lane = snapshot.lanes[identity.lane_index];
