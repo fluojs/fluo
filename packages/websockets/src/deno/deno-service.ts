@@ -53,6 +53,7 @@ interface ConnectionHandlerState {
   resolveDisconnectLifecycle: () => void;
   resolved: ResolvedGatewayInstance[];
   socketId: string;
+  terminalFailureHandled: boolean;
 }
 
 const DEFAULT_MAX_PENDING_MESSAGES_PER_SOCKET = 256;
@@ -307,6 +308,7 @@ export class DenoWebSocketGatewayLifecycleService
       resolveDisconnectLifecycle: disconnectLifecycle.resolve,
       resolved: [],
       socketId: crypto.randomUUID(),
+      terminalFailureHandled: false,
     };
   }
 
@@ -453,6 +455,9 @@ export class DenoWebSocketGatewayLifecycleService
     request: Request,
     message: DenoWebSocketMessage,
   ): void {
+    if (state.terminalFailureHandled) {
+      return;
+    }
     const limit = isFinitePositiveInteger(this.moduleOptions.buffer?.maxPendingMessagesPerSocket)
       ? this.moduleOptions.buffer.maxPendingMessagesPerSocket
       : DEFAULT_MAX_PENDING_MESSAGES_PER_SOCKET;
@@ -519,7 +524,7 @@ export class DenoWebSocketGatewayLifecycleService
       }
 
       const normalizedMessage = await this.normalizeMessage(nextMessage);
-      await dispatchGatewayMessage(
+      const outcome = await dispatchGatewayMessage(
         state.resolved,
         socket,
         request,
@@ -538,6 +543,11 @@ export class DenoWebSocketGatewayLifecycleService
         this.logger,
         LIFECYCLE_LOG_CONTEXT,
       );
+
+      if (outcome === 'terminal') {
+        this.clearQueuedMessages(state);
+        return;
+      }
     }
 
     this.clearQueuedMessages(state);
@@ -1034,6 +1044,12 @@ export class DenoWebSocketGatewayLifecycleService
     socket: DenoServerWebSocket,
     reason: string,
   ): void {
+    if (state.terminalFailureHandled) {
+      return;
+    }
+
+    state.terminalFailureHandled = true;
+    this.clearQueuedMessages(state);
     this.unregisterSocketWithDeferredStateCleanup(state);
     socket.close(1011, reason);
 

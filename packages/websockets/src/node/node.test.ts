@@ -3,7 +3,7 @@ import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { createNodeHttpAdapter } from '@fluojs/runtime/node';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
@@ -94,6 +94,21 @@ function createDeferred<T = void>(): {
   });
 
   return { promise, resolve };
+}
+
+function observeShutdownEntry(service: object): Promise<void> {
+  if (!('onModuleDestroy' in service) || typeof service.onModuleDestroy !== 'function') {
+    throw new Error('Expected websocket lifecycle service to expose onModuleDestroy().');
+  }
+  const lifecycleService = service as { onModuleDestroy(): Promise<void> };
+  const entered = createDeferred<void>();
+  const shutdown = lifecycleService.onModuleDestroy.bind(lifecycleService);
+  vi.spyOn(lifecycleService, 'onModuleDestroy').mockImplementation(async () => {
+    const shutdownPromise = shutdown();
+    entered.resolve();
+    await shutdownPromise;
+  });
+  return entered.promise;
 }
 
 describe('@fluojs/websockets/node', () => {
@@ -351,10 +366,14 @@ describe('@fluojs/websockets/node', () => {
         socket.close();
         await disconnectStarted.promise;
 
+        const shutdownEntered = observeShutdownEntry(
+          await app.container.resolve(NodeWebSocketGatewayLifecycleService),
+        );
         let appCloseSettled = false;
         const appClose = app.close().then(() => {
           appCloseSettled = true;
         });
+        await shutdownEntered;
 
         expect(appCloseSettled).toBe(false);
 

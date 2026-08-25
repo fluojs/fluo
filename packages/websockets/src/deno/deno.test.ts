@@ -3,7 +3,7 @@ import { getModuleMetadata } from '@fluojs/core/internal';
 import { type HttpApplicationAdapter, UnauthorizedException } from '@fluojs/http';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
 import * as denoPublicApi from './deno.js';
@@ -226,6 +226,21 @@ function createDeferred<T = void>() {
   });
 
   return { promise, reject, resolve };
+}
+
+function observeShutdownEntry(service: object): Promise<void> {
+  if (!('onModuleDestroy' in service) || typeof service.onModuleDestroy !== 'function') {
+    throw new Error('Expected websocket lifecycle service to expose onModuleDestroy().');
+  }
+  const lifecycleService = service as { onModuleDestroy(): Promise<void> };
+  const entered = createDeferred<void>();
+  const shutdown = lifecycleService.onModuleDestroy.bind(lifecycleService);
+  vi.spyOn(lifecycleService, 'onModuleDestroy').mockImplementation(async () => {
+    const shutdownPromise = shutdown();
+    entered.resolve();
+    await shutdownPromise;
+  });
+  return entered.promise;
 }
 
 type BinaryMessageCase = readonly [
@@ -894,11 +909,13 @@ describe('@fluojs/websockets/deno', () => {
     await connected.promise;
     socket.delayCloseUntil(closeGate.promise);
 
+    const shutdownEntered = observeShutdownEntry(await app.container.resolve(DenoWebSocketGatewayLifecycleService));
     let closed = false;
     const closePromise = app.close().then(() => {
       closed = true;
     });
 
+    await shutdownEntered;
     expect(closed).toBe(false);
     expect(state.disconnectCount).toBe(0);
 
@@ -953,12 +970,14 @@ describe('@fluojs/websockets/deno', () => {
 
     await connected.promise;
 
+    const shutdownEntered = observeShutdownEntry(await app.container.resolve(DenoWebSocketGatewayLifecycleService));
     let closed = false;
     const closePromise = app.close().then(() => {
       closed = true;
     });
     await disconnectStarted.promise;
 
+    await shutdownEntered;
     expect(closed).toBe(false);
     expect(state.disconnectCount).toBe(0);
 
@@ -1014,11 +1033,13 @@ describe('@fluojs/websockets/deno', () => {
       socket.close(1000, 'Client closed');
       await disconnectStarted.promise;
 
+      const shutdownEntered = observeShutdownEntry(await app.container.resolve(DenoWebSocketGatewayLifecycleService));
       let closed = false;
       const closePromise = app.close().then(() => {
         closed = true;
       });
 
+      await shutdownEntered;
       expect(closed).toBe(false);
 
       disconnectRelease.resolve();
@@ -1088,11 +1109,13 @@ describe('@fluojs/websockets/deno', () => {
       expect(socket.closeCalls).toEqual([{ code: 1011, reason: 'Send failed' }]);
       await disconnectStarted.promise;
 
+      const shutdownEntered = observeShutdownEntry(await app.container.resolve(DenoWebSocketGatewayLifecycleService));
       let closed = false;
       closePromise = app.close().then(() => {
         closed = true;
       });
 
+      await shutdownEntered;
       expect(closed).toBe(false);
 
       disconnectRelease.resolve();
@@ -1202,11 +1225,13 @@ describe('@fluojs/websockets/deno', () => {
     }));
     await connectStarted.promise;
 
+    const shutdownEntered = observeShutdownEntry(await app.container.resolve(DenoWebSocketGatewayLifecycleService));
     let closed = false;
     const closePromise = app.close().then(() => {
       closed = true;
     });
 
+    await shutdownEntered;
     expect(closed).toBe(false);
     expect(state.connectCount).toBe(0);
     expect(state.disconnectCount).toBe(0);
@@ -1540,13 +1565,23 @@ describe('@fluojs/websockets/deno', () => {
     const adapter = new TestDenoAdapter();
     const connected = createDeferred();
     const disconnected = createDeferred();
+    const firstHandlerStarted = createDeferred();
+    const releaseFirstHandler = createDeferred();
+    const handledPayloads: unknown[] = [];
     let disconnectCount = 0;
     @WebSocketGateway({ path: '/reply-failure' })
     class ReplyGateway {
       @OnConnect()
       onConnect(): void { connected.resolve(); }
       @OnMessage('ping')
-      onPing() { return { event: 'pong' }; }
+      async onPing(payload: unknown) {
+        handledPayloads.push(payload);
+        if (handledPayloads.length === 1) {
+          firstHandlerStarted.resolve();
+          await releaseFirstHandler.promise;
+        }
+        return { data: payload, event: 'pong' };
+      }
       @OnDisconnect()
       onDisconnect(): void {
         disconnectCount += 1;
@@ -1574,10 +1609,15 @@ describe('@fluojs/websockets/deno', () => {
     socket.send = () => { throw new Error('Reply failed.'); };
 
     // When
-    socket.emitMessage(JSON.stringify({ event: 'ping' }));
+    socket.emitMessage(JSON.stringify({ data: 'first', event: 'ping' }));
+    await firstHandlerStarted.promise;
+    socket.emitMessage(JSON.stringify({ data: 'second', event: 'ping' }));
+    releaseFirstHandler.resolve();
     await state.handlerQueue;
+    socket.emitError();
 
     // Then
+    expect(handledPayloads).toEqual(['first']);
     expect(socket.closeCalls).toEqual([{ code: 1011, reason: 'Send failed' }]);
     expect((Reflect.get(service, 'socketRegistry') as Map<string, unknown>).size).toBe(0);
     await disconnected.promise;

@@ -52,14 +52,15 @@ interface ConnectionHandlerState {
   openRegistrationSettled: boolean;
   openRegistrationPromise: Promise<void>;
   processingMessageQueue: boolean;
-    queuedMessages: BunWebSocketMessage[];
-    queuedMessagesStartIndex: number;
-    request: Request;
-    resolveOpenRegistration: () => void;
-    resolveConnectLifecycle: () => void;
-    resolveDisconnectLifecycle: () => void;
-    resolved: ResolvedGatewayInstance[];
-    socketId: string;
+  queuedMessages: BunWebSocketMessage[];
+  queuedMessagesStartIndex: number;
+  request: Request;
+  resolveOpenRegistration: () => void;
+  resolveConnectLifecycle: () => void;
+  resolveDisconnectLifecycle: () => void;
+  resolved: ResolvedGatewayInstance[];
+  socketId: string;
+  terminalFailureHandled: boolean;
 }
 
 interface BunSocketData {
@@ -329,6 +330,7 @@ export class BunWebSocketGatewayLifecycleService
       resolveDisconnectLifecycle: disconnectLifecycle.resolve,
       resolved: [],
       socketId: crypto.randomUUID(),
+      terminalFailureHandled: false,
     };
   }
 
@@ -470,6 +472,9 @@ export class BunWebSocketGatewayLifecycleService
     socket: BunServerWebSocket<BunSocketData>,
     message: BunWebSocketMessage,
   ): void {
+    if (state.terminalFailureHandled) {
+      return;
+    }
     const limit = isFinitePositiveInteger(this.moduleOptions.buffer?.maxPendingMessagesPerSocket)
       ? this.moduleOptions.buffer.maxPendingMessagesPerSocket
       : DEFAULT_MAX_PENDING_MESSAGES_PER_SOCKET;
@@ -534,7 +539,7 @@ export class BunWebSocketGatewayLifecycleService
         continue;
       }
 
-      await dispatchGatewayMessage(
+      const outcome = await dispatchGatewayMessage(
         state.resolved,
         socket,
         state.request,
@@ -552,6 +557,11 @@ export class BunWebSocketGatewayLifecycleService
         this.logger,
         LIFECYCLE_LOG_CONTEXT,
       );
+
+      if (outcome === 'terminal') {
+        this.clearQueuedMessages(state);
+        return;
+      }
     }
 
     this.clearQueuedMessages(state);
@@ -1025,6 +1035,12 @@ export class BunWebSocketGatewayLifecycleService
     socket: BunServerWebSocket<BunSocketData>,
     reason: string,
   ): void {
+    if (state.terminalFailureHandled) {
+      return;
+    }
+
+    state.terminalFailureHandled = true;
+    this.clearQueuedMessages(state);
     this.unregisterSocketWithDeferredStateCleanup(state);
     socket.close(1011, reason);
 

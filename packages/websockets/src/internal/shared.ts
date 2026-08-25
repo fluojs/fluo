@@ -276,7 +276,7 @@ export async function resolveGatewayInstance(
  * @param sendReply Runtime-owned reply sender that reports terminal send failures.
  * @param logger The logger.
  * @param loggerContext The logger context.
- * @returns The dispatch gateway message result.
+ * @returns `terminal` when reply delivery failed; otherwise `completed`.
  */
 export async function dispatchGatewayMessage<TSocket, TRequest>(
   resolved: readonly ResolvedGatewayInstance[],
@@ -288,7 +288,7 @@ export async function dispatchGatewayMessage<TSocket, TRequest>(
   sendReply: (message: string) => boolean,
   logger: ApplicationLogger,
   loggerContext: string,
-): Promise<void> {
+): Promise<'completed' | 'terminal'> {
   const parsed = parseIncomingMessage(data);
 
   for (const { descriptor, instance } of resolved) {
@@ -302,7 +302,7 @@ export async function dispatchGatewayMessage<TSocket, TRequest>(
         loggerContext,
       );
       if (!sendHandlerReply(result, replyMode, sendReply)) {
-        return;
+        return 'terminal';
       }
     }
 
@@ -322,10 +322,12 @@ export async function dispatchGatewayMessage<TSocket, TRequest>(
         loggerContext,
       );
       if (!sendHandlerReply(result, replyMode, sendReply)) {
-        return;
+        return 'terminal';
       }
     }
   }
+
+  return 'completed';
 }
 
 function sendHandlerReply(

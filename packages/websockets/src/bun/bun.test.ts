@@ -3,7 +3,7 @@ import { getModuleMetadata } from '@fluojs/core/internal';
 import { type HttpApplicationAdapter, UnauthorizedException } from '@fluojs/http';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
 import * as bunPublicApi from './bun.js';
@@ -196,6 +196,21 @@ function createDeferred<T = void>() {
   });
 
   return { promise, reject, resolve };
+}
+
+function observeShutdownEntry(service: object): Promise<void> {
+  if (!('onModuleDestroy' in service) || typeof service.onModuleDestroy !== 'function') {
+    throw new Error('Expected websocket lifecycle service to expose onModuleDestroy().');
+  }
+  const lifecycleService = service as { onModuleDestroy(): Promise<void> };
+  const entered = createDeferred<void>();
+  const shutdown = lifecycleService.onModuleDestroy.bind(lifecycleService);
+  vi.spyOn(lifecycleService, 'onModuleDestroy').mockImplementation(async () => {
+    const shutdownPromise = shutdown();
+    entered.resolve();
+    await shutdownPromise;
+  });
+  return entered.promise;
 }
 
 describe('@fluojs/websockets/bun', () => {
@@ -828,11 +843,13 @@ describe('@fluojs/websockets/bun', () => {
     await connected.promise;
     server.closeDeliveryPromise = closeGate.promise;
 
+    const shutdownEntered = observeShutdownEntry(await app.container.resolve(BunWebSocketGatewayLifecycleService));
     let closed = false;
     const closePromise = app.close().then(() => {
       closed = true;
     });
 
+    await shutdownEntered;
     expect(closed).toBe(false);
     expect(state.disconnectCount).toBe(0);
 
@@ -887,12 +904,14 @@ describe('@fluojs/websockets/bun', () => {
 
     await connected.promise;
 
+    const shutdownEntered = observeShutdownEntry(await app.container.resolve(BunWebSocketGatewayLifecycleService));
     let closed = false;
     const closePromise = app.close().then(() => {
       closed = true;
     });
     await disconnectStarted.promise;
 
+    await shutdownEntered;
     expect(closed).toBe(false);
     expect(state.disconnectCount).toBe(0);
 
@@ -941,11 +960,13 @@ describe('@fluojs/websockets/bun', () => {
       await server?.emitClose(1000, 'Client closed');
       await disconnectStarted.promise;
 
+      const shutdownEntered = observeShutdownEntry(await app.container.resolve(BunWebSocketGatewayLifecycleService));
       let closed = false;
       const closePromise = app.close().then(() => {
         closed = true;
       });
 
+      await shutdownEntered;
       expect(closed).toBe(false);
 
       disconnectRelease.resolve();
@@ -1013,11 +1034,13 @@ describe('@fluojs/websockets/bun', () => {
       expect(socket.closeCalls).toEqual([{ code: 1011, reason: 'Send failed' }]);
       await disconnectStarted.promise;
 
+      const shutdownEntered = observeShutdownEntry(await app.container.resolve(BunWebSocketGatewayLifecycleService));
       let closed = false;
       closePromise = app.close().then(() => {
         closed = true;
       });
 
+      await shutdownEntered;
       expect(closed).toBe(false);
 
       disconnectRelease.resolve();
@@ -1127,11 +1150,13 @@ describe('@fluojs/websockets/bun', () => {
     }));
     await connectStarted.promise;
 
+    const shutdownEntered = observeShutdownEntry(await app.container.resolve(BunWebSocketGatewayLifecycleService));
     let closed = false;
     const closePromise = app.close().then(() => {
       closed = true;
     });
 
+    await shutdownEntered;
     expect(closed).toBe(false);
     expect(state.connectCount).toBe(0);
     expect(state.disconnectCount).toBe(0);
@@ -1199,11 +1224,13 @@ describe('@fluojs/websockets/bun', () => {
       throw new Error('Expected Bun test socket to be available after websocket upgrade.');
     }
 
+    const shutdownEntered = observeShutdownEntry(await app.container.resolve(BunWebSocketGatewayLifecycleService));
     let closed = false;
     const closePromise = app.close().then(() => {
       closed = true;
     });
 
+    await shutdownEntered;
     expect(closed).toBe(false);
     expect(socket.closeCalls).toEqual([]);
     expect((Reflect.get(service, 'socketRegistry') as Map<string, MockSocket>).size).toBe(0);
@@ -1530,13 +1557,23 @@ describe('@fluojs/websockets/bun', () => {
     const adapter = new TestBunAdapter();
     const connected = createDeferred();
     const disconnected = createDeferred();
+    const firstHandlerStarted = createDeferred();
+    const releaseFirstHandler = createDeferred();
+    const handledPayloads: unknown[] = [];
     let disconnectCount = 0;
     @WebSocketGateway({ path: '/reply-failure' })
     class ReplyGateway {
       @OnConnect()
       onConnect(): void { connected.resolve(); }
       @OnMessage('ping')
-      onPing() { return { event: 'pong' }; }
+      async onPing(payload: unknown) {
+        handledPayloads.push(payload);
+        if (handledPayloads.length === 1) {
+          firstHandlerStarted.resolve();
+          await releaseFirstHandler.promise;
+        }
+        return { data: payload, event: 'pong' };
+      }
       @OnDisconnect()
       onDisconnect(): void {
         disconnectCount += 1;
@@ -1564,10 +1601,15 @@ describe('@fluojs/websockets/bun', () => {
     socket.send = () => 0;
 
     // When
-    await server.emitMessage(JSON.stringify({ event: 'ping' }));
+    await server.emitMessage(JSON.stringify({ data: 'first', event: 'ping' }));
+    await firstHandlerStarted.promise;
+    await server.emitMessage(JSON.stringify({ data: 'second', event: 'ping' }));
+    releaseFirstHandler.resolve();
     await state.handlerQueue;
+    await server.emitError(new Error('Terminal socket error.'));
 
     // Then
+    expect(handledPayloads).toEqual(['first']);
     expect(socket.closeCalls).toEqual([{ code: 1011, reason: 'Send failed' }]);
     expect((Reflect.get(service, 'socketRegistry') as Map<string, MockSocket>).size).toBe(0);
     await disconnected.promise;

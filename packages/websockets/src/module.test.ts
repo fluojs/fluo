@@ -218,6 +218,21 @@ function createDeferred<T = void>() {
   return { promise, reject, resolve };
 }
 
+function observeShutdownEntry(service: object): Promise<void> {
+  if (!('onModuleDestroy' in service) || typeof service.onModuleDestroy !== 'function') {
+    throw new Error('Expected websocket lifecycle service to expose onModuleDestroy().');
+  }
+  const lifecycleService = service as { onModuleDestroy(): Promise<void> };
+  const entered = createDeferred<void>();
+  const shutdown = lifecycleService.onModuleDestroy.bind(lifecycleService);
+  vi.spyOn(lifecycleService, 'onModuleDestroy').mockImplementation(async () => {
+    const shutdownPromise = shutdown();
+    entered.resolve();
+    await shutdownPromise;
+  });
+  return entered.promise;
+}
+
 function createTestLifecycleService(
   options: WebSocketModuleOptions = {},
   loggerEvents: string[] = [],
@@ -2350,10 +2365,14 @@ describe('@fluojs/websockets', () => {
     await onceOpen(socket);
     await connected.promise;
 
+    const shutdownEntered = observeShutdownEntry(
+      await app.container.resolve(NodeWebSocketGatewayLifecycleService),
+    );
     let closed = false;
     const closePromise = app.close().then(() => {
       closed = true;
     });
+    await shutdownEntered;
     await disconnectStarted.promise;
 
     expect(closed).toBe(false);
@@ -2464,10 +2483,14 @@ describe('@fluojs/websockets', () => {
     await onceOpen(socket);
     await connectStarted.promise;
 
+    const shutdownEntered = observeShutdownEntry(
+      await app.container.resolve(NodeWebSocketGatewayLifecycleService),
+    );
     let closed = false;
     const closePromise = app.close().then(() => {
       closed = true;
     });
+    await shutdownEntered;
 
     expect(closed).toBe(false);
     expect(state.connectCount).toBe(0);
