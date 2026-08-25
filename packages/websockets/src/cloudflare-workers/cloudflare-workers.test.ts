@@ -102,6 +102,14 @@ class MockWorkerSocket implements CloudflareWorkerWebSocket {
     this.#closeDeliveryPromise = promise;
   }
 
+  emitError(): void {
+    const event = new Event('error');
+
+    for (const listener of this.#listeners.error) {
+      listener(event);
+    }
+  }
+
   emitMessage(data: CloudflareWorkerWebSocketMessage): void {
     const event = new MessageEvent<CloudflareWorkerWebSocketMessage>('message', { data });
 
@@ -217,11 +225,6 @@ class TestWorkerAdapter implements HttpApplicationAdapter, CloudflareWorkerWebSo
   }
 }
 
-async function flushAsyncWork(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-}
-
-
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -231,6 +234,21 @@ function createDeferred<T = void>() {
   });
 
   return { promise, reject, resolve };
+}
+
+function observeShutdownEntry(service: object): Promise<void> {
+  if (!('onModuleDestroy' in service) || typeof service.onModuleDestroy !== 'function') {
+    throw new Error('Expected websocket lifecycle service to expose onModuleDestroy().');
+  }
+  const lifecycleService = service as { onModuleDestroy(): Promise<void> };
+  const entered = createDeferred<void>();
+  const shutdown = lifecycleService.onModuleDestroy.bind(lifecycleService);
+  vi.spyOn(lifecycleService, 'onModuleDestroy').mockImplementation(async () => {
+    const shutdownPromise = shutdown();
+    entered.resolve();
+    await shutdownPromise;
+  });
+  return entered.promise;
 }
 
 function createExecutionContext(): CloudflareWorkerExecutionContext {
@@ -302,6 +320,9 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
 
   it('preserves Worker-backed websocket behavior through the explicit cloudflare-workers seam', async () => {
     const adapter = new TestWorkerAdapter();
+    const connected = createDeferred<void>();
+    const handled = createDeferred<void>();
+    const disconnected = createDeferred<void>();
 
     class GatewayState {
       connectCount = 0;
@@ -317,17 +338,20 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       @OnConnect()
       onConnect() {
         this.state.connectCount += 1;
+        connected.resolve();
       }
 
       @OnMessage('ping')
       onPing(payload: unknown, socket: CloudflareWorkerWebSocket) {
         this.state.messages.push(payload);
         socket.send(JSON.stringify({ event: 'pong', data: payload }));
+        handled.resolve();
       }
 
       @OnDisconnect()
       onDisconnect() {
         this.state.disconnectCount += 1;
+        disconnected.resolve();
       }
     }
 
@@ -351,8 +375,6 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
         headers: { upgrade: 'websocket' },
       }));
 
-      await flushAsyncWork();
-
       const socket = server?.lastSocket;
       expect(upgradeResponse?.status).toBe(200);
       expect(socket).toBeDefined();
@@ -363,11 +385,12 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       }
 
       try {
+        await connected.promise;
         socket.emitMessage('{"event":"ping","data":{"value":"hello"}}');
-        await flushAsyncWork();
+        await handled.promise;
 
         socket.close(1000, 'done');
-        await flushAsyncWork();
+        await disconnected.promise;
 
         expect(state.connectCount).toBe(1);
         expect(state.messages).toEqual([{ value: 'hello' }]);
@@ -385,11 +408,17 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
 
   it('manages rooms and rejects stale joins through the Worker lifecycle service', async () => {
     const adapter = new TestWorkerAdapter();
+    const connected = createDeferred<void>();
+    const disconnected = createDeferred<void>();
 
     @WebSocketGateway({ path: '/rooms' })
     class RoomGateway {
+      @OnConnect()
+      onConnect(): void { connected.resolve(); }
       @OnMessage('ping')
       onPing() {}
+      @OnDisconnect()
+      onDisconnect(): void { disconnected.resolve(); }
     }
 
     class AppModule {}
@@ -411,7 +440,6 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       const upgradeResponse = await server?.fetch(new Request('https://worker.test/rooms', {
         headers: { upgrade: 'websocket' },
       }));
-      await flushAsyncWork();
 
       const socket = server?.lastSocket;
       const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, CloudflareWorkerWebSocket>;
@@ -422,6 +450,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
         throw new Error('Expected Worker room test socket registration after websocket upgrade.');
       }
 
+      await connected.promise;
       service.joinRoom(socketId, 'room-a');
       service.joinRoom(socketId, 'room-b');
 
@@ -442,7 +471,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       service.joinRoom(socketId, 'room-stale');
       const roomsWhileCloseDeliveryIsPending = Array.from(service.getRooms(socketId));
       closeDelivery.resolve();
-      await flushAsyncWork();
+      await disconnected.promise;
       service.joinRoom(socketId, 'room-stale');
 
       expect(roomsWhileCloseDeliveryIsPending).toEqual(['room-b']);
@@ -480,7 +509,6 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       const response = await server?.fetch(new Request('https://worker.test/guard-outcome', {
         headers: { upgrade: 'websocket' },
       }));
-      await flushAsyncWork();
 
       expect(response?.status).toBe(expectedStatus);
       expect(server?.lastSocket !== undefined).toBe(expectedStatus === 200);
@@ -565,7 +593,10 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
 
   it('awaits raw Worker handler return promises before ignoring returned values', async () => {
     const adapter = new TestWorkerAdapter();
+    const connected = createDeferred<void>();
+    const firstStarted = createDeferred<void>();
     const handlerGate = createDeferred<void>();
+    const secondHandled = createDeferred<void>();
 
     class GatewayState {
       messages: unknown[] = [];
@@ -576,8 +607,12 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     class ReturnOnlyGateway {
       constructor(private readonly state: GatewayState) {}
 
+      @OnConnect()
+      onConnect(): void { connected.resolve(); }
+
       @OnMessage('first')
       async onFirst(payload: unknown) {
+        firstStarted.resolve();
         await handlerGate.promise;
         this.state.messages.push(payload);
         return { event: 'pong', data: payload };
@@ -586,6 +621,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       @OnMessage('second')
       onSecond(payload: unknown) {
         this.state.messages.push(payload);
+        secondHandled.resolve();
       }
     }
 
@@ -605,7 +641,6 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       const upgradeResponse = await server?.fetch(new Request('https://worker.test/ignored-return', {
         headers: { upgrade: 'websocket' },
       }));
-      await flushAsyncWork();
 
       const socket = server?.lastSocket;
       expect(upgradeResponse?.status).toBe(200);
@@ -616,15 +651,16 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
         throw new Error('Expected Worker test socket to be available after websocket upgrade.');
       }
 
+      await connected.promise;
       socket.emitMessage('{"event":"first","data":{"value":"ignored"}}');
+      await firstStarted.promise;
       socket.emitMessage('{"event":"second","data":{"value":"after"}}');
-      await flushAsyncWork();
 
       expect(state.messages).toEqual([]);
       expect(socket.sentMessages).toEqual([]);
 
       handlerGate.resolve();
-      await flushAsyncWork();
+      await secondHandled.promise;
 
       expect(state.messages).toEqual([{ value: 'ignored' }, { value: 'after' }]);
       expect(socket.sentMessages).toEqual([]);
@@ -705,8 +741,6 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       headers: { upgrade: 'websocket' },
     }));
 
-    await flushAsyncWork();
-
     const secondUpgrade = await server?.fetch(new Request('https://worker.test/limited-race', {
       headers: { upgrade: 'websocket' },
     }));
@@ -750,8 +784,6 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     const upgradePromise = server?.fetch(new Request('https://worker.test/shutdown-guard-race', {
       headers: { upgrade: 'websocket' },
     }));
-
-    await flushAsyncWork();
 
     const closePromise = app.close();
 
@@ -894,8 +926,6 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       headers: { upgrade: 'websocket' },
     }));
 
-    await flushAsyncWork();
-
     const socket = server?.lastSocket;
     expect(upgradeResponse?.status).toBe(200);
 
@@ -905,7 +935,6 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
 
     await connected.promise;
     await app.close();
-    await flushAsyncWork();
 
     expect(socket.readyState).toBe(WEBSOCKET_CLOSED_READY_STATE);
     expect(state.connectCount).toBe(1);
@@ -952,7 +981,6 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     await server?.fetch(new Request('https://worker.test/shutdown-async-close', {
       headers: { upgrade: 'websocket' },
     }));
-    await flushAsyncWork();
 
     const socket = server?.lastSocket;
 
@@ -963,13 +991,13 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     await connected.promise;
     socket.delayCloseUntil(closeGate.promise);
 
+    const shutdownEntered = observeShutdownEntry(await app.container.resolve(CloudflareWorkersWebSocketGatewayLifecycleService));
     let closed = false;
     const closePromise = app.close().then(() => {
       closed = true;
     });
 
-    await flushAsyncWork();
-
+    await shutdownEntered;
     expect(closed).toBe(false);
     expect(state.disconnectCount).toBe(0);
 
@@ -982,6 +1010,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
   it('waits for asynchronous Worker disconnect cleanup before finishing shutdown', async () => {
     const adapter = new TestWorkerAdapter();
     const connected = createDeferred<void>();
+    const disconnectStarted = createDeferred<void>();
     const disconnectGate = createDeferred<void>();
 
     class GatewayState {
@@ -1000,6 +1029,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
 
       @OnDisconnect()
       async onDisconnect() {
+        disconnectStarted.resolve();
         await disconnectGate.promise;
         this.state.disconnectCount += 1;
       }
@@ -1019,17 +1049,17 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     await server?.fetch(new Request('https://worker.test/shutdown-async-disconnect', {
       headers: { upgrade: 'websocket' },
     }));
-    await flushAsyncWork();
 
     await connected.promise;
 
+    const shutdownEntered = observeShutdownEntry(await app.container.resolve(CloudflareWorkersWebSocketGatewayLifecycleService));
     let closed = false;
     const closePromise = app.close().then(() => {
       closed = true;
     });
+    await disconnectStarted.promise;
 
-    await flushAsyncWork();
-
+    await shutdownEntered;
     expect(closed).toBe(false);
     expect(state.disconnectCount).toBe(0);
 
@@ -1074,7 +1104,6 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       await server?.fetch(new Request('https://worker.test/shutdown-queued-disconnect', {
         headers: { upgrade: 'websocket' },
       }));
-      await flushAsyncWork();
       await connected.promise;
 
       const socket = server?.lastSocket;
@@ -1086,13 +1115,13 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       socket.close(1000, 'Client closed');
       await disconnectStarted.promise;
 
+      const shutdownEntered = observeShutdownEntry(await app.container.resolve(CloudflareWorkersWebSocketGatewayLifecycleService));
       let closed = false;
       const closePromise = app.close().then(() => {
         closed = true;
       });
 
-      await flushAsyncWork();
-
+      await shutdownEntered;
       expect(closed).toBe(false);
 
       disconnectRelease.resolve();
@@ -1142,7 +1171,6 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       await server?.fetch(new Request('https://worker.test/shutdown-broadcast-failure', {
         headers: { upgrade: 'websocket' },
       }));
-      await flushAsyncWork();
       await connected.promise;
 
       const socket = server?.lastSocket;
@@ -1157,17 +1185,21 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       socket.send = () => {
         throw new Error('Broadcast failed.');
       };
+
+      // When
       service.broadcastToRoom('shutdown-room', 'shutdown.test', undefined);
-      socket.close(1000, 'Client closed');
+
+      // Then
+      expect(socket.closeCalls).toEqual([{ code: 1011, reason: 'Send failed' }]);
       await disconnectStarted.promise;
 
+      const shutdownEntered = observeShutdownEntry(await app.container.resolve(CloudflareWorkersWebSocketGatewayLifecycleService));
       let closed = false;
       closePromise = app.close().then(() => {
         closed = true;
       });
 
-      await flushAsyncWork();
-
+      await shutdownEntered;
       expect(closed).toBe(false);
 
       disconnectRelease.resolve();
@@ -1219,7 +1251,6 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     await server?.fetch(new Request('https://worker.test/shutdown-disconnect-timeout', {
       headers: { upgrade: 'websocket' },
     }));
-    await flushAsyncWork();
 
     await connected.promise;
 
@@ -1228,7 +1259,6 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       closed = true;
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 20));
     await closePromise;
 
     expect(closed).toBe(true);
@@ -1237,6 +1267,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
 
   it('waits for in-flight Worker connect handlers to replay buffered disconnects during shutdown', async () => {
     const adapter = new TestWorkerAdapter();
+    const connectStarted = createDeferred<void>();
     const connectGate = createDeferred<void>();
 
     class GatewayState {
@@ -1251,6 +1282,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
 
       @OnConnect()
       async onConnect() {
+        connectStarted.resolve();
         await connectGate.promise;
         this.state.connectCount += 1;
       }
@@ -1275,15 +1307,15 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     await server?.fetch(new Request('https://worker.test/shutdown-connect-in-flight', {
       headers: { upgrade: 'websocket' },
     }));
-    await flushAsyncWork();
+    await connectStarted.promise;
 
+    const shutdownEntered = observeShutdownEntry(await app.container.resolve(CloudflareWorkersWebSocketGatewayLifecycleService));
     let closed = false;
     const closePromise = app.close().then(() => {
       closed = true;
     });
 
-    await flushAsyncWork();
-
+    await shutdownEntered;
     expect(closed).toBe(false);
     expect(state.connectCount).toBe(0);
     expect(state.disconnectCount).toBe(0);
@@ -1333,7 +1365,6 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       await server?.fetch(new Request('https://worker.test/payload', {
         headers: { upgrade: 'websocket' },
       }));
-      await flushAsyncWork();
 
       const socket = server?.lastSocket;
 
@@ -1342,7 +1373,6 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       }
 
       socket.emitMessage('hello');
-      await flushAsyncWork();
 
       expect(socket.closeCalls).toEqual([{ code: 1009, reason: 'Payload too large' }]);
       expect(socket.readyState).toBe(WEBSOCKET_CLOSED_READY_STATE);
@@ -1390,7 +1420,6 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       await server?.fetch(new Request('https://worker.test/binary-payload', {
         headers: { upgrade: 'websocket' },
       }));
-      await flushAsyncWork();
 
       const socket = server?.lastSocket;
 
@@ -1399,7 +1428,6 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       }
 
       socket.emitMessage(new Uint8Array([1, 2, 3, 4, 5]));
-      await flushAsyncWork();
 
       expect(socket.closeCalls).toEqual([{ code: 1009, reason: 'Payload too large' }]);
       expect(socket.readyState).toBe(WEBSOCKET_CLOSED_READY_STATE);
@@ -1411,6 +1439,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
 
   it('receives binary payloads under the configured limit', async () => {
     const adapter = new TestWorkerAdapter();
+    const handled = createDeferred<void>();
 
     class GatewayState {
       messages: unknown[] = [];
@@ -1424,6 +1453,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       @OnMessage()
       onMessage(payload: unknown) {
         this.state.messages.push(payload);
+        handled.resolve();
       }
     }
 
@@ -1447,7 +1477,6 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       await server?.fetch(new Request('https://worker.test/binary-ok', {
         headers: { upgrade: 'websocket' },
       }));
-      await flushAsyncWork();
 
       const socket = server?.lastSocket;
 
@@ -1456,7 +1485,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       }
 
       socket.emitMessage(new Uint8Array([1, 2, 3, 4]));
-      await flushAsyncWork();
+      await handled.promise;
 
       expect(socket.readyState).toBe(WEBSOCKET_OPEN_READY_STATE);
       expect(state.messages).toEqual(['\x01\x02\x03\x04']);
@@ -1467,6 +1496,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
 
   it('receives ArrayBuffer and Blob binary event envelopes under the configured limit', async () => {
     const adapter = new TestWorkerAdapter();
+    const handled = createDeferred<void>();
 
     class GatewayState {
       messages: unknown[] = [];
@@ -1480,6 +1510,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       @OnMessage('ping')
       onPing(payload: unknown) {
         this.state.messages.push(payload);
+        if (this.state.messages.length === 2) handled.resolve();
       }
     }
 
@@ -1503,7 +1534,6 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       await server?.fetch(new Request('https://worker.test/binary-event-ok', {
         headers: { upgrade: 'websocket' },
       }));
-      await flushAsyncWork();
 
       const socket = server?.lastSocket;
 
@@ -1513,7 +1543,7 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
 
       socket.emitMessage(new TextEncoder().encode(JSON.stringify({ event: 'ping', data: { value: 'arraybuffer' } })).buffer);
       socket.emitMessage(new Blob([JSON.stringify({ event: 'ping', data: { value: 'blob' } })]));
-      await flushAsyncWork();
+      await handled.promise;
 
       expect(socket.readyState).toBe(WEBSOCKET_OPEN_READY_STATE);
       expect(state.messages).toEqual([{ value: 'arraybuffer' }, { value: 'blob' }]);
@@ -1560,7 +1590,6 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       await server?.fetch(new Request('https://worker.test/blob-payload', {
         headers: { upgrade: 'websocket' },
       }));
-      await flushAsyncWork();
 
       const socket = server?.lastSocket;
 
@@ -1569,7 +1598,6 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
       }
 
       socket.emitMessage(new Blob(['hello']));
-      await flushAsyncWork();
 
       expect(socket.closeCalls).toEqual([{ code: 1009, reason: 'Payload too large' }]);
       expect(socket.readyState).toBe(WEBSOCKET_CLOSED_READY_STATE);
@@ -1577,5 +1605,194 @@ describe('@fluojs/websockets/cloudflare-workers', () => {
     } finally {
       await app.close();
     }
+  });
+
+  it('closes errored Worker sockets and settles disconnect cleanup', async () => {
+    // Given
+    const adapter = new TestWorkerAdapter();
+    const connected = createDeferred();
+    const disconnected = createDeferred();
+    @WebSocketGateway({ path: '/terminal-error' })
+    class TerminalGateway {
+      @OnConnect()
+      onConnect(): void { connected.resolve(); }
+      @OnDisconnect()
+      onDisconnect(): void { disconnected.resolve(); }
+    }
+    class AppModule {}
+    defineModule(AppModule, { imports: [CloudflareWorkersWebSocketModule.forRoot()], providers: [TerminalGateway] });
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    await app.listen();
+    const server = adapter.getServer();
+    await server?.fetch(new Request('https://worker.test/terminal-error', { headers: { upgrade: 'websocket' } }));
+    await connected.promise;
+    const socket = server?.lastSocket;
+    if (!socket) throw new Error('Expected an open Worker test socket.');
+
+    // When
+    socket.emitError();
+    await disconnected.promise;
+
+    // Then
+    expect(socket.closeCalls).toEqual([{ code: 1011, reason: 'Socket error' }]);
+    await app.close();
+  });
+
+  it('sends opt-in Worker handler replies with the connection identity', async () => {
+    // Given
+    const adapter = new TestWorkerAdapter();
+    const connected = createDeferred();
+    const handled = createDeferred();
+    const socketIds: string[] = [];
+    @WebSocketGateway({ path: '/replies' })
+    class ReplyGateway {
+      @OnConnect()
+      onConnect(): void { connected.resolve(); }
+      @OnMessage('ping')
+      onPing(payload: unknown, _socket: CloudflareWorkerWebSocket, _request: Request, socketId: string) {
+        socketIds.push(socketId);
+        handled.resolve();
+        return { data: payload, event: 'pong' };
+      }
+    }
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CloudflareWorkersWebSocketModule.forRoot({ replies: { mode: 'event-envelope' } })],
+      providers: [ReplyGateway],
+    });
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    await app.listen();
+    const server = adapter.getServer();
+    await server?.fetch(new Request('https://worker.test/replies', { headers: { upgrade: 'websocket' } }));
+    await connected.promise;
+    const socket = server?.lastSocket;
+    if (!socket) throw new Error('Expected an open Worker test socket.');
+
+    // When
+    socket.emitMessage(JSON.stringify({ data: 'value', event: 'ping' }));
+    await handled.promise;
+    await app.close();
+
+    // Then
+    expect(socketIds).toHaveLength(1);
+    expect(socketIds[0]).not.toBe('');
+    expect(socket.sentMessages).toContain(JSON.stringify({ data: 'value', event: 'pong' }));
+  });
+
+  it('closes Worker sockets when an opt-in handler reply send fails', async () => {
+    // Given
+    const adapter = new TestWorkerAdapter();
+    const connected = createDeferred();
+    const disconnected = createDeferred();
+    const firstHandlerStarted = createDeferred();
+    const releaseFirstHandler = createDeferred();
+    const handledPayloads: unknown[] = [];
+    let disconnectCount = 0;
+    @WebSocketGateway({ path: '/reply-failure' })
+    class ReplyGateway {
+      @OnConnect()
+      onConnect(): void { connected.resolve(); }
+      @OnMessage('ping')
+      async onPing(payload: unknown) {
+        handledPayloads.push(payload);
+        if (handledPayloads.length === 1) {
+          firstHandlerStarted.resolve();
+          await releaseFirstHandler.promise;
+        }
+        return { data: payload, event: 'pong' };
+      }
+      @OnDisconnect()
+      onDisconnect(): void {
+        disconnectCount += 1;
+        disconnected.resolve();
+      }
+    }
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CloudflareWorkersWebSocketModule.forRoot({ replies: { mode: 'event-envelope' } })],
+      providers: [ReplyGateway],
+    });
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    const service = await app.container.resolve(CloudflareWorkersWebSocketGatewayLifecycleService);
+    await app.listen();
+    const server = adapter.getServer();
+    await server?.fetch(new Request('https://worker.test/reply-failure', { headers: { upgrade: 'websocket' } }));
+    await connected.promise;
+    const socket = server?.lastSocket;
+    const state = [...(Reflect.get(service, 'socketStates') as Map<string, {
+      connectLifecyclePromise: Promise<void>;
+      handlerQueue: Promise<void>;
+    }>).values()][0];
+    if (!socket || !state) throw new Error('Expected an open Worker reply-failure socket.');
+    await state.connectLifecyclePromise;
+    socket.send = () => { throw new Error('Reply failed.'); };
+
+    // When
+    socket.emitMessage(JSON.stringify({ data: 'first', event: 'ping' }));
+    await firstHandlerStarted.promise;
+    socket.emitMessage(JSON.stringify({ data: 'second', event: 'ping' }));
+    releaseFirstHandler.resolve();
+    await state.handlerQueue;
+    socket.emitError();
+
+    // Then
+    expect(handledPayloads).toEqual(['first']);
+    expect(socket.closeCalls).toEqual([{ code: 1011, reason: 'Send failed' }]);
+    expect((Reflect.get(service, 'socketRegistry') as Map<string, unknown>).size).toBe(0);
+    await disconnected.promise;
+    await app.close();
+    expect(disconnectCount).toBe(1);
+  });
+
+  it.each([
+    ['drop-newest', ['first', 'second'], []],
+    ['drop-oldest', ['first', 'third'], []],
+    ['close', ['first'], [{ code: 1013, reason: 'Ready-state message queue limit exceeded' }]],
+  ] as const)('applies Worker %s pending-message overflow policy', async (overflowPolicy, expected, closeCalls) => {
+    // Given
+    const adapter = new TestWorkerAdapter();
+    const connected = createDeferred();
+    const firstStarted = createDeferred();
+    const releaseFirst = createDeferred();
+    const messages: string[] = [];
+    @WebSocketGateway({ path: '/buffer' })
+    class BufferGateway {
+      @OnConnect()
+      onConnect(): void { connected.resolve(); }
+      @OnMessage()
+      async onMessage(payload: unknown): Promise<void> {
+        messages.push(String(payload));
+        if (messages.length === 1) {
+          firstStarted.resolve();
+          await releaseFirst.promise;
+        }
+      }
+    }
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CloudflareWorkersWebSocketModule.forRoot({ buffer: { maxPendingMessagesPerSocket: 1, overflowPolicy } })],
+      providers: [BufferGateway],
+    });
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    await app.listen();
+    const server = adapter.getServer();
+    await server?.fetch(new Request('https://worker.test/buffer', { headers: { upgrade: 'websocket' } }));
+    await connected.promise;
+    const socket = server?.lastSocket;
+    if (!socket) throw new Error('Expected an open Worker test socket.');
+
+    // When
+    socket.emitMessage('first');
+    await firstStarted.promise;
+    socket.emitMessage('second');
+    socket.emitMessage('third');
+    releaseFirst.resolve();
+    await app.close();
+
+    // Then
+    expect(messages).toEqual(expected);
+    expect(socket.closeCalls).toEqual(closeCalls.length === 0
+      ? [{ code: 1001, reason: 'Server shutting down' }]
+      : closeCalls);
   });
 });

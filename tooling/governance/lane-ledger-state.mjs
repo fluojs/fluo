@@ -175,8 +175,17 @@ function validateReleaseHandoffs(path, ledger, progressByIssue) {
       path,
       'release handoff must not record branch, worktree, or PR evidence',
     );
-    if (ledger.status === 'ready') {
-      assert(lane.status === 'queued' && progress === undefined, path, 'ready release handoff must remain queued without issue progress');
+    if (
+      ledger.status === 'ready' ||
+      (ledger.status === 'running' &&
+        lane.status === 'queued' &&
+        progress === undefined)
+    ) {
+      assert(
+        lane.status === 'queued' && progress === undefined,
+        path,
+        'undispatched release handoff must remain queued without issue progress',
+      );
     } else {
       assert(
         lane.status === 'blocked-maintainer-decision' && progress?.status === 'blocked-maintainer-decision',

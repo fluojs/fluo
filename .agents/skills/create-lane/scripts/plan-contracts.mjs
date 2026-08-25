@@ -1,4 +1,5 @@
 const safeIdentifier = /^(?!.*(?:\.|\.lock)$)[A-Za-z0-9][A-Za-z0-9._-]*$/u;
+const sha256 = /^[a-f0-9]{64}$/u;
 const planKeys = [
   'version',
   'lane_id',
@@ -32,6 +33,32 @@ const isIssueArray = (value) =>
   Array.isArray(value) &&
   value.every((issue) => Number.isSafeInteger(issue) && issue > 0) &&
   new Set(value).size === value.length;
+
+const releaseHandoffIssues = (value) => {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const issues = [];
+  for (const handoff of value) {
+    if (
+      !isRecord(handoff) ||
+      !hasExactKeys(handoff, [
+        'issue_number',
+        'reason',
+        'issue_evidence_sha256',
+      ]) ||
+      !Number.isSafeInteger(handoff.issue_number) ||
+      handoff.issue_number <= 0 ||
+      handoff.reason !== 'release-or-publish-is-core' ||
+      typeof handoff.issue_evidence_sha256 !== 'string' ||
+      !sha256.test(handoff.issue_evidence_sha256)
+    ) {
+      return null;
+    }
+    issues.push(handoff.issue_number);
+  }
+  return new Set(issues).size === issues.length ? issues : null;
+};
 
 const hasCanonicalDependencies = (graph, issues) => {
   if (!isRecord(graph)) {
@@ -69,6 +96,7 @@ const hasCanonicalDependencies = (graph, issues) => {
 };
 
 export const planIsCanonical = (plan, artifact) => {
+  const handoffIssues = releaseHandoffIssues(plan?.release_handoffs);
   if (
     !isRecord(plan) ||
     !hasExactKeys(plan, planKeys) ||
@@ -78,12 +106,13 @@ export const planIsCanonical = (plan, artifact) => {
     typeof plan.base_branch !== 'string' ||
     plan.base_branch.length === 0 ||
     !isRecord(plan.source) ||
+    !hasExactKeys(plan.source, ['artifact_id', 'sha256']) ||
     plan.source.artifact_id !== artifact.artifact_id ||
     plan.source.sha256 !== artifact.sha256 ||
     !isIssueArray(plan.confirmed_issues) ||
     !Array.isArray(plan.suggested_but_excluded) ||
     !Array.isArray(plan.backlog_candidates) ||
-    !Array.isArray(plan.release_handoffs) ||
+    handoffIssues === null ||
     !Array.isArray(plan.lanes) ||
     plan.lanes.length === 0
   ) {
@@ -106,14 +135,29 @@ export const planIsCanonical = (plan, artifact) => {
     queues.length === plan.confirmed_issues.length &&
     new Set(queues).size === queues.length &&
     plan.confirmed_issues.every((issue) => queues.includes(issue)) &&
+    handoffIssues.every(
+      (issue) =>
+        plan.confirmed_issues.includes(issue) &&
+        plan.lanes.some(
+          (lane) => lane.queue.length === 1 && lane.queue[0] === issue,
+        ),
+    ) &&
     hasCanonicalDependencies(plan.dependency_graph, plan.confirmed_issues)
   );
 };
 
-export const readyLedger = (plan, artifact, artifactPath) => ({
+export const readyLedger = (
+  plan,
+  artifact,
+  artifactPath,
+  lanePlanApprovalSha256,
+) => ({
   version: 2,
   run_id: plan.lane_id,
   lane_id: plan.lane_id,
+  ...(lanePlanApprovalSha256 === undefined
+    ? {}
+    : { lane_plan_approval_sha256: lanePlanApprovalSha256 }),
   status: 'ready',
   created_by: 'create-lane',
   base_branch: plan.base_branch,
@@ -136,7 +180,9 @@ export const readyLedger = (plan, artifact, artifactPath) => ({
   confirmed_issues: plan.confirmed_issues,
   suggested_but_excluded: plan.suggested_but_excluded,
   backlog_candidates: plan.backlog_candidates,
-  release_handoffs: plan.release_handoffs,
+  release_handoffs: plan.release_handoffs.map(
+    (handoff) => handoff.issue_number,
+  ),
   completed_issues: [],
   issue_progress: {},
   lanes: plan.lanes.map((lane) => ({

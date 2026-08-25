@@ -1,7 +1,7 @@
 import type {
   WebSocketModuleOptions as SharedWebSocketModuleOptions,
-  WebSocketUpgradeContext,
   WebSocketUpgradeGuard as SharedWebSocketUpgradeGuard,
+  WebSocketUpgradeContext,
   WebSocketUpgradeRejection,
 } from '../types.js';
 
@@ -28,7 +28,9 @@ export interface BunServerWebSocket<TData = unknown> {
 }
 
 /**
- * Describes the complete Bun server handle used by Bun-specific tests and host doubles.
+ * Describes the legacy complete Bun server handle used by host doubles.
+ *
+ * @deprecated Websocket bindings receive {@link BunWebSocketUpgradeHost}. Keep listener lifecycle and raw fetch ownership in `@fluojs/platform-bun`.
  */
 export interface BunServerLike {
   fetch?(request: Request): Response | Promise<Response> | undefined | Promise<Response | undefined>;
@@ -100,11 +102,12 @@ export interface BunWebSocketBindingHost {
 /**
  * Defines the typed on message handler type.
  */
-export type TypedOnMessageHandler<TEvents extends Record<string, unknown>, K extends keyof TEvents> = (
-  payload: TEvents[K],
-  socket: BunServerWebSocket,
-  request: Request,
-) => void | Promise<void>;
+export type TypedOnMessageHandler<TEvents extends Record<string, unknown>, K extends keyof TEvents> = import('../types.js').TypedOnMessageHandler<
+  TEvents,
+  K,
+  BunServerWebSocket,
+  Request
+>;
 
 /**
  * Describes the web socket gateway context contract.

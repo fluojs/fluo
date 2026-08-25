@@ -2,6 +2,7 @@
   "version": 2,
   "run_id": "lane-4101-runtime",
   "lane_id": "lane-4101-runtime",
+  "lane_plan_approval_sha256": "081555fbe6264263afaddb6abd468874493c0d330c38d26ae2f2992a719b390a",
   "status": "ready",
   "created_by": "create-lane",
   "base_branch": "main",
@@ -10,7 +11,7 @@
     "search_run_id": "search-native-two-lanes",
     "search_ledger": ".omo/search-issue/artifacts/search-native-two-lanes.json",
     "artifact_id": "search:search-native-two-lanes",
-    "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    "sha256": "a84d89513201c9fde69a627164a50ecf9551d462408a854621f1cd8c3398c42f"
   },
   "merge_policy": "supervisor-with-human-escalation",
   "pr_merge_method": "squash",

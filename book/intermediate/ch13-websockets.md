@@ -72,7 +72,7 @@ export class OrderStatusGateway {
 
 The `@OnConnect`, `@OnMessage`, and `@OnDisconnect` decorators map directly to the WebSocket lifecycle. This structure follows the same line as the existing fluo handler model and uses the same declarative pattern as HTTP `@Get` and Event `@OnEvent` handlers. As a result, realtime connection code still reads like familiar fluo code.
 
-If you are migrating from NestJS, do not look for legacy message, body, or connected-socket decorator equivalents. fluo keeps the handler contract explicit: `@OnMessage(event?)` selects the event, then the runtime calls the method with positional arguments `(payload, socket, request)`. This keeps gateway inputs visible without legacy parameter metadata.
+If you are migrating from NestJS, do not look for legacy message, body, or connected-socket decorator equivalents. fluo keeps the handler contract explicit: `@OnMessage(event?)` selects the event, then the runtime calls the method with positional arguments `(payload, socket, request, socketId)`. The stable `socketId` is accepted by `WebSocketRoomService` room operations. This keeps gateway inputs visible without legacy parameter metadata.
 
 ## 13.4 Bounded defaults and guards
 
@@ -173,7 +173,7 @@ When you import from the correct subpath, the backend adapter can change to matc
 
 The root and Node entrypoints type upgrade guards with Node's `IncomingMessage`. Bun, Deno, and Cloudflare Workers subpaths use Web-standard `Request` guards. Guards can allow upgrades with `true` or no return, reject with `false` or a structured `WebSocketUpgradeRejection`, or throw an HTTP exception such as `UnauthorizedException`; fluo converts these failures into pre-handshake rejection responses before accepting the socket. Text frames are delivered as strings unless they parse as JSON event envelopes, and binary frames are decoded as UTF-8 before the same dispatch step, so payload handling stays consistent across supported runtimes.
 
-Raw WebSocket handler return values are awaited and then ignored. Send client replies explicitly with the runtime socket argument, for example `socket.send(JSON.stringify({ event: 'pong', data }))`, instead of returning a value from `@OnMessage()`.
+Raw WebSocket handler return values are awaited and then ignored by default. Send client replies explicitly with the runtime socket argument, for example `socket.send(JSON.stringify({ event: 'pong', data }))`. Applications that prefer return-based replies can opt in with `WebSocketModule.forRoot({ replies: { mode: 'event-envelope' } })`; in that mode, valid `{ event, data? }` handler returns are serialized and sent after completion across Node, Bun, Deno, and Cloudflare Workers.
 
 For low-level integrations, keep the public seam names visible in code reviews: `WebSocketUpgradeContext`, `WebSocketUpgradeGuard`, `WebSocketUpgradeRejection`, gateway descriptor types, and runtime socket/binding types belong to the package or runtime subpath you import from. The root `WebSocketGatewayLifecycleService` name is a DI token alias for the lazy Node implementation, so application code resolves it from the container rather than constructing it directly.
 

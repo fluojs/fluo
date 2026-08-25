@@ -12,6 +12,19 @@ Acquire a per-ledger lease, validate the v2 snapshot and event hash chain, and
 reconcile live branch, worktree, PR, head, checks, and issue identity before
 resuming.
 
+`release_handoffs` does not mean “Changeset required.” It contains only issues
+whose core task is release or publishing. Those issues are never dispatched to
+implementation and terminally park at `blocked-maintainer-decision`. When
+multiple handoffs exist, already parked items may coexist with untouched queued
+handoffs while the root status remains `running`.
+
+Before accepting any non-empty handoff set, load the consumed `lane-plan`
+approval receipt and require its issue numbers to match the ledger exactly.
+Each receipt attestation must retain the approved issue evidence digest,
+`decision: "release-or-publish-is-core"`, and `changeset_only: false`.
+Recompute the receipt binding and require it to equal the independent
+`lane_plan_approval_sha256` stored in the ready ledger.
+
 ## Attempt loop
 
 ```text

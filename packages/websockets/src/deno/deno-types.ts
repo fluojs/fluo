@@ -1,7 +1,7 @@
 import type {
   WebSocketModuleOptions as SharedWebSocketModuleOptions,
-  WebSocketUpgradeContext,
   WebSocketUpgradeGuard as SharedWebSocketUpgradeGuard,
+  WebSocketUpgradeContext,
   WebSocketUpgradeRejection,
 } from '../types.js';
 
@@ -54,11 +54,12 @@ export interface DenoWebSocketBindingHost<TSocket extends DenoServerWebSocket = 
 /**
  * Defines the typed on message handler type.
  */
-export type TypedOnMessageHandler<TEvents extends Record<string, unknown>, K extends keyof TEvents> = (
-  payload: TEvents[K],
-  socket: DenoServerWebSocket,
-  request: Request,
-) => void | Promise<void>;
+export type TypedOnMessageHandler<TEvents extends Record<string, unknown>, K extends keyof TEvents> = import('../types.js').TypedOnMessageHandler<
+  TEvents,
+  K,
+  DenoServerWebSocket,
+  Request
+>;
 
 /**
  * Describes the web socket gateway context contract.

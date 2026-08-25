@@ -37,6 +37,10 @@
       "type": "string",
       "pattern": "^(?!.*(?:\\.|\\.lock)$)[A-Za-z0-9][A-Za-z0-9._-]*$"
     },
+    "lane_plan_approval_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
     "status": {
       "enum": [
         "ready",

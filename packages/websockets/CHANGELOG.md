@@ -2,9 +2,14 @@
 
 ## [Unreleased]
 
+### Minor Changes
+
+- Expose connection IDs to message handlers and add opt-in event-envelope replies while preserving ignored returns by default.
+
 ### Patch Changes
 
-- Align websocket runtime contracts, docs, and regression coverage for room service behavior, bounded shutdown cleanup, payload normalization, and runtime-specific upgrade guard typing.
+- Raise the package-owned Node.js `ws` runtime to `^8.21.0`.
+- Preserve fetch-style host binding ownership and terminal disconnect cleanup, and isolate inherited handler metadata.
 
 ## 1.0.8
 

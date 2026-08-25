@@ -3,7 +3,7 @@ import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { createNodeHttpAdapter } from '@fluojs/runtime/node';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
@@ -84,27 +84,6 @@ function onceClosed(socket: WebSocket): Promise<void> {
   });
 }
 
-async function waitForAssertion(assertion: () => void | Promise<void>): Promise<void> {
-  const timeoutMs = 500;
-  const intervalMs = 5;
-  const startedAt = Date.now();
-
-  while (true) {
-    try {
-      await assertion();
-      return;
-    } catch (error) {
-      if (Date.now() - startedAt >= timeoutMs) {
-        throw error;
-      }
-
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, intervalMs);
-      });
-    }
-  }
-}
-
 function createDeferred<T = void>(): {
   promise: Promise<T>;
   resolve: (value: T | PromiseLike<T>) => void;
@@ -115,6 +94,21 @@ function createDeferred<T = void>(): {
   });
 
   return { promise, resolve };
+}
+
+function observeShutdownEntry(service: object): Promise<void> {
+  if (!('onModuleDestroy' in service) || typeof service.onModuleDestroy !== 'function') {
+    throw new Error('Expected websocket lifecycle service to expose onModuleDestroy().');
+  }
+  const lifecycleService = service as { onModuleDestroy(): Promise<void> };
+  const entered = createDeferred<void>();
+  const shutdown = lifecycleService.onModuleDestroy.bind(lifecycleService);
+  vi.spyOn(lifecycleService, 'onModuleDestroy').mockImplementation(async () => {
+    const shutdownPromise = shutdown();
+    entered.resolve();
+    await shutdownPromise;
+  });
+  return entered.promise;
 }
 
 describe('@fluojs/websockets/node', () => {
@@ -220,6 +214,7 @@ describe('@fluojs/websockets/node', () => {
   });
 
   it('receives Node Buffer binary event envelopes through the explicit node seam', async () => {
+    const handled = createDeferred<void>();
     class GatewayState {
       messages: unknown[] = [];
     }
@@ -232,6 +227,7 @@ describe('@fluojs/websockets/node', () => {
       @OnMessage('ping')
       onPing(payload: unknown) {
         this.state.messages.push(payload);
+        handled.resolve();
       }
     }
 
@@ -257,9 +253,8 @@ describe('@fluojs/websockets/node', () => {
         await onceOpen(socket);
         socket.send(Buffer.from(JSON.stringify({ event: 'ping', data: { value: 'buffer-node' } })));
 
-        await waitForAssertion(() => {
-          expect(state.messages).toEqual([{ value: 'buffer-node' }]);
-        });
+        await handled.promise;
+        expect(state.messages).toEqual([{ value: 'buffer-node' }]);
       } finally {
         if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
           socket.close();
@@ -371,12 +366,14 @@ describe('@fluojs/websockets/node', () => {
         socket.close();
         await disconnectStarted.promise;
 
+        const shutdownEntered = observeShutdownEntry(
+          await app.container.resolve(NodeWebSocketGatewayLifecycleService),
+        );
         let appCloseSettled = false;
         const appClose = app.close().then(() => {
           appCloseSettled = true;
         });
-
-        await new Promise((resolve) => setTimeout(resolve, 25));
+        await shutdownEntered;
 
         expect(appCloseSettled).toBe(false);
 
@@ -389,6 +386,44 @@ describe('@fluojs/websockets/node', () => {
       }
     } finally {
       disconnectRelease.resolve();
+      await app.close();
+    }
+  });
+
+  it('sends opt-in Node handler replies with the connection identity', async () => {
+    // Given
+    const socketIds: string[] = [];
+    @WebSocketGateway({ path: '/replies' })
+    class ReplyGateway {
+      @OnMessage('ping')
+      onPing(payload: unknown, _socket: WebSocket, _request: unknown, socketId: string) {
+        socketIds.push(socketId);
+        return { data: payload, event: 'pong' };
+      }
+    }
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [NodeWebSocketModule.forRoot({ replies: { mode: 'event-envelope' } })],
+      providers: [ReplyGateway],
+    });
+    const adapter = createNodeHttpAdapter({ port: 0 });
+    const app = await bootstrapApplication({ adapter, rootModule: AppModule });
+    await app.listen();
+    const socket = new WebSocket(`ws://127.0.0.1:${String(getAdapterPort(adapter))}/replies`);
+
+    try {
+      await onceOpen(socket);
+      const reply = onceMessage(socket);
+
+      // When
+      socket.send(JSON.stringify({ data: 'value', event: 'ping' }));
+
+      // Then
+      await expect(reply).resolves.toBe(JSON.stringify({ data: 'value', event: 'pong' }));
+      expect(socketIds).toHaveLength(1);
+      expect(socketIds[0]).not.toBe('');
+    } finally {
+      socket.close();
       await app.close();
     }
   });

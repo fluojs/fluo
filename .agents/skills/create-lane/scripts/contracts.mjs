@@ -73,7 +73,12 @@ export const prepareScenario = (scenarioPath) => {
   if (approvalFailure !== null) {
     return rejected(approvalFailure);
   }
-  const ledger = readyLedger(plan, artifact, input);
+  const ledger = readyLedger(
+    plan,
+    artifact,
+    input,
+    scenario.approvals[2].binding_sha256,
+  );
   try {
     assertLaneSourceBinding(ledger, artifact);
     validateLedger('lane-ledger-v2', ledger);
@@ -83,5 +88,10 @@ export const prepareScenario = (scenarioPath) => {
     }
     throw error;
   }
-  return { kind: 'ready', ledger, approvals: scenario.approvals };
+  return {
+    kind: 'ready',
+    ledger,
+    approvals: scenario.approvals,
+    plan,
+  };
 };

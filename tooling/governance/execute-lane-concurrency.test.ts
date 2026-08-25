@@ -36,6 +36,7 @@ const parseRecord = (value: string): Readonly<Record<string, unknown>> => {
 const run = (
   scenarioPath: string,
   state: string,
+  ledgerPath: string,
 ): Readonly<Record<string, unknown>> =>
   parseRecord(
     execFileSync(
@@ -46,7 +47,7 @@ const run = (
         '--scenario',
         scenarioPath,
         '--ledger',
-        resolve(fixtures, 'ready-ledger-two-lanes-v2.json'),
+        ledgerPath,
         '--state-dir',
         state,
       ],
@@ -59,7 +60,28 @@ describe('$execute-lane sibling lane independence', () => {
     const state = mkdtempSync(resolve(tmpdir(), 'fluo-execute-siblings-'));
     const input = mkdtempSync(resolve(tmpdir(), 'fluo-execute-input-'));
     try {
-      const first = run(resolve(fixtures, 'needs-human-check.json'), state);
+      const ledger = parseRecord(
+        readFileSync(
+          resolve(fixtures, 'ready-ledger-two-lanes-v2.json'),
+          'utf8',
+        ),
+      );
+      const ledgerPath = resolve(input, 'legacy-two-lanes-v2.json');
+      const legacyLedger = { ...ledger };
+      Reflect.deleteProperty(
+        legacyLedger,
+        'lane_plan_approval_sha256',
+      );
+      writeFileSync(
+        ledgerPath,
+        `${JSON.stringify(legacyLedger, null, 2)}\n`,
+        'utf8',
+      );
+      const first = run(
+        resolve(fixtures, 'needs-human-check.json'),
+        state,
+        ledgerPath,
+      );
       expect(first['status']).toBe('running');
 
       const secondRaw = readFileSync(resolve(fixtures, 'happy.json'), 'utf8')
@@ -76,7 +98,7 @@ describe('$execute-lane sibling lane independence', () => {
         )}\n`,
         'utf8',
       );
-      const completed = run(secondPath, state);
+      const completed = run(secondPath, state, ledgerPath);
       expect(completed['status']).toBe('needs-human-check-terminal');
       expect(completed['merge_count']).toBe(1);
       expect(

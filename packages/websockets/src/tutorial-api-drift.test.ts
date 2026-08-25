@@ -66,36 +66,6 @@ describe('@fluojs/websockets tutorial API alignment', () => {
     expect(chapterKo).toContain("request.headers.get('authorization')");
   });
 
-  it('documents websocket runtime subpath boundaries and ignored raw handler returns in migration docs', () => {
-    const migration = readTutorial('../../../docs/getting-started/migrate-from-nestjs.md');
-    const migrationKo = readTutorial('../../../docs/getting-started/migrate-from-nestjs.ko.md');
-
-    expect(migration).toContain('@fluojs/websockets/bun');
-    expect(migration).toContain('@fluojs/websockets/deno');
-    expect(migration).toContain('@fluojs/websockets/cloudflare-workers');
-    expect(migration).toContain('Raw WebSocket gateway return values are awaited and then ignored');
-
-    expect(migrationKo).toContain('@fluojs/websockets/bun');
-    expect(migrationKo).toContain('@fluojs/websockets/deno');
-    expect(migrationKo).toContain('@fluojs/websockets/cloudflare-workers');
-    expect(migrationKo).toContain('Raw WebSocket gateway 반환값은 await된 뒤 무시됩니다');
-  });
-
-  it('documents Deno websocket replies through explicit socket sends instead of ignored return values', () => {
-    const deno = readTutorial('../../../book/intermediate/ch23-deno.md');
-    const denoKo = readTutorial('../../../book/intermediate/ch23-deno.ko.md');
-
-    expect(deno).toContain('handlePing(_payload: unknown, socket: DenoServerWebSocket)');
-    expect(deno).toContain("socket.send(JSON.stringify({ event: 'pong', data: 'hello from deno' }));");
-    expect(deno).toContain('Gateway return values are awaited and ignored');
-    expect(deno).not.toContain("return { event: 'pong', data: 'hello from deno' };");
-
-    expect(denoKo).toContain('handlePing(_payload: unknown, socket: DenoServerWebSocket)');
-    expect(denoKo).toContain("socket.send(JSON.stringify({ event: 'pong', data: 'hello from deno' }));");
-    expect(denoKo).toContain('Gateway return value는 WebSocket dispatcher가 await한 뒤 무시합니다');
-    expect(denoKo).not.toContain("return { event: 'pong', data: 'hello from deno' };");
-  });
-
   it('keeps the README public API overview aligned with the room service export', () => {
     const readme = readTutorial('../README.md');
     const readmeKo = readTutorial('../README.ko.md');

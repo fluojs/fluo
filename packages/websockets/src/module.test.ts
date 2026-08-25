@@ -132,27 +132,6 @@ async function closeWebSocket(socket: WebSocket): Promise<void> {
   await closed;
 }
 
-async function waitForAssertion(assertion: () => void | Promise<void>): Promise<void> {
-  const timeoutMs = 500;
-  const intervalMs = 5;
-  const startedAt = Date.now();
-
-  while (true) {
-    try {
-      await assertion();
-      return;
-    } catch (error) {
-      if (Date.now() - startedAt >= timeoutMs) {
-        throw error;
-      }
-
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, intervalMs);
-      });
-    }
-  }
-}
-
 function createUpgradeRequest(path: string): string {
   return 'GET ' + path + ' HTTP/1.1\r\n'
     + 'Host: 127.0.0.1\r\n'
@@ -208,17 +187,6 @@ function onceCloseDetails(socket: WebSocket): Promise<{ code: number; reason: Bu
   });
 }
 
-async function expectNoWebSocketMessage(socket: WebSocket): Promise<void> {
-  const message = await Promise.race([
-    onceMessage(socket),
-    new Promise<undefined>((resolve) => {
-      setTimeout(() => resolve(undefined), 25);
-    }),
-  ]);
-
-  expect(message).toBeUndefined();
-}
-
 type ServerBackedGatewayScenario = {
   bootstrap: typeof bootstrapNodeApplication | typeof bootstrapFastifyApplication | typeof bootstrapExpressApplication;
   name: string;
@@ -248,6 +216,21 @@ function createDeferred<T = void>() {
   });
 
   return { promise, reject, resolve };
+}
+
+function observeShutdownEntry(service: object): Promise<void> {
+  if (!('onModuleDestroy' in service) || typeof service.onModuleDestroy !== 'function') {
+    throw new Error('Expected websocket lifecycle service to expose onModuleDestroy().');
+  }
+  const lifecycleService = service as { onModuleDestroy(): Promise<void> };
+  const entered = createDeferred<void>();
+  const shutdown = lifecycleService.onModuleDestroy.bind(lifecycleService);
+  vi.spyOn(lifecycleService, 'onModuleDestroy').mockImplementation(async () => {
+    const shutdownPromise = shutdown();
+    entered.resolve();
+    await shutdownPromise;
+  });
+  return entered.promise;
 }
 
 function createTestLifecycleService(
@@ -593,6 +576,7 @@ describe('@fluojs/websockets', () => {
   });
 
   it('boots a real Node app, connects websocket client, handles message, and disconnects', async () => {
+    const disconnected = createDeferred<void>();
     class GatewayState {
       connectCount = 0;
       disconnectCount = 0;
@@ -618,6 +602,7 @@ describe('@fluojs/websockets', () => {
       @OnDisconnect()
       onDisconnect() {
         this.state.disconnectCount += 1;
+        disconnected.resolve();
       }
     }
 
@@ -648,9 +633,8 @@ describe('@fluojs/websockets', () => {
 
         await closeWebSocket(socket);
 
-        await waitForAssertion(() => {
-          expect(state.disconnectCount).toBe(1);
-        });
+        await disconnected.promise;
+        expect(state.disconnectCount).toBe(1);
 
         expect(state.connectCount).toBe(1);
         expect(state.messages).toEqual([{ value: 'hello' }]);
@@ -665,7 +649,9 @@ describe('@fluojs/websockets', () => {
   });
 
   it('awaits raw Node handler return promises before ignoring returned values', async () => {
+    const firstStarted = createDeferred<void>();
     const handlerGate = createDeferred<void>();
+    const secondHandled = createDeferred<void>();
 
     class GatewayState {
       messages: unknown[] = [];
@@ -678,6 +664,7 @@ describe('@fluojs/websockets', () => {
 
       @OnMessage('first')
       async onFirst(payload: unknown) {
+        firstStarted.resolve();
         await handlerGate.promise;
         this.state.messages.push(payload);
         return { event: 'pong', data: payload };
@@ -686,6 +673,7 @@ describe('@fluojs/websockets', () => {
       @OnMessage('second')
       onSecond(payload: unknown) {
         this.state.messages.push(payload);
+        secondHandled.resolve();
       }
     }
 
@@ -707,21 +695,27 @@ describe('@fluojs/websockets', () => {
       const port = getBoundPort((adapter as { getServer(): unknown }).getServer());
 
       const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/ignored-return`);
+      const receivedMessages: unknown[] = [];
+      const recordMessage = (message: unknown) => receivedMessages.push(message);
+      socket.on('message', recordMessage);
       try {
         await onceOpen(socket);
         socket.send(JSON.stringify({ event: 'first', data: { value: 'ignored' } }));
         socket.send(JSON.stringify({ event: 'second', data: { value: 'after' } }));
 
-        await expectNoWebSocketMessage(socket);
+        await firstStarted.promise;
         expect(state.messages).toEqual([]);
 
         handlerGate.resolve();
+        await secondHandled.promise;
+        const closed = onceClosed(socket);
+        socket.close();
+        await closed;
 
-        await waitForAssertion(() => {
-          expect(state.messages).toEqual([{ value: 'ignored' }, { value: 'after' }]);
-        });
-        await expectNoWebSocketMessage(socket);
+        expect(state.messages).toEqual([{ value: 'ignored' }, { value: 'after' }]);
+        expect(receivedMessages).toEqual([]);
       } finally {
+        socket.off('message', recordMessage);
         if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
           socket.close();
         }
@@ -732,6 +726,7 @@ describe('@fluojs/websockets', () => {
   });
 
   it('boots a Fastify app, connects websocket client, handles message, and disconnects', async () => {
+    const disconnected = createDeferred<void>();
     class GatewayState {
       connectCount = 0;
       disconnectCount = 0;
@@ -757,6 +752,7 @@ describe('@fluojs/websockets', () => {
       @OnDisconnect()
       onDisconnect() {
         this.state.disconnectCount += 1;
+        disconnected.resolve();
       }
     }
 
@@ -786,9 +782,8 @@ describe('@fluojs/websockets', () => {
 
         await closeWebSocket(socket);
 
-        await waitForAssertion(() => {
-          expect(state.disconnectCount).toBe(1);
-        });
+        await disconnected.promise;
+        expect(state.disconnectCount).toBe(1);
 
         expect(state.connectCount).toBe(1);
         expect(state.messages).toEqual([{ value: 'hello' }]);
@@ -801,6 +796,7 @@ describe('@fluojs/websockets', () => {
   });
 
   it('boots an Express app, connects websocket client, handles message, and disconnects', async () => {
+    const disconnected = createDeferred<void>();
     class GatewayState {
       connectCount = 0;
       disconnectCount = 0;
@@ -826,6 +822,7 @@ describe('@fluojs/websockets', () => {
       @OnDisconnect()
       onDisconnect() {
         this.state.disconnectCount += 1;
+        disconnected.resolve();
       }
     }
 
@@ -855,9 +852,8 @@ describe('@fluojs/websockets', () => {
 
         await closeWebSocket(socket);
 
-        await waitForAssertion(() => {
-          expect(state.disconnectCount).toBe(1);
-        });
+        await disconnected.promise;
+        expect(state.disconnectCount).toBe(1);
 
         expect(state.connectCount).toBe(1);
         expect(state.messages).toEqual([{ value: 'hello' }]);
@@ -871,6 +867,7 @@ describe('@fluojs/websockets', () => {
 
   for (const scenario of serverBackedGatewayScenarios) {
     it(`boots ${scenario.name} with a dedicated serverBacked websocket listener`, async () => {
+      const disconnected = createDeferred<void>();
       class GatewayState {
         connectCount = 0;
         disconnectCount = 0;
@@ -903,6 +900,7 @@ describe('@fluojs/websockets', () => {
         @OnDisconnect()
         onDisconnect() {
           this.state.disconnectCount += 1;
+          disconnected.resolve();
         }
       }
 
@@ -940,9 +938,8 @@ describe('@fluojs/websockets', () => {
 
           await closeWebSocket(socket);
 
-          await waitForAssertion(() => {
-            expect(state.disconnectCount).toBe(1);
-          });
+          await disconnected.promise;
+          expect(state.disconnectCount).toBe(1);
 
           const healthResponse = await fetch(`http://127.0.0.1:${String(appPort)}/health`);
           expect(healthResponse.status).toBe(200);
@@ -966,6 +963,7 @@ describe('@fluojs/websockets', () => {
 
   it('buffers messages and disconnects that arrive before async onConnect completes', async () => {
     const connected = createDeferred<void>();
+    const disconnected = createDeferred<void>();
 
     class GatewayState {
       disconnects = 0;
@@ -990,6 +988,7 @@ describe('@fluojs/websockets', () => {
       @OnDisconnect()
       onDisconnect() {
         this.state.disconnects += 1;
+        disconnected.resolve();
       }
     }
 
@@ -1015,10 +1014,9 @@ describe('@fluojs/websockets', () => {
     await closeWebSocket(socket);
 
     connected.resolve();
-    await waitForAssertion(() => {
-      expect(state.messages).toEqual(['early']);
-      expect(state.disconnects).toBe(1);
-    });
+    await disconnected.promise;
+    expect(state.messages).toEqual(['early']);
+    expect(state.disconnects).toBe(1);
 
     await app.close();
   });
@@ -1155,6 +1153,7 @@ describe('@fluojs/websockets', () => {
   });
 
   it('reserves upgrade slots while an async Node guard is still pending', async () => {
+    const guardStarted = createDeferred<void>();
     const gate = createDeferred<void>();
     const service = createTestLifecycleService({
       limits: {
@@ -1162,6 +1161,7 @@ describe('@fluojs/websockets', () => {
       },
       upgrade: {
         async guard() {
+          guardStarted.resolve();
           await gate.promise;
           return true;
         },
@@ -1173,7 +1173,7 @@ describe('@fluojs/websockets', () => {
     ) => Promise<{ body?: string; status: number } | undefined>;
 
     const firstPromise = resolveUpgradeRejection.call(service, { headers: {} } as IncomingMessage, '/limited-race');
-    await Promise.resolve();
+    await guardStarted.promise;
 
     const secondResult = await resolveUpgradeRejection.call(service, { headers: {} } as IncomingMessage, '/limited-race');
 
@@ -1295,6 +1295,7 @@ describe('@fluojs/websockets', () => {
   });
 
   it('receives binary payloads under the configured limit', async () => {
+    const handled = createDeferred<void>();
     class GatewayState {
       messages: unknown[] = [];
     }
@@ -1307,6 +1308,7 @@ describe('@fluojs/websockets', () => {
       @OnMessage()
       onMessage(payload: unknown) {
         this.state.messages.push(payload);
+        handled.resolve();
       }
     }
 
@@ -1336,9 +1338,8 @@ describe('@fluojs/websockets', () => {
 
         socket.send(new Uint8Array([1, 2, 3, 4]));
 
-        await waitForAssertion(() => {
-          expect(state.messages).toEqual(['\x01\x02\x03\x04']);
-        });
+        await handled.promise;
+        expect(state.messages).toEqual(['\x01\x02\x03\x04']);
       } finally {
         await closeWebSocket(socket);
       }
@@ -1348,6 +1349,7 @@ describe('@fluojs/websockets', () => {
   });
 
   it('receives Node Buffer binary event envelopes through the root module', async () => {
+    const handled = createDeferred<void>();
     class GatewayState {
       messages: unknown[] = [];
     }
@@ -1360,6 +1362,7 @@ describe('@fluojs/websockets', () => {
       @OnMessage('ping')
       onPing(payload: unknown) {
         this.state.messages.push(payload);
+        handled.resolve();
       }
     }
 
@@ -1385,9 +1388,8 @@ describe('@fluojs/websockets', () => {
 
         socket.send(Buffer.from(JSON.stringify({ event: 'ping', data: { value: 'buffer-root' } })));
 
-        await waitForAssertion(() => {
-          expect(state.messages).toEqual([{ value: 'buffer-root' }]);
-        });
+        await handled.promise;
+        expect(state.messages).toEqual([{ value: 'buffer-root' }]);
       } finally {
         await closeWebSocket(socket);
       }
@@ -1397,6 +1399,7 @@ describe('@fluojs/websockets', () => {
   });
 
   it('receives plain text payloads under the configured limit', async () => {
+    const handled = createDeferred<void>();
     class GatewayState {
       messages: unknown[] = [];
     }
@@ -1409,6 +1412,7 @@ describe('@fluojs/websockets', () => {
       @OnMessage()
       onMessage(payload: unknown) {
         this.state.messages.push(payload);
+        handled.resolve();
       }
     }
 
@@ -1436,9 +1440,8 @@ describe('@fluojs/websockets', () => {
 
     socket.send('hello');
 
-    await waitForAssertion(() => {
-      expect(state.messages).toEqual(['hello']);
-    });
+    await handled.promise;
+        expect(state.messages).toEqual(['hello']);
 
     socket.close();
     await onceCloseDetails(socket);
@@ -1446,6 +1449,7 @@ describe('@fluojs/websockets', () => {
   });
 
   it('caps pre-ready buffered websocket messages with drop-oldest policy', async () => {
+    const messagesHandled = createDeferred<void>();
     const connected = createDeferred<void>();
 
     class GatewayState {
@@ -1465,6 +1469,7 @@ describe('@fluojs/websockets', () => {
       @OnMessage('ping')
       onPing(payload: unknown) {
         this.state.messages.push(payload);
+        if (this.state.messages.length === 2) messagesHandled.resolve();
       }
     }
 
@@ -1498,9 +1503,8 @@ describe('@fluojs/websockets', () => {
     await closeWebSocket(socket);
 
     connected.resolve();
-    await waitForAssertion(() => {
-      expect(state.messages).toEqual(['b', 'c']);
-    });
+    await messagesHandled.promise;
+    expect(state.messages).toEqual(['b', 'c']);
 
     await app.close();
   });
@@ -1508,6 +1512,8 @@ describe('@fluojs/websockets', () => {
   it('delivers messages and disconnects that arrive after async onConnect completes', async () => {
     const connected = createDeferred<void>();
     const connectedHandled = createDeferred<void>();
+    const messageHandled = createDeferred<void>();
+    const disconnected = createDeferred<void>();
 
     class GatewayState {
       disconnects = 0;
@@ -1528,11 +1534,13 @@ describe('@fluojs/websockets', () => {
       @OnMessage('ping')
       onPing(payload: unknown) {
         this.state.messages.push(payload);
+        messageHandled.resolve();
       }
 
       @OnDisconnect()
       onDisconnect() {
         this.state.disconnects += 1;
+        disconnected.resolve();
       }
     }
 
@@ -1559,18 +1567,19 @@ describe('@fluojs/websockets', () => {
     await connectedHandled.promise;
 
     socket.send(JSON.stringify({ event: 'ping', data: 'hello' }));
-    await waitForAssertion(() => {
-      expect(state.messages).toEqual(['hello']);
-    });
+    await messageHandled.promise;
+    expect(state.messages).toEqual(['hello']);
     await closeWebSocket(socket);
-    await waitForAssertion(() => {
-      expect(state.disconnects).toBe(1);
-    });
+    await disconnected.promise;
+    expect(state.disconnects).toBe(1);
 
     await app.close();
   });
 
   it('runs same-socket gateway handlers in deterministic registration order', async () => {
+    const firstStarted = createDeferred<void>();
+    const firstRelease = createDeferred<void>();
+    const ordered = createDeferred<void>();
     class SharedState {
       steps: string[] = [];
     }
@@ -1582,7 +1591,8 @@ describe('@fluojs/websockets', () => {
 
       @OnConnect()
       async onConnect() {
-        await new Promise((resolve) => setTimeout(resolve, 5));
+        firstStarted.resolve();
+        await firstRelease.promise;
         this.state.steps.push('first');
       }
     }
@@ -1595,6 +1605,7 @@ describe('@fluojs/websockets', () => {
       @OnConnect()
       onConnect() {
         this.state.steps.push(`second-after-${this.state.steps.join('|') || 'none'}`);
+        ordered.resolve();
       }
     }
 
@@ -1615,11 +1626,12 @@ describe('@fluojs/websockets', () => {
 
     const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/ordered`);
     await onceOpen(socket);
+    await firstStarted.promise;
+    firstRelease.resolve();
+    await ordered.promise;
     await closeWebSocket(socket);
 
-    await waitForAssertion(() => {
-      expect(state.steps).toEqual(['first', 'second-after-first']);
-    });
+    expect(state.steps).toEqual(['first', 'second-after-first']);
 
     await app.close();
   });
@@ -1835,6 +1847,13 @@ describe('@fluojs/websockets', () => {
     });
     const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, WebSocket>;
     const socketStates = Reflect.get(service, 'socketStates') as Map<string, unknown>;
+    const cleanupCompleted = createDeferred<void>();
+    const deleteSocketState = socketStates.delete.bind(socketStates);
+    vi.spyOn(socketStates, 'delete').mockImplementation((socketId) => {
+      const deleted = deleteSocketState(socketId);
+      cleanupCompleted.resolve();
+      return deleted;
+    });
     const enqueueMessageDispatch = Reflect.get(service, 'enqueueMessageDispatch') as (
       state: ReturnType<typeof createTrackedSocketState>,
       socket: WebSocket,
@@ -1857,8 +1876,7 @@ describe('@fluojs/websockets', () => {
     expect(socketStates.has(state.socketId)).toBe(true);
 
     disconnectRelease.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await cleanupCompleted.promise;
 
     expect(socketStates.has(state.socketId)).toBe(false);
 
@@ -1876,6 +1894,13 @@ describe('@fluojs/websockets', () => {
       const state = createTrackedSocketState('socket-1', { disconnect: disconnectRelease.promise });
       const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, WebSocket>;
       const socketStates = Reflect.get(service, 'socketStates') as Map<string, unknown>;
+      const cleanupCompleted = createDeferred<void>();
+      const deleteSocketState = socketStates.delete.bind(socketStates);
+      vi.spyOn(socketStates, 'delete').mockImplementation((socketId) => {
+        const deleted = deleteSocketState(socketId);
+        cleanupCompleted.resolve();
+        return deleted;
+      });
       socketRegistry.set('socket-1', socket);
       socketStates.set('socket-1', state);
 
@@ -1899,8 +1924,7 @@ describe('@fluojs/websockets', () => {
       expect(pingSentAt.has('socket-1')).toBe(false);
 
       disconnectRelease.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
+      await cleanupCompleted.promise;
 
       expect(socketStates.has('socket-1')).toBe(false);
 
@@ -2003,6 +2027,13 @@ describe('@fluojs/websockets', () => {
 
     const socketRegistry = Reflect.get(service, 'socketRegistry') as Map<string, WebSocket>;
     const socketStates = Reflect.get(service, 'socketStates') as Map<string, unknown>;
+    const cleanupCompleted = createDeferred<void>();
+    const deleteSocketState = socketStates.delete.bind(socketStates);
+    vi.spyOn(socketStates, 'delete').mockImplementation((socketId) => {
+      const deleted = deleteSocketState(socketId);
+      cleanupCompleted.resolve();
+      return deleted;
+    });
     const roomSockets = Reflect.get(service, 'roomSockets') as Map<string, Set<string>>;
     socketRegistry.set('socket-1', socket);
     socketStates.set('socket-1', state);
@@ -2016,8 +2047,7 @@ describe('@fluojs/websockets', () => {
     expect(socketStates.has('socket-1')).toBe(true);
 
     disconnectRelease.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await cleanupCompleted.promise;
 
     expect(socketStates.has('socket-1')).toBe(false);
   });
@@ -2163,7 +2193,6 @@ describe('@fluojs/websockets', () => {
     }
   });
 
-
   it('rejects malformed websocket upgrade URLs without crashing the server', async () => {
     @WebSocketGateway({ path: '/chat' })
     class ChatGateway {
@@ -2241,6 +2270,7 @@ describe('@fluojs/websockets', () => {
 
   it('rejects in-flight Node upgrades once shutdown begins during an async guard', async () => {
     const guardGate = createDeferred<void>();
+    const guardStarted = createDeferred<void>();
 
     @WebSocketGateway({ path: '/shutdown-guard-race' })
     class GuardedGateway {
@@ -2253,6 +2283,7 @@ describe('@fluojs/websockets', () => {
       imports: [WebSocketModule.forRoot({
         upgrade: {
           async guard() {
+            guardStarted.resolve();
             await guardGate.promise;
             return true;
           },
@@ -2272,9 +2303,8 @@ describe('@fluojs/websockets', () => {
       const service = await app.container.resolve(WebSocketGatewayLifecycleService) as unknown as NodeWebSocketGatewayLifecycleServiceImplementation;
 
     const responsePromise = readUpgradeResponse(port, createUpgradeRequest('/shutdown-guard-race'));
-    await waitForAssertion(() => {
-      expect(Reflect.get(service, 'pendingUpgradeReservations')).toBe(1);
-    });
+    await guardStarted.promise;
+    expect(Reflect.get(service, 'pendingUpgradeReservations')).toBe(1);
 
     const closePromise = service.onApplicationShutdown();
     guardGate.resolve();
@@ -2290,6 +2320,7 @@ describe('@fluojs/websockets', () => {
 
   it('waits for asynchronous Node disconnect cleanup before finishing shutdown', async () => {
     const connected = createDeferred<void>();
+    const disconnectStarted = createDeferred<void>();
     const disconnectGate = createDeferred<void>();
 
     class GatewayState {
@@ -2308,6 +2339,7 @@ describe('@fluojs/websockets', () => {
 
       @OnDisconnect()
       async onDisconnect() {
+        disconnectStarted.resolve();
         await disconnectGate.promise;
         this.state.disconnectCount += 1;
       }
@@ -2333,12 +2365,15 @@ describe('@fluojs/websockets', () => {
     await onceOpen(socket);
     await connected.promise;
 
+    const shutdownEntered = observeShutdownEntry(
+      await app.container.resolve(NodeWebSocketGatewayLifecycleService),
+    );
     let closed = false;
     const closePromise = app.close().then(() => {
       closed = true;
     });
-
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await shutdownEntered;
+    await disconnectStarted.promise;
 
     expect(closed).toBe(false);
     expect(state.disconnectCount).toBe(0);
@@ -2402,6 +2437,7 @@ describe('@fluojs/websockets', () => {
   });
 
   it('waits for in-flight Node connect handlers to replay buffered disconnects during shutdown', async () => {
+    const connectStarted = createDeferred<void>();
     const connectGate = createDeferred<void>();
 
     class GatewayState {
@@ -2416,6 +2452,7 @@ describe('@fluojs/websockets', () => {
 
       @OnConnect()
       async onConnect() {
+        connectStarted.resolve();
         await connectGate.promise;
         this.state.connectCount += 1;
       }
@@ -2444,13 +2481,16 @@ describe('@fluojs/websockets', () => {
 
     const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/shutdown-connect-in-flight`);
     await onceOpen(socket);
+    await connectStarted.promise;
 
+    const shutdownEntered = observeShutdownEntry(
+      await app.container.resolve(NodeWebSocketGatewayLifecycleService),
+    );
     let closed = false;
     const closePromise = app.close().then(() => {
       closed = true;
     });
-
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await shutdownEntered;
 
     expect(closed).toBe(false);
     expect(state.connectCount).toBe(0);
