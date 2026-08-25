@@ -5,6 +5,7 @@ import { createRequestContext, runWithRequestContext } from '../context/request-
 import { isSseMessage, SseResponse, type SseSendOptions } from '../context/sse.js';
 import { RequestAbortedError } from '../errors.js';
 import { runGuardChain } from '../guards.js';
+import { getRequestHeader } from '../header-helpers.js';
 import { runInterceptorChain } from '../interceptors.js';
 import { isMiddlewareRouteConfig, matchRoutePattern, runMiddlewareChain } from '../middleware/middleware.js';
 import type {
@@ -204,7 +205,7 @@ function readRequestId(request: FrameworkRequest): string | undefined {
     return request.requestId;
   }
 
-  const raw = request.headers['x-request-id'] ?? request.headers['X-Request-Id'];
+  const raw = getRequestHeader(request, 'x-request-id');
   const value = Array.isArray(raw) ? raw[0] : raw;
   const normalized = value?.trim();
 

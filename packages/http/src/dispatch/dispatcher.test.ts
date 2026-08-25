@@ -1395,6 +1395,97 @@ describe('dispatcher runtime', () => {
     expect(response.body).toBe('plain:{"ok":true}');
   });
 
+  it('selects formatter from mixed-case Accept array headers', async () => {
+    @Controller('/negotiation-case')
+    class NegotiationCaseController {
+      @Produces('application/json', 'text/plain')
+      @Get('/formatted')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationCaseController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+          {
+            format(body) {
+              return `plain:${JSON.stringify(body)}`;
+            },
+            mediaType: 'text/plain',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationCaseController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(
+      createRequest('/negotiation-case/formatted', 'GET', {
+        aCcEpT: ['text/plain;q=0.9', 'application/json;q=0.1'],
+      }),
+      response,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('text/plain');
+    expect(response.body).toBe('plain:{"ok":true}');
+  });
+
+  it('ignores blank duplicate-case Accept headers before selecting the formatter', async () => {
+    @Controller('/negotiation-duplicate-case')
+    class NegotiationDuplicateCaseController {
+      @Produces('application/json', 'text/plain')
+      @Get('/formatted')
+      getValue() {
+        return { ok: true };
+      }
+    }
+
+    const root = new Container().register(NegotiationDuplicateCaseController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+          {
+            format(body) {
+              return `plain:${JSON.stringify(body)}`;
+            },
+            mediaType: 'text/plain',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NegotiationDuplicateCaseController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(
+      createRequest('/negotiation-duplicate-case/formatted', 'GET', {
+        Accept: '   ',
+        aCcEpT: 'text/plain;q=1',
+      }),
+      response,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('text/plain');
+    expect(response.body).toBe('plain:{"ok":true}');
+  });
+
   it('keeps negotiated formatter headers while suppressing HEAD bodies', async () => {
     @Controller('/negotiation-head')
     class NegotiationHeadController {

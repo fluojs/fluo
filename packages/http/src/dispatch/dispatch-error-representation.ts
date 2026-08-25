@@ -20,6 +20,7 @@ import {
   readAcceptHeader,
   selectErrorRepresentation,
 } from './dispatch-error-negotiation.js';
+import { appendVaryHeader } from '../header-helpers.js';
 import { isRequestAborted } from './request-abort.js';
 
 const HTML_CONTENT_TYPE = 'text/html; charset=utf-8';
@@ -74,15 +75,7 @@ async function isHtmlAvailable(
 
 function setNegotiatedHeaders(response: FrameworkResponse, contentType: string): void {
   response.setHeader('Content-Type', contentType);
-  const varyEntry = Object.entries(response.headers).find(([name]) => name.toLowerCase() === 'vary');
-  const varyValues = (Array.isArray(varyEntry?.[1]) ? varyEntry[1] : varyEntry?.[1]?.split(','))
-    ?.map((value) => value.trim())
-    .filter(Boolean) ?? [];
-
-  if (!varyValues.some((value) => value.toLowerCase() === 'accept')) {
-    varyValues.push('Accept');
-  }
-  response.setHeader(varyEntry?.[0] ?? 'Vary', varyValues.join(', '));
+  appendVaryHeader(response, 'Accept');
 }
 
 async function writeBody(

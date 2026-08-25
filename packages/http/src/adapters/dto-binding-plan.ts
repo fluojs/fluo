@@ -8,6 +8,7 @@ import {
   type DtoFieldValidationRule,
 } from '@fluojs/core/internal';
 
+import { getRequestHeader } from '../header-helpers.js';
 import type { FrameworkRequest } from '../types.js';
 
 function toFieldName(propertyKey: MetadataPropertyKey): string {
@@ -16,10 +17,6 @@ function toFieldName(propertyKey: MetadataPropertyKey): string {
 
 function resolveSourceKey(propertyKey: MetadataPropertyKey, key?: string): string {
   return key ?? toFieldName(propertyKey);
-}
-
-function readHeader(request: FrameworkRequest, key: string): string | string[] | undefined {
-  return request.headers[key.toLowerCase()] ?? request.headers[key];
 }
 
 export interface CompiledDtoBindingPlanEntry {
@@ -50,7 +47,7 @@ function createSourceReader(source: MetadataSource, sourceKey: string): (request
     case 'query':
       return (request) => request.query[sourceKey];
     case 'header':
-      return (request) => readHeader(request, sourceKey);
+      return (request) => getRequestHeader(request, sourceKey);
     case 'cookie':
       return (request) => request.cookies[sourceKey];
     case 'body':
