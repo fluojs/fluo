@@ -7,6 +7,9 @@ description: Drain one canonical Fluo lane through implementation, same-head rev
 
 Consume only a strict canonical lane v2 created by `$create-lane`. Do not
 rediscover issues, regroup scope, or infer missing persisted fields.
+Require the exact `.omo/lanes/<lane-id>.json` path, revalidate its source
+artifact and all three approval receipts, and bind every resumed snapshot to
+the canonical ledger's immutable plan before compiling or mutating anything.
 
 The parent lead is the only shared lane snapshot/event/receipt/lease writer.
 It compiles exactly one native DAG from the immutable lane ledger. Every
