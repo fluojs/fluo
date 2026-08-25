@@ -9,8 +9,17 @@ import {
 } from './transition-application.mjs';
 import { assertIssueSupervisorState } from './issue-supervisor-contracts.mjs';
 import { assertIssueSupervisorBundle } from './issue-supervisor-store.mjs';
+import { dependencyGate } from './dependency-gate.mjs';
 import { parkReleaseHandoff } from './lane-progression.mjs';
 import { assertReleaseHandoffBinding } from './release-handoff-approval.mjs';
+import {
+  advanceLane,
+  assertLiveCompletion,
+  blockedProgress,
+  completedProgress,
+  identityFromSupervisor,
+  laneFor,
+} from './supervisor-terminal-evidence.mjs';
 
 const terminalStatuses = new Set([
   'done',
@@ -19,120 +28,6 @@ const terminalStatuses = new Set([
   'blocked-budget-exhausted',
   'blocked-maintainer-decision',
 ]);
-
-const laneFor = (snapshot, issueNumber) => {
-  const laneIndex = snapshot.lanes.findIndex((lane) =>
-    lane.queue.includes(issueNumber),
-  );
-  if (laneIndex === -1) {
-    throw new TypeError('supervisor issue is not assigned to a lane.');
-  }
-  return { lane: snapshot.lanes[laneIndex], laneIndex };
-};
-
-const advanceLane = (snapshot, lane) => {
-  const nextIssue = lane.queue.find(
-    (issue) => !snapshot.completed_issues.includes(issue),
-  );
-  Object.assign(lane, {
-    status: nextIssue === undefined ? 'done' : 'queued',
-    current_issue: nextIssue ?? null,
-    branch: null,
-    worktree: null,
-    pr: null,
-    retry_count: 0,
-  });
-};
-
-const identityFromSupervisor = (snapshot, supervisor, laneIndex) => ({
-  lane_id: snapshot.lane_id,
-  lane_index: laneIndex,
-  issue_number: supervisor.issue_number,
-  branch: supervisor.branch,
-  worktree: supervisor.worktree,
-  pr_number: supervisor.pr?.number ?? null,
-  pr_url: supervisor.pr?.url ?? null,
-  head_sha: supervisor.head_sha,
-});
-
-const completedProgress = (supervisor) => ({
-  status: 'done',
-  branch: supervisor.branch,
-  worktree: supervisor.worktree,
-  pr: supervisor.pr.url,
-  head_sha: supervisor.head_sha,
-  verification: supervisor.verification,
-  retry_count: supervisor.attempt,
-  blockers: supervisor.blockers,
-  review_verdict: 'merge',
-  checks: 'PASS',
-  reviewers: supervisor.local_review.reviewers,
-  reviewed_head: supervisor.local_review.head_sha,
-  commits: [supervisor.head_sha],
-  merge_commit: supervisor.merge.commit_sha,
-  issue_state: 'CLOSED',
-  cleanup: supervisor.authority_scope.cleanup_command_worktrees
-    ? {
-        status: 'done',
-        worktree_removed: true,
-        local_branch_deleted: true,
-        remote_branch_deleted: true,
-      }
-    : { status: 'skipped-authority' },
-});
-
-const blockedProgress = (supervisor) => ({
-  status: supervisor.status,
-  branch: supervisor.branch,
-  worktree: supervisor.worktree,
-  pr: supervisor.pr?.url ?? null,
-  head_sha: supervisor.head_sha,
-  verification: supervisor.verification,
-  retry_count: supervisor.attempt,
-  blockers: supervisor.blockers,
-});
-
-const assertLiveCompletion = (supervisor, live) => {
-  const expected = {
-    issue_number: supervisor.issue_number,
-    issue_url: `https://github.com/fluojs/fluo/issues/${String(supervisor.issue_number)}`,
-    pr_number: supervisor.pr.number,
-    pr_url: supervisor.pr.url,
-    branch: supervisor.branch,
-    worktree: supervisor.worktree,
-    reviewed_head_sha: supervisor.head_sha,
-    remote_head_sha: supervisor.head_sha,
-    pr_head_sha: supervisor.head_sha,
-    ci_head_sha: supervisor.head_sha,
-    merge_commit_sha: supervisor.merge.commit_sha,
-    merge_method: 'squash',
-    pr_state: 'MERGED',
-    issue_state: 'CLOSED',
-    cleanup_status: supervisor.authority_scope.cleanup_command_worktrees
-      ? 'done'
-      : 'skipped-authority',
-  };
-  if (supervisor.authority_scope.cleanup_command_worktrees) {
-    Object.assign(expected, {
-      worktree_removed: true,
-      local_branch_deleted: true,
-      remote_branch_deleted: true,
-    });
-  }
-  const actualKeys = Object.keys(live ?? {}).sort();
-  const expectedKeys = Object.keys(expected).sort();
-  if (
-    actualKeys.length !== expectedKeys.length ||
-    actualKeys.some((key, index) => key !== expectedKeys[index])
-  ) {
-    throw new TypeError('supervisor live completion contains unexpected fields.');
-  }
-  for (const [key, value] of Object.entries(expected)) {
-    if (live?.[key] !== value) {
-      throw new TypeError(`supervisor live completion mismatch: ${key}.`);
-    }
-  }
-};
 
 export const importSupervisorTerminal = (
   persisted,
@@ -178,10 +73,8 @@ export const importSupervisorTerminal = (
   }
 
   const { lane, laneIndex } = laneFor(snapshot, supervisor.issue_number);
-  const unmet = (
-    snapshot.dependency_graph[String(supervisor.issue_number)] ?? []
-  ).filter((issue) => !snapshot.completed_issues.includes(issue));
-  if (unmet.length > 0) {
+  const gate = dependencyGate(snapshot, supervisor.issue_number);
+  if (gate.status !== 'ready') {
     throw new TypeError('supervisor terminal import has unmet dependencies.');
   }
   const identity = identityFromSupervisor(snapshot, supervisor, laneIndex);
@@ -262,6 +155,7 @@ export const importSupervisorTerminal = (
       return { snapshot, events, receipts };
     }
     snapshot.issue_progress[String(supervisor.issue_number)] = progress;
+    lane.retry_count = progress.retry_count;
     terminalize(snapshot, identity, supervisor.status, supervisor.blockers);
     appendEvent(
       events,

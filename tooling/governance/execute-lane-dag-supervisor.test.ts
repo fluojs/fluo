@@ -13,6 +13,7 @@ import { join, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+// allow: SIZE_OK — integrated legacy supervisor lifecycle regression matrix.
 type DagNode = Readonly<{
   id: string;
   category: string;
@@ -64,13 +65,13 @@ const {
     transition: unknown,
   ) => SupervisorState;
 };
-const { compileLaneSupervisorDag } = (await import(
+const { compileLegacyLaneSupervisorDag } = (await import(
   resolve(
     process.cwd(),
     '.agents/skills/execute-lane/scripts/compile-dag.mjs',
   )
 )) as {
-  compileLaneSupervisorDag: (ledger: unknown) => DagDefinition;
+  compileLegacyLaneSupervisorDag: (ledger: unknown) => DagDefinition;
 };
 const {
   assertDagBindingMatches,
@@ -230,8 +231,8 @@ const identity = {
   },
   retry_policy: {
     retry_count_is_terminal: true,
-    max_same_failure_repeats: 5,
-    max_wall_clock_minutes: 360,
+    max_same_failure_repeats: 3,
+    max_wall_clock_minutes: 180,
     stop_on_child_contract_error: true,
   },
 } as const;
@@ -802,36 +803,14 @@ describe('execute-lane issue supervisor lifecycle', () => {
   });
 
   it('imports blocked and release-handoff supervisor terminals', () => {
-    let blocked = createIssueSupervisor(identity);
-    blocked = transitionIssueSupervisor(blocked, {
-      kind: 'implementation-completed',
-      new_head: headA,
-      verification: 'focused tests passed',
-    });
-    blocked = transitionIssueSupervisor(blocked, {
-      kind: 'local-review',
-      reviews: [
-        passReviews(headA)[0],
-        {
-          reviewer: 'code',
-          reviewed_head_sha: headA,
-          verdict_signal: 'NEEDS-HUMAN-CHECK',
-          blockers: [],
-        },
-        passReviews(headA)[2],
-      ],
-    });
-    const ledger = JSON.parse(
-      readFileSync(
-        resolve(
-          process.cwd(),
-          'tooling/governance/fixtures/execute-lane-native/ready-ledger-multi-v2.json',
-        ),
-        'utf8',
-      ),
-    );
-    const blockedImport = importSupervisorTerminal(
-      { snapshot: ledger, events: [], receipts: [] },
+    const blocker = {
+      reviewer: 'code',
+      signature: 'runtime:worker:abort-path',
+      evidence: 'packages/runtime/src/worker.ts:42',
+      fix_back_eligible: true,
+      status: 'unresolved',
+    };
+    const blockedBundle = () =>
       persistedLifecycle(identity, [
         {
           kind: 'implementation-completed',
@@ -845,40 +824,59 @@ describe('execute-lane issue supervisor lifecycle', () => {
             {
               reviewer: 'code',
               reviewed_head_sha: headA,
-              verdict_signal: 'NEEDS-HUMAN-CHECK',
-              blockers: [],
+              verdict_signal: 'BLOCK',
+              blockers: [blocker],
             },
             passReviews(headA)[2],
           ],
         },
-      ]),
+        {
+          kind: 'fix-completed',
+          new_head: headB,
+          observed_at: observedAt,
+          verification: 'focused tests passed',
+          addressed_blockers: remediate([blocker]),
+        },
+        {
+          kind: 'local-review',
+          reviews: [
+            passReviews(headB)[0],
+            {
+              reviewer: 'code',
+              reviewed_head_sha: headB,
+              verdict_signal: 'NEEDS-HUMAN-CHECK',
+              blockers: [],
+            },
+            passReviews(headB)[2],
+          ],
+        },
+      ]);
+    const ledger = JSON.parse(
+      readFileSync(
+        resolve(
+          process.cwd(),
+          'tooling/governance/fixtures/execute-lane-native/ready-ledger-multi-v2.json',
+        ),
+        'utf8',
+      ),
+    );
+    const blockedImport = importSupervisorTerminal(
+      { snapshot: ledger, events: [], receipts: [] },
+      blockedBundle(),
     );
     expect(blockedImport.snapshot.lanes).toMatchObject([
-      { status: 'needs-human-check-terminal' },
+      { status: 'needs-human-check-terminal', retry_count: 1 },
     ]);
+    expect(blockedImport.snapshot.issue_progress).toMatchObject({
+      '4101': {
+        status: 'needs-human-check-terminal',
+        retry_count: 1,
+      },
+    });
     expect(
       importSupervisorTerminal(
         blockedImport,
-        persistedLifecycle(identity, [
-          {
-            kind: 'implementation-completed',
-            new_head: headA,
-            verification: 'focused tests passed',
-          },
-          {
-            kind: 'local-review',
-            reviews: [
-              passReviews(headA)[0],
-              {
-                reviewer: 'code',
-                reviewed_head_sha: headA,
-                verdict_signal: 'NEEDS-HUMAN-CHECK',
-                blockers: [],
-              },
-              passReviews(headA)[2],
-            ],
-          },
-        ]),
+        blockedBundle(),
       ),
     ).toEqual(blockedImport);
 
@@ -1002,7 +1000,7 @@ describe('execute-lane issue supervisor lifecycle', () => {
         'utf8',
       ),
     );
-    const definition = compileLaneSupervisorDag(ledger);
+    const definition = compileLegacyLaneSupervisorDag(ledger);
 
     expect(definition.key).toBe('fluo:lane:lane-4101-runtime:issue-supervisors:v1');
     expect(definition.nodes).toHaveLength(2);
@@ -1018,13 +1016,13 @@ describe('execute-lane issue supervisor lifecycle', () => {
     });
     expect(definition.nodes[0].prompt).toContain('STOP WHEN:');
     expect(() =>
-      compileLaneSupervisorDag({
+      compileLegacyLaneSupervisorDag({
         ...ledger,
         dependency_graph: { 4102: [9999] },
       }),
     ).toThrow(/dependency|confirmed issue/u);
     expect(() =>
-      compileLaneSupervisorDag({
+      compileLegacyLaneSupervisorDag({
         ...ledger,
         dependency_graph: { 4101: [4102], 4102: [4101] },
       }),
@@ -1038,7 +1036,7 @@ describe('execute-lane issue supervisor lifecycle', () => {
         'utf8',
       ),
     );
-    const releaseDefinition = compileLaneSupervisorDag(releaseLedger);
+    const releaseDefinition = compileLegacyLaneSupervisorDag(releaseLedger);
     expect(releaseDefinition.nodes).toHaveLength(1);
     expect(releaseDefinition.nodes[0]).toMatchObject({
       category: 'quick',
@@ -1108,4 +1106,5 @@ describe('execute-lane issue supervisor lifecycle', () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
 });

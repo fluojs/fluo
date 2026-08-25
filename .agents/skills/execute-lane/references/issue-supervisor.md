@@ -1,8 +1,10 @@
 # Native issue supervisor
 
-One DAG node owns one issue from initial implementation through merge and
-cleanup. Nodes for independent issues run concurrently; `dependsOn` mirrors the
-canonical lane dependency graph.
+One single-node DAG owns one issue from initial implementation through merge
+and cleanup. Parent-owned dispatch may start independent eligible issues
+concurrently. A dependent node is not created until every canonical dependency
+is already shared `done`; native DAG ordering is never used as success
+evidence.
 
 ## Role separation
 
@@ -67,6 +69,12 @@ Before any remote action, re-read live Git and GitHub identity. On task restart,
 resume from the issue state and live observations rather than repeating the
 last claimed action. The node returns typed transition evidence and receipts;
 the parent validates them before updating the shared lane ledger.
+
+Before creating a child, branch, or worktree, re-read the shared snapshot and
+require the issue to remain its lane's queued cursor with every dependency
+present in `completed_issues` and `issue_progress.status === 'done'`. If that
+precondition changed after dispatch, return a ledger-conflict terminal without
+performing a mutation.
 
 ## Stop
 

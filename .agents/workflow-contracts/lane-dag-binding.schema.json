@@ -10,14 +10,19 @@
     "dag_key",
     "run_id",
     "definition_sha256",
-    "snapshot_event_hash",
     "status"
   ],
   "properties": {
-    "version": { "const": 1 },
+    "version": { "enum": [1, 2] },
     "lane_id": {
       "type": "string",
       "pattern": "^(?!.*(?:\\.|\\.lock)$)[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "issue_number": { "type": "integer", "minimum": 1 },
+    "dependencies": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "integer", "minimum": 1 }
     },
     "dag_key": { "type": "string", "minLength": 1 },
     "run_id": { "type": "string", "minLength": 1 },
@@ -30,6 +35,10 @@
         { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         { "type": "null" }
       ]
+    },
+    "dispatch_event_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
     },
     "status": { "const": "attached" }
   }
