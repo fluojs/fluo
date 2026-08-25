@@ -847,11 +847,12 @@ export class SocketIoLifecycleService
 
   private async bindConnectionHandlers(descriptors: WebSocketGatewayDescriptor[], socket: Socket): Promise<void> {
     const request = this.resolveHandshakeRequest(socket);
-    const resolved = await this.resolveConnectionGateways(descriptors);
+    const resolved: Array<{ descriptor: WebSocketGatewayDescriptor; instance: unknown }> = [];
     const state = this.createConnectionHandlerState();
 
     this.socketRegistry.set(socket.id, socket);
     this.attachConnectionListeners(state, resolved, socket, request);
+    resolved.push(...await this.resolveConnectionGateways(descriptors));
     await this.runConnectHandlers(resolved, socket, request);
     state.handlersReady = true;
     await this.replayBufferedConnectionEvents(state, resolved, socket, request);

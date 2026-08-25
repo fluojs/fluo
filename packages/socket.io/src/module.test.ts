@@ -2494,6 +2494,71 @@ describe('@fluojs/socket.io', () => {
     }
   });
 
+  it('preserves one disconnect during shutdown while gateway singleton resolution is pending', async () => {
+    const resolutionStarted = createDeferred<void>();
+    const resolutionRelease = createDeferred<void>();
+
+    class GatewayState {
+      disconnects = 0;
+    }
+
+    @Inject(GatewayState)
+    @WebSocketGateway({ path: '/resolving-shutdown-disconnect' })
+    class ResolvingShutdownGateway {
+      constructor(private readonly state: GatewayState) {}
+
+      @OnDisconnect()
+      onDisconnect() {
+        this.state.disconnects += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [SocketIoModule.forRoot({ transports: ['websocket'] })],
+      providers: [GatewayState, ResolvingShutdownGateway],
+    });
+
+    const { adapter, app } = await createNodejsSocketIoApplication(AppModule);
+    const state = await app.container.resolve(GatewayState);
+    app.container.override({
+      inject: [GatewayState],
+      provide: ResolvingShutdownGateway,
+      scope: 'singleton',
+      useFactory: async (...dependencies: unknown[]) => {
+        resolutionStarted.resolve();
+        await resolutionRelease.promise;
+        return new ResolvingShutdownGateway(dependencies[0] as GatewayState);
+      },
+    });
+    let socket: ClientSocket | undefined;
+
+    try {
+      await app.listen();
+      const port = getBoundPortFromAdapter(adapter);
+      socket = createClient(`http://127.0.0.1:${String(port)}/resolving-shutdown-disconnect`, {
+        reconnection: false,
+        transports: ['websocket'],
+      });
+      await Promise.all([onceConnected(socket), resolutionStarted.promise]);
+
+      const disconnected = onceDisconnected(socket);
+      const close = app.close();
+      await disconnected;
+
+      expect(state.disconnects).toBe(0);
+
+      resolutionRelease.resolve();
+      await close;
+
+      expect(state.disconnects).toBe(1);
+    } finally {
+      resolutionRelease.resolve();
+      socket?.close();
+      await app.close();
+    }
+  });
+
   it('waits for an asynchronous disconnect handler triggered by application shutdown', async () => {
     const disconnectStarted = createDeferred<void>();
     const disconnectRelease = createDeferred<void>();

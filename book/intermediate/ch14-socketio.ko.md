@@ -18,7 +18,7 @@
 - Chapter 1, Chapter 2, Chapter 3, Chapter 4, Chapter 5, Chapter 6, Chapter 7, Chapter 8, Chapter 9, Chapter 10, Chapter 11, Chapter 12, Chapter 13 완료.
 - WebSocket gateway lifecycle과 실시간 메시지 라우팅에 대한 기초 이해.
 - 인증, room 분리, 브로드캐스트 같은 다중 사용자 채팅 요구사항에 대한 기본 감각.
-- Node-backed Socket.IO adapter path를 실행할 때는 Node.js 20+가 필요하며, Bun 지원은 아래에서 설명하는 공식 Bun engine path를 사용합니다.
+- Node-backed Socket.IO adapter path를 실행할 때는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`이 필요하며, Bun 지원은 아래에서 설명하는 공식 Bun engine path를 사용합니다.
 
 ## 14.1 Why Socket.IO for FluoShop?
 

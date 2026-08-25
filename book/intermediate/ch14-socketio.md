@@ -18,7 +18,7 @@ This chapter explains how to add a Socket.IO layer on top of raw WebSocket and c
 - Complete Chapter 1, Chapter 2, Chapter 3, Chapter 4, Chapter 5, Chapter 6, Chapter 7, Chapter 8, Chapter 9, Chapter 10, Chapter 11, Chapter 12, and Chapter 13.
 - A basic understanding of the WebSocket gateway lifecycle and realtime message routing.
 - A basic sense of multiple user chat requirements such as authentication, room separation, and broadcast.
-- Node.js 20+ when running the Node-backed Socket.IO adapter path; Bun support uses the official Bun engine path described below.
+- Node.js `>=20.19.3 <21 || >=22.2.0 <27` when running the Node-backed Socket.IO adapter path; Bun support uses the official Bun engine path described below.
 
 ## 14.1 Why Socket.IO for FluoShop?
 

@@ -52,6 +52,28 @@ const nodeListenerEngineRange = nodeListenerEngineWindows
   .join(' || ');
 const nodeListenerEngineMarker = `engines.node ${nodeListenerEngineRange}`;
 
+export function enforceSocketIoNodeEngineAlignment(readText = read) {
+  const runtimeManifest = JSON.parse(readText('packages/runtime/package.json'));
+  const canonicalNodeRange = runtimeManifest.engines?.node;
+
+  assert(
+    typeof canonicalNodeRange === 'string' && canonicalNodeRange.length > 0,
+    '@fluojs/runtime must declare the canonical engines.node range.',
+  );
+
+  for (const [manifestPath, packageName] of [
+    ['package.json', 'root workspace'],
+    ['packages/platform-nodejs/package.json', '@fluojs/platform-nodejs'],
+    ['packages/socket.io/package.json', '@fluojs/socket.io'],
+  ]) {
+    const manifest = JSON.parse(readText(manifestPath));
+    assert(
+      manifest.engines?.node === canonicalNodeRange,
+      `${packageName} engines.node must equal the canonical @fluojs/runtime range ${canonicalNodeRange}.`,
+    );
+  }
+}
+
 export function isSupportedNodeListenerVersion(version) {
   const match = /^(\d+)\.(\d+)\.(\d+)$/u.exec(version);
   if (match === null) {
@@ -2698,6 +2720,7 @@ export function main() {
   enforcePackageDirectoriesHaveManifests();
   enforceReleaseGovernancePublishSurfaceSync();
   enforceCanonicalPackageSurfaceSync();
+  enforceSocketIoNodeEngineAlignment();
   enforceDocsHubOfficialTransportLinks();
   enforceDenoHostOwnedLifecycleContract();
   enforceDenoPermissionGuidance();
