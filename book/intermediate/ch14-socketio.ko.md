@@ -167,7 +167,7 @@ handleTicketStatus(
 
 fluo는 선택한 HTTP adapter 계약을 통해 Bun의 고성능 WebSocket 구현을 지원합니다. Socket.IO는 보통 Node.js에서 `ws` 패키지를 사용하지만, Bun에서는 활성 platform adapter가 Socket.IO adapter에 필요한 fetch-style realtime binding을 제공할 때 `@socket.io/bun-engine`을 사용할 수 있습니다. 따라서 FluoShop은 runtime auto-switching에 의존하지 말고 Bun 호환 platform adapter를 명시적으로 선택해야 합니다. 이 방식은 realtime boundary를 감사 가능한 상태로 유지하면서도 표준 Node.js 프로세스보다 낮은 메모리 오버헤드로 많은 동시 지원 채팅을 처리할 수 있게 합니다.
 
-Socket.IO 패키지에는 명시적인 runtime gate가 있습니다. Node-backed deployment는 Node.js 20+ server-backed adapter를 사용합니다. Bun은 static CORS shape를 요구합니다. CORS delegate function과 `cors.origin` array 내부의 boolean entry는 사용할 수 없습니다. 또한 Bun은 fetch-style host에 binding을 붙이므로 dedicated Node listener를 여는 `@WebSocketGateway({ serverBacked })`를 지원하지 않습니다. Deno와 Workers는 `@fluojs/socket.io`에서 지원하지 않으므로, 해당 런타임에서는 runtime-specific `@fluojs/websockets/*` subpath로 raw WebSocket gateway를 작성하세요.
+Socket.IO 패키지에는 명시적인 runtime gate가 있습니다. Node-backed deployment는 Node.js 22.12.0 이상을 요구하며 shared application listener를 사용합니다. Bun은 static CORS shape를 요구합니다. CORS delegate function과 `cors.origin` array 내부의 boolean entry는 사용할 수 없습니다. Socket.IO는 모든 runtime에서 `@WebSocketGateway({ serverBacked })`를 거부합니다. 기존 설정은 해당 option을 제거하고 shared application listener를 사용해야 하며, dedicated listener가 필요하면 `@fluojs/websockets/node`로 마이그레이션하거나 `SocketIoModule` 밖에서 별도 Socket.IO server를 직접 소유하세요. Deno와 Workers는 `@fluojs/socket.io`에서 지원하지 않으므로, 해당 런타임에서는 runtime-specific `@fluojs/websockets/*` subpath로 raw WebSocket gateway를 작성하세요.
 
 ## 14.7 여러 room으로 브로드캐스트하기
 
@@ -260,7 +260,7 @@ Socket.IO를 통해 FluoShop 지원 시스템은 대규모 실시간 흐름을 �
 3. 고객이 "티켓 열기"를 클릭하면 gateway가 고객의 소켓을 `ticket:{id}` room에 참여시킵니다.
 4. 상담원(admin namespace)은 모든 활성 티켓을 볼 수 있습니다.
 5. 메시지는 특정 room으로 브로드캐스트되어 개인 정보 보호와 성능을 모두 보장합니다.
-6. Bun 환경에서는 static CORS와 `serverBacked` gateway opt-in 없음이라는 제약 안에서 공식 Bun engine path를 사용합니다.
+6. 모든 runtime에서 Socket.IO는 shared application listener를 사용하고 `serverBacked`를 거부합니다. Bun은 추가로 static CORS와 공식 engine path를 사용합니다.
 
 이 아키텍처는 FluoShop이 성장하는 고객 지원 트래픽을 명시적인 실시간 인프라로 수용할 수 있게 합니다. 지원 흐름이 커져도 메시지 라우팅, 권한, 테스트 경계가 같은 패턴 안에 남습니다.
 
@@ -270,7 +270,7 @@ Socket.IO를 통해 FluoShop 지원 시스템은 대규모 실시간 흐름을 �
 - `SocketIoRoomService`는 주입과 테스트가 가능한 room 관리를 위한 고수준 API를 제공합니다.
 - 연결 및 메시지에 대한 명시적인 `auth` guard는 세밀한 보안을 제공합니다.
 - `SOCKETIO_SERVER`를 통해 필요할 때 저수준 서버 접근이 가능합니다.
-- Native Bun 지원은 `@socket.io/bun-engine`을 통해 제공되며, static CORS와 `serverBacked` gateway opt-in 없음이라는 제약을 갖습니다.
+- Socket.IO는 모든 runtime에서 `serverBacked` gateway opt-in을 거부하며, native Bun 지원은 static CORS를 요구하는 `@socket.io/bun-engine`을 사용합니다.
 - CORS 기본값은 안정성을 위해 `false`이며, 명시적인 origin 설정이 필요합니다.
 
 Socket.IO는 단순한 "ping-pong" 소켓과 실제 다중 사용자 애플리케이션 사이의 다리입니다. 이를 fluo decorator 시스템에 통합하면 FluoShop은 이전 장들에서 구축한 모듈형 아키텍처를 유지하면서 Socket.IO의 고수준 기능을 사용할 수 있습니다. 결과적으로 실시간 협업 기능도 모듈, provider, guard라는 익숙한 구성 요소 안에서 운영됩니다.

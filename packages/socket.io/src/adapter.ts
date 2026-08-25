@@ -3,7 +3,7 @@ import type { AsyncLocalStorage } from 'node:async_hooks';
 import { Inject, type MetadataPropertyKey } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
 import type {
-  FetchStyleHttpAdapterRealtimeCapabilityV2,
+  FetchStyleHttpAdapterRealtimeCapability,
   HttpAdapterRealtimeBindingInstallation,
   HttpAdapterRealtimeCapability,
   HttpApplicationAdapter,
@@ -124,7 +124,9 @@ type SocketIoBootstrapRuntime =
       kind: 'server-backed';
     }
   | {
-      capability: FetchStyleHttpAdapterRealtimeCapabilityV2;
+      capability: FetchStyleHttpAdapterRealtimeCapability & {
+        bindingInstallation: HttpAdapterRealtimeBindingInstallation;
+      };
       kind: 'bun';
     };
 
@@ -297,14 +299,17 @@ function resolveSocketIoBootstrapRuntime(
     );
   }
 
-  if (capability.version !== 2) {
+  if (capability.bindingInstallation === undefined) {
     throw new Error(
-      'Socket.IO Bun bootstrap requires fetch-style realtime capability version 2 with binding installation. Use a current @fluojs/platform-bun adapter.',
+      'Socket.IO Bun bootstrap requires the fetch-style realtime binding installation extension. Use a current @fluojs/platform-bun adapter.',
     );
   }
 
   return {
-    capability,
+    capability: {
+      ...capability,
+      bindingInstallation: capability.bindingInstallation,
+    },
     kind: 'bun',
   };
 }
@@ -335,6 +340,7 @@ export class SocketIoLifecycleService
   implements OnApplicationBootstrap, OnApplicationShutdown, OnModuleDestroy, SocketIoRoomService
 {
   private attachments: NamespaceAttachment[] = [];
+  private applicationBootstrapCompleted = false;
   private bunEngine: BunEngineServer | undefined;
   private readonly inFlightGatewayWork = new Set<Promise<void>>();
   private io: Server | undefined;
@@ -454,6 +460,7 @@ export class SocketIoLifecycleService
 
     if (descriptors.length === 0) {
       await this.ensureBunRealtimeBindingForRawServerAccess();
+      this.applicationBootstrapCompleted = true;
       return;
     }
 
@@ -467,6 +474,7 @@ export class SocketIoLifecycleService
     }
 
     this.attachments = attachments;
+    this.applicationBootstrapCompleted = true;
     this.wired = true;
   }
 
@@ -1263,11 +1271,18 @@ export class SocketIoLifecycleService
   }
 
   private clearManagedState(): void {
+    const clearPartialRealtimeBinding = !this.applicationBootstrapCompleted;
+
+    this.applicationBootstrapCompleted = false;
     this.wired = false;
     this.io = undefined;
     this.bunEngine = undefined;
     this.attachments = [];
-    this.realtimeBindingInstallation?.install(undefined);
+
+    if (clearPartialRealtimeBinding) {
+      this.realtimeBindingInstallation?.install(undefined);
+    }
+
     this.realtimeBindingInstallation = undefined;
     this.socketRegistry.clear();
   }

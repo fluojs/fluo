@@ -405,6 +405,7 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
 
     if (!this.server) {
       this.dispatcher = undefined;
+      this.realtimeBinding = undefined;
       return;
     }
 
@@ -421,6 +422,7 @@ export class BunHttpApplicationAdapter implements HttpApplicationAdapter, BunWeb
 
       this.closeInFlight = undefined;
       this.dispatcher = undefined;
+      this.realtimeBinding = undefined;
     });
 
     this.closeInFlight = closeInFlight;

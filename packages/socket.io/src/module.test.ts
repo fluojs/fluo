@@ -192,7 +192,7 @@ class TestBunSocketIoAdapter implements HttpApplicationAdapter {
   }
 
   configureRealtimeBinding(binding: BunRealtimeBinding | undefined): void {
-    if (this.server && binding !== undefined) {
+    if (this.server) {
       throw new Error('Test Bun Socket.IO binding must be configured before listen().');
     }
 
@@ -216,7 +216,7 @@ class TestBunSocketIoAdapter implements HttpApplicationAdapter {
         version: 1 as const,
       },
       support: 'supported' as const,
-      version: 2 as const,
+      version: 1 as const,
     };
   }
 
@@ -265,6 +265,7 @@ class TestBunSocketIoAdapter implements HttpApplicationAdapter {
 
     this.server = undefined;
     this.bunServer = undefined;
+    this.binding = undefined;
 
     if (!server) {
       return;

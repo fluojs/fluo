@@ -6,7 +6,7 @@
 '@fluojs/websockets': minor
 ---
 
-Add a versioned fetch-style realtime binding installation capability and expose the shared internal gateway discovery seam for protocol adapters.
+Add an optional, independently versioned fetch-style realtime binding installation extension while preserving the public capability version 1 contract, and expose the shared internal gateway discovery seam for protocol adapters.
 
 Make Socket.IO shutdown drain accepted gateway work before clearing managed state, reject unsupported `serverBacked` gateways consistently, dispatch through canonical handler indexes, and align runtime, migration, and bilingual option documentation.
 

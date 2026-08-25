@@ -37,7 +37,7 @@
 - [ ] MUST: HTTPS 시작을 지원하고 HTTPS listen URL을 보고합니다.
 - [ ] MUST: `close()` 이후 등록한 shutdown signal listener를 제거합니다.
 - [ ] MUST: fetch-style websocket 어댑터는 `@fluojs/testing/fetch-style-websocket-conformance`의 `createFetchStyleWebSocketConformanceHarness(...)`를 실행합니다.
-- [ ] MUST: fetch-style websocket capability 필드 `kind`, `contract`, `mode`, `version`, `support`, `reason`를 안정적으로 유지합니다. Version 2 capability는 adapter `listen()` 전에 설치해야 하는 protocol binding을 위해 versioned `bindingInstallation`도 노출합니다.
+- [ ] MUST: fetch-style websocket capability 필드 `kind`, `contract`, `mode`, `version`, `support`, `reason`를 안정적으로 유지합니다. Version 1 capability는 adapter `listen()` 전에 설치해야 하는 protocol binding을 위해 별도로 versioned된 optional `bindingInstallation` extension을 추가할 수 있지만 capability `version` field를 바꾸면 안 됩니다.
 
 ## Package Contract Requirements
 

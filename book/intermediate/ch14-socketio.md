@@ -167,7 +167,7 @@ handleTicketStatus(
 
 fluo supports Bun's high performance WebSocket implementation through the selected HTTP adapter contract. Socket.IO usually uses the `ws` package on Node.js, but on Bun it can use `@socket.io/bun-engine` when the active platform adapter exposes the fetch-style realtime binding that the Socket.IO adapter requires. FluoShop should therefore choose a Bun-compatible platform adapter explicitly instead of relying on runtime auto-switching. This keeps the realtime boundary auditable while still allowing many concurrent support chats with lower memory overhead than a standard Node.js process.
 
-The Socket.IO package still has explicit runtime gates. Node-backed deployments use Node.js 20+ server-backed adapters. Bun requires static CORS shapes: no CORS delegate functions and no boolean entries inside `cors.origin` arrays. Bun also does not support `@WebSocketGateway({ serverBacked })`, because the binding is attached to the fetch-style host rather than a dedicated Node listener. Deno and Workers are not supported by `@fluojs/socket.io`; use the runtime-specific `@fluojs/websockets/*` subpaths for raw WebSocket gateway authoring on those runtimes.
+The Socket.IO package still has explicit runtime gates. Node-backed deployments require Node.js 22.12.0 or newer and use the shared application listener. Bun requires static CORS shapes: no CORS delegate functions and no boolean entries inside `cors.origin` arrays. Socket.IO rejects `@WebSocketGateway({ serverBacked })` on every runtime. Existing configurations must remove that option and use the shared application listener; if a dedicated listener is required, migrate to `@fluojs/websockets/node` or own a separate Socket.IO server outside `SocketIoModule`. Deno and Workers are not supported by `@fluojs/socket.io`; use the runtime-specific `@fluojs/websockets/*` subpaths for raw WebSocket gateway authoring on those runtimes.
 
 ## 14.7 Broadcasting across many rooms
 
@@ -260,7 +260,7 @@ With Socket.IO, the FluoShop support system can handle large scale realtime flow
 3. When the customer clicks "Open ticket", the gateway joins the customer's socket to the `ticket:{id}` room.
 4. Agents, in the admin namespace, can see all active tickets.
 5. Messages are broadcast to a specific room, ensuring both privacy and performance.
-6. In a Bun environment, the system uses the official Bun engine path with static CORS and no `serverBacked` gateway opt-in.
+6. On every runtime, Socket.IO uses the shared application listener and rejects `serverBacked`; Bun additionally uses the official engine path with static CORS.
 
 This architecture lets FluoShop absorb growing customer support traffic through explicit realtime infrastructure. As the support flow grows, message routing, permissions, and test boundaries remain inside the same pattern.
 
@@ -270,7 +270,7 @@ This architecture lets FluoShop absorb growing customer support traffic through 
 - `SocketIoRoomService` provides a high level API for room management that can be injected and tested.
 - Explicit `auth` Guards for connections and messages provide fine grained security.
 - `SOCKETIO_SERVER` provides low level server access when needed.
-- Native Bun support is available through `@socket.io/bun-engine`, with static CORS and no `serverBacked` gateway opt-in.
+- Socket.IO rejects `serverBacked` gateway opt-in on every runtime; native Bun support uses `@socket.io/bun-engine` and requires static CORS.
 - The CORS default is `false` for safety, and explicit origin configuration is required.
 
 Socket.IO is the bridge between simple ping pong sockets and real multiple user applications. By integrating it with the fluo decorator system, FluoShop can use Socket.IO's high level features while preserving the modular architecture built in earlier chapters. Realtime collaboration features are operated through familiar pieces such as Modules, Providers, and Guards.
