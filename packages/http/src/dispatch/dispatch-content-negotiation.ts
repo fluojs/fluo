@@ -55,11 +55,124 @@ function getMediaRangeSpecificity(mediaRange: string): number {
   return subtype?.startsWith('*+') === true ? 2 : 3;
 }
 
+function splitOutsideQuotedStrings(value: string, delimiter: string): string[] | undefined {
+  const parts: string[] = [];
+  let quoted = false;
+  let escaped = false;
+  let start = 0;
+
+  for (let index = 0; index < value.length; index++) {
+    const character = value[index]!;
+
+    if (quoted) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === '"') {
+        quoted = false;
+      }
+      continue;
+    }
+
+    if (character === '"') {
+      quoted = true;
+    } else if (character === delimiter) {
+      parts.push(value.slice(start, index));
+      start = index + 1;
+    }
+  }
+
+  if (quoted || escaped) {
+    return undefined;
+  }
+
+  parts.push(value.slice(start));
+  return parts;
+}
+
+function parseParameter(parameter: string): [name: string, value: string] | undefined {
+  let equalsIndex = -1;
+  let quoted = false;
+  let escaped = false;
+
+  for (let index = 0; index < parameter.length; index++) {
+    const character = parameter[index]!;
+
+    if (quoted) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === '"') {
+        quoted = false;
+      }
+      continue;
+    }
+
+    if (character === '"') {
+      quoted = true;
+    } else if (character === '=') {
+      if (equalsIndex >= 0) {
+        return undefined;
+      }
+      equalsIndex = index;
+    }
+  }
+
+  if (quoted || escaped || equalsIndex <= 0) {
+    return undefined;
+  }
+
+  const name = parameter.slice(0, equalsIndex);
+  const value = parameter.slice(equalsIndex + 1);
+  if (!MEDIA_TYPE_TOKEN_PATTERN.test(name) || !isValidParameterValue(value)) {
+    return undefined;
+  }
+
+  return [name, value];
+}
+
+function isValidParameterValue(value: string): boolean {
+  if (MEDIA_TYPE_TOKEN_PATTERN.test(value)) {
+    return true;
+  }
+
+  if (value.length < 2 || value[0] !== '"' || value.at(-1) !== '"') {
+    return false;
+  }
+
+  let escaped = false;
+  for (let index = 1; index < value.length - 1; index++) {
+    const character = value[index]!;
+
+    if (escaped) {
+      escaped = false;
+    } else if (character === '\\') {
+      escaped = true;
+    } else if (character === '"' || character === '\r' || character === '\n') {
+      return false;
+    }
+  }
+
+  return !escaped;
+}
+
 function parseAcceptHeader(acceptHeader: string): AcceptToken[] {
+  const tokenParts = splitOutsideQuotedStrings(acceptHeader, ',');
+  if (!tokenParts) {
+    return [];
+  }
+
   const tokens: AcceptToken[] = [];
 
-  for (const [order, token] of acceptHeader.split(',').entries()) {
-    const [rawMediaRange, ...parameterParts] = token.trim().split(';');
+  for (const [order, token] of tokenParts.entries()) {
+    const parts = splitOutsideQuotedStrings(token.trim(), ';');
+    if (!parts) {
+      continue;
+    }
+
+    const [rawMediaRange, ...parameterParts] = parts;
     const mediaRange = normalizeMediaType(rawMediaRange ?? '');
 
     if (!isValidMediaRange(mediaRange)) {
@@ -71,10 +184,15 @@ function parseAcceptHeader(acceptHeader: string): AcceptToken[] {
     let malformed = false;
 
     for (const parameterPart of parameterParts) {
-      const [name, value, ...extraValues] = parameterPart.trim().split('=');
+      const parameter = parseParameter(parameterPart.trim());
+      if (!parameter) {
+        malformed = true;
+        break;
+      }
 
-      if (name?.toLowerCase() === 'q') {
-        const parsedQuality = extraValues.length === 0 ? parseQuality(value?.trim()) : undefined;
+      const [name, value] = parameter;
+      if (name.toLowerCase() === 'q') {
+        const parsedQuality = parseQuality(value);
         if (qualitySeen || parsedQuality === undefined) {
           malformed = true;
           break;

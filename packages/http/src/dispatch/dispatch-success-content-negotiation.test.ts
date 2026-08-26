@@ -177,6 +177,22 @@ describe('successful response content negotiation', () => {
       'text/plain',
       'plain',
     ],
+    [
+      'quoted media parameter',
+      '/representations/all',
+      'application/json;profile="a,b";q=0.1, text/plain;q=0.9',
+      200,
+      'text/plain',
+      'plain',
+    ],
+    [
+      'malformed whitespace before quality assignment',
+      '/representations/all',
+      'application/json;q =0, text/plain;q=0',
+      406,
+      undefined,
+      undefined,
+    ],
     ['unsupported range', '/representations/all', 'image/avif', 406, undefined, undefined],
     [
       'exact q=0 overrides a positive wildcard',
