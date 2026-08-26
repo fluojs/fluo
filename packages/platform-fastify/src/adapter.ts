@@ -79,12 +79,73 @@ export type CorsInput = false | string | string[] | CorsOptions;
 
 const DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+const NativeArray = Array;
+const NativeString = String;
+const nativeArrayIsArray = Array.isArray;
+const nativeObjectDefineProperty = Object.defineProperty;
+const nativeObjectKeys = Object.keys;
+const nativeReflectDeleteProperty = Reflect.deleteProperty;
 const nativeStringToLowerCase = Function.prototype.call.bind(String.prototype.toLowerCase);
 const SET_COOKIE_HEADER_NAME = 'set-cookie';
 const FASTIFY_NATIVE_ROUTE_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'] as const;
 const EMPTY_NATIVE_ROUTE_PARAMS: Readonly<Record<string, string>> = Object.freeze({});
 
 type FastifyNativeRouteMethod = (typeof FASTIFY_NATIVE_ROUTE_METHODS)[number];
+type SetCookieHeaderValue = string | string[];
+
+function copySetCookieHeaderValue(value: SetCookieHeaderValue): string[] {
+  if (!nativeArrayIsArray(value)) {
+    return [value];
+  }
+
+  const copied = new NativeArray<string>(value.length);
+
+  for (let index = 0; index < value.length; index += 1) {
+    nativeObjectDefineProperty(copied, index, {
+      configurable: true,
+      enumerable: true,
+      value: value[index],
+      writable: true,
+    });
+  }
+
+  return copied;
+}
+
+function cloneSetCookieHeaderValue(value: SetCookieHeaderValue): SetCookieHeaderValue {
+  return nativeArrayIsArray(value) ? copySetCookieHeaderValue(value) : value;
+}
+
+function setSetCookieMirrorHeader(
+  headers: Record<string, SetCookieHeaderValue>,
+  name: string,
+  value: SetCookieHeaderValue,
+): void {
+  const keys = nativeObjectKeys(headers);
+  let targetName: string | undefined;
+
+  for (let index = 0; index < keys.length; index += 1) {
+    const key = keys[index];
+
+    if (nativeStringToLowerCase(key) !== SET_COOKIE_HEADER_NAME) {
+      continue;
+    }
+
+    if (targetName === undefined) {
+      targetName = key;
+      continue;
+    }
+
+    nativeReflectDeleteProperty(headers, key);
+  }
+
+  nativeObjectDefineProperty(headers, targetName ?? name, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  });
+}
 
 type RouteDescribingDispatcher = Dispatcher & {
   describeRoutes?: () => readonly HandlerDescriptor[];
@@ -815,11 +876,14 @@ class MutableFastifyFrameworkResponse implements FastifyFrameworkResponse {
     if (lowerName === SET_COOKIE_HEADER_NAME) {
       this.reply.header(SET_COOKIE_HEADER_NAME, value);
       const updated = this.reply.getHeader(SET_COOKIE_HEADER_NAME);
-      this.headers[name] = Array.isArray(updated)
-        ? [...updated]
-        : updated === undefined
-          ? value
-          : String(updated);
+      const mirrored = updated === undefined
+        ? cloneSetCookieHeaderValue(value)
+        : typeof updated === 'string'
+          ? updated
+          : nativeArrayIsArray(updated)
+            ? copySetCookieHeaderValue(updated)
+            : NativeString(updated);
+      setSetCookieMirrorHeader(this.headers, name, mirrored);
       return;
     }
 

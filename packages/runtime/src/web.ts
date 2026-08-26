@@ -27,7 +27,16 @@ const DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
 const TEXT_ENCODER = new TextEncoder();
 const TEXT_DECODER = new TextDecoder();
 const REQUEST_BODY_LIMIT_MESSAGE = 'Request body exceeds the size limit.';
+const NativeArray = Array;
+const NativeHeaders = Headers;
+const nativeArrayIsArray = Array.isArray;
+const nativeObjectDefineProperty = Object.defineProperty;
+const nativeObjectKeys = Object.keys;
+const nativeReflectDeleteProperty = Reflect.deleteProperty;
 const nativeStringToLowerCase = Function.prototype.call.bind(String.prototype.toLowerCase);
+const SET_COOKIE_HEADER_NAME = 'set-cookie';
+
+type SetCookieHeaderValue = string | string[];
 
 /**
  * Configures Web request parsing, multipart handling, and raw body preservation.
@@ -228,13 +237,12 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
   }
 
   setHeader(name: string, value: string | string[]): void {
-    const existingHeaderName = findHeaderName(this.headers, name) ?? name;
-
-    if (nativeStringToLowerCase(name) === 'set-cookie') {
-      this.headers[existingHeaderName] = mergeSetCookieHeader(this.headers[existingHeaderName], value);
+    if (nativeStringToLowerCase(name) === SET_COOKIE_HEADER_NAME) {
+      appendSetCookieMirrorHeader(this.headers, name, value);
       return;
     }
 
+    const existingHeaderName = findHeaderName(this.headers, name) ?? name;
     this.headers[existingHeaderName] = value;
   }
 
@@ -725,25 +733,106 @@ function concatUint8Arrays(chunks: Uint8Array[], totalSize: number): Uint8Array 
   return rawBody;
 }
 
-function mergeSetCookieHeader(
-  current: string | string[] | undefined,
-  incoming: string | string[],
-): string | string[] {
-  const nextValues = Array.isArray(incoming) ? incoming : [incoming];
-
-  if (current === undefined) {
-    return nextValues.length === 1 ? nextValues[0] : [...nextValues];
+function copySetCookieHeaderValue(value: SetCookieHeaderValue): string[] {
+  if (!nativeArrayIsArray(value)) {
+    return [value];
   }
 
-  const currentValues = Array.isArray(current) ? current : [current];
-  const merged = [...currentValues, ...nextValues];
+  const copied = new NativeArray<string>(value.length);
 
-  return merged.length === 1 ? merged[0] : merged;
+  for (let index = 0; index < value.length; index += 1) {
+    nativeObjectDefineProperty(copied, index, {
+      configurable: true,
+      enumerable: true,
+      value: value[index],
+      writable: true,
+    });
+  }
+
+  return copied;
+}
+
+function mergeSetCookieHeader(
+  current: SetCookieHeaderValue | undefined,
+  incoming: SetCookieHeaderValue,
+): SetCookieHeaderValue {
+  const incomingValues = copySetCookieHeaderValue(incoming);
+
+  if (current === undefined) {
+    return incomingValues.length === 1 ? incomingValues[0] : incomingValues;
+  }
+
+  const currentValues = copySetCookieHeaderValue(current);
+  const merged = new NativeArray<string>(currentValues.length + incomingValues.length);
+
+  for (let index = 0; index < currentValues.length; index += 1) {
+    nativeObjectDefineProperty(merged, index, {
+      configurable: true,
+      enumerable: true,
+      value: currentValues[index],
+      writable: true,
+    });
+  }
+
+  for (let index = 0; index < incomingValues.length; index += 1) {
+    nativeObjectDefineProperty(merged, currentValues.length + index, {
+      configurable: true,
+      enumerable: true,
+      value: incomingValues[index],
+      writable: true,
+    });
+  }
+
+  return merged;
+}
+
+function appendSetCookieMirrorHeader(
+  headers: Record<string, SetCookieHeaderValue>,
+  name: string,
+  value: SetCookieHeaderValue,
+): void {
+  const keys = nativeObjectKeys(headers);
+  let merged: SetCookieHeaderValue | undefined;
+  let targetName: string | undefined;
+
+  for (let index = 0; index < keys.length; index += 1) {
+    const key = keys[index];
+
+    if (nativeStringToLowerCase(key) !== SET_COOKIE_HEADER_NAME) {
+      continue;
+    }
+
+    merged = mergeSetCookieHeader(merged, headers[key]);
+
+    if (targetName === undefined) {
+      targetName = key;
+      continue;
+    }
+
+    nativeReflectDeleteProperty(headers, key);
+  }
+
+  nativeObjectDefineProperty(headers, targetName ?? name, {
+    configurable: true,
+    enumerable: true,
+    value: mergeSetCookieHeader(merged, value),
+    writable: true,
+  });
 }
 
 function findHeaderName(headers: Record<string, string | string[]>, name: string): string | undefined {
   const lowerName = nativeStringToLowerCase(name);
-  return Object.keys(headers).find((key) => nativeStringToLowerCase(key) === lowerName);
+  const keys = nativeObjectKeys(headers);
+
+  for (let index = 0; index < keys.length; index += 1) {
+    const key = keys[index];
+
+    if (nativeStringToLowerCase(key) === lowerName) {
+      return key;
+    }
+  }
+
+  return undefined;
 }
 
 function hasHeader(headers: Record<string, string | string[]>, name: string): boolean {
@@ -755,12 +844,16 @@ function isResponseBodyForbidden(status: number | undefined): boolean {
 }
 
 function toResponseHeaders(headers: Record<string, string | string[]>): Headers {
-  const responseHeaders = new Headers();
+  const responseHeaders = new NativeHeaders();
+  const names = nativeObjectKeys(headers);
 
-  for (const [name, value] of Object.entries(headers)) {
-    if (Array.isArray(value)) {
-      for (const headerValue of value) {
-        responseHeaders.append(name, headerValue);
+  for (let index = 0; index < names.length; index += 1) {
+    const name = names[index];
+    const value = headers[name];
+
+    if (nativeArrayIsArray(value)) {
+      for (let valueIndex = 0; valueIndex < value.length; valueIndex += 1) {
+        responseHeaders.append(name, value[valueIndex]);
       }
       continue;
     }

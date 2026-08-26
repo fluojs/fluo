@@ -222,17 +222,22 @@ describe('@fluojs/platform-fastify', () => {
       await fastifyPortabilityHarness.assertSupportsPortableResponseCookies();
     });
 
-    it('appends cookies after a caller option getter poisons header normalization', async () => {
+    it('appends cookies after a caller option getter poisons header normalization hooks', async () => {
       const originalToLowerCase = Object.getOwnPropertyDescriptor(String.prototype, 'toLowerCase');
+      const originalArrayIsArray = Object.getOwnPropertyDescriptor(Array, 'isArray');
+      const originalArrayFind = Object.getOwnPropertyDescriptor(Array.prototype, 'find');
+      const originalArrayIterator = Object.getOwnPropertyDescriptor(Array.prototype, Symbol.iterator);
+      const originalObjectKeys = Object.getOwnPropertyDescriptor(Object, 'keys');
 
-      if (!originalToLowerCase) {
-        throw new Error('String.prototype.toLowerCase is unavailable.');
+      if (!originalToLowerCase || !originalArrayIsArray || !originalArrayFind || !originalArrayIterator || !originalObjectKeys) {
+        throw new Error('Required normalization intrinsics are unavailable.');
       }
 
       const originalToLowerCaseFunction = originalToLowerCase.value;
+      const originalArrayIteratorFunction = originalArrayIterator.value;
 
-      if (typeof originalToLowerCaseFunction !== 'function') {
-        throw new Error('String.prototype.toLowerCase is not callable.');
+      if (typeof originalToLowerCaseFunction !== 'function' || typeof originalArrayIteratorFunction !== 'function') {
+        throw new Error('Required normalization intrinsics are not callable.');
       }
 
       const poisonedToLowerCaseDescriptor = {
@@ -244,19 +249,31 @@ describe('@fluojs/platform-fastify', () => {
         writable: originalToLowerCase.writable,
       };
       let frameworkCookieHeaders: string | string[] | undefined;
+      let frameworkHeaders: Record<string, string | string[]> | undefined;
 
       @Controller('/cookies')
       class CookieController {
         @Get('/')
         write(_input: undefined, context: RequestContext) {
-          setCookie(context.response, 'first', 'one');
+          context.response.setHeader('set-cookie', 'first=one');
           setCookie(context.response, 'second', 'two', Object.defineProperty({}, 'expires', {
             get() {
               Object.defineProperty(String.prototype, 'toLowerCase', poisonedToLowerCaseDescriptor);
+              Object.defineProperty(Array, 'isArray', { ...originalArrayIsArray, value: () => false });
+              Object.defineProperty(Array.prototype, 'find', { ...originalArrayFind, value: () => { throw new Error('poisoned find'); } });
+              Object.defineProperty(Array.prototype, Symbol.iterator, {
+                ...originalArrayIterator,
+                value: function(this: string[]): ArrayIterator<string> {
+                  return originalArrayIteratorFunction.call(this) as ArrayIterator<string>;
+                },
+              });
+              Object.defineProperty(Object, 'keys', { ...originalObjectKeys, value: () => { throw new Error('poisoned keys'); } });
               return undefined;
             },
           }));
-          frameworkCookieHeaders = context.response.headers['Set-Cookie'];
+          context.response.setHeader('set-cookie', 'third=three');
+          frameworkCookieHeaders = context.response.headers['set-cookie'];
+          frameworkHeaders = context.response.headers;
 
           return { ok: true };
         }
@@ -275,12 +292,17 @@ describe('@fluojs/platform-fastify', () => {
         const port = await listenOnEphemeralPort(app);
         response = await requestHttp({ path: '/cookies', port });
       } finally {
+        Object.defineProperty(Object, 'keys', originalObjectKeys);
+        Object.defineProperty(Array.prototype, Symbol.iterator, originalArrayIterator);
+        Object.defineProperty(Array.prototype, 'find', originalArrayFind);
+        Object.defineProperty(Array, 'isArray', originalArrayIsArray);
         Object.defineProperty(String.prototype, 'toLowerCase', originalToLowerCase);
         await app.close();
       }
 
-      expect(frameworkCookieHeaders).toEqual(['first=one', 'second=two']);
-      expect(response?.headers['set-cookie']).toEqual(['first=one', 'second=two']);
+      expect(Object.keys(frameworkHeaders ?? {}).filter((name) => name.toLowerCase() === 'set-cookie')).toHaveLength(1);
+      expect(frameworkCookieHeaders).toEqual(['first=one', 'second=two', 'third=three']);
+      expect(response?.headers['set-cookie']).toEqual(['first=one', 'second=two', 'third=three']);
     });
 
     it('supports HTTP-owned JSON and HTML error representations', async () => {

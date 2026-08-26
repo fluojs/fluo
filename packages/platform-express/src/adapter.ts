@@ -109,6 +109,11 @@ export type CorsInput = false | string | string[] | CorsOptions;
 
 const DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+const NativeArray = Array;
+const nativeArrayIsArray = Array.isArray;
+const nativeObjectDefineProperty = Object.defineProperty;
+const nativeObjectKeys = Object.keys;
+const nativeReflectDeleteProperty = Reflect.deleteProperty;
 const nativeStringToLowerCase = Function.prototype.call.bind(String.prototype.toLowerCase);
 const SET_COOKIE_HEADER_NAME = 'set-cookie';
 const EXPRESS_NATIVE_ROUTE_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'] as const;
@@ -733,7 +738,7 @@ function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkRes
       if (lowerName === SET_COOKIE_HEADER_NAME) {
         const merged = mergeSetCookieHeader(response.getHeader(SET_COOKIE_HEADER_NAME), value);
         response.setHeader(SET_COOKIE_HEADER_NAME, merged);
-        this.headers[name] = merged;
+        setSetCookieMirrorHeader(this.headers, name, merged);
         return;
       }
 
@@ -1257,20 +1262,90 @@ function waitForCloseWithTimeout(closePromise: Promise<void>, timeoutMs: number)
   });
 }
 
-function mergeSetCookieHeader(
-  current: string | string[] | number | undefined,
-  incoming: string | string[],
-): string | string[] {
-  const nextValues = Array.isArray(incoming) ? incoming : [incoming];
+type SetCookieHeaderValue = string | string[];
 
-  if (current === undefined || typeof current === 'number') {
-    return nextValues.length === 1 ? nextValues[0] : [...nextValues];
+function copySetCookieHeaderValue(value: SetCookieHeaderValue): string[] {
+  if (!nativeArrayIsArray(value)) {
+    return [value];
   }
 
-  const currentValues = Array.isArray(current) ? current : [current];
-  const merged = [...currentValues, ...nextValues];
+  const copied = new NativeArray<string>(value.length);
 
-  return merged.length === 1 ? merged[0] : merged;
+  for (let index = 0; index < value.length; index += 1) {
+    nativeObjectDefineProperty(copied, index, {
+      configurable: true,
+      enumerable: true,
+      value: value[index],
+      writable: true,
+    });
+  }
+
+  return copied;
+}
+
+function mergeSetCookieHeader(
+  current: SetCookieHeaderValue | number | undefined,
+  incoming: SetCookieHeaderValue,
+): SetCookieHeaderValue {
+  const incomingValues = copySetCookieHeaderValue(incoming);
+
+  if (current === undefined || typeof current === 'number') {
+    return incomingValues.length === 1 ? incomingValues[0] : incomingValues;
+  }
+
+  const currentValues = copySetCookieHeaderValue(current);
+  const merged = new NativeArray<string>(currentValues.length + incomingValues.length);
+
+  for (let index = 0; index < currentValues.length; index += 1) {
+    nativeObjectDefineProperty(merged, index, {
+      configurable: true,
+      enumerable: true,
+      value: currentValues[index],
+      writable: true,
+    });
+  }
+
+  for (let index = 0; index < incomingValues.length; index += 1) {
+    nativeObjectDefineProperty(merged, currentValues.length + index, {
+      configurable: true,
+      enumerable: true,
+      value: incomingValues[index],
+      writable: true,
+    });
+  }
+
+  return merged;
+}
+
+function setSetCookieMirrorHeader(
+  headers: Record<string, SetCookieHeaderValue>,
+  name: string,
+  value: SetCookieHeaderValue,
+): void {
+  const keys = nativeObjectKeys(headers);
+  let targetName: string | undefined;
+
+  for (let index = 0; index < keys.length; index += 1) {
+    const key = keys[index];
+
+    if (nativeStringToLowerCase(key) !== SET_COOKIE_HEADER_NAME) {
+      continue;
+    }
+
+    if (targetName === undefined) {
+      targetName = key;
+      continue;
+    }
+
+    nativeReflectDeleteProperty(headers, key);
+  }
+
+  nativeObjectDefineProperty(headers, targetName ?? name, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  });
 }
 
 async function readRequestBody(

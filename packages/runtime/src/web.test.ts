@@ -70,7 +70,7 @@ describe('dispatchWebRequest', () => {
     expect(redirectResponse.headers.get('location')).toBe('/next');
   });
 
-  it('appends cookies after a caller option getter poisons header normalization', () => {
+  it('normalizes cookie mirror casing after a caller option getter poisons header normalization', () => {
     const frameworkResponse = createWebRequestResponseFactory().createResponse(
       undefined,
       new Request('https://runtime.test/cookies'),
@@ -95,7 +95,7 @@ describe('dispatchWebRequest', () => {
       },
       writable: originalToLowerCase.writable,
     };
-    setCookie(frameworkResponse, 'first', 'one');
+    frameworkResponse.setHeader('set-cookie', 'first=one');
 
     try {
       setCookie(frameworkResponse, 'second', 'two', Object.defineProperty({}, 'expires', {
@@ -108,8 +108,13 @@ describe('dispatchWebRequest', () => {
       Object.defineProperty(String.prototype, 'toLowerCase', originalToLowerCase);
     }
 
-    expect(frameworkResponse.headers['Set-Cookie']).toEqual(['first=one', 'second=two']);
-    expect(frameworkResponse.toResponse().headers.getSetCookie()).toEqual(['first=one', 'second=two']);
+    frameworkResponse.setHeader('set-cookie', 'third=three');
+    const mirrorKeys = Object.keys(frameworkResponse.headers)
+      .filter((name) => name.toLowerCase() === 'set-cookie');
+
+    expect(mirrorKeys).toHaveLength(1);
+    expect(frameworkResponse.headers[mirrorKeys[0]]).toEqual(['first=one', 'second=two', 'third=three']);
+    expect(frameworkResponse.toResponse().headers.getSetCookie()).toEqual(['first=one', 'second=two', 'third=three']);
   });
 
   it('translates Web Request semantics into the framework request contract', async () => {

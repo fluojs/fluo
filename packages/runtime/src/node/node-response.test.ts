@@ -53,13 +53,36 @@ describe('createFrameworkResponse', () => {
     ]);
   });
 
-  it('appends cookies after a caller option getter poisons header normalization', () => {
+  it('normalizes repeated cookie header casing into one mirror key', () => {
+    for (const [firstName, secondName] of [
+      ['set-cookie', 'Set-Cookie'],
+      ['Set-Cookie', 'set-cookie'],
+    ]) {
+      const rawResponse = createMockServerResponse();
+      const frameworkResponse = createFrameworkResponse(rawResponse);
+
+      frameworkResponse.setHeader(firstName, 'first=one');
+      frameworkResponse.setHeader(secondName, 'second=two');
+
+      const mirrorKeys = Object.keys(frameworkResponse.headers)
+        .filter((name) => name.toLowerCase() === 'set-cookie');
+      expect(mirrorKeys).toHaveLength(1);
+      expect(rawResponse.getHeader('set-cookie')).toEqual(['first=one', 'second=two']);
+      expect(frameworkResponse.headers[mirrorKeys[0]]).toEqual(['first=one', 'second=two']);
+    }
+  });
+
+  it('appends cookies after a caller option getter poisons header normalization hooks', () => {
     const rawResponse = createMockServerResponse();
     const frameworkResponse = createFrameworkResponse(rawResponse);
     const originalToLowerCase = Object.getOwnPropertyDescriptor(String.prototype, 'toLowerCase');
+    const originalArrayIsArray = Object.getOwnPropertyDescriptor(Array, 'isArray');
+    const originalArrayFind = Object.getOwnPropertyDescriptor(Array.prototype, 'find');
+    const originalArrayIterator = Object.getOwnPropertyDescriptor(Array.prototype, Symbol.iterator);
+    const originalObjectKeys = Object.getOwnPropertyDescriptor(Object, 'keys');
 
-    if (!originalToLowerCase) {
-      throw new Error('String.prototype.toLowerCase is unavailable.');
+    if (!originalToLowerCase || !originalArrayIsArray || !originalArrayFind || !originalArrayIterator || !originalObjectKeys) {
+      throw new Error('Required normalization intrinsics are unavailable.');
     }
 
     const originalToLowerCaseFunction = originalToLowerCase.value;
@@ -68,24 +91,31 @@ describe('createFrameworkResponse', () => {
       throw new Error('String.prototype.toLowerCase is not callable.');
     }
 
-    const poisonedToLowerCaseDescriptor = {
-      configurable: originalToLowerCase.configurable,
-      enumerable: originalToLowerCase.enumerable,
-      value: function(this: string): string {
-        return this === 'Set-Cookie' ? 'content-type' : originalToLowerCaseFunction.call(this);
-      },
-      writable: originalToLowerCase.writable,
-    };
     setCookie(frameworkResponse, 'first', 'one');
 
     try {
       setCookie(frameworkResponse, 'second', 'two', Object.defineProperty({}, 'expires', {
         get() {
-          Object.defineProperty(String.prototype, 'toLowerCase', poisonedToLowerCaseDescriptor);
+          Object.defineProperty(String.prototype, 'toLowerCase', {
+            configurable: originalToLowerCase.configurable,
+            enumerable: originalToLowerCase.enumerable,
+            value: function(this: string): string {
+              return this === 'Set-Cookie' ? 'content-type' : originalToLowerCaseFunction.call(this);
+            },
+            writable: originalToLowerCase.writable,
+          });
+          Object.defineProperty(Array, 'isArray', { ...originalArrayIsArray, value: () => false });
+          Object.defineProperty(Array.prototype, 'find', { ...originalArrayFind, value: () => { throw new Error('poisoned find'); } });
+          Object.defineProperty(Array.prototype, Symbol.iterator, { ...originalArrayIterator, value: () => { throw new Error('poisoned iterator'); } });
+          Object.defineProperty(Object, 'keys', { ...originalObjectKeys, value: () => { throw new Error('poisoned keys'); } });
           return undefined;
         },
       }));
     } finally {
+      Object.defineProperty(Object, 'keys', originalObjectKeys);
+      Object.defineProperty(Array.prototype, Symbol.iterator, originalArrayIterator);
+      Object.defineProperty(Array.prototype, 'find', originalArrayFind);
+      Object.defineProperty(Array, 'isArray', originalArrayIsArray);
       Object.defineProperty(String.prototype, 'toLowerCase', originalToLowerCase);
     }
 

@@ -1,6 +1,101 @@
 import type { Dispatcher, FrameworkRequest, FrameworkResponse, HttpMethod, Middleware, Principal } from '@fluojs/http';
 
+const NativeArray = Array;
+const nativeArrayIsArray = Array.isArray;
+const nativeObjectDefineProperty = Object.defineProperty;
+const nativeObjectKeys = Object.keys;
+const nativeReflectDeleteProperty = Reflect.deleteProperty;
 const nativeStringToLowerCase = Function.prototype.call.bind(String.prototype.toLowerCase);
+const SET_COOKIE_HEADER_NAME = 'set-cookie';
+
+type SetCookieHeaderValue = string | string[];
+
+function copySetCookieHeaderValue(value: SetCookieHeaderValue): string[] {
+  if (!nativeArrayIsArray(value)) {
+    return [value];
+  }
+
+  const copied = new NativeArray<string>(value.length);
+
+  for (let index = 0; index < value.length; index += 1) {
+    nativeObjectDefineProperty(copied, index, {
+      configurable: true,
+      enumerable: true,
+      value: value[index],
+      writable: true,
+    });
+  }
+
+  return copied;
+}
+
+function mergeSetCookieHeaderValue(
+  current: SetCookieHeaderValue | undefined,
+  incoming: SetCookieHeaderValue,
+): SetCookieHeaderValue {
+  const incomingValues = copySetCookieHeaderValue(incoming);
+
+  if (current === undefined) {
+    return incomingValues.length === 1 ? incomingValues[0] : incomingValues;
+  }
+
+  const currentValues = copySetCookieHeaderValue(current);
+  const merged = new NativeArray<string>(currentValues.length + incomingValues.length);
+
+  for (let index = 0; index < currentValues.length; index += 1) {
+    nativeObjectDefineProperty(merged, index, {
+      configurable: true,
+      enumerable: true,
+      value: currentValues[index],
+      writable: true,
+    });
+  }
+
+  for (let index = 0; index < incomingValues.length; index += 1) {
+    nativeObjectDefineProperty(merged, currentValues.length + index, {
+      configurable: true,
+      enumerable: true,
+      value: incomingValues[index],
+      writable: true,
+    });
+  }
+
+  return merged;
+}
+
+function appendSetCookieMirrorHeader(
+  headers: Record<string, SetCookieHeaderValue>,
+  name: string,
+  value: SetCookieHeaderValue,
+): void {
+  const keys = nativeObjectKeys(headers);
+  let merged: SetCookieHeaderValue | undefined;
+  let targetName: string | undefined;
+
+  for (let index = 0; index < keys.length; index += 1) {
+    const key = keys[index];
+
+    if (nativeStringToLowerCase(key) !== SET_COOKIE_HEADER_NAME) {
+      continue;
+    }
+
+    merged = mergeSetCookieHeaderValue(merged, headers[key]);
+
+    if (targetName === undefined) {
+      targetName = key;
+      continue;
+    }
+
+    nativeReflectDeleteProperty(headers, key);
+  }
+
+  nativeObjectDefineProperty(headers, targetName ?? name, {
+    configurable: true,
+    enumerable: true,
+    value: mergeSetCookieHeaderValue(merged, value),
+    writable: true,
+  });
+}
 
 /**
  * Principal payload used by testing request helpers.
@@ -238,22 +333,6 @@ function buildFrameworkRequest(req: TestRequestWithOptions): FrameworkTestReques
 function buildFrameworkResponse(): { response: MutableFrameworkResponse; result: TestResponse } {
   const result: TestResponse = { status: 200, body: undefined, headers: {} };
 
-  const mergeHeaderValue = (
-    current: string | string[] | undefined,
-    incoming: string | string[],
-  ): string | string[] => {
-    const nextValues = Array.isArray(incoming) ? incoming : [incoming];
-
-    if (current === undefined) {
-      return nextValues.length === 1 ? nextValues[0] : [...nextValues];
-    }
-
-    const currentValues = Array.isArray(current) ? current : [current];
-    const merged = [...currentValues, ...nextValues];
-
-    return merged.length === 1 ? merged[0] : merged;
-  };
-
   const response: MutableFrameworkResponse = {
     statusCode: undefined,
     headers: {},
@@ -269,9 +348,9 @@ function buildFrameworkResponse(): { response: MutableFrameworkResponse; result:
       const lowerName = nativeStringToLowerCase(name);
       const responseHeaders = this.headers as Record<string, string | string[]>;
 
-      if (lowerName === 'set-cookie') {
-        result.headers[name] = mergeHeaderValue(result.headers[name], value);
-        responseHeaders[name] = mergeHeaderValue(responseHeaders[name], value);
+      if (lowerName === SET_COOKIE_HEADER_NAME) {
+        appendSetCookieMirrorHeader(result.headers, name, value);
+        appendSetCookieMirrorHeader(responseHeaders, name, value);
         return;
       }
 

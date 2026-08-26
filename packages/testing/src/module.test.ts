@@ -908,7 +908,7 @@ describe('makeRequest', () => {
     });
   });
 
-  it('appends cookies after a caller option getter poisons header normalization', async () => {
+  it('normalizes cookie mirror casing after a caller option getter poisons header normalization', async () => {
     const originalToLowerCase = Object.getOwnPropertyDescriptor(String.prototype, 'toLowerCase');
 
     if (!originalToLowerCase) {
@@ -932,7 +932,7 @@ describe('makeRequest', () => {
     let frameworkCookieHeaders: string | string[] | undefined;
     const result = await makeRequest({
       async dispatch(_request, response) {
-        setCookie(response, 'first', 'one');
+        response.setHeader('set-cookie', 'first=one');
 
         try {
           setCookie(response, 'second', 'two', Object.defineProperty({}, 'expires', {
@@ -941,7 +941,8 @@ describe('makeRequest', () => {
               return undefined;
             },
           }));
-          frameworkCookieHeaders = response.headers['Set-Cookie'];
+          response.setHeader('set-cookie', 'third=three');
+          frameworkCookieHeaders = response.headers['set-cookie'];
         } finally {
           Object.defineProperty(String.prototype, 'toLowerCase', originalToLowerCase);
         }
@@ -950,8 +951,12 @@ describe('makeRequest', () => {
       },
     }, { path: '/' });
 
-    expect(frameworkCookieHeaders).toEqual(['first=one', 'second=two']);
-    expect(result.headers['Set-Cookie']).toEqual(['first=one', 'second=two']);
+    const frameworkCookieKeys = Object.keys(result.headers)
+      .filter((name) => name.toLowerCase() === 'set-cookie');
+
+    expect(frameworkCookieKeys).toHaveLength(1);
+    expect(frameworkCookieHeaders).toEqual(['first=one', 'second=two', 'third=three']);
+    expect(result.headers[frameworkCookieKeys[0]]).toEqual(['first=one', 'second=two', 'third=three']);
   });
 });
 
