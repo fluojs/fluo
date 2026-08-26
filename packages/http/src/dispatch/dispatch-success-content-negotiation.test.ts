@@ -84,6 +84,18 @@ class RepresentationController {
     return { ok: true };
   }
 
+  @Produces('application/*', 'application/json')
+  @Get('/mixed-invalid-produces')
+  mixedInvalidProduces() {
+    return { ok: true };
+  }
+
+  @Produces('application/*', '*/*', 'application/json;profile=v2;PROFILE=v3')
+  @Get('/invalid-produces')
+  invalidProduces() {
+    return { ok: true };
+  }
+
   @Header('Vary', 'Accept-Encoding, accept')
   @Produces('application/json', 'text/plain')
   @Get('/existing-vary')
@@ -137,12 +149,15 @@ const formatters: ResponseFormatter[] = [
   },
 ];
 
-function createNegotiatingDispatchers(configuredFormatters: ResponseFormatter[] = formatters) {
+function createNegotiatingDispatchers(
+  configuredFormatters: ResponseFormatter[] = formatters,
+  defaultMediaType = 'text/plain',
+) {
   const root = new Container().register(RepresentationController);
   const handlerMapping = createHandlerMapping([{ controllerToken: RepresentationController }]);
   const nativeDispatcher = createDispatcher({
     contentNegotiation: {
-      defaultMediaType: 'text/plain',
+      defaultMediaType,
       formatters: configuredFormatters,
     },
     handlerMapping,
@@ -155,7 +170,7 @@ function createNegotiatingDispatchers(configuredFormatters: ResponseFormatter[] 
       },
     }],
     contentNegotiation: {
-      defaultMediaType: 'text/plain',
+      defaultMediaType,
       formatters: configuredFormatters,
     },
     handlerMapping,
@@ -170,8 +185,9 @@ async function dispatchBoth(
   accept?: string,
   headers?: FrameworkRequest['headers'],
   configuredFormatters?: ResponseFormatter[],
+  defaultMediaType?: string,
 ) {
-  const { fallbackDispatcher, nativeDispatcher } = createNegotiatingDispatchers(configuredFormatters);
+  const { fallbackDispatcher, nativeDispatcher } = createNegotiatingDispatchers(configuredFormatters, defaultMediaType);
   if (!nativeDispatcher.describeRoutes || !nativeDispatcher.dispatchNativeRoute) {
     throw new Error('Expected native route dispatch support.');
   }
@@ -266,6 +282,62 @@ describe('successful response content negotiation', () => {
         Accept: ['application/json;q=1', 'text/plain;q=0.1'],
         ACCEPT: ['application/json;profile=v2;q=1'],
       },
+    ],
+    [
+      'parses a later Accept field after a malformed earlier field',
+      '/representations/all',
+      undefined,
+      200,
+      'application/json;profile=v2',
+      'json-profile',
+      {
+        Accept: ['application/json;note="unterminated'],
+        ACCEPT: ['application/json;profile=v2;q=1'],
+      },
+    ],
+    [
+      'preserves an earlier valid Accept field before a malformed later field',
+      '/representations/all',
+      undefined,
+      200,
+      'application/json;profile=v2',
+      'json-profile',
+      {
+        Accept: ['application/json;profile=v2;q=1'],
+        ACCEPT: ['application/json;note="unterminated'],
+      },
+    ],
+    [
+      'ignores a duplicated parameter q=0 after a valid Accept token',
+      '/representations/all',
+      'application/json;profile=v2;q=1, application/json;profile=v2;PROFILE=v2;q=0',
+      200,
+      'application/json;profile=v2',
+      'json-profile',
+    ],
+    [
+      'ignores a duplicated parameter q=0 before a valid Accept token',
+      '/representations/all',
+      'application/json;profile=v2;PROFILE=v2;q=0, application/json;profile=v2;q=1',
+      200,
+      'application/json;profile=v2',
+      'json-profile',
+    ],
+    [
+      'retains a valid @Produces representation beside invalid concrete types',
+      '/representations/mixed-invalid-produces',
+      'application/json',
+      200,
+      'application/json',
+      'json',
+    ],
+    [
+      'returns 406 when non-empty @Produces values are all invalid concrete types',
+      '/representations/invalid-produces',
+      'application/json',
+      406,
+      undefined,
+      undefined,
     ],
     [
       'rejects media parameters after q',
@@ -410,13 +482,35 @@ describe('successful response content negotiation', () => {
     ['drops a malformed formatter before a valid formatter', [
       { format: () => 'invalid', mediaType: 'application/json;broken' },
       { format: () => 'valid', mediaType: 'application/json' },
-    ]],
+    ], 'application/json', 'application/json', 'valid'],
     ['keeps a valid formatter before a malformed formatter', [
       { format: () => 'valid', mediaType: 'application/json' },
       { format: () => 'invalid', mediaType: 'application/json;broken' },
-    ]],
-  ])('%s', async (_name, configuredFormatters) => {
-    const { response } = await dispatchBoth('/representations/all', 'application/json', undefined, configuredFormatters);
+    ], 'application/json', 'application/json', 'valid'],
+    ['drops wildcard and duplicate concrete formatters before a valid formatter', [
+      { format: () => 'invalid-wildcard', mediaType: 'application/*' },
+      { format: () => 'invalid-duplicate', mediaType: 'application/json;profile=v2;PROFILE=v3' },
+      { format: () => 'valid-profile', mediaType: 'application/json;profile=v2' },
+    ], 'application/json;profile=v2', 'application/json;profile=v2', 'valid-profile'],
+    ['keeps a valid formatter before wildcard and duplicate concrete formatters', [
+      { format: () => 'valid-profile', mediaType: 'application/json;profile=v2' },
+      { format: () => 'invalid-wildcard', mediaType: 'application/*' },
+      { format: () => 'invalid-duplicate', mediaType: 'application/json;profile=v2;PROFILE=v3' },
+    ], 'application/json;profile=v2', 'application/json;profile=v2', 'valid-profile'],
+  ])('%s', async (_name, configuredFormatters, accept, contentType, body) => {
+    const { response } = await dispatchBoth('/representations/all', accept, undefined, configuredFormatters);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe(contentType);
+    expect(response.body).toBe(body);
+  });
+
+  it('falls back to the first unique valid formatter when defaultMediaType is invalid', async () => {
+    const { response } = await dispatchBoth('/representations/all', undefined, undefined, [
+      { format: () => 'invalid-wildcard', mediaType: 'application/*' },
+      { format: () => 'valid', mediaType: 'application/json' },
+      { format: () => 'plain', mediaType: 'text/plain' },
+    ], 'application/*');
 
     expect(response.statusCode).toBe(200);
     expect(response.headers['Content-Type']).toBe('application/json');
@@ -425,7 +519,8 @@ describe('successful response content negotiation', () => {
 
   it('disables negotiation when no formatter media type is valid', async () => {
     const { response } = await dispatchBoth('/representations/all', 'application/json', undefined, [
-      { format: () => 'invalid', mediaType: 'application/json;broken' },
+      { format: () => 'invalid-wildcard', mediaType: 'application/*' },
+      { format: () => 'invalid-duplicate', mediaType: 'application/json;profile=v2;PROFILE=v3' },
     ]);
 
     expect(response.statusCode).toBe(200);

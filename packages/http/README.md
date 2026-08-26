@@ -137,11 +137,14 @@ export function markLanguageVariance(context: RequestContext): void {
 
 Configure `ContentNegotiationOptions.formatters` on `createDispatcher(...)` or runtime bootstrap.
 `ResponseFormatter.mediaType` identifies the representation and `format(...)` returns its final
-`string` or `Uint8Array` body. A route without `@Produces(...)` uses every configured formatter; a
-route with `@Produces(...)` uses only the exact configured media types named by that metadata and
-returns `406` when the intersection is empty.
+`string` or `Uint8Array` body. Formatters, `defaultMediaType`, and `@Produces(...)` accept only
+concrete representation media types: wildcard types/subtypes and duplicate parameter names
+(case-insensitive) are ignored. A mixed list retains valid entries; an invalid-only formatter set
+disables negotiation. A route without `@Produces(...)` uses every configured formatter; a route with
+`@Produces(...)` uses only its valid exact configured media types and returns `406` when its non-empty
+metadata has no valid configured representation.
 
-For a missing `Accept` header, the selected formatter is `defaultMediaType`, or the first unique
+For a missing `Accept` header, the selected formatter is `defaultMediaType`, or the first unique valid
 configured formatter when no valid default is configured. `*/*` has the same default tie-break.
 Present headers are evaluated per representation: exact ranges outrank structured-suffix wildcards
 such as `application/*+json`, which outrank `type/*`, which outrank `*/*`. The most specific matching
@@ -149,9 +152,9 @@ range controls that representation's quality, including `q=0`; a broader positiv
 cannot re-enable a specifically excluded representation. Remaining candidates are selected by
 quality, range/type specificity, matched media-parameter count, header order, configured default, and formatter order.
 
-Malformed media ranges and malformed qualities are ignored rather than guessed or clamped. If no
-valid token remains, every matching representation is excluded by `q=0`, or no configured formatter
-matches, the dispatcher returns canonical JSON `406`. Every successful framework-managed response
+Malformed Accept media ranges and qualities, plus invalid concrete representation media types, are
+ignored rather than guessed or clamped. If no valid Accept token remains, every matching representation
+is excluded by `q=0`, or no configured formatter matches, the dispatcher returns canonical JSON `406`. Every successful framework-managed response
 that selected a formatter adds `Accept` to `Vary` through `appendVaryHeader(...)`, preserving existing
 fields, wildcard semantics, and case-insensitive deduplication. Custom response writers that take
 response ownership before formatter selection do not gain this variance. Adapter-native fast routes

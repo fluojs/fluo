@@ -35,7 +35,7 @@ function normalizeMediaType(value: string): string {
   return value.split(';')[0]?.trim().toLowerCase() ?? '';
 }
 
-function readAcceptHeader(request: FrameworkRequest): string | undefined {
+function readAcceptHeader(request: FrameworkRequest): string[] {
   const values: string[] = [];
 
   for (const [name, value] of Object.entries(request.headers)) {
@@ -51,7 +51,7 @@ function readAcceptHeader(request: FrameworkRequest): string | undefined {
     }
   }
 
-  return values.length > 0 ? values.join(',') : undefined;
+  return values;
 }
 
 function parseQuality(value: string | undefined): number | undefined {
@@ -230,11 +230,12 @@ function parseMediaType(value: string): { mediaRange: string; parameters: MediaP
 
   const [rawMediaRange, ...parameterParts] = parts;
   const mediaRange = normalizeMediaType(rawMediaRange ?? '');
-  if (!isValidMediaRange(mediaRange)) {
+  if (!isValidConcreteMediaType(mediaRange)) {
     return undefined;
   }
 
   const parameters: MediaParameter[] = [];
+  const parameterNames = new Set<string>();
   for (const parameterPart of parameterParts) {
     const parameter = parseParameter(parameterPart.trim());
     if (!parameter) {
@@ -242,7 +243,12 @@ function parseMediaType(value: string): { mediaRange: string; parameters: MediaP
     }
 
     const [name, parameterValue] = parameter;
-    parameters.push({ name: name.toLowerCase(), value: normalizeParameterValue(parameterValue) });
+    const normalizedName = name.toLowerCase();
+    if (parameterNames.has(normalizedName)) {
+      return undefined;
+    }
+    parameterNames.add(normalizedName);
+    parameters.push({ name: normalizedName, value: normalizeParameterValue(parameterValue) });
   }
 
   return { mediaRange, parameters };
@@ -266,69 +272,76 @@ function normalizeRepresentationMediaType(value: string): string | undefined {
   return parameters ? `${mediaType.mediaRange};${parameters}` : mediaType.mediaRange;
 }
 
-function parseAcceptHeader(acceptHeader: string): AcceptToken[] {
-  const tokenParts = splitOutsideQuotedStrings(acceptHeader, ',', true);
-  if (!tokenParts) {
-    return [];
-  }
-
+function parseAcceptHeader(acceptHeaders: readonly string[]): AcceptToken[] {
   const tokens: AcceptToken[] = [];
+  let order = 0;
 
-  for (const [order, token] of tokenParts.entries()) {
-    const parts = splitOutsideQuotedStrings(token.trim(), ';');
-    if (!parts) {
+  for (const acceptHeader of acceptHeaders) {
+    const tokenParts = splitOutsideQuotedStrings(acceptHeader, ',', true);
+    if (!tokenParts) {
       continue;
     }
 
-    const [rawMediaRange, ...parameterParts] = parts;
-    const mediaRange = normalizeMediaType(rawMediaRange ?? '');
-
-    if (!isValidMediaRange(mediaRange)) {
-      continue;
-    }
-
-    const mediaParameters: MediaParameter[] = [];
-    let quality = 1;
-    let qualitySeen = false;
-    let malformed = false;
-
-    for (const parameterPart of parameterParts) {
-      const parameter = parseParameter(parameterPart.trim());
-      if (!parameter) {
-        malformed = true;
-        break;
+    for (const token of tokenParts) {
+      const parts = splitOutsideQuotedStrings(token.trim(), ';');
+      if (!parts) {
+        continue;
       }
 
-      const [name, value] = parameter;
-      if (qualitySeen) {
-        malformed = true;
-        break;
+      const [rawMediaRange, ...parameterParts] = parts;
+      const mediaRange = normalizeMediaType(rawMediaRange ?? '');
+
+      if (!isValidMediaRange(mediaRange)) {
+        continue;
       }
 
-      if (name.toLowerCase() === 'q') {
-        const parsedQuality = parseQuality(value);
-        if (parsedQuality === undefined) {
+      const mediaParameters: MediaParameter[] = [];
+      const parameterNames = new Set<string>();
+      let quality = 1;
+      let qualitySeen = false;
+      let malformed = false;
+
+      for (const parameterPart of parameterParts) {
+        const parameter = parseParameter(parameterPart.trim());
+        if (!parameter) {
           malformed = true;
           break;
         }
-        quality = parsedQuality;
-        qualitySeen = true;
-      } else {
-        mediaParameters.push({ name: name.toLowerCase(), value: normalizeParameterValue(value) });
+
+        const [name, value] = parameter;
+        const normalizedName = name.toLowerCase();
+        if (parameterNames.has(normalizedName) || qualitySeen) {
+          malformed = true;
+          break;
+        }
+        parameterNames.add(normalizedName);
+
+        if (normalizedName === 'q') {
+          const parsedQuality = parseQuality(value);
+          if (parsedQuality === undefined) {
+            malformed = true;
+            break;
+          }
+          quality = parsedQuality;
+          qualitySeen = true;
+        } else {
+          mediaParameters.push({ name: normalizedName, value: normalizeParameterValue(value) });
+        }
       }
-    }
 
-    if (malformed) {
-      continue;
-    }
+      if (malformed) {
+        continue;
+      }
 
-    tokens.push({
-      mediaParameters,
-      mediaRange,
-      order,
-      quality,
-      specificity: getMediaRangeSpecificity(mediaRange),
-    });
+      tokens.push({
+        mediaParameters,
+        mediaRange,
+        order,
+        quality,
+        specificity: getMediaRangeSpecificity(mediaRange),
+      });
+      order++;
+    }
   }
 
   return tokens;
@@ -363,6 +376,15 @@ function isValidMediaRange(mediaRange: string): boolean {
   }
 
   return !subtype.includes('*') && MEDIA_TYPE_TOKEN_PATTERN.test(subtype);
+}
+
+function isValidConcreteMediaType(mediaType: string): boolean {
+  if (!isValidMediaRange(mediaType)) {
+    return false;
+  }
+
+  const [type, subtype] = mediaType.split('/');
+  return type !== '*' && subtype !== '*' && subtype?.startsWith('*+') !== true;
 }
 
 function matchesMediaParameters(mediaParameters: readonly MediaParameter[], mediaType: string): boolean {
@@ -542,13 +564,13 @@ export function selectResponseFormatter(
   }
 
   const defaultFormatter = resolveDefaultFormatter(allowedFormatters, allowedNormalizedMediaTypes, contentNegotiation);
-  const acceptHeader = readAcceptHeader(request);
+  const acceptHeaders = readAcceptHeader(request);
 
-  if (!acceptHeader) {
+  if (acceptHeaders.length === 0) {
     return defaultFormatter;
   }
 
-  const acceptTokens = parseAcceptHeader(acceptHeader);
+  const acceptTokens = parseAcceptHeader(acceptHeaders);
 
   if (!acceptTokens.length) {
     throw new NotAcceptableException(NO_ACCEPTABLE_REPRESENTATION_MESSAGE);

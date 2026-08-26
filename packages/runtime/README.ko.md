@@ -156,13 +156,17 @@ const app = await fluoFactory.create(AppModule, {
 });
 ```
 
-`Accept` header가 없거나 `*/*`이면 `defaultMediaType`(또는 첫 번째 configured formatter)을
-선택합니다. Header가 있으면 exact range, `application/*+json` 같은 structured-suffix range,
-`type/*`, `*/*` 순으로 우선합니다. Controlling range가 quality를 제공하므로 exact `q=0`
-exclusion을 더 넓은 positive wildcard가 우회하지 못합니다. Malformed entry는 무시하며 valid하고
-acceptable한 formatter가 남지 않으면 HTTP가 `406`을 반환합니다. 성공한 framework-managed
-negotiated response는 `Vary`에 case-insensitive하게 deduplicate된 `Accept` field 하나를 추가합니다.
-Native fast-route handoff와 fallback dispatch는 같은 selection policy를 사용합니다.
+`Accept` header가 없거나 `*/*`이면 `defaultMediaType`(또는 첫 번째 unique valid configured
+formatter)을 선택합니다. Formatter, `defaultMediaType`, `@Produces(...)`는 concrete representation
+media type만 받습니다. Wildcard type/subtype과 case-insensitive duplicate parameter name은 무시됩니다.
+Mixed list는 valid entry를 유지하고 invalid-only formatter set은 negotiation을 비활성화하며, non-empty
+`@Produces(...)` metadata에 valid configured representation이 없으면 `406`을 반환합니다. Header가 있으면
+exact range, `application/*+json` 같은 structured-suffix range, `type/*`, `*/*` 순으로 우선합니다.
+Controlling range가 quality를 제공하므로 exact `q=0` exclusion을 더 넓은 positive wildcard가 우회하지
+못합니다. Malformed Accept entry와 invalid concrete representation media type은 무시하며 valid하고
+acceptable한 formatter가 남지 않으면 HTTP가 `406`을 반환합니다. 성공한 framework-managed negotiated
+response는 `Vary`에 case-insensitive하게 deduplicate된 `Accept` field 하나를 추가합니다. Native fast-route
+handoff와 fallback dispatch는 같은 selection policy를 사용합니다.
 
 ### Optional HTML Error Representations
 
