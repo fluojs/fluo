@@ -350,6 +350,90 @@ describe('setCookie', () => {
     expect(setHeader).not.toHaveBeenCalled();
   });
 
+  it('resists RegExp exec poisoning from the expires getter', () => {
+    // Given
+    const response = createResponse();
+    const setHeader = vi.spyOn(response, 'setHeader');
+    const originalExec = Object.getOwnPropertyDescriptor(RegExp.prototype, 'exec');
+    let error: unknown;
+
+    try {
+      const options = {
+        get expires() {
+          Object.defineProperty(RegExp.prototype, 'exec', {
+            configurable: true,
+            value: () => ({}),
+          });
+          return undefined;
+        },
+      };
+
+      // When
+      try {
+        setCookie(response, 'session\r\nX-Injected: yes', 'value', options);
+      } catch (caught) {
+        error = caught;
+      }
+    } finally {
+      if (originalExec === undefined) {
+        Reflect.deleteProperty(RegExp.prototype, 'exec');
+      } else {
+        Object.defineProperty(RegExp.prototype, 'exec', originalExec);
+      }
+    }
+
+    // Then
+    expect(error).toBeInstanceOf(TypeError);
+    expect(setHeader).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      expectedHeader: 'session=value; Max-Age=60',
+      index: 1,
+      options: { maxAgeSeconds: 60 },
+    },
+    {
+      expectedHeader: 'session=value; Max-Age=60; Expires=Wed, 02 Jan 2030 03:04:05 GMT',
+      index: 2,
+      options: { expires: new Date('2030-01-02T03:04:05.000Z'), maxAgeSeconds: 60 },
+    },
+  ])('resists Array prototype index $index setters', ({ expectedHeader, index, options }) => {
+    // Given
+    const response = createResponse();
+    const property = String(index);
+    const originalDescriptor = Object.getOwnPropertyDescriptor(Array.prototype, property);
+    let setterCalls = 0;
+
+    try {
+      Object.defineProperty(Array.prototype, property, {
+        configurable: true,
+        set() {
+          setterCalls += 1;
+          Object.defineProperty(this, property, {
+            configurable: true,
+            enumerable: true,
+            value: 'Replaced=attribute',
+            writable: true,
+          });
+        },
+      });
+
+      // When
+      setCookie(response, 'session', 'value', options);
+    } finally {
+      if (originalDescriptor === undefined) {
+        Reflect.deleteProperty(Array.prototype, property);
+      } else {
+        Object.defineProperty(Array.prototype, property, originalDescriptor);
+      }
+    }
+
+    // Then
+    expect(setterCalls).toBe(0);
+    expect(response.headers['Set-Cookie']).toBe(expectedHeader);
+  });
+
   it('accepts a valid cross-realm Date', () => {
     // Given
     const response = createResponse();

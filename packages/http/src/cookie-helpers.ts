@@ -6,20 +6,10 @@ const NativeNumberIsFinite = Number.isFinite;
 const NativeNumberIsSafeInteger = Number.isSafeInteger;
 const NativeString = String;
 const NativeTypeError = TypeError;
-const nativeArrayJoin = Function.prototype.call.bind(Array.prototype.join);
-const nativeArrayPush = Function.prototype.call.bind(Array.prototype.push);
-const nativeArraySome = Function.prototype.call.bind(Array.prototype.some);
 const nativeDateGetTime = Function.prototype.call.bind(NativeDate.prototype.getTime);
 const nativeDateGetUTCFullYear = Function.prototype.call.bind(NativeDate.prototype.getUTCFullYear);
 const nativeDateToUTCString = Function.prototype.call.bind(NativeDate.prototype.toUTCString);
-const nativeRegExpTest = Function.prototype.call.bind(RegExp.prototype.test);
-const nativeStringSlice = Function.prototype.call.bind(String.prototype.slice);
-const nativeStringSplit = Function.prototype.call.bind(String.prototype.split);
-const nativeStringStartsWith = Function.prototype.call.bind(String.prototype.startsWith);
-const COOKIE_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
-const COOKIE_VALUE_PATTERN = /^[\u0021-\u003A\u003C-\u007E]*$/;
-const COOKIE_DOMAIN_LABEL_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
-const COOKIE_PATH_VALUE_PATTERN = /^[\u0020-\u003A\u003C-\u007E]*$/;
+const nativeStringCharCodeAt = Function.prototype.call.bind(String.prototype.charCodeAt);
 const COOKIE_DELETION_EXPIRES = new NativeDate(0);
 
 /** SameSite policies supported by the portable cookie serializer. */
@@ -59,40 +49,107 @@ function encodeCookieValue(value: string): string {
     throw new NativeTypeError('Cookie value must contain valid Unicode.', { cause: error });
   }
 
-  if (!nativeRegExpTest(COOKIE_VALUE_PATTERN, encoded)) {
+  if (!hasOnlyCookieValueCharacters(encoded)) {
     throw new NativeTypeError('Cookie value could not be encoded as a valid Set-Cookie value.');
   }
 
   return encoded;
 }
 
+function isAsciiLetterOrDigit(code: number): boolean {
+  return (
+    (code >= 0x30 && code <= 0x39)
+    || (code >= 0x41 && code <= 0x5A)
+    || (code >= 0x61 && code <= 0x7A)
+  );
+}
+
 function validateCookieName(name: string): void {
-  if (typeof name !== 'string' || !nativeRegExpTest(COOKIE_NAME_PATTERN, name)) {
+  if (typeof name !== 'string' || name.length === 0) {
     throw new NativeTypeError('Cookie name must contain only valid cookie-name characters.');
+  }
+
+  for (let index = 0; index < name.length; index += 1) {
+    const code = nativeStringCharCodeAt(name, index);
+    const isTokenPunctuation = (
+      code === 0x21 || code === 0x23 || code === 0x24 || code === 0x25
+      || code === 0x26 || code === 0x27 || code === 0x2A || code === 0x2B
+      || code === 0x2D || code === 0x2E || code === 0x5E || code === 0x5F
+      || code === 0x60 || code === 0x7C || code === 0x7E
+    );
+
+    if (!isAsciiLetterOrDigit(code) && !isTokenPunctuation) {
+      throw new NativeTypeError('Cookie name must contain only valid cookie-name characters.');
+    }
   }
 }
 
-function validateDomain(value: string): void {
-  const hostname = typeof value === 'string' && nativeStringStartsWith(value, '.')
-    ? nativeStringSlice(value, 1)
-    : value;
+function hasOnlyCookieValueCharacters(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = nativeStringCharCodeAt(value, index);
+    if (!((code >= 0x21 && code <= 0x3A) || (code >= 0x3C && code <= 0x7E))) {
+      return false;
+    }
+  }
 
-  if (
-    typeof hostname !== 'string' ||
-    hostname.length === 0 ||
-    hostname.length > 253 ||
-    nativeArraySome(
-      nativeStringSplit(hostname, '.'),
-      (label: string) => !nativeRegExpTest(COOKIE_DOMAIN_LABEL_PATTERN, label),
-    )
-  ) {
+  return true;
+}
+
+function validateDomain(value: string): void {
+  if (typeof value !== 'string') {
+    throw new NativeTypeError('Cookie domain must be a valid ASCII domain name.');
+  }
+
+  const firstCode = value.length === 0 ? -1 : nativeStringCharCodeAt(value, 0);
+  const start = firstCode === 0x2E ? 1 : 0;
+  const hostnameLength = value.length - start;
+
+  if (hostnameLength === 0 || hostnameLength > 253) {
+    throw new NativeTypeError('Cookie domain must be a valid ASCII domain name.');
+  }
+
+  let labelLength = 0;
+  let lastCode = -1;
+
+  for (let index = start; index < value.length; index += 1) {
+    const code = nativeStringCharCodeAt(value, index);
+
+    if (code === 0x2E) {
+      if (labelLength === 0 || !isAsciiLetterOrDigit(lastCode)) {
+        throw new NativeTypeError('Cookie domain must be a valid ASCII domain name.');
+      }
+
+      labelLength = 0;
+      continue;
+    }
+
+    if (
+      (!isAsciiLetterOrDigit(code) && code !== 0x2D)
+      || (labelLength === 0 && !isAsciiLetterOrDigit(code))
+      || labelLength === 63
+    ) {
+      throw new NativeTypeError('Cookie domain must be a valid ASCII domain name.');
+    }
+
+    labelLength += 1;
+    lastCode = code;
+  }
+
+  if (labelLength === 0 || !isAsciiLetterOrDigit(lastCode)) {
     throw new NativeTypeError('Cookie domain must be a valid ASCII domain name.');
   }
 }
 
 function validatePath(value: string): void {
-  if (typeof value !== 'string' || !nativeRegExpTest(COOKIE_PATH_VALUE_PATTERN, value)) {
+  if (typeof value !== 'string') {
     throw new NativeTypeError('Cookie path must contain only valid cookie attribute characters.');
+  }
+
+  for (let index = 0; index < value.length; index += 1) {
+    const code = nativeStringCharCodeAt(value, index);
+    if (!((code >= 0x20 && code <= 0x3A) || (code >= 0x3C && code <= 0x7E))) {
+      throw new NativeTypeError('Cookie path must contain only valid cookie attribute characters.');
+    }
   }
 }
 
@@ -158,28 +215,28 @@ function serializeCookie(
 
   validateCookieName(name);
   const encodedValue = encodeCookieValue(value);
-  const parts = [`${name}=${encodedValue}`];
+  let serialized = `${name}=${encodedValue}`;
 
   if (maxAgeSeconds !== undefined) {
     if (!NativeNumberIsSafeInteger(maxAgeSeconds) || maxAgeSeconds < 0) {
       throw new NativeTypeError('Cookie maxAgeSeconds must be a non-negative safe integer.');
     }
 
-    nativeArrayPush(parts, `Max-Age=${NativeString(maxAgeSeconds)}`);
+    serialized += `; Max-Age=${NativeString(maxAgeSeconds)}`;
   }
 
   if (expiresTimestamp !== undefined) {
-    nativeArrayPush(parts, `Expires=${serializeExpires(expiresTimestamp)}`);
+    serialized += `; Expires=${serializeExpires(expiresTimestamp)}`;
   }
 
   if (domain !== undefined) {
     validateDomain(domain);
-    nativeArrayPush(parts, `Domain=${domain}`);
+    serialized += `; Domain=${domain}`;
   }
 
   if (path !== undefined) {
     validatePath(path);
-    nativeArrayPush(parts, `Path=${path}`);
+    serialized += `; Path=${path}`;
   }
 
   if (httpOnly !== undefined && typeof httpOnly !== 'boolean') {
@@ -187,7 +244,7 @@ function serializeCookie(
   }
 
   if (httpOnly === true) {
-    nativeArrayPush(parts, 'HttpOnly');
+    serialized += '; HttpOnly';
   }
 
   if (secure !== undefined && typeof secure !== 'boolean') {
@@ -195,7 +252,7 @@ function serializeCookie(
   }
 
   if (secure === true) {
-    nativeArrayPush(parts, 'Secure');
+    serialized += '; Secure';
   }
 
   if (sameSite !== undefined) {
@@ -203,10 +260,10 @@ function serializeCookie(
       throw new NativeTypeError('Cookie sameSite "none" requires secure to be true.');
     }
 
-    nativeArrayPush(parts, `SameSite=${serializeSameSite(sameSite)}`);
+    serialized += `; SameSite=${serializeSameSite(sameSite)}`;
   }
 
-  return nativeArrayJoin(parts, '; ');
+  return serialized;
 }
 
 /**
