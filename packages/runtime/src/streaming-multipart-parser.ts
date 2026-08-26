@@ -189,7 +189,12 @@ export class StreamingMultipartParser {
       },
       pull: async (controller) => {
         try {
-          const chunk = await this.reader.readBodyChunk(this.bodyBoundary);
+          const chunk = await this.reader.readBodyChunk(this.bodyBoundary, {
+            maxBytes: this.maxFileSize - size,
+            onMaxBytesExceeded: () => new PayloadTooLargeException(
+              `File "${fieldname}" exceeds the maximum size of ${String(this.maxFileSize)} bytes.`,
+            ),
+          });
           size += chunk.bytes.byteLength;
 
           if (size > this.maxFileSize) {
@@ -244,7 +249,12 @@ export class StreamingMultipartParser {
     let size = initialSize;
 
     for (;;) {
-      const chunk = await this.reader.readBodyChunk(this.bodyBoundary);
+      const chunk = await this.reader.readBodyChunk(this.bodyBoundary, {
+        maxBytes: this.maxFileSize - size,
+        onMaxBytesExceeded: () => new PayloadTooLargeException(
+          `File "${fieldname}" exceeds the maximum size of ${String(this.maxFileSize)} bytes.`,
+        ),
+      });
       size += chunk.bytes.byteLength;
 
       if (size > this.maxFileSize) {

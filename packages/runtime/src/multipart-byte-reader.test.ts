@@ -42,6 +42,113 @@ describe('MultipartByteReader', () => {
     expect(body.locked).toBe(false);
   });
 
+  it('scans long split transport padding with linear copies', async () => {
+    const boundary = 'fluo-transport-padding';
+    const initialBoundary = new TextEncoder().encode(`--${boundary}`);
+    const bodyBoundary = new TextEncoder().encode(`\r\n--${boundary}`);
+    const padding = Array.from(
+      { length: 4_096 },
+      (_, index) => new Uint8Array([index % 2 === 0 ? 32 : 9]),
+    );
+    const chunks = [initialBoundary, ...padding, new Uint8Array([13]), new Uint8Array([10])];
+    let index = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        const chunk = chunks[index];
+        index += 1;
+
+        if (chunk) {
+          controller.enqueue(chunk);
+          return;
+        }
+
+        controller.close();
+      },
+    }, { highWaterMark: 0 });
+    const reader = new MultipartByteReader(body, 8 * 1024);
+    const nativeSet = Uint8Array.prototype.set;
+    let copiedBytes = 0;
+    const set = vi.spyOn(Uint8Array.prototype, 'set').mockImplementation(function (
+      this: Uint8Array,
+      source: ArrayLike<number>,
+      offset?: number,
+    ): void {
+      copiedBytes += source.length;
+      nativeSet.call(this, source, offset);
+    });
+
+    try {
+      await reader.skipPreamble(initialBoundary, bodyBoundary);
+      await expect(reader.consumeBoundarySuffix()).resolves.toBe(false);
+      expect(copiedBytes).toBeLessThan(padding.length * 4);
+    } finally {
+      set.mockRestore();
+      await reader.cancel();
+    }
+
+    expect(body.locked).toBe(false);
+  });
+
+  it('segments long invalid transport padding without copying or dropping payload bytes', async () => {
+    const boundary = 'fluo-invalid-transport-padding';
+    const delimiter = `\r\n--${boundary}`;
+    const bodyBoundary = new TextEncoder().encode(delimiter);
+    const padding = ' \t'.repeat(65_536);
+    const chunks = [
+      new TextEncoder().encode(`payload${delimiter}`),
+      ...Array.from(padding, (character) => new TextEncoder().encode(character)),
+      new TextEncoder().encode('X'),
+    ];
+    let index = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        const chunk = chunks[index];
+        index += 1;
+
+        if (chunk) {
+          controller.enqueue(chunk);
+          return;
+        }
+
+        controller.close();
+      },
+    }, { highWaterMark: 0 });
+    const reader = new MultipartByteReader(body, padding.length * 2);
+    const nativeSet = Uint8Array.prototype.set;
+    let copiedBytes = 0;
+    const set = vi.spyOn(Uint8Array.prototype, 'set').mockImplementation(function (
+      this: Uint8Array,
+      source: ArrayLike<number>,
+      offset?: number,
+    ): void {
+      copiedBytes += source.length;
+      nativeSet.call(this, source, offset);
+    });
+    const decodedChunks: string[] = [];
+
+    try {
+      for (;;) {
+        try {
+          const chunk = await reader.readBodyChunk(bodyBoundary);
+          decodedChunks.push(new TextDecoder().decode(chunk.bytes));
+        } catch (error) {
+          expect(error).toMatchObject({
+            message: 'Multipart body ended before the closing boundary.',
+          });
+          break;
+        }
+      }
+
+      expect(decodedChunks.join('')).toBe(`payload${delimiter}${padding}X`);
+      expect(copiedBytes).toBeLessThan(padding.length * 4);
+    } finally {
+      set.mockRestore();
+      await reader.cancel();
+    }
+
+    expect(body.locked).toBe(false);
+  });
+
   it('keeps abort cancellation active while draining the multipart epilogue', async () => {
     let markPullStarted!: () => void;
     const pullStarted = new Promise<void>((resolve) => {
