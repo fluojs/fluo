@@ -1,9 +1,15 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import {
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
-const { assertContract } = await import(
+const { assertContract, payloadDigest } = await import(
   resolve(process.cwd(), '.agents/workflow-contracts/contracts.mjs')
 );
 const {
@@ -13,6 +19,39 @@ const {
   resolve(
     process.cwd(),
     '.agents/skills/execute-lane/scripts/issue-supervisor.mjs',
+  )
+);
+const { assertIssueSupervisorState } = await import(
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/issue-supervisor-contracts.mjs',
+  )
+);
+const { writeActualShapedImplementerTask } = await import(
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/fixtures/implementer-task.mjs',
+  )
+);
+const { createReviewPreflight } = await import(
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/review-loop-policy.mjs',
+  )
+);
+const { writeActualShapedReviewerTask } = await import(
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/fixtures/reviewer-task.mjs',
+  )
+);
+const {
+  reviewerPromptSentinel,
+  reviewerTaskName,
+} = await import(
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/reviewer-runtime.mjs',
   )
 );
 const { validateLedger } = await import(
@@ -28,6 +67,13 @@ const adaptiveRetryPolicy = {
 
 const startedAt = '2026-08-25T00:00:00.000Z';
 const observedAfterLegacyBudget = '2026-08-26T00:00:00.000Z';
+const repositoryRoot = realpathSync(
+  mkdtempSync(join(tmpdir(), 'fluo-adaptive-v2-')),
+);
+const parentSessionId = 'ses-adaptive-retry';
+afterAll(() => {
+  rmSync(repositoryRoot, { force: true, recursive: true });
+});
 
 const identity = {
   lane_id: 'lane-adaptive-retry',
@@ -36,6 +82,12 @@ const identity = {
   worktree: '.worktrees/issue-4101-adaptive-retry',
   starting_head_sha: '0'.repeat(40),
   started_at: startedAt,
+  review_policy: 'preflight-v1',
+  repository_root: repositoryRoot,
+  parent_session_id: parentSessionId,
+  issue_contract_revision: 'issue-4101@1',
+  issue_contract_sha256: '1'.repeat(64),
+  lane_plan_approval_sha256: '2'.repeat(64),
   release_handoff: false,
   authority_scope: {
     pr_creation: true,
@@ -74,6 +126,182 @@ const reviewsFor = (head: string, fixBackEligible: boolean) => [
   },
 ];
 
+const reviewPreflight = createReviewPreflight({
+  version: 1,
+  lane_id: identity.lane_id,
+  issue_number: identity.issue_number,
+  issue_contract_revision: identity.issue_contract_revision,
+  issue_contract_sha256: identity.issue_contract_sha256,
+  lane_plan_approval_sha256: identity.lane_plan_approval_sha256,
+  head_sha: identity.starting_head_sha,
+  generated_at: startedAt,
+  approved_sources: [
+    {
+      source: 'adaptive retry acceptance',
+      revision: identity.issue_contract_revision,
+      content_sha256: '3'.repeat(64),
+    },
+  ],
+  acceptance_row_ids: ['adaptive-retry'],
+  rows: [
+    {
+      id: 'adaptive-retry',
+      acceptance_text: 'Fixable work remains active across adaptive retries.',
+      acceptance_sha256: payloadDigest({ content: 'Fixable work remains active across adaptive retries.' }),
+      source: 'adaptive retry acceptance',
+      source_bindings: [{ source: 'adaptive retry acceptance', revision: identity.issue_contract_revision, content_sha256: '3'.repeat(64) }],
+      invariant: 'Fixable work remains active across adaptive retries.',
+      surfaces: ['issue-supervisor'],
+      positive_cases: ['A remediated blocker advances to a new head.'],
+      negative_cases: ['A non-fixable blocker parks for human review.'],
+      boundary_cases: ['Fresh implementers rotate after two blocked heads.'],
+    },
+  ],
+  nonfunctional: {
+    complexity: 'Retry bookkeeping remains bounded per transition.',
+    memory: 'The blocker ledger grows only with observed blockers.',
+    atomicity: 'Each retry transition is atomic.',
+    mutation_boundary: 'Only issue-local state changes.',
+  },
+});
+
+const reviewerTask = (axis: string, head: string, fixBackEligible: boolean) => {
+  const taskId = `st_${axis}${head.slice(0, 8)}`;
+  const blocked = axis === 'code';
+  const finalResponse = {
+    sentinel: 'fluo:execute-lane:review:final:v1',
+    axis,
+    head_sha: head,
+    preflight_sha256: reviewPreflight.sha256,
+    verdict_signal: blocked ? 'BLOCK' : 'PASS',
+    coverage: { 'adaptive-retry': blocked ? 'BLOCK' : 'PASS' },
+    blockers: blocked ? [blocker(fixBackEligible)] : [],
+    blocker_sources: blocked
+      ? {
+          'runtime:worker:abort-path': {
+            contract_source: 'adaptive retry acceptance',
+            violated_invariant: 'adaptive-retry',
+            reproduction: 'Exercise the worker abort path.',
+            why_blocking: fixBackEligible ? 'correctness' : 'compatibility',
+          },
+        }
+      : {},
+  };
+  const task = {
+    task_id: taskId,
+    status: 'completed',
+    category: 'deep',
+    parent_session_id: parentSessionId,
+    name: reviewerTaskName(axis, identity.issue_number, head),
+    final_response:
+      `<fluo:execute-lane:review:final:v1>${JSON.stringify(finalResponse)}` +
+      '</fluo:execute-lane:review:final:v1>',
+    spawn_spec: {
+      cwd: repositoryRoot,
+      prompt:
+        `Review without mutation.\n${reviewerPromptSentinel({
+          repository_root: repositoryRoot,
+          lane_id: identity.lane_id,
+          issue_number: identity.issue_number,
+          worktree: identity.worktree,
+          head_sha: head,
+          preflight_sha256: reviewPreflight.sha256,
+          review_axis: axis,
+        })}`,
+    },
+  };
+  const receipt = writeActualShapedReviewerTask({
+    task,
+    repository_root: repositoryRoot,
+    expected: {
+      task_id: taskId,
+      parent_session_id: parentSessionId,
+      lane_id: identity.lane_id,
+      issue_number: identity.issue_number,
+      worktree: identity.worktree,
+      branch: identity.branch,
+      head_sha: head,
+      preflight_sha256: reviewPreflight.sha256,
+      axis,
+    },
+  });
+  return { taskId, receipt };
+};
+
+const reviewBatchFor = (head: string, fixBackEligible: boolean) => {
+  const tasks = Object.fromEntries(
+    ['contract', 'code', 'verification'].map((axis) => [
+      axis,
+      reviewerTask(axis, head, fixBackEligible),
+    ]),
+  ) as Record<
+    string,
+    Readonly<{ taskId: string; receipt: Readonly<Record<string, unknown>> }>
+  >;
+  return {
+    preflight_sha256: reviewPreflight.sha256,
+    task_ids: Object.fromEntries(
+      Object.entries(tasks).map(([axis, task]) => [axis, task.taskId]),
+    ),
+    reviewer_receipts: Object.fromEntries(
+      Object.entries(tasks).map(([axis, task]) => [axis, task.receipt]),
+    ),
+    coverage: {
+      contract: { 'adaptive-retry': 'PASS' },
+      code: { 'adaptive-retry': 'BLOCK' },
+      verification: { 'adaptive-retry': 'PASS' },
+    },
+    blocker_sources: {
+      'runtime:worker:abort-path': {
+        contract_source: 'adaptive retry acceptance',
+        violated_invariant: 'adaptive-retry',
+        reproduction: 'Exercise the worker abort path.',
+        why_blocking: fixBackEligible ? 'correctness' : 'compatibility',
+      },
+    },
+  };
+};
+
+const persistImplementerTask = (
+  state: Readonly<Record<string, unknown>>,
+  newHead: string,
+  generation: number,
+  result: 'implementation-completed' | 'fix-completed',
+) => {
+  const taskId = `st_implement${String(generation)}${newHead.slice(0, 8)}`;
+  writeActualShapedImplementerTask({
+    repository_root: repositoryRoot,
+    task_id: taskId,
+    parent_session_id: parentSessionId,
+    lane_id: identity.lane_id,
+    issue_number: identity.issue_number,
+    worktree: identity.worktree,
+    current_head: state.head_sha,
+    new_head: newHead,
+    generation,
+    result,
+    verification: 'focused tests passed',
+    addressed_blockers:
+      result === 'fix-completed'
+        ? remediatedBlockers(state.blockers as Record<string, unknown>[])
+        : [],
+    blocker_ledger: state.blocker_ledger as Record<string, unknown>[],
+    unresolved_blockers: (state.blocker_ledger as Record<string, unknown>[]).filter(
+      (entry) => entry.remediation_status === 'unresolved',
+    ),
+    blocker_ledger_sha256: payloadDigest(state.blocker_ledger),
+    preflight_sha256: reviewPreflight.sha256,
+    authoritative_preflight: reviewPreflight,
+  });
+  return { task_id: taskId };
+};
+
+const createImplementingState = () =>
+  transitionIssueSupervisor(createIssueSupervisor(identity), {
+    kind: 'preflight-completed',
+    preflight: reviewPreflight,
+  });
+
 const remediatedBlockers = (blockers: readonly Record<string, unknown>[]) =>
   blockers.map((item) => ({ ...item, status: 'remediated' }));
 
@@ -91,12 +319,19 @@ const parseRecord = (path: string): Record<string, unknown> => {
 describe('execute-lane adaptive retry policy', () => {
   it('keeps fixable work active beyond legacy count and wall-clock budgets', () => {
     // Given
-    let state = createIssueSupervisor(identity);
+    let state = createImplementingState();
     let head = 'a'.repeat(40);
     state = transitionIssueSupervisor(state, {
       kind: 'implementation-completed',
       new_head: head,
       verification: 'focused tests passed',
+      implementer_generation: 1,
+      implementer_evidence: persistImplementerTask(
+        state,
+        head,
+        1,
+        'implementation-completed',
+      ),
     });
 
     // When
@@ -106,13 +341,33 @@ describe('execute-lane adaptive retry policy', () => {
       state = transitionIssueSupervisor(state, {
         kind: 'local-review',
         reviews: reviewsFor(head, true),
+        review_batch: reviewBatchFor(head, true),
       });
+      const refresh = state.blocked_heads_since_refresh >= 2;
+      const generation = refresh
+        ? state.implementer_generation + 1
+        : state.implementer_generation;
       state = transitionIssueSupervisor(state, {
         kind: 'fix-completed',
         new_head: nextHead,
         observed_at: observedAfterLegacyBudget,
         verification: 'focused tests passed',
         addressed_blockers: remediatedBlockers(state.blockers),
+        fresh_implementer: refresh,
+        implementer_generation: generation,
+        implementer_evidence: persistImplementerTask(
+          state,
+          nextHead,
+          generation,
+          'fix-completed',
+        ),
+        ...(refresh
+          ? {
+              fresh_implementer_evidence: {
+                task_id: `st_implement${String(generation)}${nextHead.slice(0, 8)}`,
+              },
+            }
+          : {}),
       });
       head = nextHead;
     }
@@ -121,22 +376,134 @@ describe('execute-lane adaptive retry policy', () => {
     expect(state.status).toBe('local-review');
     expect(state.attempt).toBe(6);
     expect(state.head_sha).toBe('1'.repeat(40));
+    expect(state.blocker_ledger).toHaveLength(6);
+    expect(
+      (state.blocker_ledger as Record<string, unknown>[]).map(
+        (entry) => entry.implementer_generation,
+      ),
+    ).toEqual([1, 1, 2, 2, 3, 3]);
+    expect(
+      (state.blocker_ledger as Record<string, unknown>[]).every(
+        (entry) => entry.remediation_status === 'remediated',
+      ),
+    ).toBe(true);
+    expect(state.blockers).toEqual([]);
+    const refreshed = (state.implementer_tasks as Record<string, unknown>[]).filter(
+      (receipt) => Number(receipt.generation) > 1,
+    );
+    expect(state.implementer_tasks).toHaveLength(7);
+    expect(refreshed).toHaveLength(5);
+    expect(refreshed.map((receipt) => receipt.blocker_ledger_sha256)).toEqual(
+      refreshed.map((receipt) => payloadDigest(receipt.blocker_ledger)),
+    );
+    expect(
+      refreshed.map((receipt) =>
+        (receipt.unresolved_blockers as Record<string, unknown>[]).length,
+      ),
+    ).toEqual([1, 1, 1, 1, 1]);
+  });
+
+  it('rejects canonical blocker ledger tampering, duplication, and reordering', () => {
+    let state = createImplementingState();
+    const firstHead = 'a'.repeat(40);
+    state = transitionIssueSupervisor(state, {
+      kind: 'implementation-completed',
+      new_head: firstHead,
+      verification: 'focused tests passed',
+      implementer_generation: 1,
+      implementer_evidence: persistImplementerTask(
+        state,
+        firstHead,
+        1,
+        'implementation-completed',
+      ),
+    });
+    state = transitionIssueSupervisor(state, {
+      kind: 'local-review',
+      reviews: reviewsFor(firstHead, true),
+      review_batch: reviewBatchFor(firstHead, true),
+    });
+    const secondHead = 'b'.repeat(40);
+    state = transitionIssueSupervisor(state, {
+      kind: 'fix-completed',
+      new_head: secondHead,
+      observed_at: observedAfterLegacyBudget,
+      verification: 'focused tests passed',
+      addressed_blockers: remediatedBlockers(state.blockers),
+      fresh_implementer: false,
+      implementer_generation: 1,
+      implementer_evidence: persistImplementerTask(
+        state,
+        secondHead,
+        1,
+        'fix-completed',
+      ),
+    });
+    state = transitionIssueSupervisor(state, {
+      kind: 'local-review',
+      reviews: reviewsFor(secondHead, true),
+      review_batch: reviewBatchFor(secondHead, true),
+    });
+    expect(() => assertIssueSupervisorState(state)).not.toThrow();
+
+    const mutations: ((entry: Record<string, any>) => void)[] = [
+      (entry) => { entry.reviewed_head_sha = 'f'.repeat(40); },
+      (entry) => { entry.reviewer_receipt.task_id = 'st_forged'; },
+      (entry) => { entry.preflight_sha256 = 'f'.repeat(64); },
+      (entry) => { entry.approved_contract_source = 'forged source'; },
+      (entry) => { entry.reproduction = 'forged reproduction'; },
+      (entry) => { entry.blocking_reason = 'security'; },
+      (entry) => { entry.blocker.evidence = 'forged blocker'; },
+      (entry) => { entry.identity_sha256 = 'f'.repeat(64); },
+    ];
+    for (const mutate of mutations) {
+      const forged = structuredClone(state);
+      mutate(forged.blocker_ledger[0]);
+      expect(() => assertIssueSupervisorState(forged)).toThrow(/blocker ledger/u);
+    }
+    const duplicate = structuredClone(state);
+    duplicate.blocker_ledger[1] = structuredClone(duplicate.blocker_ledger[0]);
+    duplicate.blockers = [];
+    expect(() => assertIssueSupervisorState(duplicate)).toThrow(/blocker ledger/u);
+    const reordered = structuredClone(state);
+    reordered.blocker_ledger.reverse();
+    expect(() => assertIssueSupervisorState(reordered)).toThrow(/blocker ledger/u);
+  });
+
+  it('rejects caller-authored cumulative ledger transition data', () => {
+    const state = createImplementingState();
+    expect(() =>
+      transitionIssueSupervisor(state, {
+        kind: 'local-review',
+        blocker_ledger: [{ invented: true }],
+        unresolved_blockers: [],
+        blocker_ledger_sha256: 'f'.repeat(64),
+      }),
+    ).toThrow(/caller-authored blocker ledger/u);
   });
 
   it('parks an explicitly non-fixable blocker for human resolution', () => {
     // Given
-    let state = createIssueSupervisor(identity);
+    let state = createImplementingState();
     const head = 'a'.repeat(40);
     state = transitionIssueSupervisor(state, {
       kind: 'implementation-completed',
       new_head: head,
       verification: 'focused tests passed',
+      implementer_generation: 1,
+      implementer_evidence: persistImplementerTask(
+        state,
+        head,
+        1,
+        'implementation-completed',
+      ),
     });
 
     // When
     state = transitionIssueSupervisor(state, {
       kind: 'local-review',
       reviews: reviewsFor(head, false),
+      review_batch: reviewBatchFor(head, false),
     });
 
     // Then

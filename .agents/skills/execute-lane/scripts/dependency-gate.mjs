@@ -2,6 +2,7 @@ import {
   assertContract,
   assertEventChain,
 } from '../../../workflow-contracts/contracts.mjs';
+import { isStrictRfc3339DateTime } from '../../../workflow-contracts/schema-validator.mjs';
 import { terminalStatuses } from '../../../../tooling/governance/lane-ledger-contract.mjs';
 import { validateLedger } from '../../../../tooling/governance/lane-ledger-state.mjs';
 import {
@@ -123,7 +124,7 @@ const artifactAbsenceFor = (observations, issueNumber) => {
     observation === undefined ||
     absenceKeys.some((key) => observation[key] !== true) ||
     typeof observation.observed_at !== 'string' ||
-    Number.isNaN(Date.parse(observation.observed_at))
+    !isStrictRfc3339DateTime(observation.observed_at)
   ) {
     throw new TypeError(
       `issue ${String(issueNumber)} artifact absence observation is missing.`,

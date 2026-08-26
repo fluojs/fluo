@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fluo.dev/schemas/omo/review-preflight.schema.json",
+  "title": "OMO issue review preflight",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version", "lane_id", "issue_number", "issue_contract_revision",
+    "issue_contract_sha256", "lane_plan_approval_sha256", "head_sha",
+    "generated_at", "approved_sources", "acceptance_row_ids", "rows",
+    "nonfunctional", "sha256"
+  ],
+  "$defs": {
+    "sourceBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "revision", "content_sha256"],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "revision": { "type": "string", "minLength": 1 },
+        "content_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  },
+  "properties": {
+    "version": { "const": 1 },
+    "lane_id": { "type": "string", "minLength": 1 },
+    "issue_number": { "type": "integer", "minimum": 1 },
+    "issue_contract_revision": { "type": "string", "minLength": 1 },
+    "issue_contract_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "lane_plan_approval_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "head_sha": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "approved_sources": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": { "$ref": "#/$defs/sourceBinding" }
+    },
+    "acceptance_row_ids": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]*$" }
+    },
+    "rows": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "acceptance_text", "acceptance_sha256", "source", "source_bindings", "invariant", "surfaces", "positive_cases", "negative_cases", "boundary_cases"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]*$" },
+          "acceptance_text": { "type": "string", "minLength": 1 },
+          "acceptance_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "source": { "type": "string", "minLength": 1 },
+          "source_bindings": {
+            "type": "array", "minItems": 1, "uniqueItems": true,
+            "items": { "$ref": "#/$defs/sourceBinding" }
+          },
+          "invariant": { "type": "string", "minLength": 1 },
+          "surfaces": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+          "positive_cases": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+          "negative_cases": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+          "boundary_cases": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
+    "nonfunctional": {
+      "type": "object", "additionalProperties": false,
+      "required": ["complexity", "memory", "atomicity", "mutation_boundary"],
+      "properties": {
+        "complexity": { "type": "string", "minLength": 1 },
+        "memory": { "type": "string", "minLength": 1 },
+        "atomicity": { "type": "string", "minLength": 1 },
+        "mutation_boundary": { "type": "string", "minLength": 1 }
+      }
+    },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  }
+}

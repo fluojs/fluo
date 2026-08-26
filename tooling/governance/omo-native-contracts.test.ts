@@ -9,6 +9,7 @@ const contractNames = [
   'search-artifact-v2',
   'lane-ledger-v2',
   'lane-dag-binding',
+  'review-preflight',
   'local-review-verdict',
   'review-verdict',
   'blocker',
@@ -115,8 +116,90 @@ const laneDagBinding = {
   snapshot_event_hash: null,
   status: 'attached',
 };
-const localReviewVerdict = {
+const reviewPreflightContent = {
   version: 1,
+  lane_id: lane.lane_id,
+  issue_number: issueNumber,
+  issue_contract_revision: 'issue-4101@1',
+  issue_contract_sha256: '1'.repeat(64),
+  lane_plan_approval_sha256: '2'.repeat(64),
+  head_sha: headSha,
+  generated_at: '2026-08-26T00:00:00.000Z',
+  approved_sources: [{ source: 'issue #4101', revision: 'issue-4101@1', content_sha256: '3'.repeat(64) }],
+  acceptance_row_ids: ['runtime-contract'],
+  rows: [{
+    id: 'runtime-contract',
+    acceptance_text: 'Runtime contract remains compatible.',
+    acceptance_sha256: createHash('sha256').update(JSON.stringify({ content: 'Runtime contract remains compatible.' })).digest('hex'),
+    source: 'issue #4101',
+    source_bindings: [{ source: 'issue #4101', revision: 'issue-4101@1', content_sha256: '3'.repeat(64) }],
+    invariant: 'Runtime contract remains compatible.',
+    surfaces: ['runtime'],
+    positive_cases: ['supported input'],
+    negative_cases: ['unsupported input'],
+    boundary_cases: ['empty input'],
+  }],
+  nonfunctional: {
+    complexity: 'linear',
+    memory: 'bounded',
+    atomicity: 'atomic',
+    mutation_boundary: 'read-only',
+  },
+};
+const reviewPreflight = {
+  ...reviewPreflightContent,
+  sha256: createHash('sha256').update(JSON.stringify(reviewPreflightContent)).digest('hex'),
+};
+const reviewerReceipts = Object.fromEntries(
+  ['contract', 'code', 'verification'].map((axis) => {
+    const finalResponse = {
+      sentinel: 'fluo:execute-lane:review:final:v1',
+      axis,
+      head_sha: headSha,
+      preflight_sha256: reviewPreflight.sha256,
+      verdict_signal: 'PASS',
+      coverage: { 'runtime-contract': 'PASS' },
+      blockers: [],
+      blocker_sources: {},
+    };
+    const toolEvents = [{
+      tool: axis === 'verification' ? 'bash' : 'read',
+      is_error: false,
+      arguments: axis === 'verification'
+        ? { command: 'canonical verification fixture command' }
+        : { path: 'package.json' },
+    }];
+    const sessionSha = '4'.repeat(64);
+    return [axis, {
+      task_id: `st_${axis}`,
+      record_sha256: '3'.repeat(64),
+      output_sha256: createHash('sha256').update(JSON.stringify(finalResponse)).digest('hex'),
+      final_response: finalResponse,
+      parent_session_id: 'ses_contracts',
+      lane_id: lane.lane_id,
+      issue_number: issueNumber,
+      worktree: '.worktrees/issue-4101-runtime',
+      head_sha: headSha,
+      preflight_sha256: reviewPreflight.sha256,
+      axis,
+      mutation_sentinel: 'fluo:execute-lane:review:read-only:v1',
+      session_sha256: sessionSha,
+      tool_events_sha256: createHash('sha256').update(JSON.stringify(toolEvents)).digest('hex'),
+      tool_events: toolEvents,
+      canonical_verification: axis === 'verification' ? {
+        receipt_sha256: '5'.repeat(64),
+        authority_snapshot_sha256: '6'.repeat(64),
+        command: ['pnpm', 'verify'],
+        shell_command: 'canonical verification fixture command',
+        status: 0,
+        result: 'pass',
+        session_sha256: sessionSha,
+      } : null,
+    }];
+  }),
+);
+const localReviewVerdict = {
+  version: 2,
   lane_id: lane.lane_id,
   issue_number: issueNumber,
   verdict: 'ready-for-pr',
@@ -127,6 +210,27 @@ const localReviewVerdict = {
     verification: 'PASS',
   },
   blockers: [],
+  reviews: ['contract', 'code', 'verification'].map((reviewer) => ({
+    reviewer,
+    reviewed_head_sha: headSha,
+    verdict_signal: 'PASS',
+    blockers: [],
+  })),
+  review_batch: {
+    preflight_sha256: reviewPreflight.sha256,
+    task_ids: {
+      contract: 'st_contract',
+      code: 'st_code',
+      verification: 'st_verification',
+    },
+    reviewer_receipts: reviewerReceipts,
+    coverage: {
+      contract: { 'runtime-contract': 'PASS' },
+      code: { 'runtime-contract': 'PASS' },
+      verification: { 'runtime-contract': 'PASS' },
+    },
+    blocker_sources: {},
+  },
 };
 const blocker = {
   reviewer: 'code',
@@ -199,6 +303,7 @@ describe('OMO native workflow JSON schemas', () => {
     ['search-artifact-v2', artifact],
     ['lane-ledger-v2', lane],
     ['lane-dag-binding', laneDagBinding],
+    ['review-preflight', reviewPreflight],
     ['local-review-verdict', localReviewVerdict],
     ['review-verdict', reviewVerdict],
     ['blocker', blocker],
@@ -283,6 +388,63 @@ describe('OMO native cross-contract invariants', () => {
     expect(() =>
       api.assertContract('blocker', { ...blocker, retryable: true }),
     ).toThrow(/unknown key/u);
+  });
+
+  it('enforces referenced review evidence schemas and date-time formats', () => {
+    const api = requireContracts();
+    const v2Verdict = {
+      ...localReviewVerdict,
+      version: 2,
+      reviews: [
+        { reviewer: 'contract', reviewed_head_sha: headSha, verdict_signal: 'PASS', blockers: [] },
+        { reviewer: 'code', reviewed_head_sha: headSha, verdict_signal: 'PASS', blockers: [] },
+        { reviewer: 'verification', reviewed_head_sha: headSha, verdict_signal: 'PASS', blockers: [] },
+      ],
+      review_batch: {
+        preflight_sha256: reviewPreflight.sha256,
+        task_ids: { contract: 'st_contract', code: 'st_code', verification: 'st_verification' },
+        reviewer_receipts: reviewerReceipts,
+        coverage: {
+          contract: { 'runtime-contract': 'PASS' },
+          code: { 'runtime-contract': 'PASS' },
+          verification: { 'runtime-contract': 'PASS' },
+        },
+        blocker_sources: {},
+      },
+    };
+    expect(() => api.assertContract('local-review-verdict', v2Verdict)).not.toThrow();
+    for (const generatedAt of [
+      'not-a-date',
+      '2026-02-30T00:00:00Z',
+      '2025-02-29T00:00:00Z',
+      '2026-01-01T24:00:00Z',
+      '2026-01-01T00:60:00Z',
+      '2026-01-01T00:00:60Z',
+      '2026-01-01T00:00:00+24:00',
+      '2026-01-01T00:00:00+00:60',
+    ]) {
+      expect(() => api.assertContract('review-preflight', { ...reviewPreflight, generated_at: generatedAt })).toThrow(/date-time/u);
+    }
+    for (const generatedAt of [
+      '2024-02-29T23:59:59Z',
+      '2026-04-30T12:34:56.123456-07:30',
+      '2026-01-01T00:00:00+23:59',
+    ]) {
+      const content = { ...reviewPreflightContent, generated_at: generatedAt };
+      const valid = {
+        ...content,
+        sha256: createHash('sha256').update(JSON.stringify(content)).digest('hex'),
+      };
+      expect(() => api.assertContract('review-preflight', valid)).not.toThrow();
+    }
+    expect(() => api.assertContract('local-review-verdict', {
+      ...v2Verdict,
+      review_batch: { ...v2Verdict.review_batch, coverage: { ...v2Verdict.review_batch.coverage, code: {} } },
+    })).toThrow(/property/u);
+    expect(() => api.assertContract('local-review-verdict', {
+      ...v2Verdict,
+      review_batch: { ...v2Verdict.review_batch, blocker_sources: { invented: { contract_source: 'x' } } },
+    })).toThrow(/required/u);
   });
 
   it('records successful side effects as head-bound receipts', () => {

@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   mkdirSync,
   mkdtempSync,
@@ -11,9 +13,12 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
-// allow: SIZE_OK — integrated legacy supervisor lifecycle regression matrix.
+const senpiFinal = (sentinel: string, payload: unknown) =>
+  `<${sentinel}>${JSON.stringify(payload)}</${sentinel}>`;
+
+// allow: SIZE_OK — integrated v2 supervisor lifecycle regression matrix.
 type DagNode = Readonly<{
   id: string;
   category: string;
@@ -41,13 +46,28 @@ type DagBinding = Readonly<{
   status: string;
 }>;
 type SupervisorState = Readonly<{
+  version: 2;
   lane_id: string;
   issue_number: number;
+  issue_contract_revision: string;
+  issue_contract_sha256: string;
+  lane_plan_approval_sha256: string;
+  repository_root: string;
   head_sha: string;
+  branch: string;
+  worktree: string;
   status: string;
+  authority_scope: Readonly<{
+    cleanup_command_worktrees: boolean;
+  }>;
   blockers: readonly Blocker[];
+  blocker_ledger: readonly Readonly<Record<string, unknown>>[];
+  blocked_heads_since_refresh: number;
+  implementer_generation: number;
+  implementer_tasks: readonly Readonly<Record<string, unknown>>[];
   pr: null | Readonly<Record<string, unknown>>;
   ci: null | Readonly<Record<string, unknown>>;
+  review_preflight: null | Readonly<Record<string, unknown>>;
   local_review: null | {
     verdict: string;
     head_sha: string;
@@ -56,8 +76,8 @@ type SupervisorState = Readonly<{
 }>;
 
 const {
-  createIssueSupervisor,
-  transitionIssueSupervisor,
+  createIssueSupervisor: createSupervisorV2,
+  transitionIssueSupervisor: transitionSupervisorV2,
 } = (await import(
   resolve(
     process.cwd(),
@@ -69,6 +89,58 @@ const {
     state: SupervisorState,
     transition: unknown,
   ) => SupervisorState;
+};
+const { prepareCanonicalV2Runtime } = await import(
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/fixtures/v2-canonical-runtime.mjs',
+  )
+);
+const { computeConflictGitEvidence } = await import(
+  resolve(process.cwd(), '.agents/skills/execute-lane/scripts/trusted-evidence.mjs')
+);
+const {
+  writeActualShapedConflictImplementerTask,
+  writeActualShapedImplementerTask,
+} = await import(
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/fixtures/implementer-task.mjs',
+  )
+);
+const { writeActualShapedReviewerTask } = await import(
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/fixtures/reviewer-task.mjs',
+  )
+);
+const { createReviewPreflight } = (await import(
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/review-loop-policy.mjs',
+  )
+)) as {
+  createReviewPreflight: (input: unknown) => Readonly<Record<string, unknown>>;
+};
+const {
+  conflictReviewerPromptSentinel,
+  conflictReviewerTaskName,
+  reviewerPromptSentinel,
+  reviewerTaskName,
+} = (await import(
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/reviewer-runtime.mjs',
+  )
+)) as {
+  conflictReviewerPromptSentinel: (input: unknown) => string;
+  conflictReviewerTaskName: (issueNumber: number, headSha: string) => string;
+  reviewerPromptSentinel: (input: unknown) => string;
+  reviewerTaskName: (
+    axis: string,
+    issueNumber: number,
+    headSha: string,
+  ) => string;
 };
 const { compileLaneSupervisorDag, implementerRoute } = (await import(
   resolve(
@@ -109,9 +181,9 @@ const {
   persistDagBinding: (runtimeRoot: string, binding: DagBinding) => void;
 };
 const {
-  applyIssueSupervisorTransition,
-  initialiseIssueSupervisorStore,
-  loadIssueSupervisorStore,
+  applyIssueSupervisorTransition: applyIssueSupervisorTransitionRaw,
+  initialiseIssueSupervisorStore: initialiseIssueSupervisorStoreRaw,
+  loadIssueSupervisorStore: loadIssueSupervisorStoreRaw,
 } = (await import(
   resolve(
     process.cwd(),
@@ -123,6 +195,7 @@ const {
     laneId: string,
     issueNumber: number,
     transition: unknown,
+    options?: unknown,
   ) => {
     snapshot: SupervisorState;
     events: readonly Readonly<Record<string, unknown>>[];
@@ -131,6 +204,7 @@ const {
   initialiseIssueSupervisorStore: (
     runtimeRoot: string,
     identity: unknown,
+    options?: unknown,
   ) => {
     snapshot: SupervisorState;
     events: readonly Readonly<Record<string, unknown>>[];
@@ -140,13 +214,22 @@ const {
     runtimeRoot: string,
     laneId: string,
     issueNumber: number,
+    options?: unknown,
   ) => {
     snapshot: SupervisorState;
     events: readonly Readonly<Record<string, unknown>>[];
     receipts: readonly Readonly<Record<string, unknown>>[];
   } | null;
 };
-const { importSupervisorTerminal } = (await import(
+const storeRunners = new Map<string, any>();
+const initialiseIssueSupervisorStore = (runtimeRoot: string, value: unknown) =>
+  initialiseIssueSupervisorStoreRaw(runtimeRoot, value, { command_runner: storeRunners.get(runtimeRoot) });
+const applyIssueSupervisorTransition = (runtimeRoot: string, lane: string, issue: number, value: unknown) =>
+  applyIssueSupervisorTransitionRaw(runtimeRoot, lane, issue, value, { command_runner: storeRunners.get(runtimeRoot) });
+const loadIssueSupervisorStore = (runtimeRoot: string, lane: string, issue: number) =>
+  loadIssueSupervisorStoreRaw(runtimeRoot, lane, issue, { command_runner: storeRunners.get(runtimeRoot) });
+
+const { importSupervisorTerminal: importSupervisorTerminalRaw } = (await import(
   resolve(
     process.cwd(),
     '.agents/skills/execute-lane/scripts/supervisor-terminal.mjs',
@@ -169,17 +252,42 @@ const { importSupervisorTerminal } = (await import(
       artifact: Readonly<Record<string, unknown>>;
       artifact_path: string;
     } | null,
+    trustedOptions?: unknown,
   ) => {
     snapshot: Readonly<Record<string, unknown>>;
     events: readonly unknown[];
     receipts: readonly unknown[];
   };
 };
+const importSupervisorTerminal = (
+  persisted: any,
+  supervisorBundle: any,
+  liveCompletion: any = null,
+  releaseHandoffContext: any = null,
+) => {
+  const repositoryRoot = supervisorBundle.snapshot.repository_root;
+  const runtimeRoot = resolve(repositoryRoot, '.omo', 'lane-runs');
+  return importSupervisorTerminalRaw(
+    persisted,
+    supervisorBundle,
+    liveCompletion,
+    releaseHandoffContext,
+    { repository_root: repositoryRoot, command_runner: storeRunners.get(runtimeRoot) },
+  );
+};
 
 const headA = 'a'.repeat(40);
 const headB = 'b'.repeat(40);
 const headC = 'c'.repeat(40);
 const observedAt = '2026-08-25T00:00:00.000Z';
+const governanceRepositoryRoot = realpathSync(
+  mkdtempSync(join(tmpdir(), 'fluo-governance-reviewers-')),
+);
+const terminalFixtureRoots: string[] = [];
+afterAll(() => {
+  rmSync(governanceRepositoryRoot, { force: true, recursive: true });
+  for (const root of terminalFixtureRoots) rmSync(root, { force: true, recursive: true });
+});
 
 type Blocker = Readonly<{
   reviewer: string;
@@ -198,6 +306,342 @@ const remediate = (blockers: readonly Blocker[]) =>
     status: 'remediated',
   }));
 
+const v2Identity = (identityValue: unknown) => {
+  if (
+    typeof identityValue !== 'object' ||
+    identityValue === null ||
+    Array.isArray(identityValue)
+  ) {
+    return identityValue;
+  }
+  return {
+    ...identityValue,
+    review_policy: 'preflight-v1',
+    repository_root:
+      (identityValue as Readonly<Record<string, unknown>>).repository_root ??
+      governanceRepositoryRoot,
+    parent_session_id: 'ses-governance-parent',
+    issue_contract_revision:
+      (identityValue as Readonly<Record<string, unknown>>)
+        .issue_contract_revision ?? 'governance-fixture@1',
+    issue_contract_sha256:
+      (identityValue as Readonly<Record<string, unknown>>)
+        .issue_contract_sha256 ?? '1'.repeat(64),
+    lane_plan_approval_sha256:
+      (identityValue as Readonly<Record<string, unknown>>)
+        .lane_plan_approval_sha256 ?? '2'.repeat(64),
+  };
+};
+
+const preflightFor = (state: SupervisorState) => {
+  const authority = (state as SupervisorState & {
+    preflight_authority?: {
+      canonical_sources: readonly Readonly<Record<string, unknown>>[];
+      canonical_acceptance_ids: readonly string[];
+      canonical_acceptance_criteria: readonly Readonly<Record<string, string>>[];
+    };
+  }).preflight_authority;
+  const sources = authority?.canonical_sources ?? [{
+    source: 'governance acceptance source',
+    revision: 'governance-fixture@1',
+    content_sha256: '3'.repeat(64),
+  }];
+  const acceptanceIds = authority?.canonical_acceptance_ids ?? ['governance-acceptance'];
+  const acceptanceCriteria = authority?.canonical_acceptance_criteria ?? [{
+    id: 'governance-acceptance',
+    content: 'The governed issue lifecycle preserves its tested behavior.',
+    content_sha256: createHash('sha256').update(JSON.stringify({ content: 'The governed issue lifecycle preserves its tested behavior.' })).digest('hex'),
+  }];
+  return createReviewPreflight({
+    version: 1,
+    lane_id: state.lane_id,
+    issue_number: state.issue_number,
+    issue_contract_revision: state.issue_contract_revision,
+    issue_contract_sha256: state.issue_contract_sha256,
+    lane_plan_approval_sha256: state.lane_plan_approval_sha256,
+    head_sha: state.head_sha,
+    generated_at: observedAt,
+    approved_sources: sources,
+    acceptance_row_ids: acceptanceIds,
+    rows: acceptanceIds.map((id, index) => ({
+        id,
+        acceptance_text: acceptanceCriteria[index].content,
+        acceptance_sha256: acceptanceCriteria[index].content_sha256,
+        source: String(sources.at(-1)?.source),
+        source_bindings: sources,
+        invariant: 'The governed issue lifecycle preserves its tested behavior.',
+        surfaces: ['issue-supervisor'],
+        positive_cases: ['The expected lifecycle transition succeeds.'],
+        negative_cases: ['Invalid evidence is rejected.'],
+        boundary_cases: ['The exact reviewed head remains authoritative.'],
+      })),
+    nonfunctional: {
+      complexity: 'State transitions remain bounded.',
+      memory: 'Evidence remains issue-local.',
+      atomicity: 'Each transition is persisted atomically.',
+      mutation_boundary: 'Only the issue supervisor state is mutated.',
+    },
+  });
+};
+
+const reviewBatchFor = (
+  state: SupervisorState,
+  reviews: readonly Readonly<Record<string, unknown>>[],
+) => {
+  const coverage: Record<string, Record<string, string>> = {};
+  const blockerSources: Record<string, Readonly<Record<string, string>>> = {};
+  const rowIds = (state.review_preflight?.acceptance_row_ids as readonly string[] | undefined) ?? ['governance-acceptance'];
+  for (const review of reviews) {
+    const reviewer = String(review.reviewer);
+    coverage[reviewer] = Object.fromEntries(
+      rowIds.map((rowId) => [rowId, review.verdict_signal === 'BLOCK' ? 'BLOCK' : 'PASS']),
+    );
+    const blockers = Array.isArray(review.blockers) ? review.blockers : [];
+    for (const candidate of blockers) {
+      if (
+        typeof candidate !== 'object' ||
+        candidate === null ||
+        Array.isArray(candidate)
+      ) {
+        continue;
+      }
+      const blocker = candidate as Readonly<Record<string, unknown>>;
+      blockerSources[String(blocker.signature)] = {
+        contract_source: String(
+          (
+            state.review_preflight?.rows as
+              | readonly Readonly<Record<string, unknown>>[]
+              | undefined
+          )?.[0]?.source ?? 'governance acceptance source',
+        ),
+        violated_invariant: rowIds[0],
+        reproduction: String(blocker.evidence),
+        why_blocking: 'correctness',
+      };
+    }
+  }
+  const preflight = state.review_preflight;
+  if (preflight === null) {
+    throw new TypeError('v2 governance review requires a persisted preflight.');
+  }
+  const task_ids = {
+      contract: `st_governance_contract_${state.head_sha.slice(0, 8)}`,
+      code: `st_governance_code_${state.head_sha.slice(0, 8)}`,
+      verification: `st_governance_verification_${state.head_sha.slice(0, 8)}`,
+    };
+  const reviewer_receipts = Object.fromEntries(Object.entries(task_ids).map(([axis, task_id]) => {
+    const result = reviews.find((review) => review.reviewer === axis);
+    const blockers = Array.isArray(result?.blockers) ? result.blockers : [];
+    const final_response = {
+      sentinel: 'fluo:execute-lane:review:final:v1', axis,
+      head_sha: state.head_sha, preflight_sha256: preflight.sha256,
+      verdict_signal: result?.verdict_signal,
+      coverage: coverage[axis], blockers,
+      blocker_sources: Object.fromEntries(blockers.map((blocker) => [String((blocker as Record<string, unknown>).signature), blockerSources[String((blocker as Record<string, unknown>).signature)] ])),
+    };
+    const task = {
+      task_id,
+      status: 'completed',
+      category: 'deep',
+      parent_session_id: 'ses-governance-parent',
+      name: reviewerTaskName(axis, state.issue_number, state.head_sha),
+      final_response: senpiFinal(
+        'fluo:execute-lane:review:final:v1',
+        final_response,
+      ),
+      spawn_spec: {
+        cwd: state.repository_root,
+        prompt:
+          `Review without mutation.\n${reviewerPromptSentinel({
+            repository_root: state.repository_root,
+            lane_id: state.lane_id,
+            issue_number: state.issue_number,
+            worktree: state.worktree,
+            head_sha: state.head_sha,
+            preflight_sha256: preflight.sha256,
+            review_axis: axis,
+          })}`,
+      },
+    };
+    const receipt = writeActualShapedReviewerTask({
+      task,
+      repository_root: state.repository_root,
+      expected: {
+        task_id,
+        parent_session_id: 'ses-governance-parent',
+        lane_id: state.lane_id,
+        issue_number: state.issue_number,
+        worktree: state.worktree,
+        branch: state.branch,
+        head_sha: state.head_sha,
+        preflight_sha256: preflight.sha256,
+        axis,
+      },
+    });
+    return [axis, receipt];
+  }));
+  return {
+    preflight_sha256: preflight.sha256,
+    task_ids,
+    coverage,
+    reviewer_receipts,
+    blocker_sources: blockerSources,
+  };
+};
+
+const normalizeTransition = (
+  state: SupervisorState,
+  transitionValue: unknown,
+) => {
+  if (
+    typeof transitionValue !== 'object' ||
+    transitionValue === null ||
+    Array.isArray(transitionValue)
+  ) {
+    return transitionValue;
+  }
+  const transition = transitionValue as Readonly<Record<string, unknown>>;
+  if (transition.kind === 'implementation-completed') {
+    const taskId = `st_implement${String(state.issue_number)}${String(transition.new_head).slice(0, 8)}`;
+    writeActualShapedImplementerTask({
+      repository_root: state.repository_root,
+      task_id: taskId,
+      parent_session_id: 'ses-governance-parent',
+      lane_id: state.lane_id,
+      issue_number: state.issue_number,
+      worktree: state.worktree,
+      current_head: state.head_sha,
+      new_head: transition.new_head,
+      generation: 1,
+      result: 'implementation-completed',
+      verification: transition.verification,
+      preflight_sha256: String(state.review_preflight?.sha256),
+      authoritative_preflight: state.review_preflight,
+    });
+    return {
+      ...transition,
+      implementer_generation: 1,
+      implementer_evidence: { task_id: taskId },
+    };
+  }
+  if (transition.kind === 'fix-completed') {
+    const taskId = `st_fix${String(state.issue_number)}${String(transition.new_head).slice(0, 8)}`;
+    const generation = Number(transition.implementer_generation ?? state.implementer_generation);
+    const freshImplementer = transition.fresh_implementer === true;
+    writeActualShapedImplementerTask({
+      repository_root: state.repository_root,
+      task_id: taskId,
+      parent_session_id: 'ses-governance-parent',
+      lane_id: state.lane_id,
+      issue_number: state.issue_number,
+      worktree: state.worktree,
+      current_head: state.head_sha,
+      new_head: transition.new_head,
+      generation,
+      result: 'fix-completed',
+      verification: transition.verification,
+      addressed_blockers: transition.addressed_blockers,
+      blocker_ledger: state.blocker_ledger,
+      unresolved_blockers: state.blocker_ledger.filter(
+        (entry) => entry.remediation_status === 'unresolved',
+      ),
+      preflight_sha256: String(state.review_preflight?.sha256),
+      authoritative_preflight: state.review_preflight,
+    });
+    return {
+      ...transition,
+      fresh_implementer: freshImplementer,
+      implementer_generation: generation,
+      implementer_evidence: { task_id: taskId },
+      ...(freshImplementer ? { fresh_implementer_evidence: { task_id: taskId } } : {}),
+    };
+  }
+  if (transition.kind === 'local-review') {
+    const reviews = Array.isArray(transition.reviews)
+      ? (transition.reviews as readonly Readonly<Record<string, unknown>>[])
+      : [];
+    return {
+      ...transition,
+      review_batch: reviewBatchFor(state, reviews),
+    };
+  }
+  return transition;
+};
+
+const createIssueSupervisor = (identityValue: unknown) => {
+  const initial = createSupervisorV2(v2Identity(identityValue));
+  return transitionSupervisorV2(initial, {
+    kind: 'preflight-completed',
+    preflight: preflightFor(initial),
+  });
+};
+
+const transitionIssueSupervisor = (
+  state: SupervisorState,
+  transition: unknown,
+) => transitionSupervisorV2(state, normalizeTransition(state, transition));
+
+const persistSupervisorStore = (runtimeRoot: string, identityValue: unknown) => {
+  if (
+    typeof identityValue !== 'object' ||
+    identityValue === null ||
+    Array.isArray(identityValue)
+  ) {
+    throw new TypeError('persisted supervisor fixture identity is invalid.');
+  }
+  const identityRecord = identityValue as Readonly<Record<string, unknown>>;
+  const repositoryRoot = resolve(runtimeRoot, '..', '..');
+  const canonicalFixture = prepareCanonicalV2Runtime({
+    repository_root: repositoryRoot,
+    lane_id: String(identityRecord.lane_id),
+    issue_numbers: [Number(identityRecord.issue_number)],
+    authority_scope: identityRecord.authority_scope,
+    retry_policy: identityRecord.retry_policy,
+    release_handoffs:
+      identityRecord.release_handoff === true
+        ? [Number(identityRecord.issue_number)]
+        : [],
+  });
+  storeRunners.set(runtimeRoot, canonicalFixture.commandRunner);
+  mkdirSync(resolve(repositoryRoot, String(identityRecord.worktree)), { recursive: true });
+  const canonicalFixtureIdentity = v2Identity({
+    ...identityRecord,
+    repository_root: repositoryRoot,
+  }) as Readonly<Record<string, unknown>>;
+  const {
+    issue_contract_revision: _issueContractRevision,
+    issue_contract_sha256: _issueContractSha256,
+    lane_plan_approval_sha256: _lanePlanApprovalSha256,
+    ...storeIdentity
+  } = canonicalFixtureIdentity;
+  const initial = initialiseIssueSupervisorStore(runtimeRoot, storeIdentity);
+  const bundle = applyIssueSupervisorTransition(
+    runtimeRoot,
+    initial.snapshot.lane_id,
+    initial.snapshot.issue_number,
+    {
+      kind: 'preflight-completed',
+      preflight: preflightFor(initial.snapshot),
+    },
+  );
+  const state = bundle.snapshot;
+  const issueDirectory = join(
+    runtimeRoot,
+    state.lane_id,
+    'issues',
+    String(state.issue_number),
+  );
+  const loaded = loadIssueSupervisorStore(
+    runtimeRoot,
+    state.lane_id,
+    state.issue_number,
+  );
+  if (loaded === null || issueDirectory.length === 0) {
+    throw new TypeError('v2 fixture store was not persisted.');
+  }
+  return loaded;
+};
+
 const persistedLifecycle = (
   identityValue: unknown,
   transitions: readonly unknown[],
@@ -205,21 +649,35 @@ const persistedLifecycle = (
   const directory = mkdtempSync(
     join(realpathSync(tmpdir()), 'fluo-terminal-bundle-'),
   );
-  const runtimeRoot = join(directory, 'lane-runs');
-  try {
-    let bundle = initialiseIssueSupervisorStore(runtimeRoot, identityValue);
+  terminalFixtureRoots.push(directory);
+  const runtimeRoot = join(directory, '.omo', 'lane-runs');
+  let bundle = persistSupervisorStore(runtimeRoot, identityValue);
     for (const transition of transitions) {
+      const normalized = normalizeTransition(bundle.snapshot, transition) as
+        Readonly<Record<string, unknown>>;
+      if (
+        normalized.kind === 'cleanup-observed' &&
+        bundle.snapshot.authority_scope.cleanup_command_worktrees
+      ) {
+        rmSync(resolve(bundle.snapshot.repository_root, bundle.snapshot.worktree), {
+          recursive: true,
+          force: true,
+        });
+        storeRunners.get(runtimeRoot)?.setCleanupCompleted();
+      }
       bundle = applyIssueSupervisorTransition(
         runtimeRoot,
         bundle.snapshot.lane_id,
         bundle.snapshot.issue_number,
-        transition,
+        normalized.kind === 'release-handoff'
+          ? {
+              ...normalized,
+              approval_sha256: bundle.snapshot.lane_plan_approval_sha256,
+            }
+          : normalized,
       );
     }
-    return bundle;
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
+  return bundle;
 };
 
 const identity = {
@@ -275,6 +733,25 @@ const passReviews = (head: string) =>
     verdict_signal: 'PASS',
     blockers: [],
   }));
+
+const fixableBlockReviews = (head: string) => [
+  passReviews(head)[0],
+  {
+    reviewer: 'code',
+    reviewed_head_sha: head,
+    verdict_signal: 'BLOCK',
+    blockers: [
+      {
+        reviewer: 'code',
+        signature: 'runtime:worker:abort-path',
+        evidence: 'packages/runtime/src/worker.ts:42',
+        fix_back_eligible: true,
+        status: 'unresolved',
+      },
+    ],
+  },
+  passReviews(head)[2],
+];
 
 const createCiPendingState = () => {
   let state = createIssueSupervisor(identity);
@@ -466,6 +943,57 @@ describe('execute-lane issue supervisor lifecycle', () => {
     expect(state.status).toBe('done');
   });
 
+  it('counts repeated CI-only blocked heads and requires a fresh implementer on the second', () => {
+    let state = createIssueSupervisor(identity);
+    state = transitionIssueSupervisor(state, {
+      kind: 'implementation-completed',
+      new_head: headA,
+      verification: 'focused tests passed',
+    });
+    state = transitionIssueSupervisor(state, { kind: 'local-review', reviews: passReviews(headA) });
+    state = transitionIssueSupervisor(state, {
+      kind: 'pr-observed',
+      action: 'create',
+      receipt: prReceipt('pr-create', headA),
+    });
+    state = transitionIssueSupervisor(state, {
+      kind: 'ci-observed',
+      receipt: {
+        ...observationBase(headA), kind: 'ci', pr_number: 5101,
+        pr_url: 'https://github.com/fluojs/fluo/pull/5101', result: 'fixable-failure', evidence: 'ci-only failure one',
+      },
+    });
+    expect(state.blocked_heads_since_refresh).toBe(1);
+    state = transitionIssueSupervisor(state, {
+      kind: 'fix-completed', new_head: headB, observed_at: observedAt,
+      verification: 'focused tests passed', addressed_blockers: remediate(state.blockers as readonly Blocker[]),
+    });
+    state = transitionIssueSupervisor(state, { kind: 'local-review', reviews: passReviews(headB) });
+    state = transitionIssueSupervisor(state, {
+      kind: 'pr-observed', action: 'update', receipt: prReceipt('pr-update', headB),
+    });
+    state = transitionIssueSupervisor(state, {
+      kind: 'ci-observed',
+      receipt: {
+        ...observationBase(headB), kind: 'ci', pr_number: 5101,
+        pr_url: 'https://github.com/fluojs/fluo/pull/5101', result: 'fixable-failure', evidence: 'ci-only failure two',
+      },
+    });
+    expect(state.blocked_heads_since_refresh).toBe(2);
+    expect(() => transitionIssueSupervisor(state, {
+      kind: 'fix-completed', new_head: headC, observed_at: observedAt,
+      verification: 'focused tests passed', addressed_blockers: remediate(state.blockers as readonly Blocker[]),
+      fresh_implementer: false, implementer_generation: 1,
+    })).toThrow(/fresh implementer/u);
+    state = transitionIssueSupervisor(state, {
+      kind: 'fix-completed', new_head: headC, observed_at: observedAt,
+      verification: 'focused tests passed', addressed_blockers: remediate(state.blockers as readonly Blocker[]),
+      fresh_implementer: true, implementer_generation: 2,
+    });
+    expect(state.implementer_generation).toBe(2);
+    expect(state.blocked_heads_since_refresh).toBe(0);
+  });
+
   it('returns a merge-conflicting PR through fix-back before waiting for CI', () => {
     // Given
     const transitions = [
@@ -504,7 +1032,7 @@ describe('execute-lane issue supervisor lifecycle', () => {
     const persisted = persistedLifecycle(identity, transitions);
 
     // Then
-    expect(persisted.snapshot.status).toBe('ci-fix-back');
+    expect(persisted.snapshot.status).toBe('conflict-resolution');
     expect(persisted.snapshot.ci).toBeNull();
     expect(persisted.snapshot.blockers).toEqual([
       {
@@ -523,6 +1051,66 @@ describe('execute-lane issue supervisor lifecycle', () => {
         pr_merge_state_status: 'DIRTY',
       }),
     );
+  });
+
+  it('rejects blocker event-sequence substitution on store reload', () => {
+    const directory = mkdtempSync(
+      join(realpathSync(tmpdir()), 'fluo-event-sequence-tamper-'),
+    );
+    const runtimeRoot = join(directory, '.omo', 'lane-runs');
+    try {
+      let bundle = persistSupervisorStore(runtimeRoot, identity);
+      for (const transition of [
+        {
+          kind: 'implementation-completed',
+          new_head: headA,
+          verification: 'focused tests passed',
+        },
+        {
+          kind: 'local-review',
+          reviews: fixableBlockReviews(headA),
+        },
+      ]) {
+        bundle = applyIssueSupervisorTransition(
+          runtimeRoot,
+          identity.lane_id,
+          identity.issue_number,
+          normalizeTransition(bundle.snapshot, transition),
+        );
+      }
+      const snapshotPath = resolve(
+        runtimeRoot,
+        identity.lane_id,
+        'issues',
+        String(identity.issue_number),
+        'snapshot.json',
+      );
+      const snapshot = JSON.parse(readFileSync(snapshotPath, 'utf8')) as {
+        blocker_ledger: Array<Record<string, unknown>>;
+      };
+      const entry = snapshot.blocker_ledger[0];
+      entry.observed_event_sequence =
+        Number(entry.observed_event_sequence) - 1;
+      const {
+        identity_sha256: _identity,
+        remediation_status: _status,
+        remediation_history: _history,
+        ...immutable
+      } = entry;
+      entry.identity_sha256 = createHash('sha256')
+        .update(JSON.stringify(immutable))
+        .digest('hex');
+      writeFileSync(snapshotPath, `${JSON.stringify(snapshot, null, 2)}\n`);
+      expect(() =>
+        loadIssueSupervisorStore(
+          runtimeRoot,
+          identity.lane_id,
+          identity.issue_number,
+        ),
+      ).toThrow(/event ordering/u);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it.each([
@@ -558,7 +1146,7 @@ describe('execute-lane issue supervisor lifecycle', () => {
       });
 
       // Then
-      expect(result.status).toBe('ci-fix-back');
+      expect(result.status).toBe('conflict-resolution');
     },
   );
 
@@ -621,7 +1209,12 @@ describe('execute-lane issue supervisor lifecycle', () => {
     });
 
     const persisted = persistedLifecycle(identity, transitions);
-    expect(persisted.snapshot).toEqual(state);
+    expect(persisted.snapshot).toMatchObject({
+      status: state.status,
+      head_sha: state.head_sha,
+      pr: state.pr,
+      ci: state.ci,
+    });
     expect(persisted.receipts).toEqual([
       expect.objectContaining({
         kind: 'pr-adopt',
@@ -670,9 +1263,9 @@ describe('execute-lane issue supervisor lifecycle', () => {
     const directory = mkdtempSync(
       join(realpathSync(tmpdir()), 'fluo-adopted-pr-forgery-'),
     );
-    const runtimeRoot = join(directory, 'lane-runs');
+    const runtimeRoot = join(directory, '.omo', 'lane-runs');
     try {
-      let bundle = initialiseIssueSupervisorStore(runtimeRoot, identity);
+      let bundle = persistSupervisorStore(runtimeRoot, identity);
       for (const transition of [
         {
           kind: 'implementation-completed',
@@ -693,7 +1286,7 @@ describe('execute-lane issue supervisor lifecycle', () => {
           runtimeRoot,
           identity.lane_id,
           identity.issue_number,
-          transition,
+          normalizeTransition(bundle.snapshot, transition),
         );
       }
       const issuePath = resolve(
@@ -720,6 +1313,56 @@ describe('execute-lane issue supervisor lifecycle', () => {
       ).toThrow(/adopted PR must be OPEN/u);
 
       writeFileSync(snapshotPath, snapshotText, 'utf8');
+      const reviewTaskPath = resolve(
+        bundle.snapshot.repository_root,
+        '.omo/senpi-task/tasks',
+        `st_governance_contract_${headA.slice(0, 8)}.json`,
+      );
+      const reviewTaskText = readFileSync(reviewTaskPath, 'utf8');
+      const reviewTask = JSON.parse(reviewTaskText) as Record<string, unknown>;
+      reviewTask.task_summary = 'normal post-completion residency metadata';
+      reviewTask.residency_state = 'evicted';
+      reviewTask.updated_at = '2026-08-26T00:30:00.000Z';
+      writeFileSync(reviewTaskPath, JSON.stringify(reviewTask), 'utf8');
+      expect(() =>
+        loadIssueSupervisorStore(
+          runtimeRoot,
+          identity.lane_id,
+          identity.issue_number,
+        ),
+      ).not.toThrow();
+
+      reviewTask.final_response = 'tampered immutable output';
+      writeFileSync(reviewTaskPath, JSON.stringify(reviewTask), 'utf8');
+      expect(() =>
+        loadIssueSupervisorStore(
+          runtimeRoot,
+          identity.lane_id,
+          identity.issue_number,
+        ),
+      ).toThrow(/final_response|persisted local review receipt/u);
+
+      writeFileSync(reviewTaskPath, reviewTaskText, 'utf8');
+      const reviewSessionPath = resolve(
+        bundle.snapshot.repository_root,
+        '.omo/senpi-task/logs',
+        `st_governance_contract_${headA.slice(0, 8)}.jsonl`,
+      );
+      const reviewSessionText = readFileSync(reviewSessionPath, 'utf8');
+      writeFileSync(
+        reviewSessionPath,
+        `${reviewSessionText}${JSON.stringify({ type: 'tool_execution', payload: { tool: 'read', is_error: false } })}\n`,
+        'utf8',
+      );
+      expect(() =>
+        loadIssueSupervisorStore(
+          runtimeRoot,
+          identity.lane_id,
+          identity.issue_number,
+        ),
+      ).toThrow(/persisted local review receipt|canonical task|session summary/u);
+
+      writeFileSync(reviewSessionPath, reviewSessionText, 'utf8');
       writeFileSync(receiptsPath, '[]\n', 'utf8');
       expect(() =>
         loadIssueSupervisorStore(
@@ -860,10 +1503,10 @@ describe('execute-lane issue supervisor lifecycle', () => {
     const directory = mkdtempSync(
       join(realpathSync(tmpdir()), 'fluo-issue-supervisor-'),
     );
-    const runtimeRoot = join(directory, 'lane-runs');
+    const runtimeRoot = join(directory, '.omo', 'lane-runs');
     try {
-      let stored = initialiseIssueSupervisorStore(runtimeRoot, identity);
-      expect(stored.events).toHaveLength(1);
+      let stored = persistSupervisorStore(runtimeRoot, identity);
+      expect(stored.events).toHaveLength(2);
       const leasePath = resolve(
         runtimeRoot,
         identity.lane_id,
@@ -896,20 +1539,20 @@ describe('execute-lane issue supervisor lifecycle', () => {
         runtimeRoot,
         identity.lane_id,
         identity.issue_number,
-        {
+        normalizeTransition(stored.snapshot, {
           kind: 'implementation-completed',
           new_head: headA,
           verification: 'focused tests passed',
-        },
+        }),
       );
       stored = applyIssueSupervisorTransition(
         runtimeRoot,
         identity.lane_id,
         identity.issue_number,
-        {
+        normalizeTransition(stored.snapshot, {
           kind: 'local-review',
           reviews: passReviews(headA),
-        },
+        }),
       );
       stored = applyIssueSupervisorTransition(
         runtimeRoot,
@@ -923,7 +1566,7 @@ describe('execute-lane issue supervisor lifecycle', () => {
       );
 
       expect(stored.snapshot.status).toBe('ci-pending');
-      expect(stored.events).toHaveLength(4);
+      expect(stored.events).toHaveLength(5);
       expect(stored.receipts).toEqual([prReceipt('pr-create', headA)]);
       expect(
         loadIssueSupervisorStore(
@@ -934,7 +1577,7 @@ describe('execute-lane issue supervisor lifecycle', () => {
       ).toEqual(stored);
       expect(() =>
         initialiseIssueSupervisorStore(runtimeRoot, {
-          ...identity,
+          ...stored.snapshot,
           starting_head_sha: headB,
         }),
       ).toThrow(/identity conflict/u);
@@ -1076,6 +1719,40 @@ describe('execute-lane issue supervisor lifecycle', () => {
         local_branch_deleted: true,
         remote_branch_deleted: true,
       };
+    const terminalRoot = terminalBundle.snapshot.repository_root;
+    const terminalRuntimeRoot = resolve(terminalRoot, '.omo', 'lane-runs');
+    const fixtureRunner = storeRunners.get(terminalRuntimeRoot);
+    const bareOrigin = resolve(terminalRoot, '.origin.git');
+    execFileSync('git', ['init', '-q', '-b', 'main', terminalRoot]);
+    execFileSync('git', ['init', '-q', '--bare', bareOrigin]);
+    execFileSync('git', ['-C', terminalRoot, 'config', 'user.email', 'fixture@fluo.dev']);
+    execFileSync('git', ['-C', terminalRoot, 'config', 'user.name', 'Fixture']);
+    execFileSync('git', ['-C', terminalRoot, 'remote', 'add', 'origin', bareOrigin]);
+    execFileSync('git', ['-C', terminalRoot, 'commit', '-q', '--allow-empty', '-m', 'origin seed']);
+    const originHead = execFileSync('git', ['-C', terminalRoot, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    execFileSync('git', ['-C', terminalRoot, 'push', '-q', 'origin', 'HEAD:refs/heads/seed']);
+    let recreated = false;
+    storeRunners.set(terminalRuntimeRoot, (command: string, args: string[], options: Record<string, unknown>) => {
+      if (command !== 'git' || !args.includes('ls-remote')) return fixtureRunner(command, args, options);
+      try {
+        return execFileSync(command, args, { ...options, encoding: 'utf8' });
+      } catch (error) {
+        if (!recreated && Number((error as { status?: number }).status) === 2) {
+          execFileSync('git', ['--git-dir', bareOrigin, 'update-ref', `refs/heads/${identity.branch}`, originHead]);
+          recreated = true;
+        }
+        throw error;
+      }
+    });
+    expect(() => importSupervisorTerminal(
+      { snapshot: ledger, events: [], receipts: [] },
+      terminalBundle,
+      liveCompletion,
+    )).toThrow(/live origin issue branch/u);
+    expect(recreated).toBe(true);
+    execFileSync('git', ['--git-dir', bareOrigin, 'update-ref', '-d', `refs/heads/${identity.branch}`]);
+    storeRunners.set(terminalRuntimeRoot, fixtureRunner);
+
     const imported = importSupervisorTerminal(
       { snapshot: ledger, events: [], receipts: [] },
       terminalBundle,
@@ -1097,6 +1774,307 @@ describe('execute-lane issue supervisor lifecycle', () => {
     expect(
       importSupervisorTerminal(imported, terminalBundle, liveCompletion),
     ).toEqual(imported);
+
+    const forged: any = structuredClone(terminalBundle);
+    const forgedCi = forged.receipts.find((receipt: any) => receipt.kind === 'ci');
+    forgedCi.evidence = 'self-consistent forged CI evidence';
+    forged.snapshot.ci.evidence = forgedCi.evidence;
+    expect(() => importSupervisorTerminal(
+      { snapshot: ledger, events: [], receipts: [] },
+      forged,
+      liveCompletion,
+    )).toThrow(/forged or stale/u);
+
+    const stale: any = structuredClone(terminalBundle);
+    stale.events.pop();
+    expect(() => importSupervisorTerminal(
+      { snapshot: ledger, events: [], receipts: [] },
+      stale,
+      liveCompletion,
+    )).toThrow(/forged or stale/u);
+  });
+
+  it('imports a persisted conflict lifecycle with the resolved composite reviewed head', () => {
+    const directory = realpathSync(
+      mkdtempSync(join(tmpdir(), 'fluo-conflict-terminal-')),
+    );
+    const runtimeRoot = join(directory, '.omo', 'lane-runs');
+    try {
+      let bundle = persistSupervisorStore(runtimeRoot, identity);
+      const apply = (transition: unknown) => {
+        const normalized = normalizeTransition(bundle.snapshot, transition) as Readonly<Record<string, unknown>>;
+        if (normalized.kind === 'cleanup-observed') {
+          rmSync(resolve(bundle.snapshot.repository_root, bundle.snapshot.worktree), {
+            recursive: true,
+            force: true,
+          });
+          storeRunners.get(runtimeRoot)?.setCleanupCompleted();
+        }
+        bundle = applyIssueSupervisorTransition(
+          runtimeRoot,
+          identity.lane_id,
+          identity.issue_number,
+          normalized,
+        );
+      };
+      apply({
+        kind: 'implementation-completed',
+        new_head: headA,
+        verification: 'focused tests passed',
+      });
+      apply({ kind: 'local-review', reviews: passReviews(headA) });
+      apply({
+        kind: 'pr-observed',
+        action: 'create',
+        receipt: prReceipt('pr-create', headA),
+      });
+      const conflictReceipt = {
+        ...observationBase(headA),
+        kind: 'pr-conflict',
+        pr_number: 5101,
+        pr_url: 'https://github.com/fluojs/fluo/pull/5101',
+        remote_head_sha: headA,
+        pr_head_sha: headA,
+        pr_state: 'OPEN',
+        pr_mergeable: 'CONFLICTING',
+        pr_merge_state_status: 'DIRTY',
+        evidence: 'PR reports a deterministic merge conflict.',
+      };
+      apply({ kind: 'pr-conflict-observed', receipt: conflictReceipt });
+      const preflight = bundle.snapshot.review_preflight as Readonly<Record<string, unknown>>;
+      const gate = {
+        preflight_sha256: preflight.sha256,
+        previously_reviewed_head: headA,
+        upstream_head: headC,
+        resolved_head: headB,
+        conflicting_files: ['package.json'],
+        conflicting_hunks: ['package.json:10-14'],
+        semantic_impact: 'mechanical',
+        upstream_relevant: false,
+        affected_axes: [],
+        rationale: 'The resolution preserves both independent changes.',
+      };
+      const finalResponse = {
+        sentinel: 'fluo:execute-lane:conflict-review:final:v1',
+        verdict_signal: 'PASS',
+        ...gate,
+        digests: computeConflictGitEvidence({
+          repository_root: bundle.snapshot.repository_root,
+          worktree: bundle.snapshot.worktree,
+          previously_reviewed_head: headA,
+          upstream_head: headC,
+          resolved_head: headB,
+          command_runner: storeRunners.get(resolve(bundle.snapshot.repository_root, '.omo', 'lane-runs')),
+        }).digests,
+      };
+      const gateTask = {
+        task_id: 'st_governance_conflict_gate',
+        status: 'completed',
+        category: 'deep',
+        resolved_model: {
+          provider: 'openai-codex',
+          model_id: 'gpt-5.6-sol',
+          source: 'category',
+          variant: 'medium',
+        },
+        parent_session_id: 'ses-governance-parent',
+        name: conflictReviewerTaskName(identity.issue_number, headB),
+        final_response: senpiFinal(
+          'fluo:execute-lane:conflict-review:final:v1',
+          finalResponse,
+        ),
+        spawn_spec: {
+          cwd: bundle.snapshot.repository_root,
+          prompt: `Review conflict resolution without mutation.\n${conflictReviewerPromptSentinel({
+            repository_root: bundle.snapshot.repository_root,
+            lane_id: identity.lane_id,
+            issue_number: identity.issue_number,
+            worktree: identity.worktree,
+            ...gate,
+          })}`,
+        },
+      };
+      writeActualShapedReviewerTask({
+        task: gateTask,
+        repository_root: bundle.snapshot.repository_root,
+        expected: {
+          task_id: gateTask.task_id,
+          parent_session_id: 'ses-governance-parent',
+          lane_id: identity.lane_id,
+          issue_number: identity.issue_number,
+          worktree: identity.worktree,
+          preflight_sha256: gate.preflight_sha256,
+          axis: 'conflict',
+        },
+        verify: false,
+      });
+      const machineEvidence = computeConflictGitEvidence({
+        repository_root: bundle.snapshot.repository_root,
+        worktree: bundle.snapshot.worktree,
+        previously_reviewed_head: headA,
+        upstream_head: headC,
+        resolved_head: headB,
+        command_runner: storeRunners.get(resolve(bundle.snapshot.repository_root, '.omo', 'lane-runs')),
+      });
+      writeActualShapedConflictImplementerTask({
+        repository_root: bundle.snapshot.repository_root,
+        task_id: 'st_governance_conflict_implementer',
+        parent_session_id: 'ses-governance-parent',
+        lane_id: bundle.snapshot.lane_id,
+        issue_number: bundle.snapshot.issue_number,
+        worktree: bundle.snapshot.worktree,
+        old_base: machineEvidence.old_base,
+        previously_reviewed_head: headA,
+        upstream_head: headC,
+        resolved_head: headB,
+        generation: bundle.snapshot.implementer_generation,
+        preflight_sha256: gate.preflight_sha256,
+      });
+      apply({
+        kind: 'conflict-resolved',
+        gate,
+        gate_task_id: gateTask.task_id,
+        conflict_implementer_task_id: 'st_governance_conflict_implementer',
+        rerun_task_ids: {},
+      });
+      expect(bundle.snapshot.status).toBe('ready-for-push');
+      expect(bundle.snapshot.blockers).toEqual([]);
+      apply({
+        kind: 'pr-observed',
+        action: 'update',
+        receipt: prReceipt('pr-update', headB),
+      });
+      apply({
+        kind: 'ci-observed',
+        receipt: {
+          ...observationBase(headB),
+          kind: 'ci',
+          pr_number: 5101,
+          pr_url: 'https://github.com/fluojs/fluo/pull/5101',
+          result: 'fixable-failure',
+          evidence: 'resolved-head integration check failed',
+        },
+      });
+      expect(bundle.snapshot.status).toBe('ci-fix-back');
+      const ciBlocker = bundle.snapshot.blocker_ledger.at(-1);
+      expect(ciBlocker).toMatchObject({
+        reviewed_head_sha: headB,
+        evidence_kind: 'verified-ci-receipt',
+        reviewer_receipt: {
+          head_sha: headB,
+          mutation_sentinel: 'fluo:execute-lane:conflict-review:read-only:v1',
+        },
+      });
+      const fixedHead = 'e'.repeat(40);
+      apply({
+        kind: 'fix-completed',
+        new_head: fixedHead,
+        observed_at: observedAt,
+        verification: 'composite verification passed after CI fix',
+        addressed_blockers: remediate(bundle.snapshot.blockers as readonly Blocker[]),
+      });
+      apply({ kind: 'local-review', reviews: passReviews(fixedHead) });
+      apply({
+        kind: 'pr-observed',
+        action: 'update',
+        receipt: prReceipt('pr-update', fixedHead),
+      });
+      apply({
+        kind: 'ci-observed',
+        receipt: {
+          ...observationBase(fixedHead),
+          kind: 'ci',
+          pr_number: 5101,
+          pr_url: 'https://github.com/fluojs/fluo/pull/5101',
+          result: 'pass',
+          evidence: 'all required checks passed after resolved-head fix-back',
+        },
+      });
+      apply({
+        kind: 'merge-observed',
+        receipt: {
+          ...observationBase(fixedHead),
+          kind: 'merge',
+          pr_number: 5101,
+          pr_url: 'https://github.com/fluojs/fluo/pull/5101',
+          reviewed_head_sha: fixedHead,
+          remote_head_sha: fixedHead,
+          pr_head_sha: fixedHead,
+          ci_head_sha: fixedHead,
+          merge_method: 'squash',
+          pr_state: 'MERGED',
+          issue_state: 'CLOSED',
+          merge_commit_sha: headC,
+        },
+      });
+      apply({
+        kind: 'cleanup-observed',
+        receipt: {
+          ...observationBase(fixedHead),
+          kind: 'cleanup',
+          pr_number: 5101,
+          pr_url: 'https://github.com/fluojs/fluo/pull/5101',
+          worktree_removed: true,
+          local_branch_deleted: true,
+          remote_branch_deleted: true,
+        },
+      });
+      expect(bundle.snapshot.status).toBe('done');
+      const ledger = JSON.parse(
+        readFileSync(
+          resolve(process.cwd(), 'tooling/governance/fixtures/execute-lane-native/ready-ledger-multi-v2.json'),
+          'utf8',
+        ),
+      );
+      const liveCompletion = {
+        issue_number: identity.issue_number,
+        issue_url: `https://github.com/fluojs/fluo/issues/${String(identity.issue_number)}`,
+        pr_number: 5101,
+        pr_url: 'https://github.com/fluojs/fluo/pull/5101',
+        branch: identity.branch,
+        worktree: identity.worktree,
+        reviewed_head_sha: fixedHead,
+        remote_head_sha: fixedHead,
+        pr_head_sha: fixedHead,
+        ci_head_sha: fixedHead,
+        merge_commit_sha: headC,
+        merge_method: 'squash',
+        pr_state: 'MERGED',
+        issue_state: 'CLOSED',
+        cleanup_status: 'done',
+        worktree_removed: true,
+        local_branch_deleted: true,
+        remote_branch_deleted: true,
+      };
+      const imported = importSupervisorTerminal(
+        { snapshot: ledger, events: [], receipts: [] },
+        bundle,
+        liveCompletion,
+      );
+      expect(imported.snapshot.issue_progress).toMatchObject({
+        '4101': {
+          status: 'done',
+          head_sha: fixedHead,
+          reviewed_head: fixedHead,
+          blockers: [],
+          checks: 'PASS',
+        },
+      });
+      const forgedConflict: any = structuredClone(bundle);
+      forgedConflict.snapshot.conflict_resolution.conflict_receipt.evidence = 'self-consistent forged conflict evidence';
+      const persistedConflict = forgedConflict.receipts.find((receipt: any) => receipt.kind === 'pr-conflict');
+      persistedConflict.evidence = forgedConflict.snapshot.conflict_resolution.conflict_receipt.evidence;
+      forgedConflict.snapshot.conflict_resolution.conflict_receipt_sha256 = createHash('sha256')
+        .update(JSON.stringify(forgedConflict.snapshot.conflict_resolution.conflict_receipt))
+        .digest('hex');
+      expect(() => importSupervisorTerminal(
+        { snapshot: ledger, events: [], receipts: [] },
+        forgedConflict,
+        liveCompletion,
+      )).toThrow(/forged or stale/u);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it('imports blocked and release-handoff supervisor terminals', () => {
@@ -1177,114 +2155,70 @@ describe('execute-lane issue supervisor lifecycle', () => {
       ),
     ).toEqual(blockedImport);
 
-    const releaseLedger = JSON.parse(
-      readFileSync(
-        resolve(
-          process.cwd(),
-          'tooling/governance/fixtures/execute-lane-native/ready-ledger-release-v2.json',
-        ),
-        'utf8',
-      ),
+    const releaseRoot = realpathSync(
+      mkdtempSync(join(tmpdir(), 'fluo-release-supervisor-')),
     );
-    const releaseIssue = releaseLedger.confirmed_issues[0];
-    const releaseIdentity = {
-      lane_id: releaseLedger.lane_id,
-      issue_number: releaseIssue,
-      branch: `issue-${String(releaseIssue)}-release-handoff`,
-      worktree: `.worktrees/issue-${String(releaseIssue)}-release-handoff`,
-      starting_head_sha: headA,
-      started_at: observedAt,
-      authority_scope: {
-        pr_creation: releaseLedger.authority_scope.pr_creation,
-        pr_merge: releaseLedger.authority_scope.pr_merge,
-        cleanup_command_worktrees:
-          releaseLedger.authority_scope.cleanup_command_worktrees,
-      },
-      retry_policy: {
-        retry_count_is_terminal:
-          releaseLedger.retry_policy.retry_count_is_terminal,
-        max_same_failure_repeats:
-          releaseLedger.retry_policy.max_same_failure_repeats,
-        max_wall_clock_minutes:
-          releaseLedger.retry_policy.max_wall_clock_minutes,
-        stop_on_child_contract_error:
-          releaseLedger.retry_policy.stop_on_child_contract_error,
-      },
-      lane_plan_approval_sha256: releaseLedger.lane_plan_approval_sha256,
-      release_handoff: true,
-    };
-    let release = createIssueSupervisor(releaseIdentity);
-    release = transitionIssueSupervisor(release, {
-      kind: 'release-handoff',
-      approval_sha256: releaseLedger.lane_plan_approval_sha256,
-    });
-    const releaseImport = importSupervisorTerminal(
-      { snapshot: releaseLedger, events: [], receipts: [] },
-      persistedLifecycle(releaseIdentity, [
+    try {
+      const releaseIssue = 4200;
+      const fixture = prepareCanonicalV2Runtime({
+        repository_root: releaseRoot,
+        lane_id: 'lane-4200-release',
+        issue_numbers: [releaseIssue],
+        release_handoffs: [releaseIssue],
+      });
+      storeRunners.set(fixture.runtimeRoot, fixture.commandRunner);
+      mkdirSync(resolve(releaseRoot, `.worktrees/issue-${String(releaseIssue)}-release-handoff`), { recursive: true });
+      let releaseBundle = initialiseIssueSupervisorStore(fixture.runtimeRoot, {
+        lane_id: fixture.ledger.lane_id,
+        issue_number: releaseIssue,
+        branch: `issue-${String(releaseIssue)}-release-handoff`,
+        worktree: `.worktrees/issue-${String(releaseIssue)}-release-handoff`,
+        starting_head_sha: headA,
+        started_at: observedAt,
+        review_policy: 'preflight-v1',
+        repository_root: releaseRoot,
+        parent_session_id: 'ses-release-supervisor',
+      });
+      releaseBundle = applyIssueSupervisorTransition(
+        fixture.runtimeRoot,
+        fixture.ledger.lane_id,
+        releaseIssue,
+        { kind: 'preflight-completed', preflight: preflightFor(releaseBundle.snapshot) },
+      );
+      releaseBundle = applyIssueSupervisorTransition(
+        fixture.runtimeRoot,
+        fixture.ledger.lane_id,
+        releaseIssue,
         {
           kind: 'release-handoff',
-          approval_sha256: releaseLedger.lane_plan_approval_sha256,
+          approval_sha256: releaseBundle.snapshot.lane_plan_approval_sha256,
         },
-      ]),
-      null,
-      {
-        receipt: JSON.parse(
-          readFileSync(
-            resolve(
-              process.cwd(),
-              'tooling/governance/fixtures/execute-lane-native/release-handoff-approval.json',
-            ),
-            'utf8',
-          ),
-        ),
-        artifact: JSON.parse(
-          readFileSync(
-            resolve(
-              process.cwd(),
-              'tooling/governance/fixtures/execute-lane-native/search-native-release.json',
-            ),
-            'utf8',
-          ),
-        ),
-        artifact_path: releaseLedger.source.search_ledger,
-      },
-    );
-    expect(releaseImport.snapshot.lanes).toMatchObject([
-      { status: 'blocked-maintainer-decision' },
-    ]);
-    expect(
-      importSupervisorTerminal(
-        releaseImport,
-        persistedLifecycle(releaseIdentity, [
-          {
-            kind: 'release-handoff',
-            approval_sha256: releaseLedger.lane_plan_approval_sha256,
-          },
-        ]),
+      );
+      const approvalEvidence = {
+        receipt: fixture.approval,
+        artifact: fixture.artifact,
+        artifact_path: fixture.ledger.source.search_ledger,
+      };
+      const releaseImport = importSupervisorTerminal(
+        { snapshot: fixture.ledger, events: [], receipts: [] },
+        releaseBundle,
         null,
-        {
-          receipt: JSON.parse(
-            readFileSync(
-              resolve(
-                process.cwd(),
-                'tooling/governance/fixtures/execute-lane-native/release-handoff-approval.json',
-              ),
-              'utf8',
-            ),
-          ),
-          artifact: JSON.parse(
-            readFileSync(
-              resolve(
-                process.cwd(),
-                'tooling/governance/fixtures/execute-lane-native/search-native-release.json',
-              ),
-              'utf8',
-            ),
-          ),
-          artifact_path: releaseLedger.source.search_ledger,
-        },
-      ),
-    ).toEqual(releaseImport);
+        approvalEvidence,
+      );
+      expect(releaseImport.snapshot.lanes).toMatchObject([
+        { status: 'blocked-maintainer-decision' },
+      ]);
+      expect(
+        importSupervisorTerminal(
+          releaseImport,
+          releaseBundle,
+          null,
+          approvalEvidence,
+        ),
+      ).toEqual(releaseImport);
+    } finally {
+      rmSync(releaseRoot, { recursive: true, force: true });
+    }
   });
 
   it('compiles issue dependencies and persists one idempotent DAG binding', () => {
@@ -1320,6 +2254,24 @@ describe('execute-lane issue supervisor lifecycle', () => {
     expect(definition.nodes[0].prompt).toContain(
       'await-lane-dispatch.mjs',
     );
+    expect(definition.nodes[0].prompt).toContain(
+      'CONFLICTING/DIRTY observation enters conflict-resolution',
+    );
+    expect(definition.nodes[0].prompt).not.toContain(
+      'CONFLICTING/DIRTY observation enters CI fix-back',
+    );
+    expect(definition.nodes[0].prompt).toMatch(
+      /exactly one\s+successful bash event/u,
+    );
+    expect(definition.nodes[0].prompt).toContain(
+      '--head, --preflight',
+    );
+    expect(definition.nodes[0].prompt).toContain(
+      'immutable accepted preflight digest',
+    );
+    expect(definition.nodes[0].prompt).toContain(
+      '.omo/senpi-task/logs/<task-id>.jsonl',
+    );
     expect(() =>
       compileLaneSupervisorDag({
         ...ledger,
@@ -1352,6 +2304,14 @@ describe('execute-lane issue supervisor lifecycle', () => {
     );
     expect(releaseDefinition.nodes[0].prompt).toContain(
       'await-lane-dispatch.mjs',
+    );
+    const releasePrompt = releaseDefinition.nodes[0].prompt;
+    expect(releasePrompt).toContain('initialiseIssueSupervisorStore()');
+    expect(releasePrompt).toContain('review_policy=preflight-v1');
+    expect(releasePrompt).toContain('preflight-completed');
+    expect(releasePrompt).toContain('lane_plan_approval_sha256');
+    expect(releasePrompt.indexOf('preflight-completed')).toBeLessThan(
+      releasePrompt.lastIndexOf('Apply release-handoff'),
     );
 
     const binding = createDagBinding({

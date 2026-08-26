@@ -1,5 +1,4 @@
 import {
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
@@ -20,8 +19,15 @@ const { auditLaneSupervisorSettlement } = (await import(
   auditLaneSupervisorSettlement: (input: {
     repository_root: string;
     lane: Readonly<Record<string, unknown>>;
+    command_runner?: unknown;
   }) => Readonly<Record<string, unknown>>;
 };
+const { prepareCanonicalV2Runtime } = await import(
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/fixtures/v2-canonical-runtime.mjs',
+  )
+);
 const { initialiseIssueSupervisorStore } = (await import(
   resolve(
     process.cwd(),
@@ -31,6 +37,7 @@ const { initialiseIssueSupervisorStore } = (await import(
   initialiseIssueSupervisorStore: (
     runtimeRoot: string,
     identity: Readonly<Record<string, unknown>>,
+    options?: unknown,
   ) => Readonly<Record<string, unknown>>;
 };
 
@@ -82,12 +89,24 @@ describe('execute-lane supervisor settlement audit', () => {
         'utf8',
       ),
     ) as Readonly<Record<string, unknown>>;
-    const omoDirectory = join(directory, '.omo');
-    const runtimeRoot = join(omoDirectory, 'lane-runs');
+    const { runtimeRoot, commandRunner } = prepareCanonicalV2Runtime({
+      repository_root: directory,
+      lane_id: 'lane-4101-runtime',
+      issue_numbers: [4101, 4102],
+      authority_scope: {
+        pr_creation: true,
+        pr_merge: true,
+        cleanup_command_worktrees: true,
+      },
+      retry_policy: {
+        retry_count_is_terminal: true,
+        max_same_failure_repeats: 3,
+        max_wall_clock_minutes: 180,
+        stop_on_child_contract_error: true,
+      },
+    });
 
     try {
-      mkdirSync(omoDirectory);
-      mkdirSync(runtimeRoot);
       initialiseIssueSupervisorStore(runtimeRoot, {
         lane_id: 'lane-4101-runtime',
         issue_number: 4101,
@@ -95,6 +114,9 @@ describe('execute-lane supervisor settlement audit', () => {
         worktree: '.worktrees/issue-4101-runtime',
         starting_head_sha: '0'.repeat(40),
         started_at: '2026-08-25T00:00:00.000Z',
+        review_policy: 'preflight-v1',
+        repository_root: directory,
+        parent_session_id: 'ses-settlement-audit',
         release_handoff: false,
         authority_scope: {
           pr_creation: true,
@@ -107,7 +129,7 @@ describe('execute-lane supervisor settlement audit', () => {
           max_wall_clock_minutes: 180,
           stop_on_child_contract_error: true,
         },
-      });
+      }, { command_runner: commandRunner });
       renameSync(
         join(runtimeRoot, 'lane-4101-runtime', 'issues', '4101'),
         join(runtimeRoot, 'lane-4101-runtime', 'issues', '4102'),
@@ -117,6 +139,7 @@ describe('execute-lane supervisor settlement audit', () => {
         auditLaneSupervisorSettlement({
           repository_root: directory,
           lane,
+          command_runner: commandRunner,
         }),
       ).toThrow(/issue store identity/u);
     } finally {

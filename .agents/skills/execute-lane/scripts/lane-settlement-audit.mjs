@@ -20,6 +20,7 @@ const terminalStatuses = new Set([
 export const auditLaneSupervisorSettlement = ({
   repository_root,
   lane,
+  command_runner,
 }) => {
   assertContract('lane-ledger-v2', lane);
   const runtimeRoot = canonicalLaneRuntimeRoot(repository_root);
@@ -44,6 +45,7 @@ export const auditLaneSupervisorSettlement = ({
       runtimeRoot,
       lane.lane_id,
       issueNumber,
+      { command_runner },
     );
     if (
       bundle.snapshot.lane_id !== lane.lane_id ||

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -65,11 +65,25 @@ const requiredShippedContractPaths = [
   '.agents/skills/docs-sync-guardian/SKILL.md',
   '.agents/skills/docs-sync-guardian/references/guardian.md',
   '.agents/skills/docs-sync-guardian/references/workflow.md',
+  '.agents/skills/execute-lane/scripts/blocker-ledger.mjs',
+  '.agents/skills/execute-lane/scripts/canonical-verification.mjs',
+  '.agents/skills/execute-lane/scripts/conflict-resolution-policy.mjs',
+  '.agents/skills/execute-lane/scripts/dispatch-authority.mjs',
+  '.agents/skills/execute-lane/scripts/implementer-runtime.mjs',
+  '.agents/skills/execute-lane/scripts/preflight-authority.mjs',
+  '.agents/skills/execute-lane/scripts/review-loop-policy.mjs',
+  '.agents/skills/execute-lane/scripts/reviewer-runtime.mjs',
+  '.agents/skills/execute-lane/scripts/senpi-final-response.mjs',
+  '.agents/skills/execute-lane/scripts/trusted-evidence.mjs',
+  '.agents/skills/execute-lane/scripts/verification-containment.mjs',
   '.agents/workflow-contracts/blocker.schema.json',
   '.agents/workflow-contracts/contracts.mjs',
   '.agents/workflow-contracts/event.schema.json',
+  '.agents/workflow-contracts/lane-dag-binding.schema.json',
   '.agents/workflow-contracts/lane-ledger-v2.schema.json',
+  '.agents/workflow-contracts/local-review-verdict.schema.json',
   '.agents/workflow-contracts/receipt.schema.json',
+  '.agents/workflow-contracts/review-preflight.schema.json',
   '.agents/workflow-contracts/review-verdict.schema.json',
   '.agents/workflow-contracts/schema-validator.mjs',
   '.agents/workflow-contracts/search-artifact-v2.schema.json',
@@ -113,6 +127,19 @@ describe('OMO native asset manifest', () => {
     );
     for (const path of manifest.shippedContractPaths) {
       expect(existsSync(resolve(repoRoot, path)), `${path} must exist`).toBe(true);
+    }
+  });
+
+  it('registers every execute-lane governance test in validation and the dedicated plan list', () => {
+    const tests = readdirSync(resolve(repoRoot, 'tooling/governance'))
+      .filter((name) => /^execute-lane-.*\.test\.ts$/u.test(name))
+      .map((name) => `tooling/governance/${name}`)
+      .sort();
+    const validation = read('.agents/VALIDATION.md');
+    const plan = read('plans/three-stage-lane-workflow.md');
+    for (const test of tests) {
+      expect(validation, `${test} must be registered in validation`).toContain(test);
+      expect(plan, `${test} must be registered in the plan`).toContain(test);
     }
   });
 

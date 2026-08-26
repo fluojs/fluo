@@ -2,9 +2,8 @@
 
 ## Status
 
-This plan is implemented by the repository-local OMO+Senpi assets. The former
-OpenCode command plan is historical and read-only; it is not an active runtime
-fallback.
+This plan is implemented by the repository-local OMO+Senpi assets. The former OpenCode command plan is historical and
+read-only; it is not an active runtime fallback.
 
 ## Canonical pipeline
 
@@ -22,8 +21,8 @@ The three stages have exclusive responsibilities:
 | Create | `.agents/skills/create-lane/SKILL.md` | one native v2 search artifact, three plan-bound approvals | canonical ready `.omo/lanes/<lane_id>.json` plus consumed-approval receipts | issue creation, branch/worktree/PR creation, merge |
 | Execute | `.agents/skills/execute-lane/SKILL.md` | canonical v2 lane ledger and live reconciliation observations | atomic snapshot, append-only events, side-effect receipts, released lease | issue discovery, issue-set expansion, unobserved side effects |
 
-The prior direct issue-list create input is explicitly retired so every lane
-has immutable provenance. For already-open issues, use
+The prior direct issue-list create input is explicitly retired so every lane has immutable provenance. For
+already-open issues, use
 `.agents/skills/search-issue/scripts/publish-search-artifact.mjs` to publish a
 manual v2 artifact, then pass that artifact to `$create-lane`.
 
@@ -34,6 +33,7 @@ The shared source of truth is `.agents/workflow-contracts/`:
 - `search-artifact-v2.schema.json`
 - `lane-ledger-v2.schema.json`
 - `lane-dag-binding.schema.json`
+- `review-preflight.schema.json`
 - `local-review-verdict.schema.json`
 - `review-verdict.schema.json`
 - `blocker.schema.json`
@@ -50,14 +50,13 @@ multi-issue lane model:
 - lane grouping and sparse dependency graph;
 - release handoffs;
 - merge and cleanup authority;
-- bounded retry policy;
+- adaptive retry policy for new v2 lanes, with bounded behavior retained only for already-approved legacy lane-ledger evidence;
 - per-issue progress and completion evidence;
 - root `main` fast-forward-only synchronization.
 
 ## Search artifact migration
 
-Legacy actionable search records are immutable archive inputs. Reconstruct the
-ignored active runtime state with:
+Legacy actionable search records are immutable archive inputs. Reconstruct the ignored active runtime state with:
 
 ```bash
 node .agents/skills/search-issue/scripts/migrate-legacy-artifacts.mjs \
@@ -66,9 +65,8 @@ node .agents/skills/search-issue/scripts/migrate-legacy-artifacts.mjs \
   --migrated-at 2026-08-24T00:00:00.000Z
 ```
 
-The importer is idempotent, validates source shape, recomputes every v2 digest,
-fails closed on byte collisions, and emits a checksum receipt. Native runtime
-skills never load archived command or role definitions.
+The importer is idempotent, validates source shape, recomputes every v2 digest, fails closed on byte collisions, and
+emits a checksum receipt. Native runtime skills never load archived command or role definitions.
 
 ## Create-lane invariants
 
@@ -78,8 +76,7 @@ skills never load archived command or role definitions.
 2. Artifact ID and SHA-256 are recomputed from canonical content.
 3. Confirmed issues exactly match the artifact selection.
 4. Suggested additions are separately approved and may extend the issue set.
-5. The lane plan partitions every approved issue exactly once and validates
-   dependencies.
+5. The lane plan partitions every approved issue exactly once and validates dependencies.
 6. All three approval records bind the artifact and complete plan and are
    consumed once.
 7. A release handoff additionally binds live issue evidence and an explicit
@@ -93,29 +90,14 @@ skills never load archived command or role definitions.
    dispatch.
 2. Reconcile the persisted branch, worktree, PR, and head with live state.
 3. Progress each lane independently; there is no global batch barrier.
-4. Preserve lane-local dependency order and dedicated release-handoff lanes.
-   Before parking one, derive its canonical consumed lane-plan receipt,
-   recompute the artifact/plan approval binding, and reconcile all immutable
-   planning fields with the snapshot.
-   Require that binding to equal the independent
-   `lane_plan_approval_sha256` in the ledger, and reconcile whenever the field
-   exists so removing the handoff array cannot bypass provenance checks. Use
-   the canonical published ledger as the marker when validating persisted
-   snapshots so removing both fields cannot impersonate a legacy ledger.
-5. Compute eligibility from the shared ledger, persist a dispatch intent, then
-   reconcile and bind one single-node native DAG per eligible issue. Independent
-   eligible issues may run concurrently. Intent without an exact binding fails
-   closed; an exact binding attaches without another start. A dependent issue
-   is not compiled or spawned until every predecessor is shared `done`; native
-   task completion, merge before cleanup, CLOSED observations, and terminal
-   blockers do not unlock it.
-6. Implement and locally verify one commit head, then aggregate exactly one
-   contract, code, and verification result before any push or PR creation.
-7. Treat the successful local verdict as `ready-for-pr`, not `merge`. Fix local
-   blockers on the same branch and worktree, requiring a new head and a fresh
-   complete triad.
-8. After PR creation, bind required CI to the reviewed PR head. A fixable CI
-   failure returns to implementation and the local triad before the next push.
+4. Preserve dependency order and release-handoff lanes. Initialise their canonical v2 identity/authority, persist the
+   accepted preflight, then transition using the recomputed approval binding; missing/substituted evidence fails closed.
+5. Compile one native DAG containing every confirmed issue supervisor. Map explicit dependencies and each queue predecessor to `dependsOn`, persist one lane dispatch intent and binding, then start the complete DAG once. Independent nodes may run concurrently. Native ordering does not prove predecessor success: each dependent validates canonical predecessor `done` evidence before mutation, and missing, incomplete, or blocked evidence terminalizes it without issue artifacts.
+6. Implementers run focused test-first checks, not full local CI. In the parallel review batch contract/code are
+   read-only; verification is the sole artifact-producing local-CI writer under the canonical lease.
+7. `ready-for-pr` requires one complete triad. Ordinary mutation requires a new head and fresh triad; same-head PASS
+   reuse is forbidden.
+8. CI binds the reviewed PR head. A `CONFLICTING`/`DIRTY` observation enters `conflict-resolution`, never CI fix-back. Only that typed gate may inherit exact prior PASS receipts, and only after a distinct real conflict-scoped `fluo-issue-implementer` produces the commit and machine output and canonical Git proves old-base/reviewed versus upstream/resolved patch equivalence with no overlap. Canonical path/diff classification sets the minimum scoped axes; reviewers may only add axes. Ambiguous/cross-cutting impact reruns all before exact-head CI.
 9. Record merge success only after CI PASS and an issue-supervisor-owned live
    squash merge observation bound to the reviewed PR head, with the linked
    issue observed `CLOSED`.
@@ -145,6 +127,12 @@ pnpm exec vitest run \
   tooling/governance/execute-lane-dependency-cleanup-gate.test.ts \
   tooling/governance/execute-lane-dependency-assets.test.ts \
   tooling/governance/execute-lane-dispatch-intent.test.ts \
+  tooling/governance/execute-lane-git-evidence.test.ts \
+  tooling/governance/execute-lane-handoff.test.ts \
+  tooling/governance/execute-lane-implementer-route.test.ts \
+  tooling/governance/execute-lane-preflight-authority.test.ts \
+  tooling/governance/execute-lane-settlement-audit.test.ts \
+  tooling/governance/execute-lane-adaptive-retry.test.ts \
   tooling/governance/execute-lane-persistence.test.ts \
   tooling/governance/execute-lane-resilience.test.ts \
   tooling/governance/execute-lane-authority.test.ts \
@@ -157,11 +145,14 @@ pnpm exec vitest run \
   tooling/governance/verify-lane-ledger-progress.test.ts \
   tooling/governance/verify-lane-ledger-identity.test.ts \
   tooling/governance/verify-lane-ledger-schema.test.ts
+node --test .agents/skills/execute-lane/scripts/reviewer-runtime.test.mjs
+node --test .agents/skills/execute-lane/scripts/review-loop-policy.test.mjs
+node --test .agents/skills/execute-lane/scripts/conflict-resolution-policy.test.mjs
+node --test .agents/skills/execute-lane/scripts/issue-supervisor-files.test.mjs
 ```
 
-Manual QA must exercise valid and malformed search/create inputs plus happy,
-fix-back, human-check, budget, malformed-child, persisted-resume, cleanup-block,
-and root-sync execute transitions.
+Manual QA must exercise valid and malformed search/create inputs plus happy, fix-back, human-check, budget,
+malformed-child, persisted-resume, cleanup-block, and root-sync execute transitions.
 
-The scripts under `scripts/fixtures/` are deterministic contract exercisers.
-They never constitute production approval or live side-effect evidence.
+The scripts under `scripts/fixtures/` are deterministic contract exercisers. They never constitute production approval
+or live side-effect evidence.

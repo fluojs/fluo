@@ -1,4 +1,4 @@
-import { assertContract } from '../../../workflow-contracts/contracts.mjs';
+import { assertContract, payloadDigest } from '../../../workflow-contracts/contracts.mjs';
 import { validateLedger } from '../../../../tooling/governance/lane-ledger-state.mjs';
 import {
   appendEvent,
@@ -8,10 +8,15 @@ import {
   terminalize,
 } from './transition-application.mjs';
 import { assertIssueSupervisorState } from './issue-supervisor-contracts.mjs';
-import { assertIssueSupervisorBundle } from './issue-supervisor-store.mjs';
+import {
+  assertIssueSupervisorBundle,
+  loadIssueSupervisorStore,
+} from './issue-supervisor-store.mjs';
+import { canonicalLaneRuntimeRoot } from './lane-runtime-paths.mjs';
 import { dependencyGate } from './dependency-gate.mjs';
 import { parkReleaseHandoff } from './lane-progression.mjs';
 import { assertReleaseHandoffBinding } from './release-handoff-approval.mjs';
+import { assertCanonicalOriginBranchAbsent } from './trusted-evidence.mjs';
 import {
   advanceLane,
   assertLiveCompletion,
@@ -31,14 +36,38 @@ const terminalStatuses = new Set([
 
 export const importSupervisorTerminal = (
   persisted,
-  supervisorBundle,
+  supervisorTransport,
   liveCompletion = null,
   releaseHandoffContext = null,
+  trustedOptions = {},
 ) => {
-  assertIssueSupervisorBundle(supervisorBundle);
-  const { state: supervisor } = assertIssueSupervisorState(
-    supervisorBundle.snapshot,
+  const repositoryRoot = trustedOptions.repository_root;
+  const laneId = persisted?.snapshot?.lane_id;
+  const issueNumber = supervisorTransport?.snapshot?.issue_number;
+  if (
+    typeof repositoryRoot !== 'string' ||
+    typeof laneId !== 'string' ||
+    !Number.isSafeInteger(issueNumber)
+  ) {
+    throw new TypeError('supervisor terminal trusted repository and transport identity are invalid.');
+  }
+  const supervisorBundle = loadIssueSupervisorStore(
+    canonicalLaneRuntimeRoot(repositoryRoot),
+    laneId,
+    issueNumber,
+    {
+      allow_untracked: true,
+      command_runner: trustedOptions.command_runner,
+    },
   );
+  if (supervisorBundle === null) {
+    throw new TypeError('supervisor terminal canonical issue store is missing.');
+  }
+  assertIssueSupervisorBundle(supervisorBundle);
+  if (payloadDigest(supervisorTransport) !== payloadDigest(supervisorBundle)) {
+    throw new TypeError('supervisor terminal transport is forged or stale relative to the canonical issue store.');
+  }
+  const { state: supervisor } = assertIssueSupervisorState(supervisorBundle.snapshot);
   if (!terminalStatuses.has(supervisor.status)) {
     throw new TypeError('shared lane import requires a terminal supervisor state.');
   }
@@ -83,6 +112,13 @@ export const importSupervisorTerminal = (
 
   if (supervisor.status === 'done') {
     assertLiveCompletion(supervisor, liveCompletion);
+    if (supervisor.authority_scope.cleanup_command_worktrees) {
+      assertCanonicalOriginBranchAbsent({
+        repository_root: repositoryRoot,
+        branch: supervisor.branch,
+        command_runner: trustedOptions.command_runner,
+      });
+    }
     const progress = completedProgress(supervisor);
     if (snapshot.completed_issues.includes(supervisor.issue_number)) {
       if (

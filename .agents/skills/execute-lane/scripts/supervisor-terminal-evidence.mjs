@@ -45,7 +45,7 @@ export const completedProgress = (supervisor) => ({
   review_verdict: 'merge',
   checks: 'PASS',
   reviewers: supervisor.local_review.reviewers,
-  reviewed_head: supervisor.local_review.head_sha,
+  reviewed_head: supervisor.head_sha,
   commits: [supervisor.head_sha],
   merge_commit: supervisor.merge.commit_sha,
   issue_state: 'CLOSED',

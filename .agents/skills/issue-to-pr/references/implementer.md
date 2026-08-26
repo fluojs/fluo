@@ -2,8 +2,10 @@
 
 This is the detailed task contract for an implementation child used by
 `$issue-to-pr` and by an `$execute-lane` issue supervisor. The child owns scoped
-edit-test-commit work inside one assigned worktree. It never reviews or
-publishes its own result. The caller owns orchestration and remote authority.
+edit-test-commit work inside one assigned worktree. It never reviews, publishes, or runs the full local-CI gate; the
+caller owns orchestration and remote authority. Under `$execute-lane`, use exact `implementerTaskName()` and
+`implementerPromptSentinel()` evidence declaring `local_ci_role: focused-test-first-only` and `full_local_ci: false`.
+Return the documented machine final response; only the canonical completed Terra-high task record is accepted.
 
 ## Required task input
 
@@ -24,9 +26,8 @@ For `fix-back` or `ci-fix-back`, the caller must also supply:
 - fix-back attempt number
 
 `local-fix-back` occurs before a PR exists and requires local reviewer blockers
-instead of PR identity. Missing required identity, a mismatched branch or
-worktree, an absent starting head, or missing fix-back blockers is a child
-contract error. Do not repair orchestration identity by creating a replacement
+instead of PR identity. Missing required identity, a mismatched branch or worktree, an absent starting head, or
+missing fix-back blockers is a child contract error. Do not repair orchestration identity by creating a replacement
 branch, worktree, PR, or issue.
 
 ## Worktree boundary
@@ -49,9 +50,8 @@ The implementer may:
 - add behavior-locking tests, docs companions, and migration guidance required
   by the issue
 - add one Changeset for consumer-impacting public package changes
-- run diagnostics, package tests, typecheck, lint, build, and canonical
-  verifiers
-- stage only scoped changes and create one new commit on the assigned branch
+- run focused test-first checks and changed-file diagnostics before review
+- stage only scoped changes and return one final new commit on the assigned branch
 
 The implementer must not:
 
@@ -63,6 +63,8 @@ The implementer must not:
 - publish packages or run a local publish path
 - insert a `Co-Authored-By` trailer
 - review its own implementation or judge merge readiness
+- run repository-wide build, typecheck, lint, full tests, canonical verification,
+  or any full local-CI review gate; verification is the sole artifact writer
 
 ## Mandatory context
 
@@ -76,9 +78,8 @@ Before implementation, read:
   the issue or lead
 - existing implementation, callers, and regression tests at the change seam
 
-Treat canonical contracts and documented intentional limitations as binding.
-When issue wording conflicts with a canonical contract, stop and report the
-conflict instead of silently choosing one.
+Treat canonical contracts and documented intentional limitations as binding. When issue wording conflicts with a
+canonical contract, stop and report the conflict instead of silently choosing one.
 
 ## Implementation protocol
 
@@ -97,8 +98,9 @@ conflict instead of silently choosing one.
    companions in the same change.
 7. Add a Changeset for consumer-facing changes to public `@fluojs/*` packages.
    Otherwise report a concrete no-release rationale tied to policy.
-8. Inspect the scoped diff, stage only issue-related files, and create one new
-   commit using the repository's current message convention.
+8. Inspect the scoped diff and required-file checklist before committing.
+   Stage only issue-related files and create one final new commit using the
+   repository's current message convention.
 9. Confirm the resulting head differs from `starting_head_sha`. An unchanged
    head is blocked, not completed.
 
@@ -127,8 +129,7 @@ Typical verifier routing includes:
 - docs or governance: the relevant governance verifier
 - release or tooling: release-readiness verification
 
-The lead's supplied contract paths and repository scripts are authoritative;
-do not invent command names.
+The lead's supplied contract paths and repository scripts are authoritative; do not invent command names.
 
 ## Fix-back mode
 
@@ -163,13 +164,11 @@ Return one machine-readable report containing:
   `needs-human-check`
 - child contract errors, baseline failures, and unresolved decisions
 
-The report is evidence for the caller. The issue supervisor must run a fresh
-three-axis local review against `new head` before any push. The report does not
-authorize push, PR creation, merge, cleanup, release, or publication and must
-not claim the overall workflow is complete.
+The report is evidence for the caller. The issue supervisor must run a fresh three-axis local review against `new
+head` before any push. The report does not authorize push, PR creation, merge, cleanup, release, or publication and
+must not claim the overall workflow is complete.
 
 ## Communication policy
 
-Write user-facing summaries in Korean. Keep GitHub URLs, branch names, file
-paths, package names, commands, code identifiers, and raw logs in their
-original form.
+Write user-facing summaries in Korean. Keep GitHub URLs, branch names, file paths, package names, commands, code
+identifiers, and raw logs in their original form.

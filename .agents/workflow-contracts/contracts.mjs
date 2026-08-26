@@ -9,6 +9,7 @@ export const contractNames = [
   'search-artifact-v2',
   'lane-ledger-v2',
   'lane-dag-binding',
+  'review-preflight',
   'local-review-verdict',
   'review-verdict',
   'blocker',
@@ -203,6 +204,26 @@ const assertSemanticContract = (name, value) => {
         fail(name, 'needs-human-check requires one reviewer escalation');
       }
       return;
+    case 'review-preflight': {
+      const canonical = {
+        version: value.version,
+        lane_id: value.lane_id,
+        issue_number: value.issue_number,
+        issue_contract_revision: value.issue_contract_revision,
+        issue_contract_sha256: value.issue_contract_sha256,
+        lane_plan_approval_sha256: value.lane_plan_approval_sha256,
+        head_sha: value.head_sha,
+        generated_at: value.generated_at,
+        approved_sources: value.approved_sources,
+        acceptance_row_ids: value.acceptance_row_ids,
+        rows: value.rows,
+        nonfunctional: value.nonfunctional,
+      };
+      if (value.sha256 !== payloadDigest(canonical)) {
+        fail(name, 'sha256 must match the canonical preflight content');
+      }
+      return;
+    }
     case 'review-verdict':
       if (value.verdict === 'pass' && value.blockers.length !== 0) {
         fail(name, 'pass verdict must not contain blockers');

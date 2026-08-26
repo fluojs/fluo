@@ -3,6 +3,7 @@ import {
   requireTargetReceipt,
 } from './issue-supervisor-receipts.mjs';
 import { requireSha, requireString } from './transition-contracts.mjs';
+import { appendObservedBlocker } from './blocker-ledger.mjs';
 
 const requireStatus = (state, ...allowed) => {
   if (!allowed.includes(state.status)) {
@@ -51,7 +52,7 @@ const observePr = (state, step) => {
   state.status = 'ci-pending';
 };
 
-const observeCi = (state, step) => {
+const observeCi = (state, step, observedEventSequence) => {
   requireStatus(state, 'ci-pending');
   const receipt = requireTargetReceipt(state, step.receipt, 'ci');
   requirePrIdentity(receipt, state.pr);
@@ -67,21 +68,29 @@ const observeCi = (state, step) => {
       'CI result must be pass, fixable-failure, or external-failure.',
     );
   }
+  state.blocked_heads_since_refresh += 1;
   state.status = fixable ? 'ci-fix-back' : 'needs-human-check-terminal';
-  state.blockers = [
-    {
-      reviewer: 'verification',
-      signature: fixable
-        ? 'ci:required-check:failed'
-        : 'ci:external:blocked',
-      evidence,
-      fix_back_eligible: fixable,
-      status: 'unresolved',
-    },
-  ];
+  const blocker = {
+    reviewer: 'verification',
+    signature: fixable
+      ? 'ci:required-check:failed'
+      : 'ci:external:blocked',
+    evidence,
+    fix_back_eligible: fixable,
+    status: 'unresolved',
+  };
+  state.blockers = [blocker];
+  appendObservedBlocker(
+    state,
+    blocker,
+    receipt,
+    'verified-ci-receipt',
+    fixable ? 'required-verification' : 'compatibility',
+    observedEventSequence,
+  );
 };
 
-const observePrConflict = (state, step) => {
+const observePrConflict = (state, step, observedEventSequence) => {
   requireStatus(state, 'ci-pending');
   const receipt = requireTargetReceipt(
     state,
@@ -104,16 +113,24 @@ const observePrConflict = (state, step) => {
     receipt.evidence,
     'PR conflict receipt evidence',
   );
-  state.status = 'ci-fix-back';
-  state.blockers = [
-    {
-      reviewer: 'verification',
-      signature: 'pr:merge-conflict',
-      evidence,
-      fix_back_eligible: true,
-      status: 'unresolved',
-    },
-  ];
+  state.status = 'conflict-resolution';
+  state.conflict_receipt = receipt;
+  const blocker = {
+    reviewer: 'verification',
+    signature: 'pr:merge-conflict',
+    evidence,
+    fix_back_eligible: true,
+    status: 'unresolved',
+  };
+  state.blockers = [blocker];
+  appendObservedBlocker(
+    state,
+    blocker,
+    receipt,
+    'verified-pr-conflict-receipt',
+    'compatibility',
+    observedEventSequence,
+  );
 };
 
 const observeMerge = (state, step) => {
@@ -172,16 +189,20 @@ const observeCleanup = (state, step) => {
   state.status = complete ? 'done' : 'blocked-terminal';
 };
 
-export const applyRemoteTransition = (state, step) => {
+export const applyRemoteTransition = (
+  state,
+  step,
+  observedEventSequence,
+) => {
   switch (step.kind) {
     case 'pr-observed':
       observePr(state, step);
       return true;
     case 'ci-observed':
-      observeCi(state, step);
+      observeCi(state, step, observedEventSequence);
       return true;
     case 'pr-conflict-observed':
-      observePrConflict(state, step);
+      observePrConflict(state, step, observedEventSequence);
       return true;
     case 'merge-observed':
       observeMerge(state, step);
