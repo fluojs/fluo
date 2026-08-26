@@ -96,7 +96,7 @@ const allFiles = (root: string): readonly string[] =>
     .sort();
 
 describe('$create-lane native v2 producer', () => {
-  it('creates a canonical ready v2 ledger after three plan-bound approvals', () => {
+  it('creates an artifact lane with derived receipts and no redundant gate', () => {
     // Given / When
     const run = runScenario('valid-native-artifact.json');
 
@@ -115,6 +115,7 @@ describe('$create-lane native v2 producer', () => {
       expect(ledger['version']).toBe(2);
       expect(ledger['status']).toBe('ready');
       expect(ledger['confirmed_issues']).toEqual([4101]);
+      expect(ledger).not.toHaveProperty('lane_plan_approval_sha256');
       expect(ledger['lanes']).toEqual([
         {
           name: 'runtime',
@@ -134,6 +135,190 @@ describe('$create-lane native v2 producer', () => {
       ).toContain('Lane ledger check passed for 1 file(s).');
     } finally {
       rmSync(run.outputRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('publishes bulk issue numbers as canonical lane provenance', () => {
+    // Given / When
+    const run = runScenario('valid-number-intake.json');
+
+    try {
+      // Then
+      expect(run.result).toEqual({
+        status: 'ready',
+        ledger: '.omo/lanes/lane-4101-runtime.json',
+      });
+      expect(allFiles(run.outputRoot)).toHaveLength(5);
+      const artifact = parseRecord(
+        readFileSync(
+          resolve(
+            run.outputRoot,
+            '.omo/search-issue/artifacts/search-native-runtime.json',
+          ),
+          'utf8',
+        ),
+      );
+      const ledger = parseRecord(
+        readFileSync(
+          resolve(run.outputRoot, '.omo/lanes/lane-4101-runtime.json'),
+          'utf8',
+        ),
+      );
+      expect(artifact['selected_issues']).toEqual([4101]);
+      expect(ledger['source']).toEqual(
+        expect.objectContaining({
+          search_ledger:
+            '.omo/search-issue/artifacts/search-native-runtime.json',
+          artifact_id: artifact['artifact_id'],
+          sha256: artifact['sha256'],
+        }),
+      );
+    } finally {
+      rmSync(run.outputRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('publishes verbally collected issues as canonical lane provenance', () => {
+    // Given / When
+    const run = runScenario('valid-verbal-intake.json');
+
+    try {
+      // Then
+      expect(run.result).toEqual({
+        status: 'ready',
+        ledger: '.omo/lanes/lane-4101-runtime.json',
+      });
+      expect(allFiles(run.outputRoot)).toHaveLength(5);
+      const artifact = parseRecord(
+        readFileSync(
+          resolve(
+            run.outputRoot,
+            '.omo/search-issue/artifacts/search-native-runtime.json',
+          ),
+          'utf8',
+        ),
+      );
+      expect(artifact).toEqual(
+        expect.objectContaining({
+          artifact_id: 'search:search-native-runtime',
+          search_run_id: 'search-native-runtime',
+          selected_issues: [4101],
+        }),
+      );
+    } finally {
+      rmSync(run.outputRoot, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    [
+      {
+        mode: 'issue-numbers',
+        issue_numbers: [],
+        search_run_id: 'search-empty',
+      },
+      'invalid_issue_numbers',
+    ],
+    [
+      {
+        mode: 'issue-numbers',
+        issue_numbers: [4101, 4101],
+        search_run_id: 'search-duplicate',
+      },
+      'invalid_issue_numbers',
+    ],
+    [
+      {
+        mode: 'verbal',
+        query: '',
+        resolved_issue_numbers: [4101],
+        search_run_id: 'search-unresolved',
+      },
+      'unresolved_verbal_input',
+    ],
+    [
+      {
+        mode: 'verbal',
+        query: 'collect runtime issues',
+        resolved_issue_numbers: [],
+        search_run_id: 'search-unresolved',
+      },
+      'unresolved_verbal_input',
+    ],
+  ])('rejects malformed generated intake before publication', (intake, reason) => {
+    const run = runScenarioValue({ intake });
+    try {
+      expect(run.result).toEqual({ status: 'rejected', reason });
+      expect(allFiles(run.outputRoot)).toEqual([]);
+    } finally {
+      rmSync(run.outputRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves a colliding generated artifact without publishing a lane', () => {
+    const outputRoot = mkdtempSync(resolve(tmpdir(), 'fluo-create-lane-'));
+    const artifact = resolve(
+      outputRoot,
+      '.omo/search-issue/artifacts/search-native-runtime.json',
+    );
+    mkdirSync(resolve(artifact, '..'), { recursive: true });
+    writeFileSync(artifact, '{"existing":true}\n', 'utf8');
+
+    const run = runScenario('valid-number-intake.json', outputRoot);
+    try {
+      expect(run.result).toEqual({
+        status: 'rejected',
+        reason: 'artifact_collision',
+      });
+      expect(readFileSync(artifact, 'utf8')).toBe('{"existing":true}\n');
+      expect(allFiles(outputRoot)).toEqual([artifact]);
+    } finally {
+      rmSync(outputRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('retains generated provenance when the lane target collides', () => {
+    const outputRoot = mkdtempSync(resolve(tmpdir(), 'fluo-create-lane-'));
+    const target = resolve(outputRoot, '.omo/lanes/lane-4101-runtime.json');
+    const artifact = resolve(
+      outputRoot,
+      '.omo/search-issue/artifacts/search-native-runtime.json',
+    );
+    mkdirSync(resolve(target, '..'), { recursive: true });
+    writeFileSync(target, '{"existing":true}\n', 'utf8');
+
+    const run = runScenario('valid-number-intake.json', outputRoot);
+    try {
+      expect(run.result).toEqual({
+        status: 'rejected',
+        reason: 'target_collision',
+      });
+      expect(readFileSync(target, 'utf8')).toBe('{"existing":true}\n');
+      expect(parseRecord(readFileSync(artifact, 'utf8'))['selected_issues']).toEqual([
+        4101,
+      ]);
+      expect(allFiles(outputRoot)).toEqual([artifact, target].sort());
+    } finally {
+      rmSync(outputRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a symlinked generated output root before artifact publication', () => {
+    const parent = mkdtempSync(resolve(tmpdir(), 'fluo-create-parent-'));
+    const outside = mkdtempSync(resolve(tmpdir(), 'fluo-create-outside-'));
+    const outputRoot = resolve(parent, 'redirected');
+    symlinkSync(outside, outputRoot);
+
+    const run = runScenario('valid-number-intake.json', outputRoot);
+    try {
+      expect(run.result).toEqual({
+        status: 'rejected',
+        reason: 'unsafe_output_path',
+      });
+      expect(allFiles(outside)).toEqual([]);
+    } finally {
+      rmSync(parent, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
     }
   });
 

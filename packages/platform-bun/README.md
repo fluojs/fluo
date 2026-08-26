@@ -47,6 +47,10 @@ await app.listen();
 
 ## Common Patterns
 
+### Early Hints are unsupported
+
+Bun uses Fluo's Web-standard response facade, so `context.response.earlyHints` is absent. Check for capability presence before use. The adapter does not silently ignore Early Hints and does not copy early fields into the final `Response`; use a Node.js, Express, or Fastify adapter when application code must emit observable HTTP `103` responses.
+
 ### Manual Fetch Handling
 If you prefer to manage the Bun server yourself, you can use the fetch handler directly.
 The `dispatcher` should come from the already bootstrapped application via `app.getHttpDispatcher()`. `createBunFetchHandler(...)` synchronously creates the fetch bridge and preserves raw-body and multipart request parsing, while shutdown ownership, websocket upgrades, and native `routes` acceleration remain responsibilities of the surrounding `Bun.serve(...)` host or the managed adapter path.

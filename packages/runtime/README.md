@@ -67,6 +67,10 @@ await app.listen();
 
 ## Common Patterns
 
+### Optional Early Hints capability
+
+The runtime preserves the adapter-owned optional `context.response.earlyHints` capability without making it part of the required response method surface. Node.js, Express, and Fastify responses provide the writer; Web-standard response factories omit it so Bun, Deno, Workers, and custom Fetch hosts are detectable as unsupported before use. Early writes remain independent from final status, headers, body, and commit ownership. See the [`@fluojs/http` Early Hints contract](../http/README.md#early-hints).
+
 ### Application Context (No HTTP)
 
 For background workers or scripts, use `createApplicationContext` to skip HTTP setup.

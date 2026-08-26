@@ -8,10 +8,8 @@ import {
 } from '../../../workflow-contracts/contracts.mjs';
 import { validateLedger } from '../../../../tooling/governance/lane-ledger-state.mjs';
 import { validateApprovals } from './approval-contracts.mjs';
+import { normalizeIntake } from './intake-contracts.mjs';
 import { planIsCanonical, readyLedger } from './plan-contracts.mjs';
-
-const nativeArtifactPattern =
-  /^\.omo\/search-issue\/artifacts\/(?:legacy\/)?([A-Za-z0-9][A-Za-z0-9+._-]*)\.json$/u;
 
 const isRecord = (value) =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -29,23 +27,13 @@ const readScenario = (scenarioPath) => {
   return value;
 };
 
-const readArtifact = (scenario, input) =>
-  isRecord(scenario.artifacts) && Object.hasOwn(scenario.artifacts, input)
-    ? scenario.artifacts[input]
-    : undefined;
-
 export const prepareScenario = (scenarioPath) => {
   const scenario = readScenario(scenarioPath);
-  if (!Array.isArray(scenario.inputs) || scenario.inputs.length !== 1) {
-    return rejected('mixed_input');
+  const normalized = normalizeIntake(scenario);
+  if (normalized.reason !== undefined) {
+    return rejected(normalized.reason);
   }
-  const input = scenario.inputs[0];
-  const pathMatch =
-    typeof input === 'string' ? nativeArtifactPattern.exec(input) : null;
-  if (pathMatch === null) {
-    return rejected('mixed_input');
-  }
-  const artifact = readArtifact(scenario, input);
+  const { artifact, artifactPath, publishArtifact } = normalized;
   const plan = scenario.plan;
   if (!isRecord(artifact) || !isRecord(plan)) {
     return rejected('invalid_artifact');
@@ -59,8 +47,6 @@ export const prepareScenario = (scenarioPath) => {
     throw error;
   }
   if (
-    `${pathMatch[1]}.json` !== basename(input) ||
-    pathMatch[1] !== artifact.search_run_id ||
     !planIsCanonical(plan, artifact)
   ) {
     return rejected('invalid_artifact');
@@ -69,15 +55,20 @@ export const prepareScenario = (scenarioPath) => {
     scenario.approvals,
     artifact,
     plan,
+    scenario.recommended_issue_numbers,
   );
   if (approvalFailure !== null) {
     return rejected(approvalFailure);
   }
+  const releaseApprovalSha256 =
+    plan.release_handoffs.length === 0
+      ? undefined
+      : scenario.approvals[2].binding_sha256;
   const ledger = readyLedger(
     plan,
     artifact,
-    input,
-    scenario.approvals[2].binding_sha256,
+    artifactPath,
+    releaseApprovalSha256,
   );
   try {
     assertLaneSourceBinding(ledger, artifact);
@@ -93,5 +84,8 @@ export const prepareScenario = (scenarioPath) => {
     ledger,
     approvals: scenario.approvals,
     plan,
+    artifact,
+    artifactPath,
+    publishArtifact,
   };
 };

@@ -45,6 +45,10 @@ await app.listen();
 
 ## Common Patterns
 
+### Early Hints
+
+Raw Node responses expose `context.response.earlyHints`. Check that optional capability, then await `write(...)` once per HTTP `103`; multiple writes are supported. Each write requires a non-empty `link` value and may include other Node-permitted informational fields. The native write does not commit the final response or copy early fields into final headers. Late/native failures reject with `EarlyHintsWriteError`, and a disconnect before settlement rejects with `RequestAbortedError`.
+
 ### Customizing Server Options
 The adapter exposes the documented Node.js transport options: host/port binding, HTTPS configuration, request body limits, raw-body preservation, listen retry settings, and shutdown drain bounds.
 

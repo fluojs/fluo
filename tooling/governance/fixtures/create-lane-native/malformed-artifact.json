@@ -1,5 +1,8 @@
 {
-  "inputs": [".omo/search-issue/artifacts/search-native-runtime.json"],
+  "intake": {
+    "mode": "artifact",
+    "artifact_path": ".omo/search-issue/artifacts/search-native-runtime.json"
+  },
   "artifacts": {
     ".omo/search-issue/artifacts/search-native-runtime.json": {
       "version": 2,

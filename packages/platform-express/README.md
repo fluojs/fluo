@@ -50,6 +50,10 @@ await app.listen();
 
 ## Common Patterns
 
+### Early Hints
+
+Express responses expose the optional `context.response.earlyHints` capability backed by the underlying Node `ServerResponse`. Await one `write(...)` per `103`; multiple writes are observable before the final response. Early fields stay separate from Express final headers, status, body, and commit state. Missing capability means unsupported, while late writes and disconnects reject deterministically instead of becoming no-ops.
+
 ### Handling Streaming Responses (SSE)
 The Express adapter supports Server-Sent Events (SSE) via the shared `SseResponse` utility, abstracting away the Express-specific stream handling.
 

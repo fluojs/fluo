@@ -1,7 +1,7 @@
 import { Container } from '@fluojs/di';
 import { describe, expect, it } from 'vitest';
 
-import type { FrameworkRequest, FrameworkResponse } from '../index.js';
+import type { FrameworkRequest, FrameworkResponse, MiddlewareContext, Next } from '../index.js';
 import { Controller, createDispatcher, createHandlerMapping, Get } from '../index.js';
 
 function createRequest(): FrameworkRequest {
@@ -85,7 +85,110 @@ function createFinishDisposalDispatcher(events: string[], handler: () => unknown
   });
 }
 
+function createObserverOrderingDispatcher(
+  events: string[],
+  handler: () => unknown,
+  afterAppNext?: () => void,
+) {
+  class AppMiddleware {
+    async handle(_context: MiddlewareContext, next: Next) {
+      events.push('app:before');
+      await next();
+      events.push('app:after');
+      afterAppNext?.();
+    }
+  }
+
+  class ModuleMiddleware {
+    async handle(_context: MiddlewareContext, next: Next) {
+      events.push('module:before');
+      await next();
+      events.push('module:after');
+    }
+  }
+
+  @Controller('/finish-disposal-order')
+  class ObserverOrderingController {
+    @Get('/')
+    handle() {
+      events.push('handler');
+      return handler();
+    }
+  }
+
+  const observer = {
+    onRequestError() {
+      events.push('error');
+    },
+    onRequestFinish() {
+      events.push('finish');
+    },
+    onRequestSuccess() {
+      events.push('success');
+    },
+  };
+  const root = new Container().register(AppMiddleware, ModuleMiddleware, ObserverOrderingController);
+
+  return createDispatcher({
+    appMiddleware: [AppMiddleware],
+    handlerMapping: createHandlerMapping([
+      {
+        controllerToken: ObserverOrderingController,
+        moduleMiddleware: [ModuleMiddleware],
+      },
+    ]),
+    observers: [observer],
+    rootContainer: root,
+  });
+}
+
 describe('dispatcher lifecycle ordering', () => {
+  it('emits request success after application and module middleware settle', async () => {
+    // Given
+    const events: string[] = [];
+    const dispatcher = createObserverOrderingDispatcher(events, () => ({ ok: true }));
+
+    // When
+    await dispatcher.dispatch(createRequest(), createResponse());
+
+    // Then
+    expect(events).toEqual([
+      'app:before',
+      'module:before',
+      'handler',
+      'module:after',
+      'app:after',
+      'success',
+      'finish',
+    ]);
+  });
+
+  it('emits request error without success when application middleware fails after next', async () => {
+    // Given
+    const events: string[] = [];
+    const dispatcher = createObserverOrderingDispatcher(
+      events,
+      () => ({ ok: true }),
+      () => {
+        throw new Error('application middleware failed after next');
+      },
+    );
+
+    // When
+    await dispatcher.dispatch(createRequest(), createResponse());
+
+    // Then
+    expect(events).toEqual([
+      'app:before',
+      'module:before',
+      'handler',
+      'module:after',
+      'app:after',
+      'error',
+      'finish',
+    ]);
+  });
+
   it('completes onRequestFinish before request-scope disposal on the success path', async () => {
     // Given
     const events: string[] = [];

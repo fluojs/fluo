@@ -7,14 +7,23 @@
 - Events: `.omo/lane-runs/<lane-id>/events.jsonl`
 - Receipts: `.omo/lane-runs/<lane-id>/receipts.json`
 - Lease: `.omo/lane-runs/<lane-id>/lease.json`
-- Issue DAG bindings:
+- Lane DAG binding: `.omo/lane-runs/<lane-id>/dag-binding.json`
+- Legacy issue bindings:
   `.omo/lane-runs/<lane-id>/dag-bindings/issue-<number>.json`
-- Legacy lane-wide binding: `.omo/lane-runs/<lane-id>/dag-binding.json`
 - Issue runtime: `.omo/lane-runs/<lane-id>/issues/<issue-number>/`
 
 Acquire a per-ledger lease, validate the v2 snapshot and event hash chain, and
 reconcile live branch, worktree, PR, head, checks, and issue identity before
 resuming.
+
+Before acquiring the lease, require the exact canonical
+`.omo/lanes/<lane-id>.json` path with a matching filename and reject symlinked
+or repository-escaping evidence. Re-read the source search artifact and the
+`confirmed-issues`, `suggested-additions`, and `lane-plan` approval receipts.
+Recompute every approval binding, require the artifact ID/SHA and approved plan
+to reproduce the ledger's immutable fields, and reject a resumed snapshot when
+its source, authority, retry policy, issue set, lane queues, dependencies, or
+release handoffs differ from that canonical plan.
 
 `release_handoffs` does not mean “Changeset required.” It contains only issues
 whose core task is release or publishing. Those issues are never dispatched to
@@ -29,43 +38,68 @@ Each receipt attestation must retain the approved issue evidence digest,
 Recompute the receipt binding and require it to equal the independent
 `lane_plan_approval_sha256` stored in the ready ledger.
 
-## Parent-owned incremental dispatch
+## Parent-owned lane DAG dispatch
 
-Native `dependsOn` expresses task ordering, not predecessor success. Production
-therefore never starts the legacy full-lane definition. The parent repeatedly:
+Production compiles exactly one native DAG from one immutable lane ledger.
+Every confirmed issue becomes one supervisor node. Explicit
+`dependency_graph` edges map to `dependsOn`, and each issue after the first in a
+lane queue also depends on its direct queue predecessor. The combined graph
+must be acyclic. The parent:
 
-1. reconciles existing issue bindings, stores, and live identities;
-2. imports validated terminal supervisor evidence;
-3. compiles one issue through `compileIssueSupervisorDag()` and calls
-   `reconcileIssueSupervisorDispatch()`;
-4. persists the returned `supervisor.dispatch.intent` candidate;
-5. starts a single-node native DAG whose node has `dependsOn: []`;
+1. reconciles the shared snapshot, existing lane binding, issue stores, and
+   live identities;
+2. compiles the ledger through `compileLaneSupervisorDag()`;
+3. calls `reconcileLaneSupervisorDispatch()`;
+4. persists the returned `lane.dag.dispatch.intent` candidate;
+5. starts the complete native DAG once;
 6. immediately attaches the observed run with
-   `attachIssueSupervisorRun()`;
-7. persists its immutable v2 binding under
-   `dag-bindings/issue-<number>.json`.
+   `attachLaneSupervisorRun()`;
+7. authenticates the run, its native key record, and submitted definition from
+   `.omo/senpi-task/dag/{runs,keys}`;
+8. persists its immutable v3 binding at `dag-binding.json`;
+9. requires every supervisor to pass `await-lane-dispatch.mjs` before
+   mutation.
 
-Independent issues returned by the gate may be dispatched concurrently. A
-dependency succeeds only when it appears in `completed_issues` and its shared
-`issue_progress.status` is `done`, preserving merge, CLOSED issue, and cleanup
-evidence. Merge alone, a CLOSED observation, native task completion, or any
-terminal blocker does not release a dependent.
+The dispatch interface accepts the repository root and derives the only valid
+runtime root, `.omo/lane-runs`, internally. Callers cannot select a binding
+directory. The startup gate subscribes to the canonical binding path before
+rechecking it, so a fast attach cannot be missed and a delayed attach does not
+become a false terminal blocker.
 
-After a one-node run settles, the parent validates and imports it before
-computing the next eligible set. A blocked dependency terminalizes unreachable
-dependent lanes only after fresh absence observations prove no issue store,
-branch, worktree, task, or PR exists. Those observations are recorded in the
-`dependency.blocked` event. An existing dispatch intent without an exact issue
+An attached run resumes from the authenticated native run definition, not a
+fresh `compile-dag.mjs` result. This keeps a long-lived exact run attachable
+when workflow source changes later. A legacy dispatch intent that has no
+definition digest remains compatible only when its existing binding matches
+the native run record. If that binding is missing, recovery requires a
+successor lane; never synthesize a new binding from current source.
+
+Independent nodes run concurrently. Native `dependsOn` is an ordering signal,
+not semantic success. Before mutation, every dependent supervisor loads and
+validates each predecessor's isolated issue store through
+`supervisor-terminal.mjs`. Only canonical `done` evidence preserving merge,
+CLOSED issue, and cleanup authorizes mutation. Merge alone, a CLOSED
+observation, native task completion, missing or malformed evidence, or any
+terminal blocker does not release mutation.
+
+After the lane DAG settles, the parent first runs
+`scripts/lane-settlement-audit.mjs`. A native `completed` node is only a
+settled claim. Missing or nonterminal canonical issue stores keep the lane
+incomplete. The parent then validates and imports issue terminals in
+topological order. A blocked dependency terminalizes unreachable dependents
+only after fresh absence observations prove no branch, worktree, child, or PR
+was created for them. Those observations are recorded in the
+`dependency.blocked` event. An existing dispatch intent without an exact lane
 binding is an ambiguous crash window and
-`reconcileIssueSupervisorDispatch()` fails closed. An existing exact binding
+`reconcileLaneSupervisorDispatch()` fails closed. An existing exact binding
 returns only `attach`; it never authorizes a duplicate start.
 
-Legacy v1 lane-wide bindings remain immutable evidence only. Do not overwrite,
-amend, or resume them as the production scheduler. Reconcile their issue stores
-and live state, then require a new approved lane identity for unfinished work.
-The successor may reuse a reconciled canonical issue branch, worktree, and OPEN
-PR. It must rerun the same-head local triad and persist a fresh `pr-adopt`
-receipt under the successor lane identity before observing CI.
+Legacy v1 lane-wide bindings and v2 per-issue bindings remain immutable evidence
+only. Do not overwrite, amend, or resume them as the production scheduler.
+Reconcile their issue stores and live state, then require a new approved lane
+identity for unfinished work. The successor may reuse a reconciled canonical
+issue branch, worktree, and OPEN PR. It must rerun the same-head local triad and
+persist a fresh `pr-adopt` receipt under the successor lane identity before
+observing CI.
 
 Each dispatched node initialises `scripts/issue-supervisor-store.mjs` under its
 issue runtime directory. Every local review, remote observation, receipt, and
@@ -79,6 +113,7 @@ queued -> implementing -> local-review
 local-review + fixable BLOCK -> implementing -> new head -> local-review
 local-review + all PASS -> ready-for-pr
 ready-for-pr -> observed push and PR creation -> ci-pending
+ci-pending + PR CONFLICTING/DIRTY -> ci-fix-back -> new head -> local-review
 ci-pending + fixable failure -> ci-fix-back -> new head -> local-review
 local-review + all PASS and existing PR -> ready-for-push
 ready-for-push -> observed push -> ci-pending
@@ -136,7 +171,7 @@ executes root-state checks. Nested child output and fixture JSON are not live
 evidence:
 
 ```bash
-gh pr view <pr> --json number,url,state,headRefName,headRefOid,mergeCommit,mergedAt
+gh pr view <pr> --json number,url,state,headRefName,headRefOid,mergeable,mergeStateStatus,mergeCommit,mergedAt
 gh issue view <issue> --json number,state,url
 git worktree list --porcelain
 git show-ref --verify refs/heads/<branch>
@@ -147,11 +182,13 @@ git rev-parse HEAD
 git rev-parse origin/<base-branch>
 ```
 
-Before dispatch and again before first mutation, the parent and issue
-supervisor require the issue to remain the queued lane cursor with every
-dependency at canonical `done`. Before first push and every update, the issue
-supervisor verifies the complete local triad against the commit head. Before
-merge, it verifies the reviewed
+Before the single DAG dispatch, the parent requires an exact ready lane
+identity. Before first mutation, each issue supervisor requires its immutable
+node identity and canonical `done` terminal evidence for every compiled
+predecessor. The shared snapshot need not yet expose that issue as the queue
+cursor because the parent imports all settled terminals later in topological
+order. Before first push and every update, the issue supervisor verifies the
+complete local triad against the commit head. Before merge, it verifies the reviewed
 head, remote branch, `headRefOid`, and CI head are identical. After merge, it
 requires `state: MERGED`, a non-null merge commit, and the linked issue
 `state: CLOSED`. Cleanup receipts require the worktree and local/remote branch

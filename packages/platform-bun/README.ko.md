@@ -47,6 +47,10 @@ await app.listen();
 
 ## 주요 패턴
 
+### Early Hints 미지원
+
+Bun은 Fluo의 Web 표준 response facade를 사용하므로 `context.response.earlyHints`가 없습니다. 사용 전에 capability 존재 여부를 확인하세요. Adapter는 Early Hints를 조용히 무시하거나 early field를 final `Response`에 복사하지 않습니다. 애플리케이션 코드가 관찰 가능한 HTTP `103`을 emit해야 한다면 Node.js, Express, Fastify adapter를 사용하세요.
+
 ### 수동 Fetch 처리
 Bun 서버를 직접 관리하려는 경우 fetch 핸들러를 직접 사용할 수 있습니다.
 `dispatcher`는 이미 bootstrap된 application의 `app.getHttpDispatcher()`에서 가져와야 합니다. `createBunFetchHandler(...)`는 동기적으로 fetch bridge를 만들고 raw-body와 multipart request parsing을 보존하지만, shutdown ownership, websocket upgrade, native `routes` acceleration은 주변 `Bun.serve(...)` host 또는 managed adapter 경로가 소유합니다.

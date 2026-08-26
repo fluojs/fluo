@@ -50,6 +50,7 @@ import {
 } from '@fluojs/runtime/internal/request-response-factory';
 import {
   cloneHeaderValue,
+  createNodeEarlyHintsCapability,
   createDeferredFrameworkRequestShell,
   createMemoizedAsyncValue,
   createMemoizedValue,
@@ -768,6 +769,7 @@ export async function runFastifyApplication(
 
 class MutableFastifyFrameworkResponse implements FastifyFrameworkResponse {
   committed: boolean;
+  readonly earlyHints;
   headers: Record<string, string | string[]> = {};
   raw: FastifyReply;
   statusCode?: number;
@@ -777,6 +779,10 @@ class MutableFastifyFrameworkResponse implements FastifyFrameworkResponse {
 
   constructor(private readonly reply: FastifyReply) {
     this.committed = reply.sent;
+    this.earlyHints = createNodeEarlyHintsCapability(
+      reply.raw,
+      () => this.committed,
+    );
     this.raw = reply;
   }
 

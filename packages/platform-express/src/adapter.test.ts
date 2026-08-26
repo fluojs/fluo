@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import {
   createServer as createHttpServer,
+  type InformationEvent,
   request as httpRequest,
 } from 'node:http';
 import { request as httpsRequest } from 'node:https';
@@ -139,8 +140,15 @@ async function requestHttp(options: {
   method?: string;
   path: string;
   port: number;
-}): Promise<{ body: string; headers: Headers; setCookieHeaders: string[]; statusCode: number }> {
+}): Promise<{
+  body: string;
+  headers: Headers;
+  informational: InformationEvent[];
+  setCookieHeaders: string[];
+  statusCode: number;
+}> {
   return await new Promise((resolve, reject) => {
+    const informational: InformationEvent[] = [];
     const request = httpRequest({
       headers: options.headers,
       host: '127.0.0.1',
@@ -164,6 +172,7 @@ async function requestHttp(options: {
         resolve({
           body: Buffer.concat(chunks).toString('utf8'),
           headers: new Headers(response.headers as Record<string, string>),
+          informational,
           setCookieHeaders,
           statusCode: response.statusCode ?? 0,
         });
@@ -172,6 +181,9 @@ async function requestHttp(options: {
     });
 
     request.on('error', reject);
+    request.on('information', (information) => {
+      informational.push(information);
+    });
 
     if (options.body) {
       request.write(options.body);
@@ -244,6 +256,70 @@ const expressPortabilityHarness = createHttpAdapterPortabilityHarness({
 });
 
 describe('@fluojs/platform-express', () => {
+  it('emits multiple Early Hints before an independent final response on a real listener', async () => {
+    @Controller('/early-hints')
+    class EarlyHintsController {
+      @Get('/')
+      async render(_input: undefined, context: RequestContext) {
+        const earlyHints = context.response.earlyHints;
+
+        if (!earlyHints) {
+          throw new Error('Expected the Express response to support Early Hints.');
+        }
+
+        await earlyHints.write({
+          link: '</styles.css>; rel=preload; as=style',
+          'x-early-trace': 'first',
+        });
+        await earlyHints.write({
+          link: '</app.js>; rel=modulepreload',
+        });
+        context.response.setHeader('link', '</final.css>; rel=stylesheet');
+
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [EarlyHintsController] });
+
+    const adapter = createExpressAdapter({
+      host: '127.0.0.1',
+      port: 0,
+    }) as ExpressHttpApplicationAdapter;
+    const app = await FluoFactory.create(AppModule, { adapter });
+
+    try {
+      await app.listen();
+      const response = await requestHttp({
+        path: '/early-hints',
+        port: getBoundPort(adapter.getServer()),
+      });
+
+      expect(response.informational.map(({ headers, statusCode }) => ({
+        link: headers.link,
+        statusCode,
+        trace: headers['x-early-trace'],
+      }))).toEqual([
+        {
+          link: '</styles.css>; rel=preload; as=style',
+          statusCode: 103,
+          trace: 'first',
+        },
+        {
+          link: '</app.js>; rel=modulepreload',
+          statusCode: 103,
+          trace: undefined,
+        },
+      ]);
+      expect(response.statusCode).toBe(200);
+      expect(response.headers.get('link')).toBe('</final.css>; rel=stylesheet');
+      expect(JSON.parse(response.body)).toEqual({ ok: true });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('documents Express host compatibility without promising native middleware translation', () => {
     const packageReadme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
     const packageReadmeKo = readFileSync(new URL('../README.ko.md', import.meta.url), 'utf8');
@@ -1639,9 +1715,9 @@ describe('@fluojs/platform-express', () => {
       expect(lifecycle.indexOf('observer:matched:GET:/users/:id')).toBeLessThan(lifecycle.indexOf('guard:/users/:id:123'));
       expect(lifecycle.indexOf('guard:/users/:id:123')).toBeLessThan(lifecycle.indexOf('interceptor:before:/users/:id'));
       expect(lifecycle.indexOf('interceptor:before:/users/:id')).toBeLessThan(lifecycle.indexOf('interceptor:after:/users/:id'));
-      expect(lifecycle.indexOf('interceptor:after:/users/:id')).toBeLessThan(lifecycle.indexOf('observer:success:user'));
-      expect(lifecycle.indexOf('observer:success:user')).toBeLessThan(lifecycle.indexOf('middleware:after:GET'));
-      expect(lifecycle.indexOf('middleware:after:GET')).toBeLessThan(lifecycle.indexOf('observer:finish:GET'));
+      expect(lifecycle.indexOf('interceptor:after:/users/:id')).toBeLessThan(lifecycle.indexOf('middleware:after:GET'));
+      expect(lifecycle.indexOf('middleware:after:GET')).toBeLessThan(lifecycle.indexOf('observer:success:user'));
+      expect(lifecycle.indexOf('observer:success:user')).toBeLessThan(lifecycle.indexOf('observer:finish:GET'));
 
       const versionedResponse = await requestHttp({
         headers: { 'x-api-version': '1' },

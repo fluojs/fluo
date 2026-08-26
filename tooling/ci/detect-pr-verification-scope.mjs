@@ -175,6 +175,10 @@ function changedFilesFromGit() {
 
 export function shouldForceFullVerificationByPath(changedFiles) {
   for (const path of changedFiles) {
+    if (path.startsWith('.changeset/')) {
+      continue;
+    }
+
     if (alwaysFullVerifyPaths.has(path)) {
       return `changed ${path}`;
     }

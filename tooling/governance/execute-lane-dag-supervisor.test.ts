@@ -26,13 +26,18 @@ type DagDefinition = Readonly<{
   name: string;
   nodes: readonly DagNode[];
 }>;
+type ImplementerRoute = Readonly<{
+  subagent_type: 'fluo-issue-implementer';
+  expected_model: 'openai-codex/gpt-5.6-terra';
+  expected_thinking: 'high';
+}>;
 type DagBinding = Readonly<{
   version: number;
   lane_id: string;
   dag_key: string;
   run_id: string;
   definition_sha256: string;
-  snapshot_event_hash: string | null;
+  dispatch_event_hash: string;
   status: string;
 }>;
 type SupervisorState = Readonly<{
@@ -65,13 +70,14 @@ const {
     transition: unknown,
   ) => SupervisorState;
 };
-const { compileLegacyLaneSupervisorDag } = (await import(
+const { compileLaneSupervisorDag, implementerRoute } = (await import(
   resolve(
     process.cwd(),
     '.agents/skills/execute-lane/scripts/compile-dag.mjs',
   )
 )) as {
-  compileLegacyLaneSupervisorDag: (ledger: unknown) => DagDefinition;
+  compileLaneSupervisorDag: (ledger: unknown) => DagDefinition;
+  implementerRoute: ImplementerRoute;
 };
 const {
   assertDagBindingMatches,
@@ -90,14 +96,14 @@ const {
       definition: DagDefinition;
       lane_id: string;
       run_id: string;
-      snapshot_event_hash: string | null;
+      dispatch_event_hash: string;
     },
   ) => void;
   createDagBinding: (input: {
     definition: DagDefinition;
     lane_id: string;
     run_id: string;
-    snapshot_event_hash: string | null;
+    dispatch_event_hash: string;
   }) => DagBinding;
   loadDagBinding: (runtimeRoot: string, laneId: string) => DagBinding | null;
   persistDagBinding: (runtimeRoot: string, binding: DagBinding) => void;
@@ -270,6 +276,24 @@ const passReviews = (head: string) =>
     blockers: [],
   }));
 
+const createCiPendingState = () => {
+  let state = createIssueSupervisor(identity);
+  state = transitionIssueSupervisor(state, {
+    kind: 'implementation-completed',
+    new_head: headA,
+    verification: 'pnpm test --filter runtime passed',
+  });
+  state = transitionIssueSupervisor(state, {
+    kind: 'local-review',
+    reviews: passReviews(headA),
+  });
+  return transitionIssueSupervisor(state, {
+    kind: 'pr-observed',
+    action: 'create',
+    receipt: prReceipt('pr-create', headA),
+  });
+};
+
 describe('execute-lane issue supervisor lifecycle', () => {
   it('rejects non-canonical issue branch and worktree identity', () => {
     expect(() =>
@@ -440,6 +464,126 @@ describe('execute-lane issue supervisor lifecycle', () => {
     });
 
     expect(state.status).toBe('done');
+  });
+
+  it('returns a merge-conflicting PR through fix-back before waiting for CI', () => {
+    // Given
+    const transitions = [
+      {
+        kind: 'implementation-completed',
+        new_head: headA,
+        verification: 'pnpm test --filter runtime passed',
+      },
+      {
+        kind: 'local-review',
+        reviews: passReviews(headA),
+      },
+      {
+        kind: 'pr-observed',
+        action: 'create',
+        receipt: prReceipt('pr-create', headA),
+      },
+      {
+        kind: 'pr-conflict-observed',
+        receipt: {
+          ...observationBase(headA),
+          kind: 'pr-conflict',
+          pr_number: 5101,
+          pr_url: 'https://github.com/fluojs/fluo/pull/5101',
+          remote_head_sha: headA,
+          pr_head_sha: headA,
+          pr_state: 'OPEN',
+          pr_mergeable: 'CONFLICTING',
+          pr_merge_state_status: 'DIRTY',
+          evidence: 'mergeable=CONFLICTING mergeStateStatus=DIRTY',
+        },
+      },
+    ];
+
+    // When
+    const persisted = persistedLifecycle(identity, transitions);
+
+    // Then
+    expect(persisted.snapshot.status).toBe('ci-fix-back');
+    expect(persisted.snapshot.ci).toBeNull();
+    expect(persisted.snapshot.blockers).toEqual([
+      {
+        reviewer: 'verification',
+        signature: 'pr:merge-conflict',
+        evidence: 'mergeable=CONFLICTING mergeStateStatus=DIRTY',
+        fix_back_eligible: true,
+        status: 'unresolved',
+      },
+    ]);
+    expect(persisted.receipts).toContainEqual(
+      expect.objectContaining({
+        kind: 'pr-conflict',
+        pr_state: 'OPEN',
+        pr_mergeable: 'CONFLICTING',
+        pr_merge_state_status: 'DIRTY',
+      }),
+    );
+  });
+
+  it.each([
+    {
+      pr_mergeable: 'CONFLICTING',
+      pr_merge_state_status: 'UNKNOWN',
+    },
+    {
+      pr_mergeable: 'UNKNOWN',
+      pr_merge_state_status: 'DIRTY',
+    },
+  ])(
+    'accepts an independent $pr_mergeable/$pr_merge_state_status conflict signal',
+    ({ pr_mergeable, pr_merge_state_status }) => {
+      // Given
+      const state = createCiPendingState();
+
+      // When
+      const result = transitionIssueSupervisor(state, {
+        kind: 'pr-conflict-observed',
+        receipt: {
+          ...observationBase(headA),
+          kind: 'pr-conflict',
+          pr_number: 5101,
+          pr_url: 'https://github.com/fluojs/fluo/pull/5101',
+          remote_head_sha: headA,
+          pr_head_sha: headA,
+          pr_state: 'OPEN',
+          pr_mergeable,
+          pr_merge_state_status,
+          evidence: 'fresh GitHub conflict observation',
+        },
+      });
+
+      // Then
+      expect(result.status).toBe('ci-fix-back');
+    },
+  );
+
+  it('rejects a merge conflict receipt for a non-open PR', () => {
+    // Given
+    const state = createCiPendingState();
+
+    // When / Then
+    expect(() =>
+      transitionIssueSupervisor(state, {
+        kind: 'pr-conflict-observed',
+        receipt: {
+          ...observationBase(headA),
+          kind: 'pr-conflict',
+          pr_number: 5101,
+          pr_url: 'https://github.com/fluojs/fluo/pull/5101',
+          remote_head_sha: headA,
+          pr_head_sha: headA,
+          pr_state: 'MERGED',
+          pr_mergeable: 'CONFLICTING',
+          pr_merge_state_status: 'DIRTY',
+          evidence: 'stale merged PR observation',
+        },
+      }),
+    ).toThrow();
   });
 
   it('adopts an existing open PR after a same-head local triad', () => {
@@ -1153,9 +1297,14 @@ describe('execute-lane issue supervisor lifecycle', () => {
         'utf8',
       ),
     );
-    const definition = compileLegacyLaneSupervisorDag(ledger);
+    const definition = compileLaneSupervisorDag(ledger);
 
-    expect(definition.key).toBe('fluo:lane:lane-4101-runtime:issue-supervisors:v1');
+    expect(definition.key).toBe('fluo:lane:lane-4101-runtime:issue-supervisors:v2');
+    expect(implementerRoute).toEqual({
+      subagent_type: 'fluo-issue-implementer',
+      expected_model: 'openai-codex/gpt-5.6-terra',
+      expected_thinking: 'high',
+    });
     expect(definition.nodes).toHaveLength(2);
     expect(definition.nodes[0]).toMatchObject({
       id: 'issue-4101-supervisor',
@@ -1168,14 +1317,17 @@ describe('execute-lane issue supervisor lifecycle', () => {
       load_skills: ['execute-lane'],
     });
     expect(definition.nodes[0].prompt).toContain('STOP WHEN:');
+    expect(definition.nodes[0].prompt).toContain(
+      'await-lane-dispatch.mjs',
+    );
     expect(() =>
-      compileLegacyLaneSupervisorDag({
+      compileLaneSupervisorDag({
         ...ledger,
         dependency_graph: { 4102: [9999] },
       }),
     ).toThrow(/dependency|confirmed issue/u);
     expect(() =>
-      compileLegacyLaneSupervisorDag({
+      compileLaneSupervisorDag({
         ...ledger,
         dependency_graph: { 4101: [4102], 4102: [4101] },
       }),
@@ -1189,7 +1341,7 @@ describe('execute-lane issue supervisor lifecycle', () => {
         'utf8',
       ),
     );
-    const releaseDefinition = compileLegacyLaneSupervisorDag(releaseLedger);
+    const releaseDefinition = compileLaneSupervisorDag(releaseLedger);
     expect(releaseDefinition.nodes).toHaveLength(1);
     expect(releaseDefinition.nodes[0]).toMatchObject({
       category: 'quick',
@@ -1198,19 +1350,23 @@ describe('execute-lane issue supervisor lifecycle', () => {
     expect(releaseDefinition.nodes[0].prompt).toContain(
       'blocked-maintainer-decision',
     );
+    expect(releaseDefinition.nodes[0].prompt).toContain(
+      'await-lane-dispatch.mjs',
+    );
 
     const binding = createDagBinding({
       definition,
       lane_id: ledger.lane_id,
       run_id: 'run_lane_4101',
-      snapshot_event_hash: null,
+      dispatch_event_hash: 'c'.repeat(64),
     });
+    expect(binding.version).toBe(3);
     expect(() =>
       createDagBinding({
-        definition: { ...definition, key: 'fluo:lane:other:issue-supervisors:v1' },
+        definition: { ...definition, key: 'fluo:lane:other:issue-supervisors:v2' },
         lane_id: ledger.lane_id,
         run_id: 'run_lane_4101',
-        snapshot_event_hash: null,
+        dispatch_event_hash: 'c'.repeat(64),
       }),
     ).toThrow(/canonical for its lane/u);
     const directory = mkdtempSync(
@@ -1226,7 +1382,7 @@ describe('execute-lane issue supervisor lifecycle', () => {
           definition,
           lane_id: binding.lane_id,
           run_id: binding.run_id,
-          snapshot_event_hash: binding.snapshot_event_hash,
+          dispatch_event_hash: binding.dispatch_event_hash,
         }),
       ).not.toThrow();
       expect(() =>
@@ -1234,7 +1390,7 @@ describe('execute-lane issue supervisor lifecycle', () => {
           definition: { ...definition, name: 'tampered definition' },
           lane_id: binding.lane_id,
           run_id: binding.run_id,
-          snapshot_event_hash: binding.snapshot_event_hash,
+          dispatch_event_hash: binding.dispatch_event_hash,
         }),
       ).toThrow(/definition digest/u);
       expect(() =>
@@ -1252,7 +1408,7 @@ describe('execute-lane issue supervisor lifecycle', () => {
         persistDagBinding(redirectedRoot, {
           ...binding,
           lane_id: 'lane-symlink',
-          dag_key: 'fluo:lane:lane-symlink:issue-supervisors:v1',
+          dag_key: 'fluo:lane:lane-symlink:issue-supervisors:v2',
         }),
       ).toThrow(/real directory/u);
     } finally {

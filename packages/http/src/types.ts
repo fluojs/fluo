@@ -111,6 +111,12 @@ export interface FrameworkRequestMultipart {
  */
 export interface FrameworkResponse {
   compression?: FrameworkResponseCompression;
+  /**
+   * Optional request-scoped writer for HTTP 103 informational responses.
+   *
+   * @remarks Property absence means the active adapter cannot emit Early Hints.
+   */
+  earlyHints?: FrameworkResponseEarlyHints;
   statusCode?: number;
   statusSet?: boolean;
   headers: Record<string, string | string[]>;
@@ -121,6 +127,29 @@ export interface FrameworkResponse {
   setHeader(name: string, value: string | string[]): void;
   redirect(status: number, location: string): void;
   send(body: unknown): MaybePromise<void>;
+}
+
+/**
+ * Headers accepted by one HTTP 103 Early Hints write.
+ *
+ * @remarks
+ * Node-backed transports require at least one non-empty `link` value. Additional
+ * informational header fields must use valid HTTP names and values. Header names
+ * are case-insensitive and cannot be repeated with different casing.
+ */
+export type EarlyHintsHeaders = Readonly<Record<string, string | readonly string[]>> & {
+  readonly link: string | readonly string[];
+};
+
+/** Optional request-scoped capability for writing HTTP 103 Early Hints. */
+export interface FrameworkResponseEarlyHints {
+  /**
+   * Emit one informational response without committing or mutating the final response.
+   *
+   * @param headers Link hints and optional additional informational fields.
+   * @returns A promise that settles when the native transport accepts the write.
+   */
+  write(headers: EarlyHintsHeaders): Promise<void>;
 }
 
 /** Compression writer used when a platform can stream encoded response bodies. */

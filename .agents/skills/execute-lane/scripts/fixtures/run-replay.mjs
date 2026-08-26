@@ -2,9 +2,9 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 import { runReplay } from '../state-machine.mjs';
+import { acquireLease } from '../lane-lease.mjs';
 import {
-  acquireLease,
-  loadState,
+  loadFixtureState,
   persistState,
 } from '../state-store.mjs';
 
@@ -43,7 +43,7 @@ if (
 
 let result;
 for (const step of scenario.steps) {
-  const previous = loadState(
+  const previous = loadFixtureState(
     stateDirectory,
     ledgerPath,
     repositoryRoot,

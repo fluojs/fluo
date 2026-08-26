@@ -10,6 +10,7 @@
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
+- [Early Hints](#early-hints)
 - [Realtime Adapter Capabilities](#realtime-adapter-capabilities)
 - [HTTP Error Representations](#http-error-representations)
 - [요청 정리와 런타임 이식성](#요청-정리와-런타임-이식성)
@@ -150,6 +151,10 @@ class AdminController {
 }
 ```
 
+### Request observer
+
+`onRequestSuccess`는 매칭된 handler와 모든 module-level 및 application-level middleware가 완전히 settle된 뒤에만 호출되며, 여기에는 `await next()` 이후의 작업도 포함됩니다. Middleware가 `next()` 반환 뒤 예외를 던지면 observer는 앞선 success 알림 없이 `onRequestError`를 받습니다. `onRequestFinish`는 어느 outcome에서든 그 뒤에 호출됩니다.
+
 ### 비동기 요청 컨텍스트
 
 ```ts
@@ -162,6 +167,35 @@ function someDeepHelper() {
 ```
 
 `runWithRequestContext(...)`는 호스트가 `globalThis.AsyncLocalStorage` 또는 `node:async_hooks` 모듈로 `AsyncLocalStorage`를 제공할 때 활성 컨텍스트를 `await` 이후까지 보존합니다. 루트 `@fluojs/http` export는 async-context storage를 probe하거나 instantiate하지 않고 runtime-specific entrypoint를 선택합니다. Node와 Bun은 module initialization 중 host constructor를 등록하고, Deno, worker, browser, default entry는 Node built-in import 없이 유지됩니다. Request-local store 자체는 첫 사용 시점에 계속 lazy하게 생성됩니다. Promise를 반환하는 non-async callback은 동기 호출, 반환, throw 동작을 유지하고, 반환한 promise가 settle될 때까지 continuation에서 바인딩된 context를 보존합니다. Helper는 `Promise.prototype.then`을 교체하지 않으므로 관련 없는 promise continuation이 request를 capture하지 않습니다. 비동기 컨텍스트 primitive가 없는 호스트는 awaited work가 재개되기 전에 context를 지우는 synchronous-only fallback을 사용합니다.
+
+## Early Hints
+
+`FrameworkResponse.earlyHints`는 HTTP `103` informational response를 위한 optional request-scoped capability입니다. 사용 전에 property 존재 여부를 확인하세요. Property가 없으면 active adapter가 Early Hints를 emit할 수 없다는 뜻입니다. 필수 `FrameworkResponse.writeEarlyHints()` method는 없으며 unsupported adapter가 write를 조용히 무시하지도 않습니다.
+
+```ts
+import type { RequestContext } from '@fluojs/http';
+
+async function render(_input: undefined, context: RequestContext) {
+  const earlyHints = context.response.earlyHints;
+
+  if (earlyHints) {
+    await earlyHints.write({
+      link: [
+        '</styles.css>; rel=preload; as=style',
+        '</app.js>; rel=modulepreload',
+      ],
+      'x-trace-id': 'render-1',
+    });
+  }
+
+  context.response.setHeader('link', '</final.css>; rel=stylesheet');
+  return { ok: true };
+}
+```
+
+각 `write(...)`는 하나의 `103`을 emit하므로 final response 전에 여러 write를 순서대로 await할 수 있습니다. 모든 write에는 비어 있지 않은 `link` value가 하나 이상 필요하며 유효한 HTTP name과 value를 사용하는 추가 informational field를 포함할 수 있습니다. Header name은 대소문자를 구분하지 않으며 casing만 다른 이름을 중복해서 사용할 수 없습니다. Status상 금지된 framing field(`content-length`, `transfer-encoding`)는 native write 전에 reject됩니다. Early field는 `response.headers`를 채우거나 status를 바꾸거나 `committed`를 설정하지 않으며 final-response header로 복사되지도 않습니다.
+
+Node.js, Express, Fastify는 이 capability를 노출합니다. Fetch-style Web, Bun, Deno, Cloudflare Workers response는 해당 `Response` API로 final response 이전 informational response를 표현할 수 없으므로 capability를 생략합니다. Final commit 이후 write 또는 native validation/write 실패는 `EarlyHintsWriteError`(`EARLY_HINTS_WRITE_FAILED`)로 reject되고, settlement 전에 연결이 끊기면 `RequestAbortedError`(`REQUEST_ABORTED`)로 reject됩니다.
 
 ## Realtime Adapter Capabilities
 
@@ -324,11 +358,11 @@ Streaming multipart mode는 buffered `body`와 `files`를 채우는 대신 `Fram
 - **라우팅 데코레이터**: `Controller`, `Get`, `Sse`, `Query`, `Route`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
 - **바인딩 데코레이터**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`, `Optional`, `Convert`
 - **실행 데코레이터**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
-- **요청/응답 및 컨텍스트 타입**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkRequestMultipart`, `FrameworkMultipartPart`, `FrameworkMultipartFieldPart`, `FrameworkMultipartFilePart`, `FrameworkResponse`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
+- **요청/응답 및 컨텍스트 타입**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkRequestMultipart`, `FrameworkMultipartPart`, `FrameworkMultipartFieldPart`, `FrameworkMultipartFilePart`, `FrameworkResponse`, `EarlyHintsHeaders`, `FrameworkResponseEarlyHints`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
 - **디스패처, 라우팅, 협상 타입**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `HttpErrorRepresentationContext`, `HtmlErrorRepresentationProvider`, `HttpErrorRepresentationOptions`, `FastPathEligibility`, `FastPathStats`
 - **파이프라인 계약 타입**: `Middleware`, `MiddlewareLike`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardLike`, `GuardContext`, `Interceptor`, `InterceptorLike`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `RequestObserverLike`, `RequestObservationContext`, `ArgumentResolverContext`, `Binder`, `Converter`, `ConverterLike`, `ConverterTarget`, `ValidationIssue`, `Validator`
 - **Adapter API**: `HttpApplicationAdapter`, `HttpAdapterRealtimeCapability`, `ServerBackedHttpAdapterRealtimeCapability`, `FetchStyleHttpAdapterRealtimeCapability`, `HttpAdapterRealtimeBindingInstallation`, `UnsupportedHttpAdapterRealtimeCapability`, `HttpAdapterMultipartCapability`, `PortableHttpAdapterMultipartCapability`, `UnsupportedHttpAdapterMultipartCapability`, `createNoopHttpApplicationAdapter`, `createServerBackedHttpAdapterRealtimeCapability`, `createUnsupportedHttpAdapterRealtimeCapability`, `createFetchStyleHttpAdapterRealtimeCapability`, `createPortableHttpAdapterMultipartCapability`, `createUnsupportedHttpAdapterMultipartCapability`
-- **예외와 오류**: `HttpExceptionDetail`, `HttpExceptionOptions`, `ErrorResponse`, `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `InvalidHttpMethodError`, `HandlerNotFoundError`, `RequestAbortedError`
+- **예외와 오류**: `HttpExceptionDetail`, `HttpExceptionOptions`, `ErrorResponse`, `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `InvalidHttpMethodError`, `HandlerNotFoundError`, `RequestAbortedError`, `EarlyHintsWriteError`
 - **헬퍼**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `getRequestHeader`, `appendVaryHeader`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
 - **Option 및 store type**: `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStoreEntry`, `SecurityHeadersOptions`, `SseSendOptions`
 

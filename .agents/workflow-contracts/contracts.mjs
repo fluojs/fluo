@@ -153,6 +153,23 @@ const assertSemanticContract = (name, value) => {
         }
         return;
       }
+      if (value.version === 3) {
+        if (
+          !Object.hasOwn(value, 'dispatch_event_hash') ||
+          Object.hasOwn(value, 'snapshot_event_hash') ||
+          Object.hasOwn(value, 'issue_number') ||
+          Object.hasOwn(value, 'dependencies')
+        ) {
+          fail(name, 'version 3 must contain only lane-wide dispatch fields');
+        }
+        if (
+          value.dag_key !==
+          `fluo:lane:${value.lane_id}:issue-supervisors:v2`
+        ) {
+          fail(name, 'dag_key must be canonical for lane_id');
+        }
+        return;
+      }
       if (
         !Object.hasOwn(value, 'issue_number') ||
         !Object.hasOwn(value, 'dependencies') ||

@@ -10,6 +10,7 @@ The HTTP execution layer that turns route metadata into a request pipeline with 
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+- [Early Hints](#early-hints)
 - [Realtime Adapter Capabilities](#realtime-adapter-capabilities)
 - [HTTP Error Representations](#http-error-representations)
 - [Request Cleanup and Portability](#request-cleanup-and-portability)
@@ -152,6 +153,10 @@ class AdminController {
 }
 ```
 
+### Request observers
+
+`onRequestSuccess` runs only after the matched handler and all module-level and application-level middleware have settled, including work after `await next()`. If middleware throws after `next()` returns, observers receive `onRequestError` without a preceding success notification. `onRequestFinish` still runs after either outcome.
+
 ### Async request context
 
 ```ts
@@ -164,6 +169,35 @@ function someDeepHelper() {
 ```
 
 `runWithRequestContext(...)` preserves the active context across awaited work when the host provides `AsyncLocalStorage` through `globalThis.AsyncLocalStorage` or the `node:async_hooks` module. The root `@fluojs/http` export selects a runtime-specific entrypoint without probing or instantiating async-context storage: Node and Bun register the host constructor during module initialization, while Deno, worker, browser, and default entries remain free of Node built-in imports. The request-local store itself is still created lazily on first use. Promise-returning non-async callbacks keep synchronous invocation, return, and throw behavior, and their continuations retain the bound context until the returned promise settles. The helpers never replace `Promise.prototype.then`, so unrelated promise continuations cannot capture a request. Hosts without an async-context primitive use a synchronous-only fallback that clears the context before awaited work resumes.
+
+## Early Hints
+
+`FrameworkResponse.earlyHints` is an optional, request-scoped capability for HTTP `103` informational responses. Check for property presence before use; property absence means the active adapter cannot emit Early Hints. There is no required `FrameworkResponse.writeEarlyHints()` method and unsupported adapters never silently ignore a write.
+
+```ts
+import type { RequestContext } from '@fluojs/http';
+
+async function render(_input: undefined, context: RequestContext) {
+  const earlyHints = context.response.earlyHints;
+
+  if (earlyHints) {
+    await earlyHints.write({
+      link: [
+        '</styles.css>; rel=preload; as=style',
+        '</app.js>; rel=modulepreload',
+      ],
+      'x-trace-id': 'render-1',
+    });
+  }
+
+  context.response.setHeader('link', '</final.css>; rel=stylesheet');
+  return { ok: true };
+}
+```
+
+Each `write(...)` emits one `103`, so callers may await multiple writes before the final response. Every write requires at least one non-empty `link` value and may include additional informational fields with valid HTTP names and values. Header names are case-insensitive and cannot be repeated with different casing. Status-forbidden framing fields (`content-length` and `transfer-encoding`) are rejected before the native write. Early fields do not populate `response.headers`, change status, set `committed`, or become final-response headers.
+
+Node.js, Express, and Fastify expose this capability. Fetch-style Web, Bun, Deno, and Cloudflare Workers responses omit it because their `Response` APIs cannot represent an informational response before the final response. A write after final commitment or a native validation/write failure rejects with `EarlyHintsWriteError` (`EARLY_HINTS_WRITE_FAILED`); a disconnect before settlement rejects with `RequestAbortedError` (`REQUEST_ABORTED`).
 
 ## Realtime Adapter Capabilities
 
@@ -331,11 +365,11 @@ Streaming multipart mode exposes `FrameworkRequest.multipart` instead of populat
 - **Binding decorators**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`, `Optional`, `Convert`
 - **Execution decorators**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
 - **Header helpers**: `getRequestHeader`, `appendVaryHeader`
-- **Request/response and context types**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkRequestMultipart`, `FrameworkMultipartPart`, `FrameworkMultipartFieldPart`, `FrameworkMultipartFilePart`, `FrameworkResponse`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
+- **Request/response and context types**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkRequestMultipart`, `FrameworkMultipartPart`, `FrameworkMultipartFieldPart`, `FrameworkMultipartFilePart`, `FrameworkResponse`, `EarlyHintsHeaders`, `FrameworkResponseEarlyHints`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
 - **Dispatcher, routing, and negotiation types**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `HttpErrorRepresentationContext`, `HtmlErrorRepresentationProvider`, `HttpErrorRepresentationOptions`, `FastPathEligibility`, `FastPathStats`
 - **Pipeline contract types**: `Middleware`, `MiddlewareLike`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardLike`, `GuardContext`, `Interceptor`, `InterceptorLike`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `RequestObserverLike`, `RequestObservationContext`, `ArgumentResolverContext`, `Binder`, `Converter`, `ConverterLike`, `ConverterTarget`, `ValidationIssue`, `Validator`
 - **Adapter API**: `HttpApplicationAdapter`, `HttpAdapterRealtimeCapability`, `ServerBackedHttpAdapterRealtimeCapability`, `FetchStyleHttpAdapterRealtimeCapability`, `HttpAdapterRealtimeBindingInstallation`, `UnsupportedHttpAdapterRealtimeCapability`, `HttpAdapterMultipartCapability`, `PortableHttpAdapterMultipartCapability`, `UnsupportedHttpAdapterMultipartCapability`, `createNoopHttpApplicationAdapter`, `createServerBackedHttpAdapterRealtimeCapability`, `createUnsupportedHttpAdapterRealtimeCapability`, `createFetchStyleHttpAdapterRealtimeCapability`, `createPortableHttpAdapterMultipartCapability`, `createUnsupportedHttpAdapterMultipartCapability`
-- **Exceptions and errors**: `HttpExceptionDetail`, `HttpExceptionOptions`, `ErrorResponse`, `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `InvalidHttpMethodError`, `HandlerNotFoundError`, `RequestAbortedError`
+- **Exceptions and errors**: `HttpExceptionDetail`, `HttpExceptionOptions`, `ErrorResponse`, `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `InvalidHttpMethodError`, `HandlerNotFoundError`, `RequestAbortedError`, `EarlyHintsWriteError`
 - **Helpers**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `getRequestHeader`, `appendVaryHeader`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
 - **Option and store types**: `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStoreEntry`, `SecurityHeadersOptions`, `SseSendOptions`
 

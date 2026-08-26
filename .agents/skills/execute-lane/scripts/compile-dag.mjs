@@ -1,32 +1,64 @@
 import { assertContract } from '../../../workflow-contracts/contracts.mjs';
 import { validateLedger } from '../../../../tooling/governance/lane-ledger-state.mjs';
-import { dependencyGate } from './dependency-gate.mjs';
+import { implementerRoute } from './implementer-runtime.mjs';
 
 const nodeId = (issueNumber) => `issue-${String(issueNumber)}-supervisor`;
 
-const supervisorPrompt = (lane, issueNumber) => `TASK:
+export { implementerRoute };
+
+const dispatchGate = (laneId) => `STARTUP GATE:
+- Before any mutation or terminal decision, run:
+  node .agents/skills/execute-lane/scripts/await-lane-dispatch.mjs
+  --root . --ledger .omo/lanes/${laneId}.json
+- Continue only when it exits zero and reports the attached native run.
+- A delayed parent attach is not a ledger conflict.`;
+
+const supervisorPrompt = (lane, issueNumber, dependencies) => `TASK:
 Execute the complete Fluo lifecycle for issue ${String(issueNumber)} as an issue supervisor.
 
 DELIVERABLE:
 Return one typed terminal report for lane ${lane.lane_id} and issue ${String(issueNumber)}.
+
+${dispatchGate(lane.lane_id)}
 
 SCOPE:
 - Consume the canonical lane ledger at .omo/lanes/${lane.lane_id}.json.
 - Use one isolated issue branch and worktree.
 - Reconcile and reuse an existing canonical issue branch, worktree, and OPEN PR
   when their live identities and heads match; never create duplicates.
-- Delegate implementation and each contract/code/verification review to separate children.
+- Read .agents/skills/issue-to-pr/references/implementer.md before delegating implementation.
+- Delegate the implementer through the native task tool with
+  ${JSON.stringify(implementerRoute)}. Use only the configured subagent_type,
+  request a handle, and include the complete implementer contract plus
+  issue-bound inputs. Do not pass category or model overrides.
+- After the implementer reaches a terminal state, run
+  node .agents/skills/execute-lane/scripts/implementer-runtime.mjs
+  .omo/senpi-task <task-id>. Accept the child only when the verifier exits zero
+  and reports the actual Terra high session. Missing or mismatched runtime
+  evidence is a terminal child-contract blocker.
+- Never use the implementer route for contract, code, or verification review.
+  Delegate those three reviews to separate read-only children.
 - Reach READY_FOR_PR locally before the lead pushes or creates the PR.
 - After PR creation, observe required CI on the exact reviewed head.
+- Refresh PR mergeability immediately and while CI is pending. A GitHub
+  CONFLICTING/DIRTY observation enters CI fix-back without waiting for checks.
 - On a fixable CI failure, return to implementation, create a new head, rerun the full local triad, push, and observe CI again.
 - The issue supervisor owns issue-bound push, PR mutation, merge, cleanup, and
   issue-local evidence only under immutable lane authority.
 - The parent lead alone owns the shared lane ledger and root synchronization.
-- Before any mutation, re-read the shared lane snapshot and require this issue
-  to remain the queued lane cursor with every dependency at canonical done.
+- Native dependsOn is ordering only. Before any mutation, validate terminal
+  issue-store evidence for predecessor issues ${JSON.stringify(dependencies)}
+  through supervisor-terminal.mjs and require every predecessor to be done.
+- If predecessor evidence is missing, malformed, or blocked, persist one typed
+  dependency blocker and stop without creating a child, branch, worktree, or PR.
+- Bind this issue to the immutable lane plan. The parent may import predecessor
+  evidence into the shared lane snapshot only after this DAG settles.
 
 VERIFY:
 - Bind every local review, PR observation, CI result, merge, and cleanup action to the current head.
+- Query PR state with mergeable and mergeStateStatus fields before waiting for
+  CI, and persist an OPEN, head-bound pr-conflict receipt when either proves
+  conflict.
 - Adopt an existing OPEN PR only after a same-head local triad and persist a
   pr-adopt receipt whose local, remote, and PR heads are identical.
 - Persist every transition and receipt through issue-supervisor-store.mjs.
@@ -42,6 +74,8 @@ Represent approved release handoff issue ${String(issueNumber)} in lane ${lane.l
 DELIVERABLE:
 Return one typed blocked-maintainer-decision result bound to the approved lane-plan receipt.
 
+${dispatchGate(lane.lane_id)}
+
 SCOPE:
 - Do not dispatch implementation.
 - Do not create or mutate a PR.
@@ -54,13 +88,61 @@ Validate the issue number, release-handoff approval digest, and changeset_only=f
 STOP WHEN:
 The release handoff is persisted as blocked-maintainer-decision, or the approval binding is rejected.`;
 
-export const compileLegacyLaneSupervisorDag = (lane) => {
+const assertAcyclic = (dependenciesByIssue) => {
+  const visiting = new Set();
+  const visited = new Set();
+  const visit = (issueNumber) => {
+    if (visiting.has(issueNumber)) {
+      throw new TypeError('Lane DAG dependency graph contains a cycle.');
+    }
+    if (visited.has(issueNumber)) {
+      return;
+    }
+    visiting.add(issueNumber);
+    for (const dependency of dependenciesByIssue.get(issueNumber) ?? []) {
+      visit(dependency);
+    }
+    visiting.delete(issueNumber);
+    visited.add(issueNumber);
+  };
+  for (const issueNumber of dependenciesByIssue.keys()) {
+    visit(issueNumber);
+  }
+};
+
+export const compileLaneSupervisorDag = (lane) => {
   assertContract('lane-ledger-v2', lane);
   validateLedger('lane-ledger-v2', lane);
   const releaseHandoffs = new Set(lane.release_handoffs);
   const confirmedIssues = new Set(lane.confirmed_issues);
+  const queuePredecessors = new Map();
+  for (const laneState of lane.lanes) {
+    for (let index = 1; index < laneState.queue.length; index += 1) {
+      queuePredecessors.set(
+        laneState.queue[index],
+        laneState.queue[index - 1],
+      );
+    }
+  }
+  const dependenciesByIssue = new Map(
+    lane.confirmed_issues.map((issueNumber) => {
+      const explicit =
+        lane.dependency_graph[String(issueNumber)] ?? [];
+      const queuePredecessor = queuePredecessors.get(issueNumber);
+      return [
+        issueNumber,
+        [
+          ...new Set([
+            ...explicit,
+            ...(queuePredecessor === undefined ? [] : [queuePredecessor]),
+          ]),
+        ],
+      ];
+    }),
+  );
+  assertAcyclic(dependenciesByIssue);
   const nodes = lane.confirmed_issues.map((issueNumber) => {
-    const dependencies = lane.dependency_graph[String(issueNumber)] ?? [];
+    const dependencies = dependenciesByIssue.get(issueNumber) ?? [];
     if (dependencies.some((dependency) => !confirmedIssues.has(dependency))) {
       throw new TypeError(
         `issue ${String(issueNumber)} has a dependency outside confirmed issues.`,
@@ -91,46 +173,12 @@ export const compileLegacyLaneSupervisorDag = (lane) => {
       dependsOn: dependencies.map(nodeId),
       prompt: releaseHandoff
         ? releaseHandoffPrompt(lane, issueNumber)
-        : supervisorPrompt(lane, issueNumber),
+        : supervisorPrompt(lane, issueNumber, dependencies),
     };
   });
   return {
-    key: `fluo:lane:${lane.lane_id}:issue-supervisors:v1`,
+    key: `fluo:lane:${lane.lane_id}:issue-supervisors:v2`,
     name: `Fluo lane ${lane.lane_id} issue supervisors`,
     nodes,
-  };
-};
-
-export const compileIssueSupervisorDag = (lane, issueNumber) => {
-  assertContract('lane-ledger-v2', lane);
-  validateLedger('lane-ledger-v2', lane);
-  const laneState = lane.lanes.find(
-    (candidate) =>
-      candidate.status === 'queued' &&
-      candidate.current_issue === issueNumber,
-  );
-  if (laneState === undefined) {
-    throw new TypeError(
-      `issue ${String(issueNumber)} is not the queued lane cursor.`,
-    );
-  }
-  const gate = dependencyGate(lane, issueNumber);
-  if (gate.status !== 'ready') {
-    throw new TypeError(
-      `issue ${String(issueNumber)} dependency gate is ${gate.status}.`,
-    );
-  }
-  const node = compileLegacyLaneSupervisorDag(lane).nodes.find(
-    (candidate) => candidate.id === nodeId(issueNumber),
-  );
-  if (node === undefined) {
-    throw new TypeError(
-      `issue ${String(issueNumber)} is missing from the supervisor plan.`,
-    );
-  }
-  return {
-    key: `fluo:lane:${lane.lane_id}:issue-${String(issueNumber)}:supervisor:v2`,
-    name: `Fluo lane ${lane.lane_id} issue ${String(issueNumber)} supervisor`,
-    nodes: [{ ...node, dependsOn: [] }],
   };
 };

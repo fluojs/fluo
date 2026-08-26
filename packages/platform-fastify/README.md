@@ -55,6 +55,10 @@ await app.listen();
 
 ## Common Patterns
 
+### Early Hints
+
+Fastify responses expose the optional `context.response.earlyHints` capability through `reply.raw`. Await one `write(...)` per `103`; multiple informational responses precede the independently configured final response. Early fields never populate Fastify final headers or mark the Fluo facade committed. Late/native failures and client disconnects reject deterministically.
+
 ### HTTPS/TLS Startup
 When the Fastify process owns TLS directly, pass Node.js `https.ServerOptions` through the `https` option on `createFastifyAdapter(...)`, `bootstrapFastifyApplication(...)`, or `runFastifyApplication(...)`. The adapter starts Fastify with an HTTPS listener, and startup logs report the `https://host:port` URL.
 

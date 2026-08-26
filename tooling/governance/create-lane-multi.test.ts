@@ -20,6 +20,18 @@ const runner = resolve(
   '.agents/skills/create-lane/scripts/fixtures/run-scenario.mjs',
 );
 const verifier = resolve(root, 'tooling/governance/verify-lane-ledger.mjs');
+const { approvalBinding } = (await import(
+  resolve(
+    root,
+    '.agents/skills/create-lane/scripts/approval-contracts.mjs',
+  )
+)) as {
+  approvalBinding: (
+    approval: Readonly<Record<string, unknown>>,
+    artifact: Readonly<Record<string, unknown>>,
+    plan: Readonly<Record<string, unknown>>,
+  ) => string;
+};
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -52,6 +64,34 @@ const runValue = (
   } finally {
     rmSync(inputRoot, { recursive: true, force: true });
   }
+};
+
+const rebindApprovals = (
+  fixture: Readonly<Record<string, unknown>>,
+  plan: Readonly<Record<string, unknown>>,
+  approvals: readonly unknown[],
+): readonly unknown[] => {
+  const intake = fixture['intake'];
+  const artifacts = fixture['artifacts'];
+  if (
+    !isRecord(intake) ||
+    typeof intake['artifact_path'] !== 'string' ||
+    !isRecord(artifacts)
+  ) {
+    throw new TypeError('multi fixture must bind one artifact intake');
+  }
+  const artifact = artifacts[intake['artifact_path']];
+  if (!isRecord(artifact)) {
+    throw new TypeError('multi fixture artifact must be an object');
+  }
+  return approvals.map((approval) =>
+    isRecord(approval)
+      ? {
+          ...approval,
+          binding_sha256: approvalBinding(approval, artifact, plan),
+        }
+      : approval,
+  );
 };
 
 describe('$create-lane multi-issue planning', () => {
@@ -117,6 +157,47 @@ describe('$create-lane multi-issue planning', () => {
           { encoding: 'utf8' },
         ),
       ).toContain('Lane ledger check passed for 1 file(s).');
+    } finally {
+      rmSync(run.outputRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects an additions response that does not partition recommendations', () => {
+    const fixture = parseRecord(
+      readFileSync(resolve(fixtureRoot, 'valid-multi-issue.json'), 'utf8'),
+    );
+    const plan = fixture['plan'];
+    const approvals = fixture['approvals'];
+    if (!isRecord(plan) || !Array.isArray(approvals) || !isRecord(approvals[1])) {
+      throw new TypeError('multi fixture must contain plan and approvals');
+    }
+    const changedPlan = {
+      ...plan,
+      confirmed_issues: [4101, 4102],
+      suggested_but_excluded: [],
+      lanes: [{ name: 'runtime', queue: [4101, 4102] }],
+      dependency_graph: {},
+    };
+    const changedApprovals = approvals.map((approval, index) =>
+      index === 1 && isRecord(approval)
+        ? { ...approval, issue_numbers: [] }
+        : approval,
+    );
+
+    const run = runValue({
+      ...fixture,
+      plan: changedPlan,
+      approvals: rebindApprovals(
+        fixture,
+        changedPlan,
+        changedApprovals,
+      ),
+    });
+    try {
+      expect(run.result).toEqual({
+        status: 'rejected',
+        reason: 'approval_not_distinct',
+      });
     } finally {
       rmSync(run.outputRoot, { recursive: true, force: true });
     }

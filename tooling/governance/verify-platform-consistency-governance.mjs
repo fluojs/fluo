@@ -790,7 +790,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // and room broadcast backpressure runtime limits (Node.js-backed adapter only;
   // fetch-style runtimes do not apply a backpressure policy to room broadcasts),
   // plus terminal Node upgrade admission and retained disconnect lifecycle state
-  // across the bounded cross-runtime shutdown drain.
+  // across the bounded cross-runtime shutdown drain, plus HTTP request-observer
+  // success ordering after module and application middleware fully settle.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),

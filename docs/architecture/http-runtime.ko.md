@@ -18,8 +18,9 @@
 10. `invokeControllerHandler(...)`는 request container에서 controller를 해석하고, binder로 선언된 DTO를 바인딩하며, route가 `request` metadata를 선언한 경우 `HttpDtoValidationAdapter`로 DTO 입력을 검증한다.
 11. controller method는 `(input, requestContext)`를 받고 handler 결과를 반환한다.
 12. 성공한 non-SSE 결과는 `writeSuccessResponse(...)`를 통해 기록되며, 여기서 redirect metadata, route header, formatter 선택, 기본 성공 status 규칙이 적용된다. Dispatcher는 handler 실행 전후에 `signal`과 `isAborted()`를 검사하고 어느 cancellation surface든 authoritative하게 처리하므로 `false` probe가 aborted signal을 가리지 않으며 abort된 요청은 뒤늦게 성공 응답을 commit하지 않는다.
-13. 어느 단계에서든 예외가 발생하면 dispatcher는 설정된 경우 `onError`를 실행한다. 그렇지 않으면 `writeErrorResponse(...)`가 failure를 분류하고 canonical JSON을 기록하거나, eligible `HttpException` 및 route-miss outcome에 대해 configured HTTP-owned error representation negotiation을 수행한다.
-14. dispatcher는 항상 `onRequestFinish`를 호출한다. request scope가 생성되었거나 lazy promotion 되었다면 요청이 끝나기 전에 해당 isolated request-scoped container를 dispose하며, graph가 request scope를 필요로 하지 않는 요청은 root container를 dispose하지 않는다. Fast path는 handler metadata만 cache하고 매 dispatch마다 active container를 통해 controller를 resolve하므로, container가 소유하는 singleton 공유와 transient의 resolution별 새 identity가 모두 유지된다.
+13. Module-level 및 application-level middleware가 `await next()` 이후의 작업까지 모두 settle하면 dispatcher는 handler 결과와 함께 `onRequestSuccess`를 호출한다.
+14. `next()` 반환 이후의 middleware 작업을 포함해 어느 단계에서든 예외가 발생하면 dispatcher는 앞선 success 알림 없이 `onRequestError`를 호출한 뒤, 설정된 경우 `onError`를 실행한다. 그렇지 않으면 `writeErrorResponse(...)`가 failure를 분류하고 canonical JSON을 기록하거나, eligible `HttpException` 및 route-miss outcome에 대해 configured HTTP-owned error representation negotiation을 수행한다.
+15. dispatcher는 항상 `onRequestFinish`를 호출한다. request scope가 생성되었거나 lazy promotion 되었다면 요청이 끝나기 전에 해당 isolated request-scoped container를 dispose하며, graph가 request scope를 필요로 하지 않는 요청은 root container를 dispose하지 않는다. Fast path는 handler metadata만 cache하고 매 dispatch마다 active container를 통해 controller를 resolve하므로, container가 소유하는 singleton 공유와 transient의 resolution별 새 identity가 모두 유지된다.
 
 ## Error Representation Boundary
 
@@ -73,5 +74,6 @@
 - 전역 application middleware는 handler matching 전에 실행된다. 매칭된 handler의 module middleware는 handler matching 뒤, guard 전에 실행된다.
 - Middleware 해석은 request-scoped container를 사용하므로, request scope 의존성은 middleware 실행 중에도 사용할 수 있다.
 - Middleware는 응답을 조기에 commit할 수 있다. `response.committed`가 이미 `true`이면 이후 routing 과 handler 단계는 계속 진행되지 않는다.
+- 처리된 요청은 module 및 application middleware chain이 모두 반환한 뒤에만 success로 관찰된다. `next()` 이후의 middleware failure는 request error observer path를 따른다.
 - Guard와 interceptor는 middleware가 아니다. Guard는 `canActivate(...)`로 선행 조건을 강제하고, interceptor는 `intercept(...)`로 handler 실행을 감싼다.
 - Middleware는 dispatcher policy가 소유한 route matching, DTO validation, controller invocation, response serialization 규칙을 다시 정의하면 안 된다.

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-const approvalGates = [
+const receiptStages = [
   'confirmed-issues',
   'suggested-additions',
   'lane-plan',
@@ -94,14 +94,19 @@ export const approvalBinding = (approval, artifact, plan) =>
     )
     .digest('hex');
 
-export const validateApprovals = (approvals, artifact, plan) => {
-  if (!Array.isArray(approvals) || approvals.length !== approvalGates.length) {
+export const validateApprovals = (
+  approvals,
+  artifact,
+  plan,
+  recommendedIssueNumbers,
+) => {
+  if (!Array.isArray(approvals) || approvals.length !== receiptStages.length) {
     return 'approval_not_distinct';
   }
   const approvalIds = new Set();
   for (const [index, approval] of approvals.entries()) {
     const keys =
-      approvalGates[index] === 'lane-plan'
+      receiptStages[index] === 'lane-plan'
         ? [
             'gate',
             'approval_id',
@@ -119,7 +124,7 @@ export const validateApprovals = (approvals, artifact, plan) => {
     if (
       !isRecord(approval) ||
       !hasExactKeys(approval, keys) ||
-      approval.gate !== approvalGates[index] ||
+      approval.gate !== receiptStages[index] ||
       approval.approved !== true ||
       typeof approval.approval_id !== 'string' ||
       !safeIdentifier.test(approval.approval_id)
@@ -128,7 +133,7 @@ export const validateApprovals = (approvals, artifact, plan) => {
     }
     approvalIds.add(approval.approval_id);
   }
-  if (approvalIds.size !== approvalGates.length) {
+  if (approvalIds.size !== receiptStages.length) {
     return 'approval_not_distinct';
   }
   if (
@@ -141,17 +146,43 @@ export const validateApprovals = (approvals, artifact, plan) => {
     return 'approval_binding_mismatch';
   }
   const confirmed = approvals[0].issue_numbers;
-  const suggested = approvals[1].issue_numbers;
+  const included = approvals[1].issue_numbers;
+  const excluded = plan.suggested_but_excluded;
   if (
     !isIssueArray(confirmed) ||
-    !isIssueArray(suggested) ||
-    confirmed.some((issue) => suggested.includes(issue)) ||
+    !isIssueArray(included) ||
+    !isIssueArray(excluded) ||
+    !isIssueArray(recommendedIssueNumbers) ||
+    confirmed.some((issue) => recommendedIssueNumbers.includes(issue)) ||
     confirmed.length !== artifact.selected_issues.length ||
     !artifact.selected_issues.every((issue, index) => issue === confirmed[index])
   ) {
     return 'approval_not_distinct';
   }
-  const finalIssues = [...confirmed, ...suggested];
+  const includedSet = new Set(included);
+  const excludedSet = new Set(excluded);
+  if (
+    included.some((issue) => excludedSet.has(issue)) ||
+    included.length + excluded.length !== recommendedIssueNumbers.length ||
+    recommendedIssueNumbers.some(
+      (issue) => !includedSet.has(issue) && !excludedSet.has(issue),
+    ) ||
+    !included.every(
+      (issue, index) =>
+        recommendedIssueNumbers.filter((candidate) =>
+          includedSet.has(candidate),
+        )[index] === issue,
+    ) ||
+    !excluded.every(
+      (issue, index) =>
+        recommendedIssueNumbers.filter((candidate) =>
+          excludedSet.has(candidate),
+        )[index] === issue,
+    )
+  ) {
+    return 'approval_not_distinct';
+  }
+  const finalIssues = [...confirmed, ...included];
   if (
     finalIssues.length !== plan.confirmed_issues.length ||
     !finalIssues.every((issue, index) => issue === plan.confirmed_issues[index])

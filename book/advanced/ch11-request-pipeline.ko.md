@@ -80,7 +80,7 @@ export function createDispatcher(options: CreateDispatcherOptions): Dispatcher {
 7.  **Interceptors (Before)**: 인터셉터 체인의 `intercept()` 메서드를 실행합니다. `dispatcher.ts:L181`에서 시작됩니다. 요청 데이터를 변환하거나 실행 시간을 측정하는 로직이 위치합니다.
 8.  **Handler Execution**: DTO 바인딩 및 유효성 검사 후 실제 컨트롤러 메서드를 호출합니다. `invokeControllerHandler`가 이 역할을 수행하며, `packages/http/src/dispatch/dispatcher.test.ts:L541-L619`에서는 이 단계의 파라미터 매핑을 집중적으로 테스트합니다.
 9.  **Interceptors (After)**: 핸들러가 반환한 결과(또는 에러)를 가공합니다. `interceptors.ts`의 역순 체인이 완성되며, 응답 객체를 최종적으로 정형화(normalization)합니다.
-10. **Response Writing**: 최종 결과를 HTTP 응답으로 직렬화하여 클라이언트에 전송합니다. `dispatcher.ts:L188`에서 `writeSuccessResponse`가 호출됩니다. 이때 `Content-Type` 협상이 마무리됩니다.
+10. **Response Writing and Success Observation**: 최종 결과를 HTTP 응답으로 직렬화하여 클라이언트에 전송합니다. 이때 `Content-Type` 협상이 마무리되지만, `onRequestSuccess`는 module middleware와 application middleware가 모두 `await next()` 이후 작업을 완료할 때까지 지연됩니다. 해당 after-`next()` 작업에서 예외가 발생하면 앞선 success notification 없이 request가 error observer 경로를 따릅니다.
 
 ## 11.3 RequestContext와 런타임 의존 비동기 격리
 
@@ -121,7 +121,7 @@ async function notifyObservers(
 }
 ```
 
-이 구조 덕분에 비즈니스 로직을 수정하지 않고도 전역 성능 지표나 감사 로그(Audit Log)를 남길 수 있습니다. `packages/http/src/dispatch/dispatcher.test.ts:L898-L997`은 옵저버가 특정 단계에서 예외를 던지더라도 전체 파이프라인 실행은 방해받지 않고 완료되는 "Fault-tolerant" 특성을 입증합니다.
+이 구조 덕분에 비즈니스 로직을 수정하지 않고도 전역 성능 지표나 감사 로그(Audit Log)를 남길 수 있습니다. Success observer는 완전히 settle된 middleware pipeline만 관찰합니다. Module middleware와 application middleware의 after-`next()` 작업이 먼저 완료되며, 해당 작업에서 failure가 발생하면 앞선 `onRequestSuccess` 없이 `onRequestError`가 발생합니다. `packages/http/src/dispatch/dispatcher.test.ts:L898-L997`은 옵저버가 특정 단계에서 예외를 던지더라도 전체 파이프라인 실행은 방해받지 않고 완료되는 "Fault-tolerant" 특성을 입증합니다.
 
 ## 11.5 요청 중단(Aborted) 처리의 정교함
 

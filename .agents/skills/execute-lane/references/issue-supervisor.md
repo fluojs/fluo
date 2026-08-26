@@ -1,10 +1,9 @@
 # Native issue supervisor
 
-One single-node DAG owns one issue from initial implementation through merge
-and cleanup. Parent-owned dispatch may start independent eligible issues
-concurrently. A dependent node is not created until every canonical dependency
-is already shared `done`; native DAG ordering is never used as success
-evidence.
+One lane DAG contains one supervisor node per approved issue. Each node owns
+its issue from initial implementation through merge and cleanup. Independent
+nodes run concurrently; explicit dependencies and queue predecessors are
+native `dependsOn` edges. Native ordering is never treated as success evidence.
 
 ## Role separation
 
@@ -17,6 +16,15 @@ The supervisor orchestrates but does not implement or review:
   issue-bound Git/GitHub actions granted by `authority_scope`;
 - the parent execute-lane lead alone mutates the shared lane ledger and performs
   root synchronization.
+
+The implementer alone uses the `fluo-issue-implementer` subagent configured in
+`.omo/omo.jsonc` for `openai-codex/gpt-5.6-terra` with `high` reasoning. The
+supervisor must include the complete `issue-to-pr/references/implementer.md`
+contract in that child prompt without a category or model override. After the
+child terminates, `scripts/implementer-runtime.mjs` must verify the persisted
+task metadata and actual child session both prove Terra high execution. Missing
+or mismatched evidence is a terminal child-contract blocker. Reviewer routing
+is unchanged and must never reuse the implementer route.
 
 ## Local review loop
 
@@ -46,6 +54,13 @@ At `ready-for-pr`, push the reviewed head and create one PR. At
 `ready-for-push`, push the new reviewed head to the existing PR branch. Observe
 that the remote branch, PR `headRefOid`, and reviewed local head are identical
 before entering `ci-pending`.
+
+Immediately after entering `ci-pending`, and on every fresh PR observation
+while checks are pending, query `mergeable` and `mergeStateStatus`. A
+`CONFLICTING` or `DIRTY` result is a fixable PR conflict: persist a head-bound
+`pr-conflict` receipt that proves the PR remains `OPEN`, then enter
+`ci-fix-back` without waiting for CI. Conflict resolution must produce a new
+head and rerun the complete local triad.
 
 When a successor lane reconciles an existing canonical branch, worktree, and
 OPEN PR, reuse those identities instead of creating duplicates. Rerun the full
@@ -83,11 +98,27 @@ resume from the issue state and live observations rather than repeating the
 last claimed action. The node returns typed transition evidence and receipts;
 the parent validates them before updating the shared lane ledger.
 
-Before creating a child, branch, or worktree, re-read the shared snapshot and
-require the issue to remain its lane's queued cursor with every dependency
-present in `completed_issues` and `issue_progress.status === 'done'`. If that
-precondition changed after dispatch, return a ledger-conflict terminal without
-performing a mutation.
+Before creating a child, branch, worktree, or PR, load every compiled
+predecessor's isolated issue store and validate it through
+`supervisor-terminal.mjs`. Proceed only when every terminal is canonical
+`done`, including observed merge, CLOSED issue, and cleanup. Missing, malformed,
+or blocked predecessor evidence returns a typed dependency blocker without
+performing a mutation. The shared snapshot may still name an earlier queue
+cursor while the lane DAG runs because the parent imports settled terminals in
+topological order after the DAG settles.
+
+Before that dependency gate, run the event-driven canonical dispatch gate:
+
+```text
+node .agents/skills/execute-lane/scripts/await-lane-dispatch.mjs \
+  --root . --ledger .omo/lanes/<lane-id>.json
+```
+
+Do not treat the short start/attach interval as a terminal ledger conflict.
+Wait for the exact canonical binding. A timeout or mismatched immutable
+binding remains fail-closed. The gate authenticates the binding against the
+native run's key record and persisted submitted definition, and does not
+recompile current workflow source for an already attached run.
 
 ## Stop
 
