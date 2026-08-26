@@ -44,6 +44,10 @@ await app.listen();
 
 ## 주요 패턴
 
+### Early Hints
+
+Raw Node response는 `context.response.earlyHints`를 노출합니다. 이 optional capability를 확인한 뒤 HTTP `103` 하나마다 `write(...)`를 await하세요. 여러 write를 지원합니다. 각 write에는 비어 있지 않은 `link` value가 필요하며 Node가 허용하는 다른 informational field도 포함할 수 있습니다. Native write는 final response를 commit하거나 early field를 final header로 복사하지 않습니다. Late/native failure는 `EarlyHintsWriteError`로 reject되고 settlement 전에 연결이 끊기면 `RequestAbortedError`로 reject됩니다.
+
 ### 서버 옵션 커스텀
 어댑터는 문서화된 Node.js transport 옵션인 host/port 바인딩, HTTPS 설정, request body 제한, raw-body 보존, listen retry 설정, shutdown drain bound를 제공합니다.
 

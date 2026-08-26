@@ -52,6 +52,7 @@ import {
 } from '@fluojs/runtime/internal/request-response-factory';
 import {
   cloneRequestHeaders,
+  createNodeEarlyHintsCapability,
   createDeferredFrameworkRequestShell,
   createMemoizedAsyncValue,
   createRequestSignal,
@@ -677,8 +678,10 @@ function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkRes
       .map(([name, value]) => [name, typeof value === 'number' ? String(value) : value]),
   );
 
-  return {
+  let frameworkResponse: ExpressFrameworkResponse;
+  frameworkResponse = {
     committed: response.headersSent || response.writableEnded,
+    earlyHints: createNodeEarlyHintsCapability(response, () => frameworkResponse.committed),
     headers,
     raw: response,
     stream: createFrameworkResponseStream(response),
@@ -746,6 +749,8 @@ function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkRes
     statusCode: undefined,
     statusSet: false,
   };
+
+  return frameworkResponse;
 }
 
 function createFrameworkResponseStream(response: ExpressResponse): FrameworkResponseStream {

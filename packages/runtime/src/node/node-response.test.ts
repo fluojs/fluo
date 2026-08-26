@@ -1,6 +1,6 @@
-import type { ServerResponse } from 'node:http';
 import { EventEmitter } from 'node:events';
-
+import type { ServerResponse } from 'node:http';
+import { EarlyHintsWriteError, RequestAbortedError } from '@fluojs/http';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createFrameworkResponse } from './node-response.js';
@@ -28,10 +28,173 @@ function createMockServerResponse(): ServerResponse {
     },
     statusCode: 200,
     writableEnded: false,
+    writeEarlyHints(_hints: Record<string, string | string[]>, callback?: () => void) {
+      callback?.();
+    },
   }) as unknown as ServerResponse;
 }
 
 describe('createFrameworkResponse', () => {
+  it('writes multiple Early Hints without mutating the final response facade', async () => {
+    const rawResponse = createMockServerResponse();
+    const writeEarlyHints = vi.spyOn(rawResponse, 'writeEarlyHints');
+    const frameworkResponse = createFrameworkResponse(rawResponse);
+
+    await frameworkResponse.earlyHints?.write({
+      link: ['</styles.css>; rel=preload; as=style'],
+      'x-trace-id': 'trace-1',
+    });
+    await frameworkResponse.earlyHints?.write({
+      link: '</app.js>; rel=modulepreload',
+    });
+    frameworkResponse.setHeader('link', '</final.css>; rel=stylesheet');
+
+    expect(writeEarlyHints).toHaveBeenNthCalledWith(1, {
+      link: ['</styles.css>; rel=preload; as=style'],
+      'x-trace-id': 'trace-1',
+    }, expect.any(Function));
+    expect(writeEarlyHints).toHaveBeenNthCalledWith(2, {
+      link: '</app.js>; rel=modulepreload',
+    }, expect.any(Function));
+    expect(frameworkResponse.committed).toBe(false);
+    expect(frameworkResponse.statusCode).toBeUndefined();
+    expect(frameworkResponse.headers).toEqual({
+      link: '</final.css>; rel=stylesheet',
+    });
+  });
+
+  it('rejects invalid or late Early Hints writes deterministically', async () => {
+    const rawResponse = createMockServerResponse();
+    const frameworkResponse = createFrameworkResponse(rawResponse);
+
+    await expect(frameworkResponse.earlyHints?.write({ link: '' })).rejects.toBeInstanceOf(EarlyHintsWriteError);
+
+    frameworkResponse.committed = true;
+
+    await expect(frameworkResponse.earlyHints?.write({
+      link: '</late.css>; rel=preload; as=style',
+    })).rejects.toMatchObject({
+      code: 'EARLY_HINTS_WRITE_FAILED',
+    });
+  });
+
+  it('rejects unsafe or ambiguous Early Hints headers before the native write', async () => {
+    const rawResponse = createMockServerResponse();
+    const writeEarlyHints = vi.spyOn(rawResponse, 'writeEarlyHints');
+    const frameworkResponse = createFrameworkResponse(rawResponse);
+
+    await expect(frameworkResponse.earlyHints?.write({
+      link: '</styles.css>; rel=preload; as=style',
+      'x-trace': 'ok\r\nset-cookie: injected=1',
+    })).rejects.toMatchObject({
+      code: 'EARLY_HINTS_WRITE_FAILED',
+    });
+    await expect(frameworkResponse.earlyHints?.write({
+      link: '</styles.css>; rel=preload; as=style',
+      Link: '</override.css>; rel=preload; as=style',
+    })).rejects.toMatchObject({
+      code: 'EARLY_HINTS_WRITE_FAILED',
+    });
+
+    expect(writeEarlyHints).not.toHaveBeenCalled();
+  });
+
+  it.each(['content-length', 'transfer-encoding'] as const)(
+    'rejects status-forbidden %s before the native Early Hints write',
+    async (headerName) => {
+      const rawResponse = createMockServerResponse();
+      const writeEarlyHints = vi.spyOn(rawResponse, 'writeEarlyHints');
+      const frameworkResponse = createFrameworkResponse(rawResponse);
+
+      await expect(frameworkResponse.earlyHints?.write({
+        link: '</styles.css>; rel=preload; as=style',
+        [headerName]: '1',
+      })).rejects.toBeInstanceOf(EarlyHintsWriteError);
+
+      expect(writeEarlyHints).not.toHaveBeenCalled();
+    },
+  );
+
+  it('maps malformed Early Hints input to a rejected write promise', async () => {
+    const rawResponse = createMockServerResponse();
+    const writeEarlyHints = vi.spyOn(rawResponse, 'writeEarlyHints');
+    const frameworkResponse = createFrameworkResponse(rawResponse);
+
+    let write: Promise<void> | undefined;
+    expect(() => {
+      write = frameworkResponse.earlyHints?.write(null as unknown as {
+        readonly link: string;
+      });
+    }).not.toThrow();
+
+    await expect(write).rejects.toMatchObject({
+      code: 'EARLY_HINTS_WRITE_FAILED',
+    });
+    expect(writeEarlyHints).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'an inherited',
+      Object.create({
+        link: '</inherited.css>; rel=preload; as=style',
+      }),
+    ],
+    [
+      'a non-enumerable',
+      Object.defineProperty(
+        { link: '</hidden.css>; rel=preload; as=style' },
+        'link',
+        { enumerable: false },
+      ),
+    ],
+  ])('rejects %s link before the native Early Hints write', async (_kind, headers) => {
+    const rawResponse = createMockServerResponse();
+    rawResponse.writeEarlyHints = vi.fn();
+    const frameworkResponse = createFrameworkResponse(rawResponse);
+
+    const write = frameworkResponse.earlyHints?.write(headers);
+    rawResponse.emit('close');
+
+    await expect(write).rejects.toBeInstanceOf(EarlyHintsWriteError);
+    expect(rawResponse.writeEarlyHints).not.toHaveBeenCalled();
+    expect(rawResponse.listenerCount('close')).toBe(0);
+    expect(rawResponse.listenerCount('error')).toBe(0);
+  });
+
+  it('wraps native Early Hints failures and removes terminal listeners', async () => {
+    const rawResponse = createMockServerResponse();
+    const nativeError = new Error('Socket write failed');
+    rawResponse.writeEarlyHints = vi.fn(() => {
+      throw nativeError;
+    });
+    const frameworkResponse = createFrameworkResponse(rawResponse);
+
+    await expect(frameworkResponse.earlyHints?.write({
+      link: '</styles.css>; rel=preload; as=style',
+    })).rejects.toMatchObject({
+      cause: nativeError,
+      code: 'EARLY_HINTS_WRITE_FAILED',
+    });
+    expect(rawResponse.listenerCount('close')).toBe(0);
+    expect(rawResponse.listenerCount('error')).toBe(0);
+  });
+
+  it('rejects an in-flight Early Hints write when the client disconnects', async () => {
+    const rawResponse = createMockServerResponse();
+    rawResponse.writeEarlyHints = vi.fn();
+    const frameworkResponse = createFrameworkResponse(rawResponse);
+
+    const write = frameworkResponse.earlyHints?.write({
+      link: '</styles.css>; rel=preload; as=style',
+    });
+    rawResponse.emit('close');
+
+    await expect(write).rejects.toBeInstanceOf(RequestAbortedError);
+    expect(rawResponse.listenerCount('close')).toBe(0);
+    expect(rawResponse.listenerCount('error')).toBe(0);
+  });
+
   it('appends repeated set-cookie header writes', () => {
     const rawResponse = createMockServerResponse();
     const frameworkResponse = createFrameworkResponse(rawResponse);

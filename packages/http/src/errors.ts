@@ -42,3 +42,16 @@ export class RequestAbortedError extends FluoError {
     super(message, { code: 'REQUEST_ABORTED' });
   }
 }
+
+/** Error thrown when a supported adapter cannot emit one Early Hints response. */
+export class EarlyHintsWriteError extends FluoError {
+  constructor(
+    message = 'Failed to write HTTP 103 Early Hints.',
+    options: { cause?: unknown } = {},
+  ) {
+    super(message, {
+      cause: options.cause,
+      code: 'EARLY_HINTS_WRITE_FAILED',
+    });
+  }
+}

@@ -49,6 +49,10 @@ await app.listen();
 
 ## 주요 패턴
 
+### Early Hints
+
+Express response는 underlying Node `ServerResponse`를 사용하는 optional `context.response.earlyHints` capability를 노출합니다. `103` 하나마다 `write(...)`를 await하면 final response 전에 여러 write를 관찰할 수 있습니다. Early field는 Express final header, status, body, commit state와 분리됩니다. Capability가 없으면 unsupported이며 late write와 disconnect는 no-op이 아니라 결정적으로 reject됩니다.
+
 ### 스트리밍 응답 처리 (SSE)
 Express 어댑터는 공유 `SseResponse` 유틸리티를 통해 Server-Sent Events(SSE)를 지원하며, Express 전용 스트림 처리를 추상화합니다.
 

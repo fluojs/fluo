@@ -1,11 +1,103 @@
-import { Agent, get, Server } from 'node:http';
+import { Agent, get, request, Server, type InformationEvent } from 'node:http';
 import type { Socket } from 'node:net';
+import { Controller, Get, type RequestContext } from '@fluojs/http';
 import { defineModule, FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { bootstrapNodejsApplication, createNodejsAdapter } from './index.js';
 
+async function requestWithEarlyHints(url: string): Promise<{
+  readonly body: string;
+  readonly finalLink: string | string[] | undefined;
+  readonly informational: readonly InformationEvent[];
+  readonly statusCode: number;
+}> {
+  return await new Promise((resolve, reject) => {
+    const informational: InformationEvent[] = [];
+    const clientRequest = request(url, (response) => {
+      const chunks: Buffer[] = [];
+
+      response.on('data', (chunk) => {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      });
+      response.once('error', reject);
+      response.once('end', () => {
+        resolve({
+          body: Buffer.concat(chunks).toString('utf8'),
+          finalLink: response.headers.link,
+          informational,
+          statusCode: response.statusCode ?? 0,
+        });
+      });
+    });
+
+    clientRequest.on('information', (information) => {
+      informational.push(information);
+    });
+    clientRequest.once('error', reject);
+    clientRequest.end();
+  });
+}
+
 describe('@fluojs/platform-nodejs lifecycle integration', () => {
+  it('emits multiple Early Hints before an independent final response on a real listener', async () => {
+    @Controller('/early-hints')
+    class EarlyHintsController {
+      @Get('/')
+      async render(_input: undefined, context: RequestContext) {
+        const earlyHints = context.response.earlyHints;
+
+        if (!earlyHints) {
+          throw new Error('Expected the Node.js response to support Early Hints.');
+        }
+
+        await earlyHints.write({
+          link: '</styles.css>; rel=preload; as=style',
+          'x-early-trace': 'first',
+        });
+        await earlyHints.write({
+          link: '</app.js>; rel=modulepreload',
+        });
+        context.response.setHeader('link', '</final.css>; rel=stylesheet');
+
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [EarlyHintsController] });
+
+    const adapter = createNodejsAdapter({ host: '127.0.0.1', port: 0 });
+    const app = await FluoFactory.create(AppModule, { adapter });
+
+    try {
+      await app.listen();
+      const response = await requestWithEarlyHints(`${adapter.getListenTarget().url}/early-hints`);
+
+      expect(response.informational.map(({ headers, statusCode }) => ({
+        link: headers.link,
+        statusCode,
+        trace: headers['x-early-trace'],
+      }))).toEqual([
+        {
+          link: '</styles.css>; rel=preload; as=style',
+          statusCode: 103,
+          trace: 'first',
+        },
+        {
+          link: '</app.js>; rel=modulepreload',
+          statusCode: 103,
+          trace: undefined,
+        },
+      ]);
+      expect(response.statusCode).toBe(200);
+      expect(response.finalLink).toBe('</final.css>; rel=stylesheet');
+      expect(JSON.parse(response.body)).toEqual({ ok: true });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('binds only when app.listen() is called after bootstrap', async () => {
     // Given: a bootstrapped application using an OS-assigned port.
     class AppModule {}
