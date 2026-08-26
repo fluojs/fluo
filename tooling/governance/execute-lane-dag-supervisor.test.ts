@@ -26,6 +26,11 @@ type DagDefinition = Readonly<{
   name: string;
   nodes: readonly DagNode[];
 }>;
+type ImplementerRoute = Readonly<{
+  subagent_type: 'fluo-issue-implementer';
+  expected_model: 'openai-codex/gpt-5.6-terra';
+  expected_thinking: 'high';
+}>;
 type DagBinding = Readonly<{
   version: number;
   lane_id: string;
@@ -65,13 +70,14 @@ const {
     transition: unknown,
   ) => SupervisorState;
 };
-const { compileLaneSupervisorDag } = (await import(
+const { compileLaneSupervisorDag, implementerRoute } = (await import(
   resolve(
     process.cwd(),
     '.agents/skills/execute-lane/scripts/compile-dag.mjs',
   )
 )) as {
   compileLaneSupervisorDag: (ledger: unknown) => DagDefinition;
+  implementerRoute: ImplementerRoute;
 };
 const {
   assertDagBindingMatches,
@@ -1294,6 +1300,11 @@ describe('execute-lane issue supervisor lifecycle', () => {
     const definition = compileLaneSupervisorDag(ledger);
 
     expect(definition.key).toBe('fluo:lane:lane-4101-runtime:issue-supervisors:v2');
+    expect(implementerRoute).toEqual({
+      subagent_type: 'fluo-issue-implementer',
+      expected_model: 'openai-codex/gpt-5.6-terra',
+      expected_thinking: 'high',
+    });
     expect(definition.nodes).toHaveLength(2);
     expect(definition.nodes[0]).toMatchObject({
       id: 'issue-4101-supervisor',

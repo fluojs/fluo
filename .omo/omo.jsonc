@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/dev/assets/omo.schema.json",
+  "agents": {
+    "fluo-issue-implementer": {
+      "description": "Implements one Fluo issue inside its assigned worktree.",
+      "model": "openai-codex/gpt-5.6-terra",
+      "reasoning": "high"
+    }
+  },
+  "_migrations": [
+    "2026-08-reasoning-unification"
+  ]
+}
