@@ -111,6 +111,9 @@ export function createFrameworkResponse(
   const frameworkResponse: MutableFrameworkResponse & { raw: ServerResponse } = {
     committed: response.headersSent || response.writableEnded,
     headers: {},
+    get mayAlterWireBytes() {
+      return compression !== undefined;
+    },
     raw: response,
     get stream() {
       activeStream ??= createFrameworkResponseStream(response);
@@ -121,7 +124,7 @@ export function createFrameworkResponse(
       this.setHeader('Location', location);
       void this.send(undefined);
     },
-    send(body: unknown) {
+    send(body: unknown, options?: { readonly serialized?: boolean }) {
       if (response.writableEnded) {
         this.committed = true;
         return;
@@ -131,7 +134,7 @@ export function createFrameworkResponse(
       const serialized = serializeResponseBody(
         body,
         typeof existingContentType === 'string' ? existingContentType : undefined,
-        (this as unknown as Record<symbol, unknown>)[Symbol.for('fluo.http.serializedResponseBody')] === true,
+        options?.serialized === true,
       );
 
       if (!response.hasHeader('Content-Type') && serialized.defaultContentType) {
@@ -163,9 +166,22 @@ export function createFrameworkResponse(
       response.end(payload);
       this.committed = true;
     },
+    removeHeader(name: string) {
+      response.removeHeader(name);
+      for (const headerName of Object.keys(this.headers)) {
+        if (headerName.toLowerCase() === name.toLowerCase()) {
+          delete this.headers[headerName];
+        }
+      }
+    },
     setHeader(name: string, value: string | string[]) {
       const headers = this.headers as Record<string, string | string[]>;
       const lowerName = name.toLowerCase();
+      for (const headerName of Object.keys(headers)) {
+        if (headerName.toLowerCase() === lowerName) {
+          delete headers[headerName];
+        }
+      }
 
       if (lowerName === 'set-cookie') {
         const merged = mergeSetCookieHeader(response.getHeader(name), value);
@@ -174,6 +190,7 @@ export function createFrameworkResponse(
         return;
       }
 
+      response.removeHeader(name);
       response.setHeader(name, value);
       headers[name] = value;
     },
@@ -251,7 +268,8 @@ function serializeResponseBody(
 }
 
 function isJsonContentType(contentType: string | undefined): boolean {
-  return typeof contentType === 'string' && contentType.toLowerCase().includes('application/json');
+  const mediaType = contentType?.split(';', 1)[0]?.trim().toLowerCase();
+  return mediaType === 'application/json' || mediaType?.startsWith('application/') === true && mediaType.endsWith('+json');
 }
 
 function toHttpException(error: unknown): HttpException {

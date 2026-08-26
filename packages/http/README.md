@@ -181,9 +181,9 @@ to an IMF-fixdate with second precision.
 
 The resolver runs after guards, DTO binding, and validation, immediately before the controller
 handler; invalid DTOs therefore retain their normal `400` result. Safe-method conditions are evaluated
-after the handler establishes its actual status. Unsafe prerequisites run before side effects only when
-the resolver or route has already prepared an eligible status; otherwise they are evaluated after the
-actual status is known. Redirect and other ineligible outcomes skip precondition evaluation. Return
+after the handler establishes its actual status. Unsafe prerequisites use the ordinary successful route
+status before side effects unless the resolver or route explicitly prepares an ineligible status. Redirect
+and other ineligible outcomes skip precondition evaluation. Return
 `exists: false` when the target has no current representation. Generated response ETags are
 necessarily available only after the handler, so they protect later GET/HEAD revalidation but do not
 replace the resolver for unsafe operations.

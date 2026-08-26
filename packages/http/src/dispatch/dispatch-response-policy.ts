@@ -17,7 +17,6 @@ import { writeErrorResponse } from './dispatch-error-policy.js';
 type SimpleJsonResponseBody = Record<string, unknown> | unknown[];
 const responseWriterKey = Symbol.for('fluo.http.responseWriter');
 const responseValueFinalizerKey = Symbol.for('fluo.http.responseValueFinalizer');
-const serializedResponseBodyKey = Symbol.for('fluo.http.serializedResponseBody');
 const BINARY_CONTENT_TYPE = 'application/octet-stream';
 const JSON_CONTENT_TYPE = 'application/json; charset=utf-8';
 const TEXT_CONTENT_TYPE = 'text/plain; charset=utf-8';
@@ -238,15 +237,12 @@ export async function writeSuccessResponse(
     ? formatter.format(responseValue)
     : responseValue;
 
-  if (formatter) {
-    (response as unknown as Record<symbol, unknown>)[serializedResponseBodyKey] = true;
-  }
-
   if (await tryHandleConditionalResponse(
     request,
     response,
     responseBody,
     conditionalRequests,
+    formatter !== undefined,
   )) {
     return;
   }
@@ -263,7 +259,7 @@ export async function writeSuccessResponse(
     return;
   }
 
-  await response.send(responseBody);
+  await response.send(responseBody, formatter ? { serialized: true } : undefined);
 }
 
 export type { ResolvedContentNegotiation };

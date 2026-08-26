@@ -63,7 +63,8 @@ export interface FrameworkRequestFile {
  * contract before the underlying platform commits the response.
  */
 export interface FrameworkResponse {
-  compression?: FrameworkResponseCompression;
+  /** Whether the adapter may apply a content coding that changes bytes sent on the wire. */
+  readonly mayAlterWireBytes?: boolean;
   statusCode?: number;
   statusSet?: boolean;
   headers: Record<string, string | string[]>;
@@ -72,8 +73,15 @@ export interface FrameworkResponse {
   stream?: FrameworkResponseStream;
   setStatus(code: number): void;
   setHeader(name: string, value: string | string[]): void;
+  removeHeader?(name: string): void;
   redirect(status: number, location: string): void;
-  send(body: unknown): MaybePromise<void>;
+  send(body: unknown, options?: FrameworkResponseSendOptions): MaybePromise<void>;
+}
+
+/** Write options supplied by dispatcher response policies. */
+export interface FrameworkResponseSendOptions {
+  /** The body is already the exact serialized representation selected by a formatter. */
+  readonly serialized?: boolean;
 }
 
 /** Compression writer used when a platform can stream encoded response bodies. */

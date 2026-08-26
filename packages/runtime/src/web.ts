@@ -189,7 +189,7 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
     void this.send(undefined);
   }
 
-  async send(body: unknown): Promise<void> {
+  async send(body: unknown, options?: { readonly serialized?: boolean }): Promise<void> {
     if (this.finalizedResponse) {
       this.committed = true;
       return;
@@ -202,7 +202,7 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
         : typeof this.headers['content-type'] === 'string'
           ? this.headers['content-type']
           : undefined,
-      (this as unknown as Record<symbol, unknown>)[Symbol.for('fluo.http.serializedResponseBody')] === true,
+      options?.serialized === true,
     );
 
     if (serialized.defaultContentType && !hasHeader(this.headers, 'content-type')) {
@@ -225,6 +225,13 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
 
     this.responseBody = JSON.stringify(body);
     this.committed = true;
+  }
+
+  removeHeader(name: string): void {
+    const existingHeaderName = findHeaderName(this.headers, name);
+    if (existingHeaderName !== undefined) {
+      delete this.headers[existingHeaderName];
+    }
   }
 
   setHeader(name: string, value: string | string[]): void {
@@ -808,7 +815,8 @@ function serializeWebResponseBody(
 }
 
 function isJsonContentType(contentType: string | undefined): boolean {
-  return typeof contentType === 'string' && contentType.toLowerCase().includes('application/json');
+  const mediaType = contentType?.split(';', 1)[0]?.trim().toLowerCase();
+  return mediaType === 'application/json' || mediaType?.startsWith('application/') === true && mediaType.endsWith('+json');
 }
 
 function toHttpException(error: unknown): HttpException {

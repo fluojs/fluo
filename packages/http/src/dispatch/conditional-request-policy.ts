@@ -49,16 +49,14 @@ export async function tryHandleConditionalRequestBeforeHandler(
   }
 
   const validators = applyConfiguredValidators(requestContext.response, configured);
-  const isRetrieval = isRetrievalRequest(requestContext.request);
-  const hasPreparedStatus = requestContext.response.statusSet === true || handler.route.successStatus !== undefined;
-  if (isRetrieval || !hasPreparedStatus) {
+  if (isRetrievalRequest(requestContext.request)) {
     return false;
   }
 
   const outcome = evaluateConditionalRequest(
     requestContext.request,
     validators,
-    requestContext.response.statusCode ?? handler.route.successStatus,
+    requestContext.response.statusCode ?? handler.route.successStatus ?? 200,
     false,
   );
 
@@ -74,6 +72,7 @@ export async function tryHandleConditionalRequestBeforeHandler(
  * @param response Response receiving validator metadata.
  * @param value Serialized response value used to generate an entity tag.
  * @param options Conditional request policy configuration.
+ * @param isSerialized Whether `value` is already the formatter-selected representation.
  * @returns Whether a conditional response was committed.
  */
 export async function tryHandleConditionalResponse(
@@ -81,12 +80,16 @@ export async function tryHandleConditionalResponse(
   response: FrameworkResponse,
   value: unknown,
   options: ConditionalRequestOptions | undefined,
+  isSerialized = false,
 ): Promise<boolean> {
   if (options === undefined) {
     return false;
   }
 
   normalizeLastModifiedHeader(response);
+  if (response.mayAlterWireBytes === true) {
+    appendVaryHeader(response, 'Accept-Encoding');
+  }
 
   if (
     options.etag !== undefined
@@ -96,8 +99,8 @@ export async function tryHandleConditionalResponse(
     const generated = await generateEntityTag(
       value,
       readResponseHeader(response, 'content-type'),
-      options.etag === 'strong' && response.compression !== undefined ? 'weak' : options.etag,
-      (response as unknown as Record<symbol, unknown>)[Symbol.for('fluo.http.serializedResponseBody')] === true,
+      options.etag === 'strong' && response.mayAlterWireBytes === true ? 'weak' : options.etag,
+      isSerialized,
     );
 
     if (generated !== undefined) {
@@ -222,6 +225,7 @@ async function writeConditionalOutcome(
   response: FrameworkResponse,
   status: ConditionalOutcome,
 ): Promise<true> {
+  removeResponseHeader(response, 'Content-Length');
   response.setStatus(status);
   await response.send(undefined);
   return true;
@@ -360,6 +364,24 @@ function createUtcTimestamp(
   )
     ? timestamp
     : undefined;
+}
+
+function appendVaryHeader(response: FrameworkResponse, value: string): void {
+  const existing = readResponseHeader(response, 'vary');
+  const values = existing?.split(',').map((entry) => entry.trim()).filter(Boolean) ?? [];
+  if (!values.some((entry) => entry.toLowerCase() === value.toLowerCase())) {
+    values.push(value);
+    replaceResponseHeader(response, 'Vary', values.join(', '));
+  }
+}
+
+function removeResponseHeader(response: FrameworkResponse, name: string): void {
+  response.removeHeader?.(name);
+  for (const headerName of Object.keys(response.headers)) {
+    if (headerName.toLowerCase() === name.toLowerCase()) {
+      delete response.headers[headerName];
+    }
+  }
 }
 
 function replaceResponseHeader(response: FrameworkResponse, name: string, value: string): void {

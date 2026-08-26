@@ -776,7 +776,7 @@ class MutableFastifyFrameworkResponse implements FastifyFrameworkResponse {
     this.reply.redirect(location, status);
   }
 
-  send(body: unknown): ReturnType<FrameworkResponse['send']> {
+  send(body: unknown, options?: { readonly serialized?: boolean }): ReturnType<FrameworkResponse['send']> {
     if (this.reply.sent) {
       this.committed = true;
       return;
@@ -786,7 +786,7 @@ class MutableFastifyFrameworkResponse implements FastifyFrameworkResponse {
     const serialized = serializeResponseBody(
       body,
       typeof existingContentType === 'string' ? existingContentType : undefined,
-      (this as unknown as Record<symbol, unknown>)[Symbol.for('fluo.http.serializedResponseBody')] === true,
+      options?.serialized === true,
     );
 
     if (!this.reply.hasHeader('content-type') && serialized.defaultContentType) {
@@ -811,8 +811,22 @@ class MutableFastifyFrameworkResponse implements FastifyFrameworkResponse {
     void this.reply.send(JSON.stringify(body));
   }
 
+  removeHeader(name: string): void {
+    this.reply.removeHeader(name);
+    for (const headerName of Object.keys(this.headers)) {
+      if (headerName.toLowerCase() === name.toLowerCase()) {
+        delete this.headers[headerName];
+      }
+    }
+  }
+
   setHeader(name: string, value: string | string[]): void {
     const lowerName = name.toLowerCase();
+    for (const headerName of Object.keys(this.headers)) {
+      if (headerName.toLowerCase() === lowerName) {
+        delete this.headers[headerName];
+      }
+    }
 
     if (lowerName === 'set-cookie') {
       const merged = mergeSetCookieHeader(this.reply.getHeader(name), value);
@@ -821,6 +835,7 @@ class MutableFastifyFrameworkResponse implements FastifyFrameworkResponse {
       return;
     }
 
+    this.reply.removeHeader(name);
     this.reply.header(name, value);
     this.headers[name] = value;
   }
@@ -1522,5 +1537,6 @@ function serializeResponseBody(
 }
 
 function isJsonContentType(contentType: string | undefined): boolean {
-  return typeof contentType === 'string' && contentType.toLowerCase().includes('application/json');
+  const mediaType = contentType?.split(';', 1)[0]?.trim().toLowerCase();
+  return mediaType === 'application/json' || mediaType?.startsWith('application/') === true && mediaType.endsWith('+json');
 }

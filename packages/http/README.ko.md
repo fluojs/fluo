@@ -165,8 +165,8 @@ response에 설정한 `Last-Modified`는 초 단위 IMF-fixdate로 normalize됩�
 
 Resolver는 guard, DTO binding, validation 뒤 controller handler 직전에 실행되므로 invalid DTO는 기존처럼
 `400`을 반환합니다. Safe method condition은 handler가 실제 status를 결정한 뒤 평가합니다. Unsafe prerequisite는
-resolver 또는 route가 eligible status를 준비한 경우에만 side effect 전에 평가하며, 그렇지 않으면 실제 status를 안 뒤
-평가합니다. Redirect와 다른 ineligible outcome은 precondition evaluation을 건너뜁니다. Target에 현재
+resolver 또는 route가 명시적으로 ineligible status를 준비하지 않는 한 ordinary successful route status를 사용해
+side effect 전에 평가합니다. Redirect와 다른 ineligible outcome은 precondition evaluation을 건너뜁니다. Target에 현재
 representation이 없으면 `exists: false`를 반환합니다. 자동 생성된 ETag는 handler 이후에야 생기므로, 후속
 GET/HEAD revalidation에는 사용할 수 있지만 unsafe precondition을 위한 resolver를 대체하지는 않습니다.
 

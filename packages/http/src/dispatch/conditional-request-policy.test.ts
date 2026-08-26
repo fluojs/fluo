@@ -140,9 +140,8 @@ describe('dispatcher conditional request policy', () => {
     const root = new Container().register(DocumentsController);
     const dispatcher = createDispatcher({
       conditionalRequests: {
-        resolve({ requestContext }) {
+        resolve() {
           preconditionChecks += 1;
-          requestContext.response.setStatus(200);
           return { etag: '"revision-3"' };
         },
       },
@@ -374,6 +373,40 @@ describe('dispatcher conditional request policy', () => {
     expect(calls).toBe(2);
   });
 
+  it('does not replace an explicitly prepared ineligible unsafe status with a precondition outcome', async () => {
+    let writes = 0;
+
+    @Controller('/documents')
+    class DocumentsController {
+      @Put('/:id')
+      update(_input: undefined, context: { response: FrameworkResponse }) {
+        writes += 1;
+        context.response.setStatus(404);
+        return undefined;
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      conditionalRequests: {
+        resolve({ requestContext }) {
+          requestContext.response.setStatus(404);
+          return { etag: '"current"', lastModified: 'Tue, 25 Aug 2026 10:15:30 GMT' };
+        },
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: DocumentsController }]),
+      rootContainer: new Container().register(DocumentsController),
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('PUT', {
+      'if-match': '"stale"',
+      'if-unmodified-since': 'Mon, 24 Aug 2026 10:15:30 GMT',
+    }), response);
+
+    expect(response.statusCode).toBe(404);
+    expect(writes).toBe(1);
+  });
+
   it('selects bodyless 304 and 412 outcomes before handler execution', async () => {
     let calls = 0;
 
@@ -398,6 +431,7 @@ describe('dispatcher conditional request policy', () => {
         resolve({ requestContext }) {
           requestContext.response.setStatus(200);
           requestContext.response.setHeader('Cache-Control', 'private, max-age=0');
+          requestContext.response.setHeader('Content-Length', '99');
           requestContext.response.setHeader('Vary', 'Accept-Encoding');
           return {
             etag: '"revision-3"',
@@ -429,6 +463,7 @@ describe('dispatcher conditional request policy', () => {
     expect(readHeader(notModifiedResponse, 'last-modified')).toBe('Tue, 25 Aug 2026 10:15:30 GMT');
     expect(readHeader(notModifiedResponse, 'cache-control')).toBe('private, max-age=0');
     expect(readHeader(notModifiedResponse, 'vary')).toBe('Accept-Encoding');
+    expect(readHeader(notModifiedResponse, 'content-length')).toBeUndefined();
     expect(calls).toBe(1);
   });
 
