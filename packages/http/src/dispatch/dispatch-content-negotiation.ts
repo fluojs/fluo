@@ -71,10 +71,10 @@ function parseAcceptHeader(acceptHeader: string): AcceptToken[] {
     let malformed = false;
 
     for (const parameterPart of parameterParts) {
-      const [name, value] = parameterPart.trim().split('=');
+      const [name, value, ...extraValues] = parameterPart.trim().split('=');
 
       if (name?.toLowerCase() === 'q') {
-        const parsedQuality = parseQuality(value?.trim());
+        const parsedQuality = extraValues.length === 0 ? parseQuality(value?.trim()) : undefined;
         if (qualitySeen || parsedQuality === undefined) {
           malformed = true;
           break;

@@ -169,6 +169,14 @@ describe('successful response content negotiation', () => {
     ['configured default for */*', '/representations/all', '*/*', 200, 'text/plain', 'plain'],
     ['valid entry after malformed range', '/representations/all', 'not-a-range, application/json', 200, 'application/json', 'json'],
     ['malformed quality', '/representations/all', 'application/json;q=2', 406, undefined, undefined],
+    [
+      'malformed quality alongside a valid entry',
+      '/representations/all',
+      'application/json;q=0.9=invalid, text/plain;q=0.2',
+      200,
+      'text/plain',
+      'plain',
+    ],
     ['unsupported range', '/representations/all', 'image/avif', 406, undefined, undefined],
     [
       'exact q=0 overrides a positive wildcard',
