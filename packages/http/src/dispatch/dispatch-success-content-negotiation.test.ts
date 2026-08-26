@@ -55,7 +55,7 @@ function createResponse(): TestResponse {
 
 @Controller('/representations')
 class RepresentationController {
-  @Produces('application/json', 'application/problem+json', 'text/plain', 'application/json;note="a,b=c\\"d\\\\e"')
+  @Produces('application/json', 'application/problem+json', 'text/plain', 'application/json;note="a,b=c\\"d\\\\e"', 'application/json;profile=v2')
   @Get('/all')
   all() {
     return { ok: true };
@@ -111,6 +111,12 @@ const formatters = [
       return 'json-note';
     },
     mediaType: 'application/json;note="a,b=c\\"d\\\\e"',
+  },
+  {
+    format() {
+      return 'json-profile';
+    },
+    mediaType: 'application/json;profile=v2',
   },
   {
     format() {
@@ -222,6 +228,22 @@ describe('successful response content negotiation', () => {
       200,
       'application/json;note="a,b=c\\"d\\\\e"',
       'json-note',
+    ],
+    [
+      'parameterized representation wins after a generic range',
+      '/representations/all',
+      'application/json;q=1, application/json;profile=v2;q=1',
+      200,
+      'application/json;profile=v2',
+      'json-profile',
+    ],
+    [
+      'parameterized representation wins before a generic range',
+      '/representations/all',
+      'application/json;profile=v2;q=1, application/json;q=1',
+      200,
+      'application/json;profile=v2',
+      'json-profile',
     ],
     [
       'rejects media parameters after q',

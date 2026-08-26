@@ -409,6 +409,10 @@ function selectPreferredCandidate(
     return candidate.token.specificity > current.token.specificity ? candidate : current;
   }
 
+  if (candidate.token.mediaParameters.length !== current.token.mediaParameters.length) {
+    return candidate.token.mediaParameters.length > current.token.mediaParameters.length ? candidate : current;
+  }
+
   if (candidate.token.order !== current.token.order) {
     return candidate.token.order < current.token.order ? candidate : current;
   }
