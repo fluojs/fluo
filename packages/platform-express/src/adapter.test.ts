@@ -304,6 +304,10 @@ describe('@fluojs/platform-express', () => {
       await expressPortabilityHarness.assertSupportsHttpErrorRepresentations();
     });
 
+    it('supports dispatcher-owned conditional requests and validators', async () => {
+      await expressPortabilityHarness.assertSupportsConditionalRequests();
+    });
+
     it('does not commit an error representation after client disconnect', async () => {
       await expressPortabilityHarness.assertDoesNotCommitAbortedHttpErrorRepresentations();
     });

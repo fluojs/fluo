@@ -9,6 +9,7 @@
 - [설치](#설치)
 - [사용 시점](#사용-시점)
 - [퀵 스타트](#퀵-스타트)
+- [조건부 요청과 캐시 검증자](#조건부-요청과-캐시-검증자)
 - [주요 패턴](#주요-패턴)
 - [동작 계약](#동작-계약)
 - [공개 API 개요](#공개-api-개요)
@@ -99,6 +100,30 @@ await context.close();
 `@fluojs/runtime`은 live Studio snapshot과 request trace를 publish할 수 있지만 `process.env`를 직접 읽지 않습니다. `fluo dev --studio`가 애플리케이션 경계에서 sidecar를 시작하고 tokenized Studio config를 만든 뒤, 앱이 runtime을 import하기 전에 해당 명시적 config를 Node 앱 child에 주입합니다. Runtime은 Studio bridge를 생성할 때 주입된 각 field를 한 번씩 읽고 전체 config와 HTTP(S) endpoint를 검증한 뒤 private snapshot으로 freeze합니다. 따라서 writable process-global injection이 나중에 변경되어도 instrumentation input은 바뀌지 않습니다. CLI가 제공한 config가 없거나 잘못되었거나 tokenized endpoint가 없으면 Studio instrumentation은 no-op이며 bootstrap 동작은 바뀌지 않습니다.
 
 이 MVP에서 전체 지원 대상은 Node dev runner 프로젝트입니다. Bun, Deno, Cloudflare Workers의 live Studio는 dedicated bridge를 구현하고 검증하기 전까지 unsupported입니다. 해당 런타임에서도 Studio config가 없으면 bootstrap은 no-op이어야 합니다. Request trace는 body, cookie, 전체 header를 의도적으로 제외하며, runtime은 local token이 Studio event history에 남지 않도록 publish 전에 trace `url`에서 query string과 fragment를 제거합니다.
+
+### 조건부 요청과 캐시 검증자
+
+`FluoFactory.create(...)`와 `bootstrapApplication(...)`은 `conditionalRequests`를 변경 없이 HTTP dispatcher에
+전달합니다. Application에서 dispatcher-owned ETag 생성, Last-Modified normalization, HTTP precondition이
+필요하면 이 option을 설정하세요.
+
+```ts
+const app = await fluoFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ port: 3000 }),
+  conditionalRequests: {
+    etag: 'strong',
+    resolve({ requestContext }) {
+      return { etag: '"document-r3"', lastModified: new Date('2026-08-25T10:15:30.900Z') };
+    },
+  },
+});
+```
+
+Runtime은 이 option을 wiring만 합니다. Validator precedence, strong/weak comparison, 304/412 body suppression,
+HEAD metadata, Node·Express·Fastify·Web-style adapter의 공유 portability policy는 `@fluojs/http`가 소유합니다.
+Handler side effect 전에 막아야 하는 unsafe-method precondition에는 `resolve(...)`를 사용하세요. 자동 ETag는
+성공한 handler 결과 이후에만 생성됩니다. 자세한 내용은
+[HTTP package contract](../http/README.ko.md#조건부-요청과-캐시-검증자)를 참고하세요.
 
 ### 전역 예외 필터
 
@@ -206,7 +231,7 @@ class UsersModule {}
 - `@fluojs/runtime/web` 멀티파트 파싱은 Node.js `Buffer` global 없이 Web 표준 `TextEncoder`와 `Uint8Array` primitive만 사용합니다. 업로드 파일의 `buffer` 값은 `Uint8Array`이며, Node 전용 consumer는 애플리케이션 경계에서 `Buffer.from(file.buffer)`로 명시적으로 변환할 수 있습니다.
 - `createNodeHttpAdapter(...)`, `bootstrapNodeApplication(...)`, `runNodeApplication(...)`는 `maxBodySize`를 0 이상의 정수 바이트 수로만 받으며, 값이 잘못되면 어댑터 생성/부트스트랩 단계에서 즉시 실패합니다.
 - 응답 스트림 백프레셔 헬퍼는 `drain`, `close`, `error` 중 어느 경우에도 `waitForDrain()`을 완료시켜 끊어진 연결에서 스트리밍 작성기가 멈추지 않도록 합니다.
-- HTTP application bootstrap은 optional application-owned `errorRepresentation.html` provider를 representation ownership 없이 dispatcher에 전달합니다. Canonical JSON은 default로 유지되며 classification, negotiation, status/header, `HEAD`, abort, commit, fallback 의미는 HTTP가 소유합니다.
+- HTTP application bootstrap은 optional application-owned `conditionalRequests`와 `errorRepresentation.html` configuration을 response-policy ownership 없이 dispatcher에 전달합니다. ETag와 Last-Modified validator semantics, precondition precedence, 304/412 body suppression, `HEAD`, classification, negotiation, status/header, abort, commit, fallback 동작은 HTTP가 소유합니다.
 - HTTP response writing은 단일 owner를 가집니다. Framework-managed handler 결과는 runtime이 commit하기 전에 interceptor가 변환할 수 있습니다. Handler나 response helper가 `RequestContext.response`를 commit한 뒤에는 dispatcher가 두 번째 success-response write를 건너뜁니다. `SerializerInterceptor`는 serialization을 우회하고 `next.handle()`에서 받은 값을 그대로 반환하지만, 다른 interceptor는 chain 결과를 계속 변환할 수 있습니다.
 - 런타임 health 모듈은 bootstrap이 ready로 표시하기 전까지 `/ready`를 HTTP 503과 `starting`으로 보고하며, 애플리케이션/컨텍스트 종료가 시작되는 즉시, 종료 시도가 실패하더라도 다시 `starting`으로 내려갑니다.
 - 런타임 health module readiness check는 현재 `RequestContext`를 받으므로, public integration이 internal runtime token을 import하지 않고도 runtime-exposed status provider를 해석할 수 있습니다.

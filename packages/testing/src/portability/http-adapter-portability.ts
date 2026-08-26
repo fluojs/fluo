@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Query, type RequestContext, Route, SseResponse } from '@fluojs/http';
+import {
+  type ConditionalRequestValidatorContext,
+  Controller,
+  Get,
+  Head,
+  Post,
+  Put,
+  Query,
+  type RequestContext,
+  Route,
+  SseResponse,
+} from '@fluojs/http';
 import { type ApplicationLogger, defineModule, type ModuleType } from '@fluojs/runtime';
 import { assertNetworkHttpErrorRepresentationAbortPortability } from './error-representation-abort-portability.js';
 import {
@@ -437,6 +448,102 @@ export class HttpAdapterPortabilityHarness<
         })) {
           throw new Error(`${this.options.name} adapter changed ${method} method or body semantics.`);
         }
+      }
+    });
+  }
+
+  /** Verifies generated validators, bodyless GET/HEAD outcomes, and unsafe precondition ordering. */
+  async assertSupportsConditionalRequests(): Promise<void> {
+    let writes = 0;
+    const representation = { id: '1', revision: 3 };
+
+    @Controller('/conditional-documents')
+    class ConditionalDocumentsController {
+      @Get('/:id')
+      read() {
+        return representation;
+      }
+
+      @Head('/:id')
+      inspect() {
+        return representation;
+      }
+
+      @Put('/:id')
+      update() {
+        writes += 1;
+        return { updated: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [ConditionalDocumentsController],
+    });
+
+    const app = await this.options.bootstrap(AppModule, {
+      conditionalRequests: {
+        etag: 'strong',
+        resolve({ handler }: ConditionalRequestValidatorContext) {
+          return handler.route.method === 'PUT'
+            ? {
+                etag: '"revision-3"',
+                lastModified: '2026-08-25T10:15:30.900Z',
+              }
+            : undefined;
+        },
+      },
+      cors: false,
+      port: 0,
+    } as TBootstrapOptions);
+
+    await prepareAndListenWithCleanup(app, this.options.name);
+
+    await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
+      const initial = await fetch(`${baseUrl}/conditional-documents/1`);
+      const etag = initial.headers.get('etag');
+      const head = await fetch(`${baseUrl}/conditional-documents/1`, { method: 'HEAD' });
+      const notModified = await fetch(`${baseUrl}/conditional-documents/1`, {
+        headers: {
+          'if-none-match': etag === null ? '' : `W/${etag}`,
+        },
+      });
+      const preconditionFailed = await fetch(`${baseUrl}/conditional-documents/1`, {
+        body: JSON.stringify({ revision: 4 }),
+        headers: {
+          'content-type': 'application/json',
+          'if-match': 'W/"revision-3"',
+        },
+        method: 'PUT',
+      });
+
+      if (initial.status !== 200 || !etag?.startsWith('"sha256-')) {
+        throw new Error(`${this.options.name} adapter did not expose a dispatcher-generated strong ETag.`);
+      }
+
+      if (
+        head.status !== 200
+        || head.headers.get('etag') !== etag
+        || (await head.text()) !== ''
+      ) {
+        throw new Error(`${this.options.name} adapter changed HEAD validator or body-suppression semantics.`);
+      }
+
+      if (
+        notModified.status !== 304
+        || notModified.headers.get('etag') !== etag
+        || (await notModified.text()) !== ''
+      ) {
+        throw new Error(`${this.options.name} adapter changed conditional GET semantics.`);
+      }
+
+      if (
+        preconditionFailed.status !== 412
+        || preconditionFailed.headers.get('last-modified') !== 'Tue, 25 Aug 2026 10:15:30 GMT'
+        || (await preconditionFailed.text()) !== ''
+        || writes !== 0
+      ) {
+        throw new Error(`${this.options.name} adapter changed unsafe precondition ordering or metadata semantics.`);
       }
     });
   }

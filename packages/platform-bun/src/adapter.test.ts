@@ -331,6 +331,10 @@ function registerBunWebRuntimePortabilitySuite(): void {
       await bunPortabilityHarness.assertSupportsHttpErrorRepresentations();
     });
 
+    it('supports dispatcher-owned conditional requests and validators through the shared web-runtime harness', async () => {
+      await bunPortabilityHarness.assertSupportsConditionalRequests();
+    });
+
     it('does not commit an error representation after request abort', async () => {
       await bunPortabilityHarness.assertDoesNotCommitAbortedHttpErrorRepresentations();
     });

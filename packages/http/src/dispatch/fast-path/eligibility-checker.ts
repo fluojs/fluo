@@ -137,6 +137,9 @@ export function compileFastPathEligibility(
   if (hasContentNegotiation) {
     blockingReasons.push('content negotiation');
   }
+  if (options.conditionalRequests !== undefined) {
+    blockingReasons.push('conditional requests');
+  }
   if (isSseRoute) {
     blockingReasons.push('SSE streaming');
   }

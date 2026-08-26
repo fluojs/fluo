@@ -1,10 +1,12 @@
 import type {
+  ConditionalRequestOptions,
   FrameworkRequest,
   FrameworkResponse,
   HandlerDescriptor,
   RequestContext,
   ResponseFormatter,
 } from '../types.js';
+import { tryHandleConditionalResponse } from './conditional-request-policy.js';
 import {
   type ResolvedContentNegotiation,
   resolveContentNegotiation,
@@ -166,16 +168,18 @@ function applyImplicitHeadContentType(response: FrameworkResponse, value: unknow
  * @param value The value.
  * @param contentNegotiation The content negotiation.
  * @param requestContext The active request context passed to custom response writers.
+ * @param conditionalRequests Optional dispatcher-owned conditional request policy.
  * @returns The write success response result.
  */
-export function writeSuccessResponse(
+export async function writeSuccessResponse(
   handler: HandlerDescriptor,
   request: FrameworkRequest,
   response: FrameworkResponse,
   value: unknown,
   contentNegotiation: ResolvedContentNegotiation | undefined,
   requestContext: RequestContext,
-): ReturnType<FrameworkResponse['send']> | void {
+  conditionalRequests?: ConditionalRequestOptions,
+): Promise<void> {
   if (response.committed) {
     return;
   }
@@ -203,13 +207,14 @@ export function writeSuccessResponse(
       applySuccessResponseMetadata({ formatter: undefined, handler, response, value: responseValue });
     };
 
-    return responseWriter({
+    await responseWriter({
       applySuccessResponseMetadata: applyWriterSuccessResponseMetadata,
       handler,
       request,
       requestContext,
       response,
     });
+    return;
   }
 
   const formatter = contentNegotiation
@@ -218,19 +223,31 @@ export function writeSuccessResponse(
 
   applySuccessResponseMetadata({ formatter, handler, response, value: responseValue });
 
-  if (request.method.toUpperCase() === 'HEAD') {
-    applyImplicitHeadContentType(response, responseValue);
-    return response.send(undefined);
-  }
-
-  if (!formatter && hasSimpleJsonResponseWriter(response) && canUseSimpleJsonFastPath(response, responseValue)) {
-    return response.sendSimpleJson(responseValue);
-  }
-
   const responseBody = formatter
     ? formatter.format(responseValue)
     : responseValue;
-  return response.send(responseBody);
+
+  if (await tryHandleConditionalResponse(
+    request,
+    response,
+    responseBody,
+    conditionalRequests,
+  )) {
+    return;
+  }
+
+  if (request.method.toUpperCase() === 'HEAD') {
+    applyImplicitHeadContentType(response, responseValue);
+    await response.send(undefined);
+    return;
+  }
+
+  if (!formatter && hasSimpleJsonResponseWriter(response) && canUseSimpleJsonFastPath(response, responseValue)) {
+    await response.sendSimpleJson(responseValue);
+    return;
+  }
+
+  await response.send(responseBody);
 }
 
 export type { ResolvedContentNegotiation };

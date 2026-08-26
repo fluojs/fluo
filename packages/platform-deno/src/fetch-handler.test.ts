@@ -49,6 +49,10 @@ function registerHostOwnedDenoPortabilitySuite(): void {
       await harness.assertSupportsHttpErrorRepresentations();
     });
 
+    it('supports dispatcher-owned conditional requests and validators', async () => {
+      await harness.assertSupportsConditionalRequests();
+    });
+
     it('does not commit an error representation after request abort', async () => {
       await harness.assertDoesNotCommitAbortedHttpErrorRepresentations();
     });

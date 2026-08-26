@@ -113,6 +113,47 @@ export interface ContentNegotiationOptions {
   formatters?: ResponseFormatter[];
 }
 
+/** Entity-tag strength used for dispatcher-generated response validators. */
+export type EntityTagMode = 'strong' | 'weak';
+
+/** Current representation validators returned before handler execution. */
+export interface ConditionalRequestValidators {
+  /** Current entity tag in quoted HTTP syntax, including an optional `W/` prefix. */
+  readonly etag?: string;
+  /** Whether a current representation exists; defaults to `true`. */
+  readonly exists?: boolean;
+  /** Current modification time, normalized by the dispatcher to an HTTP date. */
+  readonly lastModified?: Date | number | string;
+}
+
+/** Context passed to a conditional-request validator resolver. */
+export interface ConditionalRequestValidatorContext {
+  /** Matched route whose handler has not executed yet. */
+  readonly handler: HandlerDescriptor;
+  /** Active request context available for cache metadata headers and request-scoped dependencies. */
+  readonly requestContext: RequestContext;
+}
+
+/** Opt-in dispatcher policy for conditional requests and response validators. */
+export interface ConditionalRequestOptions {
+  /** Generates a strong or weak SHA-256 entity tag for ordinary successful response bodies. */
+  readonly etag?: EntityTagMode;
+  /**
+   * Resolves current validators before handler execution.
+   *
+   * @remarks
+   * Use this seam for unsafe-method preconditions so a `412` outcome prevents
+   * handler side effects. The resolver may set cache metadata headers through
+   * `requestContext.response`, but it must not commit the response.
+   *
+   * @param context Matched handler and active request context.
+   * @returns Current validators, `exists: false`, or `undefined` when unavailable.
+   */
+  readonly resolve?: (
+    context: ConditionalRequestValidatorContext,
+  ) => MaybePromise<ConditionalRequestValidators | undefined>;
+}
+
 /**
  * HTTP-classified failure data passed to an application HTML representation provider.
  *

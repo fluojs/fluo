@@ -9,6 +9,7 @@ The assembly layer that compiles a module graph and wires DI and HTTP into a run
 - [Installation](#installation)
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
+- [Conditional Requests and Cache Validators](#conditional-requests-and-cache-validators)
 - [Common Patterns](#common-patterns)
 - [Behavioral Contracts](#behavioral-contracts)
 - [Public API Overview](#public-api-overview)
@@ -99,6 +100,30 @@ Move shutdown preparation into the documented phase that owns it. Use `onModuleD
 `@fluojs/runtime` can publish live Studio snapshots and request traces, but it does not read `process.env` directly. `fluo dev --studio` is the application boundary that starts the sidecar, creates the tokenized Studio config, and injects that explicit config into the Node app child before the app imports runtime. Runtime reads each injected field once when it creates the Studio bridge, validates the complete config and its HTTP(S) endpoint, and keeps a frozen private snapshot, so later mutation of the writable process-global injection cannot change instrumentation inputs. If that CLI-provided config is absent, malformed, or missing a tokenized endpoint, Studio instrumentation is a no-op and bootstrap behavior remains unchanged.
 
 For this MVP, Node dev runner projects are the full support target. Bun, Deno, and Cloudflare Workers remain unsupported for live Studio until a dedicated bridge is implemented and verified; their runtime bootstraps still no-op when Studio config is absent. Request traces intentionally omit bodies, cookies, and full headers, and runtime strips query strings/fragments from the trace `url` before publishing events so local tokens are not copied into Studio event history.
+
+### Conditional Requests and Cache Validators
+
+`FluoFactory.create(...)` and `bootstrapApplication(...)` pass `conditionalRequests` unchanged to the
+HTTP dispatcher. Configure the option when the application needs dispatcher-owned ETag generation,
+Last-Modified normalization, or HTTP preconditions:
+
+```ts
+const app = await fluoFactory.create(AppModule, {
+  adapter: createNodejsAdapter({ port: 3000 }),
+  conditionalRequests: {
+    etag: 'strong',
+    resolve({ requestContext }) {
+      return { etag: '"document-r3"', lastModified: new Date('2026-08-25T10:15:30.900Z') };
+    },
+  },
+});
+```
+
+Runtime only wires this option. `@fluojs/http` owns validator precedence, strong/weak comparison,
+304/412 body suppression, HEAD metadata, and the shared Node, Express, Fastify, and Web-style adapter
+portability policy. Use `resolve(...)` for unsafe-method preconditions that must prevent handler side
+effects; automatic ETags are generated only after a successful handler result. See the
+[HTTP package contract](../http#conditional-requests-and-cache-validators).
 
 ### Global Exception Filters
 
@@ -206,7 +231,7 @@ class UsersModule {}
 - `@fluojs/runtime/web` multipart parsing uses Web-standard `TextEncoder` and `Uint8Array` primitives without requiring the Node.js `Buffer` global. Uploaded file `buffer` values are `Uint8Array`; Node-only consumers can convert them explicitly with `Buffer.from(file.buffer)` at their application boundary.
 - `createNodeHttpAdapter(...)`, `bootstrapNodeApplication(...)`, and `runNodeApplication(...)` accept `maxBodySize` only as a non-negative integer byte count and fail fast during adapter creation/bootstrap when the value is invalid.
 - Response stream backpressure helpers settle `waitForDrain()` on `drain`, `close`, or `error` so streaming writers do not hang on dead connections.
-- HTTP application bootstrap passes an optional application-owned `errorRepresentation.html` provider to the dispatcher without taking representation ownership. Canonical JSON remains the default; HTTP keeps classification, negotiation, status/header, `HEAD`, abort, commit, and fallback semantics.
+- HTTP application bootstrap passes optional application-owned `conditionalRequests` and `errorRepresentation.html` configuration to the dispatcher without taking response-policy ownership. HTTP owns ETag and Last-Modified validator semantics, precondition precedence, 304/412 body suppression, `HEAD`, classification, negotiation, status/header, abort, commit, and fallback behavior.
 - HTTP response writing is single-owner: framework-managed handler results may be transformed by interceptors before the runtime commits them. Once a handler or response helper commits `RequestContext.response`, the dispatcher skips a second success-response write. `SerializerInterceptor` bypasses serialization and returns the value it received from `next.handle()` unchanged, while other interceptors may still transform the chain result.
 - Runtime health modules report `/ready` as `starting` with HTTP 503 until bootstrap marks them ready, and they return to `starting` as soon as application/context shutdown begins, including failed shutdown attempts.
 - Runtime health module readiness checks receive the current `RequestContext`, allowing public integrations to resolve runtime-exposed status providers without importing internal runtime tokens.

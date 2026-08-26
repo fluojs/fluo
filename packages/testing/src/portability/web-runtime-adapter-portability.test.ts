@@ -278,6 +278,7 @@ function registerWebRuntimePortabilitySuite(
     assertDoesNotCommitAbortedHttpErrorRepresentations(): Promise<void>;
     assertExcludesRawBodyForMultipart(): Promise<void>;
     assertSupportsHttpErrorRepresentations(): Promise<void>;
+    assertSupportsConditionalRequests(): Promise<void>;
     assertSupportsCustomHttpRouteMethods(): Promise<void>;
     assertPreservesExactRawBodyBytesForByteSensitivePayloads(): Promise<void>;
     assertPreservesQueryArraysAndDecoding(): Promise<void>;
@@ -293,6 +294,10 @@ function registerWebRuntimePortabilitySuite(
 
     it('supports HTTP-owned JSON and HTML error representations', async () => {
       await harness.assertSupportsHttpErrorRepresentations();
+    });
+
+    it('supports dispatcher-owned conditional requests and validators', async () => {
+      await harness.assertSupportsConditionalRequests();
     });
 
     it('does not commit an error representation after request abort', async () => {

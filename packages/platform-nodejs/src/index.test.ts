@@ -122,6 +122,10 @@ describe('@fluojs/platform-nodejs', () => {
       await nodejsPortabilityHarness.assertSupportsHttpErrorRepresentations();
     });
 
+    it('supports dispatcher-owned conditional requests and validators', async () => {
+      await nodejsPortabilityHarness.assertSupportsConditionalRequests();
+    });
+
     it('does not commit an error representation after client disconnect', async () => {
       await nodejsPortabilityHarness.assertDoesNotCommitAbortedHttpErrorRepresentations();
     });

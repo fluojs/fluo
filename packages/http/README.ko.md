@@ -9,6 +9,7 @@
 - [설치](#설치)
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
+- [조건부 요청과 캐시 검증자](#조건부-요청과-캐시-검증자)
 - [주요 패턴](#주요-패턴)
 - [Realtime Adapter Capabilities](#realtime-adapter-capabilities)
 - [HTTP Error Representations](#http-error-representations)
@@ -130,6 +131,53 @@ export function markLanguageVariance(context: RequestContext): void {
   appendVaryHeader(context.response, 'Accept-Language', 'Origin');
 }
 ```
+
+## 조건부 요청과 캐시 검증자
+
+조건부 요청은 opt-in이며 dispatcher가 소유합니다. `bootstrapApplication(...)`,
+`FluoFactory.create(...)`, 또는 공식 platform bootstrap helper에 `conditionalRequests`를 전달하세요.
+
+```ts
+import type { ConditionalRequestOptions } from '@fluojs/http';
+
+const conditionalRequests = {
+  etag: 'strong',
+  resolve({ handler, requestContext }) {
+    if (handler.route.method !== 'PUT') {
+      return undefined;
+    }
+
+    const id = requestContext.request.params.id;
+    return id === '1'
+      ? { etag: `"document-${id}-r3"`, lastModified: new Date('2026-08-25T10:15:30.900Z') }
+      : { exists: false };
+  },
+} satisfies ConditionalRequestOptions;
+```
+
+`etag: 'strong'`은 wire-equivalent 성공 response body에서 quoted SHA-256 entity tag를 생성합니다.
+Byte 단위로는 달라도 semantic하게 같은 representation을 허용하려면 `etag: 'weak'`을 사용하세요.
+자동 생성은 bodyless status와 `Cache-Control: no-store` response에서 건너뛰며, `no-cache`는 validator와
+revalidation을 계속 허용합니다. Application이 제공한 `ETag`가 우선합니다. `resolve(...)`가 반환하거나
+response에 설정한 `Last-Modified`는 초 단위 IMF-fixdate로 normalize됩니다.
+
+Resolver는 guard 뒤, interceptor와 controller handler 앞에서 실행됩니다. Unsafe method에서 상태 변경 전에
+`If-Match`, `If-None-Match`, `If-Unmodified-Since`를 확인하려면 이 seam을 사용하세요. Target에 현재
+representation이 없으면 `exists: false`를 반환합니다. 자동 생성된 ETag는 handler 이후에야 생기므로,
+후속 GET/HEAD revalidation에는 사용할 수 있지만 unsafe precondition을 위한 resolver를 대체하지는 않습니다.
+
+Dispatcher는 RFC validator precedence와 comparison strength를 적용합니다.
+
+- `If-Match`는 strong comparison을 사용하고 `If-Unmodified-Since`를 무시합니다.
+- `If-None-Match`는 weak comparison을 사용하고 `If-Modified-Since`를 무시합니다.
+- 일치하는 `If-None-Match`는 GET/HEAD에서 `304`, 다른 method에서 `412`를 선택합니다.
+- 성공적인 date validation은 normalize된 초 단위 HTTP date를 비교합니다.
+
+`304`와 `412`는 `ETag`, `Last-Modified`, `Cache-Control`, `Content-Location`, `Date`, `Expires`, `Vary` 같은
+선택된 metadata를 유지하면서 body를 억제합니다. HEAD는 body를 쓰지 않고 GET과 같은 generated validator와
+representation metadata를 계산합니다. Node, Express, Fastify, Web-style adapter는 같은 dispatcher policy와
+공유 portability harness로 이 동작을 검증합니다. 자체 response를 commit하는 custom response writer는
+application이 소유하며 자동 validator 생성을 우회합니다.
 
 ## 주요 패턴
 
@@ -323,7 +371,7 @@ Multipart upload를 parse하는 어댑터는 shared HTTP contract를 adapter-spe
 - **Adapter API**: `HttpApplicationAdapter`, `HttpAdapterRealtimeCapability`, `ServerBackedHttpAdapterRealtimeCapability`, `FetchStyleHttpAdapterRealtimeCapability`, `HttpAdapterRealtimeBindingInstallation`, `UnsupportedHttpAdapterRealtimeCapability`, `createNoopHttpApplicationAdapter`, `createServerBackedHttpAdapterRealtimeCapability`, `createUnsupportedHttpAdapterRealtimeCapability`, `createFetchStyleHttpAdapterRealtimeCapability`
 - **예외와 오류**: `HttpExceptionDetail`, `HttpExceptionOptions`, `ErrorResponse`, `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `InvalidHttpMethodError`, `HandlerNotFoundError`, `RequestAbortedError`
 - **헬퍼**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `getRequestHeader`, `appendVaryHeader`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
-- **Option 및 store type**: `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStoreEntry`, `SecurityHeadersOptions`, `SseSendOptions`
+- **Option 및 store type**: `ConditionalRequestOptions`, `ConditionalRequestValidatorContext`, `ConditionalRequestValidators`, `EntityTagMode`, `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStoreEntry`, `SecurityHeadersOptions`, `SseSendOptions`
 
 ## 내부 서브경로 (`@fluojs/http/internal`)
 

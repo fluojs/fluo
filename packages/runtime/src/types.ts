@@ -1,6 +1,7 @@
 import type { Constructor, MaybePromise, Token } from '@fluojs/core';
 import type { Container, Provider } from '@fluojs/di';
 import type {
+  ConditionalRequestOptions,
   ConverterLike,
   Dispatcher,
   FrameworkRequest,
@@ -140,6 +141,8 @@ export interface ExceptionFilterHandler {
 /** High-level bootstrap options for creating an HTTP application shell. */
 export interface BootstrapApplicationOptions {
   adapter?: HttpApplicationAdapter;
+  /** Dispatcher-owned ETag, Last-Modified, and HTTP precondition policy. */
+  conditionalRequests?: ConditionalRequestOptions;
   /** Application-owned HTML provider for HTTP-classified error and not-found outcomes. */
   errorRepresentation?: HttpErrorRepresentationOptions;
   /**
@@ -183,7 +186,7 @@ export type CreateApplicationOptions = Omit<BootstrapApplicationOptions, 'logger
 
 /** Options accepted by `FluoFactory.createApplicationContext(...)`. */
 export interface CreateApplicationContextOptions
-  extends Omit<BootstrapApplicationOptions, 'adapter' | 'converters' | 'filters' | 'logger' | 'middleware' | 'observers' | 'rootModule'> {
+  extends Omit<BootstrapApplicationOptions, 'adapter' | 'conditionalRequests' | 'converters' | 'filters' | 'logger' | 'middleware' | 'observers' | 'rootModule'> {
 }
 
 /** Runtime transport contract used by microservice application shells. */

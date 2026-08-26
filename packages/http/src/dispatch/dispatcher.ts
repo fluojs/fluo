@@ -10,6 +10,7 @@ import { runInterceptorChain } from '../interceptors.js';
 import { isMiddlewareRouteConfig, matchRoutePattern, runMiddlewareChain } from '../middleware/middleware.js';
 import type {
   Binder,
+  ConditionalRequestOptions,
   ContentNegotiationOptions,
   ConverterLike,
   Dispatcher,
@@ -32,6 +33,7 @@ import type {
   RequestObserverLike,
 } from '../types.js';
 import { invokeControllerHandler } from './dispatch-handler-policy.js';
+import { tryHandleConditionalRequestBeforeHandler } from './conditional-request-policy.js';
 import { type ResolvedContentNegotiation, resolveContentNegotiation, writeErrorResponse, writeSuccessResponse } from './dispatch-response-policy.js';
 import { matchHandlerOrThrow, updateRequestParams } from './dispatch-routing-policy.js';
 import {
@@ -60,6 +62,8 @@ export interface CreateDispatcherOptions {
   binder?: Binder;
   /** Optional content negotiation configuration. */
   contentNegotiation?: ContentNegotiationOptions;
+  /** Optional dispatcher-owned conditional request and response validator policy. */
+  conditionalRequests?: ConditionalRequestOptions;
   /** Mapping of routes to their respective handlers. */
   handlerMapping: HandlerMapping;
   /** Global interceptors applied to all matched handlers. */
@@ -713,6 +717,7 @@ async function dispatchMatchedHandler(
   controllerContainer: RequestScopeContainer,
   observers: RequestObserverLike[],
   contentNegotiation: ResolvedContentNegotiation | undefined,
+  conditionalRequests: ConditionalRequestOptions | undefined,
   binder: Binder | undefined,
   logger: DispatcherLogger | undefined,
 ): Promise<void> {
@@ -727,6 +732,14 @@ async function dispatchMatchedHandler(
   }
 
   if (requestContext.response.committed) {
+    return;
+  }
+
+  if (await tryHandleConditionalRequestBeforeHandler(
+    handler,
+    requestContext,
+    conditionalRequests,
+  )) {
     return;
   }
 
@@ -746,7 +759,15 @@ async function dispatchMatchedHandler(
   if (isAsyncIterable(result) && await writeManagedSseIterable(handler, requestContext, result)) {
     // Managed SSE streams are already committed and closed by writeManagedSseIterable.
   } else if (!(result instanceof SseResponse) && !requestContext.response.committed) {
-    await writeSuccessResponse(handler, requestContext.request, requestContext.response, result, contentNegotiation, requestContext);
+    await writeSuccessResponse(
+      handler,
+      requestContext.request,
+      requestContext.response,
+      result,
+      contentNegotiation,
+      requestContext,
+      conditionalRequests,
+    );
   }
 
   await notifyObserversSafely(
@@ -1012,6 +1033,7 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
         context.dispatchScope.container,
         context.observers,
         context.contentNegotiation,
+        context.options.conditionalRequests,
         context.options.binder,
         context.options.logger,
       );

@@ -1458,6 +1458,9 @@ function createRuntimeDispatcherOptions(
   const converters = options.converters ?? [];
   const dispatcherOptions: ErrorAwareDispatcherOptions = {
     appMiddleware: options.middleware ?? [],
+    ...(options.conditionalRequests === undefined
+      ? {}
+      : { conditionalRequests: options.conditionalRequests }),
     ...(options.errorRepresentation === undefined
       ? {}
       : { errorRepresentation: options.errorRepresentation }),

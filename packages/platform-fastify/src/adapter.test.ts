@@ -221,6 +221,10 @@ describe('@fluojs/platform-fastify', () => {
       await fastifyPortabilityHarness.assertSupportsHttpErrorRepresentations();
     });
 
+    it('supports dispatcher-owned conditional requests and validators', async () => {
+      await fastifyPortabilityHarness.assertSupportsConditionalRequests();
+    });
+
     it('does not commit an error representation after client disconnect', async () => {
       await fastifyPortabilityHarness.assertDoesNotCommitAbortedHttpErrorRepresentations();
     });

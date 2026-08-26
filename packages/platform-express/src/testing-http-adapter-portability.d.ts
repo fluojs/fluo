@@ -42,6 +42,7 @@ declare module '@fluojs/testing/http-adapter-portability' {
     assertReportsHttpsStartupUrl(https: { cert: string; key: string }): Promise<void>;
     assertSettlesStreamDrainWaitOnClose(): Promise<void>;
     assertSupportsHttpErrorRepresentations(): Promise<void>;
+    assertSupportsConditionalRequests(): Promise<void>;
     assertSupportsSseStreaming(): Promise<void>;
   }
 

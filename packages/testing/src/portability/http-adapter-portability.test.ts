@@ -71,6 +71,7 @@ interface PortabilityAssertions {
   assertReportsHttpsStartupUrl(https: { cert: string; key: string }): Promise<void>;
   assertSettlesStreamDrainWaitOnClose(): Promise<void>;
   assertSupportsHttpErrorRepresentations(): Promise<void>;
+  assertSupportsConditionalRequests(): Promise<void>;
   assertSupportsCustomHttpRouteMethods(): Promise<void>;
   assertSupportsSseStreaming(): Promise<void>;
 }
@@ -169,6 +170,10 @@ function registerPortabilitySuite(
 
     it('supports HTTP-owned JSON and HTML error representations', async () => {
       await harness.assertSupportsHttpErrorRepresentations();
+    });
+
+    it('supports dispatcher-owned conditional requests and validators', async () => {
+      await harness.assertSupportsConditionalRequests();
     });
 
     it('does not commit an error representation after client disconnect', async () => {

@@ -9,6 +9,7 @@ The HTTP execution layer that turns route metadata into a request pipeline with 
 - [Installation](#installation)
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
+- [Conditional Requests and Cache Validators](#conditional-requests-and-cache-validators)
 - [Common Patterns](#common-patterns)
 - [Realtime Adapter Capabilities](#realtime-adapter-capabilities)
 - [HTTP Error Representations](#http-error-representations)
@@ -132,6 +133,68 @@ export function markLanguageVariance(context: RequestContext): void {
   appendVaryHeader(context.response, 'Accept-Language', 'Origin');
 }
 ```
+
+## Conditional Requests and Cache Validators
+
+Conditional requests are opt-in and dispatcher-owned. Configure `conditionalRequests` through
+`bootstrapApplication(...)`, `FluoFactory.create(...)`, or an official platform bootstrap helper:
+
+```ts
+import type { ConditionalRequestOptions } from '@fluojs/http';
+import { bootstrapApplication } from '@fluojs/runtime';
+
+const conditionalRequests = {
+  etag: 'strong',
+  resolve({ handler, requestContext }) {
+    if (handler.route.method !== 'PUT') {
+      return undefined;
+    }
+
+    const id = requestContext.request.params.id;
+    const document = id === '1'
+      ? { revision: 3, updatedAt: new Date('2026-08-25T10:15:30.900Z') }
+      : undefined;
+
+    return document === undefined
+      ? { exists: false }
+      : {
+          etag: `"document-${id}-r${document.revision}"`,
+          lastModified: document.updatedAt,
+        };
+  },
+} satisfies ConditionalRequestOptions;
+
+const app = await bootstrapApplication({
+  conditionalRequests,
+  rootModule: AppModule,
+});
+```
+
+`etag: 'strong'` generates a quoted SHA-256 entity tag from the wire-equivalent successful response
+body. Use `etag: 'weak'` when semantically equivalent representations may differ byte-for-byte.
+Automatic generation skips bodyless statuses and responses with `Cache-Control: no-store`;
+`no-cache` still permits validators and revalidation. An application-provided `ETag` remains
+authoritative. `Last-Modified` values returned by `resolve(...)` or set on the response are normalized
+to an IMF-fixdate with second precision.
+
+The resolver runs after guards and before interceptors or the controller handler. Use it for
+`If-Match`, `If-None-Match`, and `If-Unmodified-Since` on unsafe methods so a failed precondition
+selects `412` before application state can change. Return `exists: false` when the target has no
+current representation. Generated response ETags are necessarily available only after the handler,
+so they protect later GET/HEAD revalidation but do not replace the resolver for unsafe operations.
+
+The dispatcher applies RFC validator precedence and comparison strength:
+
+- `If-Match` uses strong comparison and suppresses `If-Unmodified-Since`.
+- `If-None-Match` uses weak comparison and suppresses `If-Modified-Since`.
+- A matching `If-None-Match` selects `304` for GET/HEAD and `412` for other methods.
+- Successful date validation compares normalized second-precision HTTP dates.
+
+`304` and `412` suppress response bodies while retaining selected metadata such as `ETag`,
+`Last-Modified`, `Cache-Control`, `Content-Location`, `Date`, `Expires`, and `Vary`. HEAD computes the
+same generated validator and representation metadata as GET without writing a body. Custom response
+writers that commit their own response remain application-owned and bypass automatic validator
+generation.
 
 ## Common Patterns
 
@@ -330,7 +393,7 @@ Response content negotiation formatters must return `string` or `Uint8Array` fro
 - **Adapter API**: `HttpApplicationAdapter`, `HttpAdapterRealtimeCapability`, `ServerBackedHttpAdapterRealtimeCapability`, `FetchStyleHttpAdapterRealtimeCapability`, `HttpAdapterRealtimeBindingInstallation`, `UnsupportedHttpAdapterRealtimeCapability`, `createNoopHttpApplicationAdapter`, `createServerBackedHttpAdapterRealtimeCapability`, `createUnsupportedHttpAdapterRealtimeCapability`, `createFetchStyleHttpAdapterRealtimeCapability`
 - **Exceptions and errors**: `HttpExceptionDetail`, `HttpExceptionOptions`, `ErrorResponse`, `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `InvalidHttpMethodError`, `HandlerNotFoundError`, `RequestAbortedError`
 - **Helpers**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `getRequestHeader`, `appendVaryHeader`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
-- **Option and store types**: `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStoreEntry`, `SecurityHeadersOptions`, `SseSendOptions`
+- **Option and store types**: `ConditionalRequestOptions`, `ConditionalRequestValidatorContext`, `ConditionalRequestValidators`, `EntityTagMode`, `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStoreEntry`, `SecurityHeadersOptions`, `SseSendOptions`
 
 ## Internal Subpath (`@fluojs/http/internal`)
 
