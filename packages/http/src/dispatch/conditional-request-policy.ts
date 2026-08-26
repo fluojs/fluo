@@ -39,10 +39,6 @@ export async function tryHandleConditionalRequestBeforeHandler(
     return false;
   }
 
-  for (const header of handler.route.headers ?? []) {
-    requestContext.response.setHeader(header.name, header.value);
-  }
-
   const configured = await options.resolve({ handler, requestContext });
   if (configured === undefined) {
     return false;
@@ -60,9 +56,12 @@ export async function tryHandleConditionalRequestBeforeHandler(
     false,
   );
 
-  return outcome === undefined
-    ? false
-    : await writeConditionalOutcome(requestContext.response, outcome);
+  if (outcome === undefined) {
+    return false;
+  }
+
+  applyConditionalRouteHeaders(handler, requestContext.response);
+  return await writeConditionalOutcome(requestContext.response, outcome);
 }
 
 /**
@@ -115,6 +114,12 @@ export async function tryHandleConditionalResponse(
     true,
   );
   return outcome === undefined ? false : await writeConditionalOutcome(response, outcome);
+}
+
+function applyConditionalRouteHeaders(handler: HandlerDescriptor, response: FrameworkResponse): void {
+  for (const header of handler.route.headers ?? []) {
+    response.setHeader(header.name, header.value);
+  }
 }
 
 function applyConfiguredValidators(

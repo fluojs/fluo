@@ -125,7 +125,8 @@ function readHeader(headers: FrameworkResponse['headers'], name: string): string
 }
 
 function isJsonContentType(contentType: string): boolean {
-  return contentType.toLowerCase().includes('application/json') || contentType.toLowerCase().endsWith('+json');
+  const mediaType = contentType.split(';', 1)[0]?.trim().toLowerCase();
+  return mediaType === 'application/json' || mediaType?.startsWith('application/') === true && mediaType.endsWith('+json');
 }
 
 function applySuccessResponseMetadata(context: SuccessResponseMetadataContext): void {
@@ -164,7 +165,11 @@ function applyImplicitResponseMetadata(response: FrameworkResponse, value: unkno
       ? value.byteLength
       : value instanceof ArrayBuffer
         ? value.byteLength
-        : new TextEncoder().encode(typeof value === 'string' ? value : JSON.stringify(value)).byteLength;
+        : new TextEncoder().encode(
+          typeof value === 'string' && isJsonContentType(readHeader(response.headers, 'content-type') ?? '')
+            ? JSON.stringify(value)
+            : typeof value === 'string' ? value : JSON.stringify(value),
+        ).byteLength;
     response.setHeader('Content-Length', String(byteLength));
   }
 }

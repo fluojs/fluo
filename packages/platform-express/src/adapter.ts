@@ -1,7 +1,7 @@
 import type {
+  Server as HttpServer,
   IncomingHttpHeaders,
   IncomingMessage,
-  Server as HttpServer,
 } from 'node:http';
 import { createServer as createHttpServer } from 'node:http';
 import {
@@ -72,8 +72,8 @@ import express, {
   type ErrorRequestHandler,
   type Express,
   type Request as ExpressRequest,
-  type RequestHandler,
   type Response as ExpressResponse,
+  type RequestHandler,
 } from 'express';
 
 /**
@@ -242,6 +242,7 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
       this.multipartOptions,
       this.maxBodySize,
       this.preserveRawBody,
+      nativeMiddleware.some((middleware) => middleware.name === 'compression'),
     );
     this.server = createExpressServer(this.httpsOptions, this.app);
     this.app.use(this.router);
@@ -572,6 +573,7 @@ function createExpressRequestResponseFactory(
   multipartOptions?: MultipartOptions,
   maxBodySize = DEFAULT_MAX_BODY_SIZE,
   preserveRawBody = false,
+  mayAlterWireBytes = false,
 ): RequestResponseFactory<ExpressRequest, ExpressResponse, ExpressFrameworkResponse> {
   return {
     async createRequest(request: ExpressRequest, signal: AbortSignal) {
@@ -587,7 +589,7 @@ function createExpressRequestResponseFactory(
       return createRequestSignal(response);
     },
     createResponse(response: ExpressResponse) {
-      return createFrameworkResponse(response);
+      return createFrameworkResponse(response, mayAlterWireBytes);
     },
     async materializeRequest(request: FrameworkRequest) {
       await materializeFrameworkRequestBody(request);
@@ -670,7 +672,7 @@ export async function runExpressApplication(
   }, adapter, logger);
 }
 
-function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkResponse {
+function createFrameworkResponse(response: ExpressResponse, mayAlterWireBytes = false): ExpressFrameworkResponse {
   const headers = Object.fromEntries(
     Object.entries(response.getHeaders())
       .filter((entry): entry is [string, string | number | string[]] => entry[1] !== undefined)
@@ -680,6 +682,7 @@ function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkRes
   return {
     committed: response.headersSent || response.writableEnded,
     headers,
+    mayAlterWireBytes,
     raw: response,
     stream: createFrameworkResponseStream(response),
     redirect(status: number, location: string) {
