@@ -317,6 +317,80 @@ describe('setCookie', () => {
 });
 
 describe('clearCookie', () => {
+  it('snapshots inherited non-enumerable scoped options exactly once', () => {
+    // Given
+    const response = createResponse();
+    const reads = {
+      domain: 0,
+      httpOnly: 0,
+      path: 0,
+      sameSite: 0,
+      secure: 0,
+    };
+    class ScopedCookieOptions {
+      get domain() {
+        reads.domain += 1;
+        return 'auth.example.com';
+      }
+
+      get httpOnly() {
+        reads.httpOnly += 1;
+        return true;
+      }
+
+      get path() {
+        reads.path += 1;
+        return '/admin';
+      }
+
+      get sameSite() {
+        reads.sameSite += 1;
+        return 'none' as const;
+      }
+
+      get secure() {
+        reads.secure += 1;
+        return true;
+      }
+    }
+
+    // When
+    clearCookie(response, 'session', new ScopedCookieOptions());
+
+    // Then
+    expect(reads).toEqual({
+      domain: 1,
+      httpOnly: 1,
+      path: 1,
+      sameSite: 1,
+      secure: 1,
+    });
+    expect(response.headers['Set-Cookie']).toBe(
+      'session=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; '
+      + 'Domain=auth.example.com; Path=/admin; HttpOnly; Secure; SameSite=None',
+    );
+  });
+
+  it('does not evaluate unrelated enumerable option getters', () => {
+    // Given
+    const response = createResponse();
+    const unrelated = vi.fn(() => {
+      throw new Error('unrelated getter must not run');
+    });
+    const options = { domain: 'auth.example.com', path: '/admin' };
+    Object.defineProperty(options, 'unrelated', { enumerable: true, get: unrelated });
+
+    // When
+    clearCookie(response, 'session', options);
+
+    // Then
+    expect(unrelated).not.toHaveBeenCalled();
+    expect(response.headers['Set-Cookie']).toBe(
+      'session=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; '
+      + 'Domain=auth.example.com; Path=/admin',
+    );
+  });
+
   it('forces deletion attributes while retaining caller-supplied matching attributes', () => {
     // Given
     const response = createResponse();

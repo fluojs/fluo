@@ -216,10 +216,22 @@ export function clearCookie(
   name: string,
   options: ClearCookieOptions = {},
 ): void {
+  // Read only supported caller-owned properties once; spreading would skip inherited accessors.
+  const {
+    domain,
+    httpOnly,
+    path,
+    sameSite,
+    secure,
+  } = options;
   const serialized = serializeCookie(name, '', {
-    ...options,
+    domain,
     expires: COOKIE_DELETION_EXPIRES,
+    httpOnly,
     maxAgeSeconds: 0,
+    path,
+    sameSite,
+    secure,
   });
   response.setHeader('Set-Cookie', serialized);
 }
