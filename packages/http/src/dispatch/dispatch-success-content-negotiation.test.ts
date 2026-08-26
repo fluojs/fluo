@@ -10,6 +10,8 @@ import {
   Get,
   getDispatcherFastPathStats,
   Header,
+  type HtmlErrorRepresentationProvider,
+  HttpCode,
   type MiddlewareContext,
   type Next,
   Produces,
@@ -26,6 +28,7 @@ type TestErrorHandler = (
 ) => boolean | void | Promise<boolean | void>;
 
 type DispatcherControls = {
+  readonly errorRepresentation?: { html: HtmlErrorRepresentationProvider };
   readonly nativeFallback?: boolean;
   readonly observers?: RequestObserver[];
   readonly onError?: TestErrorHandler;
@@ -115,6 +118,15 @@ class RepresentationController {
   existingVary() {
     return { ok: true };
   }
+
+  @Header('X-Route-Success', 'should-not-leak')
+  @Header('Vary', 'Origin')
+  @HttpCode(202)
+  @Produces('application/json')
+  @Get('/formatter-throws')
+  formatterThrows() {
+    return { ok: true };
+  }
 }
 
 const formatters: ResponseFormatter[] = [
@@ -175,6 +187,7 @@ function createNegotiatingDispatchers(
       formatters: configuredFormatters,
     },
     handlerMapping,
+    ...(controls.errorRepresentation === undefined ? {} : { errorRepresentation: controls.errorRepresentation }),
     ...(controls.observers === undefined ? {} : { observers: controls.observers }),
     onError: controls.onError,
     rootContainer: root,
@@ -190,6 +203,7 @@ function createNegotiatingDispatchers(
       formatters: configuredFormatters,
     },
     handlerMapping,
+    ...(controls.errorRepresentation === undefined ? {} : { errorRepresentation: controls.errorRepresentation }),
     ...(controls.observers === undefined ? {} : { observers: controls.observers }),
     onError: controls.onError,
     rootContainer: root,
@@ -552,7 +566,9 @@ describe('successful response content negotiation', () => {
       const { nativeDispatcher, fallbackDispatcher, response } = await dispatchBoth(path, accept, headers);
 
       expect(response.statusCode).toBe(status);
-      expect(response.headers['Content-Type']).toBe(contentType);
+      expect(response.headers['Content-Type']).toBe(
+        status === 406 ? 'application/json; charset=utf-8' : contentType,
+      );
       expect(getDispatcherFastPathStats(nativeDispatcher)?.routes.every((route) => route.executionPath === 'fast')).toBe(true);
       expect(getDispatcherFastPathStats(fallbackDispatcher)?.routes.every((route) => route.executionPath === 'full')).toBe(true);
       if (status === 200) {
@@ -613,6 +629,144 @@ describe('successful response content negotiation', () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers['Content-Type']).toBeUndefined();
     expect(response.body).toEqual({ ok: true });
+  });
+
+  it('writes a generic JSON 500 without leaking throwing formatter success metadata on native and fallback paths', async () => {
+    const formatterFailure = new Error('formatter failed');
+    const { fallbackDispatcher, nativeDispatcher, response } = await dispatchBoth(
+      '/representations/formatter-throws',
+      'application/json',
+      undefined,
+      [{
+        format() {
+          throw formatterFailure;
+        },
+        mediaType: 'application/json',
+      }],
+      undefined,
+      {
+        errorRepresentation: {
+          html: {
+            render() {
+              return '<main>unused</main>';
+            },
+          },
+        },
+      },
+    );
+
+    expect(response.statusCode).toBe(500);
+    expect(response.headers).toEqual({
+      'Content-Type': 'application/json; charset=utf-8',
+    });
+    expect(response.body).toMatchObject({ error: { code: 'INTERNAL_SERVER_ERROR', status: 500 } });
+    expect(getDispatcherFastPathStats(nativeDispatcher)?.routes.every((route) => route.executionPath === 'fast')).toBe(true);
+    expect(getDispatcherFastPathStats(fallbackDispatcher)?.routes.every((route) => route.executionPath === 'full')).toBe(true);
+  });
+
+  it('keeps formatter failures pristine for native and fallback observers and onError custom handling', async () => {
+    const observedResponses: Array<{ headers: FrameworkResponse['headers']; statusCode: number | undefined }> = [];
+    const onErrorResponses: Array<{ headers: FrameworkResponse['headers']; statusCode: number | undefined }> = [];
+    const { response } = await dispatchBoth(
+      '/representations/formatter-throws',
+      'application/json',
+      undefined,
+      [{
+        format() {
+          throw new Error('formatter failed');
+        },
+        mediaType: 'application/json',
+      }],
+      undefined,
+      {
+        nativeFallback: true,
+        observers: [{
+          onRequestError(context) {
+            observedResponses.push({
+              headers: { ...context.requestContext.response.headers },
+              statusCode: context.requestContext.response.statusCode,
+            });
+          },
+        }],
+        onError(_error, _request, errorResponse) {
+          onErrorResponses.push({
+            headers: { ...errorResponse.headers },
+            statusCode: errorResponse.statusCode,
+          });
+          errorResponse.setHeader('X-Error-Handled', 'true');
+          errorResponse.setStatus(418);
+          errorResponse.send({ handled: true });
+          return true;
+        },
+      },
+    );
+
+    expect(observedResponses).toEqual([{ headers: {}, statusCode: undefined }, { headers: {}, statusCode: undefined }]);
+    expect(onErrorResponses).toEqual([{ headers: {}, statusCode: undefined }, { headers: {}, statusCode: undefined }]);
+    expect(response.statusCode).toBe(418);
+    expect(response.headers).toEqual({ 'X-Error-Handled': 'true' });
+    expect(response.body).toEqual({ handled: true });
+  });
+
+  it('applies route success metadata after a formatter successfully completes', async () => {
+    const { fallbackDispatcher, nativeDispatcher, response } = await dispatchBoth(
+      '/representations/formatter-throws',
+      'application/json',
+      undefined,
+      [{
+        format() {
+          return 'formatted';
+        },
+        mediaType: 'application/json',
+      }],
+    );
+
+    expect(response.statusCode).toBe(202);
+    expect(response.headers).toEqual({
+      'Content-Type': 'application/json',
+      'X-Route-Success': 'should-not-leak',
+      Vary: 'Origin, Accept',
+    });
+    expect(response.body).toBe('formatted');
+    expect(getDispatcherFastPathStats(nativeDispatcher)?.routes.every((route) => route.executionPath === 'fast')).toBe(true);
+    expect(getDispatcherFastPathStats(fallbackDispatcher)?.routes.every((route) => route.executionPath === 'full')).toBe(true);
+  });
+
+  it.each([
+    'text/html',
+    'image/avif, text/html;q=0.5',
+    'image/avif',
+  ])('bypasses HTML error representations for negotiation 406 Accept=%s', async (accept) => {
+    let canRenderCalls = 0;
+    let renderCalls = 0;
+    const { response } = await dispatchBoth(
+      '/representations/all',
+      accept,
+      undefined,
+      undefined,
+      undefined,
+      {
+        errorRepresentation: {
+          html: {
+            canRender() {
+              canRenderCalls++;
+              return true;
+            },
+            render() {
+              renderCalls++;
+              return '<main>unused</main>';
+            },
+          },
+        },
+      },
+    );
+
+    expect(response.statusCode).toBe(406);
+    expect(response.headers['Content-Type']).toBe('application/json; charset=utf-8');
+    expect(response.headers.Vary).toBe('Accept');
+    expect(response.body).toMatchObject({ error: { code: 'NOT_ACCEPTABLE', status: 406 } });
+    expect(canRenderCalls).toBe(0);
+    expect(renderCalls).toBe(0);
   });
 
   it('keeps route Vary metadata out of native and fallback observers and onError responses', async () => {

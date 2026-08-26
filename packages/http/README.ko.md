@@ -135,8 +135,10 @@ export function markLanguageVariance(context: RequestContext): void {
 
 `createDispatcher(...)` 또는 runtime bootstrap에서 `ContentNegotiationOptions.formatters`를
 설정하세요. `ResponseFormatter.mediaType`은 representation을 식별하고 `format(...)`은 최종
-`string` 또는 `Uint8Array` body를 반환합니다. Formatter, `defaultMediaType`, `@Produces(...)`는
-concrete representation media type만 받습니다. Wildcard type/subtype과 case-insensitive duplicate
+`string` 또는 `Uint8Array` body를 반환합니다. Framework는 formatter 실행이 완료된 뒤에만 success
+status, route header, negotiated `Content-Type`, serialized-body metadata, `Vary: Accept`를 적용하므로
+formatter failure는 success metadata가 누출되지 않은 상태로 일반 error handling으로 들어갑니다. Formatter,
+`defaultMediaType`, `@Produces(...)`는 concrete representation media type만 받습니다. Wildcard type/subtype과 case-insensitive duplicate
 parameter name은 무시됩니다. Mixed list는 valid entry를 유지하고 invalid-only formatter set은
 negotiation을 비활성화합니다. `@Produces(...)`가 없는 route는 configured formatter를 모두 사용합니다.
 `@Produces(...)`가 있는 route는 valid한 exact configured media type만 사용하며, non-empty metadata에
@@ -246,7 +248,9 @@ text-node contract가 해당 escape를 수행하는 rendering framework를 사�
 
 `Accept` negotiation은 deterministic하다. `Accept`가 없거나 wildcard/tie이면 JSON을 선택하고 quality와
 specificity가 `application/json`과 available `text/html` 사이를 선택하며 unsupported range는 canonical JSON
-406을 만든다. `canRender(...)`로 application 또는 matched handler별 HTML availability를 제한할 수 있다.
+406을 만든다. Successful-response negotiation에서 나온 `406`은 HTML provider를 우회하고 `Accept`가
+`text/html`을 허용하거나 error representation을 지원하지 않아도 canonical JSON으로 유지된다. Observer와
+`onError`는 error를 handle할 경우 계속 response ownership을 가진다. `canRender(...)`로 application 또는 matched handler별 HTML availability를 제한할 수 있다.
 Provider failure는 원래 canonical JSON outcome으로 한 번만 fallback하며 committed 또는 aborted request는
 다시 쓰지 않는다. Response writer `send(...)` 또는 stream/write failure는 그대로 propagate하며 두 번째 canonical
 JSON write를 시작하지 않는다. HTTP가 `Accept`를 추가할 때 기존 native `Vary` 값도 보존한다. Successful-route

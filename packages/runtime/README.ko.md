@@ -158,7 +158,9 @@ const app = await fluoFactory.create(AppModule, {
 
 `Accept` header가 없거나 `*/*`이면 `defaultMediaType`(또는 첫 번째 unique valid configured
 formatter)을 선택합니다. Undefined scalar entry와 undefined만 포함한 array는 absent입니다. Present blank
-또는 whitespace-only `Accept` field는 valid token이 없으므로 `406`을 반환합니다. Formatter,
+또는 whitespace-only `Accept` field는 valid token이 없으므로 `406`을 반환합니다. Framework는 formatter
+실행이 완료된 뒤에만 success status, route header, negotiated `Content-Type`, serialized-body metadata,
+`Vary: Accept`를 적용하므로 formatter failure는 success metadata 없이 일반 error handling으로 들어갑니다. Formatter,
 `defaultMediaType`, `@Produces(...)`는 concrete representation
 media type만 받습니다. Wildcard type/subtype과 case-insensitive duplicate parameter name은 무시됩니다.
 Mixed list는 valid entry를 유지하고 invalid-only formatter set은 negotiation을 비활성화하며, non-empty
@@ -201,7 +203,9 @@ const app = await fluoFactory.create(AppModule, {
 ```
 
 Runtime은 이 option을 wiring만 합니다. Error classification, `Accept` negotiation, request scope, response status와
-header, `HEAD`, abort, commit, canonical JSON fallback은 `@fluojs/http`가 소유합니다. 반환 string/byte는
+header, `HEAD`, abort, commit, canonical JSON fallback은 `@fluojs/http`가 소유합니다. Successful-response
+negotiation에서 나온 `406`은 HTML provider를 우회하고 `Accept`가 `text/html`을 허용하거나 error representation을
+지원하지 않아도 canonical JSON으로 유지되며 observer와 `onError`는 계속 이를 handle할 수 있습니다. 반환 string/byte는
 application이 책임지는 trusted HTML입니다. Runtime은 request-derived 또는 error-derived value를 escape하거나
 sanitize하지 않으므로 provider가 interpolation 전에 처리해야 합니다. Standalone application
 context는 HTTP dispatcher를 생성하지 않으므로 이 option을 사용하지 않습니다. 자세한 내용은

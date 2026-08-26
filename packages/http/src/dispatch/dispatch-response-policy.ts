@@ -217,25 +217,30 @@ export function writeSuccessResponse(
     ? selectResponseFormatter(handler, request, contentNegotiation)
     : undefined;
 
-  applySuccessResponseMetadata({ formatter, handler, response, value: responseValue });
-
-  if (formatter) {
-    appendVaryHeader(response, 'Accept');
-  }
-
   if (request.method.toUpperCase() === 'HEAD') {
+    applySuccessResponseMetadata({ formatter, handler, response, value: responseValue });
+    if (formatter) {
+      appendVaryHeader(response, 'Accept');
+    }
     applyImplicitHeadContentType(response, responseValue);
     return response.send(undefined);
   }
 
-  if (!formatter && hasSimpleJsonResponseWriter(response) && canUseSimpleJsonFastPath(response, responseValue)) {
+  if (formatter) {
+    const responseBody = formatter.format(responseValue);
+
+    applySuccessResponseMetadata({ formatter, handler, response, value: responseValue });
+    appendVaryHeader(response, 'Accept');
+    return response.send(responseBody);
+  }
+
+  applySuccessResponseMetadata({ formatter: undefined, handler, response, value: responseValue });
+
+  if (hasSimpleJsonResponseWriter(response) && canUseSimpleJsonFastPath(response, responseValue)) {
     return response.sendSimpleJson(responseValue);
   }
 
-  const responseBody = formatter
-    ? formatter.format(responseValue)
-    : responseValue;
-  return response.send(responseBody);
+  return response.send(responseValue);
 }
 
 export type { ResolvedContentNegotiation };

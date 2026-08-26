@@ -158,7 +158,9 @@ const app = await fluoFactory.create(AppModule, {
 
 An absent `Accept` header and `*/*` select `defaultMediaType` (or the first unique valid configured
 formatter). Undefined scalar entries and arrays containing only undefined entries are absent. A present
-blank or whitespace-only `Accept` field has no valid token and returns `406`.
+blank or whitespace-only `Accept` field has no valid token and returns `406`. Formatter execution completes
+before the framework applies success status, route headers, negotiated `Content-Type`, serialized-body
+metadata, or `Vary: Accept`; formatter failures therefore enter ordinary error handling without success metadata.
 Formatters, `defaultMediaType`, and `@Produces(...)` accept only concrete representation
 media types: wildcard types/subtypes and case-insensitive duplicate parameter names are ignored. Mixed
 lists retain valid entries, an invalid-only formatter set disables negotiation, and non-empty
@@ -201,7 +203,9 @@ const app = await fluoFactory.create(AppModule, {
 ```
 
 Runtime only wires this option. `@fluojs/http` owns error classification, `Accept` negotiation,
-request scope, response status and headers, `HEAD`, abort, commit, and canonical JSON fallback.
+request scope, response status and headers, `HEAD`, abort, commit, and canonical JSON fallback. A `406`
+from successful-response negotiation bypasses the HTML provider and remains canonical JSON even when
+`Accept` permits `text/html` or supports no error representation; observers and `onError` can still handle it.
 The returned string or bytes are trusted application HTML: runtime does not escape or sanitize
 request-derived or error-derived values, so the provider must do so before interpolation.
 Standalone application contexts do not use the option because they do not create an HTTP dispatcher.

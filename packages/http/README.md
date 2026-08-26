@@ -137,8 +137,10 @@ export function markLanguageVariance(context: RequestContext): void {
 
 Configure `ContentNegotiationOptions.formatters` on `createDispatcher(...)` or runtime bootstrap.
 `ResponseFormatter.mediaType` identifies the representation and `format(...)` returns its final
-`string` or `Uint8Array` body. Formatters, `defaultMediaType`, and `@Produces(...)` accept only
-concrete representation media types: wildcard types/subtypes and duplicate parameter names
+`string` or `Uint8Array` body. Formatter execution completes before the framework applies a success
+status, route headers, negotiated `Content-Type`, serialized-body metadata, or `Vary: Accept`; a
+formatter failure therefore enters ordinary error handling with no success metadata leaked. Formatters,
+`defaultMediaType`, and `@Produces(...)` accept only concrete representation media types: wildcard types/subtypes and duplicate parameter names
 (case-insensitive) are ignored. A mixed list retains valid entries; an invalid-only formatter set
 disables negotiation. A route without `@Produces(...)` uses every configured formatter; a route with
 `@Produces(...)` uses only its valid exact configured media types and returns `406` when its non-empty
@@ -250,7 +252,9 @@ every request-derived or error-derived value before interpolation, as the exampl
 
 `Accept` negotiation is deterministic: absent `Accept` and wildcard/tie cases select JSON; quality
 and specificity select between `application/json` and available `text/html`; unsupported ranges
-produce canonical JSON 406. `canRender(...)` may constrain HTML per application or matched handler.
+produce canonical JSON 406. A `406` from successful-response negotiation bypasses the HTML provider
+and remains canonical JSON even when `Accept` permits `text/html` or supports no error representation;
+observers and `onError` still retain response ownership if they handle it. `canRender(...)` may constrain HTML per application or matched handler.
 A provider failure falls back once to the original canonical JSON outcome, and committed or aborted
 requests are never rewritten. Response writer `send(...)` or stream/write failures propagate
 unchanged and do not trigger a second canonical JSON write. Existing native `Vary` values are

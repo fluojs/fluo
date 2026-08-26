@@ -125,6 +125,12 @@ export async function writeErrorResponse(
   }
 
   const httpError = toHttpException(error);
+
+  if (httpError instanceof ContentNegotiationNotAcceptableException) {
+    await writeCanonicalJson(httpError, requestContext);
+    return;
+  }
+
   const provider = options.representation?.html;
 
   if (provider === undefined || !isHttpRepresentationEligible(error)) {
@@ -133,8 +139,8 @@ export async function writeErrorResponse(
     }
 
     requestContext.response.setStatus(httpError.status);
+    requestContext.response.setHeader('Content-Type', JSON_CONTENT_TYPE);
     if (requestContext.request.method.toUpperCase() === 'HEAD') {
-      requestContext.response.setHeader('Content-Type', JSON_CONTENT_TYPE);
       await requestContext.response.send(undefined);
       return;
     }
