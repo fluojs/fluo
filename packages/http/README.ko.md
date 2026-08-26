@@ -163,15 +163,18 @@ export function removeSession(context: RequestContext): void {
 Cookie 이름은 유효한 ASCII cookie-name 범위를 사용해야 하며 `=` 또는
 `;`를 포함할 수 없습니다. String value는 `encodeURIComponent`로
 encoding되므로 미리 encoding하지 않은 원래 값을 전달하세요. 잘못된 이름,
-유효하지 않은 Unicode value, 정수가 아닌 `maxAgeSeconds`, 유효하지 않은
-날짜, 안전하지 않은 `Domain`/`Path` attribute value는 response header를
-쓰기 전에 오류를 발생시킵니다. Signing, secret rotation, Express object
-value serialization은 애플리케이션이 담당합니다.
+유효하지 않은 Unicode value, 안전하지 않은 `Domain`/`Path` attribute value,
+IMF-fixdate의 1601~9999년 범위를 벗어난 날짜는 response header를 쓰기 전에
+오류를 발생시킵니다. `Domain`은 선택적인 하나의 선행 dot을 포함한 ASCII DNS
+label만 허용합니다. Signing, secret rotation, Express object-value serialization은
+애플리케이션이 담당합니다.
 
 `CookieOptions`는 `maxAgeSeconds`, `expires`, `domain`, `path`,
 `httpOnly`, `secure`, `sameSite: 'lax' | 'none' | 'strict'`를
-지원합니다. `maxAgeSeconds`는 adapter별 unit conversion 없이 항상 정수
-초로 직렬화됩니다. Attribute도 이 순서로 출력됩니다. Set 또는 clear 호출은
+지원합니다. `maxAgeSeconds`는 음수가 아닌 safe integer여야 하며 adapter별 unit
+conversion 없이 decimal 초로 직렬화됩니다. Browser가 cookie를 수락하려면
+`sameSite: 'none'`에는 `secure: true`가 필요합니다. Attribute도 이 순서로
+출력됩니다. Set 또는 clear 호출은
 각각 독립된 `Set-Cookie` field 하나를 append하고 호출 순서를 보존하며 comma
 folding하지 않습니다.
 

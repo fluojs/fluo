@@ -114,11 +114,20 @@ describe('setCookie', () => {
   });
 
   it.each([
+    [{ maxAgeSeconds: -1 }, /maxAgeSeconds/],
     [{ maxAgeSeconds: 1.5 }, /maxAgeSeconds/],
+    [{ maxAgeSeconds: 1e21 }, /maxAgeSeconds/],
     [{ maxAgeSeconds: Number.POSITIVE_INFINITY }, /maxAgeSeconds/],
     [{ expires: new Date(Number.NaN) }, /expires/],
+    [{ expires: new Date('1600-01-01T00:00:00.000Z') }, /expires/],
+    [{ expires: new Date(Date.UTC(10_000, 0, 1)) }, /expires/],
     [{ domain: 'example.com\r\nX-Injected: yes' }, /domain/],
+    [{ domain: 'bad domain' }, /domain/],
+    [{ domain: 'example/com' }, /domain/],
+    [{ domain: 'example,com' }, /domain/],
+    [{ domain: 'example\\com' }, /domain/],
     [{ path: '/safe; Injected=yes' }, /path/],
+    [{ sameSite: 'none', secure: false }, /sameSite/],
   ] as const)('rejects invalid cookie attributes before writing a header', (options, expectedError) => {
     // Given
     const response = createResponse();
@@ -130,22 +139,51 @@ describe('setCookie', () => {
     expect(response.committed).toBe(false);
   });
 
-  it('omits disabled boolean attributes and preserves signed whole-second max ages', () => {
+  it('accepts a leading dot on a valid domain', () => {
+    // Given
+    const response = createResponse();
+
+    // When
+    setCookie(response, 'session', 'value', { domain: '.example.com' });
+
+    // Then
+    expect(response.headers['Set-Cookie']).toBe('session=value; Domain=.example.com');
+  });
+
+  it('serializes safe decimal delta-second and IMF-fixdate boundaries', () => {
+    // Given
+    const response = createResponse();
+
+    // When
+    setCookie(response, 'first', '', {
+      expires: new Date(Date.UTC(1601, 0, 1)),
+      maxAgeSeconds: 0,
+    });
+    setCookie(response, 'last', '', {
+      expires: new Date(Date.UTC(9_999, 11, 31, 23, 59, 59)),
+      maxAgeSeconds: Number.MAX_SAFE_INTEGER,
+    });
+
+    // Then
+    expect(response.headers['Set-Cookie']).toEqual([
+      'first=; Max-Age=0; Expires=Mon, 01 Jan 1601 00:00:00 GMT',
+      'last=; Max-Age=9007199254740991; Expires=Fri, 31 Dec 9999 23:59:59 GMT',
+    ]);
+  });
+
+  it('omits disabled boolean attributes without weakening SameSite policy', () => {
     // Given
     const response = createResponse();
 
     // When
     setCookie(response, 'session', '', {
       httpOnly: false,
-      maxAgeSeconds: -1,
-      sameSite: 'none',
+      sameSite: 'lax',
       secure: false,
     });
 
     // Then
-    expect(response.headers['Set-Cookie']).toBe(
-      'session=; Max-Age=-1; SameSite=None',
-    );
+    expect(response.headers['Set-Cookie']).toBe('session=; SameSite=Lax');
   });
 });
 

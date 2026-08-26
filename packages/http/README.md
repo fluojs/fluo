@@ -164,15 +164,18 @@ export function removeSession(context: RequestContext): void {
 
 Cookie names must be valid ASCII `cookie-name` tokens and cannot contain `=`
 or `;`. String values are encoded with `encodeURIComponent`, so pass the
-original unencoded value. Invalid names, malformed Unicode values,
-non-integer `maxAgeSeconds`, invalid dates, and unsafe `Domain`/`Path`
-attribute values throw before the response header is written. Signing, secret
-rotation, and Express object-value serialization remain application concerns.
+original unencoded value. Invalid names, malformed Unicode values, unsafe
+`Domain`/`Path` attribute values, and dates outside IMF-fixdate years 1601
+through 9999 throw before the response header is written. `Domain` accepts
+ASCII DNS labels, optionally with one leading dot. Signing, secret rotation,
+and Express object-value serialization remain application concerns.
 
 `CookieOptions` supports `maxAgeSeconds`, `expires`, `domain`, `path`,
 `httpOnly`, `secure`, and `sameSite: 'lax' | 'none' | 'strict'`.
-`maxAgeSeconds` always serializes as integer seconds without adapter-specific
-unit conversion. Attributes are emitted in that order. Each set or clear call
+`maxAgeSeconds` must be a non-negative safe integer and always serializes as
+decimal seconds without adapter-specific unit conversion. `sameSite: 'none'`
+requires `secure: true` so the browser can accept the cookie. Attributes are
+emitted in that order. Each set or clear call
 appends one independent `Set-Cookie` field in call order; fields are never
 comma-folded.
 
