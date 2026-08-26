@@ -24,12 +24,15 @@ const read = (relativePath: string): string =>
 function parseFrontmatter(source: string): Readonly<Record<string, string>> {
   const match = /^---\n([\s\S]*?)\n---(?:\n|$)/u.exec(source);
   expect(match, 'SKILL.md must start with YAML frontmatter').not.toBeNull();
+  const lines = (match?.[1] ?? '').split('\n').filter(Boolean);
 
   return Object.fromEntries(
-    (match?.[1] ?? '')
-      .split('\n')
-      .filter((line) => /^[A-Za-z][A-Za-z0-9_-]*:\s*\S/u.test(line))
+    lines
       .map((line) => {
+        expect(
+          line,
+          'SKILL.md frontmatter fields must be complete single-line YAML mappings',
+        ).toMatch(/^[A-Za-z][A-Za-z0-9_-]*:\s*\S/u);
         const separator = line.indexOf(':');
         return [line.slice(0, separator), line.slice(separator + 1).trim()];
       }),

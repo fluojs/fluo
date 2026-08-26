@@ -1,7 +1,6 @@
 ---
 name: execute-lane
-description: Drain one canonical Fluo lane through implementation, same-head review, adaptive fix-back, merge
-authority, cleanup, and resumable evidence.
+description: Drain one canonical Fluo lane through implementation, same-head review, adaptive fix-back, merge authority, cleanup, and resumable evidence.
 ---
 
 # Execute lane
