@@ -1,4 +1,10 @@
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -20,7 +26,26 @@ const { compileLaneSupervisorDag } = (await import(
     snapshot: Readonly<Record<string, unknown>>,
   ) => Readonly<Record<string, unknown>>;
 };
-const { attachLaneSupervisorRun, reconcileLaneSupervisorDispatch } =
+const { canonicalLaneLedgerPath } = (await import(
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/lane-runtime-paths.mjs',
+  )
+)) as {
+  canonicalLaneLedgerPath: (
+    repositoryRoot: string,
+    ledgerPath: string,
+  ) => Readonly<{
+    laneId: string;
+    ledgerPath: string;
+    repositoryRoot: string;
+  }>;
+};
+const {
+  attachLaneSupervisorRun,
+  awaitLaneSupervisorDispatch,
+  reconcileLaneSupervisorDispatch,
+} =
   (await import(
     resolve(
       process.cwd(),
@@ -29,13 +54,19 @@ const { attachLaneSupervisorRun, reconcileLaneSupervisorDispatch } =
   )) as {
     attachLaneSupervisorRun: (input: {
       persisted: PersistedState & { dispatch_event_hash: string };
-      runtime_root: string;
+      repository_root: string;
       definition: Readonly<Record<string, unknown>>;
       run_id: string;
     }) => Readonly<Record<string, unknown>>;
+    awaitLaneSupervisorDispatch: (input: {
+      persisted: PersistedState;
+      repository_root: string;
+      definition: Readonly<Record<string, unknown>>;
+      timeout_ms?: number;
+    }) => Promise<Readonly<Record<string, unknown>>>;
     reconcileLaneSupervisorDispatch: (input: {
       persisted: PersistedState;
-      runtime_root: string;
+      repository_root: string;
       definition: Readonly<Record<string, unknown>>;
     }) => Readonly<Record<string, unknown>>;
   };
@@ -72,6 +103,24 @@ const readyState = (): PersistedState => {
 };
 
 describe('execute-lane lane DAG dispatch intent', () => {
+  it('accepts only exact canonical lane ledger paths', () => {
+    const directory = mkdtempSync(
+      join(realpathSync(tmpdir()), 'fluo-lane-ledger-path-'),
+    );
+    const outsideLedger = resolve(
+      process.cwd(),
+      'tooling/governance/fixtures/execute-lane-native/ready-ledger-two-lanes-v2.json',
+    );
+
+    try {
+      expect(() =>
+        canonicalLaneLedgerPath(directory, outsideLedger),
+      ).toThrow(/canonical lane ledger path/u);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('persists one lane intent before the DAG starts', () => {
     // Given
     const persisted = readyState();
@@ -84,7 +133,7 @@ describe('execute-lane lane DAG dispatch intent', () => {
       // When
       const result = reconcileLaneSupervisorDispatch({
         persisted,
-        runtime_root: join(directory, 'lane-runs'),
+        repository_root: directory,
         definition,
       });
 
@@ -101,6 +150,7 @@ describe('execute-lane lane DAG dispatch intent', () => {
           subject_id: 'lane-4101-runtime',
           payload: {
             dag_key: 'fluo:lane:lane-4101-runtime:issue-supervisors:v2',
+            definition_sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
           },
         }),
       ]);
@@ -117,12 +167,11 @@ describe('execute-lane lane DAG dispatch intent', () => {
     const directory = mkdtempSync(
       join(realpathSync(tmpdir()), 'fluo-lane-dispatch-'),
     );
-    const runtimeRoot = join(directory, 'lane-runs');
     const persisted = readyState();
     const definition = compileLaneSupervisorDag(persisted.snapshot);
     const prepared = reconcileLaneSupervisorDispatch({
       persisted,
-      runtime_root: runtimeRoot,
+      repository_root: directory,
       definition,
     }).persisted as PersistedState & { dispatch_event_hash: string };
 
@@ -131,21 +180,45 @@ describe('execute-lane lane DAG dispatch intent', () => {
       expect(
         reconcileLaneSupervisorDispatch({
           persisted: prepared,
-          runtime_root: runtimeRoot,
+          repository_root: directory,
           definition,
         }),
       ).toMatchObject({ action: 'blocked-ledger-conflict' });
+      expect(() =>
+        attachLaneSupervisorRun({
+          persisted: prepared,
+          repository_root: directory,
+          definition: { ...definition, name: 'definition drifted' },
+          run_id: 'run_lane_4101',
+        }),
+      ).toThrow(/dispatch definition digest/u);
 
       const binding = attachLaneSupervisorRun({
         persisted: prepared,
-        runtime_root: runtimeRoot,
+        repository_root: directory,
         definition,
         run_id: 'run_lane_4101',
       });
       expect(
+        existsSync(
+          join(
+            directory,
+            '.omo',
+            'lane-runs',
+            'lane-4101-runtime',
+            'dag-binding.json',
+          ),
+        ),
+      ).toBe(true);
+      expect(
+        existsSync(
+          join(directory, 'lane-4101-runtime', 'dag-binding.json'),
+        ),
+      ).toBe(false);
+      expect(
         reconcileLaneSupervisorDispatch({
           persisted: prepared,
-          runtime_root: runtimeRoot,
+          repository_root: directory,
           definition,
         }),
       ).toMatchObject({
@@ -156,11 +229,48 @@ describe('execute-lane lane DAG dispatch intent', () => {
       expect(() =>
         attachLaneSupervisorRun({
           persisted: prepared,
-          runtime_root: runtimeRoot,
+          repository_root: directory,
           definition: { ...definition, name: 'tampered' },
           run_id: 'run_lane_4101',
         }),
       ).toThrow(/definition digest/u);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('waits for the exact canonical binding before supervisor startup', async () => {
+    const directory = mkdtempSync(
+      join(realpathSync(tmpdir()), 'fluo-lane-startup-gate-'),
+    );
+    const persisted = readyState();
+    const definition = compileLaneSupervisorDag(persisted.snapshot);
+    const prepared = reconcileLaneSupervisorDispatch({
+      persisted,
+      repository_root: directory,
+      definition,
+    }).persisted as PersistedState & { dispatch_event_hash: string };
+
+    try {
+      const waiting = awaitLaneSupervisorDispatch({
+        persisted: prepared,
+        repository_root: directory,
+        definition,
+        timeout_ms: 1_000,
+      });
+      setImmediate(() => {
+        attachLaneSupervisorRun({
+          persisted: prepared,
+          repository_root: directory,
+          definition,
+          run_id: 'run_lane_4101',
+        });
+      });
+
+      await expect(waiting).resolves.toMatchObject({
+        action: 'attach',
+        run_id: 'run_lane_4101',
+      });
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

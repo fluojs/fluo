@@ -107,6 +107,17 @@ performing a mutation. The shared snapshot may still name an earlier queue
 cursor while the lane DAG runs because the parent imports settled terminals in
 topological order after the DAG settles.
 
+Before that dependency gate, run the event-driven canonical dispatch gate:
+
+```text
+node .agents/skills/execute-lane/scripts/await-lane-dispatch.mjs \
+  --root . --ledger .omo/lanes/<lane-id>.json
+```
+
+Do not treat the short start/attach interval as a terminal ledger conflict.
+Wait for the exact canonical binding. A timeout or mismatched immutable
+binding remains fail-closed.
+
 ## Stop
 
 Stop with `done` only after observed merge and cleanup. Otherwise stop with one

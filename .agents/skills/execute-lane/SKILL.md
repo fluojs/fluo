@@ -29,6 +29,19 @@ attach; an intent/binding crash window fails closed and never authorizes a
 duplicate start. Goal, todo, and DAG state remain projections of the persisted
 lane state and live observations.
 
+The dispatch interface accepts `repository_root`, never a caller-selected
+runtime root, and derives `.omo/lane-runs` internally. Every issue supervisor
+must pass the event-driven startup gate before mutation:
+
+```text
+node .agents/skills/execute-lane/scripts/await-lane-dispatch.mjs \
+  --root . --ledger .omo/lanes/<lane-id>.json
+```
+
+After the native DAG settles, run `lane-settlement-audit.mjs`. Native node
+completion means only that a child returned. It is never lane success without
+canonical terminal issue stores and parent import.
+
 Production execution never uses `scripts/fixtures/run-replay.mjs`. The lead
 performs or observes each authorized Git/GitHub action, reads fresh raw output,
 then writes the target-bound receipt and transition. Synthetic observation JSON
@@ -42,11 +55,13 @@ all prior local review evidence. CI PASS on the exact reviewed PR head produces
 `merge-ready`; only an issue supervisor's fresh lead-authorized merge
 observation may create a merge receipt.
 
-Native task completion is ordering only, never dependency success. Before any
-mutation, a dependent supervisor validates each predecessor's persisted
+Native task completion is a settled claim only, never lane or dependency
+success. Before any mutation, a dependent supervisor validates each
+predecessor's persisted
 issue-store terminal evidence and proceeds only when every predecessor is
 canonical `done`. Missing, malformed, or blocked predecessor evidence produces
 a typed dependency blocker without creating issue artifacts. After the DAG
-settles, the parent imports terminal evidence in topological order into the
-shared lane ledger. `needs-human-check`, policy, external, cleanup,
+settles, the parent audits all canonical issue stores, then imports terminal
+evidence in topological order into the shared lane ledger.
+`needs-human-check`, policy, external, cleanup,
 malformed-output, and ledger terminal states never release mutation.
