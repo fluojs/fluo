@@ -255,6 +255,7 @@ All limits are terminal. Per-file, encoded total-size, field-count, file-count, 
 | Node.js | Supported | Supported | `portable-multipart` v1 |
 | Express | Supported | Supported | `portable-multipart` v1 |
 | Fastify | Supported | Supported | `portable-multipart` v1 |
+| Web runtime | Supported | Supported | `portable-multipart` v1 |
 | Bun | Supported | Supported | `portable-multipart` v1 |
 | Deno | Supported | Supported | `portable-multipart` v1 |
 | Cloudflare Workers | Supported | Supported | `portable-multipart` v1 |
