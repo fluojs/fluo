@@ -1,5 +1,4 @@
 import { NotAcceptableException } from '../exceptions.js';
-import { readFirstNonEmptyRequestHeaderValue } from '../header-helpers.js';
 import type {
   ContentNegotiationOptions,
   FrameworkRequest,
@@ -37,7 +36,22 @@ function normalizeMediaType(value: string): string {
 }
 
 function readAcceptHeader(request: FrameworkRequest): string | undefined {
-  return readFirstNonEmptyRequestHeaderValue(request, 'accept');
+  const values: string[] = [];
+
+  for (const [name, value] of Object.entries(request.headers)) {
+    if (name.toLowerCase() !== 'accept') {
+      continue;
+    }
+
+    for (const entry of Array.isArray(value) ? value : [value]) {
+      const normalized = entry?.trim();
+      if (normalized) {
+        values.push(normalized);
+      }
+    }
+  }
+
+  return values.length > 0 ? values.join(',') : undefined;
 }
 
 function parseQuality(value: string | undefined): number | undefined {

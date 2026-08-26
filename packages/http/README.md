@@ -147,7 +147,7 @@ Present headers are evaluated per representation: exact ranges outrank structure
 such as `application/*+json`, which outrank `type/*`, which outrank `*/*`. The most specific matching
 range controls that representation's quality, including `q=0`; a broader positive wildcard therefore
 cannot re-enable a specifically excluded representation. Remaining candidates are selected by
-quality, specificity, header order, configured default, and formatter order.
+quality, range/type specificity, matched media-parameter count, header order, configured default, and formatter order.
 
 Malformed media ranges and malformed qualities are ignored rather than guessed or clamped. If no
 valid token remains, every matching representation is excluded by `q=0`, or no configured formatter

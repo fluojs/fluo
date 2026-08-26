@@ -17,10 +17,14 @@ import {
 
 type TestResponse = FrameworkResponse & { body?: unknown };
 
-function createRequest(path: string, accept?: string): FrameworkRequest {
+function createRequest(
+  path: string,
+  accept?: string,
+  headers?: FrameworkRequest['headers'],
+): FrameworkRequest {
   return {
     cookies: {},
-    headers: accept === undefined ? {} : { accept },
+    headers: headers ?? (accept === undefined ? {} : { accept }),
     method: 'GET',
     params: {},
     path,
@@ -160,7 +164,7 @@ function createNegotiatingDispatchers() {
   return { fallbackDispatcher, nativeDispatcher };
 }
 
-async function dispatchBoth(path: string, accept?: string) {
+async function dispatchBoth(path: string, accept?: string, headers?: FrameworkRequest['headers']) {
   const { fallbackDispatcher, nativeDispatcher } = createNegotiatingDispatchers();
   if (!nativeDispatcher.describeRoutes || !nativeDispatcher.dispatchNativeRoute) {
     throw new Error('Expected native route dispatch support.');
@@ -175,10 +179,10 @@ async function dispatchBoth(path: string, accept?: string) {
   const fallbackResponse = createResponse();
   const nativeHandled = await nativeDispatcher.dispatchNativeRoute(
     { descriptor, params: {} },
-    createRequest(path, accept),
+    createRequest(path, accept, headers),
     nativeResponse,
   );
-  await fallbackDispatcher.dispatch(createRequest(path, accept), fallbackResponse);
+  await fallbackDispatcher.dispatch(createRequest(path, accept, headers), fallbackResponse);
 
   expect(nativeHandled).toBe(true);
   expect({
@@ -244,6 +248,18 @@ describe('successful response content negotiation', () => {
       200,
       'application/json;profile=v2',
       'json-profile',
+    ],
+    [
+      'combines duplicate-case Accept field arrays before candidate selection',
+      '/representations/all',
+      undefined,
+      200,
+      'application/json;profile=v2',
+      'json-profile',
+      {
+        Accept: ['application/json;q=1', 'text/plain;q=0.1'],
+        ACCEPT: ['application/json;profile=v2;q=1'],
+      },
     ],
     [
       'rejects media parameters after q',
@@ -368,8 +384,8 @@ describe('successful response content negotiation', () => {
     ],
   ])(
     'keeps native and fallback dispatch identical for %s',
-    async (_name, path, accept, status, contentType, body) => {
-      const { nativeDispatcher, fallbackDispatcher, response } = await dispatchBoth(path, accept);
+    async (_name, path, accept, status, contentType, body, headers?: FrameworkRequest['headers']) => {
+      const { nativeDispatcher, fallbackDispatcher, response } = await dispatchBoth(path, accept, headers);
 
       expect(response.statusCode).toBe(status);
       expect(response.headers['Content-Type']).toBe(contentType);

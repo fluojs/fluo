@@ -144,8 +144,8 @@ type과 일치하는 configured formatter만 사용하며 intersection이 비면
 Header가 있으면 representation별로 exact range, `application/*+json` 같은 structured-suffix
 wildcard, `type/*`, `*/*` 순으로 우선합니다. 가장 specific한 matching range가 `q=0`을 포함한
 해당 representation의 quality를 제어하므로 더 넓은 positive wildcard가 specific exclusion을
-다시 활성화할 수 없습니다. 남은 candidate는 quality, specificity, header order, configured
-default, formatter order 순으로 선택합니다.
+다시 활성화할 수 없습니다. 남은 candidate는 quality, range/type specificity, 일치한 media parameter 수,
+header order, configured default, formatter order 순으로 선택합니다.
 
 Malformed media range와 malformed quality는 추측하거나 clamp하지 않고 무시합니다. Valid token이
 남지 않거나, matching representation이 모두 `q=0`으로 제외되거나, configured formatter가
