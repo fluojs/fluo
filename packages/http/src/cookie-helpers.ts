@@ -83,7 +83,11 @@ function validatePath(value: string): void {
   }
 }
 
-function serializeExpires(expires: Date): string {
+function snapshotExpiresTimestamp(expires: Date | undefined): number | undefined {
+  if (expires === undefined) {
+    return undefined;
+  }
+
   let timestamp: number;
 
   try {
@@ -96,6 +100,10 @@ function serializeExpires(expires: Date): string {
     throw new TypeError('Cookie expires must be a valid Date.');
   }
 
+  return timestamp;
+}
+
+function serializeExpires(timestamp: number): string {
   const normalizedExpires = new NativeDate(timestamp);
   const year = nativeDateGetUTCFullYear.call(normalizedExpires);
   if (year < 1601 || year >= 10_000) {
@@ -123,10 +131,11 @@ function serializeCookie(
   value: string,
   options: CookieOptions,
 ): string {
-  // Read caller-owned properties once so validation and serialization use the same values.
+  // Snapshot the mutable Date before any later caller-owned accessor can change it.
+  const expiresTimestamp = snapshotExpiresTimestamp(options.expires);
+  // Read remaining caller-owned properties once so validation and serialization use the same values.
   const {
     domain,
-    expires,
     httpOnly,
     maxAgeSeconds,
     path,
@@ -146,8 +155,8 @@ function serializeCookie(
     parts.push(`Max-Age=${String(maxAgeSeconds)}`);
   }
 
-  if (expires !== undefined) {
-    parts.push(`Expires=${serializeExpires(expires)}`);
+  if (expiresTimestamp !== undefined) {
+    parts.push(`Expires=${serializeExpires(expiresTimestamp)}`);
   }
 
   if (domain !== undefined) {

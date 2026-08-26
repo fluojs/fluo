@@ -231,6 +231,53 @@ describe('setCookie', () => {
     );
   });
 
+  it.each(['httpOnly', 'domain', 'path'] as const)(
+    'snapshots expires before a later %s getter can mutate it',
+    (mutatingAccessor) => {
+      // Given
+      const response = createResponse();
+      const expires = new Date('2030-01-02T03:04:05.000Z');
+      const mutateExpires = () => {
+        expires.setUTCFullYear(2040);
+      };
+      const options = {
+        get domain() {
+          if (mutatingAccessor === 'domain') {
+            mutateExpires();
+          }
+
+          return 'example.com';
+        },
+        get expires() {
+          return expires;
+        },
+        get httpOnly() {
+          if (mutatingAccessor === 'httpOnly') {
+            mutateExpires();
+          }
+
+          return true;
+        },
+        get path() {
+          if (mutatingAccessor === 'path') {
+            mutateExpires();
+          }
+
+          return '/account';
+        },
+      };
+
+      // When
+      setCookie(response, 'session', 'value', options);
+
+      // Then
+      expect(response.headers['Set-Cookie']).toBe(
+        'session=value; Expires=Wed, 02 Jan 2030 03:04:05 GMT; '
+        + 'Domain=example.com; Path=/account; HttpOnly',
+      );
+    },
+  );
+
   it('accepts a valid cross-realm Date', () => {
     // Given
     const response = createResponse();
