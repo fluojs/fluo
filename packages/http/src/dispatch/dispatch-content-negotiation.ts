@@ -255,10 +255,10 @@ function encodeMediaParameters(parameters: readonly MediaParameter[]): string {
     .join('');
 }
 
-function normalizeRepresentationMediaType(value: string): string {
+function normalizeRepresentationMediaType(value: string): string | undefined {
   const mediaType = parseMediaType(value);
   if (!mediaType) {
-    return normalizeMediaType(value);
+    return undefined;
   }
 
   const parameters = encodeMediaParameters(mediaType.parameters);
@@ -452,30 +452,31 @@ export function resolveContentNegotiation(options: ContentNegotiationOptions | u
   }
 
   const seen = new Set<string>();
-  const formatters = options.formatters.filter((formatter) => {
-    const mediaType = normalizeRepresentationMediaType(formatter.mediaType);
+  const candidates: { formatter: ResponseFormatter; mediaType: string }[] = [];
 
+  for (const formatter of options.formatters) {
+    const mediaType = normalizeRepresentationMediaType(formatter.mediaType);
     if (!mediaType || seen.has(mediaType)) {
-      return false;
+      continue;
     }
 
     seen.add(mediaType);
-    return true;
-  });
+    candidates.push({ formatter, mediaType });
+  }
 
-  if (!formatters.length) {
+  if (!candidates.length) {
     return undefined;
   }
 
   const defaultMediaType = normalizeRepresentationMediaType(options.defaultMediaType ?? '');
   const defaultFormatter = defaultMediaType
-    ? formatters.find((formatter) => normalizeRepresentationMediaType(formatter.mediaType) === defaultMediaType) ?? formatters[0]
-    : formatters[0];
+    ? candidates.find((candidate) => candidate.mediaType === defaultMediaType) ?? candidates[0]!
+    : candidates[0]!;
 
   return {
-    defaultFormatter,
-    formatters,
-    normalizedMediaTypes: formatters.map((f) => normalizeRepresentationMediaType(f.mediaType)),
+    defaultFormatter: defaultFormatter.formatter,
+    formatters: candidates.map((candidate) => candidate.formatter),
+    normalizedMediaTypes: candidates.map((candidate) => candidate.mediaType),
   };
 }
 
@@ -487,7 +488,11 @@ function resolveAllowedFormatters(
     return { formatters: contentNegotiation.formatters, normalizedMediaTypes: contentNegotiation.normalizedMediaTypes };
   }
 
-  const allowed = new Set(handler.route.produces.map((mediaType) => normalizeRepresentationMediaType(mediaType)));
+  const allowed = new Set(
+    handler.route.produces
+      .map((mediaType) => normalizeRepresentationMediaType(mediaType))
+      .filter((mediaType): mediaType is string => mediaType !== undefined),
+  );
   const formatters: ResponseFormatter[] = [];
   const normalizedMediaTypes: string[] = [];
 
@@ -509,7 +514,7 @@ function resolveDefaultFormatter(
   contentNegotiation: ResolvedContentNegotiation,
 ): ResponseFormatter {
   const defaultMediaType = normalizeRepresentationMediaType(contentNegotiation.defaultFormatter.mediaType);
-  const idx = allowedNormalizedMediaTypes.indexOf(defaultMediaType);
+  const idx = defaultMediaType === undefined ? -1 : allowedNormalizedMediaTypes.indexOf(defaultMediaType);
 
   return idx >= 0 ? allowedFormatters[idx]! : (allowedFormatters[0] ?? contentNegotiation.defaultFormatter);
 }

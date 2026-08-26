@@ -13,6 +13,7 @@ import {
   type MiddlewareContext,
   type Next,
   Produces,
+  type ResponseFormatter,
 } from '../index.js';
 
 type TestResponse = FrameworkResponse & { body?: unknown };
@@ -91,7 +92,7 @@ class RepresentationController {
   }
 }
 
-const formatters = [
+const formatters: ResponseFormatter[] = [
   {
     format() {
       return 'json';
@@ -136,13 +137,13 @@ const formatters = [
   },
 ];
 
-function createNegotiatingDispatchers() {
+function createNegotiatingDispatchers(configuredFormatters: ResponseFormatter[] = formatters) {
   const root = new Container().register(RepresentationController);
   const handlerMapping = createHandlerMapping([{ controllerToken: RepresentationController }]);
   const nativeDispatcher = createDispatcher({
     contentNegotiation: {
       defaultMediaType: 'text/plain',
-      formatters,
+      formatters: configuredFormatters,
     },
     handlerMapping,
     rootContainer: root,
@@ -155,7 +156,7 @@ function createNegotiatingDispatchers() {
     }],
     contentNegotiation: {
       defaultMediaType: 'text/plain',
-      formatters,
+      formatters: configuredFormatters,
     },
     handlerMapping,
     rootContainer: root,
@@ -164,8 +165,13 @@ function createNegotiatingDispatchers() {
   return { fallbackDispatcher, nativeDispatcher };
 }
 
-async function dispatchBoth(path: string, accept?: string, headers?: FrameworkRequest['headers']) {
-  const { fallbackDispatcher, nativeDispatcher } = createNegotiatingDispatchers();
+async function dispatchBoth(
+  path: string,
+  accept?: string,
+  headers?: FrameworkRequest['headers'],
+  configuredFormatters?: ResponseFormatter[],
+) {
+  const { fallbackDispatcher, nativeDispatcher } = createNegotiatingDispatchers(configuredFormatters);
   if (!nativeDispatcher.describeRoutes || !nativeDispatcher.dispatchNativeRoute) {
     throw new Error('Expected native route dispatch support.');
   }
@@ -399,6 +405,33 @@ describe('successful response content negotiation', () => {
       }
     },
   );
+
+  it.each([
+    ['drops a malformed formatter before a valid formatter', [
+      { format: () => 'invalid', mediaType: 'application/json;broken' },
+      { format: () => 'valid', mediaType: 'application/json' },
+    ]],
+    ['keeps a valid formatter before a malformed formatter', [
+      { format: () => 'valid', mediaType: 'application/json' },
+      { format: () => 'invalid', mediaType: 'application/json;broken' },
+    ]],
+  ])('%s', async (_name, configuredFormatters) => {
+    const { response } = await dispatchBoth('/representations/all', 'application/json', undefined, configuredFormatters);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('application/json');
+    expect(response.body).toBe('valid');
+  });
+
+  it('disables negotiation when no formatter media type is valid', async () => {
+    const { response } = await dispatchBoth('/representations/all', 'application/json', undefined, [
+      { format: () => 'invalid', mediaType: 'application/json;broken' },
+    ]);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBeUndefined();
+    expect(response.body).toEqual({ ok: true });
+  });
 
   it('deduplicates Accept while preserving existing Vary fields', async () => {
     const { response } = await dispatchBoth('/representations/existing-vary', 'application/json');
