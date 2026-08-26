@@ -278,6 +278,78 @@ describe('setCookie', () => {
     },
   );
 
+  it('resists Date formatter call poisoning from a later option getter', () => {
+    // Given
+    const response = createResponse();
+    const originalCall = Object.getOwnPropertyDescriptor(Date.prototype.toUTCString, 'call');
+
+    try {
+      const options = {
+        get domain() {
+          Object.defineProperty(Date.prototype.toUTCString, 'call', {
+            configurable: true,
+            value: () => 'Wed, 02 Jan 2030 03:04:05 GMT\r\nX-Injected: yes',
+          });
+          return 'example.com';
+        },
+        get expires() {
+          return new Date('2030-01-02T03:04:05.000Z');
+        },
+      };
+
+      // When
+      setCookie(response, 'session', 'value', options);
+    } finally {
+      if (originalCall === undefined) {
+        Reflect.deleteProperty(Date.prototype.toUTCString, 'call');
+      } else {
+        Object.defineProperty(Date.prototype.toUTCString, 'call', originalCall);
+      }
+    }
+
+    // Then
+    expect(response.headers['Set-Cookie']).toBe(
+      'session=value; Expires=Wed, 02 Jan 2030 03:04:05 GMT; Domain=example.com',
+    );
+  });
+
+  it('resists RegExp test poisoning from the expires getter', () => {
+    // Given
+    const response = createResponse();
+    const setHeader = vi.spyOn(response, 'setHeader');
+    const originalTest = Object.getOwnPropertyDescriptor(RegExp.prototype, 'test');
+    let error: unknown;
+
+    try {
+      const options = {
+        get expires() {
+          Object.defineProperty(RegExp.prototype, 'test', {
+            configurable: true,
+            value: () => true,
+          });
+          return undefined;
+        },
+      };
+
+      // When
+      try {
+        setCookie(response, 'session\r\nX-Injected: yes', 'value', options);
+      } catch (caught) {
+        error = caught;
+      }
+    } finally {
+      if (originalTest === undefined) {
+        Reflect.deleteProperty(RegExp.prototype, 'test');
+      } else {
+        Object.defineProperty(RegExp.prototype, 'test', originalTest);
+      }
+    }
+
+    // Then
+    expect(error).toBeInstanceOf(TypeError);
+    expect(setHeader).not.toHaveBeenCalled();
+  });
+
   it('accepts a valid cross-realm Date', () => {
     // Given
     const response = createResponse();

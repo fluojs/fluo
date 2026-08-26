@@ -1,9 +1,21 @@
 import type { FrameworkResponse } from './types.js';
 
 const NativeDate = Date;
-const nativeDateGetTime = NativeDate.prototype.getTime;
-const nativeDateGetUTCFullYear = NativeDate.prototype.getUTCFullYear;
-const nativeDateToUTCString = NativeDate.prototype.toUTCString;
+const NativeEncodeURIComponent = encodeURIComponent;
+const NativeNumberIsFinite = Number.isFinite;
+const NativeNumberIsSafeInteger = Number.isSafeInteger;
+const NativeString = String;
+const NativeTypeError = TypeError;
+const nativeArrayJoin = Function.prototype.call.bind(Array.prototype.join);
+const nativeArrayPush = Function.prototype.call.bind(Array.prototype.push);
+const nativeArraySome = Function.prototype.call.bind(Array.prototype.some);
+const nativeDateGetTime = Function.prototype.call.bind(NativeDate.prototype.getTime);
+const nativeDateGetUTCFullYear = Function.prototype.call.bind(NativeDate.prototype.getUTCFullYear);
+const nativeDateToUTCString = Function.prototype.call.bind(NativeDate.prototype.toUTCString);
+const nativeRegExpTest = Function.prototype.call.bind(RegExp.prototype.test);
+const nativeStringSlice = Function.prototype.call.bind(String.prototype.slice);
+const nativeStringSplit = Function.prototype.call.bind(String.prototype.split);
+const nativeStringStartsWith = Function.prototype.call.bind(String.prototype.startsWith);
 const COOKIE_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 const COOKIE_VALUE_PATTERN = /^[\u0021-\u003A\u003C-\u007E]*$/;
 const COOKIE_DOMAIN_LABEL_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
@@ -36,50 +48,51 @@ export type ClearCookieOptions = Omit<CookieOptions, 'expires' | 'maxAgeSeconds'
 
 function encodeCookieValue(value: string): string {
   if (typeof value !== 'string') {
-    throw new TypeError('Cookie value must be a string.');
+    throw new NativeTypeError('Cookie value must be a string.');
   }
 
   let encoded: string;
 
   try {
-    encoded = encodeURIComponent(value);
+    encoded = NativeEncodeURIComponent(value);
   } catch (error) {
-    if (error instanceof URIError) {
-      throw new TypeError('Cookie value must contain valid Unicode.', { cause: error });
-    }
-
-    throw error;
+    throw new NativeTypeError('Cookie value must contain valid Unicode.', { cause: error });
   }
 
-  if (!COOKIE_VALUE_PATTERN.test(encoded)) {
-    throw new TypeError('Cookie value could not be encoded as a valid Set-Cookie value.');
+  if (!nativeRegExpTest(COOKIE_VALUE_PATTERN, encoded)) {
+    throw new NativeTypeError('Cookie value could not be encoded as a valid Set-Cookie value.');
   }
 
   return encoded;
 }
 
 function validateCookieName(name: string): void {
-  if (typeof name !== 'string' || !COOKIE_NAME_PATTERN.test(name)) {
-    throw new TypeError('Cookie name must contain only valid cookie-name characters.');
+  if (typeof name !== 'string' || !nativeRegExpTest(COOKIE_NAME_PATTERN, name)) {
+    throw new NativeTypeError('Cookie name must contain only valid cookie-name characters.');
   }
 }
 
 function validateDomain(value: string): void {
-  const hostname = typeof value === 'string' && value.startsWith('.') ? value.slice(1) : value;
+  const hostname = typeof value === 'string' && nativeStringStartsWith(value, '.')
+    ? nativeStringSlice(value, 1)
+    : value;
 
   if (
     typeof hostname !== 'string' ||
     hostname.length === 0 ||
     hostname.length > 253 ||
-    hostname.split('.').some((label) => !COOKIE_DOMAIN_LABEL_PATTERN.test(label))
+    nativeArraySome(
+      nativeStringSplit(hostname, '.'),
+      (label: string) => !nativeRegExpTest(COOKIE_DOMAIN_LABEL_PATTERN, label),
+    )
   ) {
-    throw new TypeError('Cookie domain must be a valid ASCII domain name.');
+    throw new NativeTypeError('Cookie domain must be a valid ASCII domain name.');
   }
 }
 
 function validatePath(value: string): void {
-  if (typeof value !== 'string' || !COOKIE_PATH_VALUE_PATTERN.test(value)) {
-    throw new TypeError('Cookie path must contain only valid cookie attribute characters.');
+  if (typeof value !== 'string' || !nativeRegExpTest(COOKIE_PATH_VALUE_PATTERN, value)) {
+    throw new NativeTypeError('Cookie path must contain only valid cookie attribute characters.');
   }
 }
 
@@ -91,13 +104,13 @@ function snapshotExpiresTimestamp(expires: Date | undefined): number | undefined
   let timestamp: number;
 
   try {
-    timestamp = nativeDateGetTime.call(expires);
+    timestamp = nativeDateGetTime(expires);
   } catch {
-    throw new TypeError('Cookie expires must be a valid Date.');
+    throw new NativeTypeError('Cookie expires must be a valid Date.');
   }
 
-  if (!Number.isFinite(timestamp)) {
-    throw new TypeError('Cookie expires must be a valid Date.');
+  if (!NativeNumberIsFinite(timestamp)) {
+    throw new NativeTypeError('Cookie expires must be a valid Date.');
   }
 
   return timestamp;
@@ -105,12 +118,12 @@ function snapshotExpiresTimestamp(expires: Date | undefined): number | undefined
 
 function serializeExpires(timestamp: number): string {
   const normalizedExpires = new NativeDate(timestamp);
-  const year = nativeDateGetUTCFullYear.call(normalizedExpires);
+  const year = nativeDateGetUTCFullYear(normalizedExpires);
   if (year < 1601 || year >= 10_000) {
-    throw new TypeError('Cookie expires must use an IMF-fixdate year from 1601 through 9999.');
+    throw new NativeTypeError('Cookie expires must use an IMF-fixdate year from 1601 through 9999.');
   }
 
-  return nativeDateToUTCString.call(normalizedExpires);
+  return nativeDateToUTCString(normalizedExpires);
 }
 
 function serializeSameSite(sameSite: CookieSameSite): string {
@@ -122,7 +135,7 @@ function serializeSameSite(sameSite: CookieSameSite): string {
     case 'strict':
       return 'Strict';
     default:
-      throw new TypeError('Cookie sameSite must be "lax", "none", or "strict".');
+      throw new NativeTypeError('Cookie sameSite must be "lax", "none", or "strict".');
   }
 }
 
@@ -148,52 +161,52 @@ function serializeCookie(
   const parts = [`${name}=${encodedValue}`];
 
   if (maxAgeSeconds !== undefined) {
-    if (!Number.isSafeInteger(maxAgeSeconds) || maxAgeSeconds < 0) {
-      throw new TypeError('Cookie maxAgeSeconds must be a non-negative safe integer.');
+    if (!NativeNumberIsSafeInteger(maxAgeSeconds) || maxAgeSeconds < 0) {
+      throw new NativeTypeError('Cookie maxAgeSeconds must be a non-negative safe integer.');
     }
 
-    parts.push(`Max-Age=${String(maxAgeSeconds)}`);
+    nativeArrayPush(parts, `Max-Age=${NativeString(maxAgeSeconds)}`);
   }
 
   if (expiresTimestamp !== undefined) {
-    parts.push(`Expires=${serializeExpires(expiresTimestamp)}`);
+    nativeArrayPush(parts, `Expires=${serializeExpires(expiresTimestamp)}`);
   }
 
   if (domain !== undefined) {
     validateDomain(domain);
-    parts.push(`Domain=${domain}`);
+    nativeArrayPush(parts, `Domain=${domain}`);
   }
 
   if (path !== undefined) {
     validatePath(path);
-    parts.push(`Path=${path}`);
+    nativeArrayPush(parts, `Path=${path}`);
   }
 
   if (httpOnly !== undefined && typeof httpOnly !== 'boolean') {
-    throw new TypeError('Cookie httpOnly must be a boolean.');
+    throw new NativeTypeError('Cookie httpOnly must be a boolean.');
   }
 
   if (httpOnly === true) {
-    parts.push('HttpOnly');
+    nativeArrayPush(parts, 'HttpOnly');
   }
 
   if (secure !== undefined && typeof secure !== 'boolean') {
-    throw new TypeError('Cookie secure must be a boolean.');
+    throw new NativeTypeError('Cookie secure must be a boolean.');
   }
 
   if (secure === true) {
-    parts.push('Secure');
+    nativeArrayPush(parts, 'Secure');
   }
 
   if (sameSite !== undefined) {
     if (sameSite === 'none' && secure !== true) {
-      throw new TypeError('Cookie sameSite "none" requires secure to be true.');
+      throw new NativeTypeError('Cookie sameSite "none" requires secure to be true.');
     }
 
-    parts.push(`SameSite=${serializeSameSite(sameSite)}`);
+    nativeArrayPush(parts, `SameSite=${serializeSameSite(sameSite)}`);
   }
 
-  return parts.join('; ');
+  return nativeArrayJoin(parts, '; ');
 }
 
 /**
