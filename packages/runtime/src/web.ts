@@ -417,6 +417,7 @@ function createDeferredWebFrameworkRequest(
             maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,
           },
           signal,
+          cancelSource: false,
         });
         frameworkRequest.body = undefined;
         return;

@@ -1,6 +1,5 @@
+import { type FrameworkRequest, type FrameworkResponse, SseResponse } from '@fluojs/http';
 import { describe, expect, it } from 'vitest';
-
-import { SseResponse, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
 
 import {
   createWebFrameworkRequest,
@@ -349,6 +348,70 @@ describe('dispatchWebRequest', () => {
 
     expect(Buffer.from(rawBody ?? new Uint8Array()).toString('utf8')).toBe('{"ok":true}');
   });
+
+  it.each(['unconsumed cleanup', 'total limit', 'file limit', 'abort'] as const)(
+    'releases a native FormData producer without unhandled rejection after %s',
+    async (scenario) => {
+      const abortController = new AbortController();
+      const form = new FormData();
+      form.set('title', 'streamed');
+      form.set('payload', new Blob([new Uint8Array(1024 * 1024)]), 'payload.bin');
+      const request = new Request('https://runtime.test/uploads', {
+        body: form,
+        method: 'POST',
+        signal: abortController.signal,
+      });
+      const response = await dispatchWebRequest({
+        dispatcher: {
+          async dispatch(frameworkRequest, frameworkResponse) {
+            const multipart = frameworkRequest.multipart;
+
+            if (!multipart) {
+              throw new Error('Expected a streaming multipart request.');
+            }
+
+            if (scenario === 'unconsumed cleanup') {
+              await frameworkResponse.send({ ok: true });
+              return;
+            }
+
+            const reader = multipart.consume().getReader();
+
+            if (scenario === 'total limit') {
+              await reader.read();
+              return;
+            }
+
+            await reader.read();
+            const file = await reader.read();
+
+            if (file.done || file.value.kind !== 'file') {
+              throw new Error('Expected a streaming multipart file part.');
+            }
+
+            if (scenario === 'file limit') {
+              await new Response(file.value.stream).arrayBuffer();
+              return;
+            }
+
+            abortController.abort(new Error('client disconnected'));
+            await file.value.stream.getReader().read();
+          },
+        },
+        multipart: {
+          maxFileSize: scenario === 'file limit' ? 10 : undefined,
+          maxTotalSize: scenario === 'total limit' ? 10 : undefined,
+          mode: 'streaming',
+        },
+        request,
+      });
+
+      expect(request.body?.locked).toBe(false);
+      expect(response.status).toBe(
+        scenario === 'total limit' || scenario === 'file limit' ? 413 : 200,
+      );
+    },
+  );
 
   it('keeps the original Web request body readable after dispatch materializes JSON bodies', async () => {
     const request = new Request('https://runtime.test/raw-observability', {
