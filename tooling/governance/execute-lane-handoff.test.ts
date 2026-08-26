@@ -5,7 +5,9 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -55,6 +57,18 @@ const { acquireLease } = (await import(
     laneId: string,
   ) => Readonly<Record<string, unknown>>;
 };
+const { awaitCanonicalLaneDispatch } = (await import(
+  resolve(
+    repositoryRoot,
+    '.agents/skills/execute-lane/scripts/await-lane-dispatch.mjs',
+  )
+)) as {
+  awaitCanonicalLaneDispatch: (input: {
+    repositoryRoot: string;
+    ledgerPath: string;
+    timeoutMs?: number;
+  }) => Promise<Readonly<Record<string, unknown>>>;
+};
 
 const isRecord = (
   value: unknown,
@@ -84,7 +98,11 @@ const createProducerOutput = (): Readonly<{
   receiptPaths: readonly string[];
   stateDirectory: string;
 }> => {
-  const root = mkdtempSync(resolve(tmpdir(), 'fluo-lane-handoff-'));
+  const root = realpathSync(
+    mkdtempSync(
+      resolve(realpathSync(tmpdir()), 'fluo-lane-handoff-'),
+    ),
+  );
   temporaryRoots.push(root);
   execFileSync(
     process.execPath,
@@ -143,6 +161,33 @@ describe('$execute-lane canonical handoff boundary', () => {
 
     // Then
     expect(state['snapshot']).toEqual(parseRecord(handoff.ledgerPath));
+  });
+
+  it('rejects a symlinked runtime root before loading state', async () => {
+    const handoff = createProducerOutput();
+    const runtimeRoot = resolve(handoff.root, '.omo/lane-runs');
+    const externalRoot = realpathSync(
+      mkdtempSync(
+        resolve(
+          realpathSync(tmpdir()),
+          'fluo-lane-runtime-external-',
+        ),
+      ),
+    );
+    temporaryRoots.push(externalRoot);
+    rmSync(runtimeRoot, { recursive: true, force: true });
+    symlinkSync(externalRoot, runtimeRoot, 'dir');
+
+    await expect(
+      awaitCanonicalLaneDispatch({
+        repositoryRoot: handoff.root,
+        ledgerPath: ledgerRelativePath,
+        timeoutMs: 100,
+      }),
+    ).rejects.toThrow(/real directory/u);
+    expect(
+      existsSync(resolve(externalRoot, 'lane-4101-runtime')),
+    ).toBe(false);
   });
 
   it('rejects a valid ledger outside the canonical lane path', () => {

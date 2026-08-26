@@ -3,7 +3,10 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { awaitLaneSupervisorDispatch } from './lane-dispatch.mjs';
-import { canonicalLaneLedgerPath } from './lane-runtime-paths.mjs';
+import {
+  canonicalLaneLedgerPath,
+  canonicalLaneRuntimeRoot,
+} from './lane-runtime-paths.mjs';
 import { loadState } from './state-store.mjs';
 
 const valueAfter = (args, flag) => {
@@ -30,12 +33,10 @@ export const awaitCanonicalLaneDispatch = async ({
       'lane ledger identity does not match its canonical path.',
     );
   }
-  const stateDirectory = resolve(
+  const runtimeRoot = canonicalLaneRuntimeRoot(
     canonical.repositoryRoot,
-    '.omo',
-    'lane-runs',
-    canonical.laneId,
   );
+  const stateDirectory = resolve(runtimeRoot, canonical.laneId);
   const persisted = loadState(
     stateDirectory,
     canonical.ledgerPath,
