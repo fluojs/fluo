@@ -157,16 +157,18 @@ const app = await fluoFactory.create(AppModule, {
 ```
 
 An absent `Accept` header and `*/*` select `defaultMediaType` (or the first unique valid configured
-formatter). Formatters, `defaultMediaType`, and `@Produces(...)` accept only concrete representation
+formatter). A present blank or whitespace-only `Accept` field has no valid token and returns `406`.
+Formatters, `defaultMediaType`, and `@Produces(...)` accept only concrete representation
 media types: wildcard types/subtypes and case-insensitive duplicate parameter names are ignored. Mixed
 lists retain valid entries, an invalid-only formatter set disables negotiation, and non-empty
 `@Produces(...)` metadata without a valid configured representation returns `406`. For present headers,
 exact ranges take precedence over structured-suffix ranges such as `application/*+json`, then `type/*`,
 then `*/*`. The controlling range supplies the quality, so an exact `q=0` exclusion is not bypassed by
 a broader positive wildcard. Malformed Accept entries and invalid concrete representation media types are
-ignored; when no valid acceptable formatter remains, HTTP returns `406`. Successful framework-managed
-negotiated responses append one case-insensitively deduplicated `Accept` field to `Vary`. Native
-fast-route handoff and fallback dispatch use the same selection policy.
+ignored; when no valid acceptable formatter remains, HTTP returns `406`. Negotiation-generated `406`
+responses and successful framework-managed negotiated responses append one case-insensitively
+deduplicated `Accept` field to `Vary`. Native fast-route handoff and fallback dispatch use the same
+selection policy.
 
 ### Optional HTML Error Representations
 

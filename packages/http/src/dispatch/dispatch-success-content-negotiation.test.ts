@@ -228,6 +228,39 @@ describe('successful response content negotiation', () => {
     ['subtype wildcard', '/representations/all', 'text/*', 200, 'text/plain', 'plain'],
     ['structured suffix wildcard', '/representations/all', 'application/*+json', 200, 'application/problem+json', 'problem'],
     ['configured default without Accept', '/representations/all', undefined, 200, 'text/plain', 'plain'],
+    [
+      'rejects a blank scalar Accept field',
+      '/representations/all',
+      undefined,
+      406,
+      undefined,
+      undefined,
+      { Accept: '   ' },
+    ],
+    [
+      'rejects duplicate Accept fields whose blank arrays and malformed values contain no valid token',
+      '/representations/all',
+      undefined,
+      406,
+      undefined,
+      undefined,
+      {
+        Accept: ['', ' \t ', 'application/json;note="unterminated'],
+        ACCEPT: ['\t', 'not-a-range'],
+      },
+    ],
+    [
+      'recovers a valid later Accept field after blank array entries',
+      '/representations/all',
+      undefined,
+      200,
+      'application/json;profile=v2',
+      'json-profile',
+      {
+        Accept: ['', '  '],
+        ACCEPT: ['application/json;profile=v2;q=1'],
+      },
+    ],
     ['configured default for */*', '/representations/all', '*/*', 200, 'text/plain', 'plain'],
     ['valid entry after malformed range', '/representations/all', 'not-a-range, application/json', 200, 'application/json', 'json'],
     ['malformed quality', '/representations/all', 'application/json;q=2', 406, undefined, undefined],
@@ -474,6 +507,7 @@ describe('successful response content negotiation', () => {
         expect(response.headers.Vary).toBe('Accept');
       } else {
         expect(response.body).toMatchObject({ error: { code: 'NOT_ACCEPTABLE', status: 406 } });
+        expect(response.headers.Vary).toBe('Accept');
       }
     },
   );
@@ -531,6 +565,19 @@ describe('successful response content negotiation', () => {
   it('deduplicates Accept while preserving existing Vary fields', async () => {
     const { response } = await dispatchBoth('/representations/existing-vary', 'application/json');
 
+    expect(response.headers.Vary).toBe('Accept-Encoding, accept');
+    expect(
+      String(response.headers.Vary)
+        .split(',')
+        .filter((field) => field.trim().toLowerCase() === 'accept'),
+    ).toHaveLength(1);
+  });
+
+  it('adds deduplicated Accept to existing Vary fields for negotiation 406 responses', async () => {
+    const { response } = await dispatchBoth('/representations/existing-vary', 'image/avif');
+
+    expect(response.statusCode).toBe(406);
+    expect(response.body).toMatchObject({ error: { code: 'NOT_ACCEPTABLE', status: 406 } });
     expect(response.headers.Vary).toBe('Accept-Encoding, accept');
     expect(
       String(response.headers.Vary)

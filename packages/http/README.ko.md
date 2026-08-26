@@ -142,8 +142,9 @@ negotiation을 비활성화합니다. `@Produces(...)`가 없는 route는 config
 `@Produces(...)`가 있는 route는 valid한 exact configured media type만 사용하며, non-empty metadata에
 valid configured representation이 없으면 `406`을 반환합니다.
 
-`Accept` header가 없으면 `defaultMediaType`을 선택하고 valid한 default가 설정되지 않았으면 첫
+`Accept` header가 없을 때만 `defaultMediaType`을 선택하고 valid한 default가 설정되지 않았으면 첫
 번째 unique valid configured formatter를 선택합니다. `*/*`도 같은 default tie-break를 사용합니다.
+Present blank 또는 whitespace-only `Accept` field는 missing이 아니며 valid token이 없으므로 `406`을 반환합니다.
 Header가 있으면 representation별로 exact range, `application/*+json` 같은 structured-suffix
 wildcard, `type/*`, `*/*` 순으로 우선합니다. 가장 specific한 matching range가 `q=0`을 포함한
 해당 representation의 quality를 제어하므로 더 넓은 positive wildcard가 specific exclusion을
@@ -152,9 +153,10 @@ header order, configured default, formatter order 순으로 선택합니다.
 
 Malformed Accept media range와 quality, 그리고 invalid concrete representation media type은
 추측하거나 clamp하지 않고 무시합니다. Valid Accept token이 남지 않거나, matching representation이 모두
-`q=0`으로 제외되거나, configured formatter가 하나도 match하지 않으면 dispatcher가 canonical JSON `406`을 반환합니다. Formatter를 선택한 모든
-성공 framework-managed response는 `appendVaryHeader(...)`를 통해 `Vary`에 `Accept`를 추가하여
-기존 field, wildcard semantics, case-insensitive deduplication을 보존합니다. Formatter 선택 전에
+`q=0`으로 제외되거나, configured formatter가 하나도 match하지 않으면 dispatcher가 canonical JSON `406`을 반환합니다.
+모든 negotiation-generated `406`과 formatter를 선택한 모든 성공 framework-managed response는
+`appendVaryHeader(...)`를 통해 `Vary`에 `Accept`를 추가하여 기존 field, wildcard semantics,
+case-insensitive deduplication을 보존합니다. Formatter 선택 전에
 response ownership을 가져가는 custom response writer에는 이 variance를 추가하지 않습니다.
 Adapter-native fast route와 fallback dispatch는 같은 negotiation engine을 호출합니다.
 

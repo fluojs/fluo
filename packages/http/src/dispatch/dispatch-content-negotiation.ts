@@ -35,14 +35,16 @@ function normalizeMediaType(value: string): string {
   return value.split(';')[0]?.trim().toLowerCase() ?? '';
 }
 
-function readAcceptHeader(request: FrameworkRequest): string[] {
+function readAcceptHeader(request: FrameworkRequest): { isPresent: boolean; values: string[] } {
   const values: string[] = [];
+  let isPresent = false;
 
   for (const [name, value] of Object.entries(request.headers)) {
     if (name.toLowerCase() !== 'accept') {
       continue;
     }
 
+    isPresent = true;
     for (const entry of Array.isArray(value) ? value : [value]) {
       const normalized = entry?.trim();
       if (normalized) {
@@ -51,7 +53,7 @@ function readAcceptHeader(request: FrameworkRequest): string[] {
     }
   }
 
-  return values;
+  return { isPresent, values };
 }
 
 function parseQuality(value: string | undefined): number | undefined {
@@ -564,13 +566,13 @@ export function selectResponseFormatter(
   }
 
   const defaultFormatter = resolveDefaultFormatter(allowedFormatters, allowedNormalizedMediaTypes, contentNegotiation);
-  const acceptHeaders = readAcceptHeader(request);
+  const acceptHeader = readAcceptHeader(request);
 
-  if (acceptHeaders.length === 0) {
+  if (!acceptHeader.isPresent) {
     return defaultFormatter;
   }
 
-  const acceptTokens = parseAcceptHeader(acceptHeaders);
+  const acceptTokens = parseAcceptHeader(acceptHeader.values);
 
   if (!acceptTokens.length) {
     throw new NotAcceptableException(NO_ACCEPTABLE_REPRESENTATION_MESSAGE);

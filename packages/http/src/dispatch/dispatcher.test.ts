@@ -32,6 +32,7 @@ import {
   Head,
   Header,
   HttpCode,
+  NotAcceptableException,
   Options,
   Post,
   Produces,
@@ -1671,7 +1672,7 @@ describe('dispatcher runtime', () => {
     });
   });
 
-  it('does not leak @Header values onto 406 negotiation error responses', async () => {
+  it('does not leak non-Vary @Header values and adds Vary for 406 negotiation error responses', async () => {
     @Controller('/negotiation')
     class NegotiationController {
       @Header('X-Secret', 'sensitive')
@@ -1703,6 +1704,39 @@ describe('dispatcher runtime', () => {
 
     expect(response.statusCode).toBe(406);
     expect((response.headers as Record<string, unknown>)['X-Secret']).toBeUndefined();
+    expect(response.headers.Vary).toBe('Accept');
+  });
+
+  it('does not append Vary for application-generated 406 responses', async () => {
+    @Controller('/application-error')
+    class ApplicationErrorController {
+      @Get('/')
+      getValue() {
+        throw new NotAcceptableException('Application rejected the request.');
+      }
+    }
+
+    const root = new Container().register(ApplicationErrorController);
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        formatters: [
+          {
+            format(body) {
+              return JSON.stringify(body);
+            },
+            mediaType: 'application/json',
+          },
+        ],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: ApplicationErrorController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/application-error', 'GET', { accept: 'application/json' }), response);
+
+    expect(response.statusCode).toBe(406);
+    expect(response.headers.Vary).toBeUndefined();
   });
 
   it('falls back to default formatter for wildcard Accept header', async () => {
