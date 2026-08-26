@@ -2,7 +2,12 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import type { ResponseFormatter } from './index.js';
+import type {
+  ClearCookieOptions,
+  CookieOptions,
+  CookieSameSite,
+  ResponseFormatter,
+} from './index.js';
 import * as httpPublicApi from './index.js';
 import * as httpInternalApi from './internal.js';
 
@@ -160,7 +165,9 @@ describe('@fluojs/http public API surface', () => {
     expect(httpPublicApi).toHaveProperty('createRateLimitMiddleware');
     expect(httpPublicApi).toHaveProperty('createSecurityHeadersMiddleware');
     expect(httpPublicApi).toHaveProperty('appendVaryHeader');
+    expect(httpPublicApi).toHaveProperty('clearCookie');
     expect(httpPublicApi).toHaveProperty('getRequestHeader');
+    expect(httpPublicApi).toHaveProperty('setCookie');
     expect(httpPublicApi).not.toHaveProperty('readFirstNonEmptyRequestHeaderValue');
     expect(httpPublicApi).toHaveProperty('SseResponse');
     expect(httpPublicApi).toHaveProperty('encodeSseComment');
@@ -174,6 +181,34 @@ describe('@fluojs/http public API surface', () => {
     > = true;
 
     expect(formatterReturnTypeContract).toBe(true);
+  });
+
+  it('publishes runtime-neutral cookie option declarations', () => {
+    const sameSiteContract: AssertTrue<
+      TypeEquals<CookieSameSite, 'lax' | 'none' | 'strict'>
+    > = true;
+    const cookieOptionKeysContract: AssertTrue<
+      TypeEquals<
+        keyof CookieOptions,
+        'domain' | 'expires' | 'httpOnly' | 'maxAgeSeconds' | 'path' | 'sameSite' | 'secure'
+      >
+    > = true;
+    const clearCookieOptionKeysContract: AssertTrue<
+      TypeEquals<
+        keyof ClearCookieOptions,
+        'domain' | 'httpOnly' | 'path' | 'sameSite' | 'secure'
+      >
+    > = true;
+
+    expect({
+      clearCookieOptionKeysContract,
+      cookieOptionKeysContract,
+      sameSiteContract,
+    }).toEqual({
+      clearCookieOptionKeysContract: true,
+      cookieOptionKeysContract: true,
+      sameSiteContract: true,
+    });
   });
 
   it('does not expose internal pipeline runners or implementation classes', () => {
@@ -216,6 +251,7 @@ describe('@fluojs/http public API surface', () => {
 
     // Then
     expect(graph.sourceUrls).toContain(new URL('./context/request-context-node-store.ts', import.meta.url).href);
+    expect(graph.sourceUrls).toContain(new URL('./cookie-helpers.ts', import.meta.url).href);
     expect(graph.sourceUrls).toContain(new URL('../../core/src/index.ts', import.meta.url).href);
     expect(graph.sourceUrls).toContain(new URL('../../validation/src/index.ts', import.meta.url).href);
     expect(graph.nodeBuiltinImports).toEqual([]);

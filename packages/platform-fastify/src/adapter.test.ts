@@ -217,6 +217,10 @@ interface FastifyReplySerializerHost {
 
 describe('@fluojs/platform-fastify', () => {
   describe('adapter portability', () => {
+    it('preserves portable response cookies as ordered independent fields', async () => {
+      await fastifyPortabilityHarness.assertSupportsPortableResponseCookies();
+    });
+
     it('supports HTTP-owned JSON and HTML error representations', async () => {
       await fastifyPortabilityHarness.assertSupportsHttpErrorRepresentations();
     });

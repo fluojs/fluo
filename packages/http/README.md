@@ -133,6 +133,55 @@ export function markLanguageVariance(context: RequestContext): void {
 }
 ```
 
+### Portable Response Cookie Helpers
+
+Use `setCookie(response, name, value, options?)` and
+`clearCookie(response, name, options?)` instead of adapter-native Express,
+Fastify, Node, Bun, Deno, or Workers response APIs.
+
+```ts
+import { clearCookie, setCookie, type RequestContext } from '@fluojs/http';
+
+export function writeSession(context: RequestContext, token: string): void {
+  setCookie(context.response, 'session', token, {
+    httpOnly: true,
+    maxAgeSeconds: 3_600,
+    path: '/',
+    sameSite: 'lax',
+    secure: true,
+  });
+}
+
+export function removeSession(context: RequestContext): void {
+  clearCookie(context.response, 'session', {
+    httpOnly: true,
+    path: '/',
+    sameSite: 'lax',
+    secure: true,
+  });
+}
+```
+
+Cookie names must be valid ASCII `cookie-name` tokens and cannot contain `=`
+or `;`. String values are encoded with `encodeURIComponent`, so pass the
+original unencoded value. Invalid names, malformed Unicode values,
+non-integer `maxAgeSeconds`, invalid dates, and unsafe `Domain`/`Path`
+attribute values throw before the response header is written. Signing, secret
+rotation, and Express object-value serialization remain application concerns.
+
+`CookieOptions` supports `maxAgeSeconds`, `expires`, `domain`, `path`,
+`httpOnly`, `secure`, and `sameSite: 'lax' | 'none' | 'strict'`.
+`maxAgeSeconds` always serializes as integer seconds without adapter-specific
+unit conversion. Attributes are emitted in that order. Each set or clear call
+appends one independent `Set-Cookie` field in call order; fields are never
+comma-folded.
+
+`clearCookie(...)` writes an empty value, `Max-Age=0`, and
+`Expires=Thu, 01 Jan 1970 00:00:00 GMT`. Cookie deletion still follows browser
+matching rules, so pass the same `Path` and `Domain` used to set the cookie.
+You may repeat `HttpOnly`, `Secure`, and `SameSite` as explicit policy, but
+they do not replace the `Path`/`Domain` matching requirement.
+
 ## Common Patterns
 
 ### Guards and interceptors
@@ -323,14 +372,14 @@ Response content negotiation formatters must return `string` or `Uint8Array` fro
 - **Routing decorators**: `Controller`, `Get`, `Sse`, `Query`, `Route`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
 - **Binding decorators**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`, `Optional`, `Convert`
 - **Execution decorators**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
-- **Header helpers**: `getRequestHeader`, `appendVaryHeader`
+- **Header and cookie helpers**: `getRequestHeader`, `appendVaryHeader`, `setCookie`, `clearCookie`
 - **Request/response and context types**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
 - **Dispatcher, routing, and negotiation types**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `HttpErrorRepresentationContext`, `HtmlErrorRepresentationProvider`, `HttpErrorRepresentationOptions`, `FastPathEligibility`, `FastPathStats`
 - **Pipeline contract types**: `Middleware`, `MiddlewareLike`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardLike`, `GuardContext`, `Interceptor`, `InterceptorLike`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `RequestObserverLike`, `RequestObservationContext`, `ArgumentResolverContext`, `Binder`, `Converter`, `ConverterLike`, `ConverterTarget`, `ValidationIssue`, `Validator`
 - **Adapter API**: `HttpApplicationAdapter`, `HttpAdapterRealtimeCapability`, `ServerBackedHttpAdapterRealtimeCapability`, `FetchStyleHttpAdapterRealtimeCapability`, `HttpAdapterRealtimeBindingInstallation`, `UnsupportedHttpAdapterRealtimeCapability`, `createNoopHttpApplicationAdapter`, `createServerBackedHttpAdapterRealtimeCapability`, `createUnsupportedHttpAdapterRealtimeCapability`, `createFetchStyleHttpAdapterRealtimeCapability`
 - **Exceptions and errors**: `HttpExceptionDetail`, `HttpExceptionOptions`, `ErrorResponse`, `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `InvalidHttpMethodError`, `HandlerNotFoundError`, `RequestAbortedError`
-- **Helpers**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `getRequestHeader`, `appendVaryHeader`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
-- **Option and store types**: `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStoreEntry`, `SecurityHeadersOptions`, `SseSendOptions`
+- **Helpers**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `getRequestHeader`, `appendVaryHeader`, `setCookie`, `clearCookie`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
+- **Option and store types**: `CookieOptions`, `ClearCookieOptions`, `CookieSameSite`, `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStoreEntry`, `SecurityHeadersOptions`, `SseSendOptions`
 
 ## Internal Subpath (`@fluojs/http/internal`)
 

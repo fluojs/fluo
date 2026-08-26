@@ -811,9 +811,13 @@ class MutableFastifyFrameworkResponse implements FastifyFrameworkResponse {
     const lowerName = name.toLowerCase();
 
     if (lowerName === 'set-cookie') {
-      const merged = mergeSetCookieHeader(this.reply.getHeader(name), value);
-      this.reply.header(name, merged);
-      this.headers[name] = merged;
+      this.reply.header(name, value);
+      const updated = this.reply.getHeader(name);
+      this.headers[name] = Array.isArray(updated)
+        ? [...updated]
+        : updated === undefined
+          ? value
+          : String(updated);
       return;
     }
 
@@ -1454,22 +1458,6 @@ function waitForCloseWithTimeout(closePromise: Promise<void>, timeoutMs: number)
       },
     );
   });
-}
-
-function mergeSetCookieHeader(
-  current: string | string[] | number | undefined,
-  incoming: string | string[],
-): string | string[] {
-  const nextValues = Array.isArray(incoming) ? incoming : [incoming];
-
-  if (current === undefined || typeof current === 'number') {
-    return nextValues.length === 1 ? nextValues[0] : [...nextValues];
-  }
-
-  const currentValues = Array.isArray(current) ? current : [current];
-  const merged = [...currentValues, ...nextValues];
-
-  return merged.length === 1 ? merged[0] : merged;
 }
 
 function serializeResponseBody(

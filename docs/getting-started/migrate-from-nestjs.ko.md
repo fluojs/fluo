@@ -30,6 +30,7 @@
 | `SwaggerModule.createDocument(...)`와 `SwaggerModule.setup(...)` | `@fluojs/openapi`의 `OpenApiModule.forRoot({ title, version, sources, descriptors, documentPath, ui, uiPath, swaggerUiAssets })` | OpenAPI 도입은 명시적이다. 문서화할 모든 controller를 `sources`에 나열하거나, 미리 만든 HTTP handler mapping을 `descriptors`에 전달하거나, 둘 다 사용한다. fluo는 application module graph에서 controller를 scan하지 않는다. `documentPath`와 `uiPath`의 기본값은 `/openapi.json`과 `/docs`이며, 여러 문서를 제공할 때는 module instance마다 서로 다른 값을 지정한다. Swagger UI는 `ui: true`일 때만 제공되고 `swaggerUiAssets`로 기본 CSS와 JavaScript URL을 교체할 수 있다. 정규화된 runtime route가 충돌하면 bootstrap이 `RouteConflictError`로 실패한다. |
 | `@nestjs/graphql` resolver discovery, reflected return type, parameter decorator, `forRootAsync(...)` | `@fluojs/graphql`의 `GraphqlModule.forRoot(...)`, module provider/controller, `@Resolver`, root operation decorator, `@FieldResolver`, `@Parent`, `@Context`, `listOf(...)` | Resolver class를 compiled module의 provider 또는 controller로 등록한다. `resolvers` option은 discovery 가능한 class에 적용하는 선택적 allowlist/filter다. 이를 생략하거나 빈 list를 전달하면 등록된 decorated candidate를 모두 허용한다. fluo는 metadata에서 provider나 GraphQL output type을 추론하지 않는다. Object 결과에는 `outputType`, array에는 `outputType: listOf(ItemType)`이 필요하며 생략한 output type은 GraphQL `String`을 사용한다. Object field는 `@Resolver('TypeName')`으로 named code-first output type에 연결한다. TC39 표준 데코레이터는 parameter decorator를 지원하지 않으므로 field resolver method에 `@Parent(index?)`, `@Context(index?)`를 배치하며 기본값은 index `0`, `1`을 바인딩한다. `forRootAsync(...)`, field argument DTO binding, schema-first field-resolver attachment, `@Subscription({ topics })` 계약은 없다. 선택적 WebSocket subscription에는 server-backed Node HTTP/S adapter가 필요하다. |
 | `@Param()`, `@Query()`, `@Body()`, `@Headers()`, `@Req()`, `@Res()` 같은 controller parameter decorator와 `Pipe` / `ValidationPipe` transformation | `@fluojs/http`의 `@RequestDto(...)`와 field-level `@FromPath(...)`, `@FromQuery(...)`, `@FromBody(...)`, `@FromHeader(...)`, `@FromCookie(...)`, `@Convert(...)`; 고급 request/response 접근을 위한 `RequestContext` handler parameter | fluo는 NestJS-style controller parameter decorator나 public parameter Pipe 단계를 노출하지 않는다. 하나의 request DTO를 바인딩하고, 각 field source를 선언하며, number/boolean/date/domain conversion에는 `@Convert(...)`를 사용한 뒤 materialized DTO를 validation package로 검증한다. |
+| `@Res()`를 통해 접근하는 Express `response.cookie(...)` / `response.clearCookie(...)` 또는 Fastify `reply.setCookie(...)` / `reply.clearCookie(...)` | `@fluojs/http`의 `setCookie(context.response, ...)` / `clearCookie(context.response, ...)` | Adapter-native response 대신 `RequestContext`를 사용한다. Fastify `maxAge`는 초 단위 값을 유지하며 `maxAgeSeconds`로 이름을 바꾸고, Express `maxAge` 밀리초는 정수 초로 변환한다. Clear 시 원래 `Path`와 `Domain`을 반복해야 한다. |
 | `createApplicationContext()` 단독 부트스트랩 | `FluoFactory.createApplicationContext(AppModule)` | `@fluojs/runtime`에 standalone application context가 존재한다. |
 | `Test.createTestingModule({ imports: [...] }).overrideModule(...)` | `@fluojs/testing`의 `createTestingModule({ rootModule }).overrideModule(...)` | fluo testing은 명시적 `rootModule`과 replacement compile seam을 사용하므로 전역 module metadata를 mutate하지 않고 authored module identity를 보존한다. |
 | NestJS 요청 transaction interceptor | 영속성 패키지의 서비스 `@Transaction()` 또는 controller/request 경계의 명시적 `requestTransaction(...)` | `PrismaTransactionInterceptor`와 `MongooseTransactionInterceptor`는 기존 import를 위한 deprecated 1.x 호환성 bridge로 유지된다. 새 코드는 비즈니스 transaction을 서비스에 두고, 전체 요청이 하나의 경계를 공유해야 할 때만 명시적 `requestTransaction(...)`을 사용하며 가능한 경우 `RequestContext.request.signal`을 전달한다. Drizzle은 호환성 interceptor export를 제공하지 않는다. |
@@ -50,6 +51,55 @@
 | NestJS-style notification module, decorator-discovered channel provider, 또는 implicit queue/event integration | `@fluojs/notifications`의 `NotificationsModule.forRoot({ channels, queue?, events?, global? })` 또는 `NotificationsModule.forRootAsync({ inject, useFactory, global? })` | fluo notifications registration은 `channels`에 전달된 명시적 `NotificationChannel` 값을 사용한다. Queue adapter와 event publisher는 module-owned resource가 아니라 애플리케이션 소유 seam이며, `global: false`를 설정하지 않으면 `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS`가 기본 global로 export된다. |
 | `imports`, `useClass`, `useExisting`, package-level multi-client registry 또는 `isGlobal`을 가정하는 NestJS Slack module | `@fluojs/slack`의 `SlackModule.forRoot({ ..., global? })` 또는 `SlackModule.forRootAsync({ inject, useFactory, global? })` | fluo Slack async registration은 injected factory option만 소비한다. 필요한 의존성은 application module graph에 먼저 등록하고 token을 `inject`에 나열한 뒤, `useFactory`에서 최종 Slack option을 반환한다. 여러 client에는 app-owned module/provider 또는 facade를 조합한다. |
 | `imports`, `useClass`, `useExisting`, `isGlobal`, 또는 custom internal provider token을 가정하는 NestJS Discord module | `@fluojs/discord`의 `DiscordModule.forRoot({ ..., global? })` 또는 `DiscordModule.forRootAsync({ inject, useFactory, global? })` | fluo Discord registration은 singleton 중심이며 async setup은 injected factory만 지원한다. 이 패키지는 `global: false`가 설정되지 않으면 `DiscordService`, `DiscordChannel`, `DISCORD`, `DISCORD_CHANNEL`을 기본 global로 export하고, 내부 provider helper와 option token은 의도적으로 private으로 유지한다. |
+
+### Response cookie 마이그레이션
+
+Adapter-native cookie write를 portable free function으로 교체합니다. Express의
+`maxAge`는 밀리초이고 Fastify cookie plugin의 `maxAge`는 초입니다. fluo는
+이 단위를 이름으로 명시합니다.
+
+```typescript
+// Express source
+response.cookie('session', token, {
+  httpOnly: true,
+  maxAge: 3_600_000,
+  path: '/',
+  sameSite: 'lax',
+  secure: true,
+});
+
+// Fastify source
+reply.setCookie('session', token, {
+  httpOnly: true,
+  maxAge: 3_600,
+  path: '/',
+  sameSite: 'lax',
+  secure: true,
+});
+
+// 두 source에 공통인 fluo target
+setCookie(context.response, 'session', token, {
+  httpOnly: true,
+  maxAgeSeconds: 3_600,
+  path: '/',
+  sameSite: 'lax',
+  secure: true,
+});
+```
+
+Deletion도 같은 runtime-neutral response로 마이그레이션합니다.
+
+```typescript
+clearCookie(context.response, 'session', {
+  path: '/',
+});
+```
+
+`clearCookie(...)`는 `Max-Age=0`과 과거 `Expires` 값을 기록합니다. 원래 set
+호출에 사용한 것과 같은 `Path`와 `Domain`을 전달하지 않으면 브라우저는
+deletion field를 다른 cookie로 취급합니다. 각 set 또는 clear 호출은 Node,
+Express, Fastify, Bun, Deno, Cloudflare Workers에서 독립된 순서 보존
+`Set-Cookie` field로 유지됩니다.
 
 ## Breaking Differences
 

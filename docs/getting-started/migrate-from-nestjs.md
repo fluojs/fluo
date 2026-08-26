@@ -30,6 +30,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 | `SwaggerModule.createDocument(...)` and `SwaggerModule.setup(...)` | `OpenApiModule.forRoot({ title, version, sources, descriptors, documentPath, ui, uiPath, swaggerUiAssets })` from `@fluojs/openapi` | OpenAPI adoption is explicit: list every documented controller in `sources`, pass prebuilt HTTP handler mappings in `descriptors`, or use both. fluo does not scan the application module graph for controllers. `documentPath` and `uiPath` default to `/openapi.json` and `/docs`; assign distinct values to each module instance when serving multiple documents. Swagger UI serves only when `ui: true`, and `swaggerUiAssets` can replace the default CSS and JavaScript URLs. Normalized runtime route collisions fail bootstrap with `RouteConflictError`. |
 | `@nestjs/graphql` resolver discovery, reflected return types, parameter decorators, and `forRootAsync(...)` | `GraphqlModule.forRoot(...)`, module providers/controllers, `@Resolver`, root operation decorators, `@FieldResolver`, `@Parent`, `@Context`, and `listOf(...)` from `@fluojs/graphql` | Register resolver classes as providers or controllers in compiled modules. The `resolvers` option is an optional allowlist/filter over those discoverable classes; omitting it or passing an empty list allows every decorated registered candidate. fluo does not infer providers or GraphQL output types from metadata. Object results require `outputType`, arrays require `outputType: listOf(ItemType)`, and omitted output types use GraphQL `String`. Object fields attach to a named code-first output type through `@Resolver('TypeName')`. Because TC39 standard decorators do not support parameter decorators, place `@Parent(index?)` and `@Context(index?)` on the field resolver method; their defaults bind indexes `0` and `1`. There is no `forRootAsync(...)`, field argument DTO binding, schema-first field-resolver attachment, or `@Subscription({ topics })` contract. Optional WebSocket subscriptions require a server-backed Node HTTP/S adapter. |
 | Controller parameter decorators such as `@Param()`, `@Query()`, `@Body()`, `@Headers()`, `@Req()`, and `@Res()`, plus `Pipe` / `ValidationPipe` transformation | `@RequestDto(...)` with field-level `@FromPath(...)`, `@FromQuery(...)`, `@FromBody(...)`, `@FromHeader(...)`, `@FromCookie(...)`, and `@Convert(...)` from `@fluojs/http`; a `RequestContext` handler parameter for advanced request/response access | fluo does not expose NestJS-style controller parameter decorators or a public parameter Pipe stage. Bind one request DTO, declare each field source, use `@Convert(...)` for number/boolean/date/domain conversion, then validate the materialized DTO with the validation package. |
+| Express `response.cookie(...)` / `response.clearCookie(...)` or Fastify `reply.setCookie(...)` / `reply.clearCookie(...)` reached through `@Res()` | `setCookie(context.response, ...)` / `clearCookie(context.response, ...)` from `@fluojs/http` | Use `RequestContext` instead of an adapter-native response. Rename Fastify `maxAge` to `maxAgeSeconds` without changing its seconds value; convert Express `maxAge` milliseconds to whole seconds. Clearing must repeat the original `Path` and `Domain`. |
 | `createApplicationContext()` standalone bootstrap | `FluoFactory.createApplicationContext(AppModule)` | Standalone application context exists in `@fluojs/runtime`. |
 | `Test.createTestingModule({ imports: [...] }).overrideModule(...)` | `createTestingModule({ rootModule }).overrideModule(...)` from `@fluojs/testing` | fluo testing uses an explicit `rootModule` and replacement compile seam so tests preserve authored module identity without mutating module metadata globally. |
 | NestJS request transaction interceptor | Service `@Transaction()` from the persistence package, or explicit `requestTransaction(...)` at the controller/request boundary | `PrismaTransactionInterceptor` and `MongooseTransactionInterceptor` remain deprecated 1.x compatibility bridges for existing imports. New code should keep business transactions on services and use explicit `requestTransaction(...)` only when the entire request must share one boundary, forwarding `RequestContext.request.signal` when available. Drizzle has no compatibility interceptor export. |
@@ -50,6 +51,55 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 | NestJS-style notification modules, decorator-discovered channel providers, or implicit queue/event integrations | `NotificationsModule.forRoot({ channels, queue?, events?, global? })` or `NotificationsModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/notifications` | fluo notifications registration uses explicit `NotificationChannel` values passed in `channels`. Queue adapters and event publishers are application-owned seams, not module-owned resources, and `NotificationsService`, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS` are global by default unless `global: false` is set. |
 | NestJS Slack modules that assume `imports`, `useClass`, `useExisting`, a package-level multi-client registry, or `isGlobal` | `SlackModule.forRoot({ ..., global? })` or `SlackModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/slack` | fluo Slack async registration consumes injected factory options only. Register dependencies in the application module graph first, list their tokens in `inject`, return final Slack options from `useFactory`, and compose app-owned modules/providers or facades for multiple clients. |
 | NestJS Discord modules that assume `imports`, `useClass`, `useExisting`, `isGlobal`, or custom internal provider tokens | `DiscordModule.forRoot({ ..., global? })` or `DiscordModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/discord` | fluo Discord registration is singleton-oriented and injected-factory-only for async setup. The package exports `DiscordService`, `DiscordChannel`, `DISCORD`, and `DISCORD_CHANNEL` globally by default unless `global: false` is set; internal provider helpers and option tokens are intentionally private. |
+
+### Response cookie migration
+
+Replace adapter-native cookie writes with the portable free functions. Express
+uses milliseconds for `maxAge`, while Fastify cookie plugins use seconds; fluo
+names the unit explicitly:
+
+```typescript
+// Express source
+response.cookie('session', token, {
+  httpOnly: true,
+  maxAge: 3_600_000,
+  path: '/',
+  sameSite: 'lax',
+  secure: true,
+});
+
+// Fastify source
+reply.setCookie('session', token, {
+  httpOnly: true,
+  maxAge: 3_600,
+  path: '/',
+  sameSite: 'lax',
+  secure: true,
+});
+
+// fluo target for either source
+setCookie(context.response, 'session', token, {
+  httpOnly: true,
+  maxAgeSeconds: 3_600,
+  path: '/',
+  sameSite: 'lax',
+  secure: true,
+});
+```
+
+Migrate deletion through the same runtime-neutral response:
+
+```typescript
+clearCookie(context.response, 'session', {
+  path: '/',
+});
+```
+
+`clearCookie(...)` writes `Max-Age=0` and a past `Expires` value. Pass the same
+`Path` and `Domain` used by the original set call or the browser will treat the
+deletion field as a different cookie. Each set or clear call remains an
+independent ordered `Set-Cookie` field across Node, Express, Fastify, Bun,
+Deno, and Cloudflare Workers.
 
 ## Breaking Differences
 

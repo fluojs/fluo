@@ -70,6 +70,7 @@ interface PortabilityAssertions {
   assertReportsConfiguredHostInStartupLogs(): Promise<void>;
   assertReportsHttpsStartupUrl(https: { cert: string; key: string }): Promise<void>;
   assertSettlesStreamDrainWaitOnClose(): Promise<void>;
+  assertSupportsPortableResponseCookies(): Promise<void>;
   assertSupportsHttpErrorRepresentations(): Promise<void>;
   assertSupportsCustomHttpRouteMethods(): Promise<void>;
   assertSupportsSseStreaming(): Promise<void>;
@@ -163,6 +164,10 @@ function registerPortabilitySuite(
   options: { exactByteCoverage?: boolean; streamDrainCloseEdge?: boolean } = {},
 ): void {
   describe(`${name} adapter portability`, () => {
+    it('preserves portable response cookies as ordered independent fields', async () => {
+      await harness.assertSupportsPortableResponseCookies();
+    });
+
     it('executes QUERY and extension methods through the real listener fallback', async () => {
       await harness.assertSupportsCustomHttpRouteMethods();
     });

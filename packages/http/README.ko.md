@@ -131,6 +131,57 @@ export function markLanguageVariance(context: RequestContext): void {
 }
 ```
 
+### 이식 가능한 응답 cookie helper
+
+Adapter-native Express, Fastify, Node, Bun, Deno, Workers response API 대신
+`setCookie(response, name, value, options?)`와
+`clearCookie(response, name, options?)`를 사용하세요.
+
+```ts
+import { clearCookie, setCookie, type RequestContext } from '@fluojs/http';
+
+export function writeSession(context: RequestContext, token: string): void {
+  setCookie(context.response, 'session', token, {
+    httpOnly: true,
+    maxAgeSeconds: 3_600,
+    path: '/',
+    sameSite: 'lax',
+    secure: true,
+  });
+}
+
+export function removeSession(context: RequestContext): void {
+  clearCookie(context.response, 'session', {
+    httpOnly: true,
+    path: '/',
+    sameSite: 'lax',
+    secure: true,
+  });
+}
+```
+
+Cookie 이름은 유효한 ASCII cookie-name 범위를 사용해야 하며 `=` 또는
+`;`를 포함할 수 없습니다. String value는 `encodeURIComponent`로
+encoding되므로 미리 encoding하지 않은 원래 값을 전달하세요. 잘못된 이름,
+유효하지 않은 Unicode value, 정수가 아닌 `maxAgeSeconds`, 유효하지 않은
+날짜, 안전하지 않은 `Domain`/`Path` attribute value는 response header를
+쓰기 전에 오류를 발생시킵니다. Signing, secret rotation, Express object
+value serialization은 애플리케이션이 담당합니다.
+
+`CookieOptions`는 `maxAgeSeconds`, `expires`, `domain`, `path`,
+`httpOnly`, `secure`, `sameSite: 'lax' | 'none' | 'strict'`를
+지원합니다. `maxAgeSeconds`는 adapter별 unit conversion 없이 항상 정수
+초로 직렬화됩니다. Attribute도 이 순서로 출력됩니다. Set 또는 clear 호출은
+각각 독립된 `Set-Cookie` field 하나를 append하고 호출 순서를 보존하며 comma
+folding하지 않습니다.
+
+`clearCookie(...)`는 빈 value, `Max-Age=0`,
+`Expires=Thu, 01 Jan 1970 00:00:00 GMT`를 기록합니다. Cookie 삭제에도
+브라우저의 matching rule이 적용되므로 설정할 때 사용한 것과 같은 `Path`와
+`Domain`을 전달해야 합니다. 명시적 정책을 위해 `HttpOnly`, `Secure`,
+`SameSite`도 반복할 수 있지만 이들은 `Path`/`Domain` 일치 요구사항을
+대체하지 않습니다.
+
 ## 주요 패턴
 
 ### 가드와 인터셉터
@@ -317,13 +368,14 @@ Multipart upload를 parse하는 어댑터는 shared HTTP contract를 adapter-spe
 - **라우팅 데코레이터**: `Controller`, `Get`, `Sse`, `Query`, `Route`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
 - **바인딩 데코레이터**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `RequestDto`, `Optional`, `Convert`
 - **실행 데코레이터**: `UseGuards`, `UseInterceptors`, `HttpCode`, `Version`, `Header`, `Redirect`, `Produces`
+- **헤더 및 cookie helper**: `getRequestHeader`, `appendVaryHeader`, `setCookie`, `clearCookie`
 - **요청/응답 및 컨텍스트 타입**: `RequestContext`, `Principal`, `ContextKey`, `ControllerHandler`, `FrameworkRequest`, `FrameworkRequestFile`, `FrameworkResponse`, `FrameworkResponseStream`, `FrameworkResponseCompression`, `FrameworkResponseCompressionWriteOptions`, `SseResponse`, `SseMessage`
 - **디스패처, 라우팅, 협상 타입**: `Dispatcher`, `CreateDispatcherOptions`, `ErrorHandler`, `DispatcherLogger`, `HandlerMapping`, `HandlerMetadata`, `HandlerDescriptor`, `HandlerMatch`, `HandlerSource`, `RouteDefinition`, `HttpMethod`, `VersioningType`, `VersioningOptions`, `VersioningExtractor`, `VersioningExtractorResult`, `ContentNegotiationOptions`, `ResponseFormatter`, `HttpErrorRepresentationContext`, `HtmlErrorRepresentationProvider`, `HttpErrorRepresentationOptions`, `FastPathEligibility`, `FastPathStats`
 - **파이프라인 계약 타입**: `Middleware`, `MiddlewareLike`, `MiddlewareContext`, `MiddlewareRouteConfig`, `Next`, `Guard`, `GuardLike`, `GuardContext`, `Interceptor`, `InterceptorLike`, `InterceptorContext`, `CallHandler`, `RequestObserver`, `RequestObserverLike`, `RequestObservationContext`, `ArgumentResolverContext`, `Binder`, `Converter`, `ConverterLike`, `ConverterTarget`, `ValidationIssue`, `Validator`
 - **Adapter API**: `HttpApplicationAdapter`, `HttpAdapterRealtimeCapability`, `ServerBackedHttpAdapterRealtimeCapability`, `FetchStyleHttpAdapterRealtimeCapability`, `HttpAdapterRealtimeBindingInstallation`, `UnsupportedHttpAdapterRealtimeCapability`, `createNoopHttpApplicationAdapter`, `createServerBackedHttpAdapterRealtimeCapability`, `createUnsupportedHttpAdapterRealtimeCapability`, `createFetchStyleHttpAdapterRealtimeCapability`
 - **예외와 오류**: `HttpExceptionDetail`, `HttpExceptionOptions`, `ErrorResponse`, `HttpException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, `NotAcceptableException`, `TooManyRequestsException`, `InternalServerErrorException`, `PayloadTooLargeException`, `createErrorResponse`, `RouteConflictError`, `InvalidRoutePathError`, `InvalidHttpMethodError`, `HandlerNotFoundError`, `RequestAbortedError`
-- **헬퍼**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `getRequestHeader`, `appendVaryHeader`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
-- **Option 및 store type**: `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStoreEntry`, `SecurityHeadersOptions`, `SseSendOptions`
+- **헬퍼**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `getRequestHeader`, `appendVaryHeader`, `setCookie`, `clearCookie`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
+- **Option 및 store type**: `CookieOptions`, `ClearCookieOptions`, `CookieSameSite`, `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStoreEntry`, `SecurityHeadersOptions`, `SseSendOptions`
 
 ## 내부 서브경로 (`@fluojs/http/internal`)
 

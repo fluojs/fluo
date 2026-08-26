@@ -2559,6 +2559,37 @@ export function enforceHttpCustomMethodContract() {
   );
 }
 
+export function enforceResponseCookiePortabilityContract() {
+  const cookieHelpers = read('packages/http/src/cookie-helpers.ts');
+  const portableEntrypoint = read('packages/http/src/index.portable.ts');
+  const networkHarness = read('packages/testing/src/portability/http-adapter-portability.ts');
+  const webHarness = read('packages/testing/src/portability/web-runtime-adapter-portability.ts');
+  const networkHarnessRegression = read('packages/testing/src/portability/http-adapter-portability.test.ts');
+  const webHarnessRegression = read('packages/testing/src/portability/web-runtime-adapter-portability.test.ts');
+  const fastifyAdapter = read('packages/platform-fastify/src/adapter.ts');
+
+  assert(
+    portableEntrypoint.includes("export * from './cookie-helpers.js';") &&
+      cookieHelpers.includes('export function setCookie') &&
+      cookieHelpers.includes('export function clearCookie') &&
+      cookieHelpers.includes('encodeURIComponent') &&
+      cookieHelpers.includes('Max-Age=0'),
+    'HTTP must expose validated portable setCookie and clearCookie helpers with explicit deletion semantics.',
+  );
+  assert(
+    networkHarness.includes('assertSupportsPortableResponseCookies') &&
+      webHarness.includes('assertSupportsPortableResponseCookies') &&
+      networkHarnessRegression.includes('assertSupportsPortableResponseCookies') &&
+      webHarnessRegression.includes('assertSupportsPortableResponseCookies'),
+    'Network and fetch-style portability harnesses must execute response-cookie conformance.',
+  );
+  assert(
+    fastifyAdapter.includes('this.reply.header(name, value)') &&
+      fastifyAdapter.includes('this.reply.getHeader(name)'),
+    'Fastify must retain repeated Set-Cookie fields through its native response API.',
+  );
+}
+
 export function enforceOpenApiNullableNormalizationContract() {
   const documentationPaths = [
     'apps/docs/content/docs/guides/http-api.mdx',
@@ -2755,6 +2786,7 @@ export function main() {
   enforceReactServerFunctionContract();
   enforceHttpRuntimeCancellationAndContextIsolation();
   enforceHttpCustomMethodContract();
+  enforceResponseCookiePortabilityContract();
   enforceHttpCatchAllRouteGrammarDecision();
   enforceOpenApiNullableNormalizationContract();
   enforceGraphqlRuntimeBoundaryDiscoverability();

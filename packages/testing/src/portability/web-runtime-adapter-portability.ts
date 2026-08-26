@@ -5,6 +5,10 @@ import {
   assertWebHttpErrorRepresentationPortability,
   type WebHttpErrorRepresentationBootstrapOptions,
 } from './error-representation-portability.js';
+import {
+  assertPortableResponseCookies,
+  createResponseCookiePortabilityModule,
+} from './response-cookie-portability.js';
 
 export type { WebHttpErrorRepresentationBootstrapOptions } from './error-representation-portability.js';
 
@@ -102,6 +106,23 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
       bootstrap: this.options.bootstrap,
       createBootstrapOptions,
       name: this.options.name,
+    });
+  }
+
+  /** Verifies ordered non-folded response cookies and whole-second max-age semantics. */
+  async assertSupportsPortableResponseCookies(): Promise<void> {
+    const app = await this.options.bootstrap(
+      createResponseCookiePortabilityModule(),
+      {
+        cors: false,
+      } as TBootstrapOptions,
+    );
+
+    await runWithCleanup(app, this.options.name, async () => {
+      assertPortableResponseCookies(
+        await app.dispatch(new Request('https://runtime.test/response-cookies')),
+        this.options.name,
+      );
     });
   }
 

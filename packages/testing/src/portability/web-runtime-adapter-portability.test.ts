@@ -283,10 +283,15 @@ function registerWebRuntimePortabilitySuite(
     assertPreservesQueryArraysAndDecoding(): Promise<void>;
     assertPreservesMalformedCookieValues(): Promise<void>;
     assertPreservesRawBodyForJsonAndText(): Promise<void>;
+    assertSupportsPortableResponseCookies(): Promise<void>;
     assertSupportsSseStreaming(): Promise<void>;
   },
 ): void {
   describe(`${name} web runtime adapter portability`, () => {
+    it('preserves portable response cookies as ordered independent fields', async () => {
+      await harness.assertSupportsPortableResponseCookies();
+    });
+
     it('executes QUERY and extension methods through fetch dispatch', async () => {
       await harness.assertSupportsCustomHttpRouteMethods();
     });
