@@ -315,7 +315,10 @@ describe('@fluojs/platform-express', () => {
       await expressPortabilityHarness.assertPreservesMalformedCookieValues();
     });
 
-    it('appends cookies after a caller option getter poisons header normalization hooks', async () => {
+    it.each([
+      ['lower-to-canonical', 'set-cookie', 'Set-Cookie'],
+      ['canonical-to-lower', 'Set-Cookie', 'set-cookie'],
+    ])('appends cookies from %s casing after a caller option getter poisons header normalization hooks', async (_direction, firstHeaderName, finalHeaderName) => {
       const originalToLowerCase = Object.getOwnPropertyDescriptor(String.prototype, 'toLowerCase');
       const originalArrayIsArray = Object.getOwnPropertyDescriptor(Array, 'isArray');
       const originalArrayFind = Object.getOwnPropertyDescriptor(Array.prototype, 'find');
@@ -353,7 +356,7 @@ describe('@fluojs/platform-express', () => {
       class CookieController {
         @Get('/')
         write(_input: undefined, context: RequestContext) {
-          context.response.setHeader('set-cookie', 'first=one');
+          context.response.setHeader(firstHeaderName, 'first=one');
           setCookie(context.response, 'second', 'two', Object.defineProperty({}, 'expires', {
             get() {
               Object.defineProperty(String.prototype, 'toLowerCase', poisonedToLowerCaseDescriptor);
@@ -372,8 +375,8 @@ describe('@fluojs/platform-express', () => {
               return undefined;
             },
           }));
-          context.response.setHeader('set-cookie', 'third=three');
-          frameworkCookieHeaders = context.response.headers['set-cookie'];
+          context.response.setHeader(finalHeaderName, 'third=three');
+          frameworkCookieHeaders = context.response.headers[firstHeaderName];
           frameworkHeaders = context.response.headers;
 
           return { ok: true };

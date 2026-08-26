@@ -1,9 +1,7 @@
-import type { ServerResponse } from 'node:http';
 import { EventEmitter } from 'node:events';
-
-import { describe, expect, it, vi } from 'vitest';
-
+import type { ServerResponse } from 'node:http';
 import { setCookie } from '@fluojs/http';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createFrameworkResponse } from './node-response.js';
 

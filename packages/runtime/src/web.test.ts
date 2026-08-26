@@ -1,6 +1,5 @@
+import { type FrameworkRequest, type FrameworkResponse, SseResponse, setCookie } from '@fluojs/http';
 import { describe, expect, it } from 'vitest';
-
-import { setCookie, SseResponse, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
 
 import {
   createWebFrameworkRequest,

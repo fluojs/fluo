@@ -1,7 +1,7 @@
 import type {
+  Server as HttpServer,
   IncomingHttpHeaders,
   IncomingMessage,
-  Server as HttpServer,
 } from 'node:http';
 import { createServer as createHttpServer } from 'node:http';
 import {
@@ -72,8 +72,8 @@ import express, {
   type ErrorRequestHandler,
   type Express,
   type Request as ExpressRequest,
-  type RequestHandler,
   type Response as ExpressResponse,
+  type RequestHandler,
 } from 'express';
 
 /**
