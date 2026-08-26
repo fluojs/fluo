@@ -38,6 +38,35 @@ describe('parseMultipart', () => {
     }
   });
 
+  it('does not reconstruct a Web Request while parsing buffered multipart bytes', async () => {
+    const OriginalRequest = Request;
+    const form = new FormData();
+    form.append('name', 'Ada');
+    const request = new OriginalRequest('http://localhost/uploads', {
+      body: form,
+      method: 'POST',
+    });
+
+    const RequestWithoutReconstruction = (): never => {
+      throw new TypeError('Buffered Web multipart parsing must not construct a second Request.');
+    };
+    Object.defineProperty(RequestWithoutReconstruction, Symbol.hasInstance, {
+      value(value: unknown): boolean {
+        return value instanceof OriginalRequest;
+      },
+    });
+    vi.stubGlobal('Request', RequestWithoutReconstruction);
+
+    try {
+      await expect(parseMultipart(request)).resolves.toEqual({
+        fields: { name: 'Ada' },
+        files: [],
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('parses fields and uploaded files from a web Request', async () => {
     const form = new FormData();
     form.append('name', 'Ada');

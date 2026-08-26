@@ -116,13 +116,8 @@ export async function parseMultipart(
 
   const bufferedBody = await readStreamBytes(webRequest.body, maxTotalSize);
 
-  const parserRequest = new Request(webRequest.url, {
-    body: bufferedBody,
-    headers: new Headers(webRequest.headers),
-    method: webRequest.method,
-  });
   const multipart = createStreamingMultipart({
-    body: parserRequest.body!,
+    body: createReadableStreamFromBytes(bufferedBody),
     contentType,
     options: {
       ...options,
@@ -255,6 +250,22 @@ function createReadableStreamFromAsyncIterable(source: AsyncIterable<Uint8Array>
       }
 
       controller.enqueue(value);
+    },
+  }, { highWaterMark: 0 });
+}
+
+function createReadableStreamFromBytes(bytes: Uint8Array): ReadableStream<Uint8Array> {
+  let sent = false;
+
+  return new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (sent) {
+        controller.close();
+        return;
+      }
+
+      sent = true;
+      controller.enqueue(bytes);
     },
   }, { highWaterMark: 0 });
 }
