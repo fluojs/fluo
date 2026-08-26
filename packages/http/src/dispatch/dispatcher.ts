@@ -735,23 +735,23 @@ async function dispatchMatchedHandler(
     return;
   }
 
-  if (await tryHandleConditionalRequestBeforeHandler(
+  const invokeHandler = async (): Promise<unknown> => invokeControllerHandler(
     handler,
     requestContext,
-    conditionalRequests,
-  )) {
-    return;
-  }
-
+    binder,
+    controllerContainer,
+    async () => handler.route.redirect === undefined
+      && tryHandleConditionalRequestBeforeHandler(handler, requestContext, conditionalRequests),
+  );
   const result = executionPlan.mergedInterceptors.length === 0
-    ? await invokeControllerHandler(handler, requestContext, binder, controllerContainer)
+    ? await invokeHandler()
     : await runInterceptorChain(
         executionPlan.mergedInterceptors,
         {
           handler,
           requestContext,
         },
-        async () => invokeControllerHandler(handler, requestContext, binder, controllerContainer),
+        invokeHandler,
       );
 
   ensureRequestNotAborted(requestContext.request);

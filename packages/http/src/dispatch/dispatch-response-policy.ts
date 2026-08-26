@@ -146,17 +146,27 @@ function applySuccessResponseMetadata(context: SuccessResponseMetadataContext): 
   }
 }
 
-function applyImplicitHeadContentType(response: FrameworkResponse, value: unknown): void {
-  if (readHeader(response.headers, 'content-type') !== undefined || value === undefined) {
+function applyImplicitHeadMetadata(response: FrameworkResponse, value: unknown): void {
+  if (value === undefined) {
     return;
   }
 
-  if (value instanceof Uint8Array || value instanceof ArrayBuffer) {
-    response.setHeader('Content-Type', BINARY_CONTENT_TYPE);
-    return;
+  if (readHeader(response.headers, 'content-type') === undefined) {
+    if (value instanceof Uint8Array || value instanceof ArrayBuffer) {
+      response.setHeader('Content-Type', BINARY_CONTENT_TYPE);
+    } else {
+      response.setHeader('Content-Type', typeof value === 'string' ? TEXT_CONTENT_TYPE : JSON_CONTENT_TYPE);
+    }
   }
 
-  response.setHeader('Content-Type', typeof value === 'string' ? TEXT_CONTENT_TYPE : JSON_CONTENT_TYPE);
+  if (readHeader(response.headers, 'content-length') === undefined) {
+    const byteLength = value instanceof Uint8Array
+      ? value.byteLength
+      : value instanceof ArrayBuffer
+        ? value.byteLength
+        : new TextEncoder().encode(typeof value === 'string' ? value : JSON.stringify(value)).byteLength;
+    response.setHeader('Content-Length', String(byteLength));
+  }
 }
 
 /**
@@ -237,7 +247,7 @@ export async function writeSuccessResponse(
   }
 
   if (request.method.toUpperCase() === 'HEAD') {
-    applyImplicitHeadContentType(response, responseValue);
+    applyImplicitHeadMetadata(response, responseBody);
     await response.send(undefined);
     return;
   }

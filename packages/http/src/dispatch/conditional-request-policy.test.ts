@@ -1,5 +1,6 @@
 import { Container } from '@fluojs/di';
-import { describe, expect, it } from 'vitest';
+import { MinLength } from '@fluojs/validation';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   Controller,
@@ -7,10 +8,15 @@ import {
   createHandlerMapping,
   type FrameworkRequest,
   type FrameworkResponse,
+  FromBody,
   Get,
   Head,
+  HttpCode,
   Put,
+  Redirect,
+  RequestDto,
 } from '../index.js';
+import { parseEntityTagList } from './entity-tag.js';
 
 type TestResponse = FrameworkResponse & {
   body?: unknown;
@@ -109,6 +115,55 @@ describe('dispatcher conditional request policy', () => {
     expect(conditionalResponse.statusCode).toBe(304);
     expect(conditionalResponse.body).toBeUndefined();
     expect(readHeader(conditionalResponse, 'etag')).toBe(etag);
+  });
+
+  it('binds and validates a DTO before resolving unsafe preconditions', async () => {
+    let preconditionChecks = 0;
+    let writes = 0;
+
+    class UpdateDocumentRequest {
+      @FromBody('title')
+      @MinLength(1)
+      title!: string;
+    }
+
+    @Controller('/documents')
+    class DocumentsController {
+      @Put('/:id')
+      @RequestDto(UpdateDocumentRequest)
+      update() {
+        writes += 1;
+        return { updated: true };
+      }
+    }
+
+    const root = new Container().register(DocumentsController);
+    const dispatcher = createDispatcher({
+      conditionalRequests: {
+        resolve() {
+          preconditionChecks += 1;
+          return { etag: '"revision-3"' };
+        },
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: DocumentsController }]),
+      rootContainer: root,
+    });
+    const invalidResponse = createResponse();
+    const conditionalResponse = createResponse();
+
+    await dispatcher.dispatch({
+      ...createRequest('PUT', { 'if-match': '"revision-3"' }),
+      body: { title: '' },
+    }, invalidResponse);
+    await dispatcher.dispatch({
+      ...createRequest('PUT', { 'if-match': '"another-revision"' }),
+      body: { title: 'updated' },
+    }, conditionalResponse);
+
+    expect(invalidResponse.statusCode).toBe(400);
+    expect(preconditionChecks).toBe(1);
+    expect(conditionalResponse.statusCode).toBe(412);
+    expect(writes).toBe(0);
   });
 
   it('requires strong comparison for If-Match before an unsafe handler runs', async () => {
@@ -332,6 +387,193 @@ describe('dispatcher conditional request policy', () => {
     expect(readHeader(notModifiedResponse, 'cache-control')).toBe('private, max-age=0');
     expect(readHeader(notModifiedResponse, 'vary')).toBe('Accept-Encoding');
     expect(calls).toBe(0);
+  });
+
+  it('ignores malformed and future If-Modified-Since dates', async () => {
+    let calls = 0;
+
+    @Controller('/documents')
+    class DocumentsController {
+      @Get('/:id')
+      read() {
+        calls += 1;
+        return { id: '1' };
+      }
+    }
+
+    const root = new Container().register(DocumentsController);
+    const dispatcher = createDispatcher({
+      conditionalRequests: {
+        resolve() {
+          return { lastModified: 'Tue, 25 Aug 2026 10:15:30 GMT' };
+        },
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: DocumentsController }]),
+      rootContainer: root,
+    });
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('Wed, 26 Aug 2026 10:15:30 GMT'));
+
+    try {
+      for (const ifModifiedSince of [
+        '2026-08-26T10:15:30Z',
+        '1787652930000',
+        'Thu, 27 Aug 2026 10:15:30 GMT',
+      ]) {
+        const response = createResponse();
+        await dispatcher.dispatch(createRequest('GET', { 'if-modified-since': ifModifiedSince }), response);
+        expect(response.statusCode).toBe(200);
+      }
+    } finally {
+      now.mockRestore();
+    }
+
+    expect(calls).toBe(3);
+  });
+
+  it('accepts all HTTP-date grammars as GMT while rejecting malformed values', async () => {
+    let calls = 0;
+
+    @Controller('/documents')
+    class DocumentsController {
+      @Get('/:id')
+      read() {
+        calls += 1;
+        return { id: '1' };
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      conditionalRequests: {
+        resolve() {
+          return { lastModified: 'Tue, 25 Aug 2026 10:15:30 GMT' };
+        },
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: DocumentsController }]),
+      rootContainer: new Container().register(DocumentsController),
+    });
+
+    for (const ifModifiedSince of [
+      'Tue, 25 Aug 2026 10:15:30 GMT',
+      'Tuesday, 25-Aug-26 10:15:30 GMT',
+      'Tue Aug 25 10:15:30 2026',
+    ]) {
+      const response = createResponse();
+      await dispatcher.dispatch(createRequest('GET', { 'if-modified-since': ifModifiedSince }), response);
+      expect(response.statusCode).toBe(304);
+    }
+
+    for (const ifModifiedSince of ['0', '2026-08-26T10:15:30Z', 'Tue, 32 Aug 2026 10:15:30 GMT']) {
+      const response = createResponse();
+      await dispatcher.dispatch(createRequest('GET', { 'if-modified-since': ifModifiedSince }), response);
+      expect(response.statusCode).toBe(200);
+    }
+
+    expect(calls).toBe(3);
+  });
+
+  it('skips conditional evaluation for redirects and ineligible successful statuses', async () => {
+    let preconditionChecks = 0;
+
+    @Controller('/documents')
+    class DocumentsController {
+      @Get('/redirect')
+      @Redirect('/documents/1', 302)
+      redirect() {
+        return undefined;
+      }
+
+      @Get('/accepted')
+      @HttpCode(202)
+      accepted() {
+        return { accepted: true };
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      conditionalRequests: {
+        resolve() {
+          preconditionChecks += 1;
+          return { etag: '"revision-3"', lastModified: 'Tue, 25 Aug 2026 10:15:30 GMT' };
+        },
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: DocumentsController }]),
+      rootContainer: new Container().register(DocumentsController),
+    });
+    const redirectResponse = createResponse();
+    const acceptedResponse = createResponse();
+
+    await dispatcher.dispatch({ ...createRequest('GET', { 'if-none-match': '"revision-3"' }), path: '/documents/redirect', url: '/documents/redirect' }, redirectResponse);
+    await dispatcher.dispatch({ ...createRequest('GET', { 'if-modified-since': 'Tue, 25 Aug 2026 10:15:30 GMT' }), path: '/documents/accepted', url: '/documents/accepted' }, acceptedResponse);
+
+    expect(redirectResponse.statusCode).toBe(302);
+    expect(acceptedResponse.statusCode).toBe(202);
+    expect(preconditionChecks).toBe(1);
+  });
+
+  it('uses the latest case-variant validator header for unsafe preconditions', async () => {
+    let writes = 0;
+
+    @Controller('/documents')
+    class DocumentsController {
+      @Put('/:id')
+      update() {
+        writes += 1;
+        return { updated: true };
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      conditionalRequests: {
+        resolve({ requestContext }) {
+          requestContext.response.headers.ETag = '"stale"';
+          requestContext.response.headers.eTAG = '"current"';
+          return {};
+        },
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: DocumentsController }]),
+      rootContainer: new Container().register(DocumentsController),
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('PUT', { 'if-match': '"stale"' }), response);
+
+    expect(response.statusCode).toBe(412);
+    expect(writes).toBe(0);
+  });
+
+  it('skips empty entity-tag list members but rejects malformed nonempty tags', async () => {
+    expect(parseEntityTagList(', W/"one",, "two",')).toEqual({
+      kind: 'tags',
+      tags: [
+        { opaqueTag: 'one', weak: true },
+        { opaqueTag: 'two', weak: false },
+      ],
+    });
+    expect(parseEntityTagList('"one", invalid, "two"')).toBeUndefined();
+
+    @Controller('/documents')
+    class DocumentsController {
+      @Get('/:id')
+      read() {
+        return { id: '1' };
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      conditionalRequests: {
+        resolve() {
+          return { etag: '"v3"' };
+        },
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: DocumentsController }]),
+      rootContainer: new Container().register(DocumentsController),
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('GET', { 'if-none-match': ', "v3"' }), response);
+
+    expect(response.statusCode).toBe(304);
+    expect(response.body).toBeUndefined();
   });
 
   it('keeps HEAD metadata identical to GET while suppressing its body', async () => {

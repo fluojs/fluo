@@ -64,6 +64,13 @@ async function assertHeadRepresentationParity(
       `${name} changed ${pair.scenario} HEAD content type parity: GET=${String(contentType)}, HEAD=${String(headContentType)}.`,
     );
   }
+  const contentLength = pair.response.headers.get('content-length');
+  const headContentLength = pair.headResponse.headers.get('content-length');
+  if (contentLength !== null && headContentLength !== contentLength) {
+    throw new Error(
+      `${name} changed ${pair.scenario} HEAD content length parity: GET=${String(contentLength)}, HEAD=${String(headContentLength)}.`,
+    );
+  }
   if (await pair.response.arrayBuffer().then((body) => body.byteLength) === 0 || await pair.headResponse.text() !== '') {
     throw new Error(`${name} changed ${pair.scenario} GET body or HEAD body suppression semantics.`);
   }
@@ -178,6 +185,7 @@ export function createRepresentationFixture(): ModuleType {
     }
 
     @Head('/success-head')
+    @Header('Content-Length', '11')
     @Header('x-head-contract', 'preserved')
     @HttpCode(202)
     successHead() {
@@ -185,6 +193,7 @@ export function createRepresentationFixture(): ModuleType {
     }
 
     @Get('/success-head')
+    @Header('Content-Length', '11')
     @HttpCode(202)
     success() {
       return { ok: true };

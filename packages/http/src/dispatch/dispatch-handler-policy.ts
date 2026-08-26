@@ -16,6 +16,7 @@ const defaultValidator = new HttpDtoValidationAdapter();
  * @param requestContext The request context.
  * @param binder The binder.
  * @param controllerContainer Container used for resolving the controller instance before handler invocation.
+ * @param beforeHandler Callback run after DTO binding and validation but immediately before handler invocation; return `true` after committing a response to skip invocation.
  * @returns The invoke controller handler result.
  */
 export async function invokeControllerHandler(
@@ -23,6 +24,7 @@ export async function invokeControllerHandler(
   requestContext: RequestContext,
   binder: Binder = defaultBinder,
   controllerContainer: RequestScopeContainer = requestContext.container,
+  beforeHandler?: () => Promise<boolean>,
 ): Promise<unknown> {
   const controller = await controllerContainer.resolve(handler.controllerToken as Token<object>);
   const method = (controller as Record<string, unknown>)[handler.methodName];
@@ -44,6 +46,10 @@ export async function invokeControllerHandler(
 
   if (requestDto && getCompiledDtoBindingPlan(requestDto).needsValidation) {
     await defaultValidator.validate(input, requestDto);
+  }
+
+  if (await beforeHandler?.()) {
+    return undefined;
   }
 
   return method.call(controller, input, requestContext);

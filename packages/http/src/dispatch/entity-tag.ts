@@ -1,15 +1,23 @@
 const ENTITY_TAG_PATTERN = /^(W\/)?"([\u0021\u0023-\u007e\u0080-\u00ff]*)"$/;
 const TEXT_ENCODER = new TextEncoder();
 
+/** Parsed entity-tag value and its comparison strength. */
 export interface ParsedEntityTag {
   readonly opaqueTag: string;
   readonly weak: boolean;
 }
 
+/** Parsed wildcard or concrete entity-tag list from a conditional request header. */
 export type ParsedEntityTagList =
   | { readonly kind: 'any' }
   | { readonly kind: 'tags'; readonly tags: readonly ParsedEntityTag[] };
 
+/**
+ * Parse one entity tag in HTTP quoted-string syntax.
+ *
+ * @param value Header value to parse.
+ * @returns The parsed tag, or `undefined` when the value is invalid.
+ */
 export function parseEntityTag(value: string | undefined): ParsedEntityTag | undefined {
   if (value === undefined) {
     return undefined;
@@ -26,6 +34,12 @@ export function parseEntityTag(value: string | undefined): ParsedEntityTag | und
       };
 }
 
+/**
+ * Parse a comma-separated HTTP entity-tag list.
+ *
+ * @param value Header value to parse.
+ * @returns The parsed list, or `undefined` when a nonempty member is invalid.
+ */
 export function parseEntityTagList(value: string | undefined): ParsedEntityTagList | undefined {
   const input = value?.trim();
 
@@ -43,6 +57,11 @@ export function parseEntityTagList(value: string | undefined): ParsedEntityTagLi
   while (cursor < input.length) {
     while (input[cursor] === ' ' || input[cursor] === '\t') {
       cursor += 1;
+    }
+
+    if (input[cursor] === ',') {
+      cursor += 1;
+      continue;
     }
 
     const weak = input.startsWith('W/', cursor);
@@ -92,6 +111,15 @@ export function parseEntityTagList(value: string | undefined): ParsedEntityTagLi
   return tags.length === 0 ? undefined : { kind: 'tags', tags };
 }
 
+/**
+ * Compare a current entity tag with conditional request candidates.
+ *
+ * @param current Current representation tag.
+ * @param candidates Parsed request candidates.
+ * @param exists Whether a current representation exists.
+ * @param comparison Required strong or weak comparison mode.
+ * @returns Whether a candidate matches the current representation.
+ */
 export function matchesEntityTag(
   current: ParsedEntityTag | undefined,
   candidates: ParsedEntityTagList,
@@ -115,6 +143,14 @@ export function matchesEntityTag(
   });
 }
 
+/**
+ * Generate a SHA-256 entity tag for a serializable response body.
+ *
+ * @param value Response value to serialize.
+ * @param contentType Selected response content type.
+ * @param mode Requested entity-tag strength.
+ * @returns The generated entity tag, or `undefined` when no bytes can be serialized.
+ */
 export async function generateEntityTag(
   value: unknown,
   contentType: string | undefined,

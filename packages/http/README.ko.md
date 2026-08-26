@@ -161,21 +161,24 @@ Byte 단위로는 달라도 semantic하게 같은 representation을 허용하려
 revalidation을 계속 허용합니다. Application이 제공한 `ETag`가 우선합니다. `resolve(...)`가 반환하거나
 response에 설정한 `Last-Modified`는 초 단위 IMF-fixdate로 normalize됩니다.
 
-Resolver는 guard 뒤, interceptor와 controller handler 앞에서 실행됩니다. Unsafe method에서 상태 변경 전에
-`If-Match`, `If-None-Match`, `If-Unmodified-Since`를 확인하려면 이 seam을 사용하세요. Target에 현재
-representation이 없으면 `exists: false`를 반환합니다. 자동 생성된 ETag는 handler 이후에야 생기므로,
-후속 GET/HEAD revalidation에는 사용할 수 있지만 unsafe precondition을 위한 resolver를 대체하지는 않습니다.
+Resolver는 guard, DTO binding, validation 뒤 controller handler 직전에 실행되므로 invalid DTO는 기존처럼
+`400`을 반환합니다. Unsafe method에서 상태 변경 전에 `If-Match`, `If-None-Match`, `If-Unmodified-Since`를
+확인하려면 이 seam을 사용하세요. Redirect route는 precondition evaluation을 건너뜁니다. Target에 현재
+representation이 없으면 `exists: false`를 반환합니다. 자동 생성된 ETag는 handler 이후에야 생기므로, 후속
+GET/HEAD revalidation에는 사용할 수 있지만 unsafe precondition을 위한 resolver를 대체하지는 않습니다.
 
 Dispatcher는 RFC validator precedence와 comparison strength를 적용합니다.
 
 - `If-Match`는 strong comparison을 사용하고 `If-Unmodified-Since`를 무시합니다.
 - `If-None-Match`는 weak comparison을 사용하고 `If-Modified-Since`를 무시합니다.
 - 일치하는 `If-None-Match`는 GET/HEAD에서 `304`, 다른 method에서 `412`를 선택합니다.
-- 성공적인 date validation은 normalize된 초 단위 HTTP date를 비교합니다.
+- Date validation은 GMT의 IMF-fixdate, RFC 850, asctime HTTP-date 형식을 허용하고 malformed, numeric,
+  ISO, future `If-Modified-Since` 값은 무시합니다.
+- `If-Modified-Since`는 otherwise `200` 또는 `304` retrieval response에서만 `304`를 선택할 수 있습니다.
 
 `304`와 `412`는 `ETag`, `Last-Modified`, `Cache-Control`, `Content-Location`, `Date`, `Expires`, `Vary` 같은
-선택된 metadata를 유지하면서 body를 억제합니다. HEAD는 body를 쓰지 않고 GET과 같은 generated validator와
-representation metadata를 계산합니다. Node, Express, Fastify, Web-style adapter는 같은 dispatcher policy와
+선택된 metadata를 유지하면서 body를 억제합니다. HEAD는 body를 쓰지 않고 GET과 같은 generated validator,
+content type, content length를 계산합니다. Node, Express, Fastify, Web-style adapter는 같은 dispatcher policy와
 공유 portability harness로 이 동작을 검증합니다. 자체 response를 commit하는 custom response writer는
 application이 소유하며 자동 validator 생성을 우회합니다.
 

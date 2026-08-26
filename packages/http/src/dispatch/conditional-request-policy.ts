@@ -22,6 +22,14 @@ interface ResolvedValidators {
   readonly lastModified?: string;
 }
 
+/**
+ * Resolve and enforce conditional request validators after normal request validation and before handler invocation.
+ *
+ * @param handler Matched handler about to be invoked.
+ * @param requestContext Active request and response context.
+ * @param options Conditional request policy configuration.
+ * @returns Whether a conditional response was committed.
+ */
 export async function tryHandleConditionalRequestBeforeHandler(
   handler: HandlerDescriptor,
   requestContext: RequestContext,
@@ -41,13 +49,26 @@ export async function tryHandleConditionalRequestBeforeHandler(
   }
 
   const validators = applyConfiguredValidators(requestContext.response, configured);
-  const outcome = evaluateConditionalRequest(requestContext.request, validators);
+  const outcome = evaluateConditionalRequest(
+    requestContext.request,
+    validators,
+    requestContext.response.statusCode ?? handler.route.successStatus,
+  );
 
   return outcome === undefined
     ? false
     : await writeConditionalOutcome(requestContext.response, outcome);
 }
 
+/**
+ * Generate response validators and enforce retrieval preconditions for a completed successful representation.
+ *
+ * @param request Incoming framework request.
+ * @param response Response receiving validator metadata.
+ * @param value Serialized response value used to generate an entity tag.
+ * @param options Conditional request policy configuration.
+ * @returns Whether a conditional response was committed.
+ */
 export async function tryHandleConditionalResponse(
   request: FrameworkRequest,
   response: FrameworkResponse,
@@ -81,7 +102,11 @@ export async function tryHandleConditionalResponse(
     return false;
   }
 
-  const outcome = evaluateConditionalRequest(request, readResponseValidators(response));
+  const outcome = evaluateConditionalRequest(
+    request,
+    readResponseValidators(response),
+    response.statusCode,
+  );
   return outcome === undefined ? false : await writeConditionalOutcome(response, outcome);
 }
 
@@ -116,6 +141,7 @@ function readResponseValidators(response: FrameworkResponse): ResolvedValidators
 function evaluateConditionalRequest(
   request: FrameworkRequest,
   validators: ResolvedValidators,
+  unconditionalStatus: number | undefined,
 ): ConditionalOutcome | undefined {
   const currentEntityTag = parseEntityTag(validators.etag);
   const ifMatchValue = readFirstNonEmptyRequestHeaderValue(request, 'if-match');
@@ -166,8 +192,10 @@ function evaluateConditionalRequest(
 
   return (
     ifModifiedSince !== undefined
+    && ifModifiedSince <= Date.now()
     && lastModified !== undefined
     && lastModified <= ifModifiedSince
+    && (unconditionalStatus === undefined || unconditionalStatus === 200 || unconditionalStatus === 304)
   )
     ? 304
     : undefined;
@@ -221,20 +249,72 @@ function normalizeHttpDate(value: Date | number | string | undefined): string | 
 }
 
 function parseHttpDateHeader(request: FrameworkRequest, name: string): number | undefined {
-  return parseNormalizedHttpDate(readFirstNonEmptyRequestHeaderValue(request, name));
+  return parseHttpDate(readFirstNonEmptyRequestHeaderValue(request, name));
 }
 
 function parseNormalizedHttpDate(value: string | undefined): number | undefined {
+  return parseHttpDate(value);
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+
+function parseHttpDate(value: string | undefined): number | undefined {
   if (value === undefined) {
     return undefined;
   }
 
-  const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) ? Math.floor(timestamp / 1000) * 1000 : undefined;
+  const imf = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat), (\d{2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{4}) (\d{2}):(\d{2}):(\d{2}) GMT$/.exec(value);
+  if (imf) {
+    return createUtcHttpDate(imf[1], imf[2], imf[3], imf[4], imf[5], imf[6], imf[7]);
+  }
+
+  const rfc850 = /^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday), (\d{2})-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-(\d{2}) (\d{2}):(\d{2}):(\d{2}) GMT$/.exec(value);
+  if (rfc850) {
+    let year = 2000 + Number(rfc850[4]);
+    if (year > new Date(Date.now()).getUTCFullYear() + 50) {
+      year -= 100;
+    }
+    return createUtcHttpDate(rfc850[1].slice(0, 3), rfc850[2], rfc850[3], String(year), rfc850[5], rfc850[6], rfc850[7]);
+  }
+
+  const asctime = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) {1,2}(\d{1,2}) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/.exec(value);
+  return asctime === null
+    ? undefined
+    : createUtcHttpDate(asctime[1], asctime[3], asctime[2], asctime[7], asctime[4], asctime[5], asctime[6]);
+}
+
+function createUtcHttpDate(
+  weekday: string,
+  day: string,
+  month: string,
+  year: string,
+  hour: string,
+  minute: string,
+  second: string,
+): number | undefined {
+  const monthIndex = MONTHS.indexOf(month as typeof MONTHS[number]);
+  const timestamp = Date.UTC(Number(year), monthIndex, Number(day), Number(hour), Number(minute), Number(second));
+  const date = new Date(timestamp);
+
+  return (
+    monthIndex !== -1
+    && date.getUTCFullYear() === Number(year)
+    && date.getUTCMonth() === monthIndex
+    && date.getUTCDate() === Number(day)
+    && date.getUTCHours() === Number(hour)
+    && date.getUTCMinutes() === Number(minute)
+    && date.getUTCSeconds() === Number(second)
+    && date.getUTCDay() === WEEKDAYS.indexOf(weekday as typeof WEEKDAYS[number])
+    && Number.isFinite(timestamp)
+  )
+    ? timestamp
+    : undefined;
 }
 
 function readResponseHeader(response: FrameworkResponse, name: string): string | undefined {
   const entry = Object.entries(response.headers)
+    .reverse()
     .find(([headerName]) => headerName.toLowerCase() === name.toLowerCase());
   const value = entry?.[1];
 

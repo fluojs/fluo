@@ -177,22 +177,26 @@ Automatic generation skips bodyless statuses and responses with `Cache-Control: 
 authoritative. `Last-Modified` values returned by `resolve(...)` or set on the response are normalized
 to an IMF-fixdate with second precision.
 
-The resolver runs after guards and before interceptors or the controller handler. Use it for
-`If-Match`, `If-None-Match`, and `If-Unmodified-Since` on unsafe methods so a failed precondition
-selects `412` before application state can change. Return `exists: false` when the target has no
-current representation. Generated response ETags are necessarily available only after the handler,
-so they protect later GET/HEAD revalidation but do not replace the resolver for unsafe operations.
+The resolver runs after guards, DTO binding, and validation, immediately before the controller
+handler; invalid DTOs therefore retain their normal `400` result. Use it for `If-Match`,
+`If-None-Match`, and `If-Unmodified-Since` on unsafe methods so a failed precondition selects `412`
+before application state can change. Redirect routes skip precondition evaluation. Return
+`exists: false` when the target has no current representation. Generated response ETags are
+necessarily available only after the handler, so they protect later GET/HEAD revalidation but do not
+replace the resolver for unsafe operations.
 
 The dispatcher applies RFC validator precedence and comparison strength:
 
 - `If-Match` uses strong comparison and suppresses `If-Unmodified-Since`.
 - `If-None-Match` uses weak comparison and suppresses `If-Modified-Since`.
 - A matching `If-None-Match` selects `304` for GET/HEAD and `412` for other methods.
-- Successful date validation compares normalized second-precision HTTP dates.
+- Date validation accepts IMF-fixdate, RFC 850, and asctime HTTP-date forms in GMT; malformed,
+  numeric, ISO, and future `If-Modified-Since` values are ignored.
+- `If-Modified-Since` can select `304` only for an otherwise `200` or `304` retrieval response.
 
 `304` and `412` suppress response bodies while retaining selected metadata such as `ETag`,
 `Last-Modified`, `Cache-Control`, `Content-Location`, `Date`, `Expires`, and `Vary`. HEAD computes the
-same generated validator and representation metadata as GET without writing a body. Custom response
+same generated validator, content type, and content length as GET without writing a body. Custom response
 writers that commit their own response remain application-owned and bypass automatic validator
 generation.
 

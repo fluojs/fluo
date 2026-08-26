@@ -484,13 +484,14 @@ export class HttpAdapterPortabilityHarness<
     const app = await this.options.bootstrap(AppModule, {
       conditionalRequests: {
         etag: 'strong',
-        resolve({ handler }: ConditionalRequestValidatorContext) {
-          return handler.route.method === 'PUT'
-            ? {
-                etag: '"revision-3"',
-                lastModified: '2026-08-25T10:15:30.900Z',
-              }
-            : undefined;
+        resolve({ handler, requestContext }: ConditionalRequestValidatorContext) {
+          if (handler.route.method !== 'PUT') {
+            return undefined;
+          }
+
+          requestContext.response.setHeader('ETag', '"stale-revision"');
+          requestContext.response.setHeader('eTAG', '"revision-3"');
+          return { lastModified: '2026-08-25T10:15:30.900Z' };
         },
       },
       cors: false,
@@ -512,7 +513,7 @@ export class HttpAdapterPortabilityHarness<
         body: JSON.stringify({ revision: 4 }),
         headers: {
           'content-type': 'application/json',
-          'if-match': 'W/"revision-3"',
+          'if-match': '"stale-revision"',
         },
         method: 'PUT',
       });
