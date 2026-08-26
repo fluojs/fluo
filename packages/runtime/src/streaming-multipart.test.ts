@@ -243,7 +243,7 @@ describe('createStreamingMultipart', () => {
     await expect(reader.read()).resolves.toEqual({ done: true, value: undefined });
   });
 
-  it('preserves long invalid transport padding while enforcing the active file limit promptly', async () => {
+  it('enforces the active file limit after invalidating long transport padding', async () => {
     const padding = ' \t'.repeat(65_536);
     const tracked = createTrackedBody(createMultipartChunks([
       `--${BOUNDARY}\r\nContent-Disposition: form-data; name="payload"; filename="payload.txt"\r\n\r\n`,
@@ -268,7 +268,66 @@ describe('createStreamingMultipart', () => {
       'File "payload" exceeds the maximum size of 16 bytes.',
     );
     expect(tracked.cancel).toHaveBeenCalledOnce();
-    expect(tracked.pull.mock.calls.length).toBeLessThan(64);
+  });
+
+  it.each([
+    ['a regular boundary', `\r\n--${BOUNDARY} \t \r\nContent-Disposition: form-data; name="next"\r\n\r\nnext\r\n--${BOUNDARY}--\r\n`],
+    ['a closing boundary at EOF', `\r\n--${BOUNDARY}-- \t `],
+  ])('does not charge legal transport padding against an exact file limit before %s', async (_name, suffix) => {
+    const tracked = createTrackedBody(createMultipartChunks([
+      `--${BOUNDARY}\r\nContent-Disposition: form-data; name="payload"; filename="payload.txt"\r\n\r\n`,
+      '1234567890123456',
+      ...Array.from(suffix),
+    ]));
+    const multipart = createStreamingMultipart({
+      body: tracked.body,
+      contentType: `multipart/form-data; boundary=${BOUNDARY}`,
+      options: { maxFileSize: 16 },
+    });
+    const reader = multipart.consume().getReader();
+    const part = await reader.read();
+
+    if (part.done || part.value.kind !== 'file') {
+      throw new Error('Expected a streaming multipart file part.');
+    }
+
+    await expect(readText(part.value.stream)).resolves.toBe('1234567890123456');
+
+    if (_name === 'a regular boundary') {
+      await expect(reader.read()).resolves.toMatchObject({
+        done: false,
+        value: {
+          fieldname: 'next',
+          kind: 'field',
+          value: 'next',
+        },
+      });
+    }
+
+    await expect(reader.read()).resolves.toEqual({ done: true, value: undefined });
+  });
+
+  it('rejects an exact-limit file when boundary-like padding has an invalid terminator', async () => {
+    const tracked = createTrackedBody(createMultipartChunks([
+      `--${BOUNDARY}\r\nContent-Disposition: form-data; name="payload"; filename="payload.txt"\r\n\r\n`,
+      `1234567890123456\r\n--${BOUNDARY} \tX\r\n--${BOUNDARY}--\r\n`,
+    ]));
+    const multipart = createStreamingMultipart({
+      body: tracked.body,
+      contentType: `multipart/form-data; boundary=${BOUNDARY}`,
+      options: { maxFileSize: 16 },
+    });
+    const reader = multipart.consume().getReader();
+    const part = await reader.read();
+
+    if (part.done || part.value.kind !== 'file') {
+      throw new Error('Expected a streaming multipart file part.');
+    }
+
+    await expect(readText(part.value.stream)).rejects.toThrow(
+      'File "payload" exceeds the maximum size of 16 bytes.',
+    );
+    expect(tracked.cancel).toHaveBeenCalledOnce();
   });
 
   it('preserves all long invalid transport-padding bytes when the file limit allows them', async () => {

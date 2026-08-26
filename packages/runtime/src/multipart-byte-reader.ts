@@ -1,7 +1,59 @@
 import { BadRequestException, PayloadTooLargeException } from '@fluojs/http';
 
 const EMPTY_BYTES = new Uint8Array();
+const SUFFIX_PAGE_SIZE = 8 * 1024;
 const TOTAL_LIMIT_MESSAGE = 'Multipart body exceeds the maximum size of';
+
+class MultipartBytePages {
+  private readonly pages: Uint8Array[] = [];
+  private size = 0;
+
+  get byteLength(): number {
+    return this.size;
+  }
+
+  append(bytes: Uint8Array): void {
+    let sourceOffset = 0;
+
+    while (sourceOffset < bytes.byteLength) {
+      const pageOffset = this.size % SUFFIX_PAGE_SIZE;
+      let page = this.pages[this.pages.length - 1];
+
+      if (page === undefined || pageOffset === 0) {
+        page = new Uint8Array(SUFFIX_PAGE_SIZE);
+        this.pages.push(page);
+      }
+
+      const length = Math.min(SUFFIX_PAGE_SIZE - pageOffset, bytes.byteLength - sourceOffset);
+
+      if (length === 1) {
+        page[pageOffset] = bytes[sourceOffset]!;
+      } else {
+        page.set(bytes.subarray(sourceOffset, sourceOffset + length), pageOffset);
+      }
+
+      sourceOffset += length;
+      this.size += length;
+    }
+  }
+
+  byteAt(offset: number): number {
+    return this.pages[Math.floor(offset / SUFFIX_PAGE_SIZE)]![offset % SUFFIX_PAGE_SIZE]!;
+  }
+
+  segments(start = 0, end = this.size): Uint8Array[] {
+    const segments: Uint8Array[] = [];
+
+    while (start < end) {
+      const pageOffset = start % SUFFIX_PAGE_SIZE;
+      const length = Math.min(SUFFIX_PAGE_SIZE - pageOffset, end - start);
+      segments.push(this.pages[Math.floor(start / SUFFIX_PAGE_SIZE)]!.subarray(pageOffset, pageOffset + length));
+      start += length;
+    }
+
+    return segments;
+  }
+}
 
 interface MultipartBodyChunk {
   boundary: boolean;
@@ -10,7 +62,6 @@ interface MultipartBodyChunk {
 
 interface MultipartBodyReadOptions {
   maxBytes?: number;
-  onMaxBytesExceeded?: () => Error;
 }
 
 interface MultipartBoundarySuffix {
@@ -20,13 +71,8 @@ interface MultipartBoundarySuffix {
 
 interface MultipartBoundarySuffixScan {
   invalidLength?: number;
-  sourceChunks: Uint8Array[];
+  sourceBytes: MultipartBytePages;
   suffix?: MultipartBoundarySuffix;
-}
-
-interface MultipartBoundarySuffixScanOptions {
-  maxPaddingBytes?: number;
-  onMaxPaddingExceeded?: () => Error;
 }
 
 /** Pull-driven byte reader that bounds multipart lookbehind and total encoded size. */
@@ -198,16 +244,13 @@ export class MultipartByteReader {
         }
 
         const suffixOffset = index + delimiter.byteLength;
-        const scan = await this.readBoundarySuffix(suffixOffset, {
-          maxPaddingBytes: options.maxBytes === undefined ? undefined : options.maxBytes - index,
-          onMaxPaddingExceeded: options.onMaxBytesExceeded,
-        });
+        const scan = await this.readBoundarySuffix(suffixOffset);
 
         if (!scan.suffix) {
           return this.queueInvalidBoundary(index, suffixOffset, scan, options.maxBytes);
         }
 
-        this.appendSourceChunks(scan.sourceChunks);
+        this.appendSourcePages(scan.sourceBytes);
         const bytes = this.buffer.slice(0, index);
         this.buffer = this.buffer.slice(index + delimiter.byteLength);
         return { boundary: true, bytes };
@@ -232,7 +275,7 @@ export class MultipartByteReader {
 
   async consumeBoundarySuffix(): Promise<boolean> {
     const scan = await this.readBoundarySuffix(0);
-    this.appendSourceChunks(scan.sourceChunks);
+    this.appendSourcePages(scan.sourceBytes);
 
     if (!scan.suffix) {
       throw new BadRequestException('Multipart boundary has an invalid terminator.');
@@ -244,54 +287,37 @@ export class MultipartByteReader {
 
   private async hasLegalBoundarySuffix(offset: number): Promise<boolean> {
     const scan = await this.readBoundarySuffix(offset);
-    this.appendSourceChunks(scan.sourceChunks);
+    this.appendSourcePages(scan.sourceBytes);
     return scan.suffix !== undefined;
   }
 
-  private async readBoundarySuffix(
-    offset: number,
-    options: MultipartBoundarySuffixScanOptions = {},
-  ): Promise<MultipartBoundarySuffixScan> {
+  private async readBoundarySuffix(offset: number): Promise<MultipartBoundarySuffixScan> {
     const baseLength = this.buffer.byteLength;
-    const sourceChunks: Uint8Array[] = [];
-    let sourceLength = 0;
-    let sourceIndex = 0;
-    let sourceStart = baseLength;
+    const sourceBytes = new MultipartBytePages();
     let closing = false;
     let cursor = offset;
-    let paddingLength = 0;
 
     const readByte = async (byteOffset: number): Promise<number | undefined> => {
-      while (baseLength + sourceLength <= byteOffset) {
+      while (baseLength + sourceBytes.byteLength <= byteOffset) {
         const result = await this.readSource(false);
 
         if (result.done) {
           return undefined;
         }
 
-        if (result.value.byteLength === 0) {
-          continue;
+        if (result.value.byteLength > 0) {
+          sourceBytes.append(result.value);
         }
-
-        sourceChunks.push(result.value);
-        sourceLength += result.value.byteLength;
       }
 
-      if (byteOffset < baseLength) {
-        return this.buffer[byteOffset];
-      }
-
-      while (byteOffset >= sourceStart + sourceChunks[sourceIndex]!.byteLength) {
-        sourceStart += sourceChunks[sourceIndex]!.byteLength;
-        sourceIndex += 1;
-      }
-
-      return sourceChunks[sourceIndex]![byteOffset - sourceStart];
+      return byteOffset < baseLength
+        ? this.buffer[byteOffset]
+        : sourceBytes.byteAt(byteOffset - baseLength);
     };
 
     const invalid = (length: number): MultipartBoundarySuffixScan => ({
       invalidLength: length,
-      sourceChunks,
+      sourceBytes,
     });
     const first = await readByte(cursor);
 
@@ -310,7 +336,7 @@ export class MultipartByteReader {
       if (byte === undefined) {
         if (closing) {
           return {
-            sourceChunks,
+            sourceBytes,
             suffix: { closing, length: cursor - offset },
           };
         }
@@ -319,13 +345,6 @@ export class MultipartByteReader {
       }
 
       if (byte === 32 || byte === 9) {
-        paddingLength += 1;
-
-        if (options.maxPaddingBytes !== undefined && paddingLength > options.maxPaddingBytes) {
-          throw options.onMaxPaddingExceeded?.()
-            ?? new PayloadTooLargeException('Multipart boundary padding exceeds the active file size limit.');
-        }
-
         cursor += 1;
         continue;
       }
@@ -341,7 +360,7 @@ export class MultipartByteReader {
       }
 
       return {
-        sourceChunks,
+        sourceBytes,
         suffix: {
           closing,
           length: cursor + 2 - offset,
@@ -365,28 +384,11 @@ export class MultipartByteReader {
       literalSegments.push(this.buffer.slice(index, baseLiteralEnd));
     }
 
-    let remainingLiteralSourceBytes = Math.max(0, literalEnd - this.buffer.byteLength);
-    const remainderChunks: Uint8Array[] = [];
+    const literalSourceBytes = Math.max(0, literalEnd - this.buffer.byteLength);
 
-    for (const chunk of scan.sourceChunks) {
-      if (remainingLiteralSourceBytes === 0) {
-        remainderChunks.push(chunk);
-        continue;
-      }
-
-      if (chunk.byteLength <= remainingLiteralSourceBytes) {
-        literalSegments.push(chunk);
-        remainingLiteralSourceBytes -= chunk.byteLength;
-        continue;
-      }
-
-      literalSegments.push(chunk.slice(0, remainingLiteralSourceBytes));
-      remainderChunks.push(chunk.slice(remainingLiteralSourceBytes));
-      remainingLiteralSourceBytes = 0;
-    }
-
+    literalSegments.push(...scan.sourceBytes.segments(0, literalSourceBytes));
     this.buffer = this.buffer.slice(baseLiteralEnd);
-    this.appendSourceChunks(remainderChunks);
+    this.appendSourceSegments(scan.sourceBytes.segments(literalSourceBytes));
     this.appendLiteralSegments(literalSegments);
 
     if (prefix.byteLength > 0) {
@@ -413,10 +415,10 @@ export class MultipartByteReader {
     }
 
     const limit = maxBytes === undefined ? 8 * 1024 : Math.max(1, maxBytes + 1);
-    const first = this.literalSegments[this.literalHead]!.slice(this.literalOffset);
+    const first = this.literalSegments[this.literalHead]!.subarray(this.literalOffset);
 
     if (first.byteLength >= limit) {
-      const bytes = first.slice(0, limit);
+      const bytes = first.subarray(0, limit);
       this.advanceLiteralBytes(limit);
       return bytes;
     }
@@ -435,9 +437,9 @@ export class MultipartByteReader {
     let remaining = length;
 
     while (remaining > 0) {
-      const segment = this.literalSegments[this.literalHead]!.slice(this.literalOffset);
+      const segment = this.literalSegments[this.literalHead]!.subarray(this.literalOffset);
       const size = Math.min(segment.byteLength, remaining);
-      bytes.set(segment.slice(0, size), destination);
+      bytes.set(segment.subarray(0, size), destination);
       destination += size;
       remaining -= size;
       this.advanceLiteralBytes(size);
@@ -475,7 +477,11 @@ export class MultipartByteReader {
     return bytes;
   }
 
-  private appendSourceChunks(chunks: readonly Uint8Array[]): void {
+  private appendSourcePages(sourceBytes: MultipartBytePages): void {
+    this.appendSourceSegments(sourceBytes.segments());
+  }
+
+  private appendSourceSegments(chunks: readonly Uint8Array[]): void {
     const size = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
 
     if (size === 0) {
