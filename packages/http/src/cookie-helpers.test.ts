@@ -1,3 +1,5 @@
+import { runInNewContext } from 'node:vm';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import { clearCookie, setCookie } from './index.js';
@@ -227,6 +229,35 @@ describe('setCookie', () => {
       'session=value; Max-Age=60; Expires=Wed, 02 Jan 2030 03:04:05 GMT; '
       + 'Domain=example.com; Path=/account; HttpOnly; Secure; SameSite=Lax',
     );
+  });
+
+  it('accepts a valid cross-realm Date', () => {
+    // Given
+    const response = createResponse();
+    const expires = runInNewContext("new Date('2030-01-02T03:04:05.000Z')") as Date;
+
+    // When
+    setCookie(response, 'session', 'value', { expires });
+
+    // Then
+    expect(response.headers['Set-Cookie']).toBe(
+      'session=value; Expires=Wed, 02 Jan 2030 03:04:05 GMT',
+    );
+  });
+
+  it('rejects Date-like impostors before writing a header', () => {
+    // Given
+    const response = createResponse();
+    const setHeader = vi.spyOn(response, 'setHeader');
+    const expires = {
+      getTime: () => Date.parse('2030-01-02T03:04:05.000Z'),
+      getUTCFullYear: () => 2030,
+      toUTCString: () => 'Wed, 02 Jan 2030 03:04:05 GMT',
+    } as unknown as Date;
+
+    // When / Then
+    expect(() => setCookie(response, 'session', 'value', { expires })).toThrow(/expires/);
+    expect(setHeader).not.toHaveBeenCalled();
   });
 
   it('uses intrinsic Date operations for caller-controlled Date subclasses', () => {

@@ -84,11 +84,14 @@ function validatePath(value: string): void {
 }
 
 function serializeExpires(expires: Date): string {
-  if (!(expires instanceof NativeDate)) {
+  let timestamp: number;
+
+  try {
+    timestamp = nativeDateGetTime.call(expires);
+  } catch {
     throw new TypeError('Cookie expires must be a valid Date.');
   }
 
-  const timestamp = nativeDateGetTime.call(expires);
   if (!Number.isFinite(timestamp)) {
     throw new TypeError('Cookie expires must be a valid Date.');
   }
