@@ -324,12 +324,51 @@ describe('dispatcher conditional request policy', () => {
       'if-unmodified-since': 'Mon, 24 Aug 2026 10:15:30 GMT',
     }), preconditionFailedResponse);
 
-    // Then: the safe request receives 304 and the unsafe request receives 412 before side effects.
+    // Then: the safe handler establishes its ordinary status before 304, while unsafe 412 skips side effects.
     expect(notModifiedResponse.statusCode).toBe(304);
     expect(preconditionFailedResponse.statusCode).toBe(412);
     expect(notModifiedResponse.body).toBeUndefined();
     expect(preconditionFailedResponse.body).toBeUndefined();
-    expect(calls).toBe(0);
+    expect(calls).toBe(1);
+  });
+
+  it('evaluates If-Modified-Since only after the handler establishes its actual status', async () => {
+    let calls = 0;
+
+    @Controller('/documents')
+    class DocumentsController {
+      @Get('/:id')
+      read(_input: undefined, context: { request: FrameworkRequest; response: FrameworkResponse }) {
+        calls += 1;
+        if (context.request.headers['x-empty'] === 'true') {
+          context.response.setStatus(204);
+          return undefined;
+        }
+        return { id: '1' };
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      conditionalRequests: {
+        resolve() {
+          return { lastModified: 'Tue, 25 Aug 2026 10:15:30 GMT' };
+        },
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: DocumentsController }]),
+      rootContainer: new Container().register(DocumentsController),
+    });
+    const bodyResponse = createResponse();
+    const emptyResponse = createResponse();
+    const headers = { 'if-modified-since': 'Tue, 25 Aug 2026 10:15:30 GMT' };
+
+    await dispatcher.dispatch(createRequest('GET', headers), bodyResponse);
+    await dispatcher.dispatch(createRequest('GET', { ...headers, 'x-empty': 'true' }), emptyResponse);
+
+    expect(bodyResponse.statusCode).toBe(304);
+    expect(bodyResponse.body).toBeUndefined();
+    expect(emptyResponse.statusCode).toBe(204);
+    expect(emptyResponse.body).toBeUndefined();
+    expect(calls).toBe(2);
   });
 
   it('selects bodyless 304 and 412 outcomes before handler execution', async () => {
@@ -462,13 +501,56 @@ describe('dispatcher conditional request policy', () => {
       expect(response.statusCode).toBe(304);
     }
 
-    for (const ifModifiedSince of ['0', '2026-08-26T10:15:30Z', 'Tue, 32 Aug 2026 10:15:30 GMT']) {
+    for (const ifModifiedSince of [
+      '0',
+      '2026-08-26T10:15:30Z',
+      'Tue, 32 Aug 2026 10:15:30 GMT',
+      'Tue Aug 5 10:15:30 2026',
+      'Tue Aug  25 10:15:30 2026',
+    ]) {
       const response = createResponse();
       await dispatcher.dispatch(createRequest('GET', { 'if-modified-since': ifModifiedSince }), response);
       expect(response.statusCode).toBe(200);
     }
 
-    expect(calls).toBe(3);
+    expect(calls).toBe(8);
+  });
+
+  it('uses the RFC 850 timestamp, not only its year, for the fifty-year rollover', async () => {
+    @Controller('/documents')
+    class DocumentsController {
+      @Put('/:id')
+      update() {
+        return { id: '1' };
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      conditionalRequests: {
+        resolve() {
+          return { lastModified: 'Tue, 25 Aug 2076 10:15:30 GMT' };
+        },
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: DocumentsController }]),
+      rootContainer: new Container().register(DocumentsController),
+    });
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('Tue, 25 Aug 2026 10:15:30 GMT'));
+
+    try {
+      const boundaryResponse = createResponse();
+      const afterBoundaryResponse = createResponse();
+      await dispatcher.dispatch(createRequest('PUT', {
+        'if-unmodified-since': 'Tuesday, 25-Aug-76 10:15:30 GMT',
+      }), boundaryResponse);
+      await dispatcher.dispatch(createRequest('PUT', {
+        'if-unmodified-since': 'Wednesday, 25-Aug-76 10:15:31 GMT',
+      }), afterBoundaryResponse);
+
+      expect(boundaryResponse.statusCode).toBe(200);
+      expect(afterBoundaryResponse.statusCode).toBe(412);
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it('skips conditional evaluation for redirects and ineligible successful statuses', async () => {
@@ -510,7 +592,7 @@ describe('dispatcher conditional request policy', () => {
     expect(preconditionChecks).toBe(1);
   });
 
-  it('uses the latest case-variant validator header for unsafe preconditions', async () => {
+  it('canonicalizes multi-overwrite case-variant validator headers for unsafe preconditions', async () => {
     let writes = 0;
 
     @Controller('/documents')
@@ -525,9 +607,10 @@ describe('dispatcher conditional request policy', () => {
     const dispatcher = createDispatcher({
       conditionalRequests: {
         resolve({ requestContext }) {
-          requestContext.response.headers.ETag = '"stale"';
-          requestContext.response.headers.eTAG = '"current"';
-          return {};
+          requestContext.response.headers.ETag = '"current"';
+          requestContext.response.headers.eTAG = '"stale"';
+          requestContext.response.setHeader('ETag', '"current"');
+          return { etag: '"current"' };
         },
       },
       handlerMapping: createHandlerMapping([{ controllerToken: DocumentsController }]),

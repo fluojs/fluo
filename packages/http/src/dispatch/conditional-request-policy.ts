@@ -53,6 +53,7 @@ export async function tryHandleConditionalRequestBeforeHandler(
     requestContext.request,
     validators,
     requestContext.response.statusCode ?? handler.route.successStatus,
+    false,
   );
 
   return outcome === undefined
@@ -106,6 +107,7 @@ export async function tryHandleConditionalResponse(
     request,
     readResponseValidators(response),
     response.statusCode,
+    true,
   );
   return outcome === undefined ? false : await writeConditionalOutcome(response, outcome);
 }
@@ -115,12 +117,12 @@ function applyConfiguredValidators(
   validators: ConditionalRequestValidators,
 ): ResolvedValidators {
   if (validators.etag !== undefined) {
-    response.setHeader('ETag', validators.etag);
+    replaceResponseHeader(response, 'ETag', validators.etag);
   }
 
   const lastModified = normalizeHttpDate(validators.lastModified);
   if (lastModified !== undefined) {
-    response.setHeader('Last-Modified', lastModified);
+    replaceResponseHeader(response, 'Last-Modified', lastModified);
   }
 
   return {
@@ -142,6 +144,7 @@ function evaluateConditionalRequest(
   request: FrameworkRequest,
   validators: ResolvedValidators,
   unconditionalStatus: number | undefined,
+  evaluateIfModifiedSince: boolean,
 ): ConditionalOutcome | undefined {
   const currentEntityTag = parseEntityTag(validators.etag);
   const ifMatchValue = readFirstNonEmptyRequestHeaderValue(request, 'if-match');
@@ -183,7 +186,7 @@ function evaluateConditionalRequest(
     return undefined;
   }
 
-  if (!isRetrieval) {
+  if (!isRetrieval || !evaluateIfModifiedSince) {
     return undefined;
   }
 
@@ -195,7 +198,7 @@ function evaluateConditionalRequest(
     && ifModifiedSince <= Date.now()
     && lastModified !== undefined
     && lastModified <= ifModifiedSince
-    && (unconditionalStatus === undefined || unconditionalStatus === 200 || unconditionalStatus === 304)
+    && (unconditionalStatus === 200 || unconditionalStatus === 304)
   )
     ? 304
     : undefined;
@@ -271,21 +274,55 @@ function parseHttpDate(value: string | undefined): number | undefined {
 
   const rfc850 = /^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday), (\d{2})-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-(\d{2}) (\d{2}):(\d{2}):(\d{2}) GMT$/.exec(value);
   if (rfc850) {
-    let year = 2000 + Number(rfc850[4]);
-    if (year > new Date(Date.now()).getUTCFullYear() + 50) {
-      year -= 100;
-    }
-    return createUtcHttpDate(rfc850[1].slice(0, 3), rfc850[2], rfc850[3], String(year), rfc850[5], rfc850[6], rfc850[7]);
+    const year = 2000 + Number(rfc850[4]);
+    const candidate = createUtcTimestamp(rfc850[2], rfc850[3], String(year), rfc850[5], rfc850[6], rfc850[7]);
+    const resolvedYear = candidate !== undefined && candidate > fiftyYearsFromNow()
+      ? year - 100
+      : year;
+    return createUtcHttpDate(
+      rfc850[1].slice(0, 3), rfc850[2], rfc850[3], String(resolvedYear), rfc850[5], rfc850[6], rfc850[7],
+    );
   }
 
-  const asctime = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) {1,2}(\d{1,2}) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/.exec(value);
+  const asctime = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(?: {2}([1-9])| ([12]\d|3[01])) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/.exec(value);
   return asctime === null
     ? undefined
-    : createUtcHttpDate(asctime[1], asctime[3], asctime[2], asctime[7], asctime[4], asctime[5], asctime[6]);
+    : createUtcHttpDate(asctime[1], asctime[3] ?? asctime[4], asctime[2], asctime[8], asctime[5], asctime[6], asctime[7]);
+}
+
+function fiftyYearsFromNow(): number {
+  const now = new Date(Date.now());
+  return Date.UTC(
+    now.getUTCFullYear() + 50,
+    now.getUTCMonth(),
+    now.getUTCDate(),
+    now.getUTCHours(),
+    now.getUTCMinutes(),
+    now.getUTCSeconds(),
+    now.getUTCMilliseconds(),
+  );
 }
 
 function createUtcHttpDate(
   weekday: string,
+  day: string,
+  month: string,
+  year: string,
+  hour: string,
+  minute: string,
+  second: string,
+): number | undefined {
+  const timestamp = createUtcTimestamp(day, month, year, hour, minute, second);
+  if (timestamp === undefined) {
+    return undefined;
+  }
+
+  return new Date(timestamp).getUTCDay() === WEEKDAYS.indexOf(weekday as typeof WEEKDAYS[number])
+    ? timestamp
+    : undefined;
+}
+
+function createUtcTimestamp(
   day: string,
   month: string,
   year: string,
@@ -305,11 +342,20 @@ function createUtcHttpDate(
     && date.getUTCHours() === Number(hour)
     && date.getUTCMinutes() === Number(minute)
     && date.getUTCSeconds() === Number(second)
-    && date.getUTCDay() === WEEKDAYS.indexOf(weekday as typeof WEEKDAYS[number])
     && Number.isFinite(timestamp)
   )
     ? timestamp
     : undefined;
+}
+
+function replaceResponseHeader(response: FrameworkResponse, name: string, value: string): void {
+  for (const headerName of Object.keys(response.headers)) {
+    if (headerName.toLowerCase() === name.toLowerCase()) {
+      delete response.headers[headerName];
+    }
+  }
+
+  response.setHeader(name, value);
 }
 
 function readResponseHeader(response: FrameworkResponse, name: string): string | undefined {

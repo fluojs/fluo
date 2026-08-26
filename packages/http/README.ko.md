@@ -162,8 +162,9 @@ revalidation을 계속 허용합니다. Application이 제공한 `ETag`가 우�
 response에 설정한 `Last-Modified`는 초 단위 IMF-fixdate로 normalize됩니다.
 
 Resolver는 guard, DTO binding, validation 뒤 controller handler 직전에 실행되므로 invalid DTO는 기존처럼
-`400`을 반환합니다. Unsafe method에서 상태 변경 전에 `If-Match`, `If-None-Match`, `If-Unmodified-Since`를
-확인하려면 이 seam을 사용하세요. Redirect route는 precondition evaluation을 건너뜁니다. Target에 현재
+`400`을 반환합니다. Unsafe entity-tag와 unmodified-date prerequisite는 side effect 전에 평가하지만,
+`If-Modified-Since`는 handler가 실제 retrieval status를 결정한 뒤 평가합니다. Unsafe method에서 상태 변경 전에
+`If-Match`, `If-None-Match`, `If-Unmodified-Since`를 확인하려면 이 seam을 사용하세요. Redirect route는 precondition evaluation을 건너뜁니다. Target에 현재
 representation이 없으면 `exists: false`를 반환합니다. 자동 생성된 ETag는 handler 이후에야 생기므로, 후속
 GET/HEAD revalidation에는 사용할 수 있지만 unsafe precondition을 위한 resolver를 대체하지는 않습니다.
 

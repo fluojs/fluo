@@ -178,9 +178,11 @@ authoritative. `Last-Modified` values returned by `resolve(...)` or set on the r
 to an IMF-fixdate with second precision.
 
 The resolver runs after guards, DTO binding, and validation, immediately before the controller
-handler; invalid DTOs therefore retain their normal `400` result. Use it for `If-Match`,
-`If-None-Match`, and `If-Unmodified-Since` on unsafe methods so a failed precondition selects `412`
-before application state can change. Redirect routes skip precondition evaluation. Return
+handler; invalid DTOs therefore retain their normal `400` result. It evaluates unsafe entity-tag and
+unmodified-date prerequisites before side effects, while `If-Modified-Since` is evaluated after the
+handler establishes the actual retrieval status. Use it for `If-Match`, `If-None-Match`, and
+`If-Unmodified-Since` on unsafe methods so a failed precondition selects `412` before application
+state can change. Redirect routes skip precondition evaluation. Return
 `exists: false` when the target has no current representation. Generated response ETags are
 necessarily available only after the handler, so they protect later GET/HEAD revalidation but do not
 replace the resolver for unsafe operations.

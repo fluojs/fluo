@@ -824,7 +824,8 @@ describe('dispatcher runtime', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({ ok: true });
-    expect(response.headers['Content-Type']).toBeUndefined();
+    expect(response.headers['Content-Type']).toBe('application/json; charset=utf-8');
+    expect(response.headers['Content-Length']).toBe('11');
   });
 
   it('uses the simple JSON fast writer for successful object and array responses', async () => {

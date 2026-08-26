@@ -489,9 +489,10 @@ export class HttpAdapterPortabilityHarness<
             return undefined;
           }
 
-          requestContext.response.setHeader('ETag', '"stale-revision"');
-          requestContext.response.setHeader('eTAG', '"revision-3"');
-          return { lastModified: '2026-08-25T10:15:30.900Z' };
+          requestContext.response.setHeader('ETag', '"revision-3"');
+          requestContext.response.setHeader('eTAG', '"stale-revision"');
+          requestContext.response.setHeader('ETag', '"revision-3"');
+          return { etag: '"revision-3"', lastModified: '2026-08-25T10:15:30.900Z' };
         },
       },
       cors: false,
@@ -525,6 +526,8 @@ export class HttpAdapterPortabilityHarness<
       if (
         head.status !== 200
         || head.headers.get('etag') !== etag
+        || head.headers.get('content-type') !== initial.headers.get('content-type')
+        || head.headers.get('content-length') !== initial.headers.get('content-length')
         || (await head.text()) !== ''
       ) {
         throw new Error(`${this.options.name} adapter changed HEAD validator or body-suppression semantics.`);

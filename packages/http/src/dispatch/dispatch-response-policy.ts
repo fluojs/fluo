@@ -146,7 +146,7 @@ function applySuccessResponseMetadata(context: SuccessResponseMetadataContext): 
   }
 }
 
-function applyImplicitHeadMetadata(response: FrameworkResponse, value: unknown): void {
+function applyImplicitResponseMetadata(response: FrameworkResponse, value: unknown): void {
   if (value === undefined) {
     return;
   }
@@ -237,6 +237,8 @@ export async function writeSuccessResponse(
     ? formatter.format(responseValue)
     : responseValue;
 
+  applyImplicitResponseMetadata(response, responseBody);
+
   if (await tryHandleConditionalResponse(
     request,
     response,
@@ -247,7 +249,6 @@ export async function writeSuccessResponse(
   }
 
   if (request.method.toUpperCase() === 'HEAD') {
-    applyImplicitHeadMetadata(response, responseBody);
     await response.send(undefined);
     return;
   }
