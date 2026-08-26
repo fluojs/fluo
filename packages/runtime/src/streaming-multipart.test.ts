@@ -33,6 +33,22 @@ function createTrackedBody(chunks: readonly Uint8Array[]) {
   };
 }
 
+async function expectNoUnhandledRejection(action: () => Promise<void>): Promise<void> {
+  const unhandled: unknown[] = [];
+  const onUnhandledRejection = (reason: unknown) => {
+    unhandled.push(reason);
+  };
+  process.on('unhandledRejection', onUnhandledRejection);
+
+  try {
+    await action();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(unhandled).toEqual([]);
+  } finally {
+    process.off('unhandledRejection', onUnhandledRejection);
+  }
+}
+
 async function readText(stream: ReadableStream<Uint8Array>): Promise<string> {
   const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
@@ -523,6 +539,60 @@ describe('createStreamingMultipart', () => {
     await expect(part.value.stream.getReader().read()).rejects.toThrow('client disconnected');
     expect(tracked.cancel).toHaveBeenCalledOnce();
   });
+
+  it.each(['dispatch cleanup', 'total limit', 'file limit', 'request abort'] as const)(
+    'does not leave an unhandled native FormData producer rejection after %s',
+    async (scenario) => {
+      await expectNoUnhandledRejection(async () => {
+        const abortController = new AbortController();
+        const form = new FormData();
+        form.set('title', 'streamed');
+        form.set('payload', new Blob([new Uint8Array(1024 * 1024)]), 'payload.bin');
+        const request = new Request('https://runtime.test/uploads', {
+          body: form,
+          method: 'POST',
+          signal: abortController.signal,
+        });
+        const multipart = createStreamingMultipart({
+          body: request.body!,
+          contentType: request.headers.get('content-type')!,
+          options: scenario === 'total limit' ? { maxTotalSize: 10 }
+            : scenario === 'file limit' ? { maxFileSize: 10 }
+            : undefined,
+          signal: abortController.signal,
+        });
+        const reader = multipart.consume().getReader();
+
+        if (scenario === 'dispatch cleanup') {
+          await reader.cancel('Request dispatch completed.');
+          return;
+        }
+
+        if (scenario === 'total limit') {
+          await expect(reader.read()).rejects.toBeInstanceOf(PayloadTooLargeException);
+          return;
+        }
+
+        await expect(reader.read()).resolves.toMatchObject({
+          done: false,
+          value: { kind: 'field' },
+        });
+        const file = await reader.read();
+
+        if (file.done || file.value.kind !== 'file') {
+          throw new Error('Expected a streaming multipart file part.');
+        }
+
+        if (scenario === 'file limit') {
+          await expect(readText(file.value.stream)).rejects.toBeInstanceOf(PayloadTooLargeException);
+          return;
+        }
+
+        abortController.abort(new Error('client disconnected'));
+        await expect(file.value.stream.getReader().read()).rejects.toThrow('client disconnected');
+      });
+    },
+  );
 
   it('cancels parser work when the multipart part stream is cancelled', async () => {
     const tracked = createTrackedBody(createMultipartChunks([

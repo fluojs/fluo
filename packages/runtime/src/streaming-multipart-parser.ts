@@ -11,6 +11,7 @@ import {
   parseBoundary,
   parseContentDisposition,
   parseHeaders,
+  shouldCancelMultipartSource,
   toReadableStream,
 } from './streaming-multipart-utils.js';
 
@@ -58,6 +59,7 @@ export class StreamingMultipartParser {
       toReadableStream(input.body),
       options.maxTotalSize ?? DEFAULT_MAX_TOTAL_SIZE,
       input.signal,
+      input.cancelSource ?? shouldCancelMultipartSource(input.body),
     );
     this.abortListener = input.signal
       ? () => {

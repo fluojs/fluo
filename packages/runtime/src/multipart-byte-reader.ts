@@ -86,6 +86,8 @@ export class MultipartByteReader {
   private cancellation: Promise<void> | undefined;
   private fatalError: unknown;
   private released = false;
+  private releaseAfterRead = false;
+  private readInFlight: Promise<ReadableStreamReadResult<Uint8Array>> | undefined;
   private totalSize = 0;
   private readonly reader: ReadableStreamDefaultReader<Uint8Array>;
   private readonly abortListener: () => void;
@@ -94,6 +96,7 @@ export class MultipartByteReader {
     stream: ReadableStream<Uint8Array>,
     private readonly maxTotalSize: number,
     private readonly signal?: AbortSignal,
+    private readonly cancelSource = true,
   ) {
     this.reader = stream.getReader();
     this.abortListener = () => {
@@ -132,6 +135,16 @@ export class MultipartByteReader {
   }
 
   private async cancelReader(reason?: unknown): Promise<void> {
+    if (!this.cancelSource) {
+      if (this.readInFlight) {
+        this.releaseAfterRead = true;
+        return;
+      }
+
+      this.releaseReader();
+      return;
+    }
+
     try {
       await this.reader.cancel(reason);
     } catch {
@@ -502,7 +515,22 @@ export class MultipartByteReader {
 
   private async readSource(appendToBuffer = true): Promise<ReadableStreamReadResult<Uint8Array>> {
     this.throwIfFailed();
-    const result = await this.reader.read();
+    const read = this.reader.read();
+    this.readInFlight = read;
+    let result: ReadableStreamReadResult<Uint8Array>;
+
+    try {
+      result = await read;
+    } finally {
+      if (this.readInFlight === read) {
+        this.readInFlight = undefined;
+      }
+
+      if (this.releaseAfterRead) {
+        this.releaseReader();
+      }
+    }
+
     this.throwIfFailed();
 
     if (result.done) {

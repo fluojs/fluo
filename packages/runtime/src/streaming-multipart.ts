@@ -13,6 +13,8 @@ export interface StreamingMultipartInput {
   options?: MultipartOptions;
   /** Request cancellation signal propagated to parser and active file streams. */
   signal?: AbortSignal;
+  /** Whether parser cancellation owns and propagates to the input source. */
+  cancelSource?: boolean;
 }
 
 /**
