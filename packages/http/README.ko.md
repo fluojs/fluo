@@ -156,15 +156,17 @@ const conditionalRequests = {
 ```
 
 `etag: 'strong'`은 wire-equivalent 성공 response body에서 quoted SHA-256 entity tag를 생성합니다.
-Byte 단위로는 달라도 semantic하게 같은 representation을 허용하려면 `etag: 'weak'`을 사용하세요.
+Adapter가 content coding을 적용할 수 있으면 서로 다른 encoded byte stream이 같은 strong tag를 공유하지 않도록
+자동 strong tag는 weak validator로 생성됩니다. Byte 단위로는 달라도 semantic하게 같은 representation을 허용하려면
+`etag: 'weak'`을 사용하세요.
 자동 생성은 bodyless status와 `Cache-Control: no-store` response에서 건너뛰며, `no-cache`는 validator와
 revalidation을 계속 허용합니다. Application이 제공한 `ETag`가 우선합니다. `resolve(...)`가 반환하거나
 response에 설정한 `Last-Modified`는 초 단위 IMF-fixdate로 normalize됩니다.
 
 Resolver는 guard, DTO binding, validation 뒤 controller handler 직전에 실행되므로 invalid DTO는 기존처럼
-`400`을 반환합니다. Unsafe entity-tag와 unmodified-date prerequisite는 side effect 전에 평가하지만,
-`If-Modified-Since`는 handler가 실제 retrieval status를 결정한 뒤 평가합니다. Unsafe method에서 상태 변경 전에
-`If-Match`, `If-None-Match`, `If-Unmodified-Since`를 확인하려면 이 seam을 사용하세요. Redirect route는 precondition evaluation을 건너뜁니다. Target에 현재
+`400`을 반환합니다. Safe method condition은 handler가 실제 status를 결정한 뒤 평가합니다. Unsafe prerequisite는
+resolver 또는 route가 eligible status를 준비한 경우에만 side effect 전에 평가하며, 그렇지 않으면 실제 status를 안 뒤
+평가합니다. Redirect와 다른 ineligible outcome은 precondition evaluation을 건너뜁니다. Target에 현재
 representation이 없으면 `exists: false`를 반환합니다. 자동 생성된 ETag는 handler 이후에야 생기므로, 후속
 GET/HEAD revalidation에는 사용할 수 있지만 unsafe precondition을 위한 resolver를 대체하지는 않습니다.
 

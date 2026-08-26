@@ -281,6 +281,7 @@ function registerWebRuntimePortabilitySuite(
     assertSupportsConditionalRequests(): Promise<void>;
     assertSupportsCustomHttpRouteMethods(): Promise<void>;
     assertPreservesExactRawBodyBytesForByteSensitivePayloads(): Promise<void>;
+    assertPreservesFormattedResponseBytes(): Promise<void>;
     assertPreservesQueryArraysAndDecoding(): Promise<void>;
     assertPreservesMalformedCookieValues(): Promise<void>;
     assertPreservesRawBodyForJsonAndText(): Promise<void>;
@@ -298,6 +299,10 @@ function registerWebRuntimePortabilitySuite(
 
     it('supports dispatcher-owned conditional requests and validators', async () => {
       await harness.assertSupportsConditionalRequests();
+    });
+
+    it('preserves negotiated response bytes and metadata across GET and HEAD', async () => {
+      await harness.assertPreservesFormattedResponseBytes();
     });
 
     it('does not commit an error representation after request abort', async () => {

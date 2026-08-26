@@ -489,6 +489,7 @@ export class HttpAdapterPortabilityHarness<
             return undefined;
           }
 
+          requestContext.response.setStatus(200);
           requestContext.response.setHeader('ETag', '"revision-3"');
           requestContext.response.setHeader('eTAG', '"stale-revision"');
           requestContext.response.setHeader('ETag', '"revision-3"');
@@ -548,6 +549,80 @@ export class HttpAdapterPortabilityHarness<
         || writes !== 0
       ) {
         throw new Error(`${this.options.name} adapter changed unsafe precondition ordering or metadata semantics.`);
+      }
+    });
+  }
+
+  /** Verifies formatter output reaches the network as exact bytes without adapter re-serialization. */
+  async assertPreservesFormattedResponseBytes(): Promise<void> {
+    const jsonBody = JSON.stringify({ greeting: 'Hello, 세계' });
+    const plainBody = 'plain: café ☕';
+
+    @Controller('/formatted-responses')
+    class FormattedResponsesController {
+      @Get('/json')
+      getJson() {
+        return { greeting: 'Hello, 세계' };
+      }
+
+      @Head('/json')
+      headJson() {
+        return { greeting: 'Hello, 세계' };
+      }
+
+      @Get('/plain')
+      getPlain() {
+        return plainBody;
+      }
+
+      @Head('/plain')
+      headPlain() {
+        return plainBody;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [FormattedResponsesController] });
+
+    const app = await this.options.bootstrap(AppModule, {
+      contentNegotiation: {
+        formatters: [
+          { format: (value: unknown) => JSON.stringify(value), mediaType: 'application/json' },
+          { format: (value: unknown) => String(value), mediaType: 'text/plain; charset=utf-8' },
+        ],
+      },
+      cors: false,
+      port: 0,
+    } as TBootstrapOptions);
+
+    await prepareAndListenWithCleanup(app, this.options.name);
+
+    await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
+      for (const [path, accept, expectedBody, expectedContentType] of [
+        ['/json', 'application/json', jsonBody, 'application/json; charset=utf-8'],
+        ['/plain', 'text/plain', plainBody, 'text/plain; charset=utf-8'],
+      ] as const) {
+        const get = await fetch(`${baseUrl}/formatted-responses${path}`, { headers: { accept } });
+        const head = await fetch(`${baseUrl}/formatted-responses${path}`, { headers: { accept }, method: 'HEAD' });
+        const expectedLength = String(Buffer.byteLength(expectedBody));
+
+        const getBody = await get.text();
+        const headBody = await head.text();
+        const getContentType = get.headers.get('content-type');
+        const getContentLength = get.headers.get('content-length');
+
+        if (
+          get.status !== 200
+          || getBody !== expectedBody
+          || getContentType !== expectedContentType
+          || getContentLength !== expectedLength
+          || head.status !== 200
+          || head.headers.get('content-type') !== getContentType
+          || head.headers.get('content-length') !== getContentLength
+          || headBody !== ''
+        ) {
+          throw new Error(`${this.options.name} adapter changed formatted response wire-byte semantics for ${path}: ${JSON.stringify({ getBody, getContentLength, getContentType, headBody, headContentLength: head.headers.get('content-length'), headContentType: head.headers.get('content-type') })}.`);
+        }
       }
     });
   }

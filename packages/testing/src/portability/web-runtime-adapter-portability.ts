@@ -246,6 +246,7 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
             return undefined;
           }
 
+          requestContext.response.setStatus(200);
           requestContext.response.setHeader('ETag', '"revision-3"');
           requestContext.response.setHeader('eTAG', '"stale-revision"');
           requestContext.response.setHeader('ETag', '"revision-3"');
@@ -304,6 +305,75 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
         || writes !== 0
       ) {
         throw new Error(`${this.options.name} adapter changed unsafe precondition ordering or metadata semantics.`);
+      }
+    });
+  }
+
+  /** Verifies formatter output reaches the Web response as exact bytes without re-serialization. */
+  async assertPreservesFormattedResponseBytes(): Promise<void> {
+    const jsonBody = JSON.stringify({ greeting: 'Hello, 세계' });
+    const plainBody = 'plain: café ☕';
+
+    @Controller('/formatted-responses')
+    class FormattedResponsesController {
+      @Get('/json')
+      getJson() {
+        return { greeting: 'Hello, 세계' };
+      }
+
+      @Head('/json')
+      headJson() {
+        return { greeting: 'Hello, 세계' };
+      }
+
+      @Get('/plain')
+      getPlain() {
+        return plainBody;
+      }
+
+      @Head('/plain')
+      headPlain() {
+        return plainBody;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [FormattedResponsesController] });
+
+    const app = await this.options.bootstrap(AppModule, {
+      contentNegotiation: {
+        formatters: [
+          { format: (value: unknown) => JSON.stringify(value), mediaType: 'application/json' },
+          { format: (value: unknown) => String(value), mediaType: 'text/plain; charset=utf-8' },
+        ],
+      },
+      cors: false,
+    } as TBootstrapOptions);
+
+    await runWithCleanup(app, this.options.name, async () => {
+      for (const [path, accept, expectedBody, expectedContentType] of [
+        ['/json', 'application/json', jsonBody, 'application/json; charset=utf-8'],
+        ['/plain', 'text/plain', plainBody, 'text/plain; charset=utf-8'],
+      ] as const) {
+        const get = await app.dispatch(new Request(`https://runtime.test/formatted-responses${path}`, { headers: { accept } }));
+        const head = await app.dispatch(new Request(`https://runtime.test/formatted-responses${path}`, {
+          headers: { accept },
+          method: 'HEAD',
+        }));
+        const expectedLength = String(new TextEncoder().encode(expectedBody).byteLength);
+
+        if (
+          get.status !== 200
+          || (await get.text()) !== expectedBody
+          || get.headers.get('content-type') !== expectedContentType
+          || get.headers.get('content-length') !== expectedLength
+          || head.status !== 200
+          || head.headers.get('content-type') !== get.headers.get('content-type')
+          || head.headers.get('content-length') !== get.headers.get('content-length')
+          || (await head.text()) !== ''
+        ) {
+          throw new Error(`${this.options.name} adapter changed formatted response wire-byte semantics for ${path}.`);
+        }
       }
     });
   }

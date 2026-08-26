@@ -149,14 +149,16 @@ export function matchesEntityTag(
  * @param value Response value to serialize.
  * @param contentType Selected response content type.
  * @param mode Requested entity-tag strength.
+ * @param isSerialized Whether `value` already contains its final serialized representation.
  * @returns The generated entity tag, or `undefined` when no bytes can be serialized.
  */
 export async function generateEntityTag(
   value: unknown,
   contentType: string | undefined,
   mode: 'strong' | 'weak',
+  isSerialized = false,
 ): Promise<string | undefined> {
-  const bytes = serializeEntityTagValue(value, contentType);
+  const bytes = serializeEntityTagValue(value, contentType, isSerialized);
 
   if (bytes === undefined) {
     return undefined;
@@ -176,6 +178,7 @@ export async function generateEntityTag(
 function serializeEntityTagValue(
   value: unknown,
   contentType: string | undefined,
+  isSerialized: boolean,
 ): Uint8Array | undefined {
   if (value === undefined) {
     return undefined;
@@ -189,7 +192,7 @@ function serializeEntityTagValue(
     return new Uint8Array(value);
   }
 
-  if (typeof value === 'string' && !isJsonContentType(contentType)) {
+  if (typeof value === 'string' && (isSerialized || !isJsonContentType(contentType))) {
     return TEXT_ENCODER.encode(value);
   }
 

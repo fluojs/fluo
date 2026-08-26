@@ -140,8 +140,9 @@ describe('dispatcher conditional request policy', () => {
     const root = new Container().register(DocumentsController);
     const dispatcher = createDispatcher({
       conditionalRequests: {
-        resolve() {
+        resolve({ requestContext }) {
           preconditionChecks += 1;
+          requestContext.response.setStatus(200);
           return { etag: '"revision-3"' };
         },
       },
@@ -181,7 +182,8 @@ describe('dispatcher conditional request policy', () => {
     const root = new Container().register(DocumentsController);
     const dispatcher = createDispatcher({
       conditionalRequests: {
-        resolve() {
+        resolve({ requestContext }) {
+          requestContext.response.setStatus(200);
           return { etag: 'W/"revision-3"' };
         },
       },
@@ -303,7 +305,8 @@ describe('dispatcher conditional request policy', () => {
     const root = new Container().register(DocumentsController);
     const dispatcher = createDispatcher({
       conditionalRequests: {
-        resolve() {
+        resolve({ requestContext }) {
+          requestContext.response.setStatus(200);
           return {
             lastModified: 'Tue, 25 Aug 2026 10:15:30 GMT',
           };
@@ -393,6 +396,7 @@ describe('dispatcher conditional request policy', () => {
     const dispatcher = createDispatcher({
       conditionalRequests: {
         resolve({ requestContext }) {
+          requestContext.response.setStatus(200);
           requestContext.response.setHeader('Cache-Control', 'private, max-age=0');
           requestContext.response.setHeader('Vary', 'Accept-Encoding');
           return {
@@ -416,7 +420,7 @@ describe('dispatcher conditional request policy', () => {
       'if-none-match': '"revision-3"',
     }), preconditionFailedResponse);
 
-    // Then: both outcomes suppress bodies, preserve metadata, and skip handlers.
+    // Then: the safe request is evaluated after its handler establishes status, while the prepared unsafe response skips mutation.
     expect(notModifiedResponse.statusCode).toBe(304);
     expect(preconditionFailedResponse.statusCode).toBe(412);
     expect(notModifiedResponse.body).toBeUndefined();
@@ -425,7 +429,7 @@ describe('dispatcher conditional request policy', () => {
     expect(readHeader(notModifiedResponse, 'last-modified')).toBe('Tue, 25 Aug 2026 10:15:30 GMT');
     expect(readHeader(notModifiedResponse, 'cache-control')).toBe('private, max-age=0');
     expect(readHeader(notModifiedResponse, 'vary')).toBe('Accept-Encoding');
-    expect(calls).toBe(0);
+    expect(calls).toBe(1);
   });
 
   it('ignores malformed and future If-Modified-Since dates', async () => {
@@ -607,6 +611,7 @@ describe('dispatcher conditional request policy', () => {
     const dispatcher = createDispatcher({
       conditionalRequests: {
         resolve({ requestContext }) {
+          requestContext.response.setStatus(200);
           requestContext.response.headers.ETag = '"current"';
           requestContext.response.headers.eTAG = '"stale"';
           requestContext.response.setHeader('ETag', '"current"');

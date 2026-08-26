@@ -701,7 +701,11 @@ function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkRes
       }
 
       const existingContentType = response.getHeader('content-type');
-      const serialized = serializeResponseBody(body, typeof existingContentType === 'string' ? existingContentType : undefined);
+      const serialized = serializeResponseBody(
+        body,
+        typeof existingContentType === 'string' ? existingContentType : undefined,
+        (this as unknown as Record<symbol, unknown>)[Symbol.for('fluo.http.serializedResponseBody')] === true,
+      );
 
       if (!response.hasHeader('content-type') && serialized.defaultContentType) {
         response.setHeader('content-type', serialized.defaultContentType);
@@ -1363,6 +1367,7 @@ function setMultiValue(target: Record<string, string | string[]>, key: string, v
 function serializeResponseBody(
   body: unknown,
   contentType?: string,
+  isSerialized = false,
 ): { defaultContentType?: string; payload: Buffer | string } {
   if (body === undefined) {
     return { payload: '' };
@@ -1394,7 +1399,7 @@ function serializeResponseBody(
 
     return {
       defaultContentType: isJson ? undefined : 'text/plain; charset=utf-8',
-      payload: isJson ? JSON.stringify(body) : body,
+      payload: isJson && !isSerialized ? JSON.stringify(body) : body,
     };
   }
 

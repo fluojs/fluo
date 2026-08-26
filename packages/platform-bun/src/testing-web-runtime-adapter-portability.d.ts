@@ -31,6 +31,7 @@ declare module '@fluojs/testing/web-runtime-adapter-portability' {
     assertDoesNotCommitAbortedHttpErrorRepresentations(): Promise<void>;
     assertExcludesRawBodyForMultipart(): Promise<void>;
     assertPreservesExactRawBodyBytesForByteSensitivePayloads(): Promise<void>;
+    assertPreservesFormattedResponseBytes(): Promise<void>;
     assertPreservesMalformedCookieValues(): Promise<void>;
     assertPreservesQueryArraysAndDecoding(): Promise<void>;
     assertPreservesRawBodyForJsonAndText(): Promise<void>;

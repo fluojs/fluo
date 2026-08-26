@@ -35,6 +35,7 @@ declare module '@fluojs/testing/http-adapter-portability' {
     assertDefaultsMultipartTotalLimitToMaxBodySize(): Promise<void>;
     assertExcludesRawBodyForMultipart(): Promise<void>;
     assertPreservesExactRawBodyBytesForByteSensitivePayloads(): Promise<void>;
+    assertPreservesFormattedResponseBytes(): Promise<void>;
     assertPreservesMalformedCookieValues(): Promise<void>;
     assertPreservesRawBodyForJsonAndText(): Promise<void>;
     assertRemovesShutdownSignalListenersAfterClose(): Promise<void>;

@@ -49,6 +49,12 @@ export async function tryHandleConditionalRequestBeforeHandler(
   }
 
   const validators = applyConfiguredValidators(requestContext.response, configured);
+  const isRetrieval = isRetrievalRequest(requestContext.request);
+  const hasPreparedStatus = requestContext.response.statusSet === true || handler.route.successStatus !== undefined;
+  if (isRetrieval || !hasPreparedStatus) {
+    return false;
+  }
+
   const outcome = evaluateConditionalRequest(
     requestContext.request,
     validators,
@@ -90,17 +96,13 @@ export async function tryHandleConditionalResponse(
     const generated = await generateEntityTag(
       value,
       readResponseHeader(response, 'content-type'),
-      options.etag,
+      options.etag === 'strong' && response.compression !== undefined ? 'weak' : options.etag,
+      (response as unknown as Record<symbol, unknown>)[Symbol.for('fluo.http.serializedResponseBody')] === true,
     );
 
     if (generated !== undefined) {
       response.setHeader('ETag', generated);
     }
-  }
-
-  const method = request.method.toUpperCase();
-  if (method !== 'GET' && method !== 'HEAD') {
-    return false;
   }
 
   const outcome = evaluateConditionalRequest(
@@ -148,11 +150,13 @@ function evaluateConditionalRequest(
 ): ConditionalOutcome | undefined {
   const currentEntityTag = parseEntityTag(validators.etag);
   const ifMatchValue = readFirstNonEmptyRequestHeaderValue(request, 'if-match');
+  const hasEligibleStatus = isConditionalStatusEligible(unconditionalStatus);
 
   if (ifMatchValue !== undefined) {
     const ifMatch = parseEntityTagList(ifMatchValue);
     if (
-      ifMatch !== undefined
+      hasEligibleStatus
+      && ifMatch !== undefined
       && !matchesEntityTag(currentEntityTag, ifMatch, validators.exists, 'strong')
     ) {
       return 412;
@@ -162,7 +166,8 @@ function evaluateConditionalRequest(
     const lastModified = parseNormalizedHttpDate(validators.lastModified);
 
     if (
-      ifUnmodifiedSince !== undefined
+      hasEligibleStatus
+      && ifUnmodifiedSince !== undefined
       && lastModified !== undefined
       && lastModified > ifUnmodifiedSince
     ) {
@@ -170,14 +175,14 @@ function evaluateConditionalRequest(
     }
   }
 
-  const method = request.method.toUpperCase();
-  const isRetrieval = method === 'GET' || method === 'HEAD';
+  const isRetrieval = isRetrievalRequest(request);
   const ifNoneMatchValue = readFirstNonEmptyRequestHeaderValue(request, 'if-none-match');
 
   if (ifNoneMatchValue !== undefined) {
     const ifNoneMatch = parseEntityTagList(ifNoneMatchValue);
     if (
-      ifNoneMatch !== undefined
+      hasEligibleStatus
+      && ifNoneMatch !== undefined
       && matchesEntityTag(currentEntityTag, ifNoneMatch, validators.exists, 'weak')
     ) {
       return isRetrieval ? 304 : 412;
@@ -202,6 +207,15 @@ function evaluateConditionalRequest(
   )
     ? 304
     : undefined;
+}
+
+function isRetrievalRequest(request: FrameworkRequest): boolean {
+  const method = request.method.toUpperCase();
+  return method === 'GET' || method === 'HEAD';
+}
+
+function isConditionalStatusEligible(status: number | undefined): boolean {
+  return status === 412 || (status !== undefined && status >= 200 && status < 300);
 }
 
 async function writeConditionalOutcome(

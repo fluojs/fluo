@@ -131,6 +131,7 @@ export function createFrameworkResponse(
       const serialized = serializeResponseBody(
         body,
         typeof existingContentType === 'string' ? existingContentType : undefined,
+        (this as unknown as Record<symbol, unknown>)[Symbol.for('fluo.http.serializedResponseBody')] === true,
       );
 
       if (!response.hasHeader('Content-Type') && serialized.defaultContentType) {
@@ -209,6 +210,7 @@ export async function writeNodeAdapterErrorResponse(
 function serializeResponseBody(
   body: unknown,
   contentType?: string,
+  isSerialized = false,
 ): { defaultContentType?: string; payload: Buffer | string } {
   if (body === undefined) {
     return { payload: '' };
@@ -238,7 +240,7 @@ function serializeResponseBody(
   if (typeof body === 'string') {
     return {
       defaultContentType: isJsonContentType(contentType) ? undefined : 'text/plain; charset=utf-8',
-      payload: isJsonContentType(contentType) ? JSON.stringify(body) : body,
+      payload: isJsonContentType(contentType) && !isSerialized ? JSON.stringify(body) : body,
     };
   }
 

@@ -202,6 +202,7 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
         : typeof this.headers['content-type'] === 'string'
           ? this.headers['content-type']
           : undefined,
+      (this as unknown as Record<symbol, unknown>)[Symbol.for('fluo.http.serializedResponseBody')] === true,
     );
 
     if (serialized.defaultContentType && !hasHeader(this.headers, 'content-type')) {
@@ -773,6 +774,7 @@ function toResponseHeaders(headers: Record<string, string | string[]>): Headers 
 function serializeWebResponseBody(
   body: unknown,
   contentType?: string,
+  isSerialized = false,
 ): { defaultContentType?: string; payload: string | Uint8Array } {
   if (body === undefined) {
     return { payload: '' };
@@ -795,7 +797,7 @@ function serializeWebResponseBody(
   if (typeof body === 'string') {
     return {
       defaultContentType: isJsonContentType(contentType) ? undefined : 'text/plain; charset=utf-8',
-      payload: isJsonContentType(contentType) ? JSON.stringify(body) : body,
+      payload: isJsonContentType(contentType) && !isSerialized ? JSON.stringify(body) : body,
     };
   }
 

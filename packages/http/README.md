@@ -171,18 +171,19 @@ const app = await bootstrapApplication({
 ```
 
 `etag: 'strong'` generates a quoted SHA-256 entity tag from the wire-equivalent successful response
-body. Use `etag: 'weak'` when semantically equivalent representations may differ byte-for-byte.
+body. When an adapter may apply content coding, automatic strong tags are emitted as weak validators so
+different encoded byte streams never share a strong tag. Use `etag: 'weak'` when semantically equivalent
+representations may differ byte-for-byte.
 Automatic generation skips bodyless statuses and responses with `Cache-Control: no-store`;
 `no-cache` still permits validators and revalidation. An application-provided `ETag` remains
 authoritative. `Last-Modified` values returned by `resolve(...)` or set on the response are normalized
 to an IMF-fixdate with second precision.
 
 The resolver runs after guards, DTO binding, and validation, immediately before the controller
-handler; invalid DTOs therefore retain their normal `400` result. It evaluates unsafe entity-tag and
-unmodified-date prerequisites before side effects, while `If-Modified-Since` is evaluated after the
-handler establishes the actual retrieval status. Use it for `If-Match`, `If-None-Match`, and
-`If-Unmodified-Since` on unsafe methods so a failed precondition selects `412` before application
-state can change. Redirect routes skip precondition evaluation. Return
+handler; invalid DTOs therefore retain their normal `400` result. Safe-method conditions are evaluated
+after the handler establishes its actual status. Unsafe prerequisites run before side effects only when
+the resolver or route has already prepared an eligible status; otherwise they are evaluated after the
+actual status is known. Redirect and other ineligible outcomes skip precondition evaluation. Return
 `exists: false` when the target has no current representation. Generated response ETags are
 necessarily available only after the handler, so they protect later GET/HEAD revalidation but do not
 replace the resolver for unsafe operations.
