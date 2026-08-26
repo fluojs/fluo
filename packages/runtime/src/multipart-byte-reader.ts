@@ -8,6 +8,11 @@ interface MultipartBodyChunk {
   bytes: Uint8Array;
 }
 
+interface MultipartBoundarySuffix {
+  closing: boolean;
+  length: number;
+}
+
 /** Pull-driven byte reader that bounds multipart lookbehind and total encoded size. */
 export class MultipartByteReader {
   private buffer: Uint8Array = EMPTY_BYTES;
@@ -200,39 +205,70 @@ export class MultipartByteReader {
     }
   }
 
+  async consumeBoundarySuffix(): Promise<boolean> {
+    const suffix = await this.readBoundarySuffix(0);
+
+    if (!suffix) {
+      throw new BadRequestException('Multipart boundary has an invalid terminator.');
+    }
+
+    this.buffer = this.buffer.slice(suffix.length);
+    return suffix.closing;
+  }
+
   private async hasLegalBoundarySuffix(offset: number): Promise<boolean> {
-    const first = this.buffer[offset];
-    const second = this.buffer[offset + 1];
+    return await this.readBoundarySuffix(offset) !== undefined;
+  }
 
-    if (first === 13 && second === 10) {
-      return true;
+  private async readBoundarySuffix(offset: number): Promise<MultipartBoundarySuffix | undefined> {
+    let closing = false;
+    let cursor = offset;
+    const first = await this.readBoundaryByte(cursor);
+
+    if (first === 45) {
+      if (await this.readBoundaryByte(cursor + 1) !== 45) {
+        return undefined;
+      }
+
+      closing = true;
+      cursor += 2;
     }
 
-    if (first !== 45 || second !== 45) {
-      return false;
-    }
+    for (;;) {
+      const byte = await this.readBoundaryByte(cursor);
 
-    if (this.buffer.byteLength === offset + 2) {
+      if (byte === undefined) {
+        return closing && cursor === offset + 2
+          ? { closing, length: cursor - offset }
+          : undefined;
+      }
+
+      if (byte === 32 || byte === 9) {
+        cursor += 1;
+        continue;
+      }
+
+      if (byte !== 13 || await this.readBoundaryByte(cursor + 1) !== 10) {
+        return undefined;
+      }
+
+      return {
+        closing,
+        length: cursor + 2 - offset,
+      };
+    }
+  }
+
+  private async readBoundaryByte(offset: number): Promise<number | undefined> {
+    while (this.buffer.byteLength <= offset) {
       const result = await this.readSource();
 
       if (result.done) {
-        return true;
+        return undefined;
       }
     }
 
-    if (this.buffer[offset + 2] !== 13) {
-      return false;
-    }
-
-    while (this.buffer.byteLength < offset + 4) {
-      const result = await this.readSource();
-
-      if (result.done) {
-        return false;
-      }
-    }
-
-    return this.buffer[offset + 3] === 10;
+    return this.buffer[offset];
   }
 
   private async readSource(appendToBuffer = true): Promise<ReadableStreamReadResult<Uint8Array>> {

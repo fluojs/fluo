@@ -96,6 +96,31 @@ describe('parseMultipart', () => {
     });
   });
 
+  it.each([
+    ['space-padded regular delimiter', ' ', ''],
+    ['tab-padded regular delimiter', '\t', ''],
+    ['space-padded closing delimiter', '', ' '],
+    ['tab-padded closing delimiter', '', '\t'],
+  ])('parses a buffered multipart body with a %s', async (_name, regularPadding, closingPadding) => {
+    const boundary = 'fluo-transport-padding';
+    const request = new Request('http://localhost/uploads', {
+      body: [
+        `--${boundary}${regularPadding}\r\n`,
+        'Content-Disposition: form-data; name="name"\r\n\r\n',
+        `Ada\r\n--${boundary}--${closingPadding}\r\n`,
+      ].join(''),
+      headers: {
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+      },
+      method: 'POST',
+    });
+
+    await expect(parseMultipart(request)).resolves.toEqual({
+      fields: { name: 'Ada' },
+      files: [],
+    });
+  });
+
   it('parses a buffered multipart body with an RFC preamble', async () => {
     // Given
     const boundary = 'fluo-preamble';

@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   type FrameworkMultipartFilePart,
   type FrameworkMultipartPart,
   PayloadTooLargeException,
@@ -8,7 +7,6 @@ import {
 import { MultipartByteReader } from './multipart-byte-reader.js';
 import type { StreamingMultipartInput } from './streaming-multipart.js';
 import {
-  bytesEqual,
   concatChunks,
   parseBoundary,
   parseContentDisposition,
@@ -22,7 +20,6 @@ const DEFAULT_MAX_FILES = 10;
 const DEFAULT_MAX_HEADERS = 100;
 const DEFAULT_MAX_HEADER_SIZE = 16 * 1024;
 const DEFAULT_MAX_TOTAL_SIZE = 10 * 1024 * 1024;
-const CRLF = new Uint8Array([13, 10]);
 const HEADER_END = new Uint8Array([13, 10, 13, 10]);
 const DECODER = new TextDecoder();
 const ENCODER = new TextEncoder();
@@ -264,20 +261,13 @@ export class StreamingMultipartParser {
   }
 
   private async finishBoundary(): Promise<void> {
-    const suffix = await this.reader.readBytes(2);
-
-    if (bytesEqual(suffix, CRLF)) {
+    if (!await this.reader.consumeBoundarySuffix()) {
       return;
     }
 
-    if (suffix[0] === 45 && suffix[1] === 45) {
-      this.finalBoundary = true;
-      await this.reader.complete();
-      this.removeAbortListener();
-      return;
-    }
-
-    throw new BadRequestException('Multipart boundary has an invalid terminator.');
+    this.finalBoundary = true;
+    await this.reader.complete();
+    this.removeAbortListener();
   }
 
   private removeAbortListener(): void {

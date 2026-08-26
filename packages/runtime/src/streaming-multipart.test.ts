@@ -157,6 +157,66 @@ describe('createStreamingMultipart', () => {
     expect(() => multipart.consume()).toThrow('Streaming multipart body can only be consumed once.');
   });
 
+  it.each([
+    ['space-padded regular and tab-padded closing delimiters', ' ', '\t'],
+    ['tab-padded regular and space-padded closing delimiters', '\t', ' '],
+  ])('accepts %s split across source chunks', async (_name, regularPadding, closingPadding) => {
+    const tracked = createTrackedBody(createMultipartChunks([
+      `--${BOUNDARY}`,
+      regularPadding,
+      '\r',
+      '\nContent-Disposition: form-data; name="name"\r\n\r\nAda\r\n--',
+      BOUNDARY,
+      '--',
+      closingPadding,
+      '\r',
+      '\n',
+    ]));
+    const multipart = createStreamingMultipart({
+      body: tracked.body,
+      contentType: `multipart/form-data; boundary=${BOUNDARY}`,
+    });
+    const reader = multipart.consume().getReader();
+
+    await expect(reader.read()).resolves.toEqual({
+      done: false,
+      value: {
+        fieldname: 'name',
+        headers: {
+          'content-disposition': 'form-data; name="name"',
+        },
+        kind: 'field',
+        value: 'Ada',
+      },
+    });
+    await expect(reader.read()).resolves.toEqual({ done: true, value: undefined });
+  });
+
+  it('preserves a delimiter with an invalid transport-padding byte as field data', async () => {
+    const tracked = createTrackedBody(createMultipartChunks([
+      `--${BOUNDARY}\r\nContent-Disposition: form-data; name="name"\r\n\r\n`,
+      `Ada\r\n--${BOUNDARY}\v\r\nstill-data\r\n--${BOUNDARY}--\r\n`,
+    ]));
+    const multipart = createStreamingMultipart({
+      body: tracked.body,
+      contentType: `multipart/form-data; boundary=${BOUNDARY}`,
+    });
+    const reader = multipart.consume().getReader();
+
+    await expect(reader.read()).resolves.toEqual({
+      done: false,
+      value: {
+        fieldname: 'name',
+        headers: {
+          'content-disposition': 'form-data; name="name"',
+        },
+        kind: 'field',
+        value: `Ada\r\n--${BOUNDARY}\v\r\nstill-data`,
+      },
+    });
+    await expect(reader.read()).resolves.toEqual({ done: true, value: undefined });
+  });
+
   it('accepts an empty multipart body terminated by the initial boundary', async () => {
     const tracked = createTrackedBody(createMultipartChunks([
       `--${BOUNDARY}--\r\n`,
