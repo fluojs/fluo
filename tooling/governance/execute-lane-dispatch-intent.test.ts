@@ -1,9 +1,11 @@
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -16,6 +18,17 @@ type PersistedState = Readonly<{
   receipts: readonly Readonly<Record<string, unknown>>[];
 }>;
 
+const { hashEvent, payloadDigest } = (await import(
+  resolve(
+    process.cwd(),
+    '.agents/workflow-contracts/contracts.mjs',
+  )
+)) as {
+  hashEvent: (
+    event: Readonly<Record<string, unknown>>,
+  ) => string;
+  payloadDigest: (value: unknown) => string;
+};
 const { compileLaneSupervisorDag } = (await import(
   resolve(
     process.cwd(),
@@ -41,6 +54,20 @@ const { canonicalLaneLedgerPath } = (await import(
     repositoryRoot: string;
   }>;
 };
+const { createDagBinding, persistDagBinding } = (await import(
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/dag-binding.mjs',
+  )
+)) as {
+  createDagBinding: (
+    input: Readonly<Record<string, unknown>>,
+  ) => Readonly<Record<string, unknown>>;
+  persistDagBinding: (
+    runtimeRoot: string,
+    binding: Readonly<Record<string, unknown>>,
+  ) => void;
+};
 const {
   attachLaneSupervisorRun,
   awaitLaneSupervisorDispatch,
@@ -55,19 +82,17 @@ const {
     attachLaneSupervisorRun: (input: {
       persisted: PersistedState & { dispatch_event_hash: string };
       repository_root: string;
-      definition: Readonly<Record<string, unknown>>;
       run_id: string;
     }) => Readonly<Record<string, unknown>>;
     awaitLaneSupervisorDispatch: (input: {
       persisted: PersistedState;
       repository_root: string;
-      definition: Readonly<Record<string, unknown>>;
       timeout_ms?: number;
     }) => Promise<Readonly<Record<string, unknown>>>;
     reconcileLaneSupervisorDispatch: (input: {
       persisted: PersistedState;
       repository_root: string;
-      definition: Readonly<Record<string, unknown>>;
+      definition?: Readonly<Record<string, unknown>>;
     }) => Readonly<Record<string, unknown>>;
   };
 
@@ -99,6 +124,78 @@ const readyState = (): PersistedState => {
     },
     events: [],
     receipts: [],
+  };
+};
+
+const persistNativeDagRun = (
+  repositoryRoot: string,
+  runId: string,
+  definition: Readonly<Record<string, unknown>>,
+) => {
+  const runDirectory = resolve(
+    repositoryRoot,
+    '.omo',
+    'senpi-task',
+    'dag',
+    'runs',
+  );
+  mkdirSync(runDirectory, { recursive: true });
+  if (!Array.isArray(definition.nodes)) {
+    throw new TypeError('Test DAG definition nodes must be an array.');
+  }
+  const nodes = definition.nodes.map((node) => {
+    if (!isRecord(node)) {
+      throw new TypeError('Test DAG node must be an object.');
+    }
+    return {
+      id: node.id,
+      prompt: node.prompt,
+      label: node.label,
+      dependsOn: node.dependsOn,
+      task_summary: node.task_summary,
+      description: node.description,
+      load_skills: node.load_skills,
+      category: node.category,
+      effectivePrompt: `loaded:${String(node.prompt)}`,
+    };
+  });
+  writeFileSync(
+    resolve(runDirectory, `${runId}.json`),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      runId,
+      runKey: definition.key,
+      name: definition.name,
+      status: 'running',
+      definitionFingerprint: 'a'.repeat(64),
+      definition: {
+        key: definition.key,
+        name: definition.name,
+        nodes,
+      },
+      nodes: [],
+    })}\n`,
+  );
+};
+
+const withoutDefinitionDigest = (
+  persisted: PersistedState & { dispatch_event_hash: string },
+) => {
+  const [event] = persisted.events;
+  if (!isRecord(event) || !isRecord(event.payload)) {
+    throw new TypeError('Dispatch event fixture must exist.');
+  }
+  const payload = { dag_key: event.payload.dag_key };
+  const draft = {
+    ...event,
+    payload,
+    payload_sha256: payloadDigest(payload),
+  };
+  const legacyEvent = { ...draft, event_hash: hashEvent(draft) };
+  return {
+    ...persisted,
+    events: [legacyEvent],
+    dispatch_event_hash: legacyEvent.event_hash,
   };
 };
 
@@ -188,16 +285,15 @@ describe('execute-lane lane DAG dispatch intent', () => {
         attachLaneSupervisorRun({
           persisted: prepared,
           repository_root: directory,
-          definition: { ...definition, name: 'definition drifted' },
-          run_id: 'run_lane_4101',
+          run_id: 'dag_missing',
         }),
-      ).toThrow(/dispatch definition digest/u);
+      ).toThrow(/native DAG run/u);
 
+      persistNativeDagRun(directory, 'dag_4101', definition);
       const binding = attachLaneSupervisorRun({
         persisted: prepared,
         repository_root: directory,
-        definition,
-        run_id: 'run_lane_4101',
+        run_id: 'dag_4101',
       });
       expect(
         existsSync(
@@ -223,17 +319,79 @@ describe('execute-lane lane DAG dispatch intent', () => {
         }),
       ).toMatchObject({
         action: 'attach',
-        run_id: 'run_lane_4101',
+        run_id: 'dag_4101',
         binding,
+      });
+      expect(
+        reconcileLaneSupervisorDispatch({
+          persisted: prepared,
+          repository_root: directory,
+          definition: { ...definition, name: 'tampered' },
+        }),
+      ).toMatchObject({
+        action: 'attach',
+        run_id: 'dag_4101',
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects legacy intent rebinding and a mismatched native run', () => {
+    const directory = mkdtempSync(
+      join(realpathSync(tmpdir()), 'fluo-lane-native-binding-'),
+    );
+    const persisted = readyState();
+    const definition = compileLaneSupervisorDag(persisted.snapshot);
+    const prepared = reconcileLaneSupervisorDispatch({
+      persisted,
+      repository_root: directory,
+      definition,
+    }).persisted as PersistedState & { dispatch_event_hash: string };
+
+    try {
+      const legacy = withoutDefinitionDigest(prepared);
+      persistNativeDagRun(directory, 'dag_legacy', definition);
+      expect(() =>
+        attachLaneSupervisorRun({
+          persisted: legacy,
+          repository_root: directory,
+          run_id: 'dag_legacy',
+        }),
+      ).toThrow(/legacy dispatch intent.*successor lane/u);
+
+      persistNativeDagRun(directory, 'dag_mismatch', {
+        ...definition,
+        name: 'different native definition',
       });
       expect(() =>
         attachLaneSupervisorRun({
           persisted: prepared,
           repository_root: directory,
-          definition: { ...definition, name: 'tampered' },
-          run_id: 'run_lane_4101',
+          run_id: 'dag_mismatch',
         }),
-      ).toThrow(/definition digest/u);
+      ).toThrow(/native DAG definition digest/u);
+
+      const binding = createDagBinding({
+        definition,
+        lane_id: 'lane-4101-runtime',
+        run_id: 'dag_legacy',
+        dispatch_event_hash: legacy.dispatch_event_hash,
+      });
+      persistDagBinding(
+        resolve(directory, '.omo', 'lane-runs'),
+        binding,
+      );
+      expect(
+        reconcileLaneSupervisorDispatch({
+          persisted: legacy,
+          repository_root: directory,
+        }),
+      ).toMatchObject({
+        action: 'attach',
+        run_id: 'dag_legacy',
+        binding,
+      });
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -255,21 +413,20 @@ describe('execute-lane lane DAG dispatch intent', () => {
       const waiting = awaitLaneSupervisorDispatch({
         persisted: prepared,
         repository_root: directory,
-        definition,
         timeout_ms: 1_000,
       });
       setImmediate(() => {
+        persistNativeDagRun(directory, 'dag_4101', definition);
         attachLaneSupervisorRun({
           persisted: prepared,
           repository_root: directory,
-          definition,
-          run_id: 'run_lane_4101',
+          run_id: 'dag_4101',
         });
       });
 
       await expect(waiting).resolves.toMatchObject({
         action: 'attach',
-        run_id: 'run_lane_4101',
+        run_id: 'dag_4101',
       });
     } finally {
       rmSync(directory, { recursive: true, force: true });

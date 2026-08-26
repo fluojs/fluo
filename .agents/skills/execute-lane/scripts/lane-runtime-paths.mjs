@@ -85,3 +85,40 @@ export const canonicalLaneRuntimeRoot = (repositoryRoot) => {
   requireRealDirectory(runtimeRoot, true);
   return runtimeRoot;
 };
+
+export const canonicalNativeDagRunPath = (
+  repositoryRoot,
+  runId,
+) => {
+  if (
+    typeof runId !== 'string' ||
+    !/^dag_[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(runId)
+  ) {
+    throw new TypeError('run_id must be a canonical native DAG run ID.');
+  }
+  const canonicalRoot = canonicalRepositoryRoot(repositoryRoot);
+  const runDirectory = resolve(
+    canonicalRoot,
+    '.omo',
+    'senpi-task',
+    'dag',
+    'runs',
+  );
+  if (!existsSync(runDirectory)) {
+    throw new TypeError(`native DAG run ${runId} must exist.`);
+  }
+  requireRealDirectory(runDirectory);
+  const runPath = resolve(runDirectory, `${runId}.json`);
+  if (!existsSync(runPath)) {
+    throw new TypeError(`native DAG run ${runId} must exist.`);
+  }
+  const stat = lstatSync(runPath);
+  if (
+    stat.isSymbolicLink() ||
+    !stat.isFile() ||
+    realpathSync(runPath) !== runPath
+  ) {
+    throw new TypeError('native DAG run must be a real canonical file.');
+  }
+  return runPath;
+};

@@ -1,11 +1,7 @@
 import { watch } from 'node:fs';
 import { resolve } from 'node:path';
 
-import {
-  assertContract,
-  assertEventChain,
-  payloadDigest,
-} from '../../../workflow-contracts/contracts.mjs';
+import { assertContract } from '../../../workflow-contracts/contracts.mjs';
 import { validateLedger } from '../../../../tooling/governance/lane-ledger-state.mjs';
 import {
   assertDagBindingMatches,
@@ -13,69 +9,33 @@ import {
   loadDagBinding,
   persistDagBinding,
 } from './dag-binding.mjs';
+import {
+  dispatchDefinitionDigestFor,
+  dispatchIntentFor,
+  prepareLaneSupervisorDispatch,
+} from './lane-dispatch-intent.mjs';
 import { canonicalLaneRuntimeRoot } from './lane-runtime-paths.mjs';
-import { appendEvent } from './transition-application.mjs';
+import { loadLaneNativeDagRun } from './native-dag-run.mjs';
 
-const dispatchIntentFor = (events, laneId) => {
-  if (events.length > 0) {
-    assertEventChain(events);
-  }
-  const intents = events.filter(
-    (event) =>
-      event.event_type === 'lane.dag.dispatch.intent' &&
-      event.subject_id === laneId,
-  );
-  if (intents.length > 1) {
-    throw new TypeError(`lane ${laneId} has conflicting DAG dispatch intents.`);
-  }
-  return intents[0] ?? null;
-};
-
-const assertDispatchDefinition = (intent, definition) => {
-  const expected = intent?.payload?.definition_sha256;
-  if (expected === undefined) {
-    return;
-  }
-  if (
-    typeof expected !== 'string' ||
-    !/^[a-f0-9]{64}$/u.test(expected) ||
-    expected !== payloadDigest(definition)
-  ) {
+const assertNativeRunMatchesIntent = (
+  intent,
+  nativeRun,
+  allowLegacyBinding,
+) => {
+  const expected = dispatchDefinitionDigestFor(intent);
+  if (expected === null) {
+    if (allowLegacyBinding) {
+      return;
+    }
     throw new TypeError(
-      'dispatch definition digest does not match the compiled definition.',
+      'legacy dispatch intent without a binding requires a successor lane.',
     );
   }
-};
-
-const prepareLaneSupervisorDispatch = (persisted, definition) => {
-  const snapshot = structuredClone(persisted.snapshot);
-  const events = structuredClone(persisted.events);
-  const receipts = structuredClone(persisted.receipts);
-  assertContract('lane-ledger-v2', snapshot);
-  validateLedger('lane-ledger-v2', snapshot);
-  if (
-    definition.key !==
-    `fluo:lane:${snapshot.lane_id}:issue-supervisors:v2`
-  ) {
-    throw new TypeError('Lane DAG definition key is not canonical.');
+  if (expected !== nativeRun.definition_sha256) {
+    throw new TypeError(
+      'native DAG definition digest does not match the dispatch intent.',
+    );
   }
-  appendEvent(
-    events,
-    snapshot.lane_id,
-    'lane.dag.dispatch.intent',
-    snapshot.lane_id,
-    {
-      dag_key: definition.key,
-      definition_sha256: payloadDigest(definition),
-    },
-  );
-  assertEventChain(events);
-  return {
-    snapshot,
-    events,
-    receipts,
-    dispatch_event_hash: events.at(-1).event_hash,
-  };
 };
 
 export const reconcileLaneSupervisorDispatch = ({
@@ -88,7 +48,6 @@ export const reconcileLaneSupervisorDispatch = ({
   const laneId = persisted.snapshot.lane_id;
   const runtimeRoot = canonicalLaneRuntimeRoot(repository_root);
   const intent = dispatchIntentFor(persisted.events, laneId);
-  assertDispatchDefinition(intent, definition);
   const binding = loadDagBinding(runtimeRoot, laneId);
   if (binding !== null) {
     if (intent === null) {
@@ -97,18 +56,32 @@ export const reconcileLaneSupervisorDispatch = ({
         reason: 'lane DAG binding exists without dispatch intent',
       };
     }
+    const nativeRun = loadLaneNativeDagRun({
+      repository_root,
+      lane_id: laneId,
+      run_id: binding.run_id,
+    });
+    assertNativeRunMatchesIntent(intent, nativeRun, true);
     assertDagBindingMatches(binding, {
-      definition,
+      definition: nativeRun.definition,
       lane_id: laneId,
       run_id: binding.run_id,
       dispatch_event_hash: intent.event_hash,
     });
-    return { action: 'attach', run_id: binding.run_id, binding };
+    return {
+      action: 'attach',
+      run_id: binding.run_id,
+      binding,
+      definition: nativeRun.definition,
+    };
   }
   if (intent !== null) {
+    const legacy = dispatchDefinitionDigestFor(intent) === null;
     return {
       action: 'blocked-ledger-conflict',
-      reason: 'dispatch intent exists without lane DAG binding',
+      reason: legacy
+        ? 'legacy dispatch intent without a binding requires a successor lane'
+        : 'dispatch intent exists without lane DAG binding',
     };
   }
   const prepared = prepareLaneSupervisorDispatch(persisted, definition);
@@ -122,7 +95,6 @@ export const reconcileLaneSupervisorDispatch = ({
 export const attachLaneSupervisorRun = ({
   persisted,
   repository_root,
-  definition,
   run_id,
 }) => {
   assertContract('lane-ledger-v2', persisted.snapshot);
@@ -133,11 +105,16 @@ export const attachLaneSupervisorRun = ({
   if (intent === null) {
     throw new TypeError(`lane ${laneId} has no DAG dispatch intent.`);
   }
-  assertDispatchDefinition(intent, definition);
   const existing = loadDagBinding(runtimeRoot, laneId);
+  const nativeRun = loadLaneNativeDagRun({
+    repository_root,
+    lane_id: laneId,
+    run_id,
+  });
+  assertNativeRunMatchesIntent(intent, nativeRun, existing !== null);
   if (existing !== null) {
     assertDagBindingMatches(existing, {
-      definition,
+      definition: nativeRun.definition,
       lane_id: laneId,
       run_id,
       dispatch_event_hash: intent.event_hash,
@@ -145,7 +122,7 @@ export const attachLaneSupervisorRun = ({
     return existing;
   }
   const binding = createDagBinding({
-    definition,
+    definition: nativeRun.definition,
     lane_id: laneId,
     run_id,
     dispatch_event_hash: intent.event_hash,
@@ -161,7 +138,6 @@ const missingBindingCrashWindow = (result) =>
 export const awaitLaneSupervisorDispatch = ({
   persisted,
   repository_root,
-  definition,
   timeout_ms = 30_000,
 }) => {
   if (!Number.isSafeInteger(timeout_ms) || timeout_ms <= 0) {
@@ -170,7 +146,6 @@ export const awaitLaneSupervisorDispatch = ({
   const initial = reconcileLaneSupervisorDispatch({
     persisted,
     repository_root,
-    definition,
   });
   if (initial.action === 'attach') {
     return Promise.resolve(initial);
@@ -199,7 +174,6 @@ export const awaitLaneSupervisorDispatch = ({
         const current = reconcileLaneSupervisorDispatch({
           persisted,
           repository_root,
-          definition,
         });
         if (current.action === 'attach') {
           finish(resolveWait, current);

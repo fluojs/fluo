@@ -116,7 +116,9 @@ node .agents/skills/execute-lane/scripts/await-lane-dispatch.mjs \
 
 Do not treat the short start/attach interval as a terminal ledger conflict.
 Wait for the exact canonical binding. A timeout or mismatched immutable
-binding remains fail-closed.
+binding remains fail-closed. The gate authenticates the binding against the
+native run's persisted submitted definition and does not recompile current
+workflow source for an already attached run.
 
 ## Stop
 

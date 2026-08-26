@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { compileLaneSupervisorDag } from './compile-dag.mjs';
 import { awaitLaneSupervisorDispatch } from './lane-dispatch.mjs';
 import { canonicalLaneLedgerPath } from './lane-runtime-paths.mjs';
 import { loadState } from './state-store.mjs';
@@ -42,11 +41,9 @@ export const awaitCanonicalLaneDispatch = async ({
     canonical.ledgerPath,
     canonical.repositoryRoot,
   );
-  const definition = compileLaneSupervisorDag(persisted.snapshot);
   return awaitLaneSupervisorDispatch({
     persisted,
     repository_root: canonical.repositoryRoot,
-    definition,
     timeout_ms: timeoutMs,
   });
 };

@@ -54,8 +54,10 @@ must be acyclic. The parent:
 5. starts the complete native DAG once;
 6. immediately attaches the observed run with
    `attachLaneSupervisorRun()`;
-7. persists its immutable v3 binding at `dag-binding.json`;
-8. requires every supervisor to pass `await-lane-dispatch.mjs` before
+7. authenticates the run key and submitted definition from
+   `.omo/senpi-task/dag/runs/<run-id>.json`;
+8. persists its immutable v3 binding at `dag-binding.json`;
+9. requires every supervisor to pass `await-lane-dispatch.mjs` before
    mutation.
 
 The dispatch interface accepts the repository root and derives the only valid
@@ -63,6 +65,13 @@ runtime root, `.omo/lane-runs`, internally. Callers cannot select a binding
 directory. The startup gate subscribes to the canonical binding path before
 rechecking it, so a fast attach cannot be missed and a delayed attach does not
 become a false terminal blocker.
+
+An attached run resumes from the authenticated native run definition, not a
+fresh `compile-dag.mjs` result. This keeps a long-lived exact run attachable
+when workflow source changes later. A legacy dispatch intent that has no
+definition digest remains compatible only when its existing binding matches
+the native run record. If that binding is missing, recovery requires a
+successor lane; never synthesize a new binding from current source.
 
 Independent nodes run concurrently. Native `dependsOn` is an ordering signal,
 not semantic success. Before mutation, every dependent supervisor loads and
