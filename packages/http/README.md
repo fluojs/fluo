@@ -357,7 +357,7 @@ Response content negotiation formatters must return `string` or `Uint8Array` fro
 
 Streaming multipart mode exposes `FrameworkRequest.multipart` instead of populating buffered `body` and `files`. Call `consume()` exactly once and read the ordered `FrameworkMultipartFieldPart | FrameworkMultipartFilePart` stream. File parts expose a portable `ReadableStream<Uint8Array>` and never expose adapter-native upload objects.
 
-`consume()` fails clearly after the first claim. Request aborts, parser failures, limit failures, and dispatch completion cancel active file streams and parser work. Conforming adapters report `{ contract: 'portable-multipart', modes: ['buffered', 'streaming'], version: 1 }` through `getMultipartCapability()`.
+`consume()` fails clearly after the first claim. Request aborts, parser failures, limit failures, and dispatch completion cancel active file streams and parser work. Conforming adapters report `{ contract: 'portable-multipart', kind: 'multipart', modes: ['buffered', 'streaming'], version: 1 }` through `getMultipartCapability()`.
 
 ## Public API
 

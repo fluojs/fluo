@@ -255,6 +255,7 @@ Streaming mode에서 `context.request.multipart.consume()`은 순서가 보존�
 | Node.js | 지원 | 지원 | `portable-multipart` v1 |
 | Express | 지원 | 지원 | `portable-multipart` v1 |
 | Fastify | 지원 | 지원 | `portable-multipart` v1 |
+| Web runtime | 지원 | 지원 | `portable-multipart` v1 |
 | Bun | 지원 | 지원 | `portable-multipart` v1 |
 | Deno | 지원 | 지원 | `portable-multipart` v1 |
 | Cloudflare Workers | 지원 | 지원 | `portable-multipart` v1 |

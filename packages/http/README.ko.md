@@ -351,7 +351,7 @@ Multipart upload를 parse하는 어댑터는 shared HTTP contract를 adapter-spe
 
 Streaming multipart mode는 buffered `body`와 `files`를 채우는 대신 `FrameworkRequest.multipart`를 노출합니다. `consume()`을 정확히 한 번 호출하고 순서가 보존된 `FrameworkMultipartFieldPart | FrameworkMultipartFilePart` stream을 읽으세요. File part는 이식 가능한 `ReadableStream<Uint8Array>`를 노출하며 adapter-native upload object는 노출하지 않습니다.
 
-첫 claim 이후의 `consume()`은 명확하게 실패합니다. Request abort, parser failure, limit failure, dispatch 완료는 active file stream과 parser 작업을 취소합니다. Conforming adapter는 `getMultipartCapability()`로 `{ contract: 'portable-multipart', modes: ['buffered', 'streaming'], version: 1 }`을 보고합니다.
+첫 claim 이후의 `consume()`은 명확하게 실패합니다. Request abort, parser failure, limit failure, dispatch 완료는 active file stream과 parser 작업을 취소합니다. Conforming adapter는 `getMultipartCapability()`로 `{ contract: 'portable-multipart', kind: 'multipart', modes: ['buffered', 'streaming'], version: 1 }`을 보고합니다.
 
 ## 공개 API
 
