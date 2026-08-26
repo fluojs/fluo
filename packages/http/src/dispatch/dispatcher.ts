@@ -32,10 +32,11 @@ import type {
   RequestObserver,
   RequestObserverLike,
 } from '../types.js';
-import { invokeControllerHandler } from './dispatch-handler-policy.js';
 import { tryHandleConditionalRequestBeforeHandler } from './conditional-request-policy.js';
+import { invokeControllerHandler } from './dispatch-handler-policy.js';
 import { type ResolvedContentNegotiation, resolveContentNegotiation, writeErrorResponse, writeSuccessResponse } from './dispatch-response-policy.js';
 import { matchHandlerOrThrow, updateRequestParams } from './dispatch-routing-policy.js';
+import { createDispatcherFastPathState, type DispatcherFastPathState } from './fast-path/dispatcher-state.js';
 import {
   addPathDebugHeader,
   createPathDebugInfo,
@@ -44,7 +45,6 @@ import {
   type FastPathStats,
   shouldUseFastPathForRequest,
 } from './fast-path/index.js';
-import { createDispatcherFastPathState, type DispatcherFastPathState } from './fast-path/dispatcher-state.js';
 import { attachFrameworkRequestNativeRouteHandoff, readFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
 import { isRequestAborted } from './request-abort.js';
 

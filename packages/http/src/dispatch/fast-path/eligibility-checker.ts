@@ -7,7 +7,7 @@ import type {
   MiddlewareLike,
 } from '../../types.js';
 import type { CreateDispatcherOptions } from '../dispatcher.js';
-import { type FastPathEligibility, FAST_PATH_ELIGIBILITY_SYMBOL } from './eligibility.js';
+import { FAST_PATH_ELIGIBILITY_SYMBOL, type FastPathEligibility } from './eligibility.js';
 
 interface RequestScopeInspector {
   hasRequestScopedDependency(token: unknown): boolean;

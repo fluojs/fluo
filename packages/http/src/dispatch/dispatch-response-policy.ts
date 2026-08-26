@@ -147,7 +147,7 @@ function applySuccessResponseMetadata(context: SuccessResponseMetadataContext): 
   }
 }
 
-function applyImplicitResponseMetadata(response: FrameworkResponse, value: unknown): void {
+function applyImplicitResponseMetadata(response: FrameworkResponse, value: unknown, isSerialized = false): void {
   if (value === undefined) {
     return;
   }
@@ -166,9 +166,11 @@ function applyImplicitResponseMetadata(response: FrameworkResponse, value: unkno
       : value instanceof ArrayBuffer
         ? value.byteLength
         : new TextEncoder().encode(
-          typeof value === 'string' && isJsonContentType(readHeader(response.headers, 'content-type') ?? '')
-            ? JSON.stringify(value)
-            : typeof value === 'string' ? value : JSON.stringify(value),
+          isSerialized && typeof value === 'string'
+            ? value
+            : typeof value === 'string' && isJsonContentType(readHeader(response.headers, 'content-type') ?? '')
+              ? JSON.stringify(value)
+              : typeof value === 'string' ? value : JSON.stringify(value),
         ).byteLength;
     response.setHeader('Content-Length', String(byteLength));
   }
@@ -252,7 +254,7 @@ export async function writeSuccessResponse(
     return;
   }
 
-  applyImplicitResponseMetadata(response, responseBody);
+  applyImplicitResponseMetadata(response, responseBody, formatter !== undefined);
 
   if (request.method.toUpperCase() === 'HEAD') {
     await response.send(undefined);

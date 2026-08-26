@@ -188,4 +188,37 @@ describe('dispatch response policy', () => {
     expect(response.headers['Content-Type']).toBe('text/html; charset=utf-8');
     expect(response.body).toBe('<main>Finalized page</main>');
   });
+
+  it('uses formatter bytes for serialized JSON Content-Length on GET and HEAD', async () => {
+    @Controller('/serialized-length')
+    class SerializedLengthController {
+      @Get('/')
+      get() {
+        return { value: 'unicode 😀' };
+      }
+
+      @Head('/')
+      head() {
+        return { value: 'unicode 😀' };
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      contentNegotiation: {
+        formatters: [{ format: JSON.stringify, mediaType: 'application/json' }],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: SerializedLengthController }]),
+      rootContainer: new Container().register(SerializedLengthController),
+    });
+    const expected = JSON.stringify({ value: 'unicode 😀' });
+    const getResponse = createResponse();
+    const headResponse = createResponse();
+
+    await dispatcher.dispatch(createRequest('/serialized-length/', { accept: 'application/json' }), getResponse);
+    await dispatcher.dispatch(createRequest('/serialized-length/', { accept: 'application/json' }, 'HEAD'), headResponse);
+
+    expect(getResponse.body).toBe(expected);
+    expect(getResponse.headers['Content-Length']).toBe(String(new TextEncoder().encode(expected).byteLength));
+    expect(headResponse.headers['Content-Length']).toBe(getResponse.headers['Content-Length']);
+  });
 });
