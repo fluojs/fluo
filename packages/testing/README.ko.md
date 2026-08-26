@@ -149,6 +149,14 @@ Adapter가 body-bearing `QUERY`와 대표 `PURGE` route를 real listener 또는 
 
 HTTP 어댑터가 런타임 전반에서 `rawBody`의 byte-sensitive payload byte를 그대로 보존하는지 증명해야 할 때는 `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`를 사용하세요.
 
+`HttpAdapterPortabilityHarness`와 `WebRuntimeHttpAdapterPortabilityHarness`는 모두 streaming multipart assertion을 노출합니다. Harness를 구성한 뒤 `assertStreamingMultipartConformance()`를 호출하면 portable contract 전체를 실행합니다. 즉, buffered `body`와 `files`가 없는 상태에서 portable file stream을 포함한 순서 보존 field/file part, file-size, field-count, file-count, header-count, header-size, total-size limit의 terminal HTTP 413 적용, 명확한 두 번째 consume 거부, active file stream과 parser cleanup까지 전파되는 request abort를 검증합니다.
+
+Focused fixture가 필요하면 `assertStreamsPortableMultipartParts()`, `assertEnforcesStreamingMultipartLimits()`, `assertRejectsSecondStreamingMultipartConsumption()`, `assertAbortsAndCleansStreamingMultipart()`을 개별적으로 사용하세요. 이 assertion은 구성한 adapter의 실제 listener 또는 fetch-dispatch surface를 통해 실행되므로 adapter-native multipart object check로 대체하지 마세요.
+
+```ts
+await harness.assertStreamingMultipartConformance();
+```
+
 JSON, HTML, `HEAD`, unsupported `Accept` 406, already-committed response 동작을 증명하려면
 `assertSupportsHttpErrorRepresentations()`를 사용하세요. Network harness는 shared
 `NetworkHttpErrorRepresentationBootstrapOptions`를 adapt하고 fetch-style harness는
@@ -205,7 +213,7 @@ synthetic React test runtime은 필요한 setup을 줄이기보다 coverage를 �
 
 - **루트 패키지**: `createTestingModule(...)`, `Test.createTestingModule(...)`, `createTestApp(...)`, 모듈 introspection 헬퍼, `DeepMocked<T>`를 포함한 공용 app/module 테스트 타입
 - **서브패스**: `@fluojs/testing/app`, `@fluojs/testing/module`, `@fluojs/testing/http`, `@fluojs/testing/mock` (`DeepMocked<T>` 포함), `@fluojs/testing/types` (`DeepMocked<T>` 포함), `@fluojs/testing/vitest`, `@fluojs/testing/vitest/tooling`
-- **하니스 서브패스**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`. HTTP portability harness는 adapter-owned bootstrap typing을 위해 `assertSupportsCustomHttpRouteMethods()`, `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `createErrorRepresentationBootstrapOptions`, `NetworkHttpErrorRepresentationBootstrapOptions`, `WebHttpErrorRepresentationBootstrapOptions`를 노출합니다.
+- **하니스 서브패스**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`. `HttpAdapterPortabilityHarness`와 `WebRuntimeHttpAdapterPortabilityHarness`는 adapter-owned bootstrap typing을 위한 `assertSupportsCustomHttpRouteMethods()`, `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `createErrorRepresentationBootstrapOptions`, `NetworkHttpErrorRepresentationBootstrapOptions`, `WebHttpErrorRepresentationBootstrapOptions`와 함께 `assertStreamingMultipartConformance()`, `assertStreamsPortableMultipartParts()`, `assertEnforcesStreamingMultipartLimits()`, `assertRejectsSecondStreamingMultipartConsumption()`, `assertAbortsAndCleansStreamingMultipart()`을 노출합니다.
 - **도구 지원**: `@fluojs/testing/vitest`의 `fluoBabelDecoratorsPlugin()` 및 `@fluojs/testing/vitest/tooling`의 Vitest workspace config helper (`vitest`와 `@babel/core`를 함께 요구)
 
 Package manifest는 public body-bearing RFC `QUERY` portability assertion이 사용하는 검증된 Node listener window와 일치하도록 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상은 제외됩니다. 문서화된 경우 non-Node runtime 애플리케이션 테스트에서 runtime-native 도구를 사용할 수 있지만, 배포된 `@fluojs/testing` 패키지 자체는 이 정확한 Node.js engine 범위를 따릅니다.

@@ -147,6 +147,14 @@ Use `assertSupportsCustomHttpRouteMethods()` to prove that the adapter executes 
 
 Use `assertPreservesExactRawBodyBytesForByteSensitivePayloads()` when an HTTP adapter must prove `rawBody` keeps byte-sensitive payload bytes intact across runtimes.
 
+Both `HttpAdapterPortabilityHarness` and `WebRuntimeHttpAdapterPortabilityHarness` expose streaming multipart assertions. Call `assertStreamingMultipartConformance()` after configuring the harness to run the complete portable contract: ordered field/file parts with portable file streams while buffered `body` and `files` remain absent, terminal HTTP 413 enforcement for file-size, field-count, file-count, header-count, header-size, and total-size limits, clear second-consumption rejection, and request-abort propagation to the active file stream and parser cleanup.
+
+Use individual assertions when a focused fixture is needed: `assertStreamsPortableMultipartParts()`, `assertEnforcesStreamingMultipartLimits()`, `assertRejectsSecondStreamingMultipartConsumption()`, and `assertAbortsAndCleansStreamingMultipart()`. These assertions run through the configured adapter's real listener or fetch-dispatch surface; do not replace them with adapter-native multipart object checks.
+
+```ts
+await harness.assertStreamingMultipartConformance();
+```
+
 Use `assertSupportsHttpErrorRepresentations()` to prove JSON, HTML, `HEAD`, unsupported `Accept`
 406, and already-committed response behavior. Network harnesses adapt the shared
 `NetworkHttpErrorRepresentationBootstrapOptions`; fetch-style harnesses adapt
@@ -205,7 +213,7 @@ React test runtime would reduce coverage rather than remove necessary setup.
 
 - **Root package**: `createTestingModule(...)`, `Test.createTestingModule(...)`, `createTestApp(...)`, module introspection helpers, and shared app/module testing types including `DeepMocked<T>`
 - **Subpaths**: `@fluojs/testing/app`, `@fluojs/testing/module`, `@fluojs/testing/http`, `@fluojs/testing/mock` (including `DeepMocked<T>`), `@fluojs/testing/types` (including `DeepMocked<T>`), `@fluojs/testing/vitest`, `@fluojs/testing/vitest/tooling`
-- **Harness subpaths**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`. The HTTP portability harnesses expose `assertSupportsCustomHttpRouteMethods()`, `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `createErrorRepresentationBootstrapOptions`, `NetworkHttpErrorRepresentationBootstrapOptions`, and `WebHttpErrorRepresentationBootstrapOptions` for adapter-owned bootstrap typing.
+- **Harness subpaths**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`. `HttpAdapterPortabilityHarness` and `WebRuntimeHttpAdapterPortabilityHarness` expose `assertStreamingMultipartConformance()`, `assertStreamsPortableMultipartParts()`, `assertEnforcesStreamingMultipartLimits()`, `assertRejectsSecondStreamingMultipartConsumption()`, and `assertAbortsAndCleansStreamingMultipart()` alongside `assertSupportsCustomHttpRouteMethods()`, `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `createErrorRepresentationBootstrapOptions`, `NetworkHttpErrorRepresentationBootstrapOptions`, and `WebHttpErrorRepresentationBootstrapOptions` for adapter-owned bootstrap typing.
 - **Tooling**: `@fluojs/testing/vitest` with `fluoBabelDecoratorsPlugin()` and `@fluojs/testing/vitest/tooling` with Vitest workspace config helpers (requires `vitest` and `@babel/core` in the consuming workspace)
 
 The package manifest declares `engines.node >=20.19.3 <21 || >=22.2.0 <27`, matching the verified Node listener windows used by its public body-bearing RFC `QUERY` portability assertion. Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded. Non-Node runtime application tests can still use runtime-native tools where documented, but the published `@fluojs/testing` package itself is governed by that exact Node.js engine range.
