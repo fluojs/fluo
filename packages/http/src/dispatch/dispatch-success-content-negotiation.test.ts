@@ -67,6 +67,18 @@ class RepresentationController {
     return { ok: true };
   }
 
+  @Produces('application/json;note="a,b=c\\"d\\\\e"')
+  @Get('/parameterized')
+  parameterized() {
+    return { ok: true };
+  }
+
+  @Produces('application/json;a="x;b=y"')
+  @Get('/structural-quoted')
+  structuralQuoted() {
+    return { ok: true };
+  }
+
   @Header('Vary', 'Accept-Encoding, accept')
   @Produces('application/json', 'text/plain')
   @Get('/existing-vary')
@@ -99,6 +111,18 @@ const formatters = [
       return 'json-note';
     },
     mediaType: 'application/json;note="a,b=c\\"d\\\\e"',
+  },
+  {
+    format() {
+      return 'json-a-x-b-y';
+    },
+    mediaType: 'application/json;a=x;b=y',
+  },
+  {
+    format() {
+      return 'json-a-x-semicolon-b-y';
+    },
+    mediaType: 'application/json;a="x;b=y"',
   },
 ];
 
@@ -198,6 +222,38 @@ describe('successful response content negotiation', () => {
       200,
       'application/json;note="a,b=c\\"d\\\\e"',
       'json-note',
+    ],
+    [
+      'rejects media parameters after q',
+      '/representations/all',
+      'application/json;q=1;note="a,b=c\\"d\\\\e", text/plain;q=0',
+      406,
+      undefined,
+      undefined,
+    ],
+    [
+      'parameterized q=0 overrides a preceding generic range',
+      '/representations/parameterized',
+      'application/json;q=1, application/json;note="a,b=c\\"d\\\\e";q=0',
+      406,
+      undefined,
+      undefined,
+    ],
+    [
+      'parameterized q=0 overrides a following generic range',
+      '/representations/parameterized',
+      'application/json;note="a,b=c\\"d\\\\e";q=0, application/json;q=1',
+      406,
+      undefined,
+      undefined,
+    ],
+    [
+      'keeps structurally distinct media parameter representations',
+      '/representations/structural-quoted',
+      'application/json;a="x;b=y"',
+      200,
+      'application/json;a="x;b=y"',
+      'json-a-x-semicolon-b-y',
     ],
     [
       'raw NUL in quoted parameter',

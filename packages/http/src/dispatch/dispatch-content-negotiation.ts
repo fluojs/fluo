@@ -234,17 +234,22 @@ function parseMediaType(value: string): { mediaRange: string; parameters: MediaP
   return { mediaRange, parameters };
 }
 
+function encodeMediaParameters(parameters: readonly MediaParameter[]): string {
+  return parameters
+    .map((parameter) => `${parameter.name.length}:${parameter.name}${parameter.value.length}:${parameter.value}`)
+    .sort()
+    .join('');
+}
+
 function normalizeRepresentationMediaType(value: string): string {
   const mediaType = parseMediaType(value);
   if (!mediaType) {
     return normalizeMediaType(value);
   }
 
-  const parameters = mediaType.parameters
-    .map((parameter) => `${parameter.name}=${parameter.value}`)
-    .sort();
+  const parameters = encodeMediaParameters(mediaType.parameters);
 
-  return parameters.length ? `${mediaType.mediaRange};${parameters.join(';')}` : mediaType.mediaRange;
+  return parameters ? `${mediaType.mediaRange};${parameters}` : mediaType.mediaRange;
 }
 
 function parseAcceptHeader(acceptHeader: string): AcceptToken[] {
@@ -281,9 +286,14 @@ function parseAcceptHeader(acceptHeader: string): AcceptToken[] {
       }
 
       const [name, value] = parameter;
+      if (qualitySeen) {
+        malformed = true;
+        break;
+      }
+
       if (name.toLowerCase() === 'q') {
         const parsedQuality = parseQuality(value);
-        if (qualitySeen || parsedQuality === undefined) {
+        if (parsedQuality === undefined) {
           malformed = true;
           break;
         }
@@ -540,7 +550,13 @@ export function selectResponseFormatter(
         || token.specificity > controllingToken.specificity
         || (
           token.specificity === controllingToken.specificity
-          && token.order < controllingToken.order
+          && (
+            token.mediaParameters.length > controllingToken.mediaParameters.length
+            || (
+              token.mediaParameters.length === controllingToken.mediaParameters.length
+              && token.order < controllingToken.order
+            )
+          )
         )
       ) {
         controllingToken = token;
