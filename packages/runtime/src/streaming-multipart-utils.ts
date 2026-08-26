@@ -87,36 +87,6 @@ export function parseContentDisposition(
 }
 
 /**
- * Whether parser cancellation should propagate to the source stream.
- *
- * Fetch-native multipart producers expose byte streams and retain ownership of
- * their producer. Releasing our reader avoids closing that stream while the
- * producer schedules its next encoded part. Callers with a custom byte stream
- * can explicitly retain source-cancellation ownership through `cancelSource`.
- *
- * @param body - Multipart source under cancellation-ownership evaluation.
- * @returns Whether parser cancellation should propagate to the source.
- */
-export function shouldCancelMultipartSource(
-  body: AsyncIterable<Uint8Array> | ReadableStream<Uint8Array>,
-): boolean {
-  if (!(body instanceof ReadableStream)) {
-    return true;
-  }
-
-  let reader: ReadableStreamBYOBReader | undefined;
-
-  try {
-    reader = body.getReader({ mode: 'byob' });
-    return false;
-  } catch {
-    return true;
-  } finally {
-    reader?.releaseLock();
-  }
-}
-
-/**
  * Adapts a portable async byte iterable to a Web readable stream.
  *
  * @param body - Existing Web stream or async byte iterable.
@@ -131,8 +101,8 @@ export function toReadableStream(
 
   const iterator = body[Symbol.asyncIterator]();
   return new ReadableStream<Uint8Array>({
-    cancel: async () => {
-      await iterator.return?.();
+    cancel: async (reason) => {
+      await iterator.return?.(reason);
     },
     pull: async (controller) => {
       const result = await iterator.next();

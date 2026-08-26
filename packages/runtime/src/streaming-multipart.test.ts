@@ -33,19 +33,28 @@ function createTrackedBody(chunks: readonly Uint8Array[]) {
   };
 }
 
-async function expectNoUnhandledRejection(action: () => Promise<void>): Promise<void> {
-  const unhandled: unknown[] = [];
-  const onUnhandledRejection = (reason: unknown) => {
-    unhandled.push(reason);
-  };
-  process.on('unhandledRejection', onUnhandledRejection);
+function createSourceReleaseSignal(): { promise: Promise<void>; release: () => void } {
+  let release!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { promise, release };
+}
+
+async function waitForSourceRelease(sourceReleased: Promise<void>): Promise<void> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
 
   try {
-    await action();
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    expect(unhandled).toEqual([]);
+    await Promise.race([
+      sourceReleased,
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error('Multipart source reader was not released.')), 1_000);
+      }),
+    ]);
   } finally {
-    process.off('unhandledRejection', onUnhandledRejection);
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
   }
 }
 
@@ -543,7 +552,9 @@ describe('createStreamingMultipart', () => {
   it.each(['dispatch cleanup', 'total limit', 'file limit', 'request abort'] as const)(
     'does not leave an unhandled native FormData producer rejection after %s',
     async (scenario) => {
-      await expectNoUnhandledRejection(async () => {
+      const sourceReleased = createSourceReleaseSignal();
+
+      await (async () => {
         const abortController = new AbortController();
         const form = new FormData();
         form.set('title', 'streamed');
@@ -560,6 +571,8 @@ describe('createStreamingMultipart', () => {
             : scenario === 'file limit' ? { maxFileSize: 10 }
             : undefined,
           signal: abortController.signal,
+          cancelSource: false,
+          onSourceReleased: sourceReleased.release,
         });
         const reader = multipart.consume().getReader();
 
@@ -590,9 +603,41 @@ describe('createStreamingMultipart', () => {
 
         abortController.abort(new Error('client disconnected'));
         await expect(file.value.stream.getReader().read()).rejects.toThrow('client disconnected');
-      });
+      })();
+
+      await waitForSourceRelease(sourceReleased.promise);
     },
   );
+
+  it('propagates the exact cancellation reason to an async iterable once', async () => {
+    const reason = new Error('handler completed');
+    const iteratorReturn = vi.fn(async (value?: unknown): Promise<IteratorResult<Uint8Array, unknown>> => ({
+      done: true,
+      value,
+    }));
+    const body: AsyncIterable<Uint8Array> = {
+      [Symbol.asyncIterator]() {
+        return {
+          async next() {
+            return new Promise<IteratorResult<Uint8Array>>(() => {});
+          },
+          return: iteratorReturn,
+        };
+      },
+    };
+    const multipart = createStreamingMultipart({
+      body,
+      contentType: `multipart/form-data; boundary=${BOUNDARY}`,
+    });
+
+    await Promise.all([
+      multipart.cancel(reason),
+      multipart.cancel(new Error('later cancellation')),
+    ]);
+
+    expect(iteratorReturn).toHaveBeenCalledOnce();
+    expect(iteratorReturn).toHaveBeenCalledWith(reason);
+  });
 
   it('cancels parser work when the multipart part stream is cancelled', async () => {
     const tracked = createTrackedBody(createMultipartChunks([

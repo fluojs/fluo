@@ -153,6 +153,59 @@ describe('MultipartByteReader', () => {
     expect(body.locked).toBe(false);
   });
 
+  it('cancels a caller-owned byte stream once with the exact reason', async () => {
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({ type: 'bytes', cancel }, { highWaterMark: 0 });
+    const reader = new MultipartByteReader(body, 1024);
+    const reason = new Error('caller-owned source cancelled');
+
+    await Promise.all([reader.cancel(reason), reader.cancel(new Error('later cancellation'))]);
+
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(cancel).toHaveBeenCalledWith(reason);
+    expect(body.locked).toBe(false);
+  });
+
+  it('waits for an in-flight producer-owned read before resolving cancellation', async () => {
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    let resolvePull!: () => void;
+    let markPullStarted!: () => void;
+    const pullStarted = new Promise<void>((resolve) => {
+      markPullStarted = resolve;
+    });
+    const body = new ReadableStream<Uint8Array>({
+      pull(currentController) {
+        controller = currentController;
+        markPullStarted();
+        return new Promise<void>((resolve) => {
+          resolvePull = resolve;
+        });
+      },
+    }, { highWaterMark: 0 });
+    const reader = new MultipartByteReader(body, 1024, undefined, false);
+    const pendingRead = reader.readBytes(1);
+    void pendingRead.catch(() => {});
+
+    await pullStarted;
+    const reason = new Error('producer-owned source cancelled');
+    const cancellation = reader.cancel(reason);
+    let resolveEarlyCheck!: () => void;
+    const earlyCheck = new Promise<void>((resolve) => {
+      resolveEarlyCheck = resolve;
+    });
+
+    resolveEarlyCheck();
+    await expect(Promise.race([
+      cancellation.then(() => 'settled'),
+      earlyCheck.then(() => 'pending'),
+    ])).resolves.toBe('pending');
+
+    controller.enqueue(new Uint8Array([1]));
+    resolvePull();
+    await expect(cancellation).resolves.toBeUndefined();
+    expect(body.locked).toBe(false);
+  });
+
   it('keeps abort cancellation active while draining the multipart epilogue', async () => {
     let markPullStarted!: () => void;
     const pullStarted = new Promise<void>((resolve) => {
