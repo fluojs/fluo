@@ -1,10 +1,14 @@
 import type { FrameworkResponse } from './types.js';
 
+const NativeDate = Date;
+const nativeDateGetTime = NativeDate.prototype.getTime;
+const nativeDateGetUTCFullYear = NativeDate.prototype.getUTCFullYear;
+const nativeDateToUTCString = NativeDate.prototype.toUTCString;
 const COOKIE_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 const COOKIE_VALUE_PATTERN = /^[\u0021-\u003A\u003C-\u007E]*$/;
 const COOKIE_DOMAIN_LABEL_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
 const COOKIE_PATH_VALUE_PATTERN = /^[\u0020-\u003A\u003C-\u007E]*$/;
-const COOKIE_DELETION_EXPIRES = new Date(0);
+const COOKIE_DELETION_EXPIRES = new NativeDate(0);
 
 /** SameSite policies supported by the portable cookie serializer. */
 export type CookieSameSite = 'lax' | 'none' | 'strict';
@@ -79,6 +83,25 @@ function validatePath(value: string): void {
   }
 }
 
+function serializeExpires(expires: Date): string {
+  if (!(expires instanceof NativeDate)) {
+    throw new TypeError('Cookie expires must be a valid Date.');
+  }
+
+  const timestamp = nativeDateGetTime.call(expires);
+  if (!Number.isFinite(timestamp)) {
+    throw new TypeError('Cookie expires must be a valid Date.');
+  }
+
+  const normalizedExpires = new NativeDate(timestamp);
+  const year = nativeDateGetUTCFullYear.call(normalizedExpires);
+  if (year < 1601 || year >= 10_000) {
+    throw new TypeError('Cookie expires must use an IMF-fixdate year from 1601 through 9999.');
+  }
+
+  return nativeDateToUTCString.call(normalizedExpires);
+}
+
 function serializeSameSite(sameSite: CookieSameSite): string {
   switch (sameSite) {
     case 'lax':
@@ -97,63 +120,65 @@ function serializeCookie(
   value: string,
   options: CookieOptions,
 ): string {
+  // Read caller-owned properties once so validation and serialization use the same values.
+  const {
+    domain,
+    expires,
+    httpOnly,
+    maxAgeSeconds,
+    path,
+    sameSite,
+    secure,
+  } = options;
+
   validateCookieName(name);
   const encodedValue = encodeCookieValue(value);
   const parts = [`${name}=${encodedValue}`];
 
-  if (options.maxAgeSeconds !== undefined) {
-    if (!Number.isSafeInteger(options.maxAgeSeconds) || options.maxAgeSeconds < 0) {
+  if (maxAgeSeconds !== undefined) {
+    if (!Number.isSafeInteger(maxAgeSeconds) || maxAgeSeconds < 0) {
       throw new TypeError('Cookie maxAgeSeconds must be a non-negative safe integer.');
     }
 
-    parts.push(`Max-Age=${String(options.maxAgeSeconds)}`);
+    parts.push(`Max-Age=${String(maxAgeSeconds)}`);
   }
 
-  if (options.expires !== undefined) {
-    if (!(options.expires instanceof Date) || !Number.isFinite(options.expires.getTime())) {
-      throw new TypeError('Cookie expires must be a valid Date.');
-    }
-
-    const year = options.expires.getUTCFullYear();
-    if (year < 1601 || year >= 10_000) {
-      throw new TypeError('Cookie expires must use an IMF-fixdate year from 1601 through 9999.');
-    }
-
-    parts.push(`Expires=${options.expires.toUTCString()}`);
+  if (expires !== undefined) {
+    parts.push(`Expires=${serializeExpires(expires)}`);
   }
 
-  if (options.domain !== undefined) {
-    validateDomain(options.domain);
-    parts.push(`Domain=${options.domain}`);
+  if (domain !== undefined) {
+    validateDomain(domain);
+    parts.push(`Domain=${domain}`);
   }
 
-  if (options.path !== undefined) {
-    validatePath(options.path);
-    parts.push(`Path=${options.path}`);
+  if (path !== undefined) {
+    validatePath(path);
+    parts.push(`Path=${path}`);
   }
 
-  if (options.httpOnly !== undefined && typeof options.httpOnly !== 'boolean') {
+  if (httpOnly !== undefined && typeof httpOnly !== 'boolean') {
     throw new TypeError('Cookie httpOnly must be a boolean.');
   }
 
-  if (options.httpOnly === true) {
+  if (httpOnly === true) {
     parts.push('HttpOnly');
   }
 
-  if (options.secure !== undefined && typeof options.secure !== 'boolean') {
+  if (secure !== undefined && typeof secure !== 'boolean') {
     throw new TypeError('Cookie secure must be a boolean.');
   }
 
-  if (options.secure === true) {
+  if (secure === true) {
     parts.push('Secure');
   }
 
-  if (options.sameSite !== undefined) {
-    if (options.sameSite === 'none' && options.secure !== true) {
+  if (sameSite !== undefined) {
+    if (sameSite === 'none' && secure !== true) {
       throw new TypeError('Cookie sameSite "none" requires secure to be true.');
     }
 
-    parts.push(`SameSite=${serializeSameSite(options.sameSite)}`);
+    parts.push(`SameSite=${serializeSameSite(sameSite)}`);
   }
 
   return parts.join('; ');

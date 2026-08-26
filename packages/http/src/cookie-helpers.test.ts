@@ -140,6 +140,121 @@ describe('setCookie', () => {
   });
 
   it.each([
+    ['path', '/safe\r\nX-Injected: yes', '/safe', /path/],
+    ['domain', 'example.com\r\nX-Injected: yes', 'example.com', /domain/],
+    ['maxAgeSeconds', 1e21, 60, /maxAgeSeconds/],
+  ] as const)('rejects an unsafe initial %s getter snapshot before writing a header', (
+    option,
+    unsafeValue,
+    safeValue,
+    expectedError,
+  ) => {
+    // Given
+    const response = createResponse();
+    const setHeader = vi.spyOn(response, 'setHeader');
+    let reads = 0;
+    const options = {};
+    Object.defineProperty(options, option, {
+      get() {
+        reads += 1;
+        return reads === 1 ? unsafeValue : safeValue;
+      },
+    });
+
+    // When / Then
+    expect(() => setCookie(response, 'session', 'value', options)).toThrow(expectedError);
+    expect(reads).toBe(1);
+    expect(setHeader).not.toHaveBeenCalled();
+  });
+
+  it('snapshots every cookie option exactly once before validation', () => {
+    // Given
+    const response = createResponse();
+    const reads = {
+      domain: 0,
+      expires: 0,
+      httpOnly: 0,
+      maxAgeSeconds: 0,
+      path: 0,
+      sameSite: 0,
+      secure: 0,
+    };
+    const options = {
+      get domain() {
+        reads.domain += 1;
+        return 'example.com';
+      },
+      get expires() {
+        reads.expires += 1;
+        return new Date('2030-01-02T03:04:05.000Z');
+      },
+      get httpOnly() {
+        reads.httpOnly += 1;
+        return true;
+      },
+      get maxAgeSeconds() {
+        reads.maxAgeSeconds += 1;
+        return 60;
+      },
+      get path() {
+        reads.path += 1;
+        return '/account';
+      },
+      get sameSite() {
+        reads.sameSite += 1;
+        return 'lax' as const;
+      },
+      get secure() {
+        reads.secure += 1;
+        return true;
+      },
+    };
+
+    // When
+    setCookie(response, 'session', 'value', options);
+
+    // Then
+    expect(reads).toEqual({
+      domain: 1,
+      expires: 1,
+      httpOnly: 1,
+      maxAgeSeconds: 1,
+      path: 1,
+      sameSite: 1,
+      secure: 1,
+    });
+    expect(response.headers['Set-Cookie']).toBe(
+      'session=value; Max-Age=60; Expires=Wed, 02 Jan 2030 03:04:05 GMT; '
+      + 'Domain=example.com; Path=/account; HttpOnly; Secure; SameSite=Lax',
+    );
+  });
+
+  it('uses intrinsic Date operations for caller-controlled Date subclasses', () => {
+    // Given
+    class CallerControlledDate extends Date {}
+
+    const response = createResponse();
+    const expires = new CallerControlledDate('2030-01-02T03:04:05.000Z');
+    const getTime = vi.fn(() => Date.prototype.getTime.call(expires));
+    const getUTCFullYear = vi.fn(() => 10_000);
+    const toUTCString = vi.fn(() => 'Wed, 02 Jan 2030 03:04:05 GMT\r\nX-Injected: yes');
+    expires.getTime = getTime;
+    expires.getUTCFullYear = getUTCFullYear;
+    expires.toUTCString = toUTCString;
+
+    // When
+    setCookie(response, 'session', 'value', { expires });
+
+    // Then
+    expect(getTime).not.toHaveBeenCalled();
+    expect(getUTCFullYear).not.toHaveBeenCalled();
+    expect(toUTCString).not.toHaveBeenCalled();
+    expect(response.headers['Set-Cookie']).toBe(
+      'session=value; Expires=Wed, 02 Jan 2030 03:04:05 GMT',
+    );
+  });
+
+  it.each([
     ['', 'session=value; Path='],
     [' :<~', 'session=value; Path= :<~'],
   ])('accepts RFC6265 path-value boundary %j', (path, expectedHeader) => {
