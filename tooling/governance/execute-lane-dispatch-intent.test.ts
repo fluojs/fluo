@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -131,6 +132,7 @@ const persistNativeDagRun = (
   repositoryRoot: string,
   runId: string,
   definition: Readonly<Record<string, unknown>>,
+  writeKey = true,
 ) => {
   const runDirectory = resolve(
     repositoryRoot,
@@ -159,15 +161,21 @@ const persistNativeDagRun = (
       effectivePrompt: `loaded:${String(node.prompt)}`,
     };
   });
+  const parentSessionId = createHash('sha256')
+    .update(runId)
+    .digest('hex')
+    .slice(0, 36);
+  const definitionFingerprint = 'a'.repeat(64);
   writeFileSync(
     resolve(runDirectory, `${runId}.json`),
     `${JSON.stringify({
       schemaVersion: 1,
+      parentSessionId,
       runId,
       runKey: definition.key,
       name: definition.name,
       status: 'running',
-      definitionFingerprint: 'a'.repeat(64),
+      definitionFingerprint,
       definition: {
         key: definition.key,
         name: definition.name,
@@ -176,6 +184,29 @@ const persistNativeDagRun = (
       nodes: [],
     })}\n`,
   );
+  if (writeKey) {
+    const keyId = createHash('sha256')
+      .update(`${parentSessionId}\0${String(definition.key)}`)
+      .digest('hex');
+    const keyDirectory = resolve(
+      repositoryRoot,
+      '.omo',
+      'senpi-task',
+      'dag',
+      'keys',
+    );
+    mkdirSync(keyDirectory, { recursive: true });
+    writeFileSync(
+      resolve(keyDirectory, `${keyId}.json`),
+      `${JSON.stringify({
+        schemaVersion: 1,
+        parentSessionId,
+        runKey: definition.key,
+        runId,
+        definitionFingerprint,
+      })}\n`,
+    );
+  }
 };
 
 const withoutDefinitionDigest = (
@@ -288,6 +319,20 @@ describe('execute-lane lane DAG dispatch intent', () => {
           run_id: 'dag_missing',
         }),
       ).toThrow(/native DAG run/u);
+
+      persistNativeDagRun(
+        directory,
+        'dag_forged',
+        definition,
+        false,
+      );
+      expect(() =>
+        attachLaneSupervisorRun({
+          persisted: prepared,
+          repository_root: directory,
+          run_id: 'dag_forged',
+        }),
+      ).toThrow(/native DAG key record/u);
 
       persistNativeDagRun(directory, 'dag_4101', definition);
       const binding = attachLaneSupervisorRun({

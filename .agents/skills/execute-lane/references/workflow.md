@@ -54,8 +54,8 @@ must be acyclic. The parent:
 5. starts the complete native DAG once;
 6. immediately attaches the observed run with
    `attachLaneSupervisorRun()`;
-7. authenticates the run key and submitted definition from
-   `.omo/senpi-task/dag/runs/<run-id>.json`;
+7. authenticates the run, its native key record, and submitted definition from
+   `.omo/senpi-task/dag/{runs,keys}`;
 8. persists its immutable v3 binding at `dag-binding.json`;
 9. requires every supervisor to pass `await-lane-dispatch.mjs` before
    mutation.

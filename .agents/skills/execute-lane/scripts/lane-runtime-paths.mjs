@@ -122,3 +122,40 @@ export const canonicalNativeDagRunPath = (
   }
   return runPath;
 };
+
+export const canonicalNativeDagKeyPath = (
+  repositoryRoot,
+  keyId,
+) => {
+  if (
+    typeof keyId !== 'string' ||
+    !/^[a-f0-9]{64}$/u.test(keyId)
+  ) {
+    throw new TypeError('native DAG key ID must be canonical.');
+  }
+  const canonicalRoot = canonicalRepositoryRoot(repositoryRoot);
+  const keyDirectory = resolve(
+    canonicalRoot,
+    '.omo',
+    'senpi-task',
+    'dag',
+    'keys',
+  );
+  if (!existsSync(keyDirectory)) {
+    throw new TypeError('native DAG key record must exist.');
+  }
+  requireRealDirectory(keyDirectory);
+  const keyPath = resolve(keyDirectory, `${keyId}.json`);
+  if (!existsSync(keyPath)) {
+    throw new TypeError('native DAG key record must exist.');
+  }
+  const stat = lstatSync(keyPath);
+  if (
+    stat.isSymbolicLink() ||
+    !stat.isFile() ||
+    realpathSync(keyPath) !== keyPath
+  ) {
+    throw new TypeError('native DAG key record must be a real canonical file.');
+  }
+  return keyPath;
+};

@@ -25,13 +25,14 @@ execution. Compile the ledger once with `compileLaneSupervisorDag()`. Use
 `scripts/lane-dispatch.mjs` to persist one lane-bound dispatch intent before
 start, then attach the observed run through `attachLaneSupervisorRun()` at
 `.omo/lane-runs/<lane-id>/dag-binding.json`. Attachment loads the canonical
-native run record from `.omo/senpi-task/dag/runs/<run-id>.json` and requires
-its submitted definition to match the intent-bound digest. An exact existing
-binding resumes from that native definition rather than recompiling current
-workflow source. A digestless legacy intent without its immutable binding
-requires a successor lane. An intent/binding crash window fails closed and
-never authorizes a duplicate start. Goal, todo, and DAG state remain
-projections of the persisted lane state and live observations.
+native run record from `.omo/senpi-task/dag/runs/<run-id>.json`, authenticates
+it against the canonical native key record, and requires its submitted
+definition to match the intent-bound digest. An exact existing binding resumes
+from that native definition rather than recompiling current workflow source.
+A digestless legacy intent without its immutable binding requires a successor
+lane. An intent/binding crash window fails closed and never authorizes a
+duplicate start. Goal, todo, and DAG state remain projections of the persisted
+lane state and live observations.
 
 The dispatch interface accepts `repository_root`, never a caller-selected
 runtime root, and derives `.omo/lane-runs` internally. Every issue supervisor

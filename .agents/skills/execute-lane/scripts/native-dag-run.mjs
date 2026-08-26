@@ -1,7 +1,11 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 import { payloadDigest } from '../../../workflow-contracts/contracts.mjs';
-import { canonicalNativeDagRunPath } from './lane-runtime-paths.mjs';
+import {
+  canonicalNativeDagKeyPath,
+  canonicalNativeDagRunPath,
+} from './lane-runtime-paths.mjs';
 
 const isRecord = (value) =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -45,6 +49,8 @@ export const loadLaneNativeDagRun = ({
     run.schemaVersion !== 1 ||
     run.runId !== run_id ||
     run.runKey !== expectedKey ||
+    typeof run.parentSessionId !== 'string' ||
+    !/^[a-z0-9-]{20,}$/u.test(run.parentSessionId) ||
     typeof run.name !== 'string' ||
     typeof run.definitionFingerprint !== 'string' ||
     !/^[a-f0-9]{64}$/u.test(run.definitionFingerprint) ||
@@ -55,6 +61,23 @@ export const loadLaneNativeDagRun = ({
   ) {
     throw new TypeError(
       `native DAG run ${run_id} does not match lane ${lane_id}.`,
+    );
+  }
+  const keyId = createHash('sha256')
+    .update(`${run.parentSessionId}\0${run.runKey}`)
+    .digest('hex');
+  const keyPath = canonicalNativeDagKeyPath(repository_root, keyId);
+  const keyRecord = JSON.parse(readFileSync(keyPath, 'utf8'));
+  if (
+    !isRecord(keyRecord) ||
+    keyRecord.schemaVersion !== 1 ||
+    keyRecord.parentSessionId !== run.parentSessionId ||
+    keyRecord.runKey !== run.runKey ||
+    keyRecord.runId !== run.runId ||
+    keyRecord.definitionFingerprint !== run.definitionFingerprint
+  ) {
+    throw new TypeError(
+      'native DAG key record does not authenticate the run.',
     );
   }
   const definition = {
