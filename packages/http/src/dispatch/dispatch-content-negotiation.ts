@@ -1,10 +1,10 @@
-import { NotAcceptableException } from '../exceptions.js';
 import type {
   ContentNegotiationOptions,
   FrameworkRequest,
   HandlerDescriptor,
   ResponseFormatter,
 } from '../types.js';
+import { ContentNegotiationNotAcceptableException } from './dispatch-content-negotiation-error.js';
 
 interface MediaParameter {
   name: string;
@@ -44,9 +44,13 @@ function readAcceptHeader(request: FrameworkRequest): { isPresent: boolean; valu
       continue;
     }
 
-    isPresent = true;
     for (const entry of Array.isArray(value) ? value : [value]) {
-      const normalized = entry?.trim();
+      if (entry === undefined) {
+        continue;
+      }
+
+      isPresent = true;
+      const normalized = entry.trim();
       if (normalized) {
         values.push(normalized);
       }
@@ -562,7 +566,7 @@ export function selectResponseFormatter(
   );
 
   if (!allowedFormatters.length) {
-    throw new NotAcceptableException(NO_ACCEPTABLE_REPRESENTATION_MESSAGE);
+    throw new ContentNegotiationNotAcceptableException(NO_ACCEPTABLE_REPRESENTATION_MESSAGE);
   }
 
   const defaultFormatter = resolveDefaultFormatter(allowedFormatters, allowedNormalizedMediaTypes, contentNegotiation);
@@ -575,7 +579,7 @@ export function selectResponseFormatter(
   const acceptTokens = parseAcceptHeader(acceptHeader.values);
 
   if (!acceptTokens.length) {
-    throw new NotAcceptableException(NO_ACCEPTABLE_REPRESENTATION_MESSAGE);
+    throw new ContentNegotiationNotAcceptableException(NO_ACCEPTABLE_REPRESENTATION_MESSAGE);
   }
 
   let selected: FormatterCandidate | undefined;
@@ -623,5 +627,5 @@ export function selectResponseFormatter(
     return selected.formatter;
   }
 
-  throw new NotAcceptableException(NO_ACCEPTABLE_REPRESENTATION_MESSAGE);
+  throw new ContentNegotiationNotAcceptableException(NO_ACCEPTABLE_REPRESENTATION_MESSAGE);
 }

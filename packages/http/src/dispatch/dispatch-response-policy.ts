@@ -1,4 +1,3 @@
-import { NotAcceptableException } from '../exceptions.js';
 import { appendVaryHeader } from '../header-helpers.js';
 import type {
   FrameworkRequest,
@@ -159,16 +158,6 @@ function applyImplicitHeadContentType(response: FrameworkResponse, value: unknow
   response.setHeader('Content-Type', typeof value === 'string' ? TEXT_CONTENT_TYPE : JSON_CONTENT_TYPE);
 }
 
-function appendNegotiationErrorVary(handler: HandlerDescriptor, response: FrameworkResponse): void {
-  for (const header of handler.route.headers ?? []) {
-    if (header.name.toLowerCase() === 'vary') {
-      response.setHeader(header.name, header.value);
-    }
-  }
-
-  appendVaryHeader(response, 'Accept');
-}
-
 /**
  * Write success response.
  *
@@ -224,17 +213,9 @@ export function writeSuccessResponse(
     });
   }
 
-  let formatter: ResponseFormatter | undefined;
-  if (contentNegotiation) {
-    try {
-      formatter = selectResponseFormatter(handler, request, contentNegotiation);
-    } catch (error) {
-      if (error instanceof NotAcceptableException) {
-        appendNegotiationErrorVary(handler, response);
-      }
-      throw error;
-    }
-  }
+  const formatter = contentNegotiation
+    ? selectResponseFormatter(handler, request, contentNegotiation)
+    : undefined;
 
   applySuccessResponseMetadata({ formatter, handler, response, value: responseValue });
 

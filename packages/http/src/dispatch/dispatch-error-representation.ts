@@ -6,6 +6,7 @@ import {
   NotAcceptableException,
   NotFoundException,
 } from '../exceptions.js';
+import { appendVaryHeader } from '../header-helpers.js';
 import type {
   DispatcherLogger,
   FrameworkResponse,
@@ -15,12 +16,12 @@ import type {
   HttpErrorRepresentationOptions,
   RequestContext,
 } from '../types.js';
+import { ContentNegotiationNotAcceptableException } from './dispatch-content-negotiation-error.js';
 import {
   canNegotiateHtml,
   readAcceptHeader,
   selectErrorRepresentation,
 } from './dispatch-error-negotiation.js';
-import { appendVaryHeader } from '../header-helpers.js';
 import { isRequestAborted } from './request-abort.js';
 
 const HTML_CONTENT_TYPE = 'text/html; charset=utf-8';
@@ -94,6 +95,10 @@ async function writeBody(
 }
 
 async function writeCanonicalJson(error: HttpException, requestContext: RequestContext): Promise<void> {
+  if (error instanceof ContentNegotiationNotAcceptableException) {
+    appendVaryHeader(requestContext.response, 'Accept');
+  }
+
   await writeBody(
     requestContext,
     error.status,
@@ -123,6 +128,10 @@ export async function writeErrorResponse(
   const provider = options.representation?.html;
 
   if (provider === undefined || !isHttpRepresentationEligible(error)) {
+    if (httpError instanceof ContentNegotiationNotAcceptableException) {
+      appendVaryHeader(requestContext.response, 'Accept');
+    }
+
     requestContext.response.setStatus(httpError.status);
     if (requestContext.request.method.toUpperCase() === 'HEAD') {
       requestContext.response.setHeader('Content-Type', JSON_CONTENT_TYPE);

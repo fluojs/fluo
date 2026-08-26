@@ -145,8 +145,9 @@ disables negotiation. A route without `@Produces(...)` uses every configured for
 metadata has no valid configured representation.
 
 Only a missing `Accept` header selects `defaultMediaType`, or the first unique valid configured
-formatter when no valid default is configured. `*/*` has the same default tie-break. A present blank or
-whitespace-only `Accept` field is not missing: it has no valid token and returns `406`.
+formatter when no valid default is configured. Undefined scalar entries and arrays containing only
+undefined entries are missing. `*/*` has the same default tie-break. A present blank or whitespace-only
+`Accept` field is not missing: it has no valid token and returns `406`.
 Present headers are evaluated per representation: exact ranges outrank structured-suffix wildcards
 such as `application/*+json`, which outrank `type/*`, which outrank `*/*`. The most specific matching
 range controls that representation's quality, including `q=0`; a broader positive wildcard therefore
@@ -156,10 +157,11 @@ quality, range/type specificity, matched media-parameter count, header order, co
 Malformed Accept media ranges and qualities, plus invalid concrete representation media types, are
 ignored rather than guessed or clamped. If no valid Accept token remains, every matching representation
 is excluded by `q=0`, or no configured formatter matches, the dispatcher returns canonical JSON `406`.
-Every negotiation-generated `406`, as well as every successful framework-managed response that selected
-a formatter, adds `Accept` to `Vary` through `appendVaryHeader(...)`, preserving existing fields,
-wildcard semantics, and case-insensitive deduplication. Custom response writers that take
-response ownership before formatter selection do not gain this variance. Adapter-native fast routes
+A framework-committed negotiation-generated `406`, as well as every successful framework-managed response
+that selected a formatter, adds `Accept` to `Vary` through `appendVaryHeader(...)`, preserving existing
+fields, wildcard semantics, and case-insensitive deduplication. Application error observers and `onError`
+handlers receive the unmodified response and retain ownership when they handle the error. Custom response
+writers that take response ownership before formatter selection do not gain this variance. Adapter-native fast routes
 and fallback dispatch call the same negotiation engine.
 
 ## Common Patterns

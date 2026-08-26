@@ -13,10 +13,23 @@ import {
   type MiddlewareContext,
   type Next,
   Produces,
+  type RequestObserver,
   type ResponseFormatter,
 } from '../index.js';
 
 type TestResponse = FrameworkResponse & { body?: unknown };
+type TestErrorHandler = (
+  error: unknown,
+  request: FrameworkRequest,
+  response: FrameworkResponse,
+  requestId?: string,
+) => boolean | void | Promise<boolean | void>;
+
+type DispatcherControls = {
+  readonly nativeFallback?: boolean;
+  readonly observers?: RequestObserver[];
+  readonly onError?: TestErrorHandler;
+};
 
 function createRequest(
   path: string,
@@ -152,6 +165,7 @@ const formatters: ResponseFormatter[] = [
 function createNegotiatingDispatchers(
   configuredFormatters: ResponseFormatter[] = formatters,
   defaultMediaType = 'text/plain',
+  controls: DispatcherControls = {},
 ) {
   const root = new Container().register(RepresentationController);
   const handlerMapping = createHandlerMapping([{ controllerToken: RepresentationController }]);
@@ -161,6 +175,8 @@ function createNegotiatingDispatchers(
       formatters: configuredFormatters,
     },
     handlerMapping,
+    ...(controls.observers === undefined ? {} : { observers: controls.observers }),
+    onError: controls.onError,
     rootContainer: root,
   });
   const fallbackDispatcher = createDispatcher({
@@ -174,6 +190,8 @@ function createNegotiatingDispatchers(
       formatters: configuredFormatters,
     },
     handlerMapping,
+    ...(controls.observers === undefined ? {} : { observers: controls.observers }),
+    onError: controls.onError,
     rootContainer: root,
   });
 
@@ -186,8 +204,9 @@ async function dispatchBoth(
   headers?: FrameworkRequest['headers'],
   configuredFormatters?: ResponseFormatter[],
   defaultMediaType?: string,
+  controls?: DispatcherControls,
 ) {
-  const { fallbackDispatcher, nativeDispatcher } = createNegotiatingDispatchers(configuredFormatters, defaultMediaType);
+  const { fallbackDispatcher, nativeDispatcher } = createNegotiatingDispatchers(configuredFormatters, defaultMediaType, controls);
   if (!nativeDispatcher.describeRoutes || !nativeDispatcher.dispatchNativeRoute) {
     throw new Error('Expected native route dispatch support.');
   }
@@ -199,14 +218,18 @@ async function dispatchBoth(
 
   const nativeResponse = createResponse();
   const fallbackResponse = createResponse();
+  const nativeRequest = createRequest(path, accept, headers);
   const nativeHandled = await nativeDispatcher.dispatchNativeRoute(
     { descriptor, params: {} },
-    createRequest(path, accept, headers),
+    nativeRequest,
     nativeResponse,
   );
+  if (!nativeHandled && controls?.nativeFallback) {
+    await nativeDispatcher.dispatch(nativeRequest, nativeResponse);
+  }
   await fallbackDispatcher.dispatch(createRequest(path, accept, headers), fallbackResponse);
 
-  expect(nativeHandled).toBe(true);
+  expect(nativeHandled).toBe(!controls?.nativeFallback);
   expect({
     body: nativeResponse.body,
     committed: nativeResponse.committed,
@@ -228,6 +251,36 @@ describe('successful response content negotiation', () => {
     ['subtype wildcard', '/representations/all', 'text/*', 200, 'text/plain', 'plain'],
     ['structured suffix wildcard', '/representations/all', 'application/*+json', 200, 'application/problem+json', 'problem'],
     ['configured default without Accept', '/representations/all', undefined, 200, 'text/plain', 'plain'],
+    [
+      'treats an undefined scalar Accept field as missing',
+      '/representations/all',
+      undefined,
+      200,
+      'text/plain',
+      'plain',
+      { accept: undefined },
+    ],
+    [
+      'treats case-variant Accept arrays containing only undefined entries as missing',
+      '/representations/all',
+      undefined,
+      200,
+      'text/plain',
+      'plain',
+      {
+        Accept: [undefined] as unknown as string[],
+        ACCEPT: [undefined] as unknown as string[],
+      },
+    ],
+    [
+      'recovers a later valid Accept entry after undefined array entries',
+      '/representations/all',
+      undefined,
+      200,
+      'application/json;profile=v2',
+      'json-profile',
+      { Accept: [undefined, 'application/json;profile=v2;q=1'] as unknown as string[] },
+    ],
     [
       'rejects a blank scalar Accept field',
       '/representations/all',
@@ -562,6 +615,57 @@ describe('successful response content negotiation', () => {
     expect(response.body).toEqual({ ok: true });
   });
 
+  it('keeps route Vary metadata out of native and fallback observers and onError responses', async () => {
+    const observedVary: unknown[] = [];
+    const { response } = await dispatchBoth(
+      '/representations/existing-vary',
+      'image/avif',
+      undefined,
+      undefined,
+      undefined,
+      {
+        nativeFallback: true,
+        observers: [{
+          onRequestError(context) {
+            observedVary.push(context.requestContext.response.headers.Vary);
+          },
+        }],
+        onError(_error, _request, errorResponse) {
+          errorResponse.setHeader('Vary', 'Origin');
+          errorResponse.setStatus(406);
+          errorResponse.send({ handled: true });
+          return true;
+        },
+      },
+    );
+
+    expect(observedVary).toEqual([undefined, undefined]);
+    expect(response.statusCode).toBe(406);
+    expect(response.body).toEqual({ handled: true });
+    expect(response.headers.Vary).toBe('Origin');
+  });
+
+  it('keeps negotiation Vary out of fallback error observers before they commit a response', async () => {
+    let observedVary: unknown;
+    const { fallbackDispatcher } = createNegotiatingDispatchers(formatters, 'text/plain', {
+      observers: [{
+        onRequestError(context) {
+          observedVary = context.requestContext.response.headers.Vary;
+          context.requestContext.response.setStatus(406);
+          context.requestContext.response.send({ handled: true });
+        },
+      }],
+    });
+    const response = createResponse();
+
+    await fallbackDispatcher.dispatch(createRequest('/representations/existing-vary', 'image/avif'), response);
+
+    expect(observedVary).toBeUndefined();
+    expect(response.statusCode).toBe(406);
+    expect(response.body).toEqual({ handled: true });
+    expect(response.headers.Vary).toBeUndefined();
+  });
+
   it('deduplicates Accept while preserving existing Vary fields', async () => {
     const { response } = await dispatchBoth('/representations/existing-vary', 'application/json');
 
@@ -578,7 +682,7 @@ describe('successful response content negotiation', () => {
 
     expect(response.statusCode).toBe(406);
     expect(response.body).toMatchObject({ error: { code: 'NOT_ACCEPTABLE', status: 406 } });
-    expect(response.headers.Vary).toBe('Accept-Encoding, accept');
+    expect(response.headers.Vary).toBe('Accept');
     expect(
       String(response.headers.Vary)
         .split(',')
