@@ -55,7 +55,7 @@ function createResponse(): TestResponse {
 
 @Controller('/representations')
 class RepresentationController {
-  @Produces('application/json', 'application/problem+json', 'text/plain')
+  @Produces('application/json', 'application/problem+json', 'text/plain', 'application/json;note="a,b=c\\"d\\\\e"')
   @Get('/all')
   all() {
     return { ok: true };
@@ -93,6 +93,12 @@ const formatters = [
       return 'plain';
     },
     mediaType: 'text/plain',
+  },
+  {
+    format() {
+      return 'json-note';
+    },
+    mediaType: 'application/json;note="a,b=c\\"d\\\\e"',
   },
 ];
 
@@ -184,6 +190,78 @@ describe('successful response content negotiation', () => {
       200,
       'text/plain',
       'plain',
+    ],
+    [
+      'valid quoted comma equals escaped quote and backslash',
+      '/representations/all',
+      'application/json;note="a,b=c\\"d\\\\e";q=1, text/plain;q=0',
+      200,
+      'application/json;note="a,b=c\\"d\\\\e"',
+      'json-note',
+    ],
+    [
+      'raw NUL in quoted parameter',
+      '/representations/all',
+      'application/json;note="a\0b";q=1, text/plain;q=0',
+      406,
+      undefined,
+      undefined,
+    ],
+    [
+      'escaped NUL in quoted parameter',
+      '/representations/all',
+      'application/json;note="a\\\0b";q=1, text/plain;q=0',
+      406,
+      undefined,
+      undefined,
+    ],
+    [
+      'raw carriage return in quoted parameter',
+      '/representations/all',
+      'application/json;note="a\rb";q=1, text/plain;q=0',
+      406,
+      undefined,
+      undefined,
+    ],
+    [
+      'escaped carriage return in quoted parameter',
+      '/representations/all',
+      'application/json;note="a\\\rb";q=1, text/plain;q=0',
+      406,
+      undefined,
+      undefined,
+    ],
+    [
+      'raw line feed in quoted parameter',
+      '/representations/all',
+      'application/json;note="a\nb";q=1, text/plain;q=0',
+      406,
+      undefined,
+      undefined,
+    ],
+    [
+      'escaped line feed in quoted parameter',
+      '/representations/all',
+      'application/json;note="a\\\nb";q=1, text/plain;q=0',
+      406,
+      undefined,
+      undefined,
+    ],
+    [
+      'media parameter without a matching representation',
+      '/representations/without-suffix',
+      'application/json;profile=v2',
+      406,
+      undefined,
+      undefined,
+    ],
+    [
+      'quoted parameter with an invalid escaped control octet',
+      '/representations/without-suffix',
+      'application/json;profile="a\\\u0001"',
+      406,
+      undefined,
+      undefined,
     ],
     [
       'unterminated quoted parameter after a valid entry',

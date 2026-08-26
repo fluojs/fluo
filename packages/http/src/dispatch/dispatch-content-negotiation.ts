@@ -7,7 +7,13 @@ import type {
   ResponseFormatter,
 } from '../types.js';
 
+interface MediaParameter {
+  name: string;
+  value: string;
+}
+
 interface AcceptToken {
+  mediaParameters: MediaParameter[];
   mediaRange: string;
   order: number;
   quality: number;
@@ -137,6 +143,20 @@ function parseParameter(parameter: string): [name: string, value: string] | unde
   return [name, value];
 }
 
+function isValidQuotedTextOctet(character: string): boolean {
+  const code = character.charCodeAt(0);
+
+  return code === 0x09
+    || (code >= 0x20 && code <= 0x7e && character !== '"' && character !== '\\')
+    || (code >= 0x80 && code <= 0xff);
+}
+
+function isValidQuotedPairOctet(character: string): boolean {
+  const code = character.charCodeAt(0);
+
+  return code === 0x09 || (code >= 0x20 && code <= 0x7e) || (code >= 0x80 && code <= 0xff);
+}
+
 function isValidParameterValue(value: string): boolean {
   if (MEDIA_TYPE_TOKEN_PATTERN.test(value)) {
     return true;
@@ -151,15 +171,80 @@ function isValidParameterValue(value: string): boolean {
     const character = value[index]!;
 
     if (escaped) {
+      if (!isValidQuotedPairOctet(character)) {
+        return false;
+      }
       escaped = false;
     } else if (character === '\\') {
       escaped = true;
-    } else if (character === '"' || character === '\r' || character === '\n') {
+    } else if (!isValidQuotedTextOctet(character)) {
       return false;
     }
   }
 
   return !escaped;
+}
+
+function normalizeParameterValue(value: string): string {
+  if (value[0] !== '"') {
+    return value;
+  }
+
+  let normalized = '';
+  let escaped = false;
+  for (let index = 1; index < value.length - 1; index++) {
+    const character = value[index]!;
+
+    if (escaped) {
+      normalized += character;
+      escaped = false;
+    } else if (character === '\\') {
+      escaped = true;
+    } else {
+      normalized += character;
+    }
+  }
+
+  return normalized;
+}
+
+function parseMediaType(value: string): { mediaRange: string; parameters: MediaParameter[] } | undefined {
+  const parts = splitOutsideQuotedStrings(value.trim(), ';');
+  if (!parts) {
+    return undefined;
+  }
+
+  const [rawMediaRange, ...parameterParts] = parts;
+  const mediaRange = normalizeMediaType(rawMediaRange ?? '');
+  if (!isValidMediaRange(mediaRange)) {
+    return undefined;
+  }
+
+  const parameters: MediaParameter[] = [];
+  for (const parameterPart of parameterParts) {
+    const parameter = parseParameter(parameterPart.trim());
+    if (!parameter) {
+      return undefined;
+    }
+
+    const [name, parameterValue] = parameter;
+    parameters.push({ name: name.toLowerCase(), value: normalizeParameterValue(parameterValue) });
+  }
+
+  return { mediaRange, parameters };
+}
+
+function normalizeRepresentationMediaType(value: string): string {
+  const mediaType = parseMediaType(value);
+  if (!mediaType) {
+    return normalizeMediaType(value);
+  }
+
+  const parameters = mediaType.parameters
+    .map((parameter) => `${parameter.name}=${parameter.value}`)
+    .sort();
+
+  return parameters.length ? `${mediaType.mediaRange};${parameters.join(';')}` : mediaType.mediaRange;
 }
 
 function parseAcceptHeader(acceptHeader: string): AcceptToken[] {
@@ -183,6 +268,7 @@ function parseAcceptHeader(acceptHeader: string): AcceptToken[] {
       continue;
     }
 
+    const mediaParameters: MediaParameter[] = [];
     let quality = 1;
     let qualitySeen = false;
     let malformed = false;
@@ -203,6 +289,8 @@ function parseAcceptHeader(acceptHeader: string): AcceptToken[] {
         }
         quality = parsedQuality;
         qualitySeen = true;
+      } else {
+        mediaParameters.push({ name: name.toLowerCase(), value: normalizeParameterValue(value) });
       }
     }
 
@@ -211,6 +299,7 @@ function parseAcceptHeader(acceptHeader: string): AcceptToken[] {
     }
 
     tokens.push({
+      mediaParameters,
       mediaRange,
       order,
       quality,
@@ -250,6 +339,14 @@ function isValidMediaRange(mediaRange: string): boolean {
   }
 
   return !subtype.includes('*') && MEDIA_TYPE_TOKEN_PATTERN.test(subtype);
+}
+
+function matchesMediaParameters(mediaParameters: readonly MediaParameter[], mediaType: string): boolean {
+  const parsedMediaType = parseMediaType(mediaType);
+
+  return parsedMediaType !== undefined && mediaParameters.every((mediaParameter) => parsedMediaType.parameters.some(
+    (parameter) => parameter.name === mediaParameter.name && parameter.value === mediaParameter.value,
+  ));
 }
 
 function matchesMediaRange(mediaRange: string, mediaType: string): boolean {
@@ -328,7 +425,7 @@ export function resolveContentNegotiation(options: ContentNegotiationOptions | u
 
   const seen = new Set<string>();
   const formatters = options.formatters.filter((formatter) => {
-    const mediaType = normalizeMediaType(formatter.mediaType);
+    const mediaType = normalizeRepresentationMediaType(formatter.mediaType);
 
     if (!mediaType || seen.has(mediaType)) {
       return false;
@@ -342,15 +439,15 @@ export function resolveContentNegotiation(options: ContentNegotiationOptions | u
     return undefined;
   }
 
-  const defaultMediaType = normalizeMediaType(options.defaultMediaType ?? '');
+  const defaultMediaType = normalizeRepresentationMediaType(options.defaultMediaType ?? '');
   const defaultFormatter = defaultMediaType
-    ? formatters.find((formatter) => normalizeMediaType(formatter.mediaType) === defaultMediaType) ?? formatters[0]
+    ? formatters.find((formatter) => normalizeRepresentationMediaType(formatter.mediaType) === defaultMediaType) ?? formatters[0]
     : formatters[0];
 
   return {
     defaultFormatter,
     formatters,
-    normalizedMediaTypes: formatters.map((f) => normalizeMediaType(f.mediaType)),
+    normalizedMediaTypes: formatters.map((f) => normalizeRepresentationMediaType(f.mediaType)),
   };
 }
 
@@ -362,7 +459,7 @@ function resolveAllowedFormatters(
     return { formatters: contentNegotiation.formatters, normalizedMediaTypes: contentNegotiation.normalizedMediaTypes };
   }
 
-  const allowed = new Set(handler.route.produces.map((mediaType) => normalizeMediaType(mediaType)));
+  const allowed = new Set(handler.route.produces.map((mediaType) => normalizeRepresentationMediaType(mediaType)));
   const formatters: ResponseFormatter[] = [];
   const normalizedMediaTypes: string[] = [];
 
@@ -383,7 +480,7 @@ function resolveDefaultFormatter(
   allowedNormalizedMediaTypes: string[],
   contentNegotiation: ResolvedContentNegotiation,
 ): ResponseFormatter {
-  const defaultMediaType = normalizeMediaType(contentNegotiation.defaultFormatter.mediaType);
+  const defaultMediaType = normalizeRepresentationMediaType(contentNegotiation.defaultFormatter.mediaType);
   const idx = allowedNormalizedMediaTypes.indexOf(defaultMediaType);
 
   return idx >= 0 ? allowedFormatters[idx]! : (allowedFormatters[0] ?? contentNegotiation.defaultFormatter);
@@ -428,11 +525,13 @@ export function selectResponseFormatter(
 
   for (let formatterIndex = 0; formatterIndex < allowedFormatters.length; formatterIndex++) {
     const formatter = allowedFormatters[formatterIndex]!;
-    const normalizedMediaType = allowedNormalizedMediaTypes[formatterIndex]!;
     let controllingToken: AcceptToken | undefined;
 
     for (const token of acceptTokens) {
-      if (!matchesMediaRange(token.mediaRange, normalizedMediaType)) {
+      if (
+        !matchesMediaRange(token.mediaRange, normalizeMediaType(formatter.mediaType))
+        || !matchesMediaParameters(token.mediaParameters, formatter.mediaType)
+      ) {
         continue;
       }
 
