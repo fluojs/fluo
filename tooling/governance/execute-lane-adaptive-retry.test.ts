@@ -482,6 +482,32 @@ describe('execute-lane adaptive retry policy', () => {
     ).toThrow(/caller-authored blocker ledger/u);
   });
 
+  it('terminalizes malformed child provenance at the observed worktree head', () => {
+    const observedHead = 'a'.repeat(40);
+
+    const state = transitionIssueSupervisor(createImplementingState(), {
+      kind: 'child-contract-error',
+      observed_head: observedHead,
+      signature: 'implementer-spawn-provenance-invalid',
+      evidence:
+        'The completed implementer task contained conflicting dispatch authority.',
+    });
+
+    expect(state.status).toBe('blocked-child-contract-error');
+    expect(state.head_sha).toBe(observedHead);
+    expect(state.blockers).toEqual([
+      {
+        reviewer: 'verification',
+        signature: 'implementer-spawn-provenance-invalid',
+        evidence:
+          'The completed implementer task contained conflicting dispatch authority.',
+        fix_back_eligible: false,
+        status: 'unresolved',
+      },
+    ]);
+    expect(() => assertIssueSupervisorState(state)).not.toThrow();
+  });
+
   it('parks an explicitly non-fixable blocker for human resolution', () => {
     // Given
     let state = createImplementingState();

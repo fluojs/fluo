@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import {
-  appendFileSync,
+  closeSync,
   existsSync,
+  fsyncSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   renameSync,
   unlinkSync,
@@ -52,15 +54,34 @@ const ensureStateDirectory = (path) => {
 };
 
 const writeAtomic = (path, value) => {
+  writeTextAtomic(path, `${JSON.stringify(value, null, 2)}\n`);
+};
+
+const fsyncDirectory = (path) => {
+  const descriptor = openSync(dirname(path), 'r');
+  try {
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+};
+
+const writeTextAtomic = (path, content) => {
   assertRegularFile(path);
   const candidate = `${path}.${randomUUID()}.tmp`;
-  writeFileSync(candidate, `${JSON.stringify(value, null, 2)}\n`, {
-    encoding: 'utf8',
-    flag: 'wx',
-  });
+  const descriptor = openSync(candidate, 'wx');
+  let closed = false;
   try {
+    writeFileSync(descriptor, content, 'utf8');
+    fsyncSync(descriptor);
+    closeSync(descriptor);
+    closed = true;
     renameSync(candidate, path);
+    fsyncDirectory(path);
   } finally {
+    if (!closed) {
+      closeSync(descriptor);
+    }
     if (existsSync(candidate)) {
       unlinkSync(candidate);
     }
@@ -78,6 +99,31 @@ const readEvents = (path) => {
     : content.split('\n').map((line) => JSON.parse(line));
 };
 
+const readRecoverableEventPrefix = (path) => {
+  if (!existsSync(path)) {
+    return [];
+  }
+  assertRegularFile(path);
+  const content = readFileSync(path, 'utf8');
+  const lines = content.split('\n');
+  if (lines.at(-1) === '') {
+    lines.pop();
+  }
+  const events = [];
+  for (const [index, line] of lines.entries()) {
+    try {
+      events.push(JSON.parse(line));
+    } catch {
+      if (index !== lines.length - 1) {
+        throw new TypeError(
+          'persisted event history contains a non-terminal torn record.',
+        );
+      }
+    }
+  }
+  return events;
+};
+
 const validateState = ({ snapshot, events, receipts }) => {
   assertContract('lane-ledger-v2', snapshot);
   validateLedger('lane-ledger-v2', snapshot);
@@ -89,6 +135,10 @@ const validateState = ({ snapshot, events, receipts }) => {
   }
   for (const receipt of receipts) {
     assertContract('receipt', receipt);
+  }
+  const receiptIds = receipts.map((receipt) => receipt.receipt_id);
+  if (new Set(receiptIds).size !== receiptIds.length) {
+    throw new TypeError('receipts.json must contain unique receipt_id values.');
   }
 };
 
@@ -113,16 +163,16 @@ const applyTransaction = (stateDirectory, transaction) => {
   }
   validateState(transaction);
   const eventsPath = resolve(stateDirectory, 'events.jsonl');
-  const existingEvents = readEvents(eventsPath);
+  const existingEvents = readRecoverableEventPrefix(eventsPath);
   assertEventPrefix(existingEvents, transaction.events);
-  const missingEvents = transaction.events.slice(existingEvents.length);
-  if (missingEvents.length > 0) {
-    appendFileSync(
-      eventsPath,
-      `${missingEvents.map((event) => JSON.stringify(event)).join('\n')}\n`,
-      'utf8',
-    );
-  }
+  writeTextAtomic(
+    eventsPath,
+    transaction.events.length === 0
+      ? ''
+      : `${transaction.events
+          .map((event) => JSON.stringify(event))
+          .join('\n')}\n`,
+  );
   writeAtomic(resolve(stateDirectory, 'snapshot.json'), transaction.snapshot);
   writeAtomic(resolve(stateDirectory, 'receipts.json'), transaction.receipts);
 };

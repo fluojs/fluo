@@ -160,7 +160,8 @@ export const resolveCanonicalPreflightAuthority = ({
   if (
     ledger.lane_id !== laneId ||
     !ledger.confirmed_issues.includes(issueNumber) ||
-    typeof ledger.lane_plan_approval_sha256 !== 'string'
+    (ledger.release_handoffs.length > 0 &&
+      typeof ledger.lane_plan_approval_sha256 !== 'string')
   ) {
     throw new TypeError('canonical lane ledger does not authorize this issue preflight.');
   }
@@ -199,7 +200,8 @@ export const resolveCanonicalPreflightAuthority = ({
     JSON.stringify(plan.release_handoffs.map(({ issue_number: number }) => number)) !==
       JSON.stringify(ledger.release_handoffs) ||
     approval.binding_sha256 !== approvalBinding(approvalInput, artifact, plan) ||
-    approval.binding_sha256 !== ledger.lane_plan_approval_sha256
+    (ledger.release_handoffs.length > 0 &&
+      approval.binding_sha256 !== ledger.lane_plan_approval_sha256)
   ) {
     throw new TypeError('canonical lane-plan approval does not match the lane ledger and source.');
   }

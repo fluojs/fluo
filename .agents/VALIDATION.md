@@ -42,6 +42,10 @@ tooling/governance/execute-lane-persistence.test.ts
 tooling/governance/execute-lane-resilience.test.ts
 tooling/governance/execute-lane-authority.test.ts
 tooling/governance/execute-lane-concurrency.test.ts
+tooling/governance/execute-lane-lane-lease.test.ts
+tooling/governance/execute-lane-root-sync.test.ts
+tooling/governance/execute-lane-settlement-transaction.test.ts
+tooling/governance/execute-lane-task-prompt.test.ts
 tooling/governance/omo-native-assets.test.ts
 node --test .agents/skills/execute-lane/scripts/reviewer-runtime.test.mjs
 node --test .agents/skills/execute-lane/scripts/review-loop-policy.test.mjs

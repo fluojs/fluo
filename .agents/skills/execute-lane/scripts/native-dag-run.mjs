@@ -11,13 +11,19 @@ const isRecord = (value) =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const submittedNode = (node) => {
+  const hasCategory =
+    typeof node?.category === 'string' &&
+    node.category.length > 0;
+  const hasSubagentType =
+    typeof node?.subagent_type === 'string' &&
+    node.subagent_type.length > 0;
   if (
     !isRecord(node) ||
     typeof node.id !== 'string' ||
     typeof node.label !== 'string' ||
     typeof node.description !== 'string' ||
     typeof node.task_summary !== 'string' ||
-    typeof node.category !== 'string' ||
+    hasCategory === hasSubagentType ||
     !Array.isArray(node.load_skills) ||
     !Array.isArray(node.dependsOn) ||
     typeof node.prompt !== 'string'
@@ -29,7 +35,9 @@ const submittedNode = (node) => {
     label: node.label,
     description: node.description,
     task_summary: node.task_summary,
-    category: node.category,
+    ...(hasCategory
+      ? { category: node.category }
+      : { subagent_type: node.subagent_type }),
     load_skills: node.load_skills,
     dependsOn: node.dependsOn,
     prompt: node.prompt,

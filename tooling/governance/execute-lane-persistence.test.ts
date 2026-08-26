@@ -172,4 +172,54 @@ describe('$execute-lane persisted files', () => {
       rmSync(expectedState, { recursive: true, force: true });
     }
   });
+
+  it('recovers a transaction over a torn trailing event write', () => {
+    const state = mkdtempSync(resolve(tmpdir(), 'fluo-execute-torn-'));
+    const expectedState = mkdtempSync(
+      resolve(tmpdir(), 'fluo-execute-torn-expected-'),
+    );
+    try {
+      runScenario('interrupted-start', state);
+      cpSync(state, expectedState, { recursive: true });
+      runScenario('interrupted-resume', expectedState);
+
+      const expectedEvents = eventLines(expectedState);
+      const currentEvents = eventLines(state);
+      const firstMissing = expectedEvents[currentEvents.length];
+      if (firstMissing === undefined) {
+        throw new TypeError('Expected a transition event to tear.');
+      }
+      appendFileSync(
+        resolve(state, 'events.jsonl'),
+        firstMissing.slice(0, Math.max(1, firstMissing.length / 2)),
+        'utf8',
+      );
+      writeFileSync(
+        resolve(state, 'transaction.json'),
+        `${JSON.stringify(
+          {
+            version: 1,
+            snapshot: JSON.parse(
+              readFileSync(resolve(expectedState, 'snapshot.json'), 'utf8'),
+            ),
+            events: expectedEvents.map((line) => JSON.parse(line)),
+            receipts: JSON.parse(
+              readFileSync(resolve(expectedState, 'receipts.json'), 'utf8'),
+            ),
+          },
+          null,
+          2,
+        )}\n`,
+        'utf8',
+      );
+
+      const recovered = runScenario('interrupted-resume', state);
+      expect(recovered['status']).toBe('done');
+      expect(eventLines(state)).toEqual(expectedEvents);
+      expect(existsSync(resolve(state, 'transaction.json'))).toBe(false);
+    } finally {
+      rmSync(state, { recursive: true, force: true });
+      rmSync(expectedState, { recursive: true, force: true });
+    }
+  });
 });

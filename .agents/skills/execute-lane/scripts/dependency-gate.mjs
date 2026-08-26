@@ -145,9 +145,19 @@ export const terminalizeBlockedDependents = (
   let changed = true;
   while (changed) {
     changed = false;
-    for (const [laneIndex, lane] of snapshot.lanes.entries()) {
-      const issueNumber = lane.current_issue;
-      if (lane.status !== 'queued' || issueNumber === null) {
+    for (const issueNumber of snapshot.confirmed_issues) {
+      if (snapshot.issue_progress[String(issueNumber)] !== undefined) {
+        continue;
+      }
+      const laneIndex = snapshot.lanes.findIndex((candidate) =>
+        candidate.queue.includes(issueNumber),
+      );
+      const lane = snapshot.lanes[laneIndex];
+      if (
+        lane === undefined ||
+        (!terminalStatuses.has(lane.status) &&
+          !(lane.status === 'queued' && lane.current_issue === issueNumber))
+      ) {
         continue;
       }
       const gate = dependencyGate(snapshot, issueNumber);
@@ -174,16 +184,18 @@ export const terminalizeBlockedDependents = (
         retry_count: 0,
         blockers,
       };
-      terminalize(
-        snapshot,
-        {
-          lane_id: snapshot.lane_id,
-          lane_index: laneIndex,
-          issue_number: issueNumber,
-        },
-        'blocked-terminal',
-        blockers,
-      );
+      if (!terminalStatuses.has(lane.status)) {
+        terminalize(
+          snapshot,
+          {
+            lane_id: snapshot.lane_id,
+            lane_index: laneIndex,
+            issue_number: issueNumber,
+          },
+          'blocked-terminal',
+          blockers,
+        );
+      }
       appendEvent(
         events,
         snapshot.lane_id,

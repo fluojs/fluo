@@ -280,6 +280,32 @@ const parkReleaseHandoff = (state, step) => {
   ];
 };
 
+const recordChildContractError = (state, step) => {
+  const observedHead = requireSha(
+    step.observed_head,
+    'child-contract-error.observed_head',
+  );
+  const signature = requireString(
+    step.signature,
+    'child-contract-error.signature',
+  );
+  const evidence = requireString(
+    step.evidence,
+    'child-contract-error.evidence',
+  );
+  state.head_sha = observedHead;
+  state.status = 'blocked-child-contract-error';
+  state.blockers = [
+    {
+      reviewer: 'verification',
+      signature,
+      evidence,
+      fix_back_eligible: false,
+      status: 'unresolved',
+    },
+  ];
+};
+
 export const createIssueSupervisor = (input) => {
   const value = requireRecord(input, 'issue supervisor identity');
   if (value.review_policy !== 'preflight-v1') {
@@ -397,6 +423,8 @@ export const transitionIssueSupervisor = (
     applyConflictResolution(state, step);
   } else if (step.kind === 'release-handoff') {
     parkReleaseHandoff(state, step);
+  } else if (step.kind === 'child-contract-error') {
+    recordChildContractError(state, step);
   } else if (!applyRemoteTransition(state, step, observedEventSequence)) {
     throw new TypeError(
       `unknown issue supervisor transition: ${String(step.kind)}`,

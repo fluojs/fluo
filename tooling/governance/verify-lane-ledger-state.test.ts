@@ -19,7 +19,10 @@ function setActiveSecondIssue(ledger: LaneLedgerFixture, laneStatus: string, pro
   ledger.status = 'running';
   ledger.completed_issues = [101];
   Object.assign(ledger.lanes[0], { status: laneStatus, current_issue: 102 });
-  Object.assign(requireRootMainSync(ledger), { status: 'not-started', sha: null });
+  Object.assign(requireRootMainSync(ledger), {
+    status: 'not-started',
+    sha: null,
+  });
   const progress = requireIssueProgress(ledger, '102');
   setNonCompletionProgress(progress, progressStatus);
   ledger.lanes[0].branch = progress.branch;
@@ -46,7 +49,10 @@ function setTerminalPostMergeCleanupFailure(ledger: LaneLedgerFixture): ReturnTy
     worktree: null,
     pr: null,
   });
-  Object.assign(requireRootMainSync(ledger), { status: 'not-started', sha: null });
+  Object.assign(requireRootMainSync(ledger), {
+    status: 'blocked-terminal',
+    sha: null,
+  });
   const progress = requireIssueProgress(ledger, '102');
   progress.status = 'blocked-terminal';
   Reflect.deleteProperty(progress, 'cleanup');

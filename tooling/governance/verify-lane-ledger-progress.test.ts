@@ -24,7 +24,10 @@ const completionEvidenceCases = [
 function setIssue102State(ledger: LaneLedgerFixture, status: string): ReturnType<typeof requireIssueProgress> {
   ledger.status = 'running';
   ledger.completed_issues = [101];
-  Object.assign(requireRootMainSync(ledger), { status: 'not-started', sha: null });
+  Object.assign(requireRootMainSync(ledger), {
+    status: 'not-started',
+    sha: null,
+  });
   const progress = requireIssueProgress(ledger, '102');
   setNonCompletionProgress(progress, status);
   if (['queued', 'running', 'in_review'].includes(status)) {
@@ -59,7 +62,10 @@ function setTerminalPostMergeCleanupFailure(ledger: LaneLedgerFixture): ReturnTy
     worktree: null,
     pr: null,
   });
-  Object.assign(requireRootMainSync(ledger), { status: 'not-started', sha: null });
+  Object.assign(requireRootMainSync(ledger), {
+    status: 'blocked-terminal',
+    sha: null,
+  });
   const progress = requireIssueProgress(ledger, '102');
   progress.status = 'blocked-terminal';
   Reflect.deleteProperty(progress, 'cleanup');

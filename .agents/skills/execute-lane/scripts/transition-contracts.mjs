@@ -182,20 +182,46 @@ export const cleanupSucceeded = (step, identity) => {
   );
 };
 
-export const rootSyncObservation = (step, snapshot, mergeCommitSha) => {
+export const rootSyncObservation = (step, snapshot) => {
   const observation = requireRecord(step.observation, 'root-sync.observation');
+  const synchronizedSha = requireSha(
+    observation.sha,
+    'root-sync.observation.sha',
+  );
   if (
     observation.authority !== 'lead' ||
     observation.base_branch !== snapshot.base_branch ||
     observation.ff_only !== true ||
     observation.status !== 'done' ||
-    observation.sha !== mergeCommitSha
+    observation.local_sha !== synchronizedSha ||
+    observation.remote_sha !== synchronizedSha
   ) {
     throw new TypeError(
       'root sync must be an observed lead-owned ff-only update of base_branch.',
     );
   }
-  return observation.sha;
+  const requiredMergeCommits = [
+    ...new Set(
+      Object.values(snapshot.issue_progress)
+        .filter((progress) => progress?.status === 'done')
+        .map((progress) => progress.merge_commit)
+        .filter((value) => typeof value === 'string'),
+    ),
+  ].sort();
+  const observedMergeCommits = Array.isArray(
+    observation.contained_merge_commits,
+  )
+    ? [...new Set(observation.contained_merge_commits)].sort()
+    : [];
+  if (
+    JSON.stringify(observedMergeCommits) !==
+    JSON.stringify(requiredMergeCommits)
+  ) {
+    throw new TypeError(
+      'root sync observation must prove every completed merge ancestry.',
+    );
+  }
+  return synchronizedSha;
 };
 
 export const receipt = ({

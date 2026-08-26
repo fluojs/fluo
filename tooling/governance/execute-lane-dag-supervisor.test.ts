@@ -21,7 +21,8 @@ const senpiFinal = (sentinel: string, payload: unknown) =>
 // allow: SIZE_OK — integrated v2 supervisor lifecycle regression matrix.
 type DagNode = Readonly<{
   id: string;
-  category: string;
+  category?: string;
+  subagent_type?: string;
   dependsOn: readonly string[];
   load_skills: readonly string[];
   prompt: string;
@@ -75,6 +76,13 @@ type SupervisorState = Readonly<{
   };
 }>;
 
+const { payloadDigest } = await import(
+  resolve(
+    process.cwd(),
+    '.agents/workflow-contracts/contracts.mjs',
+  )
+);
+
 const {
   createIssueSupervisor: createSupervisorV2,
   transitionIssueSupervisor: transitionSupervisorV2,
@@ -97,7 +105,10 @@ const { prepareCanonicalV2Runtime } = await import(
   )
 );
 const { computeConflictGitEvidence } = await import(
-  resolve(process.cwd(), '.agents/skills/execute-lane/scripts/trusted-evidence.mjs')
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/trusted-evidence.mjs',
+  )
 );
 const {
   writeActualShapedConflictImplementerTask,
@@ -142,7 +153,12 @@ const {
     headSha: string,
   ) => string;
 };
-const { compileLaneSupervisorDag, implementerRoute } = (await import(
+const {
+  compileLaneSupervisorDag,
+  implementerRoute,
+  nestedDispatchPolicy,
+  supervisorRoute,
+} = (await import(
   resolve(
     process.cwd(),
     '.agents/skills/execute-lane/scripts/compile-dag.mjs',
@@ -150,6 +166,11 @@ const { compileLaneSupervisorDag, implementerRoute } = (await import(
 )) as {
   compileLaneSupervisorDag: (ledger: unknown) => DagDefinition;
   implementerRoute: ImplementerRoute;
+  nestedDispatchPolicy: Readonly<{
+    implementer: Readonly<{ run_in_background: false }>;
+    reviewers: Readonly<{ run_in_background: false; batch: true }>;
+  }>;
+  supervisorRoute: Readonly<{ subagent_type: 'fluo-issue-supervisor' }>;
 };
 const {
   assertDagBindingMatches,
@@ -2155,6 +2176,38 @@ describe('execute-lane issue supervisor lifecycle', () => {
       ),
     ).toEqual(blockedImport);
 
+    const childContractBundle = persistedLifecycle(identity, [
+      {
+        kind: 'child-contract-error',
+        observed_head: headA,
+        signature: 'reviewer-task-suspended-without-final',
+        evidence:
+          'Required reviewer task was persisted without a final response.',
+      },
+    ]);
+    const childContractImport = importSupervisorTerminal(
+      { snapshot: ledger, events: [], receipts: [] },
+      childContractBundle,
+    );
+    expect(childContractImport.snapshot.lanes).toMatchObject([
+      { status: 'blocked-child-contract-error' },
+    ]);
+    expect(childContractImport.snapshot.issue_progress).toMatchObject({
+      '4101': {
+        status: 'blocked-child-contract-error',
+      },
+    });
+    expect(childContractImport.events.at(-1)).toMatchObject({
+      event_type: 'supervisor.blocked',
+      payload: {
+        status: 'blocked-child-contract-error',
+        imported_bundle_sha256: payloadDigest(childContractBundle),
+        terminal_event_hash:
+          childContractBundle.events.at(-1)?.event_hash,
+        receipt_ids: [],
+      },
+    });
+
     const releaseRoot = realpathSync(
       mkdtempSync(join(tmpdir(), 'fluo-release-supervisor-')),
     );
@@ -2239,17 +2292,28 @@ describe('execute-lane issue supervisor lifecycle', () => {
       expected_model: 'openai-codex/gpt-5.6-terra',
       expected_thinking: 'high',
     });
+    expect(supervisorRoute).toEqual({
+      subagent_type: 'fluo-issue-supervisor',
+    });
+    expect(nestedDispatchPolicy).toEqual({
+      implementer: { run_in_background: false },
+      reviewers: { run_in_background: false, batch: true },
+    });
     expect(definition.nodes).toHaveLength(2);
     expect(definition.nodes[0]).toMatchObject({
       id: 'issue-4101-supervisor',
+      subagent_type: 'fluo-issue-supervisor',
       dependsOn: [],
       load_skills: ['execute-lane'],
     });
+    expect(definition.nodes[0].category).toBeUndefined();
     expect(definition.nodes[1]).toMatchObject({
       id: 'issue-4102-supervisor',
+      subagent_type: 'fluo-issue-supervisor',
       dependsOn: ['issue-4101-supervisor'],
       load_skills: ['execute-lane'],
     });
+    expect(definition.nodes[1].category).toBeUndefined();
     expect(definition.nodes[0].prompt).toContain('STOP WHEN:');
     expect(definition.nodes[0].prompt).toContain(
       'await-lane-dispatch.mjs',
@@ -2272,6 +2336,34 @@ describe('execute-lane issue supervisor lifecycle', () => {
     expect(definition.nodes[0].prompt).toContain(
       '.omo/senpi-task/logs/<task-id>.jsonl',
     );
+    expect(definition.nodes[0].prompt).toContain(
+      'direct native task tool',
+    );
+    expect(definition.nodes[0].prompt).toContain(
+      'run_in_background: false',
+    );
+    expect(definition.nodes[0].prompt).toContain(
+      'one foreground batch',
+    );
+    expect(definition.nodes[0].prompt).toContain(
+      'Shell-launched delegation is forbidden',
+    );
+    const omoConfig = JSON.parse(
+      readFileSync(resolve(process.cwd(), '.omo/omo.jsonc'), 'utf8'),
+    );
+    expect(omoConfig).toMatchObject({
+      task: { max_depth: 2 },
+      agents: {
+        'fluo-issue-supervisor': {
+          execution_mode: 'process',
+          max_depth: 2,
+          tools: {
+            task: true,
+          },
+          allowed_subagents: ['fluo-issue-implementer'],
+        },
+      },
+    });
     expect(() =>
       compileLaneSupervisorDag({
         ...ledger,

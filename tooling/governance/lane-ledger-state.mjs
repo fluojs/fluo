@@ -25,6 +25,11 @@ function validateRootRelationship(path, ledger) {
     assert(ledger.root_main_sync.status !== 'not-started', path, 'done ledger requires root_main_sync to leave not-started');
   } else if (terminalStatuses.has(ledger.status)) {
     assert(ledger.lanes.every((lane) => terminalStatuses.has(lane.status)), path, 'terminal ledger status cannot contain active lanes');
+    assert(
+      ledger.root_main_sync.status !== 'not-started',
+      path,
+      'terminal ledger requires root_main_sync to leave not-started',
+    );
   }
 }
 
@@ -45,7 +50,7 @@ function validateRootMainSync(path, ledger) {
       'root_main_sync skipped-authority requires root_main_sync_ff_only authority false',
     );
     assert(rootMainSync.sha === null, path, 'root_main_sync skipped-authority must record null sha');
-  } else {
+  } else if (rootMainSync.status === 'blocked-dirty') {
     assert(everyLaneTerminal, path, 'root_main_sync blocked-dirty requires every lane to be terminal');
     assert(
       ledger.authority_scope.root_main_sync_ff_only === true,
@@ -53,6 +58,22 @@ function validateRootMainSync(path, ledger) {
       'root_main_sync blocked-dirty requires root_main_sync_ff_only authority true',
     );
     assert(rootMainSync.sha === null, path, 'root_main_sync blocked-dirty must record null sha');
+  } else {
+    assert(
+      everyLaneTerminal,
+      path,
+      'root_main_sync blocked-terminal requires every lane to be terminal',
+    );
+    assert(
+      ledger.status !== 'done',
+      path,
+      'root_main_sync blocked-terminal requires a blocked terminal root',
+    );
+    assert(
+      rootMainSync.sha === null,
+      path,
+      'root_main_sync blocked-terminal must record null sha',
+    );
   }
 }
 
@@ -148,8 +169,22 @@ function validateSequentialProgress(lanePath, lane, validation) {
         ? undefined
         : findTerminalIssue(lane, validation.progressByIssue);
       const terminalProgress = validation.progressByIssue.get(terminalIssue);
+      const dependencies =
+        validation.dependencyGraph[String(issue)] ?? [];
+      const dependencyBlocked =
+        progress?.status === 'blocked-terminal' &&
+        dependencies.some((dependency) => {
+          const dependencyStatus =
+            validation.progressByIssue.get(dependency)?.status;
+          return (
+            dependencyStatus !== 'done' &&
+            terminalStatuses.has(dependencyStatus)
+          );
+        });
       assert(
-        progress === undefined || progress.status === 'queued',
+        progress === undefined ||
+          progress.status === 'queued' ||
+          dependencyBlocked,
         lanePath,
         isPostMergeCleanupFailureProgress(terminalProgress)
           ? 'terminal post-merge cleanup failure must not dispatch a later same-lane issue'
@@ -235,7 +270,11 @@ export function validateLedger(path, ledger) {
 
   const progressByIssue = validateIssueProgress(path, ledger, prAssignments);
   assert(isObject(ledger.issue_progress), path, 'issue_progress must be an object');
-  const relationshipValidation = { completedIssues, progressByIssue };
+  const relationshipValidation = {
+    completedIssues,
+    progressByIssue,
+    dependencyGraph: ledger.dependency_graph,
+  };
   validateReleaseHandoffs(path, ledger, progressByIssue);
   for (const [index, lane] of ledger.lanes.entries()) {
     validateLaneProgressRelationship(`${path}:lanes[${index}]`, lane, relationshipValidation);

@@ -103,9 +103,14 @@
       "observation": {
         "authority": "lead",
         "base_branch": "main",
-        "ff_only": true,
-        "status": "done",
-        "sha": "dddddddddddddddddddddddddddddddddddddddd"
+      "ff_only": true,
+      "status": "done",
+      "sha": "dddddddddddddddddddddddddddddddddddddddd",
+      "local_sha": "dddddddddddddddddddddddddddddddddddddddd",
+      "remote_sha": "dddddddddddddddddddddddddddddddddddddddd",
+      "contained_merge_commits": [
+        "dddddddddddddddddddddddddddddddddddddddd"
+      ]
       }
     }
   ]

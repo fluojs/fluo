@@ -193,3 +193,24 @@ receipt requires a clean primary checkout, successful `pull --ff-only`, and equa
 
 `scripts/fixtures/run-replay.mjs --fixture-only` is a deterministic transition
 exerciser and never grants or observes production side-effect authority.
+
+## Hardened execution surface
+
+- Normal DAG nodes target `subagent_type: fluo-issue-supervisor` in process
+  mode; release handoff nodes retain their non-mutating route.
+- The runtime-derived supervisor session is the only accepted child parent.
+- Implementers run as one direct foreground native task. Reviewers start
+  together in one direct foreground batch and all three settle before
+  aggregation, remediation, PR work, or terminalization.
+- `implementerTaskPrompt()` and `reviewerTaskPrompt()` are the production
+  constructors. Narrative copies of preflight paths, digests, sentinels, or
+  dispatch blocks fail closed.
+- The parent runs `lane-settlement.mjs` after the DAG settles. It imports
+  terminal bundles topologically, persists each step, then terminalizes
+  artifact-free dependency descendants from fresh absence evidence.
+- Blocked roots end with `root_main_sync: blocked-terminal`; successful
+  multi-merge root sync proves equal local/remote base heads containing every
+  completed merge commit.
+- Shared state recovery atomically replaces the event stream from the WAL,
+  tolerates only a transaction-authenticated torn trailing record, and uses
+  PID/start-fingerprint lane leases.

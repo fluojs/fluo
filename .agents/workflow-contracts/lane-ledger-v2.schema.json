@@ -278,7 +278,7 @@
       "required": ["status", "sha"],
       "properties": {
         "status": {
-          "enum": ["not-started", "done", "skipped-authority", "blocked-dirty"]
+          "enum": ["not-started", "done", "skipped-authority", "blocked-dirty", "blocked-terminal"]
         },
         "sha": {
           "oneOf": [

@@ -59,9 +59,14 @@
       "observation": {
         "authority": "lead",
         "base_branch": "main",
-        "ff_only": true,
-        "status": "done",
-        "sha": "cccccccccccccccccccccccccccccccccccccccc"
+      "ff_only": true,
+      "status": "done",
+      "sha": "cccccccccccccccccccccccccccccccccccccccc",
+      "local_sha": "cccccccccccccccccccccccccccccccccccccccc",
+      "remote_sha": "cccccccccccccccccccccccccccccccccccccccc",
+      "contained_merge_commits": [
+        "cccccccccccccccccccccccccccccccccccccccc"
+      ]
       }
     }
   ]

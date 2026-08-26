@@ -24,6 +24,15 @@ import {
 import { assertPreflightAuthority } from './preflight-authority.mjs';
 import { assertBlockerLedger } from './blocker-ledger.mjs';
 
+export const issueSupervisorTerminalStatuses = Object.freeze([
+  'done',
+  'needs-human-check-terminal',
+  'blocked-child-contract-error',
+  'blocked-terminal',
+  'blocked-budget-exhausted',
+  'blocked-maintainer-decision',
+]);
+
 const statuses = new Set([
   'preflight',
   'implementing',
@@ -35,11 +44,7 @@ const statuses = new Set([
   'conflict-resolution',
   'merge-ready',
   'merged',
-  'done',
-  'needs-human-check-terminal',
-  'blocked-terminal',
-  'blocked-budget-exhausted',
-  'blocked-maintainer-decision',
+  ...issueSupervisorTerminalStatuses,
 ]);
 
 const prStatuses = new Set([
@@ -288,6 +293,21 @@ export const assertIssueSupervisorState = (input) => {
   }
   if (!Array.isArray(state.blockers)) {
     throw new TypeError('issue supervisor state invariant failed: blockers.');
+  }
+  if (
+    state.status === 'blocked-child-contract-error' &&
+    (state.blockers.length !== 1 ||
+      state.blockers[0]?.reviewer !== 'verification' ||
+      typeof state.blockers[0]?.signature !== 'string' ||
+      state.blockers[0].signature.length === 0 ||
+      typeof state.blockers[0]?.evidence !== 'string' ||
+      state.blockers[0].evidence.length === 0 ||
+      state.blockers[0]?.fix_back_eligible !== false ||
+      state.blockers[0]?.status !== 'unresolved')
+  ) {
+    throw new TypeError(
+      'issue supervisor state invariant failed: child contract blocker.',
+    );
   }
   if (state.local_review !== null) {
     assertContract('local-review-verdict', state.local_review);

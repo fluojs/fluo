@@ -28,6 +28,12 @@ export const parkReleaseHandoff = (snapshot, identity, events) => {
     snapshot,
     siblingIsActive ? 'running' : 'blocked-maintainer-decision',
   );
+  if (!siblingIsActive) {
+    snapshot.root_main_sync = {
+      status: 'blocked-terminal',
+      sha: null,
+    };
+  }
   Object.assign(lane, {
     status: 'blocked-maintainer-decision',
     current_issue: null,
@@ -160,10 +166,35 @@ export const applyRootSync = (
   receipts,
   events,
 ) => {
+  const blockedLane = snapshot.lanes.find(
+    (lane) =>
+      lane.status !== 'done' &&
+      !['queued', 'running', 'in_review', 'merged'].includes(
+        lane.status,
+      ),
+  );
+  if (blockedLane !== undefined) {
+    snapshot.root_main_sync = {
+      status: 'blocked-terminal',
+      sha: null,
+    };
+    setRootStatus(snapshot, blockedLane.status);
+    appendEvent(
+      events,
+      identity.lane_id,
+      'root.sync',
+      snapshot.base_branch,
+      {
+        status: 'blocked-terminal',
+        sha: null,
+      },
+    );
+    return;
+  }
   const authorized = snapshot.authority_scope.root_main_sync_ff_only === true;
   const progress = progressFor(snapshot, identity);
   const syncedSha = authorized
-    ? rootSyncObservation(step, snapshot, progress.merge_commit)
+    ? rootSyncObservation(step, snapshot)
     : progress.merge_commit;
   snapshot.root_main_sync = {
     status: authorized ? 'done' : 'skipped-authority',

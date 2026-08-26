@@ -84,6 +84,12 @@ export const terminalize = (
       ['queued', 'running', 'in_review', 'merged'].includes(candidate.status),
   );
   setRootStatus(snapshot, siblingIsActive ? 'running' : status);
+  if (!siblingIsActive) {
+    snapshot.root_main_sync = {
+      status: 'blocked-terminal',
+      sha: null,
+    };
+  }
   lane.status = status;
   lane.current_issue = null;
   lane.branch = null;
@@ -104,7 +110,9 @@ export const terminalize = (
 export const mergeReceipt = (identity) =>
   receipt({
     identity,
-    receiptId: `${identity.lane_id}:pr.merge:${identity.head_sha}`,
+    receiptId:
+      `${identity.lane_id}:issue:${String(identity.issue_number)}:` +
+      `pr.merge:${identity.head_sha}`,
     sideEffect: 'pr.merge',
     status: 'succeeded',
     target: {
@@ -115,30 +123,43 @@ export const mergeReceipt = (identity) =>
     evidence: `observed squash merge of ${identity.head_sha}`,
   });
 
+const sideEffectEvidence = (status, succeededEvidence) =>
+  status === 'succeeded'
+    ? succeededEvidence
+    : status === 'skipped'
+      ? 'not attempted: authority absent'
+      : 'attempt failed';
+
 export const cleanupReceipts = (identity, status = 'succeeded') => [
   receipt({
     identity,
-    receiptId: `${identity.lane_id}:worktree.remove`,
+    receiptId:
+      `${identity.lane_id}:issue:${String(identity.issue_number)}:` +
+      `worktree.remove:${identity.head_sha}`,
     sideEffect: 'worktree.remove',
     status,
     target: { kind: 'worktree', id: identity.worktree, url: null },
-    evidence: 'observed worktree removal',
+    evidence: sideEffectEvidence(status, 'observed worktree removal'),
   }),
   receipt({
     identity,
-    receiptId: `${identity.lane_id}:branch.delete:local`,
+    receiptId:
+      `${identity.lane_id}:issue:${String(identity.issue_number)}:` +
+      `branch.delete:local:${identity.head_sha}`,
     sideEffect: 'branch.delete',
     status,
     target: { kind: 'branch', id: `local:${identity.branch}`, url: null },
-    evidence: 'observed local branch deletion',
+    evidence: sideEffectEvidence(status, 'observed local branch deletion'),
   }),
   receipt({
     identity,
-    receiptId: `${identity.lane_id}:branch.delete:remote`,
+    receiptId:
+      `${identity.lane_id}:issue:${String(identity.issue_number)}:` +
+      `branch.delete:remote:${identity.head_sha}`,
     sideEffect: 'branch.delete',
     status,
     target: { kind: 'branch', id: `origin:${identity.branch}`, url: null },
-    evidence: 'observed remote branch deletion',
+    evidence: sideEffectEvidence(status, 'observed remote branch deletion'),
   }),
 ];
 
@@ -149,12 +170,18 @@ export const rootSyncReceipt = (
   status = 'succeeded',
 ) =>
   receipt({
-    identity: { ...identity, head_sha: syncedSha },
+    identity: {
+      ...identity,
+      head_sha: status === 'skipped' ? null : syncedSha,
+    },
     receiptId: `${identity.lane_id}:root.sync`,
     sideEffect: 'root.sync',
     status,
     target: { kind: 'branch', id: baseBranch, url: null },
-    evidence: `observed ff-only sync to ${syncedSha}`,
+    evidence: sideEffectEvidence(
+      status,
+      `observed ff-only sync to ${syncedSha}`,
+    ),
   });
 
 const applyMerge = (snapshot, identity, outcome, receipts, events) => {

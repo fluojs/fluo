@@ -186,7 +186,9 @@ export const prepareCanonicalV2Runtime = ({
     version: 2,
     run_id: laneId,
     lane_id: laneId,
-    lane_plan_approval_sha256: binding,
+    ...(releaseHandoffs.length === 0
+      ? {}
+      : { lane_plan_approval_sha256: binding }),
     status: 'ready',
     created_by: 'create-lane',
     base_branch: 'main',

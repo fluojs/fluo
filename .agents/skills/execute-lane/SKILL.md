@@ -61,3 +61,24 @@ blocker without creating issue artifacts. After the DAG settles, the parent audi
 imports terminal evidence in topological order into the shared lane ledger.
 `needs-human-check`, policy, external, cleanup,
 malformed-output, and ledger terminal states never release mutation.
+
+## Native child orchestration
+
+Normal issue nodes run as the project-local `fluo-issue-supervisor` process
+agent. The supervisor session ID comes from the runtime (`PI_SESSION_ID`), not
+from caller input. It may delegate only through the direct native `task` tool:
+one foreground Terra-high implementer task, then one foreground three-item
+reviewer batch. Shell-launched agents, background handles, separate reviewer
+calls, and hand-built terminal dispatch blocks are forbidden.
+`terminalTaskPrompt()` is the sole prompt constructor and places authority in
+exactly one final dispatch block.
+
+## Parent settlement
+
+After read-only settlement audit, the lead uses `lane-settlement.mjs` to import
+canonical terminal stores in dependency and queue order. The coordinator
+persists every deterministic transition through the shared WAL, then records
+dependency-blocked issues only from fresh branch/worktree/task/PR/store absence
+observations. A blocked terminal root must finish with
+`root_main_sync.status: blocked-terminal`; `not-started` is never terminal.
+Settlement reads never acquire or retire issue-store leases.

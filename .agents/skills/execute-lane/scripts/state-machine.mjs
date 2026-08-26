@@ -143,6 +143,10 @@ export const runReplay = (input, persisted) => {
           applyRootSync(step, snapshot, identity, receipts, events);
         } else {
           setRootStatus(snapshot, blockedLane.status);
+          snapshot.root_main_sync = {
+            status: 'blocked-terminal',
+            sha: null,
+          };
           appendEvent(
             events,
             identity.lane_id,

@@ -158,6 +158,7 @@ const persistNativeDagRun = (
       description: node.description,
       load_skills: node.load_skills,
       category: node.category,
+      subagent_type: node.subagent_type,
       effectivePrompt: `loaded:${String(node.prompt)}`,
     };
   });

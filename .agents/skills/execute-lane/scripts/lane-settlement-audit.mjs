@@ -3,19 +3,14 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { assertContract } from '../../../workflow-contracts/contracts.mjs';
-import { loadIssueSupervisorStore } from './issue-supervisor-store.mjs';
+import { readIssueSupervisorStore } from './issue-supervisor-store.mjs';
+import { issueSupervisorTerminalStatuses } from './issue-supervisor-contracts.mjs';
 import {
   canonicalLaneLedgerPath,
   canonicalLaneRuntimeRoot,
 } from './lane-runtime-paths.mjs';
 
-const terminalStatuses = new Set([
-  'done',
-  'needs-human-check-terminal',
-  'blocked-terminal',
-  'blocked-budget-exhausted',
-  'blocked-maintainer-decision',
-]);
+const terminalStatuses = new Set(issueSupervisorTerminalStatuses);
 
 export const auditLaneSupervisorSettlement = ({
   repository_root,
@@ -41,7 +36,7 @@ export const auditLaneSupervisorSettlement = ({
       missingIssues.push(issueNumber);
       continue;
     }
-    const bundle = loadIssueSupervisorStore(
+    const bundle = readIssueSupervisorStore(
       runtimeRoot,
       lane.lane_id,
       issueNumber,

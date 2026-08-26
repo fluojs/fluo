@@ -8,6 +8,7 @@ import {
   canonicalPreflightArtifactPath,
   parseTerminalDispatch,
   terminalDispatchBlock,
+  terminalTaskPrompt,
 } from './dispatch-authority.mjs';
 
 export const REVIEW_SENTINEL = 'fluo:execute-lane:review:read-only:v1';
@@ -83,6 +84,15 @@ export const reviewerPromptSentinel = ({
     preflight_sha256: preflightSha256,
     review_axis: axis,
     ...reviewerCapabilities(axis),
+  });
+
+export const reviewerTaskPrompt = ({
+  instructions,
+  ...authority
+}) =>
+  terminalTaskPrompt({
+    instructions,
+    dispatch_block: reviewerPromptSentinel(authority),
   });
 
 export const conflictReviewerTaskName = (issueNumber, resolvedHead) =>

@@ -50,8 +50,15 @@ const {
 );
 
 const runners = new Map<string, any>();
-const initialiseIssueSupervisorStore = (runtimeRoot: string, identity: unknown) =>
-  initialiseIssueSupervisorStoreRaw(runtimeRoot, identity, { command_runner: runners.get(runtimeRoot) });
+const initialiseIssueSupervisorStore = (
+  runtimeRoot: string,
+  identity: unknown,
+  options: Readonly<Record<string, unknown>> = {},
+) =>
+  initialiseIssueSupervisorStoreRaw(runtimeRoot, identity, {
+    command_runner: runners.get(runtimeRoot),
+    ...options,
+  });
 const applyIssueSupervisorTransition = (
   runtimeRoot: string,
   lane: string,
@@ -145,6 +152,9 @@ describe('execute-lane canonical preflight authority', () => {
   it('derives and persists complete authority from canonical repository artifacts', () => {
     const fixture = setup();
     try {
+      expect(fixture.ledger).not.toHaveProperty(
+        'lane_plan_approval_sha256',
+      );
       const bundle = initialiseIssueSupervisorStore(
         fixture.runtimeRoot,
         identityFor(fixture.root),
@@ -339,6 +349,27 @@ describe('execute-lane canonical preflight authority', () => {
       rmSync(canonical.root, { recursive: true, force: true });
       rmSync(fake.root, { recursive: true, force: true });
       rmSync(linkParent, { recursive: true, force: true });
+    }
+  });
+
+  it('binds the issue store to the observed supervisor session', () => {
+    const fixture = setup();
+    try {
+      expect(() =>
+        initialiseIssueSupervisorStore(
+          fixture.runtimeRoot,
+          {
+            ...identityFor(fixture.root),
+            parent_session_id: 'ses-forged-supervisor',
+          },
+          {
+            command_runner: fixture.commandRunner,
+            supervisor_session_id: 'ses-observed-supervisor',
+          },
+        ),
+      ).toThrow(/parent session does not match/u);
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
     }
   });
 
@@ -544,6 +575,62 @@ describe('execute-lane canonical preflight authority', () => {
       });
       expect(bundle.snapshot.head_sha).toBe(newHead);
       expect(bundle.snapshot.status).toBe('local-review');
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  it('terminalizes malformed child provenance after an unaccepted worktree head', () => {
+    const fixture = realGitSetup();
+    try {
+      let bundle = initialiseIssueSupervisorStore(fixture.runtimeRoot, {
+        ...identityFor(fixture.root),
+        starting_head_sha: fixture.startingHead,
+      });
+      bundle = applyIssueSupervisorTransition(
+        fixture.runtimeRoot,
+        laneId,
+        issueNumber,
+        {
+          kind: 'preflight-completed',
+          preflight: preflightFor(bundle.snapshot),
+        },
+      );
+      const worktree = resolve(fixture.root, bundle.snapshot.worktree);
+      writeFileSync(resolve(worktree, 'unaccepted.txt'), 'unaccepted\n');
+      execFileSync('git', ['-C', worktree, 'add', 'unaccepted.txt']);
+      execFileSync(
+        'git',
+        ['-C', worktree, 'commit', '-q', '-m', 'unaccepted child output'],
+      );
+      const observedHead = execFileSync(
+        'git',
+        ['-C', worktree, 'rev-parse', 'HEAD'],
+        { encoding: 'utf8' },
+      ).trim();
+
+      bundle = applyIssueSupervisorTransition(
+        fixture.runtimeRoot,
+        laneId,
+        issueNumber,
+        {
+          kind: 'child-contract-error',
+          observed_head: observedHead,
+          signature: 'implementer-spawn-provenance-invalid',
+          evidence:
+            'The completed child contained conflicting dispatch authority.',
+        },
+      );
+
+      expect(bundle.snapshot.status).toBe('blocked-child-contract-error');
+      expect(bundle.snapshot.head_sha).toBe(observedHead);
+      expect(
+        loadIssueSupervisorStore(
+          fixture.runtimeRoot,
+          laneId,
+          issueNumber,
+        ).snapshot.status,
+      ).toBe('blocked-child-contract-error');
     } finally {
       rmSync(fixture.root, { recursive: true, force: true });
     }

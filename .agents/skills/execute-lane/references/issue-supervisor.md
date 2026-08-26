@@ -121,3 +121,22 @@ attached run.
 
 Stop with `done` only after observed merge and cleanup. Otherwise stop with one explicit human, policy, external,
 cleanup, child-contract, or ledger blocker. Never report success merely because the DAG node or a child task returned.
+
+## Session and child rules
+
+The normal node is the `fluo-issue-supervisor` process agent. Store
+initialization binds `parent_session_id` to its observed runtime session; a
+caller-selected value is rejected. Use only native foreground delegation:
+
+1. Build the implementer prompt with `implementerTaskPrompt()`.
+2. Run one Terra-high `fluo-issue-implementer` task to completion.
+3. Verify and import its exact task/session/head evidence.
+4. Build all reviewer prompts with `reviewerTaskPrompt()`.
+5. Start contract, code, and verification in one foreground task batch.
+6. Wait for every slot before any finding, fix, PR, or terminal transition.
+
+Never invoke `omo`, `senpi`, or another coding agent through shell. Never
+compose or duplicate dispatch authority in narrative prose. A missing/lost
+final response or mismatched parent/head becomes
+`blocked-child-contract-error`; an unaccepted mutated head is recorded as the
+observed terminal head and is never reset or adopted.

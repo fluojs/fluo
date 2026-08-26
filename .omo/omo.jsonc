@@ -1,6 +1,20 @@
 {
   "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/dev/assets/omo.schema.json",
+  "task": {
+    "max_depth": 2
+  },
   "agents": {
+    "fluo-issue-supervisor": {
+      "description": "Runs one Fluo issue lifecycle and delegates only its bounded implementation and review children.",
+      "tools": {
+        "task": true
+      },
+      "execution_mode": "process",
+      "max_depth": 2,
+      "allowed_subagents": [
+        "fluo-issue-implementer"
+      ]
+    },
     "fluo-issue-implementer": {
       "description": "Implements one Fluo issue inside its assigned worktree.",
       "model": "openai-codex/gpt-5.6-terra",

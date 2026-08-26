@@ -50,6 +50,43 @@ export const terminalDispatchBlock = (payload) =>
 
 const occurrences = (source, token) => source.split(token).length - 1;
 
+export const terminalTaskPrompt = ({
+  instructions,
+  dispatch_block: dispatchBlock,
+}) => {
+  if (
+    typeof instructions !== 'string' ||
+    instructions.trim().length === 0 ||
+    typeof dispatchBlock !== 'string' ||
+    !dispatchBlock.startsWith(`${OPEN}\n`) ||
+    !dispatchBlock.endsWith(`\n${CLOSE}`)
+  ) {
+    throw new TypeError(
+      'terminal task prompt requires instructions and a canonical dispatch block.',
+    );
+  }
+  let dispatch;
+  try {
+    dispatch = JSON.parse(
+      dispatchBlock.slice(OPEN.length + 1, -(CLOSE.length + 1)),
+    );
+  } catch {
+    throw new TypeError('terminal task dispatch must be strict JSON.');
+  }
+  if (
+    typeof dispatch !== 'object' ||
+    dispatch === null ||
+    Array.isArray(dispatch) ||
+    typeof dispatch.sentinel !== 'string'
+  ) {
+    throw new TypeError('terminal task dispatch sentinel is invalid.');
+  }
+  parseTerminalDispatchShape(dispatchBlock, dispatch.sentinel);
+  const prompt = `${instructions.trimEnd()}\n\n${dispatchBlock}`;
+  parseTerminalDispatchShape(prompt, dispatch.sentinel);
+  return prompt;
+};
+
 export const parseTerminalDispatchShape = (prompt, expectedSentinel) => {
   if (typeof prompt !== 'string' || !prompt.endsWith(CLOSE) ||
       occurrences(prompt, OPEN) !== 1 || occurrences(prompt, CLOSE) !== 1) {

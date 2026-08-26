@@ -113,8 +113,18 @@ const recoverTransaction = (directory) => {
   }
 };
 
-const readBundle = (directory) => {
-  recoverTransaction(directory);
+const readBundle = (directory, { recover = true } = {}) => {
+  const transactionPath = resolve(
+    directory,
+    filenames.transaction,
+  );
+  if (recover) {
+    recoverTransaction(directory);
+  } else if (existsSync(transactionPath)) {
+    throw new TypeError(
+      'read-only issue supervisor load refuses a pending transaction.',
+    );
+  }
   const snapshotPath = resolve(directory, filenames.snapshot);
   if (!existsSync(snapshotPath)) {
     return null;
@@ -176,6 +186,27 @@ const requireCanonicalRuntimeRoot = (runtimeRoot, repositoryRoot) => {
 
 const canonicalStoreIdentity = (runtimeRoot, identity, options) => {
   requireCanonicalRuntimeRoot(runtimeRoot, identity.repository_root);
+  const observedSupervisorSessionId =
+    options.supervisor_session_id ??
+    (options.command_runner === undefined
+      ? process.env.PI_SESSION_ID
+      : identity.parent_session_id);
+  if (
+    typeof observedSupervisorSessionId !== 'string' ||
+    observedSupervisorSessionId.length === 0
+  ) {
+    throw new TypeError(
+      'issue supervisor session identity must come from the runtime.',
+    );
+  }
+  if (
+    identity.parent_session_id !== undefined &&
+    identity.parent_session_id !== observedSupervisorSessionId
+  ) {
+    throw new TypeError(
+      'issue supervisor parent session does not match the observed runtime session.',
+    );
+  }
   const authority = resolveCanonicalPreflightAuthority({
     ...identity,
     command_runner: options.command_runner,
@@ -209,6 +240,7 @@ const canonicalStoreIdentity = (runtimeRoot, identity, options) => {
   }
   return {
     ...identity,
+    parent_session_id: observedSupervisorSessionId,
     issue_contract_revision: authority.issue_contract_revision,
     issue_contract_sha256: authority.issue_contract_sha256,
     lane_plan_approval_sha256: authority.lane_plan_approval_sha256,
@@ -478,6 +510,8 @@ export const applyIssueSupervisorTransition = (
         ? transition.new_head
         : transition?.kind === 'conflict-resolved'
           ? transition.gate?.resolved_head
+          : transition?.kind === 'child-contract-error'
+            ? transition.observed_head
           : undefined;
     assertCanonicalStore(
       runtimeRoot,
@@ -558,4 +592,18 @@ export const loadIssueSupervisorStore = (
     }
     return bundle;
   }, options.lease_options);
+};
+
+export const readIssueSupervisorStore = (
+  runtimeRoot,
+  laneId,
+  issueNumber,
+  options = {},
+) => {
+  const directory = issueDirectory(runtimeRoot, laneId, issueNumber);
+  const bundle = readBundle(directory, { recover: false });
+  if (bundle !== null) {
+    assertCanonicalStore(runtimeRoot, bundle.snapshot, options);
+  }
+  return bundle;
 };

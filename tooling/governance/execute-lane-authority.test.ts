@@ -19,6 +19,12 @@ const replayCli = resolve(
   root,
   '.agents/skills/execute-lane/scripts/fixtures/run-replay.mjs',
 );
+const { cleanupReceipts } = await import(
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/transition-application.mjs',
+  )
+);
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -32,6 +38,22 @@ const parseRecord = (value: string): Readonly<Record<string, unknown>> => {
 };
 
 describe('$execute-lane authority scope', () => {
+  it('creates issue-bound unique cleanup receipt identities', () => {
+    const receiptSets = [4101, 4102].flatMap((issueNumber) =>
+      cleanupReceipts({
+        lane_id: 'lane-4101-runtime',
+        issue_number: issueNumber,
+        branch: `issue-${String(issueNumber)}-runtime`,
+        worktree: `.worktrees/issue-${String(issueNumber)}-runtime`,
+        head_sha: String(issueNumber).padStart(40, '0'),
+      }),
+    );
+    const receiptIds = receiptSets.map((item) => item.receipt_id);
+
+    expect(new Set(receiptIds).size).toBe(receiptIds.length);
+    expect(receiptIds.every((id) => /:issue:[0-9]+:/u.test(id))).toBe(true);
+  });
+
   it('records cleanup and root sync as skipped when authority is absent', () => {
     const state = mkdtempSync(resolve(tmpdir(), 'fluo-execute-authority-'));
     const ledger = parseRecord(
@@ -95,6 +117,25 @@ describe('$execute-lane authority scope', () => {
           )
           .every((item) => isRecord(item) && item['status'] === 'skipped'),
       ).toBe(true);
+      const skipped = receipts.filter(
+        (item) => isRecord(item) && item['status'] === 'skipped',
+      );
+      expect(
+        skipped.every(
+          (item) =>
+            isRecord(item) &&
+            String(item['evidence']).startsWith(
+              'not attempted: authority absent',
+            ),
+        ),
+      ).toBe(true);
+      const rootSync = skipped.find(
+        (item) => isRecord(item) && item['side_effect'] === 'root.sync',
+      );
+      expect(rootSync).toMatchObject({
+        head_sha: null,
+        evidence: 'not attempted: authority absent',
+      });
     } finally {
       rmSync(state, { recursive: true, force: true });
     }

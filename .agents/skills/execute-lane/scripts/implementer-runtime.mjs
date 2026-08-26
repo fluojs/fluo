@@ -9,6 +9,7 @@ import {
   parseTerminalDispatch,
   parseTerminalDispatchShape,
   terminalDispatchBlock,
+  terminalTaskPrompt,
 } from './dispatch-authority.mjs';
 
 const IMPLEMENTER_AGENT = 'fluo-issue-implementer';
@@ -62,6 +63,15 @@ export const implementerPromptSentinel = ({
     preflight_sha256: preflightSha256,
     blocker_ledger: blockerLedger,
     unresolved_blockers: unresolvedBlockers,
+  });
+
+export const implementerTaskPrompt = ({
+  instructions,
+  ...authority
+}) =>
+  terminalTaskPrompt({
+    instructions,
+    dispatch_block: implementerPromptSentinel(authority),
   });
 
 const assertRegularFile = (path) => {

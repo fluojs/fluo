@@ -7,10 +7,13 @@ import {
   setRootStatus,
   terminalize,
 } from './transition-application.mjs';
-import { assertIssueSupervisorState } from './issue-supervisor-contracts.mjs';
+import {
+  assertIssueSupervisorState,
+  issueSupervisorTerminalStatuses,
+} from './issue-supervisor-contracts.mjs';
 import {
   assertIssueSupervisorBundle,
-  loadIssueSupervisorStore,
+  readIssueSupervisorStore,
 } from './issue-supervisor-store.mjs';
 import { canonicalLaneRuntimeRoot } from './lane-runtime-paths.mjs';
 import { dependencyGate } from './dependency-gate.mjs';
@@ -26,13 +29,7 @@ import {
   laneFor,
 } from './supervisor-terminal-evidence.mjs';
 
-const terminalStatuses = new Set([
-  'done',
-  'needs-human-check-terminal',
-  'blocked-terminal',
-  'blocked-budget-exhausted',
-  'blocked-maintainer-decision',
-]);
+const terminalStatuses = new Set(issueSupervisorTerminalStatuses);
 
 export const importSupervisorTerminal = (
   persisted,
@@ -51,7 +48,7 @@ export const importSupervisorTerminal = (
   ) {
     throw new TypeError('supervisor terminal trusted repository and transport identity are invalid.');
   }
-  const supervisorBundle = loadIssueSupervisorStore(
+  const supervisorBundle = readIssueSupervisorStore(
     canonicalLaneRuntimeRoot(repositoryRoot),
     laneId,
     issueNumber,
@@ -68,6 +65,9 @@ export const importSupervisorTerminal = (
     throw new TypeError('supervisor terminal transport is forged or stale relative to the canonical issue store.');
   }
   const { state: supervisor } = assertIssueSupervisorState(supervisorBundle.snapshot);
+  const importedBundleSha256 = payloadDigest(supervisorTransport);
+  const terminalEventHash =
+    supervisorBundle.events.at(-1)?.event_hash ?? null;
   if (!terminalStatuses.has(supervisor.status)) {
     throw new TypeError('shared lane import requires a terminal supervisor state.');
   }
@@ -136,7 +136,7 @@ export const importSupervisorTerminal = (
     if (!snapshot.completed_issues.includes(supervisor.issue_number)) {
       snapshot.completed_issues.push(supervisor.issue_number);
     }
-    receipts.push(
+    const importedReceipts = [
       mergeReceipt(identity),
       ...cleanupReceipts(
         identity,
@@ -144,7 +144,8 @@ export const importSupervisorTerminal = (
           ? 'succeeded'
           : 'skipped',
       ),
-    );
+    ];
+    receipts.push(...importedReceipts);
     appendEvent(
       events,
       snapshot.lane_id,
@@ -153,6 +154,11 @@ export const importSupervisorTerminal = (
       {
         head_sha: supervisor.head_sha,
         merge_commit_sha: supervisor.merge.commit_sha,
+        imported_bundle_sha256: importedBundleSha256,
+        terminal_event_hash: terminalEventHash,
+        receipt_ids: importedReceipts.map(
+          (receiptValue) => receiptValue.receipt_id,
+        ),
       },
     );
     advanceLane(snapshot, lane);
@@ -198,7 +204,12 @@ export const importSupervisorTerminal = (
       snapshot.lane_id,
       'supervisor.blocked',
       String(supervisor.issue_number),
-      { status: supervisor.status },
+      {
+        status: supervisor.status,
+        imported_bundle_sha256: importedBundleSha256,
+        terminal_event_hash: terminalEventHash,
+        receipt_ids: [],
+      },
     );
   }
   assertContract('lane-ledger-v2', snapshot);

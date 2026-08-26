@@ -1,5 +1,6 @@
 import {
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   renameSync,
@@ -28,12 +29,28 @@ const { prepareCanonicalV2Runtime } = await import(
     '.agents/skills/execute-lane/scripts/fixtures/v2-canonical-runtime.mjs',
   )
 );
-const { initialiseIssueSupervisorStore } = (await import(
+const { createReviewPreflight } = await import(
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/review-loop-policy.mjs',
+  )
+);
+const {
+  applyIssueSupervisorTransition,
+  initialiseIssueSupervisorStore,
+} = (await import(
   resolve(
     process.cwd(),
     '.agents/skills/execute-lane/scripts/issue-supervisor-store.mjs',
   )
 )) as {
+  applyIssueSupervisorTransition: (
+    runtimeRoot: string,
+    laneId: string,
+    issueNumber: number,
+    transition: Readonly<Record<string, unknown>>,
+    options?: unknown,
+  ) => Readonly<Record<string, unknown>>;
   initialiseIssueSupervisorStore: (
     runtimeRoot: string,
     identity: Readonly<Record<string, unknown>>,
@@ -71,6 +88,139 @@ describe('execute-lane supervisor settlement audit', () => {
         active_issues: [],
         missing_issues: [4101, 4102],
       });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('accepts a canonical child-contract terminal store as settled', () => {
+    const directory = mkdtempSync(
+      join(realpathSync(tmpdir()), 'fluo-lane-settlement-child-contract-'),
+    );
+    const { ledger, runtimeRoot, commandRunner } =
+      prepareCanonicalV2Runtime({
+        repository_root: directory,
+        lane_id: 'lane-4101-runtime',
+        issue_numbers: [4101],
+      });
+
+    try {
+      let bundle = initialiseIssueSupervisorStore(
+        runtimeRoot,
+        {
+          lane_id: 'lane-4101-runtime',
+          issue_number: 4101,
+          branch: 'issue-4101-runtime',
+          worktree: '.worktrees/issue-4101-runtime',
+          starting_head_sha: '0'.repeat(40),
+          started_at: '2026-08-25T00:00:00.000Z',
+          review_policy: 'preflight-v1',
+          repository_root: directory,
+          parent_session_id: 'ses-settlement-child-contract',
+        },
+        { command_runner: commandRunner },
+      );
+      const state = bundle.snapshot as Readonly<Record<string, any>>;
+      const authority = state.preflight_authority as Readonly<
+        Record<string, any>
+      >;
+      const sources = authority.canonical_sources as readonly Readonly<
+        Record<string, unknown>
+      >[];
+      const criteria = authority.canonical_acceptance_criteria as readonly Readonly<
+        Record<string, string>
+      >[];
+      const preflight = createReviewPreflight({
+        version: 1,
+        lane_id: state.lane_id,
+        issue_number: state.issue_number,
+        issue_contract_revision: state.issue_contract_revision,
+        issue_contract_sha256: state.issue_contract_sha256,
+        lane_plan_approval_sha256: state.lane_plan_approval_sha256,
+        head_sha: state.head_sha,
+        generated_at: '2026-08-25T00:00:00.000Z',
+        approved_sources: sources,
+        acceptance_row_ids: authority.canonical_acceptance_ids,
+        rows: authority.canonical_acceptance_ids.map(
+          (id: string, index: number) => ({
+            id,
+            acceptance_text: criteria[index].content,
+            acceptance_sha256: criteria[index].content_sha256,
+            source: String(sources.at(-1)?.source),
+            source_bindings: sources,
+            invariant: 'The governed issue lifecycle remains fail-closed.',
+            surfaces: ['issue-supervisor'],
+            positive_cases: ['Canonical terminal evidence is accepted.'],
+            negative_cases: ['Malformed child evidence is rejected.'],
+            boundary_cases: ['The exact observed head remains authoritative.'],
+          }),
+        ),
+        nonfunctional: {
+          complexity: 'Settlement remains bounded.',
+          memory: 'Evidence remains issue-local.',
+          atomicity: 'Each transition is persisted atomically.',
+          mutation_boundary: 'Only issue supervisor state is mutated.',
+        },
+      });
+      bundle = applyIssueSupervisorTransition(
+        runtimeRoot,
+        'lane-4101-runtime',
+        4101,
+        {
+          kind: 'preflight-completed',
+          preflight,
+        },
+        { command_runner: commandRunner },
+      );
+      applyIssueSupervisorTransition(
+        runtimeRoot,
+        'lane-4101-runtime',
+        4101,
+        {
+          kind: 'child-contract-error',
+          observed_head: '0'.repeat(40),
+          signature: 'reviewer-task-suspended-without-final',
+          evidence: 'Required reviewer task produced no final response.',
+        },
+        { command_runner: commandRunner },
+      );
+      const issueDirectory = resolve(
+        runtimeRoot,
+        'lane-4101-runtime',
+        'issues',
+        '4101',
+      );
+      const beforeAudit = readdirSync(issueDirectory, {
+        recursive: true,
+      })
+        .map(String)
+        .sort();
+
+      expect(
+        auditLaneSupervisorSettlement({
+          repository_root: directory,
+          lane: ledger,
+          command_runner: commandRunner,
+        }),
+      ).toEqual({
+        version: 1,
+        lane_id: 'lane-4101-runtime',
+        status: 'terminal-claims-ready',
+        done_issues: [],
+        blocked_issues: [
+          {
+            issue_number: 4101,
+            status: 'blocked-child-contract-error',
+          },
+        ],
+        active_issues: [],
+        missing_issues: [],
+      });
+      expect(
+        readdirSync(issueDirectory, { recursive: true })
+          .map(String)
+          .sort(),
+      ).toEqual(beforeAudit);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

@@ -248,6 +248,12 @@ describe('$execute-lane multi-issue and trust boundaries', () => {
       );
       expect(result['status']).toBe('blocked-child-contract-error');
       expect(result['merge_count']).toBe(0);
+      expect(result['snapshot']).toMatchObject({
+        root_main_sync: {
+          status: 'blocked-terminal',
+          sha: null,
+        },
+      });
     } finally {
       rmSync(state, { recursive: true, force: true });
     }

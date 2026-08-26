@@ -4,6 +4,17 @@ import { implementerRoute } from './implementer-runtime.mjs';
 
 const nodeId = (issueNumber) => `issue-${String(issueNumber)}-supervisor`;
 
+export const supervisorRoute = Object.freeze({
+  subagent_type: 'fluo-issue-supervisor',
+});
+export const nestedDispatchPolicy = Object.freeze({
+  implementer: Object.freeze({ run_in_background: false }),
+  reviewers: Object.freeze({
+    run_in_background: false,
+    batch: true,
+  }),
+});
+
 export { implementerRoute };
 
 const dispatchGate = (laneId) => `STARTUP GATE:
@@ -44,18 +55,23 @@ SCOPE:
 - Reconcile and reuse an existing canonical issue branch, worktree, and OPEN PR
   when their live identities and heads match; never create duplicates.
 - Read .agents/skills/issue-to-pr/references/implementer.md before delegating implementation.
-- Delegate the implementer through the native task tool with
+- Delegate the implementer through the direct native task tool with
   ${JSON.stringify(implementerRoute)}. Use only the configured subagent_type,
-  request a handle, and include the complete implementer contract plus
-  issue-bound inputs. Do not pass category or model overrides.
+  include the complete implementer contract plus issue-bound inputs, and set
+  ${JSON.stringify(nestedDispatchPolicy.implementer)}
+  (\`run_in_background: false\`). Do not pass category,
+  model overrides, a background request, or a handle request.
+  Shell-launched delegation is forbidden.
 - After the implementer reaches a terminal state, run
   node .agents/skills/execute-lane/scripts/implementer-runtime.mjs
   .omo/senpi-task <task-id>. Accept the child only when the verifier exits zero
   and reports the actual Terra high session. Missing or mismatched runtime
   evidence is a terminal child-contract blocker.
 - Never use the implementer route for contract, code, or verification review.
-  Delegate those axes to separate category-routed, source-read-only children in
-  one parallel batch. Contract and code may use only read, grep, find, ls,
+  Delegate those axes through one direct native task call to separate
+  category-routed, source-read-only children as one foreground batch with
+  ${JSON.stringify(nestedDispatchPolicy.reviewers)}. Do not launch reviewers
+  through shell processes or separate task calls. Contract and code may use only read, grep, find, ls,
   read-only LSP, and session-history inspection tools; they must never invoke
   bash/shell, edit/write/apply, code evaluation, tasks, GitHub mutation, or an
   unknown tool. Verification may use those read-only tools plus exactly one
@@ -251,7 +267,9 @@ export const compileLaneSupervisorDag = (lane) => {
       task_summary: releaseHandoff
         ? `Issue #${String(issueNumber)} release handoff 보존`
         : `Issue #${String(issueNumber)} 전체 lifecycle 실행`,
-      category: releaseHandoff ? 'quick' : 'deep',
+      ...(releaseHandoff
+        ? { category: 'quick' }
+        : supervisorRoute),
       load_skills: ['execute-lane'],
       dependsOn: dependencies.map(nodeId),
       prompt: releaseHandoff

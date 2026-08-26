@@ -358,6 +358,7 @@ export const assertBlockerLedger = (state, { verifyTasks = false } = {}) => {
   const unresolved = unresolvedBlockerLedger(state.blocker_ledger).map((entry) => entry.blocker);
   if (
     state.status !== 'blocked-maintainer-decision' &&
+    state.status !== 'blocked-child-contract-error' &&
     (unresolved.length !== state.blockers.length ||
     unresolved.some(
       (blocker, index) => payloadDigest(blocker) !== payloadDigest(state.blockers[index]),
