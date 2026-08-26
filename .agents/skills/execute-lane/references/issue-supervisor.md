@@ -17,6 +17,15 @@ The supervisor orchestrates but does not implement or review:
 - the parent execute-lane lead alone mutates the shared lane ledger and performs
   root synchronization.
 
+The implementer alone uses the `fluo-issue-implementer` subagent configured in
+`.omo/omo.jsonc` for `openai-codex/gpt-5.6-terra` with `high` reasoning. The
+supervisor must include the complete `issue-to-pr/references/implementer.md`
+contract in that child prompt without a category or model override. After the
+child terminates, `scripts/implementer-runtime.mjs` must verify the persisted
+task metadata and actual child session both prove Terra high execution. Missing
+or mismatched evidence is a terminal child-contract blocker. Reviewer routing
+is unchanged and must never reuse the implementer route.
+
 ## Local review loop
 
 ```text

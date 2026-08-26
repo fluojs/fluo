@@ -8,5 +8,6 @@ coverage/
 .turbo/
 .sisyphus/
 .worktrees/
-.omo/
+.omo/*
+!.omo/omo.jsonc
 .opencode/search-issue/

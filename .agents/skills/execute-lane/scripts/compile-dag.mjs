@@ -1,7 +1,10 @@
 import { assertContract } from '../../../workflow-contracts/contracts.mjs';
 import { validateLedger } from '../../../../tooling/governance/lane-ledger-state.mjs';
+import { implementerRoute } from './implementer-runtime.mjs';
 
 const nodeId = (issueNumber) => `issue-${String(issueNumber)}-supervisor`;
+
+export { implementerRoute };
 
 const supervisorPrompt = (lane, issueNumber, dependencies) => `TASK:
 Execute the complete Fluo lifecycle for issue ${String(issueNumber)} as an issue supervisor.
@@ -14,7 +17,18 @@ SCOPE:
 - Use one isolated issue branch and worktree.
 - Reconcile and reuse an existing canonical issue branch, worktree, and OPEN PR
   when their live identities and heads match; never create duplicates.
-- Delegate implementation and each contract/code/verification review to separate children.
+- Read .agents/skills/issue-to-pr/references/implementer.md before delegating implementation.
+- Delegate the implementer through the native task tool with
+  ${JSON.stringify(implementerRoute)}. Use only the configured subagent_type,
+  request a handle, and include the complete implementer contract plus
+  issue-bound inputs. Do not pass category or model overrides.
+- After the implementer reaches a terminal state, run
+  node .agents/skills/execute-lane/scripts/implementer-runtime.mjs
+  .omo/senpi-task <task-id>. Accept the child only when the verifier exits zero
+  and reports the actual Terra high session. Missing or mismatched runtime
+  evidence is a terminal child-contract blocker.
+- Never use the implementer route for contract, code, or verification review.
+  Delegate those three reviews to separate read-only children.
 - Reach READY_FOR_PR locally before the lead pushes or creates the PR.
 - After PR creation, observe required CI on the exact reviewed head.
 - Refresh PR mergeability immediately and while CI is pending. A GitHub
