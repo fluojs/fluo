@@ -6,11 +6,20 @@ const nodeId = (issueNumber) => `issue-${String(issueNumber)}-supervisor`;
 
 export { implementerRoute };
 
+const dispatchGate = (laneId) => `STARTUP GATE:
+- Before any mutation or terminal decision, run:
+  node .agents/skills/execute-lane/scripts/await-lane-dispatch.mjs
+  --root . --ledger .omo/lanes/${laneId}.json
+- Continue only when it exits zero and reports the attached native run.
+- A delayed parent attach is not a ledger conflict.`;
+
 const supervisorPrompt = (lane, issueNumber, dependencies) => `TASK:
 Execute the complete Fluo lifecycle for issue ${String(issueNumber)} as an issue supervisor.
 
 DELIVERABLE:
 Return one typed terminal report for lane ${lane.lane_id} and issue ${String(issueNumber)}.
+
+${dispatchGate(lane.lane_id)}
 
 SCOPE:
 - Consume the canonical lane ledger at .omo/lanes/${lane.lane_id}.json.
@@ -64,6 +73,8 @@ Represent approved release handoff issue ${String(issueNumber)} in lane ${lane.l
 
 DELIVERABLE:
 Return one typed blocked-maintainer-decision result bound to the approved lane-plan receipt.
+
+${dispatchGate(lane.lane_id)}
 
 SCOPE:
 - Do not dispatch implementation.

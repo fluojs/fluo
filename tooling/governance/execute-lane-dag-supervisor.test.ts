@@ -1317,6 +1317,9 @@ describe('execute-lane issue supervisor lifecycle', () => {
       load_skills: ['execute-lane'],
     });
     expect(definition.nodes[0].prompt).toContain('STOP WHEN:');
+    expect(definition.nodes[0].prompt).toContain(
+      'await-lane-dispatch.mjs',
+    );
     expect(() =>
       compileLaneSupervisorDag({
         ...ledger,
@@ -1346,6 +1349,9 @@ describe('execute-lane issue supervisor lifecycle', () => {
     });
     expect(releaseDefinition.nodes[0].prompt).toContain(
       'blocked-maintainer-decision',
+    );
+    expect(releaseDefinition.nodes[0].prompt).toContain(
+      'await-lane-dispatch.mjs',
     );
 
     const binding = createDagBinding({

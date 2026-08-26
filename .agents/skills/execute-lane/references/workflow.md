@@ -54,7 +54,24 @@ must be acyclic. The parent:
 5. starts the complete native DAG once;
 6. immediately attaches the observed run with
    `attachLaneSupervisorRun()`;
-7. persists its immutable v3 binding at `dag-binding.json`.
+7. authenticates the run, its native key record, and submitted definition from
+   `.omo/senpi-task/dag/{runs,keys}`;
+8. persists its immutable v3 binding at `dag-binding.json`;
+9. requires every supervisor to pass `await-lane-dispatch.mjs` before
+   mutation.
+
+The dispatch interface accepts the repository root and derives the only valid
+runtime root, `.omo/lane-runs`, internally. Callers cannot select a binding
+directory. The startup gate subscribes to the canonical binding path before
+rechecking it, so a fast attach cannot be missed and a delayed attach does not
+become a false terminal blocker.
+
+An attached run resumes from the authenticated native run definition, not a
+fresh `compile-dag.mjs` result. This keeps a long-lived exact run attachable
+when workflow source changes later. A legacy dispatch intent that has no
+definition digest remains compatible only when its existing binding matches
+the native run record. If that binding is missing, recovery requires a
+successor lane; never synthesize a new binding from current source.
 
 Independent nodes run concurrently. Native `dependsOn` is an ordering signal,
 not semantic success. Before mutation, every dependent supervisor loads and
@@ -64,7 +81,10 @@ CLOSED issue, and cleanup authorizes mutation. Merge alone, a CLOSED
 observation, native task completion, missing or malformed evidence, or any
 terminal blocker does not release mutation.
 
-After the lane DAG settles, the parent validates and imports issue terminals in
+After the lane DAG settles, the parent first runs
+`scripts/lane-settlement-audit.mjs`. A native `completed` node is only a
+settled claim. Missing or nonterminal canonical issue stores keep the lane
+incomplete. The parent then validates and imports issue terminals in
 topological order. A blocked dependency terminalizes unreachable dependents
 only after fresh absence observations prove no branch, worktree, child, or PR
 was created for them. Those observations are recorded in the
