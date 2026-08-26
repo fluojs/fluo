@@ -29,9 +29,12 @@ const TEXT_DECODER = new TextDecoder();
 const REQUEST_BODY_LIMIT_MESSAGE = 'Request body exceeds the size limit.';
 const NativeArray = Array;
 const NativeHeaders = Headers;
+const nativeHeadersAppend = Headers.prototype.append;
+const nativeHeadersSet = Headers.prototype.set;
 const nativeArrayIsArray = Array.isArray;
 const nativeObjectDefineProperty = Object.defineProperty;
 const nativeObjectKeys = Object.keys;
+const nativeReflectApply = Reflect.apply;
 const nativeReflectDeleteProperty = Reflect.deleteProperty;
 const nativeStringToLowerCase = Function.prototype.call.bind(String.prototype.toLowerCase);
 const SET_COOKIE_HEADER_NAME = 'set-cookie';
@@ -853,12 +856,12 @@ function toResponseHeaders(headers: Record<string, string | string[]>): Headers 
 
     if (nativeArrayIsArray(value)) {
       for (let valueIndex = 0; valueIndex < value.length; valueIndex += 1) {
-        responseHeaders.append(name, value[valueIndex]);
+        nativeReflectApply(nativeHeadersAppend, responseHeaders, [name, value[valueIndex]]);
       }
       continue;
     }
 
-    responseHeaders.set(name, value);
+    nativeReflectApply(nativeHeadersSet, responseHeaders, [name, value]);
   }
 
   return responseHeaders;

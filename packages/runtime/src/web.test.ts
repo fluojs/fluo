@@ -116,6 +116,52 @@ describe('dispatchWebRequest', () => {
     expect(frameworkResponse.toResponse().headers.getSetCookie()).toEqual(['first=one', 'second=two', 'third=three']);
   });
 
+  it('materializes cookie headers after a caller option getter poisons Headers mutators', () => {
+    const frameworkResponse = createWebRequestResponseFactory().createResponse(
+      undefined,
+      new Request('https://runtime.test/cookies'),
+    );
+    const originalAppend = Object.getOwnPropertyDescriptor(Headers.prototype, 'append');
+    const originalSet = Object.getOwnPropertyDescriptor(Headers.prototype, 'set');
+
+    if (!originalAppend || !originalSet) {
+      throw new Error('Headers mutators are unavailable.');
+    }
+
+    frameworkResponse.setHeader('Set-Cookie', 'first=one');
+    frameworkResponse.setHeader('x-contract', 'preserved');
+    let nativeResponse: Response | undefined;
+
+    try {
+      setCookie(frameworkResponse, 'second', 'two', Object.defineProperty({}, 'expires', {
+        get() {
+          Object.defineProperty(Headers.prototype, 'append', {
+            ...originalAppend,
+            value: () => { throw new Error('poisoned Headers.append'); },
+          });
+          Object.defineProperty(Headers.prototype, 'set', {
+            ...originalSet,
+            value: () => { throw new Error('poisoned Headers.set'); },
+          });
+          return undefined;
+        },
+      }));
+      frameworkResponse.setHeader('Set-Cookie', 'third=three');
+      nativeResponse = frameworkResponse.toResponse();
+    } finally {
+      Object.defineProperty(Headers.prototype, 'set', originalSet);
+      Object.defineProperty(Headers.prototype, 'append', originalAppend);
+    }
+
+    const mirrorKeys = Object.keys(frameworkResponse.headers)
+      .filter((name) => name.toLowerCase() === 'set-cookie');
+
+    expect(mirrorKeys).toEqual(['Set-Cookie']);
+    expect(frameworkResponse.headers['Set-Cookie']).toEqual(['first=one', 'second=two', 'third=three']);
+    expect(nativeResponse?.headers.getSetCookie()).toEqual(['first=one', 'second=two', 'third=three']);
+    expect(nativeResponse?.headers.get('x-contract')).toBe('preserved');
+  });
+
   it('translates Web Request semantics into the framework request contract', async () => {
     const response = await dispatchWebRequest({
       dispatcher: {
