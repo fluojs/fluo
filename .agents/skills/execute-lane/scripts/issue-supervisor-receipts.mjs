@@ -1,3 +1,4 @@
+import { isStrictRfc3339DateTime } from '../../../workflow-contracts/schema-validator.mjs';
 import {
   requireRecord,
   requireString,
@@ -12,11 +13,8 @@ const requirePositiveInteger = (value, name) => {
 
 const requireTimestamp = (value, name) => {
   const timestamp = requireString(value, name);
-  if (
-    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(timestamp) ||
-    Number.isNaN(Date.parse(timestamp))
-  ) {
-    throw new TypeError(`${name} must be an ISO timestamp.`);
+  if (!isStrictRfc3339DateTime(timestamp)) {
+    throw new TypeError(`${name} must be a strict RFC 3339 timestamp.`);
   }
   return timestamp;
 };

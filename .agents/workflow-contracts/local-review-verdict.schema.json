@@ -11,10 +11,12 @@
     "verdict",
     "head_sha",
     "reviewers",
-    "blockers"
+    "blockers",
+    "reviews",
+    "review_batch"
   ],
   "properties": {
-    "version": { "const": 1 },
+    "version": { "const": 2 },
     "lane_id": { "type": "string", "minLength": 1 },
     "issue_number": { "type": "integer", "minimum": 1 },
     "verdict": {
@@ -54,6 +56,174 @@
           "evidence": { "type": "string", "minLength": 1 },
           "fix_back_eligible": { "type": "boolean" },
           "status": { "const": "unresolved" }
+        }
+      }
+    },
+    "reviews": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reviewer", "reviewed_head_sha", "verdict_signal", "blockers"],
+        "properties": {
+          "reviewer": { "enum": ["contract", "code", "verification"] },
+          "reviewed_head_sha": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+          "verdict_signal": { "enum": ["PASS", "BLOCK", "NEEDS-HUMAN-CHECK"] },
+          "blockers": { "$ref": "#/$defs/blockers" }
+        }
+      }
+    },
+    "review_batch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preflight_sha256",
+        "task_ids",
+        "reviewer_receipts",
+        "coverage",
+        "blocker_sources"
+      ],
+      "properties": {
+        "preflight_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "task_ids": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["contract", "code", "verification"],
+          "properties": {
+            "contract": { "type": "string", "pattern": "^st_[A-Za-z0-9_-]+$" },
+            "code": { "type": "string", "pattern": "^st_[A-Za-z0-9_-]+$" },
+            "verification": {
+              "type": "string",
+              "pattern": "^st_[A-Za-z0-9_-]+$"
+            }
+          }
+        },
+        "reviewer_receipts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["contract", "code", "verification"],
+          "properties": {
+            "contract": { "$ref": "#/$defs/reviewerReceipt" },
+            "code": { "$ref": "#/$defs/reviewerReceipt" },
+            "verification": { "$ref": "#/$defs/reviewerReceipt" }
+          }
+        },
+        "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["contract", "code", "verification"],
+          "properties": {
+            "contract": { "$ref": "#/$defs/coverage" },
+            "code": { "$ref": "#/$defs/coverage" },
+            "verification": { "$ref": "#/$defs/coverage" }
+          }
+        },
+        "blocker_sources": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/blockerSource" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reviewer", "signature", "evidence", "fix_back_eligible", "status"],
+        "properties": {
+          "reviewer": { "enum": ["contract", "code", "verification"] },
+          "signature": { "type": "string", "minLength": 1 },
+          "evidence": { "type": "string", "minLength": 1 },
+          "fix_back_eligible": { "type": "boolean" },
+          "status": { "const": "unresolved" }
+        }
+      }
+    },
+    "reviewerReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_id", "record_sha256", "output_sha256", "final_response", "parent_session_id", "lane_id", "issue_number", "worktree", "head_sha", "preflight_sha256", "axis", "mutation_sentinel", "session_sha256", "tool_events_sha256", "tool_events", "canonical_verification"],
+      "properties": {
+        "task_id": { "type": "string", "pattern": "^st_[A-Za-z0-9_-]+$" },
+        "record_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "output_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "final_response": { "type": "object" },
+        "parent_session_id": { "type": "string", "minLength": 1 },
+        "lane_id": { "type": "string", "minLength": 1 },
+        "issue_number": { "type": "integer", "minimum": 1 },
+        "worktree": { "type": "string", "minLength": 1 },
+        "head_sha": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "preflight_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "axis": { "enum": ["contract", "code", "verification"] },
+        "mutation_sentinel": { "const": "fluo:execute-lane:review:read-only:v1" },
+        "session_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "tool_events_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "tool_events": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["tool", "is_error", "arguments"],
+            "properties": {
+              "tool": { "type": "string", "minLength": 1 },
+              "is_error": { "type": "boolean" },
+              "arguments": { "type": "object" }
+            }
+          }
+        },
+        "canonical_verification": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["receipt_sha256", "authority_snapshot_sha256", "command", "shell_command", "status", "result", "session_sha256"],
+              "properties": {
+                "receipt_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+                "authority_snapshot_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+                "command": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+                "shell_command": { "type": "string", "minLength": 1 },
+                "status": { "const": 0 },
+                "result": { "const": "pass" },
+                "session_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": { "enum": ["PASS", "BLOCK"] },
+      "minProperties": 1
+    },
+    "blockerSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_source",
+        "violated_invariant",
+        "reproduction",
+        "why_blocking"
+      ],
+      "properties": {
+        "contract_source": { "type": "string", "minLength": 1 },
+        "violated_invariant": { "type": "string", "minLength": 1 },
+        "reproduction": { "type": "string", "minLength": 1 },
+        "why_blocking": {
+          "enum": [
+            "correctness",
+            "security",
+            "compatibility",
+            "required-verification"
+          ]
         }
       }
     }

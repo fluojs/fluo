@@ -1,21 +1,38 @@
-import { assertContract } from '../../../workflow-contracts/contracts.mjs';
+import {
+  assertContract,
+  payloadDigest,
+} from '../../../workflow-contracts/contracts.mjs';
+import { isStrictRfc3339DateTime } from '../../../workflow-contracts/schema-validator.mjs';
 import {
   requireRecord,
   requireSha,
   requireString,
 } from './transition-contracts.mjs';
 import {
+  assertPersistedReceipt,
   requirePrIdentity,
   requireTargetReceipt,
 } from './issue-supervisor-receipts.mjs';
+import {
+  assertReviewBatch,
+  assertReviewPreflight,
+} from './review-loop-policy.mjs';
+import {
+  assertConflictResolutionEvidence,
+  hasResolvedHeadPasses,
+} from './conflict-resolution-policy.mjs';
+import { assertPreflightAuthority } from './preflight-authority.mjs';
+import { assertBlockerLedger } from './blocker-ledger.mjs';
 
 const statuses = new Set([
+  'preflight',
   'implementing',
   'local-review',
   'ready-for-pr',
   'ready-for-push',
   'ci-pending',
   'ci-fix-back',
+  'conflict-resolution',
   'merge-ready',
   'merged',
   'done',
@@ -52,11 +69,8 @@ export const requirePositiveInteger = (value, name) => {
 
 export const requireTimestamp = (value, name) => {
   const timestamp = requireString(value, name);
-  if (
-    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(timestamp) ||
-    Number.isNaN(Date.parse(timestamp))
-  ) {
-    throw new TypeError(`${name} must be an ISO timestamp.`);
+  if (!isStrictRfc3339DateTime(timestamp)) {
+    throw new TypeError(`${name} must be a strict RFC 3339 timestamp.`);
   }
   return timestamp;
 };
@@ -143,7 +157,7 @@ const requireCanonicalIdentity = (state) => {
 
 export const assertIssueSupervisorState = (input) => {
   const state = requireRecord(input, 'issue supervisor state');
-  if (state.version !== 1 || !statuses.has(state.status)) {
+  if (state.version !== 2 || !statuses.has(state.status)) {
     throw new TypeError('issue supervisor state invariant failed: version or status.');
   }
   requireString(state.lane_id, 'issue supervisor lane_id');
@@ -151,6 +165,16 @@ export const assertIssueSupervisorState = (input) => {
   requireSha(state.starting_head_sha, 'issue supervisor starting_head_sha');
   requireSha(state.head_sha, 'issue supervisor head_sha');
   requireTimestamp(state.started_at, 'issue supervisor started_at');
+  requireTimestamp(state.last_observed_at, 'issue supervisor last_observed_at');
+  if (
+    Date.parse(state.last_observed_at) < Date.parse(state.started_at) ||
+    !Number.isSafeInteger(state.last_observed_event_sequence) ||
+    state.last_observed_event_sequence < 1
+  ) {
+    throw new TypeError('issue supervisor state invariant failed: observation sequence.');
+  }
+  requireString(state.repository_root, 'issue supervisor repository_root');
+  requireString(state.parent_session_id, 'issue supervisor parent_session_id');
   if (typeof state.release_handoff !== 'boolean') {
     throw new TypeError(
       'issue supervisor state invariant failed: release_handoff.',
@@ -158,6 +182,102 @@ export const assertIssueSupervisorState = (input) => {
   }
   const authority = requireAuthorityScope(state.authority_scope);
   const retryPolicy = requireRetryPolicy(state.retry_policy);
+  if (
+      state.review_policy !== 'preflight-v1' ||
+      typeof state.issue_contract_revision !== 'string' ||
+      state.issue_contract_revision.length === 0 ||
+      !/^[a-f0-9]{64}$/u.test(state.issue_contract_sha256 ?? '') ||
+      !/^[a-f0-9]{64}$/u.test(state.lane_plan_approval_sha256 ?? '') ||
+      !Number.isSafeInteger(state.implementer_generation) ||
+      state.implementer_generation < 1 ||
+      !Number.isSafeInteger(state.blocked_heads_since_refresh) ||
+      state.blocked_heads_since_refresh < 0 ||
+      !Array.isArray(state.blocker_ledger) ||
+      !Array.isArray(state.implementer_tasks)
+  ) {
+    throw new TypeError(
+      'issue supervisor state invariant failed: review loop telemetry.',
+    );
+  }
+  if (state.review_preflight !== null) {
+    assertBlockerLedger(state);
+  } else if (state.blocker_ledger.length !== 0) {
+    throw new TypeError('preflight state cannot contain blocker history.');
+  }
+  if (state.preflight_authority !== null) {
+    const authority = assertPreflightAuthority(state.preflight_authority);
+    if (
+      authority.lane_id !== state.lane_id ||
+      authority.issue_number !== state.issue_number ||
+      authority.issue_contract_revision !== state.issue_contract_revision ||
+      authority.issue_contract_sha256 !== state.issue_contract_sha256 ||
+      authority.lane_plan_approval_sha256 !== state.lane_plan_approval_sha256
+    ) {
+      throw new TypeError('issue supervisor state invariant failed: preflight authority.');
+    }
+  }
+  const taskIds = new Set();
+  for (const task of state.implementer_tasks) {
+      if (
+        typeof task?.task_id !== 'string' ||
+        !/^st_[A-Za-z0-9_-]+$/u.test(task.task_id) ||
+        taskIds.has(task.task_id) ||
+        task.provider !== 'openai-codex' ||
+        task.model_id !== 'gpt-5.6-terra' ||
+        task.thinking_level !== 'high' ||
+        !Number.isSafeInteger(task.generation) ||
+        task.generation < 1 ||
+        !/^[a-f0-9]{64}$/u.test(task.record_sha256 ?? '') ||
+        !/^[a-f0-9]{64}$/u.test(task.output_sha256 ?? '') ||
+        !/^[a-f0-9]{64}$/u.test(task.session_sha256 ?? '') ||
+        payloadDigest(task.final_response) !== task.output_sha256 ||
+        task.lane_id !== state.lane_id ||
+        task.issue_number !== state.issue_number ||
+        task.worktree !== state.worktree ||
+        task.parent_session_id !== state.parent_session_id ||
+        !Array.isArray(task.blocker_ledger) ||
+        !Array.isArray(task.unresolved_blockers) ||
+        payloadDigest(task.blocker_ledger) !== task.blocker_ledger_sha256
+      ) {
+        throw new TypeError('issue supervisor state invariant failed: implementer task evidence.');
+      }
+      taskIds.add(task.task_id);
+  }
+  if (state.review_preflight === null) {
+    if (state.status !== 'preflight') {
+      throw new TypeError(
+        'issue supervisor state invariant failed: review preflight required.',
+      );
+    }
+  } else {
+    assertReviewPreflight(state.review_preflight);
+    if (
+        state.review_preflight.lane_id !== state.lane_id ||
+        state.review_preflight.issue_number !== state.issue_number ||
+        state.review_preflight.issue_contract_revision !==
+          state.issue_contract_revision ||
+        state.review_preflight.issue_contract_sha256 !==
+          state.issue_contract_sha256 ||
+        state.review_preflight.head_sha !== state.starting_head_sha ||
+        state.review_preflight.lane_plan_approval_sha256 !==
+          state.lane_plan_approval_sha256 ||
+        (state.preflight_authority !== null &&
+          (JSON.stringify(state.review_preflight.acceptance_row_ids) !==
+            JSON.stringify(state.preflight_authority.canonical_acceptance_ids) ||
+            JSON.stringify(state.review_preflight.rows.map(({ id }) => id)) !==
+              JSON.stringify(state.preflight_authority.canonical_acceptance_ids) ||
+            state.preflight_authority.canonical_sources.some((canonical) =>
+              !state.review_preflight.approved_sources.some(
+                (source) => JSON.stringify(source) === JSON.stringify(canonical),
+              ),
+            ))) ||
+        state.status === 'preflight'
+    ) {
+      throw new TypeError(
+        'issue supervisor state invariant failed: review preflight binding.',
+      );
+    }
+  }
   if (
     !Number.isSafeInteger(state.attempt) ||
     state.attempt < 0 ||
@@ -171,11 +291,50 @@ export const assertIssueSupervisorState = (input) => {
   }
   if (state.local_review !== null) {
     assertContract('local-review-verdict', state.local_review);
-    if (state.local_review.head_sha !== state.head_sha) {
+    assertReviewBatch({
+      head_sha: state.local_review.head_sha,
+      preflight: state.review_preflight,
+      reviews: state.local_review.reviews,
+      review_batch: state.local_review.review_batch,
+    });
+    for (const receipt of Object.values(state.local_review.review_batch.reviewer_receipts)) {
+      if (
+        receipt.parent_session_id !== state.parent_session_id ||
+        receipt.lane_id !== state.lane_id ||
+        receipt.issue_number !== state.issue_number ||
+        receipt.worktree !== state.worktree
+      ) {
+        throw new TypeError('issue supervisor state invariant failed: reviewer provenance receipt.');
+      }
+    }
+    if (
+      state.local_review.head_sha !== state.head_sha &&
+      !(
+        hasResolvedHeadPasses(state) &&
+        state.conflict_resolution.previously_reviewed_head ===
+          state.local_review.head_sha
+      )
+    ) {
       throw new TypeError('issue supervisor state invariant failed: local review head.');
     }
-  } else if (localReviewStatuses.has(state.status)) {
+  } else if (
+    localReviewStatuses.has(state.status) &&
+    !(state.status === 'ci-pending' && hasResolvedHeadPasses(state))
+  ) {
     throw new TypeError('issue supervisor state invariant failed: local review required.');
+  }
+  if (
+    state.status === 'conflict-resolution' &&
+    (state.conflict_receipt === null || state.conflict_receipt.head_sha !== state.head_sha)
+  ) {
+    throw new TypeError('issue supervisor state invariant failed: conflict receipt required.');
+  }
+  if (state.conflict_resolution != null) {
+    if (state.conflict_receipt !== null) {
+      throw new TypeError('issue supervisor state invariant failed: resolved conflict review evidence.');
+    }
+    assertConflictResolutionEvidence(state);
+    assertPersistedReceipt(state, state.conflict_resolution.conflict_receipt);
   }
   if (prStatuses.has(state.status) && state.pr === null) {
     throw new TypeError('issue supervisor state invariant failed: PR required.');
