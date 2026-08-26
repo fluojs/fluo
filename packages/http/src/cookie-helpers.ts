@@ -3,7 +3,7 @@ import type { FrameworkResponse } from './types.js';
 const COOKIE_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 const COOKIE_VALUE_PATTERN = /^[\u0021-\u003A\u003C-\u007E]*$/;
 const COOKIE_DOMAIN_LABEL_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
-const COOKIE_PATH_VALUE_PATTERN = /^[\u0020-\u003A\u003D-\u007E]+$/;
+const COOKIE_PATH_VALUE_PATTERN = /^[\u0020-\u003A\u003C-\u007E]*$/;
 const COOKIE_DELETION_EXPIRES = new Date(0);
 
 /** SameSite policies supported by the portable cookie serializer. */

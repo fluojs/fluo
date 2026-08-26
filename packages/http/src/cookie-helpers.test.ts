@@ -139,6 +139,20 @@ describe('setCookie', () => {
     expect(response.committed).toBe(false);
   });
 
+  it.each([
+    ['', 'session=value; Path='],
+    [' :<~', 'session=value; Path= :<~'],
+  ])('accepts RFC6265 path-value boundary %j', (path, expectedHeader) => {
+    // Given
+    const response = createResponse();
+
+    // When
+    setCookie(response, 'session', 'value', { path });
+
+    // Then
+    expect(response.headers['Set-Cookie']).toBe(expectedHeader);
+  });
+
   it('accepts a leading dot on a valid domain', () => {
     // Given
     const response = createResponse();
