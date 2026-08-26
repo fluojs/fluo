@@ -55,7 +55,11 @@ function getMediaRangeSpecificity(mediaRange: string): number {
   return subtype?.startsWith('*+') === true ? 2 : 3;
 }
 
-function splitOutsideQuotedStrings(value: string, delimiter: string): string[] | undefined {
+function splitOutsideQuotedStrings(
+  value: string,
+  delimiter: string,
+  preserveCompletedPartsOnMalformedTail = false,
+): string[] | undefined {
   const parts: string[] = [];
   let quoted = false;
   let escaped = false;
@@ -84,7 +88,7 @@ function splitOutsideQuotedStrings(value: string, delimiter: string): string[] |
   }
 
   if (quoted || escaped) {
-    return undefined;
+    return preserveCompletedPartsOnMalformedTail ? parts : undefined;
   }
 
   parts.push(value.slice(start));
@@ -159,7 +163,7 @@ function isValidParameterValue(value: string): boolean {
 }
 
 function parseAcceptHeader(acceptHeader: string): AcceptToken[] {
-  const tokenParts = splitOutsideQuotedStrings(acceptHeader, ',');
+  const tokenParts = splitOutsideQuotedStrings(acceptHeader, ',', true);
   if (!tokenParts) {
     return [];
   }

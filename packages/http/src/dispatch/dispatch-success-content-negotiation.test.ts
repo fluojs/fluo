@@ -186,6 +186,14 @@ describe('successful response content negotiation', () => {
       'plain',
     ],
     [
+      'unterminated quoted parameter after a valid entry',
+      '/representations/all',
+      'application/json, text/plain;note="unterminated',
+      200,
+      'application/json',
+      'json',
+    ],
+    [
       'malformed whitespace before quality assignment',
       '/representations/all',
       'application/json;q =0, text/plain;q=0',
