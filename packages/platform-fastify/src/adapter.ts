@@ -79,6 +79,8 @@ export type CorsInput = false | string | string[] | CorsOptions;
 
 const DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+const nativeStringToLowerCase = Function.prototype.call.bind(String.prototype.toLowerCase);
+const SET_COOKIE_HEADER_NAME = 'set-cookie';
 const FASTIFY_NATIVE_ROUTE_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'] as const;
 const EMPTY_NATIVE_ROUTE_PARAMS: Readonly<Record<string, string>> = Object.freeze({});
 
@@ -808,11 +810,11 @@ class MutableFastifyFrameworkResponse implements FastifyFrameworkResponse {
   }
 
   setHeader(name: string, value: string | string[]): void {
-    const lowerName = name.toLowerCase();
+    const lowerName = nativeStringToLowerCase(name);
 
-    if (lowerName === 'set-cookie') {
-      this.reply.header(name, value);
-      const updated = this.reply.getHeader(name);
+    if (lowerName === SET_COOKIE_HEADER_NAME) {
+      this.reply.header(SET_COOKIE_HEADER_NAME, value);
+      const updated = this.reply.getHeader(SET_COOKIE_HEADER_NAME);
       this.headers[name] = Array.isArray(updated)
         ? [...updated]
         : updated === undefined

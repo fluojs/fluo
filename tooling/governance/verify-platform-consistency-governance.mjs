@@ -2584,9 +2584,10 @@ export function enforceResponseCookiePortabilityContract() {
     'Network and fetch-style portability harnesses must execute response-cookie conformance.',
   );
   assert(
-    fastifyAdapter.includes('this.reply.header(name, value)') &&
-      fastifyAdapter.includes('this.reply.getHeader(name)'),
-    'Fastify must retain repeated Set-Cookie fields through its native response API.',
+    fastifyAdapter.includes("const SET_COOKIE_HEADER_NAME = 'set-cookie';") &&
+      fastifyAdapter.includes('this.reply.header(SET_COOKIE_HEADER_NAME, value)') &&
+      fastifyAdapter.includes('this.reply.getHeader(SET_COOKIE_HEADER_NAME)'),
+    'Fastify must retain repeated Set-Cookie fields through its native response API without caller-controlled header normalization.',
   );
 }
 

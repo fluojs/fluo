@@ -109,6 +109,8 @@ export type CorsInput = false | string | string[] | CorsOptions;
 
 const DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+const nativeStringToLowerCase = Function.prototype.call.bind(String.prototype.toLowerCase);
+const SET_COOKIE_HEADER_NAME = 'set-cookie';
 const EXPRESS_NATIVE_ROUTE_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'] as const;
 
 type ExpressNativeRouteMethod = (typeof EXPRESS_NATIVE_ROUTE_METHODS)[number];
@@ -726,11 +728,11 @@ function createFrameworkResponse(response: ExpressResponse): ExpressFrameworkRes
       response.send(serialized.payload);
     },
     setHeader(name: string, value: string | string[]) {
-      const lowerName = name.toLowerCase();
+      const lowerName = nativeStringToLowerCase(name);
 
-      if (lowerName === 'set-cookie') {
-        const merged = mergeSetCookieHeader(response.getHeader(name), value);
-        response.setHeader(name, merged);
+      if (lowerName === SET_COOKIE_HEADER_NAME) {
+        const merged = mergeSetCookieHeader(response.getHeader(SET_COOKIE_HEADER_NAME), value);
+        response.setHeader(SET_COOKIE_HEADER_NAME, merged);
         this.headers[name] = merged;
         return;
       }

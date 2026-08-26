@@ -1,5 +1,7 @@
 import type { Dispatcher, FrameworkRequest, FrameworkResponse, HttpMethod, Middleware, Principal } from '@fluojs/http';
 
+const nativeStringToLowerCase = Function.prototype.call.bind(String.prototype.toLowerCase);
+
 /**
  * Principal payload used by testing request helpers.
  */
@@ -264,7 +266,7 @@ function buildFrameworkResponse(): { response: MutableFrameworkResponse; result:
     },
 
     setHeader(name: string, value: string | string[]) {
-      const lowerName = name.toLowerCase();
+      const lowerName = nativeStringToLowerCase(name);
       const responseHeaders = this.headers as Record<string, string | string[]>;
 
       if (lowerName === 'set-cookie') {

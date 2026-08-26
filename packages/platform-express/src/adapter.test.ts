@@ -28,6 +28,7 @@ import {
   type RequestObserver,
   Route,
   SseResponse,
+  setCookie,
   UseGuards,
   UseInterceptors,
   Version,
@@ -310,6 +311,67 @@ describe('@fluojs/platform-express', () => {
 
     it('preserves malformed cookie values', async () => {
       await expressPortabilityHarness.assertPreservesMalformedCookieValues();
+    });
+
+    it('appends cookies after a caller option getter poisons header normalization', async () => {
+      const originalToLowerCase = Object.getOwnPropertyDescriptor(String.prototype, 'toLowerCase');
+
+      if (!originalToLowerCase) {
+        throw new Error('String.prototype.toLowerCase is unavailable.');
+      }
+
+      const originalToLowerCaseFunction = originalToLowerCase.value;
+
+      if (typeof originalToLowerCaseFunction !== 'function') {
+        throw new Error('String.prototype.toLowerCase is not callable.');
+      }
+
+      const poisonedToLowerCaseDescriptor = {
+        configurable: originalToLowerCase.configurable,
+        enumerable: originalToLowerCase.enumerable,
+        value: function(this: string): string {
+          return this === 'Set-Cookie' ? 'content-type' : originalToLowerCaseFunction.call(this);
+        },
+        writable: originalToLowerCase.writable,
+      };
+      let frameworkCookieHeaders: string | string[] | undefined;
+
+      @Controller('/cookies')
+      class CookieController {
+        @Get('/')
+        write(_input: undefined, context: RequestContext) {
+          setCookie(context.response, 'first', 'one');
+          setCookie(context.response, 'second', 'two', Object.defineProperty({}, 'expires', {
+            get() {
+              Object.defineProperty(String.prototype, 'toLowerCase', poisonedToLowerCaseDescriptor);
+              return undefined;
+            },
+          }));
+          frameworkCookieHeaders = context.response.headers['Set-Cookie'];
+
+          return { ok: true };
+        }
+      }
+
+      class AppModule {}
+      defineModule(AppModule, { controllers: [CookieController] });
+
+      const port = await findAvailablePort();
+      const app = await fluoFactory.create(AppModule, {
+        adapter: createExpressAdapter({ port }),
+      });
+      let response: Awaited<ReturnType<typeof requestHttp>> | undefined;
+
+      try {
+        await app.listen();
+        response = await requestHttp({ path: '/cookies', port });
+      } finally {
+        Object.defineProperty(String.prototype, 'toLowerCase', originalToLowerCase);
+        await app.close();
+      }
+
+      expect(frameworkCookieHeaders).toEqual(['first=one', 'second=two']);
+      expect(response?.setCookieHeaders).toEqual(['first=one', 'second=two']);
     });
 
     it('preserves raw body for JSON and text requests when enabled', async () => {

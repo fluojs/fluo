@@ -3,9 +3,13 @@ import { EventEmitter } from 'node:events';
 
 import { describe, expect, it, vi } from 'vitest';
 
+import { setCookie } from '@fluojs/http';
+
 import { createFrameworkResponse } from './node-response.js';
 
 type HeaderValue = string | string[] | number;
+
+const nativeStringToLowerCase = Function.prototype.call.bind(String.prototype.toLowerCase);
 
 function createMockServerResponse(): ServerResponse {
   const headers: Record<string, HeaderValue> = {};
@@ -14,17 +18,17 @@ function createMockServerResponse(): ServerResponse {
     destroyed: false,
     end() {},
     getHeader(name: string) {
-      return headers[name.toLowerCase()];
+      return headers[nativeStringToLowerCase(name)];
     },
     hasHeader(name: string) {
-      return headers[name.toLowerCase()] !== undefined;
+      return headers[nativeStringToLowerCase(name)] !== undefined;
     },
     headersSent: false,
     removeHeader(name: string) {
-      delete headers[name.toLowerCase()];
+      delete headers[nativeStringToLowerCase(name)];
     },
     setHeader(name: string, value: HeaderValue) {
-      headers[name.toLowerCase()] = value;
+      headers[nativeStringToLowerCase(name)] = value;
     },
     statusCode: 200,
     writableEnded: false,
@@ -47,6 +51,46 @@ describe('createFrameworkResponse', () => {
       'access=token; HttpOnly; Path=/',
       'refresh=token; HttpOnly; Path=/',
     ]);
+  });
+
+  it('appends cookies after a caller option getter poisons header normalization', () => {
+    const rawResponse = createMockServerResponse();
+    const frameworkResponse = createFrameworkResponse(rawResponse);
+    const originalToLowerCase = Object.getOwnPropertyDescriptor(String.prototype, 'toLowerCase');
+
+    if (!originalToLowerCase) {
+      throw new Error('String.prototype.toLowerCase is unavailable.');
+    }
+
+    const originalToLowerCaseFunction = originalToLowerCase.value;
+
+    if (typeof originalToLowerCaseFunction !== 'function') {
+      throw new Error('String.prototype.toLowerCase is not callable.');
+    }
+
+    const poisonedToLowerCaseDescriptor = {
+      configurable: originalToLowerCase.configurable,
+      enumerable: originalToLowerCase.enumerable,
+      value: function(this: string): string {
+        return this === 'Set-Cookie' ? 'content-type' : originalToLowerCaseFunction.call(this);
+      },
+      writable: originalToLowerCase.writable,
+    };
+    setCookie(frameworkResponse, 'first', 'one');
+
+    try {
+      setCookie(frameworkResponse, 'second', 'two', Object.defineProperty({}, 'expires', {
+        get() {
+          Object.defineProperty(String.prototype, 'toLowerCase', poisonedToLowerCaseDescriptor);
+          return undefined;
+        },
+      }));
+    } finally {
+      Object.defineProperty(String.prototype, 'toLowerCase', originalToLowerCase);
+    }
+
+    expect(rawResponse.getHeader('set-cookie')).toEqual(['first=one', 'second=two']);
+    expect(frameworkResponse.headers['Set-Cookie']).toEqual(['first=one', 'second=two']);
   });
 
   it('keeps non set-cookie headers as replace semantics', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { SseResponse, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
+import { setCookie, SseResponse, type FrameworkRequest, type FrameworkResponse } from '@fluojs/http';
 
 import {
   createWebFrameworkRequest,
@@ -68,6 +68,48 @@ describe('dispatchWebRequest', () => {
     await expect(headerResponse.json()).resolves.toEqual({ ok: true });
     expect(redirectResponse.status).toBe(302);
     expect(redirectResponse.headers.get('location')).toBe('/next');
+  });
+
+  it('appends cookies after a caller option getter poisons header normalization', () => {
+    const frameworkResponse = createWebRequestResponseFactory().createResponse(
+      undefined,
+      new Request('https://runtime.test/cookies'),
+    );
+    const originalToLowerCase = Object.getOwnPropertyDescriptor(String.prototype, 'toLowerCase');
+
+    if (!originalToLowerCase) {
+      throw new Error('String.prototype.toLowerCase is unavailable.');
+    }
+
+    const originalToLowerCaseFunction = originalToLowerCase.value;
+
+    if (typeof originalToLowerCaseFunction !== 'function') {
+      throw new Error('String.prototype.toLowerCase is not callable.');
+    }
+
+    const poisonedToLowerCaseDescriptor = {
+      configurable: originalToLowerCase.configurable,
+      enumerable: originalToLowerCase.enumerable,
+      value: function(this: string): string {
+        return this === 'Set-Cookie' ? 'content-type' : originalToLowerCaseFunction.call(this);
+      },
+      writable: originalToLowerCase.writable,
+    };
+    setCookie(frameworkResponse, 'first', 'one');
+
+    try {
+      setCookie(frameworkResponse, 'second', 'two', Object.defineProperty({}, 'expires', {
+        get() {
+          Object.defineProperty(String.prototype, 'toLowerCase', poisonedToLowerCaseDescriptor);
+          return undefined;
+        },
+      }));
+    } finally {
+      Object.defineProperty(String.prototype, 'toLowerCase', originalToLowerCase);
+    }
+
+    expect(frameworkResponse.headers['Set-Cookie']).toEqual(['first=one', 'second=two']);
+    expect(frameworkResponse.toResponse().headers.getSetCookie()).toEqual(['first=one', 'second=two']);
   });
 
   it('translates Web Request semantics into the framework request contract', async () => {

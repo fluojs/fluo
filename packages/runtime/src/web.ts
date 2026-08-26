@@ -27,6 +27,7 @@ const DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024;
 const TEXT_ENCODER = new TextEncoder();
 const TEXT_DECODER = new TextDecoder();
 const REQUEST_BODY_LIMIT_MESSAGE = 'Request body exceeds the size limit.';
+const nativeStringToLowerCase = Function.prototype.call.bind(String.prototype.toLowerCase);
 
 /**
  * Configures Web request parsing, multipart handling, and raw body preservation.
@@ -229,7 +230,7 @@ class MutableWebFrameworkResponse implements WebFrameworkResponse {
   setHeader(name: string, value: string | string[]): void {
     const existingHeaderName = findHeaderName(this.headers, name) ?? name;
 
-    if (name.toLowerCase() === 'set-cookie') {
+    if (nativeStringToLowerCase(name) === 'set-cookie') {
       this.headers[existingHeaderName] = mergeSetCookieHeader(this.headers[existingHeaderName], value);
       return;
     }
@@ -741,8 +742,8 @@ function mergeSetCookieHeader(
 }
 
 function findHeaderName(headers: Record<string, string | string[]>, name: string): string | undefined {
-  const lowerName = name.toLowerCase();
-  return Object.keys(headers).find((key) => key.toLowerCase() === lowerName);
+  const lowerName = nativeStringToLowerCase(name);
+  return Object.keys(headers).find((key) => nativeStringToLowerCase(key) === lowerName);
 }
 
 function hasHeader(headers: Record<string, string | string[]>, name: string): boolean {

@@ -1,6 +1,6 @@
 import { getModuleMetadata, Inject, Module, Scope as ScopeDecorator } from '@fluojs/core';
 import type { CallHandler, Converter, Dispatcher, Guard, Interceptor, InterceptorContext, Middleware, MiddlewareContext, Next, RequestObserver } from '@fluojs/http';
-import { Controller, FromQuery, Get, Post, type RequestContext, RequestDto, UseGuards, UseInterceptors, Version, VersioningType } from '@fluojs/http';
+import { Controller, FromQuery, Get, Post, type RequestContext, RequestDto, setCookie, UseGuards, UseInterceptors, Version, VersioningType } from '@fluojs/http';
 import type { ExceptionFilterHandler } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 import { makeRequest } from './http.js';
@@ -906,6 +906,52 @@ describe('makeRequest', () => {
       headers: { 'x-powered-by': 'fluo' },
       body: { ok: true },
     });
+  });
+
+  it('appends cookies after a caller option getter poisons header normalization', async () => {
+    const originalToLowerCase = Object.getOwnPropertyDescriptor(String.prototype, 'toLowerCase');
+
+    if (!originalToLowerCase) {
+      throw new Error('String.prototype.toLowerCase is unavailable.');
+    }
+
+    const originalToLowerCaseFunction = originalToLowerCase.value;
+
+    if (typeof originalToLowerCaseFunction !== 'function') {
+      throw new Error('String.prototype.toLowerCase is not callable.');
+    }
+
+    const poisonedToLowerCaseDescriptor = {
+      configurable: originalToLowerCase.configurable,
+      enumerable: originalToLowerCase.enumerable,
+      value: function(this: string): string {
+        return this === 'Set-Cookie' ? 'content-type' : originalToLowerCaseFunction.call(this);
+      },
+      writable: originalToLowerCase.writable,
+    };
+    let frameworkCookieHeaders: string | string[] | undefined;
+    const result = await makeRequest({
+      async dispatch(_request, response) {
+        setCookie(response, 'first', 'one');
+
+        try {
+          setCookie(response, 'second', 'two', Object.defineProperty({}, 'expires', {
+            get() {
+              Object.defineProperty(String.prototype, 'toLowerCase', poisonedToLowerCaseDescriptor);
+              return undefined;
+            },
+          }));
+          frameworkCookieHeaders = response.headers['Set-Cookie'];
+        } finally {
+          Object.defineProperty(String.prototype, 'toLowerCase', originalToLowerCase);
+        }
+
+        await response.send(undefined);
+      },
+    }, { path: '/' });
+
+    expect(frameworkCookieHeaders).toEqual(['first=one', 'second=two']);
+    expect(result.headers['Set-Cookie']).toEqual(['first=one', 'second=two']);
   });
 });
 

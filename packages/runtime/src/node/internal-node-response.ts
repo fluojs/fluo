@@ -16,6 +16,9 @@ export type MutableFrameworkResponse = FrameworkResponse & { statusSet?: boolean
 
 type FrameworkResponseCompressionFactory = () => FrameworkResponseCompression | undefined;
 
+const nativeStringToLowerCase = Function.prototype.call.bind(String.prototype.toLowerCase);
+const SET_COOKIE_HEADER_NAME = 'set-cookie';
+
 function createFrameworkResponseStream(response: ServerResponse): FrameworkResponseStream {
   return {
     close() {
@@ -164,11 +167,11 @@ export function createFrameworkResponse(
     },
     setHeader(name: string, value: string | string[]) {
       const headers = this.headers as Record<string, string | string[]>;
-      const lowerName = name.toLowerCase();
+      const lowerName = nativeStringToLowerCase(name);
 
-      if (lowerName === 'set-cookie') {
-        const merged = mergeSetCookieHeader(response.getHeader(name), value);
-        response.setHeader(name, merged);
+      if (lowerName === SET_COOKIE_HEADER_NAME) {
+        const merged = mergeSetCookieHeader(response.getHeader(SET_COOKIE_HEADER_NAME), value);
+        response.setHeader(SET_COOKIE_HEADER_NAME, merged);
         headers[name] = merged;
         return;
       }
