@@ -148,13 +148,17 @@
     "reviewerReceipt": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["task_id", "record_sha256", "output_sha256", "final_response", "parent_session_id", "lane_id", "issue_number", "worktree", "head_sha", "preflight_sha256", "axis", "mutation_sentinel", "session_sha256", "tool_events_sha256", "tool_events", "canonical_verification"],
+      "required": ["task_id", "record_sha256", "output_sha256", "final_response", "parent_session_id", "dag_run_id", "dag_key", "dag_node_id", "dag_owner_fingerprint", "lane_id", "issue_number", "worktree", "head_sha", "preflight_sha256", "axis", "mutation_sentinel", "session_sha256", "tool_events_sha256", "tool_events", "canonical_verification"],
       "properties": {
         "task_id": { "type": "string", "pattern": "^st_[A-Za-z0-9_-]+$" },
         "record_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "output_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "final_response": { "type": "object" },
         "parent_session_id": { "type": "string", "minLength": 1 },
+        "dag_run_id": { "type": "string", "pattern": "^dag_[a-z0-9]+(?:-[a-z0-9]+)*$" },
+        "dag_key": { "type": "string", "minLength": 1 },
+        "dag_node_id": { "type": "string", "minLength": 1 },
+        "dag_owner_fingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "lane_id": { "type": "string", "minLength": 1 },
         "issue_number": { "type": "integer", "minimum": 1 },
         "worktree": { "type": "string", "minLength": 1 },

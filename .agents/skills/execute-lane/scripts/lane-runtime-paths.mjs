@@ -159,3 +159,32 @@ export const canonicalNativeDagKeyPath = (
   }
   return keyPath;
 };
+
+export const canonicalNativeDagEventPath = (
+  repositoryRoot,
+  runId,
+) => {
+  canonicalNativeDagRunPath(repositoryRoot, runId);
+  const canonicalRoot = canonicalRepositoryRoot(repositoryRoot);
+  const eventDirectory = resolve(
+    canonicalRoot,
+    '.omo',
+    'senpi-task',
+    'dag',
+    'events',
+  );
+  requireRealDirectory(eventDirectory);
+  const eventPath = resolve(eventDirectory, `${runId}.jsonl`);
+  if (!existsSync(eventPath)) {
+    throw new TypeError(`native DAG event journal ${runId} must exist.`);
+  }
+  const stat = lstatSync(eventPath);
+  if (
+    stat.isSymbolicLink() ||
+    !stat.isFile() ||
+    realpathSync(eventPath) !== eventPath
+  ) {
+    throw new TypeError('native DAG event journal must be a real canonical file.');
+  }
+  return eventPath;
+};

@@ -17,6 +17,19 @@ const IMPLEMENTER_PROVIDER = 'openai-codex';
 const IMPLEMENTER_MODEL = 'gpt-5.6-terra';
 const IMPLEMENTER_THINKING = 'high';
 const TASK_ID = /^st_[A-Za-z0-9_-]+$/u;
+const ORCHESTRATION_TOOLS = new Set([
+  'task',
+  'dag',
+  'task_create',
+  'task_get',
+  'task_list',
+  'task_update',
+  'task_send',
+  'task_output',
+  'task_cancel',
+  'team_create',
+  'team_delete',
+]);
 export const IMPLEMENTER_SCOPE = 'issue-worktree-read-write';
 export const CONFLICT_IMPLEMENTER_SCOPE = 'conflict-resolution';
 export const CONFLICT_IMPLEMENTER_SENTINEL = 'fluo:execute-lane:conflict-implementer:dispatch:v1';
@@ -45,6 +58,8 @@ export const implementerPromptSentinel = ({
   unresolved_blockers: unresolvedBlockers,
   blocker_ledger_sha256: blockerLedgerSha256,
   preflight_sha256: preflightSha256,
+  dag_key: dagKey,
+  node_id: nodeId,
 }) =>
   terminalDispatchBlock({
     version: 2,
@@ -63,6 +78,8 @@ export const implementerPromptSentinel = ({
     preflight_sha256: preflightSha256,
     blocker_ledger: blockerLedger,
     unresolved_blockers: unresolvedBlockers,
+    ...(dagKey === undefined ? {} : { dag_key: dagKey }),
+    ...(nodeId === undefined ? {} : { node_id: nodeId }),
   });
 
 export const implementerTaskPrompt = ({
@@ -137,6 +154,12 @@ const assertActualRuntime = (events) => {
   const assistantMessages = events.filter(
     (event) => event.type === 'message' && event.message?.role === 'assistant',
   );
+  const orchestrationCalls = assistantMessages.flatMap((event) =>
+    (event.message.content ?? [])
+      .filter((part) => part?.type === 'toolCall')
+      .map((part) => part.name)
+      .filter((name) => ORCHESTRATION_TOOLS.has(name)),
+  );
   if (
     modelChanges.length === 0 ||
     !modelChanges.every(
@@ -145,6 +168,7 @@ const assertActualRuntime = (events) => {
     thinkingChanges.length === 0 ||
     !thinkingChanges.every((event) => event.thinkingLevel === IMPLEMENTER_THINKING) ||
     assistantMessages.length === 0 ||
+    orchestrationCalls.length > 0 ||
     !assistantMessages.every(
       (event) =>
         event.message.provider === IMPLEMENTER_PROVIDER &&
@@ -222,6 +246,16 @@ export const verifyImplementerRuntime = (expected) => {
     throw new TypeError('implementer task record identity does not match.');
   }
   assertTaskRecord(taskRecord);
+  const dagOwned = expected.dag_run_id !== undefined;
+  if (
+    dagOwned &&
+    (taskRecord.owner?.kind !== 'dag' ||
+      taskRecord.owner.runId !== expected.dag_run_id ||
+      taskRecord.owner.nodeId !== expected.node_id ||
+      taskRecord.owner.fingerprint !== expected.dag_owner_fingerprint)
+  ) {
+    throw new TypeError('implementer task DAG owner is invalid.');
+  }
   const expectedDispatch = implementerPromptSentinel(expected);
   let dispatch;
   try {
@@ -241,7 +275,13 @@ export const verifyImplementerRuntime = (expected) => {
   if (
     taskRecord.parent_session_id !== parentSessionId ||
     taskRecord.name !==
-      implementerTaskName(expected.issue_number, expected.generation, expected.current_head) ||
+      (dagOwned
+        ? expected.node_id
+        : implementerTaskName(
+            expected.issue_number,
+            expected.generation,
+            expected.current_head,
+          )) ||
     taskRecord.spawn_spec?.cwd !== canonicalRoot ||
     terminalDispatchBlock(dispatch) !== expectedDispatch
   ) {
@@ -267,6 +307,14 @@ export const verifyImplementerRuntime = (expected) => {
     output_sha256: payloadDigest(output),
     final_response: output,
     parent_session_id: parentSessionId,
+    ...(dagOwned
+      ? {
+          dag_run_id: expected.dag_run_id,
+          dag_key: expected.dag_key,
+          dag_node_id: expected.node_id,
+          dag_owner_fingerprint: expected.dag_owner_fingerprint,
+        }
+      : {}),
     lane_id: expected.lane_id,
     issue_number: expected.issue_number,
     worktree: expected.worktree,

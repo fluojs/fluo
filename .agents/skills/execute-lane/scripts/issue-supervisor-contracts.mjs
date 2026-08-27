@@ -23,6 +23,7 @@ import {
 } from './conflict-resolution-policy.mjs';
 import { assertPreflightAuthority } from './preflight-authority.mjs';
 import { assertBlockerLedger } from './blocker-ledger.mjs';
+import { issueDagKey } from './issue-dag-contracts.mjs';
 
 export const issueSupervisorTerminalStatuses = Object.freeze([
   'done',
@@ -240,6 +241,10 @@ export const assertIssueSupervisorState = (input) => {
         task.issue_number !== state.issue_number ||
         task.worktree !== state.worktree ||
         task.parent_session_id !== state.parent_session_id ||
+        task.dag_key !== issueDagKey(state.lane_id, state.issue_number) ||
+        typeof task.dag_run_id !== 'string' ||
+        typeof task.dag_node_id !== 'string' ||
+        !/^[a-f0-9]{64}$/u.test(task.dag_owner_fingerprint ?? '') ||
         !Array.isArray(task.blocker_ledger) ||
         !Array.isArray(task.unresolved_blockers) ||
         payloadDigest(task.blocker_ledger) !== task.blocker_ledger_sha256

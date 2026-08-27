@@ -60,6 +60,10 @@ const requirePassReceipt = (state, receipt, axis, headSha, preflightSha256) => {
   const verified = verifyReviewerTask({
     ...provenance(state),
     task_id: value.task_id,
+    dag_run_id: value.dag_run_id,
+    dag_key: value.dag_key,
+    node_id: value.dag_node_id,
+    dag_owner_fingerprint: value.dag_owner_fingerprint,
     head_sha: headSha,
     preflight_sha256: preflightSha256,
     axis,

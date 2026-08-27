@@ -1,24 +1,117 @@
 {
   "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/dev/assets/omo.schema.json",
   "task": {
-    "max_depth": 2
+    "max_depth": 1
   },
   "agents": {
-    "fluo-issue-supervisor": {
-      "description": "Runs one Fluo issue lifecycle and delegates only its bounded implementation and review children.",
+    "fluo-issue-preflight": {
+      "description": "Builds one source-read-only issue acceptance preflight.",
+      "model": "openai-codex/gpt-5.6-sol",
+      "reasoning": "high",
       "tools": {
-        "task": true
-      },
-      "execution_mode": "process",
-      "max_depth": 2,
-      "allowed_subagents": [
-        "fluo-issue-implementer"
-      ]
+        "task": false,
+        "dag": false,
+        "task_create": false,
+        "task_get": false,
+        "task_list": false,
+        "task_update": false,
+        "task_send": false,
+        "task_output": false,
+        "task_cancel": false,
+        "team_create": false,
+        "team_delete": false
+      }
     },
     "fluo-issue-implementer": {
       "description": "Implements one Fluo issue inside its assigned worktree.",
       "model": "openai-codex/gpt-5.6-terra",
-      "reasoning": "high"
+      "reasoning": "high",
+      "tools": {
+        "task": false,
+        "dag": false,
+        "task_create": false,
+        "task_get": false,
+        "task_list": false,
+        "task_update": false,
+        "task_send": false,
+        "task_output": false,
+        "task_cancel": false,
+        "team_create": false,
+        "team_delete": false
+      }
+    },
+    "fluo-contract-reviewer": {
+      "description": "Reviews one exact issue head against its canonical contract.",
+      "model": "openai-codex/gpt-5.6-sol",
+      "reasoning": "high",
+      "tools": {
+        "task": false,
+        "dag": false,
+        "task_create": false,
+        "task_get": false,
+        "task_list": false,
+        "task_update": false,
+        "task_send": false,
+        "task_output": false,
+        "task_cancel": false,
+        "team_create": false,
+        "team_delete": false
+      }
+    },
+    "fluo-code-reviewer": {
+      "description": "Reviews one exact issue head for code correctness and quality.",
+      "model": "openai-codex/gpt-5.6-sol",
+      "reasoning": "high",
+      "tools": {
+        "task": false,
+        "dag": false,
+        "task_create": false,
+        "task_get": false,
+        "task_list": false,
+        "task_update": false,
+        "task_send": false,
+        "task_output": false,
+        "task_cancel": false,
+        "team_create": false,
+        "team_delete": false
+      }
+    },
+    "fluo-verification-reviewer": {
+      "description": "Runs the canonical verification wrapper for one exact issue head.",
+      "model": "openai-codex/gpt-5.6-sol",
+      "reasoning": "high",
+      "tools": {
+        "task": false,
+        "dag": false,
+        "task_create": false,
+        "task_get": false,
+        "task_list": false,
+        "task_update": false,
+        "task_send": false,
+        "task_output": false,
+        "task_cancel": false,
+        "team_create": false,
+        "team_delete": false
+      }
+    },
+    "fluo-issue-operator": {
+      "description": "Performs one issue-bound Git or GitHub lifecycle operation.",
+      "model": "openai-codex/gpt-5.6-terra",
+      "reasoning": "high",
+      "execution_mode": "process",
+      "tools": {
+        "task": false,
+        "dag": false,
+        "task_create": false,
+        "task_get": false,
+        "task_list": false,
+        "task_update": false,
+        "task_send": false,
+        "task_output": false,
+        "task_cancel": false,
+        "team_create": false,
+        "team_delete": false
+      }
     }
   },
   "_migrations": [

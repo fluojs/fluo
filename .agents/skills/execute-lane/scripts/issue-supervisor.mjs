@@ -8,6 +8,9 @@ import {
   requireRetryPolicy,
   requireTimestamp,
 } from './issue-supervisor-contracts.mjs';
+import {
+  issueDagKey,
+} from './issue-dag-contracts.mjs';
 import { applyRemoteTransition } from './issue-supervisor-remote.mjs';
 import { verifyImplementerRuntime } from './implementer-runtime.mjs';
 import { applyConflictResolution } from './conflict-resolution-policy.mjs';
@@ -125,12 +128,27 @@ const completeImplementation = (state, step) => {
       step.implementer_evidence,
       'implementation-completed.implementer_evidence',
     );
-    if (Object.keys(evidence).length !== 1) {
-      throw new TypeError('implementer evidence must contain only the canonical task ID.');
+    if (
+      Object.keys(evidence).some(
+        (key) =>
+          ![
+            'task_id',
+            'dag_run_id',
+            'dag_node_id',
+            'dag_owner_fingerprint',
+          ].includes(key),
+      ) ||
+      Object.keys(evidence).length !== 4
+    ) {
+      throw new TypeError('implementer evidence must bind one issue DAG node.');
     }
     const runtime = verifyImplementerRuntime({
       repository_root: state.repository_root,
       task_id: evidence.task_id,
+      dag_run_id: evidence.dag_run_id,
+      dag_key: issueDagKey(state.lane_id, state.issue_number),
+      node_id: evidence.dag_node_id,
+      dag_owner_fingerprint: evidence.dag_owner_fingerprint,
       parent_session_id: state.parent_session_id,
       lane_id: state.lane_id,
       issue_number: state.issue_number,
@@ -181,12 +199,27 @@ const completeImplementation = (state, step) => {
       step.implementer_evidence ?? step.fresh_implementer_evidence,
       'fix-completed.implementer_evidence',
     );
-    if (Object.keys(evidence).length !== 1) {
-      throw new TypeError('implementer evidence must contain only the canonical task ID.');
+    if (
+      Object.keys(evidence).some(
+        (key) =>
+          ![
+            'task_id',
+            'dag_run_id',
+            'dag_node_id',
+            'dag_owner_fingerprint',
+          ].includes(key),
+      ) ||
+      Object.keys(evidence).length !== 4
+    ) {
+      throw new TypeError('implementer evidence must bind one issue DAG node.');
     }
     const runtime = verifyImplementerRuntime({
       repository_root: state.repository_root,
       task_id: evidence.task_id,
+      dag_run_id: evidence.dag_run_id,
+      dag_key: issueDagKey(state.lane_id, state.issue_number),
+      node_id: evidence.dag_node_id,
+      dag_owner_fingerprint: evidence.dag_owner_fingerprint,
       parent_session_id: state.parent_session_id,
       lane_id: state.lane_id,
       issue_number: state.issue_number,

@@ -57,17 +57,13 @@ const { acquireLease } = (await import(
     laneId: string,
   ) => Readonly<Record<string, unknown>>;
 };
-const { awaitCanonicalLaneDispatch } = (await import(
+const { canonicalLaneRuntimeRoot } = (await import(
   resolve(
     repositoryRoot,
-    '.agents/skills/execute-lane/scripts/await-lane-dispatch.mjs',
+    '.agents/skills/execute-lane/scripts/lane-runtime-paths.mjs',
   )
 )) as {
-  awaitCanonicalLaneDispatch: (input: {
-    repositoryRoot: string;
-    ledgerPath: string;
-    timeoutMs?: number;
-  }) => Promise<Readonly<Record<string, unknown>>>;
+  canonicalLaneRuntimeRoot: (repositoryRoot: string) => string;
 };
 
 const isRecord = (
@@ -178,13 +174,9 @@ describe('$execute-lane canonical handoff boundary', () => {
     rmSync(runtimeRoot, { recursive: true, force: true });
     symlinkSync(externalRoot, runtimeRoot, 'dir');
 
-    await expect(
-      awaitCanonicalLaneDispatch({
-        repositoryRoot: handoff.root,
-        ledgerPath: ledgerRelativePath,
-        timeoutMs: 100,
-      }),
-    ).rejects.toThrow(/real directory/u);
+    expect(() =>
+      canonicalLaneRuntimeRoot(handoff.root),
+    ).toThrow(/real directory/u);
     expect(
       existsSync(resolve(externalRoot, 'lane-4101-runtime')),
     ).toBe(false);

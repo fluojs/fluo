@@ -582,14 +582,21 @@ describe('$execute-lane persisted native state machine', () => {
 });
 
 describe('$execute-lane shipped native assets', () => {
-  it('ships the workflow, issue supervisor, DAG projection, store, and replay CLI', () => {
-    expect(
-      [
+  it('ships the workflow, issue lifecycle, issue-DAG control, and coordinator CLI', () => {
+    const assets = [
         'SKILL.md',
         'references/workflow.md',
         'references/issue-supervisor.md',
         'scripts/compile-dag.mjs',
-        'scripts/dag-binding.mjs',
+        'scripts/issue-dag-amendment.mjs',
+        'scripts/issue-dag-contracts.mjs',
+        'scripts/issue-dag-files.mjs',
+        'scripts/issue-dag-lifecycle.mjs',
+        'scripts/issue-dag-phase-result.mjs',
+        'scripts/issue-dag-store.mjs',
+        'scripts/lane-coordinator.mjs',
+        'scripts/lane-coordinator-cli.mjs',
+        'scripts/native-dag-run.mjs',
         'scripts/issue-supervisor.mjs',
         'scripts/issue-supervisor-contracts.mjs',
         'scripts/issue-supervisor-files.mjs',
@@ -602,8 +609,10 @@ describe('$execute-lane shipped native assets', () => {
         'scripts/state-store.mjs',
         'scripts/release-handoff-approval.mjs',
         'scripts/fixtures/run-replay.mjs',
-      ].filter((path) => existsSync(resolve(skillRoot, path))),
-    ).toHaveLength(17);
+      ];
+    expect(
+      assets.filter((path) => existsSync(resolve(skillRoot, path))),
+    ).toEqual(assets);
   });
 
   it.each([

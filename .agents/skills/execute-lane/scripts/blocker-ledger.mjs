@@ -62,6 +62,10 @@ const canonicalReceipt = (receipt) => ({
   output_sha256: receipt.output_sha256,
   final_response: structuredClone(receipt.final_response),
   parent_session_id: receipt.parent_session_id,
+  dag_run_id: receipt.dag_run_id,
+  dag_key: receipt.dag_key,
+  dag_node_id: receipt.dag_node_id,
+  dag_owner_fingerprint: receipt.dag_owner_fingerprint,
   lane_id: receipt.lane_id,
   issue_number: receipt.issue_number,
   worktree: receipt.worktree,
@@ -345,9 +349,18 @@ export const assertBlockerLedger = (state, { verifyTasks = false } = {}) => {
       throw new TypeError('blocker ledger remediation status does not match its history.');
     }
     if (verifyTasks && !composite) {
-      const verified = verifyReviewerTask(
-        reviewerProvenance(state, receipt.task_id, receipt.head_sha, entry.reviewer_axis),
-      );
+      const verified = verifyReviewerTask({
+        ...reviewerProvenance(
+          state,
+          receipt.task_id,
+          receipt.head_sha,
+          entry.reviewer_axis,
+        ),
+        dag_run_id: receipt.dag_run_id,
+        dag_key: receipt.dag_key,
+        node_id: receipt.dag_node_id,
+        dag_owner_fingerprint: receipt.dag_owner_fingerprint,
+      });
       if (payloadDigest(verified) !== payloadDigest(receipt)) {
         throw new TypeError('blocker ledger reviewer receipt does not match its canonical task.');
       }

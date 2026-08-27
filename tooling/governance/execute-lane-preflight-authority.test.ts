@@ -560,6 +560,13 @@ describe('execute-lane canonical preflight authority', () => {
       execFileSync('git', ['-C', worktree, 'add', 'implemented.txt']);
       execFileSync('git', ['-C', worktree, 'commit', '-q', '-m', 'implementation']);
       const newHead = execFileSync('git', ['-C', worktree, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+      const dagRunId = `dag_issue-${String(issueNumber)}`;
+      const dagKey =
+        `fluo:lane:${laneId}:issue-${String(issueNumber)}:lifecycle:v3`;
+      const nodeId = `implement-g1-${fixture.startingHead}`;
+      const ownerFingerprint = createHash('sha256')
+        .update(nodeId)
+        .digest('hex');
       writeActualShapedImplementerTask({
         repository_root: fixture.root, task_id: 'st_real_git_advance',
         parent_session_id: bundle.snapshot.parent_session_id, lane_id: laneId,
@@ -567,11 +574,20 @@ describe('execute-lane canonical preflight authority', () => {
         current_head: fixture.startingHead, new_head: newHead, generation: 1,
         result: 'implementation-completed', verification: 'focused tests passed',
         preflight_sha256: bundle.snapshot.review_preflight.sha256,
+        dag_run_id: dagRunId,
+        dag_key: dagKey,
+        node_id: nodeId,
+        dag_owner_fingerprint: ownerFingerprint,
       });
       bundle = applyIssueSupervisorTransition(fixture.runtimeRoot, laneId, issueNumber, {
         kind: 'implementation-completed', new_head: newHead,
         verification: 'focused tests passed', implementer_generation: 1,
-        implementer_evidence: { task_id: 'st_real_git_advance' },
+        implementer_evidence: {
+          task_id: 'st_real_git_advance',
+          dag_run_id: dagRunId,
+          dag_node_id: nodeId,
+          dag_owner_fingerprint: ownerFingerprint,
+        },
       });
       expect(bundle.snapshot.head_sha).toBe(newHead);
       expect(bundle.snapshot.status).toBe('local-review');
@@ -651,6 +667,13 @@ describe('execute-lane canonical preflight authority', () => {
       );
       const taskId = 'st_authorityfirst';
       const newHead = 'b'.repeat(40);
+      const dagRunId = `dag_issue-${String(issueNumber)}`;
+      const dagKey =
+        `fluo:lane:${laneId}:issue-${String(issueNumber)}:lifecycle:v3`;
+      const nodeId = `implement-g1-${String(bundle.snapshot.head_sha)}`;
+      const ownerFingerprint = createHash('sha256')
+        .update(nodeId)
+        .digest('hex');
       writeActualShapedImplementerTask({
         repository_root: fixture.root,
         task_id: taskId,
@@ -664,6 +687,10 @@ describe('execute-lane canonical preflight authority', () => {
         result: 'implementation-completed',
         verification: 'focused tests passed',
         preflight_sha256: bundle.snapshot.review_preflight.sha256,
+        dag_run_id: dagRunId,
+        dag_key: dagKey,
+        node_id: nodeId,
+        dag_owner_fingerprint: ownerFingerprint,
       });
       applyIssueSupervisorTransition(
         fixture.runtimeRoot,
@@ -674,7 +701,12 @@ describe('execute-lane canonical preflight authority', () => {
           new_head: newHead,
           verification: 'focused tests passed',
           implementer_generation: 1,
-          implementer_evidence: { task_id: taskId },
+          implementer_evidence: {
+            task_id: taskId,
+            dag_run_id: dagRunId,
+            dag_node_id: nodeId,
+            dag_owner_fingerprint: ownerFingerprint,
+          },
         },
       );
       const snapshotPath = resolve(

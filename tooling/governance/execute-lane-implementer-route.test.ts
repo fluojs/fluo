@@ -123,6 +123,35 @@ describe('execute-lane implementer runtime routing', () => {
     }
   });
 
+  it('accepts only the exact direct issue-DAG owner', () => {
+    const root = realpathSync(
+      mkdtempSync(join(tmpdir(), 'fluo-implementer-dag-owner-')),
+    );
+    const dagEvidence = {
+      dag_run_id: 'dag_issue-4101',
+      dag_key: 'fluo:lane:lane-4101-runtime:issue-4101:lifecycle:v3',
+      node_id: `implement-g1-${headA}`,
+      dag_owner_fingerprint: 'e'.repeat(64),
+    };
+    try {
+      const expected = writeEvidence(root, dagEvidence);
+      expect(verifyImplementerRuntime(expected)).toMatchObject({
+        task_id: 'st_valid',
+        dag_run_id: dagEvidence.dag_run_id,
+        dag_node_id: dagEvidence.node_id,
+        dag_owner_fingerprint: dagEvidence.dag_owner_fingerprint,
+      });
+      expect(() =>
+        verifyImplementerRuntime({
+          ...expected,
+          dag_owner_fingerprint: 'f'.repeat(64),
+        }),
+      ).toThrow(/DAG owner/u);
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
   it.each([
     ['parent', { parent_session_id: 'ses_wrong' }],
     ['worktree', { worktree: '.worktrees/issue-4101-other' }],

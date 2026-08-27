@@ -431,6 +431,15 @@ export const assertReviewBatch = ({
       const verified = verifyReviewerTask({
         ...provenance,
         task_id: canonicalTaskIds[reviewer],
+        ...(canonicalReceipts[reviewer].dag_run_id === undefined
+          ? {}
+          : {
+              dag_run_id: canonicalReceipts[reviewer].dag_run_id,
+              dag_key: canonicalReceipts[reviewer].dag_key,
+              node_id: canonicalReceipts[reviewer].dag_node_id,
+              dag_owner_fingerprint:
+                canonicalReceipts[reviewer].dag_owner_fingerprint,
+            }),
         head_sha: headSha,
         preflight_sha256: acceptedPreflight.sha256,
         axis: reviewer,
@@ -456,15 +465,30 @@ export const assertReviewBatch = ({
 
 export const requireFreshImplementerEvidence = (evidence) => {
   const value = requireRecord(evidence, 'fresh implementer evidence');
+  const allowed = [
+    'task_id',
+    'dag_run_id',
+    'dag_node_id',
+    'dag_owner_fingerprint',
+  ];
   if (
     !taskIdPattern.test(value.task_id) ||
-    Object.keys(value).length !== 1
+    Object.keys(value).length !== allowed.length ||
+    Object.keys(value).some((key) => !allowed.includes(key)) ||
+    typeof value.dag_run_id !== 'string' ||
+    typeof value.dag_node_id !== 'string' ||
+    !/^[a-f0-9]{64}$/u.test(value.dag_owner_fingerprint ?? '')
   ) {
     throw new TypeError(
-      'fresh implementer evidence must contain only the canonical task ID.',
+      'fresh implementer evidence must bind one issue DAG node.',
     );
   }
-  return { task_id: value.task_id };
+  return {
+    task_id: value.task_id,
+    dag_run_id: value.dag_run_id,
+    dag_node_id: value.dag_node_id,
+    dag_owner_fingerprint: value.dag_owner_fingerprint,
+  };
 };
 
 export const requireFreshImplementer = ({

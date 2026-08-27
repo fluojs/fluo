@@ -20,14 +20,16 @@ type DependencyGate = Readonly<{
   unsatisfied_dependencies: readonly number[];
 }>;
 
-const { compileLaneSupervisorDag } = (await import(
+const { compileIssueLifecycleDag } = (await import(
   resolve(
     process.cwd(),
     '.agents/skills/execute-lane/scripts/compile-dag.mjs',
   )
 )) as {
-  compileLaneSupervisorDag: (
+  compileIssueLifecycleDag: (
     ledger: Readonly<Record<string, unknown>>,
+    issueNumber: number,
+    options: Readonly<Record<string, unknown>>,
   ) => DagDefinition;
 };
 const { dependencyGate, dispatchableIssueNumbers } = (await import(
@@ -46,6 +48,12 @@ const { dependencyGate, dispatchableIssueNumbers } = (await import(
 };
 
 const headA = 'a'.repeat(40);
+const bootstrap = {
+  repository_root: process.cwd(),
+  starting_head_sha: headA,
+  issue_contract_sha256: 'b'.repeat(64),
+  lane_plan_approval_sha256: 'c'.repeat(64),
+};
 
 const isRecord = (
   value: unknown,
@@ -157,34 +165,34 @@ describe('execute-lane DAG dependency scheduling', () => {
     expect(dispatchableIssueNumbers(ledger)).toEqual([]);
   });
 
-  it('compiles every issue into one lane DAG with explicit dependencies', () => {
+  it('compiles one issue into one lifecycle DAG', () => {
     // Given
     const ledger = readyLedger();
 
     // When
-    const definition = compileLaneSupervisorDag(ledger);
+    const definition = compileIssueLifecycleDag(ledger, 4101, {
+      bootstrap,
+    });
 
     // Then
     expect(definition.key).toBe(
-      'fluo:lane:lane-4101-runtime:issue-supervisors:v2',
+      'fluo:lane:lane-4101-runtime:issue-4101:lifecycle:v3',
     );
-    expect(definition.nodes).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: 'issue-4101-supervisor',
-          dependsOn: [],
-        }),
-        expect.objectContaining({
-          id: 'issue-4102-supervisor',
-          dependsOn: ['issue-4101-supervisor'],
-        }),
-      ]),
-    );
-    expect(definition.nodes).toHaveLength(2);
-    expect(compileLaneSupervisorDag(ledger)).toEqual(definition);
+    expect(definition.nodes).toEqual([
+      expect.objectContaining({
+        id: `preflight-g0-h${headA}`,
+        subagent_type: 'fluo-issue-preflight',
+        dependsOn: [],
+      }),
+    ]);
+    expect(JSON.stringify(definition)).not.toContain('issue-4102');
+    expect(JSON.stringify(definition)).not.toContain('fluo-issue-supervisor');
+    expect(
+      compileIssueLifecycleDag(ledger, 4101, { bootstrap }),
+    ).toEqual(definition);
   });
 
-  it('preserves lane queue order as DAG dependencies', () => {
+  it('keeps cross-issue queue ordering outside native DAG edges', () => {
     // Given
     const ledger = {
       ...readyLedger(),
@@ -204,18 +212,12 @@ describe('execute-lane DAG dependency scheduling', () => {
     };
 
     // When
-    const definition = compileLaneSupervisorDag(ledger);
+    const first = compileIssueLifecycleDag(ledger, 4101, { bootstrap });
+    const second = compileIssueLifecycleDag(ledger, 4102, { bootstrap });
 
     // Then
-    expect(definition.nodes).toEqual([
-      expect.objectContaining({
-        id: 'issue-4101-supervisor',
-        dependsOn: [],
-      }),
-      expect.objectContaining({
-        id: 'issue-4102-supervisor',
-        dependsOn: ['issue-4101-supervisor'],
-      }),
-    ]);
+    expect(first.nodes[0]?.dependsOn).toEqual([]);
+    expect(second.nodes[0]?.dependsOn).toEqual([]);
+    expect(first.key).not.toBe(second.key);
   });
 });

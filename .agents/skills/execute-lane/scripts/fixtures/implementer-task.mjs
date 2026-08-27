@@ -61,6 +61,10 @@ export const writeActualShapedImplementerTask = ({
   blocker_ledger_sha256: blockerLedgerSha256,
   preflight_sha256: preflightSha256,
   authoritative_preflight: authoritativePreflight,
+  dag_run_id: dagRunId,
+  dag_key: dagKey,
+  node_id: nodeId,
+  dag_owner_fingerprint: dagOwnerFingerprint,
   mutate = (task) => task,
 }) => {
   ensurePreflight(root, laneId, issueNumber, preflightSha256, authoritativePreflight);
@@ -77,6 +81,14 @@ export const writeActualShapedImplementerTask = ({
     blocker_ledger_sha256:
       blockerLedgerSha256 ?? payloadDigest(blockerLedger),
     preflight_sha256: preflightSha256,
+    ...(dagRunId === undefined
+      ? {}
+      : {
+          dag_run_id: dagRunId,
+          dag_key: dagKey,
+          node_id: nodeId,
+          dag_owner_fingerprint: dagOwnerFingerprint,
+        }),
   };
   const finalResponse = {
     sentinel: IMPLEMENTER_FINAL_SENTINEL,
@@ -103,7 +115,9 @@ export const writeActualShapedImplementerTask = ({
     depth: 1,
     execution_mode: 'in-process',
     model: 'openai-codex/gpt-5.6-terra',
-    name: implementerTaskName(issueNumber, generation, currentHead),
+    name:
+      nodeId ??
+      implementerTaskName(issueNumber, generation, currentHead),
     task_summary: `Issue #${String(issueNumber)} generation ${String(generation)} implementation`,
     agent_type: 'fluo-issue-implementer',
     requested_model: {
@@ -130,6 +144,16 @@ export const writeActualShapedImplementerTask = ({
       IMPLEMENTER_FINAL_SENTINEL,
       finalResponse,
     ),
+    ...(dagRunId === undefined
+      ? {}
+      : {
+          owner: {
+            kind: 'dag',
+            runId: dagRunId,
+            nodeId,
+            fingerprint: dagOwnerFingerprint,
+          },
+        }),
   });
   const runtimeRoot = resolve(root, '.omo', 'senpi-task');
   const taskRoot = resolve(runtimeRoot, 'tasks');

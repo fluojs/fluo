@@ -72,6 +72,8 @@ export const reviewerPromptSentinel = ({
   head_sha: headSha,
   preflight_sha256: preflightSha256,
   review_axis: axis,
+  dag_key: dagKey,
+  node_id: nodeId,
 }) =>
   terminalDispatchBlock({
     version: 1,
@@ -83,6 +85,8 @@ export const reviewerPromptSentinel = ({
     preflight_path: canonicalPreflightArtifactPath(repositoryRoot, laneId, issueNumber),
     preflight_sha256: preflightSha256,
     review_axis: axis,
+    ...(dagKey === undefined ? {} : { dag_key: dagKey }),
+    ...(nodeId === undefined ? {} : { node_id: nodeId }),
     ...reviewerCapabilities(axis),
   });
 
@@ -411,12 +415,45 @@ const finalResponse = (value, axis, headSha, preflightSha256) => {
   return output;
 };
 
-export const verifyReviewerTask = ({ repository_root: root, task_id: id, parent_session_id: parentSessionId, lane_id: laneId, issue_number: issueNumber, worktree, branch, head_sha: headSha, preflight_sha256: preflightSha256, axis }) => {
+export const verifyReviewerTask = (expected) => {
+  const {
+    repository_root: root,
+    task_id: id,
+    parent_session_id: parentSessionId,
+    lane_id: laneId,
+    issue_number: issueNumber,
+    worktree,
+    branch,
+    head_sha: headSha,
+    preflight_sha256: preflightSha256,
+    axis,
+  } = expected;
   if (!axes.has(axis)) throw new TypeError('reviewer task identity is invalid.');
   const { canonicalRoot, value } = canonicalTask(root, id);
+  const dagOwned = expected.dag_run_id !== undefined;
+  if (
+    dagOwned &&
+    (value.owner?.kind !== 'dag' ||
+      value.owner.runId !== expected.dag_run_id ||
+      value.owner.nodeId !== expected.node_id ||
+      value.owner.fingerprint !== expected.dag_owner_fingerprint)
+  ) {
+    throw new TypeError('reviewer task DAG owner is invalid.');
+  }
   requireCompletedTask(
-    value, id, parentSessionId, reviewerTaskName(axis, issueNumber, headSha), canonicalRoot,
-    reviewerPromptSentinel({ repository_root: canonicalRoot, lane_id: laneId, issue_number: issueNumber, worktree, head_sha: headSha, preflight_sha256: preflightSha256, review_axis: axis }),
+    value, id, parentSessionId, dagOwned ? expected.node_id : reviewerTaskName(axis, issueNumber, headSha), canonicalRoot,
+    reviewerPromptSentinel({
+      repository_root: canonicalRoot,
+      lane_id: laneId,
+      issue_number: issueNumber,
+      worktree,
+      head_sha: headSha,
+      preflight_sha256: preflightSha256,
+      review_axis: axis,
+      ...(dagOwned
+        ? { dag_key: expected.dag_key, node_id: expected.node_id }
+        : {}),
+    }),
     REVIEW_SENTINEL,
     { repository_root: canonicalRoot, lane_id: laneId, issue_number: issueNumber, preflight_sha256: preflightSha256 },
   );
@@ -432,6 +469,14 @@ export const verifyReviewerTask = ({ repository_root: root, task_id: id, parent_
     output_sha256: payloadDigest(output),
     final_response: output,
     parent_session_id: parentSessionId,
+    ...(dagOwned
+      ? {
+          dag_run_id: expected.dag_run_id,
+          dag_key: expected.dag_key,
+          dag_node_id: expected.node_id,
+          dag_owner_fingerprint: expected.dag_owner_fingerprint,
+        }
+      : {}),
     lane_id: laneId,
     issue_number: issueNumber,
     worktree,

@@ -1,84 +1,173 @@
 ---
 name: execute-lane
-description: Drain one canonical Fluo lane through implementation, same-head review, adaptive fix-back, merge authority, cleanup, and resumable evidence.
+description: Drain one canonical Fluo lane through independent issue DAGs, exact-head review, adaptive fix-back, merge, cleanup, and resumable evidence.
 ---
 
 # Execute lane
 
-Consume only a strict canonical lane v2 created by `$create-lane`. Do not rediscover issues, regroup scope, or infer
-missing persisted fields. Require the exact `.omo/lanes/<lane-id>.json` path, revalidate its source artifact and all
-three approval receipts, and bind every resumed snapshot to the canonical ledger's immutable plan before compiling or
-mutating anything.
+Consume only a strict canonical lane v2 created by `$create-lane`. Require the
+exact `.omo/lanes/<lane-id>.json` path and revalidate its source artifact,
+selected-issue approval, lane-plan approval, and immutable issue collection.
+Do not rediscover, regroup, or silently upgrade an in-flight lane.
 
-The parent lead is the only shared lane snapshot/event/receipt/lease writer. It compiles exactly one native DAG from
-the immutable lane ledger. Every confirmed issue is one supervisor node, explicit `dependency_graph` edges map to
-native `dependsOn`, and queue predecessors add the ordering needed to preserve each approved lane queue. Independent
-issue nodes run concurrently. Each supervisor owns one isolated issue lifecycle and may use only the Git/GitHub
-authority explicitly granted by the lane. Implementers and reviewers remain nested, separately delegated roles.
+Read `references/workflow.md` and `references/issue-supervisor.md` before
+execution.
 
-Read `references/workflow.md` and `references/issue-supervisor.md` before execution. Compile the ledger once with
-`compileLaneSupervisorDag()`. Use
-`scripts/lane-dispatch.mjs` to persist one lane-bound dispatch intent before
-start, then attach the observed run through `attachLaneSupervisorRun()` at
-`.omo/lane-runs/<lane-id>/dag-binding.json`. Attachment loads the canonical
-native run record from `.omo/senpi-task/dag/runs/<run-id>.json`, authenticates it against the canonical native key
-record, and requires its submitted definition to match the intent-bound digest. An exact existing binding resumes from
-that native definition rather than recompiling current workflow source. A digestless legacy intent without its
-immutable binding requires a successor lane. An intent/binding crash window fails closed and never authorizes a
-duplicate start. Goal, todo, and DAG state remain projections of the persisted lane state and live observations.
+## Architecture
 
-The dispatch interface accepts `repository_root`, never a caller-selected runtime root, and derives `.omo/lane-runs`
-internally. Every issue supervisor must pass the event-driven startup gate before mutation:
+The lane is a parent-owned coordinator, not a native DAG. Each admitted issue
+owns exactly one cumulative native DAG:
 
 ```text
-node .agents/skills/execute-lane/scripts/await-lane-dispatch.mjs \
-  --root . --ledger .omo/lanes/<lane-id>.json
+fluo:lane:<lane-id>:issue-<issue-number>:lifecycle:v3
 ```
 
-After the native DAG settles, run `lane-settlement-audit.mjs`. Native node completion means only that a child
-returned. It is never lane success without canonical terminal issue stores and parent import.
+Lifecycle phases are direct DAG nodes. A node never calls `task`, `dag`, team,
+or another orchestration surface. The trusted parent alone starts, attaches,
+amends, retries, verifies, terminalizes, and settles issue runs.
 
-Production execution never uses `scripts/fixtures/run-replay.mjs`. The lead performs or observes each authorized
-Git/GitHub action, reads fresh raw output, then writes the target-bound receipt and transition. Synthetic observation
-JSON is fixture evidence only.
+The parent advances one issue only through:
 
-Stop only when every lane is `done` or has an explicit terminal blocker and cleanup/root-sync state is terminal.
-Before the first implementation, every issue must persist one immutable review preflight derived from either the selected issue
-or an explicitly approved suggested addition plus a fresh trusted-lead GitHub issue contract. Each row carries the exact live acceptance text and digest; row IDs and `acceptance_row_ids` equal the complete canonical acceptance set. Every revision/content-bound core or additional
-docs/RFC/security source is row-covered. Then reach `ready-for-pr` through one complete same-head local
-contract/code/verification batch. All three reviewers must settle before remediation begins,
-close every preflight row, and bind each blocker to its approved source and invariant. Two blocked heads require a
-fresh implementer generation. Contract/code tasks use only read/search/LSP/history tools. Verification is the only local-CI writer and makes exactly one shell call: the issue/head/task-bound `canonical-verification.mjs ... -- pnpm verify`. The wrapper installs and runs from a clean disposable exact-head worktree, resolves the canonical host pnpm store before HOME/XDG isolation, mounts that store read-only, and binds the store path plus lockfile/tree/input integrity into the receipt. The OS backend limits writes to disposable/runtime temp and denies candidate signals to outside processes. It reaps every observed or process-group descendant; an instant escaped descendant may outlive observation but inherits OS confinement from canonical authority state and supervisor/reviewer processes, and disposable/runtime cleanup makes it harmless. Canonical Senpi JSONL tool events and the wrapper receipt are digest-bound into reviewer evidence. A fixable CI failure returns that issue to implementation and invalidates all prior local review evidence. A
-post-PR conflict uses the persisted typed conflict gate. A distinct real conflict-scoped `fluo-issue-implementer` produces the commit and machine final output while the supervisor remains non-editing; task reuse is forbidden. Mechanical inheritance requires machine-proven old-base/reviewed versus upstream/resolved canonical patch equivalence and no upstream overlap. Canonical changed/conflicting paths and diff shapes set the minimum rerun axes; reviewers may add but never omit axes. Ambiguous/cross-cutting impact reruns all axes before exact-head CI. Every trusted boundary revalidates the registered Git worktree, branch, commit existence, and
-live HEAD. Conflict content and pairwise diff digests are recomputed from canonical Git objects rather than trusted
-from reviewer claims. CI PASS on the exact reviewed PR head produces `merge-ready`; only an issue supervisor's fresh
-lead-authorized merge observation may create a merge receipt.
+```text
+persist intent
+-> native effect
+-> authenticate native journal/task evidence
+-> verify semantic result and live Git/GitHub state
+-> persist issue transition
+-> persist phase settlement
+-> append the next authorized wave
+```
 
-Native task completion is a settled claim only, never lane or dependency success. Before any mutation, a dependent
-supervisor validates each predecessor's persisted issue-store terminal evidence and proceeds only when every
-predecessor is canonical `done`. Missing, malformed, or blocked predecessor evidence produces a typed dependency
-blocker without creating issue artifacts. After the DAG settles, the parent audits all canonical issue stores, then
-imports terminal evidence in topological order into the shared lane ledger.
-`needs-human-check`, policy, external, cleanup,
-malformed-output, and ledger terminal states never release mutation.
+`dependsOn` is ordering only. No child output is propagated into a later
+prompt. The parent verifies and persists each result, then compiles the next
+wave from canonical state.
 
-## Native child orchestration
+## Admission
 
-Normal issue nodes run as the project-local `fluo-issue-supervisor` process
-agent. The supervisor session ID comes from the runtime (`PI_SESSION_ID`), not
-from caller input. It may delegate only through the direct native `task` tool:
-one foreground Terra-high implementer task, then one foreground three-item
-reviewer batch. Shell-launched agents, background handles, separate reviewer
-calls, and hand-built terminal dispatch blocks are forbidden.
-`terminalTaskPrompt()` is the sole prompt constructor and places authority in
-exactly one final dispatch block.
+Use `lane-coordinator.mjs` or:
 
-## Parent settlement
+```text
+node .agents/skills/execute-lane/scripts/lane-coordinator-cli.mjs plan \
+  --root . --ledger .omo/lanes/<lane-id>.json --max-active 2
+```
 
-After read-only settlement audit, the lead uses `lane-settlement.mjs` to import
-canonical terminal stores in dependency and queue order. The coordinator
-persists every deterministic transition through the shared WAL, then records
-dependency-blocked issues only from fresh branch/worktree/task/PR/store absence
-observations. A blocked terminal root must finish with
-`root_main_sync.status: blocked-terminal`; `not-started` is never terminal.
-Settlement reads never acquire or retire issue-store leases.
+An issue is admitted only when every explicit dependency and approved queue
+predecessor has imported canonical `done` evidence. Native completion, merge,
+or a child claim never releases a dependent. A blocked predecessor
+terminalizes untouched descendants only with fresh absence evidence proving no
+issue DAG, task, branch, worktree, PR, or side effect exists.
+
+Persist one issue-DAG dispatch intent before native `start`. Authenticate the
+native key record, run checkpoint, coordinator parent session, generation 1,
+definition fingerprint, and event journal before attaching the immutable
+`run_id`. Never replace a run or adopt it from another coordinator session.
+
+## Phase-gated amendments
+
+Compile the starting-head-bound preflight node with
+`compileIssueLifecycleDag()`. After each verified phase, append only the next
+wave with `amendIssueLifecycleDag()` and persist its complete base/target intent
+through `issue-dag-store.mjs` before native `dag amend`.
+
+The cumulative topology is:
+
+```text
+preflight
+-> implementation/fix
+-> contract + code + verification review
+-> PR create/adopt/update
+-> CI observation
+-> merge
+-> cleanup
+```
+
+Fix-back appends a new implementation generation and a new exact-head review
+triad. Conflict handling is three separate amendments because the resolved
+head is unknown in advance:
+
+```text
+conflict implementation
+-> conflict gate
+-> required conflict review axes
+```
+
+Every node ID contains the complete 40-character head and generation or
+observation identity. Completed nodes are immutable history. Never rename or
+reuse them. Reject an amendment that changes existing nodes, invalidates a
+completed node, mismatches `dag.definition.amended`, or exceeds 64 nodes.
+
+## Direct node roles
+
+- `fluo-issue-preflight`: source-read-only canonical acceptance compilation.
+- `fluo-issue-implementer`: one issue-worktree implementation or conflict
+  resolution generation; focused test-first checks only.
+- `fluo-contract-reviewer`, `fluo-code-reviewer`,
+  `fluo-verification-reviewer`: independent exact-head review. Contract/code
+  are source-read-only. Verification runs exactly one canonical verification
+  wrapper invocation.
+- `fluo-issue-operator`: exactly one issue-bound PR, CI, merge, cleanup, or
+  release-handoff operation followed by fresh observation.
+
+All project agents deny orchestration tools and run at task depth 1. Runtime
+verification must still reject any actual orchestration call. Configuration is
+policy; canonical task owner, native attachment events, task/session logs, and
+machine final responses are evidence.
+
+## Evidence and recovery
+
+`issue-dag-store.mjs` persists a hash-chained issue-local control bundle:
+
+```text
+dispatch-intent
+-> phase-running
+-> native-completed-unverified
+-> phase-settled
+-> amend-intent
+-> phase-running
+-> terminal
+```
+
+Native generation starts at 1 and increments once per amendment. Local
+`definition_generation` starts at 0. `implementer_generation` is the separate
+fix-back generation.
+
+Recovery is observe-before-effect:
+
+- intent without a run: discover the canonical key record before `start`;
+- run without local attachment: authenticate and attach;
+- amendment intent with native base: amend once;
+- native target already applied: authenticate the exact amendment event and
+  attach it without re-amending;
+- native completion without issue transition: verify task/runtime/live state
+  and import once;
+- issue transition without phase settlement: match its accepted receipt and
+  event hash, then backfill settlement;
+- uncertain PR/merge/cleanup: observe live state before any repeat mutation.
+
+A malformed/lost implementer that mutated the head remains a terminal child
+contract failure. Do not reset or silently adopt the head.
+
+## Review, remote lifecycle, and settlement
+
+Keep the existing review-preflight, implementer/runtime, reviewer/runtime,
+conflict, remote receipt, canonical verification, and trusted Git/GitHub
+contracts. The parent supplies direct DAG owner evidence to every runtime
+verifier and imports only verified machine results.
+
+Native `completed` means only that a child returned. It is never issue success.
+After canonical cleanup or a typed blocker, terminalize the issue-DAG bundle
+with the exact issue terminal event hash. `lane-settlement-audit.mjs` accepts a
+terminal claim only when the issue store and issue-DAG terminal projection
+match. Dependency release still requires canonical issue `done`.
+
+The parent serializes merges and root-main synchronization. Publishing remains
+GitHub Actions-only and Changesets-only. Release handoffs park as
+`blocked-maintainer-decision`.
+
+## Stop
+
+Stop when every confirmed issue is independently canonical `done` or an
+explicit terminal blocker, every admitted issue DAG is terminal and
+event-bound, untouched blocked descendants have absence evidence, the lane
+settlement audit is terminal-claims-ready, and root `main` is synchronized
+according to lane authority.

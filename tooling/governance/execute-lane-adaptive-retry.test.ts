@@ -47,7 +47,6 @@ const { writeActualShapedReviewerTask } = await import(
 );
 const {
   reviewerPromptSentinel,
-  reviewerTaskName,
 } = await import(
   resolve(
     process.cwd(),
@@ -187,12 +186,23 @@ const reviewerTask = (axis: string, head: string, fixBackEligible: boolean) => {
         }
       : {},
   };
+  const dagRunId = `dag_issue-${String(identity.issue_number)}`;
+  const dagKey =
+    `fluo:lane:${identity.lane_id}:issue-${String(identity.issue_number)}:lifecycle:v3`;
+  const nodeId = `review-${axis}-${head}`;
+  const ownerFingerprint = payloadDigest(nodeId);
   const task = {
     task_id: taskId,
     status: 'completed',
-    category: 'deep',
+    agent_type: `fluo-${axis === 'verification' ? 'verification' : axis}-reviewer`,
     parent_session_id: parentSessionId,
-    name: reviewerTaskName(axis, identity.issue_number, head),
+    name: nodeId,
+    owner: {
+      kind: 'dag',
+      runId: dagRunId,
+      nodeId,
+      fingerprint: ownerFingerprint,
+    },
     final_response:
       `<fluo:execute-lane:review:final:v1>${JSON.stringify(finalResponse)}` +
       '</fluo:execute-lane:review:final:v1>',
@@ -207,6 +217,8 @@ const reviewerTask = (axis: string, head: string, fixBackEligible: boolean) => {
           head_sha: head,
           preflight_sha256: reviewPreflight.sha256,
           review_axis: axis,
+          dag_key: dagKey,
+          node_id: nodeId,
         })}`,
     },
   };
@@ -223,6 +235,10 @@ const reviewerTask = (axis: string, head: string, fixBackEligible: boolean) => {
       head_sha: head,
       preflight_sha256: reviewPreflight.sha256,
       axis,
+      dag_run_id: dagRunId,
+      dag_key: dagKey,
+      node_id: nodeId,
+      dag_owner_fingerprint: ownerFingerprint,
     },
   });
   return { taskId, receipt };
@@ -269,6 +285,11 @@ const persistImplementerTask = (
   result: 'implementation-completed' | 'fix-completed',
 ) => {
   const taskId = `st_implement${String(generation)}${newHead.slice(0, 8)}`;
+  const dagRunId = `dag_issue-${String(identity.issue_number)}`;
+  const dagKey =
+    `fluo:lane:${identity.lane_id}:issue-${String(identity.issue_number)}:lifecycle:v3`;
+  const nodeId = `implement-g${String(generation)}-${String(state.head_sha)}`;
+  const ownerFingerprint = payloadDigest(nodeId);
   writeActualShapedImplementerTask({
     repository_root: repositoryRoot,
     task_id: taskId,
@@ -292,8 +313,17 @@ const persistImplementerTask = (
     blocker_ledger_sha256: payloadDigest(state.blocker_ledger),
     preflight_sha256: reviewPreflight.sha256,
     authoritative_preflight: reviewPreflight,
+    dag_run_id: dagRunId,
+    dag_key: dagKey,
+    node_id: nodeId,
+    dag_owner_fingerprint: ownerFingerprint,
   });
-  return { task_id: taskId };
+  return {
+    task_id: taskId,
+    dag_run_id: dagRunId,
+    dag_node_id: nodeId,
+    dag_owner_fingerprint: ownerFingerprint,
+  };
 };
 
 const createImplementingState = () =>
@@ -347,6 +377,12 @@ describe('execute-lane adaptive retry policy', () => {
       const generation = refresh
         ? state.implementer_generation + 1
         : state.implementer_generation;
+      const implementerEvidence = persistImplementerTask(
+        state,
+        nextHead,
+        generation,
+        'fix-completed',
+      );
       state = transitionIssueSupervisor(state, {
         kind: 'fix-completed',
         new_head: nextHead,
@@ -355,17 +391,10 @@ describe('execute-lane adaptive retry policy', () => {
         addressed_blockers: remediatedBlockers(state.blockers),
         fresh_implementer: refresh,
         implementer_generation: generation,
-        implementer_evidence: persistImplementerTask(
-          state,
-          nextHead,
-          generation,
-          'fix-completed',
-        ),
+        implementer_evidence: implementerEvidence,
         ...(refresh
           ? {
-              fresh_implementer_evidence: {
-                task_id: `st_implement${String(generation)}${nextHead.slice(0, 8)}`,
-              },
+              fresh_implementer_evidence: implementerEvidence,
             }
           : {}),
       });

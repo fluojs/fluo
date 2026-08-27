@@ -14,6 +14,21 @@ const dependencySucceeded = (snapshot, issueNumber) =>
   snapshot.completed_issues.includes(issueNumber) &&
   snapshot.issue_progress[String(issueNumber)]?.status === 'done';
 
+const issueDependencies = (snapshot, issueNumber) => {
+  const lane = snapshot.lanes.find((candidate) =>
+    candidate.queue.includes(issueNumber),
+  );
+  const index = lane?.queue.indexOf(issueNumber) ?? -1;
+  const queuePredecessor =
+    index > 0 ? lane.queue[index - 1] : undefined;
+  return [
+    ...new Set([
+      ...(snapshot.dependency_graph[String(issueNumber)] ?? []),
+      ...(queuePredecessor === undefined ? [] : [queuePredecessor]),
+    ]),
+  ];
+};
+
 export const dependencyGate = (snapshot, issueNumber) => {
   assertContract('lane-ledger-v2', snapshot);
   validateLedger('lane-ledger-v2', snapshot);
@@ -22,7 +37,7 @@ export const dependencyGate = (snapshot, issueNumber) => {
       `issue ${String(issueNumber)} is not confirmed by the lane.`,
     );
   }
-  const dependencies = snapshot.dependency_graph[String(issueNumber)] ?? [];
+  const dependencies = issueDependencies(snapshot, issueNumber);
   const unsatisfiedDependencies = dependencies.filter(
     (dependency) => !dependencySucceeded(snapshot, dependency),
   );

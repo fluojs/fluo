@@ -169,6 +169,10 @@ const reviewBatch = (
   );
   mkdirSync(taskRoot, { recursive: true });
   const reviewer_receipts = Object.fromEntries(Object.entries(taskIds).map(([axis, task_id]) => {
+    const dagRunId = 'dag_issue-3305';
+    const dagKey = 'fluo:lane:lane-a:issue-3305:lifecycle:v3';
+    const nodeId = `review-${axis}-${reviewedHead}`;
+    const ownerFingerprint = payloadDigest(nodeId);
     const output = {
       sentinel: 'fluo:execute-lane:review:final:v1', axis, head_sha: reviewedHead,
       preflight_sha256: reviewPreflight.sha256,
@@ -181,8 +185,14 @@ const reviewBatch = (
       task_id,
       status: 'completed',
       parent_session_id: 'ses_parent',
-      category: 'deep',
-      name: reviewerTaskName(axis, 3305, reviewedHead),
+      agent_type: `fluo-${axis === 'verification' ? 'verification' : axis}-reviewer`,
+      name: nodeId,
+      owner: {
+        kind: 'dag',
+        runId: dagRunId,
+        nodeId,
+        fingerprint: ownerFingerprint,
+      },
       final_response: formatSenpiFinalResponse(
         'fluo:execute-lane:review:final:v1',
         output,
@@ -198,6 +208,8 @@ const reviewBatch = (
             head_sha: reviewedHead,
             preflight_sha256: reviewPreflight.sha256,
             review_axis: axis,
+            dag_key: dagKey,
+            node_id: nodeId,
           })}`,
       },
     };
@@ -214,6 +226,10 @@ const reviewBatch = (
         head_sha: reviewedHead,
         preflight_sha256: reviewPreflight.sha256,
         axis,
+        dag_run_id: dagRunId,
+        dag_key: dagKey,
+        node_id: nodeId,
+        dag_owner_fingerprint: ownerFingerprint,
       },
     });
     return [axis, receipt];
@@ -351,7 +367,12 @@ test('two blocked heads require a fresh implementer generation', () => {
       implementer_generation: 1,
       fresh_implementer: true,
       reported_generation: 2,
-      fresh_implementer_evidence: { task_id: 'st_fresh' },
+      fresh_implementer_evidence: {
+        task_id: 'st_fresh',
+        dag_run_id: 'dag_issue-3305',
+        dag_node_id: `implement-g2-${'a'.repeat(40)}`,
+        dag_owner_fingerprint: 'f'.repeat(64),
+      },
     }),
     2,
   );
@@ -655,6 +676,8 @@ test('canonical verification uses a clean contained exact-head workspace and rea
     process.env.PATH = `${bin}:${originalPath}`;
     let canonicalBundle = initialiseIssueSupervisorStore(runtimeRoot, {
       ...supervisorIdentity, starting_head_sha: startingHead, repository_root: root,
+      parent_session_id:
+        process.env.PI_SESSION_ID ?? supervisorIdentity.parent_session_id,
       issue_contract_revision: undefined, issue_contract_sha256: undefined, lane_plan_approval_sha256: undefined,
     });
     const authority = canonicalBundle.snapshot.preflight_authority;
@@ -961,6 +984,12 @@ const remediatedBlockers = () =>
 
 const implementationStep = (state, newHead, verification = 'focused tests passed') => {
   const taskId = `st_implement${String(state.issue_number)}${newHead.slice(0, 8)}`;
+  const dagRunId = `dag_issue-${String(state.issue_number)}`;
+  const dagKey =
+    `fluo:lane:${state.lane_id}:issue-${String(state.issue_number)}:lifecycle:v3`;
+  const nodeId =
+    `implement-g${String(state.implementer_generation)}-${state.head_sha}`;
+  const ownerFingerprint = payloadDigest(nodeId);
   writeActualShapedImplementerTask({
     repository_root: state.repository_root,
     task_id: taskId,
@@ -975,19 +1004,33 @@ const implementationStep = (state, newHead, verification = 'focused tests passed
     verification,
     preflight_sha256: state.review_preflight.sha256,
     authoritative_preflight: state.review_preflight,
+    dag_run_id: dagRunId,
+    dag_key: dagKey,
+    node_id: nodeId,
+    dag_owner_fingerprint: ownerFingerprint,
   });
   return {
     kind: 'implementation-completed',
     new_head: newHead,
     verification,
     implementer_generation: state.implementer_generation,
-    implementer_evidence: { task_id: taskId },
+    implementer_evidence: {
+      task_id: taskId,
+      dag_run_id: dagRunId,
+      dag_node_id: nodeId,
+      dag_owner_fingerprint: ownerFingerprint,
+    },
   };
 };
 
 const fixStep = (state, newHead, generation = state.implementer_generation) => {
   const addressedBlockers = remediatedBlockers();
   const taskId = `st_fix${String(state.issue_number)}${newHead.slice(0, 8)}`;
+  const dagRunId = `dag_issue-${String(state.issue_number)}`;
+  const dagKey =
+    `fluo:lane:${state.lane_id}:issue-${String(state.issue_number)}:lifecycle:v3`;
+  const nodeId = `implement-g${String(generation)}-${state.head_sha}`;
+  const ownerFingerprint = payloadDigest(nodeId);
   writeActualShapedImplementerTask({
     repository_root: state.repository_root,
     task_id: taskId,
@@ -1007,6 +1050,10 @@ const fixStep = (state, newHead, generation = state.implementer_generation) => {
     ),
     preflight_sha256: state.review_preflight.sha256,
     authoritative_preflight: state.review_preflight,
+    dag_run_id: dagRunId,
+    dag_key: dagKey,
+    node_id: nodeId,
+    dag_owner_fingerprint: ownerFingerprint,
   });
   return {
     kind: 'fix-completed',
@@ -1016,7 +1063,12 @@ const fixStep = (state, newHead, generation = state.implementer_generation) => {
     addressed_blockers: addressedBlockers,
     fresh_implementer: generation !== state.implementer_generation,
     implementer_generation: generation,
-    implementer_evidence: { task_id: taskId },
+    implementer_evidence: {
+      task_id: taskId,
+      dag_run_id: dagRunId,
+      dag_node_id: nodeId,
+      dag_owner_fingerprint: ownerFingerprint,
+    },
   };
 };
 

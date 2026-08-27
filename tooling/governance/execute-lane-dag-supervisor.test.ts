@@ -6,7 +6,6 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
-  symlinkSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -18,34 +17,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 const senpiFinal = (sentinel: string, payload: unknown) =>
   `<${sentinel}>${JSON.stringify(payload)}</${sentinel}>`;
 
-// allow: SIZE_OK — integrated v2 supervisor lifecycle regression matrix.
-type DagNode = Readonly<{
-  id: string;
-  category?: string;
-  subagent_type?: string;
-  dependsOn: readonly string[];
-  load_skills: readonly string[];
-  prompt: string;
-}>;
-type DagDefinition = Readonly<{
-  key: string;
-  name: string;
-  nodes: readonly DagNode[];
-}>;
-type ImplementerRoute = Readonly<{
-  subagent_type: 'fluo-issue-implementer';
-  expected_model: 'openai-codex/gpt-5.6-terra';
-  expected_thinking: 'high';
-}>;
-type DagBinding = Readonly<{
-  version: number;
-  lane_id: string;
-  dag_key: string;
-  run_id: string;
-  definition_sha256: string;
-  dispatch_event_hash: string;
-  status: string;
-}>;
+// allow: SIZE_OK — integrated v2 issue lifecycle regression matrix.
 type SupervisorState = Readonly<{
   version: 2;
   lane_id: string;
@@ -137,7 +109,6 @@ const {
   conflictReviewerPromptSentinel,
   conflictReviewerTaskName,
   reviewerPromptSentinel,
-  reviewerTaskName,
 } = (await import(
   resolve(
     process.cwd(),
@@ -147,59 +118,6 @@ const {
   conflictReviewerPromptSentinel: (input: unknown) => string;
   conflictReviewerTaskName: (issueNumber: number, headSha: string) => string;
   reviewerPromptSentinel: (input: unknown) => string;
-  reviewerTaskName: (
-    axis: string,
-    issueNumber: number,
-    headSha: string,
-  ) => string;
-};
-const {
-  compileLaneSupervisorDag,
-  implementerRoute,
-  nestedDispatchPolicy,
-  supervisorRoute,
-} = (await import(
-  resolve(
-    process.cwd(),
-    '.agents/skills/execute-lane/scripts/compile-dag.mjs',
-  )
-)) as {
-  compileLaneSupervisorDag: (ledger: unknown) => DagDefinition;
-  implementerRoute: ImplementerRoute;
-  nestedDispatchPolicy: Readonly<{
-    implementer: Readonly<{ run_in_background: false }>;
-    reviewers: Readonly<{ run_in_background: false; batch: true }>;
-  }>;
-  supervisorRoute: Readonly<{ subagent_type: 'fluo-issue-supervisor' }>;
-};
-const {
-  assertDagBindingMatches,
-  createDagBinding,
-  loadDagBinding,
-  persistDagBinding,
-} = (await import(
-  resolve(
-    process.cwd(),
-    '.agents/skills/execute-lane/scripts/dag-binding.mjs',
-  )
-)) as {
-  assertDagBindingMatches: (
-    binding: DagBinding,
-    expected: {
-      definition: DagDefinition;
-      lane_id: string;
-      run_id: string;
-      dispatch_event_hash: string;
-    },
-  ) => void;
-  createDagBinding: (input: {
-    definition: DagDefinition;
-    lane_id: string;
-    run_id: string;
-    dispatch_event_hash: string;
-  }) => DagBinding;
-  loadDagBinding: (runtimeRoot: string, laneId: string) => DagBinding | null;
-  persistDagBinding: (runtimeRoot: string, binding: DagBinding) => void;
 };
 const {
   applyIssueSupervisorTransition: applyIssueSupervisorTransitionRaw,
@@ -451,6 +369,13 @@ const reviewBatchFor = (
       verification: `st_governance_verification_${state.head_sha.slice(0, 8)}`,
     };
   const reviewer_receipts = Object.fromEntries(Object.entries(task_ids).map(([axis, task_id]) => {
+    const dagRunId = `dag_issue-${String(state.issue_number)}`;
+    const dagKey =
+      `fluo:lane:${state.lane_id}:issue-${String(state.issue_number)}:lifecycle:v3`;
+    const nodeId = `review-${axis}-${state.head_sha}`;
+    const ownerFingerprint = createHash('sha256')
+      .update(nodeId)
+      .digest('hex');
     const result = reviews.find((review) => review.reviewer === axis);
     const blockers = Array.isArray(result?.blockers) ? result.blockers : [];
     const final_response = {
@@ -463,9 +388,15 @@ const reviewBatchFor = (
     const task = {
       task_id,
       status: 'completed',
-      category: 'deep',
+      agent_type: `fluo-${axis === 'verification' ? 'verification' : axis}-reviewer`,
       parent_session_id: 'ses-governance-parent',
-      name: reviewerTaskName(axis, state.issue_number, state.head_sha),
+      name: nodeId,
+      owner: {
+        kind: 'dag',
+        runId: dagRunId,
+        nodeId,
+        fingerprint: ownerFingerprint,
+      },
       final_response: senpiFinal(
         'fluo:execute-lane:review:final:v1',
         final_response,
@@ -481,6 +412,8 @@ const reviewBatchFor = (
             head_sha: state.head_sha,
             preflight_sha256: preflight.sha256,
             review_axis: axis,
+            dag_key: dagKey,
+            node_id: nodeId,
           })}`,
       },
     };
@@ -497,6 +430,10 @@ const reviewBatchFor = (
         head_sha: state.head_sha,
         preflight_sha256: preflight.sha256,
         axis,
+        dag_run_id: dagRunId,
+        dag_key: dagKey,
+        node_id: nodeId,
+        dag_owner_fingerprint: ownerFingerprint,
       },
     });
     return [axis, receipt];
@@ -524,6 +461,13 @@ const normalizeTransition = (
   const transition = transitionValue as Readonly<Record<string, unknown>>;
   if (transition.kind === 'implementation-completed') {
     const taskId = `st_implement${String(state.issue_number)}${String(transition.new_head).slice(0, 8)}`;
+    const dagRunId = `dag_issue-${String(state.issue_number)}`;
+    const dagKey =
+      `fluo:lane:${state.lane_id}:issue-${String(state.issue_number)}:lifecycle:v3`;
+    const nodeId = `implement-g1-${state.head_sha}`;
+    const ownerFingerprint = createHash('sha256')
+      .update(nodeId)
+      .digest('hex');
     writeActualShapedImplementerTask({
       repository_root: state.repository_root,
       task_id: taskId,
@@ -538,17 +482,33 @@ const normalizeTransition = (
       verification: transition.verification,
       preflight_sha256: String(state.review_preflight?.sha256),
       authoritative_preflight: state.review_preflight,
+      dag_run_id: dagRunId,
+      dag_key: dagKey,
+      node_id: nodeId,
+      dag_owner_fingerprint: ownerFingerprint,
     });
     return {
       ...transition,
       implementer_generation: 1,
-      implementer_evidence: { task_id: taskId },
+      implementer_evidence: {
+        task_id: taskId,
+        dag_run_id: dagRunId,
+        dag_node_id: nodeId,
+        dag_owner_fingerprint: ownerFingerprint,
+      },
     };
   }
   if (transition.kind === 'fix-completed') {
     const taskId = `st_fix${String(state.issue_number)}${String(transition.new_head).slice(0, 8)}`;
     const generation = Number(transition.implementer_generation ?? state.implementer_generation);
     const freshImplementer = transition.fresh_implementer === true;
+    const dagRunId = `dag_issue-${String(state.issue_number)}`;
+    const dagKey =
+      `fluo:lane:${state.lane_id}:issue-${String(state.issue_number)}:lifecycle:v3`;
+    const nodeId = `implement-g${String(generation)}-${state.head_sha}`;
+    const ownerFingerprint = createHash('sha256')
+      .update(nodeId)
+      .digest('hex');
     writeActualShapedImplementerTask({
       repository_root: state.repository_root,
       task_id: taskId,
@@ -568,13 +528,31 @@ const normalizeTransition = (
       ),
       preflight_sha256: String(state.review_preflight?.sha256),
       authoritative_preflight: state.review_preflight,
+      dag_run_id: dagRunId,
+      dag_key: dagKey,
+      node_id: nodeId,
+      dag_owner_fingerprint: ownerFingerprint,
     });
     return {
       ...transition,
       fresh_implementer: freshImplementer,
       implementer_generation: generation,
-      implementer_evidence: { task_id: taskId },
-      ...(freshImplementer ? { fresh_implementer_evidence: { task_id: taskId } } : {}),
+      implementer_evidence: {
+        task_id: taskId,
+        dag_run_id: dagRunId,
+        dag_node_id: nodeId,
+        dag_owner_fingerprint: ownerFingerprint,
+      },
+      ...(freshImplementer
+        ? {
+            fresh_implementer_evidence: {
+              task_id: taskId,
+              dag_run_id: dagRunId,
+              dag_node_id: nodeId,
+              dag_owner_fingerprint: ownerFingerprint,
+            },
+          }
+        : {}),
     };
   }
   if (transition.kind === 'local-review') {
@@ -2271,200 +2249,6 @@ describe('execute-lane issue supervisor lifecycle', () => {
       ).toEqual(releaseImport);
     } finally {
       rmSync(releaseRoot, { recursive: true, force: true });
-    }
-  });
-
-  it('compiles issue dependencies and persists one idempotent DAG binding', () => {
-    const ledger = JSON.parse(
-      readFileSync(
-        resolve(
-          process.cwd(),
-          'tooling/governance/fixtures/execute-lane-native/ready-ledger-multi-v2.json',
-        ),
-        'utf8',
-      ),
-    );
-    const definition = compileLaneSupervisorDag(ledger);
-
-    expect(definition.key).toBe('fluo:lane:lane-4101-runtime:issue-supervisors:v2');
-    expect(implementerRoute).toEqual({
-      subagent_type: 'fluo-issue-implementer',
-      expected_model: 'openai-codex/gpt-5.6-terra',
-      expected_thinking: 'high',
-    });
-    expect(supervisorRoute).toEqual({
-      subagent_type: 'fluo-issue-supervisor',
-    });
-    expect(nestedDispatchPolicy).toEqual({
-      implementer: { run_in_background: false },
-      reviewers: { run_in_background: false, batch: true },
-    });
-    expect(definition.nodes).toHaveLength(2);
-    expect(definition.nodes[0]).toMatchObject({
-      id: 'issue-4101-supervisor',
-      subagent_type: 'fluo-issue-supervisor',
-      dependsOn: [],
-      load_skills: ['execute-lane'],
-    });
-    expect(definition.nodes[0].category).toBeUndefined();
-    expect(definition.nodes[1]).toMatchObject({
-      id: 'issue-4102-supervisor',
-      subagent_type: 'fluo-issue-supervisor',
-      dependsOn: ['issue-4101-supervisor'],
-      load_skills: ['execute-lane'],
-    });
-    expect(definition.nodes[1].category).toBeUndefined();
-    expect(definition.nodes[0].prompt).toContain('STOP WHEN:');
-    expect(definition.nodes[0].prompt).toContain(
-      'await-lane-dispatch.mjs',
-    );
-    expect(definition.nodes[0].prompt).toContain(
-      'CONFLICTING/DIRTY observation enters conflict-resolution',
-    );
-    expect(definition.nodes[0].prompt).not.toContain(
-      'CONFLICTING/DIRTY observation enters CI fix-back',
-    );
-    expect(definition.nodes[0].prompt).toMatch(
-      /exactly one\s+successful bash event/u,
-    );
-    expect(definition.nodes[0].prompt).toContain(
-      '--head, --preflight',
-    );
-    expect(definition.nodes[0].prompt).toContain(
-      'immutable accepted preflight digest',
-    );
-    expect(definition.nodes[0].prompt).toContain(
-      '.omo/senpi-task/logs/<task-id>.jsonl',
-    );
-    expect(definition.nodes[0].prompt).toContain(
-      'direct native task tool',
-    );
-    expect(definition.nodes[0].prompt).toContain(
-      'run_in_background: false',
-    );
-    expect(definition.nodes[0].prompt).toContain(
-      'one foreground batch',
-    );
-    expect(definition.nodes[0].prompt).toContain(
-      'Shell-launched delegation is forbidden',
-    );
-    const omoConfig = JSON.parse(
-      readFileSync(resolve(process.cwd(), '.omo/omo.jsonc'), 'utf8'),
-    );
-    expect(omoConfig).toMatchObject({
-      task: { max_depth: 2 },
-      agents: {
-        'fluo-issue-supervisor': {
-          execution_mode: 'process',
-          max_depth: 2,
-          tools: {
-            task: true,
-          },
-          allowed_subagents: ['fluo-issue-implementer'],
-        },
-      },
-    });
-    expect(() =>
-      compileLaneSupervisorDag({
-        ...ledger,
-        dependency_graph: { 4102: [9999] },
-      }),
-    ).toThrow(/dependency|confirmed issue/u);
-    expect(() =>
-      compileLaneSupervisorDag({
-        ...ledger,
-        dependency_graph: { 4101: [4102], 4102: [4101] },
-      }),
-    ).toThrow(/cycle|dependency/u);
-    const releaseLedger = JSON.parse(
-      readFileSync(
-        resolve(
-          process.cwd(),
-          'tooling/governance/fixtures/execute-lane-native/ready-ledger-release-v2.json',
-        ),
-        'utf8',
-      ),
-    );
-    const releaseDefinition = compileLaneSupervisorDag(releaseLedger);
-    expect(releaseDefinition.nodes).toHaveLength(1);
-    expect(releaseDefinition.nodes[0]).toMatchObject({
-      category: 'quick',
-      dependsOn: [],
-    });
-    expect(releaseDefinition.nodes[0].prompt).toContain(
-      'blocked-maintainer-decision',
-    );
-    expect(releaseDefinition.nodes[0].prompt).toContain(
-      'await-lane-dispatch.mjs',
-    );
-    const releasePrompt = releaseDefinition.nodes[0].prompt;
-    expect(releasePrompt).toContain('initialiseIssueSupervisorStore()');
-    expect(releasePrompt).toContain('review_policy=preflight-v1');
-    expect(releasePrompt).toContain('preflight-completed');
-    expect(releasePrompt).toContain('lane_plan_approval_sha256');
-    expect(releasePrompt.indexOf('preflight-completed')).toBeLessThan(
-      releasePrompt.lastIndexOf('Apply release-handoff'),
-    );
-
-    const binding = createDagBinding({
-      definition,
-      lane_id: ledger.lane_id,
-      run_id: 'run_lane_4101',
-      dispatch_event_hash: 'c'.repeat(64),
-    });
-    expect(binding.version).toBe(3);
-    expect(() =>
-      createDagBinding({
-        definition: { ...definition, key: 'fluo:lane:other:issue-supervisors:v2' },
-        lane_id: ledger.lane_id,
-        run_id: 'run_lane_4101',
-        dispatch_event_hash: 'c'.repeat(64),
-      }),
-    ).toThrow(/canonical for its lane/u);
-    const directory = mkdtempSync(
-      join(realpathSync(tmpdir()), 'fluo-dag-binding-'),
-    );
-    const runtimeRoot = join(directory, 'lane-runs');
-    try {
-      persistDagBinding(runtimeRoot, binding);
-      persistDagBinding(runtimeRoot, binding);
-      expect(loadDagBinding(runtimeRoot, binding.lane_id)).toEqual(binding);
-      expect(() =>
-        assertDagBindingMatches(binding, {
-          definition,
-          lane_id: binding.lane_id,
-          run_id: binding.run_id,
-          dispatch_event_hash: binding.dispatch_event_hash,
-        }),
-      ).not.toThrow();
-      expect(() =>
-        assertDagBindingMatches(binding, {
-          definition: { ...definition, name: 'tampered definition' },
-          lane_id: binding.lane_id,
-          run_id: binding.run_id,
-          dispatch_event_hash: binding.dispatch_event_hash,
-        }),
-      ).toThrow(/definition digest/u);
-      expect(() =>
-        persistDagBinding(runtimeRoot, {
-          ...binding,
-          run_id: 'run_substituted',
-        }),
-      ).toThrow(/conflicts with the persisted run/u);
-
-      const redirectedRoot = join(directory, 'redirected-root');
-      const outside = join(directory, 'outside');
-      mkdirSync(outside);
-      symlinkSync(outside, redirectedRoot);
-      expect(() =>
-        persistDagBinding(redirectedRoot, {
-          ...binding,
-          lane_id: 'lane-symlink',
-          dag_key: 'fluo:lane:lane-symlink:issue-supervisors:v2',
-        }),
-      ).toThrow(/real directory/u);
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
     }
   });
 

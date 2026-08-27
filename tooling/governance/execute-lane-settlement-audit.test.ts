@@ -11,13 +11,13 @@ import { join, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-const { auditLaneSupervisorSettlement } = (await import(
+const { auditLaneIssueSettlement } = (await import(
   resolve(
     process.cwd(),
     '.agents/skills/execute-lane/scripts/lane-settlement-audit.mjs',
   )
 )) as {
-  auditLaneSupervisorSettlement: (input: {
+  auditLaneIssueSettlement: (input: {
     repository_root: string;
     lane: Readonly<Record<string, unknown>>;
     command_runner?: unknown;
@@ -57,6 +57,43 @@ const {
     options?: unknown,
   ) => Readonly<Record<string, unknown>>;
 };
+const {
+  attachIssueDagRun,
+  createIssueDagRunBundle,
+  observeIssueDagCompletion,
+  persistIssueDagRunBundle,
+  settleIssueDagPhase,
+  terminalizeIssueDagRun,
+} = (await import(
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/issue-dag-store.mjs',
+  )
+)) as {
+  createIssueDagRunBundle: (
+    input: Readonly<Record<string, unknown>>,
+  ) => Readonly<Record<string, any>>;
+  attachIssueDagRun: (
+    bundle: Readonly<Record<string, any>>,
+    evidence: Readonly<Record<string, unknown>>,
+  ) => Readonly<Record<string, any>>;
+  observeIssueDagCompletion: (
+    bundle: Readonly<Record<string, any>>,
+    evidence: Readonly<Record<string, unknown>>,
+  ) => Readonly<Record<string, any>>;
+  settleIssueDagPhase: (
+    bundle: Readonly<Record<string, any>>,
+    evidence: Readonly<Record<string, unknown>>,
+  ) => Readonly<Record<string, any>>;
+  terminalizeIssueDagRun: (
+    bundle: Readonly<Record<string, any>>,
+    evidence: Readonly<Record<string, unknown>>,
+  ) => Readonly<Record<string, any>>;
+  persistIssueDagRunBundle: (
+    runtimeRoot: string,
+    bundle: Readonly<Record<string, any>>,
+  ) => void;
+};
 
 describe('execute-lane supervisor settlement audit', () => {
   it('rejects native DAG completion without canonical issue stores', () => {
@@ -75,7 +112,7 @@ describe('execute-lane supervisor settlement audit', () => {
 
     try {
       expect(
-        auditLaneSupervisorSettlement({
+        auditLaneIssueSettlement({
           repository_root: directory,
           lane,
         }),
@@ -172,7 +209,7 @@ describe('execute-lane supervisor settlement audit', () => {
         },
         { command_runner: commandRunner },
       );
-      applyIssueSupervisorTransition(
+      bundle = applyIssueSupervisorTransition(
         runtimeRoot,
         'lane-4101-runtime',
         4101,
@@ -184,6 +221,82 @@ describe('execute-lane supervisor settlement audit', () => {
         },
         { command_runner: commandRunner },
       );
+      const definition = {
+        key: 'fluo:lane:lane-4101-runtime:issue-4101:lifecycle:v3',
+        name: 'Fluo lane lane-4101-runtime issue 4101 lifecycle',
+        nodes: [
+          {
+            id: `preflight-g0-h${'0'.repeat(40)}`,
+            category: 'deep',
+            dependsOn: [],
+            prompt: 'fixture',
+          },
+        ],
+      };
+      let dagBundle = createIssueDagRunBundle({
+        lane_id: 'lane-4101-runtime',
+        issue_number: 4101,
+        dependencies: [],
+        coordinator_session_id: 'ses-settlement-child-contract',
+        head_sha: '0'.repeat(40),
+        definition,
+        dispatch_event_hash: 'd'.repeat(64),
+      });
+      dagBundle = attachIssueDagRun(dagBundle, {
+        run_id: 'run_issue_4101',
+        run_key: definition.key,
+        parent_session_id: 'ses-settlement-child-contract',
+        definition_fingerprint: 'e'.repeat(64),
+        native_generation: 1,
+      });
+      persistIssueDagRunBundle(runtimeRoot, dagBundle);
+
+      expect(
+        auditLaneIssueSettlement({
+          repository_root: directory,
+          lane: ledger,
+          command_runner: commandRunner,
+        }),
+      ).toEqual({
+        version: 1,
+        lane_id: 'lane-4101-runtime',
+        status: 'incomplete',
+        done_issues: [],
+        blocked_issues: [],
+        active_issues: [
+          {
+            issue_number: 4101,
+            status: 'blocked-child-contract-error',
+            dag_status: 'phase-running',
+          },
+        ],
+        missing_issues: [],
+      });
+
+      dagBundle = observeIssueDagCompletion(dagBundle, {
+        completed_node_ids: [`preflight-g0-h${'0'.repeat(40)}`],
+        definition_fingerprint: 'e'.repeat(64),
+        native_generation: 1,
+      });
+      dagBundle = settleIssueDagPhase(dagBundle, {
+        completed_node_ids: [`preflight-g0-h${'0'.repeat(40)}`],
+        definition_fingerprint: 'e'.repeat(64),
+        native_generation: 1,
+      });
+      dagBundle = terminalizeIssueDagRun(dagBundle, {
+        issue_status: 'blocked-child-contract-error',
+        issue_event_hash: String(
+          (
+            (
+              bundle.events as readonly Readonly<
+                Record<string, unknown>
+              >[]
+            ).at(-1) as Readonly<Record<string, unknown>>
+          )
+            .event_hash,
+        ),
+      });
+      persistIssueDagRunBundle(runtimeRoot, dagBundle);
       const issueDirectory = resolve(
         runtimeRoot,
         'lane-4101-runtime',
@@ -197,7 +310,7 @@ describe('execute-lane supervisor settlement audit', () => {
         .sort();
 
       expect(
-        auditLaneSupervisorSettlement({
+        auditLaneIssueSettlement({
           repository_root: directory,
           lane: ledger,
           command_runner: commandRunner,
@@ -286,7 +399,7 @@ describe('execute-lane supervisor settlement audit', () => {
       );
 
       expect(() =>
-        auditLaneSupervisorSettlement({
+        auditLaneIssueSettlement({
           repository_root: directory,
           lane,
           command_runner: commandRunner,

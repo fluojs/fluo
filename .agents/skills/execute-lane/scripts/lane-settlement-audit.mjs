@@ -9,10 +9,13 @@ import {
   canonicalLaneLedgerPath,
   canonicalLaneRuntimeRoot,
 } from './lane-runtime-paths.mjs';
+import {
+  loadIssueDagRunBundle,
+} from './issue-dag-store.mjs';
 
 const terminalStatuses = new Set(issueSupervisorTerminalStatuses);
 
-export const auditLaneSupervisorSettlement = ({
+export const auditLaneIssueSettlement = ({
   repository_root,
   lane,
   command_runner,
@@ -51,6 +54,32 @@ export const auditLaneSupervisorSettlement = ({
       );
     }
     const status = bundle.snapshot.status;
+    const dagBundle = loadIssueDagRunBundle(
+      runtimeRoot,
+      lane.lane_id,
+      issueNumber,
+    );
+    const dependencyBlockedWithoutRun =
+      status === 'blocked-terminal' &&
+      bundle.snapshot.blockers?.some(
+        (blocker) => blocker.signature === 'dependency:not-done',
+      );
+    if (
+      terminalStatuses.has(status) &&
+      !dependencyBlockedWithoutRun &&
+      (dagBundle === null ||
+        dagBundle.state.status !== 'terminal' ||
+        dagBundle.state.terminal_issue_status !== status ||
+        dagBundle.state.terminal_issue_event_hash !==
+          bundle.events.at(-1)?.event_hash)
+    ) {
+      activeIssues.push({
+        issue_number: issueNumber,
+        status,
+        dag_status: dagBundle?.state.status ?? 'missing',
+      });
+      continue;
+    }
     if (status === 'done') {
       doneIssues.push(issueNumber);
     } else if (terminalStatuses.has(status)) {
@@ -101,7 +130,7 @@ if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
       'lane ledger identity does not match its canonical path.',
     );
   }
-  const result = auditLaneSupervisorSettlement({
+  const result = auditLaneIssueSettlement({
     repository_root: canonical.repositoryRoot,
     lane,
   });
