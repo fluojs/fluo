@@ -139,6 +139,15 @@ async function writeWebResponse(
   await pipeline(Readable.from(response.body), target);
 }
 
+/**
+ * Dispatch one Pages Router request through the bound Fluo adapter and stream
+ * the produced Web response back onto the Node.js API route target.
+ *
+ * @param adapter Bootstrapped Next-hosted Fluo application adapter.
+ * @param request Native Next.js Pages Router request source.
+ * @param response Native Next.js Pages Router response target.
+ * @returns Resolves once the Web response has been fully streamed to `response`.
+ */
 export async function dispatchNextPagesRequest(
   adapter: NextHttpApplicationAdapter,
   request: NextPagesRequestSource,
