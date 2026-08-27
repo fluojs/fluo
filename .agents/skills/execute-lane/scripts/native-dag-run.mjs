@@ -173,38 +173,74 @@ export const loadIssueNativeDagRun = ({
   }
   authenticateKeyRecord(repositoryRoot, run);
   const events = nativeEvents(repositoryRoot, runId);
+  if (events.some((event) => event.type === 'dag.node.retried')) {
+    throw new TypeError(
+      'issue DAG nodes are immutable; retry by appending a fresh node.',
+    );
+  }
   const amendments = events
     .filter((event) => event.type === 'dag.definition.amended')
     .map((event) => amendmentFor(event, laneId, issueNumber));
+  if (run.generation !== amendments.length + 1) {
+    throw new TypeError(
+      'native DAG runtime generation does not match its amendment history.',
+    );
+  }
+  const createdFingerprint = events.find(
+    (event) => event.type === 'dag.run.created',
+  )?.definitionFingerprint;
+  let priorFingerprint = createdFingerprint;
+  for (const amendment of amendments) {
+    if (amendment.previous_fingerprint !== priorFingerprint) {
+      throw new TypeError(
+        'native DAG amendment history does not match the run.',
+      );
+    }
+    priorFingerprint = amendment.fingerprint;
+  }
   if (
-    amendments.length !== run.generation - 1 ||
-    (amendments.length > 0 &&
-      amendments.at(-1).fingerprint !== run.definitionFingerprint)
+    !/^[a-f0-9]{64}$/u.test(createdFingerprint ?? '') ||
+    priorFingerprint !== run.definitionFingerprint
   ) {
     throw new TypeError('native DAG amendment history does not match the run.');
   }
-  const taskAttachments = Object.fromEntries(
-    events
-      .filter((event) => event.type === 'dag.node.task-attached')
-      .map((event) => [
-        event.nodeId,
-        {
-          task_id: event.taskId,
-          attempt: event.attempt,
-          event_sequence: event.seq,
-        },
-      ]),
+  const attachmentEvents = events.filter(
+    (event) => event.type === 'dag.node.task-attached',
   );
+  if (
+    new Set(attachmentEvents.map((event) => event.nodeId)).size !==
+    attachmentEvents.length
+  ) {
+    throw new TypeError(
+      'issue DAG immutable node has multiple task attachments.',
+    );
+  }
+  const taskAttachments = Object.fromEntries(
+    attachmentEvents.map((event) => [
+      event.nodeId,
+      {
+        task_id: event.taskId,
+        attempt: event.attempt,
+        event_sequence: event.seq,
+      },
+    ]),
+  );
+  const nodes = structuredClone(run.nodes ?? {});
+  const completedNodeIds = Object.values(nodes)
+    .filter((node) => node?.state === 'completed')
+    .map((node) => node.id);
   return {
     run_id: runId,
     run_key: run.runKey,
     parent_session_id: run.parentSessionId,
     status: run.status,
-    native_generation: run.generation,
+    native_generation: amendments.length + 1,
+    runtime_generation: run.generation,
     definition,
     definition_sha256: payloadDigest(definition),
     definition_fingerprint: run.definitionFingerprint,
-    nodes: structuredClone(run.nodes ?? {}),
+    nodes,
+    completed_node_ids: completedNodeIds,
     amendments,
     task_attachments: taskAttachments,
     events_sha256: payloadDigest(events),

@@ -45,10 +45,17 @@ type DagDefinition = Readonly<{
 const persistRun = (
   root: string,
   definition: DagDefinition,
+  runtimeGeneration = 1,
+  duplicateTaskAttachment = false,
+  amendedDefinition?: DagDefinition,
 ) => {
   const runId = 'dag_issue-4101';
   const parentSessionId = 'ses_issue_dag_parent';
-  const definitionFingerprint = 'a'.repeat(64);
+  const createdFingerprint = 'a'.repeat(64);
+  const definitionFingerprint = amendedDefinition
+    ? 'd'.repeat(64)
+    : createdFingerprint;
+  const currentDefinition = amendedDefinition ?? definition;
   const runDirectory = resolve(
     root,
     '.omo',
@@ -80,11 +87,11 @@ const persistRun = (
       runId,
       runKey: definition.key,
       parentSessionId,
-      name: definition.name,
+      name: currentDefinition.name,
       status: 'completed',
-      generation: 1,
+      generation: runtimeGeneration,
       definitionFingerprint,
-      definition,
+      definition: currentDefinition,
       nodes: {
         preflight: {
           id: `preflight-g0-h${'0'.repeat(40)}`,
@@ -101,7 +108,7 @@ const persistRun = (
         type: 'dag.run.created',
         runKey: definition.key,
         name: definition.name,
-        definitionFingerprint,
+        definitionFingerprint: createdFingerprint,
         nodeCount: definition.nodes.length,
         edgeCount: 0,
         schemaVersion: 1,
@@ -119,6 +126,65 @@ const persistRun = (
         at: '2026-08-27T00:00:00.001Z',
         lane: 'boundary',
       },
+      ...(amendedDefinition
+        ? [
+            {
+              type: 'dag.definition.amended',
+              previousFingerprint: createdFingerprint,
+              fingerprint: definitionFingerprint,
+              addedNodeIds: [
+                amendedDefinition.nodes.at(-1)?.id,
+              ],
+              changedNodeIds: [],
+              invalidatedNodeIds: [],
+              definition: amendedDefinition,
+              schemaVersion: 1,
+              runId,
+              seq: 3,
+              at: '2026-08-27T00:00:00.002Z',
+              lane: 'boundary',
+            },
+          ]
+        : runtimeGeneration === 1
+        ? []
+        : [
+            {
+              type: 'dag.node.retried',
+              nodeId: definition.nodes[0]?.id,
+              generation: runtimeGeneration,
+              schemaVersion: 1,
+              runId,
+              seq: 3,
+              at: '2026-08-27T00:00:00.002Z',
+              lane: 'boundary',
+            },
+          ]),
+      ...(duplicateTaskAttachment
+        ? [
+            {
+              type: 'dag.node.task-attached',
+              nodeId: definition.nodes[0]?.id,
+              taskId: 'st_preflight_first',
+              attempt: 1,
+              schemaVersion: 1,
+              runId,
+              seq: 3,
+              at: '2026-08-27T00:00:00.003Z',
+              lane: 'boundary',
+            },
+            {
+              type: 'dag.node.task-attached',
+              nodeId: definition.nodes[0]?.id,
+              taskId: 'st_preflight_second',
+              attempt: 2,
+              schemaVersion: 1,
+              runId,
+              seq: 4,
+              at: '2026-08-27T00:00:00.004Z',
+              lane: 'boundary',
+            },
+          ]
+        : []),
     ].map((event) => JSON.stringify(event)).join('\n')}\n`,
   );
   const keyId = createHash('sha256')
@@ -148,6 +214,7 @@ describe('execute-lane native issue DAG run', () => {
         starting_head_sha: '0'.repeat(40),
         issue_contract_sha256: 'b'.repeat(64),
         lane_plan_approval_sha256: 'c'.repeat(64),
+        evidence_paths: ['docs/contracts/testing-guide.md'],
       },
     });
     const evidence = persistRun(root, definition);
@@ -168,6 +235,7 @@ describe('execute-lane native issue DAG run', () => {
           status: 'completed',
           native_generation: 1,
           definition_fingerprint: evidence.definitionFingerprint,
+          completed_node_ids: [`preflight-g0-h${'0'.repeat(40)}`],
           definition,
         }),
       );
@@ -186,6 +254,7 @@ describe('execute-lane native issue DAG run', () => {
         starting_head_sha: '0'.repeat(40),
         issue_contract_sha256: 'b'.repeat(64),
         lane_plan_approval_sha256: 'c'.repeat(64),
+        evidence_paths: ['docs/contracts/testing-guide.md'],
       },
     });
     const evidence = persistRun(root, definition);
@@ -199,6 +268,123 @@ describe('execute-lane native issue DAG run', () => {
           coordinator_session_id: evidence.parentSessionId,
         }),
       ).toThrow(/does not match/u);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects mutable native retries of an issue DAG node', () => {
+    const root = realpathSync(
+      mkdtempSync(join(realpathSync(tmpdir()), 'fluo-native-issue-run-')),
+    );
+    const definition = compileIssueLifecycleDag(fixture(), 4101, {
+      bootstrap: {
+        repository_root: root,
+        starting_head_sha: '0'.repeat(40),
+        issue_contract_sha256: 'b'.repeat(64),
+        lane_plan_approval_sha256: 'c'.repeat(64),
+        evidence_paths: ['docs/contracts/testing-guide.md'],
+      },
+    });
+    const evidence = persistRun(root, definition, 3);
+    try {
+      expect(() =>
+        loadIssueNativeDagRun({
+          repository_root: root,
+          lane_id: 'lane-4101-runtime',
+          issue_number: 4101,
+          run_id: evidence.runId,
+          coordinator_session_id: evidence.parentSessionId,
+        }),
+      ).toThrow(/retry|immutable/u);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('accepts a native amendment without treating it as a node retry', () => {
+    const root = realpathSync(
+      mkdtempSync(join(realpathSync(tmpdir()), 'fluo-native-issue-run-')),
+    );
+    const definition = compileIssueLifecycleDag(fixture(), 4101, {
+      bootstrap: {
+        repository_root: root,
+        starting_head_sha: '0'.repeat(40),
+        issue_contract_sha256: 'b'.repeat(64),
+        lane_plan_approval_sha256: 'c'.repeat(64),
+        evidence_paths: ['docs/contracts/testing-guide.md'],
+      },
+    });
+    const addedNode = {
+      ...definition.nodes[0],
+      id: `preflight-g1-h${'1'.repeat(40)}`,
+      label: 'Fresh preflight',
+      description: 'Fresh preflight amendment',
+      task_summary: 'Fresh preflight amendment',
+      dependsOn: [],
+    };
+    const amendedDefinition = {
+      ...definition,
+      nodes: [...definition.nodes, addedNode],
+    };
+    const evidence = persistRun(
+      root,
+      definition,
+      2,
+      false,
+      amendedDefinition,
+    );
+    try {
+      expect(
+        loadIssueNativeDagRun({
+          repository_root: root,
+          lane_id: 'lane-4101-runtime',
+          issue_number: 4101,
+          run_id: evidence.runId,
+          coordinator_session_id: evidence.parentSessionId,
+        }),
+      ).toEqual(
+        expect.objectContaining({
+          native_generation: 2,
+          definition: amendedDefinition,
+          amendments: [
+            expect.objectContaining({
+              previous_fingerprint: 'a'.repeat(64),
+              fingerprint: 'd'.repeat(64),
+              added_node_ids: [addedNode.id],
+            }),
+          ],
+        }),
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects multiple task attachments for one immutable node', () => {
+    const root = realpathSync(
+      mkdtempSync(join(realpathSync(tmpdir()), 'fluo-native-issue-run-')),
+    );
+    const definition = compileIssueLifecycleDag(fixture(), 4101, {
+      bootstrap: {
+        repository_root: root,
+        starting_head_sha: '0'.repeat(40),
+        issue_contract_sha256: 'b'.repeat(64),
+        lane_plan_approval_sha256: 'c'.repeat(64),
+        evidence_paths: ['docs/contracts/testing-guide.md'],
+      },
+    });
+    const evidence = persistRun(root, definition, 1, true);
+    try {
+      expect(() =>
+        loadIssueNativeDagRun({
+          repository_root: root,
+          lane_id: 'lane-4101-runtime',
+          issue_number: 4101,
+          run_id: evidence.runId,
+          coordinator_session_id: evidence.parentSessionId,
+        }),
+      ).toThrow(/attachment|immutable/u);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

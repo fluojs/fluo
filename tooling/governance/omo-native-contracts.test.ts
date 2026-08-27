@@ -163,10 +163,14 @@ const reviewerReceipts = Object.fromEntries(
       blocker_sources: {},
     };
     const toolEvents = [{
-      tool: axis === 'verification' ? 'bash' : 'read',
+      tool: 'read',
       is_error: false,
       arguments: axis === 'verification'
-        ? { command: 'canonical verification fixture command' }
+        ? {
+            path:
+              `.omo/lane-runs/${lane.lane_id}/issues/${String(issueNumber)}/` +
+              'canonical-verification/st_parent_verify_contracts.json',
+          }
         : { path: 'package.json' },
     }];
     const sessionSha = '4'.repeat(64);
@@ -176,6 +180,11 @@ const reviewerReceipts = Object.fromEntries(
       output_sha256: createHash('sha256').update(JSON.stringify(finalResponse)).digest('hex'),
       final_response: finalResponse,
       parent_session_id: 'ses_contracts',
+      dag_run_id: 'dag_contracts',
+      dag_key:
+        `fluo:lane:${lane.lane_id}:issue-${String(issueNumber)}:lifecycle:v3`,
+      dag_node_id: `review-${axis}-${headSha}`,
+      dag_owner_fingerprint: '7'.repeat(64),
       lane_id: lane.lane_id,
       issue_number: issueNumber,
       worktree: '.worktrees/issue-4101-runtime',
@@ -187,10 +196,10 @@ const reviewerReceipts = Object.fromEntries(
       tool_events_sha256: createHash('sha256').update(JSON.stringify(toolEvents)).digest('hex'),
       tool_events: toolEvents,
       canonical_verification: axis === 'verification' ? {
+        receipt_id: 'st_parent_verify_contracts',
         receipt_sha256: '5'.repeat(64),
         authority_snapshot_sha256: '6'.repeat(64),
         command: ['pnpm', 'verify'],
-        shell_command: 'canonical verification fixture command',
         status: 0,
         result: 'pass',
         session_sha256: sessionSha,

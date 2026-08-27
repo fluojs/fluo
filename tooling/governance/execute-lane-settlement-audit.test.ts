@@ -11,7 +11,10 @@ import { join, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-const { auditLaneIssueSettlement } = (await import(
+const {
+  auditLaneIssueSettlement,
+  observeUntouchedDependencyAbsence,
+} = (await import(
   resolve(
     process.cwd(),
     '.agents/skills/execute-lane/scripts/lane-settlement-audit.mjs',
@@ -21,6 +24,18 @@ const { auditLaneIssueSettlement } = (await import(
     repository_root: string;
     lane: Readonly<Record<string, unknown>>;
     command_runner?: unknown;
+  }) => Readonly<Record<string, unknown>>;
+  observeUntouchedDependencyAbsence: (input: {
+    repository_root: string;
+    runtime_root: string;
+    lane_id: string;
+    issue_number: number;
+    command_runner: (
+      command: string,
+      args: readonly string[],
+      options: Readonly<Record<string, unknown>>,
+    ) => string;
+    now: () => string;
   }) => Readonly<Record<string, unknown>>;
 };
 const { prepareCanonicalV2Runtime } = await import(
@@ -96,6 +111,41 @@ const {
 };
 
 describe('execute-lane supervisor settlement audit', () => {
+  it('reobserves every untouched dependency artifact boundary', () => {
+    const directory = realpathSync(
+      mkdtempSync(join(tmpdir(), 'fluo-lane-absence-')),
+    );
+    const commands: string[] = [];
+    try {
+      const observation = observeUntouchedDependencyAbsence({
+        repository_root: directory,
+        runtime_root: resolve(directory, '.omo', 'lane-runs'),
+        lane_id: 'lane-4101-runtime',
+        issue_number: 4102,
+        command_runner: (command, args) => {
+          commands.push([command, ...args].join(' '));
+          return '[]';
+        },
+        now: () => '2026-08-27T00:00:00.000Z',
+      });
+
+      expect(observation).toEqual({
+        issue_number: 4102,
+        issue_store_absent: true,
+        dag_absent: true,
+        local_branch_absent: true,
+        remote_branch_absent: true,
+        worktree_absent: true,
+        task_absent: true,
+        pr_absent: true,
+        observed_at: '2026-08-27T00:00:00.000Z',
+      });
+      expect(commands).toHaveLength(3);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('rejects native DAG completion without canonical issue stores', () => {
     const directory = mkdtempSync(
       join(realpathSync(tmpdir()), 'fluo-lane-settlement-'),

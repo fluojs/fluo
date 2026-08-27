@@ -33,6 +33,23 @@ const { canonicalIssueDagDefinition } = await import(
     '.agents/skills/execute-lane/scripts/issue-dag-contracts.mjs',
   )
 );
+const { phaseContextForIssue, phaseContextFromArgs } = (await import(
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/lane-coordinator-cli.mjs',
+  )
+)) as {
+  phaseContextFromArgs: (
+    args: readonly string[],
+  ) => Readonly<Record<string, unknown>> | undefined;
+  phaseContextForIssue: (
+    args: readonly string[],
+    issue: Readonly<{
+      snapshot: Readonly<Record<string, unknown>>;
+      events: readonly Readonly<Record<string, unknown>>[];
+    }>,
+  ) => Readonly<Record<string, unknown>> | undefined;
+};
 
 const isRecord = (
   value: unknown,
@@ -112,6 +129,45 @@ const attached = (): IssueDagState => ({
 });
 
 describe('execute-lane issue DAG coordinator', () => {
+  it('forwards parent-owned phase context into amendment planning', () => {
+    // When
+    const context = phaseContextFromArgs([
+      '--phase-context-json',
+      JSON.stringify({
+        verification_receipt_id: 'st_parent_verify_4101',
+      }),
+    ]);
+
+    // Then
+    expect(context).toEqual({
+      verification_receipt_id: 'st_parent_verify_4101',
+    });
+  });
+
+  it('adds a fresh identity after legacy review migration', () => {
+    // When
+    const context = phaseContextForIssue(
+      [
+        '--phase-context-json',
+        JSON.stringify({
+          verification_receipt_id: 'st_parent_verify_4101',
+        }),
+      ],
+      {
+        snapshot: { status: 'local-review' },
+        events: [
+          { kind: 'local-review-revalidation-required' },
+        ],
+      },
+    );
+
+    // Then
+    expect(context).toEqual({
+      verification_receipt_id: 'st_parent_verify_4101',
+      review_revalidation_generation: 1,
+    });
+  });
+
   it('admits ready issues up to the configured capacity', () => {
     // When
     const plan = planLaneCoordinator({

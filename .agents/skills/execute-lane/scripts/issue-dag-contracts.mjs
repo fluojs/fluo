@@ -136,6 +136,8 @@ const assertPendingAmendment = (value, state) => {
     pending.base_native_generation !== state.native_generation ||
     typeof pending.phase_key !== 'string' ||
     !SHA.test(pending.head_sha ?? '') ||
+    (pending.continue_active_phase !== undefined &&
+      typeof pending.continue_active_phase !== 'boolean') ||
     !Array.isArray(pending.added_node_ids) ||
     pending.added_node_ids.length === 0
   ) {

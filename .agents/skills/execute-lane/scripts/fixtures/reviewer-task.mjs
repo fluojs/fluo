@@ -7,27 +7,12 @@ import { fixturePreflight } from './implementer-task.mjs';
 
 const event = (type, payload) => JSON.stringify({ type, payload });
 
-const canonicalVerificationCommand = (repositoryRoot, expected, taskId) => [
-  'node',
-  resolve(repositoryRoot, '.agents/skills/execute-lane/scripts/canonical-verification.mjs'),
-  '--root', repositoryRoot,
-  '--runtime-root', resolve(repositoryRoot, '.omo', 'lane-runs'),
-  '--lane', expected.lane_id,
-  '--issue', String(expected.issue_number),
-  '--cwd', resolve(repositoryRoot, expected.worktree),
-  '--head', expected.head_sha,
-  '--preflight', expected.preflight_sha256,
-  '--task', taskId,
-  '--', 'pnpm', 'verify',
-].join(' ');
-
 export const writeActualShapedReviewerTask = ({
   task,
   repository_root: repositoryRoot,
   expected,
   tools,
   verification_command: verificationCommand = ['pnpm', 'verify'],
-  verification_shell_command: verificationShellCommand,
   verification_status: verificationStatus = 0,
   lifecycle_events: lifecycleEvents = [],
   verify: shouldVerify = true,
@@ -61,6 +46,8 @@ export const writeActualShapedReviewerTask = ({
   mkdirSync(sessionRoot, { recursive: true });
   const taskRecord = {
     ...task,
+    execution_mode: task.execution_mode ?? 'process',
+    tool_allow: task.tool_allow ?? ['read', 'todo'],
     resolved_model: task.resolved_model ?? {
       provider: 'openai-codex',
       model_id: 'gpt-5.6-sol',
@@ -72,17 +59,47 @@ export const writeActualShapedReviewerTask = ({
   const selectedTools = tools ?? (
     expected.axis === 'verification'
       ? [
-          { tool: 'read', is_error: false, arguments: { path: 'package.json' } },
           {
-            tool: 'bash',
+            tool: 'read',
             is_error: false,
             arguments: {
-              command: verificationShellCommand ?? canonicalVerificationCommand(repositoryRoot, expected, task.task_id),
-              timeout: 3600,
+              path: resolve(
+                repositoryRoot,
+                '.omo',
+                'lane-runs',
+                expected.lane_id,
+                'issues',
+                String(expected.issue_number),
+                'canonical-verification',
+                `${expected.canonical_verification_receipt_id}.json`,
+              ),
             },
           },
         ]
-      : [{ tool: 'read', is_error: false, arguments: { path: 'package.json' } }]
+      : [
+          {
+            tool: 'read',
+            is_error: false,
+            arguments: {
+              path: canonicalPreflightArtifactPath(
+                repositoryRoot,
+                expected.lane_id,
+                expected.issue_number,
+              ),
+            },
+          },
+          {
+            tool: 'read',
+            is_error: false,
+            arguments: {
+              path: resolve(
+                repositoryRoot,
+                expected.worktree,
+                'package.json',
+              ),
+            },
+          },
+        ]
   );
   const summaryLines = [
     event('transition_applied', { type: 'transition_applied', status: 'running', residency_state: 'resident' }),
@@ -121,17 +138,19 @@ export const writeActualShapedReviewerTask = ({
   writeFileSync(resolve(sessionRoot, '2026-08-26T00-00-00-000Z_session.jsonl'), `${rawLines.join('\n')}\n`);
 
   if (expected.axis === 'verification') {
+    const receiptId = expected.canonical_verification_receipt_id;
     const receiptRoot = resolve(repositoryRoot, '.omo', 'lane-runs', expected.lane_id, 'issues', String(expected.issue_number), 'canonical-verification');
     mkdirSync(receiptRoot, { recursive: true });
     writeFileSync(
-      resolve(receiptRoot, `${task.task_id}.json`),
+      resolve(receiptRoot, `${receiptId}.json`),
       `${JSON.stringify({
         version: 2,
-        task_id: task.task_id,
+        task_id: receiptId,
         repository_root: repositoryRoot,
         runtime_root: resolve(repositoryRoot, '.omo', 'lane-runs'),
         lane_id: expected.lane_id,
         issue_number: expected.issue_number,
+        parent_session_id: expected.parent_session_id,
         worktree: resolve(repositoryRoot, expected.worktree),
         execution_worktree: resolve(repositoryRoot, '.worktrees', '.canonical-verify-fixture'),
         head_sha: expected.head_sha,
@@ -142,12 +161,12 @@ export const writeActualShapedReviewerTask = ({
         containment_backend: process.platform === 'linux' ? 'bwrap-pid-namespace' : 'sandbox-exec',
         preflight_sha256: expected.preflight_sha256,
         authority_snapshot_sha256: 'a'.repeat(64),
-        post_run_git_state: verificationStatus === 0 ? {
+        post_run_git_state: {
           repository_root: repositoryRoot,
           worktree: resolve(repositoryRoot, expected.worktree),
           branch: expected.branch,
           head_sha: expected.head_sha,
-        } : null,
+        },
         command: verificationCommand,
         status: verificationStatus,
         result: verificationStatus === 0 ? 'pass' : 'fail',

@@ -1,5 +1,11 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import {
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
@@ -45,6 +51,12 @@ const { unmetDependencies } = (await import(
     identity: Readonly<{ issue_number: number }>,
   ) => readonly number[];
 };
+const { auditUntouchedDependencySettlement } = await import(
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/lane-settlement-audit.mjs',
+  )
+);
 
 const isRecord = (
   value: unknown,
@@ -200,6 +212,7 @@ describe('execute-lane dependency cleanup gate', () => {
     const observation = {
       issue_number: 4102,
       issue_store_absent: true,
+      dag_absent: true,
       local_branch_absent: true,
       remote_branch_absent: true,
       worktree_absent: true,
@@ -243,6 +256,28 @@ describe('execute-lane dependency cleanup gate', () => {
     expect(
       terminalizeBlockedDependents(terminal, [observation]),
     ).toEqual(terminal);
+
+    const runtimeRoot = realpathSync(
+      mkdtempSync(join(realpathSync(tmpdir()), 'fluo-untouched-audit-')),
+    );
+    try {
+      expect(
+        auditUntouchedDependencySettlement({
+          shared: terminal,
+          runtime_root: runtimeRoot,
+          issue_number: 4102,
+          absence_reobserver: () => ({
+            ...observation,
+            observed_at: String(terminal.events[0]?.occurred_at),
+          }),
+        }),
+      ).toEqual({
+        issue_number: 4102,
+        status: 'blocked-terminal',
+      });
+    } finally {
+      rmSync(runtimeRoot, { recursive: true, force: true });
+    }
   });
 
   it('terminalizes absent descendants after their shared lane is already blocked', () => {
@@ -298,6 +333,7 @@ describe('execute-lane dependency cleanup gate', () => {
     const observation = {
       issue_number: 4102,
       issue_store_absent: true,
+      dag_absent: true,
       local_branch_absent: true,
       remote_branch_absent: true,
       worktree_absent: true,

@@ -31,6 +31,7 @@ const bootstrap = {
   starting_head_sha: oldHead,
   issue_contract_sha256: 'd'.repeat(64),
   lane_plan_approval_sha256: 'e'.repeat(64),
+  evidence_paths: ['docs/contracts/testing-guide.md'],
 };
 
 describe('execute-lane issue DAG remote and conflict phases', () => {
@@ -115,6 +116,12 @@ describe('execute-lane issue DAG remote and conflict phases', () => {
         upstream_head: upstreamHead,
         resolved_head: resolvedHead,
         preflight_sha256: 'f'.repeat(64),
+        machine_evidence: {
+          old_base: '0'.repeat(40),
+          digests: {
+            old_content_sha256: '1'.repeat(64),
+          },
+        },
       },
       [implementationId],
     );
@@ -134,6 +141,7 @@ describe('execute-lane issue DAG remote and conflict phases', () => {
         resolved_head: resolvedHead,
         preflight_sha256: 'f'.repeat(64),
         affected_axes: ['code', 'verification'],
+        verification_receipt_id: 'st_parent_verify_4101',
       },
       [gateId],
     );
@@ -142,15 +150,15 @@ describe('execute-lane issue DAG remote and conflict phases', () => {
       `conflict-implement-g2-h${oldHead}-u${upstreamHead}`,
     );
     expect(gateId).toBe(
-      `conflict-gate-h${resolvedHead}-from${oldHead}-u${upstreamHead}`,
+      `conflict-gate-g2-h${resolvedHead}-from${oldHead}-u${upstreamHead}`,
     );
     expect(
       review.nodes.slice(-2).map(
         (node: Readonly<{ id: string }>) => node.id,
       ),
     ).toEqual([
-      `conflict-review-code-h${resolvedHead}`,
-      `conflict-review-verification-h${resolvedHead}`,
+      `conflict-review-code-g2-h${resolvedHead}`,
+      `conflict-review-verification-g2-h${resolvedHead}`,
     ]);
     expect(
       review.nodes.slice(-2).every(
@@ -163,5 +171,9 @@ describe('execute-lane issue DAG remote and conflict phases', () => {
           node.dependsOn[0] === gateId,
       ),
     ).toBe(true);
+    expect(gate.nodes.at(-1)?.prompt).toContain('"machine_evidence"');
+    expect(gate.nodes.at(-1)?.prompt).toContain(
+      `"dag_key":"${String(gate.key)}"`,
+    );
   });
 });

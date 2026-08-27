@@ -2,8 +2,9 @@ import {
   lstatSync,
   readFileSync,
   realpathSync,
+  readdirSync,
 } from 'node:fs';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import {
   payloadDigest,
@@ -17,6 +18,7 @@ import {
 } from './issue-dag-prompts.mjs';
 import {
   assertReviewPreflight,
+  createReviewPreflight,
 } from './review-loop-policy.mjs';
 
 const orchestrationTools = new Set([
@@ -32,17 +34,13 @@ const orchestrationTools = new Set([
   'team_create',
   'team_delete',
 ]);
-const preflightTools = new Set([
+const preflightTools = Object.freeze([
   'read',
-  'grep',
-  'find',
-  'ls',
-  'lsp_diagnostics',
-  'lsp_find_references',
-  'lsp_goto_definition',
-  'lsp_symbols',
-  'web_search',
-  'webfetch',
+  'todo',
+]);
+const operatorTools = Object.freeze([
+  'read',
+  'bash',
 ]);
 
 const canonicalFile = (path, name) => {
@@ -51,6 +49,18 @@ const canonicalFile = (path, name) => {
     throw new TypeError(`${name} must be a real canonical file.`);
   }
   return readFileSync(path, 'utf8');
+};
+
+const canonicalDirectory = (path, name) => {
+  const stat = lstatSync(path);
+  if (
+    stat.isSymbolicLink() ||
+    !stat.isDirectory() ||
+    realpathSync(path) !== path
+  ) {
+    throw new TypeError(`${name} must be a real canonical directory.`);
+  }
+  return path;
 };
 
 const record = (value, name) => {
@@ -81,16 +91,101 @@ const canonicalTask = (root, taskId) => {
 };
 
 const sessionTools = (root, taskId) => {
-  const source = canonicalFile(
-    resolve(root, '.omo', 'senpi-task', 'logs', `${taskId}.jsonl`),
-    'issue DAG worker session log',
+  const sessionRoot = canonicalDirectory(
+    resolve(
+      root,
+      '.omo',
+      'senpi-task',
+      'children',
+      taskId,
+      'sessions',
+      taskId,
+    ),
+    'issue DAG worker child session',
   );
-  return source
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => JSON.parse(line))
-    .filter((event) => event.type === 'tool_execution')
-    .map((event) => record(event.payload, 'issue DAG worker tool event'));
+  const files = readdirSync(sessionRoot)
+    .filter((name) => name.endsWith('.jsonl'))
+    .sort();
+  if (files.length === 0) {
+    throw new TypeError(
+      'issue DAG worker child session must contain canonical Senpi JSONL.',
+    );
+  }
+  const tools = [];
+  for (const file of files) {
+    const calls = [];
+    const results = new Map();
+    const source = canonicalFile(
+      join(sessionRoot, file),
+      'issue DAG worker child session JSONL',
+    );
+    for (const [index, line] of source
+      .split('\n')
+      .filter(Boolean)
+      .entries()) {
+      let event;
+      try {
+        event = record(
+          JSON.parse(line),
+          `issue DAG worker session event ${String(index + 1)}`,
+        );
+      } catch (error) {
+        throw new TypeError(
+          `issue DAG worker child session JSONL is malformed: ${error.message}`,
+        );
+      }
+      if (event.type !== 'message') continue;
+      const message = record(
+        event.message,
+        'issue DAG worker session message',
+      );
+      if (message.role === 'assistant') {
+        if (!Array.isArray(message.content)) {
+          throw new TypeError(
+            'issue DAG worker assistant message content is malformed.',
+          );
+        }
+        for (const part of message.content) {
+          if (part?.type !== 'toolCall') continue;
+          if (
+            typeof part.id !== 'string' ||
+            typeof part.name !== 'string'
+          ) {
+            throw new TypeError('issue DAG worker tool call is malformed.');
+          }
+          calls.push({
+            id: part.id,
+            tool: part.name,
+            arguments: record(
+              part.arguments,
+              'issue DAG worker tool call arguments',
+            ),
+          });
+        }
+      } else if (message.role === 'toolResult') {
+        if (
+          typeof message.toolCallId !== 'string' ||
+          typeof message.isError !== 'boolean'
+        ) {
+          throw new TypeError('issue DAG worker tool result is malformed.');
+        }
+        results.set(message.toolCallId, message.isError);
+      }
+    }
+    for (const call of calls) {
+      if (!results.has(call.id)) {
+        throw new TypeError(
+          'issue DAG worker tool call is missing its canonical result.',
+        );
+      }
+      tools.push({
+        tool: call.tool,
+        is_error: results.get(call.id),
+        arguments: structuredClone(call.arguments),
+      });
+    }
+  }
+  return tools;
 };
 
 const verifyWorker = (expected, agentType, allowedTools) => {
@@ -102,8 +197,8 @@ const verifyWorker = (expected, agentType, allowedTools) => {
   if (
     task.task_id !== expected.task_id ||
     task.status !== 'completed' ||
+    task.execution_mode !== 'process' ||
     task.parent_session_id !== expected.parent_session_id ||
-    task.name !== expected.node_id ||
     task.agent_type !== agentType ||
     task.spawn_spec?.cwd !== repositoryRoot ||
     owner.kind !== 'dag' ||
@@ -115,10 +210,11 @@ const verifyWorker = (expected, agentType, allowedTools) => {
   }
   const tools = sessionTools(repositoryRoot, expected.task_id);
   if (
+    JSON.stringify(task.tool_allow) !== JSON.stringify(allowedTools) ||
     tools.some(
       ({ tool }) =>
         orchestrationTools.has(tool) ||
-        (allowedTools !== null && !allowedTools.has(tool)),
+        !allowedTools.includes(tool),
     )
   ) {
     throw new TypeError('Issue DAG worker used a forbidden tool.');
@@ -137,19 +233,117 @@ const verifyIdentity = (output, expected) => {
   }
 };
 
+const verifyPreflightReadCoverage = (evidence, expected) => {
+  const prompt = evidence.task.spawn_spec?.prompt;
+  if (typeof prompt !== 'string') {
+    throw new TypeError('Preflight task terminal dispatch is missing.');
+  }
+  const matches = [
+    ...prompt.matchAll(
+      /<fluo-terminal-dispatch-v1>\n([\s\S]*?)\n<\/fluo-terminal-dispatch-v1>/gu,
+    ),
+  ];
+  if (matches.length !== 1) {
+    throw new TypeError('Preflight task terminal dispatch is invalid.');
+  }
+  let dispatch;
+  try {
+    dispatch = record(
+      JSON.parse(matches[0][1]),
+      'preflight task terminal dispatch',
+    );
+  } catch {
+    throw new TypeError('Preflight task terminal dispatch is invalid.');
+  }
+  if (
+    dispatch.lane_id !== expected.lane_id ||
+    dispatch.issue_number !== expected.issue_number ||
+    dispatch.dag_key !== expected.dag_key ||
+    dispatch.node_id !== expected.node_id ||
+    resolve(dispatch.repository_root) !== evidence.repositoryRoot ||
+    dispatch.starting_head_sha !== expected.head_sha ||
+    dispatch.lane_ledger_path !== expected.lane_ledger_path ||
+    dispatch.issue_store_path !== expected.issue_store_path ||
+    JSON.stringify(dispatch.evidence_paths) !==
+      JSON.stringify(expected.evidence_paths) ||
+    dispatch.issue_contract_sha256 !==
+      expected.issue_contract_sha256 ||
+    dispatch.lane_plan_approval_sha256 !==
+      expected.lane_plan_approval_sha256
+  ) {
+    throw new TypeError(
+      'Preflight task terminal dispatch does not match parent authority.',
+    );
+  }
+  const readPaths = new Set(
+    evidence.tools
+      .filter(
+        ({ tool, is_error, arguments: args }) =>
+          tool === 'read' &&
+          is_error === false &&
+          args.offset === undefined &&
+          args.limit === undefined,
+      )
+      .map(({ arguments: args }) => args.path)
+      .filter((path) => typeof path === 'string')
+      .map((path) => resolve(evidence.repositoryRoot, path)),
+  );
+  const requiredPaths = new Set([
+    dispatch.lane_ledger_path,
+    dispatch.issue_store_path,
+    ...dispatch.evidence_paths,
+  ]);
+  if (
+    [...requiredPaths].some(
+      (path) =>
+        !readPaths.has(resolve(evidence.repositoryRoot, path)),
+    )
+  ) {
+    throw new TypeError(
+      'Preflight task did not read every parent-bound artifact.',
+    );
+  }
+};
+
+const parsePreflightFinalResponse = (value) => {
+  const output = parseSenpiFinalResponse(
+    value,
+    PREFLIGHT_FINAL_SENTINEL,
+    'preflight task final_response',
+  );
+  if (
+    Object.keys(output).sort().join(',') !==
+      [
+        'dag_key',
+        'issue_number',
+        'lane_id',
+        'node_id',
+        'preflight',
+        'sentinel',
+        'status',
+        'version',
+      ].sort().join(',')
+  ) {
+    throw new TypeError(
+      'Preflight task final_response envelope keys are invalid.',
+    );
+  }
+  return output;
+};
+
 export const verifyPreflightTask = (expected) => {
   const evidence = verifyWorker(
     expected,
     'fluo-issue-preflight',
     preflightTools,
   );
-  const output = parseSenpiFinalResponse(
-    evidence.task.final_response,
-    PREFLIGHT_FINAL_SENTINEL,
-    'preflight task final_response',
-  );
+  verifyPreflightReadCoverage(evidence, expected);
+  const output = parsePreflightFinalResponse(evidence.task.final_response);
   verifyIdentity(output, expected);
-  const preflight = assertReviewPreflight(output.preflight);
+  const preflight =
+    output.preflight?.sha256 === undefined
+      ? createReviewPreflight(output.preflight)
+      : assertReviewPreflight(output.preflight);
   if (
     preflight.lane_id !== expected.lane_id ||
     preflight.issue_number !== expected.issue_number ||
@@ -170,7 +364,7 @@ export const verifyIssueOperatorTask = (expected) => {
   const evidence = verifyWorker(
     expected,
     'fluo-issue-operator',
-    null,
+    operatorTools,
   );
   const output = parseSenpiFinalResponse(
     evidence.task.final_response,

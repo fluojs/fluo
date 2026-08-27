@@ -81,7 +81,7 @@ added nodes, no changed nodes, and no invalidated nodes.
 
 | Canonical issue status | Next direct DAG wave | Parent transition |
 | --- | --- | --- |
-| `preflight` | starting-head-bound preflight | `preflight-completed` |
+| `preflight` | starting-head-bound preflight or fresh append-only retry | `preflight-completed` |
 | `implementing` | implementation generation | `implementation-completed` |
 | `local-review` | contract/code/verification | `local-review` |
 | `ready-for-pr` | PR adopt-or-create | PR observation |
@@ -96,14 +96,21 @@ added nodes, no changed nodes, and no invalidated nodes.
 The parent never precompiles later waves. A reviewer cannot start before the
 parent has verified the implementation task and live worktree head.
 
+Malformed but non-mutating preflight output is corrected only by appending
+`preflight-g<N>-h<full-head>` in the same run. The prior node and task remain
+immutable. Authority substitution, forbidden tools, mutation, and owner
+mismatch are terminal child-contract failures rather than retry candidates.
+
 ## Review loop
 
 The accepted `review-preflight-v1` remains immutable. Every implementation or
 ordinary fix produces a new head and invalidates previous ordinary PASS
 receipts. Reviewers run concurrently and independently on that exact head.
 
-The parent waits for all three canonical task receipts, verifies complete row
-coverage, and persists one review batch:
+The parent first runs canonical verification to completion and publishes one
+immutable receipt ID. It then dispatches the read-only reviewer triad, waits
+for all three canonical task receipts, verifies complete row coverage and the
+verification reviewer's exact receipt read, and persists one review batch:
 
 - all PASS: proceed to PR;
 - fixable BLOCK: append blocker ledger and start a new implementation phase;

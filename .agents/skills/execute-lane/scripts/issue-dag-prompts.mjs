@@ -37,11 +37,15 @@ export const preflightNodePrompt = (authority) =>
 Build the immutable review-preflight v1 acceptance matrix for the bound issue.
 
 DELIVERABLE:
-Return ${PREFLIGHT_FINAL_SENTINEL} with the complete canonical preflight object.
+Return exactly one machine envelope with no prose or code fence:
+<${PREFLIGHT_FINAL_SENTINEL}>{"sentinel":"${PREFLIGHT_FINAL_SENTINEL}","preflight":{...}}</${PREFLIGHT_FINAL_SENTINEL}>
 
 SCOPE:
-- Read the canonical lane ledger, live issue, governed docs/contracts, callers,
-  adapters, and relevant tests.
+- Read the canonical lane ledger, issue store authority, and every parent-bound
+  evidence path in the terminal dispatch.
+- Only read and task-local todo are available. Do not call bash or eval.
+- Copy authority and acceptance digests from the issue store. Return the
+  preflight object without sha256; the trusted parent seals its digest.
 - Do not mutate source, Git, GitHub, lane state, or issue runtime state.
 - Cover every exact live Acceptance Criteria item by ID and digest.
 
@@ -58,6 +62,8 @@ is returned.`,
       sentinel: PREFLIGHT_SENTINEL,
       repository_root: authority.repository_root,
       lane_ledger_path: authority.lane_ledger_path,
+      issue_store_path: authority.issue_store_path,
+      evidence_paths: authority.evidence_paths,
       issue_contract_sha256: authority.issue_contract_sha256,
       lane_plan_approval_sha256: authority.lane_plan_approval_sha256,
       starting_head_sha: authority.starting_head_sha,

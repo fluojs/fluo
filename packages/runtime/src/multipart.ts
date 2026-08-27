@@ -61,7 +61,8 @@ export async function parseMultipart(
   const maxFiles = options.maxFiles ?? DEFAULT_MAX_FILES;
   const maxTotalSize = options.maxTotalSize ?? DEFAULT_MAX_TOTAL_SIZE;
 
-  const formData = await toWebRequest(request, maxTotalSize).formData();
+  const webRequest = await toWebRequest(request, maxTotalSize);
+  const formData = await webRequest.formData();
   const fields: Record<string, string | string[]> = {};
   const files: UploadedFile[] = [];
   let totalSize = 0;
@@ -120,7 +121,10 @@ function appendMultipartField(fields: Record<string, string | string[]>, name: s
   fields[name] = [existing, value];
 }
 
-function toWebRequest(request: Request | MultipartRequestLike, maxTotalSize: number): Request {
+async function toWebRequest(
+  request: Request | MultipartRequestLike,
+  maxTotalSize: number,
+): Promise<Request> {
   if (request instanceof Request) {
     return createMultipartRequest(
       request.url,
@@ -128,6 +132,7 @@ function toWebRequest(request: Request | MultipartRequestLike, maxTotalSize: num
       new Headers(request.headers),
       request.body,
       maxTotalSize,
+      false,
     );
   }
 
@@ -139,12 +144,17 @@ function toWebRequest(request: Request | MultipartRequestLike, maxTotalSize: num
     normalizeRequestHeaders(request.headers),
     body,
     maxTotalSize,
+    true,
   );
 }
 
 function resolveRequestBody(request: MultipartRequestLike): AsyncIterable<Uint8Array> | BodyInit | null | undefined {
   if (request.body !== undefined) {
-    return isAsyncIterableBody(request.body) ? createReadableStreamFromAsyncIterable(request.body) : request.body;
+    return request.body instanceof ReadableStream
+      ? request.body
+      : isAsyncIterableBody(request.body)
+        ? createReadableStreamFromAsyncIterable(request.body)
+        : request.body;
   }
 
   if (typeof request[Symbol.asyncIterator] === 'function') {
@@ -188,13 +198,14 @@ function createReadableStreamFromAsyncIterable(source: AsyncIterable<Uint8Array>
   });
 }
 
-function createMultipartRequest(
+async function createMultipartRequest(
   url: string,
   method: string,
   headers: Headers,
   body: AsyncIterable<Uint8Array> | BodyInit | null | undefined,
   maxTotalSize: number,
-): Request {
+  cancelOnLimit: boolean,
+): Promise<Request> {
   const contentLength = headers.get('content-length');
 
   if (contentLength !== null) {
@@ -212,7 +223,7 @@ function createMultipartRequest(
 
   if (body !== undefined) {
     const limitedBody = body !== null && isStreamingBody(body)
-      ? createByteLimitedReadableStream(body, maxTotalSize)
+      ? await readByteLimitedBody(body, maxTotalSize, cancelOnLimit)
       : body as BodyInit;
 
     init.body = limitedBody;
@@ -225,38 +236,59 @@ function createMultipartRequest(
   return new Request(url, init);
 }
 
-function createByteLimitedReadableStream(
+async function readByteLimitedBody(
   stream: AsyncIterable<Uint8Array> | ReadableStream<Uint8Array>,
   maxTotalSize: number,
-): ReadableStream<Uint8Array> {
-  const source = stream instanceof ReadableStream ? stream : createReadableStreamFromAsyncIterable(stream);
+  cancelOnLimit: boolean,
+): Promise<ArrayBuffer> {
+  const source = stream instanceof ReadableStream
+    ? stream
+    : createReadableStreamFromAsyncIterable(stream);
+  const shouldCancelOnLimit =
+    cancelOnLimit && !isReadableByteStream(source);
   const reader = source.getReader();
+  const chunks: Uint8Array[] = [];
   let totalSize = 0;
 
-  return new ReadableStream<Uint8Array>({
-    async cancel(reason) {
-      await reader.cancel(reason);
-    },
-    async pull(controller) {
-      const { done, value } = await reader.read();
-
-      if (done) {
-        controller.close();
-        return;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    totalSize += value.byteLength;
+    if (totalSize > maxTotalSize) {
+      const error = new PayloadTooLargeException(
+        `${MULTIPART_BODY_LIMIT_MESSAGE} ${String(maxTotalSize)} bytes.`,
+      );
+      if (shouldCancelOnLimit) {
+        void reader.cancel(error).catch(() => undefined);
+      } else {
+        reader.releaseLock();
       }
+      throw error;
+    }
+    chunks.push(value);
+  }
+  const buffer = new ArrayBuffer(totalSize);
+  const body = new Uint8Array(buffer);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return buffer;
+}
 
-      totalSize += value.byteLength;
-
-      if (totalSize > maxTotalSize) {
-        const error = new PayloadTooLargeException(`${MULTIPART_BODY_LIMIT_MESSAGE} ${String(maxTotalSize)} bytes.`);
-        await reader.cancel(error.message);
-        controller.error(error);
-        return;
-      }
-
-      controller.enqueue(value);
-    },
-  });
+function isReadableByteStream(
+  stream: ReadableStream<Uint8Array>,
+): boolean {
+  try {
+    const reader = stream.getReader({ mode: 'byob' });
+    reader.releaseLock();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function normalizeRequestHeaders(

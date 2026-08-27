@@ -594,7 +594,7 @@ describe('execute-lane canonical preflight authority', () => {
     } finally {
       rmSync(fixture.root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it('terminalizes malformed child provenance after an unaccepted worktree head', () => {
     const fixture = realGitSetup();

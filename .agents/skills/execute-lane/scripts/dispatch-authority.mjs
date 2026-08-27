@@ -106,8 +106,11 @@ export const parseTerminalDispatchShape = (prompt, expectedSentinel) => {
     JSON.stringify(dispatch) !== inner || dispatch.sentinel !== expectedSentinel ||
     prefix.includes('fluo-terminal-dispatch') ||
     prefix.includes('"preflight_sha256"') ||
-    occurrences(prompt, expectedSentinel) !== 1 ||
-    (typeof dispatch.preflight_path === 'string' && occurrences(prompt, dispatch.preflight_path) !== 1)
+    prefix.includes(expectedSentinel) ||
+    (
+      typeof dispatch.preflight_path === 'string' &&
+      prefix.includes(dispatch.preflight_path)
+    )
   ) {
     throw new TypeError('task prompt contains duplicate, decoy, or conflicting dispatch authority.');
   }

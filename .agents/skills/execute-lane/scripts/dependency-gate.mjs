@@ -129,6 +129,7 @@ const artifactAbsenceFor = (observations, issueNumber) => {
   );
   const absenceKeys = [
     'issue_store_absent',
+    'dag_absent',
     'local_branch_absent',
     'remote_branch_absent',
     'worktree_absent',

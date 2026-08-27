@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 type DagNode = Readonly<{
   id: string;
   dependsOn: readonly string[];
+  prompt: string;
 }>;
 
 type DagDefinition = Readonly<{
@@ -53,6 +54,7 @@ const bootstrap = {
   starting_head_sha: headA,
   issue_contract_sha256: 'b'.repeat(64),
   lane_plan_approval_sha256: 'c'.repeat(64),
+  evidence_paths: ['docs/contracts/testing-guide.md'],
 };
 
 const isRecord = (
@@ -187,9 +189,22 @@ describe('execute-lane DAG dependency scheduling', () => {
     ]);
     expect(JSON.stringify(definition)).not.toContain('issue-4102');
     expect(JSON.stringify(definition)).not.toContain('fluo-issue-supervisor');
+    expect(definition.nodes[0]?.prompt).toContain('Do not call bash or eval.');
+    expect(definition.nodes[0]?.prompt).toContain(
+      'Only read and task-local todo are available.',
+    );
     expect(
       compileIssueLifecycleDag(ledger, 4101, { bootstrap }),
     ).toEqual(definition);
+  });
+
+  it('rejects a preflight without parent-bound evidence paths', () => {
+    const { evidence_paths: _evidencePaths, ...missingEvidence } = bootstrap;
+    expect(() =>
+      compileIssueLifecycleDag(readyLedger(), 4101, {
+        bootstrap: missingEvidence,
+      }),
+    ).toThrow(/evidence paths/u);
   });
 
   it('keeps cross-issue queue ordering outside native DAG edges', () => {

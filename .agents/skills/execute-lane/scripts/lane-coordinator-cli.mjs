@@ -20,6 +20,9 @@ import {
 import {
   readIssueSupervisorStore,
 } from './issue-supervisor-store.mjs';
+import {
+  computeConflictGitEvidence,
+} from './trusted-evidence.mjs';
 
 const valueAfter = (args, flag) => {
   const index = args.indexOf(flag);
@@ -34,6 +37,38 @@ const positiveInteger = (value, name) => {
     throw new TypeError(`${name} must be a positive integer.`);
   }
   return parsed;
+};
+
+export const phaseContextFromArgs = (args) => {
+  if (!args.includes('--phase-context-json')) {
+    return undefined;
+  }
+  const parsed = JSON.parse(valueAfter(args, '--phase-context-json'));
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    Array.isArray(parsed)
+  ) {
+    throw new TypeError('phase context must be a JSON object.');
+  }
+  return parsed;
+};
+
+export const phaseContextForIssue = (args, issue) => {
+  const explicit = phaseContextFromArgs(args);
+  const revalidationGeneration = issue.events.filter(
+    (event) => event.kind === 'local-review-revalidation-required',
+  ).length;
+  if (
+    issue.snapshot.status !== 'local-review' ||
+    revalidationGeneration === 0
+  ) {
+    return explicit;
+  }
+  return {
+    ...(explicit ?? {}),
+    review_revalidation_generation: revalidationGeneration,
+  };
 };
 
 const loadLane = (args) => {
@@ -117,15 +152,33 @@ const next = (args) => {
     lane.lane_id,
     issueNumber,
   );
+  let phaseContext = phaseContextForIssue(args, issue);
+  if (phaseContext?.stage === 'gate') {
+    const {
+      diffs: _diffs,
+      ...machineEvidence
+    } = computeConflictGitEvidence({
+      repository_root: issue.snapshot.repository_root,
+      worktree: issue.snapshot.worktree,
+      previously_reviewed_head: issue.snapshot.head_sha,
+      upstream_head: phaseContext.upstream_head,
+      resolved_head: phaseContext.resolved_head,
+    });
+    phaseContext = {
+      ...phaseContext,
+      machine_evidence: machineEvidence,
+    };
+  }
   return planIssueDagAmendment({
     lane,
     issue_snapshot: issue.snapshot,
     dag_state: dag.state,
+    phase_context: phaseContext,
   });
 };
 
 const usage =
-  'Usage: node lane-coordinator-cli.mjs <plan|status|next> --root <repository> --ledger <lane-ledger> [--max-active <n>] [--issue <n>]\n';
+  'Usage: node lane-coordinator-cli.mjs <plan|status|next> --root <repository> --ledger <lane-ledger> [--max-active <n>] [--issue <n>] [--phase-context-json <json>]\n';
 
 if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);

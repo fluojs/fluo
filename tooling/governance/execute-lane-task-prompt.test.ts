@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const {
+  IMPLEMENTER_FINAL_SENTINEL,
   IMPLEMENTER_SENTINEL,
   implementerTaskPrompt,
 } = await import(
@@ -45,6 +46,26 @@ describe('execute-lane terminal task prompts', () => {
     expect(prompt.match(/<fluo-terminal-dispatch-v1>/gu)).toHaveLength(1);
     expect(prompt.match(new RegExp(IMPLEMENTER_SENTINEL, 'gu'))).toHaveLength(1);
     expect(prompt.match(/"preflight_sha256"/gu)).toHaveLength(1);
+    expect(prompt).toContain(
+      `<${IMPLEMENTER_FINAL_SENTINEL}>{"sentinel":"${IMPLEMENTER_FINAL_SENTINEL}",...}</${IMPLEMENTER_FINAL_SENTINEL}>`,
+    );
+    for (const field of [
+      'lane_id',
+      'issue_number',
+      'worktree',
+      'parent_session_id',
+      'current_head',
+      'new_head',
+      'generation',
+      'scope',
+      'result',
+      'verification',
+      'addressed_blockers',
+      'blocker_ledger_sha256',
+      'preflight_sha256',
+    ]) {
+      expect(prompt).toContain(field);
+    }
   });
 
   it('rejects narrative copies of dispatch authority', () => {
@@ -83,5 +104,26 @@ describe('execute-lane terminal task prompts', () => {
     expect(prompt.endsWith('</fluo-terminal-dispatch-v1>')).toBe(true);
     expect(prompt.match(/<fluo-terminal-dispatch-v1>/gu)).toHaveLength(1);
     expect(prompt.match(/"preflight_sha256"/gu)).toHaveLength(1);
+  });
+
+  it('binds parent-owned verification receipt authority', () => {
+    const prompt = reviewerTaskPrompt({
+      instructions:
+        'Read the parent-owned canonical receipt and return one reviewer wrapper.',
+      repository_root: process.cwd(),
+      lane_id: 'lane-4101-runtime',
+      issue_number: 4101,
+      worktree: '.worktrees/issue-4101-runtime',
+      head_sha: '1'.repeat(40),
+      preflight_sha256: '3'.repeat(64),
+      review_axis: 'verification',
+      canonical_verification_receipt_id: 'st_parent_verify_4101',
+    });
+
+    expect(prompt).toContain(
+      '"canonical_verification_receipt_id":"st_parent_verify_4101"',
+    );
+    expect(prompt).toContain('"local_ci_role":"read-only"');
+    expect(prompt).toContain('"artifact_writes":false');
   });
 });

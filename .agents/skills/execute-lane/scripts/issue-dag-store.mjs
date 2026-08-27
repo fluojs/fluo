@@ -88,7 +88,6 @@ export const createIssueDagRunBundle = ({
     pending_amendment: null,
     terminal_issue_status: null,
     terminal_issue_event_hash: null,
-    terminal_issue_event_hash: null,
   };
   return appendEvent({ state, events: [] }, 'dispatch-intent', state);
 };
@@ -151,10 +150,21 @@ export const observeIssueDagCompletion = (bundle, evidence) => {
   const state = bundle.state;
   if (
     state.status !== 'phase-running' ||
+    !Array.isArray(evidence.completed_node_ids) ||
+    evidence.completed_node_ids.some(
+      (nodeId) =>
+        typeof nodeId !== 'string' ||
+        !state.current_definition.nodes.some(
+          (node) => node.id === nodeId,
+        ),
+    ) ||
+    new Set(evidence.completed_node_ids).size !==
+      evidence.completed_node_ids.length ||
     evidence.definition_fingerprint !== state.definition_fingerprint ||
     evidence.native_generation !== state.native_generation ||
-    JSON.stringify(evidence.completed_node_ids) !==
-      JSON.stringify(state.active_node_ids)
+    !state.active_node_ids.every((nodeId) =>
+      evidence.completed_node_ids.includes(nodeId)
+    )
   ) {
     throw new TypeError('Issue DAG native completion evidence does not match.');
   }
@@ -165,7 +175,7 @@ export const observeIssueDagCompletion = (bundle, evidence) => {
       ...structuredClone(state),
       status: 'native-completed-unverified',
     },
-    { completed_node_ids: evidence.completed_node_ids },
+    { completed_node_ids: state.active_node_ids },
   );
 };
 

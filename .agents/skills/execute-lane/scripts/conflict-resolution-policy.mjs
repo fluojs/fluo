@@ -7,6 +7,7 @@ import {
   verifyReviewerTask,
 } from './reviewer-runtime.mjs';
 import { verifyConflictImplementerRuntime } from './implementer-runtime.mjs';
+import { issueDagKey } from './issue-dag-contracts.mjs';
 
 const axes = ['contract', 'code', 'verification'];
 const impacts = new Set(['mechanical', 'scoped', 'ambiguous', 'cross-cutting']);
@@ -67,6 +68,12 @@ const requirePassReceipt = (state, receipt, axis, headSha, preflightSha256) => {
     head_sha: headSha,
     preflight_sha256: preflightSha256,
     axis,
+    ...(axis === 'verification'
+      ? {
+          canonical_verification_receipt_id:
+            value.canonical_verification?.receipt_id,
+        }
+      : {}),
   });
   receiptMatches(
     value,
@@ -127,7 +134,12 @@ const requirePriorPasses = (state) => {
   );
 };
 
-const requireGate = (state, step, previousHead) => {
+const requireGate = (
+  state,
+  step,
+  previousHead,
+  machineEvidence,
+) => {
   const gate = requireRecord(step.gate, 'conflict resolution gate');
   const resolvedHead = requireSha(gate.resolved_head, 'conflict resolved head');
   const upstreamHead = requireSha(gate.upstream_head, 'conflict upstream head');
@@ -157,6 +169,7 @@ const requireGate = (state, step, previousHead) => {
     throw new TypeError('conflict resolution impact classification does not match its rerun scope.');
   }
   const canonical = {
+    generation: state.implementer_generation,
     preflight_sha256: gate.preflight_sha256,
     previously_reviewed_head: previousHead,
     upstream_head: upstreamHead,
@@ -170,8 +183,11 @@ const requireGate = (state, step, previousHead) => {
   };
   const receipt = verifyConflictGateTask({
     ...provenance(state),
+    dag_run_id: step.dag_run_id,
+    dag_key: step.dag_key,
     task_id: step.gate_task_id,
     gate: canonical,
+    machine_evidence: machineEvidence,
   });
   return { canonical, receipt };
 };
@@ -188,13 +204,34 @@ const rerunEvidence = (state, step, affectedAxes, resolvedHead) => {
   ) {
     throw new TypeError('conflict resolution must rerun every affected axis exactly once.');
   }
+  if (
+    affectedAxes.includes('verification') &&
+    !/^st_[A-Za-z0-9_-]+$/u.test(
+      step.canonical_verification_receipt_id ?? '',
+    )
+  ) {
+    throw new TypeError(
+      'conflict verification rerun requires one parent-owned receipt.',
+    );
+  }
   return affectedAxes.map((axis) => {
     const verified = verifyReviewerTask({
       ...provenance(state),
+      dag_run_id: step.dag_run_id,
+      dag_key: step.dag_key,
+      node_id:
+        `conflict-review-${axis}` +
+        `-g${String(state.implementer_generation)}-h${resolvedHead}`,
       task_id: taskIds[axis],
       head_sha: resolvedHead,
       preflight_sha256: state.review_preflight.sha256,
       axis,
+      ...(axis === 'verification'
+        ? {
+            canonical_verification_receipt_id:
+              step.canonical_verification_receipt_id,
+          }
+        : {}),
     });
     requirePassReceipt(
       state,
@@ -243,10 +280,25 @@ export const applyConflictResolution = (state, step) => {
   }
   const previousHead = state.head_sha;
   const prior = requirePriorPasses(state);
-  const { canonical: gate, receipt: gateReceipt } = requireGate(state, step, previousHead);
   const machineEvidence = step.machine_evidence === undefined
     ? null
     : requireRecord(step.machine_evidence, 'conflict machine evidence');
+  if (
+    step.dag_run_id !== undefined &&
+    (
+      typeof step.dag_run_id !== 'string' ||
+      step.dag_run_id.length === 0 ||
+      step.dag_key !== issueDagKey(state.lane_id, state.issue_number)
+    )
+  ) {
+    throw new TypeError('conflict resolution DAG identity is invalid.');
+  }
+  const { canonical: gate, receipt: gateReceipt } = requireGate(
+    state,
+    step,
+    previousHead,
+    machineEvidence,
+  );
   let implementerReceipt = null;
   if (machineEvidence !== null) {
     assertMachineConflictScope(gate, machineEvidence);
@@ -260,6 +312,8 @@ export const applyConflictResolution = (state, step) => {
     }
     implementerReceipt = verifyConflictImplementerRuntime({
       ...provenance(state),
+      dag_run_id: step.dag_run_id,
+      dag_key: step.dag_key,
       task_id: step.conflict_implementer_task_id,
       old_base: machineEvidence.old_base,
       previously_reviewed_head: previousHead,
@@ -315,6 +369,7 @@ export const assertConflictResolutionEvidence = (state) => {
     throw new TypeError('conflict resolution evidence must bind distinct old/current heads and preflight.');
   }
   const gate = {
+    generation: resolution.generation,
     preflight_sha256: resolution.preflight_sha256,
     previously_reviewed_head: previousHead,
     upstream_head: resolution.upstream_head,
@@ -331,8 +386,11 @@ export const assertConflictResolutionEvidence = (state) => {
   }
   const verifiedGate = verifyConflictGateTask({
     ...provenance(state),
+    dag_run_id: resolution.gate_receipt?.dag_run_id,
+    dag_key: resolution.gate_receipt?.dag_key,
     task_id: resolution.gate_receipt?.task_id,
     gate,
+    machine_evidence: resolution.machine_evidence ?? null,
   });
   receiptMatches(
     resolution.gate_receipt,
@@ -355,6 +413,8 @@ export const assertConflictResolutionEvidence = (state) => {
   if (resolution.machine_evidence !== null && resolution.machine_evidence !== undefined) {
     const verifiedImplementer = verifyConflictImplementerRuntime({
       ...provenance(state),
+      dag_run_id: resolution.implementer_receipt?.dag_run_id,
+      dag_key: resolution.implementer_receipt?.dag_key,
       task_id: resolution.implementer_receipt?.task_id,
       old_base: resolution.machine_evidence.old_base,
       previously_reviewed_head: previousHead,

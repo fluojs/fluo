@@ -17,7 +17,7 @@ import { pathToFileURL } from 'node:url';
 import { payloadDigest } from '../../../workflow-contracts/contracts.mjs';
 import { loadIssueSupervisorStore } from './issue-supervisor-store.mjs';
 import { canonicalLaneRuntimeRoot } from './lane-runtime-paths.mjs';
-import { withCanonicalVerificationLease } from './review-loop-policy.mjs';
+import { withGlobalCanonicalVerificationLease } from './review-loop-policy.mjs';
 import { assertCanonicalGitState } from './trusted-evidence.mjs';
 
 let anonymousInvocation = 0;
@@ -106,27 +106,109 @@ const requireBoundWorktree = ({ repositoryRoot, runtimeRoot, laneId, issueNumber
   return { canonicalWorktree, canonicalHead, supervisor };
 };
 
-export const resolveTrustedPnpmStore = (worktree) => {
-  const output = execFileSync('pnpm', ['store', 'path'], {
-    cwd: worktree,
-    encoding: 'utf8',
-    timeout: 30_000,
-  }).trim();
-  if (output.length === 0 || output.includes('\n') || output !== resolve(output)) {
-    throw new TypeError('trusted host pnpm store path must be one absolute canonical path.');
-  }
-  const stat = lstatSync(output);
-  if (stat.isSymbolicLink() || !stat.isDirectory() || realpathSync(output) !== output) {
-    throw new TypeError('trusted host pnpm store must be a real canonical directory.');
+export const resolveTrustedPnpmStore = (
+  repositoryRoot,
+  worktree,
+  runtimeRoot,
+  { execute = execFileSync } = {},
+) => {
+  const output = resolve(runtimeRoot, 'pnpm-store');
+  mkdirSync(output, { recursive: true });
+  const outputStat = lstatSync(output);
+  if (
+    outputStat.isSymbolicLink() ||
+    !outputStat.isDirectory() ||
+    realpathSync(output) !== output
+  ) {
+    throw new TypeError(
+      'trusted host pnpm store must be a real canonical directory.',
+    );
   }
   const lockfilePath = resolve(worktree, 'pnpm-lock.yaml');
   const lockfileStat = lstatSync(lockfilePath);
   if (lockfileStat.isSymbolicLink() || !lockfileStat.isFile()) {
     throw new TypeError('canonical verification requires a real pnpm lockfile.');
   }
+  const lockfileSha256 = createHash('sha256')
+    .update(readFileSync(lockfilePath))
+    .digest('hex');
+  const markerPath = resolve(output, `.fluo-fetch-${lockfileSha256}.ready`);
+  if (!existsSync(markerPath)) {
+    const bootstrapRoot = realpathSync(
+      mkdtempSync(
+        resolve(runtimeRoot, '.canonical-store-bootstrap-'),
+      ),
+    );
+    try {
+      const npmrcPath = resolve(bootstrapRoot, 'empty-npmrc');
+      const packageManager =
+        JSON.parse(
+          readFileSync(
+            resolve(repositoryRoot, 'package.json'),
+            'utf8',
+          ),
+        ).packageManager;
+      writeFileSync(
+        resolve(bootstrapRoot, 'pnpm-lock.yaml'),
+        readFileSync(lockfilePath),
+        { flag: 'wx' },
+      );
+      writeFileSync(
+        resolve(bootstrapRoot, 'package.json'),
+        `${JSON.stringify({ private: true, packageManager })}\n`,
+        { flag: 'wx' },
+      );
+      writeFileSync(npmrcPath, '', { flag: 'wx' });
+      execute(
+        'pnpm',
+        [
+          'fetch',
+          '--force',
+          '--frozen-lockfile',
+          '--ignore-scripts',
+          '--ignore-pnpmfile',
+          '--store-dir',
+          output,
+        ],
+        {
+          cwd: bootstrapRoot,
+          encoding: 'utf8',
+          timeout: 30 * 60_000,
+          env: {
+            ...process.env,
+            HOME: bootstrapRoot,
+            XDG_CACHE_HOME: resolve(bootstrapRoot, 'cache'),
+            XDG_CONFIG_HOME: resolve(bootstrapRoot, 'config'),
+            XDG_DATA_HOME: resolve(bootstrapRoot, 'data'),
+            NPM_CONFIG_USERCONFIG: npmrcPath,
+            npm_config_globalconfig: '/dev/null',
+          },
+        },
+      );
+    } finally {
+      rmSync(bootstrapRoot, { recursive: true, force: true });
+    }
+    try {
+      writeFileSync(markerPath, `${lockfileSha256}\n`, { flag: 'wx' });
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+    }
+  }
+  const stat = lstatSync(output);
+  if (stat.isSymbolicLink() || !stat.isDirectory() || realpathSync(output) !== output) {
+    throw new TypeError('trusted host pnpm store must be a real canonical directory.');
+  }
+  const markerStat = lstatSync(markerPath);
+  if (
+    markerStat.isSymbolicLink() ||
+    !markerStat.isFile() ||
+    readFileSync(markerPath, 'utf8').trim() !== lockfileSha256
+  ) {
+    throw new TypeError('trusted host pnpm store readiness marker is invalid.');
+  }
   return {
     path: output,
-    lockfile_sha256: createHash('sha256').update(readFileSync(lockfilePath)).digest('hex'),
+    lockfile_sha256: lockfileSha256,
   };
 };
 
@@ -146,7 +228,24 @@ const disposableInput = (worktree, head, store) => {
   };
 };
 
-const prepareDisposableWorktree = (repositoryRoot, canonicalWorktree, head, store) => {
+export const verificationRuntimePrefix = (runtimeRoot, phase) => {
+  if (
+    typeof runtimeRoot !== 'string' ||
+    runtimeRoot !== resolve(runtimeRoot) ||
+    !['install', 'verify'].includes(phase)
+  ) {
+    throw new TypeError('canonical verification runtime prefix is invalid.');
+  }
+  return resolve(runtimeRoot, `.canonical-verification-${phase}-`);
+};
+
+const prepareDisposableWorktree = (
+  repositoryRoot,
+  canonicalWorktree,
+  head,
+  store,
+  runtimeRoot,
+) => {
   const parent = resolve(repositoryRoot, '.worktrees');
   mkdirSync(parent, { recursive: true });
   const path = realpathSync(mkdtempSync(resolve(parent, '.canonical-verify-')));
@@ -158,7 +257,7 @@ const prepareDisposableWorktree = (repositoryRoot, canonicalWorktree, head, stor
       throw new TypeError('disposable canonical verification worktree is not clean at the exact reviewed head.');
     }
     const input = disposableInput(path, head, store);
-    const installStatus = containedRun(path, 'install', store);
+    const installStatus = containedRun(path, 'install', store, runtimeRoot);
     if (installStatus !== 0) {
       throw new TypeError(`disposable canonical verification dependency installation failed with status ${String(installStatus)}.`);
     }
@@ -177,26 +276,31 @@ const removeDisposableWorktree = (canonicalWorktree, path) => {
   }
 };
 
-const containedRun = (disposableRoot, phase, store) => {
-  const runtimeRoot = resolve(disposableRoot, `.fluo-verification-runtime-${phase}`);
-  mkdirSync(runtimeRoot);
-  const requestPath = resolve(runtimeRoot, `request-${randomUUID()}.json`);
-  writeFileSync(requestPath, `${JSON.stringify({
-    disposable_root: disposableRoot,
-    runtime_root: runtimeRoot,
-    phase,
-    pnpm_store_path: store.path,
-    lockfile_sha256: store.lockfile_sha256,
-  })}\n`, { flag: 'wx' });
-  const helper = resolve(import.meta.dirname, 'verification-containment.mjs');
-  const result = spawnSync(process.execPath, [helper, requestPath], {
-    cwd: disposableRoot,
-    shell: false,
-    stdio: 'inherit',
-  });
-  if (result.error !== undefined) throw result.error;
-  if (result.signal !== null) throw new CanonicalVerificationSignal(result.signal);
-  return result.status ?? 1;
+const containedRun = (disposableRoot, phase, store, canonicalRuntimeRoot) => {
+  const runtimeRoot = realpathSync(
+    mkdtempSync(verificationRuntimePrefix(canonicalRuntimeRoot, phase)),
+  );
+  try {
+    const requestPath = resolve(runtimeRoot, `request-${randomUUID()}.json`);
+    writeFileSync(requestPath, `${JSON.stringify({
+      disposable_root: disposableRoot,
+      runtime_root: runtimeRoot,
+      phase,
+      pnpm_store_path: store.path,
+      lockfile_sha256: store.lockfile_sha256,
+    })}\n`, { flag: 'wx' });
+    const helper = resolve(import.meta.dirname, 'verification-containment.mjs');
+    const result = spawnSync(process.execPath, [helper, requestPath], {
+      cwd: disposableRoot,
+      shell: false,
+      stdio: 'inherit',
+    });
+    if (result.error !== undefined) throw result.error;
+    if (result.signal !== null) throw new CanonicalVerificationSignal(result.signal);
+    return result.status ?? 1;
+  } finally {
+    rmSync(runtimeRoot, { recursive: true, force: true });
+  }
 };
 
 const realDirectory = (path, name) => {
@@ -245,6 +349,7 @@ export const runCanonicalVerification = ({
   cwd,
   head_sha: headSha,
   task_id: taskId,
+  parent_session_id: parentSessionId,
   preflight_sha256: preflightSha256,
   command = 'pnpm',
   command_args: commandArgs = ['verify'],
@@ -262,8 +367,17 @@ export const runCanonicalVerification = ({
   const { canonicalWorktree, canonicalHead, supervisor } = requireBoundWorktree({
     repositoryRoot, runtimeRoot, laneId, issueNumber, cwd, headSha, preflightSha256,
   });
+  if (
+    typeof parentSessionId !== 'string' ||
+    parentSessionId.length === 0 ||
+    parentSessionId !== supervisor.snapshot.parent_session_id
+  ) {
+    throw new TypeError(
+      'canonical verification parent session must match its issue supervisor.',
+    );
+  }
   const canonicalTaskId = taskId ?? `st_canonical_${String(process.pid)}_${String(++anonymousInvocation)}`;
-  return withCanonicalVerificationLease(runtimeRoot, laneId, issueNumber, canonicalWorktree, () => {
+  return withGlobalCanonicalVerificationLease(runtimeRoot, laneId, issueNumber, () => {
     if (typeof canonicalTaskId !== 'string' || !/^st_[A-Za-z0-9_-]+$/u.test(canonicalTaskId) || !/^[a-f0-9]{40}$/u.test(canonicalHead)) {
       throw new TypeError('canonical verification command is invalid.');
     }
@@ -273,11 +387,21 @@ export const runCanonicalVerification = ({
     });
     const beforeAuthority = authoritySnapshot(canonicalWorktree);
     // Resolve host package authority before containment redirects HOME/XDG.
-    const store = resolveTrustedPnpmStore(canonicalWorktree);
-    const disposable = prepareDisposableWorktree(repositoryRoot, canonicalWorktree, canonicalHead, store);
+    const store = resolveTrustedPnpmStore(
+      repositoryRoot,
+      canonicalWorktree,
+      runtimeRoot,
+    );
+    const disposable = prepareDisposableWorktree(
+      repositoryRoot,
+      canonicalWorktree,
+      canonicalHead,
+      store,
+      runtimeRoot,
+    );
     let status;
     try {
-      status = containedRun(disposable.path, 'verify', store);
+      status = containedRun(disposable.path, 'verify', store, runtimeRoot);
     } finally {
       removeDisposableWorktree(canonicalWorktree, disposable.path);
     }
@@ -297,6 +421,7 @@ export const runCanonicalVerification = ({
       runtime_root: runtimeRoot,
       lane_id: laneId,
       issue_number: issueNumber,
+      parent_session_id: parentSessionId,
       worktree: canonicalWorktree,
       execution_worktree: disposable.path,
       head_sha: canonicalHead,
@@ -319,7 +444,7 @@ export const runCanonicalVerification = ({
 };
 
 const isCli = process.argv[1] !== undefined && pathToFileURL(process.argv[1]).href === import.meta.url;
-const usage = 'usage: canonical-verification.mjs --root <repository> --runtime-root <repository>/.omo/lane-runs --lane <id> --issue <number> --cwd <path> --head <sha> --preflight <sha256> --task <task-id> -- pnpm verify';
+const usage = 'usage: canonical-verification.mjs --root <repository> --runtime-root <repository>/.omo/lane-runs --lane <id> --issue <number> --parent-session <session-id> --cwd <path> --head <sha> --preflight <sha256> --task <task-id> -- pnpm verify';
 if (isCli) {
   const args = process.argv.slice(2);
   if (args.length === 1 && args[0] === '--help') process.stdout.write(`${usage}\n`);
@@ -331,6 +456,7 @@ if (isCli) {
         const status = runCanonicalVerification({
           repository_root: valueAfter(wrapper, '--root'), runtime_root: valueAfter(wrapper, '--runtime-root'),
           lane_id: valueAfter(wrapper, '--lane'), issue_number: Number(valueAfter(wrapper, '--issue')),
+          parent_session_id: valueAfter(wrapper, '--parent-session'),
           cwd: valueAfter(wrapper, '--cwd'), head_sha: valueAfter(wrapper, '--head'),
           task_id: valueAfter(wrapper, '--task'), preflight_sha256: valueAfter(wrapper, '--preflight'),
           command: child[0], command_args: child.slice(1),

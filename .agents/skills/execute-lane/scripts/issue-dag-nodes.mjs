@@ -50,19 +50,46 @@ const base = (id, dependsOn) => ({
   load_skills: ['execute-lane'],
 });
 
-export const preflightDagNode = (
+const preflightNode = (
   lane,
   issueNumber,
   dagKey,
   bootstrap,
+  retryGeneration,
+  dependsOn,
 ) => {
   const head = sha(bootstrap.starting_head_sha, 'preflight head', 40);
-  const id = `preflight-g0-h${head}`;
+  const evidencePaths = bootstrap.evidence_paths;
+  if (
+    !Array.isArray(evidencePaths) ||
+    evidencePaths.length === 0 ||
+    new Set(evidencePaths).size !== evidencePaths.length ||
+    evidencePaths.some(
+      (path) =>
+        typeof path !== 'string' ||
+        path.length === 0 ||
+        path.startsWith('/') ||
+        /(?:^|\/)\.\.(?:\/|$)/u.test(path),
+    )
+  ) {
+    throw new TypeError(
+      'preflight evidence paths must be unique repository-relative paths.',
+    );
+  }
+  if (
+    !Number.isSafeInteger(retryGeneration) ||
+    retryGeneration < 0
+  ) {
+    throw new TypeError('preflight retry generation must be a safe integer.');
+  }
+  const id = `preflight-g${String(retryGeneration)}-h${head}`;
   return {
-  ...base(id, []),
-  label: `Issue #${String(issueNumber)} preflight`,
+  ...base(id, dependsOn),
+  label:
+    `Issue #${String(issueNumber)} preflight g${String(retryGeneration)}`,
   description: 'Compile immutable issue acceptance authority.',
-  task_summary: `Issue #${String(issueNumber)} preflight 작성`,
+  task_summary:
+    `Issue #${String(issueNumber)} preflight g${String(retryGeneration)} 작성`,
   subagent_type: 'fluo-issue-preflight',
   prompt: preflightNodePrompt({
     repository_root: string(
@@ -74,6 +101,8 @@ export const preflightDagNode = (
     dag_key: dagKey,
     node_id: id,
     lane_ledger_path: `.omo/lanes/${lane.lane_id}.json`,
+    issue_store_path:
+      `.omo/lane-runs/${lane.lane_id}/issues/${String(issueNumber)}/snapshot.json`,
     starting_head_sha: head,
     issue_contract_sha256: sha(
       bootstrap.issue_contract_sha256,
@@ -85,15 +114,57 @@ export const preflightDagNode = (
       'preflight lane approval',
       64,
     ),
+    evidence_paths: evidencePaths.map((path) =>
+      string(path, 'preflight evidence path'),
+    ),
   }),
   };
+};
+
+export const preflightDagNode = (
+  lane,
+  issueNumber,
+  dagKey,
+  bootstrap,
+) =>
+  preflightNode(
+    lane,
+    issueNumber,
+    dagKey,
+    bootstrap,
+    0,
+    [],
+  );
+
+const preflightRetryDagNode = (
+  lane,
+  issueNumber,
+  dagKey,
+  phase,
+  dependsOn,
+) => {
+  if (
+    !Number.isSafeInteger(phase.retry_generation) ||
+    phase.retry_generation < 1
+  ) {
+    throw new TypeError('Preflight retry phase authority is invalid.');
+  }
+  return preflightNode(
+    lane,
+    issueNumber,
+    dagKey,
+    phase,
+    phase.retry_generation,
+    dependsOn,
+  );
 };
 
 const implementationInstructions = `TASK:
 Implement the bound Fluo issue generation test-first in its isolated worktree.
 
 DELIVERABLE:
-Return the existing implementer machine final response with a new verified head.
+Follow the exact implementer final envelope schema appended to this prompt and
+return a new verified head.
 
 SCOPE:
 Read .agents/skills/issue-to-pr/references/implementer.md and edit only the
@@ -170,8 +241,9 @@ DELIVERABLE:
 Return the existing ${axis} reviewer final response with complete row coverage.
 
 SCOPE:
-Remain source-read-only. Verification may invoke only the canonical verification
-wrapper authorized by its dispatch contract. Do not dispatch agents.
+Remain source-read-only. Do not call bash or eval. On the verification axis,
+read and authenticate the parent-owned canonical verification receipt from the
+terminal dispatch. Do not dispatch agents.
 
 VERIFY:
 Report every currently discoverable blocker and close every preflight row.
@@ -187,8 +259,21 @@ const reviewNodes = (
   dependsOn,
 ) => {
   const head = sha(phase.head_sha, 'review head', 40);
+  const revalidationSuffix =
+    phase.review_revalidation_generation === undefined
+      ? ''
+      : (
+          Number.isSafeInteger(phase.review_revalidation_generation) &&
+          phase.review_revalidation_generation > 0
+            ? `-revalidation-g${String(phase.review_revalidation_generation)}`
+            : (() => {
+                throw new TypeError(
+                  'Review revalidation generation is invalid.',
+                );
+              })()
+        );
   return axes.map((axis) => {
-    const id = `review-${axis}-${head}`;
+    const id = `review-${axis}${revalidationSuffix}-${head}`;
     return {
       ...base(id, dependsOn),
       label: `Issue #${String(issueNumber)} ${axis} review`,
@@ -211,11 +296,75 @@ const reviewNodes = (
           64,
         ),
         review_axis: axis,
+        ...(axis === 'verification'
+          ? {
+              canonical_verification_receipt_id: string(
+                phase.verification_receipt_id,
+                'parent-owned verification receipt identity',
+              ),
+            }
+          : {}),
         dag_key: dagKey,
         node_id: id,
       }),
     };
   });
+};
+
+const reviewRetryNode = (
+  lane,
+  issueNumber,
+  dagKey,
+  phase,
+  dependsOn,
+) => {
+  const head = sha(phase.head_sha, 'review retry head', 40);
+  const axis = phase.review_axis;
+  if (
+    !axes.includes(axis) ||
+    !Number.isSafeInteger(phase.retry_generation) ||
+    phase.retry_generation < 1
+  ) {
+    throw new TypeError('Review retry phase authority is invalid.');
+  }
+  const id =
+    `review-${axis}-retry-g${String(phase.retry_generation)}-${head}`;
+  return {
+    ...base(id, dependsOn),
+    label:
+      `Issue #${String(issueNumber)} ${axis} review retry g${String(phase.retry_generation)}`,
+    description: `Retry exact issue head review on the ${axis} axis.`,
+    task_summary:
+      `Issue #${String(issueNumber)} ${axis} review retry`,
+    subagent_type: reviewerAgents[axis],
+    prompt: reviewNodePrompt({
+      instructions: reviewInstructions(axis),
+      repository_root: string(
+        phase.repository_root,
+        'review retry repository root',
+      ),
+      lane_id: lane.lane_id,
+      issue_number: issueNumber,
+      worktree: string(phase.worktree, 'review retry worktree'),
+      head_sha: head,
+      preflight_sha256: sha(
+        phase.preflight_sha256,
+        'review retry preflight',
+        64,
+      ),
+      review_axis: axis,
+      ...(axis === 'verification'
+        ? {
+            canonical_verification_receipt_id: string(
+              phase.verification_receipt_id,
+              'parent-owned verification retry receipt identity',
+            ),
+          }
+        : {}),
+      dag_key: dagKey,
+      node_id: id,
+    }),
+  };
 };
 
 export const phaseDagNodes = (
@@ -227,6 +376,16 @@ export const phaseDagNodes = (
 ) =>
   phase.kind.startsWith('conflict-')
     ? conflictDagNodes(lane, issueNumber, dagKey, phase, dependsOn)
+    : phase.kind === 'preflight-retry'
+      ? [
+          preflightRetryDagNode(
+            lane,
+            issueNumber,
+            dagKey,
+            phase,
+            dependsOn,
+          ),
+        ]
     : phase.kind === 'implementation'
     ? [
         implementationNode(
@@ -239,4 +398,14 @@ export const phaseDagNodes = (
       ]
     : phase.kind === 'review'
       ? reviewNodes(lane, issueNumber, dagKey, phase, dependsOn)
+      : phase.kind === 'review-retry'
+        ? [
+            reviewRetryNode(
+              lane,
+              issueNumber,
+              dagKey,
+              phase,
+              dependsOn,
+            ),
+          ]
       : [operatorDagNode(lane, issueNumber, dagKey, phase, dependsOn)];

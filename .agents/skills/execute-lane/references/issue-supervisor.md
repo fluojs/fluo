@@ -58,8 +58,9 @@ Contract, code, and verification are three independent direct DAG nodes on one
 exact head.
 
 - Contract and code are source-read-only.
-- Verification uses source-read-only tools plus exactly one successful
-  `canonical-verification.mjs` wrapper call.
+- The parent owns `canonical-verification.mjs` through completion.
+- Verification uses source-read-only tools to authenticate exactly one
+  immutable parent receipt and reports BLOCK when that receipt failed.
 - Every node closes every preflight row and reports all currently discoverable
   blockers.
 
@@ -109,7 +110,8 @@ releases dependents.
 
 The issue-DAG event journal and issue store cross-link every accepted phase.
 After a crash, observe native, task, Git, and GitHub state before repeating any
-effect. Reuse the same run and completed nodes.
+effect. Reuse the same run and preserve completed nodes as immutable history;
+never revive, steer, retry, or replace a completed node in place.
 
 Stop the issue only when:
 

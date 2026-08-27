@@ -360,6 +360,12 @@ export const assertBlockerLedger = (state, { verifyTasks = false } = {}) => {
         dag_key: receipt.dag_key,
         node_id: receipt.dag_node_id,
         dag_owner_fingerprint: receipt.dag_owner_fingerprint,
+        ...(entry.reviewer_axis === 'verification'
+          ? {
+              canonical_verification_receipt_id:
+                receipt.canonical_verification?.receipt_id,
+            }
+          : {}),
       });
       if (payloadDigest(verified) !== payloadDigest(receipt)) {
         throw new TypeError('blocker ledger reviewer receipt does not match its canonical task.');

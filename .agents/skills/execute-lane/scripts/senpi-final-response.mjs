@@ -12,6 +12,11 @@ export const parseSenpiFinalResponse = (value, sentinel, name) => {
   const closing = new RegExp(`</${escaped}>`, 'gu');
   const openings = [...value.matchAll(opening)];
   const closings = [...value.matchAll(closing)];
+  if (openings.length === 0 && closings.length === 0) {
+    throw new TypeError(
+      `${name} must contain exactly one ${sentinel} machine payload.`,
+    );
+  }
   if (openings.length !== 1 || closings.length !== 1) {
     throw new TypeError(`${name} must contain exactly one ${sentinel} machine payload.`);
   }

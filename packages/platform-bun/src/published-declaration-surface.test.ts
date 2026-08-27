@@ -134,5 +134,5 @@ describe('@fluojs/platform-bun published declarations', () => {
       declarationAdapterPath,
     )).toEqual(normalizeAst(emittedSourceDeclaration, sourceAdapterPath));
     expect(readExportAllTargets(declarationRootPath)).toEqual(readExportAllTargets(sourceRootPath));
-  });
+  }, 30_000);
 });

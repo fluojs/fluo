@@ -60,6 +60,26 @@ const writeEvidence = (
   return expected;
 };
 
+const mutateFinalEnvelope = (
+  task: Record<string, unknown>,
+  mutate: (
+    payload: Record<string, unknown>,
+  ) => Record<string, unknown>,
+) => {
+  const sentinel = 'fluo:execute-lane:implementer:final:v1';
+  const prefix = `<${sentinel}>`;
+  const suffix = `</${sentinel}>`;
+  const source = String(task.final_response);
+  const payload = JSON.parse(
+    source.slice(prefix.length, -suffix.length),
+  ) as Record<string, unknown>;
+  return {
+    ...task,
+    final_response:
+      `${prefix}${JSON.stringify(mutate(payload))}${suffix}`,
+  };
+};
+
 describe('execute-lane implementer runtime routing', () => {
   it('ships a project agent and reusable issue-bound spawn sentinels', () => {
     const config = JSON.parse(readFileSync(resolve(repoRoot, '.omo/omo.jsonc'), 'utf8'));
@@ -82,6 +102,55 @@ describe('execute-lane implementer runtime routing', () => {
       scope: 'issue-worktree-read-write',
       local_ci_role: 'focused-test-first-only',
       full_local_ci: false,
+    });
+  });
+
+  it('grants direct agents only the tools required by their runtime role', () => {
+    const config = JSON.parse(
+      readFileSync(resolve(repoRoot, '.omo/omo.jsonc'), 'utf8'),
+    );
+
+    for (const agent of [
+      'fluo-issue-implementer',
+      'fluo-issue-operator',
+    ]) {
+      expect(config.agents[agent].execution_mode).toBe('process');
+      expect(config.agents[agent].tools).toMatchObject({
+        read: true,
+        bash: true,
+        task: false,
+        dag: false,
+      });
+    }
+    for (const agent of [
+      'fluo-contract-reviewer',
+      'fluo-code-reviewer',
+      'fluo-verification-reviewer',
+    ]) {
+      expect(config.agents[agent].execution_mode).toBe('process');
+      expect(config.agents[agent].tools).toMatchObject({
+        read: true,
+        bash: false,
+        todo: true,
+        eval: false,
+        task: false,
+        dag: false,
+      });
+    }
+    expect(config.agents['fluo-issue-implementer'].tools).toMatchObject({
+      read: true,
+      bash: true,
+      apply_patch: true,
+      todo: false,
+      eval: false,
+      task: false,
+      dag: false,
+    });
+    expect(config.agents['fluo-issue-preflight'].tools).toMatchObject({
+      read: true,
+      bash: false,
+      todo: true,
+      eval: false,
     });
   });
 
@@ -123,6 +192,51 @@ describe('execute-lane implementer runtime routing', () => {
     }
   });
 
+  it.each([
+    [
+      'an extra envelope field',
+      {},
+      (payload: Record<string, unknown>) => ({
+        ...payload,
+        extra: true,
+      }),
+    ],
+    [
+      'a malformed matching head',
+      { new_head: 'not-a-sha' },
+      (payload: Record<string, unknown>) => payload,
+    ],
+    [
+      'an unchanged head',
+      { new_head: headA },
+      (payload: Record<string, unknown>) => payload,
+    ],
+    [
+      'an empty verification summary',
+      { verification: '' },
+      (payload: Record<string, unknown>) => payload,
+    ],
+    [
+      'an unknown result',
+      { result: 'corrected' },
+      (payload: Record<string, unknown>) => payload,
+    ],
+  ])('rejects %s in the exact final envelope', (_label, overrides, mutate) => {
+    const root = realpathSync(
+      mkdtempSync(join(tmpdir(), 'fluo-implementer-envelope-')),
+    );
+    try {
+      const expected = writeEvidence(root, overrides, (task) =>
+        mutateFinalEnvelope(task, mutate),
+      );
+      expect(() => verifyImplementerRuntime(expected)).toThrow(
+        /final_response/u,
+      );
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
   it('accepts only the exact direct issue-DAG owner', () => {
     const root = realpathSync(
       mkdtempSync(join(tmpdir(), 'fluo-implementer-dag-owner-')),
@@ -147,6 +261,131 @@ describe('execute-lane implementer runtime routing', () => {
           dag_owner_fingerprint: 'f'.repeat(64),
         }),
       ).toThrow(/DAG owner/u);
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it('rejects task metadata outside the implementer tool policy', () => {
+    const root = realpathSync(
+      mkdtempSync(join(tmpdir(), 'fluo-implementer-tool-policy-')),
+    );
+    try {
+      const expected = writeEvidence(root, {}, (task) => ({
+        ...task,
+        tool_allow: ['read', 'bash', 'apply_patch', 'eval'],
+      }));
+      expect(() => verifyImplementerRuntime(expected)).toThrow(
+        /tool policy|metadata/u,
+      );
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it('rejects an actual session tool outside the implementer allowlist', () => {
+    const root = realpathSync(
+      mkdtempSync(join(tmpdir(), 'fluo-implementer-tool-session-')),
+    );
+    try {
+      const expected = writeEvidence(root);
+      const sessionPath = resolve(
+        root,
+        '.omo/senpi-task/children/st_valid/sessions/st_valid/2026-08-26T00-00-00-000Z_session.jsonl',
+      );
+      const events = readFileSync(sessionPath, 'utf8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      events.push(
+        {
+          type: 'message',
+          message: {
+            role: 'assistant',
+            provider: 'openai-codex',
+            model: 'gpt-5.6-terra',
+            content: [
+              {
+                type: 'toolCall',
+                id: 'tool_eval',
+                name: 'eval',
+                arguments: {},
+              },
+            ],
+          },
+        },
+        {
+          type: 'message',
+          message: {
+            role: 'toolResult',
+            toolCallId: 'tool_eval',
+            isError: false,
+            content: [],
+          },
+        },
+      );
+      writeFileSync(
+        sessionPath,
+        `${events.map((event) => JSON.stringify(event)).join('\n')}\n`,
+      );
+
+      expect(() => verifyImplementerRuntime(expected)).toThrow(
+        /tool|session/u,
+      );
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it('rejects implementer shell mutations without an issue-worktree target', () => {
+    const root = realpathSync(
+      mkdtempSync(join(tmpdir(), 'fluo-implementer-root-shell-')),
+    );
+    try {
+      const expected = writeEvidence(root);
+      const sessionPath = resolve(
+        root,
+        '.omo/senpi-task/children/st_valid/sessions/st_valid/2026-08-26T00-00-00-000Z_session.jsonl',
+      );
+      const events = readFileSync(sessionPath, 'utf8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      events.push(
+        {
+          type: 'message',
+          message: {
+            role: 'assistant',
+            provider: 'openai-codex',
+            model: 'gpt-5.6-terra',
+            content: [
+              {
+                type: 'toolCall',
+                id: 'tool_root_git',
+                name: 'bash',
+                arguments: { command: 'git status --short' },
+              },
+            ],
+          },
+        },
+        {
+          type: 'message',
+          message: {
+            role: 'toolResult',
+            toolCallId: 'tool_root_git',
+            isError: false,
+            content: [],
+          },
+        },
+      );
+      writeFileSync(
+        sessionPath,
+        `${events.map((event) => JSON.stringify(event)).join('\n')}\n`,
+      );
+
+      expect(() => verifyImplementerRuntime(expected)).toThrow(
+        /worktree|shell/u,
+      );
     } finally {
       rmSync(root, { force: true, recursive: true });
     }

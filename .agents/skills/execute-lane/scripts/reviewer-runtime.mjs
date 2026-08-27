@@ -16,20 +16,16 @@ export const REVIEW_FINAL_SENTINEL = 'fluo:execute-lane:review:final:v1';
 export const CONFLICT_REVIEW_SENTINEL = 'fluo:execute-lane:conflict-review:read-only:v1';
 export const CONFLICT_REVIEW_FINAL_SENTINEL = 'fluo:execute-lane:conflict-review:final:v1';
 const axes = new Set(['contract', 'code', 'verification']);
+const reviewerAgents = Object.freeze({
+  contract: 'fluo-contract-reviewer',
+  code: 'fluo-code-reviewer',
+  verification: 'fluo-verification-reviewer',
+});
 const taskId = /^st_[A-Za-z0-9_-]+$/u;
 const sha256 = /^[a-f0-9]{64}$/u;
-const readOnlyTools = new Set([
-  'find',
-  'grep',
-  'ls',
+const reviewerTools = Object.freeze([
   'read',
-  'lsp_diagnostics',
-  'lsp_find_references',
-  'lsp_goto_definition',
-  'lsp_symbols',
-  'session_list',
-  'session_read',
-  'session_search',
+  'todo',
 ]);
 const knownNonToolEvents = new Set([
   'assistant_message',
@@ -37,8 +33,6 @@ const knownNonToolEvents = new Set([
   'child_error',
   'evicted',
   'reconcile_reattached',
-  'revived',
-  'steered',
   'suspended',
   'transition_applied',
 ]);
@@ -49,8 +43,8 @@ const reviewerCapabilities = (axis) => {
   }
   return {
     source_read_only: true,
-    local_ci_role: axis === 'verification' ? 'sole-writer' : 'read-only',
-    artifact_writes: axis === 'verification',
+    local_ci_role: 'read-only',
+    artifact_writes: false,
   };
 };
 
@@ -72,6 +66,7 @@ export const reviewerPromptSentinel = ({
   head_sha: headSha,
   preflight_sha256: preflightSha256,
   review_axis: axis,
+  canonical_verification_receipt_id: canonicalVerificationReceiptId,
   dag_key: dagKey,
   node_id: nodeId,
 }) =>
@@ -85,6 +80,12 @@ export const reviewerPromptSentinel = ({
     preflight_path: canonicalPreflightArtifactPath(repositoryRoot, laneId, issueNumber),
     preflight_sha256: preflightSha256,
     review_axis: axis,
+    ...(axis === 'verification'
+      ? {
+          canonical_verification_receipt_id:
+            canonicalVerificationReceiptId,
+        }
+      : {}),
     ...(dagKey === undefined ? {} : { dag_key: dagKey }),
     ...(nodeId === undefined ? {} : { node_id: nodeId }),
     ...reviewerCapabilities(axis),
@@ -111,6 +112,10 @@ export const conflictReviewerPromptSentinel = ({
   previously_reviewed_head: previousHead,
   upstream_head: upstreamHead,
   resolved_head: resolvedHead,
+  generation,
+  machine_evidence: machineEvidence,
+  dag_key: dagKey,
+  node_id: nodeId,
 }) =>
   terminalDispatchBlock({
     version: 1,
@@ -123,7 +128,20 @@ export const conflictReviewerPromptSentinel = ({
     previously_reviewed_head: previousHead,
     upstream_head: upstreamHead,
     resolved_head: resolvedHead,
+    generation,
+    machine_evidence: structuredClone(machineEvidence),
+    ...(dagKey === undefined ? {} : { dag_key: dagKey }),
+    ...(nodeId === undefined ? {} : { node_id: nodeId }),
     read_only: true,
+  });
+
+export const conflictReviewerTaskPrompt = ({
+  instructions,
+  ...authority
+}) =>
+  terminalTaskPrompt({
+    instructions,
+    dispatch_block: conflictReviewerPromptSentinel(authority),
   });
 
 const canonicalFile = (path, name) => {
@@ -171,12 +189,14 @@ const requireCompletedTask = (
   if (
     value.task_id !== id ||
     value.status !== 'completed' ||
+    value.execution_mode !== 'process' ||
     value.agent_type === 'fluo-issue-implementer' ||
     (typeof value.category !== 'string' && typeof value.agent_type !== 'string') ||
     value.parent_session_id !== parentSessionId ||
     value.name !== name ||
     spawn.cwd !== canonicalRoot ||
     terminalDispatchBlock(dispatch) !== expectedDispatch ||
+    JSON.stringify(value.tool_allow) !== JSON.stringify(reviewerTools) ||
     typeof resolvedModel.provider !== 'string' ||
     typeof resolvedModel.model_id !== 'string'
   ) {
@@ -193,6 +213,7 @@ const completionProjection = (value) => ({
   category: value.category ?? null,
   spawn_spec: structuredClone(value.spawn_spec),
   resolved_model: structuredClone(value.resolved_model),
+  tool_allow: [...value.tool_allow],
   final_response: value.final_response,
 });
 
@@ -287,7 +308,7 @@ const rawSession = (canonicalRoot, id) => {
   return { tools, sources };
 };
 
-const reviewerSession = (canonicalRoot, id, axis) => {
+const reviewerSession = (canonicalRoot, id, axis, allowedTools) => {
   const summaryTools = summarySession(canonicalRoot, id);
   const raw = rawSession(canonicalRoot, id);
   if (
@@ -300,14 +321,10 @@ const reviewerSession = (canonicalRoot, id, axis) => {
   if (raw.tools.length === 0) {
     throw new TypeError('reviewer session must contain inspected tool events.');
   }
-  if (axis === 'verification') {
-    if (
-      raw.tools.filter(({ tool }) => tool === 'bash').length !== 1 ||
-      raw.tools.some(({ tool }) => tool !== 'bash' && !readOnlyTools.has(tool))
-    ) {
-      throw new TypeError('verification reviewer may use read-only tools and exactly one canonical wrapper shell event.');
-    }
-  } else if (raw.tools.some(({ tool }) => !readOnlyTools.has(tool))) {
+  if (
+    JSON.stringify(allowedTools) !== JSON.stringify(reviewerTools) ||
+    raw.tools.some(({ tool }) => !allowedTools.includes(tool))
+  ) {
     throw new TypeError(`${axis} reviewer used a forbidden or unknown tool.`);
   }
   const stableEvidence = { sources: raw.sources, tool_events: raw.tools };
@@ -318,28 +335,58 @@ const reviewerSession = (canonicalRoot, id, axis) => {
   };
 };
 
-const canonicalShellCommand = (canonicalRoot, id, expected) => [
-  'node',
-  resolve(canonicalRoot, '.agents/skills/execute-lane/scripts/canonical-verification.mjs'),
-  '--root', canonicalRoot,
-  '--runtime-root', resolve(canonicalRoot, '.omo', 'lane-runs'),
-  '--lane', expected.lane_id,
-  '--issue', String(expected.issue_number),
-  '--cwd', resolve(canonicalRoot, expected.worktree),
-  '--head', expected.head_sha,
-  '--preflight', expected.preflight_sha256,
-  '--task', id,
-  '--', 'pnpm', 'verify',
-].join(' ');
-
-const canonicalVerification = (canonicalRoot, id, expected, session) => {
-  const shell = session.tool_events.find(({ tool }) => tool === 'bash');
+const assertReviewerReadCoverage = (
+  session,
+  {
+    repository_root: repositoryRoot,
+    lane_id: laneId,
+    issue_number: issueNumber,
+    worktree,
+    axis,
+  },
+) => {
+  if (!['contract', 'code'].includes(axis)) {
+    return;
+  }
+  const successfulReads = session.tool_events
+    .filter(
+      (event) =>
+        event.tool === 'read' &&
+        event.is_error === false &&
+        typeof event.arguments?.path === 'string',
+    )
+    .map((event) =>
+      resolve(repositoryRoot, event.arguments.path),
+    );
+  const preflightPath = canonicalPreflightArtifactPath(
+    repositoryRoot,
+    laneId,
+    issueNumber,
+  );
+  const worktreeRoot = resolve(repositoryRoot, worktree);
   if (
-    shell?.is_error !== false ||
-    Object.keys(shell.arguments).some((key) => !['command', 'timeout'].includes(key)) ||
-    shell.arguments.command !== canonicalShellCommand(canonicalRoot, id, expected)
+    !successfulReads.includes(preflightPath) ||
+    !successfulReads.some(
+      (path) =>
+        path !== worktreeRoot &&
+        path.startsWith(`${worktreeRoot}/`),
+    )
   ) {
-    throw new TypeError('verification reviewer shell invocation is not the exact canonical wrapper command.');
+    throw new TypeError(
+      'reviewer read coverage must include canonical preflight and issue-worktree source.',
+    );
+  }
+};
+
+const canonicalVerification = (
+  canonicalRoot,
+  expected,
+  session,
+  output,
+) => {
+  const receiptId = expected.canonical_verification_receipt_id;
+  if (!taskId.test(receiptId ?? '')) {
+    throw new TypeError('parent-owned canonical verification receipt identity is invalid.');
   }
   const path = resolve(
     canonicalRoot,
@@ -349,7 +396,7 @@ const canonicalVerification = (canonicalRoot, id, expected, session) => {
     'issues',
     String(expected.issue_number),
     'canonical-verification',
-    `${id}.json`,
+    `${receiptId}.json`,
   );
   let value;
   try {
@@ -360,11 +407,12 @@ const canonicalVerification = (canonicalRoot, id, expected, session) => {
   const worktreePath = resolve(canonicalRoot, expected.worktree);
   if (
     value.version !== 2 ||
-    value.task_id !== id ||
+    value.task_id !== receiptId ||
     value.repository_root !== canonicalRoot ||
     value.runtime_root !== resolve(canonicalRoot, '.omo', 'lane-runs') ||
     value.lane_id !== expected.lane_id ||
     value.issue_number !== expected.issue_number ||
+    value.parent_session_id !== expected.parent_session_id ||
     value.worktree !== worktreePath ||
     typeof value.execution_worktree !== 'string' ||
     !value.execution_worktree.startsWith(resolve(canonicalRoot, '.worktrees', '.canonical-verify-')) ||
@@ -382,16 +430,24 @@ const canonicalVerification = (canonicalRoot, id, expected, session) => {
     value.post_run_git_state?.branch !== expected.branch ||
     value.post_run_git_state?.head_sha !== expected.head_sha ||
     JSON.stringify(value.command) !== JSON.stringify(['pnpm', 'verify']) ||
-    value.status !== 0 ||
-    value.result !== 'pass'
+    !Number.isSafeInteger(value.status) ||
+    value.status < 0 ||
+    value.result !== (value.status === 0 ? 'pass' : 'fail') ||
+    (value.result === 'fail' && output.verdict_signal !== 'BLOCK') ||
+    !session.tool_events.some(
+      ({ tool, is_error: isError, arguments: args }) =>
+        tool === 'read' &&
+        isError === false &&
+        resolve(canonicalRoot, args.path) === path,
+    )
   ) {
     throw new TypeError('verification reviewer canonical wrapper receipt is malformed or stale.');
   }
   return {
+    receipt_id: receiptId,
     receipt_sha256: payloadDigest(value),
     authority_snapshot_sha256: value.authority_snapshot_sha256,
     command: [...value.command],
-    shell_command: shell.arguments.command,
     status: value.status,
     result: value.result,
     session_sha256: session.session_sha256,
@@ -401,6 +457,17 @@ const canonicalVerification = (canonicalRoot, id, expected, session) => {
 const finalResponse = (value, axis, headSha, preflightSha256) => {
   const output = parseSenpiFinalResponse(value.final_response, REVIEW_FINAL_SENTINEL, 'reviewer task final_response');
   if (
+    Object.keys(output).sort().join(',') !==
+      [
+        'axis',
+        'blocker_sources',
+        'blockers',
+        'coverage',
+        'head_sha',
+        'preflight_sha256',
+        'sentinel',
+        'verdict_signal',
+      ].sort().join(',') ||
     output.sentinel !== REVIEW_FINAL_SENTINEL ||
     output.axis !== axis ||
     output.head_sha !== headSha ||
@@ -427,16 +494,27 @@ export const verifyReviewerTask = (expected) => {
     head_sha: headSha,
     preflight_sha256: preflightSha256,
     axis,
+    canonical_verification_receipt_id: canonicalVerificationReceiptId,
   } = expected;
   if (!axes.has(axis)) throw new TypeError('reviewer task identity is invalid.');
   const { canonicalRoot, value } = canonicalTask(root, id);
+  if (value.agent_type !== reviewerAgents[axis]) {
+    throw new TypeError(
+      'reviewer task agent role does not match its review axis.',
+    );
+  }
   const dagOwned = expected.dag_run_id !== undefined;
+  const ownerFingerprint = value.owner?.fingerprint;
   if (
     dagOwned &&
     (value.owner?.kind !== 'dag' ||
       value.owner.runId !== expected.dag_run_id ||
       value.owner.nodeId !== expected.node_id ||
-      value.owner.fingerprint !== expected.dag_owner_fingerprint)
+      !sha256.test(ownerFingerprint ?? '') ||
+      (
+        expected.dag_owner_fingerprint !== undefined &&
+        ownerFingerprint !== expected.dag_owner_fingerprint
+      ))
   ) {
     throw new TypeError('reviewer task DAG owner is invalid.');
   }
@@ -450,6 +528,12 @@ export const verifyReviewerTask = (expected) => {
       head_sha: headSha,
       preflight_sha256: preflightSha256,
       review_axis: axis,
+      ...(axis === 'verification'
+        ? {
+            canonical_verification_receipt_id:
+              canonicalVerificationReceiptId,
+          }
+        : {}),
       ...(dagOwned
         ? { dag_key: expected.dag_key, node_id: expected.node_id }
         : {}),
@@ -459,9 +543,36 @@ export const verifyReviewerTask = (expected) => {
   );
   if (!sha256.test(preflightSha256 ?? '')) throw new TypeError('reviewer preflight digest is omitted or malformed.');
   const output = finalResponse(value, axis, headSha, preflightSha256);
-  const session = reviewerSession(canonicalRoot, id, axis);
+  const session = reviewerSession(
+    canonicalRoot,
+    id,
+    axis,
+    value.tool_allow,
+  );
+  assertReviewerReadCoverage(session, {
+    repository_root: canonicalRoot,
+    lane_id: laneId,
+    issue_number: issueNumber,
+    worktree,
+    axis,
+  });
   const verification = axis === 'verification'
-    ? canonicalVerification(canonicalRoot, id, { lane_id: laneId, issue_number: issueNumber, worktree, branch, head_sha: headSha, preflight_sha256: preflightSha256 }, session)
+    ? canonicalVerification(
+        canonicalRoot,
+        {
+          lane_id: laneId,
+          issue_number: issueNumber,
+          parent_session_id: parentSessionId,
+          worktree,
+          branch,
+          head_sha: headSha,
+          preflight_sha256: preflightSha256,
+          canonical_verification_receipt_id:
+            canonicalVerificationReceiptId,
+        },
+        session,
+        output,
+      )
     : null;
   return {
     task_id: id,
@@ -474,7 +585,7 @@ export const verifyReviewerTask = (expected) => {
           dag_run_id: expected.dag_run_id,
           dag_key: expected.dag_key,
           dag_node_id: expected.node_id,
-          dag_owner_fingerprint: expected.dag_owner_fingerprint,
+          dag_owner_fingerprint: ownerFingerprint,
         }
       : {}),
     lane_id: laneId,
@@ -496,9 +607,27 @@ const conflictFinalResponse = (value, expected) => {
   const digests = record(output.digests, 'conflict reviewer task digests');
   const digestKeys = ['old_content_sha256', 'upstream_content_sha256', 'resolved_content_sha256', 'old_upstream_diff_sha256', 'old_resolved_diff_sha256', 'upstream_resolved_diff_sha256'];
   if (
+    Object.keys(output).sort().join(',') !==
+      [
+        'affected_axes',
+        'conflicting_files',
+        'conflicting_hunks',
+        'digests',
+        'generation',
+        'preflight_sha256',
+        'previously_reviewed_head',
+        'rationale',
+        'resolved_head',
+        'semantic_impact',
+        'sentinel',
+        'upstream_head',
+        'upstream_relevant',
+        'verdict_signal',
+      ].sort().join(',') ||
     output.sentinel !== CONFLICT_REVIEW_FINAL_SENTINEL || output.verdict_signal !== 'PASS' ||
     output.previously_reviewed_head !== expected.previously_reviewed_head || output.upstream_head !== expected.upstream_head ||
     output.resolved_head !== expected.resolved_head || output.preflight_sha256 !== expected.preflight_sha256 ||
+    output.generation !== expected.generation ||
     JSON.stringify(output.conflicting_files) !== JSON.stringify(expected.conflicting_files) ||
     JSON.stringify(output.conflicting_hunks) !== JSON.stringify(expected.conflicting_hunks) ||
     output.semantic_impact !== expected.semantic_impact || output.upstream_relevant !== expected.upstream_relevant ||
@@ -508,22 +637,87 @@ const conflictFinalResponse = (value, expected) => {
   return output;
 };
 
-export const verifyConflictGateTask = ({ repository_root: root, task_id: id, parent_session_id: parentSessionId, lane_id: laneId, issue_number: issueNumber, worktree, gate }) => {
+export const verifyConflictGateTask = ({
+  repository_root: root,
+  task_id: id,
+  parent_session_id: parentSessionId,
+  dag_run_id: dagRunId,
+  dag_key: dagKey,
+  lane_id: laneId,
+  issue_number: issueNumber,
+  worktree,
+  gate,
+  machine_evidence: machineEvidence,
+}) => {
   const { canonicalRoot, value } = canonicalTask(root, id);
+  if (value.agent_type !== reviewerAgents.contract) {
+    throw new TypeError(
+      'conflict reviewer task must use the contract reviewer role.',
+    );
+  }
+  const dagOwned = value.owner?.kind === 'dag';
+  const expectedNodeId =
+    `conflict-gate-g${String(gate.generation)}-h${gate.resolved_head}` +
+    `-from${gate.previously_reviewed_head}-u${gate.upstream_head}`;
+  if (
+    dagOwned &&
+    (
+      typeof dagRunId !== 'string' ||
+      value.owner.runId !== dagRunId ||
+      value.owner.nodeId !== expectedNodeId ||
+      !sha256.test(value.owner.fingerprint ?? '') ||
+      value.name !== expectedNodeId
+    )
+  ) {
+    throw new TypeError(
+      'conflict reviewer DAG owner does not match the resolution gate node.',
+    );
+  }
   requireCompletedTask(
-    value, id, parentSessionId, conflictReviewerTaskName(issueNumber, gate.resolved_head), canonicalRoot,
-    conflictReviewerPromptSentinel({ repository_root: canonicalRoot, lane_id: laneId, issue_number: issueNumber, worktree, preflight_sha256: gate.preflight_sha256, previously_reviewed_head: gate.previously_reviewed_head, upstream_head: gate.upstream_head, resolved_head: gate.resolved_head }),
+    value, id, parentSessionId,
+    dagOwned
+      ? expectedNodeId
+      : conflictReviewerTaskName(issueNumber, gate.resolved_head),
+    canonicalRoot,
+    conflictReviewerPromptSentinel({
+      repository_root: canonicalRoot,
+      lane_id: laneId,
+      issue_number: issueNumber,
+      worktree,
+      preflight_sha256: gate.preflight_sha256,
+      previously_reviewed_head: gate.previously_reviewed_head,
+      upstream_head: gate.upstream_head,
+      resolved_head: gate.resolved_head,
+      generation: gate.generation,
+      machine_evidence: machineEvidence,
+      ...(dagOwned
+        ? { dag_key: dagKey, node_id: expectedNodeId }
+        : {}),
+    }),
     CONFLICT_REVIEW_SENTINEL,
     { repository_root: canonicalRoot, lane_id: laneId, issue_number: issueNumber, preflight_sha256: gate.preflight_sha256 },
   );
   const output = conflictFinalResponse(value, gate);
-  const session = reviewerSession(canonicalRoot, id, 'conflict');
+  const session = reviewerSession(
+    canonicalRoot,
+    id,
+    'conflict',
+    value.tool_allow,
+  );
   return {
     task_id: id,
     record_sha256: payloadDigest(completionProjection(value)),
     output_sha256: payloadDigest(output),
     final_response: output,
     parent_session_id: parentSessionId,
+    ...(dagOwned
+      ? {
+          dag_run_id: value.owner.runId,
+          dag_key: dagKey,
+          dag_node_id: value.owner.nodeId,
+          dag_owner_fingerprint: value.owner.fingerprint,
+        }
+      : {}),
     lane_id: laneId,
     issue_number: issueNumber,
     worktree,

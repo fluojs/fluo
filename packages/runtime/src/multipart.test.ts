@@ -155,4 +155,32 @@ describe('parseMultipart', () => {
     await expect(result).rejects.toBeInstanceOf(PayloadTooLargeException);
     await expect(result).rejects.toThrow('Multipart body exceeds the maximum size of 10 bytes.');
   });
+
+  it('rejects an oversized Web stream without waiting for another chunk', async () => {
+    let cancellationReason: unknown;
+    const body = new ReadableStream<Uint8Array>({
+      cancel(reason) {
+        cancellationReason = reason;
+      },
+      start(controller) {
+        controller.enqueue(new Uint8Array(11));
+      },
+    });
+
+    await expect(
+      parseMultipart(
+        {
+          body,
+          headers: {
+            'content-type':
+              'multipart/form-data; boundary=fluo-never-drain',
+          },
+          method: 'POST',
+          url: 'http://localhost/uploads',
+        },
+        { maxTotalSize: 10 },
+      ),
+    ).rejects.toBeInstanceOf(PayloadTooLargeException);
+    expect(cancellationReason).toBeInstanceOf(PayloadTooLargeException);
+  });
 });

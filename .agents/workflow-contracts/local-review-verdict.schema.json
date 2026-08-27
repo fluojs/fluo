@@ -188,14 +188,14 @@
             {
               "type": "object",
               "additionalProperties": false,
-              "required": ["receipt_sha256", "authority_snapshot_sha256", "command", "shell_command", "status", "result", "session_sha256"],
+              "required": ["receipt_id", "receipt_sha256", "authority_snapshot_sha256", "command", "status", "result", "session_sha256"],
               "properties": {
+                "receipt_id": { "type": "string", "pattern": "^st_[A-Za-z0-9_-]+$" },
                 "receipt_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
                 "authority_snapshot_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
                 "command": { "type": "array", "minItems": 1, "items": { "type": "string" } },
-                "shell_command": { "type": "string", "minLength": 1 },
-                "status": { "const": 0 },
-                "result": { "const": "pass" },
+                "status": { "type": "integer", "minimum": 0 },
+                "result": { "enum": ["pass", "fail"] },
                 "session_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
               }
             }

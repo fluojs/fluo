@@ -190,6 +190,8 @@ const reviewerTask = (axis: string, head: string, fixBackEligible: boolean) => {
   const dagKey =
     `fluo:lane:${identity.lane_id}:issue-${String(identity.issue_number)}:lifecycle:v3`;
   const nodeId = `review-${axis}-${head}`;
+  const canonicalVerificationReceiptId =
+    `st_parent_verify_${head.slice(0, 12)}`;
   const ownerFingerprint = payloadDigest(nodeId);
   const task = {
     task_id: taskId,
@@ -217,6 +219,12 @@ const reviewerTask = (axis: string, head: string, fixBackEligible: boolean) => {
           head_sha: head,
           preflight_sha256: reviewPreflight.sha256,
           review_axis: axis,
+          ...(axis === 'verification'
+            ? {
+                canonical_verification_receipt_id:
+                  canonicalVerificationReceiptId,
+              }
+            : {}),
           dag_key: dagKey,
           node_id: nodeId,
         })}`,
@@ -235,6 +243,12 @@ const reviewerTask = (axis: string, head: string, fixBackEligible: boolean) => {
       head_sha: head,
       preflight_sha256: reviewPreflight.sha256,
       axis,
+      ...(axis === 'verification'
+        ? {
+            canonical_verification_receipt_id:
+              canonicalVerificationReceiptId,
+          }
+        : {}),
       dag_run_id: dagRunId,
       dag_key: dagKey,
       node_id: nodeId,
@@ -347,6 +361,40 @@ const parseRecord = (path: string): Record<string, unknown> => {
 };
 
 describe('execute-lane adaptive retry policy', () => {
+  it('imports an existing successor head without creating a synthetic commit', () => {
+    // Given
+    const state = createImplementingState();
+
+    // When
+    const imported = transitionIssueSupervisor(state, {
+      kind: 'implementation-imported',
+      head_sha: state.head_sha,
+      preflight_sha256: reviewPreflight.sha256,
+      verification: 'parent verified the clean successor worktree head',
+      import_receipt: {
+        kind: 'implementation-import',
+        authority: 'lane-parent',
+        lane_id: state.lane_id,
+        issue_number: state.issue_number,
+        repository_root: state.repository_root,
+        worktree: state.worktree,
+        head_sha: state.head_sha,
+        preflight_sha256: reviewPreflight.sha256,
+        worktree_clean: true,
+        observed_at: '2026-08-27T00:00:00.000Z',
+      },
+    });
+
+    // Then
+    expect(imported).toMatchObject({
+      status: 'local-review',
+      head_sha: state.head_sha,
+      attempt: 0,
+      verification: 'parent verified the clean successor worktree head',
+      implementer_tasks: [],
+    });
+  });
+
   it('keeps fixable work active beyond legacy count and wall-clock budgets', () => {
     // Given
     let state = createImplementingState();

@@ -1,15 +1,17 @@
 import {
-  terminalDispatchBlock,
   terminalTaskPrompt,
 } from './dispatch-authority.mjs';
 import {
   reviewNodePrompt,
 } from './issue-dag-prompts.mjs';
-
-export const CONFLICT_PHASE_SENTINEL =
-  'fluo:execute-lane:conflict-phase:dispatch:v3';
-export const CONFLICT_PHASE_FINAL_SENTINEL =
-  'fluo:execute-lane:conflict-phase:final:v3';
+import {
+  CONFLICT_IMPLEMENTER_FINAL_SENTINEL,
+  conflictImplementerPromptSentinel,
+} from './implementer-runtime.mjs';
+import {
+  CONFLICT_REVIEW_FINAL_SENTINEL,
+  conflictReviewerTaskPrompt,
+} from './reviewer-runtime.mjs';
 
 const reviewerAgents = Object.freeze({
   contract: 'fluo-contract-reviewer',
@@ -23,23 +25,6 @@ const sha = (value, name) => {
   }
   return value;
 };
-
-const dispatch = (phase, id, dagKey, lane, issueNumber) => ({
-  version: 3,
-  sentinel: CONFLICT_PHASE_SENTINEL,
-  lane_id: lane.lane_id,
-  issue_number: issueNumber,
-  dag_key: dagKey,
-  node_id: id,
-  phase: phase.kind,
-  worktree: phase.worktree,
-  generation: phase.generation,
-  previously_reviewed_head: phase.previously_reviewed_head,
-  upstream_head: phase.upstream_head,
-  resolved_head: phase.resolved_head,
-  preflight_sha256: phase.preflight_sha256,
-  affected_axes: phase.affected_axes,
-});
 
 const conflictImplementation = (
   lane,
@@ -69,7 +54,7 @@ const conflictImplementation = (
 Resolve the bound conflict in the assigned issue worktree.
 
 DELIVERABLE:
-Return ${CONFLICT_PHASE_FINAL_SENTINEL} with the actual resolved head.
+Return ${CONFLICT_IMPLEMENTER_FINAL_SENTINEL} with the actual resolved head.
 
 SCOPE:
 Mutate only the assigned issue worktree. Do not push, mutate GitHub, review the
@@ -81,9 +66,20 @@ conflicting file and hunk resolved.
 
 STOP WHEN:
 A new resolved head is returned, or one terminal conflict blocker is returned.`,
-      dispatch_block: terminalDispatchBlock(
-        dispatch(phase, id, dagKey, lane, issueNumber),
-      ),
+      dispatch_block: conflictImplementerPromptSentinel({
+        repository_root: phase.repository_root,
+        lane_id: lane.lane_id,
+        issue_number: issueNumber,
+        worktree: phase.worktree,
+        parent_session_id: phase.parent_session_id,
+        old_base: phase.old_base,
+        previously_reviewed_head: previous,
+        upstream_head: upstream,
+        generation: phase.generation,
+        preflight_sha256: phase.preflight_sha256,
+        dag_key: dagKey,
+        node_id: id,
+      }),
     }),
   };
 };
@@ -101,7 +97,9 @@ const conflictGate = (
     'conflict reviewed head',
   );
   const upstream = sha(phase.upstream_head, 'conflict upstream head');
-  const id = `conflict-gate-h${resolved}-from${previous}-u${upstream}`;
+  const id =
+    `conflict-gate-g${String(phase.generation)}-h${resolved}` +
+    `-from${previous}-u${upstream}`;
   return {
     id,
     dependsOn,
@@ -110,12 +108,12 @@ const conflictGate = (
     description: 'Compute exact inherited and rerun review axes.',
     task_summary: `Issue #${String(issueNumber)} conflict gate`,
     subagent_type: 'fluo-contract-reviewer',
-    prompt: terminalTaskPrompt({
+    prompt: conflictReviewerTaskPrompt({
       instructions: `TASK:
 Audit the exact conflict resolution and determine the minimum safe rerun axes.
 
 DELIVERABLE:
-Return ${CONFLICT_PHASE_FINAL_SENTINEL} with canonical path/diff impact and
+Return ${CONFLICT_REVIEW_FINAL_SENTINEL} with canonical path/diff impact and
 affected review axes.
 
 SCOPE:
@@ -127,9 +125,18 @@ only when canonical Git proves patch equivalence and no upstream overlap.
 
 STOP WHEN:
 Every inherited and rerun axis is justified by exact Git evidence.`,
-      dispatch_block: terminalDispatchBlock(
-        dispatch(phase, id, dagKey, lane, issueNumber),
-      ),
+      repository_root: phase.repository_root,
+      lane_id: lane.lane_id,
+      issue_number: issueNumber,
+      worktree: phase.worktree,
+      preflight_sha256: phase.preflight_sha256,
+      previously_reviewed_head: previous,
+      upstream_head: upstream,
+      resolved_head: resolved,
+      generation: phase.generation,
+      machine_evidence: phase.machine_evidence,
+      dag_key: dagKey,
+      node_id: id,
     }),
   };
 };
@@ -150,7 +157,8 @@ const conflictReview = (
     throw new TypeError('Conflict review axes are invalid.');
   }
   return [...new Set(phase.affected_axes)].map((axis) => {
-    const id = `conflict-review-${axis}-h${resolved}`;
+    const id =
+      `conflict-review-${axis}-g${String(phase.generation)}-h${resolved}`;
     return {
       id,
       dependsOn,
@@ -183,6 +191,12 @@ Every affected row is decided for the exact resolved head.`,
         review_axis: axis,
         dag_key: dagKey,
         node_id: id,
+        ...(axis === 'verification'
+          ? {
+              canonical_verification_receipt_id:
+                phase.verification_receipt_id,
+            }
+          : {}),
       }),
     };
   });

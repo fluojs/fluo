@@ -1,5 +1,5 @@
 import { lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { payloadDigest } from '../../../workflow-contracts/contracts.mjs';
@@ -17,6 +17,11 @@ const IMPLEMENTER_PROVIDER = 'openai-codex';
 const IMPLEMENTER_MODEL = 'gpt-5.6-terra';
 const IMPLEMENTER_THINKING = 'high';
 const TASK_ID = /^st_[A-Za-z0-9_-]+$/u;
+const IMPLEMENTER_TOOLS = Object.freeze([
+  'read',
+  'bash',
+  'apply_patch',
+]);
 const ORCHESTRATION_TOOLS = new Set([
   'task',
   'dag',
@@ -36,6 +41,26 @@ export const CONFLICT_IMPLEMENTER_SENTINEL = 'fluo:execute-lane:conflict-impleme
 export const CONFLICT_IMPLEMENTER_FINAL_SENTINEL = 'fluo:execute-lane:conflict-implementer:final:v1';
 export const IMPLEMENTER_SENTINEL = 'fluo:execute-lane:implementer:dispatch:v1';
 export const IMPLEMENTER_FINAL_SENTINEL = 'fluo:execute-lane:implementer:final:v1';
+const IMPLEMENTER_FINAL_KEYS = [
+  'sentinel',
+  'lane_id',
+  'issue_number',
+  'worktree',
+  'parent_session_id',
+  'current_head',
+  'new_head',
+  'generation',
+  'scope',
+  'result',
+  'verification',
+  'addressed_blockers',
+  'blocker_ledger_sha256',
+  'preflight_sha256',
+];
+const IMPLEMENTER_RESULTS = new Set([
+  'implementation-completed',
+  'fix-completed',
+]);
 
 export const implementerRoute = Object.freeze({
   subagent_type: IMPLEMENTER_AGENT,
@@ -87,7 +112,20 @@ export const implementerTaskPrompt = ({
   ...authority
 }) =>
   terminalTaskPrompt({
-    instructions,
+    instructions: `${instructions}
+
+DELIVERABLE:
+Return exactly one machine envelope with no prose or code fence:
+<${IMPLEMENTER_FINAL_SENTINEL}>{"sentinel":"${IMPLEMENTER_FINAL_SENTINEL}",...}</${IMPLEMENTER_FINAL_SENTINEL}>
+
+The JSON object must contain exactly these fields in this order:
+sentinel, lane_id, issue_number, worktree, parent_session_id, current_head,
+new_head, generation, scope, result, verification, addressed_blockers,
+blocker_ledger_sha256, preflight_sha256.
+
+Copy every bound identity from the terminal dispatch, use scope
+${IMPLEMENTER_SCOPE}, report the observed new head and verification result, and
+do not add or omit fields.`,
     dispatch_block: implementerPromptSentinel(authority),
   });
 
@@ -116,14 +154,17 @@ const parseJson = (source, path) => {
 const assertTaskRecord = (record) => {
   if (
     record.status !== 'completed' ||
+    record.execution_mode !== 'process' ||
     record.agent_type !== IMPLEMENTER_AGENT ||
     record.resolved_model?.source !== 'agent' ||
     record.resolved_model.provider !== IMPLEMENTER_PROVIDER ||
     record.resolved_model.model_id !== IMPLEMENTER_MODEL ||
-    record.resolved_model.reasoning_effort !== IMPLEMENTER_THINKING
+    record.resolved_model.reasoning_effort !== IMPLEMENTER_THINKING ||
+    JSON.stringify(record.tool_allow) !==
+      JSON.stringify(IMPLEMENTER_TOOLS)
   ) {
     throw new TypeError(
-      'implementer task metadata must resolve the configured Terra high agent.',
+      'implementer task metadata must match the configured process-mode Terra high agent and tool policy.',
     );
   }
 };
@@ -148,17 +189,83 @@ const readSessionEvents = (sessionRoot) => {
   return { events, session_sha256: payloadDigest(sources) };
 };
 
-const assertActualRuntime = (events) => {
+const inside = (root, candidate) =>
+  candidate === root || candidate.startsWith(`${root}${sep}`);
+
+const assertMutationToolScope = (
+  toolCalls,
+  repositoryRoot,
+  worktree,
+) => {
+  const worktreeRoot = resolve(repositoryRoot, worktree);
+  for (const call of toolCalls) {
+    if (call.name === 'bash') {
+      const command = call.arguments?.command;
+      const match =
+        typeof command === 'string' &&
+        !/[\n;&|`$<>]/u.test(command)
+          ? /^(?:git -C|pnpm (?:--dir|-C))\s+([^\s]+)(?:\s|$)/u.exec(
+              command,
+            )
+          : null;
+      if (
+        match === null ||
+        !inside(
+          worktreeRoot,
+          resolve(repositoryRoot, match[1]),
+        )
+      ) {
+        throw new TypeError(
+          'implementer shell commands must target only the issue worktree.',
+        );
+      }
+    }
+    if (call.name === 'apply_patch') {
+      const patch = Object.values(call.arguments ?? {}).find(
+        (value) => typeof value === 'string',
+      );
+      const paths =
+        typeof patch === 'string'
+          ? [...patch.matchAll(
+              /^\*\*\* (?:Add|Update|Delete) File: (.+)$/gmu,
+            )].map((match) => match[1])
+          : [];
+      if (
+        paths.length === 0 ||
+        paths.some(
+          (path) =>
+            !inside(
+              worktreeRoot,
+              resolve(repositoryRoot, path),
+            ),
+        )
+      ) {
+        throw new TypeError(
+          'implementer patches must target only the issue worktree.',
+        );
+      }
+    }
+  }
+};
+
+const assertActualRuntime = (
+  events,
+  allowedTools,
+  repositoryRoot,
+  worktree,
+) => {
   const modelChanges = events.filter((event) => event.type === 'model_change');
   const thinkingChanges = events.filter((event) => event.type === 'thinking_level_change');
   const assistantMessages = events.filter(
     (event) => event.type === 'message' && event.message?.role === 'assistant',
   );
-  const orchestrationCalls = assistantMessages.flatMap((event) =>
+  const toolCalls = assistantMessages.flatMap((event) =>
     (event.message.content ?? [])
       .filter((part) => part?.type === 'toolCall')
-      .map((part) => part.name)
-      .filter((name) => ORCHESTRATION_TOOLS.has(name)),
+      .map((part) => ({
+        name: part.name,
+        arguments: part.arguments,
+      })),
   );
   if (
     modelChanges.length === 0 ||
@@ -168,7 +275,12 @@ const assertActualRuntime = (events) => {
     thinkingChanges.length === 0 ||
     !thinkingChanges.every((event) => event.thinkingLevel === IMPLEMENTER_THINKING) ||
     assistantMessages.length === 0 ||
-    orchestrationCalls.length > 0 ||
+    toolCalls.some(
+      ({ name }) =>
+        typeof name !== 'string' ||
+        ORCHESTRATION_TOOLS.has(name) ||
+        !allowedTools.includes(name),
+    ) ||
     !assistantMessages.every(
       (event) =>
         event.message.provider === IMPLEMENTER_PROVIDER &&
@@ -176,9 +288,14 @@ const assertActualRuntime = (events) => {
     )
   ) {
     throw new TypeError(
-      'actual implementer session must use openai-codex/gpt-5.6-terra with high thinking.',
+      'actual implementer session must use the configured model and tool policy.',
     );
   }
+  assertMutationToolScope(
+    toolCalls,
+    repositoryRoot,
+    worktree,
+  );
   return assistantMessages.length;
 };
 
@@ -189,6 +306,29 @@ const requireFinalResponse = (record, expected) => {
     'implementer task final_response',
   );
   if (
+    JSON.stringify(Object.keys(output)) !==
+      JSON.stringify(IMPLEMENTER_FINAL_KEYS) ||
+    output.sentinel !== IMPLEMENTER_FINAL_SENTINEL ||
+    typeof output.lane_id !== 'string' ||
+    output.lane_id.length === 0 ||
+    !Number.isSafeInteger(output.issue_number) ||
+    output.issue_number < 1 ||
+    typeof output.worktree !== 'string' ||
+    output.worktree.length === 0 ||
+    typeof output.parent_session_id !== 'string' ||
+    output.parent_session_id.length === 0 ||
+    !/^[a-f0-9]{40}$/u.test(output.current_head ?? '') ||
+    !/^[a-f0-9]{40}$/u.test(output.new_head ?? '') ||
+    output.current_head === output.new_head ||
+    !Number.isSafeInteger(output.generation) ||
+    output.generation < 1 ||
+    output.scope !== IMPLEMENTER_SCOPE ||
+    !IMPLEMENTER_RESULTS.has(output.result) ||
+    typeof output.verification !== 'string' ||
+    output.verification.length === 0 ||
+    !Array.isArray(output.addressed_blockers) ||
+    !/^[a-f0-9]{64}$/u.test(output.blocker_ledger_sha256 ?? '') ||
+    !/^[a-f0-9]{64}$/u.test(output.preflight_sha256 ?? '') ||
     output.lane_id !== expected.lane_id ||
     output.issue_number !== expected.issue_number ||
     output.worktree !== expected.worktree ||
@@ -299,6 +439,7 @@ export const verifyImplementerRuntime = (expected) => {
     agent_type: taskRecord.agent_type,
     spawn_spec: structuredClone(taskRecord.spawn_spec),
     resolved_model: structuredClone(taskRecord.resolved_model),
+    tool_allow: [...taskRecord.tool_allow],
     final_response: taskRecord.final_response,
   };
   return {
@@ -330,7 +471,12 @@ export const verifyImplementerRuntime = (expected) => {
     model_id: IMPLEMENTER_MODEL,
     thinking_level: IMPLEMENTER_THINKING,
     session_sha256: session.session_sha256,
-    assistant_turns: assertActualRuntime(session.events),
+    assistant_turns: assertActualRuntime(
+      session.events,
+      taskRecord.tool_allow,
+      canonicalRoot,
+      expected.worktree,
+    ),
   };
 };
 
@@ -346,9 +492,10 @@ export const conflictImplementerPromptSentinel = ({
   old_base: oldBase,
   previously_reviewed_head: previousHead,
   upstream_head: upstreamHead,
-  resolved_head: resolvedHead,
   generation,
   preflight_sha256: preflightSha256,
+  dag_key: dagKey,
+  node_id: nodeId,
 }) => terminalDispatchBlock({
   version: 1,
   sentinel: CONFLICT_IMPLEMENTER_SENTINEL,
@@ -359,11 +506,12 @@ export const conflictImplementerPromptSentinel = ({
   old_base: oldBase,
   previously_reviewed_head: previousHead,
   upstream_head: upstreamHead,
-  resolved_head: resolvedHead,
   generation,
   preflight_path: canonicalPreflightArtifactPath(repositoryRoot, laneId, issueNumber),
   preflight_sha256: preflightSha256,
   scope: CONFLICT_IMPLEMENTER_SCOPE,
+  ...(dagKey === undefined ? {} : { dag_key: dagKey }),
+  ...(nodeId === undefined ? {} : { node_id: nodeId }),
 });
 
 export const verifyConflictImplementerRuntime = (expected) => {
@@ -375,6 +523,24 @@ export const verifyConflictImplementerRuntime = (expected) => {
   assertRegularFile(taskPath);
   const taskRecord = parseJson(readFileSync(taskPath, 'utf8'), taskPath);
   assertTaskRecord(taskRecord);
+  const dagOwned = taskRecord.owner?.kind === 'dag';
+  const expectedNodeId =
+    `conflict-implement-g${String(expected.generation)}` +
+    `-h${expected.previously_reviewed_head}-u${expected.upstream_head}`;
+  if (
+    dagOwned &&
+    (
+      typeof expected.dag_run_id !== 'string' ||
+      taskRecord.owner.runId !== expected.dag_run_id ||
+      taskRecord.owner.nodeId !== expectedNodeId ||
+      !/^[a-f0-9]{64}$/u.test(taskRecord.owner.fingerprint ?? '') ||
+      taskRecord.name !== expectedNodeId
+    )
+  ) {
+    throw new TypeError(
+      'conflict implementer DAG owner does not match the resolution node.',
+    );
+  }
   const expectedDispatch = conflictImplementerPromptSentinel(expected);
   const dispatch = parseTerminalDispatch(
     taskRecord.spawn_spec?.prompt,
@@ -389,7 +555,14 @@ export const verifyConflictImplementerRuntime = (expected) => {
   if (
     taskRecord.task_id !== expected.task_id ||
     taskRecord.parent_session_id !== expected.parent_session_id ||
-    taskRecord.name !== conflictImplementerTaskName(expected.issue_number, expected.generation, expected.resolved_head) ||
+    taskRecord.name !==
+      (dagOwned
+        ? expectedNodeId
+        : conflictImplementerTaskName(
+            expected.issue_number,
+            expected.generation,
+            expected.resolved_head,
+          )) ||
     taskRecord.spawn_spec?.cwd !== canonicalRoot ||
     terminalDispatchBlock(dispatch) !== expectedDispatch
   ) throw new TypeError('conflict implementer spawn provenance does not match the resolution contract.');
@@ -414,7 +587,12 @@ export const verifyConflictImplementerRuntime = (expected) => {
     output.result !== 'conflict-resolved'
   ) throw new TypeError('conflict implementer final_response is malformed.');
   const session = readSessionEvents(join(runtimeRoot, 'children', expected.task_id, 'sessions', expected.task_id));
-  const assistantTurns = assertActualRuntime(session.events);
+  const assistantTurns = assertActualRuntime(
+    session.events,
+    taskRecord.tool_allow,
+    canonicalRoot,
+    expected.worktree,
+  );
   return {
     task_id: expected.task_id,
     record_sha256: payloadDigest({
@@ -425,10 +603,19 @@ export const verifyConflictImplementerRuntime = (expected) => {
       agent_type: taskRecord.agent_type,
       spawn_spec: structuredClone(taskRecord.spawn_spec),
       resolved_model: structuredClone(taskRecord.resolved_model),
+      tool_allow: [...taskRecord.tool_allow],
       final_response: taskRecord.final_response,
     }),
     output_sha256: payloadDigest(output),
     final_response: output,
+    ...(dagOwned
+      ? {
+          dag_run_id: expected.dag_run_id,
+          dag_key: expected.dag_key,
+          dag_node_id: taskRecord.owner.nodeId,
+          dag_owner_fingerprint: taskRecord.owner.fingerprint,
+        }
+      : {}),
     preflight_sha256: expected.preflight_sha256,
     session_sha256: session.session_sha256,
     assistant_turns: assistantTurns,

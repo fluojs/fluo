@@ -4,6 +4,13 @@ import { join, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+const { payloadDigest } = await import(
+  resolve(
+    process.cwd(),
+    '.agents/workflow-contracts/contracts.mjs',
+  )
+);
+
 type DagDefinition = Readonly<{
   key: string;
   name: string;
@@ -98,6 +105,37 @@ const amendedDefinition: DagDefinition = {
   ],
 };
 
+const reviewNodeIds = [
+  `review-contract-${head}`,
+  `review-code-${head}`,
+  `review-verification-${head}`,
+];
+const reviewDefinition: DagDefinition = {
+  ...initialDefinition,
+  nodes: [
+    ...initialDefinition.nodes,
+    ...reviewNodeIds.map((id) => ({
+      id,
+      subagent_type: 'fluo-code-reviewer',
+      dependsOn: [preflightNodeId],
+      prompt: id,
+    })),
+  ],
+};
+const reviewRetryNodeId = `review-verification-retry-g1-${head}`;
+const reviewRetryDefinition: DagDefinition = {
+  ...reviewDefinition,
+  nodes: [
+    ...reviewDefinition.nodes,
+    {
+      id: reviewRetryNodeId,
+      subagent_type: 'fluo-verification-reviewer',
+      dependsOn: reviewNodeIds,
+      prompt: reviewRetryNodeId,
+    },
+  ],
+};
+
 const initialBundle = () =>
   createIssueDagRunBundle({
     lane_id: laneId,
@@ -146,6 +184,20 @@ describe('execute-lane issue DAG run state', () => {
         active_node_ids: [preflightNodeId],
       }),
     );
+  });
+
+  it.each([
+    preflightNodeId,
+    [preflightNodeId, preflightNodeId],
+    ['unknown-node'],
+  ])('rejects malformed native completion node identities', (completedNodeIds) => {
+    expect(() =>
+      observeIssueDagCompletion(attachedBundle(), {
+        completed_node_ids: completedNodeIds,
+        definition_fingerprint: initialFingerprint,
+        native_generation: 1,
+      }),
+    ).toThrow(/native completion evidence/u);
   });
 
   it('persists intent before attaching one verified amendment', () => {
@@ -231,6 +283,111 @@ describe('execute-lane issue DAG run state', () => {
         phase_key: 'implementation:g2:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       }),
     ).toThrow(/conflicting/u);
+  });
+
+  it('replays legacy v3 amendment intent without continue_active_phase', () => {
+    const settled = settleIssueDagPhase(completedBundle(), {
+      completed_node_ids: [preflightNodeId],
+      definition_fingerprint: initialFingerprint,
+      native_generation: 1,
+    });
+    const input = {
+      definition: amendedDefinition,
+      phase_key: 'implementation:g1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      head_sha: head,
+      added_node_ids: [`implement-g1-${head}`],
+    };
+    const prepared = prepareIssueDagAmendment(settled, input);
+    const legacyState = structuredClone(prepared.state);
+    delete (
+      legacyState.pending_amendment as Record<string, unknown>
+    ).continue_active_phase;
+    const previousEvents = prepared.events.slice(0, -1);
+    const { event_hash: _eventHash, ...lastBase } = prepared.events.at(-1) as {
+      event_hash: string;
+      [key: string]: unknown;
+    };
+    const legacyBase = { ...lastBase, state: legacyState };
+    const legacy = {
+      state: legacyState,
+      events: [
+        ...previousEvents,
+        {
+          ...legacyBase,
+          event_hash: payloadDigest(legacyBase),
+        },
+      ],
+    };
+
+    expect(prepareIssueDagAmendment(legacy, input)).toEqual(legacy);
+  });
+
+  it('continues an unverified completed phase with supplemental evidence', () => {
+    // Given
+    const running = attachIssueDagRun(
+      createIssueDagRunBundle({
+        lane_id: laneId,
+        issue_number: issueNumber,
+        dependencies: [],
+        coordinator_session_id: coordinatorSessionId,
+        head_sha: head,
+        definition: reviewDefinition,
+        dispatch_event_hash: dispatchEventHash,
+      }),
+      {
+        run_id: 'run_issue_4101',
+        run_key: reviewDefinition.key,
+        parent_session_id: coordinatorSessionId,
+        definition_fingerprint: initialFingerprint,
+        native_generation: 1,
+      },
+    );
+    const completed = observeIssueDagCompletion(running, {
+      completed_node_ids: reviewDefinition.nodes.map((node) => node.id),
+      definition_fingerprint: initialFingerprint,
+      native_generation: 1,
+    });
+
+    // When
+    const prepared = prepareIssueDagAmendment(completed, {
+      definition: reviewRetryDefinition,
+      phase_key: 'preflight',
+      head_sha: head,
+      added_node_ids: [reviewRetryNodeId],
+      continue_active_phase: true,
+    });
+    const attached = attachIssueDagAmendment(prepared, {
+      run_id: 'run_issue_4101',
+      run_key: reviewDefinition.key,
+      parent_session_id: coordinatorSessionId,
+      definition_fingerprint: amendedFingerprint,
+      native_generation: 2,
+      amendment: {
+        event_sequence: 11,
+        previous_fingerprint: initialFingerprint,
+        fingerprint: amendedFingerprint,
+        definition_sha256: String(
+          (
+            prepared.state.pending_amendment as Readonly<
+              Record<string, unknown>
+            >
+          ).definition_sha256,
+        ),
+        added_node_ids: [reviewRetryNodeId],
+        changed_node_ids: [],
+        invalidated_node_ids: [],
+      },
+    });
+
+    // Then
+    expect(attached.state).toEqual(
+      expect.objectContaining({
+        status: 'phase-running',
+        active_phase_key: 'preflight',
+        active_node_ids: [reviewRetryNodeId],
+        completed_node_ids: reviewDefinition.nodes.map((node) => node.id),
+      }),
+    );
   });
 
   it('round-trips the append-only state bundle without duplicate events', () => {

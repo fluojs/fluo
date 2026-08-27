@@ -44,12 +44,93 @@ import {
   assertCanonicalGitState,
   computeConflictGitEvidence,
 } from './trusted-evidence.mjs';
+import {
+  loadIssueDagRunBundle,
+} from './issue-dag-store.mjs';
 
 const filenames = {
   snapshot: 'snapshot.json',
   events: 'events.jsonl',
   receipts: 'receipts.json',
   transaction: 'transaction.json',
+};
+
+const isLegacyLocalReview = (review) => {
+  const receipts = review?.review_batch?.reviewer_receipts;
+  return (
+    review?.version === 2 &&
+    typeof receipts === 'object' &&
+    receipts !== null &&
+    !Array.isArray(receipts) &&
+    Object.values(receipts).some(
+      (receipt) => {
+        if (
+          typeof receipt !== 'object' ||
+          receipt === null ||
+          typeof receipt.output_sha256 !== 'string' ||
+          typeof receipt.record_sha256 !== 'string'
+        ) {
+          return true;
+        }
+        const verification = receipt.canonical_verification;
+        return (
+          typeof verification === 'object' &&
+          verification !== null &&
+          (
+            typeof verification.receipt_id !== 'string' ||
+            Object.hasOwn(verification, 'shell_command')
+          )
+        );
+      },
+    )
+  );
+};
+
+export const migrateLegacyLocalReviewBundle = (bundle) => {
+  if (!isLegacyLocalReview(bundle.snapshot?.local_review)) {
+    return bundle;
+  }
+  assertSupervisorHistory(bundle.snapshot, bundle.events);
+  const state = bundle.snapshot;
+  const review = state.local_review;
+  if (
+    !['ready-for-pr', 'ready-for-push'].includes(state.status) ||
+    state.pr !== null ||
+    state.ci !== null ||
+    state.conflict_receipt !== null ||
+    state.conflict_resolution !== null ||
+    state.merge !== null ||
+    state.cleanup !== null ||
+    state.blockers.length !== 0 ||
+    state.blocker_ledger.some(
+      (entry) => entry.remediation_status === 'unresolved',
+    ) ||
+    !['contract', 'code', 'verification'].every(
+      (axis) => review.reviewers?.[axis] === 'PASS',
+    )
+  ) {
+    throw new TypeError(
+      'legacy local review cannot be migrated after side effects or blockers.',
+    );
+  }
+  const snapshot = {
+    ...structuredClone(state),
+    status: 'local-review',
+    local_review: null,
+    last_observed_event_sequence: bundle.events.length + 1,
+  };
+  const transition = {
+    kind: 'local-review-revalidation-required',
+    prior_review_sha256: payloadDigest(review),
+  };
+  return {
+    snapshot,
+    events: [
+      ...bundle.events,
+      eventFor(bundle.events, transition, snapshot),
+    ],
+    receipts: structuredClone(bundle.receipts),
+  };
 };
 
 const assertBundle = (bundle) => {
@@ -133,7 +214,7 @@ const readBundle = (directory, { recover = true } = {}) => {
     assertRealFile(resolve(directory, filenames[name]));
   }
   const eventText = readFileSync(resolve(directory, filenames.events), 'utf8');
-  const bundle = {
+  const loaded = {
     snapshot: JSON.parse(readFileSync(snapshotPath, 'utf8')),
     events: eventText
       .trim()
@@ -144,6 +225,19 @@ const readBundle = (directory, { recover = true } = {}) => {
       readFileSync(resolve(directory, filenames.receipts), 'utf8'),
     ),
   };
+  const bundle = migrateLegacyLocalReviewBundle(loaded);
+  if (bundle !== loaded) {
+    if (!recover) {
+      throw new TypeError(
+        'read-only issue supervisor load requires legacy review migration.',
+      );
+    }
+    persistBundle(
+      directory,
+      bundle,
+      loaded.events.at(-1)?.event_hash ?? null,
+    );
+  }
   assertBundle(bundle);
   return bundle;
 };
@@ -394,6 +488,12 @@ const assertCanonicalStore = (
         head_sha: snapshot.local_review.head_sha,
         preflight_sha256: snapshot.review_preflight.sha256,
         axis,
+        ...(axis === 'verification'
+          ? {
+              canonical_verification_receipt_id:
+                receipt.canonical_verification?.receipt_id,
+            }
+          : {}),
       });
       if (payloadDigest(verified) !== payloadDigest(receipt)) {
         throw new TypeError(
@@ -539,7 +639,21 @@ export const applyIssueSupervisorTransition = (
         command_runner: options.command_runner,
       });
       const { diffs: _diffs, ...machineEvidence } = machine;
-      canonicalTransition = { ...transition, machine_evidence: machineEvidence };
+      const dag = loadIssueDagRunBundle(
+        runtimeRoot,
+        current.snapshot.lane_id,
+        current.snapshot.issue_number,
+      );
+      canonicalTransition = {
+        ...transition,
+        machine_evidence: machineEvidence,
+        ...(dag?.state.run_id === null || dag === null
+          ? {}
+          : {
+              dag_run_id: dag.state.run_id,
+              dag_key: dag.state.dag_key,
+            }),
+      };
     }
     const snapshot = transitionIssueSupervisor(current.snapshot, canonicalTransition, {
       observedEventSequence,

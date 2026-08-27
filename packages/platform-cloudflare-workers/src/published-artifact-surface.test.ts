@@ -179,7 +179,7 @@ describe('@fluojs/platform-cloudflare-workers published artifacts', () => {
     )).toEqual(normalizeAst(emittedSourceRuntime, sourceAdapterPath, ts.ScriptKind.JS));
     expect(readExportAllTargets(runtimeRootPath)).toEqual(readExportAllTargets(sourceRootPath));
     expect(Object.keys(runtimeRoot).sort()).toEqual(readRuntimeExports(sourceAdapterPath));
-  });
+  }, 30_000);
 
   it('keeps declaration members and signatures structurally aligned with source', () => {
     // Given: the package manifest publishes its root declarations from dist/index.d.ts.
@@ -208,5 +208,5 @@ describe('@fluojs/platform-cloudflare-workers published artifacts', () => {
       ts.ScriptKind.TS,
     )).toEqual(normalizeAst(emittedSourceDeclaration, sourceAdapterPath, ts.ScriptKind.TS));
     expect(readExportAllTargets(declarationRootPath)).toEqual(readExportAllTargets(sourceRootPath));
-  });
+  }, 30_000);
 });

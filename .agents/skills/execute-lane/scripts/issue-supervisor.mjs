@@ -258,6 +258,51 @@ const completeImplementation = (state, step) => {
   state.ci = null;
 };
 
+const importExistingImplementation = (state, step) => {
+  requireStatus(state, 'implementing');
+  const head = requireSha(
+    step.head_sha,
+    'implementation-imported.head_sha',
+  );
+  const verification = requireString(
+    step.verification,
+    'implementation-imported.verification',
+  );
+  const receipt = requireRecord(
+    step.import_receipt,
+    'implementation-imported.import_receipt',
+  );
+  if (
+    state.attempt !== 0 ||
+    state.blockers.length !== 0 ||
+    state.pr !== null ||
+    state.review_preflight === null ||
+    head !== state.head_sha ||
+    step.preflight_sha256 !== state.review_preflight.sha256 ||
+    receipt.kind !== 'implementation-import' ||
+    receipt.authority !== 'lane-parent' ||
+    receipt.lane_id !== state.lane_id ||
+    receipt.issue_number !== state.issue_number ||
+    receipt.repository_root !== state.repository_root ||
+    receipt.worktree !== state.worktree ||
+    receipt.head_sha !== head ||
+    receipt.preflight_sha256 !== state.review_preflight.sha256 ||
+    receipt.worktree_clean !== true ||
+    requireTimestamp(
+      receipt.observed_at,
+      'implementation-imported.import_receipt.observed_at',
+    ) !== receipt.observed_at
+  ) {
+    throw new TypeError(
+      'implementation-imported must bind one clean preflight successor head.',
+    );
+  }
+  state.verification = verification;
+  state.status = 'local-review';
+  state.local_review = null;
+  state.ci = null;
+};
+
 const completePreflight = (state, step) => {
   requireStatus(state, 'preflight');
   const preflight = assertReviewPreflight(step.preflight);
@@ -445,6 +490,8 @@ export const transitionIssueSupervisor = (
   }
   if (step.kind === 'preflight-completed') {
     completePreflight(state, step);
+  } else if (step.kind === 'implementation-imported') {
+    importExistingImplementation(state, step);
   } else if (
     step.kind === 'implementation-completed' ||
     step.kind === 'fix-completed'

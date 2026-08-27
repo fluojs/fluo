@@ -11,6 +11,7 @@ import {
   conflictImplementerPromptSentinel,
   conflictImplementerTaskName,
   implementerPromptSentinel,
+  implementerTaskPrompt,
   implementerTaskName,
 } from '../implementer-runtime.mjs';
 import { canonicalPreflightArtifactPath } from '../dispatch-authority.mjs';
@@ -113,13 +114,14 @@ export const writeActualShapedImplementerTask = ({
     parent_session_id: parentSessionId,
     root_session_id: parentSessionId,
     depth: 1,
-    execution_mode: 'in-process',
+    execution_mode: 'process',
     model: 'openai-codex/gpt-5.6-terra',
     name:
       nodeId ??
       implementerTaskName(issueNumber, generation, currentHead),
     task_summary: `Issue #${String(issueNumber)} generation ${String(generation)} implementation`,
     agent_type: 'fluo-issue-implementer',
+    tool_allow: ['read', 'bash', 'apply_patch'],
     requested_model: {
       provider: 'openai-codex',
       model_id: 'gpt-5.6-terra',
@@ -138,7 +140,11 @@ export const writeActualShapedImplementerTask = ({
     spawn_spec: {
       version: 1,
       cwd: root,
-      prompt: `Execute the issue contract and return the machine final response.\n${implementerPromptSentinel(expected)}`,
+      prompt: implementerTaskPrompt({
+        instructions:
+          'Execute the issue contract and return the machine final response.',
+        ...expected,
+      }),
     },
     final_response: formatSenpiFinalResponse(
       IMPLEMENTER_FINAL_SENTINEL,
@@ -196,9 +202,11 @@ export const writeActualShapedConflictImplementerTask = ({
   const task = mutate({
     task_id: taskId,
     status: 'completed',
+    execution_mode: 'process',
     parent_session_id: parentSessionId,
     name: conflictImplementerTaskName(issueNumber, generation, resolvedHead),
     agent_type: 'fluo-issue-implementer',
+    tool_allow: ['read', 'bash', 'apply_patch'],
     resolved_model: {
       source: 'agent', provider: 'openai-codex', model_id: 'gpt-5.6-terra',
       reasoning_effort: 'high', reasoning: 'high',

@@ -103,8 +103,8 @@ completed node, mismatches `dag.definition.amended`, or exceeds 64 nodes.
   resolution generation; focused test-first checks only.
 - `fluo-contract-reviewer`, `fluo-code-reviewer`,
   `fluo-verification-reviewer`: independent exact-head review. Contract/code
-  are source-read-only. Verification runs exactly one canonical verification
-  wrapper invocation.
+  are source-read-only. Verification reads and authenticates exactly one
+  immutable parent-owned canonical verification receipt.
 - `fluo-issue-operator`: exactly one issue-bound PR, CI, merge, cleanup, or
   release-handoff operation followed by fresh observation.
 
@@ -140,12 +140,14 @@ Recovery is observe-before-effect:
   attach it without re-amending;
 - native completion without issue transition: verify task/runtime/live state
   and import once;
+- malformed retryable preflight output: append a fresh
+  `preflight-g<N>-h<head>` node; never revive the completed node;
 - issue transition without phase settlement: match its accepted receipt and
   event hash, then backfill settlement;
 - uncertain PR/merge/cleanup: observe live state before any repeat mutation.
 
 A malformed/lost implementer that mutated the head remains a terminal child
-contract failure. Do not reset or silently adopt the head.
+contract failure. Do not reset, revive, steer, or silently adopt the head.
 
 ## Review, remote lifecycle, and settlement
 

@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { platform } from 'node:os';
 import { resolve } from 'node:path';
@@ -85,6 +85,82 @@ const terminateDescendants = async (rootPid, known) => {
 
 const quoteProfilePath = (path) => path.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
 
+export const darwinVerificationProfile = (
+  disposableRoot,
+  runtimeRoot,
+) =>
+  `(version 1)\n(deny default)\n(allow process-fork)\n(allow process-exec)\n(allow signal (target same-sandbox))\n(allow file-read*)\n(allow sysctl-read)\n(allow mach-lookup)\n(allow network* (local ip "localhost:*"))\n(allow network* (remote ip "localhost:*"))\n(allow file-write*\n  (subpath "${quoteProfilePath(disposableRoot)}")\n  (subpath "${quoteProfilePath(runtimeRoot)}")\n  (literal "/dev/null"))\n`;
+
+export const vitestSerialHookSource = `'use strict';
+if (process.env.FLUO_CANONICAL_VERIFICATION === '1') {
+  const entry = process.argv[1] ?? '';
+  if (/(?:^|[\\\\/])vitest(?:\\.mjs|\\.js)?$/u.test(entry)) {
+    process.argv.push('--no-file-parallelism');
+  }
+}
+`;
+
+export const darwinContainmentRunnerSource = `import { spawn } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+
+const request = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+let requestedSignal = null;
+const child = spawn(request.command, request.args, {
+  cwd: request.cwd,
+  env: process.env,
+  shell: false,
+  stdio: 'inherit',
+});
+const forward = (signal) => {
+  requestedSignal ??= signal;
+  try {
+    child.kill(signal);
+  } catch (error) {
+    if (error?.code !== 'ESRCH') throw error;
+  }
+};
+process.on('SIGINT', () => forward('SIGINT'));
+process.on('SIGTERM', () => forward('SIGTERM'));
+const outcome = await new Promise((resolvePromise, reject) => {
+  child.once('error', reject);
+  child.once('exit', (status, signal) =>
+    resolvePromise({
+      status,
+      signal: requestedSignal ?? signal,
+    }));
+});
+writeFileSync(request.outcome_path, JSON.stringify(outcome), {
+  encoding: 'utf8',
+  flag: 'wx',
+});
+try {
+  process.kill(-1, 'SIGTERM');
+} catch (error) {
+  if (error?.code !== 'ESRCH') throw error;
+}
+await new Promise((resolvePromise) => setTimeout(resolvePromise, 100));
+try {
+  process.kill(-1, 'SIGKILL');
+} catch (error) {
+  if (error?.code !== 'ESRCH') throw error;
+}
+`;
+
+export const verificationEnvironment = (runtimeRoot) => ({
+  ...process.env,
+  CI: 'true',
+  HOME: runtimeRoot,
+  TMPDIR: runtimeRoot,
+  XDG_CACHE_HOME: resolve(runtimeRoot, 'cache'),
+  XDG_CONFIG_HOME: resolve(runtimeRoot, 'config'),
+  XDG_DATA_HOME: resolve(runtimeRoot, 'data'),
+  NPM_CONFIG_USERCONFIG: resolve(runtimeRoot, 'empty-npmrc'),
+  PNPM_HOME: process.env.PNPM_HOME,
+  FLUO_CANONICAL_VERIFICATION: '1',
+  NODE_OPTIONS:
+    `--require=${JSON.stringify(resolve(runtimeRoot, 'vitest-serial.cjs'))}`,
+});
+
 const verificationCommand = (phase, storePath) => phase === 'install'
   ? ['pnpm', 'install', '--offline', '--frozen-lockfile', '--ignore-scripts', '--store-dir', storePath, '--config.enableGlobalVirtualStore=false', '--ignore-pnpmfile', '--virtual-store-dir', '.pnpm']
   : phase === 'verify'
@@ -96,10 +172,32 @@ const darwinCommand = (disposableRoot, runtimeRoot, storePath, phase) => {
     throw new TypeError('canonical verification containment is unsupported: sandbox-exec is unavailable.');
   }
   const profilePath = resolve(runtimeRoot, 'verify.sb');
-  const profile = `(version 1)\n(deny default)\n(allow process-fork)\n(allow process-exec)\n(allow signal (target self))\n(allow signal (target children))\n(allow file-read*)\n(allow sysctl-read)\n(allow mach-lookup)\n(allow file-write*\n  (subpath "${quoteProfilePath(disposableRoot)}")\n  (subpath "${quoteProfilePath(runtimeRoot)}")\n  (literal "/dev/null"))\n`;
+  const profile = darwinVerificationProfile(disposableRoot, runtimeRoot);
   writeFileSync(profilePath, profile, { encoding: 'utf8', flag: 'wx' });
   const [command, ...args] = verificationCommand(phase, storePath);
-  return ['/usr/bin/sandbox-exec', ['-f', profilePath, command, ...args]];
+  const invocationId = randomUUID();
+  const runnerPath = resolve(runtimeRoot, `darwin-runner-${invocationId}.mjs`);
+  const requestPath = resolve(runtimeRoot, `darwin-runner-${invocationId}.json`);
+  const outcomePath = resolve(runtimeRoot, `darwin-outcome-${invocationId}.json`);
+  writeFileSync(runnerPath, darwinContainmentRunnerSource, {
+    encoding: 'utf8',
+    flag: 'wx',
+  });
+  writeFileSync(
+    requestPath,
+    `${JSON.stringify({
+      command,
+      args,
+      cwd: disposableRoot,
+      outcome_path: outcomePath,
+    })}\n`,
+    { encoding: 'utf8', flag: 'wx' },
+  );
+  return [
+    '/usr/bin/sandbox-exec',
+    ['-f', profilePath, process.execPath, runnerPath, requestPath],
+    outcomePath,
+  ];
 };
 
 const linuxCommand = (disposableRoot, runtimeRoot, storePath, phase) => {
@@ -150,26 +248,21 @@ export const runContainedVerification = async ({
   lockfile_sha256: lockfileSha256,
 }) => {
   requireTrustedInputs(disposableRoot, runtimeRoot, storePath, lockfileSha256);
+  writeFileSync(
+    resolve(runtimeRoot, 'vitest-serial.cjs'),
+    vitestSerialHookSource,
+    { encoding: 'utf8', flag: 'wx' },
+  );
   const backend = platform() === 'darwin'
     ? darwinCommand(disposableRoot, runtimeRoot, storePath, phase)
     : platform() === 'linux'
       ? linuxCommand(disposableRoot, runtimeRoot, storePath, phase)
       : (() => { throw new TypeError(`canonical verification containment is unsupported on ${platform()}.`); })();
-  const [command, args] = backend;
+  const [command, args, outcomePath] = backend;
   const child = spawn(command, args, {
     cwd: disposableRoot,
     detached: true,
-    env: {
-      ...process.env,
-      CI: 'true',
-      HOME: runtimeRoot,
-      TMPDIR: runtimeRoot,
-      XDG_CACHE_HOME: resolve(runtimeRoot, 'cache'),
-      XDG_CONFIG_HOME: resolve(runtimeRoot, 'config'),
-      XDG_DATA_HOME: resolve(runtimeRoot, 'data'),
-      NPM_CONFIG_USERCONFIG: resolve(runtimeRoot, 'empty-npmrc'),
-      PNPM_HOME: process.env.PNPM_HOME,
-    },
+    env: verificationEnvironment(runtimeRoot),
     shell: false,
     stdio: 'inherit',
   });
@@ -205,7 +298,13 @@ export const runContainedVerification = async ({
     process.removeListener('SIGTERM', onSigterm);
   }
   requireTrustedInputs(disposableRoot, runtimeRoot, storePath, lockfileSha256);
-  return interruptedSignal === null ? outcome : { status: null, signal: interruptedSignal };
+  const recordedOutcome =
+    typeof outcomePath === 'string' && existsSync(outcomePath)
+      ? JSON.parse(readFileSync(outcomePath, 'utf8'))
+      : outcome;
+  return interruptedSignal === null
+    ? recordedOutcome
+    : { status: null, signal: interruptedSignal };
 };
 
 const isCli = process.argv[1] !== undefined && pathToFileURL(process.argv[1]).href === import.meta.url;

@@ -378,10 +378,23 @@ export const assertReviewBatch = ({
       !/^[a-f0-9]{64}$/u.test(receipt.session_sha256 ?? '') ||
       payloadDigest(receipt.tool_events) !== receipt.tool_events_sha256 ||
       (reviewer === 'verification'
-        ? receipt.canonical_verification?.session_sha256 !== receipt.session_sha256 ||
+        ? !taskIdPattern.test(
+            receipt.canonical_verification?.receipt_id ?? '',
+          ) ||
+          receipt.canonical_verification?.session_sha256 !== receipt.session_sha256 ||
           JSON.stringify(receipt.canonical_verification?.command) !== JSON.stringify(['pnpm', 'verify']) ||
-          receipt.canonical_verification?.status !== 0 ||
-          receipt.canonical_verification?.result !== 'pass'
+          !Number.isSafeInteger(
+            receipt.canonical_verification?.status,
+          ) ||
+          receipt.canonical_verification.status < 0 ||
+          receipt.canonical_verification?.result !==
+            (receipt.canonical_verification.status === 0
+              ? 'pass'
+              : 'fail') ||
+          (
+            receipt.canonical_verification.result === 'fail' &&
+            review.verdict_signal !== 'BLOCK'
+          )
         : receipt.canonical_verification !== null)
     ) {
       throw new TypeError(`review batch ${reviewer} provenance receipt is invalid.`);
@@ -443,6 +456,14 @@ export const assertReviewBatch = ({
         head_sha: headSha,
         preflight_sha256: acceptedPreflight.sha256,
         axis: reviewer,
+        ...(reviewer === 'verification'
+          ? {
+              canonical_verification_receipt_id:
+                canonicalReceipts[reviewer]
+                  .canonical_verification
+                  .receipt_id,
+            }
+          : {}),
       });
       if (payloadDigest(verified) !== payloadDigest(canonicalReceipts[reviewer])) {
         throw new TypeError(`review batch ${reviewer} provenance receipt does not match its canonical task.`);
@@ -765,3 +786,17 @@ export const withCanonicalVerificationLease = (
     releaseCanonicalVerificationLease(lease);
   }
 };
+
+export const withGlobalCanonicalVerificationLease = (
+  runtimeRoot,
+  laneId,
+  issueNumber,
+  operation,
+) =>
+  withCanonicalVerificationLease(
+    runtimeRoot,
+    laneId,
+    issueNumber,
+    runtimeRoot,
+    operation,
+  );

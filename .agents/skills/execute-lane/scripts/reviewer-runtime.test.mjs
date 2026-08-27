@@ -11,9 +11,9 @@ import { join, resolve } from 'node:path';
 import test from 'node:test';
 
 import { payloadDigest } from '../../../workflow-contracts/contracts.mjs';
-import { formatSenpiFinalResponse } from './senpi-final-response.mjs';
 import { writeActualShapedReviewerTask } from './fixtures/reviewer-task.mjs';
 import { fixturePreflight } from './fixtures/implementer-task.mjs';
+import { formatSenpiFinalResponse } from './senpi-final-response.mjs';
 import {
   reviewerPromptSentinel,
   reviewerTaskName,
@@ -22,293 +22,452 @@ import {
 
 const head = 'a'.repeat(40);
 const parentSessionId = 'ses_parent';
-const preflightSha256 = fixturePreflight('lane-a', 3305).sha256;
+const laneId = 'lane-a';
+const issueNumber = 3305;
 const worktree = '.worktrees/issue-3305-content-negotiation';
+const branch = 'issue-3305-content-negotiation';
+const preflightSha256 = fixturePreflight(laneId, issueNumber).sha256;
+const parentReceiptId = 'st_parent_verify_3305';
+const reviewerAgent = {
+  contract: 'fluo-contract-reviewer',
+  code: 'fluo-code-reviewer',
+  verification: 'fluo-verification-reviewer',
+};
+
 const identity = (axis) => ({
   task_id: `st_${axis}`,
   parent_session_id: parentSessionId,
-  lane_id: 'lane-a',
-  issue_number: 3305,
+  lane_id: laneId,
+  issue_number: issueNumber,
   worktree,
-  branch: 'issue-3305-content-negotiation',
+  branch,
   head_sha: head,
   preflight_sha256: preflightSha256,
   axis,
+  ...(axis === 'verification'
+    ? { canonical_verification_receipt_id: parentReceiptId }
+    : {}),
 });
-const task = (root, axis) => {
+
+const task = (root, axis, verdict = 'PASS') => {
+  const blocked = verdict === 'BLOCK';
+  const blocker = {
+    reviewer: axis,
+    signature: `${axis}:canonical-verification`,
+    evidence: 'The parent-owned canonical verification failed.',
+    fix_back_eligible: true,
+    status: 'unresolved',
+  };
   const output = {
     sentinel: 'fluo:execute-lane:review:final:v1',
     axis,
     head_sha: head,
     preflight_sha256: preflightSha256,
-    verdict_signal: 'PASS',
-    coverage: { 'accept-header-presence': 'PASS' },
-    blockers: [],
-    blocker_sources: {},
+    verdict_signal: verdict,
+    coverage: { 'accept-header-presence': blocked ? 'BLOCK' : 'PASS' },
+    blockers: blocked ? [blocker] : [],
+    blocker_sources: blocked
+      ? {
+          [blocker.signature]: {
+            contract_source: 'issue acceptance',
+            violated_invariant: 'accept-header-presence',
+            reproduction: blocker.evidence,
+            why_blocking: 'required-verification',
+          },
+        }
+      : {},
   };
   return {
     task_id: `st_${axis}`,
     status: 'completed',
     parent_session_id: parentSessionId,
-    category: 'deep',
+    agent_type: reviewerAgent[axis],
     resolved_model: {
       provider: 'openai-codex',
       model_id: 'gpt-5.6-sol',
       source: 'category',
       variant: 'medium',
     },
-    name: reviewerTaskName(axis, 3305, head),
+    name: reviewerTaskName(axis, issueNumber, head),
     final_response: formatSenpiFinalResponse(
       'fluo:execute-lane:review:final:v1',
       output,
     ),
     spawn_spec: {
       cwd: root,
-      prompt: `Review under the dispatched tool policy.\n${reviewerPromptSentinel({
+      prompt: `Review without mutation.\n${reviewerPromptSentinel({
         repository_root: root,
-        lane_id: 'lane-a',
-        issue_number: 3305,
+        lane_id: laneId,
+        issue_number: issueNumber,
         worktree,
         head_sha: head,
         preflight_sha256: preflightSha256,
         review_axis: axis,
+        ...(axis === 'verification'
+          ? {
+              canonical_verification_receipt_id: parentReceiptId,
+            }
+          : {}),
       })}`,
     },
   };
 };
-const fixture = (axis, tools, shouldVerify = true, verificationCommand) => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'fluo-reviewer-runtime-')));
+
+const fixture = (
+  axis,
+  {
+    tools,
+    verificationStatus = 0,
+    verify = true,
+    lifecycleEvents = [],
+    toolAllow,
+  } = {},
+) => {
+  const root = realpathSync(
+    mkdtempSync(join(tmpdir(), 'fluo-reviewer-runtime-')),
+  );
   const expected = identity(axis);
   const receipt = writeActualShapedReviewerTask({
-    task: task(root, axis),
+    task: {
+      ...task(
+        root,
+        axis,
+        axis === 'verification' && verificationStatus !== 0
+          ? 'BLOCK'
+          : 'PASS',
+      ),
+      ...(toolAllow === undefined ? {} : { tool_allow: toolAllow }),
+    },
     repository_root: root,
     expected,
     tools,
-    verify: shouldVerify,
-    verification_command: verificationCommand,
+    verification_status: verificationStatus,
+    lifecycle_events: lifecycleEvents,
+    verify,
   });
   return { root, expected, receipt };
 };
 
-test('only verification receives artifact-producing local-CI authority', () => {
-  const sentinelFor = (axis) => {
+test('all reviewers are read-only and verification binds one parent receipt', () => {
+  for (const axis of ['contract', 'code', 'verification']) {
     const prompt = reviewerPromptSentinel({
-      repository_root: process.cwd(), lane_id: 'lane-a', issue_number: 3305, worktree, head_sha: head, preflight_sha256: preflightSha256, review_axis: axis,
+      repository_root: process.cwd(),
+      lane_id: laneId,
+      issue_number: issueNumber,
+      worktree,
+      head_sha: head,
+      preflight_sha256: preflightSha256,
+      review_axis: axis,
+      ...(axis === 'verification'
+        ? { canonical_verification_receipt_id: parentReceiptId }
+        : {}),
     });
-    return JSON.parse(prompt.split('\n')[1]);
-  };
-  for (const axis of ['contract', 'code']) {
-    assert.deepEqual(
-      { source_read_only: sentinelFor(axis).source_read_only, local_ci_role: sentinelFor(axis).local_ci_role, artifact_writes: sentinelFor(axis).artifact_writes },
-      { source_read_only: true, local_ci_role: 'read-only', artifact_writes: false },
+    const dispatch = JSON.parse(prompt.split('\n')[1]);
+    assert.equal(dispatch.local_ci_role, 'read-only');
+    assert.equal(dispatch.artifact_writes, false);
+    assert.equal(
+      dispatch.canonical_verification_receipt_id,
+      axis === 'verification' ? parentReceiptId : undefined,
     );
   }
-  assert.deepEqual(
-    { source_read_only: sentinelFor('verification').source_read_only, local_ci_role: sentinelFor('verification').local_ci_role, artifact_writes: sentinelFor('verification').artifact_writes },
-    { source_read_only: true, local_ci_role: 'sole-writer', artifact_writes: true },
-  );
 });
 
-test('contract and code accept actual-shaped read/search/LSP/history events', () => {
+test('reviewers accept only the configured read and todo tools', () => {
   for (const axis of ['contract', 'code']) {
-    const value = fixture(axis, [
-      { tool: 'read', is_error: false },
-      { tool: 'grep', is_error: false },
-      { tool: 'lsp_find_references', is_error: false },
-      { tool: 'session_read', is_error: false },
-    ]);
-    try {
-      assert.equal(value.receipt.task_id, `st_${axis}`);
-      assert.equal(value.receipt.tool_events.length, 4);
-      assert.match(value.receipt.session_sha256, /^[a-f0-9]{64}$/u);
-    } finally {
-      rmSync(value.root, { force: true, recursive: true });
-    }
-  }
-});
-
-test('reviewers accept real terminal residency lifecycle events but reject unknown event types', () => {
-  const value = fixture('contract', undefined, false);
-  try {
-    writeActualShapedReviewerTask({
-      task: task(value.root, 'contract'),
-      repository_root: value.root,
-      expected: value.expected,
-      lifecycle_events: [
-        { type: 'evicted', payload: { cause: 'evict' } },
-        { type: 'revived', payload: { cause: 'task_output' } },
-        { type: 'steered', payload: { source: 'parent' } },
-        { type: 'reconcile_reattached', payload: { status: 'completed' } },
-        { type: 'cancelled', payload: { cause: 'parent' } },
+    const value = fixture(axis, {
+      tools: [
+        { tool: 'todo', is_error: false },
+        {
+          tool: 'read',
+          is_error: false,
+          arguments: {
+            path:
+              '.omo/lane-runs/lane-a/issues/3305/review-preflight.json',
+          },
+        },
+        {
+          tool: 'read',
+          is_error: false,
+          arguments: {
+            path: `${worktree}/package.json`,
+          },
+        },
       ],
-      verify: false,
     });
-    assert.doesNotThrow(() => verifyReviewerTask({ repository_root: value.root, ...value.expected }));
-    const log = resolve(value.root, '.omo/senpi-task/logs/st_contract.jsonl');
-    writeFileSync(log, `${readFileSync(log, 'utf8')}${JSON.stringify({ type: 'future_lifecycle', payload: {} })}\n`);
-    assert.throws(
-      () => verifyReviewerTask({ repository_root: value.root, ...value.expected }),
-      /unknown event type/u,
-    );
-  } finally {
-    rmSync(value.root, { force: true, recursive: true });
-  }
-});
-
-test('contract and code reject shell, mutation, execution, spawning, GitHub mutation, and unknown tools', () => {
-  for (const axis of ['contract', 'code']) {
-    for (const tool of ['bash', 'edit', 'write', 'apply_patch', 'eval', 'task', 'gh', 'mystery_tool']) {
-      const value = fixture(axis, [{ tool, is_error: false }], false);
-      try {
-        assert.throws(() => verifyReviewerTask({ repository_root: value.root, ...value.expected }), /forbidden|unknown/u, `${axis}:${tool}`);
-      } finally {
-        rmSync(value.root, { force: true, recursive: true });
-      }
+    try {
+      assert.equal(value.receipt.tool_events.length, 3);
+    } finally {
+      rmSync(value.root, { recursive: true, force: true });
     }
   }
 });
 
-test('verification rejects direct build shell evidence without a canonical wrapper receipt', () => {
-  const value = fixture('verification');
-  try {
-    rmSync(resolve(value.root, '.omo/lane-runs/lane-a/issues/3305/canonical-verification/st_verification.json'));
-    assert.throws(
-      () => verifyReviewerTask({ repository_root: value.root, ...value.expected }),
-      /canonical wrapper evidence/u,
-    );
-  } finally {
-    rmSync(value.root, { force: true, recursive: true });
-  }
-});
-
-test('verification rejects a wrapper invocation for a non-canonical direct test command', () => {
-  const value = fixture(
-    'verification',
-    [{ tool: 'bash', is_error: false }],
-    false,
-    ['pnpm', 'test'],
-  );
-  try {
-    assert.throws(
-      () => verifyReviewerTask({ repository_root: value.root, ...value.expected }),
-      /exact canonical wrapper command|wrapper receipt.*malformed|stale/u,
-    );
-  } finally {
-    rmSync(value.root, { force: true, recursive: true });
-  }
-});
-
-test('verification rejects chained, prefixed, suffixed, direct-CI, and manufactured wrapper shell commands', () => {
-  const canonical = fixture('verification');
-  const expectedCommand = canonical.receipt.canonical_verification.shell_command;
-  rmSync(canonical.root, { force: true, recursive: true });
-  for (const command of [
-    `cd /tmp && ${expectedCommand}`,
-    `${expectedCommand} && git status --short`,
-    `env CI=1 ${expectedCommand}`,
-    'pnpm verify',
-    `printf receipt && ${expectedCommand}`,
+test('reviewers reject metadata and session tools outside the allowlist', () => {
+  for (const candidate of [
+    { tools: [{ tool: 'bash', is_error: false }] },
+    { tools: [{ tool: 'eval', is_error: false }] },
+    { toolAllow: ['read', 'todo', 'bash'] },
   ]) {
-    const value = fixture(
-      'verification',
-      undefined,
-      false,
-      undefined,
-    );
+    const value = fixture('contract', { ...candidate, verify: false });
     try {
-      writeActualShapedReviewerTask({
-        task: task(value.root, 'verification'),
-        repository_root: value.root,
-        expected: value.expected,
-        verification_shell_command: command.replaceAll(canonical.root, value.root),
-        verify: false,
-      });
       assert.throws(
-        () => verifyReviewerTask({ repository_root: value.root, ...value.expected }),
-        /exact canonical wrapper command/u,
+        () =>
+          verifyReviewerTask({
+            repository_root: value.root,
+            ...value.expected,
+          }),
+        /forbidden|unknown|provenance/u,
       );
     } finally {
-      rmSync(value.root, { force: true, recursive: true });
+      rmSync(value.root, { recursive: true, force: true });
     }
   }
 });
 
-test('verification accepts one wrapper shell event and binds command, result, and session digest', () => {
+test('contract and code reviewers reject todo-only evidence', () => {
+  for (const axis of ['contract', 'code']) {
+    const value = fixture(axis, {
+      verify: false,
+      tools: [{ tool: 'todo', is_error: false }],
+    });
+    try {
+      assert.throws(
+        () =>
+          verifyReviewerTask({
+            repository_root: value.root,
+            ...value.expected,
+          }),
+        /read coverage/u,
+      );
+    } finally {
+      rmSync(value.root, { recursive: true, force: true });
+    }
+  }
+});
+
+test('completed reviewer nodes reject revival and steering corrections', () => {
+  for (const type of ['revived', 'steered']) {
+    const value = fixture('contract', {
+      verify: false,
+      lifecycleEvents: [{ type, payload: {} }],
+    });
+    try {
+      assert.throws(
+        () =>
+          verifyReviewerTask({
+            repository_root: value.root,
+            ...value.expected,
+          }),
+        /unknown event type/u,
+      );
+    } finally {
+      rmSync(value.root, { recursive: true, force: true });
+    }
+  }
+});
+
+test('verification authenticates the immutable parent-owned receipt read', () => {
   const value = fixture('verification');
   try {
     assert.deepEqual(value.receipt.canonical_verification, {
-      receipt_sha256: value.receipt.canonical_verification.receipt_sha256,
+      receipt_id: parentReceiptId,
+      receipt_sha256:
+        value.receipt.canonical_verification.receipt_sha256,
       authority_snapshot_sha256: 'a'.repeat(64),
       command: ['pnpm', 'verify'],
-      shell_command: value.receipt.canonical_verification.shell_command,
       status: 0,
       result: 'pass',
       session_sha256: value.receipt.session_sha256,
     });
-    assert.equal(value.receipt.tool_events.filter(({ tool }) => tool === 'bash').length, 1);
+    assert.equal(value.receipt.tool_events[0].tool, 'read');
   } finally {
-    rmSync(value.root, { force: true, recursive: true });
+    rmSync(value.root, { recursive: true, force: true });
   }
 });
 
-test('verification rejects direct or unrelated mutation events even when the wrapper receipt exists', () => {
-  for (const tools of [
-    [{ tool: 'bash', is_error: false }, { tool: 'bash', is_error: false }],
-    [{ tool: 'read', is_error: false }, { tool: 'write', is_error: false }, { tool: 'bash', is_error: false }],
-    [{ tool: 'unknown', is_error: false }, { tool: 'bash', is_error: false }],
+test('failed parent verification is accepted only as a BLOCK review', () => {
+  const value = fixture('verification', { verificationStatus: 1 });
+  try {
+    assert.equal(value.receipt.final_response.verdict_signal, 'BLOCK');
+    assert.equal(value.receipt.canonical_verification.result, 'fail');
+  } finally {
+    rmSync(value.root, { recursive: true, force: true });
+  }
+});
+
+test('verification rejects missing, substituted, and tampered receipts', () => {
+  const value = fixture('verification', { verify: false });
+  const receiptPath = resolve(
+    value.root,
+    '.omo/lane-runs/lane-a/issues/3305/canonical-verification',
+    `${parentReceiptId}.json`,
+  );
+  try {
+    rmSync(receiptPath);
+    assert.throws(
+      () =>
+        verifyReviewerTask({
+          repository_root: value.root,
+          ...value.expected,
+        }),
+      /provenance|missing or invalid/u,
+    );
+    writeActualShapedReviewerTask({
+      task: task(value.root, 'verification'),
+      repository_root: value.root,
+      expected: value.expected,
+      verify: false,
+    });
+    const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
+    receipt.head_sha = 'b'.repeat(40);
+    writeFileSync(receiptPath, JSON.stringify(receipt));
+    assert.throws(
+      () =>
+        verifyReviewerTask({
+          repository_root: value.root,
+          ...value.expected,
+        }),
+      /malformed or stale/u,
+    );
+  } finally {
+    rmSync(value.root, { recursive: true, force: true });
+  }
+});
+
+test('verification rejects receipt and parent-session substitution', () => {
+  for (const mutate of [
+    (receipt) => {
+      receipt.task_id = 'st_substituted_receipt';
+    },
+    (receipt) => {
+      receipt.parent_session_id = 'ses_attacker';
+    },
   ]) {
-    const value = fixture('verification', tools, false);
+    const value = fixture('verification', { verify: false });
+    const receiptPath = resolve(
+      value.root,
+      '.omo/lane-runs/lane-a/issues/3305/canonical-verification',
+      `${parentReceiptId}.json`,
+    );
     try {
-      assert.throws(() => verifyReviewerTask({ repository_root: value.root, ...value.expected }), /read-only tools|wrapper shell/u);
+      const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
+      mutate(receipt);
+      writeFileSync(receiptPath, JSON.stringify(receipt));
+      assert.throws(
+        () =>
+          verifyReviewerTask({
+            repository_root: value.root,
+            ...value.expected,
+          }),
+        /malformed or stale/u,
+      );
     } finally {
-      rmSync(value.root, { force: true, recursive: true });
+      rmSync(value.root, { recursive: true, force: true });
     }
   }
-});
 
-test('missing, malformed, and tampered sessions fail closed or change the persisted receipt digest', () => {
-  const value = fixture('contract');
-  const log = resolve(value.root, '.omo/senpi-task/logs/st_contract.jsonl');
+  const value = fixture('verification', { verify: false });
   try {
-    const persistedDigest = payloadDigest(value.receipt);
-    rmSync(log);
-    assert.throws(() => verifyReviewerTask({ repository_root: value.root, ...value.expected }), /session JSONL/u);
-    writeFileSync(log, '{bad}\n');
-    assert.throws(() => verifyReviewerTask({ repository_root: value.root, ...value.expected }), /malformed/u);
-    writeFileSync(log, `${JSON.stringify({ type: 'tool_execution', payload: { tool: 'read', is_error: false } })}\n`);
-    const revalidated = verifyReviewerTask({ repository_root: value.root, ...value.expected });
-    assert.equal(payloadDigest(revalidated), persistedDigest);
-    assert.equal(revalidated.session_sha256, value.receipt.session_sha256);
+    assert.throws(
+      () =>
+        verifyReviewerTask({
+          repository_root: value.root,
+          ...value.expected,
+          canonical_verification_receipt_id:
+            'st_substituted_receipt',
+        }),
+      /provenance|missing or invalid/u,
+    );
   } finally {
-    rmSync(value.root, { force: true, recursive: true });
+    rmSync(value.root, { recursive: true, force: true });
   }
 });
 
-test('reviewer task provenance and final machine output remain strict', () => {
+test('reviewer rejects role identity spoofing', () => {
+  const value = fixture('code', { verify: false });
+  const taskPath = resolve(
+    value.root,
+    '.omo/senpi-task/tasks/st_code.json',
+  );
+  try {
+    const taskRecord = JSON.parse(readFileSync(taskPath, 'utf8'));
+    taskRecord.agent_type = 'fluo-contract-reviewer';
+    writeFileSync(taskPath, JSON.stringify(taskRecord));
+    assert.throws(
+      () =>
+        verifyReviewerTask({
+          repository_root: value.root,
+          ...value.expected,
+        }),
+      /role/u,
+    );
+  } finally {
+    rmSync(value.root, { recursive: true, force: true });
+  }
+});
+
+test('reviewer rejects unknown final envelope fields', () => {
+  const value = fixture('contract', { verify: false });
+  const taskPath = resolve(
+    value.root,
+    '.omo/senpi-task/tasks/st_contract.json',
+  );
+  try {
+    const taskRecord = JSON.parse(readFileSync(taskPath, 'utf8'));
+    taskRecord.final_response = taskRecord.final_response.replace(
+      '"verdict_signal":"PASS"',
+      '"unexpected":true,"verdict_signal":"PASS"',
+    );
+    writeFileSync(taskPath, JSON.stringify(taskRecord));
+    assert.throws(
+      () =>
+        verifyReviewerTask({
+          repository_root: value.root,
+          ...value.expected,
+        }),
+      /malformed/u,
+    );
+  } finally {
+    rmSync(value.root, { recursive: true, force: true });
+  }
+});
+
+test('reviewer completion digest binds tool policy and machine output', () => {
   const value = fixture('contract');
-  const path = resolve(value.root, '.omo/senpi-task/tasks/st_contract.json');
+  const path = resolve(
+    value.root,
+    '.omo/senpi-task/tasks/st_contract.json',
+  );
   try {
     const original = JSON.parse(readFileSync(path, 'utf8'));
-    const receiptDigest = payloadDigest(value.receipt);
+    const digest = payloadDigest(value.receipt);
     writeFileSync(path, JSON.stringify({
       ...original,
       residency_state: 'evicted',
       updated_at: '2026-08-26T00:30:00.000Z',
-      task_summary: 'normal post-completion metadata',
     }));
     assert.equal(
-      payloadDigest(verifyReviewerTask({ repository_root: value.root, ...value.expected })),
-      receiptDigest,
+      payloadDigest(
+        verifyReviewerTask({
+          repository_root: value.root,
+          ...value.expected,
+        }),
+      ),
+      digest,
     );
-    for (const mutation of [
-      { ...original, status: 'running' },
-      { ...original, parent_session_id: 'ses_other' },
-      { ...original, final_response: 'Review passed.' },
-    ]) {
-      writeFileSync(path, JSON.stringify(mutation));
-      assert.throws(() => verifyReviewerTask({ repository_root: value.root, ...value.expected }), /provenance|final_response|payload/u);
-    }
+    writeFileSync(path, JSON.stringify({
+      ...original,
+      tool_allow: ['read', 'todo', 'bash'],
+    }));
+    assert.throws(
+      () =>
+        verifyReviewerTask({
+          repository_root: value.root,
+          ...value.expected,
+        }),
+      /provenance/u,
+    );
   } finally {
-    rmSync(value.root, { force: true, recursive: true });
+    rmSync(value.root, { recursive: true, force: true });
   }
 });

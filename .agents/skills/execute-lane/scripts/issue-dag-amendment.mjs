@@ -60,6 +60,7 @@ const canonicalAmendment = (state, input) => {
     phase_key: input.phase_key,
     head_sha: input.head_sha,
     added_node_ids: [...input.added_node_ids],
+    continue_active_phase: input.continue_active_phase === true,
   };
 };
 
@@ -67,18 +68,29 @@ export const prepareIssueDagAmendment = (bundle, input) => {
   assertIssueDagBundle(bundle);
   const pending = canonicalAmendment(bundle.state, input);
   if (bundle.state.status === 'amend-intent') {
+    const persisted = {
+      ...structuredClone(bundle.state.pending_amendment),
+      continue_active_phase:
+        bundle.state.pending_amendment.continue_active_phase === true,
+    };
     if (
-      payloadDigest(bundle.state.pending_amendment) ===
+      payloadDigest(persisted) ===
       payloadDigest(pending)
     ) {
       return bundle;
     }
     throw new TypeError('Issue DAG amendment intent is conflicting.');
   }
-  if (
-    bundle.state.status !== 'phase-settled' ||
-    bundle.state.completed_phase_keys.includes(pending.phase_key)
-  ) {
+  const continuesActivePhase =
+    pending.continue_active_phase &&
+    bundle.state.status === 'native-completed-unverified' &&
+    pending.phase_key === bundle.state.active_phase_key &&
+    pending.head_sha === bundle.state.head_sha;
+  const startsNewPhase =
+    !pending.continue_active_phase &&
+    bundle.state.status === 'phase-settled' &&
+    !bundle.state.completed_phase_keys.includes(pending.phase_key);
+  if (!continuesActivePhase && !startsNewPhase) {
     throw new TypeError('Issue DAG amendment requires a settled new phase.');
   }
   return appendEvent(
@@ -132,8 +144,15 @@ export const attachIssueDagAmendment = (bundle, evidence) => {
     current_definition: pending.definition,
     current_definition_sha256: pending.definition_sha256,
     definition_fingerprint: evidence.definition_fingerprint,
-    active_phase_key: pending.phase_key,
-    active_node_ids: pending.added_node_ids,
+    active_phase_key: pending.continue_active_phase
+      ? state.active_phase_key
+      : pending.phase_key,
+    active_node_ids: pending.continue_active_phase
+      ? pending.added_node_ids
+      : pending.added_node_ids,
+    completed_node_ids: pending.continue_active_phase
+      ? [...state.completed_node_ids, ...state.active_node_ids]
+      : state.completed_node_ids,
     pending_amendment: null,
   };
   return appendEvent(bundle, 'amend-attached', next, {

@@ -373,6 +373,8 @@ const reviewBatchFor = (
     const dagKey =
       `fluo:lane:${state.lane_id}:issue-${String(state.issue_number)}:lifecycle:v3`;
     const nodeId = `review-${axis}-${state.head_sha}`;
+    const canonicalVerificationReceiptId =
+      `st_parent_verify_${state.head_sha.slice(0, 12)}`;
     const ownerFingerprint = createHash('sha256')
       .update(nodeId)
       .digest('hex');
@@ -412,6 +414,12 @@ const reviewBatchFor = (
             head_sha: state.head_sha,
             preflight_sha256: preflight.sha256,
             review_axis: axis,
+            ...(axis === 'verification'
+              ? {
+                  canonical_verification_receipt_id:
+                    canonicalVerificationReceiptId,
+                }
+              : {}),
             dag_key: dagKey,
             node_id: nodeId,
           })}`,
@@ -430,6 +438,12 @@ const reviewBatchFor = (
         head_sha: state.head_sha,
         preflight_sha256: preflight.sha256,
         axis,
+        ...(axis === 'verification'
+          ? {
+              canonical_verification_receipt_id:
+                canonicalVerificationReceiptId,
+            }
+          : {}),
         dag_run_id: dagRunId,
         dag_key: dagKey,
         node_id: nodeId,
@@ -1110,6 +1124,61 @@ describe('execute-lane issue supervisor lifecycle', () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  it('invalidates legacy v2 PASS receipts before resuming', () => {
+    const persisted = persistedLifecycle(identity, [
+      {
+        kind: 'implementation-completed',
+        new_head: headA,
+        verification: 'focused tests passed',
+      },
+      { kind: 'local-review', reviews: passReviews(headA) },
+    ]);
+    const repositoryRoot = persisted.snapshot.repository_root;
+    const runtimeRoot = resolve(repositoryRoot, '.omo', 'lane-runs');
+    const directory = resolve(
+      runtimeRoot,
+      persisted.snapshot.lane_id,
+      'issues',
+      String(persisted.snapshot.issue_number),
+    );
+    const legacy = structuredClone(persisted.snapshot) as Record<
+      string,
+      unknown
+    >;
+    const localReview = legacy['local_review'] as Record<string, unknown>;
+    const reviewBatch = localReview['review_batch'] as Record<string, unknown>;
+    const reviewerReceipts = reviewBatch['reviewer_receipts'] as Record<
+      string,
+      Record<string, unknown>
+    >;
+    const verificationReceipt = reviewerReceipts['verification'];
+    const canonicalVerification = verificationReceipt[
+      'canonical_verification'
+    ] as Record<string, unknown>;
+    delete canonicalVerification['receipt_id'];
+    canonicalVerification['shell_command'] =
+      'node canonical-verification.mjs -- pnpm verify';
+    writeFileSync(
+      resolve(directory, 'snapshot.json'),
+      `${JSON.stringify(legacy, null, 2)}\n`,
+    );
+
+    const migrated = loadIssueSupervisorStore(
+      runtimeRoot,
+      persisted.snapshot.lane_id,
+      persisted.snapshot.issue_number,
+    );
+
+    expect(migrated?.snapshot).toMatchObject({
+      status: 'local-review',
+      local_review: null,
+    });
+    expect(migrated?.events.at(-1)).toMatchObject({
+      kind: 'local-review-revalidation-required',
+      status: 'local-review',
+    });
   });
 
   it.each([
@@ -1853,23 +1922,27 @@ describe('execute-lane issue supervisor lifecycle', () => {
         affected_axes: [],
         rationale: 'The resolution preserves both independent changes.',
       };
+      const machineEvidence = computeConflictGitEvidence({
+        repository_root: bundle.snapshot.repository_root,
+        worktree: bundle.snapshot.worktree,
+        previously_reviewed_head: headA,
+        upstream_head: headC,
+        resolved_head: headB,
+        command_runner: storeRunners.get(resolve(bundle.snapshot.repository_root, '.omo', 'lane-runs')),
+      });
+      const { diffs: _diffs, ...canonicalMachineEvidence } =
+        machineEvidence;
       const finalResponse = {
         sentinel: 'fluo:execute-lane:conflict-review:final:v1',
         verdict_signal: 'PASS',
+        generation: bundle.snapshot.implementer_generation,
         ...gate,
-        digests: computeConflictGitEvidence({
-          repository_root: bundle.snapshot.repository_root,
-          worktree: bundle.snapshot.worktree,
-          previously_reviewed_head: headA,
-          upstream_head: headC,
-          resolved_head: headB,
-          command_runner: storeRunners.get(resolve(bundle.snapshot.repository_root, '.omo', 'lane-runs')),
-        }).digests,
+        digests: machineEvidence.digests,
       };
       const gateTask = {
         task_id: 'st_governance_conflict_gate',
         status: 'completed',
-        category: 'deep',
+        agent_type: 'fluo-contract-reviewer',
         resolved_model: {
           provider: 'openai-codex',
           model_id: 'gpt-5.6-sol',
@@ -1889,6 +1962,8 @@ describe('execute-lane issue supervisor lifecycle', () => {
             lane_id: identity.lane_id,
             issue_number: identity.issue_number,
             worktree: identity.worktree,
+            generation: bundle.snapshot.implementer_generation,
+            machine_evidence: canonicalMachineEvidence,
             ...gate,
           })}`,
         },
@@ -1906,14 +1981,6 @@ describe('execute-lane issue supervisor lifecycle', () => {
           axis: 'conflict',
         },
         verify: false,
-      });
-      const machineEvidence = computeConflictGitEvidence({
-        repository_root: bundle.snapshot.repository_root,
-        worktree: bundle.snapshot.worktree,
-        previously_reviewed_head: headA,
-        upstream_head: headC,
-        resolved_head: headB,
-        command_runner: storeRunners.get(resolve(bundle.snapshot.repository_root, '.omo', 'lane-runs')),
       });
       writeActualShapedConflictImplementerTask({
         repository_root: bundle.snapshot.repository_root,

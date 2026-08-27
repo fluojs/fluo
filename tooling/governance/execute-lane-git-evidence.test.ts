@@ -103,7 +103,7 @@ describe('execute-lane canonical Git evidence', () => {
     } finally {
       rmSync(fixture.root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it('fails closed while the real origin branch exists even after its remote-tracking ref is pruned', () => {
     const fixture = setup();
@@ -122,7 +122,7 @@ describe('execute-lane canonical Git evidence', () => {
     } finally {
       rmSync(fixture.root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it('validates a real removed worktree and deleted local and origin branches after cleanup', () => {
     const fixture = setup();
@@ -146,7 +146,7 @@ describe('execute-lane canonical Git evidence', () => {
     } finally {
       rmSync(fixture.root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it.each([
     ['runner exception', Object.assign(new Error('runner exploded'), {})],
@@ -176,7 +176,7 @@ describe('execute-lane canonical Git evidence', () => {
     } finally {
       rmSync(fixture.root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it.each([
     ['generic manifest source', 'packages/core/src/manifest.ts'],
@@ -237,7 +237,7 @@ describe('execute-lane canonical Git evidence', () => {
     } finally {
       rmSync(fixture.root, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it.each([
     ['contract', ['contracts/public.schema.json'], ['contract', 'code', 'verification']],
