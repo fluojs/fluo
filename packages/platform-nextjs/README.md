@@ -110,8 +110,6 @@ Add one optional catch-all Route Handler:
 // app/api/[[...path]]/route.ts
 import { createNextAppRouterHandler } from '@fluojs/platform-nextjs/app-router';
 
-export const runtime = 'nodejs';
-
 export const {
   GET,
   POST,
@@ -127,7 +125,9 @@ export const {
 
 Next.js still discovers one filesystem route. Fluo owns decorator metadata,
 route matching, module bootstrap, dependency injection, request scope, body
-parsing, errors, and controller dispatch behind that facade.
+parsing, errors, and controller dispatch behind that facade. Route Handlers
+default to the Node.js runtime that Fluo backends require, so no `runtime`
+override is needed.
 
 ## Pages Router
 
