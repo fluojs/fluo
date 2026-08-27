@@ -110,8 +110,6 @@ Optional catch-all Route Handler 하나를 추가합니다.
 // app/api/[[...path]]/route.ts
 import { createNextAppRouterHandler } from '@fluojs/platform-nextjs/app-router';
 
-export const runtime = 'nodejs';
-
 export const {
   GET,
   POST,
@@ -128,7 +126,8 @@ export const {
 Next.js는 filesystem route 하나를 계속 발견합니다. 이 facade 뒤에서는
 Fluo가 decorator metadata, route matching, module bootstrap, dependency
 injection, request scope, body parsing, error, controller dispatch를
-담당합니다.
+담당합니다. Route Handler는 Fluo backend가 요구하는 Node.js runtime을
+기본으로 사용하므로 `runtime` override는 필요하지 않습니다.
 
 ## Pages Router
 
