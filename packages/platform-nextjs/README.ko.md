@@ -112,17 +112,17 @@ import { createNextAppRouterHandler } from '@fluojs/platform-nextjs/app-router';
 
 export const runtime = 'nodejs';
 
-const handler = createNextAppRouterHandler(() =>
+export const {
+  GET,
+  POST,
+  PUT,
+  PATCH,
+  DELETE,
+  HEAD,
+  OPTIONS,
+} = createNextAppRouterHandler(() =>
   import('../../../src/backend').then(({ nextAdapter }) => nextAdapter),
 );
-
-export const GET = handler;
-export const POST = handler;
-export const PUT = handler;
-export const PATCH = handler;
-export const DELETE = handler;
-export const HEAD = handler;
-export const OPTIONS = handler;
 ```
 
 Next.js는 filesystem route 하나를 계속 발견합니다. 이 facade 뒤에서는
@@ -283,9 +283,10 @@ Application이 raw Node.js transport ownership, WebSocket upgrades, independentl
 - `createNextAdapter(options)`: `FluoFactory.create()`에 전달할 HTTP adapter 생성
 - `NextAdapterOptions`: adapter가 소유하는 request parsing options
 - `NextAdapterLoader`: dynamic canonical backend adapter loader
-- `createNextAppRouterHandler(loadAdapter)`: request-lazy App Router handler 생성
+- `createNextAppRouterHandler(loadAdapter)`: 구조분해 export 가능한 method-keyed App Router handler export record 생성 (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`)
 - `NextHttpApplicationAdapter`: bound `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS` handlers를 가진 `HttpApplicationAdapter`
 - `NextAppRouteHandler`: bound methods가 사용하는 Web request handler type
+- `NextAppRouterMethodHandlers`: route module에서 구조분해 export하는 method-keyed App Router record (`createNextAppRouterHandler()` 반환)
 - `createNextPagesRouterHandler(loadAdapter)`: request-lazy streaming Pages Router API handler 생성
 - `NextPagesRouterConfig`: 필수 static `bodyParser: false` literal type-check
 - `withFluoNextBackend(config)`: `@fluojs/platform-nextjs/next-config` export; packaged Turbopack decorator loader 추가

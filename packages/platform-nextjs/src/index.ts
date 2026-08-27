@@ -2,6 +2,7 @@ export type {
   NextAdapterLoader,
   NextAdapterOptions,
   NextAppRouteHandler,
+  NextAppRouterMethodHandlers,
 } from './adapter.js';
 export {
   createNextAdapter,
