@@ -216,16 +216,26 @@ describe('@fluojs/platform-nextjs', () => {
       resolveAdapter = resolve;
     });
     let loadCount = 0;
-    const handler = createNextAppRouterHandler(() => {
+    const handlers = createNextAppRouterHandler(() => {
       loadCount += 1;
       return adapterPromise;
     });
+    expect(Object.keys(handlers).sort()).toEqual([
+      'DELETE',
+      'GET',
+      'HEAD',
+      'OPTIONS',
+      'PATCH',
+      'POST',
+      'PUT',
+    ]);
+    expect(new Set(Object.values(handlers))).toHaveLength(1);
 
     expect(loadCount).toBe(0);
     const responses = [
-      handler(new Request('https://next.test/api/health')),
-      handler(new Request('https://next.test/api/health')),
-      handler(new Request('https://next.test/api/health')),
+      handlers.GET(new Request('https://next.test/api/health')),
+      handlers.GET(new Request('https://next.test/api/health')),
+      handlers.GET(new Request('https://next.test/api/health')),
     ];
 
     expect(loadCount).toBe(1);
@@ -244,13 +254,13 @@ describe('@fluojs/platform-nextjs', () => {
   it('keeps backend startup rejection sticky', async () => {
     const startupError = new Error('backend startup failed');
     let loadCount = 0;
-    const handler = createNextAppRouterHandler(async () => {
+    const handlers = createNextAppRouterHandler(async () => {
       loadCount += 1;
       throw startupError;
     });
 
-    const first = handler(new Request('https://next.test/api/health'));
-    const second = handler(new Request('https://next.test/api/health'));
+    const first = handlers.GET(new Request('https://next.test/api/health'));
+    const second = handlers.POST(new Request('https://next.test/api/health'));
 
     await expect(first).rejects.toBe(startupError);
     await expect(second).rejects.toBe(startupError);

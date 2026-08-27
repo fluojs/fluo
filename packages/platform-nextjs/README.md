@@ -112,17 +112,17 @@ import { createNextAppRouterHandler } from '@fluojs/platform-nextjs/app-router';
 
 export const runtime = 'nodejs';
 
-const handler = createNextAppRouterHandler(() =>
+export const {
+  GET,
+  POST,
+  PUT,
+  PATCH,
+  DELETE,
+  HEAD,
+  OPTIONS,
+} = createNextAppRouterHandler(() =>
   import('../../../src/backend').then(({ nextAdapter }) => nextAdapter),
 );
-
-export const GET = handler;
-export const POST = handler;
-export const PUT = handler;
-export const PATCH = handler;
-export const DELETE = handler;
-export const HEAD = handler;
-export const OPTIONS = handler;
 ```
 
 Next.js still discovers one filesystem route. Fluo owns decorator metadata,
@@ -279,9 +279,10 @@ Use a Fluo Node or Fastify platform adapter when the application requires raw No
 - `createNextAdapter(options)`: creates the HTTP adapter passed to `FluoFactory.create()`
 - `NextAdapterOptions`: adapter-owned request parsing options
 - `NextAdapterLoader`: dynamic canonical backend adapter loader
-- `createNextAppRouterHandler(loadAdapter)`: creates a request-lazy App Router handler
+- `createNextAppRouterHandler(loadAdapter)`: creates method-keyed App Router handler exports (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`) ready for destructuring
 - `NextHttpApplicationAdapter`: `HttpApplicationAdapter` with bound `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, and `OPTIONS` handlers
 - `NextAppRouteHandler`: Web request handler type used by those bound methods
+- `NextAppRouterMethodHandlers`: method-keyed App Router record returned by `createNextAppRouterHandler()`
 - `createNextPagesRouterHandler(loadAdapter)`: creates a request-lazy streaming Pages Router API handler
 - `NextPagesRouterConfig`: type-checks the required static `bodyParser: false` literal
 - `withFluoNextBackend(config)`: exported from `@fluojs/platform-nextjs/next-config`; adds the packaged Turbopack decorator loader
