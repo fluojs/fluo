@@ -169,8 +169,14 @@ function validateSequentialProgress(lanePath, lane, validation) {
         ? undefined
         : findTerminalIssue(lane, validation.progressByIssue);
       const terminalProgress = validation.progressByIssue.get(terminalIssue);
-      const dependencies =
-        validation.dependencyGraph[String(issue)] ?? [];
+      const queuePredecessor =
+        index > 0 ? lane.queue[index - 1] : undefined;
+      const dependencies = [
+        ...new Set([
+          ...(validation.dependencyGraph[String(issue)] ?? []),
+          ...(queuePredecessor === undefined ? [] : [queuePredecessor]),
+        ]),
+      ];
       const dependencyBlocked =
         progress?.status === 'blocked-terminal' &&
         dependencies.some((dependency) => {

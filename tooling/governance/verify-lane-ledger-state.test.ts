@@ -631,6 +631,49 @@ describe('verify-lane-ledger canonical v1 completion contract', () => {
     ).toContain('Lane ledger check passed for 1 file(s).');
   });
 
+  it('accepts a later queue issue blocked by its terminal predecessor', () => {
+    expect(
+      runMutatedCompletedLedger((ledger) => {
+        setTerminalSecondIssue(ledger, 'blocked-child-contract-error');
+        ledger.status = 'blocked-child-contract-error';
+        ledger.lanes[0].current_blocker = {
+          signature: 'child-contract-error',
+          evidence: 'invalid child output or transition evidence',
+        };
+        Object.assign(requireRootMainSync(ledger), {
+          status: 'blocked-dirty',
+          sha: null,
+        });
+        ledger.confirmed_issues.push(103);
+        ledger.lanes[0].queue.push(103);
+        ledger.dependency_graph['103'] = [];
+        const blockedProgress = {
+          ...requireIssueProgress(ledger, '101'),
+        };
+        setNonCompletionProgress(blockedProgress, 'blocked-terminal');
+        blockedProgress.verification =
+          'dependencies 102 did not reach canonical done';
+        blockedProgress.retry_count = 0;
+        blockedProgress.blockers = [
+          {
+            reviewer: 'contract',
+            signature: 'dependency:not-done',
+            evidence: 'dependencies 102 did not reach canonical done',
+            fix_back_eligible: false,
+            status: 'unresolved',
+          },
+        ];
+        Reflect.deleteProperty(blockedProgress, 'branch');
+        Reflect.deleteProperty(blockedProgress, 'worktree');
+        Reflect.deleteProperty(blockedProgress, 'pr');
+        ledger.issue_progress = {
+          ...ledger.issue_progress,
+          '103': blockedProgress,
+        };
+      }, runValidatorPath),
+    ).toContain('Lane ledger check passed for 1 file(s).');
+  });
+
   it('requires merged lane to have matching merged progress', () => {
     expect(
       runMutatedCompletedLedger((ledger) => {
