@@ -12,6 +12,11 @@ not a native DAG definition. The trusted parent coordinator owns:
 - PR/CI/merge/cleanup observation;
 - terminal import and root synchronization.
 
+Direct phase agents are single-depth process workers with task, DAG, and team
+dispatch disabled. The parent treats a native completion as unverified until
+the wave settles and exactly one machine final response is authenticated.
+Detached or `persisted_only` child records never authorize a transition.
+
 Every admitted issue has one key and one immutable native run:
 
 ```text

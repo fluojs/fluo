@@ -9,6 +9,11 @@ in execute-lane v3.
 The trusted parent coordinator is the issue state `parent_session_id`. It alone
 persists issue transitions and issue-DAG control state. Direct DAG workers
 return claims; they never write trusted state or orchestrate another worker.
+All direct workers are single-depth process agents with task, DAG, and team
+dispatch disabled. The parent remains live until the native wave settles and
+authenticates exactly one machine final response. Detached handles, running
+records with `persisted_only` residency, and prose-only claims cannot satisfy
+the lifecycle.
 
 Every accepted child binds:
 

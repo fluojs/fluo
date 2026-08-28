@@ -17,6 +17,19 @@ type NativeAssetManifest = {
   readonly shippedContractPaths: readonly string[];
 };
 
+type OmoProjectConfig = Readonly<{
+  task?: Readonly<{ max_depth?: number }>;
+  agents?: Readonly<
+    Record<
+      string,
+      Readonly<{
+        execution_mode?: 'in-process' | 'process';
+        tools?: Readonly<Record<string, boolean>>;
+      }>
+    >
+  >;
+}>;
+
 const repoRoot = resolve(import.meta.dirname, '..', '..');
 const read = (relativePath: string): string =>
   readFileSync(resolve(repoRoot, relativePath), 'utf8');
@@ -93,6 +106,31 @@ const requiredShippedContractPaths = [
 ] as const;
 
 describe('OMO native asset manifest', () => {
+  it('keeps execute-lane workers single-depth and non-orchestrating', () => {
+    const config = JSON.parse(read('.omo/omo.jsonc')) as OmoProjectConfig;
+    const agents = config.agents ?? {};
+    const workerNames = [
+      'fluo-issue-preflight',
+      'fluo-issue-implementer',
+      'fluo-contract-reviewer',
+      'fluo-code-reviewer',
+      'fluo-verification-reviewer',
+      'fluo-issue-operator',
+    ] as const;
+
+    expect(config.task?.max_depth).toBe(1);
+    expect(agents['fluo-issue-supervisor']).toBeUndefined();
+    for (const workerName of workerNames) {
+      const worker = agents[workerName];
+      expect(worker, `${workerName} must be registered`).toBeDefined();
+      expect(worker?.execution_mode).toBe('process');
+      expect(worker?.tools?.['task']).toBe(false);
+      expect(worker?.tools?.['dag']).toBe(false);
+      expect(worker?.tools?.['team_create']).toBe(false);
+      expect(worker?.tools?.['task_send']).toBe(false);
+    }
+  });
+
   it('declares exactly six entrypoint skills and four knowledge skills', () => {
     const manifest = parseNativeAssetManifest();
     const namesFor = (kind: SkillKind): string[] =>

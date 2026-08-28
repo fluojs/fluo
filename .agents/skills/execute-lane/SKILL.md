@@ -25,6 +25,10 @@ fluo:lane:<lane-id>:issue-<issue-number>:lifecycle:v3
 Lifecycle phases are direct DAG nodes. A node never calls `task`, `dag`, team,
 or another orchestration surface. The trusted parent alone starts, attaches,
 amends, retries, verifies, terminalizes, and settles issue runs.
+Direct workers use project-local `fluo-*` agents whose task, DAG, and team
+dispatch tools are disabled. The parent waits for each native wave to settle
+and authenticates exactly one machine final response before advancing.
+Detached or `persisted_only` child records are not progress.
 
 The parent advances one issue only through:
 
