@@ -19,11 +19,16 @@ ledger. The artifact and shared workflow contracts are authoritative.
 5. Reject mixed forms, archived `.opencode` paths, deeper or noncanonical
    artifact paths, malformed JSON, unknown keys, duplicate or empty issue sets,
    unresolved verbal requests, and path/ID mismatches before lane publication.
+6. Parse `--recommend-issues` and `-ri` as equivalent opt-in flags after the
+   intake value. Remove the flag before intake discrimination. Without either
+   flag, skip related-issue discovery.
 
 ## Interaction and receipt sequence
 
 The validated invocation or artifact defines the initial issues without a
-confirmation question. Search for related candidates and:
+confirmation question. Unless recommendation was explicitly enabled, skip
+related candidate discovery and derive an empty additions decision. When
+`--recommend-issues` or `-ri` enables discovery:
 
 1. If recommendations are empty, ask nothing and derive an empty additions
    decision.
@@ -38,8 +43,8 @@ confirmation question. Search for related candidates and:
 Persist `confirmed-issues`, `suggested-additions`, and `lane-plan` as three
 distinct plan/source-bound stage receipts. The confirmed and normal lane-plan
 receipts are derived machine evidence. The additions receipt records the sole
-normal response or the derived empty decision. Receipt count is not interaction
-count.
+normal response or the derived empty decision, including the default
+recommendation-disabled path. Receipt count is not interaction count.
 
 Present `retry_count_is_terminal: false` with null count and wall-clock limits
 as the default adaptive retry policy. Count attempts and elapsed time as

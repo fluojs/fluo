@@ -1,6 +1,6 @@
 ---
 name: create-lane
-description: Native OMO lane planning invoked with leading $create-lane. Accepts a canonical search artifact, bulk issue numbers, or a verbal issue-collection request; asks at most one normal additions question and atomically creates one source-bound v2 lane ledger.
+description: Native OMO lane planning invoked with leading $create-lane. Accepts a canonical search artifact, bulk issue numbers, or a verbal issue-collection request; optionally recommends related issues with --recommend-issues or -ri and atomically creates one source-bound v2 lane ledger.
 ---
 
 # Create lane
@@ -17,6 +17,8 @@ Accept exactly one of these intake forms:
 $create-lane .omo/search-issue/artifacts/<search-run-id>.json
 $create-lane 4101 4102 4103
 $create-lane collect the open runtime cleanup issues into one lane
+$create-lane 4101 4102 4103 --recommend-issues
+$create-lane 4101 4102 4103 -ri
 ```
 
 Artifact intake accepts canonical native or importer-owned legacy paths. Bulk
@@ -33,15 +35,21 @@ boundary before recommendation or planning. Reject empty, duplicate,
 non-positive, mixed-mode, unresolved, noncanonical, or path/ID-mismatched
 inputs before lane publication.
 
+Treat `--recommend-issues` and `-ri` as equivalent recommendation opt-ins.
+Remove the flag from the intake tokens before discriminating the intake mode.
+Without either flag, do not search for related additions.
+
 This skill performs read-only issue verification and lane planning. It does not
 create issues, implement code, create branches or worktrees, open or merge PRs,
 clean up worktrees, sync the root checkout, or publish packages.
 
 ## Interaction and receipts
 
-The invocation or validated artifact selects the initial issue set. Search for
-related issues that may belong in the same lane. If there are recommendations,
-ask exactly one question:
+The invocation or validated artifact selects the initial issue set. By default,
+skip related-issue discovery and derive an empty `suggested-additions` decision.
+Only when `--recommend-issues` or `-ri` is present, search for related issues
+that may belong in the same lane. If that search finds recommendations, ask
+exactly one question:
 
 ```text
 Recommended additions: #4103, #4104.
@@ -50,9 +58,10 @@ Include all, none, or list the issue numbers to include.
 
 The response must partition recommendations into included and excluded issues.
 Included issues append to the initial artifact order; excluded issues become
-`suggested_but_excluded`. If there are no recommendations, ask nothing. Build
-the final grouping, dependencies, lane ID, merge policy, retry policy, and
-authority scope deterministically without a normal lane-plan question.
+`suggested_but_excluded`. If recommendation was not requested or no
+recommendations were found, ask nothing. Build the final grouping,
+dependencies, lane ID, merge policy, retry policy, and authority scope
+deterministically without a normal lane-plan question.
 
 Persist the existing `confirmed-issues`, `suggested-additions`, and `lane-plan`
 receipt identities as plan/source-bound machine evidence. The first and third
@@ -93,7 +102,9 @@ signatures. Production additions approval exists only when the trusted lead
 observes the one native response, and release authority exists only when the
 trusted lead observes its separate exceptional response.
 `scripts/fixtures/run-scenario.mjs` accepts synthetic receipts for tests and is
-forbidden in production.
+forbidden in production. Recommendation fixtures must set
+`recommend_issues: true`; a nonempty `recommended_issue_numbers` value without
+that opt-in is rejected as `recommendations_not_requested`.
 
 ## Production
 

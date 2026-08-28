@@ -5,6 +5,8 @@ import { searchArtifact } from '../../search-issue/scripts/publication.mjs';
 const artifactPattern =
   /^\.omo\/search-issue\/artifacts\/(?:legacy\/)?([A-Za-z0-9][A-Za-z0-9+._-]*)\.json$/u;
 const safeRunId = /^(?!.*(?:\.|\.lock)$)[A-Za-z0-9][A-Za-z0-9+._-]*$/u;
+const issueNumberPattern = /^[1-9][0-9]*$/u;
+const recommendationFlags = new Set(['--recommend-issues', '-ri']);
 
 const isRecord = (value) =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -29,6 +31,44 @@ const generatedIntake = (runId, issueNumbers) => ({
   artifactPath: `.omo/search-issue/artifacts/${runId}.json`,
   publishArtifact: true,
 });
+
+export const parseCreateLaneInvocation = (args) => {
+  if (
+    !Array.isArray(args) ||
+    args.length === 0 ||
+    !args.every((arg) => typeof arg === 'string')
+  ) {
+    return { reason: 'mixed_input' };
+  }
+  const values = args.filter((arg) => !recommendationFlags.has(arg));
+  const recommendIssues = values.length !== args.length;
+  if (values.length === 0 || values.some((value) => value.startsWith('-'))) {
+    return { reason: 'mixed_input' };
+  }
+  if (values.every((value) => issueNumberPattern.test(value))) {
+    const issueNumbers = values.map(Number);
+    if (new Set(issueNumbers).size !== issueNumbers.length) {
+      return { reason: 'invalid_issue_numbers' };
+    }
+    return {
+      mode: 'issue-numbers',
+      issue_numbers: issueNumbers,
+      recommend_issues: recommendIssues,
+    };
+  }
+  if (values.length === 1 && artifactPattern.test(values[0])) {
+    return {
+      mode: 'artifact',
+      artifact_path: values[0],
+      recommend_issues: recommendIssues,
+    };
+  }
+  return {
+    mode: 'verbal',
+    query: values.join(' '),
+    recommend_issues: recommendIssues,
+  };
+};
 
 export const normalizeIntake = (scenario) => {
   const intake = scenario.intake;

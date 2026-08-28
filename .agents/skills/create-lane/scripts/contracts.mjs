@@ -29,6 +29,16 @@ const readScenario = (scenarioPath) => {
 
 export const prepareScenario = (scenarioPath) => {
   const scenario = readScenario(scenarioPath);
+  const recommendedIssueNumbers = scenario.recommended_issue_numbers;
+  if (
+    (scenario.recommend_issues !== undefined &&
+      typeof scenario.recommend_issues !== 'boolean') ||
+    (!scenario.recommend_issues &&
+      Array.isArray(recommendedIssueNumbers) &&
+      recommendedIssueNumbers.length > 0)
+  ) {
+    return rejected('recommendations_not_requested');
+  }
   const normalized = normalizeIntake(scenario);
   if (normalized.reason !== undefined) {
     return rejected(normalized.reason);
@@ -55,7 +65,7 @@ export const prepareScenario = (scenarioPath) => {
     scenario.approvals,
     artifact,
     plan,
-    scenario.recommended_issue_numbers,
+    recommendedIssueNumbers,
   );
   if (approvalFailure !== null) {
     return rejected(approvalFailure);

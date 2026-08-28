@@ -95,6 +95,22 @@ const rebindApprovals = (
 };
 
 describe('$create-lane multi-issue planning', () => {
+  it('rejects related recommendations when opt-in was not requested', () => {
+    const fixture = parseRecord(
+      readFileSync(resolve(fixtureRoot, 'valid-multi-issue.json'), 'utf8'),
+    );
+    const { recommend_issues: _recommendIssues, ...withoutOptIn } = fixture;
+    const run = runValue(withoutOptIn);
+    try {
+      expect(run.result).toEqual({
+        status: 'rejected',
+        reason: 'recommendations_not_requested',
+      });
+    } finally {
+      rmSync(run.outputRoot, { recursive: true, force: true });
+    }
+  });
+
   it('creates approved additions, lane grouping, and dependencies', () => {
     const fixture = parseRecord(
       readFileSync(resolve(fixtureRoot, 'valid-multi-issue.json'), 'utf8'),
