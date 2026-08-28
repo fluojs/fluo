@@ -15,6 +15,7 @@ import { resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { payloadDigest } from '../../../workflow-contracts/contracts.mjs';
+import { currentCoordinatorSessionId } from './issue-supervisor-contracts.mjs';
 import { loadIssueSupervisorStore } from './issue-supervisor-store.mjs';
 import { canonicalLaneRuntimeRoot } from './lane-runtime-paths.mjs';
 import { withGlobalCanonicalVerificationLease } from './review-loop-policy.mjs';
@@ -370,7 +371,7 @@ export const runCanonicalVerification = ({
   if (
     typeof parentSessionId !== 'string' ||
     parentSessionId.length === 0 ||
-    parentSessionId !== supervisor.snapshot.parent_session_id
+    parentSessionId !== currentCoordinatorSessionId(supervisor.snapshot)
   ) {
     throw new TypeError(
       'canonical verification parent session must match its issue supervisor.',

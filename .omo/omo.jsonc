@@ -29,6 +29,7 @@
     },
     "fluo-issue-implementer": {
       "description": "Implements one Fluo issue inside its assigned worktree.",
+      "prompt": "Only read, bash, and apply_patch are available. Do not call eval, todo, task, dag, or team tools.",
       "model": "openai-codex/gpt-5.6-terra",
       "reasoning": "high",
       "execution_mode": "process",

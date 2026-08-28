@@ -72,6 +72,8 @@ export const createIssueDagRunBundle = ({
     coordinator_session_id,
     dag_key: canonicalDefinition.key,
     run_id: null,
+    run_epoch: 1,
+    predecessor_runs: [],
     status: 'dispatch-intent',
     head_sha,
     dispatch_event_hash,
@@ -110,6 +112,88 @@ export const attachIssueDagRun = (bundle, evidence) => {
   };
   return appendEvent(bundle, 'run-attached', state, {
     run_id: evidence.run_id,
+  });
+};
+
+export const rolloverIssueDagRun = (bundle, {
+  coordinator_session_id: coordinatorSessionId,
+  phase_key: phaseKey,
+  head_sha: headSha,
+  definition,
+}) => {
+  assertIssueDagBundle(bundle);
+  const state = bundle.state;
+  const preservesPendingPhase = [
+    'dispatch-intent',
+    'phase-running',
+  ].includes(state.status);
+  const recoversPendingAmendment =
+    state.status === 'amend-intent' &&
+    state.pending_amendment?.phase_key === phaseKey;
+  if (
+    ![
+      'dispatch-intent',
+      'phase-running',
+      'phase-settled',
+      'amend-intent',
+    ].includes(state.status) ||
+    typeof coordinatorSessionId !== 'string' ||
+    coordinatorSessionId.length === 0 ||
+    coordinatorSessionId === state.coordinator_session_id ||
+    (preservesPendingPhase && phaseKey !== state.active_phase_key) ||
+    (state.status === 'amend-intent' && !recoversPendingAmendment) ||
+    headSha !== state.head_sha
+  ) {
+    throw new TypeError(
+      state.status === 'native-completed-unverified'
+        ? 'Issue DAG native completion requires phase import before rollover.'
+        : 'Issue DAG rollover requires one pending phase and a new coordinator session.',
+    );
+  }
+  const canonicalDefinition = canonicalIssueDagDefinition(
+    definition,
+    state.lane_id,
+    state.issue_number,
+  );
+  const currentEpoch = state.run_epoch ?? 1;
+  const predecessorRuns = state.predecessor_runs ?? [];
+  const predecessor =
+    state.run_id === null
+      ? []
+      : [
+          {
+            run_epoch: currentEpoch,
+            run_id: state.run_id,
+            coordinator_session_id: state.coordinator_session_id,
+            native_generation: state.native_generation,
+            definition_fingerprint: state.definition_fingerprint,
+          },
+        ];
+  const next = {
+    ...structuredClone(state),
+    coordinator_session_id: coordinatorSessionId,
+    run_id: null,
+    run_epoch: currentEpoch + 1,
+    predecessor_runs: [
+      ...structuredClone(predecessorRuns),
+      ...predecessor,
+    ],
+    status: 'dispatch-intent',
+    current_definition: canonicalDefinition,
+    current_definition_sha256: payloadDigest(canonicalDefinition),
+    definition_fingerprint: null,
+    native_generation: null,
+    active_phase_key: phaseKey,
+    active_node_ids: [],
+    completed_node_ids: [],
+    last_completed_node_ids: [],
+    pending_amendment: null,
+  };
+  return appendEvent(bundle, 'run-rollover-intent', next, {
+    ...(state.run_id === null
+      ? {}
+      : { predecessor_run_id: state.run_id }),
+    successor_run_epoch: currentEpoch + 1,
   });
 };
 

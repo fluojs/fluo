@@ -146,6 +146,12 @@ describe('execute-lane implementer runtime routing', () => {
       task: false,
       dag: false,
     });
+    expect(config.agents['fluo-issue-implementer'].prompt).toContain(
+      'Only read, bash, and apply_patch are available.',
+    );
+    expect(config.agents['fluo-issue-implementer'].prompt).toContain(
+      'Do not call eval, todo, task, dag, or team tools.',
+    );
     expect(config.agents['fluo-issue-preflight'].tools).toMatchObject({
       read: true,
       bash: false,
@@ -386,6 +392,122 @@ describe('execute-lane implementer runtime routing', () => {
       expect(() => verifyImplementerRuntime(expected)).toThrow(
         /worktree|shell/u,
       );
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it.each([
+    [
+      'a second git working-directory override',
+      'git -C .worktrees/issue-4101-runtime -C ../.. worktree add /tmp/escape HEAD',
+    ],
+    [
+      'an arbitrary pnpm executable',
+      'pnpm --dir .worktrees/issue-4101-runtime exec node -e "require(\'fs\').writeFileSync(\'/tmp/escape\',\'x\')"',
+    ],
+  ])('rejects %s after an issue-worktree prefix', (_label, command) => {
+    // Given
+    const root = realpathSync(
+      mkdtempSync(join(tmpdir(), 'fluo-implementer-shell-escape-')),
+    );
+    try {
+      const expected = writeEvidence(root);
+      const sessionPath = resolve(
+        root,
+        '.omo/senpi-task/children/st_valid/sessions/st_valid/2026-08-26T00-00-00-000Z_session.jsonl',
+      );
+      const events = readFileSync(sessionPath, 'utf8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      events.push(
+        {
+          type: 'message',
+          message: {
+            role: 'assistant',
+            provider: 'openai-codex',
+            model: 'gpt-5.6-terra',
+            content: [
+              {
+                type: 'toolCall',
+                id: 'tool_shell_escape',
+                name: 'bash',
+                arguments: { command },
+              },
+            ],
+          },
+        },
+        {
+          type: 'message',
+          message: {
+            role: 'toolResult',
+            toolCallId: 'tool_shell_escape',
+            isError: false,
+            content: [],
+          },
+        },
+      );
+      writeFileSync(
+        sessionPath,
+        `${events.map((event) => JSON.stringify(event)).join('\n')}\n`,
+      );
+
+      // When / Then
+      expect(() => verifyImplementerRuntime(expected)).toThrow(
+        /worktree|shell/u,
+      );
+    } finally {
+      rmSync(root, { force: true, recursive: true });
+    }
+  });
+
+  it('accepts bounded git and verification commands inside the issue worktree', () => {
+    // Given
+    const root = realpathSync(
+      mkdtempSync(join(tmpdir(), 'fluo-implementer-shell-safe-')),
+    );
+    try {
+      const expected = writeEvidence(root);
+      const sessionPath = resolve(
+        root,
+        '.omo/senpi-task/children/st_valid/sessions/st_valid/2026-08-26T00-00-00-000Z_session.jsonl',
+      );
+      const events = readFileSync(sessionPath, 'utf8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      const worktree = '.worktrees/issue-4101-runtime';
+      const commands = [
+        `git -C ${worktree} status --short`,
+        `git -C ${worktree} add packages/runtime`,
+        `git -C ${worktree} commit -m "fix runtime"`,
+        `pnpm --dir ${worktree} test`,
+        `pnpm --dir ${worktree} exec vitest run tooling/runtime.test.ts`,
+        `pnpm --dir ${worktree} exec biome check packages/runtime`,
+        `pnpm --dir ${worktree} exec tsc --noEmit`,
+      ];
+      events.push({
+        type: 'message',
+        message: {
+          role: 'assistant',
+          provider: 'openai-codex',
+          model: 'gpt-5.6-terra',
+          content: commands.map((command, index) => ({
+            type: 'toolCall',
+            id: `tool_shell_safe_${String(index)}`,
+            name: 'bash',
+            arguments: { command },
+          })),
+        },
+      });
+      writeFileSync(
+        sessionPath,
+        `${events.map((event) => JSON.stringify(event)).join('\n')}\n`,
+      );
+
+      // When / Then
+      expect(() => verifyImplementerRuntime(expected)).not.toThrow();
     } finally {
       rmSync(root, { force: true, recursive: true });
     }

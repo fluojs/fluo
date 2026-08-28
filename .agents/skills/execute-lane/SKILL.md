@@ -16,15 +16,18 @@ execution.
 ## Architecture
 
 The lane is a parent-owned coordinator, not a native DAG. Each admitted issue
-owns exactly one cumulative native DAG:
+owns one durable lifecycle key:
 
 ```text
 fluo:lane:<lane-id>:issue-<issue-number>:lifecycle:v3
 ```
 
+Native DAG runs are session-bound execution segments, not durable workflow
+identity. One coordinator session owns one active segment. A resumed
+coordinator starts a successor segment for only the pending phase and records
+the prior run in `predecessor_runs`; it never adopts the prior session's run.
 Lifecycle phases are direct DAG nodes. A node never calls `task`, `dag`, team,
-or another orchestration surface. The trusted parent alone starts, attaches,
-amends, retries, verifies, terminalizes, and settles issue runs.
+or another orchestration surface.
 Direct workers use project-local `fluo-*` agents whose task, DAG, and team
 dispatch tools are disabled. The parent waits for each native wave to settle
 and authenticates exactly one machine final response before advancing.
@@ -61,17 +64,22 @@ or a child claim never releases a dependent. A blocked predecessor
 terminalizes untouched descendants only with fresh absence evidence proving no
 issue DAG, task, branch, worktree, PR, or side effect exists.
 
-Persist one issue-DAG dispatch intent before native `start`. Authenticate the
-native key record, run checkpoint, coordinator parent session, generation 1,
-definition fingerprint, and event journal before attaching the immutable
-`run_id`. Never replace a run or adopt it from another coordinator session.
+Persist one issue-DAG dispatch or rollover intent before native `start`.
+Authenticate the native key record, run checkpoint, coordinator session,
+generation, definition fingerprint, and event journal before attaching the
+immutable `run_id`. Never adopt a run from another coordinator session. When
+ownership changes, compile only the pending phase, append
+`run-rollover-intent`, and start a new session-local run under the same issue
+lifecycle key.
 
 ## Phase-gated amendments
 
 Compile the starting-head-bound preflight node with
-`compileIssueLifecycleDag()`. After each verified phase, append only the next
-wave with `amendIssueLifecycleDag()` and persist its complete base/target intent
-through `issue-dag-store.mjs` before native `dag amend`.
+`compileIssueLifecycleDag()`. Within one coordinator session, append only the
+next wave with `amendIssueLifecycleDag()`. Across coordinator sessions, compile
+only the pending wave with `compileIssueLifecycleSegment()` and preserve
+completed phase receipts in the issue store rather than replaying historical
+nodes.
 
 The cumulative topology is:
 
@@ -133,12 +141,15 @@ dispatch-intent
 
 Native generation starts at 1 and increments once per amendment. Local
 `definition_generation` starts at 0. `implementer_generation` is the separate
-fix-back generation.
+fix-back generation. `run_epoch` advances only when coordinator ownership
+changes; `predecessor_runs` preserves immutable prior run bindings.
 
 Recovery is observe-before-effect:
 
 - intent without a run: discover the canonical key record before `start`;
 - run without local attachment: authenticate and attach;
+- run owned by another coordinator session: persist `run-rollover-intent` and
+  start a successor segment containing only the pending phase;
 - amendment intent with native base: amend once;
 - native target already applied: authenticate the exact amendment event and
   attach it without re-amending;

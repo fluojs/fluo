@@ -12,6 +12,12 @@ const {
     '.agents/skills/execute-lane/scripts/implementer-runtime.mjs',
   )
 );
+const { parseTerminalDispatchShape } = await import(
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/dispatch-authority.mjs',
+  )
+);
 const { reviewerTaskPrompt } = await import(
   resolve(
     process.cwd(),
@@ -40,6 +46,10 @@ describe('execute-lane terminal task prompts', () => {
         'Implement only the accepted issue contract and return one final wrapper.',
       ...authority,
     });
+    const dispatch = parseTerminalDispatchShape(
+      prompt,
+      IMPLEMENTER_SENTINEL,
+    );
 
     expect(prompt).toContain('Implement only the accepted issue contract');
     expect(prompt.endsWith('</fluo-terminal-dispatch-v1>')).toBe(true);
@@ -66,6 +76,10 @@ describe('execute-lane terminal task prompts', () => {
     ]) {
       expect(prompt).toContain(field);
     }
+    expect(dispatch.tool_policy).toEqual({
+      allowed: ['read', 'bash', 'apply_patch'],
+      forbidden: ['eval', 'todo', 'task', 'dag', 'team'],
+    });
   });
 
   it('rejects narrative copies of dispatch authority', () => {

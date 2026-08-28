@@ -13,7 +13,10 @@ import {
   createIssueSupervisor,
   transitionIssueSupervisor,
 } from './issue-supervisor.mjs';
-import { assertIssueSupervisorState } from './issue-supervisor-contracts.mjs';
+import {
+  assertIssueSupervisorState,
+  coordinatorSessionIds,
+} from './issue-supervisor-contracts.mjs';
 import {
   assertRealFile,
   atomicWrite,
@@ -469,6 +472,7 @@ const assertCanonicalStore = (
     }
   }
   assertBlockerLedger(snapshot, { verifyTasks: true });
+  const sessionIds = coordinatorSessionIds(snapshot);
   if (snapshot.local_review !== null) {
     for (const [axis, receipt] of Object.entries(
       snapshot.local_review.review_batch.reviewer_receipts,
@@ -476,7 +480,7 @@ const assertCanonicalStore = (
       const verified = verifyReviewerTask({
         repository_root: snapshot.repository_root,
         task_id: receipt.task_id,
-        parent_session_id: snapshot.parent_session_id,
+        parent_session_id: receipt.parent_session_id,
         dag_run_id: receipt.dag_run_id,
         dag_key: receipt.dag_key,
         node_id: receipt.dag_node_id,
@@ -503,11 +507,16 @@ const assertCanonicalStore = (
     }
   }
   for (const receipt of snapshot.implementer_tasks) {
+    if (!sessionIds.includes(receipt.parent_session_id)) {
+      throw new TypeError(
+        'persisted implementer receipt coordinator session is unknown.',
+      );
+    }
     const output = receipt.final_response;
     const verified = verifyImplementerRuntime({
       repository_root: snapshot.repository_root,
       task_id: receipt.task_id,
-      parent_session_id: snapshot.parent_session_id,
+      parent_session_id: receipt.parent_session_id,
       dag_run_id: receipt.dag_run_id,
       dag_key: receipt.dag_key,
       node_id: receipt.dag_node_id,

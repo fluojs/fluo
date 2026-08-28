@@ -79,6 +79,35 @@ export const compileIssueLifecycleDag = (
   }, lane.lane_id, issueNumber);
 };
 
+export const compileIssueLifecycleSegment = (
+  lane,
+  issueNumber,
+  phase,
+) => {
+  assertContract('lane-ledger-v2', lane);
+  validateLedger('lane-ledger-v2', lane);
+  if (!lane.confirmed_issues.includes(issueNumber)) {
+    throw new TypeError('Issue DAG issue is not confirmed by the lane.');
+  }
+  const dagKey = issueDagKey(lane.lane_id, issueNumber);
+  const nodes = phaseDagNodes(
+    lane,
+    issueNumber,
+    dagKey,
+    phase,
+    [],
+  );
+  if (nodes.length === 0 || nodes.length > maxIssueDagNodes) {
+    throw new TypeError('Issue DAG segment node budget is invalid.');
+  }
+  return canonicalIssueDagDefinition({
+    key: dagKey,
+    name:
+      `Fluo lane ${lane.lane_id} issue ${String(issueNumber)} lifecycle segment`,
+    nodes,
+  }, lane.lane_id, issueNumber);
+};
+
 export const amendIssueLifecycleDag = (
   lane,
   issueNumber,

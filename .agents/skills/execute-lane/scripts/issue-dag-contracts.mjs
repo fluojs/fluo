@@ -39,6 +39,34 @@ const uniqueStrings = (value, name) => {
   return value;
 };
 
+const assertPredecessorRuns = (value, currentEpoch) => {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    throw new TypeError('Issue DAG predecessor runs must be an array.');
+  }
+  const runIds = new Set();
+  for (const candidate of value) {
+    const predecessor = record(candidate, 'issue DAG predecessor run');
+    if (
+      !Number.isSafeInteger(predecessor.run_epoch) ||
+      predecessor.run_epoch < 1 ||
+      predecessor.run_epoch >= currentEpoch ||
+      typeof predecessor.run_id !== 'string' ||
+      predecessor.run_id.length === 0 ||
+      typeof predecessor.coordinator_session_id !== 'string' ||
+      predecessor.coordinator_session_id.length === 0 ||
+      !Number.isSafeInteger(predecessor.native_generation) ||
+      predecessor.native_generation < 1 ||
+      !DIGEST.test(predecessor.definition_fingerprint ?? '') ||
+      runIds.has(predecessor.run_id)
+    ) {
+      throw new TypeError('Issue DAG predecessor run is invalid.');
+    }
+    runIds.add(predecessor.run_id);
+  }
+  return value;
+};
+
 export const issueDagKey = (laneId, issueNumber) => {
   if (!LANE_ID.test(laneId) || !Number.isSafeInteger(issueNumber) || issueNumber < 1) {
     throw new TypeError('Issue DAG identity is invalid.');
@@ -149,6 +177,7 @@ const assertPendingAmendment = (value, state) => {
 
 export const assertIssueDagState = (input) => {
   const state = record(input, 'issue DAG state');
+  const runEpoch = state.run_epoch ?? 1;
   if (
     state.version !== 3 ||
     !LANE_ID.test(state.lane_id ?? '') ||
@@ -159,10 +188,13 @@ export const assertIssueDagState = (input) => {
     !SHA.test(state.head_sha ?? '') ||
     !DIGEST.test(state.dispatch_event_hash ?? '') ||
     !Number.isSafeInteger(state.definition_generation) ||
-    state.definition_generation < 0
+    state.definition_generation < 0 ||
+    !Number.isSafeInteger(runEpoch) ||
+    runEpoch < 1
   ) {
     throw new TypeError('Issue DAG state identity is invalid.');
   }
+  assertPredecessorRuns(state.predecessor_runs, runEpoch);
   string(state.coordinator_session_id, 'issue DAG coordinator session');
   if (
     !Array.isArray(state.dependencies) ||

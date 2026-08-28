@@ -13,6 +13,7 @@ import {
 } from './issue-dag-store.mjs';
 import {
   planIssueDagAmendment,
+  planIssueDagRollover,
 } from './issue-dag-lifecycle.mjs';
 import {
   planLaneCoordinator,
@@ -177,8 +178,40 @@ const next = (args) => {
   });
 };
 
+const rolloverPlan = (args) => {
+  const { canonical, lane } = loadLane(args);
+  const issueNumber = positiveInteger(
+    valueAfter(args, '--issue'),
+    'issue',
+  );
+  const runtimeRoot = canonicalLaneRuntimeRoot(canonical.repositoryRoot);
+  const dag = loadIssueDagRunBundle(
+    runtimeRoot,
+    lane.lane_id,
+    issueNumber,
+  );
+  if (dag === null) {
+    throw new TypeError('Issue DAG must exist before rollover planning.');
+  }
+  const issue = readIssueSupervisorStore(
+    runtimeRoot,
+    lane.lane_id,
+    issueNumber,
+  );
+  return planIssueDagRollover({
+    lane,
+    issue_snapshot: issue.snapshot,
+    dag_state: dag.state,
+    coordinator_session_id: valueAfter(
+      args,
+      '--coordinator-session',
+    ),
+    phase_context: phaseContextForIssue(args, issue),
+  });
+};
+
 const usage =
-  'Usage: node lane-coordinator-cli.mjs <plan|status|next> --root <repository> --ledger <lane-ledger> [--max-active <n>] [--issue <n>] [--phase-context-json <json>]\n';
+  'Usage: node lane-coordinator-cli.mjs <plan|status|next|rollover-plan> --root <repository> --ledger <lane-ledger> [--max-active <n>] [--issue <n>] [--coordinator-session <id>] [--phase-context-json <json>]\n';
 
 if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
@@ -192,8 +225,10 @@ if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
       ? plan(args)
       : command === 'status'
         ? status(args)
-        : command === 'next'
+      : command === 'next'
           ? next(args)
+          : command === 'rollover-plan'
+            ? rolloverPlan(args)
           : (() => {
               throw new TypeError('Unknown coordinator command.');
             })();

@@ -1,5 +1,6 @@
 import {
   amendIssueLifecycleDag,
+  compileIssueLifecycleSegment,
 } from './compile-dag.mjs';
 import {
   blockerLedgerDigest,
@@ -9,6 +10,8 @@ import {
 } from './issue-dag-contracts.mjs';
 import {
   assertIssueSupervisorState,
+  coordinatorSessionIds,
+  currentCoordinatorSessionId,
   issueSupervisorTerminalStatuses,
 } from './issue-supervisor-contracts.mjs';
 
@@ -47,7 +50,7 @@ const implementationPhase = (snapshot) => ({
   kind: 'implementation',
   ...shared(snapshot),
   generation: snapshot.implementer_generation,
-  parent_session_id: snapshot.parent_session_id,
+  parent_session_id: currentCoordinatorSessionId(snapshot),
   preflight_sha256: snapshot.review_preflight.sha256,
   blocker_ledger: structuredClone(snapshot.blocker_ledger),
   unresolved_blockers: snapshot.blocker_ledger.filter(
@@ -111,7 +114,7 @@ export const nextConflictDagPhase = (
       kind: 'conflict-implementation',
       ...shared(snapshot),
       generation: snapshot.implementer_generation,
-      parent_session_id: snapshot.parent_session_id,
+      parent_session_id: currentCoordinatorSessionId(snapshot),
       preflight_sha256: snapshot.review_preflight.sha256,
       previously_reviewed_head: previousHead,
       upstream_head: upstreamHead,
@@ -255,7 +258,8 @@ export const planIssueDagAmendment = ({
   if (
     snapshot.lane_id !== dagState.lane_id ||
     snapshot.issue_number !== dagState.issue_number ||
-    snapshot.parent_session_id !== dagState.coordinator_session_id
+    currentCoordinatorSessionId(snapshot) !==
+      dagState.coordinator_session_id
   ) {
     throw new TypeError('Issue DAG lifecycle authority does not match.');
   }
@@ -306,5 +310,99 @@ export const planIssueDagAmendment = ({
     definition,
     added_node_ids: addedNodeIds,
     continue_active_phase: continuesPreflight,
+  };
+};
+
+export const planIssueDagRollover = ({
+  lane,
+  issue_snapshot: snapshot,
+  dag_state: dagState,
+  coordinator_session_id: coordinatorSessionId,
+  phase_context: phaseContext,
+}) => {
+  assertIssueSupervisorState(snapshot);
+  assertIssueDagState(dagState);
+  if (
+    snapshot.lane_id !== dagState.lane_id ||
+    snapshot.issue_number !== dagState.issue_number ||
+    snapshot.head_sha !== dagState.head_sha ||
+    coordinatorSessionId === dagState.coordinator_session_id ||
+    typeof coordinatorSessionId !== 'string' ||
+    coordinatorSessionId.length === 0 ||
+    coordinatorSessionIds(snapshot).includes(coordinatorSessionId)
+  ) {
+    throw new TypeError('Issue DAG rollover authority does not match.');
+  }
+  const issueTransition = {
+    kind: 'coordinator-rolled-over',
+    coordinator_session_id: coordinatorSessionId,
+  };
+  if (dagState.status === 'native-completed-unverified') {
+    return {
+      action: 'await-phase-import',
+      issue_transition: issueTransition,
+      phase_key: dagState.active_phase_key,
+      predecessor_run_id: dagState.run_id,
+    };
+  }
+  const plannedPhase = nextIssueDagPhase(snapshot, {
+    phase_context: phaseContext,
+    completed_phase_keys: dagState.completed_phase_keys,
+  });
+  const phase =
+    plannedPhase !== null &&
+    Object.hasOwn(plannedPhase, 'parent_session_id')
+      ? {
+          ...plannedPhase,
+          parent_session_id: coordinatorSessionId,
+        }
+      : plannedPhase;
+  const reusesInitialPreflight =
+    phase === null &&
+    dagState.active_phase_key === 'preflight' &&
+    ['dispatch-intent', 'phase-running'].includes(dagState.status);
+  if (
+    (!reusesInitialPreflight && phase === null) ||
+    (phase !== null &&
+      ['terminalize', 'requires-conflict-context'].includes(phase.kind))
+  ) {
+    throw new TypeError('Issue DAG rollover has no executable phase.');
+  }
+  const key = reusesInitialPreflight
+    ? 'preflight'
+    : phaseKey(phase);
+  const preservesPendingPhase = [
+    'dispatch-intent',
+    'phase-running',
+  ].includes(dagState.status);
+  const recoversPendingAmendment =
+    dagState.status === 'amend-intent' &&
+    dagState.pending_amendment?.phase_key === key;
+  if (
+    ![
+      'dispatch-intent',
+      'phase-running',
+      'phase-settled',
+      'amend-intent',
+    ].includes(dagState.status) ||
+    (preservesPendingPhase && dagState.active_phase_key !== key) ||
+    (dagState.status === 'amend-intent' &&
+      !recoversPendingAmendment)
+  ) {
+    throw new TypeError('Issue DAG rollover phase does not match.');
+  }
+  return {
+    action: 'prepare-rollover',
+    issue_transition: issueTransition,
+    coordinator_session_id: coordinatorSessionId,
+    phase_key: key,
+    head_sha: snapshot.head_sha,
+    definition: reusesInitialPreflight
+      ? structuredClone(dagState.current_definition)
+      : compileIssueLifecycleSegment(
+          lane,
+          snapshot.issue_number,
+          phase,
+        ),
   };
 };

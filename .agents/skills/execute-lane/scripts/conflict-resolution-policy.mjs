@@ -8,6 +8,7 @@ import {
 } from './reviewer-runtime.mjs';
 import { verifyConflictImplementerRuntime } from './implementer-runtime.mjs';
 import { issueDagKey } from './issue-dag-contracts.mjs';
+import { currentCoordinatorSessionId } from './issue-supervisor-contracts.mjs';
 
 const axes = ['contract', 'code', 'verification'];
 const impacts = new Set(['mechanical', 'scoped', 'ambiguous', 'cross-cutting']);
@@ -27,7 +28,7 @@ const uniqueStrings = (value, name, allowEmpty = false) => {
 
 const provenance = (state) => ({
   repository_root: state.repository_root,
-  parent_session_id: state.parent_session_id,
+  parent_session_id: currentCoordinatorSessionId(state),
   lane_id: state.lane_id,
   issue_number: state.issue_number,
   worktree: state.worktree,

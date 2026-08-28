@@ -98,6 +98,10 @@ export const implementerPromptSentinel = ({
     scope: IMPLEMENTER_SCOPE,
     local_ci_role: 'focused-test-first-only',
     full_local_ci: false,
+    tool_policy: {
+      allowed: [...IMPLEMENTER_TOOLS],
+      forbidden: ['eval', 'todo', 'task', 'dag', 'team'],
+    },
     blocker_ledger_sha256: blockerLedgerSha256,
     preflight_path: canonicalPreflightArtifactPath(repositoryRoot, laneId, issueNumber),
     preflight_sha256: preflightSha256,
@@ -125,7 +129,10 @@ blocker_ledger_sha256, preflight_sha256.
 
 Copy every bound identity from the terminal dispatch, use scope
 ${IMPLEMENTER_SCOPE}, report the observed new head and verification result, and
-do not add or omit fields.`,
+do not add or omit fields.
+
+Only read, bash, and apply_patch are available. Do not call eval, todo, task,
+dag, or team tools.`,
     dispatch_block: implementerPromptSentinel(authority),
   });
 
@@ -192,6 +199,46 @@ const readSessionEvents = (sessionRoot) => {
 const inside = (root, candidate) =>
   candidate === root || candidate.startsWith(`${root}${sep}`);
 
+const safeGitCommand = (command) => {
+  if (
+    /(?:^|\s)(?:-C|--git-dir|--work-tree|--exec-path)(?:=|\s)/u.test(
+      command,
+    ) ||
+    /\s--amend(?:\s|$)/u.test(command)
+  ) {
+    return false;
+  }
+  return /^(?:add|commit|diff|log|ls-files|merge-base|rev-parse|show|status)(?:\s|$)/u.test(
+    command,
+  );
+};
+
+const safePnpmCommand = (command) => {
+  if (
+    /(?:^|\s)(?:--dir|-C)(?:=|\s)/u.test(command)
+  ) {
+    return false;
+  }
+  if (
+    /^(?:build|check|lint|test|typecheck|verify)(?:\s|$)/u.test(
+      command,
+    ) ||
+    /^run\s+(?:build|check|lint|test|typecheck|verify)(?:\s|$)/u.test(
+      command,
+    ) ||
+    /^exec\s+vitest(?:\s|$)/u.test(command)
+  ) {
+    return true;
+  }
+  if (/^exec\s+biome(?:\s|$)/u.test(command)) {
+    return !/(?:^|\s)--(?:fix|write)(?:\s|$)/u.test(command);
+  }
+  if (/^exec\s+tsc(?:\s|$)/u.test(command)) {
+    return /(?:^|\s)--noEmit(?:\s|$)/u.test(command);
+  }
+  return false;
+};
+
 const assertMutationToolScope = (
   toolCalls,
   repositoryRoot,
@@ -204,7 +251,7 @@ const assertMutationToolScope = (
       const match =
         typeof command === 'string' &&
         !/[\n;&|`$<>]/u.test(command)
-          ? /^(?:git -C|pnpm (?:--dir|-C))\s+([^\s]+)(?:\s|$)/u.exec(
+          ? /^(git -C|pnpm (?:--dir|-C))\s+([^\s]+)\s+(.+)$/u.exec(
               command,
             )
           : null;
@@ -212,8 +259,11 @@ const assertMutationToolScope = (
         match === null ||
         !inside(
           worktreeRoot,
-          resolve(repositoryRoot, match[1]),
-        )
+          resolve(repositoryRoot, match[2]),
+        ) ||
+        (match[1] === 'git -C'
+          ? !safeGitCommand(match[3])
+          : !safePnpmCommand(match[3]))
       ) {
         throw new TypeError(
           'implementer shell commands must target only the issue worktree.',

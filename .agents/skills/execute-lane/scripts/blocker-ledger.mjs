@@ -4,6 +4,10 @@ import {
   REVIEW_SENTINEL,
   verifyReviewerTask,
 } from './reviewer-runtime.mjs';
+import {
+  coordinatorSessionIds,
+  currentCoordinatorSessionId,
+} from './issue-supervisor-contracts.mjs';
 
 const axes = new Set(['contract', 'code', 'verification']);
 const reasons = new Set([
@@ -45,7 +49,7 @@ export const blockerLedgerDigest = (ledger) => payloadDigest(ledger);
 
 const reviewerProvenance = (state, taskId, headSha, axis) => ({
   repository_root: state.repository_root,
-  parent_session_id: state.parent_session_id,
+  parent_session_id: currentCoordinatorSessionId(state),
   lane_id: state.lane_id,
   issue_number: state.issue_number,
   worktree: state.worktree,
@@ -96,7 +100,7 @@ const compositeVerificationReceipt = (state) => {
     record_sha256: payloadDigest({ gate, source }),
     output_sha256: payloadDigest(output),
     final_response: output,
-    parent_session_id: state.parent_session_id,
+    parent_session_id: currentCoordinatorSessionId(state),
     lane_id: state.lane_id,
     issue_number: state.issue_number,
     worktree: state.worktree,
@@ -291,7 +295,7 @@ export const assertBlockerLedger = (state, { verifyTasks = false } = {}) => {
       receipt.lane_id !== state.lane_id ||
       receipt.issue_number !== state.issue_number ||
       receipt.worktree !== state.worktree ||
-      receipt.parent_session_id !== state.parent_session_id ||
+      !coordinatorSessionIds(state).includes(receipt.parent_session_id) ||
       payloadDigest(receipt.final_response) !== receipt.output_sha256 ||
       (composite &&
         (entry.evidence_kind !== 'verified-ci-receipt' ||

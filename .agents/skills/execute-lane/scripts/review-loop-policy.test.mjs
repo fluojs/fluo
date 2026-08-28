@@ -709,11 +709,15 @@ test('canonical verification uses a clean contained exact-head workspace and rea
       nonfunctional: { complexity: 'Bounded.', memory: 'Bounded.', atomicity: 'Receipt after checks.', mutation_boundary: 'Disposable only.' },
     });
     canonicalBundle = applyIssueSupervisorTransition(runtimeRoot, 'lane-a', 3305, { kind: 'preflight-completed', preflight: canonicalPreflight });
+    canonicalBundle = applyIssueSupervisorTransition(runtimeRoot, 'lane-a', 3305, {
+      kind: 'coordinator-rolled-over',
+      coordinator_session_id: 'ses_parent_rollover',
+    });
     writeFileSync(join(root, '.omo', 'protected.txt'), 'protected\n');
 
     assert.equal(runCanonicalVerification({
       repository_root: root, runtime_root: runtimeRoot, lane_id: 'lane-a', issue_number: 3305,
-      parent_session_id: canonicalBundle.snapshot.parent_session_id,
+      parent_session_id: canonicalBundle.snapshot.active_coordinator_session_id,
       cwd: worktree, head_sha: startingHead, preflight_sha256: canonicalPreflight.sha256,
       task_id: 'st_contained', command: 'pnpm', command_args: ['verify'],
     }), 0);

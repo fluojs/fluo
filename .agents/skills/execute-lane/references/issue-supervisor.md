@@ -6,9 +6,14 @@ in execute-lane v3.
 
 ## Ownership
 
-The trusted parent coordinator is the issue state `parent_session_id`. It alone
-persists issue transitions and issue-DAG control state. Direct DAG workers
-return claims; they never write trusted state or orchestrate another worker.
+The trusted parent coordinator alone persists issue transitions and issue-DAG
+control state. `parent_session_id` is the immutable initial coordinator;
+`active_coordinator_session_id` is the current epoch and
+`coordinator_session_ids` preserves every accepted epoch. A resumed coordinator
+keeps the same issue, branch, worktree, PR, head, and completed receipts while
+starting a new session-bound DAG segment for the pending phase. Direct DAG
+workers return claims; they never write trusted state or orchestrate another
+worker.
 All direct workers are single-depth process agents with task, DAG, and team
 dispatch disabled. The parent remains live until the native wave settles and
 authenticates exactly one machine final response. Detached handles, running
@@ -115,8 +120,12 @@ releases dependents.
 
 The issue-DAG event journal and issue store cross-link every accepted phase.
 After a crash, observe native, task, Git, and GitHub state before repeating any
-effect. Reuse the same run and preserve completed nodes as immutable history;
-never revive, steer, retry, or replace a completed node in place.
+effect. Reuse the same run while the coordinator session is unchanged. When it
+changes, preserve the predecessor binding and completed semantic receipts,
+then roll only `dispatch-intent`, `phase-running`, `phase-settled`, or
+`amend-intent` into a successor run. A `native-completed-unverified` phase must
+be imported before any successor dispatch; never replay it. Never adopt another
+session's run or revive, steer, retry, or replace a completed node in place.
 
 Stop the issue only when:
 

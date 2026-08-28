@@ -17,7 +17,7 @@ dispatch disabled. The parent treats a native completion as unverified until
 the wave settles and exactly one machine final response is authenticated.
 Detached or `persisted_only` child records never authorize a transition.
 
-Every admitted issue has one key and one immutable native run:
+Every admitted issue has one durable key and one active session-bound run:
 
 ```text
 key: fluo:lane:<lane>:issue-<issue>:lifecycle:v3
@@ -25,8 +25,10 @@ run_id: native ID attached after dispatch intent
 parentSessionId: the coordinator session
 ```
 
-A different parent session cannot adopt the run. Resume the owning session or
-create an explicitly approved successor lane.
+A different parent session cannot adopt the run. Resume keeps the same lane,
+issue, branch, worktree, PR, head, and completed phase receipts, then advances
+`run_epoch`, records the old binding in `predecessor_runs`, and starts a
+successor segment containing only the pending phase.
 
 ## Coordinator loop
 
@@ -45,7 +47,9 @@ For each coordinator wake:
 8. Apply one canonical issue transition.
 9. Settle the verified phase.
 10. Compile and persist only the next amendment intent.
-11. Apply or recover that amendment on the same run.
+11. Apply or recover that amendment on the same session-bound run. If the
+    coordinator session changed, persist a rollover intent and start only the
+    pending phase as a successor segment.
 12. Terminalize matching issue and DAG state, import it into the lane, and
     release newly ready issues.
 
@@ -68,7 +72,9 @@ dispatch-intent
 `definition_generation` is 0 for the initial definition and increments once per
 accepted amendment. Native generation is 1 initially and increments once per
 native amendment. Implementation generation starts at 1 and advances only
-according to the adaptive fix-back policy.
+according to the adaptive fix-back policy. `run_epoch` changes only on
+coordinator-session rollover and does not reset issue identity or semantic
+progress.
 
 An amendment intent binds:
 

@@ -143,6 +143,12 @@ export const requireRetryPolicy = (value) => {
   };
 };
 
+export const coordinatorSessionIds = (state) =>
+  state.coordinator_session_ids ?? [state.parent_session_id];
+
+export const currentCoordinatorSessionId = (state) =>
+  state.active_coordinator_session_id ?? state.parent_session_id;
+
 const requireCanonicalIdentity = (state) => {
   const issueNumber = requirePositiveInteger(
     state.issue_number,
@@ -181,6 +187,23 @@ export const assertIssueSupervisorState = (input) => {
   }
   requireString(state.repository_root, 'issue supervisor repository_root');
   requireString(state.parent_session_id, 'issue supervisor parent_session_id');
+  const sessionIds = coordinatorSessionIds(state);
+  const activeSessionId = currentCoordinatorSessionId(state);
+  if (
+    !Array.isArray(sessionIds) ||
+    sessionIds.length === 0 ||
+    sessionIds.some(
+      (sessionId) =>
+        typeof sessionId !== 'string' || sessionId.length === 0,
+    ) ||
+    new Set(sessionIds).size !== sessionIds.length ||
+    sessionIds[0] !== state.parent_session_id ||
+    !sessionIds.includes(activeSessionId)
+  ) {
+    throw new TypeError(
+      'issue supervisor coordinator session history is invalid.',
+    );
+  }
   if (typeof state.release_handoff !== 'boolean') {
     throw new TypeError(
       'issue supervisor state invariant failed: release_handoff.',
@@ -240,7 +263,7 @@ export const assertIssueSupervisorState = (input) => {
         task.lane_id !== state.lane_id ||
         task.issue_number !== state.issue_number ||
         task.worktree !== state.worktree ||
-        task.parent_session_id !== state.parent_session_id ||
+        !sessionIds.includes(task.parent_session_id) ||
         task.dag_key !== issueDagKey(state.lane_id, state.issue_number) ||
         typeof task.dag_run_id !== 'string' ||
         typeof task.dag_node_id !== 'string' ||
@@ -324,7 +347,7 @@ export const assertIssueSupervisorState = (input) => {
     });
     for (const receipt of Object.values(state.local_review.review_batch.reviewer_receipts)) {
       if (
-        receipt.parent_session_id !== state.parent_session_id ||
+        !sessionIds.includes(receipt.parent_session_id) ||
         receipt.lane_id !== state.lane_id ||
         receipt.issue_number !== state.issue_number ||
         receipt.worktree !== state.worktree

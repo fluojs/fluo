@@ -33,6 +33,15 @@ const { canonicalIssueDagDefinition } = await import(
     '.agents/skills/execute-lane/scripts/issue-dag-contracts.mjs',
   )
 );
+const {
+  createIssueSupervisor,
+  transitionIssueSupervisor,
+} = await import(
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/issue-supervisor.mjs',
+  )
+);
 const { phaseContextForIssue, phaseContextFromArgs } = (await import(
   resolve(
     process.cwd(),
@@ -49,6 +58,16 @@ const { phaseContextForIssue, phaseContextFromArgs } = (await import(
       events: readonly Readonly<Record<string, unknown>>[];
     }>,
   ) => Readonly<Record<string, unknown>> | undefined;
+};
+const { planIssueDagRollover } = (await import(
+  resolve(
+    process.cwd(),
+    '.agents/skills/execute-lane/scripts/issue-dag-lifecycle.mjs',
+  )
+)) as {
+  planIssueDagRollover: (
+    input: Readonly<Record<string, unknown>>,
+  ) => Readonly<Record<string, unknown>>;
 };
 
 const isRecord = (
@@ -286,4 +305,161 @@ describe('execute-lane issue DAG coordinator', () => {
       ).toThrow(/capacity/u);
     },
   );
+
+  it('moves only active coordinator authority during a session rollover', () => {
+    // Given
+    const initial = createIssueSupervisor({
+      lane_id: 'lane-4101-runtime',
+      issue_number: 4101,
+      branch: 'issue-4101-runtime',
+      worktree: '.worktrees/issue-4101-runtime',
+      starting_head_sha: '0'.repeat(40),
+      started_at: '2026-08-28T00:00:00.000Z',
+      repository_root: process.cwd(),
+      parent_session_id: 'ses_parent_v3',
+      issue_contract_revision: 'fixture@1',
+      issue_contract_sha256: '1'.repeat(64),
+      review_policy: 'preflight-v1',
+      authority_scope: {
+        pr_creation: true,
+        pr_merge: true,
+        cleanup_command_worktrees: true,
+      },
+      retry_policy: {
+        retry_count_is_terminal: false,
+        max_same_failure_repeats: null,
+        max_wall_clock_minutes: null,
+        stop_on_child_contract_error: true,
+      },
+      lane_plan_approval_sha256: '2'.repeat(64),
+    });
+
+    // When
+    const resumed = transitionIssueSupervisor(initial, {
+      kind: 'coordinator-rolled-over',
+      coordinator_session_id: 'ses_parent_v4',
+    });
+
+    // Then
+    expect(resumed).toEqual(
+      expect.objectContaining({
+        parent_session_id: 'ses_parent_v3',
+        active_coordinator_session_id: 'ses_parent_v4',
+        coordinator_session_ids: ['ses_parent_v3', 'ses_parent_v4'],
+      }),
+    );
+  });
+
+  it('rolls over a persisted v2 snapshot without coordinator extension fields', () => {
+    // Given
+    const legacy = createIssueSupervisor({
+      lane_id: 'lane-4101-runtime',
+      issue_number: 4101,
+      branch: 'issue-4101-runtime',
+      worktree: '.worktrees/issue-4101-runtime',
+      starting_head_sha: '0'.repeat(40),
+      started_at: '2026-08-28T00:00:00.000Z',
+      repository_root: process.cwd(),
+      parent_session_id: 'ses_parent_v3',
+      issue_contract_revision: 'fixture@1',
+      issue_contract_sha256: '1'.repeat(64),
+      review_policy: 'preflight-v1',
+      authority_scope: {
+        pr_creation: true,
+        pr_merge: true,
+        cleanup_command_worktrees: true,
+      },
+      retry_policy: {
+        retry_count_is_terminal: false,
+        max_same_failure_repeats: null,
+        max_wall_clock_minutes: null,
+        stop_on_child_contract_error: true,
+      },
+      lane_plan_approval_sha256: '2'.repeat(64),
+    });
+    Reflect.deleteProperty(legacy, 'active_coordinator_session_id');
+    Reflect.deleteProperty(legacy, 'coordinator_session_ids');
+
+    // When
+    const resumed = transitionIssueSupervisor(legacy, {
+      kind: 'coordinator-rolled-over',
+      coordinator_session_id: 'ses_parent_v4',
+    });
+
+    // Then
+    expect(resumed).toEqual(
+      expect.objectContaining({
+        parent_session_id: 'ses_parent_v3',
+        active_coordinator_session_id: 'ses_parent_v4',
+        coordinator_session_ids: ['ses_parent_v3', 'ses_parent_v4'],
+      }),
+    );
+  });
+
+  it('replays initial dispatch intent but waits for native completion import', () => {
+    // Given
+    const issue = createIssueSupervisor({
+      lane_id: 'lane-4101-runtime',
+      issue_number: 4101,
+      branch: 'issue-4101-runtime',
+      worktree: '.worktrees/issue-4101-runtime',
+      starting_head_sha: '0'.repeat(40),
+      started_at: '2026-08-28T00:00:00.000Z',
+      repository_root: process.cwd(),
+      parent_session_id: 'ses_parent_v3',
+      issue_contract_revision: 'fixture@1',
+      issue_contract_sha256: '1'.repeat(64),
+      review_policy: 'preflight-v1',
+      authority_scope: {
+        pr_creation: true,
+        pr_merge: true,
+        cleanup_command_worktrees: true,
+      },
+      retry_policy: {
+        retry_count_is_terminal: false,
+        max_same_failure_repeats: null,
+        max_wall_clock_minutes: null,
+        stop_on_child_contract_error: true,
+      },
+      lane_plan_approval_sha256: '2'.repeat(64),
+    });
+    const nativeCompleted = {
+      ...attached(),
+      status: 'native-completed-unverified',
+    };
+
+    // When
+    const dispatchPlan = planIssueDagRollover({
+      lane: readyLane(),
+      issue_snapshot: issue,
+      dag_state: dispatchIntent(),
+      coordinator_session_id: 'ses_parent_v4',
+    });
+    const completionPlan = planIssueDagRollover({
+      lane: readyLane(),
+      issue_snapshot: issue,
+      dag_state: nativeCompleted,
+      coordinator_session_id: 'ses_parent_v4',
+    });
+
+    // Then
+    expect(dispatchPlan).toEqual(
+      expect.objectContaining({
+        action: 'prepare-rollover',
+        phase_key: 'preflight',
+        definition: canonicalDefinition,
+      }),
+    );
+    expect(completionPlan).toEqual(
+      expect.objectContaining({
+        action: 'await-phase-import',
+        phase_key: 'preflight',
+        predecessor_run_id: 'run_issue_4101',
+        issue_transition: {
+          kind: 'coordinator-rolled-over',
+          coordinator_session_id: 'ses_parent_v4',
+        },
+      }),
+    );
+  });
 });

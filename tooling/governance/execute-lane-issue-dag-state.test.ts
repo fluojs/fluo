@@ -29,6 +29,7 @@ const {
   loadIssueDagRunBundle,
   persistIssueDagRunBundle,
   prepareIssueDagAmendment,
+  rolloverIssueDagRun,
   observeIssueDagCompletion,
   settleIssueDagPhase,
 } = (await import(
@@ -49,6 +50,10 @@ const {
     evidence: Readonly<Record<string, unknown>>,
   ) => DagBundle;
   prepareIssueDagAmendment: (
+    bundle: DagBundle,
+    input: Readonly<Record<string, unknown>>,
+  ) => DagBundle;
+  rolloverIssueDagRun: (
     bundle: DagBundle,
     input: Readonly<Record<string, unknown>>,
   ) => DagBundle;
@@ -410,5 +415,145 @@ describe('execute-lane issue DAG run state', () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  it('rolls a pending phase into a new coordinator session without changing issue identity', () => {
+    // Given
+    const predecessor = attachedBundle();
+    const successorSession = 'ses_parent_v4';
+
+    // When
+    const successor = rolloverIssueDagRun(predecessor, {
+      coordinator_session_id: successorSession,
+      phase_key: 'preflight',
+      head_sha: head,
+      definition: initialDefinition,
+    });
+
+    // Then
+    expect(successor.state).toEqual(
+      expect.objectContaining({
+        lane_id: laneId,
+        issue_number: issueNumber,
+        dag_key: initialDefinition.key,
+        coordinator_session_id: successorSession,
+        run_id: null,
+        status: 'dispatch-intent',
+        run_epoch: 2,
+        native_generation: null,
+        definition_fingerprint: null,
+        active_phase_key: 'preflight',
+        active_node_ids: [],
+        completed_phase_keys: [],
+        completed_node_ids: [],
+        last_completed_node_ids: [],
+        predecessor_runs: [
+          {
+            run_epoch: 1,
+            run_id: 'run_issue_4101',
+            coordinator_session_id: coordinatorSessionId,
+            native_generation: 1,
+            definition_fingerprint: initialFingerprint,
+          },
+        ],
+      }),
+    );
+    expect(successor.events.at(-1)).toMatchObject({
+      kind: 'run-rollover-intent',
+      details: {
+        predecessor_run_id: 'run_issue_4101',
+        successor_run_epoch: 2,
+      },
+    });
+    expect(() =>
+      rolloverIssueDagRun(predecessor, {
+        coordinator_session_id: coordinatorSessionId,
+        phase_key: 'preflight',
+        head_sha: head,
+        definition: initialDefinition,
+      }),
+    ).toThrow(/new coordinator session/u);
+  });
+
+  it('rolls over dispatch and settled crash windows without requiring a native run id', () => {
+    // Given
+    const settled = settleIssueDagPhase(completedBundle(), {
+      completed_node_ids: [preflightNodeId],
+      definition_fingerprint: initialFingerprint,
+      native_generation: 1,
+    });
+
+    // When
+    const dispatchSuccessor = rolloverIssueDagRun(initialBundle(), {
+      coordinator_session_id: 'ses_parent_v4',
+      phase_key: 'preflight',
+      head_sha: head,
+      definition: initialDefinition,
+    });
+    const settledSuccessor = rolloverIssueDagRun(settled, {
+      coordinator_session_id: 'ses_parent_v4',
+      phase_key: `implementation:g1:${head}`,
+      head_sha: head,
+      definition: initialDefinition,
+    });
+
+    // Then
+    expect(dispatchSuccessor.state).toEqual(
+      expect.objectContaining({
+        status: 'dispatch-intent',
+        run_id: null,
+        run_epoch: 2,
+        predecessor_runs: [],
+        active_phase_key: 'preflight',
+      }),
+    );
+    expect(settledSuccessor.state).toEqual(
+      expect.objectContaining({
+        status: 'dispatch-intent',
+        run_id: null,
+        run_epoch: 2,
+        active_phase_key: `implementation:g1:${head}`,
+      }),
+    );
+  });
+
+  it('rolls over an uncommitted amendment but never replays native completion', () => {
+    // Given
+    const settled = settleIssueDagPhase(completedBundle(), {
+      completed_node_ids: [preflightNodeId],
+      definition_fingerprint: initialFingerprint,
+      native_generation: 1,
+    });
+    const amendIntent = prepareIssueDagAmendment(settled, {
+      definition: amendedDefinition,
+      phase_key: `implementation:g1:${head}`,
+      head_sha: head,
+      added_node_ids: [`implement-g1-${head}`],
+    });
+
+    // When
+    const successor = rolloverIssueDagRun(amendIntent, {
+      coordinator_session_id: 'ses_parent_v4',
+      phase_key: `implementation:g1:${head}`,
+      head_sha: head,
+      definition: initialDefinition,
+    });
+
+    // Then
+    expect(successor.state).toEqual(
+      expect.objectContaining({
+        status: 'dispatch-intent',
+        active_phase_key: `implementation:g1:${head}`,
+        pending_amendment: null,
+      }),
+    );
+    expect(() =>
+      rolloverIssueDagRun(completedBundle(), {
+        coordinator_session_id: 'ses_parent_v4',
+        phase_key: 'preflight',
+        head_sha: head,
+        definition: initialDefinition,
+      }),
+    ).toThrow(/native completion|phase import/u);
   });
 });

@@ -21,7 +21,10 @@ type DependencyGate = Readonly<{
   unsatisfied_dependencies: readonly number[];
 }>;
 
-const { compileIssueLifecycleDag } = (await import(
+const {
+  compileIssueLifecycleDag,
+  compileIssueLifecycleSegment,
+} = (await import(
   resolve(
     process.cwd(),
     '.agents/skills/execute-lane/scripts/compile-dag.mjs',
@@ -32,7 +35,18 @@ const { compileIssueLifecycleDag } = (await import(
     issueNumber: number,
     options: Readonly<Record<string, unknown>>,
   ) => DagDefinition;
+  compileIssueLifecycleSegment: (
+    lane: Readonly<Record<string, unknown>>,
+    issueNumber: number,
+    phase: Readonly<Record<string, unknown>>,
+  ) => DagDefinition;
 };
+const { payloadDigest } = await import(
+  resolve(
+    process.cwd(),
+    '.agents/workflow-contracts/contracts.mjs',
+  )
+);
 const { dependencyGate, dispatchableIssueNumbers } = (await import(
   resolve(
     process.cwd(),
@@ -234,5 +248,37 @@ describe('execute-lane DAG dependency scheduling', () => {
     expect(first.nodes[0]?.dependsOn).toEqual([]);
     expect(second.nodes[0]?.dependsOn).toEqual([]);
     expect(first.key).not.toBe(second.key);
+  });
+
+  it('compiles only the pending phase for a successor coordinator run', () => {
+    // When
+    const segment = compileIssueLifecycleSegment(
+      readyLedger(),
+      4101,
+      {
+        kind: 'implementation',
+        repository_root: process.cwd(),
+        worktree: '.worktrees/issue-4101-runtime',
+        head_sha: headA,
+        generation: 1,
+        parent_session_id: 'ses-successor',
+        preflight_sha256: 'd'.repeat(64),
+        blocker_ledger: [],
+        unresolved_blockers: [],
+        blocker_ledger_sha256: payloadDigest([]),
+      },
+    );
+
+    // Then
+    expect(segment.nodes).toEqual([
+      expect.objectContaining({
+        id: `implement-g1-${headA}`,
+        subagent_type: 'fluo-issue-implementer',
+        dependsOn: [],
+      }),
+    ]);
+    expect(segment.nodes[0]?.prompt).toContain(
+      '"forbidden":["eval","todo","task","dag","team"]',
+    );
   });
 });

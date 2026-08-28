@@ -3,6 +3,8 @@ import { aggregateReviewerGate } from '../../pr-to-merge/scripts/contracts.mjs';
 import { assertContract } from '../../../workflow-contracts/contracts.mjs';
 import {
   assertIssueSupervisorState,
+  coordinatorSessionIds,
+  currentCoordinatorSessionId,
   requireAuthorityScope,
   requirePositiveInteger,
   requireRetryPolicy,
@@ -53,7 +55,7 @@ const localReview = (state, step, observedEventSequence) => {
     review_batch: step.review_batch,
     provenance: {
       repository_root: state.repository_root,
-      parent_session_id: state.parent_session_id,
+      parent_session_id: currentCoordinatorSessionId(state),
       lane_id: state.lane_id,
       issue_number: state.issue_number,
       worktree: state.worktree,
@@ -149,7 +151,7 @@ const completeImplementation = (state, step) => {
       dag_key: issueDagKey(state.lane_id, state.issue_number),
       node_id: evidence.dag_node_id,
       dag_owner_fingerprint: evidence.dag_owner_fingerprint,
-      parent_session_id: state.parent_session_id,
+      parent_session_id: currentCoordinatorSessionId(state),
       lane_id: state.lane_id,
       issue_number: state.issue_number,
       worktree: state.worktree,
@@ -220,7 +222,7 @@ const completeImplementation = (state, step) => {
       dag_key: issueDagKey(state.lane_id, state.issue_number),
       node_id: evidence.dag_node_id,
       dag_owner_fingerprint: evidence.dag_owner_fingerprint,
-      parent_session_id: state.parent_session_id,
+      parent_session_id: currentCoordinatorSessionId(state),
       lane_id: state.lane_id,
       issue_number: state.issue_number,
       worktree: state.worktree,
@@ -395,6 +397,10 @@ export const createIssueSupervisor = (input) => {
     value.issue_number,
     'issue supervisor issue_number',
   );
+  const parentSessionId = requireString(
+    value.parent_session_id,
+    'issue supervisor parent_session_id',
+  );
   const state = {
     version: 2,
     lane_id: requireString(value.lane_id, 'issue supervisor lane_id'),
@@ -408,7 +414,9 @@ export const createIssueSupervisor = (input) => {
     head_sha: value.starting_head_sha,
     started_at: requireTimestamp(value.started_at, 'issue supervisor started_at'),
     repository_root: requireString(value.repository_root, 'issue supervisor repository_root'),
-    parent_session_id: requireString(value.parent_session_id, 'issue supervisor parent_session_id'),
+    parent_session_id: parentSessionId,
+    active_coordinator_session_id: parentSessionId,
+    coordinator_session_ids: [parentSessionId],
     issue_contract_revision: requireString(
       value.issue_contract_revision,
       'issue supervisor issue_contract_revision',
@@ -490,6 +498,25 @@ export const transitionIssueSupervisor = (
   }
   if (step.kind === 'preflight-completed') {
     completePreflight(state, step);
+  } else if (step.kind === 'coordinator-rolled-over') {
+    const coordinatorSessionId = requireString(
+      step.coordinator_session_id,
+      'coordinator-rolled-over.coordinator_session_id',
+    );
+    const sessionIds = coordinatorSessionIds(state);
+    if (
+      coordinatorSessionId === currentCoordinatorSessionId(state) ||
+      sessionIds.includes(coordinatorSessionId)
+    ) {
+      throw new TypeError(
+        'coordinator-rolled-over requires a fresh coordinator session.',
+      );
+    }
+    state.active_coordinator_session_id = coordinatorSessionId;
+    state.coordinator_session_ids = [
+      ...sessionIds,
+      coordinatorSessionId,
+    ];
   } else if (step.kind === 'implementation-imported') {
     importExistingImplementation(state, step);
   } else if (
