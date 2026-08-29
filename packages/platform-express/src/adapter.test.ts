@@ -74,9 +74,11 @@ function createDeferred<T>(): {
 }
 
 async function waitForSettlement<T>(promise: Promise<T>, timeoutMs = 2_000): Promise<T> {
+  const scheduleTimeout = globalThis.setTimeout;
+  const cancelTimeout = globalThis.clearTimeout;
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_resolve, reject) => {
-    timeoutHandle = setTimeout(() => {
+    timeoutHandle = scheduleTimeout(() => {
       reject(new Error(`Timed out waiting for test settlement after ${String(timeoutMs)}ms.`));
     }, timeoutMs);
   });
@@ -85,7 +87,7 @@ async function waitForSettlement<T>(promise: Promise<T>, timeoutMs = 2_000): Pro
     return await Promise.race([promise, timeout]);
   } finally {
     if (timeoutHandle !== undefined) {
-      clearTimeout(timeoutHandle);
+      cancelTimeout(timeoutHandle);
     }
   }
 }
@@ -2823,8 +2825,11 @@ describe('@fluojs/platform-express', () => {
   });
 
   it('cancels retrying startup during close before a later Express bind can occur', async () => {
+    const addressInUse = createDeferred<void>();
+    const addressInUseSettlement = waitForSettlement(addressInUse.promise);
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 
+    const retryDelayMs = 25;
     const blocker = createHttpServer((_request, response) => {
       response.statusCode = 200;
       response.end('blocked');
@@ -2856,18 +2861,26 @@ describe('@fluojs/platform-express', () => {
       });
     };
 
-    const adapter = new ExpressHttpApplicationAdapter(port, '127.0.0.1', 25, 20, undefined, undefined, 1024, false, 500);
+    const adapter = new ExpressHttpApplicationAdapter(port, '127.0.0.1', retryDelayMs, 20, undefined, undefined, 1024, false, 500);
     const dispatcher = {
       async dispatch() {},
     };
-    const addressInUse = createDeferred<void>();
     const laterBind = vi.fn();
     let observedAddressInUse = false;
+    const originalSetTimeout = globalThis.setTimeout;
+    const retryDelayTimer = vi.spyOn(globalThis, 'setTimeout').mockImplementation((callback, delayMs, ...args) => {
+      const timeout = originalSetTimeout(callback, delayMs, ...args);
+
+      if (delayMs === retryDelayMs && observedAddressInUse) {
+        addressInUse.resolve();
+      }
+
+      return timeout;
+    });
 
     adapter.getServer().once('error', (error) => {
       if (error instanceof Error && 'code' in error && error.code === 'EADDRINUSE') {
         observedAddressInUse = true;
-        addressInUse.resolve();
         return;
       }
 
@@ -2884,8 +2897,12 @@ describe('@fluojs/platform-express', () => {
     );
 
     try {
-      await addressInUse.promise;
+      await addressInUseSettlement;
+      expect(observedAddressInUse).toBe(true);
+      expect(vi.getTimerCount()).toBe(1);
+
       await expect(adapter.close()).resolves.toBeUndefined();
+      expect(vi.getTimerCount()).toBe(0);
       await closeBlocker();
 
       const results = await Promise.all([firstListenResult, secondListenResult]);
@@ -2895,15 +2912,13 @@ describe('@fluojs/platform-express', () => {
         expect(String(result instanceof Error ? result.message : result)).toContain('startup was cancelled');
       }
 
-      expect(observedAddressInUse).toBe(true);
-      expect(vi.getTimerCount()).toBe(0);
-
       await vi.advanceTimersByTimeAsync(60);
 
       expect(laterBind).not.toHaveBeenCalled();
     } finally {
       await adapter.close();
       await closeBlocker();
+      retryDelayTimer.mockRestore();
       vi.useRealTimers();
     }
   });
