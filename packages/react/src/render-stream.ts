@@ -1,4 +1,4 @@
-import { type FrameworkRequest, type FrameworkResponseStream, RequestAbortedError } from '@fluojs/http';
+import { type FrameworkRequest, type FrameworkResponseStream, RequestAbortedError } from '@fluojs/http/portable';
 
 type StreamStop = 'aborted' | 'closed';
 

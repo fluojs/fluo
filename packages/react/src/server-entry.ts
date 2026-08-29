@@ -1,4 +1,8 @@
-import type { FrameworkRequest } from '@fluojs/http';
+import {
+  registerFrameworkResponseWriter,
+  type FrameworkResponseWriterContext,
+} from '@fluojs/http/internal';
+import type { FrameworkRequest } from '@fluojs/http/portable';
 import { cloneElement, isValidElement, type ReactNode } from 'react';
 
 import type {
@@ -7,13 +11,7 @@ import type {
 } from './diagnostics.js';
 import type { ReactRenderContext } from './render.js';
 
-const responseWriterKey = Symbol.for('fluo.http.responseWriter');
 const serverEntryKey = Symbol.for('fluo.react.serverEntry');
-
-type ReactResponseWriterContext = {
-  readonly applySuccessResponseMetadata: () => void;
-  readonly requestContext: ReactRenderContext;
-};
 
 type ReactAssetMapElementProps = {
   readonly assetMap?: ReactAssetMap;
@@ -223,15 +221,10 @@ export function createReactServerEntry(
     value: true,
   });
 
-  Object.defineProperty(entry, responseWriterKey, {
-    enumerable: false,
-    value: async (context: ReactResponseWriterContext): Promise<void> => {
+  return registerFrameworkResponseWriter(entry, async (context: FrameworkResponseWriterContext): Promise<void> => {
       const { renderReactResponse } = await import('./render.js');
       await renderReactResponse(entry, context.requestContext, {
         applySuccessResponseMetadata: context.applySuccessResponseMetadata,
       });
-    },
   });
-
-  return entry;
 }

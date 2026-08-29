@@ -1,6 +1,11 @@
+import { execFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+
+const runtimeStaticModuleSpecifierPattern = /(?:^|\n)\s*(?:import|export)\s+(?!type\b)(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]/g;
 
 const forbiddenRootImports = [
   ['node:fs/promises', 'Node filesystem'],
@@ -9,8 +14,153 @@ const forbiddenRootImports = [
   ['react-dom/server', 'React DOM server'],
   ['react-server-dom-webpack/server', 'React Server Components server'],
 ] as const;
+const nodeEsmExportConditions = new Set(['default', 'import', 'module-sync', 'node', 'node-addons']);
+const buildTimeoutMs = 60_000;
+const runCommand = promisify(execFile);
+const workspaceRoot = new URL('../../../', import.meta.url);
+
+function readStaticModuleSpecifiers(source: string): string[] {
+  return [...source.matchAll(runtimeStaticModuleSpecifierPattern)].flatMap((match) => {
+    const specifier = match[1];
+    return specifier === undefined ? [] : [specifier];
+  });
+}
+
+function resolveNodeEsmExportTarget(exportDefinition: unknown): string | undefined {
+  if (typeof exportDefinition === 'string') {
+    return exportDefinition;
+  }
+
+  if (typeof exportDefinition !== 'object' || exportDefinition === null) {
+    return undefined;
+  }
+
+  for (const [condition, target] of Object.entries(exportDefinition)) {
+    if (!nodeEsmExportConditions.has(condition)) {
+      continue;
+    }
+
+    const resolvedTarget = resolveNodeEsmExportTarget(target);
+
+    if (resolvedTarget !== undefined) {
+      return resolvedTarget;
+    }
+  }
+
+  return undefined;
+}
+
+function resolveWorkspaceBuildUrl(specifier: string): URL | undefined {
+  const match = /^@fluojs\/([^/]+)(?:\/(.+))?$/.exec(specifier);
+  const packageName = match?.[1];
+
+  if (packageName === undefined) {
+    return undefined;
+  }
+
+  const packageRoot = new URL(`../../${packageName}/`, import.meta.url);
+  const manifest: unknown = JSON.parse(readFileSync(new URL('package.json', packageRoot), 'utf8'));
+  const exports = typeof manifest === 'object' && manifest !== null
+    ? Reflect.get(manifest, 'exports')
+    : undefined;
+  const exportDefinition = typeof exports === 'object' && exports !== null
+    ? Reflect.get(exports, match?.[2] === undefined ? '.' : `./${match[2]}`)
+    : undefined;
+  const target = resolveNodeEsmExportTarget(exportDefinition);
+
+  if (typeof target !== 'string' || !target.startsWith('./dist/') || !target.endsWith('.js')) {
+    throw new TypeError(`Missing Node ESM build mapping for ${specifier}.`);
+  }
+
+  return new URL(target, packageRoot);
+}
+
+function resolveBuiltModuleUrl(specifier: string, importer: URL): URL | undefined {
+  if (specifier.startsWith('.')) {
+    return new URL(specifier, importer);
+  }
+
+  return specifier.startsWith('@fluojs/')
+    ? resolveWorkspaceBuildUrl(specifier)
+    : undefined;
+}
+
+function collectBuiltNodeDependencyGraph(entrypoint: URL): string[] {
+  const pending = [entrypoint];
+  const visited = new Set<string>();
+  const nodeImports: string[] = [];
+
+  while (pending.length > 0) {
+    const sourceUrl = pending.pop();
+
+    if (sourceUrl === undefined || visited.has(sourceUrl.href)) {
+      continue;
+    }
+
+    visited.add(sourceUrl.href);
+    const source = readFileSync(sourceUrl, 'utf8');
+
+    for (const specifier of readStaticModuleSpecifiers(source)) {
+      if (specifier.startsWith('node:')) {
+        nodeImports.push(`${sourceUrl.href}:${specifier}`);
+      }
+
+      const dependencyUrl = resolveBuiltModuleUrl(specifier, sourceUrl);
+
+      if (dependencyUrl !== undefined) {
+        pending.push(dependencyUrl);
+      }
+    }
+  }
+
+  return nodeImports;
+}
+
+function hasBuiltRootDependencyGraph(): boolean {
+  try {
+    collectBuiltNodeDependencyGraph(new URL('../dist/index.js', import.meta.url));
+    return true;
+  } catch (error) {
+    if (typeof error === 'object' && error !== null && Reflect.get(error, 'code') === 'ENOENT') {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
+async function ensureBuiltRootDependencyGraph(): Promise<void> {
+  if (hasBuiltRootDependencyGraph()) {
+    return;
+  }
+
+  await runCommand(
+    process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm',
+    ['--filter', '@fluojs/react...', 'build'],
+    { cwd: fileURLToPath(workspaceRoot) },
+  );
+}
 
 describe('@fluojs/react root package scaffold', () => {
+  beforeAll(async () => {
+    await ensureBuiltRootDependencyGraph();
+  }, buildTimeoutMs);
+
+  it('resolves Node ESM export conditions in declaration order', () => {
+    expect(resolveNodeEsmExportTarget({
+      import: './dist/portable.js',
+      node: './dist/node.js',
+    })).toBe('./dist/portable.js');
+    expect(resolveNodeEsmExportTarget({
+      'node-addons': './dist/addons.js',
+      import: './dist/portable.js',
+    })).toBe('./dist/addons.js');
+    expect(resolveNodeEsmExportTarget({
+      'module-sync': './dist/synchronous.js',
+      import: './dist/portable.js',
+    })).toBe('./dist/synchronous.js');
+  });
+
   it('exposes the implemented runtime React package exports from the root import', async () => {
     const react = await import('./index.js');
 
@@ -91,5 +241,16 @@ describe('@fluojs/react root package scaffold', () => {
     expect(rootEntrypoint).not.toContain('./vite.js');
     expect(rootEntrypoint).not.toContain('./client.js');
     expect(rootEntrypoint).not.toContain('./rsc.js');
+  });
+
+  it('keeps every eagerly reachable built root dependency free of Node built-ins', () => {
+    // Given: the built package root as resolved by Node's conditional exports.
+    const rootEntrypoint = new URL('../dist/index.js', import.meta.url);
+
+    // When: eager static dependencies are followed through workspace export maps.
+    const nodeImports = collectBuiltNodeDependencyGraph(rootEntrypoint);
+
+    // Then: runtime-neutral React authoring contracts never initialize Node bootstrap code.
+    expect(nodeImports).toEqual([]);
   });
 });

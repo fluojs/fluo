@@ -1,4 +1,4 @@
-import type { RequestContext } from '@fluojs/http';
+import type { RequestContext } from '@fluojs/http/portable';
 import type { ReactNode } from 'react';
 
 import { createReactRenderDiagnostics, type PendingReactRecoverableError } from './render-diagnostics.js';

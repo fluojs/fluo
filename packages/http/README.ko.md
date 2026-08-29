@@ -359,9 +359,13 @@ Multipart upload를 parse하는 어댑터는 shared HTTP contract를 adapter-spe
 - **헬퍼**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `getRequestHeader`, `appendVaryHeader`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
 - **Option 및 store type**: `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStoreEntry`, `SecurityHeadersOptions`, `SseSendOptions`
 
+## Portable 서브경로 (`@fluojs/http/portable`)
+
+Node `AsyncLocalStorage` bootstrap을 eager 초기화하지 않고 HTTP authoring contract가 필요한 runtime-neutral integration에서는 `@fluojs/http/portable`을 사용하세요. 이 경로는 지원되는 HTTP decorator, exception, request/response contract, authoring helper를 내보냅니다. Node request-context 동작이 필요한 Node 애플리케이션은 계속 root package를 import해야 합니다.
+
 ## 내부 서브경로 (`@fluojs/http/internal`)
 
-`./internal` 서브경로는 플랫폼 어댑터와 핵심 런타임에서 사용하는 저수준 유틸리티만 내보냅니다. 이들은 변경될 수 있으며 일반적인 애플리케이션 코드에서 사용해서는 안 됩니다.
+`./internal` 서브경로는 플랫폼 어댑터, 핵심 런타임, first-party response integration에서 사용하는 저수준 유틸리티만 내보냅니다. 이들은 변경될 수 있으며 일반적인 애플리케이션 코드에서 사용해서는 안 됩니다.
 
 - `DefaultBinder`: 런타임 부트스트랩 경로에서 사용하는 기본 DTO/요청 바인더.
 - `bindRawRequestNativeRouteHandoff(...)` / `attachFrameworkRequestNativeRouteHandoff(...)`: public dispatcher API를 넓히지 않고 의미 보존이 가능한 native route match를 재사용하기 위한 내부 adapter/runtime 헬퍼.
@@ -371,6 +375,8 @@ Multipart upload를 parse하는 어댑터는 shared HTTP contract를 adapter-spe
 - `getCompiledRouteIdentity(descriptor)`: first-party package integration을 위해 `createHandlerMapping(...)`이 할당한 deterministic source/method position을 읽습니다. 수동으로 작성한 descriptor에는 `undefined`를 반환합니다.
 - `resolveClientIdentity(request)`: 속도 제한과 런타임 통합에서 사용하는 보수적 클라이언트 식별 해석기.
 - `createFetchStyleHttpAdapterRealtimeCapability(...)`, `Dispatcher`, `HttpApplicationAdapter`: 전체 HTTP root barrel을 instantiate하면 안 되는 edge/fetch-style platform package를 위한 내부 adapter seam.
+- `FRAMEWORK_RESPONSE_WRITER` / `registerFrameworkResponseWriter(...)`: first-party response integration을 위한 typed response-entry branding seam.
+- `FRAMEWORK_RESPONSE_VALUE_FINALIZER` / `registerFrameworkResponseValueFinalizer(...)`: typed request-local response finalization seam. Finalizer는 registration 순서대로 compose되고 각각 이전에 resolve된 값을 받으며, dispatcher가 await하므로 throw와 rejection은 기존 error policy를 따릅니다.
 
 ## 관련 패키지
 

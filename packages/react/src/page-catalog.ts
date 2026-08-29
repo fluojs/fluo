@@ -1,5 +1,5 @@
-import type { HandlerDescriptor, HttpMethod } from '@fluojs/http';
-import { createRuntimeRouteInspection } from '@fluojs/runtime';
+import type { HandlerDescriptor, HttpMethod } from '@fluojs/http/portable';
+import { createRuntimeRouteInspection } from '@fluojs/runtime/internal';
 
 import { getReactPathMetadata, getReactRouterMetadata } from './decorators.js';
 

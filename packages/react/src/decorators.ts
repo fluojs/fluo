@@ -1,6 +1,6 @@
 import type { MetadataPropertyKey } from '@fluojs/core';
 import { getStandardMetadataBag } from '@fluojs/core/internal';
-import { Controller, Get } from '@fluojs/http';
+import { Controller, Get } from '@fluojs/http/portable';
 import {
   defineLegacyRuntimeRouteInspectionMetadata,
   defineStandardRuntimeRouteInspectionMetadata,

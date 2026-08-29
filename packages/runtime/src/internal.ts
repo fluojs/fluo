@@ -1,10 +1,13 @@
 export { getRuntimeClassDiMetadata } from './internal/core-metadata.js';
+export { defineModule } from './module-definition.js';
+export { createRuntimeRouteInspection } from './route-inspection.js';
 export type { RuntimeRouteInspectionMetadata } from './internal/route-inspection-metadata.js';
 export {
   defineLegacyRuntimeRouteInspectionMetadata,
   defineStandardRuntimeRouteInspectionMetadata,
   getRuntimeRouteInspectionMetadata,
 } from './internal/route-inspection-metadata.js';
+export type { ModuleDefinition, ModuleType } from './types.js';
 export type { BootstrapReadySignal } from './tokens.js';
 export {
   APPLICATION_LOGGER,

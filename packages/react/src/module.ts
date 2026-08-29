@@ -1,7 +1,7 @@
 import { type Constructor, Module, type Token } from '@fluojs/core';
 import type { Provider } from '@fluojs/di';
-import type { MiddlewareLike } from '@fluojs/http';
-import { defineModule, type ModuleDefinition, type ModuleType } from '@fluojs/runtime';
+import type { MiddlewareLike } from '@fluojs/http/portable';
+import { defineModule, type ModuleDefinition, type ModuleType } from '@fluojs/runtime/internal';
 import type { ReactSsrDiagnosticHandler } from './diagnostics.js';
 import { REACT_PAGE_RENDERER, type ReactPageRenderer } from './page-renderer.js';
 import { createReactPageResultMiddleware } from './page-result.js';

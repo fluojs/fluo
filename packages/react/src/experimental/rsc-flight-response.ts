@@ -1,4 +1,7 @@
-import type { FrameworkResponse, RequestContext } from '@fluojs/http';
+import {
+  registerFrameworkResponseWriter,
+  type FrameworkResponseWriterContext,
+} from '@fluojs/http/internal';
 
 import {
   collectReadableStream,
@@ -12,14 +15,6 @@ import {
   type ReactFlightResponseHeaders,
   type ReactFlightResponseOptions,
 } from './rsc-types.js';
-
-const responseWriterKey = Symbol.for('fluo.http.responseWriter');
-
-type ReactFlightResponseWriterContext = {
-  readonly applySuccessResponseMetadata: () => void;
-  readonly requestContext: RequestContext;
-  readonly response: FrameworkResponse;
-};
 
 function cloneHeaders(headers: ReactFlightResponseHeaders | undefined): ReactFlightResponseHeaders {
   const snapshot: Record<string, string | string[]> = {};
@@ -41,7 +36,7 @@ function isBufferedPayload(payload: ReactFlightPayload): payload is string | Uin
 
 function applyFlightResponseMetadata(
   entry: ReactFlightResponse,
-  context: ReactFlightResponseWriterContext,
+  context: FrameworkResponseWriterContext,
 ): void {
   context.applySuccessResponseMetadata();
 
@@ -62,7 +57,7 @@ function applyFlightResponseMetadata(
 
 async function writeReactFlightResponse(
   entry: ReactFlightResponse,
-  context: ReactFlightResponseWriterContext,
+  context: FrameworkResponseWriterContext,
 ): Promise<void> {
   throwIfReactRequestAborted(context.requestContext.request);
 
@@ -110,10 +105,8 @@ export function createReactFlightResponse(
     ...(options.status !== undefined ? { status: options.status } : {}),
   };
 
-  Object.defineProperty(entry, responseWriterKey, {
-    enumerable: false,
-    value: (context: ReactFlightResponseWriterContext): Promise<void> => writeReactFlightResponse(entry, context),
-  });
-
-  return entry;
+  return registerFrameworkResponseWriter(
+    entry,
+    (context): Promise<void> => writeReactFlightResponse(entry, context),
+  );
 }

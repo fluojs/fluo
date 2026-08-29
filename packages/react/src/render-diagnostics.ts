@@ -1,4 +1,4 @@
-import { RequestAbortedError } from '@fluojs/http';
+import { RequestAbortedError } from '@fluojs/http/portable';
 
 import {
   createReactSsrDiagnostic,

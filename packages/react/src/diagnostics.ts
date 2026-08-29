@@ -1,5 +1,5 @@
 import { FluoError } from '@fluojs/core';
-import type { FrameworkRequest, RequestContext } from '@fluojs/http';
+import type { FrameworkRequest, RequestContext } from '@fluojs/http/portable';
 
 /** Stable machine-readable phases for the React SSR request lifecycle. */
 export const REACT_SSR_DIAGNOSTIC_PHASES = {

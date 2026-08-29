@@ -6,6 +6,12 @@ import type {
   ResponseFormatter,
 } from '../types.js';
 import {
+  FRAMEWORK_RESPONSE_VALUE_FINALIZER,
+  FRAMEWORK_RESPONSE_WRITER,
+  type FrameworkResponseValueFinalizer,
+  type FrameworkResponseWriter,
+} from './response-integration.js';
+import {
   type ResolvedContentNegotiation,
   resolveContentNegotiation,
   selectResponseFormatter,
@@ -13,31 +19,9 @@ import {
 import { writeErrorResponse } from './dispatch-error-policy.js';
 
 type SimpleJsonResponseBody = Record<string, unknown> | unknown[];
-const responseWriterKey = Symbol.for('fluo.http.responseWriter');
-const responseValueFinalizerKey = Symbol.for('fluo.http.responseValueFinalizer');
 const BINARY_CONTENT_TYPE = 'application/octet-stream';
 const JSON_CONTENT_TYPE = 'application/json; charset=utf-8';
 const TEXT_CONTENT_TYPE = 'text/plain; charset=utf-8';
-
-type FrameworkResponseWriterContext = {
-  readonly applySuccessResponseMetadata: () => void;
-  readonly handler: HandlerDescriptor;
-  readonly request: FrameworkRequest;
-  readonly requestContext: RequestContext;
-  readonly response: FrameworkResponse;
-};
-
-type FrameworkResponseWriter = (context: FrameworkResponseWriterContext) => ReturnType<FrameworkResponse['send']> | void;
-
-type FrameworkResponseValueFinalizerContext = {
-  readonly handler: HandlerDescriptor;
-  readonly request: FrameworkRequest;
-  readonly requestContext: RequestContext;
-  readonly response: FrameworkResponse;
-  readonly value: unknown;
-};
-
-type FrameworkResponseValueFinalizer = (context: FrameworkResponseValueFinalizerContext) => unknown;
 
 type SimpleJsonFrameworkResponse = FrameworkResponse & {
   sendSimpleJson(body: SimpleJsonResponseBody): ReturnType<FrameworkResponse['send']>;
@@ -90,13 +74,13 @@ function readFrameworkResponseWriter(value: unknown): FrameworkResponseWriter | 
     return undefined;
   }
 
-  const writer = Reflect.get(value, responseWriterKey);
+  const writer = Reflect.get(value, FRAMEWORK_RESPONSE_WRITER);
 
   return typeof writer === 'function' ? writer : undefined;
 }
 
 function readFrameworkResponseValueFinalizer(requestContext: RequestContext): FrameworkResponseValueFinalizer | undefined {
-  const finalizer = requestContext.metadata[responseValueFinalizerKey];
+  const finalizer = requestContext.metadata[FRAMEWORK_RESPONSE_VALUE_FINALIZER];
 
   if (typeof finalizer !== 'function') {
     return undefined;
@@ -168,14 +152,14 @@ function applyImplicitHeadContentType(response: FrameworkResponse, value: unknow
  * @param requestContext The active request context passed to custom response writers.
  * @returns The write success response result.
  */
-export function writeSuccessResponse(
+export async function writeSuccessResponse(
   handler: HandlerDescriptor,
   request: FrameworkRequest,
   response: FrameworkResponse,
   value: unknown,
   contentNegotiation: ResolvedContentNegotiation | undefined,
   requestContext: RequestContext,
-): ReturnType<FrameworkResponse['send']> | void {
+) {
   if (response.committed) {
     return;
   }
@@ -188,7 +172,7 @@ export function writeSuccessResponse(
 
   const responseValueFinalizer = readFrameworkResponseValueFinalizer(requestContext);
   const responseValue = responseValueFinalizer
-    ? responseValueFinalizer({ handler, request, requestContext, response, value })
+    ? await responseValueFinalizer({ handler, request, requestContext, response, value })
     : value;
   const responseWriter = readFrameworkResponseWriter(responseValue);
 
