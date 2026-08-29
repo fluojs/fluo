@@ -251,22 +251,31 @@ describe('@fluojs/http public API surface', () => {
     ]);
   });
 
-  it('shares typed response integration keys and non-enumerable writer branding', () => {
+  it('shares typed response integration keys and non-enumerable writer branding', async () => {
     // Given: an integration-owned response entry and request-local metadata.
     const entry = {};
     const metadata: Record<symbol, unknown> = {};
     const writer = (): void => {};
-    const finalizer = ({ value }: { readonly value: unknown }): unknown => value;
+    const firstFinalizer = ({ value }: { readonly value: unknown }): unknown => `${String(value)}:first`;
+    const secondFinalizer = async ({ value }: { readonly value: unknown }): Promise<unknown> => `${String(value)}:second`;
 
-    // When: the integration registers both response protocol extensions.
+    // When: integrations register a writer and ordered synchronous/asynchronous finalizers.
     httpInternalApi.registerFrameworkResponseWriter(entry, writer);
-    httpInternalApi.registerFrameworkResponseValueFinalizer({ metadata }, finalizer);
+    httpInternalApi.registerFrameworkResponseValueFinalizer({ metadata }, firstFinalizer);
+    httpInternalApi.registerFrameworkResponseValueFinalizer({ metadata }, secondFinalizer);
+    const composedFinalizer = metadata[httpInternalApi.FRAMEWORK_RESPONSE_VALUE_FINALIZER];
 
     // Then: consumers share one globally stable protocol without exposing writer brands in output.
     expect(httpInternalApi.FRAMEWORK_RESPONSE_WRITER).toBe(Symbol.for('fluo.http.responseWriter'));
     expect(httpInternalApi.FRAMEWORK_RESPONSE_VALUE_FINALIZER).toBe(Symbol.for('fluo.http.responseValueFinalizer'));
     expect(Reflect.get(entry, httpInternalApi.FRAMEWORK_RESPONSE_WRITER)).toBe(writer);
     expect(Object.keys(entry)).toEqual([]);
-    expect(metadata[httpInternalApi.FRAMEWORK_RESPONSE_VALUE_FINALIZER]).toBe(finalizer);
+    expect(composedFinalizer).toEqual(expect.any(Function));
+
+    if (typeof composedFinalizer !== 'function') {
+      throw new TypeError('Expected a composed response value finalizer.');
+    }
+
+    await expect(composedFinalizer({ value: 'initial' })).resolves.toBe('initial:first:second');
   });
 });

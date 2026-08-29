@@ -34,10 +34,15 @@ export type FrameworkResponseValueFinalizerContext = {
   readonly value: unknown;
 };
 
-/** Request-local transformation applied before the HTTP policy selects a response writer. */
+/**
+ * Request-local transformation applied before the HTTP policy selects a response writer.
+ *
+ * Finalizers may resolve asynchronously. The dispatcher awaits their results and
+ * routes thrown errors and rejections through its normal error policy.
+ */
 export type FrameworkResponseValueFinalizer = (
   context: FrameworkResponseValueFinalizerContext,
-) => unknown;
+) => unknown | Promise<unknown>;
 
 /**
  * Brands a response entry with an integration-owned writer.
@@ -63,10 +68,30 @@ export function registerFrameworkResponseWriter<Entry extends object>(
  *
  * @param context Active request context whose metadata carries the finalizer.
  * @param finalizer Transformation applied before response-writer selection.
+ *
+ * @remarks
+ * Multiple registrations compose in registration order. Each later finalizer
+ * receives the previous finalizer's resolved value, and any thrown error or
+ * rejection is handled by the dispatcher's existing error policy.
  */
 export function registerFrameworkResponseValueFinalizer(
   context: Pick<RequestContext, 'metadata'>,
   finalizer: FrameworkResponseValueFinalizer,
 ): void {
-  context.metadata[FRAMEWORK_RESPONSE_VALUE_FINALIZER] = finalizer;
+  const existingFinalizer = context.metadata[FRAMEWORK_RESPONSE_VALUE_FINALIZER];
+
+  if (typeof existingFinalizer !== 'function') {
+    context.metadata[FRAMEWORK_RESPONSE_VALUE_FINALIZER] = finalizer;
+    return;
+  }
+
+  const previousFinalizer = existingFinalizer as FrameworkResponseValueFinalizer;
+  context.metadata[FRAMEWORK_RESPONSE_VALUE_FINALIZER] = async (
+    finalizerContext: FrameworkResponseValueFinalizerContext,
+  ) => (
+    finalizer({
+      ...finalizerContext,
+      value: await previousFinalizer(finalizerContext),
+    })
+  );
 }

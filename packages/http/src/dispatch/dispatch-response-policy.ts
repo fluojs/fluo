@@ -152,14 +152,14 @@ function applyImplicitHeadContentType(response: FrameworkResponse, value: unknow
  * @param requestContext The active request context passed to custom response writers.
  * @returns The write success response result.
  */
-export function writeSuccessResponse(
+export async function writeSuccessResponse(
   handler: HandlerDescriptor,
   request: FrameworkRequest,
   response: FrameworkResponse,
   value: unknown,
   contentNegotiation: ResolvedContentNegotiation | undefined,
   requestContext: RequestContext,
-): ReturnType<FrameworkResponse['send']> | void {
+) {
   if (response.committed) {
     return;
   }
@@ -172,7 +172,7 @@ export function writeSuccessResponse(
 
   const responseValueFinalizer = readFrameworkResponseValueFinalizer(requestContext);
   const responseValue = responseValueFinalizer
-    ? responseValueFinalizer({ handler, request, requestContext, response, value })
+    ? await responseValueFinalizer({ handler, request, requestContext, response, value })
     : value;
   const responseWriter = readFrameworkResponseWriter(responseValue);
 

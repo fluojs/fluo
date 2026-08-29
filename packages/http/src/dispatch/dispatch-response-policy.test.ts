@@ -13,6 +13,10 @@ import {
   type MiddlewareContext,
   type Next,
 } from '../index.js';
+import {
+  registerFrameworkResponseValueFinalizer,
+  registerFrameworkResponseWriter,
+} from '../internal.js';
 
 type CustomResponseWriterContext = {
   readonly applySuccessResponseMetadata: () => void;
@@ -187,5 +191,83 @@ describe('dispatch response policy', () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers['Content-Type']).toBe('text/html; charset=utf-8');
     expect(response.body).toBe('<main>Finalized page</main>');
+  });
+
+  it('awaits ordered integration finalizers before selecting the response writer', async () => {
+    const pageValue = { kind: 'page' };
+    const firstFinalizedValue = { kind: 'first-finalized-page' };
+    const htmlEntry = { html: '<main>Composed finalized page</main>' };
+    const finalizerValues: unknown[] = [];
+
+    registerFrameworkResponseWriter(htmlEntry, (context) => {
+      context.applySuccessResponseMetadata();
+      context.response.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return context.response.send(htmlEntry.html);
+    });
+
+    @Controller('/composed-response-finalizer')
+    class ComposedResponseFinalizerController {
+      @Get('/page')
+      getValue() {
+        return pageValue;
+      }
+    }
+
+    const root = new Container().register(ComposedResponseFinalizerController);
+    const dispatcher = createDispatcher({
+      appMiddleware: [{
+        async handle(context: MiddlewareContext, next: Next) {
+          registerFrameworkResponseValueFinalizer(context.requestContext, ({ value }) => {
+            finalizerValues.push(value);
+            return value === pageValue ? firstFinalizedValue : value;
+          });
+          registerFrameworkResponseValueFinalizer(context.requestContext, async ({ value }) => {
+            finalizerValues.push(value);
+            return value === firstFinalizedValue ? htmlEntry : value;
+          });
+          await next();
+        },
+      }],
+      handlerMapping: createHandlerMapping([{ controllerToken: ComposedResponseFinalizerController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/composed-response-finalizer/page'), response);
+
+    expect(finalizerValues).toEqual([pageValue, firstFinalizedValue]);
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('text/html; charset=utf-8');
+    expect(response.body).toBe('<main>Composed finalized page</main>');
+  });
+
+  it('routes asynchronous finalizer rejections through the dispatcher error policy', async () => {
+    @Controller('/rejected-response-finalizer')
+    class RejectedResponseFinalizerController {
+      @Get('/page')
+      getValue() {
+        return { kind: 'page' };
+      }
+    }
+
+    const root = new Container().register(RejectedResponseFinalizerController);
+    const dispatcher = createDispatcher({
+      appMiddleware: [{
+        async handle(context: MiddlewareContext, next: Next) {
+          registerFrameworkResponseValueFinalizer(context.requestContext, async () => {
+            throw new Error('finalizer rejected');
+          });
+          await next();
+        },
+      }],
+      handlerMapping: createHandlerMapping([{ controllerToken: RejectedResponseFinalizerController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/rejected-response-finalizer/page'), response);
+
+    expect(response.committed).toBe(true);
+    expect(response.statusCode).toBe(500);
   });
 });
