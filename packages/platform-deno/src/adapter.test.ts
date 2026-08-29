@@ -1037,6 +1037,14 @@ describe('@fluojs/platform-deno', () => {
       },
     });
 
+    const signal = serveSignal;
+    if (!signal) {
+      throw new TypeError('Expected the Deno serve signal after adapter listen().');
+    }
+
+    const abortEvent = new Promise<void>((resolve) => {
+      signal.addEventListener('abort', () => resolve(), { once: true });
+    });
     const server = adapter.getServer();
     let closeSettled = false;
 
@@ -1046,9 +1054,21 @@ describe('@fluojs/platform-deno', () => {
     });
 
     // Then: the adapter retains ownership until termination, then reports the original failure.
-    await vi.waitFor(() => {
-      expect(serveSignal?.aborted).toBe(true);
-    });
+    let abortTimeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        abortEvent,
+        new Promise<never>((_resolve, reject) => {
+          abortTimeout = setTimeout(() => {
+            reject(new Error('Timed out waiting for the Deno serve signal to abort.'));
+          }, 1_000);
+        }),
+      ]);
+    } finally {
+      if (abortTimeout) {
+        clearTimeout(abortTimeout);
+      }
+    }
 
     expect(closeSettled).toBe(false);
     expect(adapter.getServer()).toBe(server);
