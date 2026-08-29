@@ -1651,12 +1651,14 @@ describe('@fluojs/platform-bun', () => {
   it('keeps close pending and server state until Bun termination and request drain settle', async () => {
     const mockBun = installMockBun();
     const adapter = createBunAdapter() as BunHttpApplicationAdapter;
+    const requestAccepted = createDeferred<void>();
     const requestDrain = createDeferred<void>();
     const serverTermination = createDeferred<void>();
     let closeSettled = false;
 
     await adapter.listen({
       async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        requestAccepted.resolve();
         await requestDrain.promise;
         response.setStatus(200);
         await response.send({ ok: true });
@@ -1666,6 +1668,7 @@ describe('@fluojs/platform-bun', () => {
     const server = mockBun.lastServer!;
     server.stop.mockReturnValue(serverTermination.promise);
     const responsePromise = server.fetch(new Request('http://127.0.0.1:3000/drain'));
+    await requestAccepted.promise;
     const closePromise = adapter.close().then(() => {
       closeSettled = true;
     });
@@ -1677,17 +1680,76 @@ describe('@fluojs/platform-bun', () => {
 
     requestDrain.resolve();
 
-    await expect(responsePromise).resolves.toBeInstanceOf(Response);
+    const response = await responsePromise;
+    expect(response?.status).toBe(200);
+    await expect(response?.json()).resolves.toEqual({ ok: true });
     await Promise.resolve();
 
     expect(closeSettled).toBe(false);
     expect(adapter.getServer()).toBe(server);
+    expect(Reflect.get(adapter, 'closeInFlight')).toBeDefined();
 
     serverTermination.resolve();
     await closePromise;
 
     expect(closeSettled).toBe(true);
     expect(adapter.getServer()).toBeUndefined();
+    expect(Reflect.get(adapter, 'closeInFlight')).toBeUndefined();
+  });
+
+  it('retains close state until request drain settles after Bun termination rejects', async () => {
+    const mockBun = installMockBun();
+    const adapter = createBunAdapter() as BunHttpApplicationAdapter;
+    const requestAccepted = createDeferred<void>();
+    const requestDrain = createDeferred<void>();
+    const serverTermination = createDeferred<void>();
+    const stopError = new Error('Bun server stop failed.');
+    let closeSettled = false;
+
+    await adapter.listen({
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        requestAccepted.resolve();
+        await requestDrain.promise;
+        response.setStatus(200);
+        await response.send({ ok: true });
+      },
+    });
+
+    const server = mockBun.lastServer!;
+    server.stop.mockReturnValue(serverTermination.promise);
+    const responsePromise = server.fetch(new Request('http://127.0.0.1:3000/drain'));
+    await requestAccepted.promise;
+    const closePromise = adapter.close();
+    const stopRejected = serverTermination.promise.catch(() => undefined);
+    void closePromise.then(
+      () => {
+        closeSettled = true;
+      },
+      () => {
+        closeSettled = true;
+      },
+    );
+
+    expect(server.stop).toHaveBeenCalledTimes(1);
+
+    serverTermination.reject(stopError);
+    await stopRejected;
+    await expect(waitForSettlement(closePromise)).rejects.toThrow('Timed out waiting for test settlement');
+
+    expect(closeSettled).toBe(false);
+    expect(adapter.getServer()).toBe(server);
+    expect(Reflect.get(adapter, 'closeInFlight')).toBeDefined();
+
+    requestDrain.resolve();
+
+    const response = await responsePromise;
+    expect(response?.status).toBe(200);
+    await expect(response?.json()).resolves.toEqual({ ok: true });
+    await expect(closePromise).rejects.toBe(stopError);
+
+    expect(closeSettled).toBe(true);
+    expect(adapter.getServer()).toBeUndefined();
+    expect(Reflect.get(adapter, 'closeInFlight')).toBeUndefined();
   });
 
   it('coalesces duplicate close() calls while an active Bun server drains', async () => {

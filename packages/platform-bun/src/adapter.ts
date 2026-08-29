@@ -893,10 +893,19 @@ function closeBunServerWithDrain(
   waitForDrain: () => Promise<void>,
 ): Promise<void> {
   return (async () => {
-    await Promise.all([
+    const results = await Promise.allSettled([
       server.stop(stopActiveConnections),
       waitForDrain(),
     ]);
+    const rejections = results.flatMap((result) => result.status === 'rejected' ? [result.reason] : []);
+
+    if (rejections.length === 1) {
+      throw rejections[0];
+    }
+
+    if (rejections.length > 1) {
+      throw new AggregateError(rejections, 'Bun server shutdown failed.');
+    }
   })();
 }
 
