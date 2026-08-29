@@ -2,6 +2,7 @@ import type { HandlerDescriptor } from '@fluojs/http';
 import { describe, expect, it } from 'vitest';
 import { handlerToStudioRouteDescriptor } from './devtools/snapshot.js';
 import { defineStandardRuntimeRouteInspectionMetadata } from './internal.js';
+import * as runtime from './index.js';
 import { createRuntimeInspectionSnapshot } from './route-inspection.js';
 
 function RouteKind(kind: string) {
@@ -48,14 +49,11 @@ function createDescriptor(
 }
 
 describe('runtime route inspection', () => {
-  it('exports the runtime-owned route inspection projection from the package root', async () => {
+  it('exports the runtime-owned route inspection projection from the package root', () => {
     // Given
-    const runtime = await import('./index.js');
-
-    // When
     const exportedProjection = Reflect.get(runtime, 'createRuntimeInspectionSnapshot');
 
-    // Then
+    // Then: the package root retains the runtime-owned inspection export.
     expect(exportedProjection).toEqual(expect.any(Function));
   });
 
