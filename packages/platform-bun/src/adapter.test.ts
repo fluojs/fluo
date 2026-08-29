@@ -1429,6 +1429,7 @@ describe('@fluojs/platform-bun', () => {
   it('drains an accepted, still-open SSE stream before Bun shutdown settles', async () => {
     const mockBun = installMockBun();
     const requestAbort = new AbortController();
+    const releaseServerStop = createDeferred<void>();
     const streamClosed = createDeferred<void>();
     const order: string[] = [];
     let closeSettled = false;
@@ -1467,7 +1468,13 @@ describe('@fluojs/platform-bun', () => {
       expect(response.status).toBe(200);
       expect(new TextDecoder().decode(firstFrame.value)).toContain('event: ready');
 
-      void reader.closed.then(streamClosed.resolve, streamClosed.reject);
+      void reader.closed.then(
+        () => {
+          order.push('stream-closed');
+          streamClosed.resolve();
+        },
+        streamClosed.reject,
+      );
 
       const server = mockBun.lastServer;
 
@@ -1477,6 +1484,7 @@ describe('@fluojs/platform-bun', () => {
 
       server.stop.mockImplementation(async () => {
         await streamClosed.promise;
+        await releaseServerStop.promise;
       });
 
       const closePromise = adapter.close();
@@ -1492,16 +1500,29 @@ describe('@fluojs/platform-bun', () => {
       );
 
       expect(server.stop).toHaveBeenCalledTimes(1);
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
       expect(closeSettled).toBe(false);
+      expect(order).toEqual([]);
 
-      order.push('stream-cancelled');
       requestAbort.abort(new Error('SSE client disconnected.'));
-      await waitForSettlement(closePromise);
+      await streamClosed.promise;
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+
+      expect(closeSettled).toBe(false);
+      expect(order).toEqual(['stream-closed']);
+
+      releaseServerStop.resolve();
+      await closePromise;
 
       expect(closeSettled).toBe(true);
-      expect(order).toEqual(['stream-cancelled', 'close-settled']);
+      expect(order).toEqual(['stream-closed', 'close-settled']);
     } finally {
       requestAbort.abort(new Error('SSE test cleanup.'));
+      releaseServerStop.resolve();
       await adapter.close();
     }
   });
