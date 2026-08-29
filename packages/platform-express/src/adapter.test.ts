@@ -73,6 +73,23 @@ function createDeferred<T>(): {
   return { promise, reject, resolve };
 }
 
+async function waitForSettlement<T>(promise: Promise<T>, timeoutMs = 2_000): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(new Error(`Timed out waiting for test settlement after ${String(timeoutMs)}ms.`));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutHandle !== undefined) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+}
+
 function getBoundPort(server: unknown): number {
   if (!server || typeof (server as { address?: unknown }).address !== 'function') {
     throw new Error('Failed to resolve a bound test server.');
@@ -3035,7 +3052,8 @@ describe('@fluojs/platform-express', () => {
 
   it('propagates abort signal when the client disconnects', async () => {
     const aborted = createDeferred<void>();
-    const handlerReady = createDeferred<void>();
+    const abortListenerInstalled = createDeferred<void>();
+    const releaseHandler = createDeferred<void>();
 
     @Controller('/abort')
     class AbortController {
@@ -3046,7 +3064,8 @@ describe('@fluojs/platform-express', () => {
             aborted.resolve();
             resolve();
           }, { once: true });
-          handlerReady.resolve();
+          abortListenerInstalled.resolve();
+          void releaseHandler.promise.then(resolve);
         });
 
         return { ok: true };
@@ -3065,7 +3084,6 @@ describe('@fluojs/platform-express', () => {
     });
 
     let request: ReturnType<typeof httpRequest> | undefined;
-    let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
 
     try {
       await app.listen();
@@ -3083,22 +3101,20 @@ describe('@fluojs/platform-express', () => {
       });
       request.end();
 
-      await handlerReady.promise;
+      const handlerReadySettlement = waitForSettlement(abortListenerInstalled.promise);
+      void handlerReadySettlement.catch(() => {
+        releaseHandler.resolve();
+      });
+      await expect(handlerReadySettlement).resolves.toBeUndefined();
       request.destroy();
 
-      await expect(Promise.race([
-        aborted.promise,
-        new Promise<void>((_resolve, reject) => {
-          watchdogTimer = setTimeout(() => {
-            reject(new Error('Abort signal was not propagated.'));
-          }, 2_000);
-        }),
-      ])).resolves.toBeUndefined();
+      const abortSettlement = waitForSettlement(aborted.promise);
+      void abortSettlement.catch(() => {
+        releaseHandler.resolve();
+      });
+      await expect(abortSettlement).resolves.toBeUndefined();
     } finally {
-      if (watchdogTimer) {
-        clearTimeout(watchdogTimer);
-      }
-
+      releaseHandler.resolve();
       request?.destroy();
       await app.close();
     }
