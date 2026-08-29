@@ -6,7 +6,7 @@
 "@fluojs/platform-fastify": minor
 "@fluojs/platform-bun": minor
 "@fluojs/platform-deno": minor
-"@fluojs/platform-cloudflare-workers": minor
+"@fluojs/platform-cloudflare-workers": patch
 ---
 
 Add an optional request-scoped Early Hints capability with deterministic write, error, and disconnect behavior.
