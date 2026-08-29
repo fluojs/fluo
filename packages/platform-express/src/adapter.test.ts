@@ -2622,6 +2622,8 @@ describe('@fluojs/platform-express', () => {
   });
 
   it('retries startup after EADDRINUSE until the port becomes available', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+
     const blocker = createHttpServer((_request, response) => {
       response.statusCode = 200;
       response.end('blocked');
@@ -2654,15 +2656,28 @@ describe('@fluojs/platform-express', () => {
         await response.send({ ok: true });
       },
     };
+    const addressInUse = createDeferred<void>();
+    let observedAddressInUse = false;
+
+    adapter.getServer().once('error', (error) => {
+      if (error instanceof Error && 'code' in error && error.code === 'EADDRINUSE') {
+        observedAddressInUse = true;
+        addressInUse.resolve();
+        return;
+      }
+
+      addressInUse.reject(error);
+    });
 
     try {
       const listenPromise = adapter.listen(dispatcher);
 
-      setTimeout(() => {
-        void closeBlocker();
-      }, 80);
+      await addressInUse.promise;
+      await closeBlocker();
+      await vi.advanceTimersByTimeAsync(20);
 
       await listenPromise;
+      expect(observedAddressInUse).toBe(true);
 
       const response = await fetch(`http://127.0.0.1:${String(port)}/retry-check`);
 
@@ -2671,6 +2686,7 @@ describe('@fluojs/platform-express', () => {
     } finally {
       await adapter.close();
       await closeBlocker();
+      vi.useRealTimers();
     }
   });
 
