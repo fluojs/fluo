@@ -1195,25 +1195,44 @@ describe('@fluojs/platform-deno', () => {
     }
 
     abortController.abort();
-    const finishedSettled = finished.promise.then(() => undefined);
-    finished.resolve();
-    await finishedSettled;
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    const closeSettlement = adapter.close();
+    let closeSettlementReached = false;
+    void closeSettlement.then(() => {
+      closeSettlementReached = true;
+    });
+    requestDrain.resolve();
+    await activeRequest;
 
     expect(closeSettled).toBe(false);
     expect(adapter.getServer()).toBeDefined();
     expect(Reflect.get(adapter, 'closeInFlight')).toBeDefined();
 
-    requestDrain.resolve();
-    await activeRequest;
-    await closePromise;
+    try {
+      expect(closeSettlementReached).toBe(false);
+    } finally {
+      finished.resolve();
+    }
+    let closeSettlementTimeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        closeSettlement,
+        new Promise<never>((_resolve, reject) => {
+          closeSettlementTimeout = setTimeout(() => {
+            reject(new Error('Timed out waiting for the Deno close settlement after active requests drained.'));
+          }, 1_000);
+        }),
+      ]);
+    } finally {
+      if (closeSettlementTimeout) {
+        clearTimeout(closeSettlementTimeout);
+      }
+    }
 
     expect(adapter.getServer()).toBeUndefined();
     expect(Reflect.get(adapter, 'closeInFlight')).toBeUndefined();
     expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
     expect((await adapter.handle(new Request('https://runtime.test/after-drain-close'))).status).toBe(500);
+    await closePromise;
   });
 
   it('aborts the Deno serve signal when in-flight drain rejects', async () => {
