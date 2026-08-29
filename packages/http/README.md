@@ -372,7 +372,7 @@ Use `@fluojs/http/portable` from runtime-neutral integrations that need HTTP aut
 
 ## Internal Subpath (`@fluojs/http/internal`)
 
-The `./internal` subpath exports only the low-level utilities used by platform adapters and the core runtime. These are subject to change and should not be used in typical application code.
+The `./internal` subpath exports only the low-level utilities used by platform adapters, the core runtime, and first-party response integrations. These are subject to change and should not be used in typical application code.
 
 - `DefaultBinder`: Default DTO/request binder used by the runtime bootstrap path.
 - `bindRawRequestNativeRouteHandoff(...)` / `attachFrameworkRequestNativeRouteHandoff(...)`: Internal adapter/runtime helpers for reusing semantically safe native route matches without widening the public dispatcher API.
