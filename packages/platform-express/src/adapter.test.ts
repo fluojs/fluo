@@ -2461,11 +2461,10 @@ describe('@fluojs/platform-express', () => {
 
     expect(closeCallCount).toBe(1);
     expect(Reflect.get(adapter, 'dispatcher')).toBe(dispatcher);
+    const closeInFlight: Promise<void> = Reflect.get(adapter, 'closeInFlight');
 
     deferred.resolve();
-    await new Promise((resolve) => {
-      setTimeout(resolve, 0);
-    });
+    await waitForSettlement(closeInFlight);
 
     expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
   });
