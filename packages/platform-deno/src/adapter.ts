@@ -539,9 +539,10 @@ function closeDenoServerWithDrain(
 ): Promise<void> {
   return (async () => {
     let closeFailure: { readonly error: unknown } | undefined;
+    const shutdown = Promise.resolve(server.shutdown());
     const drain = waitForDrain();
     const gracefulClose = Promise.allSettled([
-      Promise.resolve(server.shutdown()),
+      shutdown,
       drain,
     ]).then((results) => ({
       kind: 'graceful' as const,
