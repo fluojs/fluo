@@ -11,12 +11,37 @@ const forbiddenRootImports = [
   ['react-dom/server', 'React DOM server'],
   ['react-server-dom-webpack/server', 'React Server Components server'],
 ] as const;
+const nodeEsmExportConditions = new Set(['default', 'import', 'node']);
 
 function readStaticModuleSpecifiers(source: string): string[] {
   return [...source.matchAll(runtimeStaticModuleSpecifierPattern)].flatMap((match) => {
     const specifier = match[1];
     return specifier === undefined ? [] : [specifier];
   });
+}
+
+function resolveNodeEsmExportTarget(exportDefinition: unknown): string | undefined {
+  if (typeof exportDefinition === 'string') {
+    return exportDefinition;
+  }
+
+  if (typeof exportDefinition !== 'object' || exportDefinition === null) {
+    return undefined;
+  }
+
+  for (const [condition, target] of Object.entries(exportDefinition)) {
+    if (!nodeEsmExportConditions.has(condition)) {
+      continue;
+    }
+
+    const resolvedTarget = resolveNodeEsmExportTarget(target);
+
+    if (resolvedTarget !== undefined) {
+      return resolvedTarget;
+    }
+  }
+
+  return undefined;
 }
 
 function resolveWorkspaceBuildUrl(specifier: string): URL | undefined {
@@ -35,15 +60,7 @@ function resolveWorkspaceBuildUrl(specifier: string): URL | undefined {
   const exportDefinition = typeof exports === 'object' && exports !== null
     ? Reflect.get(exports, match?.[2] === undefined ? '.' : `./${match[2]}`)
     : undefined;
-  const nodeTarget = typeof exportDefinition === 'object' && exportDefinition !== null
-    ? Reflect.get(exportDefinition, 'node')
-    : undefined;
-  const importTarget = typeof exportDefinition === 'string'
-    ? exportDefinition
-    : typeof exportDefinition === 'object' && exportDefinition !== null
-      ? Reflect.get(exportDefinition, 'import')
-      : undefined;
-  const target = typeof nodeTarget === 'string' ? nodeTarget : importTarget;
+  const target = resolveNodeEsmExportTarget(exportDefinition);
 
   if (typeof target !== 'string' || !target.startsWith('./dist/') || !target.endsWith('.js')) {
     throw new TypeError(`Missing Node ESM build mapping for ${specifier}.`);
@@ -94,6 +111,13 @@ function collectBuiltNodeDependencyGraph(entrypoint: URL): string[] {
 }
 
 describe('@fluojs/react root package scaffold', () => {
+  it('resolves Node ESM export conditions in declaration order', () => {
+    expect(resolveNodeEsmExportTarget({
+      import: './dist/portable.js',
+      node: './dist/node.js',
+    })).toBe('./dist/portable.js');
+  });
+
   it('exposes the implemented runtime React package exports from the root import', async () => {
     const react = await import('./index.js');
 
