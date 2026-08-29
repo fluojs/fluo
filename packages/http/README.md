@@ -366,6 +366,10 @@ Response content negotiation formatters must return `string` or `Uint8Array` fro
 - **Helpers**: `createHandlerMapping`, `createDispatcher`, `forRoutes`, `normalizeRoutePattern`, `matchRoutePattern`, `isMiddlewareRouteConfig`, `createCorrelationMiddleware`, `createCorsMiddleware`, `createRateLimitMiddleware`, `createMemoryRateLimitStore`, `createSecurityHeadersMiddleware`, `getRequestHeader`, `appendVaryHeader`, `runWithRequestContext`, `getCurrentRequestContext`, `assertRequestContext`, `createRequestContext`, `createContextKey`, `getContextValue`, `setContextValue`, `encodeSseComment`, `encodeSseMessage`, `isSseMessage`, `formatFastPathStats`, `getDispatcherFastPathStats`, `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`
 - **Option and store types**: `CorsOptions`, `RateLimitOptions`, `RateLimitStore`, `RateLimitStoreEntry`, `SecurityHeadersOptions`, `SseSendOptions`
 
+## Portable Subpath (`@fluojs/http/portable`)
+
+Use `@fluojs/http/portable` from runtime-neutral integrations that need HTTP authoring contracts without eagerly initializing the Node `AsyncLocalStorage` bootstrap. It exports the supported HTTP decorators, exceptions, request/response contracts, and authoring helpers; Node applications should continue to import the root package when they need its Node request-context behavior.
+
 ## Internal Subpath (`@fluojs/http/internal`)
 
 The `./internal` subpath exports only the low-level utilities used by platform adapters and the core runtime. These are subject to change and should not be used in typical application code.
@@ -378,6 +382,8 @@ The `./internal` subpath exports only the low-level utilities used by platform a
 - `getCompiledRouteIdentity(descriptor)`: Reads the deterministic source/method position assigned by `createHandlerMapping(...)` for first-party package integrations. Manually authored descriptors return `undefined`.
 - `resolveClientIdentity(request)`: Conservative client identity resolver used by rate limiting and other runtime integrations.
 - `createFetchStyleHttpAdapterRealtimeCapability(...)`, `Dispatcher`, and `HttpApplicationAdapter`: internal adapter seams for edge/fetch-style platform packages that must avoid instantiating the full HTTP root barrel.
+- `FRAMEWORK_RESPONSE_WRITER` / `registerFrameworkResponseWriter(...)`: Typed response-entry branding seam for first-party response integrations.
+- `FRAMEWORK_RESPONSE_VALUE_FINALIZER` / `registerFrameworkResponseValueFinalizer(...)`: Typed request-local response finalization seam. Finalizers compose in registration order, each receives the prior resolved value, and the dispatcher awaits them so throws and rejections follow its normal error policy.
 
 ## Related Packages
 
