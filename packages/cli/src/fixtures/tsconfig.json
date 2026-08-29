@@ -6,6 +6,7 @@
       "@fluojs/core/request-pipeline": ["../../../../packages/core/src/request-pipeline.ts"],
       "@fluojs/di/internal": ["../../../../packages/di/src/internal.ts"],
       "@fluojs/http/internal": ["../../../../packages/http/src/internal.ts"],
+      "@fluojs/http/portable": ["../../../../packages/http/src/index.portable.ts"],
       "@fluojs/react/typegen": ["../../../../packages/react/src/typegen.ts"],
       "@fluojs/runtime/internal": ["../../../../packages/runtime/src/internal.ts"],
       "@fluojs/runtime/internal/http-adapter": ["../../../../packages/runtime/src/internal-http-adapter.ts"],
