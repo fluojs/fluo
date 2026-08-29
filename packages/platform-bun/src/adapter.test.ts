@@ -1426,6 +1426,107 @@ describe('@fluojs/platform-bun', () => {
     }
   });
 
+  it('drains an accepted, still-open SSE stream before Bun shutdown settles', async () => {
+    const mockBun = installMockBun();
+    const requestAbort = new AbortController();
+    const releaseServerStop = createDeferred<void>();
+    const streamClosed = createDeferred<void>();
+    const order: string[] = [];
+    let closeSettled = false;
+
+    const adapter = new BunHttpApplicationAdapter();
+    await adapter.listen({
+      async dispatch(request, response) {
+        const stream = new SseResponse({
+          container: {} as RequestContext['container'],
+          metadata: {},
+          request,
+          response,
+        });
+
+        stream.send({ ready: true }, { event: 'ready', id: 'evt-1' });
+      },
+    });
+
+    try {
+      const response = await mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4329/events', {
+        headers: { accept: 'text/event-stream' },
+        signal: requestAbort.signal,
+      }));
+
+      if (!response?.body) {
+        throw new TypeError('Expected the accepted SSE response body to be available.');
+      }
+
+      const reader = response.body.getReader();
+      const firstFrame = await reader.read();
+
+      if (firstFrame.done) {
+        throw new TypeError('Expected the accepted SSE response to emit its first frame.');
+      }
+
+      expect(response.status).toBe(200);
+      expect(new TextDecoder().decode(firstFrame.value)).toContain('event: ready');
+
+      void reader.closed.then(
+        () => {
+          order.push('stream-closed');
+          streamClosed.resolve();
+        },
+        streamClosed.reject,
+      );
+
+      const server = mockBun.lastServer;
+
+      if (!server) {
+        throw new TypeError('Expected the Bun adapter test server to remain available.');
+      }
+
+      server.stop.mockImplementation(async () => {
+        await streamClosed.promise;
+        await releaseServerStop.promise;
+      });
+
+      const closePromise = adapter.close();
+      void closePromise.then(
+        () => {
+          closeSettled = true;
+          order.push('close-settled');
+        },
+        () => {
+          closeSettled = true;
+          order.push('close-settled');
+        },
+      );
+
+      expect(server.stop).toHaveBeenCalledTimes(1);
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+      expect(closeSettled).toBe(false);
+      expect(order).toEqual([]);
+
+      requestAbort.abort(new Error('SSE client disconnected.'));
+      await streamClosed.promise;
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+
+      expect(closeSettled).toBe(false);
+      expect(order).toEqual(['stream-closed']);
+
+      releaseServerStop.resolve();
+      await closePromise;
+
+      expect(closeSettled).toBe(true);
+      expect(order).toEqual(['stream-closed', 'close-settled']);
+    } finally {
+      requestAbort.abort(new Error('SSE test cleanup.'));
+      releaseServerStop.resolve();
+      await adapter.close();
+    }
+  });
+
   it('logs listen target and removes registered shutdown listeners on close', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const mockBun = installMockBun();
