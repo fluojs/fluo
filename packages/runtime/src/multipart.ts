@@ -240,7 +240,7 @@ async function readByteLimitedBody(
   stream: AsyncIterable<Uint8Array> | ReadableStream<Uint8Array>,
   maxTotalSize: number,
   cancelOnLimit: boolean,
-): Promise<ArrayBuffer> {
+): Promise<Blob> {
   const source = stream instanceof ReadableStream
     ? stream
     : createReadableStreamFromAsyncIterable(stream);
@@ -269,14 +269,13 @@ async function readByteLimitedBody(
     }
     chunks.push(value);
   }
-  const buffer = new ArrayBuffer(totalSize);
-  const body = new Uint8Array(buffer);
+  const body = new Uint8Array(totalSize);
   let offset = 0;
   for (const chunk of chunks) {
     body.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return buffer;
+  return new Blob([body]);
 }
 
 function isReadableByteStream(
