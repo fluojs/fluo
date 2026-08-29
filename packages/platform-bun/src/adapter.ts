@@ -144,7 +144,7 @@ export interface BunServerLike {
   fetch?(request: Request): Response | Promise<Response> | undefined | Promise<Response | undefined>;
   hostname?: BunHostname;
   port?: number;
-  stop(closeActiveConnections?: boolean): void;
+  stop(closeActiveConnections?: boolean): Promise<void>;
   upgrade<TData = unknown>(
     request: Request,
     options?: {
@@ -893,8 +893,19 @@ function closeBunServerWithDrain(
   waitForDrain: () => Promise<void>,
 ): Promise<void> {
   return (async () => {
-    server.stop(stopActiveConnections);
-    await waitForDrain();
+    const results = await Promise.allSettled([
+      server.stop(stopActiveConnections),
+      waitForDrain(),
+    ]);
+    const rejections = results.flatMap((result) => result.status === 'rejected' ? [result.reason] : []);
+
+    if (rejections.length === 1) {
+      throw rejections[0];
+    }
+
+    if (rejections.length > 1) {
+      throw new AggregateError(rejections, 'Bun server shutdown failed.');
+    }
   })();
 }
 

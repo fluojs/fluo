@@ -207,7 +207,7 @@ function installMockBun(): MockBun {
       },
       hostname,
       port,
-      stop() {},
+      async stop() {},
       upgrade() {
         return false;
       },
