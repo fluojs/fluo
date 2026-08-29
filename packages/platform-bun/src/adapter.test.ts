@@ -2147,6 +2147,73 @@ describe('@fluojs/platform-bun', () => {
     expect(order).toEqual(['binding-released', 'close-settled']);
   });
 
+  it('drains a rejected realtime binding during close and clears public state', async () => {
+    const mockBun = installMockBun();
+    const adapter = new BunHttpApplicationAdapter();
+    const bindingStarted = createDeferred<void>();
+    const bindingRelease = createDeferred<void>();
+    const bindingError = new Error('Realtime binding rejected.');
+    const order: string[] = [];
+    let closePromise: Promise<void> | undefined;
+    let closeSettled = false;
+    let responsePromise: Promise<Response | undefined> | undefined;
+
+    adapter.configureRealtimeBinding({
+      fetch: async () => {
+        bindingStarted.resolve();
+        await bindingRelease.promise;
+        return undefined;
+      },
+      websocket: {},
+    });
+
+    await adapter.listen({
+      dispatch: vi.fn(async () => undefined),
+    });
+
+    const server = mockBun.lastServer;
+
+    try {
+      if (!server) {
+        throw new TypeError('Expected the Bun adapter test server to be available after listen().');
+      }
+
+      const acceptedResponsePromise = Promise.resolve(server.fetch(new Request('http://127.0.0.1:3000/realtime')));
+      responsePromise = acceptedResponsePromise;
+      await waitForSettlement(bindingStarted.promise);
+
+      closePromise = adapter.close();
+      void closePromise.then(
+        () => {
+          order.push('close-settled');
+        },
+        () => {
+          order.push('close-rejected');
+        },
+      );
+
+      order.push('binding-rejected');
+      bindingRelease.reject(bindingError);
+
+      await expect(waitForSettlement(acceptedResponsePromise)).rejects.toBe(bindingError);
+      await expect(waitForSettlement(closePromise)).resolves.toBeUndefined();
+      closeSettled = true;
+
+      expect(order).toEqual(['binding-rejected', 'close-settled']);
+      expect(adapter.getServer()).toBeUndefined();
+    } finally {
+      bindingRelease.reject(bindingError);
+      if (closePromise === undefined) {
+        await adapter.close();
+      } else if (closeSettled) {
+        await waitForSettlement(Promise.allSettled([
+          responsePromise ?? Promise.resolve(undefined),
+          closePromise,
+        ]));
+      }
+    }
+  });
+
   it('drains an accepted request through a delayed websocket upgrade without HTTP fallback', async () => {
     const mockBun = installMockBun();
     const adapter = new BunHttpApplicationAdapter();
