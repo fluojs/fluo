@@ -32,7 +32,15 @@ node scripts/lane-v4-cli.mjs plan --root . --lane <lane.json> --issue <n>
 `plan` observes live git/GitHub, merges head-bound facts, and prints the
 single next action: `implement | verify-local | review | fix-back |
 create-pr | push | wait-ci | resolve-conflict | request-merge-approval |
-merge | cleanup | done | blocked`.
+merge | cleanup | done | blocked | wait-dependencies`.
+
+Multi-layer lanes: `init --issue N` also accepts `--issue N:dep1,dep2`
+(deps must be lane members). A dependent issue answers
+`wait-dependencies` until every `depends_on` issue is observably
+terminal (GitHub issue CLOSED) — release is automatic, observed live,
+never journaled. `plan-all` prints every issue's decision in one call.
+Only consumer-visible files (not `*.test.ts`, fixtures, or `*.md`)
+count toward the changeset gate, per release governance.
 
 The operator (human or agent session):
 

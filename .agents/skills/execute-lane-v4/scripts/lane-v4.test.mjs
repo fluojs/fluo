@@ -131,6 +131,33 @@ test('C3: changeset present and review passed -> create-pr', () => {
 	assert.equal(next.action, 'create-pr');
 });
 
+// --- D1: cross-issue dependency gate (multi-layer lanes) ---
+
+test('D1: unmet dependencies -> wait-dependencies, before any other action', () => {
+	const next = decideNext(
+		makeLane(),
+		makeObs({ unmetDependencies: [3356], branch: null, worktree: null, hasNewCommits: false, localChecks: null, review: null }),
+	);
+	assert.equal(next.action, 'wait-dependencies');
+	assert.deepEqual(next.unmet, [3356]);
+});
+
+test('D1: unmet dependencies outrank mid-flight state too', () => {
+	const next = decideNext(makeLane(), makeObs({ unmetDependencies: [3356] }));
+	assert.equal(next.action, 'wait-dependencies');
+});
+
+test('D1: satisfied dependencies (empty list) proceed normally', () => {
+	const next = decideNext(makeLane(), makeObs({ unmetDependencies: [], review: null }));
+	assert.equal(next.action, 'review');
+});
+
+test('D1: standing blocker still outranks dependency wait', () => {
+	const lane = makeLane({ blocker: { type: 'attempts-exhausted', phase: 'implement' } });
+	const next = decideNext(lane, makeObs({ unmetDependencies: [3356] }));
+	assert.equal(next.action, 'blocked');
+});
+
 // --- supporting decisions the loop relies on ---
 
 test('stale review head triggers re-review, not merge', () => {

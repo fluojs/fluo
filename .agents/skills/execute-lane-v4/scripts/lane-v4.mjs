@@ -87,6 +87,13 @@ export const decideNext = (lane, obs) => {
 		return { action: 'done', reason: 'issue-closed-externally' };
 	}
 
+	// 2.5 Cross-issue dependency gate: a dependent issue does nothing until
+	//     every depends_on issue is observably terminal (GitHub issue CLOSED).
+	//     Observed live, never journaled — release is automatic and ceremony-free.
+	if (Array.isArray(obs.unmetDependencies) && obs.unmetDependencies.length > 0) {
+		return { action: 'wait-dependencies', unmet: obs.unmetDependencies };
+	}
+
 	// 3. Nothing implemented yet (or implementation retry).
 	if (!obs.branch || !obs.worktree || !obs.hasNewCommits) {
 		return { action: 'implement' };

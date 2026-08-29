@@ -71,7 +71,14 @@ export const observeIssue = (root, lane, issue) => {
 	if (hasNewCommits) {
 		const changed = run(root, 'git', ['diff', '--name-only', `${mergeBase}...${headSha}`]) ?? '';
 		const files = changed.split('\n').filter(Boolean);
-		publicPackagesTouched = files.some((f) => f.startsWith('packages/'));
+		// Consumer-visible only: test files, fixtures, and docs do not require a
+		// changeset per docs/contracts/release-governance.md.
+		publicPackagesTouched = files.some(
+			(f) =>
+				f.startsWith('packages/') &&
+				!/\.(test|test-fixture)\.[cm]?ts$/.test(f) &&
+				!f.endsWith('.md'),
+		);
 		changesetPresent = files.some((f) => /^\.changeset\/.+\.md$/.test(f) && !f.endsWith('README.md'));
 	}
 
@@ -107,6 +114,11 @@ export const observeIssue = (root, lane, issue) => {
 		return s ?? 'OPEN';
 	})();
 
+	const unmetDependencies = (entry.depends_on ?? []).filter((dep) => {
+		const s = run(root, 'gh', ['issue', 'view', String(dep), '--json', 'state', '--jq', '.state']);
+		return s !== 'CLOSED';
+	});
+
 	return {
 		issueState,
 		branch: branchExists ? branch : null,
@@ -119,6 +131,7 @@ export const observeIssue = (root, lane, issue) => {
 		changesetPresent,
 		review: headSha ? factIfCurrent(entry, 'review', headSha) : null,
 		pr,
+		unmetDependencies,
 	};
 };
 
@@ -128,12 +141,22 @@ const main = () => {
 
 	if (command === 'init') {
 		const laneId = arg(args, '--lane-id');
-		const issues = [];
+		// --issue accepts `N` or `N:dep1,dep2` (deps must be lane members).
+		const specs = [];
 		for (let i = 0; i < args.length; i += 1) {
-			if (args[i] === '--issue') issues.push(Number(args[i + 1]));
+			if (args[i] !== '--issue') continue;
+			const [numRaw, depsRaw] = String(args[i + 1]).split(':');
+			const n = Number(numRaw);
+			const deps = depsRaw ? depsRaw.split(',').map(Number) : [];
+			specs.push({ n, deps });
 		}
-		if (issues.length === 0 || issues.some((n) => !Number.isSafeInteger(n) || n < 1)) {
-			throw new TypeError('init requires at least one positive --issue');
+		const all = specs.map((s) => s.n);
+		if (
+			specs.length === 0 ||
+			specs.some((s) => !Number.isSafeInteger(s.n) || s.n < 1) ||
+			specs.some((s) => s.deps.some((d) => !all.includes(d)))
+		) {
+			throw new TypeError('init requires positive --issue values; deps must be lane members (N:dep1,dep2)');
 		}
 		const dir = resolve(root, '.omo', 'lanes-v4');
 		mkdirSync(dir, { recursive: true });
@@ -142,9 +165,10 @@ const main = () => {
 			lane_id: laneId,
 			base_branch: 'main',
 			issues: Object.fromEntries(
-				issues.map((n) => [String(n), {
+				specs.map(({ n, deps }) => [String(n), {
 					issue: n,
-					branch: arg(args, '--branch', `issue-${n}`),
+					branch: `issue-${n}`,
+					depends_on: deps,
 					attempts: {},
 					approvals: { merge: false },
 					blocker: null,
@@ -160,6 +184,18 @@ const main = () => {
 
 	const lanePath = resolve(root, arg(args, '--lane'));
 	const lane = loadLane(lanePath);
+
+	if (command === 'plan-all') {
+		const decisions = Object.keys(lane.issues).map((key) => {
+			const n = Number(key);
+			const obs = observeIssue(root, lane, n);
+			const decision = decideNext(lane.issues[key], obs);
+			return { issue: n, decision };
+		});
+		process.stdout.write(`${JSON.stringify(decisions, null, 2)}\n`);
+		return;
+	}
+
 	const issue = Number(arg(args, '--issue'));
 	const entry = issueEntry(lane, issue);
 
