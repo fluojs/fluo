@@ -1924,6 +1924,7 @@ describe('@fluojs/platform-bun', () => {
       const responsePromise = mockBun.lastServer!.fetch(new Request('http://127.0.0.1:3000/timeout-check'));
       await Promise.resolve();
       const closeResultPromise = adapter.close().catch((error: unknown) => error);
+      const closeSettlementPromise = Reflect.get(adapter, 'closeInFlight') as Promise<void>;
 
       await vi.advanceTimersByTimeAsync(10_001);
 
@@ -1933,9 +1934,7 @@ describe('@fluojs/platform-bun', () => {
       deferred.resolve();
       await responsePromise;
       vi.useRealTimers();
-      await new Promise((resolve) => {
-        setTimeout(resolve, 0);
-      });
+      await waitForSettlement(closeSettlementPromise);
 
       expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
     } finally {
@@ -2000,6 +1999,7 @@ describe('@fluojs/platform-bun', () => {
     const adapter = new BunHttpApplicationAdapter();
     const bindingStarted = createDeferred<void>();
     const bindingRelease = createDeferred<void>();
+    const order: string[] = [];
     let closeSettled = false;
 
     adapter.configureRealtimeBinding({
@@ -2018,20 +2018,32 @@ describe('@fluojs/platform-bun', () => {
     const responsePromise = mockBun.lastServer?.fetch(new Request('http://127.0.0.1:3000/realtime'));
     await bindingStarted.promise;
 
-    const closePromise = adapter.close().then(() => {
-      closeSettled = true;
-    });
+    const closePromise = adapter.close();
+    void closePromise.then(
+      () => {
+        closeSettled = true;
+        order.push('close-settled');
+      },
+      () => {
+        closeSettled = true;
+        order.push('close-settled');
+      },
+    );
     await new Promise<void>((resolve) => {
-      setTimeout(resolve, 0);
+      setImmediate(resolve);
     });
 
     expect(closeSettled).toBe(false);
+    expect(adapter.getServer()).toBe(mockBun.lastServer);
+    expect(Reflect.get(adapter, 'closeInFlight')).toBeDefined();
 
+    order.push('binding-released');
     bindingRelease.resolve();
 
     await expect(responsePromise).resolves.toMatchObject({ status: 202 });
-    await closePromise;
+    await waitForSettlement(closePromise);
     expect(closeSettled).toBe(true);
+    expect(order).toEqual(['binding-released', 'close-settled']);
   });
 
   it('drains an accepted request through a delayed websocket upgrade without HTTP fallback', async () => {
@@ -2045,6 +2057,7 @@ describe('@fluojs/platform-bun', () => {
         await response.send({ fallback: 'http' });
       }),
     };
+    const order: string[] = [];
     let closeSettled = false;
     let closePromise: Promise<void> | undefined;
     let responsePromise: Promise<Response | undefined> | undefined;
@@ -2074,22 +2087,34 @@ describe('@fluojs/platform-bun', () => {
       responsePromise = acceptedResponsePromise;
       await waitForSettlement(bindingStarted.promise);
 
-      closePromise = adapter.close().then(() => {
-        closeSettled = true;
+      closePromise = adapter.close();
+      void closePromise.then(
+        () => {
+          closeSettled = true;
+          order.push('close-settled');
+        },
+        () => {
+          closeSettled = true;
+          order.push('close-settled');
+        },
+      );
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
       });
-      await waitForSettlement(new Promise<void>((resolve) => {
-        setTimeout(resolve, 0);
-      }));
 
       expect(closeSettled).toBe(false);
+      expect(adapter.getServer()).toBe(server);
+      expect(Reflect.get(adapter, 'closeInFlight')).toBeDefined();
       expect(server.upgrade).not.toHaveBeenCalled();
       expect(dispatcher.dispatch).not.toHaveBeenCalled();
 
+      order.push('binding-released');
       bindingRelease.resolve();
 
       await expect(waitForSettlement(acceptedResponsePromise)).resolves.toBeUndefined();
       await waitForSettlement(closePromise);
       expect(closeSettled).toBe(true);
+      expect(order).toEqual(['binding-released', 'close-settled']);
       expect(server.upgrade).toHaveBeenCalledTimes(1);
       expect(server.upgrade).toHaveReturnedWith(true);
       expect(dispatcher.dispatch).not.toHaveBeenCalled();
@@ -2113,6 +2138,7 @@ describe('@fluojs/platform-bun', () => {
         await response.send({ fallback: 'http' });
       }),
     };
+    const order: string[] = [];
     let closeSettled = false;
 
     adapter.configureRealtimeBinding({
@@ -2129,15 +2155,26 @@ describe('@fluojs/platform-bun', () => {
     const responsePromise = mockBun.lastServer?.fetch(new Request('http://127.0.0.1:3000/fallback'));
     await bindingStarted.promise;
 
-    const closePromise = adapter.close().then(() => {
-      closeSettled = true;
-    });
+    const closePromise = adapter.close();
+    void closePromise.then(
+      () => {
+        closeSettled = true;
+        order.push('close-settled');
+      },
+      () => {
+        closeSettled = true;
+        order.push('close-settled');
+      },
+    );
     await new Promise<void>((resolve) => {
-      setTimeout(resolve, 0);
+      setImmediate(resolve);
     });
 
     expect(closeSettled).toBe(false);
+    expect(adapter.getServer()).toBe(mockBun.lastServer);
+    expect(Reflect.get(adapter, 'closeInFlight')).toBeDefined();
 
+    order.push('binding-released');
     bindingRelease.resolve();
 
     await expect(responsePromise).resolves.toBeInstanceOf(Response);
@@ -2145,8 +2182,9 @@ describe('@fluojs/platform-bun', () => {
     expect(response?.status).toBe(200);
     await expect(response?.json()).resolves.toEqual({ fallback: 'http' });
     expect(dispatcher.dispatch).toHaveBeenCalledTimes(1);
-    await closePromise;
+    await waitForSettlement(closePromise);
     expect(closeSettled).toBe(true);
+    expect(order).toEqual(['binding-released', 'close-settled']);
   });
 
   it('falls back to HTTP dispatch when a websocket binding does not upgrade the request', async () => {
