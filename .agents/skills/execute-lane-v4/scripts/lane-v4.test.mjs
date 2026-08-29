@@ -1,0 +1,170 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+	ATTEMPT_CEILING,
+	applyChildResult,
+	decideNext,
+} from './lane-v4.mjs';
+
+const makeLane = (overrides = {}) => ({
+	issue: 3096,
+	attempts: {},
+	approvals: { merge: false },
+	blocker: null,
+	...overrides,
+});
+
+const makeObs = (overrides = {}) => ({
+	issueState: 'OPEN',
+	branch: 'issue-3096-http-integration-seam',
+	worktree: '.worktrees/issue-3096-http-integration-seam',
+	headSha: 'a'.repeat(40),
+	hasNewCommits: true,
+	localChecks: { status: 'passed' },
+	publicPackagesTouched: true,
+	changesetPresent: true,
+	review: { verdict: 'merge', head: 'a'.repeat(40) },
+	pr: null,
+	...overrides,
+});
+
+// --- C1: resume from observed state alone (no session identity) ---
+
+test('C1: fresh issue with no branch decides implement', () => {
+	const next = decideNext(makeLane(), makeObs({ branch: null, worktree: null, headSha: null, hasNewCommits: false, localChecks: null, review: null }));
+	assert.equal(next.action, 'implement');
+});
+
+test('C1: resumes mid-flight issue from observation alone -> review', () => {
+	// Branch + commits + local checks passed, review not yet run.
+	// No session id, run id, or journal appears anywhere in the inputs.
+	const next = decideNext(makeLane(), makeObs({ review: null }));
+	assert.equal(next.action, 'review');
+});
+
+test('C1: resumes with open PR and pending CI -> wait-ci', () => {
+	const next = decideNext(
+		makeLane(),
+		makeObs({
+			pr: { number: 1, state: 'OPEN', headSha: 'a'.repeat(40), mergeable: 'MERGEABLE', ciStatus: 'pending' },
+		}),
+	);
+	assert.equal(next.action, 'wait-ci');
+});
+
+test('C1: merged PR with leftover worktree -> cleanup, then done', () => {
+	const merged = { number: 1, state: 'MERGED', headSha: 'a'.repeat(40), mergeable: 'UNKNOWN', ciStatus: 'passing' };
+	assert.equal(decideNext(makeLane(), makeObs({ pr: merged })).action, 'cleanup');
+	assert.equal(
+		decideNext(makeLane(), makeObs({ pr: merged, branch: null, worktree: null })).action,
+		'done',
+	);
+});
+
+// --- C2: retry-by-default, terminal only at ceiling or policy ---
+
+test('C2: malformed child result -> retry, not terminal', () => {
+	const lane = applyChildResult(makeLane(), 'implement', { ok: false, error: 'malformed output' });
+	assert.equal(lane.attempts.implement, 1);
+	assert.equal(lane.blocker, null);
+	const next = decideNext(lane, makeObs({ hasNewCommits: false, localChecks: null, review: null }));
+	assert.equal(next.action, 'implement');
+});
+
+test('C2: attempts below ceiling never set a blocker', () => {
+	let lane = makeLane();
+	for (let i = 1; i < ATTEMPT_CEILING; i += 1) {
+		lane = applyChildResult(lane, 'implement', { ok: false, error: 'boom' });
+		assert.equal(lane.blocker, null, `attempt ${i} must not terminalize`);
+	}
+});
+
+test('C2: ceiling reached -> typed attempts-exhausted blocker', () => {
+	let lane = makeLane();
+	for (let i = 0; i < ATTEMPT_CEILING; i += 1) {
+		lane = applyChildResult(lane, 'implement', { ok: false, error: 'boom' });
+	}
+	assert.deepEqual(lane.blocker, { type: 'attempts-exhausted', phase: 'implement' });
+	assert.equal(decideNext(lane, makeObs()).action, 'blocked');
+});
+
+test('C2: success resets the attempt counter', () => {
+	let lane = applyChildResult(makeLane(), 'implement', { ok: false, error: 'boom' });
+	lane = applyChildResult(lane, 'implement', { ok: true });
+	assert.equal(lane.attempts.implement, 0);
+	assert.equal(lane.blocker, null);
+});
+
+test('C2: needs-human-check review verdict is a policy block', () => {
+	const next = decideNext(makeLane(), makeObs({ review: { verdict: 'needs-human-check', head: 'a'.repeat(40) } }));
+	assert.equal(next.action, 'blocked');
+	assert.equal(next.reason, 'needs-human-check');
+});
+
+// --- C3: real contract gates preserved ---
+
+test('C3: merge-ready without approval -> request-merge-approval, never merge', () => {
+	const obs = makeObs({
+		pr: { number: 1, state: 'OPEN', headSha: 'a'.repeat(40), mergeable: 'MERGEABLE', ciStatus: 'passing' },
+	});
+	const next = decideNext(makeLane(), obs);
+	assert.equal(next.action, 'request-merge-approval');
+});
+
+test('C3: merge only with explicit approval + green CI + same-head review', () => {
+	const obs = makeObs({
+		pr: { number: 1, state: 'OPEN', headSha: 'a'.repeat(40), mergeable: 'MERGEABLE', ciStatus: 'passing' },
+	});
+	const lane = makeLane({ approvals: { merge: true } });
+	assert.equal(decideNext(lane, obs).action, 'merge');
+});
+
+test('C3: public package change without changeset -> fix-back, never create-pr', () => {
+	const next = decideNext(makeLane(), makeObs({ changesetPresent: false, review: null }));
+	assert.equal(next.action, 'fix-back');
+	assert.equal(next.reason, 'changeset-missing');
+});
+
+test('C3: changeset present and review passed -> create-pr', () => {
+	const next = decideNext(makeLane(), makeObs());
+	assert.equal(next.action, 'create-pr');
+});
+
+// --- supporting decisions the loop relies on ---
+
+test('stale review head triggers re-review, not merge', () => {
+	const next = decideNext(makeLane(), makeObs({ review: { verdict: 'merge', head: 'b'.repeat(40) } }));
+	assert.equal(next.action, 'review');
+});
+
+test('review block -> fix-back with reason', () => {
+	const next = decideNext(makeLane(), makeObs({ review: { verdict: 'block', head: 'a'.repeat(40) } }));
+	assert.equal(next.action, 'fix-back');
+	assert.equal(next.reason, 'review-block');
+});
+
+test('failing CI -> fix-back ci-failing', () => {
+	const next = decideNext(
+		makeLane(),
+		makeObs({ pr: { number: 1, state: 'OPEN', headSha: 'a'.repeat(40), mergeable: 'MERGEABLE', ciStatus: 'failing' } }),
+	);
+	assert.equal(next.action, 'fix-back');
+	assert.equal(next.reason, 'ci-failing');
+});
+
+test('conflicting PR -> resolve-conflict', () => {
+	const next = decideNext(
+		makeLane(),
+		makeObs({ pr: { number: 1, state: 'OPEN', headSha: 'a'.repeat(40), mergeable: 'CONFLICTING', ciStatus: 'pending' } }),
+	);
+	assert.equal(next.action, 'resolve-conflict');
+});
+
+test('PR head behind local head -> push', () => {
+	const next = decideNext(
+		makeLane(),
+		makeObs({ pr: { number: 1, state: 'OPEN', headSha: 'c'.repeat(40), mergeable: 'MERGEABLE', ciStatus: 'passing' } }),
+	);
+	assert.equal(next.action, 'push');
+});
