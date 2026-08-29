@@ -144,7 +144,7 @@ export interface BunServerLike {
   fetch?(request: Request): Response | Promise<Response> | undefined | Promise<Response | undefined>;
   hostname?: BunHostname;
   port?: number;
-  stop(closeActiveConnections?: boolean): void;
+  stop(closeActiveConnections?: boolean): Promise<void>;
   upgrade<TData = unknown>(
     request: Request,
     options?: {
@@ -893,8 +893,10 @@ function closeBunServerWithDrain(
   waitForDrain: () => Promise<void>,
 ): Promise<void> {
   return (async () => {
-    server.stop(stopActiveConnections);
-    await waitForDrain();
+    await Promise.all([
+      server.stop(stopActiveConnections),
+      waitForDrain(),
+    ]);
   })();
 }
 

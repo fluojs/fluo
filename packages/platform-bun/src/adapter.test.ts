@@ -20,7 +20,7 @@ import {
 
 type MockBunServer = BunServerLike & {
   fetch(request: Request): Promise<Response | undefined>;
-  stop: ReturnType<typeof vi.fn<(closeActiveConnections?: boolean) => void>>;
+  stop: ReturnType<typeof vi.fn<(closeActiveConnections?: boolean) => Promise<void>>>;
   upgrade: ReturnType<typeof vi.fn<(request: Request, options?: { data?: unknown; headers?: HeadersInit }) => boolean>>;
 };
 
@@ -93,7 +93,7 @@ function installMockBun(options: { version?: string } = {}): MockBun {
       },
       hostname,
       port,
-      stop: vi.fn<(closeActiveConnections?: boolean) => void>(),
+      stop: vi.fn<(closeActiveConnections?: boolean) => Promise<void>>(async () => undefined),
       upgrade: vi.fn((_request: Request, upgradeOptions?: { data?: unknown; headers?: HeadersInit }) => {
         const websocket = options.websocket;
 
@@ -1648,21 +1648,24 @@ describe('@fluojs/platform-bun', () => {
     }
   });
 
-  it('drains in-flight requests before Bun close resolves', async () => {
+  it('keeps close pending and server state until Bun termination and request drain settle', async () => {
     const mockBun = installMockBun();
     const adapter = createBunAdapter() as BunHttpApplicationAdapter;
-    const deferred = createDeferred<void>();
+    const requestDrain = createDeferred<void>();
+    const serverTermination = createDeferred<void>();
     let closeSettled = false;
 
     await adapter.listen({
       async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
-        await deferred.promise;
+        await requestDrain.promise;
         response.setStatus(200);
         await response.send({ ok: true });
       },
     });
 
-    const responsePromise = mockBun.lastServer!.fetch(new Request('http://127.0.0.1:3000/drain'));
+    const server = mockBun.lastServer!;
+    server.stop.mockReturnValue(serverTermination.promise);
+    const responsePromise = server.fetch(new Request('http://127.0.0.1:3000/drain'));
     const closePromise = adapter.close().then(() => {
       closeSettled = true;
     });
@@ -1670,11 +1673,17 @@ describe('@fluojs/platform-bun', () => {
     await Promise.resolve();
 
     expect(closeSettled).toBe(false);
-    expect(mockBun.lastServer?.stop).toHaveBeenCalledTimes(1);
+    expect(server.stop).toHaveBeenCalledTimes(1);
 
-    deferred.resolve();
+    requestDrain.resolve();
 
     await expect(responsePromise).resolves.toBeInstanceOf(Response);
+    await Promise.resolve();
+
+    expect(closeSettled).toBe(false);
+    expect(adapter.getServer()).toBe(server);
+
+    serverTermination.resolve();
     await closePromise;
 
     expect(closeSettled).toBe(true);
