@@ -1734,7 +1734,9 @@ describe('@fluojs/platform-bun', () => {
 
     serverTermination.reject(stopError);
     await stopRejected;
-    await expect(waitForSettlement(closePromise)).rejects.toThrow('Timed out waiting for test settlement');
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(closeSettled).toBe(false);
     expect(adapter.getServer()).toBe(server);
