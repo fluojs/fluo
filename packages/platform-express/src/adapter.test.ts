@@ -3035,6 +3035,7 @@ describe('@fluojs/platform-express', () => {
 
   it('propagates abort signal when the client disconnects', async () => {
     const aborted = createDeferred<void>();
+    const handlerReady = createDeferred<void>();
 
     @Controller('/abort')
     class AbortController {
@@ -3045,6 +3046,7 @@ describe('@fluojs/platform-express', () => {
             aborted.resolve();
             resolve();
           }, { once: true });
+          handlerReady.resolve();
         });
 
         return { ok: true };
@@ -3063,7 +3065,6 @@ describe('@fluojs/platform-express', () => {
     });
 
     let request: ReturnType<typeof httpRequest> | undefined;
-    let destroyTimer: ReturnType<typeof setTimeout> | undefined;
     let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
 
     try {
@@ -3082,9 +3083,8 @@ describe('@fluojs/platform-express', () => {
       });
       request.end();
 
-      destroyTimer = setTimeout(() => {
-        request?.destroy();
-      }, 20);
+      await handlerReady.promise;
+      request.destroy();
 
       await expect(Promise.race([
         aborted.promise,
@@ -3095,9 +3095,6 @@ describe('@fluojs/platform-express', () => {
         }),
       ])).resolves.toBeUndefined();
     } finally {
-      if (destroyTimer) {
-        clearTimeout(destroyTimer);
-      }
       if (watchdogTimer) {
         clearTimeout(watchdogTimer);
       }
