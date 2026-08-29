@@ -1,11 +1,14 @@
 import {
-  type HandlerDescriptor,
   type Middleware,
   type MiddlewareContext,
   type Next,
   RequestAbortedError,
   type RequestContext,
-} from '@fluojs/http';
+} from '@fluojs/http/portable';
+import {
+  registerFrameworkResponseValueFinalizer,
+  type FrameworkResponseValueFinalizerContext,
+} from '@fluojs/http/internal';
 import { isValidElement } from 'react';
 
 import { getReactPathMetadata } from './decorators.js';
@@ -23,17 +26,9 @@ import type { ReactPageRenderer } from './page-renderer.js';
 import { getReactRenderPolicies } from './render-policy.js';
 import { isReactServerEntry } from './server-entry.js';
 
-const responseValueFinalizerKey = Symbol.for('fluo.http.responseValueFinalizer');
-
 type ReactPageResultRuntime = {
   readonly onDiagnostic?: ReactSsrDiagnosticHandler;
   readonly renderPage?: ReactPageRenderer;
-};
-
-type ReactPageResultFinalizerContext = {
-  readonly handler: HandlerDescriptor;
-  readonly requestContext: RequestContext;
-  readonly value: unknown;
 };
 
 function isRequestAborted(context: RequestContext): boolean {
@@ -104,7 +99,7 @@ function reportReactPageFailure(
 
 function finalizeReactPageResult(
   runtime: ReactPageResultRuntime,
-  context: ReactPageResultFinalizerContext,
+  context: FrameworkResponseValueFinalizerContext,
 ): unknown {
   if (getReactPathMetadata(context.handler.controllerToken, context.handler.methodName) === undefined) {
     return context.value;
@@ -147,9 +142,10 @@ export function createReactPageResultMiddleware(runtime: ReactPageResultRuntime)
   return {
     async handle(context: MiddlewareContext, next: Next): Promise<void> {
       bindReactSsrDiagnosticHandler(context.requestContext, runtime.onDiagnostic);
-      context.requestContext.metadata[responseValueFinalizerKey] = (
-        finalizerContext: ReactPageResultFinalizerContext,
-      ): unknown => finalizeReactPageResult(runtime, finalizerContext);
+      registerFrameworkResponseValueFinalizer(
+        context.requestContext,
+        (finalizerContext): unknown => finalizeReactPageResult(runtime, finalizerContext),
+      );
       try {
         await next();
       } catch (error) {

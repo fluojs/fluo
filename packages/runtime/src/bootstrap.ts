@@ -17,11 +17,12 @@ import {
 } from './devtools/studio-runtime.js';
 import { DuplicateProviderError } from './errors.js';
 import { type BootstrapTimingPhase, createBootstrapTimingDiagnostics } from './health/diagnostics.js';
-import { defineRuntimeModuleMetadata, getRuntimeClassDiMetadata } from './internal/core-metadata.js';
+import { getRuntimeClassDiMetadata } from './internal/core-metadata.js';
 import { RuntimeDefaultBinder } from './internal/http-runtime.js';
 import { createDefaultApplicationLogger } from './logging/default-logger.js';
 import { compileModuleGraph, providerToken } from './module-graph.js';
 import { createRuntimePlatformShell, type RuntimePlatformShell } from './platform-shell.js';
+import { defineModule } from './module-definition.js';
 import {
   createLifecycleCloseError,
   createRetryableShutdownState,
@@ -53,6 +54,8 @@ import type {
   OnModuleInit,
   RuntimeCleanupRegistration,
 } from './types.js';
+
+export { defineModule };
 
 const DEFAULT_MICROSERVICE_TOKEN = Symbol.for('fluo.microservices.service') as Token<MicroserviceRuntime>;
 const runtimePerformance = globalThis.performance;
@@ -536,19 +539,6 @@ function registerModuleMiddleware(container: Container, modules: CompiledModule[
       }
     }
   }
-}
-
-/**
- * Associates module metadata with a module type.
- *
- * @param moduleType Module class that should receive runtime module metadata.
- * @param definition Module definition contract (`imports`, `providers`, `controllers`, `exports`, etc.).
- * @returns The same `moduleType` reference for fluent helper composition.
- */
-export function defineModule<T extends ModuleType>(moduleType: T, definition: ModuleDefinition): T {
-  defineRuntimeModuleMetadata(moduleType, definition);
-
-  return moduleType;
 }
 
 /**

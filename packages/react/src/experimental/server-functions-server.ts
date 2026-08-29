@@ -1,4 +1,4 @@
-import { HttpException, type RequestContext } from '@fluojs/http';
+import { HttpException, type RequestContext } from '@fluojs/http/portable';
 
 import {
   createReactServerFunctionRegistryConfiguration,

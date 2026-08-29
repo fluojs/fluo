@@ -39,6 +39,10 @@
     "./internal": {
       "types": "./dist/internal.d.ts",
       "import": "./dist/internal.js"
+    },
+    "./portable": {
+      "types": "./dist/index.portable.d.ts",
+      "import": "./dist/index.portable.js"
     }
   },
   "main": "./dist/index.portable.js",

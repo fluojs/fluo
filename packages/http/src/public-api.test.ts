@@ -230,10 +230,14 @@ describe('@fluojs/http public API surface', () => {
 
     // Then
     expect(httpInternalApi).toHaveProperty('DefaultBinder');
+    expect(httpInternalApi).toHaveProperty('FRAMEWORK_RESPONSE_VALUE_FINALIZER');
+    expect(httpInternalApi).toHaveProperty('FRAMEWORK_RESPONSE_WRITER');
     expect(httpInternalApi).toHaveProperty('resolveClientIdentity');
     expect(compiledRouteIdentityReader).toEqual(expect.any(Function));
     expect(exportedHelpers).toEqual([
       'DefaultBinder',
+      'FRAMEWORK_RESPONSE_VALUE_FINALIZER',
+      'FRAMEWORK_RESPONSE_WRITER',
       'attachFrameworkRequestNativeRouteHandoff',
       'bindRawRequestNativeRouteHandoff',
       'consumeRawRequestNativeRouteHandoff',
@@ -241,7 +245,28 @@ describe('@fluojs/http public API surface', () => {
       'getCompiledRouteIdentity',
       'isRoutePathNormalizationSensitive',
       'readFrameworkRequestNativeRouteHandoff',
+      'registerFrameworkResponseValueFinalizer',
+      'registerFrameworkResponseWriter',
       'resolveClientIdentity',
     ]);
+  });
+
+  it('shares typed response integration keys and non-enumerable writer branding', () => {
+    // Given: an integration-owned response entry and request-local metadata.
+    const entry = {};
+    const metadata: Record<symbol, unknown> = {};
+    const writer = (): void => {};
+    const finalizer = ({ value }: { readonly value: unknown }): unknown => value;
+
+    // When: the integration registers both response protocol extensions.
+    httpInternalApi.registerFrameworkResponseWriter(entry, writer);
+    httpInternalApi.registerFrameworkResponseValueFinalizer({ metadata }, finalizer);
+
+    // Then: consumers share one globally stable protocol without exposing writer brands in output.
+    expect(httpInternalApi.FRAMEWORK_RESPONSE_WRITER).toBe(Symbol.for('fluo.http.responseWriter'));
+    expect(httpInternalApi.FRAMEWORK_RESPONSE_VALUE_FINALIZER).toBe(Symbol.for('fluo.http.responseValueFinalizer'));
+    expect(Reflect.get(entry, httpInternalApi.FRAMEWORK_RESPONSE_WRITER)).toBe(writer);
+    expect(Object.keys(entry)).toEqual([]);
+    expect(metadata[httpInternalApi.FRAMEWORK_RESPONSE_VALUE_FINALIZER]).toBe(finalizer);
   });
 });

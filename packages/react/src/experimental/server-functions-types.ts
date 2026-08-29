@@ -1,5 +1,5 @@
 import type { MaybePromise } from '@fluojs/core';
-import type { RequestContext } from '@fluojs/http';
+import type { RequestContext } from '@fluojs/http/portable';
 
 /** Header required on experimental Server Function POST requests to force a non-simple request. */
 export const REACT_SERVER_FUNCTION_REQUEST_HEADER = 'x-fluo-react-action';

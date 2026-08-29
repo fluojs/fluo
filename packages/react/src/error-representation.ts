@@ -2,7 +2,7 @@ import type { MaybePromise } from '@fluojs/core';
 import type {
   HtmlErrorRepresentationProvider,
   HttpErrorRepresentationContext,
-} from '@fluojs/http';
+} from '@fluojs/http/portable';
 
 import {
   type ReactReadableStreamRenderer,

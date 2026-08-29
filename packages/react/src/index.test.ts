@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it, vi } from 'vitest';
 
+const runtimeStaticModuleSpecifierPattern = /(?:^|\n)\s*(?:import|export)\s+(?!type\b)(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]/g;
+
 const forbiddenRootImports = [
   ['node:fs/promises', 'Node filesystem'],
   ['node:http', 'Node HTTP'],
@@ -9,6 +11,87 @@ const forbiddenRootImports = [
   ['react-dom/server', 'React DOM server'],
   ['react-server-dom-webpack/server', 'React Server Components server'],
 ] as const;
+
+function readStaticModuleSpecifiers(source: string): string[] {
+  return [...source.matchAll(runtimeStaticModuleSpecifierPattern)].flatMap((match) => {
+    const specifier = match[1];
+    return specifier === undefined ? [] : [specifier];
+  });
+}
+
+function resolveWorkspaceBuildUrl(specifier: string): URL | undefined {
+  const match = /^@fluojs\/([^/]+)(?:\/(.+))?$/.exec(specifier);
+  const packageName = match?.[1];
+
+  if (packageName === undefined) {
+    return undefined;
+  }
+
+  const packageRoot = new URL(`../../${packageName}/`, import.meta.url);
+  const manifest: unknown = JSON.parse(readFileSync(new URL('package.json', packageRoot), 'utf8'));
+  const exports = typeof manifest === 'object' && manifest !== null
+    ? Reflect.get(manifest, 'exports')
+    : undefined;
+  const exportDefinition = typeof exports === 'object' && exports !== null
+    ? Reflect.get(exports, match?.[2] === undefined ? '.' : `./${match[2]}`)
+    : undefined;
+  const nodeTarget = typeof exportDefinition === 'object' && exportDefinition !== null
+    ? Reflect.get(exportDefinition, 'node')
+    : undefined;
+  const importTarget = typeof exportDefinition === 'string'
+    ? exportDefinition
+    : typeof exportDefinition === 'object' && exportDefinition !== null
+      ? Reflect.get(exportDefinition, 'import')
+      : undefined;
+  const target = typeof nodeTarget === 'string' ? nodeTarget : importTarget;
+
+  if (typeof target !== 'string' || !target.startsWith('./dist/') || !target.endsWith('.js')) {
+    throw new TypeError(`Missing Node ESM build mapping for ${specifier}.`);
+  }
+
+  return new URL(target, packageRoot);
+}
+
+function resolveBuiltModuleUrl(specifier: string, importer: URL): URL | undefined {
+  if (specifier.startsWith('.')) {
+    return new URL(specifier, importer);
+  }
+
+  return specifier.startsWith('@fluojs/')
+    ? resolveWorkspaceBuildUrl(specifier)
+    : undefined;
+}
+
+function collectBuiltNodeDependencyGraph(entrypoint: URL): string[] {
+  const pending = [entrypoint];
+  const visited = new Set<string>();
+  const nodeImports: string[] = [];
+
+  while (pending.length > 0) {
+    const sourceUrl = pending.pop();
+
+    if (sourceUrl === undefined || visited.has(sourceUrl.href)) {
+      continue;
+    }
+
+    visited.add(sourceUrl.href);
+    const source = readFileSync(sourceUrl, 'utf8');
+
+    for (const specifier of readStaticModuleSpecifiers(source)) {
+      if (specifier.startsWith('node:')) {
+        nodeImports.push(`${sourceUrl.href}:${specifier}`);
+      }
+
+      const dependencyUrl = resolveBuiltModuleUrl(specifier, sourceUrl);
+
+      if (dependencyUrl !== undefined) {
+        pending.push(dependencyUrl);
+      }
+    }
+  }
+
+  return nodeImports;
+}
 
 describe('@fluojs/react root package scaffold', () => {
   it('exposes the implemented runtime React package exports from the root import', async () => {
@@ -91,5 +174,16 @@ describe('@fluojs/react root package scaffold', () => {
     expect(rootEntrypoint).not.toContain('./vite.js');
     expect(rootEntrypoint).not.toContain('./client.js');
     expect(rootEntrypoint).not.toContain('./rsc.js');
+  });
+
+  it('keeps every eagerly reachable built root dependency free of Node built-ins', () => {
+    // Given: the built package root as resolved by Node's conditional exports.
+    const rootEntrypoint = new URL('../dist/index.js', import.meta.url);
+
+    // When: eager static dependencies are followed through workspace export maps.
+    const nodeImports = collectBuiltNodeDependencyGraph(rootEntrypoint);
+
+    // Then: runtime-neutral React authoring contracts never initialize Node bootstrap code.
+    expect(nodeImports).toEqual([]);
   });
 });
