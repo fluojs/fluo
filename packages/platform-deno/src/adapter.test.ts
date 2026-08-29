@@ -1184,9 +1184,8 @@ describe('@fluojs/platform-deno', () => {
     const activeRequest = handler(new Request('https://runtime.test/drain-gate'));
     await requestAccepted.promise;
     let closeSettled = false;
-    const closePromise = adapter.close().then(() => {
-      closeSettled = true;
-    });
+    const settlementOrder: string[] = [];
+    const closePromise = adapter.close();
     await shutdownStarted.promise;
 
     const abortController = Reflect.get(adapter, 'abortController');
@@ -1196,22 +1195,27 @@ describe('@fluojs/platform-deno', () => {
 
     abortController.abort();
     const closeSettlement = adapter.close();
-    let closeSettlementReached = false;
     void closeSettlement.then(() => {
-      closeSettlementReached = true;
+      closeSettled = true;
+      settlementOrder.push('close-settled');
     });
-    requestDrain.resolve();
-    await activeRequest;
+    const finishedSettled = finished.promise.then(() => {
+      settlementOrder.push('server-finished');
+    });
+    finished.resolve();
+    await finishedSettled;
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
 
     expect(closeSettled).toBe(false);
     expect(adapter.getServer()).toBeDefined();
     expect(Reflect.get(adapter, 'closeInFlight')).toBeDefined();
+    expect(settlementOrder).toEqual(['server-finished']);
 
-    try {
-      expect(closeSettlementReached).toBe(false);
-    } finally {
-      finished.resolve();
-    }
+    settlementOrder.push('request-drain-released');
+    requestDrain.resolve();
+    await activeRequest;
     let closeSettlementTimeout: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
@@ -1228,6 +1232,8 @@ describe('@fluojs/platform-deno', () => {
       }
     }
 
+    expect(closeSettled).toBe(true);
+    expect(settlementOrder).toEqual(['server-finished', 'request-drain-released', 'close-settled']);
     expect(adapter.getServer()).toBeUndefined();
     expect(Reflect.get(adapter, 'closeInFlight')).toBeUndefined();
     expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
