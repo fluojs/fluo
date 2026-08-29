@@ -187,13 +187,17 @@ const main = () => {
 	const lanePath = resolve(root, arg(args, '--lane'));
 	const lane = loadLane(lanePath);
 
-	const snapshotAll = () =>
-		Object.keys(lane.issues).map((key) => {
+	// Watch runs for a long time: re-load the lane file every tick so
+	// facts/approvals recorded by concurrent operator commands are seen.
+	const snapshotAll = () => {
+		const fresh = loadLane(lanePath);
+		return Object.keys(fresh.issues).map((key) => {
 			const n = Number(key);
-			const obs = observeIssue(root, lane, n);
-			const decision = decideNext(lane.issues[key], obs);
+			const obs = observeIssue(root, fresh, n);
+			const decision = decideNext(fresh.issues[key], obs);
 			return { issue: n, decision };
 		});
+	};
 
 	if (command === 'plan-all') {
 		process.stdout.write(`${JSON.stringify(snapshotAll(), null, 2)}\n`);
