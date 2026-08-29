@@ -1058,17 +1058,17 @@ describe('@fluojs/platform-deno', () => {
     expect(adapter.getServer()).toBeUndefined();
   });
 
-  it('releases Deno ownership after forced termination settles while graceful shutdown remains pending', async () => {
+  it('retains Deno ownership after forced abort until server termination settles', async () => {
+    const requestAccepted = createDeferred<void>();
+    const requestDrain = createDeferred<void>();
     const shutdownStarted = createDeferred<void>();
     const finished = createDeferred<void>();
+    let handler: DenoServeHandler | undefined;
     const adapter = new DenoHttpApplicationAdapter({
       hostname: '0.0.0.0',
       port: 3000,
-      serve: vi.fn((options) => {
-        options.signal?.addEventListener('abort', () => {
-          finished.resolve();
-        }, { once: true });
-
+      serve: vi.fn((_options, capturedHandler) => {
+        handler = capturedHandler;
         return {
           finished: finished.promise,
           shutdown: async () => {
@@ -1081,11 +1081,22 @@ describe('@fluojs/platform-deno', () => {
 
     await adapter.listen({
       async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        requestAccepted.resolve();
+        await requestDrain.promise;
         response.setStatus(204);
       },
     });
 
-    const closePromise = adapter.close();
+    if (!handler) {
+      throw new TypeError('Expected the Deno serve handler after adapter listen().');
+    }
+
+    const activeRequest = handler(new Request('https://runtime.test/termination-gate'));
+    await requestAccepted.promise;
+    let closeSettled = false;
+    const closePromise = adapter.close().then(() => {
+      closeSettled = true;
+    });
     await shutdownStarted.promise;
 
     expect(adapter.getServer()).toBeDefined();
@@ -1098,12 +1109,91 @@ describe('@fluojs/platform-deno', () => {
     }
 
     abortController.abort();
+    requestDrain.resolve();
+    await activeRequest;
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(closeSettled).toBe(false);
+    expect(adapter.getServer()).toBeDefined();
+    expect(Reflect.get(adapter, 'closeInFlight')).toBeDefined();
+
+    finished.resolve();
     await closePromise;
 
     expect(adapter.getServer()).toBeUndefined();
     expect(Reflect.get(adapter, 'closeInFlight')).toBeUndefined();
     expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
-    expect((await adapter.handle(new Request('https://runtime.test/after-forced-close'))).status).toBe(500);
+    expect((await adapter.handle(new Request('https://runtime.test/after-termination-close'))).status).toBe(500);
+  });
+
+  it('retains Deno ownership after forced abort until active requests drain', async () => {
+    const requestAccepted = createDeferred<void>();
+    const requestDrain = createDeferred<void>();
+    const shutdownStarted = createDeferred<void>();
+    const finished = createDeferred<void>();
+    let handler: DenoServeHandler | undefined;
+    const adapter = new DenoHttpApplicationAdapter({
+      hostname: '0.0.0.0',
+      port: 3000,
+      serve: vi.fn((_options, capturedHandler) => {
+        handler = capturedHandler;
+        return {
+          finished: finished.promise,
+          shutdown: async () => {
+            shutdownStarted.resolve();
+            await new Promise<void>(() => {});
+          },
+        };
+      }),
+    });
+
+    await adapter.listen({
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        requestAccepted.resolve();
+        await requestDrain.promise;
+        response.setStatus(204);
+      },
+    });
+
+    if (!handler) {
+      throw new TypeError('Expected the Deno serve handler after adapter listen().');
+    }
+
+    const activeRequest = handler(new Request('https://runtime.test/drain-gate'));
+    await requestAccepted.promise;
+    let closeSettled = false;
+    const closePromise = adapter.close().then(() => {
+      closeSettled = true;
+    });
+    await shutdownStarted.promise;
+
+    const abortController = Reflect.get(adapter, 'abortController');
+    if (!(abortController instanceof AbortController)) {
+      throw new TypeError('Expected the Deno adapter abort controller while close is in flight.');
+    }
+
+    abortController.abort();
+    const finishedSettled = finished.promise.then(() => undefined);
+    finished.resolve();
+    await finishedSettled;
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(closeSettled).toBe(false);
+    expect(adapter.getServer()).toBeDefined();
+    expect(Reflect.get(adapter, 'closeInFlight')).toBeDefined();
+
+    requestDrain.resolve();
+    await activeRequest;
+    await closePromise;
+
+    expect(adapter.getServer()).toBeUndefined();
+    expect(Reflect.get(adapter, 'closeInFlight')).toBeUndefined();
+    expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
+    expect((await adapter.handle(new Request('https://runtime.test/after-drain-close'))).status).toBe(500);
   });
 
   it('aborts the Deno serve signal when in-flight drain rejects', async () => {
