@@ -1,6 +1,9 @@
+import { execFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 const runtimeStaticModuleSpecifierPattern = /(?:^|\n)\s*(?:import|export)\s+(?!type\b)(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]/g;
 
@@ -11,7 +14,10 @@ const forbiddenRootImports = [
   ['react-dom/server', 'React DOM server'],
   ['react-server-dom-webpack/server', 'React Server Components server'],
 ] as const;
-const nodeEsmExportConditions = new Set(['default', 'import', 'node']);
+const nodeEsmExportConditions = new Set(['default', 'import', 'module-sync', 'node', 'node-addons']);
+const buildTimeoutMs = 60_000;
+const runCommand = promisify(execFile);
+const workspaceRoot = new URL('../../../', import.meta.url);
 
 function readStaticModuleSpecifiers(source: string): string[] {
   return [...source.matchAll(runtimeStaticModuleSpecifierPattern)].flatMap((match) => {
@@ -110,12 +116,49 @@ function collectBuiltNodeDependencyGraph(entrypoint: URL): string[] {
   return nodeImports;
 }
 
+function hasBuiltRootDependencyGraph(): boolean {
+  try {
+    collectBuiltNodeDependencyGraph(new URL('../dist/index.js', import.meta.url));
+    return true;
+  } catch (error) {
+    if (typeof error === 'object' && error !== null && Reflect.get(error, 'code') === 'ENOENT') {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
+async function ensureBuiltRootDependencyGraph(): Promise<void> {
+  if (hasBuiltRootDependencyGraph()) {
+    return;
+  }
+
+  await runCommand(
+    process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm',
+    ['--filter', '@fluojs/react...', 'build'],
+    { cwd: fileURLToPath(workspaceRoot) },
+  );
+}
+
 describe('@fluojs/react root package scaffold', () => {
+  beforeAll(async () => {
+    await ensureBuiltRootDependencyGraph();
+  }, buildTimeoutMs);
+
   it('resolves Node ESM export conditions in declaration order', () => {
     expect(resolveNodeEsmExportTarget({
       import: './dist/portable.js',
       node: './dist/node.js',
     })).toBe('./dist/portable.js');
+    expect(resolveNodeEsmExportTarget({
+      'node-addons': './dist/addons.js',
+      import: './dist/portable.js',
+    })).toBe('./dist/addons.js');
+    expect(resolveNodeEsmExportTarget({
+      'module-sync': './dist/synchronous.js',
+      import: './dist/portable.js',
+    })).toBe('./dist/synchronous.js');
   });
 
   it('exposes the implemented runtime React package exports from the root import', async () => {
