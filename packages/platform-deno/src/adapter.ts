@@ -539,14 +539,34 @@ function closeDenoServerWithDrain(
 ): Promise<void> {
   return (async () => {
     let closeFailure: { readonly error: unknown } | undefined;
+    const drain = waitForDrain();
+    const gracefulClose = Promise.allSettled([
+      Promise.resolve(server.shutdown()),
+      drain,
+    ]).then((results) => ({
+      kind: 'graceful' as const,
+      results,
+    }));
+    const forcedClose = abortController
+      ? waitForAbort(abortController.signal).then(() => ({ kind: 'forced' as const }))
+      : undefined;
+    const closeResult = forcedClose
+      ? await Promise.race([gracefulClose, forcedClose])
+      : await gracefulClose;
 
-    try {
-      await server.shutdown();
-      await waitForDrain();
-    } catch (error: unknown) {
-      closeFailure = { error };
-    } finally {
+    if (closeResult.kind === 'graceful') {
       abortController?.abort();
+      const rejected = closeResult.results.find((result) => result.status === 'rejected');
+
+      if (rejected?.status === 'rejected') {
+        closeFailure = { error: rejected.reason };
+      }
+    } else {
+      try {
+        await drain;
+      } catch (error: unknown) {
+        closeFailure = { error };
+      }
     }
 
     try {
@@ -561,6 +581,18 @@ function closeDenoServerWithDrain(
       throw closeFailure.error;
     }
   })();
+}
+
+function waitForAbort(signal: AbortSignal): Promise<void> {
+  if (signal.aborted) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    signal.addEventListener('abort', () => {
+      resolve();
+    }, { once: true });
+  });
 }
 
 function createDeferred<T>(): Deferred<T> {

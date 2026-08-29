@@ -1058,6 +1058,54 @@ describe('@fluojs/platform-deno', () => {
     expect(adapter.getServer()).toBeUndefined();
   });
 
+  it('releases Deno ownership after forced termination settles while graceful shutdown remains pending', async () => {
+    const shutdownStarted = createDeferred<void>();
+    const finished = createDeferred<void>();
+    const adapter = new DenoHttpApplicationAdapter({
+      hostname: '0.0.0.0',
+      port: 3000,
+      serve: vi.fn((options) => {
+        options.signal?.addEventListener('abort', () => {
+          finished.resolve();
+        }, { once: true });
+
+        return {
+          finished: finished.promise,
+          shutdown: async () => {
+            shutdownStarted.resolve();
+            await new Promise<void>(() => {});
+          },
+        };
+      }),
+    });
+
+    await adapter.listen({
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        response.setStatus(204);
+      },
+    });
+
+    const closePromise = adapter.close();
+    await shutdownStarted.promise;
+
+    expect(adapter.getServer()).toBeDefined();
+    expect(Reflect.get(adapter, 'closeInFlight')).toBeDefined();
+    expect((await adapter.handle(new Request('https://runtime.test/during-forced-close'))).status).toBe(503);
+
+    const abortController = Reflect.get(adapter, 'abortController');
+    if (!(abortController instanceof AbortController)) {
+      throw new TypeError('Expected the Deno adapter abort controller while close is in flight.');
+    }
+
+    abortController.abort();
+    await closePromise;
+
+    expect(adapter.getServer()).toBeUndefined();
+    expect(Reflect.get(adapter, 'closeInFlight')).toBeUndefined();
+    expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
+    expect((await adapter.handle(new Request('https://runtime.test/after-forced-close'))).status).toBe(500);
+  });
+
   it('aborts the Deno serve signal when in-flight drain rejects', async () => {
     const drainError = new Error('drain failed');
     let serveSignal: AbortSignal | undefined;
