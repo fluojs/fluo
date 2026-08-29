@@ -1704,7 +1704,7 @@ describe('@fluojs/platform-bun', () => {
     const requestDrain = createDeferred<void>();
     const serverTermination = createDeferred<void>();
     const stopError = new Error('Bun server stop failed.');
-    let closeSettled = false;
+    const order: string[] = [];
 
     await adapter.listen({
       async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
@@ -1722,26 +1722,23 @@ describe('@fluojs/platform-bun', () => {
     const closePromise = adapter.close();
     const stopRejected = serverTermination.promise.catch(() => undefined);
     void closePromise.then(
-      () => {
-        closeSettled = true;
-      },
-      () => {
-        closeSettled = true;
-      },
+      () => order.push('close-settled'),
+      () => order.push('close-settled'),
     );
 
     expect(server.stop).toHaveBeenCalledTimes(1);
 
     serverTermination.reject(stopError);
     await stopRejected;
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
 
-    expect(closeSettled).toBe(false);
+    expect(order).not.toContain('close-settled');
     expect(adapter.getServer()).toBe(server);
     expect(Reflect.get(adapter, 'closeInFlight')).toBeDefined();
 
+    order.push('drain-released');
     requestDrain.resolve();
 
     const response = await responsePromise;
@@ -1749,7 +1746,7 @@ describe('@fluojs/platform-bun', () => {
     await expect(response?.json()).resolves.toEqual({ ok: true });
     await expect(closePromise).rejects.toBe(stopError);
 
-    expect(closeSettled).toBe(true);
+    expect(order).toEqual(['drain-released', 'close-settled']);
     expect(adapter.getServer()).toBeUndefined();
     expect(Reflect.get(adapter, 'closeInFlight')).toBeUndefined();
   });
