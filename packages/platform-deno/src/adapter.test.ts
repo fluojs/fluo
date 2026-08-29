@@ -1184,9 +1184,8 @@ describe('@fluojs/platform-deno', () => {
     const activeRequest = handler(new Request('https://runtime.test/drain-gate'));
     await requestAccepted.promise;
     let closeSettled = false;
-    const closePromise = adapter.close().then(() => {
-      closeSettled = true;
-    });
+    const settlementOrder: string[] = [];
+    const closePromise = adapter.close();
     await shutdownStarted.promise;
 
     const abortController = Reflect.get(adapter, 'abortController');
@@ -1195,25 +1194,51 @@ describe('@fluojs/platform-deno', () => {
     }
 
     abortController.abort();
-    const finishedSettled = finished.promise.then(() => undefined);
+    const closeSettlement = adapter.close();
+    void closeSettlement.then(() => {
+      closeSettled = true;
+      settlementOrder.push('close-settled');
+    });
+    const finishedSettled = finished.promise.then(() => {
+      settlementOrder.push('server-finished');
+    });
     finished.resolve();
     await finishedSettled;
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
 
     expect(closeSettled).toBe(false);
     expect(adapter.getServer()).toBeDefined();
     expect(Reflect.get(adapter, 'closeInFlight')).toBeDefined();
+    expect(settlementOrder).toEqual(['server-finished']);
 
+    settlementOrder.push('request-drain-released');
     requestDrain.resolve();
     await activeRequest;
-    await closePromise;
+    let closeSettlementTimeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        closeSettlement,
+        new Promise<never>((_resolve, reject) => {
+          closeSettlementTimeout = setTimeout(() => {
+            reject(new Error('Timed out waiting for the Deno close settlement after active requests drained.'));
+          }, 1_000);
+        }),
+      ]);
+    } finally {
+      if (closeSettlementTimeout) {
+        clearTimeout(closeSettlementTimeout);
+      }
+    }
 
+    expect(closeSettled).toBe(true);
+    expect(settlementOrder).toEqual(['server-finished', 'request-drain-released', 'close-settled']);
     expect(adapter.getServer()).toBeUndefined();
     expect(Reflect.get(adapter, 'closeInFlight')).toBeUndefined();
     expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
     expect((await adapter.handle(new Request('https://runtime.test/after-drain-close'))).status).toBe(500);
+    await closePromise;
   });
 
   it('aborts the Deno serve signal when in-flight drain rejects', async () => {
