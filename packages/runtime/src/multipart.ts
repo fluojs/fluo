@@ -1,4 +1,4 @@
-import { PayloadTooLargeException } from '@fluojs/http';
+import { PayloadTooLargeException } from '@fluojs/http/portable';
 
 /**
  * Represents a single uploaded multipart file buffered in memory.
