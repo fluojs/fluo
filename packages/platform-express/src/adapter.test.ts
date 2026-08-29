@@ -2823,6 +2823,8 @@ describe('@fluojs/platform-express', () => {
   });
 
   it('cancels retrying startup during close before a later Express bind can occur', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+
     const blocker = createHttpServer((_request, response) => {
       response.statusCode = 200;
       response.end('blocked');
@@ -2858,6 +2860,20 @@ describe('@fluojs/platform-express', () => {
     const dispatcher = {
       async dispatch() {},
     };
+    const addressInUse = createDeferred<void>();
+    const laterBind = vi.fn();
+    let observedAddressInUse = false;
+
+    adapter.getServer().once('error', (error) => {
+      if (error instanceof Error && 'code' in error && error.code === 'EADDRINUSE') {
+        observedAddressInUse = true;
+        addressInUse.resolve();
+        return;
+      }
+
+      addressInUse.reject(error);
+    });
+    adapter.getServer().on('listening', laterBind);
     const firstListenResult = adapter.listen(dispatcher).then(
       () => 'listened' as const,
       (error: unknown) => error,
@@ -2868,9 +2884,7 @@ describe('@fluojs/platform-express', () => {
     );
 
     try {
-      await new Promise((resolve) => {
-        setTimeout(resolve, 10);
-      });
+      await addressInUse.promise;
       await expect(adapter.close()).resolves.toBeUndefined();
       await closeBlocker();
 
@@ -2881,27 +2895,16 @@ describe('@fluojs/platform-express', () => {
         expect(String(result instanceof Error ? result.message : result)).toContain('startup was cancelled');
       }
 
-      await new Promise((resolve) => {
-        setTimeout(resolve, 60);
-      });
+      expect(observedAddressInUse).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
 
-      await new Promise<void>((resolve, reject) => {
-        const probe = createHttpServer();
-        probe.once('error', reject);
-        probe.listen({ host: '127.0.0.1', port }, () => {
-          probe.close((error) => {
-            if (error) {
-              reject(error);
-              return;
-            }
+      await vi.advanceTimersByTimeAsync(60);
 
-            resolve();
-          });
-        });
-      });
+      expect(laterBind).not.toHaveBeenCalled();
     } finally {
       await adapter.close();
       await closeBlocker();
+      vi.useRealTimers();
     }
   });
 
