@@ -23,6 +23,14 @@ const requiredArtifactPaths = [
 const babelConfigPath = resolve(repoRootPath, 'tooling/babel/babel.config.cjs');
 const buildTsconfigPath = resolve(packageRootPath, 'tsconfig.build.json');
 
+type SourceArtifacts = {
+  readonly declaration: string;
+  readonly runtime: string;
+  readonly runtimeRootExports: readonly string[];
+};
+
+let sourceArtifacts: SourceArtifacts | undefined;
+
 function readRuntimeExports(filePath: string): readonly string[] {
   const sourceFile = ts.createSourceFile(
     filePath,
@@ -138,19 +146,36 @@ function readExportAllTargets(filePath: string): readonly string[] {
     .sort();
 }
 
+function getSourceArtifacts(): SourceArtifacts {
+  if (sourceArtifacts === undefined) {
+    throw new TypeError('Published source artifacts were not generated before the verification assertions.');
+  }
+
+  return sourceArtifacts;
+}
+
 describe('@fluojs/platform-cloudflare-workers published artifacts', () => {
   beforeAll(async () => {
-    if (requiredArtifactPaths.every((artifactPath) => existsSync(artifactPath))) {
-      return;
+    if (!requiredArtifactPaths.every((artifactPath) => existsSync(artifactPath))) {
+      await execFileAsync(process.execPath, [buildClosureScriptPath, '@fluojs/platform-cloudflare-workers'], {
+        cwd: repoRootPath,
+        env: process.env,
+      });
     }
 
-    await execFileAsync(process.execPath, [buildClosureScriptPath, '@fluojs/platform-cloudflare-workers'], {
-      cwd: repoRootPath,
-      env: process.env,
-    });
+    const runtimeRootPath = resolve(packageRootPath, 'dist/index.js');
+    const emittedSourceRuntimePromise = emitSourceRuntime();
+    const emittedSourceDeclaration = emitSourceDeclarations();
+    const runtimeRoot = await import(pathToFileURL(runtimeRootPath).href);
+
+    sourceArtifacts = {
+      declaration: emittedSourceDeclaration,
+      runtime: await emittedSourceRuntimePromise,
+      runtimeRootExports: Object.keys(runtimeRoot).sort(),
+    };
   }, 300_000);
 
-  it('keeps request context, WebSocket, SSE, and shutdown runtime behavior structurally aligned with source', async () => {
+  it('keeps request context, WebSocket, SSE, and shutdown runtime behavior structurally aligned with generated source', () => {
     // Given: the package manifest publishes its root runtime from dist/index.js.
     const manifest: unknown = JSON.parse(readFileSync(resolve(packageRootPath, 'package.json'), 'utf8'));
 
@@ -167,19 +192,18 @@ describe('@fluojs/platform-cloudflare-workers published artifacts', () => {
     const runtimeRootPath = resolve(packageRootPath, 'dist/index.js');
     const runtimeAdapterPath = resolve(packageRootPath, 'dist/adapter.js');
 
-    // When: source is transformed with the production Babel config and the published runtime is parsed.
-    const runtimeRoot = await import(pathToFileURL(runtimeRootPath).href);
-    const emittedSourceRuntime = await emitSourceRuntime();
+    // When: the published runtime is parsed against the source artifact generated at suite setup.
+    const generatedSourceArtifacts = getSourceArtifacts();
 
     // Then: the complete executable AST and manifest-root exports match, including lifecycle internals.
     expect(normalizeAst(
       readFileSync(runtimeAdapterPath, 'utf8'),
       runtimeAdapterPath,
       ts.ScriptKind.JS,
-    )).toEqual(normalizeAst(emittedSourceRuntime, sourceAdapterPath, ts.ScriptKind.JS));
+    )).toEqual(normalizeAst(generatedSourceArtifacts.runtime, sourceAdapterPath, ts.ScriptKind.JS));
     expect(readExportAllTargets(runtimeRootPath)).toEqual(readExportAllTargets(sourceRootPath));
-    expect(Object.keys(runtimeRoot).sort()).toEqual(readRuntimeExports(sourceAdapterPath));
-  }, 30_000);
+    expect(generatedSourceArtifacts.runtimeRootExports).toEqual(readRuntimeExports(sourceAdapterPath));
+  });
 
   it('keeps declaration members and signatures structurally aligned with source', () => {
     // Given: the package manifest publishes its root declarations from dist/index.d.ts.
@@ -198,15 +222,15 @@ describe('@fluojs/platform-cloudflare-workers published artifacts', () => {
     const declarationRootPath = resolve(packageRootPath, 'dist/index.d.ts');
     const declarationAdapterPath = resolve(packageRootPath, 'dist/adapter.d.ts');
 
-    // When: declarations are emitted in memory from source and the published declaration is parsed.
-    const emittedSourceDeclaration = emitSourceDeclarations();
+    // When: the published declaration is parsed against the source artifact generated at suite setup.
+    const generatedSourceArtifacts = getSourceArtifacts();
 
     // Then: every declaration member/signature and the manifest-root export graph match source.
     expect(normalizeAst(
       readFileSync(declarationAdapterPath, 'utf8'),
       declarationAdapterPath,
       ts.ScriptKind.TS,
-    )).toEqual(normalizeAst(emittedSourceDeclaration, sourceAdapterPath, ts.ScriptKind.TS));
+    )).toEqual(normalizeAst(generatedSourceArtifacts.declaration, sourceAdapterPath, ts.ScriptKind.TS));
     expect(readExportAllTargets(declarationRootPath)).toEqual(readExportAllTargets(sourceRootPath));
-  }, 30_000);
+  });
 });
