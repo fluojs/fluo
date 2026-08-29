@@ -42,6 +42,17 @@ never journaled. `plan-all` prints every issue's decision in one call.
 Only consumer-visible files (not `*.test.ts`, fixtures, or `*.md`)
 count toward the changeset gate, per release governance.
 
+`watch` closes the dependent-release wake gap: it re-observes the lane
+on an interval, prints ONLY decision transitions (e.g. a dependent
+flipping `wait-dependencies -> implement` the moment its dependency's
+issue closes), and exits 0 with `LANE-SETTLED` when every issue is
+`done` or `blocked`. Each tick is a fresh GitHub/git observation —
+still no journal, no session identity:
+
+```text
+node scripts/lane-v4-cli.mjs watch --root . --lane <lane.json> [--interval 60] [--once]
+```
+
 The operator (human or agent session):
 
 1. Executes that action (dispatch an implementer child, run scoped checks,

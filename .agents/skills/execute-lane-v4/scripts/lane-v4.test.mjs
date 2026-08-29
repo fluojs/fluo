@@ -5,6 +5,7 @@ import {
 	ATTEMPT_CEILING,
 	applyChildResult,
 	decideNext,
+	summarizeTransitions,
 } from './lane-v4.mjs';
 
 const makeLane = (overrides = {}) => ({
@@ -156,6 +157,41 @@ test('D1: standing blocker still outranks dependency wait', () => {
 	const lane = makeLane({ blocker: { type: 'attempts-exhausted', phase: 'implement' } });
 	const next = decideNext(lane, makeObs({ unmetDependencies: [3356] }));
 	assert.equal(next.action, 'blocked');
+});
+
+// --- watch mode: pure transition diffing over plan-all snapshots ---
+
+test('watch: first snapshot reports every decision as a transition from null', () => {
+	const next = [{ issue: 3356, decision: { action: 'implement' } }];
+	const out = summarizeTransitions(null, next);
+	assert.deepEqual(out.changes, [{ issue: 3356, from: null, to: 'implement' }]);
+	assert.equal(out.settled, false);
+});
+
+test('watch: only changed decisions are reported', () => {
+	const prev = [
+		{ issue: 3356, decision: { action: 'wait-ci' } },
+		{ issue: 3357, decision: { action: 'wait-dependencies' } },
+	];
+	const next = [
+		{ issue: 3356, decision: { action: 'wait-ci' } },
+		{ issue: 3357, decision: { action: 'implement' } },
+	];
+	const out = summarizeTransitions(prev, next);
+	assert.deepEqual(out.changes, [{ issue: 3357, from: 'wait-dependencies', to: 'implement' }]);
+});
+
+test('watch: lane settles when every issue is done or blocked', () => {
+	const next = [
+		{ issue: 3356, decision: { action: 'done' } },
+		{ issue: 3357, decision: { action: 'blocked' } },
+	];
+	assert.equal(summarizeTransitions(null, next).settled, true);
+	const live = [
+		{ issue: 3356, decision: { action: 'done' } },
+		{ issue: 3357, decision: { action: 'wait-ci' } },
+	];
+	assert.equal(summarizeTransitions(null, live).settled, false);
 });
 
 // --- supporting decisions the loop relies on ---

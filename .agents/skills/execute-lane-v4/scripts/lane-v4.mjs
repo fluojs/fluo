@@ -61,6 +61,32 @@ export const applyChildResult = (lane, phase, result) => {
 };
 
 /**
+ * Diff two plan-all snapshots for watch mode. Pure.
+ * Returns the per-issue action transitions plus whether the lane has
+ * settled (every issue done or blocked). `prev` may be null on the
+ * first tick, in which case every decision reports as a transition
+ * from null.
+ */
+export const summarizeTransitions = (prev, next) => {
+	if (!Array.isArray(next)) {
+		throw new TypeError('next snapshot must be an array.');
+	}
+	const prevByIssue = new Map(
+		(Array.isArray(prev) ? prev : []).map((row) => [row.issue, row.decision.action]),
+	);
+	const changes = [];
+	for (const row of next) {
+		const from = prevByIssue.get(row.issue) ?? null;
+		const to = row.decision.action;
+		if (from !== to) changes.push({ issue: row.issue, from, to });
+	}
+	const settled = next.every((row) =>
+		['done', 'blocked'].includes(row.decision.action),
+	);
+	return { changes, settled };
+};
+
+/**
  * Decide the next action for one issue. Pure function of
  * (lane state, fresh observation). Returns { action, reason?, ... }.
  */

@@ -4,6 +4,8 @@
 // Commands:
 //   init            --root . --lane-id <id> --issue <n> [--issue <n> ...]
 //   plan            --root . --lane <path> --issue <n>
+//   plan-all        --root . --lane <path>
+//   watch           --root . --lane <path> [--interval 60] [--once]
 //   record          --root . --lane <path> --issue <n> --phase <p> --result-json <json>
 //   set-fact        --root . --lane <path> --issue <n> --kind local-checks|review --head <sha> --value <json>
 //   approve-merge   --root . --lane <path> --issue <n>
@@ -17,7 +19,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { applyChildResult, decideNext } from './lane-v4.mjs';
+import { applyChildResult, decideNext, summarizeTransitions } from './lane-v4.mjs';
 
 const arg = (args, flag, fallback) => {
 	const i = args.indexOf(flag);
@@ -185,14 +187,46 @@ const main = () => {
 	const lanePath = resolve(root, arg(args, '--lane'));
 	const lane = loadLane(lanePath);
 
-	if (command === 'plan-all') {
-		const decisions = Object.keys(lane.issues).map((key) => {
+	const snapshotAll = () =>
+		Object.keys(lane.issues).map((key) => {
 			const n = Number(key);
 			const obs = observeIssue(root, lane, n);
 			const decision = decideNext(lane.issues[key], obs);
 			return { issue: n, decision };
 		});
-		process.stdout.write(`${JSON.stringify(decisions, null, 2)}\n`);
+
+	if (command === 'plan-all') {
+		process.stdout.write(`${JSON.stringify(snapshotAll(), null, 2)}\n`);
+		return;
+	}
+	if (command === 'watch') {
+		// Auto-tick: re-observe the lane, print ONLY decision transitions,
+		// exit 0 when the lane settles (every issue done or blocked). This
+		// closes the dependent-release wake gap without any journal: each
+		// tick is a fresh GitHub/git observation.
+		const intervalSec = Number(arg(args, '--interval', '60'));
+		const once = args.includes('--once');
+		const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+		const loop = async () => {
+			let prev = null;
+			for (; ;) {
+				const next = snapshotAll();
+				const { changes, settled } = summarizeTransitions(prev, next);
+				for (const c of changes) {
+					process.stdout.write(
+						`${new Date().toISOString()} issue ${c.issue}: ${c.from ?? '(start)'} -> ${c.to}\n`,
+					);
+				}
+				if (settled) {
+					process.stdout.write(`LANE-SETTLED ${JSON.stringify(next.map((r) => ({ issue: r.issue, action: r.decision.action })))}\n`);
+					return;
+				}
+				if (once) return;
+				prev = next;
+				await sleep(intervalSec * 1000);
+			}
+		};
+		loop();
 		return;
 	}
 
