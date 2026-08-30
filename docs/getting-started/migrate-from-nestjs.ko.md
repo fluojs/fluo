@@ -4,6 +4,20 @@
 
 이 문서는 마이그레이션 계약 맵으로 사용한다. 각 행은 NestJS 구성 요소에 대해 허용되는 가장 가까운 fluo 대상 구성을 지정하고, 아래 규칙은 일대일 치환이 되지 않는 지점을 명시한다.
 
+## Custom decorator preload ordering
+
+fluo 내장 데코레이터는 runtime record를 framework-owned store에 저장하므로 import 시점의 전역 변경이 필요하지 않습니다. 반면 `context.metadata`를 읽도록 마이그레이션한 사용자 정의 표준 데코레이터는 decorated class module이 평가되는 동안 `Symbol.metadata`가 필요합니다.
+
+decorated application graph를 static import한 뒤 같은 bootstrap module에서 `ensureMetadataSymbol()`을 호출하면 안 됩니다. ESM은 bootstrap module body보다 static dependency를 먼저 평가하므로 그 호출은 너무 늦습니다. symbol을 설치한 다음 일반 bootstrap graph를 dynamic import하는 preload entrypoint를 사용하세요.
+
+```ts
+// preload.ts — 이 파일을 애플리케이션 entrypoint로 설정합니다.
+import { ensureMetadataSymbol } from '@fluojs/core';
+
+ensureMetadataSymbol();
+await import('./bootstrap.js');
+```
+
 ## API Correspondence Table
 
 프로덕션 코드를 마이그레이션할 때는 NestJS 원본 패턴이 아니라 두 번째 열의 fluo 구성을 적용한다.

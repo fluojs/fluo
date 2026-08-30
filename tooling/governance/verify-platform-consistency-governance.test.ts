@@ -91,6 +91,7 @@ async function loadGovernanceInternals() {
     enforceContractCompanionUpdates: (changedFiles: string[]) => void;
     enforceDenoPermissionGuidance: (readText?: (relativePath: string) => string) => void;
     enforceHttpBookRequestContracts: (readText?: (relativePath: string) => string) => void;
+    enforcePlatformFastifyEngineDocumentation: (readText?: (relativePath: string) => string) => void;
     enforceSocketIoNodeEngineAlignment: (readText?: (relativePath: string) => string) => void;
   };
 }
@@ -220,6 +221,85 @@ describe('enforceSocketIoNodeEngineAlignment', () => {
 
     expect(() => enforceSocketIoNodeEngineAlignment(readText)).toThrow(/@fluojs\/socket\.io engines\.node/u);
     expect(governanceSource).toContain('enforceSocketIoNodeEngineAlignment();');
+  });
+});
+
+describe('enforcePlatformFastifyEngineDocumentation', () => {
+  const fastifyGuidePaths = [
+    'apps/docs/content/docs/guides/runtime-adapters.mdx',
+    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+  ] as const;
+
+  it('pins both Fastify guide engine ranges to the platform manifest', async () => {
+    const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
+
+    expect(() => enforcePlatformFastifyEngineDocumentation()).not.toThrow();
+  });
+
+  it('rejects Fastify guide engine drift and remains wired into central governance', async () => {
+    const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === 'apps/docs/content/docs/guides/runtime-adapters.mdx'
+        ? content.replace('>=20.19.3 <21 || >=22.2.0 <27', '>=20.19.3 <21 || >=22.2.0 <28')
+        : content;
+    };
+    const governanceSource = readFileSync(
+      join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'),
+      'utf8',
+    );
+
+    expect(() => enforcePlatformFastifyEngineDocumentation(readText))
+      .toThrow(/runtime-adapters\.mdx Fastify section/u);
+    expect(governanceSource).toContain('enforcePlatformFastifyEngineDocumentation();');
+  });
+
+  it.each(fastifyGuidePaths)(
+    'rejects a level-three Fastify heading in %s',
+    async (targetPath) => {
+      const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
+
+      expect(() => enforcePlatformFastifyEngineDocumentation()).not.toThrow();
+      expect(() => enforcePlatformFastifyEngineDocumentation((relativePath) => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === targetPath
+          ? content.replace('## Fastify', '### Fastify')
+          : content;
+      })).toThrowError(/exactly one ## Fastify heading; found 0/u);
+    },
+  );
+
+  it.each(fastifyGuidePaths)(
+    'rejects an earlier duplicate Fastify heading in %s',
+    async (targetPath) => {
+      const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
+
+      expect(() => enforcePlatformFastifyEngineDocumentation()).not.toThrow();
+      expect(() => enforcePlatformFastifyEngineDocumentation((relativePath) => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === targetPath
+          ? content.replace(
+            '## Fastify',
+            '## Fastify\n\n`>=20.19.3 <21 || >=22.2.0 <27`\n\n## Fastify',
+          )
+          : content;
+      })).toThrowError(/exactly one ## Fastify heading; found 2/u);
+    },
+  );
+
+  it('rejects Fastify manifest engine drift from both guide sections', async () => {
+    const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === 'packages/platform-fastify/package.json'
+        ? content.replace('>=20.19.3 <21 || >=22.2.0 <27', '>=20.19.3 <21 || >=22.2.0 <28')
+        : content;
+    };
+
+    expect(() => enforcePlatformFastifyEngineDocumentation(readText))
+      .toThrow(/runtime-adapters\.mdx Fastify section/u);
   });
 });
 
@@ -747,6 +827,47 @@ describe('enforceContractCompanionUpdates', () => {
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         '.github/workflows/ci.yml',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('accepts metadata preload guidance with bilingual discoverability and governance enforcement', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const guidanceFiles = [
+      'packages/core/README.md',
+      'packages/core/README.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'book/advanced/ch16-custom-package.md',
+      'book/advanced/ch16-custom-package.ko.md',
+    ];
+
+    expect(() => enforceContractCompanionUpdates(guidanceFiles)).toThrowError(
+      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
+    );
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...guidanceFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+      ]),
+    ).toThrowError(/CI\/tooling enforcement updates/);
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...guidanceFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.mjs',
+      ]),
+    ).toThrowError(/regression test updates/);
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...guidanceFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.mjs',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();

@@ -17,6 +17,7 @@ import { enforcePassportJsBridgeNestjsMigration } from './passport-js-bridge-nes
 import { enforcePlatformShellLifecycleContract } from './platform-shell-lifecycle-contract.mjs';
 import { enforceReactPageCatalogContract } from './react-page-catalog-contract.mjs';
 import { enforceReactRscGraduationGovernance } from './react-rsc-graduation-policy.mjs';
+import { enforceRequestPipelineImportBoundary } from './request-pipeline-import-boundary.mjs';
 import { enforceRuntimeLifecycleNestjsMigrationDocs } from './runtime-lifecycle-nestjs-migration-docs.mjs';
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
@@ -36,6 +37,7 @@ export {
   enforceReactRscGraduationGovernance,
   enforceReactRscGraduationPolicy,
 } from './react-rsc-graduation-policy.mjs';
+export { enforceRequestPipelineImportBoundary } from './request-pipeline-import-boundary.mjs';
 export { enforceRuntimeLifecycleNestjsMigrationDocs } from './runtime-lifecycle-nestjs-migration-docs.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -70,6 +72,41 @@ export function enforceSocketIoNodeEngineAlignment(readText = read) {
     assert(
       manifest.engines?.node === canonicalNodeRange,
       `${packageName} engines.node must equal the canonical @fluojs/runtime range ${canonicalNodeRange}.`,
+    );
+  }
+}
+
+export function enforcePlatformFastifyEngineDocumentation(readText = read) {
+  const manifest = JSON.parse(readText('packages/platform-fastify/package.json'));
+  const engineRange = manifest.engines?.node;
+
+  assert(
+    typeof engineRange === 'string' && engineRange.length > 0,
+    '@fluojs/platform-fastify must declare engines.node.',
+  );
+
+  for (const relativePath of [
+    'apps/docs/content/docs/guides/runtime-adapters.mdx',
+    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+  ]) {
+    const content = readText(relativePath);
+    const fastifyHeadingMatches = [...content.matchAll(/^## Fastify\s*$/gmu)];
+
+    assert(
+      fastifyHeadingMatches.length === 1,
+      `${relativePath} must include exactly one ## Fastify heading; found ${fastifyHeadingMatches.length}.`,
+    );
+
+    const fastifySectionStart = fastifyHeadingMatches[0].index;
+    const nextSectionStart = content.indexOf('\n## ', fastifySectionStart + 1);
+    const fastifySection = content.slice(
+      fastifySectionStart,
+      nextSectionStart === -1 ? undefined : nextSectionStart,
+    );
+
+    assert(
+      fastifySection.includes(`\`${engineRange}\``),
+      `${relativePath} Fastify section must state @fluojs/platform-fastify engines.node ${engineRange}.`,
     );
   }
 }
@@ -737,6 +774,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // serialization class options, committed-response ownership bypass, and
   // request-boundary interceptor coverage, CLI
   // public runtime type boundaries plus the documented Node.js runtime floor,
+  // custom standard-decorator Symbol.metadata preload ordering before dynamic
+  // application-graph import,
   // and Studio live helper contracts such as deterministic Mermaid rendering,
   // route-id graph correlation, viewer dependency classification, Node.js
   // tooling runtime-floor discoverability, and CLI-owned active ingestion socket
@@ -2759,6 +2798,7 @@ export function main() {
   enforceReleaseGovernancePublishSurfaceSync();
   enforceCanonicalPackageSurfaceSync();
   enforceSocketIoNodeEngineAlignment();
+  enforcePlatformFastifyEngineDocumentation();
   enforceDocsHubOfficialTransportLinks();
   enforceDenoHostOwnedLifecycleContract();
   enforceDenoPermissionGuidance();
@@ -2789,6 +2829,7 @@ export function main() {
   enforceHttpCatchAllRouteGrammarDecision();
   enforceOpenApiNullableNormalizationContract();
   enforceGraphqlRuntimeBoundaryDiscoverability();
+  enforceRequestPipelineImportBoundary();
   enforcePersistenceTransactionInterceptorCompatibility();
   enforceQueueWorkerOwnershipContract();
   enforceMicroservicesSafetyGuidanceParity();

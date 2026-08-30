@@ -11,7 +11,12 @@ const requirements = [
   ]],
   ['packages/config/src/module.ts', ['static forRoot(options?: ConfigModuleOptions)', 'global: loadOptions.global ?? true']],
   ['packages/config/src/service.ts', ["const parts = key.split('.');", 'current = current[part];']],
-  ['packages/config/src/types.ts', ['processEnv?: NodeJS.ProcessEnv', 'schema?: ConfigSchema', 'global?: boolean']],
+  ['packages/config/src/types.ts', [
+    'export type ConfigProcessEnv = Record<string, string | undefined>',
+    'processEnv?: ConfigProcessEnv',
+    'schema?: ConfigSchema',
+    'global?: boolean',
+  ]],
   ['packages/config/README.md', [
     '### NestJS Registration Migration',
     'ConfigModule.forRootAsync(...)',

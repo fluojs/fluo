@@ -1,4 +1,4 @@
-import { type Constructor, type MetadataPropertyKey, type MetadataSource } from '@fluojs/core';
+import type { Constructor, MetadataPropertyKey, MetadataSource } from '@fluojs/core';
 import {
   getClassValidationRules,
   getDtoBindingSchema,
@@ -6,7 +6,7 @@ import {
   type DtoBindingSchemaEntry,
   type DtoFieldBindingMetadata,
   type DtoFieldValidationRule,
-} from '@fluojs/core/internal';
+} from '@fluojs/core/request-pipeline';
 
 import { getRequestHeader } from '../header-helpers.js';
 import type { FrameworkRequest } from '../types.js';

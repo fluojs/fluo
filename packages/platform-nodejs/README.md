@@ -49,18 +49,20 @@ await app.listen();
 Raw Node responses expose `context.response.earlyHints`. Check that optional capability, then await `write(...)` once per HTTP `103`; multiple writes are supported. Each write requires a non-empty `link` value and may include other Node-permitted informational fields. The native write does not commit the final response or copy early fields into final headers. Late/native failures reject with `EarlyHintsWriteError`, and a disconnect before settlement rejects with `RequestAbortedError`.
 
 ### Customizing Server Options
-The adapter exposes the documented Node.js transport options: host/port binding, HTTPS configuration, request body limits, raw-body preservation, listen retry settings, and shutdown drain bounds.
+The adapter exposes the documented Node.js transport options: host/port binding, plain HTTP or HTTPS construction configuration, request body limits, raw-body preservation, listen retry settings, and shutdown drain bounds.
 
 ```typescript
 const adapter = createNodejsAdapter({
-  port: 443,
-  https: {
-    key: fs.readFileSync('key.pem'),
-    cert: fs.readFileSync('cert.pem'),
+  port: 3000,
+  http: {
+    maxHeaderSize: 16_384,
+    joinDuplicateHeaders: true,
   },
   maxBodySize: 1_048_576,
 });
 ```
+
+`http` accepts Node's `node:http` `ServerOptions` and passes them to `createServer(options, handler)` before the listener starts. Use it for construction-time settings such as `maxHeaderSize`, `insecureHTTPParser`, `joinDuplicateHeaders`, or `highWaterMark`. For TLS, provide `https` with Node's HTTPS server options instead. `http` and `https` are mutually exclusive; supplying both throws before the adapter creates a server, so no option is silently ignored.
 
 `maxBodySize` accepts a byte count number. It is enforced while the raw Node request body is still streaming, and the same limit becomes the default total multipart payload cap unless you override `multipart.maxTotalSize` during bootstrap.
 
@@ -94,6 +96,7 @@ await app.listen();
 ## Behavioral Contracts
 
 - `createNodejsAdapter(options)` is the adapter-first entrypoint for running fluo directly on Node's built-in `http` or `https` server primitives.
+- `http` accepts Node `node:http` `ServerOptions` for plain HTTP server construction, while `https` keeps its existing TLS construction options; callers must supply at most one of those fields.
 - `maxBodySize` accepts a non-negative integer byte count, is enforced while raw Node request bytes are still streaming, and becomes the default multipart total-size cap unless `multipart.maxTotalSize` is explicitly provided through the bootstrap/run helpers.
 - The raw Node adapter normalizes mixed-case JSON and multipart `content-type` values, returns `413` when request bodies exceed `maxBodySize`, propagates `x-request-id` with `x-correlation-id` fallback into the request context and error responses, and exposes a server-backed realtime capability through `getServer()` / `getRealtimeCapability()`.
 - `bootstrapNodejsApplication(module, options)` creates an application with the raw Node adapter but does not start listening, so the caller owns the subsequent `app.listen()` and `app.close()` lifecycle.
@@ -106,7 +109,7 @@ await app.listen();
 
 This package exposes an `HttpApplicationAdapter`; it is not a runtime-managed `PlatformComponent` registered under `platform.components`. Therefore the generic `createPlatformConformanceHarness(...)` component lifecycle checks are outside this package's supported contract, while `createHttpAdapterPortabilityHarness(...)` is the applicable shared harness.
 
-The same regression targets also cover the package-specific public surface, type aliases, adapter-first startup, lifecycle option validation, observed listen retries, active-request bounded drain, normal and failed signal-driven shutdown, `process.env.PORT` isolation, zero and default `maxBodySize` boundaries, idle keep-alive shutdown, mixed-case JSON and multipart content-type parsing, `x-correlation-id` request ID fallback, and server-backed realtime capability exposure. Keep README example pointers aligned with those test files and the Node.js chapter examples below when changing startup behavior.
+The same regression targets also cover the package-specific public surface, type aliases, adapter-first startup, plain HTTP construction options and their HTTPS conflict boundary, lifecycle option validation, observed listen retries, active-request bounded drain, normal and failed signal-driven shutdown, `process.env.PORT` isolation, zero and default `maxBodySize` boundaries, idle keep-alive shutdown, mixed-case JSON and multipart content-type parsing, `x-correlation-id` request ID fallback, and server-backed realtime capability exposure. Keep README example pointers aligned with those test files and the Node.js chapter examples below when changing startup behavior.
 
 ## Public API Overview
 
@@ -114,7 +117,7 @@ The same regression targets also cover the package-specific public surface, type
 - `bootstrapNodejsApplication(module, options)`: Creates an application instance without starting the listener.
 - `runNodejsApplication(module, options)`: Bootstraps and starts the application with lifecycle management.
 - `BootstrapNodejsApplicationOptions`: Options for bootstrap-only Node.js application creation.
-- `NodejsAdapterOptions`: Transport-level options for `createNodejsAdapter(...)`, including `port`, `host`, `https`, `maxBodySize`, retry settings, raw body preservation, and shutdown timeout.
+- `NodejsAdapterOptions`: Transport-level options for `createNodejsAdapter(...)`, including `port`, `host`, mutually exclusive `http` or `https` construction options, `maxBodySize`, retry settings, raw body preservation, and shutdown timeout.
 - `NodejsApplicationSignal`: Supported signal names for `runNodejsApplication(...)` shutdown registration.
 - `NodejsHttpApplicationAdapter`: Type-only alias describing the adapter instances returned by `createNodejsAdapter(...)`, while preserving the public adapter surface exported from `@fluojs/runtime/node`.
 - `RunNodejsApplicationOptions`: Options for one-call bootstrap, listen, and graceful shutdown wiring.

@@ -5,6 +5,7 @@ import { snapshotConfigLoadOptions } from './options.js';
 import type {
   ConfigDictionary,
   ConfigLoadOptions,
+  ConfigProcessEnv,
   ConfigReloadErrorListener,
   ConfigReloader,
   ConfigReloadListener,
@@ -205,7 +206,7 @@ function unquoteEnvValue(value: string): string {
 }
 
 function stripInlineEnvComment(value: string): string {
-  const commentIndex = value.search(/\s#/);
+  const commentIndex = value.indexOf('#');
   return commentIndex === -1 ? value : value.slice(0, commentIndex);
 }
 
@@ -348,7 +349,7 @@ function parseEnvContent(content: string, safeProcessEnv: Record<string, string>
   return expandEnvVariables(parseDotenvContent(content), safeProcessEnv);
 }
 
-function sanitizeProcessEnv(processEnv: NodeJS.ProcessEnv): Record<string, string> {
+function sanitizeProcessEnv(processEnv: ConfigProcessEnv): Record<string, string> {
   return Object.fromEntries(
     Object.entries(processEnv).filter((entry): entry is [string, string] => entry[1] !== undefined),
   );

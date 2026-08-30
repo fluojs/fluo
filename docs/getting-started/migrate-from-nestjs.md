@@ -4,6 +4,20 @@
 
 Use this document as a migration contract map. Each row identifies the closest allowed fluo target for a NestJS construct, and each rule below marks the places where the migration is not one-to-one.
 
+## Custom decorator preload ordering
+
+Fluo's built-in decorators store their runtime records in framework-owned stores and do not require import-time global mutation. A migrated custom standard decorator that reads `context.metadata` is different: its decorated class needs `Symbol.metadata` while that class module is being evaluated.
+
+Do not statically import the decorated application graph and then call `ensureMetadataSymbol()` in the same bootstrap module. ESM evaluates static dependencies before the bootstrap module body, so that call is too late. Use a preload entrypoint that installs the symbol before dynamically importing the ordinary bootstrap graph:
+
+```ts
+// preload.ts — configure this as the application entrypoint
+import { ensureMetadataSymbol } from '@fluojs/core';
+
+ensureMetadataSymbol();
+await import('./bootstrap.js');
+```
+
 ## API Correspondence Table
 
 Apply the fluo construct in the second column, not the NestJS source pattern, when migrating production code.

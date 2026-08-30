@@ -75,6 +75,8 @@ fluo DI supports four provider shapes:
 - **Request**: Instance is created once per `createRequestScope()` call.
 - **Transient**: A new instance is created every time it is resolved.
 
+A singleton provider must not depend on a request-scoped provider. That mismatch throws `ScopeMismatchError` before any provider factory or constructor in the graph runs, and the check covers single, alias (`useExisting`), and multi-provider registrations. A singleton that injects a multi token fails the same way when any contribution under that token is request-scoped, so no partial contribution set is materialized first.
+
 During disposal, each container tears down successfully materialized cached instances in reverse creation order across single-provider and multi-provider caches, so dependents are destroyed before their dependencies. Each container first recursively tears down live request-scope children it owns, so disposing a non-root request scope also closes nested request scopes before its own request cache. Root disposal then continues with root-owned singleton cleanup even if one or more child disposals fail. When multiple child/root disposals fail, `dispose()` reports an `AggregateError` so callers can inspect every shutdown failure without losing cleanup progress.
 
 Starting `dispose()` is terminal for `resolve()`, `register()`, `override()`, and `createRequestScope()`. Concurrent callers share the active disposal attempt. If an `onDestroy()` hook fails, the container retains only that failed hook for a later explicit `dispose()` retry, preserving child-before-parent/root and reverse-creation ordering. Hooks that completed successfully are never run again, and disposal becomes idempotent after every retained hook succeeds.
@@ -99,7 +101,7 @@ Direct `child.dispose()` now detaches the request child from its parent after th
 
 ### Provider Overrides
 
-Use `override(...providers)` when a test or request-local boundary needs to replace existing registrations deliberately. Overrides replace the current provider set for each token, invalidate cached instances in the current container and already-materialized request-scope descendants, and dispose stale instances before the next replacement resolution continues. Multi-provider overrides replace the full multi-provider set for that token, so pass every replacement provider together; mixing single and multi replacements for the same token in one override call is rejected as ambiguous.
+Use `override(...providers)` when a test or request-local boundary needs to replace existing registrations deliberately. Overrides replace the current provider set for each token, invalidate cached instances in the current container and already-materialized request-scope descendants, and dispose stale instances before the next replacement resolution continues. Multi-provider overrides replace the full multi-provider set for that token, so pass every replacement provider together; mixing single and multi replacements for the same token in one override call is rejected as ambiguous. An override call is atomic: the whole batch is validated before any registration or cache changes, so a rejected call leaves every provider, cached instance, and disposal ownership exactly as it was.
 
 ### Request Scoping
 Isolated containers can be created to handle per-request state without polluting the root container.
@@ -201,7 +203,7 @@ Ensure all required providers are registered in the container. If you use `creat
 |---|---|---|
 | `Container` | Root export | The main DI container class. |
 | `container.register(...providers)` | `Container` instance method | Registers one or more providers. |
-| `container.override(...providers)` | `Container` instance method | Replaces existing providers, invalidates cached instances, and ensures stale instance disposal settles before the next replacement resolution continues. |
+| `container.override(...providers)` | `Container` instance method | Replaces existing providers atomically per call, invalidates cached instances, and ensures stale instance disposal settles before the next replacement resolution continues. |
 | `container.resolve<T>(token)` | `Container` instance method | Asynchronously resolves a token to an instance. |
 | `container.inspectResolutionState()` | `Container` instance method | Exposes the supported framework-owned container introspection seam for testing/tooling helpers that must preserve cache ownership through snapshot read-only map views, frozen provider records, and controlled cache adoption. Prefer `has(...)` and `resolve(...)` for application code. |
 | `container.createRequestScope()` | `Container` instance method | Creates a child container for request-scoped dependencies. |

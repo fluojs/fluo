@@ -1,5 +1,5 @@
 import { cloneConfigDictionary } from './clone.js';
-import type { ConfigDictionary, ConfigLoadOptions, ConfigModuleOptions, ConfigSchema } from './types.js';
+import type { ConfigDictionary, ConfigLoadOptions, ConfigModuleOptions, ConfigProcessEnv, ConfigSchema } from './types.js';
 
 function snapshotConfigDictionary(value: ConfigDictionary | undefined): ConfigDictionary | undefined {
   return value === undefined ? undefined : cloneConfigDictionary(value);
@@ -9,12 +9,12 @@ function snapshotEnvFilePaths(envFilePaths: readonly string[] | undefined): read
   return envFilePaths === undefined ? undefined : Object.freeze([...envFilePaths]);
 }
 
-function snapshotProcessEnv(processEnv: NodeJS.ProcessEnv | undefined): NodeJS.ProcessEnv | undefined {
+function snapshotProcessEnv(processEnv: ConfigProcessEnv | undefined): ConfigProcessEnv | undefined {
   if (processEnv === undefined) {
     return undefined;
   }
 
-  const snapshot: NodeJS.ProcessEnv = {};
+  const snapshot: ConfigProcessEnv = {};
 
   for (const [key, value] of Object.entries(processEnv)) {
     if (value !== undefined) {
