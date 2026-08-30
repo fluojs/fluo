@@ -7,6 +7,7 @@ import {
 	decideNext,
 	summarizeTransitions,
 } from './lane-v4.mjs';
+import { isChangesetFile, isConsumerVisibleFile } from './lane-v4-cli.mjs';
 
 const makeLane = (overrides = {}) => ({
 	issue: 3096,
@@ -230,4 +231,41 @@ test('PR head behind local head -> push', () => {
 		makeObs({ pr: { number: 1, state: 'OPEN', headSha: 'c'.repeat(40), mergeable: 'MERGEABLE', ciStatus: 'passing' } }),
 	);
 	assert.equal(next.action, 'push');
+});
+
+// --- C3b: changeset gate file classification (observeIssue's input) ---
+// decideNext only consumes publicPackagesTouched/changesetPresent; the
+// classification that produces them lived inline in observeIssue and drifted
+// silently, so it is pinned here directly.
+
+test('C3b: production source under packages/ is consumer-visible', () => {
+	assert.equal(isConsumerVisibleFile('packages/platform-express/src/adapter.ts'), true);
+});
+
+test('C3b: test files are not consumer-visible', () => {
+	assert.equal(isConsumerVisibleFile('packages/platform-express/src/adapter.test.ts'), false);
+	assert.equal(isConsumerVisibleFile('packages/testing/src/module.test-fixture.ts'), false);
+});
+
+test('C3b: test-support declarations outside src are not consumer-visible', () => {
+	assert.equal(isConsumerVisibleFile('packages/platform-express/test-types/testing-http-adapter-portability.d.ts'), false);
+	assert.equal(isConsumerVisibleFile('packages/platform-bun/__tests__/helpers.ts'), false);
+	assert.equal(isConsumerVisibleFile('packages/platform-deno/test/helper.ts'), false);
+});
+
+test('C3b: a directory merely starting with "test" stays consumer-visible', () => {
+	assert.equal(isConsumerVisibleFile('packages/testing/src/http.ts'), true);
+	assert.equal(isConsumerVisibleFile('packages/platform-deno/src/testing-support.ts'), true);
+});
+
+test('C3b: docs and non-package paths are not consumer-visible', () => {
+	assert.equal(isConsumerVisibleFile('packages/studio/README.md'), false);
+	assert.equal(isConsumerVisibleFile('docs/contracts/testing-guide.md'), false);
+	assert.equal(isConsumerVisibleFile('tooling/governance/verify-platform-consistency-governance.mjs'), false);
+});
+
+test('C3b: changeset files are recognized, README is not', () => {
+	assert.equal(isChangesetFile('.changeset/bright-suns-juggle.md'), true);
+	assert.equal(isChangesetFile('.changeset/README.md'), false);
+	assert.equal(isChangesetFile('packages/studio/CHANGELOG.md'), false);
 });

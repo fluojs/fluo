@@ -18,6 +18,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { applyChildResult, decideNext, summarizeTransitions } from './lane-v4.mjs';
 
@@ -57,6 +58,23 @@ const factIfCurrent = (entry, kind, headSha) => {
 		: fact.value;
 };
 
+// Consumer-visible only: test files, test-support types, fixtures, and docs do
+// not ship to consumers and therefore do not require a changeset per
+// docs/contracts/release-governance.md. Exported so the gate is testable —
+// when this lived inline it could drift silently.
+export const isConsumerVisibleFile = (file) => {
+	if (!file.startsWith('packages/') || file.endsWith('.md')) {
+		return false;
+	}
+	if (/\.(test|test-fixture)\.[cm]?ts$/.test(file)) {
+		return false;
+	}
+	const withinPackage = file.replace(/^packages\/[^/]+\//, '');
+	return !/(^|\/)(test-types|__tests__|test)\//.test(withinPackage);
+};
+
+export const isChangesetFile = (file) => /^\.changeset\/.+\.md$/.test(file) && !file.endsWith('README.md');
+
 export const observeIssue = (root, lane, issue) => {
 	const entry = issueEntry(lane, issue);
 	const branch = branchFor(entry);
@@ -73,15 +91,8 @@ export const observeIssue = (root, lane, issue) => {
 	if (hasNewCommits) {
 		const changed = run(root, 'git', ['diff', '--name-only', `${mergeBase}...${headSha}`]) ?? '';
 		const files = changed.split('\n').filter(Boolean);
-		// Consumer-visible only: test files, fixtures, and docs do not require a
-		// changeset per docs/contracts/release-governance.md.
-		publicPackagesTouched = files.some(
-			(f) =>
-				f.startsWith('packages/') &&
-				!/\.(test|test-fixture)\.[cm]?ts$/.test(f) &&
-				!f.endsWith('.md'),
-		);
-		changesetPresent = files.some((f) => /^\.changeset\/.+\.md$/.test(f) && !f.endsWith('README.md'));
+		publicPackagesTouched = files.some(isConsumerVisibleFile);
+		changesetPresent = files.some(isChangesetFile);
 	}
 
 	let pr = null;
@@ -270,4 +281,8 @@ const main = () => {
 	throw new TypeError(`unknown command: ${command}`);
 };
 
-main();
+// Only run the CLI when this file is the process entrypoint, so the pure
+// helpers above can be imported by tests without argument parsing exploding.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+	main();
+}
