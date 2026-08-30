@@ -754,17 +754,39 @@ describe('enforceContractCompanionUpdates', () => {
 
   it('accepts metadata preload guidance with bilingual discoverability and governance enforcement', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const guidanceFiles = [
+      'packages/core/README.md',
+      'packages/core/README.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'book/advanced/ch16-custom-package.md',
+      'book/advanced/ch16-custom-package.ko.md',
+    ];
+
+    expect(() => enforceContractCompanionUpdates(guidanceFiles)).toThrowError(
+      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
+    );
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...guidanceFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+      ]),
+    ).toThrowError(/CI\/tooling enforcement updates/);
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...guidanceFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.mjs',
+      ]),
+    ).toThrowError(/regression test updates/);
 
     expect(() =>
       enforceContractCompanionUpdates([
-        'packages/core/README.md',
-        'packages/core/README.ko.md',
-        'docs/getting-started/migrate-from-nestjs.md',
-        'docs/getting-started/migrate-from-nestjs.ko.md',
+        ...guidanceFiles,
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
-        'book/advanced/ch16-custom-package.md',
-        'book/advanced/ch16-custom-package.ko.md',
         'tooling/governance/verify-platform-consistency-governance.mjs',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
