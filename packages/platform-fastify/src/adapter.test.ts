@@ -2729,6 +2729,41 @@ describe('@fluojs/platform-fastify', () => {
     }
   });
 
+  it('preserves plugin registration failure when Fastify onClose also fails during shutdown', async () => {
+    const adapter = new FastifyHttpApplicationAdapter(0, '127.0.0.1', 25, 20, undefined, undefined, 1024, false, 500);
+    const fastifyApp: FastifyInstance = Reflect.get(adapter, 'app');
+    const pluginStarted = createDeferred<void>();
+    const allowPluginFailure = createDeferred<void>();
+    const pluginError = new Error('plugin rejected during startup');
+    const closeError = new Error('onClose rejected during shutdown');
+    fastifyApp.addHook('onClose', async () => {
+      throw closeError;
+    });
+    fastifyApp.register(async () => {
+      pluginStarted.resolve();
+      await allowPluginFailure.promise;
+      throw pluginError;
+    });
+    const listenResult = adapter.listen({ async dispatch() {} }).then(
+      () => 'listened' as const,
+      (error: unknown) => error,
+    );
+
+    try {
+      await pluginStarted.promise;
+
+      const closeResult = adapter.close();
+      allowPluginFailure.resolve();
+
+      await expect(closeResult).rejects.toBe(pluginError);
+      expect(Reflect.get(pluginError, 'cause')).toBe(closeError);
+      await expect(listenResult).resolves.toBe(pluginError);
+    } finally {
+      allowPluginFailure.resolve();
+      await adapter.close();
+    }
+  });
+
   it('clears the fastify shutdown timer once close settles', async () => {
     vi.useFakeTimers();
 

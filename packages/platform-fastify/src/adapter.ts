@@ -279,19 +279,49 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
   }
 
   private async closeApplication(): Promise<void> {
+    let startupError: unknown;
+    let startupFailed = false;
+
     try {
       if (this.listenInFlight) {
         this.listenAbortController?.abort();
         await ignoreCancelledListen(this.listenInFlight);
       }
+    } catch (error: unknown) {
+      startupError = error;
+      startupFailed = true;
     } finally {
       if (!this.appClosed) {
         try {
           await this.app.close();
+        } catch (closeError: unknown) {
+          if (!startupFailed) {
+            throw closeError;
+          }
+
+          if (startupError instanceof Error) {
+            const existingCause = Reflect.get(startupError, 'cause');
+            Reflect.set(
+              startupError,
+              'cause',
+              existingCause === undefined
+                ? closeError
+                : new AggregateError([existingCause, closeError], 'Fastify startup and shutdown both failed.'),
+            );
+          } else {
+            startupError = new AggregateError(
+              [startupError, closeError],
+              'Fastify startup and shutdown both failed.',
+            );
+          }
         } finally {
           this.appClosed = true;
         }
       }
+    }
+
+    if (startupFailed) {
+      throw startupError;
     }
   }
 
