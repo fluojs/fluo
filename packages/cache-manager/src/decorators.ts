@@ -1,4 +1,4 @@
-import { ensureMetadataSymbol } from '@fluojs/core/internal';
+import { ensureRequestPipelineMetadataSymbol } from '@fluojs/core/request-pipeline';
 
 import type { CacheEvictDecoratorValue, CacheKeyDecoratorValue } from './types.js';
 
@@ -11,7 +11,7 @@ const cacheEvictMetadataKey = Symbol.for('fluo.cache.evict');
 type StandardMetadataBag = Record<PropertyKey, unknown>;
 type StandardMethodDecoratorFn = (value: Function, context: ClassMethodDecoratorContext) => void;
 
-ensureMetadataSymbol();
+ensureRequestPipelineMetadataSymbol();
 
 function getMetadataBag(metadata: unknown): StandardMetadataBag {
   return metadata as StandardMetadataBag;
