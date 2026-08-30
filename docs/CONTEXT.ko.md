@@ -351,6 +351,10 @@ Migration transform contract는 `packages/cli/README.ko.md`와
 `appliedTransforms`에서 안정적인 transform token인 `injectable`과 `testing`을 보존하므로 CLI
 input alias가 이 report contract를 바꾸지 않습니다.
 
+## Studio Static-Graph Limits
+
+Studio static-graph limit discoverability는 `packages/studio/README.ko.md`, [`book/advanced/ch15-studio.ko.md`](../book/advanced/ch15-studio.ko.md), [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md)로 나뉩니다. Static artifact는 Node live snapshot이 런타임에 만드는 compiled module/provider graph가 아니라 file-first inspection이 찾은 platform component를 보고합니다. Non-Node fallback workflow는 inspect/static artifact를 생성하고 열며 live sidecar event를 약속하지 않습니다. Compiled DI graph가 필요한 workflow는 `fluo dev --studio`를 사용하는 지원되는 Node live 경로에 유지합니다.
+
 ## File Structure
 
 | Path | Role |

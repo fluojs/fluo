@@ -351,6 +351,10 @@ as aliases for `inject-params` and `tests`. Successful `--json` reports preserve
 transform tokens (`injectable` and `testing`) in `transforms` and per-file
 `appliedTransforms`; CLI input aliases do not change that report contract.
 
+## Studio Static-Graph Limits
+
+Studio static-graph limit discoverability is split across `packages/studio/README.md`, [`book/advanced/ch15-studio.md`](../book/advanced/ch15-studio.md), and [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md): static artifacts report the platform components found by file-first inspection, not the compiled module/provider graph that the Node live snapshot derives at runtime. Non-Node fallback workflows generate and open inspect/static artifacts; they do not promise live sidecar events. Workflows that require the compiled DI graph stay on the supported Node live path with `fluo dev --studio`.
+
 ## File Structure
 
 | Path | Role |
