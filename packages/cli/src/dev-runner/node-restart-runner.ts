@@ -609,9 +609,9 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
 
     const watchedFallbackDirectories = new Set<string>();
 
-    const watchFallbackDirectory = (directoryPath: string) => {
+    const watchFallbackDirectory = (directoryPath: string): boolean => {
       if (watchedFallbackDirectories.has(directoryPath) || shouldIgnorePath(directoryPath, projectDirectory, ignorePatterns)) {
-        return;
+        return false;
       }
 
       watchedFallbackDirectories.add(directoryPath);
@@ -627,9 +627,11 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
 
       try {
         registerWatcher(directoryPath, watchTarget(directoryPath, listener));
+        return true;
       } catch (error: unknown) {
         watchedFallbackDirectories.delete(directoryPath);
         stderr.write(`[fluo] unable to watch ${directoryPath}: ${error instanceof Error ? error.message : String(error)}\n`);
+        return false;
       }
     };
 
@@ -647,8 +649,14 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
           if (!stats.isDirectory()) {
             throw error;
           }
+          let fallbackWatcherAcquired = false;
           for (const directoryPath of getFallbackWatchDirectories(target, projectDirectory, ignorePatterns)) {
-            watchFallbackDirectory(directoryPath);
+            fallbackWatcherAcquired = watchFallbackDirectory(directoryPath) || fallbackWatcherAcquired;
+          }
+          if (!fallbackWatcherAcquired) {
+            const message = error instanceof Error ? error.message : String(error);
+            failFromWatcher(target, new Error(`${message}; no fallback watcher could be acquired`));
+            return;
           }
         }
       } catch (error: unknown) {

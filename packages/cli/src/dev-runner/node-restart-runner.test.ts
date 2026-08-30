@@ -219,4 +219,43 @@ describe('Node restart runner watcher failures', () => {
     expect(signals).toEqual(['SIGTERM']);
     expect(stderr.join('')).toContain(`[fluo] watcher failed for ${nestedDirectory}: fallback watcher failed`);
   });
+
+  it('stops the child when recursive and fallback source watcher acquisition fails', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-watcher-'));
+    createdDirectories.push(workspaceDirectory);
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    const nestedDirectory = join(sourceDirectory, 'features');
+    mkdirSync(nestedDirectory, { recursive: true });
+    writeFileSync(join(nestedDirectory, 'feature.ts'), 'export const feature = true;\n');
+    const signals: Array<NodeJS.Signals | undefined> = [];
+    const signalTarget = createSignalTarget();
+    const stderr: string[] = [];
+    const children: ChildProcess[] = [];
+
+    const runPromise = runNodeRestartRunner({
+      env: {},
+      projectDirectory: workspaceDirectory,
+      signalTarget: signalTarget.target,
+      spawnChild: () => {
+        const child = createMockChild(signals);
+        children.push(child);
+        return child;
+      },
+      stderr: { write: (message) => stderr.push(message) },
+      watchTarget: () => {
+        throw new Error('watcher unavailable');
+      },
+    });
+
+    const activeChild = children[0];
+    if (!activeChild) {
+      throw new Error('Expected the active app child');
+    }
+    closeMockChild(activeChild, 0);
+
+    await expect(runPromise).resolves.toBe(1);
+    expect(signalTarget.offCalls).toEqual(['SIGINT', 'SIGTERM']);
+    expect(signals).toEqual(['SIGTERM']);
+    expect(stderr.join('')).toContain(`[fluo] watcher failed for ${sourceDirectory}:`);
+  });
 });
