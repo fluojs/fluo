@@ -435,6 +435,17 @@ describe('@fluojs/graphql', () => {
     expect(await findAvailablePort()).toBeGreaterThan(0);
   });
 
+  it('forwards literal port zero to the runtime bind seam', async () => {
+    class AppModule {}
+    defineModule(AppModule, {});
+
+    const portToken = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port: portToken });
+    await app.listen();
+
+    expect(await resolvePort(portToken)).not.toBe(portToken);
+  });
+
   it('keeps two bound applications attached to their own port tokens', async () => {
     class FirstModule {}
     class SecondModule {}
@@ -1581,7 +1592,7 @@ describe('@fluojs/graphql', () => {
 
     socket.close();
     await onceWebSocketClosed(socket);
-    await destroyed;
+    await awaitGraphqlLifecycle(destroyed, 'disconnected websocket operation cleanup');
 
     expect(lifecycleEvents).toEqual(expect.arrayContaining(['resolver:started', 'resolver:destroy', 'state:destroy']));
 
@@ -1781,6 +1792,15 @@ describe('@fluojs/graphql', () => {
 describe('@fluojs/graphql — provider scopes', () => {
   it('isolates request-scoped resolver instances across concurrent operations', async () => {
     let issued = 0;
+    let enteredResolverCount = 0;
+    let releaseResolvers: (() => void) | undefined;
+    const bothResolversEntered = new Promise<void>((resolve) => {
+      releaseResolvers = resolve;
+    });
+    let releaseOverlap: (() => void) | undefined;
+    const overlapReleased = new Promise<void>((resolve) => {
+      releaseOverlap = resolve;
+    });
 
     @Inject()
     @Scope('request')
@@ -1796,6 +1816,11 @@ describe('@fluojs/graphql — provider scopes', () => {
 
       @Query()
       async requestId(): Promise<string> {
+        enteredResolverCount += 1;
+        if (enteredResolverCount === 2) {
+          releaseResolvers?.();
+        }
+        await overlapReleased;
         return this.identity.id;
       }
     }
@@ -1810,10 +1835,13 @@ describe('@fluojs/graphql — provider scopes', () => {
     const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
     await app.listen();
 
-    const [op1, op2] = await Promise.all([
+    const operations = Promise.all([
       postGraphql(port, '{ requestId }'),
       postGraphql(port, '{ requestId }'),
     ]);
+    await awaitGraphqlLifecycle(bothResolversEntered, 'both request-scoped resolvers entering');
+    releaseOverlap?.();
+    const [op1, op2] = await operations;
 
     const id1 = (op1 as { data?: { requestId?: string } }).data?.requestId;
     const id2 = (op2 as { data?: { requestId?: string } }).data?.requestId;

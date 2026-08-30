@@ -18,7 +18,7 @@ export function createGraphqlNetworkFixture(): {
   readonly resolvePort: (port: number) => Promise<number>;
 } {
   const applications: GraphqlTestApplications = new Map();
-  let nextPortToken = 10_000;
+  let nextPortToken = 65_535;
 
   afterEach(async () => {
     await closeGraphqlTestApplications(applications);
