@@ -8,9 +8,33 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createConfigReloader, loadConfig } from './load.js';
 import { ConfigModule } from './module.js';
 import { ConfigService } from './service.js';
-import type { ConfigDictionary, ConfigSchema } from './types.js';
+import type { ConfigDictionary, ConfigReloader, ConfigSchema } from './types.js';
 
-const watchCallbacks = vi.hoisted(() => new Set<() => void>());
+type WatchListener = (eventType: string, filename: string | null) => void;
+
+type MockWatcher = { close: () => void };
+
+/**
+ * Tracks every watcher the loader currently holds open, so leak assertions read one number
+ * instead of inspecting mock call history.
+ */
+const watchHarness = vi.hoisted(() => {
+  const callbacks = new Set<() => void>();
+
+  return {
+    callbacks,
+    open(listener: (eventType: string, filename: string | null) => void): { close: () => void } {
+      const callback = () => listener('change', null);
+      callbacks.add(callback);
+
+      return {
+        close: () => {
+          callbacks.delete(callback);
+        },
+      };
+    },
+  };
+});
 
 type ProcessWithGetBuiltinModule = typeof process & {
   getBuiltinModule?: typeof process.getBuiltinModule;
@@ -24,18 +48,31 @@ vi.mock('node:fs', async (importOriginal) => {
 
   return {
     ...actual,
-    watch: vi.fn((_filename, _options, listener) => {
-      const callback = () => listener('change', null);
-      watchCallbacks.add(callback);
-
-      return {
-        close: vi.fn(() => {
-          watchCallbacks.delete(callback);
-        }),
-      };
-    }),
+    watch: vi.fn((_filename, _options, listener) => watchHarness.open(listener)),
   };
 });
+
+type WatchMockImplementation = (filename: string, options: { persistent: boolean }, listener: WatchListener) => MockWatcher;
+
+/**
+ * Queues one-shot `fs.watch` behaviors for the next calls, in order, so a specific parent
+ * directory can fail while earlier directories succeed.
+ */
+function queueWatchImplementations(...implementations: readonly WatchMockImplementation[]): void {
+  const mocked = vi.mocked(watch) as unknown as {
+    mockImplementationOnce(implementation: WatchMockImplementation): unknown;
+  };
+
+  for (const implementation of implementations) {
+    mocked.mockImplementationOnce(implementation);
+  }
+}
+
+const openMockWatcher: WatchMockImplementation = (_filename, _options, listener) => watchHarness.open(listener);
+
+function openWatcherCount(): number {
+  return watchHarness.callbacks.size;
+}
 
 function spyOnGetBuiltinModule(implementation: typeof process.getBuiltinModule): void {
   if (!processWithGetBuiltinModule.getBuiltinModule) {
@@ -77,23 +114,67 @@ function installNodeBuiltinMock(): void {
 }
 
 function emitWatchChange(): void {
-  for (const callback of [...watchCallbacks]) {
+  for (const callback of [...watchHarness.callbacks]) {
     callback();
   }
 }
 
-async function waitForCondition(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
-  const startedAt = Date.now();
+/**
+ * Runs the loader's pending watch debounce timer on the fake clock.
+ *
+ * The reload path is fully synchronous once the timer fires, so every reload and error
+ * notification is delivered before this returns. No wall-clock time passes.
+ */
+function flushWatchDebounce(): void {
+  vi.runAllTimers();
+}
 
-  while (Date.now() - startedAt < timeoutMs) {
-    if (predicate()) {
-      return;
+/**
+ * Subscribes to the exact watch reload signal before any trigger runs.
+ *
+ * The returned accessor resolves with the signal that was actually delivered and rejects
+ * immediately when none arrived, so assertions never poll, sleep, or depend on timing luck.
+ */
+function watchReloadSignal(reloader: ConfigReloader): () => Promise<ConfigDictionary> {
+  const delivered: ConfigDictionary[] = [];
+
+  reloader.subscribe((snapshot, reason) => {
+    if (reason === 'watch') {
+      delivered.push(snapshot);
+    }
+  });
+
+  return async () => {
+    const latest = delivered.at(-1);
+
+    if (latest === undefined) {
+      throw new Error('Expected a watch reload notification, but none was delivered.');
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
+    return latest;
+  };
+}
 
-  throw new Error('Timed out waiting for condition.');
+/**
+ * Subscribes to the exact watch reload failure signal before any trigger runs.
+ *
+ * @param reloader Reloader whose watch-mode failures should be observed.
+ * @returns An accessor that resolves with the delivered failure or rejects when none arrived.
+ */
+function watchErrorSignal(reloader: ConfigReloader): () => Promise<unknown> {
+  const delivered: unknown[] = [];
+
+  reloader.subscribeError((error) => {
+    delivered.push(error);
+  });
+
+  return async () => {
+    if (delivered.length === 0) {
+      throw new Error('Expected a watch reload failure notification, but none was delivered.');
+    }
+
+    return delivered[delivered.length - 1];
+  };
 }
 
 function isConfigDictionary(value: unknown): value is ConfigDictionary {
@@ -123,11 +204,14 @@ function createPortSchema(): ConfigSchema {
 }
 
 beforeEach(() => {
-  watchCallbacks.clear();
+  watchHarness.callbacks.clear();
+  vi.mocked(watch).mockReset();
+  vi.useFakeTimers();
   installNodeBuiltinMock();
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -361,22 +445,13 @@ describe('createConfigReloader envFilePaths', () => {
     try {
       expect(reloader.current()).toMatchObject({ NAME: 'from-overlay', PORT: '4000' });
 
-      const updates: string[] = [];
-      reloader.subscribe((snapshot, reason) => {
-        if (reason !== 'watch') {
-          return;
-        }
-
-        const port = snapshot['PORT'];
-        if (typeof port === 'string') {
-          updates.push(port);
-        }
-      });
+      const nextWatchSnapshot = watchReloadSignal(reloader);
 
       writeFileSync(base, 'PORT=4100\nNAME=from-base\n');
       emitWatchChange();
+      flushWatchDebounce();
 
-      await waitForCondition(() => updates.includes('4100'));
+      await expect(nextWatchSnapshot()).resolves.toMatchObject({ NAME: 'from-overlay', PORT: '4100' });
       expect(reloader.current()).toMatchObject({ NAME: 'from-overlay', PORT: '4100' });
     } finally {
       reloader.close();
@@ -401,22 +476,13 @@ describe('createConfigReloader envFilePaths', () => {
     try {
       expect(reloader.current()['NAME']).toBe('from-overlay');
 
-      const updates: string[] = [];
-      reloader.subscribe((snapshot, reason) => {
-        if (reason !== 'watch') {
-          return;
-        }
-
-        const name = snapshot['NAME'];
-        if (typeof name === 'string') {
-          updates.push(name);
-        }
-      });
+      const nextWatchSnapshot = watchReloadSignal(reloader);
 
       rmSync(overlay);
       emitWatchChange();
+      flushWatchDebounce();
 
-      await waitForCondition(() => updates.includes('from-base'));
+      await expect(nextWatchSnapshot()).resolves.toMatchObject({ NAME: 'from-base' });
       expect(reloader.current()['NAME']).toBe('from-base');
     } finally {
       reloader.close();
@@ -440,23 +506,14 @@ describe('createConfigReloader envFilePaths', () => {
     });
 
     try {
-      const updates: string[] = [];
-      reloader.subscribe((snapshot, reason) => {
-        if (reason !== 'watch') {
-          return;
-        }
-
-        const port = snapshot['PORT'];
-        if (typeof port === 'string') {
-          updates.push(port);
-        }
-      });
+      const nextWatchSnapshot = watchReloadSignal(reloader);
 
       writeFileSync(replacement, 'PORT=4200\n');
       renameSync(replacement, overlay);
       emitWatchChange();
+      flushWatchDebounce();
 
-      await waitForCondition(() => updates.includes('4200'));
+      await expect(nextWatchSnapshot()).resolves.toMatchObject({ PORT: '4200' });
       expect(reloader.current()['PORT']).toBe('4200');
     } finally {
       reloader.close();
@@ -482,16 +539,13 @@ describe('createConfigReloader envFilePaths', () => {
     try {
       expect(reloader.current()['PORT']).toBe(4100);
 
-      const failures: unknown[] = [];
-      reloader.subscribeError((error) => {
-        failures.push(error);
-      });
+      const nextWatchFailure = watchErrorSignal(reloader);
 
       writeFileSync(overlay, 'PORT=not-a-number\n');
       emitWatchChange();
+      flushWatchDebounce();
 
-      await waitForCondition(() => failures.length > 0);
-      expect(failures[0]).toMatchObject({ code: 'INVALID_CONFIG' });
+      await expect(nextWatchFailure()).resolves.toMatchObject({ code: 'INVALID_CONFIG' });
       expect(reloader.current()['PORT']).toBe(4100);
     } finally {
       reloader.close();
@@ -514,7 +568,7 @@ describe('createConfigReloader envFilePaths', () => {
     });
 
     try {
-      expect(watchCallbacks.size).toBe(1);
+      expect(openWatcherCount()).toBe(1);
       expect(vi.mocked(watch).mock.calls.at(-1)?.[0]).toBe(cwd);
     } finally {
       reloader.close();
@@ -536,11 +590,70 @@ describe('createConfigReloader envFilePaths', () => {
       watch: true,
     });
 
-    expect(watchCallbacks.size).toBe(2);
+    expect(openWatcherCount()).toBe(2);
 
     reloader.close();
 
-    expect(watchCallbacks.size).toBe(0);
+    expect(openWatcherCount()).toBe(0);
+  });
+
+  it('closes already-open watchers and rethrows when a later directory watch fails', () => {
+    const parentA = mkdtempSync(join(tmpdir(), 'fluo-config-ordered-rollback-a-'));
+    const parentB = mkdtempSync(join(tmpdir(), 'fluo-config-ordered-rollback-b-'));
+    const base = join(parentA, '.env');
+    const overlay = join(parentB, '.env.overlay');
+
+    writeFileSync(base, 'PORT=4000\n');
+    writeFileSync(overlay, 'PORT=4100\n');
+
+    const watchFailure = new Error('EMFILE: too many open files, watch');
+
+    queueWatchImplementations(openMockWatcher, () => {
+      throw watchFailure;
+    });
+
+    expect(() =>
+      createConfigReloader({
+        envFilePaths: [base, overlay],
+        processEnv: {},
+        watch: true,
+      }),
+    ).toThrowError(watchFailure);
+
+    expect(vi.mocked(watch)).toHaveBeenCalledTimes(2);
+    expect(openWatcherCount()).toBe(0);
+  });
+
+  it('rethrows the original watch failure even when rolling back a watcher cannot close', () => {
+    const parentA = mkdtempSync(join(tmpdir(), 'fluo-config-ordered-rollback-close-a-'));
+    const parentB = mkdtempSync(join(tmpdir(), 'fluo-config-ordered-rollback-close-b-'));
+    const base = join(parentA, '.env');
+    const overlay = join(parentB, '.env.overlay');
+
+    writeFileSync(base, 'PORT=4000\n');
+    writeFileSync(overlay, 'PORT=4100\n');
+
+    const watchFailure = new Error('EMFILE: too many open files, watch');
+    const closeFailure = new Error('close failed during rollback');
+
+    queueWatchImplementations(
+      () => ({
+        close: () => {
+          throw closeFailure;
+        },
+      }),
+      () => {
+        throw watchFailure;
+      },
+    );
+
+    expect(() =>
+      createConfigReloader({
+        envFilePaths: [base, overlay],
+        processEnv: {},
+        watch: true,
+      }),
+    ).toThrowError(watchFailure);
   });
 });
 

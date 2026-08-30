@@ -785,21 +785,36 @@ function startReloaderWatcher(
 
   const watchers: ConfigFileWatcher[] = [];
 
-  for (const [directory, watchedNames] of watchedNamesByDirectory) {
-    if (!fs.existsSync(directory)) {
-      continue;
-    }
-
-    watchers.push(fs.watch(directory, { persistent: false }, (_eventType, filename) => {
-      if (filename !== null && !watchedNames.has(filename.toString())) {
-        return;
+  try {
+    for (const [directory, watchedNames] of watchedNamesByDirectory) {
+      if (!fs.existsSync(directory)) {
+        continue;
       }
 
-      scheduleWatchReload();
-    }));
+      watchers.push(fs.watch(directory, { persistent: false }, (_eventType, filename) => {
+        if (filename !== null && !watchedNames.has(filename.toString())) {
+          return;
+        }
+
+        scheduleWatchReload();
+      }));
+    }
+  } catch (error: unknown) {
+    rollBackStartedWatchers(watchers);
+    throw error;
   }
 
   return watchers;
+}
+
+function rollBackStartedWatchers(watchers: readonly ConfigFileWatcher[]): void {
+  for (const watcher of watchers) {
+    try {
+      watcher.close();
+    } catch {
+      // A cleanup failure must never mask the watcher initialization error being rethrown.
+    }
+  }
 }
 
 function closeReloader(
