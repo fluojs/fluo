@@ -9,7 +9,7 @@ This document defines the current cache contract across `@fluojs/cache-manager`,
 | Surface | Current contract | Source anchor |
 | --- | --- | --- |
 | Module entrypoint | Applications register cache support through `CacheModule.forRoot(...)`. Public options include `store`, `ttl`, `httpKeyStrategy`, `principalScopeResolver`, top-level `keyPrefix`, `redis`, and `global`. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
-| Cache service | `CacheService` is the direct application cache facade with `get`, `set`, `remember`, `del`, and `reset`. | `packages/cache-manager/src/service.ts` |
+| Cache service | `CacheService` is the direct application cache facade with `get`, `set`, `remember`, `del`, `reset`, and the public `close()` teardown boundary. | `packages/cache-manager/src/service.ts` |
 | HTTP integration | `CacheInterceptor` performs GET read-through caching and consumes `@CacheEvict(...)` metadata after non-GET controller handlers. The decorator does not intercept arbitrary service methods outside that HTTP pipeline. | `packages/cache-manager/src/decorators.ts`, `packages/cache-manager/src/interceptor.ts` |
 | Memory store | `MemoryStore` keeps cache entries in-process, sweeps expirations lazily on access, and caps live entries at `1,000` by evicting the oldest keys. | `packages/cache-manager/src/stores/memory-store.ts` |
 | Redis store | `RedisStore` stores JSON-serialized entries under a prefixed key space, uses `EX` for positive TTL values, and resets by scanning the configured prefix. | `packages/cache-manager/src/stores/redis-store.ts` |
@@ -36,7 +36,7 @@ This document defines the current cache contract across `@fluojs/cache-manager`,
 | No-expiry entries | `ttl: 0` means no expiration. The memory store omits `expiresAt` for such entries, and the Redis store writes without `EX`. | `packages/cache-manager/src/service.ts`, `packages/cache-manager/src/stores/memory-store.ts`, `packages/cache-manager/src/stores/redis-store.ts` |
 | GET-only response caching | `CacheInterceptor` only performs read-through caching for `GET` requests. Non-GET requests skip cache reads and writes. | `packages/cache-manager/src/interceptor.ts` |
 | Cacheable response shape | The interceptor caches only replayable successful GET results. It skips caching when the handler returns `undefined`, an `SseResponse`, a non-2xx status, or a response that is already committed. | `packages/cache-manager/src/interceptor.ts` |
-| Read-through deduplication | `CacheService.remember(...)` deduplicates concurrent misses per key through an in-flight promise map. | `packages/cache-manager/src/service.ts` |
+| Read-through deduplication | `CacheService.remember(...)` deduplicates concurrent misses per key through an in-flight promise map, scoped to one `CacheService` instance. `CacheInterceptor` does not coalesce concurrent GET misses; each miss invokes the handler. | `packages/cache-manager/src/service.ts`, `packages/cache-manager/src/interceptor.ts` |
 
 ## Invalidation Rules
 
