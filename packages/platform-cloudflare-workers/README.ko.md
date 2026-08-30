@@ -92,7 +92,7 @@ export class EdgeGateway {}
 export class RealtimeModule {}
 ```
 
-Bootstrap 전에 application module graph에 `RealtimeModule`을 import하세요. Application bootstrap 중 `CloudflareWorkersWebSocketModule`이 gateway를 발견하고 `app.listen()`이 binding을 freeze하기 전에 Worker adapter binding을 구성합니다. Listen boundary 이후에는 binding을 추가하거나 교체하지 마세요.
+Bootstrap 전에 application module graph에 `RealtimeModule`을 import하세요. Application bootstrap 중 `CloudflareWorkersWebSocketModule`이 gateway를 발견하고 `app.listen()`이 binding을 freeze하기 전에 versioned realtime capability를 통해 Worker adapter binding을 설치합니다. `configureWebSocketBinding()`은 compatibility facade로 유지됩니다. Listen boundary 이후에는 binding을 추가하거나 교체하지 마세요.
 
 ### 엣지 네이티브 미들웨어
 표준 fluo 미들웨어(CORS, Global Prefix 등)는 Worker bootstrap helper를 통해 완전히 지원되며 Cloudflare 환경에 최적화되어 있습니다. `createCloudflareWorkerAdapter(...)`는 adapter가 소유하는 parsing 및 websocket-pair 옵션만 받습니다. Routing 및 middleware 옵션은 `bootstrapCloudflareWorkerApplication(...)` 또는 `createCloudflareWorkerEntrypoint(...)`에 전달하세요.
