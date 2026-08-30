@@ -136,10 +136,10 @@ Studio is primarily a CLI-launched sidecar and browser viewer, but the published
 |---|---|
 | `FilterState` | Query, readiness status, and diagnostic severity filters applied by Studio without mutating the source snapshot. |
 | `ParsedPayload` | Return shape from `parseStudioPayload(rawJson)`, including the parsed `StudioPayload` and original JSON string. |
-| `PlatformDiagnosticIssue` | Runtime diagnostic issue type re-exported from `@fluojs/runtime` for Studio consumers. |
+| `PlatformDiagnosticIssue` | Studio-owned runtime-neutral diagnostic issue contract for Studio consumers. |
 | `PlatformDiagnosticSeverity` | Diagnostic severity union used by filters and live diagnostics. |
 | `PlatformReadinessStatus` | Readiness status union used by filters and graph annotations. |
-| `PlatformShellSnapshot` | Runtime-produced snapshot type re-exported from `@fluojs/runtime` for inspect artifacts. |
+| `PlatformShellSnapshot` | Studio-owned runtime-neutral snapshot contract for inspect artifacts. |
 | `StudioInspectionSnapshot` | Static inspect snapshot that optionally carries validated compiled route descriptors. |
 | `StudioPayload` | Static artifact envelope containing a snapshot, timing diagnostics, and/or report artifact. |
 | `StudioReportArtifact` | CI/support report artifact produced by `fluo inspect --report`. |

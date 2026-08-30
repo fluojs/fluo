@@ -7,7 +7,10 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type {
   BootstrapTimingDiagnostics as RuntimeBootstrapTimingDiagnostics,
+  PlatformCheckResult as RuntimePlatformCheckResult,
   PlatformDiagnosticIssue as RuntimePlatformDiagnosticIssue,
+  PlatformHealthReport as RuntimePlatformHealthReport,
+  PlatformReadinessReport as RuntimePlatformReadinessReport,
   PlatformShellSnapshot as RuntimePlatformShellSnapshot,
   PlatformSnapshot as RuntimePlatformSnapshot,
 } from '@fluojs/runtime';
@@ -21,13 +24,25 @@ import {
   parseStudioPayload,
   renderMermaid,
   type BootstrapTimingDiagnostics,
+  type PlatformCheckResult,
   type PlatformDiagnosticIssue,
+  type PlatformHealthReport,
+  type PlatformReadinessReport,
   type PlatformShellSnapshot,
   type PlatformSnapshot,
 } from './contracts.js';
 import { initialStudioState, selectSelectedStaticComponent } from './entities/studio/model.js';
 import * as studio from './index.js';
 import { inspectComponentConnections, renderDiagnosticDocsUrl, renderDiagnostics, renderGraphSvg } from './shared/lib/viewer-rendering.js';
+
+type Exact<Left, Right> =
+  (<Type>() => Type extends Left ? 1 : 2) extends (<Type>() => Type extends Right ? 1 : 2)
+    ? (<Type>() => Type extends Right ? 1 : 2) extends (<Type>() => Type extends Left ? 1 : 2)
+      ? true
+      : false
+    : false;
+
+function assertExactContract<Condition extends true>(): void {}
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageCommandTimeoutMs = 120_000;
@@ -476,14 +491,13 @@ describe('parseStudioPayload', () => {
     expect(packageManifest.dependencies?.['@fluojs/runtime']).toBeUndefined();
     expect(packageManifest.devDependencies?.['@fluojs/runtime']).toBe('workspace:^');
     expect(runtimeCoupledSources).toEqual([]);
-    expectTypeOf<PlatformDiagnosticIssue>().toMatchTypeOf<RuntimePlatformDiagnosticIssue>();
-    expectTypeOf<RuntimePlatformDiagnosticIssue>().toMatchTypeOf<PlatformDiagnosticIssue>();
-    expectTypeOf<PlatformSnapshot>().toMatchTypeOf<RuntimePlatformSnapshot>();
-    expectTypeOf<RuntimePlatformSnapshot>().toMatchTypeOf<PlatformSnapshot>();
-    expectTypeOf<PlatformShellSnapshot>().toMatchTypeOf<RuntimePlatformShellSnapshot>();
-    expectTypeOf<RuntimePlatformShellSnapshot>().toMatchTypeOf<PlatformShellSnapshot>();
-    expectTypeOf<BootstrapTimingDiagnostics>().toMatchTypeOf<RuntimeBootstrapTimingDiagnostics>();
-    expectTypeOf<RuntimeBootstrapTimingDiagnostics>().toMatchTypeOf<BootstrapTimingDiagnostics>();
+    assertExactContract<Exact<PlatformCheckResult, RuntimePlatformCheckResult>>();
+    assertExactContract<Exact<PlatformReadinessReport, RuntimePlatformReadinessReport>>();
+    assertExactContract<Exact<PlatformHealthReport, RuntimePlatformHealthReport>>();
+    assertExactContract<Exact<PlatformDiagnosticIssue, RuntimePlatformDiagnosticIssue>>();
+    assertExactContract<Exact<PlatformSnapshot, RuntimePlatformSnapshot>>();
+    assertExactContract<Exact<PlatformShellSnapshot, RuntimePlatformShellSnapshot>>();
+    assertExactContract<Exact<BootstrapTimingDiagnostics, RuntimeBootstrapTimingDiagnostics>>();
   });
 
   it('keeps legacy route descriptor construction source-compatible at the root entrypoint', () => {

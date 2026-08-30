@@ -21,6 +21,28 @@ export type PlatformState =
   | 'stopped'
   | 'failed';
 
+/** Outcome for one named readiness or health probe in a platform report. */
+export interface PlatformCheckResult {
+  name: string;
+  status: 'pass' | 'fail' | 'degraded';
+  message?: string;
+}
+
+/** Readiness semantics consumed from a platform inspection artifact. */
+export interface PlatformReadinessReport {
+  status: PlatformReadinessStatus;
+  critical: boolean;
+  reason?: string;
+  checks?: PlatformCheckResult[];
+}
+
+/** Health semantics consumed from a platform inspection artifact. */
+export interface PlatformHealthReport {
+  status: PlatformHealthStatus;
+  reason?: string;
+  checks?: PlatformCheckResult[];
+}
+
 /** Machine-readable issue emitted in a platform inspection artifact. */
 export interface PlatformDiagnosticIssue {
   code: string;
@@ -62,15 +84,8 @@ export interface PlatformSnapshot {
 /** Aggregate platform snapshot consumed by Studio static diagnostics. */
 export interface PlatformShellSnapshot {
   generatedAt: string;
-  readiness: {
-    status: PlatformReadinessStatus;
-    critical: boolean;
-    reason?: string;
-  };
-  health: {
-    status: PlatformHealthStatus;
-    reason?: string;
-  };
+  readiness: PlatformReadinessReport;
+  health: PlatformHealthReport;
   components: PlatformSnapshot[];
   diagnostics: PlatformDiagnosticIssue[];
 }

@@ -136,10 +136,10 @@ Studio는 주로 CLI가 실행하는 sidecar와 browser viewer이지만, 배포�
 |---|---|
 | `FilterState` | 원본 snapshot을 변경하지 않고 Studio가 적용하는 query, readiness status, diagnostic severity filter입니다. |
 | `ParsedPayload` | `parseStudioPayload(rawJson)`의 반환 shape로, parsed `StudioPayload`와 원본 JSON string을 포함합니다. |
-| `PlatformDiagnosticIssue` | Studio 소비자를 위해 `@fluojs/runtime`에서 다시 export하는 runtime diagnostic issue type입니다. |
+| `PlatformDiagnosticIssue` | Studio 소비자를 위한 Studio-owned runtime-neutral diagnostic issue 계약입니다. |
 | `PlatformDiagnosticSeverity` | Filter와 live diagnostic에서 사용하는 diagnostic severity union입니다. |
 | `PlatformReadinessStatus` | Filter와 graph annotation에서 사용하는 readiness status union입니다. |
-| `PlatformShellSnapshot` | Inspect artifact를 위해 `@fluojs/runtime`에서 다시 export하는 runtime-produced snapshot type입니다. |
+| `PlatformShellSnapshot` | Inspect artifact를 위한 Studio-owned runtime-neutral snapshot 계약입니다. |
 | `StudioInspectionSnapshot` | 검증된 compiled route descriptor를 optional로 포함하는 static inspect snapshot입니다. |
 | `StudioPayload` | Snapshot, timing diagnostics, report artifact를 담을 수 있는 static artifact envelope입니다. |
 | `StudioReportArtifact` | `fluo inspect --report`가 생성하는 CI/support report artifact입니다. |
