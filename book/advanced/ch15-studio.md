@@ -101,10 +101,10 @@ The payload is a `PlatformShellSnapshot`. At a high level, it includes:
 
 - `generatedAt`, the time the snapshot was produced.
 - `readiness` and `health`, the platform-level status signals.
-- `components`, the modules, controllers, providers, and related platform components in the resolved graph.
+- `components`, the platform components reported by file-first inspection. This is not the compiled module/provider graph that the Node live snapshot derives at runtime.
 - `diagnostics`, the structured issues found while the platform shell was built or inspected.
 
-Studio can load this file directly. It parses the JSON with `parseStudioPayload(rawJson)`, validates the version and schema expectations it supports, then exposes the snapshot to graph, diagnostics, and filtering views.
+Studio can load this file directly. It parses the JSON with `parseStudioPayload(rawJson)`, validates the version and schema expectations it supports, then exposes the snapshot to graph, diagnostics, and filtering views. Static artifacts do not reconstruct compiled module/provider nodes, provider scopes, or lifecycle diagnostics; use the supported Node live path with `fluo dev --studio` when a workflow needs that DI graph.
 
 ### Timing envelope
 
@@ -151,7 +151,7 @@ Internally, Studio uses `parseStudioPayload(rawJson)` before rendering. This kee
 
 ### Key Features of the Viewer
 
-- **Graph View**: Renders the application dependency graph so you can see modules, providers, and dependency edges at a glance.
+- **Graph View**: Renders the graph information present in the loaded artifact. Static inspect artifacts do not contain the compiled module/provider graph; use Node live Studio when you need to inspect those nodes and their dependency edges.
 - **Diagnostics Tab**: Lists `PlatformDiagnosticIssue` entries with severity, message, cause, fix hints, blockers, and docs links when present.
 - **Timing View**: Uses `BootstrapTimingDiagnostics` to show total bootstrap time and phase-level cost when timing data is present.
 - **Filtering**: Applies query, readiness, and severity filters without mutating the loaded snapshot, and keeps keyboard focus in the active search or filter control while the view updates.
@@ -161,9 +161,9 @@ These features give teams a shared artifact review flow. The CLI exports the fil
 
 ### Visualizing Scopes and Lifecycles
 
-One important role of Studio is making scope and lifecycle problems visible. In complex applications, it is easy to inject a request-scoped provider into a singleton path by mistake, or to introduce a provider that slows startup without making the dependency chain obvious.
+One important role of Node live Studio is making scope and lifecycle problems visible. In complex applications, it is easy to inject a request-scoped provider into a singleton path by mistake, or to introduce a provider that slows startup without making the dependency chain obvious. Static inspect artifacts do not contain the compiled DI graph, provider scopes, or lifecycle diagnostics needed for that analysis.
 
-The snapshot gives Studio the resolved component graph and diagnostics. Timing data gives it bootstrap phase cost. Together, those artifacts let the viewer explain both structure and startup behavior. A graph can show which component depends on a slow provider, while the timing view can show whether the delay happened during graph construction, instance resolution, or lifecycle hooks.
+The live snapshot gives Studio the resolved component graph and diagnostics. Timing data gives it bootstrap phase cost. Together, those live artifacts let the viewer explain both structure and startup behavior. A graph can show which component depends on a slow provider, while the timing view can show whether the delay happened during graph construction, instance resolution, or lifecycle hooks. File-first artifacts remain useful for their reported components, routes, timing, and diagnostics, but they do not provide equivalent compiled-DI analysis.
 
 ## 15.6 Scenario: Diagnosing a Provider Deadlock
 

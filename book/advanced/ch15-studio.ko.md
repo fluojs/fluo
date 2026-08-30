@@ -101,10 +101,10 @@ payload는 `PlatformShellSnapshot`입니다. 큰 흐름에서 다음 정보를 �
 
 - `generatedAt`, snapshot이 생성된 시각.
 - `readiness`와 `health`, platform-level status signal.
-- `components`, 해석된 graph 안의 modules, controllers, providers, related platform components.
+- `components`, file-first inspection이 보고한 platform components. 이는 Node live snapshot이 런타임에 만드는 compiled module/provider graph가 아닙니다.
 - `diagnostics`, platform shell을 만들거나 검사하는 동안 발견된 구조화된 issue.
 
-Studio는 이 파일을 직접 로드할 수 있습니다. `parseStudioPayload(rawJson)`로 JSON을 파싱하고, 지원하는 version 및 schema expectation을 검증한 뒤, graph, diagnostics, filtering view에 snapshot을 전달합니다.
+Studio는 이 파일을 직접 로드할 수 있습니다. `parseStudioPayload(rawJson)`로 JSON을 파싱하고, 지원하는 version 및 schema expectation을 검증한 뒤, graph, diagnostics, filtering view에 snapshot을 전달합니다. Static artifact는 compiled module/provider node, provider scope, lifecycle diagnostics를 재구성하지 않으므로, DI graph가 필요한 workflow는 `fluo dev --studio`를 사용하는 지원되는 Node live 경로를 사용합니다.
 
 ### 타이밍 envelope 이해하기
 
@@ -151,7 +151,7 @@ Viewer가 열리면 inspect artifact를 브라우저로 drag and drop합니다. 
 
 ### 뷰어의 핵심 기능
 
-- **Graph View**: 애플리케이션 dependency graph를 렌더링해 modules, providers, dependency edges를 한눈에 보게 합니다.
+- **Graph View**: 로드한 artifact에 있는 graph 정보를 렌더링합니다. Static inspect artifact에는 compiled module/provider graph가 없으므로, 해당 node와 dependency edge를 검사하려면 Node live Studio를 사용합니다.
 - **Diagnostics Tab**: `PlatformDiagnosticIssue` 항목을 severity, message, cause, fix hints, blockers, docs links와 함께 나열합니다.
 - **Timing View**: Timing data가 있을 때 `BootstrapTimingDiagnostics`를 사용해 total bootstrap time과 phase-level cost를 보여줍니다.
 - **Filtering**: 로드된 snapshot을 변경하지 않고 query, readiness, severity filter를 적용하며, view가 갱신되는 동안 활성 search 또는 filter control의 keyboard focus를 유지합니다.
@@ -161,9 +161,9 @@ Viewer가 열리면 inspect artifact를 브라우저로 drag and drop합니다. 
 
 ### 스코프와 생명주기 시각화하기
 
-Studio의 중요한 역할 중 하나는 scope와 lifecycle 문제를 보이게 만드는 것입니다. 복잡한 애플리케이션에서는 request-scoped provider를 singleton path에 잘못 주입하거나, dependency chain만 봐서는 분명하지 않은 느린 provider를 도입하기 쉽습니다.
+Node live Studio의 중요한 역할 중 하나는 scope와 lifecycle 문제를 보이게 만드는 것입니다. 복잡한 애플리케이션에서는 request-scoped provider를 singleton path에 잘못 주입하거나, dependency chain만 봐서는 분명하지 않은 느린 provider를 도입하기 쉽습니다. Static inspect artifact에는 이 분석에 필요한 compiled DI graph, provider scope, lifecycle diagnostics가 없습니다.
 
-Snapshot은 Studio에 해석된 component graph와 diagnostics를 제공합니다. Timing data는 bootstrap phase cost를 제공합니다. 두 artifact를 함께 보면 viewer는 구조와 startup behavior를 모두 설명할 수 있습니다. Graph는 어떤 component가 느린 provider에 의존하는지 보여주고, timing view는 지연이 graph construction, instance resolution, lifecycle hooks 중 어디에서 발생했는지 보여줄 수 있습니다.
+Live snapshot은 Studio에 해석된 component graph와 diagnostics를 제공합니다. Timing data는 bootstrap phase cost를 제공합니다. 이 live artifact를 함께 보면 viewer는 구조와 startup behavior를 모두 설명할 수 있습니다. Graph는 어떤 component가 느린 provider에 의존하는지 보여주고, timing view는 지연이 graph construction, instance resolution, lifecycle hooks 중 어디에서 발생했는지 보여줄 수 있습니다. File-first artifact는 보고된 component, route, timing, diagnostics에는 유용하지만 같은 수준의 compiled-DI 분석을 제공하지 않습니다.
 
 ## 15.6 시나리오: Provider deadlock 진단하기
 
