@@ -158,6 +158,26 @@ The operator (human or agent session):
    preserved with zero ceremony.
 3. Runs `plan` again. Repeat until `done` or a typed `blocked`.
 
+Child hygiene rides the `cleanup` phase, not a periodic sweep. Completed
+children are two things at once: dead weight on runner slots (three bulk
+cancels of 69, 58, and 32 children were needed in one 30-issue run after
+spawns started failing) AND live revival channels — `task_send` to a
+finished child resumes it with context intact, which powered 6+ reviewer
+re-adjudications (block withdrawals, re-verdicts at new heads) at 2-6
+minutes each instead of a fresh triad. A CANCELLED child cannot be
+revived, so timing is the whole rule:
+
+| Child | Cancel when | Why |
+|---|---|---|
+| implementer / fix-back | right after the lead verifies its commit | a revived implementer does not redo work (observed: 5 children re-reported "done" with unchanged heads); fix-backs go to FRESH children anyway |
+| reviewer (triad axes) | only when its issue reaches `done` (merged + cleaned) | until then it is the re-adjudication channel — cancelling it converts every future dispute into a full re-review |
+| probes, one-shot helpers | immediately | single-use |
+
+So the `cleanup` phase for an issue ends with: remove worktree, delete
+branches, `record --phase cleanup`, and CANCEL every child that belonged
+to that issue. Slots then drain at the pace issues settle instead of
+accumulating until the runner refuses new spawns.
+
 ## Preserved contracts (unchanged from AGENTS.md)
 
 - Implementers write only inside `.worktrees/<branch>`; reviewers are
