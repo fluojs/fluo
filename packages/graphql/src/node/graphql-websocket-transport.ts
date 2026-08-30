@@ -50,6 +50,11 @@ export interface GraphqlNodeWebSocketSubscribeRequest {
  * Represents a registered Node GraphQL WebSocket transport.
  */
 export interface GraphqlNodeWebSocketTransport {
+  /**
+   * Releases websocket listeners, clients, and GraphQL protocol resources.
+   *
+   * @returns A promise that resolves when cleanup completes or rejects with all current cleanup failures.
+   */
   dispose(): Promise<void>;
 }
 
@@ -110,6 +115,22 @@ function closeWebSocketServer(server: WebSocketServer): Promise<void> {
       resolve();
     });
   });
+}
+
+function collectCleanupError(errors: unknown[], error: unknown): void {
+  if (error instanceof AggregateError) {
+    for (const nested of error.errors) {
+      collectCleanupError(errors, nested);
+    }
+
+    return;
+  }
+
+  if (errors.includes(error)) {
+    return;
+  }
+
+  errors.push(error);
 }
 
 function resolveUpgradeServer(adapter: HttpApplicationAdapter): NodeUpgradeServer {
@@ -197,14 +218,28 @@ export async function createNodeGraphqlWebSocketTransport(
 ): Promise<GraphqlNodeWebSocketTransport> {
   const upgradeServer = resolveUpgradeServer(options.adapter);
   const disconnectErrors: unknown[] = [];
+  const disconnectedSockets = new Set<object>();
   const pendingDisconnects = new Set<Promise<void>>();
+  let websocketDisposableDisposed = false;
+  let websocketServerClosed = false;
+  let inFlightDispose: Promise<void> | undefined;
   const websocketServer = new WebSocketServer({
     handleProtocols: (protocols: Set<string>) => handleProtocols(protocols),
     maxPayload: options.limits?.maxPayloadBytes ?? 0,
     noServer: true,
   });
   const upgradeListener = createUpgradeListener(websocketServer, options.limits);
+  const drainDisconnectErrors = (cleanupErrors: unknown[]): void => {
+    for (const error of disconnectErrors.splice(0, disconnectErrors.length)) {
+      collectCleanupError(cleanupErrors, error);
+    }
+  };
   const trackDisconnect = (socketKey: object) => {
+    if (disconnectedSockets.has(socketKey)) {
+      return;
+    }
+
+    disconnectedSockets.add(socketKey);
     const pendingDisconnect = Promise.resolve(options.onDisconnect(socketKey))
       .catch((error: unknown) => {
         disconnectErrors.push(error);
@@ -224,8 +259,8 @@ export async function createNodeGraphqlWebSocketTransport(
       onComplete: async (context: GraphqlWebSocketContext, message: CompleteMessage) => {
         await options.onComplete(context.extra.socket, message.id);
       },
-      onDisconnect: async (context: GraphqlWebSocketContext) => {
-        await options.onDisconnect(context.extra.socket);
+      onDisconnect: (context: GraphqlWebSocketContext) => {
+        trackDisconnect(context.extra.socket);
       },
       onSubscribe: async (context: GraphqlWebSocketContext, message: SubscribeMessage) =>
         options.onSubscribe(createSubscribeRequest(context, message)),
@@ -238,9 +273,10 @@ export async function createNodeGraphqlWebSocketTransport(
   websocketServer.on('connection', trackConnection);
   upgradeServer.on('upgrade', upgradeListener);
 
-  return {
-    async dispose() {
-      let disposeError: unknown;
+  const runDispose = async (): Promise<void> => {
+      const cleanupErrors: unknown[] = [];
+
+      drainDisconnectErrors(cleanupErrors);
 
       websocketServer.off('connection', trackConnection);
       upgradeServer.off('upgrade', upgradeListener);
@@ -249,35 +285,64 @@ export async function createNodeGraphqlWebSocketTransport(
         client.terminate();
       }
 
-      const disconnectResults = await Promise.allSettled(pendingDisconnects);
-      for (const error of disconnectErrors) {
-        disposeError ??= error;
-      }
-      for (const result of disconnectResults) {
-        if (result.status === 'rejected') {
-          disposeError ??= result.reason;
+      while (pendingDisconnects.size > 0) {
+        const disconnectResults = await Promise.allSettled([...pendingDisconnects]);
+
+        for (const result of disconnectResults) {
+          if (result.status === 'rejected') {
+            collectCleanupError(cleanupErrors, result.reason);
+          }
         }
       }
 
-      try {
-        await websocketDisposable.dispose();
-      } catch (error) {
-        disposeError = error;
+      drainDisconnectErrors(cleanupErrors);
+
+      if (!websocketDisposableDisposed) {
+        try {
+          await websocketDisposable.dispose();
+          websocketDisposableDisposed = true;
+        } catch (error) {
+          collectCleanupError(cleanupErrors, error);
+        }
       }
 
-      try {
-        await closeWebSocketServer(websocketServer);
-      } catch (error) {
-        disposeError ??= error;
+      if (!websocketServerClosed) {
+        try {
+          await closeWebSocketServer(websocketServer);
+          websocketServerClosed = true;
+        } catch (error) {
+          collectCleanupError(cleanupErrors, error);
+        }
       }
 
-      if (disposeError instanceof Error) {
-        throw disposeError;
+      while (pendingDisconnects.size > 0) {
+        const lateDisconnectResults = await Promise.allSettled([...pendingDisconnects]);
+
+        for (const result of lateDisconnectResults) {
+          if (result.status === 'rejected') {
+            collectCleanupError(cleanupErrors, result.reason);
+          }
+        }
       }
 
-      if (disposeError !== undefined) {
-        throw new Error(String(disposeError));
+      drainDisconnectErrors(cleanupErrors);
+
+      if (cleanupErrors.length === 1) {
+        throw cleanupErrors[0];
       }
+
+      if (cleanupErrors.length > 1) {
+        throw new AggregateError(cleanupErrors, 'Failed to dispose GraphQL websocket transport resources.');
+      }
+  };
+
+  return {
+    async dispose() {
+      inFlightDispose ??= runDispose().finally(() => {
+        inFlightDispose = undefined;
+      });
+
+      await inFlightDispose;
     },
   };
 }
