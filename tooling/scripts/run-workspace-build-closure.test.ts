@@ -68,6 +68,40 @@ describe('resolveWorkspaceBuildOrder', () => {
     expect(resolveWorkspaceBuildOrder('@test/app', root)).toEqual(['@test/app']);
   });
 
+  it('includes declared declaration-producing workspace dev dependencies in build order', () => {
+    const root = mkdtempSync(join(tmpdir(), 'fluo-build-closure-declaration-dev-deps-'));
+
+    mkdirSync(join(root, 'packages', 'app'), { recursive: true });
+    mkdirSync(join(root, 'packages', 'declaration-helper'), { recursive: true });
+
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({ private: true, workspaces: ['packages/*'] }, null, 2),
+      'utf8',
+    );
+    writeFileSync(
+      join(root, 'packages', 'app', 'package.json'),
+      JSON.stringify(
+        {
+          devDependencies: { '@test/declaration-helper': 'workspace:^' },
+          fluo: { declarationBuildDevDependencies: ['@test/declaration-helper'] },
+          name: '@test/app',
+          version: '0.0.0',
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+    writeFileSync(
+      join(root, 'packages', 'declaration-helper', 'package.json'),
+      JSON.stringify({ name: '@test/declaration-helper', types: './dist/index.d.ts', version: '0.0.0' }, null, 2),
+      'utf8',
+    );
+
+    expect(resolveWorkspaceBuildOrder('@test/app', root)).toEqual(['@test/declaration-helper', '@test/app']);
+  });
+
   it('fails when a child build is terminated by signal', () => {
     const root = mkdtempSync(join(tmpdir(), 'fluo-build-closure-'));
     const packageDirectory = join(root, 'packages', 'app');

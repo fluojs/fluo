@@ -21,7 +21,7 @@ CLI sidecar and React viewer workflow for fluo diagnostics, with a Node dev-runn
 
 Most application projects install Studio as a development-only dependency. The CLI resolves it for `fluo dev --studio`, `fluo inspect --mermaid`, and packaged viewer access, while the application runtime itself does not import Studio.
 
-Studio is a Node.js tooling package and requires Node.js `>=20.0.0`, matching the published package `engines.node` field. The packaged viewer subpath is resolved by Node package resolution even when it displays artifacts produced by Bun, Deno, or Cloudflare Workers fallback workflows.
+Studio is a Node.js tooling package and requires Node.js `>=20.0.0`, matching the published package `engines.node` field. Studio owns runtime-neutral consumer-side diagnostics declarations and does not install `@fluojs/runtime`, so that published engine floor is not narrowed by the runtime package. The packaged viewer subpath is resolved by Node package resolution even when it displays artifacts produced by Bun, Deno, or Cloudflare Workers fallback workflows.
 
 ```bash
 pnpm add -D @fluojs/studio
@@ -136,10 +136,10 @@ Studio is primarily a CLI-launched sidecar and browser viewer, but the published
 |---|---|
 | `FilterState` | Query, readiness status, and diagnostic severity filters applied by Studio without mutating the source snapshot. |
 | `ParsedPayload` | Return shape from `parseStudioPayload(rawJson)`, including the parsed `StudioPayload` and original JSON string. |
-| `PlatformDiagnosticIssue` | Runtime diagnostic issue type re-exported from `@fluojs/runtime` for Studio consumers. |
+| `PlatformDiagnosticIssue` | Studio-owned runtime-neutral diagnostic issue contract for Studio consumers. |
 | `PlatformDiagnosticSeverity` | Diagnostic severity union used by filters and live diagnostics. |
 | `PlatformReadinessStatus` | Readiness status union used by filters and graph annotations. |
-| `PlatformShellSnapshot` | Runtime-produced snapshot type re-exported from `@fluojs/runtime` for inspect artifacts. |
+| `PlatformShellSnapshot` | Studio-owned runtime-neutral snapshot contract for inspect artifacts. |
 | `StudioInspectionSnapshot` | Static inspect snapshot that optionally carries validated compiled route descriptors. |
 | `StudioPayload` | Static artifact envelope containing a snapshot, timing diagnostics, and/or report artifact. |
 | `StudioReportArtifact` | CI/support report artifact produced by `fluo inspect --report`. |

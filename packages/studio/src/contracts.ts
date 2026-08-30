@@ -1,19 +1,115 @@
-import type {
-  BootstrapTimingDiagnostics,
-  PlatformDiagnosticIssue,
-  PlatformShellSnapshot,
-  PlatformSnapshot,
-} from '@fluojs/runtime';
+/**
+ * Runtime-neutral diagnostics contract consumed by Studio inspect artifacts.
+ *
+ * Runtime produces values with this structural shape, but Studio owns the
+ * consumer-side declaration so its Node engine support is not coupled to the
+ * runtime package's engine range.
+ */
+export type PlatformReadinessStatus = 'ready' | 'not-ready' | 'degraded';
 
-export type { PlatformDiagnosticIssue, PlatformShellSnapshot } from '@fluojs/runtime';
+/** Health statuses supported by Studio snapshot parsing. */
+export type PlatformHealthStatus = 'healthy' | 'unhealthy' | 'degraded';
+
+/** Lifecycle states supported by Studio component diagnostics. */
+export type PlatformState =
+  | 'created'
+  | 'validated'
+  | 'starting'
+  | 'ready'
+  | 'degraded'
+  | 'stopping'
+  | 'stopped'
+  | 'failed';
+
+/** Outcome for one named readiness or health probe in a platform report. */
+export interface PlatformCheckResult {
+  name: string;
+  status: 'pass' | 'fail' | 'degraded';
+  message?: string;
+}
+
+/** Readiness semantics consumed from a platform inspection artifact. */
+export interface PlatformReadinessReport {
+  status: PlatformReadinessStatus;
+  critical: boolean;
+  reason?: string;
+  checks?: PlatformCheckResult[];
+}
+
+/** Health semantics consumed from a platform inspection artifact. */
+export interface PlatformHealthReport {
+  status: PlatformHealthStatus;
+  reason?: string;
+  checks?: PlatformCheckResult[];
+}
+
+/** Machine-readable issue emitted in a platform inspection artifact. */
+export interface PlatformDiagnosticIssue {
+  code: string;
+  severity: 'error' | 'warning' | 'info';
+  componentId: string;
+  message: string;
+  cause?: string;
+  fixHint?: string;
+  dependsOn?: string[];
+  docsUrl?: string;
+}
+
+/** Component snapshot consumed by Studio graph and diagnostics views. */
+export interface PlatformSnapshot {
+  id: string;
+  kind: string;
+  state: PlatformState;
+  readiness: {
+    status: PlatformReadinessStatus;
+    critical: boolean;
+    reason?: string;
+  };
+  health: {
+    status: PlatformHealthStatus;
+    reason?: string;
+  };
+  dependencies: string[];
+  telemetry: {
+    namespace: string;
+    tags: Record<string, string>;
+  };
+  ownership: {
+    ownsResources: boolean;
+    externallyManaged: boolean;
+  };
+  details: Record<string, unknown>;
+}
+
+/** Aggregate platform snapshot consumed by Studio static diagnostics. */
+export interface PlatformShellSnapshot {
+  generatedAt: string;
+  readiness: PlatformReadinessReport;
+  health: PlatformHealthReport;
+  components: PlatformSnapshot[];
+  diagnostics: PlatformDiagnosticIssue[];
+}
+
+/** One bootstrap timing phase represented in a Studio artifact. */
+export interface BootstrapTimingPhase {
+  durationMs: number;
+  name:
+    | 'bootstrap_module'
+    | 'register_runtime_tokens'
+    | 'resolve_lifecycle_instances'
+    | 'run_bootstrap_lifecycle'
+    | 'create_dispatcher';
+}
+
+/** Bootstrap timing diagnostics consumed by Studio reports and live events. */
+export interface BootstrapTimingDiagnostics {
+  phases: BootstrapTimingPhase[];
+  totalMs: number;
+  version: 1;
+}
 
 /**
  * Readiness statuses supported by Studio snapshot filtering and graph annotations.
- */
-export type PlatformReadinessStatus = PlatformSnapshot['readiness']['status'];
-
-/**
- * Diagnostic severities supported by Studio snapshot filtering.
  */
 export type PlatformDiagnosticSeverity = PlatformDiagnosticIssue['severity'];
 

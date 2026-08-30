@@ -77,7 +77,7 @@ Use `--mermaid` when you need a text diagram for documentation or review.
 fluo inspect ./src/app.module.ts --mermaid --output artifacts/module-graph.mmd
 ```
 
-Mermaid rendering is delegated to `@fluojs/studio` through the `renderMermaid(snapshot)` contract. Install Studio as a development-only dependency in the Node.js `>=20.0.0` project that runs CLI Studio/viewer commands when you need this output.
+Mermaid rendering is delegated to `@fluojs/studio` through the `renderMermaid(snapshot)` contract. Install Studio as a development-only dependency in the Node.js `>=20.0.0` project that runs CLI Studio/viewer commands when you need this output. Studio owns runtime-neutral consumer-side declarations for those artifacts, so installing it does not inherit `@fluojs/runtime`'s narrower Node engine range.
 
 ```bash
 pnpm add -D @fluojs/studio
@@ -87,7 +87,7 @@ Use a normal dependency instead only when a published package or runtime automat
 
 ## 15.4 Understanding the Snapshot and Report Shapes
 
-The data exported by the CLI follows contracts produced by `@fluojs/runtime` and consumed by Studio. This section explains the learning model. Reference-level field details belong in the contract docs and package README files.
+The data exported by the CLI is produced by `@fluojs/runtime` and follows runtime-neutral consumer-side contracts owned by Studio. This section explains the learning model. Reference-level field details belong in the contract docs and package README files.
 
 ### Raw JSON snapshot
 
