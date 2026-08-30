@@ -248,6 +248,23 @@ describe('@fluojs/platform-nodejs', () => {
     );
   });
 
+  it('passes plain HTTP construction options and rejects HTTPS pairing through the platform adapter', async () => {
+    const adapter = createNodejsAdapter({
+      http: { maxHeaderSize: 32_768 },
+    });
+
+    try {
+      expect(Reflect.get(adapter.getServer(), 'maxHeaderSize')).toBe(32_768);
+    } finally {
+      await adapter.close();
+    }
+
+    expect(() => createNodejsAdapter({
+      http: { maxHeaderSize: 32_768 },
+      https: {},
+    })).toThrow('Plain HTTP and HTTPS server options cannot be used together.');
+  });
+
   it('rejects listen through the package adapter after retryLimit is exhausted', async () => {
     const blocker = createServer();
     await new Promise<void>((resolve) => {

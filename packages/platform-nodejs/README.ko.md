@@ -49,18 +49,20 @@ await app.listen();
 Raw Node response는 `context.response.earlyHints`를 노출합니다. 이 optional capability를 확인한 뒤 HTTP `103` 하나마다 `write(...)`를 await하세요. 여러 write를 지원합니다. 각 write에는 비어 있지 않은 `link` value가 필요하며 Node가 허용하는 다른 informational field도 포함할 수 있습니다. Native write는 final response를 commit하거나 early field를 final header로 복사하지 않습니다. Late/native failure는 `EarlyHintsWriteError`로 reject되고 settlement 전에 연결이 끊기면 `RequestAbortedError`로 reject됩니다.
 
 ### 서버 옵션 커스텀
-어댑터는 문서화된 Node.js transport 옵션인 host/port 바인딩, HTTPS 설정, request body 제한, raw-body 보존, listen retry 설정, shutdown drain bound를 제공합니다.
+어댑터는 문서화된 Node.js transport 옵션인 host/port 바인딩, plain HTTP 또는 HTTPS 생성 설정, request body 제한, raw-body 보존, listen retry 설정, shutdown drain bound를 제공합니다.
 
 ```typescript
 const adapter = createNodejsAdapter({
-  port: 443,
-  https: {
-    key: fs.readFileSync('key.pem'),
-    cert: fs.readFileSync('cert.pem'),
+  port: 3000,
+  http: {
+    maxHeaderSize: 16_384,
+    joinDuplicateHeaders: true,
   },
   maxBodySize: 1_048_576,
 });
 ```
+
+`http`는 Node의 `node:http` `ServerOptions`를 받고 listener가 시작되기 전에 `createServer(options, handler)`로 전달합니다. `maxHeaderSize`, `insecureHTTPParser`, `joinDuplicateHeaders`, `highWaterMark` 같은 생성 시점 설정에 사용하세요. TLS에는 Node HTTPS server option이 담긴 `https`를 대신 제공하세요. `http`와 `https`는 동시에 사용할 수 없으며, 둘 다 제공하면 adapter가 server를 만들기 전에 throw하므로 어느 option도 조용히 무시되지 않습니다.
 
 `maxBodySize`는 바이트 수를 나타내는 숫자만 받습니다. 이 값은 raw Node 요청 바디가 아직 스트리밍되는 동안 바로 강제되며, 부트스트랩 시 `multipart.maxTotalSize`를 따로 재정의하지 않으면 같은 값이 멀티파트 전체 페이로드 한도의 기본값으로도 사용됩니다.
 
@@ -94,6 +96,7 @@ await app.listen();
 ## 동작 계약
 
 - `createNodejsAdapter(options)`는 Node 내장 `http` 또는 `https` 서버 primitive 위에서 fluo를 직접 실행하는 adapter-first 진입점입니다.
+- `http`는 plain HTTP server 생성용 Node `node:http` `ServerOptions`를 받고, `https`는 기존 TLS 생성 option을 유지합니다. 호출자는 두 field 중 하나만 제공해야 합니다.
 - `maxBodySize`는 0 이상의 정수 바이트 수만 받으며, raw Node 요청 바이트가 아직 스트리밍되는 동안 강제되고, 부트스트랩/실행 헬퍼에서 `multipart.maxTotalSize`를 명시적으로 제공하지 않으면 멀티파트 전체 크기 한도의 기본값이 됩니다.
 - Raw Node adapter는 대소문자가 섞인 JSON 및 multipart `content-type` 값을 normalize하고, request body가 `maxBodySize`를 넘으면 `413`을 반환하며, `x-request-id`와 `x-correlation-id` fallback을 request context와 error response에 전파하고, `getServer()` / `getRealtimeCapability()`를 통해 server-backed realtime capability를 노출합니다.
 - `bootstrapNodejsApplication(module, options)`는 raw Node 어댑터가 포함된 애플리케이션을 만들지만 리스닝은 시작하지 않으므로 이후 `app.listen()`과 `app.close()` 생명주기는 호출자가 소유합니다.
@@ -106,7 +109,7 @@ await app.listen();
 
 이 패키지는 `HttpApplicationAdapter`를 노출하며 `platform.components`에 등록되는 runtime-managed `PlatformComponent`가 아닙니다. 따라서 generic `createPlatformConformanceHarness(...)` component lifecycle 검사는 이 패키지의 지원 계약 범위에 포함되지 않고, `createHttpAdapterPortabilityHarness(...)`가 적용되는 공유 harness입니다.
 
-같은 regression target들은 package-specific public surface, type alias, adapter-first startup, lifecycle option validation, 실제로 관찰되는 listen retry, active-request bounded drain, 정상 및 실패 signal-driven shutdown, `process.env.PORT` isolation, zero/default `maxBodySize` boundary, idle keep-alive shutdown, 대소문자가 섞인 JSON 및 multipart content-type parsing, `x-correlation-id` request ID fallback, server-backed realtime capability 노출도 함께 다룹니다. Startup behavior를 바꿀 때는 README 예제 포인터를 아래 테스트 파일 및 Node.js 챕터 예제와 맞춰 유지하세요.
+같은 regression target들은 package-specific public surface, type alias, adapter-first startup, plain HTTP 생성 option과 HTTPS conflict boundary, lifecycle option validation, 실제로 관찰되는 listen retry, active-request bounded drain, 정상 및 실패 signal-driven shutdown, `process.env.PORT` isolation, zero/default `maxBodySize` boundary, idle keep-alive shutdown, 대소문자가 섞인 JSON 및 multipart content-type parsing, `x-correlation-id` request ID fallback, server-backed realtime capability 노출도 함께 다룹니다. Startup behavior를 바꿀 때는 README 예제 포인터를 아래 테스트 파일 및 Node.js 챕터 예제와 맞춰 유지하세요.
 
 ## 공개 API 개요
 
@@ -114,7 +117,7 @@ await app.listen();
 - `bootstrapNodejsApplication(module, options)`: 리스너를 시작하지 않고 애플리케이션 인스턴스를 생성합니다.
 - `runNodejsApplication(module, options)`: 생명주기 관리를 포함하여 애플리케이션을 부트스트랩하고 시작합니다.
 - `BootstrapNodejsApplicationOptions`: bootstrap-only Node.js 애플리케이션 생성 옵션입니다.
-- `NodejsAdapterOptions`: `port`, `host`, `https`, `maxBodySize`, retry 설정, raw body 보존, shutdown timeout을 포함하는 `createNodejsAdapter(...)`의 transport-level 옵션입니다.
+- `NodejsAdapterOptions`: `port`, `host`, 상호 배타적인 `http` 또는 `https` 생성 option, `maxBodySize`, retry 설정, raw body 보존, shutdown timeout을 포함하는 `createNodejsAdapter(...)`의 transport-level 옵션입니다.
 - `NodejsApplicationSignal`: `runNodejsApplication(...)` shutdown 등록이 지원하는 시그널 이름입니다.
 - `NodejsHttpApplicationAdapter`: `createNodejsAdapter(...)`가 반환하는 어댑터 인스턴스를 설명하는 타입 전용 별칭이며, `@fluojs/runtime/node`가 공개하는 어댑터 surface를 그대로 보존합니다.
 - `RunNodejsApplicationOptions`: 부트스트랩, 리스닝 시작, graceful shutdown 배선을 한 번에 수행하기 위한 옵션입니다.
