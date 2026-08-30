@@ -119,11 +119,25 @@ Root `@fluojs/platform-cloudflare-workers` export는 application code와 first-p
 
 위의 listen, shutdown, SSE drain, websocket binding 규칙은 public lifecycle behavior입니다. 이러한 public seam type 또는 lifecycle semantic을 바꾸는 변경은 `@fluojs/platform-cloudflare-workers` release governance 대상이며, user-impacting update는 implementation, docs, tests와 함께 Changesets로 추적해야 합니다.
 
+<!-- fluo-contract: realtime-capability -->
+```json
+{
+  "realtimeCapability": {
+    "bindingInstallationVersion": 1,
+    "contract": "raw-websocket-expansion",
+    "kind": "fetch-style",
+    "mode": "request-upgrade",
+    "support": "supported",
+    "version": 1
+  }
+}
+```
+
 ## Conformance 커버리지
 
-`packages/platform-cloudflare-workers/src/adapter.test.ts`와 `packages/platform-cloudflare-workers/src/adapter-lifecycle.test.ts`는 문서화된 Worker 계약을 검증하는 package-local regression 대상입니다. 이 파일들은 shared Web dispatch delegation, Worker `env` request attachment, `executionContext.waitUntil(...)` SSE(`text/event-stream`) body tracking, body-cancellation 및 synchronous setup-failure drain, websocket upgrade binding, upgraded server-socket close tracking, pre-listen HTTP 및 websocket lifecycle guard, listen boundary 이후 websocket binding freeze, lazy entrypoint 재사용 및 timeout recovery, shutdown gating, drain 중 `listen()` rejection, HTTP와 websocket upgrade 모두에 대한 close 중 및 close 이후 JSON `503` response, reliable fake-timer cleanup, public seam source import, README parity, bounded 10초 close timeout을 검증합니다.
+`packages/platform-cloudflare-workers/src/adapter.test.ts`와 `packages/platform-cloudflare-workers/src/adapter-lifecycle.test.ts`는 문서화된 Worker 계약을 검증하는 package-local regression 대상입니다. 이 파일들은 shared Web dispatch delegation, Worker `env` request attachment, `executionContext.waitUntil(...)` SSE(`text/event-stream`) body tracking, body-cancellation 및 synchronous setup-failure drain, websocket upgrade binding, upgraded server-socket close tracking, pre-listen HTTP 및 websocket lifecycle guard, listen boundary 이후 websocket binding freeze, lazy entrypoint 재사용 및 timeout recovery, shutdown gating, drain 중 `listen()` rejection, HTTP와 websocket upgrade 모두에 대한 close 중 및 close 이후 JSON `503` response, reliable fake-timer cleanup, public seam source import, structured realtime capability contract, bounded 10초 close timeout을 검증합니다.
 
-공유 edge portability suite인 `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`는 Cloudflare Workers를 Bun 및 Deno와 함께 실행해 malformed cookie 보존, query decoding, JSON/text raw-body capture, multipart raw-body 제외, SSE framing을 검증합니다. 패키지 테스트의 README parity assertion은 이 edge-runtime 커버리지 문서가 한국어 mirror와 계속 동기화되도록 확인합니다.
+공유 edge portability suite인 `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`는 Cloudflare Workers를 Bun 및 Deno와 함께 실행해 malformed cookie 보존, query decoding, JSON/text raw-body capture, multipart raw-body 제외, SSE framing을 검증합니다. 패키지 테스트는 두 README locale의 structured realtime capability contract를 parse하고 machine-consumed value를 adapter capability와 비교합니다.
 
 ## 공개 API 개요
 
