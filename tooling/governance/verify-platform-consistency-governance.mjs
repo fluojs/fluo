@@ -791,7 +791,11 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // fetch-style runtimes do not apply a backpressure policy to room broadcasts),
   // plus terminal Node upgrade admission and retained disconnect lifecycle state
   // across the bounded cross-runtime shutdown drain, plus HTTP request-observer
-  // success ordering after module and application middleware fully settle.
+  // success ordering after module and application middleware fully settle,
+  // plus @nestjs/config migration call-shape and bootstrap ownership boundaries
+  // where ConfigModule never reads external secret Providers itself and
+  // ConfigService.get/getOrThrow accept a single key with no NestJS
+  // default-value or options overload.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),

@@ -84,6 +84,7 @@ class MyService {
 - `@fluojs/config`는 ambient environment variable을 scan하지 않으므로 명시적 `processEnv` snapshot을 전달합니다.
 - NestJS `validate` callback은 `schema`에 전달하는 동기 Standard Schema로 바꿉니다. 비동기 schema 결과는 거부됩니다.
 - NestJS `isGlobal`이 아니라 `global`을 사용합니다. Visibility는 기본적으로 global이며, `global: false`로 module-local visibility를 선택합니다.
+- Call site는 single-key 형태로 재작성합니다. `ConfigService.get(key)`와 `getOrThrow(key)`는 key 하나만 받으며 NestJS default-value 또는 options overload를 노출하지 않습니다. 기본값은 `defaults` 또는 `schema` output이 소유하거나, `get(key)` 결과에 명시적인 `??` fallback을 적용합니다.
 
 공유 validated snapshot bootstrap pattern과 HTTP adapter boundary는 canonical [NestJS configuration migration guide](../../docs/getting-started/migrate-from-nestjs.ko.md)를 참고하세요.
 

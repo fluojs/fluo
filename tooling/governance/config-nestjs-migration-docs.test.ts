@@ -101,6 +101,52 @@ describe('NestJS config migration documentation', () => {
     }
   });
 
+  it('documents the single-key ConfigService call shape backed by the service signatures', () => {
+    // Given
+    const serviceSource = read('packages/config/src/service.ts');
+    const englishMigration = read('docs/getting-started/migrate-from-nestjs.md');
+    const koreanMigration = read('docs/getting-started/migrate-from-nestjs.ko.md');
+    const englishReadme = read('packages/config/README.md');
+    const koreanReadme = read('packages/config/README.ko.md');
+
+    // When
+    const migrationDocs = [englishMigration, koreanMigration] as const;
+
+    // Then
+    expect(serviceSource).toContain('get<K extends DotPaths<T>>(key: K): DotValue<T, K & string> | undefined {');
+    expect(serviceSource).toContain('getOrThrow<K extends DotPaths<T>>(key: K): DotValue<T, K & string> {');
+    expect(serviceSource).not.toMatch(/\bget<[^>]*>\(key: K, /u);
+    expect(serviceSource).not.toMatch(/\bgetOrThrow<[^>]*>\(key: K, /u);
+
+    for (const migrationDoc of migrationDocs) {
+      expect(migrationDoc).toContain('get(key, defaultValue)');
+      expect(migrationDoc).toContain('get(key, { infer: true })');
+    }
+
+    expect(englishReadme).toContain(
+      '`ConfigService.get(key)` and `getOrThrow(key)` take one key and expose no NestJS default-value or options overload',
+    );
+    expect(koreanReadme).toContain(
+      '`ConfigService.get(key)`\uc640 `getOrThrow(key)`\ub294 key \ud558\ub098\ub9cc \ubc1b\uc73c\uba70 NestJS default-value \ub610\ub294 options overload\ub97c \ub178\ucd9c\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4',
+    );
+  });
+
+  it('keeps external secret resolution at the application entrypoint in the bilingual config chapter', () => {
+    // Given
+    const englishChapter = read('book/beginner/ch11-config.md');
+    const koreanChapter = read('book/beginner/ch11-config.ko.md');
+
+    // Then
+    expect(englishChapter).toContain('`ConfigModule` never fetches from an external Provider itself');
+    expect(englishChapter).not.toContain(
+      'update the `ConfigModule` logic so it reads values from those external Providers',
+    );
+    expect(koreanChapter).toContain('`ConfigModule` \uc790\uccb4\uac00 \uc678\ubd80 \ud504\ub85c\ubc14\uc774\ub354\uc5d0\uc11c \uac12\uc744 \uac00\uc838\uc624\uc9c0\ub294 \uc54a\uc2b5\ub2c8\ub2e4');
+    expect(koreanChapter).not.toContain(
+      '\uc678\ubd80 \ud504\ub85c\ubc14\uc774\ub354\ub85c\ubd80\ud130 \uac12\uc744 \uac00\uc838\uc624\ub3c4\ub85d `ConfigModule` \ub85c\uc9c1\ub9cc \uc5c5\ub370\uc774\ud2b8',
+    );
+  });
+
   it('keeps the listen-only adapter boundary explicit in the bilingual config chapter', () => {
     // Given
     const englishChapter = read('book/beginner/ch11-config.md');
