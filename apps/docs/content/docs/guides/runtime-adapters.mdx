@@ -104,6 +104,8 @@ Load certificate material at the application configuration or secret-management 
 
 Use the raw Node.js adapter when you want the built-in `http` or `https` server primitives without Express or Fastify.
 
+`@fluojs/platform-nodejs` requires Node.js `>=20.19.3 <21 || >=22.2.0 <27`. Node 21, Node 22 before 22.2.0, and Node 27+ are unsupported.
+
 ```ts
 import { createNodejsAdapter } from '@fluojs/platform-nodejs';
 import { fluoFactory } from '@fluojs/runtime';
