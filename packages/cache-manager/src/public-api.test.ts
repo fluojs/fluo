@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, expectTypeOf, it } from 'vitest';
 
-import * as cacheManagerPublicApi from './index.js';
 import type {
+  CacheAsyncModuleOptions,
   CacheEvictDecoratorValue,
   CacheEvictFactory,
   CacheKeyDecoratorValue,
@@ -21,6 +21,7 @@ import type {
   RedisCompatibleClient,
   RedisStoreOptions,
 } from './index.js';
+import * as cacheManagerPublicApi from './index.js';
 
 type RootCacheKeyStrategy =
   | 'route'
@@ -56,6 +57,12 @@ describe('@fluojs/cache-manager public API surface', () => {
     expectTypeOf<CacheStore>().toHaveProperty('set');
     expectTypeOf<CacheModuleOptions>().toHaveProperty('store');
     expectTypeOf<CacheModuleOptions>().toHaveProperty('httpKeyStrategy');
+    expectTypeOf<CacheAsyncModuleOptions>().toHaveProperty('useFactory');
+    expectTypeOf<CacheAsyncModuleOptions>().toHaveProperty('inject');
+    expectTypeOf<CacheAsyncModuleOptions>().toHaveProperty('global');
+    expectTypeOf<Awaited<ReturnType<CacheAsyncModuleOptions['useFactory']>>>().toEqualTypeOf<
+      Omit<CacheModuleOptions, 'global'>
+    >();
     expectTypeOf<NormalizedCacheModuleOptions>().toHaveProperty('keyPrefix');
     expectTypeOf<NormalizedCacheModuleOptions>().toHaveProperty('principalScopeResolver');
     expectTypeOf<RedisCacheOptions>().toHaveProperty('clientName');

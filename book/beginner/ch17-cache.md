@@ -105,10 +105,22 @@ export class AppModule {}
 
 The top-level `keyPrefix` is the Redis ownership boundary, not a nested `redis` connection option. It defaults to `fluo:cache:`, prefixes every cache entry, and limits `CacheService.reset()` to that namespace. Redis glob metacharacters in the configured prefix are escaped before reset scanning, so even prefixes containing `*`, `?`, brackets, or backslashes remain literal ownership boundaries. Use an application-specific non-empty prefix when multiple applications share Redis. An empty prefix intentionally avoids scanning `*` and lets a store instance reset only the keys it wrote and still tracks, so it cannot provide cross-restart or cross-process reset ownership.
 
-### 17.3.2 Synchronous Configuration and Secret Management: Best Practices
-In real applications, you should not hardcode cache credentials. In fluo, `CacheModule.forRoot(options)` is the synchronous module entrypoint. The lifecycle-managed path prepares a default or named raw client with `@fluojs/redis`, then passes ordinary cache options that point to that registration through `store: 'redis'` and optional `redis.clientName`. This keeps the cache module's public surface simple while letting a separate configuration layer manage environment-specific connection details.
+### 17.3.2 Injected Async Configuration and Secret Management: Best Practices
+In real applications, you should not hardcode cache credentials. Use `CacheModule.forRootAsync({ inject, useFactory, global? })` when the final store, TTL, namespace, or key strategy depends on DI or asynchronous bootstrap work. The factory returns the same final options accepted by `forRoot(...)`, except that module visibility belongs to the outer `global?` option. Injected dependencies must be bootstrap runtime providers or exports from globally visible modules; a provider local only to the importing parent module is not visible. The factory runs once per registration when cache providers are first resolved, and rejection fails bootstrap without a partially configured cache.
 
-If the application already owns a compatible Redis client, pass it directly through `redis.client`. This path does not require `@fluojs/redis`: the object only needs the exported `RedisCompatibleClient` operations (`get`, `set`, `del`, and tuple-returning `scan`). A directly supplied client takes precedence over `redis.clientName`, and the application remains responsible for connecting and closing it.
+```typescript
+CacheModule.forRootAsync({
+  inject: [CacheSettingsService],
+  useFactory: async (settings: CacheSettingsService) => ({
+    store: await settings.resolveStore(),
+    ttl: settings.ttlSeconds,
+    keyPrefix: settings.keyPrefix,
+    httpKeyStrategy: 'route+query',
+  }),
+})
+```
+
+The synchronous `CacheModule.forRoot(options)` path remains appropriate when options are already prepared. The lifecycle-managed Redis path can resolve a default or named raw client from `@fluojs/redis` through `store: 'redis'` and optional `redis.clientName`. If the application already owns a compatible Redis client, pass it directly through `redis.client`. This path does not require `@fluojs/redis`: the object only needs the exported `RedisCompatibleClient` operations (`get`, `set`, `del`, and tuple-returning `scan`). A directly supplied client takes precedence over `redis.clientName`, and the application remains responsible for connecting and closing it.
 
 ```typescript
 import Redis from 'ioredis';
@@ -129,7 +141,7 @@ const cacheClient = new Redis({ host: 'localhost', port: 6379 });
 export class AppModule {}
 ```
 
-This explicit setup still enables **environment-aware store selection**. Read the needed configuration at the application boundary, choose the cache options before module registration, then pass the final object to `CacheModule.forRoot(...)`. For example, production might select a high-performance Redis cluster, while a CI/CD pipeline can pass `store: 'memory'` to keep the build environment light and fast. The important boundary is that the current public API receives already-prepared options rather than an async factory.
+Both registration paths enable **environment-aware store selection**. Use `forRootAsync(...)` when DI or bootstrap work determines the final choice, or prepare the object at the application boundary and pass it to `forRoot(...)`. For example, production might select a high-performance Redis cluster while CI uses `store: 'memory'`. Async registration adds no request-time configuration lookup: it resolves and normalizes one final options object for the registration.
 
 ### 17.3.3 Custom Store Options Beyond the Built-ins
 The current public contract only provides memory and Redis as built-in stores. Start with one of them, then extend the system by connecting a custom store that implements the `CacheStore` contract if your requirements are more specialized. In other words, it is more accurate to understand `CacheModule` not as a model that switches between many built-in backends, but as a model that combines two verified default stores with user-implemented stores.
