@@ -320,7 +320,7 @@ Request lifetime is modeled structurally. It is not just a label that means "cre
 `createRequestScope()` in `path:packages/di/src/container.ts:609-622` calls the package-private child construction path.
 That construction contains three decisions. The child has a parent reference. It has request-scope enabled. It shares the root singleton cache.
 
-So request scope is not a special cache bucket inside the root container. It is a separate container instance with its own `requestCache` and `multiRequestCache`. These fields are declared in `path:packages/di/src/container.ts:302-304`.
+So request scope is not a special cache bucket inside the root container. It is a separate container instance with its own `requestCache` and `multiRequestCache`. These fields are declared in `path:packages/di/src/container.ts:300-301`.
 
 Request-only resolution is enforced in `cacheFor()` and `multiCacheFor()`. If the provider scope is `request` and `requestScopeEnabled` is false, the container throws `RequestScopeResolutionError` with a hint to use `container.createRequestScope()`. The code is in `path:packages/di/src/container.ts:1191-1213` and `path:packages/di/src/container.ts:1214-1236`.
 

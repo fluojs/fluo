@@ -320,7 +320,7 @@ request lifetime은 구조적으로 모델링됩니다. 단순히 "이 provider�
 `path:packages/di/src/container.ts:609-622`의 `createRequestScope()`는 package-private child construction path를 호출합니다.
 이 construction 안에 세 가지 결정이 들어 있습니다. child는 parent reference를 갖습니다. request-scope enabled 상태가 됩니다. 그리고 root singleton cache를 공유합니다.
 
-즉 request scope는 root container 내부의 특별한 cache bucket이 아닙니다. 자기 own `requestCache`와 `multiRequestCache`를 가진 별도 container instance입니다. 이 field들은 `path:packages/di/src/container.ts:302-304`에 선언되어 있습니다.
+즉 request scope는 root container 내부의 특별한 cache bucket이 아닙니다. 자기 own `requestCache`와 `multiRequestCache`를 가진 별도 container instance입니다. 이 field들은 `path:packages/di/src/container.ts:300-301`에 선언되어 있습니다.
 
 request-only resolution은 `cacheFor()`와 `multiCacheFor()`에서 강제됩니다. provider scope가 `request`인데 `requestScopeEnabled`가 false이면, 컨테이너는 `container.createRequestScope()`를 사용하라는 힌트와 함께 `RequestScopeResolutionError`를 던집니다. 코드는 `path:packages/di/src/container.ts:1191-1213`와 `path:packages/di/src/container.ts:1214-1236`에 있습니다.
 
