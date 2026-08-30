@@ -400,12 +400,12 @@ The earlier `cacheFor()` excerpt already showed the request guard for single pro
 Single providers and multi providers follow the same tier rules, only the key differs. That is why the request boundary can be explained with one model instead of repeating both cache helpers separately.
 
 The most important test in this area is the first one.
-`path:packages/di/src/container.test.ts:42-66` registers a request-scoped provider at the root,
+`path:packages/di/src/container.test.ts:41-65` registers a request-scoped provider at the root,
 confirms that root resolution fails, then shows that the same child reuses the same instance while different children receive different instances. That one test explains the whole request scope contract.
 
 Here, the test compresses the public contract more clearly than the implementation does.
 
-`path:packages/di/src/container.test.ts:42-66`
+`path:packages/di/src/container.test.ts:41-65`
 ```typescript
 it('keeps request-scoped providers unique per request scope', async () => {
   let created = 0;

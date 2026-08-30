@@ -400,12 +400,12 @@ request-only resolution은 `cacheFor()`와 `multiCacheFor()`에서 강제됩니�
 single provider와 multi provider는 key만 다를 뿐 같은 tier 규칙을 따릅니다. 그래서 request boundary 설명은 두 cache helper를 따로 반복하지 않아도 한 모델로 읽을 수 있습니다.
 
 이 영역에서 가장 중요한 테스트는 첫 번째 것입니다.
-`path:packages/di/src/container.test.ts:42-66`은 root에 request-scoped provider를 등록하고,
+`path:packages/di/src/container.test.ts:41-65`은 root에 request-scoped provider를 등록하고,
 root resolution이 실패함을 확인한 뒤, 같은 child 안에서는 동일 인스턴스를 재사용하고 다른 child끼리는 다른 인스턴스를 받음을 보여 줍니다. 이 테스트 하나가 request scope 계약 전체를 설명합니다.
 
 이 경우는 구현보다 테스트가 public contract를 더 압축해서 보여 줍니다.
 
-`path:packages/di/src/container.test.ts:42-66`
+`path:packages/di/src/container.test.ts:41-65`
 ```typescript
 it('keeps request-scoped providers unique per request scope', async () => {
   let created = 0;

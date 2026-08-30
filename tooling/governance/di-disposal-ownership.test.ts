@@ -69,11 +69,11 @@ describe('DI disposal ownership governance', () => {
     // When / Then
     for (const chapter of chapters) {
       for (const marker of [
-        'path:packages/di/src/container.ts:616-640',
-        'path:packages/di/src/container.ts:642-672',
-        'path:packages/di/src/container.ts:1197-1213',
-        'path:packages/di/src/container.ts:1215-1286',
-        'path:packages/di/src/container.ts:1403-1411',
+        'path:packages/di/src/container.ts:619-643',
+        'path:packages/di/src/container.ts:645-680',
+        'path:packages/di/src/container.ts:1204-1220',
+        'path:packages/di/src/container.ts:1222-1297',
+        'path:packages/di/src/container.ts:1448-1497',
       ]) {
         expect(chapter).toContain(marker);
       }
