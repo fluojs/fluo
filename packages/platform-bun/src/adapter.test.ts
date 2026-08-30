@@ -2449,6 +2449,28 @@ describe('@fluojs/platform-bun', () => {
     expect(() => harness.assertExposesRawWebSocketExpansionContract()).not.toThrow();
   });
 
+  it.each([
+    ['a null binding', null],
+    ['a binding without fetch', { websocket: {} }],
+    ['a binding with a non-function fetch', { fetch: 'not a function', websocket: {} }],
+    ['a binding without websocket', { fetch: (): Promise<undefined> => Promise.resolve(undefined) }],
+    [
+      'a binding with a null websocket',
+      { fetch: (): Promise<undefined> => Promise.resolve(undefined), websocket: null },
+    ],
+  ])('rejects %s through the realtime capability installer', (_description, binding) => {
+    const adapter = new BunHttpApplicationAdapter();
+    const bindingInstallation = adapter.getRealtimeCapability().bindingInstallation;
+
+    if (bindingInstallation === undefined) {
+      throw new TypeError('Expected the Bun adapter realtime capability to expose binding installation.');
+    }
+
+    expect(() => bindingInstallation.install(binding)).toThrow(
+      new TypeError('Bun realtime binding installation requires fetch and websocket host contracts.'),
+    );
+  });
+
   it('delegates websocket upgrade requests through a configured Bun websocket binding before HTTP dispatch', async () => {
     const mockBun = installMockBun();
     const adapter = new BunHttpApplicationAdapter();
