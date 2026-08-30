@@ -266,6 +266,7 @@ function collectPackageVersionDeltas(baseRef, dependencies = {}) {
             nextVersion: next.version,
             packageName: next.packageName,
             previousVersion: previous.version,
+            source: 'generated',
           },
         ]
       : [];
@@ -386,10 +387,22 @@ function collectMissingNodeEngineMigrationNotes(narrowings, intents) {
       (intent) => intent.packageName === narrowing.packageName && intent.bump === 'major',
     );
 
-    return majorIntent && !/(?:^|\n)Migration:\s+\S/mu.test(majorIntent.body)
+    return majorIntent && !hasConsumerNodeEngineMigrationGuidance(majorIntent.body)
       ? [{ ...narrowing, filePath: majorIntent.filePath }]
       : [];
   });
+}
+
+function hasConsumerNodeEngineMigrationGuidance(body) {
+  if (/(?:^|\n)Migration:\s+\S/mu.test(body)) {
+    return true;
+  }
+
+  const guide = /(?:^|\n)(?:#{1,6}\s*)?(?:consumer\s+)?(?:migration|upgrade)\s+(?:guide|guidance|notes?)\s*:?\s*\n+([\s\S]*)/iu.exec(body)?.[1] ?? '';
+
+  return /\bNode(?:\.js)?\b/iu.test(guide) &&
+    /\b(?:upgrade|install|move|use)\b/iu.test(guide) &&
+    /\b\d+\.\d+(?:\.\d+)?\b/u.test(guide);
 }
 
 function packageChangelogPathForPackageJson(packageJsonPath) {
@@ -643,6 +656,9 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
   const dependencyOnlyMajorVersionDeltas = typeof dependencies.collectDependencyOnlyMajorVersionDeltas === 'function'
     ? dependencies.collectDependencyOnlyMajorVersionDeltas(versionDeltas)
     : collectDependencyOnlyMajorVersionDeltas(versionDeltas, dependencies);
+  const pendingDependencyOnlyMajorVersionDeltas = intents.length === 0
+    ? dependencyOnlyMajorVersionDeltas.filter((delta) => delta.source !== 'generated')
+    : dependencyOnlyMajorVersionDeltas;
   const patchCliFeatureDowngrades = [
     ...collectPatchCliFeatureDowngradesFromChangesets(intents, dependencies),
     ...collectPatchCliFeatureDowngradesFromVersionDeltas(versionDeltas, dependencies),
@@ -668,7 +684,7 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
   if (
     disallowed.length > 0 ||
     disallowedVersionDeltas.length > 0 ||
-    dependencyOnlyMajorVersionDeltas.length > 0 ||
+    pendingDependencyOnlyMajorVersionDeltas.length > 0 ||
     patchCliFeatureDowngrades.length > 0 ||
     patchStudioRouteKindInputContractNarrowings.length > 0 ||
     stableNodeEngineRangeNarrowings.length > 0 ||
@@ -677,7 +693,7 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     const details = disallowed
       .map((intent) => `${intent.packageName}@${intent.bump} (${intent.filePath})`)
       .join('\n  - ');
-    const versionDetails = disallowedVersionDeltas
+    const versionDetails = pendingDependencyOnlyMajorVersionDeltas
       .map(
         (delta) =>
           `${delta.packageName}@${delta.bump} (${delta.previousVersion} -> ${delta.nextVersion}, ${delta.filePath})`,
@@ -686,8 +702,8 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     const sections = [
       details.length > 0 ? `changesets:\n  - ${details}` : '',
       versionDetails.length > 0 ? `package version deltas:\n  - ${versionDetails}` : '',
-      dependencyOnlyMajorVersionDeltas.length > 0
-        ? `dependency-only major package version deltas:\n  - ${dependencyOnlyMajorVersionDeltas
+      pendingDependencyOnlyMajorVersionDeltas.length > 0
+        ? `dependency-only major package version deltas:\n  - ${pendingDependencyOnlyMajorVersionDeltas
             .map(
               (delta) =>
                 `${delta.packageName}@major (${delta.previousVersion} -> ${delta.nextVersion}, ${delta.filePath}, ${delta.changelogPath}: ${delta.reason})`,
@@ -726,7 +742,7 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
         ? `stable Node engine range narrowings missing consumer migration notes:\n  - ${missingNodeEngineMigrationNotes
             .map(
               (narrowing) =>
-                `${narrowing.packageName}@${narrowing.previousVersion} (${narrowing.filePath}): add a non-empty Migration: paragraph.`,
+                `${narrowing.packageName}@${narrowing.previousVersion} (${narrowing.filePath}): add Migration: guidance or a structured Upgrade guidance section.`,
             )
             .join('\n  - ')}`
         : '',
@@ -739,7 +755,7 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
 
   return {
     allowedBumps: [...allowedBumps],
-    checkedDependencyOnlyMajorVersionDeltas: dependencyOnlyMajorVersionDeltas,
+    checkedDependencyOnlyMajorVersionDeltas: pendingDependencyOnlyMajorVersionDeltas,
     checkedIntents: intents,
     checkedPatchCliFeatureDowngrades: patchCliFeatureDowngrades,
     checkedPatchStudioRouteKindInputContractNarrowings: patchStudioRouteKindInputContractNarrowings,

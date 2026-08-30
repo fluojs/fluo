@@ -189,7 +189,7 @@ function compareLower(left, right) {
 function overlaps(left, right) {
   if (!left.upper || !right.lower) return true;
   const comparison = compareVersions(left.upper.parts, right.lower.parts);
-  return comparison > 0 || (comparison === 0 && left.upper.inclusive && right.lower.inclusive);
+  return comparison > 0 || (comparison === 0 && (left.upper.inclusive || right.lower.inclusive));
 }
 
 function merge(left, right) {
@@ -236,14 +236,26 @@ function isSubset(candidate, previous) {
   return candidate.every((interval) => previous.some((container) => contains(container, interval)));
 }
 
-function isOfficialVersion(version) {
-  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u.exec(version);
-  return match !== null && Number(match[1]) > 0;
+function versionTier(version) {
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u.exec(version);
+
+  if (!match) {
+    return 'invalid';
+  }
+
+  return Number(match[1]) === 0 || match[4] ? 'preview' : 'official';
 }
 
 export function narrowsStableNodeEngineRange(previousVersion, previousRange, nextRange, nextVersion = previousVersion) {
-  if (!isOfficialVersion(previousVersion) || !isOfficialVersion(nextVersion) || previousRange === nextRange) {
+  const previousTier = versionTier(previousVersion);
+  const nextTier = versionTier(nextVersion);
+
+  if (previousTier !== 'official' || nextTier === 'preview' || previousRange === nextRange) {
     return false;
+  }
+
+  if (nextTier !== 'official') {
+    return true;
   }
 
   const previous = normalizeRange(previousRange ?? '*');

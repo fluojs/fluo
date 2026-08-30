@@ -27,6 +27,10 @@ fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터
 - Runtime behavior 또는 API 변경은 affected package README, governed docs, regression test를 [`docs/contracts/behavioral-contract-policy.ko.md`](./contracts/behavioral-contract-policy.ko.md)에 맞춰 함께 유지해야 한다.
 - PlatformShell lifecycle exclusivity는 `@fluojs/testing/platform-shell-lifecycle-conformance`의 `createPlatformShellLifecycleConformanceHarness(...)`로 검증하며, active lifecycle overlap 전체는 `PlatformLifecycleConflictError`로 reject되어야 한다.
 
+## 릴리스 거버넌스 탐색
+
+Changesets 소비, 생성된 패키지 version delta, Official Node.js 지원 변경, 소비자 runtime migration guidance는 [`docs/contracts/release-governance.ko.md`](./contracts/release-governance.ko.md)에서 시작한다. Stable lane gate는 `tooling/release/verify-changeset-release-lane.mjs`이며, Changesets가 pending metadata를 소비한 뒤의 생성 결과를 허용하고 Official 패키지가 Node.js 지원을 제거하면 `Migration:` guidance 또는 구조화된 upgrade guide를 요구한다.
+
 ## Package Families
 
 | Family | Purpose | Representative packages |

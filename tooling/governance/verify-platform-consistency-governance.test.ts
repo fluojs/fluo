@@ -111,6 +111,40 @@ describe('isGovernedPackageSourcePath', () => {
   });
 });
 
+describe('enforceContractCompanionUpdates', () => {
+  it('requires bilingual context discoverability companions for release-contract changes', async () => {
+    // Given: a release-governing contract update with its tooling and regression companion.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/contracts/release-governance.md',
+      'tooling/release/verify-changeset-release-lane.mjs',
+      'tooling/release/verify-changeset-release-lane.test.ts',
+    ];
+
+    // When: bilingual context companions are absent or present.
+    // Then: platform governance requires them for discoverability.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(/docs\/CONTEXT\.md/u);
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...changedFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('keeps release-governance discovery in both context companions', () => {
+    // Given: the bilingual documentation hub.
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+
+    // When: release operations need a governed discovery path.
+    // Then: both context companions name the release-governance entrypoint.
+    expect(englishContext).toContain('## Release Governance Discoverability');
+    expect(koreanContext).toContain('## 릴리스 거버넌스 탐색');
+  });
+});
+
 describe('collectDirectProcessEnvViolations', () => {
   it('reports only ordinary package-source process.env access', () => {
     const files = [

@@ -73,6 +73,8 @@ describe('narrowsStableNodeEngineRange', () => {
     ['mixed union removal and addition', '>=20.0.0 <21.0.0 || >=22.0.0 <23.0.0', '>=21.0.0 <24.0.0', true],
     ['widened support', '>=20.0.0 <21.0.0', '>=20.0.0 <22.0.0', false],
     ['equivalent range syntax', '^20.0.0 || ^22.0.0', '>=20.0.0 <21.0.0 || >=22.0.0 <23.0.0', false],
+    ['split adjacent union equivalence', '>=20.0.0 <23.0.0', '>=20.0.0 <21.0.0 || >=21.0.0 <23.0.0', false],
+    ['merged adjacent union equivalence', '>=20.0.0 <21.0.0 || >=21.0.0 <23.0.0', '>=20.0.0 <23.0.0', false],
   ])('detects support removal for %s', (_fixture, previousRange, nextRange, expected) => {
     // Given: an Official package's published and candidate Node ranges.
     // When: the verifier compares their supported version sets.
@@ -101,6 +103,24 @@ describe('narrowsStableNodeEngineRange', () => {
     expect(
       narrowsStableNodeEngineRange('1.1.0', '>=20.0.0 <23.0.0', '>=22.0.0 <23.0.0', '2.0.0-preview.1'),
     ).toBe(false);
+  });
+
+  it('keeps stable build metadata Official', () => {
+    // Given: published and candidate Official versions with SemVer build metadata.
+    // When: the candidate removes a supported Node version.
+    // Then: build metadata does not bypass Official-tier enforcement.
+    expect(
+      narrowsStableNodeEngineRange('1.1.0+build.7', '>=20.0.0 <23.0.0', '>=21.0.0 <23.0.0', '1.2.0+sha.9'),
+    ).toBe(true);
+  });
+
+  it('fails closed for a malformed candidate version', () => {
+    // Given: an Official published version and malformed candidate version.
+    // When: the candidate removes a supported Node version.
+    // Then: invalid version metadata cannot bypass the release gate.
+    expect(
+      narrowsStableNodeEngineRange('1.1.0', '>=20.0.0 <23.0.0', '>=21.0.0 <23.0.0', 'not-a-semver'),
+    ).toBe(true);
   });
 });
 
@@ -169,6 +189,25 @@ describe('published Node engine manifest enforcement', () => {
     );
 
     // Then: the major metadata and migration note satisfy the contract.
+    expect(result.checkedStableNodeEngineRangeNarrowings).toEqual([]);
+  });
+
+  it('accepts a structured consumer upgrade guide without a literal Migration marker', () => {
+    // Given: a major Node support removal with actionable consumer guidance.
+    const directory = createChangesetDirectory();
+    writeChangeset(
+      directory,
+      'major',
+      'Raise the minimum supported Node.js version.\n\n## Upgrade guidance\n\nNode.js 20 support is removed. Upgrade production to Node.js 22.2.0 before deploying this release.',
+    );
+
+    // When: release metadata is verified.
+    const result = verifyChangesetReleaseLane(
+      { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+      publishedGraphqlDependencies('>=20.19.3 <21 || >=22.2.0 <27'),
+    );
+
+    // Then: sufficiently structured replacement-runtime guidance satisfies the migration contract.
     expect(result.checkedStableNodeEngineRangeNarrowings).toEqual([]);
   });
 });

@@ -64,10 +64,11 @@ describe('verifyChangesetReleaseLane', () => {
           },
           {
             bump: 'major',
-            filePath: 'packages/runtime/package.json',
+            filePath: 'packages/generated/package.json',
             nextVersion: '2.0.0',
-            packageName: '@fluojs/runtime',
+            packageName: '@fluojs/generated',
             previousVersion: '1.0.0',
+            source: 'generated',
           },
         ],
         collectDependencyOnlyMajorVersionDeltas: () => [],
@@ -133,6 +134,7 @@ describe('verifyChangesetReleaseLane', () => {
 
   it('rejects major package version deltas without major changelog evidence', () => {
     const directory = createChangesetDirectory();
+    writeChangeset(directory, 'i18n-major.md', '"@fluojs/i18n": major');
     writePackageChangelog(
       directory,
       'packages/i18n',
@@ -153,11 +155,39 @@ describe('verifyChangesetReleaseLane', () => {
             },
           ],
           existsSync: (targetPath: string) => targetPath.endsWith('packages/i18n/CHANGELOG.md'),
-          readFileSync: () =>
-            `# @fluojs/i18n\n\n## 2.0.0\n\n### Patch Changes\n\n- Updated dependencies:\n  - @fluojs/http@1.1.0\n`,
+          readFileSync: (targetPath: string) =>
+            targetPath.endsWith('i18n-major.md')
+              ? '---\n"@fluojs/i18n": major\n---\n\nRemove a deprecated public API.\n'
+              : `# @fluojs/i18n\n\n## 2.0.0\n\n### Patch Changes\n\n- Updated dependencies:\n  - @fluojs/http@1.1.0\n`,
         },
       ),
     ).toThrow(/dependency-only major package version deltas/u);
+  });
+
+  it('accepts a generated major version delta after Changesets consumption', () => {
+    // Given: Changesets has consumed the originating major intent.
+    const directory = createChangesetDirectory();
+
+    // When: the Version Packages result is checked without pending metadata.
+    const result = verifyChangesetReleaseLane(
+      { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+      {
+        collectPackageVersionDeltas: () => [
+          {
+            bump: 'major',
+            filePath: 'packages/generated/package.json',
+            nextVersion: '2.0.0',
+            packageName: '@fluojs/generated',
+            previousVersion: '1.0.0',
+            source: 'generated',
+          },
+        ],
+        collectStableNodeEngineRangeNarrowings: () => [],
+      },
+    );
+
+    // Then: generated release output is not rejected for lacking a pending intent.
+    expect(result.checkedDependencyOnlyMajorVersionDeltas).toEqual([]);
   });
 
   it('rejects patch changesets that describe public CLI feature additions', () => {
