@@ -111,6 +111,40 @@ export function enforcePlatformFastifyEngineDocumentation(readText = read) {
   }
 }
 
+export function enforcePlatformNodejsEngineDocumentation(readText = read) {
+  const manifest = JSON.parse(readText('packages/platform-nodejs/package.json'));
+  const engineRange = manifest.engines?.node;
+
+  assert(
+    typeof engineRange === 'string' && engineRange.length > 0,
+    '@fluojs/platform-nodejs must declare engines.node.',
+  );
+
+  for (const relativePath of [
+    'apps/docs/content/docs/guides/runtime-adapters.mdx',
+    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+  ]) {
+    const content = readText(relativePath);
+    const rawNodeSectionStart = content.indexOf('## Raw Node.js');
+
+    assert(
+      rawNodeSectionStart >= 0,
+      `${relativePath} must include a Raw Node.js section.`,
+    );
+
+    const nextSectionStart = content.indexOf('\n## ', rawNodeSectionStart + 1);
+    const rawNodeSection = content.slice(
+      rawNodeSectionStart,
+      nextSectionStart === -1 ? undefined : nextSectionStart,
+    );
+
+    assert(
+      rawNodeSection.includes(`\`${engineRange}\``),
+      `${relativePath} Raw Node.js section must state @fluojs/platform-nodejs engines.node ${engineRange}.`,
+    );
+  }
+}
+
 export function isSupportedNodeListenerVersion(version) {
   const match = /^(\d+)\.(\d+)\.(\d+)$/u.exec(version);
   if (match === null) {
@@ -2834,6 +2868,7 @@ export function main() {
   enforceQueueWorkerOwnershipContract();
   enforceMicroservicesSafetyGuidanceParity();
   enforceMicroservicesSafetyRuntimeEvidence();
+  enforcePlatformNodejsEngineDocumentation();
   enforceAdvancedBookCoreBoundaryCompanions(changedFiles);
   enforceContractCompanionUpdates(changedFiles);
   enforceAlignmentClaimsBackedByHarness(changedFiles);

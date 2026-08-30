@@ -48,6 +48,9 @@ export function isSupportedNodeListenerVersion(version: string): boolean;
 export function enforcePlatformFastifyEngineDocumentation(
   readText?: (relativePath: string) => string,
 ): void;
+export function enforcePlatformNodejsEngineDocumentation(
+  readText?: (relativePath: string) => string,
+): void;
 export function enforceCloudflareWorkersLifecycleDocsSync(
   readText?: (relativePath: string) => string,
 ): void;
