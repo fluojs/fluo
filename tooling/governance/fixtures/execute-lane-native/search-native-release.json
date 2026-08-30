@@ -1,7 +1,0 @@
-{
-  "version": 2,
-  "artifact_id": "search:search-native-release",
-  "sha256": "b0169f5a9482fe7700f607c1676277af40591509a4c630e074c0be11d8e8a1a5",
-  "search_run_id": "search-native-release",
-  "selected_issues": [4101]
-}
