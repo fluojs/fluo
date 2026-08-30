@@ -1,5 +1,3 @@
-import { createServer } from 'node:net';
-
 import { defineModule } from '@fluojs/runtime';
 import { bootstrapNodeApplication } from '@fluojs/runtime/node';
 import { GraphQLObjectType, GraphQLString } from 'graphql';
@@ -7,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { Context, FieldResolver, Parent, Query, Resolver } from './decorators.js';
 import { GraphqlModule } from './module.js';
+import { getBoundPort } from './network.test-fixture.js';
 import type { GraphQLContext } from './types.js';
 
 type Book = {
@@ -50,30 +49,6 @@ class BookFieldResolver {
   }
 }
 
-async function findAvailablePort(): Promise<number> {
-  return await new Promise<number>((resolve, reject) => {
-    const server = createServer();
-    server.once('error', reject);
-    server.listen(0, () => {
-      const address = server.address();
-
-      if (!address || typeof address === 'string') {
-        reject(new Error('Failed to resolve available port.'));
-        return;
-      }
-
-      server.close((error?: Error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve(address.port);
-      });
-    });
-  });
-}
-
 async function postGraphql(port: number, query: string): Promise<unknown> {
   const response = await fetch(`http://127.0.0.1:${String(port)}/graphql`, {
     body: JSON.stringify({ query }),
@@ -96,11 +71,11 @@ describe('GraphQL object field resolvers', () => {
       providers: [BookQueryResolver, BookFieldResolver],
     });
 
-    const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port: 0 });
 
     try {
       await app.listen();
+      const port = await getBoundPort(app);
       await expect(postGraphql(port, '{ book { id author { id label } } }')).resolves.toEqual({
         data: {
           book: {
