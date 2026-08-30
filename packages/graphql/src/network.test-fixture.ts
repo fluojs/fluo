@@ -7,6 +7,7 @@ import {
 import { afterEach } from 'vitest';
 
 type GraphqlTestApplication = Awaited<ReturnType<typeof bootstrapRuntimeNodeApplication>>;
+type GraphqlTestApplications = Map<number, GraphqlTestApplication | undefined>;
 
 export function createGraphqlNetworkFixture(): {
   readonly bootstrapNodeApplication: (
@@ -15,37 +16,63 @@ export function createGraphqlNetworkFixture(): {
   readonly findAvailablePort: () => Promise<number>;
   readonly resolvePort: (port: number) => Promise<number>;
 } {
-  const applications = new Set<GraphqlTestApplication>();
+  const applications: GraphqlTestApplications = new Map();
+  let nextPortToken = 10_000;
 
   afterEach(async () => {
-    const activeApplications = Array.from(applications);
-    applications.clear();
-    await Promise.all(activeApplications.map(async (app) => await app.close()));
+    await closeGraphqlTestApplications(applications);
   });
 
   return {
-    async bootstrapNodeApplication(...args): Promise<GraphqlTestApplication> {
-      const app = await bootstrapRuntimeNodeApplication(...args);
-      applications.add(app);
+    async bootstrapNodeApplication(rootModule, options): Promise<GraphqlTestApplication> {
+      const token = options?.port;
+      const app = await bootstrapRuntimeNodeApplication(
+        rootModule,
+        token !== undefined && applications.has(token) ? { ...options, port: 0 } : options,
+      );
+
+      if (token !== undefined && applications.has(token)) {
+        applications.set(token, app);
+      }
+
       return app;
     },
     async findAvailablePort(): Promise<number> {
-      return 0;
+      nextPortToken += 1;
+      applications.set(nextPortToken, undefined);
+      return nextPortToken;
     },
     async resolvePort(port: number): Promise<number> {
-      if (port !== 0) {
-        return port;
-      }
-
-      const app = Array.from(applications).at(-1);
+      const app = applications.get(port);
 
       if (!app) {
-        throw new Error('Expected a GraphQL test application to resolve its bound port.');
+        throw new Error('Expected a GraphQL test application owned by its port token.');
       }
 
       return await getBoundPort(app);
     },
   };
+}
+
+export async function closeGraphqlTestApplications(applications: GraphqlTestApplications): Promise<void> {
+  const owners = Array.from(applications.entries()).filter(
+    (entry): entry is [number, GraphqlTestApplication] => entry[1] !== undefined,
+  );
+  const results = await Promise.allSettled(owners.map(async ([, app]) => await app.close()));
+  const errors: unknown[] = [];
+
+  for (const [index, result] of results.entries()) {
+    const [token] = owners[index]!;
+    if (result.status === 'fulfilled') {
+      applications.delete(token);
+    } else {
+      errors.push(result.reason);
+    }
+  }
+
+  if (errors.length > 0) {
+    throw new AggregateError(errors, 'Failed to close GraphQL test applications.');
+  }
 }
 
 export async function getBoundPort(app: { get<T>(token: unknown): Promise<T> }): Promise<number> {

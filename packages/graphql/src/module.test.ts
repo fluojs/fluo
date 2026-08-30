@@ -219,20 +219,6 @@ async function readGraphqlWebSocketMessages(socket: WebSocket, count: number): P
   });
 }
 
-async function waitForGraphqlRuntimeEffect(predicate: () => boolean, description: string): Promise<void> {
-  const timeoutAt = Date.now() + 1_000;
-
-  while (Date.now() < timeoutAt) {
-    if (predicate()) {
-      return;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-
-  throw new Error(`Timed out waiting for GraphQL runtime effect: ${description}`);
-}
-
 @Inject()
 class ResolverState {
   mutableValue = 'init';
@@ -437,7 +423,22 @@ class UnionOutputResolver {
 
 describe('@fluojs/graphql', () => {
   it('requests an operating system assigned port for network tests', async () => {
-    expect(await findAvailablePort()).toBe(0);
+    expect(await findAvailablePort()).toBeGreaterThan(0);
+  });
+
+  it('keeps two bound applications attached to their own port tokens', async () => {
+    class FirstModule {}
+    class SecondModule {}
+    defineModule(FirstModule, {});
+    defineModule(SecondModule, {});
+
+    const firstToken = await findAvailablePort();
+    const secondToken = await findAvailablePort();
+    const firstApp = await bootstrapNodeApplication(FirstModule, { cors: false, port: firstToken });
+    const secondApp = await bootstrapNodeApplication(SecondModule, { cors: false, port: secondToken });
+    await Promise.all([firstApp.listen(), secondApp.listen()]);
+
+    expect(await resolvePort(firstToken)).not.toBe(await resolvePort(secondToken));
   });
 
   it('invokes configured Yoga/Envelop plugins during request execution', async () => {
@@ -1495,6 +1496,10 @@ describe('@fluojs/graphql', () => {
 
   it('disposes websocket operation-scoped providers when the client disconnects before completion', async () => {
     const lifecycleEvents: string[] = [];
+    let resolveDestroyed: (() => void) | undefined;
+    const destroyed = new Promise<void>((resolve) => {
+      resolveDestroyed = resolve;
+    });
     let releaseOperation: (() => void) | undefined;
     const waitForRelease = new Promise<void>((resolve) => {
       releaseOperation = resolve;
@@ -1505,6 +1510,7 @@ describe('@fluojs/graphql', () => {
     class WebSocketOperationState {
       onDestroy(): void {
         lifecycleEvents.push('state:destroy');
+        resolveDestroyed?.();
       }
     }
 
@@ -1566,7 +1572,7 @@ describe('@fluojs/graphql', () => {
 
     socket.close();
     await onceWebSocketClosed(socket);
-    await waitForGraphqlRuntimeEffect(() => lifecycleEvents.includes('state:destroy'), 'websocket operation container disposal');
+    await destroyed;
 
     expect(lifecycleEvents).toEqual(expect.arrayContaining(['resolver:started', 'resolver:destroy', 'state:destroy']));
 
