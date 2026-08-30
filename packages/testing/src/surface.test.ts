@@ -1,5 +1,7 @@
 import { type ChildProcessWithoutNullStreams, execFile, spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -82,8 +84,6 @@ const packageJsonPath = new URL('../package.json', import.meta.url);
 const execFileAsync = promisify(execFile);
 const CHILD_PROCESS_TIMEOUT_MS = 240_000;
 const PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS = 5_000;
-const PROCESS_EXIT_POLL_MS = 20;
-const PROCESS_EXIT_TEST_TIMEOUT_MS = 500;
 const emittedHarnessSubpaths = [
   '.',
   './app',
@@ -102,33 +102,6 @@ const emittedHarnessSubpaths = [
 const executeTaskkillCommand: TaskkillCommand = async (file, args, options) => {
   await execFileAsync(file, [...args], options);
 };
-
-function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ESRCH') {
-      return false;
-    }
-
-    throw error;
-  }
-}
-
-async function waitForProcessExit(pid: number, timeoutMs: number): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    if (!isProcessAlive(pid)) {
-      return true;
-    }
-
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, PROCESS_EXIT_POLL_MS));
-  }
-
-  return !isProcessAlive(pid);
-}
 
 function destroyOwnedStdio(streams: readonly DestroyableStdio[], preservePrimaryError: boolean): void {
   const cleanupErrors: unknown[] = [];
@@ -432,35 +405,58 @@ describe('@fluojs/testing surface', () => {
 
   it('terminates descendant processes before reporting a child timeout', async () => {
     const fixtureRoot = mkdtempSync(join(tmpdir(), 'fluo-testing-process-tree-'));
-    const descendantPidFile = join(fixtureRoot, 'descendant.pid');
-    const descendantScript = 'setInterval(() => {}, 1_000);';
+    const descendantSocketPath = join(fixtureRoot, 'descendant.sock');
+    let resolveDescendantExit: () => void = () => {};
+    let rejectDescendantExit: (error: Error) => void = () => {};
+    const descendantExitSignal = new Promise<void>((resolvePromise, rejectPromise) => {
+      resolveDescendantExit = resolvePromise;
+      rejectDescendantExit = rejectPromise;
+    });
+    const descendantExitServer = createServer((socket) => {
+      socket.once('close', () => {
+        descendantExitServer.close();
+        resolveDescendantExit();
+      });
+      socket.once('error', rejectDescendantExit);
+    });
+    descendantExitServer.once('error', rejectDescendantExit);
+    descendantExitServer.listen(descendantSocketPath);
+    await once(descendantExitServer, 'listening');
+    const descendantScript = `
+      const { connect } = await import('node:net');
+      const socket = connect(${JSON.stringify(descendantSocketPath)});
+      socket.on('error', () => process.exitCode = 1);
+      setInterval(() => {}, 1_000);
+    `;
     const parentScript = `
       const { spawn } = await import('node:child_process');
-      const { writeFileSync } = await import('node:fs');
       const descendant = spawn(process.execPath, ['--eval', ${JSON.stringify(descendantScript)}], {
         stdio: ['ignore', 'inherit', 'inherit'],
       });
-      writeFileSync(${JSON.stringify(descendantPidFile)}, String(descendant.pid));
       setInterval(() => {}, 1_000);
     `;
-    let descendantPid: number | undefined;
+    let exitSignalTimeout: ReturnType<typeof setTimeout> | undefined;
 
     try {
       await expect(
         runNodeProcess(['--input-type=module', '--eval', parentScript], packageRootPath, 1_000),
       ).rejects.toThrow('Child process timed out after 1000ms');
 
-      descendantPid = Number(readFileSync(descendantPidFile, 'utf8'));
-      expect(await waitForProcessExit(descendantPid, PROCESS_EXIT_TEST_TIMEOUT_MS)).toBe(true);
+      await Promise.race([
+        descendantExitSignal,
+        new Promise<never>((_resolvePromise, rejectPromise) => {
+          exitSignalTimeout = setTimeout(
+            () => rejectPromise(new Error('Descendant did not emit its exit signal after process-tree termination.')),
+            PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS,
+          );
+        }),
+      ]);
     } finally {
-      if (descendantPid === undefined && existsSync(descendantPidFile)) {
-        const discoveredPid = Number(readFileSync(descendantPidFile, 'utf8'));
-        if (Number.isSafeInteger(discoveredPid) && discoveredPid > 0) {
-          descendantPid = discoveredPid;
-        }
+      if (exitSignalTimeout !== undefined) {
+        clearTimeout(exitSignalTimeout);
       }
-      if (descendantPid !== undefined && isProcessAlive(descendantPid)) {
-        process.kill(descendantPid, 'SIGKILL');
+      if (descendantExitServer.listening) {
+        descendantExitServer.close();
       }
       rmSync(fixtureRoot, { force: true, recursive: true });
     }
