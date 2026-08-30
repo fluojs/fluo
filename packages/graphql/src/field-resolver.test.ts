@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { Context, FieldResolver, Parent, Query, Resolver } from './decorators.js';
 import { GraphqlModule } from './module.js';
-import { getBoundPort } from './network-test-fixture.js';
+import { getBoundPort } from './network.test-fixture.js';
 import type { GraphQLContext } from './types.js';
 
 type Book = {

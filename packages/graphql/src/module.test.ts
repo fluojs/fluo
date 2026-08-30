@@ -9,7 +9,7 @@ import { WebSocket } from 'ws';
 
 import { Arg, Mutation, Query, Resolver, Subscription } from './decorators.js';
 import { GraphqlModule } from './module.js';
-import { createGraphqlNetworkFixture } from './network-test-fixture.js';
+import { createGraphqlNetworkFixture } from './network.test-fixture.js';
 import { GRAPHQL_OPERATION_CONTAINER, type GraphQLContext, listOf } from './types.js';
 
 type GraphqlInstanceOf = (value: unknown, constructor: { prototype?: { [Symbol.toStringTag]?: string } }) => boolean;
