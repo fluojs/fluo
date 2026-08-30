@@ -50,31 +50,25 @@ interface CacheModuleInternalOptions {
 export type PrincipalScopeResolver = (context: InterceptorContext) => string | undefined;
 
 /**
- * Cache operations reported to a configured `CacheObserver`.
- */
-export type CacheOperation = 'get' | 'set' | 'del' | 'remember' | 'reset' | 'close';
-
-/**
- * Result classification reported for one observed cache operation.
- *
- * @remarks
- * `hit` and `miss` are reported only for read operations (`get` and `remember`).
- * Write, invalidation, and lifecycle operations report `success` or `error`.
- */
-export type CacheOutcome = 'hit' | 'miss' | 'success' | 'error';
-
-/**
  * Privacy-safe observation payload emitted once per completed cache operation.
  *
  * @remarks
+ * The discriminated union couples read operations to `hit`, `miss`, or `error`
+ * and write, invalidation, and lifecycle operations to `success` or `error`.
  * Observations intentionally exclude cache keys, cached values, loader results,
  * and error objects so operational instrumentation cannot leak application data.
  */
-export interface CacheObservation {
-  readonly operation: CacheOperation;
-  readonly outcome: CacheOutcome;
-  readonly durationMs: number;
-}
+export type CacheObservation =
+  | {
+      readonly durationMs: number;
+      readonly operation: 'get' | 'remember';
+      readonly outcome: 'hit' | 'miss' | 'error';
+    }
+  | {
+      readonly durationMs: number;
+      readonly operation: 'set' | 'del' | 'reset' | 'close';
+      readonly outcome: 'success' | 'error';
+    };
 
 /**
  * Opt-in observation hook for cache hit rate, latency, and error instrumentation.

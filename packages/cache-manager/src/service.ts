@@ -1,14 +1,8 @@
 import { Inject } from '@fluojs/core';
 
+import { CacheOperationObserver } from './operation-observer.js';
 import { CACHE_OPTIONS, CACHE_STORE } from './tokens.js';
-import type {
-  CacheObservation,
-  CacheObserver,
-  CacheOperation,
-  CacheOutcome,
-  CacheStore,
-  NormalizedCacheModuleOptions,
-} from './types.js';
+import type { CacheStore, NormalizedCacheModuleOptions } from './types.js';
 
 // allow: SIZE_OK — cache lifecycle and in-flight invalidation form one indivisible state machine.
 interface InflightLoad<T = unknown> {
@@ -17,15 +11,11 @@ interface InflightLoad<T = unknown> {
   promise: Promise<T>;
 }
 
-const cacheClock: { now(): number } = globalThis.performance ?? { now: () => Date.now() };
-
-function reportObservation(observer: CacheObserver, observation: CacheObservation): void {
-  try {
-    void Promise.resolve(observer.onCacheOperation(observation)).catch(() => undefined);
-  } catch {
-    return;
-  }
+interface MonotonicClock {
+  now(): number;
 }
+
+const systemCacheClock: MonotonicClock = globalThis.performance;
 
 /**
  * Application-level cache facade used for direct cache reads, writes, and read-through loading.
@@ -40,37 +30,6 @@ export class CacheService {
   private closePromise: Promise<void> | undefined;
   private resetVersion = 0;
   private storeOperationTail: Promise<void> = Promise.resolve();
-
-  private async observe<T>(
-    operation: CacheOperation,
-    run: () => Promise<T>,
-    classify: (value: T) => CacheOutcome,
-  ): Promise<T> {
-    const observer = this.options.observer;
-
-    if (!observer) {
-      return run();
-    }
-
-    const startedAt = cacheClock.now();
-
-    try {
-      const value = await run();
-      reportObservation(observer, {
-        durationMs: cacheClock.now() - startedAt,
-        operation,
-        outcome: classify(value),
-      });
-      return value;
-    } catch (error) {
-      reportObservation(observer, {
-        durationMs: cacheClock.now() - startedAt,
-        operation,
-        outcome: 'error',
-      });
-      throw error;
-    }
-  }
 
   private async runStoreOperation<T>(operation: () => Promise<T> | T): Promise<T> {
     const result = this.storeOperationTail.then(operation, operation);
@@ -111,10 +70,15 @@ export class CacheService {
     }
   }
 
+  private readonly operationObserver: CacheOperationObserver;
+
   constructor(
     private readonly store: CacheStore,
     private readonly options: NormalizedCacheModuleOptions,
-  ) {}
+    clock: MonotonicClock = systemCacheClock,
+  ) {
+    this.operationObserver = new CacheOperationObserver(options.observer, clock);
+  }
 
   /**
    * Read a cached value by key.
@@ -123,7 +87,7 @@ export class CacheService {
    * @returns The cached value, or `undefined` when the key is missing or expired.
    */
   get<T = unknown>(key: string): Promise<T | undefined> {
-    return this.observe(
+    return this.operationObserver.observeRead(
       'get',
       () => this.readFromStore<T>(key),
       (value) => (value === undefined ? 'miss' : 'hit'),
@@ -153,7 +117,7 @@ export class CacheService {
    * @returns A promise that resolves after the write completes.
    */
   async set<T = unknown>(key: string, value: T, ttlSeconds?: number): Promise<void> {
-    await this.observe('set', () => this.writeToStore(key, value, ttlSeconds), () => 'success');
+    await this.operationObserver.observeWrite('set', () => this.writeToStore(key, value, ttlSeconds));
   }
 
   private async writeToStore<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {
@@ -185,7 +149,7 @@ export class CacheService {
     loader: () => Promise<T>,
     ttlSeconds?: number,
   ): Promise<T> {
-    const [value] = await this.observe(
+    const [value] = await this.operationObserver.observeRead(
       'remember',
       () => this.rememberThroughStore(key, loader, ttlSeconds),
       ([, outcome]) => outcome,
@@ -271,7 +235,7 @@ export class CacheService {
    * @returns A promise that resolves after the entry is removed.
    */
   async del(key: string): Promise<void> {
-    await this.observe('del', () => this.invalidateKey(key), () => 'success');
+    await this.operationObserver.observeWrite('del', () => this.invalidateKey(key));
   }
 
   private async invalidateKey(key: string): Promise<void> {
@@ -298,7 +262,7 @@ export class CacheService {
    * @returns A promise that resolves after the store reset completes.
    */
   async reset(): Promise<void> {
-    await this.observe('reset', () => this.resetStore(), () => 'success');
+    await this.operationObserver.observeWrite('reset', () => this.resetStore());
   }
 
   private async resetStore(): Promise<void> {
@@ -332,7 +296,7 @@ export class CacheService {
       return this.closePromise;
     }
 
-    this.closePromise = this.observe('close', () => this.closeStore(), () => 'success');
+    this.closePromise = this.operationObserver.observeWrite('close', () => this.closeStore());
 
     return this.closePromise;
   }

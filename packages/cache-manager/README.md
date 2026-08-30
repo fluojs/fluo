@@ -246,8 +246,8 @@ The contract is intentionally narrow:
 
 - **Privacy**: an observation carries only `operation`, `outcome`, and `durationMs`. Cache keys, cached values, loader results, and error objects are never passed to the observer, so instrumentation cannot leak application data.
 - **Operation taxonomy**: `operation` is one of `get`, `set`, `del`, `remember`, `reset`, or `close`. `remember` is reported once per call; its internal read is not reported as a separate `get`.
-- **Outcomes**: read operations (`get`, `remember`) report `hit` or `miss`. Write, invalidation, and lifecycle operations report `success`. Any operation whose store call throws reports `error`. A `remember` call that joins an in-flight load for the same key reports `miss`, because that call did not read a cached value.
-- **Timing**: `durationMs` measures the full `CacheService` operation, including store-queue serialization, and uses `performance.now()` when the runtime provides it.
+- **Outcomes**: `CacheObservation` is a discriminated union: read operations (`get`, `remember`) can report only `hit`, `miss`, or `error`, while write, invalidation, and lifecycle operations can report only `success` or `error`. A `remember` call that joins an in-flight load for the same key reports `miss`, because that call did not read a cached value.
+- **Timing**: `durationMs` measures the full `CacheService` operation, including store-queue serialization, with the runtime's monotonic `performance.now()` clock.
 - **Failure containment**: observer errors are swallowed. A thrown error or a rejected promise never changes the value the caller receives and never surfaces as an unhandled rejection. Observer work is not awaited by the cache operation.
 - **HTTP fail-soft interaction**: `CacheInterceptor` still swallows store failures so cache problems cannot fail an otherwise successful handler. The observer sees those failures as `error` observations, which is the supported way to alert on a degraded cache while keeping requests served.
 
@@ -307,8 +307,7 @@ On that supported HTTP path, eviction is deferred until a framework response wri
 ### Public types
 - `CacheModuleOptions`: Application-facing configuration accepted by `CacheModule.forRoot(...)`, including the optional `observer`.
 - `CacheObserver`: Opt-in observation hook with a single `onCacheOperation(observation)` method.
-- `CacheObservation`: Privacy-safe payload carrying `operation`, `outcome`, and `durationMs`.
-- `CacheOperation` and `CacheOutcome`: The observed operation taxonomy and result classification.
+- `CacheObservation`: Privacy-safe discriminated union coupling each operation category to its valid outcomes and carrying `durationMs`.
 - `NormalizedCacheModuleOptions`: Compatibility-only type export matching the normalized configuration shape after defaults are applied. Prefer `CacheModuleOptions` for application code; this type remains public so consumers that referenced the previously shipped declaration surface can keep compiling.
 
 ### Services

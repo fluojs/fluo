@@ -32,8 +32,6 @@ export type {
   CacheModuleOptions,
   CacheObservation,
   CacheObserver,
-  CacheOperation,
-  CacheOutcome,
   CacheStore,
   NormalizedCacheModuleOptions,
   PrincipalScopeResolver,

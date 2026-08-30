@@ -56,8 +56,8 @@
 | opt-in seam | `CacheModule.forRoot(...)`가 `observer`를 받지 않으면 cache operation 관찰은 비활성화됩니다. 옵션이 없으면 `CacheService`는 관찰 작업 없이 기존 경로를 실행합니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts`, `packages/cache-manager/src/service.ts` |
 | 프라이버시 경계 | `CacheObservation`은 `operation`, `outcome`, `durationMs`만 전달합니다. cache key, 캐시된 값, loader 결과, error 객체는 observer로 전달되지 않습니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/service.ts` |
 | operation taxonomy | `operation`은 `get`, `set`, `del`, `remember`, `reset`, `close` 중 하나입니다. `remember`는 호출당 한 번 보고되며 내부 read는 별도 `get`으로 보고되지 않습니다. | `packages/cache-manager/src/service.ts` |
-| outcome 분류 | `get`과 `remember`는 `hit` 또는 `miss`를 보고합니다. `set`, `del`, `reset`, `close`는 `success`를 보고합니다. store 호출이 throw한 작업은 `error`를 보고합니다. in-flight load에 합류한 `remember` 호출은 `miss`를 보고합니다. | `packages/cache-manager/src/service.ts` |
-| timing | `durationMs`는 store queue 직렬화를 포함한 전체 `CacheService` 작업을 측정하며, 런타임이 제공하면 `performance.now()`를 사용합니다. | `packages/cache-manager/src/service.ts` |
+| outcome 분류 | `CacheObservation`은 discriminated union으로, `get`과 `remember`에는 `hit`, `miss`, `error`만 허용하고 `set`, `del`, `reset`, `close`에는 `success`, `error`만 허용합니다. in-flight load에 합류한 `remember` 호출은 `miss`를 보고합니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/service.ts` |
+| timing | `durationMs`는 런타임의 monotonic `performance.now()` clock으로 store queue 직렬화를 포함한 전체 `CacheService` 작업을 측정합니다. | `packages/cache-manager/src/service.ts` |
 | 실패 격리 | observer 오류는 삼켜집니다. throw된 error나 rejected promise는 캐시 결과를 바꾸지 않고 unhandled rejection으로도 노출되지 않으며, cache 작업은 observer 작업을 await하지 않습니다. | `packages/cache-manager/src/service.ts` |
 | HTTP fail-soft 상호작용 | `CacheInterceptor`는 여전히 store 실패를 삼켜서 캐시 오류가 정상 핸들러를 실패시키지 않도록 하며, 그 실패는 `error` observation으로 운영자에게 노출됩니다. | `packages/cache-manager/src/interceptor.ts`, `packages/cache-manager/src/service.ts` |
 | metrics 독립성 | observer는 `@fluojs/metrics`와 독립적입니다. 애플리케이션은 이미 운영 중인 metrics backend에 observation을 연결합니다. | `packages/cache-manager/README.md` |

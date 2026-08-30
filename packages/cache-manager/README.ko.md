@@ -246,8 +246,8 @@ CacheModule.forRoot({
 
 - **프라이버시**: observation은 `operation`, `outcome`, `durationMs`만 전달합니다. cache key, 캐시된 값, loader 결과, error 객체는 observer로 전달되지 않으므로 계측이 애플리케이션 데이터를 유출할 수 없습니다.
 - **operation taxonomy**: `operation`은 `get`, `set`, `del`, `remember`, `reset`, `close` 중 하나입니다. `remember`는 호출당 한 번 보고되며, 내부 read는 별도의 `get`으로 보고되지 않습니다.
-- **outcome**: read 작업(`get`, `remember`)은 `hit` 또는 `miss`를 보고합니다. write, invalidation, lifecycle 작업은 `success`를 보고합니다. store 호출이 throw한 작업은 `error`를 보고합니다. 같은 key의 in-flight load에 합류한 `remember` 호출은 캐시된 값을 읽지 않았으므로 `miss`를 보고합니다.
-- **timing**: `durationMs`는 store queue 직렬화를 포함한 전체 `CacheService` 작업 시간을 측정하며, 런타임이 제공하면 `performance.now()`를 사용합니다.
+- **outcome**: `CacheObservation`은 discriminated union입니다. read 작업(`get`, `remember`)은 `hit`, `miss`, `error`만 보고할 수 있고, write, invalidation, lifecycle 작업은 `success`, `error`만 보고할 수 있습니다. 같은 key의 in-flight load에 합류한 `remember` 호출은 캐시된 값을 읽지 않았으므로 `miss`를 보고합니다.
+- **timing**: `durationMs`는 런타임의 monotonic `performance.now()` clock을 사용하여 store queue 직렬화를 포함한 전체 `CacheService` 작업 시간을 측정합니다.
 - **실패 격리**: observer 오류는 삼켜집니다. throw된 error나 rejected promise는 caller가 받는 값을 바꾸지 않고 unhandled rejection으로도 노출되지 않습니다. observer 작업은 cache 작업이 await하지 않습니다.
 - **HTTP fail-soft 상호작용**: `CacheInterceptor`는 여전히 store 실패를 삼켜서 캐시 문제가 정상 핸들러를 실패시키지 않도록 합니다. observer는 그 실패를 `error` observation으로 확인하므로, 요청 처리를 유지하면서 저하된 캐시를 알림하는 지원 경로가 됩니다.
 
@@ -307,8 +307,7 @@ class ProductController {
 ### 공개 타입
 - `CacheModuleOptions`: `CacheModule.forRoot(...)`가 받는 애플리케이션-facing 설정이며 optional `observer`를 포함합니다.
 - `CacheObserver`: 단일 `onCacheOperation(observation)` 메서드를 가지는 opt-in 관찰 hook입니다.
-- `CacheObservation`: `operation`, `outcome`, `durationMs`를 전달하는 privacy-safe payload입니다.
-- `CacheOperation`, `CacheOutcome`: 관찰되는 operation taxonomy와 결과 분류입니다.
+- `CacheObservation`: 각 operation category를 유효한 outcome과 결합하고 `durationMs`를 전달하는 privacy-safe discriminated union입니다.
 - `NormalizedCacheModuleOptions`: 기본값이 적용된 정규화 설정 모양과 일치하는 compatibility-only type export입니다. 애플리케이션 코드에서는 `CacheModuleOptions`를 우선 사용하세요. 이 타입은 이전에 배포된 declaration surface를 참조한 소비자가 계속 컴파일되도록 공개 상태를 유지합니다.
 
 ### 서비스

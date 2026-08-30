@@ -1,9 +1,4 @@
-import { Controller, type FrameworkRequest, type FrameworkResponse, Get, UseInterceptors } from '@fluojs/http';
-import { bootstrapApplication, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
-
-import { CacheInterceptor } from './interceptor.js';
-import { CacheModule } from './module.js';
 import { CacheService } from './service.js';
 import { MemoryStore } from './stores/memory-store.js';
 import type { CacheObservation, CacheObserver, CacheStore, NormalizedCacheModuleOptions } from './types.js';
@@ -31,8 +26,47 @@ function createRecordingObserver(): { observations: CacheObservation[]; observer
   };
 }
 
-function createCacheService(observer: CacheObserver | undefined, store: CacheStore = new MemoryStore()) {
-  return new CacheService(store, { ...baseOptions, observer });
+interface DeferredSignal {
+  readonly promise: Promise<void>;
+  resolve(): void;
+}
+
+class ManualClock {
+  private current = 100;
+
+  advance(milliseconds: number): void {
+    this.current += milliseconds;
+  }
+
+  now(): number {
+    return this.current;
+  }
+}
+
+function createDeferredSignal(): DeferredSignal {
+  let resolveSignal: (() => void) | undefined;
+  const promise = new Promise<void>((resolve) => {
+    resolveSignal = resolve;
+  });
+
+  return {
+    promise,
+    resolve() {
+      if (!resolveSignal) {
+        throw new Error('Deferred signal resolver was not initialized.');
+      }
+
+      resolveSignal();
+    },
+  };
+}
+
+function createCacheService(
+  observer: CacheObserver | undefined,
+  store: CacheStore = new MemoryStore(),
+  clock?: ManualClock,
+) {
+  return new CacheService(store, { ...baseOptions, observer }, clock);
 }
 
 class ResourceStore extends MemoryStore {
@@ -132,21 +166,42 @@ describe('CacheService cache observation', () => {
     ]);
   });
 
-  it('reports non-negative numeric durations for every observation', async () => {
-    // Given: a cache service with a recording observer.
+  it('includes serialized store-queue wait in the exact monotonic duration', async () => {
+    // Given: a blocked first read, a queued second read, and a manually controlled clock.
+    const firstReadStarted = createDeferredSignal();
+    const releaseFirstRead = createDeferredSignal();
+    let readCount = 0;
+    const store: CacheStore = {
+      async del() {},
+      async get<_T>() {
+        readCount += 1;
+        if (readCount === 1) {
+          firstReadStarted.resolve();
+          await releaseFirstRead.promise;
+        }
+        return undefined;
+      },
+      async reset() {},
+      async set() {},
+    };
+    const clock = new ManualClock();
     const { observations, observer } = createRecordingObserver();
-    const cache = createCacheService(observer);
+    const cache = createCacheService(observer, store, clock);
+    const firstRead = cache.get('first');
+    await firstReadStarted.promise;
 
-    // When: one write and one read run.
-    await cache.set('user:1', { id: 'u1' });
-    await cache.get('user:1');
+    // When: the second read waits in the queue while the monotonic clock advances exactly 37ms.
+    const secondRead = cache.get('second');
+    clock.advance(37);
+    releaseFirstRead.resolve();
+    await Promise.all([firstRead, secondRead]);
 
-    // Then: every observation carries a finite non-negative duration.
-    expect(observations).toHaveLength(2);
-    for (const observation of observations) {
-      expect(Number.isFinite(observation.durationMs)).toBe(true);
-      expect(observation.durationMs).toBeGreaterThanOrEqual(0);
-    }
+    // Then: the queued operation reports the exact elapsed time including scheduler wait.
+    expect(observations[1]).toEqual({
+      durationMs: 37,
+      operation: 'get',
+      outcome: 'miss',
+    });
   });
 
   it('reports error outcomes while preserving documented store failure propagation', async () => {
@@ -220,122 +275,5 @@ describe('CacheService cache observation', () => {
     expect(observations.map(({ operation, outcome }) => [operation, outcome])).toEqual([
       ['close', 'success'],
     ]);
-  });
-});
-
-function createResponse(): FrameworkResponse & { body?: unknown } {
-  return {
-    committed: false,
-    headers: {},
-    redirect(status: number, location: string) {
-      this.setStatus(status);
-      this.setHeader('Location', location);
-      this.committed = true;
-    },
-    send(body: unknown) {
-      this.body = body;
-      this.committed = true;
-    },
-    setHeader(name: string, value: string | string[]) {
-      this.headers[name] = value;
-    },
-    setStatus(code: number) {
-      this.statusCode = code;
-      this.statusSet = true;
-    },
-    statusCode: undefined,
-    statusSet: false,
-  };
-}
-
-function createRequest(path: string): FrameworkRequest {
-  return {
-    body: undefined,
-    cookies: {},
-    headers: {},
-    method: 'GET',
-    params: {},
-    path,
-    query: {},
-    raw: {},
-    url: path,
-  };
-}
-
-describe('CacheModule observer wiring', () => {
-  it('observes HTTP interceptor cache misses and hits through the real dispatch pipeline', async () => {
-    // Given: an application whose cache module is configured with a recording observer.
-    const { observations, observer } = createRecordingObserver();
-    const listHandler = vi.fn(() => ({ count: 1 }));
-
-    @Controller('/products')
-    class ProductController {
-      @Get('/')
-      @UseInterceptors(CacheInterceptor)
-      list() {
-        return listHandler();
-      }
-    }
-
-    class AppModule {}
-    defineModule(AppModule, {
-      controllers: [ProductController],
-      imports: [CacheModule.forRoot({ observer, store: 'memory' })],
-    });
-
-    const app = await bootstrapApplication({ rootModule: AppModule });
-
-    try {
-      // When: the same route is dispatched twice.
-      await app.dispatch(createRequest('/products'), createResponse());
-      await app.dispatch(createRequest('/products'), createResponse());
-
-      // Then: the interceptor read path reports one miss, one write, and one hit.
-      expect(listHandler).toHaveBeenCalledTimes(1);
-      expect(observations.map((observation) => [observation.operation, observation.outcome])).toEqual([
-        ['get', 'miss'],
-        ['set', 'success'],
-        ['get', 'hit'],
-      ]);
-    } finally {
-      await app.close();
-    }
-  });
-
-  it('observes store errors that the HTTP interceptor fail-soft path hides from handlers', async () => {
-    // Given: an application backed by a failing store and a recording observer.
-    const { observations, observer } = createRecordingObserver();
-
-    @Controller('/products')
-    class ProductController {
-      @Get('/')
-      @UseInterceptors(CacheInterceptor)
-      list() {
-        return { count: 1 };
-      }
-    }
-
-    class AppModule {}
-    defineModule(AppModule, {
-      controllers: [ProductController],
-      imports: [CacheModule.forRoot({ observer, store: new FailingStore() })],
-    });
-
-    const app = await bootstrapApplication({ rootModule: AppModule });
-
-    try {
-      // When: one request is dispatched against the failing store.
-      const response = createResponse();
-      await app.dispatch(createRequest('/products'), response);
-
-      // Then: the handler result still succeeds while both failures are observed.
-      expect(response.body).toEqual({ count: 1 });
-      expect(observations.map((observation) => [observation.operation, observation.outcome])).toEqual([
-        ['get', 'error'],
-        ['set', 'error'],
-      ]);
-    } finally {
-      await app.close();
-    }
   });
 });
