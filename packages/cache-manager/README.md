@@ -224,7 +224,7 @@ Lifecycle diagnostics report the same teardown owner that shutdown actually uses
 
 - The built-in memory store is `framework`-owned because the framework creates and holds it in-process.
 - A custom store is `framework`-owned by default because `CacheService.close()` owns teardown dispatch to its optional `close()` or `dispose()` hook.
-- The Redis store is `external` because the Redis client's connection lifecycle stays application-owned; `CacheService` never closes it.
+- The Redis store is `external` to `CacheService`, which never closes the client. When the cache module resolves a client through `@fluojs/redis`, that integration owns its lifecycle; when `redis.client` supplies a client directly, the application owns its lifecycle.
 
 An explicit `storeOwnershipMode` still wins over the store default. Set it to `external` when the application intentionally retains lifecycle responsibility for a custom store.
 
