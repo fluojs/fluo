@@ -5,12 +5,12 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
-  MIGRATION_TRANSFORMS,
-  WARNING_CATEGORIES,
   getWarningCategoryLabel,
   groupWarningsByCategory,
-  runNestJsMigration,
+  MIGRATION_TRANSFORMS,
   type MigrationWarning,
+  runNestJsMigration,
+  WARNING_CATEGORIES,
 } from './nestjs-migrate.js';
 
 const temporaryDirectories: string[] = [];
