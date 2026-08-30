@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { createRequire } from 'node:module';
-import { dirname, extname, join, normalize, relative, sep } from 'node:path';
+import { dirname, extname, join } from 'node:path';
 import { URL } from 'node:url';
 
 /**
@@ -256,22 +256,30 @@ function injectStudioConfig(html: string, options: { eventsUrl: string; stateUrl
   return `${configScript}\n${html}`;
 }
 
+function listenerOrigin(host: string, port?: number): string {
+  const authority = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+  return port === undefined ? `http://${authority}` : `http://${authority}:${String(port)}`;
+}
+
 function safeAssetPath(rootDirectory: string, pathname: string): string | undefined {
+  const encodedPath = pathname.slice('/assets/'.length);
+  if (!encodedPath) {
+    return undefined;
+  }
+
   let decodedPath: string;
   try {
-    decodedPath = decodeURIComponent(pathname);
+    decodedPath = decodeURIComponent(encodedPath);
   } catch {
     return undefined;
   }
 
-  const normalized = normalize(decodedPath).replace(/^[/\\]+/, '');
-  const candidate = join(rootDirectory, normalized);
-  const relativePath = relative(rootDirectory, candidate);
-  if (relativePath.startsWith('..') || relativePath.split(sep).includes('..')) {
+  const segments = decodedPath.split('/');
+  if (segments.some((segment) => segment.length === 0 || segment === '.' || segment === '..' || segment.includes('\\'))) {
     return undefined;
   }
 
-  return candidate;
+  return join(rootDirectory, 'assets', ...segments);
 }
 
 function serveStudioAsset(response: ServerResponse, rootDirectory: string, pathname: string): boolean {
@@ -432,7 +440,13 @@ export async function startStudioSidecar(options: StudioSidecarOptions = {}): Pr
   };
 
   const server = createServer(async (request, response) => {
-    const requestUrl = new URL(request.url ?? '/', `http://${host}`);
+    let requestUrl: URL;
+    try {
+      requestUrl = new URL(request.url ?? '/', listenerOrigin(host));
+    } catch {
+      writeJson(response, 400, { error: 'Malformed Studio sidecar request target.' });
+      return;
+    }
     const viewerPath = resolveStudioViewerPath();
 
     if (request.method === 'GET' && requestUrl.pathname.startsWith('/assets/') && viewerPath) {
@@ -541,7 +555,7 @@ export async function startStudioSidecar(options: StudioSidecarOptions = {}): Pr
     throw new Error('Failed to resolve Studio sidecar address.');
   }
 
-  const url = `http://${host}:${String(address.port)}`;
+  const url = listenerOrigin(host, address.port);
 
   const heartbeat = options.heartbeatMs === 0
     ? undefined
@@ -603,6 +617,7 @@ async function closeServer(server: Server, resources: StudioSidecarResources): P
       resolve();
     });
   });
+  server.closeIdleConnections();
 
   for (const request of resources.ingestionRequests) {
     request.socket.destroy();

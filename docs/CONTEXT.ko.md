@@ -243,6 +243,7 @@ HTTP route 및 #2506 navigation ownership, dual-import test, bilingual docs, Cha
 | 테스트 요구사항과 canonical fluo TDD ladder 확인 | `docs/contracts/testing-guide.md` | `packages/testing/README.md` 및 `book/beginner/ch20-testing.md` |
 | 공개 API 작성 기준과 문서화 기준 확인 | `docs/contracts/public-export-tsdoc-baseline.md` | `docs/contracts/platform-conformance-authoring-checklist.md` |
 | CLI inspect output mode와 artifact ownership 확인 | `docs/reference/toolchain-contract-matrix.ko.md` | `packages/cli/README.ko.md` 및 `docs/reference/package-surface.ko.md` |
+| 설치된 Studio viewer 실행과 정적 artifact 검사 | `packages/studio/README.ko.md` | `packages/cli/README.ko.md` 및 `book/advanced/ch15-studio.ko.md` |
 | 부트스트랩 경로나 시작 순서 사실 확인 | `docs/getting-started/quick-start.md` | `docs/architecture/lifecycle-and-shutdown.md` |
 | 사람용 학습 흐름이나 튜토리얼 자료 확인 | `book/README.md` | `book/` 아래 관련 챕터 |
 

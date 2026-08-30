@@ -244,6 +244,7 @@ re-export for the documented deprecation window.
 | Testing requirements and canonical fluo TDD ladder | `docs/contracts/testing-guide.md` | `packages/testing/README.md` and `book/beginner/ch20-testing.md` |
 | Public API authoring and documentation baseline | `docs/contracts/public-export-tsdoc-baseline.md` | `docs/contracts/platform-conformance-authoring-checklist.md` |
 | CLI inspect output modes and artifact ownership | `docs/reference/toolchain-contract-matrix.md` | `packages/cli/README.md` and `docs/reference/package-surface.md` |
+| Installed Studio viewer launch and static artifact inspection | `packages/studio/README.md` | `packages/cli/README.md` and `book/advanced/ch15-studio.md` |
 | Bootstrap path or startup sequence facts | `docs/getting-started/quick-start.md` | `docs/architecture/lifecycle-and-shutdown.md` |
 | Human learning flow or tutorial material | `book/README.md` | relevant chapters under `book/` |
 

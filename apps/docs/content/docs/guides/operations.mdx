@@ -167,11 +167,15 @@ fluo inspect ./src/app.module.ts --mermaid
 Studio consumes raw snapshots, timing diagnostics, snapshot-plus-timing envelopes, and `fluo inspect --report` artifacts.
 
 ```bash
-pnpm add -D @fluojs/studio
-node -p "require.resolve('@fluojs/studio/viewer')"
+pnpm add -D @fluojs/cli @fluojs/studio
+pnpm exec fluo studio
 ```
 
-Open the printed `dist/index.html` path and drag a snapshot file into the viewer. Studio owns snapshot parsing, filtering, and Mermaid rendering through `parseStudioPayload(...)`, `applyFilters(...)`, and `renderMermaid(...)`.
+Open the printed HTTP URL and drag a snapshot file into the viewer. `fluo studio`
+is the supported installed-package workflow; it serves the viewer instead of
+opening package files directly. Studio owns snapshot parsing, filtering, and
+Mermaid rendering through `parseStudioPayload(...)`, `applyFilters(...)`, and
+`renderMermaid(...)`.
 
 ## Runnable operations example
 

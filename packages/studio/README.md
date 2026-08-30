@@ -90,11 +90,11 @@ This file-first path is the compatibility and migration fallback for CI, support
    pnpm exec fluo studio
    ```
 
-   The command resolves the existing `@fluojs/studio/viewer` asset, serves it from
-   `127.0.0.1` on an available port, and prints the browser URL. Use
-   `pnpm exec fluo studio --port 51234` to select a fixed port. Do not open the
-   resolved `dist/index.html` file through `file://`; the viewer requires the
-   supported HTTP launch path. For repo-local Studio development, use:
+   `fluo studio` is the supported installed-package workflow: it serves the
+   existing `@fluojs/studio/viewer` asset from `127.0.0.1` on an available port
+   and prints the browser URL. Use `pnpm exec fluo studio --port 51234` to select
+   a fixed port. Always use the printed HTTP URL; do not open package files
+   directly. For repo-local Studio development, use:
    ```bash
    pnpm --dir packages/studio dev
    ```

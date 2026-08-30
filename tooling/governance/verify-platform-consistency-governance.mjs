@@ -161,6 +161,9 @@ const contractGateTriggers = new Set([
   'docs/reference/package-folder-structure.ko.md',
   'docs/reference/package-surface.md',
   'docs/reference/package-surface.ko.md',
+  // Studio's installed-package launch command is a runtime-serving contract.
+  'apps/docs/content/docs/guides/operations.mdx',
+  'apps/docs/content/docs/guides/operations.ko.mdx',
 ]);
 
 const removedRuntimeModuleFactoryNames = [

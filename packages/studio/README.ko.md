@@ -90,11 +90,11 @@ Studio는 여전히 fluo CLI가 내보낸 JSON 파일을 소비합니다. 런타
    pnpm exec fluo studio
    ```
 
-   이 명령은 기존 `@fluojs/studio/viewer` asset을 resolve하고, 사용 가능한 포트의
-   `127.0.0.1`에서 제공한 뒤 브라우저 URL을 출력합니다. 고정 포트는
-   `pnpm exec fluo studio --port 51234`로 선택합니다. Resolve한
-   `dist/index.html` 파일을 `file://`로 직접 열지 마세요. Viewer에는 지원되는 HTTP
-   launch path가 필요합니다. 저장소 내부 Studio 개발에는 다음 명령을 사용합니다.
+   `fluo studio`는 지원되는 installed-package workflow입니다. 기존
+   `@fluojs/studio/viewer` asset을 사용 가능한 포트의 `127.0.0.1`에서 제공하고
+   브라우저 URL을 출력합니다. 고정 포트는 `pnpm exec fluo studio --port 51234`로
+   선택합니다. 항상 출력된 HTTP URL을 사용하고 package file을 직접 열지 마세요.
+   저장소 내부 Studio 개발에는 다음 명령을 사용합니다.
    ```bash
    pnpm --dir packages/studio dev
    ```

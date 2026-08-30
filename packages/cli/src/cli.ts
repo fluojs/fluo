@@ -14,7 +14,7 @@ import { type DevRunnerRuntime, runNodeRestartRunner } from './dev-runner/node-r
 import { builtInGeneratorCollection, generatorManifest, generatorOptionSchemas, resolveGeneratorKind } from './generators/manifest.js';
 import { renderAliasList, renderHelpTable } from './help.js';
 import type { startStudioSidecar } from './studio/sidecar.js';
-import { runStudioViewerCommand, studioUsage, type StudioViewerCommandRuntime } from './studio/viewer-command.js';
+import { runStudioViewerCommand, type StudioViewerCommandRuntime, studioUsage } from './studio/viewer-command.js';
 import type { GenerateOptions, GeneratorKind } from './types.js';
 import { type CliUpdateCheckRuntimeOptions, removeUpdateCheckFlags, runCliUpdateCheck } from './update-check.js';
 import { inspectUsage, newUsage, typegenUsage } from './usage.js';

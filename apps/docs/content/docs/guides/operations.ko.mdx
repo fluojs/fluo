@@ -167,11 +167,15 @@ fluo inspect ./src/app.module.ts --mermaid
 Studio는 raw snapshot, timing diagnostics, snapshot-plus-timing envelope, `fluo inspect --report` artifact를 소비합니다.
 
 ```bash
-pnpm add -D @fluojs/studio
-node -p "require.resolve('@fluojs/studio/viewer')"
+pnpm add -D @fluojs/cli @fluojs/studio
+pnpm exec fluo studio
 ```
 
-출력된 `dist/index.html` path를 열고 snapshot file을 viewer에 drag-and-drop하세요. Studio는 `parseStudioPayload(...)`, `applyFilters(...)`, `renderMermaid(...)`를 통해 snapshot parsing, filtering, Mermaid rendering을 소유합니다.
+출력된 HTTP URL을 열고 snapshot file을 viewer에 drag-and-drop하세요.
+`fluo studio`는 지원되는 installed-package workflow이며 package file을 직접 열지
+않고 viewer를 제공합니다. Studio는 `parseStudioPayload(...)`,
+`applyFilters(...)`, `renderMermaid(...)`를 통해 snapshot parsing, filtering,
+Mermaid rendering을 소유합니다.
 
 ## Runnable operations example
 

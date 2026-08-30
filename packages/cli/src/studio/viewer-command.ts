@@ -1,4 +1,4 @@
-import { type StudioSidecar, startStudioSidecar, resolveStudioViewerPath } from './sidecar.js';
+import { resolveStudioViewerPath, type StudioSidecar, startStudioSidecar } from './sidecar.js';
 
 type CliStream = {
   write(message: string): unknown;
@@ -111,10 +111,10 @@ export async function runStudioViewerCommand(argv: string[], runtime: StudioView
 
   const start = runtime.startStudioSidecar ?? startStudioSidecar;
   const sidecar = await start({ host: options.host, port: options.port, runtime: 'node' });
-  const stdout = runtime.stdout ?? process.stdout;
-  stdout.write(`Studio viewer: ${viewerUrl(sidecar)}\n`);
 
   try {
+    const stdout = runtime.stdout ?? process.stdout;
+    stdout.write(`Studio viewer: ${viewerUrl(sidecar)}\n`);
     await (runtime.waitForShutdown ?? waitForProcessShutdown)();
     return 0;
   } finally {
