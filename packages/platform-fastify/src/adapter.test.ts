@@ -2601,9 +2601,9 @@ describe('@fluojs/platform-fastify', () => {
       const onCloseResult = await Promise.race([
         onCloseObserved.promise.then((): 'closed' => 'closed'),
         new Promise<'timed-out'>((resolve) => {
-          AbortSignal.timeout(1_000).addEventListener('abort', () => {
+          setTimeout(() => {
             resolve('timed-out');
-          }, { once: true });
+          }, 1_000);
         }),
       ]);
       expect(onCloseResult).toBe('closed');
@@ -2625,6 +2625,64 @@ describe('@fluojs/platform-fastify', () => {
           resolve();
         });
       });
+    }
+  });
+
+  it('runs Fastify onClose hooks when shutdown races final bind completion', async () => {
+    const adapter = new FastifyHttpApplicationAdapter(0, '127.0.0.1', 25, 20, undefined, undefined, 1024, false, 500);
+    const fastifyApp: FastifyInstance = Reflect.get(adapter, 'app');
+    const originalListen = fastifyApp.listen.bind(fastifyApp);
+    const bindCompleted = createDeferred<void>();
+    const allowListenToSettle = createDeferred<void>();
+    const onCloseObserved = createDeferred<void>();
+    fastifyApp.addHook('onClose', async () => {
+      onCloseObserved.resolve();
+    });
+    const listenSpy = vi.spyOn(fastifyApp, 'listen').mockImplementation(async (options) => {
+      const url = await originalListen(options);
+      bindCompleted.resolve();
+      await allowListenToSettle.promise;
+      return url;
+    });
+    const dispatcher = { async dispatch() {} };
+    const listenResult = adapter.listen(dispatcher).then(
+      () => 'listened' as const,
+      (error: unknown) => error,
+    );
+
+    try {
+      await bindCompleted.promise;
+
+      const abortController = Reflect.get(adapter, 'listenAbortController') as AbortController | undefined;
+      if (!abortController) {
+        throw new Error('Expected an active Fastify startup abort controller.');
+      }
+
+      abortController.signal.addEventListener('abort', () => {
+        fastifyApp.server.close();
+      }, { once: true });
+
+      const closeResult = adapter.close();
+      expect((adapter.getServer() as { listening?: boolean }).listening).toBe(false);
+
+      allowListenToSettle.resolve();
+      const onCloseResult = await Promise.race([
+        onCloseObserved.promise.then((): 'closed' => 'closed'),
+        new Promise<'timed-out'>((resolve) => {
+          AbortSignal.timeout(1_000).addEventListener('abort', () => {
+            resolve('timed-out');
+          }, { once: true });
+        }),
+      ]);
+      expect(onCloseResult).toBe('closed');
+      await expect(closeResult).resolves.toBeUndefined();
+
+      const result = await listenResult;
+      expect(result).toBeInstanceOf(Error);
+      expect(String(result instanceof Error ? result.message : result)).toContain('startup was cancelled');
+    } finally {
+      allowListenToSettle.resolve();
+      listenSpy.mockRestore();
     }
   });
 
