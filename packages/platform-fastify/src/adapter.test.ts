@@ -2686,6 +2686,49 @@ describe('@fluojs/platform-fastify', () => {
     }
   });
 
+  it('runs Fastify onClose hooks when shutdown races plugin registration failure', async () => {
+    const adapter = new FastifyHttpApplicationAdapter(0, '127.0.0.1', 25, 20, undefined, undefined, 1024, false, 500);
+    const fastifyApp: FastifyInstance = Reflect.get(adapter, 'app');
+    const pluginStarted = createDeferred<void>();
+    const allowPluginFailure = createDeferred<void>();
+    const onCloseObserved = createDeferred<void>();
+    const pluginError = new Error('plugin rejected during startup');
+    fastifyApp.addHook('onClose', async () => {
+      onCloseObserved.resolve();
+    });
+    fastifyApp.register(async () => {
+      pluginStarted.resolve();
+      await allowPluginFailure.promise;
+      throw pluginError;
+    });
+    const listenResult = adapter.listen({ async dispatch() {} }).then(
+      () => 'listened' as const,
+      (error: unknown) => error,
+    );
+
+    try {
+      await pluginStarted.promise;
+
+      const closeResult = adapter.close();
+      allowPluginFailure.resolve();
+      await expect(closeResult).rejects.toBe(pluginError);
+
+      const onCloseResult = await Promise.race([
+        onCloseObserved.promise.then((): 'closed' => 'closed'),
+        new Promise<'timed-out'>((resolve) => {
+          AbortSignal.timeout(1_000).addEventListener('abort', () => {
+            resolve('timed-out');
+          }, { once: true });
+        }),
+      ]);
+      expect(onCloseResult).toBe('closed');
+      await expect(listenResult).resolves.toBe(pluginError);
+    } finally {
+      allowPluginFailure.resolve();
+      await adapter.close();
+    }
+  });
+
   it('clears the fastify shutdown timer once close settles', async () => {
     vi.useFakeTimers();
 

@@ -279,19 +279,19 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
   }
 
   private async closeApplication(): Promise<void> {
-    if (this.listenInFlight) {
-      this.listenAbortController?.abort();
-      await ignoreCancelledListen(this.listenInFlight);
-    }
-
-    if (this.appClosed) {
-      return;
-    }
-
     try {
-      await this.app.close();
+      if (this.listenInFlight) {
+        this.listenAbortController?.abort();
+        await ignoreCancelledListen(this.listenInFlight);
+      }
     } finally {
-      this.appClosed = true;
+      if (!this.appClosed) {
+        try {
+          await this.app.close();
+        } finally {
+          this.appClosed = true;
+        }
+      }
     }
   }
 
