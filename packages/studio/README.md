@@ -123,7 +123,7 @@ Studio is primarily a CLI-launched sidecar and browser viewer, but the published
 |---|---|
 | `parseStudioPayload(rawJson)` | Accepts raw snapshot JSON, standalone timing JSON, snapshot+timing envelopes, and `fluo inspect --report` artifacts; returns the parsed payload plus the original JSON string. |
 | `applyFilters(snapshot, filter)` | Applies readiness/severity/query filters without mutating the source snapshot. |
-| `renderMermaid(snapshot)` | Produces Mermaid graph text from the loaded platform graph, including internal component dependency edges and external dependency nodes. |
+| `renderMermaid(snapshot)` | Produces Mermaid graph text from the loaded platform graph, including internal component dependency edges and external dependency nodes. Filtered snapshots render deterministically, producing identical Mermaid text before and after JSON serialization. |
 | `parseStudioLiveEvent(rawJson)` / `validateStudioLiveEvent(value)` | Validate runtime-connected sidecar/SSE envelopes before UI state consumes them. |
 | `isStudioLiveEvent(value)` | Runtime-safe type guard for checking sidecar/SSE envelopes before parsing or dispatch. |
 | `StudioLiveSnapshot` | Live graph/routes/requests/timing/diagnostics snapshot consumed by the React UI. |

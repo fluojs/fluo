@@ -123,7 +123,7 @@ Studio는 주로 CLI가 실행하는 sidecar와 browser viewer이지만, 배포�
 |---|---|
 | `parseStudioPayload(rawJson)` | raw snapshot JSON, standalone timing JSON, snapshot+timing envelope, `fluo inspect --report` artifact를 받아 parsed payload와 원본 JSON string을 반환합니다. |
 | `applyFilters(snapshot, filter)` | 원본 snapshot을 변경하지 않고 readiness/severity/query filter를 적용합니다. |
-| `renderMermaid(snapshot)` | 내부 component dependency edge와 외부 dependency node를 포함해 로드된 platform graph를 Mermaid text로 변환합니다. |
+| `renderMermaid(snapshot)` | 내부 component dependency edge와 외부 dependency node를 포함해 로드된 platform graph를 Mermaid text로 변환합니다. 필터링된 snapshot은 JSON 직렬화 전후에 동일한 Mermaid text로 결정론적으로 렌더링됩니다. |
 | `parseStudioLiveEvent(rawJson)` / `validateStudioLiveEvent(value)` | UI state가 사용하기 전에 runtime-connected sidecar/SSE envelope를 검증합니다. |
 | `isStudioLiveEvent(value)` | parsing 또는 dispatch 전에 sidecar/SSE envelope를 확인하는 runtime-safe type guard입니다. |
 | `StudioLiveSnapshot` | React UI가 소비하는 live graph/routes/requests/timing/diagnostics snapshot입니다. |
