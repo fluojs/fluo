@@ -233,7 +233,12 @@ function contentTypeForPath(pathname: string): string {
   }
 }
 
-function resolveStudioViewerPath(): string | undefined {
+/**
+ * Resolves the packaged Studio viewer artifact when the optional peer is installed.
+ *
+ * @returns The packaged viewer HTML path, or `undefined` when Studio is unavailable.
+ */
+export function resolveStudioViewerPath(): string | undefined {
   try {
     const viewerPath = require.resolve('@fluojs/studio/viewer');
     return existsSync(viewerPath) ? viewerPath : undefined;

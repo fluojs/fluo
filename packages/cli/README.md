@@ -243,6 +243,23 @@ fluo dev --studio --studio-port 51234
 fluo dev --studio --dry-run
 ```
 
+### Static Studio viewer
+
+Use `fluo studio` to inspect an exported snapshot or report without starting an
+application runtime:
+
+```bash
+pnpm add -D @fluojs/studio
+fluo studio
+fluo studio --port 51234
+```
+
+The command resolves the installed `@fluojs/studio/viewer` asset, serves it
+from local HTTP, and prints a browser URL. It is the supported installed-package
+path for static artifacts; do not open `dist/index.html` through `file://`.
+`fluo dev --studio` remains the token-protected live sidecar for a running Node
+application.
+
 The CLI starts a local Studio sidecar, prints a tokenized URL, keeps restart lifecycle events flowing through the sidecar, and injects an explicit Studio config into the Node app child before the app imports `@fluojs/runtime`. Studio live mode requires the fluo-owned Node restart runner; `fluo dev --studio` rejects `--raw-watch`, `--runner native`, and `FLUO_DEV_RUNNER=native` so lifecycle events cannot be split from the CLI restart boundary. The sidecar serves the packaged `@fluojs/studio/viewer` React app when that optional package is installed. Runtime package source never reads `process.env` directly; it publishes live graph/routes/request/timing/diagnostic events only when CLI-injected Studio config is present.
 
 Security defaults are local-only: the sidecar binds `127.0.0.1`, runtime ingestion and browser state/SSE APIs require generated tokens, CORS is not enabled by default, and request bodies are not captured by default. The sidecar settles ingestion requests with a bounded error completion when a local client closes the socket after sending only a partial request body, so a malformed local client cannot hang sidecar work indefinitely. When `StudioSidecar.close()` starts while an authenticated ingestion body is still incomplete, the sidecar closes only its active ingestion sockets, ends tracked SSE responses through the existing close path, and shares one deterministic teardown across repeated or concurrent close calls. Completed ordinary requests are not part of that active-ingestion ownership set, and a client that remains open with a partial body cannot keep CLI shutdown pending indefinitely.

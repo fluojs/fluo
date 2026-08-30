@@ -14,6 +14,7 @@ import { type DevRunnerRuntime, runNodeRestartRunner } from './dev-runner/node-r
 import { builtInGeneratorCollection, generatorManifest, generatorOptionSchemas, resolveGeneratorKind } from './generators/manifest.js';
 import { renderAliasList, renderHelpTable } from './help.js';
 import type { startStudioSidecar } from './studio/sidecar.js';
+import { runStudioViewerCommand, studioUsage, type StudioViewerCommandRuntime } from './studio/viewer-command.js';
 import type { GenerateOptions, GeneratorKind } from './types.js';
 import { type CliUpdateCheckRuntimeOptions, removeUpdateCheckFlags, runCliUpdateCheck } from './update-check.js';
 import { inspectUsage, newUsage, typegenUsage } from './usage.js';
@@ -39,6 +40,7 @@ export interface CliRuntimeOptions {
   startStudioSidecar?: typeof startStudioSidecar;
   stderr?: CliStream;
   stdin?: CliReadableStream;
+  waitForStudioViewerShutdown?: StudioViewerCommandRuntime['waitForShutdown'];
   stdout?: CliStream;
   updateCheck?: false | CliUpdateCheckRuntimeOptions;
 }
@@ -86,6 +88,10 @@ type ParsedCommand =
   | {
       argv: string[];
       command: 'inspect';
+    }
+  | {
+      argv: string[];
+      command: 'studio';
     }
   | {
       argv: string[];
@@ -146,6 +152,7 @@ const TOP_LEVEL_COMMAND_HELP: TopLevelCommandHelpEntry[] = [
   { aliases: [], command: 'add', description: 'Install @fluojs packages with the detected package manager.' },
   { aliases: [], command: 'upgrade', description: 'Report latest CLI state and migration workflow guidance.' },
   { aliases: [], command: 'inspect', description: 'Inspect runtime platform snapshot/diagnostics and emit timing optionally.' },
+  { aliases: [], command: 'studio', description: 'Serve the installed Studio viewer over local HTTP for static artifacts.' },
   { aliases: [], command: 'typegen', description: 'Generate, check, or watch path-only React page route types.' },
   { aliases: [], command: 'migrate', description: 'Run NestJS-to-fluo codemods (dry-run by default).' },
   { aliases: ['--version', '-v'], command: 'version', description: 'Print the installed fluo CLI version.' },
@@ -451,6 +458,13 @@ function parseCommand(argv: string[]): ParsedCommand {
     };
   }
 
+  if (command === 'studio') {
+    return {
+      argv: argv.slice(1),
+      command: 'studio',
+    };
+  }
+
   if (command === 'typegen') {
     return {
       argv: argv.slice(1),
@@ -581,6 +595,11 @@ export async function runCli(
         return 0;
       }
 
+      if (topic === 'studio') {
+        stdout.write(`${studioUsage()}\n`);
+        return 0;
+      }
+
       if (topic === 'typegen') {
         stdout.write(`${typegenUsage()}\n`);
         return 0;
@@ -635,6 +654,11 @@ export async function runCli(
       return 0;
     }
 
+    if (commandArgv[0] === 'studio' && commandArgv.slice(1).some(isHelpFlag)) {
+      stdout.write(`${studioUsage()}\n`);
+      return 0;
+    }
+
     if (commandArgv[0] === 'typegen' && commandArgv.slice(1).some(isHelpFlag)) {
       stdout.write(`${typegenUsage()}\n`);
       return 0;
@@ -676,6 +700,14 @@ export async function runCli(
 
     if (parsedCommand.command === 'inspect') {
       return runInspectCommand(parsedCommand.argv, commandRuntime);
+    }
+
+    if (parsedCommand.command === 'studio') {
+      return await runStudioViewerCommand(parsedCommand.argv, {
+        startStudioSidecar: runtime.startStudioSidecar,
+        stdout,
+        waitForShutdown: runtime.waitForStudioViewerShutdown,
+      });
     }
 
     if (parsedCommand.command === 'typegen') {

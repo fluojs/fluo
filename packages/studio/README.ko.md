@@ -86,11 +86,15 @@ Studio는 여전히 fluo CLI가 내보낸 JSON 파일을 소비합니다. 런타
 
 2. **패키징된 Studio viewer 열기**:
    ```bash
-   pnpm add -D @fluojs/studio
-   node -p "require.resolve('@fluojs/studio/viewer')"
+   pnpm add -D @fluojs/cli @fluojs/studio
+   pnpm exec fluo studio
    ```
 
-   출력된 `dist/index.html` 경로를 브라우저에서 엽니다. 저장소 내부 Studio 개발에는 다음 명령을 사용합니다.
+   이 명령은 기존 `@fluojs/studio/viewer` asset을 resolve하고, 사용 가능한 포트의
+   `127.0.0.1`에서 제공한 뒤 브라우저 URL을 출력합니다. 고정 포트는
+   `pnpm exec fluo studio --port 51234`로 선택합니다. Resolve한
+   `dist/index.html` 파일을 `file://`로 직접 열지 마세요. Viewer에는 지원되는 HTTP
+   launch path가 필요합니다. 저장소 내부 Studio 개발에는 다음 명령을 사용합니다.
    ```bash
    pnpm --dir packages/studio dev
    ```

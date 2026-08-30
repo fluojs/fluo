@@ -135,11 +135,17 @@ Report가 raw snapshot을 대체하는 것은 아닙니다. Report는 support와
 Studio Viewer는 독립 실행형 web application입니다. 설치된 패키지를 사용하는 사용자는 보통 Studio를 개발 전용 의존성으로 유지하고, 패키징된 정적 HTML entry를 resolve해서 브라우저에서 열 수 있습니다.
 
 ```bash
-pnpm add -D @fluojs/studio
-node -p "require.resolve('@fluojs/studio/viewer')"
+pnpm add -D @fluojs/cli @fluojs/studio
+pnpm exec fluo studio
 ```
 
-출력된 경로는 패키징된 `dist/index.html` artifact를 가리킵니다. 해당 파일을 브라우저에서 연 다음 inspect artifact를 로드합니다. Artifact 자체가 Bun, Deno, Cloudflare Workers의 static/report fallback workflow에서 생성된 경우에도 이 viewer resolution 단계는 Node package resolution에 기반합니다. Studio 앱 자체를 개발하는 저장소 기여자는 대신 로컬 dev server를 실행할 수 있습니다.
+`fluo studio`는 패키징된 `@fluojs/studio/viewer` artifact를 resolve하고 local
+HTTP로 제공한 뒤 브라우저 URL을 출력합니다. 고정 포트는 `pnpm exec fluo studio
+--port 51234`로 선택합니다. `dist/index.html`을 `file://`로 직접 열지 마세요.
+지원되는 installed-package path는 HTTP입니다. Artifact 자체가 Bun, Deno,
+Cloudflare Workers의 static/report fallback workflow에서 생성된 경우에도 이
+resolution은 Node package resolution에 기반합니다. Studio 앱 자체를 개발하는
+저장소 기여자는 대신 로컬 dev server를 실행할 수 있습니다.
 
 ```bash
 pnpm --dir packages/studio dev
