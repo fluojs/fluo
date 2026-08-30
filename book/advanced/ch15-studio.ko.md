@@ -165,9 +165,11 @@ Studio의 중요한 역할 중 하나는 scope와 lifecycle 문제를 보이게 
 
 Snapshot은 Studio에 해석된 component graph와 diagnostics를 제공합니다. Timing data는 bootstrap phase cost를 제공합니다. 두 artifact를 함께 보면 viewer는 구조와 startup behavior를 모두 설명할 수 있습니다. Graph는 어떤 component가 느린 provider에 의존하는지 보여주고, timing view는 지연이 graph construction, instance resolution, lifecycle hooks 중 어디에서 발생했는지 보여줄 수 있습니다.
 
-## 15.6 시나리오: Provider deadlock 진단하기
+## 15.6 시나리오: 완료된 Bootstrap 검토하기
 
-애플리케이션이 startup 중 멈추거나 실패한다고 가정해 봅니다. 로그에만 의존하지 말고 report artifact를 생성합니다.
+Studio report는 bootstrap 이후 artifact입니다. `fluo inspect`는 snapshot이나 timing data를 수집하기 전에 애플리케이션 생성을 완료해야 하므로 bootstrap이 실패하거나 멈추면 report를 만들 수 없습니다. fluo에는 실패한 bootstrap에서 partial graph를 내보낼 수 있는 `PartialGraphHost` 대응 기능이 없습니다. 그러한 실패에는 기존 CLI stderr와 bootstrap error diagnostic을 사용하고, 필요하다면 partial-graph 지원은 별도로 설계하세요.
+
+Bootstrap이 완료된 뒤 해석된 graph, diagnostic 또는 startup timing을 검사해야 한다면 report artifact를 생성합니다.
 
 ```bash
 fluo inspect ./src/app.module.ts --report --output artifacts/deadlock-report.json
