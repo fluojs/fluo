@@ -108,7 +108,7 @@ export class AppModule {}
 
 ## 18.4 Solving N+1 with Object Field Resolvers and DataLoaders
 
-The N+1 problem is the most common performance bottleneck in GraphQL. Fluo provides request-scoped **DataLoader** support so repeated lookups in the same request can be grouped into batches.
+The N+1 problem is the most common performance bottleneck in GraphQL. Fluo provides GraphQL-operation-scoped **DataLoader** support so repeated lookups in the same GraphQL operation can be grouped into batches.
 
 ### Creating a DataLoader
 

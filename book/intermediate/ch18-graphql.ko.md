@@ -108,7 +108,7 @@ export class AppModule {}
 
 ## 18.4 Object Field Resolver와 DataLoader로 N+1 해결하기
 
-N+1 문제는 GraphQL에서 가장 흔하게 나타나는 성능 병목입니다. Fluo는 요청 스코프 **DataLoader** 지원을 제공해 같은 요청 안의 반복 조회를 배치로 묶을 수 있게 합니다.
+N+1 문제는 GraphQL에서 가장 흔하게 나타나는 성능 병목입니다. Fluo는 GraphQL operation 스코프 **DataLoader** 지원을 제공해 같은 GraphQL operation 안의 반복 조회를 배치로 묶을 수 있게 합니다.
 
 ### Creating a DataLoader
 
