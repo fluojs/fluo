@@ -15,7 +15,7 @@ import type {
   PlatformSnapshot as RuntimePlatformSnapshot,
 } from '@fluojs/runtime';
 import type { Root } from 'react-dom/client';
-import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapStudioApp } from './app/bootstrap.js';
 import {
   applyFilters,
@@ -42,7 +42,7 @@ type Exact<Left, Right> =
       : false
     : false;
 
-function assertExactContract<Condition extends true>(): void {}
+function assertExactContract<Condition extends true>(...condition: Condition[]): void { void condition; }
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageCommandTimeoutMs = 120_000;
