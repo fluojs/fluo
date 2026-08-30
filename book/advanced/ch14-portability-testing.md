@@ -201,11 +201,11 @@ describe('MyCustomAdapter Portability', () => {
   it('does not commit aborted HTTP error representations', () =>
     harness.assertDoesNotCommitAbortedHttpErrorRepresentations());
   it('preserves malformed cookies', () => harness.assertPreservesMalformedCookieValues());
-  it('handles SSE', () => harness.assertSupportsSseStreaming());
   it('preserves JSON and text raw bodies', () => harness.assertPreservesRawBodyForJsonAndText());
   it('preserves exact raw body bytes', () => harness.assertPreservesExactRawBodyBytesForByteSensitivePayloads());
   it('excludes multipart raw bodies', () => harness.assertExcludesRawBodyForMultipart());
   it('defaults multipart total limit to max body size', () => harness.assertDefaultsMultipartTotalLimitToMaxBodySize());
+  it('handles SSE', () => harness.assertSupportsSseStreaming());
   it('settles stream drain waits after close', () => harness.assertSettlesStreamDrainWaitOnClose());
   it('reports configured host startup logs', () => harness.assertReportsConfiguredHostInStartupLogs());
   it('reports the HTTPS startup URL', () =>

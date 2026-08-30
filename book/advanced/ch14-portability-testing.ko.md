@@ -201,11 +201,11 @@ describe('MyCustomAdapter Portability', () => {
   it('중단된 HTTP 오류 표현을 commit하지 않아야 함', () =>
     harness.assertDoesNotCommitAbortedHttpErrorRepresentations());
   it('잘못된 형식의 쿠키를 보존해야 함', () => harness.assertPreservesMalformedCookieValues());
-  it('SSE를 처리해야 함', () => harness.assertSupportsSseStreaming());
   it('JSON 및 text 원시 바디를 보존해야 함', () => harness.assertPreservesRawBodyForJsonAndText());
   it('정확한 원시 바디 바이트를 보존해야 함', () => harness.assertPreservesExactRawBodyBytesForByteSensitivePayloads());
   it('multipart 원시 바디를 제외해야 함', () => harness.assertExcludesRawBodyForMultipart());
   it('multipart total limit을 max body size로 기본 설정해야 함', () => harness.assertDefaultsMultipartTotalLimitToMaxBodySize());
+  it('SSE를 처리해야 함', () => harness.assertSupportsSseStreaming());
   it('close 뒤 stream drain wait를 settle해야 함', () => harness.assertSettlesStreamDrainWaitOnClose());
   it('설정된 host startup log를 보고해야 함', () => harness.assertReportsConfiguredHostInStartupLogs());
   it('HTTPS startup URL을 보고해야 함', () =>
