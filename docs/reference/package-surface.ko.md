@@ -105,7 +105,7 @@
 - **`@fluojs/testing`**: `createTestingModule({ rootModule })`, request-level `createTestApp(...)`, `@fluojs/testing/http` request helper subpath, Vitest decorator tooling, request-scoped DI isolation regression helper, body-bearing RFC `QUERY` listener portability assertion, portability harness cleanup 보장을 포함해 애플리케이션 및 플랫폼 계약을 검증하기 위한 Node.js `>=20.19.3 <21 || >=22.2.0 <27` conformance 및 통합 헬퍼.
 - **`@fluojs/vite`**: fluo 프로젝트용 Node.js 20+ Vite 빌드 유틸리티이며, package manifest는 `engines.node >=20.0.0`을 선언합니다. 생성된 starter `vite.config.ts` 파일이 사용하는 유지보수형 `fluoDecoratorsPlugin()`을 포함하고, Vite `>=6.2.0`을 요구하며, Babel peer는 package import나 plugin creation이 아니라 eligible 애플리케이션 `.ts` transform에서 lazy하게 해석합니다.
 
-Studio의 Node.js `>=20.0.0` engine floor는 consumer-side snapshot, diagnostic, timing declaration이 runtime-neutral이므로 독립적으로 설치할 수 있습니다. `@fluojs/runtime`은 배포 Studio dependency가 아니라 development-time drift check입니다.
+Studio의 Node.js `>=20.0.0` engine floor는 consumer-side snapshot, diagnostic, timing declaration이 runtime-neutral이므로 독립적으로 설치할 수 있습니다. `@fluojs/runtime`은 배포 Studio dependency가 아니라 development-time drift check입니다. Runtime-neutral `PlatformCheckResult`, `PlatformReadinessReport`, `PlatformHealthReport` declaration은 inspect artifact 전반의 check outcome을 보존하며, readiness와 health report에는 각각 선택적 `checks`를 포함할 수 있습니다.
 
 ## Studio inspect artifact ownership
 

@@ -105,7 +105,7 @@
 - **`@fluojs/testing`**: Node.js `>=20.19.3 <21 || >=22.2.0 <27` conformance and integration helpers for verifying application and platform contracts, including `createTestingModule({ rootModule })`, request-level `createTestApp(...)`, the `@fluojs/testing/http` request helper subpath, Vitest decorator tooling, request-scoped DI isolation regression helpers, body-bearing RFC `QUERY` listener portability assertions, and portability harness cleanup guarantees.
 - **`@fluojs/vite`**: Node.js 20+ Vite-facing build utilities for fluo projects; the package manifest declares `engines.node >=20.0.0`. It includes the maintained `fluoDecoratorsPlugin()` used by generated starter `vite.config.ts` files, requires Vite `>=6.2.0`, and lazily resolves Babel peers from eligible application `.ts` transforms rather than package import or plugin creation.
 
-Studio's Node.js `>=20.0.0` engine floor remains independently installable because its consumer-side snapshot, diagnostic, and timing declarations are runtime-neutral; `@fluojs/runtime` is a development-time drift check rather than a published Studio dependency.
+Studio's Node.js `>=20.0.0` engine floor remains independently installable because its consumer-side snapshot, diagnostic, and timing declarations are runtime-neutral; `@fluojs/runtime` is a development-time drift check rather than a published Studio dependency. The runtime-neutral `PlatformCheckResult`, `PlatformReadinessReport`, and `PlatformHealthReport` declarations preserve check outcomes across inspect artifacts, and readiness and health reports may each include optional `checks`.
 
 ## Studio inspect artifact ownership
 
