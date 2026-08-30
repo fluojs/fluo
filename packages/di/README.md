@@ -75,6 +75,8 @@ fluo DI supports four provider shapes:
 - **Request**: Instance is created once per `createRequestScope()` call.
 - **Transient**: A new instance is created every time it is resolved.
 
+A singleton provider must not depend on a request-scoped provider. That mismatch throws `ScopeMismatchError` before any provider factory or constructor in the graph runs, and the check covers single, alias (`useExisting`), and multi-provider registrations. A singleton that injects a multi token fails the same way when any contribution under that token is request-scoped, so no partial contribution set is materialized first.
+
 During disposal, each container tears down successfully materialized cached instances in reverse creation order across single-provider and multi-provider caches, so dependents are destroyed before their dependencies. Each container first recursively tears down live request-scope children it owns, so disposing a non-root request scope also closes nested request scopes before its own request cache. Root disposal then continues with root-owned singleton cleanup even if one or more child disposals fail. When multiple child/root disposals fail, `dispose()` reports an `AggregateError` so callers can inspect every shutdown failure without losing cleanup progress.
 
 Starting `dispose()` is terminal for `resolve()`, `register()`, `override()`, and `createRequestScope()`. Concurrent callers share the active disposal attempt. If an `onDestroy()` hook fails, the container retains only that failed hook for a later explicit `dispose()` retry, preserving child-before-parent/root and reverse-creation ordering. Hooks that completed successfully are never run again, and disposal becomes idempotent after every retained hook succeeds.

@@ -1515,6 +1515,12 @@ export class Container {
     visited.add(token);
 
     try {
+      const multiRequestScopedToken = this.findRequestScopedMultiContribution(token, visited);
+
+      if (multiRequestScopedToken) {
+        return multiRequestScopedToken;
+      }
+
       const provider = this.resolveEffectiveProvider(token);
 
       if (provider) {
@@ -1539,6 +1545,40 @@ export class Container {
     } finally {
       visited.delete(token);
     }
+  }
+
+  private findRequestScopedMultiContribution(token: Token, visited: Set<Token>): Token | undefined {
+    const aliasChain = new Set<Token>();
+    let currentToken = token;
+
+    while (!aliasChain.has(currentToken)) {
+      aliasChain.add(currentToken);
+
+      for (const multiProvider of this.collectMultiProviders(currentToken)) {
+        if (multiProvider.scope === Scope.REQUEST) {
+          return multiProvider.provide;
+        }
+
+        const requestScopedToken =
+          multiProvider.type === 'existing' && multiProvider.useExisting !== undefined
+            ? this.findRequestScopedDependencyToken(multiProvider.useExisting, visited)
+            : this.findRequestScopedDependency(multiProvider.inject, visited);
+
+        if (requestScopedToken) {
+          return requestScopedToken;
+        }
+      }
+
+      const aliasProvider = this.lookupProvider(currentToken);
+
+      if (aliasProvider?.type !== 'existing' || aliasProvider.useExisting === undefined) {
+        return undefined;
+      }
+
+      currentToken = aliasProvider.useExisting;
+    }
+
+    return undefined;
   }
 
   private resolveEffectiveProvider(

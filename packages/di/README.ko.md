@@ -76,6 +76,8 @@ const service = await container.resolve(UserService);
 - **request**: `createRequestScope()`마다 새로 생성됩니다.
 - **transient**: resolve할 때마다 새 인스턴스를 만듭니다.
 
+singleton provider는 request-scoped provider에 의존할 수 없습니다. 이 mismatch는 그래프의 어떤 provider factory나 constructor도 실행되기 전에 `ScopeMismatchError`를 던지며, 이 검사는 single, alias(`useExisting`), multi-provider 등록을 모두 포함합니다. singleton이 multi token을 주입받을 때도 해당 token의 contribution 중 하나라도 request scope이면 같은 방식으로 실패하므로, contribution 일부만 materialize되는 일이 없습니다.
+
 dispose 중에는 각 컨테이너가 single-provider cache와 multi-provider cache 전체에서 성공적으로 materialize된 cached instance를 실제 생성 순서의 역순으로 정리하므로, dependency보다 dependent를 먼저 종료합니다. 각 컨테이너는 자신이 소유한 살아 있는 request scope 자식을 먼저 재귀적으로 정리하므로, 루트가 아닌 request scope를 dispose해도 중첩 request scope를 닫은 뒤 자신의 request cache를 정리합니다. 이후 루트 dispose는 자식 dispose 중 하나 이상이 실패하더라도 루트가 소유한 singleton 정리를 계속 수행합니다. 자식/루트 dispose 실패가 여러 개 발생하면 `dispose()`는 모든 shutdown 실패를 확인할 수 있도록 `AggregateError`로 보고합니다.
 
 `dispose()` 시작은 `resolve()`, `register()`, `override()`, `createRequestScope()`에 대해 terminal입니다. 동시 caller는 active disposal 시도를 공유합니다. `onDestroy()` hook이 실패하면 컨테이너는 실패한 hook만 이후 명시적 `dispose()` 재시도를 위해 유지하면서 child-before-parent/root 순서와 생성 역순을 보존합니다. 성공적으로 완료된 hook은 다시 실행하지 않으며, 유지된 hook이 모두 성공한 뒤 disposal은 멱등입니다.
