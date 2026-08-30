@@ -31,7 +31,7 @@ pnpm add @fluojs/graphql graphql graphql-yoga
 - TypeScript 데코레이터를 사용하여 타입 안전한 GraphQL API를 구축할 때 (**Code-first**).
 - 기존의 executable `GraphQLSchema` 객체를 fluo 애플리케이션에 통합할 때.
 - GraphQL resolver 내에서 request-scoped provider를 포함한 원활한 의존성 주입이 필요할 때.
-- Request-scoped **DataLoader** 패턴을 사용하여 효율적인 데이터 페칭을 수행할 때.
+- GraphQL operation 범위 **DataLoader** 패턴을 사용하여 효율적인 데이터 페칭을 수행할 때.
 
 ## 빠른 시작
 
@@ -154,7 +154,7 @@ class BookFieldResolver {
 
 두 resolver class를 module provider 또는 controller로 등록하고, `GraphqlModule.forRoot({ resolvers })`를 allowlist로 사용할 때는 둘 다 포함하세요. 중복 `TypeName.fieldName` 등록, code-first root output에서 도달할 수 없는 field target, root operation method에 배치한 `@Parent()` / `@Context()` binding은 bootstrap 중 실패합니다. Field argument DTO binding과 schema-first field-resolver attachment는 첫 runtime 계약 범위 밖입니다. `nullable` option은 예약되어 있습니다. 기존 field nullability는 유지되며, `type`으로 추가한 field는 GraphQL의 nullable 기본값을 사용합니다.
 
-### Request-Scoped DataLoaders
+### GraphQL Operation 범위 DataLoaders
 내장된 DataLoader 통합을 통해 N+1 문제를 효율적으로 해결합니다. Loader는 각 GraphQL 작업마다 자동으로 격리됩니다.
 
 ```typescript
@@ -195,7 +195,7 @@ class UserResolver {
 - `@fluojs/graphql`은 HTTP GraphQL 요청 또는 WebSocket subscription operation마다 operation-scoped DI 컨테이너를 하나 만들고, 해당 operation 안의 resolver 호출들이 이를 공유하며, operation 완료 또는 WebSocket operation 종료 시 dispose합니다.
 - Resolver 메서드는 `GraphQLContext`를 받으며, 내장 필드에는 fluo `request`, middleware 또는 guard가 설정한 인증된 HTTP `principal`, WebSocket subscription의 `connectionParams`와 `socket`, 그리고 `GraphqlModule.forRoot({ context })`가 반환한 사용자 정의 필드가 포함됩니다.
 - Object field resolver는 root resolver와 같은 provider scope 및 operation container를 사용합니다. `@Parent()`와 `@Context()`는 positional method argument만 제어합니다.
-- Request-scoped DataLoader helper는 같은 `GraphQLContext` operation 경계를 사용하므로 loader cache는 하나의 GraphQL operation 안에서만 공유됩니다.
+- GraphQL operation 범위 DataLoader helper는 같은 `GraphQLContext` operation 경계를 사용하므로 loader cache는 하나의 GraphQL operation 안에서만 공유됩니다.
 - 애플리케이션 shutdown은 WebSocket transport를 등록 해제하고, 살아 있는 WebSocket client를 닫으며, 아직 활성 상태인 WebSocket operation container를 정상 operation 완료 때와 같은 request-scoped provider teardown 경로로 dispose합니다.
 
 ```typescript
