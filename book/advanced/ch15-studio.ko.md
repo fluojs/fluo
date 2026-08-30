@@ -57,7 +57,7 @@ CI와 support workflow에서는 shell redirection보다 명시적인 artifact �
 fluo inspect ./src/app.module.ts --json --output artifacts/inspect-snapshot.json
 ```
 
-`--output <path>`는 선택된 payload를 파일에 쓰고 필요한 parent directory를 만듭니다. 실패한 bootstrap check 이후 CI 시스템이 `artifacts/`를 업로드할 때 유용합니다. 이 옵션은 애플리케이션을 쓰기 가능하게 만들지 않으며, 정상적인 bootstrap 및 close cycle 외에 module graph state를 바꾸지 않습니다.
+`--output <path>`는 선택된 payload를 파일에 쓰고 필요한 parent directory를 만듭니다. 완료된 bootstrap check가 만든 `artifacts/`를 CI 시스템이 업로드할 때 유용합니다. 이 옵션은 애플리케이션을 쓰기 가능하게 만들지 않으며, 정상적인 bootstrap 및 close cycle 외에 module graph state를 바꾸지 않습니다.
 
 snapshot 옆에 bootstrap timing이 필요하면 `--timing`을 사용합니다.
 
@@ -172,14 +172,14 @@ Studio report는 bootstrap 이후 artifact입니다. `fluo inspect`는 snapshot�
 Bootstrap이 완료된 뒤 해석된 graph, diagnostic 또는 startup timing을 검사해야 한다면 report artifact를 생성합니다.
 
 ```bash
-fluo inspect ./src/app.module.ts --report --output artifacts/deadlock-report.json
+fluo inspect ./src/app.module.ts --report --output artifacts/completed-bootstrap-report.json
 ```
 
 그다음 artifact trail을 따라갑니다.
 
-1. **Check the summary**: `summary.errorCount`, `summary.warningCount`, `summary.readinessStatus`, `summary.timingTotalMs`를 읽어 failure shape를 파악합니다.
+1. **Check the summary**: `summary.errorCount`, `summary.warningCount`, `summary.readinessStatus`, `summary.timingTotalMs`를 읽어 완료된 run의 diagnostics, readiness state, bootstrap duration을 파악합니다.
 2. **Open the snapshot in Studio**: Viewer로 graph와 diagnostics를 검사합니다. Diagnostics tab은 가능한 경우 `dependsOn`, `cause`, `fixHint`를 포함한 structured issue를 보여줍니다.
-3. **Render a diagram if needed**: Architecture review가 PR이나 decision record 안의 text diagram을 필요로 하면 `fluo inspect --mermaid --output artifacts/deadlock-graph.mmd`를 사용합니다.
+3. **Render a diagram if needed**: Architecture review가 PR이나 decision record 안의 text diagram을 필요로 하면 `fluo inspect --mermaid --output artifacts/completed-bootstrap-graph.mmd`를 사용합니다.
 4. **Keep the artifact**: 다른 개발자가 같은 inspection view를 재현할 수 있도록 report를 CI log나 support ticket에 첨부합니다.
 
 이 workflow는 터미널 출력을 채팅에 복사하는 방식보다 반복 가능합니다. Report는 summary, snapshot, diagnostics, timing을 함께 보관합니다. Studio는 그 사실들을 reviewer가 직접 앱을 bootstrap하지 않아도 검사할 수 있는 graph와 issue list로 바꿉니다.

@@ -57,7 +57,7 @@ For CI and support workflows, prefer an explicit artifact path instead of shell 
 fluo inspect ./src/app.module.ts --json --output artifacts/inspect-snapshot.json
 ```
 
-`--output <path>` writes the selected payload to a file and creates parent directories when needed. This is useful for CI systems that upload `artifacts/` after a failed bootstrap check. It does not make the application writable, and it does not change module graph state beyond the normal bootstrap and close cycle.
+`--output <path>` writes the selected payload to a file and creates parent directories when needed. This is useful for CI systems that upload `artifacts/` from completed bootstrap checks. It does not make the application writable, and it does not change module graph state beyond the normal bootstrap and close cycle.
 
 Use `--timing` when you need bootstrap timing alongside the snapshot.
 
@@ -172,14 +172,14 @@ Studio reports are post-bootstrap artifacts. `fluo inspect` must finish creating
 When bootstrap completes and you need to inspect the resolved graph, diagnostics, or startup timing, generate a report artifact.
 
 ```bash
-fluo inspect ./src/app.module.ts --report --output artifacts/deadlock-report.json
+fluo inspect ./src/app.module.ts --report --output artifacts/completed-bootstrap-report.json
 ```
 
 Then follow the artifact trail.
 
-1. **Check the summary**: Read `summary.errorCount`, `summary.warningCount`, `summary.readinessStatus`, and `summary.timingTotalMs` to understand the failure shape.
+1. **Check the summary**: Read `summary.errorCount`, `summary.warningCount`, `summary.readinessStatus`, and `summary.timingTotalMs` to understand the completed run's diagnostics, readiness state, and bootstrap duration.
 2. **Open the snapshot in Studio**: Use the viewer to inspect the graph and diagnostics. The Diagnostics tab shows structured issues, including `dependsOn`, `cause`, and `fixHint` when available.
-3. **Render a diagram if needed**: Use `fluo inspect --mermaid --output artifacts/deadlock-graph.mmd` when an architecture review needs a text diagram in a PR or decision record.
+3. **Render a diagram if needed**: Use `fluo inspect --mermaid --output artifacts/completed-bootstrap-graph.mmd` when an architecture review needs a text diagram in a PR or decision record.
 4. **Keep the artifact**: Attach the report to CI logs or a support ticket so another developer can reproduce the same inspection view.
 
 This workflow is more repeatable than copying terminal output into chat. The report keeps summary, snapshot, diagnostics, and timing together. Studio then turns those facts into a graph and issue list that reviewers can inspect without bootstrapping the app themselves.
