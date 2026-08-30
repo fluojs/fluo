@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 import {
   collectDirectProcessEnvViolations,
   collectNodeGlobalBufferViolations,
+  enforceCliMigrationTransformDocs,
   enforceCloudflareWorkersLifecycleDocsSync,
   enforceExpressRuntimeMigrationDocsSync,
   enforceGraphqlRuntimeBoundaryDiscoverability,
@@ -44,6 +45,23 @@ const removedRuntimeModuleFactoryNames = [
   'createEventBusModule',
   'createRedisModule',
 ] as const;
+
+describe('enforceCliMigrationTransformDocs', () => {
+  it('accepts documented migration transform selections', () => {
+    expect(() => enforceCliMigrationTransformDocs()).not.toThrow();
+  });
+
+  it('rejects a documented transform that the CLI does not support', () => {
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'docs/getting-started/migrate-from-nestjs.md'
+        ? content.replace('--only imports,injectable', '--only imports,unsupported')
+        : content;
+    };
+
+    expect(() => enforceCliMigrationTransformDocs(readText)).toThrow(/unsupported/u);
+  });
+});
 
 function collectMarkdownFiles(relativeRoot: string): string[] {
   const absoluteRoot = resolve(repoRoot, relativeRoot);

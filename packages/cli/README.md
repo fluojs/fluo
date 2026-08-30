@@ -294,13 +294,19 @@ fluo migrate ./src --json
 # Apply transformations
 fluo migrate ./src --apply
 fluo migrate ./src --apply --json
-fluo migrate ./src --only imports,inject-params
-fluo migrate ./src --skip tests
+fluo migrate ./src --only imports,injectable
+fluo migrate ./src --skip testing
 ```
 
 Use `--json` when CI jobs, dashboards, or migration reports need a stable machine-readable result. Human output remains the default. JSON mode writes only the structured report to stdout on success, while parser errors and invalid flag combinations still write their message to stderr and return exit code `1` without partial JSON output. The report includes `mode` (`dry-run` or `apply`), `dryRun`, `apply`, enabled `transforms`, `scannedFiles`, `changedFiles`, aggregate `warningCount`, and per-file metadata with `filePath`, `changed`, `appliedTransforms`, `warningCount`, and warnings including category labels and source line numbers.
 
 Review every warning before rerunning with `--apply`. Warnings are manual follow-up items rather than permission for an automatic rewrite to be accepted blindly; use the [NestJS migration guide](../../docs/getting-started/migrate-from-nestjs.md) as the post-codemod checklist for each warning category.
+
+Adapter-independent transforms (`imports`, `injectable`, `scope`, `testing`, and `tsconfig`) run without an HTTP adapter. The codemod leaves an adapterless `NestFactory.create(AppModule)` bootstrap unchanged and reports a manual follow-up; install a platform package, create its adapter explicitly, and pass it to `FluoFactory.create(...)` before calling `listen()`. Run the independent transforms first:
+
+```bash
+fluo migrate ./src --apply --only imports,injectable,scope,testing,tsconfig
+```
 
 **Key Transformations:**
 - Rewrites imports from `@nestjs/common` to `@fluojs/core` or `@fluojs/http`.

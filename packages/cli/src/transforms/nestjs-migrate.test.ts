@@ -5,12 +5,12 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
-  MIGRATION_TRANSFORMS,
-  WARNING_CATEGORIES,
   getWarningCategoryLabel,
   groupWarningsByCategory,
-  runNestJsMigration,
+  MIGRATION_TRANSFORMS,
   type MigrationWarning,
+  runNestJsMigration,
+  WARNING_CATEGORIES,
 } from './nestjs-migrate.js';
 
 const temporaryDirectories: string[] = [];
@@ -124,7 +124,7 @@ describe('runNestJsMigration', () => {
     expect(readFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'utf8')).toBe(beforeMain);
   });
 
-  it('applies safe transforms and keeps second run idempotent', () => {
+  it('applies safe transforms and keeps adapterless bootstrap unchanged', () => {
     const workspaceDirectory = createMigrationFixture();
 
     const firstReport = runNestJsMigration({
@@ -145,9 +145,9 @@ describe('runNestJsMigration', () => {
     };
 
     expect(firstReport.changedFiles).toBeGreaterThan(0);
-    expect(mainContent).toContain("from \"@fluojs/runtime\"");
-    expect(mainContent).toMatch(/FluoFactory\.create\(AppModule, \{[\s\S]*port:\s*3000[\s\S]*\}\)/);
-    expect(mainContent).toContain('await app.listen();');
+    expect(mainContent).toContain('NestFactory.create(AppModule)');
+    expect(mainContent).toContain('await app.listen(3000);');
+    expect(firstReport.fileResults.flatMap((result) => result.warnings)).toHaveLength(4);
     expect(serviceContent).toMatch(/@Scope\(("|')request\1\)/);
     expect(serviceContent).not.toContain('@Injectable');
     expect(serviceContent).toContain("from \"@fluojs/core\"");
@@ -196,6 +196,24 @@ describe('runNestJsMigration', () => {
       '@app/*': ['src/app/*'],
       '@health': ['src/health/health.module.ts'],
     });
+  });
+
+  it('applies adapter-independent transforms without an HTTP adapter', () => {
+    const workspaceDirectory = createMigrationFixture();
+
+    const report = runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(['bootstrap', 'injectable']),
+      targetPath: workspaceDirectory,
+    });
+
+    const mainContent = readFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'utf8');
+    const serviceContent = readFileSync(join(workspaceDirectory, 'src', 'users.service.ts'), 'utf8');
+
+    expect(mainContent).toContain('NestFactory.create(AppModule)');
+    expect(mainContent).not.toContain('FluoFactory.create');
+    expect(serviceContent).not.toContain('@Injectable');
+    expect(report.fileResults.flatMap((result) => result.warnings).some((warning) => warning.category === 'bootstrap-unsupported')).toBe(true);
   });
 
   it('preserves listen(port) when port cannot be folded into create options', () => {

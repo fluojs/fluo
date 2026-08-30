@@ -294,13 +294,19 @@ fluo migrate ./src --json
 # 변환 적용
 fluo migrate ./src --apply
 fluo migrate ./src --apply --json
-fluo migrate ./src --only imports,inject-params
-fluo migrate ./src --skip tests
+fluo migrate ./src --only imports,injectable
+fluo migrate ./src --skip testing
 ```
 
 CI 작업, 대시보드, migration report에서 안정적인 machine-readable 결과가 필요하면 `--json`을 사용하세요. 사람을 위한 출력은 기본값으로 유지됩니다. JSON 모드는 성공 시 stdout에 structured report만 기록하고, parser 오류나 잘못된 flag 조합은 기존처럼 stderr에 메시지를 기록한 뒤 exit code `1`을 반환하며 partial JSON을 출력하지 않습니다. Report에는 `mode`(`dry-run` 또는 `apply`), `dryRun`, `apply`, 활성화된 `transforms`, `scannedFiles`, `changedFiles`, 전체 `warningCount`, 그리고 `filePath`, `changed`, `appliedTransforms`, `warningCount`, category label과 source line number가 포함된 warnings per-file metadata가 포함됩니다.
 
 `--apply`로 다시 실행하기 전에는 모든 warning을 검토하세요. Warning은 자동 rewrite를 그대로 수락해도 된다는 뜻이 아니라 수동 follow-up 항목입니다. Warning category별 post-codemod checklist는 [NestJS migration guide](../../docs/getting-started/migrate-from-nestjs.ko.md)를 기준으로 확인하세요.
+
+Adapter-independent transform(`imports`, `injectable`, `scope`, `testing`, `tsconfig`)은 HTTP adapter 없이 실행됩니다. Codemod는 adapterless `NestFactory.create(AppModule)` bootstrap을 그대로 두고 manual follow-up을 보고합니다. platform package를 설치하고 adapter를 명시적으로 생성해 `FluoFactory.create(...)`에 전달한 뒤 `listen()`을 호출하세요. 먼저 독립 transform을 실행합니다:
+
+```bash
+fluo migrate ./src --apply --only imports,injectable,scope,testing,tsconfig
+```
 
 **주요 변환 사항:**
 - `@nestjs/common` 임포트를 `@fluojs/core` 또는 `@fluojs/http`로 재작성합니다.

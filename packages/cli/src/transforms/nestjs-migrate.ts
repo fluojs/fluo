@@ -634,9 +634,16 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
       };
     }
 
+    if (callExpression.arguments.length === 1) {
+      return {
+        reason: 'No NestJS HTTP adapter could be detected. Run adapter-independent transforms with --skip bootstrap, then install a Fluo platform package such as @fluojs/platform-fastify and pass createFastifyAdapter(...) to FluoFactory.create(..., { adapter }) before calling listen().',
+        supported: false,
+      };
+    }
+
     if (callExpression.arguments.length === 2 && !ts.isObjectLiteralExpression(callExpression.arguments[1])) {
       return {
-        reason: 'Unsupported NestFactory.create adapter-specific startup form.',
+        reason: 'NestFactory.create uses an adapter-specific startup form. Run adapter-independent transforms with --skip bootstrap, then replace the NestJS adapter with a Fluo platform adapter passed to FluoFactory.create(..., { adapter }) before calling listen().',
         supported: false,
       };
     }

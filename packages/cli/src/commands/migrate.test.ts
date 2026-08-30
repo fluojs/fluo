@@ -53,7 +53,7 @@ describe('runMigrateCommand', () => {
     expect(stderrBuffer.join('')).toContain('No transforms remain');
   });
 
-  it('returns changed file summary in dry-run mode', async () => {
+  it('returns adapterless bootstrap warning in dry-run mode', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-command-'));
     tempDirectories.push(workspaceDirectory);
 
@@ -80,8 +80,9 @@ void bootstrap();
 
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Mode: dry-run');
-    expect(stdoutBuffer.join('')).toContain('Changed files: 1');
-    expect(stdoutBuffer.join('')).toContain('Run again with --apply to write transformed files.');
+    expect(stdoutBuffer.join('')).toContain('Changed files: 0');
+    expect(stdoutBuffer.join('')).toContain('Warnings: 1');
+    expect(stdoutBuffer.join('')).toContain('Manual follow-up required:');
   });
 
   it('emits structured JSON summary in dry-run mode', async () => {
@@ -129,21 +130,25 @@ void bootstrap();
     expect(output).not.toContain('Mode: dry-run');
     expect(report).toMatchObject({
       apply: false,
-      changedFiles: 1,
+      changedFiles: 0,
       command: 'migrate',
       dryRun: true,
       mode: 'dry-run',
       scannedFiles: 1,
-      warningCount: 0,
+      warningCount: 1,
     });
     expect(report.transforms).toContain('bootstrap');
     expect(report.files).toEqual([
       {
-        appliedTransforms: ['bootstrap'],
-        changed: true,
+        appliedTransforms: [],
+        changed: false,
         filePath: sourceFilePath,
-        warningCount: 0,
-        warnings: [],
+        warningCount: 1,
+        warnings: [
+          expect.objectContaining({
+            category: 'bootstrap-unsupported',
+          }),
+        ],
       },
     ]);
   });
@@ -202,19 +207,15 @@ export class AppController {
     mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
     writeFileSync(
       join(workspaceDirectory, 'src', 'main.ts'),
-      `import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
+      `import { Injectable } from '@nestjs/common';
 
-async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  await app.listen(3000);
-}
-void bootstrap();
+@Injectable()
+export class UsersService {}
 `,
     );
 
     const stdoutBuffer: string[] = [];
-    const exitCode = await runMigrateCommand(['./src', '--apply'], {
+    const exitCode = await runMigrateCommand(['./src', '--apply', '--only', 'injectable'], {
       cwd: workspaceDirectory,
       stderr: { write: () => undefined },
       stdout: { write: (message) => stdoutBuffer.push(message) },
