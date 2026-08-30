@@ -9,12 +9,29 @@ const configServiceSourcePath = 'packages/config/src/service.ts';
 
 // `ConfigService` reads resolve one key at a time. NestJS `get(key, defaultValue)` and
 // `get(key, { infer: true })` overloads have no fluo counterpart, so this contract is enforced
-// structurally through the TypeScript AST rather than through source text markers: string markers
-// pin one formatting of one signature while still admitting an added overload beside it.
+// through the TypeScript checker rather than through source text markers or a syntax-only scan.
+// String markers pin one formatting of one signature while still admitting an added overload, and
+// a first-class-member scan cannot see a declaration-merged `interface ConfigService`. Resolving
+// the merged symbol and classifying each effective signature covers both, and keeps return-shape
+// classification semantic so `void`, aliases, and parentheses are judged by meaning, not spelling.
 const singleKeyCallShapes = [
   { methodName: 'get', resolvesToOptional: true },
   { methodName: 'getOrThrow', resolvesToOptional: false },
 ];
+
+const configServiceProgramOptions = {
+  target: ts.ScriptTarget.ES2022,
+  module: ts.ModuleKind.ESNext,
+  strict: true,
+  skipLibCheck: true,
+  skipDefaultLibCheck: true,
+  types: [],
+  noEmit: true,
+};
+
+// Default library files are identical across fixtures, so parsing them once keeps each guarded
+// analysis in single-digit milliseconds instead of rebuilding a full program per invocation.
+const defaultLibrarySourceCache = new Map();
 const requirements = [
   ['packages/config/src/load.ts', [
     'mergeConfigEntries(targetValue, sourceValue);',
@@ -169,15 +186,81 @@ function failConfigServiceCallShape(methodName, detail) {
  * signature taking exactly one required `key` parameter, independent of generic nesting and
  * formatting. Overloads, options parameters, and default-value parameters are all rejected.
  */
+/**
+ * Builds a single-file program for the service source. Relative specifiers are mapped directly from
+ * their emitted `.js` form to the authored `.ts` file so the sibling config types resolve without a
+ * package.json probe; bare specifiers stay unresolved because no guarded signature depends on them.
+ */
+function createConfigServiceProgram(sourceText) {
+  const absoluteServicePath = resolve(repoRoot, configServiceSourcePath);
+  const host = ts.createCompilerHost(configServiceProgramOptions, true);
+  const readSourceFile = host.getSourceFile.bind(host);
+
+  host.getSourceFile = (fileName, languageVersion, onError, shouldCreate) => {
+    if (resolve(fileName) === absoluteServicePath) {
+      return ts.createSourceFile(fileName, sourceText, languageVersion, true, ts.ScriptKind.TS);
+    }
+
+    if (fileName.endsWith('.d.ts')) {
+      const cached = defaultLibrarySourceCache.get(fileName);
+
+      if (cached !== undefined) {
+        return cached;
+      }
+
+      const parsed = readSourceFile(fileName, languageVersion, onError, shouldCreate);
+
+      if (parsed !== undefined) {
+        defaultLibrarySourceCache.set(fileName, parsed);
+      }
+
+      return parsed;
+    }
+
+    return readSourceFile(fileName, languageVersion, onError, shouldCreate);
+  };
+
+  host.resolveModuleNames = (moduleNames, containingFile) =>
+    moduleNames.map((moduleName) => {
+      if (!moduleName.startsWith('.')) {
+        return undefined;
+      }
+
+      return {
+        resolvedFileName: join(dirname(containingFile), moduleName.replace(/\.js$/u, '.ts')),
+        extension: ts.Extension.Ts,
+        isExternalLibraryImport: false,
+      };
+    });
+
+  const program = ts.createProgram([absoluteServicePath], configServiceProgramOptions, host);
+
+  return { program, sourceFile: program.getSourceFile(absoluteServicePath) };
+}
+
+/**
+ * Classifies a resolved return type as undefined-like. `void` and `undefined` both describe an
+ * absent value, and union constituents are inspected so parentheses, aliases, and ordering cannot
+ * change the verdict.
+ */
+function describeReturnType(checker, signature) {
+  const returnType = checker.getReturnTypeOfSignature(signature);
+  const constituents = returnType.isUnion() ? returnType.types : [returnType];
+  const undefinedLike = ts.TypeFlags.Undefined | ts.TypeFlags.Void;
+
+  return {
+    text: checker.typeToString(returnType),
+    // An unresolved return type collapses to `any`, which would silently read as "not optional".
+    // Treat it as unusable evidence so the guard fails closed instead of passing on a widened API.
+    isUnresolved: constituents.some((constituent) => (constituent.flags & ts.TypeFlags.Any) !== 0),
+    isUndefinedLike: constituents.some((constituent) => (constituent.flags & undefinedLike) !== 0),
+  };
+}
+
 function enforceConfigServiceSingleKeyCallShape(sourceText) {
-  const sourceFile = ts.createSourceFile(
-    configServiceSourcePath,
-    sourceText,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TS,
-  );
-  const classDeclaration = sourceFile.statements.find(
+  const { program, sourceFile } = createConfigServiceProgram(sourceText);
+  const checker = program.getTypeChecker();
+  const classDeclaration = sourceFile?.statements.find(
     (statement) => ts.isClassDeclaration(statement) && statement.name?.text === 'ConfigService',
   );
 
@@ -187,19 +270,38 @@ function enforceConfigServiceSingleKeyCallShape(sourceText) {
     );
   }
 
-  for (const { methodName, resolvesToOptional } of singleKeyCallShapes) {
-    const declarations = classDeclaration.members.filter(
-      (member) => ts.isMethodDeclaration(member) && ts.isIdentifier(member.name) && member.name.text === methodName,
-    );
+  const classSymbol = checker.getSymbolAtLocation(classDeclaration.name);
 
-    if (declarations.length !== 1) {
+  if (classSymbol === undefined) {
+    throw new Error(
+      `Platform consistency governance check failed: ${configServiceSourcePath} must resolve the ConfigService symbol.`,
+    );
+  }
+
+  // The declared type of the merged symbol carries every effective member, including those added by
+  // a declaration-merged `interface ConfigService`, which a class-body scan would never observe.
+  const instanceType = checker.getDeclaredTypeOfSymbol(classSymbol);
+
+  for (const { methodName, resolvesToOptional } of singleKeyCallShapes) {
+    const property = checker.getPropertyOfType(instanceType, methodName);
+
+    if (property === undefined) {
+      failConfigServiceCallShape(methodName, 'must remain a public member of ConfigService');
+    }
+
+    const signatures = checker
+      .getTypeOfSymbolAtLocation(property, classDeclaration)
+      .getCallSignatures();
+
+    if (signatures.length !== 1) {
       failConfigServiceCallShape(
         methodName,
-        `must expose exactly one call signature, found ${declarations.length}`,
+        `must expose exactly one call signature, found ${signatures.length}`,
       );
     }
 
-    const [{ parameters, type }] = declarations;
+    const [signature] = signatures;
+    const parameters = signature.getParameters();
 
     if (parameters.length !== 1) {
       failConfigServiceCallShape(
@@ -209,26 +311,32 @@ function enforceConfigServiceSingleKeyCallShape(sourceText) {
     }
 
     const [parameter] = parameters;
+    const [parameterDeclaration] = parameter.getDeclarations() ?? [];
 
     if (
-      !ts.isIdentifier(parameter.name) ||
-      parameter.name.text !== 'key' ||
-      parameter.questionToken !== undefined ||
-      parameter.initializer !== undefined ||
-      parameter.dotDotDotToken !== undefined
+      parameter.getName() !== 'key' ||
+      parameterDeclaration === undefined ||
+      !ts.isParameter(parameterDeclaration) ||
+      parameterDeclaration.questionToken !== undefined ||
+      parameterDeclaration.initializer !== undefined ||
+      parameterDeclaration.dotDotDotToken !== undefined
     ) {
       failConfigServiceCallShape(methodName, 'must accept exactly one required "key" parameter');
     }
 
-    const declaresOptionalResult =
-      type !== undefined &&
-      ts.isUnionTypeNode(type) &&
-      type.types.some((member) => member.kind === ts.SyntaxKind.UndefinedKeyword);
+    const returnType = describeReturnType(checker, signature);
 
-    if (declaresOptionalResult !== resolvesToOptional) {
+    if (returnType.isUnresolved) {
       failConfigServiceCallShape(
         methodName,
-        `must ${resolvesToOptional ? 'include' : 'exclude'} undefined in its return type`,
+        `must declare a resolvable return type, found "${returnType.text}"`,
+      );
+    }
+
+    if (returnType.isUndefinedLike !== resolvesToOptional) {
+      failConfigServiceCallShape(
+        methodName,
+        `must ${resolvesToOptional ? 'include' : 'exclude'} an undefined-like return type, found "${returnType.text}"`,
       );
     }
   }

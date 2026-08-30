@@ -42,6 +42,39 @@ function readWithMutatedService(mutated: string): (relativePath: string) => stri
   return (relativePath: string): string => (relativePath === servicePath ? mutated : read(relativePath));
 }
 
+/**
+ * Rewrites the declared return type of `ConfigService.<methodName>` while leaving its single-key
+ * parameter list untouched, so return-shape classification can be exercised on its own.
+ */
+function mutateServiceReturnType(methodName: SingleKeyMethod, returnType: string): string {
+  return mutateServiceSource(methodName, (implementationLine) => {
+    const rewritten = implementationLine.replace(/\):\s.*\{$/u, `): ${returnType} {`);
+
+    expect(rewritten, `expected to rewrite the ${methodName} return type`).not.toBe(implementationLine);
+
+    return rewritten;
+  });
+}
+
+/**
+ * Appends a declaration-merged `interface ConfigService` that widens `methodName` with a second
+ * parameter. The class body is left untouched, so only an effective-signature check can see it.
+ */
+function appendMergedInterfaceOverload(methodName: SingleKeyMethod): string {
+  const source = read(servicePath);
+  const mergedInterface = [
+    '',
+    'export interface ConfigService<T extends Record<string, unknown> = ConfigDictionary> {',
+    `  ${methodName}<K extends DotPaths<T>, D>(key: K, defaultValue: D): DotValue<T, K & string> | D;`,
+    '}',
+    '',
+  ].join('\n');
+
+  expect(source, `expected ${servicePath} to declare the ConfigService class`).toContain('class ConfigService');
+
+  return `${source}${mergedInterface}`;
+}
+
 describe('NestJS config migration documentation', () => {
   it('maps the source-backed ConfigModule registration contract in both locales', () => {
     // Given
@@ -167,6 +200,79 @@ describe('NestJS config migration documentation', () => {
     // Then
     expect(runGovernanceGuard).toThrow(servicePath);
     expect(runGovernanceGuard).toThrow(`ConfigService.${methodName}`);
+  });
+
+  it.each(['get', 'getOrThrow'] as const)(
+    'rejects a declaration-merged interface overload that widens %s',
+    (methodName) => {
+      // Given
+      const mutated = appendMergedInterfaceOverload(methodName);
+
+      // When
+      const runGovernanceGuard = () => enforceConfigNestjsMigrationDocs(readWithMutatedService(mutated));
+
+      // Then
+      expect(runGovernanceGuard).toThrow(servicePath);
+      expect(runGovernanceGuard).toThrow(`ConfigService.${methodName}`);
+    },
+  );
+
+  it('rejects an undefined-like void result for getOrThrow', () => {
+    // Given
+    const mutated = mutateServiceReturnType('getOrThrow', 'void');
+
+    // When
+    const runGovernanceGuard = () => enforceConfigNestjsMigrationDocs(readWithMutatedService(mutated));
+
+    // Then
+    expect(runGovernanceGuard).toThrow(servicePath);
+    expect(runGovernanceGuard).toThrow('ConfigService.getOrThrow');
+  });
+
+  it.each([
+    ['a parenthesized union', '(DotValue<T, K & string> | undefined)'],
+    ['a union ordered undefined first', 'undefined | DotValue<T, K & string>'],
+  ] as const)('accepts %s as the optional get result', (_shape, returnType) => {
+    // Given
+    const mutated = mutateServiceReturnType('get', returnType);
+
+    // When
+    const runGovernanceGuard = () => enforceConfigNestjsMigrationDocs(readWithMutatedService(mutated));
+
+    // Then
+    expect(runGovernanceGuard).not.toThrow();
+  });
+
+  it('accepts an alias that resolves to an optional get result', () => {
+    // Given
+    const aliased = `type MaybeValue<V> = V | undefined;\n${mutateServiceReturnType(
+      'get',
+      'MaybeValue<DotValue<T, K & string>>',
+    )}`;
+
+    // When
+    const runGovernanceGuard = () => enforceConfigNestjsMigrationDocs(readWithMutatedService(aliased));
+
+    // Then
+    expect(runGovernanceGuard).not.toThrow();
+  });
+
+  it('rejects a get result whose type cannot be resolved', () => {
+    // Given
+    const unresolvable = read(servicePath).replace(
+      "import type { ConfigDictionary, DotPaths, DotValue } from './types.js';",
+      '',
+    );
+
+    expect(unresolvable, 'expected the type-import fixture to change the service source').not.toBe(
+      read(servicePath),
+    );
+
+    // When
+    const runGovernanceGuard = () => enforceConfigNestjsMigrationDocs(readWithMutatedService(unresolvable));
+
+    // Then
+    expect(runGovernanceGuard).toThrow(servicePath);
   });
 
   it.each(['get', 'getOrThrow'] as const)(
