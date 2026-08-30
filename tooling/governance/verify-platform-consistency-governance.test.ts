@@ -91,6 +91,7 @@ async function loadGovernanceInternals() {
     enforceContractCompanionUpdates: (changedFiles: string[]) => void;
     enforceDenoPermissionGuidance: (readText?: (relativePath: string) => string) => void;
     enforceHttpBookRequestContracts: (readText?: (relativePath: string) => string) => void;
+    enforcePlatformFastifyEngineDocumentation: (readText?: (relativePath: string) => string) => void;
     enforceSocketIoNodeEngineAlignment: (readText?: (relativePath: string) => string) => void;
   };
 }
@@ -220,6 +221,47 @@ describe('enforceSocketIoNodeEngineAlignment', () => {
 
     expect(() => enforceSocketIoNodeEngineAlignment(readText)).toThrow(/@fluojs\/socket\.io engines\.node/u);
     expect(governanceSource).toContain('enforceSocketIoNodeEngineAlignment();');
+  });
+});
+
+describe('enforcePlatformFastifyEngineDocumentation', () => {
+  it('pins both Fastify guide engine ranges to the platform manifest', async () => {
+    const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
+
+    expect(() => enforcePlatformFastifyEngineDocumentation()).not.toThrow();
+  });
+
+  it('rejects Fastify guide engine drift and remains wired into central governance', async () => {
+    const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === 'apps/docs/content/docs/guides/runtime-adapters.mdx'
+        ? content.replace('>=20.19.3 <21 || >=22.2.0 <27', '>=20.19.3 <21 || >=22.2.0 <28')
+        : content;
+    };
+    const governanceSource = readFileSync(
+      join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'),
+      'utf8',
+    );
+
+    expect(() => enforcePlatformFastifyEngineDocumentation(readText))
+      .toThrow(/runtime-adapters\.mdx Fastify section/u);
+    expect(governanceSource).toContain('enforcePlatformFastifyEngineDocumentation();');
+  });
+
+  it('rejects Fastify manifest engine drift from both guide sections', async () => {
+    const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === 'packages/platform-fastify/package.json'
+        ? content.replace('>=20.19.3 <21 || >=22.2.0 <27', '>=20.19.3 <21 || >=22.2.0 <28')
+        : content;
+    };
+
+    expect(() => enforcePlatformFastifyEngineDocumentation(readText))
+      .toThrow(/runtime-adapters\.mdx Fastify section/u);
   });
 });
 
