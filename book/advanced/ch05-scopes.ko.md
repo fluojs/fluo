@@ -331,7 +331,7 @@ request-only resolution은 `cacheFor()`와 `multiCacheFor()`에서 강제됩니�
 private multiCacheFor(provider: NormalizedProvider): Map<NormalizedProvider, Promise<unknown>> {
   if (provider.scope === Scope.DEFAULT) {
     if (this.requestScopeEnabled && this.hasLocalMultiProvider(provider)) {
-      return this.multiRequestCache;
+      return this.multiRequestCacheForWrite();
     }
 
     return this.root().multiSingletonCache;
