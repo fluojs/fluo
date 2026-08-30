@@ -418,8 +418,7 @@ function collectInvalidConsumedGeneratedMajorVersionDeltas(versionDeltas, intent
   return versionDeltas.flatMap((delta) => {
     if (
       delta.bump !== 'major' ||
-      delta.source !== 'generated' ||
-      intents.some((intent) => intent.packageName === delta.packageName && intent.bump === 'major')
+      delta.source !== 'generated'
     ) {
       return [];
     }
@@ -703,6 +702,17 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     intents,
     dependencies,
   );
+  const authorizedConsumedGeneratedMajorPackages = new Set(
+    versionDeltas
+      .filter((delta) => delta.bump === 'major' && delta.source === 'generated')
+      .filter(
+        (delta) =>
+          !invalidConsumedGeneratedMajorVersionDeltas.some(
+            (invalid) => invalid.packageName === delta.packageName && invalid.nextVersion === delta.nextVersion,
+          ),
+      )
+      .map((delta) => delta.packageName),
+  );
   const patchCliFeatureDowngrades = [
     ...collectPatchCliFeatureDowngradesFromChangesets(intents, dependencies),
     ...collectPatchCliFeatureDowngradesFromVersionDeltas(versionDeltas, dependencies),
@@ -718,7 +728,7 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     (narrowing) =>
       !intents.some(
         (intent) => intent.packageName === narrowing.packageName && intent.bump === 'major',
-      ),
+      ) && !authorizedConsumedGeneratedMajorPackages.has(narrowing.packageName),
   );
   const missingNodeEngineMigrationNotes = collectMissingNodeEngineMigrationNotes(
     allStableNodeEngineRangeNarrowings,
