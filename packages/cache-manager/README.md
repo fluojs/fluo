@@ -205,6 +205,8 @@ The HTTP interceptor caches only successful, uncommitted GET handler results wit
 
 ### Cache Ownership and Reset Scope
 
+Ordinary `get(...)`, `set(...)`, and `del(...)` calls run concurrently against the configured store, so a slow store call for one key does not delay unrelated keys.
+
 `CacheService.reset()` clears entries owned by the configured store, not unrelated application state. It also serializes store reads/writes across the reset boundary and invalidates in-flight `remember(...)` loaders so loaders that started before the reset cannot repopulate stale entries after the reset completes. For the built-in memory store that means the in-process entries held by that store instance. For Redis, ownership is the configured `keyPrefix` namespace; keep the default `fluo:cache:` or choose a dedicated prefix such as `myapp:cache:` for shared Redis deployments.
 
 ```typescript

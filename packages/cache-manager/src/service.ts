@@ -1,5 +1,6 @@
 import { Inject } from '@fluojs/core';
 
+import { StoreOperationScheduler } from './store-operation-scheduler.js';
 import { CACHE_OPTIONS, CACHE_STORE } from './tokens.js';
 import type { CacheStore, NormalizedCacheModuleOptions } from './types.js';
 
@@ -21,18 +22,7 @@ export class CacheService {
   private closed = false;
   private closePromise: Promise<void> | undefined;
   private resetVersion = 0;
-  private storeOperationTail: Promise<void> = Promise.resolve();
-
-  private async runStoreOperation<T>(operation: () => Promise<T> | T): Promise<T> {
-    const result = this.storeOperationTail.then(operation, operation);
-
-    this.storeOperationTail = result.then(
-      () => undefined,
-      () => undefined,
-    );
-
-    return result;
-  }
+  private readonly storeOperations = new StoreOperationScheduler();
 
   private beginPendingLoad(key: string, generation: number): void {
     const generations = this.pendingLoads.get(key) ?? new Map<number, number>();
@@ -78,7 +68,7 @@ export class CacheService {
       return Promise.resolve(undefined);
     }
 
-    return this.runStoreOperation(() => {
+    return this.storeOperations.run(() => {
       if (this.closed) {
         return undefined;
       }
@@ -102,7 +92,7 @@ export class CacheService {
       return;
     }
 
-    await this.runStoreOperation(async () => {
+    await this.storeOperations.run(async () => {
       if (this.closed) {
         return;
       }
@@ -228,7 +218,7 @@ export class CacheService {
     this.pendingLoads.clear();
     this.pendingInvalidations.clear();
     this.invalidatedInflight.clear();
-    await this.runStoreOperation(async () => {
+    await this.storeOperations.runExclusive(async () => {
       if (this.closed) {
         return;
       }
@@ -256,7 +246,7 @@ export class CacheService {
     this.pendingInvalidations.clear();
     this.invalidatedInflight.clear();
 
-    this.closePromise = this.runStoreOperation(async () => {
+    this.closePromise = this.storeOperations.runExclusive(async () => {
       if (this.store.close) {
         await this.store.close();
         return;
@@ -271,7 +261,7 @@ export class CacheService {
   }
 
   private async deleteFromStore(key: string): Promise<void> {
-    await this.runStoreOperation(async () => {
+    await this.storeOperations.run(async () => {
       if (this.closed) {
         return;
       }
