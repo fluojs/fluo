@@ -161,6 +161,8 @@ const contractGateTriggers = new Set([
   'docs/reference/package-folder-structure.ko.md',
   'docs/reference/package-surface.md',
   'docs/reference/package-surface.ko.md',
+  'book/advanced/ch15-studio.md',
+  'book/advanced/ch15-studio.ko.md',
 ]);
 
 const removedRuntimeModuleFactoryNames = [
@@ -791,7 +793,9 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // fetch-style runtimes do not apply a backpressure policy to room broadcasts),
   // plus terminal Node upgrade admission and retained disconnect lifecycle state
   // across the bounded cross-runtime shutdown drain, plus HTTP request-observer
-  // success ordering after module and application middleware fully settle.
+  // success ordering after module and application middleware fully settle,
+  // and Studio report emission requiring completed bootstrap with no artifact
+  // emitted for failed or hanging bootstrap attempts.
 
   assert(
     hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),

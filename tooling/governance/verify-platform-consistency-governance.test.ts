@@ -752,6 +752,32 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('requires Studio report guidance to carry deterministic bootstrap regression evidence', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const studioBook = 'book/advanced/ch15-studio.md';
+    const studioBookKo = 'book/advanced/ch15-studio.ko.md';
+    const context = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
+    const tooling = ['tooling/governance/verify-platform-consistency-governance.mjs'];
+    const regression = ['packages/cli/src/public-api.test.ts'];
+    const inspectSource = readFileSync(join(repoRoot, 'packages/cli/src/commands/inspect.ts'), 'utf8');
+    const cliRegressionSource = readFileSync(join(repoRoot, 'packages/cli/src/public-api.test.ts'), 'utf8');
+
+    expect(cliRegressionSource).toContain('closes the inspect context exactly once when bootstrap fails');
+    expect(cliRegressionSource).toContain("expect(stdoutBuffer.join('')).toBe('');");
+    expect(inspectSource.indexOf('const application = await FluoFactory.create')
+      < inspectSource.indexOf('await emitInspectPayload(')).toBe(true);
+    expect(inspectSource).toContain('catch (error: unknown)');
+    expect(inspectSource).not.toContain('emitInspectPayload(message');
+
+    expect(() => enforceContractCompanionUpdates([studioBook])).toThrowError(
+      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
+    );
+    expect(() => enforceContractCompanionUpdates([studioBook, studioBookKo, ...context, ...tooling])).toThrowError(
+      /regression test updates/,
+    );
+    expect(() => enforceContractCompanionUpdates([studioBook, studioBookKo, ...context, ...tooling, ...regression])).not.toThrow();
+  });
+
   it('accepts mongoose package-surface guidance when context discoverability and governance tests change together', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 
