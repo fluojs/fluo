@@ -215,6 +215,97 @@ describe('@fluojs/platform-nodejs', () => {
     expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[10]>().toEqualTypeOf<HttpServerOptions | undefined>();
   });
 
+  it('preserves positional Node adapter constructor values through their runtime behavior', async () => {
+    const blocker = createServer();
+    await new Promise<void>((resolve) => {
+      blocker.listen(0, '127.0.0.1', resolve);
+    });
+    const blockerAddress = blocker.address();
+    if (!blockerAddress || typeof blockerAddress === 'string') {
+      throw new Error('Failed to bind a positional constructor test port.');
+    }
+
+    const retryAdapter = new NodeHttpApplicationAdapter(
+      blockerAddress.port,
+      '127.0.0.1',
+      1,
+      2,
+      true,
+      undefined,
+      undefined,
+      32,
+      false,
+      61,
+      { maxHeaderSize: 32_768 },
+    );
+    const retryServerListen = vi.spyOn(retryAdapter.getServer(), 'listen');
+    const dispatcher: Dispatcher = {
+      async dispatch(_request, response) {
+        await response.send('ok');
+      },
+    };
+
+    try {
+      await expect(retryAdapter.listen(dispatcher)).rejects.toMatchObject({ code: 'EADDRINUSE' });
+      expect(retryServerListen).toHaveBeenCalledTimes(3);
+    } finally {
+      retryServerListen.mockRestore();
+      await retryAdapter.close();
+      await new Promise<void>((resolve, reject) => {
+        blocker.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    }
+
+    let observedRawBody: Uint8Array | undefined;
+    const adapter = new NodeHttpApplicationAdapter(
+      0,
+      '127.0.0.1',
+      1,
+      2,
+      true,
+      undefined,
+      undefined,
+      32,
+      false,
+      61,
+      { maxHeaderSize: 32_768 },
+    );
+
+    try {
+      await adapter.listen({
+        async dispatch(request, response) {
+          observedRawBody = request.rawBody;
+          await response.send('compressible response'.repeat(64));
+        },
+      });
+      const listeningPort = getBoundPort(adapter.getServer());
+
+      const oversizedResponse = await fetch(`http://127.0.0.1:${String(listeningPort)}`, {
+        body: 'x'.repeat(48),
+        method: 'POST',
+      });
+      expect(oversizedResponse.status).toBe(413);
+
+      const response = await fetch(`http://127.0.0.1:${String(listeningPort)}`, {
+        body: 'body',
+        headers: { 'accept-encoding': 'gzip' },
+        method: 'POST',
+      });
+      expect(response.headers.get('content-encoding')).toBe('gzip');
+      expect(observedRawBody).toBeUndefined();
+      expect(Reflect.get(adapter.getServer(), 'maxHeaderSize')).toBe(32_768);
+    } finally {
+      await adapter.close();
+    }
+  });
+
   it('keeps advanced process and compression utilities off the primary platform startup surface', () => {
     expect(platformNodejsApi).not.toHaveProperty('compressNodeResponse');
     expect(platformNodejsApi).not.toHaveProperty('createNodeResponseCompression');
