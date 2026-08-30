@@ -764,7 +764,7 @@ For advanced users building test harnesses or hot-reload-like flows, the lesson 
 ## 5.6 Disposal order, child scopes, and shutdown guarantees
 The final scope question is how instances die. Fluo's answer is deterministic teardown, with a clear split between root singletons and request children.
 
-The public `dispose()` entrypoint and its origin-aware helper live in `path:packages/di/src/container.ts:627-643`. A public call enters with direct ownership, while parent traversal uses the private `disposeFromParent()` entrypoint. Both paths call `disposeWithOrigin(...)`.
+The public `dispose()` entrypoint and its origin-aware helper live in `path:packages/di/src/container.ts:619-643`. A public call enters with direct ownership, while parent traversal uses the private `disposeFromParent()` entrypoint. Both paths call `disposeWithOrigin(...)`.
 
 The shared helper handles reentry, failure retry, and the origin of the active attempt.
 

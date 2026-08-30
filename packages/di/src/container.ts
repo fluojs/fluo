@@ -669,6 +669,10 @@ export class Container {
       completed = true;
     } finally {
       if ((completed || origin === 'direct') && this.parent && this.trackedByParent) {
+        if (origin === 'direct') {
+          this.releaseNonOwnerStaleTaskObservers();
+        }
+
         this.parent.childScopes?.delete(this);
         this.trackedByParent = false;
       }
@@ -1397,6 +1401,20 @@ export class Container {
     return Array.from(this.staleDisposalTasks).filter(
       (task) => task.retryOwner === this && task.failed && task.errorConsumed,
     );
+  }
+
+  private releaseNonOwnerStaleTaskObservers(): void {
+    for (const task of this.staleDisposalTasks) {
+      if (task.retryOwner !== this) {
+        continue;
+      }
+
+      for (const observer of task.observers) {
+        if (observer !== this) {
+          observer.staleDisposalTasks.delete(task);
+        }
+      }
+    }
   }
 
   private async retryFailedStaleDisposals(tasks: readonly StaleDisposalTask[]): Promise<unknown[]> {

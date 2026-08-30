@@ -225,4 +225,35 @@ describe('Container disposal ownership', () => {
     expect(child.attempts).toBe(2);
     expect(rootDisposable.onDestroy).toHaveBeenCalledOnce();
   });
+
+  it('releases root stale observers when a direct child retry fails after detachment', async () => {
+    // Given
+    const configToken = Symbol('stale-observer-config');
+    const childToken = Symbol('stale-observer-child');
+    const childFailure = new Error('stale child cleanup failed');
+    const directRetryFailure = new Error('direct stale child retry failed');
+    const child = createDisposalProbe([childFailure, directRetryFailure, undefined]);
+    const root = new Container().register(
+      { provide: configToken, useValue: 'before-override' },
+      { provide: childToken, scope: 'request', useFactory: () => child, inject: [configToken] },
+    );
+    const childScope = root.createRequestScope();
+    await childScope.resolve(childToken);
+
+    // When
+    root.override({ provide: configToken, useValue: 'after-override' });
+    await expect(root.resolve(configToken)).rejects.toBe(childFailure);
+    await root.resolve(configToken);
+    await expect(childScope.dispose()).rejects.toBe(directRetryFailure);
+
+    // Then
+    expect((root as unknown as { staleDisposalTasks: ReadonlySet<unknown> }).staleDisposalTasks.size).toBe(0);
+    expect((childScope as unknown as { staleDisposalTasks: ReadonlySet<unknown> }).staleDisposalTasks.size).toBe(1);
+
+    // When
+    await childScope.dispose();
+
+    // Then
+    expect(child.attempts).toBe(3);
+  });
 });

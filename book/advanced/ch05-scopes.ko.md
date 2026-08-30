@@ -764,7 +764,7 @@ console.log(stale instanceof FirstCache, fresh instanceof SecondCache, events);
 ## 5.6 Disposal order, child scopes, and shutdown guarantees
 마지막 scope 질문은 인스턴스가 어떻게 죽느냐입니다. Fluo의 답은 deterministic teardown이며, root singleton과 request child를 명확히 분리합니다.
 
-public `dispose()` entrypoint와 origin-aware helper는 `path:packages/di/src/container.ts:627-643`에 있습니다. public 호출은 direct ownership으로 진입하고 parent traversal은 private `disposeFromParent()` entrypoint를 사용합니다. 두 경로 모두 `disposeWithOrigin(...)`을 호출합니다.
+public `dispose()` entrypoint와 origin-aware helper는 `path:packages/di/src/container.ts:619-643`에 있습니다. public 호출은 direct ownership으로 진입하고 parent traversal은 private `disposeFromParent()` entrypoint를 사용합니다. 두 경로 모두 `disposeWithOrigin(...)`을 호출합니다.
 
 shared helper는 재진입, 실패 재시도, active attempt의 origin을 함께 다룹니다.
 
