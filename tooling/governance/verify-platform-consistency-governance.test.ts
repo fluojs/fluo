@@ -36,6 +36,7 @@ import {
   enforceReactPageCatalogContract,
   enforceReactPageMetadataIdentityContract,
   enforceReactServerFunctionContract,
+  enforceStudioStaticGraphLimitsContract,
   isGovernedPackageSourcePath,
   isSupportedNodeListenerVersion,
   mandatoryProductionImporterPackageNamesForLockfileChange,
@@ -4865,6 +4866,12 @@ describe('Studio public docs and migration expectations', () => {
     expect(() => enforceStudioRuntimeBridgeDiscoverability(readText)).toThrow(
       /docs\/CONTEXT\.ko\.md must document the host-owned @fluojs\/runtime\/devtools bridge/u,
     );
+  });
+
+  it('keeps static graph limits synchronized across Studio entrypoints', async () => {
+    const { enforceStudioStaticGraphLimitsContract } = await loadGovernanceInternals();
+
+    expect(() => enforceStudioStaticGraphLimitsContract()).not.toThrow();
   });
 });
 

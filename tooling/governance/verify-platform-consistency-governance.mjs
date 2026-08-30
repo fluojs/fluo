@@ -4080,6 +4080,31 @@ export function enforceNotificationsStatusDocumentationContract(readText = read)
   }
 }
 
+export function enforceStudioStaticGraphLimitsContract(readText = read) {
+  const englishContractSources = [
+    'docs/CONTEXT.md',
+    'packages/studio/README.md',
+    'book/advanced/ch15-studio.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+  ];
+  const koreanContractSources = [
+    'docs/CONTEXT.ko.md',
+    'packages/studio/README.ko.md',
+    'book/advanced/ch15-studio.ko.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+  ];
+
+  for (const relativePath of [...englishContractSources, ...koreanContractSources]) {
+    const documentation = readText(relativePath).toLowerCase();
+    assert(
+      documentation.includes('file-first') &&
+        documentation.includes('compiled module/provider graph') &&
+        documentation.includes('fluo dev --studio'),
+      `${relativePath} must preserve the Studio file-first artifact limit and Node live compiled-graph path.`,
+    );
+  }
+}
+
 export function enforceNotificationsQueueCancellationDocumentationContract(readText = read) {
   const contractSentinel =
     '<!-- notifications-queue-cancellation-contract: signal=live;pre-abort=before-handoff;mid-flight=adapter-owned;listener-cleanup=adapter-owned;bulk=native-or-sequential;fallback=stop-after-abort -->';
@@ -4156,6 +4181,7 @@ export async function main() {
   enforceExpressRuntimeMigrationDocsSync();
   enforceFastifyNativeConfigurationDocsSync();
   enforceStudioRuntimeBridgeDiscoverability();
+  enforceStudioStaticGraphLimitsContract();
   enforceNotificationsStatusDocumentationContract();
   enforceNotificationsQueueCancellationDocumentationContract();
   enforceCanonicalRuntimeMatrixReferences();
