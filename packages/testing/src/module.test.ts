@@ -1,6 +1,6 @@
 import { getModuleMetadata, Inject, Module, Scope as ScopeDecorator } from '@fluojs/core';
 import type { CallHandler, Converter, Dispatcher, Guard, Interceptor, InterceptorContext, Middleware, MiddlewareContext, Next, RequestObserver } from '@fluojs/http';
-import { Controller, FromQuery, Get, Post, type RequestContext, RequestDto, UseGuards, UseInterceptors, Version, VersioningType } from '@fluojs/http';
+import { Controller, FromCookie, FromQuery, Get, Post, type RequestContext, RequestDto, UseGuards, UseInterceptors, Version, VersioningType } from '@fluojs/http';
 import type { ExceptionFilterHandler } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 import { makeRequest } from './http.js';
@@ -1027,6 +1027,39 @@ describe('createTestApp', () => {
     }
   });
 
+  it('binds cookies from object request inputs', async () => {
+    class CookieRequest {
+      @FromCookie('session')
+      session = '';
+    }
+
+    @Controller('/cookies')
+    class CookieController {
+      @Get('/')
+      @RequestDto(CookieRequest)
+      read(input: CookieRequest) {
+        return { session: input.session };
+      }
+    }
+
+    @Module({ controllers: [CookieController] })
+    class CookieModule {}
+
+    const app = await createTestApp({ rootModule: CookieModule });
+
+    try {
+      const response = await app.request({
+        path: '/cookies',
+        cookies: { session: 'object-request-cookie' },
+      }).send();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ session: 'object-request-cookie' });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('makes close idempotent when cleanup is called more than once', async () => {
     const app = await createTestApp({ rootModule: AppModule });
 
@@ -1412,6 +1445,34 @@ describe('TestingModuleRef.dispatch', () => {
       headers: { 'x-test-id': 'dispatch' },
       query: { scope: 'all' },
     });
+  });
+
+  it('binds cookies with module-level dispatch', async () => {
+    class CookieRequest {
+      @FromCookie('session')
+      session = '';
+    }
+
+    @Controller('/cookies')
+    class CookieController {
+      @Get('/')
+      @RequestDto(CookieRequest)
+      read(input: CookieRequest) {
+        return { session: input.session };
+      }
+    }
+
+    @Module({ controllers: [CookieController] })
+    class CookieModule {}
+
+    const testingModule = await createTestingModule({ rootModule: CookieModule }).compile();
+    const response = await testingModule.dispatch({
+      path: '/cookies',
+      cookies: { session: 'module-dispatch-cookie' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ session: 'module-dispatch-cookie' });
   });
 
   it('shares singleton state between resolve() and dispatch()', async () => {

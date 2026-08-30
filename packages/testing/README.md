@@ -119,6 +119,17 @@ try {
 
 `app.request(...).send()` is the preferred app-developer path because it keeps tests close to HTTP semantics without manual `FrameworkRequest`/`FrameworkResponse` stubs and creates the same isolated request-scoped DI boundary as runtime dispatch. Close the returned app from a `finally` block so assertion failures do not leak runtime resources. Keep `app.dispatch(...)`, `makeRequest(...)`, and raw `FluoFactory.create(...)` tests for adapter/runtime contracts, framework internals, or compatibility cases where the low-level dispatch boundary itself is what the test must prove.
 
+For cookie-bound routes, use the object request overload with adapter-normalized cookie values:
+
+```ts
+const response = await app.request({
+  path: '/session',
+  cookies: { session: 'test-session' },
+}).send();
+```
+
+`cookies` is assigned directly to `FrameworkRequest.cookies`; it does not parse a `Cookie` header or introduce adapter-specific cookie semantics. `TestingModuleRef.dispatch(...)` accepts the same normalized cookie record.
+
 `createTestApp(...)` accepts the same application bootstrap options as the runtime HTTP bootstrap, including `providers`, `filters`, `converters`, `interceptors`, `middleware`, `observers`, `versioning`, `errorRepresentation`, and diagnostics options. This lets application tests assert canonical JSON, negotiated HTML, `HEAD`, 406, and provider fallback behavior through the same virtual request pipeline. The testing helper prepends its request-context middleware while preserving caller-provided middleware in the same app middleware chain.
 
 ### Mock helpers from explicit subpaths
