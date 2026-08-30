@@ -87,6 +87,41 @@ describe('resolveInstallCommand', () => {
     });
   });
 
+  it('retains buffered subprocess output when a failed install child exits', async () => {
+    const targetDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-install-target-'));
+    createdDirectories.push(targetDirectory);
+    const { env } = createExecutableFixture(
+      'npm',
+      `#!/usr/bin/env node
+const { spawn } = require('node:child_process');
+const bufferedWriter = spawn(process.execPath, ['-e', "process.stdin.resume(); process.stdin.once('end', () => { process.stdout.write('npm notice buffered output\\\\n'); process.stderr.write('npm error buffered output\\\\n'); });"], {
+  stdio: ['pipe', 'inherit', 'inherit'],
+});
+bufferedWriter.unref();
+process.stderr.write('npm error install failed\\n');
+process.exit(2);
+`,
+    );
+
+    let thrownError: unknown;
+
+    try {
+      await installDependencies(targetDirectory, 'npm', {
+        env,
+        stdio: 'capture',
+      });
+    } catch (error: unknown) {
+      thrownError = error;
+    }
+
+    expect(thrownError).toMatchObject({
+      output: expect.stringContaining('npm notice buffered output\n'),
+    });
+    expect(thrownError).toMatchObject({
+      output: expect.stringContaining('npm error buffered output\n'),
+    });
+  });
+
   it('surfaces the yarn corepack fallback warning through the provided stderr stream', async () => {
     const targetDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-install-target-'));
     createdDirectories.push(targetDirectory);

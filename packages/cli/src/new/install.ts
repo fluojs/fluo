@@ -63,7 +63,7 @@ function waitForChildProcess(
 ): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     child.on('error', reject);
-    child.on('exit', (code) => {
+    child.on('close', (code) => {
       if (code === 0) {
         resolve();
         return;
