@@ -38,7 +38,7 @@ export interface DenoServeController {
 export type DenoApplicationSignal = 'SIGINT' | 'SIGTERM';
 
 /** Message payloads delivered through Deno server websocket bindings. */
-export type DenoWebSocketMessage = Blob | string;
+export type DenoWebSocketMessage = ArrayBuffer | ArrayBufferView | Blob | string;
 
 /** Server-side websocket shape used by the Deno platform binding seam. */
 export interface DenoServerWebSocket extends Pick<WebSocket, 'addEventListener' | 'close' | 'removeEventListener' | 'send'> {

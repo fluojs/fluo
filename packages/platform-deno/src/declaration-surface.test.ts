@@ -48,4 +48,17 @@ describe('@fluojs/platform-deno declaration surface', () => {
       'export declare function createDenoFetchHandler',
     );
   }, 300_000);
+
+  it('publishes all official Deno websocket binary payload forms in declarations', async () => {
+    // Given: the package manifest publishes its root declarations from dist/index.d.ts.
+    expect(existsSync(resolve(packageRootPath, 'dist/adapter.d.ts'))).toBe(true);
+
+    // When: consumers import the Deno websocket message contract from the package root.
+    const declarations = readFileSync(resolve(packageRootPath, 'dist/adapter.d.ts'), 'utf8');
+
+    // Then: the declaration accepts every binary payload form emitted by the Deno binding.
+    expect(declarations).toContain(
+      'export type DenoWebSocketMessage = ArrayBuffer | ArrayBufferView | Blob | string;',
+    );
+  });
 });

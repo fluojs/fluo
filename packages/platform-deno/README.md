@@ -108,6 +108,14 @@ export class MyGateway {
 export class RealtimeModule {}
 ```
 
+#### Deno websocket inbound payloads
+
+`DenoWebSocketMessage` represents every payload form the Deno binding can deliver:
+`ArrayBuffer | ArrayBufferView | Blob | string`. Existing handlers that narrowed this
+public union exhaustively for `Blob | string` must add `ArrayBuffer` and
+`ArrayBufferView` branches. The `@fluojs/websockets/deno` binding already accepts and
+normalizes these binary payloads before it dispatches gateway handlers.
+
 ## HTTPS and Runtime Portability
 
 Pass Deno TLS certificate material through the `https` option to start `Deno.serve` in HTTPS mode. The adapter forwards `https.cert` and `https.key` to Deno as `cert` and `key`, and startup logging reports an `https://` listen URL so the Deno package stays aligned with the shared HTTP adapter portability contract.
@@ -147,6 +155,7 @@ The shared edge portability suite in `packages/testing/src/portability/web-runti
 - `getRealtimeCapability()`: Reports the fetch-style Deno websocket upgrade capability for runtime integration.
 - `getServer()`: Returns the active `Deno.serve` controller while the adapter is listening.
 - `configureWebSocketBinding(...)`: Installs the `@fluojs/websockets/deno` binding before `listen(dispatcher)` starts the server.
+- `DenoWebSocketMessage`: The full inbound websocket payload union: `ArrayBuffer | ArrayBufferView | Blob | string`.
 - `https: { cert, key }`: HTTPS startup options forwarded to `Deno.serve` and reflected in the reported listen URL.
 - Option and seam types: `CreateDenoFetchHandlerOptions`, `DenoServeOptions`, `DenoServeController`, `DenoServerWebSocket`, websocket binding interfaces, bootstrap/run options, and listen-target helpers.
 
