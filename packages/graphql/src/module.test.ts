@@ -3,7 +3,6 @@ import { Inject, Scope } from '@fluojs/core';
 import type { MiddlewareContext, Next } from '@fluojs/http';
 import { bootstrapModule, defineModule } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
-import { bootstrapNodeApplication } from '@fluojs/runtime/node';
 import { IsInt, MinLength } from '@fluojs/validation';
 import { GraphQLObjectType, GraphQLSchema, GraphQLString, GraphQLUnionType } from 'graphql';
 import { describe, expect, it } from 'vitest';
