@@ -234,7 +234,7 @@ async function instantiateLifecycleProvider(
   bootstrapped: BootstrapResult,
   introspection: ContainerIntrospection,
 ): Promise<unknown> {
-  if (provider.type !== 'class' || !provider.useClass) {
+  if (provider.type !== 'class' && provider.type !== 'factory') {
     throw new Error(`Lifecycle provider ${String(provider.provide)} must use a class provider.`);
   }
 
@@ -242,7 +242,24 @@ async function instantiateLifecycleProvider(
     provider.inject.map((entry) => resolveLifecycleDependency(entry, bootstrapped, introspection)),
   );
 
-  return new provider.useClass(...dependencies);
+  if (provider.type === 'class') {
+    if (!provider.useClass) {
+      throw new Error(`Lifecycle provider ${String(provider.provide)} must use a class provider.`);
+    }
+
+    return new provider.useClass(...dependencies);
+  }
+
+  if (!provider.useFactory) {
+    throw new Error(`Lifecycle provider ${String(provider.provide)} must use a factory provider.`);
+  }
+
+  const value = provider.useFactory(...dependencies);
+  rootContainerIntrospection(introspection).cacheOwner.recordFactoryResolution(
+    provider,
+    isPromiseLike(value) ? 'async' : 'sync',
+  );
+  return value;
 }
 
 async function resolveMultiLifecycleProvider(

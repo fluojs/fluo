@@ -187,6 +187,29 @@ describe('@fluojs/testing', () => {
     expect(events).toEqual(['factory:init', 'factory:bootstrap']);
   });
 
+  it('runs bootstrap lifecycle hooks returned by singleton multi factory providers', async () => {
+    const PLUGINS = Symbol('multi-factory-lifecycle-plugins');
+    const events: string[] = [];
+    const plugin = {
+      onModuleInit() {
+        events.push('factory:init');
+      },
+      onApplicationBootstrap() {
+        events.push('factory:bootstrap');
+      },
+    };
+
+    @Module({
+      providers: [{ provide: PLUGINS, useFactory: () => plugin, multi: true }],
+    })
+    class MultiFactoryLifecycleModule {}
+
+    const testingModule = await createTestingModule({ rootModule: MultiFactoryLifecycleModule }).compile();
+
+    expect(await testingModule.resolve<typeof plugin[]>(PLUGINS)).toEqual([plugin]);
+    expect(events).toEqual(['factory:init', 'factory:bootstrap']);
+  });
+
   it('runs bootstrap lifecycle hooks for each singleton multi-provider contribution', async () => {
     const PLUGINS = Symbol('lifecycle-plugins');
     const events: string[] = [];
