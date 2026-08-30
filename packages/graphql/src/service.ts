@@ -1,3 +1,5 @@
+import { createRequire } from 'node:module';
+
 import { Inject } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
 import { Controller, type FrameworkRequest, Get, type HttpApplicationAdapter, type Middleware, type MiddlewareContext, type Next, Post } from '@fluojs/http';
@@ -23,6 +25,7 @@ import type {
 
 import { discoverResolverDescriptors } from './discovery.js';
 import { createGraphqlValidationPlugin, resolveGraphqlRequestLimits } from './guardrails.js';
+import { type GraphqlInstanceOfModule, installGraphqlInstanceOfPatch } from './instance-of-patch.js';
 import { GRAPHQL_INTERNAL_MODULE_OPTIONS_TOKEN } from './internal-tokens.js';
 import type { GraphqlNodeWebSocketSubscribeRequest, GraphqlNodeWebSocketTransport } from './node/graphql-websocket-transport.js';
 import { createCodeFirstSchema, resolveSchema } from './schema/schema.js';
@@ -36,6 +39,7 @@ import type {
 import { GRAPHQL_OPERATION_CONTAINER } from './types.js';
 
 const GRAPHQL_CONTEXT_OVERRIDE = Symbol('fluo.graphql.context.override');
+const runtimeRequire = createRequire(import.meta.url);
 
 type YogaLike = {
   fetch(request: Request): Promise<Response>;
@@ -47,12 +51,6 @@ type YogaLike = {
     subscribe: (args: ExecutionArgs) => unknown;
     validate: (schema: GraphQLSchemaType, document: DocumentNode) => readonly GraphQLErrorType[];
   };
-};
-
-type GraphqlConstructor = Function & { prototype: { [Symbol.toStringTag]?: string } };
-type GraphqlInstanceOf = (value: unknown, constructor: GraphqlConstructor) => boolean;
-type GraphqlInstanceOfModule = {
-  instanceOf: GraphqlInstanceOf;
 };
 
 interface GraphqlWebSocketLimits {
@@ -103,9 +101,6 @@ interface GraphqlDeps {
   subscribe: typeof subscribeGraphql;
 }
 
-let restoreGraphqlInstanceOfPatch: (() => void) | undefined;
-const activeAllowedCrossRealmGraphqlObjectSets = new Set<WeakSet<object>>();
-
 /**
  * Declares the HTTP endpoints that receive GraphQL GET and POST requests.
  */
@@ -120,29 +115,6 @@ export class GraphqlEndpointController {
   handlePost(): undefined {
     return undefined;
   }
-}
-
-function getCrossRealmGraphqlTag(value: unknown, constructor: GraphqlConstructor): string | undefined {
-  const prototypeTag = constructor.prototype?.[Symbol.toStringTag];
-  const className = typeof prototypeTag === 'string' ? prototypeTag : constructor.name;
-
-  if (typeof className !== 'string' || !className.startsWith('GraphQL')) {
-    return undefined;
-  }
-
-  if (typeof value !== 'object' || value === null) {
-    return undefined;
-  }
-
-  const valueTag = (value as { [Symbol.toStringTag]?: unknown })[Symbol.toStringTag];
-
-  if (typeof valueTag === 'string') {
-    return valueTag === className ? className : undefined;
-  }
-
-  const valueClassName = (value as { constructor?: { name?: string } }).constructor?.name;
-
-  return valueClassName === className ? className : undefined;
 }
 
 function markAllowedCrossRealmGraphqlObjects(
@@ -183,86 +155,15 @@ function markAllowedCrossRealmGraphqlObjects(
   }
 }
 
-function isAllowedCrossRealmGraphqlObject(
-  value: unknown,
-  constructor: GraphqlConstructor,
-): boolean {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-
-  for (const allowedObjects of activeAllowedCrossRealmGraphqlObjectSets) {
-    if (allowedObjects.has(value)) {
-      return getCrossRealmGraphqlTag(value, constructor) !== undefined;
-    }
-  }
-
-  return false;
-}
-
-function installGraphqlInstanceOfPatch(
-  instanceOfModule: GraphqlInstanceOfModule,
-  allowedObjects: WeakSet<object>,
-): () => void {
-  activeAllowedCrossRealmGraphqlObjectSets.add(allowedObjects);
-
-  if (!restoreGraphqlInstanceOfPatch) {
-    const patchedFrom = instanceOfModule.instanceOf;
-
-    const patchedInstanceOf: GraphqlInstanceOf = (value, constructor) => {
-      try {
-        if (patchedFrom(value, constructor)) {
-          return true;
-        }
-      } catch (error) {
-        if (isAllowedCrossRealmGraphqlObject(value, constructor)) {
-          return true;
-        }
-
-        throw error;
-      }
-
-      return isAllowedCrossRealmGraphqlObject(value, constructor);
-    };
-    instanceOfModule.instanceOf = patchedInstanceOf;
-
-    restoreGraphqlInstanceOfPatch = () => {
-      if (instanceOfModule.instanceOf !== patchedInstanceOf) {
-        return;
-      }
-
-      instanceOfModule.instanceOf = patchedFrom;
-    };
-  }
-
-  let released = false;
-
-  return () => {
-    if (released) {
-      return;
-    }
-
-    released = true;
-    activeAllowedCrossRealmGraphqlObjectSets.delete(allowedObjects);
-
-    if (activeAllowedCrossRealmGraphqlObjectSets.size > 0) {
-      return;
-    }
-
-    restoreGraphqlInstanceOfPatch?.();
-    restoreGraphqlInstanceOfPatch = undefined;
-  };
-}
-
 async function loadGraphqlDeps(): Promise<GraphqlDeps> {
   const graphqlSpecifier = 'graphql';
   const yogaSpecifier = 'graphql-yoga';
   const instanceOfSpecifier = 'graphql/jsutils/instanceOf.js';
-  const [graphqlMod, yogaMod, instanceOfModule] = await Promise.all([
+  const [graphqlMod, yogaMod] = await Promise.all([
     import(/* @vite-ignore */ graphqlSpecifier) as Promise<typeof import('graphql')>,
     import(/* @vite-ignore */ yogaSpecifier) as Promise<typeof import('graphql-yoga')>,
-    import(/* @vite-ignore */ instanceOfSpecifier) as Promise<GraphqlInstanceOfModule>,
   ]);
+  const instanceOfModule: GraphqlInstanceOfModule = runtimeRequire(instanceOfSpecifier);
 
   return {
     GraphQLError: graphqlMod.GraphQLError,
