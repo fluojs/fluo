@@ -8,7 +8,7 @@
 ## Learning Objectives
 - fluo에서 GraphQL을 도입할 때 얻는 구조적 이점을 구분합니다.
 - `GraphqlModule` 설정과 코드 우선 리졸버 등록 방식을 정리합니다.
-- Request-scoped DataLoader로 N+1 문제를 줄이는 object field resolver 흐름을 구성합니다.
+- GraphQL operation 범위 DataLoader로 N+1 문제를 줄이는 object field resolver 흐름을 구성합니다.
 - SSE 기본 구독과 선택적 WebSocket 구독 설정을 확인합니다.
 - 복잡도 제한과 인트로스펙션 제어 같은 운영 가드레일을 적용합니다.
 - FluoShop 제품 카탈로그에 GraphQL을 연결하는 기준을 정리합니다.

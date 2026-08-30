@@ -8,7 +8,7 @@ This chapter covers how to add a query layer to FluoShop that differs from REST.
 ## Learning Objectives
 - Distinguish the structural benefits of introducing GraphQL in fluo.
 - Outline `GraphqlModule` configuration and code-first resolver registration.
-- Configure object field resolvers that reduce the N+1 problem with request-scoped DataLoader.
+- Configure object field resolvers that reduce the N+1 problem with GraphQL-operation-scoped DataLoader.
 - Review SSE-based default subscriptions and optional WebSocket subscription configuration.
 - Apply operational guardrails such as complexity limits and introspection control.
 - Define when to connect GraphQL to the FluoShop product catalog.
