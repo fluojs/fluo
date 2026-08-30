@@ -40,7 +40,7 @@ class UserFieldResolver {
   - `input?: Function` reuses the existing `@Arg(...)` DTO materialization and validation pipeline.
   - `argTypes?: Record<string, GraphqlArgType>` supports explicit scalar and list argument types.
   - `type?: GraphqlRootOutputType` (scalar/object/union/list wrapper)
-  - `nullable?: boolean` (future-compatible surface only)
+  - `nullable?: boolean` (sets non-null output only for newly added fields with an explicit `type`)
 - `@Args()`
   - Standard method decorator that binds the materialized, validated input DTO to parameter index `0` by default.
   - Accepts an explicit zero-based parameter index.
@@ -70,6 +70,8 @@ TC39 standard decorators do not define parameter decorators. The implemented con
 - The target object type must be reachable from a code-first root operation output.
 - If the target object type already declares the field, its field config is extended with the resolver function and its existing type is preserved unless `type` is provided.
 - If the target object type does not declare the field, `@FieldResolver({ type })` adds it.
+- For a newly added field with an explicit `type`, `nullable: false` wraps the output in `GraphQLNonNull`; `nullable: true` and an omitted option keep GraphQL's nullable default.
+- `nullable` never changes the declared nullability of an existing field.
 - Return type inference/override follows existing root operation type rules:
   - scalar literal, `GraphQLObjectType`, `GraphQLUnionType`, `listOf(...)`.
 
@@ -98,9 +100,10 @@ TC39 standard decorators do not define parameter decorators. The implemented con
 
 - The implementation is additive.
 - Existing root operation resolvers remain unchanged.
+- `nullable: false` is opt-in for new explicitly typed object fields, so existing schemas retain their output nullability.
 - Parameter-decorator syntax from the original draft is replaced by TC39-standard method decorators with index defaults.
 
 ## Open Questions
 
-- Activate `nullable` beyond the reserved surface.
+- Extend `nullable` to fields the object type already owns.
 - Decide whether schema-first resolver-map attachment belongs in this package.

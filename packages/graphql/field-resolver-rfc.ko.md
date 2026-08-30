@@ -40,7 +40,7 @@ class UserFieldResolver {
   - `input?: Function`: 기존 `@Arg(...)` DTO materialization 및 validation pipeline을 재사용
   - `argTypes?: Record<string, GraphqlArgType>`: 명시적 scalar 및 list argument type 지원
   - `type?: GraphqlRootOutputType` (scalar/object/union/list wrapper)
-  - `nullable?: boolean` (미래 호환용 표면만 정의)
+  - `nullable?: boolean` (명시적 `type`으로 새 field를 추가할 때만 non-null output 설정)
 - `@Args()`
   - materialize 및 validation된 input DTO를 기본 parameter index `0`에 바인딩하는 표준 method decorator
   - 명시적인 zero-based parameter index 허용
@@ -70,6 +70,8 @@ TC39 표준 데코레이터는 parameter decorator를 정의하지 않습니다.
 - 대상 object type은 code-first root operation output에서 도달 가능해야 합니다.
 - 대상 object type이 field를 이미 선언하면 resolver function으로 field config를 확장하며, `type`이 없으면 기존 type을 유지합니다.
 - 대상 object type이 field를 선언하지 않았다면 `@FieldResolver({ type })`이 field를 추가합니다.
+- 명시적 `type`으로 새 field를 추가할 때 `nullable: false`는 output을 `GraphQLNonNull`로 감싸며, `nullable: true`와 option 생략은 GraphQL의 nullable 기본값을 유지합니다.
+- `nullable`은 기존 field의 declared nullability를 변경하지 않습니다.
 - 반환 타입 규칙은 root operation과 동일:
   - scalar literal, `GraphQLObjectType`, `GraphQLUnionType`, `listOf(...)`
 
@@ -98,9 +100,10 @@ TC39 표준 데코레이터는 parameter decorator를 정의하지 않습니다.
 
 - 구현은 additive change입니다.
 - 기존 root operation resolver 동작은 유지됩니다.
+- `nullable: false`는 명시적 `type`을 가진 새 object field에만 opt-in으로 적용되므로 기존 schema의 output nullability는 유지됩니다.
 - 원래 draft의 parameter-decorator 문법은 index 기본값을 갖는 TC39 표준 method decorator로 대체됩니다.
 
 ## 열린 질문
 
-- 예약된 `nullable` surface의 실제 활성화
+- object type이 이미 소유한 field로 `nullable` 확장
 - Schema-first resolver-map attachment의 package 소유 여부
