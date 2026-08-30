@@ -112,6 +112,32 @@ describe('@fluojs/testing', () => {
     expect(events).toEqual(['service:init', 'consumer:init', 'service:bootstrap', 'consumer:bootstrap']);
   });
 
+  it('disposes successfully compiled module containers after use', async () => {
+    const events: string[] = [];
+
+    class DisposableService {
+      onDestroy() {
+        events.push('disposed');
+      }
+    }
+
+    @Module({ providers: [DisposableService] })
+    class DisposableModule {}
+
+    const testingModule = await createTestingModule({ rootModule: DisposableModule }).compile();
+
+    try {
+      expect(await testingModule.resolve(DisposableService)).toBeInstanceOf(DisposableService);
+    } finally {
+      await Promise.all([
+        testingModule.container.dispose(),
+        testingModule.container.dispose(),
+      ]);
+    }
+
+    expect(events).toEqual(['disposed']);
+  });
+
   it('runs bootstrap lifecycle hooks from the effective override provider', async () => {
     const SERVICE_TOKEN = Symbol('service-token');
     const events: string[] = [];

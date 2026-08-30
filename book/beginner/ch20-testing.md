@@ -110,15 +110,16 @@ export class PostService {
 Use `createTestingModule` to compile the smallest Module Graph needed for the test. It works like a mini DI container only for tests.
 
 ```typescript
-import { createTestingModule } from '@fluojs/testing';
+import { createTestingModule, type TestingModuleRef } from '@fluojs/testing';
 import { Module } from '@fluojs/core';
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { PostService } from './post.service';
 import { PostRepository } from './post.repository';
 
 describe('PostService', () => {
   let service: PostService;
   let mockRepo: any;
+  let module: TestingModuleRef;
 
   beforeEach(async () => {
     // 1. Define the mock implementation.
@@ -132,7 +133,7 @@ describe('PostService', () => {
     })
     class PostTestModule {}
 
-    const module = await createTestingModule({
+    module = await createTestingModule({
       rootModule: PostTestModule,
     })
       .overrideProvider(PostRepository, mockRepo)
@@ -140,6 +141,10 @@ describe('PostService', () => {
 
     // 3. Resolve the instance under test.
     service = await module.resolve(PostService);
+  });
+
+  afterEach(async () => {
+    await module.container.dispose();
   });
 
   it('should find a post by id', async () => {
@@ -165,7 +170,7 @@ This pattern, **Mock -> Compile -> Resolve -> Act -> Assert**, is the core of `c
 Asynchronous code is common in backend development. Fluo's `createTestingModule` and Vitest's `async/await` support let you test these operations in order. You can verify successful completion, expected rejections, and timing issues where several asynchronous operations must complete in a specific sequence. With `vi.useFakeTimers()`, you can test timeout or retry logic without actually waiting for time to pass.
 
 ### 20.3.3 Lifecycle Hooks in Tests
-Sometimes you need to test whether Providers initialize correctly when a module graph is compiled. `createTestingModule()` is the slice-testing surface for compile-time module wiring, provider visibility, and provider/guard/interceptor overrides; its compiled `TestingModuleRef` exposes resolution and dispatch helpers rather than a separate `close()` lifecycle phase. Until `compile()` returns that reference, the builder owns the internal container. If an override, initialization hook, bootstrap hook, or final singleton synchronization fails, the builder disposes the container before rejecting. It preserves the original compile error when cleanup succeeds and reports both failures with `AggregateError` when cleanup also fails. Keep cleanup assertions for successfully compiled modules explicit in the provider under test, or move request/application lifecycle coverage to `createTestApp()` where the returned app exposes `close()`.
+Sometimes you need to test whether Providers initialize correctly when a module graph is compiled. `createTestingModule()` is the slice-testing surface for compile-time module wiring, provider visibility, and provider/guard/interceptor overrides; its compiled `TestingModuleRef` exposes resolution and dispatch helpers rather than a separate `close()` lifecycle phase. Until `compile()` returns that reference, the builder owns the internal container. If an override, initialization hook, bootstrap hook, or final singleton synchronization fails, the builder disposes the container before rejecting. It preserves the original compile error when cleanup succeeds and reports both failures with `AggregateError` when cleanup also fails. After a successful compile, retain the `TestingModuleRef` and dispose its caller-owned `module.container` unconditionally in `finally` or `afterEach`, as the suite above does. This covers successful, failing, and early-returning tests. A completed disposal is idempotent; teardown errors must surface, and a test that can fail before teardown must preserve both errors rather than replacing its in-flight failure. Keep request/application lifecycle coverage on `createTestApp()` where the returned app exposes `close()`.
 
 ## 20.4 Provider Overrides
 `fluo` provides several ways to replace real components with test doubles. This lets you remove instability from external systems while still verifying the DI wiring and execution flow of the Module you care about. For request-facing guards and interceptors, add a request-path assertion with `TestingModuleRef.dispatch(...)` or `createTestApp(...)` so the override is proven through the same pipeline the application uses.
@@ -192,6 +197,12 @@ class PostTestModule {}
 const module = await createTestingModule({ rootModule: PostTestModule })
   .overrideProvider(PostRepository, new FakePostRepository())
   .compile();
+
+try {
+  const service = await module.resolve(PostService);
+} finally {
+  await module.container.dispose();
+}
 ```
 
 ### 20.4.1 Spies and Verification
@@ -212,6 +223,12 @@ const module = await createTestingModule({ rootModule: PostTestModule })
     get: vi.fn().mockReturnValue('test-secret'),
   })
   .compile();
+
+try {
+  const service = await module.resolve(PostService);
+} finally {
+  await module.container.dispose();
+}
 ```
 
 ### 20.4.4 Dynamic Module Overrides
@@ -312,7 +329,7 @@ One of the biggest advantages of Fluo's testing utilities is their deep integrat
 ## 20.7 Best Practices for FluoBlog Testing
 1.  **Do not test the framework**: Focus on your application's business logic, not whether `@Get()` works. Assume `fluo` handles routing and test what your code does when that route is called.
 2.  **Use fakes for databases**: Integration tests can use a real test database, such as PostgreSQL in Docker, but unit tests should always use mocks or fakes for speed.
-3.  **Clean up resources**: For request or application lifecycle tests, create the app with `createTestApp()` and call `await app.close()` from `finally` after the test. For `createTestingModule()` slice tests, keep cleanup expectations explicit in the provider or fake you are testing because the compiled `TestingModuleRef` is a resolution and dispatch surface, not an application lifecycle owner.
+3.  **Clean up resources**: For request or application lifecycle tests, create the app with `createTestApp()` and call `await app.close()` from `finally` after the test. For `createTestingModule()` slice tests, retain the successfully compiled `TestingModuleRef` and call the caller-owned `module.container.dispose()` from `finally` or `afterEach`.
 4.  **Integration tests for security**: Always test Guards and RBAC logic in integration tests. Unit tests usually bypass them, so integration tests are where real security gets verified.
 5.  **Deterministic tests**: Avoid using `Date.now()` or random numbers directly in tests. Use Vitest's time travel features, `vi.useFakeTimers()`, to make sure tests behave the same way every time they run.
 
