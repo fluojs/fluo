@@ -40,7 +40,7 @@ NestJS에서 온 경우 metadata 기반 추론을 기대하지 말고 개념을 
 | 초기화된 Nest app에 대한 Supertest e2e | 네트워크 소켓을 열지 않고 `createTestApp({ rootModule })`을 만든 뒤 `app.request(method, path).send()`를 사용합니다. |
 | 기본 suffix로 `.spec.ts` 사용 | 기본 suffix는 `.test.ts`를 사용하고, scope가 중요하면 `.slice.test.ts`, `.e2e.test.ts`처럼 role-specific 이름을 사용합니다. |
 
-fluo의 테스트 설정은 런타임 모델과 같습니다. 표준 decorator, 명시적 DI token, 작성자가 정의한 module graph를 따릅니다. 테스트는 컴파일할 `rootModule`을 이름으로 지정해야 하며, fluo는 TypeScript design metadata나 legacy reflection flag로 dependency를 추론하지 않습니다. NestJS migration에서는 request-level 테스트를 metadata-driven module imports 뒤에 숨은 shared application instance로 다루지 말고, `createTestApp(...)` 또는 `TestingModuleRef.dispatch(...)`를 통한 명시적 route dispatch로 다루세요.
+fluo의 테스트 설정은 런타임 모델과 같습니다. 표준 decorator, 명시적 DI token, 작성자가 정의한 module graph를 따릅니다. 테스트는 컴파일할 `rootModule`을 이름으로 지정해야 하며, fluo는 TypeScript design metadata나 legacy reflection flag로 dependency를 추론하지 않습니다. `compile()`은 `overrideProvider(token).useFactory(...)` replacement를 포함한 effective singleton class 및 factory provider의 lifecycle hook을 실행합니다. NestJS migration에서는 request-level 테스트를 metadata-driven module imports 뒤에 숨은 shared application instance로 다루지 말고, `createTestApp(...)` 또는 `TestingModuleRef.dispatch(...)`를 통한 명시적 route dispatch로 다루세요.
 
 수동 `FrameworkRequest`/`FrameworkResponse` stub, `makeRequest(...)`, raw `FluoFactory.create(...)`, direct `app.dispatch(...)` 테스트는 framework internal, adapter/runtime, compatibility contract에 남겨 둡니다. 이들은 기본 app-developer HTTP 경로보다 의도적으로 낮은 수준의 테스트입니다.
 

@@ -137,6 +137,79 @@ describe('@fluojs/testing', () => {
     expect(events).toEqual(['replacement:init', 'replacement:bootstrap']);
   });
 
+  it('runs bootstrap lifecycle hooks returned by singleton module factory providers', async () => {
+    const FACTORY_TOKEN = Symbol('module-factory-lifecycle-token');
+    const events: string[] = [];
+
+    @Module({
+      providers: [
+        {
+          provide: FACTORY_TOKEN,
+          useFactory: () => ({
+            onModuleInit() {
+              events.push('factory:init');
+            },
+            onApplicationBootstrap() {
+              events.push('factory:bootstrap');
+            },
+          }),
+        },
+      ],
+    })
+    class FactoryLifecycleModule {}
+
+    const testingModule = await createTestingModule({ rootModule: FactoryLifecycleModule }).compile();
+
+    expect(await testingModule.resolve(FACTORY_TOKEN)).toBeDefined();
+    expect(events).toEqual(['factory:init', 'factory:bootstrap']);
+  });
+
+  it('runs bootstrap lifecycle hooks returned by singleton factory overrides', async () => {
+    const FACTORY_TOKEN = Symbol('override-factory-lifecycle-token');
+    const events: string[] = [];
+
+    @Module({ providers: [{ provide: FACTORY_TOKEN, useValue: { name: 'original' } }] })
+    class FactoryOverrideLifecycleModule {}
+
+    const testingModule = await createTestingModule({ rootModule: FactoryOverrideLifecycleModule })
+      .overrideProvider(FACTORY_TOKEN)
+      .useFactory(() => ({
+        onModuleInit() {
+          events.push('factory:init');
+        },
+        onApplicationBootstrap() {
+          events.push('factory:bootstrap');
+        },
+      }))
+      .compile();
+
+    expect(await testingModule.resolve(FACTORY_TOKEN)).toBeDefined();
+    expect(events).toEqual(['factory:init', 'factory:bootstrap']);
+  });
+
+  it('runs bootstrap lifecycle hooks returned by singleton multi factory providers', async () => {
+    const PLUGINS = Symbol('multi-factory-lifecycle-plugins');
+    const events: string[] = [];
+    const plugin = {
+      onModuleInit() {
+        events.push('factory:init');
+      },
+      onApplicationBootstrap() {
+        events.push('factory:bootstrap');
+      },
+    };
+
+    @Module({
+      providers: [{ provide: PLUGINS, useFactory: () => plugin, multi: true }],
+    })
+    class MultiFactoryLifecycleModule {}
+
+    const testingModule = await createTestingModule({ rootModule: MultiFactoryLifecycleModule }).compile();
+
+    expect(await testingModule.resolve<typeof plugin[]>(PLUGINS)).toEqual([plugin]);
+    expect(events).toEqual(['factory:init', 'factory:bootstrap']);
+  });
+
   it('runs bootstrap lifecycle hooks for each singleton multi-provider contribution', async () => {
     const PLUGINS = Symbol('lifecycle-plugins');
     const events: string[] = [];
@@ -430,7 +503,7 @@ describe('@fluojs/testing', () => {
     expect(testingModule.get<Logger>(Logger)).toEqual({ name: 'nest-style-fake' });
   });
 
-  it('throws from get() for async providers and guides to resolve()', async () => {
+  it('reports eagerly resolved async providers from get()', async () => {
     const TOKEN = Symbol('async-token');
 
     @Module({
@@ -447,7 +520,7 @@ describe('@fluojs/testing', () => {
       rootModule: AsyncProviderModule,
     }).compile();
 
-    expect(() => testingModule.get<string>(TOKEN)).toThrow(/requires async resolution/);
+    expect(() => testingModule.get<string>(TOKEN)).toThrow(/already resolved asynchronously/);
     await expect(testingModule.resolve<string>(TOKEN)).resolves.toBe('async-value');
   });
 
