@@ -99,7 +99,7 @@ Direct `child.dispose()` now detaches the request child from its parent after th
 
 ### Provider Overrides
 
-Use `override(...providers)` when a test or request-local boundary needs to replace existing registrations deliberately. Overrides replace the current provider set for each token, invalidate cached instances in the current container and already-materialized request-scope descendants, and dispose stale instances before the next replacement resolution continues. Multi-provider overrides replace the full multi-provider set for that token, so pass every replacement provider together; mixing single and multi replacements for the same token in one override call is rejected as ambiguous.
+Use `override(...providers)` when a test or request-local boundary needs to replace existing registrations deliberately. Overrides replace the current provider set for each token, invalidate cached instances in the current container and already-materialized request-scope descendants, and dispose stale instances before the next replacement resolution continues. Multi-provider overrides replace the full multi-provider set for that token, so pass every replacement provider together; mixing single and multi replacements for the same token in one override call is rejected as ambiguous. An override call is atomic: the whole batch is validated before any registration or cache changes, so a rejected call leaves every provider, cached instance, and disposal ownership exactly as it was.
 
 ### Request Scoping
 Isolated containers can be created to handle per-request state without polluting the root container.
@@ -201,7 +201,7 @@ Ensure all required providers are registered in the container. If you use `creat
 |---|---|---|
 | `Container` | Root export | The main DI container class. |
 | `container.register(...providers)` | `Container` instance method | Registers one or more providers. |
-| `container.override(...providers)` | `Container` instance method | Replaces existing providers, invalidates cached instances, and ensures stale instance disposal settles before the next replacement resolution continues. |
+| `container.override(...providers)` | `Container` instance method | Replaces existing providers atomically per call, invalidates cached instances, and ensures stale instance disposal settles before the next replacement resolution continues. |
 | `container.resolve<T>(token)` | `Container` instance method | Asynchronously resolves a token to an instance. |
 | `container.inspectResolutionState()` | `Container` instance method | Exposes the supported framework-owned container introspection seam for testing/tooling helpers that must preserve cache ownership through snapshot read-only map views, frozen provider records, and controlled cache adoption. Prefer `has(...)` and `resolve(...)` for application code. |
 | `container.createRequestScope()` | `Container` instance method | Creates a child container for request-scoped dependencies. |
