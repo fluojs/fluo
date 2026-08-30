@@ -2563,7 +2563,7 @@ describe('@fluojs/platform-fastify', () => {
     expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
   });
 
-  it('cancels retrying startup during close before a later port bind can occur', async () => {
+  it('runs Fastify onClose hooks when close cancels retrying startup', async () => {
     const blocker = createServer();
     await new Promise<void>((resolve, reject) => {
       blocker.once('error', reject);
@@ -2576,6 +2576,10 @@ describe('@fluojs/platform-fastify', () => {
     const fastifyApp: FastifyInstance = Reflect.get(adapter, 'app');
     const originalListen = fastifyApp.listen.bind(fastifyApp);
     const retryObserved = createDeferred<void>();
+    const onCloseObserved = createDeferred<void>();
+    fastifyApp.addHook('onClose', async () => {
+      onCloseObserved.resolve();
+    });
     const listenSpy = vi.spyOn(fastifyApp, 'listen').mockImplementation(async (options) => {
       try {
         return await originalListen(options);
@@ -2594,6 +2598,16 @@ describe('@fluojs/platform-fastify', () => {
       await retryObserved.promise;
       await expect(adapter.close()).resolves.toBeUndefined();
 
+      const onCloseResult = await Promise.race([
+        onCloseObserved.promise.then((): 'closed' => 'closed'),
+        new Promise<'timed-out'>((resolve) => {
+          setTimeout(() => {
+            resolve('timed-out');
+          }, 1_000);
+        }),
+      ]);
+      expect(onCloseResult).toBe('closed');
+
       const result = await listenResult;
       expect(result).toBeInstanceOf(Error);
       expect(String(result instanceof Error ? result.message : result)).toContain('startup was cancelled');
@@ -2611,6 +2625,313 @@ describe('@fluojs/platform-fastify', () => {
           resolve();
         });
       });
+    }
+  });
+
+  it('runs Fastify onClose hooks when shutdown races final bind completion', async () => {
+    const adapter = new FastifyHttpApplicationAdapter(0, '127.0.0.1', 25, 20, undefined, undefined, 1024, false, 500);
+    const fastifyApp: FastifyInstance = Reflect.get(adapter, 'app');
+    const originalListen = fastifyApp.listen.bind(fastifyApp);
+    const bindCompleted = createDeferred<void>();
+    const allowListenToSettle = createDeferred<void>();
+    const onCloseObserved = createDeferred<void>();
+    fastifyApp.addHook('onClose', async () => {
+      onCloseObserved.resolve();
+    });
+    const listenSpy = vi.spyOn(fastifyApp, 'listen').mockImplementation(async (options) => {
+      const url = await originalListen(options);
+      bindCompleted.resolve();
+      await allowListenToSettle.promise;
+      return url;
+    });
+    const dispatcher = { async dispatch() {} };
+    const listenResult = adapter.listen(dispatcher).then(
+      () => 'listened' as const,
+      (error: unknown) => error,
+    );
+
+    try {
+      await bindCompleted.promise;
+
+      const abortController = Reflect.get(adapter, 'listenAbortController') as AbortController | undefined;
+      if (!abortController) {
+        throw new Error('Expected an active Fastify startup abort controller.');
+      }
+
+      abortController.signal.addEventListener('abort', () => {
+        fastifyApp.server.close();
+      }, { once: true });
+
+      const closeResult = adapter.close();
+      expect((adapter.getServer() as { listening?: boolean }).listening).toBe(false);
+
+      allowListenToSettle.resolve();
+      const onCloseResult = await Promise.race([
+        onCloseObserved.promise.then((): 'closed' => 'closed'),
+        new Promise<'timed-out'>((resolve) => {
+          AbortSignal.timeout(1_000).addEventListener('abort', () => {
+            resolve('timed-out');
+          }, { once: true });
+        }),
+      ]);
+      expect(onCloseResult).toBe('closed');
+      await expect(closeResult).resolves.toBeUndefined();
+
+      const result = await listenResult;
+      expect(result).toBeInstanceOf(Error);
+      expect(String(result instanceof Error ? result.message : result)).toContain('startup was cancelled');
+    } finally {
+      allowListenToSettle.resolve();
+      listenSpy.mockRestore();
+    }
+  });
+
+  it('runs Fastify onClose hooks when shutdown races plugin registration failure', async () => {
+    const adapter = new FastifyHttpApplicationAdapter(0, '127.0.0.1', 25, 20, undefined, undefined, 1024, false, 500);
+    const fastifyApp: FastifyInstance = Reflect.get(adapter, 'app');
+    const pluginStarted = createDeferred<void>();
+    const allowPluginFailure = createDeferred<void>();
+    const onCloseObserved = createDeferred<void>();
+    const pluginError = new Error('plugin rejected during startup');
+    fastifyApp.addHook('onClose', async () => {
+      onCloseObserved.resolve();
+    });
+    fastifyApp.register(async () => {
+      pluginStarted.resolve();
+      await allowPluginFailure.promise;
+      throw pluginError;
+    });
+    const listenResult = adapter.listen({ async dispatch() {} }).then(
+      () => 'listened' as const,
+      (error: unknown) => error,
+    );
+
+    try {
+      await pluginStarted.promise;
+
+      const closeResult = adapter.close();
+      allowPluginFailure.resolve();
+      await expect(closeResult).rejects.toBe(pluginError);
+
+      const onCloseResult = await Promise.race([
+        onCloseObserved.promise.then((): 'closed' => 'closed'),
+        new Promise<'timed-out'>((resolve) => {
+          AbortSignal.timeout(1_000).addEventListener('abort', () => {
+            resolve('timed-out');
+          }, { once: true });
+        }),
+      ]);
+      expect(onCloseResult).toBe('closed');
+      await expect(listenResult).resolves.toBe(pluginError);
+    } finally {
+      allowPluginFailure.resolve();
+      await adapter.close();
+    }
+  });
+
+  it('preserves plugin registration failure when Fastify onClose also fails during shutdown', async () => {
+    const adapter = new FastifyHttpApplicationAdapter(0, '127.0.0.1', 25, 20, undefined, undefined, 1024, false, 500);
+    const fastifyApp: FastifyInstance = Reflect.get(adapter, 'app');
+    const pluginStarted = createDeferred<void>();
+    const allowPluginFailure = createDeferred<void>();
+    const pluginError = new Error('plugin rejected during startup');
+    const closeError = new Error('onClose rejected during shutdown');
+    fastifyApp.addHook('onClose', async () => {
+      throw closeError;
+    });
+    fastifyApp.register(async () => {
+      pluginStarted.resolve();
+      await allowPluginFailure.promise;
+      throw pluginError;
+    });
+    const listenResult = adapter.listen({ async dispatch() {} }).then(
+      () => 'listened' as const,
+      (error: unknown) => error,
+    );
+
+    try {
+      await pluginStarted.promise;
+
+      const closeResult = adapter.close();
+      allowPluginFailure.resolve();
+
+      await expect(closeResult).rejects.toBe(pluginError);
+      expect(Reflect.get(pluginError, 'cause')).toBe(closeError);
+      await expect(listenResult).resolves.toBe(pluginError);
+    } finally {
+      allowPluginFailure.resolve();
+      await adapter.close();
+    }
+  });
+
+  it('keeps a frozen startup error primary when Fastify onClose also fails during shutdown', async () => {
+    const adapter = new FastifyHttpApplicationAdapter(0, '127.0.0.1', 25, 20, undefined, undefined, 1024, false, 500);
+    const fastifyApp: FastifyInstance = Reflect.get(adapter, 'app');
+    const pluginStarted = createDeferred<void>();
+    const allowPluginFailure = createDeferred<void>();
+    const pluginError = Object.freeze(new Error('frozen plugin rejected during startup'));
+    const closeError = new Error('onClose rejected during shutdown');
+    fastifyApp.addHook('onClose', async () => {
+      throw closeError;
+    });
+    fastifyApp.register(async () => {
+      pluginStarted.resolve();
+      await allowPluginFailure.promise;
+      throw pluginError;
+    });
+    const listenResult = adapter.listen({ async dispatch() {} }).then(
+      () => 'listened' as const,
+      (error: unknown) => error,
+    );
+
+    try {
+      await pluginStarted.promise;
+
+      const closeResult = adapter.close();
+      allowPluginFailure.resolve();
+
+      const closeFailure = await closeResult.then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      if (!(closeFailure instanceof AggregateError)) {
+        throw new Error('Expected shutdown to preserve both failures in an AggregateError.');
+      }
+
+      expect(closeFailure.errors).toEqual([pluginError, closeError]);
+      await expect(listenResult).resolves.toBe(pluginError);
+    } finally {
+      allowPluginFailure.resolve();
+      await adapter.close();
+    }
+  });
+
+  it('keeps both failures reachable when the startup cause setter discards writes', async () => {
+    const adapter = new FastifyHttpApplicationAdapter(0, '127.0.0.1', 25, 20, undefined, undefined, 1024, false, 500);
+    const fastifyApp: FastifyInstance = Reflect.get(adapter, 'app');
+    const pluginStarted = createDeferred<void>();
+    const allowPluginFailure = createDeferred<void>();
+    const pluginError = {};
+    const closeError = new Error('onClose rejected during shutdown');
+    Object.defineProperty(pluginError, 'cause', {
+      get: () => undefined,
+      set: () => {},
+    });
+    fastifyApp.addHook('onClose', async () => {
+      throw closeError;
+    });
+    fastifyApp.register(async () => {
+      pluginStarted.resolve();
+      await allowPluginFailure.promise;
+      throw pluginError;
+    });
+    const listenResult = adapter.listen({ async dispatch() {} }).then(
+      () => 'listened' as const,
+      (error: unknown) => error,
+    );
+
+    try {
+      await pluginStarted.promise;
+
+      const closeResult = adapter.close();
+      allowPluginFailure.resolve();
+
+      const closeFailure = await closeResult.then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      if (!(closeFailure instanceof AggregateError)) {
+        throw new Error('Expected shutdown to preserve both failures in an AggregateError.');
+      }
+
+      expect(closeFailure.errors).toEqual([pluginError, closeError]);
+      await expect(listenResult).resolves.toBe(pluginError);
+    } finally {
+      allowPluginFailure.resolve();
+      await adapter.close();
+    }
+  });
+
+  it('keeps both failures reachable when the startup cause getter throws', async () => {
+    const adapter = new FastifyHttpApplicationAdapter(0, '127.0.0.1', 25, 20, undefined, undefined, 1024, false, 500);
+    const fastifyApp: FastifyInstance = Reflect.get(adapter, 'app');
+    const pluginStarted = createDeferred<void>();
+    const allowPluginFailure = createDeferred<void>();
+    const pluginError = {};
+    const causeGetterError = new Error('startup cause getter rejected');
+    const closeError = new Error('onClose rejected during shutdown');
+    Object.defineProperty(pluginError, 'cause', {
+      get: () => {
+        throw causeGetterError;
+      },
+    });
+    fastifyApp.addHook('onClose', async () => {
+      throw closeError;
+    });
+    fastifyApp.register(async () => {
+      pluginStarted.resolve();
+      await allowPluginFailure.promise;
+      throw pluginError;
+    });
+    const listenResult = adapter.listen({ async dispatch() {} }).then(
+      () => 'listened' as const,
+      (error: unknown) => error,
+    );
+
+    try {
+      await pluginStarted.promise;
+
+      const closeResult = adapter.close();
+      allowPluginFailure.resolve();
+
+      const closeFailure = await closeResult.then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      if (!(closeFailure instanceof AggregateError)) {
+        throw new Error('Expected shutdown to preserve both failures in an AggregateError.');
+      }
+
+      expect(closeFailure.errors).toEqual([pluginError, closeError]);
+      await expect(listenResult).resolves.toBe(pluginError);
+    } finally {
+      allowPluginFailure.resolve();
+      await adapter.close();
+    }
+  });
+
+  it('preserves a mutable non-Error startup rejection when Fastify onClose also fails during shutdown', async () => {
+    const adapter = new FastifyHttpApplicationAdapter(0, '127.0.0.1', 25, 20, undefined, undefined, 1024, false, 500);
+    const fastifyApp: FastifyInstance = Reflect.get(adapter, 'app');
+    const pluginStarted = createDeferred<void>();
+    const allowPluginFailure = createDeferred<void>();
+    const pluginError = { message: 'plugin rejected during startup' };
+    const closeError = new Error('onClose rejected during shutdown');
+    fastifyApp.addHook('onClose', async () => {
+      throw closeError;
+    });
+    fastifyApp.register(async () => {
+      pluginStarted.resolve();
+      await allowPluginFailure.promise;
+      throw pluginError;
+    });
+    const listenResult = adapter.listen({ async dispatch() {} }).then(
+      () => 'listened' as const,
+      (error: unknown) => error,
+    );
+
+    try {
+      await pluginStarted.promise;
+
+      const closeResult = adapter.close();
+      allowPluginFailure.resolve();
+
+      await expect(closeResult).rejects.toBe(pluginError);
+      expect(Reflect.get(pluginError, 'cause')).toBe(closeError);
+      await expect(listenResult).resolves.toBe(pluginError);
+    } finally {
+      allowPluginFailure.resolve();
+      await adapter.close();
     }
   });
 
