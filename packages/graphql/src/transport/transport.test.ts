@@ -161,17 +161,31 @@ describe('writeFetchResponse', () => {
     expect(cancel).toHaveBeenCalledOnce();
   });
 
-  it('preserves the downstream backpressure error when upstream cancellation also fails', async () => {
+  it('waits for upstream cancellation before preserving the downstream backpressure error', async () => {
     // Given
     const cancellationError = new Error('upstream cancellation failed');
+    let releaseCancellation: (() => void) | undefined;
+    const cancellationReleased = new Promise<void>((resolve) => {
+      releaseCancellation = resolve;
+    });
+    let notifyCancellationStarted: (() => void) | undefined;
+    const cancellationStarted = new Promise<void>((resolve) => {
+      notifyCancellationStarted = resolve;
+    });
+    let notifyCancellationFinished: (() => void) | undefined;
+    const cancellationFinished = new Promise<void>((resolve) => {
+      notifyCancellationFinished = resolve;
+    });
     const cancel = vi.fn(async () => {
+      notifyCancellationStarted?.();
+      await cancellationReleased;
+      notifyCancellationFinished?.();
       throw cancellationError;
     });
     const fetchResponse = new Response(new ReadableStream<Uint8Array>({
       cancel,
       start(controller) {
         controller.enqueue(new TextEncoder().encode('chunk-1'));
-        controller.enqueue(new TextEncoder().encode('chunk-2'));
       },
     }), {
       headers: { 'content-type': 'text/event-stream' },
@@ -186,8 +200,8 @@ describe('writeFetchResponse', () => {
     }
     const waitForDrain = stream.waitForDrain;
 
-    if (!waitForDrain) {
-      throw new Error('Expected waitForDrain mock to exist.');
+    if (!waitForDrain || !releaseCancellation || !notifyCancellationFinished) {
+      throw new Error('Expected stream drain and cancellation controls to exist.');
     }
 
     vi.mocked(stream.write).mockReturnValueOnce(false);
@@ -195,8 +209,18 @@ describe('writeFetchResponse', () => {
 
     // When
     const write = writeFetchResponse(fetchResponse, frameworkResponse);
+    await cancellationStarted;
+    releaseCancellation();
+    const firstSettlement = await Promise.race([
+      write.then(
+        () => 'write',
+        () => 'write',
+      ),
+      cancellationFinished.then(() => 'cancellation'),
+    ]);
 
     // Then
+    expect(firstSettlement).toBe('cancellation');
     await expect(write).rejects.toBe(downstreamError);
     expect(cancel).toHaveBeenCalledOnce();
   });
