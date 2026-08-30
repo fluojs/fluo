@@ -38,7 +38,7 @@ In a modular backend like FluoBlog, each Module can have its own configuration n
 ### Scaling Configuration as Your App Grows
 As FluoBlog grows from a few files into dozens of Modules, the cost of configuration management grows with it. In an implicit system, you may need to search the entire codebase to find where a specific environment variable is used. With `ConfigService`, you can create a centralized source of truth that scales with the application.
 
-This approach also makes it much easier to move to professional secret management tools such as HashiCorp Vault, AWS Secrets Manager, or Azure Key Vault. Instead of editing every file that uses secrets, you only update the `ConfigModule` logic so it reads values from those external Providers.
+This approach also makes it much easier to move to professional secret management tools such as HashiCorp Vault, AWS Secrets Manager, or Azure Key Vault. Instead of editing every file that uses secrets, you read those values once at the application entrypoint before the module graph is built, then pass the resolved snapshot into the synchronous `ConfigModule.forRoot(...)` call. `ConfigModule` never fetches from an external Provider itself.
 
 ### Configuration as a Behavioral Contract
 Configuration is a contract between the application and its runtime environment. When you explicitly define which settings are required, you also make it clear what conditions the environment must provide. If the environment doesn't satisfy that contract, the application refuses to start and avoids the risk of running in an undefined state. This kind of behavioral contract is a basic requirement for building predictable backend systems that are easy to reason about.

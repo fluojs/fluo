@@ -87,6 +87,7 @@ class MyService {
 - Pass an explicit `processEnv` snapshot because `@fluojs/config` does not scan ambient environment variables.
 - Replace NestJS `validate` callbacks with a synchronous Standard Schema passed as `schema`; asynchronous schema results are rejected.
 - Use `global`, not NestJS `isGlobal`. Visibility is global by default, and `global: false` opts into module-local visibility.
+- Rewrite call sites to the single-key shape: `ConfigService.get(key)` and `getOrThrow(key)` take one key and expose no NestJS default-value or options overload. Own defaults in `defaults` or the `schema` output, or apply an explicit `??` fallback to the `get(key)` result.
 
 See the canonical [NestJS configuration migration guide](../../docs/getting-started/migrate-from-nestjs.md) for the shared validated-snapshot bootstrap pattern and HTTP adapter boundary.
 

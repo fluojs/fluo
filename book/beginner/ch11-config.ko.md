@@ -38,7 +38,7 @@ FluoBlog와 같은 모듈형 백엔드에서 각 모듈은 자신만의 설정 �
 ### Scaling Configuration as Your App Grows
 FluoBlog이 몇 개의 파일에서 수십 개의 모듈로 성장하면 설정 관리 비용도 함께 커집니다. 암시적인 시스템에서는 특정 환경 변수가 어디에서 사용되는지 찾기 위해 전체 코드베이스를 검색해야 할 수도 있습니다. `ConfigService`를 사용하면 애플리케이션과 함께 확장되는 중앙 집중식 "진실의 원천(source of truth)"을 만들 수 있습니다.
 
-이러한 접근 방식은 HashiCorp Vault, AWS Secrets Manager, 또는 Azure Key Vault와 같은 전문적인 비밀 관리 도구로 전환하는 것을 훨씬 쉽게 만듭니다. 비밀 정보를 사용하는 모든 파일을 수정하는 대신, 이러한 외부 프로바이더로부터 값을 가져오도록 `ConfigModule` 로직만 업데이트하면 되기 때문입니다.
+이러한 접근 방식은 HashiCorp Vault, AWS Secrets Manager, 또는 Azure Key Vault와 같은 전문적인 비밀 관리 도구로 전환하는 것을 훨씬 쉽게 만듭니다. 비밀 정보를 사용하는 모든 파일을 수정하는 대신, module graph를 구성하기 전에 애플리케이션 entrypoint에서 그 값을 한 번 읽어 resolve한 snapshot을 동기식 `ConfigModule.forRoot(...)` 호출에 전달하면 되기 때문입니다. `ConfigModule` 자체가 외부 프로바이더에서 값을 가져오지는 않습니다.
 
 ### Configuration as a Behavioral Contract
 설정은 애플리케이션과 실행 환경 사이의 계약입니다. 어떤 설정이 필요한지 명시적으로 정의하면 환경이 제공해야 할 조건도 분명해집니다. 환경이 이 계약을 충족하지 못하면 애플리케이션은 시작을 거부하고, 정의되지 않은 상태로 실행되는 위험을 피합니다. 이런 행동 계약은 예측 가능하고 추론하기 쉬운 백엔드를 만드는 기본 조건입니다.
