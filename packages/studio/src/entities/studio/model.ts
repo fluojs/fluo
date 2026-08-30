@@ -1,6 +1,8 @@
-import type { BootstrapTimingDiagnostics, PlatformShellSnapshot, PlatformSnapshot } from '@fluojs/runtime';
 import type {
+  BootstrapTimingDiagnostics,
   FilterState,
+  PlatformShellSnapshot,
+  PlatformSnapshot,
   StudioConnectionState,
   StudioInspectionSnapshot,
   StudioLiveDiagnostic,

@@ -1070,9 +1070,6 @@ importers:
 
   packages/studio:
     dependencies:
-      '@fluojs/runtime':
-        specifier: workspace:^
-        version: link:../runtime
       react:
         specifier: ^19.2.6
         version: 19.2.6
@@ -1083,6 +1080,9 @@ importers:
       '@fluojs-internal/tooling-vite':
         specifier: workspace:^
         version: link:../../tooling/vite
+      '@fluojs/runtime':
+        specifier: workspace:^
+        version: link:../runtime
       '@types/react':
         specifier: ^19.2.14
         version: 19.2.14

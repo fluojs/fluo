@@ -154,6 +154,8 @@ CLI와 Studio diagnostics discoverability는 CLI 패키지, Studio 패키지, go
 
 Studio sidecar teardown ownership은 `packages/cli/README.ko.md`, [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md), [`book/advanced/ch15-studio.ko.md`](../book/advanced/ch15-studio.ko.md)에서 동기화된다. 반복되거나 동시에 호출된 `StudioSidecar.close()`는 하나의 결정적인 shutdown을 공유하고, 추적 중인 SSE response는 기존의 명시적 종료 동작을 유지하며, active authenticated runtime ingestion을 처리하는 socket만 닫기 때문에 client가 incomplete body를 열어 두어도 CLI shutdown이 대기 상태로 남지 않는다. 완료된 일반 요청은 이 ingestion ownership set 밖에 유지된다.
 
+Studio의 배포 Node.js `>=20.0.0` engine contract는 `@fluojs/runtime`과 독립적입니다. Studio가 runtime-neutral consumer-side snapshot, diagnostic, timing declaration을 소유하고 runtime은 development-time drift check로만 유지하므로, Studio 설치는 runtime의 더 좁은 engine range를 상속하지 않습니다.
+
 ## Cron Migration Option Boundary
 
 Cron NestJS migration surface는 NestJS `timeZone`을 fluo `timezone`으로 바꿔야 한다는 점을 기록합니다. `waitForCompletion`은 fluo에 직접 대응하는 option이 없으며 scheduler protection과 in-process running guard가 같은 task instance의 overlapping tick을 queue하지 않고 항상 건너뜁니다. NestJS overlap에 의존한 작업은 application-owned queue나 worker로 옮겨야 하고, application instance 사이의 exclusion에는 여전히 Redis distributed locking이 필요합니다.

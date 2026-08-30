@@ -5,11 +5,26 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { PlatformShellSnapshot } from '@fluojs/runtime';
+import type {
+  BootstrapTimingDiagnostics as RuntimeBootstrapTimingDiagnostics,
+  PlatformDiagnosticIssue as RuntimePlatformDiagnosticIssue,
+  PlatformShellSnapshot as RuntimePlatformShellSnapshot,
+  PlatformSnapshot as RuntimePlatformSnapshot,
+} from '@fluojs/runtime';
 import type { Root } from 'react-dom/client';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { bootstrapStudioApp } from './app/bootstrap.js';
-import { applyFilters, isStudioLiveEvent, parseStudioLiveEvent, parseStudioPayload, renderMermaid } from './contracts.js';
+import {
+  applyFilters,
+  isStudioLiveEvent,
+  parseStudioLiveEvent,
+  parseStudioPayload,
+  renderMermaid,
+  type BootstrapTimingDiagnostics,
+  type PlatformDiagnosticIssue,
+  type PlatformShellSnapshot,
+  type PlatformSnapshot,
+} from './contracts.js';
 import { initialStudioState, selectSelectedStaticComponent } from './entities/studio/model.js';
 import * as studio from './index.js';
 import { inspectComponentConnections, renderDiagnosticDocsUrl, renderDiagnostics, renderGraphSvg } from './shared/lib/viewer-rendering.js';
@@ -445,6 +460,30 @@ describe('parseStudioPayload', () => {
 
     expect(snapshot.components).toHaveLength(2);
     expect(issue.code).toBe('QUEUE_DEPENDENCY_NOT_READY');
+  });
+
+  it('keeps Studio diagnostics contracts independent from the runtime package', () => {
+    const packageManifest = JSON.parse(readFileSync(resolve(packageDir, 'package.json'), 'utf8')) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const runtimeCoupledSources = [
+      'src/contracts.ts',
+      'src/entities/studio/model.ts',
+      'src/shared/lib/viewer-rendering.ts',
+    ].filter((sourcePath) => readFileSync(resolve(packageDir, sourcePath), 'utf8').includes('@fluojs/runtime'));
+
+    expect(packageManifest.dependencies?.['@fluojs/runtime']).toBeUndefined();
+    expect(packageManifest.devDependencies?.['@fluojs/runtime']).toBe('workspace:^');
+    expect(runtimeCoupledSources).toEqual([]);
+    expectTypeOf<PlatformDiagnosticIssue>().toMatchTypeOf<RuntimePlatformDiagnosticIssue>();
+    expectTypeOf<RuntimePlatformDiagnosticIssue>().toMatchTypeOf<PlatformDiagnosticIssue>();
+    expectTypeOf<PlatformSnapshot>().toMatchTypeOf<RuntimePlatformSnapshot>();
+    expectTypeOf<RuntimePlatformSnapshot>().toMatchTypeOf<PlatformSnapshot>();
+    expectTypeOf<PlatformShellSnapshot>().toMatchTypeOf<RuntimePlatformShellSnapshot>();
+    expectTypeOf<RuntimePlatformShellSnapshot>().toMatchTypeOf<PlatformShellSnapshot>();
+    expectTypeOf<BootstrapTimingDiagnostics>().toMatchTypeOf<RuntimeBootstrapTimingDiagnostics>();
+    expectTypeOf<RuntimeBootstrapTimingDiagnostics>().toMatchTypeOf<BootstrapTimingDiagnostics>();
   });
 
   it('keeps legacy route descriptor construction source-compatible at the root entrypoint', () => {

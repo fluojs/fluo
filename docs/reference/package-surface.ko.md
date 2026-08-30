@@ -105,6 +105,8 @@
 - **`@fluojs/testing`**: `createTestingModule({ rootModule })`, request-level `createTestApp(...)`, `@fluojs/testing/http` request helper subpath, Vitest decorator tooling, request-scoped DI isolation regression helper, body-bearing RFC `QUERY` listener portability assertion, portability harness cleanup 보장을 포함해 애플리케이션 및 플랫폼 계약을 검증하기 위한 Node.js `>=20.19.3 <21 || >=22.2.0 <27` conformance 및 통합 헬퍼.
 - **`@fluojs/vite`**: fluo 프로젝트용 Node.js 20+ Vite 빌드 유틸리티이며, package manifest는 `engines.node >=20.0.0`을 선언합니다. 생성된 starter `vite.config.ts` 파일이 사용하는 유지보수형 `fluoDecoratorsPlugin()`을 포함하고, Vite `>=6.2.0`을 요구하며, Babel peer는 package import나 plugin creation이 아니라 eligible 애플리케이션 `.ts` transform에서 lazy하게 해석합니다.
 
+Studio의 Node.js `>=20.0.0` engine floor는 consumer-side snapshot, diagnostic, timing declaration이 runtime-neutral이므로 독립적으로 설치할 수 있습니다. `@fluojs/runtime`은 배포 Studio dependency가 아니라 development-time drift check입니다.
+
 ## Studio inspect artifact ownership
 
 런타임 패키지는 inspection snapshot, timing diagnostics, request trace, route descriptor, live diagnostic, sidecar event의 원천으로 남습니다. CLI는 Node dev-runner `fluo dev --studio` sidecar를 통해 이 값을 Studio로 stream하거나 raw JSON, standalone timing diagnostics, snapshot-plus-timing envelope, report artifact, 또는 Studio가 설치된 경우 Mermaid text 같은 이동 가능한 artifact로 바꿉니다. Bun, Deno, Cloudflare Workers 프로젝트는 dedicated live bridge가 구현되고 검증될 때까지 inspect/static artifact 경로를 MVP fallback으로 사용합니다. Studio는 사람과 자동화 호출자를 위해 live sidecar state와 inspect artifact를 읽고, 검증하고, 필터링하고, 보여주고, 렌더링하는 책임을 맡습니다.

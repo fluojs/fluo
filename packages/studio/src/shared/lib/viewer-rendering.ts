@@ -1,4 +1,4 @@
-import type { PlatformDiagnosticIssue, PlatformShellSnapshot, PlatformSnapshot } from '@fluojs/runtime';
+import type { PlatformDiagnosticIssue, PlatformShellSnapshot, PlatformSnapshot } from '../../contracts.js';
 
 /** Selected Studio component neighborhood rendered by the static report inspector. */
 export interface ComponentConnectionSummary {

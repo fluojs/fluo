@@ -77,7 +77,7 @@ fluo inspect ./src/app.module.ts --report --output artifacts/inspect-report.json
 fluo inspect ./src/app.module.ts --mermaid --output artifacts/module-graph.mmd
 ```
 
-Mermaid 렌더링은 `renderMermaid(snapshot)` 계약을 통해 `@fluojs/studio`에 위임됩니다. 이 출력이 필요하면 CLI Studio/viewer 명령을 실행하는 Node.js `>=20.0.0` 프로젝트에 Studio를 개발 전용 의존성으로 설치합니다.
+Mermaid 렌더링은 `renderMermaid(snapshot)` 계약을 통해 `@fluojs/studio`에 위임됩니다. 이 출력이 필요하면 CLI Studio/viewer 명령을 실행하는 Node.js `>=20.0.0` 프로젝트에 Studio를 개발 전용 의존성으로 설치합니다. Studio는 이 artifact의 runtime-neutral consumer-side declaration을 소유하므로, Studio 설치가 `@fluojs/runtime`의 더 좁은 Node engine range를 상속하지 않습니다.
 
 ```bash
 pnpm add -D @fluojs/studio
@@ -87,7 +87,7 @@ pnpm add -D @fluojs/studio
 
 ## 15.4 Snapshot과 리포트 shape 이해하기
 
-CLI가 내보내는 데이터는 `@fluojs/runtime`이 생산하고 Studio가 소비하는 계약을 따릅니다. 이 절은 학습 모델을 설명합니다. 필드 단위의 reference 세부 정보는 contract docs와 package README가 맡습니다.
+CLI가 내보내는 데이터는 `@fluojs/runtime`이 생산하고 Studio가 소유하는 runtime-neutral consumer-side contract를 따릅니다. 이 절은 학습 모델을 설명합니다. 필드 단위의 reference 세부 정보는 contract docs와 package README가 맡습니다.
 
 ### 원본 JSON snapshot
 

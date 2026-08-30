@@ -154,6 +154,8 @@ CLI and Studio diagnostics discoverability is split across the CLI package, Stud
 
 Studio sidecar teardown ownership is synchronized across `packages/cli/README.md`, [`docs/reference/package-surface.md`](./reference/package-surface.md), and [`book/advanced/ch15-studio.md`](../book/advanced/ch15-studio.md): repeated or concurrent `StudioSidecar.close()` calls share one deterministic shutdown, tracked SSE responses keep their existing explicit end behavior, and only sockets serving active authenticated runtime ingestion are closed so a client-held incomplete body cannot keep CLI shutdown pending. Completed ordinary requests remain outside that ingestion ownership set.
 
+Studio's published Node.js `>=20.0.0` engine contract is independent from `@fluojs/runtime`: Studio owns runtime-neutral consumer-side snapshot, diagnostic, and timing declarations and keeps runtime only as a development-time drift check, so installing Studio does not inherit runtime's narrower engine range.
+
 ## Cron Migration Option Boundary
 
 The Cron NestJS migration surfaces record that NestJS `timeZone` becomes fluo `timezone`, while `waitForCompletion` has no direct fluo option because scheduler protection and the in-process running guard always skip overlapping ticks for the same task instance rather than queueing another run. Work that relied on NestJS overlap must move to an application-owned queue or worker, and cross-instance exclusion still requires Redis distributed locking.

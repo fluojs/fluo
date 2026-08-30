@@ -50,11 +50,11 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@fluojs/runtime": "workspace:^",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },
   "devDependencies": {
+    "@fluojs/runtime": "workspace:^",
     "@fluojs-internal/tooling-vite": "workspace:^",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
