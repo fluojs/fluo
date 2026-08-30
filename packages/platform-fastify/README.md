@@ -170,7 +170,7 @@ await bootstrapFastifyApplication(AppModule, {
 ```
 
 ### Native Fastify Configuration
-Use portable fluo middleware by default. When a migration must retain a Fastify-native plugin, hook, serializer, or instance customization, configure it through the construction-time `configureFastify` seam:
+Use portable fluo middleware by default. When a migration must retain a Fastify-native plugin, hook, or instance customization, configure it through the construction-time `configureFastify` seam:
 
 ```typescript
 const adapter = createFastifyAdapter({
@@ -178,13 +178,13 @@ const adapter = createFastifyAdapter({
     fastify.addHook('onRequest', async (request, reply) => {
       reply.header('x-native-request-id', request.id);
     });
-    fastify.setReplySerializer((payload) => JSON.stringify(payload));
+    fastify.setReplySerializer((payload) => JSON.stringify(payload) ?? '');
   },
   port: 3000,
 });
 ```
 
-`configureFastify` runs once for each Fastify instance that the adapter creates, before fluo registers its multipart, raw-body, native-route, and wildcard-route handling. `bootstrapFastifyApplication(...)` and `runFastifyApplication(...)` accept the same option. A thrown or rejected configuration prevents that `listen()` call from starting; the failed instance is not configured again, while a later `listen()` after a successful `close()` configures the newly created instance once.
+`configureFastify` runs once for each Fastify instance that the adapter creates, before fluo registers its multipart, raw-body, native-route, and wildcard-route handling. `bootstrapFastifyApplication(...)` and `runFastifyApplication(...)` accept the same option. A thrown or rejected configuration prevents that `listen()` call from starting; the failed instance is not configured again, while a later `listen()` after a successful `close()` configures the newly created instance once. Although this seam can call `setReplySerializer(...)`, the adapter serializes fluo response payloads before handing them to Fastify, so an instance serializer does not customize fluo responses.
 
 The adapter continues to own routing, CORS, logging, multipart and raw-body behavior, response semantics, and shutdown. Do not retain or mutate the Fastify instance after bootstrap, adopt an existing Fastify instance, or use this hook as a native-route bypass. Move portable request behavior to fluo `middleware` instead.
 

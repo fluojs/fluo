@@ -383,7 +383,11 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
 
   private configureFastifyInstance(): Promise<void> {
     if (!this.fastifyConfigurationInFlight) {
-      this.fastifyConfigurationInFlight = Promise.resolve().then(() => this.configureFastify?.(this.app));
+      this.fastifyConfigurationInFlight = Promise.resolve()
+        .then(() => this.configureFastify?.(this.app))
+        .catch((error: unknown) => {
+          throw error;
+        });
     }
 
     return this.fastifyConfigurationInFlight;

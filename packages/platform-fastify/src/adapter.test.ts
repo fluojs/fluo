@@ -551,6 +551,32 @@ describe('@fluojs/platform-fastify', () => {
     }
   });
 
+  it('closes Fastify resources after configuration failure', async () => {
+    const onClose = vi.fn();
+    const adapter = createFastifyAdapter({
+      configureFastify: async (app) => {
+        app.addHook('onClose', onClose);
+        throw new Error('Fastify native configuration failed.');
+      },
+      port: 0,
+    }) as FastifyHttpApplicationAdapter;
+    const dispatcher: Dispatcher = {
+      async dispatch(_request, response) {
+        await response.send({ ok: true });
+      },
+    };
+
+    try {
+      await expect(adapter.listen(dispatcher)).rejects.toThrow('Fastify native configuration failed.');
+
+      await adapter.close();
+
+      expect(onClose).toHaveBeenCalledTimes(1);
+    } finally {
+      await adapter.close();
+    }
+  });
+
   it('preserves response parity for simple JSON and non-fast-path responses', async () => {
     @Controller('/responses')
     class ResponsesController {

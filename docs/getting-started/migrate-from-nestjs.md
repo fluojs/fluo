@@ -182,7 +182,7 @@ NestJS `forRootAsync(...)` and `load` namespace factories have no direct registr
 
 ### Fastify Native Extension Migration
 
-Use fluo `middleware` for portable request behavior; it is not a Fastify plugin API. If a NestJS migration must retain a Fastify-native plugin, hook, serializer, or instance customization, pass it through `createFastifyAdapter({ configureFastify })` (or the same bootstrap/run option) before listening:
+Use fluo `middleware` for portable request behavior; it is not a Fastify plugin API. If a NestJS migration must retain a Fastify-native plugin, hook, or instance customization, pass it through `createFastifyAdapter({ configureFastify })` (or the same bootstrap/run option) before listening:
 
 ```typescript
 const adapter = createFastifyAdapter({
@@ -195,7 +195,7 @@ const adapter = createFastifyAdapter({
 });
 ```
 
-The hook runs once per adapter-created Fastify instance before fluo registers multipart, raw-body, native-route, and wildcard-route handling. Rejection prevents that `listen()` call; a successful close followed by relisten creates and configures one new instance. The adapter still owns routing, CORS, logging, response semantics, and shutdown. Do not carry post-bootstrap instance mutation, existing-instance adoption, or native-route bypasses across this boundary.
+The hook runs once per adapter-created Fastify instance before fluo registers multipart, raw-body, native-route, and wildcard-route handling. Rejection prevents that `listen()` call; a successful close followed by relisten creates and configures one new instance. The adapter still owns routing, CORS, logging, response semantics, and shutdown. It serializes fluo response payloads before handing them to Fastify, so an instance-level `setReplySerializer(...)` does not customize fluo responses. Do not carry post-bootstrap instance mutation, existing-instance adoption, or native-route bypasses across this boundary.
 
 ### NestJS i18n Locale and Validation Migration
 
