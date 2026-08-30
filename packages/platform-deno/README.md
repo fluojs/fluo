@@ -49,7 +49,7 @@ The managed startup path opens a network listener and registers `SIGINT`/`SIGTER
 deno run --allow-net main.ts
 ```
 
-Signal listener registration does not require a separate Deno permission. The adapter does not read environment variables. Add a scoped grant such as `--allow-env=PORT,DATABASE_URL` only when application code reads those keys. If the surrounding host owns process signals, pass `shutdownSignals: false` to `runDenoApplication(...)`; this selects host-owned lifecycle coordination rather than changing permissions, and the host must coordinate application shutdown.
+Signal listener registration does not require a separate Deno permission. The adapter does not read environment variables. Add a scoped grant such as `--allow-env=PORT,DATABASE_URL` only when application code reads those keys. Signal-triggered application-close failures are logged and swallowed by the helper; it does not set an exit status. Hosts that require failure-status propagation or forced termination must pass `shutdownSignals: false` to `runDenoApplication(...)` and coordinate signals and shutdown themselves.
 
 ## Common Patterns
 

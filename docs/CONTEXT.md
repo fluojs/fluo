@@ -156,6 +156,8 @@ Studio sidecar teardown ownership is synchronized across `packages/cli/README.md
 
 Studio's published Node.js `>=20.0.0` engine contract is independent from `@fluojs/runtime`: Studio owns runtime-neutral consumer-side snapshot, diagnostic, and timing declarations and keeps runtime only as a development-time drift check, so installing Studio does not inherit runtime's narrower engine range.
 
+Deno signal-close failure status remains host-owned: `runDenoApplication(...)` logs and swallows signal-triggered application-close failures without setting an exit status. Deployments that require failure-status propagation or forced termination must use `shutdownSignals: false` and coordinate signals and shutdown themselves.
+
 ## Cron Migration Option Boundary
 
 The Cron NestJS migration surfaces record that NestJS `timeZone` becomes fluo `timezone`, while `waitForCompletion` has no direct fluo option because scheduler protection and the in-process running guard always skip overlapping ticks for the same task instance rather than queueing another run. Work that relied on NestJS overlap must move to an application-owned queue or worker, and cross-instance exclusion still requires Redis distributed locking.

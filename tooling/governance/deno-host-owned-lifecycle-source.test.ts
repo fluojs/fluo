@@ -266,6 +266,36 @@ describe('Deno host-owned lifecycle source contract', () => {
 		expect(runGovernanceGuard).toThrow(/runDenoApplication\(\.\.\.\) must pass Deno signal registration as shutdownRegistration/);
 	});
 
+	it('rejects exit-status handoff from a signal-triggered application close failure', () => {
+		// Given
+		const readWithSignalCloseExit = overrideFile('packages/platform-deno/src/adapter.ts', (content) =>
+			content.replace(
+				"    logger.error('Failed to shut down the application cleanly.', error, 'FluoFactory');",
+				"    Deno.exit(1);\n    logger.error('Failed to shut down the application cleanly.', error, 'FluoFactory');",
+			));
+
+		// When
+		const runGovernanceGuard = () => enforceDenoHostOwnedLifecycleSource(readWithSignalCloseExit);
+
+		// Then
+		expect(runGovernanceGuard).toThrow(/must not set an exit status/);
+	});
+
+	it('rejects rethrowing a signal-triggered application close failure', () => {
+		// Given
+		const readWithRethrownSignalClose = overrideFile('packages/platform-deno/src/adapter.ts', (content) =>
+			content.replace(
+				"    logger.error('Failed to shut down the application cleanly.', error, 'FluoFactory');",
+				"    logger.error('Failed to shut down the application cleanly.', error, 'FluoFactory');\n    throw error;",
+			));
+
+		// When
+		const runGovernanceGuard = () => enforceDenoHostOwnedLifecycleSource(readWithRethrownSignalClose);
+
+		// Then
+		expect(runGovernanceGuard).toThrow(/must log and swallow signal-triggered application close failures/);
+	});
+
 	it('requires the managed close helper to invoke server shutdown before drain', () => {
 		// Given
 		const readWithoutServerShutdown = overrideFile('packages/platform-deno/src/adapter.ts', (content) =>

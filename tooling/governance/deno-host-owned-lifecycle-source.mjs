@@ -35,6 +35,22 @@ function requireMethod(sourceFile, relativePath, name) {
   return method;
 }
 
+function containsThrowStatement(node) {
+  let found = false;
+
+  const visit = (child) => {
+    if (ts.isThrowStatement(child)) {
+      found = true;
+      return;
+    }
+
+    ts.forEachChild(child, visit);
+  };
+
+  visit(node);
+  return found;
+}
+
 function enforceHandlerSource(readText) {
   const sourceFile = parseDenoSource(fetchHandlerSourcePath, readText(fetchHandlerSourcePath));
   const options = sourceFile.statements.find(
@@ -110,6 +126,19 @@ function enforceManagedAdapterSource(readText) {
   assert(
     capabilities(removal, { receivers: { denoGlobal: 'deno' } }).has('signal removal'),
     'Deno signal cleanup must invoke removeSignalListener(...).',
+  );
+  enforceSignalCloseFailureOwnership(sourceFile);
+}
+
+function enforceSignalCloseFailureOwnership(sourceFile) {
+  const signalClose = requireFunction(sourceFile, adapterSourcePath, 'closeDenoApplicationFromSignal');
+  assert(
+    !collectCallNames(signalClose).has('exit'),
+    'closeDenoApplicationFromSignal(...) must not set an exit status.',
+  );
+  assert(
+    findCalls(signalClose, 'error').length > 0 && !containsThrowStatement(signalClose),
+    'closeDenoApplicationFromSignal(...) must log and swallow signal-triggered application close failures.',
   );
 }
 

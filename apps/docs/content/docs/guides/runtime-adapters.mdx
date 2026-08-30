@@ -244,7 +244,7 @@ This managed path opens the network listener and registers `SIGINT`/`SIGTERM` li
 deno run --allow-net main.ts
 ```
 
-Signal listener registration does not require a separate Deno permission. The adapter does not read environment variables. Add a scoped grant such as `--allow-env=PORT,DATABASE_URL` only when application code reads those keys. If the deployment host owns process signals, set `shutdownSignals: false` in `runDenoApplication(...)`; this selects host-owned lifecycle coordination rather than changing permissions, and the host must coordinate application shutdown.
+Signal listener registration does not require a separate Deno permission. The adapter does not read environment variables. Add a scoped grant such as `--allow-env=PORT,DATABASE_URL` only when application code reads those keys. Signal-triggered application-close failures are logged and swallowed by the helper; it does not set an exit status. Hosts that require failure-status propagation or forced termination must set `shutdownSignals: false` in `runDenoApplication(...)` and coordinate signals and shutdown themselves.
 
 For a host-owned `Deno.serve(...)`, bootstrap without `app.listen()` and create a handler from the public dispatcher.
 
@@ -404,7 +404,7 @@ export class WorkerBindingsModule {}
 | Assuming native route acceleration bypasses fluo semantics | Native matches still hand back to the shared dispatcher. |
 | Using server-backed WebSocket options on fetch-style runtimes | Use runtime-specific WebSocket subpaths and avoid `serverBacked` on Bun/Deno/Workers fetch-style bindings. |
 | Treating raw body as available for multipart requests | Multipart requests do not expose `rawBody`; use multipart APIs and limits. |
-| Letting platform helpers terminate the process directly | Helpers report shutdown failure through logs/exit code; host process owns final termination. |
+| Letting platform helpers terminate the process directly | The host process owns final termination. Do not infer that every runtime reports shutdown failure through an exit code: Deno logs and swallows signal-triggered application-close failures without setting an exit status. |
 | Depending on Node globals in portable app code | Keep runtime-specific behavior inside adapter/bootstrap code. |
 | Existing Express application adoption or post-bootstrap `use(...)` mutation | Let the adapter construct the Express application, pass unavoidable native handlers through construction-time `nativeMiddleware`, and rewrite portable behavior as fluo `Middleware`. |
 
