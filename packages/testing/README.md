@@ -75,10 +75,38 @@ const module = await createTestingModule({ rootModule: AppModule })
   })
   .compile();
 
+let testError: unknown;
+let testFailed = false;
+let disposeError: unknown;
+let disposeFailed = false;
+
 try {
   const service = await module.resolve(UserService);
+} catch (error: unknown) {
+  testError = error;
+  testFailed = true;
 } finally {
-  await module.container.dispose();
+  try {
+    await module.container.dispose();
+  } catch (error: unknown) {
+    disposeFailed = true;
+    disposeError = error;
+  }
+}
+
+if (testFailed) {
+  if (disposeFailed) {
+    throw new AggregateError(
+      [testError, disposeError],
+      'Test and testing module disposal both failed.',
+    );
+  }
+
+  throw testError;
+}
+
+if (disposeFailed) {
+  throw disposeError;
 }
 ```
 

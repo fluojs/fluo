@@ -54,6 +54,10 @@ function createResponse(): FrameworkResponse & { body?: unknown } {
 describe('AuthService', () => {
   it('issues bearer tokens for a subject', async () => {
     const module = await createTestingModule({ rootModule: AppModule }).compile();
+    let testError: unknown;
+    let testFailed = false;
+    let disposeError: unknown;
+    let disposeFailed = false;
 
     try {
       const service = await module.resolve(AuthService);
@@ -61,8 +65,31 @@ describe('AuthService', () => {
       await expect(service.issueToken('ada')).resolves.toMatchObject({
         accessToken: expect.any(String),
       });
+    } catch (error: unknown) {
+      testError = error;
+      testFailed = true;
     } finally {
-      await module.container.dispose();
+      try {
+        await module.container.dispose();
+      } catch (error: unknown) {
+        disposeFailed = true;
+        disposeError = error;
+      }
+    }
+
+    if (testFailed) {
+      if (disposeFailed) {
+        throw new AggregateError(
+          [testError, disposeError],
+          'Test and testing module disposal both failed.',
+        );
+      }
+
+      throw testError;
+    }
+
+    if (disposeFailed) {
+      throw disposeError;
     }
   });
 });
@@ -70,6 +97,10 @@ describe('AuthService', () => {
 describe('BearerJwtStrategy', () => {
   it('requires a Bearer authorization header', async () => {
     const module = await createTestingModule({ rootModule: AppModule }).compile();
+    let testError: unknown;
+    let testFailed = false;
+    let disposeError: unknown;
+    let disposeFailed = false;
 
     try {
       const strategy = await module.resolve(BearerJwtStrategy);
@@ -83,8 +114,31 @@ describe('BearerJwtStrategy', () => {
           response: createResponse(),
         },
       })).rejects.toThrow('Authorization header is required.');
+    } catch (error: unknown) {
+      testError = error;
+      testFailed = true;
     } finally {
-      await module.container.dispose();
+      try {
+        await module.container.dispose();
+      } catch (error: unknown) {
+        disposeFailed = true;
+        disposeError = error;
+      }
+    }
+
+    if (testFailed) {
+      if (disposeFailed) {
+        throw new AggregateError(
+          [testError, disposeError],
+          'Test and testing module disposal both failed.',
+        );
+      }
+
+      throw testError;
+    }
+
+    if (disposeFailed) {
+      throw disposeError;
     }
   });
 });
