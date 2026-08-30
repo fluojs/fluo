@@ -389,7 +389,7 @@ burst는 100 ms 동안 coalesce되고 generation은 serialize되며 output과 �
 포함한 현재 application module graph를 평가합니다. Regeneration failure는 `ERROR <output>: <message>`를
 출력하고 마지막 valid artifact를 보존한 채 다음 change를 기다립니다. Watcher failure는 cleanup 뒤 code
 `1`로 종료됩니다. `SIGINT`와 `SIGTERM`은 watcher를 닫고 signal handler를 제거하며 active generation을
-기다린 뒤 code `0`으로 종료됩니다. Module directory 밖의 파일은 의도적으로 watch boundary 밖에
+child가 publish하기 전에 cancel하고 settle을 기다린 뒤 code `0`으로 종료됩니다. Module directory 밖의 파일은 의도적으로 watch boundary 밖에
 있습니다. Source scanner나 두 번째 route discovery system을 기대하지 말고 command를 다시 실행하거나
 의도한 source root의 module path를 선택하세요.
 

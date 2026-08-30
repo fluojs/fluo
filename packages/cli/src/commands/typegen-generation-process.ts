@@ -14,6 +14,7 @@ type TypegenGenerationRequest = {
 
 /** Listener boundary for one short-lived typegen generation child. */
 export type TypegenGenerationChild = {
+  readonly kill: (signal: NodeJS.Signals) => boolean;
   readonly offError: (listener: (error: Error) => void) => void;
   readonly offExit: (listener: (code: number | null, signal: NodeJS.Signals | null) => void) => void;
   readonly offMessage: (listener: (message: unknown) => void) => void;
@@ -37,6 +38,7 @@ function createGenerationChild(request: TypegenGenerationRequest): TypegenGenera
     stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
   });
   return {
+    kill: (signal) => child.kill(signal),
     offError: (listener) => child.off('error', listener),
     offExit: (listener) => child.off('exit', listener),
     offMessage: (listener) => child.off('message', listener),
@@ -45,6 +47,12 @@ function createGenerationChild(request: TypegenGenerationRequest): TypegenGenera
     onMessage: (listener) => child.on('message', listener),
   };
 }
+
+/** One short-lived typegen generation process controlled by its watch coordinator. */
+export type TypegenGenerationProcess = {
+  cancel(): void;
+  readonly result: Promise<string>;
+};
 
 function describeExit(code: number | null, signal: NodeJS.Signals | null): string {
   if (signal !== null) {
@@ -100,6 +108,26 @@ export function waitForTypegenGenerationChild(child: TypegenGenerationChild): Pr
 }
 
 /**
+ * Starts one default typegen generation child for a coordinator to complete or cancel.
+ *
+ * @param request Consumer directory, application module path, and selected export.
+ * @param spawnGeneration Child-process factory used by the default runtime and lifecycle tests.
+ * @returns A cancellable child process whose result settles only after a clean process exit.
+ */
+export function startTypegenGenerationProcess(
+  request: TypegenGenerationRequest,
+  spawnGeneration: TypegenGenerationSpawner = createGenerationChild,
+): TypegenGenerationProcess {
+  const child = spawnGeneration(request);
+  return {
+    cancel() {
+      child.kill('SIGTERM');
+    },
+    result: waitForTypegenGenerationChild(child),
+  };
+}
+
+/**
  * Runs one default typegen generation in a short-lived child process.
  *
  * @param request Consumer directory, application module path, and selected export.
@@ -110,5 +138,5 @@ export async function runTypegenGenerationProcess(
   request: TypegenGenerationRequest,
   spawnGeneration: TypegenGenerationSpawner = createGenerationChild,
 ): Promise<string> {
-  return waitForTypegenGenerationChild(spawnGeneration(request));
+  return startTypegenGenerationProcess(request, spawnGeneration).result;
 }

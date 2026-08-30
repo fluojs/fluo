@@ -7,7 +7,10 @@ import {
   type TypegenArtifactCheck,
   writeTypegenArtifact,
 } from './typegen-artifact.js';
-import { runTypegenGenerationProcess } from './typegen-generation-process.js';
+import {
+  runTypegenGenerationProcess,
+  startTypegenGenerationProcess,
+} from './typegen-generation-process.js';
 import { parseTypegenArgs, TypegenCommandError } from './typegen-options.js';
 import {
   createTypegenSource,
@@ -93,14 +96,12 @@ export async function runTypegenCommand(
     const generateSource = async () => customModules === undefined
       ? runTypegenGenerationProcess({ cwd, exportName: parsed.exportName, modulePath: parsed.modulePath })
       : createTypegenSource({ cwd, modules: await customModules, parsed });
-    const generateAndWrite = async () => {
-      const source = await generateSource();
-      const action = await writeTypegenArtifact(outputPath, source);
-      stdout.write(`${action} ${outputPath}\n`);
-    };
     if (parsed.watch) {
       return await runTypegenWatch({
-        generate: generateAndWrite,
+        async commit(source) {
+          const action = await writeTypegenArtifact(outputPath, source);
+          stdout.write(`${action} ${outputPath}\n`);
+        },
         modulePath: resolve(cwd, parsed.modulePath),
         onError(error) {
           stderr.write(`ERROR ${outputPath}: ${error instanceof Error ? error.message : String(error)}\n`);
@@ -109,6 +110,37 @@ export async function runTypegenCommand(
           stdout.write(`WATCHING ${watchRoot}\n`);
         },
         outputPath,
+        startGeneration: customModules === undefined
+          ? () => startTypegenGenerationProcess({ cwd, exportName: parsed.exportName, modulePath: parsed.modulePath })
+          : () => {
+            let cancelled = false;
+            let rejectResult: (error: Error) => void = () => undefined;
+            const result = new Promise<string>((resolveResult, reject) => {
+              rejectResult = reject;
+              void generateSource().then(
+                (source) => {
+                  if (!cancelled) {
+                    resolveResult(source);
+                  }
+                },
+                (error: unknown) => {
+                  if (!cancelled) {
+                    reject(error);
+                  }
+                },
+              );
+            });
+            return {
+              cancel() {
+                if (cancelled) {
+                  return;
+                }
+                cancelled = true;
+                rejectResult(new TypegenCommandError('Typegen generation was cancelled.'));
+              },
+              result,
+            };
+          },
       });
     }
 

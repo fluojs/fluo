@@ -390,7 +390,8 @@ output or its temporary files are ignored. Each generation evaluates a current a
 graph, including changed native `.js` and `.mjs` dependencies, before the authoritative bootstrap.
 A regeneration failure prints `ERROR <output>: <message>`, preserves the last valid artifact, and
 waits for a later change. A watcher failure exits with code `1` after cleanup. `SIGINT` and `SIGTERM`
-close the watcher, remove signal handlers, wait for an active generation, and exit with code `0`.
+close the watcher, remove signal handlers, cancel the active owned generation child before it can
+publish, wait for it to settle, and exit with code `0`.
 Files outside the module directory are intentionally outside this watch boundary; run the command
 again or choose a module path at the intended source root instead of expecting source scanning or a
 second route discovery system.

@@ -19,6 +19,12 @@ export type TypegenWatcher = {
   on(event: 'error', listener: (error: Error) => void): TypegenWatcher;
 };
 
+/** One child generation owned by a typegen watch coordinator. */
+export type TypegenWatchGeneration = {
+  cancel(): void;
+  readonly result: Promise<string>;
+};
+
 type TypegenWatchTarget = (
   target: string,
   options: { readonly persistent: boolean; readonly recursive: boolean },
@@ -27,14 +33,15 @@ type TypegenWatchTarget = (
 
 /** Dependencies and callbacks for one bounded typegen watch lifecycle. */
 export type TypegenWatchOptions = {
+  readonly commit: (source: string) => Promise<void>;
   readonly debounceMs?: number;
-  readonly generate: () => Promise<void>;
   readonly modulePath: string;
   readonly onError?: (error: unknown) => void;
   readonly onReady?: (watchRoot: string) => void;
   readonly outputPath: string;
   readonly scheduler?: TypegenWatchScheduler;
   readonly signalTarget?: TypegenWatchSignalTarget;
+  readonly startGeneration: () => TypegenWatchGeneration;
   readonly watchTarget?: TypegenWatchTarget;
 };
 
@@ -89,7 +96,7 @@ export async function runTypegenWatch(options: TypegenWatchOptions): Promise<num
   const signalTarget = options.signalTarget ?? process;
   const watchTarget = options.watchTarget ?? defaultWatchTarget;
   const watchRoot = dirname(options.modulePath);
-  let activeGeneration: Promise<void> | undefined;
+  let activeGeneration: TypegenWatchGeneration | undefined;
   let cleanedUp = false;
   let rerunRequested = false;
   let resolved = false;
@@ -131,6 +138,7 @@ export async function runTypegenWatch(options: TypegenWatchOptions): Promise<num
     if (!stopping) {
       stopping = true;
       cleanup();
+      activeGeneration?.cancel();
     }
     settleIfIdle();
   };
@@ -138,6 +146,32 @@ export async function runTypegenWatch(options: TypegenWatchOptions): Promise<num
   function stopForSignal(): void {
     stop(0);
   }
+
+  const runGeneration = async (reportError: boolean): Promise<void> => {
+    let generation: TypegenWatchGeneration | undefined;
+    try {
+      generation = options.startGeneration();
+      activeGeneration = generation;
+      const source = await generation.result;
+      if (!stopping) {
+        await options.commit(source);
+      }
+    } catch (error: unknown) {
+      if (stopping) {
+        return;
+      }
+      if (reportError) {
+        onError(error);
+        return;
+      }
+      throw error;
+    } finally {
+      if (activeGeneration === generation) {
+        activeGeneration = undefined;
+        settleIfIdle();
+      }
+    }
+  };
 
   const regenerate = () => {
     if (stopping) {
@@ -148,19 +182,12 @@ export async function runTypegenWatch(options: TypegenWatchOptions): Promise<num
       return;
     }
 
-    activeGeneration = (async () => {
+    void (async () => {
       do {
         rerunRequested = false;
-        try {
-          await options.generate();
-        } catch (error: unknown) {
-          onError(error);
-        }
+        await runGeneration(true);
       } while (rerunRequested && !stopping);
-    })().finally(() => {
-      activeGeneration = undefined;
-      settleIfIdle();
-    });
+    })();
   };
 
   const scheduleRegeneration = (changedPath: string) => {
@@ -201,16 +228,12 @@ export async function runTypegenWatch(options: TypegenWatchOptions): Promise<num
   try {
     signalTarget.once('SIGINT', stopForSignal);
     signalTarget.once('SIGTERM', stopForSignal);
-    activeGeneration = (async () => {
+    await (async () => {
       do {
         rerunRequested = false;
-        await options.generate();
+        await runGeneration(false);
       } while (rerunRequested && !stopping);
-    })().finally(() => {
-      activeGeneration = undefined;
-      settleIfIdle();
-    });
-    await activeGeneration;
+    })();
     startupComplete = true;
     if (stopping) {
       return result;

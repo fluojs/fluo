@@ -86,14 +86,18 @@ describe('fluo typegen watch lifecycle', () => {
         });
       }
       active -= 1;
+      return `source ${String(generationCount)}`;
     });
     const runPromise = runTypegenWatch({
-      generate,
+      commit: async () => undefined,
       modulePath: '/project/src/app.ts',
       onReady,
       outputPath: '/project/src/generated/react-pages.ts',
       scheduler,
       signalTarget,
+      startGeneration() {
+        return { cancel: () => undefined, result: generate() };
+      },
       watchTarget,
     });
     await vi.waitFor(() => expect(onReady).toHaveBeenCalledOnce());
@@ -140,16 +144,21 @@ describe('fluo typegen watch lifecycle', () => {
       if (generationCount === 2) {
         throw new Error('application bootstrap failed');
       }
-      await writeTypegenArtifact(outputPath, generationCount === 1 ? 'valid one\n' : 'valid two\n');
+      return generationCount === 1 ? 'valid one\n' : 'valid two\n';
     });
     const runPromise = runTypegenWatch({
-      generate,
+      commit: async (source) => {
+        await writeTypegenArtifact(outputPath, source);
+      },
       modulePath: join(cwd, 'src', 'app.ts'),
       onError,
       onReady,
       outputPath,
       scheduler,
       signalTarget,
+      startGeneration() {
+        return { cancel: () => undefined, result: generate() };
+      },
       watchTarget,
     });
     await vi.waitFor(() => expect(onReady).toHaveBeenCalledOnce());
@@ -185,15 +194,20 @@ describe('fluo typegen watch lifecycle', () => {
     });
     const onReady = vi.fn();
     const generate = vi.fn(async () => {
-      await writeTypegenArtifact(outputPath, 'stable artifact\n');
+      return 'stable artifact\n';
     });
     const runPromise = runTypegenWatch({
-      generate,
+      commit: async (source) => {
+        await writeTypegenArtifact(outputPath, source);
+      },
       modulePath: join(cwd, 'src', 'app.ts'),
       onReady,
       outputPath,
       scheduler,
       signalTarget,
+      startGeneration() {
+        return { cancel: () => undefined, result: generate() };
+      },
       watchTarget,
     });
     await vi.waitFor(() => expect(onReady).toHaveBeenCalledOnce());
