@@ -1,9 +1,9 @@
 import type { Constructor, InjectionToken, MaybePromise, MetadataPropertyKey, MetadataSource, Token } from '../types.js';
 
 /**
- * Defines the metadata collection type.
+ * Defines the read-only metadata collection type.
  */
-export type MetadataCollection<T = unknown> = T[];
+export type MetadataCollection<T = unknown> = readonly T[];
 
 /**
  * Describes the module metadata contract.
