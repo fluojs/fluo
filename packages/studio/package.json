@@ -24,6 +24,11 @@
     "access": "public"
   },
   "type": "module",
+  "fluo": {
+    "declarationBuildDevDependencies": [
+      "@fluojs/runtime"
+    ]
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

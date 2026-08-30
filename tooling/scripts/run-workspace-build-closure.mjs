@@ -171,7 +171,13 @@ function collectWorkspaceManifests(rootDirectory) {
   return manifests;
 }
 
-function collectLocalDependencies(manifest, workspaceNames) {
+function isWorkspaceDependency(dependencyName, dependencyVersion, manifestByName) {
+  return manifestByName.has(dependencyName)
+    && typeof dependencyVersion === 'string'
+    && (dependencyVersion.startsWith('workspace:') || dependencyVersion === 'catalog:');
+}
+
+function collectLocalDependencies(manifest, manifestByName, includeDeclarationDevDependencies) {
   const sections = [manifest.dependencies, manifest.peerDependencies, manifest.optionalDependencies];
 
   const dependencies = new Set();
@@ -181,13 +187,21 @@ function collectLocalDependencies(manifest, workspaceNames) {
     }
 
     for (const [dependencyName, dependencyVersion] of Object.entries(section)) {
-      if (!workspaceNames.has(dependencyName)) {
-        continue;
+      if (isWorkspaceDependency(dependencyName, dependencyVersion, manifestByName)) {
+        dependencies.add(dependencyName);
       }
+    }
+  }
 
+  if (includeDeclarationDevDependencies) {
+    const declarationBuildDevDependencies = manifest.fluo?.declarationBuildDevDependencies;
+    for (const dependencyName of Array.isArray(declarationBuildDevDependencies) ? declarationBuildDevDependencies : []) {
+      const dependencyVersion = manifest.devDependencies?.[dependencyName];
+      const dependency = manifestByName.get(dependencyName);
       if (
-        typeof dependencyVersion === 'string' &&
-        (dependencyVersion.startsWith('workspace:') || dependencyVersion === 'catalog:')
+        dependency
+        && typeof dependency.manifest.types === 'string'
+        && isWorkspaceDependency(dependencyName, dependencyVersion, manifestByName)
       ) {
         dependencies.add(dependencyName);
       }
@@ -200,7 +214,6 @@ function collectLocalDependencies(manifest, workspaceNames) {
 export function resolveWorkspaceBuildOrder(targetPackageName, rootDirectory) {
   const workspaceManifests = collectWorkspaceManifests(rootDirectory);
   const manifestByName = new Map(workspaceManifests.map((entry) => [entry.name, entry]));
-  const workspaceNames = new Set(workspaceManifests.map((entry) => entry.name));
 
   if (!manifestByName.has(targetPackageName)) {
     throw new Error(`Could not find workspace package ${targetPackageName}.`);
@@ -210,7 +223,7 @@ export function resolveWorkspaceBuildOrder(targetPackageName, rootDirectory) {
   const visited = new Set();
   const order = [];
 
-  function visit(packageName) {
+  function visit(packageName, includeDeclarationDevDependencies = false) {
     if (visited.has(packageName)) {
       return;
     }
@@ -225,7 +238,7 @@ export function resolveWorkspaceBuildOrder(targetPackageName, rootDirectory) {
     }
 
     visiting.add(packageName);
-    for (const dependencyName of collectLocalDependencies(entry.manifest, workspaceNames)) {
+    for (const dependencyName of collectLocalDependencies(entry.manifest, manifestByName, includeDeclarationDevDependencies)) {
       visit(dependencyName);
     }
     visiting.delete(packageName);
@@ -233,7 +246,7 @@ export function resolveWorkspaceBuildOrder(targetPackageName, rootDirectory) {
     order.push(packageName);
   }
 
-  visit(targetPackageName);
+  visit(targetPackageName, true);
   return order;
 }
 
