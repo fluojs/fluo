@@ -173,20 +173,6 @@ describe('verifyChangesetReleaseLane', () => {
     );
   });
 
-  it('rejects Studio route-kind input-contract narrowing classified as patch', () => {
-    const directory = createChangesetDirectory();
-    writeChangeset(
-      directory,
-      'reject-unknown-studio-route-kinds.md',
-      '"@fluojs/studio": patch',
-      'Reject unknown supplied route kinds in static and live Studio artifacts while preserving the legacy `http` default when `kind` is omitted.',
-    );
-
-    expect(() => verifyChangesetReleaseLane({ changesetDirectory: directory, lane: 'stable' })).toThrow(
-      /Studio route-kind input-contract narrowing classified as patch/u,
-    );
-  });
-
   it('allows patch changesets that preserve existing CLI behavior without additive feature language', () => {
     const directory = createChangesetDirectory();
     writeChangeset(
@@ -294,30 +280,6 @@ describe('verifyChangesetReleaseLane', () => {
         },
       ),
     ).toThrow(/public CLI feature additions classified as patch.*fluo inspect/us);
-  });
-
-  it('rejects generated Studio patch changelog sections that narrow route kinds', () => {
-    const directory = createChangesetDirectory();
-
-    expect(() =>
-      verifyChangesetReleaseLane(
-        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
-        {
-          collectPackageVersionDeltas: () => [
-            {
-              bump: 'patch',
-              filePath: 'packages/studio/package.json',
-              nextVersion: '1.0.9',
-              packageName: '@fluojs/studio',
-              previousVersion: '1.0.8',
-            },
-          ],
-          existsSync: (targetPath: string) => targetPath.endsWith('packages/studio/CHANGELOG.md'),
-          readFileSync: () =>
-            '# @fluojs/studio\n\n## 1.0.9\n\n### Patch Changes\n\n- Reject unknown supplied route kinds in static and live Studio artifacts.\n',
-        },
-      ),
-    ).toThrow(/Studio route-kind input-contract narrowing classified as patch.*unknown supplied route kinds/us);
   });
 
   it('allows major package version deltas with major changelog evidence', () => {

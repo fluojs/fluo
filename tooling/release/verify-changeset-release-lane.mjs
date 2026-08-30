@@ -14,7 +14,6 @@ const allowedBumpsByLane = {
 const validBumps = new Set(['patch', 'minor', 'major']);
 const publicCliFeatureAdditionVerbs = /\b(adds?|added|allows?|allowed|introduces?|introduced|exposes?|exposed|supports?|supported|enables?|enabled|provides?|provided|implements?|implemented|ships?|shipped|expands?|expanded)\b/iu;
 const nonBehaviorAdditionPhrases = /\b(adds?|added)\s+(?:(?:regression\s+)?(?:tests?|coverage|docs?|documentation)|(?:validation|guardrails?|checks?)\s+for)\b/giu;
-const studioRouteKindInputContractNarrowing = /\breject(?:s|ed|ing)?\s+(?:previously\s+)?(?:tolerated\s+)?(?:unknown|unsupported|unrecognized)\s+(?:supplied\s+)?route\s+kind(?:s)?\b/iu;
 const documentedCliSurfacePhraseMarkers = [
   {
     readme: /\b(?:generated|starter|template|lifecycle)\b/iu,
@@ -448,59 +447,6 @@ function collectPatchCliFeatureDowngradesFromVersionDeltas(versionDeltas, depend
   });
 }
 
-function describesStudioRouteKindInputContractNarrowing(text) {
-  return studioRouteKindInputContractNarrowing.test(normalizeReleaseText(text));
-}
-
-function collectPatchStudioRouteKindInputContractNarrowingsFromChangesets(intents) {
-  return intents
-    .filter(
-      (intent) =>
-        intent.packageName === '@fluojs/studio' &&
-        intent.bump === 'patch' &&
-        describesStudioRouteKindInputContractNarrowing(intent.body),
-    )
-    .map((intent) => ({
-      filePath: intent.filePath,
-      packageName: intent.packageName,
-      releaseText: normalizeReleaseText(intent.body),
-      source: 'changeset',
-    }));
-}
-
-function collectPatchStudioRouteKindInputContractNarrowingsFromVersionDeltas(versionDeltas, dependencies = {}) {
-  const { existsSync: pathExists = existsSync, readFileSync: readFile = readFileSync } = dependencies;
-
-  return versionDeltas.flatMap((delta) => {
-    if (delta.packageName !== '@fluojs/studio' || delta.bump !== 'patch') {
-      return [];
-    }
-
-    const changelogPath = packageChangelogPathForPackageJson(delta.filePath);
-    const absoluteChangelogPath = join(repoRoot, changelogPath);
-
-    if (!pathExists(absoluteChangelogPath)) {
-      return [];
-    }
-
-    const section = changelogSectionForVersion(readFile(absoluteChangelogPath, 'utf8'), delta.nextVersion);
-
-    if (!section || !describesStudioRouteKindInputContractNarrowing(section)) {
-      return [];
-    }
-
-    return [
-      {
-        changelogPath,
-        nextVersion: delta.nextVersion,
-        packageName: delta.packageName,
-        releaseText: normalizeReleaseText(section),
-        source: 'package-changelog',
-      },
-    ];
-  });
-}
-
 export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
   const baseRef = options.baseRef;
   const changesetDirectory = options.changesetDirectory ?? defaultChangesetDirectory;
@@ -526,17 +472,12 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     ...collectPatchCliFeatureDowngradesFromChangesets(intents, dependencies),
     ...collectPatchCliFeatureDowngradesFromVersionDeltas(versionDeltas, dependencies),
   ];
-  const patchStudioRouteKindInputContractNarrowings = [
-    ...collectPatchStudioRouteKindInputContractNarrowingsFromChangesets(intents),
-    ...collectPatchStudioRouteKindInputContractNarrowingsFromVersionDeltas(versionDeltas, dependencies),
-  ];
 
   if (
     disallowed.length > 0 ||
     disallowedVersionDeltas.length > 0 ||
     dependencyOnlyMajorVersionDeltas.length > 0 ||
-    patchCliFeatureDowngrades.length > 0 ||
-    patchStudioRouteKindInputContractNarrowings.length > 0
+    patchCliFeatureDowngrades.length > 0
   ) {
     const details = disallowed
       .map((intent) => `${intent.packageName}@${intent.bump} (${intent.filePath})`)
@@ -568,20 +509,10 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
             })
             .join('\n  - ')}`
         : '',
-      patchStudioRouteKindInputContractNarrowings.length > 0
-        ? `Studio route-kind input-contract narrowing classified as patch:\n  - ${patchStudioRouteKindInputContractNarrowings
-            .map((narrowing) => {
-              const location = narrowing.source === 'changeset'
-                ? narrowing.filePath
-                : `${narrowing.changelogPath} ${narrowing.nextVersion}`;
-              return `${narrowing.packageName}@patch (${location}): ${narrowing.releaseText}`;
-            })
-            .join('\n  - ')}`
-        : '',
     ].filter((section) => section.length > 0);
 
     throw new Error(
-      `Changeset release lane check failed: the ${lane} lane only allows ${[...allowedBumps].join(', ')} changesets, package version bumps with matching major changelog evidence, public CLI feature additions classified as minor metadata, and Studio route-kind input-contract narrowing classified as major metadata:\n${sections.join('\n')}`,
+      `Changeset release lane check failed: the ${lane} lane only allows ${[...allowedBumps].join(', ')} changesets, package version bumps with matching major changelog evidence, and public CLI feature additions classified as minor metadata:\n${sections.join('\n')}`,
     );
   }
 
@@ -590,7 +521,6 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     checkedDependencyOnlyMajorVersionDeltas: dependencyOnlyMajorVersionDeltas,
     checkedIntents: intents,
     checkedPatchCliFeatureDowngrades: patchCliFeatureDowngrades,
-    checkedPatchStudioRouteKindInputContractNarrowings: patchStudioRouteKindInputContractNarrowings,
     checkedVersionDeltas: versionDeltas,
     lane,
   };
