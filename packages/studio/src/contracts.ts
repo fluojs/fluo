@@ -417,12 +417,16 @@ function isStudioRequestStatus(value: unknown): value is StudioRequestStatus {
     || value === 'finished';
 }
 
+const bootstrapTimingPhaseNames = {
+  bootstrap_module: true,
+  register_runtime_tokens: true,
+  resolve_lifecycle_instances: true,
+  run_bootstrap_lifecycle: true,
+  create_dispatcher: true,
+} satisfies Record<BootstrapTimingPhase['name'], true>;
+
 function isBootstrapTimingPhaseName(value: unknown): value is BootstrapTimingPhase['name'] {
-  return value === 'bootstrap_module'
-    || value === 'register_runtime_tokens'
-    || value === 'resolve_lifecycle_instances'
-    || value === 'run_bootstrap_lifecycle'
-    || value === 'create_dispatcher';
+  return typeof value === 'string' && Object.hasOwn(bootstrapTimingPhaseNames, value);
 }
 
 function validateStudioGraphNode(value: unknown): StudioGraphNode {
