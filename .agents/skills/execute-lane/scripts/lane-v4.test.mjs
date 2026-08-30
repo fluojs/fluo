@@ -7,7 +7,7 @@ import {
 	decideNext,
 	summarizeTransitions,
 } from './lane-v4.mjs';
-import { isChangesetFile, isConsumerVisibleFile } from './lane-v4-cli.mjs';
+import { isChangesetFile, isConsumerVisibleFile, laneV2ToInitSpecs } from './lane-v4-cli.mjs';
 
 const makeLane = (overrides = {}) => ({
 	issue: 3096,
@@ -268,4 +268,52 @@ test('C3b: changeset files are recognized, README is not', () => {
 	assert.equal(isChangesetFile('.changeset/bright-suns-juggle.md'), true);
 	assert.equal(isChangesetFile('.changeset/README.md'), false);
 	assert.equal(isChangesetFile('packages/studio/CHANGELOG.md'), false);
+});
+
+// --- C4: `$create-lane` v2 ledger intake ---
+// v4 consumes only the issue set and dependency edges from a v2 ledger; the rest
+// of v2 describes v1 DAG/authority machinery that v4 does not have.
+
+test('C4: v2 ledger translates to init specs with dependency edges', () => {
+	const { laneId, baseBranch, specs } = laneV2ToInitSpecs({
+		version: 2,
+		lane_id: 'lane-3134-3268-3333-studio-runtime',
+		base_branch: 'main',
+		confirmed_issues: [3134, 3268, 3333],
+		dependency_graph: { 3134: [3268] },
+	});
+	assert.equal(laneId, 'lane-3134-3268-3333-studio-runtime');
+	assert.equal(baseBranch, 'main');
+	assert.deepEqual(specs, [
+		{ n: 3134, deps: [3268] },
+		{ n: 3268, deps: [] },
+		{ n: 3333, deps: [] },
+	]);
+});
+
+test('C4: v2 ledger without a dependency graph yields independent issues', () => {
+	const { specs } = laneV2ToInitSpecs({
+		version: 2,
+		lane_id: 'lane-x',
+		confirmed_issues: [10, 20],
+	});
+	assert.deepEqual(specs, [{ n: 10, deps: [] }, { n: 20, deps: [] }]);
+});
+
+test('C4: non-v2 input is rejected', () => {
+	assert.throws(() => laneV2ToInitSpecs({ version: 4, confirmed_issues: [1] }), /version.*2/);
+	assert.throws(() => laneV2ToInitSpecs(null), /version.*2/);
+});
+
+test('C4: empty or malformed confirmed_issues is rejected', () => {
+	assert.throws(() => laneV2ToInitSpecs({ version: 2, confirmed_issues: [] }), /confirmed_issues/);
+	assert.throws(() => laneV2ToInitSpecs({ version: 2, confirmed_issues: [0] }), /confirmed_issues/);
+	assert.throws(() => laneV2ToInitSpecs({ version: 2 }), /confirmed_issues/);
+});
+
+test('C4: a dependency outside the lane is rejected, not silently dropped', () => {
+	assert.throws(
+		() => laneV2ToInitSpecs({ version: 2, lane_id: 'l', confirmed_issues: [1, 2], dependency_graph: { 1: [99] } }),
+		/dependency 99 of issue 1 is not in confirmed_issues/,
+	);
 });

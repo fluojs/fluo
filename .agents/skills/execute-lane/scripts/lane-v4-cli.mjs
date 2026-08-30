@@ -75,6 +75,36 @@ export const isConsumerVisibleFile = (file) => {
 
 export const isChangesetFile = (file) => /^\.changeset\/.+\.md$/.test(file) && !file.endsWith('README.md');
 
+// `$create-lane` emits a canonical lane v2 ledger at `.omo/lanes/<lane-id>.json`.
+// v4 consumes only the issue set and the dependency edges from it; every other v2
+// field describes v1's DAG/authority machinery, which v4 does not have. Exported
+// so the translation is testable rather than buried in argument parsing.
+export const laneV2ToInitSpecs = (laneV2) => {
+	if (laneV2?.version !== 2) {
+		throw new TypeError('lane v2 intake requires "version": 2');
+	}
+	const issues = laneV2.confirmed_issues;
+	if (!Array.isArray(issues) || issues.length === 0 || issues.some((n) => !Number.isSafeInteger(n) || n < 1)) {
+		throw new TypeError('lane v2 confirmed_issues must be a non-empty array of positive integers');
+	}
+	const members = new Set(issues);
+	const graph = laneV2.dependency_graph ?? {};
+	const specs = issues.map((n) => {
+		const deps = (graph[String(n)] ?? []).map(Number);
+		for (const d of deps) {
+			if (!members.has(d)) {
+				throw new TypeError(`lane v2 dependency ${d} of issue ${n} is not in confirmed_issues`);
+			}
+		}
+		return { n, deps };
+	});
+	return {
+		laneId: laneV2.lane_id,
+		baseBranch: laneV2.base_branch ?? 'main',
+		specs,
+	};
+};
+
 export const observeIssue = (root, lane, issue) => {
 	const entry = issueEntry(lane, issue);
 	const branch = branchFor(entry);
@@ -153,15 +183,27 @@ const main = () => {
 	const root = resolve(arg(args, '--root', '.'));
 
 	if (command === 'init') {
-		const laneId = arg(args, '--lane-id');
-		// --issue accepts `N` or `N:dep1,dep2` (deps must be lane members).
-		const specs = [];
-		for (let i = 0; i < args.length; i += 1) {
-			if (args[i] !== '--issue') continue;
-			const [numRaw, depsRaw] = String(args[i + 1]).split(':');
-			const n = Number(numRaw);
-			const deps = depsRaw ? depsRaw.split(',').map(Number) : [];
-			specs.push({ n, deps });
+		// Either translate a `$create-lane` v2 ledger, or take explicit --issue specs.
+		const fromLaneV2 = args.includes('--from-lane-v2') ? arg(args, '--from-lane-v2') : null;
+		let laneId;
+		let baseBranch = 'main';
+		let specs;
+		if (fromLaneV2 !== null) {
+			const translated = laneV2ToInitSpecs(JSON.parse(readFileSync(resolve(root, fromLaneV2), 'utf8')));
+			laneId = args.includes('--lane-id') ? arg(args, '--lane-id') : translated.laneId;
+			baseBranch = translated.baseBranch;
+			specs = translated.specs;
+		} else {
+			laneId = arg(args, '--lane-id');
+			// --issue accepts `N` or `N:dep1,dep2` (deps must be lane members).
+			specs = [];
+			for (let i = 0; i < args.length; i += 1) {
+				if (args[i] !== '--issue') continue;
+				const [numRaw, depsRaw] = String(args[i + 1]).split(':');
+				const n = Number(numRaw);
+				const deps = depsRaw ? depsRaw.split(',').map(Number) : [];
+				specs.push({ n, deps });
+			}
 		}
 		const all = specs.map((s) => s.n);
 		if (
@@ -176,7 +218,7 @@ const main = () => {
 		const lane = {
 			version: 4,
 			lane_id: laneId,
-			base_branch: 'main',
+			base_branch: baseBranch,
 			issues: Object.fromEntries(
 				specs.map(({ n, deps }) => [String(n), {
 					issue: n,
