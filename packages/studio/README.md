@@ -128,7 +128,7 @@ Studio is primarily a CLI-launched sidecar and browser viewer, but the published
 | `isStudioLiveEvent(value)` | Runtime-safe type guard for checking sidecar/SSE envelopes before parsing or dispatch. |
 | `StudioLiveSnapshot` | Live graph/routes/requests/timing/diagnostics snapshot consumed by the React UI. |
 | `StudioLiveEvent` | Versioned live event envelope for `snapshot`, `request`, `timing`, `diagnostic`, `restart`, `disconnect`, and `heartbeat`. |
-| `StudioPayload` / `StudioInspectionSnapshot` / `StudioReportArtifact` / `StudioReportSummary` | Static/report compatibility contracts, including optional compiled route diagnostics. |
+| `StudioPayload` / `StudioInspectionSnapshot` / `StudioReportArtifact` / `StudioReportSummary` | Static/report compatibility contracts, including optional compiled route diagnostics; Studio renders report artifacts with their canonical seven-field summary for CI triage and support handoff. |
 
 ### Root type exports
 

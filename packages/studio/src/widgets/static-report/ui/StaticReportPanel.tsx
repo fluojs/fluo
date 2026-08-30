@@ -3,7 +3,12 @@ import type { PlatformSnapshot } from '@fluojs/runtime';
 import { renderMermaid } from '../../../contracts.js';
 import type { StudioAction } from '../../../entities/studio/actions.js';
 import type { StudioDashboardState } from '../../../entities/studio/model.js';
-import { selectOriginalStaticSnapshot, selectSelectedStaticComponent, selectStaticSnapshot } from '../../../entities/studio/model.js';
+import {
+  selectOriginalStaticSnapshot,
+  selectSelectedStaticComponent,
+  selectStaticReportSummary,
+  selectStaticSnapshot,
+} from '../../../entities/studio/model.js';
 import { EmptyState } from '../../../shared/ui/EmptyState.js';
 import { inspectComponentConnections, renderDiagnostics, renderGraphSvg } from '../../../shared/lib/viewer-rendering.js';
 
@@ -12,9 +17,26 @@ interface StaticReportPanelProps {
   state: StudioDashboardState;
 }
 
-function renderSnapshotSummary(snapshot: ReturnType<typeof selectStaticSnapshot>) {
+function renderSnapshotSummary(
+  snapshot: ReturnType<typeof selectStaticSnapshot>,
+  reportSummary: ReturnType<typeof selectStaticReportSummary>,
+) {
   if (!snapshot) {
     return <p className="muted">No platform snapshot loaded.</p>;
+  }
+
+  if (reportSummary) {
+    return (
+      <div className="chips">
+        <span className="chip">report components: {reportSummary.componentCount}</span>
+        <span className="chip">report diagnostics: {reportSummary.diagnosticCount}</span>
+        <span className="chip">report errors: {reportSummary.errorCount}</span>
+        <span className="chip">report warnings: {reportSummary.warningCount}</span>
+        <span className="chip">report health: {reportSummary.healthStatus}</span>
+        <span className="chip">report readiness: {reportSummary.readinessStatus}</span>
+        <span className="chip">report timing: {reportSummary.timingTotalMs.toFixed(3)}ms</span>
+      </div>
+    );
   }
 
   const ready = snapshot.components.filter((component) => component.readiness.status === 'ready').length;
@@ -132,6 +154,7 @@ function ConnectionExplorer({ dispatch, selectedId, state }: StaticReportPanelPr
 export function StaticReportPanel({ dispatch, state }: StaticReportPanelProps) {
   const snapshot = selectStaticSnapshot(state);
   const originalSnapshot = selectOriginalStaticSnapshot(state);
+  const reportSummary = selectStaticReportSummary(state);
   const selected = selectSelectedStaticComponent(state);
   const mermaidText = snapshot ? renderMermaid(snapshot) : '';
   const graphSvg = snapshot && snapshot.components.length > 0
@@ -163,10 +186,10 @@ export function StaticReportPanel({ dispatch, state }: StaticReportPanelProps) {
         <div className="section-title-row">
           <div>
             <p className="eyebrow">Static/report compatibility</p>
-            <h2>Snapshot summary</h2>
+            <h2>{reportSummary ? 'Canonical report summary' : 'Snapshot summary'}</h2>
           </div>
         </div>
-        {renderSnapshotSummary(snapshot)}
+        {renderSnapshotSummary(snapshot, reportSummary)}
       </section>
 
       <section className="card graph-card">

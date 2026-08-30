@@ -128,7 +128,7 @@ Studio는 주로 CLI가 실행하는 sidecar와 browser viewer이지만, 배포�
 | `isStudioLiveEvent(value)` | parsing 또는 dispatch 전에 sidecar/SSE envelope를 확인하는 runtime-safe type guard입니다. |
 | `StudioLiveSnapshot` | React UI가 소비하는 live graph/routes/requests/timing/diagnostics snapshot입니다. |
 | `StudioLiveEvent` | `snapshot`, `request`, `timing`, `diagnostic`, `restart`, `disconnect`, `heartbeat`를 위한 versioned live event envelope입니다. |
-| `StudioPayload` / `StudioInspectionSnapshot` / `StudioReportArtifact` / `StudioReportSummary` | Optional compiled route diagnostics를 포함하는 static/report 호환성 계약입니다. |
+| `StudioPayload` / `StudioInspectionSnapshot` / `StudioReportArtifact` / `StudioReportSummary` | Optional compiled route diagnostics를 포함하는 static/report 호환성 계약이며, Studio는 CI triage와 support handoff를 위해 report artifact의 canonical seven-field summary를 렌더링합니다. |
 
 ### Root type export
 

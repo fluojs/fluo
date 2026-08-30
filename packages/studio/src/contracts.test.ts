@@ -1043,7 +1043,14 @@ describe('parseStudioPayload', () => {
     });
 
     expect(document.body.textContent).toContain('QUEUE_DEPENDENCY_NOT_READY');
-    expect(document.body.textContent).toContain('components: 2');
+    expect(document.body.textContent).toContain('Canonical report summary');
+    expect(document.body.textContent).toContain('report components: 2');
+    expect(document.body.textContent).toContain('report diagnostics: 1');
+    expect(document.body.textContent).toContain('report errors: 0');
+    expect(document.body.textContent).toContain('report warnings: 1');
+    expect(document.body.textContent).toContain('report health: degraded');
+    expect(document.body.textContent).toContain('report readiness: degraded');
+    expect(document.body.textContent).toContain('report timing: 4.560ms');
     expect(document.body.textContent).toContain('Static/report timing');
     expect(document.body.textContent).toContain('4.560ms');
   });
