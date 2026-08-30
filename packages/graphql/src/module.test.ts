@@ -219,6 +219,15 @@ async function readGraphqlWebSocketMessages(socket: WebSocket, count: number): P
   });
 }
 
+async function awaitGraphqlLifecycle<T>(signal: Promise<T>, description: string): Promise<T> {
+  const timeout = AbortSignal.timeout(250);
+  const timedOut = new Promise<never>((_, reject) => {
+    timeout.addEventListener('abort', () => reject(new Error(`Timed out waiting for ${description}.`)), { once: true });
+  });
+
+  return await Promise.race([signal, timedOut]);
+}
+
 @Inject()
 class ResolverState {
   mutableValue = 'init';
@@ -1787,7 +1796,6 @@ describe('@fluojs/graphql — provider scopes', () => {
 
       @Query()
       async requestId(): Promise<string> {
-        await new Promise((resolve) => setTimeout(resolve, 25));
         return this.identity.id;
       }
     }
@@ -1918,7 +1926,6 @@ describe('@fluojs/graphql — provider scopes', () => {
 
       @Subscription()
       async *requestIds(): AsyncGenerator<string, void, void> {
-        await new Promise((resolve) => setTimeout(resolve, 10));
         yield this.identity.id;
       }
     }
@@ -2180,10 +2187,7 @@ describe('@fluojs/graphql — provider scopes', () => {
       },
     ]);
 
-    await expect(Promise.race([
-      destroyed,
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Timed out waiting for websocket operation cleanup.')), 250)),
-    ])).resolves.toBe('subscription-probe-1784');
+    await expect(awaitGraphqlLifecycle(destroyed, 'websocket operation cleanup')).resolves.toBe('subscription-probe-1784');
     expect(destroyedIds).toEqual(['subscription-probe-1784']);
 
     socket.close();
@@ -2263,10 +2267,7 @@ describe('@fluojs/graphql — provider scopes', () => {
     const socketClosed = onceWebSocketClosed(socket);
     await app.close();
 
-    await expect(Promise.race([
-      destroyed,
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Timed out waiting for shutdown cleanup.')), 250)),
-    ])).resolves.toBe('live-subscription-probe-1967');
+    await expect(awaitGraphqlLifecycle(destroyed, 'shutdown cleanup')).resolves.toBe('live-subscription-probe-1967');
     await expect(socketClosed).resolves.toBeUndefined();
     expect(destroyedIds).toEqual(['live-subscription-probe-1967']);
   });

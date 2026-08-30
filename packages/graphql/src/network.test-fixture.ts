@@ -8,6 +8,7 @@ import { afterEach } from 'vitest';
 
 type GraphqlTestApplication = Awaited<ReturnType<typeof bootstrapRuntimeNodeApplication>>;
 type GraphqlTestApplications = Map<number, GraphqlTestApplication | undefined>;
+type Closeable = { close: () => Promise<void> };
 
 export function createGraphqlNetworkFixture(): {
   readonly bootstrapNodeApplication: (
@@ -54,9 +55,11 @@ export function createGraphqlNetworkFixture(): {
   };
 }
 
-export async function closeGraphqlTestApplications(applications: GraphqlTestApplications): Promise<void> {
+export async function closeGraphqlTestApplications<T extends Closeable>(
+  applications: Map<number, T | undefined>,
+): Promise<void> {
   const owners = Array.from(applications.entries()).filter(
-    (entry): entry is [number, GraphqlTestApplication] => entry[1] !== undefined,
+    (entry): entry is [number, T] => entry[1] !== undefined,
   );
   const results = await Promise.allSettled(owners.map(async ([, app]) => await app.close()));
   const errors: unknown[] = [];
