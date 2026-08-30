@@ -81,7 +81,6 @@
   },
   "devDependencies": {
     "@fluojs/serialization": "workspace:^",
-    "@fluojs/testing": "workspace:^",
     "vitest": "^3.2.4"
   }
 }
