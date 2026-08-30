@@ -130,11 +130,11 @@ The rest of this chapter traces how this one line expands into real cache behavi
 ## 5.2 Singleton caching and the root container baseline
 Singleton is the default lifetime, but Fluo's singleton behavior is more precise than simply "one object forever." In practice, it is closer to "one promise per token in the root singleton cache unless there is a documented override path."
 
-The cache fields are declared in `path:packages/di/src/container.ts:287-313`. The key field for single providers is `singletonCache: Map<Token, Promise<unknown>>`. Multi providers have a separate `multiSingletonCache: Map<NormalizedProvider, Promise<unknown>>`.
+The cache fields and construction boundary are declared in `path:packages/di/src/container.ts:292-359`. The key field for single providers is `singletonCache: Map<Token, Promise<unknown>>`. Multi providers have a separate `multiSingletonCache: Map<NormalizedProvider, Promise<unknown>>`.
 
 Looking at the container fields immediately shows why singleton, request, and multi providers use different cache maps.
 
-`path:packages/di/src/container.ts:287-313`
+`path:packages/di/src/container.ts:292-359`
 ```typescript
 private readonly registrations = new Map<Token, NormalizedProvider>();
 private readonly multiRegistrations = new Map<Token, NormalizedProvider[]>();
@@ -156,24 +156,38 @@ private disposed = false;
 private trackedByParent = false;
 private graphRevision = 0;
 
-constructor(
-  private readonly parent?: Container,
-  private readonly requestScopeEnabled = false,
-  singletonCache?: Map<Token, Promise<unknown>>,
-) {
-  this.singletonCache = singletonCache ?? new Map<Token, Promise<unknown>>();
+private readonly parent: Container | undefined;
+private readonly requestScopeEnabled: boolean;
+
+constructor(...construction: never[]) {
+  if (construction.length > 0) {
+    throw new ContainerResolutionError(
+      'Container child-scope construction is package-owned and cannot be invoked directly.',
+      {
+        hint: 'Construct root containers with new Container() and create child scopes with container.createRequestScope().',
+      },
+    );
+  }
+
+  const childScope = Container.#childScopeConstruction;
+
+  this.parent = childScope?.parent;
+  this.requestScopeEnabled = childScope?.requestScopeEnabled ?? false;
+  this.singletonCache = childScope?.singletonCache ?? new Map<Token, Promise<unknown>>();
 }
 ```
+
+The public construction surface is deliberately narrow. `new Container()` is the only supported caller-facing form, and the `...construction: never[]` signature leaves no argument type a consumer can satisfy. Parent, request-scope, and singleton-cache wiring travel through a package-private construction path, so a structural cast against the emitted declaration cannot forge one.
 
 Because of this structure, the singleton cache is keyed by token, while the multi singleton cache is keyed by each normalized provider. The request caches repeat the same separation, but they are owned by the child container.
 
 The root container owns singleton cache state.
-`createRequestScope()` in `path:packages/di/src/container.ts:563-572` creates the child container by passing `this.root().singletonCache`.
+`createRequestScope()` in `path:packages/di/src/container.ts:604-620` creates the child container by handing it `this.root().singletonCache`.
 So request scope does not copy singleton state. It shares it.
 
-The request child creation code passes that shared state directly as a constructor argument.
+The request child creation code passes that shared state through the package-private construction path.
 
-`path:packages/di/src/container.ts:563-572`
+`path:packages/di/src/container.ts:604-620`
 ```typescript
 createRequestScope(): Container {
   if (this.isDisposedInHierarchy()) {
@@ -183,11 +197,15 @@ createRequestScope(): Container {
     );
   }
 
-  return new Container(this, true, this.root().singletonCache);
+  return Container.createChildScope({
+    parent: this,
+    requestScopeEnabled: true,
+    singletonCache: this.root().singletonCache,
+  });
 }
 ```
 
-A request child therefore has a parent and the request flag, but it sees the root's singleton promise map. Empty scope shells are not tracked immediately. `ensureTrackedRequestScope()` and the lazy request-cache writers in `path:packages/di/src/container.ts:1066-1087` attach the child chain when request-owned cache state is first materialized. This preserves the chapter's ownership rule while making descendant invalidation and disposal operate on live request caches rather than every scope object ever created.
+A request child therefore has a parent and the request flag, but it sees the root's singleton promise map. Because the construction path is package-private, `createRequestScope()` is the only way to reach that wiring; application code cannot hand a container someone else's singleton cache. Empty scope shells are not tracked immediately. `ensureTrackedRequestScope()` and the lazy request-cache writers in `path:packages/di/src/container.ts:1153-1174` attach the child chain when request-owned cache state is first materialized. This preserves the chapter's ownership rule while making descendant invalidation and disposal operate on live request caches rather than every scope object ever created.
 
 The resolution step enforces the same structure again.
 `resolveScopedOrSingletonInstance()` in `path:packages/di/src/container.ts:963-999` first checks `shouldResolveFromRoot(provider)`.
@@ -299,8 +317,8 @@ Because `cache.set()` appears before `await`, concurrent resolves share the same
 ## 5.3 Request scope is a child container, not a flag on a provider
 Request lifetime is modeled structurally. It is not just a label that means "create this provider often." Fluo creates a real child container for each request boundary.
 
-`createRequestScope()` in `path:packages/di/src/container.ts:247-263` calls `new Container(this, true, this.root().singletonCache)`.
-That constructor call contains three decisions. The child has a parent reference. It has request-scope enabled. It shares the root singleton cache.
+`createRequestScope()` in `path:packages/di/src/container.ts:604-620` calls the package-private child construction path.
+That construction contains three decisions. The child has a parent reference. It has request-scope enabled. It shares the root singleton cache.
 
 So request scope is not a special cache bucket inside the root container. It is a separate container instance with its own `requestCache` and `multiRequestCache`. These fields are declared in `path:packages/di/src/container.ts:124-127`.
 

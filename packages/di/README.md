@@ -101,6 +101,30 @@ Direct `child.dispose()` now detaches the request child from its parent after th
 
 Use `override(...providers)` when a test or request-local boundary needs to replace existing registrations deliberately. Overrides replace the current provider set for each token, invalidate cached instances in the current container and already-materialized request-scope descendants, and dispose stale instances before the next replacement resolution continues. Multi-provider overrides replace the full multi-provider set for that token, so pass every replacement provider together; mixing single and multi replacements for the same token in one override call is rejected as ambiguous.
 
+### Container Construction Boundary
+
+`new Container()` is the only supported public construction form, and it always creates a root container that owns its own singleton cache. Child request scopes are package-owned: parent linkage, the request-scope flag, and singleton-cache sharing use a private construction path reachable only through `createRequestScope()`.
+
+```typescript
+const root = new Container();
+const requestScope = root.createRequestScope();
+```
+
+Supplying constructor arguments is rejected. The emitted declaration accepts no assignable argument type, and at runtime a caller-supplied argument throws `ContainerResolutionError` rather than producing a container with borrowed cache ownership.
+
+```typescript
+// Rejected: child-scope wiring is package-owned.
+Reflect.construct(Container, [root]);
+```
+
+### Migrating container construction from 2.x to 3.x
+
+In `@fluojs/di` 2.x, the emitted `Container` declaration exposed `parent`, `requestScopeEnabled`, and `singletonCache` constructor parameters even though caller-supplied child wiring was never a supported application workflow. In 3.x that surface is sealed: the constructor accepts no arguments, and passing any argument throws `ContainerResolutionError`.
+
+Zero-argument `new Container()` and `createRequestScope()` are unchanged, so supported code needs no migration. If you constructed child containers directly, replace that call with `parent.createRequestScope()`, which supplies the same parent linkage, request-scope flag, and shared root singleton cache while keeping disposal ownership intact.
+
+Executable evidence lives in `packages/di/src/container-construction-boundary.test.ts`.
+
 ### Request Scoping
 Isolated containers can be created to handle per-request state without polluting the root container.
 
@@ -199,12 +223,12 @@ Ensure all required providers are registered in the container. If you use `creat
 
 | Surface | Kind | Description |
 |---|---|---|
-| `Container` | Root export | The main DI container class. |
+| `Container` | Root export | The main DI container class. `new Container()` takes no arguments and creates a root container; child request scopes are package-owned and created with `createRequestScope()`. Supplying constructor arguments throws `ContainerResolutionError`. |
 | `container.register(...providers)` | `Container` instance method | Registers one or more providers. |
 | `container.override(...providers)` | `Container` instance method | Replaces existing providers, invalidates cached instances, and ensures stale instance disposal settles before the next replacement resolution continues. |
 | `container.resolve<T>(token)` | `Container` instance method | Asynchronously resolves a token to an instance. |
 | `container.inspectResolutionState()` | `Container` instance method | Exposes the supported framework-owned container introspection seam for testing/tooling helpers that must preserve cache ownership through snapshot read-only map views, frozen provider records, and controlled cache adoption. Prefer `has(...)` and `resolve(...)` for application code. |
-| `container.createRequestScope()` | `Container` instance method | Creates a child container for request-scoped dependencies. |
+| `container.createRequestScope()` | `Container` instance method | Creates a child container for request-scoped dependencies. This is the only supported path to parent-linked, request-scope-enabled containers that share the root singleton cache. |
 | `container.has(token)` | `Container` instance method | Checks if a token is registered in the container or its parents. |
 | `container.hasRequestScopedDependency(token)` | `Container` instance method | Checks whether resolving a token may require a request-scope container because its provider graph contains request-scoped dependencies or is cyclic. |
 | `container.dispose()` | `Container` instance method | Disposes request children before parent/root caches, shares an active attempt, and retries only failed `onDestroy()` hooks on a later explicit call. |
