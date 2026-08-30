@@ -53,7 +53,7 @@ describe('Studio devtools runtime bridge', () => {
 
     // When
     const runtime = createStudioDevtoolsRuntimeFromConfig();
-    runtime?.publish('heartbeat', { uptimeMs: 0 });
+    runtime?.publish({ payload: { uptimeMs: 0 }, type: 'heartbeat' });
 
     // Then
     await vi.waitFor(() => {

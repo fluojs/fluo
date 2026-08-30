@@ -30,6 +30,13 @@ export interface StudioDevtoolsRuntimeOptions {
 }
 
 /**
+ * Correlates a Studio event discriminant with its valid payload.
+ */
+export type StudioLiveEventInput<TEvent extends StudioLiveEvent = StudioLiveEvent> = TEvent extends StudioLiveEvent
+  ? { payload: TEvent['payload']; type: TEvent['type'] }
+  : never;
+
+/**
  * Describes Studio Bootstrap Snapshot Input data used by the Studio devtool.
  */
 export interface StudioBootstrapSnapshotInput {
@@ -88,23 +95,33 @@ export class StudioDevtoolsRuntime {
     return this.observer;
   }
 
-  publish<TEvent extends StudioLiveEvent>(type: TEvent['type'], payload: TEvent['payload']): void {
+  /**
+   * Publishes a correlated Studio event through the host transport.
+   *
+   * Transport failures are intentionally ignored so Studio instrumentation cannot affect application behavior.
+   *
+   * @param input Event discriminant and its corresponding payload.
+   */
+  publish(input: StudioLiveEventInput): void {
     this.sequence += 1;
     const event = {
       emittedAt: new Date().toISOString(),
       epoch: this.epoch,
       eventId: `${this.epoch}:${String(this.sequence)}`,
-      payload,
       sequence: this.sequence,
       source: {
         appId: this.options.appId,
         runtime: this.options.runtime ?? 'node',
       },
-      type,
       version: 1 as const,
-    } as StudioLiveEvent;
+      ...input,
+    } satisfies StudioLiveEvent;
 
-    void Promise.resolve(this.options.transport.publish(event)).catch(() => undefined);
+    try {
+      void Promise.resolve(this.options.transport.publish(event)).catch(() => undefined);
+    } catch {
+      // Studio transport is observational and cannot affect application execution.
+    }
   }
 
   publishBootstrapSnapshot(input: StudioBootstrapSnapshotInput): void {
@@ -118,15 +135,16 @@ export class StudioDevtoolsRuntime {
     });
 
     if (input.timing) {
-      this.publish('timing', input.timing);
+      this.publish({ payload: input.timing, type: 'timing' });
     }
 
-    this.publish('snapshot', snapshot);
+    this.publish({ payload: snapshot, type: 'snapshot' });
   }
 
   close(): void {
-    this.publish('heartbeat', {
-      uptimeMs: Number((runtimePerformance.now() - processStart).toFixed(3)),
+    this.publish({
+      payload: { uptimeMs: Number((runtimePerformance.now() - processStart).toFixed(3)) },
+      type: 'heartbeat',
     });
   }
 }

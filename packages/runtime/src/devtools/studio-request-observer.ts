@@ -77,6 +77,7 @@ function traceToPayload(trace: MutableTrace, statusCode?: number): StudioRequest
   return payload;
 }
 
+/** Converts runtime request lifecycle observations into Studio request events. */
 export class StudioRequestObserver implements RequestObserver {
   private readonly traces = new WeakMap<object, MutableTrace>();
 
@@ -98,14 +99,14 @@ export class StudioRequestObserver implements RequestObserver {
     };
 
     this.traces.set(context.requestContext, trace);
-    this.runtime.publish('request', traceToPayload(trace));
+    this.runtime.publish({ payload: traceToPayload(trace), type: 'request' });
   }
 
   onHandlerMatched(context: RequestObservationContext): void {
     const trace = this.ensureTrace(context);
     trace.handler = context.handler;
     trace.status = 'matched';
-    this.runtime.publish('request', traceToPayload(trace));
+    this.runtime.publish({ payload: traceToPayload(trace), type: 'request' });
   }
 
   onRequestSuccess(context: RequestObservationContext): void {
@@ -119,7 +120,10 @@ export class StudioRequestObserver implements RequestObserver {
     trace.handler = context.handler ?? trace.handler;
     trace.error = toErrorPayload(error);
     trace.status = 'failed';
-    this.runtime.publish('request', traceToPayload(trace, context.requestContext.response.statusCode));
+    this.runtime.publish({
+      payload: traceToPayload(trace, context.requestContext.response.statusCode),
+      type: 'request',
+    });
   }
 
   onRequestFinish(context: RequestObservationContext): void {
@@ -129,7 +133,10 @@ export class StudioRequestObserver implements RequestObserver {
       trace.status = 'finished';
     }
 
-    this.runtime.publish('request', traceToPayload(trace, context.requestContext.response.statusCode));
+    this.runtime.publish({
+      payload: traceToPayload(trace, context.requestContext.response.statusCode),
+      type: 'request',
+    });
   }
 
   private ensureTrace(context: RequestObservationContext): MutableTrace {

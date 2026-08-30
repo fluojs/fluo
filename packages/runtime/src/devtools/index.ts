@@ -30,4 +30,5 @@ export {
   type StudioDevtoolsConfig,
   type StudioDevtoolsRuntimeOptions,
   type StudioDevtoolsRuntimeTransport,
+  type StudioLiveEventInput,
 } from './studio-runtime.js';
