@@ -339,6 +339,142 @@ describe('@fluojs/platform-express', () => {
     }
   });
 
+  it('rejects Early Hints written after final response commit on a real listener', async () => {
+    const lateWrite = createDeferred<void>();
+    const responseCommitted = createDeferred<void>();
+    void lateWrite.promise.catch(() => {});
+
+    @Controller('/early-hints-after-commit')
+    class EarlyHintsAfterCommitController {
+      @Get('/')
+      async render(_input: undefined, context: RequestContext) {
+        const earlyHints = context.response.earlyHints;
+
+        if (!earlyHints) {
+          throw new Error('Expected the Express response to support Early Hints.');
+        }
+
+        const rawResponse = context.response.raw;
+
+        if (!isExpressResponse(rawResponse)) {
+          throw new Error('Expected the Express response to expose its raw response.');
+        }
+
+        rawResponse.once('finish', () => {
+          responseCommitted.resolve();
+          void earlyHints.write({
+            link: '</late.css>; rel=preload; as=style',
+          }).then(lateWrite.resolve, lateWrite.reject);
+        });
+
+        await context.response.send({ ok: true });
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [EarlyHintsAfterCommitController] });
+
+    const adapter = createExpressAdapter({
+      host: '127.0.0.1',
+      port: 0,
+    }) as ExpressHttpApplicationAdapter;
+    const app = await FluoFactory.create(AppModule, { adapter });
+
+    try {
+      await app.listen();
+      const response = await requestHttp({
+        path: '/early-hints-after-commit',
+        port: getBoundPort(adapter.getServer()),
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({ ok: true });
+      await expect(waitForSettlement(responseCommitted.promise)).resolves.toBeUndefined();
+      await expect(waitForSettlement(lateWrite.promise)).rejects.toMatchObject({
+        code: 'EARLY_HINTS_WRITE_FAILED',
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects Early Hints written after client disconnect on a real listener', async () => {
+    const handlerReady = createDeferred<void>();
+    const disconnectedWrite = createDeferred<void>();
+    const releaseHandler = createDeferred<void>();
+    void disconnectedWrite.promise.catch(() => {});
+
+    @Controller('/early-hints-after-disconnect')
+    class EarlyHintsAfterDisconnectController {
+      @Get('/')
+      async render(_input: undefined, context: RequestContext) {
+        const earlyHints = context.response.earlyHints;
+
+        if (!earlyHints) {
+          throw new Error('Expected the Express response to support Early Hints.');
+        }
+
+        const rawResponse = context.response.raw;
+
+        if (!isExpressResponse(rawResponse)) {
+          throw new Error('Expected the Express response to expose its raw response.');
+        }
+
+        rawResponse.once('close', () => {
+          void earlyHints.write({
+            link: '</disconnected.css>; rel=preload; as=style',
+          }).then(disconnectedWrite.resolve, disconnectedWrite.reject);
+        });
+        handlerReady.resolve();
+        await releaseHandler.promise;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [EarlyHintsAfterDisconnectController] });
+
+    const adapter = createExpressAdapter({
+      host: '127.0.0.1',
+      port: 0,
+    }) as ExpressHttpApplicationAdapter;
+    const app = await FluoFactory.create(AppModule, { adapter });
+    let request: ReturnType<typeof httpRequest> | undefined;
+
+    try {
+      await app.listen();
+      request = httpRequest({
+        host: '127.0.0.1',
+        path: '/early-hints-after-disconnect',
+        port: getBoundPort(adapter.getServer()),
+      });
+      request.on('error', (error) => {
+        if (!request?.destroyed) {
+          disconnectedWrite.reject(error);
+        }
+      });
+      request.end();
+
+      const handlerReadySettlement = waitForSettlement(handlerReady.promise);
+      void handlerReadySettlement.catch(() => {
+        releaseHandler.resolve();
+      });
+      await expect(handlerReadySettlement).resolves.toBeUndefined();
+      request.destroy();
+
+      const disconnectedWriteSettlement = waitForSettlement(disconnectedWrite.promise);
+      void disconnectedWriteSettlement.catch(() => {
+        releaseHandler.resolve();
+      });
+      await expect(disconnectedWriteSettlement).rejects.toMatchObject({
+        code: 'REQUEST_ABORTED',
+      });
+    } finally {
+      releaseHandler.resolve();
+      request?.destroy();
+      await app.close();
+    }
+  });
+
   it('documents Express host compatibility without promising native middleware translation', () => {
     const packageReadme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
     const packageReadmeKo = readFileSync(new URL('../README.ko.md', import.meta.url), 'utf8');
