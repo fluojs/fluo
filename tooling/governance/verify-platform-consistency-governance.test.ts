@@ -268,6 +268,21 @@ describe('enforcePlatformNodejsEngineDocumentation', () => {
     expect(governanceSource).toContain('enforcePlatformNodejsEngineDocumentation();');
   });
 
+  it('rejects platform Node.js manifest engine drift', async () => {
+    const { enforcePlatformNodejsEngineDocumentation } = await loadGovernanceInternals();
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === 'packages/platform-nodejs/package.json'
+        ? content.replace(nodeListenerEngineRange, '>=20.19.3 <21 || >=22.2.0 <28')
+        : content;
+    };
+
+    expect(() => enforcePlatformNodejsEngineDocumentation(readText))
+      .toThrow(/runtime-adapters\.mdx Raw Node\.js section must state @fluojs\/platform-nodejs engines\.node >=20\.19\.3 <21 \|\| >=22\.2\.0 <28\./u);
+    expect(() => enforcePlatformNodejsEngineDocumentation()).not.toThrow();
+  });
+
   it.each([
     'apps/docs/content/docs/guides/runtime-adapters.mdx',
     'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
