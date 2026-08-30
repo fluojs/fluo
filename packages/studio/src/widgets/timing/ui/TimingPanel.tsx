@@ -1,4 +1,4 @@
-import type { BootstrapTimingDiagnostics } from '@fluojs/runtime';
+import type { BootstrapTimingDiagnostics } from '../../../contracts.js';
 import type { StudioDashboardState } from '../../../entities/studio/model.js';
 import { selectLiveTiming, selectStaticTiming } from '../../../entities/studio/model.js';
 import { EmptyState } from '../../../shared/ui/EmptyState.js';

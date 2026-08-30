@@ -1083,9 +1083,6 @@ importers:
       '@fluojs-internal/tooling-vite':
         specifier: workspace:^
         version: link:../../tooling/vite
-      '@fluojs/runtime':
-        specifier: workspace:^
-        version: link:../runtime
       '@playwright/test':
         specifier: ^1.61.1
         version: 1.61.1

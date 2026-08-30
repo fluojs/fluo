@@ -5,28 +5,13 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type {
-  BootstrapTimingDiagnostics as RuntimeBootstrapTimingDiagnostics,
-  PlatformCheckResult as RuntimePlatformCheckResult,
-  PlatformDiagnosticIssue as RuntimePlatformDiagnosticIssue,
-  PlatformHealthReport as RuntimePlatformHealthReport,
-  PlatformReadinessReport as RuntimePlatformReadinessReport,
-  PlatformShellSnapshot as RuntimePlatformShellSnapshot,
-  PlatformSnapshot as RuntimePlatformSnapshot,
-} from '@fluojs/runtime';
 import type { Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapStudioApp } from './app/bootstrap.js';
 import {
   applyFilters,
-  type BootstrapTimingDiagnostics,
   isStudioLiveEvent,
-  type PlatformCheckResult,
-  type PlatformDiagnosticIssue,
-  type PlatformHealthReport,
-  type PlatformReadinessReport,
   type PlatformShellSnapshot,
-  type PlatformSnapshot,
   parseStudioLiveEvent,
   parseStudioPayload,
   renderMermaid,
@@ -34,15 +19,6 @@ import {
 import { initialStudioState, selectSelectedStaticComponent } from './entities/studio/model.js';
 import * as studio from './index.js';
 import { inspectComponentConnections, renderDiagnosticDocsUrl, renderDiagnostics, renderGraphSvg } from './shared/lib/viewer-rendering.js';
-
-type Exact<Left, Right> =
-  (<Type>() => Type extends Left ? 1 : 2) extends (<Type>() => Type extends Right ? 1 : 2)
-    ? (<Type>() => Type extends Right ? 1 : 2) extends (<Type>() => Type extends Left ? 1 : 2)
-      ? true
-      : false
-    : false;
-
-function assertExactContract<Condition extends true>(...condition: Condition[]): void { void condition; }
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageCommandTimeoutMs = 120_000;
@@ -534,23 +510,22 @@ describe('parseStudioPayload', () => {
     const packageManifest = JSON.parse(readFileSync(resolve(packageDir, 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>;
       devDependencies?: Record<string, string>;
+      fluo?: {
+        declarationBuildDevDependencies?: readonly string[];
+      };
     };
     const runtimeCoupledSources = [
       'src/contracts.ts',
       'src/entities/studio/model.ts',
       'src/shared/lib/viewer-rendering.ts',
+      'src/widgets/static-report/ui/StaticReportPanel.tsx',
+      'src/widgets/timing/ui/TimingPanel.tsx',
     ].filter((sourcePath) => readFileSync(resolve(packageDir, sourcePath), 'utf8').includes('@fluojs/runtime'));
 
     expect(packageManifest.dependencies?.['@fluojs/runtime']).toBeUndefined();
-    expect(packageManifest.devDependencies?.['@fluojs/runtime']).toBe('workspace:^');
+    expect(packageManifest.devDependencies?.['@fluojs/runtime']).toBeUndefined();
+    expect(packageManifest.fluo?.declarationBuildDevDependencies).toBeUndefined();
     expect(runtimeCoupledSources).toEqual([]);
-    assertExactContract<Exact<PlatformCheckResult, RuntimePlatformCheckResult>>();
-    assertExactContract<Exact<PlatformReadinessReport, RuntimePlatformReadinessReport>>();
-    assertExactContract<Exact<PlatformHealthReport, RuntimePlatformHealthReport>>();
-    assertExactContract<Exact<PlatformDiagnosticIssue, RuntimePlatformDiagnosticIssue>>();
-    assertExactContract<Exact<PlatformSnapshot, RuntimePlatformSnapshot>>();
-    assertExactContract<Exact<PlatformShellSnapshot, RuntimePlatformShellSnapshot>>();
-    assertExactContract<Exact<BootstrapTimingDiagnostics, RuntimeBootstrapTimingDiagnostics>>();
   });
 
   it('gives runtime live bridge types one Studio-owned wire contract seam', () => {
