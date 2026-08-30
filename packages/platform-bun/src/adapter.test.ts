@@ -2030,15 +2030,17 @@ describe('@fluojs/platform-bun', () => {
     }
   });
 
-  it('keeps the Bun dispatcher until drain settles even when close() times out', async () => {
+  it('rejects the caller-facing close timeout while retaining accepted work and adapter state until drain settles', async () => {
     vi.useFakeTimers();
 
     try {
       const mockBun = installMockBun();
       const adapter = createBunAdapter() as BunHttpApplicationAdapter;
+      const requestAccepted = createDeferred<void>();
       const deferred = createDeferred<void>();
       const dispatcher = {
         async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+          requestAccepted.resolve();
           await deferred.promise;
           response.setStatus(200);
           await response.send({ ok: true });
@@ -2047,22 +2049,28 @@ describe('@fluojs/platform-bun', () => {
 
       await adapter.listen(dispatcher);
 
-      const responsePromise = mockBun.lastServer!.fetch(new Request('http://127.0.0.1:3000/timeout-check'));
-      await Promise.resolve();
-      const closeResultPromise = adapter.close().catch((error: unknown) => error);
+      const server = mockBun.lastServer!;
+      const responsePromise = server.fetch(new Request('http://127.0.0.1:3000/timeout-check'));
+      await requestAccepted.promise;
+      const closeResultPromise = adapter.close();
+      void closeResultPromise.catch(() => {});
       const closeSettlementPromise = Reflect.get(adapter, 'closeInFlight') as Promise<void>;
 
       await vi.advanceTimersByTimeAsync(10_001);
 
-      await expect(closeResultPromise).resolves.toBeInstanceOf(Error);
+      await expect(closeResultPromise).rejects.toThrow('Bun adapter shutdown timeout exceeded 10000ms.');
+      expect(adapter.getServer()).toBe(server);
       expect(Reflect.get(adapter, 'dispatcher')).toBe(dispatcher);
+      expect(Reflect.get(adapter, 'closeInFlight')).toBe(closeSettlementPromise);
 
       deferred.resolve();
       await responsePromise;
       vi.useRealTimers();
       await waitForSettlement(closeSettlementPromise);
 
+      expect(adapter.getServer()).toBeUndefined();
       expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
+      expect(Reflect.get(adapter, 'closeInFlight')).toBeUndefined();
     } finally {
       vi.useRealTimers();
     }
