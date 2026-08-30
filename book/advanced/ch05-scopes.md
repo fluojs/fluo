@@ -570,11 +570,11 @@ The hierarchy walk is implemented in `path:packages/di/src/container.ts:1551-160
 
 This is targeted invalidation, not a promise that every child cache is cleared or isolated from ancestor changes. A descendant with no affected materialized entry has nothing to retire; its later resolution follows the updated ancestor graph. A child-local override walks that child and its descendants, not its ancestors. Cache eviction also cannot revoke stale references that application code has already retained.
 
-Each evicted cached promise is handed to `scheduleStaleDisposal()` in `path:packages/di/src/container.ts:1309-1340`. `override()` remains synchronous: it starts the asynchronous retirement task but does not wait for cleanup to finish. The task waits for the cached resolution promise, then awaits `onDestroy()` when the resolved value is disposable. Completion is guaranteed at the next observing lifecycle boundary, not at the moment `override()` returns.
+Each evicted cached promise is handed to `scheduleStaleDisposal()` in `path:packages/di/src/container.ts:1430-1478`. `override()` remains synchronous: it starts the asynchronous retirement task but does not wait for cleanup to finish. The task waits for the cached resolution promise, then awaits `onDestroy()` when the resolved value is disposable. Completion is guaranteed at the next observing lifecycle boundary, not at the moment `override()` returns.
 
 Stale disposal is now a task state machine rather than a shutdown-only error accumulator. `StaleDisposalTask` records its promise, failure, and whether that failure has already been consumed (`path:packages/di/src/container.ts:31-36`). `resolve()` calls `assertStaleDisposalsSettled()` before beginning replacement resolution (`path:packages/di/src/container.ts:584-595`). Disposal reaches the same boundary through `disposeCache()` (`path:packages/di/src/container.ts:1181-1197`), while still collecting resolution and ordinary `onDestroy()` failures so cleanup can continue.
 
-`path:packages/di/src/container.ts:1289-1340`
+`path:packages/di/src/container.ts:1354-1478`
 ```typescript
 private async assertStaleDisposalsSettled(): Promise<void> {
   const errors: unknown[] = [];
@@ -597,14 +597,59 @@ private async assertStaleDisposalsSettled(): Promise<void> {
         continue;
       }
 
+      // A rejected materialization has no hook to retry. Deliver its error
+      // once, then release it from every observer's stale-task ledger.
       if (!task.errorConsumed) {
         task.errorConsumed = true;
         errors.push(task.error);
+      }
+
+      if (!task.retryInstance) {
+        for (const observer of task.observers) {
+          observer.staleDisposalTasks.delete(task);
+        }
       }
     }
   }
 
   this.throwDisposalErrors(errors);
+}
+
+private retainedStaleDisposalTasks(): StaleDisposalTask[] {
+  // Only the scheduling container retries a stale hook, and only when the
+  // failure was already delivered to an earlier caller. A failure first
+  // surfaced by this attempt is reported, not retried within the same pass.
+  return Array.from(this.staleDisposalTasks).filter(
+    (task) => task.retryOwner === this && task.failed && task.errorConsumed,
+  );
+}
+
+private async retryFailedStaleDisposals(tasks: readonly StaleDisposalTask[]): Promise<unknown[]> {
+  const errors: unknown[] = [];
+
+  for (const task of tasks) {
+    const instance = task.retryInstance;
+
+    if (!task.failed || !instance) {
+      continue;
+    }
+
+    try {
+      await instance.onDestroy();
+      task.failed = false;
+      task.retryInstance = undefined;
+
+      for (const observer of task.observers) {
+        observer.staleDisposalTasks.delete(task);
+      }
+    } catch (error) {
+      task.error = error;
+      task.errorConsumed = true;
+      errors.push(error);
+    }
+  }
+
+  return errors;
 }
 
 private scheduleStaleDisposal(instancePromise: Promise<unknown>, staleDisposalOwner: Container): void {
@@ -620,21 +665,31 @@ private scheduleStaleDisposal(instancePromise: Promise<unknown>, staleDisposalOw
   };
 
   task.promise = (async () => {
-    let disposable: Disposable | undefined;
+    let instance: unknown;
 
     try {
-      const instance = await instancePromise;
-
-      if (this.isDisposable(instance)) {
-        disposable = instance;
-        await instance.onDestroy();
-      }
+      instance = await instancePromise;
     } catch (error) {
       task.error = error;
       task.failed = true;
-      task.retryInstance = disposable;
+      return;
+    }
+
+    if (!this.isDisposable(instance)) {
+      return;
+    }
+
+    try {
+      await instance.onDestroy();
+    } catch (error) {
+      task.error = error;
+      task.failed = true;
+      task.retryInstance = instance;
     }
   })().finally(() => {
+    const retainedMaterializations = this.materializedCachePromises.filter((promise) => promise !== instancePromise);
+    this.materializedCachePromises.splice(0, this.materializedCachePromises.length, ...retainedMaterializations);
+
     if (!task.failed) {
       for (const observer of observers) {
         observer.staleDisposalTasks.delete(task);

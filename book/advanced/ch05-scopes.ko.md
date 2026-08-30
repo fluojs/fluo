@@ -570,11 +570,11 @@ hierarchy walk은 `path:packages/di/src/container.ts:1551-1605`에 구현되어 
 
 이는 targeted invalidation이지, 모든 child cache를 비우거나 각 child가 ancestor 변경으로부터 격리된다는 보장이 아닙니다. 영향을 받는 materialized entry가 없는 descendant에는 retire할 대상이 없고, 이후 resolve는 갱신된 ancestor graph를 따릅니다. child-local override는 해당 child와 그 descendant만 순회하며 ancestor는 순회하지 않습니다. 또한 cache eviction이 application code가 이미 보관 중인 stale reference를 회수할 수는 없습니다.
 
-evict된 각 cached promise는 `path:packages/di/src/container.ts:1309-1340`의 `scheduleStaleDisposal()`로 전달됩니다. `override()`는 여전히 동기적입니다. 비동기 retirement task를 시작하지만 cleanup 완료를 기다리지는 않습니다. task는 cached resolution promise를 기다리고, resolve된 값이 disposable이면 `onDestroy()`도 await합니다. 완료가 보장되는 시점은 `override()`가 반환하는 순간이 아니라 다음 observing lifecycle boundary입니다.
+evict된 각 cached promise는 `path:packages/di/src/container.ts:1430-1478`의 `scheduleStaleDisposal()`로 전달됩니다. `override()`는 여전히 동기적입니다. 비동기 retirement task를 시작하지만 cleanup 완료를 기다리지는 않습니다. task는 cached resolution promise를 기다리고, resolve된 값이 disposable이면 `onDestroy()`도 await합니다. 완료가 보장되는 시점은 `override()`가 반환하는 순간이 아니라 다음 observing lifecycle boundary입니다.
 
 stale disposal은 이제 shutdown-only error accumulator가 아니라 task state machine입니다. `StaleDisposalTask`는 promise, failure, 그리고 failure가 이미 소비되었는지를 기록합니다(`path:packages/di/src/container.ts:31-36`). `resolve()`는 replacement resolution을 시작하기 전에 `assertStaleDisposalsSettled()`를 호출합니다(`path:packages/di/src/container.ts:584-595`). disposal도 `disposeCache()`를 통해 같은 경계에 도달하며(`path:packages/di/src/container.ts:1181-1197`), cleanup이 계속될 수 있도록 resolution failure와 일반 `onDestroy()` failure도 함께 수집합니다.
 
-`path:packages/di/src/container.ts:1289-1340`
+`path:packages/di/src/container.ts:1354-1478`
 ```typescript
 private async assertStaleDisposalsSettled(): Promise<void> {
   const errors: unknown[] = [];
@@ -597,14 +597,59 @@ private async assertStaleDisposalsSettled(): Promise<void> {
         continue;
       }
 
+      // A rejected materialization has no hook to retry. Deliver its error
+      // once, then release it from every observer's stale-task ledger.
       if (!task.errorConsumed) {
         task.errorConsumed = true;
         errors.push(task.error);
+      }
+
+      if (!task.retryInstance) {
+        for (const observer of task.observers) {
+          observer.staleDisposalTasks.delete(task);
+        }
       }
     }
   }
 
   this.throwDisposalErrors(errors);
+}
+
+private retainedStaleDisposalTasks(): StaleDisposalTask[] {
+  // Only the scheduling container retries a stale hook, and only when the
+  // failure was already delivered to an earlier caller. A failure first
+  // surfaced by this attempt is reported, not retried within the same pass.
+  return Array.from(this.staleDisposalTasks).filter(
+    (task) => task.retryOwner === this && task.failed && task.errorConsumed,
+  );
+}
+
+private async retryFailedStaleDisposals(tasks: readonly StaleDisposalTask[]): Promise<unknown[]> {
+  const errors: unknown[] = [];
+
+  for (const task of tasks) {
+    const instance = task.retryInstance;
+
+    if (!task.failed || !instance) {
+      continue;
+    }
+
+    try {
+      await instance.onDestroy();
+      task.failed = false;
+      task.retryInstance = undefined;
+
+      for (const observer of task.observers) {
+        observer.staleDisposalTasks.delete(task);
+      }
+    } catch (error) {
+      task.error = error;
+      task.errorConsumed = true;
+      errors.push(error);
+    }
+  }
+
+  return errors;
 }
 
 private scheduleStaleDisposal(instancePromise: Promise<unknown>, staleDisposalOwner: Container): void {
@@ -620,21 +665,31 @@ private scheduleStaleDisposal(instancePromise: Promise<unknown>, staleDisposalOw
   };
 
   task.promise = (async () => {
-    let disposable: Disposable | undefined;
+    let instance: unknown;
 
     try {
-      const instance = await instancePromise;
-
-      if (this.isDisposable(instance)) {
-        disposable = instance;
-        await instance.onDestroy();
-      }
+      instance = await instancePromise;
     } catch (error) {
       task.error = error;
       task.failed = true;
-      task.retryInstance = disposable;
+      return;
+    }
+
+    if (!this.isDisposable(instance)) {
+      return;
+    }
+
+    try {
+      await instance.onDestroy();
+    } catch (error) {
+      task.error = error;
+      task.failed = true;
+      task.retryInstance = instance;
     }
   })().finally(() => {
+    const retainedMaterializations = this.materializedCachePromises.filter((promise) => promise !== instancePromise);
+    this.materializedCachePromises.splice(0, this.materializedCachePromises.length, ...retainedMaterializations);
+
     if (!task.failed) {
       for (const observer of observers) {
         observer.staleDisposalTasks.delete(task);
