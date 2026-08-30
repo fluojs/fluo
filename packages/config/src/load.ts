@@ -203,7 +203,7 @@ function unquoteEnvValue(value: string): string {
 }
 
 function stripInlineEnvComment(value: string): string {
-  const commentIndex = value.search(/\s#/);
+  const commentIndex = value.indexOf('#');
   return commentIndex === -1 ? value : value.slice(0, commentIndex);
 }
 
