@@ -303,19 +303,26 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
             (typeof startupError === 'object' && startupError !== null) ||
             typeof startupError === 'function'
           ) {
-            const existingCause = Reflect.get(startupError, 'cause');
-            const closeFailure = existingCause === undefined
-              ? closeError
-              : new AggregateError([existingCause, closeError], 'Fastify startup and shutdown both failed.');
-            const causeAttached = Reflect.set(
-              startupError,
-              'cause',
-              closeFailure,
-            );
+            try {
+              const existingCause = Reflect.get(startupError, 'cause');
+              const closeFailure = existingCause === undefined
+                ? closeError
+                : new AggregateError([existingCause, closeError], 'Fastify startup and shutdown both failed.');
+              const causeAttached = Reflect.set(
+                startupError,
+                'cause',
+                closeFailure,
+              );
 
-            // Mutable rejection objects preserve identity. Primitives and values with an unassignable
-            // cause cannot both preserve identity and expose the close failure, so use startup-first errors.
-            if (!causeAttached) {
+              if (!causeAttached || Reflect.get(startupError, 'cause') !== closeFailure) {
+                startupError = new AggregateError(
+                  [startupError, closeError],
+                  'Fastify startup and shutdown both failed.',
+                );
+              }
+            } catch {
+              // Mutable rejection objects preserve identity only when cause can be read, written, and
+              // read back. Every other rejection value uses startup-first errors to expose both failures.
               startupError = new AggregateError(
                 [startupError, closeError],
                 'Fastify startup and shutdown both failed.',

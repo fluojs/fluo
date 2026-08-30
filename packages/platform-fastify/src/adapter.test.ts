@@ -2806,6 +2806,100 @@ describe('@fluojs/platform-fastify', () => {
     }
   });
 
+  it('keeps both failures reachable when the startup cause setter discards writes', async () => {
+    const adapter = new FastifyHttpApplicationAdapter(0, '127.0.0.1', 25, 20, undefined, undefined, 1024, false, 500);
+    const fastifyApp: FastifyInstance = Reflect.get(adapter, 'app');
+    const pluginStarted = createDeferred<void>();
+    const allowPluginFailure = createDeferred<void>();
+    const pluginError = {};
+    const closeError = new Error('onClose rejected during shutdown');
+    Object.defineProperty(pluginError, 'cause', {
+      get: () => undefined,
+      set: () => {},
+    });
+    fastifyApp.addHook('onClose', async () => {
+      throw closeError;
+    });
+    fastifyApp.register(async () => {
+      pluginStarted.resolve();
+      await allowPluginFailure.promise;
+      throw pluginError;
+    });
+    const listenResult = adapter.listen({ async dispatch() {} }).then(
+      () => 'listened' as const,
+      (error: unknown) => error,
+    );
+
+    try {
+      await pluginStarted.promise;
+
+      const closeResult = adapter.close();
+      allowPluginFailure.resolve();
+
+      const closeFailure = await closeResult.then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      if (!(closeFailure instanceof AggregateError)) {
+        throw new Error('Expected shutdown to preserve both failures in an AggregateError.');
+      }
+
+      expect(closeFailure.errors).toEqual([pluginError, closeError]);
+      await expect(listenResult).resolves.toBe(pluginError);
+    } finally {
+      allowPluginFailure.resolve();
+      await adapter.close();
+    }
+  });
+
+  it('keeps both failures reachable when the startup cause getter throws', async () => {
+    const adapter = new FastifyHttpApplicationAdapter(0, '127.0.0.1', 25, 20, undefined, undefined, 1024, false, 500);
+    const fastifyApp: FastifyInstance = Reflect.get(adapter, 'app');
+    const pluginStarted = createDeferred<void>();
+    const allowPluginFailure = createDeferred<void>();
+    const pluginError = {};
+    const causeGetterError = new Error('startup cause getter rejected');
+    const closeError = new Error('onClose rejected during shutdown');
+    Object.defineProperty(pluginError, 'cause', {
+      get: () => {
+        throw causeGetterError;
+      },
+    });
+    fastifyApp.addHook('onClose', async () => {
+      throw closeError;
+    });
+    fastifyApp.register(async () => {
+      pluginStarted.resolve();
+      await allowPluginFailure.promise;
+      throw pluginError;
+    });
+    const listenResult = adapter.listen({ async dispatch() {} }).then(
+      () => 'listened' as const,
+      (error: unknown) => error,
+    );
+
+    try {
+      await pluginStarted.promise;
+
+      const closeResult = adapter.close();
+      allowPluginFailure.resolve();
+
+      const closeFailure = await closeResult.then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      if (!(closeFailure instanceof AggregateError)) {
+        throw new Error('Expected shutdown to preserve both failures in an AggregateError.');
+      }
+
+      expect(closeFailure.errors).toEqual([pluginError, closeError]);
+      await expect(listenResult).resolves.toBe(pluginError);
+    } finally {
+      allowPluginFailure.resolve();
+      await adapter.close();
+    }
+  });
+
   it('preserves a mutable non-Error startup rejection when Fastify onClose also fails during shutdown', async () => {
     const adapter = new FastifyHttpApplicationAdapter(0, '127.0.0.1', 25, 20, undefined, undefined, 1024, false, 500);
     const fastifyApp: FastifyInstance = Reflect.get(adapter, 'app');

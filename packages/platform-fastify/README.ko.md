@@ -214,6 +214,7 @@ fluo의 Fastify 어댑터는 높은 동시성 시나리오에서 raw Node.js 어
 - **글로벌 접두사 (Global Prefix)**: 내부 경로 또는 헬스 체크 엔드포인트에 접두사가 붙지 않도록 `globalPrefixExclude`를 적절히 설정하세요.
 - **Malformed Cookie**: 잘못된 cookie header는 request 실패로 이어지지 않고 보존됩니다.
 - **HTTPS 시작**: Fastify 프로세스가 TLS를 소유한다면 Node.js `>=20.19.3 <21 || >=22.2.0 <27`에서 adapter `https` option 아래에 certificate material을 전달하세요. Infrastructure가 TLS를 종료한다면 해당 경계 뒤에서 adapter를 일반 HTTP로 유지하세요.
+- **시작 및 종료 실패**: startup과 Fastify `onClose`가 모두 실패하면, `cause`를 읽고 쓰고 다시 읽을 수 있는 경우에만 caller는 원래 startup rejection과 `cause`의 close failure를 받습니다. 그 외에는 caller가 startup rejection을 `errors[0]`, close failure를 `errors[1]`로 갖는 startup-first `AggregateError`를 받습니다.
 
 ## 관련 패키지
 
