@@ -317,7 +317,10 @@ describe('enforcePlatformNodejsEngineDocumentation', () => {
       const content = readFileSync(join(repoRoot, relativePath), 'utf8');
 
       return relativePath === 'apps/docs/content/docs/guides/runtime-adapters.mdx'
-        ? content.replace('>=20.19.3 <21 || >=22.2.0 <27', '>=20.19.3 <21 || >=22.2.0 <28')
+        ? content.replace(
+          /(## Raw Node\.js[\s\S]*?)>=20\.19\.3 <21 \|\| >=22\.2\.0 <27/u,
+          '$1>=20.19.3 <21 || >=22.2.0 <28',
+        )
         : content;
     };
     const governanceSource = readFileSync(
