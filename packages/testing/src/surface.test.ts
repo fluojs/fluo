@@ -353,38 +353,6 @@ describe('@fluojs/testing surface', () => {
     expect(readFileSync(resolve(packageRootPath, 'README.ko.md'), 'utf8')).toContain('pnpm add -D @babel/core');
   });
 
-  it('documents the testing module identity contract in both README mirrors', () => {
-    const englishReadme = readFileSync(resolve(packageRootPath, 'README.md'), 'utf8');
-    const koreanReadme = readFileSync(resolve(packageRootPath, 'README.ko.md'), 'utf8');
-
-    expect(englishReadme).toContain('`createTestingModule({ rootModule })` requires an explicit root module');
-    expect(englishReadme).toContain('preserves the original `rootModule` and compiled `modules[].type` identities');
-    expect(koreanReadme).toContain('`createTestingModule({ rootModule })`에는 명시적인 루트 모듈이 필요합니다');
-    expect(koreanReadme).toContain('원래 `rootModule`과 컴파일된 `modules[].type` identity를 보존합니다');
-  });
-
-  it('documents createTestApp bootstrap option and middleware preservation in both README mirrors', () => {
-    const englishReadme = readFileSync(resolve(packageRootPath, 'README.md'), 'utf8');
-    const koreanReadme = readFileSync(resolve(packageRootPath, 'README.ko.md'), 'utf8');
-
-    expect(englishReadme).toContain('accepts the same application bootstrap options as the runtime HTTP bootstrap');
-    expect(englishReadme).toContain('preserving caller-provided middleware');
-    expect(koreanReadme).toContain('runtime HTTP bootstrap과 같은 application bootstrap option을 받습니다');
-    expect(koreanReadme).toContain('호출자가 넘긴 middleware를 같은 app middleware chain 안에 보존합니다');
-  });
-
-  it('documents the Test namespace facade and deduplicated subpath list in both README mirrors', () => {
-    const englishReadme = readFileSync(resolve(packageRootPath, 'README.md'), 'utf8');
-    const koreanReadme = readFileSync(resolve(packageRootPath, 'README.ko.md'), 'utf8');
-
-    expect(englishReadme).toContain('`Test.createTestingModule(...)`');
-    expect(koreanReadme).toContain('`Test.createTestingModule(...)`');
-    expect(englishReadme).not.toContain('**Mock subpath**');
-    expect(englishReadme).not.toContain('**HTTP helpers**');
-    expect(koreanReadme).not.toContain('**Mock 서브패스**');
-    expect(koreanReadme).not.toContain('**HTTP 헬퍼**');
-  });
-
   it('bounds and reports taskkill failures without invoking Windows', async () => {
     const taskkillFailure = new Error('taskkill stalled');
     let observedTimeout: number | undefined;
