@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import {
   createServer as createHttpServer,
-  type InformationEvent,
   request as httpRequest,
+  type InformationEvent,
 } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { type AddressInfo, createServer as createNetServer } from 'node:net';
