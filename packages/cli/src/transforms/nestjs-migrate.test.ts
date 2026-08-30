@@ -367,6 +367,81 @@ describe('users', () => {
     expect(secondReport.changedFiles).toBe(0);
   });
 
+  it('converts every constructor dependency to an ordered class-level Inject tuple', () => {
+    // Given
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
+    temporaryDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'src', 'three-dependencies.service.ts'),
+      `import { Inject, Injectable } from '@nestjs/common';
+
+const PRIMARY_TOKEN = Symbol('primary');
+const TERTIARY_TOKEN = Symbol('tertiary');
+
+@Injectable()
+export class ThreeDependenciesService {
+  constructor(
+    @Inject(PRIMARY_TOKEN) private readonly primary: string,
+    private readonly secondary: SecondaryDependency,
+    @Inject(TERTIARY_TOKEN) private readonly tertiary: string,
+  ) {}
+}
+`,
+    );
+
+    // When
+    const report = runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(MIGRATION_TRANSFORMS),
+      targetPath: workspaceDirectory,
+    });
+    const serviceContent = readFileSync(join(workspaceDirectory, 'src', 'three-dependencies.service.ts'), 'utf8');
+
+    // Then
+    expect(serviceContent).toContain('@Inject(PRIMARY_TOKEN, SecondaryDependency, TERTIARY_TOKEN)');
+    expect(serviceContent).not.toContain('constructor(@Inject');
+    expect(report.fileResults.flatMap((result) => result.warnings).some((warning) => warning.category === 'inject-token')).toBe(false);
+  });
+
+  it('retains unsafe constructor dependencies and reports an unsupported inject-token diagnostic', () => {
+    // Given
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
+    temporaryDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'src', 'unsafe-dependencies.service.ts'),
+      `import { Inject, Injectable } from '@nestjs/common';
+
+const PRIMARY_TOKEN = Symbol('primary');
+
+@Injectable()
+export class UnsafeDependenciesService {
+  constructor(
+    @Inject(PRIMARY_TOKEN) private readonly primary: string,
+    private readonly secondary: SecondaryDependency,
+    ...remaining: readonly RemainingDependency[]
+  ) {}
+}
+`,
+    );
+
+    // When
+    const report = runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(MIGRATION_TRANSFORMS),
+      targetPath: workspaceDirectory,
+    });
+    const serviceContent = readFileSync(join(workspaceDirectory, 'src', 'unsafe-dependencies.service.ts'), 'utf8');
+
+    // Then
+    expect(serviceContent).toContain('@Inject(PRIMARY_TOKEN)');
+    expect(serviceContent).toContain('...remaining: readonly RemainingDependency[]');
+    expect(report.fileResults.flatMap((result) => result.warnings).some((warning) => warning.category === 'inject-token-unsupported')).toBe(true);
+  });
+
   it('attaches correct warning categories to each warning type', () => {
     const workspaceDirectory = createMigrationFixture();
 
@@ -386,7 +461,7 @@ describe('users', () => {
     }
 
     const categories = new Set(allWarnings.map((w) => w.category));
-    expect(categories.has('inject-token')).toBe(true);
+    expect(categories.has('inject-token-unsupported')).toBe(false);
     expect(categories.has('request-dto')).toBe(true);
     expect(categories.has('pipe-converter')).toBe(true);
   });

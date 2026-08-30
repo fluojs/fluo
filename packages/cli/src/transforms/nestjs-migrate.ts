@@ -23,6 +23,7 @@ type ImportBinding = {
  */
 export const WARNING_CATEGORIES = [
   'inject-token',
+  'inject-token-unsupported',
   'request-dto',
   'pipe-converter',
   'bootstrap-unsupported',
@@ -50,6 +51,7 @@ export type MigrationWarning = {
 
 const WARNING_CATEGORY_LABEL: Record<WarningCategory, string> = {
   'inject-token': 'DI token migration (@Inject)',
+  'inject-token-unsupported': 'Unsupported constructor injection',
   'request-dto': 'Request DTO migration (handler parameter decorators)',
   'pipe-converter': 'Pipe/converter migration',
   'bootstrap-unsupported': 'Unsupported bootstrap variant',
@@ -326,6 +328,7 @@ function rewriteImports(source: string, filePath: string): { changed: boolean; s
   const warnings: MigrationWarning[] = [];
   const additions = new Map<string, ImportBinding[]>();
   const statements: ts.Statement[] = [];
+  const hasNestInjectParameter = hasInjectParameterDecorator(sourceFile);
   let touched = false;
 
   for (const statement of sourceFile.statements) {
@@ -349,6 +352,11 @@ function rewriteImports(source: string, filePath: string): { changed: boolean; s
     const remaining: ImportBinding[] = [];
 
     for (const binding of getImportBindings(statement)) {
+      if (binding.imported === 'Inject' && hasNestInjectParameter) {
+        remaining.push(binding);
+        continue;
+      }
+
       const targetModule = NEST_COMMON_TO_FLUO[binding.imported];
       if (!targetModule) {
         remaining.push(binding);
@@ -410,6 +418,188 @@ function hasDecoratorNamed(modifiers: readonly ts.ModifierLike[] | undefined, na
   }
 
   return modifiers.some((modifier) => ts.isDecorator(modifier) && isDecoratorNamed(modifier, name));
+}
+
+function hasInjectParameterDecorator(sourceFile: ts.SourceFile): boolean {
+  let found = false;
+
+  const visit = (node: ts.Node): void => {
+    if (found) {
+      return;
+    }
+
+    if (ts.isParameter(node) && hasDecoratorNamed(node.modifiers, 'Inject')) {
+      found = true;
+      return;
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return found;
+}
+
+function createInjectionTokenFromType(type: ts.TypeNode | undefined): ts.Expression | undefined {
+  if (!type || !ts.isTypeReferenceNode(type)) {
+    return undefined;
+  }
+
+  const createEntityExpression = (name: ts.EntityName): ts.Expression => {
+    if (ts.isIdentifier(name)) {
+      return ts.factory.createIdentifier(name.text);
+    }
+
+    return ts.factory.createPropertyAccessExpression(createEntityExpression(name.left), name.right);
+  };
+
+  return createEntityExpression(type.typeName);
+}
+
+function getConstructorInjectionTokens(
+  classDeclaration: ts.ClassDeclaration,
+): { kind: 'none' } | { kind: 'safe'; tokens: readonly ts.Expression[] } | { kind: 'unsafe'; node: ts.Node } {
+  const constructorDeclaration = classDeclaration.members.find(ts.isConstructorDeclaration);
+  if (!constructorDeclaration) {
+    return { kind: 'none' };
+  }
+
+  const parameters = constructorDeclaration.parameters;
+  const hasInjectParameter = parameters.some((parameter) => hasDecoratorNamed(parameter.modifiers, 'Inject'));
+  if (!hasInjectParameter) {
+    return { kind: 'none' };
+  }
+
+  if (hasDecoratorNamed(classDeclaration.modifiers, 'Inject')) {
+    return { kind: 'unsafe', node: classDeclaration };
+  }
+
+  const tokens: ts.Expression[] = [];
+  for (const parameter of parameters) {
+    if (parameter.dotDotDotToken || parameter.questionToken || parameter.initializer || !ts.isIdentifier(parameter.name)) {
+      return { kind: 'unsafe', node: parameter };
+    }
+
+    const decorators = parameter.modifiers?.filter(ts.isDecorator) ?? [];
+    const injectDecorators = decorators.filter((decorator) => isDecoratorNamed(decorator, 'Inject'));
+    if (decorators.length !== injectDecorators.length || injectDecorators.length > 1) {
+      return { kind: 'unsafe', node: parameter };
+    }
+
+    const [injectDecorator] = injectDecorators;
+    if (injectDecorator) {
+      const expression = injectDecorator.expression;
+      if (!ts.isCallExpression(expression) || expression.arguments.length !== 1) {
+        return { kind: 'unsafe', node: parameter };
+      }
+
+      const [token] = expression.arguments;
+      if (!token) {
+        return { kind: 'unsafe', node: parameter };
+      }
+
+      tokens.push(token);
+      continue;
+    }
+
+    const token = createInjectionTokenFromType(parameter.type);
+    if (!token) {
+      return { kind: 'unsafe', node: parameter };
+    }
+
+    tokens.push(token);
+  }
+
+  return { kind: 'safe', tokens };
+}
+
+function rewriteConstructorInjectTokens(source: string, filePath: string): { changed: boolean; source: string; warnings: MigrationWarning[] } {
+  const sourceFile = parseSource(source, filePath);
+  const warnings: MigrationWarning[] = [];
+  const safeClasses = new Map<ts.ClassDeclaration, readonly ts.Expression[]>();
+  let hasUnsafeConstructor = false;
+
+  const inspect = (node: ts.Node): void => {
+    if (ts.isClassDeclaration(node)) {
+      const result = getConstructorInjectionTokens(node);
+      if (result.kind === 'safe') {
+        safeClasses.set(node, result.tokens);
+      }
+
+      if (result.kind === 'unsafe') {
+        hasUnsafeConstructor = true;
+        warnings.push(
+          buildWarning(
+            filePath,
+            sourceFile,
+            result.node,
+            'inject-token-unsupported',
+            'Unable to safely convert constructor injection. Keep the NestJS constructor unchanged and manually add class-level @Inject(...) tokens in constructor parameter order.',
+          ),
+        );
+      }
+    }
+
+    ts.forEachChild(node, inspect);
+  };
+
+  inspect(sourceFile);
+  if (safeClasses.size === 0 || hasUnsafeConstructor) {
+    return { changed: false, source, warnings };
+  }
+
+  const transformer = <T extends ts.Node>(context: ts.TransformationContext) => {
+    const visit = (node: ts.Node): ts.Node => {
+      if (ts.isClassDeclaration(node)) {
+        const tokens = safeClasses.get(node);
+        if (tokens) {
+          const members = node.members.map((member) => {
+            if (!ts.isConstructorDeclaration(member)) {
+              return member;
+            }
+
+            const parameters = member.parameters.map((parameter) => {
+              const modifiers = parameter.modifiers?.filter((modifier) => !ts.isDecorator(modifier) || !isDecoratorNamed(modifier, 'Inject'));
+              return ts.factory.updateParameterDeclaration(
+                parameter,
+                modifiers,
+                parameter.dotDotDotToken,
+                parameter.name,
+                parameter.questionToken,
+                parameter.type,
+                parameter.initializer,
+              );
+            });
+            return ts.factory.updateConstructorDeclaration(member, member.modifiers, parameters, member.body);
+          });
+          const modifiers = [
+            ts.factory.createDecorator(ts.factory.createCallExpression(ts.factory.createIdentifier('Inject'), undefined, tokens)),
+            ...(node.modifiers ?? []),
+          ];
+
+          return ts.factory.updateClassDeclaration(
+            node,
+            modifiers,
+            node.name,
+            node.typeParameters,
+            node.heritageClauses,
+            members,
+          );
+        }
+      }
+
+      return ts.visitEachChild(node, visit, context);
+    };
+
+    return (node: T) => ts.visitNode(node, visit);
+  };
+
+  const transformed = ts.transform(sourceFile, [transformer]).transformed[0] as ts.SourceFile;
+  return {
+    changed: true,
+    source: printer.printFile(transformed),
+    warnings,
+  };
 }
 
 function hasConflictingScopeImport(sourceFile: ts.SourceFile): boolean {
@@ -1046,7 +1236,7 @@ function rewriteBaseUrlPaths(paths: unknown, baseUrl: string | undefined): Recor
   return Object.fromEntries(rewrittenEntries);
 }
 
-function detectManualFollowUps(source: string, filePath: string): MigrationWarning[] {
+function detectManualFollowUps(source: string, filePath: string, includeInjectTokenWarning: boolean): MigrationWarning[] {
   const sourceFile = parseSource(source, filePath);
   const warnings: MigrationWarning[] = [];
   let hasRequestDecoratorWarning = false;
@@ -1061,7 +1251,7 @@ function detectManualFollowUps(source: string, filePath: string): MigrationWarni
         }
 
         const decoratorName = modifier.expression.expression.text;
-        if (!hasInjectParameterWarning && decoratorName === 'Inject') {
+        if (includeInjectTokenWarning && !hasInjectParameterWarning && decoratorName === 'Inject') {
           hasInjectParameterWarning = true;
           warnings.push(
             buildWarning(filePath, sourceFile, modifier, 'inject-token', 'Constructor @Inject(TOKEN) parameter decorators need manual migration to class-level @Inject(TOKEN, ...) syntax.'),
@@ -1158,6 +1348,12 @@ function runTypeScriptTransforms(
   const appliedTransforms: MigrationTransformKind[] = [];
   const warnings: MigrationWarning[] = [];
 
+  if (enabledTransforms.has('injectable')) {
+    const rewritten = rewriteConstructorInjectTokens(nextSource, filePath);
+    nextSource = rewritten.source;
+    warnings.push(...rewritten.warnings);
+  }
+
   if (enabledTransforms.has('imports')) {
     const rewritten = rewriteImports(nextSource, filePath);
     nextSource = rewritten.source;
@@ -1207,7 +1403,7 @@ function runTypeScriptTransforms(
     }
   }
 
-  warnings.push(...detectManualFollowUps(source, filePath));
+  warnings.push(...detectManualFollowUps(source, filePath, !enabledTransforms.has('injectable')));
 
   return {
     appliedTransforms: [...new Set(appliedTransforms)],
