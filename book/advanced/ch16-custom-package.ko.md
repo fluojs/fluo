@@ -49,6 +49,20 @@ fluo 패키지는 일반적으로 세 가지 핵심 기둥에 의존합니다.
 
 라이브러리를 만들 때는 사용자 의존성 그래프에서 버전 충돌을 피하기 위해 `@fluojs/core`와 `@fluojs/di`를 `peerDependencies`로 두는 편이 좋습니다. 특히 `@fluojs/di`는 여러 주입 엔진 인스턴스가 공존하면 토큰 확인 중 예상치 못한 동작이 생길 수 있으므로 주의해야 합니다.
 
+### Preload Symbol.metadata Before Custom Decorators
+
+fluo 내장 데코레이터는 framework-owned store에 기록하므로 import만으로 전역 `Symbol.metadata` polyfill을 설치하지 않습니다. `context.metadata`를 읽는 package-defined 표준 데코레이터는 더 이른 시점, 즉 그 데코레이터가 적용된 class를 포함한 module이 평가되기 전에 symbol이 필요합니다.
+
+bootstrap 파일이 decorated graph를 static import한다면 일반 bootstrap 호출로는 충분하지 않습니다. ESM은 bootstrap body보다 static import를 먼저 평가합니다. preload 파일을 configured entrypoint로 사용하고 초기화가 끝난 뒤에만 나머지를 dynamic import하세요.
+
+```ts
+// preload.ts
+import { ensureMetadataSymbol } from '@fluojs/core';
+
+ensureMetadataSymbol();
+await import('./bootstrap.js');
+```
+
 ## Designing DynamicModules
 
 `DynamicModule` 패턴은 fluo에서 설정 가능한 기능을 제공하는 주요 방식입니다. 컴파일 타임에 정의되는 정적 모듈과 달리, 동적 모듈은 런타임에 생성되며 보통 설정 객체를 받습니다.

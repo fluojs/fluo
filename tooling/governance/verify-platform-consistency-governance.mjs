@@ -737,6 +737,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // serialization class options, committed-response ownership bypass, and
   // request-boundary interceptor coverage, CLI
   // public runtime type boundaries plus the documented Node.js runtime floor,
+  // custom standard-decorator Symbol.metadata preload ordering before dynamic
+  // application-graph import,
   // and Studio live helper contracts such as deterministic Mermaid rendering,
   // route-id graph correlation, viewer dependency classification, Node.js
   // tooling runtime-floor discoverability, and CLI-owned active ingestion socket
