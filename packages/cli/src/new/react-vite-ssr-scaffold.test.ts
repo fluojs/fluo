@@ -90,7 +90,7 @@ describe('React SSR + Vite scaffold', () => {
       'package.json',
       'playwright.config.ts',
       'src/app.test.ts',
-      'src/app.tsx',
+      'src/app.ts',
       'src/entry-client.tsx',
       'src/entry-server.tsx',
       'src/load-manifest.test.ts',
@@ -107,9 +107,9 @@ describe('React SSR + Vite scaffold', () => {
       'vite.server.config.ts',
       'vitest.config.ts',
     ]);
-    expect(snapshot['src/app.tsx']).toContain("@Router('/products')");
-    expect(snapshot['src/app.tsx']).toContain("@Path('/:sku')");
-    expect(snapshot['src/app.tsx']).toContain('return <ProductPage />;');
+    expect(snapshot['src/app.ts']).toContain("@Router('/products')");
+    expect(snapshot['src/app.ts']).toContain("@Path('/:sku')");
+    expect(snapshot['src/app.ts']).toContain('return createElement(ProductPage);');
     expect(snapshot['src/page.tsx']).toContain('return (');
     expect(snapshot['src/main.ts']).toContain("loadReactViteManifest(new URL('../client/.vite/manifest.json', import.meta.url))");
     expect(snapshot['src/main.ts']).toContain('createReactPageRenderer(manifest)');
@@ -129,7 +129,7 @@ describe('React SSR + Vite scaffold', () => {
     expect(snapshot['vite.client.config.ts']).toContain("manifest: true");
     expect(snapshot['vite.server.config.ts']).toContain("ssr: 'src/main.ts'");
     expect(snapshot).not.toHaveProperty('src/routes.generated.ts');
-    expect(snapshot).not.toHaveProperty('src/app.ts');
+    expect(snapshot).not.toHaveProperty('src/app.tsx');
     expect(snapshot).not.toHaveProperty('src/hydration.ts');
     expect(snapshot).not.toHaveProperty('src/hydration.test.tsx');
     expect(Object.values(snapshot).join('\n')).not.toContain('@fluojs/react/experimental/rsc');

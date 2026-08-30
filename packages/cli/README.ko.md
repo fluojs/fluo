@@ -119,7 +119,7 @@ fluo new my-react-app --starter react-vite-ssr
 
 이 starter는 schema를 Node.js + Fastify HTTP로 고정합니다. `pnpm dev`를 실행하고
 `/products/sku-42?preview=true`를 연 뒤 `src/page.tsx`를 편집하세요. Page UI는 더 이상 Vite asset,
-document shell, server/client route snapshot wiring을 함께 다루지 않습니다. `src/app.tsx`의 명시적인
+document shell, server/client route snapshot wiring을 함께 다루지 않습니다. `src/app.ts`의 명시적인
 `@Router(...)` / `@Path(...)` handler가 page를 하나의 `ReactElement`로 반환하므로 기존 HTTP
 dispatcher가 계속 authoritative합니다.
 
