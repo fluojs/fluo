@@ -1,3 +1,4 @@
+import { GraphQLNonNull } from 'graphql';
 import type { GraphQLFieldConfigArgumentMap, GraphQLFieldConfigMap, GraphQLOutputType } from 'graphql';
 
 import type {
@@ -81,12 +82,15 @@ export class ObjectFieldResolverRegistry {
         );
       }
 
+      const hasExplicitNonNullableNewField =
+        existingField === undefined && entry.handler.outputType !== undefined && entry.handler.nullable === false;
+
       attachedFields[fieldName] = {
         ...existingField,
         ...(entry.handler.inputClass ? { args: resolveInputArgs(entry.handler) } : {}),
         resolve: async (source: unknown, args: Record<string, unknown>, contextValue: FluoGraphQLContext) =>
           invokeResolver(entry.descriptor, entry.handler, args, source, contextValue),
-        type: outputType,
+        type: hasExplicitNonNullableNewField ? new GraphQLNonNull(outputType) : outputType,
       };
     }
 
