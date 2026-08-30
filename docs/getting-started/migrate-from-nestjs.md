@@ -180,6 +180,23 @@ await app.listen();
 
 NestJS `forRootAsync(...)` and `load` namespace factories have no direct registration equivalent. Await remote stores or secret managers at the application-owned bootstrap boundary before defining the final module graph, then pass their nested results to the synchronous loader or module options. An adapterless `FluoFactory.create(AppModule)` application shell and `FluoFactory.createApplicationContext(AppModule)` can resolve `ConfigService`; only HTTP `listen()` requires `FluoFactory.create(AppModule, { adapter })`. Preparing a shared validated snapshot before the final HTTP application avoids a second ambient environment read and keeps the adapter and injected config aligned.
 
+### Fastify Native Extension Migration
+
+Use fluo `middleware` for portable request behavior; it is not a Fastify plugin API. If a NestJS migration must retain a Fastify-native plugin, hook, serializer, or instance customization, pass it through `createFastifyAdapter({ configureFastify })` (or the same bootstrap/run option) before listening:
+
+```typescript
+const adapter = createFastifyAdapter({
+  configureFastify: async (fastify) => {
+    fastify.addHook('onRequest', async (request, reply) => {
+      reply.header('x-native-request-id', request.id);
+    });
+  },
+  port: validatedConfig.http.port,
+});
+```
+
+The hook runs once per adapter-created Fastify instance before fluo registers multipart, raw-body, native-route, and wildcard-route handling. Rejection prevents that `listen()` call; a successful close followed by relisten creates and configures one new instance. The adapter still owns routing, CORS, logging, response semantics, and shutdown. Do not carry post-bootstrap instance mutation, existing-instance adoption, or native-route bypasses across this boundary.
+
 ### NestJS i18n Locale and Validation Migration
 
 Replace NestJS i18n's resolver discovery and request-scoped context with one explicit request-boundary handoff. Register catalogs through the root module, select the request locale with the HTTP subpath, and pass that locale into the validation subpath:

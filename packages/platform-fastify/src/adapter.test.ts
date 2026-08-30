@@ -460,6 +460,97 @@ describe('@fluojs/platform-fastify', () => {
     }
   });
 
+  it('configures every created Fastify instance once before internal registration', async () => {
+    const configuredInstances = new Set<FastifyInstance>();
+    const configurationOrder: string[] = [];
+    const adapter = createFastifyAdapter({
+      configureFastify: async (app) => {
+        configuredInstances.add(app);
+        configurationOrder.push('configure');
+        app.addHook('onRoute', () => {
+          configurationOrder.push('internal-route');
+        });
+        app.addHook('onRequest', (_request, reply, done) => {
+          reply.header('x-native-config', 'active');
+          done();
+        });
+      },
+      port: 0,
+    }) as FastifyHttpApplicationAdapter;
+    const dispatcher: Dispatcher = {
+      async dispatch(_request, response) {
+        await response.send({ ok: true });
+      },
+    };
+
+    try {
+      await adapter.listen(dispatcher);
+      const firstResponse = await requestHttp({
+        method: 'GET',
+        path: '/',
+        port: getBoundPort(adapter.getServer()),
+      });
+
+      expect(firstResponse.headers['x-native-config']).toBe('active');
+      expect(JSON.parse(firstResponse.body)).toEqual({ ok: true });
+      expect(configuredInstances.size).toBe(1);
+      expect(configurationOrder).toEqual(['configure', 'internal-route']);
+
+      await adapter.listen(dispatcher);
+      expect(configuredInstances.size).toBe(1);
+      expect(configurationOrder).toEqual(['configure', 'internal-route']);
+
+      await adapter.close();
+      await adapter.listen(dispatcher);
+      const secondResponse = await requestHttp({
+        method: 'GET',
+        path: '/',
+        port: getBoundPort(adapter.getServer()),
+      });
+
+      expect(secondResponse.headers['x-native-config']).toBe('active');
+      expect(JSON.parse(secondResponse.body)).toEqual({ ok: true });
+      expect(configuredInstances.size).toBe(2);
+      expect(configurationOrder).toEqual([
+        'configure',
+        'internal-route',
+        'configure',
+        'internal-route',
+      ]);
+    } finally {
+      await adapter.close();
+    }
+  });
+
+  it('propagates configuration failures and retries only after closing the failed instance', async () => {
+    let configurationCalls = 0;
+    const adapter = createFastifyAdapter({
+      configureFastify: async () => {
+        configurationCalls += 1;
+        throw new Error('Fastify native configuration failed.');
+      },
+      port: 0,
+    }) as FastifyHttpApplicationAdapter;
+    const dispatcher: Dispatcher = {
+      async dispatch(_request, response) {
+        await response.send({ ok: true });
+      },
+    };
+
+    try {
+      await expect(adapter.listen(dispatcher)).rejects.toThrow('Fastify native configuration failed.');
+      await expect(adapter.listen(dispatcher)).rejects.toThrow('Fastify native configuration failed.');
+      expect(configurationCalls).toBe(1);
+      expect((adapter.getServer() as { listening?: boolean }).listening).toBe(false);
+
+      await adapter.close();
+      await expect(adapter.listen(dispatcher)).rejects.toThrow('Fastify native configuration failed.');
+      expect(configurationCalls).toBe(2);
+    } finally {
+      await adapter.close();
+    }
+  });
+
   it('preserves response parity for simple JSON and non-fast-path responses', async () => {
     @Controller('/responses')
     class ResponsesController {
