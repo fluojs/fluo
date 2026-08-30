@@ -1405,9 +1405,12 @@ function createRawBodyBufferChunk(chunk: unknown, encoding: BufferEncoding): Buf
 }
 
 function isMultipartRequestContentType(contentType: string | string[] | undefined): boolean {
+  return normalizePrimaryMediaType(contentType) === 'multipart/form-data';
+}
+
+function normalizePrimaryMediaType(contentType: string | string[] | undefined): string | undefined {
   const primaryValue = Array.isArray(contentType) ? contentType[0] : contentType;
-  const primaryMediaType = primaryValue?.split(';')[0]?.trim().toLowerCase();
-  return primaryMediaType === 'multipart/form-data';
+  return primaryValue?.split(';')[0]?.trim().toLowerCase();
 }
 
 function resolveListenTarget(
@@ -1604,5 +1607,5 @@ function serializeResponseBody(
 }
 
 function isJsonContentType(contentType: string | undefined): boolean {
-  return typeof contentType === 'string' && contentType.toLowerCase().includes('application/json');
+  return normalizePrimaryMediaType(contentType) === 'application/json';
 }

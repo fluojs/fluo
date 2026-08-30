@@ -595,6 +595,18 @@ describe('@fluojs/platform-fastify', () => {
         return 'plain';
       }
 
+      @Header('Content-Type', ' text/plain; profile="application/json" ')
+      @Get('/string-with-json-profile')
+      getStringWithJsonProfile() {
+        return 'plain with a JSON profile';
+      }
+
+      @Header('Content-Type', ' Application/Json ; charset=utf-8 ')
+      @Get('/json-string-with-parameters')
+      getJsonStringWithParameters() {
+        return 'JSON string';
+      }
+
       @Get('/bytes')
       getBytes() {
         return Uint8Array.from([65, 66]);
@@ -637,6 +649,8 @@ describe('@fluojs/platform-fastify', () => {
       const objectResponse = await requestHttp({ path: '/responses/object', port });
       const arrayResponse = await requestHttp({ path: '/responses/array', port });
       const stringResponse = await requestHttp({ path: '/responses/string', port });
+      const stringWithJsonProfileResponse = await requestHttp({ path: '/responses/string-with-json-profile', port });
+      const jsonStringWithParametersResponse = await requestHttp({ path: '/responses/json-string-with-parameters', port });
       const bytesResponse = await requestHttp({ path: '/responses/bytes', port });
       const bufferResponse = await requestHttp({ path: '/responses/buffer', port });
       const headerResponse = await requestHttp({ path: '/responses/headers', port });
@@ -651,6 +665,8 @@ describe('@fluojs/platform-fastify', () => {
       expect(JSON.parse(arrayResponse.body)).toEqual([{ ok: true }]);
       expect(stringResponse.headers['content-type']).toContain('text/plain');
       expect(stringResponse.body).toBe('plain');
+      expect(stringWithJsonProfileResponse.body).toBe('plain with a JSON profile');
+      expect(jsonStringWithParametersResponse.body).toBe(JSON.stringify('JSON string'));
       expect(bytesResponse.headers['content-type']).toContain('application/octet-stream');
       expect(bytesResponse.body).toBe('AB');
       expect(bufferResponse.headers['content-type']).toContain('application/octet-stream');
@@ -1011,13 +1027,8 @@ describe('@fluojs/platform-fastify', () => {
     const observedMultipartRequest = createDeferred<void>();
 
     fastifyApp.addHook('preHandler', (request) => {
-      const contentType = request.headers['content-type'];
-      const primaryValue = Array.isArray(contentType) ? contentType[0] : contentType;
-
-      if (typeof primaryValue === 'string' && primaryValue.includes('multipart/form-data')) {
-        observedMultipartRawBodyStates.push(request.rawBody !== undefined);
-        observedMultipartRequest.resolve();
-      }
+      observedMultipartRawBodyStates.push(request.rawBody !== undefined);
+      observedMultipartRequest.resolve();
     });
 
     const port = await listenOnEphemeralPort(app);
