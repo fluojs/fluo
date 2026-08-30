@@ -147,12 +147,12 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
     private readonly retryDelayMs = 150,
     private readonly retryLimit = 20,
     compression = false,
-    private readonly httpOptions: HttpServerOptions | undefined,
     private readonly httpsOptions: HttpsServerOptions | undefined,
     multipartOptions?: MultipartOptions,
     maxBodySize = 1 * 1024 * 1024,
     preserveRawBody = false,
     private readonly shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
+    private readonly httpOptions?: HttpServerOptions,
   ) {
     validateNodeLifecycleOptions({
       retryDelayMs: this.retryDelayMs,
@@ -287,12 +287,12 @@ export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, comp
     options.retryDelayMs,
     options.retryLimit,
     compression,
-    options.http,
     options.https,
     multipartOptions,
     resolveNodeMaxBodySize(options.maxBodySize),
     options.rawBody,
     options.shutdownTimeoutMs,
+    options.http,
   );
 }
 

@@ -1,12 +1,14 @@
 import { type AddressInfo, createServer } from 'node:net';
+import type { ServerOptions as HttpServerOptions } from 'node:http';
+import type { ServerOptions as HttpsServerOptions } from 'node:https';
 import { Controller, type Dispatcher, FromBody, Get, Post, type RequestContext, RequestDto } from '@fluojs/http';
-import { defineModule, FluoFactory } from '@fluojs/runtime';
+import { defineModule, FluoFactory, type MultipartOptions } from '@fluojs/runtime';
 import {
   type BootstrapNodeApplicationOptions,
   bootstrapNodeApplication,
   type NodeApplicationSignal,
   type NodeHttpAdapterOptions,
-  type NodeHttpApplicationAdapter,
+  NodeHttpApplicationAdapter,
   type RunNodeApplicationOptions,
   runNodeApplication,
 } from '@fluojs/runtime/node';
@@ -23,6 +25,10 @@ import {
   type RunNodejsApplicationOptions,
   runNodejsApplication,
 } from './index.js';
+
+type NodeHttpApplicationAdapterConstructorParameters = ConstructorParameters<
+  typeof NodeHttpApplicationAdapter
+>;
 
 function getBoundPort(server: { address(): AddressInfo | string | null }): number {
   const address = server.address();
@@ -193,6 +199,20 @@ describe('@fluojs/platform-nodejs', () => {
     expectTypeOf<NodejsApplicationSignal>().toEqualTypeOf<NodeApplicationSignal>();
     expectTypeOf<NodejsHttpApplicationAdapter>().toEqualTypeOf<NodeHttpApplicationAdapter>();
     expectTypeOf<RunNodejsApplicationOptions>().toEqualTypeOf<RunNodeApplicationOptions>();
+  });
+
+  it('preserves the Node adapter constructor parameter order for positional consumers', () => {
+    expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[0]>().toEqualTypeOf<number>();
+    expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[1]>().toEqualTypeOf<string | undefined>();
+    expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[2]>().toEqualTypeOf<number | undefined>();
+    expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[3]>().toEqualTypeOf<number | undefined>();
+    expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[4]>().toEqualTypeOf<boolean | undefined>();
+    expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[5]>().toEqualTypeOf<HttpsServerOptions | undefined>();
+    expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[6]>().toEqualTypeOf<MultipartOptions | undefined>();
+    expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[7]>().toEqualTypeOf<number | undefined>();
+    expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[8]>().toEqualTypeOf<boolean | undefined>();
+    expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[9]>().toEqualTypeOf<number | undefined>();
+    expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[10]>().toEqualTypeOf<HttpServerOptions | undefined>();
   });
 
   it('keeps advanced process and compression utilities off the primary platform startup surface', () => {
