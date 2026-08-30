@@ -69,7 +69,14 @@ const DEFAULT_GRAPHQL_WEBSOCKET_LIMITS: GraphqlWebSocketLimits = {
 
 function collectCleanupError(errors: unknown[], error: unknown): void {
   if (error instanceof AggregateError) {
-    errors.push(...error.errors);
+    for (const nested of error.errors) {
+      collectCleanupError(errors, nested);
+    }
+
+    return;
+  }
+
+  if (errors.includes(error)) {
     return;
   }
 
@@ -307,6 +314,8 @@ export class GraphqlLifecycleService implements Middleware, OnApplicationBootstr
   private readonly operationContainers = new Map<Request, Container>();
   private readonly requestContexts = new WeakMap<Request, GraphqlRequestContext>();
   private readonly failedWebsocketOperationContainers = new Map<object, Set<Container>>();
+  private readonly websocketContainerDisposals = new Map<Container, Promise<unknown>>();
+  private websocketContainersAttemptedInCurrentCleanup: Set<Container> | undefined;
   private readonly websocketOperationContainers = new Map<object, Map<string, Container>>();
   private websocketTransport: GraphqlNodeWebSocketTransport | undefined;
   private executeGraphqlOperation: typeof executeGraphql | undefined;
@@ -417,10 +426,14 @@ export class GraphqlLifecycleService implements Middleware, OnApplicationBootstr
   private async resetGraphqlRuntimeState(): Promise<void> {
     const cleanupErrors: unknown[] = [];
 
+    this.websocketContainersAttemptedInCurrentCleanup = new Set<Container>();
+
     try {
       await this.unregisterWebSocketTransport();
     } catch (error) {
       collectCleanupError(cleanupErrors, error);
+    } finally {
+      this.websocketContainersAttemptedInCurrentCleanup = undefined;
     }
 
     try {
@@ -680,15 +693,46 @@ export class GraphqlLifecycleService implements Middleware, OnApplicationBootstr
       this.websocketOperationContainers.delete(socketKey);
     }
 
-    try {
-      await operationContainer.dispose();
-    } catch (error) {
-      const failedContainers = this.failedWebsocketOperationContainers.get(socketKey) ?? new Set<Container>();
-      failedContainers.add(operationContainer);
-      this.failedWebsocketOperationContainers.set(socketKey, failedContainers);
-      this.logger.error('Failed to dispose GraphQL websocket operation container.', error, 'GraphqlLifecycleService');
-      return error;
+    return await this.disposeWebSocketContainerOnce(socketKey, operationContainer);
+  }
+
+  private async disposeWebSocketContainerOnce(socketKey: object, operationContainer: Container): Promise<unknown> {
+    const inFlight = this.websocketContainerDisposals.get(operationContainer);
+
+    if (inFlight) {
+      return await inFlight;
     }
+
+    const attempted = this.websocketContainersAttemptedInCurrentCleanup;
+
+    if (attempted?.has(operationContainer)) {
+      return undefined;
+    }
+
+    attempted?.add(operationContainer);
+
+    const disposal = operationContainer
+      .dispose()
+      .then(
+        () => {
+          this.failedWebsocketOperationContainers.get(socketKey)?.delete(operationContainer);
+          return undefined;
+        },
+        (error: unknown) => {
+          const failedContainers = this.failedWebsocketOperationContainers.get(socketKey) ?? new Set<Container>();
+          failedContainers.add(operationContainer);
+          this.failedWebsocketOperationContainers.set(socketKey, failedContainers);
+          this.logger.error('Failed to dispose GraphQL websocket operation container.', error, 'GraphqlLifecycleService');
+          return error;
+        },
+      )
+      .finally(() => {
+        this.websocketContainerDisposals.delete(operationContainer);
+      });
+
+    this.websocketContainerDisposals.set(operationContainer, disposal);
+
+    return await disposal;
   }
 
   private async disposeAllWebSocketOperationContainers(socketKey: object): Promise<void> {
@@ -696,12 +740,10 @@ export class GraphqlLifecycleService implements Middleware, OnApplicationBootstr
     const failedContainers = this.failedWebsocketOperationContainers.get(socketKey);
 
     for (const operationContainer of [...(failedContainers ?? [])]) {
-      try {
-        await operationContainer.dispose();
-        failedContainers?.delete(operationContainer);
-      } catch (error) {
-        this.logger.error('Failed to retry GraphQL websocket operation container cleanup.', error, 'GraphqlLifecycleService');
-        collectCleanupError(cleanupErrors, error);
+      const cleanupError = await this.disposeWebSocketContainerOnce(socketKey, operationContainer);
+
+      if (cleanupError !== undefined) {
+        collectCleanupError(cleanupErrors, cleanupError);
       }
     }
 

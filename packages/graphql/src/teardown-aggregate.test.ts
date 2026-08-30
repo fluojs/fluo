@@ -1,7 +1,7 @@
-import { createServer } from 'node:net';
-
 import { Inject, Scope } from '@fluojs/core';
+import type { Application } from '@fluojs/runtime';
 import { defineModule } from '@fluojs/runtime';
+import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
 import { bootstrapNodeApplication } from '@fluojs/runtime/node';
 import { describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
@@ -17,29 +17,16 @@ type GraphqlWebSocketMessage = {
   type: string;
 };
 
-async function findAvailablePort(): Promise<number> {
-  return await new Promise<number>((resolve, reject) => {
-    const server = createServer();
+async function resolveListeningPort(app: Application): Promise<number> {
+  const adapter = await app.get(HTTP_APPLICATION_ADAPTER);
+  const server = adapter.getServer?.() as { address?: () => unknown } | undefined;
+  const address = server?.address?.();
 
-    server.once('error', reject);
-    server.listen(0, () => {
-      const address = server.address();
+  if (!address || typeof address !== 'object' || !('port' in address)) {
+    throw new Error('Failed to resolve the listening port of the bootstrapped application.');
+  }
 
-      if (!address || typeof address === 'string') {
-        reject(new Error('Failed to resolve available port.'));
-        return;
-      }
-
-      server.close((error?: Error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve(address.port);
-      });
-    });
-  });
+  return (address as { port: number }).port;
 }
 
 async function postGraphql(port: number, query: string): Promise<unknown> {
@@ -186,10 +173,11 @@ describe('GraphQL teardown error aggregation', () => {
       ],
     });
 
-    const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port: 0 });
 
     await app.listen();
+
+    const port = await resolveListeningPort(app);
     await expect(postGraphql(port, '{ httpCleanup }')).resolves.toEqual({
       data: {
         httpCleanup: 'HttpCleanupFailure',
@@ -227,8 +215,15 @@ describe('GraphQL teardown error aggregation', () => {
         return false;
       }
 
-      return error.errors.some((item) => item instanceof Error && item.message === 'HTTP operation cleanup failed') &&
-        error.errors.some((item) => item instanceof Error && item.message === 'websocket operation cleanup failed');
+      const hasNestedAggregate = error.errors.some((item) => item instanceof AggregateError);
+      const messages = error.errors
+        .map((item) => (item instanceof Error ? item.message : String(item)))
+        .sort();
+
+      return !hasNestedAggregate &&
+        messages.includes('HTTP operation cleanup failed') &&
+        messages.includes('websocket operation cleanup failed') &&
+        messages.length === new Set(messages).size;
     });
     await socketClosed;
 
