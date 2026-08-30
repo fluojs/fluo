@@ -70,19 +70,7 @@ export function useStudioLiveConnection(dispatch: Dispatch<StudioAction>): void 
 
     let closed = false;
     let lastEventAt = Date.now();
-    const staleTimer = window.setInterval(() => {
-      if (closed) {
-        return;
-      }
-
-      if (Date.now() - lastEventAt > 20_000) {
-        dispatchConnection(dispatch, {
-          lastEventAt: new Date(lastEventAt).toISOString(),
-          message: 'No Studio event has arrived for 20s; showing stale data until the sidecar reconnects.',
-          status: 'stale',
-        });
-      }
-    }, 5_000);
+    let staleTimer: number | undefined;
 
     dispatchConnection(dispatch, {
       message: 'Connecting to the local Studio sidecar…',
@@ -120,6 +108,19 @@ export function useStudioLiveConnection(dispatch: Dispatch<StudioAction>): void 
         });
         return;
       }
+      staleTimer = window.setInterval(() => {
+        if (closed) {
+          return;
+        }
+
+        if (Date.now() - lastEventAt > 20_000) {
+          dispatchConnection(dispatch, {
+            lastEventAt: new Date(lastEventAt).toISOString(),
+            message: 'No Studio event has arrived for 20s; showing stale data until the sidecar reconnects.',
+            status: 'stale',
+          });
+        }
+      }, 5_000);
       source.onopen = () => {
         if (closed) {
           return;
@@ -193,7 +194,9 @@ export function useStudioLiveConnection(dispatch: Dispatch<StudioAction>): void 
       if (config.stateUrl && typeof fetch === 'function') {
         abortController?.abort();
       }
-      window.clearInterval(staleTimer);
+      if (staleTimer !== undefined) {
+        window.clearInterval(staleTimer);
+      }
       if (source) {
         for (const eventType of LIVE_EVENT_TYPES) {
           source.removeEventListener(eventType, handleMessage);

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { createElement, useReducer } from 'react';
+import { act, createElement, useReducer } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { StudioLiveEvent } from '../../../contracts.js';
@@ -8,6 +8,10 @@ import type { StudioDashboardState } from '../../../entities/studio/model.js';
 import { initialStudioState } from '../../../entities/studio/model.js';
 import { studioReducer } from './reducer.js';
 import { useStudioLiveConnection } from './useStudioLiveConnection.js';
+
+declare global {
+  var IS_REACT_ACT_ENVIRONMENT: boolean | undefined;
+}
 
 class FakeEventSource {
   static readonly instances: FakeEventSource[] = [];
@@ -116,6 +120,7 @@ describe('useStudioLiveConnection', () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    globalThis.IS_REACT_ACT_ENVIRONMENT = undefined;
     FakeEventSource.instances.length = 0;
   });
 
@@ -322,6 +327,8 @@ describe('useStudioLiveConnection', () => {
   });
 
   it('reports a controlled error when direct EventSource construction fails', async () => {
+    vi.useFakeTimers();
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     let constructionCount = 0;
     class ThrowingEventSource {
       constructor() {
@@ -345,24 +352,34 @@ describe('useStudioLiveConnection', () => {
     const container = document.createElement('div');
     document.body.append(container);
     const root: Root = createRoot(container);
-    root.render(createElement(Harness));
 
     try {
-      await vi.waitFor(() => {
-        expect(observedStates).toContainEqual(expect.objectContaining({
-          connection: {
-            message: 'EventSource construction failed.',
-            status: 'error',
-          },
-        }));
+      await act(async () => {
+        root.render(createElement(Harness));
       });
+      expect(observedStates).toContainEqual(expect.objectContaining({
+        connection: {
+          message: 'EventSource construction failed.',
+          status: 'error',
+        },
+      }));
+      expect(constructionCount).toBe(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(25_001);
+      });
+      expect(observedStates.at(-1)?.connection.status).toBe('error');
       expect(constructionCount).toBe(1);
     } finally {
-      root.unmount();
+      await act(async () => {
+        root.unmount();
+      });
     }
   });
 
   it('reports a controlled error without retrying EventSource after state replay', async () => {
+    vi.useFakeTimers();
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     let constructionCount = 0;
     class ThrowingEventSource {
       constructor() {
@@ -391,21 +408,33 @@ describe('useStudioLiveConnection', () => {
     const container = document.createElement('div');
     document.body.append(container);
     const root: Root = createRoot(container);
-    root.render(createElement(Harness));
 
     try {
-      await vi.waitFor(() => {
-        expect(observedStates).toContainEqual(expect.objectContaining({
-          connection: expect.objectContaining({
-            message: 'EventSource construction failed.',
-            status: 'error',
-          }),
-        }));
+      await act(async () => {
+        root.render(createElement(Harness));
       });
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(observedStates).toContainEqual(expect.objectContaining({
+        connection: expect.objectContaining({
+          message: 'EventSource construction failed.',
+          status: 'error',
+        }),
+      }));
       expect(constructionCount).toBe(1);
       expect(observedStates.at(-1)?.events).toHaveLength(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(25_001);
+      });
+      expect(observedStates.at(-1)?.connection.status).toBe('error');
+      expect(constructionCount).toBe(1);
     } finally {
-      root.unmount();
+      await act(async () => {
+        root.unmount();
+      });
     }
   });
 });
