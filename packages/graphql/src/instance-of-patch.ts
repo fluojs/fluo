@@ -15,6 +15,7 @@ export type GraphqlInstanceOfModule = {
 
 interface GraphqlInstanceOfPatchState {
   readonly allowedObjectSets: Set<WeakSet<object>>;
+  isEvaluatingDelegate: boolean;
   originalInstanceOf: GraphqlInstanceOf;
   readonly patchedInstanceOf: GraphqlInstanceOf;
 }
@@ -27,23 +28,34 @@ function createGraphqlInstanceOfPatchState(
   let patchState: GraphqlInstanceOfPatchState;
   const allowedObjectSets = new Set<WeakSet<object>>();
   const patchedInstanceOf: GraphqlInstanceOf = (value, constructor) => {
-    try {
-      if (patchState.originalInstanceOf(value, constructor)) {
-        return true;
-      }
-    } catch (error) {
-      if (isAllowedCrossRealmGraphqlObject(value, constructor, allowedObjectSets)) {
-        return true;
-      }
-
-      throw error;
+    if (patchState.isEvaluatingDelegate) {
+      return isAllowedCrossRealmGraphqlObject(value, constructor, allowedObjectSets);
     }
 
-    return isAllowedCrossRealmGraphqlObject(value, constructor, allowedObjectSets);
+    patchState.isEvaluatingDelegate = true;
+
+    try {
+      try {
+        if (patchState.originalInstanceOf(value, constructor)) {
+          return true;
+        }
+      } catch (error) {
+        if (isAllowedCrossRealmGraphqlObject(value, constructor, allowedObjectSets)) {
+          return true;
+        }
+
+        throw error;
+      }
+
+      return isAllowedCrossRealmGraphqlObject(value, constructor, allowedObjectSets);
+    } finally {
+      patchState.isEvaluatingDelegate = false;
+    }
   };
 
   patchState = {
     allowedObjectSets,
+    isEvaluatingDelegate: false,
     originalInstanceOf,
     patchedInstanceOf,
   };
