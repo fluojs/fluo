@@ -90,13 +90,14 @@ export function enforcePlatformFastifyEngineDocumentation(readText = read) {
     'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
   ]) {
     const content = readText(relativePath);
-    const fastifySectionStart = content.indexOf('## Fastify');
+    const fastifyHeadingMatches = [...content.matchAll(/^## Fastify\s*$/gmu)];
 
     assert(
-      fastifySectionStart >= 0,
-      `${relativePath} must include a Fastify section.`,
+      fastifyHeadingMatches.length === 1,
+      `${relativePath} must include exactly one ## Fastify heading; found ${fastifyHeadingMatches.length}.`,
     );
 
+    const fastifySectionStart = fastifyHeadingMatches[0].index;
     const nextSectionStart = content.indexOf('\n## ', fastifySectionStart + 1);
     const fastifySection = content.slice(
       fastifySectionStart,

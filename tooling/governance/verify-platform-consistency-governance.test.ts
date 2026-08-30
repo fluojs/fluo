@@ -225,6 +225,11 @@ describe('enforceSocketIoNodeEngineAlignment', () => {
 });
 
 describe('enforcePlatformFastifyEngineDocumentation', () => {
+  const fastifyGuidePaths = [
+    'apps/docs/content/docs/guides/runtime-adapters.mdx',
+    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+  ] as const;
+
   it('pins both Fastify guide engine ranges to the platform manifest', async () => {
     const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
 
@@ -249,6 +254,39 @@ describe('enforcePlatformFastifyEngineDocumentation', () => {
       .toThrow(/runtime-adapters\.mdx Fastify section/u);
     expect(governanceSource).toContain('enforcePlatformFastifyEngineDocumentation();');
   });
+
+  it.each(fastifyGuidePaths)(
+    'rejects a level-three Fastify heading in %s',
+    async (targetPath) => {
+      const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
+
+      expect(() => enforcePlatformFastifyEngineDocumentation()).not.toThrow();
+      expect(() => enforcePlatformFastifyEngineDocumentation((relativePath) => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === targetPath
+          ? content.replace('## Fastify', '### Fastify')
+          : content;
+      })).toThrowError(/exactly one ## Fastify heading; found 0/u);
+    },
+  );
+
+  it.each(fastifyGuidePaths)(
+    'rejects an earlier duplicate Fastify heading in %s',
+    async (targetPath) => {
+      const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
+
+      expect(() => enforcePlatformFastifyEngineDocumentation()).not.toThrow();
+      expect(() => enforcePlatformFastifyEngineDocumentation((relativePath) => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === targetPath
+          ? content.replace(
+            '## Fastify',
+            '## Fastify\n\n`>=20.19.3 <21 || >=22.2.0 <27`\n\n## Fastify',
+          )
+          : content;
+      })).toThrowError(/exactly one ## Fastify heading; found 2/u);
+    },
+  );
 
   it('rejects Fastify manifest engine drift from both guide sections', async () => {
     const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
