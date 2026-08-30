@@ -320,4 +320,92 @@ describe('useStudioLiveConnection', () => {
       expect(source?.listeners.get(eventType)?.size).toBe(0);
     }
   });
+
+  it('reports a controlled error when direct EventSource construction fails', async () => {
+    let constructionCount = 0;
+    class ThrowingEventSource {
+      constructor() {
+        constructionCount += 1;
+        throw new Error('EventSource construction failed.');
+      }
+    }
+    vi.stubGlobal('EventSource', ThrowingEventSource);
+    (window as typeof window & { __FLUO_STUDIO__?: { eventsUrl: string } }).__FLUO_STUDIO__ = {
+      eventsUrl: '/api/events?token=test-token',
+    };
+
+    const observedStates: StudioDashboardState[] = [];
+    function Harness() {
+      const [state, dispatch] = useReducer(studioReducer, initialStudioState);
+      observedStates.push(state);
+      useStudioLiveConnection(dispatch);
+      return createElement('output', null, state.connection.status);
+    }
+
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root: Root = createRoot(container);
+    root.render(createElement(Harness));
+
+    try {
+      await vi.waitFor(() => {
+        expect(observedStates).toContainEqual(expect.objectContaining({
+          connection: {
+            message: 'EventSource construction failed.',
+            status: 'error',
+          },
+        }));
+      });
+      expect(constructionCount).toBe(1);
+    } finally {
+      root.unmount();
+    }
+  });
+
+  it('reports a controlled error without retrying EventSource after state replay', async () => {
+    let constructionCount = 0;
+    class ThrowingEventSource {
+      constructor() {
+        constructionCount += 1;
+        throw new Error('EventSource construction failed.');
+      }
+    }
+    vi.stubGlobal('EventSource', ThrowingEventSource);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ events: [liveSnapshotEvent()], sequence: 1 }), { status: 200 })),
+    );
+    (window as typeof window & { __FLUO_STUDIO__?: { eventsUrl: string; stateUrl: string } }).__FLUO_STUDIO__ = {
+      eventsUrl: '/api/events?token=test-token',
+      stateUrl: '/api/state?token=test-token',
+    };
+
+    const observedStates: StudioDashboardState[] = [];
+    function Harness() {
+      const [state, dispatch] = useReducer(studioReducer, initialStudioState);
+      observedStates.push(state);
+      useStudioLiveConnection(dispatch);
+      return createElement('output', null, state.connection.status);
+    }
+
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root: Root = createRoot(container);
+    root.render(createElement(Harness));
+
+    try {
+      await vi.waitFor(() => {
+        expect(observedStates).toContainEqual(expect.objectContaining({
+          connection: expect.objectContaining({
+            message: 'EventSource construction failed.',
+            status: 'error',
+          }),
+        }));
+      });
+      expect(constructionCount).toBe(1);
+      expect(observedStates.at(-1)?.events).toHaveLength(1);
+    } finally {
+      root.unmount();
+    }
+  });
 });

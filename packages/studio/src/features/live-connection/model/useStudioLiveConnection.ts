@@ -111,7 +111,15 @@ export function useStudioLiveConnection(dispatch: Dispatch<StudioAction>): void 
         return;
       }
 
-      source = new EventSource(eventsUrl);
+      try {
+        source = new EventSource(eventsUrl);
+      } catch (error: unknown) {
+        dispatchConnection(dispatch, {
+          message: error instanceof Error ? error.message : 'Failed to connect to the Studio event stream.',
+          status: 'error',
+        });
+        return;
+      }
       source.onopen = () => {
         if (closed) {
           return;
