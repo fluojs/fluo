@@ -34,6 +34,27 @@ export const ASYMMETRIC_HASH: Partial<Record<JwtAlgorithm, string>> = {
   ES512: 'sha512',
 };
 
+/**
+ * Rejects static key entries whose IDs cannot unambiguously select one key.
+ *
+ * @param keys Static JWT key entries to validate.
+ */
+export function assertJwtKeyEntries(keys: JwtKeyEntry[] | undefined): void {
+  if (!Array.isArray(keys)) {
+    return;
+  }
+
+  const keyIds = new Set<string>();
+
+  for (const entry of keys) {
+    if (typeof entry.kid !== 'string' || entry.kid.length === 0 || keyIds.has(entry.kid)) {
+      throw new JwtConfigurationError('JWT key entries require non-empty unique kid values.');
+    }
+
+    keyIds.add(entry.kid);
+  }
+}
+
 function hasOwnAlgorithmMapping(
   mappings: Partial<Record<JwtAlgorithm, string>>,
   alg: string | undefined,
@@ -291,6 +312,7 @@ export class DefaultJwtVerifier implements OnModuleDestroy {
 
   constructor(private readonly options: JwtVerifierOptions) {
     assertJwtAlgorithms(options.algorithms, 'JWT verifier');
+    assertJwtKeyEntries(options.keys);
     this.jwksClient = options.jwksUri
       ? new JwksClient(options.jwksUri, options.jwksCacheTtl, options.jwksRequestTimeoutMs, options.jwksCacheMaxEntries)
       : undefined;

@@ -3,6 +3,7 @@ import { generateKeyPairSync, sign, verify } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 
 import { JwtConfigurationError } from '../errors.js';
+import type { JwtVerifierOptions } from '../types.js';
 import { DefaultJwtSigner } from './signer.js';
 import { DefaultJwtVerifier } from './verifier.js';
 
@@ -30,6 +31,43 @@ describe('DefaultJwtSigner', () => {
     expect(() => new DefaultJwtSigner({ algorithms: ['toString' as never], secret: 'secret' })).toThrow(
       'JWT signer received unsupported JWT algorithm "toString".',
     );
+  });
+
+  it('rejects empty and duplicate key IDs during construction', () => {
+    const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const ec = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+    const invalidOptions: JwtVerifierOptions[] = [
+      {
+        algorithms: ['HS256'],
+        keys: [{ kid: '', secret: 'hmac-secret' }],
+      },
+      {
+        algorithms: ['RS256'],
+        keys: [
+          { kid: 'rsa-key', privateKey: rsa.privateKey },
+          { kid: 'rsa-key', privateKey: rsa.privateKey },
+        ],
+      },
+      {
+        algorithms: ['ES256'],
+        keys: [
+          { kid: 'ec-key', privateKey: ec.privateKey },
+          { kid: 'ec-key', privateKey: ec.privateKey },
+        ],
+      },
+      {
+        algorithms: ['HS256', 'RS256'],
+        keys: [
+          { kid: 'mixed-key', secret: 'hmac-secret' },
+          { kid: 'mixed-key', privateKey: rsa.privateKey },
+        ],
+      },
+    ];
+
+    for (const options of invalidOptions) {
+      expect(() => new DefaultJwtSigner(options)).toThrow(JwtConfigurationError);
+      expect(() => new DefaultJwtSigner(options)).toThrow('JWT key entries require non-empty unique kid values.');
+    }
   });
 
   it('rejects non-positive access token ttl values before issuing a token', async () => {

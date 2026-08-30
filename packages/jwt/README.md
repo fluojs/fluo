@@ -163,7 +163,7 @@ JWKS keys are cached for `jwksCacheTtl` milliseconds (`600_000` by default) and 
 
 `JwtService.verify(token, options)` applies per-call algorithm and claim-policy overrides (`issuer`, `audience`, `clockSkewSeconds`, `maxAge`, `requireExp`) without rebuilding the underlying JWKS client or static key-resolution cache. Per-call verification does not replace configured key sources such as `jwksUri`, `keys[]`, `publicKey`, `secret`, or `secretOrKeyProvider`.
 
-When multiple compatible keys are configured, `kid` disambiguates the verification key. A single compatible static key can verify tokens without `kid`; JWKS-backed verification relies on the remote key set and its cache policy.
+When multiple compatible keys are configured, `kid` disambiguates the verification key. Every `keys[]` entry must have a non-empty, unique `kid`; `DefaultJwtSigner` and `DefaultJwtVerifier` reject empty or duplicate values with `JwtConfigurationError` during construction so key rotation cannot select different keys for signing and verification. A single compatible static key can verify tokens without `kid`; JWKS-backed verification relies on the remote key set and its cache policy.
 
 For multi-tenant systems, prefer putting a tenant-specific `kid` in issued token headers and configuring compatible key sources up front. `secretOrKeyProvider` is called with the decoded token header only, so request headers, route params, or other request-context tenant hints must be handled by application-level strategy/guard code before calling the JWT verifier.
 
