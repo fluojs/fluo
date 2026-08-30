@@ -115,7 +115,7 @@ The N+1 problem is the most common performance bottleneck in GraphQL. Fluo provi
 ```typescript
 import { createDataLoader, type GraphQLContext } from '@fluojs/graphql';
 
-const authorLoader = createDataLoader(async (ids: string[]) => {
+const authorLoader = createDataLoader(async (ids: readonly string[]) => {
   const authors = await authorService.findByIds(ids);
   // Ensure the returned array matches the order of the input IDs.
   return ids.map(id => authors.find(a => a.id === id));
@@ -164,7 +164,7 @@ export class BookFieldResolver {
 }
 ```
 
-`authorLoader(context)` returns a loader instance bound to a specific GraphQL execution context. Therefore, batching and caching are shared only within a single request. Keeping this scope prevents one user's lookup results from leaking into another request while still reducing the N+1 problem. Register both resolver classes as module providers and include both in the optional `resolvers` allowlist.
+`authorLoader(context)` returns a loader instance bound to a specific GraphQL execution context. Therefore, batching and caching are shared only within a single GraphQL operation. Keeping this scope prevents one user's lookup results from leaking into another operation while still reducing the N+1 problem. Register both resolver classes as module providers and include both in the optional `resolvers` allowlist.
 
 `@Parent()` and `@Context()` are TC39 standard method decorators, not legacy parameter decorators. Their defaults bind the parent/source object to method parameter `0` and `GraphQLContext` to parameter `1`. Pass an explicit zero-based index when the method order differs. The `Book` object type above already declares `author`, so `@FieldResolver('author')` preserves that field type. When adding a field that is absent from the object type, use `@FieldResolver({ fieldName: 'author', type: AuthorType })`.
 

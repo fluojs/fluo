@@ -169,7 +169,7 @@ const UserType = new GraphQLObjectType({
   },
 });
 
-const userLoader = createDataLoader(async (ids: string[]) => {
+const userLoader = createDataLoader(async (ids: readonly string[]) => {
   const users = await userService.findByIds(ids);
   return ids.map(id => users.find(u => u.id === id));
 });

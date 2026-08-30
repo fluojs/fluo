@@ -115,7 +115,7 @@ N+1 문제는 GraphQL에서 가장 흔하게 나타나는 성능 병목입니다
 ```typescript
 import { createDataLoader, type GraphQLContext } from '@fluojs/graphql';
 
-const authorLoader = createDataLoader(async (ids: string[]) => {
+const authorLoader = createDataLoader(async (ids: readonly string[]) => {
   const authors = await authorService.findByIds(ids);
   // 반환되는 배열이 입력 ID의 순서와 일치하도록 보장해야 합니다.
   return ids.map(id => authors.find(a => a.id === id));
@@ -164,7 +164,7 @@ export class BookFieldResolver {
 }
 ```
 
-`authorLoader(context)`는 특정 GraphQL 실행 컨텍스트에 묶인 로더 인스턴스를 반환합니다. 따라서 배치와 캐시는 단일 요청 안에서만 공유됩니다. 이 범위를 지키면 한 사용자의 조회 결과가 다른 요청으로 새어 나가지 않으면서도 N+1 문제를 줄일 수 있습니다. 두 resolver class를 모두 module provider로 등록하고 선택적 `resolvers` allowlist에도 둘 다 포함하세요.
+`authorLoader(context)`는 특정 GraphQL 실행 컨텍스트에 묶인 로더 인스턴스를 반환합니다. 따라서 배치와 캐시는 단일 GraphQL operation 안에서만 공유됩니다. 이 범위를 지키면 한 사용자의 조회 결과가 다른 operation으로 새어 나가지 않으면서도 N+1 문제를 줄일 수 있습니다. 두 resolver class를 모두 module provider로 등록하고 선택적 `resolvers` allowlist에도 둘 다 포함하세요.
 
 `@Parent()`와 `@Context()`는 legacy parameter decorator가 아니라 TC39 표준 method decorator입니다. 기본값은 parent/source object를 method parameter `0`에, `GraphQLContext`를 parameter `1`에 바인딩합니다. Method 순서가 다르면 zero-based index를 명시적으로 전달하세요. 위 `Book` object type은 `author`를 이미 선언하므로 `@FieldResolver('author')`가 기존 field type을 유지합니다. Object type에 없는 field를 추가할 때는 `@FieldResolver({ fieldName: 'author', type: AuthorType })`을 사용합니다.
 
