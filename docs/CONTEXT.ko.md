@@ -25,6 +25,7 @@ fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터
 - `packages/*/src` 아래 public export 변경은 source TSDoc을 포함해야 하며 `pnpm lint`를 통해 `pnpm verify:public-export-tsdoc`를 통과해야 한다.
 - 공개 `@fluojs/*` 패키지의 behavior, API surface, package contents, release metadata에 소비자에게 보이는 변경이 있으면 committed `.changeset/*.md` 파일이 필요하다. Docs-only, test-only, internal-only 변경에는 보통 필요하지 않다.
 - Runtime behavior 또는 API 변경은 affected package README, governed docs, regression test를 [`docs/contracts/behavioral-contract-policy.ko.md`](./contracts/behavioral-contract-policy.ko.md)에 맞춰 함께 유지해야 한다.
+- PlatformShell lifecycle exclusivity는 `@fluojs/testing/platform-shell-lifecycle-conformance`의 `createPlatformShellLifecycleConformanceHarness(...)`로 검증하며, active lifecycle overlap 전체는 `PlatformLifecycleConflictError`로 reject되어야 한다.
 
 ## Package Families
 

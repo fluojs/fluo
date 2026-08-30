@@ -148,7 +148,9 @@ Install `vitest` in the consuming workspace before using the mock helpers so the
 
 ### Conformance and portability harnesses
 
-Use subpaths like `@fluojs/testing/platform-conformance`, `@fluojs/testing/http-adapter-portability`, and `@fluojs/testing/web-runtime-adapter-portability` when authoring framework-facing platform packages.
+Use subpaths like `@fluojs/testing/platform-conformance`, `@fluojs/testing/platform-shell-lifecycle-conformance`, `@fluojs/testing/http-adapter-portability`, and `@fluojs/testing/web-runtime-adapter-portability` when authoring framework-facing platform packages.
+
+Use `createPlatformShellLifecycleConformanceHarness({ createShell })` to verify every active `start()` / `stop()` overlap rejects with `PlatformLifecycleConflictError`, callback reentry remains conflict-safe before and after arbitrary awaits, and callers can retry after a failed transition settles. Keep component-level checks in `createPlatformConformanceHarness(...).assertAll()`; the PlatformShell lifecycle contract is intentionally a separate harness.
 
 Portability harness cleanup is part of the contract: if setup, `listen()`, a run callback that surfaces a partial app, or an assertion fails after an app has been bootstrapped, the harness closes that partial app. If `app.close()` fails, the harness reports that cleanup failure, and when setup or an assertion already failed it raises an aggregate error that preserves both the original failure and the cleanup failure.
 
@@ -216,7 +218,7 @@ React test runtime would reduce coverage rather than remove necessary setup.
 
 - **Root package**: `createTestingModule(...)`, `Test.createTestingModule(...)`, `createTestApp(...)`, module introspection helpers, and shared app/module testing types including `DeepMocked<T>`
 - **Subpaths**: `@fluojs/testing/app`, `@fluojs/testing/module`, `@fluojs/testing/http`, `@fluojs/testing/mock` (including `DeepMocked<T>`), `@fluojs/testing/types` (including `DeepMocked<T>`), `@fluojs/testing/vitest`, `@fluojs/testing/vitest/tooling`
-- **Harness subpaths**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`. The HTTP portability harnesses expose `assertSupportsCustomHttpRouteMethods()`, `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `createErrorRepresentationBootstrapOptions`, `NetworkHttpErrorRepresentationBootstrapOptions`, and `WebHttpErrorRepresentationBootstrapOptions` for adapter-owned bootstrap typing.
+- **Harness subpaths**: `platform-conformance`, `platform-shell-lifecycle-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`. The HTTP portability harnesses expose `assertSupportsCustomHttpRouteMethods()`, `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `createErrorRepresentationBootstrapOptions`, `NetworkHttpErrorRepresentationBootstrapOptions`, and `WebHttpErrorRepresentationBootstrapOptions` for adapter-owned bootstrap typing.
 - **Tooling**: `@fluojs/testing/vitest` with `fluoBabelDecoratorsPlugin()` and `@fluojs/testing/vitest/tooling` with Vitest workspace config helpers (requires `vitest` and `@babel/core` in the consuming workspace)
 
 The package manifest declares `engines.node >=20.19.3 <21 || >=22.2.0 <27`, matching the verified Node listener windows used by its public body-bearing RFC `QUERY` portability assertion. Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded. Non-Node runtime application tests can still use runtime-native tools where documented, but the published `@fluojs/testing` package itself is governed by that exact Node.js engine range.

@@ -25,6 +25,7 @@ For the full contributor workflow, read [`CONTRIBUTING.md`](../CONTRIBUTING.md) 
 - Public export changes under `packages/*/src` must include source TSDoc and pass `pnpm verify:public-export-tsdoc` through `pnpm lint`.
 - Consumer-visible changes to public `@fluojs/*` package behavior, API surface, package contents, or release metadata require a committed `.changeset/*.md` file. Docs-only, test-only, and internal-only changes usually do not need one.
 - Runtime behavior or API changes must keep affected package READMEs, governed docs, and regression tests aligned with [`docs/contracts/behavioral-contract-policy.md`](./contracts/behavioral-contract-policy.md).
+- PlatformShell lifecycle exclusivity is verified with `createPlatformShellLifecycleConformanceHarness(...)` from `@fluojs/testing/platform-shell-lifecycle-conformance`; every active lifecycle overlap must reject with `PlatformLifecycleConflictError`.
 
 ## Package Families
 
