@@ -1,3 +1,5 @@
+import { createRequire } from 'node:module';
+
 import { Inject } from '@fluojs/core';
 import type { Container } from '@fluojs/di';
 import { Controller, type FrameworkRequest, Get, type HttpApplicationAdapter, type Middleware, type MiddlewareContext, type Next, Post } from '@fluojs/http';
@@ -37,6 +39,7 @@ import type {
 import { GRAPHQL_OPERATION_CONTAINER } from './types.js';
 
 const GRAPHQL_CONTEXT_OVERRIDE = Symbol('fluo.graphql.context.override');
+const runtimeRequire = createRequire(import.meta.url);
 
 type YogaLike = {
   fetch(request: Request): Promise<Response>;
@@ -156,11 +159,11 @@ async function loadGraphqlDeps(): Promise<GraphqlDeps> {
   const graphqlSpecifier = 'graphql';
   const yogaSpecifier = 'graphql-yoga';
   const instanceOfSpecifier = 'graphql/jsutils/instanceOf.js';
-  const [graphqlMod, yogaMod, instanceOfModule] = await Promise.all([
+  const [graphqlMod, yogaMod] = await Promise.all([
     import(/* @vite-ignore */ graphqlSpecifier) as Promise<typeof import('graphql')>,
     import(/* @vite-ignore */ yogaSpecifier) as Promise<typeof import('graphql-yoga')>,
-    import(/* @vite-ignore */ instanceOfSpecifier) as Promise<GraphqlInstanceOfModule>,
   ]);
+  const instanceOfModule: GraphqlInstanceOfModule = runtimeRequire(instanceOfSpecifier);
 
   return {
     GraphQLError: graphqlMod.GraphQLError,

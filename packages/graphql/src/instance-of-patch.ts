@@ -15,11 +15,41 @@ export type GraphqlInstanceOfModule = {
 
 interface GraphqlInstanceOfPatchState {
   readonly allowedObjectSets: Set<WeakSet<object>>;
-  readonly originalInstanceOf: GraphqlInstanceOf;
+  originalInstanceOf: GraphqlInstanceOf;
   readonly patchedInstanceOf: GraphqlInstanceOf;
 }
 
 const graphqlInstanceOfPatchStates = new WeakMap<GraphqlInstanceOfModule, GraphqlInstanceOfPatchState>();
+
+function createGraphqlInstanceOfPatchState(
+  originalInstanceOf: GraphqlInstanceOf,
+): GraphqlInstanceOfPatchState {
+  let patchState: GraphqlInstanceOfPatchState;
+  const allowedObjectSets = new Set<WeakSet<object>>();
+  const patchedInstanceOf: GraphqlInstanceOf = (value, constructor) => {
+    try {
+      if (patchState.originalInstanceOf(value, constructor)) {
+        return true;
+      }
+    } catch (error) {
+      if (isAllowedCrossRealmGraphqlObject(value, constructor, allowedObjectSets)) {
+        return true;
+      }
+
+      throw error;
+    }
+
+    return isAllowedCrossRealmGraphqlObject(value, constructor, allowedObjectSets);
+  };
+
+  patchState = {
+    allowedObjectSets,
+    originalInstanceOf,
+    patchedInstanceOf,
+  };
+
+  return patchState;
+}
 
 function getCrossRealmGraphqlTag(value: unknown, constructor: GraphqlConstructor): string | undefined {
   const prototypeTag = constructor.prototype?.[Symbol.toStringTag];
@@ -80,34 +110,14 @@ export function installGraphqlInstanceOfPatch(
 ): () => void {
   let patchState = graphqlInstanceOfPatchStates.get(instanceOfModule);
 
-  if (patchState === undefined || instanceOfModule.instanceOf !== patchState.patchedInstanceOf) {
-    const originalInstanceOf = instanceOfModule.instanceOf;
-    const allowedObjectSets = new Set<WeakSet<object>>();
-    const patchedInstanceOf: GraphqlInstanceOf = (value, constructor) => {
-      try {
-        if (originalInstanceOf(value, constructor)) {
-          return true;
-        }
-      } catch (error) {
-        if (isAllowedCrossRealmGraphqlObject(value, constructor, allowedObjectSets)) {
-          return true;
-        }
-
-        throw error;
-      }
-
-      return isAllowedCrossRealmGraphqlObject(value, constructor, allowedObjectSets);
-    };
-
-    patchState = {
-      allowedObjectSets,
-      originalInstanceOf,
-      patchedInstanceOf,
-    };
-    instanceOfModule.instanceOf = patchedInstanceOf;
+  if (patchState === undefined) {
+    patchState = createGraphqlInstanceOfPatchState(instanceOfModule.instanceOf);
     graphqlInstanceOfPatchStates.set(instanceOfModule, patchState);
+  } else if (instanceOfModule.instanceOf !== patchState.patchedInstanceOf) {
+    patchState.originalInstanceOf = instanceOfModule.instanceOf;
   }
 
+  instanceOfModule.instanceOf = patchState.patchedInstanceOf;
   patchState.allowedObjectSets.add(allowedObjects);
   let released = false;
 
