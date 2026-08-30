@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { CacheService } from './service.js';
 import type { CacheStore, NormalizedCacheModuleOptions } from './types.js';
@@ -35,10 +35,26 @@ function createDeferred<T>(): Deferred<T> {
   };
 }
 
+async function awaitSignal(signal: Promise<void>, description: string): Promise<void> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const bound = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => {
+      reject(new Error(`Timed out waiting for ${description}.`));
+    }, 1_000);
+  });
+
+  try {
+    await Promise.race([signal, bound]);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 describe('CacheService store operation concurrency', () => {
   it('starts an unrelated key read while another key read is still pending', async () => {
     // Given
     const events: string[] = [];
+    const slowGetStarted = createDeferred<void>();
     const slowGet = createDeferred<undefined>();
     const store: CacheStore = {
       async del() {},
@@ -46,6 +62,7 @@ describe('CacheService store operation concurrency', () => {
         events.push(`get:start:${key}`);
 
         if (key === 'slow') {
+          slowGetStarted.resolve();
           await slowGet.promise;
         }
 
@@ -58,9 +75,8 @@ describe('CacheService store operation concurrency', () => {
     const cache = new CacheService(store, cacheOptions);
     const pendingSlowGet = cache.get('slow');
 
-    await vi.waitFor(() => {
-      expect(events).toEqual(['get:start:slow']);
-    });
+    await awaitSignal(slowGetStarted.promise, 'the slow store get to start');
+    expect(events).toEqual(['get:start:slow']);
 
     // When
     const pendingFastGet = cache.get('fast');
@@ -76,6 +92,7 @@ describe('CacheService store operation concurrency', () => {
   it('starts an unrelated key write and delete while another key write is still pending', async () => {
     // Given
     const events: string[] = [];
+    const slowSetStarted = createDeferred<void>();
     const slowSet = createDeferred<void>();
     const store: CacheStore = {
       async del(key: string) {
@@ -89,6 +106,7 @@ describe('CacheService store operation concurrency', () => {
         events.push(`set:start:${key}`);
 
         if (key === 'slow') {
+          slowSetStarted.resolve();
           await slowSet.promise;
         }
 
@@ -98,9 +116,8 @@ describe('CacheService store operation concurrency', () => {
     const cache = new CacheService(store, cacheOptions);
     const pendingSlowSet = cache.set('slow', 'value');
 
-    await vi.waitFor(() => {
-      expect(events).toEqual(['set:start:slow']);
-    });
+    await awaitSignal(slowSetStarted.promise, 'the slow store set to start');
+    expect(events).toEqual(['set:start:slow']);
 
     // When
     const pendingFastSet = cache.set('fast', 'value');
