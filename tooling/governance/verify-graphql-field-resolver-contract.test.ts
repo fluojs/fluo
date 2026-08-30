@@ -187,4 +187,12 @@ describe('GraphQL object field resolver contract governance', () => {
     // Then
     expect(detectedClaims).toContain(claimName);
   });
+
+  it.each([
+    ['schema-first-only', 'Code-first field argument DTO binding is supported; schema-first field-resolver attachment remains unsupported.'],
+    ['schema-first-only-ko', 'Code-first field argument DTO binding은 지원하며 schema-first field-resolver attachment만 지원하지 않습니다.'],
+  ] as const)('accepts the qualified %s limitation', (_claimName, claim) => {
+    expect(collectUnsupportedMigrationClaims(claim)).not.toContain('field-argument-compound-limitation');
+    expect(collectUnsupportedMigrationClaims(claim)).not.toContain('field-argument-compound-limitation-ko');
+  });
 });
