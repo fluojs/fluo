@@ -394,15 +394,15 @@ function collectMissingNodeEngineMigrationNotes(narrowings, intents) {
 }
 
 function migrationGuidanceSection(body) {
-  return /(?:^|\n)Migration:\s*([\s\S]*)/iu.exec(body)?.[1] ??
-    /(?:^|\n)(?:#{1,6}\s*)?(?:consumer\s+)?(?:migration|upgrade)\s+(?:guide|guidance|notes?)\s*:?\s*\n+([\s\S]*)/iu.exec(body)?.[1] ??
-    '';
+  const match = /(?:^|\n)(?:Migration:|(?:#{1,6}\s*)?(?:consumer\s+)?(?:migration|upgrade)\s+(?:guide|guidance|notes?)\s*:?)\s*([\s\S]*?)(?=\n#{1,6}\s|\n\s*\n|$)/iu.exec(body);
+  return match?.[1].trim() ?? '';
 }
 
 function hasConsumerNodeEngineMigrationGuidance(body) {
   const guidance = migrationGuidanceSection(body);
-  const removesNodeSupport = /\bNode(?:\.js)?\s+v?\d+(?:\.\d+){0,2}\s+(?:support\s+)?(?:is\s+)?(?:removed|dropped|unsupported|no\s+longer\s+supported)\b/iu;
-  const namesReplacementNodeVersion = /\b(?:upgrade|install|move|use)\b[\s\S]{0,120}\bNode(?:\.js)?\s+v?(?:\d+(?:\.\d+){0,2}|(?:>=|>|~|\^)\s*\d+)/iu;
+  const nodeVersionOrRange = String.raw`(?:v?\d+(?:\.\d+){0,2}|(?:>=|>|~|\^)\s*\d+(?:\.\d+){0,2}(?:\s*<\s*\d+(?:\.\d+){0,2})?)`;
+  const removesNodeSupport = new RegExp(String.raw`\bNode(?:\.js)?\s+${nodeVersionOrRange}\s+(?:support\s+)?(?:is\s+)?(?:removed|dropped|unsupported|no\s+longer\s+supported)\b`, 'iu');
+  const namesReplacementNodeVersion = new RegExp(String.raw`\b(?:upgrade|install|move|use)\b[\s\S]{0,120}\bNode(?:\.js)?\s+${nodeVersionOrRange}`, 'iu');
 
   return removesNodeSupport.test(guidance) && namesReplacementNodeVersion.test(guidance);
 }
@@ -412,11 +412,15 @@ function hasGeneratedMajorMigrationEvidence(section) {
     /(?:^|\n)(?:#{1,6}\s*)?(?:consumer\s+)?(?:migration|upgrade)\s+(?:guide|guidance|notes?)\s*:?\s*\n+\S/iu.test(section);
 }
 
-function collectInvalidConsumedGeneratedMajorVersionDeltas(versionDeltas, dependencies = {}) {
+function collectInvalidConsumedGeneratedMajorVersionDeltas(versionDeltas, intents, dependencies = {}) {
   const { existsSync: pathExists = existsSync, readFileSync: readFile = readFileSync } = dependencies;
 
   return versionDeltas.flatMap((delta) => {
-    if (delta.bump !== 'major' || delta.source !== 'generated') {
+    if (
+      delta.bump !== 'major' ||
+      delta.source !== 'generated' ||
+      intents.some((intent) => intent.packageName === delta.packageName && intent.bump === 'major')
+    ) {
       return [];
     }
 
@@ -444,14 +448,15 @@ function packageChangelogPathForPackageJson(packageJsonPath) {
 }
 
 function changelogSectionForVersion(changelog, version) {
-  const heading = `## ${version}`;
-  const headingIndex = changelog.indexOf(heading);
-
-  if (headingIndex === -1) {
+  const matches = [...changelog.matchAll(new RegExp(`^## ${escapeRegexLiteral(version)}$`, 'gmu'))];
+  if (matches.length !== 1 || matches[0].index === undefined) {
     return null;
   }
 
-  const nextHeadingIndex = changelog.indexOf('\n## ', headingIndex + heading.length);
+  const headingIndex = matches[0].index;
+  const nextHeading = /^## /gmu;
+  nextHeading.lastIndex = headingIndex + matches[0][0].length;
+  const nextHeadingIndex = nextHeading.exec(changelog)?.index ?? -1;
 
   return nextHeadingIndex === -1 ? changelog.slice(headingIndex) : changelog.slice(headingIndex, nextHeadingIndex);
 }
@@ -693,9 +698,11 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
   const pendingDependencyOnlyMajorVersionDeltas = intents.length === 0
     ? dependencyOnlyMajorVersionDeltas.filter((delta) => delta.source !== 'generated')
     : dependencyOnlyMajorVersionDeltas;
-  const invalidConsumedGeneratedMajorVersionDeltas = intents.length === 0
-    ? collectInvalidConsumedGeneratedMajorVersionDeltas(versionDeltas, dependencies)
-    : [];
+  const invalidConsumedGeneratedMajorVersionDeltas = collectInvalidConsumedGeneratedMajorVersionDeltas(
+    versionDeltas,
+    intents,
+    dependencies,
+  );
   const patchCliFeatureDowngrades = [
     ...collectPatchCliFeatureDowngradesFromChangesets(intents, dependencies),
     ...collectPatchCliFeatureDowngradesFromVersionDeltas(versionDeltas, dependencies),

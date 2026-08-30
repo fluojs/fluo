@@ -209,6 +209,36 @@ describe('verifyChangesetReleaseLane', () => {
     ).toThrow(/consumed generated major package version deltas/u);
   });
 
+  it('validates consumed generated majors despite unrelated pending intents', () => {
+    // Given: an unrelated pending changeset and a consumed generated major without evidence.
+    const directory = createChangesetDirectory();
+    writeChangeset(directory, 'unrelated.md', '"@fluojs/http": patch');
+
+    // When: the release lane verifies all version deltas.
+    // Then: unrelated pending metadata cannot skip generated-major provenance.
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+        consumedGeneratedMajorDependencies(),
+      ),
+    ).toThrow(/consumed generated major package version deltas/u);
+  });
+
+  it('rejects a prerelease-prefix changelog heading for a generated major', () => {
+    // Given: only a non-exact prerelease heading that prefixes the generated version.
+    const directory = createChangesetDirectory();
+    const changelog = '# @fluojs/generated\n\n## 2.0.0-preview.1\n\n### Major Changes\n\nMigration: Update consumers.\n';
+
+    // When: the generated 2.0.0 release is checked.
+    // Then: a unique line-exact 2.0.0 heading is required.
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+        consumedGeneratedMajorDependencies(changelog),
+      ),
+    ).toThrow(/consumed generated major package version deltas/u);
+  });
+
   it('rejects patch changesets that describe public CLI feature additions', () => {
     const directory = createChangesetDirectory();
     writeChangeset(
