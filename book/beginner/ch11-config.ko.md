@@ -131,6 +131,18 @@ export class AppModule {}
 ### Managing Complex Precedence Scenarios
 고급 배포 시나리오에서는 여러 환경 파일이 필요하거나 런타임 오버라이드가 동적으로 계산되는 상황을 마주할 수 있습니다. 우선순위 시스템은 이러한 값들이 예측 가능한 방식으로 병합되도록 보장합니다. 예를 들어, `.env` 파일에도 존재하는 변수에 대해 런타임 오버라이드를 제공하면 런타임 값이 항상 우선하며, 환경 파일을 수정하지 않고도 특정 설정을 테스트할 수 있게 해줍니다.
 
+여러 환경 파일이 정말로 필요하다면 직접 미리 병합하지 말고 `envFilePaths`를 전달하세요. 이 목록은 명시적이며 낮은 우선순위에서 높은 우선순위 순서로 정렬되고, 병합 결과는 여전히 단일 env-file 계층을 차지합니다.
+
+```typescript
+const configSources = {
+  envFilePaths: ['.env', '.env.production', '.env.production.local'],
+  processEnv,
+  schema: ConfigSchema,
+} satisfies ConfigModuleOptions;
+```
+
+목록 안의 누락된 파일은 load를 실패시키지 않고 건너뛰므로, 일부 파일만 존재하는 머신에서도 같은 목록을 그대로 사용할 수 있습니다.
+
 ### Best Practices for Config Defaults
 `ConfigModule.forRoot`에서 `defaults`를 설정할 때, 애플리케이션이 "안전하지만 제한적인" 모드로 시작할 수 있도록 하는 값을 목표로 하세요. 예를 들어, `PORT`를 3000으로 기본 설정하는 것은 표준이지만, `DATABASE_URL`에 대한 기본값을 제공하는 것은 지양해야 합니다. 데이터베이스 설정이 누락된 경우, 일반적인 연결 문자열로 시도하다 실패하는 것보다는 앱이 즉시 중단(Fail-Fast)되는 것이 훨씬 낫습니다.
 
@@ -285,6 +297,20 @@ const configSources = {
   schema: ConfigSchema,
 } satisfies ConfigModuleOptions;
 ```
+
+환경마다 파일을 하나씩 두는 대신 공통 baseline과 환경별 override를 함께 쓰고 싶다면 순서가 있는 목록을 구성하세요.
+
+```typescript
+const environment = process.env.NODE_ENV ?? 'development';
+
+const configSources = {
+  envFilePaths: ['.env', `.env.${environment}`, `.env.${environment}.local`],
+  processEnv,
+  schema: ConfigSchema,
+} satisfies ConfigModuleOptions;
+```
+
+`@fluojs/config`는 이러한 파일 이름을 대신 추측하지 않습니다. 정확한 목록과 순서는 애플리케이션이 결정하며, 덕분에 해석된 설정이 개발 머신과 CI 전반에서 재현 가능하게 유지됩니다. 다만 `envFilePaths`는 `envFile`이나 `envFilePath`와 함께 사용할 수 없으며, 혼용하면 의도한 순서가 모호해지지 않도록 `INVALID_CONFIG`로 즉시 실패합니다.
 
 ### Advanced Precedence: Docker and Kubernetes
 Docker나 Kubernetes와 같은 컨테이너 환경에서 fluo를 실행할 때는 `.env` 파일을 아예 건너뛰고 오케스트레이터의 환경 변수 시스템을 사용하고 싶을 때가 많습니다. 이 경우에도 `@fluojs/config`가 주변의 `process.env`를 자동으로 스캔하는 것은 아닙니다. 대신 부트스트랩 경계에서 필요한 값을 `processEnv`로 명시적으로 전달하면, 그 스냅샷이 `.env`보다 높은 우선순위로 적용됩니다.
