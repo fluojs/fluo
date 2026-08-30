@@ -76,7 +76,7 @@ MVP request flow는 route/handler와 dependency-graph correlation을 의미합�
 
 ## 정적/리포트 호환성
 
-Studio는 여전히 fluo CLI가 내보낸 JSON 파일을 소비합니다. 런타임은 snapshot을 생산하고, CLI는 artifact export/write/delegation을 소유하며, Studio는 사람과 자동화 호출자가 사용할 수 있도록 snapshot을 파싱, 필터링, 검사, 렌더링하는 공개 헬퍼와 viewer surface를 소유합니다. 지원되는 inspect artifact에는 raw snapshot, snapshot-plus-timing envelope, `fluo inspect --report`가 생성한 report artifact, legacy standalone timing diagnostics가 포함됩니다. 새 snapshot은 compiled `routes`를 포함할 수 있습니다. Studio는 `kind`와 parameter-name-only `params`를 검증하고 `react-page`를 **React page**로 표시하며, `routes`가 없는 artifact 또는 이 field가 없는 이전 route entry는 ordinary HTTP diagnostic으로 backward-compatible하게 처리합니다.
+Studio는 여전히 fluo CLI가 내보낸 JSON 파일을 소비합니다. 런타임은 snapshot을 생산하고, CLI는 artifact export/write/delegation을 소유하며, Studio는 사람과 자동화 호출자가 사용할 수 있도록 snapshot을 파싱, 필터링, 검사, 렌더링하는 공개 헬퍼와 viewer surface를 소유합니다. 지원되는 inspect artifact에는 raw snapshot, snapshot-plus-timing envelope, `fluo inspect --report`가 생성한 report artifact, legacy standalone timing diagnostics가 포함됩니다. 새 snapshot은 compiled `routes`를 포함할 수 있습니다. Studio는 `kind`와 parameter-name-only `params`를 검증하고 `react-page`를 **React page**로 표시하며, `routes`가 없는 artifact 또는 이 field가 없는 이전 route entry는 ordinary HTTP diagnostic으로 backward-compatible하게 처리합니다. 파싱된 route 결과는 생략된 legacy `kind`를 `http`로, `params`를 `[]`로 normalize하지만, producer 호환성을 위해 export된 wire-input field는 optional로 유지합니다.
 
 이 file-first 경로는 CI, support handoff, architecture review, non-Node runtime target을 위한 호환성 및 migration fallback입니다. Bun, Deno, Cloudflare Workers 프로젝트는 MVP에서 live sidecar event를 기대하는 대신 inspect/static artifact를 생성하고 `fluo-studio-viewer`로 시작해야 합니다. HTML asset 경로가 필요한 integration은 inspected artifact가 non-Node runtime fallback workflow에서 생성된 경우에도 Node 기반 package entrypoint(`node -p "require.resolve('@fluojs/studio/viewer')"`)로 resolve합니다.
 
@@ -127,7 +127,7 @@ Bootstrap timing phase 이름은 `bootstrap_module`, `register_runtime_tokens`, 
 | `parseStudioPayload(rawJson)` | raw snapshot JSON, standalone timing JSON, snapshot+timing envelope, `fluo inspect --report` artifact를 받아 parsed payload와 원본 JSON string을 반환합니다. |
 | `applyFilters(snapshot, filter)` | 원본 snapshot을 변경하지 않고 readiness/severity/query filter를 적용합니다. |
 | `renderMermaid(snapshot)` | 내부 component dependency edge와 외부 dependency node를 포함해 로드된 platform graph를 Mermaid text로 변환합니다. 필터링된 snapshot은 JSON 직렬화 전후에 동일한 Mermaid text로 결정론적으로 렌더링됩니다. |
-| `parseStudioLiveEvent(rawJson)` / `validateStudioLiveEvent(value)` | UI state가 사용하기 전에 runtime-connected sidecar/SSE envelope를 검증합니다. |
+| `parseStudioLiveEvent(rawJson)` / `validateStudioLiveEvent(value)` | UI state가 사용하기 전에 runtime-connected sidecar/SSE envelope를 검증하고 normalized route entry를 반환합니다. |
 | `isStudioLiveEvent(value)` | parsing 또는 dispatch 전에 sidecar/SSE envelope를 확인하는 runtime-safe type guard입니다. |
 | `StudioLiveSnapshot` | React UI가 소비하는 live graph/routes/requests/timing/diagnostics snapshot입니다. |
 | `StudioLiveEvent` | `snapshot`, `request`, `timing`, `diagnostic`, `restart`, `disconnect`, `heartbeat`를 위한 versioned live event envelope입니다. |
@@ -164,6 +164,9 @@ Bootstrap timing phase 이름은 `bootstrap_module`, `register_runtime_tokens`, 
 | `StudioRequestTrace` | Request/response body 없이 emit되는 request trace metadata입니다. |
 | `StudioRestartPayload` | CLI-owned dev supervision이 emit하는 runtime/app restart lifecycle payload입니다. |
 | `StudioRouteDescriptor` | `kind`, method/effective path, parameter name, controller-handler identity를 포함하는 live/static route descriptor입니다. |
+| `StudioRouteKind` | Studio validator와 Runtime producer가 수용하는 route kind union입니다. |
+| `StudioNormalizedRouteDescriptor` | Legacy `kind`와 `params` default가 materialize된 parsed route descriptor입니다. |
+| `StudioParsedInspectionSnapshot` / `StudioParsedLiveSnapshot` / `StudioParsedPayload` / `StudioParsedLiveEvent` | Legacy optional wire-input contract을 보존하면서 normalized route entry를 노출하는 parsed output입니다. |
 
 ### 배포 패키지 진입점
 

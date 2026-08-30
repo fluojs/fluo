@@ -172,12 +172,15 @@ export interface StudioGraphEdge {
   to: string;
 }
 
+/** Route kinds accepted by the Studio live wire contract. */
+export type StudioRouteKind = 'http' | 'react-page';
+
 /** Route descriptor projected into the live Studio UI. */
 export interface StudioRouteDescriptor {
   controller: string;
   handler: string;
   id: string;
-  kind?: 'http' | 'react-page';
+  kind?: StudioRouteKind;
   method: string;
   module?: string;
   params?: string[];
@@ -185,9 +188,20 @@ export interface StudioRouteDescriptor {
   version?: string;
 }
 
+/** Route descriptor returned after Studio normalizes legacy wire defaults. */
+export interface StudioNormalizedRouteDescriptor extends Omit<StudioRouteDescriptor, 'kind' | 'params'> {
+  kind: StudioRouteKind;
+  params: string[];
+}
+
 /** Static inspect snapshot with optional compiled route diagnostics. */
 export interface StudioInspectionSnapshot extends PlatformShellSnapshot {
   routes?: StudioRouteDescriptor[];
+}
+
+/** Static inspect snapshot returned after route entries are normalized. */
+export interface StudioParsedInspectionSnapshot extends Omit<StudioInspectionSnapshot, 'routes'> {
+  routes?: StudioNormalizedRouteDescriptor[];
 }
 
 /** Request lifecycle status understood by the live Studio request-flow panel. */
@@ -236,6 +250,11 @@ export interface StudioLiveSnapshot {
   routes: StudioRouteDescriptor[];
   timing?: BootstrapTimingDiagnostics;
   version: 1;
+}
+
+/** Live snapshot returned after route entries are normalized. */
+export interface StudioParsedLiveSnapshot extends Omit<StudioLiveSnapshot, 'routes'> {
+  routes: StudioNormalizedRouteDescriptor[];
 }
 
 /** Studio connection status presented by the live UI. */
@@ -306,6 +325,16 @@ export type StudioLiveEvent =
   | StudioLiveEventBase<'snapshot', StudioLiveSnapshot>
   | StudioLiveEventBase<'timing', BootstrapTimingDiagnostics>;
 
+/** Live event returned after Studio validates and normalizes its payload. */
+export type StudioParsedLiveEvent =
+  | StudioLiveEventBase<'disconnect', StudioDisconnectPayload>
+  | StudioLiveEventBase<'diagnostic', StudioLiveDiagnostic>
+  | StudioLiveEventBase<'heartbeat', StudioHeartbeatPayload>
+  | StudioLiveEventBase<'request', StudioRequestTrace>
+  | StudioLiveEventBase<'restart', StudioRestartPayload>
+  | StudioLiveEventBase<'snapshot', StudioParsedLiveSnapshot>
+  | StudioLiveEventBase<'timing', BootstrapTimingDiagnostics>;
+
 /**
  * Filter state applied to the loaded platform snapshot inside Studio.
  */
@@ -319,8 +348,20 @@ export interface FilterState {
  * Parsed Studio payload together with the original JSON source.
  */
 export interface ParsedPayload {
-  payload: StudioPayload;
+  payload: StudioParsedPayload;
   rawJson: string;
+}
+
+/** Report artifact returned after compiled route entries are normalized. */
+export interface StudioParsedReportArtifact extends Omit<StudioReportArtifact, 'snapshot'> {
+  snapshot: StudioParsedInspectionSnapshot;
+}
+
+/** Studio payload returned after compiled route entries are normalized. */
+export interface StudioParsedPayload {
+  report?: StudioParsedReportArtifact;
+  snapshot?: StudioParsedInspectionSnapshot;
+  timing?: BootstrapTimingDiagnostics;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -481,7 +522,7 @@ function validateStudioGraphEdge(value: unknown): StudioGraphEdge {
   return edge;
 }
 
-function validateStudioRouteDescriptor(value: unknown): StudioRouteDescriptor {
+function validateStudioRouteDescriptor(value: unknown): StudioNormalizedRouteDescriptor {
   if (!isRecord(value)) {
     throw new Error('Invalid Studio live route descriptor payload.');
   }
@@ -496,7 +537,7 @@ function validateStudioRouteDescriptor(value: unknown): StudioRouteDescriptor {
     throw new Error('Invalid Studio live route descriptor params payload.');
   }
 
-  const route: StudioRouteDescriptor = {
+  const route: StudioNormalizedRouteDescriptor = {
     controller: validateString(value.controller, 'Invalid Studio live route descriptor payload.'),
     handler: validateString(value.handler, 'Invalid Studio live route descriptor payload.'),
     id: validateString(value.id, 'Invalid Studio live route descriptor payload.'),
@@ -632,7 +673,7 @@ function validateStudioDisconnectPayload(value: unknown): StudioDisconnectPayloa
   return reason === undefined ? {} : { reason };
 }
 
-function validateStudioLiveSnapshot(value: unknown): StudioLiveSnapshot {
+function validateStudioLiveSnapshot(value: unknown): StudioParsedLiveSnapshot {
   if (!isRecord(value) || value.version !== 1 || !isRecord(value.graph)) {
     throw new Error('Invalid Studio live snapshot payload.');
   }
@@ -642,7 +683,7 @@ function validateStudioLiveSnapshot(value: unknown): StudioLiveSnapshot {
   }
 
   const timing = validateTiming(value.timing);
-  const snapshot: StudioLiveSnapshot = {
+  const snapshot: StudioParsedLiveSnapshot = {
     appId: validateString(value.appId, 'Invalid Studio live snapshot payload.'),
     diagnostics: value.diagnostics.map((diagnostic) => validateStudioLiveDiagnostic(diagnostic)),
     generatedAt: validateString(value.generatedAt, 'Invalid Studio live snapshot payload.'),
@@ -727,7 +768,7 @@ function validateStudioLiveEventPayload(type: unknown, payload: unknown): Studio
  * @returns The typed Studio live event.
  * @throws Error when the event does not match the live Studio contract.
  */
-export function validateStudioLiveEvent(value: unknown): StudioLiveEvent {
+export function validateStudioLiveEvent(value: unknown): StudioParsedLiveEvent {
   if (!isRecord(value) || value.version !== 1 || !isNumber(value.sequence)) {
     throw new Error('Invalid Studio live event payload.');
   }
@@ -744,7 +785,7 @@ export function validateStudioLiveEvent(value: unknown): StudioLiveEvent {
   };
 
   if (type === 'snapshot') {
-    return { ...eventBase, payload: payload as StudioLiveSnapshot, type };
+    return { ...eventBase, payload: payload as StudioParsedLiveSnapshot, type };
   }
 
   if (type === 'request') {
@@ -776,7 +817,7 @@ export function validateStudioLiveEvent(value: unknown): StudioLiveEvent {
  * @param rawJson Raw JSON encoded event.
  * @returns The validated Studio live event.
  */
-export function parseStudioLiveEvent(rawJson: string): StudioLiveEvent {
+export function parseStudioLiveEvent(rawJson: string): StudioParsedLiveEvent {
   return validateStudioLiveEvent(JSON.parse(rawJson) as unknown);
 }
 
@@ -795,7 +836,7 @@ export function isStudioLiveEvent(value: unknown): value is StudioLiveEvent {
   }
 }
 
-function validateSnapshot(value: unknown): StudioInspectionSnapshot | null {
+function validateSnapshot(value: unknown): StudioParsedInspectionSnapshot | null {
   if (!isRecord(value)) {
     return null;
   }
@@ -883,7 +924,7 @@ function validateSnapshot(value: unknown): StudioInspectionSnapshot | null {
     throw new Error('Invalid route diagnostics in platform snapshot payload.');
   }
 
-  const snapshot = value as unknown as StudioInspectionSnapshot;
+  const snapshot = value as unknown as StudioParsedInspectionSnapshot;
   return value.routes === undefined
     ? snapshot
     : {
@@ -960,7 +1001,7 @@ function isReportArtifactEnvelope(value: Record<string, unknown>): boolean {
     || (hasOwn(value, 'snapshot') && hasOwn(value, 'timing') && (hasOwn(value, 'generatedAt') || hasOwn(value, 'version')));
 }
 
-function validateReport(value: unknown, snapshot: StudioInspectionSnapshot | null, timing: BootstrapTimingDiagnostics | null): StudioReportArtifact | null {
+function validateReport(value: unknown, snapshot: StudioParsedInspectionSnapshot | null, timing: BootstrapTimingDiagnostics | null): StudioParsedReportArtifact | null {
   if (!isRecord(value) || !isReportArtifactEnvelope(value)) {
     return null;
   }

@@ -1,11 +1,12 @@
 import { Container } from '@fluojs/di';
 import type { RequestContext } from '@fluojs/http';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { StudioLiveEvent as StudioWireLiveEvent } from '@fluojs/studio/contracts';
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 
 import { bootstrapApplication, bootstrapModule, FluoFactory } from '../bootstrap.js';
 import { defineRuntimeClassDiMetadata, defineRuntimeModuleMetadata } from '../internal/core-metadata.js';
 import type { ApplicationLogger } from '../types.js';
-import type { StudioLiveEvent } from './contracts.js';
+import type { StudioLiveEvent as RuntimeStudioLiveEvent, StudioLiveEvent } from './contracts.js';
 import { createStudioLiveSnapshot } from './snapshot.js';
 import { createStudioDevtoolsRuntimeFromConfig, createStudioDevtoolsRuntimeFromEnv, StudioDevtoolsRuntime } from './studio-runtime.js';
 
@@ -30,6 +31,10 @@ afterEach(() => {
 });
 
 describe('Studio devtools runtime bridge', () => {
+  it('uses the Studio-owned live wire contract exactly', () => {
+    expectTypeOf<RuntimeStudioLiveEvent>().toEqualTypeOf<StudioWireLiveEvent>();
+  });
+
   it('stays disabled unless Studio env injection includes a token-protected endpoint', () => {
     expect(createStudioDevtoolsRuntimeFromConfig()).toBeUndefined();
     expect(createStudioDevtoolsRuntimeFromEnv({})).toBeUndefined();

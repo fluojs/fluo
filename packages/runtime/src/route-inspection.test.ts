@@ -1,11 +1,12 @@
 import type { HandlerDescriptor } from '@fluojs/http';
+import type { StudioRouteKind } from '@fluojs/studio/contracts';
 import { describe, expect, it } from 'vitest';
 import { handlerToStudioRouteDescriptor } from './devtools/snapshot.js';
-import { defineStandardRuntimeRouteInspectionMetadata } from './internal.js';
 import * as runtime from './index.js';
+import { defineStandardRuntimeRouteInspectionMetadata } from './internal.js';
 import { createRuntimeInspectionSnapshot } from './route-inspection.js';
 
-function RouteKind(kind: string) {
+function RouteKind(kind: StudioRouteKind) {
   return (_value: Function, context: ClassMethodDecoratorContext): void => {
     defineStandardRuntimeRouteInspectionMetadata(context.metadata, context.name, { kind });
   };

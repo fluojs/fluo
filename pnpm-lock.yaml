@@ -985,6 +985,9 @@ importers:
       '@fluojs/http':
         specifier: workspace:^
         version: link:../http
+      '@fluojs/studio':
+        specifier: workspace:^
+        version: link:../studio
     devDependencies:
       '@fluojs/serialization':
         specifier: workspace:^

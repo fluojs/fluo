@@ -19,17 +19,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapStudioApp } from './app/bootstrap.js';
 import {
   applyFilters,
-  isStudioLiveEvent,
-  parseStudioLiveEvent,
-  parseStudioPayload,
-  renderMermaid,
   type BootstrapTimingDiagnostics,
+  isStudioLiveEvent,
   type PlatformCheckResult,
   type PlatformDiagnosticIssue,
   type PlatformHealthReport,
   type PlatformReadinessReport,
   type PlatformShellSnapshot,
   type PlatformSnapshot,
+  parseStudioLiveEvent,
+  parseStudioPayload,
+  renderMermaid,
 } from './contracts.js';
 import { initialStudioState, selectSelectedStaticComponent } from './entities/studio/model.js';
 import * as studio from './index.js';
@@ -268,7 +268,10 @@ describe('Studio live contracts', () => {
       version: 1,
     };
 
-    expect(parseStudioLiveEvent(JSON.stringify(event))).toEqual(event);
+    const parsed = parseStudioLiveEvent(JSON.stringify(event));
+
+    expectTypeOf(parsed).toEqualTypeOf<studio.StudioParsedLiveEvent>();
+    expect(parsed).toEqual(event);
     expect(isStudioLiveEvent(event)).toBe(true);
     expect(studio.parseStudioLiveEvent(JSON.stringify(event))).toEqual(event);
   });
@@ -550,6 +553,18 @@ describe('parseStudioPayload', () => {
     assertExactContract<Exact<BootstrapTimingDiagnostics, RuntimeBootstrapTimingDiagnostics>>();
   });
 
+  it('gives runtime live bridge types one Studio-owned wire contract seam', () => {
+    const runtimeManifest = JSON.parse(readFileSync(resolve(packageDir, '../runtime/package.json'), 'utf8')) as {
+      dependencies?: Record<string, string>;
+    };
+    const runtimeLiveContracts = readFileSync(resolve(packageDir, '../runtime/src/devtools/contracts.ts'), 'utf8');
+
+    expect(runtimeManifest.dependencies?.['@fluojs/studio']).toBe('workspace:^');
+    expect(runtimeLiveContracts).toContain("from '@fluojs/studio/contracts';");
+    expect(runtimeLiveContracts).not.toContain('export interface StudioRouteDescriptor');
+    expect(runtimeLiveContracts).not.toContain('export type StudioLiveEvent =');
+  });
+
   it('keeps legacy route descriptor construction source-compatible at the root entrypoint', () => {
     const route: studio.StudioRouteDescriptor = {
       controller: 'LegacyController',
@@ -640,7 +655,9 @@ describe('parseStudioPayload', () => {
       ],
     }));
 
+    expectTypeOf(parsed.payload).toEqualTypeOf<studio.StudioParsedPayload>();
     expect(parsed.payload.snapshot?.routes?.[0]?.kind).toBe('http');
+    expect(parsed.payload.snapshot?.routes?.[0]?.params).toEqual([]);
   });
 
   it('rejects arbitrary JSON objects that are not Studio inspect artifacts', () => {
