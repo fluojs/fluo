@@ -5,6 +5,7 @@ import { snapshotConfigLoadOptions } from './options.js';
 import type {
   ConfigDictionary,
   ConfigLoadOptions,
+  ConfigProcessEnv,
   ConfigReloadErrorListener,
   ConfigReloader,
   ConfigReloadListener,
@@ -346,7 +347,7 @@ function parseEnvContent(content: string, safeProcessEnv: Record<string, string>
   return expandEnvVariables(parseDotenvContent(content), safeProcessEnv);
 }
 
-function sanitizeProcessEnv(processEnv: NodeJS.ProcessEnv): Record<string, string> {
+function sanitizeProcessEnv(processEnv: ConfigProcessEnv): Record<string, string> {
   return Object.fromEntries(
     Object.entries(processEnv).filter((entry): entry is [string, string] => entry[1] !== undefined),
   );

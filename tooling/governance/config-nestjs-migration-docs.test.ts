@@ -35,7 +35,8 @@ describe('NestJS config migration documentation', () => {
     expect(moduleSource).toContain('static forRoot(options?: ConfigModuleOptions)');
     expect(moduleSource).toContain('global: loadOptions.global ?? true');
     expect(serviceSource).toContain("const parts = key.split('.');");
-    expect(typesSource).toContain('processEnv?: NodeJS.ProcessEnv');
+    expect(typesSource).toContain('export type ConfigProcessEnv = Record<string, string | undefined>');
+    expect(typesSource).toContain('processEnv?: ConfigProcessEnv');
     expect(typesSource).toContain('schema?: ConfigSchema');
     expect(typesSource).toContain('global?: boolean');
     expect(englishReadme).toContain('### NestJS Registration Migration');
