@@ -10,8 +10,6 @@ import type {
   PlatformValidationResult,
 } from '@fluojs/runtime';
 
-const CONFLICT_SETTLEMENT_TIMEOUT_MS = 1_000;
-
 type LifecycleHook = () => Promise<void> | void;
 
 interface ControlledPlatformComponentOptions {
@@ -268,48 +266,36 @@ async function assertLifecycleConflict(
   active: PlatformLifecycleOperation,
   requested: PlatformLifecycleOperation,
 ): Promise<void> {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const outcome = await Promise.race([
+    transition.then(
+      () => ({ status: 'fulfilled' }) as const,
+      (error: unknown) => ({ error, status: 'rejected' }) as const,
+    ),
+    Promise.resolve().then(() => ({ status: 'pending' }) as const),
+  ]);
 
-  try {
-    const outcome = await Promise.race([
-      transition.then(
-        () => ({ status: 'fulfilled' }) as const,
-        (error: unknown) => ({ error, status: 'rejected' }) as const,
-      ),
-      new Promise<never>((_resolvePromise, reject) => {
-        timeout = setTimeout(() => {
-          reject(
-            new Error(
-              `${requested}() must reject with PlatformLifecycleConflictError while ${active}() is active.`,
-            ),
-          );
-        }, CONFLICT_SETTLEMENT_TIMEOUT_MS);
-      }),
-    ]);
+  if (outcome.status === 'pending') {
+    throw new Error(`${requested}() must reject with PlatformLifecycleConflictError while ${active}() is active.`);
+  }
 
-    if (outcome.status === 'fulfilled') {
-      throw new Error(`${requested}() must reject while ${active}() is active.`);
-    }
+  if (outcome.status === 'fulfilled') {
+    throw new Error(`${requested}() must reject while ${active}() is active.`);
+  }
 
-    if (!(outcome.error instanceof PlatformLifecycleConflictError)) {
-      throw new Error(`${requested}() must reject with PlatformLifecycleConflictError while ${active}() is active.`);
-    }
+  if (!(outcome.error instanceof PlatformLifecycleConflictError)) {
+    throw new Error(`${requested}() must reject with PlatformLifecycleConflictError while ${active}() is active.`);
+  }
 
-    const { error } = outcome;
-    const metadata = error.meta;
-    if (
-      error.code !== 'PLATFORM_LIFECYCLE_CONFLICT' ||
-      error.activeOperation !== active ||
-      error.requestedOperation !== requested ||
-      metadata?.['activeOperation'] !== active ||
-      metadata?.['requestedOperation'] !== requested
-    ) {
-      throw new Error(`${requested}() returned incorrect PlatformLifecycleConflictError metadata.`);
-    }
-  } finally {
-    if (timeout !== undefined) {
-      clearTimeout(timeout);
-    }
+  const { error } = outcome;
+  const metadata = error.meta;
+  if (
+    error.code !== 'PLATFORM_LIFECYCLE_CONFLICT' ||
+    error.activeOperation !== active ||
+    error.requestedOperation !== requested ||
+    metadata?.['activeOperation'] !== active ||
+    metadata?.['requestedOperation'] !== requested
+  ) {
+    throw new Error(`${requested}() returned incorrect PlatformLifecycleConflictError metadata.`);
   }
 }
 
