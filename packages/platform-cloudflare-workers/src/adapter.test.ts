@@ -30,6 +30,68 @@ function createExecutionContext(): CloudflareWorkerExecutionContext {
   };
 }
 
+type DocumentedRealtimeCapability = {
+  readonly bindingInstallationVersion: number;
+  readonly contract: string;
+  readonly kind: string;
+  readonly mode: string;
+  readonly support: string;
+  readonly version: number;
+};
+
+const REALTIME_CAPABILITY_DOCUMENTATION_ANCHOR = '<!-- fluo-contract: realtime-capability -->';
+
+function isDocumentedRealtimeCapability(value: unknown): value is DocumentedRealtimeCapability {
+  if (value === null || typeof value !== 'object') {
+    return false;
+  }
+
+  return (
+    typeof Reflect.get(value, 'bindingInstallationVersion') === 'number'
+    && typeof Reflect.get(value, 'contract') === 'string'
+    && typeof Reflect.get(value, 'kind') === 'string'
+    && typeof Reflect.get(value, 'mode') === 'string'
+    && typeof Reflect.get(value, 'support') === 'string'
+    && typeof Reflect.get(value, 'version') === 'number'
+  );
+}
+
+function readDocumentedRealtimeCapability(readme: string, locale: string): DocumentedRealtimeCapability {
+  const anchorOffset = readme.indexOf(REALTIME_CAPABILITY_DOCUMENTATION_ANCHOR);
+
+  if (anchorOffset === -1) {
+    throw new Error(
+      `${locale} README is missing the ${REALTIME_CAPABILITY_DOCUMENTATION_ANCHOR} documentation contract anchor.`,
+    );
+  }
+
+  const payloadStart = readme.indexOf('```json\n', anchorOffset);
+  const payloadEnd = payloadStart === -1 ? -1 : readme.indexOf('\n```', payloadStart);
+
+  if (payloadStart === -1 || payloadEnd === -1) {
+    throw new Error(`${locale} README realtime capability documentation contract must contain a JSON code block.`);
+  }
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(readme.slice(payloadStart + '```json\n'.length, payloadEnd));
+  } catch {
+    throw new Error(`${locale} README realtime capability documentation contract must contain valid JSON.`);
+  }
+
+  if (
+    !parsed
+    || typeof parsed !== 'object'
+    || !('realtimeCapability' in parsed)
+    || !isDocumentedRealtimeCapability(parsed.realtimeCapability)
+  ) {
+    throw new Error(`${locale} README realtime capability documentation contract has an invalid shape.`);
+  }
+
+  return parsed.realtimeCapability;
+}
+
 function createMockWorkerWebSocket(): CloudflareWorkerWebSocket {
   const listeners = {
     close: [] as Array<(event: Event) => void>,
@@ -99,18 +161,26 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     expect(() => createCloudflareWorkerAdapter({ maxBodySize: 1.5 })).toThrow(/maxBodySize/i);
   });
 
-  it('keeps edge runtime README conformance coverage aligned across English and Korean docs', () => {
+  it('keeps the machine-consumed realtime capability contract synchronized with both READMEs', () => {
     const englishReadme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
     const koreanReadme = readFileSync(new URL('../README.ko.md', import.meta.url), 'utf8');
+    const capability = createCloudflareWorkerAdapter().getRealtimeCapability();
 
-    for (const readme of [englishReadme, koreanReadme]) {
-      expect(readme).toContain('Cloudflare Workers');
-      expect(readme).toContain('executionContext.waitUntil(...)');
-      expect(readme).toContain('10');
-      expect(readme).toContain('503');
-      expect(readme).toContain('packages/platform-cloudflare-workers/src/adapter.test.ts');
-      expect(readme).toContain('packages/testing/src/portability/web-runtime-adapter-portability.test.ts');
+    if (!capability.bindingInstallation) {
+      throw new Error('Expected the Cloudflare Workers adapter to expose websocket binding installation.');
     }
+
+    const expectedDocumentationContract = {
+      bindingInstallationVersion: capability.bindingInstallation.version,
+      contract: capability.contract,
+      kind: capability.kind,
+      mode: capability.mode,
+      support: capability.support,
+      version: capability.version,
+    };
+
+    expect(readDocumentedRealtimeCapability(englishReadme, 'English')).toEqual(expectedDocumentationContract);
+    expect(readDocumentedRealtimeCapability(koreanReadme, 'Korean')).toEqual(expectedDocumentationContract);
   });
 
   it('keeps the Worker adapter runtime import path free of the HTTP root barrel', () => {

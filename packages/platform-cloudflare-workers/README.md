@@ -119,11 +119,25 @@ The root `@fluojs/platform-cloudflare-workers` export owns the Worker public sea
 
 The listen, shutdown, SSE drain, and websocket binding rules above are public lifecycle behavior. Changes to those public seam types or lifecycle semantics are release-governed for `@fluojs/platform-cloudflare-workers`; user-impacting updates must be tracked with Changesets alongside the implementation, docs, and tests.
 
+<!-- fluo-contract: realtime-capability -->
+```json
+{
+  "realtimeCapability": {
+    "bindingInstallationVersion": 1,
+    "contract": "raw-websocket-expansion",
+    "kind": "fetch-style",
+    "mode": "request-upgrade",
+    "support": "supported",
+    "version": 1
+  }
+}
+```
+
 ## Conformance Coverage
 
-`packages/platform-cloudflare-workers/src/adapter.test.ts` and `packages/platform-cloudflare-workers/src/adapter-lifecycle.test.ts` are the package-local regression targets for the documented Worker contract. They cover shared Web dispatch delegation, Worker `env` request attachment, `executionContext.waitUntil(...)` SSE (`text/event-stream`) body tracking, body-cancellation and synchronous setup-failure drains, websocket upgrade binding, upgraded server-socket close tracking, pre-listen HTTP and websocket lifecycle guards, websocket binding freeze after the listen boundary, lazy entrypoint reuse and timeout recovery, shutdown gating, drain-time `listen()` rejection, JSON `503` responses while closing and after close for both HTTP and websocket upgrades, reliable fake-timer cleanup, public seam source imports, README parity, and the bounded 10-second close timeout.
+`packages/platform-cloudflare-workers/src/adapter.test.ts` and `packages/platform-cloudflare-workers/src/adapter-lifecycle.test.ts` are the package-local regression targets for the documented Worker contract. They cover shared Web dispatch delegation, Worker `env` request attachment, `executionContext.waitUntil(...)` SSE (`text/event-stream`) body tracking, body-cancellation and synchronous setup-failure drains, websocket upgrade binding, upgraded server-socket close tracking, pre-listen HTTP and websocket lifecycle guards, websocket binding freeze after the listen boundary, lazy entrypoint reuse and timeout recovery, shutdown gating, drain-time `listen()` rejection, JSON `503` responses while closing and after close for both HTTP and websocket upgrades, reliable fake-timer cleanup, public seam source imports, the structured realtime capability contract, and the bounded 10-second close timeout.
 
-The shared edge portability suite in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` exercises Cloudflare Workers beside Bun and Deno for malformed cookie preservation, query decoding, JSON/text raw-body capture, multipart raw-body exclusion, and SSE framing. The README parity assertion in the package test keeps these documented edge-runtime coverage claims synchronized with the Korean mirror.
+The shared edge portability suite in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` exercises Cloudflare Workers beside Bun and Deno for malformed cookie preservation, query decoding, JSON/text raw-body capture, multipart raw-body exclusion, and SSE framing. The package test parses the structured realtime capability contract in both README locales and compares its machine-consumed values with the adapter capability.
 
 ## Public API Overview
 

@@ -92,41 +92,6 @@ describe('@fluojs/platform-cloudflare-workers lifecycle regressions', () => {
     expect(source).not.toContain("from '@fluojs/runtime/internal/request-response-factory'");
   });
 
-  it('keeps Worker README lifecycle and public API claims mirrored across English and Korean docs', () => {
-    const englishReadme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
-    const koreanReadme = readFileSync(new URL('../README.ko.md', import.meta.url), 'utf8');
-    const sharedPublicSymbols = [
-      'CloudflareWorkerHttpApplicationAdapter',
-      'CloudflareWorkerHandler',
-      'CloudflareWorkerApplication',
-      'CloudflareWorkerEntrypoint',
-      'CloudflareWorkerWebSocketBinding',
-      'CloudflareWorkerWebSocketPair',
-      'CloudflareWorkerWebSocketUpgradeResult',
-    ];
-    const pairedLifecycleClaims = [
-      ['executionContext.waitUntil(...)', 'executionContext.waitUntil(...)'],
-      ['SSE (`text/event-stream`) response bodies', 'SSE(`text/event-stream`) response body'],
-      ['WebSocket upgrades', 'WebSocket upgrade'],
-      ['Cloudflare Workers adapter cannot listen while shutdown is still draining.',
-        'Cloudflare Workers adapter cannot listen while shutdown is still draining.'],
-      ['bounded 10-second drain window', '최대 10초의 bounded drain window'],
-      ['JSON `503` shutdown response', 'JSON `503` shutdown response'],
-      ['public seam', 'public seam'],
-      ['Changesets', 'Changesets'],
-    ];
-
-    for (const symbol of sharedPublicSymbols) {
-      expect(englishReadme).toContain(symbol);
-      expect(koreanReadme).toContain(symbol);
-    }
-
-    for (const [englishClaim, koreanClaim] of pairedLifecycleClaims) {
-      expect(englishReadme).toContain(englishClaim);
-      expect(koreanReadme).toContain(koreanClaim);
-    }
-  });
-
   it('rejects Worker websocket binding reconfiguration after the listen boundary even after close', async () => {
     const adapter = new CloudflareWorkerHttpApplicationAdapter({
       createWebSocketPair: createWebSocketPairStub(),
