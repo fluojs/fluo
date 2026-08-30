@@ -61,7 +61,7 @@ await runDenoApplication(AppModule, {
 deno run --allow-net main.ts
 ```
 
-`runDenoApplication(...)`은 listener를 열고 기본적으로 `SIGINT`/`SIGTERM` listener를 등록하지만 signal listener 등록에는 별도의 Deno permission이 필요하지 않습니다. Managed startup에는 `--allow-net`이 필요합니다. Adapter 자체는 environment variable을 읽지 않습니다. 애플리케이션 코드가 해당 key를 읽을 때만 `--allow-env=PORT,DATABASE_URL`처럼 범위를 제한한 권한을 추가하세요. 주변 host가 process signal을 소유한다면 `runDenoApplication(...)`에 `shutdownSignals: false`를 전달하세요. 이 옵션은 permission을 변경하는 대신 lifecycle coordination을 host에 맡기며, 이 경우 애플리케이션 shutdown 조율은 host 책임입니다.
+`runDenoApplication(...)`은 listener를 열고 기본적으로 `SIGINT`/`SIGTERM` listener를 등록하지만 signal listener 등록에는 별도의 Deno permission이 필요하지 않습니다. Managed startup에는 `--allow-net`이 필요합니다. Adapter 자체는 environment variable을 읽지 않습니다. 애플리케이션 코드가 해당 key를 읽을 때만 `--allow-env=PORT,DATABASE_URL`처럼 범위를 제한한 권한을 추가하세요. Signal로 트리거된 애플리케이션 close 실패는 helper가 log한 뒤 swallow하며 exit status를 설정하지 않습니다. Failure-status propagation 또는 forced termination이 필요한 host는 `runDenoApplication(...)`에 `shutdownSignals: false`를 전달하고 signal과 shutdown을 직접 조율해야 합니다.
 
 필요한 플래그를 빠뜨리면 Deno는 실행 시 프롬프트를 띄우거나 명확한 에러와 함께 종료합니다. 권한 누락은 배포 전에 드러나는 설정 문제로 다루는 편이 안전합니다. 따라서 실행 명령 자체가 애플리케이션이 접근할 수 있는 리소스를 설명하는 문서 역할을 합니다. Canonical starter에는 파일 시스템 접근이 필요하지 않으므로 `--allow-read`를 부여하지 않습니다. 애플리케이션 코드가 인증서, 설정 파일, 정적 자산을 실제로 읽을 때만 `--allow-read=./static`처럼 대상 경로를 한정한 권한을 추가하세요.
 

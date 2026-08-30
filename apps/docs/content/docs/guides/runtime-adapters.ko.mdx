@@ -244,7 +244,7 @@ await runDenoApplication(AppModule, {
 deno run --allow-net main.ts
 ```
 
-Signal listener 등록에는 별도의 Deno permission이 필요하지 않습니다. Adapter 자체는 environment variable을 읽지 않습니다. 애플리케이션 코드가 해당 key를 읽을 때만 `--allow-env=PORT,DATABASE_URL`처럼 범위를 제한한 권한을 추가하세요. Deployment host가 process signal을 소유한다면 `runDenoApplication(...)`에 `shutdownSignals: false`를 설정하세요. 이 옵션은 permission을 변경하는 대신 lifecycle coordination을 host에 맡기며, 이 경우 애플리케이션 shutdown 조율은 host 책임입니다.
+Signal listener 등록에는 별도의 Deno permission이 필요하지 않습니다. Adapter 자체는 environment variable을 읽지 않습니다. 애플리케이션 코드가 해당 key를 읽을 때만 `--allow-env=PORT,DATABASE_URL`처럼 범위를 제한한 권한을 추가하세요. Signal로 트리거된 애플리케이션 close 실패는 helper가 log한 뒤 swallow하며 exit status를 설정하지 않습니다. Failure-status propagation 또는 forced termination이 필요한 host는 `runDenoApplication(...)`에 `shutdownSignals: false`를 설정하고 signal과 shutdown을 직접 조율해야 합니다.
 
 Host-owned `Deno.serve(...)`에는 `app.listen()` 없이 bootstrap하고 public dispatcher에서 handler를 생성합니다.
 
@@ -404,7 +404,7 @@ export class WorkerBindingsModule {}
 | Native route acceleration이 fluo semantics를 우회한다고 생각함 | Native match도 shared dispatcher로 돌아갑니다. |
 | Fetch-style runtime에서 server-backed WebSocket option을 사용함 | Runtime-specific WebSocket subpath를 사용하고 Bun/Deno/Workers fetch-style binding에서 `serverBacked`를 피하세요. |
 | Multipart request에서 raw body를 기대함 | Multipart request는 `rawBody`를 노출하지 않습니다. Multipart API와 limit을 사용하세요. |
-| Platform helper가 process를 직접 종료한다고 가정함 | Helper는 shutdown failure를 log/exit code로 보고하고 최종 termination은 host가 소유합니다. |
+| Platform helper가 process를 직접 종료한다고 가정함 | 최종 termination은 host가 소유합니다. 모든 runtime이 shutdown failure를 exit code로 보고한다고 가정하지 마세요. Deno는 signal로 트리거된 애플리케이션 close 실패를 log한 뒤 swallow하며 exit status를 설정하지 않습니다. |
 | Portable app code에서 Node global에 의존함 | Runtime-specific behavior는 adapter/bootstrap code에만 두세요. |
 | 기존 Express application 채택 또는 post-bootstrap `use(...)` mutation | Adapter가 Express application을 생성하게 두고, 불가피한 native handler는 construction-time `nativeMiddleware`로 전달하며, 이식 가능한 동작은 fluo `Middleware`로 재작성하세요. |
 

@@ -156,6 +156,8 @@ Studio sidecar teardown ownership은 `packages/cli/README.ko.md`, [`docs/referen
 
 Studio의 배포 Node.js `>=20.0.0` engine contract는 `@fluojs/runtime`과 독립적입니다. Studio가 runtime-neutral consumer-side snapshot, diagnostic, timing declaration을 소유하고 runtime은 development-time drift check로만 유지하므로, Studio 설치는 runtime의 더 좁은 engine range를 상속하지 않습니다.
 
+Deno signal-close failure status는 host가 소유합니다. `runDenoApplication(...)`은 signal로 트리거된 애플리케이션 close 실패를 log한 뒤 swallow하며 exit status를 설정하지 않습니다. Failure-status propagation 또는 forced termination이 필요한 배포 환경은 `shutdownSignals: false`를 사용하고 signal과 shutdown을 직접 조율해야 합니다.
+
 ## Cron Migration Option Boundary
 
 Cron NestJS migration surface는 NestJS `timeZone`을 fluo `timezone`으로 바꿔야 한다는 점을 기록합니다. `waitForCompletion`은 fluo에 직접 대응하는 option이 없으며 scheduler protection과 in-process running guard가 같은 task instance의 overlapping tick을 queue하지 않고 항상 건너뜁니다. NestJS overlap에 의존한 작업은 application-owned queue나 worker로 옮겨야 하고, application instance 사이의 exclusion에는 여전히 Redis distributed locking이 필요합니다.

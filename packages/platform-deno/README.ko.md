@@ -49,7 +49,7 @@ Managed startup 경로는 network listener를 열고 기본적으로 `SIGINT`/`S
 deno run --allow-net main.ts
 ```
 
-Signal listener 등록에는 별도의 Deno permission이 필요하지 않습니다. Adapter 자체는 environment variable을 읽지 않습니다. 애플리케이션 코드가 해당 key를 읽을 때만 `--allow-env=PORT,DATABASE_URL`처럼 범위를 제한한 권한을 추가하세요. 주변 host가 process signal을 소유한다면 `runDenoApplication(...)`에 `shutdownSignals: false`를 전달하세요. 이 옵션은 permission을 변경하는 대신 lifecycle coordination을 host에 맡기며, 이 경우 애플리케이션 shutdown 조율은 host 책임입니다.
+Signal listener 등록에는 별도의 Deno permission이 필요하지 않습니다. Adapter 자체는 environment variable을 읽지 않습니다. 애플리케이션 코드가 해당 key를 읽을 때만 `--allow-env=PORT,DATABASE_URL`처럼 범위를 제한한 권한을 추가하세요. Signal로 트리거된 애플리케이션 close 실패는 helper가 log한 뒤 swallow하며 exit status를 설정하지 않습니다. Failure-status propagation 또는 forced termination이 필요한 host는 `runDenoApplication(...)`에 `shutdownSignals: false`를 전달하고 signal과 shutdown을 직접 조율해야 합니다.
 
 ## 주요 패턴
 
