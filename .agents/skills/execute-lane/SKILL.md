@@ -44,6 +44,11 @@ the v1-only DAG/authority fields. A dependency naming an issue outside
 non-package surface (governance tooling, CONTEXT docs, shared harness)
 will likely need `resolve-conflict` with a keep-both resolution when the
 second one rebases — expect it instead of being surprised by it.
+A `--from-lane-v2` init also records `source_ledger: { path, sha256 }`
+in the v4 lane — the runtime state's back-reference to the exact
+planning-ledger bytes it came from (a hand-built `--issue` init has no
+ledger, so the field is absent). The hash covers bytes, not parsed
+values, so a later ledger edit is detectable.
 
 Multi-layer lanes: `init --issue N` also accepts `--issue N:dep1,dep2`
 (deps must be lane members). A dependent issue answers

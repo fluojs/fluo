@@ -16,6 +16,7 @@
 // no event journal. A new head silently invalidates stale facts.
 
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -92,6 +93,22 @@ export const isChangesetFile = (file) => /^\.changeset\/.+\.md$/.test(file) && !
 // v4 consumes only the issue set and the dependency edges from it; every other v2
 // field describes v1's DAG/authority machinery, which v4 does not have. Exported
 // so the translation is testable rather than buried in argument parsing.
+// Provenance back-reference written into the v4 lane at init time. Two files
+// describe "the lane" during a run — the v2 planning ledger (immutable
+// evidence) and the v4 runtime state (mutated by every set-fact/record) — and
+// without this link the runtime file cannot say which planning bytes it came
+// from. Hashing the exact bytes (not the parsed value) makes later ledger
+// edits detectable.
+export const sourceLedgerRef = (path, contents) => {
+	if (typeof path !== 'string' || path.length === 0) {
+		throw new TypeError('source ledger path must be a non-empty string');
+	}
+	if (typeof contents !== 'string') {
+		throw new TypeError('source ledger contents must be a string');
+	}
+	return { path, sha256: createHash('sha256').update(contents).digest('hex') };
+};
+
 export const laneV2ToInitSpecs = (laneV2) => {
 	if (laneV2?.version !== 2) {
 		throw new TypeError('lane v2 intake requires "version": 2');
@@ -201,11 +218,14 @@ const main = () => {
 		let laneId;
 		let baseBranch = 'main';
 		let specs;
+		let ledgerRef = null;
 		if (fromLaneV2 !== null) {
-			const translated = laneV2ToInitSpecs(JSON.parse(readFileSync(resolve(root, fromLaneV2), 'utf8')));
+			const raw = readFileSync(resolve(root, fromLaneV2), 'utf8');
+			const translated = laneV2ToInitSpecs(JSON.parse(raw));
 			laneId = args.includes('--lane-id') ? arg(args, '--lane-id') : translated.laneId;
 			baseBranch = translated.baseBranch;
 			specs = translated.specs;
+			ledgerRef = sourceLedgerRef(fromLaneV2, raw);
 		} else {
 			laneId = arg(args, '--lane-id');
 			// --issue accepts `N` or `N:dep1,dep2` (deps must be lane members).
@@ -232,6 +252,9 @@ const main = () => {
 			version: 4,
 			lane_id: laneId,
 			base_branch: baseBranch,
+			// Present only for --from-lane-v2 inits; a hand-built lane has no
+			// planning ledger to point at.
+			...(ledgerRef ? { source_ledger: ledgerRef } : {}),
 			issues: Object.fromEntries(
 				specs.map(({ n, deps }) => [String(n), {
 					issue: n,

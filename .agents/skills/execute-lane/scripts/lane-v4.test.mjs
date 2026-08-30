@@ -8,7 +8,12 @@ import {
 	summarizeTransitions,
 	trackStalls,
 } from './lane-v4.mjs';
-import { isChangesetFile, isConsumerVisibleFile, laneV2ToInitSpecs } from './lane-v4-cli.mjs';
+import {
+	isChangesetFile,
+	isConsumerVisibleFile,
+	laneV2ToInitSpecs,
+	sourceLedgerRef,
+} from './lane-v4-cli.mjs';
 
 const makeLane = (overrides = {}) => ({
 	issue: 3096,
@@ -387,6 +392,24 @@ test('C4: empty or malformed confirmed_issues is rejected', () => {
 	assert.throws(() => laneV2ToInitSpecs({ version: 2, confirmed_issues: [] }), /confirmed_issues/);
 	assert.throws(() => laneV2ToInitSpecs({ version: 2, confirmed_issues: [0] }), /confirmed_issues/);
 	assert.throws(() => laneV2ToInitSpecs({ version: 2 }), /confirmed_issues/);
+});
+
+// C4b: provenance back-reference. During a run, two files describe "the
+// lane" (the v2 planning ledger and the v4 runtime state); the v4 file must
+// point at the exact ledger bytes it was initialized from, so planning
+// evidence and runtime state stay linked after the ledger or the lane moves.
+test('C4b: sourceLedgerRef binds the ledger path to a sha256 of its bytes', () => {
+	const ref = sourceLedgerRef('.omo/lanes/lane-x.json', 'abc');
+	assert.deepEqual(ref, {
+		path: '.omo/lanes/lane-x.json',
+		// sha256("abc") — fixed vector, so a hash-algorithm drift fails loudly.
+		sha256: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+	});
+});
+
+test('C4b: sourceLedgerRef rejects an empty path or non-string contents', () => {
+	assert.throws(() => sourceLedgerRef('', 'abc'), TypeError);
+	assert.throws(() => sourceLedgerRef('.omo/lanes/x.json', null), TypeError);
 });
 
 test('C4: a dependency outside the lane is rejected, not silently dropped', () => {
