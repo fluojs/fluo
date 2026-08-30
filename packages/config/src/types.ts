@@ -6,6 +6,15 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 export type ConfigDictionary = Record<string, unknown>;
 
 /**
+ * Structural process-environment snapshot accepted by `@fluojs/config`.
+ *
+ * Declared by this package instead of the ambient `NodeJS.ProcessEnv` namespace so the
+ * published declarations resolve for strict consumers without Node ambient types. A
+ * `NodeJS.ProcessEnv` value remains assignable because it has the same structure.
+ */
+export type ConfigProcessEnv = Record<string, string | undefined>;
+
+/**
  * Standard Schema v1-compatible config validator accepted by `@fluojs/config` loaders.
  *
  * @typeParam Input Raw merged config shape consumed by the schema validator.
@@ -42,7 +51,7 @@ export type DotValue<T, K extends string> = K extends keyof T
 export interface ConfigModuleOptions {
   envFile?: string;
   envFilePath?: string;
-  processEnv?: NodeJS.ProcessEnv;
+  processEnv?: ConfigProcessEnv;
   schema?: ConfigSchema;
   defaults?: ConfigDictionary;
   /** Highest-precedence values applied after defaults, env files, and `processEnv`. */
