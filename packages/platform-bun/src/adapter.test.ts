@@ -2461,13 +2461,25 @@ describe('@fluojs/platform-bun', () => {
   ])('rejects %s through the realtime capability installer', (_description, binding) => {
     const adapter = new BunHttpApplicationAdapter();
     const bindingInstallation = adapter.getRealtimeCapability().bindingInstallation;
+    let thrown: unknown;
 
     if (bindingInstallation === undefined) {
       throw new TypeError('Expected the Bun adapter realtime capability to expose binding installation.');
     }
 
-    expect(() => bindingInstallation.install(binding)).toThrow(
-      new TypeError('Bun realtime binding installation requires fetch and websocket host contracts.'),
+    try {
+      bindingInstallation.install(binding);
+    } catch (error: unknown) {
+      thrown = error;
+    }
+
+    if (!(thrown instanceof Error)) {
+      throw new TypeError('Expected realtime binding installation to throw an Error.');
+    }
+
+    expect(thrown).toBeInstanceOf(TypeError);
+    expect(thrown.message).toBe(
+      'Bun realtime binding installation requires fetch and websocket host contracts.',
     );
   });
 
