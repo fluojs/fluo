@@ -664,6 +664,11 @@ export class HttpAdapterPortabilityHarness<
   }
 
   async assertSupportsSseStreaming(): Promise<void> {
+    let resolveHandlerReady!: (stream: SseResponse) => void;
+    const handlerReady = new Promise<SseResponse>((resolve) => {
+      resolveHandlerReady = resolve;
+    });
+
     @Controller('/events')
     class EventsController {
       @Get('/')
@@ -672,9 +677,7 @@ export class HttpAdapterPortabilityHarness<
 
         stream.comment('connected');
         stream.send({ ready: true }, { event: 'ready', id: 'evt-1' });
-        queueMicrotask(() => {
-          stream.close();
-        });
+        resolveHandlerReady(stream);
 
         return stream;
       }
@@ -693,22 +696,40 @@ export class HttpAdapterPortabilityHarness<
     await prepareAndListenWithCleanup(app, this.options.name);
 
     await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
-      const response = await fetch(`${baseUrl}/events`, {
-        headers: { accept: 'text/event-stream' },
-      });
-      const body = await response.text();
+      const client = new AbortController();
 
-      if (response.status !== 200) {
-        throw new Error(`${this.options.name} adapter changed SSE response status semantics.`);
-      }
+      try {
+        const responsePromise = fetch(`${baseUrl}/events`, {
+          headers: { accept: 'text/event-stream' },
+          signal: client.signal,
+        });
+        const stream = await withTimeout(
+          handlerReady,
+          2_000,
+          `${this.options.name} adapter did not enter the SSE handler.`,
+        );
+        stream.close();
+        const response = await responsePromise;
+        const body = await withTimeout(
+          response.text(),
+          2_000,
+          `${this.options.name} adapter did not close the SSE response stream.`,
+        );
 
-      const contentType = response.headers.get('content-type') ?? '';
-      if (!contentType.includes('text/event-stream')) {
-        throw new Error(`${this.options.name} adapter does not expose text/event-stream content-type.`);
-      }
+        if (response.status !== 200) {
+          throw new Error(`${this.options.name} adapter changed SSE response status semantics.`);
+        }
 
-      if (!body.includes('event: ready') || !body.includes('data: {"ready":true}')) {
-        throw new Error(`${this.options.name} adapter changed SSE body framing.`);
+        const contentType = response.headers.get('content-type') ?? '';
+        if (!contentType.includes('text/event-stream')) {
+          throw new Error(`${this.options.name} adapter does not expose text/event-stream content-type.`);
+        }
+
+        if (!body.includes('event: ready') || !body.includes('data: {"ready":true}')) {
+          throw new Error(`${this.options.name} adapter changed SSE body framing.`);
+        }
+      } finally {
+        client.abort();
       }
     });
   }

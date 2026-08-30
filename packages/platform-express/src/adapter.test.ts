@@ -1667,51 +1667,6 @@ describe('@fluojs/platform-express', () => {
     }
   });
 
-  it('supports SSE streaming', async () => {
-    @Controller('/events')
-    class EventsController {
-      @Get('/')
-      stream(_input: undefined, context: RequestContext) {
-        const stream = new SseResponse(context);
-
-        stream.comment('connected');
-        stream.send({ ready: true }, { event: 'ready', id: 'evt-1' });
-        setTimeout(() => {
-          stream.close();
-        }, 10);
-
-        return stream;
-      }
-    }
-
-    class AppModule {}
-    defineModule(AppModule, {
-      controllers: [EventsController],
-    });
-
-    const port = await findAvailablePort();
-    const app = await bootstrapExpressApplication(AppModule, {
-      cors: false,
-      port,
-    });
-
-    try {
-      await app.listen();
-
-      const response = await fetch(`http://127.0.0.1:${String(port)}/events`, {
-        headers: { accept: 'text/event-stream' },
-      });
-      const body = await response.text();
-
-      expect(response.status).toBe(200);
-      expect(response.headers.get('content-type')).toContain('text/event-stream');
-      expect(body).toContain('event: ready');
-      expect(body).toContain('data: {"ready":true}');
-    } finally {
-      await app.close();
-    }
-  });
-
   it('registers native Express router routes while preserving fluo matching, versioning, lifecycle, and fallback semantics', async () => {
     const lifecycle: string[] = [];
 
