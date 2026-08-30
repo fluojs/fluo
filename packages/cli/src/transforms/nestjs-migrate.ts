@@ -15,6 +15,7 @@ export type MigrationTransformKind = typeof MIGRATION_TRANSFORMS[number];
 
 type ImportBinding = {
   imported: string;
+  isTypeOnly: boolean;
   local: string;
 };
 
@@ -174,17 +175,18 @@ function getImportBindings(importDeclaration: ts.ImportDeclaration): ImportBindi
 
   return importClause.namedBindings.elements.map((element) => ({
     imported: (element.propertyName ?? element.name).text,
+    isTypeOnly: element.isTypeOnly,
     local: element.name.text,
   }));
 }
 
 function createImportSpecifier(binding: ImportBinding): ts.ImportSpecifier {
   if (binding.imported === binding.local) {
-    return ts.factory.createImportSpecifier(false, undefined, ts.factory.createIdentifier(binding.local));
+    return ts.factory.createImportSpecifier(binding.isTypeOnly, undefined, ts.factory.createIdentifier(binding.local));
   }
 
   return ts.factory.createImportSpecifier(
-    false,
+    binding.isTypeOnly,
     ts.factory.createIdentifier(binding.imported),
     ts.factory.createIdentifier(binding.local),
   );
@@ -357,7 +359,7 @@ function rewriteImports(source: string, filePath: string): { changed: boolean; s
 
       touched = true;
       const moduleBindings = additions.get(targetModule) ?? [];
-      moduleBindings.push({ imported: binding.imported, local: binding.local });
+      moduleBindings.push({ imported: binding.imported, isTypeOnly: binding.isTypeOnly, local: binding.local });
       additions.set(targetModule, moduleBindings);
     }
 
@@ -580,7 +582,7 @@ function rewriteInjectableAndScope(
     const nextSourceFile = parseSource(nextSource, filePath);
     nextSource = printSourceFile(
       nextSourceFile,
-      mergeNamedImport([...nextSourceFile.statements], '@fluojs/core', [{ imported: 'Scope', local: scopeDecoratorName }]),
+      mergeNamedImport([...nextSourceFile.statements], '@fluojs/core', [{ imported: 'Scope', isTypeOnly: false, local: scopeDecoratorName }]),
     );
   }
 
@@ -761,7 +763,7 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
   nextSource = removed.source;
 
   const nextSourceFile = parseSource(nextSource, filePath);
-  const withRuntimeImport = printSourceFile(nextSourceFile, mergeNamedImport([...nextSourceFile.statements], '@fluojs/runtime', [{ imported: 'FluoFactory', local: 'FluoFactory' }]));
+  const withRuntimeImport = printSourceFile(nextSourceFile, mergeNamedImport([...nextSourceFile.statements], '@fluojs/runtime', [{ imported: 'FluoFactory', isTypeOnly: false, local: 'FluoFactory' }]));
 
   return {
     changed: withRuntimeImport !== source,
@@ -947,7 +949,7 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
   const nextSourceFile = parseSource(nextSource, filePath);
   nextSource = printSourceFile(
     nextSourceFile,
-    mergeNamedImport([...nextSourceFile.statements], '@fluojs/testing', [{ imported: 'createTestingModule', local: 'createTestingModule' }]),
+    mergeNamedImport([...nextSourceFile.statements], '@fluojs/testing', [{ imported: 'createTestingModule', isTypeOnly: false, local: 'createTestingModule' }]),
   );
 
   const withFluoImportSourceFile = parseSource(nextSource, filePath);

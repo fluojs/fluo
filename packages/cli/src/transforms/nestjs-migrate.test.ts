@@ -2,15 +2,16 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import ts from 'typescript';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
-  MIGRATION_TRANSFORMS,
-  WARNING_CATEGORIES,
   getWarningCategoryLabel,
   groupWarningsByCategory,
-  runNestJsMigration,
+  MIGRATION_TRANSFORMS,
   type MigrationWarning,
+  runNestJsMigration,
+  WARNING_CATEGORIES,
 } from './nestjs-migrate.js';
 
 const temporaryDirectories: string[] = [];
@@ -43,10 +44,12 @@ void bootstrap();
 
   writeFileSync(
     join(workspaceDirectory, 'src', 'users.service.ts'),
-    `import { Injectable, Scope } from '@nestjs/common';
+    `import { Injectable, Scope, type OnModuleInit } from '@nestjs/common';
 
 @Injectable({ scope: Scope.REQUEST })
-export class UsersService {}
+export class UsersService implements OnModuleInit {
+  onModuleInit(): void {}
+}
 `,
   );
 
@@ -151,6 +154,7 @@ describe('runNestJsMigration', () => {
     expect(serviceContent).toMatch(/@Scope\(("|')request\1\)/);
     expect(serviceContent).not.toContain('@Injectable');
     expect(serviceContent).toContain("from \"@fluojs/core\"");
+    expect(serviceContent).toMatch(/import \{ type OnModuleInit \} from ['"]@nestjs\/common['"];/);
     expect(testContent).toContain("from \"@fluojs/testing\"");
     expect(testContent).toMatch(/createTestingModule\(\{[\s\S]*rootModule:\s*UsersModule[\s\S]*\}\)/);
     expect(testContent).not.toContain('Test.createTestingModule');
@@ -161,6 +165,33 @@ describe('runNestJsMigration', () => {
       '@app/*': ['src/app/*'],
       '@health': ['src/health/health.module.ts'],
     });
+
+    const nestTypesDirectory = join(workspaceDirectory, 'node_modules', '@nestjs', 'common');
+    mkdirSync(nestTypesDirectory, { recursive: true });
+    writeFileSync(join(nestTypesDirectory, 'index.d.ts'), 'export interface OnModuleInit { onModuleInit(): void; }\n');
+
+    const fluoTypesDirectory = join(workspaceDirectory, 'node_modules', '@fluojs', 'core');
+    mkdirSync(fluoTypesDirectory, { recursive: true });
+    writeFileSync(join(fluoTypesDirectory, 'index.d.ts'), 'export declare function Scope(scope: string): ClassDecorator;\n');
+
+    const outputDirectory = join(workspaceDirectory, 'compiled');
+    const program = ts.createProgram([join(workspaceDirectory, 'src', 'users.service.ts')], {
+      experimentalDecorators: true,
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      noEmitOnError: true,
+      outDir: outputDirectory,
+      skipLibCheck: true,
+      target: ts.ScriptTarget.ES2022,
+    });
+    const diagnostics = ts.getPreEmitDiagnostics(program);
+    const emitResult = program.emit();
+    const compiledService = readFileSync(join(outputDirectory, 'users.service.js'), 'utf8');
+
+    expect(diagnostics).toEqual([]);
+    expect(emitResult.emitSkipped).toBe(false);
+    expect(compiledService).toContain('@fluojs/core');
+    expect(compiledService).not.toContain('@nestjs/common');
 
     const secondReport = runNestJsMigration({
       apply: true,
