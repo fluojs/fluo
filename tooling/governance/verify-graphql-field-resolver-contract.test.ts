@@ -37,6 +37,14 @@ const unsupportedMigrationClaims = [
   ['detached-type-reachability-ko', /분리된 object type은 root operation output 없이도 도달 가능/iu],
   ['field-argument-binding', /field argument DTO binding (?:is |remains )?(?:un|not )supported/iu],
   ['field-argument-binding-ko', /field argument DTO binding(?:을|은)? (?:지원하지 않|미지원)/iu],
+  [
+    'field-argument-compound-limitation',
+    /There is no `forRootAsync\(\.\.\.\)`, field argument DTO binding, schema-first field-resolver attachment, or `@Subscription\(\{ topics \}\)` contract\./u,
+  ],
+  [
+    'field-argument-compound-limitation-ko',
+    /`forRootAsync\(\.\.\.\)`, field argument DTO binding, schema-first field-resolver attachment, `@Subscription\(\{ topics \}\)` 계약은 없다\./u,
+  ],
 ] as const;
 
 function collectUnsupportedMigrationClaims(content: string): string[] {
@@ -161,6 +169,14 @@ describe('GraphQL object field resolver contract governance', () => {
     ['detached-type-reachability-ko', '분리된 object type은 root operation output 없이도 도달 가능합니다.'],
     ['field-argument-binding', 'Field argument DTO binding is unsupported.'],
     ['field-argument-binding-ko', 'Field argument DTO binding을 지원하지 않습니다.'],
+    [
+      'field-argument-compound-limitation',
+      'There is no `forRootAsync(...)`, field argument DTO binding, schema-first field-resolver attachment, or `@Subscription({ topics })` contract.',
+    ],
+    [
+      'field-argument-compound-limitation-ko',
+      '`forRootAsync(...)`, field argument DTO binding, schema-first field-resolver attachment, `@Subscription({ topics })` 계약은 없다.',
+    ],
   ] as const)('rejects the unsupported %s migration claim', (claimName, claim) => {
     // Given
     const migrationSection = `### GraphQL Resolver Migration\n\n${claim}`;
