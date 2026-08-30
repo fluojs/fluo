@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -185,6 +185,51 @@ describe('verifyChangesetReleaseLane', () => {
     expect(() => verifyChangesetReleaseLane({ changesetDirectory: directory, lane: 'stable' })).toThrow(
       /Studio route-kind input-contract narrowing classified as patch/u,
     );
+  });
+
+  it('rejects patch changesets when a stable Node engine range narrows', () => {
+    // Given: a stable package narrows its supported Node.js range.
+    const directory = createChangesetDirectory();
+    writeChangeset(directory, 'graphql-node-range.md', '"@fluojs/graphql": patch');
+
+    // When: release metadata is verified against the previous package manifest.
+    // Then: the breaking range narrowing requires major release metadata.
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+        {
+          readFileSync: (filePath: string) =>
+            filePath.endsWith('packages/graphql/package.json')
+              ? JSON.stringify({
+                  engines: { node: '>=20.19.3 <21 || >=22.2.0 <27' },
+                  name: '@fluojs/graphql',
+                  version: '1.1.0',
+                })
+              : readFileSync(filePath, 'utf8'),
+          runGit: (args: string[]) => {
+            const command = args.join(' ');
+
+            if (command === 'diff --name-only origin/main -- packages/*/package.json') {
+              return 'packages/graphql/package.json\n';
+            }
+
+            if (command === 'cat-file -e origin/main:packages/graphql/package.json') {
+              return '';
+            }
+
+            if (command === 'show origin/main:packages/graphql/package.json') {
+              return JSON.stringify({
+                engines: { node: '>=20.16.0 <21 || >=22.0.0 <27' },
+                name: '@fluojs/graphql',
+                version: '1.1.0',
+              });
+            }
+
+            throw new Error(`unexpected git command: ${command}`);
+          },
+        },
+      ),
+    ).toThrow(/stable Node engine range narrowings without a major changeset/u);
   });
 
   it('allows patch changesets that preserve existing CLI behavior without additive feature language', () => {
