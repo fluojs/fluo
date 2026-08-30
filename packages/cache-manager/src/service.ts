@@ -1,6 +1,7 @@
 import { Inject } from '@fluojs/core';
 
 import { CACHE_OPTIONS, CACHE_STORE } from './tokens.js';
+import { applyCacheTtlJitter } from './ttl-jitter.js';
 import type { CacheStore, NormalizedCacheModuleOptions } from './types.js';
 
 interface InflightLoad<T = unknown> {
@@ -94,6 +95,11 @@ export class CacheService {
    * @param value Value to cache.
    * @param ttlSeconds Optional per-call TTL override in seconds.
    * @returns A promise that resolves after the write completes.
+   *
+   * @remarks
+   * When `ttlJitter` is configured, a positive resolved TTL is jittered once here, before store handoff,
+   * so every store observes the same effective expiry. `ttl: 0` stays a no-expiry write and invalid TTL
+   * values still skip the write entirely.
    */
   async set<T = unknown>(key: string, value: T, ttlSeconds?: number): Promise<void> {
     const resolvedTtl = ttlSeconds ?? this.options.ttl;
@@ -102,12 +108,14 @@ export class CacheService {
       return;
     }
 
+    const effectiveTtl = applyCacheTtlJitter(resolvedTtl, this.options.ttlJitter);
+
     await this.runStoreOperation(async () => {
       if (this.closed) {
         return;
       }
 
-      await this.store.set<T>(key, value, resolvedTtl);
+      await this.store.set<T>(key, value, effectiveTtl);
     });
   }
 

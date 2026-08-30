@@ -8,7 +8,7 @@ This document defines the current cache contract across `@fluojs/cache-manager`,
 
 | Surface | Current contract | Source anchor |
 | --- | --- | --- |
-| Module entrypoint | Applications register cache support through `CacheModule.forRoot(...)`. Public options include `store`, `ttl`, `httpKeyStrategy`, `principalScopeResolver`, top-level `keyPrefix`, `redis`, and `global`. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
+| Module entrypoint | Applications register cache support through `CacheModule.forRoot(...)`. Public options include `store`, `ttl`, opt-in `ttlJitter`, `httpKeyStrategy`, `principalScopeResolver`, top-level `keyPrefix`, `redis`, and `global`. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
 | Cache service | `CacheService` is the direct application cache facade with `get`, `set`, `remember`, `del`, and `reset`. | `packages/cache-manager/src/service.ts` |
 | HTTP integration | `CacheInterceptor` performs GET read-through caching and consumes `@CacheEvict(...)` metadata after non-GET controller handlers. The decorator does not intercept arbitrary service methods outside that HTTP pipeline. | `packages/cache-manager/src/decorators.ts`, `packages/cache-manager/src/interceptor.ts` |
 | Memory store | `MemoryStore` keeps cache entries in-process, sweeps expirations lazily on access, and caps live entries at `1,000` by evicting the oldest keys. | `packages/cache-manager/src/stores/memory-store.ts` |
@@ -31,7 +31,8 @@ This document defines the current cache contract across `@fluojs/cache-manager`,
 
 | Rule | Current contract | Source anchor |
 | --- | --- | --- |
-| Default TTL resolution | `CacheService.set(...)` resolves TTL as `ttlSeconds ?? options.ttl`. | `packages/cache-manager/src/service.ts` |
+| Default TTL resolution | `CacheService.set(...)` resolves TTL as `ttlSeconds ?? options.ttl`; a per-call TTL therefore takes precedence before jitter is calculated. | `packages/cache-manager/src/service.ts` |
+| Opt-in TTL jitter | When `ttlJitter` is configured, `CacheService` applies the configured bounded ratio and direction once to each positive resolved TTL before store handoff. Memory, Redis, and custom stores receive that same effective TTL. The injectable random source is a deterministic test seam; production defaults to `Math.random`. | `packages/cache-manager/src/service.ts`, `packages/cache-manager/src/ttl-jitter.ts` |
 | Disabled writes | Non-finite TTL values or TTL values below `0` are ignored and produce no cache write. | `packages/cache-manager/src/service.ts` |
 | No-expiry entries | `ttl: 0` means no expiration. The memory store omits `expiresAt` for such entries, and the Redis store writes without `EX`. | `packages/cache-manager/src/service.ts`, `packages/cache-manager/src/stores/memory-store.ts`, `packages/cache-manager/src/stores/redis-store.ts` |
 | GET-only response caching | `CacheInterceptor` only performs read-through caching for `GET` requests. Non-GET requests skip cache reads and writes. | `packages/cache-manager/src/interceptor.ts` |
@@ -56,4 +57,5 @@ This document defines the current cache contract across `@fluojs/cache-manager`,
 - Redis-backed values must be JSON-compatible because `RedisStore` persists entries with `JSON.stringify(...)` and reconstructs them with `JSON.parse(...)`.
 - Cache invalidation is key-based only. The built-in contract does not provide tag-based or wildcard invalidation at the interceptor layer.
 - Cache TTL enforcement in the memory store is lazy and access-driven, not timer-driven.
+- TTL jitter spreads positive expiry times only. It does not provide distributed locking, refresh-ahead caching, or cross-instance stampede coordination; `ttl: 0` and invalid TTL meanings are preserved.
 - The cache package defines extensibility through the `CacheStore` interface. Custom stores must implement `get`, `set`, `del`, and `reset`; resource-owning stores should also implement optional `close()` or `dispose()` teardown.

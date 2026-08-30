@@ -8,7 +8,7 @@
 
 | 표면 | 현재 계약 | 소스 기준 |
 | --- | --- | --- |
-| 모듈 진입점 | 애플리케이션은 `CacheModule.forRoot(...)`로 캐시 지원을 등록합니다. 공개 옵션에는 `store`, `ttl`, `httpKeyStrategy`, `principalScopeResolver`, top-level `keyPrefix`, `redis`, `global`이 포함됩니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
+| 모듈 진입점 | 애플리케이션은 `CacheModule.forRoot(...)`로 캐시 지원을 등록합니다. 공개 옵션에는 `store`, `ttl`, opt-in `ttlJitter`, `httpKeyStrategy`, `principalScopeResolver`, top-level `keyPrefix`, `redis`, `global`이 포함됩니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
 | 캐시 서비스 | `CacheService`는 `get`, `set`, `remember`, `del`, `reset`을 제공하는 직접 애플리케이션 캐시 파사드입니다. | `packages/cache-manager/src/service.ts` |
 | HTTP 통합 | `CacheInterceptor`는 GET read-through 캐싱을 수행하고 non-GET controller handler 이후 `@CacheEvict(...)` metadata를 소비합니다. 이 decorator는 해당 HTTP pipeline 밖의 임의 service method를 intercept하지 않습니다. | `packages/cache-manager/src/decorators.ts`, `packages/cache-manager/src/interceptor.ts` |
 | 메모리 저장소 | `MemoryStore`는 캐시 엔트리를 프로세스 내부에 보관하고, 접근 시점에 만료를 지연 정리하며, 가장 오래된 키부터 제거하면서 라이브 엔트리를 `1,000`개로 제한합니다. | `packages/cache-manager/src/stores/memory-store.ts` |
@@ -31,7 +31,8 @@
 
 | 규칙 | 현재 계약 | 소스 기준 |
 | --- | --- | --- |
-| 기본 TTL 해석 | `CacheService.set(...)`는 TTL을 `ttlSeconds ?? options.ttl`로 해석합니다. | `packages/cache-manager/src/service.ts` |
+| 기본 TTL 해석 | `CacheService.set(...)`는 TTL을 `ttlSeconds ?? options.ttl`로 해석하므로 per-call TTL이 지터 계산 전에 우선합니다. | `packages/cache-manager/src/service.ts` |
+| Opt-in TTL 지터 | `ttlJitter`가 설정되면 `CacheService`는 각 양수 resolved TTL에 설정된 bounded ratio와 direction을 한 번 적용한 뒤 store로 넘깁니다. Memory, Redis, custom store는 모두 동일한 effective TTL을 받습니다. 주입 가능한 random source는 deterministic test seam이고 production 기본값은 `Math.random`입니다. | `packages/cache-manager/src/service.ts`, `packages/cache-manager/src/ttl-jitter.ts` |
 | 쓰기 비활성화 | TTL이 유한하지 않거나 `0`보다 작으면 캐시 쓰기를 수행하지 않습니다. | `packages/cache-manager/src/service.ts` |
 | 무기한 엔트리 | `ttl: 0`은 만료 없음 의미입니다. 메모리 저장소는 이런 엔트리에 `expiresAt`을 두지 않고, Redis 저장소는 `EX` 없이 기록합니다. | `packages/cache-manager/src/service.ts`, `packages/cache-manager/src/stores/memory-store.ts`, `packages/cache-manager/src/stores/redis-store.ts` |
 | GET 전용 응답 캐싱 | `CacheInterceptor`는 `GET` 요청에 대해서만 read-through 캐싱을 수행합니다. GET이 아닌 요청은 캐시 읽기와 쓰기를 건너뜁니다. | `packages/cache-manager/src/interceptor.ts` |
@@ -56,4 +57,5 @@
 - Redis 저장소 값은 `RedisStore`가 `JSON.stringify(...)`와 `JSON.parse(...)`를 사용하므로 JSON 호환 형태여야 합니다.
 - 캐시 무효화는 키 기반만 지원합니다. 기본 계약은 interceptor 계층에서 tag 기반이나 wildcard 무효화를 제공하지 않습니다.
 - 메모리 저장소의 TTL 강제는 타이머 기반이 아니라 접근 기반의 lazy 방식입니다.
+- TTL 지터는 양수 만료 시점만 분산합니다. Distributed locking, refresh-ahead caching, cross-instance stampede coordination을 제공하지 않으며 `ttl: 0`과 invalid TTL 의미를 보존합니다.
 - 캐시 패키지는 `CacheStore` 인터페이스로 확장을 정의합니다. custom store는 `get`, `set`, `del`, `reset`을 구현해야 하며, 리소스를 소유하는 store는 optional `close()` 또는 `dispose()` teardown도 구현하는 것이 좋습니다.

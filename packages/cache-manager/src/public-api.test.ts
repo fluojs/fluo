@@ -1,8 +1,6 @@
 import { readFileSync } from 'node:fs';
 
 import { describe, expect, expectTypeOf, it } from 'vitest';
-
-import * as cacheManagerPublicApi from './index.js';
 import type {
   CacheEvictDecoratorValue,
   CacheEvictFactory,
@@ -15,12 +13,16 @@ import type {
   CacheManagerStoreOwnershipMode,
   CacheModuleOptions,
   CacheStore,
+  CacheTtlJitterMode,
+  CacheTtlJitterOptions,
   NormalizedCacheModuleOptions,
+  NormalizedCacheTtlJitterOptions,
   PrincipalScopeResolver,
   RedisCacheOptions,
   RedisCompatibleClient,
   RedisStoreOptions,
 } from './index.js';
+import * as cacheManagerPublicApi from './index.js';
 
 type RootCacheKeyStrategy =
   | 'route'
@@ -56,6 +58,10 @@ describe('@fluojs/cache-manager public API surface', () => {
     expectTypeOf<CacheStore>().toHaveProperty('set');
     expectTypeOf<CacheModuleOptions>().toHaveProperty('store');
     expectTypeOf<CacheModuleOptions>().toHaveProperty('httpKeyStrategy');
+    expectTypeOf<CacheModuleOptions>().toHaveProperty('ttlJitter');
+    expectTypeOf<CacheTtlJitterOptions>().toHaveProperty('ratio');
+    expectTypeOf<CacheTtlJitterMode>().toEqualTypeOf<'symmetric' | 'shorten' | 'lengthen'>();
+    expectTypeOf<NormalizedCacheTtlJitterOptions>().toHaveProperty('mode');
     expectTypeOf<NormalizedCacheModuleOptions>().toHaveProperty('keyPrefix');
     expectTypeOf<NormalizedCacheModuleOptions>().toHaveProperty('principalScopeResolver');
     expectTypeOf<RedisCacheOptions>().toHaveProperty('clientName');

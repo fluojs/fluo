@@ -13,6 +13,7 @@
   - [애플리케이션 레벨 캐싱](#애플리케이션-레벨-캐싱)
 - [공통 패턴](#공통-패턴)
   - [Redis 저장소 사용](#redis-저장소-사용)
+  - [TTL 지터](#ttl-지터)
   - [쿼리 매개변수 기반 캐싱](#쿼리-매개변수-기반-캐싱)
   - [캐시 소유권과 reset 범위](#캐시-소유권과-reset-범위)
   - [수동 모듈 조합](#수동-모듈-조합)
@@ -162,6 +163,25 @@ class AppModule {}
 
 Redis reset 소유권은 기본값이 `fluo:cache:`이며 내장 `RedisStore` namespace로 전달되는 top-level `keyPrefix` 옵션으로 제한됩니다. Redis 기반 저장소에서 `CacheService.reset()`은 해당 prefix 아래의 키만 삭제하므로, cache prefix 밖의 애플리케이션 소유 Redis 데이터는 유지됩니다. 비어 있지 않은 prefix의 Redis glob metacharacter(`*`, `?`, `[`, `]`, `\`)는 `SCAN` 전에 escape되므로 설정한 prefix가 reset 소유권을 넓히지 않고 literal namespace로 유지됩니다. 의도적으로 빈 `keyPrefix`를 설정하면 reset은 `*`를 scan하지 않고 현재 `RedisStore` 인스턴스가 쓴 키로만 제한됩니다. 재시작 이후나 여러 프로세스에 걸친 캐시 엔트리까지 reset해야 한다면 비어 있지 않은 애플리케이션 전용 prefix를 사용하세요.
 
+### TTL 지터
+
+함께 기록된 인기 키는 같은 시점에 만료되어 origin 부하를 동기화할 수 있습니다. `ttlJitter`를 사용하면 양수 TTL 지터를 중앙에서 opt-in할 수 있습니다. `CacheService`는 memory, Redis 또는 custom store에 쓰기를 넘기기 전에 유효 TTL을 한 번 계산합니다.
+
+```typescript
+CacheModule.forRoot({
+  store: 'redis',
+  ttl: 600,
+  ttlJitter: {
+    ratio: 0.1,
+    mode: 'symmetric',
+  },
+});
+```
+
+`ratio`는 `0`보다 크고 `1` 이하여야 합니다. 기본 `symmetric` mode는 `ttl ± (ttl * ratio)` 범위에서 값을 뽑고, `shorten`은 TTL을 줄이기만 하며 `lengthen`은 늘리기만 합니다. `CacheService.set(...)` 또는 `remember(...)`의 per-call TTL override가 있으면 module 기본값 대신 해당 값에 지터를 적용합니다. `ttl: 0`은 계속 만료 없음 쓰기이며, 음수 또는 유한하지 않은 TTL 값은 여전히 쓰기를 건너뜁니다.
+
+`ttlJitter`를 생략하면 지터가 비활성화됩니다. Optional `random` 함수는 deterministic test seam이며 `[0, 1]` 범위의 값을 반환해야 합니다. Production code에서는 일반적으로 기본 `Math.random`을 유지하세요. TTL 지터는 만료 시점을 분산할 뿐입니다. Distributed locking, refresh-ahead caching 또는 cross-instance stampede coordination이 아닙니다.
+
 ### 쿼리 매개변수 기반 캐싱
 
 내장 HTTP 캐시 키 전략은 경로 부분을 route template metadata가 아니라 구체적인 요청 경로(`requestContext.request.path`)에서 계산합니다. 따라서 같은 `@Get('/:id')` 핸들러를 타더라도 `/users/1`과 `/users/2` 같은 요청은 항상 서로 다른 캐시 키로 분리됩니다.
@@ -268,12 +288,14 @@ class ProductController {
 ## 공개 API 개요
 
 ### 모듈
-- `CacheModule.forRoot(options)`: 캐시 저장소(memory/redis/custom), 기본 TTL, 키 전략, `global`, `principalScopeResolver`, Redis namespace `keyPrefix`, `redis.scanCount` 같은 Redis 옵션을 설정합니다.
+- `CacheModule.forRoot(options)`: 캐시 저장소(memory/redis/custom), 기본 TTL, opt-in `ttlJitter`, 키 전략, `global`, `principalScopeResolver`, Redis namespace `keyPrefix`, `redis.scanCount` 같은 Redis 옵션을 설정합니다.
   애플리케이션 모듈에서 사용하는 기본 패키지 진입점입니다.
 
 ### 공개 타입
 - `CacheModuleOptions`: `CacheModule.forRoot(...)`가 받는 애플리케이션-facing 설정입니다.
-- `NormalizedCacheModuleOptions`: 기본값이 적용된 정규화 설정 모양과 일치하는 compatibility-only type export입니다. 애플리케이션 코드에서는 `CacheModuleOptions`를 우선 사용하세요. 이 타입은 이전에 배포된 declaration surface를 참조한 소비자가 계속 컴파일되도록 공개 상태를 유지합니다.
+- `CacheTtlJitterOptions`, `CacheTtlJitterMode`: Opt-in 양수 TTL 지터의 범위, 방향, deterministic randomness seam을 정의합니다.
+- `NormalizedCacheModuleOptions`: 기본값이 적용된 정규화 module 설정 모양과 일치하는 compatibility-only type export입니다. 애플리케이션 코드에서는 `CacheModuleOptions`를 우선 사용하세요. 이 타입은 이전에 배포된 declaration surface를 참조한 소비자가 계속 컴파일되도록 공개 상태를 유지합니다.
+- `NormalizedCacheTtlJitterOptions`: 기본값이 적용된 정규화 TTL 지터 설정입니다.
 
 ### 서비스
 - `CacheService`: 수동 캐시 작업(`get`, `set`, `del`, `remember`, `reset`, `close`)을 위한 기본 API입니다. 애플리케이션 shutdown은 같은 `close()` 경로를 호출하며, 이 경로는 `close()` 또는 `dispose()`를 노출하는 custom store로 teardown을 전달하고 동시에 또는 반복해서 호출한 caller가 첫 teardown 완료를 공유하도록 합니다.

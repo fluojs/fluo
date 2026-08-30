@@ -13,6 +13,7 @@ General-purpose cache manager for fluo with pluggable memory, Redis, and custom 
   - [Application-Level Caching](#application-level-caching)
 - [Common Patterns](#common-patterns)
   - [Redis Storage](#redis-storage)
+  - [TTL Jitter](#ttl-jitter)
   - [Query-Sensitive Caching](#query-sensitive-caching)
   - [Cache Ownership and Reset Scope](#cache-ownership-and-reset-scope)
   - [Manual Module Composition](#manual-module-composition)
@@ -162,6 +163,25 @@ Positive Redis TTL values are accepted in seconds and may be fractional. Redis e
 
 Redis reset ownership is scoped by the top-level `keyPrefix` option, which defaults to `fluo:cache:` and is passed through to the built-in `RedisStore` namespace. `CacheService.reset()` deletes only keys under that prefix for Redis-backed stores, so application-owned Redis data outside the cache prefix is preserved. Redis glob metacharacters in a non-empty prefix (`*`, `?`, `[`, `]`, and `\`) are escaped before `SCAN`, so the configured prefix remains a literal namespace instead of broadening reset ownership. If you intentionally configure an empty `keyPrefix`, reset is limited to keys written by the current `RedisStore` instance instead of scanning `*`; use a non-empty, application-specific prefix when you need reset to cover cache entries across restarts or multiple processes.
 
+### TTL Jitter
+
+Popular keys written together can otherwise expire together and synchronize origin load. Opt in to centralized positive-TTL jitter with `ttlJitter`; `CacheService` calculates the effective TTL once before handing the write to memory, Redis, or a custom store.
+
+```typescript
+CacheModule.forRoot({
+  store: 'redis',
+  ttl: 600,
+  ttlJitter: {
+    ratio: 0.1,
+    mode: 'symmetric',
+  },
+});
+```
+
+`ratio` must be greater than `0` and at most `1`. The default `symmetric` mode samples within `ttl ± (ttl * ratio)`; `shorten` only subtracts from the TTL and `lengthen` only adds to it. A `CacheService.set(...)` or `remember(...)` per-call TTL override is jittered instead of the module default. `ttl: 0` remains a no-expiry write, and negative or non-finite TTL values still skip the write.
+
+Jitter is disabled when `ttlJitter` is omitted. The optional `random` function is a deterministic test seam and must return a value in `[0, 1]`; production code should normally keep the default `Math.random`. TTL jitter spreads expiry times only. It is not distributed locking, refresh-ahead caching, or cross-instance stampede coordination.
+
 ### Query-Sensitive Caching
 
 Built-in HTTP cache key strategies derive their path segment from the concrete request path (`requestContext.request.path`), not the route template metadata. That means requests such as `/users/1` and `/users/2` always resolve to different cache keys even when they hit the same `@Get('/:id')` handler.
@@ -268,12 +288,14 @@ On that supported HTTP path, eviction is deferred until a framework response wri
 ## Public API Overview
 
 ### Modules
-- `CacheModule.forRoot(options)`: Configures the cache store (memory/redis/custom), default TTL, key strategies, `global`, `principalScopeResolver`, the Redis namespace `keyPrefix`, and Redis options such as `redis.scanCount`.
+- `CacheModule.forRoot(options)`: Configures the cache store (memory/redis/custom), default TTL, opt-in `ttlJitter`, key strategies, `global`, `principalScopeResolver`, the Redis namespace `keyPrefix`, and Redis options such as `redis.scanCount`.
   This is the primary package entrypoint for application modules.
 
 ### Public types
 - `CacheModuleOptions`: Application-facing configuration accepted by `CacheModule.forRoot(...)`.
-- `NormalizedCacheModuleOptions`: Compatibility-only type export matching the normalized configuration shape after defaults are applied. Prefer `CacheModuleOptions` for application code; this type remains public so consumers that referenced the previously shipped declaration surface can keep compiling.
+- `CacheTtlJitterOptions` and `CacheTtlJitterMode`: Opt-in positive-TTL jitter bounds, direction, and deterministic randomness seam.
+- `NormalizedCacheModuleOptions`: Compatibility-only type export matching the normalized module configuration after defaults are applied. Prefer `CacheModuleOptions` for application code; this type remains public so consumers that referenced the previously shipped declaration surface can keep compiling.
+- `NormalizedCacheTtlJitterOptions`: Normalized TTL jitter configuration after defaults are applied.
 
 ### Services
 - `CacheService`: Main API for manual cache operations (`get`, `set`, `del`, `remember`, `reset`, `close`). Application shutdown calls the same `close()` path, which forwards teardown to custom stores exposing `close()` or `dispose()` and shares the first teardown completion across concurrent or repeated callers.

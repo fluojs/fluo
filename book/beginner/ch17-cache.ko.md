@@ -276,7 +276,7 @@ export class PostsController {
 ### 17.6.2 The "Thundering Herd" (Cache Stampede)
 매우 인기 있는 캐시 키가 만료되면 수천 개의 요청이 동시에 데이터베이스로 몰려들어 이를 갱신하려 할 수 있습니다. 이는 데이터베이스를 마비시킬 수 있으며, 이를 "Thundering Herd" 또는 "Cache Stampede" 현상이라고 합니다. 현재 배포된 캐시 계약에는 리스 기반 잠금, 확률적 조기 재계산, 자동 다중 노드 스탬피드 방지가 내장되어 있지 않습니다. 오늘 기본 제공되는 것은 `CacheService.remember(...)`를 통한 프로세스 내부 중복 완화 정도이며, 이는 하나의 `CacheService` 인스턴스 안에서만 동작합니다.
 
-이를 완화하는 일반적인 기술은 **지터링(Jittering)**입니다. 모든 키에 정확히 3600초의 TTL을 부여하는 대신, 작은 랜덤 "지터"(예: 3600 ± 60초)를 추가합니다. 이를 통해 동시에 생성된 키들이 정확히 같은 순간에 만료되지 않도록 보장하여, 데이터베이스 갱신 부하를 시간에 따라 더 고르게 분산시킵니다. Fluo에서는 현재 이 지터를 애플리케이션 로직이나 커스텀 저장소 래퍼에서 직접 적용해야 하며, `CacheModule`에 자동 지터 토글은 없습니다.
+이를 완화하는 일반적인 기술은 **지터링(Jittering)**입니다. 모든 키에 정확히 3600초의 TTL을 부여하는 대신, 작은 랜덤 "지터"(예: 3600 ± 60초)를 추가합니다. 이를 통해 동시에 생성된 키들이 정확히 같은 순간에 만료되지 않도록 보장하여, 데이터베이스 갱신 부하를 시간에 따라 더 고르게 분산시킵니다. Fluo는 opt-in `CacheModule.forRoot({ ttlJitter: { ratio: 0.1 } })`로 이 정책을 중앙화합니다. `CacheService`는 per-call TTL override를 포함해 resolved TTL이 양수일 때 store handoff 전에 한 번 지터를 적용하고, `ttl: 0`과 invalid TTL 의미는 보존합니다. 기본 `symmetric` mode는 TTL을 줄이거나 늘릴 수 있고, `shorten`과 `lengthen`은 방향을 제한합니다. 이는 만료 시점만 분산하며 distributed locking, refresh-ahead caching 또는 cross-instance stampede coordination이 아닙니다.
 
 ### 17.6.3 Write-Through vs. Write-Back Caching: Choosing the Right Trade-off
 "Write-Through" 캐싱에서는 애플리케이션이 캐시와 데이터베이스에 동시에 씁니다. 이는 캐시가 항상 최신 상태임을 보장합니다. "Write-Back" 캐싱에서는 애플리케이션이 캐시에만 쓰고, 백그라운드 프로세스가 주기적으로 변경 사항을 데이터베이스에 반영합니다. "Write-Back"은 쓰기 작업이 많은 부하 상황에서 매우 빠르지만, 캐시 서버가 다운될 경우 데이터 손실 위험이 있습니다. Fluo는 애플리케이션의 신뢰성 요구 사항에 따라 두 전략 중 하나를 구현할 수 있게 해줍니다.
