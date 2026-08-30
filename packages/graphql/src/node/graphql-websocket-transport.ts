@@ -35,6 +35,9 @@ interface GraphqlSubscribePayload {
   variables?: Record<string, unknown> | null;
 }
 
+/**
+ * Describes a GraphQL-over-WebSocket subscription forwarded to application hooks.
+ */
 export interface GraphqlNodeWebSocketSubscribeRequest {
   connectionParams?: Record<string, unknown>;
   operationId: string;
@@ -43,6 +46,9 @@ export interface GraphqlNodeWebSocketSubscribeRequest {
   socket: object;
 }
 
+/**
+ * Represents a registered Node GraphQL WebSocket transport.
+ */
 export interface GraphqlNodeWebSocketTransport {
   dispose(): Promise<void>;
 }
@@ -180,6 +186,12 @@ function createSubscribeRequest(
   };
 }
 
+/**
+ * Registers GraphQL-over-WebSocket upgrade handling for a Node HTTP/S adapter.
+ *
+ * @param options Transport dependencies and WebSocket lifecycle hooks.
+ * @returns A transport that unregisters upgrade handling and disposes WebSocket clients.
+ */
 export async function createNodeGraphqlWebSocketTransport(
   options: GraphqlNodeWebSocketTransportOptions,
 ): Promise<GraphqlNodeWebSocketTransport> {
