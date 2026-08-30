@@ -16,6 +16,7 @@ import {
   type ReactTypegenModules,
 } from './typegen-source.js';
 import { runTypegenWatch } from './typegen-watch.js';
+import { assertOutputDoesNotAliasModule } from './output-path-safety.js';
 
 type CliStream = {
   write(message: string): unknown;
@@ -88,8 +89,10 @@ export async function runTypegenCommand(
     }
 
     const parsed = parseTypegenArgs(argv);
-    const customModules = runtime.loadReactTypegenModules?.(cwd);
+    const modulePath = resolve(cwd, parsed.modulePath);
     const outputPath = resolve(cwd, parsed.outputPath);
+    await assertOutputDoesNotAliasModule(modulePath, outputPath);
+    const customModules = runtime.loadReactTypegenModules?.(cwd);
     const generateSource = async () => customModules === undefined
       ? runTypegenGenerationProcess({ cwd, exportName: parsed.exportName, modulePath: parsed.modulePath })
       : createTypegenSource({ cwd, modules: await customModules, parsed });
@@ -101,7 +104,7 @@ export async function runTypegenCommand(
     if (parsed.watch) {
       return await runTypegenWatch({
         generate: generateAndWrite,
-        modulePath: resolve(cwd, parsed.modulePath),
+        modulePath,
         onError(error) {
           stderr.write(`ERROR ${outputPath}: ${error instanceof Error ? error.message : String(error)}\n`);
         },

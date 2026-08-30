@@ -1,6 +1,6 @@
 import { type ChildProcess, spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { chmodSync, existsSync, type FSWatcher, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, type FSWatcher, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -4254,6 +4254,36 @@ exit 7
     expect(report.snapshot.diagnostics).toEqual([]);
     expect(report.summary.readinessStatus).toBe('ready');
     expect(report.summary.healthStatus).toBe('healthy');
+  });
+
+  it.each(['direct path', 'symlink'] as const)('rejects a %s output alias to the inspected application module', async (aliasKind) => {
+    // Given
+    const fixtureDirectory = mkdtempSync(join(dirname(inspectFixtureModulePath), 'inspect-output-alias-'));
+    createdDirectories.push(fixtureDirectory);
+    const modulePath = join(fixtureDirectory, 'app.module.mjs');
+    const source = readFileSync(inspectFixtureModulePath, 'utf8');
+    writeFileSync(modulePath, source, 'utf8');
+    const outputPath = aliasKind === 'direct path'
+      ? modulePath
+      : join(fixtureDirectory, 'inspect-output.json');
+    if (aliasKind === 'symlink') {
+      symlinkSync(modulePath, outputPath);
+    }
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+
+    // When
+    const exitCode = await runCli(['inspect', modulePath, '--output', outputPath], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    // Then
+    expect(exitCode).toBe(1);
+    expect(stdoutBuffer).toEqual([]);
+    expect(stderrBuffer).toHaveLength(1);
+    expect(readFileSync(modulePath, 'utf8')).toBe(source);
   });
 
   it('delegates inspect --mermaid output to Studio when resolvable', async () => {
