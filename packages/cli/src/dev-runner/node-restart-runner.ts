@@ -621,7 +621,13 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
         scheduleRestart(changedPath, resolveExitCode, cleanup);
 
         for (const nextDirectoryPath of getFallbackWatchDirectories(changedPath, projectDirectory, ignorePatterns)) {
-          watchFallbackDirectory(nextDirectoryPath);
+          if (watchedFallbackDirectories.has(nextDirectoryPath) || shouldIgnorePath(nextDirectoryPath, projectDirectory, ignorePatterns)) {
+            continue;
+          }
+          if (!watchFallbackDirectory(nextDirectoryPath)) {
+            failFromWatcher(nextDirectoryPath, new Error('required fallback watcher could not be acquired'));
+            return;
+          }
         }
       };
 
