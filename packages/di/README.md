@@ -101,6 +101,8 @@ Direct `child.dispose()` now detaches the request child from its parent after th
 
 Use `override(...providers)` when a test or request-local boundary needs to replace existing registrations deliberately. Overrides replace the current provider set for each token, invalidate cached instances in the current container and already-materialized request-scope descendants, and dispose stale instances before the next replacement resolution continues. Multi-provider overrides replace the full multi-provider set for that token, so pass every replacement provider together; mixing single and multi replacements for the same token in one override call is rejected as ambiguous.
 
+A failed stale `onDestroy()` hook follows the same retained-retry contract as ordinary disposal. The next resolution on an observing container surfaces that failure once so the replacement can continue, and the failed instance stays retained by the container that scheduled its cleanup until a later explicit `dispose()` on that container invokes the hook again. Stale hooks that already completed successfully are never repeated.
+
 ### Request Scoping
 Isolated containers can be created to handle per-request state without polluting the root container.
 

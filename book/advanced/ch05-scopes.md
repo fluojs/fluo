@@ -578,15 +578,26 @@ Stale disposal is now a task state machine rather than a shutdown-only error acc
 ```typescript
 private async assertStaleDisposalsSettled(): Promise<void> {
   const errors: unknown[] = [];
+  const settled = new Set<StaleDisposalTask>();
 
-  while (this.staleDisposalTasks.size > 0) {
-    const tasks = Array.from(this.staleDisposalTasks);
+  while (true) {
+    const tasks = Array.from(this.staleDisposalTasks).filter((task) => !settled.has(task));
+
+    if (tasks.length === 0) {
+      break;
+    }
+
     await Promise.all(tasks.map((task) => task.promise));
 
     for (const task of tasks) {
-      this.staleDisposalTasks.delete(task);
+      settled.add(task);
 
-      if (task.failed && !task.errorConsumed) {
+      if (!task.failed) {
+        this.staleDisposalTasks.delete(task);
+        continue;
+      }
+
+      if (!task.errorConsumed) {
         task.errorConsumed = true;
         errors.push(task.error);
       }
@@ -602,19 +613,26 @@ private scheduleStaleDisposal(instancePromise: Promise<unknown>, staleDisposalOw
     error: undefined,
     errorConsumed: false,
     failed: false,
+    observers,
     promise: Promise.resolve(),
+    retryInstance: undefined,
+    retryOwner: this,
   };
 
   task.promise = (async () => {
+    let disposable: Disposable | undefined;
+
     try {
       const instance = await instancePromise;
 
       if (this.isDisposable(instance)) {
+        disposable = instance;
         await instance.onDestroy();
       }
     } catch (error) {
       task.error = error;
       task.failed = true;
+      task.retryInstance = disposable;
     }
   })().finally(() => {
     if (!task.failed) {
@@ -632,7 +650,9 @@ private scheduleStaleDisposal(instancePromise: Promise<unknown>, staleDisposalOw
 
 The observer set defines the lifecycle boundary precisely. A local override is observed by that container. When an ancestor override invalidates a descendant cache, the descendant and the ancestor that initiated invalidation observe the same task. This makes both a descendant replacement resolve and a root replacement resolve wait for affected descendant retirement. It does not make an unrelated root resolve wait for a child-local override, nor does a child-local stale-disposal failure leak into that unrelated root resolve.
 
-If stale disposal fails, the first later `resolve()` or `dispose()` on an observing container consumes and propagates the failure. A `resolve()` rejects before constructing the replacement; because the task failure is consumed once, a retry can continue. A `dispose()` records the failure, continues the rest of teardown, and then throws the single error or an `AggregateError` when several cleanup paths failed (`path:packages/di/src/container.ts:1342-1359`). Failure reporting is therefore not deferred only to shutdown.
+If stale disposal fails, the first later `resolve()` or `dispose()` on an observing container consumes and propagates the failure. A `resolve()` rejects before constructing the replacement; because the task failure is consumed once, a retry can continue. A `dispose()` records the failure, continues the rest of teardown, and then throws the single error or an `AggregateError` when several cleanup paths failed. Failure reporting is therefore not deferred only to shutdown.
+
+Error delivery and retry ownership are separate concerns. Consuming a stale failure does not discharge it: the failed instance stays in the scheduling container's retry ledger, so a later explicit `dispose()` on that container invokes the same `onDestroy()` hook again before tearing down its own cached instances. Only the container that scheduled the task retries it, so an ancestor that merely observes the failure does not repeat a descendant's hook inside the same shutdown. A hook that finally succeeds leaves every observer's ledger, and a hook that keeps failing stays retained and re-reports to each later shutdown caller.
 
 Tests pin each boundary. `path:packages/di/src/container.test.ts:503-690` covers direct, dependency-aware, materialized child, and nested descendant invalidation. `path:packages/di/src/container.test.ts:1959-2016` proves replacement resolution waits and receives stale-disposal failures. `path:packages/di/src/container.test.ts:2045-2188` covers descendant disposal, root waiting, and descendant failure propagation. `path:packages/di/src/container.test.ts:2190-2248` fixes the child-local/unrelated-root boundary, while `path:packages/di/src/container.test.ts:2251-2329` covers multi-provider and repeated override retirement.
 

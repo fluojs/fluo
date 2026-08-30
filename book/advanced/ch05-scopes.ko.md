@@ -578,15 +578,26 @@ stale disposal은 이제 shutdown-only error accumulator가 아니라 task state
 ```typescript
 private async assertStaleDisposalsSettled(): Promise<void> {
   const errors: unknown[] = [];
+  const settled = new Set<StaleDisposalTask>();
 
-  while (this.staleDisposalTasks.size > 0) {
-    const tasks = Array.from(this.staleDisposalTasks);
+  while (true) {
+    const tasks = Array.from(this.staleDisposalTasks).filter((task) => !settled.has(task));
+
+    if (tasks.length === 0) {
+      break;
+    }
+
     await Promise.all(tasks.map((task) => task.promise));
 
     for (const task of tasks) {
-      this.staleDisposalTasks.delete(task);
+      settled.add(task);
 
-      if (task.failed && !task.errorConsumed) {
+      if (!task.failed) {
+        this.staleDisposalTasks.delete(task);
+        continue;
+      }
+
+      if (!task.errorConsumed) {
         task.errorConsumed = true;
         errors.push(task.error);
       }
@@ -602,19 +613,26 @@ private scheduleStaleDisposal(instancePromise: Promise<unknown>, staleDisposalOw
     error: undefined,
     errorConsumed: false,
     failed: false,
+    observers,
     promise: Promise.resolve(),
+    retryInstance: undefined,
+    retryOwner: this,
   };
 
   task.promise = (async () => {
+    let disposable: Disposable | undefined;
+
     try {
       const instance = await instancePromise;
 
       if (this.isDisposable(instance)) {
+        disposable = instance;
         await instance.onDestroy();
       }
     } catch (error) {
       task.error = error;
       task.failed = true;
+      task.retryInstance = disposable;
     }
   })().finally(() => {
     if (!task.failed) {
@@ -632,7 +650,9 @@ private scheduleStaleDisposal(instancePromise: Promise<unknown>, staleDisposalOw
 
 observer set이 lifecycle boundary를 정확히 정의합니다. local override는 해당 컨테이너가 관찰합니다. ancestor override가 descendant cache를 무효화하면 그 descendant와 invalidation을 시작한 ancestor가 같은 task를 관찰합니다. 따라서 descendant replacement resolve와 root replacement resolve 모두 영향을 받은 descendant retirement를 기다립니다. 반면 unrelated root resolve는 child-local override를 기다리지 않으며, child-local stale-disposal failure도 그 unrelated root resolve로 유출되지 않습니다.
 
-stale disposal이 실패하면 observing container의 다음 `resolve()` 또는 `dispose()` 중 처음 도달한 호출이 failure를 소비하고 전파합니다. `resolve()`는 replacement를 만들기 전에 reject하며, task failure는 한 번만 소비되므로 retry는 계속 진행할 수 있습니다. `dispose()`는 failure를 기록하고 나머지 teardown을 계속한 뒤, 단일 error 또는 여러 cleanup path가 실패했을 때 `AggregateError`를 던집니다(`path:packages/di/src/container.ts:1342-1359`). 따라서 failure reporting은 shutdown 시점에만 미뤄지지 않습니다.
+stale disposal이 실패하면 observing container의 다음 `resolve()` 또는 `dispose()` 중 처음 도달한 호출이 failure를 소비하고 전파합니다. `resolve()`는 replacement를 만들기 전에 reject하며, task failure는 한 번만 소비되므로 retry는 계속 진행할 수 있습니다. `dispose()`는 failure를 기록하고 나머지 teardown을 계속한 뒤, 단일 error 또는 여러 cleanup path가 실패했을 때 `AggregateError`를 던집니다. 따라서 failure reporting은 shutdown 시점에만 미뤄지지 않습니다.
+
+error 전달과 retry 소유권은 서로 다른 관심사입니다. stale failure를 소비했다고 해서 그 실패가 해소되지는 않습니다. 실패한 인스턴스는 task를 예약한 container의 retry ledger에 남아 있으므로, 이후 그 container에 대한 명시적 `dispose()`가 자신의 cached instance를 정리하기 전에 동일한 `onDestroy()` hook을 다시 호출합니다. task를 예약한 container만 retry를 수행하므로, failure를 관찰하기만 하는 ancestor는 같은 shutdown 안에서 descendant의 hook을 반복하지 않습니다. 마침내 성공한 hook은 모든 observer의 ledger에서 제거되고, 계속 실패하는 hook은 retain된 채로 이후의 shutdown 호출자에게 다시 보고됩니다.
 
 테스트는 각 경계를 고정합니다. `path:packages/di/src/container.test.ts:503-690`은 direct, dependency-aware, materialized child, nested descendant invalidation을 다룹니다. `path:packages/di/src/container.test.ts:1959-2016`은 replacement resolution의 대기와 stale-disposal failure 수신을 증명합니다. `path:packages/di/src/container.test.ts:2045-2188`은 descendant disposal, root 대기, descendant failure propagation을 다룹니다. `path:packages/di/src/container.test.ts:2190-2248`은 child-local/unrelated-root 경계를 고정하고, `path:packages/di/src/container.test.ts:2251-2329`는 multi-provider 및 반복 override retirement를 다룹니다.
 

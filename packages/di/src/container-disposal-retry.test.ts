@@ -234,4 +234,56 @@ describe('Container disposal retry', () => {
     // Then
     expect(attempts).toBe(2);
   });
+
+  it('retries a failed stale override cleanup on a later explicit disposal', async () => {
+    // Given
+    const events: string[] = [];
+    let staleAttempts = 0;
+    const token = Symbol('RetryableStaleOverrideToken');
+
+    class StaleService {
+      onDestroy(): void {
+        staleAttempts += 1;
+        events.push(`stale:${staleAttempts}`);
+
+        if (staleAttempts === 1) {
+          throw new Error('stale cleanup failed');
+        }
+      }
+    }
+
+    class ReplacementService {
+      readonly onDestroy = vi.fn(() => {
+        events.push('replacement');
+      });
+    }
+
+    const container = new Container().register({ provide: token, useClass: StaleService });
+    await container.resolve(token);
+
+    // When
+    container.override({ provide: token, useClass: ReplacementService });
+
+    // Then
+    await expect(container.resolve(token)).rejects.toThrow('stale cleanup failed');
+
+    // When
+    const replacement = await container.resolve<ReplacementService>(token);
+
+    // Then
+    expect(events).toEqual(['stale:1']);
+
+    // When
+    await container.dispose();
+
+    // Then
+    expect(events).toEqual(['stale:1', 'stale:2', 'replacement']);
+    expect(replacement.onDestroy).toHaveBeenCalledOnce();
+
+    // When
+    await container.dispose();
+
+    // Then
+    expect(events).toEqual(['stale:1', 'stale:2', 'replacement']);
+  });
 });

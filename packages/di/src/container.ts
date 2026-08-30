@@ -32,7 +32,10 @@ interface StaleDisposalTask {
   error: unknown;
   errorConsumed: boolean;
   failed: boolean;
+  readonly observers: readonly Container[];
   promise: Promise<void>;
+  retryInstance: Disposable | undefined;
+  readonly retryOwner: Container;
 }
 
 type DisposalAttemptOrigin = 'direct' | 'parent';
@@ -1215,11 +1218,15 @@ export class Container {
   private async disposeCache(entries: Array<[NormalizedProvider | Token, Promise<unknown>]>): Promise<void> {
     const errors: unknown[] = [];
 
+    const retryableStaleTasks = this.retainedStaleDisposalTasks();
+
     try {
       await this.assertStaleDisposalsSettled();
     } catch (error) {
       this.collectDisposalError(error, errors);
     }
+
+    errors.push(...(await this.retryFailedStaleDisposals(retryableStaleTasks)));
 
     const {
       disposables: materializedDisposables,
@@ -1346,15 +1353,28 @@ export class Container {
 
   private async assertStaleDisposalsSettled(): Promise<void> {
     const errors: unknown[] = [];
+    const settled = new Set<StaleDisposalTask>();
 
-    while (this.staleDisposalTasks.size > 0) {
-      const tasks = Array.from(this.staleDisposalTasks);
+    while (true) {
+      const tasks = Array.from(this.staleDisposalTasks).filter((task) => !settled.has(task));
+
+      if (tasks.length === 0) {
+        break;
+      }
+
       await Promise.all(tasks.map((task) => task.promise));
 
       for (const task of tasks) {
-        this.staleDisposalTasks.delete(task);
+        settled.add(task);
 
-        if (task.failed && !task.errorConsumed) {
+        if (!task.failed) {
+          this.staleDisposalTasks.delete(task);
+          continue;
+        }
+
+        // A failed stale hook stays in the retry ledger for a later explicit
+        // disposal, while its error is delivered to a resolver exactly once.
+        if (!task.errorConsumed) {
           task.errorConsumed = true;
           errors.push(task.error);
         }
@@ -1364,25 +1384,69 @@ export class Container {
     this.throwDisposalErrors(errors);
   }
 
+  private retainedStaleDisposalTasks(): StaleDisposalTask[] {
+    // Only the scheduling container retries a stale hook, and only when the
+    // failure was already delivered to an earlier caller. A failure first
+    // surfaced by this attempt is reported, not retried within the same pass.
+    return Array.from(this.staleDisposalTasks).filter(
+      (task) => task.retryOwner === this && task.failed && task.errorConsumed,
+    );
+  }
+
+  private async retryFailedStaleDisposals(tasks: readonly StaleDisposalTask[]): Promise<unknown[]> {
+    const errors: unknown[] = [];
+
+    for (const task of tasks) {
+      const instance = task.retryInstance;
+
+      if (!task.failed || !instance) {
+        continue;
+      }
+
+      try {
+        await instance.onDestroy();
+        task.failed = false;
+        task.retryInstance = undefined;
+
+        for (const observer of task.observers) {
+          observer.staleDisposalTasks.delete(task);
+        }
+      } catch (error) {
+        task.error = error;
+        task.errorConsumed = true;
+        errors.push(error);
+      }
+    }
+
+    return errors;
+  }
+
   private scheduleStaleDisposal(instancePromise: Promise<unknown>, staleDisposalOwner: Container): void {
     const observers = staleDisposalOwner === this ? [this] : [this, staleDisposalOwner];
     const task: StaleDisposalTask = {
       error: undefined,
       errorConsumed: false,
       failed: false,
+      observers,
       promise: Promise.resolve(),
+      retryInstance: undefined,
+      retryOwner: this,
     };
 
     task.promise = (async () => {
+      let disposable: Disposable | undefined;
+
       try {
         const instance = await instancePromise;
 
         if (this.isDisposable(instance)) {
+          disposable = instance;
           await instance.onDestroy();
         }
       } catch (error) {
         task.error = error;
         task.failed = true;
+        task.retryInstance = disposable;
       }
     })().finally(() => {
       const retainedMaterializations = this.materializedCachePromises.filter((promise) => promise !== instancePromise);

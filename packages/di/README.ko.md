@@ -102,6 +102,8 @@ direct `child.dispose()`는 이제 실패한 attempt를 포함해 attempt가 set
 
 테스트나 request-local 경계에서 기존 등록을 의도적으로 교체해야 할 때는 `override(...providers)`를 사용합니다. override는 각 토큰의 현재 provider set을 교체하고 현재 컨테이너와 이미 materialize된 request-scope 자식의 cached instance를 무효화하며, 다음 replacement resolution이 계속되기 전에 오래된 instance의 dispose가 끝나도록 보장합니다. multi provider override는 해당 토큰의 전체 multi-provider set을 교체하므로 필요한 replacement provider를 한 번에 모두 전달하세요. 같은 토큰에 single replacement와 multi replacement를 한 override 호출에서 섞으면 모호한 교체로 보고 거부합니다.
 
+실패한 stale `onDestroy()` hook도 일반 disposal과 동일한 retained-retry 계약을 따릅니다. observing container의 다음 resolution이 그 실패를 한 번 노출해 replacement가 계속될 수 있게 하며, 실패한 instance는 해당 cleanup을 예약한 container가 이후 명시적 `dispose()`로 hook을 다시 호출할 때까지 retain됩니다. 이미 성공한 stale hook은 다시 실행하지 않습니다.
+
 ### request scope 분리
 
 ```ts
