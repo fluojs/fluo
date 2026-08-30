@@ -21,6 +21,7 @@ import { tsImport } from 'tsx/esm/api';
 import { CliPromptCancelledError, isCliPromptCancelledError } from '../prompt-cancel.js';
 import { inspectUsage } from '../usage.js';
 import { createCliDiagnosticsLogger } from './diagnostics.js';
+import { assertOutputDoesNotAliasModule } from './output-path-safety.js';
 
 type CliStream = {
   write(message: string): unknown;
@@ -275,13 +276,12 @@ function stringifySnapshotWithTiming(snapshot: RuntimeInspectionSnapshot, timing
   }, null, 2);
 }
 
-async function emitInspectPayload(payload: string, parsed: ParsedInspectArgs, cwd: string, stdout: CliStream): Promise<void> {
-  if (!parsed.outputPath) {
+async function emitInspectPayload(payload: string, outputPath: string | undefined, stdout: CliStream): Promise<void> {
+  if (!outputPath) {
     stdout.write(`${payload}\n`);
     return;
   }
 
-  const outputPath = resolve(cwd, parsed.outputPath);
   await mkdir(dirname(outputPath), { recursive: true });
   await writeFile(outputPath, `${payload}\n`, 'utf8');
 }
@@ -391,6 +391,10 @@ export async function runInspectCommand(argv: string[], runtime: InspectCommandR
 
     const parsed = parseInspectArgs(argv);
     const modulePath = resolve(cwd, parsed.modulePath);
+    const outputPath = parsed.outputPath === undefined ? undefined : resolve(cwd, parsed.outputPath);
+    if (outputPath !== undefined) {
+      await assertOutputDoesNotAliasModule(modulePath, outputPath);
+    }
     const importedModule = await importInspectModule(modulePath);
     const rootModule = resolveRootModule(importedModule[parsed.exportName], parsed.exportName);
 
@@ -407,16 +411,16 @@ export async function runInspectCommand(argv: string[], runtime: InspectCommandR
       const snapshot = createRuntimeInspectionSnapshot(platformSnapshot, routes);
 
       if (parsed.json) {
-        await emitInspectPayload(parsed.timing ? stringifySnapshotWithTiming(snapshot, application.bootstrapTiming) : stringifySnapshot(snapshot), parsed, cwd, stdout);
+        await emitInspectPayload(parsed.timing ? stringifySnapshotWithTiming(snapshot, application.bootstrapTiming) : stringifySnapshot(snapshot), outputPath, stdout);
       }
 
       if (parsed.report) {
-        await emitInspectPayload(JSON.stringify(createInspectReport(snapshot, application.bootstrapTiming), null, 2), parsed, cwd, stdout);
+        await emitInspectPayload(JSON.stringify(createInspectReport(snapshot, application.bootstrapTiming), null, 2), outputPath, stdout);
       }
 
       if (parsed.mermaid) {
         const renderMermaid = await resolveStudioMermaidRenderer(cwd, runtime);
-        await emitInspectPayload(renderMermaid(snapshot), parsed, cwd, stdout);
+        await emitInspectPayload(renderMermaid(snapshot), outputPath, stdout);
       }
     } finally {
       await application.close();

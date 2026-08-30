@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -68,6 +68,37 @@ afterEach(async () => {
 });
 
 describe('fluo typegen', () => {
+  it.each(['direct path', 'symlink'] as const)('rejects a %s output alias to the application module', async (aliasKind) => {
+    // Given
+    const fixture = await createFixture();
+    const sourceDirectory = await mkdtemp(join(dirname(fixtureModulePath), 'typegen-output-alias-'));
+    tempDirectories.push(sourceDirectory);
+    const modulePath = join(sourceDirectory, 'app.module.ts');
+    const source = await readFile(fixtureModulePath, 'utf8');
+    await writeFile(modulePath, source, 'utf8');
+    const outputPath = aliasKind === 'direct path'
+      ? modulePath
+      : join(sourceDirectory, 'react-pages.ts');
+    if (aliasKind === 'symlink') {
+      await symlink(modulePath, outputPath);
+    }
+    const loadReactTypegenModules = vi.fn(fixture.runtime.loadReactTypegenModules);
+
+    // When
+    const exitCode = await runTypegenCommand([
+      modulePath,
+      '--output',
+      outputPath,
+    ], { ...fixture.runtime, loadReactTypegenModules });
+
+    // Then
+    expect(exitCode).toBe(1);
+    expect(fixture.stdout).toEqual([]);
+    expect(fixture.stderr).toHaveLength(1);
+    expect(loadReactTypegenModules).not.toHaveBeenCalled();
+    expect(await readFile(modulePath, 'utf8')).toBe(source);
+  });
+
   it('creates a deterministic artifact from the compiled React page catalog', async () => {
     // Given
     const fixture = await createFixture();
