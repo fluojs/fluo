@@ -1,8 +1,15 @@
 import { MIGRATION_TRANSFORMS, type MigrationTransformKind } from '../transforms/nestjs-migrate.js';
 
+/**
+ * Provides canonical migration transform tokens accepted by CLI options.
+ */
+export const MIGRATION_TRANSFORM_CLI_TOKENS = ['imports', 'inject-params', 'scope', 'bootstrap', 'tests', 'tsconfig'] as const;
+
 const MIGRATION_TRANSFORM_ALIASES: Readonly<Record<string, MigrationTransformKind>> = {
-  injectable: 'inject-params',
-  testing: 'tests',
+  'inject-params': 'injectable',
+  injectable: 'injectable',
+  tests: 'testing',
+  testing: 'testing',
 };
 
 /**
@@ -38,7 +45,7 @@ export function parseMigrationTransformList(
   }
 
   if (invalid.length > 0) {
-    throw new Error(`Unknown transform(s): ${invalid.join(', ')}. Available transforms: ${MIGRATION_TRANSFORMS.join(', ')}.`);
+    throw new Error(`Unknown transform(s): ${invalid.join(', ')}. Available transforms: ${MIGRATION_TRANSFORM_CLI_TOKENS.join(', ')}.`);
   }
 
   return transforms;

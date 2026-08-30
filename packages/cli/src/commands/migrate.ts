@@ -10,7 +10,7 @@ import {
   renderTransformList,
   runNestJsMigration,
 } from '../transforms/nestjs-migrate.js';
-import { parseMigrationTransformList } from './migration-transform-tokens.js';
+import { MIGRATION_TRANSFORM_CLI_TOKENS, parseMigrationTransformList } from './migration-transform-tokens.js';
 
 type CliStream = {
   write(message: string): unknown;
@@ -54,12 +54,12 @@ const MIGRATE_OPTION_HELP: MigrateOptionHelpEntry[] = [
   },
   {
     aliases: [],
-    description: `Run only selected transforms. Available: ${MIGRATION_TRANSFORMS.join(', ')}.`,
+    description: `Run only selected transforms. Available: ${MIGRATION_TRANSFORM_CLI_TOKENS.join(', ')}.`,
     option: '--only <comma-list>',
   },
   {
     aliases: [],
-    description: `Skip selected transforms. Available: ${MIGRATION_TRANSFORMS.join(', ')}.`,
+    description: `Skip selected transforms. Available: ${MIGRATION_TRANSFORM_CLI_TOKENS.join(', ')}.`,
     option: '--skip <comma-list>',
   },
   {

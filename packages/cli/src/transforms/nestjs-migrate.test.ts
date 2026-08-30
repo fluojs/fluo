@@ -290,7 +290,7 @@ describe('users', () => {
 
     const report = runNestJsMigration({
       apply: true,
-      enabledTransforms: new Set(['tests']),
+      enabledTransforms: new Set(['testing']),
       targetPath: workspaceDirectory,
     });
 
@@ -327,7 +327,7 @@ describe('users', () => {
 
     const report = runNestJsMigration({
       apply: true,
-      enabledTransforms: new Set(['tests']),
+      enabledTransforms: new Set(['testing']),
       targetPath: workspaceDirectory,
     });
 
@@ -477,7 +477,7 @@ describe('users', () => {
 
     const report = runNestJsMigration({
       apply: true,
-      enabledTransforms: new Set(['tests']),
+      enabledTransforms: new Set(['testing']),
       targetPath: workspaceDirectory,
     });
 
