@@ -516,6 +516,8 @@ const contractGateTriggers = new Set([
   'docs/reference/package-surface.ko.md',
   'docs/getting-started/migrate-from-nestjs.md',
   'docs/getting-started/migrate-from-nestjs.ko.md',
+  'book/advanced/ch15-studio.md',
+  'book/advanced/ch15-studio.ko.md',
 ]);
 
 const removedRuntimeModuleFactoryNames = [
@@ -1376,6 +1378,8 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
   // and Notifications publisher wiring versus active lifecycle-publication
   // status so configured-but-disabled publishers do not appear as active
   // event-backed dependencies or external owners.
+  // and Studio report emission requiring completed bootstrap with no artifact
+  // emitted for failed or hanging bootstrap attempts.
 
   assert(
     contractDiscoverabilityCompanions.every((path) => hasChanged(changedFiles, path)),
