@@ -71,10 +71,10 @@ class ProductFieldResolver {
     input: ProductLabelInput,
     type: 'string',
   })
-  @Args(2)
-  @Parent(0)
-  @Context(1)
-  localizedLabel(product: Product, context: GraphQLContext, input: ProductLabelInput): string {
+  @Context(0)
+  @Args(1)
+  @Parent(2)
+  localizedLabel(context: GraphQLContext, input: ProductLabelInput, product: Product): string {
     observedRequestIds.push(this.requestState.id);
     return `${product.id}:${input.locale}:${input.tags.join(',')}:${String(context.region)}`;
   }
