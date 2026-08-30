@@ -63,7 +63,7 @@ describe('React SSR + Vite scaffold', () => {
 
     expect(packageJson).toEqual(expect.objectContaining({
       dependencies: expect.objectContaining({
-        '@fluojs/react': expect.any(String),
+        '@fluojs/react': '^0.1.0',
         react: '^19.2.6',
         'react-dom': '^19.2.6',
       }),

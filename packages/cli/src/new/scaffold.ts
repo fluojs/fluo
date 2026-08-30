@@ -54,7 +54,7 @@ const PUBLISHED_INTERNAL_DEPENDENCIES = {
   '@fluojs/platform-express': '^1.0.0',
   '@fluojs/platform-fastify': '^1.0.0',
   '@fluojs/platform-nodejs': '^1.0.0',
-  '@fluojs/react': '^1.0.0',
+  '@fluojs/react': '^0.1.0',
   '@fluojs/runtime': '^1.0.0',
   '@fluojs/testing': '^1.0.0',
   '@fluojs/validation': '^1.0.0',
