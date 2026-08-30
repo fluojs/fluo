@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { narrowsStableNodeEngineRange } from './node-engine-range.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDirectory, '..', '..');
@@ -265,9 +266,230 @@ function collectPackageVersionDeltas(baseRef, dependencies = {}) {
             nextVersion: next.version,
             packageName: next.packageName,
             previousVersion: previous.version,
+            source: 'generated',
           },
         ]
       : [];
+  });
+}
+
+function parsePackageManifestNodeEngine(contents, source) {
+  const manifest = JSON.parse(contents);
+
+  if (typeof manifest.name !== 'string' || typeof manifest.version !== 'string') {
+    throw new Error(`Changeset release lane check failed: ${source} must declare string name and version fields.`);
+  }
+
+  return {
+    nodeEngineRange:
+      manifest.engines !== null &&
+      typeof manifest.engines === 'object' &&
+      typeof manifest.engines.node === 'string'
+        ? manifest.engines.node
+        : null,
+    packageName: manifest.name,
+    version: manifest.version,
+  };
+}
+
+function parseOfficialVersion(version) {
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u.exec(version);
+
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
+}
+
+function compareOfficialVersions(left, right) {
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) {
+      return left[index] < right[index] ? -1 : 1;
+    }
+  }
+
+  return 0;
+}
+
+function publishedManifestTag(packageName, currentVersion, dependencies = {}) {
+  const current = parseOfficialVersion(currentVersion);
+
+  if (!current) {
+    return null;
+  }
+
+  const { runGit: git = runGit } = dependencies;
+  const prefix = `${packageName}@`;
+  const candidates = git(['tag', '--merged', 'HEAD', '--list', `${packageName}@*`])
+    .split(/\r?\n/)
+    .map((tag) => tag.trim())
+    .filter((tag) => tag.startsWith(prefix))
+    .map((tag) => ({ tag, version: parseOfficialVersion(tag.slice(prefix.length)) }))
+    .filter((candidate) => candidate.version !== null && compareOfficialVersions(candidate.version, current) <= 0)
+    .sort((left, right) => compareOfficialVersions(right.version, left.version));
+
+  return candidates.at(0)?.tag ?? null;
+}
+
+function collectStableNodeEngineRangeNarrowings(baseRef, dependencies = {}) {
+  if (typeof baseRef !== 'string' || baseRef.length === 0 || isAllZeroGitSha(baseRef)) {
+    return [];
+  }
+
+  const { readFileSync: readFile = readFileSync, runGit: git = runGit } = dependencies;
+  const packageJsonPaths = git(['diff', '--name-only', baseRef, '--', 'packages/*/package.json'])
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .sort();
+
+  return packageJsonPaths.flatMap((packageJsonPath) => {
+    const next = parsePackageManifestNodeEngine(
+      readFile(join(repoRoot, packageJsonPath), 'utf8'),
+      packageJsonPath,
+    );
+
+    if (!next.packageName.startsWith('@fluojs/')) {
+      return [];
+    }
+
+    if (!parseOfficialVersion(next.version)) {
+      return [
+        {
+          filePath: packageJsonPath,
+          nextEngineRange: next.nodeEngineRange,
+          packageName: next.packageName,
+          previousEngineRange: null,
+          previousVersion: next.version,
+          unparseableVersion: true,
+        },
+      ];
+    }
+
+    const tag = publishedManifestTag(next.packageName, next.version, dependencies);
+
+    if (!tag) {
+      return [];
+    }
+
+    const previous = parsePackageManifestNodeEngine(
+      git(['show', `${tag}:${packageJsonPath}`]),
+      `${tag}:${packageJsonPath}`,
+    );
+
+    return previous.packageName === next.packageName &&
+      narrowsStableNodeEngineRange(
+        previous.version,
+        previous.nodeEngineRange,
+        next.nodeEngineRange,
+        next.version,
+      )
+      ? [
+          {
+            filePath: packageJsonPath,
+            nextEngineRange: next.nodeEngineRange,
+            packageName: next.packageName,
+            previousEngineRange: previous.nodeEngineRange,
+            previousVersion: previous.version,
+          },
+        ]
+      : [];
+  });
+}
+
+function collectMissingNodeEngineMigrationNotes(narrowings, intents) {
+  return narrowings.flatMap((narrowing) => {
+    const majorIntent = intents.find(
+      (intent) => intent.packageName === narrowing.packageName && intent.bump === 'major',
+    );
+
+    return majorIntent && !hasConsumerNodeEngineMigrationGuidance(majorIntent.body)
+      ? [{ ...narrowing, filePath: majorIntent.filePath }]
+      : [];
+  });
+}
+
+function migrationGuidanceSection(body) {
+  const match = /(?:^|\n)(?:Migration:|(?:#{1,6}\s*)?(?:consumer\s+)?(?:migration|upgrade)\s+(?:guide|guidance|notes?)\s*:?)\s*([\s\S]*?)(?=\n#{1,6}\s|\n\s*\n|$)/iu.exec(body);
+  return match?.[1].trim() ?? '';
+}
+
+function hasConsumerNodeEngineMigrationGuidance(body) {
+  const guidance = migrationGuidanceSection(body);
+  const nodeVersionOrRange = String.raw`(?:v?\d+(?:\.\d+){0,2}|(?:>=|>|~|\^)\s*\d+(?:\.\d+){0,2}(?:\s*<\s*\d+(?:\.\d+){0,2})?)`;
+  const removesNodeSupport = new RegExp(String.raw`\bNode(?:\.js)?\s+${nodeVersionOrRange}\s+(?:support\s+)?(?:is\s+)?(?:removed|dropped|unsupported|no\s+longer\s+supported)\b`, 'iu');
+  const namesReplacementNodeVersion = new RegExp(String.raw`\b(?:upgrade|install|move|use)\b[\s\S]{0,120}\bNode(?:\.js)?\s+(${nodeVersionOrRange})`, 'iu');
+  const replacement = namesReplacementNodeVersion.exec(guidance);
+
+  return removesNodeSupport.test(guidance) &&
+    replacement !== null &&
+    isSatisfiableNodeReplacementRange(replacement[1]);
+}
+
+function parseNodeVersionParts(version) {
+  return version
+    .trim()
+    .replace(/^v/iu, '')
+    .split('.')
+    .map((part) => Number.parseInt(part, 10));
+}
+
+function compareNodeVersionParts(left, right) {
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const leftPart = left[index] ?? 0;
+    const rightPart = right[index] ?? 0;
+
+    if (leftPart !== rightPart) {
+      return leftPart < rightPart ? -1 : 1;
+    }
+  }
+
+  return 0;
+}
+
+function isSatisfiableNodeReplacementRange(expression) {
+  const lowerBound = /(?:>=|>)\s*(v?\d+(?:\.\d+){0,2})/u.exec(expression);
+  const upperBound = /<\s*(v?\d+(?:\.\d+){0,2})/u.exec(expression);
+
+  if (!lowerBound || !upperBound) {
+    return true;
+  }
+
+  return compareNodeVersionParts(
+    parseNodeVersionParts(lowerBound[1]),
+    parseNodeVersionParts(upperBound[1]),
+  ) < 0;
+}
+
+function hasGeneratedMajorMigrationEvidence(section) {
+  return /(?:^|\n)Migration:\s+\S/iu.test(section) ||
+    /(?:^|\n)(?:#{1,6}\s*)?(?:consumer\s+)?(?:migration|upgrade)\s+(?:guide|guidance|notes?)\s*:?\s*\n+\S/iu.test(section);
+}
+
+function collectInvalidConsumedGeneratedMajorVersionDeltas(versionDeltas, intents, dependencies = {}) {
+  const { existsSync: pathExists = existsSync, readFileSync: readFile = readFileSync } = dependencies;
+
+  return versionDeltas.flatMap((delta) => {
+    if (
+      delta.bump !== 'major' ||
+      delta.source !== 'generated'
+    ) {
+      return [];
+    }
+
+    const changelogPath = packageChangelogPathForPackageJson(delta.filePath);
+    const absoluteChangelogPath = join(repoRoot, changelogPath);
+
+    if (!pathExists(absoluteChangelogPath)) {
+      return [{ ...delta, changelogPath, reason: `missing ${changelogPath}` }];
+    }
+
+    const section = changelogSectionForVersion(readFile(absoluteChangelogPath, 'utf8'), delta.nextVersion);
+
+    if (!section || !section.includes('### Major Changes')) {
+      return [{ ...delta, changelogPath, reason: `missing major changelog section for ${delta.nextVersion}` }];
+    }
+
+    return hasGeneratedMajorMigrationEvidence(section)
+      ? []
+      : [{ ...delta, changelogPath, reason: 'missing generated consumer migration guidance' }];
   });
 }
 
@@ -276,14 +498,15 @@ function packageChangelogPathForPackageJson(packageJsonPath) {
 }
 
 function changelogSectionForVersion(changelog, version) {
-  const heading = `## ${version}`;
-  const headingIndex = changelog.indexOf(heading);
-
-  if (headingIndex === -1) {
+  const matches = [...changelog.matchAll(new RegExp(`^## ${escapeRegexLiteral(version)}$`, 'gmu'))];
+  if (matches.length !== 1 || matches[0].index === undefined) {
     return null;
   }
 
-  const nextHeadingIndex = changelog.indexOf('\n## ', headingIndex + heading.length);
+  const headingIndex = matches[0].index;
+  const nextHeading = /^## /gmu;
+  nextHeading.lastIndex = headingIndex + matches[0][0].length;
+  const nextHeadingIndex = nextHeading.exec(changelog)?.index ?? -1;
 
   return nextHeadingIndex === -1 ? changelog.slice(headingIndex) : changelog.slice(headingIndex, nextHeadingIndex);
 }
@@ -522,6 +745,25 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
   const dependencyOnlyMajorVersionDeltas = typeof dependencies.collectDependencyOnlyMajorVersionDeltas === 'function'
     ? dependencies.collectDependencyOnlyMajorVersionDeltas(versionDeltas)
     : collectDependencyOnlyMajorVersionDeltas(versionDeltas, dependencies);
+  const pendingDependencyOnlyMajorVersionDeltas = intents.length === 0
+    ? dependencyOnlyMajorVersionDeltas.filter((delta) => delta.source !== 'generated')
+    : dependencyOnlyMajorVersionDeltas;
+  const invalidConsumedGeneratedMajorVersionDeltas = collectInvalidConsumedGeneratedMajorVersionDeltas(
+    versionDeltas,
+    intents,
+    dependencies,
+  );
+  const authorizedConsumedGeneratedMajorPackages = new Set(
+    versionDeltas
+      .filter((delta) => delta.bump === 'major' && delta.source === 'generated')
+      .filter(
+        (delta) =>
+          !invalidConsumedGeneratedMajorVersionDeltas.some(
+            (invalid) => invalid.packageName === delta.packageName && invalid.nextVersion === delta.nextVersion,
+          ),
+      )
+      .map((delta) => delta.packageName),
+  );
   const patchCliFeatureDowngrades = [
     ...collectPatchCliFeatureDowngradesFromChangesets(intents, dependencies),
     ...collectPatchCliFeatureDowngradesFromVersionDeltas(versionDeltas, dependencies),
@@ -530,18 +772,35 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     ...collectPatchStudioRouteKindInputContractNarrowingsFromChangesets(intents),
     ...collectPatchStudioRouteKindInputContractNarrowingsFromVersionDeltas(versionDeltas, dependencies),
   ];
+  const allStableNodeEngineRangeNarrowings = typeof dependencies.collectStableNodeEngineRangeNarrowings === 'function'
+    ? dependencies.collectStableNodeEngineRangeNarrowings()
+    : collectStableNodeEngineRangeNarrowings(baseRef, dependencies);
+  const stableNodeEngineRangeNarrowings = allStableNodeEngineRangeNarrowings.filter(
+    (narrowing) =>
+      narrowing.unparseableVersion === true ||
+      (!intents.some(
+        (intent) => intent.packageName === narrowing.packageName && intent.bump === 'major',
+      ) && !authorizedConsumedGeneratedMajorPackages.has(narrowing.packageName)),
+  );
+  const missingNodeEngineMigrationNotes = collectMissingNodeEngineMigrationNotes(
+    allStableNodeEngineRangeNarrowings,
+    intents,
+  );
 
   if (
     disallowed.length > 0 ||
     disallowedVersionDeltas.length > 0 ||
-    dependencyOnlyMajorVersionDeltas.length > 0 ||
+    pendingDependencyOnlyMajorVersionDeltas.length > 0 ||
+    invalidConsumedGeneratedMajorVersionDeltas.length > 0 ||
     patchCliFeatureDowngrades.length > 0 ||
-    patchStudioRouteKindInputContractNarrowings.length > 0
+    patchStudioRouteKindInputContractNarrowings.length > 0 ||
+    stableNodeEngineRangeNarrowings.length > 0 ||
+    missingNodeEngineMigrationNotes.length > 0
   ) {
     const details = disallowed
       .map((intent) => `${intent.packageName}@${intent.bump} (${intent.filePath})`)
       .join('\n  - ');
-    const versionDetails = disallowedVersionDeltas
+    const versionDetails = pendingDependencyOnlyMajorVersionDeltas
       .map(
         (delta) =>
           `${delta.packageName}@${delta.bump} (${delta.previousVersion} -> ${delta.nextVersion}, ${delta.filePath})`,
@@ -550,8 +809,16 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     const sections = [
       details.length > 0 ? `changesets:\n  - ${details}` : '',
       versionDetails.length > 0 ? `package version deltas:\n  - ${versionDetails}` : '',
-      dependencyOnlyMajorVersionDeltas.length > 0
-        ? `dependency-only major package version deltas:\n  - ${dependencyOnlyMajorVersionDeltas
+      pendingDependencyOnlyMajorVersionDeltas.length > 0
+        ? `dependency-only major package version deltas:\n  - ${pendingDependencyOnlyMajorVersionDeltas
+            .map(
+              (delta) =>
+                `${delta.packageName}@major (${delta.previousVersion} -> ${delta.nextVersion}, ${delta.filePath}, ${delta.changelogPath}: ${delta.reason})`,
+            )
+            .join('\n  - ')}`
+        : '',
+      invalidConsumedGeneratedMajorVersionDeltas.length > 0
+        ? `consumed generated major package version deltas:\n  - ${invalidConsumedGeneratedMajorVersionDeltas
             .map(
               (delta) =>
                 `${delta.packageName}@major (${delta.previousVersion} -> ${delta.nextVersion}, ${delta.filePath}, ${delta.changelogPath}: ${delta.reason})`,
@@ -578,19 +845,37 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
             })
             .join('\n  - ')}`
         : '',
+      stableNodeEngineRangeNarrowings.length > 0
+        ? `stable Node engine range narrowings without a major changeset:\n  - ${stableNodeEngineRangeNarrowings
+            .map(
+              (narrowing) =>
+                `${narrowing.packageName}@${narrowing.previousVersion} (${narrowing.previousEngineRange} -> ${narrowing.nextEngineRange}, ${narrowing.filePath})`,
+            )
+            .join('\n  - ')}`
+        : '',
+      missingNodeEngineMigrationNotes.length > 0
+        ? `stable Node engine range narrowings missing consumer migration notes:\n  - ${missingNodeEngineMigrationNotes
+            .map(
+              (narrowing) =>
+                `${narrowing.packageName}@${narrowing.previousVersion} (${narrowing.filePath}): add Migration: guidance or a structured Upgrade guidance section.`,
+            )
+            .join('\n  - ')}`
+        : '',
     ].filter((section) => section.length > 0);
 
     throw new Error(
-      `Changeset release lane check failed: the ${lane} lane only allows ${[...allowedBumps].join(', ')} changesets, package version bumps with matching major changelog evidence, public CLI feature additions classified as minor metadata, and Studio route-kind input-contract narrowing classified as major metadata:\n${sections.join('\n')}`,
+      `Changeset release lane check failed: the ${lane} lane only allows ${[...allowedBumps].join(', ')} changesets, package version bumps with matching major changelog evidence, public CLI feature additions classified as minor metadata, Studio route-kind input-contract narrowing classified as major metadata, and stable Node engine range narrowing with major metadata:\n${sections.join('\n')}`,
     );
   }
 
   return {
     allowedBumps: [...allowedBumps],
-    checkedDependencyOnlyMajorVersionDeltas: dependencyOnlyMajorVersionDeltas,
+    checkedConsumedGeneratedMajorVersionDeltas: invalidConsumedGeneratedMajorVersionDeltas,
+    checkedDependencyOnlyMajorVersionDeltas: pendingDependencyOnlyMajorVersionDeltas,
     checkedIntents: intents,
     checkedPatchCliFeatureDowngrades: patchCliFeatureDowngrades,
     checkedPatchStudioRouteKindInputContractNarrowings: patchStudioRouteKindInputContractNarrowings,
+    checkedStableNodeEngineRangeNarrowings: stableNodeEngineRangeNarrowings,
     checkedVersionDeltas: versionDeltas,
     lane,
   };

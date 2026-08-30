@@ -27,6 +27,10 @@ For the full contributor workflow, read [`CONTRIBUTING.md`](../CONTRIBUTING.md) 
 - Runtime behavior or API changes must keep affected package READMEs, governed docs, and regression tests aligned with [`docs/contracts/behavioral-contract-policy.md`](./contracts/behavioral-contract-policy.md).
 - PlatformShell lifecycle exclusivity is verified with `createPlatformShellLifecycleConformanceHarness(...)` from `@fluojs/testing/platform-shell-lifecycle-conformance`; every active lifecycle overlap must reject with `PlatformLifecycleConflictError`.
 
+## Release Governance Discoverability
+
+For Changesets consumption, generated package version deltas, Official Node.js support changes, and consumer runtime migration guidance, start with [`docs/contracts/release-governance.md`](./contracts/release-governance.md). The stable lane gate is `tooling/release/verify-changeset-release-lane.mjs`; it accepts generated version output after Changesets has consumed pending metadata, and requires either `Migration:` guidance or a structured upgrade guide when an Official package removes Node.js support.
+
 ## Package Families
 
 | Family | Purpose | Representative packages |
