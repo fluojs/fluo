@@ -125,16 +125,17 @@ export function enforcePlatformNodejsEngineDocumentation(readText = read) {
     'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
   ]) {
     const content = readText(relativePath);
-    const rawNodeSectionStart = content.indexOf('## Raw Node.js');
+    const headingMatches = [...content.matchAll(/^## Raw Node\.js\s*$/gmu)];
 
     assert(
-      rawNodeSectionStart >= 0,
-      `${relativePath} must include a Raw Node.js section.`,
+      headingMatches.length === 1,
+      `${relativePath} must include exactly one ## Raw Node.js heading; found ${headingMatches.length}.`,
     );
+    const sectionStart = headingMatches[0].index;
 
-    const nextSectionStart = content.indexOf('\n## ', rawNodeSectionStart + 1);
+    const nextSectionStart = content.indexOf('\n## ', sectionStart + 1);
     const rawNodeSection = content.slice(
-      rawNodeSectionStart,
+      sectionStart,
       nextSectionStart === -1 ? undefined : nextSectionStart,
     );
 

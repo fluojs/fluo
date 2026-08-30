@@ -267,6 +267,45 @@ describe('enforcePlatformNodejsEngineDocumentation', () => {
       .toThrow(/runtime-adapters\.mdx Raw Node\.js section/u);
     expect(governanceSource).toContain('enforcePlatformNodejsEngineDocumentation();');
   });
+
+  it.each([
+    'apps/docs/content/docs/guides/runtime-adapters.mdx',
+    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+  ])('rejects a level-three Raw Node.js heading in %s', async (targetPath) => {
+    const { enforcePlatformNodejsEngineDocumentation } = await loadGovernanceInternals();
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === targetPath
+        ? content.replace('## Raw Node.js', '### Raw Node.js')
+        : content;
+    };
+
+    expect(() => enforcePlatformNodejsEngineDocumentation(readText))
+      .toThrowError(/must include exactly one ## Raw Node\.js heading; found 0\./u);
+    expect(() => enforcePlatformNodejsEngineDocumentation()).not.toThrow();
+  });
+
+  it.each([
+    'apps/docs/content/docs/guides/runtime-adapters.mdx',
+    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+  ])('rejects a duplicate Raw Node.js heading in %s', async (targetPath) => {
+    const { enforcePlatformNodejsEngineDocumentation } = await loadGovernanceInternals();
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === targetPath
+        ? content.replace(
+          '## Raw Node.js',
+          '## Raw Node.js\n\n`>=20.19.3 <21 || >=22.2.0 <27`\n\n## Raw Node.js',
+        )
+        : content;
+    };
+
+    expect(() => enforcePlatformNodejsEngineDocumentation(readText))
+      .toThrowError(/must include exactly one ## Raw Node\.js heading; found 2\./u);
+    expect(() => enforcePlatformNodejsEngineDocumentation()).not.toThrow();
+  });
 });
 
 describe('enforceHttpCustomMethodContract', () => {
