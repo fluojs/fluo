@@ -1749,6 +1749,31 @@ describe('@fluojs/platform-bun', () => {
     }
   });
 
+  it.each([
+    ['true', true],
+    ['false', false],
+    ['the default undefined value', undefined],
+  ])('forwards stopActiveConnections=%s to Bun server shutdown', async (_description, stopActiveConnections) => {
+    const mockBun = installMockBun();
+    const adapter = new BunHttpApplicationAdapter({ stopActiveConnections });
+
+    await adapter.listen({
+      async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
+        response.setStatus(204);
+      },
+    });
+
+    const server = mockBun.lastServer;
+
+    if (server === undefined) {
+      throw new TypeError('Expected the Bun adapter to create a server.');
+    }
+
+    await adapter.close();
+
+    expect(server.stop).toHaveBeenCalledWith(stopActiveConnections);
+  });
+
   it('keeps close pending and server state until Bun termination and request drain settle', async () => {
     const mockBun = installMockBun();
     const adapter = createBunAdapter() as BunHttpApplicationAdapter;
