@@ -185,7 +185,7 @@ The root container owns singleton cache state.
 `createRequestScope()` in `path:packages/di/src/container.ts:604-620` creates the child container by handing it `this.root().singletonCache`.
 So request scope does not copy singleton state. It shares it.
 
-The request child creation code passes that shared state through the package-private construction path.
+The request child creation code passes that shared state through the package-private construction path. The following source excerpt is the body of a `Container` method: its `#createChildScope` call is a private class-member access, not application code that consumers can copy or invoke.
 
 `path:packages/di/src/container.ts:604-620`
 ```typescript
@@ -197,7 +197,7 @@ createRequestScope(): Container {
     );
   }
 
-  return Container.createChildScope({
+  return Container.#createChildScope({
     parent: this,
     requestScopeEnabled: true,
     singletonCache: this.root().singletonCache,

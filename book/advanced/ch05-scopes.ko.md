@@ -185,7 +185,7 @@ root container가 singleton cache state를 소유합니다.
 `path:packages/di/src/container.ts:604-620`의 `createRequestScope()`는 `this.root().singletonCache`를 넘겨 child container를 생성합니다.
 즉 request scope는 singleton state를 복제하지 않습니다. 공유합니다.
 
-request child 생성 코드는 그 공유를 package-private construction path로 넘깁니다.
+request child 생성 코드는 그 공유를 package-private construction path로 넘깁니다. 다음 source excerpt는 `Container` 메서드 본문입니다. 여기의 `#createChildScope` 호출은 private class-member access이므로 consumer가 복사하거나 호출할 수 있는 application code가 아닙니다.
 
 `path:packages/di/src/container.ts:604-620`
 ```typescript
@@ -197,7 +197,7 @@ createRequestScope(): Container {
     );
   }
 
-  return Container.createChildScope({
+  return Container.#createChildScope({
     parent: this,
     requestScopeEnabled: true,
     singletonCache: this.root().singletonCache,
