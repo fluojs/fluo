@@ -34,6 +34,7 @@ function consumedGeneratedMajorDependencies(changelog?: string) {
         source: 'generated',
       },
     ],
+    collectStableNodeEngineRangeNarrowings: () => [],
     existsSync: (targetPath: string) => changelog !== undefined && targetPath.endsWith('packages/generated/CHANGELOG.md'),
     readFileSync: () => changelog ?? '',
   };
@@ -88,6 +89,7 @@ describe('verifyChangesetReleaseLane', () => {
           },
         ],
         collectDependencyOnlyMajorVersionDeltas: () => [],
+        collectStableNodeEngineRangeNarrowings: () => [],
       },
     );
 
@@ -170,6 +172,7 @@ describe('verifyChangesetReleaseLane', () => {
               previousVersion: '1.0.2',
             },
           ],
+          collectStableNodeEngineRangeNarrowings: () => [],
           existsSync: (targetPath: string) => targetPath.endsWith('packages/i18n/CHANGELOG.md'),
           readFileSync: (targetPath: string) =>
             targetPath.endsWith('i18n-major.md')
@@ -321,6 +324,106 @@ describe('verifyChangesetReleaseLane', () => {
     ).toThrow(/stable Node engine range narrowings without a major changeset/u);
   });
 
+  it('fails closed when a changed package manifest carries an unparseable version', () => {
+    // Given: a changed stable package manifest whose version cannot be parsed.
+    const directory = createChangesetDirectory();
+    writeChangeset(directory, 'graphql-node-range.md', '"@fluojs/graphql": major');
+
+    // When: release metadata is verified without a published baseline to compare against.
+    // Then: the unparseable version fails closed instead of skipping the narrowing check.
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+        {
+          collectPackageVersionDeltas: () => [],
+          readFileSync: (filePath: string) =>
+            filePath.endsWith('packages/graphql/package.json')
+              ? JSON.stringify({
+                  engines: { node: '>=20.19.3 <21' },
+                  name: '@fluojs/graphql',
+                  version: 'not-a-semver',
+                })
+              : readFileSync(filePath, 'utf8'),
+          runGit: (args: string[]) => {
+            const command = args.join(' ');
+
+            if (command === 'diff --name-only origin/main -- packages/*/package.json') {
+              return 'packages/graphql/package.json\n';
+            }
+
+            if (command === 'cat-file -e origin/main:packages/graphql/package.json') {
+              return '';
+            }
+
+            throw new Error(`unexpected git command: ${command}`);
+          },
+        },
+      ),
+    ).toThrow(/stable Node engine range narrowings without a major changeset/u);
+  });
+
+  it('rejects Node migration guidance whose replacement range is empty', () => {
+    // Given: a major changeset whose replacement Node range cannot be satisfied.
+    const directory = createChangesetDirectory();
+    writeChangeset(
+      directory,
+      'graphql-node-range.md',
+      '"@fluojs/graphql": major',
+      'Migration: Node.js 20 support is removed. Upgrade to Node.js >=22 <20.',
+    );
+
+    // When: release metadata is verified for a stable Node engine range narrowing.
+    // Then: the syntactically matched but empty replacement range is not accepted as guidance.
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+        {
+          collectPackageVersionDeltas: () => [],
+          collectStableNodeEngineRangeNarrowings: () => [
+            {
+              filePath: 'packages/graphql/package.json',
+              nextEngineRange: '>=22.2.0 <27',
+              packageName: '@fluojs/graphql',
+              previousEngineRange: '>=20.16.0 <21 || >=22.0.0 <27',
+              previousVersion: '1.1.0',
+            },
+          ],
+        },
+      ),
+    ).toThrow(/stable Node engine range narrowings missing consumer migration notes/u);
+  });
+
+  it('accepts Node migration guidance whose replacement range is satisfiable', () => {
+    // Given: a major changeset whose replacement Node range is bounded and satisfiable.
+    const directory = createChangesetDirectory();
+    writeChangeset(
+      directory,
+      'graphql-node-range.md',
+      '"@fluojs/graphql": major',
+      'Migration: Node.js 20 support is removed. Upgrade to Node.js >=22.2.0 <27.',
+    );
+
+    // When: release metadata is verified for the same stable Node engine range narrowing.
+    // Then: the bounded replacement range satisfies the consumer migration requirement.
+    const result = verifyChangesetReleaseLane(
+      { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+      {
+        collectPackageVersionDeltas: () => [],
+        collectStableNodeEngineRangeNarrowings: () => [
+          {
+            filePath: 'packages/graphql/package.json',
+            nextEngineRange: '>=22.2.0 <27',
+            packageName: '@fluojs/graphql',
+            previousEngineRange: '>=20.16.0 <21 || >=22.0.0 <27',
+            previousVersion: '1.1.0',
+          },
+        ],
+      },
+    );
+
+    expect(result.checkedIntents).toMatchObject([{ bump: 'major', packageName: '@fluojs/graphql' }]);
+  });
+
   it('allows patch changesets that preserve existing CLI behavior without additive feature language', () => {
     const directory = createChangesetDirectory();
     writeChangeset(
@@ -422,6 +525,7 @@ describe('verifyChangesetReleaseLane', () => {
               previousVersion: '1.0.6',
             },
           ],
+          collectStableNodeEngineRangeNarrowings: () => [],
           existsSync: (targetPath: string) => targetPath.endsWith('packages/cli/CHANGELOG.md'),
           readFileSync: () =>
             '# @fluojs/cli\n\n## 1.0.7\n\n### Patch Changes\n\n- Support documented TypeScript source module paths in `fluo inspect`.\n',
@@ -446,6 +550,7 @@ describe('verifyChangesetReleaseLane', () => {
               previousVersion: '1.0.8',
             },
           ],
+          collectStableNodeEngineRangeNarrowings: () => [],
           existsSync: (targetPath: string) => targetPath.endsWith('packages/studio/CHANGELOG.md'),
           readFileSync: () =>
             '# @fluojs/studio\n\n## 1.0.9\n\n### Patch Changes\n\n- Reject unknown supplied route kinds in static and live Studio artifacts.\n',
@@ -469,6 +574,7 @@ describe('verifyChangesetReleaseLane', () => {
             previousVersion: '1.0.0',
           },
         ],
+        collectStableNodeEngineRangeNarrowings: () => [],
         existsSync: (targetPath: string) => targetPath.endsWith('packages/runtime/CHANGELOG.md'),
         readFileSync: () =>
           `# @fluojs/runtime\n\n## 2.0.0\n\n### Major Changes\n\n- Remove a deprecated public API.\n`,

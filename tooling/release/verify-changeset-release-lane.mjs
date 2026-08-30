@@ -350,6 +350,19 @@ function collectStableNodeEngineRangeNarrowings(baseRef, dependencies = {}) {
       return [];
     }
 
+    if (!parseOfficialVersion(next.version)) {
+      return [
+        {
+          filePath: packageJsonPath,
+          nextEngineRange: next.nodeEngineRange,
+          packageName: next.packageName,
+          previousEngineRange: null,
+          previousVersion: next.version,
+          unparseableVersion: true,
+        },
+      ];
+    }
+
     const tag = publishedManifestTag(next.packageName, next.version, dependencies);
 
     if (!tag) {
@@ -402,9 +415,47 @@ function hasConsumerNodeEngineMigrationGuidance(body) {
   const guidance = migrationGuidanceSection(body);
   const nodeVersionOrRange = String.raw`(?:v?\d+(?:\.\d+){0,2}|(?:>=|>|~|\^)\s*\d+(?:\.\d+){0,2}(?:\s*<\s*\d+(?:\.\d+){0,2})?)`;
   const removesNodeSupport = new RegExp(String.raw`\bNode(?:\.js)?\s+${nodeVersionOrRange}\s+(?:support\s+)?(?:is\s+)?(?:removed|dropped|unsupported|no\s+longer\s+supported)\b`, 'iu');
-  const namesReplacementNodeVersion = new RegExp(String.raw`\b(?:upgrade|install|move|use)\b[\s\S]{0,120}\bNode(?:\.js)?\s+${nodeVersionOrRange}`, 'iu');
+  const namesReplacementNodeVersion = new RegExp(String.raw`\b(?:upgrade|install|move|use)\b[\s\S]{0,120}\bNode(?:\.js)?\s+(${nodeVersionOrRange})`, 'iu');
+  const replacement = namesReplacementNodeVersion.exec(guidance);
 
-  return removesNodeSupport.test(guidance) && namesReplacementNodeVersion.test(guidance);
+  return removesNodeSupport.test(guidance) &&
+    replacement !== null &&
+    isSatisfiableNodeReplacementRange(replacement[1]);
+}
+
+function parseNodeVersionParts(version) {
+  return version
+    .trim()
+    .replace(/^v/iu, '')
+    .split('.')
+    .map((part) => Number.parseInt(part, 10));
+}
+
+function compareNodeVersionParts(left, right) {
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const leftPart = left[index] ?? 0;
+    const rightPart = right[index] ?? 0;
+
+    if (leftPart !== rightPart) {
+      return leftPart < rightPart ? -1 : 1;
+    }
+  }
+
+  return 0;
+}
+
+function isSatisfiableNodeReplacementRange(expression) {
+  const lowerBound = /(?:>=|>)\s*(v?\d+(?:\.\d+){0,2})/u.exec(expression);
+  const upperBound = /<\s*(v?\d+(?:\.\d+){0,2})/u.exec(expression);
+
+  if (!lowerBound || !upperBound) {
+    return true;
+  }
+
+  return compareNodeVersionParts(
+    parseNodeVersionParts(lowerBound[1]),
+    parseNodeVersionParts(upperBound[1]),
+  ) < 0;
 }
 
 function hasGeneratedMajorMigrationEvidence(section) {
@@ -726,9 +777,10 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     : collectStableNodeEngineRangeNarrowings(baseRef, dependencies);
   const stableNodeEngineRangeNarrowings = allStableNodeEngineRangeNarrowings.filter(
     (narrowing) =>
-      !intents.some(
+      narrowing.unparseableVersion === true ||
+      (!intents.some(
         (intent) => intent.packageName === narrowing.packageName && intent.bump === 'major',
-      ) && !authorizedConsumedGeneratedMajorPackages.has(narrowing.packageName),
+      ) && !authorizedConsumedGeneratedMajorPackages.has(narrowing.packageName)),
   );
   const missingNodeEngineMigrationNotes = collectMissingNodeEngineMigrationNotes(
     allStableNodeEngineRangeNarrowings,
