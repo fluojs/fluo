@@ -1,6 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-
 import type { FrameworkResponse } from '@fluojs/http';
+import { describe, expect, it, vi } from 'vitest';
 
 import { writeFetchResponse } from './transport.js';
 
@@ -159,6 +158,46 @@ describe('writeFetchResponse', () => {
 
     await expect(writeFetchResponse(fetchResponse, frameworkResponse)).rejects.toBe(downstreamError);
 
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it('preserves the downstream backpressure error when upstream cancellation also fails', async () => {
+    // Given
+    const cancellationError = new Error('upstream cancellation failed');
+    const cancel = vi.fn(async () => {
+      throw cancellationError;
+    });
+    const fetchResponse = new Response(new ReadableStream<Uint8Array>({
+      cancel,
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('chunk-1'));
+        controller.enqueue(new TextEncoder().encode('chunk-2'));
+      },
+    }), {
+      headers: { 'content-type': 'text/event-stream' },
+      status: 200,
+    });
+    const frameworkResponse = createFrameworkResponseMock();
+    const stream = frameworkResponse.stream;
+    const downstreamError = new Error('downstream closed with error');
+
+    if (!stream) {
+      throw new Error('Expected stream mock to exist.');
+    }
+    const waitForDrain = stream.waitForDrain;
+
+    if (!waitForDrain) {
+      throw new Error('Expected waitForDrain mock to exist.');
+    }
+
+    vi.mocked(stream.write).mockReturnValueOnce(false);
+    vi.mocked(waitForDrain).mockRejectedValueOnce(downstreamError);
+
+    // When
+    const write = writeFetchResponse(fetchResponse, frameworkResponse);
+
+    // Then
+    await expect(write).rejects.toBe(downstreamError);
     expect(cancel).toHaveBeenCalledOnce();
   });
 

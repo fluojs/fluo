@@ -252,6 +252,7 @@ GraphqlModule.forRoot({
 - `graphiql` defaults to `false`. `introspection` follows `graphiql` unless set explicitly, so production apps stay private by default while local GraphiQL sessions can opt in.
 - `limits` accepts request validation budgets or `false`; use `false` only when equivalent controls exist outside fluo.
 - Streaming GraphQL responses cancel the upstream fetch body when the downstream response stream closes or errors, so SSE subscription resources are released promptly.
+- If downstream streaming fails while upstream cancellation cleanup also fails, the downstream failure remains observable and cancellation cleanup is best-effort.
 - Bootstrap failures after GraphQL schema resolution remove only the failed service's cross-realm GraphQL object allowlist before rethrowing. The package restores its process-wide `graphql/jsutils/instanceOf` patch only when no other active GraphQL application remains.
 - Each active GraphQL application owns its cross-realm GraphQL object allowlist. Shutdown follows the same release rule, so another running application retains the process-wide `instanceOf` patch and only its own objects remain allowed.
 - WebSocket subscriptions use separate transport budgets by default: `100` concurrent connections, `64 KiB` maximum payload size, and `25` active operations per connection.

@@ -186,7 +186,7 @@ async function writeFetchResponseStream(body: ReadableStream<Uint8Array>, stream
       }
     }
   } catch (error) {
-    await cancelUnreadBody();
+    void cancelUnreadBody().catch(() => {});
     throw error;
   } finally {
     removeCloseListener?.();

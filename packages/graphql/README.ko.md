@@ -252,6 +252,7 @@ GraphqlModule.forRoot({
 - `graphiql` 기본값은 `false`입니다. `introspection`은 명시하지 않으면 `graphiql` 설정을 따르므로, production 앱은 기본적으로 비공개 상태를 유지하고 로컬 GraphiQL 세션만 opt in할 수 있습니다.
 - `limits`에는 request validation budget을 전달하거나 `false`를 전달할 수 있습니다. `false`는 fluo 밖에서 동등한 제어를 적용할 때만 사용하세요.
 - Streaming GraphQL 응답은 downstream response stream이 닫히거나 오류를 내면 upstream fetch body를 cancel하므로 SSE subscription 리소스를 즉시 해제합니다.
+- Downstream streaming 실패와 upstream cancellation cleanup 실패가 동시에 발생하면 downstream 실패가 계속 관찰 가능하며 cancellation cleanup은 best-effort로 처리됩니다.
 - GraphQL 스키마 해석 이후 bootstrap이 실패하면 원래 오류를 다시 던지기 전에 실패한 service의 cross-realm GraphQL object allowlist만 제거합니다. 다른 활성 GraphQL 애플리케이션이 하나도 남지 않은 경우에만 package의 process-wide `graphql/jsutils/instanceOf` 패치를 원복합니다.
 - 각 활성 GraphQL 애플리케이션은 자체 cross-realm GraphQL object allowlist를 소유합니다. Shutdown도 같은 release 규칙을 따르므로, 다른 실행 중인 애플리케이션은 process-wide `instanceOf` 패치를 유지하고 자신의 object만 허용합니다.
 - WebSocket 구독 경로에는 별도의 전송 budget이 기본 적용됩니다: 동시 연결 `100`, 최대 payload 크기 `64 KiB`, 연결당 활성 operation `25`개입니다.
