@@ -92,7 +92,7 @@ export class EdgeGateway {}
 export class RealtimeModule {}
 ```
 
-Import `RealtimeModule` into the application module graph before bootstrap. During application bootstrap, `CloudflareWorkersWebSocketModule` discovers the gateway and configures the Worker adapter binding before `app.listen()` freezes it; do not add or replace the binding after the listen boundary.
+Import `RealtimeModule` into the application module graph before bootstrap. During application bootstrap, `CloudflareWorkersWebSocketModule` discovers the gateway and installs the Worker adapter binding through its versioned realtime capability before `app.listen()` freezes it; `configureWebSocketBinding()` remains a compatibility facade. Do not add or replace the binding after the listen boundary.
 
 ### Edge-Native Middleware
 Standard fluo middleware (CORS, Global Prefix, etc.) is fully supported through Worker bootstrap helpers and optimized for the Cloudflare environment. `createCloudflareWorkerAdapter(...)` only accepts adapter-owned parsing and websocket-pair options; pass routing and middleware options to `bootstrapCloudflareWorkerApplication(...)` or `createCloudflareWorkerEntrypoint(...)` instead.

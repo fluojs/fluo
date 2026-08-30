@@ -36,6 +36,8 @@ const WEBSOCKET_CLOSED_READY_STATE = 3;
 const ADAPTER_CLOSE_SETTLED = Symbol('CloudflareWorkerAdapterCloseSettled');
 const WEBSOCKET_BINDING_RECONFIGURATION_MESSAGE =
   'Cloudflare Workers websocket binding must be configured before listen() starts accepting Worker requests.';
+const WEBSOCKET_BINDING_INSTALLATION_MESSAGE =
+  'Cloudflare Workers websocket binding installation requires a binding with a fetch(request, host) function.';
 type CloudflareWorkerCorsInput = false | string | string[] | CorsOptions;
 type WebRequestResponseFactory = NonNullable<DispatchWebRequestOptions['factory']>;
 
@@ -183,7 +185,18 @@ export class CloudflareWorkerHttpApplicationAdapter
   getRealtimeCapability() {
     return createFetchStyleHttpAdapterRealtimeCapability(
       'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @fluojs/websockets/cloudflare-workers for the official raw websocket binding.',
-      { support: 'supported' },
+      {
+        bindingInstallation: {
+          install: (binding) => {
+            if (binding !== undefined && !isCloudflareWorkerWebSocketBinding(binding)) {
+              throw new Error(WEBSOCKET_BINDING_INSTALLATION_MESSAGE);
+            }
+
+            this.configureWebSocketBinding(binding);
+          },
+        },
+        support: 'supported',
+      },
     );
   }
 
@@ -520,6 +533,13 @@ function validateNonNegativeIntegerOption(name: string, value: number | undefine
 
 function isWebSocketUpgradeRequest(request: Request): boolean {
   return request.headers.get('upgrade')?.toLowerCase() === 'websocket';
+}
+
+function isCloudflareWorkerWebSocketBinding(binding: unknown): binding is CloudflareWorkerWebSocketBinding {
+  return typeof binding === 'object'
+    && binding !== null
+    && 'fetch' in binding
+    && typeof binding.fetch === 'function';
 }
 
 function createWebSocketCloseLifecycle(socket: CloudflareWorkerWebSocket): Promise<void> {

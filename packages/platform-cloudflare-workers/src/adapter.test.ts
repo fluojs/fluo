@@ -177,14 +177,20 @@ describe('@fluojs/platform-cloudflare-workers', () => {
 
   it('exposes a supported fetch-style raw websocket expansion contract for Worker runtimes', async () => {
     const adapter = createCloudflareWorkerAdapter();
+    const capability = adapter.getRealtimeCapability();
+    const { bindingInstallation, ...contract } = capability;
 
-    expect(adapter.getRealtimeCapability()).toEqual({
+    expect(contract).toEqual({
       contract: 'raw-websocket-expansion',
       kind: 'fetch-style',
       mode: 'request-upgrade',
       reason:
         'Cloudflare Workers exposes WebSocketPair isolate-local request-upgrade hosting. Use @fluojs/websockets/cloudflare-workers for the official raw websocket binding.',
       support: 'supported',
+      version: 1,
+    });
+    expect(bindingInstallation).toEqual({
+      install: expect.any(Function),
       version: 1,
     });
   });
@@ -312,8 +318,16 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     const replacementBinding = {
       fetch: vi.fn<CloudflareWorkerWebSocketBinding['fetch']>(async () => new Response(null, { status: 426 })),
     };
+    const installation = adapter.getRealtimeCapability().bindingInstallation;
 
-    adapter.configureWebSocketBinding(initialBinding);
+    if (!installation) {
+      throw new Error('Expected the Cloudflare Workers adapter to expose websocket binding installation.');
+    }
+
+    expect(() => installation.install({})).toThrow(
+      'Cloudflare Workers websocket binding installation requires a binding with a fetch(request, host) function.',
+    );
+    installation.install(initialBinding);
     await adapter.listen({
       async dispatch(_request: FrameworkRequest, response: FrameworkResponse) {
         response.setStatus(204);
@@ -321,12 +335,13 @@ describe('@fluojs/platform-cloudflare-workers', () => {
     });
 
     try {
-      expect(() => adapter.configureWebSocketBinding(replacementBinding)).toThrow(
+      expect(() => installation.install(replacementBinding)).toThrow(
         'Cloudflare Workers websocket binding must be configured before listen() starts accepting Worker requests.',
       );
-      expect(() => adapter.configureWebSocketBinding(undefined)).toThrow(
+      expect(() => installation.install(undefined)).toThrow(
         'Cloudflare Workers websocket binding must be configured before listen() starts accepting Worker requests.',
       );
+      expect(() => installation.install(initialBinding)).not.toThrow();
       expect(() => adapter.configureWebSocketBinding(initialBinding)).not.toThrow();
     } finally {
       await adapter.close();

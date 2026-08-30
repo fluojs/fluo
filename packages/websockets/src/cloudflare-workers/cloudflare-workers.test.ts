@@ -17,7 +17,6 @@ import {
   CloudflareWorkersWebSocketModule,
   type CloudflareWorkerWebSocket,
   type CloudflareWorkerWebSocketBinding,
-  type CloudflareWorkerWebSocketBindingHost,
   type CloudflareWorkerWebSocketMessage,
   type CloudflareWorkerWebSocketUpgradeResult,
 } from './cloudflare-workers.js';
@@ -193,16 +192,18 @@ class TestWorkerServer {
   }
 }
 
-class TestWorkerAdapter implements HttpApplicationAdapter, CloudflareWorkerWebSocketBindingHost {
+class TestWorkerAdapter implements HttpApplicationAdapter {
   private binding?: CloudflareWorkerWebSocketBinding;
   private server?: TestWorkerServer;
 
-  configureWebSocketBinding(binding: CloudflareWorkerWebSocketBinding | undefined): void {
-    this.binding = binding;
-  }
-
   getRealtimeCapability() {
     return {
+      bindingInstallation: {
+        install: (binding: unknown | undefined) => {
+          this.binding = binding as CloudflareWorkerWebSocketBinding | undefined;
+        },
+        version: 1 as const,
+      },
       contract: 'raw-websocket-expansion' as const,
       kind: 'fetch-style' as const,
       mode: 'request-upgrade' as const,

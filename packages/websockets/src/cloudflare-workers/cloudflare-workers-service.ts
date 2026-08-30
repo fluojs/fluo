@@ -21,7 +21,6 @@ import type { WebSocketGatewayDescriptor, WebSocketRoomService, WebSocketUpgrade
 import type {
   CloudflareWorkerWebSocket,
   CloudflareWorkerWebSocketBinding,
-  CloudflareWorkerWebSocketBindingHost,
   CloudflareWorkerWebSocketMessage,
   WebSocketModuleOptions,
 } from './cloudflare-workers-types.js';
@@ -62,12 +61,6 @@ const DEFAULT_MAX_WEBSOCKET_PAYLOAD_BYTES = 1_048_576;
 const DEFAULT_WEBSOCKET_SHUTDOWN_TIMEOUT_MS = 5_000;
 const LIFECYCLE_LOG_CONTEXT = 'WebSocketGatewayLifecycleService';
 const WEBSOCKET_OPEN_READY_STATE = 1;
-
-function hasCloudflareWorkerWebSocketBindingHost(
-  adapter: HttpApplicationAdapter,
-): adapter is HttpApplicationAdapter & CloudflareWorkerWebSocketBindingHost {
-  return 'configureWebSocketBinding' in adapter && typeof adapter.configureWebSocketBinding === 'function';
-}
 
 function isWebSocketUpgradeRequest(request: Request): boolean {
   return request.headers.get('upgrade')?.toLowerCase() === 'websocket';
@@ -131,19 +124,19 @@ export class CloudflareWorkersWebSocketGatewayLifecycleService
 
     assertNoFetchStyleServerBackedGatewayOptIn(descriptors, 'cloudflare-workers');
 
-    resolveSupportedFetchStyleRealtimeCapability(this.adapter, {
+    const capability = resolveSupportedFetchStyleRealtimeCapability(this.adapter, {
       packageSubpath: 'cloudflare-workers',
       platformPackage: '@fluojs/platform-cloudflare-workers',
       runtimeName: 'Cloudflare Workers',
     });
 
-    if (!hasCloudflareWorkerWebSocketBindingHost(this.adapter)) {
+    if (!capability.bindingInstallation) {
       throw new Error(
-        'Cloudflare Workers WebSocket gateway bootstrap requires the selected adapter to expose Cloudflare websocket binding configuration. Use @fluojs/platform-cloudflare-workers with @fluojs/websockets/cloudflare-workers.',
+        'Cloudflare Workers WebSocket gateway bootstrap requires the selected adapter to expose websocket binding installation through its realtime capability. Use @fluojs/platform-cloudflare-workers with @fluojs/websockets/cloudflare-workers.',
       );
     }
 
-    this.adapter.configureWebSocketBinding(this.createBinding(descriptors));
+    capability.bindingInstallation.install(this.createBinding(descriptors));
   }
 
   async onApplicationShutdown(): Promise<void> {
