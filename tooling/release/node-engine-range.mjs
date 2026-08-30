@@ -253,5 +253,5 @@ export function narrowsStableNodeEngineRange(previousVersion, previousRange, nex
     return true;
   }
 
-  return isSubset(next, previous) && !isSubset(previous, next);
+  return !isSubset(previous, next);
 }

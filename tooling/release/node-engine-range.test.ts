@@ -17,7 +17,10 @@ function writeChangeset(directory: string, bump: 'major' | 'patch', body: string
   writeFileSync(join(directory, 'graphql.md'), `---\n"@fluojs/graphql": ${bump}\n---\n\n${body}\n`, 'utf8');
 }
 
-function publishedGraphqlDependencies(nextEngineRange: string) {
+function publishedGraphqlDependencies(
+  nextEngineRange: string,
+  previousEngineRange = '>=20.16.0 <21 || >=22.0.0 <27',
+) {
   return {
     collectPackageVersionDeltas: () => [],
     readFileSync: (filePath: string) =>
@@ -41,7 +44,7 @@ function publishedGraphqlDependencies(nextEngineRange: string) {
 
       if (command === 'show @fluojs/graphql@1.1.0:packages/graphql/package.json') {
         return JSON.stringify({
-          engines: { node: '>=20.16.0 <21 || >=22.0.0 <27' },
+          engines: { node: previousEngineRange },
           name: '@fluojs/graphql',
           version: '1.1.0',
         });
@@ -66,6 +69,8 @@ describe('narrowsStableNodeEngineRange', () => {
     ['star ranges', '*', '>=20.0.0 <23.0.0', true],
     ['hyphen unions', '20.0.0 - 20.9.0 || 22.0.0 - 22.9.0', '20.0.0 - 20.9.0', true],
     ['mixed comparator unions', '>=20.0.0 <21.0.0 || ^22.0.0', '^20.0.0', true],
+    ['mixed removal and addition', '>=20.0.0 <23.0.0', '>=21.0.0 <24.0.0', true],
+    ['mixed union removal and addition', '>=20.0.0 <21.0.0 || >=22.0.0 <23.0.0', '>=21.0.0 <24.0.0', true],
     ['widened support', '>=20.0.0 <21.0.0', '>=20.0.0 <22.0.0', false],
     ['equivalent range syntax', '^20.0.0 || ^22.0.0', '>=20.0.0 <21.0.0 || >=22.0.0 <23.0.0', false],
   ])('detects support removal for %s', (_fixture, previousRange, nextRange, expected) => {
@@ -100,6 +105,24 @@ describe('narrowsStableNodeEngineRange', () => {
 });
 
 describe('published Node engine manifest enforcement', () => {
+  it.each([
+    ['mixed comparator range', '>=20.0.0 <23.0.0', '>=21.0.0 <24.0.0'],
+    ['mixed union range', '>=20.0.0 <21.0.0 || >=22.0.0 <23.0.0', '>=21.0.0 <24.0.0'],
+  ])('rejects patch metadata when %s removes support while adding support', (_fixture, previousRange, nextRange) => {
+    // Given: a published range and candidate range that removes one Node line while adding another.
+    const directory = createChangesetDirectory();
+    writeChangeset(directory, 'patch', 'Correct a mixed Node engine range fixture.');
+
+    // When: release metadata is checked without a major changeset.
+    // Then: any removal from the published support set is rejected.
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+        publishedGraphqlDependencies(nextRange, previousRange),
+      ),
+    ).toThrow(/stable Node engine range narrowings without a major changeset/u);
+  });
+
   it('rejects patch metadata from the published manifest baseline', () => {
     // Given: the published GraphQL tag permits a broader Node range.
     const directory = createChangesetDirectory();
