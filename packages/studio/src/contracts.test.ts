@@ -294,6 +294,45 @@ describe('Studio live contracts', () => {
     ).toThrow('Invalid Studio live graph node payload.');
   });
 
+  it('rejects unknown BootstrapTimingPhase names across static and live timing payloads', () => {
+    const unknownPhaseTiming = {
+      phases: [{ durationMs: 1.25, name: 'unknown_bootstrap_phase' }],
+      totalMs: 1.25,
+      version: 1,
+    };
+    const eventBase = {
+      emittedAt: '2026-05-28T00:00:02.000Z',
+      epoch: 'epoch-1',
+      eventId: 'epoch-1:unknown-phase',
+      sequence: 3,
+      source: { appId: 'app-test', runtime: 'node' as const },
+      version: 1,
+    };
+    const snapshotEvent = {
+      ...eventBase,
+      payload: { ...liveSnapshot, timing: unknownPhaseTiming },
+      type: 'snapshot' as const,
+    };
+    const timingEvent = {
+      ...eventBase,
+      eventId: 'epoch-1:unknown-phase-timing',
+      payload: unknownPhaseTiming,
+      type: 'timing' as const,
+    };
+
+    expect(() => parseStudioPayload(JSON.stringify(unknownPhaseTiming))).toThrow(
+      'Invalid phase entry in bootstrap timing payload.',
+    );
+    expect(() => parseStudioLiveEvent(JSON.stringify(snapshotEvent))).toThrow(
+      'Invalid phase entry in bootstrap timing payload.',
+    );
+    expect(isStudioLiveEvent(snapshotEvent)).toBe(false);
+    expect(() => parseStudioLiveEvent(JSON.stringify(timingEvent))).toThrow(
+      'Invalid phase entry in bootstrap timing payload.',
+    );
+    expect(isStudioLiveEvent(timingEvent)).toBe(false);
+  });
+
   it('rejects request events with body-like fields before UI state consumes them', () => {
     const event = {
       emittedAt: '2026-05-28T00:00:02.000Z',
