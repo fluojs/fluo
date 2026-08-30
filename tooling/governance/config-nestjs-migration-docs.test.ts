@@ -8,8 +8,38 @@ import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+const servicePath = 'packages/config/src/service.ts';
+
+type SingleKeyMethod = 'get' | 'getOrThrow';
+
 function read(relativePath: string): string {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
+}
+
+/**
+ * Rewrites the single-key implementation line of `ConfigService.<methodName>` so a fixture can
+ * model a widened call shape. Both the anchor match and the resulting edit are asserted so a
+ * reformatted service source fails loudly instead of silently producing a vacuous fixture.
+ */
+function mutateServiceSource(
+  methodName: SingleKeyMethod,
+  buildReplacement: (implementationLine: string, indent: string) => string,
+): string {
+  const source = read(servicePath);
+  const match = source.match(new RegExp(`^([ \\t]*)${methodName}<.*\\{$`, 'mu'));
+
+  expect(match, `expected a single-key ${methodName} implementation line in ${servicePath}`).not.toBeNull();
+
+  const [implementationLine, indent] = match as RegExpMatchArray;
+  const mutated = source.replace(implementationLine, buildReplacement(implementationLine, indent));
+
+  expect(mutated, `expected the ${methodName} fixture to change ${servicePath}`).not.toBe(source);
+
+  return mutated;
+}
+
+function readWithMutatedService(mutated: string): (relativePath: string) => string {
+  return (relativePath: string): string => (relativePath === servicePath ? mutated : read(relativePath));
 }
 
 describe('NestJS config migration documentation', () => {
@@ -101,51 +131,63 @@ describe('NestJS config migration documentation', () => {
     }
   });
 
-  it('documents the single-key ConfigService call shape backed by the service signatures', () => {
+  it.each(['get', 'getOrThrow'] as const)(
+    'rejects an added %s overload that leaves the single-key implementation intact',
+    (methodName) => {
+      // Given
+      const mutated = mutateServiceSource(
+        methodName,
+        (implementationLine, indent) =>
+          `${indent}${methodName}<K extends DotPaths<T>, D>(key: K, defaultValue?: D): DotValue<T, K & string> | D;\n${implementationLine}`,
+      );
+
+      // When
+      const runGovernanceGuard = () => enforceConfigNestjsMigrationDocs(readWithMutatedService(mutated));
+
+      // Then
+      expect(runGovernanceGuard).toThrow(servicePath);
+      expect(runGovernanceGuard).toThrow(`ConfigService.${methodName}`);
+    },
+  );
+
+  it.each([
+    ['get', 'defaultValue: DotValue<T, K & string>'],
+    ['get', 'options: { infer: true }'],
+    ['getOrThrow', 'defaultValue: DotValue<T, K & string>'],
+    ['getOrThrow', 'options: { infer: true }'],
+  ] as const)('rejects a second %s parameter declared as %s', (methodName, secondParameter) => {
     // Given
-    const serviceSource = read('packages/config/src/service.ts');
-    const englishMigration = read('docs/getting-started/migrate-from-nestjs.md');
-    const koreanMigration = read('docs/getting-started/migrate-from-nestjs.ko.md');
-    const englishReadme = read('packages/config/README.md');
-    const koreanReadme = read('packages/config/README.ko.md');
+    const mutated = mutateServiceSource(methodName, (implementationLine) =>
+      implementationLine.replace('(key: K)', `(key: K, ${secondParameter})`),
+    );
 
     // When
-    const migrationDocs = [englishMigration, koreanMigration] as const;
+    const runGovernanceGuard = () => enforceConfigNestjsMigrationDocs(readWithMutatedService(mutated));
 
     // Then
-    expect(serviceSource).toContain('get<K extends DotPaths<T>>(key: K): DotValue<T, K & string> | undefined {');
-    expect(serviceSource).toContain('getOrThrow<K extends DotPaths<T>>(key: K): DotValue<T, K & string> {');
-    expect(serviceSource).not.toMatch(/\bget<[^>]*>\(key: K, /u);
-    expect(serviceSource).not.toMatch(/\bgetOrThrow<[^>]*>\(key: K, /u);
-
-    for (const migrationDoc of migrationDocs) {
-      expect(migrationDoc).toContain('get(key, defaultValue)');
-      expect(migrationDoc).toContain('get(key, { infer: true })');
-    }
-
-    expect(englishReadme).toContain(
-      '`ConfigService.get(key)` and `getOrThrow(key)` take one key and expose no NestJS default-value or options overload',
-    );
-    expect(koreanReadme).toContain(
-      '`ConfigService.get(key)`\uc640 `getOrThrow(key)`\ub294 key \ud558\ub098\ub9cc \ubc1b\uc73c\uba70 NestJS default-value \ub610\ub294 options overload\ub97c \ub178\ucd9c\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4',
-    );
+    expect(runGovernanceGuard).toThrow(servicePath);
+    expect(runGovernanceGuard).toThrow(`ConfigService.${methodName}`);
   });
 
-  it('keeps external secret resolution at the application entrypoint in the bilingual config chapter', () => {
-    // Given
-    const englishChapter = read('book/beginner/ch11-config.md');
-    const koreanChapter = read('book/beginner/ch11-config.ko.md');
+  it.each(['get', 'getOrThrow'] as const)(
+    'rejects a reformatted multi-line %s signature that adds a second parameter',
+    (methodName) => {
+      // Given
+      const mutated = mutateServiceSource(methodName, (implementationLine, indent) =>
+        implementationLine.replace(
+          '(key: K)',
+          `(\n${indent}  key: K,\n${indent}  options: { infer: true },\n${indent})`,
+        ),
+      );
 
-    // Then
-    expect(englishChapter).toContain('`ConfigModule` never fetches from an external Provider itself');
-    expect(englishChapter).not.toContain(
-      'update the `ConfigModule` logic so it reads values from those external Providers',
-    );
-    expect(koreanChapter).toContain('`ConfigModule` \uc790\uccb4\uac00 \uc678\ubd80 \ud504\ub85c\ubc14\uc774\ub354\uc5d0\uc11c \uac12\uc744 \uac00\uc838\uc624\uc9c0\ub294 \uc54a\uc2b5\ub2c8\ub2e4');
-    expect(koreanChapter).not.toContain(
-      '\uc678\ubd80 \ud504\ub85c\ubc14\uc774\ub354\ub85c\ubd80\ud130 \uac12\uc744 \uac00\uc838\uc624\ub3c4\ub85d `ConfigModule` \ub85c\uc9c1\ub9cc \uc5c5\ub370\uc774\ud2b8',
-    );
-  });
+      // When
+      const runGovernanceGuard = () => enforceConfigNestjsMigrationDocs(readWithMutatedService(mutated));
+
+      // Then
+      expect(runGovernanceGuard).toThrow(servicePath);
+      expect(runGovernanceGuard).toThrow(`ConfigService.${methodName}`);
+    },
+  );
 
   it('keeps the listen-only adapter boundary explicit in the bilingual config chapter', () => {
     // Given

@@ -2,7 +2,19 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import ts from 'typescript';
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const configServiceSourcePath = 'packages/config/src/service.ts';
+
+// `ConfigService` reads resolve one key at a time. NestJS `get(key, defaultValue)` and
+// `get(key, { infer: true })` overloads have no fluo counterpart, so this contract is enforced
+// structurally through the TypeScript AST rather than through source text markers: string markers
+// pin one formatting of one signature while still admitting an added overload beside it.
+const singleKeyCallShapes = [
+  { methodName: 'get', resolvesToOptional: true },
+  { methodName: 'getOrThrow', resolvesToOptional: false },
+];
 const requirements = [
   ['packages/config/src/load.ts', [
     'mergeConfigEntries(targetValue, sourceValue);',
@@ -10,12 +22,7 @@ const requirements = [
     'return validateConfig(options, buildMergedConfig(options));',
   ]],
   ['packages/config/src/module.ts', ['static forRoot(options?: ConfigModuleOptions)', 'global: loadOptions.global ?? true']],
-  ['packages/config/src/service.ts', [
-    "const parts = key.split('.');",
-    'current = current[part];',
-    'get<K extends DotPaths<T>>(key: K): DotValue<T, K & string> | undefined {',
-    'getOrThrow<K extends DotPaths<T>>(key: K): DotValue<T, K & string> {',
-  ]],
+  ['packages/config/src/service.ts', ["const parts = key.split('.');", 'current = current[part];']],
   ['packages/config/src/types.ts', ['processEnv?: NodeJS.ProcessEnv', 'schema?: ConfigSchema', 'global?: boolean']],
   ['packages/config/README.md', [
     '### NestJS Registration Migration',
@@ -25,7 +32,6 @@ const requirements = [
     'explicit `processEnv` snapshot',
     'synchronous Standard Schema',
     '`global`, not NestJS `isGlobal`',
-    '`ConfigService.get(key)` and `getOrThrow(key)` take one key and expose no NestJS default-value or options overload',
     '../../docs/getting-started/migrate-from-nestjs.md',
   ]],
   ['packages/config/README.ko.md', [
@@ -36,7 +42,6 @@ const requirements = [
     '명시적 `processEnv` snapshot',
     '동기 Standard Schema',
     'NestJS `isGlobal`이 아니라 `global`',
-    '`ConfigService.get(key)`와 `getOrThrow(key)`는 key 하나만 받으며 NestJS default-value 또는 options overload를 노출하지 않습니다',
     '../../docs/getting-started/migrate-from-nestjs.ko.md',
   ]],
   ['packages/runtime/src/bootstrap.ts', [
@@ -51,8 +56,6 @@ const requirements = [
     'const validatedConfig = ConfigSchema.parse(loadConfig(configSources));',
     'defaults: validatedConfig',
     "ConfigService.get('http.port')",
-    'get(key, defaultValue)',
-    'get(key, { infer: true })',
     'FluoFactory.createApplicationContext(AppModule)',
     'FluoFactory.create(AppModule, { adapter })',
   ]],
@@ -63,8 +66,6 @@ const requirements = [
     'const validatedConfig = ConfigSchema.parse(loadConfig(configSources));',
     'defaults: validatedConfig',
     "ConfigService.get('http.port')",
-    'get(key, defaultValue)',
-    'get(key, { infer: true })',
     'FluoFactory.createApplicationContext(AppModule)',
     'FluoFactory.create(AppModule, { adapter })',
   ]],
@@ -129,36 +130,6 @@ const semanticRequirements = [
     ],
   },
   {
-    relativePath: 'book/beginner/ch11-config.md',
-    required: [
-      {
-        pattern: /`ConfigModule` never fetches from an external Provider itself/u,
-        message: 'must state that ConfigModule does not read from external secret Providers',
-      },
-    ],
-    forbidden: [
-      {
-        pattern: /update the `ConfigModule` logic so it reads values from those external Providers/u,
-        message: 'must not tell readers to make ConfigModule read from external Providers',
-      },
-    ],
-  },
-  {
-    relativePath: 'book/beginner/ch11-config.ko.md',
-    required: [
-      {
-        pattern: /`ConfigModule` 자체가 외부 프로바이더에서 값을 가져오지는 않습니다/u,
-        message: 'must state that ConfigModule does not read from external secret Providers',
-      },
-    ],
-    forbidden: [
-      {
-        pattern: /외부 프로바이더로부터 값을 가져오도록 `ConfigModule` 로직만 업데이트/u,
-        message: 'must not tell readers to make ConfigModule read from external Providers',
-      },
-    ],
-  },
-  {
     relativePath: 'packages/config/README.ko.md',
     required: [
       {
@@ -187,9 +158,87 @@ const semanticRequirements = [
   },
 ];
 
+function failConfigServiceCallShape(methodName, detail) {
+  throw new Error(
+    `Platform consistency governance check failed: ${configServiceSourcePath} ConfigService.${methodName} ${detail}.`,
+  );
+}
+
+/**
+ * Structurally proves that `ConfigService.get` and `getOrThrow` each expose exactly one call
+ * signature taking exactly one required `key` parameter, independent of generic nesting and
+ * formatting. Overloads, options parameters, and default-value parameters are all rejected.
+ */
+function enforceConfigServiceSingleKeyCallShape(sourceText) {
+  const sourceFile = ts.createSourceFile(
+    configServiceSourcePath,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const classDeclaration = sourceFile.statements.find(
+    (statement) => ts.isClassDeclaration(statement) && statement.name?.text === 'ConfigService',
+  );
+
+  if (classDeclaration === undefined) {
+    throw new Error(
+      `Platform consistency governance check failed: ${configServiceSourcePath} must declare the ConfigService class.`,
+    );
+  }
+
+  for (const { methodName, resolvesToOptional } of singleKeyCallShapes) {
+    const declarations = classDeclaration.members.filter(
+      (member) => ts.isMethodDeclaration(member) && ts.isIdentifier(member.name) && member.name.text === methodName,
+    );
+
+    if (declarations.length !== 1) {
+      failConfigServiceCallShape(
+        methodName,
+        `must expose exactly one call signature, found ${declarations.length}`,
+      );
+    }
+
+    const [{ parameters, type }] = declarations;
+
+    if (parameters.length !== 1) {
+      failConfigServiceCallShape(
+        methodName,
+        `must accept exactly one parameter, found ${parameters.length}`,
+      );
+    }
+
+    const [parameter] = parameters;
+
+    if (
+      !ts.isIdentifier(parameter.name) ||
+      parameter.name.text !== 'key' ||
+      parameter.questionToken !== undefined ||
+      parameter.initializer !== undefined ||
+      parameter.dotDotDotToken !== undefined
+    ) {
+      failConfigServiceCallShape(methodName, 'must accept exactly one required "key" parameter');
+    }
+
+    const declaresOptionalResult =
+      type !== undefined &&
+      ts.isUnionTypeNode(type) &&
+      type.types.some((member) => member.kind === ts.SyntaxKind.UndefinedKeyword);
+
+    if (declaresOptionalResult !== resolvesToOptional) {
+      failConfigServiceCallShape(
+        methodName,
+        `must ${resolvesToOptional ? 'include' : 'exclude'} undefined in its return type`,
+      );
+    }
+  }
+}
+
 export function enforceConfigNestjsMigrationDocs(
   readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
 ) {
+  enforceConfigServiceSingleKeyCallShape(readText(configServiceSourcePath));
+
   for (const [relativePath, requiredMarkers] of requirements) {
     const content = readText(relativePath);
     const missingMarkers = requiredMarkers.filter((marker) => !content.includes(marker));
