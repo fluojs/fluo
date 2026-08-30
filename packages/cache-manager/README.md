@@ -15,6 +15,7 @@ General-purpose cache manager for fluo with pluggable memory, Redis, and custom 
   - [Redis Storage](#redis-storage)
   - [Query-Sensitive Caching](#query-sensitive-caching)
   - [Cache Ownership and Reset Scope](#cache-ownership-and-reset-scope)
+  - [Observing Cache Operations](#observing-cache-operations)
   - [Manual Module Composition](#manual-module-composition)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
@@ -220,6 +221,38 @@ When the application closes, `CacheService` stops new store reads/writes, waits 
 
 Custom stores can be passed directly through `store` when they implement the `CacheStore` contract. This is the right option for in-process LRU stores, remote caches other than Redis, or test doubles that need to observe cache operations.
 
+### Observing Cache Operations
+
+The platform status helpers report cache availability only. To measure hit rate, latency, and error outcomes, pass an opt-in `observer` to `CacheModule.forRoot(...)`. The observer is independent of `@fluojs/metrics`; wire it to whichever metrics backend the application already uses.
+
+```typescript
+import { CacheModule, type CacheObservation } from '@fluojs/cache-manager';
+
+CacheModule.forRoot({
+  store: 'memory',
+  observer: {
+    onCacheOperation(observation: CacheObservation) {
+      cacheOperationCounter.inc({
+        operation: observation.operation,
+        outcome: observation.outcome,
+      });
+      cacheOperationLatency.observe(observation.durationMs);
+    },
+  },
+});
+```
+
+The contract is intentionally narrow:
+
+- **Privacy**: an observation carries only `operation`, `outcome`, and `durationMs`. Cache keys, cached values, loader results, and error objects are never passed to the observer, so instrumentation cannot leak application data.
+- **Operation taxonomy**: `operation` is one of `get`, `set`, `del`, `remember`, `reset`, or `close`. `remember` is reported once per call; its internal read is not reported as a separate `get`.
+- **Outcomes**: read operations (`get`, `remember`) report `hit` or `miss`. Write, invalidation, and lifecycle operations report `success`. Any operation whose store call throws reports `error`. A `remember` call that joins an in-flight load for the same key reports `miss`, because that call did not read a cached value.
+- **Timing**: `durationMs` measures the full `CacheService` operation, including store-queue serialization, and uses `performance.now()` when the runtime provides it.
+- **Failure containment**: observer errors are swallowed. A thrown error or a rejected promise never changes the value the caller receives and never surfaces as an unhandled rejection. Observer work is not awaited by the cache operation.
+- **HTTP fail-soft interaction**: `CacheInterceptor` still swallows store failures so cache problems cannot fail an otherwise successful handler. The observer sees those failures as `error` observations, which is the supported way to alert on a degraded cache while keeping requests served.
+
+When no `observer` is configured, the cache runs its original code path with no observation work.
+
 ### Manual Module Composition
 
 Use `CacheModule.forRoot(...)` for normal application setup, including custom `defineModule(...)` composition.
@@ -272,7 +305,10 @@ On that supported HTTP path, eviction is deferred until a framework response wri
   This is the primary package entrypoint for application modules.
 
 ### Public types
-- `CacheModuleOptions`: Application-facing configuration accepted by `CacheModule.forRoot(...)`.
+- `CacheModuleOptions`: Application-facing configuration accepted by `CacheModule.forRoot(...)`, including the optional `observer`.
+- `CacheObserver`: Opt-in observation hook with a single `onCacheOperation(observation)` method.
+- `CacheObservation`: Privacy-safe payload carrying `operation`, `outcome`, and `durationMs`.
+- `CacheOperation` and `CacheOutcome`: The observed operation taxonomy and result classification.
 - `NormalizedCacheModuleOptions`: Compatibility-only type export matching the normalized configuration shape after defaults are applied. Prefer `CacheModuleOptions` for application code; this type remains public so consumers that referenced the previously shipped declaration surface can keep compiling.
 
 ### Services
@@ -303,3 +339,4 @@ On that supported HTTP path, eviction is deferred until a framework response wri
 - `packages/cache-manager/src/interceptor.test.ts`: HTTP caching and eviction tests.
 - `packages/cache-manager/src/service.ts`: Core `CacheService` implementation.
 - `packages/cache-manager/src/status.test.ts`: Status and diagnostic helper tests.
+- `packages/cache-manager/src/cache-observer.test.ts`: Cache observation contract tests.

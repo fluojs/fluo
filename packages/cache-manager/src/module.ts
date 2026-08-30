@@ -1,12 +1,12 @@
 import type { Token } from '@fluojs/core';
-import type { Provider, Container } from '@fluojs/di';
+import type { Container, Provider } from '@fluojs/di';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
 import { CacheInterceptor } from './interceptor.js';
+import { CacheService } from './service.js';
 import { MemoryStore } from './stores/memory-store.js';
 import { RedisStore } from './stores/redis-store.js';
-import { CacheService } from './service.js';
 import { CACHE_OPTIONS, CACHE_STORE } from './tokens.js';
 import type { CacheModuleOptions, NormalizedCacheModuleOptions, RedisCompatibleClient } from './types.js';
 
@@ -77,6 +77,7 @@ function normalizeCacheModuleOptions(options: CacheModuleOptions = {}): Normaliz
     ttl: options.ttl ?? (store === 'memory' ? DEFAULT_MEMORY_STORE_TTL_SECONDS : 0),
     httpKeyStrategy: options.httpKeyStrategy ?? 'route',
     principalScopeResolver: options.principalScopeResolver,
+    observer: options.observer,
   };
 }
 

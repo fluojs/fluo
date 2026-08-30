@@ -337,7 +337,22 @@ For example, if analytics show that users who read "Chapter 1" almost always mov
 ### 17.7.7 Monitoring Cache Health: Hit Rates and Latency
 Finally, a caching strategy is only effective when you can measure its performance. You must monitor **cache hit rate**, the percentage of requests handled from the cache, and **cache latency**, the time it takes to retrieve data from the cache. A low hit rate may indicate that TTLs are too short or eviction policy is not tuned well. High latency may suggest that the cache store is overloaded or the network connection is slow.
 
-Fluo's `@fluojs/metrics` module can still be part of the broader observability stack, but cache-specific metrics such as hit rate and latency remain application-owned instrumentation unless you wire them up yourself. By visualizing that data in a dashboard, such as Grafana, you can see the real-time effect of your caching strategy and identify areas that need optimization. Remember that caching is not a set-and-forget feature. As the application and traffic patterns change, continuous monitoring and tuning are required to keep efficiency high.
+Fluo's cache module provides an opt-in, metrics-backend-independent observation seam for this application-owned instrumentation. Configure `CacheModule.forRoot({ observer })` and adapt each `CacheObservation` to your existing metrics backend. Each observation reports the operation (`get`, `set`, `del`, `remember`, `reset`, or `close`), its outcome, and `durationMs`. Read operations distinguish `hit` from `miss`, while failures report `error`.
+
+```typescript
+CacheModule.forRoot({
+  observer: {
+    onCacheOperation({ operation, outcome, durationMs }) {
+      cacheOperationCounter.inc({ operation, outcome });
+      cacheOperationLatency.observe(durationMs);
+    },
+  },
+});
+```
+
+The payload deliberately omits cache keys, values, loader results, and error objects, avoiding high-cardinality or sensitive labels. Observer failures are contained and do not change cache results. `CacheInterceptor` also remains fail-soft when a store fails, while its service calls emit `error` observations. This makes degraded cache behavior measurable without turning an optional cache into a request failure.
+
+`@fluojs/metrics` can still be part of the broader observability stack; the observer simply keeps the cache package independent from it. By visualizing these measurements in a dashboard such as Grafana, you can identify where tuning is needed. Caching is not a set-and-forget feature: application and traffic changes require continuous monitoring.
 
 ## 17.8 Summary
 Caching is a cornerstone of high-performance backend systems. By moving frequently accessed data from the database into a fast storage layer, it ensures FluoBlog remains highly responsive even under heavy load.

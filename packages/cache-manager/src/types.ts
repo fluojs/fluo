@@ -50,6 +50,44 @@ interface CacheModuleInternalOptions {
 export type PrincipalScopeResolver = (context: InterceptorContext) => string | undefined;
 
 /**
+ * Cache operations reported to a configured `CacheObserver`.
+ */
+export type CacheOperation = 'get' | 'set' | 'del' | 'remember' | 'reset' | 'close';
+
+/**
+ * Result classification reported for one observed cache operation.
+ *
+ * @remarks
+ * `hit` and `miss` are reported only for read operations (`get` and `remember`).
+ * Write, invalidation, and lifecycle operations report `success` or `error`.
+ */
+export type CacheOutcome = 'hit' | 'miss' | 'success' | 'error';
+
+/**
+ * Privacy-safe observation payload emitted once per completed cache operation.
+ *
+ * @remarks
+ * Observations intentionally exclude cache keys, cached values, loader results,
+ * and error objects so operational instrumentation cannot leak application data.
+ */
+export interface CacheObservation {
+  readonly operation: CacheOperation;
+  readonly outcome: CacheOutcome;
+  readonly durationMs: number;
+}
+
+/**
+ * Opt-in observation hook for cache hit rate, latency, and error instrumentation.
+ *
+ * @remarks
+ * Observer failures are contained: a thrown error or rejected promise is
+ * swallowed and never changes the cache result the caller receives.
+ */
+export interface CacheObserver {
+  onCacheOperation(observation: CacheObservation): Awaitable<void>;
+}
+
+/**
  * Public configuration options for `CacheModule.forRoot(...)`.
  */
 export interface CacheModuleOptions extends CacheModuleInternalOptions {
@@ -59,6 +97,8 @@ export interface CacheModuleOptions extends CacheModuleInternalOptions {
   ttl?: number;
   httpKeyStrategy?: CacheKeyStrategy;
   principalScopeResolver?: PrincipalScopeResolver;
+  /** Opt-in privacy-safe observer notified after each cache operation completes. */
+  observer?: CacheObserver;
 }
 
 /**
@@ -77,6 +117,8 @@ export interface NormalizedCacheModuleOptions {
   ttl: number;
   httpKeyStrategy: CacheKeyStrategy;
   principalScopeResolver: PrincipalScopeResolver | undefined;
+  /** Opt-in privacy-safe observer notified after each cache operation completes. */
+  observer?: CacheObserver;
 }
 
 /**

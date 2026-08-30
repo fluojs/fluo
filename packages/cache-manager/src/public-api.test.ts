@@ -1,8 +1,6 @@
 import { readFileSync } from 'node:fs';
 
 import { describe, expect, expectTypeOf, it } from 'vitest';
-
-import * as cacheManagerPublicApi from './index.js';
 import type {
   CacheEvictDecoratorValue,
   CacheEvictFactory,
@@ -14,6 +12,10 @@ import type {
   CacheManagerStoreKind,
   CacheManagerStoreOwnershipMode,
   CacheModuleOptions,
+  CacheObservation,
+  CacheObserver,
+  CacheOperation,
+  CacheOutcome,
   CacheStore,
   NormalizedCacheModuleOptions,
   PrincipalScopeResolver,
@@ -21,6 +23,7 @@ import type {
   RedisCompatibleClient,
   RedisStoreOptions,
 } from './index.js';
+import * as cacheManagerPublicApi from './index.js';
 
 type RootCacheKeyStrategy =
   | 'route'
@@ -58,6 +61,14 @@ describe('@fluojs/cache-manager public API surface', () => {
     expectTypeOf<CacheModuleOptions>().toHaveProperty('httpKeyStrategy');
     expectTypeOf<NormalizedCacheModuleOptions>().toHaveProperty('keyPrefix');
     expectTypeOf<NormalizedCacheModuleOptions>().toHaveProperty('principalScopeResolver');
+    expectTypeOf<CacheModuleOptions>().toHaveProperty('observer');
+    expectTypeOf<NormalizedCacheModuleOptions>().toHaveProperty('observer');
+    expectTypeOf<CacheObserver>().toHaveProperty('onCacheOperation');
+    expectTypeOf<CacheObservation>().toHaveProperty('operation');
+    expectTypeOf<CacheObservation>().toHaveProperty('outcome');
+    expectTypeOf<CacheObservation>().toHaveProperty('durationMs');
+    expectTypeOf<CacheOperation>().toEqualTypeOf<'get' | 'set' | 'del' | 'remember' | 'reset' | 'close'>();
+    expectTypeOf<CacheOutcome>().toEqualTypeOf<'hit' | 'miss' | 'success' | 'error'>();
     expectTypeOf<RedisCacheOptions>().toHaveProperty('clientName');
     expectTypeOf<RedisCompatibleClient>().toHaveProperty('scan');
     expectTypeOf<RedisStoreOptions>().toHaveProperty('keyPrefix');

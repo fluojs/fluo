@@ -8,7 +8,7 @@
 
 | 표면 | 현재 계약 | 소스 기준 |
 | --- | --- | --- |
-| 모듈 진입점 | 애플리케이션은 `CacheModule.forRoot(...)`로 캐시 지원을 등록합니다. 공개 옵션에는 `store`, `ttl`, `httpKeyStrategy`, `principalScopeResolver`, top-level `keyPrefix`, `redis`, `global`이 포함됩니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
+| 모듈 진입점 | 애플리케이션은 `CacheModule.forRoot(...)`로 캐시 지원을 등록합니다. 공개 옵션에는 `store`, `ttl`, `httpKeyStrategy`, `principalScopeResolver`, top-level `keyPrefix`, `redis`, `observer`, `global`이 포함됩니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
 | 캐시 서비스 | `CacheService`는 `get`, `set`, `remember`, `del`, `reset`을 제공하는 직접 애플리케이션 캐시 파사드입니다. | `packages/cache-manager/src/service.ts` |
 | HTTP 통합 | `CacheInterceptor`는 GET read-through 캐싱을 수행하고 non-GET controller handler 이후 `@CacheEvict(...)` metadata를 소비합니다. 이 decorator는 해당 HTTP pipeline 밖의 임의 service method를 intercept하지 않습니다. | `packages/cache-manager/src/decorators.ts`, `packages/cache-manager/src/interceptor.ts` |
 | 메모리 저장소 | `MemoryStore`는 캐시 엔트리를 프로세스 내부에 보관하고, 접근 시점에 만료를 지연 정리하며, 가장 오래된 키부터 제거하면서 라이브 엔트리를 `1,000`개로 제한합니다. | `packages/cache-manager/src/stores/memory-store.ts` |
@@ -49,6 +49,19 @@
 | 전체 reset | `CacheService.reset()`은 내부 reset version을 증가시키고, 진행 중/대기 중인 load bookkeeping과 진행 중 무효화 마커를 지운 뒤, 하위 저장소를 reset합니다. | `packages/cache-manager/src/service.ts` |
 | 저장소 teardown | 애플리케이션 종료 중 `CacheService`는 custom store의 `close()` hook을 호출하고, `close()`가 없으면 `dispose()`를 호출하므로 리소스를 소유한 store가 socket, pool, timer 또는 기타 외부 handle을 해제할 수 있습니다. 동시에 또는 반복해서 호출한 service/lifecycle close는 실패를 포함한 첫 teardown promise를 공유하므로, 하나의 authoritative completion boundary 뒤에서 teardown이 한 번만 실행됩니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/service.ts` |
 
+## 관찰 규칙
+
+| 규칙 | 현재 계약 | 소스 기준 |
+| --- | --- | --- |
+| opt-in seam | `CacheModule.forRoot(...)`가 `observer`를 받지 않으면 cache operation 관찰은 비활성화됩니다. 옵션이 없으면 `CacheService`는 관찰 작업 없이 기존 경로를 실행합니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts`, `packages/cache-manager/src/service.ts` |
+| 프라이버시 경계 | `CacheObservation`은 `operation`, `outcome`, `durationMs`만 전달합니다. cache key, 캐시된 값, loader 결과, error 객체는 observer로 전달되지 않습니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/service.ts` |
+| operation taxonomy | `operation`은 `get`, `set`, `del`, `remember`, `reset`, `close` 중 하나입니다. `remember`는 호출당 한 번 보고되며 내부 read는 별도 `get`으로 보고되지 않습니다. | `packages/cache-manager/src/service.ts` |
+| outcome 분류 | `get`과 `remember`는 `hit` 또는 `miss`를 보고합니다. `set`, `del`, `reset`, `close`는 `success`를 보고합니다. store 호출이 throw한 작업은 `error`를 보고합니다. in-flight load에 합류한 `remember` 호출은 `miss`를 보고합니다. | `packages/cache-manager/src/service.ts` |
+| timing | `durationMs`는 store queue 직렬화를 포함한 전체 `CacheService` 작업을 측정하며, 런타임이 제공하면 `performance.now()`를 사용합니다. | `packages/cache-manager/src/service.ts` |
+| 실패 격리 | observer 오류는 삼켜집니다. throw된 error나 rejected promise는 캐시 결과를 바꾸지 않고 unhandled rejection으로도 노출되지 않으며, cache 작업은 observer 작업을 await하지 않습니다. | `packages/cache-manager/src/service.ts` |
+| HTTP fail-soft 상호작용 | `CacheInterceptor`는 여전히 store 실패를 삼켜서 캐시 오류가 정상 핸들러를 실패시키지 않도록 하며, 그 실패는 `error` observation으로 운영자에게 노출됩니다. | `packages/cache-manager/src/interceptor.ts`, `packages/cache-manager/src/service.ts` |
+| metrics 독립성 | observer는 `@fluojs/metrics`와 독립적입니다. 애플리케이션은 이미 운영 중인 metrics backend에 observation을 연결합니다. | `packages/cache-manager/README.md` |
+
 ## 제약 사항
 
 - 기본 메모리 저장소는 프로세스 로컬이며 클러스터 안전하지 않습니다. 다중 인스턴스 배포는 Redis 저장소나 다른 공유 custom store가 필요합니다.
@@ -56,4 +69,5 @@
 - Redis 저장소 값은 `RedisStore`가 `JSON.stringify(...)`와 `JSON.parse(...)`를 사용하므로 JSON 호환 형태여야 합니다.
 - 캐시 무효화는 키 기반만 지원합니다. 기본 계약은 interceptor 계층에서 tag 기반이나 wildcard 무효화를 제공하지 않습니다.
 - 메모리 저장소의 TTL 강제는 타이머 기반이 아니라 접근 기반의 lazy 방식입니다.
+- 캐시 관찰은 operation 단위로만 제공됩니다. 이 계약은 key별 metric, cardinality를 가지는 label, store 내부 counter를 노출하지 않습니다.
 - 캐시 패키지는 `CacheStore` 인터페이스로 확장을 정의합니다. custom store는 `get`, `set`, `del`, `reset`을 구현해야 하며, 리소스를 소유하는 store는 optional `close()` 또는 `dispose()` teardown도 구현하는 것이 좋습니다.

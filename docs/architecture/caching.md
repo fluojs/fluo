@@ -8,7 +8,7 @@ This document defines the current cache contract across `@fluojs/cache-manager`,
 
 | Surface | Current contract | Source anchor |
 | --- | --- | --- |
-| Module entrypoint | Applications register cache support through `CacheModule.forRoot(...)`. Public options include `store`, `ttl`, `httpKeyStrategy`, `principalScopeResolver`, top-level `keyPrefix`, `redis`, and `global`. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
+| Module entrypoint | Applications register cache support through `CacheModule.forRoot(...)`. Public options include `store`, `ttl`, `httpKeyStrategy`, `principalScopeResolver`, top-level `keyPrefix`, `redis`, `observer`, and `global`. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
 | Cache service | `CacheService` is the direct application cache facade with `get`, `set`, `remember`, `del`, and `reset`. | `packages/cache-manager/src/service.ts` |
 | HTTP integration | `CacheInterceptor` performs GET read-through caching and consumes `@CacheEvict(...)` metadata after non-GET controller handlers. The decorator does not intercept arbitrary service methods outside that HTTP pipeline. | `packages/cache-manager/src/decorators.ts`, `packages/cache-manager/src/interceptor.ts` |
 | Memory store | `MemoryStore` keeps cache entries in-process, sweeps expirations lazily on access, and caps live entries at `1,000` by evicting the oldest keys. | `packages/cache-manager/src/stores/memory-store.ts` |
@@ -49,6 +49,19 @@ This document defines the current cache contract across `@fluojs/cache-manager`,
 | Full reset | `CacheService.reset()` increments an internal reset version, clears in-flight and pending load bookkeeping, clears in-flight invalidation markers, and resets the underlying store. | `packages/cache-manager/src/service.ts` |
 | Store teardown | During application shutdown, `CacheService` calls a custom store `close()` hook, or `dispose()` when `close()` is absent, so resource-owning stores can release sockets, pools, timers, or other external handles. Concurrent and repeated service or lifecycle close calls share the first teardown promise, including its failure, so teardown runs once behind one authoritative completion boundary. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/service.ts` |
 
+## Observation Rules
+
+| Rule | Current contract | Source anchor |
+| --- | --- | --- |
+| Opt-in seam | Cache operation observation is disabled unless `CacheModule.forRoot(...)` receives an `observer`. Without it, `CacheService` runs its original path with no observation work. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts`, `packages/cache-manager/src/service.ts` |
+| Privacy boundary | A `CacheObservation` carries only `operation`, `outcome`, and `durationMs`. Cache keys, cached values, loader results, and error objects are never passed to the observer. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/service.ts` |
+| Operation taxonomy | `operation` is one of `get`, `set`, `del`, `remember`, `reset`, or `close`. `remember` reports once per call; its internal read is not reported as a separate `get`. | `packages/cache-manager/src/service.ts` |
+| Outcome classification | `get` and `remember` report `hit` or `miss`. `set`, `del`, `reset`, and `close` report `success`. Any operation whose store call throws reports `error`. A `remember` call that joins an in-flight load reports `miss`. | `packages/cache-manager/src/service.ts` |
+| Timing | `durationMs` covers the full `CacheService` operation, including store-queue serialization, measured with `performance.now()` when the runtime provides it. | `packages/cache-manager/src/service.ts` |
+| Failure containment | Observer errors are swallowed. A thrown error or rejected promise never changes the cache result and never surfaces as an unhandled rejection; observer work is not awaited by the cache operation. | `packages/cache-manager/src/service.ts` |
+| HTTP fail-soft interaction | `CacheInterceptor` still swallows store failures, so cache errors cannot fail an otherwise successful handler. Those failures remain visible to operators as `error` observations. | `packages/cache-manager/src/interceptor.ts`, `packages/cache-manager/src/service.ts` |
+| Metrics independence | The observer is independent of `@fluojs/metrics`. Applications adapt observations to whichever metrics backend they already run. | `packages/cache-manager/README.md` |
+
 ## Constraints
 
 - The built-in memory store is process-local and not cluster-safe. Multi-instance deployments require the Redis store or another shared custom store.
@@ -56,4 +69,5 @@ This document defines the current cache contract across `@fluojs/cache-manager`,
 - Redis-backed values must be JSON-compatible because `RedisStore` persists entries with `JSON.stringify(...)` and reconstructs them with `JSON.parse(...)`.
 - Cache invalidation is key-based only. The built-in contract does not provide tag-based or wildcard invalidation at the interceptor layer.
 - Cache TTL enforcement in the memory store is lazy and access-driven, not timer-driven.
+- Cache observation is operation-level only. The contract does not expose per-key metrics, cardinality-bearing labels, or store-internal counters.
 - The cache package defines extensibility through the `CacheStore` interface. Custom stores must implement `get`, `set`, `del`, and `reset`; resource-owning stores should also implement optional `close()` or `dispose()` teardown.
