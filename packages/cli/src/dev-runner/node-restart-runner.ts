@@ -649,14 +649,12 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
           if (!stats.isDirectory()) {
             throw error;
           }
-          let fallbackWatcherAcquired = false;
           for (const directoryPath of getFallbackWatchDirectories(target, projectDirectory, ignorePatterns)) {
-            fallbackWatcherAcquired = watchFallbackDirectory(directoryPath) || fallbackWatcherAcquired;
-          }
-          if (!fallbackWatcherAcquired) {
-            const message = error instanceof Error ? error.message : String(error);
-            failFromWatcher(target, new Error(`${message}; no fallback watcher could be acquired`));
-            return;
+            if (!watchFallbackDirectory(directoryPath)) {
+              const message = error instanceof Error ? error.message : String(error);
+              failFromWatcher(target, new Error(`${message}; required fallback watcher could not be acquired`));
+              return;
+            }
           }
         }
       } catch (error: unknown) {

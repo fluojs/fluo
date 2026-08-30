@@ -258,4 +258,53 @@ describe('Node restart runner watcher failures', () => {
     expect(signals).toEqual(['SIGTERM']);
     expect(stderr.join('')).toContain(`[fluo] watcher failed for ${sourceDirectory}:`);
   });
+
+  it('stops the child when a required fallback source watcher cannot be acquired', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-watcher-'));
+    createdDirectories.push(workspaceDirectory);
+    const sourceDirectory = join(workspaceDirectory, 'src');
+    const nestedDirectory = join(sourceDirectory, 'features');
+    mkdirSync(nestedDirectory, { recursive: true });
+    writeFileSync(join(nestedDirectory, 'feature.ts'), 'export const feature = true;\n');
+    const fallbackWatchers = new Map<string, TestWatcher>();
+    const signals: Array<NodeJS.Signals | undefined> = [];
+    const signalTarget = createSignalTarget();
+    const stderr: string[] = [];
+    const children: ChildProcess[] = [];
+
+    const runPromise = runNodeRestartRunner({
+      env: {},
+      projectDirectory: workspaceDirectory,
+      signalTarget: signalTarget.target,
+      spawnChild: () => {
+        const child = createMockChild(signals);
+        children.push(child);
+        return child;
+      },
+      stderr: { write: (message) => stderr.push(message) },
+      watchTarget: (target, optionsOrListener) => {
+        if (typeof optionsOrListener !== 'function') {
+          throw new Error('recursive watch unavailable');
+        }
+        if (target === nestedDirectory) {
+          throw new Error('nested watcher unavailable');
+        }
+        const watcher = new TestWatcher();
+        fallbackWatchers.set(target, watcher);
+        return watcher;
+      },
+    });
+
+    const activeChild = children[0];
+    if (!activeChild) {
+      throw new Error('Expected the active app child');
+    }
+    closeMockChild(activeChild, 0);
+
+    await expect(runPromise).resolves.toBe(1);
+    expect([...fallbackWatchers.values()].every((watcher) => watcher.closed)).toBe(true);
+    expect(signalTarget.offCalls).toEqual(['SIGINT', 'SIGTERM']);
+    expect(signals).toEqual(['SIGTERM']);
+    expect(stderr.join('')).toContain(`[fluo] unable to watch ${nestedDirectory}: nested watcher unavailable`);
+  });
 });
