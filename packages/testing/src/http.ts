@@ -268,8 +268,13 @@ function buildFrameworkResponse(): { response: MutableFrameworkResponse; result:
       const responseHeaders = this.headers as Record<string, string | string[]>;
 
       if (lowerName === 'set-cookie') {
-        result.headers[name] = mergeHeaderValue(result.headers[name], value);
-        responseHeaders[name] = mergeHeaderValue(responseHeaders[name], value);
+        const existingHeaderName = Object.keys(result.headers).find(
+          (headerName) => headerName.toLowerCase() === lowerName,
+        );
+        const canonicalHeaderName = existingHeaderName ?? name;
+
+        result.headers[canonicalHeaderName] = mergeHeaderValue(result.headers[canonicalHeaderName], value);
+        responseHeaders[canonicalHeaderName] = mergeHeaderValue(responseHeaders[canonicalHeaderName], value);
         return;
       }
 
