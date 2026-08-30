@@ -212,7 +212,9 @@ function isSingletonLifecycleProvider(provider: NormalizedProvider): boolean {
     return false;
   }
 
-  return provider.type === 'class' || (provider.type === 'value' && hasAnyBootstrapLifecycleHook(provider.useValue));
+  return provider.type === 'class'
+    || provider.type === 'factory'
+    || (provider.type === 'value' && hasAnyBootstrapLifecycleHook(provider.useValue));
 }
 
 async function resolveLifecycleDependency(
