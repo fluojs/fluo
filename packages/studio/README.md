@@ -181,6 +181,5 @@ The MVP is local and runtime-connected. Future releases should consider, but do 
 
 ## Example Sources
 
-- [main.ts](./src/main.ts) - Test-compatible application entry point.
 - [main.tsx](./src/main.tsx) - React browser viewer entry point.
 - [contracts.ts](./src/contracts.ts) - Static and live Studio contract definitions.

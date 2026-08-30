@@ -181,6 +181,5 @@ MVP는 local runtime-connected devtool입니다. 향후 릴리스에서는 cloud
 
 ## 예제 소스
 
-- [main.ts](./src/main.ts) - 테스트 호환 애플리케이션 진입점
 - [main.tsx](./src/main.tsx) - React 브라우저 viewer 진입점
 - [contracts.ts](./src/contracts.ts) - static/live Studio 계약 정의
