@@ -1372,11 +1372,17 @@ export class Container {
           continue;
         }
 
-        // A failed stale hook stays in the retry ledger for a later explicit
-        // disposal, while its error is delivered to a resolver exactly once.
+        // A rejected materialization has no hook to retry. Deliver its error
+        // once, then release it from every observer's stale-task ledger.
         if (!task.errorConsumed) {
           task.errorConsumed = true;
           errors.push(task.error);
+        }
+
+        if (!task.retryInstance) {
+          for (const observer of task.observers) {
+            observer.staleDisposalTasks.delete(task);
+          }
         }
       }
     }
@@ -1434,19 +1440,26 @@ export class Container {
     };
 
     task.promise = (async () => {
-      let disposable: Disposable | undefined;
+      let instance: unknown;
 
       try {
-        const instance = await instancePromise;
-
-        if (this.isDisposable(instance)) {
-          disposable = instance;
-          await instance.onDestroy();
-        }
+        instance = await instancePromise;
       } catch (error) {
         task.error = error;
         task.failed = true;
-        task.retryInstance = disposable;
+        return;
+      }
+
+      if (!this.isDisposable(instance)) {
+        return;
+      }
+
+      try {
+        await instance.onDestroy();
+      } catch (error) {
+        task.error = error;
+        task.failed = true;
+        task.retryInstance = instance;
       }
     })().finally(() => {
       const retainedMaterializations = this.materializedCachePromises.filter((promise) => promise !== instancePromise);

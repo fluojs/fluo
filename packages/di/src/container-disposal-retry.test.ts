@@ -286,4 +286,49 @@ describe('Container disposal retry', () => {
     // Then
     expect(events).toEqual(['stale:1', 'stale:2', 'replacement']);
   });
+
+  it('releases a rejected stale materialization after delivering its error once', async () => {
+    // Given
+    const materializationFailure = new Error('stale materialization failed');
+    const token = Symbol('RejectedStaleMaterializationToken');
+    const replacement = { onDestroy: vi.fn() };
+    let reportFactoryStarted = (): void => undefined;
+    let rejectMaterialization = (_error: unknown): void => undefined;
+    const factoryStarted = new Promise<void>((resolve) => {
+      reportFactoryStarted = resolve;
+    });
+    const materialization = new Promise<never>((_resolve, reject) => {
+      rejectMaterialization = reject;
+    });
+    const container = new Container().register({
+      provide: token,
+      useFactory: async () => {
+        reportFactoryStarted();
+        return materialization;
+      },
+    });
+    const staleResolution = container.resolve(token);
+    await factoryStarted;
+
+    // When
+    container.override({ provide: token, useValue: replacement });
+    rejectMaterialization(materializationFailure);
+
+    // Then
+    await expect(staleResolution).rejects.toBe(materializationFailure);
+    await expect(container.resolve(token)).rejects.toBe(materializationFailure);
+    expect((container as unknown as { staleDisposalTasks: ReadonlySet<unknown> }).staleDisposalTasks.size).toBe(0);
+
+    // When
+    const resolvedReplacement = await container.resolve(token);
+
+    // Then
+    expect(resolvedReplacement).toBe(replacement);
+
+    // When
+    await container.dispose();
+
+    // Then
+    expect(replacement.onDestroy).toHaveBeenCalledOnce();
+  });
 });
