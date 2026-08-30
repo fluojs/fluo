@@ -15,6 +15,7 @@ General-purpose cache manager for fluo with pluggable memory, Redis, and custom 
   - [Redis Storage](#redis-storage)
   - [Query-Sensitive Caching](#query-sensitive-caching)
   - [Cache Ownership and Reset Scope](#cache-ownership-and-reset-scope)
+  - [Async Configuration](#async-configuration)
   - [Manual Module Composition](#manual-module-composition)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
@@ -220,6 +221,46 @@ When the application closes, `CacheService` stops new store reads/writes, waits 
 
 Custom stores can be passed directly through `store` when they implement the `CacheStore` contract. This is the right option for in-process LRU stores, remote caches other than Redis, or test doubles that need to observe cache operations.
 
+### Async Configuration
+
+Use `CacheModule.forRootAsync(...)` when the final store, TTL, `keyPrefix`, or key strategy must come from DI or asynchronous bootstrap work. List the dependency tokens in `inject`, return ordinary `CacheModuleOptions` from `useFactory`, and the module normalizes that result with the same defaults as `CacheModule.forRoot(...)`.
+
+```typescript
+import { Module } from '@fluojs/core';
+import { CacheModule } from '@fluojs/cache-manager';
+
+import { CacheSettingsService } from './cache-settings.service';
+
+@Module({
+  imports: [
+    CacheModule.forRootAsync({
+      inject: [CacheSettingsService],
+      useFactory: async (settings: CacheSettingsService) => ({
+        store: 'redis',
+        ttl: await settings.resolveTtlSeconds(),
+        keyPrefix: settings.keyPrefix,
+        redis: { clientName: 'cache' },
+      }),
+    }),
+  ],
+})
+class AppModule {}
+```
+
+Injected tokens must be visible to the container that instantiates the cache module. Provide them as bootstrap runtime providers or export them from a globally visible imported module before the cache options provider resolves. A provider local only to the importing parent module, or an ordinary sibling/parent export, is not visible to the async cache module. The factory runs once per registration when cache providers are first resolved, and a rejected factory fails bootstrap instead of registering a partially configured cache.
+
+Module visibility stays on the registration call: pass `global: true` to `CacheModule.forRootAsync({ global: true, ... })`. `useFactory` is typed to return `CacheModuleOptions` without `global`; any extra runtime `global` property is ignored because module metadata is fixed before the factory runs.
+
+```typescript
+CacheModule.forRootAsync({
+  global: true,
+  inject: [CacheSettingsService],
+  useFactory: (settings: CacheSettingsService) => ({ store: settings.store }),
+})
+```
+
+The async path supports the same store selection as `forRoot(...)`: `'memory'`, `'redis'` with a DI-resolved or directly supplied client, and any custom `CacheStore` instance.
+
 ### Manual Module Composition
 
 Use `CacheModule.forRoot(...)` for normal application setup, including custom `defineModule(...)` composition.
@@ -270,9 +311,11 @@ On that supported HTTP path, eviction is deferred until a framework response wri
 ### Modules
 - `CacheModule.forRoot(options)`: Configures the cache store (memory/redis/custom), default TTL, key strategies, `global`, `principalScopeResolver`, the Redis namespace `keyPrefix`, and Redis options such as `redis.scanCount`.
   This is the primary package entrypoint for application modules.
+- `CacheModule.forRootAsync({ inject, useFactory, global? })`: Resolves the same options through an injected factory for applications that build cache configuration from DI or asynchronous bootstrap work. `global` belongs to this registration call, and a rejected factory fails bootstrap.
 
 ### Public types
 - `CacheModuleOptions`: Application-facing configuration accepted by `CacheModule.forRoot(...)`.
+- `CacheAsyncModuleOptions`: Injected-factory configuration accepted by `CacheModule.forRootAsync(...)`. `useFactory` returns `CacheModuleOptions` without `global`.
 - `NormalizedCacheModuleOptions`: Compatibility-only type export matching the normalized configuration shape after defaults are applied. Prefer `CacheModuleOptions` for application code; this type remains public so consumers that referenced the previously shipped declaration surface can keep compiling.
 
 ### Services

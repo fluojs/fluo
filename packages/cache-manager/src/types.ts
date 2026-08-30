@@ -1,3 +1,4 @@
+import type { AsyncModuleOptions } from '@fluojs/core';
 import type { InterceptorContext } from '@fluojs/http';
 
 type Awaitable<T> = T | Promise<T>;
@@ -78,6 +79,17 @@ export interface NormalizedCacheModuleOptions {
   httpKeyStrategy: CacheKeyStrategy;
   principalScopeResolver: PrincipalScopeResolver | undefined;
 }
+
+/**
+ * Public configuration options for `CacheModule.forRootAsync(...)`.
+ *
+ * @remarks
+ * `global` stays on the registration call because module visibility is decided when the
+ * module is defined, before the injected factory runs. A `global` value returned by
+ * `useFactory` is excluded by the public type and ignored if supplied as an extra runtime property.
+ */
+export type CacheAsyncModuleOptions = AsyncModuleOptions<Omit<CacheModuleOptions, 'global'>> &
+  Pick<CacheModuleOptions, 'global'>;
 
 /**
  * Computes a cache key from the active interceptor context.
