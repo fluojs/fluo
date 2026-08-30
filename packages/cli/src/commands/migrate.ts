@@ -2,14 +2,15 @@ import { resolve } from 'node:path';
 
 import { renderAliasList, renderHelpTable } from '../help.js';
 import {
-  MIGRATION_TRANSFORMS,
   getWarningCategoryLabel,
   groupWarningsByCategory,
+  MIGRATION_TRANSFORMS,
   type MigrationReport,
+  type MigrationTransformKind,
   renderTransformList,
   runNestJsMigration,
-  type MigrationTransformKind,
 } from '../transforms/nestjs-migrate.js';
+import { parseMigrationTransformList } from './migration-transform-tokens.js';
 
 type CliStream = {
   write(message: string): unknown;
@@ -72,24 +73,6 @@ function isHelpFlag(value: string | undefined): boolean {
   return value === '--help' || value === '-h';
 }
 
-function parseTransformList(rawValue: string, optionName: '--only' | '--skip'): MigrationTransformKind[] {
-  const values = rawValue
-    .split(',')
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0);
-
-  if (values.length === 0) {
-    throw new Error(`${optionName} requires a non-empty comma-separated transform list.`);
-  }
-
-  const invalid = values.filter((value) => !MIGRATION_TRANSFORMS.includes(value as MigrationTransformKind));
-  if (invalid.length > 0) {
-    throw new Error(`Unknown transform(s): ${invalid.join(', ')}. Available transforms: ${MIGRATION_TRANSFORMS.join(', ')}.`);
-  }
-
-  return values as MigrationTransformKind[];
-}
-
 function parseArgs(argv: string[]): ParsedMigrateArgs {
   let pathArgument: string | undefined;
   let apply = false;
@@ -120,7 +103,7 @@ function parseArgs(argv: string[]): ParsedMigrateArgs {
         throw new Error(`Expected ${arg} to have a comma-separated value.`);
       }
 
-      const parsed = parseTransformList(rawValue, arg);
+      const parsed = parseMigrationTransformList(rawValue, arg);
       if (arg === '--only') {
         if (onlyTransforms) {
           throw new Error('Duplicate --only option.');

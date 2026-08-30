@@ -6,7 +6,7 @@ import ts from 'typescript';
 /**
  * Provides the migration transforms value.
  */
-export const MIGRATION_TRANSFORMS = ['imports', 'injectable', 'scope', 'bootstrap', 'testing', 'tsconfig'] as const;
+export const MIGRATION_TRANSFORMS = ['imports', 'inject-params', 'scope', 'bootstrap', 'tests', 'tsconfig'] as const;
 
 /**
  * Defines the migration transform kind type.
@@ -150,10 +150,10 @@ const REQUEST_DTO_DECORATORS = new Set(['Body', 'Param', 'Query']);
 
 const TRANSFORM_KIND_LABEL: Record<MigrationTransformKind, string> = {
   bootstrap: 'bootstrap rewrite',
+  'inject-params': '@Injectable removal',
   imports: 'import rewriting',
-  injectable: '@Injectable removal',
   scope: 'scope mapping',
-  testing: 'testing rewrite',
+  tests: 'testing rewrite',
   tsconfig: 'tsconfig rewrite',
 };
 
@@ -1168,17 +1168,17 @@ function runTypeScriptTransforms(
     }
   }
 
-  if (enabledTransforms.has('injectable') || enabledTransforms.has('scope')) {
+  if (enabledTransforms.has('inject-params') || enabledTransforms.has('scope')) {
     const rewritten = rewriteInjectableAndScope(nextSource, filePath, {
-      removeInjectable: enabledTransforms.has('injectable'),
+      removeInjectable: enabledTransforms.has('inject-params'),
       rewriteScope: enabledTransforms.has('scope'),
     });
     nextSource = rewritten.source;
     warnings.push(...rewritten.warnings);
 
     if (rewritten.changed) {
-      if (enabledTransforms.has('injectable')) {
-        appliedTransforms.push('injectable');
+      if (enabledTransforms.has('inject-params')) {
+        appliedTransforms.push('inject-params');
       }
 
       if (enabledTransforms.has('scope')) {
@@ -1197,13 +1197,13 @@ function runTypeScriptTransforms(
     }
   }
 
-  if (enabledTransforms.has('testing')) {
+  if (enabledTransforms.has('tests')) {
     const rewritten = rewriteTesting(nextSource, filePath);
     nextSource = rewritten.source;
     warnings.push(...rewritten.warnings);
 
     if (rewritten.changed) {
-      appliedTransforms.push('testing');
+      appliedTransforms.push('tests');
     }
   }
 
