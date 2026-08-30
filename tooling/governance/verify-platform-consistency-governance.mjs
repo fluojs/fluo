@@ -76,6 +76,41 @@ export function enforceSocketIoNodeEngineAlignment(readText = read) {
   }
 }
 
+export function enforcePlatformFastifyEngineDocumentation(readText = read) {
+  const manifest = JSON.parse(readText('packages/platform-fastify/package.json'));
+  const engineRange = manifest.engines?.node;
+
+  assert(
+    typeof engineRange === 'string' && engineRange.length > 0,
+    '@fluojs/platform-fastify must declare engines.node.',
+  );
+
+  for (const relativePath of [
+    'apps/docs/content/docs/guides/runtime-adapters.mdx',
+    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+  ]) {
+    const content = readText(relativePath);
+    const fastifyHeadingMatches = [...content.matchAll(/^## Fastify\s*$/gmu)];
+
+    assert(
+      fastifyHeadingMatches.length === 1,
+      `${relativePath} must include exactly one ## Fastify heading; found ${fastifyHeadingMatches.length}.`,
+    );
+
+    const fastifySectionStart = fastifyHeadingMatches[0].index;
+    const nextSectionStart = content.indexOf('\n## ', fastifySectionStart + 1);
+    const fastifySection = content.slice(
+      fastifySectionStart,
+      nextSectionStart === -1 ? undefined : nextSectionStart,
+    );
+
+    assert(
+      fastifySection.includes(`\`${engineRange}\``),
+      `${relativePath} Fastify section must state @fluojs/platform-fastify engines.node ${engineRange}.`,
+    );
+  }
+}
+
 export function isSupportedNodeListenerVersion(version) {
   const match = /^(\d+)\.(\d+)\.(\d+)$/u.exec(version);
   if (match === null) {
@@ -2763,6 +2798,7 @@ export function main() {
   enforceReleaseGovernancePublishSurfaceSync();
   enforceCanonicalPackageSurfaceSync();
   enforceSocketIoNodeEngineAlignment();
+  enforcePlatformFastifyEngineDocumentation();
   enforceDocsHubOfficialTransportLinks();
   enforceDenoHostOwnedLifecycleContract();
   enforceDenoPermissionGuidance();
