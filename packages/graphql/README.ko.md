@@ -290,7 +290,7 @@ GraphqlModule.forRoot({
 - `Arg`: Input DTO 필드를 GraphQL 인자로 매핑하는 데코레이터.
 - `createDataLoader`, `createDataLoaderMap`, `getRequestScopedDataLoader`, `createRequestScopedDataLoaderFactory`, `DataLoader`: DataLoader factory helper와 type.
 - `listOf`, `isGraphqlListTypeRef`: list output type reference helper.
-- `GraphQLContext` 및 export되는 option/metadata type: GraphQL 실행과 module 설정을 위한 타입 정의.
+- `GraphQLContext` 및 export되는 option/metadata type: `subscriptions.websocket.limits`에 사용하는 `GraphqlWebSocketLimitsOptions`를 포함한 GraphQL 실행과 module 설정을 위한 타입 정의.
 
 지원되는 module option에는 `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `subscriptions.websocket.connectionInitWaitTimeoutMs`, `subscriptions.websocket.keepAliveMs`가 포함됩니다.
 

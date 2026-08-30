@@ -290,7 +290,7 @@ GraphqlModule.forRoot({
 - `Arg`: Input DTO field-to-GraphQL-argument mapping decorator.
 - `createDataLoader`, `createDataLoaderMap`, `getRequestScopedDataLoader`, `createRequestScopedDataLoaderFactory`, `DataLoader`: DataLoader factory helpers and types.
 - `listOf`, `isGraphqlListTypeRef`: Helpers for list output type references.
-- `GraphQLContext` and exported option/metadata types: Type definitions for GraphQL execution and module configuration.
+- `GraphQLContext` and exported option/metadata types: Type definitions for GraphQL execution and module configuration, including `GraphqlWebSocketLimitsOptions` for `subscriptions.websocket.limits`.
 
 Supported module options include `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `subscriptions.websocket.connectionInitWaitTimeoutMs`, and `subscriptions.websocket.keepAliveMs`.
 
