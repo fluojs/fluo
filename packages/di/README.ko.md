@@ -100,7 +100,7 @@ direct `child.dispose()`는 이제 실패한 attempt를 포함해 attempt가 set
 
 ### provider override
 
-테스트나 request-local 경계에서 기존 등록을 의도적으로 교체해야 할 때는 `override(...providers)`를 사용합니다. override는 각 토큰의 현재 provider set을 교체하고 현재 컨테이너와 이미 materialize된 request-scope 자식의 cached instance를 무효화하며, 다음 replacement resolution이 계속되기 전에 오래된 instance의 dispose가 끝나도록 보장합니다. multi provider override는 해당 토큰의 전체 multi-provider set을 교체하므로 필요한 replacement provider를 한 번에 모두 전달하세요. 같은 토큰에 single replacement와 multi replacement를 한 override 호출에서 섞으면 모호한 교체로 보고 거부합니다.
+테스트나 request-local 경계에서 기존 등록을 의도적으로 교체해야 할 때는 `override(...providers)`를 사용합니다. override는 각 토큰의 현재 provider set을 교체하고 현재 컨테이너와 이미 materialize된 request-scope 자식의 cached instance를 무효화하며, 다음 replacement resolution이 계속되기 전에 오래된 instance의 dispose가 끝나도록 보장합니다. multi provider override는 해당 토큰의 전체 multi-provider set을 교체하므로 필요한 replacement provider를 한 번에 모두 전달하세요. 같은 토큰에 single replacement와 multi replacement를 한 override 호출에서 섞으면 모호한 교체로 보고 거부합니다. override 호출은 원자적입니다. 배치 전체를 검증한 뒤에야 등록과 캐시를 변경하므로, 거부된 호출은 모든 provider와 cached instance, disposal 소유권을 호출 이전 상태 그대로 남깁니다.
 
 ### request scope 분리
 
@@ -201,7 +201,7 @@ it('uses a mock database', async () => {
 |---|---|---|
 | `Container` | Root export | 메인 DI 컨테이너 클래스입니다. |
 | `container.register(...providers)` | `Container` instance method | 하나 이상의 프로바이더를 등록합니다. |
-| `container.override(...providers)` | `Container` instance method | 기존 provider를 교체하고 cached instance를 무효화하며 다음 replacement resolution이 계속되기 전에 오래된 instance dispose가 settle되도록 보장합니다. |
+| `container.override(...providers)` | `Container` instance method | 호출 단위로 원자적으로 기존 provider를 교체하고 cached instance를 무효화하며 다음 replacement resolution이 계속되기 전에 오래된 instance dispose가 settle되도록 보장합니다. |
 | `container.resolve<T>(token)` | `Container` instance method | 토큰을 인스턴스로 비동기 해석합니다. |
 | `container.inspectResolutionState()` | `Container` instance method | snapshot read-only map view, frozen provider record, controlled cache adoption을 통해 cache ownership을 보존해야 하는 testing/tooling helper를 위한 지원 대상 framework-owned container introspection seam을 노출합니다. 애플리케이션 코드는 `has(...)`와 `resolve(...)`를 우선 사용하세요. |
 | `container.createRequestScope()` | `Container` instance method | 요청 스코프 의존성을 위한 자식 컨테이너를 생성합니다. |

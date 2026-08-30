@@ -379,11 +379,16 @@ export class Container {
    * set — the whole set is replaced. If you need to preserve other entries, re-register them
    * together with the replacement in one `override()` call.
    *
+   * **Batch atomicity**: the whole batch is validated before any registration or cache is touched,
+   * so a rejected `override()` call leaves every provider, cached instance, and disposal ownership
+   * exactly as it was before the call.
+   *
    * @param providers Provider definitions that should replace existing registrations for each token.
    * @returns The same container instance for fluent override chains.
    * @throws {ContainerResolutionError} When called after the container was disposed.
    * @throws {ScopeMismatchError} When a request-scope override would introduce a new singleton token.
    * @throws {InvalidProviderError} When a provider definition is structurally invalid.
+   * @throws {DuplicateProviderError} When one token mixes single and multi replacements or repeats a single replacement.
    */
   override(...providers: Provider[]): this {
     if (this.isDisposedInHierarchy()) {
@@ -424,6 +429,8 @@ export class Container {
       }
     }
 
+    const plannedOverrides = new Map<Token, { containsMultiProvider: boolean; firstProvider: NormalizedProvider; normalizedProviders: NormalizedProvider[] }>();
+
     for (const [token, normalizedProviders] of normalizedByToken) {
       const firstProvider = normalizedProviders[0];
 
@@ -441,6 +448,10 @@ export class Container {
         throw new DuplicateProviderError(token);
       }
 
+      plannedOverrides.set(token, { containsMultiProvider, firstProvider, normalizedProviders });
+    }
+
+    for (const [token, { containsMultiProvider, firstProvider, normalizedProviders }] of plannedOverrides) {
       this.invalidateAffectedCachedEntriesInHierarchy(token);
       this.registrations.delete(token);
       this.multiRegistrations.delete(token);
