@@ -218,6 +218,7 @@ Lazy loading은 import-time 안전성 속성일 뿐입니다. 서명이나 검�
 
 ### Deprecated compatibility helper
 - `normalizeRefreshTokenOptions(...)`: 기존 caller의 root import 호환성만을 위해 유지됩니다. package normalization 내부 helper를 직접 호출하기보다 `JwtModule.forRoot(...)` / `JwtModule.forRootAsync(...)`와 `RefreshTokenService`를 사용하세요.
+- `createJwtCoreProviders(...)`: 기존 direct module composition caller의 root import 호환성만을 위해 유지됩니다. registration이 published module surface와 정렬되도록 `JwtModule.forRoot(...)` / `JwtModule.forRootAsync(...)`를 사용하세요.
 
 ## 관련 패키지
 

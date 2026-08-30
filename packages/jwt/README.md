@@ -218,6 +218,7 @@ Lazy loading is an import-time safety property only. It does **not** make signin
 
 ### Deprecated compatibility helpers
 - `normalizeRefreshTokenOptions(...)`: Retained only for root-import compatibility with existing callers. Prefer `JwtModule.forRoot(...)` / `JwtModule.forRootAsync(...)` plus `RefreshTokenService` instead of calling package normalization internals.
+- `createJwtCoreProviders(...)`: Retained only for root-import compatibility with existing direct module composition callers. Prefer `JwtModule.forRoot(...)` / `JwtModule.forRootAsync(...)` so registration stays aligned with the published module surface.
 
 ## Related Packages
 
