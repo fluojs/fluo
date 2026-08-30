@@ -67,6 +67,15 @@ const DEFAULT_GRAPHQL_WEBSOCKET_LIMITS: GraphqlWebSocketLimits = {
   maxPayloadBytes: 64 * 1024,
 };
 
+function collectCleanupError(errors: unknown[], error: unknown): void {
+  if (error instanceof AggregateError) {
+    errors.push(...error.errors);
+    return;
+  }
+
+  errors.push(error);
+}
+
 function buildFrameworkRequestFromFetchRequest(request: Request): FrameworkRequest {
   const requestUrl = new URL(request.url);
 
@@ -295,7 +304,7 @@ async function loadGraphqlDeps(): Promise<GraphqlDeps> {
 export class GraphqlLifecycleService implements Middleware, OnApplicationBootstrap, OnApplicationShutdown {
   private allowedCrossRealmGraphqlObjects: WeakSet<object> | undefined;
   private graphQLErrorConstructor: typeof GraphQLErrorType | undefined;
-  private readonly operationContainers = new WeakMap<Request, Container>();
+  private readonly operationContainers = new Map<Request, Container>();
   private readonly requestContexts = new WeakMap<Request, GraphqlRequestContext>();
   private readonly websocketOperationContainers = new Map<object, Map<string, Container>>();
   private websocketTransport: GraphqlNodeWebSocketTransport | undefined;
@@ -405,7 +414,23 @@ export class GraphqlLifecycleService implements Middleware, OnApplicationBootstr
   }
 
   private async resetGraphqlRuntimeState(): Promise<void> {
-    await this.unregisterWebSocketTransport();
+    const cleanupErrors: unknown[] = [];
+
+    try {
+      await this.unregisterWebSocketTransport();
+    } catch (error) {
+      collectCleanupError(cleanupErrors, error);
+    }
+
+    try {
+      await this.disposeAllOperationContainers();
+    } catch (error) {
+      collectCleanupError(cleanupErrors, error);
+    }
+
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(cleanupErrors, 'Failed to clean up GraphQL runtime resources.');
+    }
     this.executeGraphqlOperation = undefined;
     this.graphQLErrorConstructor = undefined;
     this.releaseGraphqlInstanceOfPatch?.();
@@ -499,7 +524,9 @@ export class GraphqlLifecycleService implements Middleware, OnApplicationBootstr
       },
       keepAliveMs: this.options.subscriptions?.websocket?.keepAliveMs,
       limits: this.resolveWebSocketLimits(),
-      onComplete: (socketKey, operationId) => this.disposeWebSocketOperationContainer(socketKey, operationId),
+      onComplete: async (socketKey, operationId) => {
+        await this.disposeWebSocketOperationContainer(socketKey, operationId);
+      },
       onDisconnect: (socketKey) => this.disposeAllWebSocketOperationContainers(socketKey),
       onSubscribe: (request) => this.handleWebSocketSubscribe(request),
       subscribe: (args: ExecutionArgs) => {
@@ -513,18 +540,30 @@ export class GraphqlLifecycleService implements Middleware, OnApplicationBootstr
   }
 
   private async unregisterWebSocketTransport(): Promise<void> {
+    const cleanupErrors: unknown[] = [];
     if (this.websocketTransport) {
       try {
         await this.websocketTransport.dispose();
       } catch (error) {
         this.logger.error('Failed to dispose GraphQL websocket transport.', error, 'GraphqlLifecycleService');
+        collectCleanupError(cleanupErrors, error);
+      }
+
+      if (cleanupErrors.length === 0) {
+        this.websocketTransport = undefined;
       }
     }
 
-    this.websocketTransport = undefined;
+    for (const socketKey of [...this.websocketOperationContainers.keys()]) {
+      try {
+        await this.disposeAllWebSocketOperationContainers(socketKey);
+      } catch (error) {
+        collectCleanupError(cleanupErrors, error);
+      }
+    }
 
-    for (const socketKey of this.websocketOperationContainers.keys()) {
-      await this.disposeAllWebSocketOperationContainers(socketKey);
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(cleanupErrors, 'Failed to dispose GraphQL websocket resources.');
     }
   }
 
@@ -547,17 +586,17 @@ export class GraphqlLifecycleService implements Middleware, OnApplicationBootstr
 
     const fetchRequest = toFetchRequest(request.request);
     const operationContainer = this.getOrCreateWebSocketOperationContainer(request.socket, request.operationId);
-    const graphqlContext = this.buildGraphqlContext(
-      fetchRequest,
-      {
-        connectionParams: request.connectionParams,
-        request: request.request,
-        socket: request.socket,
-      },
-      operationContainer,
-    );
 
     try {
+      const graphqlContext = this.buildGraphqlContext(
+        fetchRequest,
+        {
+          connectionParams: request.connectionParams,
+          request: request.request,
+          socket: request.socket,
+        },
+        operationContainer,
+      );
       const { contextFactory, parse, schema, validate } = yoga.getEnveloped({
         request: fetchRequest,
         [GRAPHQL_CONTEXT_OVERRIDE]: graphqlContext,
@@ -621,7 +660,7 @@ export class GraphqlLifecycleService implements Middleware, OnApplicationBootstr
     return created;
   }
 
-  private async disposeWebSocketOperationContainer(socketKey: object, operationId: string): Promise<void> {
+  private async disposeWebSocketOperationContainer(socketKey: object, operationId: string): Promise<unknown> {
     const socketContainers = this.websocketOperationContainers.get(socketKey);
     const operationContainer = socketContainers?.get(operationId);
 
@@ -629,16 +668,17 @@ export class GraphqlLifecycleService implements Middleware, OnApplicationBootstr
       return;
     }
 
-    socketContainers?.delete(operationId);
-
-    if (socketContainers && socketContainers.size === 0) {
-      this.websocketOperationContainers.delete(socketKey);
-    }
-
     try {
       await operationContainer.dispose();
     } catch (error) {
       this.logger.error('Failed to dispose GraphQL websocket operation container.', error, 'GraphqlLifecycleService');
+      return error;
+    }
+
+    socketContainers?.delete(operationId);
+
+    if (socketContainers && socketContainers.size === 0) {
+      this.websocketOperationContainers.delete(socketKey);
     }
   }
 
@@ -649,14 +689,18 @@ export class GraphqlLifecycleService implements Middleware, OnApplicationBootstr
       return;
     }
 
-    this.websocketOperationContainers.delete(socketKey);
+    const cleanupErrors: unknown[] = [];
 
-    for (const operationContainer of socketContainers.values()) {
-      try {
-        await operationContainer.dispose();
-      } catch (error) {
-        this.logger.error('Failed to dispose GraphQL websocket operation container.', error, 'GraphqlLifecycleService');
+    for (const operationId of [...socketContainers.keys()]) {
+      const cleanupError = await this.disposeWebSocketOperationContainer(socketKey, operationId);
+
+      if (cleanupError !== undefined) {
+        collectCleanupError(cleanupErrors, cleanupError);
       }
+    }
+
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(cleanupErrors, 'Failed to dispose GraphQL websocket operation containers.');
     }
   }
 
@@ -672,19 +716,36 @@ export class GraphqlLifecycleService implements Middleware, OnApplicationBootstr
     return created;
   }
 
-  private async disposeOperationContainer(request: Request): Promise<void> {
+  private async disposeOperationContainer(request: Request): Promise<unknown> {
     const operationContainer = this.operationContainers.get(request);
 
     if (!operationContainer) {
       return;
     }
 
-    this.operationContainers.delete(request);
-
     try {
       await operationContainer.dispose();
     } catch (error) {
       this.logger.error('Failed to dispose GraphQL operation container.', error, 'GraphqlLifecycleService');
+      return error;
+    }
+
+    this.operationContainers.delete(request);
+  }
+
+  private async disposeAllOperationContainers(): Promise<void> {
+    const cleanupErrors: unknown[] = [];
+
+    for (const request of [...this.operationContainers.keys()]) {
+      const cleanupError = await this.disposeOperationContainer(request);
+
+      if (cleanupError !== undefined) {
+        collectCleanupError(cleanupErrors, cleanupError);
+      }
+    }
+
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(cleanupErrors, 'Failed to dispose GraphQL operation containers.');
     }
   }
 }

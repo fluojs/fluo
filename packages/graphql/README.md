@@ -205,6 +205,7 @@ class UserResolver {
 - Object field resolvers use the same provider scope and operation container as root resolvers; `@Parent()` and `@Context()` only control positional method arguments.
 - GraphQL-operation-scoped DataLoader helpers use the same `GraphQLContext` operation boundary, so loader caches are shared only within one GraphQL operation.
 - Application shutdown unregisters the websocket transport, closes live websocket clients, and disposes any still-active websocket operation containers through the same request-scoped provider teardown path used when an operation completes normally.
+- Failed HTTP operation-container, websocket operation-container, or websocket transport teardown retains its owner for a later `Application.close()` retry. Shutdown reports every remaining cleanup failure together and never repeats cleanup that already succeeded.
 
 ```typescript
 import { Inject, Scope } from '@fluojs/core';
