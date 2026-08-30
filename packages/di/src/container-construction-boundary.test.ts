@@ -40,6 +40,19 @@ describe('Container construction boundary', () => {
     expect(construct).toThrow(ContainerResolutionError);
   });
 
+  it('keeps the child-scope factory inaccessible to external runtime callers', () => {
+    // Given
+    const root = new Container();
+
+    // When
+    const childScopeFactory = Reflect.get(Container, 'createChildScope');
+    const construct = (): object => Reflect.construct(Container, [root, true, new Map()]);
+
+    // Then
+    expect(childScopeFactory).toBeUndefined();
+    expect(construct).toThrow(ContainerResolutionError);
+  });
+
   it('keeps createRequestScope() as the supported child-scope path', async () => {
     // Given
     const singletonToken = Symbol('shared-singleton');

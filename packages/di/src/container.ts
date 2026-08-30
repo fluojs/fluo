@@ -345,7 +345,7 @@ export class Container {
     this.singletonCache = childScope?.singletonCache ?? new Map<Token, Promise<unknown>>();
   }
 
-  private static createChildScope(construction: ChildScopeConstruction): Container {
+  static #createChildScope(construction: ChildScopeConstruction): Container {
     const parentConstruction = Container.#childScopeConstruction;
     Container.#childScopeConstruction = construction;
 
@@ -614,7 +614,7 @@ export class Container {
       );
     }
 
-    return Container.createChildScope({
+    return Container.#createChildScope({
       parent: this,
       requestScopeEnabled: true,
       singletonCache: this.root().singletonCache,
