@@ -108,6 +108,14 @@ export class MyGateway {
 export class RealtimeModule {}
 ```
 
+#### Deno websocket 수신 payload
+
+`DenoWebSocketMessage`는 Deno binding이 전달할 수 있는 모든 payload form,
+`ArrayBuffer | ArrayBufferView | Blob | string`을 나타냅니다. 기존에 이 public
+union을 `Blob | string`으로 exhaustive narrowing한 handler는 `ArrayBuffer`와
+`ArrayBufferView` branch를 추가해야 합니다. `@fluojs/websockets/deno` binding은
+이미 gateway handler를 dispatch하기 전에 이 binary payload를 수용하고 normalize합니다.
+
 ## HTTPS와 런타임 이식성
 
 `https` 옵션으로 Deno TLS 인증서 자료를 전달하면 `Deno.serve`를 HTTPS 모드로 시작할 수 있습니다. 어댑터는 `https.cert`와 `https.key`를 Deno의 `cert` 및 `key`로 전달하며, 시작 로그도 `https://` listen URL을 보고하므로 Deno 패키지가 공유 HTTP 어댑터 이식성 계약과 정렬됩니다.
@@ -147,6 +155,7 @@ Advanced option에는 test 또는 non-hosted runtime을 위한 injectable `serve
 - `getRealtimeCapability()`: runtime integration을 위한 fetch-style Deno websocket upgrade capability를 보고합니다.
 - `getServer()`: adapter가 listen 중일 때 active `Deno.serve` controller를 반환합니다.
 - `configureWebSocketBinding(...)`: `listen(dispatcher)`가 server를 시작하기 전에 `@fluojs/websockets/deno` binding을 설치합니다.
+- `DenoWebSocketMessage`: 전체 수신 websocket payload union인 `ArrayBuffer | ArrayBufferView | Blob | string`입니다.
 - `https: { cert, key }`: `Deno.serve`로 전달되고 보고되는 listen URL에 반영되는 HTTPS 시작 옵션입니다.
 - Option 및 seam type: `CreateDenoFetchHandlerOptions`, `DenoServeOptions`, `DenoServeController`, `DenoServerWebSocket`, websocket binding interface, bootstrap/run option, listen-target helper.
 
