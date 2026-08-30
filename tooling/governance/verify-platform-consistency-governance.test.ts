@@ -18,6 +18,7 @@ import {
   enforceCloudflareWorkersLifecycleDocsSync,
   enforceExpressRuntimeMigrationDocsSync,
   enforceGraphqlRuntimeBoundaryDiscoverability,
+  enforceHttpAdapterPortabilityDocumentationContract,
   enforceHttpCustomMethodContract,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
@@ -236,6 +237,25 @@ describe('enforceHttpCustomMethodContract', () => {
     for (const version of ['20.19.2', '21.7.3', '22.0.0', '22.1.0', '27.0.0']) {
       expect(isSupportedNodeListenerVersion(version)).toBe(false);
     }
+  });
+});
+
+describe('enforceHttpAdapterPortabilityDocumentationContract', () => {
+  it('keeps the complete HTTP portability suite and companion contract discoverable', () => {
+    expect(() => enforceHttpAdapterPortabilityDocumentationContract()).not.toThrow();
+  });
+
+  it('rejects a discoverability document missing a required suite identifier', () => {
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'docs/CONTEXT.md'
+        ? content.replace('assertReportsHttpsStartupUrl(...)', '')
+        : content;
+    };
+
+    expect(() => enforceHttpAdapterPortabilityDocumentationContract(readText)).toThrow(
+      /docs\/CONTEXT\.md must keep assertReportsHttpsStartupUrl discoverable/u,
+    );
   });
 });
 

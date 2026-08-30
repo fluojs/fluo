@@ -44,6 +44,9 @@ export function enforceReactServerFunctionContract(): void;
 export function enforceHttpRuntimeCancellationAndContextIsolation(): void;
 export function enforceHttpCatchAllRouteGrammarDecision(): void;
 export function enforceHttpCustomMethodContract(): void;
+export function enforceHttpAdapterPortabilityDocumentationContract(
+  readText?: (relativePath: string) => string,
+): void;
 export function isSupportedNodeListenerVersion(version: string): boolean;
 export function enforceCloudflareWorkersLifecycleDocsSync(
   readText?: (relativePath: string) => string,
