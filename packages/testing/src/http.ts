@@ -22,6 +22,7 @@ export interface TestRequest {
   body?: unknown;
   headers?: Record<string, string>;
   query?: Record<string, string | string[]>;
+  cookies?: FrameworkRequest['cookies'];
   principal?: TestPrincipal;
 }
 
@@ -141,6 +142,7 @@ export function createRequestBuilder(dispatcher: Dispatcher, request: TestReques
     body: request.body,
     headers: request.headers ? { ...request.headers } : undefined,
     query: request.query ? { ...request.query } : undefined,
+    cookies: request.cookies ? { ...request.cookies } : undefined,
     principal: request.principal,
   };
 
@@ -225,7 +227,7 @@ function buildFrameworkRequest(req: TestRequestWithOptions): FrameworkTestReques
     url: req.path + queryString,
     headers: req.headers ?? {},
     query: req.query ?? {},
-    cookies: {},
+    cookies: req.cookies ?? {},
     params: {},
     body: req.body,
     raw: req,

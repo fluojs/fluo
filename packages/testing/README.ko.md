@@ -121,6 +121,17 @@ try {
 
 `app.request(...).send()`는 수동 `FrameworkRequest`/`FrameworkResponse` stub 없이 HTTP 의미에 가까운 테스트를 작성하게 해 주고 runtime dispatch와 같은 isolated request-scoped DI boundary를 생성하므로 애플리케이션 개발자의 기본 경로입니다. Assertion 실패가 runtime resource 누수로 이어지지 않도록 반환된 app은 `finally` 블록에서 닫으세요. `app.dispatch(...)`, `makeRequest(...)`, raw `FluoFactory.create(...)` 테스트는 adapter/runtime contract, framework internal, 또는 low-level dispatch boundary 자체를 증명해야 하는 compatibility case에 남겨 둡니다.
 
+Cookie-bound route에는 adapter가 정규화한 cookie 값을 담는 object request overload를 사용하세요.
+
+```ts
+const response = await app.request({
+  path: '/session',
+  cookies: { session: 'test-session' },
+}).send();
+```
+
+`cookies`는 `FrameworkRequest.cookies`에 직접 할당됩니다. `Cookie` header를 parse하거나 adapter별 cookie 의미를 도입하지 않습니다. `TestingModuleRef.dispatch(...)`도 같은 정규화된 cookie record를 받습니다.
+
 `createTestApp(...)`은 runtime HTTP bootstrap과 같은 application bootstrap option을 받습니다. 여기에는 `providers`, `filters`, `converters`, `interceptors`, `middleware`, `observers`, `versioning`, `errorRepresentation`, diagnostics option이 포함됩니다. 따라서 application test는 같은 virtual request pipeline으로 canonical JSON, negotiated HTML, `HEAD`, 406, provider fallback을 검증할 수 있습니다. 테스트 헬퍼는 request-context middleware를 앞에 추가하되, 호출자가 넘긴 middleware를 같은 app middleware chain 안에 보존합니다.
 
 ### 명시적 서브패스의 mock 헬퍼

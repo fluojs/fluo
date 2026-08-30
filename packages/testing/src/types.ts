@@ -22,6 +22,7 @@ export interface TestingApplicationOptions extends BootstrapApplicationOptions {
  * Optional request extras accepted by `TestApp.request(...)` overloads.
  */
 export interface TestRequestOptions {
+  cookies?: TestRequest['cookies'];
   principal?: TestPrincipal;
 }
 
