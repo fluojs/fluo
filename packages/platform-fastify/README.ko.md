@@ -169,6 +169,25 @@ await bootstrapFastifyApplication(AppModule, {
 });
 ```
 
+### 네이티브 Fastify 설정
+기본적으로는 이식 가능한 fluo 미들웨어를 사용하세요. 마이그레이션에서 Fastify 전용 플러그인, hook 또는 인스턴스 customisation을 유지해야 할 때는 construction-time `configureFastify` seam으로 설정합니다.
+
+```typescript
+const adapter = createFastifyAdapter({
+  configureFastify: async (fastify) => {
+    fastify.addHook('onRequest', async (request, reply) => {
+      reply.header('x-native-request-id', request.id);
+    });
+    fastify.setReplySerializer((payload) => JSON.stringify(payload) ?? '');
+  },
+  port: 3000,
+});
+```
+
+`configureFastify`는 어댑터가 생성하는 각 Fastify 인스턴스마다 한 번 실행되며, fluo가 multipart, raw-body, native-route, wildcard-route 처리를 등록하기 전에 완료됩니다. `bootstrapFastifyApplication(...)`과 `runFastifyApplication(...)`도 같은 옵션을 받습니다. 설정이 throw 또는 reject되면 해당 `listen()` 호출은 시작되지 않습니다. 실패한 인스턴스에는 설정을 다시 적용하지 않으며, 성공적으로 `close()`한 뒤의 다음 `listen()`은 새 인스턴스를 한 번 설정합니다. 이 seam에서 `setReplySerializer(...)`를 호출할 수는 있지만, 어댑터는 Fastify에 넘기기 전에 fluo response payload를 직렬화하므로 instance serializer는 fluo response를 customisation하지 않습니다.
+
+어댑터는 routing, CORS, logging, multipart와 raw-body 동작, response semantics, shutdown의 소유권을 계속 가집니다. Bootstrap 뒤 Fastify 인스턴스를 보관하거나 변경하지 말고, 기존 Fastify 인스턴스를 adoption하거나 이 hook을 native-route bypass로 사용하지 마세요. 이식 가능한 request 동작은 fluo `middleware`로 옮기세요.
+
 ### 네이티브 라우트 등록과 안전한 폴백
 fluo 라우트 메타데이터를 Fastify 경로로 그대로 옮길 수 있는 경우, 어댑터는 모든 요청을 단일 와일드카드 라우트로 보내는 대신 명시적 `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD` route에 Fastify 네이티브 per-route 핸들러를 등록합니다. 의미 보존이 가능한 unversioned route에서는 Fastify가 미리 고른 descriptor와 params를 공유 fluo dispatcher에 전달하므로 duplicate route matching을 건너뛰면서도 middleware, guards, interceptors, observers, SSE, multipart, raw body, streaming, error handling 의미론은 그대로 유지됩니다.
 

@@ -180,6 +180,23 @@ await app.listen();
 
 NestJS `forRootAsync(...)`와 `load` namespace factory에는 직접 대응하는 registration이 없다. Remote store나 secret manager는 최종 module graph를 정의하기 전에 application-owned bootstrap boundary에서 await하고, nested result는 동기 loader 또는 module option에 그대로 전달한다. Adapterless `FluoFactory.create(AppModule)` application shell과 `FluoFactory.createApplicationContext(AppModule)`도 `ConfigService`를 resolve할 수 있으며 HTTP `listen()`에만 `FluoFactory.create(AppModule, { adapter })`가 필요하다. 최종 HTTP application 전에 공유 validated snapshot을 준비하면 ambient environment를 다시 읽지 않고 adapter와 injected config를 일치시킬 수 있다.
 
+### Fastify 네이티브 확장 마이그레이션
+
+이식 가능한 request 동작에는 fluo `middleware`를 사용하세요. 이는 Fastify plugin API가 아닙니다. NestJS 마이그레이션에서 Fastify 전용 plugin, hook 또는 instance customisation을 유지해야 한다면 listen 전에 `createFastifyAdapter({ configureFastify })`(또는 같은 bootstrap/run option)로 전달합니다.
+
+```typescript
+const adapter = createFastifyAdapter({
+  configureFastify: async (fastify) => {
+    fastify.addHook('onRequest', async (request, reply) => {
+      reply.header('x-native-request-id', request.id);
+    });
+  },
+  port: validatedConfig.http.port,
+});
+```
+
+이 hook은 어댑터가 생성한 Fastify 인스턴스마다 한 번 실행되며, fluo가 multipart, raw-body, native-route, wildcard-route 처리를 등록하기 전에 완료됩니다. Reject되면 해당 `listen()` 호출은 시작되지 않습니다. 성공적으로 close한 뒤 relisten하면 새 인스턴스 하나를 생성하고 설정합니다. Adapter는 routing, CORS, logging, response semantics, shutdown의 소유권을 계속 가집니다. Adapter는 fluo response payload를 Fastify에 넘기기 전에 직렬화하므로 instance-level `setReplySerializer(...)`는 fluo response를 customisation하지 않습니다. Post-bootstrap instance mutation, existing-instance adoption, native-route bypass는 이 boundary로 넘기지 마세요.
+
 ### NestJS i18n Locale 및 Validation Migration
 
 NestJS i18n의 resolver discovery와 request-scoped context를 하나의 명시적 request-boundary handoff로 바꾼다. Root module로 catalog를 등록하고 HTTP subpath로 request locale을 선택한 뒤 그 locale을 validation subpath에 전달한다.

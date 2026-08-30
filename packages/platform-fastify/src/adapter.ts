@@ -57,12 +57,17 @@ import {
   createNodeShutdownSignalRegistration,
   defaultNodeShutdownSignals,
 } from '@fluojs/runtime/node';
-import fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
+import fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 
 /**
  * Transport-level knobs for the standalone Fastify HTTP adapter factory.
  */
 export interface FastifyAdapterOptions {
+  /**
+   * Configures the internally created Fastify instance before fluo registers
+   * its multipart, raw-body, and route handling integrations.
+   */
+  configureFastify?: (app: FastifyInstance) => void | Promise<void>;
   host?: string;
   https?: HttpsServerOptions;
   maxBodySize?: number;
@@ -94,6 +99,7 @@ type RouteDescribingDispatcher = Dispatcher & {
  * implicitly registering process shutdown listeners.
  */
 export interface BootstrapFastifyApplicationOptions extends Omit<CreateApplicationOptions, 'adapter' | 'logger' | 'middleware'> {
+  configureFastify?: FastifyAdapterOptions['configureFastify'];
   cors?: CorsInput;
   globalPrefix?: string;
   globalPrefixExclude?: readonly string[];
@@ -160,6 +166,7 @@ type FastifyListenState = 'idle' | 'starting' | 'listening';
  */
 export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
   private closeInFlight?: Promise<void>;
+  private fastifyConfigurationInFlight?: Promise<void>;
   private dispatcher?: Dispatcher;
   private appClosed = false;
   private listenAbortController?: AbortController;
@@ -184,6 +191,7 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
     private readonly maxBodySize = DEFAULT_MAX_BODY_SIZE,
     private readonly preserveRawBody = false,
     private readonly shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
+    private readonly configureFastify?: (app: FastifyInstance) => void | Promise<void>,
   ) {
     resolvePort(this.port);
     resolveNonNegativeIntegerOption('retryDelayMs', this.retryDelayMs, 150);
@@ -226,6 +234,7 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
     if (this.appClosed) {
       this.app = createFastifyApp(this.httpsOptions, this.maxBodySize);
       this.appClosed = false;
+      this.fastifyConfigurationInFlight = undefined;
       this.pluginsReady = false;
     }
 
@@ -357,6 +366,7 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
       return;
     }
 
+    await this.configureFastifyInstance();
     await this.app.register(multipart);
 
     if (this.preserveRawBody) {
@@ -369,6 +379,18 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
     this.registerWildcardFallbackRoute();
 
     this.pluginsReady = true;
+  }
+
+  private configureFastifyInstance(): Promise<void> {
+    if (!this.fastifyConfigurationInFlight) {
+      this.fastifyConfigurationInFlight = Promise.resolve()
+        .then(() => this.configureFastify?.(this.app))
+        .catch((error: unknown) => {
+          throw error;
+        });
+    }
+
+    return this.fastifyConfigurationInFlight;
   }
 
   private configureNativeRouteDescriptors(dispatcher: Dispatcher): void {
@@ -760,6 +782,7 @@ export function createFastifyAdapter(
     options.maxBodySize,
     options.rawBody,
     options.shutdownTimeoutMs,
+    options.configureFastify,
   );
 }
 

@@ -2722,6 +2722,35 @@ export function enforceQueueWorkerOwnershipContract() {
   );
 }
 
+export function enforceFastifyNativeConfigurationDocsSync() {
+  const adapterSource = read('packages/platform-fastify/src/adapter.ts');
+  const regressionSource = read('packages/platform-fastify/src/adapter.test.ts');
+
+  assert(
+    adapterSource.includes('configureFastify?:') &&
+      adapterSource.includes('await this.configureFastifyInstance()'),
+    'Fastify adapter configuration must remain an awaited typed construction-time seam.',
+  );
+  assert(
+    regressionSource.includes('configures every created Fastify instance once before internal registration') &&
+      regressionSource.includes('propagates configuration failures and retries only after closing the failed instance'),
+    'Fastify configuration must retain ordering and failure/relisten regression coverage.',
+  );
+
+  for (const documentationPath of [
+    'packages/platform-fastify/README.md',
+    'packages/platform-fastify/README.ko.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+  ]) {
+    const documentation = read(documentationPath);
+    assert(
+      documentation.includes('configureFastify') && documentation.includes('middleware'),
+      `${documentationPath} must document the Fastify native configuration seam and portable middleware boundary.`,
+    );
+  }
+}
+
 export function main() {
   const changedFiles = changedFilesFromGit();
 
@@ -2743,6 +2772,7 @@ export function main() {
   enforcePassportJsBridgeNestjsMigration();
   enforceExpressApplicationOwnershipDocs();
   enforceExpressRuntimeMigrationDocsSync();
+  enforceFastifyNativeConfigurationDocsSync();
   enforceCanonicalRuntimeMatrixReferences();
   enforceHttpBookRequestContracts();
   enforceRemovedRuntimeFactoryNamesNotUsedInDocs();
