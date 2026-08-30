@@ -59,10 +59,10 @@ export namespace Scope {
 
 이 단순함은 `@Scope(...)`에도 그대로 반영됩니다.
 `path:packages/core/src/decorators.ts:79-89`의 decorator는 class DI metadata에 문자열 필드 하나만 기록합니다.
-그리고 `path:packages/core/src/metadata/class-di.ts:33-83`가 그 필드를 constructor lineage를 따라 상속 가능하게 만듭니다. 즉 scope는 explicit metadata와 container policy의 조합일 뿐입니다. 사용 패턴에서 추론되지 않습니다.
+그리고 `path:packages/core/src/metadata/class-di.ts:95-123`가 그 필드를 constructor lineage를 따라 상속 가능하게 만듭니다. 즉 scope는 explicit metadata와 container policy의 조합일 뿐입니다. 사용 패턴에서 추론되지 않습니다.
 
 이 점은 예측 가능성에 직접 연결됩니다. class가 `@Scope(...)`를 생략하면,
-`path:packages/di/src/provider-normalization.ts:168-179` 또는 `path:packages/di/src/container.ts:91-102`의 normalization이 `Scope.DEFAULT`를 넣습니다.
+`path:packages/di/src/provider-normalization.ts:168-179`의 normalization이 `Scope.DEFAULT`를 넣습니다.
 즉 Fluo는 작성자가 더 짧은 lifetime을 명시하지 않는 한 singleton-first입니다.
 
 class provider 정규화는 이 기본값을 실제 내부 record에 저장합니다.
@@ -86,8 +86,8 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
 여기서 scope 결정은 instantiation보다 먼저 끝납니다. 이후 resolve 경로는 이 `scope` 필드를 보고 cache map을 고를 뿐, class 생성 방식을 scope마다 따로 바꾸지 않습니다.
 
 테스트도 이 계약을 강화합니다.
-`path:packages/di/src/container.test.ts:89-122`는 `Scope.REQUEST`와 `Scope.TRANSIENT` 상수가 decorator와 provider object 모두에서 동작함을 검증합니다.
-`path:packages/di/src/container.test.ts:68-87`은 같은 metadata 경로가 `@Inject`와 `@Scope` 조합에서도 정상 동작함을 보여 줍니다.
+`path:packages/di/src/container.test.ts:125-158`는 `Scope.REQUEST`와 `Scope.TRANSIENT` 상수가 decorator와 provider object 모두에서 동작함을 검증합니다.
+`path:packages/di/src/container.test.ts:104-122`은 같은 metadata 경로가 `@Inject`와 `@Scope` 조합에서도 정상 동작함을 보여 줍니다.
 
 고급 독자가 눈여겨봐야 할 점은, scope 선택이 instantiation 이전에 완료된다는 사실입니다. `normalizeProvider()`는 scope를 계산해 normalized record에 저장합니다. 그 이후 scope는 cache selection과 guardrail에만 영향을 줍니다. 객체 생성 코드를 바꾸지는 않습니다.
 
@@ -198,8 +198,8 @@ request child 생성 코드는 그 공유를 constructor 인자로 직접 넘깁
 따라서 request child는 parent와 request flag를 갖지만, singleton promise map은 root의 것을 봅니다. 빈 scope shell은 즉시 추적되지 않습니다. `path:packages/di/src/container.ts:1107-1128`의 `ensureTrackedRequestScope()`와 lazy request-cache writer는 request-owned cache state가 처음 materialize될 때 child chain을 연결합니다. 이 방식은 chapter의 ownership rule을 유지하면서 descendant invalidation과 disposal이 생성된 모든 scope object가 아니라 실제 request cache를 대상으로 동작하게 합니다.
 
 이 구조는 resolution 단계에서 다시 강제됩니다.
-`path:packages/di/src/container.ts:995-1034`의 `resolveScopedOrSingletonInstance()`는 먼저 `shouldResolveFromRoot(provider)`를 검사합니다.
-그리고 `path:packages/di/src/container.ts:1050-1060`의 helper는 provider가 default-scope이고, 현재 container가 request-scoped이며, provider가 local registration이 아닐 때 true를 반환합니다. 그 경우 child는 root로 위임합니다.
+`path:packages/di/src/container.ts:995-1034`의 `resolveScopedOrSingletonInstance()`는 먼저 `cacheOwnerFor(provider)`로 cache owner를 찾습니다.
+`path:packages/di/src/container.ts:1050-1060`의 `cacheOwnerFor()`는 default provider가 child의 local registration이거나 local multi provider일 때만 현재 request child에 남기고, 그렇지 않으면 parent로 재귀합니다. 그 경우 child는 root cache owner로 위임합니다.
 
 실제 cache map 선택은 `cacheFor()`가 합니다.
 `path:packages/di/src/container.ts:1154-1198`가 핵심 규칙을 보여 줍니다.
@@ -363,7 +363,7 @@ request lifetime은 구조적으로 모델링됩니다. 단순히 "이 provider�
 
 즉 request scope는 root container 내부의 특별한 cache bucket이 아닙니다. 자기 own `requestCache`와 `multiRequestCache`를 가진 별도 container instance입니다. 이 field들은 `path:packages/di/src/container.ts:292-297`에 선언되어 있습니다.
 
-request-only resolution은 `cacheFor()`와 `multiCacheFor()`에서 강제됩니다. provider scope가 `request`인데 `requestScopeEnabled`가 false이면, 컨테이너는 `container.createRequestScope()`를 사용하라는 힌트와 함께 `RequestScopeResolutionError`를 던집니다. 코드는 `path:packages/di/src/container.ts:1154-1198`와 `path:packages/di/src/container.ts:656-668`에 있습니다.
+request-only resolution은 `cacheFor()`와 `multiCacheFor()`에서 강제됩니다. provider scope가 `request`인데 `requestScopeEnabled`가 false이면, 컨테이너는 `container.createRequestScope()`를 사용하라는 힌트와 함께 `RequestScopeResolutionError`를 던집니다. 코드는 `path:packages/di/src/container.ts:1154-1198`에 있습니다.
 
 위 `cacheFor()` 발췌가 single provider의 request guard를 이미 보여 주므로 여기서는 multi provider 쪽만 보강하면 충분합니다.
 
@@ -438,10 +438,10 @@ it('keeps request-scoped providers unique per request scope', async () => {
 
 request-scope registration 자체에도 작성 경계가 있습니다.
 `path:packages/di/src/container.ts:332-370`는 request child에 default singleton을 직접 등록하는 것을 금지합니다.
-대응 테스트는 `path:packages/di/src/container.test.ts:485-491`입니다. Fluo는 request child를 두 번째 root container처럼 쓰는 것을 막고 싶어 합니다. request child의 주된 역할은 resolution boundary입니다.
+대응 테스트는 `path:packages/di/src/container.test.ts:807-813`입니다. Fluo는 request child를 두 번째 root container처럼 쓰는 것을 막고 싶어 합니다. request child의 주된 역할은 resolution boundary입니다.
 
 multi provider도 같은 request 경계를 공유합니다.
-`path:packages/di/src/container.test.ts:693-720`은 request-scoped multi provider가 request child마다 별도 캐시됨을 보여 줍니다.
+`path:packages/di/src/container.test.ts:1292-1320`은 request-scoped multi provider가 request child마다 별도 캐시됨을 보여 줍니다.
 같은 child 안의 두 resolve는 같은 entry 인스턴스를 돌려주고, 다른 child는 다른 인스턴스를 받습니다.
 
 request-scope 흐름은 다음과 같습니다.
@@ -481,7 +481,7 @@ console.log(rootError instanceof RequestScopeResolutionError, first === second, 
 ## 5.4 Transient providers skip caches entirely
 transient scope는 의미론적으로 가장 단순한 lifetime이고, 개념적으로는 가장 쉽게 오해되는 lifetime입니다. 뜻은 "이 token이 resolve될 때마다 새 인스턴스를 만든다"입니다. "consumer class마다 한 번"도 아니고, "처음 만든 뒤 복제"도 아닙니다.
 
-type-level label은 `path:packages/di/src/types.ts:20-26`에서 옵니다. 실제 런타임 동작은 `path:packages/di/src/container.ts:839-880`과 `path:packages/di/src/container.ts:500-502`에 있습니다. 컨테이너가 `provider.scope === 'transient'`를 보는 순간, 그 provider는 바로 `instantiate()`로 갑니다. token cache write는 없습니다.
+type-level label은 `path:packages/di/src/types.ts:20-26`에서 옵니다. 실제 런타임 동작은 `path:packages/di/src/container.ts:839-880`에 있습니다. 컨테이너가 `provider.scope === 'transient'`를 보는 순간, 그 provider는 바로 `instantiate()`로 갑니다. token cache write는 없습니다.
 
 transient 분기는 cache helper를 호출하기 전에 빠져나갑니다.
 
@@ -535,11 +535,11 @@ transient 분기는 cache helper를 호출하기 전에 빠져나갑니다.
 
 그래서 transient 테스트는 아주 직접적입니다.
 `path:packages/di/src/container.test.ts:124-160`은 transient token을 두 번 resolve하고 서로 다른 인스턴스임을 확인합니다.
-`path:packages/di/src/container.test.ts:162-181`은 request scope 내부에서도 동일한 규칙이 유지됨을 보여 줍니다.
+`path:packages/di/src/container.test.ts:198-217`은 request scope 내부에서도 동일한 규칙이 유지됨을 보여 줍니다.
 request scope는 transient semantics를 바꾸지 않습니다.
 
 흥미로운 뉘앙스는 dependency graph에서 나타납니다.
-`path:packages/di/src/container.test.ts:183-200`은 singleton이 transient provider에 의존할 수 있음을 증명합니다.
+`path:packages/di/src/container.test.ts:219-236`은 singleton이 transient provider에 의존할 수 있음을 증명합니다.
 겉보기엔 모순 같지만 construction 시점과 이후 resolve를 분리해서 보면 자연스럽습니다. singleton은 자기 자신이 생성되는 순간 transient 인스턴스 하나를 받습니다. 그 이후 다른 위치에서 transient token을 resolve하면 여전히 새 인스턴스가 나옵니다.
 
 반대로 문제가 되는 edge는 Fluo가 명시적으로 금지합니다.
@@ -703,13 +703,13 @@ console.log(first === second, report.currentBuilder() instanceof QueryBuilder);
    */
 ```
 
-hierarchy walk은 `path:packages/di/src/container.ts:1707-1761`에 구현되어 있습니다. override를 받은 컨테이너와 추적 중인 모든 request-scope descendant를 방문합니다. `path:packages/di/src/container.ts:1103-1125`에서 보듯 request scope는 request cache 또는 request-local multi cache를 처음 materialize할 때 추적 대상이 됩니다. 따라서 root override는 이미 materialize된 descendant request entry 중 overridden token 자체와, provider graph가 그 token에 의존하는 cached consumer를 evict할 수 있습니다. direct, alias, multi-provider dependency path를 포괄하는 dependency-aware 검사는 `path:packages/di/src/container.ts:1745-1800`에 있습니다.
+hierarchy walk은 `path:packages/di/src/container.ts:1707-1761`에 구현되어 있습니다. override를 받은 컨테이너와 추적 중인 모든 request-scope descendant를 방문합니다. `path:packages/di/src/container.ts:1107-1128`에서 보듯 request scope는 request cache 또는 request-local multi cache를 처음 materialize할 때 추적 대상이 됩니다. 따라서 root override는 이미 materialize된 descendant request entry 중 overridden token 자체와, provider graph가 그 token에 의존하는 cached consumer를 evict할 수 있습니다. direct, alias, multi-provider dependency path를 포괄하는 dependency-aware 검사는 `path:packages/di/src/container.ts:1763-1819`에 있습니다.
 
 이는 targeted invalidation이지, 모든 child cache를 비우거나 각 child가 ancestor 변경으로부터 격리된다는 보장이 아닙니다. 영향을 받는 materialized entry가 없는 descendant에는 retire할 대상이 없고, 이후 resolve는 갱신된 ancestor graph를 따릅니다. child-local override는 해당 child와 그 descendant만 순회하며 ancestor는 순회하지 않습니다. 또한 cache eviction이 application code가 이미 보관 중인 stale reference를 회수할 수는 없습니다.
 
 evict된 각 cached promise는 `path:packages/di/src/container.ts:1448-1497`의 `scheduleStaleDisposal()`로 전달됩니다. `override()`는 여전히 동기적입니다. 비동기 retirement task를 시작하지만 cleanup 완료를 기다리지는 않습니다. task는 cached resolution promise를 기다리고, resolve된 값이 disposable이면 `onDestroy()`도 await합니다. 완료가 보장되는 시점은 `override()`가 반환하는 순간이 아니라 다음 observing lifecycle boundary입니다.
 
-stale disposal은 이제 shutdown-only error accumulator가 아니라 task state machine입니다. `StaleDisposalTask`는 promise, failure, 그리고 failure가 이미 소비되었는지를 기록합니다(`path:packages/di/src/container.ts:31-39`). `resolve()`는 replacement resolution을 시작하기 전에 `assertStaleDisposalsSettled()`를 호출합니다(`path:packages/di/src/container.ts:593-604`). disposal도 `disposeCache()`를 통해 같은 경계에 도달하며(`path:packages/di/src/container.ts:1218-1244`), cleanup이 계속될 수 있도록 resolution failure와 일반 `onDestroy()` failure도 함께 수집합니다.
+stale disposal은 이제 shutdown-only error accumulator가 아니라 task state machine입니다. `StaleDisposalTask`는 promise, failure, 그리고 failure가 이미 소비되었는지를 기록합니다(`path:packages/di/src/container.ts:31-39`). `resolve()`는 replacement resolution을 시작하기 전에 `assertStaleDisposalsSettled()`를 호출합니다(`path:packages/di/src/container.ts:593-604`). disposal도 `disposeCache()`를 통해 같은 경계에 도달하며(`path:packages/di/src/container.ts:1222-1248`), cleanup이 계속될 수 있도록 resolution failure와 일반 `onDestroy()` failure도 함께 수집합니다.
 
 `path:packages/di/src/container.ts:1358-1497`
 ```typescript
@@ -1122,7 +1122,7 @@ tier별 cache ownership은 disposal 대상 목록에서도 반복됩니다.
 
 request child와 root singleton의 분리는 테스트가 더 읽기 쉽습니다.
 
-`path:packages/di/src/container.test.ts:778-809`
+`path:packages/di/src/container.test.ts:1649-1680`
 ```typescript
 it('disposes only the request cache for request-scoped containers', async () => {
   const events: string[] = [];

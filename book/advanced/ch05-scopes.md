@@ -59,10 +59,10 @@ The namespace helpers in the same file show the same idea. `Scope.DEFAULT` is ju
 
 The same simplicity appears in `@Scope(...)`.
 The decorator in `path:packages/core/src/decorators.ts:79-89` records one string field in class DI metadata.
-Then `path:packages/core/src/metadata/class-di.ts:33-83` makes that field inheritable through the constructor lineage. In other words, scope is only a combination of explicit metadata and container policy. It is not inferred from usage patterns.
+Then `path:packages/core/src/metadata/class-di.ts:95-123` makes that field inheritable through the constructor lineage. In other words, scope is only a combination of explicit metadata and container policy. It is not inferred from usage patterns.
 
 This connects directly to predictability. If a class omits `@Scope(...)`,
-the normalization in `path:packages/di/src/provider-normalization.ts:168-179` or `path:packages/di/src/container.ts:91-102` inserts `Scope.DEFAULT`.
+the normalization in `path:packages/di/src/provider-normalization.ts:168-179` inserts `Scope.DEFAULT`.
 So Fluo is singleton-first unless the author explicitly chooses a shorter lifetime.
 
 Class provider normalization stores this default in the actual internal record.
@@ -86,8 +86,8 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
 Here, the scope decision is complete before instantiation. Later resolve paths only look at this `scope` field and choose a cache map. They do not change the class creation path separately for each scope.
 
 Tests reinforce this contract.
-`path:packages/di/src/container.test.ts:89-122` verifies that `Scope.REQUEST` and `Scope.TRANSIENT` constants work in both decorators and provider objects.
-`path:packages/di/src/container.test.ts:68-87` shows that the same metadata path works correctly with the combination of `@Inject` and `@Scope`.
+`path:packages/di/src/container.test.ts:125-158` verifies that `Scope.REQUEST` and `Scope.TRANSIENT` constants work in both decorators and provider objects.
+`path:packages/di/src/container.test.ts:104-122` shows that the same metadata path works correctly with the combination of `@Inject` and `@Scope`.
 
 The point advanced readers should notice is that scope selection is complete before instantiation. `normalizeProvider()` computes the scope and stores it in the normalized record. After that, scope only affects cache selection and guardrails. It does not change object construction code.
 
@@ -198,8 +198,8 @@ The request child creation code passes that shared state directly as a construct
 A request child therefore has a parent and the request flag, but it sees the root's singleton promise map. Empty scope shells are not tracked immediately. `ensureTrackedRequestScope()` and the lazy request-cache writers in `path:packages/di/src/container.ts:1107-1128` attach the child chain when request-owned cache state is first materialized. This preserves the chapter's ownership rule while making descendant invalidation and disposal operate on live request caches rather than every scope object ever created.
 
 The resolution step enforces the same structure again.
-`resolveScopedOrSingletonInstance()` in `path:packages/di/src/container.ts:995-1034` first checks `shouldResolveFromRoot(provider)`.
-Then the helper in `path:packages/di/src/container.ts:1050-1060` returns true when the provider has default scope, the current container is request-scoped, and the provider is not a local registration. In that case, the child delegates to the root.
+`resolveScopedOrSingletonInstance()` in `path:packages/di/src/container.ts:995-1034` first asks `cacheOwnerFor(provider)` which container owns the cache.
+`cacheOwnerFor()` in `path:packages/di/src/container.ts:1050-1060` keeps a default provider in the current request child only when the child registered it locally or owns its local multi provider; otherwise it recurses to the parent. In that case, the child delegates to the root cache owner.
 
 The actual cache map is selected by `cacheFor()`.
 `path:packages/di/src/container.ts:1154-1198` shows the core rules.
@@ -363,7 +363,7 @@ That constructor call contains three decisions. The child has a parent reference
 
 So request scope is not a special cache bucket inside the root container. It is a separate container instance with its own `requestCache` and `multiRequestCache`. These fields are declared in `path:packages/di/src/container.ts:292-297`.
 
-Request-only resolution is enforced in `cacheFor()` and `multiCacheFor()`. If the provider scope is `request` and `requestScopeEnabled` is false, the container throws `RequestScopeResolutionError` with a hint to use `container.createRequestScope()`. The code is in `path:packages/di/src/container.ts:1154-1198` and `path:packages/di/src/container.ts:656-668`.
+Request-only resolution is enforced in `cacheFor()` and `multiCacheFor()`. If the provider scope is `request` and `requestScopeEnabled` is false, the container throws `RequestScopeResolutionError` with a hint to use `container.createRequestScope()`. The code is in `path:packages/di/src/container.ts:1154-1198`.
 
 The earlier `cacheFor()` excerpt already showed the request guard for single providers, so it is enough to add the multi provider side here.
 
@@ -438,10 +438,10 @@ Root error, same-child reuse, and sibling isolation all appear together in this 
 
 Request-scope registration also has authoring boundaries.
 `path:packages/di/src/container.ts:332-370` forbids registering a default singleton directly in a request child.
-The matching test is `path:packages/di/src/container.test.ts:485-491`. Fluo wants to prevent request children from being used like second root containers. The main role of a request child is to be a resolution boundary.
+The matching test is `path:packages/di/src/container.test.ts:807-813`. Fluo wants to prevent request children from being used like second root containers. The main role of a request child is to be a resolution boundary.
 
 Multi providers share the same request boundary.
-`path:packages/di/src/container.test.ts:693-720` shows that request-scoped multi providers are cached separately per request child.
+`path:packages/di/src/container.test.ts:1292-1320` shows that request-scoped multi providers are cached separately per request child.
 Two resolves inside the same child return the same entry instance, while a different child receives a different instance.
 
 The request-scope flow is this.
@@ -481,7 +481,7 @@ From an implementation perspective, this structure is powerful. As long as you h
 ## 5.4 Transient providers skip caches entirely
 Transient scope is the simplest lifetime semantically, and the easiest one to misunderstand conceptually. It means "create a new instance every time this token is resolved." It does not mean "once per consumer class," and it does not mean "create once and clone later."
 
-The type-level label comes from `path:packages/di/src/types.ts:20-26`. The actual runtime behavior is in `path:packages/di/src/container.ts:839-880` and `path:packages/di/src/container.ts:500-502`. The moment the container sees `provider.scope === 'transient'`, that provider goes straight to `instantiate()`. There is no token cache write.
+The type-level label comes from `path:packages/di/src/types.ts:20-26`. The actual runtime behavior is in `path:packages/di/src/container.ts:839-880`. The moment the container sees `provider.scope === 'transient'`, that provider goes straight to `instantiate()`. There is no token cache write.
 
 The transient branch exits before calling the cache helper.
 
@@ -535,11 +535,11 @@ In this code, transient never descends into `resolveScopedOrSingletonInstance()`
 
 The transient tests are therefore very direct.
 `path:packages/di/src/container.test.ts:124-160` resolves a transient token twice and confirms that the instances differ.
-`path:packages/di/src/container.test.ts:162-181` shows that the same rule holds inside request scope.
+`path:packages/di/src/container.test.ts:198-217` shows that the same rule holds inside request scope.
 Request scope does not change transient semantics.
 
 The interesting nuance appears in the dependency graph.
-`path:packages/di/src/container.test.ts:183-200` proves that a singleton can depend on a transient provider.
+`path:packages/di/src/container.test.ts:219-236` proves that a singleton can depend on a transient provider.
 This may look contradictory at first, but it is natural if you separate construction time from later resolves. The singleton receives one transient instance at the moment it is created. After that, resolving the transient token elsewhere still produces a new instance.
 
 Fluo explicitly forbids the opposite problematic edge.
@@ -703,13 +703,13 @@ The current `override()` implementation is in `path:packages/di/src/container.ts
    */
 ```
 
-The hierarchy walk is implemented in `path:packages/di/src/container.ts:1707-1761`. It visits the container receiving the override and every tracked request-scope descendant. A request scope becomes tracked when it first materializes a request or request-local multi cache, as shown in `path:packages/di/src/container.ts:1103-1125`. Therefore, a root override can evict already-materialized descendant request entries for the overridden token and cached consumers whose provider graph depends on that token. The dependency-aware checks live in `path:packages/di/src/container.ts:1745-1800` and cover direct, alias, and multi-provider dependency paths.
+The hierarchy walk is implemented in `path:packages/di/src/container.ts:1707-1761`. It visits the container receiving the override and every tracked request-scope descendant. A request scope becomes tracked when it first materializes a request or request-local multi cache, as shown in `path:packages/di/src/container.ts:1107-1128`. Therefore, a root override can evict already-materialized descendant request entries for the overridden token and cached consumers whose provider graph depends on that token. The dependency-aware checks live in `path:packages/di/src/container.ts:1763-1819` and cover direct, alias, and multi-provider dependency paths.
 
 This is targeted invalidation, not a promise that every child cache is cleared or isolated from ancestor changes. A descendant with no affected materialized entry has nothing to retire; its later resolution follows the updated ancestor graph. A child-local override walks that child and its descendants, not its ancestors. Cache eviction also cannot revoke stale references that application code has already retained.
 
 Each evicted cached promise is handed to `scheduleStaleDisposal()` in `path:packages/di/src/container.ts:1448-1497`. `override()` remains synchronous: it starts the asynchronous retirement task but does not wait for cleanup to finish. The task waits for the cached resolution promise, then awaits `onDestroy()` when the resolved value is disposable. Completion is guaranteed at the next observing lifecycle boundary, not at the moment `override()` returns.
 
-Stale disposal is now a task state machine rather than a shutdown-only error accumulator. `StaleDisposalTask` records its promise, failure, and whether that failure has already been consumed (`path:packages/di/src/container.ts:31-39`). `resolve()` calls `assertStaleDisposalsSettled()` before beginning replacement resolution (`path:packages/di/src/container.ts:593-604`). Disposal reaches the same boundary through `disposeCache()` (`path:packages/di/src/container.ts:1218-1244`), while still collecting resolution and ordinary `onDestroy()` failures so cleanup can continue.
+Stale disposal is now a task state machine rather than a shutdown-only error accumulator. `StaleDisposalTask` records its promise, failure, and whether that failure has already been consumed (`path:packages/di/src/container.ts:31-39`). `resolve()` calls `assertStaleDisposalsSettled()` before beginning replacement resolution (`path:packages/di/src/container.ts:593-604`). Disposal reaches the same boundary through `disposeCache()` (`path:packages/di/src/container.ts:1222-1248`), while still collecting resolution and ordinary `onDestroy()` failures so cleanup can continue.
 
 `path:packages/di/src/container.ts:1358-1497`
 ```typescript
@@ -1122,7 +1122,7 @@ Executable evidence lives in `packages/di/src/container-disposal-ownership.test.
 
 The split between request children and root singletons is easier to read in the test.
 
-`path:packages/di/src/container.test.ts:778-809`
+`path:packages/di/src/container.test.ts:1649-1680`
 ```typescript
 it('disposes only the request cache for request-scoped containers', async () => {
   const events: string[] = [];
