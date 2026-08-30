@@ -6,7 +6,7 @@ import { delimiter, dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createContentChangeGate, runNodeRestartRunner } from './dev-runner/node-restart-runner.js';
 import { generatorManifest } from './generators/manifest.js';
@@ -186,6 +186,32 @@ describe('CLI command runner', () => {
     expect(errorOutput.join('')).toContain('fluo dev --studio supports Node dev runner projects only.');
     expect(errorOutput.join('')).toContain('fluo inspect <module-path> --json --output <path>');
     expect(errorOutput.join('')).toContain('fluo inspect <module-path> --report --output <path>');
+  });
+
+  it('keeps JSON inspect stdout parseable while routing runtime diagnostics to stderr', async () => {
+    // Given: a CLI caller capturing each process stream independently.
+    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
+    const log = vi.spyOn(console, 'log').mockImplementation((...messages: unknown[]) => {
+      stdoutBuffer.push(`${messages.join(' ')}\n`);
+    });
+
+    try {
+      // When: inspect renders a runtime snapshot in machine-readable JSON mode.
+      const exitCode = await runCli(['inspect', inspectFixtureModulePath, '--json'], {
+        ci: true,
+        stderr: { write: (message) => stderrBuffer.push(message) },
+        stdout: { write: (message) => stdoutBuffer.push(message) },
+        updateCheck: false,
+      });
+
+      // Then: stdout is one JSON artifact and bootstrap diagnostics remain on stderr.
+      expect(exitCode).toBe(0);
+      expect(() => JSON.parse(stdoutBuffer.join(''))).not.toThrow();
+      expect(stderrBuffer.join('')).toContain('[fluo] LOG [FluoFactory] Starting fluo application...');
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it('publishes fluo as the canonical bin', () => {
@@ -4046,6 +4072,7 @@ exit 7
         cwd: process.cwd(),
         stderr: { write: (message) => stderrBuffer.push(message) },
         stdout: { write: (message) => stdoutBuffer.push(message) },
+        updateCheck: false,
       });
     } finally {
       lifecycleFixture.resetInspectLifecycleLogPath();
@@ -4064,7 +4091,7 @@ exit 7
     };
 
     expect(exitCode).toBe(0);
-    expect(stderrBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).toContain('[fluo] LOG [FluoFactory] Starting fluo application...');
     expect(payload.generatedAt).toEqual(expect.any(String));
     expect(payload.components).toEqual([]);
     expect(payload.diagnostics).toEqual([]);
@@ -4091,7 +4118,7 @@ exit 7
       readiness: { status: string };
     };
 
-    expect(stderrBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).toContain('[fluo] LOG [FluoFactory] Starting fluo application...');
     expect(payload.components).toEqual([]);
     expect(payload.diagnostics).toEqual([]);
     expect(payload.readiness.status).toBe('ready');
@@ -4109,7 +4136,7 @@ exit 7
     });
 
     expectCliCommandSuccess(exitCode, stdoutBuffer, stderrBuffer);
-    expect(stderrBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).toContain('[fluo] LOG [FluoFactory] Starting fluo application...');
 
     const payload = JSON.parse(stdoutBuffer.join('')) as {
       routes: Array<{
@@ -4158,7 +4185,7 @@ exit 7
 
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toBe('');
-    expect(stderrBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).toContain('[fluo] LOG [FluoFactory] Starting fluo application...');
     expect(payload.generatedAt).toEqual(expect.any(String));
     expect(payload.components).toEqual([]);
     expect(payload.diagnostics).toEqual([]);
@@ -4260,7 +4287,7 @@ exit 7
     };
 
     expect(stdoutBuffer.join('')).toBe('');
-    expect(stderrBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).toContain('[fluo] LOG [FluoFactory] Starting fluo application...');
     expect(report.version).toBe(1);
     expect(report.snapshot.diagnostics).toEqual([]);
     expect(report.summary.readinessStatus).toBe('ready');
@@ -4489,7 +4516,7 @@ exit 7
 
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toBe('');
-    expect(stderrBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).toContain('[fluo] LOG [FluoFactory] Starting fluo application...');
     expect(payload.snapshot.diagnostics).toEqual([]);
     expect(payload.snapshot.readiness.status).toBe('ready');
     expect(payload.snapshot.health.status).toBe('healthy');

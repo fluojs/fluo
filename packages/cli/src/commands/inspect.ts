@@ -6,9 +6,9 @@ import { pathToFileURL } from 'node:url';
 
 import * as clack from '@clack/prompts';
 import {
+  bootstrapApplication,
   type BootstrapTimingDiagnostics,
   createRuntimeInspectionSnapshot,
-  FluoFactory,
   type ModuleType,
   PLATFORM_SHELL,
   type PlatformDiagnosticIssue,
@@ -18,6 +18,7 @@ import {
 } from '@fluojs/runtime';
 import { tsImport } from 'tsx/esm/api';
 
+import { createCliDiagnosticsLogger } from './diagnostics.js';
 import { CliPromptCancelledError, isCliPromptCancelledError } from '../prompt-cancel.js';
 import { inspectUsage } from '../usage.js';
 
@@ -378,8 +379,10 @@ export async function runInspectCommand(argv: string[], runtime: InspectCommandR
     const importedModule = await importInspectModule(modulePath);
     const rootModule = resolveRootModule(importedModule[parsed.exportName], parsed.exportName);
 
-    const application = await FluoFactory.create(rootModule, {
+    const application = await bootstrapApplication({
       diagnostics: parsed.timing || parsed.report ? { timing: true } : undefined,
+      ...(parsed.json || parsed.report ? { logger: createCliDiagnosticsLogger(stderr) } : {}),
+      rootModule,
     });
 
     try {
