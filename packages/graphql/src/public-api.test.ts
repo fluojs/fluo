@@ -28,6 +28,7 @@ describe('@fluojs/graphql public API surface', () => {
     expect(graphqlPublicApi).toHaveProperty('Subscription');
     expect(graphqlPublicApi).toHaveProperty('Resolver');
     expect(graphqlPublicApi).toHaveProperty('FieldResolver');
+    expect(graphqlPublicApi).toHaveProperty('Args');
     expect(graphqlPublicApi).toHaveProperty('Parent');
     expect(graphqlPublicApi).toHaveProperty('Context');
     expect(graphqlPublicApi).toHaveProperty('GraphqlModule');

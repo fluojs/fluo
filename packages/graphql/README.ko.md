@@ -111,11 +111,13 @@ class UserResolver {
 
 `@FieldResolver(...)`는 provider method를 `@Resolver('TypeName')`이 소유하는 named object type의 field에 연결합니다. 대상 object type은 code-first root operation output에서 도달 가능해야 합니다. 해당 field가 `GraphQLObjectType`에 이미 존재하거나, schema builder가 field를 추가할 수 있도록 field resolver가 `type`을 선언해야 합니다.
 
-TC39 표준 데코레이터는 parameter decorator를 지원하지 않습니다. fluo의 standard-decorator 계약을 지키기 위해 `@Parent()`와 `@Context()`는 zero-based parameter index를 바인딩하는 method decorator입니다. 기본값은 parent/source object를 parameter `0`에, `GraphQLContext`를 parameter `1`에 매핑합니다. Method 순서가 다르면 index를 명시적으로 전달하세요.
+`@FieldResolver({ input })`은 root resolver DTO argument pipeline을 그대로 재사용합니다. `@Arg(...)` field가 GraphQL argument를 정의하고, 값은 DTO로 materialize되며, validation error는 계속 GraphQL `BAD_USER_INPUT` error로 반환됩니다. list argument type은 root operation과 동일하게 `argTypes`로 지정하세요.
+
+TC39 표준 데코레이터는 parameter decorator를 지원하지 않습니다. fluo의 standard-decorator 계약을 지키기 위해 `@Args()`, `@Parent()`, `@Context()`는 zero-based parameter index를 바인딩하는 method decorator입니다. `@Args()`와 `@Parent()`의 기본값은 모두 `0`이므로 둘을 함께 사용할 때는 서로 다른 명시적 index를 지정해야 합니다. `@Context()`의 기본값은 `1`입니다. 같은 index를 두 번 바인딩하면 decorator evaluation 중 실패합니다. `@FieldResolver({ input })`에는 `@Args()`가 필요하고, `@Args()`에는 `input`이 필요합니다.
 
 ```typescript
 import { GraphQLObjectType, GraphQLString } from 'graphql';
-import { Context, FieldResolver, Parent, Query, Resolver, type GraphQLContext } from '@fluojs/graphql';
+import { Arg, Args, Context, FieldResolver, Parent, Query, Resolver, type GraphQLContext } from '@fluojs/graphql';
 
 const AuthorType = new GraphQLObjectType({
   name: 'Author',
@@ -133,6 +135,11 @@ const BookType = new GraphQLObjectType({
   },
 });
 
+class AuthorInput {
+  @Arg('locale')
+  locale = 'en';
+}
+
 @Resolver()
 class BookQueryResolver {
   @Query({ outputType: BookType })
@@ -143,16 +150,17 @@ class BookQueryResolver {
 
 @Resolver('Book')
 class BookFieldResolver {
-  @FieldResolver({ fieldName: 'author', type: AuthorType })
-  @Parent()
-  @Context()
-  author(book: { authorId: string }, context: GraphQLContext) {
+  @FieldResolver({ fieldName: 'author', input: AuthorInput, type: AuthorType })
+  @Args(0)
+  @Parent(1)
+  @Context(2)
+  author(input: AuthorInput, book: { authorId: string }, context: GraphQLContext) {
     return authorLoader(context).load(book.authorId);
   }
 }
 ```
 
-두 resolver class를 module provider 또는 controller로 등록하고, `GraphqlModule.forRoot({ resolvers })`를 allowlist로 사용할 때는 둘 다 포함하세요. 중복 `TypeName.fieldName` 등록, code-first root output에서 도달할 수 없는 field target, root operation method에 배치한 `@Parent()` / `@Context()` binding은 bootstrap 중 실패합니다. Field argument DTO binding과 schema-first field-resolver attachment는 첫 runtime 계약 범위 밖입니다. `nullable` option은 예약되어 있습니다. 기존 field nullability는 유지되며, `type`으로 추가한 field는 GraphQL의 nullable 기본값을 사용합니다.
+두 resolver class를 module provider 또는 controller로 등록하고, `GraphqlModule.forRoot({ resolvers })`를 allowlist로 사용할 때는 둘 다 포함하세요. Field resolver DTO input은 root resolver와 같은 HTTP 및 subscription operation container scope를 따릅니다. 중복 `TypeName.fieldName` 등록, code-first root output에서 도달할 수 없는 field target, root operation method에 배치한 `@Args()` / `@Parent()` / `@Context()` binding은 bootstrap 중 실패합니다. Schema-first field-resolver attachment는 이 runtime 계약 범위 밖입니다. `nullable` option은 예약되어 있습니다. 기존 field nullability는 유지되며, `type`으로 추가한 field는 GraphQL의 nullable 기본값을 사용합니다.
 
 ### Request-Scoped DataLoaders
 내장된 DataLoader 통합을 통해 N+1 문제를 효율적으로 해결합니다. Loader는 각 GraphQL 작업마다 자동으로 격리됩니다.
@@ -286,7 +294,7 @@ GraphqlModule.forRoot({
 
 - `GraphqlModule.forRoot(options)`: GraphQL 통합을 위한 메인 엔트리 포인트.
 - `Resolver`, `Query`, `Mutation`, `Subscription`: Resolver 및 root operation 데코레이터.
-- `FieldResolver`, `Parent`, `Context`: Code-first object field resolution과 명시적 parent/context parameter-index binding.
+- `FieldResolver`, `Args`, `Parent`, `Context`: Code-first object field resolution과 명시적 DTO input, parent, context parameter-index binding.
 - `Arg`: Input DTO 필드를 GraphQL 인자로 매핑하는 데코레이터.
 - `createDataLoader`, `createDataLoaderMap`, `getRequestScopedDataLoader`, `createRequestScopedDataLoaderFactory`, `DataLoader`: DataLoader factory helper와 type.
 - `listOf`, `isGraphqlListTypeRef`: list output type reference helper.
@@ -303,6 +311,6 @@ GraphqlModule.forRoot({
 ## 예제 소스
 
 - `packages/graphql/src/module.test.ts`: 모듈 등록, resolver 실행, request-scoped container, subscription, guardrail 기본값을 다루는 통합 테스트 및 사용 예제.
-- `packages/graphql/src/field-resolver.test.ts`: Object field resolver의 discovery, schema attachment, parent/context binding, invalid placement를 실행 가능한 형태로 검증하는 테스트.
+- `packages/graphql/src/field-resolver-input.test.ts`: Object field DTO input의 HTTP, request scope, validation, scalar/list argument, subscription, binding collision을 실행 가능한 형태로 검증하는 테스트.
 - `packages/graphql/src/runtime-support.test.ts`: Package의 Node.js engine 하한이 필수 first-party dependency graph에서 가장 높은 하한 이상인지 검증하는 회귀 테스트.
 - `packages/graphql/field-resolver-rfc.md`: Object field resolver의 구현된 계약과 후속 범위.
