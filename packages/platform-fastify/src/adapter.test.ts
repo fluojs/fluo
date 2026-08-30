@@ -3133,16 +3133,24 @@ describe('@fluojs/platform-fastify', () => {
 
   it('propagates abort signal when the client disconnects', async () => {
     const aborted = createDeferred<void>();
+    const abortListenerReady = createDeferred<void>();
 
     @Controller('/abort')
     class AbortController {
       @Get('/')
       async wait(_input: undefined, context: RequestContext) {
+        const signal = context.request.signal;
+
+        if (!signal) {
+          throw new Error('Expected the Fastify request to expose an abort signal.');
+        }
+
         await new Promise<void>((resolve) => {
-          context.request.signal?.addEventListener('abort', () => {
+          signal.addEventListener('abort', () => {
             aborted.resolve();
             resolve();
           }, { once: true });
+          abortListenerReady.resolve();
         });
 
         return { ok: true };
@@ -3171,18 +3179,18 @@ describe('@fluojs/platform-fastify', () => {
       request.on('error', () => {});
       request.end();
 
-      setTimeout(() => {
-        request.destroy();
-      }, 20);
+      await abortListenerReady.promise;
+      request.destroy();
 
-      await expect(Promise.race([
-        aborted.promise,
-        new Promise<void>((_resolve, reject) => {
-          setTimeout(() => {
-            reject(new Error('Abort signal was not propagated.'));
-          }, 2_000);
+      const abortResult = await Promise.race([
+        aborted.promise.then(() => 'aborted' as const),
+        new Promise<'timed-out'>((resolve) => {
+          AbortSignal.timeout(2_000).addEventListener('abort', () => {
+            resolve('timed-out');
+          }, { once: true });
         }),
-      ])).resolves.toBeUndefined();
+      ]);
+      expect(abortResult).toBe('aborted');
     } finally {
       request.destroy();
       await app.close();
