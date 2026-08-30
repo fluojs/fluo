@@ -49,6 +49,20 @@ fluo packages generally depend on three core pillars.
 
 When building a library, it is best to keep `@fluojs/core` and `@fluojs/di` as `peerDependencies` to avoid version conflicts in the user's dependency graph. Be especially careful with `@fluojs/di`, because multiple injection engine instances can cause unexpected behavior during Token resolution.
 
+### Preload Symbol.metadata Before Custom Decorators
+
+Fluo's built-in decorators write to framework-owned stores, so importing them does not install a global `Symbol.metadata` polyfill. A package-defined standard decorator that reads `context.metadata` needs the symbol earlier: before any module containing its decorated classes is evaluated.
+
+An ordinary bootstrap call is not enough when that bootstrap file statically imports the decorated graph. ESM evaluates static imports before the bootstrap body. Make the preload file the configured entrypoint and dynamically import the rest only after initialization:
+
+```ts
+// preload.ts
+import { ensureMetadataSymbol } from '@fluojs/core';
+
+ensureMetadataSymbol();
+await import('./bootstrap.js');
+```
+
 ## Designing DynamicModules
 
 The `DynamicModule` pattern is the main way fluo provides configurable functionality. Unlike static Modules defined at compile time, Dynamic Modules are created at runtime and usually accept a configuration object.
