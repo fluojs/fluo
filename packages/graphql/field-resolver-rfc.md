@@ -9,7 +9,7 @@ This RFC defines the implemented minimum API and integration contract for `@Fiel
 ## Goals
 
 - Define decorator shape for field-level resolution.
-- Define `parent/source` and `context` argument rules.
+- Define DTO input, `parent/source`, and `context` argument rules.
 - Define discovery and registration rules for field resolvers.
 - Define schema attachment rules from object type to resolved fields.
 
@@ -17,7 +17,6 @@ This RFC defines the implemented minimum API and integration contract for `@Fiel
 
 - Automatic batching/cache policy framework.
 - Interface-level polymorphic resolver expansion.
-- Field argument DTO binding.
 - Schema-first resolver-map attachment.
 
 ## Proposed API Shape
@@ -38,8 +37,13 @@ class UserFieldResolver {
 
 - `@FieldResolver(fieldNameOrOptions?)`
   - `fieldName?: string`
+  - `input?: Function` reuses the existing `@Arg(...)` DTO materialization and validation pipeline.
+  - `argTypes?: Record<string, GraphqlArgType>` supports explicit scalar and list argument types.
   - `type?: GraphqlRootOutputType` (scalar/object/union/list wrapper)
   - `nullable?: boolean` (future-compatible surface only)
+- `@Args()`
+  - Standard method decorator that binds the materialized, validated input DTO to parameter index `0` by default.
+  - Accepts an explicit zero-based parameter index.
 - `@Parent()`
   - Standard method decorator that binds parent object (`source`) to parameter index `0` by default.
   - Accepts an explicit zero-based parameter index.
@@ -47,7 +51,7 @@ class UserFieldResolver {
   - Standard method decorator that binds GraphQL context (`GraphQLContext`) to parameter index `1` by default.
   - Accepts an explicit zero-based parameter index.
 
-TC39 standard decorators do not define parameter decorators. The implemented contract therefore keeps all three APIs as standard method decorators and records the positional binding index explicitly instead of using legacy parameter-decorator syntax.
+TC39 standard decorators do not define parameter decorators. The implemented contract therefore keeps all four APIs as standard method decorators and records the positional binding index explicitly instead of using legacy parameter-decorator syntax.
 
 ## Discovery Rules
 
@@ -57,6 +61,8 @@ TC39 standard decorators do not define parameter decorators. The implemented con
    - duplicate resolver for same `TypeName.fieldName` is rejected.
    - root operation names (`Query/Mutation/Subscription`) and field resolver names remain isolated.
 4. Scope semantics follow existing provider scope behavior (singleton/request/transient).
+5. `@FieldResolver({ input })` requires `@Args()`, and `@Args()` requires `input`.
+6. `@Args()`, `@Parent()`, and `@Context()` cannot share a parameter index; duplicate indexes fail during decorator evaluation.
 
 ## Schema Attachment Rules
 
@@ -71,7 +77,9 @@ TC39 standard decorators do not define parameter decorators. The implemented con
 
 - `@Parent()` maps to GraphQL `source` argument.
 - Resolver signatures receive parent and context at the indexes recorded by the `@Parent(...)` and `@Context(...)` method decorators.
-- DTO input binding (`@Arg`) stays for root operations; field-resolver argument binding remains a follow-up after runtime phase.
+- `@Args()` receives the DTO materialized from GraphQL field arguments through the existing `@Arg(...)` mapping and validation pipeline.
+- Field resolver input validation raises the same GraphQL `BAD_USER_INPUT` error shape as root operations.
+- Field resolver input runs in the same HTTP or subscription operation container as the parent resolver.
 
 ## Implemented Integration
 
@@ -82,9 +90,9 @@ TC39 standard decorators do not define parameter decorators. The implemented con
 3. Schema builder
    - Field resolver configs are merged into matching object types during code-first schema assembly.
 4. Invocation pipeline
-   - Provider instances follow existing singleton/request/transient scope semantics and receive mapped parent/context arguments.
+   - Provider instances follow existing singleton/request/transient scope semantics and receive mapped DTO input, parent, and context arguments.
 5. Validation and errors
-   - Duplicate `TypeName.fieldName`, unreachable target types, missing field types, invalid root-operation bindings, and duplicate parameter indexes fail explicitly.
+   - Duplicate `TypeName.fieldName`, unreachable target types, missing field types, invalid root-operation bindings, missing input bindings, duplicate parameter indexes, and DTO validation failures fail explicitly.
 
 ## Compatibility and Migration
 
@@ -95,5 +103,4 @@ TC39 standard decorators do not define parameter decorators. The implemented con
 ## Open Questions
 
 - Activate `nullable` beyond the reserved surface.
-- Add field-level argument DTO binding.
 - Decide whether schema-first resolver-map attachment belongs in this package.

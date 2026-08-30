@@ -168,6 +168,12 @@ export class BookFieldResolver {
 
 `@Parent()` and `@Context()` are TC39 standard method decorators, not legacy parameter decorators. Their defaults bind the parent/source object to method parameter `0` and `GraphQLContext` to parameter `1`. Pass an explicit zero-based index when the method order differs. The `Book` object type above already declares `author`, so `@FieldResolver('author')` preserves that field type. When adding a field that is absent from the object type, use `@FieldResolver({ fieldName: 'author', type: AuthorType })`.
 
+### Binding and Validating Field Arguments
+
+Object fields can use the same DTO argument pipeline as root operations. Define `@Arg(...)` fields on an input DTO, pass the DTO through `@FieldResolver({ input: AuthorInput })`, and bind it with `@Args(index?)`. The DTO is materialized and validated before the resolver runs; validation failures are GraphQL `BAD_USER_INPUT` errors.
+
+Because these are TC39 method decorators, choose distinct explicit indexes whenever `@Args()`, `@Parent()`, and `@Context()` appear together. `@FieldResolver({ input })` requires `@Args()`, and `@Args()` requires `input`; bootstrap rejects either incomplete pairing and any of these bindings on a root operation. Request-scoped root and field resolvers share the same operation container for HTTP requests and subscription execution. Schema-first field-resolver attachment remains unsupported.
+
 ## 18.5 Real-time with Subscriptions
 
 Fluo supports GraphQL subscriptions based on **SSE (Server-Sent Events)** by default, and WebSocket can be enabled when needed.
