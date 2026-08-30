@@ -299,15 +299,28 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
             throw closeError;
           }
 
-          if (startupError instanceof Error) {
+          if (
+            (typeof startupError === 'object' && startupError !== null) ||
+            typeof startupError === 'function'
+          ) {
             const existingCause = Reflect.get(startupError, 'cause');
-            Reflect.set(
+            const closeFailure = existingCause === undefined
+              ? closeError
+              : new AggregateError([existingCause, closeError], 'Fastify startup and shutdown both failed.');
+            const causeAttached = Reflect.set(
               startupError,
               'cause',
-              existingCause === undefined
-                ? closeError
-                : new AggregateError([existingCause, closeError], 'Fastify startup and shutdown both failed.'),
+              closeFailure,
             );
+
+            // Mutable rejection objects preserve identity. Primitives and values with an unassignable
+            // cause cannot both preserve identity and expose the close failure, so use startup-first errors.
+            if (!causeAttached) {
+              startupError = new AggregateError(
+                [startupError, closeError],
+                'Fastify startup and shutdown both failed.',
+              );
+            }
           } else {
             startupError = new AggregateError(
               [startupError, closeError],
