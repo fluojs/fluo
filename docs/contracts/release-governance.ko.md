@@ -17,7 +17,7 @@
 - `minor`는 하위 호환 기능 추가에 사용하며, `0.x` 단계의 파괴적 변경에도 같은 증가 규칙을 사용합니다.
 - `patch`는 문서화된 동작을 유지하는 하위 호환 수정, 보안 수정, 문서 또는 툴링 변경에만 사용합니다.
 - 공개 tooling 패키지에서 README에 문서화되는 CLI command, flag, 생성 starter mode 또는 script, inspect artifact/output mode, programmatic entrypoint 추가는 소비자에게 보이는 feature work이므로 `minor` release metadata가 필요합니다. `patch`는 새 caller path를 추가하지 않고 이미 문서화된 계약을 수정하거나 보존하는 경우에만 해당 surface를 언급할 수 있습니다.
-- Official 패키지의 `engines.node`를 좁히는 것은 기존에 지원하던 runtime을 제거하므로 파괴적 변경입니다. Release lane은 패키지의 이전 published `@fluojs/<name>@<version>` manifest tag를 baseline으로 사용하고, `--base-ref`는 변경된 candidate manifest를 고르는 데만 사용합니다. 지원이 끊기는 Node.js 버전과 대체할 지원 버전을 식별하는 비어 있지 않은 `Migration:` 문단 또는 구조화된 `Migration Guide` / `Upgrade Guidance` section 및 `major` metadata가 필요합니다. `0.x`와 프리릴리스 Preview 패키지는 이 Official-tier major 규칙에서 제외됩니다.
+- Official 패키지의 `engines.node`를 좁히는 것은 기존에 지원하던 runtime을 제거하므로 파괴적 변경입니다. Release lane은 패키지의 이전 published `@fluojs/<name>@<version>` manifest tag를 baseline으로 사용하고, `--base-ref`는 변경된 candidate manifest를 고르는 데만 사용합니다. 제거되는 Node.js 지원과 대체할 Node.js version 또는 range를 명시적으로 식별하는 비어 있지 않은 `Migration:` 문단 또는 구조화된 `Migration Guide` / `Upgrade Guidance` section 및 `major` metadata가 필요합니다. `0.x`와 프리릴리스 Preview 패키지는 이 Official-tier major 규칙에서 제외됩니다.
 - 프리릴리스 버전은 하이픈 접미사가 있는 버전입니다. 이런 버전은 `next`, `beta`, `rc` 같은 non-`latest` dist-tag로 배포해야 합니다.
 - 프리릴리스 접미사가 없는 안정 버전은 `latest` dist-tag로 배포해야 합니다.
 - 공개 배포 대상 패키지의 매니페스트는 내부 `@fluojs/*` 의존성에 대해 dependency, optional dependency, peer dependency, dev dependency 전부에서 `workspace:^`를 사용해야 합니다.
@@ -51,7 +51,7 @@ Changesets(`.changeset/*.md`)는 canonical release metadata 도구입니다. 기
 2. 패키지별 semver intent, `major`, `minor`, `patch` 중 하나입니다.
 3. 변경 사항을 설명하는 summary.
 
-Release reviewer는 semver metadata를 승인하기 전에 `.changeset/*.md`, generated package `CHANGELOG.md` section, 영향받은 package `README.md` 계약, 그리고 변경된 package `engines.node` range를 이전 published manifest tag와 비교해야 합니다. Official package가 `engines.node`를 좁히면 changeset은 `major`여야 하고, 소비자 대상 대체 runtime 안내가 있는 비어 있지 않은 `Migration:` 문단 또는 구조화된 `Migration Guide` / `Upgrade Guidance` section을 포함해야 하며 `verify:changeset-release-lane`이 이를 강제합니다. Changesets가 pending metadata를 소비한 뒤 생성된 major version delta는 pending intent 없이도 유효한 release output입니다. `@fluojs/cli` entry가 README에 문서화된 공개 CLI, starter, inspect, programmatic surface를 add, expose, support, introduce, enable, provide한다고 설명하면 해당 entry는 `minor`여야 하며, Version Packages PR을 merge하기 전에 patch metadata를 수정해야 합니다.
+Release reviewer는 semver metadata를 승인하기 전에 `.changeset/*.md`, generated package `CHANGELOG.md` section, 영향받은 package `README.md` 계약, 그리고 변경된 package `engines.node` range를 이전 published manifest tag와 비교해야 합니다. Official package가 `engines.node`를 좁히면 changeset은 `major`여야 하고, 제거되는 Node.js 지원과 대체할 Node.js version 또는 range를 명시적으로 연결하는 비어 있지 않은 `Migration:` 문단 또는 구조화된 `Migration Guide` / `Upgrade Guidance` section을 포함해야 하며 `verify:changeset-release-lane`이 이를 강제합니다. Changesets가 pending metadata를 소비한 뒤 생성된 major version delta는 생성된 `CHANGELOG.md` section에 `### Major Changes`와 소비자 migration guidance가 있을 때만 유효한 release output입니다. `@fluojs/cli` entry가 README에 문서화된 공개 CLI, starter, inspect, programmatic surface를 add, expose, support, introduce, enable, provide한다고 설명하면 해당 entry는 `minor`여야 하며, Version Packages PR을 merge하기 전에 patch metadata를 수정해야 합니다.
 
 changeset에 없는 패키지는 해당 릴리스에서 version이 올라가거나 publish되지 않습니다. Downstream dependent 패키지는 Changesets의 내부 dependency graph를 통해 평가되며, dependent 버전 bump는 versioning 단계에서 자동으로 계산됩니다.
 

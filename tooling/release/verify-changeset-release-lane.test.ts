@@ -22,6 +22,23 @@ function writePackageChangelog(directory: string, packageDirectory: string, chan
   writeFileSync(join(targetDirectory, 'CHANGELOG.md'), changelog, 'utf8');
 }
 
+function consumedGeneratedMajorDependencies(changelog?: string) {
+  return {
+    collectPackageVersionDeltas: () => [
+      {
+        bump: 'major',
+        filePath: 'packages/generated/package.json',
+        nextVersion: '2.0.0',
+        packageName: '@fluojs/generated',
+        previousVersion: '1.0.0',
+        source: 'generated',
+      },
+    ],
+    existsSync: (targetPath: string) => changelog !== undefined && targetPath.endsWith('packages/generated/CHANGELOG.md'),
+    readFileSync: () => changelog ?? '',
+  };
+}
+
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { force: true, recursive: true });
@@ -68,7 +85,6 @@ describe('verifyChangesetReleaseLane', () => {
             nextVersion: '2.0.0',
             packageName: '@fluojs/generated',
             previousVersion: '1.0.0',
-            source: 'generated',
           },
         ],
         collectDependencyOnlyMajorVersionDeltas: () => [],
@@ -167,27 +183,30 @@ describe('verifyChangesetReleaseLane', () => {
   it('accepts a generated major version delta after Changesets consumption', () => {
     // Given: Changesets has consumed the originating major intent.
     const directory = createChangesetDirectory();
+    const changelog = '# @fluojs/generated\n\n## 2.0.0\n\n### Major Changes\n\nMigration: Update consumers for the removed API.\n';
 
     // When: the Version Packages result is checked without pending metadata.
     const result = verifyChangesetReleaseLane(
       { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
-      {
-        collectPackageVersionDeltas: () => [
-          {
-            bump: 'major',
-            filePath: 'packages/generated/package.json',
-            nextVersion: '2.0.0',
-            packageName: '@fluojs/generated',
-            previousVersion: '1.0.0',
-            source: 'generated',
-          },
-        ],
-        collectStableNodeEngineRangeNarrowings: () => [],
-      },
+      consumedGeneratedMajorDependencies(changelog),
     );
 
-    // Then: generated release output is not rejected for lacking a pending intent.
+    // Then: generated release output is accepted with matching consumer evidence.
     expect(result.checkedDependencyOnlyMajorVersionDeltas).toEqual([]);
+  });
+
+  it('rejects a consumed generated major without changelog provenance', () => {
+    // Given: generated major metadata without its generated changelog evidence.
+    const directory = createChangesetDirectory();
+
+    // When: the consumed release output is verified.
+    // Then: source metadata alone cannot bypass major-release evidence.
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+        consumedGeneratedMajorDependencies(),
+      ),
+    ).toThrow(/consumed generated major package version deltas/u);
   });
 
   it('rejects patch changesets that describe public CLI feature additions', () => {

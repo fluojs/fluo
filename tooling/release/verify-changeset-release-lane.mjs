@@ -293,7 +293,7 @@ function parsePackageManifestNodeEngine(contents, source) {
 }
 
 function parseOfficialVersion(version) {
-  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u.exec(version);
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u.exec(version);
 
   return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
 }
@@ -393,16 +393,50 @@ function collectMissingNodeEngineMigrationNotes(narrowings, intents) {
   });
 }
 
+function migrationGuidanceSection(body) {
+  return /(?:^|\n)Migration:\s*([\s\S]*)/iu.exec(body)?.[1] ??
+    /(?:^|\n)(?:#{1,6}\s*)?(?:consumer\s+)?(?:migration|upgrade)\s+(?:guide|guidance|notes?)\s*:?\s*\n+([\s\S]*)/iu.exec(body)?.[1] ??
+    '';
+}
+
 function hasConsumerNodeEngineMigrationGuidance(body) {
-  if (/(?:^|\n)Migration:\s+\S/mu.test(body)) {
-    return true;
-  }
+  const guidance = migrationGuidanceSection(body);
+  const removesNodeSupport = /\bNode(?:\.js)?\s+v?\d+(?:\.\d+){0,2}\s+(?:support\s+)?(?:is\s+)?(?:removed|dropped|unsupported|no\s+longer\s+supported)\b/iu;
+  const namesReplacementNodeVersion = /\b(?:upgrade|install|move|use)\b[\s\S]{0,120}\bNode(?:\.js)?\s+v?(?:\d+(?:\.\d+){0,2}|(?:>=|>|~|\^)\s*\d+)/iu;
 
-  const guide = /(?:^|\n)(?:#{1,6}\s*)?(?:consumer\s+)?(?:migration|upgrade)\s+(?:guide|guidance|notes?)\s*:?\s*\n+([\s\S]*)/iu.exec(body)?.[1] ?? '';
+  return removesNodeSupport.test(guidance) && namesReplacementNodeVersion.test(guidance);
+}
 
-  return /\bNode(?:\.js)?\b/iu.test(guide) &&
-    /\b(?:upgrade|install|move|use)\b/iu.test(guide) &&
-    /\b\d+\.\d+(?:\.\d+)?\b/u.test(guide);
+function hasGeneratedMajorMigrationEvidence(section) {
+  return /(?:^|\n)Migration:\s+\S/iu.test(section) ||
+    /(?:^|\n)(?:#{1,6}\s*)?(?:consumer\s+)?(?:migration|upgrade)\s+(?:guide|guidance|notes?)\s*:?\s*\n+\S/iu.test(section);
+}
+
+function collectInvalidConsumedGeneratedMajorVersionDeltas(versionDeltas, dependencies = {}) {
+  const { existsSync: pathExists = existsSync, readFileSync: readFile = readFileSync } = dependencies;
+
+  return versionDeltas.flatMap((delta) => {
+    if (delta.bump !== 'major' || delta.source !== 'generated') {
+      return [];
+    }
+
+    const changelogPath = packageChangelogPathForPackageJson(delta.filePath);
+    const absoluteChangelogPath = join(repoRoot, changelogPath);
+
+    if (!pathExists(absoluteChangelogPath)) {
+      return [{ ...delta, changelogPath, reason: `missing ${changelogPath}` }];
+    }
+
+    const section = changelogSectionForVersion(readFile(absoluteChangelogPath, 'utf8'), delta.nextVersion);
+
+    if (!section || !section.includes('### Major Changes')) {
+      return [{ ...delta, changelogPath, reason: `missing major changelog section for ${delta.nextVersion}` }];
+    }
+
+    return hasGeneratedMajorMigrationEvidence(section)
+      ? []
+      : [{ ...delta, changelogPath, reason: 'missing generated consumer migration guidance' }];
+  });
 }
 
 function packageChangelogPathForPackageJson(packageJsonPath) {
@@ -659,6 +693,9 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
   const pendingDependencyOnlyMajorVersionDeltas = intents.length === 0
     ? dependencyOnlyMajorVersionDeltas.filter((delta) => delta.source !== 'generated')
     : dependencyOnlyMajorVersionDeltas;
+  const invalidConsumedGeneratedMajorVersionDeltas = intents.length === 0
+    ? collectInvalidConsumedGeneratedMajorVersionDeltas(versionDeltas, dependencies)
+    : [];
   const patchCliFeatureDowngrades = [
     ...collectPatchCliFeatureDowngradesFromChangesets(intents, dependencies),
     ...collectPatchCliFeatureDowngradesFromVersionDeltas(versionDeltas, dependencies),
@@ -685,6 +722,7 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     disallowed.length > 0 ||
     disallowedVersionDeltas.length > 0 ||
     pendingDependencyOnlyMajorVersionDeltas.length > 0 ||
+    invalidConsumedGeneratedMajorVersionDeltas.length > 0 ||
     patchCliFeatureDowngrades.length > 0 ||
     patchStudioRouteKindInputContractNarrowings.length > 0 ||
     stableNodeEngineRangeNarrowings.length > 0 ||
@@ -704,6 +742,14 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
       versionDetails.length > 0 ? `package version deltas:\n  - ${versionDetails}` : '',
       pendingDependencyOnlyMajorVersionDeltas.length > 0
         ? `dependency-only major package version deltas:\n  - ${pendingDependencyOnlyMajorVersionDeltas
+            .map(
+              (delta) =>
+                `${delta.packageName}@major (${delta.previousVersion} -> ${delta.nextVersion}, ${delta.filePath}, ${delta.changelogPath}: ${delta.reason})`,
+            )
+            .join('\n  - ')}`
+        : '',
+      invalidConsumedGeneratedMajorVersionDeltas.length > 0
+        ? `consumed generated major package version deltas:\n  - ${invalidConsumedGeneratedMajorVersionDeltas
             .map(
               (delta) =>
                 `${delta.packageName}@major (${delta.previousVersion} -> ${delta.nextVersion}, ${delta.filePath}, ${delta.changelogPath}: ${delta.reason})`,
@@ -755,6 +801,7 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
 
   return {
     allowedBumps: [...allowedBumps],
+    checkedConsumedGeneratedMajorVersionDeltas: invalidConsumedGeneratedMajorVersionDeltas,
     checkedDependencyOnlyMajorVersionDeltas: pendingDependencyOnlyMajorVersionDeltas,
     checkedIntents: intents,
     checkedPatchCliFeatureDowngrades: patchCliFeatureDowngrades,

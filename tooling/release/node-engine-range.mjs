@@ -250,11 +250,15 @@ export function narrowsStableNodeEngineRange(previousVersion, previousRange, nex
   const previousTier = versionTier(previousVersion);
   const nextTier = versionTier(nextVersion);
 
-  if (previousTier !== 'official' || nextTier === 'preview' || previousRange === nextRange) {
+  if (nextTier === 'preview' || previousRange === nextRange) {
     return false;
   }
 
-  if (nextTier !== 'official') {
+  if (previousTier === 'preview') {
+    return false;
+  }
+
+  if (previousTier !== 'official' || nextTier !== 'official') {
     return true;
   }
 

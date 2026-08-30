@@ -20,6 +20,8 @@ function writeChangeset(directory: string, bump: 'major' | 'patch', body: string
 function publishedGraphqlDependencies(
   nextEngineRange: string,
   previousEngineRange = '>=20.16.0 <21 || >=22.0.0 <27',
+  previousVersion = '1.1.0',
+  nextVersion = '1.1.0',
 ) {
   return {
     collectPackageVersionDeltas: () => [],
@@ -28,7 +30,7 @@ function publishedGraphqlDependencies(
         ? JSON.stringify({
             engines: { node: nextEngineRange },
             name: '@fluojs/graphql',
-            version: '1.1.0',
+            version: nextVersion,
           })
         : readFileSync(filePath, 'utf8'),
     runGit: (args: string[]) => {
@@ -46,7 +48,7 @@ function publishedGraphqlDependencies(
         return JSON.stringify({
           engines: { node: previousEngineRange },
           name: '@fluojs/graphql',
-          version: '1.1.0',
+          version: previousVersion,
         });
       }
 
@@ -114,12 +116,12 @@ describe('narrowsStableNodeEngineRange', () => {
     ).toBe(true);
   });
 
-  it('fails closed for a malformed candidate version', () => {
+  it('fails closed for a malformed candidate version even when ranges are equivalent', () => {
     // Given: an Official published version and malformed candidate version.
-    // When: the candidate removes a supported Node version.
+    // When: the candidate preserves the same supported Node versions.
     // Then: invalid version metadata cannot bypass the release gate.
     expect(
-      narrowsStableNodeEngineRange('1.1.0', '>=20.0.0 <23.0.0', '>=21.0.0 <23.0.0', 'not-a-semver'),
+      narrowsStableNodeEngineRange('1.1.0', '>=20.0.0 <23.0.0', '>=20.0.0 <21.0.0 || >=21.0.0 <23.0.0', 'not-a-semver'),
     ).toBe(true);
   });
 });
@@ -158,6 +160,42 @@ describe('published Node engine manifest enforcement', () => {
     ).toThrow(/stable Node engine range narrowings without a major changeset/u);
   });
 
+  it.each([
+    ['stable build metadata candidate', '1.1.0', '1.1.0+build.7'],
+    ['malformed published manifest version', 'published-version-invalid', '1.1.0'],
+  ])('fails closed in collector mode for %s', (_fixture, previousVersion, nextVersion) => {
+    // Given: a real manifest collector fixture with a narrowed Node range.
+    const directory = createChangesetDirectory();
+    writeChangeset(directory, 'patch', 'Reduce the supported Node range.');
+
+    // When: the stable release verifier resolves the published manifest tag.
+    // Then: Official build metadata stays governed and malformed published versions cannot bypass the gate.
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+        publishedGraphqlDependencies('>=22.0.0 <27', '>=20.16.0 <21 || >=22.0.0 <27', previousVersion, nextVersion),
+      ),
+    ).toThrow(/stable Node engine range narrowings without a major changeset/u);
+  });
+
+  it.each([
+    '## Upgrade guidance\n\nNode.js 20 support is removed. Upgrade the package to version 2.0.0.',
+    '## Upgrade guidance\n\nUpgrade Node.js when deploying version 2.0.0.',
+  ])('rejects weak structured migration guidance %s', (guidance) => {
+    // Given: a major Node range removal with unconnected or placeholder upgrade prose.
+    const directory = createChangesetDirectory();
+    writeChangeset(directory, 'major', `Raise the minimum supported Node.js version.\n\n${guidance}`);
+
+    // When: release metadata is verified.
+    // Then: guidance must name the removed Node support and replacement Node version or range.
+    expect(() =>
+      verifyChangesetReleaseLane(
+        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+        publishedGraphqlDependencies('>=20.19.3 <21 || >=22.2.0 <27'),
+      ),
+    ).toThrow(/missing consumer migration notes/u);
+  });
+
   it('requires an explicit migration note with major Node metadata', () => {
     // Given: a published range narrowing and major changeset without migration guidance.
     const directory = createChangesetDirectory();
@@ -179,7 +217,7 @@ describe('published Node engine manifest enforcement', () => {
     writeChangeset(
       directory,
       'major',
-      'Raise the minimum supported Node.js version.\n\nMigration: upgrade to Node.js 20.19.3 or 22.2.0 before installing this release.',
+      'Raise the minimum supported Node.js version.\n\nMigration: Node.js 20 support is removed. Upgrade to Node.js 22.2.0 before installing this release.',
     );
 
     // When: release metadata is verified.
