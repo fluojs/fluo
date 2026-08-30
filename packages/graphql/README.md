@@ -31,7 +31,7 @@ pnpm add @fluojs/graphql graphql graphql-yoga
 - When building type-safe GraphQL APIs using TypeScript decorators (**Code-first**).
 - When integrating an existing executable `GraphQLSchema` object into a fluo application.
 - When you need seamless dependency injection within GraphQL resolvers, including request-scoped providers.
-- When performing efficient data fetching using request-scoped **DataLoader** patterns.
+- When performing efficient data fetching using GraphQL-operation-scoped **DataLoader** patterns.
 
 ## Quick Start
 
@@ -162,7 +162,7 @@ class BookFieldResolver {
 
 Register both resolver classes as module providers or controllers and include both when `GraphqlModule.forRoot({ resolvers })` is used as an allowlist. Field resolver DTO inputs follow the same HTTP and subscription operation container scope as root resolvers. Duplicate `TypeName.fieldName` registrations, field targets that are not reachable from a code-first root output, and `@Args()` / `@Parent()` / `@Context()` bindings placed on root operation methods fail during bootstrap. Schema-first field-resolver attachment remains outside this runtime contract. The `nullable` option is reserved; existing field nullability is preserved, while fields added with `type` use GraphQL's nullable default.
 
-### Request-Scoped DataLoaders
+### GraphQL-Operation-Scoped DataLoaders
 Efficiently solve the N+1 problem with built-in DataLoader integration. Loaders are automatically isolated per GraphQL operation.
 
 ```typescript
@@ -177,7 +177,7 @@ const UserType = new GraphQLObjectType({
   },
 });
 
-const userLoader = createDataLoader(async (ids: string[]) => {
+const userLoader = createDataLoader(async (ids: readonly string[]) => {
   const users = await userService.findByIds(ids);
   return ids.map(id => users.find(u => u.id === id));
 });
@@ -203,7 +203,7 @@ class UserResolver {
 - `@fluojs/graphql` creates one operation-scoped DI container for each HTTP GraphQL request or websocket subscription operation, shares it across resolver calls in that operation, and disposes it when the operation completes or the websocket operation disconnects.
 - Resolver methods receive a `GraphQLContext` whose built-in fields expose the underlying fluo `request`, the authenticated HTTP `principal` when middleware or guards set one, websocket `connectionParams` and `socket` for websocket subscriptions, and any custom fields returned from `GraphqlModule.forRoot({ context })`.
 - Object field resolvers use the same provider scope and operation container as root resolvers; `@Parent()` and `@Context()` only control positional method arguments.
-- Request-scoped DataLoader helpers use the same `GraphQLContext` operation boundary, so loader caches are shared only within one GraphQL operation.
+- GraphQL-operation-scoped DataLoader helpers use the same `GraphQLContext` operation boundary, so loader caches are shared only within one GraphQL operation.
 - Application shutdown unregisters the websocket transport, closes live websocket clients, and disposes any still-active websocket operation containers through the same request-scoped provider teardown path used when an operation completes normally.
 
 ```typescript

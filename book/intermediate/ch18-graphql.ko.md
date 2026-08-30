@@ -8,7 +8,7 @@
 ## Learning Objectives
 - fluo에서 GraphQL을 도입할 때 얻는 구조적 이점을 구분합니다.
 - `GraphqlModule` 설정과 코드 우선 리졸버 등록 방식을 정리합니다.
-- Request-scoped DataLoader로 N+1 문제를 줄이는 object field resolver 흐름을 구성합니다.
+- GraphQL operation 범위 DataLoader로 N+1 문제를 줄이는 object field resolver 흐름을 구성합니다.
 - SSE 기본 구독과 선택적 WebSocket 구독 설정을 확인합니다.
 - 복잡도 제한과 인트로스펙션 제어 같은 운영 가드레일을 적용합니다.
 - FluoShop 제품 카탈로그에 GraphQL을 연결하는 기준을 정리합니다.
@@ -108,14 +108,14 @@ export class AppModule {}
 
 ## 18.4 Object Field Resolver와 DataLoader로 N+1 해결하기
 
-N+1 문제는 GraphQL에서 가장 흔하게 나타나는 성능 병목입니다. Fluo는 요청 스코프 **DataLoader** 지원을 제공해 같은 요청 안의 반복 조회를 배치로 묶을 수 있게 합니다.
+N+1 문제는 GraphQL에서 가장 흔하게 나타나는 성능 병목입니다. Fluo는 GraphQL operation 스코프 **DataLoader** 지원을 제공해 같은 GraphQL operation 안의 반복 조회를 배치로 묶을 수 있게 합니다.
 
 ### Creating a DataLoader
 
 ```typescript
 import { createDataLoader, type GraphQLContext } from '@fluojs/graphql';
 
-const authorLoader = createDataLoader(async (ids: string[]) => {
+const authorLoader = createDataLoader(async (ids: readonly string[]) => {
   const authors = await authorService.findByIds(ids);
   // 반환되는 배열이 입력 ID의 순서와 일치하도록 보장해야 합니다.
   return ids.map(id => authors.find(a => a.id === id));
@@ -164,7 +164,7 @@ export class BookFieldResolver {
 }
 ```
 
-`authorLoader(context)`는 특정 GraphQL 실행 컨텍스트에 묶인 로더 인스턴스를 반환합니다. 따라서 배치와 캐시는 단일 요청 안에서만 공유됩니다. 이 범위를 지키면 한 사용자의 조회 결과가 다른 요청으로 새어 나가지 않으면서도 N+1 문제를 줄일 수 있습니다. 두 resolver class를 모두 module provider로 등록하고 선택적 `resolvers` allowlist에도 둘 다 포함하세요.
+`authorLoader(context)`는 특정 GraphQL 실행 컨텍스트에 묶인 로더 인스턴스를 반환합니다. 따라서 배치와 캐시는 단일 GraphQL operation 안에서만 공유됩니다. 이 범위를 지키면 한 사용자의 조회 결과가 다른 operation으로 새어 나가지 않으면서도 N+1 문제를 줄일 수 있습니다. 두 resolver class를 모두 module provider로 등록하고 선택적 `resolvers` allowlist에도 둘 다 포함하세요.
 
 `@Parent()`와 `@Context()`는 legacy parameter decorator가 아니라 TC39 표준 method decorator입니다. 기본값은 parent/source object를 method parameter `0`에, `GraphQLContext`를 parameter `1`에 바인딩합니다. Method 순서가 다르면 zero-based index를 명시적으로 전달하세요. 위 `Book` object type은 `author`를 이미 선언하므로 `@FieldResolver('author')`가 기존 field type을 유지합니다. Object type에 없는 field를 추가할 때는 `@FieldResolver({ fieldName: 'author', type: AuthorType })`을 사용합니다.
 
