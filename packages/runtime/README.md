@@ -257,6 +257,7 @@ Use `@fluojs/runtime/node` and `@fluojs/runtime/web` for application-facing runt
 | :--- | :--- |
 | `@fluojs/runtime/node` | Supported Node.js entrypoint for logger factories, Node adapter/bootstrap helpers, and shutdown signal registration. |
 | `@fluojs/runtime/web` | Shared Web-standard request/response utilities for Bun, Deno, and Cloudflare Workers, including `createWebRequestResponseFactory`, `dispatchWebRequest`, `createWebFrameworkRequest`, and `parseMultipart`. |
+| `@fluojs/runtime/devtools` | Public package-integration seam for transport-neutral Studio events, snapshots, and `StudioDevtoolsRuntime`. A host bridge constructs the runtime with its transport and passes it as `studio` to application or context bootstrap; omitting it preserves the CLI-injected Node configuration default. This package does not ship Bun, Deno, or Workers bridges, so those hosts gain live Studio only when a host integration has executable evidence. |
 | `@fluojs/runtime/internal` | Internal package-integration seam for runtime wiring tokens, runtime-owned metadata and route-inspection helpers, plus `defineModule(...)` and `createRuntimeRouteInspection(...)` for first-party runtime-neutral integrations that must align with compiled runtime descriptors. |
 | `@fluojs/runtime/internal-node` | Node-only internal seam for adapter/runtime plumbing; prefer `@fluojs/runtime/node` in application code. |
 | `@fluojs/runtime/internal/http-adapter` | Internal HTTP adapter seam for platform packages. |

@@ -91,6 +91,7 @@ describe('runtime export boundaries', () => {
     expect(packageJson.exports).toHaveProperty('./internal/http-adapter');
     expect(packageJson.exports).toHaveProperty('./internal/request-response-factory');
     expect(packageJson.exports).toHaveProperty('./internal-node');
+    expect(packageJson.exports).toHaveProperty('./devtools');
     expect(packageJson.typesVersions?.['*']).toMatchObject({
       'internal-node': ['./dist/internal-node.d.ts'],
     });

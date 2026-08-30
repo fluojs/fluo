@@ -28,7 +28,7 @@
 
 `@fluojs/studio`는 이 복잡성을 다루기 위한 fluo의 진단 계층입니다. Live development에서는 CLI가 local sidecar/viewer workflow로 실행하고, static workflow에서는 inspect artifact를 파일로 받아 구조를 검증한 뒤 팀이 함께 검토할 수 있는 view로 바꿉니다. 다시 말해 DI 컨테이너의 "black box"를 추측의 대상이 아니라 검사할 수 있는 구조로 드러냅니다.
 
-Studio는 local development 진단과 정적 및 bootstrap-time 아키텍처 증거에 집중합니다. Live MVP는 Node dev-runner를 대상으로 하며, Bun, Deno, Cloudflare Workers 사용자는 dedicated live bridge가 생길 때까지 inspect/static artifact 경로를 유지합니다. 그래서 팀은 "왜 이 요청이 느린가"를 묻기 전에 "왜 시작되지 않았는가"를 확인하고, CI와 support를 위한 재현 가능한 증거도 보관할 수 있습니다.
+Studio는 local development 진단과 정적 및 bootstrap-time 아키텍처 증거에 집중합니다. Node dev-runner는 built-in live path입니다. `@fluojs/runtime/devtools`는 transport-neutral package-integration seam도 제공하므로 host는 자체 transport로 `StudioDevtoolsRuntime`을 만들고 process-global configuration에 의존하지 않고 명시적인 `studio` bootstrap option으로 전달할 수 있습니다. Bun, Deno, Cloudflare Workers는 소유 host package가 executable integration evidence를 갖춘 bridge를 출시할 때까지 inspect/static artifact 경로를 유지합니다. 그래서 팀은 "왜 이 요청이 느린가"를 묻기 전에 "왜 시작되지 않았는가"를 확인하고, CI와 support를 위한 재현 가능한 증거도 보관할 수 있습니다.
 
 ## 15.2 Studio 생태계
 
@@ -229,11 +229,11 @@ Studio artifact는 CI/CD pipeline 안의 architecture guard가 될 수 있습니
 
 ### 라이브 Studio
 
-현재 Studio workflow에는 두 가지 supported path가 있습니다. `fluo dev --studio`는 snapshot, request trace, timing, diagnostic, restart/disconnect lifecycle, heartbeat를 위한 sidecar event를 소비하는 runtime-connected local devtool을 엽니다. Live MVP는 의도적으로 Node dev-runner에 한정됩니다. CLI가 앱이 `@fluojs/runtime`을 import하기 전에 명시적인 Studio runtime config를 Node 앱 child에 주입할 수 있기 때문입니다.
+현재 Studio workflow에는 built-in Node path와 package-integration seam이 있습니다. `fluo dev --studio`는 snapshot, request trace, timing, diagnostic, restart/disconnect lifecycle, heartbeat를 위한 sidecar event를 소비하는 runtime-connected local devtool을 엽니다. CLI가 앱이 `@fluojs/runtime`을 import하기 전에 Studio runtime config를 Node 앱 child에 주입하므로 Node path가 기본값으로 남습니다. Non-Node host integration은 대신 `@fluojs/runtime/devtools`에서 `StudioDevtoolsRuntime`을 가져와 인증된 transport로 만들고 명시적인 `studio` bootstrap option으로 전달할 수 있습니다.
 
 CLI는 live sidecar teardown도 소유합니다. `StudioSidecar.close()`는 기존처럼 추적 중인 SSE response를 종료하고, 인증된 runtime ingestion을 처리 중인 socket만 닫으며, 반복되거나 동시에 호출된 caller가 하나의 결정적인 close 작업을 공유하게 합니다. 따라서 request body를 완료하지 않은 ingestion client가 `fluo dev --studio` shutdown을 무기한 열어 두지 못하며, teardown이 완료된 일반 요청 socket까지 일괄 파괴하지도 않습니다.
 
-Bun, Deno, Cloudflare Workers는 이번 MVP에서 migration/static 사용자입니다. Dedicated bridge가 구현되고 검증될 때까지 non-Node 프로젝트는 live sidecar stream을 기대하는 대신 `fluo inspect` JSON, timing, report, Mermaid artifact를 만들고 패키징된 Studio viewer로 열어야 합니다.
+Bun, Deno, Cloudflare Workers는 각 소유 host package가 bridge를 구현하고 검증할 때까지 migration/static 사용자로 남습니다. Runtime seam 자체는 first-party sidecar나 host transport가 아니므로, non-Node 프로젝트는 host package가 executable live-bridge evidence를 문서화하지 않은 한 `fluo inspect` JSON, timing, report, Mermaid artifact를 만들고 패키징된 Studio viewer로 열어야 합니다.
 
 Live Studio가 inspect artifact의 필요성을 없애지는 않습니다. 팀은 여전히 CI, support, governance를 위한 재현 가능한 증거가 필요합니다. File-first report는 그 증거를 제공하고, live devtool은 앱이 실행되는 동안 개발자에게 즉각적인 피드백을 제공합니다.
 

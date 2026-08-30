@@ -257,6 +257,7 @@ class UsersModule {}
 | :--- | :--- |
 | `@fluojs/runtime/node` | 로거 팩토리, Node 어댑터/부트스트랩 헬퍼, 종료 시그널 등록을 위한 지원되는 Node.js 전용 진입점입니다. |
 | `@fluojs/runtime/web` | Bun, Deno, Cloudflare Workers를 위한 공유 Web 표준 요청/응답 유틸리티입니다. `createWebRequestResponseFactory`, `dispatchWebRequest`, `createWebFrameworkRequest`, `parseMultipart`를 포함합니다. |
+| `@fluojs/runtime/devtools` | transport-neutral Studio event, snapshot, `StudioDevtoolsRuntime`을 위한 공개 package-integration seam입니다. Host bridge는 자체 transport로 runtime을 만들고 application 또는 context bootstrap의 `studio`로 전달하며, 이를 생략하면 CLI-injected Node configuration 기본 경로가 유지됩니다. 이 package는 Bun, Deno, Workers bridge를 제공하지 않으므로 해당 host는 host integration에 executable evidence가 있을 때만 live Studio를 얻습니다. |
 | `@fluojs/runtime/internal` | runtime wiring token, runtime-owned metadata 및 route-inspection helper와 함께 compiled runtime descriptor에 정렬되어야 하는 first-party runtime-neutral integration을 위한 `defineModule(...)`, `createRuntimeRouteInspection(...)`을 제공하는 internal package-integration seam입니다. |
 | `@fluojs/runtime/internal-node` | adapter/runtime plumbing을 위한 Node 전용 internal seam이며, 애플리케이션 코드에서는 `@fluojs/runtime/node`를 우선 사용하세요. |
 | `@fluojs/runtime/internal/http-adapter` | platform package를 위한 internal HTTP adapter seam입니다. |

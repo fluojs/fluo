@@ -70,7 +70,7 @@ class FetchStudioTransport implements StudioDevtoolsRuntimeTransport {
   }
 }
 
-/** Process-local runtime bridge used only when Studio env injection is present. */
+/** Runtime-owned Studio bridge that publishes transport-neutral events through a host transport. */
 export class StudioDevtoolsRuntime {
   private readonly epoch: string;
   private readonly observer = new StudioRequestObserver(this);

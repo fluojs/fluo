@@ -15,6 +15,7 @@ import type {
 
 import type { BootstrapTimingDiagnostics } from './health/diagnostics.js';
 import type { PlatformComponentInput } from './platform-contract.js';
+import type { StudioDevtoolsRuntime } from './devtools/studio-runtime.js';
 
 /** Module class accepted by bootstrap and module-graph compilation helpers. */
 export type ModuleType = Constructor & { definition?: ModuleDefinition };
@@ -171,6 +172,12 @@ export interface BootstrapApplicationOptions {
   platform?: {
     components?: readonly PlatformComponentInput[];
   };
+  /**
+   * Optional runtime-owned Studio bridge for an explicit host transport.
+   *
+   * When omitted, bootstrap retains the CLI-injected Studio configuration path.
+   */
+  studio?: StudioDevtoolsRuntime;
   rootModule: ModuleType;
   diagnostics?: {
     timing?: boolean;

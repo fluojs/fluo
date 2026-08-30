@@ -28,7 +28,7 @@ As an application grows, its dependency graph becomes too complex to keep in you
 
 `@fluojs/studio` is fluo's diagnostic layer for managing that complexity. In live development it is launched by the CLI as a local sidecar/viewer workflow; in static workflows it receives inspect artifacts as files, validates their structure, and turns them into views that teams can review together. In other words, it exposes the DI container's "black box" as a structure you can inspect instead of guessing about it.
 
-Studio focuses on local development diagnostics plus static and bootstrap-time architecture evidence. The live MVP targets the Node dev-runner, while Bun, Deno, and Cloudflare Workers users keep the inspect/static artifact path until dedicated live bridges exist. That lets teams ask "why did this fail to start?" before they ask "why is this request slow?" and still keep reproducible evidence for CI and support.
+Studio focuses on local development diagnostics plus static and bootstrap-time architecture evidence. The Node dev-runner is the built-in live path. `@fluojs/runtime/devtools` also exposes a transport-neutral package-integration seam: a host can construct `StudioDevtoolsRuntime` with its own transport and pass it as the explicit `studio` bootstrap option without relying on process-global configuration. Bun, Deno, and Cloudflare Workers keep the inspect/static artifact path until an owning host package ships that bridge with executable integration evidence. That lets teams ask "why did this fail to start?" before they ask "why is this request slow?" and still keep reproducible evidence for CI and support.
 
 ## 15.2 The Studio Ecosystem
 
@@ -229,11 +229,11 @@ This approach catches architecture regressions before they reach production. It 
 
 ### Live Studio
 
-The current Studio workflow has two supported paths. `fluo dev --studio` opens a runtime-connected local devtool that consumes sidecar events for snapshots, request traces, timing, diagnostics, restart/disconnect lifecycle, and heartbeats. The live MVP is intentionally scoped to the Node dev-runner because the CLI can inject explicit Studio runtime config into the Node app child before `@fluojs/runtime` is imported.
+The current Studio workflow has a built-in Node path and a package-integration seam. `fluo dev --studio` opens a runtime-connected local devtool that consumes sidecar events for snapshots, request traces, timing, diagnostics, restart/disconnect lifecycle, and heartbeats. The Node path remains the default because the CLI injects Studio runtime config into the Node app child before `@fluojs/runtime` is imported. A non-Node host integration can instead create `StudioDevtoolsRuntime` from `@fluojs/runtime/devtools` with its authenticated transport and pass it as the explicit `studio` bootstrap option.
 
 The CLI also owns live sidecar teardown. `StudioSidecar.close()` ends tracked SSE responses as before, closes sockets only while they are serving authenticated runtime ingestion, and shares one deterministic close operation across repeated or concurrent callers. This keeps an ingestion client that leaves its request body incomplete from holding `fluo dev --studio` shutdown open indefinitely without turning teardown into blanket destruction of completed ordinary request sockets.
 
-Bun, Deno, and Cloudflare Workers are migration/static users for this MVP. Until dedicated bridges are implemented and verified, non-Node projects should generate `fluo inspect` JSON, timing, report, or Mermaid artifacts and open them with the packaged Studio viewer instead of expecting live sidecar streams.
+Bun, Deno, and Cloudflare Workers remain migration/static users until their owning host packages implement and verify a bridge. The runtime seam is not a first-party sidecar or host transport; non-Node projects should continue generating `fluo inspect` JSON, timing, report, or Mermaid artifacts and opening them with the packaged Studio viewer unless their host package documents executable live-bridge evidence.
 
 Live Studio does not remove the need for inspect artifacts. Teams still need reproducible evidence for CI, support, and governance. File-first reports provide that evidence, while the live devtool gives developers immediate feedback while the app is running.
 
