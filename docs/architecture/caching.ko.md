@@ -32,7 +32,7 @@
 | 규칙 | 현재 계약 | 소스 기준 |
 | --- | --- | --- |
 | 기본 TTL 해석 | `CacheService.set(...)`는 TTL을 `ttlSeconds ?? options.ttl`로 해석하므로 per-call TTL이 지터 계산 전에 우선합니다. | `packages/cache-manager/src/service.ts` |
-| Opt-in TTL 지터 | `ttlJitter`가 설정되면 `CacheService`는 각 양수 resolved TTL에 설정된 bounded ratio와 direction을 한 번 적용한 뒤 store로 넘깁니다. Memory, Redis, custom store는 모두 동일한 effective TTL을 받습니다. 주입 가능한 random source는 deterministic test seam이고 production 기본값은 `Math.random`입니다. | `packages/cache-manager/src/service.ts`, `packages/cache-manager/src/ttl-jitter.ts` |
+| Opt-in TTL 지터 | `ttlJitter`를 생략하거나 `undefined`로 설정한 경우에만 지터가 비활성화되며 malformed option value는 module 등록을 실패시킵니다. `CacheService`는 각 양수 resolved TTL에 설정된 bounded ratio와 direction을 한 번 적용한 뒤 store로 넘깁니다. 주입된 random sample이 유한한 `[0, 1]` 범위를 벗어나면 write를 거부합니다. 모든 effective TTL은 선택한 direction bound 안에서 양수이자 유한하게 유지되며 JavaScript의 가장 작은 양수 또는 가장 큰 유한값에서만 포화됩니다. Memory, Redis, custom store는 모두 동일한 effective TTL을 받습니다. | `packages/cache-manager/src/service.ts`, `packages/cache-manager/src/ttl-jitter.ts` |
 | 쓰기 비활성화 | TTL이 유한하지 않거나 `0`보다 작으면 캐시 쓰기를 수행하지 않습니다. | `packages/cache-manager/src/service.ts` |
 | 무기한 엔트리 | `ttl: 0`은 만료 없음 의미입니다. 메모리 저장소는 이런 엔트리에 `expiresAt`을 두지 않고, Redis 저장소는 `EX` 없이 기록합니다. | `packages/cache-manager/src/service.ts`, `packages/cache-manager/src/stores/memory-store.ts`, `packages/cache-manager/src/stores/redis-store.ts` |
 | GET 전용 응답 캐싱 | `CacheInterceptor`는 `GET` 요청에 대해서만 read-through 캐싱을 수행합니다. GET이 아닌 요청은 캐시 읽기와 쓰기를 건너뜁니다. | `packages/cache-manager/src/interceptor.ts` |

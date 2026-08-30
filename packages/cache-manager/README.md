@@ -180,7 +180,9 @@ CacheModule.forRoot({
 
 `ratio` must be greater than `0` and at most `1`. The default `symmetric` mode samples within `ttl ± (ttl * ratio)`; `shorten` only subtracts from the TTL and `lengthen` only adds to it. A `CacheService.set(...)` or `remember(...)` per-call TTL override is jittered instead of the module default. `ttl: 0` remains a no-expiry write, and negative or non-finite TTL values still skip the write.
 
-Jitter is disabled when `ttlJitter` is omitted. The optional `random` function is a deterministic test seam and must return a value in `[0, 1]`; production code should normally keep the default `Math.random`. TTL jitter spreads expiry times only. It is not distributed locking, refresh-ahead caching, or cross-instance stampede coordination.
+Jitter is disabled only when `ttlJitter` is omitted or `undefined`; `null`, primitives, arrays, and invalid option fields are rejected during module registration. The optional `random` function is a deterministic test seam and must return a finite value in `[0, 1]`; an invalid sample rejects the write instead of being coerced. Production code should normally keep the default `Math.random`.
+
+Every jittered positive TTL remains positive and finite within its selected direction. A fully shortened TTL uses JavaScript's smallest positive finite value rather than becoming the no-expiry sentinel, while an upward result beyond the representable range saturates at `Number.MAX_VALUE`. TTL jitter spreads expiry times only. It is not distributed locking, refresh-ahead caching, or cross-instance stampede coordination.
 
 ### Query-Sensitive Caching
 

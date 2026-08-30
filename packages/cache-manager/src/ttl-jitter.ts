@@ -1,19 +1,21 @@
 import type { CacheTtlJitterMode, CacheTtlJitterOptions, NormalizedCacheTtlJitterOptions } from './types.js';
 
-const MINIMUM_JITTERED_TTL_SECONDS = 0.001;
-
 /**
  * Normalize opt-in TTL jitter configuration and reject ratios that cannot produce a usable spread.
  *
  * @param options Raw jitter configuration, or `undefined` when jitter stays disabled.
  * @returns Normalized jitter configuration, or `undefined` when jitter stays disabled.
- * @throws Error When `ratio` is not a finite number greater than `0` and at most `1`.
+ * @throws Error When the supplied value is not an options object or contains an invalid field.
  */
 export function normalizeCacheTtlJitterOptions(
   options: CacheTtlJitterOptions | undefined,
 ): NormalizedCacheTtlJitterOptions | undefined {
-  if (!options) {
+  if (options === undefined) {
     return undefined;
+  }
+
+  if (typeof options !== 'object' || options === null || Array.isArray(options)) {
+    throw new Error('@fluojs/cache-manager ttlJitter must be an options object when provided.');
   }
 
   if (!Number.isFinite(options.ratio) || options.ratio <= 0 || options.ratio > 1) {
@@ -40,11 +42,11 @@ export function normalizeCacheTtlJitterOptions(
 function readUnitSample(random: (() => number) | undefined): number {
   const sample = (random ?? Math.random)();
 
-  if (!Number.isFinite(sample)) {
-    return 0.5;
+  if (!Number.isFinite(sample) || sample < 0 || sample > 1) {
+    throw new Error('@fluojs/cache-manager ttlJitter.random must return a finite number from 0 through 1.');
   }
 
-  return Math.min(1, Math.max(0, sample));
+  return sample;
 }
 
 function resolveJitterOffsetSeconds(
@@ -67,7 +69,8 @@ function resolveJitterOffsetSeconds(
  *
  * @param ttlSeconds Resolved TTL in seconds, taken from a per-call override or the module default.
  * @param jitter Normalized jitter configuration, or `undefined` when jitter stays disabled.
- * @returns The TTL handed to the cache store, preserving `0` as a no-expiry write and never returning a non-positive expiring TTL.
+ * @returns The TTL handed to the cache store, preserving `0` as a no-expiry write and returning a positive finite value within the selected directional bounds.
+ * @throws Error When the configured randomness source returns a value outside the finite `[0, 1]` range.
  */
 export function applyCacheTtlJitter(
   ttlSeconds: number,
@@ -83,5 +86,13 @@ export function applyCacheTtlJitter(
     readUnitSample(jitter.random),
   );
 
-  return Math.max(MINIMUM_JITTERED_TTL_SECONDS, ttlSeconds + offsetSeconds);
+  if (offsetSeconds <= -ttlSeconds) {
+    return Number.MIN_VALUE;
+  }
+
+  if (offsetSeconds > Number.MAX_VALUE - ttlSeconds) {
+    return Number.MAX_VALUE;
+  }
+
+  return ttlSeconds + offsetSeconds;
 }

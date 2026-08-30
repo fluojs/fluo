@@ -72,7 +72,7 @@ export interface CacheTtlJitterOptions {
   ratio: number;
   /** Direction of the applied jitter. Defaults to `'symmetric'`. */
   mode?: CacheTtlJitterMode;
-  /** Randomness source returning a value in `[0, 1]`. Defaults to `Math.random`; inject a deterministic source in tests. */
+  /** Randomness source that must return a finite value in `[0, 1]`. Defaults to `Math.random`; invalid samples reject the write. */
   random?: () => number;
 }
 
@@ -84,7 +84,7 @@ export interface CacheModuleOptions extends CacheModuleInternalOptions {
   global?: boolean;
   store?: 'memory' | 'redis' | CacheStore;
   ttl?: number;
-  /** Opt-in positive-TTL jitter applied before store handoff. Disabled when omitted. */
+  /** Opt-in positive-TTL jitter applied before store handoff. Only omission or `undefined` disables jitter. */
   ttlJitter?: CacheTtlJitterOptions;
   httpKeyStrategy?: CacheKeyStrategy;
   principalScopeResolver?: PrincipalScopeResolver;

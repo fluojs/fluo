@@ -180,7 +180,9 @@ CacheModule.forRoot({
 
 `ratio`는 `0`보다 크고 `1` 이하여야 합니다. 기본 `symmetric` mode는 `ttl ± (ttl * ratio)` 범위에서 값을 뽑고, `shorten`은 TTL을 줄이기만 하며 `lengthen`은 늘리기만 합니다. `CacheService.set(...)` 또는 `remember(...)`의 per-call TTL override가 있으면 module 기본값 대신 해당 값에 지터를 적용합니다. `ttl: 0`은 계속 만료 없음 쓰기이며, 음수 또는 유한하지 않은 TTL 값은 여전히 쓰기를 건너뜁니다.
 
-`ttlJitter`를 생략하면 지터가 비활성화됩니다. Optional `random` 함수는 deterministic test seam이며 `[0, 1]` 범위의 값을 반환해야 합니다. Production code에서는 일반적으로 기본 `Math.random`을 유지하세요. TTL 지터는 만료 시점을 분산할 뿐입니다. Distributed locking, refresh-ahead caching 또는 cross-instance stampede coordination이 아닙니다.
+`ttlJitter`를 생략하거나 `undefined`로 설정한 경우에만 지터가 비활성화됩니다. `null`, primitive, array 및 invalid option field는 module 등록 중 거부됩니다. Optional `random` 함수는 deterministic test seam이며 `[0, 1]` 범위의 유한한 값을 반환해야 합니다. Invalid sample은 coercion하지 않고 write를 거부합니다. Production code에서는 일반적으로 기본 `Math.random`을 유지하세요.
+
+지터가 적용된 모든 양수 TTL은 선택한 방향 범위 안에서 양수이자 유한한 값으로 유지됩니다. 완전히 단축된 TTL은 no-expiry sentinel이 되지 않고 JavaScript의 가장 작은 양수 유한값을 사용하며, 표현 가능한 범위를 넘는 증가 결과는 `Number.MAX_VALUE`에서 포화됩니다. TTL 지터는 만료 시점을 분산할 뿐입니다. Distributed locking, refresh-ahead caching 또는 cross-instance stampede coordination이 아닙니다.
 
 ### 쿼리 매개변수 기반 캐싱
 

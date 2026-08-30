@@ -177,19 +177,6 @@ describe('CacheService — opt-in TTL jitter', () => {
     expect(store.writes).toEqual([{ key: 'remembered', ttlSeconds: 540 }]);
   });
 
-  it('ignores an out-of-range random sample by clamping it into the configured bounds', async () => {
-    const store = new RecordingStore();
-    const cache = createCacheService(store, {
-      ttl: 600,
-      ttlJitter: jitter(0.5, createSequenceRandom([-3, 4, Number.NaN])),
-    });
-
-    await cache.set('low', 'value');
-    await cache.set('high', 'value');
-    await cache.set('nan', 'value');
-
-    expect(store.writes.map((write) => write.ttlSeconds)).toEqual([300, 900, 600]);
-  });
 });
 
 function readNormalizedOptions(module: ReturnType<typeof CacheModule.forRoot>): NormalizedCacheModuleOptions {
