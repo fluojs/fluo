@@ -8,7 +8,7 @@ import { CacheInterceptor } from './interceptor.js';
 import { CacheModule } from './module.js';
 import { CacheService } from './service.js';
 import { CACHE_OPTIONS } from './tokens.js';
-import type { CacheStore, RedisCompatibleClient } from './types.js';
+import type { CacheAsyncModuleOptions, CacheStore, RedisCompatibleClient } from './types.js';
 
 class MemoryRedisClient implements RedisCompatibleClient {
   readonly storage = new Map<string, string>();
@@ -140,8 +140,13 @@ describe('CacheModule.forRootAsync', () => {
     await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(/local-cache-settings/);
   });
 
-  it('owns global visibility from the async registration option instead of the factory result', () => {
-    const localModule = CacheModule.forRootAsync({ useFactory: () => ({ global: true, store: 'memory' }) });
+  it('owns global visibility from the async registration option instead of an untrusted factory property', () => {
+    const untrustedFactoryResult: Awaited<ReturnType<CacheAsyncModuleOptions['useFactory']>> = {
+      store: 'memory',
+    };
+    Object.defineProperty(untrustedFactoryResult, 'global', { enumerable: true, value: true });
+
+    const localModule = CacheModule.forRootAsync({ useFactory: () => untrustedFactoryResult });
     const globalModule = CacheModule.forRootAsync({ global: true, useFactory: () => ({ store: 'memory' }) });
 
     expect(getModuleMetadata(localModule)?.global).toBe(false);

@@ -88,7 +88,9 @@ export interface NormalizedCacheModuleOptions {
  * module is defined, before the injected factory runs. A `global` value returned by
  * `useFactory` is excluded by the public type and ignored if supplied as an extra runtime property.
  */
-export type CacheAsyncModuleOptions = AsyncModuleOptions<Omit<CacheModuleOptions, 'global'>> &
+export type CacheAsyncModuleOptions = AsyncModuleOptions<
+  Omit<CacheModuleOptions, 'global'> & { global?: never }
+> &
   Pick<CacheModuleOptions, 'global'>;
 
 /**
