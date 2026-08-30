@@ -4284,7 +4284,9 @@ exit 7
     expect(stdoutBuffer).toEqual([]);
     expect(stderrBuffer).toHaveLength(1);
     expect(readFileSync(modulePath, 'utf8')).toBe(source);
-  });
+    // The lazy `runCli` facade transforms the full CLI module graph on first use,
+    // which exceeds the default per-test budget on a cold Vitest cache.
+  }, 90000);
 
   it('delegates inspect --mermaid output to Studio when resolvable', async () => {
     const stdoutBuffer: string[] = [];
