@@ -1034,14 +1034,7 @@ describe('@fluojs/platform-fastify', () => {
     });
 
     try {
-      await expect(Promise.race([
-        observedMultipartRequest.promise,
-        new Promise<void>((_resolve, reject) => {
-          setTimeout(() => {
-            reject(new Error('Multipart request never reached Fastify preHandler hook.'));
-          }, 2_000);
-        }),
-      ])).resolves.toBeUndefined();
+      await observedMultipartRequest.promise;
 
       expect(observedMultipartRawBodyStates).toEqual([false]);
     } finally {
@@ -1051,7 +1044,7 @@ describe('@fluojs/platform-fastify', () => {
     }
   });
 
-  it('treats multipart content-type values case-insensitively before raw-body capture', async () => {
+  it('treats multipart media types with casing, whitespace, and parameters before raw-body capture', async () => {
     @Controller('/uploads')
     class UploadController {
       @Post('/')
@@ -1078,13 +1071,8 @@ describe('@fluojs/platform-fastify', () => {
     const observedMultipartRequest = createDeferred<void>();
 
     fastifyApp.addHook('preHandler', (request) => {
-      const contentType = request.headers['content-type'];
-      const primaryValue = Array.isArray(contentType) ? contentType[0] : contentType;
-
-      if (typeof primaryValue === 'string' && primaryValue.toLowerCase().includes('multipart/form-data')) {
-        observedMultipartRawBodyStates.push(request.rawBody !== undefined);
-        observedMultipartRequest.resolve();
-      }
+      observedMultipartRawBodyStates.push(request.rawBody !== undefined);
+      observedMultipartRequest.resolve();
     });
 
     const port = await listenOnEphemeralPort(app);
@@ -1104,26 +1092,65 @@ describe('@fluojs/platform-fastify', () => {
       body,
       headers: {
         'content-length': String(Buffer.byteLength(body)),
-        'content-type': `Multipart/Form-Data; boundary=${boundary}`,
+        'content-type': `Multipart/Form-Data  ; boundary=${boundary}`,
       },
       method: 'POST',
       signal: abortController.signal,
     });
 
     try {
-      await expect(Promise.race([
-        observedMultipartRequest.promise,
-        new Promise<void>((_resolve, reject) => {
-          setTimeout(() => {
-            reject(new Error('Mixed-case multipart request never reached Fastify preHandler hook.'));
-          }, 2_000);
-        }),
-      ])).resolves.toBeUndefined();
+      await observedMultipartRequest.promise;
 
       expect(observedMultipartRawBodyStates).toEqual([false]);
     } finally {
       abortController.abort();
       await multipartRequest.catch(() => undefined);
+      await app.close();
+    }
+  });
+
+  it('captures normal JSON bodies when a parameter merely contains the multipart media type', async () => {
+    @Controller('/webhooks')
+    class WebhookController {
+      @Post('/json')
+      readJson(_input: undefined, context: RequestContext) {
+        return {
+          body: context.request.body,
+          rawBody: Buffer.from(context.request.rawBody ?? new Uint8Array()).toString('utf8'),
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [WebhookController],
+    });
+
+    const app = await bootstrapFastifyApplication(AppModule, {
+      cors: false,
+      port: 0,
+      rawBody: true,
+    });
+    const port = await listenOnEphemeralPort(app);
+    const body = JSON.stringify({ event: 'payment.succeeded' });
+
+    try {
+      const response = await requestHttp({
+        body,
+        headers: {
+          'content-type': 'application/json; profile="multipart/form-data"',
+        },
+        method: 'POST',
+        path: '/webhooks/json',
+        port,
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(JSON.parse(response.body)).toEqual({
+        body: { event: 'payment.succeeded' },
+        rawBody: body,
+      });
+    } finally {
       await app.close();
     }
   });

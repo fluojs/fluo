@@ -1406,7 +1406,8 @@ function createRawBodyBufferChunk(chunk: unknown, encoding: BufferEncoding): Buf
 
 function isMultipartRequestContentType(contentType: string | string[] | undefined): boolean {
   const primaryValue = Array.isArray(contentType) ? contentType[0] : contentType;
-  return typeof primaryValue === 'string' && primaryValue.toLowerCase().includes('multipart/form-data');
+  const primaryMediaType = primaryValue?.split(';')[0]?.trim().toLowerCase();
+  return primaryMediaType === 'multipart/form-data';
 }
 
 function resolveListenTarget(
