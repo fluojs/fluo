@@ -261,8 +261,8 @@ GraphqlModule.forRoot({
 - `limits`에는 request validation budget을 전달하거나 `false`를 전달할 수 있습니다. `false`는 fluo 밖에서 동등한 제어를 적용할 때만 사용하세요.
 - Streaming GraphQL 응답은 downstream response stream이 닫히거나 오류를 내면 upstream fetch body를 cancel하므로 SSE subscription 리소스를 즉시 해제합니다.
 - Downstream streaming 실패와 upstream cancellation cleanup 실패가 동시에 발생하면 downstream 실패가 계속 관찰 가능하며 cancellation cleanup은 best-effort로 처리됩니다.
-- GraphQL 스키마 해석 이후 bootstrap이 실패하면 원래 오류를 다시 던지기 전에 실패한 service의 cross-realm GraphQL object allowlist만 제거합니다. 다른 활성 GraphQL 애플리케이션이 하나도 남지 않은 경우에만 package의 process-wide `graphql/jsutils/instanceOf` 패치를 원복합니다.
-- 각 활성 GraphQL 애플리케이션은 자체 cross-realm GraphQL object allowlist를 소유합니다. Shutdown도 같은 release 규칙을 따르므로, 다른 실행 중인 애플리케이션은 process-wide `instanceOf` 패치를 유지하고 자신의 object만 허용합니다.
+- GraphQL 스키마 해석 이후 bootstrap이 실패하면 원래 오류를 다시 던지기 전에 실패한 service의 cross-realm GraphQL object allowlist만 제거합니다. 실제 `graphql/jsutils/instanceOf` module object마다 설치한 patch와 활성 애플리케이션 allowlist를 별도로 추적합니다.
+- Shutdown은 해당 module object의 마지막 활성 GraphQL 애플리케이션이 release한 뒤 package가 소유한 patch만 원복합니다. 다른 GraphQL module instance와 다른 integration이 교체한 `instanceOf` 구현은 그대로 둡니다.
 - WebSocket 구독 경로에는 별도의 전송 budget이 기본 적용됩니다: 동시 연결 `100`, 최대 payload 크기 `64 KiB`, 연결당 활성 operation `25`개입니다.
 - `subscriptions.websocket.enabled` 기본값은 `false`입니다. 활성화하려면 upgrade를 지원하는 Node HTTP/S adapter가 필요합니다. `connectionInitWaitTimeoutMs`는 연결 초기화를 위해 `graphql-ws`로 전달되고, `keepAliveMs`는 설정 시 WebSocket keepalive ping 주기를 제어합니다.
 - 무제한 WebSocket 동작이 정말 필요할 때만 `subscriptions.websocket.limits = false`를 사용하고, 그 경우에도 동일한 수준의 외부 제어 수단을 마련해야 합니다.
