@@ -51,6 +51,15 @@ export type DotValue<T, K extends string> = K extends keyof T
 export interface ConfigModuleOptions {
   envFile?: string;
   envFilePath?: string;
+  /**
+   * Explicit ordered env-file list merged from lowest to highest precedence.
+   *
+   * Entries are resolved against `cwd` when relative, missing files contribute nothing,
+   * and the merged result stays below `processEnv` and `runtimeOverrides`. Combining this
+   * option with `envFile` or `envFilePath`, repeating a resolved path, or passing a blank
+   * entry fails with `INVALID_CONFIG`. An empty list opts out of env-file loading entirely.
+   */
+  envFilePaths?: readonly string[];
   processEnv?: ConfigProcessEnv;
   schema?: ConfigSchema;
   defaults?: ConfigDictionary;

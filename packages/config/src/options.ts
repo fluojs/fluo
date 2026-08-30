@@ -5,6 +5,10 @@ function snapshotConfigDictionary(value: ConfigDictionary | undefined): ConfigDi
   return value === undefined ? undefined : cloneConfigDictionary(value);
 }
 
+function snapshotEnvFilePaths(envFilePaths: readonly string[] | undefined): readonly string[] | undefined {
+  return envFilePaths === undefined ? undefined : Object.freeze([...envFilePaths]);
+}
+
 function snapshotProcessEnv(processEnv: ConfigProcessEnv | undefined): ConfigProcessEnv | undefined {
   if (processEnv === undefined) {
     return undefined;
@@ -53,6 +57,7 @@ export function snapshotConfigModuleOptions(options?: ConfigModuleOptions): Conf
   return Object.freeze({
     ...options,
     defaults: snapshotConfigDictionary(options.defaults),
+    envFilePaths: snapshotEnvFilePaths(options.envFilePaths),
     processEnv: snapshotProcessEnv(options.processEnv),
     runtimeOverrides: snapshotConfigDictionary(options.runtimeOverrides),
     schema: snapshotConfigSchema(options.schema),
@@ -73,6 +78,7 @@ export function snapshotConfigLoadOptions(options?: ConfigLoadOptions): ConfigLo
   return Object.freeze({
     ...options,
     defaults: snapshotConfigDictionary(options.defaults),
+    envFilePaths: snapshotEnvFilePaths(options.envFilePaths),
     processEnv: snapshotProcessEnv(options.processEnv),
     runtimeOverrides: snapshotConfigDictionary(options.runtimeOverrides),
     schema: snapshotConfigSchema(options.schema),

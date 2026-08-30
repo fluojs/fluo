@@ -56,7 +56,7 @@ const EnvSchema = z.object({
 class AppModule {}
 ```
 
-env file이 절대 경로나 미리 해석된 경로에 있다면 `envFilePath`를 사용하고, 기본 dotenv parser 대신 다른 flat-file parser가 필요하다면 `parse`를 전달하세요.
+env file이 절대 경로나 미리 해석된 경로에 있다면 `envFilePath`를 사용하고, 여러 env file을 명시적인 순서로 계층화해야 한다면 `envFilePaths`를 사용하며, 기본 dotenv parser 대신 다른 flat-file parser가 필요하다면 `parse`를 전달하세요.
 
 등록 후에는 `ConfigService`를 주입해서 값을 읽습니다.
 
@@ -95,6 +95,33 @@ class MyService {
 `@fluojs/config`는 주변 환경 변수를 자동으로 스캔하지 않습니다. 환경 기반 값을 우선순위에 포함하려면 부트스트랩 경계에서 `processEnv` 스냅샷을 명시적으로 전달하세요.
 
 `envFilePath`는 `envFile`보다 우선하며, `parse`를 사용하면 flat key/value 파일을 위한 custom parser로 dotenv parsing을 대체할 수 있습니다. 빈 load/module option은 `loadConfig({})`와 `ConfigModule.forRoot()`에 대해 기본 `<cwd>/.env` 동작을 보존합니다. 누락된 env file은 load 시 빈 입력처럼 처리됩니다. watch mode에서는 parent directory도 관찰하므로 나중에 파일을 생성해도 reload를 트리거할 수 있습니다.
+
+### 순서가 있는 다중 env file loading
+
+`envFilePaths`는 명시적으로 순서가 정해진 env file 목록 하나를 받습니다. 목록은 낮은 우선순위에서 높은 우선순위로 병합되어 단일 env-file tier를 구성하므로, 여전히 `defaults`보다 위에 있고 `processEnv`와 `runtimeOverrides`보다 아래에 있습니다.
+
+```ts
+ConfigModule.forRoot({
+  envFilePaths: ['.env', '.env.production', '.env.production.local'],
+  processEnv: {
+    DATABASE_URL: process.env.DATABASE_URL,
+  },
+  schema: EnvSchema,
+});
+```
+
+contract는 다음과 같습니다.
+
+- 뒤쪽 entry가 앞쪽 entry를 이깁니다. plain object는 여전히 deep merge되고 array는 여전히 교체됩니다.
+- 상대 경로 entry는 `cwd`(기본값 `process.cwd()`) 기준으로 해석되고, 절대 경로 entry는 그대로 사용됩니다.
+- 누락된 파일은 아무 값도 기여하지 않으며 load를 실패시키지 않습니다.
+- `envFilePaths: []`는 기본 `<cwd>/.env` fallback을 포함해 env-file loading 자체를 명시적으로 해제합니다.
+- `envFilePaths`를 `envFile` 또는 `envFilePath`와 함께 쓰면 `INVALID_CONFIG`로 실패하며, 해석 결과가 중복된 경로나 빈 entry도 동일하게 실패합니다.
+- schema는 개별 파일이 아니라 완전히 병합된 결과를 한 번만 검증합니다.
+- watch mode에서는 서로 다른 parent directory마다 watcher를 하나씩만 시작하고, 목록에 포함된 파일이 변경되면 전체 목록을 다시 계산하며, 우선순위가 높은 파일을 삭제하면 남은 파일로 fallback합니다. 검증 실패 시에는 마지막 유효 snapshot을 유지합니다.
+- 자동 profile 탐색은 패키지 밖에 남습니다. 정확한 목록과 순서는 caller가 결정합니다.
+
+패키지는 `NODE_ENV`에서 env file 이름을 유도하지 않습니다. 환경별 계층화가 필요하다면 bootstrap boundary에서 목록을 직접 구성하세요.
 
 Root `@fluojs/config` 패키지를 import하는 것만으로는 Node filesystem, path, crypto builtin을 해석하지 않습니다. `ConfigService`, option type, 또는 명시적 in-memory 입력을 쓰는 `loadConfig(...)` consumer는 root import를 안전하게 사용할 수 있고, Node builtin은 env-file load 또는 watch mode가 실제로 실행될 때 lazy하게 해석됩니다. `loadConfig({ defaults, processEnv, runtimeOverrides })`는 `process.cwd()`, 기본 `.env` path, Node filesystem/path/crypto builtin을 해석하지 않습니다. Published package engine이 Node.js 20.16.0 이상이므로 Node.js 20.0.0부터 20.15.x까지와 Node.js 밖의 runtime은 env-file, 기본 `.env`, watch execution path의 지원 package contract에 포함되지 않습니다.
 

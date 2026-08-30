@@ -59,7 +59,7 @@ const EnvSchema = z.object({
 class AppModule {}
 ```
 
-Use `envFilePath` when the env file lives at an absolute or pre-resolved path, or `parse` when you need a custom flat-file parser instead of the default dotenv parser.
+Use `envFilePath` when the env file lives at an absolute or pre-resolved path, `envFilePaths` when a deployment needs several env files layered in an explicit order, or `parse` when you need a custom flat-file parser instead of the default dotenv parser.
 
 Once registered, you can inject `ConfigService` to access your values:
 
@@ -101,6 +101,33 @@ Configuration is merged in the following order (highest precedence wins):
 `@fluojs/config` does not scan ambient environment variables automatically. Pass an explicit `processEnv` snapshot at the bootstrap boundary when process-backed values should participate in precedence.
 
 `envFilePath` overrides `envFile`, and `parse` lets callers replace dotenv parsing with a custom parser for flat key/value files. Empty load/module options preserve the default `<cwd>/.env` behavior for `loadConfig({})` and `ConfigModule.forRoot()`. Missing env files are treated as empty input during load; watch mode also observes the parent directory so creating the file later can trigger a reload.
+
+### Ordered Multi-File Env Loading
+
+`envFilePaths` accepts one explicit, ordered list of env files. The list is merged from lowest to highest precedence into the single env-file tier, so it still sits above `defaults` and below `processEnv` and `runtimeOverrides`.
+
+```typescript
+ConfigModule.forRoot({
+  envFilePaths: ['.env', '.env.production', '.env.production.local'],
+  processEnv: {
+    DATABASE_URL: process.env.DATABASE_URL,
+  },
+  schema: EnvSchema,
+});
+```
+
+Contract:
+
+- Later entries win over earlier entries; plain objects still deep-merge and arrays still replace.
+- Relative entries resolve against `cwd` (defaulting to `process.cwd()`); absolute entries are used as-is.
+- Missing files contribute nothing and never fail the load.
+- `envFilePaths: []` explicitly opts out of env-file loading, including the default `<cwd>/.env` fallback.
+- Combining `envFilePaths` with `envFile` or `envFilePath` fails with `INVALID_CONFIG`, as do duplicate resolved paths and blank entries.
+- The schema validates the fully merged result once, not each file individually.
+- In watch mode every distinct parent directory is watched once, any listed-file change recomputes the entire list, and deleting a higher-precedence file falls back to the remaining files. Validation failures keep the last valid snapshot.
+- Automatic profile discovery stays outside the package: the caller decides the exact list and order.
+
+The package does not derive env-file names from `NODE_ENV`. Build the list at the bootstrap boundary when a deployment needs environment-specific layering.
 
 Importing the root `@fluojs/config` package is safe for in-memory consumers that only need `ConfigService`, option types, or `loadConfig(...)` with explicit in-memory inputs: Node filesystem, path, and crypto builtins are resolved lazily only when env-file loading or watch mode actually runs. `loadConfig({ defaults, processEnv, runtimeOverrides })` does not resolve `process.cwd()`, a default `.env` path, or Node filesystem/path/crypto builtins. Because the published package engine is Node.js 20.16.0 or newer, Node.js 20.0.0 through 20.15.x and non-Node runtimes are outside the supported package contract for env-file, default `.env`, and watch execution paths.
 
