@@ -3,6 +3,8 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import type { ApplicationLogger } from '@fluojs/runtime';
+
 type CliStream = {
   write(message: string): unknown;
 };
@@ -19,6 +21,36 @@ type JsonRecord = Record<string, unknown>;
 const DEFAULT_PACKAGE_NAME = '@fluojs/cli';
 const DEFAULT_REGISTRY_TIMEOUT_MS = 5_000;
 const EMPTY_ENV: NodeJS.ProcessEnv = {};
+
+/**
+ * Creates the runtime logger used when a CLI command reserves stdout for an artifact.
+ *
+ * @param stderr Stream that receives human-readable runtime diagnostics.
+ * @returns A logger that preserves the default runtime diagnostic format on stderr.
+ */
+export function createCliDiagnosticsLogger(stderr: CliStream): ApplicationLogger {
+  const write = (level: 'DEBUG' | 'ERROR' | 'LOG' | 'WARN', message: string, context = 'fluo'): void => {
+    stderr.write(`[fluo] ${level} [${context}] ${message}\n`);
+  };
+
+  return {
+    debug(message, context = 'fluo') {
+      write('DEBUG', message, context);
+    },
+    error(message, error, context = 'fluo') {
+      write('ERROR', message, context);
+      if (error) {
+        stderr.write(`${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
+      }
+    },
+    log(message, context = 'fluo') {
+      write('LOG', message, context);
+    },
+    warn(message, context = 'fluo') {
+      write('WARN', message, context);
+    },
+  };
+}
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null;
