@@ -1,4 +1,4 @@
-import { Inject } from '@fluojs/core';
+import { Inject, InvariantError } from '@fluojs/core';
 import { defineModuleMetadata } from '@fluojs/core/internal';
 
 import { cloneConfigDictionary } from './clone.js';
@@ -36,9 +36,17 @@ function createSubscription<T>(listeners: Set<T>, listener: T): ConfigReloadSubs
 
 /**
  * Lazily creates and coordinates the active config reloader instance.
+ *
+ * @remarks
+ * `close()` and `onModuleDestroy()` are terminal. After shutdown the manager never creates another
+ * reloader or watcher, `onApplicationBootstrap()` becomes a no-op, and `current()` keeps returning the
+ * last committed `ConfigService` snapshot.
+ *
+ * @throws {InvariantError} When `reload()`, `subscribe()`, or `subscribeError()` is called after shutdown.
  */
 @Inject(ConfigService, CONFIG_RELOAD_OPTIONS)
 export class ConfigReloadManager implements ConfigReloader {
+  private closed = false;
   private reloader: ConfigReloader | undefined;
   private reloadForwarder: ConfigReloadSubscription | undefined;
   private errorForwarder: ConfigReloadSubscription | undefined;
@@ -55,18 +63,25 @@ export class ConfigReloadManager implements ConfigReloader {
   }
 
   reload(): ConfigDictionary {
+    this.assertNotClosed('reload');
+
     return this.ensureReloader().reload();
   }
 
   subscribe(listener: ConfigReloadListener): ConfigReloadSubscription {
+    this.assertNotClosed('subscribe');
+
     return createSubscription(this.reloadListeners, listener);
   }
 
   subscribeError(listener: ConfigReloadErrorListener): ConfigReloadSubscription {
+    this.assertNotClosed('subscribeError');
+
     return createSubscription(this.errorListeners, listener);
   }
 
   close(): void {
+    this.closed = true;
     this.reloadForwarder?.unsubscribe();
     this.reloadForwarder = undefined;
     this.errorForwarder?.unsubscribe();
@@ -82,7 +97,7 @@ export class ConfigReloadManager implements ConfigReloader {
   }
 
   onApplicationBootstrap(): void {
-    if (!this.options.watch) {
+    if (this.closed || !this.options.watch) {
       return;
     }
 
@@ -91,6 +106,12 @@ export class ConfigReloadManager implements ConfigReloader {
 
   onModuleDestroy(): void {
     this.close();
+  }
+
+  private assertNotClosed(operation: 'reload' | 'subscribe' | 'subscribeError'): void {
+    if (this.closed) {
+      throw new InvariantError(`Config reload manager cannot ${operation} after shutdown has started.`);
+    }
   }
 
   private ensureReloader(): ConfigReloader {
