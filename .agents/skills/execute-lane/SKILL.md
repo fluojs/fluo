@@ -86,6 +86,13 @@ The operator (human or agent session):
 
 1. Executes that action (dispatch an implementer child, run scoped checks,
    fan out the read-only review triad, `gh pr create`, `gh pr merge`, ...).
+   Dispatch EVERY issue currently in `implement` as ONE batch of
+   implementer children — worktrees isolate them and the engine imposes
+   no width limit (a live run held 10 simultaneously; merges serialize
+   at the lead regardless, so implement-phase width is pure wall-clock
+   win). If the task runner refuses to start a batch, cancel completed
+   children to free slots and fall back to sequential spawns — both
+   failure modes were observed live and both remedies worked.
    `verify-local` MUST build the dependency closure BEFORE typechecks and
    tests — workspace `types` entries point at emitted `dist/*.d.ts`, so a
    bare-filter check on an unbuilt checkout fails with misleading TS2307s:

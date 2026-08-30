@@ -63,6 +63,35 @@ recommendations were found, ask nothing. Build the final grouping,
 dependencies, lane ID, merge policy, retry policy, and authority scope
 deterministically without a normal lane-plan question.
 
+Dependency derivation is PARALLELISM-FIRST: independence is the null
+hypothesis, and every edge carries the burden of proof. Wall-clock is won
+in the implement phase — merges serialize at the lead regardless — so an
+unjustified edge costs real time while buying nothing. Evidence from a
+live 30-issue run: layer-1 width 10 ran ten implementers simultaneously;
+the ONLY rebase conflict was CROSS-chain on a shared tooling file (an
+edge inside either chain could not have prevented it); and two chains in
+the SAME package (platform-fastify source-tests vs website-docs) ran in
+parallel cleanly because their file sets were disjoint.
+
+Add an edge A -> B only for one of these reasons, and record which:
+
+1. **Semantic dependency**: B's body or acceptance criteria reference
+   A's outcome (B documents what A implements, B extends A's API, B
+   tests behavior A introduces).
+2. **Same-file overlap in shipped source**: both issues name the same
+   production file(s). Docs-only overlap does not qualify — EN/KO and
+   CONTEXT collisions resolved keep-both cheaply in the live run.
+3. **Same-package shipped-source overlap that cannot be shown disjoint**
+   from the issue texts. When the surfaces ARE demonstrably disjoint
+   (different modules, source vs website docs), emit NO edge.
+
+Within a justified chain, order production fixes first, then tests, then
+docs. Shared NON-package surfaces never justify an edge — they become
+`predicted_conflicts` hints (below). When in doubt between an edge and a
+hint, choose the hint: a wrong edge silently costs a parallel slot for
+the whole run, while a missing edge costs at most one visible
+`resolve-conflict` round that the executor already knows how to run.
+
 Authority scope derivation: `cleanup_command_worktrees` is ALWAYS `true`
 (schema `const` — a lane that cannot clean up its own worktrees leaves
 the operator doing it by hand for every merge; maintainer decision).
