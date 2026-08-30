@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { createPlatformShellLifecycleConformanceHarness } from '@fluojs/testing/platform-shell-lifecycle-conformance';
+
 import type {
   PlatformComponent,
   PlatformHealthReport,
@@ -136,6 +138,19 @@ function observeImmediate(promise: Promise<void>): Promise<ImmediateResult> {
 }
 
 describe('RuntimePlatformShell exclusive lifecycle transitions', () => {
+  it('satisfies the shared PlatformShell lifecycle exclusivity contract', async () => {
+    // Given
+    const harness = createPlatformShellLifecycleConformanceHarness({
+      createShell: (component) => RuntimePlatformShell.fromInputs([component]),
+    });
+
+    // When
+    const assertion = harness.assertAll();
+
+    // Then
+    await expect(assertion).resolves.toBeUndefined();
+  });
+
   it.each(overlapPairs)('rejects %s -> %s overlap immediately with typed conflict metadata', async (active, requested) => {
     // Given
     const gate = new Deferred();

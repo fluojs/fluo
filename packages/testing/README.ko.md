@@ -150,7 +150,9 @@ const mailer = createDeepMock(MailService);
 
 ### 적합성 및 이식성 하니스
 
-프레임워크 지향 플랫폼 패키지를 작성할 때는 `@fluojs/testing/platform-conformance`, `@fluojs/testing/http-adapter-portability`, `@fluojs/testing/web-runtime-adapter-portability` 같은 서브패스를 사용해 적합성 및 이식성 검증을 수행합니다.
+프레임워크 지향 플랫폼 패키지를 작성할 때는 `@fluojs/testing/platform-conformance`, `@fluojs/testing/platform-shell-lifecycle-conformance`, `@fluojs/testing/http-adapter-portability`, `@fluojs/testing/web-runtime-adapter-portability` 같은 서브패스를 사용해 적합성 및 이식성 검증을 수행합니다.
+
+`createPlatformShellLifecycleConformanceHarness({ createShell })`는 active `start()` / `stop()` overlap 전체가 `PlatformLifecycleConflictError`로 reject되는지, callback reentry가 synchronous 시점과 임의의 await 이후에도 conflict-safe한지, 실패한 transition이 settle된 뒤 호출자가 retry할 수 있는지 검증합니다. 컴포넌트 수준 검사는 `createPlatformConformanceHarness(...).assertAll()`에 유지하세요. PlatformShell lifecycle 계약은 의도적으로 별도 harness입니다.
 
 이식성 하니스의 cleanup도 계약에 포함됩니다. 앱이 bootstrap된 뒤 setup, `listen()`, partial app을 노출한 run callback, assertion이 실패하면 하니스는 해당 partial app을 닫습니다. `app.close()`가 실패하면 하니스는 cleanup 실패를 보고하며, setup 또는 assertion이 이미 실패한 경우에는 원래 실패와 cleanup 실패를 모두 보존하는 aggregate error를 발생시킵니다.
 
@@ -216,7 +218,7 @@ synthetic React test runtime은 필요한 setup을 줄이기보다 coverage를 �
 
 - **루트 패키지**: `createTestingModule(...)`, `Test.createTestingModule(...)`, `createTestApp(...)`, 모듈 introspection 헬퍼, `DeepMocked<T>`를 포함한 공용 app/module 테스트 타입
 - **서브패스**: `@fluojs/testing/app`, `@fluojs/testing/module`, `@fluojs/testing/http`, `@fluojs/testing/mock` (`DeepMocked<T>` 포함), `@fluojs/testing/types` (`DeepMocked<T>` 포함), `@fluojs/testing/vitest`, `@fluojs/testing/vitest/tooling`
-- **하니스 서브패스**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`. HTTP portability harness는 adapter-owned bootstrap typing을 위해 `assertSupportsCustomHttpRouteMethods()`, `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `createErrorRepresentationBootstrapOptions`, `NetworkHttpErrorRepresentationBootstrapOptions`, `WebHttpErrorRepresentationBootstrapOptions`를 노출합니다.
+- **하니스 서브패스**: `platform-conformance`, `platform-shell-lifecycle-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`. HTTP portability harness는 adapter-owned bootstrap typing을 위해 `assertSupportsCustomHttpRouteMethods()`, `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `createErrorRepresentationBootstrapOptions`, `NetworkHttpErrorRepresentationBootstrapOptions`, `WebHttpErrorRepresentationBootstrapOptions`를 노출합니다.
 - **도구 지원**: `@fluojs/testing/vitest`의 `fluoBabelDecoratorsPlugin()` 및 `@fluojs/testing/vitest/tooling`의 Vitest workspace config helper (`vitest`와 `@babel/core`를 함께 요구)
 
 Package manifest는 public body-bearing RFC `QUERY` portability assertion이 사용하는 검증된 Node listener window와 일치하도록 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상은 제외됩니다. 문서화된 경우 non-Node runtime 애플리케이션 테스트에서 runtime-native 도구를 사용할 수 있지만, 배포된 `@fluojs/testing` 패키지 자체는 이 정확한 Node.js engine 범위를 따릅니다.

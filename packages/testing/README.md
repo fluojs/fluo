@@ -148,7 +148,9 @@ Install `vitest` in the consuming workspace before using the mock helpers so the
 
 ### Conformance and portability harnesses
 
-Use subpaths like `@fluojs/testing/platform-conformance`, `@fluojs/testing/http-adapter-portability`, and `@fluojs/testing/web-runtime-adapter-portability` when authoring framework-facing platform packages.
+Use subpaths like `@fluojs/testing/platform-conformance`, `@fluojs/testing/platform-shell-lifecycle-conformance`, `@fluojs/testing/http-adapter-portability`, and `@fluojs/testing/web-runtime-adapter-portability` when authoring framework-facing platform packages.
+
+Use `createPlatformShellLifecycleConformanceHarness({ createShell })` to verify every active `start()` / `stop()` overlap rejects with `PlatformLifecycleConflictError`, callback reentry remains conflict-safe before and after arbitrary awaits, and callers can retry after a failed transition settles. Keep component-level checks in `createPlatformConformanceHarness(...).assertAll()`; the PlatformShell lifecycle contract is intentionally a separate harness.
 
 Portability harness cleanup is part of the contract: if setup, `listen()`, a run callback that surfaces a partial app, or an assertion fails after an app has been bootstrapped, the harness closes that partial app. If `app.close()` fails, the harness reports that cleanup failure, and when setup or an assertion already failed it raises an aggregate error that preserves both the original failure and the cleanup failure.
 
