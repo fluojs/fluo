@@ -1,9 +1,7 @@
 import { createRequire } from 'node:module';
-import { createServer } from 'node:net';
 import { Inject, Scope } from '@fluojs/core';
 import type { MiddlewareContext, Next } from '@fluojs/http';
 import { defineModule } from '@fluojs/runtime';
-import { bootstrapNodeApplication } from '@fluojs/runtime/node';
 import { IsInt, MinLength } from '@fluojs/validation';
 import { GraphQLObjectType, GraphQLSchema, GraphQLString, GraphQLUnionType } from 'graphql';
 import { describe, expect, it } from 'vitest';
@@ -11,43 +9,20 @@ import { WebSocket } from 'ws';
 
 import { Arg, Mutation, Query, Resolver, Subscription } from './decorators.js';
 import { GraphqlModule } from './module.js';
+import { createGraphqlNetworkFixture } from './network-test-fixture.js';
 import { GRAPHQL_OPERATION_CONTAINER, type GraphQLContext, listOf } from './types.js';
 
 type GraphqlInstanceOf = (value: unknown, constructor: { prototype?: { [Symbol.toStringTag]?: string } }) => boolean;
 
 const runtimeRequire = createRequire(import.meta.url);
-
-async function findAvailablePort(): Promise<number> {
-  return await new Promise<number>((resolve, reject) => {
-    const server = createServer();
-
-    server.once('error', reject);
-    server.listen(0, () => {
-      const address = server.address();
-
-      if (!address || typeof address === 'string') {
-        reject(new Error('Failed to resolve available port.'));
-        return;
-      }
-
-      server.close((error?: Error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve(address.port);
-      });
-    });
-  });
-}
+const { bootstrapNodeApplication, findAvailablePort, resolvePort } = createGraphqlNetworkFixture();
 
 async function postGraphql(
   port: number,
   query: string,
   options?: { headers?: Record<string, string>; operationName?: string },
 ): Promise<unknown> {
-  const response = await fetch(`http://127.0.0.1:${String(port)}/graphql`, {
+  const response = await fetch(`http://127.0.0.1:${String(await resolvePort(port))}/graphql`, {
     body: JSON.stringify({
       ...(options?.operationName ? { operationName: options.operationName } : {}),
       query,
@@ -127,9 +102,11 @@ function onceWebSocketCloseEvent(socket: WebSocket): Promise<{ code: number; rea
   });
 }
 
-function openGraphqlWebSocket(port: number): Promise<WebSocket> {
-  return new Promise((resolve, reject) => {
-    const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/graphql`, 'graphql-transport-ws');
+async function openGraphqlWebSocket(port: number): Promise<WebSocket> {
+  const resolvedPort = await resolvePort(port);
+
+  return await new Promise((resolve, reject) => {
+    const socket = new WebSocket(`ws://127.0.0.1:${String(resolvedPort)}/graphql`, 'graphql-transport-ws');
     socket.once('open', () => resolve(socket));
     socket.once('error', reject);
   });
@@ -459,6 +436,10 @@ class UnionOutputResolver {
 }
 
 describe('@fluojs/graphql', () => {
+  it('requests an operating system assigned port for network tests', async () => {
+    expect(await findAvailablePort()).toBe(0);
+  });
+
   it('invokes configured Yoga/Envelop plugins during request execution', async () => {
     const pluginHooks: string[] = [];
 
@@ -1145,7 +1126,7 @@ describe('@fluojs/graphql', () => {
       await app.listen();
 
       const response = await fetch(
-        `http://127.0.0.1:${String(port)}/graphql?query=${encodeURIComponent('subscription { pingStream }')}`,
+        `http://127.0.0.1:${String(await resolvePort(port))}/graphql?query=${encodeURIComponent('subscription { pingStream }')}`,
         {
           headers: {
             accept: 'text/event-stream',
@@ -1290,7 +1271,10 @@ describe('@fluojs/graphql', () => {
     await app.listen();
 
     const firstSocket = await connectGraphqlWebSocket(port);
-    const secondSocket = new WebSocket(`ws://127.0.0.1:${String(port)}/graphql`, 'graphql-transport-ws');
+    const secondSocket = new WebSocket(
+      `ws://127.0.0.1:${String(await resolvePort(port))}/graphql`,
+      'graphql-transport-ws',
+    );
 
     await expect(onceUnexpectedWebSocketUpgradeResponse(secondSocket)).resolves.toEqual({
       body: 'GraphQL websocket connection count exceeds the configured limit.\n',
