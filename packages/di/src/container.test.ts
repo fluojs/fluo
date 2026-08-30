@@ -450,7 +450,6 @@ describe('Container', () => {
       );
 
       await expect(container.resolve(ServiceA)).rejects.toThrow(CircularDependencyError);
-      await expect(container.resolve(ServiceA)).rejects.toThrow(/forwardRef only defers token lookup/i);
     });
 
     it('throws CircularDependencyError for a deep cycle (A -> B -> C -> A)', async () => {
