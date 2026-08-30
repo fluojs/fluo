@@ -48,6 +48,7 @@ This document defines the current cache contract across `@fluojs/cache-manager`,
 | In-flight invalidation | `CacheService.del(...)` marks keys that are still loading so `remember(...)` does not repopulate a key that was invalidated during the same load cycle. | `packages/cache-manager/src/service.ts` |
 | Full reset | `CacheService.reset()` increments an internal reset version, clears in-flight and pending load bookkeeping, clears in-flight invalidation markers, and resets the underlying store. | `packages/cache-manager/src/service.ts` |
 | Store teardown | During application shutdown, `CacheService` calls a custom store `close()` hook, or `dispose()` when `close()` is absent, so resource-owning stores can release sockets, pools, timers, or other external handles. Concurrent and repeated service or lifecycle close calls share the first teardown promise, including its failure, so teardown runs once behind one authoritative completion boundary. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/service.ts` |
+| Teardown ownership diagnostics | `createCacheManagerPlatformStatusSnapshot(...)` resolves `storeOwnershipMode` from teardown responsibility, not from store category alone. Memory and custom stores default to `framework` because `CacheService` owns their lifecycle teardown dispatch, while Redis remains `external` because its client lifecycle stays application-owned. An explicit `storeOwnershipMode` overrides the store default. | `packages/cache-manager/src/status.ts`, `packages/cache-manager/src/service.ts` |
 
 ## Constraints
 

@@ -220,6 +220,14 @@ When the application closes, `CacheService` stops new store reads/writes, waits 
 
 Custom stores can be passed directly through `store` when they implement the `CacheStore` contract. This is the right option for in-process LRU stores, remote caches other than Redis, or test doubles that need to observe cache operations.
 
+Lifecycle diagnostics report the same teardown owner that shutdown actually uses. `createCacheManagerPlatformStatusSnapshot(...)` resolves ownership from lifecycle responsibility rather than treating every non-memory store alike:
+
+- The built-in memory store is `framework`-owned because the framework creates and holds it in-process.
+- A custom store is `framework`-owned by default because `CacheService.close()` owns teardown dispatch to its optional `close()` or `dispose()` hook.
+- The Redis store is `external` because the Redis client's connection lifecycle stays application-owned; `CacheService` never closes it.
+
+An explicit `storeOwnershipMode` still wins over the store default. Set it to `external` when the application intentionally retains lifecycle responsibility for a custom store.
+
 ### Manual Module Composition
 
 Use `CacheModule.forRoot(...)` for normal application setup, including custom `defineModule(...)` composition.
