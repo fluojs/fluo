@@ -2563,7 +2563,7 @@ describe('@fluojs/platform-fastify', () => {
     expect(Reflect.get(adapter, 'dispatcher')).toBeUndefined();
   });
 
-  it('cancels retrying startup during close before a later port bind can occur', async () => {
+  it('runs Fastify onClose hooks when close cancels retrying startup', async () => {
     const blocker = createServer();
     await new Promise<void>((resolve, reject) => {
       blocker.once('error', reject);
@@ -2576,6 +2576,10 @@ describe('@fluojs/platform-fastify', () => {
     const fastifyApp: FastifyInstance = Reflect.get(adapter, 'app');
     const originalListen = fastifyApp.listen.bind(fastifyApp);
     const retryObserved = createDeferred<void>();
+    const onCloseObserved = createDeferred<void>();
+    fastifyApp.addHook('onClose', async () => {
+      onCloseObserved.resolve();
+    });
     const listenSpy = vi.spyOn(fastifyApp, 'listen').mockImplementation(async (options) => {
       try {
         return await originalListen(options);
@@ -2593,6 +2597,16 @@ describe('@fluojs/platform-fastify', () => {
     try {
       await retryObserved.promise;
       await expect(adapter.close()).resolves.toBeUndefined();
+
+      const onCloseResult = await Promise.race([
+        onCloseObserved.promise.then((): 'closed' => 'closed'),
+        new Promise<'timed-out'>((resolve) => {
+          AbortSignal.timeout(1_000).addEventListener('abort', () => {
+            resolve('timed-out');
+          }, { once: true });
+        }),
+      ]);
+      expect(onCloseResult).toBe('closed');
 
       const result = await listenResult;
       expect(result).toBeInstanceOf(Error);

@@ -284,7 +284,7 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
       await ignoreCancelledListen(this.listenInFlight);
     }
 
-    if (!this.app.server.listening) {
+    if (this.appClosed) {
       return;
     }
 
