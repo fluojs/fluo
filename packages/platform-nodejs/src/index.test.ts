@@ -118,6 +118,10 @@ const nodejsPortabilityHarness = createHttpAdapterPortabilityHarness<
 
 describe('@fluojs/platform-nodejs', () => {
   describe('adapter portability', () => {
+    it('executes QUERY and extension methods through the real Node listener', async () => {
+      await nodejsPortabilityHarness.assertSupportsCustomHttpRouteMethods();
+    });
+
     it('supports HTTP-owned JSON and HTML error representations', async () => {
       await nodejsPortabilityHarness.assertSupportsHttpErrorRepresentations();
     });
