@@ -82,9 +82,10 @@ describe('verifyChangesetReleaseLane', () => {
     writeChangeset(directory, 'react-scaffold.md', '"@fluojs/react": minor');
 
     const result = verifyChangesetReleaseLane(
-      { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
-      {
-        runGit: (args: string[]) => {
+        { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+        {
+          collectStableNodeEngineRangeNarrowings: () => [],
+          runGit: (args: string[]) => {
           const command = args.join(' ');
 
           if (command === 'diff --name-only origin/main -- packages/*/package.json') {
@@ -198,6 +199,15 @@ describe('verifyChangesetReleaseLane', () => {
       verifyChangesetReleaseLane(
         { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
         {
+          collectStableNodeEngineRangeNarrowings: () => [
+            {
+              filePath: 'packages/graphql/package.json',
+              nextEngineRange: '>=20.19.3 <21 || >=22.2.0 <27',
+              packageName: '@fluojs/graphql',
+              previousEngineRange: '>=20.16.0 <21 || >=22.0.0 <27',
+              previousVersion: '1.1.0',
+            },
+          ],
           readFileSync: (filePath: string) =>
             filePath.endsWith('packages/graphql/package.json')
               ? JSON.stringify({

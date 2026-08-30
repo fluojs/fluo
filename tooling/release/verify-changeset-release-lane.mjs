@@ -291,6 +291,42 @@ function parsePackageManifestNodeEngine(contents, source) {
   };
 }
 
+function parseOfficialVersion(version) {
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u.exec(version);
+
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
+}
+
+function compareOfficialVersions(left, right) {
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) {
+      return left[index] < right[index] ? -1 : 1;
+    }
+  }
+
+  return 0;
+}
+
+function publishedManifestTag(packageName, currentVersion, dependencies = {}) {
+  const current = parseOfficialVersion(currentVersion);
+
+  if (!current) {
+    return null;
+  }
+
+  const { runGit: git = runGit } = dependencies;
+  const prefix = `${packageName}@`;
+  const candidates = git(['tag', '--merged', 'HEAD', '--list', `${packageName}@*`])
+    .split(/\r?\n/)
+    .map((tag) => tag.trim())
+    .filter((tag) => tag.startsWith(prefix))
+    .map((tag) => ({ tag, version: parseOfficialVersion(tag.slice(prefix.length)) }))
+    .filter((candidate) => candidate.version !== null && compareOfficialVersions(candidate.version, current) <= 0)
+    .sort((left, right) => compareOfficialVersions(right.version, left.version));
+
+  return candidates.at(0)?.tag ?? null;
+}
+
 function collectStableNodeEngineRangeNarrowings(baseRef, dependencies = {}) {
   if (typeof baseRef !== 'string' || baseRef.length === 0 || isAllZeroGitSha(baseRef)) {
     return [];
@@ -304,29 +340,33 @@ function collectStableNodeEngineRangeNarrowings(baseRef, dependencies = {}) {
     .sort();
 
   return packageJsonPaths.flatMap((packageJsonPath) => {
-    try {
-      git(['cat-file', '-e', `${baseRef}:${packageJsonPath}`]);
-    } catch (error) {
-      if (isMissingPathAtBaseRefError(error, baseRef, packageJsonPath)) {
-        return [];
-      }
-
-      throw error;
-    }
-
-    const previous = parsePackageManifestNodeEngine(
-      git(['show', `${baseRef}:${packageJsonPath}`]),
-      `${baseRef}:${packageJsonPath}`,
-    );
     const next = parsePackageManifestNodeEngine(
       readFile(join(repoRoot, packageJsonPath), 'utf8'),
       packageJsonPath,
     );
 
-    return previous.nodeEngineRange !== null &&
-      next.nodeEngineRange !== null &&
-      previous.packageName === next.packageName &&
-      narrowsStableNodeEngineRange(previous.version, previous.nodeEngineRange, next.nodeEngineRange)
+    if (!next.packageName.startsWith('@fluojs/')) {
+      return [];
+    }
+
+    const tag = publishedManifestTag(next.packageName, next.version, dependencies);
+
+    if (!tag) {
+      return [];
+    }
+
+    const previous = parsePackageManifestNodeEngine(
+      git(['show', `${tag}:${packageJsonPath}`]),
+      `${tag}:${packageJsonPath}`,
+    );
+
+    return previous.packageName === next.packageName &&
+      narrowsStableNodeEngineRange(
+        previous.version,
+        previous.nodeEngineRange,
+        next.nodeEngineRange,
+        next.version,
+      )
       ? [
           {
             filePath: packageJsonPath,
@@ -336,6 +376,18 @@ function collectStableNodeEngineRangeNarrowings(baseRef, dependencies = {}) {
             previousVersion: previous.version,
           },
         ]
+      : [];
+  });
+}
+
+function collectMissingNodeEngineMigrationNotes(narrowings, intents) {
+  return narrowings.flatMap((narrowing) => {
+    const majorIntent = intents.find(
+      (intent) => intent.packageName === narrowing.packageName && intent.bump === 'major',
+    );
+
+    return majorIntent && !/(?:^|\n)Migration:\s+\S/mu.test(majorIntent.body)
+      ? [{ ...narrowing, filePath: majorIntent.filePath }]
       : [];
   });
 }
@@ -599,11 +651,18 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     ...collectPatchStudioRouteKindInputContractNarrowingsFromChangesets(intents),
     ...collectPatchStudioRouteKindInputContractNarrowingsFromVersionDeltas(versionDeltas, dependencies),
   ];
-  const stableNodeEngineRangeNarrowings = collectStableNodeEngineRangeNarrowings(baseRef, dependencies).filter(
+  const allStableNodeEngineRangeNarrowings = typeof dependencies.collectStableNodeEngineRangeNarrowings === 'function'
+    ? dependencies.collectStableNodeEngineRangeNarrowings()
+    : collectStableNodeEngineRangeNarrowings(baseRef, dependencies);
+  const stableNodeEngineRangeNarrowings = allStableNodeEngineRangeNarrowings.filter(
     (narrowing) =>
       !intents.some(
         (intent) => intent.packageName === narrowing.packageName && intent.bump === 'major',
       ),
+  );
+  const missingNodeEngineMigrationNotes = collectMissingNodeEngineMigrationNotes(
+    allStableNodeEngineRangeNarrowings,
+    intents,
   );
 
   if (
@@ -612,7 +671,8 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     dependencyOnlyMajorVersionDeltas.length > 0 ||
     patchCliFeatureDowngrades.length > 0 ||
     patchStudioRouteKindInputContractNarrowings.length > 0 ||
-    stableNodeEngineRangeNarrowings.length > 0
+    stableNodeEngineRangeNarrowings.length > 0 ||
+    missingNodeEngineMigrationNotes.length > 0
   ) {
     const details = disallowed
       .map((intent) => `${intent.packageName}@${intent.bump} (${intent.filePath})`)
@@ -659,6 +719,14 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
             .map(
               (narrowing) =>
                 `${narrowing.packageName}@${narrowing.previousVersion} (${narrowing.previousEngineRange} -> ${narrowing.nextEngineRange}, ${narrowing.filePath})`,
+            )
+            .join('\n  - ')}`
+        : '',
+      missingNodeEngineMigrationNotes.length > 0
+        ? `stable Node engine range narrowings missing consumer migration notes:\n  - ${missingNodeEngineMigrationNotes
+            .map(
+              (narrowing) =>
+                `${narrowing.packageName}@${narrowing.previousVersion} (${narrowing.filePath}): add a non-empty Migration: paragraph.`,
             )
             .join('\n  - ')}`
         : '',

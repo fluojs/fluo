@@ -1,4 +1,4 @@
-function compareNodeVersions(left, right) {
+function compareVersions(left, right) {
   for (let index = 0; index < left.length; index += 1) {
     if (left[index] !== right[index]) {
       return left[index] < right[index] ? -1 : 1;
@@ -8,22 +8,43 @@ function compareNodeVersions(left, right) {
   return 0;
 }
 
-function parseNodeVersion(value) {
-  const match = /^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?$/u.exec(value);
+function parseVersion(value) {
+  const rawParts = value.replace(/^v/u, '').split('.');
 
-  if (!match) {
+  if (rawParts.length > 3 || rawParts.length === 0) {
     return null;
   }
 
-  return {
-    parts: [Number(match[1]), Number(match[2] ?? 0), Number(match[3] ?? 0)],
-    precision: match[3] === undefined ? (match[2] === undefined ? 1 : 2) : 3,
-  };
+  const parts = [0, 0, 0];
+  let precision = rawParts.length;
+  let hasWildcard = false;
+
+  for (let index = 0; index < rawParts.length; index += 1) {
+    const part = rawParts[index];
+
+    if (part === '*' || /^x$/iu.test(part)) {
+      hasWildcard = true;
+      precision = Math.min(precision, index);
+      continue;
+    }
+
+    if (hasWildcard || !/^(0|[1-9]\d*)$/u.test(part)) {
+      return null;
+    }
+
+    parts[index] = Number(part);
+  }
+
+  return { parts, precision };
 }
 
-function nextPartialVersion(version) {
+function nextPrefix(version, precision = version.precision) {
+  if (precision === 0) {
+    return null;
+  }
+
   const parts = [...version.parts];
-  const incrementIndex = version.precision - 1;
+  const incrementIndex = precision - 1;
   parts[incrementIndex] += 1;
 
   for (let index = incrementIndex + 1; index < parts.length; index += 1) {
@@ -33,176 +54,204 @@ function nextPartialVersion(version) {
   return parts;
 }
 
-function setLowerBound(interval, bound) {
-  if (!interval.lower || compareNodeVersions(bound.parts, interval.lower.parts) > 0) {
+function setLower(interval, bound) {
+  if (
+    !interval.lower ||
+    compareVersions(bound.parts, interval.lower.parts) > 0 ||
+    (compareVersions(bound.parts, interval.lower.parts) === 0 && !bound.inclusive)
+  ) {
     interval.lower = bound;
   }
 }
 
-function setUpperBound(interval, bound) {
-  if (!interval.upper || compareNodeVersions(bound.parts, interval.upper.parts) < 0) {
+function setUpper(interval, bound) {
+  if (
+    !interval.upper ||
+    compareVersions(bound.parts, interval.upper.parts) < 0 ||
+    (compareVersions(bound.parts, interval.upper.parts) === 0 && !bound.inclusive)
+  ) {
     interval.upper = bound;
   }
 }
 
-function parseNodeEngineClause(clause) {
-  const interval = { lower: null, upper: null };
+function applyComparator(interval, operator, version) {
+  const upper = nextPrefix(version);
 
-  for (const token of clause.trim().split(/\s+/u)) {
-    const match = /^(>=|>|<=|<|=)?(v?\d+(?:\.\d+){0,2})$/u.exec(token);
-
-    if (!match) {
-      return null;
+  if (operator === '^') {
+    const nonZeroIndex = version.parts.findIndex((part) => part !== 0);
+    const next = nextPrefix(version, nonZeroIndex === -1 ? version.precision : nonZeroIndex + 1);
+    setLower(interval, { inclusive: true, parts: version.parts });
+    if (next) {
+      setUpper(interval, { inclusive: false, parts: next });
     }
-
-    const version = parseNodeVersion(match[2]);
-
-    if (!version) {
-      return null;
-    }
-
-    const operator = match[1] ?? '';
-
-    if (operator === '') {
-      if (version.precision < 3) {
-        setLowerBound(interval, { inclusive: true, parts: version.parts });
-        setUpperBound(interval, { inclusive: false, parts: nextPartialVersion(version) });
-      } else {
-        setLowerBound(interval, { inclusive: true, parts: version.parts });
-        setUpperBound(interval, { inclusive: true, parts: version.parts });
-      }
-    } else if (operator === '>' || operator === '>=') {
-      setLowerBound(interval, { inclusive: operator === '>=', parts: version.parts });
-    } else if (operator === '<' || operator === '<=') {
-      setUpperBound(interval, { inclusive: operator === '<=', parts: version.parts });
-    } else {
-      setLowerBound(interval, { inclusive: true, parts: version.parts });
-      setUpperBound(interval, { inclusive: true, parts: version.parts });
-    }
+    return;
   }
 
+  if (operator === '~') {
+    const next = nextPrefix(version, Math.min(Math.max(version.precision, 1), 2));
+    setLower(interval, { inclusive: true, parts: version.parts });
+    if (next) {
+      setUpper(interval, { inclusive: false, parts: next });
+    }
+    return;
+  }
+
+  if (operator === '' || operator === '=') {
+    setLower(interval, { inclusive: true, parts: version.parts });
+    if (version.precision === 3) {
+      setUpper(interval, { inclusive: true, parts: version.parts });
+    } else if (upper) {
+      setUpper(interval, { inclusive: false, parts: upper });
+    }
+    return;
+  }
+
+  if (operator === '>') {
+    setLower(interval, {
+      inclusive: version.precision < 3,
+      parts: version.precision < 3 ? nextPrefix(version) : version.parts,
+    });
+    return;
+  }
+
+  if (operator === '>=') {
+    setLower(interval, { inclusive: true, parts: version.parts });
+    return;
+  }
+
+  if (operator === '<') {
+    setUpper(interval, { inclusive: false, parts: version.parts });
+    return;
+  }
+
+  if (operator === '<=') {
+    if (version.precision === 3) {
+      setUpper(interval, { inclusive: true, parts: version.parts });
+    } else if (upper) {
+      setUpper(interval, { inclusive: false, parts: upper });
+    }
+  }
+}
+
+function isValid(interval) {
   if (!interval.lower || !interval.upper) {
-    return interval;
-  }
-
-  const comparison = compareNodeVersions(interval.lower.parts, interval.upper.parts);
-
-  return comparison < 0 || (comparison === 0 && interval.lower.inclusive && interval.upper.inclusive)
-    ? interval
-    : null;
-}
-
-function compareLowerBounds(left, right) {
-  if (!left) {
-    return right ? -1 : 0;
-  }
-
-  if (!right) {
-    return 1;
-  }
-
-  const comparison = compareNodeVersions(left.parts, right.parts);
-
-  return comparison === 0 && left.inclusive !== right.inclusive ? (left.inclusive ? -1 : 1) : comparison;
-}
-
-function intervalsOverlap(left, right) {
-  if (!left.upper || !right.lower) {
     return true;
   }
 
-  const comparison = compareNodeVersions(left.upper.parts, right.lower.parts);
-
-  return comparison > 0 || (comparison === 0 && (left.upper.inclusive || right.lower.inclusive));
+  const comparison = compareVersions(interval.lower.parts, interval.upper.parts);
+  return comparison < 0 || (comparison === 0 && interval.lower.inclusive && interval.upper.inclusive);
 }
 
-function mergeIntervals(left, right) {
-  if (!left.upper || !right.upper) {
-    return { lower: left.lower, upper: null };
+function parseClause(clause) {
+  const trimmed = clause.trim();
+  const hyphen = /^(\S+)\s+-\s+(\S+)$/u.exec(trimmed);
+  const interval = { lower: null, upper: null };
+
+  if (hyphen) {
+    const lower = parseVersion(hyphen[1]);
+    const upper = parseVersion(hyphen[2]);
+
+    if (!lower || !upper) {
+      return null;
+    }
+
+    setLower(interval, { inclusive: true, parts: lower.parts });
+    const next = nextPrefix(upper);
+    if (upper.precision === 3) {
+      setUpper(interval, { inclusive: true, parts: upper.parts });
+    } else if (next) {
+      setUpper(interval, { inclusive: false, parts: next });
+    }
+    return isValid(interval) ? interval : null;
   }
 
-  const comparison = compareNodeVersions(left.upper.parts, right.upper.parts);
+  for (const token of trimmed.split(/\s+/u)) {
+    const match = /^(<=|>=|<|>|=|~|\^)?(v?[\d*xX][\d*xX.]*)$/u.exec(token);
+    const version = match ? parseVersion(match[2]) : null;
 
+    if (!match || !version) {
+      return null;
+    }
+
+    applyComparator(interval, match[1] ?? '', version);
+  }
+
+  return isValid(interval) ? interval : null;
+}
+
+function compareLower(left, right) {
+  if (!left) return right ? -1 : 0;
+  if (!right) return 1;
+  const comparison = compareVersions(left.parts, right.parts);
+  return comparison === 0 && left.inclusive !== right.inclusive ? (left.inclusive ? -1 : 1) : comparison;
+}
+
+function overlaps(left, right) {
+  if (!left.upper || !right.lower) return true;
+  const comparison = compareVersions(left.upper.parts, right.lower.parts);
+  return comparison > 0 || (comparison === 0 && left.upper.inclusive && right.lower.inclusive);
+}
+
+function merge(left, right) {
+  if (!left.upper || !right.upper) return { lower: left.lower, upper: null };
+  const comparison = compareVersions(left.upper.parts, right.upper.parts);
   return {
     lower: left.lower,
-    upper:
-      comparison > 0 || (comparison === 0 && left.upper.inclusive)
-        ? left.upper
-        : right.upper,
+    upper: comparison > 0 || (comparison === 0 && left.upper.inclusive) ? left.upper : right.upper,
   };
 }
 
-function normalizeNodeEngineRange(range) {
-  const parsedIntervals = range.split('||').map((clause) => parseNodeEngineClause(clause));
+function normalizeRange(range) {
+  const intervals = range
+    .split('||')
+    .map((clause) => parseClause(clause))
+    .sort((left, right) => (left && right ? compareLower(left.lower, right.lower) : 0));
 
-  if (parsedIntervals.length === 0 || parsedIntervals.some((interval) => interval === null)) {
-    return null;
-  }
-
-  const intervals = parsedIntervals.sort((left, right) => compareLowerBounds(left.lower, right.lower));
+  if (intervals.some((interval) => interval === null)) return null;
 
   return intervals.reduce((merged, interval) => {
     const previous = merged.at(-1);
-
-    if (!previous || !intervalsOverlap(previous, interval)) {
+    if (!previous || !overlaps(previous, interval)) {
       merged.push(interval);
-      return merged;
+    } else {
+      merged[merged.length - 1] = merge(previous, interval);
     }
-
-    merged[merged.length - 1] = mergeIntervals(previous, interval);
     return merged;
   }, []);
 }
 
-function containsInterval(container, candidate) {
-  if (container.lower && !candidate.lower) {
-    return false;
-  }
-
-  if (container.lower && candidate.lower) {
-    const lowerComparison = compareNodeVersions(container.lower.parts, candidate.lower.parts);
-
-    if (
-      lowerComparison > 0 ||
-      (lowerComparison === 0 && !container.lower.inclusive && candidate.lower.inclusive)
-    ) {
-      return false;
-    }
-  }
-
-  if (container.upper && !candidate.upper) {
-    return false;
-  }
-
+function contains(container, candidate) {
+  if (container.lower && (!candidate.lower || compareLower(container.lower, candidate.lower) > 0)) return false;
+  if (container.upper && !candidate.upper) return false;
   if (container.upper && candidate.upper) {
-    const upperComparison = compareNodeVersions(container.upper.parts, candidate.upper.parts);
-
-    if (
-      upperComparison < 0 ||
-      (upperComparison === 0 && !container.upper.inclusive && candidate.upper.inclusive)
-    ) {
+    const comparison = compareVersions(container.upper.parts, candidate.upper.parts);
+    if (comparison < 0 || (comparison === 0 && !container.upper.inclusive && candidate.upper.inclusive)) {
       return false;
     }
   }
-
   return true;
 }
 
 function isSubset(candidate, previous) {
-  return candidate.every((candidateInterval) =>
-    previous.some((previousInterval) => containsInterval(previousInterval, candidateInterval)),
-  );
+  return candidate.every((interval) => previous.some((container) => contains(container, interval)));
 }
 
-export function narrowsStableNodeEngineRange(previousVersion, previousRange, nextRange) {
-  const previousMajorVersion = /^(\d+)\./u.exec(previousVersion);
+function isOfficialVersion(version) {
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u.exec(version);
+  return match !== null && Number(match[1]) > 0;
+}
 
-  if (!previousMajorVersion || Number(previousMajorVersion[1]) === 0 || previousRange === nextRange) {
+export function narrowsStableNodeEngineRange(previousVersion, previousRange, nextRange, nextVersion = previousVersion) {
+  if (!isOfficialVersion(previousVersion) || !isOfficialVersion(nextVersion) || previousRange === nextRange) {
     return false;
   }
 
-  const previous = normalizeNodeEngineRange(previousRange);
-  const next = normalizeNodeEngineRange(nextRange);
+  const previous = normalizeRange(previousRange ?? '*');
+  const next = normalizeRange(nextRange ?? '*');
 
-  return previous !== null && next !== null && isSubset(next, previous) && !isSubset(previous, next);
+  if (!previous || !next) {
+    return true;
+  }
+
+  return isSubset(next, previous) && !isSubset(previous, next);
 }
