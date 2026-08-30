@@ -1676,6 +1676,41 @@ describe('@fluojs/platform-deno', () => {
     expect(httpResponse?.status).toBe(200);
   });
 
+  it('rejects websocket binding changes after listen and retains the original upgrade dispatch', async () => {
+    const server = createServeStub();
+    const upgraded = createUpgradeWebSocketStub();
+    const adapter = new DenoHttpApplicationAdapter({
+      hostname: '0.0.0.0',
+      port: 3000,
+      serve: server.serve,
+      upgradeWebSocket: upgraded.upgrade,
+    });
+    const originalBindingFetch = vi.fn<DenoWebSocketBinding['fetch']>(async (request, host) => host.upgrade(request).response);
+    const replacementBindingFetch = vi.fn<DenoWebSocketBinding['fetch']>(async (request, host) => host.upgrade(request).response);
+
+    adapter.configureWebSocketBinding({
+      fetch: originalBindingFetch,
+    });
+    await adapter.listen({
+      dispatch: vi.fn(async () => undefined),
+    });
+
+    expect(() => adapter.configureWebSocketBinding({
+      fetch: replacementBindingFetch,
+    })).toThrow('Deno websocket binding must be configured before Deno adapter listen() starts the server.');
+
+    const response = await server.handler?.(new Request('https://runtime.test/chat', {
+      headers: { upgrade: 'websocket' },
+    }));
+
+    expect(response?.status).toBe(200);
+    expect(originalBindingFetch).toHaveBeenCalledTimes(1);
+    expect(replacementBindingFetch).not.toHaveBeenCalled();
+    expect(upgraded.upgrade).toHaveBeenCalledTimes(1);
+
+    await adapter.close();
+  });
+
   it('keeps websocket upgrade requests on HTTP dispatch when no Deno websocket binding is configured', async () => {
     const server = createServeStub();
     const upgraded = createUpgradeWebSocketStub();
