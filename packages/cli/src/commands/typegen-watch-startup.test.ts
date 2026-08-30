@@ -44,16 +44,21 @@ describe('fluo typegen watch startup barrier', () => {
           releaseInitialGeneration = resolve;
         });
       }
-      publishedSources.push(capturedSource);
+      return capturedSource;
     });
     const runPromise = runTypegenWatch({
-      generate,
+      commit: async (source) => {
+        publishedSources.push(source);
+      },
       modulePath: '/project/src/app.ts',
       onReady() {
         readySources.push(publishedSources.at(-1) ?? 'missing');
       },
       outputPath: '/project/src/generated/react-pages.ts',
       signalTarget,
+      startGeneration() {
+        return { cancel: () => undefined, result: generate() };
+      },
       watchTarget,
     });
 
@@ -89,12 +94,16 @@ describe('fluo typegen watch startup barrier', () => {
 
     // When: watch mode performs its deterministic startup generation.
     const action = runTypegenWatch({
-      generate: async () => {
-        throw startupError;
-      },
+      commit: async () => undefined,
       modulePath: '/project/src/app.ts',
       outputPath: '/project/src/generated/react-pages.ts',
       signalTarget,
+      startGeneration() {
+        return {
+          cancel: () => undefined,
+          result: Promise.reject(startupError),
+        };
+      },
       watchTarget,
     });
 
@@ -117,13 +126,16 @@ describe('fluo typegen watch startup barrier', () => {
 
     // When: watch mode announces that its long-running lifecycle is ready.
     const action = runTypegenWatch({
-      generate: async () => undefined,
+      commit: async () => undefined,
       modulePath: '/project/src/app.ts',
       onReady() {
         throw readyError;
       },
       outputPath: '/project/src/generated/react-pages.ts',
       signalTarget,
+      startGeneration() {
+        return { cancel: () => undefined, result: Promise.resolve('source') };
+      },
       watchTarget: () => watcher,
     });
 

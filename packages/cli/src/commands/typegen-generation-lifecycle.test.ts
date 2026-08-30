@@ -10,6 +10,10 @@ class FakeGenerationChild implements TypegenGenerationChild {
   readonly exitListeners = new Set<(code: number | null, signal: NodeJS.Signals | null) => void>();
   readonly messageListeners = new Set<(message: unknown) => void>();
 
+  kill(_signal: NodeJS.Signals): boolean {
+    return true;
+  }
+
   offError(listener: (error: Error) => void): void {
     this.errorListeners.delete(listener);
   }
