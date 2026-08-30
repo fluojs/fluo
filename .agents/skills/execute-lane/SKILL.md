@@ -39,15 +39,24 @@ Intake from `$create-lane`: a canonical lane v2 ledger is translated with
 base branch, `confirmed_issues`, and `dependency_graph` edges and ignores
 the v1-only DAG/authority fields. A dependency naming an issue outside
 `confirmed_issues` is rejected rather than silently dropped. Pass
-`--lane-id` to override the inherited id.
+`--lane-id` to override the inherited id. If the source ledger carries
+`predicted_conflicts` entries, read them at init: issues sharing a
+non-package surface (governance tooling, CONTEXT docs, shared harness)
+will likely need `resolve-conflict` with a keep-both resolution when the
+second one rebases — expect it instead of being surprised by it.
 
 Multi-layer lanes: `init --issue N` also accepts `--issue N:dep1,dep2`
 (deps must be lane members). A dependent issue answers
 `wait-dependencies` until every `depends_on` issue is observably
 terminal (GitHub issue CLOSED) — release is automatic, observed live,
 never journaled. `plan-all` prints every issue's decision in one call.
-Only consumer-visible files (not `*.test.ts`, fixtures, or `*.md`)
-count toward the changeset gate, per release governance.
+Only consumer-visible files (not `*.test.ts`, fixtures, or most `*.md`)
+count toward the changeset gate, per release governance. Exception: npm
+auto-includes package-root `README*` and `LICENSE*` in the tarball
+regardless of the manifest `files` field, so those ARE consumer-visible
+(proven on #3347 via `npm pack --dry-run`: README.md and README.ko.md
+shipped for a `files:["dist"]` package; the old blanket `.md` exclusion
+let a README-only change slip the gate until a reviewer caught it).
 
 `watch` closes the dependent-release wake gap: it re-observes the lane
 on an interval, prints ONLY decision transitions (e.g. a dependent
@@ -57,8 +66,16 @@ issue closes), and exits 0 with `LANE-SETTLED` when every issue is
 still no journal, no session identity:
 
 ```text
-node scripts/lane-v4-cli.mjs watch --root . --lane <lane.json> [--interval 60] [--once]
+node scripts/lane-v4-cli.mjs watch --root . --lane <lane.json> [--interval 60] [--once] [--stall-after 15]
 ```
+
+`watch` also prints `STALLED issue <n>: <action> x <ticks> ticks` when a
+non-terminal decision has not moved for `--stall-after` ticks (repeating
+at every multiple; `0` disables). Transitions-only output reads "no
+change" as "no problem", and that assumption broke live: an issue sat in
+`review` for hours after a unanimous triad because nothing nudged the
+operator to consult `plan`. `done`/`blocked`/`wait-dependencies` never
+stall — the last is derivative waiting whose upstream stall fires instead.
 
 The operator (human or agent session):
 
@@ -84,6 +101,44 @@ The operator (human or agent session):
    fix-back one CI round later (observed: @fluojs/cli typegen/inspect
    broke on a react/runtime seam change that http/react/runtime suites
    could not see).
+
+   Additional verification rules, each earned by a live incident
+   (lane-30x10, 30 issues):
+
+   - **Dependency-edge changes need a clean-dist full build.** If the
+     branch touches any `packages/*/package.json` dependency field, run
+     the full `pnpm build` from a CLEAN dist state. Warm dist masks
+     ordering defects entirely: a `runtime -> testing -> runtime`
+     workspace cycle passed every local closure build (stale `dist/`
+     resolved the types regardless of order) and failed only in CI,
+     twice. Closure scope was not the gap — warm dist was.
+   - **Classifying a failure as pre-existing requires a control run.**
+     Run the SAME command on a clean `main` checkout and record both
+     results. One incident classified correctly this way (@fluojs/cli
+     7-of-444 local-env failures, main failed 6-of-444 identically);
+     one plausible-sounding causation story ("stale merge-base") was
+     disproven by a reviewer because nobody had checked whether the
+     blamed files had actually changed between the bases.
+   - **"Green twice" means two CONSECUTIVE clean runs.** A fail + a pass
+     does not satisfy it. Re-run a failing package ALONE to separate
+     contention from regression before believing either.
+   - **Never run lead commands in a worktree a child currently owns.**
+     Two writers in one worktree corrupt both results — the lead's
+     evidence binds to a moving head and the child's verification runs
+     against files it did not write.
+   - **Keep-both conflict resolutions get three extra checks**: (1) both
+     sides' functions are still REGISTERED and INVOKED, not merely
+     defined — a guard that survives the merge but loses its call site
+     keeps every test green while enforcing nothing; (2) the merged test
+     count is explained by exact arithmetic (e.g. 146 + 7 = 153), not by
+     "it went up"; (3) `grep -rl '<<<<<<<' $(git ls-files)` is empty
+     after EVERY `rebase --continue`, not just at the end.
+   - **Receipts must be literally true.** A manual demonstration is not
+     an automated regression — write "proven by hand, not pinned by a
+     test" when that is the truth. "My patch is unchanged" is not "these
+     files are unchanged" after a rebase. Reviewers caught eight receipt
+     inaccuracies in one 30-issue run; every correction was recorded in
+     the receipt rather than silently amended.
 2. Records the outcome: `record --phase <p> --result-json '{"ok":true}'`
    (or `ok:false` — retry accounting), and semantic facts bound to the
    exact head: `set-fact --kind local-checks|review --head <sha> --value ...`.

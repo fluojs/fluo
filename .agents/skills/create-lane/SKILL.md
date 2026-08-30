@@ -63,6 +63,20 @@ recommendations were found, ask nothing. Build the final grouping,
 dependencies, lane ID, merge policy, retry policy, and authority scope
 deterministically without a normal lane-plan question.
 
+While deriving the grouping, also scan every issue's title, body, and
+acceptance criteria for SHARED NON-PACKAGE surfaces: `tooling/governance/**`,
+`docs/CONTEXT*`, `.agents/workflow-contracts/**`, and shared harness sources
+under `packages/testing/src/**`. Package-based chain grouping is structurally
+blind to these — in a live 30-issue run, the only rebase conflict came from
+two issues in DIFFERENT chains (different packages) that each added a guard
+to the same `tooling/governance/verify-platform-consistency-governance.mjs`.
+When two or more issues reference the same such surface, record an optional
+`predicted_conflicts` entry in the ledger (`{ surface, issues, note? }`, see
+the v2 schema). This is a HINT, not a serialization order: keep-both
+resolution handled the live conflict cleanly, so the value is in the executor
+expecting `resolve-conflict` rather than being surprised by it. Do not
+restructure chains around a hint.
+
 Persist the existing `confirmed-issues`, `suggested-additions`, and `lane-plan`
 receipt identities as plan/source-bound machine evidence. The first and third
 normal receipts are derived from validated state; the second records the sole

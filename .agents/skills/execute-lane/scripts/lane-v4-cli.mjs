@@ -5,7 +5,7 @@
 //   init            --root . --lane-id <id> --issue <n> [--issue <n> ...]
 //   plan            --root . --lane <path> --issue <n>
 //   plan-all        --root . --lane <path>
-//   watch           --root . --lane <path> [--interval 60] [--once]
+//   watch           --root . --lane <path> [--interval 60] [--once] [--stall-after 15]
 //   record          --root . --lane <path> --issue <n> --phase <p> --result-json <json>
 //   set-fact        --root . --lane <path> --issue <n> --kind local-checks|review --head <sha> --value <json>
 //   approve-merge   --root . --lane <path> --issue <n>
@@ -20,7 +20,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { applyChildResult, decideNext, summarizeTransitions } from './lane-v4.mjs';
+import { applyChildResult, decideNext, summarizeTransitions, trackStalls } from './lane-v4.mjs';
 
 const arg = (args, flag, fallback) => {
 	const i = args.indexOf(flag);
@@ -62,7 +62,20 @@ const factIfCurrent = (entry, kind, headSha) => {
 // not ship to consumers and therefore do not require a changeset per
 // docs/contracts/release-governance.md. Exported so the gate is testable —
 // when this lived inline it could drift silently.
+//
+// EXCEPTION the .md blanket exclusion got wrong (caught by a reviewer on
+// #3347): npm auto-includes package-root README* and LICENSE/LICENCE* in the
+// tarball regardless of the manifest `files` field, so those ARE shipped
+// package content. `npm pack --dry-run` on @fluojs/testing (files:["dist"])
+// showed README.md and README.ko.md in the tarball. Root-level only — npm's
+// auto-include does not apply to nested paths — and CHANGELOG is not in npm's
+// auto-include set.
+const packageRootAlwaysPacked = /^packages\/[^/]+\/(?:README|LICEN[SC]E)[^/]*$/i;
+
 export const isConsumerVisibleFile = (file) => {
+	if (packageRootAlwaysPacked.test(file)) {
+		return true;
+	}
 	if (!file.startsWith('packages/') || file.endsWith('.md')) {
 		return false;
 	}
@@ -263,15 +276,27 @@ const main = () => {
 		// tick is a fresh GitHub/git observation.
 		const intervalSec = Number(arg(args, '--interval', '60'));
 		const once = args.includes('--once');
+		// A decision that stops moving is owed an operator action; transitions
+		// alone hide that (issue 3400 sat in `review` for hours unnoticed).
+		// Fires at every threshold multiple; 0 disables.
+		const stallAfter = Number(arg(args, '--stall-after', '15'));
 		const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 		const loop = async () => {
 			let prev = null;
+			let stallCounts = null;
 			for (; ;) {
 				const next = snapshotAll();
 				const { changes, settled } = summarizeTransitions(prev, next);
 				for (const c of changes) {
 					process.stdout.write(
 						`${new Date().toISOString()} issue ${c.issue}: ${c.from ?? '(start)'} -> ${c.to}\n`,
+					);
+				}
+				const tracked = trackStalls(stallCounts, next, stallAfter);
+				stallCounts = tracked.counts;
+				for (const s of tracked.stalled) {
+					process.stdout.write(
+						`${new Date().toISOString()} STALLED issue ${s.issue}: ${s.action} x ${s.ticks} ticks\n`,
 					);
 				}
 				if (settled) {

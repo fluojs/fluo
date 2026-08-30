@@ -272,6 +272,23 @@
       }
     },
     "dependency_graph": { "type": "object" },
+    "predicted_conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["surface", "issues"],
+        "properties": {
+          "surface": { "type": "string", "minLength": 1 },
+          "issues": {
+            "type": "array",
+            "minItems": 2,
+            "items": { "type": "integer", "minimum": 1 }
+          },
+          "note": { "type": "string" }
+        }
+      }
+    },
     "root_main_sync": {
       "type": "object",
       "additionalProperties": false,
