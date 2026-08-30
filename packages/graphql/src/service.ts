@@ -292,10 +292,9 @@ async function loadGraphqlDeps(): Promise<GraphqlDeps> {
  * Boots the GraphQL runtime, middleware, and subscription transports for the active adapter.
  */
 @Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, HTTP_APPLICATION_ADAPTER, GRAPHQL_INTERNAL_MODULE_OPTIONS_TOKEN)
-export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplicationShutdown {
+export class GraphqlLifecycleService implements Middleware, OnApplicationBootstrap, OnApplicationShutdown {
   private allowedCrossRealmGraphqlObjects: WeakSet<object> | undefined;
   private graphQLErrorConstructor: typeof GraphQLErrorType | undefined;
-  private middlewareRegistered = false;
   private readonly operationContainers = new WeakMap<Request, Container>();
   private readonly requestContexts = new WeakMap<Request, GraphqlRequestContext>();
   private readonly websocketOperationContainers = new Map<object, Map<string, Container>>();
@@ -305,50 +304,48 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
   private subscribeGraphqlOperation: typeof subscribeGraphql | undefined;
   private yoga: YogaLike | undefined;
 
-  private readonly middleware: Middleware = {
-    handle: async (context: MiddlewareContext, next: Next) => {
-      if (!isGraphqlPath(context.request.path)) {
-        await next();
-        return;
+  async handle(context: MiddlewareContext, next: Next): Promise<void> {
+    if (!isGraphqlPath(context.request.path)) {
+      await next();
+      return;
+    }
+
+    const yoga = this.yoga;
+
+    if (!yoga) {
+      this.logger.error('GraphQL middleware was invoked before GraphQL Yoga initialization.', undefined, 'GraphqlLifecycleService');
+      context.response.setStatus(500);
+      await context.response.send({
+        errors: [{ message: 'GraphQL server not initialized.' }],
+      });
+      return;
+    }
+
+    try {
+      const fetchRequest = toFetchRequest(context.request);
+      this.requestContexts.set(fetchRequest, {
+        principal: context.requestContext.principal,
+        request: context.request,
+      });
+      try {
+        const fetchResponse = await yoga.fetch(fetchRequest);
+
+        await writeFetchResponse(fetchResponse, context.response);
+      } finally {
+        this.requestContexts.delete(fetchRequest);
+        await this.disposeOperationContainer(fetchRequest);
       }
+    } catch (error) {
+      this.logger.error('Failed to process GraphQL request.', error, 'GraphqlLifecycleService');
 
-      const yoga = this.yoga;
-
-      if (!yoga) {
-        this.logger.error('GraphQL middleware was invoked before GraphQL Yoga initialization.', undefined, 'GraphqlLifecycleService');
+      if (!context.response.committed) {
         context.response.setStatus(500);
         await context.response.send({
-          errors: [{ message: 'GraphQL server not initialized.' }],
+          errors: [{ message: 'Internal server error.' }],
         });
-        return;
       }
-
-      try {
-        const fetchRequest = toFetchRequest(context.request);
-        this.requestContexts.set(fetchRequest, {
-          principal: context.requestContext.principal,
-          request: context.request,
-        });
-        try {
-          const fetchResponse = await yoga.fetch(fetchRequest);
-
-          await writeFetchResponse(fetchResponse, context.response);
-        } finally {
-          this.requestContexts.delete(fetchRequest);
-          await this.disposeOperationContainer(fetchRequest);
-        }
-      } catch (error) {
-        this.logger.error('Failed to process GraphQL request.', error, 'GraphqlLifecycleService');
-
-        if (!context.response.committed) {
-          context.response.setStatus(500);
-          await context.response.send({
-            errors: [{ message: 'Internal server error.' }],
-          });
-        }
-      }
-    },
-  };
+    }
+  }
 
   constructor(
     private readonly runtimeContainer: Container,
@@ -359,7 +356,7 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    if (this.middlewareRegistered) {
+    if (this.yoga) {
       return;
     }
 
@@ -392,9 +389,6 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
       });
 
       await this.registerWebSocketTransport();
-
-      this.registerMiddleware();
-      this.middlewareRegistered = true;
     } catch (error) {
       try {
         await this.resetGraphqlRuntimeState();
@@ -412,8 +406,6 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
 
   private async resetGraphqlRuntimeState(): Promise<void> {
     await this.unregisterWebSocketTransport();
-    this.unregisterMiddleware();
-    this.middlewareRegistered = false;
     this.executeGraphqlOperation = undefined;
     this.graphQLErrorConstructor = undefined;
     this.releaseGraphqlInstanceOfPatch?.();
@@ -461,42 +453,6 @@ export class GraphqlLifecycleService implements OnApplicationBootstrap, OnApplic
 
   private discoverResolverDescriptors(): ResolverDescriptor[] {
     return discoverResolverDescriptors(this.compiledModules, this.options);
-  }
-
-  private registerMiddleware(): void {
-    for (const compiledModule of this.compiledModules) {
-      if (!compiledModule.providerTokens.has(GraphqlLifecycleService)) {
-        continue;
-      }
-
-      const middleware = compiledModule.definition.middleware ?? [];
-
-      if (!middleware.includes(this.middleware)) {
-        compiledModule.definition.middleware = [...middleware, this.middleware];
-        continue;
-      }
-
-      compiledModule.definition.middleware = [...middleware];
-    }
-  }
-
-  private unregisterMiddleware(): void {
-    for (const compiledModule of this.compiledModules) {
-      if (!compiledModule.providerTokens.has(GraphqlLifecycleService)) {
-        continue;
-      }
-
-      const middleware = compiledModule.definition.middleware ?? [];
-      const remaining = [];
-
-      for (const entry of middleware) {
-        if (entry !== this.middleware) {
-          remaining.push(entry);
-        }
-      }
-
-      compiledModule.definition.middleware = remaining;
-    }
   }
 
   private buildGraphqlContext(

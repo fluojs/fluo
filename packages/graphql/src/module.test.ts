@@ -1,7 +1,8 @@
 import { createRequire } from 'node:module';
 import { Inject, Scope } from '@fluojs/core';
 import type { MiddlewareContext, Next } from '@fluojs/http';
-import { defineModule } from '@fluojs/runtime';
+import { bootstrapModule, defineModule } from '@fluojs/runtime';
+import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import { IsInt, MinLength } from '@fluojs/validation';
 import { GraphQLObjectType, GraphQLSchema, GraphQLString, GraphQLUnionType } from 'graphql';
 import { describe, expect, it } from 'vitest';
@@ -10,6 +11,7 @@ import { WebSocket } from 'ws';
 import { Arg, Mutation, Query, Resolver, Subscription } from './decorators.js';
 import { GraphqlModule } from './module.js';
 import { createGraphqlNetworkFixture } from './network.test-fixture.js';
+import { GraphqlLifecycleService } from './service.js';
 import { GRAPHQL_OPERATION_CONTAINER, type GraphQLContext, listOf } from './types.js';
 
 type GraphqlInstanceOf = (value: unknown, constructor: { prototype?: { [Symbol.toStringTag]?: string } }) => boolean;
@@ -431,6 +433,24 @@ class UnionOutputResolver {
 }
 
 describe('@fluojs/graphql', () => {
+  it('registers GraphQL middleware through module metadata', () => {
+    // Given: GraphQL module options for an application endpoint.
+    const graphqlModule = GraphqlModule.forRoot();
+
+    // When: the runtime compiles the generated module metadata.
+    const bootstrap = bootstrapModule(graphqlModule, {
+      validationTokens: [
+        APPLICATION_LOGGER,
+        COMPILED_MODULES,
+        HTTP_APPLICATION_ADAPTER,
+        RUNTIME_CONTAINER,
+      ],
+    });
+
+    // Then: the DI-managed lifecycle service is declared as package middleware.
+    expect(bootstrap.modules[0]?.definition.middleware).toEqual([GraphqlLifecycleService]);
+  });
+
   it('requests an operating system assigned port for network tests', async () => {
     expect(await findAvailablePort()).toBeGreaterThan(0);
   });
