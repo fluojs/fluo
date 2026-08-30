@@ -63,6 +63,13 @@ recommendations were found, ask nothing. Build the final grouping,
 dependencies, lane ID, merge policy, retry policy, and authority scope
 deterministically without a normal lane-plan question.
 
+Authority scope derivation: `cleanup_command_worktrees` is ALWAYS `true`
+(schema `const` — a lane that cannot clean up its own worktrees leaves
+the operator doing it by hand for every merge; maintainer decision).
+`root_main_sync_ff_only` DEFAULTS to `true`; emit `false` only when the
+requester explicitly asks the lane not to touch the root checkout's
+`main`. Neither is a lane-plan question.
+
 While deriving the grouping, also scan every issue's title, body, and
 acceptance criteria for SHARED NON-PACKAGE surfaces: `tooling/governance/**`,
 `docs/CONTEXT*`, `.agents/workflow-contracts/**`, and shared harness sources

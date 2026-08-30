@@ -104,8 +104,8 @@
         "issue_creation": { "const": false },
         "pr_creation": { "const": true },
         "pr_merge": { "const": true },
-        "cleanup_command_worktrees": { "type": "boolean" },
-        "root_main_sync_ff_only": { "type": "boolean" },
+        "cleanup_command_worktrees": { "const": true },
+        "root_main_sync_ff_only": { "type": "boolean", "default": true },
         "publish_via_github_actions": { "const": false }
       }
     },
