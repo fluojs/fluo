@@ -907,6 +907,27 @@ describe('makeRequest', () => {
       body: { ok: true },
     });
   });
+
+  it('merges mixed-case Set-Cookie writes under one ordered header', async () => {
+    const dispatcher: Dispatcher = {
+      async dispatch(_request, response) {
+        response.setHeader('Set-Cookie', 'session=alpha; Path=/; HttpOnly');
+        response.setHeader('set-cookie', 'theme=dark; Path=/');
+        response.setHeader('SET-COOKIE', 'locale=en-US; Path=/');
+        await response.send({ ok: true });
+      },
+    };
+
+    const result = await makeRequest(dispatcher, { path: '/cookies' });
+
+    expect(result.headers).toEqual({
+      'Set-Cookie': [
+        'session=alpha; Path=/; HttpOnly',
+        'theme=dark; Path=/',
+        'locale=en-US; Path=/',
+      ],
+    });
+  });
 });
 
 describe('createTestApp', () => {
