@@ -7,6 +7,7 @@ import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } fro
 import { normalizeRefreshTokenOptions } from '../refresh/refresh-token.js';
 import type { JwtAlgorithm, JwtClaims, JwtKeyEntry, JwtPrincipal, JwtVerifierOptions } from '../types.js';
 import { JwksClient } from './jwks.js';
+import { assertJwtKeyEntries } from './key-entries.js';
 
 /**
  * Provides the resolved JWT verifier options through dependency injection.
@@ -33,27 +34,6 @@ export const ASYMMETRIC_HASH: Partial<Record<JwtAlgorithm, string>> = {
   ES384: 'sha384',
   ES512: 'sha512',
 };
-
-/**
- * Rejects static key entries whose IDs cannot unambiguously select one key.
- *
- * @param keys Static JWT key entries to validate.
- */
-export function assertJwtKeyEntries(keys: JwtKeyEntry[] | undefined): void {
-  if (!Array.isArray(keys)) {
-    return;
-  }
-
-  const keyIds = new Set<string>();
-
-  for (const entry of keys) {
-    if (typeof entry.kid !== 'string' || entry.kid.length === 0 || keyIds.has(entry.kid)) {
-      throw new JwtConfigurationError('JWT key entries require non-empty unique kid values.');
-    }
-
-    keyIds.add(entry.kid);
-  }
-}
 
 function hasOwnAlgorithmMapping(
   mappings: Partial<Record<JwtAlgorithm, string>>,
