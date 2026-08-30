@@ -65,6 +65,10 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 | NestJS Slack modules that assume `imports`, `useClass`, `useExisting`, a package-level multi-client registry, or `isGlobal` | `SlackModule.forRoot({ ..., global? })` or `SlackModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/slack` | fluo Slack async registration consumes injected factory options only. Register dependencies in the application module graph first, list their tokens in `inject`, return final Slack options from `useFactory`, and compose app-owned modules/providers or facades for multiple clients. |
 | NestJS Discord modules that assume `imports`, `useClass`, `useExisting`, `isGlobal`, or custom internal provider tokens | `DiscordModule.forRoot({ ..., global? })` or `DiscordModule.forRootAsync({ inject, useFactory, global? })` from `@fluojs/discord` | fluo Discord registration is singleton-oriented and injected-factory-only for async setup. The package exports `DiscordService`, `DiscordChannel`, `DISCORD`, and `DISCORD_CHANNEL` globally by default unless `global: false` is set; internal provider helpers and option tokens are intentionally private. |
 
+## GraphQL Field Resolver DTO Arguments
+
+The prior migration limitation for field argument DTO binding is superseded for code-first object fields. Put GraphQL argument fields on an `InputDto` with `@Arg(...)`, pass it through `@FieldResolver({ input: InputDto })`, and bind the materialized, validated DTO with `@Args(index?)`. `@Args()`, `@Parent()`, and `@Context()` are TC39 method decorators, so every binding must use a distinct zero-based method index; duplicate indexes fail during decorator evaluation. Bootstrap rejects `input` without `@Args()`, `@Args()` without `input`, and every one of these bindings on root operations. Request-scoped root and field resolvers share one HTTP or subscription operation container. Schema-first field-resolver attachment remains unsupported.
+
 ## Breaking Differences
 
 - Decorators MUST follow the TC39 standard model. NestJS legacy decorator assumptions do not carry over.

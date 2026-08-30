@@ -1,21 +1,20 @@
-import { createServer } from 'node:net';
-
 import { Inject, Scope } from '@fluojs/core';
-import { defineModule } from '@fluojs/runtime';
-import { bootstrapNodeApplication } from '@fluojs/runtime/node';
+import { type Application, defineModule, FluoFactory, type ModuleType } from '@fluojs/runtime';
+import { NodeHttpApplicationAdapter } from '@fluojs/runtime/node';
 import { MinLength } from '@fluojs/validation';
 import { GraphQLObjectType, GraphQLString } from 'graphql';
 import { describe, expect, it } from 'vitest';
 
 import { Arg, Args, Context, FieldResolver, Parent, Query, Resolver, Subscription } from './decorators.js';
 import { GraphqlModule } from './module.js';
-import { listOf, type GraphQLContext } from './types.js';
+import { type GraphQLContext, listOf } from './types.js';
 
 type Product = {
   readonly id: string;
 };
 
 const observedRequestIds: number[] = [];
+const observedRootRequestIds: number[] = [];
 
 class ProductLabelInput {
   @Arg('locale')
@@ -34,24 +33,30 @@ const ProductType = new GraphQLObjectType({
   name: 'FieldResolverInputProduct',
 });
 
-@Resolver()
-class ProductQueryResolver {
-  @Query({ outputType: listOf(ProductType) })
-  products(): readonly Product[] {
-    return [{ id: 'first' }, { id: 'second' }];
-  }
-
-  @Subscription({ outputType: ProductType })
-  async *productStream(): AsyncIterable<Product> {
-    yield { id: 'stream' };
-  }
-}
-
 @Inject()
 @Scope('request')
 class RequestState {
   private static nextId = 0;
   readonly id = ++RequestState.nextId;
+}
+
+@Inject(RequestState)
+@Scope('request')
+@Resolver()
+class ProductQueryResolver {
+  constructor(private readonly requestState: RequestState) {}
+
+  @Query({ outputType: listOf(ProductType) })
+  products(): readonly Product[] {
+    observedRootRequestIds.push(this.requestState.id);
+    return [{ id: 'first' }, { id: 'second' }];
+  }
+
+  @Subscription({ outputType: ProductType })
+  async *productStream(): AsyncIterable<Product> {
+    observedRootRequestIds.push(this.requestState.id);
+    yield { id: 'stream' };
+  }
 }
 
 @Inject(RequestState)
@@ -66,41 +71,25 @@ class ProductFieldResolver {
     input: ProductLabelInput,
     type: 'string',
   })
-  @Args(0)
-  @Parent(1)
-  @Context(2)
-  localizedLabel(input: ProductLabelInput, product: Product, context: GraphQLContext): string {
+  @Args(2)
+  @Parent(0)
+  @Context(1)
+  localizedLabel(product: Product, context: GraphQLContext, input: ProductLabelInput): string {
     observedRequestIds.push(this.requestState.id);
     return `${product.id}:${input.locale}:${input.tags.join(',')}:${String(context.region)}`;
   }
 }
 
-async function findAvailablePort(): Promise<number> {
-  return await new Promise<number>((resolve, reject) => {
-    const server = createServer();
-    server.once('error', reject);
-    server.listen(0, () => {
-      const address = server.address();
+async function startGraphqlApplication(rootModule: ModuleType): Promise<{ readonly app: Application; readonly origin: string }> {
+  const adapter = new NodeHttpApplicationAdapter(0, '127.0.0.1', 0, 0, false, undefined);
+  const app = await FluoFactory.create(rootModule, { adapter });
+  await app.listen();
 
-      if (!address || typeof address === 'string') {
-        reject(new Error('Failed to resolve available port.'));
-        return;
-      }
-
-      server.close((error?: Error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve(address.port);
-      });
-    });
-  });
+  return { app, origin: adapter.getListenTarget().url };
 }
 
-async function postGraphql(port: number, query: string): Promise<unknown> {
-  const response = await fetch(`http://127.0.0.1:${String(port)}/graphql`, {
+async function postGraphql(origin: string, query: string): Promise<unknown> {
+  const response = await fetch(`${origin}/graphql`, {
     body: JSON.stringify({ query }),
     headers: { 'content-type': 'application/json' },
     method: 'POST',
@@ -111,9 +100,19 @@ async function postGraphql(port: number, query: string): Promise<unknown> {
 async function readSsePayload(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<Record<string, unknown>> {
   const decoder = new TextDecoder();
   let buffer = '';
+  const timeout = AbortSignal.timeout(2_000);
+  const timedOut = new Promise<never>((_resolve, reject) => {
+    timeout.addEventListener(
+      'abort',
+      () => {
+        reject(new Error('Timed out waiting for a GraphQL SSE data frame.'));
+      },
+      { once: true },
+    );
+  });
 
   while (buffer.length < 64 * 1024) {
-    const chunk = await reader.read();
+    const chunk = await Promise.race([reader.read(), timedOut]);
 
     if (chunk.done) {
       throw new Error('Expected a GraphQL SSE data frame before the response stream closed.');
@@ -133,6 +132,7 @@ async function readSsePayload(reader: ReadableStreamDefaultReader<Uint8Array>): 
 describe('GraphQL object field resolver DTO inputs', () => {
   it('materializes scalar and list HTTP arguments at explicit field resolver indexes', async () => {
     observedRequestIds.length = 0;
+    observedRootRequestIds.length = 0;
 
     class AppModule {}
     defineModule(AppModule, {
@@ -145,15 +145,12 @@ describe('GraphQL object field resolver DTO inputs', () => {
       providers: [RequestState, ProductQueryResolver, ProductFieldResolver],
     });
 
-    const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
+    const { app, origin } = await startGraphqlApplication(AppModule);
 
     try {
-      await app.listen();
-
       await expect(
         postGraphql(
-          port,
+          origin,
           '{ products { ko: localizedLabel(locale: "ko", tags: ["new", "sale"]) en: localizedLabel(locale: "en", tags: ["featured"]) } }',
         ),
       ).resolves.toEqual({
@@ -172,9 +169,10 @@ describe('GraphQL object field resolver DTO inputs', () => {
       });
 
       expect(new Set(observedRequestIds)).toHaveLength(1);
+      expect(observedRootRequestIds).toEqual([observedRequestIds[0]]);
       const firstOperationRequestId = observedRequestIds[0];
 
-      await expect(postGraphql(port, '{ products { localizedLabel(locale: "ko", tags: []) } }')).resolves.toEqual({
+      await expect(postGraphql(origin, '{ products { localizedLabel(locale: "ko", tags: []) } }')).resolves.toEqual({
         data: {
           products: [
             { localizedLabel: 'first:ko::ap-northeast-2' },
@@ -185,8 +183,9 @@ describe('GraphQL object field resolver DTO inputs', () => {
 
       expect(new Set(observedRequestIds.slice(4))).toHaveLength(1);
       expect(observedRequestIds[4]).not.toBe(firstOperationRequestId);
+      expect(observedRootRequestIds[1]).toBe(observedRequestIds[4]);
 
-      const invalidResult = (await postGraphql(port, '{ products { localizedLabel(locale: "x") } }')) as {
+      const invalidResult = (await postGraphql(origin, '{ products { localizedLabel(locale: "x") } }')) as {
         data: { products: Array<{ localizedLabel: unknown }> };
         errors: Array<{ extensions?: { code?: string; issues?: Array<{ field?: string }> }; message: string }>;
       };
@@ -202,6 +201,7 @@ describe('GraphQL object field resolver DTO inputs', () => {
 
   it('materializes field arguments for subscription payload execution', async () => {
     observedRequestIds.length = 0;
+    observedRootRequestIds.length = 0;
 
     class AppModule {}
     defineModule(AppModule, {
@@ -214,14 +214,12 @@ describe('GraphQL object field resolver DTO inputs', () => {
       providers: [RequestState, ProductQueryResolver, ProductFieldResolver],
     });
 
-    const port = await findAvailablePort();
-    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
+    const { app, origin } = await startGraphqlApplication(AppModule);
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
 
     try {
-      await app.listen();
       const response = await fetch(
-        `http://127.0.0.1:${String(port)}/graphql?query=${encodeURIComponent(
+        `${origin}/graphql?query=${encodeURIComponent(
           'subscription { productStream { localizedLabel(locale: "ko", tags: ["live"]) } }',
         )}`,
         {
@@ -245,6 +243,7 @@ describe('GraphQL object field resolver DTO inputs', () => {
         },
       });
       expect(observedRequestIds).toHaveLength(1);
+      expect(observedRootRequestIds).toEqual(observedRequestIds);
     } finally {
       await reader?.cancel();
       await app.close();
@@ -266,4 +265,5 @@ describe('GraphQL object field resolver DTO inputs', () => {
       return CollidingFieldResolver;
     }).toThrow(/parameter 0.*already bound/);
   });
+
 });

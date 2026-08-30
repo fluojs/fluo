@@ -168,6 +168,12 @@ export class BookFieldResolver {
 
 `@Parent()`와 `@Context()`는 legacy parameter decorator가 아니라 TC39 표준 method decorator입니다. 기본값은 parent/source object를 method parameter `0`에, `GraphQLContext`를 parameter `1`에 바인딩합니다. Method 순서가 다르면 zero-based index를 명시적으로 전달하세요. 위 `Book` object type은 `author`를 이미 선언하므로 `@FieldResolver('author')`가 기존 field type을 유지합니다. Object type에 없는 field를 추가할 때는 `@FieldResolver({ fieldName: 'author', type: AuthorType })`을 사용합니다.
 
+### Field Argument 바인딩과 검증
+
+Object field는 root operation과 동일한 DTO argument pipeline을 사용할 수 있습니다. Input DTO의 field에 `@Arg(...)`를 선언하고 DTO를 `@FieldResolver({ input: AuthorInput })`로 전달한 다음 `@Args(index?)`로 바인딩하세요. Resolver가 실행되기 전에 DTO가 materialize 및 validate되며 validation failure는 GraphQL `BAD_USER_INPUT` error가 됩니다.
+
+이들은 TC39 method decorator이므로 `@Args()`, `@Parent()`, `@Context()`를 함께 사용할 때는 서로 다른 explicit index를 선택해야 합니다. `@FieldResolver({ input })`에는 `@Args()`가 필요하고, `@Args()`에는 `input`이 필요합니다. Bootstrap은 불완전한 pairing과 root operation에 둔 이 binding을 모두 거부합니다. Request-scoped root 및 field resolver는 HTTP request와 subscription execution에서 같은 operation container를 공유합니다. Schema-first field-resolver attachment는 계속 지원하지 않습니다.
+
 ## 18.5 Real-time with Subscriptions
 
 Fluo는 기본적으로 **SSE(Server-Sent Events)** 기반 GraphQL 구독을 지원하고, 필요할 때 WebSocket도 활성화할 수 있습니다.

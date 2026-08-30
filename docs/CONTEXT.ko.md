@@ -251,6 +251,10 @@ HTTP route 및 #2506 navigation ownership, dual-import test, bilingual docs, Cha
 
 JWT async-registration 정정: `JwtModule.forRootAsync({ inject, useFactory, global? })`는 지원되는 typed configuration만 받으며 NestJS `imports`, `useClass`, `useExisting`에는 dynamic-module 의미가 없습니다. 추가 JavaScript object property는 runtime에서 읽지 않을 뿐 validate하거나 reject하지 않습니다. injected dependency는 global로 visible한 module export 또는 `JwtRuntimeModule`이 resolve할 수 있는 application graph의 bootstrap runtime provider에서 와야 합니다. ordinary sibling 또는 parent module의 export만으로는 충분하지 않으며, `AuthModule.providers`에만 local인 provider는 JWT options provider에서 보이지 않습니다.
 
+## GraphQL Field Resolver DTO Inputs
+
+`@fluojs/graphql`의 code-first object field resolver는 `@FieldResolver({ input: InputDto })`와 `@Args(index?)`로 GraphQL argument를 바인딩할 수 있다. `InputDto`의 각 `@Arg(...)` field는 GraphQL argument가 되고, framework는 root operation과 동일한 `BAD_USER_INPUT` error contract로 DTO를 materialize 및 validate한다. `@Args()`, `@Parent()`, `@Context()`는 서로 다른 explicit zero-based method index를 바인딩하며, index 충돌은 즉시 실패한다. `@FieldResolver({ input })`에는 `@Args()`가 필요하고 `@Args()`에는 `input`이 필요하며, 세 binding 모두 root operation에서는 유효하지 않다. Request-scoped root resolver와 field resolver는 HTTP 및 subscription execution에서 하나의 operation container를 공유하지만 schema-first field-resolver attachment는 계속 지원하지 않는다.
+
 ## Anti-Patterns at a Glance
 
 - `experimentalDecorators` 또는 `emitDecoratorMetadata`를 활성화하는 것, fluo의 표준 데코레이터 기준을 깨뜨린다.
