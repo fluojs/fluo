@@ -20,7 +20,47 @@ interface GraphqlInstanceOfPatchState {
   readonly patchedInstanceOf: GraphqlInstanceOf;
 }
 
-const graphqlInstanceOfPatchStates = new WeakMap<GraphqlInstanceOfModule, GraphqlInstanceOfPatchState>();
+interface GraphqlInstanceOfPatchStateRegistry {
+  readonly states: WeakMap<GraphqlInstanceOfModule, GraphqlInstanceOfPatchState>;
+}
+
+const graphqlInstanceOfPatchStateRegistryKey = Symbol.for(
+  '@fluojs/graphql.instance-of-patch-state-registry/v1',
+);
+
+function isGraphqlInstanceOfPatchStateRegistry(
+  value: unknown,
+): value is GraphqlInstanceOfPatchStateRegistry {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  return Reflect.get(value, 'states') instanceof WeakMap;
+}
+
+function getGraphqlInstanceOfPatchStates(): WeakMap<
+  GraphqlInstanceOfModule,
+  GraphqlInstanceOfPatchState
+> {
+  const registeredValue: unknown = Reflect.get(globalThis, graphqlInstanceOfPatchStateRegistryKey);
+
+  if (isGraphqlInstanceOfPatchStateRegistry(registeredValue)) {
+    return registeredValue.states;
+  }
+
+  const registry: GraphqlInstanceOfPatchStateRegistry = {
+    states: new WeakMap<GraphqlInstanceOfModule, GraphqlInstanceOfPatchState>(),
+  };
+
+  Object.defineProperty(globalThis, graphqlInstanceOfPatchStateRegistryKey, {
+    configurable: false,
+    enumerable: false,
+    value: registry,
+    writable: false,
+  });
+
+  return registry.states;
+}
 
 function createGraphqlInstanceOfPatchState(
   originalInstanceOf: GraphqlInstanceOf,
@@ -120,11 +160,12 @@ export function installGraphqlInstanceOfPatch(
   instanceOfModule: GraphqlInstanceOfModule,
   allowedObjects: WeakSet<object>,
 ): () => void {
-  let patchState = graphqlInstanceOfPatchStates.get(instanceOfModule);
+  const patchStates = getGraphqlInstanceOfPatchStates();
+  let patchState = patchStates.get(instanceOfModule);
 
   if (patchState === undefined) {
     patchState = createGraphqlInstanceOfPatchState(instanceOfModule.instanceOf);
-    graphqlInstanceOfPatchStates.set(instanceOfModule, patchState);
+    patchStates.set(instanceOfModule, patchState);
   } else if (instanceOfModule.instanceOf !== patchState.patchedInstanceOf) {
     patchState.originalInstanceOf = instanceOfModule.instanceOf;
   }
@@ -149,8 +190,8 @@ export function installGraphqlInstanceOfPatch(
       instanceOfModule.instanceOf = patchState.originalInstanceOf;
     }
 
-    if (graphqlInstanceOfPatchStates.get(instanceOfModule) === patchState) {
-      graphqlInstanceOfPatchStates.delete(instanceOfModule);
+    if (patchStates.get(instanceOfModule) === patchState) {
+      patchStates.delete(instanceOfModule);
     }
   };
 }

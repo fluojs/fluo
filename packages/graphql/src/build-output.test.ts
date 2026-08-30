@@ -127,6 +127,40 @@ it('boots the built ESM runtime while patching the mutable GraphQL helper owner'
       }
       instanceOfModule.instanceOf = originalInstanceOf;
     }
+
+    for (const [firstRelease, secondRelease] of [['first', 'second'], ['second', 'first']]) {
+      const firstManager = await import('./dist/instance-of-patch.js?module-copy=first');
+      const secondManager = await import('./dist/instance-of-patch.js?module-copy=second');
+      const copiedOwner = { instanceOf: () => false };
+      const copiedOwnerOriginalInstanceOf = copiedOwner.instanceOf;
+      const firstCrossRealmSchema = { [Symbol.toStringTag]: 'GraphQLSchema' };
+      const secondCrossRealmSchema = { [Symbol.toStringTag]: 'GraphQLSchema' };
+      const releaseFirstPatch = firstManager.installGraphqlInstanceOfPatch(
+        copiedOwner,
+        new WeakSet([firstCrossRealmSchema]),
+      );
+      const releaseSecondPatch = secondManager.installGraphqlInstanceOfPatch(
+        copiedOwner,
+        new WeakSet([secondCrossRealmSchema]),
+      );
+      const releases = {
+        first: releaseFirstPatch,
+        second: releaseSecondPatch,
+      };
+
+      releases[firstRelease]();
+      const activeCrossRealmSchema = firstRelease === 'first'
+        ? secondCrossRealmSchema
+        : firstCrossRealmSchema;
+      if (!copiedOwner.instanceOf(activeCrossRealmSchema, GraphQLSchema)) {
+        throw new Error('remaining copied-manager owner must keep its allowlist');
+      }
+
+      releases[secondRelease]();
+      if (copiedOwner.instanceOf !== copiedOwnerOriginalInstanceOf) {
+        throw new Error('original owner identity must be restored after copied-manager releases');
+      }
+    }
   `;
 
   // When
