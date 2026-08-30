@@ -111,16 +111,18 @@ console.log(metadata.providers);
 `AsyncModuleOptions<T>`는 외부 `ConfigService` 등에 의존하여 비동기적으로 초기화가 필요한 모듈을 위한 표준 계약입니다.
 
 ```ts
-import { AsyncModuleOptions, MaybePromise, Token } from '@fluojs/core';
+import { type AsyncModuleOptions } from '@fluojs/core';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 interface Config {
   apiKey: string;
 }
 
 class EmailModule {
-  static forRootAsync(options: AsyncModuleOptions<Config>) {
-    return {
-      module: EmailModule,
+  static forRootAsync(options: AsyncModuleOptions<Config>): ModuleType {
+    class EmailRuntimeModule {}
+
+    return defineModule(EmailRuntimeModule, {
       providers: [
         {
           provide: 'CONFIG',
@@ -128,7 +130,7 @@ class EmailModule {
           inject: options.inject,
         },
       ],
-    };
+    });
   }
 }
 ```

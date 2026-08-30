@@ -45,26 +45,39 @@ fluo에서 가시성(visibility)은 일급 설계 요소입니다. 패키지는 
 fluo 패키지는 일반적으로 세 가지 핵심 기둥에 의존합니다.
 - `@fluojs/core`: 메타데이터 중추(`@Module`, `@Global`, `@Inject`)를 제공합니다.
 - `@fluojs/di`: 토큰 기반 컨테이너와 프로바이더 모델을 제공합니다.
-- `@fluojs/runtime`: 수동 부트스트랩이나 그래프 조작을 수행하는 경우에만 필요합니다.
+- `@fluojs/runtime`: bootstrap API와 함께 class-based programmatic module을 위한 공개 `ModuleType` 및 `defineModule(...)` 경계를 제공합니다.
 
 라이브러리를 만들 때는 사용자 의존성 그래프에서 버전 충돌을 피하기 위해 `@fluojs/core`와 `@fluojs/di`를 `peerDependencies`로 두는 편이 좋습니다. 특히 `@fluojs/di`는 여러 주입 엔진 인스턴스가 공존하면 토큰 확인 중 예상치 못한 동작이 생길 수 있으므로 주의해야 합니다.
 
 ## Designing DynamicModules
 
-`DynamicModule` 패턴은 fluo에서 설정 가능한 기능을 제공하는 주요 방식입니다. 컴파일 타임에 정의되는 정적 모듈과 달리, 동적 모듈은 런타임에 생성되며 보통 설정 객체를 받습니다.
+Dynamic Module 패턴은 fluo에서 설정 가능한 기능을 제공하는 주요 방식입니다. `@Module(...)`로 한 번 선언하는 정적 모듈과 달리, configurable helper는 런타임에 Module class를 만들고 해당 class에 metadata를 연결합니다.
 
 ### The DynamicModule Contract
 
-`DynamicModule`은 `ModuleMetadata` 인터페이스와 `module` 참조를 만족하는 객체(또는 객체를 반환하는 정적 메서드가 있는 클래스)입니다. 정적 모듈과 같은 메타데이터 형태를 유지하면서도, 호출 시점에 옵션과 프로바이더 구성을 함께 만들어낼 수 있다는 점이 핵심입니다.
+fluo Dynamic Module은 NestJS 형태의 `{ module, providers, exports }` 객체가 아니라 constructable `ModuleType`입니다. `defineModule(...)`은 `ModuleDefinition`을 class에 연결하고 같은 class reference를 반환하므로 다른 Module의 `imports`에 직접 넣을 수 있습니다.
 
 ```ts
-export interface DynamicModule extends ModuleMetadata {
-  module: Type<any>;
+import { defineModule, type ModuleType } from '@fluojs/runtime';
+
+class MyModule {
+  static forRoot(options: MyModuleOptions): ModuleType {
+    class MyRuntimeModule {}
+
+    return defineModule(MyRuntimeModule, {
+      providers: [
+        { provide: MY_OPTIONS, useValue: options },
+        MyService,
+      ],
+      exports: [MyService],
+    });
+  }
 }
 ```
 
 동적 모듈의 구성 요소:
-- `imports`: 이 동적 인스턴스에 필요한 다른 모듈들.
+- 반환된 `ModuleType`: bootstrap과 Module Graph compilation이 받는 class identity.
+- `imports`: 생성된 Module에 필요한 다른 Module class.
 - `providers`: 설정 객체를 포함한 커스텀 프로바이더들.
 - `exports`: 임포트하는 모듈에 노출할 프로바이더들.
 - `global`: 모듈을 전역적으로 표시하기 위한 불리언 플래그.
@@ -79,15 +92,16 @@ export interface DynamicModule extends ModuleMetadata {
 2. **주입 토큰 생성**: DI 컨테이너에서 옵션을 나타낼 `unique symbol`이나 문자열을 사용합니다.
 3. **정적 `forRoot`**:
    ```ts
-   static forRoot(options: MyModuleOptions): DynamicModule {
-     return {
-       module: MyModule,
+   static forRoot(options: MyModuleOptions): ModuleType {
+     class MyRuntimeModule {}
+
+     return defineModule(MyRuntimeModule, {
        providers: [
          { provide: MY_OPTIONS, useValue: options },
          MyService,
        ],
        exports: [MyService],
-     };
+     });
    }
    ```
 4. **팩토리 기반 `forRootAsync`**:
@@ -154,22 +168,23 @@ export class FeatureFlagsService {
 이 모듈에서 `forRoot` 및 `forRootAsync` 로직을 구현합니다. 두 메서드는 같은 서비스를 내보내지만, 옵션 값을 준비하는 방식만 다르게 두어 소비자 설정 방식의 차이를 흡수합니다.
 
 ```ts
-@Module({})
 export class FeatureFlagsModule {
-  static forRoot(options: FeatureFlagsOptions): DynamicModule {
-    return {
-      module: FeatureFlagsModule,
+  static forRoot(options: FeatureFlagsOptions): ModuleType {
+    class FeatureFlagsRuntimeModule {}
+
+    return defineModule(FeatureFlagsRuntimeModule, {
       providers: [
         { provide: FEATURE_FLAGS_OPTIONS, useValue: options },
         FeatureFlagsService,
       ],
       exports: [FeatureFlagsService],
-    };
+    });
   }
 
-  static forRootAsync(options: AsyncModuleOptions<FeatureFlagsOptions>): DynamicModule {
-    return {
-      module: FeatureFlagsModule,
+  static forRootAsync(options: AsyncModuleOptions<FeatureFlagsOptions>): ModuleType {
+    class FeatureFlagsRuntimeModule {}
+
+    return defineModule(FeatureFlagsRuntimeModule, {
       providers: [
         {
           provide: FEATURE_FLAGS_OPTIONS,
@@ -179,7 +194,7 @@ export class FeatureFlagsModule {
         FeatureFlagsService,
       ],
       exports: [FeatureFlagsService],
-    };
+    });
   }
 }
 ```
@@ -188,7 +203,7 @@ export class FeatureFlagsModule {
 
 ### Minimize Core Dependencies
 
-패키지는 가능하면 `@fluojs/core`에만 의존해야 합니다. 플랫폼 어댑터를 직접 작성하는 경우가 아니라면 `@fluojs/platform-*`을 가져오지 마세요. 그래야 라이브러리가 Node.js, Bun, Cloudflare Workers 전반에서 플랫폼 독립성을 유지할 수 있습니다.
+패키지의 dependency set은 좁게 유지해야 합니다. 공유 metadata contract에는 `@fluojs/core`, Provider type에는 `@fluojs/di`, `defineModule(...)`로 class-based Module type을 만드는 공개 helper가 있을 때만 `@fluojs/runtime`을 사용하세요. 플랫폼 어댑터를 직접 작성하는 경우가 아니라면 `@fluojs/platform-*`을 가져오지 마세요. 그래야 라이브러리가 Node.js, Bun, Cloudflare Workers 전반에서 플랫폼 독립성을 유지할 수 있습니다.
 
 ### Explicit Token Naming
 

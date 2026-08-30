@@ -45,26 +45,39 @@ In fluo, visibility is a first-class design element. A package usually exposes f
 fluo packages generally depend on three core pillars.
 - `@fluojs/core`: Provides the metadata backbone (`@Module`, `@Global`, `@Inject`).
 - `@fluojs/di`: Provides the Token-based container and Provider model.
-- `@fluojs/runtime`: Needed only when performing manual Bootstrap or graph manipulation.
+- `@fluojs/runtime`: Provides the public `ModuleType` and `defineModule(...)` boundary for class-based programmatic modules, in addition to bootstrap APIs.
 
 When building a library, it is best to keep `@fluojs/core` and `@fluojs/di` as `peerDependencies` to avoid version conflicts in the user's dependency graph. Be especially careful with `@fluojs/di`, because multiple injection engine instances can cause unexpected behavior during Token resolution.
 
 ## Designing DynamicModules
 
-The `DynamicModule` pattern is the main way fluo provides configurable functionality. Unlike static Modules defined at compile time, Dynamic Modules are created at runtime and usually accept a configuration object.
+The Dynamic Module pattern is the main way fluo provides configurable functionality. Unlike static Modules declared once with `@Module(...)`, configurable helpers create a Module class at runtime and attach metadata to that class.
 
 ### The DynamicModule Contract
 
-A `DynamicModule` is an object, or a class with a static method that returns an object, that satisfies the `ModuleMetadata` interface plus a `module` reference. The important point is that it keeps the same metadata shape as a static Module while allowing options and Provider configuration to be created at call time.
+A Fluo Dynamic Module is a constructable `ModuleType`, not a NestJS-shaped `{ module, providers, exports }` object. `defineModule(...)` associates a `ModuleDefinition` with a class and returns that same class reference, which can be placed directly in another Module's `imports`.
 
 ```ts
-export interface DynamicModule extends ModuleMetadata {
-  module: Type<any>;
+import { defineModule, type ModuleType } from '@fluojs/runtime';
+
+class MyModule {
+  static forRoot(options: MyModuleOptions): ModuleType {
+    class MyRuntimeModule {}
+
+    return defineModule(MyRuntimeModule, {
+      providers: [
+        { provide: MY_OPTIONS, useValue: options },
+        MyService,
+      ],
+      exports: [MyService],
+    });
+  }
 }
 ```
 
 Components of a Dynamic Module:
-- `imports`: Other Modules required by this dynamic instance.
+- the returned `ModuleType`: the class identity accepted by bootstrap and Module Graph compilation.
+- `imports`: Other Module classes required by this generated Module.
 - `providers`: Custom Providers, including the configuration object.
 - `exports`: Providers exposed to importing Modules.
 - `global`: Boolean flag for marking the Module as global.
@@ -79,15 +92,16 @@ Following the community standard, fluo libraries use `forRoot` for static config
 2. **Create an injection Token**: Use a `unique symbol` or string to represent the options in the DI container.
 3. **Static `forRoot`**:
    ```ts
-   static forRoot(options: MyModuleOptions): DynamicModule {
-     return {
-       module: MyModule,
+   static forRoot(options: MyModuleOptions): ModuleType {
+     class MyRuntimeModule {}
+
+     return defineModule(MyRuntimeModule, {
        providers: [
          { provide: MY_OPTIONS, useValue: options },
          MyService,
        ],
        exports: [MyService],
-     };
+     });
    }
    ```
 4. **Factory-based `forRootAsync`**:
@@ -154,22 +168,23 @@ export class FeatureFlagsService {
 This Module implements the `forRoot` and `forRootAsync` logic. Both methods export the same service, but they absorb the difference in how option values are prepared.
 
 ```ts
-@Module({})
 export class FeatureFlagsModule {
-  static forRoot(options: FeatureFlagsOptions): DynamicModule {
-    return {
-      module: FeatureFlagsModule,
+  static forRoot(options: FeatureFlagsOptions): ModuleType {
+    class FeatureFlagsRuntimeModule {}
+
+    return defineModule(FeatureFlagsRuntimeModule, {
       providers: [
         { provide: FEATURE_FLAGS_OPTIONS, useValue: options },
         FeatureFlagsService,
       ],
       exports: [FeatureFlagsService],
-    };
+    });
   }
 
-  static forRootAsync(options: AsyncModuleOptions<FeatureFlagsOptions>): DynamicModule {
-    return {
-      module: FeatureFlagsModule,
+  static forRootAsync(options: AsyncModuleOptions<FeatureFlagsOptions>): ModuleType {
+    class FeatureFlagsRuntimeModule {}
+
+    return defineModule(FeatureFlagsRuntimeModule, {
       providers: [
         {
           provide: FEATURE_FLAGS_OPTIONS,
@@ -179,7 +194,7 @@ export class FeatureFlagsModule {
         FeatureFlagsService,
       ],
       exports: [FeatureFlagsService],
-    };
+    });
   }
 }
 ```
@@ -188,7 +203,7 @@ export class FeatureFlagsModule {
 
 ### Minimize Core Dependencies
 
-Packages should depend only on `@fluojs/core` when possible. Do not import `@fluojs/platform-*` unless you are directly writing a Platform Adapter. This keeps the library platform-independent across Node.js, Bun, and Cloudflare Workers.
+Packages should keep their dependency set narrow: use `@fluojs/core` for shared metadata contracts, `@fluojs/di` for Provider types, and `@fluojs/runtime` only when a public helper creates class-based Module types with `defineModule(...)`. Do not import `@fluojs/platform-*` unless you are directly writing a Platform Adapter. This keeps the library platform-independent across Node.js, Bun, and Cloudflare Workers.
 
 ### Explicit Token Naming
 
