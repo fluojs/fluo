@@ -44,10 +44,10 @@ import {
 } from '@fluojs/runtime/internal/request-response-factory';
 import {
   cloneHeaderValue,
-  createNodeEarlyHintsCapability,
   createDeferredFrameworkRequestShell,
   createMemoizedAsyncValue,
   createMemoizedValue,
+  createNodeEarlyHintsCapability,
   parseQueryParamsFromSearch,
   snapshotSimpleQueryRecord,
   splitRawRequestUrl,
@@ -281,6 +281,8 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
   private async closeApplication(): Promise<void> {
     let startupError: unknown;
     let startupFailed = false;
+    let closeError: unknown;
+    let closeFailed = false;
 
     try {
       if (this.listenInFlight) {
@@ -294,46 +296,9 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
       if (!this.appClosed) {
         try {
           await this.app.close();
-        } catch (closeError: unknown) {
-          if (!startupFailed) {
-            throw closeError;
-          }
-
-          if (
-            (typeof startupError === 'object' && startupError !== null) ||
-            typeof startupError === 'function'
-          ) {
-            try {
-              const existingCause = Reflect.get(startupError, 'cause');
-              const closeFailure = existingCause === undefined
-                ? closeError
-                : new AggregateError([existingCause, closeError], 'Fastify startup and shutdown both failed.');
-              const causeAttached = Reflect.set(
-                startupError,
-                'cause',
-                closeFailure,
-              );
-
-              if (!causeAttached || Reflect.get(startupError, 'cause') !== closeFailure) {
-                startupError = new AggregateError(
-                  [startupError, closeError],
-                  'Fastify startup and shutdown both failed.',
-                );
-              }
-            } catch {
-              // Mutable rejection objects preserve identity only when cause can be read, written, and
-              // read back. Every other rejection value uses startup-first errors to expose both failures.
-              startupError = new AggregateError(
-                [startupError, closeError],
-                'Fastify startup and shutdown both failed.',
-              );
-            }
-          } else {
-            startupError = new AggregateError(
-              [startupError, closeError],
-              'Fastify startup and shutdown both failed.',
-            );
-          }
+        } catch (error: unknown) {
+          closeError = error;
+          closeFailed = true;
         } finally {
           this.appClosed = true;
         }
@@ -341,7 +306,49 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
     }
 
     if (startupFailed) {
+      if (closeFailed) {
+        if (
+          (typeof startupError === 'object' && startupError !== null) ||
+          typeof startupError === 'function'
+        ) {
+          try {
+            const existingCause = Reflect.get(startupError, 'cause');
+            const closeFailure = existingCause === undefined
+              ? closeError
+              : new AggregateError([existingCause, closeError], 'Fastify startup and shutdown both failed.');
+            const causeAttached = Reflect.set(
+              startupError,
+              'cause',
+              closeFailure,
+            );
+
+            if (!causeAttached || Reflect.get(startupError, 'cause') !== closeFailure) {
+              startupError = new AggregateError(
+                [startupError, closeError],
+                'Fastify startup and shutdown both failed.',
+              );
+            }
+          } catch {
+            // Mutable rejection objects preserve identity only when cause can be read, written, and
+            // read back. Every other rejection value uses startup-first errors to expose both failures.
+            startupError = new AggregateError(
+              [startupError, closeError],
+              'Fastify startup and shutdown both failed.',
+            );
+          }
+        } else {
+          startupError = new AggregateError(
+            [startupError, closeError],
+            'Fastify startup and shutdown both failed.',
+          );
+        }
+      }
+
       throw startupError;
+    }
+
+    if (closeFailed) {
+      throw closeError;
     }
   }
 
