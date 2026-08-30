@@ -1215,4 +1215,3 @@ console.log(events); // ['request context', 'root api', 'root database']
 From an implementation perspective, this completes the scope story. Scope does not only decide where an instance is created and cached. It also decides which container tier owns that instance's final destruction.
 
 That is why Fluo's three-scope model is small but still powerful. Singleton defines root ownership, request defines child ownership, and transient gives up caching ownership entirely. If you understand these three categories as "cache-and-disposal policies around one constructor path," the whole container becomes much easier to read.
-Offset 1081 is beyond end of file (1027 lines total)

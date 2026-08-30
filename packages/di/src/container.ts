@@ -670,7 +670,7 @@ export class Container {
     } finally {
       if ((completed || origin === 'direct') && this.parent && this.trackedByParent) {
         if (origin === 'direct') {
-          this.releaseNonOwnerStaleTaskObservers();
+          this.releaseNonOwnerStaleTaskObserversInSubtree();
         }
 
         this.parent.childScopes?.delete(this);
@@ -1414,6 +1414,14 @@ export class Container {
           observer.staleDisposalTasks.delete(task);
         }
       }
+    }
+  }
+
+  private releaseNonOwnerStaleTaskObserversInSubtree(): void {
+    this.releaseNonOwnerStaleTaskObservers();
+
+    for (const childScope of this.childScopes ?? []) {
+      childScope.releaseNonOwnerStaleTaskObserversInSubtree();
     }
   }
 

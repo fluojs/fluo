@@ -1215,4 +1215,3 @@ console.log(events); // ['request context', 'root api', 'root database']
 구현 관점에서 이것이 scope 이야기의 완성입니다. scope는 인스턴스가 어디서 생성되고 cache되는지만 결정하지 않습니다. 어느 container tier가 그 인스턴스의 최종 destruction을 소유하는지도 결정합니다.
 
 그래서 Fluo의 세 가지 scope 모델은 작아도 충분히 강력합니다. singleton은 root ownership을 정의하고, request는 child ownership을 정의하며, transient는 caching ownership 자체를 포기합니다. 이 세 범주를 "하나의 constructor 경로를 감싼 cache-and-disposal policy"로 이해하면, 컨테이너 전체가 훨씬 명확하게 읽히기 시작합니다.
-Offset 1081 is beyond end of file (1027 lines total)
