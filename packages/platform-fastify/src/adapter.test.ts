@@ -688,6 +688,39 @@ describe('@fluojs/platform-fastify', () => {
     }
   });
 
+  it('serializes string responses with JSON structured-suffix media types', () => {
+    const adapter = createFastifyAdapter({ port: 0 }) as FastifyHttpApplicationAdapter;
+    const requestResponseFactory = Reflect.get(adapter, 'requestResponseFactory') as {
+      createResponse(reply: FastifyReply): FrameworkResponse;
+    };
+    const headers = new Map<string, string | string[]>();
+    const sentPayloads: unknown[] = [];
+    const reply = {
+      getHeader(name: string) {
+        return headers.get(name.toLowerCase());
+      },
+      hasHeader(name: string) {
+        return headers.has(name.toLowerCase());
+      },
+      header(name: string, value: string | string[]) {
+        headers.set(name.toLowerCase(), value);
+        return this;
+      },
+      raw: {},
+      send(payload: unknown) {
+        sentPayloads.push(payload);
+        return this;
+      },
+      sent: false,
+    } as unknown as FastifyReply;
+    const response = requestResponseFactory.createResponse(reply);
+
+    response.setHeader('Content-Type', ' Application/Json-Patch+Json ; charset=utf-8 ');
+    response.send('JSON Patch string');
+
+    expect(sentPayloads).toEqual([JSON.stringify('JSON Patch string')]);
+  });
+
   it('preserves benchmark-style simple query and JSON body routes on the native request path', async () => {
     @Controller('/')
     class BenchmarkController {

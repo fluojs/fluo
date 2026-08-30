@@ -1607,5 +1607,6 @@ function serializeResponseBody(
 }
 
 function isJsonContentType(contentType: string | undefined): boolean {
-  return normalizePrimaryMediaType(contentType) === 'application/json';
+  const normalized = normalizePrimaryMediaType(contentType);
+  return normalized === 'application/json' || normalized?.endsWith('+json') === true;
 }
