@@ -535,6 +535,10 @@ describe('@fluojs/platform-express', () => {
       await expressPortabilityHarness.assertSupportsCustomHttpRouteMethods();
     });
 
+    it('preserves ordered independent response cookies', async () => {
+      await expressPortabilityHarness.assertSupportsPortableResponseCookies();
+    });
+
     it('supports HTTP-owned JSON and HTML error representations', async () => {
       await expressPortabilityHarness.assertSupportsHttpErrorRepresentations();
     });

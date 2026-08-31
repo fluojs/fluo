@@ -43,6 +43,7 @@ declare module '@fluojs/testing/http-adapter-portability' {
     assertSettlesStreamDrainWaitOnClose(): Promise<void>;
     assertSupportsCustomHttpRouteMethods(): Promise<void>;
     assertSupportsHttpErrorRepresentations(): Promise<void>;
+    assertSupportsPortableResponseCookies(): Promise<void>;
     assertSupportsSseStreaming(): Promise<void>;
   }
 

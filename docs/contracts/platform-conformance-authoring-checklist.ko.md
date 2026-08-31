@@ -29,6 +29,7 @@
 ## Adapter Portability Requirements
 
 - [ ] MUST: HTTP 어댑터는 `@fluojs/testing/http-adapter-portability`의 `createHttpAdapterPortabilityHarness(...)`를 실행합니다.
+- [ ] MUST: 독립적이고 순서가 보존되는 응답 `Set-Cookie` field를 검증하려면 `assertSupportsPortableResponseCookies()`를 실행합니다.
 - [ ] MUST: 손상된 cookie 값을 크래시 없이 보존하고 임의 정규화하지 않습니다.
 - [ ] MUST: raw body 캡처가 켜져 있을 때 JSON과 text 요청의 `rawBody`를 보존합니다.
 - [ ] MUST: byte-sensitive payload에 대해 `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`를 검증하여 어댑터가 Unicode replacement, newline normalization, re-encoding 없이 정확한 `rawBody` byte를 보존하는지 확인합니다.

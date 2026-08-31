@@ -128,6 +128,10 @@ describe('@fluojs/platform-nodejs', () => {
       await nodejsPortabilityHarness.assertSupportsCustomHttpRouteMethods();
     });
 
+    it('preserves ordered independent response cookies through the real Node listener', async () => {
+      await nodejsPortabilityHarness.assertSupportsPortableResponseCookies();
+    });
+
     it('supports HTTP-owned JSON and HTML error representations', async () => {
       await nodejsPortabilityHarness.assertSupportsHttpErrorRepresentations();
     });

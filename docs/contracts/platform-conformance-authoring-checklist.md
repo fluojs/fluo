@@ -29,6 +29,7 @@ Use this checklist when authoring or changing official platform-facing packages 
 ## Adapter Portability Requirements
 
 - [ ] MUST: For HTTP adapters, run `createHttpAdapterPortabilityHarness(...)` from `@fluojs/testing/http-adapter-portability`.
+- [ ] MUST: Run `assertSupportsPortableResponseCookies()` to verify independent, ordered response `Set-Cookie` fields.
 - [ ] MUST: Preserve malformed cookie values without crashing or normalizing them away.
 - [ ] MUST: Preserve `rawBody` for JSON and text requests when raw-body capture is enabled.
 - [ ] MUST: Verify `assertPreservesExactRawBodyBytesForByteSensitivePayloads()` for byte-sensitive payloads so adapters preserve exact `rawBody` bytes without Unicode replacement, newline normalization, or re-encoding.

@@ -25,7 +25,12 @@ export interface CookieOptions {
   readonly secure?: boolean;
 }
 
-/** Attributes that must match an existing cookie when clearing it. */
+/**
+ * Attributes accepted when clearing a cookie.
+ *
+ * Only `path` and `domain` identify the browser cookie to delete. `httpOnly`,
+ * `secure`, and `sameSite` are deletion attributes, not cookie identity keys.
+ */
 export type ClearCookieOptions = Omit<CookieOptions, 'expires' | 'maxAgeSeconds'>;
 
 type CookieOptionValues = {
