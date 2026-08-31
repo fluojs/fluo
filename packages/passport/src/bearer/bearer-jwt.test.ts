@@ -98,6 +98,16 @@ describe('BearerJwtStrategy credential extraction', () => {
     expect(verifier.verifyAccessToken).toHaveBeenCalledWith('first-token');
   });
 
+  it('throws AuthenticationRequiredError when the first array authorization header entry is empty', async () => {
+    const verifier = createMockVerifier();
+    const strategy = new BearerJwtStrategy(verifier);
+
+    await expect(
+      strategy.authenticate(createGuardContext(['', 'Bearer valid-token'])),
+    ).rejects.toThrow(AuthenticationRequiredError);
+    expect(verifier.verifyAccessToken).not.toHaveBeenCalled();
+  });
+
   it('throws AuthenticationRequiredError when the authorization header is absent', async () => {
     const strategy = new BearerJwtStrategy(createMockVerifier());
 
