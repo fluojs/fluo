@@ -15,6 +15,7 @@ const learningFilePaths = [
 const learningFileHeader = /^\/\/ (src\/auth\/auth\.(?:persistence|service|controller|module)\.ts)\n/u;
 const virtualRoot = join(repoRoot, '.virtual-jwt-learning-path');
 const workspacePublicSources = join(repoRoot, 'packages', '*', 'src', 'index.ts');
+const workspaceSourceFileCache = new Map();
 
 function fail(relativePath, message) {
   throw new Error(
@@ -300,9 +301,29 @@ function collectDiagnostics(files) {
   host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => {
     const sourceText = virtualFiles.get(resolve(fileName));
 
-    return sourceText === undefined
-      ? defaultGetSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile)
-      : ts.createSourceFile(fileName, sourceText, languageVersion, true, ts.ScriptKind.TS);
+    if (sourceText !== undefined) {
+      return ts.createSourceFile(fileName, sourceText, languageVersion, true, ts.ScriptKind.TS);
+    }
+
+    const cacheKey = `${resolve(fileName)}:${String(languageVersion)}`;
+    const cachedSourceFile = workspaceSourceFileCache.get(cacheKey);
+
+    if (cachedSourceFile !== undefined) {
+      return cachedSourceFile;
+    }
+
+    const sourceFile = defaultGetSourceFile(
+      fileName,
+      languageVersion,
+      onError,
+      shouldCreateNewSourceFile,
+    );
+
+    if (sourceFile !== undefined) {
+      workspaceSourceFileCache.set(cacheKey, sourceFile);
+    }
+
+    return sourceFile;
   };
 
   const program = ts.createProgram([...virtualFiles.keys()], compilerOptions, host);
