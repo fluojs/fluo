@@ -658,6 +658,8 @@ fluo migrate ./src --only imports,inject-params
 fluo migrate ./src --skip tests
 ```
 
+The canonical `--only` and `--skip` tokens are `imports`, `inject-params`, `scope`, `bootstrap`, `tests`, and `tsconfig`. The legacy `injectable` and `testing` tokens remain accepted aliases for `inject-params` and `tests`.
+
 Human-readable output is the default. Add `--json` when CI jobs, dashboards, or migration reports need stable machine-readable output. JSON mode writes only the structured migration report to stdout on success. Parser errors and invalid flag combinations still write their message to stderr, return exit code `1`, and do not emit partial JSON.
 
 The JSON report includes `mode` (`dry-run` or `apply`), `dryRun`, `apply`, enabled `transforms`, `scannedFiles`, `changedFiles`, aggregate `warningCount`, and per-file metadata. Each file entry records `filePath`, whether the file changed, applied transforms, warning count, and warning details with category labels and source line numbers.

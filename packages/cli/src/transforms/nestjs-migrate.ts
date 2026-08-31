@@ -153,8 +153,8 @@ const REQUEST_DTO_DECORATORS = new Set(['Body', 'Param', 'Query']);
 
 const TRANSFORM_KIND_LABEL: Record<MigrationTransformKind, string> = {
   bootstrap: 'bootstrap rewrite',
-  imports: 'import rewriting',
   injectable: '@Injectable removal',
+  imports: 'import rewriting',
   scope: 'scope mapping',
   testing: 'testing rewrite',
   tsconfig: 'tsconfig rewrite',

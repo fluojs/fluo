@@ -231,6 +231,16 @@ HTTP route 및 #2506 navigation ownership, dual-import test, bilingual docs, Cha
 추가하지 않습니다. 승인 후 `@fluojs/react/experimental/rsc`는 문서화된 deprecation window 동안
 테스트되는 re-export로 남습니다.
 
+## CLI Migration Transform Token
+
+Migration transform contract는 `packages/cli/README.ko.md`와
+[`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md)에서
+확인합니다. `--only`와 `--skip`의 정식 vocabulary는 `imports`, `inject-params`, `scope`,
+`bootstrap`, `tests`, `tsconfig`이며, 기존 `injectable`과 `testing`은 각각 `inject-params`와
+`tests`의 허용되는 alias로만 유지됩니다. 성공한 `--json` report는 `transforms`와 파일별
+`appliedTransforms`에서 안정적인 transform token인 `injectable`과 `testing`을 보존하므로 CLI
+input alias가 이 report contract를 바꾸지 않습니다.
+
 ## File Structure
 
 | Path | Role |

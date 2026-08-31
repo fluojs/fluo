@@ -298,6 +298,8 @@ fluo migrate ./src --only imports,inject-params
 fluo migrate ./src --skip tests
 ```
 
+정식 `--only` 및 `--skip` 토큰은 `imports`, `inject-params`, `scope`, `bootstrap`, `tests`, `tsconfig`입니다. 기존 `injectable` 및 `testing` 토큰은 각각 `inject-params` 및 `tests`의 허용되는 별칭으로 유지됩니다.
+
 CI 작업, 대시보드, migration report에서 안정적인 machine-readable 결과가 필요하면 `--json`을 사용하세요. 사람을 위한 출력은 기본값으로 유지됩니다. JSON 모드는 성공 시 stdout에 structured report만 기록하고, parser 오류나 잘못된 flag 조합은 기존처럼 stderr에 메시지를 기록한 뒤 exit code `1`을 반환하며 partial JSON을 출력하지 않습니다. Report에는 `mode`(`dry-run` 또는 `apply`), `dryRun`, `apply`, 활성화된 `transforms`, `scannedFiles`, `changedFiles`, 전체 `warningCount`, 그리고 `filePath`, `changed`, `appliedTransforms`, `warningCount`, category label과 source line number가 포함된 warnings per-file metadata가 포함됩니다.
 
 `--apply`로 다시 실행하기 전에는 모든 warning을 검토하세요. Warning은 자동 rewrite를 그대로 수락해도 된다는 뜻이 아니라 수동 follow-up 항목입니다. Warning category별 post-codemod checklist는 [NestJS migration guide](../../docs/getting-started/migrate-from-nestjs.ko.md)를 기준으로 확인하세요.
