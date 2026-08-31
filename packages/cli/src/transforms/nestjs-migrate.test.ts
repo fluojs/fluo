@@ -1069,7 +1069,7 @@ export class UnsafeAliasedInjectService {
     expect(report.fileResults.flatMap((result) => result.warnings).some((warning) => warning.category === 'inject-token-unsupported')).toBe(true);
   });
 
-  it('emits a runtime Inject binding separately from type-only core imports', () => {
+  it('emits a runtime Inject binding from a mixed type/value core import', () => {
     // Given
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
     temporaryDirectories.push(workspaceDirectory);
@@ -1077,7 +1077,7 @@ export class UnsafeAliasedInjectService {
     mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
     writeFileSync(
       join(workspaceDirectory, 'src', 'type-only-core-import.service.ts'),
-      `import type { InjectionToken } from '@fluojs/core';
+      `import { type InjectionToken } from '@fluojs/core';
 import { Inject as NestInject, Injectable } from '@nestjs/common';
 
 const TOKEN = Symbol('token');
@@ -1109,10 +1109,11 @@ export class TypeOnlyCoreImportService {
     });
 
     // Then
-    expect(serviceContent).toContain("import type { InjectionToken } from '@fluojs/core';");
-    expect(serviceContent).toContain('import { Inject as NestInject } from "@fluojs/core";');
+    expect(serviceContent).toContain("import { type InjectionToken, Inject as NestInject } from '@fluojs/core';");
     expect(emitted.diagnostics).toEqual([]);
+    expect(emitted.outputText).toContain("import { Inject as NestInject } from '@fluojs/core';");
     expect(emitted.outputText).toContain('NestInject(TOKEN, RuntimeDependency)');
+    expect(emitted.outputText).not.toContain('InjectionToken');
   });
 
   it('attaches correct warning categories to each warning type', () => {
