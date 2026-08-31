@@ -100,16 +100,16 @@ describe('buildOpenApiDocument', () => {
     `);
   });
 
-  it('omits enum type when allowed values mix primitive kinds', () => {
+  it('emits only accepted numeric enum values with a numeric type', () => {
     enum NumericStatus {
-      Draft,
+      __proto__ = 0,
       Published,
     }
 
     class UpdatePostRequest {
       @FromBody('status')
       @IsEnum(NumericStatus)
-      status = NumericStatus.Draft;
+      status = 0;
     }
 
     @Controller('/posts')
@@ -133,7 +133,7 @@ describe('buildOpenApiDocument', () => {
       additionalProperties: false,
       properties: {
         status: {
-          enum: ['Draft', 'Published', 0, 1],
+          enum: [0, 1], type: 'number',
         },
       },
       required: ['status'],

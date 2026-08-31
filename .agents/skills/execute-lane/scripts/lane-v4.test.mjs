@@ -6,8 +6,14 @@ import {
 	applyChildResult,
 	decideNext,
 	summarizeTransitions,
+	trackStalls,
 } from './lane-v4.mjs';
-import { isChangesetFile, isConsumerVisibleFile, laneV2ToInitSpecs } from './lane-v4-cli.mjs';
+import {
+	isChangesetFile,
+	isConsumerVisibleFile,
+	laneV2ToInitSpecs,
+	sourceLedgerRef,
+} from './lane-v4-cli.mjs';
 
 const makeLane = (overrides = {}) => ({
 	issue: 3096,
@@ -259,15 +265,92 @@ test('C3b: a directory merely starting with "test" stays consumer-visible', () =
 });
 
 test('C3b: docs and non-package paths are not consumer-visible', () => {
-	assert.equal(isConsumerVisibleFile('packages/studio/README.md'), false);
 	assert.equal(isConsumerVisibleFile('docs/contracts/testing-guide.md'), false);
 	assert.equal(isConsumerVisibleFile('tooling/governance/verify-platform-consistency-governance.mjs'), false);
+});
+
+// npm auto-includes package-root README*/LICENSE* in the tarball regardless of
+// the manifest `files` field (proven live on #3347: `npm pack --dry-run` showed
+// README.md and README.ko.md shipping for @fluojs/testing despite files:["dist"]).
+// The old predicate excluded every .md, so a README-only change slipped the
+// changeset gate until a reviewer caught it.
+test('C3b: package-root README and LICENSE ship in the tarball -> consumer-visible', () => {
+	assert.equal(isConsumerVisibleFile('packages/studio/README.md'), true);
+	assert.equal(isConsumerVisibleFile('packages/testing/README.ko.md'), true);
+	assert.equal(isConsumerVisibleFile('packages/studio/LICENSE'), true);
+});
+
+test('C3b: nested README and non-shipping package-root docs stay invisible', () => {
+	// npm's auto-include applies only at the package root.
+	assert.equal(isConsumerVisibleFile('packages/studio/src/README.md'), false);
+	// CHANGELOG is not auto-included and files:["dist"] excludes it (verified in
+	// the same #3347 pack output).
+	assert.equal(isConsumerVisibleFile('packages/studio/CHANGELOG.md'), false);
 });
 
 test('C3b: changeset files are recognized, README is not', () => {
 	assert.equal(isChangesetFile('.changeset/bright-suns-juggle.md'), true);
 	assert.equal(isChangesetFile('.changeset/README.md'), false);
 	assert.equal(isChangesetFile('packages/studio/CHANGELOG.md'), false);
+});
+
+// --- C5: watch stall detection ---
+// Transitions-only output reads "no change" as "no problem"; issue 3400
+// disproved that by sitting in `review` for hours after a unanimous triad
+// with no nudge.
+const snap = (pairs) => pairs.map(([issue, action]) => ({ issue, decision: { action } }));
+
+test('C5: first tick starts counts at 1 and reports nothing below threshold', () => {
+	const r = trackStalls(null, snap([[3400, 'review']]), 3);
+	assert.deepEqual(r.counts, { 3400: { action: 'review', ticks: 1 } });
+	assert.deepEqual(r.stalled, []);
+});
+
+test('C5: an unchanged decision stalls at the threshold and at every multiple', () => {
+	let counts = null;
+	const reported = [];
+	for (let i = 0; i < 6; i++) {
+		const r = trackStalls(counts, snap([[3400, 'review']]), 3);
+		counts = r.counts;
+		reported.push(r.stalled.length);
+	}
+	// ticks 1..6 -> stall fires at 3 and 6 only
+	assert.deepEqual(reported, [0, 0, 1, 0, 0, 1]);
+	assert.deepEqual(counts, { 3400: { action: 'review', ticks: 6 } });
+});
+
+test('C5: a decision change resets the stall counter', () => {
+	let counts = trackStalls(null, snap([[3400, 'review']]), 2).counts;
+	counts = trackStalls(counts, snap([[3400, 'review']]), 2).counts; // ticks 2 -> fired
+	const r = trackStalls(counts, snap([[3400, 'wait-ci']]), 2);
+	assert.deepEqual(r.counts, { 3400: { action: 'wait-ci', ticks: 1 } });
+	assert.deepEqual(r.stalled, []);
+});
+
+test('C5: terminal and derivative-wait states never stall', () => {
+	let counts = null;
+	for (let i = 0; i < 4; i++) {
+		const r = trackStalls(
+			counts,
+			snap([[1, 'done'], [2, 'blocked'], [3, 'wait-dependencies']]),
+			2,
+		);
+		counts = r.counts;
+		assert.deepEqual(r.stalled, []);
+	}
+});
+
+test('C5: threshold 0 disables stall reporting', () => {
+	let counts = null;
+	for (let i = 0; i < 5; i++) {
+		const r = trackStalls(counts, snap([[3400, 'review']]), 0);
+		counts = r.counts;
+		assert.deepEqual(r.stalled, []);
+	}
+});
+
+test('C5: a non-array snapshot is rejected', () => {
+	assert.throws(() => trackStalls(null, null, 3), TypeError);
 });
 
 // --- C4: `$create-lane` v2 ledger intake ---
@@ -309,6 +392,24 @@ test('C4: empty or malformed confirmed_issues is rejected', () => {
 	assert.throws(() => laneV2ToInitSpecs({ version: 2, confirmed_issues: [] }), /confirmed_issues/);
 	assert.throws(() => laneV2ToInitSpecs({ version: 2, confirmed_issues: [0] }), /confirmed_issues/);
 	assert.throws(() => laneV2ToInitSpecs({ version: 2 }), /confirmed_issues/);
+});
+
+// C4b: provenance back-reference. During a run, two files describe "the
+// lane" (the v2 planning ledger and the v4 runtime state); the v4 file must
+// point at the exact ledger bytes it was initialized from, so planning
+// evidence and runtime state stay linked after the ledger or the lane moves.
+test('C4b: sourceLedgerRef binds the ledger path to a sha256 of its bytes', () => {
+	const ref = sourceLedgerRef('.omo/lanes/lane-x.json', 'abc');
+	assert.deepEqual(ref, {
+		path: '.omo/lanes/lane-x.json',
+		// sha256("abc") — fixed vector, so a hash-algorithm drift fails loudly.
+		sha256: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+	});
+});
+
+test('C4b: sourceLedgerRef rejects an empty path or non-string contents', () => {
+	assert.throws(() => sourceLedgerRef('', 'abc'), TypeError);
+	assert.throws(() => sourceLedgerRef('.omo/lanes/x.json', null), TypeError);
 });
 
 test('C4: a dependency outside the lane is rejected, not silently dropped', () => {

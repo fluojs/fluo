@@ -15,7 +15,7 @@ import type {
   PlatformSnapshot as RuntimePlatformSnapshot,
 } from '@fluojs/runtime';
 import type { Root } from 'react-dom/client';
-import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bootstrapStudioApp } from './app/bootstrap.js';
 import {
   applyFilters,
@@ -42,7 +42,7 @@ type Exact<Left, Right> =
       : false
     : false;
 
-function assertExactContract<Condition extends true>(): void {}
+function assertExactContract<Condition extends true>(...condition: Condition[]): void { void condition; }
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageCommandTimeoutMs = 120_000;
@@ -292,6 +292,54 @@ describe('Studio live contracts', () => {
         }),
       )
     ).toThrow('Invalid Studio live graph node payload.');
+  });
+
+  const unknownPhaseTiming = {
+    phases: [{ durationMs: 1.25, name: 'unknown_bootstrap_phase' }],
+    totalMs: 1.25,
+    version: 1,
+  };
+  const unknownPhaseEventBase = {
+    emittedAt: '2026-05-28T00:00:02.000Z',
+    epoch: 'epoch-1',
+    eventId: 'epoch-1:unknown-phase',
+    sequence: 3,
+    source: { appId: 'app-test', runtime: 'node' as const },
+    version: 1,
+  };
+  const unknownPhaseSnapshotEvent = {
+    ...unknownPhaseEventBase,
+    payload: { ...liveSnapshot, timing: unknownPhaseTiming },
+    type: 'snapshot' as const,
+  };
+  const unknownPhaseTimingEvent = {
+    ...unknownPhaseEventBase,
+    eventId: 'epoch-1:unknown-phase-timing',
+    payload: unknownPhaseTiming,
+    type: 'timing' as const,
+  };
+
+  it('rejects unknown BootstrapTimingPhase names in static timing payloads', () => {
+    expect(() => parseStudioPayload(JSON.stringify(unknownPhaseTiming))).toThrow(
+      'Invalid phase entry in bootstrap timing payload.',
+    );
+  });
+
+  it('rejects unknown BootstrapTimingPhase names in live snapshot events', () => {
+    expect(() => parseStudioLiveEvent(JSON.stringify(unknownPhaseSnapshotEvent))).toThrow(
+      'Invalid phase entry in bootstrap timing payload.',
+    );
+  });
+
+  it('rejects unknown BootstrapTimingPhase names in timing events', () => {
+    expect(() => parseStudioLiveEvent(JSON.stringify(unknownPhaseTimingEvent))).toThrow(
+      'Invalid phase entry in bootstrap timing payload.',
+    );
+  });
+
+  it('returns false for unknown BootstrapTimingPhase names in Studio live event guards', () => {
+    expect(isStudioLiveEvent(unknownPhaseSnapshotEvent)).toBe(false);
+    expect(isStudioLiveEvent(unknownPhaseTimingEvent)).toBe(false);
   });
 
   it('rejects request events with body-like fields before UI state consumes them', () => {

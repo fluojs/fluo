@@ -260,14 +260,9 @@ export class AppController {
     expect(report.dryRun).toBe(false);
     expect(report.mode).toBe('apply');
     expect(report.changedFiles).toBe(1);
-    expect(report.warningCount).toBe(1);
-    expect(report.files[0]?.warningCount).toBe(1);
-    expect(report.files[0]?.warnings[0]).toMatchObject({
-      category: 'inject-token',
-      categoryLabel: 'DI token migration (@Inject)',
-      line: 5,
-      message: 'Constructor @Inject(TOKEN) parameter decorators need manual migration to class-level @Inject(TOKEN, ...) syntax.',
-    });
+    expect(report.warningCount).toBe(0);
+    expect(report.files[0]?.warningCount).toBe(0);
+    expect(report.files[0]?.warnings).toEqual([]);
   });
 
   it('outputs "Automated rewrites:" section header for changed files', async () => {
@@ -308,7 +303,11 @@ export class UsersService {}
 
 @Controller('users')
 export class UsersController {
-  constructor(@Inject('TOKEN') private readonly token: string) {}
+  constructor(
+    @Inject('TOKEN') private readonly token: string,
+    private readonly secondary: SecondaryDependency,
+    ...remaining: readonly RemainingDependency[]
+  ) {}
 
   @Post()
   @UsePipes(new ValidationPipe({ transform: true }))
@@ -329,7 +328,7 @@ export class UsersController {
     const output = stdoutBuffer.join('');
     expect(exitCode).toBe(0);
     expect(output).toContain('Manual follow-up required:');
-    expect(output).toMatch(/\[DI token migration \(@Inject\)\]/);
+    expect(output).toMatch(/\[Unsupported constructor injection\]/);
     expect(output).toContain('Docs: https://github.com/fluojs/fluo');
     expect(output).toContain('post-codemod checklist');
   });
@@ -376,7 +375,11 @@ export class UsersController {
 
 @Controller('app')
 export class AppController {
-  constructor(@Inject('SVC') private readonly svc: unknown) {}
+  constructor(
+    @Inject('SVC') private readonly svc: unknown,
+    private readonly secondary: SecondaryDependency,
+    ...remaining: readonly RemainingDependency[]
+  ) {}
 }
 `,
     );
