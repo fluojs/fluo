@@ -68,7 +68,7 @@ pnpm dev
 ```
 
 Open `/products/sku-42?preview=true` and edit `src/page.tsx`. The explicit `@Router(...)` / `@Path(...)`
-handler remains in `src/app.tsx` and returns that page as one `ReactElement`, so `@fluojs/http` still
+handler remains in `src/app.ts` and returns `createElement(ProductPage)`, one `ReactElement`, so `@fluojs/http` still
 owns matching, DTO binding and validation, middleware, guards, interceptors, request scopes, and
 not-found behavior.
 

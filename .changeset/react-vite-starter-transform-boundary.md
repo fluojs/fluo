@@ -1,5 +1,5 @@
 ---
-"@fluojs/cli": patch
+"@fluojs/cli": minor
 "@fluojs/vite": patch
 ---
 

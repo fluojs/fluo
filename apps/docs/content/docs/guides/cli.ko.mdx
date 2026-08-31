@@ -73,8 +73,8 @@ fluo new my-react-app --starter react-vite-ssr
 ```
 
 `pnpm dev`를 실행하고 `/products/sku-42?preview=true`를 연 뒤 `src/page.tsx`를 편집합니다.
-명시적인 `@Router(...)` / `@Path(...)` handler는 `src/app.tsx`에 남아 해당 page를 하나의
-`ReactElement`로 반환하므로 HTTP matching과 DTO validation이 계속 authoritative합니다. Generated
+명시적인 `@Router(...)` / `@Path(...)` handler는 `src/app.ts`에 남아 `createElement(ProductPage)`를
+하나의 `ReactElement`로 반환하므로 HTTP matching과 DTO validation이 계속 authoritative합니다. Generated
 wiring은 숨기지 않으면서 첫 편집 path를 작게 유지합니다. `src/entry-server.tsx`는 교체 가능한
 `ReactPageRenderer`를 소유하고, `src/react-app.tsx`는 하나의 document 및
 `ReactClientRouterProvider` composition을 공유하며, `src/entry-client.tsx`는 그 tree를 hydrate합니다.
