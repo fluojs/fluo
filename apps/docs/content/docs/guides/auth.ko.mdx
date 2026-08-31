@@ -243,7 +243,17 @@ import {
   UseAuth,
 } from '@fluojs/passport';
 
+@Controller('/auth')
+export class AuthController {
+  @Post('/refresh')
+  @UseAuth('refresh-token')
+  async refresh(input: never, ctx: RequestContext) {
+    return ctx.principal;
+  }
+}
+
 @Module({
+  controllers: [AuthController],
   imports: [
     JwtModule.forRoot({
       algorithms: ['HS256'],
@@ -258,15 +268,6 @@ import {
   ],
 })
 export class AuthModule {}
-
-@Controller('/auth')
-export class AuthController {
-  @Post('/refresh')
-  @UseAuth('refresh-token')
-  async refresh(input: never, ctx: RequestContext) {
-    return ctx.principal;
-  }
-}
 ```
 
 `RefreshTokenModule`은 `forRoot(...)`로 전달한 class를 소유합니다. 해당 class에 constructor dependency가 있으면 application-owned module에서 dependency를 제공하고 export한 뒤, `RefreshTokenModule.forRoot(MyRefreshTokenService, { imports: [RefreshTokenDependenciesModule] })`로 `imports`에 전달하세요. `MyRefreshTokenService`를 `AuthModule.providers`에 다시 등록하지 마세요. provider가 중복되고 `duplicateProviderPolicy: 'throw'`에서 실패합니다. `JwtModule`은 sibling import이므로 `DefaultJwtVerifier`를 `RefreshTokenStrategy`에 노출하려면 `global: true`를 유지하세요.

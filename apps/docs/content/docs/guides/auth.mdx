@@ -243,7 +243,17 @@ import {
   UseAuth,
 } from '@fluojs/passport';
 
+@Controller('/auth')
+export class AuthController {
+  @Post('/refresh')
+  @UseAuth('refresh-token')
+  async refresh(input: never, ctx: RequestContext) {
+    return ctx.principal;
+  }
+}
+
 @Module({
+  controllers: [AuthController],
   imports: [
     JwtModule.forRoot({
       algorithms: ['HS256'],
@@ -258,15 +268,6 @@ import {
   ],
 })
 export class AuthModule {}
-
-@Controller('/auth')
-export class AuthController {
-  @Post('/refresh')
-  @UseAuth('refresh-token')
-  async refresh(input: never, ctx: RequestContext) {
-    return ctx.principal;
-  }
-}
 ```
 
 `RefreshTokenModule` owns a class passed to `forRoot(...)`. When that class has constructor dependencies, define an application-owned module that provides and exports those dependencies, then pass it through `imports` with `RefreshTokenModule.forRoot(MyRefreshTokenService, { imports: [RefreshTokenDependenciesModule] })`. Do not also register `MyRefreshTokenService` in `AuthModule.providers`; that duplicates the provider and fails with `duplicateProviderPolicy: 'throw'`. `JwtModule` is a sibling import, so keep `global: true` to expose `DefaultJwtVerifier` to `RefreshTokenStrategy`.
