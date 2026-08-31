@@ -138,6 +138,13 @@ export function createNestedDtoInstance<T>(
     }
 
     for (const nestedEntry of metadata.nestedDtoTransforms) {
+      const hasConflictingTarget = metadata.nestedDtoTransforms.some(
+        (candidate) => candidate.propertyKey === nestedEntry.propertyKey && candidate.target !== nestedEntry.target,
+      );
+      if (hasConflictingTarget) {
+        continue;
+      }
+
       const currentValue = instance[nestedEntry.propertyKey];
       if (currentValue === undefined || currentValue === null) {
         continue;

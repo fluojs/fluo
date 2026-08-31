@@ -13,6 +13,7 @@ Use this checklist when authoring or changing official platform-facing packages 
 ## Conformance Harness Requirements
 
 - [ ] MUST: Run `createPlatformConformanceHarness(...)` from `@fluojs/testing/platform-conformance` for platform component contract checks.
+- [ ] MUST: Run `createPlatformShellLifecycleConformanceHarness(...)` from `@fluojs/testing/platform-shell-lifecycle-conformance` for PlatformShell lifecycle exclusivity checks.
 - [ ] MUST: Verify `validate()` does not transition component state.
 - [ ] MUST: Verify `validate()` does not introduce long-lived side effects when side-effect capture is configured.
 - [ ] MUST: Verify `start()` is deterministic across duplicate calls.

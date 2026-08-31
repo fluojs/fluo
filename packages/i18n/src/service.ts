@@ -1,4 +1,5 @@
-import { isPlainObject, resolveCatalogMessage } from './catalog.js';
+import { isPlainObject } from './catalog.js';
+import { resolveMessageProvenance } from './message-provenance.js';
 import { snapshotI18nModuleOptions } from './options.js';
 import { I18nError } from './errors.js';
 import type {
@@ -12,6 +13,8 @@ import type {
   I18nRelativeTimeFormatOptions,
   I18nTranslateOptions,
 } from './types.js';
+
+const serviceOptions = new WeakMap<I18nService, I18nModuleOptions>();
 
 function normalizeTranslationKey(key: unknown, namespace: unknown): string {
   if (typeof key !== 'string') {
@@ -135,6 +138,7 @@ export class I18nService {
    */
   constructor(options: I18nModuleOptions = {}) {
     this.options = snapshotI18nModuleOptions(options);
+    serviceOptions.set(this, this.options);
   }
 
   /**
@@ -339,12 +343,10 @@ export class I18nService {
     const resolvedKey = normalizeTranslationKey(key, options.namespace);
     const locales = this.resolveLocales(options.locale);
 
-    for (const locale of locales) {
-      const message = resolveCatalogMessage(this.options.catalogs?.[locale], resolvedKey);
+    const message = resolveMessageProvenance(this.options.catalogs, locales, resolvedKey);
 
-      if (message !== undefined) {
-        return interpolate(message, options.values);
-      }
+    if (message !== undefined) {
+      return interpolate(message.message, options.values);
     }
 
     if (options.defaultValue !== undefined) {
@@ -364,6 +366,22 @@ export class I18nService {
 
     throw new I18nError(`Missing i18n message: ${resolvedKey}`, 'I18N_MISSING_MESSAGE');
   }
+}
+
+export function resolveI18nMessageProvenance(
+  service: I18nService,
+  key: string,
+  locale: I18nLocale,
+  namespace: string | undefined,
+) {
+  const options = serviceOptions.get(service);
+
+  if (options === undefined) {
+    return undefined;
+  }
+
+  const resolvedKey = normalizeTranslationKey(key, namespace);
+  return resolveMessageProvenance(options.catalogs, service.resolveLocales(locale), resolvedKey);
 }
 
 /**
