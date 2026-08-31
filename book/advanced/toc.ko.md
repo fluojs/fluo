@@ -177,7 +177,7 @@
 ## 파트 5. 테스트와 진단
 
 - [챕터 14. 이식성 테스트와 적합성 검증](ch14-portability-testing.ko.md)
-  - [이 챕터에서 배우는 것](ch14-portability-testing.ko.md#what-you-will-learn-in-this-chapter)
+  - [이 챕터에서 배우는 것](ch14-portability-testing.ko.md#learning-objectives)
   - [사전 요구사항](ch14-portability-testing.ko.md#prerequisites)
   - [14.1 이식성의 도전 과제](ch14-portability-testing.ko.md#141-the-portability-challenge)
   - [14.2 적합성 vs 이식성](ch14-portability-testing.ko.md#142-conformance-vs-portability)

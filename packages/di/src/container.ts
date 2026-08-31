@@ -37,6 +37,12 @@ interface StaleDisposalTask {
 
 type DisposalAttemptOrigin = 'direct' | 'parent';
 
+interface ChildScopeConstruction {
+  readonly parent: Container;
+  readonly requestScopeEnabled: boolean;
+  readonly singletonCache: Map<Token, Promise<unknown>>;
+}
+
 /**
  * Controlled cache adoption seam for framework-owned testing and tooling that
  * need synchronous helpers to preserve container-owned singleton disposal.
@@ -286,6 +292,8 @@ function linkPendingResolution(
  */
 // allow: SIZE_OK — Container is the package's existing DI lifecycle state machine.
 export class Container {
+  static #childScopeConstruction: ChildScopeConstruction | undefined;
+
   private readonly registrations = new Map<Token, NormalizedProvider>();
   private readonly multiRegistrations = new Map<Token, NormalizedProvider[]>();
   private readonly multiOverriddenTokens = new Set<Token>();
@@ -308,12 +316,44 @@ export class Container {
   private trackedByParent = false;
   private graphRevision = 0;
 
-  constructor(
-    private readonly parent?: Container,
-    private readonly requestScopeEnabled = false,
-    singletonCache?: Map<Token, Promise<unknown>>,
-  ) {
-    this.singletonCache = singletonCache ?? new Map<Token, Promise<unknown>>();
+  private readonly parent: Container | undefined;
+  private readonly requestScopeEnabled: boolean;
+
+  /**
+   * Creates a root container that owns its own singleton cache.
+   *
+   * Child request scopes are package-owned and must be created with
+   * {@link Container.createRequestScope}; caller-supplied parent, request-scope,
+   * or singleton-cache wiring is rejected.
+   *
+   * @throws {ContainerResolutionError} When any constructor argument is supplied.
+   */
+  constructor(...construction: never[]) {
+    if (construction.length > 0) {
+      throw new ContainerResolutionError(
+        'Container child-scope construction is package-owned and cannot be invoked directly.',
+        {
+          hint: 'Construct root containers with new Container() and create child scopes with container.createRequestScope().',
+        },
+      );
+    }
+
+    const childScope = Container.#childScopeConstruction;
+
+    this.parent = childScope?.parent;
+    this.requestScopeEnabled = childScope?.requestScopeEnabled ?? false;
+    this.singletonCache = childScope?.singletonCache ?? new Map<Token, Promise<unknown>>();
+  }
+
+  static #createChildScope(construction: ChildScopeConstruction): Container {
+    const parentConstruction = Container.#childScopeConstruction;
+    Container.#childScopeConstruction = construction;
+
+    try {
+      return new Container();
+    } finally {
+      Container.#childScopeConstruction = parentConstruction;
+    }
   }
 
   /**
@@ -379,11 +419,16 @@ export class Container {
    * set — the whole set is replaced. If you need to preserve other entries, re-register them
    * together with the replacement in one `override()` call.
    *
+   * **Batch atomicity**: the whole batch is validated before any registration or cache is touched,
+   * so a rejected `override()` call leaves every provider, cached instance, and disposal ownership
+   * exactly as it was before the call.
+   *
    * @param providers Provider definitions that should replace existing registrations for each token.
    * @returns The same container instance for fluent override chains.
    * @throws {ContainerResolutionError} When called after the container was disposed.
    * @throws {ScopeMismatchError} When a request-scope override would introduce a new singleton token.
    * @throws {InvalidProviderError} When a provider definition is structurally invalid.
+   * @throws {DuplicateProviderError} When one token mixes single and multi replacements or repeats a single replacement.
    */
   override(...providers: Provider[]): this {
     if (this.isDisposedInHierarchy()) {
@@ -424,6 +469,8 @@ export class Container {
       }
     }
 
+    const plannedOverrides = new Map<Token, { containsMultiProvider: boolean; firstProvider: NormalizedProvider; normalizedProviders: NormalizedProvider[] }>();
+
     for (const [token, normalizedProviders] of normalizedByToken) {
       const firstProvider = normalizedProviders[0];
 
@@ -441,6 +488,10 @@ export class Container {
         throw new DuplicateProviderError(token);
       }
 
+      plannedOverrides.set(token, { containsMultiProvider, firstProvider, normalizedProviders });
+    }
+
+    for (const [token, { containsMultiProvider, firstProvider, normalizedProviders }] of plannedOverrides) {
       this.invalidateAffectedCachedEntriesInHierarchy(token);
       this.registrations.delete(token);
       this.multiRegistrations.delete(token);
@@ -574,7 +625,11 @@ export class Container {
       );
     }
 
-    return new Container(this, true, this.root().singletonCache);
+    return Container.#createChildScope({
+      parent: this,
+      requestScopeEnabled: true,
+      singletonCache: this.root().singletonCache,
+    });
   }
 
   /**
@@ -1504,6 +1559,12 @@ export class Container {
     visited.add(token);
 
     try {
+      const multiRequestScopedToken = this.findRequestScopedMultiContribution(token, visited);
+
+      if (multiRequestScopedToken) {
+        return multiRequestScopedToken;
+      }
+
       const provider = this.resolveEffectiveProvider(token);
 
       if (provider) {
@@ -1528,6 +1589,40 @@ export class Container {
     } finally {
       visited.delete(token);
     }
+  }
+
+  private findRequestScopedMultiContribution(token: Token, visited: Set<Token>): Token | undefined {
+    const aliasChain = new Set<Token>();
+    let currentToken = token;
+
+    while (!aliasChain.has(currentToken)) {
+      aliasChain.add(currentToken);
+
+      for (const multiProvider of this.collectMultiProviders(currentToken)) {
+        if (multiProvider.scope === Scope.REQUEST) {
+          return multiProvider.provide;
+        }
+
+        const requestScopedToken =
+          multiProvider.type === 'existing' && multiProvider.useExisting !== undefined
+            ? this.findRequestScopedDependencyToken(multiProvider.useExisting, visited)
+            : this.findRequestScopedDependency(multiProvider.inject, visited);
+
+        if (requestScopedToken) {
+          return requestScopedToken;
+        }
+      }
+
+      const aliasProvider = this.lookupProvider(currentToken);
+
+      if (aliasProvider?.type !== 'existing' || aliasProvider.useExisting === undefined) {
+        return undefined;
+      }
+
+      currentToken = aliasProvider.useExisting;
+    }
+
+    return undefined;
   }
 
   private resolveEffectiveProvider(

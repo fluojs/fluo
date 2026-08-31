@@ -1,4 +1,6 @@
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, expectTypeOf, it, vi } from 'vitest';
+
+import type { GraphqlWebSocketLimitsOptions } from './index.js';
 
 let graphqlPublicApi: typeof import('./index.js');
 
@@ -17,6 +19,16 @@ beforeAll(async () => {
 });
 
 describe('@fluojs/graphql public API surface', () => {
+  it('exports the documented websocket limits configuration type', () => {
+    type GivenDocumentedWebSocketLimits = {
+      maxConnections?: number;
+      maxOperationsPerConnection?: number;
+      maxPayloadBytes?: number;
+    };
+
+    expectTypeOf<GraphqlWebSocketLimitsOptions>().toEqualTypeOf<GivenDocumentedWebSocketLimits>();
+  });
+
   it('keeps websocket transport dependencies behind the enabled websocket branch', () => {
     expect(graphqlPublicApi.GraphqlModule).toHaveProperty('forRoot');
   });
@@ -28,6 +40,7 @@ describe('@fluojs/graphql public API surface', () => {
     expect(graphqlPublicApi).toHaveProperty('Subscription');
     expect(graphqlPublicApi).toHaveProperty('Resolver');
     expect(graphqlPublicApi).toHaveProperty('FieldResolver');
+    expect(graphqlPublicApi).toHaveProperty('Args');
     expect(graphqlPublicApi).toHaveProperty('Parent');
     expect(graphqlPublicApi).toHaveProperty('Context');
     expect(graphqlPublicApi).toHaveProperty('GraphqlModule');

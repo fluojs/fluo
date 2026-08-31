@@ -27,6 +27,8 @@
 npm install @fluojs/cache-manager
 ```
 
+`@fluojs/cache-manager`는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 지원하며 `engines.node`로 정확히 이 범위를 선언합니다. mandatory `@fluojs/runtime` dependency가 이 Node listener 경계를 소유하므로 Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상은 제외됩니다. 이전 1.x 릴리스는 `engines.node >=20.0.0`을 광고했지만, 이는 실제 dependency floor와 일치한 적이 없습니다.
+
 root `@fluojs/cache-manager` import는 memory-only 설치에서도 안전합니다. Redis client는 Redis 저장소 경로를 명시적으로 선택할 때만 필요합니다.
 
 Lifecycle이 관리되는 `@fluojs/redis` client로 Redis 기반 캐싱을 사용하는 경우:
@@ -206,6 +208,8 @@ HTTP 인터셉터는 나중에 재사용할 수 있는 값이 있는 성공한, 
 
 ### 캐시 소유권과 reset 범위
 
+일반적인 `get(...)`, `set(...)`, `del(...)` 호출은 설정된 store에 대해 동시에 실행되므로, 한 키의 느린 store 호출이 관련 없는 키를 지연시키지 않습니다.
+
 `CacheService.reset()`은 관련 없는 애플리케이션 상태가 아니라 설정된 store가 소유한 엔트리만 삭제합니다. 또한 reset 경계에서 store read/write를 직렬화하고 진행 중인 `remember(...)` loader를 무효화하므로, reset 전에 시작된 loader가 reset 완료 후 stale 엔트리를 다시 채우지 못합니다. 내장 메모리 저장소에서는 해당 store 인스턴스가 보유한 in-process 엔트리를 의미합니다. Redis에서는 설정된 `keyPrefix` namespace가 소유권 경계입니다. 공유 Redis 배포에서는 기본 `fluo:cache:`를 유지하거나 `myapp:cache:`처럼 전용 prefix를 선택하세요.
 
 ```typescript
@@ -252,6 +256,13 @@ CacheModule.forRoot({
 - **HTTP fail-soft 상호작용**: `CacheInterceptor`는 여전히 store 실패를 삼켜서 캐시 문제가 정상 핸들러를 실패시키지 않도록 합니다. observer는 그 실패를 `error` observation으로 확인하므로, 요청 처리를 유지하면서 저하된 캐시를 알림하는 지원 경로가 됩니다.
 
 `observer`를 설정하지 않으면 캐시는 관찰 작업 없이 기존 코드 경로 그대로 동작합니다.
+Lifecycle diagnostic은 shutdown이 실제로 사용하는 teardown 소유자를 그대로 보고합니다. `createCacheManagerPlatformStatusSnapshot(...)`은 모든 non-memory store를 같게 취급하지 않고 lifecycle 책임에서 소유권을 해석합니다.
+
+- 내장 메모리 store는 프레임워크가 in-process로 생성하고 보유하므로 `framework` 소유입니다.
+- Custom store는 `CacheService.close()`가 optional `close()` 또는 `dispose()` hook으로 teardown을 전달할 책임을 가지므로 기본적으로 `framework` 소유입니다.
+- Redis store는 client를 닫지 않는 `CacheService`에 대해 `external`입니다. Cache module이 `@fluojs/redis`를 통해 client를 해석하면 해당 integration이 lifecycle을 소유하고, `redis.client`로 client를 직접 전달하면 애플리케이션이 lifecycle을 소유합니다.
+
+명시적인 `storeOwnershipMode`는 store 기본값보다 우선합니다. 애플리케이션이 custom store의 lifecycle 책임을 의도적으로 유지하는 경우 `external`로 설정하세요.
 
 ### 수동 모듈 조합
 

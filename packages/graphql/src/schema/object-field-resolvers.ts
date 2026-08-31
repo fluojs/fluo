@@ -1,4 +1,5 @@
-import type { GraphQLFieldConfigMap, GraphQLOutputType } from 'graphql';
+import { GraphQLNonNull } from 'graphql';
+import type { GraphQLFieldConfigArgumentMap, GraphQLFieldConfigMap, GraphQLOutputType } from 'graphql';
 
 import type {
   GraphQLContext as FluoGraphQLContext,
@@ -13,10 +14,12 @@ type ObjectFieldResolverEntry = {
 };
 
 type ResolveOutputType = (outputType: GraphqlRootOutputType) => GraphQLOutputType;
+type ResolveInputArgs = (handler: ResolverHandlerDescriptor) => GraphQLFieldConfigArgumentMap;
 
 type InvokeObjectFieldResolver = (
   descriptor: ResolverDescriptor,
   handler: ResolverHandlerDescriptor,
+  args: Record<string, unknown>,
   source: unknown,
   contextValue: FluoGraphQLContext,
 ) => Promise<unknown>;
@@ -57,6 +60,7 @@ export class ObjectFieldResolverRegistry {
     typeName: string,
     fields: GraphQLFieldConfigMap<unknown, FluoGraphQLContext>,
     resolveOutputType: ResolveOutputType,
+    resolveInputArgs: ResolveInputArgs,
     invokeResolver: InvokeObjectFieldResolver,
   ): GraphQLFieldConfigMap<unknown, FluoGraphQLContext> {
     const resolverFields = this.entriesByTypeName.get(typeName);
@@ -78,11 +82,15 @@ export class ObjectFieldResolverRegistry {
         );
       }
 
+      const hasExplicitNonNullableNewField =
+        existingField === undefined && entry.handler.outputType !== undefined && entry.handler.nullable === false;
+
       attachedFields[fieldName] = {
         ...existingField,
-        resolve: async (source: unknown, _args: Record<string, unknown>, contextValue: FluoGraphQLContext) =>
-          invokeResolver(entry.descriptor, entry.handler, source, contextValue),
-        type: outputType,
+        ...(entry.handler.inputClass ? { args: resolveInputArgs(entry.handler) } : {}),
+        resolve: async (source: unknown, args: Record<string, unknown>, contextValue: FluoGraphQLContext) =>
+          invokeResolver(entry.descriptor, entry.handler, args, source, contextValue),
+        type: hasExplicitNonNullableNewField ? new GraphQLNonNull(outputType) : outputType,
       };
     }
 
@@ -91,6 +99,7 @@ export class ObjectFieldResolverRegistry {
 
   createMethodArguments(
     handler: ResolverHandlerDescriptor,
+    input: unknown,
     parent: unknown,
     contextValue: FluoGraphQLContext,
   ): unknown[] {
@@ -99,6 +108,9 @@ export class ObjectFieldResolverRegistry {
 
     for (const binding of handler.parameterBindings) {
       switch (binding.kind) {
+        case 'input':
+          methodArguments[binding.index] = input;
+          break;
         case 'parent':
           methodArguments[binding.index] = parent;
           break;

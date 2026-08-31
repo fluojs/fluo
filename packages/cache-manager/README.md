@@ -27,6 +27,8 @@ General-purpose cache manager for fluo with pluggable memory, Redis, and custom 
 npm install @fluojs/cache-manager
 ```
 
+`@fluojs/cache-manager` supports Node.js `>=20.19.3 <21 || >=22.2.0 <27` and declares that exact range through `engines.node`. Its mandatory `@fluojs/runtime` dependency owns that Node listener boundary, so Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded. Earlier 1.x releases advertised `engines.node >=20.0.0`, which never matched the effective dependency floor.
+
 The root `@fluojs/cache-manager` import stays safe for memory-only installs. You only need a Redis client when you explicitly select the Redis-backed store path.
 
 For Redis-backed caching with a lifecycle-managed `@fluojs/redis` client:
@@ -206,6 +208,8 @@ The HTTP interceptor caches only successful, uncommitted GET handler results wit
 
 ### Cache Ownership and Reset Scope
 
+Ordinary `get(...)`, `set(...)`, and `del(...)` calls run concurrently against the configured store, so a slow store call for one key does not delay unrelated keys.
+
 `CacheService.reset()` clears entries owned by the configured store, not unrelated application state. It also serializes store reads/writes across the reset boundary and invalidates in-flight `remember(...)` loaders so loaders that started before the reset cannot repopulate stale entries after the reset completes. For the built-in memory store that means the in-process entries held by that store instance. For Redis, ownership is the configured `keyPrefix` namespace; keep the default `fluo:cache:` or choose a dedicated prefix such as `myapp:cache:` for shared Redis deployments.
 
 ```typescript
@@ -252,6 +256,13 @@ The contract is intentionally narrow:
 - **HTTP fail-soft interaction**: `CacheInterceptor` still swallows store failures so cache problems cannot fail an otherwise successful handler. The observer sees those failures as `error` observations, which is the supported way to alert on a degraded cache while keeping requests served.
 
 When no `observer` is configured, the cache runs its original code path with no observation work.
+Lifecycle diagnostics report the same teardown owner that shutdown actually uses. `createCacheManagerPlatformStatusSnapshot(...)` resolves ownership from lifecycle responsibility rather than treating every non-memory store alike:
+
+- The built-in memory store is `framework`-owned because the framework creates and holds it in-process.
+- A custom store is `framework`-owned by default because `CacheService.close()` owns teardown dispatch to its optional `close()` or `dispose()` hook.
+- The Redis store is `external` to `CacheService`, which never closes the client. When the cache module resolves a client through `@fluojs/redis`, that integration owns its lifecycle; when `redis.client` supplies a client directly, the application owns its lifecycle.
+
+An explicit `storeOwnershipMode` still wins over the store default. Set it to `external` when the application intentionally retains lifecycle responsibility for a custom store.
 
 ### Manual Module Composition
 
