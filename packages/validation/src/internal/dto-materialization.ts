@@ -4,6 +4,7 @@ import { DtoValidationError } from '../errors.js';
 import type { MaterializeOptions, ValidationIssue } from '../types.js';
 import { getCachedDtoMetadata } from './dto-metadata-cache.js';
 import { assignSafeOwnEnumerableProperties, isPlainObject, isSafeOwnEnumerableProperty } from './object-utils.js';
+import { joinFieldPath } from './validation-issues.js';
 
 /**
  * Carries invocation-local DTO traversal state across materialization and validation.
@@ -98,6 +99,7 @@ export function createNestedDtoInstance<T>(
   target: Constructor<T>,
   rawValue: unknown,
   context?: NestedTraversalContext,
+  fieldPrefix?: string,
 ): T {
   if (rawValue instanceof target && context?.hydrateExistingInstances !== true) {
     return rawValue as T;
@@ -138,7 +140,7 @@ export function createNestedDtoInstance<T>(
         const issues = Reflect.ownKeys(rawValue)
           .filter((key) => isSafeOwnEnumerableProperty(rawValue, key) && !declaredKeys.has(key))
           .map((key): ValidationIssue => {
-            const field = String(key);
+            const field = fieldPrefix ? joinFieldPath(fieldPrefix, String(key)) : String(key);
             return {
               code: 'UNDECLARED_PROPERTY',
               field,
@@ -173,7 +175,10 @@ export function createNestedDtoInstance<T>(
         continue;
       }
 
-      instance[nestedEntry.propertyKey] = transformNestedCollectionValue(currentValue, nestedEntry.target, context);
+      const fieldPath = fieldPrefix
+        ? joinFieldPath(fieldPrefix, String(nestedEntry.propertyKey))
+        : String(nestedEntry.propertyKey);
+      instance[nestedEntry.propertyKey] = transformNestedCollectionValue(currentValue, nestedEntry.target, context, fieldPath);
     }
 
     return instance as T;
@@ -182,7 +187,12 @@ export function createNestedDtoInstance<T>(
   }
 }
 
-function transformNestedValue(value: unknown, target: Constructor, context?: NestedTraversalContext): unknown {
+function transformNestedValue(
+  value: unknown,
+  target: Constructor,
+  context: NestedTraversalContext | undefined,
+  fieldPrefix: string,
+): unknown {
   if (value === undefined || value === null) {
     return value;
   }
@@ -195,23 +205,34 @@ function transformNestedValue(value: unknown, target: Constructor, context?: Nes
     return value;
   }
 
-  return createNestedDtoInstance(target, value, context);
+  return createNestedDtoInstance(target, value, context, fieldPrefix);
 }
 
-function transformNestedCollectionValue(value: unknown, target: Constructor, context?: NestedTraversalContext): unknown {
+function transformNestedCollectionValue(
+  value: unknown,
+  target: Constructor,
+  context: NestedTraversalContext | undefined,
+  fieldPrefix: string,
+): unknown {
   if (Array.isArray(value)) {
-    return value.map((item) => transformNestedValue(item, target, context));
+    return value.map((item, index) => transformNestedValue(item, target, context, `${fieldPrefix}[${String(index)}]`));
   }
 
   if (value instanceof Set) {
-    return new Set(Array.from(value.values(), (item) => transformNestedValue(item, target, context)));
+    return new Set(Array.from(
+      value.values(),
+      (item, index) => transformNestedValue(item, target, context, `${fieldPrefix}[${String(index)}]`),
+    ));
   }
 
   if (value instanceof Map) {
-    return new Map(Array.from(value.entries(), ([key, item]) => [key, transformNestedValue(item, target, context)]));
+    return new Map(Array.from(
+      value.entries(),
+      ([key, item], index) => [key, transformNestedValue(item, target, context, `${fieldPrefix}[${String(index)}]`)],
+    ));
   }
 
-  return transformNestedValue(value, target, context);
+  return transformNestedValue(value, target, context, fieldPrefix);
 }
 
 function buildInvalidRootIssue(): ValidationIssue {
