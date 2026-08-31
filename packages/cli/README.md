@@ -89,7 +89,7 @@ Generated Node.js `dev`, `build`, and `start` package scripts delegate to `fluo 
 
 Generated starters set their `@fluojs/cli` `devDependency` from the generator CLI package version that created the project, so lifecycle scripts such as `pnpm dev`, `pnpm build`, and `pnpm start` keep using the same CLI behavior that scaffolded the starter instead of a stale hard-coded range.
 
-Generated non-Deno standard starter `vite.config.ts` files import `fluoDecoratorsPlugin()` from `@fluojs/vite`, while the React SSR + Vite starter applies the same plugin in `vite.server.config.ts`. Decorator transform updates therefore ship through the maintained Vite package instead of being copied inline into every new project.
+Generated non-Deno standard starter `vite.config.ts` files import `fluoDecoratorsPlugin()` from `@fluojs/vite`, while the React SSR + Vite starter applies the same plugin in `vite.server.config.ts`. The React starter keeps decorator-bearing declarations in `src/app.ts` and JSX rendering in `.tsx` modules, so the supported `.ts` transform boundary stays explicit. Decorator transform updates therefore ship through the maintained Vite package instead of being copied inline into every new project.
 
 Generated standard non-Deno HTTP starters use a TDD-first Vitest layout: fast greeting unit tests and `greeting.slice.test.ts` stay colocated under `src/greeting/`, app dispatch tests stay in `src/app.test.ts`, and the default e2e-style request-pipeline tests live in `test/app.e2e.test.ts` with `createTestApp({ rootModule })` plus `app.request(...).send()`. The React starter instead includes focused streamed SSR, DOM hydration, and production Playwright hydration tests. Its `test:browser` script starts the built Fastify server and fails on missing assets, hydration warnings, or navigation that bypasses the server-owned route.
 
@@ -120,7 +120,7 @@ fluo new my-react-app --starter react-vite-ssr
 This starter fixes the schema to Node.js + Fastify HTTP. Run `pnpm dev`, open
 `/products/sku-42?preview=true`, and edit `src/page.tsx`; page UI no longer needs to carry Vite assets,
 the document shell, or the server/client route snapshot wiring. The explicit `@Router(...)` /
-`@Path(...)` handler in `src/app.tsx` returns that page as one `ReactElement`, so the existing HTTP
+`@Path(...)` handler in `src/app.ts` returns that page as one `ReactElement`, so the existing HTTP
 dispatcher remains authoritative.
 
 Generated application wiring stays visible instead of becoming a framework abstraction:
