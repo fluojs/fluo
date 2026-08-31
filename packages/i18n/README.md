@@ -346,11 +346,11 @@ const loader = createRemoteI18nLoader({
 const common = await loader.load('en', 'common');
 ```
 
-The provider receives the validated `locale`, `namespace`, and an `AbortSignal` that combines the loader timeout with optional per-call cancellation. Providers may return a raw object message tree or a JSON string. `undefined` and `null` are treated as missing catalogs and throw `I18N_MISSING_CATALOG`; malformed JSON and invalid message tree shapes throw `I18N_INVALID_CATALOG`; provider failures are wrapped as `I18N_LOADER_FAILED`; timeouts throw `I18N_LOADER_TIMEOUT`; caller cancellation throws `I18N_LOADER_ABORTED`. Returned catalogs are always detached immutable `I18nMessageTree` snapshots.
+The provider receives the validated `locale`, `namespace`, and an `AbortSignal` that combines the loader timeout with optional per-call cancellation. `timeoutMs` must be a positive integer no greater than `2_147_483_647`, the largest delay that the runtime timer can represent truthfully. Providers may return a raw object message tree or a JSON string. `undefined` and `null` are treated as missing catalogs and throw `I18N_MISSING_CATALOG`; malformed JSON and invalid message tree shapes throw `I18N_INVALID_CATALOG`; provider-thrown `I18nError` instances are rethrown unchanged, while other provider failures are wrapped as `I18N_LOADER_FAILED`; timeouts throw `I18N_LOADER_TIMEOUT`; caller cancellation throws `I18N_LOADER_ABORTED`. Returned catalogs are always detached immutable `I18nMessageTree` snapshots.
 
 The remote loader never caches by default: every `load(locale, namespace)` call invokes the provider and snapshots that provider result. Applications that need memory, HTTP, CDN, database, or stale-while-revalidate caching should implement it inside the provider or in a wrapper around the provider so cache invalidation remains explicit at the application boundary.
 
-Applications that want a first-party in-memory policy can wrap the loader explicitly. Cache entries are keyed by `(locale, namespace, version)` unless the caller provides a custom key, and `invalidate(...)` / `clear()` keep invalidation application-owned:
+Applications that want a first-party in-memory policy can wrap the loader explicitly. Cache entries are keyed by `(locale, namespace, version)` unless the caller provides a custom key, begin their TTL only after a successful load, and keep invalidation application-owned through `invalidate(...)` / `clear()`:
 
 ```ts
 import { createCachedRemoteI18nLoader, createRemoteI18nLoader } from '@fluojs/i18n/loaders/remote';
