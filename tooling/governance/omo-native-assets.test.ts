@@ -95,10 +95,10 @@ const requiredShippedContractPaths = [
 ] as const;
 
 describe('OMO native asset manifest', () => {
-  it('keeps execute-lane workers single-depth, non-orchestrating, and in their intended modes', () => {
+  it('keeps execute-lane workers single-depth and non-orchestrating', () => {
     const config = JSON.parse(read('.omo/omo.jsonc')) as OmoProjectConfig;
     const agents = config.agents ?? {};
-    const expectedWorkerModes = {
+    const workerModes = {
       'fluo-issue-preflight': 'in-process',
       'fluo-issue-implementer': 'process',
       'fluo-contract-reviewer': 'in-process',
@@ -109,10 +109,10 @@ describe('OMO native asset manifest', () => {
 
     expect(config.task?.max_depth).toBe(1);
     expect(agents['fluo-issue-supervisor']).toBeUndefined();
-    for (const [workerName, expectedMode] of Object.entries(expectedWorkerModes)) {
+    for (const [workerName, executionMode] of Object.entries(workerModes)) {
       const worker = agents[workerName];
       expect(worker, `${workerName} must be registered`).toBeDefined();
-      expect(worker?.execution_mode).toBe(expectedMode);
+      expect(worker?.execution_mode).toBe(executionMode);
       expect(worker?.tools?.['task']).toBe(false);
       expect(worker?.tools?.['dag']).toBe(false);
       expect(worker?.tools?.['team_create']).toBe(false);
