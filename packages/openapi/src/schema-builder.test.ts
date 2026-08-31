@@ -102,14 +102,14 @@ describe('buildOpenApiDocument', () => {
 
   it('emits only accepted numeric enum values with a numeric type', () => {
     enum NumericStatus {
-      Draft,
+      __proto__ = 0,
       Published,
     }
 
     class UpdatePostRequest {
       @FromBody('status')
       @IsEnum(NumericStatus)
-      status = NumericStatus.Draft;
+      status = 0;
     }
 
     @Controller('/posts')

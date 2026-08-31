@@ -9,6 +9,7 @@ import type {
 
 import { createArrayValidationDecorator, createFlagValidationDecorator, createValidationDecorator, createValidationOptionsWithConfigDecorator, createValidatorJsDecorator } from './internal/decorator-factories.js';
 import { appendStandardClassValidationRule, type ClassDecoratorFn, type FieldDecoratorFn } from './internal/decorator-metadata.js';
+import { normalizeEnumValues } from './internal/enum-values.js';
 import { createClassValidatorFromStandardSchema, isStandardSchemaLike, type StandardSchemaV1Like } from './standard-schema.js';
 
 type ValidateClassInput = CustomClassValidator | StandardSchemaV1Like;
@@ -174,11 +175,7 @@ export const IsNegative = createFlagValidationDecorator((options) => ({ kind: 'n
  * @returns A field decorator that registers an enum-membership rule.
  */
 export function IsEnum(values: Record<string, unknown> | readonly unknown[], options?: ValidationDecoratorOptions): FieldDecoratorFn {
-  const normalized = Array.isArray(values)
-    ? values
-    : Object.entries(values)
-        .filter(([key, value]) => typeof value !== 'string' || !Object.is(Reflect.get(values, value), Number(key)))
-        .map(([, value]) => value);
+  const normalized = normalizeEnumValues(values);
   return createValidationDecorator(() => ({ kind: 'enum', values: normalized, ...options }));
 }
 
