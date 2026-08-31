@@ -664,6 +664,42 @@ export class ImportedTypeCollisionService {
     expect(report.fileResults.flatMap((result) => result.warnings).some((warning) => warning.category === 'inject-token-unsupported')).toBe(true);
   });
 
+  it('retains constructor injection when a class type parameter collides with a runtime value', () => {
+    // Given
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
+    temporaryDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'src', 'generic-type-parameter-collision.service.ts'),
+      `import { Inject } from '@nestjs/common';
+
+const TOKEN = Symbol('token');
+const Dependency = Symbol('wrong-token');
+
+class Consumer<Dependency> {
+  constructor(
+    @Inject(TOKEN) private readonly token: string,
+    private readonly dependency: Dependency,
+  ) {}
+}
+`,
+    );
+
+    // When
+    const report = runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(MIGRATION_TRANSFORMS),
+      targetPath: workspaceDirectory,
+    });
+    const serviceContent = readFileSync(join(workspaceDirectory, 'src', 'generic-type-parameter-collision.service.ts'), 'utf8');
+
+    // Then
+    expect(serviceContent).toContain('@Inject(TOKEN)');
+    expect(serviceContent).not.toContain('@Inject(TOKEN, Dependency)');
+    expect(report.fileResults.flatMap((result) => result.warnings).some((warning) => warning.category === 'inject-token-unsupported')).toBe(true);
+  });
+
   it('rewrites generated Inject imports when only injectable is enabled', () => {
     // Given
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));

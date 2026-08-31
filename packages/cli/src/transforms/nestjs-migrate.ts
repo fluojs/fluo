@@ -652,11 +652,28 @@ function getTypeOnlyImportNames(sourceFile: ts.SourceFile): ReadonlySet<string> 
   return names;
 }
 
+function getInScopeTypeParameterNames(node: ts.Node): ReadonlySet<string> {
+  const names = new Set<string>();
+
+  for (let current: ts.Node | undefined = node; current; current = current.parent) {
+    if (!ts.isClassDeclaration(current) && !ts.isFunctionLike(current)) {
+      continue;
+    }
+
+    for (const typeParameter of current.typeParameters ?? []) {
+      names.add(typeParameter.name.text);
+    }
+  }
+
+  return names;
+}
+
 function createInjectionTokenFromType(
   type: ts.TypeNode | undefined,
   runtimeValueNames: ReadonlySet<string>,
   collidingTypeValueNames: ReadonlySet<string>,
   typeOnlyImportNames: ReadonlySet<string>,
+  inScopeTypeParameterNames: ReadonlySet<string>,
 ): ts.Expression | undefined {
   if (
     !type
@@ -665,6 +682,7 @@ function createInjectionTokenFromType(
     || !runtimeValueNames.has(type.typeName.text)
     || collidingTypeValueNames.has(type.typeName.text)
     || typeOnlyImportNames.has(type.typeName.text)
+    || inScopeTypeParameterNames.has(type.typeName.text)
   ) {
     return undefined;
   }
@@ -715,6 +733,7 @@ function getConstructorInjectionTokens(
   }
 
   const tokens: ts.Expression[] = [];
+  const inScopeTypeParameterNames = getInScopeTypeParameterNames(classDeclaration);
   let decoratorLocalName: string | undefined;
   for (const [index, parameter] of parameters.entries()) {
     if (parameter.dotDotDotToken || parameter.questionToken || parameter.initializer || !ts.isIdentifier(parameter.name)) {
@@ -757,6 +776,7 @@ function getConstructorInjectionTokens(
       runtimeValueNames,
       collidingTypeValueNames,
       typeOnlyImportNames,
+      inScopeTypeParameterNames,
     );
     if (!token) {
       return { kind: 'unsafe', node: parameter };
