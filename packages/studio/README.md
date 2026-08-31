@@ -119,6 +119,8 @@ This file-first path is the compatibility and migration fallback for CI, support
 
 Studio is primarily a CLI-launched sidecar and browser viewer, but the published package also exposes documented contracts used by tooling and automation. Treat `@fluojs/studio` as the canonical owner of snapshot parsing, filtering, Mermaid graph rendering, and live Studio event validation semantics. The root `@fluojs/studio` export re-exports the helper functions and public types from `@fluojs/studio/contracts`.
 
+Bootstrap timing phase names accept only `bootstrap_module`, `register_runtime_tokens`, `resolve_lifecycle_instances`, `run_bootstrap_lifecycle`, and `create_dispatcher`; all other values are rejected in static payloads and live timing events.
+
 | Contract | Description |
 |---|---|
 | `parseStudioPayload(rawJson)` | Accepts raw snapshot JSON, standalone timing JSON, snapshot+timing envelopes, and `fluo inspect --report` artifacts; returns the parsed payload plus the original JSON string. |
