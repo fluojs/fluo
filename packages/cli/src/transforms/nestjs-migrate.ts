@@ -241,6 +241,10 @@ function mergeNamedImport(statements: ts.Statement[], moduleSpecifier: string, n
       return statement;
     }
 
+    if (!statement.importClause?.namedBindings || !ts.isNamedImports(statement.importClause.namedBindings)) {
+      return statement;
+    }
+
     const bindings = new Map<string, ImportBinding>();
     for (const binding of getImportBindings(statement)) {
       bindings.set(toBindingKey(binding), binding);
@@ -333,7 +337,11 @@ function removeImportBinding(
   };
 }
 
-function rewriteImports(source: string, filePath: string): { changed: boolean; source: string; warnings: MigrationWarning[] } {
+function rewriteImports(
+  source: string,
+  filePath: string,
+  allowedNestImports?: ReadonlySet<string>,
+): { changed: boolean; source: string; warnings: MigrationWarning[] } {
   const sourceFile = parseSource(source, filePath);
   const warnings: MigrationWarning[] = [];
   const additions = new Map<string, ImportBinding[]>();
@@ -363,6 +371,11 @@ function rewriteImports(source: string, filePath: string): { changed: boolean; s
 
     for (const binding of getImportBindings(statement)) {
       if (binding.isTypeOnly) {
+        remaining.push(binding);
+        continue;
+      }
+
+      if (allowedNestImports && !allowedNestImports.has(binding.imported)) {
         remaining.push(binding);
         continue;
       }
@@ -460,6 +473,31 @@ function getNestInjectLocalNames(sourceFile: ts.SourceFile): ReadonlySet<string>
   return localNames;
 }
 
+function getFluoInjectLocalNames(sourceFile: ts.SourceFile): ReadonlySet<string> {
+  const localNames = new Set<string>();
+
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement)
+      || !ts.isStringLiteral(statement.moduleSpecifier)
+      || statement.moduleSpecifier.text !== '@fluojs/core'
+      || statement.importClause?.isTypeOnly
+      || !statement.importClause?.namedBindings
+      || !ts.isNamedImports(statement.importClause.namedBindings)
+    ) {
+      continue;
+    }
+
+    for (const element of statement.importClause.namedBindings.elements) {
+      if (!element.isTypeOnly && (element.propertyName ?? element.name).text === 'Inject') {
+        localNames.add(element.name.text);
+      }
+    }
+  }
+
+  return localNames;
+}
+
 function getNestInjectDecoratorLocalName(decorator: ts.Decorator, localNames: ReadonlySet<string>): string | undefined {
   if (!ts.isCallExpression(decorator.expression) || !ts.isIdentifier(decorator.expression.expression)) {
     return undefined;
@@ -475,6 +513,27 @@ function hasNestInjectDecorator(modifiers: readonly ts.ModifierLike[] | undefine
   }
 
   return modifiers.some((modifier) => ts.isDecorator(modifier) && !!getNestInjectDecoratorLocalName(modifier, localNames));
+}
+
+function getFluoInjectClassDecorator(
+  modifiers: readonly ts.ModifierLike[] | undefined,
+  localNames: ReadonlySet<string>,
+): { decorator: ts.Decorator; expression: ts.CallExpression } | undefined {
+  if (!modifiers) {
+    return undefined;
+  }
+
+  for (const modifier of modifiers) {
+    if (!ts.isDecorator(modifier) || !ts.isCallExpression(modifier.expression) || !ts.isIdentifier(modifier.expression.expression)) {
+      continue;
+    }
+
+    if (localNames.has(modifier.expression.expression.text)) {
+      return { decorator: modifier, expression: modifier.expression };
+    }
+  }
+
+  return undefined;
 }
 
 function hasNestInjectParameterDecorator(sourceFile: ts.SourceFile, localNames: ReadonlySet<string>): boolean {
@@ -521,8 +580,33 @@ function getRuntimeValueNames(sourceFile: ts.SourceFile): ReadonlySet<string> {
   return names;
 }
 
-function createInjectionTokenFromType(type: ts.TypeNode | undefined, runtimeValueNames: ReadonlySet<string>): ts.Expression | undefined {
-  if (!type || !ts.isTypeReferenceNode(type) || !ts.isIdentifier(type.typeName) || !runtimeValueNames.has(type.typeName.text)) {
+function getCollidingTypeValueNames(sourceFile: ts.SourceFile, runtimeValueNames: ReadonlySet<string>): ReadonlySet<string> {
+  const names = new Set<string>();
+
+  for (const statement of sourceFile.statements) {
+    if (
+      (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement))
+      && runtimeValueNames.has(statement.name.text)
+    ) {
+      names.add(statement.name.text);
+    }
+  }
+
+  return names;
+}
+
+function createInjectionTokenFromType(
+  type: ts.TypeNode | undefined,
+  runtimeValueNames: ReadonlySet<string>,
+  collidingTypeValueNames: ReadonlySet<string>,
+): ts.Expression | undefined {
+  if (
+    !type
+    || !ts.isTypeReferenceNode(type)
+    || !ts.isIdentifier(type.typeName)
+    || !runtimeValueNames.has(type.typeName.text)
+    || collidingTypeValueNames.has(type.typeName.text)
+  ) {
     return undefined;
   }
 
@@ -533,8 +617,11 @@ function getConstructorInjectionTokens(
   classDeclaration: ts.ClassDeclaration,
   nestInjectLocalNames: ReadonlySet<string>,
   runtimeValueNames: ReadonlySet<string>,
+  collidingTypeValueNames: ReadonlySet<string>,
 ): { kind: 'none' } | { decoratorLocalName: string; kind: 'safe'; tokens: readonly ts.Expression[] } | { kind: 'unsafe'; node: ts.Node } {
-  const constructorDeclaration = classDeclaration.members.find(ts.isConstructorDeclaration);
+  const constructorDeclaration = classDeclaration.members.find(
+    (member): member is ts.ConstructorDeclaration => ts.isConstructorDeclaration(member) && member.body !== undefined,
+  );
   if (!constructorDeclaration) {
     return { kind: 'none' };
   }
@@ -581,7 +668,7 @@ function getConstructorInjectionTokens(
       continue;
     }
 
-    const token = createInjectionTokenFromType(parameter.type, runtimeValueNames);
+    const token = createInjectionTokenFromType(parameter.type, runtimeValueNames, collidingTypeValueNames);
     if (!token) {
       return { kind: 'unsafe', node: parameter };
     }
@@ -600,13 +687,15 @@ function rewriteConstructorInjectTokens(source: string, filePath: string): { cha
   const sourceFile = parseSource(source, filePath);
   const warnings: MigrationWarning[] = [];
   const nestInjectLocalNames = getNestInjectLocalNames(sourceFile);
+  const fluoInjectLocalNames = getFluoInjectLocalNames(sourceFile);
   const runtimeValueNames = getRuntimeValueNames(sourceFile);
+  const collidingTypeValueNames = getCollidingTypeValueNames(sourceFile, runtimeValueNames);
   const safeClasses = new Map<ts.ClassDeclaration, { decoratorLocalName: string; tokens: readonly ts.Expression[] }>();
   let hasUnsafeConstructor = false;
 
   const inspect = (node: ts.Node): void => {
     if (ts.isClassDeclaration(node)) {
-      const result = getConstructorInjectionTokens(node, nestInjectLocalNames, runtimeValueNames);
+      const result = getConstructorInjectionTokens(node, nestInjectLocalNames, runtimeValueNames, collidingTypeValueNames);
       if (result.kind === 'safe') {
         safeClasses.set(node, result);
       }
@@ -629,10 +718,11 @@ function rewriteConstructorInjectTokens(source: string, filePath: string): { cha
   };
 
   inspect(sourceFile);
-  if (safeClasses.size === 0 || hasUnsafeConstructor) {
+  if (safeClasses.size === 0) {
     return { changed: false, source, warnings };
   }
 
+  const generatedFluoInjectLocalName = hasUnsafeConstructor ? [...fluoInjectLocalNames][0] ?? 'FluoInject' : undefined;
   const transformer = <T extends ts.Node>(context: ts.TransformationContext) => {
     const visit = (node: ts.Node): ts.Node => {
       if (ts.isClassDeclaration(node)) {
@@ -657,16 +747,31 @@ function rewriteConstructorInjectTokens(source: string, filePath: string): { cha
             });
             return ts.factory.updateConstructorDeclaration(member, member.modifiers, parameters, member.body);
           });
-          const modifiers = [
-            ts.factory.createDecorator(
-              ts.factory.createCallExpression(
-                ts.factory.createIdentifier(injection.decoratorLocalName),
-                undefined,
-                injection.tokens,
-              ),
-            ),
-            ...(node.modifiers ?? []),
-          ];
+          const existingInjectDecorator = getFluoInjectClassDecorator(node.modifiers, fluoInjectLocalNames);
+          const modifiers = existingInjectDecorator
+            ? node.modifiers?.map((modifier) =>
+                modifier === existingInjectDecorator.decorator
+                  ? ts.factory.updateDecorator(
+                      existingInjectDecorator.decorator,
+                      ts.factory.updateCallExpression(
+                        existingInjectDecorator.expression,
+                        existingInjectDecorator.expression.expression,
+                        existingInjectDecorator.expression.typeArguments,
+                        [...existingInjectDecorator.expression.arguments, ...injection.tokens],
+                      ),
+                    )
+                  : modifier,
+              )
+            : [
+                ts.factory.createDecorator(
+                  ts.factory.createCallExpression(
+                    ts.factory.createIdentifier(generatedFluoInjectLocalName ?? injection.decoratorLocalName),
+                    undefined,
+                    injection.tokens,
+                  ),
+                ),
+                ...(node.modifiers ?? []),
+              ];
 
           return ts.factory.updateClassDeclaration(
             node,
@@ -686,9 +791,20 @@ function rewriteConstructorInjectTokens(source: string, filePath: string): { cha
   };
 
   const transformed = ts.transform(sourceFile, [transformer]).transformed[0] as ts.SourceFile;
+  let nextSource = printer.printFile(transformed);
+  if (generatedFluoInjectLocalName && fluoInjectLocalNames.size === 0) {
+    const nextSourceFile = parseSource(nextSource, filePath);
+    nextSource = printSourceFile(
+      nextSourceFile,
+      mergeNamedImport([...nextSourceFile.statements], '@fluojs/core', [
+        { imported: 'Inject', isTypeOnly: false, local: generatedFluoInjectLocalName },
+      ]),
+    );
+  }
+
   return {
     changed: true,
-    source: printer.printFile(transformed),
+    source: nextSource,
     warnings,
   };
 }
@@ -1449,6 +1565,12 @@ function runTypeScriptTransforms(
     const rewritten = rewriteConstructorInjectTokens(nextSource, filePath);
     nextSource = rewritten.source;
     warnings.push(...rewritten.warnings);
+
+    if (rewritten.changed) {
+      const rewrittenImports = rewriteImports(nextSource, filePath, new Set(['Inject']));
+      nextSource = rewrittenImports.source;
+      warnings.push(...rewrittenImports.warnings);
+    }
   }
 
   if (enabledTransforms.has('imports')) {
