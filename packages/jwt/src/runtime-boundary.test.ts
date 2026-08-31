@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const packageSourceRoot = dirname(fileURLToPath(import.meta.url));
+const packageManifestPath = resolve(packageSourceRoot, '../package.json');
 
 const rootImportSurfaceFiles = [
   'index.ts',
@@ -20,6 +21,20 @@ const rootImportSurfaceFiles = [
 ];
 
 describe('JWT runtime boundary', () => {
+  it('does not require @fluojs/runtime from its published dependency graph', async () => {
+    const packageManifest = JSON.parse(await readFile(packageManifestPath, 'utf8')) as {
+      dependencies?: Record<string, string>;
+    };
+
+    expect(packageManifest.dependencies).not.toHaveProperty('@fluojs/runtime');
+
+    for (const sourceFile of rootImportSurfaceFiles) {
+      const source = await readFile(resolve(packageSourceRoot, sourceFile), 'utf8');
+
+      expect(source, `${sourceFile} must not import @fluojs/runtime`).not.toContain('@fluojs/runtime');
+    }
+  });
+
   it('keeps node:crypto out of the root import graph until crypto operations execute', async () => {
     for (const sourceFile of rootImportSurfaceFiles) {
       const source = await readFile(resolve(packageSourceRoot, sourceFile), 'utf8');
