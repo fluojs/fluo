@@ -209,7 +209,7 @@ A request child therefore has a parent and the request flag, but it sees the roo
 
 The resolution step enforces the same structure again.
 `resolveScopedOrSingletonInstance()` in `path:packages/di/src/container.ts:1032-1041` first asks `cacheOwnerFor(provider)` for the container that owns the cache.
-`cacheOwnerFor()` in `path:packages/di/src/container.ts:1087-1098` keeps local default providers in the request child and delegates inherited default providers toward the parent/root cache owner.
+`cacheOwnerFor()` in `path:packages/di/src/container.ts:1087-1098` keeps local default providers in the request child and delegates inherited default providers toward the parent/root cache owner. For a default-scope, non-alias replacement registered in a request scope, a nested request child delegates to the nearest request-scope ancestor that owns that replacement, so both resolutions use the owner's request cache. Request-scoped and transient replacements keep their own scope behavior, and aliases resolve their target before cache ownership is selected.
 
 The actual cache map is selected by `cacheFor()`.
 `path:packages/di/src/container.ts:1191-1213` shows the core rules.
@@ -258,11 +258,11 @@ the dependency graph of a root singleton consumer does not change. The consumer 
 The singleton algorithm can be summarized like this.
 
 ```text
-if provider.scope is singleton:
-  if current container is request child and provider is inherited from root:
-    resolve through root cache
+if provider.scope is singleton and provider is not an alias:
+  if a request-scope ancestor locally owns the replacement:
+    resolve through that nearest owner's request cache
   else:
-    resolve through local/request-local path defined by cacheFor()
+    resolve through the cache path defined by cacheFor()
   cache promise by token
 ```
 

@@ -18,7 +18,7 @@ import {
   type ReactPageRenderer,
 } from '@fluojs/react';
 import { IsIn, IsString, MinLength } from '@fluojs/validation';
-import type { ReactElement } from 'react';
+import { createElement, type ReactElement } from 'react';
 
 import { ProductPage } from './page';
 
@@ -52,7 +52,7 @@ export function createAppModule(options: ReactViteAppModuleOptions) {
     @Path('/:sku')
     @RequestDto(ProductPageRequest)
     show(_input: ProductPageRequest): ReactElement {
-      return <ProductPage />;
+      return createElement(ProductPage);
     }
   }
 
