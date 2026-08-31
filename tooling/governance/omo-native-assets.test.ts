@@ -113,10 +113,10 @@ describe('OMO native asset manifest', () => {
       const worker = agents[workerName];
       expect(worker, `${workerName} must be registered`).toBeDefined();
       expect(worker?.execution_mode).toBe(executionMode);
-      expect(worker?.tools?.['task']).toBe(false);
-      expect(worker?.tools?.['dag']).toBe(false);
-      expect(worker?.tools?.['team_create']).toBe(false);
-      expect(worker?.tools?.['task_send']).toBe(false);
+      expect(worker?.tools?.task).toBe(false);
+      expect(worker?.tools?.dag).toBe(false);
+      expect(worker?.tools?.team_create).toBe(false);
+      expect(worker?.tools?.task_send).toBe(false);
     }
   });
 
@@ -141,10 +141,10 @@ describe('OMO native asset manifest', () => {
       expect(skill.path).toBe(`.agents/skills/${skill.name}/SKILL.md`);
       expect(existsSync(resolve(repoRoot, skill.path)), `${skill.path} must exist`).toBe(true);
       const frontmatter = parseFrontmatter(read(skill.path));
-      expect(frontmatter['name']).toBe(skill.name);
-      expect(frontmatter['description']).toBeTruthy();
+      expect(frontmatter.name).toBe(skill.name);
+      expect(frontmatter.description).toBeTruthy();
       if (skill.kind === 'knowledge') {
-        expect(frontmatter['compatibility']).toBe('omo');
+        expect(frontmatter.compatibility).toBe('omo');
       }
     }
   });
