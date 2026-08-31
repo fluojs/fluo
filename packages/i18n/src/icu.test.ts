@@ -188,4 +188,22 @@ describe('@fluojs/i18n/icu MessageFormat subpath', () => {
     expect(icu.getCoreService()).toBe(core);
     expect(icu.translate('simple', { locale: 'en', values: { name: 'fluo' } })).toBe('Hello fluo');
   });
+
+  it('keeps fallback message provenance when wrapping an existing core service', () => {
+    const core = createI18n({
+      catalogs: {
+        en: {
+          ordinal: '{count, selectordinal, one {#st result} other {#th results}}',
+        },
+        ko: {},
+      },
+      defaultLocale: 'en',
+      fallbackLocales: { ko: ['en'] },
+      supportedLocales: ['en', 'ko'],
+    });
+
+    const icu = new IcuI18nService(core);
+
+    expect(icu.translate('ordinal', { locale: 'ko', values: { count: 1 } })).toBe('1st result');
+  });
 });
