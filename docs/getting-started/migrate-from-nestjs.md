@@ -230,6 +230,69 @@ Replace NestJS i18n's resolver discovery and request-scoped context with one exp
 
 `I18nModule.forRoot(...)` is synchronous. Finish asynchronous catalog or configuration loading at the application-owned bootstrap boundary before `I18nModule.forRoot(...)`, then define the module graph with the completed values. This is application-owned composition, not a NestJS dynamic-module runtime bridge or compatibility layer; the framework-agnostic root contract does not gain `forRootAsync(...)`.
 
+#### Catalog Aggregation and Fallback Migration
+
+Do not pass a NestJS loader configuration through to fluo registration. Load every required locale and namespace at the application-owned bootstrap boundary, then pass the completed locale-scoped catalog map to the synchronous `I18nModule.forRoot(...)` call:
+
+```ts
+import { Module } from '@fluojs/core';
+import { I18nModule } from '@fluojs/i18n';
+import { createFileSystemI18nLoader } from '@fluojs/i18n/loaders/fs';
+
+const locales = ['en', 'ko'] as const;
+const namespaces = ['common', 'validation'] as const;
+const catalogLoader = createFileSystemI18nLoader({
+  rootDir: new URL('./locales', import.meta.url).pathname,
+});
+
+const catalogEntries = await Promise.all(
+  locales.map(async (locale) => {
+    const namespaceEntries = await Promise.all(
+      namespaces.map(async (namespace) => [
+        namespace,
+        await catalogLoader.load(locale, namespace),
+      ] as const),
+    );
+
+    return [locale, Object.fromEntries(namespaceEntries)] as const;
+  }),
+);
+const catalogs = Object.fromEntries(catalogEntries);
+
+@Module({
+  imports: [
+    I18nModule.forRoot({
+      defaultLocale: 'en',
+      supportedLocales: locales,
+      fallbackLocales: { ko: ['en'] },
+      catalogs,
+    }),
+  ],
+})
+class AppModule {}
+```
+
+Each loader result stays below its namespace instead of being shallow-merged. For example, `locales/ko/common.json` is addressed with `i18n.translate('title', { locale: 'ko', namespace: 'common' })`. A missing catalog file still rejects aggregation with `I18N_MISSING_CATALOG`; `fallbackLocales` does not silently substitute a missing loader result.
+
+Convert NestJS i18n fallback intent explicitly:
+
+```ts
+// NestJS i18n
+I18nModule.forRoot({
+  fallbackLanguage: 'en',
+  fallbacks: { ko: 'en' },
+});
+
+// fluo
+I18nModule.forRoot({
+  defaultLocale: 'en',
+  fallbackLocales: { ko: ['en'] },
+  catalogs,
+});
+```
+
+After registration, message lookup remains deterministic: the explicit locale, that locale's `fallbackLocales` chain, `defaultLocale`, the per-call `defaultValue`, then `missingMessage`. The asynchronous aggregation above completes before synchronous registration; it does not change that lookup order or add `forRootAsync(...)`.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { I18nModule, type I18nService } from '@fluojs/i18n';

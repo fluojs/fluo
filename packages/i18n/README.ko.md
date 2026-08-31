@@ -9,6 +9,7 @@ fluo 애플리케이션을 위한 프레임워크 비종속 국제화 코어 표
 - [설치](#설치)
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
+- [Catalog Aggregation 및 Fallback Migration](#catalog-aggregation-및-fallback-migration)
 - [코어 번역](#코어-번역)
 - [포맷팅](#포맷팅)
 - [ICU MessageFormat](#icu-messageformat)
@@ -71,6 +72,69 @@ class AppModule {}
 `I18nModule.forRoot(...)`는 기본적으로 `I18nService`를 global provider로 export하므로 root package를 한 번 import한 뒤 sibling module에서도 shared service를 inject할 수 있습니다. Service를 i18n module을 import한 module 안에만 보이게 하려면 `global: false`를 전달하세요.
 
 `I18nModule.forRoot(...)`는 module graph가 정의될 때 최종 option을 capture하는 동기 registration입니다. 비동기 catalog 또는 configuration loading은 `I18nModule.forRoot(...)` 전에 application-owned bootstrap boundary에서 완료하고, resolve된 catalog와 option을 해당 registration call에 전달하세요. 이 방식은 framework-agnostic root contract를 유지하며 NestJS dynamic-module runtime bridge나 `forRootAsync(...)` compatibility surface를 제공하지 않습니다.
+
+## Catalog Aggregation 및 Fallback Migration
+
+NestJS i18n에서 migration할 때는 동기 `I18nModule.forRoot(...)` 호출 전에 필요한 모든 locale과 namespace를 load하세요. NestJS loader configuration을 module registration으로 가져오지 않습니다.
+
+```ts
+import { Module } from '@fluojs/core';
+import { I18nModule } from '@fluojs/i18n';
+import { createFileSystemI18nLoader } from '@fluojs/i18n/loaders/fs';
+
+const locales = ['en', 'ko'] as const;
+const namespaces = ['common', 'validation'] as const;
+const catalogLoader = createFileSystemI18nLoader({
+  rootDir: new URL('./locales', import.meta.url).pathname,
+});
+
+const catalogEntries = await Promise.all(
+  locales.map(async (locale) => {
+    const namespaceEntries = await Promise.all(
+      namespaces.map(async (namespace) => [
+        namespace,
+        await catalogLoader.load(locale, namespace),
+      ] as const),
+    );
+
+    return [locale, Object.fromEntries(namespaceEntries)] as const;
+  }),
+);
+const catalogs = Object.fromEntries(catalogEntries);
+
+@Module({
+  imports: [
+    I18nModule.forRoot({
+      defaultLocale: 'en',
+      supportedLocales: locales,
+      fallbackLocales: { ko: ['en'] },
+      catalogs,
+    }),
+  ],
+})
+class AppModule {}
+```
+
+Aggregate는 namespace boundary를 보존합니다. `locales/ko/common.json`은 namespace tree를 shallow merge하지 말고 `i18n.translate('title', { locale: 'ko', namespace: 'common' })`로 조회하세요. Catalog file이 없으면 aggregation은 `I18N_MISSING_CATALOG`으로 reject됩니다. `fallbackLocales`는 catalog가 존재한 뒤 메시지를 조회할 때만 적용됩니다.
+
+NestJS i18n fallback intent는 명시적으로 변환합니다.
+
+```ts
+// NestJS i18n
+I18nModule.forRoot({
+  fallbackLanguage: 'en',
+  fallbacks: { ko: 'en' },
+});
+
+// fluo
+I18nModule.forRoot({
+  defaultLocale: 'en',
+  fallbackLocales: { ko: ['en'] },
+  catalogs,
+});
+```
+
+이 방식은 lookup order를 보존합니다. 명시적 locale, 구성된 fallback chain, `defaultLocale`, 호출별 `defaultValue`, `missingMessage` 순서입니다. Registration 전에 비동기 aggregation을 완료해도 이 순서는 바뀌지 않으며 `forRootAsync(...)`도 추가되지 않습니다.
 
 ## 코어 번역
 

@@ -230,6 +230,69 @@ NestJS i18n의 resolver discovery와 request-scoped context를 하나의 명시�
 
 `I18nModule.forRoot(...)`는 동기 방식이다. 비동기 catalog 또는 configuration loading은 `I18nModule.forRoot(...)` 전에 application-owned bootstrap boundary에서 완료하고, 그 값으로 module graph를 정의한다. 이는 application-owned composition이지 NestJS dynamic-module runtime bridge나 compatibility layer가 아니며, framework-agnostic root contract에 `forRootAsync(...)`를 추가하지 않는다.
 
+#### Catalog Aggregation 및 Fallback Migration
+
+NestJS loader configuration을 fluo registration으로 그대로 전달하지 않는다. Application-owned bootstrap boundary에서 필요한 모든 locale과 namespace를 load한 뒤, 완료된 locale-scoped catalog map을 동기 `I18nModule.forRoot(...)` 호출에 전달한다.
+
+```ts
+import { Module } from '@fluojs/core';
+import { I18nModule } from '@fluojs/i18n';
+import { createFileSystemI18nLoader } from '@fluojs/i18n/loaders/fs';
+
+const locales = ['en', 'ko'] as const;
+const namespaces = ['common', 'validation'] as const;
+const catalogLoader = createFileSystemI18nLoader({
+  rootDir: new URL('./locales', import.meta.url).pathname,
+});
+
+const catalogEntries = await Promise.all(
+  locales.map(async (locale) => {
+    const namespaceEntries = await Promise.all(
+      namespaces.map(async (namespace) => [
+        namespace,
+        await catalogLoader.load(locale, namespace),
+      ] as const),
+    );
+
+    return [locale, Object.fromEntries(namespaceEntries)] as const;
+  }),
+);
+const catalogs = Object.fromEntries(catalogEntries);
+
+@Module({
+  imports: [
+    I18nModule.forRoot({
+      defaultLocale: 'en',
+      supportedLocales: locales,
+      fallbackLocales: { ko: ['en'] },
+      catalogs,
+    }),
+  ],
+})
+class AppModule {}
+```
+
+각 loader result는 shallow merge하지 않고 해당 namespace 아래에 유지한다. 예를 들어 `locales/ko/common.json`은 `i18n.translate('title', { locale: 'ko', namespace: 'common' })`로 조회한다. Catalog file이 없으면 aggregation은 계속 `I18N_MISSING_CATALOG`으로 reject된다. `fallbackLocales`는 누락된 loader result를 조용히 대체하지 않는다.
+
+NestJS i18n fallback intent는 명시적으로 변환한다.
+
+```ts
+// NestJS i18n
+I18nModule.forRoot({
+  fallbackLanguage: 'en',
+  fallbacks: { ko: 'en' },
+});
+
+// fluo
+I18nModule.forRoot({
+  defaultLocale: 'en',
+  fallbackLocales: { ko: ['en'] },
+  catalogs,
+});
+```
+
+Registration 뒤 메시지 lookup 순서는 결정론적으로 유지된다. 명시적 locale, 해당 locale의 `fallbackLocales` chain, `defaultLocale`, 호출별 `defaultValue`, `missingMessage` 순서다. 위 비동기 aggregation은 동기 registration 전에 완료되며, 이 lookup order를 바꾸거나 `forRootAsync(...)`를 추가하지 않는다.
+
 ```typescript
 import { Module } from '@fluojs/core';
 import { I18nModule, type I18nService } from '@fluojs/i18n';
