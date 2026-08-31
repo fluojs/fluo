@@ -222,6 +222,14 @@ Redis cache prefix를 cache가 아닌 데이터와 공유하지 마세요. `del(
 
 `CacheStore` 계약을 구현한 custom store는 `store` 옵션에 직접 전달할 수 있습니다. in-process LRU store, Redis 외 원격 캐시, 또는 cache operation을 관찰해야 하는 테스트 더블에 적합합니다.
 
+Lifecycle diagnostic은 shutdown이 실제로 사용하는 teardown 소유자를 그대로 보고합니다. `createCacheManagerPlatformStatusSnapshot(...)`은 모든 non-memory store를 같게 취급하지 않고 lifecycle 책임에서 소유권을 해석합니다.
+
+- 내장 메모리 store는 프레임워크가 in-process로 생성하고 보유하므로 `framework` 소유입니다.
+- Custom store는 `CacheService.close()`가 optional `close()` 또는 `dispose()` hook으로 teardown을 전달할 책임을 가지므로 기본적으로 `framework` 소유입니다.
+- Redis store는 client를 닫지 않는 `CacheService`에 대해 `external`입니다. Cache module이 `@fluojs/redis`를 통해 client를 해석하면 해당 integration이 lifecycle을 소유하고, `redis.client`로 client를 직접 전달하면 애플리케이션이 lifecycle을 소유합니다.
+
+명시적인 `storeOwnershipMode`는 store 기본값보다 우선합니다. 애플리케이션이 custom store의 lifecycle 책임을 의도적으로 유지하는 경우 `external`로 설정하세요.
+
 ### 수동 모듈 조합
 
 일반적인 애플리케이션 설정과 커스텀 `defineModule(...)` 조합에서는 `CacheModule.forRoot(...)`를 사용합니다.

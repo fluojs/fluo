@@ -49,6 +49,7 @@
 | 저장소 작업 동시성 | 일반적인 `get`, `set`, `del` store 호출은 동시에 실행되므로 한 키의 느린 store 호출이 관련 없는 키를 지연시키지 않습니다. `reset()`과 저장소 teardown은 배타적으로 실행됩니다. 이후 store 호출을 대기시키고, 이미 시작된 호출이 종료되기를 기다린 뒤 단독으로 실행됩니다. | `packages/cache-manager/src/store-operation-scheduler.ts`, `packages/cache-manager/src/service.ts` |
 | 전체 reset | `CacheService.reset()`은 내부 reset version을 증가시키고, 진행 중/대기 중인 load bookkeeping과 진행 중 무효화 마커를 지운 뒤, 하위 저장소를 reset합니다. | `packages/cache-manager/src/service.ts` |
 | 저장소 teardown | 애플리케이션 종료 중 `CacheService`는 custom store의 `close()` hook을 호출하고, `close()`가 없으면 `dispose()`를 호출하므로 리소스를 소유한 store가 socket, pool, timer 또는 기타 외부 handle을 해제할 수 있습니다. 동시에 또는 반복해서 호출한 service/lifecycle close는 실패를 포함한 첫 teardown promise를 공유하므로, 하나의 authoritative completion boundary 뒤에서 teardown이 한 번만 실행됩니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/service.ts` |
+| teardown 소유권 diagnostic | `createCacheManagerPlatformStatusSnapshot(...)`은 store 분류만이 아니라 teardown 책임에서 `storeOwnershipMode`를 해석합니다. 메모리와 custom store는 `CacheService`가 lifecycle teardown 전달을 소유하므로 기본적으로 `framework`입니다. Redis는 `CacheService`에 대해 `external`로 유지됩니다. `@fluojs/redis`를 통해 해석된 client는 해당 integration이 lifecycle을 소유하고, `redis.client`로 직접 전달한 client는 애플리케이션이 lifecycle을 소유합니다. 명시적인 `storeOwnershipMode`는 store 기본값보다 우선합니다. | `packages/cache-manager/src/status.ts`, `packages/cache-manager/src/service.ts` |
 
 ## 제약 사항
 
