@@ -2,49 +2,60 @@
  * Describes the readiness state exposed by JWT.
  */
 export interface JwtPlatformReadinessReport {
-  readonly critical: boolean;
-  readonly reason?: string;
-  readonly status: 'ready' | 'not-ready' | 'degraded';
+  critical: boolean;
+  reason?: string;
+  status: 'ready' | 'not-ready' | 'degraded';
+  checks?: JwtPlatformCheckResult[];
 }
 
 /**
  * Describes the health state exposed by JWT.
  */
 export interface JwtPlatformHealthReport {
-  readonly reason?: string;
-  readonly status: 'healthy' | 'unhealthy' | 'degraded';
+  reason?: string;
+  status: 'healthy' | 'unhealthy' | 'degraded';
+  checks?: JwtPlatformCheckResult[];
+}
+
+/**
+ * Describes one named readiness or health probe result exposed by JWT.
+ */
+export interface JwtPlatformCheckResult {
+  name: string;
+  status: 'pass' | 'fail' | 'degraded';
+  message?: string;
 }
 
 /**
  * Describes ownership of JWT-managed resources.
  */
 export interface JwtPlatformOwnership {
-  readonly externallyManaged: boolean;
-  readonly ownsResources: boolean;
+  externallyManaged: boolean;
+  ownsResources: boolean;
 }
 
 /**
  * Describes a JWT diagnostic issue.
  */
 export interface JwtPlatformDiagnosticIssue {
-  readonly cause?: string;
-  readonly code: string;
-  readonly componentId: string;
-  readonly dependsOn?: string[];
-  readonly docsUrl?: string;
-  readonly fixHint?: string;
-  readonly message: string;
-  readonly severity: 'error' | 'warning' | 'info';
+  cause?: string;
+  code: string;
+  componentId: string;
+  dependsOn?: string[];
+  docsUrl?: string;
+  fixHint?: string;
+  message: string;
+  severity: 'error' | 'warning' | 'info';
 }
 
 /**
  * Describes the jwt platform status snapshot contract.
  */
 export interface JwtPlatformStatusSnapshot {
-  readonly details: Record<string, unknown>;
-  readonly health: JwtPlatformHealthReport;
-  readonly ownership: JwtPlatformOwnership;
-  readonly readiness: JwtPlatformReadinessReport;
+  details: Record<string, unknown>;
+  health: JwtPlatformHealthReport;
+  ownership: JwtPlatformOwnership;
+  readiness: JwtPlatformReadinessReport;
 }
 
 /**

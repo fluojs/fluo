@@ -16,7 +16,7 @@ export const JWT_OPTIONS = Symbol.for('fluo.jwt.options');
  * Describes the lifecycle hook called when a JWT module is destroyed.
  */
 export interface JwtModuleDestroyLifecycle {
-  onModuleDestroy(): void;
+  onModuleDestroy(): void | Promise<void>;
 }
 
 /**
