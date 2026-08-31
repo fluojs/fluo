@@ -13,6 +13,7 @@ import type {
   VersioningOptions,
 } from '@fluojs/http';
 
+import type { StudioDevtoolsRuntime } from './devtools/studio-runtime.js';
 import type { BootstrapTimingDiagnostics } from './health/diagnostics.js';
 import type { PlatformComponentInput } from './platform-contract.js';
 
@@ -140,6 +141,14 @@ export interface ExceptionFilterHandler {
 /** High-level bootstrap options for creating an HTTP application shell. */
 export interface BootstrapApplicationOptions {
   adapter?: HttpApplicationAdapter;
+  /**
+   * Host-owned Studio bridge used to publish live bootstrap and request events.
+   *
+   * When omitted, runtime preserves the CLI-injected Node.js bridge behavior.
+   * Platform integrations should create this bridge from `@fluojs/runtime/devtools`
+   * instead of mutating the undocumented Studio process-global.
+   */
+  studioDevtools?: StudioDevtoolsRuntime;
   /** Application-owned HTML provider for HTTP-classified error and not-found outcomes. */
   errorRepresentation?: HttpErrorRepresentationOptions;
   /**

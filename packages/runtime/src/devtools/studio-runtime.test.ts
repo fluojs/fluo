@@ -2,7 +2,7 @@ import { Container } from '@fluojs/di';
 import type { RequestContext } from '@fluojs/http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { bootstrapApplication, bootstrapModule } from '../bootstrap.js';
+import { bootstrapApplication, bootstrapModule, FluoFactory } from '../bootstrap.js';
 import { defineRuntimeClassDiMetadata, defineRuntimeModuleMetadata } from '../internal/core-metadata.js';
 import type { ApplicationLogger } from '../types.js';
 import type { StudioLiveEvent } from './contracts.js';
@@ -244,5 +244,44 @@ describe('Studio devtools runtime bridge', () => {
     });
 
     await app.close();
+  });
+
+  it('publishes application and context bootstrap events through an explicit host bridge', async () => {
+    const events: StudioLiveEvent[] = [];
+    const createBridge = (runtime: 'bun' | 'worker') =>
+      new StudioDevtoolsRuntime({
+        appId: `${runtime}-host`,
+        epoch: `${runtime}-epoch`,
+        runtime,
+        transport: {
+          publish(event) {
+            events.push(event);
+          },
+        },
+      });
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {});
+
+    const app = await bootstrapApplication({
+      logger,
+      rootModule: AppModule,
+      studioDevtools: createBridge('bun'),
+    });
+    await app.close();
+
+    const context = await FluoFactory.createApplicationContext(AppModule, {
+      studioDevtools: createBridge('worker'),
+    });
+    await context.close();
+
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: { appId: 'bun-host', runtime: 'bun' }, type: 'snapshot' }),
+        expect.objectContaining({ source: { appId: 'bun-host', runtime: 'bun' }, type: 'heartbeat' }),
+        expect.objectContaining({ source: { appId: 'worker-host', runtime: 'worker' }, type: 'snapshot' }),
+        expect.objectContaining({ source: { appId: 'worker-host', runtime: 'worker' }, type: 'heartbeat' }),
+      ]),
+    );
   });
 });

@@ -100,9 +100,24 @@ await context.close();
 
 ### Studio Devtools Bridge
 
-`@fluojs/runtime`은 live Studio snapshot과 request trace를 publish할 수 있지만 `process.env`를 직접 읽지 않습니다. `fluo dev --studio`가 애플리케이션 경계에서 sidecar를 시작하고 tokenized Studio config를 만든 뒤, 앱이 runtime을 import하기 전에 해당 명시적 config를 Node 앱 child에 주입합니다. Runtime은 Studio bridge를 생성할 때 주입된 각 field를 한 번씩 읽고 전체 config와 HTTP(S) endpoint를 검증한 뒤 private snapshot으로 freeze합니다. 따라서 writable process-global injection이 나중에 변경되어도 instrumentation input은 바뀌지 않습니다. CLI가 제공한 config가 없거나 잘못되었거나 tokenized endpoint가 없으면 Studio instrumentation은 no-op이며 bootstrap 동작은 바뀌지 않습니다.
+`@fluojs/runtime`은 `process.env`를 직접 읽지 않고 live Studio snapshot과 request trace를 publish할 수 있습니다. `fluo dev --studio`는 기본 Node 경로로 유지됩니다. CLI가 sidecar를 시작하고 tokenized Studio config를 만든 뒤 앱이 runtime을 import하기 전에 주입합니다. Runtime은 주입된 field를 한 번씩 읽고 HTTP(S) endpoint를 검증한 후 freeze된 private snapshot을 유지하므로 legacy process-global이 나중에 변경되어도 instrumentation input은 바뀌지 않습니다.
 
-이 MVP에서 전체 지원 대상은 Node dev runner 프로젝트입니다. Bun, Deno, Cloudflare Workers의 live Studio는 dedicated bridge를 구현하고 검증하기 전까지 unsupported입니다. 해당 런타임에서도 Studio config가 없으면 bootstrap은 no-op이어야 합니다. Request trace는 body, cookie, 전체 header를 의도적으로 제외하며, runtime은 local token이 Studio event history에 남지 않도록 publish 전에 trace `url`에서 query string과 fragment를 제거합니다.
+Package integration은 `@fluojs/runtime/devtools`에서 `StudioDevtoolsRuntime`과 transport contract를 import하고, host가 소유한 bridge를 `bootstrapApplication(...)`, `fluoFactory.create(...)`, 또는 `fluoFactory.createApplicationContext(...)`의 `studioDevtools`로 전달할 수 있습니다. 명시적 bridge는 CLI injection보다 우선하며 process-global mutation이 필요하지 않습니다.
+
+```typescript
+import { fluoFactory } from '@fluojs/runtime';
+import { StudioDevtoolsRuntime } from '@fluojs/runtime/devtools';
+
+const studioDevtools = new StudioDevtoolsRuntime({
+  appId: 'my-bun-app',
+  runtime: 'bun',
+  transport: { publish: (event) => hostStudioTransport.send(event) },
+});
+
+const app = await fluoFactory.create(AppModule, { studioDevtools });
+```
+
+이 package는 transport-neutral seam을 publish하며 Bun, Deno, Cloudflare Workers sidecar 구현을 제공하지는 않습니다. Non-Node host는 소유자가 bridge와 executable host integration evidence를 제공한 경우에만 live Studio를 지원합니다. 그렇지 않으면 inspect/static artifact path를 사용하세요. Request trace는 body, cookie, 전체 header를 의도적으로 제외하며, runtime은 local token이 Studio event history에 남지 않도록 publish 전에 trace `url`에서 query string과 fragment를 제거합니다.
 
 ### 전역 예외 필터
 
@@ -217,7 +232,7 @@ class UsersModule {}
 - 시그널 기반 종료 헬퍼는 bounded drain semantics를 유지하면서 timeout/실패 상황을 로그와 `process.exitCode`로 보고하지만, 최종 프로세스 종료 소유권은 주변 호스트 런타임에 남겨 둡니다.
 - 플랫폼 snapshot 및 diagnostic issue 생산은 런타임에 남아 있고, 그래프 보기, filtering 표현, Mermaid 렌더링은 CLI 및 자동화 호출자가 소비하는 Studio 소유 계약입니다.
 - Compiled route inspection은 `HandlerDescriptor` 값의 one-way projection입니다. Effective method, path, version, params, module, controller, handler field를 freeze된 entry로 복사합니다. 일반 route는 `kind: 'http'`를 사용하고 runtime-aware integration은 `react-page` 같은 더 구체적인 marker를 publish할 수 있습니다. Route inspection은 matching, conflict detection, dispatch에 관여하지 않으며 request body, cookie, header, query value 또는 다른 request-private data를 보관하지 않습니다.
-- Runtime-connected Studio instrumentation은 명시적인 CLI 주입 Studio config로만 활성화되며 runtime package source에서 `process.env`를 직접 읽지 않습니다. Bridge 생성은 알려진 각 field를 한 번씩 읽어 검증되고 freeze된 private snapshot으로 캡처하며 HTTP(S) tokenized endpoint만 허용하므로, 이후 global object mutation이 instrumentation 대상을 바꾸거나 재인증할 수 없습니다. 유효한 config와 tokenized endpoint가 없으면 non-Node 런타임을 포함해 Studio 관점의 runtime bootstrap은 no-op입니다.
+- Runtime-connected Studio instrumentation은 명시적인 host-owned `studioDevtools` bridge 또는 기본 CLI 주입 Node config를 받고, runtime package source에서 `process.env`를 직접 읽지 않습니다. 문서화된 `@fluojs/runtime/devtools` subpath는 package integration이 private import나 process-global mutation 없이 사용할 transport-neutral bridge contract를 노출합니다. 명시적 bridge가 우선하며, CLI config는 한 번 캡처되어 검증되고 freeze된 private snapshot이 됩니다. bridge와 유효한 config가 모두 없을 때만 Studio 관점의 runtime bootstrap은 no-op입니다.
 - Studio request trace는 request/response body, cookie, 전체 header를 제외합니다. Trace `url`은 publish 전에 path-only 형태로 sanitize되어 query token과 fragment가 local Studio event history에 남지 않습니다.
 - 플랫폼 component snapshot은 런타임 소유 계약 payload입니다. 각 component는 `readiness`, `health`, dependency id, telemetry tag, diagnostic issue, 그리고 `ownership.ownsResources` / `ownership.externallyManaged`를 통해 리소스 소유권을 보고합니다. Runtime은 shell snapshot에서 이 ownership flag를 보존하므로 adapter와 package integration이 fluo가 종료해야 하는 리소스와 host가 소유한 외부 관리 리소스를 구분할 수 있습니다.
 - Runtime은 validation, start, rollback, stop에서 발생한 서로 다른 lifecycle diagnostic을 보존합니다. 반복 가능한 `ready()`, `health()`, `snapshot()` probe가 생성한 실패는 component와 probe phase별 최신 실패 하나로 제한되므로, 장기 polling이 `PlatformShellSnapshot.diagnostics`를 무제한으로 늘리지 않으면서도 최신 cause는 계속 확인할 수 있습니다.
@@ -240,6 +255,7 @@ class UsersModule {}
 - `ReadinessCheck`: runtime health module이 사용하는 function type입니다. Check는 `/ready` request context를 받고 boolean 또는 promise를 반환합니다.
 - `defineModule(cls, metadata)`: 프로그래밍 방식의 모듈 정의 헬퍼입니다.
 - `bootstrapApplication(options)`: 저수준 비동기 부트스트랩 함수입니다. `BootstrapApplicationOptions.errorRepresentation`은 optional HTTP-owned HTML representation provider를 등록하며 `CreateApplicationOptions`는 `FluoFactory.create(...)`에서 같은 field를 노출합니다.
+- `@fluojs/runtime/devtools`: `StudioDevtoolsRuntime`, transport contract, live Studio event contract를 위한 package-integration subpath입니다. 생성한 bridge를 application 또는 context bootstrap의 `studioDevtools`로 전달합니다.
 - `bootstrapModule(...)`: 저수준 module graph bootstrap helper입니다. `BootstrapModuleOptions`에는 opt-in compile-result cache를 위한 `moduleGraphCache`와 authored module identity를 안정적으로 유지하는 testing-only module replacement compilation을 위한 `moduleReplacements` / `ModuleReplacementMap`이 포함됩니다.
 - `createBootstrapTimingDiagnostics(...)`, `createRuntimeDiagnosticsGraph(...)`: CLI/support tooling을 위한 runtime 소유 diagnostics snapshot helper입니다. 이 helper들은 기계 읽기 가능한 데이터를 생산하며, Studio가 viewer parsing, graph presentation, Mermaid rendering을 소유합니다.
 - `createRuntimeRouteInspection(...)`, `createRuntimeRouteCatalog(...)`, `createRuntimeInspectionSnapshot(...)`: HTTP route behavior를 변경하지 않고 platform snapshot에 effective compiled route diagnostics를 추가하는 runtime-owned immutable projection입니다.
