@@ -55,16 +55,37 @@ function pngDimensions(path: string): { readonly height: number; readonly width:
   return { height: content.readUInt32BE(20), width: content.readUInt32BE(16) };
 }
 
-async function captureEvidence(page: Page, label: string, viewport: (typeof viewports)[number], servedUrl: URL): Promise<void> {
+async function captureEvidence(page: Page, label: string, viewport: (typeof viewports)[number], servedUrl: URL) {
   mkdirSync(evidenceDirectory, { recursive: true });
   const path = join(evidenceDirectory, `issue-3333-${label}-${viewport.name}.png`);
-  await page.screenshot({ fullPage: true, path });
+  const measuredDimensions = await page.evaluate(() => {
+    const body = document.body;
+    const root = document.documentElement;
+
+    return {
+      document: {
+        height: Math.max(body?.scrollHeight ?? 0, root.scrollHeight, window.innerHeight),
+        width: Math.max(body?.scrollWidth ?? 0, root.scrollWidth, window.innerWidth),
+      },
+      viewport: { height: window.innerHeight, width: window.innerWidth },
+    };
+  });
+  const captureClip = {
+    height: measuredDimensions.document.height,
+    width: viewport.width,
+    x: 0,
+    y: 0,
+  };
+  await page.screenshot({ clip: captureClip, fullPage: true, path });
   const dimensions = pngDimensions(path);
   const metadata = {
     browser: 'Google Chrome',
     byteSize: statSync(path).size,
+    captureClip,
     commit,
     deviceScaleFactor: 1,
+    documentDimensions: measuredDimensions.document,
+    measuredViewport: measuredDimensions.viewport,
     path,
     pngDimensions: dimensions,
     servedUrl: servedUrl.href,
@@ -72,9 +93,12 @@ async function captureEvidence(page: Page, label: string, viewport: (typeof view
   };
 
   expect(metadata.byteSize).toBeGreaterThan(0);
+  expect(metadata.measuredViewport).toEqual(metadata.viewport);
   expect(dimensions.width).toBe(viewport.width);
+  expect(dimensions.height).toBe(captureClip.height);
   expect(dimensions.height).toBeGreaterThanOrEqual(viewport.height);
   writeFileSync(path.replace(/\.png$/u, '.json'), `${JSON.stringify(metadata, null, 2)}\n`);
+  return metadata;
 }
 
 async function openViewer(browser: Browser, viewport: (typeof viewports)[number]): Promise<{ readonly context: BrowserContext; readonly page: Page }> {
@@ -153,7 +177,10 @@ test('opens the installed public viewer bin and exercises its file workflow in C
       page.on('pageerror', (error) => pageErrors.push(error.message));
       await page.goto(url.href);
       await expect(page.locator('#app')).not.toBeEmpty();
-      await captureEvidence(page, '02-http-mounted', viewport, url);
+      const httpMountedEvidence = await captureEvidence(page, '02-http-mounted', viewport, url);
+      expect(httpMountedEvidence.captureClip.width).toBe(viewport.width);
+      expect(httpMountedEvidence.captureClip.height).toBeGreaterThanOrEqual(viewport.height);
+      expect(httpMountedEvidence.measuredViewport).toEqual({ height: viewport.height, width: viewport.width });
 
       await page.setInputFiles('#file-input', {
         buffer: snapshotFixture,
