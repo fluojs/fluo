@@ -37,6 +37,12 @@ interface StaleDisposalTask {
 
 type DisposalAttemptOrigin = 'direct' | 'parent';
 
+interface ChildScopeConstruction {
+  readonly parent: Container;
+  readonly requestScopeEnabled: boolean;
+  readonly singletonCache: Map<Token, Promise<unknown>>;
+}
+
 /**
  * Controlled cache adoption seam for framework-owned testing and tooling that
  * need synchronous helpers to preserve container-owned singleton disposal.
@@ -286,6 +292,8 @@ function linkPendingResolution(
  */
 // allow: SIZE_OK — Container is the package's existing DI lifecycle state machine.
 export class Container {
+  static #childScopeConstruction: ChildScopeConstruction | undefined;
+
   private readonly registrations = new Map<Token, NormalizedProvider>();
   private readonly multiRegistrations = new Map<Token, NormalizedProvider[]>();
   private readonly multiOverriddenTokens = new Set<Token>();
@@ -308,12 +316,44 @@ export class Container {
   private trackedByParent = false;
   private graphRevision = 0;
 
-  constructor(
-    private readonly parent?: Container,
-    private readonly requestScopeEnabled = false,
-    singletonCache?: Map<Token, Promise<unknown>>,
-  ) {
-    this.singletonCache = singletonCache ?? new Map<Token, Promise<unknown>>();
+  private readonly parent: Container | undefined;
+  private readonly requestScopeEnabled: boolean;
+
+  /**
+   * Creates a root container that owns its own singleton cache.
+   *
+   * Child request scopes are package-owned and must be created with
+   * {@link Container.createRequestScope}; caller-supplied parent, request-scope,
+   * or singleton-cache wiring is rejected.
+   *
+   * @throws {ContainerResolutionError} When any constructor argument is supplied.
+   */
+  constructor(...construction: never[]) {
+    if (construction.length > 0) {
+      throw new ContainerResolutionError(
+        'Container child-scope construction is package-owned and cannot be invoked directly.',
+        {
+          hint: 'Construct root containers with new Container() and create child scopes with container.createRequestScope().',
+        },
+      );
+    }
+
+    const childScope = Container.#childScopeConstruction;
+
+    this.parent = childScope?.parent;
+    this.requestScopeEnabled = childScope?.requestScopeEnabled ?? false;
+    this.singletonCache = childScope?.singletonCache ?? new Map<Token, Promise<unknown>>();
+  }
+
+  static #createChildScope(construction: ChildScopeConstruction): Container {
+    const parentConstruction = Container.#childScopeConstruction;
+    Container.#childScopeConstruction = construction;
+
+    try {
+      return new Container();
+    } finally {
+      Container.#childScopeConstruction = parentConstruction;
+    }
   }
 
   /**
@@ -585,7 +625,11 @@ export class Container {
       );
     }
 
-    return new Container(this, true, this.root().singletonCache);
+    return Container.#createChildScope({
+      parent: this,
+      requestScopeEnabled: true,
+      singletonCache: this.root().singletonCache,
+    });
   }
 
   /**
