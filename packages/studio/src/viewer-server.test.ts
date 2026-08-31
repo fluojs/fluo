@@ -1,20 +1,35 @@
-import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync } from 'node:fs';
 import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseStudioViewerArguments, startStudioViewerServer, type StudioViewerServer } from './viewer-server.js';
 
 const temporaryDirectories: string[] = [];
 const servers: StudioViewerServer[] = [];
-const packageDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
   await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })));
 });
+
+function sendRawRequest(server: StudioViewerServer, request: string): Promise<string> {
+  return new Promise((resolveResponse, rejectResponse) => {
+    const socket = connect({
+      host: server.url.hostname,
+      port: Number(server.url.port),
+    });
+    let response = '';
+
+    socket.setEncoding('utf8');
+    socket.once('connect', () => socket.end(request));
+    socket.on('data', (chunk: string) => {
+      response += chunk;
+    });
+    socket.once('end', () => resolveResponse(response));
+    socket.once('error', rejectResponse);
+  });
+}
 
 describe('Studio viewer server', () => {
   it('serves the packaged viewer and its assets over HTTP', async () => {
@@ -93,38 +108,29 @@ describe('Studio viewer server', () => {
     expect(postResponse.headers.get('allow')).toBe('GET, HEAD');
   });
 
-  it('runs the packed npm-installed bin through its symlink for help and invalid ports', () => {
-    const temporaryDirectory = mkdtempSync(join(tmpdir(), 'fluo-studio-viewer-consumer-'));
-    temporaryDirectories.push(temporaryDirectory);
-    const tarballDirectory = join(temporaryDirectory, 'tarball');
-    const consumerDirectory = join(temporaryDirectory, 'consumer');
-    mkdirSync(tarballDirectory);
-    mkdirSync(consumerDirectory);
+  it('returns 400 without an unhandled rejection for malformed raw request targets', async () => {
+    // Given: a packaged viewer server and a raw request target that URL cannot parse.
+    const viewerDirectory = await mkdtemp(join(tmpdir(), 'fluo-studio-viewer-'));
+    temporaryDirectories.push(viewerDirectory);
+    await writeFile(join(viewerDirectory, 'index.html'), '<div id="app"></div>');
+    const server = await startStudioViewerServer({ port: 0, viewerDirectory });
+    servers.push(server);
+    let unhandledRejection: unknown;
+    const captureUnhandledRejection = (reason: unknown): void => {
+      unhandledRejection = reason;
+    };
+    process.once('unhandledRejection', captureUnhandledRejection);
 
-    const build = spawnSync('pnpm', ['build'], { cwd: packageDirectory, encoding: 'utf8' });
-    expect(build.status, [build.stdout, build.stderr].filter(Boolean).join('\n')).toBe(0);
+    try {
+      // When: a raw socket sends the malformed target.
+      const response = await sendRawRequest(server, 'GET // HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n');
+      await new Promise<void>((resolveTurn) => setImmediate(resolveTurn));
 
-    const packed = spawnSync('npm', ['pack', '--json', '--pack-destination', tarballDirectory], {
-      cwd: packageDirectory,
-      encoding: 'utf8',
-    });
-    expect(packed.status, [packed.stdout, packed.stderr].filter(Boolean).join('\n')).toBe(0);
-    const packResult = JSON.parse(packed.stdout) as readonly { readonly filename: string }[];
-    const tarball = join(tarballDirectory, packResult[0]?.filename ?? '');
-
-    const installed = spawnSync('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false', tarball], {
-      cwd: consumerDirectory,
-      encoding: 'utf8',
-    });
-    expect(installed.status, [installed.stdout, installed.stderr].filter(Boolean).join('\n')).toBe(0);
-
-    const binary = join(consumerDirectory, 'node_modules', '.bin', 'fluo-studio-viewer');
-    const help = spawnSync(binary, ['--help'], { encoding: 'utf8' });
-    const invalidPort = spawnSync(binary, ['--port', 'not-a-port'], { encoding: 'utf8' });
-
-    expect(help.status).toBe(0);
-    expect(help.stdout).toContain('Usage: fluo-studio-viewer');
-    expect(invalidPort.status).toBe(1);
-    expect(invalidPort.stderr).toContain('Invalid port');
-  }, 30_000);
+      // Then: the client receives a controlled response and no Promise rejects unhandled.
+      expect(response).toMatch(/^HTTP\/1\.1 400 Bad Request\r\n/u);
+      expect(unhandledRejection).toBeUndefined();
+    } finally {
+      process.off('unhandledRejection', captureUnhandledRejection);
+    }
+  });
 });

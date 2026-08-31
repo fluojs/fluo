@@ -70,7 +70,12 @@ export function parseStudioViewerArguments(arguments_: readonly string[]): Studi
 export async function startStudioViewerServer(options: StudioViewerServerOptions): Promise<StudioViewerServer> {
   const viewerDirectory = await realpath(resolve(options.viewerDirectory));
   const server = createServer((request, response) => {
-    void serveViewerAsset(request, response, viewerDirectory);
+    void serveViewerAsset(request, response, viewerDirectory).catch(() => {
+      if (!response.headersSent) {
+        response.writeHead(500);
+      }
+      response.end();
+    });
   });
 
   await listen(server, options.port);
@@ -92,7 +97,13 @@ async function serveViewerAsset(request: IncomingMessage, response: ServerRespon
     return;
   }
 
-  const pathname = new URL(request.url ?? '/', `http://${viewerHost}`).pathname;
+  let pathname: string;
+  try {
+    pathname = new URL(request.url ?? '/', `http://${viewerHost}`).pathname;
+  } catch {
+    response.writeHead(400).end();
+    return;
+  }
   const relativePath = pathname === '/' ? 'index.html' : `.${pathname}`;
   const assetPath = resolve(viewerDirectory, relativePath);
 
@@ -155,6 +166,7 @@ async function close(server: Server): Promise<void> {
  *
  * @param arguments_ - Arguments passed after the executable name.
  * @param viewerDirectory - Installed directory containing the viewer HTML assets.
+ * @returns A Promise that resolves after help output or successful local server launch.
  */
 export async function runStudioViewerCli(arguments_: readonly string[], viewerDirectory: string): Promise<void> {
   const request = parseStudioViewerArguments(arguments_);

@@ -1,4 +1,4 @@
-import { spawn, spawnSync, type ChildProcessByStdio } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcessByStdio, type SpawnSyncReturns } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -19,15 +19,55 @@ let consumerDirectory: string | undefined;
 let viewerProcess: ChildProcessByStdio<null, Readable, Readable> | undefined;
 let viewerUrl: Promise<URL> | undefined;
 
-function runCommand(command: string, arguments_: readonly string[], cwd: string) {
-  const result = spawnSync(command, arguments_, { cwd, encoding: 'utf8' });
-
-  if (result.error) {
-    throw result.error;
+async function stopViewerProcess(process: ChildProcessByStdio<null, Readable, Readable>): Promise<void> {
+  if (process.exitCode !== null || process.signalCode !== null) {
+    return;
   }
 
-  if (result.status !== 0) {
-    throw new Error([`${command} ${arguments_.join(' ')} failed.`, result.stdout, result.stderr].filter(Boolean).join('\n'));
+  await new Promise<void>((resolveExit, rejectExit) => {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const cleanup = (): void => {
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+      }
+      process.off('error', rejectFromError);
+      process.off('exit', resolveFromExit);
+    };
+    const rejectFromError = (error: Error): void => {
+      cleanup();
+      rejectExit(error);
+    };
+    const resolveFromExit = (): void => {
+      cleanup();
+      resolveExit();
+    };
+
+    timeout = setTimeout(() => {
+      cleanup();
+      rejectExit(new Error('Installed viewer did not exit after SIGTERM within 10 seconds.'));
+    }, 10_000);
+    process.once('error', rejectFromError);
+    process.once('exit', resolveFromExit);
+    process.kill('SIGTERM');
+  });
+}
+
+function commandDiagnostics(command: string, arguments_: readonly string[], result: SpawnSyncReturns<string>): string {
+  return [
+    `${command} ${arguments_.join(' ')}`,
+    `error: ${result.error?.message ?? 'none'}`,
+    `signal: ${result.signal ?? 'none'}`,
+    `status: ${String(result.status)}`,
+    `stdout:\n${result.stdout}`,
+    `stderr:\n${result.stderr}`,
+  ].join('\n');
+}
+
+function runCommand(command: string, arguments_: readonly string[], cwd: string): SpawnSyncReturns<string> {
+  const result = spawnSync(command, arguments_, { cwd, encoding: 'utf8' });
+
+  if (result.error || result.signal !== null || result.status !== 0) {
+    throw new Error(commandDiagnostics(command, arguments_, result));
   }
 
   return result;
@@ -115,6 +155,12 @@ test.beforeAll(() => {
   const binary = join(installedConsumer, 'node_modules', '.bin', 'fluo-studio-viewer');
   const help = runCommand(binary, ['--help'], installedConsumer);
   expect(help.stdout).toContain('Usage: fluo-studio-viewer');
+  const invalidPort = spawnSync(binary, ['--port', 'not-a-port'], { cwd: installedConsumer, encoding: 'utf8' });
+  const invalidPortDiagnostics = commandDiagnostics(binary, ['--port', 'not-a-port'], invalidPort);
+  expect(invalidPort.error, invalidPortDiagnostics).toBeUndefined();
+  expect(invalidPort.signal, invalidPortDiagnostics).toBeNull();
+  expect(invalidPort.status, invalidPortDiagnostics).toBe(1);
+  expect(invalidPort.stderr, invalidPortDiagnostics).toContain('Invalid port');
 
   const launchedViewer = spawn(binary, ['--port', '0'], { cwd: installedConsumer, stdio: ['ignore', 'pipe', 'pipe'] });
   viewerProcess = launchedViewer;
@@ -123,7 +169,9 @@ test.beforeAll(() => {
 });
 
 test.afterAll(async () => {
-  viewerProcess?.kill();
+  if (viewerProcess) {
+    await stopViewerProcess(viewerProcess);
+  }
   if (consumerDirectory && existsSync(join(consumerDirectory, '.fluo-studio-installed-viewer.json'))) {
     rmSync(consumerDirectory, { force: true, recursive: true });
   }
