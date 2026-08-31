@@ -14,7 +14,7 @@ const learningFilePaths = [
 ];
 const learningFileHeader = /^\/\/ (src\/auth\/auth\.(?:persistence|service|controller|module)\.ts)\n/u;
 const virtualRoot = join(repoRoot, '.virtual-jwt-learning-path');
-const workspacePublicTypes = join(repoRoot, 'packages', '*', 'dist', 'index.d.ts');
+const workspacePublicSources = join(repoRoot, 'packages', '*', 'src', 'index.ts');
 
 function fail(relativePath, message) {
   throw new Error(
@@ -43,15 +43,233 @@ function extractLearningFiles(relativePath, markdown) {
   return files;
 }
 
+function normalizeSource(sourceText) {
+  return sourceText.replace(/\s+/gu, ' ').trim();
+}
+
+function enforceExplicitModuleWiring(relativePath, files) {
+  const persistenceSource = files.get('src/auth/auth.persistence.ts');
+  const serviceSource = files.get('src/auth/auth.service.ts');
+  const moduleSource = files.get('src/auth/auth.module.ts');
+
+  if (
+    persistenceSource === undefined
+    || serviceSource === undefined
+    || moduleSource === undefined
+  ) {
+    fail(relativePath, 'must include every JWT learning-path source block before checking DI wiring');
+  }
+
+  const injectionMetadata = [
+    [persistenceSource, '@Inject(REFRESH_TOKEN_REPOSITORY)', 'DatabaseRefreshTokenStore'],
+    [persistenceSource, '@Inject(CREDENTIALS_REPOSITORY)', 'DatabaseCredentialsVerifier'],
+    [serviceSource, '@Inject(CREDENTIALS_VERIFIER, JwtService, RefreshTokenService)', 'AuthService'],
+  ];
+
+  for (const [sourceText, metadata, className] of injectionMetadata) {
+    if (!sourceText.includes(metadata)) {
+      fail(relativePath, `${className} must declare explicit ${metadata} constructor metadata`);
+    }
+  }
+
+  if (/\bproviders:\s*\[\s*(?:DatabaseRefreshTokenStore|DatabaseCredentialsVerifier)\s*,/u.test(moduleSource)) {
+    fail(relativePath, 'must not register a persistence adapter as a bare class provider');
+  }
+
+  const normalizedModuleSource = normalizeSource(moduleSource);
+  const explicitProviders = [
+    '{ provide: REFRESH_TOKEN_STORE, useClass: DatabaseRefreshTokenStore, inject: [REFRESH_TOKEN_REPOSITORY], }',
+    '{ provide: CREDENTIALS_VERIFIER, useClass: DatabaseCredentialsVerifier, inject: [CREDENTIALS_REPOSITORY], }',
+  ];
+
+  for (const provider of explicitProviders) {
+    if (!normalizedModuleSource.includes(provider)) {
+      fail(relativePath, `must bind persistence adapters through explicit provider metadata: ${provider}`);
+    }
+  }
+}
+
+function probeRuntimeModuleGraph(relativePath, files) {
+  const injectionTokens = new Map();
+  const moduleMetadata = new Map();
+  const jwtRuntime = { asyncOptions: undefined };
+  const core = {
+    Inject: (...tokens) => (value) => {
+      injectionTokens.set(value, tokens);
+    },
+    Module: (metadata) => (value) => {
+      moduleMetadata.set(value, metadata);
+    },
+  };
+  class ConfigService {
+    snapshot() {
+      return {
+        JWT_REFRESH_SECRET: 'refresh-secret',
+        JWT_SECRET: 'access-secret',
+      };
+    }
+  }
+  class JwtService {}
+  class RefreshTokenService {}
+  const externalModules = {
+    '@fluojs/config': {
+      ConfigModule: {
+        forRoot: () => class ConfigRuntimeModule {},
+      },
+      ConfigService,
+    },
+    '@fluojs/core': core,
+    '@fluojs/http': {
+      Controller: () => () => undefined,
+      Post: () => () => undefined,
+      RequestDto: () => () => undefined,
+    },
+    '@fluojs/jwt': {
+      JwtModule: {
+        forRootAsync: (options) => {
+          jwtRuntime.asyncOptions = options;
+          return class JwtRuntimeModule {};
+        },
+      },
+      JwtService,
+      RefreshTokenService,
+    },
+  };
+  const loadedModules = new Map();
+
+  const loadModule = (filePath) => {
+    const existing = loadedModules.get(filePath);
+
+    if (existing !== undefined) {
+      return existing;
+    }
+
+    const sourceText = files.get(filePath);
+
+    if (sourceText === undefined) {
+      fail(relativePath, `runtime probe could not load ${filePath}`);
+    }
+
+    const transpiled = ts.transpileModule(sourceText, {
+      compilerOptions: {
+        module: ts.ModuleKind.CommonJS,
+        target: ts.ScriptTarget.ES2022,
+      },
+      fileName: filePath,
+      reportDiagnostics: true,
+    });
+    const diagnostics = (transpiled.diagnostics ?? [])
+      .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error)
+      .map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'));
+
+    if (diagnostics.length > 0) {
+      fail(relativePath, `runtime probe could not transpile ${filePath}:\n${diagnostics.join('\n')}`);
+    }
+
+    const module = { exports: {} };
+    loadedModules.set(filePath, module.exports);
+    const require = (specifier) => {
+      const externalModule = externalModules[specifier];
+
+      if (externalModule !== undefined) {
+        return externalModule;
+      }
+
+      if (!specifier.startsWith('./')) {
+        fail(relativePath, `runtime probe cannot resolve ${specifier} from ${filePath}`);
+      }
+
+      const importedPath = resolve(dirname(join(virtualRoot, filePath)), specifier)
+        .replace(/\.js$/u, '.ts')
+        .replace(`${virtualRoot}/`, '');
+
+      return loadModule(importedPath);
+    };
+    const execute = new Function('exports', 'module', 'require', transpiled.outputText);
+    execute(module.exports, module, require);
+    loadedModules.set(filePath, module.exports);
+
+    return module.exports;
+  };
+
+  const persistence = loadModule('src/auth/auth.persistence.ts');
+  const service = loadModule('src/auth/auth.service.ts');
+  const controller = loadModule('src/auth/auth.controller.ts');
+  const authModule = loadModule('src/auth/auth.module.ts');
+  const persistenceProviders = moduleMetadata.get(authModule.AuthPersistenceModule)?.providers;
+
+  if (!Array.isArray(persistenceProviders) || jwtRuntime.asyncOptions === undefined) {
+    fail(relativePath, 'runtime probe could not register the persistence and JWT module graph');
+  }
+
+  const providersByToken = new Map(
+    persistenceProviders.map((provider) => [provider.provide, provider]),
+  );
+  const refreshProvider = providersByToken.get(persistence.REFRESH_TOKEN_STORE);
+  const credentialsProvider = providersByToken.get(persistence.CREDENTIALS_VERIFIER);
+  const refreshRepository = {
+    find: () => undefined,
+    revoke: () => undefined,
+    revokeByFamily: () => undefined,
+    revokeBySubject: () => undefined,
+    rotate: () => undefined,
+    save: () => undefined,
+  };
+  const credentialsRepository = {
+    verify: () => ({ id: 'user-1', roles: [] }),
+  };
+
+  const instantiate = (provider, dependencies) => {
+    if (
+      provider === undefined
+      || provider.useClass === undefined
+      || !Array.isArray(provider.inject)
+    ) {
+      fail(relativePath, 'runtime probe requires explicit class-provider injection metadata');
+    }
+
+    return new provider.useClass(...provider.inject.map((token) => dependencies.get(token)));
+  };
+  const refreshStore = instantiate(refreshProvider, new Map([
+    [persistence.REFRESH_TOKEN_REPOSITORY, refreshRepository],
+  ]));
+  const credentialsVerifier = instantiate(credentialsProvider, new Map([
+    [persistence.CREDENTIALS_REPOSITORY, credentialsRepository],
+  ]));
+  const createInjectedInstance = (type, dependencies) => {
+    const tokens = injectionTokens.get(type);
+
+    if (tokens === undefined) {
+      fail(relativePath, `runtime probe requires explicit @Inject metadata for ${type.name}`);
+    }
+
+    return new type(...tokens.map((token) => dependencies.get(token)));
+  };
+  const authService = createInjectedInstance(service.AuthService, new Map([
+    [persistence.CREDENTIALS_VERIFIER, credentialsVerifier],
+    [JwtService, new JwtService()],
+    [RefreshTokenService, new RefreshTokenService()],
+  ]));
+  const authController = createInjectedInstance(controller.AuthController, new Map([
+    [service.AuthService, authService],
+  ]));
+
+  if (refreshStore.repository !== refreshRepository || credentialsVerifier.repository !== credentialsRepository || authController.authService !== authService) {
+    fail(relativePath, 'runtime probe could not instantiate the documented dependency graph');
+  }
+}
+
 function collectDiagnostics(files) {
   const compilerOptions = {
+    baseUrl: repoRoot,
     exactOptionalPropertyTypes: true,
+    ignoreDeprecations: '6.0',
     module: ts.ModuleKind.NodeNext,
     moduleResolution: ts.ModuleResolutionKind.NodeNext,
     noEmit: true,
     noUncheckedIndexedAccess: true,
     paths: {
-      '@fluojs/*': [workspacePublicTypes],
+      '@fluojs/*': [workspacePublicSources],
     },
     skipLibCheck: true,
     strict: true,
@@ -112,7 +330,9 @@ export function enforceJwtLearningPathModuleWiring(
   readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
 ) {
   for (const relativePath of chapterPaths) {
-    const diagnostics = collectDiagnostics(extractLearningFiles(relativePath, readText(relativePath)));
+    const files = extractLearningFiles(relativePath, readText(relativePath));
+    enforceExplicitModuleWiring(relativePath, files);
+    const diagnostics = collectDiagnostics(files);
 
     if (diagnostics.length > 0) {
       fail(
@@ -120,5 +340,7 @@ export function enforceJwtLearningPathModuleWiring(
         `must typecheck as the complete virtual JWT learning path:\n${diagnostics.join('\n')}`,
       );
     }
+
+    probeRuntimeModuleGraph(relativePath, files);
   }
 }

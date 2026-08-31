@@ -189,6 +189,7 @@ Refresh store는 데이터베이스 transaction과 retention policy를 소유하
 
 ```typescript
 // src/auth/auth.persistence.ts
+import { Inject } from '@fluojs/core';
 import type {
   RefreshTokenConsumeResult,
   RefreshTokenRecord,
@@ -200,6 +201,8 @@ export type { RefreshTokenStore } from '@fluojs/jwt';
 
 export const REFRESH_TOKEN_STORE = Symbol('REFRESH_TOKEN_STORE');
 export const CREDENTIALS_VERIFIER = Symbol('CREDENTIALS_VERIFIER');
+export const REFRESH_TOKEN_REPOSITORY = Symbol('REFRESH_TOKEN_REPOSITORY');
+export const CREDENTIALS_REPOSITORY = Symbol('CREDENTIALS_REPOSITORY');
 
 export interface RefreshTokenRepository {
   save(record: RefreshTokenRecord): Promise<void>;
@@ -210,6 +213,7 @@ export interface RefreshTokenRepository {
   rotate(input: RefreshTokenRotateInput): Promise<RefreshTokenConsumeResult>;
 }
 
+@Inject(REFRESH_TOKEN_REPOSITORY)
 export class DatabaseRefreshTokenStore implements RefreshTokenStore {
   constructor(private readonly repository: RefreshTokenRepository) {}
 
@@ -251,6 +255,7 @@ export interface CredentialsRepository {
   verify(email: string, password: string): Promise<AuthenticatedUser>;
 }
 
+@Inject(CREDENTIALS_REPOSITORY)
 export class DatabaseCredentialsVerifier implements CredentialsVerifier {
   constructor(private readonly repository: CredentialsRepository) {}
 
@@ -260,7 +265,7 @@ export class DatabaseCredentialsVerifier implements CredentialsVerifier {
 }
 ```
 
-JWT options factory가 실행되기 전에 globally visible한 persistence module에 해당 store를 등록하세요. Factory는 최종 store instance를 받고, 이후 `RefreshTokenService`를 constructor injection으로 사용할 수 있습니다. 이 예시는 database query를 application-owned `RefreshTokenRepository`에 남깁니다. 이 repository의 `rotate(...)` 구현이 유일한 transaction boundary입니다.
+JWT options factory가 실행되기 전에 application-owned repository token을 globally visible한 persistence module에 등록하세요. fluo는 constructor dependency를 추론하지 않으므로 `@Inject(...)`가 interface dependency를 명시적으로 선언합니다. Factory는 최종 store instance를 받고, 이후 `RefreshTokenService`를 constructor injection으로 사용할 수 있습니다. 이 예시는 database query를 `RefreshTokenRepository`에 남깁니다. 이 repository의 `rotate(...)` 구현이 유일한 transaction boundary입니다.
 
 ```typescript
 // src/auth/auth.service.ts
@@ -355,8 +360,10 @@ import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import {
   CREDENTIALS_VERIFIER,
+  CREDENTIALS_REPOSITORY,
   DatabaseCredentialsVerifier,
   DatabaseRefreshTokenStore,
+  REFRESH_TOKEN_REPOSITORY,
   REFRESH_TOKEN_STORE,
   type RefreshTokenStore,
 } from './auth.persistence.js';
@@ -374,15 +381,15 @@ function isRefreshTokenStore(value: unknown): value is RefreshTokenStore {
 @Module({
   global: true,
   providers: [
-    DatabaseRefreshTokenStore,
     {
       provide: REFRESH_TOKEN_STORE,
-      useExisting: DatabaseRefreshTokenStore,
+      useClass: DatabaseRefreshTokenStore,
+      inject: [REFRESH_TOKEN_REPOSITORY],
     },
-    DatabaseCredentialsVerifier,
     {
       provide: CREDENTIALS_VERIFIER,
-      useExisting: DatabaseCredentialsVerifier,
+      useClass: DatabaseCredentialsVerifier,
+      inject: [CREDENTIALS_REPOSITORY],
     },
   ],
   exports: [REFRESH_TOKEN_STORE, CREDENTIALS_VERIFIER],

@@ -189,6 +189,7 @@ The refresh store belongs to the application because it owns the database transa
 
 ```typescript
 // src/auth/auth.persistence.ts
+import { Inject } from '@fluojs/core';
 import type {
   RefreshTokenConsumeResult,
   RefreshTokenRecord,
@@ -200,6 +201,8 @@ export type { RefreshTokenStore } from '@fluojs/jwt';
 
 export const REFRESH_TOKEN_STORE = Symbol('REFRESH_TOKEN_STORE');
 export const CREDENTIALS_VERIFIER = Symbol('CREDENTIALS_VERIFIER');
+export const REFRESH_TOKEN_REPOSITORY = Symbol('REFRESH_TOKEN_REPOSITORY');
+export const CREDENTIALS_REPOSITORY = Symbol('CREDENTIALS_REPOSITORY');
 
 export interface RefreshTokenRepository {
   save(record: RefreshTokenRecord): Promise<void>;
@@ -210,6 +213,7 @@ export interface RefreshTokenRepository {
   rotate(input: RefreshTokenRotateInput): Promise<RefreshTokenConsumeResult>;
 }
 
+@Inject(REFRESH_TOKEN_REPOSITORY)
 export class DatabaseRefreshTokenStore implements RefreshTokenStore {
   constructor(private readonly repository: RefreshTokenRepository) {}
 
@@ -251,6 +255,7 @@ export interface CredentialsRepository {
   verify(email: string, password: string): Promise<AuthenticatedUser>;
 }
 
+@Inject(CREDENTIALS_REPOSITORY)
 export class DatabaseCredentialsVerifier implements CredentialsVerifier {
   constructor(private readonly repository: CredentialsRepository) {}
 
@@ -260,7 +265,7 @@ export class DatabaseCredentialsVerifier implements CredentialsVerifier {
 }
 ```
 
-Register that store in a globally visible persistence module before the JWT options factory runs. The factory receives the final store instance, and `RefreshTokenService` is then available for constructor injection. This example intentionally keeps database queries in the application-owned `RefreshTokenRepository`; its `rotate(...)` implementation is the single transaction boundary.
+Register the application-owned repository tokens in a globally visible persistence module before the JWT options factory runs. `@Inject(...)` declares those interface dependencies explicitly because fluo does not infer constructor dependencies. The factory receives the final store instance, and `RefreshTokenService` is then available for constructor injection. This example intentionally keeps database queries in `RefreshTokenRepository`; its `rotate(...)` implementation is the single transaction boundary.
 
 ```typescript
 // src/auth/auth.service.ts
@@ -355,8 +360,10 @@ import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import {
   CREDENTIALS_VERIFIER,
+  CREDENTIALS_REPOSITORY,
   DatabaseCredentialsVerifier,
   DatabaseRefreshTokenStore,
+  REFRESH_TOKEN_REPOSITORY,
   REFRESH_TOKEN_STORE,
   type RefreshTokenStore,
 } from './auth.persistence.js';
@@ -374,15 +381,15 @@ function isRefreshTokenStore(value: unknown): value is RefreshTokenStore {
 @Module({
   global: true,
   providers: [
-    DatabaseRefreshTokenStore,
     {
       provide: REFRESH_TOKEN_STORE,
-      useExisting: DatabaseRefreshTokenStore,
+      useClass: DatabaseRefreshTokenStore,
+      inject: [REFRESH_TOKEN_REPOSITORY],
     },
-    DatabaseCredentialsVerifier,
     {
       provide: CREDENTIALS_VERIFIER,
-      useExisting: DatabaseCredentialsVerifier,
+      useClass: DatabaseCredentialsVerifier,
+      inject: [CREDENTIALS_REPOSITORY],
     },
   ],
   exports: [REFRESH_TOKEN_STORE, CREDENTIALS_VERIFIER],
