@@ -489,7 +489,7 @@ JSON report에는 `mode`(`dry-run` 또는 `apply`), `dryRun`, `apply`, 활성화
 
 Codemod는 import 재작성, `@Injectable()` 제거, provider scope 매핑, constructor parameter `@Inject(...)` 사용 migration, 지원되는 bootstrap/listen 패턴 재작성, test template의 `@fluojs/testing` helper 방향 갱신, decorator compiler flag 갱신, `baseUrl` path alias 설정 재작성을 수행할 수 있습니다. 그래도 수동 검토는 필요합니다. 마이그레이션을 수락하기 전에 모든 warning category를 post-codemod checklist 항목으로 처리하세요.
 
-`@Injectable()`을 제거할 때 codemod는 필요한 `import type` binding을 유지하면서 NestJS runtime import는 남기지 않습니다. 남아 있는 non-type `@nestjs/common` import는 codemod가 변환하지 않은 NestJS runtime API를 사용한다는 뜻이므로 NestJS runtime dependency를 제거하기 전에 해당 API를 수동으로 마이그레이션하세요.
+`@Injectable()`을 제거할 때 codemod는 필요한 `import type` binding을 유지하면서 NestJS runtime import는 남기지 않습니다. 남아 있는 모든 `@nestjs/common` import는 수동으로 검증하세요. 계속 사용하는 type 또는 value에만 import를 유지하고, NestJS dependency를 제거하기 전에 해당 import를 마이그레이션하거나 제거하세요.
 
 ## Related Docs
 

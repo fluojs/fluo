@@ -27,6 +27,7 @@ function createMigrationFixture(): string {
   temporaryDirectories.push(workspaceDirectory);
 
   mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+  writeFileSync(join(workspaceDirectory, 'package.json'), '{"type":"module"}\n');
 
   writeFileSync(
     join(workspaceDirectory, 'src', 'main.ts'),
@@ -44,10 +45,30 @@ void bootstrap();
 
   writeFileSync(
     join(workspaceDirectory, 'src', 'users.service.ts'),
-    `import { Injectable, Scope, type OnModuleInit } from '@nestjs/common';
+    `import { Injectable, Scope } from '@nestjs/common';
+import type { OnModuleInit } from '@nestjs/common';
 
 @Injectable({ scope: Scope.REQUEST })
 export class UsersService implements OnModuleInit {
+  onModuleInit(): void {}
+}
+`,
+  );
+
+  writeFileSync(
+    join(workspaceDirectory, 'src', 'type-only-controller.ts'),
+    `import type { Controller } from '@nestjs/common';
+
+export type ControllerContract = Controller;
+`,
+  );
+
+  writeFileSync(
+    join(workspaceDirectory, 'src', 'type-only-provider.ts'),
+    `import { Injectable, type OnModuleInit } from '@nestjs/common';
+
+@Injectable()
+export class TypeOnlyProvider implements OnModuleInit {
   onModuleInit(): void {}
 }
 `,
@@ -121,7 +142,7 @@ describe('runNestJsMigration', () => {
       targetPath: workspaceDirectory,
     });
 
-    expect(report.scannedFiles).toBeGreaterThanOrEqual(5);
+    expect(report.scannedFiles).toBeGreaterThanOrEqual(7);
     expect(report.changedFiles).toBeGreaterThan(0);
     expect(report.warningCount).toBeGreaterThan(0);
     expect(readFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'utf8')).toBe(beforeMain);
@@ -139,6 +160,8 @@ describe('runNestJsMigration', () => {
     const mainContent = readFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'utf8');
     const serviceContent = readFileSync(join(workspaceDirectory, 'src', 'users.service.ts'), 'utf8');
     const testContent = readFileSync(join(workspaceDirectory, 'src', 'users.spec.ts'), 'utf8');
+    const typeOnlyControllerContent = readFileSync(join(workspaceDirectory, 'src', 'type-only-controller.ts'), 'utf8');
+    const typeOnlyProviderContent = readFileSync(join(workspaceDirectory, 'src', 'type-only-provider.ts'), 'utf8');
     const tsconfigContent = readFileSync(join(workspaceDirectory, 'tsconfig.json'), 'utf8');
     const tsconfig = JSON.parse(tsconfigContent) as {
       compilerOptions?: {
@@ -154,7 +177,9 @@ describe('runNestJsMigration', () => {
     expect(serviceContent).toMatch(/@Scope\(("|')request\1\)/);
     expect(serviceContent).not.toContain('@Injectable');
     expect(serviceContent).toContain("from \"@fluojs/core\"");
-    expect(serviceContent).toMatch(/import \{ type OnModuleInit \} from ['"]@nestjs\/common['"];/);
+    expect(serviceContent).toMatch(/import type \{ OnModuleInit \} from ['"]@nestjs\/common['"];/);
+    expect(typeOnlyControllerContent).toMatch(/import type \{ Controller \} from ['"]@fluojs\/http['"];/);
+    expect(typeOnlyProviderContent).toMatch(/import type \{ OnModuleInit \} from ['"]@nestjs\/common['"];/);
     expect(testContent).toContain("from \"@fluojs/testing\"");
     expect(testContent).toMatch(/createTestingModule\(\{[\s\S]*rootModule:\s*UsersModule[\s\S]*\}\)/);
     expect(testContent).not.toContain('Test.createTestingModule');
@@ -166,32 +191,18 @@ describe('runNestJsMigration', () => {
       '@health': ['src/health/health.module.ts'],
     });
 
-    const nestTypesDirectory = join(workspaceDirectory, 'node_modules', '@nestjs', 'common');
-    mkdirSync(nestTypesDirectory, { recursive: true });
-    writeFileSync(join(nestTypesDirectory, 'index.d.ts'), 'export interface OnModuleInit { onModuleInit(): void; }\n');
-
-    const fluoTypesDirectory = join(workspaceDirectory, 'node_modules', '@fluojs', 'core');
-    mkdirSync(fluoTypesDirectory, { recursive: true });
-    writeFileSync(join(fluoTypesDirectory, 'index.d.ts'), 'export declare function Scope(scope: string): ClassDecorator;\n');
-
-    const outputDirectory = join(workspaceDirectory, 'compiled');
-    const program = ts.createProgram([join(workspaceDirectory, 'src', 'users.service.ts')], {
-      experimentalDecorators: true,
-      module: ts.ModuleKind.NodeNext,
-      moduleResolution: ts.ModuleResolutionKind.NodeNext,
-      noEmitOnError: true,
-      outDir: outputDirectory,
-      skipLibCheck: true,
-      target: ts.ScriptTarget.ES2022,
+    const emittedTypeOnlyProvider = ts.transpileModule(typeOnlyProviderContent, {
+      compilerOptions: {
+        module: ts.ModuleKind.ESNext,
+        target: ts.ScriptTarget.ES2022,
+        verbatimModuleSyntax: true,
+      },
+      fileName: 'type-only-provider.ts',
+      reportDiagnostics: true,
     });
-    const diagnostics = ts.getPreEmitDiagnostics(program);
-    const emitResult = program.emit();
-    const compiledService = readFileSync(join(outputDirectory, 'users.service.js'), 'utf8');
 
-    expect(diagnostics).toEqual([]);
-    expect(emitResult.emitSkipped).toBe(false);
-    expect(compiledService).toContain('@fluojs/core');
-    expect(compiledService).not.toContain('@nestjs/common');
+    expect(emittedTypeOnlyProvider.diagnostics).toEqual([]);
+    expect(emittedTypeOnlyProvider.outputText).not.toContain('@nestjs/common');
 
     const secondReport = runNestJsMigration({
       apply: true,
@@ -200,6 +211,74 @@ describe('runNestJsMigration', () => {
     });
 
     expect(secondReport.changedFiles).toBe(0);
+  });
+
+  it('keeps a clause-level type-only import type-only after migration', () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
+    temporaryDirectories.push(workspaceDirectory);
+    const sourceFilePath = join(workspaceDirectory, 'controller.ts');
+    writeFileSync(sourceFilePath, "import type { Controller } from '@nestjs/common';\n");
+
+    runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(['imports']),
+      targetPath: sourceFilePath,
+    });
+
+    const migratedSource = readFileSync(sourceFilePath, 'utf8');
+    expect(migratedSource).toMatch(/import type \{ Controller \} from ['"]@fluojs\/http['"];/);
+  });
+
+  it('preserves type specifiers in a mixed type and value import clause', () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
+    temporaryDirectories.push(workspaceDirectory);
+    const sourceFilePath = join(workspaceDirectory, 'module.ts');
+    writeFileSync(sourceFilePath, "import { type Controller, Module } from '@nestjs/common';\n");
+
+    runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(['imports']),
+      targetPath: sourceFilePath,
+    });
+
+    const migratedSource = readFileSync(sourceFilePath, 'utf8');
+    expect(migratedSource).toMatch(/import type \{ Controller \} from ['"]@fluojs\/http['"];/);
+    expect(migratedSource).toMatch(/import \{ Module \} from ['"]@fluojs\/core['"];/);
+  });
+
+  it('drops an emptied type-only Nest import under verbatim module syntax', () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
+    temporaryDirectories.push(workspaceDirectory);
+    const sourceFilePath = join(workspaceDirectory, 'provider.ts');
+    writeFileSync(
+      sourceFilePath,
+      `import { type Injectable } from '@nestjs/common';
+
+@Injectable()
+export class Provider {}
+`,
+    );
+
+    runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(['injectable']),
+      targetPath: sourceFilePath,
+    });
+
+    const migratedSource = readFileSync(sourceFilePath, 'utf8');
+    const emitted = ts.transpileModule(migratedSource, {
+      compilerOptions: {
+        module: ts.ModuleKind.ESNext,
+        target: ts.ScriptTarget.ES2022,
+        verbatimModuleSyntax: true,
+      },
+      fileName: sourceFilePath,
+      reportDiagnostics: true,
+    });
+
+    expect(migratedSource).not.toMatch(/import\s*\{\s*\}\s*from\s*['"]@nestjs\/common['"];/);
+    expect(emitted.diagnostics).toEqual([]);
+    expect(emitted.outputText).not.toContain('@nestjs/common');
   });
 
   it('supports --only/--skip equivalent transform filtering', () => {

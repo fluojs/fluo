@@ -175,7 +175,7 @@ function getImportBindings(importDeclaration: ts.ImportDeclaration): ImportBindi
 
   return importClause.namedBindings.elements.map((element) => ({
     imported: (element.propertyName ?? element.name).text,
-    isTypeOnly: element.isTypeOnly,
+    isTypeOnly: importClause.isTypeOnly || element.isTypeOnly,
     local: element.name.text,
   }));
 }
@@ -206,11 +206,14 @@ function updateNamedImports(importDeclaration: ts.ImportDeclaration, bindings: I
     return undefined;
   }
 
+  const isTypeOnlyClause = importClause.isTypeOnly || (!importClause.name && bindings.length > 0 && bindings.every((binding) => binding.isTypeOnly));
   const updatedClause = ts.factory.updateImportClause(
     importClause,
-    importClause.isTypeOnly,
+    isTypeOnlyClause,
     importClause.name,
-    bindings.length > 0 ? ts.factory.createNamedImports(bindings.map(createImportSpecifier)) : undefined,
+    bindings.length > 0
+      ? ts.factory.createNamedImports(bindings.map((binding) => createImportSpecifier({ ...binding, isTypeOnly: isTypeOnlyClause ? false : binding.isTypeOnly })))
+      : undefined,
   );
 
   return ts.factory.updateImportDeclaration(
@@ -252,12 +255,14 @@ function mergeNamedImport(statements: ts.Statement[], moduleSpecifier: string, n
     return updated;
   }
 
+  const bindings = [...deduped.values()].sort((left, right) => left.local.localeCompare(right.local));
+  const isTypeOnlyClause = bindings.every((binding) => binding.isTypeOnly);
   const importDeclaration = ts.factory.createImportDeclaration(
     undefined,
     ts.factory.createImportClause(
-      false,
+      isTypeOnlyClause,
       undefined,
-      ts.factory.createNamedImports([...deduped.values()].sort((left, right) => left.local.localeCompare(right.local)).map(createImportSpecifier)),
+      ts.factory.createNamedImports(bindings.map((binding) => createImportSpecifier({ ...binding, isTypeOnly: isTypeOnlyClause ? false : binding.isTypeOnly }))),
     ),
     ts.factory.createStringLiteral(moduleSpecifier),
   );
