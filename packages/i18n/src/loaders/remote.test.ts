@@ -59,6 +59,31 @@ describe('@fluojs/i18n/loaders/remote', () => {
     expect(Object.isFrozen(catalog.nested)).toBe(true);
   });
 
+  it('preserves own __proto__ message keys from remote provider catalogs', async () => {
+    // Given: a provider result with an own message key that collides with Object.prototype.
+    const providerCatalog: I18nMessageTree = {};
+    Object.defineProperty(providerCatalog, '__proto__', { enumerable: true, value: 'Prototype-safe' });
+    const loader = createRemoteI18nLoader({ provider: () => providerCatalog });
+
+    // When: the remote loader snapshots that catalog.
+    const catalog = await loader.load('en', 'common');
+
+    // Then: the valid own key remains a frozen catalog entry.
+    expect(Object.hasOwn(catalog, '__proto__')).toBe(true);
+    expect(catalog.__proto__).toBe('Prototype-safe');
+    expect(Object.isFrozen(catalog)).toBe(true);
+  });
+
+  it('rejects cyclic remote provider catalogs with the stable invalid catalog code', async () => {
+    // Given: a provider result whose nested catalog tree refers to itself.
+    const providerCatalog: Record<string, string | I18nMessageTree> = {};
+    providerCatalog.self = providerCatalog;
+    const loader = createRemoteI18nLoader({ provider: () => providerCatalog });
+
+    // When/Then: loader validation reports the documented error instead of overflowing recursion.
+    await expectI18nRejection(() => loader.load('en', 'common'), 'I18N_INVALID_CATALOG');
+  });
+
   it('loads remote JSON string catalogs into immutable message trees', async () => {
     const loader = new RemoteI18nLoader({
       provider: () => JSON.stringify({ title: 'Welcome' }),
