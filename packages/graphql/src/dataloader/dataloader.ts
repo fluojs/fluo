@@ -18,9 +18,8 @@ export function getRequestScopedDataLoader<TLoader>(
   const cache = context[GRAPHQL_REQUEST_SCOPED_LOADER_CACHE] ?? new Map<string | symbol, unknown>();
   context[GRAPHQL_REQUEST_SCOPED_LOADER_CACHE] = cache;
 
-  const existing = cache.get(key);
-  if (existing !== undefined) {
-    return existing as TLoader;
+  if (cache.has(key)) {
+    return cache.get(key) as TLoader;
   }
 
   const created = createLoader();

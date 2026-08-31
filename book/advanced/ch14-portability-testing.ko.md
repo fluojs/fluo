@@ -132,9 +132,11 @@ await harness.assertAll();
 
 이는 플랫폼 지향 컴포넌트를 작성하는 사람이 공개 컴포넌트 계약에 대해 자신의 작업을 즉시 검증할 수 있게 합니다. 또한 어댑터 및 도구 작성자를 위한 기대 동작 문서 역할도 합니다.
 
+`PlatformShell` lifecycle ownership은 컴포넌트 수준 `assertAll()`과 의도적으로 분리됩니다. 플랫폼 패키지 suite는 `@fluojs/testing/platform-shell-lifecycle-conformance`의 `createPlatformShellLifecycleConformanceHarness({ createShell })`를 사용하여 겹치는 `start()` / `stop()`의 네 가지 조합이 모두 `PlatformLifecycleConflictError`로 거부됨을, callback reentry가 임의의 await 전후에도 conflict-safe하게 유지됨을, 실패한 transition이 settle된 후에만 호출자가 재시도할 수 있음을 입증합니다.
+
 ### Conformance Testing for Library Authors
 
-커스텀 유효성 검사 파이프나 로깅 인터셉터처럼 fluo를 확장하는 라이브러리를 개발한다면 사용자에게 게시하는 계약을 설명하는 테스트를 여전히 제공해야 합니다. `@fluojs/testing`은 현재 platform, HTTP adapter, web-runtime adapter, fetch-style WebSocket 계약을 위한 구체적인 harness subpath를 배포합니다. 전용 pipe/interceptor/library conformance harness는 아직 공개 표면에 포함되어 있지 않으므로, custom library 저자는 존재하지 않는 공유 하네스에 의존하지 말고 이러한 패턴을 참고해 자신의 패키지 테스트를 작성해야 합니다.
+커스텀 유효성 검사 파이프나 로깅 인터셉터처럼 fluo를 확장하는 라이브러리를 개발한다면 사용자에게 게시하는 계약을 설명하는 테스트를 여전히 제공해야 합니다. `@fluojs/testing`은 현재 플랫폼 컴포넌트, PlatformShell lifecycle ownership, HTTP adapter, web-runtime adapter, fetch-style WebSocket 계약을 위한 구체적인 harness subpath를 배포합니다. 전용 pipe/interceptor/library conformance harness는 아직 공개 표면에 포함되어 있지 않으므로, custom library 저자는 존재하지 않는 공유 하네스에 의존하지 말고 이러한 패턴을 참고해 자신의 패키지 테스트를 작성해야 합니다.
 
 `@fluojs/testing/platform-conformance`와 다른 배포된 harness subpath에서 사용하는 명시적 단언 스타일을 따르면 사용자에게 표준화된 통합 검증 방법을 제공할 수 있습니다. 이는 생태계의 신뢰성을 높이고 사용자와의 신뢰를 쌓는 데 도움이 됩니다. 테스트의 일관성은 동작의 일관성으로 이어지며, 이것이 fluo 프레임워크가 지향하는 핵심 목표입니다. 새로운 확장 패턴에 공유 적합성 영역이 필요하다면, 먼저 패키지 소유 테스트와 RFC에서 시작해 향후 공개 하네스의 범위를 명확하게 설계하세요.
 

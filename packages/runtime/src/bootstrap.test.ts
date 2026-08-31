@@ -1493,6 +1493,45 @@ describe('FluoFactory.createApplicationContext', () => {
     expect(siblingOnDestroy).toHaveBeenCalledOnce();
   });
 
+  it('retries only failed container-managed onDestroy hooks on a second application close', async () => {
+    let failedAttempts = 0;
+    const failedOnDestroy = vi.fn(() => {
+      failedAttempts += 1;
+
+      if (failedAttempts === 1) {
+        throw new Error('application container destroy failed');
+      }
+    });
+    const siblingOnDestroy = vi.fn();
+
+    class FailingResource {
+      onDestroy = failedOnDestroy;
+    }
+
+    class SiblingResource {
+      onDestroy = siblingOnDestroy;
+    }
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {
+      providers: [FailingResource, SiblingResource],
+    });
+
+    const app = await FluoFactory.create(AppModule);
+    await app.get(FailingResource);
+    await app.get(SiblingResource);
+
+    // Given: an application whose container-managed onDestroy hook fails once.
+    // When: the first close attempt reports that failure.
+    await expect(app.close()).rejects.toThrow('application container destroy failed');
+
+    // Then: a later close retries only the failed hook and reaches a stable closed application.
+    await expect(app.close()).resolves.toBeUndefined();
+    expect(failedOnDestroy).toHaveBeenCalledTimes(2);
+    expect(siblingOnDestroy).toHaveBeenCalledOnce();
+    expect(app.state).toBe('closed');
+  });
+
   it('rejects ApplicationContext.get() as soon as shutdown starts while teardown is pending', async () => {
     const shutdownCanFinish = createDeferred<void>();
 

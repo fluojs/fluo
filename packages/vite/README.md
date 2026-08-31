@@ -60,6 +60,9 @@ The plugin transforms `.ts` application files with Babel using the `2023-11` dec
 2. The Vite plugin strips query suffixes, accepts only application `.ts` files, lazily loads Babel on the first eligible transform, and runs `@babel/plugin-proposal-decorators` with `{ version: '2023-11' }` plus `@babel/preset-typescript`.
 3. `vitest.config.ts` imports `fluoBabelDecoratorsPlugin()` from `@fluojs/testing/vitest`, so `*.test.ts` and `*.spec.ts` files stay on the testing-specific transform path.
 
+The React SSR + Vite starter keeps its decorator-bearing application declarations in `src/app.ts`;
+JSX rendering remains in `.tsx` modules such as `src/page.tsx`.
+
 Keep those boundaries separate when customizing generated projects. Re-enabling `experimentalDecorators`, relying on direct esbuild decorator handling, or routing test files through the Vite application transform is outside the documented fluo support contract.
 
 ## Public API

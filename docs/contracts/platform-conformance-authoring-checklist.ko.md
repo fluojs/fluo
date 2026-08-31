@@ -13,6 +13,7 @@
 ## Conformance Harness Requirements
 
 - [ ] MUST: 플랫폼 컴포넌트 계약 검사를 위해 `@fluojs/testing/platform-conformance`의 `createPlatformConformanceHarness(...)`를 실행합니다.
+- [ ] MUST: PlatformShell lifecycle exclusivity 검사를 위해 `@fluojs/testing/platform-shell-lifecycle-conformance`의 `createPlatformShellLifecycleConformanceHarness(...)`를 실행합니다.
 - [ ] MUST: `validate()`가 컴포넌트 상태를 전이시키지 않는지 검증합니다.
 - [ ] MUST: side-effect capture를 설정한 경우 `validate()`가 장기 지속 부수 효과를 만들지 않는지 검증합니다.
 - [ ] MUST: `start()`가 중복 호출에서도 결정론적인지 검증합니다.

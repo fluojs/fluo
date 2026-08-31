@@ -8,6 +8,7 @@ Class-based response serialization and output shaping for fluo with decorator-aw
 
 - [Installation](#installation)
 - [When to Use](#when-to-use)
+- [Decorator Metadata Preload](#decorator-metadata-preload)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
 - [Public API Overview](#public-api-overview)
@@ -26,6 +27,18 @@ pnpm add @fluojs/serialization
 - when sensitive values such as password hashes or internal identifiers must never leave the response boundary
 - when response data needs lightweight synchronous transforms during serialization
 - when you want an HTTP interceptor to apply the same serialization rules automatically
+
+## Decorator Metadata Preload
+
+`@fluojs/serialization` does not install `Symbol.metadata` as an import side effect. When your target runtime does not provide it natively, install it before importing any module that evaluates classes decorated with `@Expose()`, `@Exclude()`, or `@Transform()`:
+
+```ts
+// preload.ts — configure this as the application entrypoint
+import { ensureMetadataSymbol } from '@fluojs/core';
+
+ensureMetadataSymbol();
+await import('./bootstrap.js');
+```
 
 ## Quick Start
 
@@ -84,6 +97,7 @@ class ProductDto {
 ```
 
 When the same field is decorated in a base class and a derived class, transforms run in declaration order from base to derived.
+`TransformFunction` is a synchronous `(value: unknown) => unknown` callback: it receives only the current field value, so use it for value-only transforms rather than async work or access to the DTO, property metadata, or serialization context.
 
 ### HTTP response shaping with an interceptor
 
@@ -121,6 +135,7 @@ The serializer cuts active cyclic references safely instead of recursing forever
 ### Inherited decorator contracts
 
 Serialization metadata declared on a base class is inherited by derived DTOs. `@Expose()`, `@Exclude()`, and `@Transform()` rules applied to shared base fields still take effect when you serialize subclass instances.
+Derived decorators own their metadata updates, so overriding a field or class option never changes the later serialization of the base DTO or a sibling DTO.
 
 Class-level `excludeExtraneous` also follows normal inheritance. A derived class with `@Expose()` and no options keeps the nearest inherited setting, so an expose-only base DTO remains expose-only in subclasses. Use `@Expose({ excludeExtraneous: false })` on the derived class only when you intentionally want to re-enable ordinary enumerable fields while still honoring inherited field-level `@Exclude()` metadata.
 

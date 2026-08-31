@@ -952,7 +952,7 @@ This excerpt shows that a failed Token lookup doesn't end as a simple `undefined
 
 `RequestScopeResolutionError` is raised from `cacheFor()` and `multiCacheFor()` when a request-scoped Provider is resolved outside a request Scope. The basis is `path:packages/di/src/container.ts:958-970` and `path:packages/di/src/container.ts:981-993`. This is a runtime error, but it describes an architectural violation rather than a simple construction failure.
 
-`ScopeMismatchError` is the next layer of validation. `assertSingletonDependencyScopes()` and its recursive helpers in `path:packages/di/src/container.ts:1234-1306` walk the dependency graph before singleton creation and reject a path that reaches a request-scoped Provider. Because the traversal follows effective Providers, wrappers, nested dependencies, and class metadata, the same rule applies through aliases and transitive edges.
+`ScopeMismatchError` is the next layer of validation. `assertSingletonDependencyScopes()` and its recursive helpers in `path:packages/di/src/container.ts:1234-1306` walk the dependency graph before singleton creation and reject a path that reaches a request-scoped Provider. Because the traversal follows effective Providers, multi-Provider contributions, wrappers, nested dependencies, and class metadata, the same rule applies through aliases, multi Tokens, and transitive edges.
 
 The singleton dependency Scope check runs before the Provider is created.
 
@@ -978,7 +978,7 @@ The singleton dependency Scope check runs before the Provider is created.
   }
 ```
 
-This check inspects the dependency graph before a singleton Provider is made. The recursive helpers catch request-scoped Providers behind aliases, nested dependencies, wrappers, and unregistered class metadata.
+This check inspects the dependency graph before a singleton Provider is made. The recursive helpers catch request-scoped Providers behind aliases, multi-Provider contributions, nested dependencies, wrappers, and unregistered class metadata.
 
 `CircularDependencyError` is intentionally explicit. Its constructor in `path:packages/di/src/errors.ts:106-125` includes the full chain and a first-party hint recommending shared-logic extraction or `forwardRef()` use. That recovery advice is rooted in the standard resolution model.
 

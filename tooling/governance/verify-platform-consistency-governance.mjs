@@ -9,6 +9,9 @@ import { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecyc
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 import { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 import { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
+
+const contractDiscoverabilityCompanions = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
+
 import {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
@@ -17,6 +20,7 @@ import { enforcePassportJsBridgeNestjsMigration } from './passport-js-bridge-nes
 import { enforcePlatformShellLifecycleContract } from './platform-shell-lifecycle-contract.mjs';
 import { enforceReactPageCatalogContract } from './react-page-catalog-contract.mjs';
 import { enforceReactRscGraduationGovernance } from './react-rsc-graduation-policy.mjs';
+import { enforceRequestPipelineImportBoundary } from './request-pipeline-import-boundary.mjs';
 import { enforceRuntimeLifecycleNestjsMigrationDocs } from './runtime-lifecycle-nestjs-migration-docs.mjs';
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
@@ -36,6 +40,7 @@ export {
   enforceReactRscGraduationGovernance,
   enforceReactRscGraduationPolicy,
 } from './react-rsc-graduation-policy.mjs';
+export { enforceRequestPipelineImportBoundary } from './request-pipeline-import-boundary.mjs';
 export { enforceRuntimeLifecycleNestjsMigrationDocs } from './runtime-lifecycle-nestjs-migration-docs.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
@@ -70,6 +75,76 @@ export function enforceSocketIoNodeEngineAlignment(readText = read) {
     assert(
       manifest.engines?.node === canonicalNodeRange,
       `${packageName} engines.node must equal the canonical @fluojs/runtime range ${canonicalNodeRange}.`,
+    );
+  }
+}
+
+export function enforcePlatformFastifyEngineDocumentation(readText = read) {
+  const manifest = JSON.parse(readText('packages/platform-fastify/package.json'));
+  const engineRange = manifest.engines?.node;
+
+  assert(
+    typeof engineRange === 'string' && engineRange.length > 0,
+    '@fluojs/platform-fastify must declare engines.node.',
+  );
+
+  for (const relativePath of [
+    'apps/docs/content/docs/guides/runtime-adapters.mdx',
+    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+  ]) {
+    const content = readText(relativePath);
+    const fastifyHeadingMatches = [...content.matchAll(/^## Fastify\s*$/gmu)];
+
+    assert(
+      fastifyHeadingMatches.length === 1,
+      `${relativePath} must include exactly one ## Fastify heading; found ${fastifyHeadingMatches.length}.`,
+    );
+
+    const fastifySectionStart = fastifyHeadingMatches[0].index;
+    const nextSectionStart = content.indexOf('\n## ', fastifySectionStart + 1);
+    const fastifySection = content.slice(
+      fastifySectionStart,
+      nextSectionStart === -1 ? undefined : nextSectionStart,
+    );
+
+    assert(
+      fastifySection.includes(`\`${engineRange}\``),
+      `${relativePath} Fastify section must state @fluojs/platform-fastify engines.node ${engineRange}.`,
+    );
+  }
+}
+
+export function enforcePlatformNodejsEngineDocumentation(readText = read) {
+  const manifest = JSON.parse(readText('packages/platform-nodejs/package.json'));
+  const engineRange = manifest.engines?.node;
+
+  assert(
+    typeof engineRange === 'string' && engineRange.length > 0,
+    '@fluojs/platform-nodejs must declare engines.node.',
+  );
+
+  for (const relativePath of [
+    'apps/docs/content/docs/guides/runtime-adapters.mdx',
+    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+  ]) {
+    const content = readText(relativePath);
+    const headingMatches = [...content.matchAll(/^## Raw Node\.js\s*$/gmu)];
+
+    assert(
+      headingMatches.length === 1,
+      `${relativePath} must include exactly one ## Raw Node.js heading; found ${headingMatches.length}.`,
+    );
+    const sectionStart = headingMatches[0].index;
+
+    const nextSectionStart = content.indexOf('\n## ', sectionStart + 1);
+    const rawNodeSection = content.slice(
+      sectionStart,
+      nextSectionStart === -1 ? undefined : nextSectionStart,
+    );
+
+    assert(
+      rawNodeSection.includes(`\`${engineRange}\``),
+      `${relativePath} Raw Node.js section must state @fluojs/platform-nodejs engines.node ${engineRange}.`,
     );
   }
 }
@@ -111,6 +186,7 @@ const ssotPairs = [
   ['docs/contracts/react-rsc-graduation.md', 'docs/contracts/react-rsc-graduation.ko.md'],
   ['docs/contracts/release-governance.md', 'docs/contracts/release-governance.ko.md'],
   ['docs/contracts/platform-conformance-authoring-checklist.md', 'docs/contracts/platform-conformance-authoring-checklist.ko.md'],
+  ['docs/getting-started/migrate-from-nestjs.md', 'docs/getting-started/migrate-from-nestjs.ko.md'],
   ['docs/reference/package-folder-structure.md', 'docs/reference/package-folder-structure.ko.md'],
   ['docs/reference/package-surface.md', 'docs/reference/package-surface.ko.md'],
 ];
@@ -142,6 +218,8 @@ const contractGateTriggers = new Set([
   'docs/architecture/http-runtime.ko.md',
   'docs/contracts/deployment.md',
   'docs/contracts/deployment.ko.md',
+  // These shared files intentionally use only the generic contract gate; topic-specific prose
+  // must not impose unrelated companion-document requirements.
   'docs/contracts/nestjs-parity-gaps.md',
   'docs/contracts/nestjs-parity-gaps.ko.md',
   // Includes Bun fetch-style lifecycle, synchronous manual fetch-host ownership,
@@ -364,6 +442,35 @@ function assert(condition, message) {
 
 function read(relativePath) {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
+}
+
+export function enforceCliMigrationTransformDocs(readText = read) {
+  const transformSource = readText('packages/cli/src/transforms/nestjs-migrate.ts');
+  const transformList = /export const MIGRATION_TRANSFORMS = \[([\s\S]*?)\] as const;/u.exec(transformSource);
+  assert(transformList?.[1], 'unable to read the CLI migration transform declarations.');
+
+  const supportedTransforms = new Set([...transformList[1].matchAll(/'([^']+)'/gu)].map((match) => match[1]));
+  assert(supportedTransforms.size > 0, 'CLI migration transform declarations must not be empty.');
+
+  const migrationDocs = [
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'packages/cli/README.md',
+    'packages/cli/README.ko.md',
+  ];
+
+  for (const relativePath of migrationDocs) {
+    const markdown = readText(relativePath);
+    const selections = [...markdown.matchAll(/--(?:only|skip)\s+([a-z]+(?:,[a-z]+)*)/gu)];
+    for (const selection of selections) {
+      for (const transform of selection[1].split(',')) {
+        assert(
+          supportedTransforms.has(transform),
+          `documented migration transform "${transform}" in ${relativePath} is not supported by the CLI.`,
+        );
+      }
+    }
+  }
 }
 
 function hasOneArgumentGuardContextContract(markdown) {
@@ -737,6 +844,8 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // serialization class options, committed-response ownership bypass, and
   // request-boundary interceptor coverage, CLI
   // public runtime type boundaries plus the documented Node.js runtime floor,
+  // custom standard-decorator Symbol.metadata preload ordering before dynamic
+  // application-graph import,
   // and Studio live helper contracts such as deterministic Mermaid rendering,
   // route-id graph correlation, viewer dependency classification, Node.js
   // tooling runtime-floor discoverability, and CLI-owned active ingestion socket
@@ -791,10 +900,15 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // fetch-style runtimes do not apply a backpressure policy to room broadcasts),
   // plus terminal Node upgrade admission and retained disconnect lifecycle state
   // across the bounded cross-runtime shutdown drain, plus HTTP request-observer
-  // success ordering after module and application middleware fully settle.
+  // success ordering after module and application middleware fully settle,
+  // plus @nestjs/config migration call-shape and bootstrap ownership boundaries
+  // where ConfigModule never reads external secret Providers itself and
+  // ConfigService.get/getOrThrow accept a single key with no NestJS
+  // default-value or options overload, plus JWT refresh-token-specific HMAC
+  // algorithm policy separation from narrow access-token algorithm allowlists.
 
   assert(
-    hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
+    contractDiscoverabilityCompanions.every((path) => hasChanged(changedFiles, path)),
     'contract-governing doc updates must include docs/CONTEXT.md and docs/CONTEXT.ko.md discoverability updates.',
   );
   assert(
@@ -2857,6 +2971,7 @@ export function main() {
   enforceReleaseGovernancePublishSurfaceSync();
   enforceCanonicalPackageSurfaceSync();
   enforceSocketIoNodeEngineAlignment();
+  enforcePlatformFastifyEngineDocumentation();
   enforceDocsHubOfficialTransportLinks();
   enforceDenoHostOwnedLifecycleContract();
   enforceDenoPermissionGuidance();
@@ -2865,6 +2980,7 @@ export function main() {
   enforceCloudflareWorkersLifecycleDocsSync();
   enforcePlatformShellLifecycleContract();
   enforceConfigNestjsMigrationDocs();
+  enforceCliMigrationTransformDocs();
   enforceJwtAsyncRegistrationContract();
   enforceRuntimeLifecycleNestjsMigrationDocs();
   enforcePassportJsBridgeNestjsMigration();
@@ -2888,10 +3004,12 @@ export function main() {
   enforceHttpCatchAllRouteGrammarDecision();
   enforceOpenApiNullableNormalizationContract();
   enforceGraphqlRuntimeBoundaryDiscoverability();
+  enforceRequestPipelineImportBoundary();
   enforcePersistenceTransactionInterceptorCompatibility();
   enforceQueueWorkerOwnershipContract();
   enforceMicroservicesSafetyGuidanceParity();
   enforceMicroservicesSafetyRuntimeEvidence();
+  enforcePlatformNodejsEngineDocumentation();
   enforceAdvancedBookCoreBoundaryCompanions(changedFiles);
   enforceContractCompanionUpdates(changedFiles);
   enforceAlignmentClaimsBackedByHarness(changedFiles);

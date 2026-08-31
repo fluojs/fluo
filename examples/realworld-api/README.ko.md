@@ -7,7 +7,7 @@
 ## 이 예제가 보여주는 것
 
 - `imports` / `exports`를 사용한 다중 모듈 조합
-- `ConfigModule.forRoot`을 통한 타입 안전 설정
+- `ConfigModule.forRoot`을 통한 타입 안전 설정. `envFilePaths: ['.env', '.env.local']`로 명시적인 순서 다중 env file loading을 포함합니다
 - `@fluojs/validation` 데코레이터를 사용한 Request DTO 검증
 - 명시적 DI 토큰을 사용한 Repository 패턴
 - 런타임 소유 `/health`, `/ready` + 도메인 `/users` CRUD 표면

@@ -132,9 +132,11 @@ await harness.assertAll();
 
 This lets someone writing a platform-facing component immediately validate their work against the public component contract. It also acts as expected-behavior documentation for adapter and tooling authors.
 
+`PlatformShell` lifecycle ownership is intentionally separate from component-level `assertAll()`. Platform package suites use `createPlatformShellLifecycleConformanceHarness({ createShell })` from `@fluojs/testing/platform-shell-lifecycle-conformance` to prove all four overlapping `start()` / `stop()` pairs reject with `PlatformLifecycleConflictError`, callback reentry remains conflict-safe before and after arbitrary awaits, and a caller can retry only after a failed transition settles.
+
 ### Conformance Testing for Library Authors
 
-If you develop a library that extends fluo, such as a custom validation pipe or logging interceptor, you should still provide tests that describe the contract you publish to users. `@fluojs/testing` currently publishes concrete harness subpaths for platform, HTTP adapter, web-runtime adapter, and fetch-style WebSocket contracts. A dedicated pipe/interceptor/library conformance harness is not part of the public surface yet, so custom library authors should model their own package tests after these patterns instead of relying on a nonexistent shared harness.
+If you develop a library that extends fluo, such as a custom validation pipe or logging interceptor, you should still provide tests that describe the contract you publish to users. `@fluojs/testing` currently publishes concrete harness subpaths for platform components, PlatformShell lifecycle ownership, HTTP adapters, web-runtime adapters, and fetch-style WebSocket contracts. A dedicated pipe/interceptor/library conformance harness is not part of the public surface yet, so custom library authors should model their own package tests after these patterns instead of relying on a nonexistent shared harness.
 
 By following the explicit assertion style used in `@fluojs/testing/platform-conformance` and the other published harness subpaths, you can give users a standardized way to verify integrations. This improves ecosystem reliability and builds trust with users. Consistent tests lead to consistent behavior, which is the core goal of the fluo framework. When a new extension pattern needs a shared conformance area, start with package-owned tests and an RFC so the eventual public harness can be designed with clear scope.
 

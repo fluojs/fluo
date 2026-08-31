@@ -417,6 +417,18 @@ function isStudioRequestStatus(value: unknown): value is StudioRequestStatus {
     || value === 'finished';
 }
 
+const bootstrapTimingPhaseNames = {
+  bootstrap_module: true,
+  register_runtime_tokens: true,
+  resolve_lifecycle_instances: true,
+  run_bootstrap_lifecycle: true,
+  create_dispatcher: true,
+} satisfies Record<BootstrapTimingPhase['name'], true>;
+
+function isBootstrapTimingPhaseName(value: unknown): value is BootstrapTimingPhase['name'] {
+  return typeof value === 'string' && Object.hasOwn(bootstrapTimingPhaseNames, value);
+}
+
 function validateStudioGraphNode(value: unknown): StudioGraphNode {
   if (!isRecord(value) || !isStudioGraphNodeKind(value.kind)) {
     throw new Error('Invalid Studio live graph node payload.');
@@ -894,7 +906,7 @@ function validateTiming(value: unknown): BootstrapTimingDiagnostics | null {
   }
 
   for (const phase of value.phases) {
-    if (!isRecord(phase) || typeof phase.name !== 'string' || typeof phase.durationMs !== 'number') {
+    if (!isRecord(phase) || !isBootstrapTimingPhaseName(phase.name) || typeof phase.durationMs !== 'number') {
       throw new Error('Invalid phase entry in bootstrap timing payload.');
     }
   }
