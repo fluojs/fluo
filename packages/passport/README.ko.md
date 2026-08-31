@@ -224,7 +224,9 @@ export class AuthController {
       global: true,
       secret: 'your-access-token-secret',
     }),
-    RefreshTokenModule.forRoot(MyRefreshTokenService),
+    RefreshTokenModule.forRoot(MyRefreshTokenService, {
+      imports: [RefreshTokenDependenciesModule],
+    }),
     PassportModule.forRoot(
       { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
       [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
@@ -234,7 +236,7 @@ export class AuthController {
 export class AuthModule {}
 ```
 
-`JwtModule.forRoot(...)`, `RefreshTokenModule.forRoot(...)`, `PassportModule.forRoot(...)`를 함께 import 하세요. 이 graph에서 `RefreshTokenStrategy`는 `JwtModule`의 sibling인 `RefreshTokenModule`에 속하므로, 이 예제는 문서화된 `global: true` option을 설정해 refresh module이 strategy를 resolve할 때 `DefaultJwtVerifier`를 볼 수 있게 합니다. `RefreshTokenModule.forRoot(MyRefreshTokenService)`는 service class를 refresh module 내부에 등록하고 공유 `REFRESH_TOKEN_SERVICE` alias로 export합니다. `MyRefreshTokenService`를 application module의 `providers`에 다시 등록하지 마세요. 중복 provider registration이 되며 bootstrap은 기본적으로 warning을 남기고 `duplicateProviderPolicy: 'throw'`에서는 거부할 수 있습니다. Application code가 service를 사용할 때는 export된 `REFRESH_TOKEN_SERVICE` alias를 inject하고, service class 자체의 dependency도 refresh module graph에서 보이도록 유지하며, refresh route가 실제로 존재하려면 application module이 `AuthController`를 등록해야 합니다. `PassportModule`은 `@UseAuth('refresh-token')`가 resolve하는 named strategy를 등록합니다.
+`JwtModule.forRoot(...)`, `RefreshTokenModule.forRoot(...)`, `PassportModule.forRoot(...)`를 함께 import 하세요. 이 graph에서 `RefreshTokenStrategy`는 `JwtModule`의 sibling인 `RefreshTokenModule`에 속하므로, 이 예제는 문서화된 `global: true` option을 설정해 refresh module이 strategy를 resolve할 때 `DefaultJwtVerifier`를 볼 수 있게 합니다. `RefreshTokenModule.forRoot(MyRefreshTokenService)`는 service class를 refresh module 내부에 등록하고 공유 `REFRESH_TOKEN_SERVICE` alias로 export합니다. 이 class에 constructor dependency가 있다면 application-owned module에서 dependency를 제공하고 export한 뒤, `RefreshTokenDependenciesModule`처럼 `imports`로 전달하세요. String 및 symbol service token도 `imports`로 전달한 module에서 export해야 합니다. `MyRefreshTokenService`를 application module의 `providers`에 다시 등록하지 마세요. 중복 provider registration이 되며 bootstrap은 기본적으로 warning을 남기고 `duplicateProviderPolicy: 'throw'`에서는 거부할 수 있습니다. Application code가 service를 사용할 때는 export된 `REFRESH_TOKEN_SERVICE` alias를 inject하고, refresh route가 실제로 존재하려면 application module이 `AuthController`를 등록해야 합니다. `PassportModule`은 `@UseAuth('refresh-token')`가 resolve하는 named strategy를 등록합니다.
 
 교환에 성공하면 `ctx.principal`은 `RefreshTokenPrincipal` shape으로 resolve됩니다. Rotation된 token 쌍은 `claims.accessToken`과 `claims.refreshToken`에 중첩되고, 검증된 `subject`는 최상위에 위치합니다. 별도로 export되는 `RefreshTokenAuthResult` 타입은 refresh endpoint가 client에 반환하는 application-facing 교환 payload를 설명합니다.
 

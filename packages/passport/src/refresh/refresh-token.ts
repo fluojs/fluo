@@ -72,6 +72,21 @@ const MALFORMED_REFRESH_TOKEN = Symbol('MALFORMED_REFRESH_TOKEN');
 type RefreshTokenModuleType = ModuleType;
 
 /**
+ * Configures application modules that supply refresh-token service dependencies.
+ */
+export interface RefreshTokenModuleImportOptions {
+  /**
+   * Modules that export dependencies injected into the refresh-token service.
+   *
+   * @remarks
+   * `RefreshTokenModule` keeps ownership of a class service token. Import modules
+   * that own and export its constructor dependencies so they are visible without
+   * duplicating the service provider in the importing application module.
+   */
+  imports?: ModuleType[];
+}
+
+/**
  * Authenticates refresh-token requests and exchanges them for a fresh token pair.
  */
 @Inject(REFRESH_TOKEN_SERVICE, DefaultJwtVerifier)
@@ -199,16 +214,18 @@ export class RefreshTokenModule {
    * Registers the shared refresh-token service alias together with `RefreshTokenStrategy`.
    *
    * @param service DI token for the concrete refresh-token service implementation.
-   *   Class tokens are registered inside this module so the alias always resolves.
-   *   String and symbol tokens must already be registered in the application DI container.
+   *   Class tokens are registered inside this module.
+   *   String and symbol tokens must be exported by a module passed through `options.imports`.
+   * @param options Optional module imports that export class-service constructor dependencies.
    * @returns A module definition that exports `RefreshTokenStrategy` and `REFRESH_TOKEN_SERVICE`.
    * @remarks
-   * Do not re-register the service class in the importing application module; doing
-   *   so duplicates a provider registration, which bootstrap warns about by default
-   *   and can reject with `duplicateProviderPolicy: 'throw'`. Application code consumes
-   *   the service through the exported `REFRESH_TOKEN_SERVICE` alias. The service
-   *   class's own dependencies must stay visible to this module graph, exactly like
-   *   `DefaultJwtVerifier` visibility.
+   * To register a class service with constructor dependencies, place those
+   * dependencies in an application-owned module, export them, and pass that module
+   * through `options.imports`. This preserves strict
+   * `duplicateProviderPolicy: 'throw'` behavior because the service class remains
+   * registered exactly once by `RefreshTokenModule`. Do not re-register the service
+   * class in the importing application module. String and symbol service tokens are
+   * owned by and exported from a module in `options.imports`.
    *
    * @example
    * ```ts
@@ -232,12 +249,19 @@ export class RefreshTokenModule {
    * export class AuthModule {}
    * ```
    */
-  static forRoot(service: Token<RefreshTokenService>): RefreshTokenModuleType {
+  static forRoot(
+    service: Token<RefreshTokenService>,
+    options: RefreshTokenModuleImportOptions = {},
+  ): RefreshTokenModuleType {
     class RefreshTokenRuntimeModule extends RefreshTokenModule {}
 
     return defineModule(RefreshTokenRuntimeModule, {
       exports: [RefreshTokenStrategy, REFRESH_TOKEN_SERVICE],
-      providers: [RefreshTokenStrategy, ...createRefreshTokenAliasProviders(service)],
+      imports: options.imports ? [...options.imports] : undefined,
+      providers: [
+        RefreshTokenStrategy,
+        ...createRefreshTokenAliasProviders(service),
+      ],
     });
   }
 }
