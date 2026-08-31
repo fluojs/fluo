@@ -661,6 +661,28 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
     );
   }
 
+  function hasUnconvertedNestFactoryCreate(sourceFile: ts.SourceFile): boolean {
+    let found = false;
+
+    const inspect = (node: ts.Node): void => {
+      if (
+        ts.isCallExpression(node)
+        && ts.isPropertyAccessExpression(node.expression)
+        && ts.isIdentifier(node.expression.expression)
+        && node.expression.expression.text === 'NestFactory'
+        && node.expression.name.text === 'create'
+      ) {
+        found = true;
+        return;
+      }
+
+      ts.forEachChild(node, inspect);
+    };
+
+    inspect(sourceFile);
+    return found;
+  }
+
   const inspect = (node: ts.Node): void => {
     if (ts.isVariableDeclaration(node) && node.initializer) {
       const initializer = ts.isAwaitExpression(node.initializer) ? node.initializer.expression : node.initializer;
@@ -768,8 +790,10 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
 
   let nextSource = printer.printFile(transformed);
 
-  const removed = removeImportBinding(nextSource, filePath, '@nestjs/core', 'NestFactory');
-  nextSource = removed.source;
+  if (!hasUnconvertedNestFactoryCreate(transformed)) {
+    const removed = removeImportBinding(nextSource, filePath, '@nestjs/core', 'NestFactory');
+    nextSource = removed.source;
+  }
 
   const nextSourceFile = parseSource(nextSource, filePath);
   const withRuntimeImport = printSourceFile(nextSourceFile, mergeNamedImport([...nextSourceFile.statements], '@fluojs/runtime', [{ imported: 'FluoFactory', local: 'FluoFactory' }]));

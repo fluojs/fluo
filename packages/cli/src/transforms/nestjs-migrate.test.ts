@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import ts from 'typescript';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
@@ -256,6 +257,74 @@ void bootstrap();
       warning.category === 'bootstrap-unsupported' &&
       warning.message.includes('NestFactory.create options object'),
     )).toBe(true);
+
+  });
+
+  it('retains NestFactory imports for unsupported bootstrap calls in mixed files', () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
+    temporaryDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    mkdirSync(join(workspaceDirectory, 'node_modules', '@nestjs', 'core'), { recursive: true });
+    mkdirSync(join(workspaceDirectory, 'node_modules', '@fluojs', 'runtime'), { recursive: true });
+    mkdirSync(join(workspaceDirectory, 'node_modules', '@fluojs', 'platform-express'), { recursive: true });
+    writeFileSync(join(workspaceDirectory, 'src', 'app.module.ts'), 'export class AppModule {}\n');
+    writeFileSync(
+      join(workspaceDirectory, 'node_modules', '@nestjs', 'core', 'index.d.ts'),
+      'export declare const NestFactory: { create(module: unknown, options?: { bufferLogs?: boolean }): Promise<{ listen(port?: number): Promise<void> }> };\n',
+    );
+    writeFileSync(
+      join(workspaceDirectory, 'node_modules', '@fluojs', 'runtime', 'index.d.ts'),
+      'export declare const FluoFactory: { create(module: unknown, options: { adapter: unknown }): Promise<{ listen(): Promise<void> }> };\n',
+    );
+    writeFileSync(
+      join(workspaceDirectory, 'node_modules', '@fluojs', 'platform-express', 'index.d.ts'),
+      'export declare function createExpressAdapter(options: { port?: number }): unknown;\n',
+    );
+    writeFileSync(
+      join(workspaceDirectory, 'src', 'main.ts'),
+      `import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const defaultApp = await NestFactory.create(AppModule);
+  await defaultApp.listen(3000);
+
+  const bufferedApp = await NestFactory.create(AppModule, { bufferLogs: true });
+  await bufferedApp.listen(4000);
+}
+
+void bootstrap();
+`,
+    );
+
+    const report = runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(['bootstrap']),
+      targetPath: workspaceDirectory,
+    });
+
+    const mainContent = readFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'utf8');
+
+    expect(mainContent).toMatch(/import\s*\{\s*NestFactory\s*\}\s*from\s*["']@nestjs\/core["'];/u);
+    expect(mainContent).toMatch(/import\s*\{\s*FluoFactory\s*\}\s*from\s*["']@fluojs\/runtime["'];/u);
+    expect(mainContent).toMatch(/import\s*\{\s*createExpressAdapter\s*\}\s*from\s*["']@fluojs\/platform-express["'];/u);
+    expect(mainContent).toContain('FluoFactory.create(AppModule');
+    expect(mainContent).toContain('NestFactory.create(AppModule, { bufferLogs: true })');
+    expect(mainContent).toContain('await bufferedApp.listen(4000);');
+    expect(report.fileResults.flatMap((result) => result.warnings).some((warning) =>
+      warning.category === 'bootstrap-unsupported' &&
+      warning.message.includes('NestFactory.create options object'),
+    )).toBe(true);
+
+    const program = ts.createProgram([join(workspaceDirectory, 'src', 'main.ts')], {
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      noEmit: true,
+      target: ts.ScriptTarget.ES2022,
+    });
+    const diagnostics = ts.getPreEmitDiagnostics(program);
+    expect(diagnostics.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'))).toEqual([]);
   });
 
   it('skips bootstrap rewrite for unsupported NestFactory.create type arguments and adapter arguments', () => {
