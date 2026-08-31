@@ -38,6 +38,18 @@ One common mistake is using a single DTO class for both input and output. This i
 
 Suppose FluoBlog stores posts with fields that should not be exposed directly through the public API.
 
+### Prepare decorator metadata before decorated modules
+
+`@fluojs/serialization` does not install `Symbol.metadata` when it is imported. If your runtime does not provide it, configure a preload entrypoint before importing a module that evaluates `@Expose()`, `@Exclude()`, or `@Transform()`:
+
+```typescript
+// preload.ts
+import { ensureMetadataSymbol } from '@fluojs/core';
+
+ensureMetadataSymbol();
+await import('./bootstrap.js');
+```
+
 ```typescript
 class PostRecord {
   id = '';

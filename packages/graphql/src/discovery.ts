@@ -178,8 +178,20 @@ export function discoverResolverDescriptors(
 
         if (entry.metadata.type !== 'field' && parameterBindings.length > 0) {
           throw new Error(
-            `@Parent() and @Context() can only bind parameters on @FieldResolver() methods. ` +
+            `@Parent() and @Context() can only bind parameters on @FieldResolver() methods; @Args() follows the same rule. ` +
               `Invalid placement: ${candidate.targetType.name}.${methodKeyToName(entry.propertyKey)}.`,
+          );
+        }
+
+        if (entry.metadata.type === 'field' && inputClass !== undefined && !parameterBindings.some((binding) => binding.kind === 'input')) {
+          throw new Error(
+            `@FieldResolver({ input }) requires @Args() on ${candidate.targetType.name}.${methodKeyToName(entry.propertyKey)}.`,
+          );
+        }
+
+        if (entry.metadata.type === 'field' && inputClass === undefined && parameterBindings.some((binding) => binding.kind === 'input')) {
+          throw new Error(
+            `@Args() requires @FieldResolver({ input }) on ${candidate.targetType.name}.${methodKeyToName(entry.propertyKey)}.`,
           );
         }
 

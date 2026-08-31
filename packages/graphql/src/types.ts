@@ -116,7 +116,7 @@ export type ResolverHandlerType = 'query' | 'mutation' | 'subscription' | 'field
 /**
  * Explicit source kinds that can be bound to object field-resolver parameters.
  */
-export type FieldResolverParameterKind = 'parent' | 'context';
+export type FieldResolverParameterKind = 'parent' | 'context' | 'input';
 
 /**
  * Describes one positional parameter binding for an object field resolver.

@@ -19,6 +19,9 @@ export function collectNodeGlobalBufferViolations(
   relativePaths: readonly string[],
   readSource: (relativePath: string) => string,
 ): NodeGlobalBufferViolation[];
+export function enforceCliMigrationTransformDocs(
+  readText?: (relativePath: string) => string,
+): void;
 export function parsePackageNamesFromFamilyTable(markdown: string, sectionTitle: string): string[];
 export function enforceNoDirectProcessEnvInOrdinaryPackageSource(
   relativePaths?: readonly string[],
@@ -28,6 +31,7 @@ export function enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices(
   relativePaths?: readonly string[],
   readSource?: (relativePath: string) => string,
 ): void;
+export function enforceContractCompanionUpdates(changedFiles: readonly string[]): void;
 export function enforceReactClientSubpathContract(): void;
 export function enforceReactPageCatalogContract(readText?: (relativePath: string) => string): void;
 export function enforceReactPageMetadataIdentityContract(): void;
@@ -45,6 +49,12 @@ export function enforceHttpRuntimeCancellationAndContextIsolation(): void;
 export function enforceHttpCatchAllRouteGrammarDecision(): void;
 export function enforceHttpCustomMethodContract(): void;
 export function isSupportedNodeListenerVersion(version: string): boolean;
+export function enforcePlatformFastifyEngineDocumentation(
+  readText?: (relativePath: string) => string,
+): void;
+export function enforcePlatformNodejsEngineDocumentation(
+  readText?: (relativePath: string) => string,
+): void;
 export function enforceCloudflareWorkersLifecycleDocsSync(
   readText?: (relativePath: string) => string,
 ): void;

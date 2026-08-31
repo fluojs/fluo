@@ -112,6 +112,115 @@ describe('@fluojs/testing', () => {
     expect(events).toEqual(['service:init', 'consumer:init', 'service:bootstrap', 'consumer:bootstrap']);
   });
 
+  it('disposes successfully compiled module containers after use', async () => {
+    const events: string[] = [];
+
+    class DisposableService {
+      onDestroy() {
+        events.push('disposed');
+      }
+    }
+
+    @Module({ providers: [DisposableService] })
+    class DisposableModule {}
+
+    const testingModule = await createTestingModule({ rootModule: DisposableModule }).compile();
+    let testError: unknown;
+    let testFailed = false;
+    let disposeError: unknown;
+    let disposeFailed = false;
+
+    try {
+      expect(await testingModule.resolve(DisposableService)).toBeInstanceOf(DisposableService);
+    } catch (error: unknown) {
+      testError = error;
+      testFailed = true;
+    } finally {
+      try {
+        await Promise.all([
+          testingModule.container.dispose(),
+          testingModule.container.dispose(),
+        ]);
+      } catch (error: unknown) {
+        disposeFailed = true;
+        disposeError = error;
+      }
+    }
+
+    if (testFailed) {
+      if (disposeFailed) {
+        throw new AggregateError(
+          [testError, disposeError],
+          'Test and testing module disposal both failed.',
+        );
+      }
+
+      throw testError;
+    }
+
+    if (disposeFailed) {
+      throw disposeError;
+    }
+
+    expect(events).toEqual(['disposed']);
+  });
+
+  it('preserves test and disposal failures together', async () => {
+    const testError = new Error('test assertion failed');
+    const disposeError = new Error('testing module disposal failed');
+
+    class DisposableService {
+      onDestroy() {
+        throw disposeError;
+      }
+    }
+
+    @Module({ providers: [DisposableService] })
+    class DisposableModule {}
+
+    const testingModule = await createTestingModule({ rootModule: DisposableModule }).compile();
+    const result = await (async () => {
+      let caughtTestError: unknown;
+      let testFailed = false;
+      let caughtDisposeError: unknown;
+      let disposeFailed = false;
+
+      try {
+        throw testError;
+      } catch (error: unknown) {
+        caughtTestError = error;
+        testFailed = true;
+      } finally {
+        try {
+          await testingModule.container.dispose();
+        } catch (error: unknown) {
+          disposeFailed = true;
+          caughtDisposeError = error;
+        }
+      }
+
+      if (testFailed) {
+        if (disposeFailed) {
+          throw new AggregateError(
+            [caughtTestError, caughtDisposeError],
+            'Test and testing module disposal both failed.',
+          );
+        }
+
+        throw caughtTestError;
+      }
+
+      if (disposeFailed) {
+        throw caughtDisposeError;
+      }
+    })().catch((error: unknown) => error);
+
+    expect(result).toBeInstanceOf(AggregateError);
+    if (result instanceof AggregateError) {
+      expect(result.errors).toEqual([testError, disposeError]);
+    }
+  });
+
   it('runs bootstrap lifecycle hooks from the effective override provider', async () => {
     const SERVICE_TOKEN = Symbol('service-token');
     const events: string[] = [];

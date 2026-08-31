@@ -110,15 +110,16 @@ export class PostService {
 `createTestingModule`을 사용하여 테스트를 위한 최소한의 모듈 그래프를 컴파일합니다. 이는 오직 테스트만을 위한 미니 DI 컨테이너처럼 작동합니다.
 
 ```typescript
-import { createTestingModule } from '@fluojs/testing';
+import { createTestingModule, type TestingModuleRef } from '@fluojs/testing';
 import { Module } from '@fluojs/core';
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { PostService } from './post.service';
 import { PostRepository } from './post.repository';
 
 describe('PostService', () => {
   let service: PostService;
   let mockRepo: any;
+  let module: TestingModuleRef;
 
   beforeEach(async () => {
     // 1. 모의 구현(mock implementation) 정의
@@ -132,7 +133,7 @@ describe('PostService', () => {
     })
     class PostTestModule {}
 
-    const module = await createTestingModule({
+    module = await createTestingModule({
       rootModule: PostTestModule,
     })
       .overrideProvider(PostRepository, mockRepo)
@@ -140,6 +141,10 @@ describe('PostService', () => {
 
     // 3. 테스트하려는 인스턴스 해결(resolve)
     service = await module.resolve(PostService);
+  });
+
+  afterEach(async () => {
+    await module.container.dispose();
   });
 
   it('should find a post by id', async () => {
@@ -165,7 +170,9 @@ describe('PostService', () => {
 비동기 코드는 백엔드 개발의 일반적인 형태입니다. Fluo의 `createTestingModule`과 Vitest의 `async/await` 지원을 사용하면 이러한 작업을 순서대로 테스트할 수 있습니다. 성공적인 완료, 예상된 거부(rejection), 그리고 여러 비동기 작업이 특정 순서대로 완료되어야 하는 타이밍 문제까지 검증할 수 있습니다. `vi.useFakeTimers()`를 사용하면 실제로 시간을 기다리지 않고도 타임아웃이나 재시도 로직을 테스트할 수 있습니다.
 
 ### 20.3.3 Lifecycle Hooks in Tests
-때로는 모듈 그래프가 컴파일될 때 프로바이더가 올바르게 초기화되는지 테스트해야 할 때가 있습니다. `createTestingModule()`은 컴파일 시점의 모듈 연결, 프로바이더 가시성, 프로바이더/가드/인터셉터 교체를 검증하는 슬라이스 테스트 표면입니다. 컴파일된 `TestingModuleRef`는 해결(resolve) 및 디스패치 헬퍼를 제공하지만 별도의 `close()` 라이프사이클 단계는 제공하지 않습니다. `compile()`이 해당 reference를 반환할 때까지는 builder가 내부 container를 소유합니다. Override, initialization hook, bootstrap hook, 최종 singleton 동기화가 실패하면 builder는 reject하기 전에 container를 dispose합니다. Cleanup이 성공하면 원래 compile error를 보존하고, cleanup도 실패하면 두 실패를 `AggregateError`로 함께 보고합니다. 성공적으로 컴파일된 module의 cleanup 검증은 테스트 대상 provider 안에서 명시적으로 수행하거나, 반환된 app이 `close()`를 노출하는 `createTestApp()` 기반 request/application lifecycle 테스트로 옮기세요.
+때로는 모듈 그래프가 컴파일될 때 프로바이더가 올바르게 초기화되는지 테스트해야 할 때가 있습니다. `createTestingModule()`은 컴파일 시점의 모듈 연결, 프로바이더 가시성, 프로바이더/가드/인터셉터 교체를 검증하는 슬라이스 테스트 표면입니다. 컴파일된 `TestingModuleRef`는 해결(resolve) 및 디스패치 헬퍼를 제공하지만 별도의 `close()` 라이프사이클 단계는 제공하지 않습니다. `compile()`이 해당 reference를 반환할 때까지는 builder가 내부 container를 소유합니다. Override, initialization hook, bootstrap hook, 최종 singleton 동기화가 실패하면 builder는 reject하기 전에 container를 dispose합니다. Cleanup이 성공하면 원래 compile error를 보존하고, cleanup도 실패하면 두 실패를 `AggregateError`로 함께 보고합니다.
+
+성공적으로 컴파일된 뒤에는 위 suite처럼 `TestingModuleRef`를 보관하고 caller-owned `module.container`를 `finally` 또는 `afterEach`에서 unconditional하게 dispose하세요. 그러면 성공, 실패, 조기 반환 테스트를 모두 처리합니다. 완료된 disposal은 idempotent하며 teardown error는 surface되어야 합니다. Teardown 전에 실패할 수 있는 테스트는 in-flight failure를 대체하지 말고 두 오류를 모두 보존해야 합니다. Request/application lifecycle coverage는 반환된 app이 `close()`를 노출하는 `createTestApp()`에 유지하세요.
 
 ## 20.4 Provider Overrides
 `fluo`는 실제 컴포넌트를 테스트 대역(test double)으로 교체하는 여러 가지 방법을 제공합니다. 이 기능을 사용하면 외부 시스템의 불안정성은 제거하면서도, 테스트하려는 모듈의 DI 연결과 실행 흐름은 그대로 검증할 수 있습니다. Request-facing guard와 interceptor는 `TestingModuleRef.dispatch(...)` 또는 `createTestApp(...)` 기반 request-path assertion을 추가해 애플리케이션이 사용하는 동일한 pipeline에서 override가 검증되도록 하세요.
@@ -192,6 +199,40 @@ class PostTestModule {}
 const module = await createTestingModule({ rootModule: PostTestModule })
   .overrideProvider(PostRepository, new FakePostRepository())
   .compile();
+
+let testError: unknown;
+let testFailed = false;
+let disposeError: unknown;
+let disposeFailed = false;
+
+try {
+  const service = await module.resolve(PostService);
+} catch (error: unknown) {
+  testError = error;
+  testFailed = true;
+} finally {
+  try {
+    await module.container.dispose();
+  } catch (error: unknown) {
+    disposeFailed = true;
+    disposeError = error;
+  }
+}
+
+if (testFailed) {
+  if (disposeFailed) {
+    throw new AggregateError(
+      [testError, disposeError],
+      'Test and testing module disposal both failed.',
+    );
+  }
+
+  throw testError;
+}
+
+if (disposeFailed) {
+  throw disposeError;
+}
 ```
 
 ### 20.4.1 Spies and Verification
@@ -212,6 +253,40 @@ const module = await createTestingModule({ rootModule: PostTestModule })
     get: vi.fn().mockReturnValue('test-secret'),
   })
   .compile();
+
+let testError: unknown;
+let testFailed = false;
+let disposeError: unknown;
+let disposeFailed = false;
+
+try {
+  const service = await module.resolve(PostService);
+} catch (error: unknown) {
+  testError = error;
+  testFailed = true;
+} finally {
+  try {
+    await module.container.dispose();
+  } catch (error: unknown) {
+    disposeFailed = true;
+    disposeError = error;
+  }
+}
+
+if (testFailed) {
+  if (disposeFailed) {
+    throw new AggregateError(
+      [testError, disposeError],
+      'Test and testing module disposal both failed.',
+    );
+  }
+
+  throw testError;
+}
+
+if (disposeFailed) {
+  throw disposeError;
+}
 ```
 
 ### 20.4.4 Dynamic Module Overrides
@@ -312,7 +387,7 @@ Fluo 테스트 유틸리티의 큰 장점 중 하나는 TypeScript와의 깊은 
 ## 20.7 Best Practices for FluoBlog Testing
 1.  **프레임워크를 테스트하지 마세요**: `@Get()`이 작동하는지가 아니라, 애플리케이션의 비즈니스 로직에 집중하세요. `fluo`가 라우팅을 처리한다고 전제하고, 해당 경로가 호출되었을 때 작성한 코드가 무엇을 하는지 테스트하세요.
 2.  **데이터베이스에는 가짜(Fake)를 사용하세요**: 통합 테스트는 실제 테스트용 데이터베이스(예: Docker의 PostgreSQL)를 사용할 수 있지만, 단위 테스트는 속도를 위해 항상 모의 객체나 가짜를 사용해야 합니다.
-3.  **리소스 정리**: request 또는 application lifecycle 테스트에서는 `createTestApp()`으로 앱을 만들고 테스트 후 `finally`에서 `await app.close()`를 호출하세요. `createTestingModule()` slice 테스트에서는 컴파일된 `TestingModuleRef`가 application lifecycle 소유자가 아니라 resolve 및 dispatch 표면이므로, 테스트 대상 provider나 fake 안에서 cleanup 기대치를 명시적으로 검증하세요.
+3.  **리소스 정리**: request 또는 application lifecycle 테스트에서는 `createTestApp()`으로 앱을 만들고 테스트 후 `finally`에서 `await app.close()`를 호출하세요. `createTestingModule()` slice 테스트에서는 성공한 `TestingModuleRef`를 보관하고 `finally` 또는 `afterEach`에서 caller-owned `module.container.dispose()`를 호출하세요.
 4.  **보안을 위한 통합 테스트**: 항상 가드와 RBAC 로직은 통합 테스트에서 테스트하세요. 단위 테스트는 대개 이를 우회하므로, 통합 테스트가 실제 보안을 검증하는 곳입니다.
 5.  **결정론적 테스트**: 테스트에서 `Date.now()`나 랜덤 숫자를 직접 사용하는 것을 피하세요. Vitest의 시간 여행 기능(`vi.useFakeTimers()`)을 사용하여 테스트가 실행될 때마다 동일하게 동작하도록 보장하세요.
 
