@@ -28,6 +28,8 @@ fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터
 
 ## Package Families
 
+NestJS codemod import-safety discoverability는 [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), `packages/cli/src/transforms/nestjs-migrate.ts`, 해당 regression test에 나뉘어 있습니다. Migration이 `Module` 같은 runtime decorator를 기존 type-only target import로 옮길 때 기존 type specifier를 보존하면서 runtime clause를 출력합니다(예: `import { type Existing, Module } from '@fluojs/core'`). Codemod는 NestJS runtime import가 전혀 남지 않는다고 주장하지 않고 `Optional` 같은 변환되지 않은 NestJS value binding을 수동 검토용으로 유지합니다.
+
 | Family | Purpose | Representative packages |
 | --- | --- | --- |
 | Core | 데코레이터, DI, 설정, i18n, 런타임 오케스트레이션 | `@fluojs/core`, `@fluojs/di`, `@fluojs/config`, `@fluojs/i18n`, `@fluojs/runtime` |

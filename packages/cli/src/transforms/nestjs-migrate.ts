@@ -206,7 +206,7 @@ function updateNamedImports(importDeclaration: ts.ImportDeclaration, bindings: I
     return undefined;
   }
 
-  const isTypeOnlyClause = importClause.isTypeOnly || (!importClause.name && bindings.length > 0 && bindings.every((binding) => binding.isTypeOnly));
+  const isTypeOnlyClause = !importClause.name && bindings.length > 0 && bindings.every((binding) => binding.isTypeOnly);
   const updatedClause = ts.factory.updateImportClause(
     importClause,
     isTypeOnlyClause,

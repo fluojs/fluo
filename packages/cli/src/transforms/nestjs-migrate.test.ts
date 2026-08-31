@@ -246,6 +246,30 @@ describe('runNestJsMigration', () => {
     expect(migratedSource).toMatch(/import \{ Module \} from ['"]@fluojs\/core['"];/);
   });
 
+  it('demotes an existing type-only target import when adding a runtime binding', () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
+    temporaryDirectories.push(workspaceDirectory);
+    const sourceFilePath = join(workspaceDirectory, 'module.ts');
+    writeFileSync(
+      sourceFilePath,
+      `import type { Existing } from '@fluojs/core';
+import { Module } from '@nestjs/common';
+
+@Module({})
+export class AppModule {}
+`,
+    );
+
+    runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(['imports']),
+      targetPath: sourceFilePath,
+    });
+
+    const migratedSource = readFileSync(sourceFilePath, 'utf8');
+    expect(migratedSource).toMatch(/import \{ type Existing, Module \} from ['"]@fluojs\/core['"];/);
+  });
+
   it('drops an emptied type-only Nest import under verbatim module syntax', () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
     temporaryDirectories.push(workspaceDirectory);

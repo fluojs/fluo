@@ -489,7 +489,7 @@ The JSON report includes `mode` (`dry-run` or `apply`), `dryRun`, `apply`, enabl
 
 The codemod can rewrite imports, remove `@Injectable()`, map provider scopes, migrate constructor parameter `@Inject(...)` usage, rewrite supported bootstrap/listen patterns, update test templates toward `@fluojs/testing`, update decorator compiler flags, and rewrite `baseUrl` path alias configuration. It does not remove the need for manual review. Treat every warning category as a post-codemod checklist item before accepting the migration.
 
-When removing `@Injectable()`, the codemod retains required `import type` bindings without preserving a NestJS runtime import. Manually verify every remaining `@nestjs/common` import: preserve it only for still-used types or values, then migrate or remove it before removing the NestJS dependency.
+When removing `@Injectable()`, the codemod retains required `import type` bindings and removes only the obsolete `@Injectable` import binding. It does not remove other NestJS runtime value imports: unconverted values such as `Optional` remain for manual review. Manually verify every remaining `@nestjs/common` import, then migrate or remove it before removing the NestJS dependency.
 
 ## Related Docs
 

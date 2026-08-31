@@ -28,6 +28,8 @@ For the full contributor workflow, read [`CONTRIBUTING.md`](../CONTRIBUTING.md) 
 
 ## Package Families
 
+NestJS codemod import-safety discoverability is split across [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md), `packages/cli/src/transforms/nestjs-migrate.ts`, and its regression tests: when migration moves a runtime decorator such as `Module` into an existing type-only target import, it emits a runtime clause while preserving prior type specifiers (for example, `import { type Existing, Module } from '@fluojs/core'`). The codemod retains unconverted NestJS value bindings such as `Optional` for manual review rather than claiming that no NestJS runtime imports remain.
+
 | Family | Purpose | Representative packages |
 | --- | --- | --- |
 | Core | Decorators, DI, config, i18n, runtime orchestration | `@fluojs/core`, `@fluojs/di`, `@fluojs/config`, `@fluojs/i18n`, `@fluojs/runtime` |
