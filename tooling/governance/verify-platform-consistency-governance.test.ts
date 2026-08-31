@@ -916,39 +916,43 @@ describe('enforceAdvancedBookCoreBoundaryCompanions', () => {
 });
 
 describe('enforceContractCompanionUpdates', () => {
-  it('requires discoverability, tooling or CI, and regression test updates for contract-governing docs', async () => {
+  it.each([
+    ['English context companion', 'docs/CONTEXT.md', /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u],
+    ['Korean context companion', 'docs/CONTEXT.ko.md', /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u],
+    ['workflow enforcement companion', '.github/workflows/ci.yml', /CI\/tooling enforcement updates/u],
+    ['package regression test companion', 'packages/core/src/module.test.ts', /regression test updates/u],
+  ] as const)(
+    'rejects removal of the required %s from an otherwise complete contract change',
+    async (_companion, removedPath, expectedError) => {
+      // Given: a contract update with every required companion present.
+      const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+      const completeChangedFiles = [
+        'docs/reference/package-surface.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        '.github/workflows/ci.yml',
+        'packages/core/src/module.test.ts',
+      ];
+
+      // When: exactly one enforcement companion is absent.
+      const changedFiles = completeChangedFiles.filter((path) => path !== removedPath);
+
+      // Then: its own enforcement category rejects the incomplete change.
+      expect(() => enforceContractCompanionUpdates(changedFiles)).toThrowError(expectedError);
+    },
+  );
+
+  it('accepts a complete contract change with all required companion categories', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const completeChangedFiles = [
+      'docs/reference/package-surface.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      '.github/workflows/ci.yml',
+      'packages/core/src/module.test.ts',
+    ];
 
-    expect(() => enforceContractCompanionUpdates(['docs/reference/package-surface.md'])).toThrowError(
-      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
-    );
-
-    expect(() =>
-      enforceContractCompanionUpdates([
-        'docs/reference/package-surface.md',
-        'docs/CONTEXT.md',
-        'docs/CONTEXT.ko.md',
-      ]),
-    ).toThrowError(/CI\/tooling enforcement updates/);
-
-    expect(() =>
-      enforceContractCompanionUpdates([
-        'docs/reference/package-surface.md',
-        'docs/CONTEXT.md',
-        'docs/CONTEXT.ko.md',
-        '.github/workflows/ci.yml',
-      ]),
-    ).toThrowError(/regression test updates/);
-
-    expect(() =>
-      enforceContractCompanionUpdates([
-        'docs/reference/package-surface.md',
-        'docs/CONTEXT.md',
-        'docs/CONTEXT.ko.md',
-        '.github/workflows/ci.yml',
-        'tooling/governance/verify-platform-consistency-governance.test.ts',
-      ]),
-    ).not.toThrow();
+    expect(() => enforceContractCompanionUpdates(completeChangedFiles)).not.toThrow();
   });
 
   it('accepts generic companions for validation migration prose without topic-specific book coupling', async () => {
