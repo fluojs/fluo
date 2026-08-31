@@ -97,6 +97,7 @@ class ProductDto {
 ```
 
 같은 필드가 base class와 derived class 모두에서 decorate되면 transform은 base에서 derived 순서로 실행됩니다.
+`TransformFunction`은 동기식 `(value: unknown) => unknown` callback입니다. 현재 field value만 전달받으므로 async 작업이나 DTO, property metadata, serialization context 접근이 아니라 value-only transform에 사용하세요.
 
 ### HTTP 인터셉터와 함께 사용
 

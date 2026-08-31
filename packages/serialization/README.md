@@ -97,6 +97,7 @@ class ProductDto {
 ```
 
 When the same field is decorated in a base class and a derived class, transforms run in declaration order from base to derived.
+`TransformFunction` is a synchronous `(value: unknown) => unknown` callback: it receives only the current field value, so use it for value-only transforms rather than async work or access to the DTO, property metadata, or serialization context.
 
 ### HTTP response shaping with an interceptor
 

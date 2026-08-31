@@ -438,9 +438,15 @@ describe('serialize', () => {
     });
   });
 
-  it('merges base and derived transforms for the same field in declaration order', () => {
+  it('executes inherited transforms once each in declaration order', () => {
+    // Given
+    let transformCalls = 0;
+
     class BaseView {
-      @Transform((value) => String(value).trim())
+      @Transform((value) => {
+        transformCalls += 1;
+        return `${String(value)}B`;
+      })
       label: string;
 
       constructor(label: string) {
@@ -450,8 +456,8 @@ describe('serialize', () => {
 
     class DerivedView extends BaseView {
       @Transform((value) => {
-        const label = String(value);
-        return label.startsWith('[') && label.endsWith(']') ? label : `[${label}]`;
+        transformCalls += 1;
+        return `${String(value)}C`;
       })
       override label: string;
 
@@ -461,7 +467,12 @@ describe('serialize', () => {
       }
     }
 
-    expect(serialize(new DerivedView('  fluo  '))).toEqual({ label: '[fluo]' });
+    // When
+    const serialized = serialize(new DerivedView('x'));
+
+    // Then
+    expect(serialized).toEqual({ label: 'xBC' });
+    expect(transformCalls).toBe(2);
   });
 
   it('does not emit undecorated undefined fields when excludeExtraneous is enabled', () => {

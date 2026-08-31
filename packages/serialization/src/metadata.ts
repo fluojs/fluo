@@ -43,7 +43,7 @@ function getFieldMetadataMap(metadata: unknown): Map<MetadataPropertyKey, Serial
     return current;
   }
 
-  const created = new Map(current);
+  const created = new Map<MetadataPropertyKey, SerializationFieldMetadata>();
   bag[standardSerializationFieldMetadataKey] = created;
   return created;
 }
@@ -56,7 +56,7 @@ function getClassMetadataObject(metadata: unknown): ClassSerializationOptions {
     return current;
   }
 
-  const created: ClassSerializationOptions = { ...current };
+  const created: ClassSerializationOptions = {};
   bag[standardSerializationClassMetadataKey] = created;
   return created;
 }
