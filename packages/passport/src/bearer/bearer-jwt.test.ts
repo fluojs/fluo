@@ -2,11 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { GuardContext, Principal, RequestContext } from '@fluojs/http';
 import {
-  DefaultJwtVerifier,
   JwtConfigurationError,
   JwtExpiredTokenError,
   JwtInvalidTokenError,
 } from '@fluojs/jwt';
+import type { DefaultJwtVerifier } from '@fluojs/jwt';
 
 import {
   AuthenticationExpiredError,
@@ -33,6 +33,11 @@ const VERIFIED_PRINCIPAL: Principal = {
   scopes: ['profile:read'],
   subject: 'user-1',
 };
+
+const CONTROL_CHARACTERS = [
+  ...Array.from({ length: 32 }, (_, code) => String.fromCharCode(code)),
+  String.fromCharCode(127),
+];
 
 function createMockVerifier(overrides: Partial<DefaultJwtVerifier> = {}): DefaultJwtVerifier {
   return {
@@ -134,20 +139,43 @@ describe('BearerJwtStrategy credential extraction', () => {
   it('throws AuthenticationFailedError for a malformed Bearer header with extra segments', async () => {
     const strategy = new BearerJwtStrategy(createMockVerifier());
 
+    await expect(strategy.authenticate(createGuardContext('Bearer  token'))).rejects.toThrow(
+      AuthenticationFailedError,
+    );
     await expect(strategy.authenticate(createGuardContext('Bearer token extra'))).rejects.toThrow(
       AuthenticationFailedError,
     );
   });
 
-  it('rejects a Bearer credential containing control characters before verification', async () => {
+  it('rejects HTAB as a Bearer separator before verification', async () => {
     const verifier = createMockVerifier();
     const strategy = new BearerJwtStrategy(verifier);
 
-    await expect(strategy.authenticate(createGuardContext('Bearer token\u0000'))).rejects.toThrow(
+    await expect(strategy.authenticate(createGuardContext('Bearer\tvalid-token'))).rejects.toThrow(
       AuthenticationFailedError,
     );
     expect(verifier.verifyAccessToken).not.toHaveBeenCalled();
   });
+
+  it.each(CONTROL_CHARACTERS)(
+    'rejects control character %j in every header segment before verification',
+    async (controlCharacter) => {
+      const verifier = createMockVerifier();
+      const strategy = new BearerJwtStrategy(verifier);
+
+      await expect(
+        strategy.authenticate(createGuardContext(`${controlCharacter}Bearer valid-token`)),
+      ).rejects.toThrow(AuthenticationFailedError);
+      await expect(
+        strategy.authenticate(createGuardContext(`Bearer${controlCharacter}valid-token`)),
+      ).rejects.toThrow(AuthenticationFailedError);
+      await expect(
+        strategy.authenticate(createGuardContext(`Bearer valid-token${controlCharacter}`)),
+      ).rejects.toThrow(AuthenticationFailedError);
+
+      expect(verifier.verifyAccessToken).not.toHaveBeenCalled();
+    },
+  );
 
   it('maps expired tokens to AuthenticationExpiredError and preserves the verifier cause', async () => {
     const jwtError = new JwtExpiredTokenError();

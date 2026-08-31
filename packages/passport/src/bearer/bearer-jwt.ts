@@ -19,10 +19,33 @@ import type { AuthStrategy, AuthStrategyRegistration, AuthStrategyResult } from 
  */
 export const BEARER_JWT_STRATEGY_NAME = 'jwt';
 
-const BEARER_CREDENTIAL_PATTERN = /^Bearer[ \t]+([^\s\x00-\x1F\x7F]+)$/i;
-
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
+}
+
+function parseBearerCredential(authorization: string): string | undefined {
+  for (const character of authorization) {
+    const characterCode = character.charCodeAt(0);
+
+    if (characterCode <= 31 || characterCode === 127) {
+      return undefined;
+    }
+  }
+
+  const separatorIndex = authorization.indexOf(' ');
+
+  if (separatorIndex <= 0 || authorization.indexOf(' ', separatorIndex + 1) !== -1) {
+    return undefined;
+  }
+
+  const scheme = authorization.slice(0, separatorIndex);
+  const token = authorization.slice(separatorIndex + 1);
+
+  if (scheme.toLowerCase() !== 'bearer' || token.length === 0) {
+    return undefined;
+  }
+
+  return token;
 }
 
 function readAuthorizationHeader(context: GuardContext): string | undefined {
@@ -53,8 +76,9 @@ function readAuthorizationHeader(context: GuardContext): string | undefined {
  * {@link AuthenticationFailedError} with the original `JwtInvalidTokenError`
  * preserved as `cause`; JWT configuration and verifier-provider errors
  * propagate unchanged. The Bearer scheme is matched case-insensitively per RFC
- * 7235. When an adapter surfaces an array-valued `Authorization` header, only
- * the first entry is read.
+ * 7235 and is separated from the token by exactly one ASCII space. When an
+ * adapter surfaces an array-valued `Authorization` header, only the first entry
+ * is read.
  *
  * The strategy returns the normalized `JwtPrincipal` produced by
  * `DefaultJwtVerifier.verifyAccessToken(...)` unchanged, so `subject`,
@@ -82,7 +106,7 @@ export class BearerJwtStrategy implements AuthStrategy {
       throw new AuthenticationRequiredError('Authorization header is required.');
     }
 
-    const token = BEARER_CREDENTIAL_PATTERN.exec(authorization)?.[1];
+    const token = parseBearerCredential(authorization);
 
     if (!token) {
       throw new AuthenticationFailedError('Authorization header must use Bearer token format.');

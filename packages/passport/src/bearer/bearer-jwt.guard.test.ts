@@ -139,6 +139,17 @@ describe('BearerJwtStrategy AuthGuard integration', () => {
     expect(response.statusCode).toBe(401);
   });
 
+  it('maps an HTAB-separated bearer credential to the canonical 401 response without verification', async () => {
+    const verifier = createMockVerifier();
+    const dispatcher = createGuardedDispatcher(verifier);
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/profile', { authorization: 'Bearer\tinvalid-token' }), response);
+
+    expect(response.statusCode).toBe(401);
+    expect(verifier.verifyAccessToken).not.toHaveBeenCalled();
+  });
+
   it('does not map a JWT configuration error to 401', async () => {
     const dispatcher = createGuardedDispatcher(
       createMockVerifier({
