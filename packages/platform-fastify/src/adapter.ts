@@ -897,9 +897,8 @@ class MutableFastifyFrameworkResponse implements FastifyFrameworkResponse {
     const lowerName = name.toLowerCase();
 
     if (lowerName === 'set-cookie') {
-      const merged = mergeSetCookieHeader(this.reply.getHeader(name), value);
-      this.reply.header(name, merged);
-      this.headers[name] = merged;
+      this.reply.header(name, value);
+      this.headers[name] = mergeSetCookieHeader(this.headers[name], value);
       return;
     }
 

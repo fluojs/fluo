@@ -72,6 +72,7 @@ interface PortabilityAssertions {
   assertSettlesStreamDrainWaitOnClose(): Promise<void>;
   assertSupportsHttpErrorRepresentations(): Promise<void>;
   assertSupportsCustomHttpRouteMethods(): Promise<void>;
+  assertSupportsPortableResponseCookies(): Promise<void>;
   assertSupportsSseStreaming(): Promise<void>;
 }
 
@@ -177,6 +178,10 @@ function registerPortabilitySuite(
 
     it('preserves malformed cookie values', async () => {
       await harness.assertPreservesMalformedCookieValues();
+    });
+
+    it('preserves ordered non-folded portable response cookies', async () => {
+      await harness.assertSupportsPortableResponseCookies();
     });
 
     it('preserves raw body for JSON and text requests when enabled', async () => {

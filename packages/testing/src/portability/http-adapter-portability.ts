@@ -5,6 +5,10 @@ import {
   assertNetworkHttpErrorRepresentationPortability,
   type NetworkHttpErrorRepresentationBootstrapOptions,
 } from './error-representation-portability.js';
+import {
+  assertPortableResponseCookies,
+  createResponseCookiePortabilityModule,
+} from './response-cookie-portability.js';
 
 export type { NetworkHttpErrorRepresentationBootstrapOptions } from './error-representation-portability.js';
 
@@ -333,6 +337,23 @@ export class HttpAdapterPortabilityHarness<
       bootstrap: this.options.bootstrap,
       createBootstrapOptions,
       name: this.options.name,
+    });
+  }
+
+  /** Verifies ordered, non-folded portable response cookies over a real listener. */
+  async assertSupportsPortableResponseCookies(): Promise<void> {
+    const app = await this.options.bootstrap(createResponseCookiePortabilityModule(), {
+      cors: false,
+      port: 0,
+    } as TBootstrapOptions);
+
+    await prepareAndListenWithCleanup(app, this.options.name);
+
+    await runWithListeningUrlCleanup(app, this.options.name, async (url) => {
+      assertPortableResponseCookies(
+        await fetch(`${url}/response-cookies`),
+        this.options.name,
+      );
     });
   }
 

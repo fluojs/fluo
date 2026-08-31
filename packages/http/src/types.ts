@@ -77,6 +77,12 @@ export interface FrameworkResponse {
   raw?: unknown;
   stream?: FrameworkResponseStream;
   setStatus(code: number): void;
+  /**
+   * Writes one response header value.
+   *
+   * Repeated `Set-Cookie` writes append ordered independent fields. Other
+   * header names retain adapter-defined replacement semantics.
+   */
   setHeader(name: string, value: string | string[]): void;
   redirect(status: number, location: string): void;
   send(body: unknown): MaybePromise<void>;

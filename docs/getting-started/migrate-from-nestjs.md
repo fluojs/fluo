@@ -4,6 +4,12 @@
 
 Use this document as a migration contract map. Each row identifies the closest allowed fluo target for a NestJS construct, and each rule below marks the places where the migration is not one-to-one.
 
+## Response cookie migration
+
+Replace `res.cookie()` and `res.clearCookie()` with `setCookie(response, name, value, options?)` and `clearCookie(response, name, options?)` from `@fluojs/http`. These free functions work through `FrameworkResponse`, so they do not couple controllers to Express or Fastify.
+
+Use `maxAgeSeconds` as an explicit whole-second lifetime; do not carry Express millisecond values into the new option. Repeated helper calls stay independent and ordered `Set-Cookie` fields. A clear operation emits `Max-Age=0` and a past `Expires`; pass the original `path` and `domain` again to target the same browser cookie.
+
 ## Custom decorator preload ordering
 
 Fluo's built-in decorators store their runtime records in framework-owned stores and do not require import-time global mutation. A migrated custom standard decorator that reads `context.metadata` is different: its decorated class needs `Symbol.metadata` while that class module is being evaluated.

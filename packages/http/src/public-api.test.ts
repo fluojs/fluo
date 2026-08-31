@@ -1,8 +1,13 @@
 import { readFileSync } from 'node:fs';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 
-import type { ResponseFormatter } from './index.js';
+import type {
+  ClearCookieOptions,
+  CookieOptions,
+  CookieSameSite,
+  ResponseFormatter,
+} from './index.js';
 import * as httpPublicApi from './index.js';
 import * as httpInternalApi from './internal.js';
 
@@ -117,6 +122,12 @@ function collectRuntimeDependencyGraph(entrypoint: URL) {
 }
 
 describe('@fluojs/http public API surface', () => {
+  it('declares portable response cookie APIs', () => {
+    expectTypeOf<CookieSameSite>().toEqualTypeOf<'lax' | 'none' | 'strict'>();
+    expectTypeOf<keyof CookieOptions>().toEqualTypeOf<'domain' | 'expires' | 'httpOnly' | 'maxAgeSeconds' | 'path' | 'sameSite' | 'secure'>();
+    expectTypeOf<keyof ClearCookieOptions>().toEqualTypeOf<'domain' | 'httpOnly' | 'path' | 'sameSite' | 'secure'>();
+  });
+
   it('keeps documented supported root-barrel exports', () => {
     expect(httpPublicApi).toHaveProperty('Controller');
     expect(httpPublicApi).toHaveProperty('Get');
@@ -150,6 +161,8 @@ describe('@fluojs/http public API surface', () => {
     expect(httpPublicApi).toHaveProperty('FAST_PATH_STATS_SYMBOL');
     expect(httpPublicApi).toHaveProperty('formatFastPathStats');
     expect(httpPublicApi).toHaveProperty('getDispatcherFastPathStats');
+    expect(httpPublicApi).toHaveProperty('setCookie');
+    expect(httpPublicApi).toHaveProperty('clearCookie');
     expect(httpPublicApi).toHaveProperty('createHandlerMapping');
     expect(httpPublicApi).toHaveProperty('forRoutes');
     expect(httpPublicApi).toHaveProperty('normalizeRoutePattern');
