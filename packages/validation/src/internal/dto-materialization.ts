@@ -3,7 +3,12 @@ import type { Constructor } from '@fluojs/core';
 import { DtoValidationError } from '../errors.js';
 import type { MaterializeOptions, ValidationIssue } from '../types.js';
 import { getCachedDtoMetadata } from './dto-metadata-cache.js';
-import { assignSafeOwnEnumerableProperties, isPlainObject, isSafeOwnEnumerableProperty } from './object-utils.js';
+import {
+  assignSafeOwnEnumerableProperties,
+  getIterableValues,
+  isPlainObject,
+  isSafeOwnEnumerableProperty,
+} from './object-utils.js';
 import { joinFieldPath } from './validation-issues.js';
 
 /**
@@ -11,6 +16,7 @@ import { joinFieldPath } from './validation-issues.js';
  */
 export interface NestedTraversalContext {
   readonly active: WeakSet<object>;
+  readonly declaredNestedKeys?: WeakMap<object, ReadonlySet<PropertyKey>>;
   readonly hydrateExistingInstances?: boolean;
   readonly undeclaredProperties?: MaterializeOptions['undeclaredProperties'];
   readonly materialized?: WeakMap<object, WeakMap<Constructor, object>>;
@@ -47,6 +53,43 @@ function rememberMaterializedInstance(
 
 function canMaterialize<T>(value: unknown, target: Constructor<T>): value is object {
   return value instanceof target || isPlainObject(value);
+}
+
+function collectDeclaredKeys(
+  instance: Record<PropertyKey, unknown>,
+  target: Constructor,
+): Set<PropertyKey> {
+  const metadata = getCachedDtoMetadata(target);
+
+  return new Set<PropertyKey>([
+    ...Reflect.ownKeys(instance),
+    ...metadata.mergedPropertyKeys,
+    ...Array.from(metadata.bindingMap.values()).flatMap((binding) => binding.key === undefined ? [] : [binding.key]),
+  ]);
+}
+
+function rememberConflictingNestedKeys(
+  value: unknown,
+  targets: readonly Constructor[],
+  context?: NestedTraversalContext,
+): void {
+  if (!context?.declaredNestedKeys) {
+    return;
+  }
+
+  const declaredKeys = new Set<PropertyKey>();
+
+  for (const target of targets) {
+    for (const key of collectDeclaredKeys(new target() as Record<PropertyKey, unknown>, target)) {
+      declaredKeys.add(key);
+    }
+  }
+
+  for (const entry of getIterableValues(value) ?? [value]) {
+    if (isPlainObject(entry)) {
+      context.declaredNestedKeys.set(entry, declaredKeys);
+    }
+  }
 }
 
 /**
@@ -93,6 +136,7 @@ export function exitTraversal(value: unknown, context?: NestedTraversalContext):
  * @param target Nested DTO constructor.
  * @param rawValue Raw nested value.
  * @param context Invocation-local traversal state.
+ * @param fieldPrefix Parent path used for undeclared-property issues.
  * @returns The materialized DTO value or the original unsupported value.
  */
 export function createNestedDtoInstance<T>(
@@ -132,11 +176,14 @@ export function createNestedDtoInstance<T>(
 
     if (isPlainObject(rawValue)) {
       if (context?.undeclaredProperties === 'reject') {
-        const declaredKeys = new Set<PropertyKey>([
-          ...Reflect.ownKeys(instance),
-          ...metadata.mergedPropertyKeys,
-          ...Array.from(metadata.bindingMap.values()).flatMap((binding) => binding.key === undefined ? [] : [binding.key]),
-        ]);
+        const declaredKeys = collectDeclaredKeys(instance, target);
+        const declaredNestedKeys = context.declaredNestedKeys?.get(rawValue);
+
+        if (declaredNestedKeys) {
+          for (const key of declaredNestedKeys) {
+            declaredKeys.add(key);
+          }
+        }
         const issues = Reflect.ownKeys(rawValue)
           .filter((key) => isSafeOwnEnumerableProperty(rawValue, key) && !declaredKeys.has(key))
           .map((key): ValidationIssue => {
@@ -163,10 +210,14 @@ export function createNestedDtoInstance<T>(
     }
 
     for (const nestedEntry of metadata.nestedDtoTransforms) {
-      const hasConflictingTarget = metadata.nestedDtoTransforms.some(
-        (candidate) => candidate.propertyKey === nestedEntry.propertyKey && candidate.target !== nestedEntry.target,
+      const nestedTargets = metadata.nestedDtoTransforms
+        .filter((candidate) => candidate.propertyKey === nestedEntry.propertyKey)
+        .map((candidate) => candidate.target);
+      const hasConflictingTarget = nestedTargets.some(
+        (candidate) => candidate !== nestedEntry.target,
       );
       if (hasConflictingTarget) {
+        rememberConflictingNestedKeys(instance[nestedEntry.propertyKey], nestedTargets, context);
         continue;
       }
 

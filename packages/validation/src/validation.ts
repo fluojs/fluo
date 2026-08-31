@@ -116,7 +116,7 @@ async function validateNestedRule(
       continue;
     }
 
-    const nestedDto = createNestedDtoInstance(resolvedDto, entry, context);
+    const nestedDto = createNestedDtoInstance(resolvedDto, entry, context, nestedPath);
     const shouldTrackEntry = trackedEntry && !(entry instanceof resolvedDto)
       ? enterTraversal(trackedEntry, context)
       : false;
@@ -275,6 +275,9 @@ export class DefaultValidator implements Validator {
       hydrateExistingInstances: true,
       undeclaredProperties: options.undeclaredProperties ?? 'preserve',
       materialized: new WeakMap<object, WeakMap<Constructor, object>>(),
+      ...(options.undeclaredProperties === 'reject'
+        ? { declaredNestedKeys: new WeakMap<object, ReadonlySet<PropertyKey>>() }
+        : {}),
     };
     const instance = createNestedDtoInstance(target, value, traversal);
     const issues = await collectValidationIssuesInternal(target, instance, {}, traversal);
