@@ -189,7 +189,7 @@ Lazy loading is an import-time safety property only. It does **not** make signin
 
 ### `decode()` trust boundary
 
-`JwtService.decode(token)` reads the JWT payload segment without verifying the signature, `alg`, `exp`, `nbf`, `iss`, `aud`, or any other claim. The returned object is **unverified input** and must never be used for authorization decisions, identity resolution, or any code path that grants access. Use `JwtService.verify(token, options)` (or `DefaultJwtVerifier.verifyAccessToken(token)`) first, and read identity from the normalized `JwtPrincipal` that verification returns.
+`JwtService.decode(token)` reads the JWT payload segment without verifying the signature, `alg`, `exp`, `nbf`, `iss`, `aud`, or any other claim. The returned object is **unverified input** and must never be used for authorization decisions, identity resolution, or any code path that grants access. Use `JwtService.verify(token, options)` to obtain verified claims, or `DefaultJwtVerifier.verifyAccessToken(token)` to obtain a normalized `JwtPrincipal`.
 
 `decode()` exists for diagnostics and non-authoritative inspection only, such as reading token metadata for logging or selecting a verification key before calling `verify()`. Any claim value read from `decode()` — including `sub`, `roles`, `scopes`, `iss`, `aud`, and `exp` — must be treated as attacker-controlled until `verify()` succeeds. Never branch on `decode()` output to allow or deny a request, and never expose decoded claims to downstream code as if they were verified.
 

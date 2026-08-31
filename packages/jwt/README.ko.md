@@ -189,7 +189,7 @@ Lazy loading은 import-time 안전성 속성일 뿐입니다. 서명이나 검�
 
 ### `decode()` trust boundary
 
-`JwtService.decode(token)`는 서명, `alg`, `exp`, `nbf`, `iss`, `aud` 또는 기타 클레임을 검증하지 않고 JWT payload segment를 읽습니다. 반환된 객체는 **검증되지 않은 입력(unverified input)**이며, 권한 결정(authorization decisions), 신원 확인(identity resolution), 또는 접근을 허가하는 모든 코드 경로에 사용해서는 안 됩니다. 먼저 `JwtService.verify(token, options)`(또는 `DefaultJwtVerifier.verifyAccessToken(token)`)를 호출하고, 검증이 반환하는 정규화된 `JwtPrincipal`에서 신원을 읽으세요.
+`JwtService.decode(token)`는 서명, `alg`, `exp`, `nbf`, `iss`, `aud` 또는 기타 클레임을 검증하지 않고 JWT payload segment를 읽습니다. 반환된 객체는 **검증되지 않은 입력(unverified input)**이며, 권한 결정(authorization decisions), 신원 확인(identity resolution), 또는 접근을 허가하는 모든 코드 경로에 사용해서는 안 됩니다. 검증된 클레임은 `JwtService.verify(token, options)`로 얻고, 정규화된 `JwtPrincipal`은 `DefaultJwtVerifier.verifyAccessToken(token)`으로 얻으세요.
 
 `decode()`는 진단(diagnostics) 및 비권위적 검사(non-authoritative inspection)에만 사용됩니다. 예를 들어 로깅을 위해 토큰 메타데이터를 읽거나 `verify()` 호출 전에 검증 키를 선택할 때 사용할 수 있습니다. `decode()` 출력에서 읽은 모든 클레임 값 — `sub`, `roles`, `scopes`, `iss`, `aud`, `exp` 포함 — 은 `verify()`가 성공하기 전까지 공격자가 제어한 값으로 취급해야 합니다. `decode()` 출력을 기준으로 요청을 허가하거나 거부하는 분기를 만들지 말고, 검증되지 않은 클레임을 검증된 것처럼 downstream 코드에 노출하지 마세요.
 

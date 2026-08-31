@@ -13,7 +13,7 @@
 | Allowed signing algorithms | 액세스 토큰 서명은 signer가 지원하는 첫 번째 구성 알고리즘을 사용합니다. 지원 값은 `HS256`, `HS384`, `HS512`, `RS256`, `RS384`, `RS512`, `ES256`, `ES384`, `ES512`입니다. | `packages/jwt/src/signing/signer.ts`, `packages/jwt/src/types.ts` |
 | Key material | HMAC 서명에는 `secret` 또는 `keys[]`의 HMAC 항목이 필요합니다. 비대칭 서명에는 `privateKey` 또는 `keys[]`의 private-key 항목이 필요합니다. 서명 재료가 없으면 구성 오류입니다. | `packages/jwt/src/signing/signer.ts` |
 | Default lifetime | `DefaultJwtSigner`는 `exp`를 서명 시각에 `accessTokenTtlSeconds`를 더한 값으로 설정합니다. `accessTokenTtlSeconds`가 없으면 기본 액세스 토큰 수명은 `3600`초입니다. | `packages/jwt/src/signing/signer.ts` |
-| Default claims | `DefaultJwtSigner`는 호출자가 제공하지 않은 `aud`, `iss`, `iat`, `exp`를 모듈 옵션으로 채웁니다. | `packages/jwt/src/signing/signer.ts` |
+| Default claims | `DefaultJwtSigner`는 호출자가 제공하지 않은 `aud`, `iss`, `exp`를 모듈 옵션으로 채웁니다. `iat`는 현재 서명 시각으로 채웁니다. | `packages/jwt/src/signing/signer.ts` |
 | Per-call overrides | `JwtService.sign(payload, options)`는 `aud`, `iss`, `sub`, `nbf`, `exp`를 호출 단위로 재정의할 수 있습니다. `expiresIn` 옵션은 기존 `payload.exp`보다 우선합니다. | `packages/jwt/src/service.ts`, `packages/jwt/src/service.test.ts` |
 | Refresh-token algorithm set | 리프레시 토큰 서명은 HMAC 알고리즘으로 제한됩니다. 구성된 알고리즘 목록에 HMAC이 없으면 리프레시 토큰 서명이 실패합니다. | `packages/jwt/src/signing/signer.ts`, `packages/jwt/src/signing/verifier.ts` |
 | Refresh-token shape | `RefreshTokenService`는 `type: 'refresh'`, `jti`, `family`, `sub`, `iat`, `exp`를 포함한 리프레시 토큰을 발급하고, 이에 대응하는 저장소 레코드를 저장합니다. | `packages/jwt/src/refresh/refresh-token.ts` |
@@ -70,5 +70,5 @@ Principal 처리 제약:
 | --- | --- | --- |
 | No verification | `JwtService.decode(token)`는 서명, `alg`, `exp`, `nbf`, `iss`, `aud` 또는 기타 클레임을 검증하지 않고 JWT payload segment를 읽습니다. | `packages/jwt/src/service.ts` |
 | Unverified input | 반환된 객체는 검증되지 않은 입력(unverified input)입니다. `decode()` 출력에서 읽은 모든 클레임 값 — `sub`, `roles`, `scopes`, `iss`, `aud`, `exp` 포함 — 은 `verify()`가 성공하기 전까지 공격자가 제어한 값으로 취급해야 합니다. | `packages/jwt/src/service.ts` |
-| Authorization prohibition | `decode()` 출력은 권한 결정(authorization decisions), 신원 확인(identity resolution), 또는 접근을 허가하는 모든 코드 경로에 사용해서는 안 됩니다. 먼저 `JwtService.verify(token, options)` 또는 `DefaultJwtVerifier.verifyAccessToken(token)`을 호출하고, 검증이 반환하는 정규화된 `JwtPrincipal`에서 신원을 읽으세요. | `packages/jwt/src/service.ts`, `packages/jwt/README.md` |
+| Authorization prohibition | `decode()` 출력은 권한 결정(authorization decisions), 신원 확인(identity resolution), 또는 접근을 허가하는 모든 코드 경로에 사용해서는 안 됩니다. 검증된 클레임은 `JwtService.verify(token, options)`로 얻고, 정규화된 `JwtPrincipal`은 `DefaultJwtVerifier.verifyAccessToken(token)`으로 얻으세요. | `packages/jwt/src/service.ts`, `packages/jwt/README.md` |
 | Permitted uses | `decode()`는 진단(diagnostics) 및 비권위적 검사(non-authoritative inspection)에만 사용됩니다. 예를 들어 로깅을 위해 토큰 메타데이터를 읽거나 `verify()` 호출 전에 검증 키를 선택할 때 사용할 수 있습니다. | `packages/jwt/src/service.ts` |
