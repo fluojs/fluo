@@ -14,12 +14,24 @@ function sourceRange(source: string, start: number, end: number): string {
 }
 
 function sourceExcerpt(document: string, citation: string): string {
-  const citationOffset = document.indexOf(citation);
-  const openingFenceOffset = document.indexOf('```typescript\n', citationOffset);
-  const excerptStart = openingFenceOffset + '```typescript\n'.length;
-  const closingFenceOffset = document.indexOf('\n```', excerptStart);
+  const lines = document.split('\n');
+  const anchor = `\`${citation}\``;
+  const citationLineIndexes = lines.flatMap((line, index) => line === anchor ? [index] : []);
 
-  return document.slice(excerptStart, closingFenceOffset);
+  expect(citationLineIndexes).toHaveLength(1);
+
+  const citationLineIndex = citationLineIndexes.at(0) ?? -1;
+  const openingFenceLineIndex = lines.indexOf('```typescript', citationLineIndex + 1);
+  const closingFenceLineIndex = lines.indexOf('```', openingFenceLineIndex + 1);
+
+  expect(openingFenceLineIndex).toBeGreaterThan(citationLineIndex);
+  expect(closingFenceLineIndex).toBeGreaterThan(openingFenceLineIndex);
+
+  return lines.slice(openingFenceLineIndex + 1, closingFenceLineIndex).join('\n');
+}
+
+function assertSourceExcerpt(document: string, citation: string, expected: string): void {
+  expect(sourceExcerpt(document, citation)).toBe(expected);
 }
 
 const englishOwnershipClaims = [
@@ -45,6 +57,36 @@ const ownershipEvidenceTitles = [
   'keeps parent-first ownership when direct disposal joins the active attempt',
   'detaches a retained child after a later direct retry fails',
 ] as const;
+
+describe('source excerpt guard', () => {
+  const citation = 'path:packages/di/src/container.ts:1-1';
+  const expected = 'const value = true;';
+  const excerpt = `\`${citation}\`\n\`\`\`typescript\n${expected}\n\`\`\``;
+
+  it('rejects duplicate line-exact citation anchors', () => {
+    // Given
+    const duplicate = `${excerpt}\n\n${excerpt}`;
+
+    // When / Then
+    expect(() => assertSourceExcerpt(duplicate, citation, expected)).toThrow();
+  });
+
+  it('rejects a missing line-exact citation anchor', () => {
+    // Given
+    const missing = excerpt.replace(citation, 'path:packages/di/src/container.ts:2-2');
+
+    // When / Then
+    expect(() => assertSourceExcerpt(missing, citation, expected)).toThrow();
+  });
+
+  it('rejects source excerpt drift', () => {
+    // Given
+    const drifted = excerpt.replace(expected, 'const value = false;');
+
+    // When / Then
+    expect(() => assertSourceExcerpt(drifted, citation, expected)).toThrow();
+  });
+});
 
 describe('DI disposal ownership governance', () => {
   it('keeps all five ownership guarantees in the English package and advanced book', () => {
@@ -88,8 +130,7 @@ describe('DI disposal ownership governance', () => {
     // When / Then
     for (const chapter of chapters) {
       for (const [citation, start, end] of sourceExcerpts) {
-        expect(chapter).toContain(citation);
-        expect(sourceExcerpt(chapter, citation)).toBe(sourceRange(containerSource, start, end));
+        assertSourceExcerpt(chapter, citation, sourceRange(containerSource, start, end));
       }
 
       expect(chapter).not.toContain('if (completed && this.parent && this.trackedByParent)');
