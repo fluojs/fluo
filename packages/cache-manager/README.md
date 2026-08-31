@@ -26,6 +26,8 @@ General-purpose cache manager for fluo with pluggable memory, Redis, and custom 
 npm install @fluojs/cache-manager
 ```
 
+`@fluojs/cache-manager` supports Node.js `>=20.19.3 <21 || >=22.2.0 <27` and declares that exact range through `engines.node`. Its mandatory `@fluojs/runtime` dependency owns that Node listener boundary, so Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded. Earlier 1.x releases advertised `engines.node >=20.0.0`, which never matched the effective dependency floor.
+
 The root `@fluojs/cache-manager` import stays safe for memory-only installs. You only need a Redis client when you explicitly select the Redis-backed store path.
 
 For Redis-backed caching with a lifecycle-managed `@fluojs/redis` client:
