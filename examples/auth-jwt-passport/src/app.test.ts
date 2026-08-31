@@ -163,6 +163,33 @@ describe('AppModule e2e', () => {
         status: 401,
       });
 
+      await expect(
+        app
+          .request('GET', '/profile/')
+          .header('authorization', 'Bearer invalid-token')
+          .send(),
+      ).resolves.toMatchObject({
+        headers: {
+          'WWW-Authenticate': 'Bearer',
+        },
+        status: 401,
+      });
+
+      await expect(
+        app
+          .request('GET', '/profile/')
+          .header(
+            'authorization',
+            'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJmbHVvLWF1dGgtZXhhbXBsZS1jbGllbnRzIiwiZXhwIjowLCJpc3MiOiJmbHVvLWF1dGgtZXhhbXBsZSIsInN1YiI6ImV4cGlyZWQifQ.sY5V1fydHfhYke1_1_TTcmYit8Nl5CfhknF2H3wTZUk',
+          )
+          .send(),
+      ).resolves.toMatchObject({
+        headers: {
+          'WWW-Authenticate': 'Bearer',
+        },
+        status: 401,
+      });
+
       const issueResult = await app
         .request('POST', '/auth/token')
         .body({ username: 'grace' })
