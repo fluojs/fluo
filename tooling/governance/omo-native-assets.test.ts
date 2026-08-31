@@ -95,7 +95,7 @@ const requiredShippedContractPaths = [
 ] as const;
 
 describe('OMO native asset manifest', () => {
-  it('keeps execute-lane workers single-depth and non-orchestrating', () => {
+  it('keeps execute-lane workers single-depth, in-process, and non-orchestrating', () => {
     const config = JSON.parse(read('.omo/omo.jsonc')) as OmoProjectConfig;
     const agents = config.agents ?? {};
     const workerNames = [
@@ -112,7 +112,7 @@ describe('OMO native asset manifest', () => {
     for (const workerName of workerNames) {
       const worker = agents[workerName];
       expect(worker, `${workerName} must be registered`).toBeDefined();
-      expect(worker?.execution_mode).toBe('process');
+      expect(worker?.execution_mode).toBe('in-process');
       expect(worker?.tools?.['task']).toBe(false);
       expect(worker?.tools?.['dag']).toBe(false);
       expect(worker?.tools?.['team_create']).toBe(false);
