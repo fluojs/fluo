@@ -1,5 +1,6 @@
 import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
-import { connect } from 'node:net';
+import { createServer } from 'node:http';
+import { connect, Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -7,6 +8,7 @@ import { parseStudioViewerArguments, startStudioViewerServer, type StudioViewerS
 
 const temporaryDirectories: string[] = [];
 const servers: StudioViewerServer[] = [];
+const RAW_REQUEST_TIMEOUT_MS = 1_000;
 
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
@@ -15,19 +17,68 @@ afterEach(async () => {
 
 function sendRawRequest(server: StudioViewerServer, request: string): Promise<string> {
   return new Promise((resolveResponse, rejectResponse) => {
-    const socket = connect({
+    const socket = new Socket();
+    let settled = false;
+    let response = '';
+    let timeout: NodeJS.Timeout | undefined;
+    const cleanup = (): void => {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+      socket.off('connect', sendRequest);
+      socket.off('data', appendResponse);
+      socket.off('end', resolveFromEnd);
+      socket.off('close', rejectFromClose);
+      socket.off('error', rejectFromError);
+      if (!socket.destroyed) {
+        socket.destroy();
+      }
+    };
+    const resolveWithResponse = (): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolveResponse(response);
+    };
+    const rejectWithError = (error: Error): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      rejectResponse(error);
+    };
+    const sendRequest = (): void => {
+      socket.end(request);
+    };
+    const appendResponse = (chunk: string): void => {
+      response += chunk;
+    };
+    const resolveFromEnd = (): void => {
+      if (response.length === 0) {
+        rejectWithError(new Error('Raw viewer request ended before a response was received.'));
+        return;
+      }
+      resolveWithResponse();
+    };
+    const rejectFromClose = (): void => rejectWithError(new Error('Raw viewer request socket closed before response end.'));
+    const rejectFromError = (error: Error): void => rejectWithError(error);
+
+    socket.setEncoding('utf8');
+    socket.on('connect', sendRequest);
+    socket.on('data', appendResponse);
+    socket.once('end', resolveFromEnd);
+    socket.once('close', rejectFromClose);
+    socket.once('error', rejectFromError);
+    timeout = setTimeout(() => {
+      rejectWithError(new Error(`Raw viewer request timed out within ${String(RAW_REQUEST_TIMEOUT_MS)}ms.`));
+    }, RAW_REQUEST_TIMEOUT_MS);
+    socket.connect({
       host: server.url.hostname,
       port: Number(server.url.port),
     });
-    let response = '';
-
-    socket.setEncoding('utf8');
-    socket.once('connect', () => socket.end(request));
-    socket.on('data', (chunk: string) => {
-      response += chunk;
-    });
-    socket.once('end', () => resolveResponse(response));
-    socket.once('error', rejectResponse);
   });
 }
 
@@ -131,6 +182,56 @@ describe('Studio viewer server', () => {
       expect(unhandledRejection).toBeUndefined();
     } finally {
       process.off('unhandledRejection', captureUnhandledRejection);
+    }
+  });
+
+  it('rejects a raw request when the peer closes before ending its response', async () => {
+    // Given: a local peer that accepts a connection and closes before any HTTP response ends.
+    const sockets = new Set<Socket>();
+    const closingServer = createServer();
+    closingServer.on('connection', (socket) => {
+      sockets.add(socket);
+      socket.once('close', () => sockets.delete(socket));
+    });
+    await new Promise<void>((resolve, reject) => {
+      closingServer.once('error', reject);
+      closingServer.listen(0, '127.0.0.1', () => {
+        closingServer.off('error', reject);
+        resolve();
+      });
+    });
+    const address = closingServer.address();
+    if (!address || typeof address === 'string') {
+      await new Promise<void>((resolve, reject) => closingServer.close((error) => error ? reject(error) : resolve()));
+      throw new Error('Failed to allocate socket-closing test port.');
+    }
+    const viewer: StudioViewerServer = {
+      close: () => new Promise<void>((resolve, reject) => closingServer.close((error) => error ? reject(error) : resolve())),
+      url: new URL(`http://127.0.0.1:${String(address.port)}/`),
+    };
+
+    try {
+      // When: the raw request helper observes the peer close.
+      let timeout: NodeJS.Timeout | undefined;
+      const result = await Promise.race([
+        sendRawRequest(viewer, 'GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n')
+          .then(() => 'resolved' as const, () => 'rejected' as const),
+        new Promise<'timed-out'>((resolve) => {
+          timeout = setTimeout(() => resolve('timed-out'), RAW_REQUEST_TIMEOUT_MS + 500);
+        }),
+      ]).finally(() => {
+        if (timeout) {
+          clearTimeout(timeout);
+        }
+      });
+
+      // Then: a close is a bounded transport failure rather than a hanging helper.
+      expect(result).toBe('rejected');
+    } finally {
+      for (const socket of sockets) {
+        socket.destroy();
+      }
+      await viewer.close();
     }
   });
 });

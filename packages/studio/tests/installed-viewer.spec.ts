@@ -6,6 +6,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Readable } from 'node:stream';
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 
+import { readViewerUrl, stopViewerProcess } from '../src/viewer-process.js';
+
 const packageDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const evidenceDirectory = resolve(packageDirectory, 'evidence');
 const snapshotFixture = readFileSync(join(packageDirectory, 'tests', 'fixtures', 'studio-snapshot.json'));
@@ -18,39 +20,6 @@ const viewports = [
 let consumerDirectory: string | undefined;
 let viewerProcess: ChildProcessByStdio<null, Readable, Readable> | undefined;
 let viewerUrl: Promise<URL> | undefined;
-
-async function stopViewerProcess(process: ChildProcessByStdio<null, Readable, Readable>): Promise<void> {
-  if (process.exitCode !== null || process.signalCode !== null) {
-    return;
-  }
-
-  await new Promise<void>((resolveExit, rejectExit) => {
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    const cleanup = (): void => {
-      if (timeout !== undefined) {
-        clearTimeout(timeout);
-      }
-      process.off('error', rejectFromError);
-      process.off('exit', resolveFromExit);
-    };
-    const rejectFromError = (error: Error): void => {
-      cleanup();
-      rejectExit(error);
-    };
-    const resolveFromExit = (): void => {
-      cleanup();
-      resolveExit();
-    };
-
-    timeout = setTimeout(() => {
-      cleanup();
-      rejectExit(new Error('Installed viewer did not exit after SIGTERM within 10 seconds.'));
-    }, 10_000);
-    process.once('error', rejectFromError);
-    process.once('exit', resolveFromExit);
-    process.kill('SIGTERM');
-  });
-}
 
 function commandDiagnostics(command: string, arguments_: readonly string[], result: SpawnSyncReturns<string>): string {
   return [
@@ -71,28 +40,6 @@ function runCommand(command: string, arguments_: readonly string[], cwd: string)
   }
 
   return result;
-}
-
-function readViewerUrl(process: ChildProcessByStdio<null, Readable, Readable>): Promise<URL> {
-  return new Promise((resolveUrl, reject) => {
-    let output = '';
-    const rejectFromExit = (code: number | null, signal: NodeJS.Signals | null): void => {
-      reject(new Error(`Installed viewer exited before announcing its URL (code ${String(code)}, signal ${String(signal)}): ${output}`));
-    };
-
-    process.stdout.setEncoding('utf8');
-    process.stdout.on('data', (chunk: string) => {
-      output += chunk;
-      const url = output.match(/http:\/\/127\.0\.0\.1:\d+\//u)?.[0];
-
-      if (url) {
-        process.off('exit', rejectFromExit);
-        resolveUrl(new URL(url));
-      }
-    });
-    process.once('error', reject);
-    process.once('exit', rejectFromExit);
-  });
 }
 
 function pngDimensions(path: string): { readonly height: number; readonly width: number } {
