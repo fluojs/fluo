@@ -302,7 +302,7 @@ CI 작업, 대시보드, migration report에서 안정적인 machine-readable �
 
 `--apply`로 다시 실행하기 전에는 모든 warning을 검토하세요. Warning은 자동 rewrite를 그대로 수락해도 된다는 뜻이 아니라 수동 follow-up 항목입니다. Warning category별 post-codemod checklist는 [NestJS migration guide](../../docs/getting-started/migrate-from-nestjs.ko.md)를 기준으로 확인하세요.
 
-Adapter-independent transform(`imports`, `injectable`, `scope`, `testing`, `tsconfig`)은 HTTP adapter 없이 실행됩니다. Codemod는 adapterless `NestFactory.create(AppModule)` bootstrap을 그대로 두고 manual follow-up을 보고합니다. platform package를 설치하고 adapter를 명시적으로 생성해 `FluoFactory.create(...)`에 전달한 뒤 `listen()`을 호출하세요. 먼저 독립 transform을 실행합니다:
+Adapter-independent transform(`imports`, `injectable`, `scope`, `testing`, `tsconfig`)은 HTTP adapter 없이 실행됩니다. 기본 NestJS bootstrap은 Express를 사용하므로 기본 bootstrap transform은 `NestFactory.create(AppModule)`를 `createExpressAdapter(...)`로 재작성하고 static `listen(port)` 인수를 그 adapter로 접습니다. 마이그레이션한 애플리케이션을 컴파일하기 전에 `@fluojs/platform-express`와 `express`를 설치하세요. bootstrap을 그대로 두려면 독립 transform만 선택하세요:
 
 ```bash
 fluo migrate ./src --apply --only imports,injectable,scope,testing,tsconfig

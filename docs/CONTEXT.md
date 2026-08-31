@@ -6,7 +6,7 @@ This document is the primary AI-reference entrypoint for the fluo repository. It
 
 fluo is a standard-first TypeScript backend framework built on TC39 standard decorators, explicit dependency boundaries, and metadata-free runtime wiring. It rejects legacy decorator compiler modes and treats behavioral contracts, platform parity, and package surface clarity as core design constraints.
 
-For NestJS migrations, `fluo migrate` runs adapter-independent transforms without selecting a platform; adapterless `NestFactory.create(AppModule)` bootstrap remains a documented manual follow-up in the [migration guide](./getting-started/migrate-from-nestjs.md).
+For NestJS migrations, `fluo migrate` rewrites default `NestFactory.create(AppModule)` bootstrap with an explicit Express adapter, while explicit adapter-independent transform selections leave bootstrap unchanged.
 
 ## Hard Constraints
 

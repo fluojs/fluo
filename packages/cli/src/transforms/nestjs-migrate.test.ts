@@ -124,7 +124,7 @@ describe('runNestJsMigration', () => {
     expect(readFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'utf8')).toBe(beforeMain);
   });
 
-  it('applies safe transforms and keeps adapterless bootstrap unchanged', () => {
+  it('applies safe transforms and folds a default Express bootstrap port', () => {
     const workspaceDirectory = createMigrationFixture();
 
     const firstReport = runNestJsMigration({
@@ -145,9 +145,12 @@ describe('runNestJsMigration', () => {
     };
 
     expect(firstReport.changedFiles).toBeGreaterThan(0);
-    expect(mainContent).toContain('NestFactory.create(AppModule)');
-    expect(mainContent).toContain('await app.listen(3000);');
-    expect(firstReport.fileResults.flatMap((result) => result.warnings)).toHaveLength(4);
+    expect(mainContent).toContain('FluoFactory.create(AppModule, {');
+    expect(mainContent).toContain("import { createExpressAdapter } from \"@fluojs/platform-express\";");
+    expect(mainContent).toContain('adapter: createExpressAdapter({');
+    expect(mainContent).toMatch(/port:\s*3000/);
+    expect(mainContent).toContain('await app.listen();');
+    expect(firstReport.fileResults.flatMap((result) => result.warnings).some((warning) => warning.category === 'bootstrap-unsupported')).toBe(false);
     expect(serviceContent).toMatch(/@Scope\(("|')request\1\)/);
     expect(serviceContent).not.toContain('@Injectable');
     expect(serviceContent).toContain("from \"@fluojs/core\"");
@@ -198,12 +201,12 @@ describe('runNestJsMigration', () => {
     });
   });
 
-  it('applies adapter-independent transforms without an HTTP adapter', () => {
+  it('leaves bootstrap unchanged when only an adapter-independent transform is selected', () => {
     const workspaceDirectory = createMigrationFixture();
 
     const report = runNestJsMigration({
       apply: true,
-      enabledTransforms: new Set(['bootstrap', 'injectable']),
+      enabledTransforms: new Set(['injectable']),
       targetPath: workspaceDirectory,
     });
 
@@ -213,7 +216,7 @@ describe('runNestJsMigration', () => {
     expect(mainContent).toContain('NestFactory.create(AppModule)');
     expect(mainContent).not.toContain('FluoFactory.create');
     expect(serviceContent).not.toContain('@Injectable');
-    expect(report.fileResults.flatMap((result) => result.warnings).some((warning) => warning.category === 'bootstrap-unsupported')).toBe(true);
+    expect(report.fileResults.flatMap((result) => result.warnings).some((warning) => warning.category === 'bootstrap-unsupported')).toBe(false);
   });
 
   it('preserves listen(port) when port cannot be folded into create options', () => {

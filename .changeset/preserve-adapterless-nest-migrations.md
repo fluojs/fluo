@@ -2,4 +2,4 @@
 "@fluojs/cli": patch
 ---
 
-Keep adapterless NestJS bootstrap code unchanged during migration, while allowing adapter-independent transforms to run and reporting the explicit platform-adapter migration path.
+Restore the default NestJS Express bootstrap migration with an explicit fluo adapter while preserving explicit adapter-independent transform selections.

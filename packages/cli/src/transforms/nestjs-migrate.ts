@@ -604,6 +604,7 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
   const portFoldedApps = new Set<string>();
   const rewrittenCreateCallKeys = new Set<string>();
   const warnedCreateCallKeys = new Set<string>();
+  let usesDefaultExpressAdapter = false;
 
   function toCallKey(callExpression: ts.CallExpression): string {
     return `${callExpression.pos}:${callExpression.end}`;
@@ -634,13 +635,6 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
       };
     }
 
-    if (callExpression.arguments.length === 1) {
-      return {
-        reason: 'No NestJS HTTP adapter could be detected. Run adapter-independent transforms with --skip bootstrap, then install a Fluo platform package such as @fluojs/platform-fastify and pass createFastifyAdapter(...) to FluoFactory.create(..., { adapter }) before calling listen().',
-        supported: false,
-      };
-    }
-
     if (callExpression.arguments.length === 2 && !ts.isObjectLiteralExpression(callExpression.arguments[1])) {
       return {
         reason: 'NestFactory.create uses an adapter-specific startup form. Run adapter-independent transforms with --skip bootstrap, then replace the NestJS adapter with a Fluo platform adapter passed to FluoFactory.create(..., { adapter }) before calling listen().',
@@ -649,6 +643,15 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
     }
 
     return { supported: true };
+  }
+
+  function createDefaultExpressAdapter(options?: ts.ObjectLiteralExpression): ts.CallExpression {
+    usesDefaultExpressAdapter = true;
+    return ts.factory.createCallExpression(
+      ts.factory.createIdentifier('createExpressAdapter'),
+      undefined,
+      options ? [options] : [],
+    );
   }
 
   const inspect = (node: ts.Node): void => {
@@ -702,7 +705,14 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
 
               if (nextArgs.length === 1) {
                 nextArgs = [nextArgs[0], ts.factory.createObjectLiteralExpression([
-                  ts.factory.createPropertyAssignment('port', portExpression),
+                  ts.factory.createPropertyAssignment(
+                    'adapter',
+                    createDefaultExpressAdapter(
+                      ts.factory.createObjectLiteralExpression([
+                        ts.factory.createPropertyAssignment('port', portExpression),
+                      ], true),
+                    ),
+                  ),
                 ], true)];
                 portFoldedApps.add(appVariable);
               } else if (nextArgs.length === 2 && ts.isObjectLiteralExpression(nextArgs[1])) {
@@ -726,6 +736,12 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
                 );
               }
             }
+          }
+
+          if (nextArgs.length === 1) {
+            nextArgs = [nextArgs[0], ts.factory.createObjectLiteralExpression([
+              ts.factory.createPropertyAssignment('adapter', createDefaultExpressAdapter()),
+            ], true)];
           }
 
           rewrittenCreateCallKeys.add(toCallKey(node));
@@ -769,10 +785,20 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
 
   const nextSourceFile = parseSource(nextSource, filePath);
   const withRuntimeImport = printSourceFile(nextSourceFile, mergeNamedImport([...nextSourceFile.statements], '@fluojs/runtime', [{ imported: 'FluoFactory', local: 'FluoFactory' }]));
+  const withPlatformImport = usesDefaultExpressAdapter
+    ? printSourceFile(
+      parseSource(withRuntimeImport, filePath),
+      mergeNamedImport(
+        [...parseSource(withRuntimeImport, filePath).statements],
+        '@fluojs/platform-express',
+        [{ imported: 'createExpressAdapter', local: 'createExpressAdapter' }],
+      ),
+    )
+    : withRuntimeImport;
 
   return {
-    changed: withRuntimeImport !== source,
-    source: withRuntimeImport,
+    changed: withPlatformImport !== source,
+    source: withPlatformImport,
     warnings,
   };
 }

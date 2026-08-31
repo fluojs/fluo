@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -53,7 +53,7 @@ describe('runMigrateCommand', () => {
     expect(stderrBuffer.join('')).toContain('No transforms remain');
   });
 
-  it('returns adapterless bootstrap warning in dry-run mode', async () => {
+  it('returns adapterless bootstrap rewrite summary in dry-run mode', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-command-'));
     tempDirectories.push(workspaceDirectory);
 
@@ -80,9 +80,83 @@ void bootstrap();
 
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Mode: dry-run');
-    expect(stdoutBuffer.join('')).toContain('Changed files: 0');
-    expect(stdoutBuffer.join('')).toContain('Warnings: 1');
-    expect(stdoutBuffer.join('')).toContain('Manual follow-up required:');
+    expect(stdoutBuffer.join('')).toContain('Changed files: 1');
+    expect(stdoutBuffer.join('')).toContain('Warnings: 0');
+    expect(stdoutBuffer.join('')).toContain('Run again with --apply to write transformed files.');
+  });
+
+  it('applies the default Express-backed bootstrap rewrite', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-command-'));
+    tempDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    const sourceFilePath = join(workspaceDirectory, 'src', 'main.ts');
+    writeFileSync(
+      sourceFilePath,
+      `import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  await app.listen(3000);
+}
+void bootstrap();
+`,
+    );
+
+    const exitCode = await runMigrateCommand(['./src', '--apply'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    });
+
+    const migratedSource = readFileSync(sourceFilePath, 'utf8');
+    expect(exitCode).toBe(0);
+    expect(migratedSource).not.toContain('NestFactory.create');
+    expect(migratedSource).toContain('FluoFactory.create(AppModule, {');
+    expect(migratedSource).toContain("import { createExpressAdapter } from \"@fluojs/platform-express\";");
+    expect(migratedSource).toContain('adapter: createExpressAdapter({');
+    expect(migratedSource).toMatch(/port:\s*3000/);
+    expect(migratedSource).toContain('await app.listen();');
+  });
+
+  it('keeps bootstrap unchanged for CLI-selected adapter-independent transforms', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-command-'));
+    tempDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    const sourceFilePath = join(workspaceDirectory, 'src', 'main.ts');
+    const serviceFilePath = join(workspaceDirectory, 'src', 'users.service.ts');
+    writeFileSync(
+      sourceFilePath,
+      `import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  await app.listen(3000);
+}
+void bootstrap();
+`,
+    );
+    writeFileSync(
+      serviceFilePath,
+      `import { Injectable } from '@nestjs/common';
+
+@Injectable()
+export class UsersService {}
+`,
+    );
+
+    const exitCode = await runMigrateCommand(['./src', '--apply', '--only', 'injectable'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(readFileSync(sourceFilePath, 'utf8')).toContain('NestFactory.create(AppModule)');
+    expect(readFileSync(serviceFilePath, 'utf8')).not.toContain('@Injectable');
   });
 
   it('emits structured JSON summary in dry-run mode', async () => {
@@ -130,25 +204,21 @@ void bootstrap();
     expect(output).not.toContain('Mode: dry-run');
     expect(report).toMatchObject({
       apply: false,
-      changedFiles: 0,
+      changedFiles: 1,
       command: 'migrate',
       dryRun: true,
       mode: 'dry-run',
       scannedFiles: 1,
-      warningCount: 1,
+      warningCount: 0,
     });
     expect(report.transforms).toContain('bootstrap');
     expect(report.files).toEqual([
       {
-        appliedTransforms: [],
-        changed: false,
+        appliedTransforms: ['bootstrap'],
+        changed: true,
         filePath: sourceFilePath,
-        warningCount: 1,
-        warnings: [
-          expect.objectContaining({
-            category: 'bootstrap-unsupported',
-          }),
-        ],
+        warningCount: 0,
+        warnings: [],
       },
     ]);
   });

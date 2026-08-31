@@ -487,7 +487,7 @@ Human-readable output is the default. Add `--json` when CI jobs, dashboards, or 
 
 The JSON report includes `mode` (`dry-run` or `apply`), `dryRun`, `apply`, enabled `transforms`, `scannedFiles`, `changedFiles`, aggregate `warningCount`, and per-file metadata. Each file entry records `filePath`, whether the file changed, applied transforms, warning count, and warning details with category labels and source line numbers.
 
-Adapter-independent transforms (`imports`, `injectable`, `scope`, `testing`, and `tsconfig`) run without an HTTP adapter. The codemod leaves an adapterless `NestFactory.create(AppModule)` bootstrap unchanged and reports a manual follow-up because fluo cannot choose a platform on the application's behalf. Complete the independent work first, then install a platform package and pass its explicitly created adapter to `FluoFactory.create(...)` before calling `listen()`:
+Adapter-independent transforms (`imports`, `injectable`, `scope`, `testing`, and `tsconfig`) run without an HTTP adapter. The default NestJS bootstrap uses Express, so the default bootstrap transform rewrites `NestFactory.create(AppModule)` with `createExpressAdapter(...)` and folds a static `listen(port)` argument into that adapter. Install `@fluojs/platform-express` and `express` before compiling the migrated application. Select only the independent transforms when you want to leave bootstrap unchanged:
 
 ```bash
 fluo migrate ./src --apply --only imports,injectable,scope,testing,tsconfig

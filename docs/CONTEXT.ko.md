@@ -6,7 +6,7 @@
 
 fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터 없는 런타임 구성을 기반으로 하는 standard-first TypeScript 백엔드 프레임워크다. legacy 데코레이터 컴파일 모드를 거부하며, behavioral contract, 플랫폼 parity, 패키지 표면의 명확성을 핵심 설계 제약으로 둔다.
 
-NestJS migration에서 `fluo migrate`는 platform을 선택하지 않고 adapter-independent transform을 실행하며, adapterless `NestFactory.create(AppModule)` bootstrap은 [migration guide](./getting-started/migrate-from-nestjs.ko.md)의 문서화된 manual follow-up으로 남는다.
+NestJS migration에서 `fluo migrate`는 명시적 Express adapter로 기본 `NestFactory.create(AppModule)` bootstrap을 재작성하며, 명시적으로 선택한 adapter-independent transform은 bootstrap을 변경하지 않는다.
 
 ## Hard Constraints
 

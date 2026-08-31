@@ -302,7 +302,7 @@ Use `--json` when CI jobs, dashboards, or migration reports need a stable machin
 
 Review every warning before rerunning with `--apply`. Warnings are manual follow-up items rather than permission for an automatic rewrite to be accepted blindly; use the [NestJS migration guide](../../docs/getting-started/migrate-from-nestjs.md) as the post-codemod checklist for each warning category.
 
-Adapter-independent transforms (`imports`, `injectable`, `scope`, `testing`, and `tsconfig`) run without an HTTP adapter. The codemod leaves an adapterless `NestFactory.create(AppModule)` bootstrap unchanged and reports a manual follow-up; install a platform package, create its adapter explicitly, and pass it to `FluoFactory.create(...)` before calling `listen()`. Run the independent transforms first:
+Adapter-independent transforms (`imports`, `injectable`, `scope`, `testing`, and `tsconfig`) run without an HTTP adapter. The default NestJS bootstrap uses Express, so the default bootstrap transform rewrites `NestFactory.create(AppModule)` with `createExpressAdapter(...)` and folds a static `listen(port)` argument into that adapter. Install `@fluojs/platform-express` and `express` before compiling the migrated application; select only the independent transforms to leave bootstrap unchanged:
 
 ```bash
 fluo migrate ./src --apply --only imports,injectable,scope,testing,tsconfig
