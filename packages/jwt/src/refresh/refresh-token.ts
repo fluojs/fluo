@@ -1,7 +1,8 @@
 import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from '../errors.js';
+import { SUPPORTED_HMAC_HASH } from '../signing/algorithm-policy.js';
 import type { DefaultJwtSigner } from '../signing/signer.js';
 import type { DefaultJwtVerifier } from '../signing/verifier.js';
-import type { JwtClaims } from '../types.js';
+import type { JwtAlgorithm, JwtClaims } from '../types.js';
 
 /**
  * Describes the refresh token store contract.
@@ -54,11 +55,13 @@ export interface RefreshTokenRecord {
  * Describes the refresh token options contract.
  */
 export interface RefreshTokenOptions {
-  secret: string;
-  expiresInSeconds: number;
-  verifyMaxAgeSeconds?: number;
-  rotation: boolean;
-  store: RefreshTokenStore;
+  /** HMAC algorithms allowed for refresh-token signing and verification. Defaults to HMAC algorithms from the top-level policy. */
+  readonly algorithms?: readonly Extract<JwtAlgorithm, 'HS256' | 'HS384' | 'HS512'>[];
+  readonly secret: string;
+  readonly expiresInSeconds: number;
+  readonly verifyMaxAgeSeconds?: number;
+  readonly rotation: boolean;
+  readonly store: RefreshTokenStore;
 }
 
 /**
@@ -75,6 +78,20 @@ export interface RefreshTokenOptions {
 export function normalizeRefreshTokenOptions(options: RefreshTokenOptions | undefined): RefreshTokenOptions {
   if (!options) {
     throw new JwtConfigurationError('JWT refresh token options are not configured.');
+  }
+
+  if (options.algorithms !== undefined) {
+    if (!Array.isArray(options.algorithms) || options.algorithms.length === 0) {
+      throw new JwtConfigurationError('JWT refresh token algorithms must contain at least one HMAC algorithm.');
+    }
+
+    for (const algorithm of options.algorithms) {
+      if (typeof algorithm !== 'string' || !Object.hasOwn(SUPPORTED_HMAC_HASH, algorithm)) {
+        throw new JwtConfigurationError(
+          `JWT refresh token received unsupported algorithm "${String(algorithm)}"; only HS256, HS384, and HS512 are allowed.`,
+        );
+      }
+    }
   }
 
   if (typeof options.secret !== 'string' || options.secret.length === 0) {

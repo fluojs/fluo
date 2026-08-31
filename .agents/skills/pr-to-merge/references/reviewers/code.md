@@ -32,6 +32,32 @@ concrete risks at one immutable local or PR head.
 8. Is every changed file necessary for the issue, its tests, docs, contract
    companions, or release metadata?
 
+## Guard and enforcement checklist
+
+When the diff ADDS or EDITS any enforcement — a governance check, drift
+guard, validator, or gate — apply this checklist. Six guards that could not
+fail shipped or nearly shipped in one 30-issue lane; every one passed its
+own suite:
+
+1. **A passing guard is not a working guard.** Demand mutation evidence in
+   BOTH directions: the guarded artifact mutated → guard fails; and for a
+   new test, the guard's own comparison removed → the test fails. A manual
+   demonstration is not a regression test — only a pinned test keeps the
+   guard working tomorrow.
+2. **Anchors must be line-exact and unique.** `indexOf('## Heading')` is a
+   substring search: `### Heading` still matches from the second `#`, and
+   an earlier duplicate heading shadows the real section. Require
+   `^## Heading\s*$` (escaped dots — an unescaped `.` matches anything)
+   with an exactly-one-match assertion that fails loudly on BOTH zero and
+   many. Phrase-keyed regexes over prose are the same defect class: a
+   reworded sentence bypasses them while legitimate changes false-positive.
+3. **Defined is not invoked.** Verify the guard is registered where the
+   verifier enumerates its checks — especially after a merge or keep-both
+   conflict resolution, where a function survives but its call site
+   silently disappears.
+4. **Assert the specific failure**, not merely that something threw — a
+   bare `toThrow()` passes when the guard fails for the wrong reason.
+
 ## Evidence and severity
 
 - Report only a correctness, architecture, security, package-boundary, or

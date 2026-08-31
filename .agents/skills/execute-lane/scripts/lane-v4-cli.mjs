@@ -5,7 +5,7 @@
 //   init            --root . --lane-id <id> --issue <n> [--issue <n> ...]
 //   plan            --root . --lane <path> --issue <n>
 //   plan-all        --root . --lane <path>
-//   watch           --root . --lane <path> [--interval 60] [--once]
+//   watch           --root . --lane <path> [--interval 60] [--once] [--stall-after 15]
 //   record          --root . --lane <path> --issue <n> --phase <p> --result-json <json>
 //   set-fact        --root . --lane <path> --issue <n> --kind local-checks|review --head <sha> --value <json>
 //   approve-merge   --root . --lane <path> --issue <n>
@@ -16,11 +16,12 @@
 // no event journal. A new head silently invalidates stale facts.
 
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { applyChildResult, decideNext, summarizeTransitions } from './lane-v4.mjs';
+import { applyChildResult, decideNext, summarizeTransitions, trackStalls } from './lane-v4.mjs';
 
 const arg = (args, flag, fallback) => {
 	const i = args.indexOf(flag);
@@ -62,7 +63,20 @@ const factIfCurrent = (entry, kind, headSha) => {
 // not ship to consumers and therefore do not require a changeset per
 // docs/contracts/release-governance.md. Exported so the gate is testable —
 // when this lived inline it could drift silently.
+//
+// EXCEPTION the .md blanket exclusion got wrong (caught by a reviewer on
+// #3347): npm auto-includes package-root README* and LICENSE/LICENCE* in the
+// tarball regardless of the manifest `files` field, so those ARE shipped
+// package content. `npm pack --dry-run` on @fluojs/testing (files:["dist"])
+// showed README.md and README.ko.md in the tarball. Root-level only — npm's
+// auto-include does not apply to nested paths — and CHANGELOG is not in npm's
+// auto-include set.
+const packageRootAlwaysPacked = /^packages\/[^/]+\/(?:README|LICEN[SC]E)[^/]*$/i;
+
 export const isConsumerVisibleFile = (file) => {
+	if (packageRootAlwaysPacked.test(file)) {
+		return true;
+	}
 	if (!file.startsWith('packages/') || file.endsWith('.md')) {
 		return false;
 	}
@@ -79,6 +93,22 @@ export const isChangesetFile = (file) => /^\.changeset\/.+\.md$/.test(file) && !
 // v4 consumes only the issue set and the dependency edges from it; every other v2
 // field describes v1's DAG/authority machinery, which v4 does not have. Exported
 // so the translation is testable rather than buried in argument parsing.
+// Provenance back-reference written into the v4 lane at init time. Two files
+// describe "the lane" during a run — the v2 planning ledger (immutable
+// evidence) and the v4 runtime state (mutated by every set-fact/record) — and
+// without this link the runtime file cannot say which planning bytes it came
+// from. Hashing the exact bytes (not the parsed value) makes later ledger
+// edits detectable.
+export const sourceLedgerRef = (path, contents) => {
+	if (typeof path !== 'string' || path.length === 0) {
+		throw new TypeError('source ledger path must be a non-empty string');
+	}
+	if (typeof contents !== 'string') {
+		throw new TypeError('source ledger contents must be a string');
+	}
+	return { path, sha256: createHash('sha256').update(contents).digest('hex') };
+};
+
 export const laneV2ToInitSpecs = (laneV2) => {
 	if (laneV2?.version !== 2) {
 		throw new TypeError('lane v2 intake requires "version": 2');
@@ -188,11 +218,14 @@ const main = () => {
 		let laneId;
 		let baseBranch = 'main';
 		let specs;
+		let ledgerRef = null;
 		if (fromLaneV2 !== null) {
-			const translated = laneV2ToInitSpecs(JSON.parse(readFileSync(resolve(root, fromLaneV2), 'utf8')));
+			const raw = readFileSync(resolve(root, fromLaneV2), 'utf8');
+			const translated = laneV2ToInitSpecs(JSON.parse(raw));
 			laneId = args.includes('--lane-id') ? arg(args, '--lane-id') : translated.laneId;
 			baseBranch = translated.baseBranch;
 			specs = translated.specs;
+			ledgerRef = sourceLedgerRef(fromLaneV2, raw);
 		} else {
 			laneId = arg(args, '--lane-id');
 			// --issue accepts `N` or `N:dep1,dep2` (deps must be lane members).
@@ -219,6 +252,9 @@ const main = () => {
 			version: 4,
 			lane_id: laneId,
 			base_branch: baseBranch,
+			// Present only for --from-lane-v2 inits; a hand-built lane has no
+			// planning ledger to point at.
+			...(ledgerRef ? { source_ledger: ledgerRef } : {}),
 			issues: Object.fromEntries(
 				specs.map(({ n, deps }) => [String(n), {
 					issue: n,
@@ -263,15 +299,27 @@ const main = () => {
 		// tick is a fresh GitHub/git observation.
 		const intervalSec = Number(arg(args, '--interval', '60'));
 		const once = args.includes('--once');
+		// A decision that stops moving is owed an operator action; transitions
+		// alone hide that (issue 3400 sat in `review` for hours unnoticed).
+		// Fires at every threshold multiple; 0 disables.
+		const stallAfter = Number(arg(args, '--stall-after', '15'));
 		const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 		const loop = async () => {
 			let prev = null;
+			let stallCounts = null;
 			for (; ;) {
 				const next = snapshotAll();
 				const { changes, settled } = summarizeTransitions(prev, next);
 				for (const c of changes) {
 					process.stdout.write(
 						`${new Date().toISOString()} issue ${c.issue}: ${c.from ?? '(start)'} -> ${c.to}\n`,
+					);
+				}
+				const tracked = trackStalls(stallCounts, next, stallAfter);
+				stallCounts = tracked.counts;
+				for (const s of tracked.stalled) {
+					process.stdout.write(
+						`${new Date().toISOString()} STALLED issue ${s.issue}: ${s.action} x ${s.ticks} ticks\n`,
 					);
 				}
 				if (settled) {

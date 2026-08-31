@@ -21,8 +21,8 @@ describe('NestJS i18n migration documentation', () => {
     const koreanBridgeDecision = read('docs/reference/i18n-ecosystem-bridges.ko.md');
 
     // When
-    const englishGuidance = [englishReadme, englishMigration] as const;
-    const koreanGuidance = [koreanReadme, koreanMigration] as const;
+    const englishGuidance = [englishReadme, englishMigration, englishBridgeDecision] as const;
+    const koreanGuidance = [koreanReadme, koreanMigration, koreanBridgeDecision] as const;
 
     // Then
     expect(moduleSource).toContain('static forRoot(options?: I18nModuleOptions)');

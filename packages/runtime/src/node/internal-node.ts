@@ -1,4 +1,9 @@
-import { createServer as createHttpServer, type RequestListener, type ServerResponse } from 'node:http';
+import {
+  createServer as createHttpServer,
+  type ServerOptions as HttpServerOptions,
+  type RequestListener,
+  type ServerResponse,
+} from 'node:http';
 import { createServer as createHttpsServer, type ServerOptions as HttpsServerOptions } from 'node:https';
 import type { AddressInfo, Socket } from 'node:net';
 
@@ -61,6 +66,7 @@ import {
  */
 export interface NodeHttpAdapterOptions {
   host?: string;
+  http?: HttpServerOptions;
   https?: HttpsServerOptions;
   maxBodySize?: number;
   port?: number;
@@ -91,6 +97,7 @@ export interface BootstrapNodeApplicationOptions extends Omit<CreateApplicationO
   globalPrefix?: string;
   globalPrefixExclude?: readonly string[];
   host?: string;
+  http?: HttpServerOptions;
   https?: HttpsServerOptions;
   logger?: ApplicationLogger;
   maxBodySize?: number;
@@ -145,6 +152,7 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
     maxBodySize = 1 * 1024 * 1024,
     preserveRawBody = false,
     private readonly shutdownTimeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS,
+    private readonly httpOptions?: HttpServerOptions,
   ) {
     validateNodeLifecycleOptions({
       retryDelayMs: this.retryDelayMs,
@@ -157,7 +165,7 @@ export class NodeHttpApplicationAdapter implements HttpApplicationAdapter {
       maxBodySize,
       preserveRawBody,
     );
-    this.server = createNodeServer(this.httpsOptions, (request, response) => {
+    this.server = createNodeServer(this.httpOptions, this.httpsOptions, (request, response) => {
       void this.handleRequest(request, response);
     });
     this.listenLifecycle = new NodeListenLifecycle(this.server, {
@@ -284,6 +292,7 @@ export function createNodeHttpAdapter(options: NodeHttpAdapterOptions = {}, comp
     resolveNodeMaxBodySize(options.maxBodySize),
     options.rawBody,
     options.shutdownTimeoutMs,
+    options.http,
   );
 }
 
@@ -352,9 +361,18 @@ export {
 };
 
 function createNodeServer(
+  httpOptions: HttpServerOptions | undefined,
   httpsOptions: HttpsServerOptions | undefined,
   handler: NodeRequestListener,
 ): NodeServer {
+  if (httpOptions && httpsOptions) {
+    throw new Error('Plain HTTP and HTTPS server options cannot be used together.');
+  }
+
+  if (httpOptions) {
+    return createHttpServer(httpOptions, handler);
+  }
+
   return httpsOptions ? createHttpsServer(httpsOptions, handler) : createHttpServer(handler);
 }
 

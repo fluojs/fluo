@@ -131,11 +131,11 @@ The rest of this chapter traces how this one line expands into real cache behavi
 ## 5.2 Singleton caching and the root container baseline
 Singleton is the default lifetime, but Fluo's singleton behavior is more precise than simply "one object forever." In practice, it is closer to "one promise per token in the root singleton cache unless there is a documented override path."
 
-The cache fields are declared in `path:packages/di/src/container.ts:292-317`. The key field for single providers is `singletonCache: Map<Token, Promise<unknown>>`. Multi providers have a separate `multiSingletonCache: Map<NormalizedProvider, Promise<unknown>>`.
+The cache fields and construction boundary are declared in `path:packages/di/src/container.ts:300-349`. The key field for single providers is `singletonCache: Map<Token, Promise<unknown>>`. Multi providers have a separate `multiSingletonCache: Map<NormalizedProvider, Promise<unknown>>`.
 
 Looking at the container fields immediately shows why singleton, request, and multi providers use different cache maps.
 
-`path:packages/di/src/container.ts:292-317`
+`path:packages/di/src/container.ts:300-349`
 ```typescript
   private readonly registrations = new Map<Token, NormalizedProvider>();
   private readonly multiRegistrations = new Map<Token, NormalizedProvider[]>();
@@ -159,21 +159,47 @@ Looking at the container fields immediately shows why singleton, request, and mu
   private trackedByParent = false;
   private graphRevision = 0;
 
-  constructor(
-    private readonly parent?: Container,
-    private readonly requestScopeEnabled = false,
-    singletonCache?: Map<Token, Promise<unknown>>,
+  private readonly parent: Container | undefined;
+  private readonly requestScopeEnabled: boolean;
+
+  /**
+   * Creates a root container that owns its own singleton cache.
+   *
+   * Child request scopes are package-owned and must be created with
+   * {@link Container.createRequestScope}; caller-supplied parent, request-scope,
+   * or singleton-cache wiring is rejected.
+   *
+   * @throws {ContainerResolutionError} When any constructor argument is supplied.
+   */
+  constructor(...construction: never[]) {
+    if (construction.length > 0) {
+      throw new ContainerResolutionError(
+        'Container child-scope construction is package-owned and cannot be invoked directly.',
+        {
+          hint: 'Construct root containers with new Container() and create child scopes with container.createRequestScope().',
+        },
+      );
+    }
+
+    const childScope = Container.#childScopeConstruction;
+
+    this.parent = childScope?.parent;
+    this.requestScopeEnabled = childScope?.requestScopeEnabled ?? false;
+    this.singletonCache = childScope?.singletonCache ?? new Map<Token, Promise<unknown>>();
+  }
 ```
+
+The public construction surface is deliberately narrow. `new Container()` is the only supported caller-facing form, and the `...construction: never[]` signature leaves no argument type a consumer can satisfy. Parent, request-scope, and singleton-cache wiring travel through a package-private construction path, so a structural cast against the emitted declaration cannot forge one.
 
 Because of this structure, the singleton cache is keyed by token, while the multi singleton cache is keyed by each normalized provider. The request caches repeat the same separation, but they are owned by the child container.
 
 The root container owns singleton cache state.
-`createRequestScope()` in `path:packages/di/src/container.ts:572-589` creates the child container by passing `this.root().singletonCache`.
+`createRequestScope()` in `path:packages/di/src/container.ts:609-622` creates the child container by handing it `this.root().singletonCache`.
 So request scope does not copy singleton state. It shares it.
 
-The request child creation code passes that shared state directly as a constructor argument.
+The request child creation code passes that shared state through the package-private construction path. The following source excerpt is the body of a `Container` method: its `#createChildScope` call is a private class-member access, not application code that consumers can copy or invoke.
 
-`path:packages/di/src/container.ts:572-589`
+`path:packages/di/src/container.ts:609-622`
 ```typescript
   createRequestScope(): Container {
     if (this.isDisposedInHierarchy()) {
@@ -183,31 +209,27 @@ The request child creation code passes that shared state directly as a construct
       );
     }
 
-    return new Container(this, true, this.root().singletonCache);
+    return Container.#createChildScope({
+      parent: this,
+      requestScopeEnabled: true,
+      singletonCache: this.root().singletonCache,
+    });
   }
-
-  /**
-   * Resolves a token to an instance using scope-aware caching rules.
-   *
-   * @param token Token to resolve.
-   * @returns A promise that resolves to the token instance (or multi-provider instance array).
-   * @throws {ContainerResolutionError} When called after disposal or when no provider is registered.
-   * @throws {RequestScopeResolutionError} When request-scoped providers are resolved from root scope.
 ```
 
-A request child therefore has a parent and the request flag, but it sees the root's singleton promise map. Empty scope shells are not tracked immediately. `ensureTrackedRequestScope()` and the lazy request-cache writers in `path:packages/di/src/container.ts:1107-1128` attach the child chain when request-owned cache state is first materialized. This preserves the chapter's ownership rule while making descendant invalidation and disposal operate on live request caches rather than every scope object ever created.
+A request child therefore has a parent and the request flag, but it sees the root's singleton promise map. Because the construction path is package-private, `createRequestScope()` is the only way to reach that wiring; application code cannot hand a container someone else's singleton cache. Empty scope shells are not tracked immediately. `ensureTrackedRequestScope()` in `path:packages/di/src/container.ts:1144-1153` and the lazy request-cache writers in `path:packages/di/src/container.ts:1155-1166` attach the child chain when request-owned cache state is first materialized. This preserves the chapter's ownership rule while making descendant invalidation and disposal operate on live request caches rather than every scope object ever created.
 
 The resolution step enforces the same structure again.
-`resolveScopedOrSingletonInstance()` in `path:packages/di/src/container.ts:995-1034` first asks `cacheOwnerFor(provider)` which container owns the cache.
-`cacheOwnerFor()` in `path:packages/di/src/container.ts:1050-1060` keeps a default provider in the current request child only when the child registered it locally or owns its local multi provider; otherwise it recurses to the parent. In that case, the child delegates to the root cache owner.
+`resolveScopedOrSingletonInstance()` in `path:packages/di/src/container.ts:1032-1041` first asks `cacheOwnerFor(provider)` for the container that owns the cache.
+`cacheOwnerFor()` in `path:packages/di/src/container.ts:1087-1098` keeps local default providers in the request child and delegates inherited default providers toward the parent/root cache owner.
 
 The actual cache map is selected by `cacheFor()`.
-`path:packages/di/src/container.ts:1154-1198` shows the core rules.
+`path:packages/di/src/container.ts:1191-1213` shows the core rules.
 A default-scope provider normally uses the root `singletonCache`. The one exception is a provider locally registered in a request child, which uses the request cache. The method comment documents this exception as a footgun on purpose.
 
 We will inspect the cache selection rules closely once. The request, override, and disposal sections later recap from this excerpt.
 
-`path:packages/di/src/container.ts:1154-1198`
+`path:packages/di/src/container.ts:1191-1213`
 ```typescript
   private cacheFor(provider: NormalizedProvider): Map<Token, Promise<unknown>> {
     if (provider.scope === Scope.DEFAULT) {
@@ -358,16 +380,16 @@ Because `cache.set()` appears before `await`, concurrent resolves share the same
 ## 5.3 Request scope is a child container, not a flag on a provider
 Request lifetime is modeled structurally. It is not just a label that means "create this provider often." Fluo creates a real child container for each request boundary.
 
-`createRequestScope()` in `path:packages/di/src/container.ts:572-589` calls `new Container(this, true, this.root().singletonCache)`.
-That constructor call contains three decisions. The child has a parent reference. It has request-scope enabled. It shares the root singleton cache.
+`createRequestScope()` in `path:packages/di/src/container.ts:609-622` calls the package-private child construction path.
+That construction contains three decisions. The child has a parent reference. It has request-scope enabled. It shares the root singleton cache.
 
-So request scope is not a special cache bucket inside the root container. It is a separate container instance with its own `requestCache` and `multiRequestCache`. These fields are declared in `path:packages/di/src/container.ts:292-297`.
+So request scope is not a special cache bucket inside the root container. It is a separate container instance with its own `requestCache` and `multiRequestCache`. These fields are declared in `path:packages/di/src/container.ts:300-301`.
 
-Request-only resolution is enforced in `cacheFor()` and `multiCacheFor()`. If the provider scope is `request` and `requestScopeEnabled` is false, the container throws `RequestScopeResolutionError` with a hint to use `container.createRequestScope()`. The code is in `path:packages/di/src/container.ts:1154-1198`.
+Request-only resolution is enforced in `cacheFor()` and `multiCacheFor()`. If the provider scope is `request` and `requestScopeEnabled` is false, the container throws `RequestScopeResolutionError` with a hint to use `container.createRequestScope()`. The code is in `path:packages/di/src/container.ts:1191-1213` and `path:packages/di/src/container.ts:1214-1236`.
 
 The earlier `cacheFor()` excerpt already showed the request guard for single providers, so it is enough to add the multi provider side here.
 
-`path:packages/di/src/container.ts:1177-1202`
+`path:packages/di/src/container.ts:1214-1236`
 ```typescript
   private multiCacheFor(provider: NormalizedProvider): Map<NormalizedProvider, Promise<unknown>> {
     if (provider.scope === Scope.DEFAULT) {
@@ -390,10 +412,6 @@ The earlier `cacheFor()` excerpt already showed the request guard for single pro
     }
 
     return this.multiRequestCacheForWrite();
-  }
-
-  private hasLocalMultiProvider(provider: NormalizedProvider): boolean {
-    return this.multiRegistrations.get(provider.provide)?.includes(provider) ?? false;
   }
 ```
 
@@ -711,7 +729,7 @@ Each evicted cached promise is handed to `scheduleStaleDisposal()` in `path:pack
 
 Stale disposal is now a task state machine rather than a shutdown-only error accumulator. `StaleDisposalTask` records its promise, failure, and whether that failure has already been consumed (`path:packages/di/src/container.ts:31-39`). `resolve()` calls `assertStaleDisposalsSettled()` before beginning replacement resolution (`path:packages/di/src/container.ts:593-604`). Disposal reaches the same boundary through `disposeCache()`, while still collecting resolution and ordinary `onDestroy()` failures so cleanup can continue.
 
-`path:packages/di/src/container.ts:1367-1523`
+`path:packages/di/src/container.ts:1422-1578`
 ```typescript
   private async assertStaleDisposalsSettled(): Promise<void> {
     const errors: unknown[] = [];
@@ -937,7 +955,7 @@ The public `dispose()` entrypoint and its origin-aware helper live in `path:pack
 
 The shared helper handles reentry, failure retry, and the origin of the active attempt.
 
-`path:packages/di/src/container.ts:627-648`
+`path:packages/di/src/container.ts:682-703`
 ```typescript
   private async disposeWithOrigin(origin: DisposalAttemptOrigin): Promise<void> {
     if (this.disposePromise) {
@@ -969,7 +987,7 @@ A concurrent caller awaits the active promise, so overlapping callers do not dup
 
 The origin-aware child traversal and detach rule are the load-bearing lines.
 
-`path:packages/di/src/container.ts:650-687`
+`path:packages/di/src/container.ts:705-742`
 ```typescript
   private async disposeAll(origin: DisposalAttemptOrigin): Promise<void> {
     const errors: unknown[] = [];
@@ -1027,7 +1045,7 @@ and returns singleton cache and multi singleton cache for the root. So disposing
 
 Tiered cache ownership appears again in the disposal target list.
 
-`path:packages/di/src/container.ts:1204-1220`
+`path:packages/di/src/container.ts:1266-1282`
 ```typescript
   private disposalCacheEntries(): Array<[NormalizedProvider | Token, Promise<unknown>]> {
     if (this.parent) {
@@ -1054,7 +1072,7 @@ Actual instance collection happens in `collectDisposableInstances()` using `Prom
 
 `disposeCache()` snapshots retry candidates before settling stale tasks so a failure first observed during the same disposal is not retried in that pass. Every stale instance actually retried is excluded from live-cache disposal, including one whose retry failed, so a factory that returns the same live object cannot invoke a successful hook behind a retained failure.
 
-`path:packages/di/src/container.ts:1229-1257`
+`path:packages/di/src/container.ts:1284-1312`
 ```typescript
   private async disposeCache(entries: Array<[NormalizedProvider | Token, Promise<unknown>]>): Promise<void> {
     const errors: unknown[] = [];

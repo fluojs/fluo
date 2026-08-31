@@ -595,6 +595,18 @@ describe('@fluojs/platform-fastify', () => {
         return 'plain';
       }
 
+      @Header('Content-Type', ' text/plain; profile="application/json" ')
+      @Get('/string-with-json-profile')
+      getStringWithJsonProfile() {
+        return 'plain with a JSON profile';
+      }
+
+      @Header('Content-Type', ' Application/Json ; charset=utf-8 ')
+      @Get('/json-string-with-parameters')
+      getJsonStringWithParameters() {
+        return 'JSON string';
+      }
+
       @Get('/bytes')
       getBytes() {
         return Uint8Array.from([65, 66]);
@@ -637,6 +649,8 @@ describe('@fluojs/platform-fastify', () => {
       const objectResponse = await requestHttp({ path: '/responses/object', port });
       const arrayResponse = await requestHttp({ path: '/responses/array', port });
       const stringResponse = await requestHttp({ path: '/responses/string', port });
+      const stringWithJsonProfileResponse = await requestHttp({ path: '/responses/string-with-json-profile', port });
+      const jsonStringWithParametersResponse = await requestHttp({ path: '/responses/json-string-with-parameters', port });
       const bytesResponse = await requestHttp({ path: '/responses/bytes', port });
       const bufferResponse = await requestHttp({ path: '/responses/buffer', port });
       const headerResponse = await requestHttp({ path: '/responses/headers', port });
@@ -651,6 +665,8 @@ describe('@fluojs/platform-fastify', () => {
       expect(JSON.parse(arrayResponse.body)).toEqual([{ ok: true }]);
       expect(stringResponse.headers['content-type']).toContain('text/plain');
       expect(stringResponse.body).toBe('plain');
+      expect(stringWithJsonProfileResponse.body).toBe('plain with a JSON profile');
+      expect(jsonStringWithParametersResponse.body).toBe(JSON.stringify('JSON string'));
       expect(bytesResponse.headers['content-type']).toContain('application/octet-stream');
       expect(bytesResponse.body).toBe('AB');
       expect(bufferResponse.headers['content-type']).toContain('application/octet-stream');
@@ -670,6 +686,39 @@ describe('@fluojs/platform-fastify', () => {
     } finally {
       await app.close();
     }
+  });
+
+  it('serializes string responses with JSON structured-suffix media types', () => {
+    const adapter = createFastifyAdapter({ port: 0 }) as FastifyHttpApplicationAdapter;
+    const requestResponseFactory = Reflect.get(adapter, 'requestResponseFactory') as {
+      createResponse(reply: FastifyReply): FrameworkResponse;
+    };
+    const headers = new Map<string, string | string[]>();
+    const sentPayloads: unknown[] = [];
+    const reply = {
+      getHeader(name: string) {
+        return headers.get(name.toLowerCase());
+      },
+      hasHeader(name: string) {
+        return headers.has(name.toLowerCase());
+      },
+      header(name: string, value: string | string[]) {
+        headers.set(name.toLowerCase(), value);
+        return this;
+      },
+      raw: {},
+      send(payload: unknown) {
+        sentPayloads.push(payload);
+        return this;
+      },
+      sent: false,
+    } as unknown as FastifyReply;
+    const response = requestResponseFactory.createResponse(reply);
+
+    response.setHeader('Content-Type', ' Application/Json-Patch+Json ; charset=utf-8 ');
+    response.send('JSON Patch string');
+
+    expect(sentPayloads).toEqual([JSON.stringify('JSON Patch string')]);
   });
 
   it('preserves benchmark-style simple query and JSON body routes on the native request path', async () => {
@@ -1011,13 +1060,8 @@ describe('@fluojs/platform-fastify', () => {
     const observedMultipartRequest = createDeferred<void>();
 
     fastifyApp.addHook('preHandler', (request) => {
-      const contentType = request.headers['content-type'];
-      const primaryValue = Array.isArray(contentType) ? contentType[0] : contentType;
-
-      if (typeof primaryValue === 'string' && primaryValue.includes('multipart/form-data')) {
-        observedMultipartRawBodyStates.push(request.rawBody !== undefined);
-        observedMultipartRequest.resolve();
-      }
+      observedMultipartRawBodyStates.push(request.rawBody !== undefined);
+      observedMultipartRequest.resolve();
     });
 
     const port = await listenOnEphemeralPort(app);
@@ -1034,14 +1078,7 @@ describe('@fluojs/platform-fastify', () => {
     });
 
     try {
-      await expect(Promise.race([
-        observedMultipartRequest.promise,
-        new Promise<void>((_resolve, reject) => {
-          setTimeout(() => {
-            reject(new Error('Multipart request never reached Fastify preHandler hook.'));
-          }, 2_000);
-        }),
-      ])).resolves.toBeUndefined();
+      await observedMultipartRequest.promise;
 
       expect(observedMultipartRawBodyStates).toEqual([false]);
     } finally {
@@ -1051,7 +1088,7 @@ describe('@fluojs/platform-fastify', () => {
     }
   });
 
-  it('treats multipart content-type values case-insensitively before raw-body capture', async () => {
+  it('treats multipart media types with casing, whitespace, and parameters before raw-body capture', async () => {
     @Controller('/uploads')
     class UploadController {
       @Post('/')
@@ -1078,13 +1115,8 @@ describe('@fluojs/platform-fastify', () => {
     const observedMultipartRequest = createDeferred<void>();
 
     fastifyApp.addHook('preHandler', (request) => {
-      const contentType = request.headers['content-type'];
-      const primaryValue = Array.isArray(contentType) ? contentType[0] : contentType;
-
-      if (typeof primaryValue === 'string' && primaryValue.toLowerCase().includes('multipart/form-data')) {
-        observedMultipartRawBodyStates.push(request.rawBody !== undefined);
-        observedMultipartRequest.resolve();
-      }
+      observedMultipartRawBodyStates.push(request.rawBody !== undefined);
+      observedMultipartRequest.resolve();
     });
 
     const port = await listenOnEphemeralPort(app);
@@ -1104,26 +1136,65 @@ describe('@fluojs/platform-fastify', () => {
       body,
       headers: {
         'content-length': String(Buffer.byteLength(body)),
-        'content-type': `Multipart/Form-Data; boundary=${boundary}`,
+        'content-type': `Multipart/Form-Data  ; boundary=${boundary}`,
       },
       method: 'POST',
       signal: abortController.signal,
     });
 
     try {
-      await expect(Promise.race([
-        observedMultipartRequest.promise,
-        new Promise<void>((_resolve, reject) => {
-          setTimeout(() => {
-            reject(new Error('Mixed-case multipart request never reached Fastify preHandler hook.'));
-          }, 2_000);
-        }),
-      ])).resolves.toBeUndefined();
+      await observedMultipartRequest.promise;
 
       expect(observedMultipartRawBodyStates).toEqual([false]);
     } finally {
       abortController.abort();
       await multipartRequest.catch(() => undefined);
+      await app.close();
+    }
+  });
+
+  it('captures normal JSON bodies when a parameter merely contains the multipart media type', async () => {
+    @Controller('/webhooks')
+    class WebhookController {
+      @Post('/json')
+      readJson(_input: undefined, context: RequestContext) {
+        return {
+          body: context.request.body,
+          rawBody: Buffer.from(context.request.rawBody ?? new Uint8Array()).toString('utf8'),
+        };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [WebhookController],
+    });
+
+    const app = await bootstrapFastifyApplication(AppModule, {
+      cors: false,
+      port: 0,
+      rawBody: true,
+    });
+    const port = await listenOnEphemeralPort(app);
+    const body = JSON.stringify({ event: 'payment.succeeded' });
+
+    try {
+      const response = await requestHttp({
+        body,
+        headers: {
+          'content-type': 'application/json; profile="multipart/form-data"',
+        },
+        method: 'POST',
+        path: '/webhooks/json',
+        port,
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(JSON.parse(response.body)).toEqual({
+        body: { event: 'payment.succeeded' },
+        rawBody: body,
+      });
+    } finally {
       await app.close();
     }
   });
@@ -3133,16 +3204,24 @@ describe('@fluojs/platform-fastify', () => {
 
   it('propagates abort signal when the client disconnects', async () => {
     const aborted = createDeferred<void>();
+    const abortListenerReady = createDeferred<void>();
 
     @Controller('/abort')
     class AbortController {
       @Get('/')
       async wait(_input: undefined, context: RequestContext) {
+        const signal = context.request.signal;
+
+        if (!signal) {
+          throw new Error('Expected the Fastify request to expose an abort signal.');
+        }
+
         await new Promise<void>((resolve) => {
-          context.request.signal?.addEventListener('abort', () => {
+          signal.addEventListener('abort', () => {
             aborted.resolve();
             resolve();
           }, { once: true });
+          abortListenerReady.resolve();
         });
 
         return { ok: true };
@@ -3171,18 +3250,18 @@ describe('@fluojs/platform-fastify', () => {
       request.on('error', () => {});
       request.end();
 
-      setTimeout(() => {
-        request.destroy();
-      }, 20);
+      await abortListenerReady.promise;
+      request.destroy();
 
-      await expect(Promise.race([
-        aborted.promise,
-        new Promise<void>((_resolve, reject) => {
-          setTimeout(() => {
-            reject(new Error('Abort signal was not propagated.'));
-          }, 2_000);
+      const abortResult = await Promise.race([
+        aborted.promise.then(() => 'aborted' as const),
+        new Promise<'timed-out'>((resolve) => {
+          AbortSignal.timeout(2_000).addEventListener('abort', () => {
+            resolve('timed-out');
+          }, { once: true });
         }),
-      ])).resolves.toBeUndefined();
+      ]);
+      expect(abortResult).toBe('aborted');
     } finally {
       request.destroy();
       await app.close();

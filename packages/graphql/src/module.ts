@@ -38,7 +38,7 @@ export class GraphqlModule {
 
     return defineModule(GraphqlRootModule, {
       controllers: [GraphqlEndpointController],
-      middleware: [],
+      middleware: [GraphqlLifecycleService],
       providers: createGraphqlProviders(options),
     });
   }
