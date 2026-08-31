@@ -98,21 +98,21 @@ describe('OMO native asset manifest', () => {
   it('keeps execute-lane workers single-depth and non-orchestrating', () => {
     const config = JSON.parse(read('.omo/omo.jsonc')) as OmoProjectConfig;
     const agents = config.agents ?? {};
-    const workerNames = [
-      'fluo-issue-preflight',
-      'fluo-issue-implementer',
-      'fluo-contract-reviewer',
-      'fluo-code-reviewer',
-      'fluo-verification-reviewer',
-      'fluo-issue-operator',
-    ] as const;
+    const workerModes = {
+      'fluo-issue-preflight': 'in-process',
+      'fluo-issue-implementer': 'process',
+      'fluo-contract-reviewer': 'in-process',
+      'fluo-code-reviewer': 'in-process',
+      'fluo-verification-reviewer': 'in-process',
+      'fluo-issue-operator': 'process',
+    } as const;
 
     expect(config.task?.max_depth).toBe(1);
     expect(agents['fluo-issue-supervisor']).toBeUndefined();
-    for (const workerName of workerNames) {
+    for (const [workerName, executionMode] of Object.entries(workerModes)) {
       const worker = agents[workerName];
       expect(worker, `${workerName} must be registered`).toBeDefined();
-      expect(worker?.execution_mode).toBe('process');
+      expect(worker?.execution_mode).toBe(executionMode);
       expect(worker?.tools?.['task']).toBe(false);
       expect(worker?.tools?.['dag']).toBe(false);
       expect(worker?.tools?.['team_create']).toBe(false);
