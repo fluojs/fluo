@@ -137,6 +137,15 @@ When you use the `@Throttle()` decorator, you pass metadata that `ThrottlerGuard
 
 The decorator can be applied to both classes, meaning Controllers, and methods. When applied to a class, it affects every method in that class. This is useful when grouping related endpoints that should share a particular rate limiting policy. If a method also has an `@Throttle()` decorator, the method-level decorator takes priority over the class-level decorator. This hierarchical override model lets you configure traffic control with very high precision.
 
+### 16.3.5 Migrating from @nestjs/throttler
+`@fluojs/throttler` is not a one-to-one replacement for `@nestjs/throttler`. Preserve Fluo's contracts instead of copying NestJS configuration verbatim:
+
+- **Convert TTL units.** NestJS uses milliseconds and Fluo uses seconds. A NestJS `ttl: 60_000` becomes `ttl: 60`; copying the value directly produces a window 1,000 times longer.
+- **Reshape skipped controllers when necessary.** NestJS named skip metadata can set a method-level `false` to reactivate throttling below a skipped class. Fluo's argument-free `@SkipThrottle()` combines class and method skips additively, so move the protected method to a controller that is not skipped, or enforce that exception in an application-owned guard wrapper.
+- **Prepare asynchronous inputs before registration.** Fluo provides synchronous `ThrottlerModule.forRoot(...)`, not NestJS `forRootAsync(...)`. Resolve secrets, configuration, and store construction at the application bootstrap boundary before registering final options.
+- **Keep policies at their transport boundary.** Fluo's `ThrottlerGuard` and `keyGenerator` operate on HTTP contexts. Use transport-owned guards or middleware for WebSocket messages, GraphQL operations, RPC calls, and queue workers.
+- **Plan counter continuity explicitly.** NestJS and Fluo use different bucket keys and storage call contracts. Migration starts a new window by default; use an application-owned compatibility store or a bounded cutover only when existing counters must remain continuous.
+
 ## 16.4 Storage Providers: Memory vs. Redis
 The throttler needs somewhere to store each tracker's request count. Choosing the right storage Provider is an important decision that affects both the performance and correctness of rate limiting.
 
@@ -351,7 +360,7 @@ You should also consider **per-job rate limiting**. Not every background job is 
 ### 16.13.3 GraphQL Complexity Throttling
 For GraphQL APIs, simple request counting is not enough because a single query can be very expensive. Instead, protect the GraphQL endpoint with module-level complexity guardrails. With Fluo's GraphQL integration, `GraphqlModule.forRoot(...)` accepts `limits.maxDepth`, `limits.maxComplexity`, and `limits.maxCost`, and requests that exceed those budgets are rejected before resolver execution. This cost-based throttling is an important safeguard for APIs that offer flexible and rich data access.
 
-To implement **complexity-based throttling** in fluo, configure those budgets at the module boundary rather than adding field-cost decorators to resolvers. For example, a public catalog API might keep `maxDepth` low to prevent recursive traversal, set `maxComplexity` to cap total field weight, and set `maxCost` to bound aggregate compute estimates. These module-level controls reduce exposure to expensive or deeply recursive queries that could bring down the server, while request-scoped DataLoader remains the mitigation for N+1 lookup patterns and keeps the GraphQL contract aligned with the runtime package surface.
+To implement **complexity-based throttling** in fluo, configure those budgets at the module boundary rather than adding field-cost decorators to resolvers. For example, a public catalog API might keep `maxDepth` low to prevent recursive traversal, set `maxComplexity` to cap total field weight, and set `maxCost` to bound aggregate compute estimates. These module-level controls reduce exposure to expensive or deeply recursive queries that could bring down the server, while GraphQL-operation-scoped DataLoader remains the mitigation for N+1 lookup patterns and keeps the GraphQL contract aligned with the runtime package surface.
 
 You can also combine complexity analysis with **persistent query whitelisting**. By allowing only pre-approved named queries in production, you remove the risk that attackers will send arbitrary high-cost queries. For public GraphQL APIs that need arbitrary queries, complexity-based throttling remains the strongest defense. This two-layer approach, analyzing both the cost and shape of requested data, ensures the GraphQL backend stays performant and secure no matter how complex client needs become.
 

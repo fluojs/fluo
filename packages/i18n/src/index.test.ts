@@ -240,6 +240,27 @@ describe('@fluojs/i18n root public surface', () => {
     expect(service.snapshotOptions().supportedLocales).toEqual(['en', 'ko']);
   });
 
+  it('preserves own __proto__ message keys in core catalog snapshots', () => {
+    // Given: a plain-object catalog with an own message key that collides with Object.prototype.
+    const messages: I18nMessageCatalogs['en'] = {};
+    Object.defineProperty(messages, '__proto__', { enumerable: true, value: 'Prototype-safe' });
+
+    // When: the core service captures its catalog snapshot.
+    const service = createI18n({ catalogs: { en: messages }, defaultLocale: 'en' });
+
+    // Then: the valid own key remains available for translation.
+    expect(service.translate('__proto__', { locale: 'en' })).toBe('Prototype-safe');
+  });
+
+  it('rejects cyclic core catalogs with the stable invalid catalog code', () => {
+    // Given: a catalog whose nested tree refers to itself.
+    const messages: Record<string, string | I18nMessageCatalogs['en']> = {};
+    messages.self = messages;
+
+    // When/Then: core registration reports the documented catalog error instead of overflowing recursion.
+    expectI18nCode(() => createI18n({ catalogs: { en: messages }, defaultLocale: 'en' }), 'I18N_INVALID_CATALOG');
+  });
+
   it('fails with stable errors for invalid catalogs, locale config, and translation options', () => {
     const invalidCatalogs = {
       en: {

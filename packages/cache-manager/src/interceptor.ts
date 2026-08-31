@@ -1,5 +1,5 @@
 import { Inject } from '@fluojs/core';
-import { getStandardMetadataBag } from '@fluojs/core/internal';
+import { getRequestPipelineMetadataBag } from '@fluojs/core/request-pipeline';
 import { type CallHandler, type Interceptor, type InterceptorContext, SseResponse } from '@fluojs/http';
 
 import { cacheRouteMetadataKey, getCacheEvictMetadata, getCacheKeyMetadata, getCacheTtlMetadata } from './decorators.js';
@@ -15,7 +15,7 @@ function isMetadataBag(value: unknown): value is MetadataBag {
 }
 
 function getMethodMetadataBag(controllerToken: Function, methodName: string): MetadataBag | undefined {
-  const classBag = getStandardMetadataBag(controllerToken);
+  const classBag = getRequestPipelineMetadataBag(controllerToken);
 
   if (!isMetadataBag(classBag)) {
     return undefined;
