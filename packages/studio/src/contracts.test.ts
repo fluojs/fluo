@@ -925,6 +925,8 @@ describe('parseStudioPayload', () => {
     expect(readme).toContain('pnpm add @fluojs/studio');
     expect(readme).toContain('@fluojs/studio/contracts');
     expect(readme).toContain('@fluojs/studio/viewer');
+    expect(readme).toContain('`fluo-studio-viewer` is the public launch path');
+    expect(readme).toContain('only the integration asset-resolution contract');
     expect(readme).toContain('report artifacts');
     expect(readme).toContain('node -p "require.resolve(\'@fluojs/studio/viewer\')"');
     expect(readme).toContain('pnpm --dir packages/studio dev');
@@ -935,6 +937,8 @@ describe('parseStudioPayload', () => {
     expect(readmeKo).toContain('pnpm add @fluojs/studio');
     expect(readmeKo).toContain('@fluojs/studio/contracts');
     expect(readmeKo).toContain('@fluojs/studio/viewer');
+    expect(readmeKo).toContain('`fluo-studio-viewer`가 공개 실행 경로');
+    expect(readmeKo).toContain('통합용 asset-resolution 계약으로만');
     expect(readmeKo).toContain('report artifact');
     expect(readmeKo).toContain('node -p "require.resolve(\'@fluojs/studio/viewer\')"');
     expect(readmeKo).toContain('pnpm --dir packages/studio dev');

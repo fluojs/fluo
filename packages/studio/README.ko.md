@@ -36,7 +36,8 @@ pnpm add @fluojs/studio
 배포된 패키지는 다음 caller-facing entrypoint를 제공합니다.
 
 - `@fluojs/studio` / `@fluojs/studio/contracts`: canonical snapshot 파싱, 필터링, Mermaid graph 렌더링 헬퍼와 runtime-connected Studio live event 계약
-- `@fluojs/studio/viewer`: 패키징된 React 브라우저 viewer HTML 진입 파일
+- `fluo-studio-viewer`가 공개 실행 경로이며 패키징된 React 브라우저 viewer를 시작합니다.
+- `@fluojs/studio/viewer`는 패키징된 HTML 진입 파일이 필요한 호출자를 위한 통합용 asset-resolution 계약으로만 제공합니다.
 
 ## 릴리스 정책
 
@@ -77,7 +78,7 @@ MVP request flow는 route/handler와 dependency-graph correlation을 의미합�
 
 Studio는 여전히 fluo CLI가 내보낸 JSON 파일을 소비합니다. 런타임은 snapshot을 생산하고, CLI는 artifact export/write/delegation을 소유하며, Studio는 사람과 자동화 호출자가 사용할 수 있도록 snapshot을 파싱, 필터링, 검사, 렌더링하는 공개 헬퍼와 viewer surface를 소유합니다. 지원되는 inspect artifact에는 raw snapshot, snapshot-plus-timing envelope, `fluo inspect --report`가 생성한 report artifact, legacy standalone timing diagnostics가 포함됩니다. 새 snapshot은 compiled `routes`를 포함할 수 있습니다. Studio는 `kind`와 parameter-name-only `params`를 검증하고 `react-page`를 **React page**로 표시하며, `routes`가 없는 artifact 또는 이 field가 없는 이전 route entry는 ordinary HTTP diagnostic으로 backward-compatible하게 처리합니다.
 
-이 file-first 경로는 CI, support handoff, architecture review, non-Node runtime target을 위한 호환성 및 migration fallback입니다. Bun, Deno, Cloudflare Workers 프로젝트는 MVP에서 live sidecar event를 기대하는 대신 inspect/static artifact를 생성하고 패키징된 viewer로 열어야 합니다. 패키징된 viewer는 inspected artifact가 non-Node runtime fallback workflow에서 생성된 경우에도 Node 기반 package entrypoint(`node -p "require.resolve('@fluojs/studio/viewer')"`)로 resolve합니다.
+이 file-first 경로는 CI, support handoff, architecture review, non-Node runtime target을 위한 호환성 및 migration fallback입니다. Bun, Deno, Cloudflare Workers 프로젝트는 MVP에서 live sidecar event를 기대하는 대신 inspect/static artifact를 생성하고 `fluo-studio-viewer`로 시작해야 합니다. HTML asset 경로가 필요한 integration은 inspected artifact가 non-Node runtime fallback workflow에서 생성된 경우에도 Node 기반 package entrypoint(`node -p "require.resolve('@fluojs/studio/viewer')"`)로 resolve합니다.
 
 1. **Snapshot 내보내기**:
    ```bash
@@ -90,7 +91,7 @@ Studio는 여전히 fluo CLI가 내보낸 JSON 파일을 소비합니다. 런타
    pnpm exec fluo-studio-viewer
    ```
 
-   명령은 패키징된 viewer를 `127.0.0.1`에서 제공하고 HTTP URL을 출력합니다. `dist/index.html`을 직접 여는 대신 그 URL을 브라우저에서 여세요. 패키징된 HTML entry를 resolve하는 integration을 위해 `@fluojs/studio/viewer` export는 계속 사용할 수 있습니다. 저장소 내부 Studio 개발에는 다음 명령을 사용합니다.
+   `fluo-studio-viewer` 명령은 패키징된 viewer를 `127.0.0.1`에서 제공하고 HTTP URL을 출력합니다. `dist/index.html`을 직접 여는 대신 그 URL을 브라우저에서 여세요. `@fluojs/studio/viewer`는 패키징된 HTML entry를 resolve하는 호출자를 위한 통합용 asset-resolution 계약으로만 유지합니다. 저장소 내부 Studio 개발에는 다음 명령을 사용합니다.
    ```bash
    pnpm --dir packages/studio dev
    ```
@@ -168,9 +169,10 @@ Bootstrap timing phase 이름은 `bootstrap_module`, `register_runtime_tokens`, 
 
 - `@fluojs/studio`: snapshot parsing/filtering/rendering과 live contract용 root helper barrel
 - `@fluojs/studio/contracts`: 계약 헬퍼를 직접 가져오고 싶은 도구용 명시적 subpath
-- `@fluojs/studio/viewer`: React 브라우저 viewer bundle의 `dist/index.html` entrypoint
+- `fluo-studio-viewer`: 패키징된 React 브라우저 viewer bundle을 위한 공개 CLI 실행 경로
+- `@fluojs/studio/viewer`: 패키징된 `dist/index.html` 파일을 위한 integration asset-resolution subpath
 
-`@fluojs/studio/viewer`는 asset-only manifest subpath입니다. 호출자는 JavaScript module이나 TypeScript declaration entrypoint가 아니라 패키징된 HTML 파일 경로를 resolve합니다.
+`@fluojs/studio/viewer`는 통합용 asset-resolution 계약으로만 제공됩니다. 호출자는 JavaScript module이나 TypeScript declaration entrypoint가 아니라 패키징된 HTML 파일 경로를 resolve합니다.
 
 ## 향후 방향
 
