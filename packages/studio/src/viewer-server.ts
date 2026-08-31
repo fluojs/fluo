@@ -2,9 +2,12 @@
 
 import { readFile, realpath } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import type { Socket } from 'node:net';
 import { extname, resolve, sep } from 'node:path';
 
 const viewerHost = '127.0.0.1';
+/** Grace period before close destroys incomplete viewer-owned connections. */
+export const viewerServerCloseGracePeriodMs = 1_000;
 const mimeTypes: Readonly<Record<string, string>> = {
   '.css': 'text/css; charset=utf-8',
   '.html': 'text/html; charset=utf-8',
@@ -77,6 +80,11 @@ export async function startStudioViewerServer(options: StudioViewerServerOptions
       response.end();
     });
   });
+  const connections = new Set<Socket>();
+  server.on('connection', (socket) => {
+    connections.add(socket);
+    socket.once('close', () => connections.delete(socket));
+  });
 
   await listen(server, options.port);
   const address = server.address();
@@ -87,7 +95,7 @@ export async function startStudioViewerServer(options: StudioViewerServerOptions
 
   return {
     url: new URL(`http://${viewerHost}:${String(address.port)}/`),
-    close: () => close(server),
+    close: () => close(server, connections),
   };
 }
 
@@ -148,8 +156,8 @@ async function listen(server: Server, port: number): Promise<void> {
   });
 }
 
-async function close(server: Server): Promise<void> {
-  await new Promise<void>((resolveClose, rejectClose) => {
+async function close(server: Server, connections: ReadonlySet<Socket>): Promise<void> {
+  const terminalClose = new Promise<void>((resolveClose, rejectClose) => {
     server.close((error) => {
       if (error === undefined) {
         resolveClose();
@@ -159,6 +167,17 @@ async function close(server: Server): Promise<void> {
       rejectClose(error);
     });
   });
+  const forceCloseTimer = setTimeout(() => {
+    for (const connection of connections) {
+      connection.destroy();
+    }
+  }, viewerServerCloseGracePeriodMs);
+
+  try {
+    await terminalClose;
+  } finally {
+    clearTimeout(forceCloseTimer);
+  }
 }
 
 /**

@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcessByStdio, type SpawnSyncReturns } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -11,7 +11,12 @@ import { readViewerUrl, stopViewerProcess } from '../src/viewer-process.js';
 const packageDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const evidenceDirectory = resolve(packageDirectory, 'evidence');
 const snapshotFixture = readFileSync(join(packageDirectory, 'tests', 'fixtures', 'studio-snapshot.json'));
-const commit = runCommand('git', ['rev-parse', 'HEAD'], packageDirectory).stdout.trim();
+const COMMIT_COMMAND_TIMEOUT_MS = 10_000;
+const BUILD_COMMAND_TIMEOUT_MS = 120_000;
+const PACKAGE_COMMAND_TIMEOUT_MS = 60_000;
+const INSTALL_COMMAND_TIMEOUT_MS = 120_000;
+const VIEWER_COMMAND_TIMEOUT_MS = 10_000;
+const commit = runCommand('git', ['rev-parse', 'HEAD'], packageDirectory, COMMIT_COMMAND_TIMEOUT_MS).stdout.trim();
 const viewports = [
   { height: 900, name: 'desktop', width: 1440 },
   { height: 844, name: 'mobile', width: 390 },
@@ -19,7 +24,7 @@ const viewports = [
 
 let consumerDirectory: string | undefined;
 let viewerProcess: ChildProcessByStdio<null, Readable, Readable> | undefined;
-let viewerUrl: Promise<URL> | undefined;
+let viewerUrl: URL | undefined;
 
 function commandDiagnostics(command: string, arguments_: readonly string[], result: SpawnSyncReturns<string>): string {
   return [
@@ -32,8 +37,8 @@ function commandDiagnostics(command: string, arguments_: readonly string[], resu
   ].join('\n');
 }
 
-function runCommand(command: string, arguments_: readonly string[], cwd: string): SpawnSyncReturns<string> {
-  const result = spawnSync(command, arguments_, { cwd, encoding: 'utf8' });
+function runCommand(command: string, arguments_: readonly string[], cwd: string, timeout: number): SpawnSyncReturns<string> {
+  const result = spawnSync(command, arguments_, { cwd, encoding: 'utf8', timeout });
 
   if (result.error || result.signal !== null || result.status !== 0) {
     throw new Error(commandDiagnostics(command, arguments_, result));
@@ -82,45 +87,54 @@ async function openViewer(browser: Browser, viewport: (typeof viewports)[number]
   return { context, page };
 }
 
-test.beforeAll(() => {
+test.beforeAll(async () => {
   const sandbox = mkdtempSync(join(tmpdir(), 'fluo-studio-installed-viewer-'));
-  const tarballDirectory = join(sandbox, 'tarball');
-  const installedConsumer = join(sandbox, 'consumer');
-  mkdirSync(tarballDirectory);
-  mkdirSync(installedConsumer);
-  writeFileSync(join(sandbox, '.fluo-studio-installed-viewer.json'), '{"managed":true}\n');
-
-  runCommand('pnpm', ['build'], packageDirectory);
-  const packed = runCommand('npm', ['pack', '--json', '--pack-destination', tarballDirectory], packageDirectory);
-  const packResult = JSON.parse(packed.stdout) as readonly { readonly filename: string }[];
-  const tarballName = packResult[0]?.filename;
-  if (!tarballName) {
-    throw new Error('npm pack did not report a Studio tarball.');
-  }
-
-  runCommand('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false', join(tarballDirectory, tarballName)], installedConsumer);
-  const binary = join(installedConsumer, 'node_modules', '.bin', 'fluo-studio-viewer');
-  const help = runCommand(binary, ['--help'], installedConsumer);
-  expect(help.stdout).toContain('Usage: fluo-studio-viewer');
-  const invalidPort = spawnSync(binary, ['--port', 'not-a-port'], { cwd: installedConsumer, encoding: 'utf8' });
-  const invalidPortDiagnostics = commandDiagnostics(binary, ['--port', 'not-a-port'], invalidPort);
-  expect(invalidPort.error, invalidPortDiagnostics).toBeUndefined();
-  expect(invalidPort.signal, invalidPortDiagnostics).toBeNull();
-  expect(invalidPort.status, invalidPortDiagnostics).toBe(1);
-  expect(invalidPort.stderr, invalidPortDiagnostics).toContain('Invalid port');
-
-  const launchedViewer = spawn(binary, ['--port', '0'], { cwd: installedConsumer, stdio: ['ignore', 'pipe', 'pipe'] });
-  viewerProcess = launchedViewer;
-  viewerUrl = readViewerUrl(launchedViewer);
   consumerDirectory = sandbox;
+  try {
+    const tarballDirectory = join(sandbox, 'tarball');
+    const installedConsumer = join(sandbox, 'consumer');
+    mkdirSync(tarballDirectory);
+    mkdirSync(installedConsumer);
+    writeFileSync(join(sandbox, '.fluo-studio-installed-viewer.json'), '{"managed":true}\n');
+
+    runCommand('pnpm', ['build'], packageDirectory, BUILD_COMMAND_TIMEOUT_MS);
+    const packed = runCommand('npm', ['pack', '--json', '--pack-destination', tarballDirectory], packageDirectory, PACKAGE_COMMAND_TIMEOUT_MS);
+    const packResult = JSON.parse(packed.stdout) as readonly { readonly filename: string }[];
+    const tarballName = packResult[0]?.filename;
+    if (!tarballName) {
+      throw new Error('npm pack did not report a Studio tarball.');
+    }
+
+    runCommand('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false', join(tarballDirectory, tarballName)], installedConsumer, INSTALL_COMMAND_TIMEOUT_MS);
+    const binary = join(installedConsumer, 'node_modules', '.bin', 'fluo-studio-viewer');
+    const help = runCommand(binary, ['--help'], installedConsumer, VIEWER_COMMAND_TIMEOUT_MS);
+    expect(help.stdout).toContain('Usage: fluo-studio-viewer');
+    const invalidPort = spawnSync(binary, ['--port', 'not-a-port'], { cwd: installedConsumer, encoding: 'utf8', timeout: VIEWER_COMMAND_TIMEOUT_MS });
+    const invalidPortDiagnostics = commandDiagnostics(binary, ['--port', 'not-a-port'], invalidPort);
+    expect(invalidPort.error, invalidPortDiagnostics).toBeUndefined();
+    expect(invalidPort.signal, invalidPortDiagnostics).toBeNull();
+    expect(invalidPort.status, invalidPortDiagnostics).toBe(1);
+    expect(invalidPort.stderr, invalidPortDiagnostics).toContain('Invalid port');
+
+    const launchedViewer = spawn(binary, ['--port', '0'], { cwd: installedConsumer, stdio: ['ignore', 'pipe', 'pipe'] });
+    viewerProcess = launchedViewer;
+    viewerUrl = await readViewerUrl(launchedViewer);
+  } catch (error) {
+    rmSync(sandbox, { force: true, recursive: true });
+    consumerDirectory = undefined;
+    throw error;
+  }
 });
 
 test.afterAll(async () => {
-  if (viewerProcess) {
-    await stopViewerProcess(viewerProcess);
-  }
-  if (consumerDirectory && existsSync(join(consumerDirectory, '.fluo-studio-installed-viewer.json'))) {
-    rmSync(consumerDirectory, { force: true, recursive: true });
+  try {
+    if (viewerProcess) {
+      await stopViewerProcess(viewerProcess);
+    }
+  } finally {
+    if (consumerDirectory) {
+      rmSync(consumerDirectory, { force: true, recursive: true });
+    }
   }
 });
 
@@ -129,7 +143,7 @@ test('opens the installed public viewer bin and exercises its file workflow in C
     throw new Error('Installed viewer setup did not complete.');
   }
 
-  const url = await viewerUrl;
+  const url = viewerUrl;
   const fileUrl = pathToFileURL(join(consumerDirectory, 'consumer', 'node_modules', '@fluojs', 'studio', 'dist', 'index.html'));
 
   for (const viewport of viewports) {

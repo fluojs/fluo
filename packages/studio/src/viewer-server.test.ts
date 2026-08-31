@@ -1,10 +1,10 @@
-import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { connect, Socket } from 'node:net';
+import { Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { parseStudioViewerArguments, startStudioViewerServer, type StudioViewerServer } from './viewer-server.js';
+import { parseStudioViewerArguments, type StudioViewerServer, startStudioViewerServer } from './viewer-server.js';
 
 const temporaryDirectories: string[] = [];
 const servers: StudioViewerServer[] = [];
