@@ -259,8 +259,8 @@ defineModule(ManualCacheModule, {
 | `ttl: 0` | `ttl: 0` | "캐싱하지 않음"이 아니라 만료 없음을 뜻합니다. 음수이거나 유한하지 않은 값은 잘못된 값으로 처리되어 `CacheService.set(...)`은 쓰기를 건너뛰고 `CacheInterceptor`는 해당 handler의 cache 읽기와 쓰기를 모두 건너뜁니다. |
 | `@CacheTTL(...)` | `@CacheTTL(ttlSeconds: number)` | 정적 숫자 하나만 받습니다. 요청마다 달라지는 lifetime은 `CacheService.set(key, value, ttlSeconds)`로 옮기세요. |
 | 암묵적 query 민감 key | `httpKeyStrategy` | 기본값은 path만 사용하는 `'route'`입니다. 응답이 query parameter에 따라 달라지면 `'route+query'`(또는 `'full'`), function strategy, `@CacheKey(...)` 중 하나를 선택하세요. |
-| `isGlobal: true` | `global: true` | `global`의 기본값은 `false`이므로 명시적으로 opt-in하거나 cache provider를 resolve하는 모든 module에 import하지 않으면 module-local로 유지됩니다. |
-| `cache-manager-redis-store` 같은 NestJS store adapter | `store: 'redis'` 또는 `CacheStore` 객체 | NestJS adapter는 `CacheStore` 계약을 만족하지 않습니다. 내장 Redis 경로를 쓰거나 `get`, `set`, `del`, `reset`을 노출하는 객체로 adapter를 감싸세요. |
+| `isGlobal: true` | `global: true` | NestJS `isGlobal`과 fluo `global`은 모두 기본값이 `false`이므로, 명시적으로 opt-in하거나 cache provider를 resolve하는 모든 module에 import하지 않으면 두 cache module 모두 module-local로 유지됩니다. |
+| `cache-manager-redis-store` 같은 NestJS store adapter | `store: 'redis'` 또는 `CacheStore` 객체 | NestJS adapter는 `CacheStore` 계약을 만족하지 않습니다. 내장 Redis 경로를 쓰거나 callback/options 완료를 Promise로 변환하고, `ttlSeconds`를 legacy TTL 초 단위로 매핑하며, `reset()`이 cache namespace만 비우도록 adapter를 감싸세요. `reset()`을 whole-database `flushDb`로 무분별하게 전달하면 안 됩니다. |
 | adapter가 소유하던 client teardown | store의 `close()` / `dispose()` | 애플리케이션 shutdown은 이 optional hook에만 teardown을 전달합니다. `redis.client`로 전달한 raw client는 애플리케이션 소유로 남아 애플리케이션 lifecycle에서 닫아야 합니다. |
 
 ```typescript
