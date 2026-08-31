@@ -57,7 +57,7 @@ The `@fluojs/cache-manager` module is built on a Provider-based architecture. Th
 That extensibility boundary matters for **serialization protocols** too. The shipped `RedisStore` uses `JSON.stringify(...)`/`JSON.parse(...)` internally, so alternative formats such as Protocol Buffers or MessagePack are not a built-in toggle on `CacheModule`. If your application needs a different serialization strategy, implement it through a custom store that still satisfies the public cache contract.
 
 ### 17.2.3 Serialization and Type Safety in Fluo
-One common pain point in caching is ensuring that retrieved data has the same type as the data that was stored. Fluo's `CacheService` provides a TypeScript-friendly API surface, but the built-in stores do not perform rich type revival for you. In practice, JSON-compatible values round-trip cleanly, while values such as `Date` return in their serialized JSON form unless your application rehydrates them explicitly. As a result, service code should treat cache values as application-owned data contracts rather than assuming the cache layer restores every original runtime type automatically.
+One common pain point in caching is ensuring that retrieved data has the same type as the data that was stored. Fluo's `CacheService` provides a TypeScript-friendly API surface, but the answer depends on the store you configured. `MemoryStore` copies entries with `structuredClone(...)`, so structured-cloneable values such as `Date`, `Map`, and `Set` come back as the same runtime types in-process. `RedisStore` persists entries with `JSON.stringify(...)`, so there a `Date` returns as its serialized JSON form (for example an ISO string) unless your application rehydrates it explicitly. Because the same code can run against either store, treat cache values as application-owned data contracts and normalize them yourself when a value must survive both paths identically.
 
 ## 17.3 Basic Configuration and Setup
 Register `CacheModule` in `AppModule`. The default configuration uses an in-memory store, which is suitable for local development.
@@ -142,7 +142,7 @@ Although caches are usually considered "volatile" storage, some providers such a
 However, persistence can affect write performance, so use it carefully. Most Fluo applications prefer the default non-persistent mode for maximum speed. Failure behavior then depends on how the cache is called. On HTTP routes wrapped by `CacheInterceptor`, the interceptor treats store read failures as cache misses and contains store write or eviction failures, so an otherwise successful handler can continue. This route-only isolation does not apply to explicit `CacheService` operations: `get`, `set`, `remember`, `del`, and `reset` await store work and reject when that work fails unless the application catches the error. Decide at each manual call site whether the cache is critical or should fail soft, and preserve logs or metrics when containing an error.
 
 ## 17.4 Automatic Response Caching
-The easiest way to improve performance is to cache entire HTTP responses. Fluo provides `CacheInterceptor` for this purpose. When this Interceptor is applied to a specific route, successful uncommitted GET results are cached automatically, and later identical requests return the cached content immediately.
+The easiest way to improve performance is to cache entire HTTP responses. Fluo provides `CacheInterceptor` for this purpose. When this Interceptor is applied to a specific route, successful uncommitted GET results are cached automatically, and later identical requests return the cached content immediately. Note that the interceptor reads the store and, on a miss, calls the handler directly: it does not coalesce concurrent misses, so simultaneous requests that all miss the same key each run the handler.
 
 ```typescript
 import { Controller, Get, UseInterceptors } from '@fluojs/http';
@@ -155,7 +155,7 @@ export class PostsController {
   @CacheKey('popular_posts')
   @CacheTTL(600) // Cache for 10 minutes
   async getPopular() {
-    // This slow database query runs only once every 10 minutes!
+    // After a hit is stored, later requests are served from cache for 10 minutes.
     return this.postsService.findPopular();
   }
 }
@@ -257,7 +257,7 @@ On this supported route path, eviction runs only after the non-GET handler succe
 By combining these advanced manual patterns with automatic response caching, you can create a highly efficient data layer that maximizes the performance and reliability of your Fluo backend. Always remember that the goal of caching is to give users the fastest possible response while reducing load on the primary data source. Every optimization you make in this layer contributes to a more scalable and resilient system overall.
 
 ### 17.5.4 Advanced Manual Patterns: Coordinating Concurrent Writers
-The application-facing public surface of `CacheService` focuses on `get`, `set`, `remember`, `del`, and `reset`. Therefore, when you need store-specific atomic operations such as counter increments or distributed locks, it is safer to treat them as separate capabilities of the selected store or as an application-specific coordination layer, rather than assuming they are built into the `CacheService` application API.
+The application-facing public surface of `CacheService` focuses on `get`, `set`, `remember`, `del`, `reset`, and the `close()` teardown boundary that forwards shutdown to stores exposing `close()` or `dispose()`. Therefore, when you need store-specific atomic operations such as counter increments or distributed locks, it is safer to treat them as separate capabilities of the selected store or as an application-specific coordination layer, rather than assuming they are built into the `CacheService` application API.
 
 In practice, it is important to keep this boundary clear. Do not expect the cache layer to solve every synchronization problem automatically. Instead, explicitly design the required locking or atomic update strategy around the chosen store's characteristics. This lets you manage race conditions in high-traffic environments through separate design while staying within the documented cache contract.
 
