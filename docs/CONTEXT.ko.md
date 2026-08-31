@@ -251,6 +251,7 @@ HTTP route 및 #2506 navigation ownership, dual-import test, bilingual docs, Cha
 | 공개 API 작성 기준과 문서화 기준 확인 | `docs/contracts/public-export-tsdoc-baseline.md` | `docs/contracts/platform-conformance-authoring-checklist.md` |
 | CLI inspect output mode와 artifact ownership 확인 | `docs/reference/toolchain-contract-matrix.ko.md` | `packages/cli/README.ko.md` 및 `docs/reference/package-surface.ko.md` |
 | 부트스트랩 경로나 시작 순서 사실 확인 | `docs/getting-started/quick-start.md` | `docs/architecture/lifecycle-and-shutdown.md` |
+| NestJS throttler 마이그레이션 경계 | `docs/getting-started/migrate-from-nestjs.ko.md` | `packages/throttler/README.ko.md` 및 `book/beginner/ch16-throttler.ko.md` |
 | 사람용 학습 흐름이나 튜토리얼 자료 확인 | `book/README.md` | `book/` 아래 관련 챕터 |
 
 JWT async-registration 정정: `JwtModule.forRootAsync({ inject, useFactory, global? })`는 지원되는 typed configuration만 받으며 NestJS `imports`, `useClass`, `useExisting`에는 dynamic-module 의미가 없습니다. 추가 JavaScript object property는 runtime에서 읽지 않을 뿐 validate하거나 reject하지 않습니다. injected dependency는 global로 visible한 module export 또는 `JwtRuntimeModule`이 resolve할 수 있는 application graph의 bootstrap runtime provider에서 와야 합니다. ordinary sibling 또는 parent module의 export만으로는 충분하지 않으며, `AuthModule.providers`에만 local인 provider는 JWT options provider에서 보이지 않습니다.
