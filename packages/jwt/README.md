@@ -214,7 +214,7 @@ Lazy loading is an import-time safety property only. It does **not** make signin
 ### Errors and diagnostics
 - `JwtVerificationError`, `JwtInvalidTokenError`, `JwtExpiredTokenError`, `JwtConfigurationError`: Typed JWT failures.
 - `createJwtPlatformStatusSnapshot(...)` and `createJwtPlatformDiagnosticIssues(...)`: Status and diagnostic helpers.
-- `JWT_OPTIONS`, `HMAC_HASH`, `ASYMMETRIC_HASH`: Exported tokens/constants used by the module and verification layer.
+- `JWT_OPTIONS`, `HMAC_HASH`, `ASYMMETRIC_HASH`: Exported tokens/constants used by the module and verification layer. `HMAC_HASH` and `ASYMMETRIC_HASH` are readonly lookup values; do not mutate them.
 
 ### Deprecated compatibility helpers
 - `normalizeRefreshTokenOptions(...)`: Retained only for root-import compatibility with existing callers. Prefer `JwtModule.forRoot(...)` / `JwtModule.forRootAsync(...)` plus `RefreshTokenService` instead of calling package normalization internals.

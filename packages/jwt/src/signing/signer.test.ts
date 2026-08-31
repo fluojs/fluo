@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { JwtConfigurationError } from '../errors.js';
 import type { JwtVerifierOptions } from '../types.js';
 import { DefaultJwtSigner } from './signer.js';
-import { DefaultJwtVerifier } from './verifier.js';
+import { ASYMMETRIC_HASH, DefaultJwtVerifier, HMAC_HASH } from './verifier.js';
 
 function encodeBase64Url(value: string): string {
   return Buffer.from(value, 'utf8').toString('base64url');
@@ -31,6 +31,21 @@ describe('DefaultJwtSigner', () => {
     expect(() => new DefaultJwtSigner({ algorithms: ['toString' as never], secret: 'secret' })).toThrow(
       'JWT signer received unsupported JWT algorithm "toString".',
     );
+  });
+
+  it('keeps public hash lookups immutable and independent from signing policy', async () => {
+    expect(Object.isFrozen(HMAC_HASH)).toBe(true);
+    expect(Object.isFrozen(ASYMMETRIC_HASH)).toBe(true);
+    expect(Reflect.set(HMAC_HASH, 'HS999', 'sha256')).toBe(false);
+    expect(Reflect.deleteProperty(HMAC_HASH, 'HS256')).toBe(false);
+    expect(Reflect.set(ASYMMETRIC_HASH, 'RS999', 'sha256')).toBe(false);
+    expect(Reflect.deleteProperty(ASYMMETRIC_HASH, 'RS256')).toBe(false);
+
+    const signer = new DefaultJwtSigner({ algorithms: ['HS256'], secret: 'secret' });
+    const verifier = new DefaultJwtVerifier({ algorithms: ['HS256'], secret: 'secret' });
+    const token = await signer.signAccessToken({ sub: 'immutable-policy-user' });
+
+    await expect(verifier.verifyAccessToken(token)).resolves.toMatchObject({ subject: 'immutable-policy-user' });
   });
 
   it('rejects empty and duplicate key IDs during construction', () => {
