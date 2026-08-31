@@ -69,8 +69,8 @@ client entry와 server document 정렬입니다. 이 명시적 seam은 advanced 
    실행합니다.
 2. `/products/sku-42?preview=true`를 열고 `src/page.tsx`를 편집합니다. Page component는 page UI와
    hydrated interaction만 소유합니다.
-3. Route를 변경할 때 `src/app.tsx`를 읽습니다. 명시적인 `@Router(...)` / `@Path(...)` handler가
-   `<ProductPage />`를 반환하므로 HTTP matching, DTO validation, middleware, guard, interceptor,
+3. Route를 변경할 때 `src/app.ts`를 읽습니다. 명시적인 `@Router(...)` / `@Path(...)` handler가
+   `createElement(ProductPage)`를 반환하므로 HTTP matching, DTO validation, middleware, guard, interceptor,
    request scope, not-found behavior가 React rendering보다 먼저 계속 실행됩니다.
 4. Production path에는 `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm start`,
    `pnpm test:browser`를 실행합니다. Browser test는 console warning/error 없이 첫 response, emitted asset,

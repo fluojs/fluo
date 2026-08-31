@@ -10,6 +10,8 @@ fluo is a standard-first TypeScript backend framework built on TC39 standard dec
 
 For a NestJS migration, start with the [NestJS migration map](./getting-started/migrate-from-nestjs.md). Its i18n handoff maps every custom resolver to an `HttpLocaleResolver`, registers one application-owned `Middleware` through `FluoFactory.create(...)`, and stores the selected locale only on the current `RequestContext`; no global locale fallback exists.
 
+For NestJS migrations, `fluo migrate` rewrites default one-argument `NestFactory.create(AppModule)` bootstrap with an explicit Express adapter, while unsupported bootstrap variants remain unchanged with a diagnostic and explicit adapter-independent transform selections leave bootstrap unchanged.
+
 ## Hard Constraints
 
 - NEVER use `experimentalDecorators`.
@@ -36,6 +38,8 @@ For the full contributor workflow, read [`CONTRIBUTING.md`](../CONTRIBUTING.md) 
 For Changesets consumption, generated package version deltas, Official Node.js support changes, and consumer runtime migration guidance, start with [`docs/contracts/release-governance.md`](./contracts/release-governance.md). The stable lane gate is `tooling/release/verify-changeset-release-lane.mjs`; it accepts generated version output after Changesets has consumed pending metadata, and requires either `Migration:` guidance or a structured upgrade guide when an Official package removes Node.js support.
 
 ## Package Families
+
+NestJS codemod import-safety discoverability is split across [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md), `packages/cli/src/transforms/nestjs-migrate.ts`, and its regression tests: when migration moves a runtime decorator such as `Module` into an existing type-only target import, it emits a runtime clause while preserving prior type specifiers (for example, `import { type Existing, Module } from '@fluojs/core'`). The codemod retains unconverted NestJS value bindings such as `Optional` for manual review rather than claiming that no NestJS runtime imports remain.
 
 | Family | Purpose | Representative packages |
 | --- | --- | --- |
@@ -231,6 +235,16 @@ SSR/CSR/prerendering, hydration mismatch recovery, safe transfer rules, HTTP rou
 navigation ownership, dual-import tests, bilingual docs, and Changesets intent. Graduation does not
 add a stable root RSC export. After approval, `@fluojs/react/experimental/rsc` remains a tested
 re-export for the documented deprecation window.
+
+## CLI Migration Transform Tokens
+
+The migration transform contract is discoverable in `packages/cli/README.md` and
+[`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md):
+`--only` and `--skip` use the canonical `imports`, `inject-params`, `scope`, `bootstrap`,
+`tests`, and `tsconfig` vocabulary, while legacy `injectable` and `testing` remain accepted only
+as aliases for `inject-params` and `tests`. Successful `--json` reports preserve their stable
+transform tokens (`injectable` and `testing`) in `transforms` and per-file
+`appliedTransforms`; CLI input aliases do not change that report contract.
 
 ## File Structure
 

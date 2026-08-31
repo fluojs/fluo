@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 import {
   collectDirectProcessEnvViolations,
   collectNodeGlobalBufferViolations,
+  enforceCliMigrationTransformDocs,
   enforceCloudflareWorkersLifecycleDocsSync,
   enforceExpressRuntimeMigrationDocsSync,
   enforceGraphqlRuntimeBoundaryDiscoverability,
@@ -44,6 +45,23 @@ const removedRuntimeModuleFactoryNames = [
   'createEventBusModule',
   'createRedisModule',
 ] as const;
+
+describe('enforceCliMigrationTransformDocs', () => {
+  it('accepts documented migration transform selections', () => {
+    expect(() => enforceCliMigrationTransformDocs()).not.toThrow();
+  });
+
+  it('rejects a documented transform that the CLI does not support', () => {
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'docs/getting-started/migrate-from-nestjs.md'
+        ? content.replace('--only imports,injectable', '--only imports,unsupported')
+        : content;
+    };
+
+    expect(() => enforceCliMigrationTransformDocs(readText)).toThrow(/unsupported/u);
+  });
+});
 
 function collectMarkdownFiles(relativeRoot: string): string[] {
   const absoluteRoot = resolve(repoRoot, relativeRoot);
@@ -1183,6 +1201,21 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('accepts NestJS import migration guidance with context and executable evidence updates', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'packages/cli/src/transforms/nestjs-migrate.test.ts',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('accepts Microservices handler migration guidance when bilingual contract surfaces and governance tests change together', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 
@@ -1553,6 +1586,23 @@ describe('enforceContractCompanionUpdates', () => {
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         'packages/vite/src/index.test.ts',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('accepts CLI migration transform guidance when context and token regression evidence change together', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'packages/cli/README.md',
+        'packages/cli/README.ko.md',
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'packages/cli/src/commands/migration-transform-tokens.test.ts',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();

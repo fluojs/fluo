@@ -445,6 +445,35 @@ function read(relativePath) {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
 }
 
+export function enforceCliMigrationTransformDocs(readText = read) {
+  const transformSource = readText('packages/cli/src/transforms/nestjs-migrate.ts');
+  const transformList = /export const MIGRATION_TRANSFORMS = \[([\s\S]*?)\] as const;/u.exec(transformSource);
+  assert(transformList?.[1], 'unable to read the CLI migration transform declarations.');
+
+  const supportedTransforms = new Set([...transformList[1].matchAll(/'([^']+)'/gu)].map((match) => match[1]));
+  assert(supportedTransforms.size > 0, 'CLI migration transform declarations must not be empty.');
+
+  const migrationDocs = [
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'packages/cli/README.md',
+    'packages/cli/README.ko.md',
+  ];
+
+  for (const relativePath of migrationDocs) {
+    const markdown = readText(relativePath);
+    const selections = [...markdown.matchAll(/--(?:only|skip)\s+([a-z]+(?:,[a-z]+)*)/gu)];
+    for (const selection of selections) {
+      for (const transform of selection[1].split(',')) {
+        assert(
+          supportedTransforms.has(transform),
+          `documented migration transform "${transform}" in ${relativePath} is not supported by the CLI.`,
+        );
+      }
+    }
+  }
+}
+
 function hasOneArgumentGuardContextContract(markdown) {
   const guardCodeBlocks = [...markdown.matchAll(/```(?:typescript|ts)\s*\n([\s\S]*?)```/gu)]
     .map((match) => match[1] ?? '')
@@ -2854,6 +2883,7 @@ export async function main() {
   enforceCloudflareWorkersLifecycleDocsSync();
   enforcePlatformShellLifecycleContract();
   enforceConfigNestjsMigrationDocs();
+  enforceCliMigrationTransformDocs();
   enforceJwtAsyncRegistrationContract();
   await enforceJwtLearningPathModuleWiring();
   enforceRuntimeLifecycleNestjsMigrationDocs();
