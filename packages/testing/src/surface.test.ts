@@ -1,9 +1,8 @@
 import { type ChildProcessWithoutNullStreams, execFile, spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
@@ -32,6 +31,7 @@ type TaskkillCommand = (
   args: readonly string[],
   options: { readonly timeout?: number; readonly windowsHide: boolean },
 ) => Promise<void>;
+type NodeProcessStartHook = (child: ChildProcessWithoutNullStreams) => Promise<void>;
 type DestroyableStdio = {
   destroy(): unknown;
 };
@@ -85,6 +85,9 @@ const packageJsonPath = new URL('../package.json', import.meta.url);
 const execFileAsync = promisify(execFile);
 const CHILD_PROCESS_TIMEOUT_MS = 240_000;
 const PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS = 5_000;
+const DESCENDANT_PROCESS_TIMEOUT_MS = 1_000;
+const DESCENDANT_TIMEOUT_TEST_TIMEOUT_MS =
+  PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS * 5 + DESCENDANT_PROCESS_TIMEOUT_MS;
 const emittedHarnessSubpaths = [
   '.',
   './app',
@@ -104,6 +107,23 @@ const emittedHarnessSubpaths = [
 const executeTaskkillCommand: TaskkillCommand = async (file, args, options) => {
   await execFileAsync(file, [...args], options);
 };
+
+async function waitForSignal(signal: Promise<void>, timeoutMs: number, failureMessage: string): Promise<void> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    await Promise.race([
+      signal,
+      new Promise<never>((_resolvePromise, rejectPromise) => {
+        timeout = setTimeout(() => rejectPromise(new Error(failureMessage)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+  }
+}
 
 function destroyOwnedStdio(streams: readonly DestroyableStdio[], preservePrimaryError: boolean): void {
   const cleanupErrors: unknown[] = [];
@@ -166,6 +186,7 @@ async function runNodeProcess(
   args: readonly string[],
   cwd: string,
   timeoutMs: number = CHILD_PROCESS_TIMEOUT_MS,
+  onStarted?: NodeProcessStartHook,
 ): Promise<void> {
   const child = spawn(process.execPath, [...args], {
     cwd,
@@ -194,9 +215,6 @@ async function runNodeProcess(
     child.once('close', onClose);
   });
   let timeout: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<'timeout'>((resolvePromise) => {
-    timeout = setTimeout(() => resolvePromise('timeout'), timeoutMs);
-  });
 
   child.stdout.on('data', onStdout);
   child.stderr.on('data', onStderr);
@@ -204,6 +222,10 @@ async function runNodeProcess(
   let hasPrimaryError = false;
 
   try {
+    await onStarted?.(child);
+    const timeoutPromise = new Promise<'timeout'>((resolvePromise) => {
+      timeout = setTimeout(() => resolvePromise('timeout'), timeoutMs);
+    });
     const outcome = await Promise.race([closePromise, timeoutPromise]);
 
     if (outcome === 'timeout') {
@@ -243,6 +265,14 @@ async function runNodeProcess(
     }
   } catch (error) {
     hasPrimaryError = true;
+    try {
+      await terminateOwnedProcessTree(child);
+    } catch (terminationError) {
+      throw new AggregateError(
+        [error, terminationError],
+        'Child process failed and fallback process-tree termination could not be confirmed.',
+      );
+    }
     throw error;
   } finally {
     if (timeout !== undefined) {
@@ -412,8 +442,12 @@ describe('@fluojs/testing surface', () => {
   });
 
   it('terminates descendant processes before reporting a child timeout', async () => {
-    const fixtureRoot = mkdtempSync(join(tmpdir(), 'fluo-testing-process-tree-'));
-    const descendantSocketPath = join(fixtureRoot, 'descendant.sock');
+    let resolveDescendantReady: () => void = () => {};
+    let rejectDescendantReady: (error: Error) => void = () => {};
+    const descendantReadySignal = new Promise<void>((resolvePromise, rejectPromise) => {
+      resolveDescendantReady = resolvePromise;
+      rejectDescendantReady = rejectPromise;
+    });
     let resolveDescendantExit: () => void = () => {};
     let rejectDescendantExit: (error: Error) => void = () => {};
     const descendantExitSignal = new Promise<void>((resolvePromise, rejectPromise) => {
@@ -421,54 +455,121 @@ describe('@fluojs/testing surface', () => {
       rejectDescendantExit = rejectPromise;
     });
     const descendantExitServer = createServer((socket) => {
-      socket.once('close', () => {
-        descendantExitServer.close();
-        resolveDescendantExit();
+      socket.once('error', rejectDescendantReady);
+      socket.once('data', (message) => {
+        if (message.toString() !== 'ready') {
+          rejectDescendantReady(new Error(`Unexpected descendant readiness message: ${message.toString()}`));
+          socket.destroy();
+          return;
+        }
+
+        socket.off('error', rejectDescendantReady);
+        socket.once('error', rejectDescendantExit);
+        socket.once('close', resolveDescendantExit);
+        resolveDescendantReady();
       });
-      socket.once('error', rejectDescendantExit);
     });
-    descendantExitServer.once('error', rejectDescendantExit);
-    descendantExitServer.listen(descendantSocketPath);
-    await once(descendantExitServer, 'listening');
-    const descendantScript = `
-      const { connect } = await import('node:net');
-      const socket = connect(${JSON.stringify(descendantSocketPath)});
-      socket.on('error', () => process.exitCode = 1);
-      setInterval(() => {}, 1_000);
-    `;
-    const parentScript = `
-      const { spawn } = await import('node:child_process');
-      const descendant = spawn(process.execPath, ['--eval', ${JSON.stringify(descendantScript)}], {
-        stdio: ['ignore', 'inherit', 'inherit'],
-      });
-      setInterval(() => {}, 1_000);
-    `;
-    let exitSignalTimeout: ReturnType<typeof setTimeout> | undefined;
+    descendantExitServer.once('error', rejectDescendantReady);
+    let readinessObservedBeforeTimeout = false;
+    let spawnedParent: ChildProcessWithoutNullStreams | undefined;
+    let primaryError: unknown;
 
     try {
-      await expect(
-        runNodeProcess(['--input-type=module', '--eval', parentScript], packageRootPath, 1_000),
-      ).rejects.toThrow('Child process timed out after 1000ms');
+      descendantExitServer.listen(0, '127.0.0.1');
+      await once(descendantExitServer, 'listening');
+      const address = descendantExitServer.address();
 
-      await Promise.race([
+      if (address === null || typeof address === 'string') {
+        throw new Error('Descendant readiness server did not bind to a loopback TCP port.');
+      }
+
+      const descendantScript = `
+        const { connect } = await import('node:net');
+        const socket = connect({ host: '127.0.0.1', port: ${address.port} });
+        socket.once('connect', () => socket.write('ready'));
+        socket.on('error', () => process.exitCode = 1);
+        setInterval(() => {}, 1_000);
+      `;
+      const parentScript = `
+        const { spawn } = await import('node:child_process');
+        spawn(process.execPath, ['--eval', ${JSON.stringify(descendantScript)}], {
+          stdio: ['ignore', 'inherit', 'inherit'],
+        });
+        setInterval(() => {}, 1_000);
+      `;
+
+      await expect(
+        runNodeProcess(
+          ['--input-type=module', '--eval', parentScript],
+          packageRootPath,
+          DESCENDANT_PROCESS_TIMEOUT_MS,
+          async (child) => {
+            spawnedParent = child;
+            await waitForSignal(
+              descendantReadySignal,
+              PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS,
+              'Descendant did not complete its loopback TCP readiness handshake.',
+            );
+            readinessObservedBeforeTimeout = true;
+          },
+        ),
+      ).rejects.toThrow('Child process timed out after 1000ms');
+      expect(readinessObservedBeforeTimeout).toBe(true);
+      await waitForSignal(
         descendantExitSignal,
-        new Promise<never>((_resolvePromise, rejectPromise) => {
-          exitSignalTimeout = setTimeout(
-            () => rejectPromise(new Error('Descendant did not emit its exit signal after process-tree termination.')),
-            PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS,
-          );
-        }),
-      ]);
-    } finally {
-      if (exitSignalTimeout !== undefined) {
-        clearTimeout(exitSignalTimeout);
-      }
-      if (descendantExitServer.listening) {
-        descendantExitServer.close();
-      }
-      rmSync(fixtureRoot, { force: true, recursive: true });
+        PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS,
+        'Descendant did not close its loopback TCP connection after process-tree termination.',
+      );
+    } catch (error) {
+      primaryError = error;
     }
-  }, 5_000);
+
+    const cleanupErrors: unknown[] = [];
+
+    if (spawnedParent !== undefined) {
+      try {
+        await terminateOwnedProcessTree(spawnedParent);
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+    }
+
+    if (descendantExitServer.listening) {
+      try {
+        await waitForSignal(
+          new Promise<void>((resolvePromise, rejectPromise) => {
+            descendantExitServer.close((error) => {
+              if (error === undefined) {
+                resolvePromise();
+                return;
+              }
+
+              rejectPromise(error);
+            });
+          }),
+          PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS,
+          'Descendant readiness server did not close after process-tree termination.',
+        );
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+    }
+
+    if (primaryError !== undefined) {
+      if (cleanupErrors.length > 0) {
+        throw new AggregateError(
+          [primaryError, ...cleanupErrors],
+          'Descendant timeout regression test and fallback cleanup both failed.',
+        );
+      }
+
+      throw primaryError;
+    }
+
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(cleanupErrors, 'Descendant timeout regression test cleanup failed.');
+    }
+  }, DESCENDANT_TIMEOUT_TEST_TIMEOUT_MS);
 
   it('build emits the published harness subpath files without blocking the Vitest worker event loop', async () => {
     await runBuild();
