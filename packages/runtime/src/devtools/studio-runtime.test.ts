@@ -345,6 +345,15 @@ describe('Studio devtools runtime bridge', () => {
       unhandledRejections.push(reason);
     };
     process.on('unhandledRejection', onUnhandledRejection);
+    let resolveRejectionTurn: (() => void) | undefined;
+    let rejectionTurnTimeout: ReturnType<typeof setTimeout> | undefined;
+    const rejectionTurnSettled = new Promise<void>((resolve, reject) => {
+      resolveRejectionTurn = resolve;
+      rejectionTurnTimeout = setTimeout(() => {
+        rejectionTurnTimeout = undefined;
+        reject(new Error('Studio transport rejection turn did not settle'));
+      }, 1_000);
+    });
 
     class AppModule {}
     defineRuntimeModuleMetadata(AppModule, {});
@@ -392,17 +401,21 @@ describe('Studio devtools runtime bridge', () => {
       studioDevtools.requestObserver.onRequestStart?.(observerContext);
       await app.close();
 
-      let rejectionTurnCompleted = false;
       setImmediate(() => {
-        rejectionTurnCompleted = true;
+        if (rejectionTurnTimeout !== undefined) {
+          clearTimeout(rejectionTurnTimeout);
+          rejectionTurnTimeout = undefined;
+        }
+        resolveRejectionTurn?.();
       });
 
       // Then
-      await vi.waitFor(() => {
-        expect(rejectionTurnCompleted).toBe(true);
-        expect(unhandledRejections).toEqual([]);
-      }, { timeout: 1_000 });
+      await rejectionTurnSettled;
+      expect(unhandledRejections).toEqual([]);
     } finally {
+      if (rejectionTurnTimeout !== undefined) {
+        clearTimeout(rejectionTurnTimeout);
+      }
       process.off('unhandledRejection', onUnhandledRejection);
     }
   });
