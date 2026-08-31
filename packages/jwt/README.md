@@ -169,13 +169,30 @@ For multi-tenant systems, prefer putting a tenant-specific `kid` in issued token
 
 ### Refresh tokens
 
-`RefreshTokenService` uses a dedicated HMAC refresh-token path. Configure `refreshToken.secret` separately from access-token signing keys. Rotation can use `RefreshTokenStore.rotate(...)` to atomically mark the current token as consumed and persist the replacement token in the same durable store operation, so a successful rotation never consumes the old token without a stored successor. Stores that only implement the older atomic `consume(...)` hook remain supported: after a successful consume, the service saves the replacement through `save(...)`, but only store-owned `rotate(...)` makes those two writes atomic.
+`RefreshTokenService` uses a dedicated HMAC refresh-token path. Configure `refreshToken.secret` separately from access-token signing keys. Set `refreshToken.algorithms` to an explicit HMAC allowlist (for example, `['HS256']`) when the access-token `algorithms` list is asymmetric-only; otherwise, existing configurations continue to derive the refresh policy from the top-level HMAC algorithms. This policy applies only to refresh-token signing and verification, so it does not widen access-token verification.
+
+```typescript
+const options = {
+  algorithms: ['RS256'],
+  privateKey: '...private PEM...',
+  publicKey: '...public PEM...',
+  refreshToken: {
+    algorithms: ['HS256'],
+    secret: 'refresh-secret',
+    expiresInSeconds: 300,
+    rotation: false,
+    store,
+  },
+};
+```
+
+Rotation can use `RefreshTokenStore.rotate(...)` to atomically mark the current token as consumed and persist the replacement token in the same durable store operation, so a successful rotation never consumes the old token without a stored successor. Stores that only implement the older atomic `consume(...)` hook remain supported: after a successful consume, the service saves the replacement through `save(...)`, but only store-owned `rotate(...)` makes those two writes atomic.
 
 When reuse is detected, stores that implement the optional `revokeByFamily(family)` capability revoke only the compromised token family. Existing stores remain source-compatible: if `revokeByFamily(...)` is absent, `RefreshTokenService` conservatively falls back to `revokeBySubject(subject)`, which also revokes the subject's independent refresh-token families. Implement `revokeByFamily(...)` in production stores when separate device or session families must remain active after another family is compromised.
 
 ## Configuration Guardrails
 
-JWT signing and verification require at least one supported algorithm in `algorithms`. The built-in signer supports `HS256`, `HS384`, `HS512`, `RS256`, `RS384`, `RS512`, `ES256`, `ES384`, and `ES512`; configuration with an empty algorithm list fails fast instead of issuing or accepting ambiguous tokens.
+JWT signing and access-token verification require at least one supported algorithm in `algorithms`. Refresh-token signing and verification use `refreshToken.algorithms` when configured, or the top-level HMAC algorithms for backward compatibility. The built-in signer supports `HS256`, `HS384`, `HS512`, `RS256`, `RS384`, `RS512`, `ES256`, `ES384`, and `ES512`; configuration with an empty algorithm list fails fast instead of issuing or accepting ambiguous tokens.
 
 Access-token TTL must also be a positive finite number. When `accessTokenTtlSeconds` is omitted, `DefaultJwtSigner` uses the documented `3600` second default. Fractional seconds are preserved in the JWT NumericDate `exp` claim; when the option is provided as `0`, a negative number, or a non-finite value, signing fails with `JwtConfigurationError` before a token is issued.
 
@@ -214,7 +231,7 @@ Lazy loading is an import-time safety property only. It does **not** make signin
 ### Errors and diagnostics
 - `JwtVerificationError`, `JwtInvalidTokenError`, `JwtExpiredTokenError`, `JwtConfigurationError`: Typed JWT failures.
 - `createJwtPlatformStatusSnapshot(...)` and `createJwtPlatformDiagnosticIssues(...)`: Status and diagnostic helpers.
-- `JWT_OPTIONS`, `HMAC_HASH`, `ASYMMETRIC_HASH`: Exported tokens/constants used by the module and verification layer.
+- `JWT_OPTIONS`, `HMAC_HASH`, `ASYMMETRIC_HASH`: Exported tokens/constants used by the module and verification layer. `HMAC_HASH` and `ASYMMETRIC_HASH` are readonly lookup values; do not mutate them.
 
 ### Deprecated compatibility helpers
 - `normalizeRefreshTokenOptions(...)`: Retained only for root-import compatibility with existing callers. Prefer `JwtModule.forRoot(...)` / `JwtModule.forRootAsync(...)` plus `RefreshTokenService` instead of calling package normalization internals.
