@@ -261,7 +261,7 @@ class AppModule {}
 
 Injected tokens must be visible to the container that instantiates the cache module. Provide them as bootstrap runtime providers or export them from a globally visible imported module before the cache options provider resolves. A provider local only to the importing parent module, or an ordinary sibling/parent export, is not visible to the async cache module. The factory runs once per registration when cache providers are first resolved, and a rejected factory fails bootstrap instead of registering a partially configured cache.
 
-Module visibility stays on the registration call: pass `global: true` to `CacheModule.forRootAsync({ global: true, ... })`. `useFactory` is typed to return `CacheModuleOptions` without `global`; any extra runtime `global` property is ignored because module metadata is fixed before the factory runs.
+Module visibility stays on the registration call: pass `global: true` to `CacheModule.forRootAsync({ global: true, ... })`. `useFactory` may return a prepared `CacheModuleOptions` value, including its `global` property; any returned `global` is ignored because module metadata is fixed before the factory runs.
 
 ```typescript
 CacheModule.forRootAsync({
@@ -327,7 +327,7 @@ On that supported HTTP path, eviction is deferred until a framework response wri
 
 ### Public types
 - `CacheModuleOptions`: Application-facing configuration accepted by `CacheModule.forRoot(...)`.
-- `CacheAsyncModuleOptions`: Injected-factory configuration accepted by `CacheModule.forRootAsync(...)`. `useFactory` returns `CacheModuleOptions` without `global`.
+- `CacheAsyncModuleOptions`: Injected-factory configuration accepted by `CacheModule.forRootAsync(...)`. `useFactory` returns `CacheModuleOptions`; registration-level `global` alone controls module visibility.
 - `NormalizedCacheModuleOptions`: Compatibility-only type export matching the normalized configuration shape after defaults are applied. Prefer `CacheModuleOptions` for application code; this type remains public so consumers that referenced the previously shipped declaration surface can keep compiling.
 
 ### Services

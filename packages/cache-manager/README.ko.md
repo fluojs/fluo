@@ -261,7 +261,7 @@ class AppModule {}
 
 Inject한 토큰은 cache module을 생성하는 container에 보여야 합니다. Cache options provider가 resolve되기 전에 bootstrap runtime provider로 제공하거나 globally visible한 imported module에서 export하세요. Import하는 parent module에만 local인 provider나 일반 sibling/parent export는 async cache module에 보이지 않습니다. Factory는 cache provider가 처음 resolve될 때 등록마다 한 번 실행되며, factory가 reject되면 부분적으로 설정된 cache를 등록하지 않고 bootstrap이 실패합니다.
 
-모듈 가시성은 등록 호출이 소유합니다. 전역으로 노출하려면 `CacheModule.forRootAsync({ global: true, ... })`처럼 전달하세요. `useFactory`는 `global`을 제외한 `CacheModuleOptions`를 반환하도록 typed되어 있으며, module metadata는 factory 실행 전에 확정되므로 runtime의 추가 `global` property는 무시됩니다.
+모듈 가시성은 등록 호출이 소유합니다. 전역으로 노출하려면 `CacheModule.forRootAsync({ global: true, ... })`처럼 전달하세요. `useFactory`는 `global` property를 포함한 준비된 `CacheModuleOptions` 값을 반환할 수 있으며, module metadata는 factory 실행 전에 확정되므로 반환된 `global`은 무시됩니다.
 
 ```typescript
 CacheModule.forRootAsync({
@@ -327,7 +327,7 @@ class ProductController {
 
 ### 공개 타입
 - `CacheModuleOptions`: `CacheModule.forRoot(...)`가 받는 애플리케이션-facing 설정입니다.
-- `CacheAsyncModuleOptions`: `CacheModule.forRootAsync(...)`가 받는 injected-factory 설정입니다. `useFactory`는 `global`을 제외한 `CacheModuleOptions`를 반환합니다.
+- `CacheAsyncModuleOptions`: `CacheModule.forRootAsync(...)`가 받는 injected-factory 설정입니다. `useFactory`는 `CacheModuleOptions`를 반환하며, module visibility는 등록 수준의 `global`만 따릅니다.
 - `NormalizedCacheModuleOptions`: 기본값이 적용된 정규화 설정 모양과 일치하는 compatibility-only type export입니다. 애플리케이션 코드에서는 `CacheModuleOptions`를 우선 사용하세요. 이 타입은 이전에 배포된 declaration surface를 참조한 소비자가 계속 컴파일되도록 공개 상태를 유지합니다.
 
 ### 서비스

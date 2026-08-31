@@ -84,14 +84,15 @@ export interface NormalizedCacheModuleOptions {
  * Public configuration options for `CacheModule.forRootAsync(...)`.
  *
  * @remarks
- * `global` stays on the registration call because module visibility is decided when the
- * module is defined, before the injected factory runs. A `global` value returned by
- * `useFactory` is excluded by the public type and ignored if supplied as an extra runtime property.
+ * `useFactory` returns `CacheModuleOptions`, so applications can reuse prepared cache
+ * configuration values. `global` stays on the registration call because module visibility
+ * is decided when the module is defined, before the injected factory runs. A `global` value
+ * returned by `useFactory` is ignored.
  */
-export type CacheAsyncModuleOptions = AsyncModuleOptions<
-  Omit<CacheModuleOptions, 'global'> & { global?: never }
-> &
-  Pick<CacheModuleOptions, 'global'>;
+export type CacheAsyncModuleOptions = Omit<AsyncModuleOptions<CacheModuleOptions>, 'useFactory'> &
+  Pick<CacheModuleOptions, 'global'> & {
+    useFactory: (...dependencies: never[]) => Awaitable<CacheModuleOptions>;
+  };
 
 /**
  * Computes a cache key from the active interceptor context.

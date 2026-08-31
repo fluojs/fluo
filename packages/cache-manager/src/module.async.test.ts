@@ -67,6 +67,10 @@ class RecordingStore implements CacheStore {
   }
 }
 
+class CacheSettingsService {
+  readonly ttl = 42;
+}
+
 @Inject(CacheService)
 class CacheConsumer {
   constructor(readonly cache: CacheService) {}
@@ -74,16 +78,14 @@ class CacheConsumer {
 
 describe('CacheModule.forRootAsync', () => {
   it('resolves injected dependencies and normalizes factory options once', async () => {
-    const CACHE_SETTINGS = Symbol('cache-settings') as Token<{ readonly ttl: number }>;
-    const factoryCalls: Array<{ readonly ttl: number }> = [];
+    const factoryCalls: CacheSettingsService[] = [];
 
     class AppModule {}
     defineModule(AppModule, {
       imports: [
         CacheModule.forRootAsync({
-          inject: [CACHE_SETTINGS],
-          useFactory: async (...deps: unknown[]) => {
-            const settings = deps[0] as { readonly ttl: number };
+          inject: [CacheSettingsService],
+          useFactory: async (settings: CacheSettingsService) => {
             factoryCalls.push(settings);
 
             return { keyPrefix: 'async:cache:', store: 'memory' as const, ttl: settings.ttl };
@@ -94,7 +96,7 @@ describe('CacheModule.forRootAsync', () => {
     });
 
     const app = await bootstrapApplication({
-      providers: [{ provide: CACHE_SETTINGS, useValue: { ttl: 42 } }],
+      providers: [{ provide: CacheSettingsService, useValue: new CacheSettingsService() }],
       rootModule: AppModule,
     });
 

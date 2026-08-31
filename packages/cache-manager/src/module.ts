@@ -264,10 +264,17 @@ export class CacheModule {
         inject: options.inject,
         provide: CACHE_OPTIONS,
         scope: 'singleton',
-        useFactory: (...deps: unknown[]) =>
-          Promise.resolve(options.useFactory(...deps)).then((resolved) =>
+        useFactory: (...deps: unknown[]) => {
+          const factoryOptions: ReturnType<CacheAsyncModuleOptions['useFactory']> = Reflect.apply(
+            options.useFactory,
+            options,
+            deps,
+          );
+
+          return Promise.resolve(factoryOptions).then((resolved) =>
             normalizeCacheModuleOptions({ ...resolved, global: options.global ?? false }),
-          ),
+          );
+        },
       }),
     });
   }

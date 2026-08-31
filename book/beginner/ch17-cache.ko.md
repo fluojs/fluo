@@ -106,7 +106,7 @@ export class AppModule {}
 Top-level `keyPrefix`는 nested `redis` connection option이 아니라 Redis 소유권 경계입니다. 기본값은 `fluo:cache:`이며, 모든 cache entry에 prefix를 붙이고 `CacheService.reset()`을 해당 namespace로 제한합니다. 설정된 prefix의 Redis glob metacharacter는 reset scan 전에 escape되므로 `*`, `?`, bracket, backslash를 포함한 prefix도 literal 소유권 경계로 유지됩니다. 여러 애플리케이션이 Redis를 공유한다면 비어 있지 않은 애플리케이션 전용 prefix를 사용하세요. 빈 prefix는 의도적으로 `*` scan을 피하고 store instance가 직접 쓰고 계속 추적하는 key만 reset하므로, 재시작이나 여러 process를 가로지르는 reset 소유권을 제공할 수 없습니다.
 
 ### 17.3.2 Injected Async Configuration and Secret Management: Best Practices
-실제 애플리케이션에서는 캐시 자격 증명을 하드코딩해서는 안 됩니다. 최종 store, TTL, namespace, key strategy가 DI 또는 비동기 bootstrap 작업에 의존하면 `CacheModule.forRootAsync({ inject, useFactory, global? })`를 사용하세요. Factory는 `forRoot(...)`가 받는 것과 같은 최종 option을 반환하지만 module visibility는 outer `global?` option이 소유합니다. Inject한 의존성은 bootstrap runtime provider 또는 globally visible module의 export여야 하며, import하는 parent module에만 local인 provider는 보이지 않습니다. Factory는 cache provider가 처음 resolve될 때 등록마다 한 번 실행되고, reject되면 부분 설정된 cache 없이 bootstrap이 실패합니다.
+실제 애플리케이션에서는 캐시 자격 증명을 하드코딩해서는 안 됩니다. 최종 store, TTL, namespace, key strategy가 DI 또는 비동기 bootstrap 작업에 의존하면 `CacheModule.forRootAsync({ inject, useFactory, global? })`를 사용하세요. Factory는 준비된 `CacheModuleOptions` 값을 반환할 수 있지만 module visibility는 outer `global?` option만 소유하므로, 반환된 `global`은 무시됩니다. Inject한 의존성은 bootstrap runtime provider 또는 globally visible module의 export여야 하며, import하는 parent module에만 local인 provider는 보이지 않습니다. Factory는 cache provider가 처음 resolve될 때 등록마다 한 번 실행되고, reject되면 부분 설정된 cache 없이 bootstrap이 실패합니다.
 
 ```typescript
 CacheModule.forRootAsync({
