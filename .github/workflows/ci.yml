@@ -281,26 +281,34 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - resolve-pr-verification-scope
-    if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')
 
     steps:
       - name: Checkout
+        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')
         uses: actions/checkout@v5
 
       - name: Install pnpm
+        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')
         uses: pnpm/action-setup@v5
 
       - name: Setup Node.js
+        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')
         uses: actions/setup-node@v5
         with:
           node-version: "20"
           cache: pnpm
 
       - name: Install dependencies
+        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')
         run: pnpm install --frozen-lockfile
 
       - name: Run Studio browser verification
+        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')
         run: pnpm --filter @fluojs/studio test:browser
+
+      - name: Skip Studio browser verification outside scoped Studio changes
+        if: github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped' && !contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')
+        run: echo "Studio browser verification is outside the scoped package closure."
 
   official-web-runtime-adapter-portability:
     name: Official web runtime adapter portability (${{ matrix.adapter }})
