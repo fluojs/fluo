@@ -12,6 +12,13 @@ const localRuntimeModuleSpecifierPattern =
   /^(?:import|export)\s+(?!type\b)(?:[\s\S]*?\s+from\s+)?['"](\.[^'"]+)['"];?$/gm;
 const staticNodeCryptoRuntimeDeclarationPattern = /^(?:import|export)\s+(?!type\b)[^;]*['"]node:crypto['"]/m;
 
+class StaticNodeCryptoRuntimeDeclarationError extends Error {
+  constructor(sourceFile: string) {
+    super(`Static node:crypto runtime declaration found in ${sourceFile}.`);
+    this.name = 'StaticNodeCryptoRuntimeDeclarationError';
+  }
+}
+
 const collectLocalRuntimeImportGraph = async (entryPoint: string): Promise<string[]> => {
   const sourceFiles = [entryPoint];
   const discovered = new Set(sourceFiles);
@@ -37,9 +44,10 @@ const assertNoStaticNodeCryptoRuntimeDeclaration = async (entryPoint: string): P
 
   for (const sourceFile of sourceFiles) {
     const source = await readFile(sourceFile, 'utf8');
-    expect(source, `${sourceFile} must not statically import or re-export node:crypto values`).not.toMatch(
-      staticNodeCryptoRuntimeDeclarationPattern,
-    );
+
+    if (staticNodeCryptoRuntimeDeclarationPattern.test(source)) {
+      throw new StaticNodeCryptoRuntimeDeclarationError(sourceFile);
+    }
   }
 };
 
@@ -66,21 +74,27 @@ describe('JWT runtime boundary', () => {
   });
 
   it('rejects a static node:crypto import through a local re-export chain', async () => {
+    const violatingSourceFile = resolve(fixtureSourceRoot, 'crypto.fixture');
+
     await expect(
       assertNoStaticNodeCryptoRuntimeDeclaration(resolve(fixtureSourceRoot, 'root.fixture')),
-    ).rejects.toThrow();
+    ).rejects.toThrowError(new StaticNodeCryptoRuntimeDeclarationError(violatingSourceFile));
   });
 
   it('rejects named static node:crypto re-exports through a local re-export chain', async () => {
+    const violatingSourceFile = resolve(fixtureSourceRoot, 'named-crypto-export.fixture');
+
     await expect(
       assertNoStaticNodeCryptoRuntimeDeclaration(resolve(fixtureSourceRoot, 'named-crypto-export-root.fixture')),
-    ).rejects.toThrow();
+    ).rejects.toThrowError(new StaticNodeCryptoRuntimeDeclarationError(violatingSourceFile));
   });
 
   it('rejects star static node:crypto re-exports through a local re-export chain', async () => {
+    const violatingSourceFile = resolve(fixtureSourceRoot, 'star-crypto-export.fixture');
+
     await expect(
       assertNoStaticNodeCryptoRuntimeDeclaration(resolve(fixtureSourceRoot, 'star-crypto-export-root.fixture')),
-    ).rejects.toThrow();
+    ).rejects.toThrowError(new StaticNodeCryptoRuntimeDeclarationError(violatingSourceFile));
   });
 
   it('keeps node:crypto out of the root import graph until crypto operations execute', async () => {
