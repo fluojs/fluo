@@ -1,18 +1,50 @@
-import type {
-  PlatformDiagnosticIssue,
-  PlatformHealthReport,
-  PlatformReadinessReport,
-  PlatformSnapshot,
-} from '@fluojs/runtime';
+/**
+ * Describes the readiness state exposed by JWT.
+ */
+export interface JwtPlatformReadinessReport {
+  readonly critical: boolean;
+  readonly reason?: string;
+  readonly status: 'ready' | 'not-ready' | 'degraded';
+}
+
+/**
+ * Describes the health state exposed by JWT.
+ */
+export interface JwtPlatformHealthReport {
+  readonly reason?: string;
+  readonly status: 'healthy' | 'unhealthy' | 'degraded';
+}
+
+/**
+ * Describes ownership of JWT-managed resources.
+ */
+export interface JwtPlatformOwnership {
+  readonly externallyManaged: boolean;
+  readonly ownsResources: boolean;
+}
+
+/**
+ * Describes a JWT diagnostic issue.
+ */
+export interface JwtPlatformDiagnosticIssue {
+  readonly cause?: string;
+  readonly code: string;
+  readonly componentId: string;
+  readonly dependsOn?: string[];
+  readonly docsUrl?: string;
+  readonly fixHint?: string;
+  readonly message: string;
+  readonly severity: 'error' | 'warning' | 'info';
+}
 
 /**
  * Describes the jwt platform status snapshot contract.
  */
 export interface JwtPlatformStatusSnapshot {
-  readiness: PlatformReadinessReport;
-  health: PlatformHealthReport;
-  ownership: PlatformSnapshot['ownership'];
-  details: Record<string, unknown>;
+  readonly details: Record<string, unknown>;
+  readonly health: JwtPlatformHealthReport;
+  readonly ownership: JwtPlatformOwnership;
+  readonly readiness: JwtPlatformReadinessReport;
 }
 
 /**
@@ -36,7 +68,7 @@ function isRefreshTokenStoreReady(input: JwtStatusAdapterInput): boolean {
   return input.refreshTokenStoreReady ?? true;
 }
 
-function createReadiness(input: JwtStatusAdapterInput): PlatformReadinessReport {
+function createReadiness(input: JwtStatusAdapterInput): JwtPlatformReadinessReport {
   const critical = input.readinessCritical ?? false;
 
   if (isRefreshTokenStoreReady(input)) {
@@ -53,7 +85,7 @@ function createReadiness(input: JwtStatusAdapterInput): PlatformReadinessReport 
   };
 }
 
-function createHealth(input: JwtStatusAdapterInput): PlatformHealthReport {
+function createHealth(input: JwtStatusAdapterInput): JwtPlatformHealthReport {
   if (isRefreshTokenStoreReady(input)) {
     return {
       status: 'healthy',
@@ -124,7 +156,7 @@ export function createJwtPlatformStatusSnapshot(input: JwtStatusAdapterInput): J
  * @param input The input.
  * @returns The create jwt platform diagnostic issues result.
  */
-export function createJwtPlatformDiagnosticIssues(input: JwtStatusAdapterInput): PlatformDiagnosticIssue[] {
+export function createJwtPlatformDiagnosticIssues(input: JwtStatusAdapterInput): JwtPlatformDiagnosticIssue[] {
   if (isRefreshTokenStoreReady(input)) {
     return [];
   }

@@ -1,8 +1,20 @@
+import type {
+  PlatformDiagnosticIssue,
+  PlatformHealthReport,
+  PlatformReadinessReport,
+  PlatformSnapshot,
+} from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import {
   createJwtPlatformDiagnosticIssues,
   createJwtPlatformStatusSnapshot,
+} from './status.js';
+import type {
+  JwtPlatformDiagnosticIssue,
+  JwtPlatformHealthReport,
+  JwtPlatformOwnership,
+  JwtPlatformReadinessReport,
 } from './status.js';
 
 describe('createJwtPlatformStatusSnapshot', () => {
@@ -92,5 +104,29 @@ describe('createJwtPlatformDiagnosticIssues', () => {
 
     expect(issues).toHaveLength(1);
     expect(issues[0]?.severity).toBe('error');
+  });
+});
+
+describe('JWT platform status contracts', () => {
+  it('remains structurally assignable to runtime platform status contracts', () => {
+    const readiness: JwtPlatformReadinessReport = { critical: false, status: 'ready' };
+    const health: JwtPlatformHealthReport = { status: 'healthy' };
+    const ownership: JwtPlatformOwnership = { externallyManaged: true, ownsResources: false };
+    const diagnostic: JwtPlatformDiagnosticIssue = {
+      code: 'AUTH_JWT_REFRESH_TOKEN_BACKING_STORE_NOT_READY',
+      componentId: 'jwt.default',
+      message: 'JWT refresh token backing store is degraded.',
+      severity: 'warning',
+    };
+
+    const runtimeReadiness: PlatformReadinessReport = readiness;
+    const runtimeHealth: PlatformHealthReport = health;
+    const runtimeOwnership: PlatformSnapshot['ownership'] = ownership;
+    const runtimeDiagnostic: PlatformDiagnosticIssue = diagnostic;
+
+    expect(runtimeReadiness).toEqual(readiness);
+    expect(runtimeHealth).toEqual(health);
+    expect(runtimeOwnership).toEqual(ownership);
+    expect(runtimeDiagnostic).toEqual(diagnostic);
   });
 });
