@@ -143,6 +143,11 @@ validation 및 binding metadata를 보존합니다. `PickType`, `OmitType`,
 `PartialType`은 생략되었거나 optional이 된 필드에 의존할 수 있는 base
 class-level validator를 derived DTO로 전달하지 않습니다.
 
+`IntersectionType(...)` source가 같은 property에 서로 다른
+`@ValidateNested(...)` target을 선언하면 모든 nested rule이 보존되고 검증됩니다.
+공유 property의 plain value는 초기 실체화 중 plain 상태로 유지되므로 각 nested
+target이 해당 value를 독립적으로 실체화하고 검증할 수 있습니다.
+
 ### Standard Schema 지원
 
 Standard Schema adapter는 유효하지 않은 입력을 명시적인 issue로 보고해야 합니다. issue가 없는 검증 결과는 성공으로 처리합니다.
