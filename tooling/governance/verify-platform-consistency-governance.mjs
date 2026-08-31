@@ -2675,6 +2675,104 @@ export function enforceHttpCustomMethodContract() {
   );
 }
 
+export function enforceHttpAdapterPortabilityDocumentationContract(readText = read) {
+  const assertionOrder = [
+    'assertSupportsCustomHttpRouteMethods()',
+    'assertSupportsHttpErrorRepresentations()',
+    'assertDoesNotCommitAbortedHttpErrorRepresentations()',
+    'assertPreservesMalformedCookieValues()',
+    'assertPreservesRawBodyForJsonAndText()',
+    'assertPreservesExactRawBodyBytesForByteSensitivePayloads()',
+    'assertExcludesRawBodyForMultipart()',
+    'assertDefaultsMultipartTotalLimitToMaxBodySize()',
+    'assertSupportsSseStreaming()',
+    'assertSettlesStreamDrainWaitOnClose()',
+    'assertReportsConfiguredHostInStartupLogs()',
+    'assertReportsHttpsStartupUrl',
+    'assertRemovesShutdownSignalListenersAfterClose()',
+  ];
+  const discoverabilityPaths = [
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'book/advanced/ch14-portability-testing.md',
+    'book/advanced/ch14-portability-testing.ko.md',
+  ];
+
+  for (const documentationPath of discoverabilityPaths) {
+    const documentation = readText(documentationPath);
+    const suiteStartMarker = documentationPath.startsWith('docs/')
+      ? '## HTTP Portability Harness Contract'
+      : "describe('MyCustomAdapter Portability', () => {";
+    const suiteStart = documentation.indexOf(suiteStartMarker);
+    assert(
+      suiteStart >= 0,
+      `${documentationPath} must keep the complete HTTP portability suite section discoverable.`,
+    );
+    const suite = documentation.slice(suiteStart);
+    let previousPosition = -1;
+
+    for (const assertion of assertionOrder) {
+      const position = suite.indexOf(assertion);
+      assert(
+        position >= 0,
+        `${documentationPath} must keep ${assertion} discoverable.`,
+      );
+      assert(
+        position > previousPosition,
+        `${documentationPath} must keep the complete HTTP portability suite in canonical assertion order.`,
+      );
+      previousPosition = position;
+    }
+
+    for (const supportingIdentifier of [
+      'createHttpAdapterPortabilityHarness',
+      'createErrorRepresentationBootstrapOptions',
+      'TEST_TLS_CERTIFICATE',
+      'TEST_TLS_PRIVATE_KEY',
+    ]) {
+      assert(
+        documentation.includes(supportingIdentifier),
+        `${documentationPath} must keep ${supportingIdentifier} discoverable.`,
+      );
+    }
+  }
+
+  for (const contractPath of [
+    'docs/contracts/platform-conformance-authoring-checklist.md',
+    'docs/contracts/platform-conformance-authoring-checklist.ko.md',
+  ]) {
+    const contract = readText(contractPath);
+
+    for (const marker of [
+      '## Adapter Portability Requirements',
+      'createHttpAdapterPortabilityHarness(...)',
+      'assertSupportsCustomHttpRouteMethods()',
+      'assertSupportsHttpErrorRepresentations()',
+      'assertDoesNotCommitAbortedHttpErrorRepresentations()',
+      'assertPreservesExactRawBodyBytesForByteSensitivePayloads()',
+      'assertDefaultsMultipartTotalLimitToMaxBodySize()',
+      'assertSettlesStreamDrainWaitOnClose()',
+      'assertReportsConfiguredHostInStartupLogs()',
+      'assertReportsHttpsStartupUrl(...)',
+      'assertRemovesShutdownSignalListenersAfterClose()',
+    ]) {
+      assert(
+        contract.includes(marker),
+        `${contractPath} must keep the HTTP portability companion contract marker ${marker}.`,
+      );
+    }
+  }
+
+  const networkHarness = readText('packages/testing/src/portability/http-adapter-portability.ts');
+  for (const assertion of assertionOrder) {
+    const identifier = assertion.replace(/\([^)]*\)$/, '');
+    assert(
+      networkHarness.includes(identifier),
+      `packages/testing/src/portability/http-adapter-portability.ts must retain ${identifier}.`,
+    );
+  }
+}
+
 export function enforceOpenApiNullableNormalizationContract() {
   const documentationPaths = [
     'apps/docs/content/docs/guides/http-api.mdx',
@@ -2904,6 +3002,7 @@ export async function main() {
   enforceReactServerFunctionContract();
   enforceHttpRuntimeCancellationAndContextIsolation();
   enforceHttpCustomMethodContract();
+  enforceHttpAdapterPortabilityDocumentationContract();
   enforceHttpCatchAllRouteGrammarDecision();
   enforceOpenApiNullableNormalizationContract();
   enforceGraphqlRuntimeBoundaryDiscoverability();

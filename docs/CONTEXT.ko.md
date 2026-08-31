@@ -175,6 +175,10 @@ Studio의 배포 Node.js `>=20.0.0` engine contract는 `@fluojs/runtime`과 독�
 
 Deno signal-close failure status는 host가 소유합니다. `runDenoApplication(...)`은 signal로 트리거된 애플리케이션 close 실패를 log한 뒤 swallow하며 exit status를 설정하지 않습니다. Failure-status propagation 또는 forced termination이 필요한 배포 환경은 `shutdownSignals: false`를 사용하고 signal과 shutdown을 직접 조율해야 합니다.
 
+## HTTP Portability Harness Contract
+
+전체 listener-style HTTP portability suite는 [Chapter 14](../book/advanced/ch14-portability-testing.ko.md)와 [Platform Conformance Authoring Checklist](./contracts/platform-conformance-authoring-checklist.ko.md)에서 확인할 수 있습니다. 커스텀 어댑터 테스트는 `createHttpAdapterPortabilityHarness(...)`를 사용하며 canonical 순서는 다음과 같습니다: `assertSupportsCustomHttpRouteMethods()`, `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `assertPreservesMalformedCookieValues()`, `assertPreservesRawBodyForJsonAndText()`, `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`, `assertExcludesRawBodyForMultipart()`, `assertDefaultsMultipartTotalLimitToMaxBodySize()`, `assertSupportsSseStreaming()`, `assertSettlesStreamDrainWaitOnClose()`, `assertReportsConfiguredHostInStartupLogs()`, `assertReportsHttpsStartupUrl(...)`, `assertRemovesShutdownSignalListenersAfterClose()`입니다. Error representation에는 `createErrorRepresentationBootstrapOptions`를 쓰고 HTTPS에는 test-owned `TEST_TLS_CERTIFICATE`와 `TEST_TLS_PRIVATE_KEY`를 사용합니다.
+
 ## Cron Migration Option Boundary
 
 Cron NestJS migration surface는 NestJS `timeZone`을 fluo `timezone`으로 바꿔야 한다는 점을 기록합니다. `waitForCompletion`은 fluo에 직접 대응하는 option이 없으며 scheduler protection과 in-process running guard가 같은 task instance의 overlapping tick을 queue하지 않고 항상 건너뜁니다. NestJS overlap에 의존한 작업은 application-owned queue나 worker로 옮겨야 하고, application instance 사이의 exclusion에는 여전히 Redis distributed locking이 필요합니다.

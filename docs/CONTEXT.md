@@ -175,6 +175,10 @@ Studio's published Node.js `>=20.0.0` engine contract is independent from `@fluo
 
 Deno signal-close failure status remains host-owned: `runDenoApplication(...)` logs and swallows signal-triggered application-close failures without setting an exit status. Deployments that require failure-status propagation or forced termination must use `shutdownSignals: false` and coordinate signals and shutdown themselves.
 
+## HTTP Portability Harness Contract
+
+The complete listener-style HTTP portability suite is discoverable in [Chapter 14](../book/advanced/ch14-portability-testing.md) and the [Platform Conformance Authoring Checklist](./contracts/platform-conformance-authoring-checklist.md). Custom adapter tests call `createHttpAdapterPortabilityHarness(...)` in this canonical order: `assertSupportsCustomHttpRouteMethods()`, `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `assertPreservesMalformedCookieValues()`, `assertPreservesRawBodyForJsonAndText()`, `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`, `assertExcludesRawBodyForMultipart()`, `assertDefaultsMultipartTotalLimitToMaxBodySize()`, `assertSupportsSseStreaming()`, `assertSettlesStreamDrainWaitOnClose()`, `assertReportsConfiguredHostInStartupLogs()`, `assertReportsHttpsStartupUrl(...)`, and `assertRemovesShutdownSignalListenersAfterClose()`. Error representation uses `createErrorRepresentationBootstrapOptions`, and HTTPS uses test-owned `TEST_TLS_CERTIFICATE` and `TEST_TLS_PRIVATE_KEY`.
+
 ## Cron Migration Option Boundary
 
 The Cron NestJS migration surfaces record that NestJS `timeZone` becomes fluo `timezone`, while `waitForCompletion` has no direct fluo option because scheduler protection and the in-process running guard always skip overlapping ticks for the same task instance rather than queueing another run. Work that relied on NestJS overlap must move to an application-owned queue or worker, and cross-instance exclusion still requires Redis distributed locking.
