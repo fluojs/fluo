@@ -992,6 +992,22 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('accepts i18n catalog migration guidance with required governance companions', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const guidanceFiles = [
+      'packages/i18n/README.md',
+      'packages/i18n/README.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ];
+
+    expect(() => enforceContractCompanionUpdates(guidanceFiles)).not.toThrow();
+  });
+
   it('accepts mongoose package-surface guidance when context discoverability and governance tests change together', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 

@@ -9,6 +9,9 @@ import { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecyc
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 import { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 import { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
+
+const contractDiscoverabilityCompanions = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
+
 import {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
@@ -872,7 +875,7 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // default-value or options overload.
 
   assert(
-    hasChanged(changedFiles, 'docs/CONTEXT.md') && hasChanged(changedFiles, 'docs/CONTEXT.ko.md'),
+    contractDiscoverabilityCompanions.every((path) => hasChanged(changedFiles, path)),
     'contract-governing doc updates must include docs/CONTEXT.md and docs/CONTEXT.ko.md discoverability updates.',
   );
   assert(
