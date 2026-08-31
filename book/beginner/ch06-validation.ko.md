@@ -111,9 +111,11 @@ field를 필수로 만들지 않습니다. 두 누락 값 중 하나라도 실�
 사용합니다.
 
 Plain 입력 객체를 materialize할 때 선언된 DTO field 외의 안전한 own enumerable
-속성도 유지합니다. 위험한 prototype key, inherited 속성, non-enumerable 속성은
-제외하지만 whitelist 또는 추가 field 금지 모드는 아닙니다. API에 해당 정책이
-필요하면 추가 입력을 명시적으로 shaping하거나 거부하세요.
+속성도 기본적으로 유지합니다. 위험한 prototype key, inherited 속성,
+non-enumerable 속성은 제외합니다. 엄격한 입력 경계가 필요하면 세 번째
+`materialize()` 인자로 `{ undeclaredProperties: 'reject' }`를 전달하세요. 이 정책은
+초기화되었거나 metadata가 있는 DTO field와 binding alias를 허용하고 plain nested
+DTO 값에도 재귀적으로 적용되며 추가 속성을 조용히 제거하지 않고 거부합니다.
 
 마지막으로 fluo validation은 class-validator 스타일의 `groups` 또는 `always`
 option을 실행하지 않습니다. Create, update, 기타 workflow에 서로 다른 규칙이

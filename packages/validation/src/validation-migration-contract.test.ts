@@ -1,6 +1,7 @@
+import { defineDtoFieldBindingMetadata } from '@fluojs/core/request-pipeline';
 import { describe, expect, it } from 'vitest';
 
-import { IsDefined, IsString } from './decorators.js';
+import { IsDefined, IsString, ValidateNested } from './decorators.js';
 import { DefaultValidator } from './validation.js';
 
 describe('validation migration contract', () => {
@@ -66,4 +67,90 @@ describe('validation migration contract', () => {
     expect(Object.hasOwn(result, 'migrationMarker')).toBe(true);
     expect(Reflect.get(result, 'migrationMarker')).toBe('retained-extra-property');
   });
+
+  it('rejects undeclared properties while accepting DTO fields and binding aliases when opted in', async () => {
+    // Given
+    class StrictDto {
+      @IsString()
+      userId = '';
+    }
+    defineDtoFieldBindingMetadata(StrictDto.prototype, 'userId', {
+      key: 'id',
+      source: 'path',
+    });
+    const validator = new DefaultValidator();
+
+    // When
+    const materialization = validator.materialize(
+      { id: 'user-123', migrationMarker: 'undeclared' },
+      StrictDto,
+      { undeclaredProperties: 'reject' },
+    );
+
+    // Then
+    await expect(materialization).rejects.toMatchObject({
+      issues: [
+        {
+          code: 'UNDECLARED_PROPERTY',
+          field: 'migrationMarker',
+          message: 'migrationMarker is not declared by the DTO.',
+        },
+      ],
+    });
+  });
+
+  it('accepts DTO fields and binding aliases as declared properties when rejection is opted in', async () => {
+    // Given
+    class StrictDto {
+      @IsString()
+      userId = '';
+    }
+    defineDtoFieldBindingMetadata(StrictDto.prototype, 'userId', {
+      key: 'id',
+      source: 'path',
+    });
+    const validator = new DefaultValidator();
+
+    // When
+    const materialization = validator.materialize(
+      { id: 'user-123', userId: 'direct-user-id' },
+      StrictDto,
+      { undeclaredProperties: 'reject' },
+    );
+
+    // Then
+    await expect(materialization).resolves.toMatchObject({ userId: 'user-123' });
+  });
+
+  it('rejects undeclared properties in nested plain DTO values when opted in', async () => {
+    // Given
+    class ChildDto {
+      @IsString()
+      name = '';
+    }
+    class ParentDto {
+      @ValidateNested(ChildDto)
+      child = new ChildDto();
+    }
+    const validator = new DefaultValidator();
+
+    // When
+    const materialization = validator.materialize(
+      { child: { name: 'fluo', nestedMarker: 'undeclared' } },
+      ParentDto,
+      { undeclaredProperties: 'reject' },
+    );
+
+    // Then
+    await expect(materialization).rejects.toMatchObject({
+      issues: [
+        {
+          code: 'UNDECLARED_PROPERTY',
+          field: 'nestedMarker',
+          message: 'nestedMarker is not declared by the DTO.',
+        },
+      ],
+    });
+  });
+
 });

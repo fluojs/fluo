@@ -77,11 +77,14 @@ coercion.
 applies DTO binding metadata, and recursively hydrates `@ValidateNested(...)`
 fields. It preserves the request-pipeline contract that transports or binders own
 source selection and scalar conversion before validation runs.
-When materializing a plain input object, safe extra own enumerable properties are retained; only dangerous keys such as
+When materializing a plain input object, safe extra own enumerable properties are retained by default; only dangerous keys such as
 `__proto__`, `constructor`, and `prototype`, plus inherited or non-enumerable
-properties, are excluded. This is not a `ValidationPipe`-style whitelist or
-`forbidNonWhitelisted` boundary. Shape or reject extra input explicitly before
-materialization when an application requires that policy.
+properties, are excluded. Pass `{ undeclaredProperties: 'reject' }` as the third
+`materialize()` argument to reject safe enumerable properties that are not
+initialized DTO fields, validation or binding metadata fields, or binding aliases.
+The policy applies recursively to plain nested DTO values and reports
+`UNDECLARED_PROPERTY` issues instead of silently stripping input. Existing DTO
+instances are not an undeclared-property boundary.
 Existing nested values that are already instances of the declared nested DTO are
 preserved; plain nested values are hydrated only for the affected nested field or
 collection entry.

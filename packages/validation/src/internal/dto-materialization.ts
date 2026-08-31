@@ -1,9 +1,9 @@
 import type { Constructor } from '@fluojs/core';
 
 import { DtoValidationError } from '../errors.js';
-import type { ValidationIssue } from '../types.js';
+import type { MaterializeOptions, ValidationIssue } from '../types.js';
 import { getCachedDtoMetadata } from './dto-metadata-cache.js';
-import { assignSafeOwnEnumerableProperties, isPlainObject } from './object-utils.js';
+import { assignSafeOwnEnumerableProperties, isPlainObject, isSafeOwnEnumerableProperty } from './object-utils.js';
 
 /**
  * Carries invocation-local DTO traversal state across materialization and validation.
@@ -11,6 +11,7 @@ import { assignSafeOwnEnumerableProperties, isPlainObject } from './object-utils
 export interface NestedTraversalContext {
   readonly active: WeakSet<object>;
   readonly hydrateExistingInstances?: boolean;
+  readonly undeclaredProperties?: MaterializeOptions['undeclaredProperties'];
   readonly materialized?: WeakMap<object, WeakMap<Constructor, object>>;
 }
 
@@ -128,6 +129,28 @@ export function createNestedDtoInstance<T>(
     const metadata = getCachedDtoMetadata(target);
 
     if (isPlainObject(rawValue)) {
+      if (context?.undeclaredProperties === 'reject') {
+        const declaredKeys = new Set<PropertyKey>([
+          ...Reflect.ownKeys(instance),
+          ...metadata.mergedPropertyKeys,
+          ...Array.from(metadata.bindingMap.values()).flatMap((binding) => binding.key === undefined ? [] : [binding.key]),
+        ]);
+        const issues = Reflect.ownKeys(rawValue)
+          .filter((key) => isSafeOwnEnumerableProperty(rawValue, key) && !declaredKeys.has(key))
+          .map((key): ValidationIssue => {
+            const field = String(key);
+            return {
+              code: 'UNDECLARED_PROPERTY',
+              field,
+              message: `${field} is not declared by the DTO.`,
+            };
+          });
+
+        if (issues.length > 0) {
+          throw new DtoValidationError('Validation failed.', issues);
+        }
+      }
+
       assignSafeOwnEnumerableProperties(instance, rawValue);
 
       for (const propertyKey of metadata.mergedPropertyKeys) {
