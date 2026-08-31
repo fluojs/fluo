@@ -245,6 +245,7 @@ HTTP route 및 #2506 navigation ownership, dual-import test, bilingual docs, Cha
 | HTTP catch-all grammar 결정과 재검토 gate 확인 | `docs/architecture/http-catch-all-route-grammar.ko.md` | 활성 explicit-route contract는 `packages/http/README.ko.md` 및 `packages/react/README.ko.md` |
 | HTTP JSON/HTML error representation ownership와 negotiation 확인 | `docs/architecture/http-error-representations.ko.md` | `docs/architecture/error-responses.ko.md`, `packages/http/README.ko.md`, `packages/react/README.ko.md` |
 | 패키지 계열 조회 또는 런타임 범위 확인 | `docs/reference/package-surface.md` | 선택 로직이 필요하면 `docs/reference/package-chooser.md` |
+| serialization decorator metadata, 상속, NestJS `class-transformer` migration 확인 | `packages/serialization/README.ko.md` | `docs/getting-started/migrate-from-nestjs.ko.md` 및 `docs/contracts/nestjs-parity-gaps.ko.md` |
 | i18n ecosystem bridge compatibility와 migration boundary 확인 | `docs/reference/i18n-ecosystem-bridges.ko.md` | third-party bridge 작성 시 `docs/contracts/third-party-extension-contract.ko.md` |
 | behavioral guarantee, Changesets 릴리스 흐름, 버전 정책 확인 | `docs/contracts/behavioral-contract-policy.md` | `docs/contracts/release-governance.md` |
 | 테스트 요구사항과 canonical fluo TDD ladder 확인 | `docs/contracts/testing-guide.md` | `packages/testing/README.md` 및 `book/beginner/ch20-testing.md` |

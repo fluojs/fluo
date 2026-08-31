@@ -246,6 +246,7 @@ re-export for the documented deprecation window.
 | HTTP catch-all grammar decision and revisit gates | `docs/architecture/http-catch-all-route-grammar.md` | `packages/http/README.md` and `packages/react/README.md` for the active explicit-route contract |
 | HTTP JSON/HTML error representation ownership and negotiation | `docs/architecture/http-error-representations.md` | `docs/architecture/error-responses.md`, `packages/http/README.md`, and `packages/react/README.md` |
 | Package family lookup or runtime coverage | `docs/reference/package-surface.md` | `docs/reference/package-chooser.md` when selection logic is needed |
+| Serialization decorator metadata, inheritance, or NestJS `class-transformer` migration | `packages/serialization/README.md` | `docs/getting-started/migrate-from-nestjs.md` and `docs/contracts/nestjs-parity-gaps.md` |
 | i18n ecosystem bridge compatibility and migration boundaries | `docs/reference/i18n-ecosystem-bridges.md` | `docs/contracts/third-party-extension-contract.md` when authoring a third-party bridge |
 | Behavioral guarantees, Changesets release flow, and versioning policy | `docs/contracts/behavioral-contract-policy.md` | `docs/contracts/release-governance.md` |
 | Testing requirements and canonical fluo TDD ladder | `docs/contracts/testing-guide.md` | `packages/testing/README.md` and `book/beginner/ch20-testing.md` |

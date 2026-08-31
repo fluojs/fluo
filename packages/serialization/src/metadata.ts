@@ -39,11 +39,11 @@ function getFieldMetadataMap(metadata: unknown): Map<MetadataPropertyKey, Serial
   const bag = getStandardMetadataBag(metadata);
   const current = bag[standardSerializationFieldMetadataKey] as Map<MetadataPropertyKey, SerializationFieldMetadata> | undefined;
 
-  if (current) {
+  if (current && Object.hasOwn(bag, standardSerializationFieldMetadataKey)) {
     return current;
   }
 
-  const created = new Map<MetadataPropertyKey, SerializationFieldMetadata>();
+  const created = new Map(current);
   bag[standardSerializationFieldMetadataKey] = created;
   return created;
 }
@@ -52,11 +52,11 @@ function getClassMetadataObject(metadata: unknown): ClassSerializationOptions {
   const bag = getStandardMetadataBag(metadata);
   const current = bag[standardSerializationClassMetadataKey] as ClassSerializationOptions | undefined;
 
-  if (current) {
+  if (current && Object.hasOwn(bag, standardSerializationClassMetadataKey)) {
     return current;
   }
 
-  const created: ClassSerializationOptions = {};
+  const created: ClassSerializationOptions = { ...current };
   bag[standardSerializationClassMetadataKey] = created;
   return created;
 }

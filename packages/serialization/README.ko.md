@@ -8,6 +8,7 @@ fluo를 위한 클래스 기반 응답 직렬화 및 데코레이터 인지형 �
 
 - [설치](#설치)
 - [사용 시점](#사용-시점)
+- [데코레이터 메타데이터 사전 로드](#데코레이터-메타데이터-사전-로드)
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
 - [공개 API 개요](#공개-api-개요)
@@ -26,6 +27,18 @@ pnpm add @fluojs/serialization
 - password hash나 내부 identifier 같은 민감한 값이 response boundary를 벗어나면 안 될 때
 - response data가 serialization 중 lightweight synchronous transform을 거쳐야 할 때
 - HTTP interceptor가 같은 serialization rule을 자동으로 적용하게 하고 싶을 때
+
+## 데코레이터 메타데이터 사전 로드
+
+`@fluojs/serialization`은 import side effect로 `Symbol.metadata`를 설치하지 않습니다. 대상 runtime이 이를 기본 제공하지 않는다면 `@Expose()`, `@Exclude()`, `@Transform()`으로 decorate한 클래스를 평가하는 module을 import하기 전에 설치하세요.
+
+```ts
+// preload.ts — 이 파일을 애플리케이션 entrypoint로 설정합니다.
+import { ensureMetadataSymbol } from '@fluojs/core';
+
+ensureMetadataSymbol();
+await import('./bootstrap.js');
+```
 
 ## 빠른 시작
 
@@ -121,6 +134,7 @@ fluo의 직렬화 엔진은 활성 순환 참조를 자동으로 감지하고 `u
 ### 상속된 데코레이터 계약
 
 기반 클래스에 선언한 직렬화 메타데이터는 파생 DTO에도 상속됩니다. 공통 필드에 적용한 `@Expose()`, `@Exclude()`, `@Transform()` 규칙은 서브클래스 인스턴스를 직렬화할 때도 그대로 반영됩니다.
+파생 클래스의 데코레이터 갱신은 해당 클래스만 소유하므로 field나 class option을 override해도 base DTO나 sibling DTO의 이후 직렬화는 바뀌지 않습니다.
 
 Class-level `excludeExtraneous`도 일반 상속 규칙을 따릅니다. 파생 클래스에 option 없는 `@Expose()`를 붙여도 가장 가까운 상속 설정이 유지되므로, expose-only 기반 DTO는 subclass에서도 expose-only 상태를 유지합니다. 일반 enumerable field를 다시 포함하려는 의도가 있을 때만 파생 클래스에 `@Expose({ excludeExtraneous: false })`를 명시하세요. 이 경우에도 상속된 field-level `@Exclude()` metadata는 계속 적용됩니다.
 

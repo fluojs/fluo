@@ -1449,6 +1449,28 @@ describe('enforceContractCompanionUpdates', () => {
     }
   });
 
+  it('accepts serialization migration contracts with metadata regressions and governance coverage', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'packages/serialization/README.md',
+        'packages/serialization/README.ko.md',
+        'packages/serialization/src/serialize.test.ts',
+        'packages/runtime/src/application.test.ts',
+        'docs/contracts/nestjs-parity-gaps.md',
+        'docs/contracts/nestjs-parity-gaps.ko.md',
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'book/beginner/ch07-serialization.md',
+        'book/beginner/ch07-serialization.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('treats the React render policy decision pairs as contract-governing updates', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
     const renderPolicyDecisionTriggers = [
