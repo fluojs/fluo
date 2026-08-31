@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { GuardContext, Principal, RequestContext } from '@fluojs/http';
-import { DefaultJwtVerifier, JwtExpiredTokenError, JwtInvalidTokenError } from '@fluojs/jwt';
+import {
+  DefaultJwtVerifier,
+  JwtConfigurationError,
+  JwtExpiredTokenError,
+  JwtInvalidTokenError,
+} from '@fluojs/jwt';
 
 import {
   AuthenticationExpiredError,
@@ -168,6 +173,30 @@ describe('BearerJwtStrategy credential extraction', () => {
 
     expect(failure).toBeInstanceOf(AuthenticationFailedError);
     expect((failure as Error).cause).toBe(jwtError);
+  });
+
+  it('propagates JWT configuration errors unchanged', async () => {
+    const jwtError = new JwtConfigurationError('JWT verification is not configured.');
+    const verifier = createMockVerifier({ verifyAccessToken: vi.fn().mockRejectedValue(jwtError) });
+    const strategy = new BearerJwtStrategy(verifier);
+
+    const failure = await strategy
+      .authenticate(createGuardContext('Bearer configured-token'))
+      .catch((error: unknown) => error);
+
+    expect(failure).toBe(jwtError);
+  });
+
+  it('propagates verifier infrastructure errors unchanged', async () => {
+    const verifierError = new Error('JWKS provider is unavailable.');
+    const verifier = createMockVerifier({ verifyAccessToken: vi.fn().mockRejectedValue(verifierError) });
+    const strategy = new BearerJwtStrategy(verifier);
+
+    const failure = await strategy
+      .authenticate(createGuardContext('Bearer provider-token'))
+      .catch((error: unknown) => error);
+
+    expect(failure).toBe(verifierError);
   });
 });
 

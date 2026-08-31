@@ -112,7 +112,7 @@ import {
 } from '@fluojs/passport';
 ```
 
-The preset defines the credential contract exactly: a missing or empty `Authorization` header fails with `AuthenticationRequiredError`; a wrong-scheme or malformed header fails with `AuthenticationFailedError` and the scheme match is case-insensitive; an expired token fails with `AuthenticationExpiredError`; and any other verification failure fails with `AuthenticationFailedError`, each preserving the original JWT verifier error as `cause`. Internally, `AuthGuard` converts every one of these failures into the canonical `401 Unauthorized` response.
+The preset defines the credential contract exactly: a missing or empty `Authorization` header fails with `AuthenticationRequiredError`; a wrong-scheme or malformed header fails with `AuthenticationFailedError` and the scheme match is case-insensitive; an expired token fails with `AuthenticationExpiredError`; and `JwtInvalidTokenError` fails with `AuthenticationFailedError`, each preserving the original JWT verifier error as `cause`. `JwtConfigurationError` and verifier-provider infrastructure failures propagate unchanged rather than becoming credential failures. Internally, `AuthGuard` converts only credential failures into the canonical `401 Unauthorized` response.
 
 ### 15.3.2 Registering the JWT and Passport Modules
 Importing the strategy is not enough to make `@UseAuth('jwt')` runnable. The application module must register the JWT verifier, list the preset as a provider, and register the named Passport strategy with the stable registration helper. This is the same wiring used by the canonical `packages/passport/README.md` quick start and the runnable `examples/auth-jwt-passport/src/auth/auth.module.ts` example.

@@ -188,6 +188,8 @@ const ssotPairs = [
 ];
 
 const contractGateTriggers = new Set([
+  'docs/architecture/auth-and-jwt.md',
+  'docs/architecture/auth-and-jwt.ko.md',
   'docs/architecture/http-catch-all-route-grammar.md',
   'docs/architecture/http-catch-all-route-grammar.ko.md',
   'docs/architecture/platform-consistency-design.md',

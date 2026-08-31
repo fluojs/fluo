@@ -112,7 +112,7 @@ import {
 } from '@fluojs/passport';
 ```
 
-Preset은 credential contract를 정확히 정의합니다. `Authorization` header가 없거나 비어 있으면 `AuthenticationRequiredError`, scheme이 다르거나 malformed이면 `AuthenticationFailedError`(scheme 비교는 대소문자를 구분하지 않음), 만료된 토큰은 `AuthenticationExpiredError`, 그 외 검증 실패는 `AuthenticationFailedError`로 실패하며, 각각 원본 JWT verifier error를 `cause`로 보존합니다. 내부적으로 `AuthGuard`는 이 모든 실패를 canonical `401 Unauthorized` response로 변환합니다.
+Preset은 credential contract를 정확히 정의합니다. `Authorization` header가 없거나 비어 있으면 `AuthenticationRequiredError`, scheme이 다르거나 malformed이면 `AuthenticationFailedError`(scheme 비교는 대소문자를 구분하지 않음), 만료된 토큰은 `AuthenticationExpiredError`, `JwtInvalidTokenError`는 `AuthenticationFailedError`로 실패하며, 각각 원본 JWT verifier error를 `cause`로 보존합니다. `JwtConfigurationError`와 verifier-provider infrastructure failure는 credential failure로 바꾸지 않고 변경 없이 전파합니다. 내부적으로 `AuthGuard`는 credential failure만 canonical `401 Unauthorized` response로 변환합니다.
 
 ### 15.3.2 Registering the JWT and Passport Modules
 전략을 import하는 것만으로는 `@UseAuth('jwt')`를 실행할 수 없습니다. 애플리케이션 module이 JWT verifier를 등록하고, preset을 provider로 나열하고, 안정적인 registration helper로 named Passport strategy를 등록해야 합니다. 아래 구성은 canonical `packages/passport/README.md` quick start와 실행 가능한 `examples/auth-jwt-passport/src/auth/auth.module.ts` 예제에서 사용하는 wiring과 같습니다.

@@ -1,6 +1,6 @@
 import { Inject } from '@fluojs/core';
 import type { GuardContext } from '@fluojs/http';
-import { DefaultJwtVerifier, JwtExpiredTokenError } from '@fluojs/jwt';
+import { DefaultJwtVerifier, JwtExpiredTokenError, JwtInvalidTokenError } from '@fluojs/jwt';
 
 import {
   AuthenticationExpiredError,
@@ -49,11 +49,12 @@ function readAuthorizationHeader(context: GuardContext): string | undefined {
  * wrong-scheme or malformed header (including control characters) raises
  * {@link AuthenticationFailedError};
  * an expired token raises {@link AuthenticationExpiredError} with the original
- * `JwtExpiredTokenError` preserved as `cause`; any other verification failure
- * raises {@link AuthenticationFailedError} with the verifier error preserved as
- * `cause`. The Bearer scheme is matched case-insensitively per RFC 7235. When an
- * adapter surfaces an array-valued `Authorization` header, only the first entry
- * is read.
+ * `JwtExpiredTokenError` preserved as `cause`; an invalid token raises
+ * {@link AuthenticationFailedError} with the original `JwtInvalidTokenError`
+ * preserved as `cause`; JWT configuration and verifier-provider errors
+ * propagate unchanged. The Bearer scheme is matched case-insensitively per RFC
+ * 7235. When an adapter surfaces an array-valued `Authorization` header, only
+ * the first entry is read.
  *
  * The strategy returns the normalized `JwtPrincipal` produced by
  * `DefaultJwtVerifier.verifyAccessToken(...)` unchanged, so `subject`,
@@ -94,7 +95,11 @@ export class BearerJwtStrategy implements AuthStrategy {
         throw new AuthenticationExpiredError('Access token has expired.', { cause: error });
       }
 
-      throw new AuthenticationFailedError('Access token verification failed.', { cause: error });
+      if (error instanceof JwtInvalidTokenError) {
+        throw new AuthenticationFailedError('Access token verification failed.', { cause: error });
+      }
+
+      throw error;
     }
   }
 }
