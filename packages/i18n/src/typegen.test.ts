@@ -232,6 +232,17 @@ export interface I18nCatalogTypedService {
     expect(first).toContain('export type I18nCatalogKey = "alpha" | "beta" | "nested.zeta";');
   });
 
+  it('rejects colliding final declaration identifiers', () => {
+    expectI18nThrow(
+      () =>
+        generateI18nCatalogTypes([], {
+          keyTypeName: 'CatalogDeclaration',
+          namespaceTypeName: 'CatalogDeclaration',
+        }),
+      'I18N_INVALID_OPTIONS',
+    );
+  });
+
   it('fails with stable errors for invalid inputs, catalogs, namespaces, and options', async () => {
     expectI18nThrow(
       () => generateI18nCatalogTypes([{ locale: 'en', messages: { count: 1 } as unknown as I18nMessageTree }]),

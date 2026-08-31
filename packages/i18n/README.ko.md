@@ -415,7 +415,7 @@ typedI18n.translateInNamespace('admin/common', 'dashboard.title', { locale: 'en'
 
 이 helper declaration은 type-only이며 application-owned입니다. Runtime wrapper를 추가하지 않고, framework bridge를 import하지 않으며, 넓은 runtime `I18nService.translate(key: string, options)` signature도 바꾸지 않습니다.
 
-두 helper 모두 locale 간 key를 deduplicate하고 stable diff를 위해 output을 sort하며, invalid catalog shape는 `I18N_INVALID_CATALOG`, unsafe locale 또는 namespace path는 `I18N_INVALID_LOADER_OPTIONS`로 거부합니다.
+두 helper 모두 locale 간 key를 deduplicate하고 stable diff를 위해 output을 sort하며, invalid catalog shape는 `I18N_INVALID_CATALOG`, unsafe locale 또는 namespace path는 `I18N_INVALID_LOADER_OPTIONS`로 거부합니다. Custom output name은 유효하고 서로 다른 TypeScript identifier여야 하며, invalid 또는 충돌하는 name은 `I18N_INVALID_OPTIONS`로 거부합니다.
 
 ## 공개 API
 
