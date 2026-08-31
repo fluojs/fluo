@@ -205,6 +205,8 @@ HTTP 인터셉터는 나중에 재사용할 수 있는 값이 있는 성공한, 
 
 ### 캐시 소유권과 reset 범위
 
+일반적인 `get(...)`, `set(...)`, `del(...)` 호출은 설정된 store에 대해 동시에 실행되므로, 한 키의 느린 store 호출이 관련 없는 키를 지연시키지 않습니다.
+
 `CacheService.reset()`은 관련 없는 애플리케이션 상태가 아니라 설정된 store가 소유한 엔트리만 삭제합니다. 또한 reset 경계에서 store read/write를 직렬화하고 진행 중인 `remember(...)` loader를 무효화하므로, reset 전에 시작된 loader가 reset 완료 후 stale 엔트리를 다시 채우지 못합니다. 내장 메모리 저장소에서는 해당 store 인스턴스가 보유한 in-process 엔트리를 의미합니다. Redis에서는 설정된 `keyPrefix` namespace가 소유권 경계입니다. 공유 Redis 배포에서는 기본 `fluo:cache:`를 유지하거나 `myapp:cache:`처럼 전용 prefix를 선택하세요.
 
 ```typescript
