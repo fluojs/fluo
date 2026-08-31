@@ -237,7 +237,7 @@ export class UsersController {
 ### 15.6.1 The Importance of Clear Error Feedback
 명확하면서도 안전한 피드백을 제공하려면 균형이 필요합니다. 공격자에게 민감한 시스템 정보를 유출해서는 안 되지만, 정당한 사용자에게는 왜 요청이 실패했는지 이해하도록 도와야 합니다. 로그에서 "토큰 누락"과 "토큰 만료"를 구분하는 것만으로도, 사용자에게는 일반적인 메시지를 보여주면서 개발자의 디버깅 시간을 줄일 수 있습니다.
 
-Fluo의 passport 전략과 예외 처리 계층은 이런 에러 관리를 구현하는 데 필요한 도구들을 제공합니다. 예를 들어 특정 IP에서 만료된 토큰으로 대량의 요청이 들어오는 것과 같은 의심스러운 패턴을 감지했을 때(예: "재전송(replay)" 공격 시도) 자동화된 알림을 트리거할 수도 있습니다. 내부 모니터링 시스템에 구체적인 실패 원인(예: 서명 불일치 vs 만료)을 기록하는 것은 사고 대응 및 포렌식 분석에 필수적입니다.
+Bearer 인증을 디버깅할 때는 credential parsing과 token verification을 분리하세요. 먼저 `Authorization` header에 `Bearer` scheme, ASCII-space separator, 하나의 credential segment가 있는지 확인하고, parsing이 성공한 뒤에만 verifier 결과에서 서명, 만료, issuer, audience, claim 실패를 살펴보세요. 감사 로그는 custom strategy의 failure branch나 전역 예외 filter에서 애플리케이션 소유로 남기고, credential 자체는 기록하지 마세요.
 
 ### 15.6.2 Integration with Global Filters
 가드가 요청의 진행 여부를 결정하는 동안, 가드는 종종 최종 응답 형식을 지정하기 위해 전역 예외 필터(Global Exception Filters)와 협력합니다. 가드가 `UnauthorizedException`을 던집면, 필터가 이를 가로채 응답 본문에 추적 ID나 법적 면책 조항을 추가할 수 있습니다. 이러한 관심사 분리(Separation of Concerns)를 통해 가드 로직은 "예/아니오" 결정에 집중하고, 필터는 "사용자에게 어떻게 알릴 것인가"라는 부분을 처리하게 됩니다.

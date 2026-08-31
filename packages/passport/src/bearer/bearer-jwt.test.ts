@@ -88,6 +88,19 @@ describe('BearerJwtStrategy credential extraction', () => {
     expect(verifier.verifyAccessToken).toHaveBeenCalledWith('valid-token');
   });
 
+  it.each(['Bearer  valid-token', 'Bearer   valid-token'])(
+    'accepts one or more ASCII spaces between Bearer and the token',
+    async (authorization) => {
+      const verifier = createMockVerifier();
+      const strategy = new BearerJwtStrategy(verifier);
+
+      const result = await strategy.authenticate(createGuardContext(authorization));
+
+      expect(result).toBe(VERIFIED_PRINCIPAL);
+      expect(verifier.verifyAccessToken).toHaveBeenCalledWith('valid-token');
+    },
+  );
+
   it('reads the first entry of an array-valued authorization header', async () => {
     const verifier = createMockVerifier();
     const strategy = new BearerJwtStrategy(verifier);
@@ -149,9 +162,6 @@ describe('BearerJwtStrategy credential extraction', () => {
   it('throws AuthenticationFailedError for a malformed Bearer header with extra segments', async () => {
     const strategy = new BearerJwtStrategy(createMockVerifier());
 
-    await expect(strategy.authenticate(createGuardContext('Bearer  token'))).rejects.toThrow(
-      AuthenticationFailedError,
-    );
     await expect(strategy.authenticate(createGuardContext('Bearer token extra'))).rejects.toThrow(
       AuthenticationFailedError,
     );

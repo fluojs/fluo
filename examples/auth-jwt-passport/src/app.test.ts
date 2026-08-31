@@ -157,6 +157,9 @@ describe('AppModule e2e', () => {
       });
 
       await expect(app.request('GET', '/profile/').send()).resolves.toMatchObject({
+        headers: {
+          'WWW-Authenticate': 'Bearer',
+        },
         status: 401,
       });
 

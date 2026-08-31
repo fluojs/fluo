@@ -34,18 +34,32 @@ function parseBearerCredential(authorization: string): string | undefined {
 
   const separatorIndex = authorization.indexOf(' ');
 
-  if (separatorIndex <= 0 || authorization.indexOf(' ', separatorIndex + 1) !== -1) {
+  if (separatorIndex <= 0) {
     return undefined;
   }
 
   const scheme = authorization.slice(0, separatorIndex);
-  const token = authorization.slice(separatorIndex + 1);
 
-  if (scheme.toLowerCase() !== 'bearer' || token.length === 0) {
+  if (scheme.toLowerCase() !== 'bearer') {
+    return undefined;
+  }
+
+  let tokenStart = separatorIndex;
+  while (authorization[tokenStart] === ' ') {
+    tokenStart += 1;
+  }
+
+  const token = authorization.slice(tokenStart);
+
+  if (token.length === 0 || token.includes(' ')) {
     return undefined;
   }
 
   return token;
+}
+
+function addBearerChallenge(context: GuardContext): void {
+  context.requestContext.response?.setHeader('WWW-Authenticate', 'Bearer');
 }
 
 function readAuthorizationHeader(context: GuardContext): string | undefined {
@@ -76,7 +90,7 @@ function readAuthorizationHeader(context: GuardContext): string | undefined {
  * {@link AuthenticationFailedError} with the original `JwtInvalidTokenError`
  * preserved as `cause`; JWT configuration and verifier-provider errors
  * propagate unchanged. The Bearer scheme is matched case-insensitively per RFC
- * 7235 and is separated from the token by exactly one ASCII space. When an
+ * 7235 and is separated from the token by one or more ASCII spaces. When an
  * adapter surfaces an array-valued `Authorization` header, only the first entry
  * is read.
  *
@@ -103,12 +117,14 @@ export class BearerJwtStrategy implements AuthStrategy {
     const authorization = readAuthorizationHeader(context);
 
     if (!authorization) {
+      addBearerChallenge(context);
       throw new AuthenticationRequiredError('Authorization header is required.');
     }
 
     const token = parseBearerCredential(authorization);
 
     if (!token) {
+      addBearerChallenge(context);
       throw new AuthenticationFailedError('Authorization header must use Bearer token format.');
     }
 
@@ -116,10 +132,12 @@ export class BearerJwtStrategy implements AuthStrategy {
       return await this.verifier.verifyAccessToken(token);
     } catch (error: unknown) {
       if (error instanceof JwtExpiredTokenError) {
+        addBearerChallenge(context);
         throw new AuthenticationExpiredError('Access token has expired.', { cause: error });
       }
 
       if (error instanceof JwtInvalidTokenError) {
+        addBearerChallenge(context);
         throw new AuthenticationFailedError('Access token verification failed.', { cause: error });
       }
 
