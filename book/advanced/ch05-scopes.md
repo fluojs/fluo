@@ -190,8 +190,7 @@ createRequestScope(): Container {
 A request child therefore has a parent and the request flag, but it sees the root's singleton promise map. Empty scope shells are not tracked immediately. `ensureTrackedRequestScope()` and the lazy request-cache writers in `path:packages/di/src/container.ts:1066-1087` attach the child chain when request-owned cache state is first materialized. This preserves the chapter's ownership rule while making descendant invalidation and disposal operate on live request caches rather than every scope object ever created.
 
 The resolution step enforces the same structure again.
-`resolveScopedOrSingletonInstance()` in `path:packages/di/src/container.ts:963-999` first checks `shouldResolveFromRoot(provider)`.
-Then the helper in `path:packages/di/src/container.ts:1013-1019` returns true when the provider has default scope, the current container is request-scoped, and the provider is not a local registration. In that case, the child delegates to the root.
+`cacheOwnerFor(provider)` selects the cache owner before `resolveScopedOrSingletonInstance()` selects a cache map. For a default-scope, non-alias replacement registered in a request scope, a nested request child delegates to the nearest request-scope ancestor that owns that replacement, so both resolutions use the owner's request cache. Request-scoped and transient replacements keep their own scope behavior, and aliases resolve their target before cache ownership is selected.
 
 The actual cache map is selected by `cacheFor()`.
 `path:packages/di/src/container.ts:1113-1134` shows the core rules.
@@ -240,11 +239,11 @@ the dependency graph of a root singleton consumer does not change. The consumer 
 The singleton algorithm can be summarized like this.
 
 ```text
-if provider.scope is singleton:
-  if current container is request child and provider is inherited from root:
-    resolve through root cache
+if provider.scope is singleton and provider is not an alias:
+  if a request-scope ancestor locally owns the replacement:
+    resolve through that nearest owner's request cache
   else:
-    resolve through local/request-local path defined by cacheFor()
+    resolve through the cache path defined by cacheFor()
   cache promise by token
 ```
 

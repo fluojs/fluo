@@ -44,7 +44,7 @@
 - A request-scoped provider MUST be resolved from a request container. Resolving it from the root container raises `RequestScopeResolutionError`.
 - A singleton provider MUST NOT depend on a request-scoped provider. That mismatch raises `ScopeMismatchError`.
 - A request-scope container MUST NOT use `register()` to introduce a singleton provider or use `override()` to introduce a singleton provider for a token that is not already visible. Root-level singleton registration happens before request scopes are created.
-- A request-scope container MAY use `override()` to replace a token already visible through its scope chain for that request. The replacement is cached in the request cache of the nearest request-scope ancestor that owns the override; resolutions initiated directly by that owner and by nested request-scope descendants share it, and the root singleton cache remains unchanged.
+- A request-scope container MAY use `override()` to replace a token already visible through its scope chain for that request. When the replacement is a default-scope, non-alias provider, it is cached in the request cache of the nearest request-scope ancestor that owns the override; resolutions initiated directly by that owner and by nested request-scope descendants share it, and the root singleton cache remains unchanged. Request-scoped, transient, and alias replacements retain their ordinary resolution semantics.
 - `createRequestScope()` creates a child container that shares the root singleton cache for inherited singleton providers and isolates that child's request-scoped instances.
 
 ## Constraints

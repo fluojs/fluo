@@ -190,8 +190,7 @@ createRequestScope(): Container {
 따라서 request child는 parent와 request flag를 갖지만, singleton promise map은 root의 것을 봅니다. 빈 scope shell은 즉시 추적되지 않습니다. `path:packages/di/src/container.ts:1066-1087`의 `ensureTrackedRequestScope()`와 lazy request-cache writer는 request-owned cache state가 처음 materialize될 때 child chain을 연결합니다. 이 방식은 chapter의 ownership rule을 유지하면서 descendant invalidation과 disposal이 생성된 모든 scope object가 아니라 실제 request cache를 대상으로 동작하게 합니다.
 
 이 구조는 resolution 단계에서 다시 강제됩니다.
-`path:packages/di/src/container.ts:963-999`의 `resolveScopedOrSingletonInstance()`는 먼저 `shouldResolveFromRoot(provider)`를 검사합니다.
-그리고 `path:packages/di/src/container.ts:1013-1019`의 helper는 provider가 default-scope이고, 현재 container가 request-scoped이며, provider가 local registration이 아닐 때 true를 반환합니다. 그 경우 child는 root로 위임합니다.
+`cacheOwnerFor(provider)`는 `resolveScopedOrSingletonInstance()`가 cache map을 고르기 전에 cache owner를 선택합니다. 요청 범위에 등록된 기본 범위의 비별칭 교체 항목은 중첩된 요청 자식이 그 교체 항목을 소유한 가장 가까운 요청 범위 조상에게 위임하므로, 두 해석이 소유자의 요청 캐시를 사용합니다. 요청 범위와 transient 교체 항목은 각자의 scope 동작을 유지하고, alias는 cache owner를 선택하기 전에 대상 토큰을 해석합니다.
 
 실제 cache map 선택은 `cacheFor()`가 합니다.
 `path:packages/di/src/container.ts:1113-1134`가 핵심 규칙을 보여 줍니다.
@@ -240,11 +239,11 @@ root singleton consumer의 dependency graph는 바뀌지 않습니다. request c
 singleton 알고리즘은 다음처럼 정리할 수 있습니다.
 
 ```text
-if provider.scope is singleton:
-  if current container is request child and provider is inherited from root:
-    resolve through root cache
+if provider.scope is singleton and provider is not an alias:
+  if a request-scope ancestor locally owns the replacement:
+    resolve through that nearest owner's request cache
   else:
-    resolve through local/request-local path defined by cacheFor()
+    resolve through the cache path defined by cacheFor()
   cache promise by token
 ```
 
