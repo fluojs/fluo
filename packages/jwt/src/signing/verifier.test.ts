@@ -634,6 +634,32 @@ describe('DefaultJwtVerifier', () => {
     await expect(verifier.verifyAccessToken(token)).rejects.toBeInstanceOf(JwtInvalidTokenError);
   });
 
+  it('rejects valid-JSON non-object JWT headers and payloads with a typed invalid-token error', async () => {
+    const verifier = new DefaultJwtVerifier({
+      algorithms: ['HS256'],
+      secret: 'secret',
+    });
+    const invalidJsonValues = ['null', '[]', '"payload"', '42'];
+
+    for (const payloadJson of invalidJsonValues) {
+      const token = signRawPayload(payloadJson, 'secret');
+
+      await expect(verifier.verifyAccessToken(token)).rejects.toBeInstanceOf(JwtInvalidTokenError);
+      await expect(verifier.verifyAccessToken(token)).rejects.toMatchObject({ code: 'JWT_INVALID_TOKEN' });
+    }
+
+    for (const headerJson of invalidJsonValues) {
+      const token = signRawPayload(
+        JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 60, sub: 'invalid-header' }),
+        'secret',
+        JSON.parse(headerJson) as Record<string, unknown>,
+      );
+
+      await expect(verifier.verifyAccessToken(token)).rejects.toBeInstanceOf(JwtInvalidTokenError);
+      await expect(verifier.verifyAccessToken(token)).rejects.toMatchObject({ code: 'JWT_INVALID_TOKEN' });
+    }
+  });
+
   it('verifies signature before payload parsing on malformed payload tokens', async () => {
     const headerSegment = encodeBase64Url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
     const payloadSegment = encodeBase64Url('not-json-payload');
