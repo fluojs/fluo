@@ -73,6 +73,8 @@ function runIsolatedBuild(outputDirectory: string): void {
     'babel',
     'src/contracts.ts',
     'src/index.ts',
+    'src/viewer-server.ts',
+    'src/viewer-cli.ts',
     '--extensions',
     '.ts',
     '--out-dir',
@@ -894,6 +896,7 @@ describe('parseStudioPayload', () => {
       private?: boolean;
       main?: string;
       types?: string;
+      bin?: Record<string, string>;
       exports?: Record<string, unknown>;
       publishConfig?: { access?: string };
     };
@@ -906,6 +909,7 @@ describe('parseStudioPayload', () => {
     expect(packageManifest.main).toBe('./dist/index.js');
     expect(packageManifest.types).toBe('./dist/index.d.ts');
     expect(packageManifest.publishConfig?.access).toBe('public');
+    expect(packageManifest.bin).toEqual({ 'fluo-studio-viewer': './dist/viewer-cli.js' });
     expect(packageManifest.exports).toEqual({
       '.': {
         types: './dist/index.d.ts',
