@@ -1,6 +1,6 @@
-import type { GuardContext, RequestContext } from '@fluojs/http';
 import { Inject, InvariantError, type Token } from '@fluojs/core';
 import type { Provider } from '@fluojs/di';
+import type { GuardContext, RequestContext } from '@fluojs/http';
 import { DefaultJwtVerifier, JwtExpiredTokenError, JwtInvalidTokenError } from '@fluojs/jwt';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 
@@ -9,7 +9,7 @@ import {
   AuthenticationFailedError,
   AuthenticationRequiredError,
 } from '../errors.js';
-import type { AuthStrategy, AuthStrategyRegistration, AuthStrategyResult } from '../types.js';
+import type { AuthStrategy, AuthStrategyRegistration } from '../types.js';
 
 /**
  * Defines the operations required to issue, rotate, and revoke refresh tokens.
@@ -35,10 +35,30 @@ export interface RefreshTokenInput {
 
 /**
  * Captures the token pair returned after a successful refresh-token exchange.
+ *
+ * @remarks
+ * This is the application-facing exchange payload shape refresh endpoints return to
+ * clients. It is not the shape `RefreshTokenStrategy` places on `ctx.principal`;
+ * that principal result is typed by {@link RefreshTokenPrincipal}.
  */
 export interface RefreshTokenAuthResult {
   accessToken: string;
   refreshToken: string;
+  subject: string;
+}
+
+/**
+ * The principal `RefreshTokenStrategy` resolves onto `ctx.principal` after a
+ * successful exchange, with the rotated token pair nested under `claims`.
+ */
+export interface RefreshTokenPrincipal {
+  /**
+   * Principal claims carrying the rotated pair under `accessToken` and `refreshToken`.
+   */
+  claims: Record<string, unknown> & { accessToken: string; refreshToken: string };
+  /**
+   * Verified subject the rotated access token was issued for.
+   */
   subject: string;
 }
 
@@ -61,7 +81,7 @@ export class RefreshTokenStrategy implements AuthStrategy {
     private readonly verifier: DefaultJwtVerifier,
   ) {}
 
-  async authenticate(context: GuardContext): Promise<AuthStrategyResult> {
+  async authenticate(context: GuardContext): Promise<RefreshTokenPrincipal> {
     const request = context.requestContext.request;
     const refreshToken = this.extractRefreshToken(request);
 
@@ -141,10 +161,17 @@ export class RefreshTokenStrategy implements AuthStrategy {
   }
 }
 
+function isClassToken<T>(token: Token<T>): token is Extract<Token<T>, Provider> {
+  return typeof token === 'function';
+}
+
 function createRefreshTokenAliasProviders(
   service: Token<RefreshTokenService>,
 ): Provider[] {
   return [
+    ...(
+      isClassToken(service) ? [service] : []
+    ),
     {
       provide: REFRESH_TOKEN_SERVICE,
       useExisting: service,
@@ -172,7 +199,16 @@ export class RefreshTokenModule {
    * Registers the shared refresh-token service alias together with `RefreshTokenStrategy`.
    *
    * @param service DI token for the concrete refresh-token service implementation.
+   *   Class tokens are registered inside this module so the alias always resolves.
+   *   String and symbol tokens must already be registered in the application DI container.
    * @returns A module definition that exports `RefreshTokenStrategy` and `REFRESH_TOKEN_SERVICE`.
+   * @remarks
+   * Do not re-register the service class in the importing application module; doing
+   *   so duplicates a provider registration, which bootstrap warns about by default
+   *   and can reject with `duplicateProviderPolicy: 'throw'`. Application code consumes
+   *   the service through the exported `REFRESH_TOKEN_SERVICE` alias. The service
+   *   class's own dependencies must stay visible to this module graph, exactly like
+   *   `DefaultJwtVerifier` visibility.
    *
    * @example
    * ```ts
@@ -192,7 +228,6 @@ export class RefreshTokenModule {
    *       [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
    *     ),
    *   ],
-   *   providers: [MyRefreshTokenService],
    * })
    * export class AuthModule {}
    * ```

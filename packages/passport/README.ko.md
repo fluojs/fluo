@@ -120,11 +120,13 @@ export class AuthModule {}
 
 이 bridge helper는 third-party Passport.js strategy instance를 `AuthGuard`가 실행하기 전에 provider로 바인딩해야 하므로 Passport.js adapter에 대해 공식적으로 허용되는 module-facade 예외입니다. 애플리케이션-facing 인증 표면은 계속 `PassportModule`, `@UseAuth(...)`, `AuthGuard`이며, 이 helper가 이를 대체하지 않습니다.
 
-브릿지는 각 Passport.js 전략 실행을 정확히 한 번만 정착(settle)시킵니다. 전략은 바인딩된 Passport 액션(`success`, `fail`, `redirect`, `pass`, `error`) 중 하나를 호출해야 하며, promise rejection, 액션 없이 완료된 promise, 그리고 제한된 action timeout을 초과한 callback-style 실행은 요청을 미해결 상태로 두지 않고 인증 실패로 처리됩니다. `handled: true`를 포함한 모든 `AuthStrategyResult`는 전략이 response를 commit한 뒤에는 `principal`을 함께 포함하더라도 완전히 terminal입니다. 이때 `AuthGuard`는 principal validation, scope check, `requestContext.principal` 할당, protected handler 실행을 모두 건너뜁니다. 커스텀 `mapPrincipal` 함수는 비어 있지 않은 `subject`와 객체 형태의 `claims`를 포함한 유효한 fluo `Principal`을 반환해야 합니다.
+브릿지는 각 Passport.js 전략 실행을 정확히 한 번만 정착(settle)시킵니다. 전략은 바인딩된 Passport 액션(`success`, `fail`, `redirect`, `pass`, `error`) 중 하나를 호출해야 하며, promise rejection, 액션 없이 완료된 promise, 그리고 제한된 action timeout을 초과한 callback-style 실행은 요청을 미해결 상태로 두지 않고 인증 실패로 처리됩니다. 브릿지는 `authenticate()`의 반환 값을 소비하지 않으며, 바인딩된 액션만이 요청을 정착시킵니다. `handled: true`를 포함한 모든 `AuthStrategyResult`는 전략이 response를 commit한 뒤에는 `principal`을 함께 포함하더라도 완전히 terminal입니다. 이때 `AuthGuard`는 principal validation, scope check, `requestContext.principal` 할당, protected handler 실행을 모두 건너뜁니다. 커스텀 `mapPrincipal` 함수는 비어 있지 않은 `subject`와 객체 형태의 `claims`를 포함한 유효한 fluo `Principal`을 반환해야 합니다.
+
+브릿지는 활성 platform adapter가 raw host request를 제공하면 그 값을, 그렇지 않으면 정규화된 fluo request를 `authenticate(request, options)`에 전달합니다. Passport-initialized host request를 생성하지는 않으므로, Passport middleware augmentation(`request.logIn`, `request.user`, session state)이나 adapter별 request field에 의존하는 strategy는 cutover 전에 [NestJS → fluo Migration Map](../../docs/getting-started/migrate-from-nestjs.ko.md#passportjs-bridge-migration)의 compatibility checklist를 확인해야 합니다.
 
 `actionTimeoutMs` 기본값은 `30_000`밀리초이며 0 이상인 유한한 숫자여야 합니다. `0`으로 설정하면 다음 timer turn에 timeout settlement를 예약합니다. 음수, `NaN`, 무한대 값은 settlement 제한을 비활성화하지 않고 bridge strategy 생성 시 `RangeError`를 발생시킵니다.
 
-애플리케이션 종료가 시작되면 진행 중인 모든 bridge 실행을 취소하고 action timeout을 정리한 뒤, 설정된 timeout까지 request state를 유지하지 않고 pending authentication을 reject합니다.
+애플리케이션 종료가 시작되면 진행 중인 모든 bridge 실행을 취소하고 action timeout을 정리한 뒤, 설정된 timeout까지 request state를 유지하지 않고 pending authentication을 reject합니다. Bridge는 일반 application lifecycle에 참여하므로, application 또는 application context가 close될 때 이 취소가 실행됩니다.
 
 ### 쿠키 인증 프리셋
 
@@ -164,6 +166,10 @@ export class AuthModule {}
 `CookieAuthStrategy`는 `@fluojs/jwt`가 정규화한 JWT principal 계약을 보존하며, `subject`, `claims`, `issuer`, `audience`, `roles`, `scopes`를 그대로 전달합니다.
 
 Cookie access token은 비어 있지 않은 문자열이어야 합니다. `requireAccessToken: false`일 때만 누락된 cookie가 `{ authenticated: false }`로 resolve될 수 있으며, 존재하지만 malformed인 cookie 값은 JWT 검증 전에 항상 인증 실패로 처리됩니다.
+
+Cookie 검증 실패는 문서화된 분류를 유지합니다. 만료된 access token은 `AuthenticationExpiredError`, 유효하지 않은 access token은 `AuthenticationFailedError`, 누락되거나 malformed인 access-token cookie는 `AuthenticationRequiredError`를 발생시킵니다. 원본 `@fluojs/jwt` error는 `cause`로 보존되며, `AuthGuard`는 세 경우 모두 HTTP `401`로 응답합니다.
+
+`CookieManagerConfig.cookieOptions`는 `SetCookieOptions`를 받습니다. `accessTokenTtlSeconds`와 `refreshTokenTtlSeconds` field는 positional TTL 인자가 생략되었을 때 해당 token cookie의 기본 `Max-Age`가 되며, 명시적인 positional TTL이 항상 우선합니다.
 
 `CookieManager`는 underlying adapter가 기존 header를 `set-cookie`처럼 다른 casing으로 저장했더라도, response에 이미 설정된 cookie를 덮어쓰지 않고 access-token 및 refresh-token `Set-Cookie` 값을 append합니다.
 
@@ -224,12 +230,13 @@ export class AuthController {
       [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
     ),
   ],
-  providers: [MyRefreshTokenService],
 })
 export class AuthModule {}
 ```
 
-`JwtModule.forRoot(...)`, `RefreshTokenModule.forRoot(...)`, `PassportModule.forRoot(...)`를 함께 import 하세요. 이 graph에서 `RefreshTokenStrategy`는 `JwtModule`의 sibling인 `RefreshTokenModule`에 속하므로, 이 예제는 문서화된 `global: true` option을 설정해 refresh module이 strategy를 resolve할 때 `DefaultJwtVerifier`를 볼 수 있게 합니다. `RefreshTokenModule`은 strategy와 공유 `REFRESH_TOKEN_SERVICE` alias를 제공하고, `PassportModule`은 `@UseAuth('refresh-token')`가 resolve하는 named strategy를 등록하며, refresh route가 실제로 존재하려면 application module이 `AuthController`를 등록해야 합니다.
+`JwtModule.forRoot(...)`, `RefreshTokenModule.forRoot(...)`, `PassportModule.forRoot(...)`를 함께 import 하세요. 이 graph에서 `RefreshTokenStrategy`는 `JwtModule`의 sibling인 `RefreshTokenModule`에 속하므로, 이 예제는 문서화된 `global: true` option을 설정해 refresh module이 strategy를 resolve할 때 `DefaultJwtVerifier`를 볼 수 있게 합니다. `RefreshTokenModule.forRoot(MyRefreshTokenService)`는 service class를 refresh module 내부에 등록하고 공유 `REFRESH_TOKEN_SERVICE` alias로 export합니다. `MyRefreshTokenService`를 application module의 `providers`에 다시 등록하지 마세요. 중복 provider registration이 되며 bootstrap은 기본적으로 warning을 남기고 `duplicateProviderPolicy: 'throw'`에서는 거부할 수 있습니다. Application code가 service를 사용할 때는 export된 `REFRESH_TOKEN_SERVICE` alias를 inject하고, service class 자체의 dependency도 refresh module graph에서 보이도록 유지하며, refresh route가 실제로 존재하려면 application module이 `AuthController`를 등록해야 합니다. `PassportModule`은 `@UseAuth('refresh-token')`가 resolve하는 named strategy를 등록합니다.
+
+교환에 성공하면 `ctx.principal`은 `RefreshTokenPrincipal` shape으로 resolve됩니다. Rotation된 token 쌍은 `claims.accessToken`과 `claims.refreshToken`에 중첩되고, 검증된 `subject`는 최상위에 위치합니다. 별도로 export되는 `RefreshTokenAuthResult` 타입은 refresh endpoint가 client에 반환하는 application-facing 교환 payload를 설명합니다.
 
 `RefreshTokenStrategy`는 `body.refreshToken`, `Authorization: Bearer ...`, `x-refresh-token`에서 token을 읽습니다. Malformed non-string token은 인증 실패로 처리됩니다. Rotation 후에는 `@fluojs/jwt`가 반환한 정규화 access-token principal subject를 신뢰합니다. `JwtRefreshTokenAdapter`는 `secret`과 backing store가 필요하며, `store: 'memory'`는 development 및 single-instance deployment용이고 rotation은 store consume contract를 통해 재사용을 감지합니다.
 
@@ -264,14 +271,14 @@ Identity-link 결정을 모델링하려면 `createConservativeAccountLinkPolicy(
 ### Cookie auth preset
 - `CookieAuthModule`: 내장 cookie-auth preset의 모듈 진입점입니다.
 - `CookieAuthStrategy`, `COOKIE_AUTH_STRATEGY_NAME`, `COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_OPTIONS`: Cookie strategy wiring token, preset 기본값, response-cookie 기본값입니다.
-- `CookieAuthOptions`, `CookieAuthPresetConfig`, `CookieManagerConfig`, `CookieOptions`, `SetCookieOptions`: Cookie strategy 및 response cookie 설정 타입입니다.
+- `CookieAuthOptions`, `CookieAuthPresetConfig`, `CookieManagerConfig`, `CookieOptions`, `SetCookieOptions`: Cookie strategy 및 response cookie 설정 타입입니다. `CookieManagerConfig.cookieOptions`는 `SetCookieOptions`를 받으며, token별 TTL field는 기본 cookie `Max-Age`가 됩니다.
 - `CookieManager`: HttpOnly access/refresh token cookie를 설정하고 제거하는 유틸리티입니다.
 - Cookie helper: `createCookieAuthPreset`(compatibility-only manual provider bundle), `createCookieAuthStrategyRegistration`(low-level registration helper), `createCookieManager`, `normalizeCookieAuthOptions`.
 
 ### Refresh token preset
 - `RefreshTokenModule`: 내장 refresh-token preset의 모듈 진입점입니다.
 - `RefreshTokenStrategy`, `REFRESH_TOKEN_STRATEGY_NAME`, `REFRESH_TOKEN_SERVICE`: Refresh-token strategy 및 service alias wiring입니다.
-- `RefreshTokenService`, `RefreshTokenInput`, `RefreshTokenAuthResult`: Application service contract와 exchange payload shape입니다.
+- `RefreshTokenService`, `RefreshTokenInput`, `RefreshTokenAuthResult`, `RefreshTokenPrincipal`: Application service contract, exchange payload shape, 그리고 교환 성공 후 `ctx.principal`에 resolve되는 principal shape입니다.
 - `JwtRefreshTokenAdapter`: `@fluojs/jwt`의 refresh logic을 passport interface로 연결합니다.
 - `REFRESH_TOKEN_MODULE_OPTIONS`, `RefreshTokenModuleOptions`: 필수 `secret`과 `store` 계약을 포함하는 JWT 기반 refresh-token adapter 설정 token 및 option입니다.
 - Refresh helper: `createRefreshTokenStrategyRegistration`.
