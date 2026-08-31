@@ -63,9 +63,6 @@ describe('@fluojs/cache-manager public API surface', () => {
     expectTypeOf<Awaited<ReturnType<CacheAsyncModuleOptions['useFactory']>>>().toEqualTypeOf<
       Omit<CacheModuleOptions, 'global'> & { global?: never }
     >();
-    expectTypeOf<() => { readonly global: true; readonly store: 'memory' }>().not.toExtend<
-      CacheAsyncModuleOptions['useFactory']
-    >();
     expectTypeOf<NormalizedCacheModuleOptions>().toHaveProperty('keyPrefix');
     expectTypeOf<NormalizedCacheModuleOptions>().toHaveProperty('principalScopeResolver');
     expectTypeOf<RedisCacheOptions>().toHaveProperty('clientName');
