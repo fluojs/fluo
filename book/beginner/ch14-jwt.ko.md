@@ -188,12 +188,18 @@ Fluo는 **리프레시 토큰 로테이션(Refresh Token Rotation)**을 구현�
 Refresh store는 데이터베이스 transaction과 retention policy를 소유하므로 애플리케이션이 책임집니다. PostgreSQL이나 Redis 같은 durable storage에 모든 필수 method를 구현하세요. 특히 `rotate(...)`는 제시된 record를 used로 표시하고 `replacement`를 저장해야 하며, 이 두 작업은 원자적이어야 합니다. read-then-write 구현은 replay race를 다시 만들게 됩니다.
 
 ```typescript
+// src/auth/auth.persistence.ts
 import type {
   RefreshTokenConsumeResult,
   RefreshTokenRecord,
   RefreshTokenRotateInput,
   RefreshTokenStore,
 } from '@fluojs/jwt';
+
+export type { RefreshTokenStore } from '@fluojs/jwt';
+
+export const REFRESH_TOKEN_STORE = Symbol('REFRESH_TOKEN_STORE');
+export const CREDENTIALS_VERIFIER = Symbol('CREDENTIALS_VERIFIER');
 
 export interface RefreshTokenRepository {
   save(record: RefreshTokenRecord): Promise<void>;
@@ -231,37 +237,42 @@ export class DatabaseRefreshTokenStore implements RefreshTokenStore {
     return this.repository.rotate(input);
   }
 }
+
+export interface AuthenticatedUser {
+  readonly id: string;
+  readonly roles: readonly string[];
+}
+
+export interface CredentialsVerifier {
+  verify(email: string, password: string): Promise<AuthenticatedUser>;
+}
+
+export interface CredentialsRepository {
+  verify(email: string, password: string): Promise<AuthenticatedUser>;
+}
+
+export class DatabaseCredentialsVerifier implements CredentialsVerifier {
+  constructor(private readonly repository: CredentialsRepository) {}
+
+  verify(email: string, password: string): Promise<AuthenticatedUser> {
+    return this.repository.verify(email, password);
+  }
+}
 ```
 
 JWT options factory가 실행되기 전에 globally visible한 persistence module에 해당 store를 등록하세요. Factory는 최종 store instance를 받고, 이후 `RefreshTokenService`를 constructor injection으로 사용할 수 있습니다. 이 예시는 database query를 application-owned `RefreshTokenRepository`에 남깁니다. 이 repository의 `rotate(...)` 구현이 유일한 transaction boundary입니다.
 
 ```typescript
+// src/auth/auth.service.ts
 import { Inject } from '@fluojs/core';
-import { ConfigService } from '@fluojs/config';
 import {
-  JwtModule,
-  type RefreshTokenStore,
   RefreshTokenService,
-  type JwtVerifierOptions,
   JwtService,
 } from '@fluojs/jwt';
-
-export const REFRESH_TOKEN_STORE = Symbol('REFRESH_TOKEN_STORE');
-export const CREDENTIALS_VERIFIER = Symbol('CREDENTIALS_VERIFIER');
-
-export interface CredentialsVerifier {
-  verify(email: string, password: string): Promise<{ id: string; roles: string[] }>;
-}
-
-function isRefreshTokenStore(value: unknown): value is RefreshTokenStore {
-  return typeof value === 'object'
-    && value !== null
-    && 'find' in value
-    && 'revoke' in value
-    && 'revokeBySubject' in value
-    && 'rotate' in value
-    && 'save' in value;
-}
+import {
+  CREDENTIALS_VERIFIER,
+  type CredentialsVerifier,
+} from './auth.persistence.js';
 
 @Inject(CREDENTIALS_VERIFIER, JwtService, RefreshTokenService)
 export class AuthService {
@@ -299,9 +310,16 @@ export class AuthService {
 // src/auth/auth.controller.ts
 import { Inject } from '@fluojs/core';
 import { Controller, Post, RequestDto } from '@fluojs/http';
-import { AuthService } from './auth.service';
-import { LoginDto } from './dto/login.dto';
-import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { AuthService } from './auth.service.js';
+
+export class LoginDto {
+  email = '';
+  password = '';
+}
+
+export class RefreshTokenDto {
+  refreshToken = '';
+}
 
 @Inject(AuthService)
 @Controller('auth')
@@ -323,7 +341,7 @@ export class AuthController {
 ```
 
 ### 실행 가능한 Auth Module Wiring
-durable 구현은 `auth.persistence.ts`에 두고 애플리케이션이 주입하는 token에 해당 class instance를 bind하세요. `AuthPersistenceModule`은 global이며 두 token을 모두 export하므로 JWT options factory와 `AuthService`가 같은 durable instance를 resolve합니다. `ConfigModule.forRoot()`는 기본적으로 global이므로 asynchronous JWT options provider가 resolve될 때 `ConfigService`가 visible합니다. `JwtModule.forRootAsync(...)`보다 먼저 persistence module을 등록하세요. 일반 sibling module의 export는 그 runtime provider graph에 들어가지 않습니다.
+명명된 네 source block은 하나의 컴파일 가능한 학습 프로그램을 이룹니다. `AuthService`와 `AuthModule`은 각 의존성을 defining file에서 import합니다. durable 구현은 `auth.persistence.ts`에 두고 애플리케이션이 주입하는 token에 해당 class instance를 bind하세요. `AuthPersistenceModule`은 global이며 두 token을 모두 export하므로 JWT options factory와 `AuthService`가 같은 durable instance를 resolve합니다. `ConfigModule.forRoot()`는 기본적으로 global이므로 asynchronous JWT options provider가 resolve될 때 `ConfigService`가 visible합니다. `JwtModule.forRootAsync(...)`보다 먼저 persistence module을 등록하세요. 일반 sibling module의 export는 그 runtime provider graph에 들어가지 않습니다.
 
 ```typescript
 // src/auth/auth.module.ts
@@ -333,15 +351,15 @@ import {
   JwtModule,
   type JwtVerifierOptions,
 } from '@fluojs/jwt';
-import { AuthController } from './auth.controller';
-import { AuthService } from './auth.service';
+import { AuthController } from './auth.controller.js';
+import { AuthService } from './auth.service.js';
 import {
   CREDENTIALS_VERIFIER,
   DatabaseCredentialsVerifier,
   DatabaseRefreshTokenStore,
   REFRESH_TOKEN_STORE,
   type RefreshTokenStore,
-} from './auth.persistence';
+} from './auth.persistence.js';
 
 function isRefreshTokenStore(value: unknown): value is RefreshTokenStore {
   return typeof value === 'object'

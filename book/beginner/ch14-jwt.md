@@ -188,12 +188,18 @@ Before using `RefreshTokenService.issueRefreshToken(...)` or `RefreshTokenServic
 The refresh store belongs to the application because it owns the database transaction and retention policy. Implement every required method against durable storage such as PostgreSQL or Redis. In particular, `rotate(...)` must atomically mark the presented record used and persist `replacement`; a read-then-write implementation reintroduces a replay race.
 
 ```typescript
+// src/auth/auth.persistence.ts
 import type {
   RefreshTokenConsumeResult,
   RefreshTokenRecord,
   RefreshTokenRotateInput,
   RefreshTokenStore,
 } from '@fluojs/jwt';
+
+export type { RefreshTokenStore } from '@fluojs/jwt';
+
+export const REFRESH_TOKEN_STORE = Symbol('REFRESH_TOKEN_STORE');
+export const CREDENTIALS_VERIFIER = Symbol('CREDENTIALS_VERIFIER');
 
 export interface RefreshTokenRepository {
   save(record: RefreshTokenRecord): Promise<void>;
@@ -231,37 +237,42 @@ export class DatabaseRefreshTokenStore implements RefreshTokenStore {
     return this.repository.rotate(input);
   }
 }
+
+export interface AuthenticatedUser {
+  readonly id: string;
+  readonly roles: readonly string[];
+}
+
+export interface CredentialsVerifier {
+  verify(email: string, password: string): Promise<AuthenticatedUser>;
+}
+
+export interface CredentialsRepository {
+  verify(email: string, password: string): Promise<AuthenticatedUser>;
+}
+
+export class DatabaseCredentialsVerifier implements CredentialsVerifier {
+  constructor(private readonly repository: CredentialsRepository) {}
+
+  verify(email: string, password: string): Promise<AuthenticatedUser> {
+    return this.repository.verify(email, password);
+  }
+}
 ```
 
 Register that store in a globally visible persistence module before the JWT options factory runs. The factory receives the final store instance, and `RefreshTokenService` is then available for constructor injection. This example intentionally keeps database queries in the application-owned `RefreshTokenRepository`; its `rotate(...)` implementation is the single transaction boundary.
 
 ```typescript
+// src/auth/auth.service.ts
 import { Inject } from '@fluojs/core';
-import { ConfigService } from '@fluojs/config';
 import {
-  JwtModule,
-  type RefreshTokenStore,
   RefreshTokenService,
-  type JwtVerifierOptions,
   JwtService,
 } from '@fluojs/jwt';
-
-export const REFRESH_TOKEN_STORE = Symbol('REFRESH_TOKEN_STORE');
-export const CREDENTIALS_VERIFIER = Symbol('CREDENTIALS_VERIFIER');
-
-export interface CredentialsVerifier {
-  verify(email: string, password: string): Promise<{ id: string; roles: string[] }>;
-}
-
-function isRefreshTokenStore(value: unknown): value is RefreshTokenStore {
-  return typeof value === 'object'
-    && value !== null
-    && 'find' in value
-    && 'revoke' in value
-    && 'revokeBySubject' in value
-    && 'rotate' in value
-    && 'save' in value;
-}
+import {
+  CREDENTIALS_VERIFIER,
+  type CredentialsVerifier,
+} from './auth.persistence.js';
 
 @Inject(CREDENTIALS_VERIFIER, JwtService, RefreshTokenService)
 export class AuthService {
@@ -299,9 +310,16 @@ Now let's connect configuration and the token lifecycle to real endpoint flow. `
 // src/auth/auth.controller.ts
 import { Inject } from '@fluojs/core';
 import { Controller, Post, RequestDto } from '@fluojs/http';
-import { AuthService } from './auth.service';
-import { LoginDto } from './dto/login.dto';
-import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { AuthService } from './auth.service.js';
+
+export class LoginDto {
+  email = '';
+  password = '';
+}
+
+export class RefreshTokenDto {
+  refreshToken = '';
+}
 
 @Inject(AuthService)
 @Controller('auth')
@@ -323,7 +341,7 @@ export class AuthController {
 ```
 
 ### Executable Auth Module Wiring
-Put the durable implementations in `auth.persistence.ts`, then bind their class instances to the tokens that the application injects. `AuthPersistenceModule` is global and exports both tokens, so the JWT options factory and `AuthService` resolve the same durable instances. `ConfigModule.forRoot()` is global by default, which makes `ConfigService` visible when the asynchronous JWT options provider resolves. Register the persistence module before `JwtModule.forRootAsync(...)`; ordinary sibling-module exports do not enter that runtime provider graph.
+These four named source blocks form one compilable learning program: `AuthService` and `AuthModule` import each dependency from its defining file. Put the durable implementations in `auth.persistence.ts`, then bind their class instances to the tokens that the application injects. `AuthPersistenceModule` is global and exports both tokens, so the JWT options factory and `AuthService` resolve the same durable instances. `ConfigModule.forRoot()` is global by default, which makes `ConfigService` visible when the asynchronous JWT options provider resolves. Register the persistence module before `JwtModule.forRootAsync(...)`; ordinary sibling-module exports do not enter that runtime provider graph.
 
 ```typescript
 // src/auth/auth.module.ts
@@ -333,15 +351,15 @@ import {
   JwtModule,
   type JwtVerifierOptions,
 } from '@fluojs/jwt';
-import { AuthController } from './auth.controller';
-import { AuthService } from './auth.service';
+import { AuthController } from './auth.controller.js';
+import { AuthService } from './auth.service.js';
 import {
   CREDENTIALS_VERIFIER,
   DatabaseCredentialsVerifier,
   DatabaseRefreshTokenStore,
   REFRESH_TOKEN_STORE,
   type RefreshTokenStore,
-} from './auth.persistence';
+} from './auth.persistence.js';
 
 function isRefreshTokenStore(value: unknown): value is RefreshTokenStore {
   return typeof value === 'object'
