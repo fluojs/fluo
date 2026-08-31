@@ -161,7 +161,7 @@ const verifier = new DefaultJwtVerifier({
 
 JWKS key는 `jwksCacheTtl` 밀리초 동안 cache되며 기본값은 `600_000`입니다. in-memory cache는 `jwksCacheMaxEntries`로 제한되고 기본값은 `100`입니다. lookup 전 만료된 entry를 정리하고, 제한을 넘으면 가장 오래 보관된 key를 제거합니다. `JwtModule`은 관리 중인 `DefaultJwtVerifier` shutdown hook을 호출하므로 module teardown 중 보관 중인 remote key material이 정리됩니다. 수동으로 생성한 verifier나 client는 수동 shutdown 또는 identity-provider 재설정 시 여전히 `JwksClient.dispose()` / `DefaultJwtVerifier.dispose()`를 호출해야 합니다. 이 dispose method들은 보관 중인 JWKS key material을 정리하고 진행 중인 JWKS fetch를 abort합니다. `jwksCacheTtl`을 `0`으로 설정하면 bounded fetch timeout은 유지하면서 key 보관만 비활성화합니다.
 
-`JwtService.verify(token, options)`는 호출 단위의 알고리즘/클레임 정책 재정의(`issuer`, `audience`, `clockSkewSeconds`, `maxAge`, `requireExp`)를 적용하더라도, 내부 JWKS client나 정적 key-resolution cache를 다시 만들지 않습니다. 호출 단위 검증은 `jwksUri`, `keys[]`, `publicKey`, `secret`, `secretOrKeyProvider` 같은 구성된 key source 자체를 교체하지는 않습니다.
+`DefaultJwtVerifier.verifyAccessTokenWithOverrides(token, options)`는 호출 단위의 알고리즘/클레임 정책 재정의(`algorithms`, `issuer`, `audience`, `clockSkewSeconds`, `maxAge`, `requireExp`)를 적용하더라도, 내부 JWKS client나 정적 key-resolution cache를 다시 만들지 않습니다. 호출 단위 검증은 `jwksUri`, `keys[]`, `publicKey`, `secret`, `secretOrKeyProvider` 같은 구성된 key source 자체를 교체하지는 않습니다.
 
 호환되는 키가 여러 개 설정되어 있으면 `kid`가 검증 키를 구분합니다. 호환되는 정적 키가 하나뿐이면 `kid` 없이도 토큰을 검증할 수 있고, JWKS 기반 검증은 원격 key set과 cache policy를 따릅니다.
 
@@ -189,7 +189,7 @@ Lazy loading은 import-time 안전성 속성일 뿐입니다. 서명이나 검�
 
 ### `decode()` trust boundary
 
-`JwtService.decode(token)`는 서명, `alg`, `exp`, `nbf`, `iss`, `aud` 또는 기타 클레임을 검증하지 않고 JWT payload segment를 읽습니다. 반환된 객체는 **검증되지 않은 입력(unverified input)**이며, 권한 결정(authorization decisions), 신원 확인(identity resolution), 또는 접근을 허가하는 모든 코드 경로에 사용해서는 안 됩니다. 검증된 클레임은 `JwtService.verify(token, options)`로 얻고, 정규화된 `JwtPrincipal`은 `DefaultJwtVerifier.verifyAccessToken(token)`으로 얻으세요.
+`JwtService.decode(token)`는 서명, `alg`, `exp`, `nbf`, `iss`, `aud` 또는 기타 클레임을 검증하지 않고 JWT payload segment를 읽습니다. 반환된 객체는 **검증되지 않은 입력(unverified input)**이며, 권한 결정(authorization decisions), 신원 확인(identity resolution), 또는 접근을 허가하는 모든 코드 경로에 사용해서는 안 됩니다. 검증된 클레임은 `JwtService.verify(token, options)`로 얻으세요. 정규화된 `JwtPrincipal`이 필요하면 호출 단위 재정의 없이 `DefaultJwtVerifier.verifyAccessToken(token)`을 사용하고, 호출 단위 `algorithms`, `audience`, `issuer`, `clockSkewSeconds`, `maxAge`, `requireExp`를 보존해야 하면 `DefaultJwtVerifier.verifyAccessTokenWithOverrides(token, options)`을 사용하세요.
 
 `decode()`는 진단(diagnostics) 및 비권위적 검사(non-authoritative inspection)에만 사용됩니다. 예를 들어 로깅을 위해 토큰 메타데이터를 읽거나 `verify()` 호출 전에 검증 키를 선택할 때 사용할 수 있습니다. `decode()` 출력에서 읽은 모든 클레임 값 — `sub`, `roles`, `scopes`, `iss`, `aud`, `exp` 포함 — 은 `verify()`가 성공하기 전까지 공격자가 제어한 값으로 취급해야 합니다. `decode()` 출력을 기준으로 요청을 허가하거나 거부하는 분기를 만들지 말고, 검증되지 않은 클레임을 검증된 것처럼 downstream 코드에 노출하지 마세요.
 
