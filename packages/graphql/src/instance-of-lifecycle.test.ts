@@ -6,11 +6,16 @@ import type { ApplicationLogger, CompiledModule } from '@fluojs/runtime';
 import { GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
 import { describe, expect, it } from 'vitest';
 
+import { type GraphqlInstanceOf, type GraphqlInstanceOfModule, installGraphqlInstanceOfPatch } from './instance-of-patch.js';
 import { GraphqlLifecycleService } from './service.js';
 
-type GraphqlInstanceOf = (value: unknown, constructor: { prototype?: { [Symbol.toStringTag]?: string } }) => boolean;
-
 const runtimeRequire = createRequire(import.meta.url);
+
+class GraphQLSchemaConstructor {}
+
+Object.defineProperty(GraphQLSchemaConstructor.prototype, Symbol.toStringTag, {
+  value: 'GraphQLSchema',
+});
 
 function createCrossRealmSchema(name: string): GraphQLSchema {
   const schema = new GraphQLSchema({
@@ -52,6 +57,149 @@ function createService(schema: GraphQLSchema, websocketEnabled = false): Graphql
 }
 
 describe('GraphqlLifecycleService cross-instance object isolation', () => {
+  it('releases a module patch without affecting a different GraphQL module instance', () => {
+    // Given
+    const originalInstanceOf: GraphqlInstanceOf = () => false;
+    const firstModule: GraphqlInstanceOfModule = { instanceOf: originalInstanceOf };
+    const secondModule: GraphqlInstanceOfModule = { instanceOf: originalInstanceOf };
+    const firstCrossRealmSchema = { [Symbol.toStringTag]: 'GraphQLSchema' };
+    const secondCrossRealmSchema = { [Symbol.toStringTag]: 'GraphQLSchema' };
+    const releaseFirstPatch = installGraphqlInstanceOfPatch(
+      firstModule,
+      new WeakSet<object>([firstCrossRealmSchema]),
+    );
+    const releaseSecondPatch = installGraphqlInstanceOfPatch(
+      secondModule,
+      new WeakSet<object>([secondCrossRealmSchema]),
+    );
+
+    // When
+    releaseFirstPatch();
+
+    // Then
+    expect(firstModule.instanceOf(firstCrossRealmSchema, GraphQLSchemaConstructor)).toBe(false);
+    expect(secondModule.instanceOf(secondCrossRealmSchema, GraphQLSchemaConstructor)).toBe(true);
+
+    releaseSecondPatch();
+  });
+
+  it('preserves an externally replaced instanceOf implementation during release', () => {
+    // Given
+    const originalInstanceOf: GraphqlInstanceOf = () => false;
+    const instanceOfModule: GraphqlInstanceOfModule = { instanceOf: originalInstanceOf };
+    const allowedCrossRealmSchema = { [Symbol.toStringTag]: 'GraphQLSchema' };
+    const releasePatch = installGraphqlInstanceOfPatch(
+      instanceOfModule,
+      new WeakSet<object>([allowedCrossRealmSchema]),
+    );
+    const externalReplacement: GraphqlInstanceOf = () => true;
+
+    // When
+    instanceOfModule.instanceOf = externalReplacement;
+    releasePatch();
+
+    // Then
+    expect(instanceOfModule.instanceOf).toBe(externalReplacement);
+  });
+
+  it.each([
+    ['first', 'second'],
+    ['second', 'first'],
+  ] as const)(
+    'keeps every active allowlist patched after an external replacement when %s releases before %s',
+    (firstRelease, secondRelease) => {
+      // Given
+      const originalInstanceOf: GraphqlInstanceOf = () => false;
+      const externalReplacement: GraphqlInstanceOf = () => false;
+      const instanceOfModule: GraphqlInstanceOfModule = { instanceOf: originalInstanceOf };
+      const firstCrossRealmSchema = { [Symbol.toStringTag]: 'GraphQLSchema' };
+      const secondCrossRealmSchema = { [Symbol.toStringTag]: 'GraphQLSchema' };
+      const releaseFirstPatch = installGraphqlInstanceOfPatch(
+        instanceOfModule,
+        new WeakSet<object>([firstCrossRealmSchema]),
+      );
+
+      instanceOfModule.instanceOf = externalReplacement;
+      const releaseSecondPatch = installGraphqlInstanceOfPatch(
+        instanceOfModule,
+        new WeakSet<object>([secondCrossRealmSchema]),
+      );
+      const releases = {
+        first: releaseFirstPatch,
+        second: releaseSecondPatch,
+      };
+
+      expect(instanceOfModule.instanceOf(firstCrossRealmSchema, GraphQLSchemaConstructor)).toBe(true);
+      expect(instanceOfModule.instanceOf(secondCrossRealmSchema, GraphQLSchemaConstructor)).toBe(true);
+
+      // When
+      releases[firstRelease]();
+
+      // Then
+      expect(instanceOfModule.instanceOf(firstCrossRealmSchema, GraphQLSchemaConstructor)).toBe(
+        firstRelease === 'second',
+      );
+      expect(instanceOfModule.instanceOf(secondCrossRealmSchema, GraphQLSchemaConstructor)).toBe(
+        firstRelease === 'first',
+      );
+      expect(instanceOfModule.instanceOf).not.toBe(externalReplacement);
+
+      releases[secondRelease]();
+      expect(instanceOfModule.instanceOf).toBe(externalReplacement);
+    },
+  );
+
+  it.each([
+    ['first', 'second'],
+    ['second', 'first'],
+  ] as const)(
+    'avoids recursive delegation after an external wrapper captures the Fluo patch when %s releases before %s',
+    (firstRelease, secondRelease) => {
+      // Given
+      const originalInstanceOf: GraphqlInstanceOf = () => false;
+      const instanceOfModule: GraphqlInstanceOfModule = { instanceOf: originalInstanceOf };
+      const firstCrossRealmSchema = { [Symbol.toStringTag]: 'GraphQLSchema' };
+      const secondCrossRealmSchema = { [Symbol.toStringTag]: 'GraphQLSchema' };
+      const releaseFirstPatch = installGraphqlInstanceOfPatch(
+        instanceOfModule,
+        new WeakSet<object>([firstCrossRealmSchema]),
+      );
+      const capturedFluoPatch = instanceOfModule.instanceOf;
+      const externalWrapper: GraphqlInstanceOf = (value, constructor) =>
+        capturedFluoPatch(value, constructor);
+
+      instanceOfModule.instanceOf = externalWrapper;
+      const releaseSecondPatch = installGraphqlInstanceOfPatch(
+        instanceOfModule,
+        new WeakSet<object>([secondCrossRealmSchema]),
+      );
+      const releases = {
+        first: releaseFirstPatch,
+        second: releaseSecondPatch,
+      };
+
+      expect(() => instanceOfModule.instanceOf({}, GraphQLSchemaConstructor)).not.toThrow();
+      expect(instanceOfModule.instanceOf({}, GraphQLSchemaConstructor)).toBe(false);
+      expect(instanceOfModule.instanceOf(firstCrossRealmSchema, GraphQLSchemaConstructor)).toBe(true);
+      expect(instanceOfModule.instanceOf(secondCrossRealmSchema, GraphQLSchemaConstructor)).toBe(true);
+
+      // When
+      releases[firstRelease]();
+
+      // Then
+      expect(instanceOfModule.instanceOf(firstCrossRealmSchema, GraphQLSchemaConstructor)).toBe(
+        firstRelease === 'second',
+      );
+      expect(instanceOfModule.instanceOf(secondCrossRealmSchema, GraphQLSchemaConstructor)).toBe(
+        firstRelease === 'first',
+      );
+      expect(instanceOfModule.instanceOf).not.toBe(externalWrapper);
+
+      releases[secondRelease]();
+      expect(instanceOfModule.instanceOf).toBe(externalWrapper);
+    },
+  );
+
   it("releases one application's cross-realm objects while another keeps the instanceOf patch active", async () => {
     // Given
     const instanceOfModule: { instanceOf: GraphqlInstanceOf } = runtimeRequire('graphql/jsutils/instanceOf.js');

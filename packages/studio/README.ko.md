@@ -119,6 +119,8 @@ Studio는 여전히 fluo CLI가 내보낸 JSON 파일을 소비합니다. 런타
 
 Studio는 주로 CLI가 실행하는 sidecar와 browser viewer이지만, 배포된 패키지는 도구/자동화가 사용할 수 있는 계약도 함께 공개합니다. `@fluojs/studio`를 snapshot parsing, filtering, Mermaid graph rendering, live Studio event validation 의미론의 canonical owner로 취급합니다. Root `@fluojs/studio` export는 `@fluojs/studio/contracts`의 helper function과 public type을 다시 export합니다.
 
+Bootstrap timing phase 이름은 `bootstrap_module`, `register_runtime_tokens`, `resolve_lifecycle_instances`, `run_bootstrap_lifecycle`, `create_dispatcher`만 허용하며, 그 밖의 모든 값은 static payload와 live timing event에서 거부됩니다.
+
 | 규격 | 설명 |
 |---|---|
 | `parseStudioPayload(rawJson)` | raw snapshot JSON, standalone timing JSON, snapshot+timing envelope, `fluo inspect --report` artifact를 받아 parsed payload와 원본 JSON string을 반환합니다. |

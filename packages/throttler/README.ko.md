@@ -130,8 +130,15 @@ ThrottlerModule.forRoot({
 
 - `ThrottlerModule.forRoot(...)`는 검증된 옵션과 provider를 등록하지만, 모든 route에 throttling을 자동으로 강제하지 않습니다. 보호가 필요한 곳마다 `@UseGuards(ThrottlerGuard)` 같은 Fluo guard metadata로 `ThrottlerGuard`를 활성화하세요.
 - 공개 정책 shape는 하나의 module default와 class 또는 method 수준 `@Throttle({ ttl, limit })` override입니다. burst와 sustained limit을 함께 두는 named multi-window definition은 HTTP middleware, custom `ThrottlerStore`, 또는 애플리케이션이 소유한 guard wrapper로 명시적으로 조합해야 합니다.
+- NestJS `ttl` 값은 밀리초이고 fluo `ttl` 값은 초입니다. 값을 그대로 복사하지 말고 `ttl: 60_000`을 `ttl: 60`으로 변환하세요.
+- `@SkipThrottle()`에는 named 또는 `false` 형식이 없습니다. Class와 method 수준 skip은 additive하게 결합되므로, 다시 활성화할 method는 skipped controller 밖으로 옮기거나 application-owned guard wrapper를 사용하세요.
+- 비동기 secret, configuration, store 생성은 동기 `ThrottlerModule.forRoot(...)` 등록 전에 해결하세요. fluo는 NestJS `forRootAsync(...)` shape을 제공하지 않습니다.
+- `ThrottlerGuard`와 `keyGenerator`는 HTTP 전용입니다. WebSocket, GraphQL, RPC, queue 정책에는 별도 transport-owned guard 또는 middleware를 적용하세요.
+- Bucket key와 storage call contract가 다르므로 persisted NestJS window는 기본적으로 이어지지 않습니다. 연속성이 필요하면 application-owned compatibility store 또는 bounded cutover를 사용하세요.
 - Forwarded client IP header는 기본적으로 무시됩니다. `Forwarded`, `X-Forwarded-For`, `X-Real-IP`를 신뢰 가능한 proxy가 덮어쓰는 배포에서만 `trustProxyHeaders: true`를 활성화하세요.
 - 제한 초과 시 보장되는 응답 계약은 HTTP `429`와 `Retry-After`입니다. 추가 rate-limit header나 response body는 exception filter 같은 애플리케이션 경계에서 더하세요.
+
+마이그레이션 예제와 전체 호환성 맵은 [NestJS → fluo Migration Map](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-nestjs.ko.md)을 참고하세요.
 
 ## 공개 API 개요
 

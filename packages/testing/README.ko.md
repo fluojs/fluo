@@ -77,12 +77,44 @@ const module = await createTestingModule({ rootModule: AppModule })
   })
   .compile();
 
-const service = await module.resolve(UserService);
+let testError: unknown;
+let testFailed = false;
+let disposeError: unknown;
+let disposeFailed = false;
+
+try {
+  const service = await module.resolve(UserService);
+} catch (error: unknown) {
+  testError = error;
+  testFailed = true;
+} finally {
+  try {
+    await module.container.dispose();
+  } catch (error: unknown) {
+    disposeFailed = true;
+    disposeError = error;
+  }
+}
+
+if (testFailed) {
+  if (disposeFailed) {
+    throw new AggregateError(
+      [testError, disposeError],
+      'Test and testing module disposal both failed.',
+    );
+  }
+
+  throw testError;
+}
+
+if (disposeFailed) {
+  throw disposeError;
+}
 ```
 
-Testing builder는 route-pipeline 테스트에서 cross-cutting behavior를 교체할 수 있도록 `overrideProviders([[token, value], ...])`, `overrideGuard(...)`, `overrideInterceptor(...)`, `overrideFilter(...)`도 지원합니다. Guard와 interceptor override는 route가 같은 token을 `@UseGuards(...)` 또는 `@UseInterceptors(...)`로 참조할 때 request path에서도 안전하게 검증할 수 있습니다. Filter override는 컴파일된 module graph의 token을 교체하므로, 해당 filter가 runtime app 표면에 등록되는 경우 request-level coverage와 함께 사용하세요.
+Testing builder는 route-pipeline 테스트에서 cross-cutting behavior를 교체할 수 있도록 `overrideProviders([[token, value], ...])`, `overrideGuard(...)`, `overrideInterceptor(...)`, `overrideFilter(...)`도 지원합니다. Guard와 interceptor override는 route가 같은 token을 `@UseGuards(...)` 또는 `@UseInterceptors(...)`로 참조할 때 request path에서도 안전하게 검증할 수 있습니다. Filter override는 컴파일된 module graph의 token을 교체하므로, 해당 filter가 runtime app 표면에 등록되는 경우 request-level coverage와 함께 사용하세요. 성공적으로 컴파일된 모든 `TestingModuleRef`를 보관하고 caller-owned `container`는 `finally`(suite setup은 `afterEach`)에서 dispose하여 통과, 실패, 조기 반환 테스트 모두 lifecycle resource를 해제하세요. 완료된 `container.dispose()` 호출은 idempotent합니다. Teardown 실패는 surface되며, in-flight assertion도 실패할 수 있다면 어느 하나를 suppress하거나 assertion failure를 대체하지 말고(예: `AggregateError`) 두 오류를 함께 보고하세요.
 
-`compile()`은 module에 선언했거나 override한 factory provider를 포함해 lifecycle hook이 있는 singleton provider에 대해 production module bootstrap과 같은 의미를 따릅니다. effective provider graph를 해석하고, testing module을 반환하기 전에 provider 순서대로 각 instance의 `onModuleInit()`을 실행한 뒤 `onApplicationBootstrap()`을 실행합니다. Builder는 반환 시점까지 내부에서 생성한 container를 소유합니다. Override 적용, lifecycle hook 실행, resolved singleton 동기화가 실패하면 reject하기 전에 container를 dispose합니다. Cleanup이 성공하면 원래 compile 실패를 그대로 보존하고, cleanup도 실패하면 원래 실패와 cleanup 실패를 `AggregateError`로 함께 보고합니다. 성공한 `TestingModuleRef`의 동작은 바뀌지 않으며 호출자가 `module.container.dispose()`의 소유권을 계속 가집니다. `get()`은 synchronous singleton 및 multi-provider 경로에서도 DI ownership 의미를 보존하므로, 반복 sync read는 같은 singleton contribution을 재사용하고 container가 해당 instance를 계속 정리할 수 있습니다.
+`compile()`은 module에 선언했거나 override한 factory provider를 포함해 lifecycle hook이 있는 singleton provider에 대해 production module bootstrap과 같은 의미를 따릅니다. effective provider graph를 해석하고, testing module을 반환하기 전에 provider 순서대로 각 instance의 `onModuleInit()`을 실행한 뒤 `onApplicationBootstrap()`을 실행합니다. Builder는 반환 시점까지 내부에서 생성한 container를 소유합니다. Override 적용, lifecycle hook 실행, resolved singleton 동기화가 실패하면 reject하기 전에 container를 dispose합니다. Cleanup이 성공하면 원래 compile 실패를 그대로 보존하고, cleanup도 실패하면 원래 실패와 cleanup 실패를 `AggregateError`로 함께 보고합니다. 성공한 `TestingModuleRef`의 동작은 바뀌지 않으며 호출자는 unconditional `finally` 또는 `afterEach` cleanup을 통해 `module.container.dispose()`의 소유권을 계속 가집니다. `get()`은 synchronous singleton 및 multi-provider 경로에서도 DI ownership 의미를 보존하므로, 반복 sync read는 같은 singleton contribution을 재사용하고 container가 해당 instance를 계속 정리할 수 있습니다.
 
 ### `overrideModule()` 사용 시 모듈 identity 보존
 
@@ -150,7 +182,9 @@ const mailer = createDeepMock(MailService);
 
 ### 적합성 및 이식성 하니스
 
-프레임워크 지향 플랫폼 패키지를 작성할 때는 `@fluojs/testing/platform-conformance`, `@fluojs/testing/http-adapter-portability`, `@fluojs/testing/web-runtime-adapter-portability` 같은 서브패스를 사용해 적합성 및 이식성 검증을 수행합니다.
+프레임워크 지향 플랫폼 패키지를 작성할 때는 `@fluojs/testing/platform-conformance`, `@fluojs/testing/platform-shell-lifecycle-conformance`, `@fluojs/testing/http-adapter-portability`, `@fluojs/testing/web-runtime-adapter-portability` 같은 서브패스를 사용해 적합성 및 이식성 검증을 수행합니다.
+
+`createPlatformShellLifecycleConformanceHarness({ createShell })`는 active `start()` / `stop()` overlap 전체가 `PlatformLifecycleConflictError`로 reject되는지, callback reentry가 synchronous 시점과 임의의 await 이후에도 conflict-safe한지, 실패한 transition이 settle된 뒤 호출자가 retry할 수 있는지 검증합니다. 컴포넌트 수준 검사는 `createPlatformConformanceHarness(...).assertAll()`에 유지하세요. PlatformShell lifecycle 계약은 의도적으로 별도 harness입니다.
 
 이식성 하니스의 cleanup도 계약에 포함됩니다. 앱이 bootstrap된 뒤 setup, `listen()`, partial app을 노출한 run callback, assertion이 실패하면 하니스는 해당 partial app을 닫습니다. `app.close()`가 실패하면 하니스는 cleanup 실패를 보고하며, setup 또는 assertion이 이미 실패한 경우에는 원래 실패와 cleanup 실패를 모두 보존하는 aggregate error를 발생시킵니다.
 
@@ -216,7 +250,7 @@ synthetic React test runtime은 필요한 setup을 줄이기보다 coverage를 �
 
 - **루트 패키지**: `createTestingModule(...)`, `Test.createTestingModule(...)`, `createTestApp(...)`, 모듈 introspection 헬퍼, `DeepMocked<T>`를 포함한 공용 app/module 테스트 타입
 - **서브패스**: `@fluojs/testing/app`, `@fluojs/testing/module`, `@fluojs/testing/http`, `@fluojs/testing/mock` (`DeepMocked<T>` 포함), `@fluojs/testing/types` (`DeepMocked<T>` 포함), `@fluojs/testing/vitest`, `@fluojs/testing/vitest/tooling`
-- **하니스 서브패스**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`. HTTP portability harness는 adapter-owned bootstrap typing을 위해 `assertSupportsCustomHttpRouteMethods()`, `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `createErrorRepresentationBootstrapOptions`, `NetworkHttpErrorRepresentationBootstrapOptions`, `WebHttpErrorRepresentationBootstrapOptions`를 노출합니다.
+- **하니스 서브패스**: `platform-conformance`, `platform-shell-lifecycle-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`. HTTP portability harness는 adapter-owned bootstrap typing을 위해 `assertSupportsCustomHttpRouteMethods()`, `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `createErrorRepresentationBootstrapOptions`, `NetworkHttpErrorRepresentationBootstrapOptions`, `WebHttpErrorRepresentationBootstrapOptions`를 노출합니다.
 - **도구 지원**: `@fluojs/testing/vitest`의 `fluoBabelDecoratorsPlugin()` 및 `@fluojs/testing/vitest/tooling`의 Vitest workspace config helper (`vitest`와 `@babel/core`를 함께 요구)
 
 Package manifest는 public body-bearing RFC `QUERY` portability assertion이 사용하는 검증된 Node listener window와 일치하도록 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상은 제외됩니다. 문서화된 경우 non-Node runtime 애플리케이션 테스트에서 runtime-native 도구를 사용할 수 있지만, 배포된 `@fluojs/testing` 패키지 자체는 이 정확한 Node.js engine 범위를 따릅니다.

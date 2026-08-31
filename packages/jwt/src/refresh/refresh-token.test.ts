@@ -4,6 +4,7 @@ import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } fro
 import { DefaultJwtSigner } from '../signing/signer.js';
 import { DefaultJwtVerifier } from '../signing/verifier.js';
 import {
+  normalizeRefreshTokenOptions,
   type RefreshTokenRecord,
   type RefreshTokenRotateInput,
   RefreshTokenService,
@@ -491,6 +492,35 @@ describe('RefreshTokenService', () => {
           secret: 'access-secret',
         }),
     ).toThrow(JwtConfigurationError);
+  });
+
+  it('rejects invalid runtime refresh algorithm policies at the shared boundary', () => {
+    const store = new InMemoryRefreshTokenStore();
+    const invalidAlgorithms: unknown[] = [
+      'HS256',
+      [],
+      ['RS256'],
+      ['HS256', 'RS256'],
+    ];
+
+    for (const algorithms of invalidAlgorithms) {
+      const refreshOptions = {
+        algorithms,
+        expiresInSeconds: 3600,
+        rotation: false,
+        secret: 'refresh-secret',
+        store,
+      };
+      const options = {
+        algorithms: ['HS256' as const],
+        refreshToken: refreshOptions,
+        secret: 'access-secret',
+      };
+
+      expect(() => normalizeRefreshTokenOptions(refreshOptions as never)).toThrow(JwtConfigurationError);
+      expect(() => new DefaultJwtSigner(options as never)).toThrow(JwtConfigurationError);
+      expect(() => new DefaultJwtVerifier(options as never)).toThrow(JwtConfigurationError);
+    }
   });
 
   it('fails fast when refresh secret is empty', () => {
