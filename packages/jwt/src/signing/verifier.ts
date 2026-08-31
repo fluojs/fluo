@@ -372,7 +372,10 @@ export class DefaultJwtVerifier implements OnModuleDestroy {
   private createRefreshVerificationOptions(
     refreshToken: ReturnType<typeof normalizeRefreshTokenOptions>,
   ): JwtVerifierOptions {
-    const algorithms = this.options.algorithms.filter((algorithm): algorithm is JwtAlgorithm => hasOwnAlgorithmMapping(SUPPORTED_HMAC_HASH, algorithm));
+    const configuredRefreshAlgorithms = refreshToken.algorithms;
+    const algorithms = (configuredRefreshAlgorithms ?? this.options.algorithms).filter(
+      (algorithm): algorithm is JwtAlgorithm => hasOwnAlgorithmMapping(SUPPORTED_HMAC_HASH, algorithm),
+    );
 
     if (algorithms.length === 0) {
       throw new JwtConfigurationError(
