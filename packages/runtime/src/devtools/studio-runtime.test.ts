@@ -199,6 +199,101 @@ describe('Studio devtools runtime bridge', () => {
     }
   });
 
+  it('redacts all raw request-observation exception details from Studio events', () => {
+    // Given
+    const secrets = {
+      errorCause: 'studio-error-cause-secret',
+      errorMessage: 'studio-error-message-secret',
+      errorName: 'studio-error-name-secret',
+      errorStack: 'studio-error-stack-secret',
+      nonErrorStringification: 'studio-non-error-stringification-secret',
+    } as const;
+    const events: StudioLiveEvent[] = [];
+    const runtime = new StudioDevtoolsRuntime({
+      appId: 'app-test',
+      epoch: 'epoch-test',
+      transport: {
+        publish(event) {
+          events.push(event);
+        },
+      },
+    });
+    const createRequestContext = (requestId: string, statusCode: number) =>
+      ({
+        requestContext: {
+          request: {
+            cookies: {},
+            headers: {},
+            method: 'GET',
+            params: {},
+            path: '/health',
+            query: {},
+            raw: {},
+            requestId,
+            url: '/health',
+          },
+          response: {
+            committed: false,
+            headers: {},
+            redirect() {},
+            async send() {},
+            setHeader() {},
+            setStatus() {},
+            statusCode,
+          },
+        },
+      }) as unknown as Parameters<NonNullable<typeof runtime.requestObserver.onRequestStart>>[0];
+    const error = new Error(secrets.errorMessage, { cause: secrets.errorCause });
+    error.name = secrets.errorName;
+    error.stack = `${error.stack}\n${secrets.errorStack}`;
+    const nonError = {
+      toString() {
+        return secrets.nonErrorStringification;
+      },
+    };
+    const errorContext = createRequestContext('request-error', 500);
+    const nonErrorContext = createRequestContext('request-non-error', 503);
+
+    // When
+    runtime.requestObserver.onRequestStart?.(errorContext);
+    runtime.requestObserver.onRequestError?.(errorContext, error);
+    runtime.requestObserver.onRequestStart?.(nonErrorContext);
+    runtime.requestObserver.onRequestError?.(nonErrorContext, nonError);
+
+    // Then
+    const failedEvents = events.filter(
+      (event): event is Extract<StudioLiveEvent, { type: 'request' }> => event.type === 'request' && event.payload.status === 'failed',
+    );
+    expect(failedEvents).toHaveLength(2);
+    expect(failedEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            error: { message: 'Request failed' },
+            requestId: 'request-error',
+            status: 'failed',
+            statusCode: 500,
+          }),
+        }),
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            error: { message: 'Request failed' },
+            requestId: 'request-non-error',
+            status: 'failed',
+            statusCode: 503,
+          }),
+        }),
+      ]),
+    );
+    const serializedEvents = JSON.stringify(events);
+    for (const secret of Object.values(secrets)) {
+      expect(serializedEvents).not.toContain(secret);
+    }
+    for (const event of failedEvents) {
+      expect(event.payload.error).toEqual({ message: 'Request failed' });
+    }
+  });
+
   it('auto-instruments bootstrap when fluo dev --studio injects Studio env', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 202 }));
     (globalThis as Record<string, unknown>)[studioGlobalConfigKey] = {

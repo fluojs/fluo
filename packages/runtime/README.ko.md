@@ -117,7 +117,7 @@ const studioDevtools = new StudioDevtoolsRuntime({
 const app = await fluoFactory.create(AppModule, { studioDevtools });
 ```
 
-이 package는 transport-neutral seam을 publish하며 Bun, Deno, Cloudflare Workers sidecar 구현을 제공하지는 않습니다. Non-Node host는 소유자가 bridge와 executable host integration evidence를 제공한 경우에만 live Studio를 지원합니다. 그렇지 않으면 inspect/static artifact path를 사용하세요. Request trace는 body, cookie, 전체 header를 의도적으로 제외하며, runtime은 local token이 Studio event history에 남지 않도록 publish 전에 trace `url`에서 query string과 fragment를 제거합니다.
+이 package는 transport-neutral seam을 publish하며 Bun, Deno, Cloudflare Workers sidecar 구현을 제공하지는 않습니다. Non-Node host는 소유자가 bridge와 executable host integration evidence를 제공한 경우에만 live Studio를 지원합니다. 그렇지 않으면 inspect/static artifact path를 사용하세요. Request trace는 body, cookie, 전체 header를 의도적으로 제외하며, runtime은 local token이 Studio event history에 남지 않도록 publish 전에 trace `url`에서 query string과 fragment를 제거합니다. Failed-request event는 고정된 `Request failed` message만 사용하며 raw exception text, name, stack, cause, stringified value를 포함하지 않습니다.
 
 ### 전역 예외 필터
 

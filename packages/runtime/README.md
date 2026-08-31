@@ -117,7 +117,7 @@ const studioDevtools = new StudioDevtoolsRuntime({
 const app = await fluoFactory.create(AppModule, { studioDevtools });
 ```
 
-This package publishes a transport-neutral seam, not Bun, Deno, or Cloudflare Workers sidecar implementations. A non-Node host is live-Studio supported only when its owner supplies a bridge and executable host integration evidence; otherwise use the inspect/static artifact path. Request traces intentionally omit bodies, cookies, and full headers, and runtime strips query strings/fragments from the trace `url` before publishing events so local tokens are not copied into Studio event history.
+This package publishes a transport-neutral seam, not Bun, Deno, or Cloudflare Workers sidecar implementations. A non-Node host is live-Studio supported only when its owner supplies a bridge and executable host integration evidence; otherwise use the inspect/static artifact path. Request traces intentionally omit bodies, cookies, and full headers, and runtime strips query strings/fragments from the trace `url` before publishing events so local tokens are not copied into Studio event history. Failed-request events use only the fixed `Request failed` message and never include raw exception text, names, stacks, causes, or stringified values.
 
 ### Global Exception Filters
 
