@@ -89,7 +89,7 @@ Generated Node.js `dev`, `build`, and `start` package scripts delegate to `fluo 
 
 Generated starters set their `@fluojs/cli` `devDependency` from the generator CLI package version that created the project, so lifecycle scripts such as `pnpm dev`, `pnpm build`, and `pnpm start` keep using the same CLI behavior that scaffolded the starter instead of a stale hard-coded range.
 
-Generated non-Deno standard starter `vite.config.ts` files import `fluoDecoratorsPlugin()` from `@fluojs/vite`, while the React SSR + Vite starter applies the same plugin in `vite.server.config.ts`. Decorator transform updates therefore ship through the maintained Vite package instead of being copied inline into every new project.
+Generated non-Deno standard starter `vite.config.ts` files import `fluoDecoratorsPlugin()` from `@fluojs/vite`, while the React SSR + Vite starter applies the same plugin in `vite.server.config.ts`. The React starter keeps decorator-bearing declarations in `src/app.ts` and JSX rendering in `.tsx` modules, so the supported `.ts` transform boundary stays explicit. Decorator transform updates therefore ship through the maintained Vite package instead of being copied inline into every new project.
 
 Generated standard non-Deno HTTP starters use a TDD-first Vitest layout: fast greeting unit tests and `greeting.slice.test.ts` stay colocated under `src/greeting/`, app dispatch tests stay in `src/app.test.ts`, and the default e2e-style request-pipeline tests live in `test/app.e2e.test.ts` with `createTestApp({ rootModule })` plus `app.request(...).send()`. The React starter instead includes focused streamed SSR, DOM hydration, and production Playwright hydration tests. Its `test:browser` script starts the built Fastify server and fails on missing assets, hydration warnings, or navigation that bypasses the server-owned route.
 
@@ -120,7 +120,7 @@ fluo new my-react-app --starter react-vite-ssr
 This starter fixes the schema to Node.js + Fastify HTTP. Run `pnpm dev`, open
 `/products/sku-42?preview=true`, and edit `src/page.tsx`; page UI no longer needs to carry Vite assets,
 the document shell, or the server/client route snapshot wiring. The explicit `@Router(...)` /
-`@Path(...)` handler in `src/app.tsx` returns that page as one `ReactElement`, so the existing HTTP
+`@Path(...)` handler in `src/app.ts` returns that page as one `ReactElement`, so the existing HTTP
 dispatcher remains authoritative.
 
 Generated application wiring stays visible instead of becoming a framework abstraction:
@@ -294,8 +294,8 @@ fluo migrate ./src --json
 # Apply transformations
 fluo migrate ./src --apply
 fluo migrate ./src --apply --json
-fluo migrate ./src --only imports,inject-params
-fluo migrate ./src --skip tests
+fluo migrate ./src --only imports,injectable
+fluo migrate ./src --skip testing
 ```
 
 The canonical `--only` and `--skip` tokens are `imports`, `inject-params`, `scope`, `bootstrap`, `tests`, and `tsconfig`. The legacy `injectable` and `testing` tokens remain accepted aliases for `inject-params` and `tests`.
@@ -303,6 +303,12 @@ The canonical `--only` and `--skip` tokens are `imports`, `inject-params`, `scop
 Use `--json` when CI jobs, dashboards, or migration reports need a stable machine-readable result. Human output remains the default. JSON mode writes only the structured report to stdout on success, while parser errors and invalid flag combinations still write their message to stderr and return exit code `1` without partial JSON output. The report includes `mode` (`dry-run` or `apply`), `dryRun`, `apply`, enabled `transforms`, `scannedFiles`, `changedFiles`, aggregate `warningCount`, and per-file metadata with `filePath`, `changed`, `appliedTransforms`, `warningCount`, and warnings including category labels and source line numbers.
 
 Review every warning before rerunning with `--apply`. Warnings are manual follow-up items rather than permission for an automatic rewrite to be accepted blindly; use the [NestJS migration guide](../../docs/getting-started/migrate-from-nestjs.md) as the post-codemod checklist for each warning category.
+
+Adapter-independent transforms (`imports`, `injectable`, `scope`, `testing`, and `tsconfig`) run without an HTTP adapter. The default NestJS bootstrap uses Express, so the default bootstrap transform rewrites `NestFactory.create(AppModule)` with `createExpressAdapter(...)` and folds a static `listen(port)` argument into that adapter. Install `@fluojs/platform-express` and `express` before compiling the migrated application; select only the independent transforms to leave bootstrap unchanged:
+
+```bash
+fluo migrate ./src --apply --only imports,injectable,scope,testing,tsconfig
+```
 
 **Key Transformations:**
 - Rewrites imports from `@nestjs/common` to `@fluojs/core` or `@fluojs/http`.

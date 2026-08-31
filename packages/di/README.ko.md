@@ -128,6 +128,8 @@ Reflect.construct(Container, [root]);
 
 실행 가능한 근거는 `packages/di/src/container-construction-boundary.test.ts`에 있습니다.
 
+실패한 stale `onDestroy()` hook도 일반 disposal과 동일한 retained-retry 계약을 따릅니다. observing container의 다음 resolution이 그 실패를 한 번 노출해 replacement가 계속될 수 있게 하며, 실패한 instance는 해당 cleanup을 예약한 container가 이후 명시적 `dispose()`로 hook을 다시 호출할 때까지 retain됩니다. 이미 성공한 stale hook은 다시 실행하지 않습니다.
+
 ### request scope 분리
 
 ```ts

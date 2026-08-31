@@ -10,6 +10,8 @@ fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터
 
 NestJS 마이그레이션은 [NestJS migration map](./getting-started/migrate-from-nestjs.ko.md)에서 시작한다. i18n handoff는 각 custom resolver를 `HttpLocaleResolver`로 mapping하고, `FluoFactory.create(...)`에 application-owned `Middleware` 하나를 등록하며, 선택된 locale은 현재 `RequestContext`에만 저장한다. global locale fallback은 없다.
 
+NestJS migration에서 `fluo migrate`는 명시적 Express adapter로 기본 one-argument `NestFactory.create(AppModule)` bootstrap을 재작성하며, 지원하지 않는 bootstrap variant는 diagnostic과 함께 변경하지 않고 명시적으로 선택한 adapter-independent transform은 bootstrap을 변경하지 않는다.
+
 ## Hard Constraints
 
 - NEVER use `experimentalDecorators`.
@@ -36,6 +38,8 @@ NestJS 마이그레이션은 [NestJS migration map](./getting-started/migrate-fr
 Changesets 소비, 생성된 패키지 version delta, Official Node.js 지원 변경, 소비자 runtime migration guidance는 [`docs/contracts/release-governance.ko.md`](./contracts/release-governance.ko.md)에서 시작한다. Stable lane gate는 `tooling/release/verify-changeset-release-lane.mjs`이며, Changesets가 pending metadata를 소비한 뒤의 생성 결과를 허용하고 Official 패키지가 Node.js 지원을 제거하면 `Migration:` guidance 또는 구조화된 upgrade guide를 요구한다.
 
 ## Package Families
+
+NestJS codemod import-safety discoverability는 [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), `packages/cli/src/transforms/nestjs-migrate.ts`, 해당 regression test에 나뉘어 있습니다. Migration이 `Module` 같은 runtime decorator를 기존 type-only target import로 옮길 때 기존 type specifier를 보존하면서 runtime clause를 출력합니다(예: `import { type Existing, Module } from '@fluojs/core'`). Codemod는 NestJS runtime import가 전혀 남지 않는다고 주장하지 않고 `Optional` 같은 변환되지 않은 NestJS value binding을 수동 검토용으로 유지합니다.
 
 | Family | Purpose | Representative packages |
 | --- | --- | --- |

@@ -119,7 +119,7 @@ fluo new my-react-app --starter react-vite-ssr
 
 이 starter는 schema를 Node.js + Fastify HTTP로 고정합니다. `pnpm dev`를 실행하고
 `/products/sku-42?preview=true`를 연 뒤 `src/page.tsx`를 편집하세요. Page UI는 더 이상 Vite asset,
-document shell, server/client route snapshot wiring을 함께 다루지 않습니다. `src/app.tsx`의 명시적인
+document shell, server/client route snapshot wiring을 함께 다루지 않습니다. `src/app.ts`의 명시적인
 `@Router(...)` / `@Path(...)` handler가 page를 하나의 `ReactElement`로 반환하므로 기존 HTTP
 dispatcher가 계속 authoritative합니다.
 
@@ -294,8 +294,8 @@ fluo migrate ./src --json
 # 변환 적용
 fluo migrate ./src --apply
 fluo migrate ./src --apply --json
-fluo migrate ./src --only imports,inject-params
-fluo migrate ./src --skip tests
+fluo migrate ./src --only imports,injectable
+fluo migrate ./src --skip testing
 ```
 
 정식 `--only` 및 `--skip` 토큰은 `imports`, `inject-params`, `scope`, `bootstrap`, `tests`, `tsconfig`입니다. 기존 `injectable` 및 `testing` 토큰은 각각 `inject-params` 및 `tests`의 허용되는 별칭으로 유지됩니다.
@@ -303,6 +303,12 @@ fluo migrate ./src --skip tests
 CI 작업, 대시보드, migration report에서 안정적인 machine-readable 결과가 필요하면 `--json`을 사용하세요. 사람을 위한 출력은 기본값으로 유지됩니다. JSON 모드는 성공 시 stdout에 structured report만 기록하고, parser 오류나 잘못된 flag 조합은 기존처럼 stderr에 메시지를 기록한 뒤 exit code `1`을 반환하며 partial JSON을 출력하지 않습니다. Report에는 `mode`(`dry-run` 또는 `apply`), `dryRun`, `apply`, 활성화된 `transforms`, `scannedFiles`, `changedFiles`, 전체 `warningCount`, 그리고 `filePath`, `changed`, `appliedTransforms`, `warningCount`, category label과 source line number가 포함된 warnings per-file metadata가 포함됩니다.
 
 `--apply`로 다시 실행하기 전에는 모든 warning을 검토하세요. Warning은 자동 rewrite를 그대로 수락해도 된다는 뜻이 아니라 수동 follow-up 항목입니다. Warning category별 post-codemod checklist는 [NestJS migration guide](../../docs/getting-started/migrate-from-nestjs.ko.md)를 기준으로 확인하세요.
+
+Adapter-independent transform(`imports`, `injectable`, `scope`, `testing`, `tsconfig`)은 HTTP adapter 없이 실행됩니다. 기본 NestJS bootstrap은 Express를 사용하므로 기본 bootstrap transform은 `NestFactory.create(AppModule)`를 `createExpressAdapter(...)`로 재작성하고 static `listen(port)` 인수를 그 adapter로 접습니다. 마이그레이션한 애플리케이션을 컴파일하기 전에 `@fluojs/platform-express`와 `express`를 설치하세요. bootstrap을 그대로 두려면 독립 transform만 선택하세요:
+
+```bash
+fluo migrate ./src --apply --only imports,injectable,scope,testing,tsconfig
+```
 
 **주요 변환 사항:**
 - `@nestjs/common` 임포트를 `@fluojs/core` 또는 `@fluojs/http`로 재작성합니다.

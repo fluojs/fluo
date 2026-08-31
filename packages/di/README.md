@@ -127,6 +127,8 @@ Zero-argument `new Container()` and `createRequestScope()` are unchanged, so sup
 
 Executable evidence lives in `packages/di/src/container-construction-boundary.test.ts`.
 
+A failed stale `onDestroy()` hook follows the same retained-retry contract as ordinary disposal. The next resolution on an observing container surfaces that failure once so the replacement can continue, and the failed instance stays retained by the container that scheduled its cleanup until a later explicit `dispose()` on that container invokes the hook again. Stale hooks that already completed successfully are never repeated.
+
 ### Request Scoping
 Isolated containers can be created to handle per-request state without polluting the root container.
 
