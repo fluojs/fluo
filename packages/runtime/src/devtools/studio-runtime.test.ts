@@ -338,6 +338,75 @@ describe('Studio devtools runtime bridge', () => {
     expect(() => studioDevtools.requestObserver.onRequestStart?.(observerContext)).not.toThrow();
   });
 
+  it('keeps bootstrap, request observation, and close operational when a host transport rejects asynchronously', async () => {
+    // Given
+    const unhandledRejections: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown) => {
+      unhandledRejections.push(reason);
+    };
+    process.on('unhandledRejection', onUnhandledRejection);
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {});
+
+    const studioDevtools = new StudioDevtoolsRuntime({
+      appId: 'rejecting-host',
+      transport: {
+        publish() {
+          return Promise.reject(new Error('host transport unavailable'));
+        },
+      },
+    });
+    const observerContext = {
+      requestContext: {
+        request: {
+          cookies: {},
+          headers: {},
+          method: 'GET',
+          path: '/health',
+          params: {},
+          query: {},
+          raw: undefined,
+          requestId: 'request-1',
+          url: '/health',
+        },
+        response: {
+          committed: false,
+          headers: {},
+          redirect() {},
+          async send() {},
+          setHeader() {},
+          setStatus() {},
+          statusCode: 200,
+        },
+      } satisfies Pick<RequestContext, 'request' | 'response'>,
+    } as unknown as Parameters<NonNullable<typeof studioDevtools.requestObserver.onRequestStart>>[0];
+
+    try {
+      // When
+      const app = await bootstrapApplication({
+        logger,
+        rootModule: AppModule,
+        studioDevtools,
+      });
+      studioDevtools.requestObserver.onRequestStart?.(observerContext);
+      await app.close();
+
+      let rejectionTurnCompleted = false;
+      setImmediate(() => {
+        rejectionTurnCompleted = true;
+      });
+
+      // Then
+      await vi.waitFor(() => {
+        expect(rejectionTurnCompleted).toBe(true);
+        expect(unhandledRejections).toEqual([]);
+      }, { timeout: 1_000 });
+    } finally {
+      process.off('unhandledRejection', onUnhandledRejection);
+    }
+  });
+
   it('prefers an explicit bridge over CLI injection without calling injected fetch', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 202 }));
     const events: StudioLiveEvent[] = [];
