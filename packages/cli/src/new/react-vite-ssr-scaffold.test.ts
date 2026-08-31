@@ -41,11 +41,29 @@ function readDirectorySnapshot(rootDirectory: string): Record<string, string> {
   return snapshot;
 }
 
+function readWorkspaceReactVersion(): string {
+  const packageJson: unknown = JSON.parse(
+    readFileSync(new URL('../../../react/package.json', import.meta.url), 'utf8'),
+  );
+
+  if (
+    typeof packageJson !== 'object'
+    || packageJson === null
+    || !('version' in packageJson)
+    || typeof packageJson.version !== 'string'
+  ) {
+    throw new Error('Expected packages/react/package.json to declare a string version.');
+  }
+
+  return packageJson.version;
+}
+
 describe('React SSR + Vite scaffold', () => {
   it('generates the HTTP-first starter contract when the named starter is selected', async () => {
     // Given
     const targetDirectory = mkdtempSync(join(tmpdir(), 'fluo-scaffold-react-vite-'));
     temporaryDirectories.push(targetDirectory);
+    const workspaceReactVersion = readWorkspaceReactVersion();
 
     // When
     await scaffoldBootstrapApp({
@@ -63,7 +81,9 @@ describe('React SSR + Vite scaffold', () => {
 
     expect(packageJson).toEqual(expect.objectContaining({
       dependencies: expect.objectContaining({
-        '@fluojs/react': '^0.1.0',
+        // This deterministically proves the emitted range resolves the workspace React release version.
+        // A real registry install remains a release-time manual smoke because the local sandbox uses tarballs.
+        '@fluojs/react': `^${workspaceReactVersion}`,
         react: '^19.2.6',
         'react-dom': '^19.2.6',
       }),
