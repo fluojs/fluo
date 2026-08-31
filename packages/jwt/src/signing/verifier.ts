@@ -7,6 +7,7 @@ import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } fro
 import { normalizeRefreshTokenOptions } from '../refresh/refresh-token.js';
 import type { JwtAlgorithm, JwtClaims, JwtKeyEntry, JwtPrincipal, JwtVerifierOptions } from '../types.js';
 import { JwksClient } from './jwks.js';
+import { assertJwtKeyEntries } from './key-entries.js';
 
 /**
  * Provides the resolved JWT verifier options through dependency injection.
@@ -291,6 +292,7 @@ export class DefaultJwtVerifier implements OnModuleDestroy {
 
   constructor(private readonly options: JwtVerifierOptions) {
     assertJwtAlgorithms(options.algorithms, 'JWT verifier');
+    assertJwtKeyEntries(options.keys);
     this.jwksClient = options.jwksUri
       ? new JwksClient(options.jwksUri, options.jwksCacheTtl, options.jwksRequestTimeoutMs, options.jwksCacheMaxEntries)
       : undefined;

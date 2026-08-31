@@ -163,7 +163,7 @@ JWKS key는 `jwksCacheTtl` 밀리초 동안 cache되며 기본값은 `600_000`�
 
 `JwtService.verify(token, options)`는 호출 단위의 알고리즘/클레임 정책 재정의(`issuer`, `audience`, `clockSkewSeconds`, `maxAge`, `requireExp`)를 적용하더라도, 내부 JWKS client나 정적 key-resolution cache를 다시 만들지 않습니다. 호출 단위 검증은 `jwksUri`, `keys[]`, `publicKey`, `secret`, `secretOrKeyProvider` 같은 구성된 key source 자체를 교체하지는 않습니다.
 
-호환되는 키가 여러 개 설정되어 있으면 `kid`가 검증 키를 구분합니다. 호환되는 정적 키가 하나뿐이면 `kid` 없이도 토큰을 검증할 수 있고, JWKS 기반 검증은 원격 key set과 cache policy를 따릅니다.
+호환되는 키가 여러 개 설정되어 있으면 `kid`가 검증 키를 구분합니다. `keys[]`의 모든 entry는 비어 있지 않고 고유한 `kid`를 가져야 합니다. `DefaultJwtSigner`와 `DefaultJwtVerifier`는 key rotation 중 서명과 검증이 서로 다른 키를 선택하지 않도록 construction 시점에 빈 값 또는 중복 값을 `JwtConfigurationError`로 거부합니다. 호환되는 정적 키가 하나뿐이면 `kid` 없이도 토큰을 검증할 수 있고, JWKS 기반 검증은 원격 key set과 cache policy를 따릅니다.
 
 멀티테넌트 시스템에서는 발행된 토큰 header에 tenant-specific `kid`를 넣고 호환되는 key source를 미리 구성하는 방식을 권장합니다. `secretOrKeyProvider`는 decoded token header만 인자로 받으므로, request header, route param, 기타 request-context tenant hint는 JWT verifier 호출 전에 애플리케이션 수준 strategy/guard 코드에서 처리해야 합니다.
 

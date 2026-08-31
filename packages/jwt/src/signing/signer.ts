@@ -3,6 +3,7 @@ import { Inject } from '@fluojs/core';
 import { JwtConfigurationError } from '../errors.js';
 import { normalizeRefreshTokenOptions } from '../refresh/refresh-token.js';
 import type { JwtAlgorithm, JwtClaims, JwtKeyEntry, JwtVerifierOptions } from '../types.js';
+import { assertJwtKeyEntries } from './key-entries.js';
 import { ASYMMETRIC_HASH, HMAC_HASH, JWT_OPTIONS } from './verifier.js';
 
 function encodeBase64Url(value: Buffer | string): string {
@@ -69,6 +70,7 @@ export class DefaultJwtSigner {
 
   constructor(private readonly options: JwtVerifierOptions) {
     assertSigningAlgorithms(options.algorithms);
+    assertJwtKeyEntries(options.keys);
     this.refreshAlgorithms = this.options.algorithms.filter(
       (algorithm): algorithm is JwtAlgorithm => hasOwnAlgorithmMapping(HMAC_HASH, algorithm),
     );
