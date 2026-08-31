@@ -916,39 +916,63 @@ describe('enforceAdvancedBookCoreBoundaryCompanions', () => {
 });
 
 describe('enforceContractCompanionUpdates', () => {
-  it('requires discoverability, tooling or CI, and regression test updates for contract-governing docs', async () => {
+  it.each([
+    ['English context companion', 'docs/CONTEXT.md', /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u],
+    ['Korean context companion', 'docs/CONTEXT.ko.md', /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u],
+    ['workflow enforcement companion', '.github/workflows/ci.yml', /CI\/tooling enforcement updates/u],
+    ['package regression test companion', 'packages/core/src/module.test.ts', /regression test updates/u],
+  ] as const)(
+    'rejects removal of the required %s from an otherwise complete contract change',
+    async (_companion, removedPath, expectedError) => {
+      // Given: a contract update with every required companion present.
+      const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+      const completeChangedFiles = [
+        'docs/reference/package-surface.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        '.github/workflows/ci.yml',
+        'packages/core/src/module.test.ts',
+      ];
+
+      // When: exactly one enforcement companion is absent.
+      const changedFiles = completeChangedFiles.filter((path) => path !== removedPath);
+
+      // Then: its own enforcement category rejects the incomplete change.
+      expect(() => enforceContractCompanionUpdates(changedFiles)).toThrowError(expectedError);
+    },
+  );
+
+  it('accepts a complete contract change with all required companion categories', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const completeChangedFiles = [
+      'docs/reference/package-surface.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      '.github/workflows/ci.yml',
+      'packages/core/src/module.test.ts',
+    ];
 
-    expect(() => enforceContractCompanionUpdates(['docs/reference/package-surface.md'])).toThrowError(
-      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
-    );
+    expect(() => enforceContractCompanionUpdates(completeChangedFiles)).not.toThrow();
+  });
 
-    expect(() =>
-      enforceContractCompanionUpdates([
-        'docs/reference/package-surface.md',
-        'docs/CONTEXT.md',
-        'docs/CONTEXT.ko.md',
-      ]),
-    ).toThrowError(/CI\/tooling enforcement updates/);
+  it('accepts generic companions for validation migration prose without topic-specific book coupling', async () => {
+    // Given
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const genericContractCompanions = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'docs/contracts/nestjs-parity-gaps.md',
+      'docs/contracts/nestjs-parity-gaps.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ];
 
-    expect(() =>
-      enforceContractCompanionUpdates([
-        'docs/reference/package-surface.md',
-        'docs/CONTEXT.md',
-        'docs/CONTEXT.ko.md',
-        '.github/workflows/ci.yml',
-      ]),
-    ).toThrowError(/regression test updates/);
+    // When
+    const enforceGenericCompanions = () => enforceContractCompanionUpdates(genericContractCompanions);
 
-    expect(() =>
-      enforceContractCompanionUpdates([
-        'docs/reference/package-surface.md',
-        'docs/CONTEXT.md',
-        'docs/CONTEXT.ko.md',
-        '.github/workflows/ci.yml',
-        'tooling/governance/verify-platform-consistency-governance.test.ts',
-      ]),
-    ).not.toThrow();
+    // Then
+    expect(enforceGenericCompanions).not.toThrow();
   });
 
   it('accepts metadata preload guidance with bilingual discoverability and governance enforcement', async () => {
@@ -990,6 +1014,22 @@ describe('enforceContractCompanionUpdates', () => {
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();
+  });
+
+  it('accepts i18n catalog migration guidance with required governance companions', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const guidanceFiles = [
+      'packages/i18n/README.md',
+      'packages/i18n/README.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ];
+
+    expect(() => enforceContractCompanionUpdates(guidanceFiles)).not.toThrow();
   });
 
   it('accepts mongoose package-surface guidance when context discoverability and governance tests change together', async () => {
@@ -1247,6 +1287,24 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('accepts NestJS throttler migration guidance when context and governance tests change together', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'book/beginner/ch16-throttler.md',
+        'book/beginner/ch16-throttler.ko.md',
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'packages/throttler/README.md',
+        'packages/throttler/README.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('accepts Notifications package-surface and Chapter 15 guidance when context and governance tests change together', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 
@@ -1393,6 +1451,28 @@ describe('enforceContractCompanionUpdates', () => {
         /contract-governing doc updates must include docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
       );
     }
+  });
+
+  it('accepts serialization migration contracts with metadata regressions and governance coverage', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'packages/serialization/README.md',
+        'packages/serialization/README.ko.md',
+        'packages/serialization/src/serialize.test.ts',
+        'packages/runtime/src/application.test.ts',
+        'docs/contracts/nestjs-parity-gaps.md',
+        'docs/contracts/nestjs-parity-gaps.ko.md',
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'book/beginner/ch07-serialization.md',
+        'book/beginner/ch07-serialization.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
   });
 
   it('treats the React render policy decision pairs as contract-governing updates', async () => {

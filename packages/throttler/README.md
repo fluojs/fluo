@@ -130,8 +130,15 @@ When migrating from `@nestjs/throttler`, treat `@fluojs/throttler` as an explici
 
 - `ThrottlerModule.forRoot(...)` registers validated options and providers, but it does not automatically enforce throttling on every route. Activate `ThrottlerGuard` with Fluo guard metadata such as `@UseGuards(ThrottlerGuard)` wherever enforcement is required.
 - The public policy shape is one module default plus class- or method-level `@Throttle({ ttl, limit })` overrides. Named multi-window definitions such as burst plus sustained limits require explicit composition through HTTP middleware, a custom `ThrottlerStore`, or an application-owned guard wrapper.
+- NestJS `ttl` values are milliseconds; fluo `ttl` values are seconds. Convert `ttl: 60_000` to `ttl: 60` rather than copying the value directly.
+- `@SkipThrottle()` has no named or `false` form. Class- and method-level skips combine additively, so move a reactivated method outside a skipped controller or use an application-owned guard wrapper.
+- Resolve async secrets, configuration, and store construction before synchronous `ThrottlerModule.forRoot(...)` registration; fluo does not provide NestJS `forRootAsync(...)` shapes.
+- `ThrottlerGuard` and `keyGenerator` are HTTP-only. Apply separate transport-owned guards or middleware to WebSocket, GraphQL, RPC, and queue policies.
+- Persisted NestJS windows do not continue by default because bucket keys and storage call contracts differ. Use an application-owned compatibility store or a bounded cutover when continuity is required.
 - Forwarded client IP headers are ignored by default. Enable `trustProxyHeaders: true` only behind a trusted proxy that overwrites `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`.
 - The guaranteed limit-exceeded response contract is HTTP `429` with `Retry-After`. Additional rate-limit headers or response bodies should be added at the application boundary, for example with an exception filter.
+
+For migration examples and the complete compatibility map, see the [NestJS → fluo Migration Map](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-nestjs.md).
 
 ## Public API Overview
 
