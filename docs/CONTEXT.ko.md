@@ -6,6 +6,10 @@
 
 fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터 없는 런타임 구성을 기반으로 하는 standard-first TypeScript 백엔드 프레임워크다. legacy 데코레이터 컴파일 모드를 거부하며, behavioral contract, 플랫폼 parity, 패키지 표면의 명확성을 핵심 설계 제약으로 둔다.
 
+## Migration Reference
+
+NestJS 마이그레이션은 [NestJS migration map](./getting-started/migrate-from-nestjs.ko.md)에서 시작한다. i18n handoff는 각 custom resolver를 `HttpLocaleResolver`로 mapping하고, `FluoFactory.create(...)`에 application-owned `Middleware` 하나를 등록하며, 선택된 locale은 현재 `RequestContext`에만 저장한다. global locale fallback은 없다.
+
 ## Hard Constraints
 
 - NEVER use `experimentalDecorators`.
