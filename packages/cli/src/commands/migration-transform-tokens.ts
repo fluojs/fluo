@@ -36,7 +36,8 @@ export function parseMigrationTransformList(
   const transforms: MigrationTransformKind[] = [];
   const invalid: string[] = [];
   for (const value of values) {
-    const transform = MIGRATION_TRANSFORMS.find((candidate) => candidate === value) ?? MIGRATION_TRANSFORM_ALIASES[value];
+    const transform = MIGRATION_TRANSFORMS.find((candidate) => candidate === value)
+      ?? (Object.hasOwn(MIGRATION_TRANSFORM_ALIASES, value) ? MIGRATION_TRANSFORM_ALIASES[value] : undefined);
     if (transform) {
       transforms.push(transform);
     } else {

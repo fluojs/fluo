@@ -20,8 +20,10 @@ describe('documented migration transform tokens', () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-command-'));
     temporaryDirectories.push(workspaceDirectory);
     mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    const servicePath = join(workspaceDirectory, 'src', 'users.service.ts');
+    const testPath = join(workspaceDirectory, 'src', 'users.spec.ts');
     writeFileSync(
-      join(workspaceDirectory, 'src', 'users.service.ts'),
+      servicePath,
       `import { Injectable } from '@nestjs/common';
 
 @Injectable()
@@ -29,10 +31,12 @@ export class UsersService {}
 `,
     );
     writeFileSync(
-      join(workspaceDirectory, 'src', 'users.spec.ts'),
+      testPath,
       `import { Test } from '@nestjs/testing';
 
-void Test;
+class UsersModule {}
+
+void Test.createTestingModule({ imports: [UsersModule] });
 `,
     );
 
@@ -48,8 +52,20 @@ void Test;
     // Then
     expect(exitCode).toBe(0);
     expect(stderrBuffer.join('')).toBe('');
-    expect(stdoutBuffer.join('')).toContain('"injectable"');
-    expect(stdoutBuffer.join('')).toContain('"testing"');
+    const report: unknown = JSON.parse(stdoutBuffer.join(''));
+    expect(report).toMatchObject({
+      transforms: ['injectable', 'testing'],
+      files: [
+        {
+          appliedTransforms: ['injectable'],
+          filePath: servicePath,
+        },
+        {
+          appliedTransforms: ['testing'],
+          filePath: testPath,
+        },
+      ],
+    });
   });
 
   it('applies documented --skip transform tokens', async () => {
@@ -106,6 +122,24 @@ void Test;
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('"injectable"');
     expect(stdoutBuffer.join('')).toContain('"testing"');
+  });
+
+  it.each(['constructor', '__proto__', 'toString'])('rejects inherited alias token "%s" at the CLI boundary', async (token) => {
+    // Given
+    const stderrBuffer: string[] = [];
+    const stdoutBuffer: string[] = [];
+
+    // When
+    const exitCode = await runMigrateCommand(['./src', '--json', '--only', token], {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    // Then
+    expect(exitCode).toBe(1);
+    expect(stdoutBuffer.join('')).toBe('');
+    expect(stderrBuffer.join('')).toContain(`Unknown transform(s): ${token}`);
   });
 
   it('accepts the injectable alias at the CLI boundary', async () => {
