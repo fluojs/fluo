@@ -86,8 +86,11 @@ const execFileAsync = promisify(execFile);
 const CHILD_PROCESS_TIMEOUT_MS = 240_000;
 const PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS = 5_000;
 const DESCENDANT_PROCESS_TIMEOUT_MS = 1_000;
+const DESCENDANT_TIMEOUT_TEST_SCHEDULING_MARGIN_MS = 5_000;
 const DESCENDANT_TIMEOUT_TEST_TIMEOUT_MS =
-  PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS * 5 + DESCENDANT_PROCESS_TIMEOUT_MS;
+  PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS * 5 +
+  DESCENDANT_PROCESS_TIMEOUT_MS +
+  DESCENDANT_TIMEOUT_TEST_SCHEDULING_MARGIN_MS;
 const emittedHarnessSubpaths = [
   '.',
   './app',
@@ -455,19 +458,34 @@ describe('@fluojs/testing surface', () => {
       rejectDescendantExit = rejectPromise;
     });
     const descendantExitServer = createServer((socket) => {
+      let readinessMessage = '';
+
       socket.once('error', rejectDescendantReady);
-      socket.once('data', (message) => {
-        if (message.toString() !== 'ready') {
-          rejectDescendantReady(new Error(`Unexpected descendant readiness message: ${message.toString()}`));
+      const onReadinessData = (message: Buffer): void => {
+        readinessMessage += message.toString();
+
+        if (!'ready\n'.startsWith(readinessMessage)) {
+          rejectDescendantReady(new Error(`Unexpected descendant readiness message: ${readinessMessage}`));
           socket.destroy();
           return;
         }
 
+        if (readinessMessage === 'rea') {
+          socket.write('continue');
+          return;
+        }
+
+        if (readinessMessage !== 'ready\n') {
+          return;
+        }
+
+        socket.off('data', onReadinessData);
         socket.off('error', rejectDescendantReady);
         socket.once('error', rejectDescendantExit);
         socket.once('close', resolveDescendantExit);
         resolveDescendantReady();
-      });
+      };
+      socket.on('data', onReadinessData);
     });
     descendantExitServer.once('error', rejectDescendantReady);
     let readinessObservedBeforeTimeout = false;
@@ -475,8 +493,13 @@ describe('@fluojs/testing surface', () => {
     let primaryError: unknown;
 
     try {
+      const listeningSignal = once(descendantExitServer, 'listening').then(() => undefined);
       descendantExitServer.listen(0, '127.0.0.1');
-      await once(descendantExitServer, 'listening');
+      await waitForSignal(
+        listeningSignal,
+        PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS,
+        'Descendant readiness server did not start listening on loopback TCP.',
+      );
       const address = descendantExitServer.address();
 
       if (address === null || typeof address === 'string') {
@@ -486,7 +509,16 @@ describe('@fluojs/testing surface', () => {
       const descendantScript = `
         const { connect } = await import('node:net');
         const socket = connect({ host: '127.0.0.1', port: ${address.port} });
-        socket.once('connect', () => socket.write('ready'));
+        socket.once('connect', () => socket.write('rea'));
+        socket.once('data', (message) => {
+          if (message.toString() !== 'continue') {
+            process.exitCode = 1;
+            socket.destroy();
+            return;
+          }
+
+          socket.write('dy\\n');
+        });
         socket.on('error', () => process.exitCode = 1);
         setInterval(() => {}, 1_000);
       `;
