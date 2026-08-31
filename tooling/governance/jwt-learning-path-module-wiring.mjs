@@ -3,6 +3,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
+import { probeJwtLearningPathRuntimeGraph } from './jwt-learning-path-module-runtime-probe.mjs';
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const chapterPaths = ['book/beginner/ch14-jwt.md', 'book/beginner/ch14-jwt.ko.md'];
@@ -90,176 +92,6 @@ function enforceExplicitModuleWiring(relativePath, files) {
   }
 }
 
-function probeRuntimeModuleGraph(relativePath, files) {
-  const injectionTokens = new Map();
-  const moduleMetadata = new Map();
-  const jwtRuntime = { asyncOptions: undefined };
-  const core = {
-    Inject: (...tokens) => (value) => {
-      injectionTokens.set(value, tokens);
-    },
-    Module: (metadata) => (value) => {
-      moduleMetadata.set(value, metadata);
-    },
-  };
-  class ConfigService {
-    snapshot() {
-      return {
-        JWT_REFRESH_SECRET: 'refresh-secret',
-        JWT_SECRET: 'access-secret',
-      };
-    }
-  }
-  class JwtService {}
-  class RefreshTokenService {}
-  const externalModules = {
-    '@fluojs/config': {
-      ConfigModule: {
-        forRoot: () => class ConfigRuntimeModule {},
-      },
-      ConfigService,
-    },
-    '@fluojs/core': core,
-    '@fluojs/http': {
-      Controller: () => () => undefined,
-      Post: () => () => undefined,
-      RequestDto: () => () => undefined,
-    },
-    '@fluojs/jwt': {
-      JwtModule: {
-        forRootAsync: (options) => {
-          jwtRuntime.asyncOptions = options;
-          return class JwtRuntimeModule {};
-        },
-      },
-      JwtService,
-      RefreshTokenService,
-    },
-  };
-  const loadedModules = new Map();
-
-  const loadModule = (filePath) => {
-    const existing = loadedModules.get(filePath);
-
-    if (existing !== undefined) {
-      return existing;
-    }
-
-    const sourceText = files.get(filePath);
-
-    if (sourceText === undefined) {
-      fail(relativePath, `runtime probe could not load ${filePath}`);
-    }
-
-    const transpiled = ts.transpileModule(sourceText, {
-      compilerOptions: {
-        module: ts.ModuleKind.CommonJS,
-        target: ts.ScriptTarget.ES2022,
-      },
-      fileName: filePath,
-      reportDiagnostics: true,
-    });
-    const diagnostics = (transpiled.diagnostics ?? [])
-      .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error)
-      .map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'));
-
-    if (diagnostics.length > 0) {
-      fail(relativePath, `runtime probe could not transpile ${filePath}:\n${diagnostics.join('\n')}`);
-    }
-
-    const module = { exports: {} };
-    loadedModules.set(filePath, module.exports);
-    const require = (specifier) => {
-      const externalModule = externalModules[specifier];
-
-      if (externalModule !== undefined) {
-        return externalModule;
-      }
-
-      if (!specifier.startsWith('./')) {
-        fail(relativePath, `runtime probe cannot resolve ${specifier} from ${filePath}`);
-      }
-
-      const importedPath = resolve(dirname(join(virtualRoot, filePath)), specifier)
-        .replace(/\.js$/u, '.ts')
-        .replace(`${virtualRoot}/`, '');
-
-      return loadModule(importedPath);
-    };
-    const execute = new Function('exports', 'module', 'require', transpiled.outputText);
-    execute(module.exports, module, require);
-    loadedModules.set(filePath, module.exports);
-
-    return module.exports;
-  };
-
-  const persistence = loadModule('src/auth/auth.persistence.ts');
-  const service = loadModule('src/auth/auth.service.ts');
-  const controller = loadModule('src/auth/auth.controller.ts');
-  const authModule = loadModule('src/auth/auth.module.ts');
-  const persistenceProviders = moduleMetadata.get(authModule.AuthPersistenceModule)?.providers;
-
-  if (!Array.isArray(persistenceProviders) || jwtRuntime.asyncOptions === undefined) {
-    fail(relativePath, 'runtime probe could not register the persistence and JWT module graph');
-  }
-
-  const providersByToken = new Map(
-    persistenceProviders.map((provider) => [provider.provide, provider]),
-  );
-  const refreshProvider = providersByToken.get(persistence.REFRESH_TOKEN_STORE);
-  const credentialsProvider = providersByToken.get(persistence.CREDENTIALS_VERIFIER);
-  const refreshRepository = {
-    find: () => undefined,
-    revoke: () => undefined,
-    revokeByFamily: () => undefined,
-    revokeBySubject: () => undefined,
-    rotate: () => undefined,
-    save: () => undefined,
-  };
-  const credentialsRepository = {
-    verify: () => ({ id: 'user-1', roles: [] }),
-  };
-
-  const instantiate = (provider, dependencies) => {
-    if (
-      provider === undefined
-      || provider.useClass === undefined
-      || !Array.isArray(provider.inject)
-    ) {
-      fail(relativePath, 'runtime probe requires explicit class-provider injection metadata');
-    }
-
-    return new provider.useClass(...provider.inject.map((token) => dependencies.get(token)));
-  };
-  const refreshStore = instantiate(refreshProvider, new Map([
-    [persistence.REFRESH_TOKEN_REPOSITORY, refreshRepository],
-  ]));
-  const credentialsVerifier = instantiate(credentialsProvider, new Map([
-    [persistence.CREDENTIALS_REPOSITORY, credentialsRepository],
-  ]));
-  const createInjectedInstance = (type, dependencies) => {
-    const tokens = injectionTokens.get(type);
-
-    if (tokens === undefined) {
-      fail(relativePath, `runtime probe requires explicit @Inject metadata for ${type.name}`);
-    }
-
-    return new type(...tokens.map((token) => dependencies.get(token)));
-  };
-  const authService = createInjectedInstance(service.AuthService, new Map([
-    [persistence.CREDENTIALS_VERIFIER, credentialsVerifier],
-    [JwtService, new JwtService()],
-    [RefreshTokenService, new RefreshTokenService()],
-  ]));
-  const authController = createInjectedInstance(controller.AuthController, new Map([
-    [service.AuthService, authService],
-  ]));
-
-  if (refreshStore.repository !== refreshRepository || credentialsVerifier.repository !== credentialsRepository || authController.authService !== authService) {
-    fail(relativePath, 'runtime probe could not instantiate the documented dependency graph');
-  }
-}
-
 function collectDiagnostics(files) {
   const compilerOptions = {
     baseUrl: repoRoot,
@@ -308,8 +140,14 @@ function collectDiagnostics(files) {
     const cacheKey = `${resolve(fileName)}:${String(languageVersion)}`;
     const cachedSourceFile = workspaceSourceFileCache.get(cacheKey);
 
-    if (cachedSourceFile !== undefined) {
-      return cachedSourceFile;
+    if (cachedSourceFile !== undefined && !shouldCreateNewSourceFile) {
+      return ts.createSourceFile(
+        fileName,
+        cachedSourceFile.text,
+        languageVersion,
+        true,
+        cachedSourceFile.scriptKind,
+      );
     }
 
     const sourceFile = defaultGetSourceFile(
@@ -320,7 +158,13 @@ function collectDiagnostics(files) {
     );
 
     if (sourceFile !== undefined) {
-      workspaceSourceFileCache.set(cacheKey, sourceFile);
+      workspaceSourceFileCache.set(cacheKey, ts.createSourceFile(
+        fileName,
+        sourceFile.text,
+        languageVersion,
+        true,
+        sourceFile.scriptKind,
+      ));
     }
 
     return sourceFile;
@@ -347,7 +191,7 @@ function collectDiagnostics(files) {
  * Typechecks the complete Chapter 14 JWT learning path as virtual source files
  * against the workspace's public package declarations.
  */
-export function enforceJwtLearningPathModuleWiring(
+export async function enforceJwtLearningPathModuleWiring(
   readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
 ) {
   for (const relativePath of chapterPaths) {
@@ -362,6 +206,6 @@ export function enforceJwtLearningPathModuleWiring(
       );
     }
 
-    probeRuntimeModuleGraph(relativePath, files);
+    await probeJwtLearningPathRuntimeGraph(relativePath, files);
   }
 }
