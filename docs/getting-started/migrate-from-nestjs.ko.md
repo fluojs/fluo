@@ -4,9 +4,9 @@
 
 이 문서는 마이그레이션 계약 맵으로 사용한다. 각 행은 NestJS 구성 요소에 대해 허용되는 가장 가까운 fluo 대상 구성을 지정하고, 아래 규칙은 일대일 치환이 되지 않는 지점을 명시한다.
 
-## Custom decorator preload ordering
+## Decorator metadata 사전 로드 순서
 
-fluo 내장 데코레이터는 runtime record를 framework-owned store에 저장하므로 import 시점의 전역 변경이 필요하지 않습니다. 반면 `context.metadata`를 읽도록 마이그레이션한 사용자 정의 표준 데코레이터는 decorated class module이 평가되는 동안 `Symbol.metadata`가 필요합니다.
+fluo 내장 데코레이터는 runtime record를 framework-owned store에 저장하므로 import 시점의 전역 변경이 필요하지 않습니다. 반면 `context.metadata`를 읽도록 마이그레이션한 사용자 정의 표준 데코레이터와 `@fluojs/serialization` 데코레이터는 decorated class module이 평가되는 동안 `Symbol.metadata`가 필요합니다.
 
 decorated application graph를 static import한 뒤 같은 bootstrap module에서 `ensureMetadataSymbol()`을 호출하면 안 됩니다. ESM은 bootstrap module body보다 static dependency를 먼저 평가하므로 그 호출은 너무 늦습니다. symbol을 설치한 다음 일반 bootstrap graph를 dynamic import하는 preload entrypoint를 사용하세요.
 
@@ -30,6 +30,7 @@ await import('./bootstrap.js');
 | `@Get()`, `@Post()` 등 라우트 데코레이터 | `@fluojs/http`의 `@Get()`, `@Post()` 등 | HTTP 라우트 선언은 계속 메서드 기반 데코레이터를 사용한다. |
 | `@Sse()` | `@fluojs/http`의 `@Sse()`와 수동 stream용 `SseResponse` 또는 managed stream용 `AsyncIterable` | fluo는 `@Sse()`를 `text/event-stream` metadata를 가진 `GET` 라우트로 매핑한다. `AsyncIterable` 값은 SSE frame으로 변환할 수 있지만, NestJS `Observable` 반환값은 여전히 `SseResponse` 또는 async iterable로 재작성해야 한다. |
 | 반환 DTO, `@Res()`, 또는 passthrough/manual response write와 함께 쓰는 `ClassSerializerInterceptor` | framework-managed 반환값에는 `@fluojs/serialization`의 `SerializerInterceptor`; 명시적인 handler ownership에는 `RequestContext.response` | Response가 commit되지 않은 동안에만 반환값을 직렬화한다. `send(...)`, `redirect(...)`, 또는 수동 stream이 response를 commit하면 `SerializerInterceptor`는 serialization 대신 `next.handle()`에서 받은 값을 그대로 반환한다. 다른 interceptor는 chain 결과를 계속 변환할 수 있으며, dispatcher는 두 번째 success-response write를 건너뛴다. |
+| `class-transformer`의 `@Expose()`, `@Exclude()`, `@Transform()` | `@fluojs/serialization`의 `@Expose()`, `@Exclude()`, `@Transform()` | interceptor뿐 아니라 decorator도 교체합니다. fluo transform callback은 동기식이며 field value만 받으므로 여러 field를 조합한 출력은 DTO field를 할당하기 전에 계산하세요. Base metadata는 상속되지만 child override는 base와 sibling DTO에서 분리됩니다. |
 | `NestFactory.create(AppModule)` | `@fluojs/runtime`의 `FluoFactory.create(AppModule, { adapter })` | HTTP listen에는 `createFastifyAdapter()` 같은 명시적 platform adapter가 필요하다. `FluoFactory.create(AppModule)`은 adapterless application shell도 만들 수 있지만 그 shell은 `listen()`을 호출할 수 없다. |
 | NestJS `beforeApplicationShutdown(signal?)` | 직접 대응 없음; `@fluojs/runtime`의 `onModuleDestroy()` 또는 `onApplicationShutdown(signal?)` 사용 | `beforeApplicationShutdown`은 지원하지 않는다. Application-wide signal phase보다 먼저 수행할 shutdown preparation은 `onModuleDestroy()`에 두고, signal이 필요한 cleanup은 `onApplicationShutdown(signal?)`에 둔다. fluo는 compatibility shim이나 추가 runtime hook을 제공하지 않는다. |
 | `@nestjs/config` `ConfigModule.forRoot(...)`, `forRootAsync(...)`, `load`, `validate`, `isGlobal` | `@fluojs/config`의 `ConfigModule.forRoot({ processEnv, schema, global? })` | fluo registration은 동기 방식이다. 명시적 `processEnv` snapshot을 전달하고 동기 Standard Schema validator를 사용하며 visibility에는 기본값이 `true`인 `global?: boolean`을 사용한다. Async factory는 module registration 전에 resolve하되 nested object를 deep merge와 dot-path access를 위해 보존하고, 하나의 validated snapshot을 `ConfigModule`과 HTTP adapter input에 함께 사용한다. `ConfigService.get(key)`와 `getOrThrow(key)`는 key 하나만 받으며, `get(key, defaultValue)`나 `get(key, { infer: true })` 같은 NestJS default-value 및 options overload에 대응하는 fluo API는 없다. 기본값은 `defaults` 또는 `schema` output이 소유하거나, `get(key)` 결과에 call-site `??` fallback을 명시적으로 적용한다. |

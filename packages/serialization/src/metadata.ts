@@ -39,7 +39,7 @@ function getFieldMetadataMap(metadata: unknown): Map<MetadataPropertyKey, Serial
   const bag = getStandardMetadataBag(metadata);
   const current = bag[standardSerializationFieldMetadataKey] as Map<MetadataPropertyKey, SerializationFieldMetadata> | undefined;
 
-  if (current) {
+  if (current && Object.hasOwn(bag, standardSerializationFieldMetadataKey)) {
     return current;
   }
 
@@ -52,7 +52,7 @@ function getClassMetadataObject(metadata: unknown): ClassSerializationOptions {
   const bag = getStandardMetadataBag(metadata);
   const current = bag[standardSerializationClassMetadataKey] as ClassSerializationOptions | undefined;
 
-  if (current) {
+  if (current && Object.hasOwn(bag, standardSerializationClassMetadataKey)) {
     return current;
   }
 
@@ -118,7 +118,9 @@ export function getClassSerializationOptions(constructor: Function): ClassSerial
   const options: ClassSerializationOptions = {};
 
   for (const bag of getConstructorMetadataBags(constructor)) {
-    Object.assign(options, bag[standardSerializationClassMetadataKey] as ClassSerializationOptions | undefined);
+    if (Object.hasOwn(bag, standardSerializationClassMetadataKey)) {
+      Object.assign(options, bag[standardSerializationClassMetadataKey] as ClassSerializationOptions);
+    }
   }
 
   return options;
@@ -134,6 +136,10 @@ export function getFieldSerializationMetadata(constructor: Function): Map<Metada
   const merged = new Map<MetadataPropertyKey, SerializationFieldMetadata>();
 
   for (const bag of getConstructorMetadataBags(constructor)) {
+    if (!Object.hasOwn(bag, standardSerializationFieldMetadataKey)) {
+      continue;
+    }
+
     const fieldMetadata = bag[standardSerializationFieldMetadataKey] as
       | Map<MetadataPropertyKey, SerializationFieldMetadata>
       | undefined;
