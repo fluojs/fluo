@@ -498,6 +498,27 @@ function getFluoInjectLocalNames(sourceFile: ts.SourceFile): ReadonlySet<string>
   return localNames;
 }
 
+function getFluoInjectNamespaceLocalNames(sourceFile: ts.SourceFile): ReadonlySet<string> {
+  const localNames = new Set<string>();
+
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement)
+      || !ts.isStringLiteral(statement.moduleSpecifier)
+      || statement.moduleSpecifier.text !== '@fluojs/core'
+      || statement.importClause?.isTypeOnly
+      || !statement.importClause?.namedBindings
+      || !ts.isNamespaceImport(statement.importClause.namedBindings)
+    ) {
+      continue;
+    }
+
+    localNames.add(statement.importClause.namedBindings.name.text);
+  }
+
+  return localNames;
+}
+
 function getNestInjectDecoratorLocalName(decorator: ts.Decorator, localNames: ReadonlySet<string>): string | undefined {
   if (!ts.isCallExpression(decorator.expression) || !ts.isIdentifier(decorator.expression.expression)) {
     return undefined;
@@ -518,17 +539,27 @@ function hasNestInjectDecorator(modifiers: readonly ts.ModifierLike[] | undefine
 function getFluoInjectClassDecorator(
   modifiers: readonly ts.ModifierLike[] | undefined,
   localNames: ReadonlySet<string>,
+  namespaceLocalNames: ReadonlySet<string>,
 ): { decorator: ts.Decorator; expression: ts.CallExpression } | undefined {
   if (!modifiers) {
     return undefined;
   }
 
   for (const modifier of modifiers) {
-    if (!ts.isDecorator(modifier) || !ts.isCallExpression(modifier.expression) || !ts.isIdentifier(modifier.expression.expression)) {
+    if (!ts.isDecorator(modifier) || !ts.isCallExpression(modifier.expression)) {
       continue;
     }
 
-    if (localNames.has(modifier.expression.expression.text)) {
+    const decoratorTarget = modifier.expression.expression;
+    if (
+      (ts.isIdentifier(decoratorTarget) && localNames.has(decoratorTarget.text))
+      || (
+        ts.isPropertyAccessExpression(decoratorTarget)
+        && ts.isIdentifier(decoratorTarget.expression)
+        && namespaceLocalNames.has(decoratorTarget.expression.text)
+        && decoratorTarget.name.text === 'Inject'
+      )
+    ) {
       return { decorator: modifier, expression: modifier.expression };
     }
   }
@@ -688,6 +719,7 @@ function rewriteConstructorInjectTokens(source: string, filePath: string): { cha
   const warnings: MigrationWarning[] = [];
   const nestInjectLocalNames = getNestInjectLocalNames(sourceFile);
   const fluoInjectLocalNames = getFluoInjectLocalNames(sourceFile);
+  const fluoInjectNamespaceLocalNames = getFluoInjectNamespaceLocalNames(sourceFile);
   const runtimeValueNames = getRuntimeValueNames(sourceFile);
   const collidingTypeValueNames = getCollidingTypeValueNames(sourceFile, runtimeValueNames);
   const safeClasses = new Map<ts.ClassDeclaration, { decoratorLocalName: string; tokens: readonly ts.Expression[] }>();
@@ -747,7 +779,11 @@ function rewriteConstructorInjectTokens(source: string, filePath: string): { cha
             });
             return ts.factory.updateConstructorDeclaration(member, member.modifiers, parameters, member.body);
           });
-          const existingInjectDecorator = getFluoInjectClassDecorator(node.modifiers, fluoInjectLocalNames);
+          const existingInjectDecorator = getFluoInjectClassDecorator(
+            node.modifiers,
+            fluoInjectLocalNames,
+            fluoInjectNamespaceLocalNames,
+          );
           const modifiers = existingInjectDecorator
             ? node.modifiers?.map((modifier) =>
                 modifier === existingInjectDecorator.decorator
@@ -1567,6 +1603,7 @@ function runTypeScriptTransforms(
     warnings.push(...rewritten.warnings);
 
     if (rewritten.changed) {
+      appliedTransforms.push('injectable');
       const rewrittenImports = rewriteImports(nextSource, filePath, new Set(['Inject']));
       nextSource = rewrittenImports.source;
       warnings.push(...rewrittenImports.warnings);
