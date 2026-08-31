@@ -250,15 +250,12 @@ import {
       global: true,
       secret: 'your-access-token-secret',
     }),
-    RefreshTokenModule.forRoot(MyRefreshTokenService, {
-      imports: [RefreshTokenDependenciesModule],
-    }),
+    RefreshTokenModule.forRoot(MyRefreshTokenService),
     PassportModule.forRoot(
       { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
       [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
     ),
   ],
-  providers: [MyRefreshTokenService],
 })
 export class AuthModule {}
 

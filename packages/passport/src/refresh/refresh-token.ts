@@ -215,7 +215,8 @@ export class RefreshTokenModule {
    *
    * @param service DI token for the concrete refresh-token service implementation.
    *   Class tokens are registered inside this module.
-   *   String and symbol tokens must be exported by a module passed through `options.imports`.
+   *   String and symbol tokens must be visible to this module through an imported
+   *   module export, a global module export, or bootstrap runtime providers.
    * @param options Optional module imports that export class-service constructor dependencies.
    * @returns A module definition that exports `RefreshTokenStrategy` and `REFRESH_TOKEN_SERVICE`.
    * @remarks
@@ -224,8 +225,9 @@ export class RefreshTokenModule {
    * through `options.imports`. This preserves strict
    * `duplicateProviderPolicy: 'throw'` behavior because the service class remains
    * registered exactly once by `RefreshTokenModule`. Do not re-register the service
-   * class in the importing application module. String and symbol service tokens are
-   * owned by and exported from a module in `options.imports`.
+   * class in the importing application module. String and symbol service tokens
+   * can be exported by a module in `options.imports`; globally exported and
+   * bootstrap runtime provider tokens are also visible.
    *
    * @example
    * ```ts

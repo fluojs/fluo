@@ -224,9 +224,7 @@ export class AuthController {
       global: true,
       secret: 'your-access-token-secret',
     }),
-    RefreshTokenModule.forRoot(MyRefreshTokenService, {
-      imports: [RefreshTokenDependenciesModule],
-    }),
+    RefreshTokenModule.forRoot(MyRefreshTokenService),
     PassportModule.forRoot(
       { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
       [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
@@ -236,7 +234,7 @@ export class AuthController {
 export class AuthModule {}
 ```
 
-Import `JwtModule.forRoot(...)`, `RefreshTokenModule.forRoot(...)`, and `PassportModule.forRoot(...)` together. `RefreshTokenStrategy` belongs to `RefreshTokenModule`, which is a sibling of `JwtModule` in this graph, so this example sets the documented `global: true` option to make `DefaultJwtVerifier` visible when the refresh module resolves the strategy. `RefreshTokenModule.forRoot(MyRefreshTokenService)` registers the service class inside the refresh module and exports it through the shared `REFRESH_TOKEN_SERVICE` alias. When that class has constructor dependencies, place those dependencies in an application-owned module that exports them, then pass that module through `imports` as shown with `RefreshTokenDependenciesModule`. String and symbol service tokens must likewise be exported by a module passed through `imports`. Do not also list `MyRefreshTokenService` in the application module's `providers`; that duplicates a provider registration, which bootstrap warns about by default and can reject under `duplicateProviderPolicy: 'throw'`. Inject the exported `REFRESH_TOKEN_SERVICE` alias where application code needs the service, and register `AuthController` in the application module so the refresh route exists. `PassportModule` registers the named strategy resolved by `@UseAuth('refresh-token')`.
+Import `JwtModule.forRoot(...)`, `RefreshTokenModule.forRoot(...)`, and `PassportModule.forRoot(...)` together. `RefreshTokenStrategy` belongs to `RefreshTokenModule`, which is a sibling of `JwtModule` in this graph, so this example sets the documented `global: true` option to make `DefaultJwtVerifier` visible when the refresh module resolves the strategy. `RefreshTokenModule.forRoot(MyRefreshTokenService)` registers the service class inside the refresh module and exports it through the shared `REFRESH_TOKEN_SERVICE` alias. When that class has constructor dependencies, place those dependencies in an application-owned module that exports them, then pass that module through `imports`. String and symbol service tokens must be visible to `RefreshTokenModule`: export them through an imported module, a global module, or bootstrap runtime providers. Do not also list `MyRefreshTokenService` in the application module's `providers`; that duplicates a provider registration, which bootstrap warns about by default and can reject under `duplicateProviderPolicy: 'throw'`. Inject the exported `REFRESH_TOKEN_SERVICE` alias where application code needs the service, and register `AuthController` in the application module so the refresh route exists. `PassportModule` registers the named strategy resolved by `@UseAuth('refresh-token')`.
 
 A successful exchange resolves `ctx.principal` to the `RefreshTokenPrincipal` shape: the rotated pair is nested under `claims.accessToken` and `claims.refreshToken`, with the verified `subject` at the top level. The separate exported `RefreshTokenAuthResult` type describes the application-facing exchange payload a refresh endpoint returns to clients.
 

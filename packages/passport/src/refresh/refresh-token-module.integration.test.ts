@@ -171,4 +171,44 @@ describe('RefreshTokenModule application wiring', () => {
     }
   });
 
+  it('resolves an imported string service through the exported alias under strict policy', async () => {
+    // Given — the imported module owns and exports the non-class service token.
+    const serviceToken = 'fluo.passport.refresh-token-service';
+    const service = new ApplicationRefreshTokenService();
+
+    @Module({
+      exports: [serviceToken],
+      providers: [{ provide: serviceToken, useValue: service }],
+    })
+    class RefreshTokenServicesModule {}
+
+    @Module({
+      imports: [
+        JwtModule.forRoot({
+          algorithms: ['HS256'],
+          global: true,
+          secret: 'refresh-integration-secret',
+        }),
+        RefreshTokenModule.forRoot(serviceToken, {
+          imports: [RefreshTokenServicesModule],
+        }),
+      ],
+    })
+    class AuthModule {}
+
+    const app = await FluoFactory.createApplicationContext(AuthModule, {
+      duplicateProviderPolicy: 'throw',
+    });
+
+    try {
+      // When
+      const resolvedService = await app.container.resolve(REFRESH_TOKEN_SERVICE);
+
+      // Then
+      expect(resolvedService).toBe(service);
+    } finally {
+      await app.close();
+    }
+  });
+
 });
