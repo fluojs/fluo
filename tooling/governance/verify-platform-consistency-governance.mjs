@@ -2865,7 +2865,7 @@ export function enforceFastifyNativeConfigurationDocsSync() {
   }
 }
 
-export function enforceStudioRuntimeBridgeDiscoverability() {
+export function enforceStudioRuntimeBridgeDiscoverability(readText = read) {
   const requirements = [
     '@fluojs/runtime/devtools',
     'StudioDevtoolsRuntime',
@@ -2877,7 +2877,7 @@ export function enforceStudioRuntimeBridgeDiscoverability() {
   ];
 
   for (const documentationPath of ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md']) {
-    const documentation = read(documentationPath);
+    const documentation = readText(documentationPath);
     assert(
       requirements.every((requirement) => documentation.includes(requirement)),
       `${documentationPath} must document the host-owned @fluojs/runtime/devtools bridge, its bootstrap seam, and its observational precedence over CLI injection.`,
