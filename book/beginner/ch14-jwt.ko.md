@@ -9,7 +9,7 @@
 - JSON Web Token(JWT)의 구조와 목적을 이해합니다.
 - 토큰 서명 및 검증을 위해 `JwtModule`을 설정합니다.
 - 이중 토큰 패턴(액세스 및 리프레시 토큰)을 구현합니다.
-- 로그인 및 토큰 갱신을 위한 FluoBlog 인증 엔드포인트를 구축합니다.
+- durable refresh-token store로 뒷받침되는 FluoBlog 로그인 및 토큰 갱신 엔드포인트를 구축합니다.
 - `fluo`에서의 JWT principal 정규화에 대해 배웁니다.
 - 토큰 기반 인증의 보안 함의와 상태 비저장 인증의 장점을 이해합니다.
 - 토큰 폐기와 로테이션을 포함한 기본 토큰 관리 전략을 살펴봅니다.
@@ -184,10 +184,151 @@ Fluo는 **리프레시 토큰 로테이션(Refresh Token Rotation)**을 구현�
 
 `RefreshTokenService.issueRefreshToken(...)` 또는 `RefreshTokenService.rotateRefreshToken(...)`를 사용하기 전에 `JwtModule`에 `refreshToken` 옵션을 설정하고 durable `RefreshTokenStore`를 제공해야 합니다. 이 전제 조건이 없으면 서비스는 JWT provider surface의 일부로 사용할 수 있더라도, 이 챕터가 전제하는 storage-backed refresh-token 흐름은 아직 완성되지 않은 상태입니다.
 
+### Durable Store, Registration, and Service Injection
+Refresh store는 데이터베이스 transaction과 retention policy를 소유하므로 애플리케이션이 책임집니다. PostgreSQL이나 Redis 같은 durable storage에 모든 필수 method를 구현하세요. 특히 `rotate(...)`는 제시된 record를 used로 표시하고 `replacement`를 저장해야 하며, 이 두 작업은 원자적이어야 합니다. read-then-write 구현은 replay race를 다시 만들게 됩니다.
+
+```typescript
+import type {
+  RefreshTokenConsumeResult,
+  RefreshTokenRecord,
+  RefreshTokenRotateInput,
+  RefreshTokenStore,
+} from '@fluojs/jwt';
+
+export interface RefreshTokenRepository {
+  save(record: RefreshTokenRecord): Promise<void>;
+  find(id: string): Promise<RefreshTokenRecord | undefined>;
+  revoke(id: string): Promise<void>;
+  revokeBySubject(subject: string): Promise<void>;
+  revokeByFamily(family: string): Promise<void>;
+  rotate(input: RefreshTokenRotateInput): Promise<RefreshTokenConsumeResult>;
+}
+
+export class DatabaseRefreshTokenStore implements RefreshTokenStore {
+  constructor(private readonly repository: RefreshTokenRepository) {}
+
+  save(record: RefreshTokenRecord): Promise<void> {
+    return this.repository.save(record);
+  }
+
+  find(id: string): Promise<RefreshTokenRecord | undefined> {
+    return this.repository.find(id);
+  }
+
+  revoke(id: string): Promise<void> {
+    return this.repository.revoke(id);
+  }
+
+  revokeBySubject(subject: string): Promise<void> {
+    return this.repository.revokeBySubject(subject);
+  }
+
+  revokeByFamily(family: string): Promise<void> {
+    return this.repository.revokeByFamily(family);
+  }
+
+  rotate(input: RefreshTokenRotateInput): Promise<RefreshTokenConsumeResult> {
+    return this.repository.rotate(input);
+  }
+}
+```
+
+JWT options factory가 실행되기 전에 globally visible한 persistence module에 해당 store를 등록하세요. Factory는 최종 store instance를 받고, 이후 `RefreshTokenService`를 constructor injection으로 사용할 수 있습니다. 이 예시는 database query를 application-owned `RefreshTokenRepository`에 남깁니다. 이 repository의 `rotate(...)` 구현이 유일한 transaction boundary입니다.
+
+```typescript
+import { Inject, Module } from '@fluojs/core';
+import { ConfigService } from '@fluojs/config';
+import {
+  JwtModule,
+  type RefreshTokenStore,
+  RefreshTokenService,
+  type JwtVerifierOptions,
+  JwtService,
+} from '@fluojs/jwt';
+
+export const REFRESH_TOKEN_STORE = Symbol('REFRESH_TOKEN_STORE');
+export const CREDENTIALS_VERIFIER = Symbol('CREDENTIALS_VERIFIER');
+
+export interface CredentialsVerifier {
+  verify(email: string, password: string): Promise<{ id: string; roles: string[] }>;
+}
+
+function isRefreshTokenStore(value: unknown): value is RefreshTokenStore {
+  return typeof value === 'object'
+    && value !== null
+    && 'find' in value
+    && 'revoke' in value
+    && 'revokeBySubject' in value
+    && 'rotate' in value
+    && 'save' in value;
+}
+
+@Module({
+  imports: [
+    JwtModule.forRootAsync({
+      inject: [ConfigService, REFRESH_TOKEN_STORE],
+      useFactory: async (...dependencies: unknown[]): Promise<JwtVerifierOptions> => {
+        const [config, store] = dependencies;
+        if (!(config instanceof ConfigService) || !isRefreshTokenStore(store)) {
+          throw new TypeError('ConfigService and RefreshTokenStore are required');
+        }
+
+        const secret = config.snapshot()['JWT_SECRET'];
+        const refreshSecret = config.snapshot()['JWT_REFRESH_SECRET'];
+        if (typeof secret !== 'string' || typeof refreshSecret !== 'string') {
+          throw new TypeError('JWT secrets must be configured');
+        }
+
+        return {
+          algorithms: ['HS256'],
+          audience: 'fluoblog-client',
+          issuer: 'fluoblog-api',
+          secret,
+          accessTokenTtlSeconds: 900,
+          refreshToken: {
+            secret: refreshSecret,
+            expiresInSeconds: 60 * 60 * 24 * 7,
+            rotation: true,
+            store,
+          },
+        };
+      },
+    }),
+  ],
+})
+export class AuthModule {}
+
+@Inject(CREDENTIALS_VERIFIER, JwtService, RefreshTokenService)
+export class AuthService {
+  constructor(
+    private readonly credentials: CredentialsVerifier,
+    private readonly jwtService: JwtService,
+    private readonly refreshTokens: RefreshTokenService,
+  ) {}
+
+  async signIn(email: string, password: string) {
+    const user = await this.credentials.verify(email, password);
+    const accessToken = await this.jwtService.sign(
+      { roles: user.roles },
+      { expiresIn: '15m', subject: user.id },
+    );
+    const refreshToken = await this.refreshTokens.issueRefreshToken(user.id);
+
+    return { accessToken, refreshToken };
+  }
+
+  async refresh(refreshToken: string) {
+    return this.refreshTokens.rotateRefreshToken(refreshToken);
+  }
+}
+```
+
+`JwtService.sign(...)`과 `JwtService.verify(...)`는 항상 Promise를 반환합니다. NestJS 코드를 마이그레이션할 때는 이 이름과 `await`를 사용하세요. fluo는 `signAsync()`나 `verifyAsync()` alias를 제공하지 않습니다. `JwtService.decode(...)`는 동기이지만 검증되지 않은 입력만 parse하므로 진단 용도로만 사용하고, claim을 신뢰하기 전에는 `await jwtService.verify(...)`를 호출하세요.
+
 ### Securing Refresh Tokens
 리프레시 토큰은 수명이 길기 때문에 각별히 주의해서 저장해야 합니다. 웹에서는 `httpOnly`, `secure`, `sameSite: 'strict'` 쿠키에 저장하는 것이 표준입니다. 이는 크로스 사이트 스크립팅(XSS) 공격을 통해 JavaScript로 토큰에 접근하는 것을 방지합니다. Fluo의 인증 패턴은 쿠키 기반과 헤더 기반 토큰 전달 방식 모두와 원활하게 작동하도록 설계되어, 브라우저, 네이티브 모바일 앱, 또는 다른 서버 등 특정 클라이언트 유형에 가장 적합한 보안 모델을 선택할 수 있는 유연성을 제공합니다. 또한 모바일 앱의 경우 보안 인클레이브(secure enclaves)나 키체인 저장소를 활용하여 이러한 영구적인 자격 증명을 무단 추출로부터 보호하는 것이 권장됩니다.
 ## 14.6 Implementing FluoBlog Auth Endpoints
-이제 설정과 토큰 수명 주기를 실제 엔드포인트 흐름으로 연결해 보겠습니다. FluoBlog를 위한 실제 `AuthController`를 만들어 보겠습니다.
+이제 설정과 토큰 수명 주기를 실제 엔드포인트 흐름으로 연결해 보겠습니다. 앞의 `AuthService.signIn(...)`은 두 토큰 발급 단계를 모두 await하며, controller는 구성된 refresh service를 우회하지 않고 그 결과를 노출해야 합니다.
 
 ```typescript
 // src/auth/auth.controller.ts
@@ -195,6 +336,7 @@ import { Inject } from '@fluojs/core';
 import { Controller, Post, RequestDto } from '@fluojs/http';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 
 @Inject(AuthService)
 @Controller('auth')
@@ -204,16 +346,19 @@ export class AuthController {
   @Post('login')
   @RequestDto(LoginDto)
   async login(dto: LoginDto) {
-    // 1. AuthService를 통해 자격 증명 확인
-    // 2. 액세스 토큰을 발급하고 RefreshTokenService.issueRefreshToken을 호출해
-    //    리프레시 토큰을 설정된 durable store에 저장
     return this.authService.signIn(dto.email, dto.password);
+  }
+
+  @Post('refresh')
+  @RequestDto(RefreshTokenDto)
+  async refresh(dto: RefreshTokenDto) {
+    return this.authService.refresh(dto.refreshToken);
   }
 }
 ```
 
 ### The Authentication Lifecycle
-Fluo에서의 인증 생명주기는 `login` 엔드포인트에 대한 요청으로 시작됩니다. 자격 증명을 확인한 후(주로 데이터베이스에서 해시된 비밀번호 확인), 서비스는 짧게 사는 액세스 토큰은 직접 서명할 수 있지만 리프레시 토큰은 `JwtModule`에 `refreshToken` 옵션과 durable `RefreshTokenStore`가 설정된 뒤에만 `RefreshTokenService.issueRefreshToken(...)`으로 발급해야 합니다. 이 서비스는 리프레시 토큰을 서명하고 설정된 store에 레코드를 저장하므로, 이후 `refresh` 엔드포인트가 같은 storage path에서 `RefreshTokenService.rotateRefreshToken(...)`을 호출할 때 로테이션, 재사용 감지, durable replacement persistence가 함께 유지됩니다. 이 토큰들은 응답 바디나 보안 쿠키를 통해 클라이언트에게 반환됩니다.
+Fluo의 인증 생명주기는 `login` 엔드포인트에 대한 요청으로 시작됩니다. 자격 증명을 확인한 후(주로 데이터베이스에서 해시된 비밀번호 확인), `AuthService.signIn(...)`은 짧게 사는 액세스 토큰을 위해 `JwtService.sign(...)`을 await하고 durable refresh-token record를 위해 `RefreshTokenService.issueRefreshToken(...)`을 await합니다. 이어서 `refresh` 엔드포인트는 같은 구성된 storage path에서 `RefreshTokenService.rotateRefreshToken(...)`을 호출합니다. `rotation: true`일 때 store의 atomic `rotate(...)` 작업은 이전 record를 consume하고 replacement를 함께 저장하므로 replay detection과 durable replacement persistence가 보존됩니다. 이 토큰들은 응답 바디나 보안 쿠키를 통해 클라이언트에게 반환됩니다.
 
 그 시점부터 클라이언트는 모든 요청의 `Authorization` 헤더에 액세스 토큰을 포함합니다. 액세스 토큰이 만료되면 클라이언트는 새로운 토큰 쌍을 얻기 위해 리프레시 토큰과 함께 `refresh` 엔드포인트를 호출합니다. 이 사이클은 상태 비저장성의 성능 이점을 유지하면서 지속적이고 안전한 사용자 세션을 보장합니다. 이는 애플리케이션의 정문을 안전하면서도 환영받는 상태로 유지하는 엔진입니다. 또한 이러한 생명주기를 통해 약간 만료된 액세스 토큰이 특정 저위험 작업에는 여전히 허용되면서도 다른 작업에는 강제 갱신을 트리거하는 "유예 기간"을 둘 수도 있습니다.
 
