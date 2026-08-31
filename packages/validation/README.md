@@ -147,6 +147,11 @@ the documented subclassing pattern shown above. `PickType`, `OmitType`, and
 `PartialType` do not carry base class-level validators onto derived DTOs because
 those validators can depend on fields that were omitted or made optional.
 
+When `IntersectionType(...)` sources declare different `@ValidateNested(...)`
+targets for the same property, every nested rule is preserved and validated.
+Plain values for that shared property remain plain during the initial hydration
+so each nested target can materialize and validate the value independently.
+
 ### Standard Schema support
 
 Standard Schema adapters are expected to report invalid input through explicit issues. Validation results without issues are treated as successful.
