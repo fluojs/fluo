@@ -197,6 +197,8 @@ export class PostsController {
 
 처음에는 비슷한 DTO를 손으로 반복해서 작성하기 쉽고, 실제로 초반에는 그 방법도 동작합니다. 하지만 빠르게 반복적이고 실수하기 쉬운 코드가 됩니다. `PartialType`, `PickType`, `OmitType` 같은 helper는 중복을 줄이면서도 field-level validation metadata를 보존하므로, 하나의 기준 DTO에서 파생된 계약을 안전하게 만들 수 있습니다. Class-level validator는 의도적으로 제외되었거나 optional이 된 필드에 의존할 수 있으므로 subset 또는 partial DTO로 복사되지 않습니다.
 
+이 DTO를 NestJS에서 마이그레이션할 때는 [NestJS migration map](../../docs/getting-started/migrate-from-nestjs.ko.md#nested-dto-and-mapped-type-rewrites)에서 명시적인 import 재작성과 subset, partial, intersection helper의 서로 다른 class-level rule 의미를 확인하세요.
+
 ### Creating Specific DTO Variations
 
 예를 들어 제목만 포함하는 DTO가 필요하다면 다음과 같이 할 수 있습니다.
