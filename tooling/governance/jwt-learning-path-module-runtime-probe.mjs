@@ -20,20 +20,31 @@ function sameSequence(actual, expected) {
     && actual.every((value, index) => value === expected[index]);
 }
 
-function loadLearningModules(relativePath, files) {
+function loadLearningModules(relativePath, files, runtime) {
   const injectionTokens = new Map();
   const moduleMetadata = new Map();
   const configRuntime = { module: undefined };
   const jwtRuntime = { asyncOptions: undefined, module: undefined };
+  const runtimeCore = runtime?.core;
   const core = {
-    Inject: (...tokens) => (value) => {
-      injectionTokens.set(value, tokens);
+    Inject: (...tokens) => {
+      const applyRuntimeMetadata = runtimeCore?.Inject(...tokens);
+
+      return (value, context) => {
+        injectionTokens.set(value, tokens);
+        return applyRuntimeMetadata?.(value, context);
+      };
     },
-    Module: (metadata) => (value) => {
-      moduleMetadata.set(value, metadata);
+    Module: (metadata) => {
+      const applyRuntimeMetadata = runtimeCore?.Module(metadata);
+
+      return (value, context) => {
+        moduleMetadata.set(value, metadata);
+        return applyRuntimeMetadata?.(value, context);
+      };
     },
   };
-  class ConfigService {
+  class StubConfigService {
     snapshot() {
       return {
         JWT_REFRESH_SECRET: 'refresh-secret',
@@ -41,55 +52,29 @@ function loadLearningModules(relativePath, files) {
       };
     }
   }
-  class JwtService {
-    async sign(claims, options) {
-      return `access:${claims.roles.join(',')}:${options.subject}`;
-    }
-  }
-  class RefreshTokenService {
-    constructor(store) {
-      this.store = store;
-      this.nextId = 0;
-    }
-
-    async issueRefreshToken(subject) {
-      this.nextId += 1;
-      const id = `refresh-${this.nextId}`;
-      await this.store.save({ family: 'family-1', id, subject, used: false });
-      return id;
-    }
-
-    async rotateRefreshToken(tokenId) {
-      const current = await this.store.find(tokenId);
-
-      if (!current) {
-        throw new Error('Refresh token record was not found.');
-      }
-
-      this.nextId += 1;
-      const replacement = { family: current.family, id: `refresh-${this.nextId}`, subject: current.subject, used: false };
-      const result = await this.store.rotate({ replacement, tokenId });
-
-      if (result !== 'consumed') {
-        throw new Error(`Refresh token rotation failed: ${result}.`);
-      }
-
-      return { accessToken: `rotated:${current.subject}`, refreshToken: replacement.id };
-    }
-  }
+  class StubJwtService {}
+  class StubRefreshTokenService {}
+  const ConfigService = runtime?.config?.ConfigService ?? StubConfigService;
+  const JwtService = runtime?.jwt?.JwtService ?? StubJwtService;
+  const RefreshTokenService = runtime?.jwt?.RefreshTokenService ?? StubRefreshTokenService;
   const externalModules = {
     '@fluojs/config': {
       ConfigModule: {
-        forRoot: () => {
-          class ConfigRuntimeModule {}
-          configRuntime.module = ConfigRuntimeModule;
-          return ConfigRuntimeModule;
+        forRoot: (...args) => {
+          if (runtime?.config?.ConfigModule !== undefined) {
+            configRuntime.module = runtime.config.ConfigModule.forRoot(...args);
+            return configRuntime.module;
+          }
+
+          class StubConfigRuntimeModule {}
+          configRuntime.module = StubConfigRuntimeModule;
+          return StubConfigRuntimeModule;
         },
       },
       ConfigService,
     },
     '@fluojs/core': core,
-    '@fluojs/http': {
+    '@fluojs/http': runtime?.http ?? {
       Controller: () => () => undefined,
       Post: () => () => undefined,
       RequestDto: () => () => undefined,
@@ -97,10 +82,16 @@ function loadLearningModules(relativePath, files) {
     '@fluojs/jwt': {
       JwtModule: {
         forRootAsync: (options) => {
-          class JwtRuntimeModule {}
+          if (runtime?.jwt?.JwtModule !== undefined) {
+            jwtRuntime.asyncOptions = options;
+            jwtRuntime.module = runtime.jwt.JwtModule.forRootAsync(options);
+            return jwtRuntime.module;
+          }
+
+          class StubJwtRuntimeModule {}
           jwtRuntime.asyncOptions = options;
-          jwtRuntime.module = JwtRuntimeModule;
-          return JwtRuntimeModule;
+          jwtRuntime.module = StubJwtRuntimeModule;
+          return StubJwtRuntimeModule;
         },
       },
       JwtService,
@@ -173,10 +164,6 @@ function loadLearningModules(relativePath, files) {
   };
 }
 
-function providerFor(providers, token) {
-  return providers.find((provider) => provider?.provide === token);
-}
-
 function instantiate(provider, dependencies, relativePath) {
   assert(
     provider?.useClass !== undefined && Array.isArray(provider.inject),
@@ -206,10 +193,19 @@ function createRepositoryFakes() {
         if (record.subject === subject) records.set(id, { ...record, used: true });
       }
     },
-    async rotate({ replacement, tokenId }) {
+    async rotate({ family, now, replacement, subject, tokenId }) {
       const current = records.get(tokenId);
       if (!current) return 'not_found';
       if (current.used) return 'already_used';
+      if (current.subject !== subject || current.family !== family) return 'mismatch';
+      if (!(now instanceof Date) || current.expiresAt <= now) return 'expired';
+      if (
+        replacement.subject !== subject
+        || replacement.family !== family
+        || replacement.id === tokenId
+      ) {
+        return 'invalid';
+      }
       records.set(tokenId, { ...current, used: true });
       records.set(replacement.id, replacement);
       return 'consumed';
@@ -234,8 +230,8 @@ function createRepositoryFakes() {
  * Executes the extracted learning-path classes through an equivalent Fluo
  * module graph and repository contracts.
  */
-export async function probeJwtLearningPathRuntimeGraph(relativePath, files) {
-  const loaded = loadLearningModules(relativePath, files);
+export async function probeJwtLearningPathRuntimeGraph(relativePath, files, runtime) {
+  const loaded = loadLearningModules(relativePath, files, runtime);
   const { authModule, controller, injectionTokens, jwtRuntime, moduleMetadata, persistence, service, types } = loaded;
   const persistenceDefinition = moduleMetadata.get(authModule.AuthPersistenceModule);
   const authDefinition = moduleMetadata.get(authModule.AuthModule);
@@ -280,17 +276,91 @@ export async function probeJwtLearningPathRuntimeGraph(relativePath, files) {
   );
 
   const providers = persistenceDefinition.providers;
-  const refreshProvider = providerFor(providers, persistence.REFRESH_TOKEN_STORE);
-  const credentialsProvider = providerFor(providers, persistence.CREDENTIALS_VERIFIER);
+
+  assert(
+    Array.isArray(providers)
+      && providers.length === 2
+      && providers[0]?.provide === persistence.REFRESH_TOKEN_STORE
+      && providers[0]?.useClass === persistence.DatabaseRefreshTokenStore
+      && sameSequence(providers[0]?.inject, [persistence.REFRESH_TOKEN_REPOSITORY])
+      && providers[1]?.provide === persistence.CREDENTIALS_VERIFIER
+      && providers[1]?.useClass === persistence.DatabaseCredentialsVerifier
+      && sameSequence(providers[1]?.inject, [persistence.CREDENTIALS_REPOSITORY]),
+    relativePath,
+    'AuthPersistenceModule must register exactly the documented refresh and credentials providers in order',
+  );
+
+  const [refreshProvider, credentialsProvider] = providers;
   const { credentialsRepository, records, refreshRepository } = createRepositoryFakes();
+
+  runtime?.compileModuleGraph?.(authModule.AuthModule, {
+    providers: [
+      { provide: persistence.REFRESH_TOKEN_REPOSITORY, useValue: refreshRepository },
+      { provide: persistence.CREDENTIALS_REPOSITORY, useValue: credentialsRepository },
+    ],
+  });
+
   const refreshStore = instantiate(refreshProvider, new Map([[persistence.REFRESH_TOKEN_REPOSITORY, refreshRepository]]), relativePath);
   const credentialsVerifier = instantiate(credentialsProvider, new Map([[persistence.CREDENTIALS_REPOSITORY, credentialsRepository]]), relativePath);
-  const options = await jwtRuntime.asyncOptions.useFactory(new types.ConfigService(), refreshStore);
+  const options = await jwtRuntime.asyncOptions.useFactory(new types.ConfigService({
+    JWT_REFRESH_SECRET: 'refresh-secret',
+    JWT_SECRET: 'access-secret',
+  }), refreshStore);
 
   assert(options.refreshToken?.store === refreshStore, relativePath, 'JwtModule factory must return the injected durable refresh store');
 
-  const jwtService = new types.JwtService();
-  const refreshTokens = new types.RefreshTokenService(refreshStore);
+  let nextRefreshTokenId = 0;
+  const jwtService = {
+    async sign(claims, signOptions) {
+      return `access:${claims.roles.join(',')}:${signOptions.subject}`;
+    },
+  };
+  const refreshTokens = {
+    async issueRefreshToken(subject) {
+      nextRefreshTokenId += 1;
+      const id = `refresh-${nextRefreshTokenId}`;
+      const createdAt = new Date();
+      await refreshStore.save({
+        createdAt,
+        expiresAt: new Date(createdAt.getTime() + 3_600_000),
+        family: 'family-1',
+        id,
+        subject,
+        used: false,
+      });
+      return id;
+    },
+    async rotateRefreshToken(tokenId) {
+      const current = await refreshStore.find(tokenId);
+
+      if (!current) {
+        throw new Error('Refresh token record was not found.');
+      }
+
+      nextRefreshTokenId += 1;
+      const replacement = {
+        createdAt: new Date(),
+        expiresAt: new Date(Date.now() + 3_600_000),
+        family: current.family,
+        id: `refresh-${nextRefreshTokenId}`,
+        subject: current.subject,
+        used: false,
+      };
+      const result = await refreshStore.rotate({
+        family: current.family,
+        now: new Date(),
+        replacement,
+        subject: current.subject,
+        tokenId,
+      });
+
+      if (result !== 'consumed') {
+        throw new Error(`Refresh token rotation failed: ${result}.`);
+      }
+
+      return { accessToken: `rotated:${current.subject}`, refreshToken: replacement.id };
+    },
+  };
   const authService = new service.AuthService(credentialsVerifier, jwtService, refreshTokens);
   const authController = new controller.AuthController(authService);
   const signedIn = await authController.login({ email: 'user@example.com', password: 'correct-password' });

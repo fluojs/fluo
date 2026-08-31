@@ -436,6 +436,39 @@ export class AuthPersistenceModule {}
 export class AuthModule {}
 ```
 
+두 repository token은 application boundary 입력입니다. graph를 bootstrap할
+때 concrete durable 구현을 제공해야 합니다. 제공하지 않으면 runtime은 adapter
+dependency를 볼 수 없으므로 `AuthPersistenceModule`을 올바르게 거부합니다.
+application의 database module이 이 객체와 transaction semantics를 소유합니다.
+
+```typescript
+import { fluoFactory } from '@fluojs/runtime';
+import { AuthModule } from './auth/auth.module.js';
+import {
+  CREDENTIALS_REPOSITORY,
+  REFRESH_TOKEN_REPOSITORY,
+  type CredentialsRepository,
+  type RefreshTokenRepository,
+} from './auth/auth.persistence.js';
+import {
+  credentialsRepository,
+  refreshTokenRepository,
+} from './database/auth.repositories.js';
+
+const context = await fluoFactory.createApplicationContext(AuthModule, {
+  providers: [
+    {
+      provide: REFRESH_TOKEN_REPOSITORY,
+      useValue: refreshTokenRepository satisfies RefreshTokenRepository,
+    },
+    {
+      provide: CREDENTIALS_REPOSITORY,
+      useValue: credentialsRepository satisfies CredentialsRepository,
+    },
+  ],
+});
+```
+
 ### The Authentication Lifecycle
 Fluo의 인증 생명주기는 `login` 엔드포인트에 대한 요청으로 시작됩니다. 자격 증명을 확인한 후(주로 데이터베이스에서 해시된 비밀번호 확인), `AuthService.signIn(...)`은 짧게 사는 액세스 토큰을 위해 `JwtService.sign(...)`을 await하고 durable refresh-token record를 위해 `RefreshTokenService.issueRefreshToken(...)`을 await합니다. 이어서 `refresh` 엔드포인트는 같은 구성된 storage path에서 `RefreshTokenService.rotateRefreshToken(...)`을 호출합니다. `rotation: true`일 때 store의 atomic `rotate(...)` 작업은 이전 record를 consume하고 replacement를 함께 저장하므로 replay detection과 durable replacement persistence가 보존됩니다. 이 토큰들은 응답 바디나 보안 쿠키를 통해 클라이언트에게 반환됩니다.
 

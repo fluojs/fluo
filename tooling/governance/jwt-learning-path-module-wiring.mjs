@@ -50,6 +50,21 @@ function normalizeSource(sourceText) {
   return sourceText.replace(/\s+/gu, ' ').trim();
 }
 
+function enforceBootstrapRepositoryBindings(relativePath, markdown) {
+  const normalizedMarkdown = normalizeSource(markdown);
+  const requiredFragments = [
+    'fluoFactory.createApplicationContext(AuthModule',
+    'provide: REFRESH_TOKEN_REPOSITORY, useValue: refreshTokenRepository satisfies RefreshTokenRepository',
+    'provide: CREDENTIALS_REPOSITORY, useValue: credentialsRepository satisfies CredentialsRepository',
+  ];
+
+  for (const fragment of requiredFragments) {
+    if (!normalizedMarkdown.includes(fragment)) {
+      fail(relativePath, `must document the bootstrap repository binding: ${fragment}`);
+    }
+  }
+}
+
 function enforceExplicitModuleWiring(relativePath, files) {
   const persistenceSource = files.get('src/auth/auth.persistence.ts');
   const serviceSource = files.get('src/auth/auth.service.ts');
@@ -193,9 +208,12 @@ function collectDiagnostics(files) {
  */
 export async function enforceJwtLearningPathModuleWiring(
   readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
+  runtime,
 ) {
   for (const relativePath of chapterPaths) {
-    const files = extractLearningFiles(relativePath, readText(relativePath));
+    const markdown = readText(relativePath);
+    enforceBootstrapRepositoryBindings(relativePath, markdown);
+    const files = extractLearningFiles(relativePath, markdown);
     enforceExplicitModuleWiring(relativePath, files);
     const diagnostics = collectDiagnostics(files);
 
@@ -206,6 +224,6 @@ export async function enforceJwtLearningPathModuleWiring(
       );
     }
 
-    await probeJwtLearningPathRuntimeGraph(relativePath, files);
+    await probeJwtLearningPathRuntimeGraph(relativePath, files, runtime);
   }
 }

@@ -2837,7 +2837,7 @@ export function enforceFastifyNativeConfigurationDocsSync() {
   }
 }
 
-export function main() {
+export async function main() {
   const changedFiles = changedFilesFromGit();
 
   enforceSsotMirrorStructure();
@@ -2855,7 +2855,7 @@ export function main() {
   enforcePlatformShellLifecycleContract();
   enforceConfigNestjsMigrationDocs();
   enforceJwtAsyncRegistrationContract();
-  enforceJwtLearningPathModuleWiring();
+  await enforceJwtLearningPathModuleWiring();
   enforceRuntimeLifecycleNestjsMigrationDocs();
   enforcePassportJsBridgeNestjsMigration();
   enforceExpressApplicationOwnershipDocs();
@@ -2891,5 +2891,5 @@ export function main() {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main();
+  await main();
 }

@@ -436,6 +436,40 @@ export class AuthPersistenceModule {}
 export class AuthModule {}
 ```
 
+The two repository tokens are application-boundary inputs. Supply concrete,
+durable implementations when bootstrapping the graph; otherwise the runtime
+correctly rejects `AuthPersistenceModule` because its adapter dependencies are
+not visible. The database module in your application owns these objects and
+their transaction semantics.
+
+```typescript
+import { fluoFactory } from '@fluojs/runtime';
+import { AuthModule } from './auth/auth.module.js';
+import {
+  CREDENTIALS_REPOSITORY,
+  REFRESH_TOKEN_REPOSITORY,
+  type CredentialsRepository,
+  type RefreshTokenRepository,
+} from './auth/auth.persistence.js';
+import {
+  credentialsRepository,
+  refreshTokenRepository,
+} from './database/auth.repositories.js';
+
+const context = await fluoFactory.createApplicationContext(AuthModule, {
+  providers: [
+    {
+      provide: REFRESH_TOKEN_REPOSITORY,
+      useValue: refreshTokenRepository satisfies RefreshTokenRepository,
+    },
+    {
+      provide: CREDENTIALS_REPOSITORY,
+      useValue: credentialsRepository satisfies CredentialsRepository,
+    },
+  ],
+});
+```
+
 ### The Authentication Lifecycle
 Fluo Authentication lifecycle starts with a request to the `login` endpoint. After verifying credentials, usually by checking a hashed password in the database, `AuthService.signIn(...)` awaits `JwtService.sign(...)` for the short-lived access token and `RefreshTokenService.issueRefreshToken(...)` for the durable refresh-token record. The `refresh` endpoint then calls `RefreshTokenService.rotateRefreshToken(...)` on that same configured storage path. With `rotation: true`, the store's atomic `rotate(...)` operation consumes the old record and saves the replacement together, preserving replay detection and durable replacement persistence. These tokens are returned to the client through the response body or secure cookies.
 

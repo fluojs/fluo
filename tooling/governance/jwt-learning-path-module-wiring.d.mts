@@ -5,4 +5,5 @@ export type JwtLearningPathReadText = (relativePath: string) => string;
  */
 export declare function enforceJwtLearningPathModuleWiring(
   readText?: JwtLearningPathReadText,
-): void;
+  runtime?: unknown,
+): Promise<void>;
