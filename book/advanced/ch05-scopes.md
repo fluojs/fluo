@@ -707,11 +707,11 @@ The hierarchy walk is implemented in `path:packages/di/src/container.ts:1707-176
 
 This is targeted invalidation, not a promise that every child cache is cleared or isolated from ancestor changes. A descendant with no affected materialized entry has nothing to retire; its later resolution follows the updated ancestor graph. A child-local override walks that child and its descendants, not its ancestors. Cache eviction also cannot revoke stale references that application code has already retained.
 
-Each evicted cached promise is handed to `scheduleStaleDisposal()` in `path:packages/di/src/container.ts:1448-1497`. `override()` remains synchronous: it starts the asynchronous retirement task but does not wait for cleanup to finish. The task waits for the cached resolution promise, then awaits `onDestroy()` when the resolved value is disposable. Completion is guaranteed at the next observing lifecycle boundary, not at the moment `override()` returns.
+Each evicted cached promise is handed to `scheduleStaleDisposal()` in `path:packages/di/src/container.ts:1467-1515`. `override()` remains synchronous: it starts the asynchronous retirement task but does not wait for cleanup to finish. The task waits for the cached resolution promise, then awaits `onDestroy()` when the resolved value is disposable. Completion is guaranteed at the next observing lifecycle boundary, not at the moment `override()` returns.
 
-Stale disposal is now a task state machine rather than a shutdown-only error accumulator. `StaleDisposalTask` records its promise, failure, and whether that failure has already been consumed (`path:packages/di/src/container.ts:31-39`). `resolve()` calls `assertStaleDisposalsSettled()` before beginning replacement resolution (`path:packages/di/src/container.ts:593-604`). Disposal reaches the same boundary through `disposeCache()` (`path:packages/di/src/container.ts:1222-1248`), while still collecting resolution and ordinary `onDestroy()` failures so cleanup can continue.
+Stale disposal is now a task state machine rather than a shutdown-only error accumulator. `StaleDisposalTask` records its promise, failure, and whether that failure has already been consumed (`path:packages/di/src/container.ts:31-39`). `resolve()` calls `assertStaleDisposalsSettled()` before beginning replacement resolution (`path:packages/di/src/container.ts:593-604`). Disposal reaches the same boundary through `disposeCache()` (`path:packages/di/src/container.ts:1227-1258`), while still collecting resolution and ordinary `onDestroy()` failures so cleanup can continue.
 
-`path:packages/di/src/container.ts:1358-1497`
+`path:packages/di/src/container.ts:1365-1515`
 ```typescript
   private async assertStaleDisposalsSettled(): Promise<void> {
     const errors: unknown[] = [];
@@ -775,7 +775,18 @@ Stale disposal is now a task state machine rather than a shutdown-only error acc
     }
   }
 
-  private async retryFailedStaleDisposals(tasks: readonly StaleDisposalTask[]): Promise<unknown[]> {
+  private releaseNonOwnerStaleTaskObserversInSubtree(): void {
+    this.releaseNonOwnerStaleTaskObservers();
+
+    for (const childScope of this.childScopes ?? []) {
+      childScope.releaseNonOwnerStaleTaskObserversInSubtree();
+    }
+  }
+
+  private async retryFailedStaleDisposals(
+    tasks: readonly StaleDisposalTask[],
+    successfullyRetriedInstances: Set<Disposable>,
+  ): Promise<unknown[]> {
     const errors: unknown[] = [];
 
     for (const task of tasks) {
@@ -787,6 +798,7 @@ Stale disposal is now a task state machine rather than a shutdown-only error acc
 
       try {
         await instance.onDestroy();
+        successfullyRetriedInstances.add(instance);
         task.failed = false;
         task.retryInstance = undefined;
 
@@ -852,7 +864,6 @@ Stale disposal is now a task state machine rather than a shutdown-only error acc
       observer.staleDisposalTasks.add(task);
     }
   }
-
 ```
 
 The observer set defines the lifecycle boundary precisely. A local override is observed by that container. When an ancestor override invalidates a descendant cache, the descendant and the ancestor that initiated invalidation observe the same task. This makes both a descendant replacement resolve and a root replacement resolve wait for affected descendant retirement. It does not make an unrelated root resolve wait for a child-local override, nor does a child-local stale-disposal failure leak into that unrelated root resolve.
@@ -916,11 +927,11 @@ For advanced users building test harnesses or hot-reload-like flows, the lesson 
 ## 5.6 Disposal order, child scopes, and shutdown guarantees
 The final scope question is how instances die. Fluo's answer is deterministic teardown, with a clear split between root singletons and request children.
 
-The public `dispose()` entrypoint and its origin-aware helper live in `path:packages/di/src/container.ts:619-643`. A public call enters with direct ownership, while parent traversal uses the private `disposeFromParent()` entrypoint. Both paths call `disposeWithOrigin(...)`.
+The public `dispose()` entrypoint and its origin-aware helper live in `path:packages/di/src/container.ts:619-648`. A public call enters with direct ownership, while parent traversal uses the private `disposeFromParent()` entrypoint. Both paths call `disposeWithOrigin(...)`.
 
 The shared helper handles reentry, failure retry, and the origin of the active attempt.
 
-`path:packages/di/src/container.ts:627-643`
+`path:packages/di/src/container.ts:627-648`
 ```typescript
   private async disposeWithOrigin(origin: DisposalAttemptOrigin): Promise<void> {
     if (this.disposePromise) {
@@ -930,10 +941,15 @@ The shared helper handles reentry, failure retry, and the origin of the active a
 
     this.disposed = true;
     this.advanceGraphRevision();
-    this.disposePromise = this.disposeAll(origin);
+    const activeDispose = this.disposeAll(origin);
+    this.disposePromise = activeDispose;
 
     try {
-      await this.disposePromise;
+      await activeDispose;
+
+      if (this.disposePromise === activeDispose && this.retainedStaleDisposalTasks().length > 0) {
+        this.disposePromise = undefined;
+      }
     } catch (error) {
       this.disposePromise = undefined;
       throw error;
@@ -941,13 +957,13 @@ The shared helper handles reentry, failure retry, and the origin of the active a
   }
 ```
 
-A concurrent caller awaits the active promise, so overlapping callers do not duplicate teardown. The first caller has already selected direct or parent ownership before a later caller joins. A successful attempt keeps the settled promise and makes later calls idempotent. A failure clears the promise after settlement so a later explicit call can retry. The terminal `disposed` gate remains closed throughout and after retry.
+A concurrent caller awaits the active promise, so overlapping callers do not duplicate teardown. The first caller has already selected direct or parent ownership before a later caller joins. A successful attempt with no retained stale failure keeps the settled promise and makes later calls idempotent. If resolution consumes a stale failure while an active disposal had already selected no retry candidate, the settled promise is cleared so a later explicit call retries that retained hook. A failure also clears the promise after settlement. The terminal `disposed` gate remains closed throughout and after retry.
 
-`disposeAll()` in `path:packages/di/src/container.ts:645-680` enters every tracked request child through `disposeFromParent()`, then cleans the current tier. Its final detach condition distinguishes a successful parent-owned attempt from any settled direct attempt.
+`disposeAll()` in `path:packages/di/src/container.ts:650-685` enters every tracked request child through `disposeFromParent()`, then cleans the current tier. Its final detach condition distinguishes a successful parent-owned attempt from any settled direct attempt.
 
 The origin-aware child traversal and detach rule are the load-bearing lines.
 
-`path:packages/di/src/container.ts:645-680`
+`path:packages/di/src/container.ts:650-685`
 ```typescript
   private async disposeAll(origin: DisposalAttemptOrigin): Promise<void> {
     const errors: unknown[] = [];
@@ -977,7 +993,7 @@ The origin-aware child traversal and detach rule are the load-bearing lines.
     } finally {
       if ((completed || origin === 'direct') && this.parent && this.trackedByParent) {
         if (origin === 'direct') {
-          this.releaseNonOwnerStaleTaskObservers();
+          this.releaseNonOwnerStaleTaskObserversInSubtree();
         }
 
         this.parent.childScopes?.delete(this);

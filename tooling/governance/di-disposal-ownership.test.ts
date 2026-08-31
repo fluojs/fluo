@@ -9,6 +9,19 @@ function read(relativePath: string): string {
   return readFileSync(resolve(repoRoot, relativePath), 'utf8');
 }
 
+function sourceRange(source: string, start: number, end: number): string {
+  return source.split('\n').slice(start - 1, end).join('\n');
+}
+
+function sourceExcerpt(document: string, citation: string): string {
+  const citationOffset = document.indexOf(citation);
+  const openingFenceOffset = document.indexOf('```typescript\n', citationOffset);
+  const excerptStart = openingFenceOffset + '```typescript\n'.length;
+  const closingFenceOffset = document.indexOf('\n```', excerptStart);
+
+  return document.slice(excerptStart, closingFenceOffset);
+}
+
 const englishOwnershipClaims = [
   'public `child.dispose()` directly detaches the request child',
   'retained child reference can call `dispose()` again',
@@ -65,17 +78,17 @@ describe('DI disposal ownership governance', () => {
     const containerSource = read('packages/di/src/container.ts');
     const ownershipEvidence = read('packages/di/src/container-disposal-ownership.test.ts');
     const retryEvidence = read('packages/di/src/container-disposal-retry.test.ts');
+    const sourceExcerpts = [
+      ['path:packages/di/src/container.ts:627-648', 627, 648],
+      ['path:packages/di/src/container.ts:650-685', 650, 685],
+      ['path:packages/di/src/container.ts:1365-1515', 1365, 1515],
+    ] as const;
 
     // When / Then
     for (const chapter of chapters) {
-      for (const marker of [
-        'path:packages/di/src/container.ts:619-643',
-        'path:packages/di/src/container.ts:645-680',
-        'path:packages/di/src/container.ts:1204-1220',
-        'path:packages/di/src/container.ts:1222-1297',
-        'path:packages/di/src/container.ts:1448-1497',
-      ]) {
-        expect(chapter).toContain(marker);
+      for (const [citation, start, end] of sourceExcerpts) {
+        expect(chapter).toContain(citation);
+        expect(sourceExcerpt(chapter, citation)).toBe(sourceRange(containerSource, start, end));
       }
 
       expect(chapter).not.toContain('if (completed && this.parent && this.trackedByParent)');
@@ -93,6 +106,9 @@ describe('DI disposal ownership governance', () => {
       'private async disposeFromParent(): Promise<void> {',
       "await this.disposeWithOrigin('parent');",
       "if ((completed || origin === 'direct') && this.parent && this.trackedByParent) {",
+      'private releaseNonOwnerStaleTaskObserversInSubtree(): void {',
+      'this.releaseNonOwnerStaleTaskObserversInSubtree();',
+      'childScope.releaseNonOwnerStaleTaskObserversInSubtree();',
       'disposed child owns its remaining retries after that attempt settles',
       'parent-started failed attempt remains owned by the parent hierarchy',
     ]) {

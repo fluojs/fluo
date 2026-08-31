@@ -707,11 +707,11 @@ hierarchy walk은 `path:packages/di/src/container.ts:1707-1761`에 구현되어 
 
 이는 targeted invalidation이지, 모든 child cache를 비우거나 각 child가 ancestor 변경으로부터 격리된다는 보장이 아닙니다. 영향을 받는 materialized entry가 없는 descendant에는 retire할 대상이 없고, 이후 resolve는 갱신된 ancestor graph를 따릅니다. child-local override는 해당 child와 그 descendant만 순회하며 ancestor는 순회하지 않습니다. 또한 cache eviction이 application code가 이미 보관 중인 stale reference를 회수할 수는 없습니다.
 
-evict된 각 cached promise는 `path:packages/di/src/container.ts:1448-1497`의 `scheduleStaleDisposal()`로 전달됩니다. `override()`는 여전히 동기적입니다. 비동기 retirement task를 시작하지만 cleanup 완료를 기다리지는 않습니다. task는 cached resolution promise를 기다리고, resolve된 값이 disposable이면 `onDestroy()`도 await합니다. 완료가 보장되는 시점은 `override()`가 반환하는 순간이 아니라 다음 observing lifecycle boundary입니다.
+evict된 각 cached promise는 `path:packages/di/src/container.ts:1467-1515`의 `scheduleStaleDisposal()`로 전달됩니다. `override()`는 여전히 동기적입니다. 비동기 retirement task를 시작하지만 cleanup 완료를 기다리지는 않습니다. task는 cached resolution promise를 기다리고, resolve된 값이 disposable이면 `onDestroy()`도 await합니다. 완료가 보장되는 시점은 `override()`가 반환하는 순간이 아니라 다음 observing lifecycle boundary입니다.
 
-stale disposal은 이제 shutdown-only error accumulator가 아니라 task state machine입니다. `StaleDisposalTask`는 promise, failure, 그리고 failure가 이미 소비되었는지를 기록합니다(`path:packages/di/src/container.ts:31-39`). `resolve()`는 replacement resolution을 시작하기 전에 `assertStaleDisposalsSettled()`를 호출합니다(`path:packages/di/src/container.ts:593-604`). disposal도 `disposeCache()`를 통해 같은 경계에 도달하며(`path:packages/di/src/container.ts:1222-1248`), cleanup이 계속될 수 있도록 resolution failure와 일반 `onDestroy()` failure도 함께 수집합니다.
+stale disposal은 이제 shutdown-only error accumulator가 아니라 task state machine입니다. `StaleDisposalTask`는 promise, failure, 그리고 failure가 이미 소비되었는지를 기록합니다(`path:packages/di/src/container.ts:31-39`). `resolve()`는 replacement resolution을 시작하기 전에 `assertStaleDisposalsSettled()`를 호출합니다(`path:packages/di/src/container.ts:593-604`). disposal도 `disposeCache()`를 통해 같은 경계에 도달하며(`path:packages/di/src/container.ts:1227-1258`), cleanup이 계속될 수 있도록 resolution failure와 일반 `onDestroy()` failure도 함께 수집합니다.
 
-`path:packages/di/src/container.ts:1358-1497`
+`path:packages/di/src/container.ts:1365-1515`
 ```typescript
   private async assertStaleDisposalsSettled(): Promise<void> {
     const errors: unknown[] = [];
@@ -775,7 +775,18 @@ stale disposal은 이제 shutdown-only error accumulator가 아니라 task state
     }
   }
 
-  private async retryFailedStaleDisposals(tasks: readonly StaleDisposalTask[]): Promise<unknown[]> {
+  private releaseNonOwnerStaleTaskObserversInSubtree(): void {
+    this.releaseNonOwnerStaleTaskObservers();
+
+    for (const childScope of this.childScopes ?? []) {
+      childScope.releaseNonOwnerStaleTaskObserversInSubtree();
+    }
+  }
+
+  private async retryFailedStaleDisposals(
+    tasks: readonly StaleDisposalTask[],
+    successfullyRetriedInstances: Set<Disposable>,
+  ): Promise<unknown[]> {
     const errors: unknown[] = [];
 
     for (const task of tasks) {
@@ -787,6 +798,7 @@ stale disposal은 이제 shutdown-only error accumulator가 아니라 task state
 
       try {
         await instance.onDestroy();
+        successfullyRetriedInstances.add(instance);
         task.failed = false;
         task.retryInstance = undefined;
 
@@ -852,7 +864,6 @@ stale disposal은 이제 shutdown-only error accumulator가 아니라 task state
       observer.staleDisposalTasks.add(task);
     }
   }
-
 ```
 
 observer set이 lifecycle boundary를 정확히 정의합니다. local override는 해당 컨테이너가 관찰합니다. ancestor override가 descendant cache를 무효화하면 그 descendant와 invalidation을 시작한 ancestor가 같은 task를 관찰합니다. 따라서 descendant replacement resolve와 root replacement resolve 모두 영향을 받은 descendant retirement를 기다립니다. 반면 unrelated root resolve는 child-local override를 기다리지 않으며, child-local stale-disposal failure도 그 unrelated root resolve로 유출되지 않습니다.
@@ -916,11 +927,11 @@ console.log(stale instanceof FirstCache, fresh instanceof SecondCache, events);
 ## 5.6 Disposal order, child scopes, and shutdown guarantees
 마지막 scope 질문은 인스턴스가 어떻게 죽느냐입니다. Fluo의 답은 deterministic teardown이며, root singleton과 request child를 명확히 분리합니다.
 
-public `dispose()` entrypoint와 origin-aware helper는 `path:packages/di/src/container.ts:619-643`에 있습니다. public 호출은 direct ownership으로 진입하고 parent traversal은 private `disposeFromParent()` entrypoint를 사용합니다. 두 경로 모두 `disposeWithOrigin(...)`을 호출합니다.
+public `dispose()` entrypoint와 origin-aware helper는 `path:packages/di/src/container.ts:619-648`에 있습니다. public 호출은 direct ownership으로 진입하고 parent traversal은 private `disposeFromParent()` entrypoint를 사용합니다. 두 경로 모두 `disposeWithOrigin(...)`을 호출합니다.
 
 shared helper는 재진입, 실패 재시도, active attempt의 origin을 함께 다룹니다.
 
-`path:packages/di/src/container.ts:627-643`
+`path:packages/di/src/container.ts:627-648`
 ```typescript
   private async disposeWithOrigin(origin: DisposalAttemptOrigin): Promise<void> {
     if (this.disposePromise) {
@@ -930,10 +941,15 @@ shared helper는 재진입, 실패 재시도, active attempt의 origin을 함께
 
     this.disposed = true;
     this.advanceGraphRevision();
-    this.disposePromise = this.disposeAll(origin);
+    const activeDispose = this.disposeAll(origin);
+    this.disposePromise = activeDispose;
 
     try {
-      await this.disposePromise;
+      await activeDispose;
+
+      if (this.disposePromise === activeDispose && this.retainedStaleDisposalTasks().length > 0) {
+        this.disposePromise = undefined;
+      }
     } catch (error) {
       this.disposePromise = undefined;
       throw error;
@@ -941,13 +957,13 @@ shared helper는 재진입, 실패 재시도, active attempt의 origin을 함께
   }
 ```
 
-동시 caller는 active promise를 기다리므로 겹치는 caller가 teardown을 중복 실행하지 않습니다. 첫 caller는 나중 caller가 참여하기 전에 이미 direct 또는 parent ownership을 선택합니다. 성공한 attempt는 settle된 promise를 유지해 이후 호출을 멱등으로 만듭니다. 실패하면 settlement 뒤 promise를 비워 이후 명시적 호출이 재시도할 수 있습니다. Terminal `disposed` gate는 재시도 중과 이후에도 닫힌 상태를 유지합니다.
+동시 caller는 active promise를 기다리므로 겹치는 caller가 teardown을 중복 실행하지 않습니다. 첫 caller는 나중 caller가 참여하기 전에 이미 direct 또는 parent ownership을 선택합니다. 유지된 stale failure가 없는 성공한 attempt는 settle된 promise를 유지해 이후 호출을 멱등으로 만듭니다. active disposal이 retry candidate를 고르기 전에 resolution이 stale failure를 소비하면, settle된 promise를 비워 이후 명시적 호출이 유지된 hook을 재시도하게 합니다. 실패한 attempt도 settlement 뒤 promise를 비웁니다. Terminal `disposed` gate는 재시도 중과 이후에도 닫힌 상태를 유지합니다.
 
-`path:packages/di/src/container.ts:645-680`의 `disposeAll()`은 추적 중인 모든 request child에 `disposeFromParent()`로 진입한 뒤 현재 tier를 정리합니다. 마지막 detach 조건은 성공한 parent-owned attempt와 settle된 모든 direct attempt를 구분합니다.
+`path:packages/di/src/container.ts:650-685`의 `disposeAll()`은 추적 중인 모든 request child에 `disposeFromParent()`로 진입한 뒤 현재 tier를 정리합니다. 마지막 detach 조건은 성공한 parent-owned attempt와 settle된 모든 direct attempt를 구분합니다.
 
 origin-aware child traversal과 detach 규칙은 이 동작의 핵심입니다.
 
-`path:packages/di/src/container.ts:645-680`
+`path:packages/di/src/container.ts:650-685`
 ```typescript
   private async disposeAll(origin: DisposalAttemptOrigin): Promise<void> {
     const errors: unknown[] = [];
@@ -977,7 +993,7 @@ origin-aware child traversal과 detach 규칙은 이 동작의 핵심입니다.
     } finally {
       if ((completed || origin === 'direct') && this.parent && this.trackedByParent) {
         if (origin === 'direct') {
-          this.releaseNonOwnerStaleTaskObservers();
+          this.releaseNonOwnerStaleTaskObserversInSubtree();
         }
 
         this.parent.childScopes?.delete(this);

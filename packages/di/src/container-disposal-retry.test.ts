@@ -287,6 +287,88 @@ describe('Container disposal retry', () => {
     expect(events).toEqual(['stale:1', 'stale:2', 'replacement']);
   });
 
+  it('retains a failed stale hook for a later disposal after resolution consumes it during disposal', async () => {
+    // Given
+    const staleFailure = new Error('interleaved stale cleanup failed');
+    const token = Symbol('InterleavedStaleCleanupToken');
+    let staleAttempts = 0;
+    let releaseStaleFailure = (): void => undefined;
+    let reportStaleCleanupStarted = (): void => undefined;
+    const staleCleanupCanFail = new Promise<void>((resolve) => {
+      releaseStaleFailure = resolve;
+    });
+    const staleCleanupStarted = new Promise<void>((resolve) => {
+      reportStaleCleanupStarted = resolve;
+    });
+
+    class StaleService {
+      async onDestroy(): Promise<void> {
+        staleAttempts += 1;
+
+        if (staleAttempts === 1) {
+          reportStaleCleanupStarted();
+          await staleCleanupCanFail;
+          throw staleFailure;
+        }
+      }
+    }
+
+    const container = new Container().register({ provide: token, useClass: StaleService });
+    await container.resolve(token);
+    container.override({ provide: token, useValue: 'replacement' });
+    await staleCleanupStarted;
+
+    // When
+    const resolvingReplacement = container.resolve(token);
+    const disposingContainer = container.dispose();
+    releaseStaleFailure();
+
+    // Then
+    await expect(resolvingReplacement).rejects.toBe(staleFailure);
+    await expect(disposingContainer).resolves.toBeUndefined();
+    expect(staleAttempts).toBe(1);
+    expect((container as unknown as { staleDisposalTasks: ReadonlySet<unknown> }).staleDisposalTasks.size).toBe(1);
+
+    // When
+    await container.dispose();
+
+    // Then
+    expect(staleAttempts).toBe(2);
+    expect((container as unknown as { staleDisposalTasks: ReadonlySet<unknown> }).staleDisposalTasks.size).toBe(0);
+  });
+
+  it('does not dispose a successful stale retry again when a shared factory returns the live instance', async () => {
+    // Given
+    const staleFailure = new Error('shared stale cleanup failed');
+    const token = Symbol('SharedStaleCleanupToken');
+    let staleAttempts = 0;
+    const sharedInstance = {
+      onDestroy(): void {
+        staleAttempts += 1;
+
+        if (staleAttempts === 1) {
+          throw staleFailure;
+        }
+      },
+    };
+    const sharedFactory = (): typeof sharedInstance => sharedInstance;
+    const container = new Container().register({ provide: token, useFactory: sharedFactory });
+    await container.resolve(token);
+
+    // When
+    container.override({ provide: token, useFactory: sharedFactory });
+
+    // Then
+    await expect(container.resolve(token)).rejects.toBe(staleFailure);
+    expect((await container.resolve(token))).toBe(sharedInstance);
+
+    // When
+    await container.dispose();
+
+    // Then
+    expect(staleAttempts).toBe(2);
+  });
+
   it('releases a rejected stale materialization after delivering its error once', async () => {
     // Given
     const materializationFailure = new Error('stale materialization failed');

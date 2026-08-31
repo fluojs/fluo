@@ -632,10 +632,15 @@ export class Container {
 
     this.disposed = true;
     this.advanceGraphRevision();
-    this.disposePromise = this.disposeAll(origin);
+    const activeDispose = this.disposeAll(origin);
+    this.disposePromise = activeDispose;
 
     try {
-      await this.disposePromise;
+      await activeDispose;
+
+      if (this.disposePromise === activeDispose && this.retainedStaleDisposalTasks().length > 0) {
+        this.disposePromise = undefined;
+      }
     } catch (error) {
       this.disposePromise = undefined;
       throw error;
@@ -1223,6 +1228,7 @@ export class Container {
     const errors: unknown[] = [];
 
     const retryableStaleTasks = this.retainedStaleDisposalTasks();
+    const successfullyRetriedStaleInstances = new Set<Disposable>();
 
     try {
       await this.assertStaleDisposalsSettled();
@@ -1230,15 +1236,16 @@ export class Container {
       this.collectDisposalError(error, errors);
     }
 
-    errors.push(...(await this.retryFailedStaleDisposals(retryableStaleTasks)));
+    errors.push(...(await this.retryFailedStaleDisposals(retryableStaleTasks, successfullyRetriedStaleInstances)));
 
     const {
       disposables: materializedDisposables,
       errors: resolutionErrors,
     } = await this.collectDisposableInstances(entries);
-    const disposables = this.pendingDisposables.length > 0
+    const disposalCandidates = this.pendingDisposables.length > 0
       ? this.pendingDisposables
       : materializedDisposables;
+    const disposables = disposalCandidates.filter((instance) => !successfullyRetriedStaleInstances.has(instance));
 
     errors.push(...resolutionErrors);
     errors.push(...(await this.disposeInstancesInReverseOrder(disposables)));
@@ -1425,7 +1432,10 @@ export class Container {
     }
   }
 
-  private async retryFailedStaleDisposals(tasks: readonly StaleDisposalTask[]): Promise<unknown[]> {
+  private async retryFailedStaleDisposals(
+    tasks: readonly StaleDisposalTask[],
+    successfullyRetriedInstances: Set<Disposable>,
+  ): Promise<unknown[]> {
     const errors: unknown[] = [];
 
     for (const task of tasks) {
@@ -1437,6 +1447,7 @@ export class Container {
 
       try {
         await instance.onDestroy();
+        successfullyRetriedInstances.add(instance);
         task.failed = false;
         task.retryInstance = undefined;
 
