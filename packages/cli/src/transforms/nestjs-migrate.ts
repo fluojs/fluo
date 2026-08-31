@@ -1142,6 +1142,7 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
   const portFoldedApps = new Set<string>();
   const rewrittenCreateCallKeys = new Set<string>();
   const warnedCreateCallKeys = new Set<string>();
+  let usesDefaultExpressAdapter = false;
 
   function toCallKey(callExpression: ts.CallExpression): string {
     return `${callExpression.pos}:${callExpression.end}`;
@@ -1172,14 +1173,52 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
       };
     }
 
-    if (callExpression.arguments.length === 2 && !ts.isObjectLiteralExpression(callExpression.arguments[1])) {
+    if (callExpression.arguments.length === 2) {
+      if (ts.isObjectLiteralExpression(callExpression.arguments[1])) {
+        return {
+          reason: 'NestFactory.create options object has no documented Fluo mapping.',
+          supported: false,
+        };
+      }
+
       return {
-        reason: 'Unsupported NestFactory.create adapter-specific startup form.',
+        reason: 'NestFactory.create uses an adapter-specific startup form. Run adapter-independent transforms with --skip bootstrap, then replace the NestJS adapter with a Fluo platform adapter passed to FluoFactory.create(..., { adapter }) before calling listen().',
         supported: false,
       };
     }
 
     return { supported: true };
+  }
+
+  function createDefaultExpressAdapter(options?: ts.ObjectLiteralExpression): ts.CallExpression {
+    usesDefaultExpressAdapter = true;
+    return ts.factory.createCallExpression(
+      ts.factory.createIdentifier('createExpressAdapter'),
+      undefined,
+      options ? [options] : [],
+    );
+  }
+
+  function hasUnconvertedNestFactoryCreate(sourceFile: ts.SourceFile): boolean {
+    let found = false;
+
+    const inspect = (node: ts.Node): void => {
+      if (
+        ts.isCallExpression(node)
+        && ts.isPropertyAccessExpression(node.expression)
+        && ts.isIdentifier(node.expression.expression)
+        && node.expression.expression.text === 'NestFactory'
+        && node.expression.name.text === 'create'
+      ) {
+        found = true;
+        return;
+      }
+
+      ts.forEachChild(node, inspect);
+    };
+
+    inspect(sourceFile);
+    return found;
   }
 
   const inspect = (node: ts.Node): void => {
@@ -1233,30 +1272,24 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
 
               if (nextArgs.length === 1) {
                 nextArgs = [nextArgs[0], ts.factory.createObjectLiteralExpression([
-                  ts.factory.createPropertyAssignment('port', portExpression),
+                  ts.factory.createPropertyAssignment(
+                    'adapter',
+                    createDefaultExpressAdapter(
+                      ts.factory.createObjectLiteralExpression([
+                        ts.factory.createPropertyAssignment('port', portExpression),
+                      ], true),
+                    ),
+                  ),
                 ], true)];
                 portFoldedApps.add(appVariable);
-              } else if (nextArgs.length === 2 && ts.isObjectLiteralExpression(nextArgs[1])) {
-                const hasPort = nextArgs[1].properties.some((property) => ts.isPropertyAssignment(property) && ts.isIdentifier(property.name) && property.name.text === 'port');
-
-                if (!hasPort) {
-                  nextArgs = [
-                    nextArgs[0],
-                    ts.factory.updateObjectLiteralExpression(nextArgs[1], [
-                      ...nextArgs[1].properties,
-                      ts.factory.createPropertyAssignment('port', portExpression),
-                    ]),
-                  ];
-                  portFoldedApps.add(appVariable);
-                }
-              }
-
-              if (!portFoldedApps.has(appVariable)) {
-                warnings.push(
-                  buildWarning(filePath, sourceFile, node, 'bootstrap-port', 'Unable to move listen() port argument into FluoFactory.create options. Review bootstrap manually.'),
-                );
               }
             }
+          }
+
+          if (nextArgs.length === 1) {
+            nextArgs = [nextArgs[0], ts.factory.createObjectLiteralExpression([
+              ts.factory.createPropertyAssignment('adapter', createDefaultExpressAdapter()),
+            ], true)];
           }
 
           rewrittenCreateCallKeys.add(toCallKey(node));
@@ -1295,18 +1328,30 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
 
   let nextSource = printer.printFile(transformed);
 
-  const removed = removeImportBinding(nextSource, filePath, '@nestjs/core', 'NestFactory');
-  nextSource = removed.source;
+  if (!hasUnconvertedNestFactoryCreate(transformed)) {
+    const removed = removeImportBinding(nextSource, filePath, '@nestjs/core', 'NestFactory');
+    nextSource = removed.source;
+  }
 
   const nextSourceFile = parseSource(nextSource, filePath);
   const withRuntimeImport = printSourceFile(
     nextSourceFile,
     mergeNamedImport([...nextSourceFile.statements], '@fluojs/runtime', [{ imported: 'FluoFactory', isTypeOnly: false, local: 'FluoFactory' }]),
   );
+  const withPlatformImport = usesDefaultExpressAdapter
+    ? printSourceFile(
+      parseSource(withRuntimeImport, filePath),
+      mergeNamedImport(
+        [...parseSource(withRuntimeImport, filePath).statements],
+        '@fluojs/platform-express',
+        [{ imported: 'createExpressAdapter', isTypeOnly: false, local: 'createExpressAdapter' }],
+      ),
+    )
+    : withRuntimeImport;
 
   return {
-    changed: withRuntimeImport !== source,
-    source: withRuntimeImport,
+    changed: withPlatformImport !== source,
+    source: withPlatformImport,
     warnings,
   };
 }

@@ -148,7 +148,7 @@ describe('runNestJsMigration', () => {
     expect(readFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'utf8')).toBe(beforeMain);
   });
 
-  it('applies safe transforms and keeps second run idempotent', () => {
+  it('applies safe transforms and folds a default Express bootstrap port', () => {
     const workspaceDirectory = createMigrationFixture();
 
     const firstReport = runNestJsMigration({
@@ -171,9 +171,12 @@ describe('runNestJsMigration', () => {
     };
 
     expect(firstReport.changedFiles).toBeGreaterThan(0);
-    expect(mainContent).toContain("from \"@fluojs/runtime\"");
-    expect(mainContent).toMatch(/FluoFactory\.create\(AppModule, \{[\s\S]*port:\s*3000[\s\S]*\}\)/);
+    expect(mainContent).toContain('FluoFactory.create(AppModule, {');
+    expect(mainContent).toContain("import { createExpressAdapter } from \"@fluojs/platform-express\";");
+    expect(mainContent).toContain('adapter: createExpressAdapter({');
+    expect(mainContent).toMatch(/port:\s*3000/);
     expect(mainContent).toContain('await app.listen();');
+    expect(firstReport.fileResults.flatMap((result) => result.warnings).some((warning) => warning.category === 'bootstrap-unsupported')).toBe(false);
     expect(serviceContent).toMatch(/@Scope\(("|')request\1\)/);
     expect(serviceContent).not.toContain('@Injectable');
     expect(serviceContent).toContain("from \"@fluojs/core\"");
@@ -332,7 +335,25 @@ export class Provider {}
     });
   });
 
-  it('preserves listen(port) when port cannot be folded into create options', () => {
+  it('leaves bootstrap unchanged when only an adapter-independent transform is selected', () => {
+    const workspaceDirectory = createMigrationFixture();
+
+    const report = runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(['injectable']),
+      targetPath: workspaceDirectory,
+    });
+
+    const mainContent = readFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'utf8');
+    const serviceContent = readFileSync(join(workspaceDirectory, 'src', 'users.service.ts'), 'utf8');
+
+    expect(mainContent).toContain('NestFactory.create(AppModule)');
+    expect(mainContent).not.toContain('FluoFactory.create');
+    expect(serviceContent).not.toContain('@Injectable');
+    expect(report.fileResults.flatMap((result) => result.warnings).some((warning) => warning.category === 'bootstrap-unsupported')).toBe(false);
+  });
+
+  it('keeps Nest bootstrap options and imports unchanged when they cannot be mapped safely', () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
     temporaryDirectories.push(workspaceDirectory);
 
@@ -343,7 +364,7 @@ export class Provider {}
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { port: 4000 });
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
   await app.listen(3000);
 }
 
@@ -359,10 +380,84 @@ void bootstrap();
 
     const mainContent = readFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'utf8');
 
-    expect(mainContent).toContain('FluoFactory.create(AppModule, { port: 4000 })');
+    expect(mainContent).toContain("import { NestFactory } from '@nestjs/core';");
+    expect(mainContent).not.toContain('@fluojs/runtime');
+    expect(mainContent).not.toContain('@fluojs/platform-express');
+    expect(mainContent).toContain('NestFactory.create(AppModule, { bufferLogs: true })');
     expect(mainContent).toContain('await app.listen(3000);');
-    expect(report.warningCount).toBeGreaterThan(0);
-    expect(report.fileResults.flatMap((result) => result.warnings).some((warning) => warning.message.includes('Unable to move listen() port argument'))).toBe(true);
+    expect(report.changedFiles).toBe(0);
+    expect(report.fileResults.flatMap((result) => result.warnings).some((warning) =>
+      warning.category === 'bootstrap-unsupported' &&
+      warning.message.includes('NestFactory.create options object'),
+    )).toBe(true);
+
+  });
+
+  it('retains NestFactory imports for unsupported bootstrap calls in mixed files', () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
+    temporaryDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    mkdirSync(join(workspaceDirectory, 'node_modules', '@nestjs', 'core'), { recursive: true });
+    mkdirSync(join(workspaceDirectory, 'node_modules', '@fluojs', 'runtime'), { recursive: true });
+    mkdirSync(join(workspaceDirectory, 'node_modules', '@fluojs', 'platform-express'), { recursive: true });
+    writeFileSync(join(workspaceDirectory, 'src', 'app.module.ts'), 'export class AppModule {}\n');
+    writeFileSync(
+      join(workspaceDirectory, 'node_modules', '@nestjs', 'core', 'index.d.ts'),
+      'export declare const NestFactory: { create(module: unknown, options?: { bufferLogs?: boolean }): Promise<{ listen(port?: number): Promise<void> }> };\n',
+    );
+    writeFileSync(
+      join(workspaceDirectory, 'node_modules', '@fluojs', 'runtime', 'index.d.ts'),
+      'export declare const FluoFactory: { create(module: unknown, options: { adapter: unknown }): Promise<{ listen(): Promise<void> }> };\n',
+    );
+    writeFileSync(
+      join(workspaceDirectory, 'node_modules', '@fluojs', 'platform-express', 'index.d.ts'),
+      'export declare function createExpressAdapter(options: { port?: number }): unknown;\n',
+    );
+    writeFileSync(
+      join(workspaceDirectory, 'src', 'main.ts'),
+      `import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const defaultApp = await NestFactory.create(AppModule);
+  await defaultApp.listen(3000);
+
+  const bufferedApp = await NestFactory.create(AppModule, { bufferLogs: true });
+  await bufferedApp.listen(4000);
+}
+
+void bootstrap();
+`,
+    );
+
+    const report = runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(['bootstrap']),
+      targetPath: workspaceDirectory,
+    });
+
+    const mainContent = readFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'utf8');
+
+    expect(mainContent).toMatch(/import\s*\{\s*NestFactory\s*\}\s*from\s*["']@nestjs\/core["'];/u);
+    expect(mainContent).toMatch(/import\s*\{\s*FluoFactory\s*\}\s*from\s*["']@fluojs\/runtime["'];/u);
+    expect(mainContent).toMatch(/import\s*\{\s*createExpressAdapter\s*\}\s*from\s*["']@fluojs\/platform-express["'];/u);
+    expect(mainContent).toContain('FluoFactory.create(AppModule');
+    expect(mainContent).toContain('NestFactory.create(AppModule, { bufferLogs: true })');
+    expect(mainContent).toContain('await bufferedApp.listen(4000);');
+    expect(report.fileResults.flatMap((result) => result.warnings).some((warning) =>
+      warning.category === 'bootstrap-unsupported' &&
+      warning.message.includes('NestFactory.create options object'),
+    )).toBe(true);
+
+    const program = ts.createProgram([join(workspaceDirectory, 'src', 'main.ts')], {
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      noEmit: true,
+      target: ts.ScriptTarget.ES2022,
+    });
+    const diagnostics = ts.getPreEmitDiagnostics(program);
+    expect(diagnostics.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'))).toEqual([]);
   });
 
   it('skips bootstrap rewrite for unsupported NestFactory.create type arguments and adapter arguments', () => {
@@ -1305,7 +1400,7 @@ void bootstrap();
     expect(bootstrapWarnings.length).toBeGreaterThan(0);
   });
 
-  it('attaches bootstrap-port category when listen port cannot be folded', () => {
+  it('attaches bootstrap-unsupported category to NestFactory.create options objects', () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
     temporaryDirectories.push(workspaceDirectory);
 
@@ -1316,7 +1411,7 @@ void bootstrap();
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { port: 4000 });
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
   await app.listen(3000);
 }
 
@@ -1331,8 +1426,8 @@ void bootstrap();
     });
 
     const allWarnings = report.fileResults.flatMap((result) => result.warnings);
-    const portWarnings = allWarnings.filter((w) => w.category === 'bootstrap-port');
-    expect(portWarnings.length).toBeGreaterThan(0);
+    const bootstrapWarnings = allWarnings.filter((w) => w.category === 'bootstrap-unsupported');
+    expect(bootstrapWarnings.length).toBeGreaterThan(0);
   });
 
   it('attaches testing-unsupported category to unsupported testing patterns', () => {
