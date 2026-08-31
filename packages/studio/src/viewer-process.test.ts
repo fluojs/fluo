@@ -12,6 +12,7 @@ class FakeViewerProcess extends EventEmitter {
   signalCode: NodeJS.Signals | null = null;
   readonly signals: NodeJS.Signals[] = [];
   readonly stdout = new PassThrough();
+  readonly stderr = new PassThrough();
 
   constructor(private readonly exitBehavior: ExitBehavior) {
     super();
@@ -92,24 +93,68 @@ describe('installed viewer process lifecycle', () => {
     // Then: the URL resolves and every temporary listener is removed.
     await expect(reading).resolves.toEqual(new URL('http://127.0.0.1:43123/'));
     expect(process.stdout.listenerCount('data')).toBe(0);
+    expect(process.stderr.listenerCount('data')).toBe(0);
     expect(process.listenerCount('error')).toBe(0);
     expect(process.listenerCount('exit')).toBe(0);
   });
 
-  it('bounds URL startup and cleans listeners when no announcement arrives', async () => {
-    // Given: a viewer process that remains silent.
+  it('reports stdout and stderr when the viewer exits before announcing its URL', async () => {
+    // Given: a viewer process that emits startup diagnostics before an early exit.
+    const process = new FakeViewerProcess('exit-on-sigterm');
+    const reading = readViewerUrl(process, 10);
+    process.stdout.write('startup phase one\n');
+    process.stderr.write('failed to bind viewer port\n');
+
+    // When: the process exits before writing its URL.
+    process.emit('exit', 1, null);
+
+    // Then: both bounded diagnostic streams explain the failure and all listeners are removed.
+    await expect(reading).rejects.toThrow('stdout: startup phase one\n; stderr: failed to bind viewer port\n');
+    expect(process.stdout.listenerCount('data')).toBe(0);
+    expect(process.stderr.listenerCount('data')).toBe(0);
+    expect(process.listenerCount('error')).toBe(0);
+    expect(process.listenerCount('exit')).toBe(0);
+  });
+
+  it('cleans stdout, stderr, process listeners, and the timer after a startup error', async () => {
+    // Given: a viewer process that has subscribed startup diagnostics.
+    const process = new FakeViewerProcess('exit-on-sigterm');
+    vi.useFakeTimers();
+    const reading = readViewerUrl(process, 10);
+
+    // When: startup reports a process error.
+    const startupError = new Error('viewer executable failed');
+    process.emit('error', startupError);
+
+    // Then: the original error is retained without leaked listeners or a deadline timer.
+    await expect(reading).rejects.toThrow(startupError);
+    expect(process.stdout.listenerCount('data')).toBe(0);
+    expect(process.stderr.listenerCount('data')).toBe(0);
+    expect(process.listenerCount('error')).toBe(0);
+    expect(process.listenerCount('exit')).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('bounds stdout and stderr and cleans listeners when no announcement arrives', async () => {
+    // Given: a viewer process that emits diagnostics but never announces a URL.
     const process = new FakeViewerProcess('exit-on-sigterm');
     vi.useFakeTimers();
 
     // When: the startup deadline expires.
     const reading = readViewerUrl(process, 10);
-    const expectation = expect(reading).rejects.toThrow('within 10ms');
+    process.stdout.write('startup phase one\n');
+    process.stderr.write('waiting for a missing dependency\n');
+    const expectation = expect(reading).rejects.toThrow(
+      'within 10ms: stdout: startup phase one\n; stderr: waiting for a missing dependency\n',
+    );
     await vi.advanceTimersByTimeAsync(10);
 
     // Then: startup fails without retaining listeners or timers.
     await expectation;
     expect(process.stdout.listenerCount('data')).toBe(0);
+    expect(process.stderr.listenerCount('data')).toBe(0);
     expect(process.listenerCount('error')).toBe(0);
     expect(process.listenerCount('exit')).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

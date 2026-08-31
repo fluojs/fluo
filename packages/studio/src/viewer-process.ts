@@ -1,7 +1,8 @@
 import type { ChildProcessByStdio } from 'node:child_process';
 import type { Readable } from 'node:stream';
 
-type ViewerProcess = NodeJS.EventEmitter & Pick<ChildProcessByStdio<null, Readable, Readable>, 'exitCode' | 'kill' | 'signalCode' | 'stdout'>;
+type ViewerProcess = NodeJS.EventEmitter &
+  Pick<ChildProcessByStdio<null, Readable, Readable>, 'exitCode' | 'kill' | 'signalCode' | 'stderr' | 'stdout'>;
 
 const DEFAULT_VIEWER_TIMEOUT_MS = 10_000;
 const MAX_VIEWER_STARTUP_OUTPUT_LENGTH = 4_096;
@@ -96,13 +97,15 @@ export async function stopViewerProcess(process: ViewerProcess, timeoutMs = DEFA
  */
 export function readViewerUrl(process: ViewerProcess, timeoutMs = DEFAULT_VIEWER_TIMEOUT_MS): Promise<URL> {
   return new Promise((resolveUrl, rejectUrl) => {
-    let output = '';
+    let stderr = '';
+    let stdout = '';
     let timer: ReturnType<typeof setTimeout> | undefined;
     const cleanup = (): void => {
       if (timer !== undefined) {
         clearTimeout(timer);
       }
-      process.stdout.off('data', resolveFromData);
+      process.stdout.off('data', resolveFromStdout);
+      process.stderr.off('data', retainStderr);
       process.off('error', rejectFromError);
       process.off('exit', rejectFromExit);
     };
@@ -114,21 +117,30 @@ export function readViewerUrl(process: ViewerProcess, timeoutMs = DEFAULT_VIEWER
       cleanup();
       rejectUrl(error);
     };
-    const resolveFromData = (chunk: string): void => {
-      output = `${output}${chunk}`.slice(-MAX_VIEWER_STARTUP_OUTPUT_LENGTH);
-      const url = output.match(/http:\/\/127\.0\.0\.1:\d+\//u)?.[0];
+    const resolveFromStdout = (chunk: string): void => {
+      stdout = `${stdout}${chunk}`.slice(-MAX_VIEWER_STARTUP_OUTPUT_LENGTH);
+      const url = stdout.match(/http:\/\/127\.0\.0\.1:\d+\//u)?.[0];
 
       if (url) {
         resolveWithUrl(new URL(url));
       }
     };
+    const retainStderr = (chunk: string): void => {
+      stderr = `${stderr}${chunk}`.slice(-MAX_VIEWER_STARTUP_OUTPUT_LENGTH);
+    };
     const rejectFromError = (error: Error): void => rejectWithError(error);
     const rejectFromExit = (code: number | null, signal: NodeJS.Signals | null): void => {
-      rejectWithError(new Error(`Installed viewer exited before announcing its URL (code ${String(code)}, signal ${String(signal)}): ${output}`));
+      rejectWithError(
+        new Error(
+          `Installed viewer exited before announcing its URL (code ${String(code)}, signal ${String(signal)}): stdout: ${stdout}; stderr: ${stderr}`,
+        ),
+      );
     };
 
     process.stdout.setEncoding('utf8');
-    process.stdout.on('data', resolveFromData);
+    process.stderr.setEncoding('utf8');
+    process.stdout.on('data', resolveFromStdout);
+    process.stderr.on('data', retainStderr);
     process.once('error', rejectFromError);
     process.once('exit', rejectFromExit);
 
@@ -138,7 +150,9 @@ export function readViewerUrl(process: ViewerProcess, timeoutMs = DEFAULT_VIEWER
     }
 
     timer = setTimeout(() => {
-      rejectWithError(new Error(`Installed viewer did not announce its URL within ${String(timeoutMs)}ms: ${output}`));
+      rejectWithError(
+        new Error(`Installed viewer did not announce its URL within ${String(timeoutMs)}ms: stdout: ${stdout}; stderr: ${stderr}`),
+      );
     }, timeoutMs);
   });
 }

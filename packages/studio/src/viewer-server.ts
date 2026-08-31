@@ -93,9 +93,14 @@ export async function startStudioViewerServer(options: StudioViewerServerOptions
     throw new Error('Studio viewer did not bind to a TCP port.');
   }
 
+  let terminalClose: Promise<void> | undefined;
+
   return {
     url: new URL(`http://${viewerHost}:${String(address.port)}/`),
-    close: () => close(server, connections),
+    close: () => {
+      terminalClose ??= close(server, connections);
+      return terminalClose;
+    },
   };
 }
 

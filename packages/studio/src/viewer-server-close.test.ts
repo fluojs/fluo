@@ -16,6 +16,26 @@ afterEach(async () => {
 });
 
 describe('Studio viewer server close', () => {
+  it('shares one terminal close promise across concurrent and repeated calls', async () => {
+    // Given: a running viewer server with no active client connections.
+    const viewerDirectory = await mkdtemp(join(tmpdir(), 'fluo-studio-viewer-'));
+    temporaryDirectories.push(viewerDirectory);
+    await writeFile(join(viewerDirectory, 'index.html'), '<div id="app"></div>');
+    const server = await startStudioViewerServer({ port: 0, viewerDirectory });
+    servers.push(server);
+
+    // When: callers concurrently request shutdown, then request it again after it settles.
+    const firstClose = server.close();
+    const concurrentClose = server.close();
+    await firstClose;
+    const repeatedClose = server.close();
+
+    // Then: every caller receives the same terminal outcome without reopening server.close.
+    expect(concurrentClose).toBe(firstClose);
+    expect(repeatedClose).toBe(firstClose);
+    await expect(Promise.all([concurrentClose, repeatedClose])).resolves.toEqual([undefined, undefined]);
+  });
+
   it('forces its incomplete raw socket closed exactly at the bounded grace period', async () => {
     // Given: a viewer server with a connected peer that never completes an HTTP request.
     const viewerDirectory = await mkdtemp(join(tmpdir(), 'fluo-studio-viewer-'));
@@ -43,9 +63,11 @@ describe('Studio viewer server close', () => {
       vi.useFakeTimers();
       const socketClosed = new Promise<void>((resolveClose) => socket.once('close', () => resolveClose()));
       stopping = server.close();
+      const concurrentStopping = server.close();
       await vi.advanceTimersByTimeAsync(viewerServerCloseGracePeriodMs);
 
       // Then: the server-owned incomplete connection is forcibly closed and terminal close settles.
+      expect(concurrentStopping).toBe(stopping);
       await expect(stopping).resolves.toBeUndefined();
       await expect(socketClosed).resolves.toBeUndefined();
     } finally {
