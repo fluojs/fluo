@@ -951,6 +951,26 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('accepts generic companions for validation migration prose without topic-specific book coupling', async () => {
+    // Given
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const genericContractCompanions = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'docs/contracts/nestjs-parity-gaps.md',
+      'docs/contracts/nestjs-parity-gaps.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ];
+
+    // When
+    const enforceGenericCompanions = () => enforceContractCompanionUpdates(genericContractCompanions);
+
+    // Then
+    expect(enforceGenericCompanions).not.toThrow();
+  });
+
   it('accepts metadata preload guidance with bilingual discoverability and governance enforcement', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
     const guidanceFiles = [

@@ -40,6 +40,7 @@ await import('./bootstrap.js');
 | `emitDecoratorMetadata`를 통한 생성자 타입 리플렉션 | `@fluojs/core`의 `@Inject(TokenA, TokenB)` | 생성자 의존성은 데코레이터 인자 순서대로 명시한다. |
 | `@Inject(TOKEN) private value` 같은 속성 주입 | 클래스 수준 `@Inject(TOKEN)`과 이에 대응하는 생성자 매개변수 | fluo의 `@Inject(...)`는 생성자 토큰을 매개변수 순서대로 선언하는 표준 클래스 데코레이터다. 속성 또는 생성자 매개변수 데코레이터가 아니다. |
 | `class-validator` / 데코레이터 중심 DTO 검증 | Zod와 Valibot을 포함한 Standard Schema를 지원하는 `@fluojs/validation` | 이는 class-validator 호환 계층이 아니라 fluo 고유 검증 surface다. 일반 validator는 `null` / `undefined`를 건너뛰고, 필수값에는 `@IsDefined()`를 사용하며, plain 객체 materialization은 안전한 own enumerable 추가 속성을 유지하고 validation group은 지원되지 않는다. |
+| `@ValidateNested()`와 class-transformer `@Type(() => ChildDto)` 조합 | `@fluojs/validation`의 `@ValidateNested(() => ChildDto)` | 중첩 DTO target을 decorator argument로 명시합니다. `@Type(...)`과 class-transformer import를 제거하세요. fluo는 class-transformer metadata나 reflected design type을 소비하지 않습니다. |
 | `nestjs-i18n` `I18nModule.forRoot(...)`, request locale resolver, request-scoped `I18nContext`, localized validation filter | `@fluojs/i18n`의 `I18nModule.forRoot(...)`; `@fluojs/i18n/http`의 `createAcceptLanguageLocaleResolver(...)`, `resolveHttpLocale(...)`, `getHttpLocale(...)`; `@fluojs/i18n/validation`의 `localizeDtoValidationError(...)` | 아래에서 설명하는 동기 root registration 전에 비동기 catalog와 configuration input을 resolve한다. 그런 다음 application-owned request boundary에서 각 locale을 resolve 및 저장하고 translation과 validation localization에 명시적으로 전달한다. fluo는 NestJS resolver class를 discovery하거나 implicit request-locale global을 노출하지 않는다. |
 | `SwaggerModule.createDocument(...)`와 `SwaggerModule.setup(...)` | `@fluojs/openapi`의 `OpenApiModule.forRoot({ title, version, sources, descriptors, documentPath, ui, uiPath, swaggerUiAssets })` | OpenAPI 도입은 명시적이다. 문서화할 모든 controller를 `sources`에 나열하거나, 미리 만든 HTTP handler mapping을 `descriptors`에 전달하거나, 둘 다 사용한다. fluo는 application module graph에서 controller를 scan하지 않는다. `documentPath`와 `uiPath`의 기본값은 `/openapi.json`과 `/docs`이며, 여러 문서를 제공할 때는 module instance마다 서로 다른 값을 지정한다. Swagger UI는 `ui: true`일 때만 제공되고 `swaggerUiAssets`로 기본 CSS와 JavaScript URL을 교체할 수 있다. 정규화된 runtime route가 충돌하면 bootstrap이 `RouteConflictError`로 실패한다. |
 | `@nestjs/graphql` resolver discovery, reflected return type, parameter decorator, `forRootAsync(...)` | `@fluojs/graphql`의 `GraphqlModule.forRoot(...)`, module provider/controller, `@Resolver`, root operation decorator, `@FieldResolver`, `@Args`, `@Parent`, `@Context`, `listOf(...)` | Resolver class를 compiled module의 provider 또는 controller로 등록한다. `resolvers` option은 discovery 가능한 class에 적용하는 선택적 allowlist/filter다. 이를 생략하거나 빈 list를 전달하면 등록된 decorated candidate를 모두 허용한다. fluo는 metadata에서 provider나 GraphQL output type을 추론하지 않는다. Object 결과에는 `outputType`, array에는 `outputType: listOf(ItemType)`이 필요하며 생략한 output type은 GraphQL `String`을 사용한다. Object field는 `@Resolver('TypeName')`으로 named code-first output type에 연결한다. TC39 표준 데코레이터는 parameter decorator를 지원하지 않으므로 field resolver method에 서로 다른 index의 `@Args(index?)`, `@Parent(index?)`, `@Context(index?)`를 배치한다. Code-first field argument DTO binding은 `@FieldResolver({ input: InputDto })`, 선택적 `argTypes`, `@Args(index?)`로 지원하며 `input`과 `@Args()`는 서로 필요하고 root operation에서는 유효하지 않다. `forRootAsync(...)`, schema-first field-resolver attachment, `@Subscription({ topics })` 계약은 없다. 선택적 WebSocket subscription에는 server-backed Node HTTP/S adapter가 필요하다. |
@@ -84,6 +85,7 @@ Code-first `@FieldResolver({ input: InputDto })`와 `@Args(index?)` DTO binding�
 - `@nestjs/config` migration은 async Dynamic Module 또는 namespace loader를 그대로 복제하지 않는다. `@fluojs/config`는 동기 `ConfigModule.forRoot(...)`를 제공한다. Ambient process value는 명시적 `processEnv` option으로 전달하고, 병합된 snapshot은 동기 Standard Schema `schema`로 검증하며, NestJS `isGlobal` 대신 기본 global visibility를 가진 `global?: boolean`을 사용한다. Remote secret과 NestJS `load` factory는 module graph 구성 전에 application bootstrap boundary에서 await하되 nested object는 `defaults` 또는 `runtimeOverrides`에 그대로 보존한다. Plain object는 deep merge되고 dot-path `ConfigService` lookup으로 계속 접근할 수 있다.
 - Configuration은 HTTP adapter 없이 `FluoFactory.create(AppModule)` 또는 `FluoFactory.createApplicationContext(AppModule)`에서 resolve할 수 있다. Adapter requirement는 `listen()`에만 적용된다. `port` 같은 adapter option이 configuration에서 온다면 HTTP application 생성 전에 하나의 validated snapshot을 준비하고, 같은 snapshot을 `ConfigModule`에 등록한 뒤 adapter도 그 값으로 구성한다. `app.listen(port)`가 platform이나 port를 선택하지는 않는다.
 - 검증은 `class-validator` 우선 계약을 유지하지 않고 Standard Schema 방향으로 반드시 옮겨야 한다.
+- 중첩 DTO 검증은 `@ValidateNested(() => ChildDto)`로 target을 반드시 명시해야 합니다. fluo는 중첩 constructor를 추론하기 위해 class-transformer `@Type(...)`, `reflect-metadata`, emitted design metadata를 소비하지 않습니다.
 - NestJS controller parameter decorator, Pipe, `ValidationPipe` migration은 parameter-for-parameter 치환이 아니다. `@Param()`, `@Query()`, `@Body()`, `@Headers()`, `@Req()`, `@Res()` 가정은 하나의 `@RequestDto(...)`, field-level source decorator, `@Convert(...)`, 그리고 low-level 접근이 필요할 때의 명시적 `RequestContext` handler parameter로 바꾼다. 검증은 public controller-parameter Pipe stage가 아니라 DTO materialization 이후에 실행된다.
 - Response ownership을 직접 가진 뒤에도 `ClassSerializerInterceptor`처럼 후처리될 것이라고 기대하면 안 된다. `SerializerInterceptor`가 DTO를 shaping해야 한다면 response를 commit하지 말고 DTO를 반환한다. Migrated code가 `RequestContext.response.send(...)`, `redirect(...)`, 또는 수동 streaming helper를 호출한다면 commit 전에 안전한 최종 payload를 만들어야 한다. 이후 `SerializerInterceptor`는 serialization을 우회하고 `next.handle()`에서 받은 값을 그대로 반환하지만, 다른 interceptor는 chain 결과를 계속 변환할 수 있다. Dispatcher는 이와 별개로 두 번째 success-response write를 건너뛴다.
 - `ValidationPipe`의 whitelist/forbid 가정이나 class-validator group 실행을 그대로 옮기지 않는다. 일반 fluo validator는 `null`과 `undefined`를 건너뛰므로 필수 field에는 `@IsDefined()`를 추가한다. 입력이 plain 객체일 때 `materialize()`는 안전한 own enumerable 추가 속성을 제거하거나 거부하지 않고 유지하며, 이 filtering 보장은 이미 생성된 DTO 인스턴스를 설명하지 않는다. Decorator option은 `groups`와 `always`를 지원하지 않는다. Workflow별 규칙에는 명시적 input shaping과 별도 DTO, mapped DTO, `@ValidateIf(...)`, class-level validator를 사용한다.
@@ -142,6 +144,62 @@ Code-first `@FieldResolver({ input: InputDto })`와 `@Args(index?)` DTO binding�
 - `NotificationsModule`은 기본적으로 `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS`에 대해 global이다. Migrated code에 module-local visibility가 필요할 때는 `global: false`를 사용한다.
 - Slack migration은 NestJS async dynamic-module 또는 package-level multi-client registry clone이 아니다. `SlackModule.forRootAsync(...)`는 `inject`와 `useFactory`를 받으며, `imports`, `useClass`, `useExisting`은 소비하지 않는다. 필요한 의존성은 application module graph에 등록한 뒤 token을 `inject`에 나열하고, `useFactory`에서 최종 Slack option을 반환한다. `@fluojs/slack`은 singleton compatibility token인 `SLACK`과 `SLACK_CHANNEL`을 노출하고 `createSlackProviders(...)`로 같은 singleton wiring을 재사용하며, NestJS `isGlobal` 대신 기본 global visibility를 가진 `global?: boolean`을 사용한다.
 - Discord migration은 NestJS async dynamic-module 또는 custom-provider clone이 아니다. `DiscordModule.forRootAsync(...)`는 `inject`와 `useFactory`를 받으며, `imports`, `useClass`, `useExisting`는 소비하지 않는다. `@fluojs/discord`는 singleton compatibility token인 `DISCORD`와 `DISCORD_CHANNEL`을 노출하고, NestJS `isGlobal` 대신 기본 global visibility를 가진 `global?: boolean`을 사용하며, `createDiscordProviders(...)`, `DISCORD_OPTIONS`, `NormalizedDiscordModuleOptions` 같은 내부 provider helper는 private으로 유지한다.
+
+### Nested DTO and Mapped Type Rewrites
+
+NestJS에서는 class-validator와 class-transformer를 함께 사용하여 reflected metadata 또는 transformer metadata로 중첩 constructor를 제공하는 경우가 많습니다.
+
+```typescript
+import { Type } from 'class-transformer';
+import { IsString, ValidateNested } from 'class-validator';
+
+class AddressDto {
+  @IsString()
+  city = '';
+}
+
+class CreateUserDto {
+  @ValidateNested()
+  @Type(() => AddressDto)
+  address = new AddressDto();
+}
+```
+
+fluo에서는 constructor를 `@ValidateNested(...)` 안으로 옮기고 이 경계에서 class-transformer를 제거합니다.
+
+```typescript
+import { IsString, ValidateNested } from '@fluojs/validation';
+
+class AddressDto {
+  @IsString()
+  city = '';
+}
+
+class CreateUserDto {
+  @ValidateNested(() => AddressDto)
+  address = new AddressDto();
+}
+```
+
+`@ValidateNested(() => AddressDto)`가 materialization과 재귀 검증에 사용하는 runtime source of truth입니다. fluo는 `@Type(...)`, class-transformer metadata, `reflect-metadata`, `emitDecoratorMetadata`를 읽지 않으므로 legacy decorator compiler flag는 비활성화된 상태로 유지하세요. 이는 compatibility shim이 아니라 명시적인 재작성입니다.
+
+Mapped DTO helper도 fluo import로 옮깁니다.
+
+```typescript
+import {
+  IntersectionType,
+  OmitType,
+  PartialType,
+  PickType,
+} from '@fluojs/validation';
+
+class UpdateUserDto extends PartialType(CreateUserDto) {}
+class PublicUserDto extends OmitType(CreateUserDto, ['address']) {}
+class AddressOnlyDto extends PickType(CreateUserDto, ['address']) {}
+class UserWithAuditDto extends IntersectionType(CreateUserDto, AuditDto) {}
+```
+
+네 helper는 모두 `@fluojs/validation`에서 export되며 전용 mapped-type subpath인 `@fluojs/validation/mapped-types`도 사용할 수 있습니다. `PickType`, `OmitType`, `PartialType`은 적용 가능한 field-level validation과 binding metadata를 보존하지만, subset 또는 optional DTO가 base class-level validator의 field 가정을 더 이상 만족하지 않을 수 있으므로 해당 validator는 의도적으로 복사하지 않습니다. Derived DTO에서도 여전히 유효한 class-level rule은 검토 후 다시 선언하세요. `IntersectionType`은 모든 source contract를 유지하므로 각 input DTO의 field-level 및 class-level validation을 보존합니다. NestJS mapped-type의 class-level metadata 동작이 암묵적으로 이어진다고 가정하지 마세요.
 
 ### NestJS Config Registration 및 Bootstrap Migration
 

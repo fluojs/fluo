@@ -40,6 +40,7 @@ Apply the fluo construct in the second column, not the NestJS source pattern, wh
 | constructor type reflection via `emitDecoratorMetadata` | `@Inject(TokenA, TokenB)` from `@fluojs/core` | Constructor dependencies are declared explicitly in decorator argument order. |
 | property injection such as `@Inject(TOKEN) private value` | class-level `@Inject(TOKEN)` plus a matching constructor parameter | fluo's `@Inject(...)` is a standard class Decorator that declares constructor Tokens in parameter order. It is not a property or constructor-parameter Decorator. |
 | `class-validator` / decorator-driven DTO validation | `@fluojs/validation` with Standard Schema support, including Zod and Valibot | This is a fluo-native validation surface, not class-validator compatibility. Ordinary validators skip `null` / `undefined`, requiredness uses `@IsDefined()`, plain-object materialization retains safe own enumerable extra properties, and validation groups are unsupported. |
+| `@ValidateNested()` plus class-transformer `@Type(() => ChildDto)` | `@ValidateNested(() => ChildDto)` from `@fluojs/validation` | The nested DTO target is an explicit decorator argument. Remove `@Type(...)` and the class-transformer import; fluo does not consume class-transformer metadata or reflected design types. |
 | `nestjs-i18n` `I18nModule.forRoot(...)`, request locale resolvers, request-scoped `I18nContext`, and localized validation filters | `I18nModule.forRoot(...)` from `@fluojs/i18n`; `createAcceptLanguageLocaleResolver(...)`, `resolveHttpLocale(...)`, and `getHttpLocale(...)` from `@fluojs/i18n/http`; `localizeDtoValidationError(...)` from `@fluojs/i18n/validation` | Resolve asynchronous catalog and configuration inputs before the synchronous root registration described below. Then resolve and store each locale at an application-owned request boundary and pass it explicitly to translation and validation localization. fluo does not discover NestJS resolver classes or expose an implicit request-locale global. |
 | `SwaggerModule.createDocument(...)` and `SwaggerModule.setup(...)` | `OpenApiModule.forRoot({ title, version, sources, descriptors, documentPath, ui, uiPath, swaggerUiAssets })` from `@fluojs/openapi` | OpenAPI adoption is explicit: list every documented controller in `sources`, pass prebuilt HTTP handler mappings in `descriptors`, or use both. fluo does not scan the application module graph for controllers. `documentPath` and `uiPath` default to `/openapi.json` and `/docs`; assign distinct values to each module instance when serving multiple documents. Swagger UI serves only when `ui: true`, and `swaggerUiAssets` can replace the default CSS and JavaScript URLs. Normalized runtime route collisions fail bootstrap with `RouteConflictError`. |
 | `@nestjs/graphql` resolver discovery, reflected return types, parameter decorators, and `forRootAsync(...)` | `GraphqlModule.forRoot(...)`, module providers/controllers, `@Resolver`, root operation decorators, `@FieldResolver`, `@Args`, `@Parent`, `@Context`, and `listOf(...)` from `@fluojs/graphql` | Register resolver classes as providers or controllers in compiled modules. The `resolvers` option is an optional allowlist/filter over those discoverable classes; omitting it or passing an empty list allows every decorated registered candidate. fluo does not infer providers or GraphQL output types from metadata. Object results require `outputType`, arrays require `outputType: listOf(ItemType)`, and omitted output types use GraphQL `String`. Object fields attach to a named code-first output type through `@Resolver('TypeName')`. Because TC39 standard decorators do not support parameter decorators, place `@Args(index?)`, `@Parent(index?)`, and `@Context(index?)` on the field resolver method with distinct indexes. Code-first field argument DTO binding is supported through `@FieldResolver({ input: InputDto })`, optional `argTypes`, and `@Args(index?)`; `input` and `@Args()` require each other and are invalid on root operations. There is no `forRootAsync(...)`, schema-first field-resolver attachment, or `@Subscription({ topics })` contract. Optional WebSocket subscriptions require a server-backed Node HTTP/S adapter. |
@@ -84,6 +85,7 @@ Code-first `@FieldResolver({ input: InputDto })` with `@Args(index?)` is support
 - `@nestjs/config` migration is not an async Dynamic Module or namespace-loader clone. `@fluojs/config` exposes synchronous `ConfigModule.forRoot(...)`; pass ambient process values through the explicit `processEnv` option, validate the merged snapshot with a synchronous Standard Schema `schema`, and use `global?: boolean` with default global visibility instead of NestJS `isGlobal`. Await remote secrets and NestJS `load` factories at the application bootstrap boundary before module graph construction, but preserve their nested objects in `defaults` or `runtimeOverrides`; plain objects deep-merge and remain available through dot-path `ConfigService` lookups.
 - Configuration can be resolved in `FluoFactory.create(AppModule)` or `FluoFactory.createApplicationContext(AppModule)` without an HTTP adapter. Only `listen()` has the adapter requirement. When an adapter option such as `port` comes from configuration, prepare one validated snapshot before HTTP application creation, register that same snapshot with `ConfigModule`, and construct the adapter from it. `app.listen(port)` does not select a platform or port.
 - Validation MUST be migrated to the Standard Schema direction instead of keeping a `class-validator`-first contract.
+- Nested DTO validation MUST name its target explicitly with `@ValidateNested(() => ChildDto)`. fluo does not consume class-transformer `@Type(...)`, `reflect-metadata`, or emitted design metadata to infer nested constructors.
 - NestJS controller parameter decorators, Pipe, and `ValidationPipe` migration are not parameter-for-parameter replacements. Replace `@Param()`, `@Query()`, `@Body()`, `@Headers()`, `@Req()`, and `@Res()` assumptions with one `@RequestDto(...)`, field-level source decorators, `@Convert(...)`, and an explicit `RequestContext` handler parameter when low-level access is necessary. Validation runs after DTO materialization instead of through a public controller-parameter Pipe stage.
 - Do not expect `ClassSerializerInterceptor`-style post-processing after taking direct response ownership. Return DTOs without committing the response when `SerializerInterceptor` should shape them. If migrated code calls `RequestContext.response.send(...)`, `redirect(...)`, or a manual streaming helper, it must produce the final safe payload before that commit. Afterward, `SerializerInterceptor` bypasses serialization and returns the value it received from `next.handle()` unchanged; other interceptors may still transform the chain result. The dispatcher independently skips a second success-response write.
 - Do not carry over `ValidationPipe` whitelist/forbid assumptions or class-validator group execution. Ordinary fluo validators skip `null` and `undefined`, so add `@IsDefined()` for required fields. When its input is a plain object, `materialize()` retains safe own enumerable extra properties rather than stripping or rejecting them; this filtering guarantee does not describe already-created DTO instances. Decorator options do not support `groups` or `always`. Use explicit input shaping and separate DTOs, mapped DTOs, `@ValidateIf(...)`, or class-level validators for workflow-specific rules.
@@ -142,6 +144,62 @@ Code-first `@FieldResolver({ input: InputDto })` with `@Args(index?)` is support
 - `NotificationsModule` is global by default for `NotificationsService`, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS`; use `global: false` when migrated code requires module-local visibility.
 - Slack migration is not a NestJS async dynamic-module or package-level multi-client registry clone. `SlackModule.forRootAsync(...)` accepts `inject` plus `useFactory`; it does not consume `imports`, `useClass`, or `useExisting`. Register dependencies in the application module graph before listing their tokens in `inject`, then return final Slack options from `useFactory`. `@fluojs/slack` exposes singleton compatibility tokens `SLACK` and `SLACK_CHANNEL`, mirrors that singleton wiring through `createSlackProviders(...)`, and uses `global?: boolean` with default global visibility instead of NestJS `isGlobal`.
 - Discord migration is not a NestJS async dynamic-module or custom-provider clone. `DiscordModule.forRootAsync(...)` accepts `inject` plus `useFactory`; it does not consume `imports`, `useClass`, or `useExisting`. `@fluojs/discord` exposes singleton compatibility tokens `DISCORD` and `DISCORD_CHANNEL`, uses `global?: boolean` with default global visibility instead of NestJS `isGlobal`, and keeps internal provider helpers such as `createDiscordProviders(...)`, `DISCORD_OPTIONS`, and `NormalizedDiscordModuleOptions` private.
+
+### Nested DTO and Mapped Type Rewrites
+
+NestJS commonly combines class-validator with class-transformer so reflected or transformer metadata supplies the nested constructor:
+
+```typescript
+import { Type } from 'class-transformer';
+import { IsString, ValidateNested } from 'class-validator';
+
+class AddressDto {
+  @IsString()
+  city = '';
+}
+
+class CreateUserDto {
+  @ValidateNested()
+  @Type(() => AddressDto)
+  address = new AddressDto();
+}
+```
+
+In fluo, move that constructor into `@ValidateNested(...)` and remove class-transformer from this boundary:
+
+```typescript
+import { IsString, ValidateNested } from '@fluojs/validation';
+
+class AddressDto {
+  @IsString()
+  city = '';
+}
+
+class CreateUserDto {
+  @ValidateNested(() => AddressDto)
+  address = new AddressDto();
+}
+```
+
+`@ValidateNested(() => AddressDto)` is the runtime source of truth for materialization and recursive validation. fluo does not read `@Type(...)`, class-transformer metadata, `reflect-metadata`, or `emitDecoratorMetadata`; keep the legacy decorator compiler flags disabled. This is an explicit rewrite, not a compatibility shim.
+
+Mapped DTO helpers also move to fluo imports:
+
+```typescript
+import {
+  IntersectionType,
+  OmitType,
+  PartialType,
+  PickType,
+} from '@fluojs/validation';
+
+class UpdateUserDto extends PartialType(CreateUserDto) {}
+class PublicUserDto extends OmitType(CreateUserDto, ['address']) {}
+class AddressOnlyDto extends PickType(CreateUserDto, ['address']) {}
+class UserWithAuditDto extends IntersectionType(CreateUserDto, AuditDto) {}
+```
+
+All four helpers are exported from `@fluojs/validation`; `@fluojs/validation/mapped-types` is also available as the dedicated mapped-type subpath. `PickType`, `OmitType`, and `PartialType` preserve applicable field-level validation and binding metadata but intentionally do not copy base class-level validators, because a subset or optionalized DTO may no longer satisfy those validators' field assumptions. Audit and redeclare any class-level rule that is still valid on the derived DTO. `IntersectionType` preserves field-level and class-level validation from every input DTO because the intersection retains all source contracts. Do not assume NestJS mapped-type class-level metadata behavior carries over implicitly.
 
 ### NestJS Config Registration and Bootstrap Migration
 

@@ -217,6 +217,8 @@ const contractGateTriggers = new Set([
   'docs/architecture/http-runtime.ko.md',
   'docs/contracts/deployment.md',
   'docs/contracts/deployment.ko.md',
+  // These shared files intentionally use only the generic contract gate; topic-specific prose
+  // must not impose unrelated companion-document requirements.
   'docs/contracts/nestjs-parity-gaps.md',
   'docs/contracts/nestjs-parity-gaps.ko.md',
   // Includes Bun fetch-style lifecycle, synchronous manual fetch-host ownership,
