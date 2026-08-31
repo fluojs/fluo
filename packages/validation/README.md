@@ -188,6 +188,9 @@ Pass either a DTO class or a lazy constructor factory such as `() => ChildDto` o
 `materialize()` is intentionally strict. If a transport gives you `'42'` and your DTO expects `number`, the transport or binding layer must convert it first.
 Numeric validators, including `@IsLatitude()` and `@IsLongitude()`, validate numeric DTO values without treating numeric strings as already-converted numbers.
 
+`@IsEnum(...)` accepts declared enum values. For numeric TypeScript enums, generated
+reverse-map member names are not values and are rejected.
+
 ## Public API
 
 - **Validator engine**: `DefaultValidator`, `DtoValidationError`, `ValidationIssue`, `Validator`
