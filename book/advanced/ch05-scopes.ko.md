@@ -130,11 +130,11 @@ const singleton = await root.resolve(DefaultSingleton);
 ## 5.2 Singleton caching and the root container baseline
 singleton은 기본 lifetime이지만, Fluo의 singleton 동작은 단순한 "영원히 객체 하나"보다 더 정밀합니다. 실제로는 "문서화된 override 경로가 없는 한 root singleton cache에 token별 promise 하나"에 가깝습니다.
 
-cache field는 `path:packages/di/src/container.ts:287-313`에 선언되어 있습니다. single provider 쪽의 핵심은 `singletonCache: Map<Token, Promise<unknown>>`입니다. multi provider는 `multiSingletonCache: Map<NormalizedProvider, Promise<unknown>>`를 따로 가집니다.
+cache field와 construction boundary는 `path:packages/di/src/container.ts:296-347`에 선언되어 있습니다. single provider 쪽의 핵심은 `singletonCache: Map<Token, Promise<unknown>>`입니다. multi provider는 `multiSingletonCache: Map<NormalizedProvider, Promise<unknown>>`를 따로 가집니다.
 
 컨테이너 field를 보면 singleton, request, multi provider가 서로 다른 cache map을 갖는 이유가 바로 드러납니다.
 
-`path:packages/di/src/container.ts:287-313`
+`path:packages/di/src/container.ts:296-347`
 ```typescript
 private readonly registrations = new Map<Token, NormalizedProvider>();
 private readonly multiRegistrations = new Map<Token, NormalizedProvider[]>();
@@ -156,24 +156,38 @@ private disposed = false;
 private trackedByParent = false;
 private graphRevision = 0;
 
-constructor(
-  private readonly parent?: Container,
-  private readonly requestScopeEnabled = false,
-  singletonCache?: Map<Token, Promise<unknown>>,
-) {
-  this.singletonCache = singletonCache ?? new Map<Token, Promise<unknown>>();
+private readonly parent: Container | undefined;
+private readonly requestScopeEnabled: boolean;
+
+constructor(...construction: never[]) {
+  if (construction.length > 0) {
+    throw new ContainerResolutionError(
+      'Container child-scope construction is package-owned and cannot be invoked directly.',
+      {
+        hint: 'Construct root containers with new Container() and create child scopes with container.createRequestScope().',
+      },
+    );
+  }
+
+  const childScope = Container.#childScopeConstruction;
+
+  this.parent = childScope?.parent;
+  this.requestScopeEnabled = childScope?.requestScopeEnabled ?? false;
+  this.singletonCache = childScope?.singletonCache ?? new Map<Token, Promise<unknown>>();
 }
 ```
+
+public construction surface는 의도적으로 좁습니다. caller가 사용할 수 있는 형태는 `new Container()` 하나뿐이며, `...construction: never[]` signature는 consumer가 만족시킬 수 있는 인자 타입을 남기지 않습니다. parent, request-scope, singleton-cache wiring은 package-private construction path로만 전달되므로, emitted declaration에 대한 structural cast로도 위조할 수 없습니다.
 
 이 구조 때문에 singleton cache는 token 기준이고, multi singleton cache는 개별 normalized provider 기준입니다. request cache도 같은 분리를 반복하지만 child container의 소유물이 됩니다.
 
 root container가 singleton cache state를 소유합니다.
-`path:packages/di/src/container.ts:563-572`의 `createRequestScope()`는 `this.root().singletonCache`를 넘겨 child container를 생성합니다.
+`path:packages/di/src/container.ts:609-622`의 `createRequestScope()`는 `this.root().singletonCache`를 넘겨 child container를 생성합니다.
 즉 request scope는 singleton state를 복제하지 않습니다. 공유합니다.
 
-request child 생성 코드는 그 공유를 constructor 인자로 직접 넘깁니다.
+request child 생성 코드는 그 공유를 package-private construction path로 넘깁니다. 다음 source excerpt는 `Container` 메서드 본문입니다. 여기의 `#createChildScope` 호출은 private class-member access이므로 consumer가 복사하거나 호출할 수 있는 application code가 아닙니다.
 
-`path:packages/di/src/container.ts:563-572`
+`path:packages/di/src/container.ts:609-622`
 ```typescript
 createRequestScope(): Container {
   if (this.isDisposedInHierarchy()) {
@@ -183,23 +197,27 @@ createRequestScope(): Container {
     );
   }
 
-  return new Container(this, true, this.root().singletonCache);
+  return Container.#createChildScope({
+    parent: this,
+    requestScopeEnabled: true,
+    singletonCache: this.root().singletonCache,
+  });
 }
 ```
 
-따라서 request child는 parent와 request flag를 갖지만, singleton promise map은 root의 것을 봅니다. 빈 scope shell은 즉시 추적되지 않습니다. `path:packages/di/src/container.ts:1066-1087`의 `ensureTrackedRequestScope()`와 lazy request-cache writer는 request-owned cache state가 처음 materialize될 때 child chain을 연결합니다. 이 방식은 chapter의 ownership rule을 유지하면서 descendant invalidation과 disposal이 생성된 모든 scope object가 아니라 실제 request cache를 대상으로 동작하게 합니다.
+따라서 request child는 parent와 request flag를 갖지만, singleton promise map은 root의 것을 봅니다. construction path가 package-private이므로 그 wiring에 도달하는 경로는 `createRequestScope()`뿐이며, application 코드가 다른 컨테이너의 singleton cache를 넘겨줄 수 없습니다. 빈 scope shell은 즉시 추적되지 않습니다. `path:packages/di/src/container.ts:1144-1153`의 `ensureTrackedRequestScope()`와 `path:packages/di/src/container.ts:1155-1166`의 lazy request-cache writer는 request-owned cache state가 처음 materialize될 때 child chain을 연결합니다. 이 방식은 chapter의 ownership rule을 유지하면서 descendant invalidation과 disposal이 생성된 모든 scope object가 아니라 실제 request cache를 대상으로 동작하게 합니다.
 
 이 구조는 resolution 단계에서 다시 강제됩니다.
-`path:packages/di/src/container.ts:963-999`의 `resolveScopedOrSingletonInstance()`는 먼저 `shouldResolveFromRoot(provider)`를 검사합니다.
-그리고 `path:packages/di/src/container.ts:1013-1019`의 helper는 provider가 default-scope이고, 현재 container가 request-scoped이며, provider가 local registration이 아닐 때 true를 반환합니다. 그 경우 child는 root로 위임합니다.
+`path:packages/di/src/container.ts:1032-1041`의 `resolveScopedOrSingletonInstance()`는 먼저 `cacheOwnerFor(provider)`에 cache를 소유할 container를 묻습니다.
+`path:packages/di/src/container.ts:1087-1098`의 `cacheOwnerFor()`는 local default provider를 request child에 남기고 inherited default provider를 parent/root cache owner로 위임합니다. 요청 범위에 등록된 기본 범위의 비별칭 교체 항목은 중첩된 요청 자식이 그 교체 항목을 소유한 가장 가까운 요청 범위 조상에게 위임하므로, 두 해석이 소유자의 요청 캐시를 사용합니다. 요청 범위와 transient 교체 항목은 각자의 scope 동작을 유지하고, alias는 cache owner를 선택하기 전에 대상 토큰을 해석합니다.
 
 실제 cache map 선택은 `cacheFor()`가 합니다.
-`path:packages/di/src/container.ts:1113-1134`가 핵심 규칙을 보여 줍니다.
+`path:packages/di/src/container.ts:1191-1213`가 핵심 규칙을 보여 줍니다.
 default-scope provider는 원칙적으로 root `singletonCache`를 사용합니다. 단 request child에 locally registered된 경우만 예외적으로 request cache를 사용합니다. 메서드 주석이 이 예외를 일부러 footgun으로 문서화하는 이유도 여기에 있습니다.
 
 cache 선택 규칙은 한 번만 자세히 보겠습니다. 뒤의 request, override, disposal 문단은 이 발췌를 전제로 recap만 붙입니다.
 
-`path:packages/di/src/container.ts:1113-1134`
+`path:packages/di/src/container.ts:1191-1213`
 ```typescript
 private cacheFor(provider: NormalizedProvider): Map<Token, Promise<unknown>> {
   if (provider.scope === Scope.DEFAULT) {
@@ -240,11 +258,11 @@ root singleton consumer의 dependency graph는 바뀌지 않습니다. request c
 singleton 알고리즘은 다음처럼 정리할 수 있습니다.
 
 ```text
-if provider.scope is singleton:
-  if current container is request child and provider is inherited from root:
-    resolve through root cache
+if provider.scope is singleton and provider is not an alias:
+  if a request-scope ancestor locally owns the replacement:
+    resolve through that nearest owner's request cache
   else:
-    resolve through local/request-local path defined by cacheFor()
+    resolve through the cache path defined by cacheFor()
   cache promise by token
 ```
 
@@ -299,21 +317,21 @@ return cache.get(provider.provide);
 ## 5.3 Request scope is a child container, not a flag on a provider
 request lifetime은 구조적으로 모델링됩니다. 단순히 "이 provider는 자주 다시 만들어라"라는 label이 아닙니다. Fluo는 request boundary마다 child container를 실제로 만듭니다.
 
-`path:packages/di/src/container.ts:247-263`의 `createRequestScope()`는 `new Container(this, true, this.root().singletonCache)`를 호출합니다.
-이 constructor 호출 안에 세 가지 결정이 들어 있습니다. child는 parent reference를 갖습니다. request-scope enabled 상태가 됩니다. 그리고 root singleton cache를 공유합니다.
+`path:packages/di/src/container.ts:609-622`의 `createRequestScope()`는 package-private child construction path를 호출합니다.
+이 construction 안에 세 가지 결정이 들어 있습니다. child는 parent reference를 갖습니다. request-scope enabled 상태가 됩니다. 그리고 root singleton cache를 공유합니다.
 
-즉 request scope는 root container 내부의 특별한 cache bucket이 아닙니다. 자기 own `requestCache`와 `multiRequestCache`를 가진 별도 container instance입니다. 이 field들은 `path:packages/di/src/container.ts:124-127`에 선언되어 있습니다.
+즉 request scope는 root container 내부의 특별한 cache bucket이 아닙니다. 자기 own `requestCache`와 `multiRequestCache`를 가진 별도 container instance입니다. 이 field들은 `path:packages/di/src/container.ts:300-301`에 선언되어 있습니다.
 
-request-only resolution은 `cacheFor()`와 `multiCacheFor()`에서 강제됩니다. provider scope가 `request`인데 `requestScopeEnabled`가 false이면, 컨테이너는 `container.createRequestScope()`를 사용하라는 힌트와 함께 `RequestScopeResolutionError`를 던집니다. 코드는 `path:packages/di/src/container.ts:633-645`와 `path:packages/di/src/container.ts:656-668`에 있습니다.
+request-only resolution은 `cacheFor()`와 `multiCacheFor()`에서 강제됩니다. provider scope가 `request`인데 `requestScopeEnabled`가 false이면, 컨테이너는 `container.createRequestScope()`를 사용하라는 힌트와 함께 `RequestScopeResolutionError`를 던집니다. 코드는 `path:packages/di/src/container.ts:1191-1213`와 `path:packages/di/src/container.ts:1214-1236`에 있습니다.
 
 위 `cacheFor()` 발췌가 single provider의 request guard를 이미 보여 주므로 여기서는 multi provider 쪽만 보강하면 충분합니다.
 
-`path:packages/di/src/container.ts:647-668`
+`path:packages/di/src/container.ts:1214-1236`
 ```typescript
 private multiCacheFor(provider: NormalizedProvider): Map<NormalizedProvider, Promise<unknown>> {
   if (provider.scope === Scope.DEFAULT) {
     if (this.requestScopeEnabled && this.hasLocalMultiProvider(provider)) {
-      return this.multiRequestCache;
+      return this.multiRequestCacheForWrite();
     }
 
     return this.root().multiSingletonCache;
@@ -330,7 +348,7 @@ private multiCacheFor(provider: NormalizedProvider): Map<NormalizedProvider, Pro
     );
   }
 
-  return this.multiRequestCache;
+  return this.multiRequestCacheForWrite();
 }
 ```
 

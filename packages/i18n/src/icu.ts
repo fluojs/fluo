@@ -1,9 +1,8 @@
 import { FormatError, IntlMessageFormat } from 'intl-messageformat';
 import type { Formats } from 'intl-messageformat';
 
-import { resolveCatalogMessage } from './catalog.js';
 import { I18nError } from './errors.js';
-import { I18nService, createI18n } from './service.js';
+import { I18nService, createI18n, resolveI18nMessageProvenance } from './service.js';
 import type { I18nInterpolationValues, I18nLocale, I18nModuleOptions, I18nTranslateOptions } from './types.js';
 
 /**
@@ -57,16 +56,7 @@ function toMessageFormatValues(values: I18nIcuValues | undefined): Record<string
 }
 
 function resolveMessageLocale(service: I18nService, key: string, options: I18nIcuTranslateOptions): I18nLocale {
-  const resolvedKey = options.namespace === undefined ? key : `${options.namespace}.${key}`;
-  const snapshot = service.snapshotOptions();
-
-  for (const locale of service.resolveLocales(options.locale)) {
-    if (resolveCatalogMessage(snapshot.catalogs?.[locale], resolvedKey) !== undefined) {
-      return locale;
-    }
-  }
-
-  return options.locale;
+  return resolveI18nMessageProvenance(service, key, options.locale, options.namespace)?.locale ?? options.locale;
 }
 
 function normalizeMessageFormatError(error: unknown, key: string): I18nError {

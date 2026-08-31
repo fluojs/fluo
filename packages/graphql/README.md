@@ -31,7 +31,7 @@ pnpm add @fluojs/graphql graphql graphql-yoga
 - When building type-safe GraphQL APIs using TypeScript decorators (**Code-first**).
 - When integrating an existing executable `GraphQLSchema` object into a fluo application.
 - When you need seamless dependency injection within GraphQL resolvers, including request-scoped providers.
-- When performing efficient data fetching using request-scoped **DataLoader** patterns.
+- When performing efficient data fetching using GraphQL-operation-scoped **DataLoader** patterns.
 
 ## Quick Start
 
@@ -111,11 +111,13 @@ class UserResolver {
 
 `@FieldResolver(...)` attaches a provider method to a field on the named object type owned by `@Resolver('TypeName')`. The target object type must be reachable from a code-first root operation output. The field must already exist on that `GraphQLObjectType`, or the field resolver must declare `type` so the schema builder can add it.
 
-TC39 standard decorators do not support parameter decorators. To preserve fluo's standard-decorator contract, `@Parent()` and `@Context()` are method decorators that bind zero-based parameter indexes. Their defaults map the parent/source object to parameter `0` and `GraphQLContext` to parameter `1`; pass an explicit index when your method uses a different order.
+`@FieldResolver({ input })` reuses the root resolver DTO argument pipeline: `@Arg(...)` fields define GraphQL arguments, values are materialized into the DTO, and validation errors remain GraphQL `BAD_USER_INPUT` errors. Use `argTypes` for list argument types exactly as with root operations.
+
+TC39 standard decorators do not support parameter decorators. To preserve fluo's standard-decorator contract, `@Args()`, `@Parent()`, and `@Context()` are method decorators that bind zero-based parameter indexes. `@Args()` defaults to `0`, as does `@Parent()`; when a field resolver receives both, assign distinct explicit indexes. `@Context()` defaults to `1`. Binding the same index twice fails during decorator evaluation; `@FieldResolver({ input })` requires `@Args()`, and `@Args()` requires `input`.
 
 ```typescript
 import { GraphQLObjectType, GraphQLString } from 'graphql';
-import { Context, FieldResolver, Parent, Query, Resolver, type GraphQLContext } from '@fluojs/graphql';
+import { Arg, Args, Context, FieldResolver, Parent, Query, Resolver, type GraphQLContext } from '@fluojs/graphql';
 
 const AuthorType = new GraphQLObjectType({
   name: 'Author',
@@ -133,6 +135,11 @@ const BookType = new GraphQLObjectType({
   },
 });
 
+class AuthorInput {
+  @Arg('locale')
+  locale = 'en';
+}
+
 @Resolver()
 class BookQueryResolver {
   @Query({ outputType: BookType })
@@ -143,18 +150,19 @@ class BookQueryResolver {
 
 @Resolver('Book')
 class BookFieldResolver {
-  @FieldResolver({ fieldName: 'author', type: AuthorType })
-  @Parent()
-  @Context()
-  author(book: { authorId: string }, context: GraphQLContext) {
+  @FieldResolver({ fieldName: 'author', input: AuthorInput, type: AuthorType })
+  @Args(0)
+  @Parent(1)
+  @Context(2)
+  author(input: AuthorInput, book: { authorId: string }, context: GraphQLContext) {
     return authorLoader(context).load(book.authorId);
   }
 }
 ```
 
-Register both resolver classes as module providers or controllers and include both when `GraphqlModule.forRoot({ resolvers })` is used as an allowlist. Duplicate `TypeName.fieldName` registrations, field targets that are not reachable from a code-first root output, and `@Parent()` / `@Context()` bindings placed on root operation methods fail during bootstrap. Field argument DTO binding and schema-first field-resolver attachment remain outside this first runtime contract. The `nullable` option is reserved; existing field nullability is preserved, while fields added with `type` use GraphQL's nullable default.
+Register both resolver classes as module providers or controllers and include both when `GraphqlModule.forRoot({ resolvers })` is used as an allowlist. Field resolver DTO inputs follow the same HTTP and subscription operation container scope as root resolvers. Duplicate `TypeName.fieldName` registrations, field targets that are not reachable from a code-first root output, and `@Args()` / `@Parent()` / `@Context()` bindings placed on root operation methods fail during bootstrap. Schema-first field-resolver attachment remains outside this runtime contract. For a field added with an explicit `type`, pass `nullable: false` to expose a non-null GraphQL output; `nullable: true` and an omitted option preserve GraphQL's nullable default. Existing field configurations retain their declared nullability because `nullable` does not change fields the object type already owns.
 
-### Request-Scoped DataLoaders
+### GraphQL-Operation-Scoped DataLoaders
 Efficiently solve the N+1 problem with built-in DataLoader integration. Loaders are automatically isolated per GraphQL operation.
 
 ```typescript
@@ -169,7 +177,7 @@ const UserType = new GraphQLObjectType({
   },
 });
 
-const userLoader = createDataLoader(async (ids: string[]) => {
+const userLoader = createDataLoader(async (ids: readonly string[]) => {
   const users = await userService.findByIds(ids);
   return ids.map(id => users.find(u => u.id === id));
 });
@@ -195,8 +203,9 @@ class UserResolver {
 - `@fluojs/graphql` creates one operation-scoped DI container for each HTTP GraphQL request or websocket subscription operation, shares it across resolver calls in that operation, and disposes it when the operation completes or the websocket operation disconnects.
 - Resolver methods receive a `GraphQLContext` whose built-in fields expose the underlying fluo `request`, the authenticated HTTP `principal` when middleware or guards set one, websocket `connectionParams` and `socket` for websocket subscriptions, and any custom fields returned from `GraphqlModule.forRoot({ context })`.
 - Object field resolvers use the same provider scope and operation container as root resolvers; `@Parent()` and `@Context()` only control positional method arguments.
-- Request-scoped DataLoader helpers use the same `GraphQLContext` operation boundary, so loader caches are shared only within one GraphQL operation.
+- GraphQL-operation-scoped DataLoader helpers use the same `GraphQLContext` operation boundary, so loader caches are shared only within one GraphQL operation.
 - Application shutdown unregisters the websocket transport, closes live websocket clients, and disposes any still-active websocket operation containers through the same request-scoped provider teardown path used when an operation completes normally.
+- Failed HTTP operation-container, websocket operation-container, or websocket transport teardown retains its owner for a later `Application.close()` retry. Shutdown reports every remaining cleanup failure together and never repeats cleanup that already succeeded.
 
 ```typescript
 import { Inject, Scope } from '@fluojs/core';
@@ -252,8 +261,9 @@ GraphqlModule.forRoot({
 - `graphiql` defaults to `false`. `introspection` follows `graphiql` unless set explicitly, so production apps stay private by default while local GraphiQL sessions can opt in.
 - `limits` accepts request validation budgets or `false`; use `false` only when equivalent controls exist outside fluo.
 - Streaming GraphQL responses cancel the upstream fetch body when the downstream response stream closes or errors, so SSE subscription resources are released promptly.
-- Bootstrap failures after GraphQL schema resolution remove only the failed service's cross-realm GraphQL object allowlist before rethrowing. The package restores its process-wide `graphql/jsutils/instanceOf` patch only when no other active GraphQL application remains.
-- Each active GraphQL application owns its cross-realm GraphQL object allowlist. Shutdown follows the same release rule, so another running application retains the process-wide `instanceOf` patch and only its own objects remain allowed.
+- If downstream streaming fails while upstream cancellation cleanup also fails, the downstream failure remains observable and cancellation cleanup is best-effort.
+- Bootstrap failures after GraphQL schema resolution remove only the failed service's cross-realm GraphQL object allowlist before rethrowing. Bootstrap patches the mutable `graphql/jsutils/instanceOf` module owner rather than its read-only ESM namespace, and each owner retains every active application allowlist across external replacement and re-patch.
+- Shutdown restores only the package-owned patch for that module object after its final active GraphQL application releases. It leaves other GraphQL module instances and an `instanceOf` implementation replaced by another integration untouched.
 - WebSocket subscriptions use separate transport budgets by default: `100` concurrent connections, `64 KiB` maximum payload size, and `25` active operations per connection.
 - `subscriptions.websocket.enabled` defaults to `false`; enabling it requires a Node HTTP/S adapter with upgrade support. `connectionInitWaitTimeoutMs` is forwarded to `graphql-ws` for connection initialization, and `keepAliveMs` controls websocket keepalive pings when configured.
 - Set `subscriptions.websocket.limits = false` only when you intentionally need unbounded websocket behavior and can enforce equivalent controls elsewhere.
@@ -286,11 +296,11 @@ GraphqlModule.forRoot({
 
 - `GraphqlModule.forRoot(options)`: Main entry point for GraphQL integration.
 - `Resolver`, `Query`, `Mutation`, `Subscription`: Resolver and root operation decorators.
-- `FieldResolver`, `Parent`, `Context`: Code-first object field resolution and explicit parent/context parameter-index bindings.
+- `FieldResolver`, `Args`, `Parent`, `Context`: Code-first object field resolution and explicit DTO input, parent, and context parameter-index bindings.
 - `Arg`: Input DTO field-to-GraphQL-argument mapping decorator.
 - `createDataLoader`, `createDataLoaderMap`, `getRequestScopedDataLoader`, `createRequestScopedDataLoaderFactory`, `DataLoader`: DataLoader factory helpers and types.
 - `listOf`, `isGraphqlListTypeRef`: Helpers for list output type references.
-- `GraphQLContext` and exported option/metadata types: Type definitions for GraphQL execution and module configuration.
+- `GraphQLContext` and exported option/metadata types: Type definitions for GraphQL execution and module configuration, including `GraphqlWebSocketLimitsOptions` for `subscriptions.websocket.limits`.
 
 Supported module options include `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `subscriptions.websocket.connectionInitWaitTimeoutMs`, and `subscriptions.websocket.keepAliveMs`.
 
@@ -303,6 +313,6 @@ Supported module options include `schema`, `context`, `plugins`, `graphiql`, `in
 ## Example Sources
 
 - `packages/graphql/src/module.test.ts`: Integration tests and usage examples for module registration, resolver execution, request-scoped containers, subscriptions, and guardrail defaults.
-- `packages/graphql/src/field-resolver.test.ts`: Executable discovery, schema attachment, parent/context binding, and invalid-placement coverage for object field resolvers.
+- `packages/graphql/src/field-resolver-input.test.ts`: Executable HTTP, request-scope, validation, scalar/list argument, subscription, and binding-collision coverage for object field DTO inputs.
 - `packages/graphql/src/runtime-support.test.ts`: Regression coverage that keeps the package's Node.js engine floor at or above the highest floor in its mandatory first-party dependency graph.
 - `packages/graphql/field-resolver-rfc.md`: Implemented contract and follow-up boundaries for object field resolvers.

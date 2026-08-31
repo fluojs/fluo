@@ -76,6 +76,8 @@ const service = await container.resolve(UserService);
 - **request**: `createRequestScope()`마다 새로 생성됩니다.
 - **transient**: resolve할 때마다 새 인스턴스를 만듭니다.
 
+singleton provider는 request-scoped provider에 의존할 수 없습니다. 이 mismatch는 그래프의 어떤 provider factory나 constructor도 실행되기 전에 `ScopeMismatchError`를 던지며, 이 검사는 single, alias(`useExisting`), multi-provider 등록을 모두 포함합니다. singleton이 multi token을 주입받을 때도 해당 token의 contribution 중 하나라도 request scope이면 같은 방식으로 실패하므로, contribution 일부만 materialize되는 일이 없습니다.
+
 dispose 중에는 각 컨테이너가 single-provider cache와 multi-provider cache 전체에서 성공적으로 materialize된 cached instance를 실제 생성 순서의 역순으로 정리하므로, dependency보다 dependent를 먼저 종료합니다. 각 컨테이너는 자신이 소유한 살아 있는 request scope 자식을 먼저 재귀적으로 정리하므로, 루트가 아닌 request scope를 dispose해도 중첩 request scope를 닫은 뒤 자신의 request cache를 정리합니다. 이후 루트 dispose는 자식 dispose 중 하나 이상이 실패하더라도 루트가 소유한 singleton 정리를 계속 수행합니다. 자식/루트 dispose 실패가 여러 개 발생하면 `dispose()`는 모든 shutdown 실패를 확인할 수 있도록 `AggregateError`로 보고합니다.
 
 `dispose()` 시작은 `resolve()`, `register()`, `override()`, `createRequestScope()`에 대해 terminal입니다. 동시 caller는 active disposal 시도를 공유합니다. `onDestroy()` hook이 실패하면 컨테이너는 실패한 hook만 이후 명시적 `dispose()` 재시도를 위해 유지하면서 child-before-parent/root 순서와 생성 역순을 보존합니다. 성공적으로 완료된 hook은 다시 실행하지 않으며, 유지된 hook이 모두 성공한 뒤 disposal은 멱등입니다.
@@ -100,7 +102,31 @@ direct `child.dispose()`는 이제 실패한 attempt를 포함해 attempt가 set
 
 ### provider override
 
-테스트나 request-local 경계에서 기존 등록을 의도적으로 교체해야 할 때는 `override(...providers)`를 사용합니다. override는 각 토큰의 현재 provider set을 교체하고 현재 컨테이너와 이미 materialize된 request-scope 자식의 cached instance를 무효화하며, 다음 replacement resolution이 계속되기 전에 오래된 instance의 dispose가 끝나도록 보장합니다. multi provider override는 해당 토큰의 전체 multi-provider set을 교체하므로 필요한 replacement provider를 한 번에 모두 전달하세요. 같은 토큰에 single replacement와 multi replacement를 한 override 호출에서 섞으면 모호한 교체로 보고 거부합니다.
+테스트나 request-local 경계에서 기존 등록을 의도적으로 교체해야 할 때는 `override(...providers)`를 사용합니다. override는 각 토큰의 현재 provider set을 교체하고 현재 컨테이너와 이미 materialize된 request-scope 자식의 cached instance를 무효화하며, 다음 replacement resolution이 계속되기 전에 오래된 instance의 dispose가 끝나도록 보장합니다. multi provider override는 해당 토큰의 전체 multi-provider set을 교체하므로 필요한 replacement provider를 한 번에 모두 전달하세요. 같은 토큰에 single replacement와 multi replacement를 한 override 호출에서 섞으면 모호한 교체로 보고 거부합니다. override 호출은 원자적입니다. 배치 전체를 검증한 뒤에야 등록과 캐시를 변경하므로, 거부된 호출은 모든 provider와 cached instance, disposal 소유권을 호출 이전 상태 그대로 남깁니다.
+
+### 컨테이너 생성 경계
+
+공개된 생성 형태는 `new Container()` 하나뿐이며, 항상 자신의 singleton cache를 소유하는 루트 컨테이너를 만듭니다. child request scope는 package가 소유합니다. parent 연결, request-scope flag, singleton cache 공유는 `createRequestScope()`로만 도달할 수 있는 private construction path입니다.
+
+```ts
+const root = new Container();
+const requestScope = root.createRequestScope();
+```
+
+constructor 인자 전달은 거부됩니다. emitted declaration은 할당 가능한 인자 타입을 받지 않으며, 런타임에서도 caller가 인자를 넘기면 cache ownership을 빌린 컨테이너를 만드는 대신 `ContainerResolutionError`를 던집니다.
+
+```ts
+// 거부됨: child-scope wiring은 package가 소유합니다.
+Reflect.construct(Container, [root]);
+```
+
+### 2.x에서 3.x로 컨테이너 생성 마이그레이션
+
+`@fluojs/di` 2.x에서는 caller가 child wiring을 직접 넘기는 것이 지원되는 workflow가 아니었음에도, emitted `Container` declaration이 `parent`, `requestScopeEnabled`, `singletonCache` constructor parameter를 노출했습니다. 3.x에서는 이 surface를 봉쇄합니다. constructor는 인자를 받지 않으며, 인자를 전달하면 `ContainerResolutionError`를 던집니다.
+
+인자 없는 `new Container()`와 `createRequestScope()`는 그대로이므로 지원되는 코드는 마이그레이션이 필요 없습니다. child 컨테이너를 직접 생성했다면 해당 호출을 `parent.createRequestScope()`로 바꾸세요. 동일한 parent 연결, request-scope flag, 공유 root singleton cache를 제공하면서 disposal ownership도 그대로 유지합니다.
+
+실행 가능한 근거는 `packages/di/src/container-construction-boundary.test.ts`에 있습니다.
 
 ### request scope 분리
 
@@ -199,12 +225,12 @@ it('uses a mock database', async () => {
 
 | Surface | 종류 | 설명 |
 |---|---|---|
-| `Container` | Root export | 메인 DI 컨테이너 클래스입니다. |
+| `Container` | Root export | 메인 DI 컨테이너 클래스입니다. `new Container()`는 인자를 받지 않고 루트 컨테이너를 만들며, child request scope는 package가 소유하고 `createRequestScope()`로 생성합니다. constructor 인자를 전달하면 `ContainerResolutionError`를 던집니다. |
 | `container.register(...providers)` | `Container` instance method | 하나 이상의 프로바이더를 등록합니다. |
-| `container.override(...providers)` | `Container` instance method | 기존 provider를 교체하고 cached instance를 무효화하며 다음 replacement resolution이 계속되기 전에 오래된 instance dispose가 settle되도록 보장합니다. |
+| `container.override(...providers)` | `Container` instance method | 호출 단위로 원자적으로 기존 provider를 교체하고 cached instance를 무효화하며 다음 replacement resolution이 계속되기 전에 오래된 instance dispose가 settle되도록 보장합니다. |
 | `container.resolve<T>(token)` | `Container` instance method | 토큰을 인스턴스로 비동기 해석합니다. |
 | `container.inspectResolutionState()` | `Container` instance method | snapshot read-only map view, frozen provider record, controlled cache adoption을 통해 cache ownership을 보존해야 하는 testing/tooling helper를 위한 지원 대상 framework-owned container introspection seam을 노출합니다. 애플리케이션 코드는 `has(...)`와 `resolve(...)`를 우선 사용하세요. |
-| `container.createRequestScope()` | `Container` instance method | 요청 스코프 의존성을 위한 자식 컨테이너를 생성합니다. |
+| `container.createRequestScope()` | `Container` instance method | 요청 스코프 의존성을 위한 자식 컨테이너를 생성합니다. parent에 연결되고 request scope가 활성화되며 root singleton cache를 공유하는 컨테이너를 얻는 유일한 지원 경로입니다. |
 | `container.has(token)` | `Container` instance method | 컨테이너나 부모에 토큰이 등록되어 있는지 확인합니다. |
 | `container.hasRequestScopedDependency(token)` | `Container` instance method | 토큰 해석 시 provider 그래프에 request-scoped 의존성이나 순환이 있어 request-scope 컨테이너가 필요할 수 있는지 확인합니다. |
 | `container.dispose()` | `Container` instance method | parent/root cache보다 request child를 먼저 정리하고 active 시도를 공유하며, 이후 명시적 호출에서 실패한 `onDestroy()` hook만 재시도합니다. |

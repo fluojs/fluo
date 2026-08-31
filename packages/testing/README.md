@@ -75,12 +75,44 @@ const module = await createTestingModule({ rootModule: AppModule })
   })
   .compile();
 
-const service = await module.resolve(UserService);
+let testError: unknown;
+let testFailed = false;
+let disposeError: unknown;
+let disposeFailed = false;
+
+try {
+  const service = await module.resolve(UserService);
+} catch (error: unknown) {
+  testError = error;
+  testFailed = true;
+} finally {
+  try {
+    await module.container.dispose();
+  } catch (error: unknown) {
+    disposeFailed = true;
+    disposeError = error;
+  }
+}
+
+if (testFailed) {
+  if (disposeFailed) {
+    throw new AggregateError(
+      [testError, disposeError],
+      'Test and testing module disposal both failed.',
+    );
+  }
+
+  throw testError;
+}
+
+if (disposeFailed) {
+  throw disposeError;
+}
 ```
 
-The testing builder also supports `overrideProviders([[token, value], ...])`, `overrideGuard(...)`, `overrideInterceptor(...)`, and `overrideFilter(...)` for route-pipeline tests that need to replace cross-cutting behavior. Guard and interceptor overrides are request-path safe when the route references the same token via `@UseGuards(...)` or `@UseInterceptors(...)`; filter overrides replace the token in the compiled module graph and should be paired with request-level coverage where that filter is registered in the runtime app surface.
+The testing builder also supports `overrideProviders([[token, value], ...])`, `overrideGuard(...)`, `overrideInterceptor(...)`, and `overrideFilter(...)` for route-pipeline tests that need to replace cross-cutting behavior. Guard and interceptor overrides are request-path safe when the route references the same token via `@UseGuards(...)` or `@UseInterceptors(...)`; filter overrides replace the token in the compiled module graph and should be paired with request-level coverage where that filter is registered in the runtime app surface. Retain every successfully compiled `TestingModuleRef` and dispose its caller-owned `container` from `finally` (or `afterEach` for suite setup) so passing, failing, and early-returning tests all release lifecycle resources. A completed `container.dispose()` is idempotent. Teardown failures surface; when an in-flight assertion can also fail, report both errors (for example with `AggregateError`) rather than suppressing or replacing the assertion failure.
 
-`compile()` follows production module-bootstrap semantics for lifecycle-bearing singleton providers, including module-declared and overridden factory providers: it resolves the effective provider graph, runs `onModuleInit()` for each resolved instance, then runs `onApplicationBootstrap()` in the same provider order before the testing module is returned. The builder owns its internally created container until that return: if applying overrides, running lifecycle hooks, or synchronizing resolved singletons fails, it disposes the container before rejecting. Successful cleanup preserves the original compile failure; a cleanup failure is reported with the original failure in an `AggregateError`. Successful `TestingModuleRef` behavior is unchanged, and callers retain ownership of `module.container.dispose()`. `get()` keeps DI ownership semantics for synchronous singleton and multi-provider paths, so repeated sync reads reuse the same singleton contributions and the container can still clean them up.
+`compile()` follows production module-bootstrap semantics for lifecycle-bearing singleton providers, including module-declared and overridden factory providers: it resolves the effective provider graph, runs `onModuleInit()` for each resolved instance, then runs `onApplicationBootstrap()` in the same provider order before the testing module is returned. The builder owns its internally created container until that return: if applying overrides, running lifecycle hooks, or synchronizing resolved singletons fails, it disposes the container before rejecting. Successful cleanup preserves the original compile failure; a cleanup failure is reported with the original failure in an `AggregateError`. Successful `TestingModuleRef` behavior is unchanged, and callers retain ownership of `module.container.dispose()` through an unconditional `finally` or `afterEach` cleanup. `get()` keeps DI ownership semantics for synchronous singleton and multi-provider paths, so repeated sync reads reuse the same singleton contributions and the container can still clean them up.
 
 ### Preserve module identity with `overrideModule()`
 
@@ -148,7 +180,9 @@ Install `vitest` in the consuming workspace before using the mock helpers so the
 
 ### Conformance and portability harnesses
 
-Use subpaths like `@fluojs/testing/platform-conformance`, `@fluojs/testing/http-adapter-portability`, and `@fluojs/testing/web-runtime-adapter-portability` when authoring framework-facing platform packages.
+Use subpaths like `@fluojs/testing/platform-conformance`, `@fluojs/testing/platform-shell-lifecycle-conformance`, `@fluojs/testing/http-adapter-portability`, and `@fluojs/testing/web-runtime-adapter-portability` when authoring framework-facing platform packages.
+
+Use `createPlatformShellLifecycleConformanceHarness({ createShell })` to verify every active `start()` / `stop()` overlap rejects with `PlatformLifecycleConflictError`, callback reentry remains conflict-safe before and after arbitrary awaits, and callers can retry after a failed transition settles. Keep component-level checks in `createPlatformConformanceHarness(...).assertAll()`; the PlatformShell lifecycle contract is intentionally a separate harness.
 
 Portability harness cleanup is part of the contract: if setup, `listen()`, a run callback that surfaces a partial app, or an assertion fails after an app has been bootstrapped, the harness closes that partial app. If `app.close()` fails, the harness reports that cleanup failure, and when setup or an assertion already failed it raises an aggregate error that preserves both the original failure and the cleanup failure.
 
@@ -216,7 +250,7 @@ React test runtime would reduce coverage rather than remove necessary setup.
 
 - **Root package**: `createTestingModule(...)`, `Test.createTestingModule(...)`, `createTestApp(...)`, module introspection helpers, and shared app/module testing types including `DeepMocked<T>`
 - **Subpaths**: `@fluojs/testing/app`, `@fluojs/testing/module`, `@fluojs/testing/http`, `@fluojs/testing/mock` (including `DeepMocked<T>`), `@fluojs/testing/types` (including `DeepMocked<T>`), `@fluojs/testing/vitest`, `@fluojs/testing/vitest/tooling`
-- **Harness subpaths**: `platform-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`. The HTTP portability harnesses expose `assertSupportsCustomHttpRouteMethods()`, `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `createErrorRepresentationBootstrapOptions`, `NetworkHttpErrorRepresentationBootstrapOptions`, and `WebHttpErrorRepresentationBootstrapOptions` for adapter-owned bootstrap typing.
+- **Harness subpaths**: `platform-conformance`, `platform-shell-lifecycle-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`. The HTTP portability harnesses expose `assertSupportsCustomHttpRouteMethods()`, `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `createErrorRepresentationBootstrapOptions`, `NetworkHttpErrorRepresentationBootstrapOptions`, and `WebHttpErrorRepresentationBootstrapOptions` for adapter-owned bootstrap typing.
 - **Tooling**: `@fluojs/testing/vitest` with `fluoBabelDecoratorsPlugin()` and `@fluojs/testing/vitest/tooling` with Vitest workspace config helpers (requires `vitest` and `@babel/core` in the consuming workspace)
 
 The package manifest declares `engines.node >=20.19.3 <21 || >=22.2.0 <27`, matching the verified Node listener windows used by its public body-bearing RFC `QUERY` portability assertion. Node 21, Node 22 before 22.2.0, and unverified Node 27+ are excluded. Non-Node runtime application tests can still use runtime-native tools where documented, but the published `@fluojs/testing` package itself is governed by that exact Node.js engine range.

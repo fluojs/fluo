@@ -59,6 +59,31 @@ describe('@fluojs/i18n/loaders/remote', () => {
     expect(Object.isFrozen(catalog.nested)).toBe(true);
   });
 
+  it('preserves own __proto__ message keys from remote provider catalogs', async () => {
+    // Given: a provider result with an own message key that collides with Object.prototype.
+    const providerCatalog: I18nMessageTree = {};
+    Object.defineProperty(providerCatalog, '__proto__', { enumerable: true, value: 'Prototype-safe' });
+    const loader = createRemoteI18nLoader({ provider: () => providerCatalog });
+
+    // When: the remote loader snapshots that catalog.
+    const catalog = await loader.load('en', 'common');
+
+    // Then: the valid own key remains a frozen catalog entry.
+    expect(Object.hasOwn(catalog, '__proto__')).toBe(true);
+    expect(catalog.__proto__).toBe('Prototype-safe');
+    expect(Object.isFrozen(catalog)).toBe(true);
+  });
+
+  it('rejects cyclic remote provider catalogs with the stable invalid catalog code', async () => {
+    // Given: a provider result whose nested catalog tree refers to itself.
+    const providerCatalog: Record<string, string | I18nMessageTree> = {};
+    providerCatalog.self = providerCatalog;
+    const loader = createRemoteI18nLoader({ provider: () => providerCatalog });
+
+    // When/Then: loader validation reports the documented error instead of overflowing recursion.
+    await expectI18nRejection(() => loader.load('en', 'common'), 'I18N_INVALID_CATALOG');
+  });
+
   it('loads remote JSON string catalogs into immutable message trees', async () => {
     const loader = new RemoteI18nLoader({
       provider: () => JSON.stringify({ title: 'Welcome' }),
@@ -99,6 +124,27 @@ describe('@fluojs/i18n/loaders/remote', () => {
     await expect(cached.load('en', 'common')).resolves.toEqual({ title: 'Welcome 1' });
     now = 1_101;
     await expect(cached.load('en', 'common')).resolves.toEqual({ title: 'Welcome 2' });
+    expect(providerCalls).toBe(2);
+  });
+
+  it('starts a cache entry TTL after its catalog load succeeds', async () => {
+    let now = 1_000;
+    let providerCalls = 0;
+    const loader: I18nLoader = {
+      load: async () => {
+        providerCalls += 1;
+        now = 1_050;
+        return { title: `Welcome ${providerCalls}` };
+      },
+    };
+    const cached = createCachedRemoteI18nLoader({ loader, now: () => now, ttlMs: 100 });
+
+    await expect(cached.load('en', 'common')).resolves.toEqual({ title: 'Welcome 1' });
+    now = 1_149;
+    await expect(cached.load('en', 'common')).resolves.toEqual({ title: 'Welcome 1' });
+    now = 1_150;
+    await expect(cached.load('en', 'common')).resolves.toEqual({ title: 'Welcome 2' });
+
     expect(providerCalls).toBe(2);
   });
 
@@ -175,13 +221,14 @@ describe('@fluojs/i18n/loaders/remote', () => {
   });
 
   it('preserves provider-thrown i18n errors without remapping', async () => {
+    const providerError = new I18nError('backend reported a missing catalog', 'I18N_MISSING_CATALOG');
     const loader = new RemoteI18nLoader({
       provider: () => {
-        throw new I18nError('backend reported a missing catalog', 'I18N_MISSING_CATALOG');
+        throw providerError;
       },
     });
 
-    await expectI18nRejection(() => loader.load('en', 'common'), 'I18N_MISSING_CATALOG');
+    await expect(loader.load('en', 'common')).rejects.toBe(providerError);
   });
 
   it('aborts provider work and rejects with a stable timeout code', async () => {
@@ -250,6 +297,7 @@ describe('@fluojs/i18n/loaders/remote', () => {
 
     expectI18nThrow(() => new RemoteI18nLoader({ provider: undefined } as unknown as { readonly provider: () => unknown }), 'I18N_INVALID_LOADER_OPTIONS');
     expectI18nThrow(() => new RemoteI18nLoader({ provider: () => ({}), timeoutMs: 0 }), 'I18N_INVALID_LOADER_OPTIONS');
+    expectI18nThrow(() => new RemoteI18nLoader({ provider: () => ({}), timeoutMs: 2_147_483_648 }), 'I18N_INVALID_LOADER_OPTIONS');
     await expectI18nRejection(() => loader.load('../en', 'common'), 'I18N_INVALID_LOADER_OPTIONS');
     await expectI18nRejection(() => loader.load('en', '.'), 'I18N_INVALID_LOADER_OPTIONS');
     await expectI18nRejection(() => loader.load('en', 'common.json'), 'I18N_INVALID_LOADER_OPTIONS');

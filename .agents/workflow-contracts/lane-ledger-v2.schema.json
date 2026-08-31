@@ -104,8 +104,8 @@
         "issue_creation": { "const": false },
         "pr_creation": { "const": true },
         "pr_merge": { "const": true },
-        "cleanup_command_worktrees": { "type": "boolean" },
-        "root_main_sync_ff_only": { "type": "boolean" },
+        "cleanup_command_worktrees": { "const": true },
+        "root_main_sync_ff_only": { "type": "boolean", "default": true },
         "publish_via_github_actions": { "const": false }
       }
     },
@@ -272,6 +272,23 @@
       }
     },
     "dependency_graph": { "type": "object" },
+    "predicted_conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["surface", "issues"],
+        "properties": {
+          "surface": { "type": "string", "minLength": 1 },
+          "issues": {
+            "type": "array",
+            "minItems": 2,
+            "items": { "type": "integer", "minimum": 1 }
+          },
+          "note": { "type": "string" }
+        }
+      }
+    },
     "root_main_sync": {
       "type": "object",
       "additionalProperties": false,

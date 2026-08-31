@@ -2,11 +2,11 @@ import {
   type AcceptLanguageLocalePolicyOptions,
   isSupportedLocale,
   isValidLocale,
-  normalizeLocaleResolverResult,
   parseLocalePreferences,
   resolveSupportedLocale,
   selectLocaleFromAcceptLanguagePolicy,
 } from './locale-resolution.js';
+import { resolveLocaleResolverChain } from './resolver-chain.js';
 import type { I18nLocale } from './types.js';
 
 /**
@@ -181,27 +181,10 @@ export function getAdapterLocale<TContext>(
  * @throws {TypeError} When the configured default locale is invalid or unsupported.
  */
 export function resolveLocale<TContext>(context: TContext, options: ResolveLocaleOptions<TContext>): LocaleAdapterContext {
-  if (!isValidLocale(options.defaultLocale)) {
-    throw new TypeError('defaultLocale must be a syntactically valid locale string.');
-  }
-
-  if (!isSupportedLocale(options.defaultLocale, options.supportedLocales)) {
-    throw new TypeError('defaultLocale must be listed in supportedLocales when supportedLocales is provided.');
-  }
-
-  for (const resolver of options.resolvers ?? []) {
-    const result = normalizeLocaleResolverResult(
-      resolver({ context, defaultLocale: options.defaultLocale, supportedLocales: options.supportedLocales }),
-    );
-
-    if (result === undefined || !isValidLocale(result.locale) || !isSupportedLocale(result.locale, options.supportedLocales)) {
-      continue;
-    }
-
-    return Object.freeze({ locale: result.locale, source: result.source });
-  }
-
-  return Object.freeze({ locale: options.defaultLocale, source: 'default' });
+  return resolveLocaleResolverChain<LocaleAdapterResolverInput<TContext>>(
+    { context, defaultLocale: options.defaultLocale, supportedLocales: options.supportedLocales },
+    options,
+  );
 }
 
 /**
