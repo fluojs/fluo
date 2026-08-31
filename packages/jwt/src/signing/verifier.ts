@@ -242,8 +242,18 @@ function decodeBase64Url(value: string): Buffer {
 
 function parseJwtPart<T>(value: string): T {
   try {
-    return JSON.parse(decodeBase64Url(value).toString('utf8')) as T;
-  } catch {
+    const parsed: unknown = JSON.parse(decodeBase64Url(value).toString('utf8'));
+
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw new JwtInvalidTokenError('JWT header and payload must be JSON objects.');
+    }
+
+    return parsed as T;
+  } catch (error) {
+    if (error instanceof JwtInvalidTokenError) {
+      throw error;
+    }
+
     throw new JwtInvalidTokenError();
   }
 }
