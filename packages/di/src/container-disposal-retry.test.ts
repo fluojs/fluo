@@ -369,6 +369,45 @@ describe('Container disposal retry', () => {
     expect(staleAttempts).toBe(2);
   });
 
+  it('does not dispose a failed stale retry through the shared live cache before explicit retry', async () => {
+    // Given
+    const staleFailure = new Error('shared stale cleanup failed');
+    const retryFailure = new Error('shared stale retry failed');
+    const token = Symbol('FailedSharedStaleCleanupToken');
+    let staleAttempts = 0;
+    const sharedInstance = {
+      onDestroy(): void {
+        staleAttempts += 1;
+
+        if (staleAttempts === 1) {
+          throw staleFailure;
+        }
+
+        if (staleAttempts === 2) {
+          throw retryFailure;
+        }
+      },
+    };
+    const sharedFactory = (): typeof sharedInstance => sharedInstance;
+    const container = new Container().register({ provide: token, useFactory: sharedFactory });
+    await container.resolve(token);
+    container.override({ provide: token, useFactory: sharedFactory });
+    await expect(container.resolve(token)).rejects.toBe(staleFailure);
+    await expect(container.resolve(token)).resolves.toBe(sharedInstance);
+
+    // When
+    await expect(container.dispose()).rejects.toBe(retryFailure);
+
+    // Then
+    expect(staleAttempts).toBe(2);
+
+    // When
+    await container.dispose();
+
+    // Then
+    expect(staleAttempts).toBe(3);
+  });
+
   it('releases a rejected stale materialization after delivering its error once', async () => {
     // Given
     const materializationFailure = new Error('stale materialization failed');

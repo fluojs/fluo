@@ -287,4 +287,42 @@ describe('Container disposal ownership', () => {
     // Then
     expect(child.attempts).toBe(3);
   });
+
+  it('keeps a parent-owned descendant reachable when root resolution consumes its stale failure', async () => {
+    // Given
+    const configToken = Symbol('nested-retained-stale-config');
+    const childToken = Symbol('nested-retained-stale-child');
+    const staleFailure = new Error('nested retained stale cleanup failed');
+    const staleCleanupCanFail = createDeferred();
+    const staleCleanupStarted = createDeferred();
+    const child = createDisposalProbe([staleFailure, undefined], {
+      release: staleCleanupCanFail.promise,
+      started: staleCleanupStarted.resolve,
+    });
+    const root = new Container().register(
+      { provide: configToken, useValue: 'before-override' },
+      { provide: childToken, scope: 'request', useFactory: () => child, inject: [configToken] },
+    );
+    const parentScope = root.createRequestScope();
+    const descendantScope = parentScope.createRequestScope();
+    await descendantScope.resolve(childToken);
+    root.override({ provide: configToken, useValue: 'after-override' });
+    await staleCleanupStarted.promise;
+
+    // When
+    const resolvingReplacement = root.resolve(configToken);
+    const disposingRoot = root.dispose();
+    staleCleanupCanFail.resolve();
+
+    // Then
+    await expect(resolvingReplacement).rejects.toBe(staleFailure);
+    await expect(disposingRoot).resolves.toBeUndefined();
+    expect(child.attempts).toBe(1);
+
+    // When
+    await root.dispose();
+
+    // Then
+    expect(child.attempts).toBe(2);
+  });
 });

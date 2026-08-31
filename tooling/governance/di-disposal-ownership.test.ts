@@ -80,8 +80,9 @@ describe('DI disposal ownership governance', () => {
     const retryEvidence = read('packages/di/src/container-disposal-retry.test.ts');
     const sourceExcerpts = [
       ['path:packages/di/src/container.ts:627-648', 627, 648],
-      ['path:packages/di/src/container.ts:650-685', 650, 685],
-      ['path:packages/di/src/container.ts:1365-1515', 1365, 1515],
+      ['path:packages/di/src/container.ts:650-687', 650, 687],
+      ['path:packages/di/src/container.ts:1229-1257', 1229, 1257],
+      ['path:packages/di/src/container.ts:1367-1523', 1367, 1523],
     ] as const;
 
     // When / Then
@@ -105,7 +106,10 @@ describe('DI disposal ownership governance', () => {
       "await this.disposeWithOrigin('direct');",
       'private async disposeFromParent(): Promise<void> {',
       "await this.disposeWithOrigin('parent');",
-      "if ((completed || origin === 'direct') && this.parent && this.trackedByParent) {",
+      'private hasRetainedStaleDisposalTasksInSubtree(): boolean {',
+      "if ((origin === 'direct' || (completed && !retainsStaleRetries)) && this.parent && this.trackedByParent) {",
+      'const attemptedStaleInstances = new Set<Disposable>();',
+      'const disposables = disposalCandidates.filter((instance) => !attemptedStaleInstances.has(instance));',
       'private releaseNonOwnerStaleTaskObserversInSubtree(): void {',
       'this.releaseNonOwnerStaleTaskObserversInSubtree();',
       'childScope.releaseNonOwnerStaleTaskObserversInSubtree();',

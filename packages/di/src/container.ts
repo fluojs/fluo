@@ -638,7 +638,7 @@ export class Container {
     try {
       await activeDispose;
 
-      if (this.disposePromise === activeDispose && this.retainedStaleDisposalTasks().length > 0) {
+      if (this.disposePromise === activeDispose && this.hasRetainedStaleDisposalTasksInSubtree()) {
         this.disposePromise = undefined;
       }
     } catch (error) {
@@ -673,7 +673,9 @@ export class Container {
       this.throwDisposalErrors(errors);
       completed = true;
     } finally {
-      if ((completed || origin === 'direct') && this.parent && this.trackedByParent) {
+      const retainsStaleRetries = this.hasRetainedStaleDisposalTasksInSubtree();
+
+      if ((origin === 'direct' || (completed && !retainsStaleRetries)) && this.parent && this.trackedByParent) {
         if (origin === 'direct') {
           this.releaseNonOwnerStaleTaskObserversInSubtree();
         }
@@ -1228,7 +1230,7 @@ export class Container {
     const errors: unknown[] = [];
 
     const retryableStaleTasks = this.retainedStaleDisposalTasks();
-    const successfullyRetriedStaleInstances = new Set<Disposable>();
+    const attemptedStaleInstances = new Set<Disposable>();
 
     try {
       await this.assertStaleDisposalsSettled();
@@ -1236,7 +1238,7 @@ export class Container {
       this.collectDisposalError(error, errors);
     }
 
-    errors.push(...(await this.retryFailedStaleDisposals(retryableStaleTasks, successfullyRetriedStaleInstances)));
+    errors.push(...(await this.retryFailedStaleDisposals(retryableStaleTasks, attemptedStaleInstances)));
 
     const {
       disposables: materializedDisposables,
@@ -1245,7 +1247,7 @@ export class Container {
     const disposalCandidates = this.pendingDisposables.length > 0
       ? this.pendingDisposables
       : materializedDisposables;
-    const disposables = disposalCandidates.filter((instance) => !successfullyRetriedStaleInstances.has(instance));
+    const disposables = disposalCandidates.filter((instance) => !attemptedStaleInstances.has(instance));
 
     errors.push(...resolutionErrors);
     errors.push(...(await this.disposeInstancesInReverseOrder(disposables)));
@@ -1410,6 +1412,11 @@ export class Container {
     );
   }
 
+  private hasRetainedStaleDisposalTasksInSubtree(): boolean {
+    return this.retainedStaleDisposalTasks().length > 0
+      || Array.from(this.childScopes ?? []).some((childScope) => childScope.hasRetainedStaleDisposalTasksInSubtree());
+  }
+
   private releaseNonOwnerStaleTaskObservers(): void {
     for (const task of this.staleDisposalTasks) {
       if (task.retryOwner !== this) {
@@ -1434,7 +1441,7 @@ export class Container {
 
   private async retryFailedStaleDisposals(
     tasks: readonly StaleDisposalTask[],
-    successfullyRetriedInstances: Set<Disposable>,
+    attemptedInstances: Set<Disposable>,
   ): Promise<unknown[]> {
     const errors: unknown[] = [];
 
@@ -1445,9 +1452,10 @@ export class Container {
         continue;
       }
 
+      attemptedInstances.add(instance);
+
       try {
         await instance.onDestroy();
-        successfullyRetriedInstances.add(instance);
         task.failed = false;
         task.retryInstance = undefined;
 
