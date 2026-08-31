@@ -24,6 +24,9 @@
     "access": "public"
   },
   "type": "module",
+  "bin": {
+    "fluo-studio-viewer": "./dist/viewer-server.js"
+  },
   "fluo": {
     "declarationBuildDevDependencies": [
       "@fluojs/runtime"
@@ -47,7 +50,7 @@
   ],
   "scripts": {
     "prebuild": "node ../../tooling/scripts/clean-dist.mjs",
-    "build": "pnpm exec vite build && pnpm exec babel src/contracts.ts src/index.ts --extensions .ts --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json",
+    "build": "pnpm exec vite build && pnpm exec babel src/contracts.ts src/index.ts src/viewer-server.ts --extensions .ts --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json",
     "dev": "pnpm exec vite",
     "preview": "pnpm exec vite preview",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",

@@ -87,10 +87,10 @@ This file-first path is the compatibility and migration fallback for CI, support
 2. **Open the packaged Studio viewer**:
    ```bash
    pnpm add -D @fluojs/studio
-   node -p "require.resolve('@fluojs/studio/viewer')"
+   pnpm exec fluo-studio-viewer
    ```
 
-   Open the printed `dist/index.html` path in a browser. For repo-local Studio development, use:
+   The command serves the packaged viewer from `127.0.0.1` and prints its HTTP URL. Open that URL in a browser instead of opening `dist/index.html` directly. `@fluojs/studio/viewer` remains available for integrations that resolve the packaged HTML entry. For repo-local Studio development, use:
    ```bash
    pnpm --dir packages/studio dev
    ```
