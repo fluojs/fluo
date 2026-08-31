@@ -245,6 +245,7 @@ re-export for the documented deprecation window.
 | Architecture model, request flow, and runtime boundaries | `docs/architecture/architecture-overview.md` | `docs/reference/glossary-and-mental-model.md` |
 | HTTP catch-all grammar decision and revisit gates | `docs/architecture/http-catch-all-route-grammar.md` | `packages/http/README.md` and `packages/react/README.md` for the active explicit-route contract |
 | HTTP JSON/HTML error representation ownership and negotiation | `docs/architecture/http-error-representations.md` | `docs/architecture/error-responses.md`, `packages/http/README.md`, and `packages/react/README.md` |
+| NestJS response-cookie migration and portable adapter contract | `docs/getting-started/migrate-from-nestjs.md` | `packages/http/README.md` for `setCookie` and `clearCookie` semantics |
 | Package family lookup or runtime coverage | `docs/reference/package-surface.md` | `docs/reference/package-chooser.md` when selection logic is needed |
 | i18n ecosystem bridge compatibility and migration boundaries | `docs/reference/i18n-ecosystem-bridges.md` | `docs/contracts/third-party-extension-contract.md` when authoring a third-party bridge |
 | Behavioral guarantees, Changesets release flow, and versioning policy | `docs/contracts/behavioral-contract-policy.md` | `docs/contracts/release-governance.md` |

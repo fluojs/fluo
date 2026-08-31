@@ -10,19 +10,19 @@ export type CookieSameSite = 'lax' | 'none' | 'strict';
 /** Runtime-neutral attributes used when serializing one response cookie. */
 export interface CookieOptions {
   /** Domain that scopes the cookie. */
-  domain?: string;
+  readonly domain?: string;
   /** Absolute expiry time for the cookie. */
-  expires?: Date;
+  readonly expires?: Date;
   /** Whether the cookie is inaccessible to client-side scripts. */
-  httpOnly?: boolean;
+  readonly httpOnly?: boolean;
   /** Lifetime in whole seconds. */
-  maxAgeSeconds?: number;
+  readonly maxAgeSeconds?: number;
   /** URL path that scopes the cookie. */
-  path?: string;
+  readonly path?: string;
   /** Cross-site request policy for the cookie. */
-  sameSite?: CookieSameSite;
+  readonly sameSite?: CookieSameSite;
   /** Whether the cookie is sent only over secure connections. */
-  secure?: boolean;
+  readonly secure?: boolean;
 }
 
 /** Attributes that must match an existing cookie when clearing it. */

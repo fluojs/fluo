@@ -244,6 +244,7 @@ HTTP route 및 #2506 navigation ownership, dual-import test, bilingual docs, Cha
 | 아키텍처 모델, 요청 흐름, 런타임 경계 확인 | `docs/architecture/architecture-overview.md` | `docs/reference/glossary-and-mental-model.md` |
 | HTTP catch-all grammar 결정과 재검토 gate 확인 | `docs/architecture/http-catch-all-route-grammar.ko.md` | 활성 explicit-route contract는 `packages/http/README.ko.md` 및 `packages/react/README.ko.md` |
 | HTTP JSON/HTML error representation ownership와 negotiation 확인 | `docs/architecture/http-error-representations.ko.md` | `docs/architecture/error-responses.ko.md`, `packages/http/README.ko.md`, `packages/react/README.ko.md` |
+| NestJS 응답 쿠키 migration과 portable adapter contract 확인 | `docs/getting-started/migrate-from-nestjs.ko.md` | `setCookie`, `clearCookie` 동작은 `packages/http/README.ko.md`에서 확인 |
 | 패키지 계열 조회 또는 런타임 범위 확인 | `docs/reference/package-surface.md` | 선택 로직이 필요하면 `docs/reference/package-chooser.md` |
 | i18n ecosystem bridge compatibility와 migration boundary 확인 | `docs/reference/i18n-ecosystem-bridges.ko.md` | third-party bridge 작성 시 `docs/contracts/third-party-extension-contract.ko.md` |
 | behavioral guarantee, Changesets 릴리스 흐름, 버전 정책 확인 | `docs/contracts/behavioral-contract-policy.md` | `docs/contracts/release-governance.md` |

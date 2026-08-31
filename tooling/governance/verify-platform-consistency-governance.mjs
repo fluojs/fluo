@@ -223,6 +223,7 @@ const contractGateTriggers = new Set([
   'apps/docs/content/docs/guides/realtime.ko.mdx',
   'apps/docs/content/docs/guides/runtime-adapters.mdx',
   'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+  // Includes portable setCookie/clearCookie migration and cross-adapter response semantics.
   'docs/getting-started/migrate-from-nestjs.md',
   'docs/getting-started/migrate-from-nestjs.ko.md',
   'docs/architecture/transactions.md',
