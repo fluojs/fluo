@@ -154,13 +154,11 @@ async function createStore(options: NormalizedCacheModuleOptions, container: Con
   return new MemoryStore();
 }
 
-function createCacheModuleProviders(options: CacheModuleOptions = {}): Provider[] {
-  const normalized = normalizeCacheModuleOptions(options);
-
+function createCacheModuleProviders(options: NormalizedCacheModuleOptions): Provider[] {
   return [
     {
       provide: CACHE_OPTIONS,
-      useValue: normalized,
+      useValue: options,
     },
     {
       inject: [CACHE_OPTIONS, RUNTIME_CONTAINER],
@@ -225,7 +223,7 @@ export class CacheModule {
     return defineModule(CacheRootModule, {
       exports: [CacheService, CacheInterceptor],
       global: normalized.global,
-      providers: createCacheModuleProviders(options),
+      providers: createCacheModuleProviders(normalized),
     });
   }
 }
