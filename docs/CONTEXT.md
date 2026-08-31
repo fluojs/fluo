@@ -221,6 +221,16 @@ navigation ownership, dual-import tests, bilingual docs, and Changesets intent. 
 add a stable root RSC export. After approval, `@fluojs/react/experimental/rsc` remains a tested
 re-export for the documented deprecation window.
 
+## CLI Migration Transform Tokens
+
+The migration transform contract is discoverable in `packages/cli/README.md` and
+[`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md):
+`--only` and `--skip` use the canonical `imports`, `inject-params`, `scope`, `bootstrap`,
+`tests`, and `tsconfig` vocabulary, while legacy `injectable` and `testing` remain accepted only
+as aliases for `inject-params` and `tests`. Successful `--json` reports preserve their stable
+transform tokens (`injectable` and `testing`) in `transforms` and per-file
+`appliedTransforms`; CLI input aliases do not change that report contract.
+
 ## File Structure
 
 | Path | Role |
