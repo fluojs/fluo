@@ -50,6 +50,8 @@ Changesets 소비, 생성된 패키지 version delta, Official Node.js 지원 �
 | UI | React 통합 | `@fluojs/react` |
 | Tooling | CLI, 진단 도구, Vite 빌드 통합 | `@fluojs/cli`, `@fluojs/studio`, `@fluojs/testing`, `@fluojs/vite` |
 
+JWT refresh-policy discoverability는 `packages/jwt/README.ko.md`와 [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md)에 나뉜다. `RefreshTokenOptions.algorithms`는 refresh-token 서명과 검증에만 사용되는 선택적 HMAC 전용 allowlist다. 기존 derivation을 유지하려면 설정하지 않고, HMAC refresh token을 구성하기 위해 좁은 비대칭 access-token policy를 넓히지 않는다.
+
 Fastify 네이티브 확장 마이그레이션은 [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md)와 `packages/platform-fastify/README.ko.md`에 문서화되어 있다. 기본적으로 이식 가능한 fluo middleware를 사용하고, fluo가 internal registration을 소유하기 전에 유지해야 하는 Fastify 전용 plugin, hook 또는 instance customisation에만 한 번 실행되는 `configureFastify` construction hook을 사용한다.
 
 CQRS dispatch context discoverability는 `packages/cqrs/README.ko.md`, [`docs/architecture/cqrs.ko.md`](./architecture/cqrs.ko.md), [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)로 나뉜다. `CqrsDispatchContext`는 신뢰하는 topology, continuation, shutdown-drain state를 비공개로 유지하는 opaque, frozen fieldless runtime-agnostic pass-through 값이고, event handler와 saga fan-out identity는 singleton provider token을 따르며, 애플리케이션 등록은 low-level provider assembly helper가 아니라 `CqrsModule.forRoot(...)` facade에 머문다. Saga execution은 singleton provider token마다 하나의 owner를 가지며, 활성 token의 다른 route로 향하는 context-preserving nested publication은 deadlock-safe FIFO continuation이 되고, 이미 활성 상태인 provider-token/event route로 다시 진입하면 `SagaTopologyError`가 발생한다. CQRS local handler는 saga와 위임 `@fluojs/event-bus` 발행보다 먼저 완료되고, `publishAll(...)`은 각 event마다 이 전체 pipeline을 기다린다.

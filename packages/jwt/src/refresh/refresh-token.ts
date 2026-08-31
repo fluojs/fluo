@@ -1,7 +1,7 @@
 import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from '../errors.js';
 import type { DefaultJwtSigner } from '../signing/signer.js';
 import type { DefaultJwtVerifier } from '../signing/verifier.js';
-import type { JwtClaims } from '../types.js';
+import type { JwtAlgorithm, JwtClaims } from '../types.js';
 
 /**
  * Describes the refresh token store contract.
@@ -54,11 +54,13 @@ export interface RefreshTokenRecord {
  * Describes the refresh token options contract.
  */
 export interface RefreshTokenOptions {
-  secret: string;
-  expiresInSeconds: number;
-  verifyMaxAgeSeconds?: number;
-  rotation: boolean;
-  store: RefreshTokenStore;
+  /** HMAC algorithms allowed for refresh-token signing and verification. Defaults to HMAC algorithms from the top-level policy. */
+  readonly algorithms?: readonly Extract<JwtAlgorithm, 'HS256' | 'HS384' | 'HS512'>[];
+  readonly secret: string;
+  readonly expiresInSeconds: number;
+  readonly verifyMaxAgeSeconds?: number;
+  readonly rotation: boolean;
+  readonly store: RefreshTokenStore;
 }
 
 /**

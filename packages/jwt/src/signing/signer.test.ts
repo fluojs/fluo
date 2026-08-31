@@ -1,4 +1,4 @@
-import { generateKeyPairSync, sign, verify } from 'node:crypto';
+import { createHmac, generateKeyPairSync, sign, verify } from 'node:crypto';
 
 import { describe, expect, it, vi } from 'vitest';
 
@@ -31,6 +31,65 @@ describe('DefaultJwtSigner', () => {
     expect(() => new DefaultJwtSigner({ algorithms: ['toString' as never], secret: 'secret' })).toThrow(
       'JWT signer received unsupported JWT algorithm "toString".',
     );
+  });
+
+  it('keeps refresh HMAC policy independent from the RS256-only access policy', async () => {
+    const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const store = {
+      find: async () => undefined,
+      revoke: async () => undefined,
+      revokeBySubject: async () => undefined,
+      save: async () => undefined,
+    };
+    const options: JwtVerifierOptions = {
+      algorithms: ['RS256'],
+      privateKey: rsa.privateKey,
+      publicKey: rsa.publicKey,
+      refreshToken: {
+        algorithms: ['HS256'],
+        expiresInSeconds: 300,
+        rotation: false,
+        secret: 'refresh-secret',
+        store,
+      },
+    };
+    const signer = new DefaultJwtSigner(options);
+    const verifier = new DefaultJwtVerifier(options);
+
+    const refreshToken = await signer.signRefreshToken({ sub: 'refresh-policy-user', type: 'refresh' });
+    await expect(verifier.verifyRefreshToken(refreshToken)).resolves.toMatchObject({
+      subject: 'refresh-policy-user',
+    });
+
+    const accessToken = await signer.signAccessToken({ sub: 'access-policy-user' });
+    await expect(verifier.verifyAccessToken(accessToken)).resolves.toMatchObject({ subject: 'access-policy-user' });
+
+    const headerSegment = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' }), 'utf8').toString('base64url');
+    const payloadSegment = Buffer.from(JSON.stringify({ sub: 'forbidden-access-user' }), 'utf8').toString('base64url');
+    const signingInput = `${headerSegment}.${payloadSegment}`;
+    const signatureSegment = createHmac('sha256', 'refresh-secret').update(signingInput).digest('base64url');
+
+    await expect(verifier.verifyAccessToken(`${signingInput}.${signatureSegment}`)).rejects.toThrow(
+      'JWT algorithm is not allowed.',
+    );
+
+    const legacyOptions: JwtVerifierOptions = {
+      algorithms: ['HS256'],
+      refreshToken: {
+        expiresInSeconds: 300,
+        rotation: false,
+        secret: 'refresh-secret',
+        store,
+      },
+      secret: 'access-secret',
+    };
+    const legacySigner = new DefaultJwtSigner(legacyOptions);
+    const legacyVerifier = new DefaultJwtVerifier(legacyOptions);
+    const legacyRefreshToken = await legacySigner.signRefreshToken({ sub: 'legacy-refresh-user', type: 'refresh' });
+
+    await expect(legacyVerifier.verifyRefreshToken(legacyRefreshToken)).resolves.toMatchObject({
+      subject: 'legacy-refresh-user',
+    });
   });
 
   it('keeps public hash lookups immutable and independent from signing policy', async () => {

@@ -72,7 +72,8 @@ export class DefaultJwtSigner {
   constructor(private readonly options: JwtVerifierOptions) {
     assertSigningAlgorithms(options.algorithms);
     assertJwtKeyEntries(options.keys);
-    this.refreshAlgorithms = this.options.algorithms.filter(
+    const configuredRefreshAlgorithms = this.options.refreshToken?.algorithms;
+    this.refreshAlgorithms = (configuredRefreshAlgorithms ?? this.options.algorithms).filter(
       (algorithm): algorithm is JwtAlgorithm => hasOwnAlgorithmMapping(SUPPORTED_HMAC_HASH, algorithm),
     );
   }
