@@ -255,7 +255,7 @@ defineModule(ManualCacheModule, {
 
 | NestJS option or decorator | fluo equivalent | Conversion rule |
 | --- | --- | --- |
-| `ttl` in milliseconds | `ttl` in seconds | Divide NestJS v5 millisecond values by 1000. Omitting `ttl` applies `300` seconds on the memory path and `0` for the `redis` and custom-store paths. |
+| `ttl` when the installed underlying `cache-manager` generation uses milliseconds | `ttl` in seconds | Inspect the installed underlying `cache-manager` dependency/version. Divide by 1000 only when that generation defines TTLs in milliseconds. Omitting `ttl` applies `300` seconds on the memory path and `0` for the `redis` and custom-store paths. |
 | `ttl: 0` | `ttl: 0` | Means no expiry, not "do not cache". Negative or non-finite values are invalid: `CacheService.set(...)` drops the write, and `CacheInterceptor` skips both the cache read and write for that handler. |
 | `@CacheTTL(...)` | `@CacheTTL(ttlSeconds: number)` | Accepts one static number only. Move per-request lifetimes to `CacheService.set(key, value, ttlSeconds)`. |
 | implicit query-sensitive keys | `httpKeyStrategy` | Defaults to path-only `'route'`. Select `'route+query'` (or `'full'`), a function strategy, or `@CacheKey(...)` when a response varies by query parameters. |
@@ -265,7 +265,8 @@ defineModule(ManualCacheModule, {
 
 ```typescript
 CacheModule.forRoot({
-  // NestJS `ttl: 60_000` (milliseconds) becomes 60 seconds.
+  // If the installed underlying cache-manager generation uses milliseconds,
+  // NestJS `ttl: 60_000` becomes 60 seconds.
   ttl: 60,
   // NestJS `isGlobal: true` becomes `global: true`.
   global: true,

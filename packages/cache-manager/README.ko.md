@@ -255,7 +255,7 @@ defineModule(ManualCacheModule, {
 
 | NestJS option 또는 decorator | fluo 대응 | 변환 규칙 |
 | --- | --- | --- |
-| millisecond 단위 `ttl` | 초 단위 `ttl` | NestJS v5의 millisecond 값을 1000으로 나눕니다. `ttl`을 생략하면 memory 경로는 `300`초를, `redis` 및 custom-store 경로는 `0`을 적용합니다. |
+| 설치된 underlying `cache-manager` generation이 millisecond를 사용하는 경우의 `ttl` | 초 단위 `ttl` | 설치된 underlying `cache-manager` dependency/version을 확인하세요. 해당 generation이 TTL을 millisecond로 정의할 때에만 1000으로 나눕니다. `ttl`을 생략하면 memory 경로는 `300`초를, `redis` 및 custom-store 경로는 `0`을 적용합니다. |
 | `ttl: 0` | `ttl: 0` | "캐싱하지 않음"이 아니라 만료 없음을 뜻합니다. 음수이거나 유한하지 않은 값은 잘못된 값으로 처리되어 `CacheService.set(...)`은 쓰기를 건너뛰고 `CacheInterceptor`는 해당 handler의 cache 읽기와 쓰기를 모두 건너뜁니다. |
 | `@CacheTTL(...)` | `@CacheTTL(ttlSeconds: number)` | 정적 숫자 하나만 받습니다. 요청마다 달라지는 lifetime은 `CacheService.set(key, value, ttlSeconds)`로 옮기세요. |
 | 암묵적 query 민감 key | `httpKeyStrategy` | 기본값은 path만 사용하는 `'route'`입니다. 응답이 query parameter에 따라 달라지면 `'route+query'`(또는 `'full'`), function strategy, `@CacheKey(...)` 중 하나를 선택하세요. |
@@ -265,7 +265,8 @@ defineModule(ManualCacheModule, {
 
 ```typescript
 CacheModule.forRoot({
-  // NestJS `ttl: 60_000` (milliseconds) becomes 60 seconds.
+  // 설치된 underlying cache-manager generation이 milliseconds를 사용할 때
+  // NestJS `ttl: 60_000`은 60초가 됩니다.
   ttl: 60,
   // NestJS `isGlobal: true` becomes `global: true`.
   global: true,

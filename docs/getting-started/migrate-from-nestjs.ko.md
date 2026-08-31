@@ -125,7 +125,7 @@ Code-first `@FieldResolver({ input: InputDto })`와 `@Args(index?)` DTO binding�
 - Cache-manager migration은 async dynamic-module 치환이 아니다. `@fluojs/cache-manager`는 동기 `CacheModule.forRoot(...)`를 제공한다. 환경별 client는 먼저 application boundary에서 구성하고, `store`, `ttl`, `keyPrefix`, `redis.clientName`, `httpKeyStrategy` 같은 최종 cache option을 전달한다.
 - NestJS-style cache-key customization은 interceptor subclassing 대신 fluo가 문서화한 key seam으로 옮겨야 한다. 애플리케이션 전역 request-aware 정책에는 function-valued `httpKeyStrategy`를 사용하고, handler-local 동작에는 literal key 또는 key factory를 받는 `@CacheKey(...)`를 사용한다.
 - Custom cache tooling은 private metadata key를 다시 구현하지 말고 `getCacheKeyMetadata(...)`, `getCacheTtlMetadata(...)`, `getCacheEvictMetadata(...)` 같은 exported cache metadata helper를 읽어야 한다.
-- Cache TTL 값은 millisecond가 아니라 초 단위이며, `@CacheTTL(ttlSeconds: number)`은 정적 숫자만 받는다. NestJS의 millisecond TTL은 마이그레이션 전에 변환하고, 요청마다 달라지는 lifetime은 `CacheService.set(key, value, ttlSeconds)`로 옮긴다.
+- Cache TTL 값은 millisecond가 아니라 초 단위이며, `@CacheTTL(ttlSeconds: number)`은 정적 숫자만 받는다. NestJS TTL을 변환하기 전에 설치된 underlying `cache-manager` dependency/version을 확인하세요. 해당 dependency generation이 TTL을 millisecond로 정의할 때에만 1000으로 나누고, 요청마다 달라지는 lifetime은 `CacheService.set(key, value, ttlSeconds)`로 옮긴다.
 - 기본 HTTP cache key는 path만 사용한다. `httpKeyStrategy`의 기본값이 `'route'`이므로 `'route+query'`, function strategy, `@CacheKey(...)` 중 하나를 선택하기 전까지 query 값은 무시된다.
 - NestJS `isGlobal`은 fluo `global`이 되며 기본값은 `false`다. Migration이 `global: true`를 설정하거나 소비하는 모든 module에 `CacheModule.forRoot(...)`를 import하지 않으면 cache provider는 module-local로 남는다.
 - `cache-manager-redis-store` 같은 NestJS store adapter는 fluo `CacheStore` 값이 아니다. 내장 `store: 'redis'` 경로를 쓰거나 `get`, `set`, `del`, `reset`을 구현한 객체를 전달하고, teardown 소유권을 명시적으로 유지한다. fluo는 store의 optional `close()`/`dispose()`에만 shutdown을 전달하므로 직접 전달한 `redis.client`는 애플리케이션 소유로 남는다.
@@ -587,7 +587,7 @@ Kafka와 RabbitMQ는 handler 실행과 request response publication이 settle할
 
 `@nestjs/cache-manager`와 `@fluojs/cache-manager`는 cache 개념이 일부 겹치지만 option 이름, 단위, 기본값, 소유권이 모두 그대로 유지되지는 않습니다. NestJS cache 설정을 재사용하기 전에 다음 항목을 각각 변환하세요.
 
-- **TTL 단위와 기본값.** fluo `ttl`은 초 단위이고 `@nestjs/cache-manager` v5의 `ttl`은 millisecond입니다. NestJS 값을 그대로 옮기면 만료 시간이 1000배로 늘어납니다. `ttl`을 생략하면 `CacheModule.forRoot(...)`는 기본 memory 경로에 `300`초를, `redis` 및 custom-store 경로에는 `0`을 적용합니다.
+- **TTL 단위와 기본값.** fluo `ttl`은 초 단위입니다. NestJS TTL을 변환하기 전에 설치된 underlying `cache-manager` dependency/version을 확인하세요. 해당 dependency generation이 TTL을 millisecond로 정의할 때에만 1000으로 나누며, 이 값을 그대로 옮기면 만료 시간이 1000배로 늘어납니다. `ttl`을 생략하면 `CacheModule.forRoot(...)`는 기본 memory 경로에 `300`초를, `redis` 및 custom-store 경로에는 `0`을 적용합니다.
 - **TTL `0`과 잘못된 값.** `ttl: 0`은 "캐싱하지 않음"이 아니라 "만료 없음"을 뜻합니다. 음수이거나 유한하지 않은 TTL은 잘못된 값으로 처리되어 `CacheService.set(...)`은 쓰기를 건너뛰고, `CacheInterceptor`는 해당 handler의 cache 읽기와 쓰기를 모두 건너뛰므로 요청마다 handler로 그대로 내려갑니다.
 - **정적 `@CacheTTL(...)`.** `@CacheTTL(ttlSeconds: number)`은 정적 숫자 하나를 route metadata로 저장하며 factory, context 인자, 비동기 값을 받지 않습니다. 요청마다 lifetime을 계산하던 NestJS handler는 `CacheService.set(key, value, ttlSeconds)`를 명시적으로 호출해야 합니다.
 - **Query 민감 key.** `httpKeyStrategy`의 기본값 `'route'`는 구체적인 요청 path만으로 key를 만들고 query 값을 무시하므로 `/search?q=a`와 `/search?q=b`가 하나의 엔트리를 공유하게 됩니다. 응답이 query parameter에 따라 달라진다면 `httpKeyStrategy: 'route+query'`(또는 `'full'`), function strategy, `@CacheKey(...)` 중 하나를 선택하세요.
@@ -606,7 +606,8 @@ const cacheClient = new Redis({ host: 'localhost', port: 6379 });
 @Module({
   imports: [
     CacheModule.forRoot({
-      // NestJS `ttl: 60_000` (milliseconds) becomes 60 seconds.
+      // 설치된 underlying cache-manager generation이 milliseconds를 사용할 때
+      // NestJS `ttl: 60_000`은 60초가 됩니다.
       ttl: 60,
       // NestJS `isGlobal: true` becomes `global: true`.
       global: true,

@@ -125,7 +125,7 @@ Code-first `@FieldResolver({ input: InputDto })` with `@Args(index?)` is support
 - Cache-manager migration is not an async dynamic-module replacement. `@fluojs/cache-manager` exposes synchronous `CacheModule.forRoot(...)`; configure environment-specific clients at the application boundary first, then pass final cache options such as `store`, `ttl`, `keyPrefix`, `redis.clientName`, and `httpKeyStrategy`.
 - NestJS-style cache-key customization should move to fluo's documented key seams instead of subclassing the interceptor. Use a function-valued `httpKeyStrategy` for an application-wide request-aware policy, or `@CacheKey(...)` with a literal key or key factory for handler-local behavior.
 - Custom cache tooling should read exported cache metadata helpers such as `getCacheKeyMetadata(...)`, `getCacheTtlMetadata(...)`, and `getCacheEvictMetadata(...)` rather than reimplementing private metadata keys.
-- Cache TTL values are seconds, not milliseconds, and `@CacheTTL(ttlSeconds: number)` accepts only a static number. Convert NestJS millisecond TTLs before migrating, and move dynamic per-request lifetimes to `CacheService.set(key, value, ttlSeconds)`.
+- Cache TTL values are seconds, not milliseconds, and `@CacheTTL(ttlSeconds: number)` accepts only a static number. Inspect the installed underlying `cache-manager` dependency/version before converting a NestJS TTL: divide by 1000 only when that dependency generation defines TTLs in milliseconds. Move dynamic per-request lifetimes to `CacheService.set(key, value, ttlSeconds)`.
 - The default HTTP cache key is path-only. `httpKeyStrategy` defaults to `'route'`, so query values are ignored until you select `'route+query'`, a function strategy, or `@CacheKey(...)`.
 - NestJS `isGlobal` becomes fluo `global`, whose default is `false`. Cache providers are module-local unless a migration sets `global: true` or imports `CacheModule.forRoot(...)` into every consuming module.
 - NestJS store adapters such as `cache-manager-redis-store` are not fluo `CacheStore` values. Select the built-in `store: 'redis'` path or pass an object implementing `get`, `set`, `del`, and `reset`, and keep teardown ownership explicit: fluo forwards shutdown only to a store's optional `close()`/`dispose()`, so a directly supplied `redis.client` stays application-owned.
@@ -587,7 +587,7 @@ Kafka and RabbitMQ keep inbound consumer callbacks pending until handler executi
 
 `@nestjs/cache-manager` and `@fluojs/cache-manager` expose overlapping cache concepts, but their option names, units, defaults, and ownership do not all carry over. Convert each of the following before reusing a NestJS cache configuration.
 
-- **TTL unit and defaults.** fluo `ttl` is a number of seconds, while `@nestjs/cache-manager` v5 `ttl` is milliseconds. Copying a NestJS value unchanged inflates expiry by 1000x. When `ttl` is omitted, `CacheModule.forRoot(...)` applies `300` seconds on the default memory path and `0` for the `redis` and custom-store paths.
+- **TTL unit and defaults.** fluo `ttl` is a number of seconds. Before converting a NestJS TTL, inspect the installed underlying `cache-manager` dependency/version: divide by 1000 only when that dependency generation defines TTLs in milliseconds; copying such a value unchanged inflates expiry by 1000x. When `ttl` is omitted, `CacheModule.forRoot(...)` applies `300` seconds on the default memory path and `0` for the `redis` and custom-store paths.
 - **TTL `0` and invalid values.** `ttl: 0` means "no expiry", not "do not cache". A negative or non-finite TTL is treated as invalid: `CacheService.set(...)` drops the write, and `CacheInterceptor` skips both the cache read and the cache write for that handler, so the route falls through to the handler on every request.
 - **Static `@CacheTTL(...)`.** `@CacheTTL(ttlSeconds: number)` stores one static number as route metadata; it accepts no factory, context argument, or async value. A NestJS handler that computed a per-request lifetime must call `CacheService.set(key, value, ttlSeconds)` explicitly instead.
 - **Query-sensitive keys.** `httpKeyStrategy` defaults to `'route'`, which keys entries on the concrete request path only and ignores query values, so `/search?q=a` and `/search?q=b` would share one entry. Select `httpKeyStrategy: 'route+query'` (or `'full'`), a function strategy, or `@CacheKey(...)` whenever a response varies by query parameters.
@@ -606,7 +606,8 @@ const cacheClient = new Redis({ host: 'localhost', port: 6379 });
 @Module({
   imports: [
     CacheModule.forRoot({
-      // NestJS `ttl: 60_000` (milliseconds) becomes 60 seconds.
+      // If the installed underlying cache-manager generation uses milliseconds,
+      // NestJS `ttl: 60_000` becomes 60 seconds.
       ttl: 60,
       // NestJS `isGlobal: true` becomes `global: true`.
       global: true,
