@@ -118,7 +118,9 @@ export function getClassSerializationOptions(constructor: Function): ClassSerial
   const options: ClassSerializationOptions = {};
 
   for (const bag of getConstructorMetadataBags(constructor)) {
-    Object.assign(options, bag[standardSerializationClassMetadataKey] as ClassSerializationOptions | undefined);
+    if (Object.hasOwn(bag, standardSerializationClassMetadataKey)) {
+      Object.assign(options, bag[standardSerializationClassMetadataKey] as ClassSerializationOptions);
+    }
   }
 
   return options;
@@ -134,6 +136,10 @@ export function getFieldSerializationMetadata(constructor: Function): Map<Metada
   const merged = new Map<MetadataPropertyKey, SerializationFieldMetadata>();
 
   for (const bag of getConstructorMetadataBags(constructor)) {
+    if (!Object.hasOwn(bag, standardSerializationFieldMetadataKey)) {
+      continue;
+    }
+
     const fieldMetadata = bag[standardSerializationFieldMetadataKey] as
       | Map<MetadataPropertyKey, SerializationFieldMetadata>
       | undefined;
