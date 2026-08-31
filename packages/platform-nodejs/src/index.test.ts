@@ -1,12 +1,14 @@
 import { type AddressInfo, createServer } from 'node:net';
+import type { ServerOptions as HttpServerOptions } from 'node:http';
+import type { ServerOptions as HttpsServerOptions } from 'node:https';
 import { Controller, type Dispatcher, FromBody, Get, Post, type RequestContext, RequestDto } from '@fluojs/http';
-import { defineModule, FluoFactory } from '@fluojs/runtime';
+import { defineModule, FluoFactory, type MultipartOptions } from '@fluojs/runtime';
 import {
   type BootstrapNodeApplicationOptions,
   bootstrapNodeApplication,
   type NodeApplicationSignal,
   type NodeHttpAdapterOptions,
-  type NodeHttpApplicationAdapter,
+  NodeHttpApplicationAdapter,
   type RunNodeApplicationOptions,
   runNodeApplication,
 } from '@fluojs/runtime/node';
@@ -23,6 +25,10 @@ import {
   type RunNodejsApplicationOptions,
   runNodejsApplication,
 } from './index.js';
+
+type NodeHttpApplicationAdapterConstructorParameters = ConstructorParameters<
+  typeof NodeHttpApplicationAdapter
+>;
 
 function getBoundPort(server: { address(): AddressInfo | string | null }): number {
   const address = server.address();
@@ -195,6 +201,111 @@ describe('@fluojs/platform-nodejs', () => {
     expectTypeOf<RunNodejsApplicationOptions>().toEqualTypeOf<RunNodeApplicationOptions>();
   });
 
+  it('preserves the Node adapter constructor parameter order for positional consumers', () => {
+    expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[0]>().toEqualTypeOf<number>();
+    expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[1]>().toEqualTypeOf<string | undefined>();
+    expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[2]>().toEqualTypeOf<number | undefined>();
+    expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[3]>().toEqualTypeOf<number | undefined>();
+    expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[4]>().toEqualTypeOf<boolean | undefined>();
+    expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[5]>().toEqualTypeOf<HttpsServerOptions | undefined>();
+    expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[6]>().toEqualTypeOf<MultipartOptions | undefined>();
+    expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[7]>().toEqualTypeOf<number | undefined>();
+    expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[8]>().toEqualTypeOf<boolean | undefined>();
+    expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[9]>().toEqualTypeOf<number | undefined>();
+    expectTypeOf<NodeHttpApplicationAdapterConstructorParameters[10]>().toEqualTypeOf<HttpServerOptions | undefined>();
+  });
+
+  it('preserves positional Node adapter constructor values through their runtime behavior', async () => {
+    const blocker = createServer();
+    await new Promise<void>((resolve) => {
+      blocker.listen(0, '127.0.0.1', resolve);
+    });
+    const blockerAddress = blocker.address();
+    if (!blockerAddress || typeof blockerAddress === 'string') {
+      throw new Error('Failed to bind a positional constructor test port.');
+    }
+
+    const retryAdapter = new NodeHttpApplicationAdapter(
+      blockerAddress.port,
+      '127.0.0.1',
+      1,
+      2,
+      true,
+      undefined,
+      undefined,
+      32,
+      false,
+      61,
+      { maxHeaderSize: 32_768 },
+    );
+    const retryServerListen = vi.spyOn(retryAdapter.getServer(), 'listen');
+    const dispatcher: Dispatcher = {
+      async dispatch(_request, response) {
+        await response.send('ok');
+      },
+    };
+
+    try {
+      await expect(retryAdapter.listen(dispatcher)).rejects.toMatchObject({ code: 'EADDRINUSE' });
+      expect(retryServerListen).toHaveBeenCalledTimes(3);
+    } finally {
+      retryServerListen.mockRestore();
+      await retryAdapter.close();
+      await new Promise<void>((resolve, reject) => {
+        blocker.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    }
+
+    let observedRawBody: Uint8Array | undefined;
+    const adapter = new NodeHttpApplicationAdapter(
+      0,
+      '127.0.0.1',
+      1,
+      2,
+      true,
+      undefined,
+      undefined,
+      32,
+      false,
+      61,
+      { maxHeaderSize: 32_768 },
+    );
+
+    try {
+      await adapter.listen({
+        async dispatch(request, response) {
+          observedRawBody = request.rawBody;
+          await response.send('compressible response'.repeat(64));
+        },
+      });
+      const listeningPort = getBoundPort(adapter.getServer());
+
+      const oversizedResponse = await fetch(`http://127.0.0.1:${String(listeningPort)}`, {
+        body: 'x'.repeat(48),
+        method: 'POST',
+      });
+      expect(oversizedResponse.status).toBe(413);
+
+      const response = await fetch(`http://127.0.0.1:${String(listeningPort)}`, {
+        body: 'body',
+        headers: { 'accept-encoding': 'gzip' },
+        method: 'POST',
+      });
+      expect(response.headers.get('content-encoding')).toBe('gzip');
+      expect(observedRawBody).toBeUndefined();
+      expect(Reflect.get(adapter.getServer(), 'maxHeaderSize')).toBe(32_768);
+    } finally {
+      await adapter.close();
+    }
+  });
+
   it('keeps advanced process and compression utilities off the primary platform startup surface', () => {
     expect(platformNodejsApi).not.toHaveProperty('compressNodeResponse');
     expect(platformNodejsApi).not.toHaveProperty('createNodeResponseCompression');
@@ -246,6 +357,23 @@ describe('@fluojs/platform-nodejs', () => {
     expect(() => createNodejsAdapter({ shutdownTimeoutMs: -1 })).toThrow(
       'Invalid shutdownTimeoutMs value: -1. Expected a non-negative integer.',
     );
+  });
+
+  it('passes plain HTTP construction options and rejects HTTPS pairing through the platform adapter', async () => {
+    const adapter = createNodejsAdapter({
+      http: { maxHeaderSize: 32_768 },
+    });
+
+    try {
+      expect(Reflect.get(adapter.getServer(), 'maxHeaderSize')).toBe(32_768);
+    } finally {
+      await adapter.close();
+    }
+
+    expect(() => createNodejsAdapter({
+      http: { maxHeaderSize: 32_768 },
+      https: {},
+    })).toThrow('Plain HTTP and HTTPS server options cannot be used together.');
   });
 
   it('rejects listen through the package adapter after retryLimit is exhausted', async () => {

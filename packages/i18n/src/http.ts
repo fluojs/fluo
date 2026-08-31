@@ -7,13 +7,11 @@ import {
 } from '@fluojs/http';
 import {
   type AcceptLanguageLocalePolicyOptions,
-  isSupportedLocale,
-  isValidLocale,
-  normalizeLocaleResolverResult,
   parseLocalePreferences,
   resolveSupportedLocale,
   selectLocaleFromAcceptLanguagePolicy,
 } from './locale-resolution.js';
+import { resolveLocaleResolverChain } from './resolver-chain.js';
 import type { I18nLocale } from './types.js';
 
 /**
@@ -212,27 +210,11 @@ export function createAcceptLanguageLocalePolicyResolver(
  * @throws {TypeError} When the configured default locale is invalid or unsupported.
  */
 export function resolveHttpLocale(context: RequestContext, options: ResolveHttpLocaleOptions): HttpLocaleContext {
-  if (!isValidLocale(options.defaultLocale)) {
-    throw new TypeError('defaultLocale must be a syntactically valid locale string.');
-  }
+  const resolved = resolveLocaleResolverChain<HttpLocaleResolverInput>(
+    { context, defaultLocale: options.defaultLocale, supportedLocales: options.supportedLocales },
+    options,
+  );
 
-  if (!isSupportedLocale(options.defaultLocale, options.supportedLocales)) {
-    throw new TypeError('defaultLocale must be listed in supportedLocales when supportedLocales is provided.');
-  }
-
-  for (const resolver of options.resolvers ?? []) {
-    const result = normalizeLocaleResolverResult(
-      resolver({ context, defaultLocale: options.defaultLocale, supportedLocales: options.supportedLocales }),
-    );
-
-    if (result === undefined || !isValidLocale(result.locale) || !isSupportedLocale(result.locale, options.supportedLocales)) {
-      continue;
-    }
-
-    setHttpLocale(context, result.locale, { source: result.source });
-    return getHttpLocale(context) ?? { locale: result.locale, source: result.source };
-  }
-
-  setHttpLocale(context, options.defaultLocale, { source: 'default' });
-  return getHttpLocale(context) ?? { locale: options.defaultLocale, source: 'default' };
+  setHttpLocale(context, resolved.locale, { source: resolved.source });
+  return getHttpLocale(context) ?? resolved;
 }

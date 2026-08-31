@@ -9,6 +9,7 @@ import type { Mock } from 'vitest';
 import { describe, expect, it } from 'vitest';
 import * as fetchStyleWebsocket from './conformance/fetch-style-websocket-conformance.js';
 import * as conformance from './conformance/platform-conformance.js';
+import * as platformShellLifecycle from './conformance/platform-shell-lifecycle-conformance.js';
 import * as http from './http.js';
 import type { DeepMocked as RootDeepMocked } from './index.js';
 import * as testing from './index.js';
@@ -91,6 +92,7 @@ const emittedHarnessSubpaths = [
   './http',
   './mock',
   './platform-conformance',
+  './platform-shell-lifecycle-conformance',
   './http-adapter-portability',
   './web-runtime-adapter-portability',
   './fetch-style-websocket-conformance',
@@ -295,6 +297,7 @@ describe('@fluojs/testing surface', () => {
     expect('createMock' in testing).toBe(false);
     expect('makeRequest' in testing).toBe(false);
     expect('createPlatformConformanceHarness' in testing).toBe(false);
+    expect('createPlatformShellLifecycleConformanceHarness' in testing).toBe(false);
     expect('createHttpAdapterPortabilityHarness' in testing).toBe(false);
     expect('createWebRuntimeHttpAdapterPortabilityHarness' in testing).toBe(false);
     expect('createFetchStyleWebSocketConformanceHarness' in testing).toBe(false);
@@ -306,6 +309,7 @@ describe('@fluojs/testing surface', () => {
     expect(mock.mockToken).toBeTypeOf('function');
     expect(http.makeRequest).toBeTypeOf('function');
     expect(conformance.createPlatformConformanceHarness).toBeTypeOf('function');
+    expect(platformShellLifecycle.createPlatformShellLifecycleConformanceHarness).toBeTypeOf('function');
     expect(portability.createHttpAdapterPortabilityHarness).toBeTypeOf('function');
     expect(webPortability.createWebRuntimeHttpAdapterPortabilityHarness).toBeTypeOf('function');
     expect(fetchStyleWebsocket.createFetchStyleWebSocketConformanceHarness).toBeTypeOf('function');
@@ -325,6 +329,10 @@ describe('@fluojs/testing surface', () => {
     expect(packageJson.exports['./platform-conformance']).toEqual({
       types: './dist/conformance/platform-conformance.d.ts',
       import: './dist/conformance/platform-conformance.js',
+    });
+    expect(packageJson.exports['./platform-shell-lifecycle-conformance']).toEqual({
+      types: './dist/conformance/platform-shell-lifecycle-conformance.d.ts',
+      import: './dist/conformance/platform-shell-lifecycle-conformance.js',
     });
     expect(packageJson.exports['./http-adapter-portability']).toEqual({
       types: './dist/portability/http-adapter-portability.d.ts',

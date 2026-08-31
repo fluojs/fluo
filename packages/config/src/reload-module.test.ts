@@ -322,4 +322,40 @@ describe('ConfigReloadManager', () => {
       manager.close();
     }
   });
+
+  it('keeps manager shutdown terminal for reload, subscription, and watcher recreation paths', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-manager-terminal-shutdown-'));
+    const envPath = join(cwd, '.env.dev');
+
+    writeFileSync(envPath, 'PORT=4000\n');
+
+    const service = new ConfigService<ConfigDictionary>({ PORT: '4000' });
+    const manager = new ConfigReloadManager(service, {
+      cwd,
+      envFile: envPath,
+      processEnv: {},
+      watch: true,
+    });
+
+    manager.onApplicationBootstrap();
+    expect(watchCallbacks.size).toBe(1);
+
+    manager.onModuleDestroy();
+    expect(watchCallbacks.size).toBe(0);
+
+    writeFileSync(envPath, 'PORT=4100\n');
+
+    expect(() => manager.reload()).toThrow('Config reload manager cannot reload after shutdown has started.');
+    expect(() => manager.subscribe(() => {})).toThrow('Config reload manager cannot subscribe after shutdown has started.');
+    expect(() => manager.subscribeError(() => {})).toThrow('Config reload manager cannot subscribeError after shutdown has started.');
+
+    manager.onApplicationBootstrap();
+
+    expect(watchCallbacks.size).toBe(0);
+    expect(service.get('PORT')).toBe('4000');
+    expect(manager.current()['PORT']).toBe('4000');
+
+    expect(() => manager.close()).not.toThrow();
+    expect(watchCallbacks.size).toBe(0);
+  });
 });

@@ -9,7 +9,7 @@
 | 표면 | 현재 계약 | 소스 기준 |
 | --- | --- | --- |
 | 모듈 진입점 | 애플리케이션은 `CacheModule.forRoot(...)`로 캐시 지원을 등록합니다. 공개 옵션에는 `store`, `ttl`, opt-in `ttlJitter`, `httpKeyStrategy`, `principalScopeResolver`, top-level `keyPrefix`, `redis`, `global`이 포함됩니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
-| 캐시 서비스 | `CacheService`는 `get`, `set`, `remember`, `del`, `reset`을 제공하는 직접 애플리케이션 캐시 파사드입니다. | `packages/cache-manager/src/service.ts` |
+| 캐시 서비스 | `CacheService`는 `get`, `set`, `remember`, `del`, `reset`과 공개 `close()` teardown 경계를 제공하는 직접 애플리케이션 캐시 파사드입니다. | `packages/cache-manager/src/service.ts` |
 | HTTP 통합 | `CacheInterceptor`는 GET read-through 캐싱을 수행하고 non-GET controller handler 이후 `@CacheEvict(...)` metadata를 소비합니다. 이 decorator는 해당 HTTP pipeline 밖의 임의 service method를 intercept하지 않습니다. | `packages/cache-manager/src/decorators.ts`, `packages/cache-manager/src/interceptor.ts` |
 | 메모리 저장소 | `MemoryStore`는 캐시 엔트리를 프로세스 내부에 보관하고, 접근 시점에 만료를 지연 정리하며, 가장 오래된 키부터 제거하면서 라이브 엔트리를 `1,000`개로 제한합니다. | `packages/cache-manager/src/stores/memory-store.ts` |
 | Redis 저장소 | `RedisStore`는 JSON 직렬화된 엔트리를 prefix가 붙은 키 공간에 저장하고, 양수 TTL에는 `EX`를 사용하며, 설정된 prefix를 scan해서 reset을 수행합니다. | `packages/cache-manager/src/stores/redis-store.ts` |
@@ -37,7 +37,7 @@
 | 무기한 엔트리 | `ttl: 0`은 만료 없음 의미입니다. 메모리 저장소는 이런 엔트리에 `expiresAt`을 두지 않고, Redis 저장소는 `EX` 없이 기록합니다. | `packages/cache-manager/src/service.ts`, `packages/cache-manager/src/stores/memory-store.ts`, `packages/cache-manager/src/stores/redis-store.ts` |
 | GET 전용 응답 캐싱 | `CacheInterceptor`는 `GET` 요청에 대해서만 read-through 캐싱을 수행합니다. GET이 아닌 요청은 캐시 읽기와 쓰기를 건너뜁니다. | `packages/cache-manager/src/interceptor.ts` |
 | 캐시 가능한 응답 형태 | 인터셉터는 나중에 재생할 수 있는 성공한 GET 결과만 캐싱합니다. 핸들러가 `undefined`, `SseResponse`, 2xx가 아닌 status, 이미 커밋된 응답을 반환한 경우 캐싱하지 않습니다. | `packages/cache-manager/src/interceptor.ts` |
-| read-through 중복 제거 | `CacheService.remember(...)`는 key별 in-flight promise 맵으로 동시 miss를 중복 제거합니다. | `packages/cache-manager/src/service.ts` |
+| read-through 중복 제거 | `CacheService.remember(...)`는 key별 in-flight promise 맵으로 동시 miss를 중복 제거하며, 그 범위는 하나의 `CacheService` 인스턴스입니다. `CacheInterceptor`는 동시 GET miss를 합치지 않으며 각 miss가 handler를 호출합니다. | `packages/cache-manager/src/service.ts`, `packages/cache-manager/src/interceptor.ts` |
 
 ## 무효화 규칙
 
@@ -47,8 +47,10 @@
 | eviction 시점 | GET이 아닌 handler에서는 downstream handler가 성공하고 response writer가 commit을 확인한 뒤에만 eviction이 실행됩니다. Writer reject, commit 확인 없이 settle된 writer, 또는 commit 전 request abort는 지연 eviction을 취소하므로 shutdown과 disconnect에서도 이전 cached read를 유지합니다. `response.send(...)`를 호출하지 않고 commit하는 adapter 경로도 bounded 5초 fallback을 유지하지만, deadline에 `response.committed`가 이미 commit을 확인한 경우에만 eviction을 실행합니다. 확인되지 않은 response는 취소하므로 경과 시간만으로 이후의 실패한 commit보다 먼저 cache를 삭제하지 않습니다. Fallback timer는 Node.js에서 unref되고 writer가 settle되면 clear됩니다. | `packages/cache-manager/src/interceptor.ts`, `packages/cache-manager/src/deferred-eviction.ts` |
 | 실패 격리 | `safeGet`, `safeSet`, `safeDel`은 저장소 오류를 삼킵니다. 캐시 실패가 다른 정상 핸들러를 실패시키지 않습니다. | `packages/cache-manager/src/interceptor.ts` |
 | 진행 중 로드 무효화 | `CacheService.del(...)`은 아직 로딩 중인 키를 표시하여, 같은 로드 주기 중 무효화된 키가 `remember(...)`에 의해 다시 채워지지 않도록 합니다. | `packages/cache-manager/src/service.ts` |
+| 저장소 작업 동시성 | 일반적인 `get`, `set`, `del` store 호출은 동시에 실행되므로 한 키의 느린 store 호출이 관련 없는 키를 지연시키지 않습니다. `reset()`과 저장소 teardown은 배타적으로 실행됩니다. 이후 store 호출을 대기시키고, 이미 시작된 호출이 종료되기를 기다린 뒤 단독으로 실행됩니다. | `packages/cache-manager/src/store-operation-scheduler.ts`, `packages/cache-manager/src/service.ts` |
 | 전체 reset | `CacheService.reset()`은 내부 reset version을 증가시키고, 진행 중/대기 중인 load bookkeeping과 진행 중 무효화 마커를 지운 뒤, 하위 저장소를 reset합니다. | `packages/cache-manager/src/service.ts` |
 | 저장소 teardown | 애플리케이션 종료 중 `CacheService`는 custom store의 `close()` hook을 호출하고, `close()`가 없으면 `dispose()`를 호출하므로 리소스를 소유한 store가 socket, pool, timer 또는 기타 외부 handle을 해제할 수 있습니다. 동시에 또는 반복해서 호출한 service/lifecycle close는 실패를 포함한 첫 teardown promise를 공유하므로, 하나의 authoritative completion boundary 뒤에서 teardown이 한 번만 실행됩니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/service.ts` |
+| teardown 소유권 diagnostic | `createCacheManagerPlatformStatusSnapshot(...)`은 store 분류만이 아니라 teardown 책임에서 `storeOwnershipMode`를 해석합니다. 메모리와 custom store는 `CacheService`가 lifecycle teardown 전달을 소유하므로 기본적으로 `framework`입니다. Redis는 `CacheService`에 대해 `external`로 유지됩니다. `@fluojs/redis`를 통해 해석된 client는 해당 integration이 lifecycle을 소유하고, `redis.client`로 직접 전달한 client는 애플리케이션이 lifecycle을 소유합니다. 명시적인 `storeOwnershipMode`는 store 기본값보다 우선합니다. | `packages/cache-manager/src/status.ts`, `packages/cache-manager/src/service.ts` |
 
 ## 제약 사항
 

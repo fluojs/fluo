@@ -137,6 +137,15 @@ ThrottlerModule.forRoot({
 
 데코레이터는 클래스(컨트롤러)와 메서드 모두에 적용할 수 있습니다. 클래스에 적용하면 해당 클래스 내의 모든 메서드에 영향을 미칩니다. 이는 특정 속도 제한 정책을 공유해야 하는 관련 엔드포인트들을 그룹화할 때 유용합니다. 만약 메서드에도 `@Throttle()` 데코레이터가 있다면, 클래스 수준의 데코레이터보다 우선순위를 가집니다. 이러한 계층적 재정의를 통해 트래픽 제어 전략을 매우 정밀하게 구성할 수 있습니다.
 
+### 16.3.5 @nestjs/throttler에서 마이그레이션하기
+`@fluojs/throttler`는 `@nestjs/throttler`의 일대일 대체제가 아닙니다. NestJS 설정을 그대로 복사하지 말고 Fluo의 계약을 유지하세요.
+
+- **TTL 단위를 변환합니다.** NestJS는 밀리초를 사용하고 Fluo는 초를 사용합니다. NestJS의 `ttl: 60_000`은 `ttl: 60`이 됩니다. 값을 그대로 복사하면 window가 1,000배 길어집니다.
+- **필요하면 skipped controller를 재구성합니다.** NestJS named skip metadata는 skipped class 아래 method-level `false`로 throttling을 다시 활성화할 수 있습니다. Fluo의 인자 없는 `@SkipThrottle()`은 class와 method skip을 additive하게 결합하므로, 보호할 method를 skip하지 않은 controller로 옮기거나 application-owned guard wrapper에서 해당 예외를 집행하세요.
+- **등록 전에 비동기 입력을 준비합니다.** Fluo는 NestJS `forRootAsync(...)`가 아니라 동기 `ThrottlerModule.forRoot(...)`를 제공합니다. Secret, configuration, store 생성은 application bootstrap boundary에서 해결한 뒤 최종 option을 등록하세요.
+- **정책을 transport 경계에 둡니다.** Fluo의 `ThrottlerGuard`와 `keyGenerator`는 HTTP context에서 동작합니다. WebSocket message, GraphQL operation, RPC call, queue worker에는 transport-owned guard 또는 middleware를 사용하세요.
+- **counter 연속성을 명시적으로 계획합니다.** NestJS와 Fluo는 서로 다른 bucket key와 storage call contract를 사용합니다. Migration은 기본적으로 새 window에서 시작합니다. 기존 counter를 계속 유지해야 할 때만 application-owned compatibility store 또는 bounded cutover를 사용하세요.
+
 ## 16.4 Storage Providers: Memory vs. Redis
 스로틀러는 각 트래커의 요청 횟수를 저장할 공간이 필요합니다. 적절한 저장소 프로바이더를 선택하는 것은 속도 제한의 성능과 정확성 모두에 영향을 미치는 중요한 결정입니다.
 
@@ -351,7 +360,7 @@ WebSocket을 스로틀링할 때 **인바운드 바이트 속도(Inbound Byte Ra
 ### 16.13.3 GraphQL Complexity Throttling
 GraphQL API에서는 단일 쿼리가 매우 비쌀 수 있기 때문에 단순한 요청 카운팅만으로는 부족합니다. 대신 module-level complexity guardrail로 GraphQL 엔드포인트를 보호해야 합니다. Fluo의 GraphQL 통합에서는 `GraphqlModule.forRoot(...)`에 `limits.maxDepth`, `limits.maxComplexity`, `limits.maxCost`를 전달할 수 있고, 이 예산을 초과하는 요청은 resolver 실행 전에 거부됩니다. 이러한 "비용 기반 스로틀링"은 유연하고 풍부한 데이터를 제공하는 API에서 중요한 보호책입니다.
 
-fluo에서 **복잡도 기반 스로틀링(Complexity-Based Throttling)**을 구현하려면 resolver에 field-cost decorator를 추가하는 대신 module boundary에서 해당 예산을 설정합니다. 예를 들어 공개 카탈로그 API는 recursive traversal을 막기 위해 `maxDepth`를 낮게 유지하고, 전체 필드 가중치를 제한하기 위해 `maxComplexity`를 설정하며, aggregate compute estimate를 제한하기 위해 `maxCost`를 설정할 수 있습니다. 이러한 module-level control은 서버를 마비시킬 수 있는 고비용 또는 깊은 재귀 쿼리에 대한 노출을 줄이며, N+1 조회 패턴에 대한 완화책은 request-scoped DataLoader로 유지해 GraphQL 계약을 런타임 패키지 표면과 일치시킵니다.
+fluo에서 **복잡도 기반 스로틀링(Complexity-Based Throttling)**을 구현하려면 resolver에 field-cost decorator를 추가하는 대신 module boundary에서 해당 예산을 설정합니다. 예를 들어 공개 카탈로그 API는 recursive traversal을 막기 위해 `maxDepth`를 낮게 유지하고, 전체 필드 가중치를 제한하기 위해 `maxComplexity`를 설정하며, aggregate compute estimate를 제한하기 위해 `maxCost`를 설정할 수 있습니다. 이러한 module-level control은 서버를 마비시킬 수 있는 고비용 또는 깊은 재귀 쿼리에 대한 노출을 줄이며, N+1 조회 패턴에 대한 완화책은 GraphQL operation 범위 DataLoader로 유지해 GraphQL 계약을 런타임 패키지 표면과 일치시킵니다.
 
 나아가 복잡도 분석을 **영구 쿼리 화이트리스트(Persistent Query Whitelisting)**와 결합할 수 있습니다. 프로덕션에서 사전 승인된 명명된 쿼리만 실행할 수 있도록 허용함으로써, 공격자가 임의의 고비용 쿼리를 보낼 위험을 제거합니다. 임의의 쿼리가 필요한 공개 GraphQL API의 경우, 복잡도 기반 스로틀링이 여전히 가장 강력한 방어책입니다. 요청되는 데이터의 "비용"과 "형태"를 모두 분석하는 이러한 이중 계층 접근 방식은 클라이언트의 요구 사항이 아무리 복잡해지더라도 GraphQL 백엔드가 우수한 성능과 보안을 유지하도록 보장합니다.
 

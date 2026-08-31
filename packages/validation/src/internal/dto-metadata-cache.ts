@@ -1,7 +1,6 @@
 import type { Constructor, MetadataPropertyKey } from '@fluojs/core';
 import {
   type DtoFieldBindingMetadata,
-  type DtoFieldValidationRule,
   getClassValidationRules,
   getDtoBindingSchema,
   getDtoValidationSchema,
@@ -44,18 +43,16 @@ function collectNestedDtoTransforms(dtoValidationSchema: DtoValidationSchema): C
   const nestedEntries: CachedDtoMetadata['nestedDtoTransforms'][number][] = [];
 
   for (const entry of dtoValidationSchema) {
-    const nestedRule = entry.rules.find(
-      (rule: DtoFieldValidationRule): rule is Extract<DtoFieldValidationRule, { kind: 'nested' }> => rule.kind === 'nested',
-    );
+    for (const rule of entry.rules) {
+      if (rule.kind !== 'nested') {
+        continue;
+      }
 
-    if (!nestedRule) {
-      continue;
+      nestedEntries.push({
+        propertyKey: entry.propertyKey,
+        target: resolveNestedDto(rule.dto),
+      });
     }
-
-    nestedEntries.push({
-      propertyKey: entry.propertyKey,
-      target: resolveNestedDto(nestedRule.dto),
-    });
   }
 
   return nestedEntries;
