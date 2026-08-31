@@ -626,10 +626,37 @@ function getCollidingTypeValueNames(sourceFile: ts.SourceFile, runtimeValueNames
   return names;
 }
 
+function getTypeOnlyImportNames(sourceFile: ts.SourceFile): ReadonlySet<string> {
+  const names = new Set<string>();
+
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement) || !statement.importClause) {
+      continue;
+    }
+
+    if (statement.importClause.name && statement.importClause.isTypeOnly) {
+      names.add(statement.importClause.name.text);
+    }
+
+    if (!statement.importClause.namedBindings || !ts.isNamedImports(statement.importClause.namedBindings)) {
+      continue;
+    }
+
+    for (const element of statement.importClause.namedBindings.elements) {
+      if (statement.importClause.isTypeOnly || element.isTypeOnly) {
+        names.add(element.name.text);
+      }
+    }
+  }
+
+  return names;
+}
+
 function createInjectionTokenFromType(
   type: ts.TypeNode | undefined,
   runtimeValueNames: ReadonlySet<string>,
   collidingTypeValueNames: ReadonlySet<string>,
+  typeOnlyImportNames: ReadonlySet<string>,
 ): ts.Expression | undefined {
   if (
     !type
@@ -637,6 +664,7 @@ function createInjectionTokenFromType(
     || !ts.isIdentifier(type.typeName)
     || !runtimeValueNames.has(type.typeName.text)
     || collidingTypeValueNames.has(type.typeName.text)
+    || typeOnlyImportNames.has(type.typeName.text)
   ) {
     return undefined;
   }
@@ -644,11 +672,26 @@ function createInjectionTokenFromType(
   return ts.factory.createIdentifier(type.typeName.text);
 }
 
+function getExistingInjectTokens(expression: ts.CallExpression): readonly ts.Expression[] | undefined {
+  if (expression.arguments.length !== 1 || !ts.isArrayLiteralExpression(expression.arguments[0])) {
+    return expression.arguments;
+  }
+
+  if (expression.arguments[0].elements.some((element) => !ts.isExpression(element))) {
+    return undefined;
+  }
+
+  return expression.arguments[0].elements.filter(ts.isExpression);
+}
+
 function getConstructorInjectionTokens(
   classDeclaration: ts.ClassDeclaration,
   nestInjectLocalNames: ReadonlySet<string>,
   runtimeValueNames: ReadonlySet<string>,
   collidingTypeValueNames: ReadonlySet<string>,
+  typeOnlyImportNames: ReadonlySet<string>,
+  existingInjectTokens: readonly ts.Expression[] | undefined,
+  hasExistingInjectDecorator: boolean,
 ): { kind: 'none' } | { decoratorLocalName: string; kind: 'safe'; tokens: readonly ts.Expression[] } | { kind: 'unsafe'; node: ts.Node } {
   const constructorDeclaration = classDeclaration.members.find(
     (member): member is ts.ConstructorDeclaration => ts.isConstructorDeclaration(member) && member.body !== undefined,
@@ -667,9 +710,13 @@ function getConstructorInjectionTokens(
     return { kind: 'unsafe', node: classDeclaration };
   }
 
+  if (hasExistingInjectDecorator && !existingInjectTokens) {
+    return { kind: 'unsafe', node: classDeclaration };
+  }
+
   const tokens: ts.Expression[] = [];
   let decoratorLocalName: string | undefined;
-  for (const parameter of parameters) {
+  for (const [index, parameter] of parameters.entries()) {
     if (parameter.dotDotDotToken || parameter.questionToken || parameter.initializer || !ts.isIdentifier(parameter.name)) {
       return { kind: 'unsafe', node: parameter };
     }
@@ -699,7 +746,18 @@ function getConstructorInjectionTokens(
       continue;
     }
 
-    const token = createInjectionTokenFromType(parameter.type, runtimeValueNames, collidingTypeValueNames);
+    const existingToken = existingInjectTokens?.[index];
+    if (existingToken) {
+      tokens.push(existingToken);
+      continue;
+    }
+
+    const token = createInjectionTokenFromType(
+      parameter.type,
+      runtimeValueNames,
+      collidingTypeValueNames,
+      typeOnlyImportNames,
+    );
     if (!token) {
       return { kind: 'unsafe', node: parameter };
     }
@@ -722,12 +780,29 @@ function rewriteConstructorInjectTokens(source: string, filePath: string): { cha
   const fluoInjectNamespaceLocalNames = getFluoInjectNamespaceLocalNames(sourceFile);
   const runtimeValueNames = getRuntimeValueNames(sourceFile);
   const collidingTypeValueNames = getCollidingTypeValueNames(sourceFile, runtimeValueNames);
+  const typeOnlyImportNames = getTypeOnlyImportNames(sourceFile);
   const safeClasses = new Map<ts.ClassDeclaration, { decoratorLocalName: string; tokens: readonly ts.Expression[] }>();
   let hasUnsafeConstructor = false;
 
   const inspect = (node: ts.Node): void => {
     if (ts.isClassDeclaration(node)) {
-      const result = getConstructorInjectionTokens(node, nestInjectLocalNames, runtimeValueNames, collidingTypeValueNames);
+      const existingInjectDecorator = getFluoInjectClassDecorator(
+        node.modifiers,
+        fluoInjectLocalNames,
+        fluoInjectNamespaceLocalNames,
+      );
+      const existingInjectTokens = existingInjectDecorator
+        ? getExistingInjectTokens(existingInjectDecorator.expression)
+        : undefined;
+      const result = getConstructorInjectionTokens(
+        node,
+        nestInjectLocalNames,
+        runtimeValueNames,
+        collidingTypeValueNames,
+        typeOnlyImportNames,
+        existingInjectTokens,
+        !!existingInjectDecorator,
+      );
       if (result.kind === 'safe') {
         safeClasses.set(node, result);
       }
@@ -793,7 +868,7 @@ function rewriteConstructorInjectTokens(source: string, filePath: string): { cha
                         existingInjectDecorator.expression,
                         existingInjectDecorator.expression.expression,
                         existingInjectDecorator.expression.typeArguments,
-                        [...existingInjectDecorator.expression.arguments, ...injection.tokens],
+                        injection.tokens,
                       ),
                     )
                   : modifier,

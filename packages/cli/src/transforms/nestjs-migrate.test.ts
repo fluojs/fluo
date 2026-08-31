@@ -457,7 +457,10 @@ const B_TOKEN = Symbol('b');
 
 @FluoInject(A_TOKEN)
 export class PartiallyMigratedService {
-  constructor(@NestInject(B_TOKEN) private readonly dependency: string) {}
+  constructor(
+    private readonly existing: object,
+    @NestInject(B_TOKEN) private readonly dependency: string,
+  ) {}
 }
 `,
     );
@@ -493,7 +496,10 @@ const B_TOKEN = Symbol('b');
 
 @Core.Inject(A_TOKEN)
 export class NamespaceDecoratorService {
-  constructor(@NestInject(B_TOKEN) private readonly dependency: string) {}
+  constructor(
+    private readonly existing: object,
+    @NestInject(B_TOKEN) private readonly dependency: string,
+  ) {}
 }
 `,
     );
@@ -510,6 +516,45 @@ export class NamespaceDecoratorService {
     expect(serviceContent).toContain('@Core.Inject(A_TOKEN, B_TOKEN)');
     expect(serviceContent.match(/@Core\.Inject\(/g)).toHaveLength(1);
     expect(serviceContent).not.toContain('@NestInject(');
+    expect(report.warningCount).toBe(0);
+  });
+
+  it('normalizes legacy Fluo Inject arrays while replacing converted token positions', () => {
+    // Given
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
+    temporaryDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'src', 'legacy-array-decorator.service.ts'),
+      `import { Inject as FluoInject } from '@fluojs/core';
+import { Inject as NestInject } from '@nestjs/common';
+
+const A_TOKEN = Symbol('a');
+const B_TOKEN = Symbol('b');
+
+@FluoInject([A_TOKEN])
+export class LegacyArrayDecoratorService {
+  constructor(
+    private readonly existing: object,
+    @NestInject(B_TOKEN) private readonly dependency: string,
+  ) {}
+}
+`,
+    );
+
+    // When
+    const report = runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(MIGRATION_TRANSFORMS),
+      targetPath: workspaceDirectory,
+    });
+    const serviceContent = readFileSync(join(workspaceDirectory, 'src', 'legacy-array-decorator.service.ts'), 'utf8');
+
+    // Then
+    expect(serviceContent).toContain('@FluoInject(A_TOKEN, B_TOKEN)');
+    expect(serviceContent).not.toContain('@FluoInject([');
+    expect(serviceContent.match(/@FluoInject\(/g)).toHaveLength(1);
     expect(report.warningCount).toBe(0);
   });
 
@@ -575,6 +620,43 @@ export class CollidingDependencyService {
       targetPath: workspaceDirectory,
     });
     const serviceContent = readFileSync(join(workspaceDirectory, 'src', 'colliding-dependency.service.ts'), 'utf8');
+
+    // Then
+    expect(serviceContent).toContain('@Inject(TOKEN)');
+    expect(serviceContent).not.toContain('@Inject(TOKEN, Dependency)');
+    expect(report.fileResults.flatMap((result) => result.warnings).some((warning) => warning.category === 'inject-token-unsupported')).toBe(true);
+  });
+
+  it('retains constructor injection when an imported type collides with a runtime value', () => {
+    // Given
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
+    temporaryDirectories.push(workspaceDirectory);
+
+    mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
+    writeFileSync(
+      join(workspaceDirectory, 'src', 'imported-type-collision.service.ts'),
+      `import type { Dependency } from './types';
+import { Inject } from '@nestjs/common';
+
+const TOKEN = Symbol('token');
+const Dependency = Symbol('wrong-token');
+
+export class ImportedTypeCollisionService {
+  constructor(
+    @Inject(TOKEN) private readonly token: string,
+    private readonly dependency: Dependency,
+  ) {}
+}
+`,
+    );
+
+    // When
+    const report = runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(MIGRATION_TRANSFORMS),
+      targetPath: workspaceDirectory,
+    });
+    const serviceContent = readFileSync(join(workspaceDirectory, 'src', 'imported-type-collision.service.ts'), 'utf8');
 
     // Then
     expect(serviceContent).toContain('@Inject(TOKEN)');
