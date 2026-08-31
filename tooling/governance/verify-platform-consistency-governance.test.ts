@@ -951,10 +951,10 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
-  it('requires the bilingual validation book companions when migration contracts change', async () => {
+  it('accepts generic companions for validation migration prose without topic-specific book coupling', async () => {
     // Given
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
-    const migrationCompanions = [
+    const genericContractCompanions = [
       'docs/getting-started/migrate-from-nestjs.md',
       'docs/getting-started/migrate-from-nestjs.ko.md',
       'docs/contracts/nestjs-parity-gaps.md',
@@ -965,34 +965,10 @@ describe('enforceContractCompanionUpdates', () => {
     ];
 
     // When
-    const enforceWithoutBookCompanions = () => enforceContractCompanionUpdates(migrationCompanions);
+    const enforceGenericCompanions = () => enforceContractCompanionUpdates(genericContractCompanions);
 
     // Then
-    expect(enforceWithoutBookCompanions).toThrowError(
-      /validation migration contract updates must include the bilingual beginner validation book companions/u,
-    );
-  });
-
-  it('accepts the complete bilingual validation migration companion set', async () => {
-    // Given
-    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
-    const migrationCompanions = [
-      'docs/getting-started/migrate-from-nestjs.md',
-      'docs/getting-started/migrate-from-nestjs.ko.md',
-      'docs/contracts/nestjs-parity-gaps.md',
-      'docs/contracts/nestjs-parity-gaps.ko.md',
-      'docs/CONTEXT.md',
-      'docs/CONTEXT.ko.md',
-      'book/beginner/ch06-validation.md',
-      'book/beginner/ch06-validation.ko.md',
-      'tooling/governance/verify-platform-consistency-governance.test.ts',
-    ];
-
-    // When
-    const enforceCompleteCompanions = () => enforceContractCompanionUpdates(migrationCompanions);
-
-    // Then
-    expect(enforceCompleteCompanions).not.toThrow();
+    expect(enforceGenericCompanions).not.toThrow();
   });
 
   it('accepts metadata preload guidance with bilingual discoverability and governance enforcement', async () => {

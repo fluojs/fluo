@@ -214,6 +214,8 @@ const contractGateTriggers = new Set([
   'docs/architecture/http-runtime.ko.md',
   'docs/contracts/deployment.md',
   'docs/contracts/deployment.ko.md',
+  // These shared files intentionally use only the generic contract gate; topic-specific prose
+  // must not impose unrelated companion-document requirements.
   'docs/contracts/nestjs-parity-gaps.md',
   'docs/contracts/nestjs-parity-gaps.ko.md',
   // Includes Bun fetch-style lifecycle, synchronous manual fetch-host ownership,
@@ -234,21 +236,6 @@ const contractGateTriggers = new Set([
   'docs/reference/package-surface.md',
   'docs/reference/package-surface.ko.md',
 ]);
-
-const validationMigrationContractTriggers = new Set([
-  'docs/contracts/nestjs-parity-gaps.md',
-  'docs/contracts/nestjs-parity-gaps.ko.md',
-  'docs/getting-started/migrate-from-nestjs.md',
-  'docs/getting-started/migrate-from-nestjs.ko.md',
-]);
-
-const validationMigrationContractCompanions = [
-  ...validationMigrationContractTriggers,
-  'book/beginner/ch06-validation.md',
-  'book/beginner/ch06-validation.ko.md',
-  'docs/CONTEXT.md',
-  'docs/CONTEXT.ko.md',
-];
 
 const removedRuntimeModuleFactoryNames = [
   'createMicroservicesModule',
@@ -797,13 +784,6 @@ export function enforceContractCompanionUpdates(changedFiles) {
 
   if (!touchedContractGate) {
     return;
-  }
-
-  if (changedFiles.some((path) => validationMigrationContractTriggers.has(path))) {
-    assert(
-      validationMigrationContractCompanions.every((path) => hasChanged(changedFiles, path)),
-      'validation migration contract updates must include the bilingual beginner validation book companions.',
-    );
   }
 
   // Contract-governing docs must remain discoverable from the docs hub, and any
