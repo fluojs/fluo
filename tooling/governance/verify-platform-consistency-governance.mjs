@@ -9,9 +9,7 @@ import { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecyc
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 import { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 import { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
-
-const contractDiscoverabilityCompanions = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
-
+import { enforceJwtLearningPathModuleWiring } from './jwt-learning-path-module-wiring.mjs';
 import {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
@@ -23,11 +21,14 @@ import { enforceReactRscGraduationGovernance } from './react-rsc-graduation-poli
 import { enforceRequestPipelineImportBoundary } from './request-pipeline-import-boundary.mjs';
 import { enforceRuntimeLifecycleNestjsMigrationDocs } from './runtime-lifecycle-nestjs-migration-docs.mjs';
 
+const contractDiscoverabilityCompanions = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
+
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 export { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 export { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 export { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 export { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
+export { enforceJwtLearningPathModuleWiring } from './jwt-learning-path-module-wiring.mjs';
 export {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
@@ -2865,7 +2866,7 @@ export function enforceFastifyNativeConfigurationDocsSync() {
   }
 }
 
-export function main() {
+export async function main() {
   const changedFiles = changedFilesFromGit();
 
   enforceSsotMirrorStructure();
@@ -2884,6 +2885,7 @@ export function main() {
   enforceConfigNestjsMigrationDocs();
   enforceCliMigrationTransformDocs();
   enforceJwtAsyncRegistrationContract();
+  await enforceJwtLearningPathModuleWiring();
   enforceRuntimeLifecycleNestjsMigrationDocs();
   enforcePassportJsBridgeNestjsMigration();
   enforceExpressApplicationOwnershipDocs();
@@ -2919,5 +2921,5 @@ export function main() {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main();
+  await main();
 }
