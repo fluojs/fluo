@@ -462,6 +462,19 @@ describe('CookieManager', () => {
 
     expect(response.headers['Set-Cookie']).toContain('Max-Age=3600');
   });
+
+  it('lets positional refresh token TTL override configured SetCookieOptions defaults', () => {
+    const manager = new CookieManager({
+      cookieOptions: {
+        refreshTokenTtlSeconds: 86_400,
+      },
+    });
+    const response = createMockResponse();
+
+    manager.setRefreshTokenCookie(response, 'refresh-jwt', 3_600);
+
+    expect(response.headers['Set-Cookie']).toContain('Max-Age=3600');
+  });
 });
 
 describe('CookieAuthModule', () => {
