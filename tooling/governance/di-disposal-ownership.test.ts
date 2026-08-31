@@ -5,6 +5,23 @@ import { describe, expect, it } from 'vitest';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+type SourceExcerptGuardReason =
+  | 'duplicate-anchor'
+  | 'excerpt-drift'
+  | 'missing-anchor'
+  | 'missing-closing-fence'
+  | 'missing-opening-fence';
+
+class SourceExcerptGuardError extends Error {
+  constructor(
+    readonly reason: SourceExcerptGuardReason,
+    readonly citation: string,
+  ) {
+    super(`Source excerpt guard failed (${reason}): ${citation}`);
+    this.name = 'SourceExcerptGuardError';
+  }
+}
+
 function read(relativePath: string): string {
   return readFileSync(resolve(repoRoot, relativePath), 'utf8');
 }
@@ -18,20 +35,59 @@ function sourceExcerpt(document: string, citation: string): string {
   const anchor = `\`${citation}\``;
   const citationLineIndexes = lines.flatMap((line, index) => line === anchor ? [index] : []);
 
-  expect(citationLineIndexes).toHaveLength(1);
+  if (citationLineIndexes.length === 0) {
+    throw new SourceExcerptGuardError('missing-anchor', citation);
+  }
 
-  const citationLineIndex = citationLineIndexes.at(0) ?? -1;
+  if (citationLineIndexes.length > 1) {
+    throw new SourceExcerptGuardError('duplicate-anchor', citation);
+  }
+
+  const citationLineIndex = citationLineIndexes.at(0);
+
+  if (citationLineIndex === undefined) {
+    throw new SourceExcerptGuardError('missing-anchor', citation);
+  }
+
   const openingFenceLineIndex = lines.indexOf('```typescript', citationLineIndex + 1);
+
+  if (openingFenceLineIndex < 0) {
+    throw new SourceExcerptGuardError('missing-opening-fence', citation);
+  }
+
   const closingFenceLineIndex = lines.indexOf('```', openingFenceLineIndex + 1);
 
-  expect(openingFenceLineIndex).toBeGreaterThan(citationLineIndex);
-  expect(closingFenceLineIndex).toBeGreaterThan(openingFenceLineIndex);
+  if (closingFenceLineIndex < 0) {
+    throw new SourceExcerptGuardError('missing-closing-fence', citation);
+  }
 
   return lines.slice(openingFenceLineIndex + 1, closingFenceLineIndex).join('\n');
 }
 
 function assertSourceExcerpt(document: string, citation: string, expected: string): void {
-  expect(sourceExcerpt(document, citation)).toBe(expected);
+  if (sourceExcerpt(document, citation) !== expected) {
+    throw new SourceExcerptGuardError('excerpt-drift', citation);
+  }
+}
+
+function expectSourceExcerptGuardFailure(
+  action: () => void,
+  expectedReason: SourceExcerptGuardReason,
+): void {
+  try {
+    action();
+  } catch (error) {
+    expect(error).toBeInstanceOf(SourceExcerptGuardError);
+
+    if (!(error instanceof SourceExcerptGuardError)) {
+      throw error;
+    }
+
+    expect(error.reason).toBe(expectedReason);
+    return;
+  }
+
+  expect.fail(`Expected source excerpt guard failure: ${expectedReason}`);
 }
 
 const englishOwnershipClaims = [
@@ -68,7 +124,10 @@ describe('source excerpt guard', () => {
     const duplicate = `${excerpt}\n\n${excerpt}`;
 
     // When / Then
-    expect(() => assertSourceExcerpt(duplicate, citation, expected)).toThrow();
+    expectSourceExcerptGuardFailure(
+      () => assertSourceExcerpt(duplicate, citation, expected),
+      'duplicate-anchor',
+    );
   });
 
   it('rejects a missing line-exact citation anchor', () => {
@@ -76,7 +135,10 @@ describe('source excerpt guard', () => {
     const missing = excerpt.replace(citation, 'path:packages/di/src/container.ts:2-2');
 
     // When / Then
-    expect(() => assertSourceExcerpt(missing, citation, expected)).toThrow();
+    expectSourceExcerptGuardFailure(
+      () => assertSourceExcerpt(missing, citation, expected),
+      'missing-anchor',
+    );
   });
 
   it('rejects source excerpt drift', () => {
@@ -84,7 +146,10 @@ describe('source excerpt guard', () => {
     const drifted = excerpt.replace(expected, 'const value = false;');
 
     // When / Then
-    expect(() => assertSourceExcerpt(drifted, citation, expected)).toThrow();
+    expectSourceExcerptGuardFailure(
+      () => assertSourceExcerpt(drifted, citation, expected),
+      'excerpt-drift',
+    );
   });
 });
 
