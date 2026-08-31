@@ -19,6 +19,9 @@ export function collectNodeGlobalBufferViolations(
   relativePaths: readonly string[],
   readSource: (relativePath: string) => string,
 ): NodeGlobalBufferViolation[];
+export function enforceCliMigrationTransformDocs(
+  readText?: (relativePath: string) => string,
+): void;
 export function parsePackageNamesFromFamilyTable(markdown: string, sectionTitle: string): string[];
 export function enforceNoDirectProcessEnvInOrdinaryPackageSource(
   relativePaths?: readonly string[],

@@ -635,7 +635,14 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
       };
     }
 
-    if (callExpression.arguments.length === 2 && !ts.isObjectLiteralExpression(callExpression.arguments[1])) {
+    if (callExpression.arguments.length === 2) {
+      if (ts.isObjectLiteralExpression(callExpression.arguments[1])) {
+        return {
+          reason: 'NestFactory.create options object has no documented Fluo mapping.',
+          supported: false,
+        };
+      }
+
       return {
         reason: 'NestFactory.create uses an adapter-specific startup form. Run adapter-independent transforms with --skip bootstrap, then replace the NestJS adapter with a Fluo platform adapter passed to FluoFactory.create(..., { adapter }) before calling listen().',
         supported: false,
@@ -715,25 +722,6 @@ function rewriteBootstrap(source: string, filePath: string): { changed: boolean;
                   ),
                 ], true)];
                 portFoldedApps.add(appVariable);
-              } else if (nextArgs.length === 2 && ts.isObjectLiteralExpression(nextArgs[1])) {
-                const hasPort = nextArgs[1].properties.some((property) => ts.isPropertyAssignment(property) && ts.isIdentifier(property.name) && property.name.text === 'port');
-
-                if (!hasPort) {
-                  nextArgs = [
-                    nextArgs[0],
-                    ts.factory.updateObjectLiteralExpression(nextArgs[1], [
-                      ...nextArgs[1].properties,
-                      ts.factory.createPropertyAssignment('port', portExpression),
-                    ]),
-                  ];
-                  portFoldedApps.add(appVariable);
-                }
-              }
-
-              if (!portFoldedApps.has(appVariable)) {
-                warnings.push(
-                  buildWarning(filePath, sourceFile, node, 'bootstrap-port', 'Unable to move listen() port argument into FluoFactory.create options. Review bootstrap manually.'),
-                );
               }
             }
           }

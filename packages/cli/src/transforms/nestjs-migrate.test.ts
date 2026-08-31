@@ -219,7 +219,7 @@ describe('runNestJsMigration', () => {
     expect(report.fileResults.flatMap((result) => result.warnings).some((warning) => warning.category === 'bootstrap-unsupported')).toBe(false);
   });
 
-  it('preserves listen(port) when port cannot be folded into create options', () => {
+  it('keeps Nest bootstrap options and imports unchanged when they cannot be mapped safely', () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
     temporaryDirectories.push(workspaceDirectory);
 
@@ -230,7 +230,7 @@ describe('runNestJsMigration', () => {
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { port: 4000 });
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
   await app.listen(3000);
 }
 
@@ -246,10 +246,16 @@ void bootstrap();
 
     const mainContent = readFileSync(join(workspaceDirectory, 'src', 'main.ts'), 'utf8');
 
-    expect(mainContent).toContain('FluoFactory.create(AppModule, { port: 4000 })');
+    expect(mainContent).toContain("import { NestFactory } from '@nestjs/core';");
+    expect(mainContent).not.toContain('@fluojs/runtime');
+    expect(mainContent).not.toContain('@fluojs/platform-express');
+    expect(mainContent).toContain('NestFactory.create(AppModule, { bufferLogs: true })');
     expect(mainContent).toContain('await app.listen(3000);');
-    expect(report.warningCount).toBeGreaterThan(0);
-    expect(report.fileResults.flatMap((result) => result.warnings).some((warning) => warning.message.includes('Unable to move listen() port argument'))).toBe(true);
+    expect(report.changedFiles).toBe(0);
+    expect(report.fileResults.flatMap((result) => result.warnings).some((warning) =>
+      warning.category === 'bootstrap-unsupported' &&
+      warning.message.includes('NestFactory.create options object'),
+    )).toBe(true);
   });
 
   it('skips bootstrap rewrite for unsupported NestFactory.create type arguments and adapter arguments', () => {
@@ -444,7 +450,7 @@ void bootstrap();
     expect(bootstrapWarnings.length).toBeGreaterThan(0);
   });
 
-  it('attaches bootstrap-port category when listen port cannot be folded', () => {
+  it('attaches bootstrap-unsupported category to NestFactory.create options objects', () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
     temporaryDirectories.push(workspaceDirectory);
 
@@ -455,7 +461,7 @@ void bootstrap();
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { port: 4000 });
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
   await app.listen(3000);
 }
 
@@ -470,8 +476,8 @@ void bootstrap();
     });
 
     const allWarnings = report.fileResults.flatMap((result) => result.warnings);
-    const portWarnings = allWarnings.filter((w) => w.category === 'bootstrap-port');
-    expect(portWarnings.length).toBeGreaterThan(0);
+    const bootstrapWarnings = allWarnings.filter((w) => w.category === 'bootstrap-unsupported');
+    expect(bootstrapWarnings.length).toBeGreaterThan(0);
   });
 
   it('attaches testing-unsupported category to unsupported testing patterns', () => {
