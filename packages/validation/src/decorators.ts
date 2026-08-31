@@ -174,7 +174,11 @@ export const IsNegative = createFlagValidationDecorator((options) => ({ kind: 'n
  * @returns A field decorator that registers an enum-membership rule.
  */
 export function IsEnum(values: Record<string, unknown> | readonly unknown[], options?: ValidationDecoratorOptions): FieldDecoratorFn {
-  const normalized = Array.isArray(values) ? values : Object.values(values);
+  const normalized = Array.isArray(values)
+    ? values
+    : Object.entries(values)
+        .filter(([key, value]) => typeof value !== 'string' || !Object.is(Reflect.get(values, value), Number(key)))
+        .map(([, value]) => value);
   return createValidationDecorator(() => ({ kind: 'enum', values: normalized, ...options }));
 }
 
