@@ -143,7 +143,7 @@ The operator (human or agent session):
      defined — a guard that survives the merge but loses its call site
      keeps every test green while enforcing nothing; (2) the merged test
      count is explained by exact arithmetic (e.g. 146 + 7 = 153), not by
-     "it went up"; (3) `grep -rl '<<<<<<<' $(git ls-files)` is empty
+     "it went up"; (3) `grep -Erl '^<{7} ' $(git ls-files)` is empty
      after EVERY `rebase --continue`, not just at the end.
    - **Receipts must be literally true.** A manual demonstration is not
      an automated regression — write "proven by hand, not pinned by a
