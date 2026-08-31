@@ -8,7 +8,7 @@
 ## Learning Objectives
 - `fluo` 요청 생명주기에서 가드의 역할을 이해합니다.
 - `@fluojs/passport`로 인증 전략을 구성합니다.
-- 커스텀 `AuthStrategy`로 토큰을 검증하고 principal을 구성합니다.
+- 내장 bearer JWT 전략 preset을 등록하고 커스텀 `AuthStrategy`로 인증 정책을 확장합니다.
 - `@UseAuth()`로 라우트와 컨트롤러를 보호합니다.
 - 지원되는 `@RequireScopes()` 데코레이터로 라우트 인가를 강제합니다.
 - 여러 인증 전략을 조합하는 흐름을 살펴봅니다.
@@ -99,51 +99,33 @@ export class AuthModule {}
 
 이 bridge는 full NestJS Passport compatibility가 아닙니다. Passport middleware, sessions, serializers, deserializers, automatic strategy discovery를 설치하지 않으며 implicit guards 또는 host middleware ownership도 제공하지 않습니다. Session과 serializer/deserializer migration은 application-owned 상태로 남습니다. Bridge shim을 추가하지 말고 bootstrap 및 request-host boundary에서 해당 책임을 구성하세요.
 
-## 15.3 Implementing the JWT AuthStrategy
-FluoBlog에서 가장 흔히 쓰이는 전략은 Bearer 토큰을 읽어 `JwtPrincipal`로 정규화하는 커스텀 `AuthStrategy`입니다. "표준 우선(Standard-First)" 철학을 따르면 JWT 구현이 RFC 7519와 같은 산업 표준과 어긋나지 않도록 설계하기 쉽습니다.
+## 15.3 The JWT Passport Strategy
+FluoBlog에서 가장 흔히 쓰이는 전략은 Bearer 토큰을 읽어 `JwtPrincipal`로 정규화하는 전략입니다. `@fluojs/passport`는 이 흐름을 내장 `BearerJwtStrategy` preset으로 제공하므로, 새 애플리케이션이 header parsing과 error mapping 코드를 애플리케이션 코드로 복사할 필요가 없습니다. "표준 우선(Standard-First)" 철학에 따라 preset은 RFC 7235와 RFC 7519 같은 산업 표준과 어긋나지 않게 유지됩니다.
 
-### 15.3.1 Defining the Strategy Class
-전략 클래스는 `AuthStrategy` 계약을 구현하는 일반적인 Fluo provider입니다. 실제 예제도 이 저장소의 `examples/auth-jwt-passport/src/auth/bearer.strategy.ts`처럼 request header를 직접 읽고 `DefaultJwtVerifier`에 검증을 위임하는 형태를 사용합니다.
+### 15.3.1 Registering the Built-in Bearer Strategy
+`BearerJwtStrategy`는 `AuthStrategy` 계약을 구현하는 일반적인 Fluo provider입니다. `Authorization` header를 읽고 `Bearer <token>` 형태를 강제한 뒤 검증을 `DefaultJwtVerifier`에 위임합니다. 직접 작성하지 않고 `@fluojs/passport`에서 import하면 됩니다. 이 저장소의 실행 가능한 예제 `examples/auth-jwt-passport/src/auth/bearer.strategy.ts`도 같은 내장 preset을 re-export합니다.
 
 ```typescript
-import { Inject } from '@fluojs/core';
-import type { GuardContext } from '@fluojs/http';
-import { DefaultJwtVerifier } from '@fluojs/jwt';
 import {
-  AuthenticationFailedError,
-  AuthenticationRequiredError,
-  type AuthStrategy,
+  BEARER_JWT_STRATEGY_NAME,
+  BearerJwtStrategy,
 } from '@fluojs/passport';
-
-@Inject(DefaultJwtVerifier)
-export class BearerJwtStrategy implements AuthStrategy {
-  constructor(private readonly verifier: DefaultJwtVerifier) {}
-
-  async authenticate(context: GuardContext) {
-    const authorization = context.requestContext.request.headers.authorization;
-    if (typeof authorization !== 'string') {
-      throw new AuthenticationRequiredError('Authorization header is required.');
-    }
-
-    const [scheme, token] = authorization.split(' ');
-    if (scheme !== 'Bearer' || !token) {
-      throw new AuthenticationFailedError('Authorization header must use Bearer token format.');
-    }
-
-    return await this.verifier.verifyAccessToken(token);
-  }
-}
 ```
 
+Preset은 credential contract를 정확히 정의합니다. `Authorization` header가 없거나 비어 있으면 `AuthenticationRequiredError`, scheme이 다르거나 malformed이면 `AuthenticationFailedError`(scheme 비교는 대소문자를 구분하지 않음), 만료된 토큰은 `AuthenticationExpiredError`, 그 외 검증 실패는 `AuthenticationFailedError`로 실패하며, 각각 원본 JWT verifier error를 `cause`로 보존합니다. 내부적으로 `AuthGuard`는 이 모든 실패를 canonical `401 Unauthorized` response로 변환합니다.
+
 ### 15.3.2 Registering the JWT and Passport Modules
-Provider를 정의하는 것만으로는 `@UseAuth('jwt')`를 실행할 수 없습니다. 애플리케이션 module에서 JWT verifier와 named Passport strategy를 모두 등록해야 합니다. 아래 구성은 canonical `packages/passport/README.md` quick start와 실행 가능한 `examples/auth-jwt-passport/src/auth/auth.module.ts` 예제에서 사용하는 wiring과 같습니다.
+전략을 import하는 것만으로는 `@UseAuth('jwt')`를 실행할 수 없습니다. 애플리케이션 module이 JWT verifier를 등록하고, preset을 provider로 나열하고, 안정적인 registration helper로 named Passport strategy를 등록해야 합니다. 아래 구성은 canonical `packages/passport/README.md` quick start와 실행 가능한 `examples/auth-jwt-passport/src/auth/auth.module.ts` 예제에서 사용하는 wiring과 같습니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
 import { JwtModule } from '@fluojs/jwt';
-import { PassportModule } from '@fluojs/passport';
-
-import { BearerJwtStrategy } from './bearer.strategy';
+import {
+  BEARER_JWT_STRATEGY_NAME,
+  BearerJwtStrategy,
+  createBearerJwtStrategyRegistration,
+  PassportModule,
+} from '@fluojs/passport';
 
 @Module({
   imports: [
@@ -154,8 +136,8 @@ import { BearerJwtStrategy } from './bearer.strategy';
       secret: 'replace-with-an-application-secret',
     }),
     PassportModule.forRoot(
-      { defaultStrategy: 'jwt' },
-      [{ name: 'jwt', token: BearerJwtStrategy }],
+      { defaultStrategy: BEARER_JWT_STRATEGY_NAME },
+      [createBearerJwtStrategyRegistration()],
     ),
   ],
   providers: [BearerJwtStrategy],
@@ -163,16 +145,18 @@ import { BearerJwtStrategy } from './bearer.strategy';
 export class AuthModule {}
 ```
 
-`JwtModule.forRoot(...)`는 `BearerJwtStrategy`가 `DefaultJwtVerifier`를 사용할 수 있게 합니다. `PassportModule.forRoot(...)`는 이 provider를 `@UseAuth('jwt')`가 resolve하는 `jwt` 이름으로 등록하므로, 이를 생략하면 strategy가 등록되지 않습니다. 위 literal 값은 tutorial placeholder입니다. Production 애플리케이션에서는 application configuration boundary를 통해 secret과 환경별 option을 제공해야 합니다.
+`JwtModule.forRoot(...)`는 `BearerJwtStrategy`가 `DefaultJwtVerifier`를 사용할 수 있게 하고, `providers` 항목은 명시적 `@Inject(...)` metadata를 통해 preset을 해당 verifier에 바인딩합니다. `PassportModule.forRoot(...)`는 preset을 `@UseAuth('jwt')`가 resolve하는 안정적인 `BEARER_JWT_STRATEGY_NAME`(`'jwt'`) 이름으로 등록하므로, 이를 생략하면 strategy가 등록되지 않습니다. 위 literal 값은 tutorial placeholder입니다. Production 애플리케이션에서는 application configuration boundary를 통해 secret과 환경별 option을 제공해야 합니다.
 
 ### 15.3.3 Configuration Options
-이 전략의 핵심 설정 포인트는 세 가지입니다.
-- 토큰을 어디서 읽을지 (`Authorization` 헤더 같은 입력 경계)
-- 어떤 verifier에 검증을 맡길지 (`DefaultJwtVerifier`)
-- 검증이 성공했을 때 어떤 principal을 애플리케이션에 넘길지
+Preset은 bearer 전략의 세 가지 기본 결정을 고정합니다.
+- 토큰을 읽는 위치: `Authorization` header 입력 경계
+- 검증을 위임하는 verifier: `DefaultJwtVerifier`
+- 검증 성공 후 애플리케이션에 전달하는 principal: verifier가 반환한 정규화 `JwtPrincipal` 그대로
 
-### 15.3.4 The Strategy Method: Your Security Gate
-`authenticate()` 메서드는 모든 custom strategy의 핵심입니다. 여기서 토큰의 형식을 검사하고, verifier가 돌려준 principal에 추가 검사를 수행할 수 있습니다. 예를 들어 데이터베이스에서 사용자 계정이 정지되었는지 확인하거나 비밀번호가 최근에 변경되었는지 확인하고 싶을 수 있습니다.
+이 중 하나라도 바꾸고 싶다면 preset을 수정하지 말고 custom strategy를 통해 변경하세요.
+
+### 15.3.4 The Extension Point: Custom Strategy Policy
+내장 preset은 의도적으로 credential extraction과 JWT 검증까지만 수행합니다. 요청이 계정 상태 확인, token revocation, claim 기반 규칙 같은 application-owned 정책을 필요로 한다면, verifier가 돌려준 principal에 추가 검사를 수행하는 custom `AuthStrategy`의 `authenticate()` 메서드를 구현하세요. 예를 들어 데이터베이스에서 사용자 계정이 정지되었는지 확인하거나 비밀번호가 최근에 변경되었는지 확인하고 싶을 수 있습니다.
 
 여기서 에러를 던지면 JWT 자체가 기술적으로 유효하더라도 요청이 거부됩니다. 암호화 기반 검증과 애플리케이션 로직 검증을 함께 두면 토큰이 만료되기 전이라도 폐기된 자격 증명이 시스템에 접근하지 못하게 막을 수 있습니다.
 
@@ -348,7 +332,7 @@ Fluo에서는 보통 첫 번째 요소(비밀번호)가 성공한 후 "부분적
 따라서 strategy는 `AuthenticationRequiredError`와 `AuthenticationFailedError`처럼 의미가 분명한 실패를 던지고, 응답 메시지와 로깅은 그 위 계층에서 일관되게 정리하는 편이 좋습니다. 이런 분리는 프론트엔드가 "세션이 만료되었습니다"와 "자격 증명 형식이 잘못되었습니다"를 더 쉽게 구분하게 해 줍니다.
 
 ### 15.12.2 Strategy Debugging Techniques
-전략 구현에 어려움을 겪고 있다면, 먼저 예제의 `BearerJwtStrategy`처럼 입력 헤더 읽기와 verifier 호출을 분리해서 로그를 남기십시오. 이렇게 하면 검증 프로세스의 어느 부분에서 실패하는지 정확히 확인할 수 있고, 문제의 원인이 암호화 서명인지 헤더 형식인지도 빠르게 좁힐 수 있습니다. 작은 단계로 나누어 관찰하면 인증 흐름이 블랙박스처럼 느껴지지 않고, 운영 중 401 응답을 분석할 때도 같은 사고방식을 적용할 수 있습니다.
+전략 구현에 어려움을 겪고 있다면, 먼저 내장 `BearerJwtStrategy` preset처럼 입력 헤더 읽기와 verifier 호출을 분리해서 로그를 남기십시오. 이렇게 하면 검증 프로세스의 어느 부분에서 실패하는지 정확히 확인할 수 있고, 문제의 원인이 암호화 서명인지 헤더 형식인지도 빠르게 좁힐 수 있습니다. 작은 단계로 나누어 관찰하면 인증 흐름이 블랙박스처럼 느껴지지 않고, 운영 중 401 응답을 분석할 때도 같은 사고방식을 적용할 수 있습니다.
 
 ## 15.13 Security Beyond the Framework
 보안은 다층적인 작업입니다. Fluo의 가드와 Passport 전략이 강한 애플리케이션 레벨 보호를 제공하더라도, 더 넓은 보안 전략의 일부여야 합니다.

@@ -31,29 +31,17 @@ npm install @fluojs/passport
 
 ### 1. Register Modules
 
-Define your strategies and register them using `PassportModule.forRoot(...)`.
+Use the built-in bearer JWT preset and register it with `PassportModule.forRoot(...)`.
 
 ```typescript
-import { Inject, Module } from '@fluojs/core';
-import type { GuardContext } from '@fluojs/http';
-import { DefaultJwtVerifier, JwtModule } from '@fluojs/jwt';
-import { AuthenticationRequiredError, PassportModule, type AuthStrategy } from '@fluojs/passport';
-
-@Inject(DefaultJwtVerifier)
-export class BearerJwtStrategy implements AuthStrategy {
-  constructor(private readonly verifier: DefaultJwtVerifier) {}
-
-  async authenticate(context: GuardContext) {
-    const authorization = context.requestContext.request.headers.authorization;
-    const [scheme, token] = typeof authorization === 'string' ? authorization.split(' ') : [];
-
-    if (scheme !== 'Bearer' || !token) {
-      throw new AuthenticationRequiredError('Bearer access token is required.');
-    }
-
-    return this.verifier.verifyAccessToken(token);
-  }
-}
+import { Module } from '@fluojs/core';
+import { JwtModule } from '@fluojs/jwt';
+import {
+  BEARER_JWT_STRATEGY_NAME,
+  BearerJwtStrategy,
+  createBearerJwtStrategyRegistration,
+  PassportModule,
+} from '@fluojs/passport';
 
 @Module({
   imports: [
@@ -64,8 +52,8 @@ export class BearerJwtStrategy implements AuthStrategy {
       secret: 'your-secure-secret',
     }),
     PassportModule.forRoot(
-      { defaultStrategy: 'jwt' },
-      [{ name: 'jwt', token: BearerJwtStrategy }],
+      { defaultStrategy: BEARER_JWT_STRATEGY_NAME },
+      [createBearerJwtStrategyRegistration()],
     ),
   ],
   providers: [BearerJwtStrategy],
@@ -73,7 +61,7 @@ export class BearerJwtStrategy implements AuthStrategy {
 export class AuthModule {}
 ```
 
-JWT-based passport strategies require both pieces of module wiring: `JwtModule.forRoot(...)` registers `DefaultJwtVerifier`, and `PassportModule.forRoot(...)` registers the named strategy that `@UseAuth('jwt')` resolves. Returning the `DefaultJwtVerifier.verifyAccessToken(...)` result preserves the normalized principal contract (`subject`, `claims`, `issuer`, `audience`, `roles`, and `scopes`) that `AuthGuard` writes to `requestContext.principal`.
+`BearerJwtStrategy` is the first-party strategy preset for `Authorization: Bearer <token>` credentials. JWT-based passport strategies require both pieces of module wiring: `JwtModule.forRoot(...)` registers `DefaultJwtVerifier`, the `providers` entry exposes `BearerJwtStrategy` to that verifier through DI, and `PassportModule.forRoot(...)` registers the named strategy that `@UseAuth('jwt')` resolves. Returning the `DefaultJwtVerifier.verifyAccessToken(...)` result unchanged preserves the normalized principal contract (`subject`, `claims`, `issuer`, `audience`, `roles`, and `scopes`) that `AuthGuard` writes to `requestContext.principal`.
 
 ### 2. Protect Routes
 
@@ -95,6 +83,46 @@ export class ProfileController {
 ```
 
 ## Common Patterns
+
+### Bearer JWT Preset
+
+Use the built-in `BearerJwtStrategy` when your app authenticates `Authorization: Bearer <token>` requests; no application-owned parsing code is required.
+
+```typescript
+import { Module } from '@fluojs/core';
+import { JwtModule } from '@fluojs/jwt';
+import {
+  BEARER_JWT_STRATEGY_NAME,
+  BearerJwtStrategy,
+  createBearerJwtStrategyRegistration,
+  PassportModule,
+} from '@fluojs/passport';
+
+@Module({
+  imports: [
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      audience: 'my-app',
+      issuer: 'my-api',
+      secret: 'your-secure-secret',
+    }),
+    PassportModule.forRoot(
+      { defaultStrategy: BEARER_JWT_STRATEGY_NAME },
+      [createBearerJwtStrategyRegistration()],
+    ),
+  ],
+  providers: [BearerJwtStrategy],
+})
+export class AuthModule {}
+```
+
+Register `BearerJwtStrategy` as a provider in the same application module that imports `PassportModule` and `JwtModule`; `JwtModule` remains the owner of verification configuration, and the preset does not introduce a combined JWT/Passport module facade. The preset registers under the stable strategy name `BEARER_JWT_STRATEGY_NAME` (`'jwt'`), so protected routes keep using `@UseAuth('jwt')`, and `createBearerJwtStrategyRegistration()` returns the matching `AuthStrategyRegistration`.
+
+Credential extraction is strict. A missing or empty `Authorization` header throws `AuthenticationRequiredError`, and when the adapter surfaces an array-valued `Authorization` header only the first entry is read. A wrong-scheme or malformed header, including `Bearer` without credentials, extra segments, or control characters, throws `AuthenticationFailedError`; the scheme match is case-insensitive. Verification failures keep `DefaultJwtVerifier` error causality: expired credentials throw `AuthenticationExpiredError` and other invalid credentials throw `AuthenticationFailedError`, each preserving the original JWT error as `cause`. `AuthGuard` maps all of these failures to the canonical `401 Unauthorized` response, and scope mismatches still produce `403 Forbidden`.
+
+`BearerJwtStrategy` returns the normalized `JwtPrincipal` from `DefaultJwtVerifier.verifyAccessToken(...)` unchanged, preserving `subject`, `claims`, `issuer`, `audience`, `roles`, and `scopes`.
+
+A custom `AuthStrategy` remains the extension point for token revocation, account-state checks, alternate extraction, and application-owned policy.
 
 ### Passport.js Bridge
 
@@ -261,6 +289,10 @@ Use `createConservativeAccountLinkPolicy(...)` and `resolveAccountLinking(...)` 
 - `defineAuthRequirement(...)`, `getOwnAuthRequirement(...)`, `getAuthRequirement(...)`: Public helpers for reading and writing auth requirement metadata when integrating custom decorators or tooling with `AuthGuard`.
 - Scope requirements are normally authored with `@RequireScopes(...)`; lower-level scope normalization helpers remain internal and are not part of the package root export.
 
+### Bearer JWT Preset
+- `BearerJwtStrategy`, `BEARER_JWT_STRATEGY_NAME`: Built-in bearer credential strategy and its stable registration name (`'jwt'`).
+- Bearer helper: `createBearerJwtStrategyRegistration`.
+
 ### Cookie Auth Preset
 - `CookieAuthModule`: Module entry point for the built-in cookie-auth preset.
 - `CookieAuthStrategy`, `COOKIE_AUTH_STRATEGY_NAME`, `COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_OPTIONS`: Cookie strategy wiring tokens, preset defaults, and response-cookie defaults.
@@ -302,4 +334,4 @@ Use `createConservativeAccountLinkPolicy(...)` and `resolveAccountLinking(...)` 
 
 - `packages/passport/src/guard.test.ts`: Guard execution and scope enforcement patterns.
 - `packages/passport/src/adapters/passport-js.ts`: Implementation of the Passport.js bridge.
-- `examples/auth-jwt-passport/src/auth/bearer.strategy.ts`: JWT strategy implementation.
+- `packages/passport/src/bearer/bearer-jwt.ts`: Built-in bearer JWT strategy preset.

@@ -36,6 +36,9 @@ This document defines the current JWT signing, verification, and principal-norma
 | Refresh-token verification | Refresh-token verification is derived from the access-token verifier, but it forces HMAC-only algorithms, `requireExp: true`, the refresh secret, and optional `verifyMaxAgeSeconds`. | `packages/jwt/src/signing/verifier.ts` |
 | Route enforcement | `AuthGuard` resolves the active strategy, writes the resolved principal to `requestContext.principal`, converts authentication failures to `401 Unauthorized`, and converts missing required scopes to `403 Forbidden`. | `packages/passport/src/guard.ts` |
 | Scope matching | Route scope checks require every declared scope to be present in `principal.scopes`. | `packages/passport/src/guard.ts` |
+| Bearer credential extraction | `BearerJwtStrategy` reads the `Authorization` header and verifies `Bearer <token>` credentials; when the header is array-valued only the first entry is read. Absent or empty headers raise `AuthenticationRequiredError`. Wrong-scheme or malformed headers, including `Bearer` without credentials, extra segments, or control characters, raise `AuthenticationFailedError`. The scheme match is case-insensitive. | `packages/passport/src/bearer/bearer-jwt.ts` |
+| Bearer preset error causality | Expired bearer credentials raise `AuthenticationExpiredError`, and other verification failures raise `AuthenticationFailedError`; each preserves the original JWT verifier error as `cause`, and the preset returns the normalized `JwtPrincipal` unchanged. | `packages/passport/src/bearer/bearer-jwt.ts` |
+| Bearer preset registration | `BEARER_JWT_STRATEGY_NAME` is the stable strategy name `'jwt'`, `createBearerJwtStrategyRegistration()` returns the registry entry for `PassportModule.forRoot(...)`, and `BearerJwtStrategy` is registered as an application provider. No combined JWT/Passport module facade is introduced. | `packages/passport/src/bearer/bearer-jwt.ts` |
 
 ## Principal Model
 
