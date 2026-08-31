@@ -186,6 +186,7 @@ const ssotPairs = [
   ['docs/contracts/react-rsc-graduation.md', 'docs/contracts/react-rsc-graduation.ko.md'],
   ['docs/contracts/release-governance.md', 'docs/contracts/release-governance.ko.md'],
   ['docs/contracts/platform-conformance-authoring-checklist.md', 'docs/contracts/platform-conformance-authoring-checklist.ko.md'],
+  ['docs/getting-started/migrate-from-nestjs.md', 'docs/getting-started/migrate-from-nestjs.ko.md'],
   ['docs/reference/package-folder-structure.md', 'docs/reference/package-folder-structure.ko.md'],
   ['docs/reference/package-surface.md', 'docs/reference/package-surface.ko.md'],
 ];

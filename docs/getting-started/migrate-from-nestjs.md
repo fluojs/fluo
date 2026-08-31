@@ -358,12 +358,25 @@ import {
   createAcceptLanguageLocaleResolver,
   getHttpLocale,
   resolveHttpLocale,
+  type HttpLocaleResolver,
 } from '@fluojs/i18n/http';
 import { localizeDtoValidationError } from '@fluojs/i18n/validation';
-import type { RequestContext } from '@fluojs/http';
+import type { Middleware, RequestContext } from '@fluojs/http';
+import { FluoFactory } from '@fluojs/runtime';
+import { createNodeHttpAdapter } from '@fluojs/runtime/node';
 import type { DtoValidationError } from '@fluojs/validation';
 
 const acceptLanguage = createAcceptLanguageLocaleResolver();
+
+class TenantLocaleResolver {
+  resolve(context: RequestContext) {
+    const locale = context.request.headers['x-tenant-locale'];
+    return typeof locale === 'string' ? { locale, source: 'tenant-header' } : undefined;
+  }
+}
+
+const tenantLocaleResolver = new TenantLocaleResolver();
+const mapTenantLocaleResolver: HttpLocaleResolver = ({ context }) => tenantLocaleResolver.resolve(context);
 
 @Module({
   imports: [
@@ -379,13 +392,22 @@ const acceptLanguage = createAcceptLanguageLocaleResolver();
 })
 class AppModule {}
 
-function bindRequestLocale(context: RequestContext) {
-  return resolveHttpLocale(context, {
-    defaultLocale: 'en',
-    supportedLocales: ['en', 'ko'],
-    resolvers: [acceptLanguage],
-  });
-}
+const requestLocaleHook: Middleware = {
+  async handle({ requestContext }, next) {
+    resolveHttpLocale(requestContext, {
+      defaultLocale: 'en',
+      supportedLocales: ['en', 'ko'],
+      resolvers: [mapTenantLocaleResolver, acceptLanguage],
+    });
+    await next();
+  },
+};
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: createNodeHttpAdapter({ port: 3000 }),
+  middleware: [requestLocaleHook],
+});
+await app.listen();
 
 function localizeValidationFailure(
   i18n: I18nService,
@@ -397,7 +419,7 @@ function localizeValidationFailure(
 }
 ```
 
-Invoke `bindRequestLocale(...)` from application-owned middleware or another request hook before downstream translation or validation-error handling. `resolveHttpLocale(...)` runs resolvers in array order, ignores invalid or unsupported results, and stores the configured default with source `default` when none match. `getHttpLocale(...)` reads only that `RequestContext`; it does not consult global state.
+Map each custom NestJS resolver class to an `HttpLocaleResolver` and register one application-owned `Middleware` in `FluoFactory.create(...)`. The hook resolves the tenant value before `Accept-Language`, then downstream translation or validation-error handling reads the result from the same `RequestContext`. `resolveHttpLocale(...)` runs resolvers in array order, ignores invalid or unsupported results, and stores the configured default with source `default` when none match. `getHttpLocale(...)` reads only that `RequestContext`; it does not consult global state or another request's locale.
 
 `localizeDtoValidationError(...)` returns a new error whose issue messages use the explicit locale. Its default namespace is `validation`, candidate keys run from `source.field.code` through `code`, and missing translations preserve the original issue message unless `fallbackToIssueMessage: false` is selected. The helper remains transport-agnostic: HTTP chooses the locale here, but validation localization never reads HTTP state itself.
 
