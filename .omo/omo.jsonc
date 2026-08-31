@@ -1,14 +1,16 @@
 {
   "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/dev/assets/omo.schema.json",
   "task": {
-    "max_depth": 1
+    "max_depth": 1,
+    "reattach_on_reconcile": false,
+    "resume_children": false
   },
   "agents": {
     "fluo-issue-preflight": {
       "description": "Builds one source-read-only issue acceptance preflight.",
       "model": "openai-codex/gpt-5.6-sol",
       "reasoning": "high",
-      "execution_mode": "process",
+      "execution_mode": "in-process",
       "tools": {
         "read": true,
         "bash": false,
@@ -56,7 +58,7 @@
       "description": "Reviews one exact issue head against its canonical contract.",
       "model": "openai-codex/gpt-5.6-sol",
       "reasoning": "high",
-      "execution_mode": "process",
+      "execution_mode": "in-process",
       "tools": {
         "read": true,
         "bash": false,
@@ -81,7 +83,7 @@
       "description": "Reviews one exact issue head for code correctness and quality.",
       "model": "openai-codex/gpt-5.6-sol",
       "reasoning": "high",
-      "execution_mode": "process",
+      "execution_mode": "in-process",
       "tools": {
         "read": true,
         "bash": false,
@@ -106,7 +108,7 @@
       "description": "Reviews one parent-owned canonical verification receipt.",
       "model": "openai-codex/gpt-5.6-sol",
       "reasoning": "high",
-      "execution_mode": "process",
+      "execution_mode": "in-process",
       "tools": {
         "read": true,
         "bash": false,
