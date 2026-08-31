@@ -236,7 +236,7 @@ export class DatabaseRefreshTokenStore implements RefreshTokenStore {
 JWT options factory가 실행되기 전에 globally visible한 persistence module에 해당 store를 등록하세요. Factory는 최종 store instance를 받고, 이후 `RefreshTokenService`를 constructor injection으로 사용할 수 있습니다. 이 예시는 database query를 application-owned `RefreshTokenRepository`에 남깁니다. 이 repository의 `rotate(...)` 구현이 유일한 transaction boundary입니다.
 
 ```typescript
-import { Inject, Module } from '@fluojs/core';
+import { Inject } from '@fluojs/core';
 import { ConfigService } from '@fluojs/config';
 import {
   JwtModule,
@@ -262,41 +262,6 @@ function isRefreshTokenStore(value: unknown): value is RefreshTokenStore {
     && 'rotate' in value
     && 'save' in value;
 }
-
-@Module({
-  imports: [
-    JwtModule.forRootAsync({
-      inject: [ConfigService, REFRESH_TOKEN_STORE],
-      useFactory: async (...dependencies: unknown[]): Promise<JwtVerifierOptions> => {
-        const [config, store] = dependencies;
-        if (!(config instanceof ConfigService) || !isRefreshTokenStore(store)) {
-          throw new TypeError('ConfigService and RefreshTokenStore are required');
-        }
-
-        const secret = config.snapshot()['JWT_SECRET'];
-        const refreshSecret = config.snapshot()['JWT_REFRESH_SECRET'];
-        if (typeof secret !== 'string' || typeof refreshSecret !== 'string') {
-          throw new TypeError('JWT secrets must be configured');
-        }
-
-        return {
-          algorithms: ['HS256'],
-          audience: 'fluoblog-client',
-          issuer: 'fluoblog-api',
-          secret,
-          accessTokenTtlSeconds: 900,
-          refreshToken: {
-            secret: refreshSecret,
-            expiresInSeconds: 60 * 60 * 24 * 7,
-            rotation: true,
-            store,
-          },
-        };
-      },
-    }),
-  ],
-})
-export class AuthModule {}
 
 @Inject(CREDENTIALS_VERIFIER, JwtService, RefreshTokenService)
 export class AuthService {
@@ -355,6 +320,95 @@ export class AuthController {
     return this.authService.refresh(dto.refreshToken);
   }
 }
+```
+
+### 실행 가능한 Auth Module Wiring
+durable 구현은 `auth.persistence.ts`에 두고 애플리케이션이 주입하는 token에 해당 class instance를 bind하세요. `AuthPersistenceModule`은 global이며 두 token을 모두 export하므로 JWT options factory와 `AuthService`가 같은 durable instance를 resolve합니다. `ConfigModule.forRoot()`는 기본적으로 global이므로 asynchronous JWT options provider가 resolve될 때 `ConfigService`가 visible합니다. `JwtModule.forRootAsync(...)`보다 먼저 persistence module을 등록하세요. 일반 sibling module의 export는 그 runtime provider graph에 들어가지 않습니다.
+
+```typescript
+// src/auth/auth.module.ts
+import { ConfigModule, ConfigService } from '@fluojs/config';
+import { Module } from '@fluojs/core';
+import {
+  JwtModule,
+  type JwtVerifierOptions,
+} from '@fluojs/jwt';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+import {
+  CREDENTIALS_VERIFIER,
+  DatabaseCredentialsVerifier,
+  DatabaseRefreshTokenStore,
+  REFRESH_TOKEN_STORE,
+  type RefreshTokenStore,
+} from './auth.persistence';
+
+function isRefreshTokenStore(value: unknown): value is RefreshTokenStore {
+  return typeof value === 'object'
+    && value !== null
+    && 'find' in value
+    && 'revoke' in value
+    && 'revokeBySubject' in value
+    && 'rotate' in value
+    && 'save' in value;
+}
+
+@Module({
+  global: true,
+  providers: [
+    DatabaseRefreshTokenStore,
+    {
+      provide: REFRESH_TOKEN_STORE,
+      useExisting: DatabaseRefreshTokenStore,
+    },
+    DatabaseCredentialsVerifier,
+    {
+      provide: CREDENTIALS_VERIFIER,
+      useExisting: DatabaseCredentialsVerifier,
+    },
+  ],
+  exports: [REFRESH_TOKEN_STORE, CREDENTIALS_VERIFIER],
+})
+export class AuthPersistenceModule {}
+
+@Module({
+  imports: [
+    ConfigModule.forRoot(),
+    AuthPersistenceModule,
+    JwtModule.forRootAsync({
+      inject: [ConfigService, REFRESH_TOKEN_STORE],
+      useFactory: async (...dependencies: unknown[]): Promise<JwtVerifierOptions> => {
+        const [config, store] = dependencies;
+        if (!(config instanceof ConfigService) || !isRefreshTokenStore(store)) {
+          throw new TypeError('ConfigService and RefreshTokenStore are required');
+        }
+
+        const secret = config.snapshot()['JWT_SECRET'];
+        const refreshSecret = config.snapshot()['JWT_REFRESH_SECRET'];
+        if (typeof secret !== 'string' || typeof refreshSecret !== 'string') {
+          throw new TypeError('JWT secrets must be configured');
+        }
+
+        return {
+          algorithms: ['HS256'],
+          audience: 'fluoblog-client',
+          issuer: 'fluoblog-api',
+          secret,
+          accessTokenTtlSeconds: 900,
+          refreshToken: {
+            secret: refreshSecret,
+            expiresInSeconds: 60 * 60 * 24 * 7,
+            rotation: true,
+            store,
+          },
+        };
+      },
+    }),
+  ],
+  providers: [AuthService],
+  controllers: [AuthController],
+})
+export class AuthModule {}
 ```
 
 ### The Authentication Lifecycle

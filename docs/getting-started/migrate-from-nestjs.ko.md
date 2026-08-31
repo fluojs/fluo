@@ -4,6 +4,10 @@
 
 이 문서는 마이그레이션 계약 맵으로 사용한다. 각 행은 NestJS 구성 요소에 대해 허용되는 가장 가까운 fluo 대상 구성을 지정하고, 아래 규칙은 일대일 치환이 되지 않는 지점을 명시한다.
 
+## 실행 가능한 JWT 학습 경로
+
+완전한 Chapter 14 경로에서는 `JwtModule.forRootAsync(...)`보다 먼저 `ConfigModule.forRoot()`와 global `AuthPersistenceModule`을 import합니다. `AuthPersistenceModule`은 durable `REFRESH_TOKEN_STORE` 및 `CREDENTIALS_VERIFIER` token을 export하고, `AuthModule`은 `AuthService`를 `providers`에, `AuthController`를 `controllers`에 등록합니다. 이는 NestJS dynamic-module configuration이 아니라 application-graph wiring입니다. 전체 실행 가능한 module은 [`book/beginner/ch14-jwt.ko.md`](../../book/beginner/ch14-jwt.ko.md)를 따르세요.
+
 ## Custom decorator preload ordering
 
 fluo 내장 데코레이터는 runtime record를 framework-owned store에 저장하므로 import 시점의 전역 변경이 필요하지 않습니다. 반면 `context.metadata`를 읽도록 마이그레이션한 사용자 정의 표준 데코레이터는 decorated class module이 평가되는 동안 `Symbol.metadata`가 필요합니다.

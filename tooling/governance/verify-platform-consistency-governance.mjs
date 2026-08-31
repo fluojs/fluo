@@ -9,6 +9,7 @@ import { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecyc
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 import { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 import { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
+import { enforceJwtLearningPathModuleWiring } from './jwt-learning-path-module-wiring.mjs';
 import {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
@@ -25,6 +26,7 @@ export { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecyc
 export { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 export { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 export { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
+export { enforceJwtLearningPathModuleWiring } from './jwt-learning-path-module-wiring.mjs';
 export {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
@@ -2847,6 +2849,7 @@ export function main() {
   enforcePlatformShellLifecycleContract();
   enforceConfigNestjsMigrationDocs();
   enforceJwtAsyncRegistrationContract();
+  enforceJwtLearningPathModuleWiring();
   enforceRuntimeLifecycleNestjsMigrationDocs();
   enforcePassportJsBridgeNestjsMigration();
   enforceExpressApplicationOwnershipDocs();

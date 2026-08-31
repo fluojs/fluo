@@ -251,6 +251,8 @@ HTTP route 및 #2506 navigation ownership, dual-import test, bilingual docs, Cha
 
 JWT async-registration 정정: `JwtModule.forRootAsync({ inject, useFactory, global? })`는 지원되는 typed configuration만 받으며 NestJS `imports`, `useClass`, `useExisting`에는 dynamic-module 의미가 없습니다. 추가 JavaScript object property는 runtime에서 읽지 않을 뿐 validate하거나 reject하지 않습니다. injected dependency는 global로 visible한 module export 또는 `JwtRuntimeModule`이 resolve할 수 있는 application graph의 bootstrap runtime provider에서 와야 합니다. ordinary sibling 또는 parent module의 export만으로는 충분하지 않으며, `AuthModule.providers`에만 local인 provider는 JWT options provider에서 보이지 않습니다.
 
+Chapter 14의 실행 가능한 JWT 학습 경로는 `JwtModule.forRootAsync(...)`보다 먼저 `ConfigModule.forRoot()`와 global `AuthPersistenceModule`을 import합니다. 이 persistence module은 `REFRESH_TOKEN_STORE` 및 `CREDENTIALS_VERIFIER`를 export하고, 이어서 `AuthModule`이 `AuthService`와 `AuthController`를 local로 등록합니다. 마이그레이션 경계는 [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), 완전한 module snippet은 [`book/beginner/ch14-jwt.ko.md`](../book/beginner/ch14-jwt.ko.md)를 읽으세요.
+
 ## Anti-Patterns at a Glance
 
 - `experimentalDecorators` 또는 `emitDecoratorMetadata`를 활성화하는 것, fluo의 표준 데코레이터 기준을 깨뜨린다.

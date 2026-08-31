@@ -236,7 +236,7 @@ export class DatabaseRefreshTokenStore implements RefreshTokenStore {
 Register that store in a globally visible persistence module before the JWT options factory runs. The factory receives the final store instance, and `RefreshTokenService` is then available for constructor injection. This example intentionally keeps database queries in the application-owned `RefreshTokenRepository`; its `rotate(...)` implementation is the single transaction boundary.
 
 ```typescript
-import { Inject, Module } from '@fluojs/core';
+import { Inject } from '@fluojs/core';
 import { ConfigService } from '@fluojs/config';
 import {
   JwtModule,
@@ -262,41 +262,6 @@ function isRefreshTokenStore(value: unknown): value is RefreshTokenStore {
     && 'rotate' in value
     && 'save' in value;
 }
-
-@Module({
-  imports: [
-    JwtModule.forRootAsync({
-      inject: [ConfigService, REFRESH_TOKEN_STORE],
-      useFactory: async (...dependencies: unknown[]): Promise<JwtVerifierOptions> => {
-        const [config, store] = dependencies;
-        if (!(config instanceof ConfigService) || !isRefreshTokenStore(store)) {
-          throw new TypeError('ConfigService and RefreshTokenStore are required');
-        }
-
-        const secret = config.snapshot()['JWT_SECRET'];
-        const refreshSecret = config.snapshot()['JWT_REFRESH_SECRET'];
-        if (typeof secret !== 'string' || typeof refreshSecret !== 'string') {
-          throw new TypeError('JWT secrets must be configured');
-        }
-
-        return {
-          algorithms: ['HS256'],
-          audience: 'fluoblog-client',
-          issuer: 'fluoblog-api',
-          secret,
-          accessTokenTtlSeconds: 900,
-          refreshToken: {
-            secret: refreshSecret,
-            expiresInSeconds: 60 * 60 * 24 * 7,
-            rotation: true,
-            store,
-          },
-        };
-      },
-    }),
-  ],
-})
-export class AuthModule {}
 
 @Inject(CREDENTIALS_VERIFIER, JwtService, RefreshTokenService)
 export class AuthService {
@@ -355,6 +320,95 @@ export class AuthController {
     return this.authService.refresh(dto.refreshToken);
   }
 }
+```
+
+### Executable Auth Module Wiring
+Put the durable implementations in `auth.persistence.ts`, then bind their class instances to the tokens that the application injects. `AuthPersistenceModule` is global and exports both tokens, so the JWT options factory and `AuthService` resolve the same durable instances. `ConfigModule.forRoot()` is global by default, which makes `ConfigService` visible when the asynchronous JWT options provider resolves. Register the persistence module before `JwtModule.forRootAsync(...)`; ordinary sibling-module exports do not enter that runtime provider graph.
+
+```typescript
+// src/auth/auth.module.ts
+import { ConfigModule, ConfigService } from '@fluojs/config';
+import { Module } from '@fluojs/core';
+import {
+  JwtModule,
+  type JwtVerifierOptions,
+} from '@fluojs/jwt';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+import {
+  CREDENTIALS_VERIFIER,
+  DatabaseCredentialsVerifier,
+  DatabaseRefreshTokenStore,
+  REFRESH_TOKEN_STORE,
+  type RefreshTokenStore,
+} from './auth.persistence';
+
+function isRefreshTokenStore(value: unknown): value is RefreshTokenStore {
+  return typeof value === 'object'
+    && value !== null
+    && 'find' in value
+    && 'revoke' in value
+    && 'revokeBySubject' in value
+    && 'rotate' in value
+    && 'save' in value;
+}
+
+@Module({
+  global: true,
+  providers: [
+    DatabaseRefreshTokenStore,
+    {
+      provide: REFRESH_TOKEN_STORE,
+      useExisting: DatabaseRefreshTokenStore,
+    },
+    DatabaseCredentialsVerifier,
+    {
+      provide: CREDENTIALS_VERIFIER,
+      useExisting: DatabaseCredentialsVerifier,
+    },
+  ],
+  exports: [REFRESH_TOKEN_STORE, CREDENTIALS_VERIFIER],
+})
+export class AuthPersistenceModule {}
+
+@Module({
+  imports: [
+    ConfigModule.forRoot(),
+    AuthPersistenceModule,
+    JwtModule.forRootAsync({
+      inject: [ConfigService, REFRESH_TOKEN_STORE],
+      useFactory: async (...dependencies: unknown[]): Promise<JwtVerifierOptions> => {
+        const [config, store] = dependencies;
+        if (!(config instanceof ConfigService) || !isRefreshTokenStore(store)) {
+          throw new TypeError('ConfigService and RefreshTokenStore are required');
+        }
+
+        const secret = config.snapshot()['JWT_SECRET'];
+        const refreshSecret = config.snapshot()['JWT_REFRESH_SECRET'];
+        if (typeof secret !== 'string' || typeof refreshSecret !== 'string') {
+          throw new TypeError('JWT secrets must be configured');
+        }
+
+        return {
+          algorithms: ['HS256'],
+          audience: 'fluoblog-client',
+          issuer: 'fluoblog-api',
+          secret,
+          accessTokenTtlSeconds: 900,
+          refreshToken: {
+            secret: refreshSecret,
+            expiresInSeconds: 60 * 60 * 24 * 7,
+            rotation: true,
+            store,
+          },
+        };
+      },
+    }),
+  ],
+  providers: [AuthService],
+  controllers: [AuthController],
+})
+export class AuthModule {}
 ```
 
 ### The Authentication Lifecycle

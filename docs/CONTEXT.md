@@ -252,6 +252,8 @@ re-export for the documented deprecation window.
 
 JWT async-registration clarification: `JwtModule.forRootAsync({ inject, useFactory, global? })` accepts only its supported typed configuration; NestJS `imports`, `useClass`, and `useExisting` have no dynamic-module semantics, while extra JavaScript object properties are unread at runtime rather than validated or rejected. Dependencies must come from a globally visible module export or bootstrap runtime providers in the application graph that `JwtRuntimeModule` can resolve. An ordinary sibling or parent module export alone, and a provider local only to `AuthModule.providers`, are not visible to the JWT options provider.
 
+Chapter 14's executable JWT learning path imports `ConfigModule.forRoot()` and a global `AuthPersistenceModule` before `JwtModule.forRootAsync(...)`. That persistence module exports `REFRESH_TOKEN_STORE` and `CREDENTIALS_VERIFIER`; `AuthModule` then registers `AuthService` and `AuthController` locally. Read [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md) for the migration boundary and [`book/beginner/ch14-jwt.md`](../book/beginner/ch14-jwt.md) for the complete module snippet.
+
 ## Anti-Patterns at a Glance
 
 - Enabling `experimentalDecorators` or `emitDecoratorMetadata`, this violates fluo's standard-decorator baseline.
