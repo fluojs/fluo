@@ -54,30 +54,92 @@ function createResponse(): FrameworkResponse & { body?: unknown } {
 describe('AuthService', () => {
   it('issues bearer tokens for a subject', async () => {
     const module = await createTestingModule({ rootModule: AppModule }).compile();
-    const service = await module.resolve(AuthService);
+    let testError: unknown;
+    let testFailed = false;
+    let disposeError: unknown;
+    let disposeFailed = false;
 
-    await expect(service.issueToken('ada')).resolves.toMatchObject({
-      accessToken: expect.any(String),
-    });
+    try {
+      const service = await module.resolve(AuthService);
 
+      await expect(service.issueToken('ada')).resolves.toMatchObject({
+        accessToken: expect.any(String),
+      });
+    } catch (error: unknown) {
+      testError = error;
+      testFailed = true;
+    } finally {
+      try {
+        await module.container.dispose();
+      } catch (error: unknown) {
+        disposeFailed = true;
+        disposeError = error;
+      }
+    }
+
+    if (testFailed) {
+      if (disposeFailed) {
+        throw new AggregateError(
+          [testError, disposeError],
+          'Test and testing module disposal both failed.',
+        );
+      }
+
+      throw testError;
+    }
+
+    if (disposeFailed) {
+      throw disposeError;
+    }
   });
 });
 
 describe('BearerJwtStrategy', () => {
   it('requires a Bearer authorization header', async () => {
     const module = await createTestingModule({ rootModule: AppModule }).compile();
-    const strategy = await module.resolve(BearerJwtStrategy);
+    let testError: unknown;
+    let testFailed = false;
+    let disposeError: unknown;
+    let disposeFailed = false;
 
-    await expect(strategy.authenticate({
-      handler: {} as never,
-      requestContext: {
-        container: module.container.createRequestScope(),
-        metadata: {},
-        request: createRequest('GET', '/profile/'),
-        response: createResponse(),
-      },
-    })).rejects.toThrow('Authorization header is required.');
+    try {
+      const strategy = await module.resolve(BearerJwtStrategy);
 
+      await expect(strategy.authenticate({
+        handler: {} as never,
+        requestContext: {
+          container: module.container.createRequestScope(),
+          metadata: {},
+          request: createRequest('GET', '/profile/'),
+          response: createResponse(),
+        },
+      })).rejects.toThrow('Authorization header is required.');
+    } catch (error: unknown) {
+      testError = error;
+      testFailed = true;
+    } finally {
+      try {
+        await module.container.dispose();
+      } catch (error: unknown) {
+        disposeFailed = true;
+        disposeError = error;
+      }
+    }
+
+    if (testFailed) {
+      if (disposeFailed) {
+        throw new AggregateError(
+          [testError, disposeError],
+          'Test and testing module disposal both failed.',
+        );
+      }
+
+      throw testError;
+    }
+
+    if (disposeFailed) {
+      throw disposeError;
+    }
   });
 });
 
@@ -85,34 +147,36 @@ describe('AppModule e2e', () => {
   it('serves health, ready, and auth routes through createTestApp request helpers', async () => {
     const app = await createTestApp({ rootModule: AppModule });
 
-    await expect(app.request('GET', '/health').send()).resolves.toMatchObject({
-      status: 200,
-    });
+    try {
+      await expect(app.request('GET', '/health').send()).resolves.toMatchObject({
+        status: 200,
+      });
 
-    await expect(app.request('GET', '/ready').send()).resolves.toMatchObject({
-      status: 200,
-    });
+      await expect(app.request('GET', '/ready').send()).resolves.toMatchObject({
+        status: 200,
+      });
 
-    await expect(app.request('GET', '/profile/').send()).resolves.toMatchObject({
-      status: 401,
-    });
+      await expect(app.request('GET', '/profile/').send()).resolves.toMatchObject({
+        status: 401,
+      });
 
-    const issueResult = await app
-      .request('POST', '/auth/token')
-      .body({ username: 'grace' })
-      .send();
-    expect(issueResult.status).toBe(201);
+      const issueResult = await app
+        .request('POST', '/auth/token')
+        .body({ username: 'grace' })
+        .send();
+      expect(issueResult.status).toBe(201);
 
-    const profileResult = await app
-      .request('GET', '/profile/')
-      .header('authorization', `Bearer ${(issueResult.body as { accessToken: string }).accessToken}`)
-      .send();
+      const profileResult = await app
+        .request('GET', '/profile/')
+        .header('authorization', `Bearer ${(issueResult.body as { accessToken: string }).accessToken}`)
+        .send();
 
-    expect(profileResult.status).toBe(200);
-    expect(profileResult.body).toMatchObject({
-      user: expect.objectContaining({ subject: 'grace' }),
-    });
-
-    await app.close();
+      expect(profileResult.status).toBe(200);
+      expect(profileResult.body).toMatchObject({
+        user: expect.objectContaining({ subject: 'grace' }),
+      });
+    } finally {
+      await app.close();
+    }
   });
 });

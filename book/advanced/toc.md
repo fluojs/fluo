@@ -177,7 +177,7 @@
 ## Part 5. Testing and Diagnostics
 
 - [Chapter 14. Portability Testing and Conformance Verification](ch14-portability-testing.md)
-  - [What You Will Learn in This Chapter](ch14-portability-testing.md#what-you-will-learn-in-this-chapter)
+  - [What You Will Learn in This Chapter](ch14-portability-testing.md#learning-objectives)
   - [Prerequisites](ch14-portability-testing.md#prerequisites)
   - [14.1 The Portability Challenge](ch14-portability-testing.md#141-the-portability-challenge)
   - [14.2 Conformance vs Portability](ch14-portability-testing.md#142-conformance-vs-portability)

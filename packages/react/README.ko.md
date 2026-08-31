@@ -66,8 +66,8 @@ pnpm dev
 ```
 
 `/products/sku-42?preview=true`를 열고 `src/page.tsx`를 편집합니다. 명시적인
-`@Router(...)` / `@Path(...)` handler는 `src/app.tsx`에 남아 해당 page를 하나의 `ReactElement`로
-반환하므로 matching, DTO binding/validation, middleware, guard, interceptor, request scope,
+`@Router(...)` / `@Path(...)` handler는 `src/app.ts`에 남아 `createElement(ProductPage)`를 하나의
+`ReactElement`로 반환하므로 matching, DTO binding/validation, middleware, guard, interceptor, request scope,
 not-found behavior는 계속 `@fluojs/http`가 소유합니다.
 
 Generated wiring은 첫 편집에 부수적인 작업을 다음 application file로 이동합니다.

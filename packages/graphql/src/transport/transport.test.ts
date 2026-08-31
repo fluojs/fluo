@@ -1,6 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-
 import type { FrameworkResponse } from '@fluojs/http';
+import { describe, expect, it, vi } from 'vitest';
 
 import { writeFetchResponse } from './transport.js';
 
@@ -159,6 +158,70 @@ describe('writeFetchResponse', () => {
 
     await expect(writeFetchResponse(fetchResponse, frameworkResponse)).rejects.toBe(downstreamError);
 
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it('waits for upstream cancellation before preserving the downstream backpressure error', async () => {
+    // Given
+    const cancellationError = new Error('upstream cancellation failed');
+    let releaseCancellation: (() => void) | undefined;
+    const cancellationReleased = new Promise<void>((resolve) => {
+      releaseCancellation = resolve;
+    });
+    let notifyCancellationStarted: (() => void) | undefined;
+    const cancellationStarted = new Promise<void>((resolve) => {
+      notifyCancellationStarted = resolve;
+    });
+    let notifyCancellationFinished: (() => void) | undefined;
+    const cancellationFinished = new Promise<void>((resolve) => {
+      notifyCancellationFinished = resolve;
+    });
+    const cancel = vi.fn(async () => {
+      notifyCancellationStarted?.();
+      await cancellationReleased;
+      notifyCancellationFinished?.();
+      throw cancellationError;
+    });
+    const fetchResponse = new Response(new ReadableStream<Uint8Array>({
+      cancel,
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('chunk-1'));
+      },
+    }), {
+      headers: { 'content-type': 'text/event-stream' },
+      status: 200,
+    });
+    const frameworkResponse = createFrameworkResponseMock();
+    const stream = frameworkResponse.stream;
+    const downstreamError = new Error('downstream closed with error');
+
+    if (!stream) {
+      throw new Error('Expected stream mock to exist.');
+    }
+    const waitForDrain = stream.waitForDrain;
+
+    if (!waitForDrain || !releaseCancellation || !notifyCancellationFinished) {
+      throw new Error('Expected stream drain and cancellation controls to exist.');
+    }
+
+    vi.mocked(stream.write).mockReturnValueOnce(false);
+    vi.mocked(waitForDrain).mockRejectedValueOnce(downstreamError);
+
+    // When
+    const write = writeFetchResponse(fetchResponse, frameworkResponse);
+    await cancellationStarted;
+    releaseCancellation();
+    const firstSettlement = await Promise.race([
+      write.then(
+        () => 'write',
+        () => 'write',
+      ),
+      cancellationFinished.then(() => 'cancellation'),
+    ]);
+
+    // Then
+    expect(firstSettlement).toBe('cancellation');
+    await expect(write).rejects.toBe(downstreamError);
     expect(cancel).toHaveBeenCalledOnce();
   });
 

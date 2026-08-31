@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 import {
   collectDirectProcessEnvViolations,
   collectNodeGlobalBufferViolations,
+  enforceCliMigrationTransformDocs,
   enforceCloudflareWorkersLifecycleDocsSync,
   enforceExpressRuntimeMigrationDocsSync,
   enforceGraphqlRuntimeBoundaryDiscoverability,
@@ -44,6 +45,23 @@ const removedRuntimeModuleFactoryNames = [
   'createEventBusModule',
   'createRedisModule',
 ] as const;
+
+describe('enforceCliMigrationTransformDocs', () => {
+  it('accepts documented migration transform selections', () => {
+    expect(() => enforceCliMigrationTransformDocs()).not.toThrow();
+  });
+
+  it('rejects a documented transform that the CLI does not support', () => {
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'docs/getting-started/migrate-from-nestjs.md'
+        ? content.replace('--only imports,injectable', '--only imports,unsupported')
+        : content;
+    };
+
+    expect(() => enforceCliMigrationTransformDocs(readText)).toThrow(/unsupported/u);
+  });
+});
 
 function collectMarkdownFiles(relativeRoot: string): string[] {
   const absoluteRoot = resolve(repoRoot, relativeRoot);
@@ -91,6 +109,8 @@ async function loadGovernanceInternals() {
     enforceContractCompanionUpdates: (changedFiles: string[]) => void;
     enforceDenoPermissionGuidance: (readText?: (relativePath: string) => string) => void;
     enforceHttpBookRequestContracts: (readText?: (relativePath: string) => string) => void;
+    enforcePlatformFastifyEngineDocumentation: (readText?: (relativePath: string) => string) => void;
+    enforcePlatformNodejsEngineDocumentation: (readText?: (relativePath: string) => string) => void;
     enforceSocketIoNodeEngineAlignment: (readText?: (relativePath: string) => string) => void;
   };
 }
@@ -107,6 +127,40 @@ describe('isGovernedPackageSourcePath', () => {
     expect(isGovernedPackageSourcePath('packages/core/src/module.spec.ts')).toBe(false);
     expect(isGovernedPackageSourcePath('packages/cli/scripts/local-test-env.mjs')).toBe(false);
     expect(isGovernedPackageSourcePath('examples/realworld-api/src/app.ts')).toBe(false);
+  });
+});
+
+describe('enforceContractCompanionUpdates', () => {
+  it('requires bilingual context discoverability companions for release-contract changes', async () => {
+    // Given: a release-governing contract update with its tooling and regression companion.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/contracts/release-governance.md',
+      'tooling/release/verify-changeset-release-lane.mjs',
+      'tooling/release/verify-changeset-release-lane.test.ts',
+    ];
+
+    // When: bilingual context companions are absent or present.
+    // Then: platform governance requires them for discoverability.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(/docs\/CONTEXT\.md/u);
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...changedFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('keeps release-governance discovery in both context companions', () => {
+    // Given: the bilingual documentation hub.
+    const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
+    const koreanContext = readFileSync(join(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');
+
+    // When: release operations need a governed discovery path.
+    // Then: both context companions name the release-governance entrypoint.
+    expect(englishContext).toContain('## Release Governance Discoverability');
+    expect(koreanContext).toContain('## 릴리스 거버넌스 탐색');
   });
 });
 
@@ -220,6 +274,169 @@ describe('enforceSocketIoNodeEngineAlignment', () => {
 
     expect(() => enforceSocketIoNodeEngineAlignment(readText)).toThrow(/@fluojs\/socket\.io engines\.node/u);
     expect(governanceSource).toContain('enforceSocketIoNodeEngineAlignment();');
+  });
+});
+
+describe('enforcePlatformFastifyEngineDocumentation', () => {
+  const fastifyGuidePaths = [
+    'apps/docs/content/docs/guides/runtime-adapters.mdx',
+    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+  ] as const;
+
+  it('pins both Fastify guide engine ranges to the platform manifest', async () => {
+    const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
+
+    expect(() => enforcePlatformFastifyEngineDocumentation()).not.toThrow();
+  });
+
+  it('rejects Fastify guide engine drift and remains wired into central governance', async () => {
+    const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === 'apps/docs/content/docs/guides/runtime-adapters.mdx'
+        ? content.replace('>=20.19.3 <21 || >=22.2.0 <27', '>=20.19.3 <21 || >=22.2.0 <28')
+        : content;
+    };
+    const governanceSource = readFileSync(
+      join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'),
+      'utf8',
+    );
+
+    expect(() => enforcePlatformFastifyEngineDocumentation(readText))
+      .toThrow(/runtime-adapters\.mdx Fastify section/u);
+    expect(governanceSource).toContain('enforcePlatformFastifyEngineDocumentation();');
+  });
+
+  it.each(fastifyGuidePaths)(
+    'rejects a level-three Fastify heading in %s',
+    async (targetPath) => {
+      const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
+
+      expect(() => enforcePlatformFastifyEngineDocumentation()).not.toThrow();
+      expect(() => enforcePlatformFastifyEngineDocumentation((relativePath) => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === targetPath
+          ? content.replace('## Fastify', '### Fastify')
+          : content;
+      })).toThrowError(/exactly one ## Fastify heading; found 0/u);
+    },
+  );
+
+  it.each(fastifyGuidePaths)(
+    'rejects an earlier duplicate Fastify heading in %s',
+    async (targetPath) => {
+      const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
+
+      expect(() => enforcePlatformFastifyEngineDocumentation()).not.toThrow();
+      expect(() => enforcePlatformFastifyEngineDocumentation((relativePath) => {
+        const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+        return relativePath === targetPath
+          ? content.replace(
+            '## Fastify',
+            '## Fastify\n\n`>=20.19.3 <21 || >=22.2.0 <27`\n\n## Fastify',
+          )
+          : content;
+      })).toThrowError(/exactly one ## Fastify heading; found 2/u);
+    },
+  );
+
+  it('rejects Fastify manifest engine drift from both guide sections', async () => {
+    const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === 'packages/platform-fastify/package.json'
+        ? content.replace('>=20.19.3 <21 || >=22.2.0 <27', '>=20.19.3 <21 || >=22.2.0 <28')
+        : content;
+    };
+
+    expect(() => enforcePlatformFastifyEngineDocumentation(readText))
+      .toThrow(/runtime-adapters\.mdx Fastify section/u);
+  });
+});
+
+describe('enforcePlatformNodejsEngineDocumentation', () => {
+  it('pins both Raw Node.js guide engine ranges to the platform manifest', async () => {
+    const { enforcePlatformNodejsEngineDocumentation } = await loadGovernanceInternals();
+
+    expect(() => enforcePlatformNodejsEngineDocumentation()).not.toThrow();
+  });
+
+  it('rejects Raw Node.js guide engine drift and remains wired into central governance', async () => {
+    const { enforcePlatformNodejsEngineDocumentation } = await loadGovernanceInternals();
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === 'apps/docs/content/docs/guides/runtime-adapters.mdx'
+        ? content.replace(
+          /(## Raw Node\.js[\s\S]*?)>=20\.19\.3 <21 \|\| >=22\.2\.0 <27/u,
+          '$1>=20.19.3 <21 || >=22.2.0 <28',
+        )
+        : content;
+    };
+    const governanceSource = readFileSync(
+      join(repoRoot, 'tooling/governance/verify-platform-consistency-governance.mjs'),
+      'utf8',
+    );
+
+    expect(() => enforcePlatformNodejsEngineDocumentation(readText))
+      .toThrow(/runtime-adapters\.mdx Raw Node\.js section/u);
+    expect(governanceSource).toContain('enforcePlatformNodejsEngineDocumentation();');
+  });
+
+  it('rejects platform Node.js manifest engine drift', async () => {
+    const { enforcePlatformNodejsEngineDocumentation } = await loadGovernanceInternals();
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === 'packages/platform-nodejs/package.json'
+        ? content.replace(nodeListenerEngineRange, '>=20.19.3 <21 || >=22.2.0 <28')
+        : content;
+    };
+
+    expect(() => enforcePlatformNodejsEngineDocumentation(readText))
+      .toThrow(/runtime-adapters\.mdx Raw Node\.js section must state @fluojs\/platform-nodejs engines\.node >=20\.19\.3 <21 \|\| >=22\.2\.0 <28\./u);
+    expect(() => enforcePlatformNodejsEngineDocumentation()).not.toThrow();
+  });
+
+  it.each([
+    'apps/docs/content/docs/guides/runtime-adapters.mdx',
+    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+  ])('rejects a level-three Raw Node.js heading in %s', async (targetPath) => {
+    const { enforcePlatformNodejsEngineDocumentation } = await loadGovernanceInternals();
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === targetPath
+        ? content.replace('## Raw Node.js', '### Raw Node.js')
+        : content;
+    };
+
+    expect(() => enforcePlatformNodejsEngineDocumentation(readText))
+      .toThrowError(/must include exactly one ## Raw Node\.js heading; found 0\./u);
+    expect(() => enforcePlatformNodejsEngineDocumentation()).not.toThrow();
+  });
+
+  it.each([
+    'apps/docs/content/docs/guides/runtime-adapters.mdx',
+    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+  ])('rejects a duplicate Raw Node.js heading in %s', async (targetPath) => {
+    const { enforcePlatformNodejsEngineDocumentation } = await loadGovernanceInternals();
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+
+      return relativePath === targetPath
+        ? content.replace(
+          '## Raw Node.js',
+          '## Raw Node.js\n\n`>=20.19.3 <21 || >=22.2.0 <27`\n\n## Raw Node.js',
+        )
+        : content;
+    };
+
+    expect(() => enforcePlatformNodejsEngineDocumentation(readText))
+      .toThrowError(/must include exactly one ## Raw Node\.js heading; found 2\./u);
+    expect(() => enforcePlatformNodejsEngineDocumentation()).not.toThrow();
   });
 });
 
@@ -717,39 +934,120 @@ describe('enforceAdvancedBookCoreBoundaryCompanions', () => {
 });
 
 describe('enforceContractCompanionUpdates', () => {
-  it('requires discoverability, tooling or CI, and regression test updates for contract-governing docs', async () => {
-    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
-
-    expect(() => enforceContractCompanionUpdates(['docs/reference/package-surface.md'])).toThrowError(
-      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
-    );
-
-    expect(() =>
-      enforceContractCompanionUpdates([
-        'docs/reference/package-surface.md',
-        'docs/CONTEXT.md',
-        'docs/CONTEXT.ko.md',
-      ]),
-    ).toThrowError(/CI\/tooling enforcement updates/);
-
-    expect(() =>
-      enforceContractCompanionUpdates([
+  it.each([
+    ['English context companion', 'docs/CONTEXT.md', /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u],
+    ['Korean context companion', 'docs/CONTEXT.ko.md', /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u],
+    ['workflow enforcement companion', '.github/workflows/ci.yml', /CI\/tooling enforcement updates/u],
+    ['package regression test companion', 'packages/core/src/module.test.ts', /regression test updates/u],
+  ] as const)(
+    'rejects removal of the required %s from an otherwise complete contract change',
+    async (_companion, removedPath, expectedError) => {
+      // Given: a contract update with every required companion present.
+      const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+      const completeChangedFiles = [
         'docs/reference/package-surface.md',
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         '.github/workflows/ci.yml',
+        'packages/core/src/module.test.ts',
+      ];
+
+      // When: exactly one enforcement companion is absent.
+      const changedFiles = completeChangedFiles.filter((path) => path !== removedPath);
+
+      // Then: its own enforcement category rejects the incomplete change.
+      expect(() => enforceContractCompanionUpdates(changedFiles)).toThrowError(expectedError);
+    },
+  );
+
+  it('accepts a complete contract change with all required companion categories', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const completeChangedFiles = [
+      'docs/reference/package-surface.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      '.github/workflows/ci.yml',
+      'packages/core/src/module.test.ts',
+    ];
+
+    expect(() => enforceContractCompanionUpdates(completeChangedFiles)).not.toThrow();
+  });
+
+  it('accepts generic companions for validation migration prose without topic-specific book coupling', async () => {
+    // Given
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const genericContractCompanions = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'docs/contracts/nestjs-parity-gaps.md',
+      'docs/contracts/nestjs-parity-gaps.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ];
+
+    // When
+    const enforceGenericCompanions = () => enforceContractCompanionUpdates(genericContractCompanions);
+
+    // Then
+    expect(enforceGenericCompanions).not.toThrow();
+  });
+
+  it('accepts metadata preload guidance with bilingual discoverability and governance enforcement', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const guidanceFiles = [
+      'packages/core/README.md',
+      'packages/core/README.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'book/advanced/ch16-custom-package.md',
+      'book/advanced/ch16-custom-package.ko.md',
+    ];
+
+    expect(() => enforceContractCompanionUpdates(guidanceFiles)).toThrowError(
+      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/,
+    );
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...guidanceFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+      ]),
+    ).toThrowError(/CI\/tooling enforcement updates/);
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...guidanceFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.mjs',
       ]),
     ).toThrowError(/regression test updates/);
 
     expect(() =>
       enforceContractCompanionUpdates([
-        'docs/reference/package-surface.md',
+        ...guidanceFiles,
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
-        '.github/workflows/ci.yml',
+        'tooling/governance/verify-platform-consistency-governance.mjs',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();
+  });
+
+  it('accepts i18n catalog migration guidance with required governance companions', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const guidanceFiles = [
+      'packages/i18n/README.md',
+      'packages/i18n/README.ko.md',
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ];
+
+    expect(() => enforceContractCompanionUpdates(guidanceFiles)).not.toThrow();
   });
 
   it('accepts mongoose package-surface guidance when context discoverability and governance tests change together', async () => {
@@ -903,6 +1201,21 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('accepts NestJS import migration guidance with context and executable evidence updates', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'packages/cli/src/transforms/nestjs-migrate.test.ts',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('accepts Microservices handler migration guidance when bilingual contract surfaces and governance tests change together', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 
@@ -1002,6 +1315,24 @@ describe('enforceContractCompanionUpdates', () => {
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         'packages/email/src/module.test.ts',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('accepts NestJS throttler migration guidance when context and governance tests change together', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'book/beginner/ch16-throttler.md',
+        'book/beginner/ch16-throttler.ko.md',
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'packages/throttler/README.md',
+        'packages/throttler/README.ko.md',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();
@@ -1155,6 +1486,28 @@ describe('enforceContractCompanionUpdates', () => {
     }
   });
 
+  it('accepts serialization migration contracts with metadata regressions and governance coverage', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'packages/serialization/README.md',
+        'packages/serialization/README.ko.md',
+        'packages/serialization/src/serialize.test.ts',
+        'packages/runtime/src/application.test.ts',
+        'docs/contracts/nestjs-parity-gaps.md',
+        'docs/contracts/nestjs-parity-gaps.ko.md',
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'book/beginner/ch07-serialization.md',
+        'book/beginner/ch07-serialization.ko.md',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('treats the React render policy decision pairs as contract-governing updates', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
     const renderPolicyDecisionTriggers = [
@@ -1233,6 +1586,23 @@ describe('enforceContractCompanionUpdates', () => {
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         'packages/vite/src/index.test.ts',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('accepts CLI migration transform guidance when context and token regression evidence change together', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'packages/cli/README.md',
+        'packages/cli/README.ko.md',
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'packages/cli/src/commands/migration-transform-tokens.test.ts',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();

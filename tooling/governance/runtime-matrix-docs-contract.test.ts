@@ -199,6 +199,25 @@ describe('runtime matrix docs contract', () => {
     ]);
   });
 
+  it('keeps the cache-manager runtime boundary aligned to its mandatory runtime dependency range', () => {
+    const nodeListenerEngine = '>=20.19.3 <21 || >=22.2.0 <27';
+
+    expect(JSON.parse(read('packages/cache-manager/package.json'))).toMatchObject({
+      engines: { node: nodeListenerEngine },
+    });
+
+    for (const path of [
+      'packages/cache-manager/README.md',
+      'packages/cache-manager/README.ko.md',
+      'docs/reference/package-surface.md',
+      'docs/reference/package-surface.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+    ]) {
+      expect(read(path)).toContain(nodeListenerEngine);
+    }
+  });
+
   it('keeps book setup prerequisites aligned to the Node.js listener baseline', () => {
     const nodeListenerEngine = '>=20.19.3 <21 || >=22.2.0 <27';
 
