@@ -86,9 +86,10 @@ const execFileAsync = promisify(execFile);
 const CHILD_PROCESS_TIMEOUT_MS = 240_000;
 const PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS = 5_000;
 const DESCENDANT_PROCESS_TIMEOUT_MS = 1_000;
+const DESCENDANT_TIMEOUT_TEST_BOUNDED_OPERATION_COUNT = 6;
 const DESCENDANT_TIMEOUT_TEST_SCHEDULING_MARGIN_MS = 5_000;
 const DESCENDANT_TIMEOUT_TEST_TIMEOUT_MS =
-  PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS * 5 +
+  PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS * DESCENDANT_TIMEOUT_TEST_BOUNDED_OPERATION_COUNT +
   DESCENDANT_PROCESS_TIMEOUT_MS +
   DESCENDANT_TIMEOUT_TEST_SCHEDULING_MARGIN_MS;
 const emittedHarnessSubpaths = [
@@ -471,7 +472,7 @@ describe('@fluojs/testing surface', () => {
         }
 
         if (readinessMessage === 'rea') {
-          socket.write('continue');
+          socket.write('con');
           return;
         }
 
@@ -483,6 +484,7 @@ describe('@fluojs/testing surface', () => {
         socket.off('error', rejectDescendantReady);
         socket.once('error', rejectDescendantExit);
         socket.once('close', resolveDescendantExit);
+        socket.write('tinue\n');
         resolveDescendantReady();
       };
       socket.on('data', onReadinessData);
@@ -509,16 +511,27 @@ describe('@fluojs/testing surface', () => {
       const descendantScript = `
         const { connect } = await import('node:net');
         const socket = connect({ host: '127.0.0.1', port: ${address.port} });
-        socket.once('connect', () => socket.write('rea'));
-        socket.once('data', (message) => {
-          if (message.toString() !== 'continue') {
+        let controlMessage = '';
+        const onControlData = (message) => {
+          controlMessage += message.toString();
+
+          if (!'continue\\n'.startsWith(controlMessage)) {
             process.exitCode = 1;
             socket.destroy();
             return;
           }
 
-          socket.write('dy\\n');
-        });
+          if (controlMessage === 'con') {
+            socket.write('dy\\n');
+            return;
+          }
+
+          if (controlMessage === 'continue\\n') {
+            socket.off('data', onControlData);
+          }
+        };
+        socket.once('connect', () => socket.write('rea'));
+        socket.on('data', onControlData);
         socket.on('error', () => process.exitCode = 1);
         setInterval(() => {}, 1_000);
       `;
