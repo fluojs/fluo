@@ -23,6 +23,7 @@ function startWorker() {
     ],
     {
       cwd: new URL('../..', import.meta.url),
+      detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   );
@@ -57,12 +58,21 @@ function startWorker() {
 }
 
 async function stopWorker(child) {
-  if (child.exitCode !== null) {
+  if (child.pid === undefined) {
     return;
   }
 
-  child.kill('SIGTERM');
-  await once(child, 'exit');
+  const exited = child.exitCode === null ? once(child, 'exit') : undefined;
+
+  try {
+    process.kill(-child.pid, 'SIGTERM');
+  } catch (error) {
+    if (error.code !== 'ESRCH') {
+      throw error;
+    }
+  }
+
+  await exited;
 }
 
 test('workerd preserves ordered independent Set-Cookie fields for repeated setCookie and clearCookie calls', async () => {
