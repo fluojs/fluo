@@ -188,7 +188,7 @@ test('opens the installed public viewer bin and exercises its file workflow in C
 
       await page.goto(fileUrl.href);
       await expect(page.locator('#app')).toBeEmpty();
-      await captureEvidence(page, '01-file-origin-blank', viewport, url);
+      await captureEvidence(page, '01-file-origin-blank', viewport, fileUrl);
     } finally {
       await context.close();
     }
