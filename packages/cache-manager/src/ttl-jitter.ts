@@ -18,24 +18,28 @@ export function normalizeCacheTtlJitterOptions(
     throw new Error('@fluojs/cache-manager ttlJitter must be an options object when provided.');
   }
 
-  if (!Number.isFinite(options.ratio) || options.ratio <= 0 || options.ratio > 1) {
+  const ratio = options.ratio;
+  const mode = options.mode;
+  const random = options.random;
+
+  if (!Number.isFinite(ratio) || ratio <= 0 || ratio > 1) {
     throw new Error('@fluojs/cache-manager ttlJitter.ratio must be a finite number greater than 0 and at most 1.');
   }
 
-  const mode = options.mode ?? 'symmetric';
+  const normalizedMode = mode ?? 'symmetric';
 
-  if (mode !== 'symmetric' && mode !== 'shorten' && mode !== 'lengthen') {
+  if (normalizedMode !== 'symmetric' && normalizedMode !== 'shorten' && normalizedMode !== 'lengthen') {
     throw new Error("@fluojs/cache-manager ttlJitter.mode must be 'symmetric', 'shorten', or 'lengthen'.");
   }
 
-  if (options.random !== undefined && typeof options.random !== 'function') {
+  if (random !== undefined && typeof random !== 'function') {
     throw new Error('@fluojs/cache-manager ttlJitter.random must be a function when provided.');
   }
 
   return {
-    mode,
-    random: options.random,
-    ratio: options.ratio,
+    mode: normalizedMode,
+    random,
+    ratio,
   };
 }
 

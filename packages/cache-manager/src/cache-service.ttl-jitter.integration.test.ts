@@ -1,6 +1,6 @@
 import { Controller, type FrameworkRequest, type FrameworkResponse, Get, UseInterceptors } from '@fluojs/http';
 import { bootstrapApplication, defineModule } from '@fluojs/runtime';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CacheInterceptor } from './interceptor.js';
 import { CacheModule } from './module.js';
@@ -48,8 +48,9 @@ class RecordingStore implements CacheStore {
 function createCacheService(
   store: CacheStore,
   ttlJitter: NormalizedCacheTtlJitterOptions,
+  ttl = 600,
 ): CacheService {
-  return new CacheService(store, { ...baseOptions, ttl: 600, ttlJitter });
+  return new CacheService(store, { ...baseOptions, ttl, ttlJitter });
 }
 
 function createRequest(path: string): FrameworkRequest {
@@ -130,28 +131,34 @@ describe('CacheInterceptor — TTL jitter on the HTTP cache path', () => {
 
 class MemoryRedisClient implements RedisCompatibleClient {
   readonly expiries: Array<number | undefined> = [];
+  readonly storage = new Map<string, string>();
 
   async del(): Promise<number> {
     return 0;
   }
 
-  async get(): Promise<string | null> {
-    return null;
+  async get(key: string): Promise<string | null> {
+    return this.storage.get(key) ?? null;
   }
 
   async scan(): Promise<[string, string[]]> {
     return ['0', []];
   }
 
-  async set(_key: string, _value: string, ...args: Array<string | number>): Promise<'OK'> {
+  async set(key: string, value: string, ...args: Array<string | number>): Promise<'OK'> {
     const expiryIndex = args.indexOf('EX');
 
     this.expiries.push(expiryIndex >= 0 ? Number(args[expiryIndex + 1]) : undefined);
+    this.storage.set(key, value);
     return 'OK';
   }
 }
 
 describe('CacheService — TTL jitter store parity', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('applies one jittered TTL before store handoff on the memory and Redis paths', async () => {
     const memoryStore = new MemoryStore();
     const memorySet = vi.spyOn(memoryStore, 'set');
@@ -169,5 +176,49 @@ describe('CacheService — TTL jitter store parity', () => {
 
     expect(memorySet).toHaveBeenCalledWith('parity', 'value', 900);
     expect(redisClient.expiries).toEqual([900]);
+  });
+
+  it('round-trips a maximum lengthened TTL through memory and Redis with finite Redis expiry metadata', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-24T00:00:00.000Z'));
+
+    const value = { source: 'maximum-ttl' };
+    const jitter: NormalizedCacheTtlJitterOptions = {
+      mode: 'lengthen',
+      random: () => 1,
+      ratio: 1,
+    };
+    const memoryStore = new MemoryStore();
+    const memoryCache = createCacheService(memoryStore, jitter, Number.MAX_VALUE);
+    const redisClient = new MemoryRedisClient();
+    const redisCache = createCacheService(new RedisStore(redisClient, { keyPrefix: 'test:' }), jitter, Number.MAX_VALUE);
+
+    await memoryCache.set('maximum', value);
+    await redisCache.set('maximum', value);
+
+    expect(await memoryCache.get('maximum')).toEqual(value);
+    await expect(redisCache.get('maximum')).resolves.toEqual(value);
+    expect(redisClient.expiries).toHaveLength(1);
+    expect(Number.isSafeInteger(redisClient.expiries[0] ?? Number.NaN)).toBe(true);
+
+    const memoryEntries: unknown = Reflect.get(memoryStore, 'entries');
+
+    if (!(memoryEntries instanceof Map)) {
+      throw new Error('MemoryStore did not retain its cache entries.');
+    }
+
+    const memoryEntry: unknown = memoryEntries.get('maximum');
+    const storedEntry: unknown = JSON.parse(redisClient.storage.get('test:maximum') ?? '{}');
+
+    if (typeof memoryEntry !== 'object' || memoryEntry === null || typeof storedEntry !== 'object' || storedEntry === null) {
+      throw new Error('Built-in cache stores did not retain maximum TTL entries.');
+    }
+
+    const memoryExpiresAt = Reflect.get(memoryEntry, 'expiresAt');
+    const redisExpiresAt = Reflect.get(storedEntry, 'expiresAt');
+
+    expect(Number.isSafeInteger(memoryExpiresAt)).toBe(true);
+    expect(redisExpiresAt).toBe(memoryExpiresAt);
+    expect(Number.isSafeInteger(redisExpiresAt)).toBe(true);
   });
 });

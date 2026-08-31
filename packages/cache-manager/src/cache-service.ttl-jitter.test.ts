@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { CacheModule } from './module.js';
 import { CacheService } from './service.js';
 import { CACHE_OPTIONS } from './tokens.js';
+import { normalizeCacheTtlJitterOptions } from './ttl-jitter.js';
 import type {
   CacheStore,
   NormalizedCacheModuleOptions,
@@ -210,6 +211,35 @@ describe('CacheModule.forRoot — TTL jitter configuration', () => {
       random,
       ratio: 0.2,
     });
+  });
+
+  it('snapshots each jitter option accessor once before validation', () => {
+    let modeReads = 0;
+    let randomReads = 0;
+    let ratioReads = 0;
+    const firstRandom = () => 0.25;
+    const replacementRandom = () => 0.75;
+    const ttlJitter = {
+      get mode(): 'lengthen' {
+        modeReads += 1;
+        return 'lengthen';
+      },
+      get random(): () => number {
+        randomReads += 1;
+        return randomReads === 1 ? firstRandom : replacementRandom;
+      },
+      get ratio(): number {
+        ratioReads += 1;
+        return ratioReads === 1 ? 0.5 : Number.NaN;
+      },
+    };
+
+    expect(normalizeCacheTtlJitterOptions(ttlJitter)).toEqual({
+      mode: 'lengthen',
+      random: firstRandom,
+      ratio: 0.5,
+    });
+    expect({ modeReads, randomReads, ratioReads }).toEqual({ modeReads: 1, randomReads: 1, ratioReads: 1 });
   });
 
   it('rejects an unusable jitter ratio at module registration', () => {
