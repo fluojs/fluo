@@ -63,6 +63,56 @@ recommendations were found, ask nothing. Build the final grouping,
 dependencies, lane ID, merge policy, retry policy, and authority scope
 deterministically without a normal lane-plan question.
 
+Dependency derivation is PARALLELISM-FIRST: independence is the null
+hypothesis, and every edge carries the burden of proof. Wall-clock is won
+in the implement phase — merges serialize at the lead regardless — so an
+unjustified edge costs real time while buying nothing. Evidence from a
+live 30-issue run: layer-1 width 10 ran ten implementers simultaneously;
+the ONLY rebase conflict was CROSS-chain on a shared tooling file (an
+edge inside either chain could not have prevented it); and two chains in
+the SAME package (platform-fastify source-tests vs website-docs) ran in
+parallel cleanly because their file sets were disjoint.
+
+Add an edge A -> B only for one of these reasons, and record which:
+
+1. **Semantic dependency**: B's body or acceptance criteria reference
+   A's outcome (B documents what A implements, B extends A's API, B
+   tests behavior A introduces).
+2. **Same-file overlap in shipped source**: both issues name the same
+   production file(s). Docs-only overlap does not qualify — EN/KO and
+   CONTEXT collisions resolved keep-both cheaply in the live run.
+3. **Same-package shipped-source overlap that cannot be shown disjoint**
+   from the issue texts. When the surfaces ARE demonstrably disjoint
+   (different modules, source vs website docs), emit NO edge.
+
+Within a justified chain, order production fixes first, then tests, then
+docs. Shared NON-package surfaces never justify an edge — they become
+`predicted_conflicts` hints (below). When in doubt between an edge and a
+hint, choose the hint: a wrong edge silently costs a parallel slot for
+the whole run, while a missing edge costs at most one visible
+`resolve-conflict` round that the executor already knows how to run.
+
+Authority scope derivation: `cleanup_command_worktrees` is ALWAYS `true`
+(schema `const` — a lane that cannot clean up its own worktrees leaves
+the operator doing it by hand for every merge; maintainer decision).
+`root_main_sync_ff_only` DEFAULTS to `true`; emit `false` only when the
+requester explicitly asks the lane not to touch the root checkout's
+`main`. Neither is a lane-plan question.
+
+While deriving the grouping, also scan every issue's title, body, and
+acceptance criteria for SHARED NON-PACKAGE surfaces: `tooling/governance/**`,
+`docs/CONTEXT*`, `.agents/workflow-contracts/**`, and shared harness sources
+under `packages/testing/src/**`. Package-based chain grouping is structurally
+blind to these — in a live 30-issue run, the only rebase conflict came from
+two issues in DIFFERENT chains (different packages) that each added a guard
+to the same `tooling/governance/verify-platform-consistency-governance.mjs`.
+When two or more issues reference the same such surface, record an optional
+`predicted_conflicts` entry in the ledger (`{ surface, issues, note? }`, see
+the v2 schema). This is a HINT, not a serialization order: keep-both
+resolution handled the live conflict cleanly, so the value is in the executor
+expecting `resolve-conflict` rather than being surprised by it. Do not
+restructure chains around a hint.
+
 Persist the existing `confirmed-issues`, `suggested-additions`, and `lane-plan`
 receipt identities as plan/source-bound machine evidence. The first and third
 normal receipts are derived from validated state; the second records the sole

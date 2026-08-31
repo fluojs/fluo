@@ -31,7 +31,7 @@ pnpm add @fluojs/graphql graphql graphql-yoga
 - TypeScript 데코레이터를 사용하여 타입 안전한 GraphQL API를 구축할 때 (**Code-first**).
 - 기존의 executable `GraphQLSchema` 객체를 fluo 애플리케이션에 통합할 때.
 - GraphQL resolver 내에서 request-scoped provider를 포함한 원활한 의존성 주입이 필요할 때.
-- Request-scoped **DataLoader** 패턴을 사용하여 효율적인 데이터 페칭을 수행할 때.
+- GraphQL operation 범위 **DataLoader** 패턴을 사용하여 효율적인 데이터 페칭을 수행할 때.
 
 ## 빠른 시작
 
@@ -111,11 +111,13 @@ class UserResolver {
 
 `@FieldResolver(...)`는 provider method를 `@Resolver('TypeName')`이 소유하는 named object type의 field에 연결합니다. 대상 object type은 code-first root operation output에서 도달 가능해야 합니다. 해당 field가 `GraphQLObjectType`에 이미 존재하거나, schema builder가 field를 추가할 수 있도록 field resolver가 `type`을 선언해야 합니다.
 
-TC39 표준 데코레이터는 parameter decorator를 지원하지 않습니다. fluo의 standard-decorator 계약을 지키기 위해 `@Parent()`와 `@Context()`는 zero-based parameter index를 바인딩하는 method decorator입니다. 기본값은 parent/source object를 parameter `0`에, `GraphQLContext`를 parameter `1`에 매핑합니다. Method 순서가 다르면 index를 명시적으로 전달하세요.
+`@FieldResolver({ input })`은 root resolver DTO argument pipeline을 그대로 재사용합니다. `@Arg(...)` field가 GraphQL argument를 정의하고, 값은 DTO로 materialize되며, validation error는 계속 GraphQL `BAD_USER_INPUT` error로 반환됩니다. list argument type은 root operation과 동일하게 `argTypes`로 지정하세요.
+
+TC39 표준 데코레이터는 parameter decorator를 지원하지 않습니다. fluo의 standard-decorator 계약을 지키기 위해 `@Args()`, `@Parent()`, `@Context()`는 zero-based parameter index를 바인딩하는 method decorator입니다. `@Args()`와 `@Parent()`의 기본값은 모두 `0`이므로 둘을 함께 사용할 때는 서로 다른 명시적 index를 지정해야 합니다. `@Context()`의 기본값은 `1`입니다. 같은 index를 두 번 바인딩하면 decorator evaluation 중 실패합니다. `@FieldResolver({ input })`에는 `@Args()`가 필요하고, `@Args()`에는 `input`이 필요합니다.
 
 ```typescript
 import { GraphQLObjectType, GraphQLString } from 'graphql';
-import { Context, FieldResolver, Parent, Query, Resolver, type GraphQLContext } from '@fluojs/graphql';
+import { Arg, Args, Context, FieldResolver, Parent, Query, Resolver, type GraphQLContext } from '@fluojs/graphql';
 
 const AuthorType = new GraphQLObjectType({
   name: 'Author',
@@ -133,6 +135,11 @@ const BookType = new GraphQLObjectType({
   },
 });
 
+class AuthorInput {
+  @Arg('locale')
+  locale = 'en';
+}
+
 @Resolver()
 class BookQueryResolver {
   @Query({ outputType: BookType })
@@ -143,18 +150,19 @@ class BookQueryResolver {
 
 @Resolver('Book')
 class BookFieldResolver {
-  @FieldResolver({ fieldName: 'author', type: AuthorType })
-  @Parent()
-  @Context()
-  author(book: { authorId: string }, context: GraphQLContext) {
+  @FieldResolver({ fieldName: 'author', input: AuthorInput, type: AuthorType })
+  @Args(0)
+  @Parent(1)
+  @Context(2)
+  author(input: AuthorInput, book: { authorId: string }, context: GraphQLContext) {
     return authorLoader(context).load(book.authorId);
   }
 }
 ```
 
-두 resolver class를 module provider 또는 controller로 등록하고, `GraphqlModule.forRoot({ resolvers })`를 allowlist로 사용할 때는 둘 다 포함하세요. 중복 `TypeName.fieldName` 등록, code-first root output에서 도달할 수 없는 field target, root operation method에 배치한 `@Parent()` / `@Context()` binding은 bootstrap 중 실패합니다. Field argument DTO binding과 schema-first field-resolver attachment는 첫 runtime 계약 범위 밖입니다. `nullable` option은 예약되어 있습니다. 기존 field nullability는 유지되며, `type`으로 추가한 field는 GraphQL의 nullable 기본값을 사용합니다.
+두 resolver class를 module provider 또는 controller로 등록하고, `GraphqlModule.forRoot({ resolvers })`를 allowlist로 사용할 때는 둘 다 포함하세요. Field resolver DTO input은 root resolver와 같은 HTTP 및 subscription operation container scope를 따릅니다. 중복 `TypeName.fieldName` 등록, code-first root output에서 도달할 수 없는 field target, root operation method에 배치한 `@Args()` / `@Parent()` / `@Context()` binding은 bootstrap 중 실패합니다. Schema-first field-resolver attachment는 이 runtime 계약 범위 밖입니다. 명시적 `type`으로 추가하는 field에는 `nullable: false`를 전달해 non-null GraphQL output을 노출할 수 있으며, `nullable: true`와 option 생략은 GraphQL의 nullable 기본값을 유지합니다. 기존 field configuration은 object type이 이미 소유하므로 `nullable`이 그 declared nullability를 바꾸지 않습니다.
 
-### Request-Scoped DataLoaders
+### GraphQL Operation 범위 DataLoaders
 내장된 DataLoader 통합을 통해 N+1 문제를 효율적으로 해결합니다. Loader는 각 GraphQL 작업마다 자동으로 격리됩니다.
 
 ```typescript
@@ -169,7 +177,7 @@ const UserType = new GraphQLObjectType({
   },
 });
 
-const userLoader = createDataLoader(async (ids: string[]) => {
+const userLoader = createDataLoader(async (ids: readonly string[]) => {
   const users = await userService.findByIds(ids);
   return ids.map(id => users.find(u => u.id === id));
 });
@@ -195,8 +203,9 @@ class UserResolver {
 - `@fluojs/graphql`은 HTTP GraphQL 요청 또는 WebSocket subscription operation마다 operation-scoped DI 컨테이너를 하나 만들고, 해당 operation 안의 resolver 호출들이 이를 공유하며, operation 완료 또는 WebSocket operation 종료 시 dispose합니다.
 - Resolver 메서드는 `GraphQLContext`를 받으며, 내장 필드에는 fluo `request`, middleware 또는 guard가 설정한 인증된 HTTP `principal`, WebSocket subscription의 `connectionParams`와 `socket`, 그리고 `GraphqlModule.forRoot({ context })`가 반환한 사용자 정의 필드가 포함됩니다.
 - Object field resolver는 root resolver와 같은 provider scope 및 operation container를 사용합니다. `@Parent()`와 `@Context()`는 positional method argument만 제어합니다.
-- Request-scoped DataLoader helper는 같은 `GraphQLContext` operation 경계를 사용하므로 loader cache는 하나의 GraphQL operation 안에서만 공유됩니다.
+- GraphQL operation 범위 DataLoader helper는 같은 `GraphQLContext` operation 경계를 사용하므로 loader cache는 하나의 GraphQL operation 안에서만 공유됩니다.
 - 애플리케이션 shutdown은 WebSocket transport를 등록 해제하고, 살아 있는 WebSocket client를 닫으며, 아직 활성 상태인 WebSocket operation container를 정상 operation 완료 때와 같은 request-scoped provider teardown 경로로 dispose합니다.
+- HTTP operation-container, WebSocket operation-container 또는 WebSocket transport teardown이 실패하면 소유자를 이후 `Application.close()` 재시도까지 보존합니다. Shutdown은 남은 모든 cleanup 실패를 함께 보고하며, 이미 성공한 cleanup은 반복하지 않습니다.
 
 ```typescript
 import { Inject, Scope } from '@fluojs/core';
@@ -252,8 +261,9 @@ GraphqlModule.forRoot({
 - `graphiql` 기본값은 `false`입니다. `introspection`은 명시하지 않으면 `graphiql` 설정을 따르므로, production 앱은 기본적으로 비공개 상태를 유지하고 로컬 GraphiQL 세션만 opt in할 수 있습니다.
 - `limits`에는 request validation budget을 전달하거나 `false`를 전달할 수 있습니다. `false`는 fluo 밖에서 동등한 제어를 적용할 때만 사용하세요.
 - Streaming GraphQL 응답은 downstream response stream이 닫히거나 오류를 내면 upstream fetch body를 cancel하므로 SSE subscription 리소스를 즉시 해제합니다.
-- GraphQL 스키마 해석 이후 bootstrap이 실패하면 원래 오류를 다시 던지기 전에 실패한 service의 cross-realm GraphQL object allowlist만 제거합니다. 다른 활성 GraphQL 애플리케이션이 하나도 남지 않은 경우에만 package의 process-wide `graphql/jsutils/instanceOf` 패치를 원복합니다.
-- 각 활성 GraphQL 애플리케이션은 자체 cross-realm GraphQL object allowlist를 소유합니다. Shutdown도 같은 release 규칙을 따르므로, 다른 실행 중인 애플리케이션은 process-wide `instanceOf` 패치를 유지하고 자신의 object만 허용합니다.
+- Downstream streaming 실패와 upstream cancellation cleanup 실패가 동시에 발생하면 downstream 실패가 계속 관찰 가능하며 cancellation cleanup은 best-effort로 처리됩니다.
+- GraphQL 스키마 해석 이후 bootstrap이 실패하면 원래 오류를 다시 던지기 전에 실패한 service의 cross-realm GraphQL object allowlist만 제거합니다. Bootstrap은 읽기 전용 ESM namespace 대신 변경 가능한 `graphql/jsutils/instanceOf` module owner를 patch하며, 각 owner는 외부 교체와 재-patch 이후에도 모든 활성 애플리케이션 allowlist를 유지합니다.
+- Shutdown은 해당 module object의 마지막 활성 GraphQL 애플리케이션이 release한 뒤 package가 소유한 patch만 원복합니다. 다른 GraphQL module instance와 다른 integration이 교체한 `instanceOf` 구현은 그대로 둡니다.
 - WebSocket 구독 경로에는 별도의 전송 budget이 기본 적용됩니다: 동시 연결 `100`, 최대 payload 크기 `64 KiB`, 연결당 활성 operation `25`개입니다.
 - `subscriptions.websocket.enabled` 기본값은 `false`입니다. 활성화하려면 upgrade를 지원하는 Node HTTP/S adapter가 필요합니다. `connectionInitWaitTimeoutMs`는 연결 초기화를 위해 `graphql-ws`로 전달되고, `keepAliveMs`는 설정 시 WebSocket keepalive ping 주기를 제어합니다.
 - 무제한 WebSocket 동작이 정말 필요할 때만 `subscriptions.websocket.limits = false`를 사용하고, 그 경우에도 동일한 수준의 외부 제어 수단을 마련해야 합니다.
@@ -286,11 +296,11 @@ GraphqlModule.forRoot({
 
 - `GraphqlModule.forRoot(options)`: GraphQL 통합을 위한 메인 엔트리 포인트.
 - `Resolver`, `Query`, `Mutation`, `Subscription`: Resolver 및 root operation 데코레이터.
-- `FieldResolver`, `Parent`, `Context`: Code-first object field resolution과 명시적 parent/context parameter-index binding.
+- `FieldResolver`, `Args`, `Parent`, `Context`: Code-first object field resolution과 명시적 DTO input, parent, context parameter-index binding.
 - `Arg`: Input DTO 필드를 GraphQL 인자로 매핑하는 데코레이터.
 - `createDataLoader`, `createDataLoaderMap`, `getRequestScopedDataLoader`, `createRequestScopedDataLoaderFactory`, `DataLoader`: DataLoader factory helper와 type.
 - `listOf`, `isGraphqlListTypeRef`: list output type reference helper.
-- `GraphQLContext` 및 export되는 option/metadata type: GraphQL 실행과 module 설정을 위한 타입 정의.
+- `GraphQLContext` 및 export되는 option/metadata type: `subscriptions.websocket.limits`에 사용하는 `GraphqlWebSocketLimitsOptions`를 포함한 GraphQL 실행과 module 설정을 위한 타입 정의.
 
 지원되는 module option에는 `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `subscriptions.websocket.connectionInitWaitTimeoutMs`, `subscriptions.websocket.keepAliveMs`가 포함됩니다.
 
@@ -303,6 +313,6 @@ GraphqlModule.forRoot({
 ## 예제 소스
 
 - `packages/graphql/src/module.test.ts`: 모듈 등록, resolver 실행, request-scoped container, subscription, guardrail 기본값을 다루는 통합 테스트 및 사용 예제.
-- `packages/graphql/src/field-resolver.test.ts`: Object field resolver의 discovery, schema attachment, parent/context binding, invalid placement를 실행 가능한 형태로 검증하는 테스트.
+- `packages/graphql/src/field-resolver-input.test.ts`: Object field DTO input의 HTTP, request scope, validation, scalar/list argument, subscription, binding collision을 실행 가능한 형태로 검증하는 테스트.
 - `packages/graphql/src/runtime-support.test.ts`: Package의 Node.js engine 하한이 필수 first-party dependency graph에서 가장 높은 하한 이상인지 검증하는 회귀 테스트.
 - `packages/graphql/field-resolver-rfc.md`: Object field resolver의 구현된 계약과 후속 범위.

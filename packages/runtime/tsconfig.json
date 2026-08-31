@@ -1,7 +1,12 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": "src",
+    "paths": {
+      "@fluojs/testing/platform-shell-lifecycle-conformance": [
+        "../testing/src/conformance/platform-shell-lifecycle-conformance.ts"
+      ]
+    },
+    "rootDir": "..",
     "types": ["node"]
   },
   "include": ["src/**/*.ts"]

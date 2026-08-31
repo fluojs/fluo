@@ -45,6 +45,8 @@ Adapter는 host-level route matching을 optimize할 수 있지만, matched reque
 
 Fastify는 권장 high-throughput Node.js adapter입니다.
 
+`@fluojs/platform-fastify`에는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`가 필요합니다. Node 21, 22.2.0 미만 Node 22, Node 27+는 지원하지 않습니다.
+
 ```ts
 import { createFastifyAdapter } from '@fluojs/platform-fastify';
 import { fluoFactory } from '@fluojs/runtime';
@@ -101,6 +103,8 @@ Adapter를 만들기 전에 application configuration 또는 secret-management b
 ## Raw Node.js
 
 Express나 Fastify 없이 built-in `http`/`https` server primitive를 직접 사용하려면 raw Node.js adapter를 선택합니다.
+
+`@fluojs/platform-nodejs`에는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`가 필요합니다. Node 21, 22.2.0 미만 Node 22, Node 27+는 지원하지 않습니다.
 
 ```ts
 import { createNodejsAdapter } from '@fluojs/platform-nodejs';

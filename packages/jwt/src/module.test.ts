@@ -57,8 +57,8 @@ async function createJwtApplicationContext(jwtModule: Constructor) {
 }
 
 describe('JwtModule', () => {
-  it('does not expose createJwtCoreProviders from the package root', () => {
-    expect(jwtRootExports).not.toHaveProperty('createJwtCoreProviders');
+  it('keeps createJwtCoreProviders as an explicit deprecated compatibility root export', () => {
+    expect(jwtRootExports.createJwtCoreProviders).toBeTypeOf('function');
   });
 
   it('keeps refresh-token normalization as an explicit deprecated compatibility root export', () => {

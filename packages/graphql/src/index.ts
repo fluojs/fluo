@@ -15,6 +15,7 @@ export type {
   GraphqlRootOutputType,
   GraphqlScalarTypeName,
   GraphqlSubscriptionsOptions,
+  GraphqlWebSocketLimitsOptions,
   GraphqlWebSocketSubscriptionsOptions,
   ResolverHandlerMetadata,
   ResolverHandlerType,
