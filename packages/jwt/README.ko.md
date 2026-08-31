@@ -214,7 +214,7 @@ Lazy loading은 import-time 안전성 속성일 뿐입니다. 서명이나 검�
 ### 에러와 diagnostics
 - `JwtVerificationError`, `JwtInvalidTokenError`, `JwtExpiredTokenError`, `JwtConfigurationError`: 타입이 지정된 JWT 실패입니다.
 - `createJwtPlatformStatusSnapshot(...)`, `createJwtPlatformDiagnosticIssues(...)`: status 및 diagnostic helper입니다.
-- `JWT_OPTIONS`, `HMAC_HASH`, `ASYMMETRIC_HASH`: 모듈과 검증 레이어에서 사용하는 export token/constant입니다.
+- `JWT_OPTIONS`, `HMAC_HASH`, `ASYMMETRIC_HASH`: 모듈과 검증 레이어에서 사용하는 export token/constant입니다. `HMAC_HASH`와 `ASYMMETRIC_HASH`는 readonly lookup 값이므로 변경하지 마세요.
 
 ### Deprecated compatibility helper
 - `normalizeRefreshTokenOptions(...)`: 기존 caller의 root import 호환성만을 위해 유지됩니다. package normalization 내부 helper를 직접 호출하기보다 `JwtModule.forRoot(...)` / `JwtModule.forRootAsync(...)`와 `RefreshTokenService`를 사용하세요.
