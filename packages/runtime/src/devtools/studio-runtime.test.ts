@@ -284,4 +284,89 @@ describe('Studio devtools runtime bridge', () => {
       ]),
     );
   });
+
+  it('keeps bootstrap and request observation operational when a host transport throws synchronously', async () => {
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {});
+
+    const studioDevtools = new StudioDevtoolsRuntime({
+      appId: 'throwing-host',
+      transport: {
+        publish() {
+          throw new Error('host transport unavailable');
+        },
+      },
+    });
+    const observerContext = {
+      requestContext: {
+        request: {
+          cookies: {},
+          headers: {},
+          method: 'GET',
+          path: '/health',
+          params: {},
+          query: {},
+          raw: undefined,
+          requestId: 'request-1',
+          url: '/health',
+        },
+        response: {
+          committed: false,
+          headers: {},
+          redirect() {},
+          async send() {},
+          setHeader() {},
+          setStatus() {},
+          statusCode: 200,
+        },
+      } satisfies Pick<RequestContext, 'request' | 'response'>,
+    } as unknown as Parameters<NonNullable<typeof studioDevtools.requestObserver.onRequestStart>>[0];
+
+    const app = await bootstrapApplication({
+      logger,
+      rootModule: AppModule,
+      studioDevtools,
+    });
+    await app.close();
+
+    const factoryApp = await FluoFactory.create(AppModule, { studioDevtools });
+    await factoryApp.close();
+
+    const context = await FluoFactory.createApplicationContext(AppModule, { studioDevtools });
+    await context.close();
+
+    expect(() => studioDevtools.requestObserver.onRequestStart?.(observerContext)).not.toThrow();
+  });
+
+  it('prefers an explicit bridge over CLI injection without calling injected fetch', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 202 }));
+    const events: StudioLiveEvent[] = [];
+    (globalThis as Record<string, unknown>)[studioGlobalConfigKey] = {
+      FLUO_STUDIO: '1',
+      FLUO_STUDIO_TOKEN: 'cli-token',
+      FLUO_STUDIO_URL: 'http://127.0.0.1:49152',
+    };
+
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, {});
+
+    const app = await FluoFactory.create(AppModule, {
+      studioDevtools: new StudioDevtoolsRuntime({
+        appId: 'explicit-host',
+        runtime: 'bun',
+        transport: {
+          publish(event) {
+            events.push(event);
+          },
+        },
+      }),
+    });
+    await app.close();
+
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: { appId: 'explicit-host', runtime: 'bun' }, type: 'snapshot' }),
+      expect.objectContaining({ source: { appId: 'explicit-host', runtime: 'bun' }, type: 'heartbeat' }),
+    ]));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

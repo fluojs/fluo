@@ -3138,4 +3138,16 @@ describe('Studio public docs and migration expectations', () => {
       expect(content).toContain('renderMermaid(snapshot)');
     }
   });
+
+  it('enforces host-owned runtime bridge discoverability from both context hubs', () => {
+    for (const content of [englishContext, koreanContext]) {
+      expect(content).toContain('@fluojs/runtime/devtools');
+      expect(content).toContain('StudioDevtoolsRuntime');
+      expect(content).toContain('StudioDevtoolsRuntimeTransport');
+      expect(content).toContain('studioDevtools');
+      expect(content).toContain('host-owned');
+      expect(content).toContain('observational');
+      expect(content).toContain('CLI-injected');
+    }
+  });
 });

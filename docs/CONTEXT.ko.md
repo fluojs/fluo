@@ -242,6 +242,10 @@ HTTP route 및 #2506 navigation ownership, dual-import test, bilingual docs, Cha
 | `docs/getting-started/` | 일반적인 시작 경로에 대한 부트스트랩 및 설정 사실을 정리한다. |
 | `docs/reference/` | 조회 중심 표, 용어집, 패키지 매트릭스, 지원 현황 스냅샷을 제공한다. |
 
+## Studio Runtime Bridge
+
+Studio bridge discoverability는 [`packages/runtime/README.ko.md`](../packages/runtime/README.ko.md)와 [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)에 나뉘어 있습니다. package integration은 `@fluojs/runtime/devtools`에서 `StudioDevtoolsRuntime`, `StudioDevtoolsRuntimeTransport`, `StudioLiveEvent`를 import하고, host-owned bridge를 `bootstrapApplication`, `FluoFactory.create`, 또는 `FluoFactory.createApplicationContext`의 `studioDevtools`로 전달합니다. delivery는 observational이므로 synchronous transport throw와 async rejection은 애플리케이션 동작을 바꾸지 않습니다. explicit bridge는 CLI-injected Studio configuration보다 우선하며, bridge와 injected configuration이 모두 없으면 Studio는 비활성 상태로 남습니다.
+
 ## Navigation
 
 | Need | Read first | Follow with |

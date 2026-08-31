@@ -2836,6 +2836,26 @@ export function enforceFastifyNativeConfigurationDocsSync() {
   }
 }
 
+export function enforceStudioRuntimeBridgeDiscoverability() {
+  const requirements = [
+    '@fluojs/runtime/devtools',
+    'StudioDevtoolsRuntime',
+    'StudioDevtoolsRuntimeTransport',
+    'studioDevtools',
+    'host-owned',
+    'observational',
+    'CLI-injected',
+  ];
+
+  for (const documentationPath of ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md']) {
+    const documentation = read(documentationPath);
+    assert(
+      requirements.every((requirement) => documentation.includes(requirement)),
+      `${documentationPath} must document the host-owned @fluojs/runtime/devtools bridge, its bootstrap seam, and its observational precedence over CLI injection.`,
+    );
+  }
+}
+
 export function main() {
   const changedFiles = changedFilesFromGit();
 
@@ -2859,6 +2879,7 @@ export function main() {
   enforceExpressApplicationOwnershipDocs();
   enforceExpressRuntimeMigrationDocsSync();
   enforceFastifyNativeConfigurationDocsSync();
+  enforceStudioRuntimeBridgeDiscoverability();
   enforceCanonicalRuntimeMatrixReferences();
   enforceHttpBookRequestContracts();
   enforceRemovedRuntimeFactoryNamesNotUsedInDocs();
