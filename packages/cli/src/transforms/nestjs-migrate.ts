@@ -208,11 +208,14 @@ function updateNamedImports(importDeclaration: ts.ImportDeclaration, bindings: I
     return undefined;
   }
 
+  const isTypeOnlyClause = !importClause.name && bindings.length > 0 && bindings.every((binding) => binding.isTypeOnly);
   const updatedClause = ts.factory.updateImportClause(
     importClause,
-    importClause.isTypeOnly,
+    isTypeOnlyClause,
     importClause.name,
-    bindings.length > 0 ? ts.factory.createNamedImports(bindings.map(createImportSpecifier)) : undefined,
+    bindings.length > 0
+      ? ts.factory.createNamedImports(bindings.map((binding) => createImportSpecifier({ ...binding, isTypeOnly: isTypeOnlyClause ? false : binding.isTypeOnly })))
+      : undefined,
   );
 
   return ts.factory.updateImportDeclaration(
@@ -224,7 +227,12 @@ function updateNamedImports(importDeclaration: ts.ImportDeclaration, bindings: I
   );
 }
 
-function mergeNamedImport(statements: ts.Statement[], moduleSpecifier: string, newBindings: ImportBinding[]): ts.Statement[] {
+function mergeNamedImport(
+  statements: ts.Statement[],
+  moduleSpecifier: string,
+  newBindings: ImportBinding[],
+  preserveTypeOnlyImport = false,
+): ts.Statement[] {
   if (newBindings.length === 0) {
     return statements;
   }
@@ -236,7 +244,7 @@ function mergeNamedImport(statements: ts.Statement[], moduleSpecifier: string, n
       || !ts.isImportDeclaration(statement)
       || !ts.isStringLiteral(statement.moduleSpecifier)
       || statement.moduleSpecifier.text !== moduleSpecifier
-      || statement.importClause?.isTypeOnly
+      || (preserveTypeOnlyImport && statement.importClause?.isTypeOnly)
     ) {
       return statement;
     }
@@ -266,12 +274,14 @@ function mergeNamedImport(statements: ts.Statement[], moduleSpecifier: string, n
     return updated;
   }
 
+  const bindings = [...newBindings].sort((left, right) => left.local.localeCompare(right.local));
+  const isTypeOnlyClause = bindings.every((binding) => binding.isTypeOnly);
   const importDeclaration = ts.factory.createImportDeclaration(
     undefined,
     ts.factory.createImportClause(
-      false,
+      isTypeOnlyClause,
       undefined,
-      ts.factory.createNamedImports([...newBindings].sort((left, right) => left.local.localeCompare(right.local)).map(createImportSpecifier)),
+      ts.factory.createNamedImports(bindings.map((binding) => createImportSpecifier({ ...binding, isTypeOnly: isTypeOnlyClause ? false : binding.isTypeOnly }))),
     ),
     ts.factory.createStringLiteral(moduleSpecifier),
   );
@@ -370,7 +380,7 @@ function rewriteImports(
     const remaining: ImportBinding[] = [];
 
     for (const binding of getImportBindings(statement)) {
-      if (binding.isTypeOnly) {
+      if (binding.isTypeOnly && allowedNestImports) {
         remaining.push(binding);
         continue;
       }
@@ -393,7 +403,7 @@ function rewriteImports(
 
       touched = true;
       const moduleBindings = additions.get(targetModule) ?? [];
-      moduleBindings.push(binding);
+      moduleBindings.push({ imported: binding.imported, isTypeOnly: binding.isTypeOnly, local: binding.local });
       additions.set(targetModule, moduleBindings);
     }
 
@@ -413,7 +423,7 @@ function rewriteImports(
 
   let nextStatements = statements;
   for (const [moduleSpecifier, bindings] of additions.entries()) {
-    nextStatements = mergeNamedImport(nextStatements, moduleSpecifier, bindings);
+    nextStatements = mergeNamedImport(nextStatements, moduleSpecifier, bindings, !!allowedNestImports);
   }
 
   const nextSource = printSourceFile(sourceFile, nextStatements);
@@ -929,7 +939,7 @@ function rewriteConstructorInjectTokens(source: string, filePath: string): { cha
       nextSourceFile,
       mergeNamedImport([...nextSourceFile.statements], '@fluojs/core', [
         { imported: 'Inject', isTypeOnly: false, local: generatedFluoInjectLocalName },
-      ]),
+      ], true),
     );
   }
 
@@ -1478,9 +1488,7 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
   const nextSourceFile = parseSource(nextSource, filePath);
   nextSource = printSourceFile(
     nextSourceFile,
-    mergeNamedImport([...nextSourceFile.statements], '@fluojs/testing', [
-      { imported: 'createTestingModule', isTypeOnly: false, local: 'createTestingModule' },
-    ]),
+    mergeNamedImport([...nextSourceFile.statements], '@fluojs/testing', [{ imported: 'createTestingModule', isTypeOnly: false, local: 'createTestingModule' }]),
   );
 
   const withFluoImportSourceFile = parseSource(nextSource, filePath);

@@ -1183,6 +1183,21 @@ describe('enforceContractCompanionUpdates', () => {
     ).not.toThrow();
   });
 
+  it('accepts NestJS import migration guidance with context and executable evidence updates', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() =>
+      enforceContractCompanionUpdates([
+        'docs/getting-started/migrate-from-nestjs.md',
+        'docs/getting-started/migrate-from-nestjs.ko.md',
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+        'packages/cli/src/transforms/nestjs-migrate.test.ts',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ]),
+    ).not.toThrow();
+  });
+
   it('accepts Microservices handler migration guidance when bilingual contract surfaces and governance tests change together', async () => {
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
 
