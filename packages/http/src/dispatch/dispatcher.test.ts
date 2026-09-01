@@ -1340,6 +1340,52 @@ describe('dispatcher runtime', () => {
     expect(bufferResponse.body).toBeInstanceOf(ArrayBuffer);
   });
 
+  it('keeps ArrayBuffer values on the generic writer for range fallbacks', async () => {
+    @Controller('/generic-range-fallback')
+    class GenericRangeFallbackController {
+      @Get('/buffer')
+      getBuffer() {
+        return Uint8Array.from([4, 5, 6]).buffer;
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      conditionalRequest: {
+        resolve() {
+          return {
+            exists: true,
+            validators: { etag: { opaqueValue: 'buffer-v1', strength: 'strong' } },
+          };
+        },
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: GenericRangeFallbackController }]),
+      rootContainer: new Container().register(GenericRangeFallbackController),
+    });
+    const malformedRangeResponse = createFastPathResponse();
+    const ifRangeFallbackResponse = createFastPathResponse();
+
+    await dispatcher.dispatch(
+      createRequest('/generic-range-fallback/buffer', 'GET', { range: 'items=0-1' }),
+      malformedRangeResponse,
+    );
+    await dispatcher.dispatch(
+      createRequest('/generic-range-fallback/buffer', 'GET', {
+        'if-range': '"buffer-v2"',
+        range: 'bytes=0-1',
+      }),
+      ifRangeFallbackResponse,
+    );
+
+    for (const response of [malformedRangeResponse, ifRangeFallbackResponse]) {
+      expect(response.simpleJsonBody).toBeUndefined();
+      expect(response.body).toBeInstanceOf(ArrayBuffer);
+      expect(response.headers['Accept-Ranges']).toBeUndefined();
+      expect(response.headers['Content-Range']).toBeUndefined();
+      expect(response.headers['Content-Length']).toBeUndefined();
+    }
+    expect(ifRangeFallbackResponse.headers.ETag).toBe('"buffer-v1"');
+  });
+
   it('preserves explicit success headers and status on the simple JSON fast path', async () => {
     @Controller('/fast-json-contract')
     class FastJsonContractController {

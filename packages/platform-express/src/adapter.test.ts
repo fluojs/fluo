@@ -573,6 +573,10 @@ describe('@fluojs/platform-express', () => {
       await expressPortabilityHarness.assertSupportsConditionalRequests();
     });
 
+    it('preserves single byte range semantics through the real listener', async () => {
+      await expressPortabilityHarness.assertSupportsSingleByteRanges();
+    });
+
     it('supports HTTP-owned JSON and HTML error representations', async () => {
       await expressPortabilityHarness.assertSupportsHttpErrorRepresentations();
     });

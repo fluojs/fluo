@@ -1,5 +1,12 @@
 export * from './adapter.js';
 export * from './access-log-observer.js';
+export {
+  createByteRangeResponse,
+} from './byte-range-response.js';
+export type {
+  ByteRangeResponseOptions,
+  ByteRangeResponseSource,
+} from './byte-range-response.js';
 export * from './context/request-context.js';
 export * from './context/sse.js';
 export * from './connection.js';

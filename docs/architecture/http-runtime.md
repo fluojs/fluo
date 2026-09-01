@@ -4,6 +4,12 @@
 
 This document defines the current request execution contract implemented by `@fluojs/http` and assembled by `@fluojs/runtime`.
 
+## Byte Range Contract
+
+After conditional-request evaluation permits handler execution, the response policy applies one `Range: bytes=` member only to `GET` representations and the documented `HEAD` metadata mirror. Valid bounded, suffix, and open-ended members produce `206`; malformed and multi-range fields retain the full response; unsatisfiable members produce bodyless `416` with `Accept-Ranges: bytes`, `Content-Range: bytes */size`, and `Content-Length: 0`. `POST`, unsafe, and custom methods ignore `Range` and retain their ordinary full status, body, and metadata. `If-Range` reuses the selected representation validators and never re-runs conditional resolution. `HEAD` uses the same range status and headers as GET without consuming a portable stream. Partial Node responses are identity encoded so `Content-Range` and `Content-Length` describe the transmitted representation bytes.
+
+`createByteRangeResponse(...)` accepts application-owned bytes or a stream factory with an exact representation size. It never opens, stats, seeks, sizes, or owns filesystem resources: the application supplies the exact size and source. Multi-range response construction is intentionally unsupported.
+
 ## Request Lifecycle
 
 1. The adapter supplies a normalized `FrameworkRequest` and `FrameworkResponse` to `Dispatcher.dispatch(...)`, including `signal` or `isAborted()` when the host exposes request cancellation.

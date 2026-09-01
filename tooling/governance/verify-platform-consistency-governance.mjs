@@ -35,6 +35,18 @@ const manualSseLifecycleRegressionTest =
   'packages/http/src/dispatch/dispatcher-manual-sse-lifecycle.test.ts';
 const httpConnectionIdentityRegressionTest = 'packages/http/src/connection.test.ts';
 const accessLogObserverLifecycleRegressionTest = 'packages/http/src/access-log-observer.test.ts';
+const httpByteRangeRuntimeSourcePaths = new Set([
+  'packages/http/src/byte-range-response.ts',
+  'packages/http/src/dispatch/byte-range-response.ts',
+  'packages/http/src/dispatch/conditional-request-policy.ts',
+  'packages/http/src/dispatch/dispatch-response-policy.ts',
+]);
+const httpByteRangeRegressionEvidence = [
+  'packages/http/src/dispatch/conditional-request-policy.test.ts',
+  'packages/http/src/dispatch/byte-range-response.test.ts',
+  'packages/testing/src/portability/http-adapter-portability.ts',
+  'packages/testing/src/portability/http-adapter-portability.test.ts',
+];
 
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 export { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
@@ -856,6 +868,13 @@ export function enforceContractCompanionUpdates(changedFiles) {
       hasChanged(changedFiles, httpRuntimeChangedPathRegression),
       `HTTP runtime contract updates must include ${httpRuntimeChangedPathRegression}.`,
     );
+    if (includesAny(changedFiles, (path) => httpByteRangeRuntimeSourcePaths.has(path))) {
+      assert(
+        httpByteRangeRegressionEvidence.every((path) => hasChanged(changedFiles, path)),
+        `HTTP byte-range runtime contract changes must include ${httpByteRangeRegressionEvidence.join(', ')}.`,
+      );
+      return;
+    }
     if (
       hasChanged(changedFiles, httpConnectionIdentityRegressionTest)
       || hasChanged(changedFiles, accessLogObserverLifecycleRegressionTest)
@@ -964,7 +983,9 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // default-value or options overload, plus JWT refresh-token-specific HMAC
   // algorithm policy separation from narrow access-token algorithm allowlists,
   // plus HTTP conditional-request middleware/guard ordering, representation
-  // existence, conditional/HEAD response ownership, and cross-adapter
+  // existence, conditional/HEAD response ownership, single-range 206 and
+  // bodyless 416 partial responses, If-Range reuse of selected validators,
+  // identity-encoded representation-byte metadata, and cross-adapter
   // conformance.
 
   assert(
@@ -2463,6 +2484,13 @@ export function enforceHttpRuntimeCancellationAndContextIsolation() {
   const sseBackpressureRegression = read(
     'packages/http/src/dispatch/dispatcher-sse-backpressure-cancellation.test.ts',
   );
+  const byteRangeRegression = read('packages/http/src/dispatch/byte-range-response.test.ts');
+  const httpAdapterPortabilityHarness = read(
+    'packages/testing/src/portability/http-adapter-portability.ts',
+  );
+  const httpAdapterPortabilityRegression = read(
+    'packages/testing/src/portability/http-adapter-portability.test.ts',
+  );
 
   assert(
     abortSource.includes('request.isAborted?.() === true || request.signal?.aborted === true'),
@@ -2530,6 +2558,17 @@ export function enforceHttpRuntimeCancellationAndContextIsolation() {
       sseBackpressureRegression.includes('writeFailure') &&
       sseBackpressureRegression.includes('drainFailure'),
     'Managed SSE regressions must cover blocked-drain cancellation, exactly-once iterator cleanup, request-scope disposal, and original stream errors.',
+  );
+  assert(
+    byteRangeRegression.includes('if-range') &&
+      byteRangeRegression.includes('uses the complete representation when If-Range does not match') &&
+      byteRangeRegression.includes('writes a satisfiable byte range from a byte representation'),
+    'HTTP byte-range regressions must cover satisfiable range selection and If-Range fallback.',
+  );
+  assert(
+    httpAdapterPortabilityHarness.includes('assertSupportsSingleByteRanges') &&
+      httpAdapterPortabilityRegression.includes('await harness.assertSupportsSingleByteRanges()'),
+    'HTTP byte-range regressions must retain canonical listener-harness coverage.',
   );
 
   for (const documentationPath of [
@@ -2741,6 +2780,7 @@ export function enforceHttpCustomMethodContract() {
 export function enforceHttpAdapterPortabilityDocumentationContract(readText = read) {
   const assertionOrder = [
     'assertSupportsCustomHttpRouteMethods()',
+    'assertSupportsSingleByteRanges()',
     'assertSupportsHttpErrorRepresentations()',
     'assertDoesNotCommitAbortedHttpErrorRepresentations()',
     'assertPreservesMalformedCookieValues()',
@@ -2812,6 +2852,7 @@ export function enforceHttpAdapterPortabilityDocumentationContract(readText = re
       'createHttpAdapterPortabilityHarness(...)',
       'assertSupportsPortableResponseCookies()',
       'assertSupportsCustomHttpRouteMethods()',
+      'assertSupportsSingleByteRanges()',
       'assertSupportsHttpErrorRepresentations()',
       'assertDoesNotCommitAbortedHttpErrorRepresentations()',
       'assertPreservesExactRawBodyBytesForByteSensitivePayloads()',
