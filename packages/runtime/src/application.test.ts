@@ -906,16 +906,25 @@ describe('bootstrapApplication', () => {
       controllers: [SearchController],
     });
 
-    const port = await findAvailablePort();
     const app = await runNodeApplication(AppModule, {
       converters: [QueryNumberConverter],
       cors: false,
-      port,
+      port: 0,
       shutdownSignals: false,
     });
 
     try {
-      const response = await fetchForTest(`http://127.0.0.1:${String(port)}/search?id=42`);
+      const adapter = await app.get(HTTP_APPLICATION_ADAPTER);
+      if (!(adapter instanceof NodeHttpApplicationAdapter)) {
+        throw new Error('Expected the runtime Node HTTP application adapter.');
+      }
+
+      const address: AddressInfo | string | null = adapter.getServer().address();
+      if (!address || typeof address === 'string') {
+        throw new Error('Failed to resolve the bound test port.');
+      }
+
+      const response = await fetchForTest(`http://127.0.0.1:${String(address.port)}/search?id=42`);
 
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toEqual({ id: 42, type: 'number' });
