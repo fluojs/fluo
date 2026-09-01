@@ -379,6 +379,36 @@ describe('HttpDtoValidationAdapter', () => {
     });
   });
 
+  it('forwards strict materialization options to the validation engine', async () => {
+    // Given
+    class CreateUserRequest {
+      @FromBody('name')
+      @IsString()
+      name = '';
+    }
+
+    const validator = new HttpDtoValidationAdapter();
+
+    // When
+    const result = validator.materialize(
+      { extra: true, name: 'Ada' },
+      CreateUserRequest,
+      { undeclaredProperties: 'reject' },
+    );
+
+    // Then
+    await expect(result).rejects.toMatchObject({
+      details: [
+        {
+          code: 'UNDECLARED_PROPERTY',
+          field: 'extra',
+          message: 'extra is not declared by the DTO.',
+        },
+      ],
+      status: 400,
+    });
+  });
+
   it('supports validator-style email and array decorators', async () => {
     class CreateInviteRequest {
       @FromBody('email')

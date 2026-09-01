@@ -139,7 +139,8 @@ export const IsDate = createFlagValidationDecorator((options) => ({ kind: 'date'
  */
 export const IsArray = createFlagValidationDecorator((options) => ({ kind: 'array', ...options }));
 /**
- * Validates that the decorated field is an object value.
+ * Validates that the decorated field is a plain object value, including a null-prototype record.
+ * Class instances, `Date`, `Map`, and `Set` values are rejected.
  *
  * @param options Optional validation behavior (`message`, `code`, `each`).
  * @returns A field decorator that registers an object validation rule.
@@ -670,7 +671,8 @@ export function ArrayUnique(
 /**
  * Registers a custom field-level validation function.
  *
- * @param validate Custom validator callback invoked with `(dto, value)`.
+ * @param validate Custom validator callback invoked with `(value, context)`, where `context.dto`
+ * is the containing DTO and `context.propertyKey` is the decorated field key.
  * @param options Optional custom-validator metadata (`message`, `code`, `source`, `each`).
  * @returns A field decorator that registers a custom validation rule.
  */
