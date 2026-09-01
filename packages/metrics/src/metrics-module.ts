@@ -23,6 +23,7 @@ import {
 import { MetricsService } from './metrics-service.js';
 import { METER_PROVIDER } from './providers/meter-provider.js';
 import { PrometheusMeterProvider } from './providers/prometheus-meter-provider.js';
+import { SerializedScrapeQueue } from './serialized-scrape-queue.js';
 
 /** HTTP-specific metric labeling options exposed by `MetricsModule.forRoot(...)`. */
 export interface MetricsHttpOptions {
@@ -245,7 +246,7 @@ type RuntimePlatformTelemetryRegistryState = {
   lastReadinessStatuses: ComponentStatusMap<PlatformReadinessStatus>;
   originalMetrics?: Registry['metrics'];
   registrations: RuntimePlatformTelemetry[];
-  scrapeChain: Promise<unknown>;
+  scrapeQueue: SerializedScrapeQueue;
 };
 type ContainerPresenceProbe = RequestContext['container'] & { has?: (token: Token) => boolean };
 
@@ -401,7 +402,7 @@ function getRuntimePlatformTelemetryRegistryState(registry: Registry): RuntimePl
     lastHealthStatuses: new Map(),
     lastReadinessStatuses: new Map(),
     registrations: [],
-    scrapeChain: Promise.resolve(),
+    scrapeQueue: new SerializedScrapeQueue(),
   };
   PLATFORM_TELEMETRY_REGISTRY_STATES.set(registry, state);
   return state;
@@ -538,17 +539,10 @@ class RuntimePlatformTelemetry implements OnModuleDestroy {
   }
 
   private collectScrape(render: () => Promise<string>): Promise<string> {
-    const scrape = this.telemetryState.scrapeChain.then(async () => {
+    return this.telemetryState.scrapeQueue.enqueue(async () => {
       await this.refresh();
       return await render();
     });
-
-    this.telemetryState.scrapeChain = scrape.then(
-      () => undefined,
-      () => undefined,
-    );
-
-    return scrape;
   }
 
   private async refresh(): Promise<void> {
