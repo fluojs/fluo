@@ -195,8 +195,21 @@ export class MetricsModule {
     const registry = configuredRegistry ?? options.registry ?? new PrometheusRegistry();
 
     if (options.defaultMetrics !== false && !MetricsModule.registeredRegistries.has(registry)) {
+      const existingMetricNames = new Set(registry.getMetricsAsArray().map((metric) => metric.name));
+
+      try {
+        collectDefaultMetrics({ register: registry });
+      } catch (error) {
+        for (const metric of registry.getMetricsAsArray()) {
+          if (!existingMetricNames.has(metric.name)) {
+            registry.removeSingleMetric(metric.name);
+          }
+        }
+
+        throw error;
+      }
+
       MetricsModule.registeredRegistries.add(registry);
-      collectDefaultMetrics({ register: registry });
     }
 
     return registry;

@@ -469,6 +469,51 @@ describe('MetricsModule', () => {
     }
   });
 
+  it('rolls back partial default collector registration so a cleaned registry can retry', async () => {
+    const sharedRegistry = new Registry();
+
+    new Counter({
+      help: 'Application-owned collector that forces a prom-client collision.',
+      name: 'process_cpu_seconds_total',
+      registers: [sharedRegistry],
+    });
+
+    class FailedAppModule {}
+
+    defineModule(FailedAppModule, {
+      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+    });
+
+    // Given: prom-client registers the CPU user and system collectors before its total collector collides.
+    await expect(bootstrapApplication({ rootModule: FailedAppModule })).rejects.toThrow(
+      'A metric with the name process_cpu_seconds_total has already been registered.',
+    );
+
+    // Then: failed framework registration preserves only the application-owned conflict.
+    expect(sharedRegistry.getSingleMetric('process_cpu_user_seconds_total')).toBeUndefined();
+    expect(sharedRegistry.getSingleMetric('process_cpu_system_seconds_total')).toBeUndefined();
+
+    sharedRegistry.removeSingleMetric('process_cpu_seconds_total');
+
+    class CleanAppModule {}
+
+    defineModule(CleanAppModule, {
+      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+    });
+
+    // When: a clean bootstrap retries the same registry.
+    const app = await bootstrapApplication({ rootModule: CleanAppModule });
+
+    try {
+      // Then: all default CPU collectors register without stale framework ownership.
+      expect(sharedRegistry.getSingleMetric('process_cpu_user_seconds_total')).toBeDefined();
+      expect(sharedRegistry.getSingleMetric('process_cpu_system_seconds_total')).toBeDefined();
+      expect(sharedRegistry.getSingleMetric('process_cpu_seconds_total')).toBeDefined();
+    } finally {
+      await app.close();
+    }
+  });
+
   it('uses explicit platform telemetry labels when provided', async () => {
     class AppModule {}
 
