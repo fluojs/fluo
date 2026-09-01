@@ -1464,6 +1464,95 @@ describe('MetricsModule', () => {
     }
   });
 
+  it('drains telemetry snapshots before stopping platform probe resources', async () => {
+    const sharedRegistry = new Registry();
+    const probeStarted = createDeferred<void>();
+    const probeReleased = createDeferred<void>();
+    const drainEntered = createDeferred<void>();
+    const originalMetrics = sharedRegistry.metrics;
+    const originalDrain = SerializedScrapeQueue.prototype.drain;
+    const probeAccesses: string[] = [];
+    let resourceAvailable = true;
+    let firstHealthProbe = true;
+    let stopped = false;
+
+    const component = createPlatformComponent({ id: 'cache.live', kind: 'cache' });
+    component.health = async () => {
+      if (!resourceAvailable) {
+        throw new Error('Health probe accessed a stopped platform resource.');
+      }
+
+      probeAccesses.push('health');
+      if (firstHealthProbe) {
+        firstHealthProbe = false;
+        probeStarted.resolve();
+        await probeReleased.promise;
+      }
+
+      return { status: 'healthy' };
+    };
+    component.ready = async () => {
+      if (!resourceAvailable) {
+        throw new Error('Readiness probe accessed a stopped platform resource.');
+      }
+
+      probeAccesses.push('readiness');
+      return { critical: false, status: 'ready' };
+    };
+    component.stop = async () => {
+      stopped = true;
+      resourceAvailable = false;
+    };
+
+    const drain = vi.spyOn(SerializedScrapeQueue.prototype, 'drain');
+    drain.mockImplementation(async function drainQueue(
+      this: SerializedScrapeQueue,
+      finalizer: () => void,
+    ): Promise<void> {
+      drainEntered.resolve();
+      await originalDrain.call(this, finalizer);
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+
+    const app = await bootstrapApplication({
+      platform: { components: [component] },
+      rootModule: AppModule,
+    });
+
+    try {
+      const activeScrape = sharedRegistry.metrics();
+      await probeStarted.promise;
+
+      const queuedScrape = sharedRegistry.metrics();
+      const closing = app.close();
+      await drainEntered.promise;
+
+      expect(stopped).toBe(false);
+
+      const appendedScrape = sharedRegistry.metrics();
+      probeReleased.resolve();
+
+      const [activeMetrics] = await Promise.all([activeScrape, queuedScrape, appendedScrape, closing]);
+
+      expect(activeMetrics).toContain('component_id="cache.live"');
+      expect(probeAccesses).toEqual(expect.arrayContaining(['health', 'readiness']));
+      expect(stopped).toBe(true);
+      expect(sharedRegistry.metrics).toBe(originalMetrics);
+      expect(sharedRegistry.getSingleMetric('fluo_component_ready')).toBeUndefined();
+      expect(sharedRegistry.getSingleMetric('fluo_component_health')).toBeUndefined();
+      expect(sharedRegistry.getSingleMetric('fluo_metrics_registry_mode')).toBeUndefined();
+    } finally {
+      probeReleased.resolve();
+      drain.mockRestore();
+      await app.close();
+    }
+  });
+
   it('keeps shared telemetry for an active registration and reboots without stale series', async () => {
     const sharedRegistry = new Registry();
     const applicationCounter = new Counter({

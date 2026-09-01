@@ -1580,7 +1580,7 @@ export async function bootstrapApplication(options: BootstrapApplicationOptions)
 
     const resolveLifecycleStart = timingEnabled ? runtimePerformance.now() : 0;
     lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, lifecycleInstances);
-    lifecycleInstances.push({
+    lifecycleInstances.unshift({
       onModuleDestroy() {
         return platformShell.stop();
       },
@@ -1746,7 +1746,7 @@ export class FluoFactory {
 
       const resolveLifecycleStart = timingEnabled ? runtimePerformance.now() : 0;
       lifecycleInstances = await resolveBootstrapLifecycleInstances(bootstrapped, lifecycleInstances);
-      lifecycleInstances.push({
+      lifecycleInstances.unshift({
         onModuleDestroy() {
           return platformShell.stop();
         },
