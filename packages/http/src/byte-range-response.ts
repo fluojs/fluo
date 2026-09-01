@@ -88,7 +88,8 @@ export function shouldApplyByteRange(
   request: FrameworkRequest,
   validators: ResponseValidators | undefined,
 ): boolean {
-  return parseByteRangeHeader(readFirstNonEmptyRequestHeaderValue(request, 'range')) !== undefined
+  return isByteRangeRequestMethod(request.method)
+    && parseByteRangeHeader(readFirstNonEmptyRequestHeaderValue(request, 'range')) !== undefined
     && matchesIfRange(request, validators);
 }
 
@@ -164,18 +165,50 @@ async function writeByteRangeResponse(
     return;
   }
 
+  const acceptsByteRange = isByteRangeRequestMethod(context.request.method);
+  const range = resolveByteRange(
+    acceptsByteRange
+      ? readFirstNonEmptyRequestHeaderValue(context.request, 'range')
+      : undefined,
+    entry.size,
+    acceptsByteRange && matchesIfRange(context.request, context.validators),
+  );
+  const isHead = context.request.method.toUpperCase() === 'HEAD';
+  const bytes = toBytes(entry.source);
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  let stream: FrameworkResponseStream | undefined;
+
+  if (!isHead && !bytes) {
+    const streamSource = openByteRangeStream(entry.source);
+
+    if (!streamSource) {
+      throw new TypeError('A byte-range response must contain bytes or a portable readable stream.');
+    }
+
+    reader = streamSource.getReader();
+
+    try {
+      stream = response.stream;
+    } catch (error) {
+      reader.releaseLock();
+      throw error;
+    }
+
+    if (!stream) {
+      reader.releaseLock();
+      throw new TypeError('The active HTTP adapter cannot write a portable byte stream.');
+    }
+  }
+
   context.applySuccessResponseMetadata();
-  response.setHeader('Accept-Ranges', 'bytes');
+
+  if (acceptsByteRange) {
+    response.setHeader('Accept-Ranges', 'bytes');
+  }
 
   if (!hasHeader(response, 'content-type')) {
     response.setHeader('Content-Type', entry.contentType);
   }
-
-  const range = resolveByteRange(
-    readFirstNonEmptyRequestHeaderValue(context.request, 'range'),
-    entry.size,
-    matchesIfRange(context.request, context.validators),
-  );
 
   if (range.kind === 'unsatisfiable') {
     response.setStatus(416);
@@ -193,30 +226,26 @@ async function writeByteRangeResponse(
     response.setHeader('Content-Length', String(entry.size));
   }
 
-  if (context.request.method.toUpperCase() === 'HEAD') {
+  if (isHead) {
     await response.send(undefined);
     return;
   }
-
-  const bytes = toBytes(entry.source);
 
   if (bytes) {
     await response.send(range.kind === 'partial' ? bytes.slice(range.start, range.end + 1) : bytes);
     return;
   }
 
-  const streamSource = openByteRangeStream(entry.source);
-
-  if (!streamSource) {
-    throw new TypeError('A byte-range response must contain bytes or a portable readable stream.');
+  if (!reader || !stream) {
+    throw new TypeError('A byte-range response must contain an opened portable readable stream.');
   }
 
   await writeReadableStream(
-    streamSource,
+    reader,
     range.kind === 'partial' ? range.start : 0,
     range.kind === 'partial' ? range.end : entry.size - 1,
     context.request,
-    response,
+    stream,
   );
 }
 
@@ -237,8 +266,16 @@ function toBytes(source: ByteRangeResponseSource): Uint8Array | undefined {
   return undefined;
 }
 
-function isReadableStream(source: ByteRangeResponseSource): source is ReadableStream<Uint8Array> {
-  return typeof source === 'object' && source !== null && 'getReader' in source;
+function isByteRangeRequestMethod(method: string): boolean {
+  const normalizedMethod = method.toUpperCase();
+  return normalizedMethod === 'GET' || normalizedMethod === 'HEAD';
+}
+
+function isReadableStream(source: unknown): source is ReadableStream<Uint8Array> {
+  return typeof source === 'object'
+    && source !== null
+    && 'getReader' in source
+    && typeof source.getReader === 'function';
 }
 
 function openByteRangeStream(source: ByteRangeResponseSource): ReadableStream<Uint8Array> | undefined {
@@ -247,38 +284,54 @@ function openByteRangeStream(source: ByteRangeResponseSource): ReadableStream<Ui
 }
 
 async function writeReadableStream(
-  source: ReadableStream<Uint8Array>,
+  reader: ReadableStreamDefaultReader<Uint8Array>,
   start: number,
   end: number,
   request: FrameworkRequest,
-  response: FrameworkResponse,
+  stream: FrameworkResponseStream,
 ): Promise<void> {
-  const stream = response.stream;
-
-  if (!stream) {
-    throw new TypeError('The active HTTP adapter cannot write a portable byte stream.');
-  }
-
-  const reader = source.getReader();
   let skip = start;
   let remaining = end - start + 1;
-  let closed = false;
-
-  const close = (): void => {
-    if (closed) {
-      return;
+  let stopped = false;
+  let resolveStop: () => void = () => {};
+  let cancellation: Promise<void> | undefined;
+  const stopPromise = new Promise<void>((resolve) => {
+    resolveStop = resolve;
+  });
+  const cancel = (): Promise<void> => {
+    cancellation ??= reader.cancel().catch(() => undefined);
+    return cancellation;
+  };
+  const stop = (): void => {
+    if (!stopped) {
+      stopped = true;
+      resolveStop();
     }
 
-    closed = true;
-    void reader.cancel();
+    void cancel();
   };
-  const removeCloseListener = stream.onClose?.(close);
-  request.signal?.addEventListener('abort', close, { once: true });
-  response.committed = true;
+  const removeCloseListener = stream.onClose?.(stop);
+  request.signal?.addEventListener('abort', stop, { once: true });
+
+  if (isByteRangeRequestAborted(request)) {
+    stop();
+  }
 
   try {
-    while (remaining > 0 && !closed && !stream.closed) {
-      const { done, value } = await reader.read();
+    while (remaining > 0 && !stopped && !stream.closed) {
+      if (isByteRangeRequestAborted(request)) {
+        stop();
+        break;
+      }
+
+      const result = await raceWithStop(reader.read(), stopPromise);
+
+      if (!result || stopped || isByteRangeRequestAborted(request)) {
+        stop();
+        break;
+      }
+
+      const { done, value } = result;
 
       if (done) {
         break;
@@ -296,16 +349,39 @@ async function writeReadableStream(
       remaining -= chunk.byteLength;
 
       if (chunk.byteLength > 0 && stream.write(chunk) === false) {
-        await stream.waitForDrain?.();
+        const drain = stream.waitForDrain?.();
+
+        if (drain) {
+          await raceWithStop(drain, stopPromise);
+        }
+
+        if (isByteRangeRequestAborted(request)) {
+          stop();
+        }
       }
     }
   } finally {
-    request.signal?.removeEventListener('abort', close);
+    request.signal?.removeEventListener('abort', stop);
     removeCloseListener?.();
-    close();
+    await cancel();
+    reader.releaseLock();
 
     if (!stream.closed) {
       stream.close();
     }
   }
+}
+
+function isByteRangeRequestAborted(request: FrameworkRequest): boolean {
+  return request.signal?.aborted === true || request.isAborted?.() === true;
+}
+
+async function raceWithStop<T>(
+  operation: Promise<T>,
+  stop: Promise<void>,
+): Promise<T | undefined> {
+  return await Promise.race([
+    operation,
+    stop.then(() => undefined),
+  ]);
 }

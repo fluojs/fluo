@@ -281,22 +281,25 @@ export function createFrameworkResponse(
       const payload = typeof serialized.payload === 'string'
         ? Buffer.from(serialized.payload, 'utf8')
         : serialized.payload;
-      const activeCompression = resolveCompression();
 
-      if (activeCompression && response.statusCode !== 206 && !response.hasHeader('Content-Range')) {
-        this.committed = true;
+      if (response.statusCode !== 206 && !response.hasHeader('Content-Range')) {
+        const activeCompression = resolveCompression();
 
-        return Promise.resolve(activeCompression.write(payload, { contentType }))
-          .then((handled) => {
-            if (!handled && !response.writableEnded) {
-              response.end(payload);
-            }
-          })
-          .catch(() => {
-            if (!response.writableEnded) {
-              response.end();
-            }
-          });
+        if (activeCompression) {
+          this.committed = true;
+
+          return Promise.resolve(activeCompression.write(payload, { contentType }))
+            .then((handled) => {
+              if (!handled && !response.writableEnded) {
+                response.end(payload);
+              }
+            })
+            .catch(() => {
+              if (!response.writableEnded) {
+                response.end();
+              }
+            });
+        }
       }
 
       response.end(payload);

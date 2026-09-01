@@ -495,7 +495,7 @@ dispatcher는 RFC 9110 precedence와 comparison을 소유합니다. 성공한 `I
 
 ## 바이트 범위 응답
 
-`Uint8Array` 또는 `ArrayBuffer`를 반환하면 RFC 단일 `bytes` 범위 응답이 자동으로 활성화됩니다. 유효한 범위는 `206`, `Accept-Ranges: bytes`, `Content-Range`, 정확한 identity-byte `Content-Length`를 생성합니다. malformed 또는 multi-range field는 전체 `200` representation으로 fallback하고, 충족 불가능한 범위는 `Content-Range: bytes */<size>`와 body 없는 `416`을 반환합니다.
+`Uint8Array` 또는 `ArrayBuffer`를 반환하면 `GET`과 `HEAD` metadata mirror에서 RFC 단일 `bytes` 범위 응답이 자동으로 활성화됩니다. 유효한 범위는 `206`, `Accept-Ranges: bytes`, `Content-Range`, 정확한 identity-byte `Content-Length`를 생성합니다. malformed 또는 multi-range field는 전체 representation으로 fallback하고, 충족 불가능한 범위는 `Accept-Ranges: bytes`, `Content-Range: bytes */<size>`, `Content-Length: 0`을 포함한 body 없는 `416`을 반환합니다. `POST`, unsafe, custom method는 `Range`를 무시하고 원래 full status, body, metadata를 유지합니다.
 
 portable `ReadableStream`에는 정확한 전체 크기와 함께 `createByteRangeResponse(...)`를 사용하세요. `HEAD`가 stream을 만들지 않아야 하면 factory를 전달합니다.
 
@@ -508,7 +508,7 @@ return createByteRangeResponse(
 );
 ```
 
-dispatcher는 먼저 일반 conditional request를 평가합니다. 그 다음 `If-Range`는 정확한 strong `ETag` 또는 현재 `Last-Modified` date일 때만 partial response를 허용하며, 그 외에는 전체 representation을 보냅니다. partial response는 range offset과 length를 보존하도록 identity byte를 유지하고 Node compression을 건너뜁니다. `HEAD`는 GET의 status와 metadata를 보존하면서 stream을 열지 않습니다.
+dispatcher는 먼저 일반 conditional request를 평가합니다. 그 다음 `If-Range`는 정확한 strong `ETag` 또는 현재 `Last-Modified` date일 때만 partial response를 허용하며, 그 외에는 전체 representation을 보냅니다. partial response는 range offset과 length를 보존하도록 identity byte를 유지하고 Node compression을 건너뜁니다. `HEAD`는 GET의 status와 metadata를 보존하면서 stream을 열지 않습니다. Byte, 정확한 size, filesystem resource는 애플리케이션이 소유합니다. `createByteRangeResponse(...)`는 file을 열거나, stat, seek, size 계산, close하지 않으며 multi-range response도 의도적으로 구성하지 않습니다.
 
 ## 관련 패키지
 

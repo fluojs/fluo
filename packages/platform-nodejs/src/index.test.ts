@@ -1,7 +1,16 @@
 import { type AddressInfo, createServer } from 'node:net';
 import type { ServerOptions as HttpServerOptions } from 'node:http';
 import type { ServerOptions as HttpsServerOptions } from 'node:https';
-import { Controller, type Dispatcher, FromBody, Get, Post, type RequestContext, RequestDto } from '@fluojs/http';
+import {
+  Controller,
+  createByteRangeResponse,
+  type Dispatcher,
+  FromBody,
+  Get,
+  Post,
+  type RequestContext,
+  RequestDto,
+} from '@fluojs/http';
 import { defineModule, FluoFactory, type MultipartOptions } from '@fluojs/runtime';
 import {
   type BootstrapNodeApplicationOptions,
@@ -324,6 +333,50 @@ describe('@fluojs/platform-nodejs', () => {
     expect(platformNodejsApi).not.toHaveProperty('createNodeResponseCompression');
     expect(platformNodejsApi).not.toHaveProperty('createNodeShutdownSignalRegistration');
     expect(platformNodejsApi).not.toHaveProperty('registerShutdownSignals');
+  });
+
+  it('compresses full byte representations but preserves ranged identity bytes', async () => {
+    const representation = new TextEncoder().encode('compressible response '.repeat(128));
+
+    @Controller('/assets')
+    class AssetController {
+      @Get('/logo')
+      getLogo() {
+        return createByteRangeResponse(representation, { contentType: 'text/plain' });
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [AssetController] });
+
+    const adapter = new NodeHttpApplicationAdapter(0, '127.0.0.1', 1, 2, true, undefined);
+    const app = await FluoFactory.create(AppModule, {
+      adapter,
+    });
+
+    try {
+      await app.listen();
+      const baseUrl = `http://127.0.0.1:${String(getBoundPort(adapter.getServer()))}`;
+      const [fullResponse, partialResponse] = await Promise.all([
+        fetch(`${baseUrl}/assets/logo`, { headers: { 'accept-encoding': 'gzip' } }),
+        fetch(`${baseUrl}/assets/logo`, {
+          headers: {
+            'accept-encoding': 'gzip',
+            range: 'bytes=2-4',
+          },
+        }),
+      ]);
+
+      expect(fullResponse.status).toBe(200);
+      expect(fullResponse.headers.get('content-encoding')).toBe('gzip');
+      await expect(fullResponse.bytes()).resolves.toEqual(representation);
+      expect(partialResponse.status).toBe(206);
+      expect(partialResponse.headers.get('content-encoding')).toBeNull();
+      expect(partialResponse.headers.get('content-length')).toBe('3');
+      await expect(partialResponse.bytes()).resolves.toEqual(representation.slice(2, 5));
+    } finally {
+      await app.close();
+    }
   });
 
   it('supports adapter-first startup on the runtime facade for raw Node', async () => {

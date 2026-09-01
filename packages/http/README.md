@@ -502,7 +502,7 @@ The dispatcher owns RFC 9110 precedence and comparison: a successful `If-Match` 
 
 ## Byte Range Responses
 
-Returning a `Uint8Array` or `ArrayBuffer` enables RFC single-range `bytes` responses automatically. A valid range produces `206`, `Accept-Ranges: bytes`, `Content-Range`, and the exact identity-byte `Content-Length`; malformed or multi-range fields fall back to the complete `200` representation, while unsatisfiable ranges return bodyless `416` with `Content-Range: bytes */<size>`.
+Returning a `Uint8Array` or `ArrayBuffer` enables RFC single-range `bytes` responses automatically for `GET` and the `HEAD` metadata mirror. A valid range produces `206`, `Accept-Ranges: bytes`, `Content-Range`, and the exact identity-byte `Content-Length`; malformed or multi-range fields fall back to the complete representation, while unsatisfiable ranges return bodyless `416` with `Accept-Ranges: bytes`, `Content-Range: bytes */<size>`, and `Content-Length: 0`. `POST`, unsafe, and custom methods ignore `Range` and retain their ordinary full status, body, and metadata.
 
 Use `createByteRangeResponse(...)` for a portable `ReadableStream` and provide its exact full size. Pass a factory when `HEAD` must not construct the stream:
 
@@ -515,7 +515,7 @@ return createByteRangeResponse(
 );
 ```
 
-The dispatcher evaluates normal conditional requests first. `If-Range` then permits a partial response only for an exact strong `ETag` or a current `Last-Modified` date; otherwise it sends the complete representation. Partial responses preserve identity bytes and bypass Node compression so range offsets and lengths remain meaningful. `HEAD` preserves GET status and metadata without opening the stream.
+The dispatcher evaluates normal conditional requests first. `If-Range` then permits a partial response only for an exact strong `ETag` or a current `Last-Modified` date; otherwise it sends the complete representation. Partial responses preserve identity bytes and bypass Node compression so range offsets and lengths remain meaningful. `HEAD` preserves GET status and metadata without opening the stream. The application owns its bytes, exact size, and any filesystem resource: `createByteRangeResponse(...)` never opens, stats, seeks, sizes, or closes files, and it intentionally does not construct multi-range responses.
 
 ## Related Packages
 

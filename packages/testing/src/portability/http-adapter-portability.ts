@@ -469,6 +469,11 @@ export class HttpAdapterPortabilityHarness<
       headLogo() {
         return Uint8Array.from([0, 1, 2, 3, 4, 5]);
       }
+
+      @Post('/logo')
+      postLogo() {
+        return Uint8Array.from([0, 1, 2, 3, 4, 5]);
+      }
     }
 
     class AppModule {}
@@ -482,36 +487,56 @@ export class HttpAdapterPortabilityHarness<
     await prepareAndListenWithCleanup(app, this.options.name);
 
     await runWithListeningUrlCleanup(app, this.options.name, async (baseUrl) => {
-      const [bounded, suffix, unsatisfiable, head] = await Promise.all([
+      const [bounded, suffix, openEnded, malformed, multiple, unsatisfiable, head, post] = await Promise.all([
         fetch(`${baseUrl}/assets/logo`, { headers: { range: 'bytes=2-4' } }),
         fetch(`${baseUrl}/assets/logo`, { headers: { range: 'bytes=-2' } }),
+        fetch(`${baseUrl}/assets/logo`, { headers: { range: 'bytes=3-' } }),
+        fetch(`${baseUrl}/assets/logo`, { headers: { range: 'items=2-4' } }),
+        fetch(`${baseUrl}/assets/logo`, { headers: { range: 'bytes=0-1,3-4' } }),
         fetch(`${baseUrl}/assets/logo`, { headers: { range: 'bytes=9-' } }),
         fetch(`${baseUrl}/assets/logo`, { headers: { range: 'bytes=2-4' }, method: 'HEAD' }),
+        fetch(`${baseUrl}/assets/logo`, { headers: { range: 'bytes=2-4' }, method: 'POST' }),
       ]);
 
-      const [boundedBytes, suffixBytes, unsatisfiableBody, headBody] = await Promise.all([
+      const [boundedBytes, suffixBytes, openEndedBytes, malformedBytes, multipleBytes, unsatisfiableBody, headBody, postBytes] = await Promise.all([
         bounded.bytes(),
         suffix.bytes(),
+        openEnded.bytes(),
+        malformed.bytes(),
+        multiple.bytes(),
         unsatisfiable.text(),
         head.text(),
+        post.bytes(),
       ]);
 
       if (
         bounded.status !== 206
         || suffix.status !== 206
+        || openEnded.status !== 206
+        || malformed.status !== 200
+        || multiple.status !== 200
         || unsatisfiable.status !== 416
         || head.status !== 206
+        || post.status !== 201
         || bounded.headers.get('accept-ranges') !== 'bytes'
         || bounded.headers.get('content-range') !== 'bytes 2-4/6'
         || bounded.headers.get('content-length') !== '3'
         || suffix.headers.get('content-range') !== 'bytes 4-5/6'
+        || openEnded.headers.get('content-range') !== 'bytes 3-5/6'
+        || openEnded.headers.get('content-length') !== '3'
+        || unsatisfiable.headers.get('accept-ranges') !== 'bytes'
         || unsatisfiable.headers.get('content-range') !== 'bytes */6'
+        || unsatisfiable.headers.get('content-length') !== '0'
         || unsatisfiableBody !== ''
         || head.headers.get('content-range') !== bounded.headers.get('content-range')
         || head.headers.get('content-length') !== bounded.headers.get('content-length')
         || headBody !== ''
         || !equalByteArrays(boundedBytes, Uint8Array.from([2, 3, 4]))
         || !equalByteArrays(suffixBytes, Uint8Array.from([4, 5]))
+        || !equalByteArrays(openEndedBytes, Uint8Array.from([3, 4, 5]))
+        || !equalByteArrays(malformedBytes, Uint8Array.from([0, 1, 2, 3, 4, 5]))
+        || !equalByteArrays(multipleBytes, Uint8Array.from([0, 1, 2, 3, 4, 5]))
+        || !equalByteArrays(postBytes, Uint8Array.from([0, 1, 2, 3, 4, 5]))
       ) {
         throw new Error(`${this.options.name} adapter changed single byte-range response semantics.`);
       }
