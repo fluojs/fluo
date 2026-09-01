@@ -1,6 +1,6 @@
 import { Inject, type Token } from '@fluojs/core';
-import { ContainerResolutionError, type Container, type Provider } from '@fluojs/di';
-import { Controller, Get, forRoutes, type Middleware, type MiddlewareLike, type RequestContext } from '@fluojs/http';
+import { type Container, ContainerResolutionError, type Provider } from '@fluojs/di';
+import { Controller, forRoutes, Get, type Middleware, type MiddlewareLike, type RequestContext } from '@fluojs/http';
 import {
   defineModule,
   type ModuleType,
@@ -8,7 +8,7 @@ import {
   PLATFORM_SHELL,
   type PlatformShellSnapshot,
 } from '@fluojs/runtime';
-import { RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
+import { BOOTSTRAP_PROVIDER_TOKENS, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import { collectDefaultMetrics, Gauge, Registry as PrometheusRegistry, type Registry } from 'prom-client';
 
 import {
@@ -17,12 +17,14 @@ import {
   type HttpMetricsPathLabelMode,
   type HttpMetricsPathLabelNormalizer,
 } from './http-metrics-middleware.js';
-import { METER_PROVIDER } from './providers/meter-provider.js';
 import { MetricsService } from './metrics-service.js';
+import { METER_PROVIDER } from './providers/meter-provider.js';
 import { PrometheusMeterProvider } from './providers/prometheus-meter-provider.js';
 
 /** HTTP-specific metric labeling options exposed by `MetricsModule.forRoot(...)`. */
 export interface MetricsHttpOptions {
+  /** Duration buckets in seconds for the built-in HTTP request histogram. */
+  durationHistogramBuckets?: readonly number[];
   /** How request paths are converted into Prometheus label values. Defaults to route templates. */
   pathLabelMode?: HttpMetricsPathLabelMode;
   /** Custom path-label normalizer for bounded application-specific label values. */
@@ -56,14 +58,16 @@ export interface MetricsModuleOptions {
     /** Instance label value. Defaults to `local`. */
     instance?: string;
   };
-  /** External Prometheus registry to share between built-in and custom metrics. */
+  /** Legacy shared-registry fallback. Prefer the `METRICS_REGISTRY` bootstrap provider. */
   registry?: Registry;
 }
+
+/** Bootstrap provider token for a Registry shared by metrics module instances. */
+export const METRICS_REGISTRY: Token<Registry> = Symbol.for('fluo.metrics.registry');
 
 /** Module entry point that exposes `/metrics` and optional HTTP/runtime telemetry. */
 export class MetricsModule {
   private static registeredRegistries = new WeakSet<Registry>();
-  private static httpInstrumentationRegistrations = new WeakMap<Registry, HttpInstrumentationRegistration>();
 
   /**
    * Register framework metrics, optional HTTP middleware, and a scrape endpoint.
@@ -72,11 +76,10 @@ export class MetricsModule {
    * ```ts
    * MetricsModule.forRoot({
    *   http: { pathLabelMode: 'template' },
-   *   registry: new Registry(),
    * });
    * ```
    *
-   * @param options Metrics endpoint, registry, HTTP middleware, and runtime telemetry configuration.
+   * @param options Metrics endpoint, HTTP middleware, and runtime telemetry configuration.
    * @returns A runtime module that exposes metrics through the configured path.
    */
   static forRoot(options: MetricsModuleOptions = {}): ModuleType {
@@ -88,9 +91,9 @@ export class MetricsModule {
     const httpOptions = resolveHttpOptions(options.http);
     const metricsPath = options.path === undefined ? '/metrics' : options.path;
 
-    let registryToken: Token<Registry> = Symbol('MetricsModule.registry');
+    const registryToken: Token<Registry> = Symbol('MetricsModule.registry');
     const platformTelemetryToken: Token<RuntimePlatformTelemetry> = Symbol('MetricsModule.platformTelemetry');
-    let httpMetricsMiddleware = httpOptions
+    const httpMetricsMiddleware = httpOptions
       ? createHttpMetricsMiddleware(registryToken, httpOptions)
       : undefined;
 
@@ -104,48 +107,34 @@ export class MetricsModule {
 
     const registryProvider: Provider = {
       provide: registryToken,
-      useFactory: () => MetricsModule.createRegistry(options),
+      inject: [RUNTIME_CONTAINER, BOOTSTRAP_PROVIDER_TOKENS],
+      useFactory: async (container: unknown, bootstrapProviderTokens: unknown) => {
+        const runtimeContainer = assertRuntimeContainer(container);
+        const configuredRegistry = assertBootstrapProviderTokens(bootstrapProviderTokens).has(METRICS_REGISTRY)
+          ? assertPrometheusRegistry(await runtimeContainer.resolve(METRICS_REGISTRY))
+          : undefined;
+
+        return MetricsModule.createRegistry(options, configuredRegistry);
+      },
     };
     const imports: ModuleType[] = [];
-    const validationProviders: Provider[] = [];
-    let includeRuntimeRegistryProvider = httpMetricsMiddleware === undefined;
+    const includeRuntimeRegistryProvider = httpMetricsMiddleware === undefined;
 
     if (httpOptions && httpMetricsMiddleware) {
-      const existingRegistration = options.registry
-        ? MetricsModule.httpInstrumentationRegistrations.get(options.registry)
-        : undefined;
+      class MetricsHttpInstrumentationModule {}
 
-      if (existingRegistration) {
-        registryToken = existingRegistration.registryToken;
-        httpMetricsMiddleware = undefined;
-        validationProviders.push(createHttpCollectorValidationProvider(registryToken, httpOptions));
-        imports.push(existingRegistration.moduleType);
-      } else {
-        includeRuntimeRegistryProvider = false;
+      defineModule(MetricsHttpInstrumentationModule, {
+        exports: [registryToken],
+        global: true,
+        middleware: [httpMetricsMiddleware],
+        providers: [registryProvider, httpMetricsMiddleware],
+      });
 
-        class MetricsHttpInstrumentationModule {}
-
-        defineModule(MetricsHttpInstrumentationModule, {
-          exports: [registryToken],
-          global: true,
-          middleware: [httpMetricsMiddleware],
-          providers: [registryProvider, httpMetricsMiddleware],
-        });
-
-        if (options.registry) {
-          MetricsModule.httpInstrumentationRegistrations.set(options.registry, {
-            moduleType: MetricsHttpInstrumentationModule,
-            registryToken,
-          });
-        }
-
-        imports.push(MetricsHttpInstrumentationModule);
-      }
+      imports.push(MetricsHttpInstrumentationModule);
     }
 
     const providers: Provider[] = [
       ...(includeRuntimeRegistryProvider ? [registryProvider] : []),
-      ...validationProviders,
       {
         provide: MetricsService,
         inject: [registryToken, platformTelemetryToken],
@@ -158,11 +147,11 @@ export class MetricsModule {
       },
       {
         provide: platformTelemetryToken,
-        inject: [registryToken, RUNTIME_CONTAINER],
-        useFactory: (registry: unknown, container: unknown) => new RuntimePlatformTelemetry(
+        inject: [registryToken, RUNTIME_CONTAINER, BOOTSTRAP_PROVIDER_TOKENS],
+        useFactory: (registry: unknown, container: unknown, bootstrapProviderTokens: unknown) => new RuntimePlatformTelemetry(
           assertPrometheusRegistry(registry),
           assertRuntimeContainer(container),
-          options.registry ? 'shared' : 'isolated',
+          resolveRegistryMode(options, assertBootstrapProviderTokens(bootstrapProviderTokens)),
           options.platformTelemetry,
         ),
       },
@@ -204,8 +193,8 @@ export class MetricsModule {
     return MetricsRuntimeModule;
   }
 
-  private static createRegistry(options: MetricsModuleOptions): Registry {
-    const registry = options.registry ?? new PrometheusRegistry();
+  private static createRegistry(options: MetricsModuleOptions, configuredRegistry?: Registry): Registry {
+    const registry = configuredRegistry ?? options.registry ?? new PrometheusRegistry();
 
     if (options.defaultMetrics !== false && !MetricsModule.registeredRegistries.has(registry)) {
       MetricsModule.registeredRegistries.add(registry);
@@ -240,16 +229,13 @@ type RuntimePlatformTelemetryRegistryState = {
   registrations: RuntimePlatformTelemetry[];
   scrapeChain: Promise<unknown>;
 };
-type HttpInstrumentationRegistration = {
-  moduleType: ModuleType;
-  registryToken: Token<Registry>;
-};
 type ContainerPresenceProbe = RequestContext['container'] & { has?: (token: Token) => boolean };
 
 const PLATFORM_COMPONENT_LABELS = ['component_id', 'component_kind', 'operation', 'result', 'env', 'instance'] as const;
 const REGISTRY_MODE_LABELS = ['mode'] as const;
 const FRAMEWORK_PLATFORM_GAUGES = new WeakSet<Gauge<string>>();
 const PLATFORM_TELEMETRY_REGISTRY_STATES = new WeakMap<Registry, RuntimePlatformTelemetryRegistryState>();
+const HTTP_INSTRUMENTATION_OWNERS = new WeakMap<Container, WeakSet<Registry>>();
 const HEALTH_STATUSES = ['healthy', 'unhealthy', 'degraded'] as const satisfies readonly PlatformHealthStatus[];
 const READINESS_STATUSES = ['ready', 'not-ready', 'degraded'] as const satisfies readonly PlatformReadinessStatus[];
 const PLATFORM_SHELL_TOKEN_NAMES = new Set([String(PLATFORM_SHELL)]);
@@ -257,32 +243,42 @@ const PLATFORM_SHELL_TOKEN_NAMES = new Set([String(PLATFORM_SHELL)]);
 function createHttpMetricsMiddleware(
   registryToken: Token<Registry>,
   httpOptions: HttpMetricsMiddlewareOptions,
-): new (registry: Registry) => Middleware {
-  @Inject(registryToken)
+): new (registry: Registry, container: Container) => Middleware {
+  @Inject(registryToken, RUNTIME_CONTAINER)
   class MetricsHttpMiddleware implements Middleware {
-    private readonly delegate: HttpMetricsMiddleware;
+    private readonly delegate: HttpMetricsMiddleware | undefined;
 
-    constructor(registry: Registry) {
-      this.delegate = new HttpMetricsMiddleware(registry, httpOptions);
+    constructor(registry: Registry, container: unknown) {
+      const httpMetricsMiddleware = new HttpMetricsMiddleware(registry, httpOptions);
+      const runtimeContainer = assertRuntimeContainer(container);
+
+      if (claimsHttpInstrumentationOwnership(runtimeContainer, registry)) {
+        this.delegate = httpMetricsMiddleware;
+      }
     }
 
     handle(context: Parameters<Middleware['handle']>[0], next: Parameters<Middleware['handle']>[1]): ReturnType<Middleware['handle']> {
-      return this.delegate.handle(context, next);
+      return this.delegate ? this.delegate.handle(context, next) : next();
     }
   }
 
   return MetricsHttpMiddleware;
 }
 
-function createHttpCollectorValidationProvider(
-  registryToken: Token<Registry>,
-  httpOptions: HttpMetricsMiddlewareOptions,
-): Provider {
-  return {
-    provide: Symbol('MetricsModule.httpCollectorValidation'),
-    inject: [registryToken],
-    useFactory: (registry: unknown) => new HttpMetricsMiddleware(assertPrometheusRegistry(registry), httpOptions),
-  };
+function claimsHttpInstrumentationOwnership(container: Container, registry: Registry): boolean {
+  let registryOwners = HTTP_INSTRUMENTATION_OWNERS.get(container);
+
+  if (!registryOwners) {
+    registryOwners = new WeakSet();
+    HTTP_INSTRUMENTATION_OWNERS.set(container, registryOwners);
+  }
+
+  if (registryOwners.has(registry)) {
+    return false;
+  }
+
+  registryOwners.add(registry);
+  return true;
 }
 
 function assertPrometheusRegistry(value: unknown): Registry {
@@ -299,6 +295,18 @@ function assertRuntimeContainer(value: unknown): Container {
   }
 
   return value;
+}
+
+function assertBootstrapProviderTokens(value: unknown): ReadonlySet<Token> {
+  if (!(value instanceof Set)) {
+    throw new Error('MetricsModule bootstrap provider token metadata resolved invalidly.');
+  }
+
+  return value as ReadonlySet<Token>;
+}
+
+function resolveRegistryMode(options: MetricsModuleOptions, bootstrapProviderTokens: ReadonlySet<Token>): RegistryMode {
+  return options.registry || bootstrapProviderTokens.has(METRICS_REGISTRY) ? 'shared' : 'isolated';
 }
 
 function isRuntimeContainer(value: unknown): value is Container {
@@ -704,6 +712,7 @@ function resolveHttpOptions(http: MetricsModuleOptions['http']): HttpMetricsMidd
 
   return {
     allowUnsafeRawPathLabelMode: http.allowUnsafeRawPathLabelMode,
+    durationHistogramBuckets: http.durationHistogramBuckets,
     pathLabelMode: http.pathLabelMode,
     pathLabelNormalizer: http.pathLabelNormalizer,
     unknownPathLabel: http.unknownPathLabel,

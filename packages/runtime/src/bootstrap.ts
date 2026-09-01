@@ -20,16 +20,25 @@ import { type BootstrapTimingPhase, createBootstrapTimingDiagnostics } from './h
 import { getRuntimeClassDiMetadata } from './internal/core-metadata.js';
 import { RuntimeDefaultBinder } from './internal/http-runtime.js';
 import { createDefaultApplicationLogger } from './logging/default-logger.js';
+import { defineModule } from './module-definition.js';
 import { compileModuleGraph, providerToken } from './module-graph.js';
 import { createRuntimePlatformShell, type RuntimePlatformShell } from './platform-shell.js';
-import { defineModule } from './module-definition.js';
 import {
   createLifecycleCloseError,
   createRetryableShutdownState,
   type RetryableShutdownState,
 } from './retryable-shutdown.js';
 import type { BootstrapReadySignal } from './tokens.js';
-import { APPLICATION_LOGGER, BOOTSTRAP_READY_SIGNAL, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, PLATFORM_SHELL, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from './tokens.js';
+import {
+  APPLICATION_LOGGER,
+  BOOTSTRAP_PROVIDER_TOKENS,
+  BOOTSTRAP_READY_SIGNAL,
+  COMPILED_MODULES,
+  HTTP_APPLICATION_ADAPTER,
+  PLATFORM_SHELL,
+  RUNTIME_CLEANUP_REGISTRATION,
+  RUNTIME_CONTAINER,
+} from './tokens.js';
 import type {
   Application,
   ApplicationContext,
@@ -46,7 +55,6 @@ import type {
   ExceptionFilterHandler,
   MicroserviceApplication,
   MicroserviceRuntime,
-  ModuleDefinition,
   ModuleType,
   OnApplicationBootstrap,
   OnApplicationShutdown,
@@ -1325,8 +1333,14 @@ function createRuntimeProviders(
   options: { readonly providers?: Provider[] },
   logger: ApplicationLogger,
 ): Provider[] {
+  const bootstrapProviderTokens = new Set((options.providers ?? []).map(providerToken));
+
   return [
     ...(options.providers ?? []),
+    {
+      provide: BOOTSTRAP_PROVIDER_TOKENS,
+      useValue: bootstrapProviderTokens,
+    },
     {
       provide: APPLICATION_LOGGER,
       useValue: logger,

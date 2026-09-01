@@ -1,9 +1,9 @@
 import { clearCookie, setCookie } from '../../packages/http/dist/cookie-helpers.js';
 
 export const expectedResponseCookies = [
-  'session=hello%20world; Max-Age=90; Domain=example.test; Path=/account; HttpOnly; Secure; SameSite=Lax',
+  'session=hello%20world; Max-Age=90; Path=/account; Domain=example.test; Secure; HttpOnly; SameSite=Lax',
   'refresh=token; Max-Age=180; Path=/account; SameSite=Strict',
-  'session=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Domain=example.test; Path=/account; HttpOnly; Secure; SameSite=Lax',
+  'session=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/account; Domain=example.test; Secure; HttpOnly; SameSite=Lax',
   'refresh=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/account',
 ];
 
