@@ -128,10 +128,15 @@ describe('handler mapping', () => {
     route.path = '/:slug';
     route.headers[0]!.value = 'mutated';
 
+    const header = descriptor.route.headers?.[0];
+    if (header === undefined) {
+      throw new Error('Expected descriptor route headers.');
+    }
+
     expect(Reflect.set(mapping.descriptors, mapping.descriptors.length, descriptor)).toBe(false);
     expect(Reflect.set(descriptor.route, 'path', '/users/:slug')).toBe(false);
     expect(Reflect.set(descriptor.metadata.pathParams, descriptor.metadata.pathParams.length, 'slug')).toBe(false);
-    expect(Reflect.set(descriptor.route.headers?.[0]!, 'value', 'mutated')).toBe(false);
+    expect(Reflect.set(header, 'value', 'mutated')).toBe(false);
     expect(Reflect.set(descriptor.route.redirect!, 'url', '/users/mutated')).toBe(false);
     expect(Object.isFrozen(mapping.descriptors)).toBe(true);
     expect(Object.isFrozen(descriptor)).toBe(true);

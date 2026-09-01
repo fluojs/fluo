@@ -241,16 +241,19 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
 
     @Controller('/assets')
     class AssetController {
+      @Produces('application/octet-stream')
       @Get('/logo')
       getLogo() {
         return Uint8Array.from([0, 1, 2, 3, 4, 5]);
       }
 
+      @Produces('application/octet-stream')
       @Head('/logo')
       headLogo() {
         return Uint8Array.from([0, 1, 2, 3, 4, 5]);
       }
 
+      @Produces('application/octet-stream')
       @Post('/logo')
       postLogo() {
         return Uint8Array.from([0, 1, 2, 3, 4, 5]);
@@ -271,6 +274,23 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
             },
           };
         },
+      },
+      contentNegotiation: {
+        formatters: [{
+          format(body) {
+            return JSON.stringify(body);
+          },
+          mediaType: 'application/json',
+        }, {
+          format(body) {
+            if (!(body instanceof Uint8Array)) {
+              throw new Error('Expected byte-range formatter to receive a Uint8Array.');
+            }
+
+            return body;
+          },
+          mediaType: 'application/octet-stream',
+        }],
       },
       cors: false,
     }));
