@@ -1263,16 +1263,30 @@ async function runBootstrapHooks(instances: unknown[]): Promise<void> {
  * 종료 단계의 hook을 역순으로 실행해 이미 시작한 리소스를 정리한다.
  */
 async function runShutdownHooks(instances: readonly unknown[], signal?: string): Promise<void> {
+  const errors: unknown[] = [];
+
   for (const instance of [...instances].reverse()) {
-    if (isOnModuleDestroy(instance)) {
-      await instance.onModuleDestroy();
+    try {
+      if (isOnModuleDestroy(instance)) {
+        await instance.onModuleDestroy();
+      }
+    } catch (error) {
+      errors.push(error);
     }
   }
 
   for (const instance of [...instances].reverse()) {
-    if (isOnApplicationShutdown(instance)) {
-      await instance.onApplicationShutdown(signal);
+    try {
+      if (isOnApplicationShutdown(instance)) {
+        await instance.onApplicationShutdown(signal);
+      }
+    } catch (error) {
+      errors.push(error);
     }
+  }
+
+  if (errors.length > 0) {
+    throw createLifecycleCloseError(errors);
   }
 }
 
