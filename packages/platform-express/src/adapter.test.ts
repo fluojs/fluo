@@ -1492,18 +1492,17 @@ describe('@fluojs/platform-express', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [StreamingUploadController] });
 
-    const port = await findAvailablePort();
-    const app = await bootstrapExpressApplication(AppModule, {
-      cors: false,
-      multipart: { strategy: 'stream' },
-      port,
-    });
+    const adapter = createExpressAdapter(
+      { host: '127.0.0.1', port: 0 },
+      { strategy: 'stream' },
+    ) as ExpressHttpApplicationAdapter;
+    const app = await fluoFactory.create(AppModule, { adapter });
 
     try {
       await app.listen();
       const form = new FormData();
       form.set('title', 'Ada');
-      const response = await fetch(`http://127.0.0.1:${String(port)}/streaming-upload`, {
+      const response = await fetch(`${adapter.getListenTarget().url}/streaming-upload`, {
         body: form,
         method: 'POST',
       });
@@ -1546,18 +1545,17 @@ describe('@fluojs/platform-express', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [NativeStreamingCleanupController] });
 
-    const port = await findAvailablePort();
-    const app = await bootstrapExpressApplication(AppModule, {
-      cors: false,
-      multipart: { strategy: 'stream' },
-      port,
-    });
+    const adapter = createExpressAdapter(
+      { host: '127.0.0.1', port: 0 },
+      { strategy: 'stream' },
+    ) as ExpressHttpApplicationAdapter;
+    const app = await fluoFactory.create(AppModule, { adapter });
 
     try {
       await app.listen();
       const form = new FormData();
       form.set('title', 'Ada');
-      const response = await fetch(`http://127.0.0.1:${String(port)}/native-streaming-cleanup`, {
+      const response = await fetch(`${adapter.getListenTarget().url}/native-streaming-cleanup`, {
         body: form,
         method: 'POST',
       });
@@ -1617,25 +1615,25 @@ describe('@fluojs/platform-express', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [StreamingAbortController] });
 
-    const port = await findAvailablePort();
-    const app = await bootstrapExpressApplication(AppModule, {
-      cors: false,
-      multipart: { strategy: 'stream' },
-      port,
-    });
+    const adapter = createExpressAdapter(
+      { host: '127.0.0.1', port: 0 },
+      { strategy: 'stream' },
+    ) as ExpressHttpApplicationAdapter;
+    const app = await fluoFactory.create(AppModule, { adapter });
     let request: ReturnType<typeof httpRequest> | undefined;
 
     try {
       await app.listen();
+      const target = new URL(adapter.getListenTarget().url);
       request = httpRequest({
         headers: {
           'content-type': 'multipart/form-data; boundary=fluo-express-disconnect',
           'transfer-encoding': 'chunked',
         },
-        host: '127.0.0.1',
+        host: target.hostname,
         method: 'POST',
         path: '/streaming-abort',
-        port,
+        port: Number(target.port),
       });
       request.on('error', () => {});
       request.write('--fluo-express-disconnect\r\ncontent-disposition: form-data; name="file"; filename="file.txt"\r\n\r\n');
