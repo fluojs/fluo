@@ -12,9 +12,9 @@ import {
 import { bootstrapApplication, defineModule, PLATFORM_SHELL, type PlatformComponent } from '@fluojs/runtime';
 import { Counter, Gauge, Histogram, Registry } from 'prom-client';
 import { describe, expect, it } from 'vitest';
-import { METER_PROVIDER } from './providers/meter-provider.js';
-import { MetricsModule } from './metrics-module.js';
+import { METRICS_REGISTRY, MetricsModule } from './metrics-module.js';
 import { MetricsService } from './metrics-service.js';
+import { METER_PROVIDER } from './providers/meter-provider.js';
 import { PrometheusMeterProvider } from './providers/prometheus-meter-provider.js';
 
 type TestResponse = FrameworkResponse & { body?: unknown };
@@ -787,7 +787,7 @@ describe('MetricsModule', () => {
     );
   });
 
-  it('uses shared registry when provided via options', async () => {
+  it('uses a shared registry configured by bootstrap providers', async () => {
     const sharedRegistry = new Registry();
 
     const customCounter = new Counter({
@@ -801,10 +801,11 @@ describe('MetricsModule', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MetricsModule.forRoot({ registry: sharedRegistry, defaultMetrics: false })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false })],
     });
 
     const app = await bootstrapApplication({
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
       rootModule: AppModule,
     });
 
@@ -1782,6 +1783,124 @@ describe('MetricsModule', () => {
       expect(await secondRegistry.metrics()).not.toContain('bootstrap_local_counter_total');
     } finally {
       await secondApp.close();
+    }
+  });
+
+  it('records one HTTP observation when module instances use the bootstrap registry', async () => {
+    const sharedRegistry = new Registry();
+
+    @Controller('/orders')
+    class OrdersController {
+      @Get('/:orderId')
+      getOrder(): { id: string } {
+        return { id: '123' };
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [OrdersController],
+      imports: [
+        MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-a' }),
+        MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-b' }),
+      ],
+    });
+
+    const app = await bootstrapApplication({
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+      rootModule: AppModule,
+    });
+
+    try {
+      // Given: two HTTP-enabled metrics modules resolve the same bootstrap registry.
+
+      // When: one application request passes through the runtime pipeline.
+      const response = createResponse();
+      await app.dispatch(createRequest('/orders/123'), response);
+
+      // Then: the shared collector receives one observation rather than one per module instance.
+      expect(response.statusCode).toBe(200);
+      expect(await sharedRegistry.metrics()).toContain(
+        'http_requests_total{method="GET",path="/orders/:orderId",status="200"} 1',
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('ignores a private module registry when bootstrap does not provide one', async () => {
+    const privateRegistry = new Registry();
+
+    class UnrelatedModule {}
+
+    defineModule(UnrelatedModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: privateRegistry }],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [UnrelatedModule, MetricsModule.forRoot({ defaultMetrics: false, path: false })],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    try {
+      // Given: an unrelated module privately provides the bootstrap token.
+
+      // When: metrics resolves its registry without a bootstrap-level provider.
+      const metricsService = (await app.container.resolve(MetricsService)) as MetricsService;
+
+      // Then: metrics retains isolated bootstrap ownership instead of reading the private provider.
+      expect(metricsService.getRegistry()).not.toBe(privateRegistry);
+      expect(await metricsService.getRegistry().metrics()).toContain('fluo_metrics_registry_mode{mode="isolated"} 1');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('prefers the bootstrap registry over the legacy registry option', async () => {
+    const bootstrapRegistry = new Registry();
+    const legacyRegistry = new Registry();
+
+    new Counter({
+      help: 'Bootstrap registry marker',
+      name: 'bootstrap_registry_marker_total',
+      registers: [bootstrapRegistry],
+    }).inc();
+    new Counter({
+      help: 'Legacy registry marker',
+      name: 'legacy_registry_marker_total',
+      registers: [legacyRegistry],
+    }).inc();
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: legacyRegistry })],
+    });
+
+    const app = await bootstrapApplication({
+      providers: [{ provide: METRICS_REGISTRY, useValue: bootstrapRegistry }],
+      rootModule: AppModule,
+    });
+
+    try {
+      // Given: bootstrap and legacy configuration specify distinct registries.
+
+      // When: metrics resolves its active registry.
+      const metricsService = (await app.container.resolve(MetricsService)) as MetricsService;
+      const metricsText = await metricsService.getRegistry().metrics();
+
+      // Then: the bootstrap registry has deterministic precedence.
+      expect(metricsService.getRegistry()).toBe(bootstrapRegistry);
+      expect(metricsText).toContain('bootstrap_registry_marker_total 1');
+      expect(metricsText).not.toContain('legacy_registry_marker_total 1');
+    } finally {
+      await app.close();
     }
   });
 });
