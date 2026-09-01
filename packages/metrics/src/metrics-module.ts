@@ -527,31 +527,39 @@ class RuntimePlatformTelemetry implements OnModuleDestroy {
     const telemetryState = this.telemetryState;
     const originalMetrics = registry.metrics;
     telemetryState.originalMetrics = originalMetrics;
-    registry.metrics = async () => {
+    registry.metrics = () => {
       const activeRegistration = telemetryState.registrations.at(-1);
-      await activeRegistration?.refresh();
-      return await originalMetrics.call(registry);
+      if (!activeRegistration) {
+        return originalMetrics.call(registry);
+      }
+
+      return activeRegistration.collectScrape(() => originalMetrics.call(registry));
     };
   }
 
-  async refresh(): Promise<void> {
-    const collect = this.telemetryState.scrapeChain.then(async () => {
-      const platformShell = await this.resolvePlatformShell();
-      if (!platformShell) {
-        this.clearPlatformTelemetry();
-        return;
-      }
-
-      const snapshot = await platformShell.snapshot();
-      this.syncSnapshot(snapshot);
+  private collectScrape(render: () => Promise<string>): Promise<string> {
+    const scrape = this.telemetryState.scrapeChain.then(async () => {
+      await this.refresh();
+      return await render();
     });
 
-    this.telemetryState.scrapeChain = collect.then(
+    this.telemetryState.scrapeChain = scrape.then(
       () => undefined,
       () => undefined,
     );
 
-    await collect;
+    return scrape;
+  }
+
+  private async refresh(): Promise<void> {
+    const platformShell = await this.resolvePlatformShell();
+    if (!platformShell) {
+      this.clearPlatformTelemetry();
+      return;
+    }
+
+    const snapshot = await platformShell.snapshot();
+    this.syncSnapshot(snapshot);
   }
 
   private syncSnapshot(snapshot: PlatformShellSnapshot): void {

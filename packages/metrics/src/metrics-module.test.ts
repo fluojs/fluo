@@ -1794,6 +1794,147 @@ describe('MetricsModule', () => {
     }
   });
 
+  it('serializes each complete platform telemetry scrape snapshot before rendering the next one', async () => {
+    let currentReadiness: 'ready' | 'degraded' = 'ready';
+    let currentHealth: 'healthy' | 'degraded' = 'healthy';
+    let firstProbe = true;
+    let startFirstProbe: (() => void) | undefined;
+    let releaseFirstProbe: (() => void) | undefined;
+    let startFirstRender: (() => void) | undefined;
+    let releaseFirstRender: (() => void) | undefined;
+
+    const firstProbeStarted = new Promise<void>((resolve) => {
+      startFirstProbe = resolve;
+    });
+    const firstProbeReleased = new Promise<void>((resolve) => {
+      releaseFirstProbe = resolve;
+    });
+    const firstRenderStarted = new Promise<void>((resolve) => {
+      startFirstRender = resolve;
+    });
+    const firstRenderReleased = new Promise<void>((resolve) => {
+      releaseFirstRender = resolve;
+    });
+    const sharedRegistry = new Registry();
+    const originalMetrics = sharedRegistry.metrics;
+    let firstRender = true;
+    let snapshotCount = 0;
+
+    sharedRegistry.metrics = async () => {
+      if (firstRender) {
+        firstRender = false;
+        startFirstRender?.();
+        await firstRenderReleased;
+      }
+
+      return await originalMetrics.call(sharedRegistry);
+    };
+
+    async function waitForFirstProbeRelease(): Promise<void> {
+      if (!firstProbe) {
+        return;
+      }
+
+      firstProbe = false;
+      startFirstProbe?.();
+      await firstProbeReleased;
+    }
+
+    const component: PlatformComponent = {
+      async health() {
+        const status = currentHealth;
+        await waitForFirstProbeRelease();
+        return { status };
+      },
+      id: 'cache.serialized',
+      kind: 'cache',
+      async ready() {
+        const status = currentReadiness;
+        await waitForFirstProbeRelease();
+        return { critical: false, status };
+      },
+      snapshot() {
+        snapshotCount += 1;
+        return {
+          dependencies: [],
+          details: {},
+          health: { status: currentHealth },
+          id: 'cache.serialized',
+          kind: 'cache',
+          ownership: { externallyManaged: false, ownsResources: true },
+          readiness: { critical: false, status: currentReadiness },
+          state: currentReadiness === 'ready' ? 'ready' : 'starting',
+          telemetry: { namespace: 'cache', tags: {} },
+        };
+      },
+      async start() {},
+      state() {
+        return currentReadiness === 'ready' ? 'ready' : 'starting';
+      },
+      async stop() {},
+      async validate() {
+        return { issues: [], ok: true };
+      },
+    };
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, registry: sharedRegistry })],
+    });
+
+    const app = await bootstrapApplication({
+      platform: { components: [component] },
+      rootModule: AppModule,
+    });
+
+    try {
+      const firstResponse = createResponse();
+      const secondResponse = createResponse();
+
+      const firstDispatch = app.dispatch(createRequest('/metrics'), firstResponse);
+      await firstProbeStarted;
+
+      currentReadiness = 'degraded';
+      currentHealth = 'degraded';
+
+      const secondDispatch = app.dispatch(createRequest('/metrics'), secondResponse);
+      releaseFirstProbe?.();
+      await firstRenderStarted;
+      await new Promise<void>(queueMicrotask);
+      await new Promise<void>(queueMicrotask);
+      await new Promise<void>(queueMicrotask);
+      expect(snapshotCount).toBe(1);
+      releaseFirstRender?.();
+
+      await Promise.all([firstDispatch, secondDispatch]);
+
+      const firstMetrics = String(firstResponse.body);
+      const secondMetrics = String(secondResponse.body);
+
+      expect(firstResponse.statusCode).toBe(200);
+      expect(firstMetrics).toContain(
+        'fluo_component_ready{component_id="cache.serialized",component_kind="cache",operation="readiness",result="ready",env="unknown",instance="local"} 1',
+      );
+      expect(firstMetrics).toContain(
+        'fluo_component_health{component_id="cache.serialized",component_kind="cache",operation="health",result="healthy",env="unknown",instance="local"} 1',
+      );
+      expect(firstMetrics).not.toContain('result="degraded"');
+
+      expect(secondResponse.statusCode).toBe(200);
+      expect(secondMetrics).toContain(
+        'fluo_component_ready{component_id="cache.serialized",component_kind="cache",operation="readiness",result="degraded",env="unknown",instance="local"} 0',
+      );
+      expect(secondMetrics).toContain(
+        'fluo_component_health{component_id="cache.serialized",component_kind="cache",operation="health",result="degraded",env="unknown",instance="local"} 0',
+      );
+      expect(secondMetrics).not.toContain('result="ready"');
+      expect(secondMetrics).not.toContain('result="healthy"');
+    } finally {
+      await app.close();
+    }
+  });
+
   it('emits both framework and custom metrics from shared registry', async () => {
     const sharedRegistry = new Registry();
 
