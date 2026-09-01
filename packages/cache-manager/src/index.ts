@@ -24,6 +24,7 @@ export { MemoryStore } from './stores/memory-store.js';
 export { RedisStore, type RedisStoreOptions } from './stores/redis-store.js';
 export { CACHE_OPTIONS, CACHE_STORE } from './tokens.js';
 export type {
+  CacheAsyncModuleOptions,
   CacheEvictDecoratorValue,
   CacheEvictFactory,
   CacheKeyDecoratorValue,

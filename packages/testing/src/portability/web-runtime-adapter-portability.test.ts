@@ -276,13 +276,16 @@ function registerWebRuntimePortabilitySuite(
   name: string,
   harness: {
     assertDoesNotCommitAbortedHttpErrorRepresentations(): Promise<void>;
+    assertSupportsConditionalRequests(): Promise<void>;
     assertExcludesRawBodyForMultipart(): Promise<void>;
     assertSupportsHttpErrorRepresentations(): Promise<void>;
     assertSupportsCustomHttpRouteMethods(): Promise<void>;
+    assertSupportsSingleByteRanges(): Promise<void>;
     assertPreservesExactRawBodyBytesForByteSensitivePayloads(): Promise<void>;
     assertPreservesQueryArraysAndDecoding(): Promise<void>;
     assertPreservesMalformedCookieValues(): Promise<void>;
     assertPreservesRawBodyForJsonAndText(): Promise<void>;
+    assertSupportsPortableResponseCookies(): Promise<void>;
     assertSupportsSseStreaming(): Promise<void>;
   },
 ): void {
@@ -297,6 +300,14 @@ function registerWebRuntimePortabilitySuite(
 
     it('does not commit an error representation after request abort', async () => {
       await harness.assertDoesNotCommitAbortedHttpErrorRepresentations();
+    });
+
+    it('preserves conditional response validators and body suppression', async () => {
+      await harness.assertSupportsConditionalRequests();
+    });
+
+    it('preserves single byte range metadata and body slicing', async () => {
+      await harness.assertSupportsSingleByteRanges();
     });
 
     it('preserves query arrays and decoding semantics', async () => {
@@ -317,6 +328,10 @@ function registerWebRuntimePortabilitySuite(
 
     it('does not preserve rawBody for multipart requests', async () => {
       await harness.assertExcludesRawBodyForMultipart();
+    });
+
+    it('preserves ordered non-folded portable response cookies', async () => {
+      await harness.assertSupportsPortableResponseCookies();
     });
 
     it('supports SSE streaming', async () => {
@@ -377,6 +392,7 @@ registerWebRuntimePortabilitySuite(
       return await createBunPortabilityApp(rootModule, options);
     },
     createErrorRepresentationBootstrapOptions: (options) => options,
+    createConditionalRequestBootstrapOptions: (options) => options,
     name: 'bun',
   }),
 );
@@ -450,6 +466,7 @@ registerWebRuntimePortabilitySuite(
       };
     },
     createErrorRepresentationBootstrapOptions: (options) => options,
+    createConditionalRequestBootstrapOptions: (options) => options,
     name: 'deno',
   }),
 );
@@ -488,6 +505,7 @@ registerWebRuntimePortabilitySuite(
       };
     },
     createErrorRepresentationBootstrapOptions: (options) => options,
+    createConditionalRequestBootstrapOptions: (options) => options,
     name: 'cloudflare-workers',
   }),
 );

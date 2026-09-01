@@ -1,4 +1,4 @@
-import type { FrameworkResponse } from '@fluojs/http';
+import { type FrameworkResponse, setCookie } from '@fluojs/http';
 
 import { type CookieAuthOptions, normalizeCookieAuthOptions } from './cookie-auth.js';
 
@@ -15,7 +15,13 @@ export interface CookieOptions {
 }
 
 /**
- * Describes the set cookie options contract.
+ * Describes the set cookie options contract accepted by {@link CookieManagerConfig}.
+ *
+ * @remarks
+ * `accessTokenTtlSeconds` and `refreshTokenTtlSeconds` become the default `Max-Age`
+ * for the matching token cookie when the positional TTL argument of
+ * `CookieManager.setAccessTokenCookie(...)` / `setRefreshTokenCookie(...)` is omitted.
+ * An explicit positional TTL always wins over these defaults.
  */
 export interface SetCookieOptions extends CookieOptions {
   accessTokenTtlSeconds?: number;
@@ -26,11 +32,20 @@ export interface SetCookieOptions extends CookieOptions {
  * Describes the cookie manager config contract.
  */
 export interface CookieManagerConfig extends CookieAuthOptions {
-  cookieOptions?: CookieOptions;
+  /**
+   * Response-cookie defaults, including optional per-token TTL defaults.
+   */
+  cookieOptions?: SetCookieOptions;
 }
 
 type NormalizedCookieOptions = Omit<Required<CookieOptions>, 'domain' | 'maxAge'> &
   Pick<CookieOptions, 'domain' | 'maxAge'>;
+
+type CookieWrite = {
+  readonly maxAgeSeconds: number | undefined;
+  readonly name: string;
+  readonly value: string;
+};
 
 /**
  * Provides the default cookie options value.
@@ -43,43 +58,6 @@ export const DEFAULT_COOKIE_OPTIONS: NormalizedCookieOptions = {
   domain: undefined,
   maxAge: undefined,
 };
-
-function buildCookieHeader(name: string, value: string, options: NormalizedCookieOptions): string {
-  const parts: string[] = [`${name}=${value}`];
-
-  if (options.maxAge !== undefined && options.maxAge >= 0) {
-    parts.push(`Max-Age=${options.maxAge}`);
-  }
-
-  if (options.path) {
-    parts.push(`Path=${options.path}`);
-  }
-
-  if (options.domain) {
-    parts.push(`Domain=${options.domain}`);
-  }
-
-  if (options.secure) {
-    parts.push('Secure');
-  }
-
-  if (options.httpOnly) {
-    parts.push('HttpOnly');
-  }
-
-  if (options.sameSite) {
-    parts.push(`SameSite=${options.sameSite.charAt(0).toUpperCase() + options.sameSite.slice(1)}`);
-  }
-
-  return parts.join('; ');
-}
-
-function buildClearCookieHeader(name: string, options: NormalizedCookieOptions): string {
-  return buildCookieHeader(name, '', {
-    ...options,
-    maxAge: 0,
-  });
-}
 
 function getHeaderCaseInsensitive(
   headers: FrameworkResponse['headers'],
@@ -108,6 +86,8 @@ function toHeaderValues(value: string | string[] | undefined): string[] {
 export class CookieManager {
   private readonly options: Required<CookieAuthOptions>;
   private readonly cookieOptions: NormalizedCookieOptions;
+  private readonly accessTokenTtlSeconds: number | undefined;
+  private readonly refreshTokenTtlSeconds: number | undefined;
 
   constructor(config?: CookieManagerConfig) {
     this.options = normalizeCookieAuthOptions(config);
@@ -119,50 +99,40 @@ export class CookieManager {
       domain: config?.cookieOptions?.domain ?? DEFAULT_COOKIE_OPTIONS.domain,
       maxAge: config?.cookieOptions?.maxAge ?? DEFAULT_COOKIE_OPTIONS.maxAge,
     };
+    this.accessTokenTtlSeconds = config?.cookieOptions?.accessTokenTtlSeconds;
+    this.refreshTokenTtlSeconds = config?.cookieOptions?.refreshTokenTtlSeconds;
   }
 
   setAccessTokenCookie(response: FrameworkResponse, token: string, ttlSeconds?: number): void {
-    const cookie = buildCookieHeader(
-      this.options.accessTokenCookieName,
-      token,
-      {
-        ...this.cookieOptions,
-        maxAge: ttlSeconds ?? this.cookieOptions.maxAge,
-      },
-    );
-
-    this.appendSetCookie(response, cookie);
+    this.writeCookie(response, {
+      maxAgeSeconds: ttlSeconds ?? this.accessTokenTtlSeconds ?? this.cookieOptions.maxAge,
+      name: this.options.accessTokenCookieName,
+      value: token,
+    });
   }
 
   setRefreshTokenCookie(response: FrameworkResponse, token: string, ttlSeconds?: number): void {
-    const cookie = buildCookieHeader(
-      this.options.refreshTokenCookieName,
-      token,
-      {
-        ...this.cookieOptions,
-        maxAge: ttlSeconds ?? this.cookieOptions.maxAge,
-      },
-    );
-
-    this.appendSetCookie(response, cookie);
+    this.writeCookie(response, {
+      maxAgeSeconds: ttlSeconds ?? this.refreshTokenTtlSeconds ?? this.cookieOptions.maxAge,
+      name: this.options.refreshTokenCookieName,
+      value: token,
+    });
   }
 
   clearAccessTokenCookie(response: FrameworkResponse): void {
-    const cookie = buildClearCookieHeader(
-      this.options.accessTokenCookieName,
-      this.cookieOptions,
-    );
-
-    this.appendSetCookie(response, cookie);
+    this.writeCookie(response, {
+      maxAgeSeconds: 0,
+      name: this.options.accessTokenCookieName,
+      value: '',
+    });
   }
 
   clearRefreshTokenCookie(response: FrameworkResponse): void {
-    const cookie = buildClearCookieHeader(
-      this.options.refreshTokenCookieName,
-      this.cookieOptions,
-    );
-
-    this.appendSetCookie(response, cookie);
+    this.writeCookie(response, {
+      maxAgeSeconds: 0,
+      name: this.options.refreshTokenCookieName,
+      value: '',
+    });
   }
 
   clearAllCookies(response: FrameworkResponse): void {
@@ -184,13 +154,26 @@ export class CookieManager {
     }
   }
 
-  private appendSetCookie(response: FrameworkResponse, cookie: string): void {
+  private writeCookie(response: FrameworkResponse, cookie: CookieWrite): void {
     const existingHeader = getHeaderCaseInsensitive(response.headers, 'Set-Cookie');
-    const cookies = [...toHeaderValues(existingHeader?.value), cookie];
+    const existingValues = toHeaderValues(existingHeader?.value);
 
-    response.setHeader('Set-Cookie', cookie);
+    setCookie(response, cookie.name, cookie.value, {
+      domain: this.cookieOptions.domain,
+      httpOnly: this.cookieOptions.httpOnly,
+      maxAgeSeconds: cookie.maxAgeSeconds,
+      path: this.cookieOptions.path,
+      sameSite: this.cookieOptions.sameSite,
+      secure: this.cookieOptions.secure,
+    });
 
     const updatedHeader = getHeaderCaseInsensitive(response.headers, 'Set-Cookie');
+    const writtenValues = toHeaderValues(response.headers['Set-Cookie'] ?? updatedHeader?.value);
+    const appendedExistingValues = writtenValues.length > existingValues.length
+      && existingValues.every((value, index) => writtenValues[index] === value);
+    const cookies = appendedExistingValues
+      ? writtenValues
+      : [...existingValues, ...writtenValues];
 
     if (updatedHeader?.key && updatedHeader.key !== 'Set-Cookie') {
       delete response.headers[updatedHeader.key];

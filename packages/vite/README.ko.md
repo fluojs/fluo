@@ -60,6 +60,9 @@ export default defineConfig({
 2. Vite 플러그인은 query suffix를 제거하고 애플리케이션 `.ts` 파일만 허용하며, 첫 eligible transform 시점에 Babel을 lazy load한 뒤 `@babel/plugin-proposal-decorators`의 `{ version: '2023-11' }` 설정과 `@babel/preset-typescript`를 실행합니다.
 3. `vitest.config.ts`는 `@fluojs/testing/vitest`에서 `fluoBabelDecoratorsPlugin()`을 import하므로 `*.test.ts`와 `*.spec.ts` 파일은 testing-specific transform 경로에 남습니다.
 
+React SSR + Vite starter는 데코레이터가 있는 애플리케이션 선언을 `src/app.ts`에 두고,
+`src/page.tsx` 같은 `.tsx` 모듈에는 JSX 렌더링을 유지합니다.
+
 생성 프로젝트를 커스터마이즈할 때도 이 경계를 분리하세요. `experimentalDecorators`를 다시 활성화하거나, direct esbuild decorator handling에 의존하거나, 테스트 파일을 Vite 애플리케이션 transform으로 보내는 방식은 문서화된 fluo 지원 계약 밖에 있습니다.
 
 ## 공개 API

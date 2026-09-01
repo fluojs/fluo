@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { createFastifyAdapter } from '@fluojs/platform-fastify';
+import { FluoFactory } from '@fluojs/runtime';
 import { createTestApp, createTestingModule } from '@fluojs/testing';
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 
@@ -144,6 +146,65 @@ describe('BearerJwtStrategy', () => {
 });
 
 describe('AppModule e2e', () => {
+  it('serializes Bearer challenges and authenticates through an ephemeral Fastify port', async () => {
+    const adapter = createFastifyAdapter({ port: 0 });
+    const app = await FluoFactory.create(AppModule, { adapter });
+
+    try {
+      await app.listen();
+
+      const server = adapter.getServer?.();
+      if (!server || typeof (server as { address?: unknown }).address !== 'function') {
+        throw new Error('Failed to resolve the runnable Fastify server.');
+      }
+
+      const address = (server as { address(): { port: number } | string | null }).address();
+      if (!address || typeof address === 'string') {
+        throw new Error('Failed to resolve the runnable Fastify port.');
+      }
+
+      const origin = `http://127.0.0.1:${address.port}`;
+
+      const missingCredential = await fetch(`${origin}/profile/`);
+      expect(missingCredential.status).toBe(401);
+      expect(missingCredential.headers.get('www-authenticate')).toBe('Bearer');
+
+      const invalidCredential = await fetch(`${origin}/profile/`, {
+        headers: { authorization: 'Bearer invalid-token' },
+      });
+      expect(invalidCredential.status).toBe(401);
+      expect(invalidCredential.headers.get('www-authenticate')).toBe('Bearer error="invalid_token"');
+
+      const expiredCredential = await fetch(`${origin}/profile/`, {
+        headers: {
+          authorization:
+            'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJmbHVvLWF1dGgtZXhhbXBsZS1jbGllbnRzIiwiZXhwIjowLCJpc3MiOiJmbHVvLWF1dGgtZXhhbXBsZSIsInN1YiI6ImV4cGlyZWQifQ.sY5V1fydHfhYke1_1_TTcmYit8Nl5CfhknF2H3wTZUk',
+        },
+      });
+      expect(expiredCredential.status).toBe(401);
+      expect(expiredCredential.headers.get('www-authenticate')).toBe('Bearer error="invalid_token"');
+
+      const issueResponse = await fetch(`${origin}/auth/token`, {
+        body: JSON.stringify({ username: 'ada' }),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      });
+      expect(issueResponse.status).toBe(201);
+
+      const issuedToken = await issueResponse.json() as { accessToken: string };
+      const authenticated = await fetch(`${origin}/profile/`, {
+        headers: { aUtHoRiZaTiOn: `bEaReR ${issuedToken.accessToken}` },
+      });
+      expect(authenticated.status).toBe(200);
+      expect(authenticated.headers.get('www-authenticate')).toBeNull();
+      await expect(authenticated.json()).resolves.toMatchObject({
+        user: { subject: 'ada' },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('serves health, ready, and auth routes through createTestApp request helpers', async () => {
     const app = await createTestApp({ rootModule: AppModule });
 
@@ -157,6 +218,36 @@ describe('AppModule e2e', () => {
       });
 
       await expect(app.request('GET', '/profile/').send()).resolves.toMatchObject({
+        headers: {
+          'WWW-Authenticate': 'Bearer',
+        },
+        status: 401,
+      });
+
+      await expect(
+        app
+          .request('GET', '/profile/')
+          .header('authorization', 'Bearer invalid-token')
+          .send(),
+      ).resolves.toMatchObject({
+        headers: {
+          'WWW-Authenticate': 'Bearer error="invalid_token"',
+        },
+        status: 401,
+      });
+
+      await expect(
+        app
+          .request('GET', '/profile/')
+          .header(
+            'authorization',
+            'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJmbHVvLWF1dGgtZXhhbXBsZS1jbGllbnRzIiwiZXhwIjowLCJpc3MiOiJmbHVvLWF1dGgtZXhhbXBsZSIsInN1YiI6ImV4cGlyZWQifQ.sY5V1fydHfhYke1_1_TTcmYit8Nl5CfhknF2H3wTZUk',
+          )
+          .send(),
+      ).resolves.toMatchObject({
+        headers: {
+          'WWW-Authenticate': 'Bearer error="invalid_token"',
+        },
         status: 401,
       });
 

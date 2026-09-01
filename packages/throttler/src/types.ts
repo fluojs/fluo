@@ -1,4 +1,4 @@
-import type { MiddlewareContext } from '@fluojs/http';
+import type { MiddlewareContext, TrustProxyPolicy } from '@fluojs/http';
 
 /**
  * Snapshot of a client's current rate-limit window state returned by a throttler store.
@@ -65,10 +65,20 @@ export interface ThrottlerModuleOptions {
   /** Maximum number of requests allowed within the window (module-wide default). */
   limit: number;
   /**
-   * Trust `Forwarded`, `X-Forwarded-For`, and `X-Real-IP` before the raw socket address.
-   * Enable this only when the adapter sits behind a trusted proxy that rewrites those headers.
+   * Broad legacy compatibility mode for forwarding headers.
+   *
+   * This trusts the complete `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`
+   * chain and is not limited to the direct peer. Use `trustProxy` instead for
+   * new deployments with a known proxy boundary.
    */
   trustProxyHeaders?: boolean;
+  /**
+   * Explicit proxy boundary for the default client key generator.
+   *
+   * @remarks
+   * Prefer this policy over the broad legacy `trustProxyHeaders` mode.
+   */
+  trustProxy?: TrustProxyPolicy;
   /**
    * Key generator function. Defaults to conservative client identity resolution.
    * Receives the raw middleware context so custom headers (e.g. x-api-key) can be used.

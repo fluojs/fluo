@@ -6,6 +6,11 @@ import type {
   ResponseFormatter,
 } from '../types.js';
 import {
+  createByteRangeResponse,
+  isByteRangeByteSource,
+  shouldApplyByteRange,
+} from '../byte-range-response.js';
+import {
   FRAMEWORK_RESPONSE_VALUE_FINALIZER,
   FRAMEWORK_RESPONSE_WRITER,
   type FrameworkResponseValueFinalizer,
@@ -16,7 +21,9 @@ import {
   resolveContentNegotiation,
   selectResponseFormatter,
 } from './dispatch-content-negotiation.js';
+import { applyResponseValidators } from './conditional-request-policy.js';
 import { writeErrorResponse } from './dispatch-error-policy.js';
+import type { ResponseValidators } from '../types.js';
 
 type SimpleJsonResponseBody = Record<string, unknown> | unknown[];
 const BINARY_CONTENT_TYPE = 'application/octet-stream';
@@ -150,6 +157,7 @@ function applyImplicitHeadContentType(response: FrameworkResponse, value: unknow
  * @param value The value.
  * @param contentNegotiation The content negotiation.
  * @param requestContext The active request context passed to custom response writers.
+ * @param validators Validators resolved before the route handler executes.
  * @returns The write success response result.
  */
 export async function writeSuccessResponse(
@@ -159,6 +167,7 @@ export async function writeSuccessResponse(
   value: unknown,
   contentNegotiation: ResolvedContentNegotiation | undefined,
   requestContext: RequestContext,
+  validators?: ResponseValidators,
 ) {
   if (response.committed) {
     return;
@@ -166,6 +175,7 @@ export async function writeSuccessResponse(
 
   if (handler.route.redirect) {
     const { url, statusCode = 302 } = handler.route.redirect;
+    applyResponseValidators(response, validators);
     response.redirect(statusCode, url);
     return;
   }
@@ -174,9 +184,17 @@ export async function writeSuccessResponse(
   const responseValue = responseValueFinalizer
     ? await responseValueFinalizer({ handler, request, requestContext, response, value })
     : value;
-  const responseWriter = readFrameworkResponseWriter(responseValue);
+  const writerValue = readFrameworkResponseWriter(responseValue)
+    ? responseValue
+    : isByteRangeByteSource(responseValue) && shouldApplyByteRange(request, validators)
+      ? createByteRangeResponse(responseValue)
+      : undefined;
+  const responseWriter = writerValue
+    ? readFrameworkResponseWriter(writerValue)
+    : undefined;
 
   if (responseWriter) {
+    applyResponseValidators(response, validators);
     let successResponseMetadataApplied = false;
     const applyWriterSuccessResponseMetadata = (): void => {
       if (successResponseMetadataApplied) {
@@ -185,6 +203,7 @@ export async function writeSuccessResponse(
 
       successResponseMetadataApplied = true;
       applySuccessResponseMetadata({ formatter: undefined, handler, response, value: responseValue });
+      applyResponseValidators(response, validators);
     };
 
     return responseWriter({
@@ -193,6 +212,8 @@ export async function writeSuccessResponse(
       request,
       requestContext,
       response,
+      validators,
+      value: writerValue,
     });
   }
 
@@ -201,6 +222,7 @@ export async function writeSuccessResponse(
     : undefined;
 
   applySuccessResponseMetadata({ formatter, handler, response, value: responseValue });
+  applyResponseValidators(response, validators);
 
   if (request.method.toUpperCase() === 'HEAD') {
     applyImplicitHeadContentType(response, responseValue);

@@ -178,7 +178,7 @@ jobs:
 
       - name: Test (scoped PR package scripts)
         if: matrix.project == 'other' && github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped' && needs.resolve-pr-verification-scope.outputs.test_package_names != ''
-        run: pnpm -r --if-present ${{ needs.resolve-pr-verification-scope.outputs.test_filter_args }} run test
+        run: pnpm --workspace-concurrency=1 -r --if-present ${{ needs.resolve-pr-verification-scope.outputs.test_filter_args }} run test
 
       - name: Test (scoped PR fallback paths)
         if: matrix.project == 'other' && github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped' && needs.resolve-pr-verification-scope.outputs.test_paths != ''
@@ -276,6 +276,40 @@ jobs:
           path: .artifacts/vitest-shutdown-debug/**/*.json
           if-no-files-found: error
 
+  studio-browser:
+    name: Studio browser
+    runs-on: ubuntu-latest
+    needs:
+      - resolve-pr-verification-scope
+
+    steps:
+      - name: Checkout
+        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')
+        uses: actions/checkout@v5
+
+      - name: Install pnpm
+        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - name: Install dependencies
+        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Studio browser verification
+        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')
+        run: pnpm --filter @fluojs/studio test:browser
+
+      - name: Skip Studio browser verification outside scoped Studio changes
+        if: github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped' && !contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')
+        run: echo "Studio browser verification is outside the scoped package closure."
+
   official-web-runtime-adapter-portability:
     name: Official web runtime adapter portability (${{ matrix.adapter }})
     runs-on: ubuntu-latest
@@ -305,6 +339,56 @@ jobs:
 
       - name: Run official web runtime adapter portability suite
         run: pnpm vitest run packages/testing/src/portability/web-runtime-adapter-portability.test.ts --testNamePattern "${{ matrix.adapter }} web runtime adapter portability"
+
+  native-response-cookie-conformance:
+    name: Native response cookie conformance (${{ matrix.runtime }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime:
+          - bun
+          - deno
+          - cloudflare-workers
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build portable cookie helper
+        run: pnpm --filter @fluojs/http... build
+
+      - name: Setup Bun
+        if: matrix.runtime == 'bun'
+        uses: oven-sh/setup-bun@v2
+
+      - name: Run Bun response cookie conformance
+        if: matrix.runtime == 'bun'
+        run: bun test tooling/native-runtime/response-cookie-conformance.test.mjs
+
+      - name: Setup Deno
+        if: matrix.runtime == 'deno'
+        uses: denoland/setup-deno@v2
+
+      - name: Run Deno response cookie conformance
+        if: matrix.runtime == 'deno'
+        run: deno test --allow-read tooling/native-runtime/response-cookie-conformance.test.mjs
+
+      - name: Run Cloudflare Workers response cookie conformance
+        if: matrix.runtime == 'cloudflare-workers'
+        run: node --test tooling/native-runtime/cloudflare-workers-response-cookie-conformance.test.mjs
 
   verify-platform-consistency-governance:
     name: Verify platform consistency governance
@@ -339,7 +423,9 @@ jobs:
       - build-and-typecheck
       - lint
       - test
+      - studio-browser
       - official-web-runtime-adapter-portability
+      - native-response-cookie-conformance
       - verify-platform-consistency-governance
       - resolve-pr-verification-scope
     runs-on: ubuntu-latest

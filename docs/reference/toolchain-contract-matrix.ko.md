@@ -19,7 +19,7 @@
 | --- | --- | --- |
 | **프로젝트 생성 (기본 HTTP)** | `fluo new my-app` | 호환 기준선 스타터인 단일 패키지(single-package) Node.js + Fastify HTTP 앱을 생성합니다. |
 | **프로젝트 생성 (명시적 HTTP)** | `fluo new my-app --shape application --transport http --runtime node --platform fastify` | 기본 HTTP 스타터와 동일한 생성 결과로 해석됩니다. |
-| **프로젝트 생성 (React SSR + Vite)** | `fluo new my-app --starter react-vite-ssr` | 명시적인 client/server entry, `src/main.ts`의 Vite manifest loading, application-owned page rendering, direct JSX, hydration, real anchor, full-document navigation, 집중된 Vitest/Playwright check를 포함하는 고정 Node.js + Fastify HTTP React starter를 생성합니다. RSC, Server Functions, file routing, client route table, prefetch, data cache는 제외됩니다. |
+| **프로젝트 생성 (React SSR + Vite)** | `fluo new my-app --starter react-vite-ssr` | 명시적인 client/server entry, `src/main.ts`의 Vite manifest loading, `src/app.ts`의 데코레이터 선언, `.tsx` 모듈의 JSX 렌더링, application-owned page rendering, direct JSX, hydration, real anchor, full-document navigation, 집중된 Vitest/Playwright check를 포함하는 고정 Node.js + Fastify HTTP React starter를 생성합니다. RSC, Server Functions, file routing, client route table, prefetch, data cache는 제외됩니다. |
 | **프로젝트 생성 (microservice)** | `fluo new my-service --shape microservice --transport tcp --runtime node --platform none` | 실행 가능한 단일 패키지 TCP 마이크로서비스(microservice) 스타터를 생성합니다. `--transport redis-streams`, `--transport nats`, `--transport kafka`, `--transport rabbitmq`, `--transport mqtt`, `--transport grpc`는 전송별 dependency/env/proto 구성을 갖춘 다른 shipped starter 변형을 생성합니다. `@fluojs/redis` 같은 더 넓은 패키지는 추가 `fluo new --transport` 값이 아니라 스캐폴딩 이후에 붙이는 통합 선택지로 남습니다. |
 | **프로젝트 생성 (mixed)** | `fluo new my-app --shape mixed --transport tcp --runtime node --platform fastify` | Fastify HTTP 앱 하나와 연결된(attached) TCP 마이크로서비스 하나를 함께 생성하는 혼합 단일 패키지 스타터를 생성합니다. |
 | **대화형 위저드 (Interactive wizard)** | TTY에서 `fluo new` 실행 | non-interactive flag 경로와 같은 `standard` 또는 `react-vite-ssr` named starter를 선택합니다. Standard 분기는 shape-first schema를 이어가고 React 분기는 tooling, package manager, install, git 선택 전에 Node.js + Fastify HTTP를 고정합니다. |
@@ -97,7 +97,7 @@ dependency graph를 평가합니다.
 | 단계 | 도구 | 계약 |
 | --- | --- | --- |
 | **변환** | Babel | `@babel/plugin-proposal-decorators`와 `{ version: '2023-11' }` 구성으로 Stage 3 데코레이터 변환을 적용합니다. |
-| **Vite 앱 변환** | `@fluojs/vite` | 생성된 `vite.config.ts`는 `fluoDecoratorsPlugin()`을 애플리케이션 `.ts` 파일에 적용하고, 테스트/declaration/dependency/non-TypeScript 파일을 건너뛰며, `@babel/plugin-proposal-decorators`와 `@babel/preset-typescript`를 실행하고, 누락된 Babel peer를 transform hook에서 진단합니다. `@fluojs/vite`를 import하거나 plugin을 생성해도 `@babel/core`를 로드하지 않습니다. |
+| **Vite 앱 변환** | `@fluojs/vite` | 생성된 `vite.config.ts`는 `fluoDecoratorsPlugin()`을 애플리케이션 `.ts` 파일에 적용하고, 테스트/declaration/dependency/non-TypeScript 파일을 건너뛰며, `@babel/plugin-proposal-decorators`와 `@babel/preset-typescript`를 실행하고, 누락된 Babel peer를 transform hook에서 진단합니다. 따라서 React SSR + Vite starter는 데코레이터 선언을 `src/app.ts`에 두고 JSX는 `.tsx` 모듈에 유지합니다. `@fluojs/vite`를 import하거나 plugin을 생성해도 `@babel/core`를 로드하지 않습니다. |
 | **번들링** | Vite | 선택한 런타임 대상에 맞게 생성된 애플리케이션을 번들링합니다. |
 | **검증** | `@fluojs/testing/vitest` + Vitest | 생성된 `vitest.config.ts`는 `*.test.ts`와 `*.spec.ts` 파일을 Vite 애플리케이션 transform 대신 testing-specific Babel decorator transform 경로에 둡니다. |
 | **제약** | 대체 도구 | direct `esbuild` decorator handling 같은 대체 체인은 문서화된 지원 계약 밖에 있습니다. |

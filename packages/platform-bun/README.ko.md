@@ -50,6 +50,10 @@ await app.listen();
 
 Bun은 Fluo의 Web 표준 response facade를 사용하므로 `context.response.earlyHints`가 없습니다. 사용 전에 capability 존재 여부를 확인하세요. Adapter는 Early Hints를 조용히 무시하거나 early field를 final `Response`에 복사하지 않습니다. 애플리케이션 코드가 관찰 가능한 HTTP `103`을 emit해야 한다면 Node.js, Express, Fastify adapter를 사용하세요.
 
+### 바이트 범위와 캐시 검증
+
+Bun은 fetch dispatch를 통해 공유 `@fluojs/http` 단일 byte-range 및 `If-Range` contract를 보존합니다. Conditional-request 평가가 cache validator를 선택한 뒤 유효한 `Range: bytes=` 요청은 portable `206` identity-byte response를 만들고, `If-Range`는 선택된 validator를 재사용합니다. Malformed 또는 multi-range field는 전체 response를 유지하고 충족 불가능한 range는 body 없는 `416`을 만들며, `HEAD`는 stream을 소비하지 않고 GET metadata를 반영합니다.
+
 ### 수동 Fetch 처리
 Bun 서버를 직접 관리하려는 경우 fetch 핸들러를 직접 사용할 수 있습니다.
 `dispatcher`는 이미 bootstrap된 application의 `app.getHttpDispatcher()`에서 가져와야 합니다. `createBunFetchHandler(...)`는 동기적으로 fetch bridge를 만들고 raw-body와 multipart request parsing을 보존하지만, shutdown ownership, websocket upgrade, native `routes` acceleration은 주변 `Bun.serve(...)` host 또는 managed adapter 경로가 소유합니다.
@@ -124,7 +128,7 @@ Native handoff가 붙은 뒤 app middleware가 framework request의 method 또�
 
 ## Conformance 커버리지
 
-`packages/platform-bun/src/adapter.test.ts`는 문서화된 계약을 검증하는 package-local regression 대상입니다. 이 파일은 custom `QUERY`/extension-method fallback, malformed cookie, byte-exact JSON/text raw-body 보존, managed/custom fetch handler의 multipart raw-body 제외, SSE framing, native-route param parity, same-path multi-method handoff, middleware가 request path 또는 method를 rewrite한 뒤의 stale native handoff rematch, versioning fallback, normalization-sensitive fallback, OPTIONS/CORS ownership, same-shape route fallback, TLS listen-target reporting을 검증하는 Bun fetch-style portability assertion과 startup logging, duplicate listen idempotency, shutdown listener cleanup, in-flight drain, 비동기 realtime binding 평가 중 close, binding 완료 후 HTTP fallback, timeout validation/reporting, shutdown 503 ingress rejection, signal-driven close rejection reporting, upgrade-only host를 통한 websocket binding delegation/short-circuit 동작을 검증하는 집중 테스트를 포함합니다.
+`packages/platform-bun/src/adapter.test.ts`는 문서화된 계약을 검증하는 package-local regression 대상입니다. 이 파일은 conditional request, single-byte range 및 `If-Range`, custom `QUERY`/extension-method fallback, malformed cookie, byte-exact JSON/text raw-body 보존, managed/custom fetch handler의 multipart raw-body 제외, SSE framing, native-route param parity, same-path multi-method handoff, middleware가 request path 또는 method를 rewrite한 뒤의 stale native handoff rematch, versioning fallback, normalization-sensitive fallback, OPTIONS/CORS ownership, same-shape route fallback, TLS listen-target reporting을 검증하는 Bun fetch-style portability assertion과 startup logging, duplicate listen idempotency, shutdown listener cleanup, in-flight drain, 비동기 realtime binding 평가 중 close, binding 완료 후 HTTP fallback, timeout validation/reporting, shutdown 503 ingress rejection, signal-driven close rejection reporting, upgrade-only host를 통한 websocket binding delegation/short-circuit 동작을 검증하는 집중 테스트를 포함합니다.
 
 저장소의 더 넓은 suite도 `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`에서 `createWebRuntimeHttpAdapterPortabilityHarness(...)`로 Bun을 Deno 및 Cloudflare Workers와 함께 실행해 fetch-style platform 간 shared web-runtime portability baseline을 맞춥니다.
 

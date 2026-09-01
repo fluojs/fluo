@@ -9,6 +9,7 @@ import { URL } from 'node:url';
 import {
   BadRequestException,
   PayloadTooLargeException,
+  type FrameworkRequestConnection,
   type FrameworkRequest,
 } from '@fluojs/http';
 
@@ -28,11 +29,34 @@ type MemoizedValue<T> = () => T;
 
 type QueryRecord = Record<string, string | string[] | undefined>;
 
+function snapshotNodeConnection(raw: unknown): FrameworkRequestConnection | undefined {
+  if (!raw || typeof raw !== 'object') {
+    return undefined;
+  }
+
+  const socket = (raw as {
+    socket?: {
+      encrypted?: unknown;
+      remoteAddress?: unknown;
+    };
+  }).socket;
+
+  if (typeof socket?.remoteAddress !== 'string' || !socket.remoteAddress.trim()) {
+    return undefined;
+  }
+
+  return Object.freeze({
+    protocol: socket.encrypted === true ? 'https' : 'http',
+    remoteAddress: socket.remoteAddress,
+  });
+}
+
 /**
  * Options for creating a deferred framework request shell from a Node-backed adapter.
  */
 export interface DeferredFrameworkRequestShellOptions<RawRequest> {
   cookieHeader?: string | string[] | undefined;
+  connection?: FrameworkRequestConnection;
   headers?: FrameworkRequest['headers'];
   headersFactory?: () => FrameworkRequest['headers'];
   materializeBody?: () => Promise<void>;
@@ -177,6 +201,7 @@ export function createDeferredFrameworkRequest(
  */
 export function createDeferredFrameworkRequestShell<RawRequest>({
   cookieHeader,
+  connection,
   headers,
   headersFactory,
   materializeBody,
@@ -196,6 +221,7 @@ export function createDeferredFrameworkRequestShell<RawRequest>({
   const resolveQuery = hasQuerySnapshot ? undefined : createMemoizedValue(() => queryFactory?.() ?? {});
 
   const frameworkRequest = {
+    connection: connection ?? snapshotNodeConnection(raw),
     get cookies() {
       return resolveCookies();
     },

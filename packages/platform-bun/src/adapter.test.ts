@@ -322,17 +322,30 @@ function registerBunWebRuntimePortabilitySuite(): void {
         },
       };
     },
+    createConditionalRequestBootstrapOptions: (options) => options,
     createErrorRepresentationBootstrapOptions: (options) => options,
     name: 'Bun',
   });
 
   describe('Bun web-runtime portability conformance', () => {
+    it('preserves ordered independent response cookies through the shared web-runtime harness', async () => {
+      await bunPortabilityHarness.assertSupportsPortableResponseCookies();
+    });
+
     it('supports HTTP-owned error representations through the shared web-runtime harness', async () => {
       await bunPortabilityHarness.assertSupportsHttpErrorRepresentations();
     });
 
     it('does not commit an error representation after request abort', async () => {
       await bunPortabilityHarness.assertDoesNotCommitAbortedHttpErrorRepresentations();
+    });
+
+    it('preserves conditional response semantics through the shared web-runtime harness', async () => {
+      await bunPortabilityHarness.assertSupportsConditionalRequests();
+    });
+
+    it('preserves single byte range semantics through the shared web-runtime harness', async () => {
+      await bunPortabilityHarness.assertSupportsSingleByteRanges();
     });
 
     it('preserves malformed cookie values through the shared web-runtime harness', async () => {
@@ -459,6 +472,81 @@ describe('@fluojs/platform-bun', () => {
     expect(response.status).toBe(202);
     expect(response.headers.get('x-runtime')).toBe('bun');
     await expect(response.text()).resolves.toBe('');
+  });
+
+  it('applies byte ranges through a host-owned Bun fetch handler', async () => {
+    @Controller('/assets')
+    class AssetController {
+      @Get('/logo')
+      getLogo() {
+        return Uint8Array.from([0, 1, 2, 3, 4, 5]);
+      }
+    }
+
+    const fetch = createBunFetchHandler({
+      dispatcher: createDispatcher({
+        conditionalRequest: {
+          resolve() {
+            return {
+              exists: true,
+              validators: {
+                etag: { opaqueValue: 'logo-v1', strength: 'strong' },
+                lastModified: new Date('2026-01-02T00:00:00Z'),
+              },
+            };
+          },
+        },
+        handlerMapping: createHandlerMapping([{ controllerToken: AssetController }]),
+        rootContainer: {
+          createRequestScope() {
+            return {
+              async dispose() {},
+              resolve() {
+                return new AssetController();
+              },
+            };
+          },
+        } as never,
+      }),
+    });
+
+    const [bounded, unsatisfiable, etagMatch, etagMismatch, dateMatch, dateMismatch] = await Promise.all([
+      fetch(new Request('https://runtime.test/assets/logo', {
+        headers: { range: 'bytes=2-4' },
+      })),
+      fetch(new Request('https://runtime.test/assets/logo', {
+        headers: { range: 'bytes=9-' },
+      })),
+      fetch(new Request('https://runtime.test/assets/logo', {
+        headers: { 'if-range': '"logo-v1"', range: 'bytes=2-4' },
+      })),
+      fetch(new Request('https://runtime.test/assets/logo', {
+        headers: { 'if-range': '"logo-v2"', range: 'bytes=2-4' },
+      })),
+      fetch(new Request('https://runtime.test/assets/logo', {
+        headers: { 'if-range': 'Fri, 02 Jan 2026 00:00:00 GMT', range: 'bytes=2-4' },
+      })),
+      fetch(new Request('https://runtime.test/assets/logo', {
+        headers: { 'if-range': 'Thu, 01 Jan 2026 00:00:00 GMT', range: 'bytes=2-4' },
+      })),
+    ]);
+
+    expect(bounded.status).toBe(206);
+    expect(bounded.headers.get('accept-ranges')).toBe('bytes');
+    expect(bounded.headers.get('content-range')).toBe('bytes 2-4/6');
+    expect(bounded.headers.get('content-length')).toBe('3');
+    await expect(bounded.bytes()).resolves.toEqual(Uint8Array.from([2, 3, 4]));
+    expect(unsatisfiable.status).toBe(416);
+    expect(unsatisfiable.headers.get('content-range')).toBe('bytes */6');
+    await expect(unsatisfiable.text()).resolves.toBe('');
+    expect(etagMatch.status).toBe(206);
+    await expect(etagMatch.bytes()).resolves.toEqual(Uint8Array.from([2, 3, 4]));
+    expect(etagMismatch.status).toBe(200);
+    await expect(etagMismatch.bytes()).resolves.toEqual(Uint8Array.from([0, 1, 2, 3, 4, 5]));
+    expect(dateMatch.status).toBe(206);
+    await expect(dateMatch.bytes()).resolves.toEqual(Uint8Array.from([2, 3, 4]));
+    expect(dateMismatch.status).toBe(200);
+    await expect(dateMismatch.bytes()).resolves.toEqual(Uint8Array.from([0, 1, 2, 3, 4, 5]));
   });
 
   it('preserves byte-exact rawBody values for byte-sensitive custom fetch handlers', async () => {
@@ -746,6 +834,52 @@ describe('@fluojs/platform-bun', () => {
 
       expect(response?.status).toBe(200);
       await expect(response?.json()).resolves.toEqual({ userId: 'a%2Fb' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('applies byte ranges through Bun native routes', async () => {
+    const mockBun = installMockBun();
+
+    @Controller('/assets')
+    class AssetController {
+      @Get('/logo')
+      getLogo() {
+        return Uint8Array.from([0, 1, 2, 3, 4, 5]);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [AssetController] });
+
+    const app = await runBunApplication(AppModule, {
+      hostname: '127.0.0.1',
+      port: 4330,
+    });
+
+    try {
+      expect(mockBun.lastOptions?.routes).toMatchObject({
+        '/assets/logo': {
+          GET: expect.any(Function),
+        },
+      });
+
+      const [bounded, unsatisfiable] = await Promise.all([
+        mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4330/assets/logo', {
+          headers: { range: 'bytes=2-4' },
+        })),
+        mockBun.lastServer?.fetch(new Request('http://127.0.0.1:4330/assets/logo', {
+          headers: { range: 'bytes=9-' },
+        })),
+      ]);
+
+      expect(bounded?.status).toBe(206);
+      expect(bounded?.headers.get('content-range')).toBe('bytes 2-4/6');
+      await expect(bounded?.bytes()).resolves.toEqual(Uint8Array.from([2, 3, 4]));
+      expect(unsatisfiable?.status).toBe(416);
+      expect(unsatisfiable?.headers.get('content-range')).toBe('bytes */6');
+      await expect(unsatisfiable?.text()).resolves.toBe('');
     } finally {
       await app.close();
     }
@@ -1430,6 +1564,7 @@ describe('@fluojs/platform-bun', () => {
     const mockBun = installMockBun();
     const requestAbort = new AbortController();
     const releaseServerStop = createDeferred<void>();
+    const serverStopStarted = createDeferred<void>();
     const streamClosed = createDeferred<void>();
     const order: string[] = [];
     let closeSettled = false;
@@ -1483,6 +1618,7 @@ describe('@fluojs/platform-bun', () => {
       }
 
       server.stop.mockImplementation(async () => {
+        serverStopStarted.resolve();
         await streamClosed.promise;
         await releaseServerStop.promise;
       });
@@ -1500,17 +1636,12 @@ describe('@fluojs/platform-bun', () => {
       );
 
       expect(server.stop).toHaveBeenCalledTimes(1);
-      await new Promise<void>((resolve) => {
-        setImmediate(resolve);
-      });
+      await serverStopStarted.promise;
       expect(closeSettled).toBe(false);
       expect(order).toEqual([]);
 
       requestAbort.abort(new Error('SSE client disconnected.'));
       await streamClosed.promise;
-      await new Promise<void>((resolve) => {
-        setImmediate(resolve);
-      });
 
       expect(closeSettled).toBe(false);
       expect(order).toEqual(['stream-closed']);
@@ -1856,9 +1987,6 @@ describe('@fluojs/platform-bun', () => {
 
     serverTermination.reject(stopError);
     await stopRejected;
-    await new Promise<void>((resolve) => {
-      setImmediate(resolve);
-    });
 
     expect(order).not.toContain('close-settled');
     expect(adapter.getServer()).toBe(server);
@@ -2163,9 +2291,6 @@ describe('@fluojs/platform-bun', () => {
         order.push('close-settled');
       },
     );
-    await new Promise<void>((resolve) => {
-      setImmediate(resolve);
-    });
 
     expect(closeSettled).toBe(false);
     expect(adapter.getServer()).toBe(mockBun.lastServer);
@@ -2299,9 +2424,6 @@ describe('@fluojs/platform-bun', () => {
           order.push('close-settled');
         },
       );
-      await new Promise<void>((resolve) => {
-        setImmediate(resolve);
-      });
 
       expect(closeSettled).toBe(false);
       expect(adapter.getServer()).toBe(server);
@@ -2367,9 +2489,6 @@ describe('@fluojs/platform-bun', () => {
         order.push('close-settled');
       },
     );
-    await new Promise<void>((resolve) => {
-      setImmediate(resolve);
-    });
 
     expect(closeSettled).toBe(false);
     expect(adapter.getServer()).toBe(mockBun.lastServer);

@@ -29,6 +29,7 @@ This file defines the always-on project rules and behavioral contracts for all O
   - Pull Request merging
   - Worktree/Branch cleanup
   - Package publishing
+- **Lane-Scoped Grants**: A v2 lane ledger's `authority_scope` IS the explicit approval above, scoped to that lane's issues: `pr_merge: true` authorizes merging that lane's PRs (squash per `pr_merge_method`) and `cleanup_command_worktrees: true` authorizes removing that lane's worktrees and branches. Do not re-ask per issue.
 - **Behavioral Contract Precedence**: Implementation must adhere to documented behavioral contracts in `README.md` and `docs/contracts/` before proceeding with changes.
 
 ## Project-Local OMO+Senpi Assets
