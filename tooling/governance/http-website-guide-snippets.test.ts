@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 import {
   classDecoratorArguments,
   exportedHttpNames,
+  intendedHttpSnippets,
   routeBindings,
   semanticDiagnostics,
 } from './http-website-guide-snippets.mjs';
@@ -32,10 +33,7 @@ function read(relativePath: string): string {
 }
 
 function codeSnippets(relativePath: string): readonly string[] {
-  return [...read(relativePath).matchAll(/```ts\n([\s\S]*?)```/gu)]
-    .map((match) => match[1])
-    .filter((source): source is string => source !== undefined)
-    .filter((source) => source.includes("from '@fluojs/http'"));
+  return intendedHttpSnippets(read(relativePath));
 }
 
 function importedHttpNames(source: string): readonly string[] {
@@ -54,6 +52,22 @@ function importedHttpNames(source: string): readonly string[] {
 }
 
 describe('HTTP website guide snippets', () => {
+  it.each([
+    ['apps/docs/content/docs/guides/http-api.mdx', 1],
+    ['apps/docs/content/docs/guides/http-api.ko.mdx', 1],
+    ['apps/docs/content/docs/guides/first-feature.mdx', 2],
+    ['apps/docs/content/docs/guides/first-feature.ko.mdx', 2],
+  ])('%s selects every intended HTTP TypeScript snippet', (relativePath, expectedCount) => {
+    // Given
+    const snippets = codeSnippets(relativePath);
+
+    // When
+    const count = snippets.length;
+
+    // Then
+    expect(count).toBe(expectedCount);
+  });
+
   it.each(guidePaths)('%s compiles against real public package types', (relativePath) => {
     // Given
     const snippets = codeSnippets(relativePath);
@@ -66,6 +80,7 @@ describe('HTTP website guide snippets', () => {
   });
 
   it.each([
+    ['malformed HTTP module specifier', "import { Controller } from '@fluojs/htp';\n@Controller('/')\nclass Example {}\n"],
     ['unresolved HTTP imports', "import { Missing } from '@fluojs/http';\nMissing;\n"],
     ['invalid route decorator arguments', "import { Controller, Get } from '@fluojs/http';\n@Controller('/')\nclass Example { @Get() handler() {} }\n"],
     ['invalid DTO member access', "import { Controller, FromBody, Post, RequestDto } from '@fluojs/http';\nclass Input { @FromBody() name!: string; }\n@Controller('/')\nclass Example { @Post('/') @RequestDto(Input) create(input: Input) { return input.missing; } }\n"],
@@ -77,6 +92,21 @@ describe('HTTP website guide snippets', () => {
     const diagnostics = semanticDiagnostics(fixturePath, source);
 
     // Then
+    expect(diagnostics).not.toEqual([]);
+  });
+
+  it('selects malformed HTTP module specifiers for semantic compilation', () => {
+    // Given
+    const source = "import { Controller } from '@fluojs/htp';\n@Controller('/')\nclass Example {}\n";
+    const markdown = `\`\`\`ts
+${source}\`\`\``;
+
+    // When
+    const snippets = intendedHttpSnippets(markdown);
+    const diagnostics = snippets.flatMap((snippet) => semanticDiagnostics('tooling/governance/fixtures/malformed-http-module.ts', snippet));
+
+    // Then
+    expect(snippets).toEqual([source]);
     expect(diagnostics).not.toEqual([]);
   });
 
@@ -128,7 +158,32 @@ describe('HTTP website guide snippets', () => {
 
       for (const binding of route.bindings) {
         expect(binding.source, `${route.method} ${route.name} binds ${binding.member}`).toBe(expectedSources.get(route.method));
+
+        if (binding.source === 'FromPath') {
+          expect(route.pathPlaceholders, `${route.method} ${route.name} includes ${binding.key}`).toContain(binding.key);
+        }
       }
     }
+  });
+
+  it.each([
+    ['wrong DTO path key', `import { Controller, FromPath, Get, RequestDto } from '@fluojs/http';
+class Input { @FromPath('slug') id!: string; }
+@Controller('/') class Example { @Get('/:id') @RequestDto(Input) handler(input: Input) {} }`],
+    ['wrong handler placeholder', `import { Controller, FromPath, Get, RequestDto } from '@fluojs/http';
+class Input { @FromPath() id!: string; }
+@Controller('/') class Example { @Get('/:slug') @RequestDto(Input) handler(input: Input) {} }`],
+  ])('%s exposes an unmatched FromPath key', (_name, source) => {
+    // Given
+    const [route] = routeBindings(source);
+
+    // When
+    const unmatchedKeys = route?.bindings
+      .filter((binding) => binding.source === 'FromPath')
+      .filter((binding) => !route.pathPlaceholders.includes(binding.key ?? binding.member))
+      .map((binding) => binding.key ?? binding.member);
+
+    // Then
+    expect(unmatchedKeys).not.toEqual([]);
   });
 });

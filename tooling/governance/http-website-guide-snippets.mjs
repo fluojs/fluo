@@ -13,6 +13,7 @@ import {
   isIdentifier,
   isMethodDeclaration,
   isPropertyDeclaration,
+  isStringLiteral,
   isTypeReferenceNode,
   ModuleKind,
   ModuleResolutionKind,
@@ -45,6 +46,13 @@ function compilerOptions() {
 
 function virtualSnippetPath(relativePath) {
   return join(repoRoot, '.virtual-http-docs', relativePath.replace(/\.(?:md|mdx)$/u, '.ts'));
+}
+
+export function intendedHttpSnippets(markdown) {
+  return [...markdown.matchAll(/```ts\n([\s\S]*?)```/gu)]
+    .map((match) => match[1])
+    .filter((source) => source !== undefined)
+    .filter((source) => /\b(?:Controller|FromBody|FromPath|Get|Post|RequestDto)\b/u.test(source));
 }
 
 function virtualFixtures(relativePath) {
@@ -148,6 +156,11 @@ function identifierArgument(call) {
   return argument && isIdentifier(argument) ? argument.text : undefined;
 }
 
+function stringArgument(call) {
+  const [argument] = call?.arguments ?? [];
+  return argument && isStringLiteral(argument) ? argument.text : undefined;
+}
+
 function classDeclarations(sourceFile) {
   return new Map(
     sourceFile.statements
@@ -156,22 +169,50 @@ function classDeclarations(sourceFile) {
   );
 }
 
+/**
+ * @typedef {{
+ *   readonly key: string | undefined;
+ *   readonly member: string;
+ *   readonly source: 'FromBody' | 'FromPath';
+ * }} DtoBinding
+ */
+
+/**
+ * @typedef {{
+ *   readonly bindings: readonly DtoBinding[];
+ *   readonly method: 'Get' | 'Post';
+ *   readonly name: string;
+ *   readonly parameterDto: string | undefined;
+ *   readonly pathPlaceholders: readonly string[];
+ *   readonly requestDto: string | undefined;
+ *   readonly routePath: string;
+ * }} GuideRouteBinding
+ */
+
+/** @returns {DtoBinding[]} */
 function dtoBindings(declaration) {
   return declaration.members
     .filter(isPropertyDeclaration)
     .flatMap((member) => {
-      const source = ['FromBody', 'FromPath']
-        .find((candidate) => decorator(member, candidate) !== undefined);
+      const fromBody = decorator(member, 'FromBody');
+      const fromPath = decorator(member, 'FromPath');
+      const source = fromBody ? 'FromBody' : fromPath ? 'FromPath' : undefined;
 
       return member.name && isIdentifier(member.name) && source
-        ? [{ member: member.name.text, source }]
+        ? [{
+          key: source === 'FromPath' ? stringArgument(fromPath) ?? member.name.text : undefined,
+          member: member.name.text,
+          source,
+        }]
         : [];
     });
 }
 
+/** @returns {GuideRouteBinding[]} */
 export function routeBindings(sourceText) {
   const sourceFile = createSourceFile('snippet.ts', sourceText, ScriptTarget.ES2022, true, ScriptKind.TS);
   const classes = classDeclarations(sourceFile);
+  /** @type {GuideRouteBinding[]} */
   const routes = [];
 
   for (const declaration of classes.values()) {
@@ -193,13 +234,18 @@ export function routeBindings(sourceText) {
         ? parameterType.typeName.text
         : undefined;
       const dto = requestDto ? classes.get(requestDto) : undefined;
+      const routePath = stringArgument(decorator(member, method)) ?? '';
+      const pathPlaceholders = routePath.split('/')
+        .flatMap((segment) => segment.startsWith(':') ? [segment.slice(1)] : []);
 
       routes.push({
         bindings: dto ? dtoBindings(dto) : [],
         method,
         name: member.name.text,
         parameterDto,
+        pathPlaceholders,
         requestDto,
+        routePath,
       });
     }
   }
