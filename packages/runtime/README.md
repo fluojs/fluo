@@ -66,6 +66,44 @@ await app.listen();
 
 ## Common Patterns
 
+### Streaming multipart consumption
+
+Use `parseMultipartStream(...)` from `@fluojs/runtime/web` when an application route must consume
+large uploaded files without materializing each file as a `Uint8Array`. The existing
+`parseMultipart(...)` API remains the explicit buffered mode. Select exactly one mode for a request:
+buffered and streaming parsing of the same body reject with `MultipartBodyConsumedError`.
+
+```typescript
+import {
+  parseMultipartStream,
+  type MultipartFilePart,
+} from '@fluojs/runtime/web';
+
+for await (const part of parseMultipartStream(request, {
+  maxFieldSize: 1 * 1024 * 1024,
+  maxFields: 20,
+  maxFiles: 4,
+  maxFileSize: 20 * 1024 * 1024,
+  maxHeaderSize: 8 * 1024,
+  maxTotalSize: 25 * 1024 * 1024,
+})) {
+  if (part.kind === 'field') {
+    continue; // part.name and part.value
+  }
+
+  const file: MultipartFilePart = part;
+  await store(file.stream); // finish or cancel before reading the next part
+}
+```
+
+`MultipartFilePart.stream` is a Web `ReadableStream<Uint8Array>` with parser-driven
+backpressure: a file body is yielded before the complete request arrives, and the next request
+chunk is read only when the active file stream needs it. File-stream cancellation, request abort,
+parser failures, and every size/count/header limit cancel the active source and release the parser.
+The parser accepts native Fetch `Request` values plus native async-iterable Node/Express/Fastify
+request streams (directly or as `MultipartRequestLike` wrappers); it never exposes adapter-native
+multipart objects or temporary-file APIs.
+
 ### Optional Early Hints capability
 
 The runtime preserves the adapter-owned optional `context.response.earlyHints` capability without making it part of the required response method surface. Node.js, Express, and Fastify responses provide the writer; Web-standard response factories omit it so Bun, Deno, Workers, and custom Fetch hosts are detectable as unsupported before use. Early writes remain independent from final status, headers, body, and commit ownership. See the [`@fluojs/http` Early Hints contract](../http/README.md#early-hints).
@@ -208,6 +246,7 @@ class UsersModule {}
 - Bootstrap resolves independent singleton lifecycle providers concurrently, then runs lifecycle hooks in deterministic provider order.
 - Multipart parsing rejects payloads when the cumulative body size exceeds the configured `multipart.maxTotalSize`; runtime adapters default that limit to `maxBodySize` unless you override it.
 - `@fluojs/runtime/web` multipart parsing uses Web-standard `TextEncoder` and `Uint8Array` primitives without requiring the Node.js `Buffer` global. Uploaded file `buffer` values are `Uint8Array`; Node-only consumers can convert them explicitly with `Buffer.from(file.buffer)` at their application boundary.
+- `@fluojs/runtime/web` exposes two mutually exclusive multipart consumption modes: `parseMultipart(...)` buffers fields and files, while `parseMultipartStream(...)` yields discriminated field/file parts and never materializes complete file payloads. Streaming mode enforces per-field, per-file, total-size, field-count, file-count, and header limits while bytes are read; abort, cancellation, and parser failures cancel the active source. A body selected by either mode rejects a second buffered or streaming selection with `MultipartBodyConsumedError`.
 - `createNodeHttpAdapter(...)`, `bootstrapNodeApplication(...)`, and `runNodeApplication(...)` accept `maxBodySize` only as a non-negative integer byte count and fail fast during adapter creation/bootstrap when the value is invalid.
 - Response stream backpressure helpers settle `waitForDrain()` on `drain`, `close`, or `error` so streaming writers do not hang on dead connections.
 - HTTP application bootstrap passes an optional application-owned `errorRepresentation.html` provider to the dispatcher without taking representation ownership. Canonical JSON remains the default; HTTP keeps classification, negotiation, status/header, `HEAD`, abort, commit, and fallback semantics.
@@ -248,6 +287,7 @@ class UsersModule {}
 - `PlatformLifecycleOperation`, `PlatformLifecycleConflictError`: Root-exported lifecycle conflict contracts. The error uses code `PLATFORM_LIFECYCLE_CONFLICT` and exposes matching `activeOperation` / `requestedOperation` fields and structured metadata.
 - `createRequestAbortContext(...)`, `trackActiveRequestTransaction(...)`, `untrackActiveRequestTransaction(...)`: Request abort and active transaction helpers used by runtime-aware integrations.
 - `UploadedFile`: Runtime-neutral multipart file descriptor whose in-memory `buffer` payload is a Web-standard `Uint8Array`.
+- `MultipartFieldPart`, `MultipartFilePart`, `MultipartPart`, and `MultipartBodyConsumedError`: Typed streaming multipart contracts. `MultipartFilePart.stream` is single-consumer and must settle before iteration requests the following part.
 
 ## Platform-Specific Subpaths
 
@@ -256,7 +296,7 @@ Use `@fluojs/runtime/node` and `@fluojs/runtime/web` for application-facing runt
 | Subpath | Purpose |
 | :--- | :--- |
 | `@fluojs/runtime/node` | Supported Node.js entrypoint for logger factories, Node adapter/bootstrap helpers, and shutdown signal registration. |
-| `@fluojs/runtime/web` | Shared Web-standard request/response utilities for Bun, Deno, and Cloudflare Workers, including `createWebRequestResponseFactory`, `dispatchWebRequest`, `createWebFrameworkRequest`, and `parseMultipart`. |
+| `@fluojs/runtime/web` | Shared Web-standard request/response utilities for Bun, Deno, and Cloudflare Workers, including `createWebRequestResponseFactory`, `dispatchWebRequest`, `createWebFrameworkRequest`, buffered `parseMultipart`, and streaming `parseMultipartStream`. |
 | `@fluojs/runtime/internal` | Internal package-integration seam for runtime wiring tokens, runtime-owned metadata and route-inspection helpers, plus `defineModule(...)` and `createRuntimeRouteInspection(...)` for first-party runtime-neutral integrations that must align with compiled runtime descriptors. |
 | `@fluojs/runtime/internal-node` | Node-only internal seam for adapter/runtime plumbing; prefer `@fluojs/runtime/node` in application code. |
 | `@fluojs/runtime/internal/http-adapter` | Internal HTTP adapter seam for platform packages. |

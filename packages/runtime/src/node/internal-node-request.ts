@@ -3,7 +3,6 @@ import type {
   IncomingMessage,
   ServerResponse,
 } from 'node:http';
-import { Readable } from 'node:stream';
 import { URL } from 'node:url';
 
 import {
@@ -124,12 +123,7 @@ export function createDeferredFrameworkRequest(
   const materializeBody = createMemoizedAsyncValue(async () => {
     if (isMultipart) {
       const result = await parseMultipart(
-        {
-          body: Readable.toWeb(request),
-          headers,
-          method: request.method,
-          url: resolveAbsoluteRequestUrl(rawUrl),
-        },
+        request,
         {
           ...multipartOptions,
           maxTotalSize: multipartOptions?.maxTotalSize ?? maxBodySize,

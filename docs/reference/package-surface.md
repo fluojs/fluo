@@ -28,6 +28,21 @@
 | **Deno** | `@fluojs/platform-deno` | Official managed `Deno.serve()` startup path plus `createDenoFetchHandler(...)` for hosts that bootstrap fluo but own server startup, shutdown, signals, and websocket upgrades. |
 | **Cloudflare Workers** | `@fluojs/platform-cloudflare-workers` | Stateless isolate lifecycle built on the fetch-style adapter seam. `listen()` binds the dispatcher without opening a socket, Worker `fetch()` registers active work with `executionContext.waitUntil(...)`, SSE (`text/event-stream`) drains follow the response body until completion or cancellation, WebSocket upgrades use a binding frozen before the first listen boundary, and shutdown returns JSON `503` for new HTTP/WebSocket ingress while active work drains for the bounded close window. If a lazy entrypoint `close()` times out, it keeps the shutdown gate until the underlying drain settles, then clears the temporary gate so a later request can bootstrap a fresh application. |
 
+## portable multipart capability matrix
+
+The normal runtime dispatch pipeline retains buffered multipart materialization so its existing
+`FrameworkRequest.body` and `files` contract stays stable. Applications select streaming explicitly
+through `@fluojs/runtime/web` and must not consume the same body through both modes.
+
+| adapter family | portable input to `parseMultipartStream(...)` | buffered mode | streaming mode |
+| --- | --- | --- | --- |
+| Node.js, Express, Fastify | Native async-iterable request directly or as `MultipartRequestLike` | Supported by the runtime request pipeline. | Supported by the shared parser with typed parts and Web streams. |
+| Bun, Deno, Cloudflare Workers | Native Fetch `Request` | Supported by the runtime request pipeline. | Supported by the shared parser with typed parts and Web streams. |
+
+Both rows enforce the same `maxFieldSize`, `maxFileSize`, `maxTotalSize`, `maxFields`, `maxFiles`,
+and `maxHeaderSize` limits. Request abort, parser failure, and file-stream cancellation cancel the
+active source; `MultipartBodyConsumedError` rejects buffered/streaming double consumption.
+
 ## package responsibilities
 
 ### core

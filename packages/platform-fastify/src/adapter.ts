@@ -34,6 +34,7 @@ import type {
   MultipartOptions,
   UploadedFile,
 } from '@fluojs/runtime';
+import { parseMultipart } from '@fluojs/runtime/web';
 import {
   bootstrapHttpAdapterApplication,
   runHttpAdapterApplication,
@@ -1151,70 +1152,11 @@ function collectVersionSensitiveRouteKeys(descriptors: readonly HandlerDescripto
   );
 }
 
-async function parseMultipartRequest(
+function parseMultipartRequest(
   request: FastifyRequest,
   options: MultipartOptions = {},
 ): Promise<{ fields: Record<string, string | string[]>; files: UploadedFile[] }> {
-  const fields: Record<string, string | string[]> = {};
-  const files: UploadedFile[] = [];
-  const maxFileSize = options.maxFileSize ?? 10 * 1024 * 1024;
-  const maxFiles = options.maxFiles ?? 10;
-  const maxTotalSize = options.maxTotalSize ?? 10 * 1024 * 1024;
-  const contentLength = Number(request.headers['content-length']);
-  let totalSize = 0;
-
-  if (Number.isFinite(contentLength) && contentLength > maxTotalSize) {
-    throw new PayloadTooLargeException('Request body exceeds the configured multipart limits.');
-  }
-
-  try {
-    for await (const part of request.parts({
-      limits: {
-        fileSize: maxFileSize,
-        files: maxFiles,
-      },
-    })) {
-      if (part.type === 'file') {
-        if (files.length >= maxFiles) {
-          throw new PayloadTooLargeException(`Exceeded maximum file count of ${String(maxFiles)}.`);
-        }
-
-        const buffer = await part.toBuffer();
-        totalSize += buffer.byteLength;
-
-        if (totalSize > maxTotalSize) {
-          throw new PayloadTooLargeException('Request body exceeds the configured multipart limits.');
-        }
-
-        files.push({
-          buffer,
-          fieldname: part.fieldname,
-          mimetype: part.mimetype,
-          originalname: part.filename,
-          size: buffer.byteLength,
-        });
-
-        continue;
-      }
-
-      const value = String(part.value ?? '');
-      totalSize += Buffer.byteLength(value, 'utf8');
-
-      if (totalSize > maxTotalSize) {
-        throw new PayloadTooLargeException('Request body exceeds the configured multipart limits.');
-      }
-
-      setMultiValue(fields, part.fieldname, value);
-    }
-  } catch (error: unknown) {
-    if (isFastifyMultipartTooLargeError(error)) {
-      throw new PayloadTooLargeException('Request body exceeds the configured multipart limits.');
-    }
-
-    throw error;
-  }
-
-  return { fields, files };
+  return parseMultipart(request.raw, options);
 }
 
 /**
@@ -1270,22 +1212,6 @@ function cloneRequestHeaders(headers: FastifyRequest['headers']): IncomingHttpHe
   return Object.fromEntries(
     Object.entries(headers).map(([name, value]) => [name, cloneHeaderValue(value)]),
   );
-}
-
-function setMultiValue(target: Record<string, string | string[]>, key: string, value: string): void {
-  const existing = target[key];
-
-  if (existing === undefined) {
-    target[key] = value;
-    return;
-  }
-
-  if (Array.isArray(existing)) {
-    existing.push(value);
-    return;
-  }
-
-  target[key] = [existing, value];
 }
 
 function createRequestSignal(response: import('node:http').ServerResponse): AbortSignal {

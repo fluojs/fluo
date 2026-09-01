@@ -66,6 +66,43 @@ await app.listen();
 
 ## 주요 패턴
 
+### 스트리밍 멀티파트 소비
+
+애플리케이션 route가 업로드 파일 하나를 `Uint8Array`로 실체화하지 않고 큰 파일을 소비해야 할 때는
+`@fluojs/runtime/web`의 `parseMultipartStream(...)`을 사용하세요. 기존 `parseMultipart(...)` API는
+명시적인 buffered mode로 유지됩니다. 요청마다 정확히 하나의 mode를 선택해야 하며, 같은 body를
+buffered와 streaming으로 함께 파싱하면 `MultipartBodyConsumedError`로 reject됩니다.
+
+```typescript
+import {
+  parseMultipartStream,
+  type MultipartFilePart,
+} from '@fluojs/runtime/web';
+
+for await (const part of parseMultipartStream(request, {
+  maxFieldSize: 1 * 1024 * 1024,
+  maxFields: 20,
+  maxFiles: 4,
+  maxFileSize: 20 * 1024 * 1024,
+  maxHeaderSize: 8 * 1024,
+  maxTotalSize: 25 * 1024 * 1024,
+})) {
+  if (part.kind === 'field') {
+    continue; // part.name 및 part.value
+  }
+
+  const file: MultipartFilePart = part;
+  await store(file.stream); // 다음 part를 읽기 전에 끝까지 소비하거나 cancel
+}
+```
+
+`MultipartFilePart.stream`은 parser가 제어하는 backpressure를 가진 Web
+`ReadableStream<Uint8Array>`입니다. Complete request가 도착하기 전에 file body를 yield하며,
+active file stream이 다음 chunk를 필요로 할 때만 요청 chunk를 읽습니다. File stream cancel, request
+abort, parser failure, 모든 size/count/header limit은 active source를 cancel하고 parser를 해제합니다.
+Parser는 native Fetch `Request`와 native async-iterable Node/Express/Fastify request stream을 직접 또는
+`MultipartRequestLike` wrapper로 받으며 adapter-native multipart object나 temporary-file API를 노출하지 않습니다.
+
 ### Optional Early Hints capability
 
 Runtime은 adapter가 소유하는 optional `context.response.earlyHints` capability를 보존하면서 이를 필수 response method surface로 만들지 않습니다. Node.js, Express, Fastify response는 writer를 제공하고 Web 표준 response factory는 이를 생략하므로 Bun, Deno, Workers, custom Fetch host가 unsupported임을 사용 전에 감지할 수 있습니다. Early write는 final status, header, body, commit ownership과 독립적입니다. 자세한 내용은 [`@fluojs/http` Early Hints 계약](../http/README.ko.md#early-hints)을 참고하세요.
@@ -208,6 +245,7 @@ class UsersModule {}
 - Bootstrap은 독립적인 singleton lifecycle provider를 병렬로 해석한 뒤 lifecycle hook은 결정적인 provider 순서대로 실행합니다.
 - 멀티파트 파싱은 누적 바디 크기가 설정된 `multipart.maxTotalSize`를 넘으면 즉시 거부되며, 런타임 어댑터는 별도 재정의가 없으면 이 한도를 `maxBodySize`와 동일하게 맞춥니다.
 - `@fluojs/runtime/web` 멀티파트 파싱은 Node.js `Buffer` global 없이 Web 표준 `TextEncoder`와 `Uint8Array` primitive만 사용합니다. 업로드 파일의 `buffer` 값은 `Uint8Array`이며, Node 전용 consumer는 애플리케이션 경계에서 `Buffer.from(file.buffer)`로 명시적으로 변환할 수 있습니다.
+- `@fluojs/runtime/web`은 서로 배타적인 두 멀티파트 소비 mode를 노출합니다. `parseMultipart(...)`는 field와 file을 buffer하고, `parseMultipartStream(...)`은 discriminated field/file part를 yield하며 complete file payload를 실체화하지 않습니다. Streaming mode는 byte를 읽는 동안 per-field, per-file, total-size, field-count, file-count, header limit을 강제하고 abort, cancellation, parser failure가 active source를 cancel합니다. 두 mode 중 하나가 선택한 body를 다시 buffered 또는 streaming으로 선택하면 `MultipartBodyConsumedError`로 reject됩니다.
 - `createNodeHttpAdapter(...)`, `bootstrapNodeApplication(...)`, `runNodeApplication(...)`는 `maxBodySize`를 0 이상의 정수 바이트 수로만 받으며, 값이 잘못되면 어댑터 생성/부트스트랩 단계에서 즉시 실패합니다.
 - 응답 스트림 백프레셔 헬퍼는 `drain`, `close`, `error` 중 어느 경우에도 `waitForDrain()`을 완료시켜 끊어진 연결에서 스트리밍 작성기가 멈추지 않도록 합니다.
 - HTTP application bootstrap은 optional application-owned `errorRepresentation.html` provider를 representation ownership 없이 dispatcher에 전달합니다. Canonical JSON은 default로 유지되며 classification, negotiation, status/header, `HEAD`, abort, commit, fallback 의미는 HTTP가 소유합니다.
@@ -248,6 +286,7 @@ class UsersModule {}
 - `PlatformLifecycleOperation`, `PlatformLifecycleConflictError`: root-exported lifecycle conflict 계약입니다. Error는 code `PLATFORM_LIFECYCLE_CONFLICT`를 사용하고 일치하는 `activeOperation` / `requestedOperation` field와 structured metadata를 노출합니다.
 - `createRequestAbortContext(...)`, `trackActiveRequestTransaction(...)`, `untrackActiveRequestTransaction(...)`: runtime-aware integration이 사용하는 request abort 및 active transaction helper입니다.
 - `UploadedFile`: 메모리 내 `buffer` payload를 Web 표준 `Uint8Array`로 제공하는 runtime-neutral 멀티파트 파일 descriptor입니다.
+- `MultipartFieldPart`, `MultipartFilePart`, `MultipartPart`, `MultipartBodyConsumedError`: 타입화된 streaming 멀티파트 계약입니다. `MultipartFilePart.stream`은 single-consumer이며 iteration이 다음 part를 요청하기 전에 settle되어야 합니다.
 
 ## 플랫폼 전용 서브경로
 
@@ -256,7 +295,7 @@ class UsersModule {}
 | 서브경로 | 용도 |
 | :--- | :--- |
 | `@fluojs/runtime/node` | 로거 팩토리, Node 어댑터/부트스트랩 헬퍼, 종료 시그널 등록을 위한 지원되는 Node.js 전용 진입점입니다. |
-| `@fluojs/runtime/web` | Bun, Deno, Cloudflare Workers를 위한 공유 Web 표준 요청/응답 유틸리티입니다. `createWebRequestResponseFactory`, `dispatchWebRequest`, `createWebFrameworkRequest`, `parseMultipart`를 포함합니다. |
+| `@fluojs/runtime/web` | Bun, Deno, Cloudflare Workers를 위한 공유 Web 표준 요청/응답 유틸리티입니다. `createWebRequestResponseFactory`, `dispatchWebRequest`, `createWebFrameworkRequest`, buffered `parseMultipart`, streaming `parseMultipartStream`을 포함합니다. |
 | `@fluojs/runtime/internal` | runtime wiring token, runtime-owned metadata 및 route-inspection helper와 함께 compiled runtime descriptor에 정렬되어야 하는 first-party runtime-neutral integration을 위한 `defineModule(...)`, `createRuntimeRouteInspection(...)`을 제공하는 internal package-integration seam입니다. |
 | `@fluojs/runtime/internal-node` | adapter/runtime plumbing을 위한 Node 전용 internal seam이며, 애플리케이션 코드에서는 `@fluojs/runtime/node`를 우선 사용하세요. |
 | `@fluojs/runtime/internal/http-adapter` | platform package를 위한 internal HTTP adapter seam입니다. |

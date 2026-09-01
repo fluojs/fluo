@@ -18,6 +18,7 @@ import {
   consumeRuntimeRawRequestNativeRouteHandoff,
 } from './internal/http-runtime.js';
 import {
+  markMultipartBodyConsumed,
   type MultipartOptions,
   parseMultipart,
   type UploadedFile,
@@ -65,7 +66,16 @@ export interface WebFrameworkResponse extends FrameworkResponse {
   toResponse(): Response;
 }
 
-export { parseMultipart } from './multipart.js';
+export {
+  MultipartBodyConsumedError,
+  parseMultipart,
+  parseMultipartStream,
+} from './multipart.js';
+export type {
+  MultipartFieldPart,
+  MultipartFilePart,
+  MultipartPart,
+} from './multipart.js';
 
 interface WebFrameworkResponseStream {
   readonly closed: boolean;
@@ -396,6 +406,7 @@ function createDeferredWebFrameworkRequest(
   const materializeBody = hasRequestBody ? createMemoizedAsyncValue(async () => {
     if (isMultipart) {
       const materializedRequest = request.clone();
+      markMultipartBodyConsumed(request);
       const result = await parseMultipart(createRequestWithSnapshotMetadata(
         materializedRequest,
         request.url,

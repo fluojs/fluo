@@ -10,7 +10,6 @@ import {
   type ServerOptions as HttpsServerOptions,
 } from 'node:https';
 import type { AddressInfo, Socket } from 'node:net';
-import { Readable } from 'node:stream';
 import {
   BadRequestException,
   type CorsOptions,
@@ -58,7 +57,6 @@ import {
   createRequestSignal,
   normalizePrimaryContentType,
   parseQueryParamsFromSearch,
-  resolveAbsoluteRequestUrl,
   resolveRequestIdFromHeaders,
   snapshotSimpleQueryRecord,
   splitRawRequestUrl,
@@ -904,12 +902,7 @@ async function parseMultipartRequest(
 ): Promise<{ fields: Record<string, string | string[]>; files: UploadedFile[] }> {
   try {
     const result = await parseMultipart(
-      {
-        body: Readable.toWeb(request),
-        headers: normalizeHeaders(request.headers),
-        method: request.method,
-        url: resolveAbsoluteRequestUrl(request.url),
-      },
+      request,
       options,
     );
 

@@ -6,6 +6,8 @@ import {
   createWebFrameworkRequest,
   createWebRequestResponseFactory,
   dispatchWebRequest,
+  parseMultipart,
+  parseMultipartStream,
 } from './web.js';
 
 describe('dispatchWebRequest', () => {
@@ -514,5 +516,65 @@ describe('createWebFrameworkRequest', () => {
     const rawFormData = await request.formData();
 
     expect(rawFormData.get('title')).toBe('before');
+  });
+});
+
+describe('Web multipart consumption boundary', () => {
+  it('rejects buffered and streaming double consumption through the public Web adapter surface', async () => {
+    const createRequest = () => {
+      const form = new FormData();
+      form.set('title', 'portable');
+      return new Request('https://runtime.test/upload', {
+        body: form,
+        method: 'POST',
+      });
+    };
+    const streamingFirst = createRequest();
+    const streamingParts = parseMultipartStream(streamingFirst);
+
+    await expect(streamingParts.next()).resolves.toMatchObject({
+      done: false,
+      value: {
+        kind: 'field',
+        name: 'title',
+        value: 'portable',
+      },
+    });
+    await expect(parseMultipart(streamingFirst)).rejects.toThrow(
+      'Multipart request body has already been consumed.',
+    );
+
+    const bufferedFirst = createRequest();
+
+    await expect(parseMultipart(bufferedFirst)).resolves.toMatchObject({
+      fields: { title: 'portable' },
+    });
+    await expect(parseMultipartStream(bufferedFirst).next()).rejects.toThrow(
+      'Multipart request body has already been consumed.',
+    );
+  });
+
+  it('marks the public raw request consumed after framework buffered materialization', async () => {
+    // Given
+    const form = new FormData();
+    form.set('title', 'portable');
+    const request = new Request('https://runtime.test/upload', {
+      body: form,
+      method: 'POST',
+    });
+    const factory = createWebRequestResponseFactory();
+    const frameworkRequest = await factory.createRequest(request, new AbortController().signal);
+
+    // When
+    await factory.materializeRequest?.(frameworkRequest);
+
+    // Then
+    if (!(frameworkRequest.raw instanceof Request)) {
+      throw new TypeError('Expected the Web framework raw request.');
+    }
+
+    await expect(parseMultipartStream(frameworkRequest.raw).next()).rejects.toThrow(
+      'Multipart request body has already been consumed.',
+    );
   });
 });
