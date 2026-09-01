@@ -49,17 +49,26 @@ describe('handler mapping', () => {
     });
   });
 
-  it('keeps route inspection synchronized with matching after descriptor mutation attempts', () => {
-    @Controller('/users')
+  it('freezes mapping snapshots without freezing caller metadata', () => {
     class UsersController {
-      @Get('/:id')
       getUser() {
         return { ok: true };
       }
     }
 
+    const route = {
+      headers: [{ name: 'x-source', value: 'original' }],
+      method: 'GET',
+      path: '/:id',
+    };
+    defineControllerMetadata(UsersController, { basePath: '/users' });
+    defineRouteMetadata(UsersController.prototype, 'getUser', route);
+
     const mapping = createHandlerMapping([{ controllerToken: UsersController }]);
     const descriptor = mapping.descriptors[0];
+
+    route.path = '/:slug';
+    route.headers[0]!.value = 'mutated';
 
     expect(() => {
       mapping.descriptors.push(descriptor);
@@ -70,6 +79,9 @@ describe('handler mapping', () => {
     expect(() => {
       descriptor.metadata.pathParams.push('slug');
     }).toThrow(TypeError);
+    expect(Object.isFrozen(route)).toBe(false);
+    expect(Object.isFrozen(route.headers)).toBe(false);
+    expect(descriptor.route.headers).toEqual([{ name: 'x-source', value: 'original' }]);
 
     const match = mapping.match({
       body: undefined,
@@ -85,7 +97,10 @@ describe('handler mapping', () => {
 
     expect(match).toMatchObject({
       descriptor: {
-        route: { path: '/users/:id' },
+        route: {
+          headers: [{ name: 'x-source', value: 'original' }],
+          path: '/users/:id',
+        },
       },
       params: { id: '42' },
     });

@@ -421,13 +421,32 @@ function buildDescriptorList(sources: HandlerSource[], versioning: ResolvedVersi
   return descriptors;
 }
 
-function freezeDescriptorSnapshot(descriptors: HandlerDescriptor[]): HandlerDescriptor[] {
-  for (const descriptor of descriptors) {
+function freezeDescriptorSnapshot(descriptors: readonly HandlerDescriptor[]): HandlerDescriptor[] {
+  const snapshot = descriptors.map((descriptor) => {
+    const { metadata, route } = descriptor;
+
+    return {
+      ...descriptor,
+      metadata: {
+        ...metadata,
+        moduleMiddleware: [...metadata.moduleMiddleware],
+        pathParams: [...metadata.pathParams],
+      },
+      route: {
+        ...route,
+        ...(route.guards ? { guards: [...route.guards] } : {}),
+        ...(route.headers ? { headers: route.headers.map((header) => ({ ...header })) } : {}),
+        ...(route.interceptors ? { interceptors: [...route.interceptors] } : {}),
+        ...(route.produces ? { produces: [...route.produces] } : {}),
+        ...(route.redirect ? { redirect: { ...route.redirect } } : {}),
+      },
+    };
+  });
+
+  for (const descriptor of snapshot) {
     const { metadata, route } = descriptor;
 
     if (route.headers) {
-      route.headers = route.headers.map((header) => ({ ...header }));
-
       for (const header of route.headers) {
         Object.freeze(header);
       }
@@ -436,7 +455,6 @@ function freezeDescriptorSnapshot(descriptors: HandlerDescriptor[]): HandlerDesc
     }
 
     if (route.redirect) {
-      route.redirect = { ...route.redirect };
       Object.freeze(route.redirect);
     }
 
@@ -460,8 +478,8 @@ function freezeDescriptorSnapshot(descriptors: HandlerDescriptor[]): HandlerDesc
     Object.freeze(descriptor);
   }
 
-  Object.freeze(descriptors);
-  return descriptors;
+  Object.freeze(snapshot);
+  return snapshot;
 }
 
 /**
