@@ -84,6 +84,7 @@ function normalizeCacheModuleOptions(options: CacheModuleOptions = {}): Normaliz
     ttlJitter: normalizeCacheTtlJitterOptions(options.ttlJitter),
     httpKeyStrategy: options.httpKeyStrategy ?? 'route',
     principalScopeResolver: options.principalScopeResolver,
+    observer: options.observer,
   };
 }
 

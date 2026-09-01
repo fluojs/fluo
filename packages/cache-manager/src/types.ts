@@ -78,6 +78,38 @@ export interface CacheTtlJitterOptions {
 }
 
 /**
+ * Privacy-safe observation payload emitted once per completed cache operation.
+ *
+ * @remarks
+ * The discriminated union couples read operations to `hit`, `miss`, or `error`
+ * and write, invalidation, and lifecycle operations to `success` or `error`.
+ * Observations intentionally exclude cache keys, cached values, loader results,
+ * and error objects so operational instrumentation cannot leak application data.
+ */
+export type CacheObservation =
+  | {
+      readonly durationMs: number;
+      readonly operation: 'get' | 'remember';
+      readonly outcome: 'hit' | 'miss' | 'error';
+    }
+  | {
+      readonly durationMs: number;
+      readonly operation: 'set' | 'del' | 'reset' | 'close';
+      readonly outcome: 'success' | 'error';
+    };
+
+/**
+ * Opt-in observation hook for cache hit rate, latency, and error instrumentation.
+ *
+ * @remarks
+ * Observer failures are contained: a thrown error or rejected promise is
+ * swallowed and never changes the cache result the caller receives.
+ */
+export interface CacheObserver {
+  onCacheOperation(observation: CacheObservation): Awaitable<void>;
+}
+
+/**
  * Public configuration options for `CacheModule.forRoot(...)`.
  */
 export interface CacheModuleOptions extends CacheModuleInternalOptions {
@@ -89,6 +121,8 @@ export interface CacheModuleOptions extends CacheModuleInternalOptions {
   ttlJitter?: CacheTtlJitterOptions;
   httpKeyStrategy?: CacheKeyStrategy;
   principalScopeResolver?: PrincipalScopeResolver;
+  /** Opt-in privacy-safe observer notified after each cache operation completes. */
+  observer?: CacheObserver;
 }
 
 /**
@@ -108,6 +142,8 @@ export interface NormalizedCacheModuleOptions {
   ttlJitter?: NormalizedCacheTtlJitterOptions;
   httpKeyStrategy: CacheKeyStrategy;
   principalScopeResolver: PrincipalScopeResolver | undefined;
+  /** Opt-in privacy-safe observer notified after each cache operation completes. */
+  observer?: CacheObserver;
 }
 
 /**

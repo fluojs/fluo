@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs';
 
+import { describe, expect, expectTypeOf, it } from 'vitest';
+
 import type {
   CacheAsyncModuleOptions,
   CacheEvictDecoratorValue,
@@ -12,6 +14,8 @@ import type {
   CacheManagerStoreKind,
   CacheManagerStoreOwnershipMode,
   CacheModuleOptions,
+  CacheObservation,
+  CacheObserver,
   CacheStore,
   CacheTtlJitterMode,
   CacheTtlJitterOptions,
@@ -21,10 +25,18 @@ import type {
   RedisCacheOptions,
   RedisCompatibleClient,
   RedisStoreOptions,
-} from '@fluojs/cache-manager';
-import * as cacheManagerPublicApi from '@fluojs/cache-manager';
-import { CacheModule } from '@fluojs/cache-manager';
-import { describe, expect, expectTypeOf, it } from 'vitest';
+} from './index.js';
+import * as cacheManagerPublicApi from './index.js';
+import { CacheModule } from './index.js';
+
+type ReadCacheObservation = Extract<
+  CacheObservation,
+  { readonly operation: 'get' | 'remember' }
+>;
+type WriteCacheObservation = Extract<
+  CacheObservation,
+  { readonly operation: 'set' | 'del' | 'reset' | 'close' }
+>;
 
 type RootCacheKeyStrategy =
   | 'route'
@@ -73,6 +85,14 @@ describe('@fluojs/cache-manager public API surface', () => {
     expectTypeOf<CacheAsyncModuleOptions>().toHaveProperty('global');
     expectTypeOf<NormalizedCacheModuleOptions>().toHaveProperty('keyPrefix');
     expectTypeOf<NormalizedCacheModuleOptions>().toHaveProperty('principalScopeResolver');
+    expectTypeOf<CacheModuleOptions>().toHaveProperty('observer');
+    expectTypeOf<NormalizedCacheModuleOptions>().toHaveProperty('observer');
+    expectTypeOf<CacheObserver>().toHaveProperty('onCacheOperation');
+    expectTypeOf<CacheObservation>().toHaveProperty('operation');
+    expectTypeOf<CacheObservation>().toHaveProperty('outcome');
+    expectTypeOf<CacheObservation>().toHaveProperty('durationMs');
+    expectTypeOf<ReadCacheObservation['outcome']>().toEqualTypeOf<'hit' | 'miss' | 'error'>();
+    expectTypeOf<WriteCacheObservation['outcome']>().toEqualTypeOf<'success' | 'error'>();
     expectTypeOf<RedisCacheOptions>().toHaveProperty('clientName');
     expectTypeOf<RedisCompatibleClient>().toHaveProperty('scan');
     expectTypeOf<RedisStoreOptions>().toHaveProperty('keyPrefix');
