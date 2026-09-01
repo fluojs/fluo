@@ -1,8 +1,10 @@
 import {
   Controller,
+  type ContentNegotiationOptions,
   Get,
   Head,
   Post,
+  Produces,
   Query,
   type ConditionalRequestOptions,
   type RequestContext,
@@ -69,6 +71,7 @@ export interface HttpAdapterPortabilityHarnessOptions<
   createConditionalRequestBootstrapOptions?: (
     options: {
       readonly conditionalRequest: ConditionalRequestOptions;
+      readonly contentNegotiation: ContentNegotiationOptions;
       readonly cors: false;
       readonly port: 0;
     },
@@ -385,11 +388,13 @@ export class HttpAdapterPortabilityHarness<
 
     @Controller('/validators')
     class ValidatorsController {
+      @Produces('application/json')
       @Get('/resource')
       getResource() {
         return { id: 'resource' };
       }
 
+      @Produces('application/json')
       @Head('/resource')
       headResource() {
         return { id: 'resource' };
@@ -415,6 +420,14 @@ export class HttpAdapterPortabilityHarness<
             },
           };
         },
+      },
+      contentNegotiation: {
+        formatters: [{
+          format(body) {
+            return JSON.stringify(body);
+          },
+          mediaType: 'application/json',
+        }],
       },
       cors: false,
       port: 0,
@@ -446,10 +459,12 @@ export class HttpAdapterPortabilityHarness<
         || await head.text() !== ''
         || notModified.headers.get('etag') !== '"resource-v1"'
         || notModified.headers.get('last-modified') !== 'Thu, 01 Jan 2026 00:00:00 GMT'
+        || notModified.headers.get('vary') !== 'Accept'
         || preconditionFailed.headers.get('etag') !== '"resource-v1"'
         || preconditionFailed.headers.get('last-modified') !== 'Thu, 01 Jan 2026 00:00:00 GMT'
         || head.headers.get('etag') !== '"resource-v1"'
         || head.headers.get('last-modified') !== 'Thu, 01 Jan 2026 00:00:00 GMT'
+        || head.headers.get('vary') !== 'Accept'
       ) {
         throw new Error(`${this.options.name} adapter changed conditional request response semantics.`);
       }
@@ -465,16 +480,19 @@ export class HttpAdapterPortabilityHarness<
 
     @Controller('/assets')
     class AssetController {
+      @Produces('application/octet-stream')
       @Get('/logo')
       getLogo() {
         return Uint8Array.from([0, 1, 2, 3, 4, 5]);
       }
 
+      @Produces('application/octet-stream')
       @Head('/logo')
       headLogo() {
         return Uint8Array.from([0, 1, 2, 3, 4, 5]);
       }
 
+      @Produces('application/octet-stream')
       @Post('/logo')
       postLogo() {
         return Uint8Array.from([0, 1, 2, 3, 4, 5]);
@@ -495,6 +513,23 @@ export class HttpAdapterPortabilityHarness<
             },
           };
         },
+      },
+      contentNegotiation: {
+        formatters: [{
+          format(body) {
+            return JSON.stringify(body);
+          },
+          mediaType: 'application/json',
+        }, {
+          format(body) {
+            if (!(body instanceof Uint8Array)) {
+              throw new Error('Expected byte-range formatter to receive a Uint8Array.');
+            }
+
+            return body;
+          },
+          mediaType: 'application/octet-stream',
+        }],
       },
       cors: false,
       port: 0,

@@ -12,6 +12,7 @@ import {
   Header,
   type MiddlewareContext,
   type Next,
+  Produces,
   Redirect,
 } from '../index.js';
 import {
@@ -352,5 +353,207 @@ describe('dispatch response policy', () => {
     expect(response.headers.Location).toBe('/destination');
     expect(response.headers.ETag).toBe('W/"redirect-v1"');
     expect(response.headers['Last-Modified']).toBe('Thu, 01 Jan 2026 00:00:00 GMT');
+  });
+
+  it.each([
+    ['GET'],
+    ['HEAD'],
+  ])('retains route cache metadata on negotiated matching %s validators', async (method) => {
+    let handlerCalls = 0;
+
+    @Controller('/conditional-route-headers')
+    class ConditionalRouteHeadersController {
+      @Get('/')
+      @Produces('application/json')
+      @Header('Vary', 'Origin, origin, ORIGIN')
+      @Header('Cache-Control', 'public, max-age=3600')
+      @Header('Expires', 'Thu, 01 Jan 2026 01:00:00 GMT')
+      getValue() {
+        handlerCalls += 1;
+        return { ok: true };
+      }
+
+      @Head('/')
+      @Produces('application/json')
+      @Header('Vary', 'Origin, origin, ORIGIN')
+      @Header('Cache-Control', 'public, max-age=3600')
+      @Header('Expires', 'Thu, 01 Jan 2026 01:00:00 GMT')
+      headValue() {
+        handlerCalls += 1;
+        return { ok: true };
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      conditionalRequest: {
+        resolve() {
+          return {
+            exists: true,
+            validators: {
+              etag: { opaqueValue: 'route-cache-v1', strength: 'strong' },
+            },
+          };
+        },
+      },
+      contentNegotiation: {
+        formatters: [{
+          format(body) {
+            return JSON.stringify(body);
+          },
+          mediaType: 'application/json',
+        }],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: ConditionalRouteHeadersController }]),
+      rootContainer: new Container().register(ConditionalRouteHeadersController),
+    });
+    const response = createResponse();
+
+    // Given: negotiated route metadata and a matching current representation validator.
+    // When: a GET or HEAD request carries If-None-Match for that representation.
+    await dispatcher.dispatch(createRequest(
+      '/conditional-route-headers',
+      { accept: 'application/json', 'if-none-match': '"route-cache-v1"' },
+      method,
+    ), response);
+
+    // Then: the bodyless 304 preserves static cache metadata and canonicalizes Vary.
+    expect(response.statusCode).toBe(304);
+    expect(response.body).toBeUndefined();
+    expect(response.headers.Vary).toBe('Origin, Accept');
+    expect(response.headers['Cache-Control']).toBe('public, max-age=3600');
+    expect(response.headers.Expires).toBe('Thu, 01 Jan 2026 01:00:00 GMT');
+    expect(handlerCalls).toBe(0);
+  });
+
+  it.each([
+    ['GET'],
+    ['HEAD'],
+  ])('keeps %s redirects unconditional when a matching condition cannot negotiate a formatter', async (method) => {
+    let handlerCalls = 0;
+
+    @Controller('/conditional-redirect-bypass')
+    class ConditionalRedirectBypassController {
+      @Get('/')
+      @Redirect('/destination', 302)
+      getValue() {
+        handlerCalls += 1;
+        return { redirected: true };
+      }
+
+      @Head('/')
+      @Redirect('/destination', 302)
+      headValue() {
+        handlerCalls += 1;
+        return { redirected: true };
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      conditionalRequest: {
+        resolve() {
+          return {
+            exists: true,
+            validators: {
+              etag: { opaqueValue: 'redirect-v1', strength: 'strong' },
+            },
+          };
+        },
+      },
+      contentNegotiation: {
+        formatters: [{
+          format(body) {
+            return JSON.stringify(body);
+          },
+          mediaType: 'application/json',
+        }],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: ConditionalRedirectBypassController }]),
+      rootContainer: new Container().register(ConditionalRedirectBypassController),
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest(
+      '/conditional-redirect-bypass',
+      { accept: 'text/plain', 'if-none-match': '"redirect-v1"' },
+      method,
+    ), response);
+
+    expect(response.statusCode).toBe(302);
+    expect(response.headers.Location).toBe('/destination');
+    expect(response.headers.ETag).toBe('"redirect-v1"');
+    expect(response.headers.Vary).toBeUndefined();
+    expect(handlerCalls).toBe(1);
+  });
+
+  it.each([
+    ['GET'],
+    ['HEAD'],
+  ])('keeps %s custom writers unconditional when a matching condition cannot negotiate a formatter', async (method) => {
+    const htmlEntry = { html: '<main>Conditional writer</main>' };
+    let handlerCalls = 0;
+
+    registerFrameworkResponseWriter(htmlEntry, (context) => {
+      context.applySuccessResponseMetadata();
+      context.response.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return context.response.send(htmlEntry.html);
+    });
+
+    @Controller('/conditional-writer-bypass')
+    class ConditionalWriterBypassController {
+      @Get('/')
+      getValue() {
+        handlerCalls += 1;
+        return htmlEntry;
+      }
+
+      @Head('/')
+      headValue() {
+        handlerCalls += 1;
+        return htmlEntry;
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      appMiddleware: [{
+        async handle(context: MiddlewareContext, next: Next) {
+          registerFrameworkResponseValueFinalizer(context.requestContext, ({ value }) => value);
+          await next();
+        },
+      }],
+      conditionalRequest: {
+        resolve() {
+          return {
+            exists: true,
+            validators: {
+              etag: { opaqueValue: 'writer-v1', strength: 'strong' },
+            },
+          };
+        },
+      },
+      contentNegotiation: {
+        formatters: [{
+          format(body) {
+            return JSON.stringify(body);
+          },
+          mediaType: 'application/json',
+        }],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: ConditionalWriterBypassController }]),
+      rootContainer: new Container().register(ConditionalWriterBypassController),
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest(
+      '/conditional-writer-bypass',
+      { accept: 'text/plain', 'if-none-match': '"writer-v1"' },
+      method,
+    ), response);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe('text/html; charset=utf-8');
+    expect(response.headers.ETag).toBe('"writer-v1"');
+    expect(response.headers.Vary).toBeUndefined();
+    expect(response.body).toBe('<main>Conditional writer</main>');
+    expect(handlerCalls).toBe(1);
   });
 });

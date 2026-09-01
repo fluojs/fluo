@@ -36,11 +36,18 @@ import type {
   ResponseValidators,
 } from '../types.js';
 import {
+  type ConditionalRequestOutcome,
   resolveConditionalRequest,
-  writeConditionalResponse,
 } from './conditional-request-policy.js';
+import { isContentNegotiationNotAcceptableException } from './dispatch-content-negotiation.js';
 import { invokeControllerHandler } from './dispatch-handler-policy.js';
-import { type ResolvedContentNegotiation, resolveContentNegotiation, writeErrorResponse, writeSuccessResponse } from './dispatch-response-policy.js';
+import {
+  type ResolvedContentNegotiation,
+  resolveResponsePolicy,
+  resolveContentNegotiation,
+  writeErrorResponse,
+  writeSuccessResponse,
+} from './dispatch-response-policy.js';
 import { matchHandlerOrThrow, updateRequestParams } from './dispatch-routing-policy.js';
 import { createDispatcherFastPathState, type DispatcherFastPathState } from './fast-path/dispatcher-state.js';
 import {
@@ -53,6 +60,7 @@ import {
 } from './fast-path/index.js';
 import { attachFrameworkRequestNativeRouteHandoff, readFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
 import { isRequestAborted } from './request-abort.js';
+import { FRAMEWORK_RESPONSE_VALUE_FINALIZER } from './response-integration.js';
 
 export type { FastPathEligibility, FastPathStats } from './fast-path/index.js';
 export { FAST_PATH_ELIGIBILITY_SYMBOL, FAST_PATH_STATS_SYMBOL } from './fast-path/index.js';
@@ -126,7 +134,7 @@ interface CompiledHandlerExecutionPlan {
   mergedInterceptors: InterceptorLike[];
   requestScope: CompiledMiddlewareScopePlan;
   requiresRequestScope: boolean;
-  routeGuards: GuardLike[];
+  routeGuards: readonly GuardLike[];
 }
 
 interface FastPathHandlerRuntimeCache {
@@ -742,6 +750,16 @@ async function dispatchMatchedHandler(
     return;
   }
 
+  if (
+    contentNegotiation
+    && handler.route.produces?.length
+    && handler.route.redirect === undefined
+    && typeof requestContext.metadata[FRAMEWORK_RESPONSE_VALUE_FINALIZER] !== 'function'
+  ) {
+    resolveResponsePolicy(handler, requestContext.request, contentNegotiation);
+  }
+
+  let conditionalOutcome: Exclude<ConditionalRequestOutcome, 'proceed'> | undefined;
   let conditionalValidators: ResponseValidators | undefined;
 
   if (conditionalRequest) {
@@ -752,9 +770,25 @@ async function dispatchMatchedHandler(
     conditionalValidators = resolved.validators;
 
     if (resolved.outcome !== 'proceed') {
-      await writeConditionalResponse(requestContext.response, resolved.outcome, resolved.validators);
-      return;
+      conditionalOutcome = resolved.outcome;
     }
+  }
+
+  if (
+    conditionalOutcome !== undefined
+    && !requiresResultFirstConditionalClassification(handler, requestContext)
+  ) {
+    await writeSuccessResponse(
+      handler,
+      requestContext.request,
+      requestContext.response,
+      undefined,
+      contentNegotiation,
+      requestContext,
+      conditionalValidators,
+      conditionalOutcome,
+    );
+    return { result: undefined };
   }
 
   const result = executionPlan.mergedInterceptors.length === 0
@@ -770,10 +804,14 @@ async function dispatchMatchedHandler(
 
   ensureRequestNotAborted(requestContext.request);
 
-  if (result instanceof SseResponse) {
+  if (conditionalOutcome === undefined && result instanceof SseResponse) {
     await waitForSseResponseCompletion(result);
     ensureRequestNotAborted(requestContext.request);
-  } else if (isAsyncIterable(result) && await writeManagedSseIterable(handler, requestContext, result)) {
+  } else if (
+    conditionalOutcome === undefined
+    && isAsyncIterable(result)
+    && await writeManagedSseIterable(handler, requestContext, result)
+  ) {
     // Managed SSE streams are already committed and closed by writeManagedSseIterable.
   } else if (!requestContext.response.committed) {
     await writeSuccessResponse(
@@ -784,10 +822,24 @@ async function dispatchMatchedHandler(
       contentNegotiation,
       requestContext,
       conditionalValidators,
+      conditionalOutcome,
     );
   }
 
   return { result };
+}
+
+function requiresResultFirstConditionalClassification(
+  handler: HandlerDescriptor,
+  requestContext: RequestContext,
+): boolean {
+  const method = requestContext.request.method.toUpperCase();
+
+  return (method === 'GET' || method === 'HEAD')
+    && (
+      handler.route.redirect !== undefined
+      || typeof requestContext.metadata[FRAMEWORK_RESPONSE_VALUE_FINALIZER] === 'function'
+    );
 }
 
 function resolveHandlerExecutionPlan(
@@ -1117,6 +1169,7 @@ async function handleDispatchError(context: DispatchPhaseContext, error: unknown
     ...(context.options.errorRepresentation === undefined
       ? {}
       : { representation: context.options.errorRepresentation }),
+    ...(isContentNegotiationNotAcceptableException(dispatchError) ? { varyAccept: true } : {}),
   });
 }
 

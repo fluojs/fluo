@@ -1,8 +1,10 @@
 import {
   Controller,
+  type ContentNegotiationOptions,
   Get,
   Head,
   Post,
+  Produces,
   Query,
   type ConditionalRequestOptions,
   type RequestContext,
@@ -41,7 +43,11 @@ export interface WebRuntimeHttpAdapterPortabilityHarnessOptions<
   ) => TBootstrapOptions;
   /** Adapts shared conditional-request policy options to one web runtime bootstrap API. */
   createConditionalRequestBootstrapOptions?: (
-    options: { readonly conditionalRequest: ConditionalRequestOptions; readonly cors: false },
+    options: {
+      readonly conditionalRequest: ConditionalRequestOptions;
+      readonly contentNegotiation: ContentNegotiationOptions;
+      readonly cors: false;
+    },
   ) => TBootstrapOptions;
   name: string;
 }
@@ -146,11 +152,13 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
 
     @Controller('/validators')
     class ValidatorsController {
+      @Produces('application/json')
       @Get('/resource')
       getResource() {
         return { id: 'resource' };
       }
 
+      @Produces('application/json')
       @Head('/resource')
       headResource() {
         return { id: 'resource' };
@@ -176,6 +184,14 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
             },
           };
         },
+      },
+      contentNegotiation: {
+        formatters: [{
+          format(body) {
+            return JSON.stringify(body);
+          },
+          mediaType: 'application/json',
+        }],
       },
       cors: false,
     }));
@@ -203,11 +219,13 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
         || await head.text() !== ''
         || notModified.headers.get('etag') !== '"resource-v1"'
         || notModified.headers.get('last-modified') !== 'Thu, 01 Jan 2026 00:00:00 GMT'
+        || notModified.headers.get('vary') !== 'Accept'
         || preconditionFailed.headers.get('etag') !== '"resource-v1"'
         || preconditionFailed.headers.get('last-modified') !== 'Thu, 01 Jan 2026 00:00:00 GMT'
         || head.status !== 304
         || head.headers.get('etag') !== '"resource-v1"'
         || head.headers.get('last-modified') !== 'Thu, 01 Jan 2026 00:00:00 GMT'
+        || head.headers.get('vary') !== 'Accept'
       ) {
         throw new Error(`${this.options.name} adapter changed conditional request response semantics.`);
       }
@@ -223,16 +241,19 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
 
     @Controller('/assets')
     class AssetController {
+      @Produces('application/octet-stream')
       @Get('/logo')
       getLogo() {
         return Uint8Array.from([0, 1, 2, 3, 4, 5]);
       }
 
+      @Produces('application/octet-stream')
       @Head('/logo')
       headLogo() {
         return Uint8Array.from([0, 1, 2, 3, 4, 5]);
       }
 
+      @Produces('application/octet-stream')
       @Post('/logo')
       postLogo() {
         return Uint8Array.from([0, 1, 2, 3, 4, 5]);
@@ -253,6 +274,23 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
             },
           };
         },
+      },
+      contentNegotiation: {
+        formatters: [{
+          format(body) {
+            return JSON.stringify(body);
+          },
+          mediaType: 'application/json',
+        }, {
+          format(body) {
+            if (!(body instanceof Uint8Array)) {
+              throw new Error('Expected byte-range formatter to receive a Uint8Array.');
+            }
+
+            return body;
+          },
+          mediaType: 'application/octet-stream',
+        }],
       },
       cors: false,
     }));
