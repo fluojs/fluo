@@ -412,7 +412,13 @@ function createDeferredWebFrameworkRequest(
       };
 
       if (multipartOptions?.strategy === 'stream') {
-        frameworkRequest.body = parseMultipartStream(request, resolvedMultipartOptions);
+        frameworkRequest.body = parseMultipartStream({
+          body: request.body,
+          headers: requestHeaders,
+          method,
+          signal,
+          url: request.url,
+        }, resolvedMultipartOptions);
         return;
       }
 

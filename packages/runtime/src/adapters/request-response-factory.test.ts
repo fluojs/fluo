@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 
+import { parseMultipartStream } from '../multipart.js';
 import {
   dispatchWithRequestResponseFactory,
   type RequestResponseFactory,
@@ -203,7 +204,7 @@ describe('dispatchWithRequestResponseFactory', () => {
 
   it('returns a route-owned multipart iterator when dispatch rejects before reading the body', async () => {
     // Given
-    const multipart = createRouteOwnedMultipartIterator();
+    const multipart = createRouteOwnedMultipartParser();
 
     // When
     await dispatchWithRequestResponseFactory({
@@ -213,18 +214,18 @@ describe('dispatchWithRequestResponseFactory', () => {
         },
       },
       dispatcherNotReadyMessage: 'dispatcher unavailable',
-      factory: createFactoryWithMultipart(multipart),
+      factory: createFactoryWithMultipart(multipart.multipart),
       rawRequest: undefined,
       rawResponse: undefined,
     });
 
     // Then
-    expect(multipart.return).toHaveBeenCalledOnce();
+    expect(multipart.source.return).toHaveBeenCalledOnce();
   });
 
   it('returns a route-owned multipart iterator when a handler ignores the body', async () => {
     // Given
-    const multipart = createRouteOwnedMultipartIterator();
+    const multipart = createRouteOwnedMultipartParser();
 
     // When
     await dispatchWithRequestResponseFactory({
@@ -232,18 +233,20 @@ describe('dispatchWithRequestResponseFactory', () => {
         async dispatch() {},
       },
       dispatcherNotReadyMessage: 'dispatcher unavailable',
-      factory: createFactoryWithMultipart(multipart),
+      factory: createFactoryWithMultipart(multipart.multipart),
       rawRequest: undefined,
       rawResponse: undefined,
     });
 
     // Then
-    expect(multipart.return).toHaveBeenCalledOnce();
+    expect(multipart.source.return).toHaveBeenCalledOnce();
   });
 
-  it('returns a route-owned multipart iterator after a handler breaks its for-await loop', async () => {
+  it('cancels a route-owned multipart source once after a handler breaks its for-await loop', async () => {
     // Given
-    const multipart = createRouteOwnedMultipartIterator();
+    const multipart = createRouteOwnedMultipartParser(
+      '--fluo-route-owned\r\ncontent-disposition: form-data; name="file"; filename="note.txt"\r\n\r\n',
+    );
 
     // When
     await dispatchWithRequestResponseFactory({
@@ -255,37 +258,49 @@ describe('dispatchWithRequestResponseFactory', () => {
         },
       },
       dispatcherNotReadyMessage: 'dispatcher unavailable',
-      factory: createFactoryWithMultipart(multipart),
+      factory: createFactoryWithMultipart(multipart.multipart),
       rawRequest: undefined,
       rawResponse: undefined,
     });
 
     // Then
-    expect(multipart.return).toHaveBeenCalledTimes(2);
+    expect(multipart.source.return).toHaveBeenCalledOnce();
   });
 });
 
-function createRouteOwnedMultipartIterator(): AsyncIterableIterator<unknown> {
-  let yielded = false;
-
-  return {
+function createRouteOwnedMultipartParser(chunk?: string): {
+  multipart: AsyncIterableIterator<unknown>;
+  source: AsyncIterableIterator<Uint8Array>;
+} {
+  let sent = false;
+  const source: AsyncIterableIterator<Uint8Array> = {
     async next() {
-      if (yielded) {
+      if (!chunk || sent) {
         return { done: true, value: undefined };
       }
 
-      yielded = true;
-      return { done: false, value: { kind: 'field', name: 'title', value: 'Ada' } };
+      sent = true;
+      return { done: false, value: new TextEncoder().encode(chunk) };
     },
-    return: vi.fn(async () => ({ done: true, value: undefined })),
+    return: vi.fn(async (): Promise<IteratorResult<Uint8Array>> => ({ done: true, value: undefined })),
     [Symbol.asyncIterator]() {
       return this;
     },
   };
+  const multipart = parseMultipartStream({
+    headers: { 'content-type': 'multipart/form-data; boundary=fluo-route-owned' },
+    method: 'POST',
+    [Symbol.asyncIterator]() {
+      return source;
+    },
+    url: 'http://localhost/route-owned',
+  });
+
+  return { multipart, source };
 }
 
 function createFactoryWithMultipart(
-  multipart: AsyncIterableIterator<unknown>,
+  multipart: AsyncIterable<unknown>,
 ): RequestResponseFactory<undefined, undefined> {
   const request = { body: multipart } as FrameworkRequest;
   const response: FrameworkResponse = {

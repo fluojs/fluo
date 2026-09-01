@@ -413,6 +413,40 @@ describe('dispatchWebRequest', () => {
 });
 
 describe('createWebFrameworkRequest', () => {
+  it('cancels stream parsing through the supplied framework abort signal', async () => {
+    const abort = new AbortController();
+    let resolveCancelled!: () => void;
+    const cancelled = new Promise<void>((resolve) => {
+      resolveCancelled = resolve;
+    });
+    const request = new Request('https://runtime.test/abort', {
+      body: new ReadableStream<Uint8Array>({
+        cancel() {
+          resolveCancelled();
+        },
+      }),
+      duplex: 'half',
+      headers: {
+        'content-type': 'multipart/form-data; boundary=fluo-web-abort',
+      },
+      method: 'POST',
+    } as RequestInit & { duplex: 'half' });
+    const factory = createWebRequestResponseFactory({
+      multipart: { strategy: 'stream' },
+    });
+    const frameworkRequest = await factory.createRequest(request, abort.signal);
+
+    await factory.materializeRequest?.(frameworkRequest);
+    const iterator = (frameworkRequest.body as AsyncIterable<unknown>)[Symbol.asyncIterator]();
+    const pendingPart = iterator.next();
+    const reason = new Error('framework request cancelled');
+
+    abort.abort(reason);
+
+    await expect(pendingPart).rejects.toBe(reason);
+    await cancelled;
+  });
+
   it('captures headers at creation, then materializes and memoizes the cloned object lazily', async () => {
     const request = new Request('https://runtime.test/headers', {
       headers: {

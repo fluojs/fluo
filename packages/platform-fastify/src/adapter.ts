@@ -1021,7 +1021,13 @@ function createDeferredFrameworkRequest(
       };
 
       if ((multipartOptions as StreamingMultipartOptions | undefined)?.strategy === 'stream') {
-        body = parseMultipartStream(request.raw, resolvedMultipartOptions);
+        body = parseMultipartStream({
+          body: request.raw,
+          headers: headerSnapshot,
+          method: request.method,
+          signal,
+          url: rawUrl,
+        }, resolvedMultipartOptions);
       } else {
         const parsed = await parseMultipartRequest(request, resolvedMultipartOptions);
         body = parsed.fields;

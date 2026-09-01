@@ -47,6 +47,7 @@ import {
 } from '@fluojs/runtime/internal/http-adapter';
 import {
   dispatchWithRequestResponseFactory,
+  finalizeRouteOwnedMultipartBody,
   type RequestResponseFactory,
 } from '@fluojs/runtime/internal/request-response-factory';
 import {
@@ -443,9 +444,10 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
     const factory = this.requestResponseFactory;
     const frameworkResponse = factory.createResponse(response, request);
     const signal = factory.createRequestSignal(response);
+    let frameworkRequest: FrameworkRequest | undefined;
 
     try {
-      const frameworkRequest = attachFrameworkRequestNativeRouteHandoff(
+      frameworkRequest = attachFrameworkRequestNativeRouteHandoff(
         await factory.createRequest(request, signal),
         { descriptor, params },
       );
@@ -467,6 +469,8 @@ export class ExpressHttpApplicationAdapter implements HttpApplicationAdapter {
       }
 
       await factory.writeErrorResponse(error, frameworkResponse, factory.resolveRequestId(request));
+    } finally {
+      await finalizeRouteOwnedMultipartBody(frameworkRequest);
     }
   }
 }
@@ -821,7 +825,13 @@ async function createFrameworkRequest(
       };
 
       if ((multipartOptions as StreamingMultipartOptions | undefined)?.strategy === 'stream') {
-        frameworkRequest.body = parseMultipartStream(request, resolvedMultipartOptions);
+        frameworkRequest.body = parseMultipartStream({
+          body: request,
+          headers,
+          method: request.method,
+          signal,
+          url: rawUrl,
+        }, resolvedMultipartOptions);
         return;
       }
 

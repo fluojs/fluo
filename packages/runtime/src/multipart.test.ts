@@ -486,6 +486,31 @@ describe('parseMultipartStream', () => {
     });
   });
 
+  it('accepts a maxHeaderSize boundary when the header delimiter is fragmented', async () => {
+    const boundary = 'fluo-split-header-limit';
+    const header = 'content-disposition: form-data; name="title"';
+    const source = createChunkedMultipartRequest(boundary, [
+      `--${boundary}\r\n${header}\r`,
+      '\n\r',
+      `\nAda\r\n--${boundary}--\r\n`,
+    ]);
+    const parts = parseMultipartStream(source.request, {
+      maxHeaderSize: TEXT_ENCODER.encode(header).byteLength,
+    });
+
+    await expect(parts.next()).resolves.toEqual({
+      done: false,
+      value: {
+        headers: {
+          'content-disposition': 'form-data; name="title"',
+        },
+        kind: 'field',
+        name: 'title',
+        value: 'Ada',
+      },
+    });
+  });
+
   it('enforces field, file, file-size, total-size, and header limits', async () => {
     const boundary = 'fluo-stream-limits';
     const twoFields = createChunkedMultipartRequest(boundary, [

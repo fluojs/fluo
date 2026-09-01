@@ -79,7 +79,7 @@ export async function dispatchWithRequestResponseFactory<
   }
 }
 
-async function finalizeRouteOwnedMultipartBody(request: FrameworkRequest | undefined): Promise<void> {
+export async function finalizeRouteOwnedMultipartBody(request: FrameworkRequest | undefined): Promise<void> {
   const body = request?.body;
 
   if (!isAsyncIterable(body)) {

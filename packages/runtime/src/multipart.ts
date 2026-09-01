@@ -550,7 +550,9 @@ class MultipartStreamParser {
         return value;
       }
 
-      if (this.buffer.byteLength > limit) {
+      const confirmedSize = this.buffer.byteLength - trailingDelimiterPrefixLength(this.buffer, delimiter);
+
+      if (confirmedSize > limit) {
         this.fail(new PayloadTooLargeException(message));
         this.throwIfFailed();
       }
@@ -801,6 +803,18 @@ function concatBytes(
   }
 
   return result;
+}
+
+function trailingDelimiterPrefixLength(buffer: Uint8Array, delimiter: Uint8Array): number {
+  const maximum = Math.min(buffer.byteLength, delimiter.byteLength - 1);
+
+  for (let size = maximum; size > 0; size -= 1) {
+    if (equalsBytes(buffer.slice(buffer.byteLength - size), delimiter.slice(0, size))) {
+      return size;
+    }
+  }
+
+  return 0;
 }
 
 function toAbortError(reason: unknown): Error {

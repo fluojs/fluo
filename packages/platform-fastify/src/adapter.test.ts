@@ -33,6 +33,7 @@ import {
   VersioningType,
 } from '@fluojs/http';
 import { type Application, createHealthModule, defineModule, FluoFactory, fluoFactory } from '@fluojs/runtime';
+import * as runtimeWeb from '@fluojs/runtime/web';
 import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
@@ -1729,6 +1730,88 @@ describe('@fluojs/platform-fastify', () => {
       });
     } finally {
       await app.close();
+    }
+  });
+
+  it('cancels the active multipart file stream when the Fastify client disconnects', async () => {
+    const fileStreamCancelled = createDeferred<void>();
+    const parserReady = createDeferred<void>();
+    const originalParseMultipartStream = runtimeWeb.parseMultipartStream;
+    let frameworkSignal: AbortSignal | undefined;
+    let parserSignal: AbortSignal | undefined;
+    const parseMultipartStream = vi.spyOn(runtimeWeb, 'parseMultipartStream').mockImplementation((request, options) => {
+      if (!(request instanceof Request)) {
+        parserSignal = request.signal;
+      }
+
+      return originalParseMultipartStream(request, options);
+    });
+
+    @Controller('/streaming-abort')
+    class StreamingAbortController {
+      @Post('/')
+      async upload(_input: undefined, context: RequestContext) {
+        frameworkSignal = context.request.signal;
+        const parts = context.request.body as AsyncIterable<{
+          kind: string;
+          stream?: ReadableStream<Uint8Array>;
+        }>;
+        const first = await parts[Symbol.asyncIterator]().next();
+
+        if (first.done || first.value.kind !== 'file' || !first.value.stream) {
+          throw new Error('Expected an active multipart file part.');
+        }
+
+        const reader = first.value.stream.getReader();
+        context.request.signal?.addEventListener('abort', () => {
+          void reader.read().then(
+            () => fileStreamCancelled.reject(new Error('Expected the active file stream to reject after disconnect.')),
+            () => fileStreamCancelled.resolve(),
+          );
+        }, { once: true });
+        parserReady.resolve();
+        await fileStreamCancelled.promise;
+
+        return { ok: true };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [StreamingAbortController] });
+
+    const app = await bootstrapFastifyApplication(AppModule, {
+      cors: false,
+      multipart: { strategy: 'stream' },
+      port: 0,
+    });
+    const port = await listenOnEphemeralPort(app);
+    const request = httpRequest({
+      headers: {
+        'content-type': 'multipart/form-data; boundary=fluo-fastify-disconnect',
+        'transfer-encoding': 'chunked',
+      },
+      host: '127.0.0.1',
+      method: 'POST',
+      path: '/streaming-abort',
+      port,
+    });
+
+    try {
+      request.on('error', () => {});
+      request.write('--fluo-fastify-disconnect\r\ncontent-disposition: form-data; name="file"; filename="file.txt"\r\n\r\n');
+      await parserReady.promise;
+      request.destroy();
+
+      await expect(fileStreamCancelled.promise).resolves.toBeUndefined();
+      expect(parserSignal).toBe(frameworkSignal);
+      expect(parserSignal?.aborted).toBe(true);
+    } finally {
+      request.destroy();
+      try {
+        await app.close();
+      } finally {
+        parseMultipartStream.mockRestore();
+      }
     }
   });
 
