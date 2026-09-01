@@ -252,7 +252,7 @@ export interface HandlerMetadata {
   controllerPath: string;
   effectivePath: string;
   effectiveVersion?: string;
-  moduleMiddleware: MiddlewareLike[];
+  moduleMiddleware: readonly MiddlewareLike[];
   moduleType?: Constructor;
   pathParams: string[];
 }
@@ -357,7 +357,7 @@ export interface Middleware {
 /** Declarative middleware binding for selected route patterns. */
 export interface MiddlewareRouteConfig {
   middleware: Constructor<Middleware>;
-  routes: string[];
+  routes: readonly string[];
 }
 
 /** Guard execution context for one matched handler invocation. */

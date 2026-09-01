@@ -73,7 +73,7 @@ async function resolveMiddleware(definition: MiddlewareLike, requestContext: Req
 }
 
 async function resolveActiveMiddlewareDefinitions(
-  definitions: MiddlewareLike[],
+  definitions: readonly MiddlewareLike[],
   context: MiddlewareContext,
 ): Promise<Middleware[]> {
   const requestPath = context.request.path;
@@ -114,7 +114,7 @@ function deferNext(next: Next): Next {
  * @returns The run middleware chain result.
  */
 export async function runMiddlewareChain(
-  definitions: MiddlewareLike[],
+  definitions: readonly MiddlewareLike[],
   context: MiddlewareContext,
   terminal: Next,
 ): Promise<void> {

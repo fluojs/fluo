@@ -4,6 +4,7 @@ import { getControllerMetadata, getRouteMetadata } from '@fluojs/core/internal';
 import { attachCompiledRouteIdentity } from './compiled-route-identity.js';
 import { getRouteProducesMetadata } from './decorators.js';
 import { RouteConflictError } from './errors.js';
+import { isMiddlewareRouteConfig } from './middleware/middleware.js';
 import { extractRoutePathParams, normalizeRoutePath, parseRoutePath, type RoutePathSegment } from './route-path.js';
 import type {
   FrameworkRequest,
@@ -14,6 +15,7 @@ import type {
   HandlerSource,
   HttpMethod,
   InterceptorLike,
+  MiddlewareLike,
   VersioningExtractor,
   VersioningOptions,
 } from './types.js';
@@ -429,7 +431,7 @@ function freezeDescriptorSnapshot(descriptors: readonly HandlerDescriptor[]): Ha
       ...descriptor,
       metadata: {
         ...metadata,
-        moduleMiddleware: [...metadata.moduleMiddleware],
+        moduleMiddleware: freezeModuleMiddlewareSnapshot(metadata.moduleMiddleware),
         pathParams: [...metadata.pathParams],
       },
       route: {
@@ -482,6 +484,21 @@ function freezeDescriptorSnapshot(descriptors: readonly HandlerDescriptor[]): Ha
   return snapshot;
 }
 
+function freezeModuleMiddlewareSnapshot(definitions: readonly MiddlewareLike[]): readonly MiddlewareLike[] {
+  const snapshot = definitions.map((definition) => {
+    if (!isMiddlewareRouteConfig(definition)) {
+      return definition;
+    }
+
+    return Object.freeze({
+      middleware: definition.middleware,
+      routes: Object.freeze([...definition.routes]),
+    });
+  });
+
+  return Object.freeze(snapshot);
+}
+
 /**
  * Create handler mapping.
  *
@@ -494,7 +511,7 @@ export function createHandlerMapping(sources: HandlerSource[], options?: CreateH
   const descriptors = freezeDescriptorSnapshot(buildDescriptorList(sources, versioning));
   const descriptorIndex = buildDescriptorIndex(descriptors);
 
-  return {
+  return Object.freeze({
     descriptors,
     match(request: FrameworkRequest): HandlerMatch | undefined {
       const method = request.method.toUpperCase();
@@ -559,5 +576,5 @@ export function createHandlerMapping(sources: HandlerSource[], options?: CreateH
 
       return undefined;
     },
-  };
+  });
 }
