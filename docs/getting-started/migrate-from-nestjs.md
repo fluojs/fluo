@@ -160,7 +160,7 @@ Code-first `@FieldResolver({ input: InputDto })` with `@Args(index?)` is support
 - `ThrottlerGuard` and `keyGenerator` consume the HTTP `GuardContext` and `MiddlewareContext`; they are not WebSocket, GraphQL, RPC, or queue transport policies. Move equivalent limits to transport-owned guards or middleware at each of those boundaries.
 - Do not assume persisted NestJS throttle windows continue in fluo. The packages use different bucket keys and storage call contracts, so the default migration starts a new window. When continuity is required, provide an application-owned compatibility store or use a bounded cutover that permits the existing windows to expire.
 - `@fluojs/platform-express` requires Node.js `>=20.19.3 <21 || >=22.2.0 <27` and preserves Express only as the host engine. This bounded range excludes Node 21, Node 22 before 22.2.0, and unverified Node 27+ to keep listener-level RFC `QUERY` ingress truthful. Before replacing a NestJS HTTP adapter, migrate controllers and providers to TC39 standard decorators, declare constructor tokens with class-level `@Inject(...)`, and use explicit module/provider registration. Keep `experimentalDecorators` and `emitDecoratorMetadata` disabled; changing the HTTP host does not preserve NestJS decorator, reflection metadata, or implicit dependency-discovery semantics.
-- `@fluojs/platform-express` is not an implicit middleware translation layer. The adapter constructs and owns its Express application; adopting or reusing an existing Express application is unsupported. Native Express/Connect `(req, res, next)` middleware from a NestJS or Express migration must be supplied through the adapter's explicit `nativeMiddleware` option at construction time, which runs in array order before Express routing and fluo dispatch. After bootstrap, calling `use(...)` to append to the native stack is not a supported surface. A handler that calls `next()` continues into fluo; a handler that ends the response does not. Native failures stay in the Express error chain, and native middleware resources remain application-owned. Prefer rewriting portable behavior as fluo `Middleware` before it enters `fluoFactory.create({ middleware })`.
+- `@fluojs/platform-express` is not an implicit middleware translation layer. The adapter constructs and owns its Express application; adopting or reusing an existing Express application is unsupported. Native Express/Connect `(req, res, next)` middleware from a NestJS or Express migration must be supplied through the adapter's explicit `nativeMiddleware` option at construction time, which runs in array order before Express routing and fluo dispatch. After bootstrap, calling `use(...)` to append to the native stack is not a supported surface. A handler that calls `next()` continues into fluo; a handler that ends the response does not. Native failures stay in the Express error chain, and native middleware resources remain application-owned. Prefer rewriting portable behavior as fluo `Middleware` before it enters `fluoFactory.create(AppModule, { middleware })`.
 - Forwarded client IP headers are ignored unless `trustProxyHeaders: true` is set behind a trusted proxy that overwrites `Forwarded`, `X-Forwarded-For`, or `X-Real-IP`.
 - The guaranteed throttled response metadata is HTTP `429` with `Retry-After`; add any extra rate-limit headers or body shape at the application boundary.
 - WebSocket migration is not a decorator-for-decorator replacement. Use `@OnMessage(event?)` from `@fluojs/websockets`, read handler inputs positionally as `(payload, socket, request, socketId)`, and use `WebSocketRoomService` for room membership or broadcasts instead of assuming NestJS gateway server injection or parameter decorators carry over. `WebSocketRoomService` is a type-only contract implemented by the runtime lifecycle service; inject the lifecycle service token with `@Inject(...)` (root entrypoint: `WebSocketGatewayLifecycleService`; explicit Node subpath: `NodeWebSocketGatewayLifecycleService`; other runtime subpaths: the matching `*WebSocketGatewayLifecycleService`) and type the constructor parameter as `WebSocketRoomService`. The root `@fluojs/websockets` and `@fluojs/websockets/node` module paths are the Node.js defaults with `IncomingMessage` upgrade guards; Bun, Deno, and Cloudflare Workers migrations should import from `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, or `@fluojs/websockets/cloudflare-workers` so guard/request types and runtime lifecycle services stay at the correct subpath boundary. Room broadcast backpressure is applied only by the Node.js-backed adapter; the fetch-style runtimes do not apply a backpressure policy to room broadcasts. Raw WebSocket gateway return values are awaited and then ignored by default; send replies explicitly with the runtime socket argument, or opt into valid `{ event, data? }` return replies with `WebSocketModule.forRoot({ replies: { mode: 'event-envelope' } })`.
@@ -719,6 +719,50 @@ The codemod can rewrite imports, remove `@Injectable()`, map provider scopes, mi
 
 When removing `@Injectable()`, the codemod retains required `import type` bindings and removes only the obsolete `@Injectable` import binding. It does not remove other NestJS runtime value imports: unconverted values such as `Optional` remain for manual review. Manually verify every remaining `@nestjs/common` import, then migrate or remove it before removing the NestJS dependency.
 
+## HTTP migration boundaries
+
+### Route grammar is narrower than NestJS
+
+| NestJS route declaration | fluo migration |
+| --- | --- |
+| Wildcards and catch-alls such as `assets/*`, `:path*`, or `(.*)` | Define explicit routes instead. fluo supports only literal segments and full-segment `:param` placeholders; broad matching remains middleware-only. |
+| Regex-like, optional, or mixed-segment parameters such as `:id(\\d+)`, `:id?`, or `report-:id` | Split the behavior into explicit routes and validate the bound value in application code. `*`, `?`, `+`, grouping tokens, brackets, braces, backslashes, and a `:` outside a complete `:param` segment are rejected. |
+
+Do not infer HTTP wildcard support from NestJS's router. A fluo `ALL` method can select every HTTP method for one explicit path, but it does not widen the path grammar. See the [HTTP Catch-All Route Grammar Decision](../architecture/http-catch-all-route-grammar.md) before designing a catch-all migration.
+
+### Global pipeline registration belongs at bootstrap
+
+NestJS's application-wide pipeline calls map to `FluoFactory.create(...)` options, not to DI provider tokens:
+
+```ts
+const application = await FluoFactory.create(AppModule, {
+  middleware: [new RequestLogMiddleware()],
+  interceptors: [new EnvelopeInterceptor()],
+  filters: [new ApiExceptionFilter()],
+});
+```
+
+| NestJS registration | fluo migration |
+| --- | --- |
+| `app.use(...)` | Supply portable `middleware` at bootstrap. Do not move NestJS/Express `(req, res, next)` middleware unchanged into `FluoFactory.create(AppModule, { middleware })`: the portable contract is `handle(MiddlewareContext, next)`. Keep Express-specific handlers at the Express adapter boundary with `createExpressAdapter({ nativeMiddleware: [...] })`. This application-wide chain runs in addition to module middleware. |
+| `app.useGlobalInterceptors(...)` | Supply `interceptors` at bootstrap. |
+| `app.useGlobalFilters(...)` | Supply `filters` at bootstrap. This is the only shipped filter registration: filters run in declared order before fluo's built-in error writer, and the first filter that returns `true` stops the chain. |
+| `app.useGlobalGuards(...)` or `APP_GUARD` | No application-wide guard array exists. Put `@UseGuards(...)` explicitly on each controller or handler that requires it, and use an application-owned shared decorator or base-controller convention when that repetition is intentional. |
+
+`APP_INTERCEPTOR`, `APP_FILTER`, `APP_GUARD`, and `APP_PIPE` are NestJS-specific provider tokens. Registering one as a fluo `providers` entry only makes it injectable; it does not configure a global HTTP pipeline. Use the bootstrap arrays above, explicit guard metadata, and fluo's binding/validation contracts instead of relying on `APP_*` discovery.
+
+### Multipart files use the portable request seam
+
+Do not carry `FileInterceptor`, `FilesInterceptor`, `@UploadedFile()`, `@UploadedFiles()`, or Multer-specific request objects into fluo. The host adapter supplies portable multipart values on `RequestContext.request.files`; read that array from the active request context and handle an absent array deliberately:
+
+```ts
+import { assertRequestContext } from '@fluojs/http';
+
+const files = assertRequestContext().request.files ?? [];
+```
+
+Each file is a portable `FrameworkRequestFile` with `fieldname`, `originalname`, `mimetype`, `buffer`, and `size`. Keep storage, validation, and application policy outside adapter-specific upload interceptors.
+
 ## Related Docs
 
 - [NestJS Parity Gaps](../contracts/nestjs-parity-gaps.md)
@@ -727,3 +771,7 @@ When removing `@Injectable()`, the codemod retains required `import type` bindin
 - [CQRS Contract](../architecture/cqrs.md)
 - [i18n Ecosystem Bridge Decision](../reference/i18n-ecosystem-bridges.md)
 - [fluo new Support Matrix](../reference/fluo-new-support-matrix.md)
+- [Book Chapter 5: Routing and Controllers](../../book/beginner/ch05-routing-controllers.md)
+- [Book Chapter 9: Guards and Interceptors](../../book/beginner/ch09-guards-interceptors.md)
+- [Book Chapter 11: Request Pipeline Anatomy](../../book/advanced/ch11-request-pipeline.md)
+- [Book Chapter 12: Execution Chain and Exception Chain](../../book/advanced/ch12-execution-chain.md)

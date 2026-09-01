@@ -165,6 +165,29 @@ describe('enforceContractCompanionUpdates', () => {
     expect(englishContext).toContain('## Release Governance Discoverability');
     expect(koreanContext).toContain('## 릴리스 거버넌스 탐색');
   });
+
+  it('requires context companions for NestJS HTTP pipeline migration updates', async () => {
+    // Given: a bilingual NestJS HTTP migration update with its governance regression.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const changedFiles = [
+      'docs/getting-started/migrate-from-nestjs.md',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ];
+
+    // When: one or both documentation-hub companions are absent.
+    // Then: governance rejects the incomplete changed-file category.
+    expect(() => enforceContractCompanionUpdates(changedFiles)).toThrow(
+      /docs\/CONTEXT\.md and docs\/CONTEXT\.ko\.md/u,
+    );
+    expect(() =>
+      enforceContractCompanionUpdates([
+        ...changedFiles,
+        'docs/CONTEXT.md',
+        'docs/CONTEXT.ko.md',
+      ]),
+    ).not.toThrow();
+  });
 });
 
 describe('collectDirectProcessEnvViolations', () => {
