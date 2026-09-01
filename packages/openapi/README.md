@@ -80,7 +80,7 @@ When a prebuilt descriptor and a discovered source resolve to the same OpenAPI p
 fluo inspects only the controllers and handler descriptors supplied through `sources` and `descriptors` to build an OpenAPI 3.1.0 document. This includes paths, methods, parameters, and request bodies for that explicit input set; importing a controller into an application module does not add it automatically.
 
 ### OpenAPI 3.1 Path Item Validation
-The builder emits only standard Path Item operations: `get`, `put`, `post`, `delete`, `options`, `head`, and `patch`. Fluo catch-all `ALL` descriptors are runtime routing inputs, not OpenAPI operations, so document generation rejects them instead of serializing a nonstandard `all` key. Unsupported descriptor methods fail with the same path-specific error.
+The builder emits only standard Path Item operations: `get`, `put`, `post`, `delete`, `options`, `head`, `patch`, and `trace`. Fluo catch-all `ALL` descriptors are runtime routing inputs, not OpenAPI operations, so document generation rejects them instead of serializing a nonstandard `all` key. Unsupported descriptor methods fail with the same path-specific error.
 
 After `documentTransform`, every Path Item is validated again. Transforms may use the OpenAPI 3.1 operations (including `trace`), fixed fields (`$ref`, `summary`, `description`, `servers`, and `parameters`), and `x-*` specification extensions. Keys such as `all`, `query`, or other unknown fields fail document generation before the document is exposed.
 
