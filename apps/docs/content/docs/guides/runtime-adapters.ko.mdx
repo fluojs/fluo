@@ -17,6 +17,12 @@ AppModule
 
 Runtime target을 선택하거나 어떤 behavior가 portable하고 어떤 behavior가 adapter 책임인지 이해해야 할 때 이 가이드를 사용하세요.
 
+## 정적 에셋
+
+정적 에셋 policy는 애플리케이션이 `createStaticAssetsMiddleware(...)`에 `StaticAssetSource`를 제공할 때만 portable합니다. 이렇게 하면 모든 adapter에서 traversal protection, validator, `HEAD`, `Range`, `If-Range`, stream-cancellation behavior를 동일하게 유지하면서 모든 host에 filesystem이 있다고 주장하지 않습니다.
+
+Raw Node.js, Express, Fastify에서는 `@fluojs/runtime/node`의 `createNodeFileSystemAssetSource(...)`를 root-confined filesystem source로 사용하세요. 이 helper는 configuration 중 invalid root를 거부하고 lexical 및 symlink escape를 거부하며 precompression을 활성화하면 `.br` 또는 `.gz` sibling을 선택할 수 있습니다. Bun, Deno, Cloudflare Workers는 애플리케이션이 소유한 source를 제공해야 하며 fluo는 해당 target에서 Node filesystem access를 emulation하지 않습니다.
+
 ## Adapter families
 
 | Target | Package | Best for |

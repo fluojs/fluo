@@ -10,6 +10,7 @@
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [주요 패턴](#주요-패턴)
+- [정적 에셋 제공](#정적-에셋-제공)
 - [응답 쿠키](#응답-쿠키)
 - [Early Hints](#early-hints)
 - [Realtime Adapter Capabilities](#realtime-adapter-capabilities)
@@ -25,6 +26,29 @@
 ```bash
 npm install @fluojs/http
 ```
+
+## 정적 에셋 제공
+
+`createStaticAssetsMiddleware(...)`는 애플리케이션이 소유한 명시적 `StaticAssetSource`를 통해 `GET` 및 `HEAD` 요청만 제공합니다. portable HTTP 패키지는 filesystem 접근을 가정하지 않으므로 Web 및 edge 애플리케이션은 암묵적 Node fallback 대신 자체 source를 제공해야 합니다.
+
+미들웨어는 각 URL segment를 한 번만 decode하고 source 해석 전에 traversal, encoded separator, backslash, NUL, dotfile(`dotfiles: 'allow'`을 선택하지 않은 경우)을 거부합니다. Directory index는 기본적으로 비활성화되며 trailing slash URL에서만 고려됩니다.
+
+```ts
+import { createStaticAssetsMiddleware } from '@fluojs/http';
+import { createNodeFileSystemAssetSource } from '@fluojs/runtime/node';
+
+const assets = createStaticAssetsMiddleware({
+  cacheControl: 'public, max-age=3600',
+  index: ['index.html'],
+  prefix: '/assets',
+  source: createNodeFileSystemAssetSource({
+    precompressed: true,
+    root: './public',
+  }),
+});
+```
+
+Runtime bootstrap의 `middleware`에 `assets`를 등록하세요. 선택된 representation은 MIME type, 정확한 length, `ETag`, `Last-Modified`, 선택적 `Content-Encoding`을 소유하며 `GET`, `HEAD`, conditional field, `Range`, `If-Range`는 같은 validator 및 cancellation 계약을 사용합니다. source가 `br` 또는 `gzip`을 선택하면 `Vary: Accept-Encoding`이 설정되고 byte range는 그 선택된 encoded representation을 대상으로 합니다.
 
 ## 사용 시점
 

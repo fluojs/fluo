@@ -10,6 +10,7 @@ The assembly layer that compiles a module graph and wires DI and HTTP into a run
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+- [Node Static Asset Source](#node-static-asset-source)
 - [Behavioral Contracts](#behavioral-contracts)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
@@ -22,6 +23,10 @@ npm install @fluojs/runtime
 ```
 
 The published package declares `engines.node >=20.19.3 <21 || >=22.2.0 <27`. This exact range keeps the `@fluojs/runtime/node` raw HTTP listener truthful for RFC `QUERY` by excluding Node 21, Node 22 before 22.2.0, and unverified Node 27+; the Web-standard helpers remain available through `@fluojs/runtime/web` for supported fetch-style hosts. A fetch-style HTTPS `Request` is not Node transport parity: absent an adapter-provided `connection` snapshot or explicit headers, it has no peer, host, or port, and `resolveHttpConnection(...)` does not infer HTTPS, `secure`, host, or port from the URL.
+
+## Node Static Asset Source
+
+`@fluojs/runtime/node` exports `createNodeFileSystemAssetSource(...)` for the explicit `StaticAssetSource` consumed by `@fluojs/http` static middleware. It validates the root directory during configuration, keeps lexical and realpath resolution inside that root (including symlink checks), lazily streams regular files, and can select `.br` or `.gz` siblings. This Node-only helper is intentionally absent from `@fluojs/runtime/web`; Web and edge deployments must provide an application-owned source.
 
 ## When to Use
 

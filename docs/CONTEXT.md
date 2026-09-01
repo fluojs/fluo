@@ -2,6 +2,10 @@
 
 This document is the primary AI-reference entrypoint for the fluo repository. It summarizes framework identity, non-negotiable authoring rules, package boundaries, and the fastest path to the correct source document.
 
+## Static Asset Delivery
+
+Static delivery is a portable `@fluojs/http` middleware contract, documented in [HTTP Runtime Contract](./architecture/http-runtime.md): applications pass an explicit `StaticAssetSource` to `createStaticAssetsMiddleware(...)`, so fetch-style and edge hosts never receive an implicit filesystem claim. `@fluojs/runtime/node` owns `createNodeFileSystemAssetSource(...)` for Node, Express, and Fastify deployments; it constrains lexical and realpath resolution to a configured root and can select precompressed siblings. Use the `@fluojs/http` and `@fluojs/runtime` package READMEs for API examples and deployment configuration.
+
 ## Identity
 
 fluo is a standard-first TypeScript backend framework built on TC39 standard decorators, explicit dependency boundaries, and metadata-free runtime wiring. It rejects legacy decorator compiler modes and treats behavioral contracts, platform parity, and package surface clarity as core design constraints.

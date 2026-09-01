@@ -37,6 +37,22 @@ export interface ByteRangeResponseOptions {
   readonly size?: number;
 }
 
+/** Internal byte-representation data shared by response writers. */
+export interface ByteRangeResponseEntry {
+  readonly contentType: string;
+  readonly size: number;
+  readonly source: ByteRangeResponseSource;
+}
+
+/** Inputs for writing a byte representation through a portable response facade. */
+export interface ByteRangeResponseWriteOptions {
+  readonly applySuccessResponseMetadata: () => void;
+  readonly entry: ByteRangeResponseEntry;
+  readonly request: FrameworkRequest;
+  readonly response: FrameworkResponse;
+  readonly validators: ResponseValidators | undefined;
+}
+
 /**
  * Creates a response entry with RFC single-byte-range semantics.
  *
@@ -58,10 +74,21 @@ export function createByteRangeResponse(
     throw new TypeError('A readable byte-range response requires a non-negative integer size.');
   }
 
-  return registerFrameworkResponseWriter(
-    { source, contentType: options.contentType ?? DEFAULT_CONTENT_TYPE, size },
-    writeByteRangeResponse,
-  );
+  const entry: ByteRangeResponseEntry = {
+    source,
+    contentType: options.contentType ?? DEFAULT_CONTENT_TYPE,
+    size,
+  };
+
+  return registerFrameworkResponseWriter(entry, async (context) => {
+    await writeByteRangeResponse({
+      applySuccessResponseMetadata: context.applySuccessResponseMetadata,
+      entry,
+      request: context.request,
+      response: context.response,
+      validators: context.validators,
+    });
+  });
 }
 
 /**
@@ -151,33 +178,34 @@ function parseByteRangeHeader(rangeHeader: string | undefined): RegExpExecArray 
     : undefined;
 }
 
-async function writeByteRangeResponse(
-  context: FrameworkResponseWriterContext,
+/**
+ * Writes one byte representation while preserving range and cancellation semantics.
+ *
+ * @param options Request, response, validators, and representation metadata.
+ * @returns A promise that settles after the representation completes or fails.
+ */
+export async function writeByteRangeResponse(
+  options: ByteRangeResponseWriteOptions,
 ): Promise<void> {
-  const entry = context.value as {
-    readonly contentType: string;
-    readonly size: number;
-    readonly source: ByteRangeResponseSource;
-  };
-  const response = context.response;
+  const { entry, request, response, validators } = options;
 
   if (response.committed) {
     return;
   }
 
-  const acceptsByteRange = isByteRangeRequestMethod(context.request.method);
+  const acceptsByteRange = isByteRangeRequestMethod(request.method);
   const range = resolveByteRange(
     acceptsByteRange
-      ? readFirstNonEmptyRequestHeaderValue(context.request, 'range')
+      ? readFirstNonEmptyRequestHeaderValue(request, 'range')
       : undefined,
     entry.size,
-    acceptsByteRange && matchesIfRange(context.request, context.validators),
+    acceptsByteRange && matchesIfRange(request, validators),
   );
-  const isHead = context.request.method.toUpperCase() === 'HEAD';
+  const isHead = request.method.toUpperCase() === 'HEAD';
   const bytes = toBytes(entry.source);
 
   if (range.kind === 'unsatisfiable') {
-    context.applySuccessResponseMetadata();
+    options.applySuccessResponseMetadata();
 
     if (acceptsByteRange) {
       response.setHeader('Accept-Ranges', 'bytes');
@@ -219,7 +247,7 @@ async function writeByteRangeResponse(
     }
   }
 
-  context.applySuccessResponseMetadata();
+  options.applySuccessResponseMetadata();
 
   if (acceptsByteRange) {
     response.setHeader('Accept-Ranges', 'bytes');
@@ -256,7 +284,7 @@ async function writeByteRangeResponse(
     reader,
     range.kind === 'partial' ? range.start : 0,
     range.kind === 'partial' ? range.end : entry.size - 1,
-    context.request,
+    request,
     stream,
   );
 }

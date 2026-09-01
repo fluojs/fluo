@@ -2,6 +2,10 @@
 
 이 문서는 fluo 저장소를 위한 최우선 AI 참조 진입점이다. 프레임워크 정체성, 위반 불가 규칙, 패키지 경계, 그리고 적절한 원본 문서로 이동하는 가장 짧은 경로를 요약한다.
 
+## 정적 에셋 제공
+
+정적 제공은 [HTTP Runtime Contract](./architecture/http-runtime.ko.md)에 문서화한 portable `@fluojs/http` middleware 계약입니다. 애플리케이션은 `createStaticAssetsMiddleware(...)`에 명시적 `StaticAssetSource`를 전달하므로 fetch-style 및 edge host에 암묵적 filesystem claim이 제공되지 않습니다. `@fluojs/runtime/node`는 Node, Express, Fastify deployment용 `createNodeFileSystemAssetSource(...)`를 소유하며 lexical 및 realpath 해석을 구성된 root에 제한하고 precompressed sibling을 선택할 수 있습니다. API 예제와 deployment configuration은 `@fluojs/http`, `@fluojs/runtime` package README를 사용하세요.
+
 ## Identity
 
 fluo는 TC39 표준 데코레이터, 명시적 의존성 경계, 메타데이터 없는 런타임 구성을 기반으로 하는 standard-first TypeScript 백엔드 프레임워크다. legacy 데코레이터 컴파일 모드를 거부하며, behavioral contract, 플랫폼 parity, 패키지 표면의 명확성을 핵심 설계 제약으로 둔다.

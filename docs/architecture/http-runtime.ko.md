@@ -4,6 +4,18 @@
 
 이 문서는 `@fluojs/http`가 구현하고 `@fluojs/runtime`이 조립하는 현재 요청 실행 계약을 정의한다.
 
+## 정적 에셋 계약
+
+정적 에셋 제공은 catch-all route나 `FrameworkResponse.sendFile()` capability가 아니라 application middleware입니다. `createStaticAssetsMiddleware(...)`는 runtime-neutral `StaticAssetSource`를 요구하며 portable graph는 filesystem을 import하거나 emulation하지 않습니다. 미들웨어는 각 URL segment를 정확히 한 번 decode하고 source 해석 전에 traversal, encoded separator, backslash, NUL, 허용되지 않은 dotfile을 거부합니다. Directory index는 opt-in이며 trailing-slash path에만 적용됩니다.
+
+선택된 representation은 MIME type, 정확한 byte length, validator를 제공합니다. 미들웨어는 lazy stream을 열기 전에 conditional field를 평가하고 이어서 `Range`, `If-Range`, `HEAD`, cancellation, committed stream failure 처리를 공유 byte-range 계약에 위임합니다. Precompressed selection은 선택된 representation을 `Content-Encoding`과 `Vary: Accept-Encoding`으로 식별하며 range는 그 representation을 대상으로 동작합니다. Node filesystem 지원은 `@fluojs/runtime/node`에만 존재하고 configuration/resolution 중 root 또는 realpath escape를 거부합니다. Web과 edge host는 명시적 source를 제공해야 합니다.
+
+## 정적 에셋 계약
+
+정적 에셋 제공은 catch-all route나 `FrameworkResponse.sendFile()` capability가 아니라 application middleware입니다. `createStaticAssetsMiddleware(...)`는 runtime-neutral `StaticAssetSource`를 요구하며 portable graph는 filesystem을 import하거나 emulation하지 않습니다. 미들웨어는 각 URL segment를 정확히 한 번 decode하고 source 해석 전에 traversal, encoded separator, backslash, NUL, 허용되지 않은 dotfile을 거부합니다. Directory index는 opt-in이며 trailing-slash path에만 적용됩니다.
+
+선택된 representation은 MIME type, 정확한 byte length, validator를 제공합니다. 미들웨어는 lazy stream을 열기 전에 conditional field를 평가하고 이어서 `Range`, `If-Range`, `HEAD`, cancellation, committed stream failure 처리를 공유 byte-range 계약에 위임합니다. Precompressed selection은 선택된 representation을 `Content-Encoding`과 `Vary: Accept-Encoding`으로 식별하며 range는 그 representation을 대상으로 동작합니다. Node filesystem 지원은 `@fluojs/runtime/node`에만 존재하고 configuration/resolution 중 root 또는 realpath escape를 거부합니다. Web과 edge host는 명시적 source를 제공해야 합니다.
+
 ## 바이트 범위 계약
 
 conditional-request 평가가 handler 실행을 허용한 뒤 response policy는 `GET` representation과 문서화된 `HEAD` metadata mirror에만 하나의 `Range: bytes=` member를 적용한다. 유효한 bounded, suffix, open-ended member는 `206`을 만들고 malformed 및 multi-range field는 전체 응답을 유지하며 충족 불가능한 member는 `Accept-Ranges: bytes`, `Content-Range: bytes */size`, `Content-Length: 0`을 포함한 body 없는 `416`을 만든다. `POST`, unsafe, custom method는 `Range`를 무시하고 기존 full status, body, metadata를 유지한다. `If-Range`는 선택된 representation validator를 재사용하며 conditional resolution을 다시 실행하지 않는다. `HEAD`는 portable stream을 소비하지 않으면서 GET과 같은 range status와 header를 사용한다. Node의 partial response는 `Content-Range`와 `Content-Length`가 전송 representation byte를 나타내도록 identity encoding을 사용한다.

@@ -6,6 +6,17 @@ export type {
   ByteRangeResponseOptions,
   ByteRangeResponseSource,
 } from './byte-range-response.js';
+export {
+  createStaticAssetsMiddleware,
+} from './static-assets.js';
+export type {
+  StaticAsset,
+  StaticAssetContentEncoding,
+  StaticAssetResolveContext,
+  StaticAssetSource,
+  StaticAssetsMiddleware,
+  StaticAssetsMiddlewareOptions,
+} from './static-assets.js';
 export * from './context/request-context.js';
 export * from './context/sse.js';
 export * from './connection.js';

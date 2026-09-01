@@ -10,6 +10,7 @@
 - [사용 시점](#사용-시점)
 - [퀵 스타트](#퀵-스타트)
 - [주요 패턴](#주요-패턴)
+- [Node 정적 에셋 source](#node-정적-에셋-source)
 - [동작 계약](#동작-계약)
 - [공개 API 개요](#공개-api-개요)
 - [관련 패키지](#관련-패키지)
@@ -22,6 +23,10 @@ npm install @fluojs/runtime
 ```
 
 배포된 package는 `engines.node >=20.19.3 <21 || >=22.2.0 <27`을 선언합니다. 이 정확한 범위는 Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상을 제외해 RFC `QUERY`에 대한 `@fluojs/runtime/node` raw HTTP listener 계약을 정확하게 유지하며, Web 표준 helper는 지원되는 fetch-style host에서 `@fluojs/runtime/web`을 통해 계속 사용할 수 있습니다. fetch-style HTTPS `Request`는 Node transport parity가 아닙니다. adapter가 제공한 `connection` snapshot이나 명시적 header가 없으면 peer, host, port가 없고 `resolveHttpConnection(...)`은 URL에서 HTTPS, `secure`, host, port를 추론하지 않습니다.
+
+## Node 정적 에셋 source
+
+`@fluojs/runtime/node`는 `@fluojs/http` static middleware가 소비하는 명시적 `StaticAssetSource`용 `createNodeFileSystemAssetSource(...)`를 export합니다. 이 helper는 configuration 단계에서 root directory를 검증하고 symlink 검사를 포함한 lexical 및 realpath 해석을 root 내부로 제한하며 regular file을 lazy stream으로 제공하고 `.br` 또는 `.gz` sibling을 선택할 수 있습니다. 이 Node 전용 helper는 의도적으로 `@fluojs/runtime/web`에 없으며 Web 및 edge deployment는 애플리케이션이 소유한 source를 제공해야 합니다.
 
 ## 사용 시점
 

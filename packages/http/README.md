@@ -10,6 +10,7 @@ The HTTP execution layer that turns route metadata into a request pipeline with 
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
+- [Static Asset Delivery](#static-asset-delivery)
 - [Response Cookies](#response-cookies)
 - [Early Hints](#early-hints)
 - [Realtime Adapter Capabilities](#realtime-adapter-capabilities)
@@ -25,6 +26,29 @@ The HTTP execution layer that turns route metadata into a request pipeline with 
 ```bash
 npm install @fluojs/http
 ```
+
+## Static Asset Delivery
+
+`createStaticAssetsMiddleware(...)` serves only `GET` and `HEAD` requests through an explicit application-owned `StaticAssetSource`. The portable HTTP package never assumes filesystem access, so Web and edge applications must provide their own source instead of receiving an implicit Node fallback.
+
+The middleware decodes each URL segment once and rejects traversal, encoded separators, backslashes, NUL, and dotfiles (unless `dotfiles: 'allow'` is selected) before it asks the source to resolve anything. Directory indexes are disabled by default and are considered only for a trailing-slash URL.
+
+```ts
+import { createStaticAssetsMiddleware } from '@fluojs/http';
+import { createNodeFileSystemAssetSource } from '@fluojs/runtime/node';
+
+const assets = createStaticAssetsMiddleware({
+  cacheControl: 'public, max-age=3600',
+  index: ['index.html'],
+  prefix: '/assets',
+  source: createNodeFileSystemAssetSource({
+    precompressed: true,
+    root: './public',
+  }),
+});
+```
+
+Register `assets` in runtime bootstrap `middleware`. The selected representation owns MIME type, exact length, `ETag`, `Last-Modified`, and optional `Content-Encoding`; `GET`, `HEAD`, conditional fields, `Range`, and `If-Range` use the same validator and cancellation contract. A source that selects `br` or `gzip` marks `Vary: Accept-Encoding`, and byte ranges address that selected encoded representation.
 
 ## When to Use
 
