@@ -1,6 +1,7 @@
 import type { MiddlewareContext, Middleware } from '../types.js';
 import { TooManyRequestsException, createErrorResponse } from '../exceptions.js';
 import { resolveClientIdentity } from '../client-identity.js';
+import type { TrustProxyPolicy } from '../connection.js';
 
 /** Snapshot of one key's current rate-limit window state. */
 export interface RateLimitStoreEntry {
@@ -27,10 +28,19 @@ export interface RateLimitOptions {
    * Enable this only when the adapter sits behind a trusted proxy that overwrites spoofable headers.
    */
   trustProxyHeaders?: boolean;
+  /**
+   * Explicit proxy boundary used for default client identity resolution.
+   *
+   * @remarks
+   * Prefer this policy over `trustProxyHeaders`; the legacy boolean trusts
+   * only the direct peer when enabled.
+   */
+  trustProxy?: TrustProxyPolicy;
 }
 
 function defaultKeyResolver(ctx: MiddlewareContext, options: RateLimitOptions): string {
   return resolveClientIdentity(ctx.request, {
+    trustProxy: options.trustProxy,
     trustProxyHeaders: options.trustProxyHeaders ?? false,
   });
 }

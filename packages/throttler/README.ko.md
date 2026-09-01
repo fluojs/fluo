@@ -103,9 +103,11 @@ ThrottlerModule.forRoot({
 ThrottlerModule.forRoot({
   ttl: 60,
   limit: 100,
-  trustProxyHeaders: true,
+  trustProxy: ['10.0.0.0/8'],
 });
 ```
+
+`trustProxy`는 기본 client key의 명시적인 forwarding boundary입니다. `false`, trusted-hop 수, address/CIDR rule 또는 predicate를 받을 수 있습니다. 신뢰되지 않았거나 malformed인 forwarding data는 direct transport identity를 대체할 수 없습니다. `trustProxyHeaders: true`는 legacy full-header behavior를 보존하지만 새 deployment에서는 `trustProxy`로 교체하세요.
 
 ```typescript
 ThrottlerModule.forRoot({

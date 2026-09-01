@@ -281,7 +281,17 @@ JSON write를 시작하지 않는다. HTTP가 `Accept`를 추가할 때 기존 n
 
 ### 프록시 뒤의 속도 제한
 
-`createRateLimitMiddleware(...)`는 기본적으로 raw socket `remoteAddress`만으로 클라이언트 식별자를 해석합니다. `Forwarded`, `X-Forwarded-For`, `X-Real-IP`를 신뢰하려면 해당 헤더를 신뢰 가능한 프록시가 덮어쓰는 환경에서만 `trustProxyHeaders: true`를 명시적으로 켜세요. 어댑터가 신뢰 가능한 프록시 체인도 raw socket 식별자도 제공하지 않는다면 공유 fallback 버킷에 의존하지 말고 명시적인 `keyResolver`를 설정하세요.
+`createRateLimitMiddleware(...)`는 기본적으로 어댑터가 snapshot한 직접 transport 주소로 클라이언트 식별자를 해석합니다. `Forwarded`, `X-Forwarded-For`, `X-Real-IP`를 신뢰하려면 명시적인 hop 수, address/CIDR 목록 또는 predicate를 `trustProxy`로 구성하세요. 직접 peer가 해당 policy를 만족하지 않으면 forwarded data는 무시되며, malformed `Forwarded` data는 direct transport identity로 fail-closed 됩니다.
+
+```ts
+import { resolveHttpConnection } from '@fluojs/http';
+
+const connection = resolveHttpConnection(context.request, {
+  trustProxy: ['10.0.0.0/8', '2001:db8:feed::/48'],
+});
+```
+
+`connection`은 immutable이며 선택된 `clientAddress`, direct `remoteAddress`, 신뢰된 `proxyChain`, `protocol`, `secure`, `host`, `hostname`, `port`를 노출합니다. Fetch-only adapter는 Web `Request` contract가 direct address를 제공하지 않으므로 해당 값을 undefined로 둘 수 있습니다. 기존 `trustProxyHeaders: true` 설정은 기존 full-header behavior를 보존하지만, deployment boundary를 정확히 기술하려면 `trustProxy`로 교체하세요. 두 설정 모두 해당 header를 다시 쓰는 proxy를 제어할 때만 사용해야 합니다. 어댑터가 신뢰 가능한 proxy chain과 raw socket identity를 모두 제공하지 않는다면 shared fallback bucket 대신 명시적인 `keyResolver`를 설정하세요.
 
 ### 서버 전송 이벤트
 

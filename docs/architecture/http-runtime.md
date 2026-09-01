@@ -48,6 +48,19 @@ The complete ownership, negotiation, React adapter, and fallback contract is rec
 - If cancellation wins while a drain promise remains unsettled, the dispatcher stops waiting for that promise, closes the response stream, calls the source iterator's `return()` exactly once, and awaits that cleanup before request-scope disposal.
 - A stream write that throws or a drain promise that rejects is not reclassified as cancellation. The original error continues through the committed-response observer and dispatcher logging boundary.
 
+## Connection Identity
+
+Adapters snapshot a direct peer address and transport protocol into
+`FrameworkRequest.connection` when their host exposes them. Node, Express, and
+Fastify populate this portable seam through the shared Node request
+normalization path; Fetch-only adapters may omit it because standard `Request`
+objects expose no peer address.
+
+`resolveHttpConnection(request, { trustProxy })` derives the immutable public
+connection model. Forwarding headers can influence client address, protocol,
+and host only after the direct peer matches the explicit `trustProxy` policy.
+Malformed forwarding input is discarded rather than partially trusted.
+
 ## Routing Rules
 
 | Rule | Current behavior |

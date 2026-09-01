@@ -103,9 +103,11 @@ Counters are scoped by route identity and client identity. The route portion inc
 ThrottlerModule.forRoot({
   ttl: 60,
   limit: 100,
-  trustProxyHeaders: true,
+  trustProxy: ['10.0.0.0/8'],
 });
 ```
+
+`trustProxy` is the explicit forwarding boundary for the default client key. It accepts `false`, a trusted-hop count, address/CIDR rules, or a predicate. Untrusted or malformed forwarding data cannot replace the direct transport identity. `trustProxyHeaders: true` preserves the legacy full-header behavior; replace it with `trustProxy` for new deployments.
 
 ```typescript
 ThrottlerModule.forRoot({

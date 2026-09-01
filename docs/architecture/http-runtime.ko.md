@@ -48,6 +48,19 @@
 - Drain promise가 settle되지 않은 동안 cancellation이 먼저 완료되면 dispatcher는 해당 promise를 더 기다리지 않고 response stream을 닫으며, source iterator의 `return()`을 정확히 한 번 호출하고 그 cleanup을 기다린 뒤 request-scope disposal을 수행한다.
 - Stream write가 throw하거나 drain promise가 reject하는 경우 cancellation으로 다시 분류하지 않는다. 원래 error가 committed-response observer 및 dispatcher logging boundary를 통해 그대로 전달된다.
 
+## Connection Identity
+
+adapter는 host가 제공할 때 direct peer address와 transport protocol을
+`FrameworkRequest.connection`에 snapshot합니다. Node, Express, Fastify는
+공유 Node request normalization path를 통해 이 portable seam을 채웁니다.
+Fetch-only adapter는 standard `Request`가 peer address를 노출하지 않으므로
+이를 생략할 수 있습니다.
+
+`resolveHttpConnection(request, { trustProxy })`는 immutable public connection
+model을 만듭니다. forwarding header는 direct peer가 명시적인 `trustProxy`
+policy를 만족한 뒤에만 client address, protocol, host에 영향을 줄 수 있습니다.
+malformed forwarding input은 부분 신뢰하지 않고 버립니다.
+
 ## Routing Rules
 
 | Rule | Current behavior |

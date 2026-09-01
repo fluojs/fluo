@@ -35,11 +35,30 @@ export interface FrameworkRequest {
   files?: readonly FrameworkRequestFile[];
   /** Adapter-snapshotted inbound request id used without forcing header normalization. */
   requestId?: string;
+  /**
+   * Adapter-snapshotted transport metadata available without platform-specific
+   * casts from middleware, guards, and request-scoped services.
+   */
+  connection?: FrameworkRequestConnection;
   rawBody?: Uint8Array;
   raw: unknown;
   /** Adapter-owned abort probe used by internal fast paths without forcing AbortSignal allocation. */
   isAborted?: () => boolean;
   signal?: AbortSignal;
+}
+
+/**
+ * Runtime-neutral transport metadata captured when an adapter receives a request.
+ *
+ * @remarks
+ * Fetch-only adapters may omit this value because the Web `Request` contract
+ * does not expose a peer address.
+ */
+export interface FrameworkRequestConnection {
+  /** Direct peer address supplied by the adapter transport, when available. */
+  readonly remoteAddress?: string;
+  /** Transport protocol supplied by the adapter when known. */
+  readonly protocol?: 'http' | 'https';
 }
 
 /** Runtime-neutral multipart file shape attached by adapters that parse uploads. */

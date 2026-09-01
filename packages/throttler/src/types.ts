@@ -1,4 +1,4 @@
-import type { MiddlewareContext } from '@fluojs/http';
+import type { MiddlewareContext, TrustProxyPolicy } from '@fluojs/http';
 
 /**
  * Snapshot of a client's current rate-limit window state returned by a throttler store.
@@ -69,6 +69,14 @@ export interface ThrottlerModuleOptions {
    * Enable this only when the adapter sits behind a trusted proxy that rewrites those headers.
    */
   trustProxyHeaders?: boolean;
+  /**
+   * Explicit proxy boundary for the default client key generator.
+   *
+   * @remarks
+   * Prefer this policy over `trustProxyHeaders`; the legacy boolean trusts
+   * only the direct peer when enabled.
+   */
+  trustProxy?: TrustProxyPolicy;
   /**
    * Key generator function. Defaults to conservative client identity resolution.
    * Receives the raw middleware context so custom headers (e.g. x-api-key) can be used.
