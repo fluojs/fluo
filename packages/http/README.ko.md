@@ -373,8 +373,10 @@ Multipart 파일이 handler 입력 계약에 포함되면 `@RequestDto(...)`와 
 
 ```ts
 import {
+  Controller,
   FromFiles,
   Optional,
+  Post,
   RequestDto,
   type FrameworkRequestFile,
 } from '@fluojs/http';
@@ -388,10 +390,13 @@ class UploadAssetsDto {
   cover?: readonly FrameworkRequestFile[];
 }
 
-@Post('/')
-@RequestDto(UploadAssetsDto)
-upload(input: UploadAssetsDto) {
-  return input.attachments.map((file) => file.originalname);
+@Controller('/uploads')
+export class UploadController {
+  @Post('/')
+  @RequestDto(UploadAssetsDto)
+  upload(input: UploadAssetsDto) {
+    return input.attachments.map((file) => file.originalname);
+  }
 }
 ```
 
