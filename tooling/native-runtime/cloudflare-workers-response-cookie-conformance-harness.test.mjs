@@ -19,6 +19,10 @@ function esrch() {
   return Object.assign(new Error('no such process'), { code: 'ESRCH' });
 }
 
+function eperm() {
+  return Object.assign(new Error('operation not permitted'), { code: 'EPERM' });
+}
+
 test('preserves startup and cleanup errors', async () => {
   const startupError = new Error('workerd exited before readiness');
   const cleanupError = new Error('process group remained after SIGTERM');
@@ -302,6 +306,42 @@ test('accepts ESRCH after SIGKILL while confirming process-group exit', async ()
   ]);
 });
 
+test('uses a native process-group probe when macOS reports EPERM after SIGKILL', async () => {
+  const child = createChild(1016, 1);
+  const calls = [];
+  let probeCount = 0;
+  const nativeProcessGroupProbe = [];
+
+  await stopProcessGroup(
+    child,
+    (pid, signal) => {
+      calls.push([pid, signal]);
+      if (signal === 'SIGTERM' || signal === 'SIGKILL') {
+        return true;
+      }
+      probeCount += 1;
+      if (probeCount === 1) {
+        return true;
+      }
+      throw eperm();
+    },
+    undefined,
+    undefined,
+    (pid) => {
+      nativeProcessGroupProbe.push(pid);
+      return false;
+    },
+  );
+
+  assert.deepEqual(calls, [
+    [-1016, 'SIGTERM'],
+    [-1016, 0],
+    [-1016, 'SIGKILL'],
+    [-1016, 0],
+  ]);
+  assert.deepEqual(nativeProcessGroupProbe, [1016]);
+});
+
 test('accepts a graceful leader exit before the grace deadline and waits for stdio close', async () => {
   const child = createChild(1008);
   const childExited = once(child, 'exit');
@@ -454,5 +494,26 @@ test('uses separate dynamic loopback ports for concurrent Workers conformance ru
   for (const { args, options } of calls) {
     assert.equal(args[args.indexOf('--port') + 1], '0');
     assert.equal(options.detached, true);
+  }
+});
+
+test('uses separate dynamic inspector ports for concurrent Workers conformance runs', async () => {
+  const calls = [];
+  const spawnWorker = (_command, args) => {
+    const child = createChild(1015 + calls.length);
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    calls.push(args);
+    queueMicrotask(() => {
+      child.stdout.emit('data', Buffer.from(`Ready on http://127.0.0.1:${53002 + calls.length}`));
+    });
+    return child;
+  };
+
+  const workers = [startWorker(spawnWorker), startWorker(spawnWorker)];
+  await Promise.all(workers.map((worker) => worker.ready));
+
+  for (const args of calls) {
+    assert.equal(args[args.indexOf('--inspector-port') + 1], '0');
   }
 });

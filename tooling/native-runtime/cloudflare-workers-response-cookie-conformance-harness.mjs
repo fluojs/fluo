@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
 
 const workerHost = '127.0.0.1';
@@ -16,12 +16,27 @@ function workerUrlFromOutput(output) {
   return match?.[0];
 }
 
-function processGroupExists(pid, kill) {
+function processGroupExists(pid, kill, nativeProcessGroupProbe) {
   try {
     kill(-pid, 0);
     return true;
   } catch (error) {
     if (isErrno(error, 'ESRCH')) {
+      return false;
+    }
+    if (isErrno(error, 'EPERM') && nativeProcessGroupProbe !== undefined) {
+      return nativeProcessGroupProbe(pid);
+    }
+    throw error;
+  }
+}
+
+function probeMacOSProcessGroup(pid) {
+  try {
+    execFileSync('/bin/kill', ['-0', `-${pid}`], { stdio: 'ignore' });
+    return true;
+  } catch (error) {
+    if (typeof error === 'object' && error !== null && error.status === 1) {
       return false;
     }
     throw error;
@@ -103,6 +118,8 @@ export function startWorker(spawnWorker = spawn) {
       '--local',
       '--port',
       '0',
+      '--inspector-port',
+      '0',
     ],
     {
       cwd: new URL('../..', import.meta.url),
@@ -144,6 +161,7 @@ export async function stopProcessGroup(
   kill = process.kill,
   createGraceDeadline = createProcessGroupGraceDeadline,
   processGroupExitWaitOptions,
+  nativeProcessGroupProbe = process.platform === 'darwin' ? probeMacOSProcessGroup : undefined,
 ) {
   if (child.pid === undefined) {
     return;
@@ -160,7 +178,7 @@ export async function stopProcessGroup(
   graceDeadline?.cancel();
 
   const forceTerminationSent =
-    processGroupRunning && processGroupExists(child.pid, kill)
+    processGroupRunning && processGroupExists(child.pid, kill, nativeProcessGroupProbe)
       ? signalProcessGroup(child.pid, 'SIGKILL', kill)
       : false;
 
@@ -176,7 +194,7 @@ export async function stopProcessGroup(
       processGroupExitWaitOptions ?? {
         deadline: createProcessGroupExitDeadline(),
         scheduler: scheduleProcessGroupExitProbe,
-        stateProbe: (pid) => processGroupExists(pid, kill),
+        stateProbe: (pid) => processGroupExists(pid, kill, nativeProcessGroupProbe),
       },
     );
   }
