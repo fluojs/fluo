@@ -67,14 +67,9 @@ describe('OpenAPI Path Item validation', () => {
     // Given
     @Controller('/unsupported')
     class UnsupportedController {
-      @Get('/') handle() { return undefined; }
+      @Route(method, '/') handle() { return undefined; }
     }
     const descriptors = createHandlerMapping([{ controllerToken: UnsupportedController }]).descriptors;
-    const descriptor = descriptors[0];
-    if (descriptor === undefined) {
-      throw new TypeError('Expected the unsupported-method fixture to create one descriptor.');
-    }
-    Reflect.set(descriptor.route, 'method', method);
 
     // When
     const buildDocument = () => buildOpenApiDocument({ ...DOCUMENT_OPTIONS, descriptors });
