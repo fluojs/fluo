@@ -142,17 +142,10 @@ Calling `MetricsService.counter(...)` again with the same name recreates the col
 
 ```ts
 import { Module } from '@fluojs/core';
-import { Counter, Registry } from 'prom-client';
-import { METRICS_REGISTRY, MetricsModule } from '@fluojs/metrics';
+import { METRICS_REGISTRY, MetricsModule, Registry } from '@fluojs/metrics';
 import { bootstrapApplication } from '@fluojs/runtime';
 
 const registry = new Registry();
-
-new Counter({
-  name: 'orders_total',
-  help: 'Total orders processed',
-  registers: [registry],
-});
 
 @Module({
   imports: [MetricsModule.forRoot({ http: true })],
@@ -164,6 +157,8 @@ const app = await bootstrapApplication({
   providers: [{ provide: METRICS_REGISTRY, useValue: registry }],
 });
 ```
+
+`Registry` is re-exported by `@fluojs/metrics`, so this setup needs no direct `prom-client` dependency. Create application collectors through the `MetricsService` pattern above.
 
 When multiple metrics module instances intentionally share the same registry, built-in HTTP metrics reuse the existing `http_requests_total`, `http_errors_total`, and `http_request_duration_seconds` collectors instead of registering duplicate framework metrics only when their framework ownership, label schema, and effective path-label configuration match. The path-label compatibility check includes `pathLabelMode`, the exact `pathLabelNormalizer` function reference, and `unknownPathLabel` fallback semantics, so incompatible module instances fail fast instead of mixing different HTTP series policies into one collector set. Built-in platform telemetry gauges follow the same ownership rule: module-created `fluo_component_ready`, `fluo_component_health`, and `fluo_metrics_registry_mode` gauges are reused only when their framework ownership and label schema match. Platform telemetry state is tracked per reused registry, so a later scrape replaces stale module-owned component readiness and health series from an earlier module instance before metrics are returned. The registry scrape wrapper keeps using the latest active module registration and restores the Registry's original `metrics()` function after the last registration closes. Application-defined duplicate names still fail fast.
 
@@ -211,18 +206,20 @@ MetricsModule.forRoot({
 ## Public API
 
 - `MetricsModule.forRoot(options)`
+- `METRICS_REGISTRY`, the bootstrap-only token for an intentionally shared `Registry`
 - `MetricsService`, including `counter(...)`, `gauge(...)`, `histogram(...)`, and `getRegistry()`
 - `METER_PROVIDER`
 - `PrometheusMeterProvider`
 - Meter abstraction types: `MeterProvider`, `MeterCounter`, `MeterGauge`, and `MeterHistogram`
 - `HttpMetricsMiddleware` and HTTP path-label option types
 - Module options including `provider` (currently only `'prometheus'`), module-level `middleware`, and endpoint-scoped `endpointMiddleware`
-- `Registry` from `prom-client`
+- `Registry`, re-exported from `prom-client`
 
 ### Operational defaults
 
 - `path` defaults to `'/metrics'`, any string path including `''` exposes a scrape endpoint, and `path: false` disables the scrape endpoint entirely.
-- When `registry` is omitted, each application bootstrap owns a fresh isolated registry, `MetricsService`, meter provider, and telemetry collector set.
+- When neither bootstrap `METRICS_REGISTRY` nor the legacy `registry` option is supplied, each application bootstrap owns a fresh isolated registry, `MetricsService`, meter provider, and telemetry collector set.
+- A bootstrap `METRICS_REGISTRY` provider takes precedence over the legacy `registry` option; an unrelated module provider with the same token does not configure metrics ownership.
 - The scrape response uses the active registry's Prometheus content type and registry contents.
 - `defaultMetrics` defaults to `true`, and `defaultMetrics: false` disables Prometheus default process and Node.js collectors for that registry.
 - `endpointMiddleware` binds class-based route-scoped middleware only to the scrape endpoint; with HTTP instrumentation enabled, endpoint middleware failures are counted by the built-in HTTP collectors.

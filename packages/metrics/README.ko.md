@@ -142,17 +142,10 @@ class OrdersService {
 
 ```ts
 import { Module } from '@fluojs/core';
-import { Counter, Registry } from 'prom-client';
-import { METRICS_REGISTRY, MetricsModule } from '@fluojs/metrics';
+import { METRICS_REGISTRY, MetricsModule, Registry } from '@fluojs/metrics';
 import { bootstrapApplication } from '@fluojs/runtime';
 
 const registry = new Registry();
-
-new Counter({
-  name: 'orders_total',
-  help: 'Total orders processed',
-  registers: [registry],
-});
 
 @Module({
   imports: [MetricsModule.forRoot({ http: true })],
@@ -164,6 +157,8 @@ const app = await bootstrapApplication({
   providers: [{ provide: METRICS_REGISTRY, useValue: registry }],
 });
 ```
+
+`Registry`는 `@fluojs/metrics`가 re-export하므로 이 setup에는 `prom-client` 직접 dependency가 필요하지 않습니다. application collector는 위의 `MetricsService` pattern으로 생성하세요.
 
 여러 `MetricsModule` 인스턴스가 같은 Registry를 의도적으로 공유하는 경우, 내장 HTTP 메트릭은 framework ownership, label schema, effective path-label configuration이 모두 일치할 때만 기존 `http_requests_total`, `http_errors_total`, `http_request_duration_seconds` collector를 재사용합니다. Path-label compatibility 검사는 `pathLabelMode`, 정확히 같은 `pathLabelNormalizer` 함수 참조, `unknownPathLabel` fallback 의미론을 포함하므로 서로 다른 HTTP series policy를 하나의 collector set에 섞는 module instance는 빠르게 실패합니다. 내장 플랫폼 텔레메트리 Gauge도 같은 ownership 규칙을 따릅니다. 모듈이 만든 `fluo_component_ready`, `fluo_component_health`, `fluo_metrics_registry_mode` Gauge는 framework ownership과 label schema가 일치할 때만 재사용합니다. 플랫폼 텔레메트리 상태는 재사용된 Registry별로 추적되므로, 이후 스크레이프는 이전 module instance가 남긴 stale component readiness/health series를 제거한 뒤 메트릭을 반환합니다. Registry scrape wrapper는 최신 active module registration을 사용하며 마지막 registration이 종료되면 Registry의 원래 `metrics()` 함수를 복원합니다. 애플리케이션이 직접 등록한 중복 메트릭 이름은 Prometheus Registry 규칙대로 계속 빠르게 실패합니다.
 
@@ -211,18 +206,20 @@ MetricsModule.forRoot({
 ## 공개 API
 
 - `MetricsModule.forRoot(options)`
+- 의도적으로 공유하는 `Registry`를 위한 bootstrap 전용 token `METRICS_REGISTRY`
 - `MetricsService` 및 `counter(...)`, `gauge(...)`, `histogram(...)`, `getRegistry()`
 - `METER_PROVIDER` (Token)
 - `PrometheusMeterProvider`
 - Meter abstraction type: `MeterProvider`, `MeterCounter`, `MeterGauge`, `MeterHistogram`
 - `HttpMetricsMiddleware` 및 HTTP path-label 옵션 타입
 - `provider`(현재는 `'prometheus'`만 지원), module-level `middleware`, endpoint-scoped `endpointMiddleware`를 포함한 module option
-- `prom-client`의 `Registry`
+- `prom-client`에서 re-export한 `Registry`
 
 ### 운영 기본값
 
 - `path`의 기본값은 `'/metrics'`입니다. `''`를 포함한 모든 문자열 path는 scrape endpoint를 노출하며, `path: false`로만 scrape endpoint를 완전히 비활성화할 수 있습니다.
-- `registry`를 생략하면 application bootstrap마다 fresh isolated Registry, `MetricsService`, meter provider, telemetry collector set을 소유합니다.
+- bootstrap `METRICS_REGISTRY`와 legacy `registry` option을 모두 제공하지 않으면 application bootstrap마다 fresh isolated Registry, `MetricsService`, meter provider, telemetry collector set을 소유합니다.
+- Bootstrap `METRICS_REGISTRY` provider는 legacy `registry` option보다 우선하며, 같은 token을 가진 관련 없는 module provider는 metrics ownership을 구성하지 않습니다.
 - scrape response는 active Registry의 Prometheus content type과 Registry contents를 사용합니다.
 - `defaultMetrics`의 기본값은 `true`이며, `defaultMetrics: false`로 해당 Registry의 Prometheus 기본 프로세스/Node.js collector를 끌 수 있습니다.
 - `endpointMiddleware`는 class-based route-scoped middleware를 스크레이프 엔드포인트에만 바인딩합니다. HTTP 계측이 활성화된 경우 endpoint middleware 실패는 내장 HTTP collector에 집계됩니다.
