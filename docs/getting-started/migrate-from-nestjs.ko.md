@@ -83,14 +83,6 @@ NestJS Swagger 마이그레이션은 생성 문서 경계에서 일대일 대응
 - fluo는 controller tag, handler name, HTTP method, normalized path에서 `operationId`를 만들고 충돌에는 숫자 suffix를 붙입니다. 생성된 client가 legacy operation identifier를 요구하면 문서를 제공하기 전에 `documentTransform`으로 생성된 operation ID를 변경하고 변환된 출력을 client generator로 검증하세요.
 - `OpenApiModule.forRootAsync(...)`에서는 `documentPath`와 `uiPath`의 route가 `useFactory(...)`가 resolve되기 전에 compile되므로 두 값은 바깥 registration object에 둡니다. route는 `inject`와 `useFactory` 옆에 두고 factory에서는 document configuration을 반환하세요. factory가 반환한 path로는 등록된 route를 다시 구성할 수 없습니다.
 
-## OpenAPI 계약 차이
-
-NestJS Swagger 마이그레이션은 생성 문서 경계에서 일대일 대응이 아닙니다.
-
-- fluo는 명시적으로 선언한 응답을 대체하지 않으면서 기본적으로 `400`, `401`, `403`, `404`, `500` 응답과 `ErrorResponse` schema를 추가합니다. client를 다시 생성하기 전에 생성된 error contract를 검토하거나, legacy client에 주입된 응답이 들어가면 안 되는 경우 `defaultErrorResponsesPolicy: 'omit'`을 선택하세요.
-- fluo는 controller tag, handler name, HTTP method, normalized path에서 `operationId`를 만들고 충돌에는 숫자 suffix를 붙입니다. 생성된 client가 legacy operation identifier를 요구하면 문서를 제공하기 전에 `documentTransform`으로 생성된 operation ID를 변경하고 변환된 출력을 client generator로 검증하세요.
-- `OpenApiModule.forRootAsync(...)`에서는 `documentPath`와 `uiPath`의 route가 `useFactory(...)`가 resolve되기 전에 compile되므로 두 값은 바깥 registration object에 둡니다. route는 `inject`와 `useFactory` 옆에 두고 factory에서는 document configuration을 반환하세요. factory가 반환한 path로는 등록된 route를 다시 구성할 수 없습니다.
-
 ## GraphQL Field Resolver DTO Arguments
 
 Field argument DTO binding에 대한 이전 migration 제한은 code-first object field에서는 더 이상 적용되지 않는다. `InputDto`의 GraphQL argument field에 `@Arg(...)`를 두고 `@FieldResolver({ input: InputDto })`로 전달한 뒤 materialize 및 validate된 DTO를 `@Args(index?)`로 바인딩한다. `@Args()`, `@Parent()`, `@Context()`는 TC39 method decorator이므로 각 binding은 서로 다른 zero-based method index를 사용해야 하며, index 충돌은 decorator evaluation 중 실패한다. Bootstrap은 `@Args()` 없는 `input`, `input` 없는 `@Args()`, root operation에 둔 이 binding들을 모두 거부한다. Request-scoped root 및 field resolver는 하나의 HTTP 또는 subscription operation container를 공유한다. Schema-first field-resolver attachment는 계속 지원하지 않는다.

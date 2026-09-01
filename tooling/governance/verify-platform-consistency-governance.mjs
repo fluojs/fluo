@@ -2816,6 +2816,46 @@ export function enforceOpenApiNullableNormalizationContract() {
   );
 }
 
+const openApiMigrationDocumentRequirements = [
+  {
+    heading: '## OpenAPI Contract Differences',
+    markers: ["defaultErrorResponsesPolicy: 'omit'", 'operationId', 'documentTransform', 'documentPath', 'uiPath', 'useFactory(...)'],
+    path: 'docs/getting-started/migrate-from-nestjs.md',
+  },
+  {
+    heading: '## OpenAPI 계약 차이',
+    markers: ["defaultErrorResponsesPolicy: 'omit'", 'operationId', 'documentTransform', 'documentPath', 'uiPath', 'useFactory(...)'],
+    path: 'docs/getting-started/migrate-from-nestjs.ko.md',
+  },
+  {
+    heading: '### Default Error Contract',
+    markers: [],
+    path: 'book/beginner/ch10-openapi.md',
+  },
+  {
+    heading: '### 기본 오류 계약',
+    markers: [],
+    path: 'book/beginner/ch10-openapi.ko.md',
+  },
+];
+
+export function enforceOpenApiMigrationDocumentStructure(readText = read) {
+  for (const { heading, markers, path } of openApiMigrationDocumentRequirements) {
+    const documentation = readText(path);
+    const headingCount = documentation.split('\n').filter((line) => line.trim() === heading).length;
+    const missingMarkers = markers.filter((marker) => !documentation.includes(marker));
+
+    assert(
+      headingCount === 1,
+      `${path} must contain exactly one ${heading.slice('#'.repeat(heading.match(/^#+/)?.[0].length ?? 0).length + 1)} heading; found ${headingCount}.`,
+    );
+    assert(
+      missingMarkers.length === 0,
+      `${path} must retain migration marker(s): ${missingMarkers.join(', ')}.`,
+    );
+  }
+}
+
 export function enforceGraphqlRuntimeBoundaryDiscoverability() {
   const expectedNodeEngine = nodeListenerEngineRange;
   const graphqlPackageJson = JSON.parse(read('packages/graphql/package.json'));
@@ -3148,6 +3188,7 @@ export async function main() {
   enforceHttpAdapterPortabilityDocumentationContract();
   enforceHttpCatchAllRouteGrammarDecision();
   enforceOpenApiNullableNormalizationContract();
+  enforceOpenApiMigrationDocumentStructure();
   enforceGraphqlRuntimeBoundaryDiscoverability();
   enforceRequestPipelineImportBoundary();
   enforcePersistenceTransactionInterceptorCompatibility();

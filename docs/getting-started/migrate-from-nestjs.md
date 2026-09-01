@@ -83,14 +83,6 @@ NestJS Swagger migration is not one-to-one at the generated-document boundary:
 - fluo derives `operationId` from the controller tag, handler name, HTTP method, and normalized path; collisions receive numeric suffixes. If generated clients require legacy operation identifiers, use `documentTransform` to rename the generated operation IDs before serving the document, then validate the transformed output with the client generator.
 - In `OpenApiModule.forRootAsync(...)`, `documentPath` and `uiPath` belong to the outer registration object because their routes compile before `useFactory(...)` resolves. Keep routes beside `inject` and `useFactory`, and return document configuration from the factory; factory-returned paths cannot reconfigure the registered routes.
 
-## OpenAPI Contract Differences
-
-NestJS Swagger migration is not one-to-one at the generated-document boundary:
-
-- fluo injects `400`, `401`, `403`, `404`, and `500` responses plus an `ErrorResponse` schema by default, without replacing an explicitly declared response. Review that generated error contract before regenerating clients, or select `defaultErrorResponsesPolicy: 'omit'` when legacy clients must not receive the injected responses.
-- fluo derives `operationId` from the controller tag, handler name, HTTP method, and normalized path; collisions receive numeric suffixes. If generated clients require legacy operation identifiers, use `documentTransform` to rename the generated operation IDs before serving the document, then validate the transformed output with the client generator.
-- In `OpenApiModule.forRootAsync(...)`, `documentPath` and `uiPath` belong to the outer registration object because their routes compile before `useFactory(...)` resolves. Keep routes beside `inject` and `useFactory`, and return document configuration from the factory; factory-returned paths cannot reconfigure the registered routes.
-
 ## GraphQL Field Resolver DTO Arguments
 
 The prior migration limitation for field argument DTO binding is superseded for code-first object fields. Put GraphQL argument fields on an `InputDto` with `@Arg(...)`, pass it through `@FieldResolver({ input: InputDto })`, and bind the materialized, validated DTO with `@Args(index?)`. `@Args()`, `@Parent()`, and `@Context()` are TC39 method decorators, so every binding must use a distinct zero-based method index; duplicate indexes fail during decorator evaluation. Bootstrap rejects `input` without `@Args()`, `@Args()` without `input`, and every one of these bindings on root operations. Request-scoped root and field resolvers share one HTTP or subscription operation container. Schema-first field-resolver attachment remains unsupported.

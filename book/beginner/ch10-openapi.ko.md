@@ -181,10 +181,6 @@ DTO에서 `@IsString()`, `@IsEmail()`, `@MinLength(10)` 같은 유효성 검사 
 
 생성 문서에는 기본 error contract도 있습니다. fluo는 응답이 이미 선언된 경우를 제외하고 `400`, `401`, `403`, `404`, `500` 응답과 공용 `ErrorResponse` schema를 추가합니다. client를 생성하기 전에 이 생성된 응답을 검증하세요. legacy client contract에서 이를 제외해야 한다면 `defaultErrorResponsesPolicy: 'omit'`을 설정하고, 공개하려는 응답은 명시적 `@ApiResponse(...)` 선언으로 계속 기술하세요.
 
-### 기본 오류 계약
-
-생성 문서에는 기본 error contract도 있습니다. fluo는 응답이 이미 선언된 경우를 제외하고 `400`, `401`, `403`, `404`, `500` 응답과 공용 `ErrorResponse` schema를 추가합니다. client를 생성하기 전에 이 생성된 응답을 검증하세요. legacy client contract에서 이를 제외해야 한다면 `defaultErrorResponsesPolicy: 'omit'`을 설정하고, 공개하려는 응답은 명시적 `@ApiResponse(...)` 선언으로 계속 기술하세요.
-
 ### Protected Routes in the Docs
 
 9장에서 Guard를 다뤘습니다. 라우트가 보호되어 있다면 문서도 이를 반영해야 합니다. 그렇지 않으면 사용자는 왜 `403 Forbidden` 에러가 나는지 파악하기 어렵습니다.
