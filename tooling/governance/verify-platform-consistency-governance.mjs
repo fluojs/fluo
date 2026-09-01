@@ -2688,6 +2688,7 @@ export function enforceHttpCustomMethodContract() {
 export function enforceHttpAdapterPortabilityDocumentationContract(readText = read) {
   const assertionOrder = [
     'assertSupportsCustomHttpRouteMethods()',
+    'assertSupportsSingleByteRanges()',
     'assertSupportsHttpErrorRepresentations()',
     'assertDoesNotCommitAbortedHttpErrorRepresentations()',
     'assertPreservesMalformedCookieValues()',
@@ -2759,6 +2760,7 @@ export function enforceHttpAdapterPortabilityDocumentationContract(readText = re
       'createHttpAdapterPortabilityHarness(...)',
       'assertSupportsPortableResponseCookies()',
       'assertSupportsCustomHttpRouteMethods()',
+      'assertSupportsSingleByteRanges()',
       'assertSupportsHttpErrorRepresentations()',
       'assertDoesNotCommitAbortedHttpErrorRepresentations()',
       'assertPreservesExactRawBodyBytesForByteSensitivePayloads()',

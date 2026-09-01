@@ -1,5 +1,5 @@
 import { Container } from '@fluojs/di';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   Controller,
@@ -89,6 +89,29 @@ describe('single byte range response', () => {
     expect(response.sentBodies).toEqual([Uint8Array.from([2, 3, 4])]);
   });
 
+  it('writes a satisfiable byte range from an ArrayBuffer representation', async () => {
+    @Controller('/assets')
+    class AssetController {
+      @Get('/logo')
+      getLogo() {
+        return Uint8Array.from([0, 1, 2, 3, 4, 5]).buffer;
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: AssetController }]),
+      rootContainer: new Container().register(AssetController),
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest({ range: 'bytes=2-4' }), response);
+
+    expect(response.statusCode).toBe(206);
+    expect(response.headers['Content-Range']).toBe('bytes 2-4/6');
+    expect(response.headers['Content-Length']).toBe('3');
+    expect(response.sentBodies).toEqual([Uint8Array.from([2, 3, 4])]);
+  });
+
   it.each([
     ['absent', undefined, 200, undefined, undefined, Uint8Array.from([0, 1, 2, 3, 4, 5])],
     ['malformed', 'items=2-4', 200, undefined, undefined, Uint8Array.from([0, 1, 2, 3, 4, 5])],
@@ -142,6 +165,87 @@ describe('single byte range response', () => {
     expect(response.headers['Content-Length']).toBe('0');
     expect(response.sentBodies).toEqual([undefined]);
   });
+
+  it('writes 416 before opening an unsatisfiable streamed representation', async () => {
+    let factoryCalls = 0;
+
+    @Controller('/assets')
+    class AssetController {
+      @Get('/logo')
+      getLogo() {
+        return createByteRangeResponse(() => {
+          factoryCalls += 1;
+          return new ReadableStream<Uint8Array>();
+        }, { size: 6 });
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: AssetController }]),
+      rootContainer: new Container().register(AssetController),
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest({ range: 'bytes=9-' }), response);
+
+    expect(factoryCalls).toBe(0);
+    expect(response.statusCode).toBe(416);
+    expect(response.headers['Content-Range']).toBe('bytes */6');
+  });
+
+  it.each(['missing', 'throwing'] as const)(
+    'awaits rejected reader cancellation before releasing a %s stream capability',
+    async (capability) => {
+      const cancellationFailure = new Error('reader cancellation failed');
+      const cleanupOrder: string[] = [];
+      const releaseLock = vi.spyOn(ReadableStreamDefaultReader.prototype, 'releaseLock')
+        .mockImplementation(function releaseLock() {
+          cleanupOrder.push('release');
+        });
+
+      @Controller('/assets')
+      class AssetController {
+        @Get('/logo')
+        getLogo() {
+          return createByteRangeResponse(() => new ReadableStream<Uint8Array>({
+            cancel() {
+              cleanupOrder.push('cancel');
+              return Promise.reject(cancellationFailure).finally(() => {
+                cleanupOrder.push('cancel-settled');
+              });
+            },
+          }), { size: 6 });
+        }
+      }
+
+      const dispatcher = createDispatcher({
+        handlerMapping: createHandlerMapping([{ controllerToken: AssetController }]),
+        rootContainer: new Container().register(AssetController),
+      });
+      const response = createResponse();
+
+      Object.defineProperty(response, 'stream', {
+        get() {
+          if (capability === 'throwing') {
+            throw new Error('stream capability failed');
+          }
+
+          return undefined;
+        },
+      });
+
+      try {
+        await dispatcher.dispatch(createRequest({ range: 'bytes=2-4' }), response);
+      } finally {
+        releaseLock.mockRestore();
+      }
+
+      expect(cleanupOrder).toEqual(['cancel', 'cancel-settled', 'release']);
+      expect(response.statusCode).toBe(500);
+      expect(response.headers['Accept-Ranges']).toBeUndefined();
+      expect(response.headers['Content-Range']).toBeUndefined();
+    },
+  );
 
   it('uses the complete representation when If-Range does not match', async () => {
     @Controller('/assets')
@@ -422,6 +526,40 @@ describe('single byte range response', () => {
     expect(headResponse.sentBodies).toEqual([undefined]);
     expect(headResponse.stream.chunks).toEqual([]);
     expect(streamPulls).toBe(pullsAfterGet);
+  });
+
+  it('does not write a canonical error after incremental range streaming starts', async () => {
+    @Controller('/assets')
+    class AssetController {
+      @Get('/logo')
+      getLogo() {
+        return createByteRangeResponse(() => new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(Uint8Array.from([0, 1, 2]));
+          },
+        }), { size: 6 });
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: AssetController }]),
+      rootContainer: new Container().register(AssetController),
+    });
+    const response = createStreamingResponse();
+    let writeCalls = 0;
+    response.stream.write = () => {
+      writeCalls += 1;
+      throw new Error('stream write failed');
+    };
+
+    await dispatcher.dispatch(createRequest({ range: 'bytes=0-2' }), response);
+
+    expect(writeCalls).toBe(1);
+    expect(response.committed).toBe(true);
+    expect(response.statusCode).toBe(206);
+    expect(response.headers['Content-Range']).toBe('bytes 0-2/6');
+    expect(response.sentBodies).toEqual([]);
+    expect(response.stream.closed).toBe(true);
   });
 
   it.each(['request signal', 'response close'] as const)(

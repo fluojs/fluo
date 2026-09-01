@@ -175,6 +175,25 @@ async function writeByteRangeResponse(
   );
   const isHead = context.request.method.toUpperCase() === 'HEAD';
   const bytes = toBytes(entry.source);
+
+  if (range.kind === 'unsatisfiable') {
+    context.applySuccessResponseMetadata();
+
+    if (acceptsByteRange) {
+      response.setHeader('Accept-Ranges', 'bytes');
+    }
+
+    if (!hasHeader(response, 'content-type')) {
+      response.setHeader('Content-Type', entry.contentType);
+    }
+
+    response.setStatus(416);
+    response.setHeader('Content-Length', '0');
+    response.setHeader('Content-Range', `bytes */${entry.size}`);
+    await response.send(undefined);
+    return;
+  }
+
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   let stream: FrameworkResponseStream | undefined;
 
@@ -190,12 +209,12 @@ async function writeByteRangeResponse(
     try {
       stream = response.stream;
     } catch (error) {
-      reader.releaseLock();
+      await cancelAndReleaseReader(reader);
       throw error;
     }
 
     if (!stream) {
-      reader.releaseLock();
+      await cancelAndReleaseReader(reader);
       throw new TypeError('The active HTTP adapter cannot write a portable byte stream.');
     }
   }
@@ -208,14 +227,6 @@ async function writeByteRangeResponse(
 
   if (!hasHeader(response, 'content-type')) {
     response.setHeader('Content-Type', entry.contentType);
-  }
-
-  if (range.kind === 'unsatisfiable') {
-    response.setStatus(416);
-    response.setHeader('Content-Length', '0');
-    response.setHeader('Content-Range', `bytes */${entry.size}`);
-    await response.send(undefined);
-    return;
   }
 
   if (range.kind === 'partial') {
@@ -240,6 +251,7 @@ async function writeByteRangeResponse(
     throw new TypeError('A byte-range response must contain an opened portable readable stream.');
   }
 
+  response.committed = true;
   await writeReadableStream(
     reader,
     range.kind === 'partial' ? range.start : 0,
@@ -281,6 +293,11 @@ function isReadableStream(source: unknown): source is ReadableStream<Uint8Array>
 function openByteRangeStream(source: ByteRangeResponseSource): ReadableStream<Uint8Array> | undefined {
   const stream = typeof source === 'function' ? source() : source;
   return isReadableStream(stream) ? stream : undefined;
+}
+
+async function cancelAndReleaseReader(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
+  await reader.cancel().catch(() => undefined);
+  reader.releaseLock();
 }
 
 async function writeReadableStream(

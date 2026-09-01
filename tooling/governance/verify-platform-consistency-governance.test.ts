@@ -489,6 +489,19 @@ describe('enforceHttpAdapterPortabilityDocumentationContract', () => {
       /platform-conformance-authoring-checklist\.md must keep the HTTP portability companion contract marker assertSupportsPortableResponseCookies/u,
     );
   });
+
+  it('rejects removal of the canonical single-byte-range assertion', () => {
+    const readText = (relativePath: string) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'docs/CONTEXT.md'
+        ? content.replace('assertSupportsSingleByteRanges()', '')
+        : content;
+    };
+
+    expect(() => enforceHttpAdapterPortabilityDocumentationContract(readText)).toThrow(
+      /docs\/CONTEXT\.md must keep assertSupportsSingleByteRanges\(\) discoverable/u,
+    );
+  });
 });
 
 describe('enforceReactServerFunctionContract', () => {
