@@ -20,6 +20,8 @@ fluo를 위한 descriptor-driven OpenAPI 3.1.0 문서 생성 패키지입니다.
 pnpm add @fluojs/openapi
 ```
 
+`@fluojs/openapi`는 Node.js `>=20.19.3 <21 || >=22.2.0 <27`을 지원하며 `engines.node`로 정확히 이 범위를 선언합니다. mandatory `@fluojs/runtime` dependency가 이 Node listener 경계를 소유하므로 Node 21, Node 22.2.0 미만, 검증되지 않은 Node 27 이상은 제외됩니다. 이전 1.x 릴리스는 `engines.node >=20.0.0`을 광고했지만, 이는 실제 dependency floor와 일치한 적이 없습니다.
+
 ## 사용 시점
 
 - **Swagger UI**를 사용하여 REST API에 대한 대화형 문서를 제공하고 싶을 때.

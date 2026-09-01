@@ -2708,9 +2708,9 @@ describe('Queue lifecycle and migration discoverability', () => {
       extractMarkdownLine(englishSurface, '- **`@fluojs/queue`**:'),
       extractMarkdownLine(koreanSurface, '- **`@fluojs/queue`**:'),
       extractMarkdownLine(englishReadme, '`@fluojs/queue` requires Node.js'),
-      extractMarkdownLine(koreanReadme, '`@fluojs/queue`는 package manifest'),
-      extractMarkdownLine(englishChapter, '`@fluojs/queue` is a Node.js'),
-      extractMarkdownLine(koreanChapter, '`@fluojs/queue`는 `engines.node'),
+      extractMarkdownLine(koreanReadme, '`@fluojs/queue`는 필수'),
+      extractMarkdownLine(englishChapter, '`@fluojs/queue` declares'),
+      extractMarkdownLine(koreanChapter, '`@fluojs/queue`는 필수'),
     ]) {
       expect(queueRuntimeEntry).toContain('Node.js');
       expect(queueRuntimeEntry).toContain(nodeEngineRange);
