@@ -32,30 +32,9 @@ type TaskkillCommand = (
   options: { readonly timeout?: number; readonly windowsHide: boolean },
 ) => Promise<void>;
 type NodeProcessStartHook = (child: ChildProcessWithoutNullStreams) => Promise<void>;
-type ProcessGroupExitWaitOptions = {
-  readonly deadline: () => boolean;
-  readonly schedule: (callback: () => void) => void;
-  readonly stateProbe: (pid: number) => boolean;
-};
-type ProcessGroupTerminationOptions = {
-  readonly createDeadline: () => () => boolean;
-  readonly schedule: ProcessGroupExitWaitOptions['schedule'];
-  readonly sendSignal: (pid: number, signal: NodeJS.Signals) => void;
-  readonly stateProbe: ProcessGroupExitWaitOptions['stateProbe'];
-};
-type OwnedChildProcessState = Pick<ChildProcessWithoutNullStreams, 'exitCode' | 'pid' | 'signalCode'>;
-type ProcessTreeTerminator = (pid: number) => Promise<void>;
 type DestroyableStdio = {
   destroy(): unknown;
 };
-
-class ProcessGroupExitDeadlineError extends Error {
-  readonly name = 'ProcessGroupExitDeadlineError';
-
-  constructor(pid: number) {
-    super(`Process group ${pid} did not exit before the termination deadline.`);
-  }
-}
 
 interface LegacyDeepMockedConsumerService {
   findById(id: string): Promise<{ id: string }>;
@@ -106,7 +85,6 @@ const packageJsonPath = new URL('../package.json', import.meta.url);
 const execFileAsync = promisify(execFile);
 const CHILD_PROCESS_TIMEOUT_MS = 240_000;
 const PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS = 5_000;
-const PROCESS_GROUP_EXIT_POLL_MS = 20;
 const DESCENDANT_PROCESS_TIMEOUT_MS = 1_000;
 const DESCENDANT_TIMEOUT_TEST_BOUNDED_OPERATION_COUNT = 6;
 const DESCENDANT_TIMEOUT_TEST_SCHEDULING_MARGIN_MS = 5_000;
@@ -133,97 +111,6 @@ const emittedHarnessSubpaths = [
 const executeTaskkillCommand: TaskkillCommand = async (file, args, options) => {
   await execFileAsync(file, [...args], options);
 };
-
-function isMissingProcessGroup(error: unknown): boolean {
-  return error instanceof Error && 'code' in error && error.code === 'ESRCH';
-}
-
-function isPermissionDeniedProcessGroupProbe(error: unknown): boolean {
-  return error instanceof Error && 'code' in error && error.code === 'EPERM';
-}
-
-function createProcessGroupExitDeadline(): () => boolean {
-  const expiresAt = Date.now() + PROCESS_TERMINATION_CONFIRM_TIMEOUT_MS;
-
-  return () => Date.now() >= expiresAt;
-}
-
-function scheduleProcessGroupExitProbe(callback: () => void): void {
-  setTimeout(callback, PROCESS_GROUP_EXIT_POLL_MS);
-}
-
-function probeProcessGroupState(pid: number): boolean {
-  try {
-    process.kill(-pid, 0);
-    return true;
-  } catch (error) {
-    if (isMissingProcessGroup(error) || isPermissionDeniedProcessGroupProbe(error)) {
-      return false;
-    }
-
-    throw error;
-  }
-}
-
-function sendProcessGroupSignal(pid: number, signal: NodeJS.Signals): void {
-  process.kill(-pid, signal);
-}
-
-const defaultProcessGroupTerminationOptions = {
-  createDeadline: createProcessGroupExitDeadline,
-  schedule: scheduleProcessGroupExitProbe,
-  sendSignal: sendProcessGroupSignal,
-  stateProbe: probeProcessGroupState,
-} satisfies ProcessGroupTerminationOptions;
-
-function waitForProcessGroupExit(pid: number, options: ProcessGroupExitWaitOptions): Promise<void> {
-  return new Promise((resolvePromise, rejectPromise) => {
-    const inspectProcessGroup = (): void => {
-      try {
-        if (!options.stateProbe(pid)) {
-          resolvePromise();
-          return;
-        }
-
-        if (options.deadline()) {
-          rejectPromise(new ProcessGroupExitDeadlineError(pid));
-          return;
-        }
-
-        options.schedule(inspectProcessGroup);
-      } catch (error) {
-        rejectPromise(error);
-      }
-    };
-
-    inspectProcessGroup();
-  });
-}
-
-async function terminateProcessGroup(
-  pid: number,
-  options: ProcessGroupTerminationOptions = defaultProcessGroupTerminationOptions,
-): Promise<void> {
-  if (!options.stateProbe(pid)) {
-    return;
-  }
-
-  try {
-    options.sendSignal(pid, 'SIGKILL');
-  } catch (error) {
-    if (isMissingProcessGroup(error)) {
-      return;
-    }
-
-    throw new Error(`Unable to terminate child process group ${pid}.`, { cause: error });
-  }
-
-  await waitForProcessGroupExit(pid, {
-    deadline: options.createDeadline(),
-    schedule: options.schedule,
-    stateProbe: options.stateProbe,
-  });
-}
 
 async function waitForSignal(signal: Promise<void>, timeoutMs: number, failureMessage: string): Promise<void> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -272,13 +159,10 @@ async function runWindowsTaskkill(pid: number, execute: TaskkillCommand = execut
   }
 }
 
-async function terminateOwnedProcessTree(
-  child: OwnedChildProcessState,
-  terminateProcessGroupTree: ProcessTreeTerminator = terminateProcessGroup,
-): Promise<void> {
+async function terminateOwnedProcessTree(child: ChildProcessWithoutNullStreams): Promise<void> {
   const pid = child.pid;
 
-  if (pid === undefined) {
+  if (pid === undefined || child.exitCode !== null || child.signalCode !== null) {
     return;
   }
 
@@ -293,7 +177,13 @@ async function terminateOwnedProcessTree(
     return;
   }
 
-  await terminateProcessGroupTree(pid);
+  try {
+    process.kill(-pid, 'SIGKILL');
+  } catch (error) {
+    if (!(error instanceof Error && 'code' in error && error.code === 'ESRCH')) {
+      throw new Error(`Unable to terminate child process group ${pid}.`, { cause: error });
+    }
+  }
 }
 
 async function runNodeProcess(
@@ -334,7 +224,6 @@ async function runNodeProcess(
   child.stderr.on('data', onStderr);
   child.once('error', onError);
   let hasPrimaryError = false;
-  let terminationAttempted = false;
 
   try {
     await onStarted?.(child);
@@ -348,7 +237,6 @@ async function runNodeProcess(
       let confirmationTimeout: ReturnType<typeof setTimeout> | undefined;
 
       try {
-        terminationAttempted = true;
         await terminateOwnedProcessTree(child);
         await Promise.race([
           closePromise,
@@ -381,15 +269,13 @@ async function runNodeProcess(
     }
   } catch (error) {
     hasPrimaryError = true;
-    if (!terminationAttempted) {
-      try {
-        await terminateOwnedProcessTree(child);
-      } catch (terminationError) {
-        throw new AggregateError(
-          [error, terminationError],
-          'Child process failed and fallback process-tree termination could not be confirmed.',
-        );
-      }
+    try {
+      await terminateOwnedProcessTree(child);
+    } catch (terminationError) {
+      throw new AggregateError(
+        [error, terminationError],
+        'Child process failed and fallback process-tree termination could not be confirmed.',
+      );
     }
     throw error;
   } finally {
@@ -525,132 +411,6 @@ describe('@fluojs/testing surface', () => {
       ),
     ).not.toThrow();
     expect(destroyed).toEqual(['stdin', 'stdout', 'stderr']);
-  });
-
-  it('waits for delayed process-group disappearance after forced termination', async () => {
-    const scheduled: (() => void)[] = [];
-    const signals: NodeJS.Signals[] = [];
-    const observedStates = [true, true, false];
-
-    const exit = terminateProcessGroup(42, {
-      createDeadline: () => () => false,
-      schedule: (callback) => {
-        scheduled.push(callback);
-      },
-      sendSignal: (_pid, signal) => {
-        signals.push(signal);
-      },
-      stateProbe: () => observedStates.shift() ?? false,
-    });
-
-    expect(signals).toEqual(['SIGKILL']);
-    expect(scheduled).toHaveLength(1);
-    scheduled.shift()?.();
-
-    await expect(exit).resolves.toBeUndefined();
-  });
-
-  it('continues terminating a process group after its leader exited without inherited stdio', async () => {
-    const terminatedGroups: number[] = [];
-
-    await terminateOwnedProcessTree(
-      {
-        exitCode: 0,
-        pid: 42,
-        signalCode: null,
-      },
-      async (pid) => {
-        terminatedGroups.push(pid);
-      },
-    );
-
-    expect(terminatedGroups).toEqual([42]);
-  });
-
-  it('preserves a graceful process-group exit without forced escalation', async () => {
-    const signals: NodeJS.Signals[] = [];
-
-    await terminateProcessGroup(42, {
-      createDeadline: () => () => false,
-      schedule: () => {
-        throw new Error('A process group that already exited must not be scheduled again.');
-      },
-      sendSignal: (_pid, signal) => {
-        signals.push(signal);
-      },
-      stateProbe: () => false,
-    });
-
-    expect(signals).toEqual([]);
-  });
-
-  it('escalates a stubborn process-group leader to SIGKILL', async () => {
-    const signals: NodeJS.Signals[] = [];
-    const observedStates = [true, false];
-
-    await terminateProcessGroup(42, {
-      createDeadline: () => () => false,
-      schedule: () => {
-        throw new Error('A process group that exited after escalation must not be scheduled.');
-      },
-      sendSignal: (_pid, signal) => {
-        signals.push(signal);
-      },
-      stateProbe: () => observedStates.shift() ?? false,
-    });
-
-    expect(signals).toEqual(['SIGKILL']);
-  });
-
-  it('rejects a never-disappearing process group after a bounded forced wait', async () => {
-    const scheduled: (() => void)[] = [];
-    let probeCount = 0;
-    const signals: NodeJS.Signals[] = [];
-
-    const exit = terminateProcessGroup(42, {
-      createDeadline: () => () => probeCount >= 3,
-      schedule: (callback) => {
-        scheduled.push(callback);
-      },
-      sendSignal: (_pid, signal) => {
-        signals.push(signal);
-      },
-      stateProbe: () => {
-        probeCount += 1;
-        return true;
-      },
-    });
-
-    expect(scheduled).toHaveLength(1);
-    scheduled.shift()?.();
-
-    await expect(exit).rejects.toThrow('Process group 42 did not exit before the termination deadline.');
-    expect(probeCount).toBe(3);
-    expect(signals).toEqual(['SIGKILL']);
-    expect(scheduled).toHaveLength(0);
-  });
-
-  it('treats ESRCH during process-group signaling as a completed exit', async () => {
-    const signals: NodeJS.Signals[] = [];
-    const missingGroupError = Object.assign(new Error('missing process group'), { code: 'ESRCH' });
-
-    await terminateProcessGroup(42, {
-      createDeadline: () => () => {
-        throw new Error('An absent process group must not create a deadline.');
-      },
-      schedule: () => {
-        throw new Error('An absent process group must not be scheduled.');
-      },
-      sendSignal: (_pid, signal) => {
-        signals.push(signal);
-        throw missingGroupError;
-      },
-      stateProbe: () => {
-        return true;
-      },
-    });
-
-    expect(signals).toEqual(['SIGKILL']);
   });
 
   it('terminates descendant processes before reporting a child timeout', async () => {

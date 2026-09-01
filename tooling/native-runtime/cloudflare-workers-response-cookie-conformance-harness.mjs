@@ -4,6 +4,7 @@ import { once } from 'node:events';
 const workerHost = '127.0.0.1';
 const startupTimeoutMs = 30_000;
 const processGroupGraceMs = 5_000;
+const processGroupExitPollMs = 20;
 
 function isErrno(error, code) {
   return typeof error === 'object' && error !== null && error.code === code;
@@ -39,10 +40,38 @@ function signalProcessGroup(pid, signal, kill) {
   }
 }
 
-function assertProcessGroupExited(pid, kill) {
-  if (processGroupExists(pid, kill)) {
-    throw new Error(`process group ${pid} still has running descendants after forced termination`);
-  }
+function createProcessGroupExitDeadline() {
+  const expiresAt = Date.now() + processGroupGraceMs;
+
+  return () => Date.now() >= expiresAt;
+}
+
+function scheduleProcessGroupExitProbe(callback) {
+  setTimeout(callback, processGroupExitPollMs);
+}
+
+function waitForProcessGroupExit(pid, { deadline, scheduler, stateProbe }) {
+  return new Promise((resolve, reject) => {
+    const probe = () => {
+      try {
+        if (!stateProbe(pid)) {
+          resolve();
+          return;
+        }
+
+        if (deadline()) {
+          reject(new Error(`process group ${pid} still has running descendants after forced termination`));
+          return;
+        }
+
+        scheduler(probe);
+      } catch (error) {
+        reject(error);
+      }
+    };
+
+    probe();
+  });
 }
 
 function hasOpenInheritedStdio(child) {
@@ -110,7 +139,12 @@ export function startWorker(spawnWorker = spawn) {
   return { child, ready };
 }
 
-export async function stopProcessGroup(child, kill = process.kill, createGraceDeadline = createProcessGroupGraceDeadline) {
+export async function stopProcessGroup(
+  child,
+  kill = process.kill,
+  createGraceDeadline = createProcessGroupGraceDeadline,
+  processGroupExitWaitOptions,
+) {
   if (child.pid === undefined) {
     return;
   }
@@ -137,7 +171,14 @@ export async function stopProcessGroup(child, kill = process.kill, createGraceDe
   await stdioClosed;
 
   if (forceTerminationSent) {
-    assertProcessGroupExited(child.pid, kill);
+    await waitForProcessGroupExit(
+      child.pid,
+      processGroupExitWaitOptions ?? {
+        deadline: createProcessGroupExitDeadline(),
+        scheduler: scheduleProcessGroupExitProbe,
+        stateProbe: (pid) => processGroupExists(pid, kill),
+      },
+    );
   }
 }
 

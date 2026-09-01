@@ -177,6 +177,131 @@ test('waits for inherited stdio close after a startup exit before proving group 
   ]);
 });
 
+test('waits for delayed process-group disappearance after SIGKILL with a fake scheduler', async () => {
+  const child = createChild(1011, 1);
+  const calls = [];
+  const scheduled = [];
+  const observedStates = [true, false];
+  const cleanup = stopProcessGroup(
+    child,
+    (pid, signal) => {
+      calls.push([pid, signal]);
+      return true;
+    },
+    undefined,
+    {
+      deadline: () => false,
+      scheduler: (callback) => {
+        scheduled.push(callback);
+      },
+      stateProbe: () => observedStates.shift() ?? false,
+    },
+  );
+
+  await Promise.resolve();
+  assert.equal(scheduled.length, 1);
+  scheduled.shift()();
+  await cleanup;
+
+  assert.deepEqual(calls, [
+    [-1011, 'SIGTERM'],
+    [-1011, 0],
+    [-1011, 'SIGKILL'],
+  ]);
+});
+
+test('waits for an exited leader group without inherited stdio', async () => {
+  const child = createChild(1012, 1);
+  const calls = [];
+
+  await stopProcessGroup(
+    child,
+    (pid, signal) => {
+      calls.push([pid, signal]);
+      return true;
+    },
+    undefined,
+    {
+      deadline: () => {
+        throw new Error('an exited process group must not need a deadline');
+      },
+      scheduler: () => {
+        throw new Error('an exited process group must not be scheduled');
+      },
+      stateProbe: () => false,
+    },
+  );
+
+  assert.deepEqual(calls, [
+    [-1012, 'SIGTERM'],
+    [-1012, 0],
+    [-1012, 'SIGKILL'],
+  ]);
+});
+
+test('rejects a never-disappearing process group at a fake bounded deadline', async () => {
+  const child = createChild(1013, 1);
+  const calls = [];
+  const scheduled = [];
+  let probeCount = 0;
+  const cleanup = stopProcessGroup(
+    child,
+    (pid, signal) => {
+      calls.push([pid, signal]);
+      return true;
+    },
+    undefined,
+    {
+      deadline: () => probeCount >= 2,
+      scheduler: (callback) => {
+        scheduled.push(callback);
+      },
+      stateProbe: () => {
+        probeCount += 1;
+        return true;
+      },
+    },
+  );
+
+  await Promise.resolve();
+  assert.equal(scheduled.length, 1);
+  scheduled.shift()();
+
+  await assert.rejects(cleanup, /process group 1013 still has running descendants after forced termination/);
+  assert.equal(probeCount, 2);
+  assert.equal(scheduled.length, 0);
+  assert.deepEqual(calls, [
+    [-1013, 'SIGTERM'],
+    [-1013, 0],
+    [-1013, 'SIGKILL'],
+  ]);
+});
+
+test('accepts ESRCH after SIGKILL while confirming process-group exit', async () => {
+  const child = createChild(1014, 1);
+  const calls = [];
+  let probeCount = 0;
+
+  await stopProcessGroup(child, (pid, signal) => {
+    calls.push([pid, signal]);
+    if (signal === 'SIGTERM' || signal === 'SIGKILL') {
+      return true;
+    }
+    probeCount += 1;
+    if (probeCount === 1) {
+      return true;
+    }
+    throw esrch();
+  });
+
+  assert.deepEqual(calls, [
+    [-1014, 'SIGTERM'],
+    [-1014, 0],
+    [-1014, 'SIGKILL'],
+    [-1014, 0],
+  ]);
+});
+
 test('accepts a graceful leader exit before the grace deadline and waits for stdio close', async () => {
   const child = createChild(1008);
   const childExited = once(child, 'exit');
