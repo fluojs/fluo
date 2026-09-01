@@ -306,31 +306,45 @@ export interface RouteDefinition {
 
 /** Derived metadata used while mapping controllers into dispatchable handlers. */
 export interface HandlerMetadata {
-  controllerPath: string;
-  effectivePath: string;
-  effectiveVersion?: string;
-  moduleMiddleware: readonly MiddlewareSnapshotLike[];
-  moduleType?: Constructor;
-  pathParams: string[];
+  readonly controllerPath: string;
+  readonly effectivePath: string;
+  readonly effectiveVersion?: string;
+  readonly moduleMiddleware: readonly MiddlewareSnapshotLike[];
+  readonly moduleType?: Constructor;
+  readonly pathParams: readonly string[];
+}
+
+/** Immutable route metadata retained by a handler mapping snapshot. */
+export interface HandlerRouteSnapshot {
+  readonly method: HttpMethod;
+  readonly path: string;
+  readonly produces?: readonly string[];
+  readonly request?: Constructor;
+  readonly guards?: readonly GuardLike[];
+  readonly headers?: readonly Readonly<{ name: string; value: string }>[];
+  readonly interceptors?: readonly InterceptorLike[];
+  readonly redirect?: Readonly<{ url: string; statusCode?: number }>;
+  readonly successStatus?: number;
+  readonly version?: string;
 }
 
 /** Fully resolved controller handler descriptor stored in handler mappings. */
 export interface HandlerDescriptor {
-  controllerToken: Constructor;
-  metadata: HandlerMetadata;
-  methodName: string;
-  route: RouteDefinition;
+  readonly controllerToken: Constructor;
+  readonly metadata: HandlerMetadata;
+  readonly methodName: string;
+  readonly route: HandlerRouteSnapshot;
 }
 
 /** Result returned when request matching resolves one handler and path params. */
 export interface HandlerMatch {
-  descriptor: HandlerDescriptor;
-  params: Readonly<Record<string, string>>;
+  readonly descriptor: HandlerDescriptor;
+  readonly params: Readonly<Record<string, string>>;
 }
 
 /** Immutable lookup table that matches incoming requests to controller handlers. */
 export interface HandlerMapping {
-  readonly descriptors: HandlerDescriptor[];
+  readonly descriptors: readonly HandlerDescriptor[];
 
   match(request: FrameworkRequest): HandlerMatch | undefined;
 }

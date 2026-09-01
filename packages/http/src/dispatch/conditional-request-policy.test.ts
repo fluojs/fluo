@@ -8,6 +8,7 @@ import {
   Get,
   Head,
   Post,
+  Produces,
   type FrameworkRequest,
   type FrameworkResponse,
 } from '../index.js';
@@ -19,6 +20,7 @@ type RecordedResponse = FrameworkResponse & {
 function createRequest(
   method: string,
   headers: FrameworkRequest['headers'] = {},
+  path = '/validators/resource',
 ): FrameworkRequest {
   return {
     body: undefined,
@@ -26,10 +28,10 @@ function createRequest(
     headers,
     method,
     params: {},
-    path: '/validators/resource',
+    path,
     query: {},
     raw: {},
-    url: '/validators/resource',
+    url: path,
   };
 }
 
@@ -268,6 +270,95 @@ describe('conditional request policy', () => {
     expect(response.sentBodies).toEqual([undefined]);
     expect(response.headers.ETag).toBe('W/"resource-v1"');
     expect(response.headers['Last-Modified']).toBe('Thu, 01 Jan 2026 00:00:00 GMT');
+  });
+
+  it('negotiates before conditional short-circuits and preserves representation metadata', async () => {
+    @Controller('/validators')
+    class ValidatorsController {
+      @Produces('application/json')
+      @Get('/negotiated')
+      getResource() {
+        return { id: 'resource' };
+      }
+
+      @Produces('application/json')
+      @Head('/negotiated')
+      headResource() {
+        return { id: 'resource' };
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      conditionalRequest: {
+        resolve() {
+          return {
+            exists: true,
+            validators: {
+              etag: { opaqueValue: 'resource-v1', strength: 'strong' },
+              lastModified: new Date('2026-01-01T00:00:00.750Z'),
+            },
+          };
+        },
+      },
+      contentNegotiation: {
+        formatters: [{
+          format(body) {
+            return JSON.stringify(body);
+          },
+          mediaType: 'application/json',
+        }],
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: ValidatorsController }]),
+      rootContainer: new Container().register(ValidatorsController),
+    });
+    const getResponse = createResponse();
+    const headResponse = createResponse();
+    const nonmatchingResponse = createResponse();
+    const unacceptableResponse = createResponse();
+    getResponse.headers.Vary = 'Origin, accept';
+    getResponse.headers.vary = 'ACCEPT, User-Agent';
+    headResponse.headers.Vary = 'Origin, accept';
+    headResponse.headers.vary = 'ACCEPT, User-Agent';
+
+    // Given: validator matches are scoped to an application/json representation.
+    // When: GET and HEAD select it, a validator misses it, and Accept selects no representation.
+    await Promise.all([
+      dispatcher.dispatch(createRequest('GET', {
+        accept: 'application/json',
+        'if-none-match': '"resource-v1"',
+      }, '/validators/negotiated'), getResponse),
+      dispatcher.dispatch(createRequest('HEAD', {
+        accept: 'application/json',
+        'if-none-match': '"resource-v1"',
+      }, '/validators/negotiated'), headResponse),
+      dispatcher.dispatch(createRequest('GET', {
+        accept: 'application/json',
+        'if-none-match': '"different-resource"',
+      }, '/validators/negotiated'), nonmatchingResponse),
+      dispatcher.dispatch(createRequest('GET', {
+        accept: 'text/plain',
+        'if-none-match': '"resource-v1"',
+      }, '/validators/negotiated'), unacceptableResponse),
+    ]);
+
+    // Then: negotiation wins over 304, while negotiated 304s retain canonical cache metadata.
+    expect(getResponse.statusCode).toBe(304);
+    expect(getResponse.sentBodies).toEqual([undefined]);
+    expect(getResponse.headers.ETag).toBe('"resource-v1"');
+    expect(getResponse.headers['Last-Modified']).toBe('Thu, 01 Jan 2026 00:00:00 GMT');
+    expect(getResponse.headers.Vary).toBe('Origin, accept, User-Agent');
+    expect(getResponse.headers.vary).toBeUndefined();
+    expect(headResponse.statusCode).toBe(304);
+    expect(headResponse.sentBodies).toEqual([undefined]);
+    expect(headResponse.headers.ETag).toBe(getResponse.headers.ETag);
+    expect(headResponse.headers['Last-Modified']).toBe(getResponse.headers['Last-Modified']);
+    expect(headResponse.headers.Vary).toBe(getResponse.headers.Vary);
+    expect(nonmatchingResponse.statusCode).toBe(200);
+    expect(nonmatchingResponse.headers['Content-Type']).toBe('application/json');
+    expect(nonmatchingResponse.headers.Vary).toBe('Accept');
+    expect(nonmatchingResponse.sentBodies).toEqual(['{"id":"resource"}']);
+    expect(unacceptableResponse.statusCode).toBe(406);
+    expect(unacceptableResponse.headers.Vary).toBe('Accept');
   });
 
   it('suppresses the body while retaining validators for a 412 response', async () => {

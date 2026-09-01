@@ -4,6 +4,7 @@ import type {
   HandlerDescriptor,
   RequestContext,
   ResponseFormatter,
+  ResponseValidators,
 } from '../types.js';
 import { appendVaryHeader } from '../header-helpers.js';
 import {
@@ -17,9 +18,11 @@ import {
   resolveContentNegotiation,
   selectResponseFormatter,
 } from './dispatch-content-negotiation.js';
-import { applyResponseValidators } from './conditional-request-policy.js';
+import {
+  applyResponseValidators,
+  type ConditionalRequestOutcome,
+} from './conditional-request-policy.js';
 import { writeErrorResponse } from './dispatch-error-policy.js';
-import type { ResponseValidators } from '../types.js';
 
 type SimpleJsonResponseBody = Record<string, unknown> | unknown[];
 const BINARY_CONTENT_TYPE = 'application/octet-stream';
@@ -36,6 +39,35 @@ type SuccessResponseMetadataContext = {
   readonly response: FrameworkResponse;
   readonly value: unknown;
 };
+
+/** Selected representation metadata shared by success and conditional response writers. */
+export interface ResolvedResponsePolicy {
+  readonly formatter: ResponseFormatter | undefined;
+  readonly variesByAccept: boolean;
+}
+
+/**
+ * Resolves the representation policy before conditional request evaluation.
+ *
+ * @param handler Matched route descriptor.
+ * @param request Adapter-normalized request.
+ * @param contentNegotiation Configured response formatters.
+ * @returns Formatter selection and representation variance metadata.
+ */
+export function resolveResponsePolicy(
+  handler: HandlerDescriptor,
+  request: FrameworkRequest,
+  contentNegotiation: ResolvedContentNegotiation | undefined,
+): ResolvedResponsePolicy {
+  const formatter = contentNegotiation
+    ? selectResponseFormatter(handler, request, contentNegotiation)
+    : undefined;
+
+  return {
+    formatter,
+    variesByAccept: formatter !== undefined,
+  };
+}
 
 function resolveDefaultSuccessStatus(handler: HandlerDescriptor, value: unknown): number {
   switch (handler.route.method) {
@@ -151,7 +183,7 @@ function applyImplicitHeadContentType(response: FrameworkResponse, value: unknow
  * @param request The request.
  * @param response The response.
  * @param value The value.
- * @param contentNegotiation The content negotiation.
+ * @param contentNegotiation The configured response formatters.
  * @param requestContext The active request context passed to custom response writers.
  * @param validators Validators resolved before the route handler executes.
  * @returns The write success response result.
@@ -204,12 +236,11 @@ export async function writeSuccessResponse(
     });
   }
 
-  const formatter = contentNegotiation
-    ? selectResponseFormatter(handler, request, contentNegotiation)
-    : undefined;
+  const responsePolicy = resolveResponsePolicy(handler, request, contentNegotiation);
+  const { formatter } = responsePolicy;
 
   applySuccessResponseMetadata({ formatter, handler, response, value: responseValue });
-  if (formatter) {
+  if (responsePolicy.variesByAccept) {
     appendVaryHeader(response, 'Accept');
   }
   applyResponseValidators(response, validators);
@@ -227,6 +258,29 @@ export async function writeSuccessResponse(
     ? formatter.format(responseValue)
     : responseValue;
   return response.send(responseBody);
+}
+
+/**
+ * Writes a bodyless conditional response through every supported adapter facade.
+ *
+ * @param response Mutable adapter-normalized response.
+ * @param outcome Selected non-proceed conditional request outcome.
+ * @param validators Current representation validators.
+ * @param responsePolicy Selected representation metadata.
+ * @returns A promise that settles after the adapter accepts the bodyless response.
+ */
+export async function writeConditionalResponse(
+  response: FrameworkResponse,
+  outcome: Exclude<ConditionalRequestOutcome, 'proceed'>,
+  validators: ResponseValidators | undefined,
+  responsePolicy: ResolvedResponsePolicy,
+): Promise<void> {
+  applyResponseValidators(response, validators);
+  if (responsePolicy.variesByAccept) {
+    appendVaryHeader(response, 'Accept');
+  }
+  response.setStatus(outcome === 'not-modified' ? 304 : 412);
+  await response.send(undefined);
 }
 
 export type { ResolvedContentNegotiation };

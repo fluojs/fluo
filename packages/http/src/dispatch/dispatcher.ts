@@ -38,9 +38,15 @@ import { invokeControllerHandler } from './dispatch-handler-policy.js';
 import { isContentNegotiationNotAcceptableException } from './dispatch-content-negotiation.js';
 import {
   resolveConditionalRequest,
-  writeConditionalResponse,
 } from './conditional-request-policy.js';
-import { type ResolvedContentNegotiation, resolveContentNegotiation, writeErrorResponse, writeSuccessResponse } from './dispatch-response-policy.js';
+import {
+  type ResolvedContentNegotiation,
+  resolveContentNegotiation,
+  resolveResponsePolicy,
+  writeConditionalResponse,
+  writeErrorResponse,
+  writeSuccessResponse,
+} from './dispatch-response-policy.js';
 import { matchHandlerOrThrow, updateRequestParams } from './dispatch-routing-policy.js';
 import {
   addPathDebugHeader,
@@ -126,7 +132,7 @@ interface CompiledHandlerExecutionPlan {
   mergedInterceptors: InterceptorLike[];
   requestScope: CompiledMiddlewareScopePlan;
   requiresRequestScope: boolean;
-  routeGuards: GuardLike[];
+  routeGuards: readonly GuardLike[];
 }
 
 interface FastPathHandlerRuntimeCache {
@@ -764,7 +770,13 @@ async function dispatchMatchedHandler(
     conditionalValidators = resolved.validators;
 
     if (resolved.outcome !== 'proceed') {
-      await writeConditionalResponse(requestContext.response, resolved.outcome, resolved.validators);
+      const responsePolicy = resolveResponsePolicy(handler, requestContext.request, contentNegotiation);
+      await writeConditionalResponse(
+        requestContext.response,
+        resolved.outcome,
+        resolved.validators,
+        responsePolicy,
+      );
       return;
     }
   }

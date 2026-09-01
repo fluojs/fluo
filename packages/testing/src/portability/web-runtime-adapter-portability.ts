@@ -1,8 +1,10 @@
 import {
   Controller,
+  type ContentNegotiationOptions,
   Get,
   Head,
   Post,
+  Produces,
   Query,
   type ConditionalRequestOptions,
   type RequestContext,
@@ -41,7 +43,11 @@ export interface WebRuntimeHttpAdapterPortabilityHarnessOptions<
   ) => TBootstrapOptions;
   /** Adapts shared conditional-request policy options to one web runtime bootstrap API. */
   createConditionalRequestBootstrapOptions?: (
-    options: { readonly conditionalRequest: ConditionalRequestOptions; readonly cors: false },
+    options: {
+      readonly conditionalRequest: ConditionalRequestOptions;
+      readonly contentNegotiation: ContentNegotiationOptions;
+      readonly cors: false;
+    },
   ) => TBootstrapOptions;
   name: string;
 }
@@ -146,11 +152,13 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
 
     @Controller('/validators')
     class ValidatorsController {
+      @Produces('application/json')
       @Get('/resource')
       getResource() {
         return { id: 'resource' };
       }
 
+      @Produces('application/json')
       @Head('/resource')
       headResource() {
         return { id: 'resource' };
@@ -176,6 +184,14 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
             },
           };
         },
+      },
+      contentNegotiation: {
+        formatters: [{
+          format(body) {
+            return JSON.stringify(body);
+          },
+          mediaType: 'application/json',
+        }],
       },
       cors: false,
     }));
@@ -203,11 +219,13 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
         || await head.text() !== ''
         || notModified.headers.get('etag') !== '"resource-v1"'
         || notModified.headers.get('last-modified') !== 'Thu, 01 Jan 2026 00:00:00 GMT'
+        || notModified.headers.get('vary') !== 'Accept'
         || preconditionFailed.headers.get('etag') !== '"resource-v1"'
         || preconditionFailed.headers.get('last-modified') !== 'Thu, 01 Jan 2026 00:00:00 GMT'
         || head.status !== 304
         || head.headers.get('etag') !== '"resource-v1"'
         || head.headers.get('last-modified') !== 'Thu, 01 Jan 2026 00:00:00 GMT'
+        || head.headers.get('vary') !== 'Accept'
       ) {
         throw new Error(`${this.options.name} adapter changed conditional request response semantics.`);
       }

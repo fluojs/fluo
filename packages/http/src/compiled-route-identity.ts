@@ -2,10 +2,10 @@ import type { HandlerDescriptor } from './types.js';
 
 const COMPILED_ROUTE_IDENTITY_SYMBOL = Symbol.for('fluo.http.compiledRouteIdentity');
 
-export function attachCompiledRouteIdentity(
-  descriptor: HandlerDescriptor,
+export function attachCompiledRouteIdentity<Descriptor extends HandlerDescriptor>(
+  descriptor: Descriptor,
   identity: string,
-): HandlerDescriptor {
+): Descriptor {
   Object.defineProperty(descriptor, COMPILED_ROUTE_IDENTITY_SYMBOL, {
     configurable: false,
     enumerable: true,

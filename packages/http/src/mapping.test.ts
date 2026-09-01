@@ -6,7 +6,18 @@ import { All, Controller, Get, Query, Route, Version } from './decorators.js';
 import { InvalidRoutePathError, RouteConflictError } from './errors.js';
 import { createHandlerMapping } from './mapping.js';
 import { isMiddlewareRouteConfig, runMiddlewareChain } from './middleware/middleware.js';
-import type { FrameworkRequest, FrameworkResponse, Middleware, MiddlewareContext, Next } from './types.js';
+import type {
+  CallHandler,
+  FrameworkRequest,
+  FrameworkResponse,
+  Guard,
+  GuardContext,
+  Interceptor,
+  InterceptorContext,
+  Middleware,
+  MiddlewareContext,
+  Next,
+} from './types.js';
 import { VersioningType } from './types.js';
 
 function createMiddlewareContext(path: string, container: Container): MiddlewareContext {
@@ -81,6 +92,18 @@ describe('handler mapping', () => {
   });
 
   it('freezes mapping snapshots without freezing caller metadata', () => {
+    class RouteGuard implements Guard {
+      canActivate(_context: GuardContext): boolean {
+        return true;
+      }
+    }
+
+    class RouteInterceptor implements Interceptor {
+      intercept(_context: InterceptorContext, next: CallHandler) {
+        return next.handle();
+      }
+    }
+
     class UsersController {
       getUser() {
         return { ok: true };
@@ -88,9 +111,13 @@ describe('handler mapping', () => {
     }
 
     const route = {
+      guards: [RouteGuard],
       headers: [{ name: 'x-source', value: 'original' }],
+      interceptors: [RouteInterceptor],
       method: 'GET',
       path: '/:id',
+      produces: ['application/json'],
+      redirect: { statusCode: 308, url: '/users/next' },
     };
     defineControllerMetadata(UsersController, { basePath: '/users' });
     defineRouteMetadata(UsersController.prototype, 'getUser', route);
@@ -101,17 +128,28 @@ describe('handler mapping', () => {
     route.path = '/:slug';
     route.headers[0]!.value = 'mutated';
 
-    expect(() => {
-      mapping.descriptors.push(descriptor);
-    }).toThrow(TypeError);
-    expect(() => {
-      descriptor.route.path = '/users/:slug';
-    }).toThrow(TypeError);
-    expect(() => {
-      descriptor.metadata.pathParams.push('slug');
-    }).toThrow(TypeError);
+    expect(Reflect.set(mapping.descriptors, mapping.descriptors.length, descriptor)).toBe(false);
+    expect(Reflect.set(descriptor.route, 'path', '/users/:slug')).toBe(false);
+    expect(Reflect.set(descriptor.metadata.pathParams, descriptor.metadata.pathParams.length, 'slug')).toBe(false);
+    expect(Reflect.set(descriptor.route.headers?.[0]!, 'value', 'mutated')).toBe(false);
+    expect(Reflect.set(descriptor.route.redirect!, 'url', '/users/mutated')).toBe(false);
+    expect(Object.isFrozen(mapping.descriptors)).toBe(true);
+    expect(Object.isFrozen(descriptor)).toBe(true);
+    expect(Object.isFrozen(descriptor.metadata)).toBe(true);
+    expect(Object.isFrozen(descriptor.metadata.pathParams)).toBe(true);
+    expect(Object.isFrozen(descriptor.route)).toBe(true);
+    expect(Object.isFrozen(descriptor.route.guards)).toBe(true);
+    expect(Object.isFrozen(descriptor.route.headers)).toBe(true);
+    expect(Object.isFrozen(descriptor.route.headers?.[0])).toBe(true);
+    expect(Object.isFrozen(descriptor.route.interceptors)).toBe(true);
+    expect(Object.isFrozen(descriptor.route.produces)).toBe(true);
+    expect(Object.isFrozen(descriptor.route.redirect)).toBe(true);
     expect(Object.isFrozen(route)).toBe(false);
+    expect(Object.isFrozen(route.guards)).toBe(false);
     expect(Object.isFrozen(route.headers)).toBe(false);
+    expect(Object.isFrozen(route.interceptors)).toBe(false);
+    expect(Object.isFrozen(route.produces)).toBe(false);
+    expect(Object.isFrozen(route.redirect)).toBe(false);
     expect(descriptor.route.headers).toEqual([{ name: 'x-source', value: 'original' }]);
 
     const match = mapping.match({
