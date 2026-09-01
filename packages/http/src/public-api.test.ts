@@ -176,7 +176,10 @@ describe('@fluojs/http public API surface', () => {
     expect(httpPublicApi).toHaveProperty('resolveHttpConnection');
     expect(httpPublicApi).toHaveProperty('createSecurityHeadersMiddleware');
     expect(httpPublicApi).toHaveProperty('appendVaryHeader');
+    expect(httpPublicApi).toHaveProperty('buildContentDisposition');
     expect(httpPublicApi).toHaveProperty('getRequestHeader');
+    expect(httpPublicApi).toHaveProperty('getResponseHeader');
+    expect(httpPublicApi).toHaveProperty('hasResponseHeader');
     expect(httpPublicApi).not.toHaveProperty('readFirstNonEmptyRequestHeaderValue');
     expect(httpPublicApi).toHaveProperty('SseResponse');
     expect(httpPublicApi).toHaveProperty('encodeSseComment');

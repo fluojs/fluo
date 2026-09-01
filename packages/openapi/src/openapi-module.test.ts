@@ -28,6 +28,7 @@ import {
 } from './decorators.js';
 import * as openApiPublicApi from './index.js';
 import { OpenApiModule } from './openapi-module.js';
+import { cloneSnapshotValue } from './snapshot.js';
 import type { OpenApiDocument } from './schema-builder.js';
 
 type TestFrameworkResponse = FrameworkResponse & { body?: unknown };
@@ -2332,7 +2333,9 @@ describe('OpenApiModule', () => {
       }
     }
 
-    const descriptors = createHandlerMapping([{ controllerToken: DescriptorStableController }]).descriptors;
+    const descriptors = cloneSnapshotValue(
+      createHandlerMapping([{ controllerToken: DescriptorStableController }]).descriptors,
+    );
     const extraModels = [StableExtraModel];
     const sources: HandlerSource[] = [{ controllerToken: StableController }];
     const securitySchemes = {

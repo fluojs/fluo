@@ -199,7 +199,7 @@ Cookie verification failures keep their documented classification: expired acces
 
 `CookieManagerConfig.cookieOptions` accepts `SetCookieOptions`. Its `accessTokenTtlSeconds` and `refreshTokenTtlSeconds` fields supply the default `Max-Age` for the matching token cookie when the positional TTL argument is omitted; an explicit positional TTL always wins.
 
-`CookieManager` appends access-token and refresh-token `Set-Cookie` values without overwriting cookies that were already placed on the response, even when the underlying adapter stores the existing header with different casing such as `set-cookie`.
+`CookieManager` appends access-token and refresh-token `Set-Cookie` values without overwriting cookies that were already placed on the response, even when the underlying adapter stores the existing header with different casing such as `set-cookie`. It uses the portable HTTP serializer, so cookie values are percent-encoded before they are emitted and malformed cookie names or attributes fail validation instead of emitting invalid headers.
 
 Protected routes must keep using `@UseAuth(...)`. If you configure `requireAccessToken: false`, a missing cookie resolves to an explicit unauthenticated result instead of an anonymous principal, so protected routes still reject the request.
 

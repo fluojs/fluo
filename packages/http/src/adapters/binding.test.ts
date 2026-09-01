@@ -1,15 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Token } from '@fluojs/core';
-
-import {
-  Convert,
-  FromBody,
-  FromCookie,
-  FromHeader,
-  FromPath,
-  FromQuery,
-  Optional,
-} from '../decorators.js';
+import { Container, type RequestScopeContainer } from '@fluojs/di';
 import {
   ArrayMinSize,
   DefaultValidator as BaseDefaultValidator,
@@ -20,10 +10,27 @@ import {
   ValidateIf,
   ValidateNested,
 } from '@fluojs/validation';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import {
+  Convert,
+  FromBody,
+  FromCookie,
+  FromFiles,
+  FromHeader,
+  FromPath,
+  FromQuery,
+  Optional,
+} from '../decorators.js';
+import type {
+  ArgumentResolverContext,
+  FrameworkRequest,
+  FrameworkRequestFile,
+  FrameworkResponse,
+} from '../types.js';
 import { DefaultBinder } from './binding.js';
 import { getCompiledDtoBindingPlan } from './dto-binding-plan.js';
 import { HttpDtoValidationAdapter } from './dto-validation-adapter.js';
-import type { ArgumentResolverContext, FrameworkRequest, FrameworkResponse } from '../types.js';
 
 function createRequest(overrides: Partial<FrameworkRequest> = {}): FrameworkRequest {
   return {
@@ -73,7 +80,18 @@ function createContext(
   resolve: <T>(token: Token<T>) => Promise<T> = async () => {
     throw new Error('not used');
   },
+  has: (token: Token) => boolean = () => false,
 ): ArgumentResolverContext {
+  const container: RequestScopeContainer & { has(token: Token): boolean } = {
+    async dispose() {
+      return undefined;
+    },
+    has,
+    async resolve(token) {
+      return resolve(token);
+    },
+  };
+
   return {
     handler: {
       controllerToken: class ExampleController {},
@@ -91,14 +109,7 @@ function createContext(
       },
     },
     requestContext: {
-      container: {
-        async dispose() {
-          return undefined;
-        },
-        async resolve(token) {
-          return resolve(token);
-        },
-      },
+      container,
       metadata: {},
       request,
       response: createResponse(),
@@ -246,6 +257,143 @@ describe('DefaultBinder', () => {
     expect(bound.tags).toEqual(['admin']);
   });
 
+  it('binds filtered portable file arrays in adapter order without native leakage', async () => {
+    const attachments = [
+      {
+        buffer: new Uint8Array([1]),
+        fieldname: 'attachments',
+        mimetype: 'text/plain',
+        nativeUpload: { stream: 'native-only' },
+        originalname: 'first.txt',
+        size: 1,
+      },
+      {
+        buffer: new Uint8Array([2]),
+        fieldname: 'cover',
+        mimetype: 'text/plain',
+        nativeUpload: { stream: 'native-only' },
+        originalname: 'cover.txt',
+        size: 1,
+      },
+      {
+        buffer: new Uint8Array([3]),
+        fieldname: 'attachments',
+        mimetype: 'text/plain',
+        nativeUpload: { stream: 'native-only' },
+        originalname: 'second.txt',
+        size: 1,
+      },
+    ] satisfies readonly (FrameworkRequestFile & { nativeUpload: { stream: string } })[];
+
+    class UploadRequest {
+      @FromFiles('attachments')
+      attachments: readonly FrameworkRequestFile[] = [];
+    }
+
+    const request = createRequest({ files: attachments });
+    const binder = new DefaultBinder();
+    const bound = (await binder.bind(UploadRequest, createContext(request))) as UploadRequest;
+
+    expect(bound.attachments.map((file) => file.originalname)).toEqual(['first.txt', 'second.txt']);
+    expect(bound.attachments[0]).not.toBe(attachments[0]);
+    expect(bound.attachments[0]).toEqual({
+      buffer: new Uint8Array([1]),
+      fieldname: 'attachments',
+      mimetype: 'text/plain',
+      originalname: 'first.txt',
+      size: 1,
+    });
+    expect(bound.attachments[0]).not.toHaveProperty('nativeUpload');
+    expect(request.files?.[0]).toBe(attachments[0]);
+  });
+
+  it('distinguishes absent files from present unmatched fields and supports Optional', async () => {
+    class RequiredUploadRequest {
+      @FromFiles('attachments')
+      attachments: readonly FrameworkRequestFile[] = [];
+    }
+
+    class OptionalUploadRequest {
+      @FromFiles('attachments')
+      @Optional()
+      attachments?: readonly FrameworkRequestFile[];
+    }
+
+    const binder = new DefaultBinder();
+
+    await expect(
+      binder.bind(RequiredUploadRequest, createContext(createRequest())),
+    ).rejects.toMatchObject({
+      details: [
+        {
+          code: 'MISSING_FIELD',
+          field: 'attachments',
+          source: 'files',
+        },
+      ],
+      status: 400,
+    });
+
+    const absent = (await binder.bind(
+      OptionalUploadRequest,
+      createContext(createRequest()),
+    )) as OptionalUploadRequest;
+    const unmatched = (await binder.bind(
+      OptionalUploadRequest,
+      createContext(
+        createRequest({
+          files: [
+            {
+              buffer: new Uint8Array([1]),
+              fieldname: 'cover',
+              mimetype: 'text/plain',
+              originalname: 'cover.txt',
+              size: 1,
+            },
+          ],
+        }),
+      ),
+    )) as OptionalUploadRequest;
+
+    expect(absent.attachments).toBeUndefined();
+    expect(unmatched.attachments).toEqual([]);
+  });
+
+  it('applies converters to portable file arrays', async () => {
+    class FileNameConverter {
+      convert(value: unknown, target: { source: string }) {
+        expect(target.source).toBe('files');
+        return (value as readonly FrameworkRequestFile[]).map((file) => file.originalname);
+      }
+    }
+
+    class UploadRequest {
+      @FromFiles('attachments')
+      @Convert(FileNameConverter)
+      filenames: string[] = [];
+    }
+
+    const binder = new DefaultBinder();
+    const bound = (await binder.bind(
+      UploadRequest,
+      createContext(
+        createRequest({
+          files: [
+            {
+              buffer: new Uint8Array([1]),
+              fieldname: 'attachments',
+              mimetype: 'text/plain',
+              originalname: 'first.txt',
+              size: 1,
+            },
+          ],
+        }),
+      ),
+    )) as UploadRequest;
+
+    expect(bound.filenames).toEqual(['first.txt']);
+  });
+
   it('applies global converters before assigning DTO fields', async () => {
     class QueryNumberConverter {
       convert(value: unknown, target: { source: string }) {
@@ -353,9 +501,202 @@ describe('DefaultBinder', () => {
     expect(second.id).toBe('second:42');
     expect(resolveCalls).toEqual(['first', 'second']);
   });
+
+  it('propagates registered converter provider failures without direct construction', async () => {
+    // Given
+    let constructorCalls = 0;
+    const providerFailure = new Error('registered converter failed');
+
+    class RegisteredConverter {
+      constructor() {
+        constructorCalls += 1;
+      }
+
+      convert(value: unknown) {
+        return value;
+      }
+    }
+
+    class SearchUsersRequest {
+      @FromQuery('id')
+      id = '';
+    }
+
+    const binder = new DefaultBinder([RegisteredConverter]);
+
+    // When
+    const binding = binder.bind(
+      SearchUsersRequest,
+      createContext(createRequest({ query: { id: '42' } }), async <T>(token: Token<T>) => {
+        expect(token).toBe(RegisteredConverter);
+        throw providerFailure;
+      }, (token) => token === RegisteredConverter),
+    );
+
+    // Then
+    await expect(binding).rejects.toBe(providerFailure);
+    expect(constructorCalls).toBe(0);
+  });
+
+  it('resolves class converters through request facades without registration checks', async () => {
+    // Given
+    const directConstructionFailure = new Error('must resolve through the facade');
+    const resolvedConverter = {
+      convert(value: unknown) {
+        return `resolved:${String(value)}`;
+      },
+    };
+
+    class FacadeConverter {
+      constructor() {
+        throw directConstructionFailure;
+      }
+
+      convert(value: unknown) {
+        return value;
+      }
+    }
+
+    class SearchUsersRequest {
+      @FromQuery('id')
+      id = '';
+    }
+
+    const context = createContext(
+      createRequest({ query: { id: '42' } }),
+      async <T>(token: Token<T>) => {
+        expect(token).toBe(FacadeConverter);
+        return resolvedConverter as T;
+      },
+    );
+    const resolve = context.requestContext.container.resolve.bind(context.requestContext.container);
+    const container: RequestScopeContainer = {
+      async dispose() {
+        return undefined;
+      },
+      async resolve<T>(token: Token<T>) {
+        return resolve(token);
+      },
+    };
+    context.requestContext.container = container;
+    const binder = new DefaultBinder([FacadeConverter]);
+
+    // When
+    const bound = (await binder.bind(SearchUsersRequest, context)) as SearchUsersRequest;
+
+    // Then
+    expect(bound.id).toBe('resolved:42');
+  });
+
+  it('directly constructs explicitly unregistered converter classes', async () => {
+    // Given
+    let constructorCalls = 0;
+
+    class UnregisteredConverter {
+      constructor() {
+        constructorCalls += 1;
+      }
+
+      convert(value: unknown) {
+        return Number(value);
+      }
+    }
+
+    class SearchUsersRequest {
+      @FromQuery('id')
+      id = 0;
+    }
+
+    const binder = new DefaultBinder([UnregisteredConverter]);
+
+    // When
+    const bound = (await binder.bind(
+      SearchUsersRequest,
+      createContext(createRequest({ query: { id: '42' } })),
+    )) as SearchUsersRequest;
+
+    // Then
+    expect(bound.id).toBe(42);
+    expect(constructorCalls).toBe(1);
+  });
+
+  it('uses the request container for request-scoped converter disposal', async () => {
+    // Given
+    const disposalEvents: string[] = [];
+
+    class RequestScopedConverter {
+      convert(value: unknown) {
+        return `converted:${String(value)}`;
+      }
+
+      onDestroy() {
+        disposalEvents.push('destroyed');
+      }
+    }
+
+    class SearchUsersRequest {
+      @FromQuery('id')
+      id = '';
+    }
+
+    const root = new Container().register({
+      provide: RequestScopedConverter,
+      scope: 'request',
+      useClass: RequestScopedConverter,
+    });
+    const requestScope = root.createRequestScope();
+    const binder = new DefaultBinder([RequestScopedConverter]);
+    const context = createContext(createRequest({ query: { id: '42' } }));
+    context.requestContext.container = requestScope;
+
+    // When
+    const bound = (await binder.bind(SearchUsersRequest, context)) as SearchUsersRequest;
+    await requestScope.dispose();
+
+    // Then
+    expect(bound.id).toBe('converted:42');
+    expect(disposalEvents).toEqual(['destroyed']);
+  });
 });
 
 describe('HttpDtoValidationAdapter', () => {
+  it('validates matched file arrays after binding', async () => {
+    class UploadRequest {
+      @FromFiles('attachments')
+      @ArrayMinSize(1)
+      attachments: readonly FrameworkRequestFile[] = [];
+    }
+
+    const binder = new DefaultBinder();
+    const validator = new HttpDtoValidationAdapter();
+    const bound = (await binder.bind(
+      UploadRequest,
+      createContext(
+        createRequest({
+          files: [
+            {
+              buffer: new Uint8Array([1]),
+              fieldname: 'cover',
+              mimetype: 'text/plain',
+              originalname: 'cover.txt',
+              size: 1,
+            },
+          ],
+        }),
+      ),
+    )) as UploadRequest;
+
+    await expect(validator.validate(bound, UploadRequest)).rejects.toMatchObject({
+      details: [
+        {
+          field: 'attachments',
+          source: 'files',
+        },
+      ],
+      status: 400,
+    });
+  });
+
   it('uses DTO decorator validation rules and raises bad request details', async () => {
     class CreateUserRequest {
       @FromBody('name')

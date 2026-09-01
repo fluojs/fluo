@@ -61,7 +61,7 @@ describe('portable response cookie helpers', () => {
 
     expect(response.headers).toEqual({
       'Set-Cookie': [
-        'session=token%20with%20spaces; Max-Age=300; Expires=Wed, 01 Jan 2025 00:00:00 GMT; Domain=example.com; Path=/sessions; HttpOnly; Secure; SameSite=Lax',
+        'session=token%20with%20spaces; Max-Age=300; Expires=Wed, 01 Jan 2025 00:00:00 GMT; Path=/sessions; Domain=example.com; Secure; HttpOnly; SameSite=Lax',
       ],
     });
   });
@@ -90,7 +90,7 @@ describe('portable response cookie helpers', () => {
     });
 
     expect(response.headers['Set-Cookie']).toEqual([
-      'session=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Domain=example.com; Path=/sessions; HttpOnly; Secure; SameSite=Strict',
+      'session=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/sessions; Domain=example.com; Secure; HttpOnly; SameSite=Strict',
     ]);
   });
 

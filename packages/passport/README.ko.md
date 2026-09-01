@@ -199,7 +199,7 @@ Cookie 검증 실패는 문서화된 분류를 유지합니다. 만료된 access
 
 `CookieManagerConfig.cookieOptions`는 `SetCookieOptions`를 받습니다. `accessTokenTtlSeconds`와 `refreshTokenTtlSeconds` field는 positional TTL 인자가 생략되었을 때 해당 token cookie의 기본 `Max-Age`가 되며, 명시적인 positional TTL이 항상 우선합니다.
 
-`CookieManager`는 underlying adapter가 기존 header를 `set-cookie`처럼 다른 casing으로 저장했더라도, response에 이미 설정된 cookie를 덮어쓰지 않고 access-token 및 refresh-token `Set-Cookie` 값을 append합니다.
+`CookieManager`는 underlying adapter가 기존 header를 `set-cookie`처럼 다른 casing으로 저장했더라도, response에 이미 설정된 cookie를 덮어쓰지 않고 access-token 및 refresh-token `Set-Cookie` 값을 append합니다. portable HTTP serializer를 사용하므로 cookie 값은 emit 전에 percent-encoding되며, malformed cookie name 또는 attribute는 invalid header를 emit하는 대신 validation에서 실패합니다.
 
 보호된 라우트는 계속 `@UseAuth(...)`를 사용해야 합니다. `requireAccessToken: false`를 설정해도 쿠키가 없을 때는 익명 principal이 아니라 명시적인 미인증 결과를 반환하므로, 보호된 라우트는 요청을 계속 거부합니다.
 

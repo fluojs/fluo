@@ -269,6 +269,7 @@ JNCDpGwh8us=
 
 const expressPortabilityHarness = createHttpAdapterPortabilityHarness({
   bootstrap: bootstrapExpressApplication,
+  createConditionalRequestBootstrapOptions: (options) => options,
   createErrorRepresentationBootstrapOptions: (options) => options,
   name: 'express',
   run: runExpressApplication,
@@ -566,6 +567,10 @@ describe('@fluojs/platform-express', () => {
 
     it('preserves ordered independent response cookies', async () => {
       await expressPortabilityHarness.assertSupportsPortableResponseCookies();
+    });
+
+    it('preserves conditional response semantics through the real listener', async () => {
+      await expressPortabilityHarness.assertSupportsConditionalRequests();
     });
 
     it('supports HTTP-owned JSON and HTML error representations', async () => {

@@ -354,8 +354,9 @@ test('C5: a non-array snapshot is rejected', () => {
 });
 
 // --- C4: `$create-lane` v2 ledger intake ---
-// v4 consumes only the issue set and dependency edges from a v2 ledger; the rest
-// of v2 describes v1 DAG/authority machinery that v4 does not have.
+// v4 consumes the issue set, dependency edges, and the authority
+// grant (`authority_scope.pr_merge` -> every issue's merge approval) from a
+// v2 ledger; the rest of v2 describes v1 DAG machinery that v4 does not have.
 
 test('C4: v2 ledger translates to init specs with dependency edges', () => {
 	const { laneId, baseBranch, specs } = laneV2ToInitSpecs({
@@ -381,6 +382,29 @@ test('C4: v2 ledger without a dependency graph yields independent issues', () =>
 		confirmed_issues: [10, 20],
 	});
 	assert.deepEqual(specs, [{ n: 10, deps: [] }, { n: 20, deps: [] }]);
+});
+
+test('C4: v2 ledger pr_merge grant is imported as the merge approval', () => {
+	// create-lane already lands the maintainer's merge grant in
+	// authority_scope.pr_merge; v4 must not drop it and re-ask per issue.
+	const { mergeApproved } = laneV2ToInitSpecs({
+		version: 2,
+		lane_id: 'lane-x',
+		confirmed_issues: [10],
+		authority_scope: { pr_merge: true },
+	});
+	assert.equal(mergeApproved, true);
+});
+
+test('C4: missing or false authority_scope.pr_merge yields no merge approval', () => {
+	assert.equal(
+		laneV2ToInitSpecs({ version: 2, lane_id: 'l', confirmed_issues: [1] }).mergeApproved,
+		false,
+	);
+	assert.equal(
+		laneV2ToInitSpecs({ version: 2, lane_id: 'l', confirmed_issues: [1], authority_scope: { pr_merge: false } }).mergeApproved,
+		false,
+	);
 });
 
 test('C4: non-v2 input is rejected', () => {
