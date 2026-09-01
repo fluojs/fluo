@@ -84,18 +84,18 @@ export class AppModule {}
 기본적으로 이는 `GET /metrics` 엔드포인트를 노출합니다. 응답은 활성 `prom-client` Registry가 제공하는 Prometheus text exposition content type을 사용합니다. `defaultMetrics`를 켜 둔 경우 기본 프로세스 및 Node.js 메트릭과 같은 Registry의 Fluo 전용 메트릭이 함께 포함됩니다. 이것이 현재 `@fluojs/metrics` 패키지 계약입니다. 향후 패키지 버전이 명시적으로 문서화하기 전까지는 이 엔드포인트가 다른 exposition format을 반환한다고 가정하여 스크레이퍼나 테스트를 구성하지 마세요.
 
 ### 19.3.1 Under the Hood: The Registry
-각 `MetricsModule.forRoot()` 호출은 `registry` option을 명시적으로 전달하지 않는 한 격리된 `prom-client` `Registry`를 소유합니다. `/metrics` 엔드포인트가 호출되면 모듈은 해당 active Registry를 스크레이프하고 현재 값을 수집하여 Prometheus 텍스트 응답 형식으로 변환합니다. 이 과정은 스크랩 요청이 애플리케이션 성능에 불필요한 부담을 주지 않도록 가볍게 유지되어야 합니다.
+각 `MetricsModule.forRoot()` 호출은 bootstrap이 `METRICS_REGISTRY`를 제공하지 않는 한 격리된 `prom-client` `Registry`를 소유하며, legacy `registry` option은 호환성 fallback으로 남아 있습니다. `/metrics` 엔드포인트가 호출되면 모듈은 해당 active Registry를 스크레이프하고 현재 값을 수집하여 Prometheus 텍스트 응답 형식으로 변환합니다. 이 과정은 스크랩 요청이 애플리케이션 성능에 불필요한 부담을 주지 않도록 가볍게 유지되어야 합니다.
 
 ### 19.3.2 Scrape Intervals and Resolution
 중요한 고려 사항 중 하나는 Prometheus가 얼마나 자주 애플리케이션을 스크랩해야 하는가입니다. 전형적인 간격은 15초 또는 30초입니다. 간격이 짧을수록 더 고해상도의 데이터를 얻을 수 있지만 서버 부하가 늘어납니다. 간격이 길면 가볍지만 짧은 트래픽 폭주(micro-bursts)를 놓칠 수 있습니다. Fluo의 메트릭은 "스레드 안전"하고 "비차단(Non-Blocking)" 방식으로 설계되어 있으므로, 운영자는 정확도와 비용 사이의 균형을 기준으로 간격을 정하면 됩니다.
 
 ### 19.3.3 Choosing a Registry Model
-기본 모델은 격리된 Registry ownership입니다. 하나의 `MetricsModule.forRoot()` 인스턴스가 자신이 소유한 collector를 등록하고 스크레이프합니다. framework metric과 application metric을 하나의 scrape surface에서 공유해야 한다면 직접 `Registry`를 만들고 제한된 custom metric을 등록한 뒤 `MetricsModule.forRoot({ registry })`에 전달하세요. 내장 HTTP collector는 의도적으로 공유된 모듈 인스턴스 사이에서도 framework-owned이고 예상 label schema 및 같은 path-label configuration을 가진 경우에만 재사용됩니다. 플랫폼 텔레메트리 Gauge는 framework-owned이고 예상 label schema를 가진 경우에 재사용되며, Registry-scoped telemetry state는 이전 module instance가 남긴 stale component readiness/health series를 제거합니다. 애플리케이션이 직접 정의한 중복 메트릭 이름은 계속 빠르게 실패합니다.
+기본 모델은 격리된 Registry ownership입니다. 하나의 `MetricsModule.forRoot()` 인스턴스가 자신이 소유한 collector를 등록하고 스크레이프합니다. framework metric과 application metric을 하나의 scrape surface에서 공유해야 한다면 `Registry`를 만들고 `bootstrapApplication()`에 `METRICS_REGISTRY` provider로 제공하세요. legacy `registry` option은 호환성 용도로만 사용하세요. 내장 HTTP collector는 의도적으로 공유된 모듈 인스턴스 사이에서도 framework-owned이고 예상 label schema 및 같은 path-label configuration을 가진 경우에만 재사용됩니다. 플랫폼 텔레메트리 Gauge는 framework-owned이고 예상 label schema를 가진 경우에 재사용되며, Registry-scoped telemetry state는 이전 module instance가 남긴 stale component readiness/health series를 제거합니다. 애플리케이션이 직접 정의한 중복 메트릭 이름은 계속 빠르게 실패합니다.
 
 ### 19.3.4 Public Responsibility Boundaries
 `MetricsModule.forRoot(...)`는 module option wiring을 소유합니다. 여기에는 scrape `path`, `provider`, `defaultMetrics`, optional HTTP collector, platform telemetry label, endpoint-scoped `endpointMiddleware`, module-level `middleware`, registry 선택이 포함됩니다. `provider`는 현재 `'prometheus'`만 지원하며, `path: false`는 scrape endpoint를 끄고 endpoint-scoped middleware도 건너뜁니다.
 
-Application-defined counter, gauge, histogram에는 `MetricsService`를 사용하세요. `getRegistry()` method는 DI로 받은 service에서 같은 active `prom-client` Registry에 third-party collector를 등록해야 하는 advanced integration을 위해 제공됩니다. Bootstrap path를 직접 소유한다면 명시적 `MetricsModule.forRoot({ registry })` shared-registry setup을 우선하세요. 더 낮은 수준의 `METER_PROVIDER` token, `PrometheusMeterProvider`, `MeterProvider` / `MeterCounter` / `MeterGauge` / `MeterHistogram` abstraction type은 meter provider bridge가 필요한 package integration을 위한 것이며, 일반 tutorial code용 표면은 아닙니다. 이 경계는 business metric, framework-owned HTTP metric, package-integration metric이 같은 Registry 이름의 ownership을 두고 충돌하지 않게 합니다.
+Application-defined counter, gauge, histogram에는 `MetricsService`를 사용하세요. `getRegistry()` method는 DI로 받은 service에서 같은 active `prom-client` Registry에 third-party collector를 등록해야 하는 advanced integration을 위해 제공됩니다. Bootstrap path를 직접 소유한다면 shared-registry setup에는 `METRICS_REGISTRY` provider를 우선하고 legacy `registry` option은 호환성 경로로만 사용하세요. 더 낮은 수준의 `METER_PROVIDER` token, `PrometheusMeterProvider`, `MeterProvider` / `MeterCounter` / `MeterGauge` / `MeterHistogram` abstraction type은 meter provider bridge가 필요한 package integration을 위한 것이며, 일반 tutorial code용 표면은 아닙니다. 이 경계는 business metric, framework-owned HTTP metric, package-integration metric이 같은 Registry 이름의 ownership을 두고 충돌하지 않게 합니다.
 
 ### 19.3.5 Integration with Cloud-Native Sidecars
 Istio나 Linkerd와 같은 서비스 메쉬(Service Mesh) 환경에서 애플리케이션은 종종 "사이드카(Sidecar)" 프록시와 함께 실행됩니다. 이러한 프록시들은 자체 메트릭을 가지기도 하지만, Fluo 애플리케이션 메트릭을 합산하고 노출하도록 설정할 수도 있습니다. Fluo는 Prometheus 텍스트 스크레이프 형식을 노출하므로 이 데이터는 Prometheus-compatible 사이드카 관측성 패턴과 자연스럽게 연결됩니다.
@@ -128,7 +128,7 @@ MetricsModule.forRoot({
 ```
 
 ### 19.4.1 Bucket Tuning for Latency
-히스토그램은 "버킷(buckets)"을 사용하여 서로 다른 시간 범위(예: <100ms, <500ms, <1s)에 얼마나 많은 요청이 속하는지 계산합니다. 현재 내장 HTTP 히스토그램은 패키지 기본값을 사용하며 `MetricsModule.forRoot(...)` bucket option을 노출하지 않습니다. 초저지연 API에서 custom bucket boundary가 필요하다면 `MetricsService.histogram(...)`으로 애플리케이션 전용 히스토그램을 만들거나 별도 middleware가 소유하는 히스토그램을 추가해 custom bucket 계약을 명시적으로 유지하세요.
+히스토그램은 "버킷(buckets)"을 사용하여 서로 다른 시간 범위(예: <100ms, <500ms, <1s)에 얼마나 많은 요청이 속하는지 계산합니다. 내장 HTTP duration bucket은 `http.durationHistogramBuckets`로 구성하며, 값의 단위는 초이고 유한하며 엄격히 증가하는 경계여야 합니다. 옵션을 생략하면 `prom-client` 기본값을 유지하고, 값을 제공하면 기본값을 대체합니다. 별도 측정 계약이 필요한 custom metric에만 애플리케이션 전용 히스토그램을 사용하세요.
 
 ### 19.4.2 Response Size Tracking
 지연 시간 외에 응답 크기까지 보고 싶을 때가 많지만, 현재 기본 HTTP 메트릭 계약은 `http_requests_total`, `http_errors_total`, `http_request_duration_seconds`에 한정됩니다. 응답 크기 분포를 추적하고 싶다면 애플리케이션 전용 커스텀 메트릭이나 별도 미들웨어 계층으로 추가하는 편이 맞습니다.

@@ -199,7 +199,7 @@ The module emits fluo-specific gauges that mirror the platform shell and registe
 
 - `fluo_component_ready`: `1` when a component is ready, otherwise `0`.
 - `fluo_component_health`: `1` when a component is healthy, otherwise `0`.
-- `fluo_metrics_registry_mode`: gauge value `1` with `mode="isolated"` when `MetricsModule.forRoot()` creates its registry, or `mode="shared"` when you pass a `registry` option. The label reports that module registration configuration; it does not infer registry sharing at scrape time.
+- `fluo_metrics_registry_mode`: gauge value `1` with `mode="isolated"` when `MetricsModule.forRoot()` creates its registry, or `mode="shared"` when bootstrap supplies `METRICS_REGISTRY` or the legacy `registry` option is supplied. The label reports the effective registry ownership configuration selected during bootstrap or module registration; it does not infer registry sharing at scrape time.
 
 The platform snapshot is refreshed during each registry scrape, including advanced `MetricsService.getRegistry().metrics()` scrape paths, and you can attach environment labels up front.
 

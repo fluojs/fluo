@@ -2,4 +2,4 @@
 "@fluojs/metrics": patch
 ---
 
-Clarify that `MetricsService` is non-global: modules can inject it by directly importing a `MetricsModule` registration or by importing a module that re-exports `MetricsService`, while unrelated sibling modules do not receive it automatically.
+Align consumer-facing `@fluojs/metrics` documentation with existing behavior: clarify `MetricsService` visibility, bootstrap-owned shared registry mode, and HTTP duration histogram bucket configuration.
