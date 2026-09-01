@@ -3,6 +3,7 @@ import type {
   FrameworkResponse,
   HandlerDescriptor,
   RequestContext,
+  ResponseValidators,
 } from '../types.js';
 
 /** Shared response-entry brand recognized by the HTTP success-response policy. */
@@ -18,6 +19,10 @@ export type FrameworkResponseWriterContext = {
   readonly request: FrameworkRequest;
   readonly requestContext: RequestContext;
   readonly response: FrameworkResponse;
+  /** Validators resolved by the dispatcher before the handler executed. */
+  readonly validators: ResponseValidators | undefined;
+  /** Finalized handler value that owns this response writer. */
+  readonly value: unknown;
 };
 
 /** Writer installed by an HTTP integration on one response entry. */

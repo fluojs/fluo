@@ -35,11 +35,30 @@ export interface FrameworkRequest {
   files?: readonly FrameworkRequestFile[];
   /** Adapter-snapshotted inbound request id used without forcing header normalization. */
   requestId?: string;
+  /**
+   * Adapter-snapshotted transport metadata available without platform-specific
+   * casts from middleware, guards, and request-scoped services.
+   */
+  connection?: FrameworkRequestConnection;
   rawBody?: Uint8Array;
   raw: unknown;
   /** Adapter-owned abort probe used by internal fast paths without forcing AbortSignal allocation. */
   isAborted?: () => boolean;
   signal?: AbortSignal;
+}
+
+/**
+ * Runtime-neutral transport metadata captured when an adapter receives a request.
+ *
+ * @remarks
+ * Fetch-only adapters may omit this value because the Web `Request` contract
+ * does not expose a peer address.
+ */
+export interface FrameworkRequestConnection {
+  /** Direct peer address supplied by the adapter transport, when available. */
+  readonly remoteAddress?: string;
+  /** Transport protocol supplied by the adapter when known. */
+  readonly protocol?: 'http' | 'https';
 }
 
 /** Runtime-neutral multipart file shape attached by adapters that parse uploads. */
@@ -77,6 +96,12 @@ export interface FrameworkResponse {
   raw?: unknown;
   stream?: FrameworkResponseStream;
   setStatus(code: number): void;
+  /**
+   * Writes one response header value.
+   *
+   * Repeated `Set-Cookie` writes append ordered independent fields. Other
+   * header names retain adapter-defined replacement semantics.
+   */
   setHeader(name: string, value: string | string[]): void;
   redirect(status: number, location: string): void;
   send(body: unknown): MaybePromise<void>;
@@ -140,6 +165,63 @@ export interface ResponseFormatter {
 export interface ContentNegotiationOptions {
   defaultMediaType?: string;
   formatters?: ResponseFormatter[];
+}
+
+/** Strength used when serializing one generated HTTP entity tag. */
+export type EntityTagStrength = 'strong' | 'weak';
+
+/** Portable entity tag generated for one selected resource representation. */
+export interface EntityTag {
+  /** Opaque validator value without surrounding quotes or a weak prefix. */
+  readonly opaqueValue: string;
+  /** Comparison strength emitted in the `ETag` response field. */
+  readonly strength: EntityTagStrength;
+}
+
+/** Validators that describe the current selected resource representation. */
+export interface ResponseValidators {
+  /** Optional entity tag emitted as the `ETag` response field. */
+  readonly etag?: EntityTag;
+  /** Optional modification instant normalized to whole seconds for `Last-Modified`. */
+  readonly lastModified?: Date;
+}
+
+/** Route and request information supplied when resolving a selected representation. */
+export interface ConditionalRequestContext {
+  /** Matched route descriptor selected for the request. */
+  readonly handler: HandlerDescriptor;
+  /** Adapter-normalized request carrying conditional request fields. */
+  readonly request: FrameworkRequest;
+}
+
+/**
+ * Current existence and validators for the selected representation.
+ *
+ * @remarks `exists` controls wildcard conditional fields independently from
+ * validator metadata, so an existing representation may intentionally omit
+ * both `ETag` and `Last-Modified`.
+ */
+export type ConditionalRequestResolution =
+  | {
+      /** The selected representation does not currently exist. */
+      readonly exists: false;
+    }
+  | {
+      /** The selected representation exists, whether or not it has validators. */
+      readonly exists: true;
+      /** Optional validators emitted with a successful or conditional response. */
+      readonly validators?: ResponseValidators;
+    };
+
+/** Resolves the selected representation before its route handler executes. */
+export type ConditionalRequestResolver = (
+  context: ConditionalRequestContext,
+) => MaybePromise<ConditionalRequestResolution>;
+
+/** Dispatcher-owned HTTP conditional request configuration. */
+export interface ConditionalRequestOptions {
+  /** Resolves representation existence and optional validators for each matched resource request. */
+  readonly resolve: ConditionalRequestResolver;
 }
 
 /**
@@ -246,7 +328,7 @@ export interface HandlerMetadata {
   controllerPath: string;
   effectivePath: string;
   effectiveVersion?: string;
-  moduleMiddleware: MiddlewareLike[];
+  moduleMiddleware: readonly MiddlewareSnapshotLike[];
   moduleType?: Constructor;
   pathParams: string[];
 }
@@ -354,6 +436,12 @@ export interface MiddlewareRouteConfig {
   routes: string[];
 }
 
+/** @internal Immutable route-binding view retained by handler mapping snapshots. */
+export interface MiddlewareRouteSnapshot {
+  readonly middleware: Constructor<Middleware>;
+  readonly routes: readonly string[];
+}
+
 /** Guard execution context for one matched handler invocation. */
 export interface GuardContext {
   handler: HandlerDescriptor;
@@ -421,6 +509,8 @@ export interface Converter {
 
 /** Middleware reference accepted by module/runtime configuration. */
 export type MiddlewareLike = Middleware | Token<Middleware> | MiddlewareRouteConfig;
+/** @internal Middleware reference retained by handler mapping snapshots. */
+export type MiddlewareSnapshotLike = Middleware | Token<Middleware> | MiddlewareRouteSnapshot;
 /** Guard reference accepted by route metadata and runtime configuration. */
 export type GuardLike = Guard | Token<Guard>;
 /** Interceptor reference accepted by route metadata and runtime configuration. */

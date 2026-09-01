@@ -1,3 +1,4 @@
+import type { AsyncModuleOptions } from '@fluojs/core';
 import type { InterceptorContext } from '@fluojs/http';
 
 type Awaitable<T> = T | Promise<T>;
@@ -108,6 +109,20 @@ export interface NormalizedCacheModuleOptions {
   httpKeyStrategy: CacheKeyStrategy;
   principalScopeResolver: PrincipalScopeResolver | undefined;
 }
+
+/**
+ * Public configuration options for `CacheModule.forRootAsync(...)`.
+ *
+ * @remarks
+ * `useFactory` returns `CacheModuleOptions`, so applications can reuse prepared cache
+ * configuration values. `global` stays on the registration call because module visibility
+ * is decided when the module is defined, before the injected factory runs. A `global` value
+ * returned by `useFactory` is ignored.
+ */
+export type CacheAsyncModuleOptions = Omit<AsyncModuleOptions<CacheModuleOptions>, 'useFactory'> &
+  Pick<CacheModuleOptions, 'global'> & {
+    useFactory: (...dependencies: never[]) => Awaitable<CacheModuleOptions>;
+  };
 
 /**
  * Normalized TTL jitter configuration after defaults are applied.

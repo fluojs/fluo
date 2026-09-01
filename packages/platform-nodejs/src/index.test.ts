@@ -1,7 +1,17 @@
 import { type AddressInfo, createServer } from 'node:net';
-import type { ServerOptions as HttpServerOptions } from 'node:http';
+import { request as requestHttp, type IncomingHttpHeaders, type ServerOptions as HttpServerOptions } from 'node:http';
 import type { ServerOptions as HttpsServerOptions } from 'node:https';
-import { Controller, type Dispatcher, FromBody, Get, Post, type RequestContext, RequestDto } from '@fluojs/http';
+import { gunzipSync } from 'node:zlib';
+import {
+  Controller,
+  createByteRangeResponse,
+  type Dispatcher,
+  FromBody,
+  Get,
+  Post,
+  type RequestContext,
+  RequestDto,
+} from '@fluojs/http';
 import { defineModule, FluoFactory, type MultipartOptions } from '@fluojs/runtime';
 import {
   type BootstrapNodeApplicationOptions,
@@ -38,6 +48,31 @@ function getBoundPort(server: { address(): AddressInfo | string | null }): numbe
   }
 
   return address.port;
+}
+
+function requestRawNodeResponse(
+  url: string,
+  headers: Record<string, string>,
+): Promise<{ readonly body: Buffer; readonly headers: IncomingHttpHeaders; readonly statusCode: number | undefined }> {
+  return new Promise((resolve, reject) => {
+    const request = requestHttp(url, { headers }, (response) => {
+      const chunks: Buffer[] = [];
+      response.on('data', (chunk: Buffer) => {
+        chunks.push(chunk);
+      });
+      response.once('end', () => {
+        resolve({
+          body: Buffer.concat(chunks),
+          headers: response.headers,
+          statusCode: response.statusCode,
+        });
+      });
+      response.once('error', reject);
+    });
+
+    request.once('error', reject);
+    request.end();
+  });
 }
 
 type MultipartRequestWithFiles = RequestContext['request'] & {
@@ -117,15 +152,53 @@ const nodejsPortabilityHarness = createHttpAdapterPortabilityHarness<
   RunNodejsApplicationOptions
 >({
   bootstrap: bootstrapNodejsApplication,
+  createConditionalRequestBootstrapOptions: (options) => options,
   createErrorRepresentationBootstrapOptions: (options) => options,
   name: 'nodejs',
   run: runNodejsApplication,
 });
 
 describe('@fluojs/platform-nodejs', () => {
+  it('captures connection metadata through a real public Node listener', async () => {
+    const adapter = createNodejsAdapter({ host: '127.0.0.1', port: 0 });
+    let connection: RequestContext['request']['connection'];
+    const dispatcher: Dispatcher = {
+      async dispatch(request, response) {
+        connection = request.connection;
+        await response.send({ ok: true });
+      },
+    };
+
+    try {
+      await adapter.listen(dispatcher);
+      const response = await fetch(`${adapter.getListenTarget().url}/connection`);
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ ok: true });
+      expect(connection).toEqual({
+        protocol: 'http',
+        remoteAddress: '127.0.0.1',
+      });
+    } finally {
+      await adapter.close();
+    }
+  });
+
   describe('adapter portability', () => {
     it('executes QUERY and extension methods through the real Node listener', async () => {
       await nodejsPortabilityHarness.assertSupportsCustomHttpRouteMethods();
+    });
+
+    it('preserves ordered independent response cookies through the real Node listener', async () => {
+      await nodejsPortabilityHarness.assertSupportsPortableResponseCookies();
+    });
+
+    it('preserves conditional response semantics through the real Node listener', async () => {
+      await nodejsPortabilityHarness.assertSupportsConditionalRequests();
+    });
+
+    it('preserves single byte range semantics through the real Node listener', async () => {
+      await nodejsPortabilityHarness.assertSupportsSingleByteRanges();
     });
 
     it('supports HTTP-owned JSON and HTML error representations', async () => {
@@ -311,6 +384,48 @@ describe('@fluojs/platform-nodejs', () => {
     expect(platformNodejsApi).not.toHaveProperty('createNodeResponseCompression');
     expect(platformNodejsApi).not.toHaveProperty('createNodeShutdownSignalRegistration');
     expect(platformNodejsApi).not.toHaveProperty('registerShutdownSignals');
+  });
+
+  it('writes gzip bytes for full responses and identity bytes for ranges over raw Node HTTP', async () => {
+    const representation = new TextEncoder().encode('compressible response '.repeat(128));
+
+    @Controller('/assets')
+    class AssetController {
+      @Get('/logo')
+      getLogo() {
+        return createByteRangeResponse(representation, { contentType: 'text/plain' });
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [AssetController] });
+
+    const adapter = new NodeHttpApplicationAdapter(0, '127.0.0.1', 1, 2, true, undefined);
+    const app = await FluoFactory.create(AppModule, {
+      adapter,
+    });
+
+    try {
+      await app.listen();
+      const url = `http://127.0.0.1:${String(getBoundPort(adapter.getServer()))}/assets/logo`;
+      const [fullResponse, partialResponse] = await Promise.all([
+        requestRawNodeResponse(url, { 'accept-encoding': 'gzip' }),
+        requestRawNodeResponse(url, {
+          'accept-encoding': 'gzip',
+          range: 'bytes=2-4',
+        }),
+      ]);
+
+      expect(fullResponse.statusCode).toBe(200);
+      expect(fullResponse.headers['content-encoding']).toBe('gzip');
+      expect(gunzipSync(fullResponse.body)).toEqual(Buffer.from(representation));
+      expect(partialResponse.statusCode).toBe(206);
+      expect(partialResponse.headers['content-encoding']).toBeUndefined();
+      expect(partialResponse.headers['content-length']).toBe('3');
+      expect(partialResponse.body).toEqual(Buffer.from(representation.slice(2, 5)));
+    } finally {
+      await app.close();
+    }
   });
 
   it('supports adapter-first startup on the runtime facade for raw Node', async () => {

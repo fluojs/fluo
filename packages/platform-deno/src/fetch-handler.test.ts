@@ -36,6 +36,7 @@ function registerHostOwnedDenoPortabilitySuite(): void {
         },
       };
     },
+    createConditionalRequestBootstrapOptions: (options) => options,
     createErrorRepresentationBootstrapOptions: (options) => options,
     name: 'host-owned Deno fetch handler',
   });
@@ -55,6 +56,10 @@ function registerHostOwnedDenoPortabilitySuite(): void {
 
     it('preserves malformed cookie values', async () => {
       await harness.assertPreservesMalformedCookieValues();
+    });
+
+    it('preserves single byte range metadata and body slicing', async () => {
+      await harness.assertSupportsSingleByteRanges();
     });
 
     it('preserves query arrays and malformed query decoding', async () => {

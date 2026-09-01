@@ -1,10 +1,24 @@
-import { Controller, Get, Post, Query, type RequestContext, Route, SseResponse } from '@fluojs/http';
+import {
+  Controller,
+  Get,
+  Head,
+  Post,
+  Query,
+  type ConditionalRequestOptions,
+  type RequestContext,
+  Route,
+  SseResponse,
+} from '@fluojs/http';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { assertWebHttpErrorRepresentationAbortPortability } from './error-representation-abort-portability.js';
 import {
   assertWebHttpErrorRepresentationPortability,
   type WebHttpErrorRepresentationBootstrapOptions,
 } from './error-representation-portability.js';
+import {
+  assertPortableResponseCookies,
+  createResponseCookiePortabilityModule,
+} from './response-cookie-portability.js';
 
 export type { WebHttpErrorRepresentationBootstrapOptions } from './error-representation-portability.js';
 
@@ -24,6 +38,10 @@ export interface WebRuntimeHttpAdapterPortabilityHarnessOptions<
   /** Adapts the shared error-representation fixture fields to this runtime's bootstrap options. */
   createErrorRepresentationBootstrapOptions?: (
     options: WebHttpErrorRepresentationBootstrapOptions,
+  ) => TBootstrapOptions;
+  /** Adapts shared conditional-request policy options to one web runtime bootstrap API. */
+  createConditionalRequestBootstrapOptions?: (
+    options: { readonly conditionalRequest: ConditionalRequestOptions; readonly cors: false },
   ) => TBootstrapOptions;
   name: string;
 }
@@ -102,6 +120,230 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
       bootstrap: this.options.bootstrap,
       createBootstrapOptions,
       name: this.options.name,
+    });
+  }
+
+  /** Verifies ordered, non-folded portable response cookies through Web Response headers. */
+  async assertSupportsPortableResponseCookies(): Promise<void> {
+    const app = await this.options.bootstrap(createResponseCookiePortabilityModule(), {
+      cors: false,
+    } as TBootstrapOptions);
+
+    await runWithCleanup(app, this.options.name, async () => {
+      assertPortableResponseCookies(
+        await app.dispatch(new Request('https://runtime.test/response-cookies')),
+        this.options.name,
+      );
+    });
+  }
+
+  /** Verifies 304/412 metadata and body suppression through fetch-style adapters. */
+  async assertSupportsConditionalRequests(): Promise<void> {
+    const createBootstrapOptions = this.options.createConditionalRequestBootstrapOptions;
+    if (createBootstrapOptions === undefined) {
+      throw new Error(`${this.options.name} adapter portability harness requires createConditionalRequestBootstrapOptions.`);
+    }
+
+    @Controller('/validators')
+    class ValidatorsController {
+      @Get('/resource')
+      getResource() {
+        return { id: 'resource' };
+      }
+
+      @Head('/resource')
+      headResource() {
+        return { id: 'resource' };
+      }
+
+      @Post('/resource')
+      updateResource() {
+        return { id: 'resource' };
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [ValidatorsController] });
+
+    const app = await this.options.bootstrap(AppModule, createBootstrapOptions({
+      conditionalRequest: {
+        resolve() {
+          return {
+            exists: true,
+            validators: {
+              etag: { opaqueValue: 'resource-v1', strength: 'strong' },
+              lastModified: new Date('2026-01-01T00:00:00.750Z'),
+            },
+          };
+        },
+      },
+      cors: false,
+    }));
+
+    await runWithCleanup(app, this.options.name, async () => {
+      const [notModified, preconditionFailed, head] = await Promise.all([
+        app.dispatch(new Request('https://runtime.test/validators/resource', {
+          headers: { 'if-none-match': '"resource-v1"' },
+        })),
+        app.dispatch(new Request('https://runtime.test/validators/resource', {
+          headers: { 'if-match': '"different-resource"' },
+          method: 'POST',
+        })),
+        app.dispatch(new Request('https://runtime.test/validators/resource', {
+          headers: { 'if-none-match': '"resource-v1"' },
+          method: 'HEAD',
+        })),
+      ]);
+
+      if (
+        notModified.status !== 304
+        || preconditionFailed.status !== 412
+        || await notModified.text() !== ''
+        || await preconditionFailed.text() !== ''
+        || await head.text() !== ''
+        || notModified.headers.get('etag') !== '"resource-v1"'
+        || notModified.headers.get('last-modified') !== 'Thu, 01 Jan 2026 00:00:00 GMT'
+        || preconditionFailed.headers.get('etag') !== '"resource-v1"'
+        || preconditionFailed.headers.get('last-modified') !== 'Thu, 01 Jan 2026 00:00:00 GMT'
+        || head.status !== 304
+        || head.headers.get('etag') !== '"resource-v1"'
+        || head.headers.get('last-modified') !== 'Thu, 01 Jan 2026 00:00:00 GMT'
+      ) {
+        throw new Error(`${this.options.name} adapter changed conditional request response semantics.`);
+      }
+    });
+  }
+
+  /** Verifies single-byte-range metadata and payload slicing through fetch dispatch. */
+  async assertSupportsSingleByteRanges(): Promise<void> {
+    const createBootstrapOptions = this.options.createConditionalRequestBootstrapOptions;
+    if (createBootstrapOptions === undefined) {
+      throw new Error(`${this.options.name} adapter portability harness requires createConditionalRequestBootstrapOptions.`);
+    }
+
+    @Controller('/assets')
+    class AssetController {
+      @Get('/logo')
+      getLogo() {
+        return Uint8Array.from([0, 1, 2, 3, 4, 5]);
+      }
+
+      @Head('/logo')
+      headLogo() {
+        return Uint8Array.from([0, 1, 2, 3, 4, 5]);
+      }
+
+      @Post('/logo')
+      postLogo() {
+        return Uint8Array.from([0, 1, 2, 3, 4, 5]);
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [AssetController] });
+
+    const app = await this.options.bootstrap(AppModule, createBootstrapOptions({
+      conditionalRequest: {
+        resolve() {
+          return {
+            exists: true,
+            validators: {
+              etag: { opaqueValue: 'asset-v1', strength: 'strong' },
+              lastModified: new Date('2026-01-01T00:00:00.750Z'),
+            },
+          };
+        },
+      },
+      cors: false,
+    }));
+
+    await runWithCleanup(app, this.options.name, async () => {
+      const [bounded, suffix, openEnded, malformed, multiple, unsatisfiable, head, post, matchingEtag, nonmatchingEtag, matchingDate, nonmatchingDate] = await Promise.all([
+        app.dispatch(new Request('https://runtime.test/assets/logo', { headers: { range: 'bytes=2-4' } })),
+        app.dispatch(new Request('https://runtime.test/assets/logo', { headers: { range: 'bytes=-2' } })),
+        app.dispatch(new Request('https://runtime.test/assets/logo', { headers: { range: 'bytes=3-' } })),
+        app.dispatch(new Request('https://runtime.test/assets/logo', { headers: { range: 'items=2-4' } })),
+        app.dispatch(new Request('https://runtime.test/assets/logo', { headers: { range: 'bytes=0-1,3-4' } })),
+        app.dispatch(new Request('https://runtime.test/assets/logo', { headers: { range: 'bytes=9-' } })),
+        app.dispatch(new Request('https://runtime.test/assets/logo', {
+          headers: { range: 'bytes=2-4' },
+          method: 'HEAD',
+        })),
+        app.dispatch(new Request('https://runtime.test/assets/logo', {
+          headers: { range: 'bytes=2-4' },
+          method: 'POST',
+        })),
+        app.dispatch(new Request('https://runtime.test/assets/logo', {
+          headers: { 'if-range': '"asset-v1"', range: 'bytes=2-4' },
+        })),
+        app.dispatch(new Request('https://runtime.test/assets/logo', {
+          headers: { 'if-range': '"different-asset"', range: 'bytes=2-4' },
+        })),
+        app.dispatch(new Request('https://runtime.test/assets/logo', {
+          headers: { 'if-range': 'Thu, 01 Jan 2026 00:00:00 GMT', range: 'bytes=2-4' },
+        })),
+        app.dispatch(new Request('https://runtime.test/assets/logo', {
+          headers: { 'if-range': 'Wed, 31 Dec 2025 23:59:59 GMT', range: 'bytes=2-4' },
+        })),
+      ]);
+      const [boundedBytes, suffixBytes, openEndedBytes, malformedBytes, multipleBytes, unsatisfiableBody, headBody, postBytes, matchingEtagBytes, nonmatchingEtagBytes, matchingDateBytes, nonmatchingDateBytes] = await Promise.all([
+        bounded.bytes(),
+        suffix.bytes(),
+        openEnded.bytes(),
+        malformed.bytes(),
+        multiple.bytes(),
+        unsatisfiable.text(),
+        head.text(),
+        post.bytes(),
+        matchingEtag.bytes(),
+        nonmatchingEtag.bytes(),
+        matchingDate.bytes(),
+        nonmatchingDate.bytes(),
+      ]);
+
+      if (
+        bounded.status !== 206
+        || suffix.status !== 206
+        || openEnded.status !== 206
+        || malformed.status !== 200
+        || multiple.status !== 200
+        || unsatisfiable.status !== 416
+        || head.status !== 206
+        || post.status !== 201
+        || matchingEtag.status !== 206
+        || nonmatchingEtag.status !== 200
+        || matchingDate.status !== 206
+        || nonmatchingDate.status !== 200
+        || bounded.headers.get('accept-ranges') !== 'bytes'
+        || bounded.headers.get('content-range') !== 'bytes 2-4/6'
+        || bounded.headers.get('content-length') !== '3'
+        || suffix.headers.get('content-range') !== 'bytes 4-5/6'
+        || openEnded.headers.get('content-range') !== 'bytes 3-5/6'
+        || openEnded.headers.get('content-length') !== '3'
+        || unsatisfiable.headers.get('accept-ranges') !== 'bytes'
+        || unsatisfiable.headers.get('content-range') !== 'bytes */6'
+        || unsatisfiable.headers.get('content-length') !== '0'
+        || unsatisfiableBody !== ''
+        || head.headers.get('content-range') !== bounded.headers.get('content-range')
+        || head.headers.get('content-length') !== bounded.headers.get('content-length')
+        || headBody !== ''
+        || matchingEtag.headers.get('content-range') !== 'bytes 2-4/6'
+        || matchingEtag.headers.get('etag') !== '"asset-v1"'
+        || matchingDate.headers.get('content-range') !== 'bytes 2-4/6'
+        || matchingDate.headers.get('last-modified') !== 'Thu, 01 Jan 2026 00:00:00 GMT'
+        || !sameBytes(boundedBytes, Uint8Array.from([2, 3, 4]))
+        || !sameBytes(suffixBytes, Uint8Array.from([4, 5]))
+        || !sameBytes(openEndedBytes, Uint8Array.from([3, 4, 5]))
+        || !sameBytes(malformedBytes, Uint8Array.from([0, 1, 2, 3, 4, 5]))
+        || !sameBytes(multipleBytes, Uint8Array.from([0, 1, 2, 3, 4, 5]))
+        || !sameBytes(postBytes, Uint8Array.from([0, 1, 2, 3, 4, 5]))
+        || !sameBytes(matchingEtagBytes, Uint8Array.from([2, 3, 4]))
+        || !sameBytes(nonmatchingEtagBytes, Uint8Array.from([0, 1, 2, 3, 4, 5]))
+        || !sameBytes(matchingDateBytes, Uint8Array.from([2, 3, 4]))
+        || !sameBytes(nonmatchingDateBytes, Uint8Array.from([0, 1, 2, 3, 4, 5]))
+      ) {
+        throw new Error(`${this.options.name} adapter changed single byte-range or If-Range response semantics.`);
+      }
     });
   }
 
@@ -475,4 +717,9 @@ export function createWebRuntimeHttpAdapterPortabilityHarness<
   options: WebRuntimeHttpAdapterPortabilityHarnessOptions<TBootstrapOptions, TApp>,
 ): WebRuntimeHttpAdapterPortabilityHarness<TBootstrapOptions, TApp> {
   return new WebRuntimeHttpAdapterPortabilityHarness(options);
+}
+
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  return left.byteLength === right.byteLength
+    && left.every((value, index) => value === right[index]);
 }

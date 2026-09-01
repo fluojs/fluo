@@ -52,6 +52,9 @@ export interface HttpAdapterPortabilityHarnessOptions<
   TApp extends AppLike = AppLike,
 > {
   bootstrap: (rootModule: ModuleType, options: TBootstrapOptions) => Promise<TApp>;
+  createErrorRepresentationBootstrapOptions?: (
+    options: NetworkHttpErrorRepresentationBootstrapOptions,
+  ) => TBootstrapOptions;
   name: string;
   run: (rootModule: ModuleType, options: TRunOptions) => Promise<TApp>;
 }
@@ -61,11 +64,13 @@ export interface HttpAdapterPortabilityHarnessOptions<
 
 하네스는 런타임 사이에서 차이가 발생하기 쉬운 여러 임계 표면을 다룹니다. 목적은 Fluo 추상화 계층이 서로 다른 실행 환경에서도 새지 않도록 확인하는 것입니다:
 
-1. **쿠키 처리(Cookie Handling)**: 잘못된 형식의 쿠키가 서버를 중단시키거나 다른 헤더를 오염시키지 않도록 보장.
-2. **원시 바디 보존(Raw Body Preservation)**: JSON 및 text에서는 `rawBody`를 사용할 수 있고, byte-sensitive payload에서는 정확한 바이트가 보존되며, 메모리 절약을 위해 multipart request에서는 제외되는지 확인.
-3. **SSE (Server-Sent Events)**: 버퍼링 없이 연결을 열린 상태로 유지하는 적절한 스트리밍 동작 확인.
-4. **시작 로그(Startup Logs)**: 어댑터가 표준화된 훅을 통해 리스닝 호스트와 포트를 올바르게 보고하는지 검증.
-5. **종료 시그널(Shutdown Signals)**: 메모리 누수를 방지하기 위해 `SIGTERM` 및 `SIGINT` 리스너가 종료 후 올바르게 정리되는지 확인.
+1. **커스텀 HTTP 메서드(Custom HTTP Methods)**: `QUERY`와 extension method가 실제 listener에 도달하고 request body를 보존하는지 검증.
+2. **HTTP 오류 표현(HTTP Error Representations)**: JSON, HTML, HEAD, `406`, 이미 commit된 response 의미론과 fallback error commit 없이 client disconnect abort를 처리하는지 검증.
+3. **쿠키 처리(Cookie Handling)**: 잘못된 형식의 쿠키가 서버를 중단시키거나 다른 헤더를 오염시키지 않도록 보장.
+4. **원시 바디 보존(Raw Body Preservation)**: JSON 및 text에서는 `rawBody`를 사용할 수 있고, byte-sensitive payload에서는 정확한 바이트가 보존되며, multipart request에서는 제외되고 기본 multipart total limit이 적용되는지 확인.
+5. **SSE (Server-Sent Events)**: 버퍼링 없이 연결을 열린 상태로 유지하는 적절한 스트리밍 동작과, 어댑터가 제공하는 경우 stream 종료 시 `response.stream.waitForDrain()`이 settle되는지 확인.
+6. **시작 로그와 HTTPS(Startup Logs and HTTPS)**: 어댑터가 구성된 HTTP host와 bound HTTPS listen URL을 보고하는지 검증.
+7. **종료 시그널(Shutdown Signals)**: 메모리 누수를 방지하기 위해 `SIGTERM` 및 `SIGINT` 리스너가 종료 후 올바르게 정리되는지 확인.
 
 하니스가 앱을 bootstrap한 뒤 assertion 본문이 실행되기 전에 setup 또는 `listen()`이 실패해도 cleanup은 계약에 포함됩니다. 부분적으로 bootstrap된 앱은 반드시 닫혀야 하며, `close()`까지 실패하면 원래 setup 실패와 cleanup 실패를 함께 보고합니다.
 
@@ -166,11 +171,21 @@ WebSocket 적합성은 프로토콜이 구현체마다 크게 다르기 때문�
 
 ```typescript
 import { FluoFactory } from '@fluojs/runtime';
-import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
+import {
+  createHttpAdapterPortabilityHarness,
+  type NetworkHttpErrorRepresentationBootstrapOptions,
+} from '@fluojs/testing/http-adapter-portability';
 import { myAdapter } from './my-adapter';
+import { TEST_TLS_CERTIFICATE, TEST_TLS_PRIVATE_KEY } from './test-tls-fixture';
 
 const harness = createHttpAdapterPortabilityHarness({
   name: 'MyCustomAdapter',
+  createErrorRepresentationBootstrapOptions: (
+    options: NetworkHttpErrorRepresentationBootstrapOptions,
+  ) => ({
+    ...options,
+    port: 0,
+  }),
   bootstrap: async (module, opts) => {
     const app = await FluoFactory.create(module, { adapter: myAdapter(opts) });
     return app;
@@ -183,19 +198,32 @@ const harness = createHttpAdapterPortabilityHarness({
 });
 
 describe('MyCustomAdapter Portability', () => {
+  it('커스텀 HTTP route method를 지원해야 함', () => harness.assertSupportsCustomHttpRouteMethods());
+  it('단일 바이트 범위를 지원해야 함', () => harness.assertSupportsSingleByteRanges());
+  it('HTTP 오류 표현을 지원해야 함', () => harness.assertSupportsHttpErrorRepresentations());
+  it('중단된 HTTP 오류 표현을 commit하지 않아야 함', () =>
+    harness.assertDoesNotCommitAbortedHttpErrorRepresentations());
   it('잘못된 형식의 쿠키를 보존해야 함', () => harness.assertPreservesMalformedCookieValues());
-  it('SSE를 처리해야 함', () => harness.assertSupportsSseStreaming());
+  it('portable response cookie를 지원해야 함', () => harness.assertSupportsPortableResponseCookies());
   it('JSON 및 text 원시 바디를 보존해야 함', () => harness.assertPreservesRawBodyForJsonAndText());
   it('정확한 원시 바디 바이트를 보존해야 함', () => harness.assertPreservesExactRawBodyBytesForByteSensitivePayloads());
   it('multipart 원시 바디를 제외해야 함', () => harness.assertExcludesRawBodyForMultipart());
   it('multipart total limit을 max body size로 기본 설정해야 함', () => harness.assertDefaultsMultipartTotalLimitToMaxBodySize());
+  it('SSE를 처리해야 함', () => harness.assertSupportsSseStreaming());
   it('close 뒤 stream drain wait를 settle해야 함', () => harness.assertSettlesStreamDrainWaitOnClose());
   it('설정된 host startup log를 보고해야 함', () => harness.assertReportsConfiguredHostInStartupLogs());
+  it('HTTPS startup URL을 보고해야 함', () =>
+    harness.assertReportsHttpsStartupUrl({
+      cert: TEST_TLS_CERTIFICATE,
+      key: TEST_TLS_PRIVATE_KEY,
+    }));
   it('shutdown signal listener를 제거해야 함', () => harness.assertRemovesShutdownSignalListenersAfterClose());
 });
 ```
 
-이 테스트를 실행할 때는 앞부분 예시 몇 개만 복사하지 말고 cleanup 및 performance-sensitive assertion도 유지하세요. 하네스는 partial-bootstrap cleanup, 정확한 byte 보존, multipart memory boundary, application logger를 통한 startup logging, shutdown listener cleanup, stream-drain settlement를 확인합니다. 또한 타이밍 데이터도 함께 봐야 합니다. 이식성 스위트에서 느린 테스트는 플랫폼 프리미티브의 하위 구현이 최적화되지 않았다는 신호일 수 있습니다. 하네스의 피드백을 사용해 어댑터를 정제하면 정확성과 성능을 함께 확인할 수 있습니다.
+이것이 배포된 전체 HTTP portability suite입니다. 더 작은 sample을 Behavioral Contract 준수로 간주하지 말고 15개의 assertion을 모두 유지하세요. `createErrorRepresentationBootstrapOptions`는 공유 error-representation fixture field를 어댑터의 bootstrap option으로 변환하며, 두 error-representation assertion에 필요합니다. `assertReportsHttpsStartupUrl(...)`이 실제 HTTPS listener를 검증할 수 있도록 `TEST_TLS_CERTIFICATE`와 `TEST_TLS_PRIVATE_KEY`는 production credential이 아닌 test-owned PEM fixture에 보관하세요. Stream-drain assertion은 어댑터가 `response.stream.waitForDrain()`을 제공하는 경우에 적용합니다.
+
+하네스는 partial-bootstrap cleanup, 정확한 byte 보존, multipart memory boundary, application logger를 통한 startup logging, shutdown listener cleanup, stream-drain settlement도 확인합니다. 또한 타이밍 데이터도 함께 봐야 합니다. 이식성 스위트에서 느린 테스트는 플랫폼 프리미티브의 하위 구현이 최적화되지 않았다는 신호일 수 있습니다. 하네스의 피드백을 사용해 어댑터를 정제하면 정확성과 성능을 함께 확인할 수 있습니다.
 
 ## 14.9 Why Line-by-Line Consistency Matters
 

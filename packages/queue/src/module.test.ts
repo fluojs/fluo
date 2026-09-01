@@ -897,6 +897,12 @@ describe('@fluojs/queue', () => {
     expect(() => getQueueLifecycleServiceToken('  ')).toThrow('Queue scope must be a non-empty string when provided.');
   });
 
+  it('rejects blank ownership namespaces during module registration', () => {
+    expect(() => QueueModule.forRoot({ ownershipNamespace: '   ' })).toThrow(
+      'Queue ownership namespace must be a non-empty string when provided.',
+    );
+  });
+
   it('resolves a named Redis client through sibling Redis and Queue module imports', async () => {
     class ScopedRedisJob {
       constructor(public readonly id: string) {}
@@ -1519,6 +1525,7 @@ describe('@fluojs/queue', () => {
         defaultConcurrency: 1,
         defaultDeadLetterMaxEntries: 1_000,
         global: true,
+        ownershipEnforcement: 'warn',
         workerShutdownTimeoutMs: 30_000,
       },
       redis,
@@ -1791,6 +1798,7 @@ describe('@fluojs/queue', () => {
         defaultConcurrency: 1,
         defaultDeadLetterMaxEntries: 1_000,
         global: true,
+        ownershipEnforcement: 'warn',
         workerShutdownTimeoutMs: 30_000,
       },
       redis,
@@ -1960,6 +1968,7 @@ describe('@fluojs/queue', () => {
         defaultConcurrency: 1,
         defaultDeadLetterMaxEntries: 1_000,
         global: true,
+        ownershipEnforcement: 'warn',
         workerShutdownTimeoutMs: 30_000,
       },
       redis,
@@ -2035,6 +2044,7 @@ describe('@fluojs/queue', () => {
         defaultConcurrency: 1,
         defaultDeadLetterMaxEntries: 1_000,
         global: true,
+        ownershipEnforcement: 'warn',
         workerShutdownTimeoutMs: 30_000,
       },
       redis,

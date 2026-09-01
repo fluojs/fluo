@@ -58,6 +58,10 @@ await app.listen();
 
 Fastify responses expose the optional `context.response.earlyHints` capability through `reply.raw`. Await one `write(...)` per `103`; multiple informational responses precede the independently configured final response. Early fields never populate Fastify final headers or mark the Fluo facade committed. Late/native failures and client disconnects reject deterministically.
 
+### Byte Ranges and Cache Validation
+
+Fastify preserves the shared `@fluojs/http` single-byte-range and `If-Range` contract. After conditional-request evaluation selects cache validators, a valid `Range: bytes=` request yields the portable `206` identity-byte response; `If-Range` reuses those selected validators, while malformed or multi-range fields retain the full response and an unsatisfiable range yields bodyless `416`. `HEAD` mirrors GET metadata without consuming a stream.
+
 ### HTTPS/TLS Startup
 When the Fastify process owns TLS directly, pass Node.js `https.ServerOptions` through the `https` option on `createFastifyAdapter(...)`, `bootstrapFastifyApplication(...)`, or `runFastifyApplication(...)`. The adapter starts Fastify with an HTTPS listener, and startup logs report the `https://host:port` URL.
 
@@ -212,7 +216,7 @@ fluo's Fastify adapter significantly outperforms the raw Node.js adapter in high
 
 ## Conformance Coverage
 
-`packages/platform-fastify/src/adapter.test.ts` is the package-local regression target for the documented Fastify adapter contract. It runs the shared `createHttpAdapterPortabilityHarness(...)` checks for custom `QUERY`/extension-method fallback, malformed cookie preservation, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body exclusion, multipart total-size defaults, SSE framing, response stream drain settlement, host and HTTPS startup logging, and shutdown signal listener cleanup.
+`packages/platform-fastify/src/adapter.test.ts` is the package-local regression target for the documented Fastify adapter contract. It runs the shared `createHttpAdapterPortabilityHarness(...)` checks for conditional requests, single-byte ranges and `If-Range`, custom `QUERY`/extension-method fallback, malformed cookie preservation, JSON/text raw-body capture, byte-exact raw-body capture, multipart raw-body exclusion, multipart total-size defaults, SSE framing, response stream drain settlement, host and HTTPS startup logging, and shutdown signal listener cleanup.
 
 The same file also covers Fastify-specific native route registration with wildcard fallback, duplicate shape route fallback, concurrent and repeated `listen()` idempotency, startup retry cancellation during shutdown, native descriptor refresh on adapter reuse, explicit `OPTIONS` route ownership, middleware/guard/interceptor/observer ordering, CORS ownership, global prefix behavior, malformed cookie preservation, response serialization parity, raw-body pre-parsing behavior, zero-valued body/shutdown limits, close wait timeouts that leave the underlying Fastify close in flight, case-insensitive multipart detection, and multipart limit handling. Keep README example pointers aligned with that test file and the custom adapter book chapter when changing startup, routing, or adapter portability behavior.
 

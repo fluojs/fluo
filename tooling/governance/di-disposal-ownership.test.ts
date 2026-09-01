@@ -5,8 +5,89 @@ import { describe, expect, it } from 'vitest';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+type SourceExcerptGuardReason =
+  | 'duplicate-anchor'
+  | 'excerpt-drift'
+  | 'missing-anchor'
+  | 'missing-closing-fence'
+  | 'missing-opening-fence';
+
+class SourceExcerptGuardError extends Error {
+  constructor(
+    readonly reason: SourceExcerptGuardReason,
+    readonly citation: string,
+  ) {
+    super(`Source excerpt guard failed (${reason}): ${citation}`);
+    this.name = 'SourceExcerptGuardError';
+  }
+}
+
 function read(relativePath: string): string {
   return readFileSync(resolve(repoRoot, relativePath), 'utf8');
+}
+
+function sourceRange(source: string, start: number, end: number): string {
+  return source.split('\n').slice(start - 1, end).join('\n');
+}
+
+function sourceExcerpt(document: string, citation: string): string {
+  const lines = document.split('\n');
+  const anchor = `\`${citation}\``;
+  const citationLineIndexes = lines.flatMap((line, index) => line === anchor ? [index] : []);
+
+  if (citationLineIndexes.length === 0) {
+    throw new SourceExcerptGuardError('missing-anchor', citation);
+  }
+
+  if (citationLineIndexes.length > 1) {
+    throw new SourceExcerptGuardError('duplicate-anchor', citation);
+  }
+
+  const citationLineIndex = citationLineIndexes.at(0);
+
+  if (citationLineIndex === undefined) {
+    throw new SourceExcerptGuardError('missing-anchor', citation);
+  }
+
+  const openingFenceLineIndex = lines.indexOf('```typescript', citationLineIndex + 1);
+
+  if (openingFenceLineIndex < 0) {
+    throw new SourceExcerptGuardError('missing-opening-fence', citation);
+  }
+
+  const closingFenceLineIndex = lines.indexOf('```', openingFenceLineIndex + 1);
+
+  if (closingFenceLineIndex < 0) {
+    throw new SourceExcerptGuardError('missing-closing-fence', citation);
+  }
+
+  return lines.slice(openingFenceLineIndex + 1, closingFenceLineIndex).join('\n');
+}
+
+function assertSourceExcerpt(document: string, citation: string, expected: string): void {
+  if (sourceExcerpt(document, citation) !== expected) {
+    throw new SourceExcerptGuardError('excerpt-drift', citation);
+  }
+}
+
+function expectSourceExcerptGuardFailure(
+  action: () => void,
+  expectedReason: SourceExcerptGuardReason,
+): void {
+  try {
+    action();
+  } catch (error) {
+    expect(error).toBeInstanceOf(SourceExcerptGuardError);
+
+    if (!(error instanceof SourceExcerptGuardError)) {
+      throw error;
+    }
+
+    expect(error.reason).toBe(expectedReason);
+    return;
+  }
+
+  expect.fail(`Expected source excerpt guard failure: ${expectedReason}`);
 }
 
 const englishOwnershipClaims = [
@@ -32,6 +113,45 @@ const ownershipEvidenceTitles = [
   'keeps parent-first ownership when direct disposal joins the active attempt',
   'detaches a retained child after a later direct retry fails',
 ] as const;
+
+describe('source excerpt guard', () => {
+  const citation = 'path:packages/di/src/container.ts:1-1';
+  const expected = 'const value = true;';
+  const excerpt = `\`${citation}\`\n\`\`\`typescript\n${expected}\n\`\`\``;
+
+  it('rejects duplicate line-exact citation anchors', () => {
+    // Given
+    const duplicate = `${excerpt}\n\n${excerpt}`;
+
+    // When / Then
+    expectSourceExcerptGuardFailure(
+      () => assertSourceExcerpt(duplicate, citation, expected),
+      'duplicate-anchor',
+    );
+  });
+
+  it('rejects a missing line-exact citation anchor', () => {
+    // Given
+    const missing = excerpt.replace(citation, 'path:packages/di/src/container.ts:2-2');
+
+    // When / Then
+    expectSourceExcerptGuardFailure(
+      () => assertSourceExcerpt(missing, citation, expected),
+      'missing-anchor',
+    );
+  });
+
+  it('rejects source excerpt drift', () => {
+    // Given
+    const drifted = excerpt.replace(expected, 'const value = false;');
+
+    // When / Then
+    expectSourceExcerptGuardFailure(
+      () => assertSourceExcerpt(drifted, citation, expected),
+      'excerpt-drift',
+    );
+  });
+});
 
 describe('DI disposal ownership governance', () => {
   it('keeps all five ownership guarantees in the English package and advanced book', () => {
@@ -65,17 +185,17 @@ describe('DI disposal ownership governance', () => {
     const containerSource = read('packages/di/src/container.ts');
     const ownershipEvidence = read('packages/di/src/container-disposal-ownership.test.ts');
     const retryEvidence = read('packages/di/src/container-disposal-retry.test.ts');
+    const sourceExcerpts = [
+      ['path:packages/di/src/container.ts:682-703', 682, 703],
+      ['path:packages/di/src/container.ts:705-742', 705, 742],
+      ['path:packages/di/src/container.ts:1284-1312', 1284, 1312],
+      ['path:packages/di/src/container.ts:1422-1578', 1422, 1578],
+    ] as const;
 
     // When / Then
     for (const chapter of chapters) {
-      for (const marker of [
-        'path:packages/di/src/container.ts:616-640',
-        'path:packages/di/src/container.ts:642-672',
-        'path:packages/di/src/container.ts:1197-1213',
-        'path:packages/di/src/container.ts:1215-1286',
-        'path:packages/di/src/container.ts:1403-1411',
-      ]) {
-        expect(chapter).toContain(marker);
+      for (const [citation, start, end] of sourceExcerpts) {
+        assertSourceExcerpt(chapter, citation, sourceRange(containerSource, start, end));
       }
 
       expect(chapter).not.toContain('if (completed && this.parent && this.trackedByParent)');
@@ -92,7 +212,13 @@ describe('DI disposal ownership governance', () => {
       "await this.disposeWithOrigin('direct');",
       'private async disposeFromParent(): Promise<void> {',
       "await this.disposeWithOrigin('parent');",
-      "if ((completed || origin === 'direct') && this.parent && this.trackedByParent) {",
+      'private hasRetainedStaleDisposalTasksInSubtree(): boolean {',
+      "if ((origin === 'direct' || (completed && !retainsStaleRetries)) && this.parent && this.trackedByParent) {",
+      'const attemptedStaleInstances = new Set<Disposable>();',
+      'const disposables = disposalCandidates.filter((instance) => !attemptedStaleInstances.has(instance));',
+      'private releaseNonOwnerStaleTaskObserversInSubtree(): void {',
+      'this.releaseNonOwnerStaleTaskObserversInSubtree();',
+      'childScope.releaseNonOwnerStaleTaskObserversInSubtree();',
       'disposed child owns its remaining retries after that attempt settles',
       'parent-started failed attempt remains owned by the parent hierarchy',
     ]) {

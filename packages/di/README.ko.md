@@ -10,6 +10,7 @@
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)
 - [주요 기능](#주요-기능)
+- [NestJS scope 및 optional 의존성 마이그레이션](#nestjs-scope-및-optional-의존성-마이그레이션)
 - [순환 의존성 처리](#순환-의존성-처리)
 - [테스트 및 모킹](#테스트-및-모킹)
 - [문제 해결](#문제-해결)
@@ -128,6 +129,8 @@ Reflect.construct(Container, [root]);
 
 실행 가능한 근거는 `packages/di/src/container-construction-boundary.test.ts`에 있습니다.
 
+실패한 stale `onDestroy()` hook도 일반 disposal과 동일한 retained-retry 계약을 따릅니다. observing container의 다음 resolution이 그 실패를 한 번 노출해 replacement가 계속될 수 있게 하며, 실패한 instance는 해당 cleanup을 예약한 container가 이후 명시적 `dispose()`로 hook을 다시 호출할 때까지 retain됩니다. 이미 성공한 stale hook은 다시 실행하지 않습니다.
+
 ### request scope 분리
 
 ```ts
@@ -138,6 +141,27 @@ const scopedService = await requestContainer.resolve(RequestScopedService);
 request scope 컨테이너는 부모 체인의 provider를 해석할 수 있지만, request가 소유하는 등록은 새 singleton provider를 만들 수 없습니다. singleton provider는 request scope를 만들기 전에 루트 컨테이너에 등록하세요. request scope에 로컬 provider를 추가해야 한다면 `scope: 'request'`/`Scope.REQUEST`를 명시하거나 `override()`로 의도적인 request-local 교체를 표현하세요. multi provider에도 같은 규칙이 적용됩니다. 기본 scope의 multi provider는 루트 컨테이너에 등록하고, request-local multi provider는 request scope를 명시하거나 `override()`로 교체해야 합니다.
 
 provider 객체는 등록 시점에 검증됩니다. 모든 객체 provider는 string, symbol 또는 constructable class `provide` 토큰과 정확히 하나의 전략(`useClass`, `useValue`, `useFactory`, `useExisting`)을 포함해야 합니다. alias provider의 `useExisting`에도 동일한 유효 토큰 형태가 필요합니다. class provider에서 `inject`를 생략하거나 `undefined`로 지정하면 `useClass`의 `@Inject(...)` 메타데이터로 fallback하며, 그 밖의 명시적 `inject` 값은 유효한 token 또는 올바른 `forwardRef(...)` / `optional(...)` wrapper로 구성된 배열이어야 합니다. value provider는 `inject`를 생략해야 하며, 값이 `undefined`인 경우에도 자체 속성으로 선언하면 거부됩니다. 명시적인 `scope` 값은 `singleton`, `request`, `transient` 중 하나여야 합니다. 잘못된 provider 형태는 컨테이너 그래프에 영향을 주기 전에 `InvalidProviderError`를 발생시킵니다.
+
+## NestJS scope 및 optional 의존성 마이그레이션
+
+NestJS `@Injectable({ scope: Scope.REQUEST })`와 `@Injectable({ scope: Scope.TRANSIENT })`는 `@Scope('request')` / `@Scope('transient')` 또는 명시적 provider `scope: 'request'` / `scope: 'transient'`를 가진 fluo provider로 매핑합니다. Singleton은 기본값으로 유지됩니다.
+
+fluo는 NestJS scope bubbling을 구현하지 않습니다. Request-scoped provider는 `createRequestScope()` child container에서 resolve하세요. Root에서 resolve하면 `RequestScopeResolutionError`가 발생하고, request-scoped provider에 의존하는 singleton은 `ScopeMismatchError`를 발생시킵니다.
+
+NestJS `@Optional()`은 클래스 수준 `@Inject(...)` 목록 또는 provider `inject` 배열의 `optional(Token)`으로 매핑합니다. `optional(...)`은 decorator가 아닌 token wrapper이고, 등록이 없으면 `undefined`로 resolve됩니다.
+
+```typescript
+import { Inject, Scope } from '@fluojs/core';
+import { optional } from '@fluojs/di';
+
+class AuditLogger {}
+
+@Scope('request')
+@Inject(optional(AuditLogger))
+class RequestAuditService {
+  constructor(private readonly auditLogger: AuditLogger | undefined) {}
+}
+```
 
 ## 순환 의존성 처리
 

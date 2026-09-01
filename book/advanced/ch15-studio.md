@@ -132,14 +132,14 @@ A report does not replace the raw snapshot. It packages the snapshot with the ex
 
 ## 15.5 Using the Studio Viewer
 
-Studio Viewer is a standalone web application. Installed-package users usually keep it as a development dependency, resolve the packaged static HTML entry, and open it in a browser.
+Studio Viewer is a standalone web application. Installed-package users usually keep it as a development dependency and launch its packaged HTTP server.
 
 ```bash
 pnpm add -D @fluojs/studio
-node -p "require.resolve('@fluojs/studio/viewer')"
+pnpm exec fluo-studio-viewer
 ```
 
-The printed path points at the packaged `dist/index.html` artifact. Open that file in a browser, then load your inspect artifact. This viewer resolution step is Node package-resolution based even when the artifact itself came from a Bun, Deno, or Cloudflare Workers static/report fallback workflow. Repository contributors who are developing the Studio app itself can run the local dev server instead.
+The command prints a `http://127.0.0.1:<port>/` URL that serves the packaged viewer; open that URL in a browser, then load your inspect artifact. Do not open `dist/index.html` directly because browser file-origin module loading can leave the viewer blank. `@fluojs/studio/viewer` remains the packaged HTML entry for integrations that resolve it. This launch step is Node package based even when the artifact itself came from a Bun, Deno, or Cloudflare Workers static/report fallback workflow. Repository contributors who are developing the Studio app itself can run the local dev server instead.
 
 ```bash
 pnpm --dir packages/studio dev

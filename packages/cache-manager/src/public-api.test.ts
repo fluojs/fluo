@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 
-import { describe, expect, expectTypeOf, it } from 'vitest';
 import type {
+  CacheAsyncModuleOptions,
   CacheEvictDecoratorValue,
   CacheEvictFactory,
   CacheKeyDecoratorValue,
@@ -21,14 +21,20 @@ import type {
   RedisCacheOptions,
   RedisCompatibleClient,
   RedisStoreOptions,
-} from './index.js';
-import * as cacheManagerPublicApi from './index.js';
+} from '@fluojs/cache-manager';
+import * as cacheManagerPublicApi from '@fluojs/cache-manager';
+import { CacheModule } from '@fluojs/cache-manager';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 
 type RootCacheKeyStrategy =
   | 'route'
   | 'route+query'
   | 'full'
   | ((context: Parameters<CacheKeyFactory>[0]) => string);
+
+class CacheSettingsService {
+  readonly ttlSeconds = 60;
+}
 
 describe('@fluojs/cache-manager public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
@@ -62,6 +68,9 @@ describe('@fluojs/cache-manager public API surface', () => {
     expectTypeOf<CacheTtlJitterOptions>().toHaveProperty('ratio');
     expectTypeOf<CacheTtlJitterMode>().toEqualTypeOf<'symmetric' | 'shorten' | 'lengthen'>();
     expectTypeOf<NormalizedCacheTtlJitterOptions>().toHaveProperty('mode');
+    expectTypeOf<CacheAsyncModuleOptions>().toHaveProperty('useFactory');
+    expectTypeOf<CacheAsyncModuleOptions>().toHaveProperty('inject');
+    expectTypeOf<CacheAsyncModuleOptions>().toHaveProperty('global');
     expectTypeOf<NormalizedCacheModuleOptions>().toHaveProperty('keyPrefix');
     expectTypeOf<NormalizedCacheModuleOptions>().toHaveProperty('principalScopeResolver');
     expectTypeOf<RedisCacheOptions>().toHaveProperty('clientName');
@@ -79,6 +88,30 @@ describe('@fluojs/cache-manager public API surface', () => {
     expectTypeOf<CacheManagerStatusAdapterInput>().toHaveProperty('storeKind');
     expectTypeOf<CacheManagerStoreKind>().toEqualTypeOf<'memory' | 'redis' | 'custom'>();
     expectTypeOf<CacheManagerStoreOwnershipMode>().toEqualTypeOf<'framework' | 'external'>();
+  });
+
+  it('accepts a typed injected async factory from the public root', () => {
+    const module = CacheModule.forRootAsync({
+      inject: [CacheSettingsService],
+      useFactory: (settings: CacheSettingsService) => ({
+        store: 'memory',
+        ttl: settings.ttlSeconds,
+      }),
+    });
+
+    expect(module).toBeDefined();
+  });
+
+  it('accepts a prepared CacheModuleOptions value from the public root', () => {
+    const preparedOptions: CacheModuleOptions = {
+      store: 'memory',
+      ttl: 60,
+    };
+    const module = CacheModule.forRootAsync({
+      useFactory: () => preparedOptions,
+    });
+
+    expect(module).toBeDefined();
   });
 
   it('keeps the normalized options compatibility type on the explicit root barrel', () => {

@@ -1,3 +1,5 @@
+import { createRequire } from 'node:module';
+
 import { getModuleMetadata, Inject } from '@fluojs/core';
 import { ContainerResolutionError } from '@fluojs/di';
 import {
@@ -11,15 +13,38 @@ import {
 } from '@fluojs/http';
 import { bootstrapApplication, defineModule, PLATFORM_SHELL, type PlatformComponent } from '@fluojs/runtime';
 import { Counter, Gauge, Histogram, Registry } from 'prom-client';
-import { describe, expect, it } from 'vitest';
-import { METER_PROVIDER } from './providers/meter-provider.js';
-import { MetricsModule } from './metrics-module.js';
+import { describe, expect, it, vi } from 'vitest';
+import { METRICS_REGISTRY, MetricsModule } from './metrics-module.js';
 import { MetricsService } from './metrics-service.js';
+import { METER_PROVIDER } from './providers/meter-provider.js';
 import { PrometheusMeterProvider } from './providers/prometheus-meter-provider.js';
+import { SerializedScrapeQueue } from './serialized-scrape-queue.js';
 
 type TestResponse = FrameworkResponse & { body?: unknown };
 type TestPlatformHealthStatus = 'healthy' | 'unhealthy' | 'degraded';
 type TestPlatformReadinessStatus = 'ready' | 'not-ready' | 'degraded';
+type Deferred<T> = {
+  promise: Promise<T>;
+  resolve(value: T): void;
+};
+
+const perfHooks = createRequire(import.meta.url)('node:perf_hooks');
+
+function createDeferred<T>(): Deferred<T> {
+  let resolvePromise: (value: T | PromiseLike<T>) => void = () => {
+    throw new Error('Deferred resolution was not initialized.');
+  };
+  const promise = new Promise<T>((resolve) => {
+    resolvePromise = resolve;
+  });
+
+  return {
+    promise,
+    resolve(value: T) {
+      resolvePromise(value);
+    },
+  };
+}
 
 function createRequest(path: string, headers: FrameworkRequest['headers'] = {}): FrameworkRequest {
   return {
@@ -469,6 +494,207 @@ describe('MetricsModule', () => {
     }
   });
 
+  it('preserves application-owned collectors on a default collector collision so a cleaned registry can retry', async () => {
+    const sharedRegistry = new Registry();
+
+    const conflictingCollector = new Counter({
+      help: 'Application-owned collector that forces a prom-client collision.',
+      name: 'process_cpu_seconds_total',
+      registers: [sharedRegistry],
+    });
+    const unrelatedCollector = new Gauge({
+      help: 'Application-owned collector unrelated to the default metric collision.',
+      name: 'app_unrelated_metric',
+      registers: [sharedRegistry],
+    });
+
+    class FailedAppModule {}
+
+    defineModule(FailedAppModule, {
+      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+    });
+
+    await expect(bootstrapApplication({ rootModule: FailedAppModule })).rejects.toThrow(
+      'A metric with the name process_cpu_seconds_total has already been registered.',
+    );
+
+    expect(sharedRegistry.getSingleMetric('process_cpu_seconds_total')).toBe(conflictingCollector);
+    expect(sharedRegistry.getSingleMetric('app_unrelated_metric')).toBe(unrelatedCollector);
+    expect(sharedRegistry.getSingleMetric('process_cpu_user_seconds_total')).toBeUndefined();
+    expect(sharedRegistry.getSingleMetric('process_cpu_system_seconds_total')).toBeUndefined();
+
+    sharedRegistry.removeSingleMetric('process_cpu_seconds_total');
+
+    class CleanAppModule {}
+
+    defineModule(CleanAppModule, {
+      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+    });
+
+    const app = await bootstrapApplication({ rootModule: CleanAppModule });
+
+    try {
+      expect(sharedRegistry.getSingleMetric('process_cpu_user_seconds_total')).toBeDefined();
+      expect(sharedRegistry.getSingleMetric('process_cpu_system_seconds_total')).toBeDefined();
+      expect(sharedRegistry.getSingleMetric('process_cpu_seconds_total')).toBeDefined();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('preflights a late default collector collision before enabling its event-loop monitor', async () => {
+    const sharedRegistry = new Registry();
+    const eventLoopMonitor = { enable: vi.fn() };
+    const monitorEventLoopDelay = vi.spyOn(perfHooks, 'monitorEventLoopDelay').mockReturnValue(eventLoopMonitor);
+
+    new Gauge({
+      help: 'Application-owned collector that collides after prom-client enables the event-loop monitor.',
+      name: 'nodejs_eventloop_lag_seconds',
+      registers: [sharedRegistry],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+    });
+
+    try {
+      await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+        'A metric with the name nodejs_eventloop_lag_seconds has already been registered.',
+      );
+
+      expect(monitorEventLoopDelay).not.toHaveBeenCalled();
+      expect(eventLoopMonitor.enable).not.toHaveBeenCalled();
+    } finally {
+      monitorEventLoopDelay.mockRestore();
+    }
+  });
+
+  it('does not reject an inactive Darwin-only default collector name', async () => {
+    const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'darwin' });
+
+    const sharedRegistry = new Registry();
+    const applicationCollector = new Gauge({
+      help: 'Application metric with an inactive default collector name.',
+      name: 'process_open_fds',
+      registers: [sharedRegistry],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+    });
+
+    try {
+      const app = await bootstrapApplication({ rootModule: AppModule });
+
+      try {
+        expect(sharedRegistry.getSingleMetric('process_open_fds')).toBe(applicationCollector);
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (platformDescriptor) {
+        Object.defineProperty(process, 'platform', platformDescriptor);
+      }
+    }
+  });
+
+  it('does not reject an inactive process handles collector name', async () => {
+    const activeHandlesDescriptor = Object.getOwnPropertyDescriptor(process, '_getActiveHandles');
+    Reflect.deleteProperty(process, '_getActiveHandles');
+
+    const sharedRegistry = new Registry();
+    const applicationCollector = new Gauge({
+      help: 'Application metric with an inactive default collector name.',
+      name: 'nodejs_active_handles',
+      registers: [sharedRegistry],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+    });
+
+    try {
+      const app = await bootstrapApplication({ rootModule: AppModule });
+
+      try {
+        expect(sharedRegistry.getSingleMetric('nodejs_active_handles')).toBe(applicationCollector);
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (activeHandlesDescriptor) {
+        Object.defineProperty(process, '_getActiveHandles', activeHandlesDescriptor);
+      }
+    }
+  });
+
+  it('does not reject an inactive process requests collector name', async () => {
+    const activeRequestsDescriptor = Object.getOwnPropertyDescriptor(process, '_getActiveRequests');
+    Reflect.deleteProperty(process, '_getActiveRequests');
+
+    const sharedRegistry = new Registry();
+    const applicationCollector = new Gauge({
+      help: 'Application metric with an inactive default collector name.',
+      name: 'nodejs_active_requests',
+      registers: [sharedRegistry],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+    });
+
+    try {
+      const app = await bootstrapApplication({ rootModule: AppModule });
+
+      try {
+        expect(sharedRegistry.getSingleMetric('nodejs_active_requests')).toBe(applicationCollector);
+      } finally {
+        await app.close();
+      }
+    } finally {
+      if (activeRequestsDescriptor) {
+        Object.defineProperty(process, '_getActiveRequests', activeRequestsDescriptor);
+      }
+    }
+  });
+
+  it('rejects a Linux-active default collector name', async () => {
+    const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'linux' });
+
+    const sharedRegistry = new Registry();
+    new Gauge({
+      help: 'Application metric with a Linux-active default collector name.',
+      name: 'process_open_fds',
+      registers: [sharedRegistry],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+    });
+
+    try {
+      await expect(bootstrapApplication({ rootModule: AppModule })).rejects.toThrow(
+        'A metric with the name process_open_fds has already been registered.',
+      );
+    } finally {
+      if (platformDescriptor) {
+        Object.defineProperty(process, 'platform', platformDescriptor);
+      }
+    }
+  });
+
   it('uses explicit platform telemetry labels when provided', async () => {
     class AppModule {}
 
@@ -591,7 +817,9 @@ describe('MetricsModule', () => {
       imports: [
         MetricsModule.forRoot({
           defaultMetrics: false,
-          http: true,
+          http: {
+            durationHistogramBuckets: [0.001, 0.002],
+          },
           path: '/metrics/:resourceId',
         }),
       ],
@@ -613,6 +841,9 @@ describe('MetricsModule', () => {
 
       expect(secondResponse.statusCode).toBe(200);
       expect(metricsText).toContain('http_requests_total{method="GET",path="/metrics/:resourceId",status="200"} 1');
+      expect(metricsText).toContain(
+        'http_request_duration_seconds_bucket{le="0.001",method="GET",path="/metrics/:resourceId",status="200"}',
+      );
     } finally {
       await app.close();
     }
@@ -782,7 +1013,7 @@ describe('MetricsModule', () => {
     );
   });
 
-  it('uses shared registry when provided via options', async () => {
+  it('uses a shared registry configured by bootstrap providers', async () => {
     const sharedRegistry = new Registry();
 
     const customCounter = new Counter({
@@ -796,10 +1027,11 @@ describe('MetricsModule', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MetricsModule.forRoot({ registry: sharedRegistry, defaultMetrics: false })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false })],
     });
 
     const app = await bootstrapApplication({
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
       rootModule: AppModule,
     });
 
@@ -939,6 +1171,469 @@ describe('MetricsModule', () => {
     }
   });
 
+  it('selects the remaining latest registration when a queued scrape outlives the removed registration', async () => {
+    const sharedRegistry = new Registry();
+    const firstProbeStarted = createDeferred<void>();
+    const firstProbeReleased = createDeferred<void>();
+    let firstProbe = true;
+    const firstComponent = createPlatformComponent({
+      id: 'queue.first',
+      kind: 'queue',
+    });
+    const secondComponent = createPlatformComponent({
+      id: 'cache.second',
+      kind: 'cache',
+    });
+    const originalSecondHealth = secondComponent.health;
+
+    secondComponent.health = async () => {
+      if (firstProbe) {
+        firstProbe = false;
+        firstProbeStarted.resolve();
+        await firstProbeReleased.promise;
+      }
+
+      return originalSecondHealth();
+    };
+
+    class FirstAppModule {}
+    class SecondAppModule {}
+
+    defineModule(FirstAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+    defineModule(SecondAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+
+    const firstApp = await bootstrapApplication({
+      platform: { components: [firstComponent] },
+      rootModule: FirstAppModule,
+    });
+
+    try {
+      const secondApp = await bootstrapApplication({
+        platform: { components: [secondComponent] },
+        rootModule: SecondAppModule,
+      });
+
+      try {
+        const activeScrape = sharedRegistry.metrics();
+        await firstProbeStarted.promise;
+
+        const queuedScrape = sharedRegistry.metrics();
+        await secondApp.close();
+        firstProbeReleased.resolve();
+
+        await activeScrape;
+        const metricsText = await queuedScrape;
+
+        expect(metricsText).toContain('component_id="queue.first"');
+        expect(metricsText).not.toContain('component_id="cache.second"');
+      } finally {
+        await secondApp.close();
+      }
+    } finally {
+      await firstApp.close();
+    }
+  });
+
+  it('keeps the real registry renderer inside the serialized queue', async () => {
+    const sharedRegistry = new Registry();
+    const firstRenderStarted = createDeferred<void>();
+    const renderReleased = createDeferred<void>();
+    const originalMetrics = sharedRegistry.metrics;
+    let firstRender = true;
+    let queue: SerializedScrapeQueue | undefined;
+
+    sharedRegistry.metrics = async () => {
+      if (firstRender) {
+        firstRender = false;
+        firstRenderStarted.resolve();
+      }
+
+      await renderReleased.promise;
+      return originalMetrics.call(sharedRegistry);
+    };
+
+    const originalEnqueue = SerializedScrapeQueue.prototype.enqueue;
+    const enqueue = vi.spyOn(SerializedScrapeQueue.prototype, 'enqueue');
+    enqueue.mockImplementation(function enqueueTask<T>(
+      this: SerializedScrapeQueue,
+      task: () => Promise<T>,
+    ): Promise<T> {
+      queue = this;
+      return originalEnqueue.bind(this)(task);
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    try {
+      const firstScrape = sharedRegistry.metrics();
+      await firstRenderStarted.promise;
+
+      const secondScrape = sharedRegistry.metrics();
+
+      expect(queue?.state).toEqual({ isRunning: true, queued: 1 });
+
+      renderReleased.resolve();
+      await Promise.all([firstScrape, secondScrape]);
+    } finally {
+      enqueue.mockRestore();
+      await app.close();
+    }
+  });
+
+  it('drains queued scrapes before restoration and retains a registration added during teardown', async () => {
+    const sharedRegistry = new Registry();
+    const firstRenderStarted = createDeferred<void>();
+    const renderReleased = createDeferred<void>();
+    const drainEntered = createDeferred<void>();
+    const registryMetrics = sharedRegistry.metrics;
+    const originalDrain = SerializedScrapeQueue.prototype.drain;
+    let firstRender = true;
+
+    const originalMetrics = async () => {
+      if (firstRender) {
+        firstRender = false;
+        firstRenderStarted.resolve();
+      }
+
+      await renderReleased.promise;
+      return registryMetrics.call(sharedRegistry);
+    };
+    sharedRegistry.metrics = originalMetrics;
+
+    const drain = vi.spyOn(SerializedScrapeQueue.prototype, 'drain');
+    drain.mockImplementation(async function drainQueue(
+      this: SerializedScrapeQueue,
+      finalizer: () => void,
+    ): Promise<void> {
+      drainEntered.resolve();
+      await originalDrain.call(this, finalizer);
+    });
+
+    class FirstAppModule {}
+    class SecondAppModule {}
+
+    defineModule(FirstAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+    defineModule(SecondAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+
+    const firstApp = await bootstrapApplication({
+      rootModule: FirstAppModule,
+    });
+    const wrapper = sharedRegistry.metrics;
+
+    try {
+      const activeScrape = sharedRegistry.metrics();
+      await firstRenderStarted.promise;
+      const queuedScrape = sharedRegistry.metrics();
+
+      const closing = firstApp.close();
+      await drainEntered.promise;
+      expect(sharedRegistry.metrics).toBe(wrapper);
+
+      const drainingScrape = sharedRegistry.metrics();
+      const secondApp = await bootstrapApplication({
+        rootModule: SecondAppModule,
+      });
+
+      try {
+        renderReleased.resolve();
+        await Promise.all([activeScrape, queuedScrape, drainingScrape, closing]);
+
+        expect(sharedRegistry.metrics).toBe(wrapper);
+        await sharedRegistry.metrics();
+      } finally {
+        await secondApp.close();
+      }
+
+      expect(sharedRegistry.metrics).toBe(originalMetrics);
+    } finally {
+      drain.mockRestore();
+      await firstApp.close();
+    }
+  });
+
+  it('drains active and appended scrapes before clearing final shared registry telemetry', async () => {
+    const sharedRegistry = new Registry();
+    const applicationCounter = new Counter({
+      help: 'Application metric that must outlive framework telemetry teardown.',
+      name: 'app_lifecycle_requests_total',
+      registers: [sharedRegistry],
+    });
+    applicationCounter.inc();
+    const firstRenderStarted = createDeferred<void>();
+    const renderReleased = createDeferred<void>();
+    const drainEntered = createDeferred<void>();
+    const registryMetrics = sharedRegistry.metrics;
+    const originalDrain = SerializedScrapeQueue.prototype.drain;
+    let firstRender = true;
+
+    const originalMetrics = async () => {
+      if (firstRender) {
+        firstRender = false;
+        firstRenderStarted.resolve();
+      }
+
+      await renderReleased.promise;
+      return registryMetrics.call(sharedRegistry);
+    };
+    sharedRegistry.metrics = originalMetrics;
+
+    const drain = vi.spyOn(SerializedScrapeQueue.prototype, 'drain');
+    drain.mockImplementation(async function drainQueue(
+      this: SerializedScrapeQueue,
+      finalizer: () => void,
+    ): Promise<void> {
+      drainEntered.resolve();
+      await originalDrain.call(this, finalizer);
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+
+    const app = await bootstrapApplication({
+      platform: {
+        components: [createPlatformComponent({ id: 'cache.draining', kind: 'cache' })],
+      },
+      rootModule: AppModule,
+    });
+    const wrapper = sharedRegistry.metrics;
+    const cleanupRenderers: Array<Registry['metrics']> = [];
+    const frameworkMetricNames = new Set([
+      'fluo_component_ready',
+      'fluo_component_health',
+      'fluo_metrics_registry_mode',
+    ]);
+    const originalRemoveSingleMetric = sharedRegistry.removeSingleMetric.bind(sharedRegistry);
+    const removeSingleMetric = vi.spyOn(sharedRegistry, 'removeSingleMetric').mockImplementation((metricName: string) => {
+      if (frameworkMetricNames.has(metricName)) {
+        cleanupRenderers.push(sharedRegistry.metrics);
+      }
+
+      originalRemoveSingleMetric(metricName);
+    });
+
+    try {
+      const activeScrape = sharedRegistry.metrics();
+      await firstRenderStarted.promise;
+      const queuedScrape = sharedRegistry.metrics();
+
+      const closing = app.close();
+      await drainEntered.promise;
+      const appendedScrape = sharedRegistry.metrics();
+
+      expect(sharedRegistry.metrics).toBe(wrapper);
+      expect(cleanupRenderers).toHaveLength(0);
+
+      renderReleased.resolve();
+      await Promise.all([activeScrape, queuedScrape, appendedScrape, closing]);
+
+      const metricsText = await sharedRegistry.metrics();
+
+      expect(cleanupRenderers).not.toHaveLength(0);
+      expect(cleanupRenderers.every((renderer) => renderer === wrapper)).toBe(true);
+      expect(sharedRegistry.metrics).toBe(originalMetrics);
+      expect(metricsText).toContain('app_lifecycle_requests_total 1');
+      expect(sharedRegistry.getSingleMetric('fluo_component_ready')).toBeUndefined();
+      expect(sharedRegistry.getSingleMetric('fluo_component_health')).toBeUndefined();
+      expect(sharedRegistry.getSingleMetric('fluo_metrics_registry_mode')).toBeUndefined();
+      expect(metricsText).not.toContain('fluo_component_ready{');
+      expect(metricsText).not.toContain('fluo_component_health{');
+      expect(metricsText).not.toContain('fluo_metrics_registry_mode{');
+    } finally {
+      removeSingleMetric.mockRestore();
+      drain.mockRestore();
+      await app.close();
+    }
+  });
+
+  it('drains telemetry snapshots before stopping platform probe resources', async () => {
+    const sharedRegistry = new Registry();
+    const probeStarted = createDeferred<void>();
+    const probeReleased = createDeferred<void>();
+    const drainEntered = createDeferred<void>();
+    const originalMetrics = sharedRegistry.metrics;
+    const originalDrain = SerializedScrapeQueue.prototype.drain;
+    const probeAccesses: string[] = [];
+    let resourceAvailable = true;
+    let firstHealthProbe = true;
+    let stopped = false;
+
+    const component = createPlatformComponent({ id: 'cache.live', kind: 'cache' });
+    component.health = async () => {
+      if (!resourceAvailable) {
+        throw new Error('Health probe accessed a stopped platform resource.');
+      }
+
+      probeAccesses.push('health');
+      if (firstHealthProbe) {
+        firstHealthProbe = false;
+        probeStarted.resolve();
+        await probeReleased.promise;
+      }
+
+      return { status: 'healthy' };
+    };
+    component.ready = async () => {
+      if (!resourceAvailable) {
+        throw new Error('Readiness probe accessed a stopped platform resource.');
+      }
+
+      probeAccesses.push('readiness');
+      return { critical: false, status: 'ready' };
+    };
+    component.stop = async () => {
+      stopped = true;
+      resourceAvailable = false;
+    };
+
+    const drain = vi.spyOn(SerializedScrapeQueue.prototype, 'drain');
+    drain.mockImplementation(async function drainQueue(
+      this: SerializedScrapeQueue,
+      finalizer: () => void,
+    ): Promise<void> {
+      drainEntered.resolve();
+      await originalDrain.call(this, finalizer);
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+
+    const app = await bootstrapApplication({
+      platform: { components: [component] },
+      rootModule: AppModule,
+    });
+
+    try {
+      const activeScrape = sharedRegistry.metrics();
+      await probeStarted.promise;
+
+      const queuedScrape = sharedRegistry.metrics();
+      const closing = app.close();
+      await drainEntered.promise;
+
+      expect(stopped).toBe(false);
+
+      const appendedScrape = sharedRegistry.metrics();
+      probeReleased.resolve();
+
+      const [activeMetrics] = await Promise.all([activeScrape, queuedScrape, appendedScrape, closing]);
+
+      expect(activeMetrics).toContain('component_id="cache.live"');
+      expect(probeAccesses).toEqual(expect.arrayContaining(['health', 'readiness']));
+      expect(stopped).toBe(true);
+      expect(sharedRegistry.metrics).toBe(originalMetrics);
+      expect(sharedRegistry.getSingleMetric('fluo_component_ready')).toBeUndefined();
+      expect(sharedRegistry.getSingleMetric('fluo_component_health')).toBeUndefined();
+      expect(sharedRegistry.getSingleMetric('fluo_metrics_registry_mode')).toBeUndefined();
+    } finally {
+      probeReleased.resolve();
+      drain.mockRestore();
+      await app.close();
+    }
+  });
+
+  it('keeps shared telemetry for an active registration and reboots without stale series', async () => {
+    const sharedRegistry = new Registry();
+    const applicationCounter = new Counter({
+      help: 'Application metric that survives framework telemetry lifecycle changes.',
+      name: 'app_shared_registry_lifecycle_total',
+      registers: [sharedRegistry],
+    });
+    applicationCounter.inc();
+
+    class FirstAppModule {}
+    class SecondAppModule {}
+    class RebootedAppModule {}
+
+    defineModule(FirstAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+    defineModule(SecondAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+    defineModule(RebootedAppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+    });
+
+    const firstApp = await bootstrapApplication({
+      platform: {
+        components: [createPlatformComponent({ id: 'cache.closed', kind: 'cache' })],
+      },
+      rootModule: FirstAppModule,
+    });
+
+    try {
+      const secondApp = await bootstrapApplication({
+        platform: {
+          components: [createPlatformComponent({ id: 'queue.active', kind: 'queue' })],
+        },
+        rootModule: SecondAppModule,
+      });
+
+      try {
+        await sharedRegistry.metrics();
+        await firstApp.close();
+
+        const activeMetrics = await sharedRegistry.metrics();
+
+        expect(activeMetrics).toContain('app_shared_registry_lifecycle_total 1');
+        expect(activeMetrics).toContain('component_id="queue.active"');
+        expect(activeMetrics).not.toContain('component_id="cache.closed"');
+
+        await secondApp.close();
+
+        const clearedMetrics = await sharedRegistry.metrics();
+
+        expect(clearedMetrics).toContain('app_shared_registry_lifecycle_total 1');
+        expect(clearedMetrics).not.toContain('fluo_component_ready{');
+        expect(clearedMetrics).not.toContain('fluo_component_health{');
+        expect(clearedMetrics).not.toContain('fluo_metrics_registry_mode{');
+
+        const rebootedApp = await bootstrapApplication({
+          platform: {
+            components: [createPlatformComponent({ id: 'worker.rebooted', kind: 'worker' })],
+          },
+          rootModule: RebootedAppModule,
+        });
+
+        try {
+          const rebootedMetrics = await sharedRegistry.metrics();
+
+          expect(rebootedMetrics).toContain('app_shared_registry_lifecycle_total 1');
+          expect(rebootedMetrics).toContain('component_id="worker.rebooted"');
+          expect(rebootedMetrics).not.toContain('component_id="queue.active"');
+        } finally {
+          await rebootedApp.close();
+        }
+      } finally {
+        await secondApp.close();
+      }
+    } finally {
+      await firstApp.close();
+    }
+  });
+
   it('reuses built-in HTTP metrics when multiple module instances share one registry', async () => {
     const sharedRegistry = new Registry();
 
@@ -946,8 +1641,18 @@ describe('MetricsModule', () => {
 
     defineModule(AppModule, {
       imports: [
-        MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-a', registry: sharedRegistry }),
-        MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-b', registry: sharedRegistry }),
+        MetricsModule.forRoot({
+          defaultMetrics: false,
+          http: { durationHistogramBuckets: [0.001, 0.002] },
+          path: '/metrics-a',
+          registry: sharedRegistry,
+        }),
+        MetricsModule.forRoot({
+          defaultMetrics: false,
+          http: { durationHistogramBuckets: [0.001, 0.002] },
+          path: '/metrics-b',
+          registry: sharedRegistry,
+        }),
       ],
     });
 
@@ -1066,7 +1771,46 @@ describe('MetricsModule', () => {
     });
 
     await expect(bootstrapApplication({ rootModule: SecondAppModule })).rejects.toThrow(
-      'Metric name "http_requests_total" is already registered with framework HTTP path-label configuration pathLabelMode="template", pathLabelNormalizer=none, unknownPathLabel="FIRST_UNKNOWN". Built-in HTTP metrics require matching path-label configuration before reuse; received pathLabelMode="template", pathLabelNormalizer=none, unknownPathLabel="SECOND_UNKNOWN".',
+      'Metric name "http_requests_total" is already registered with framework HTTP collector configuration pathLabelMode="template", pathLabelNormalizer=none, unknownPathLabel="FIRST_UNKNOWN". Built-in HTTP metrics require matching HTTP collector configuration before reuse; received pathLabelMode="template", pathLabelNormalizer=none, unknownPathLabel="SECOND_UNKNOWN".',
+    );
+  });
+
+  it('rejects shared-registry HTTP collector reuse when only duration buckets differ', async () => {
+    const sharedRegistry = new Registry();
+
+    class FirstAppModule {}
+
+    defineModule(FirstAppModule, {
+      imports: [
+        MetricsModule.forRoot({
+          defaultMetrics: false,
+          http: { durationHistogramBuckets: [0.001, 0.002] },
+          path: '/metrics-a',
+          registry: sharedRegistry,
+        }),
+      ],
+    });
+
+    const firstApp = await bootstrapApplication({
+      rootModule: FirstAppModule,
+    });
+    await firstApp.close();
+
+    class SecondAppModule {}
+
+    defineModule(SecondAppModule, {
+      imports: [
+        MetricsModule.forRoot({
+          defaultMetrics: false,
+          http: { durationHistogramBuckets: [0.002, 0.003] },
+          path: '/metrics-b',
+          registry: sharedRegistry,
+        }),
+      ],
+    });
+
+    await expect(bootstrapApplication({ rootModule: SecondAppModule })).rejects.toThrow(
+      'Metric name "http_requests_total" is already registered with framework HTTP collector configuration pathLabelMode="template", pathLabelNormalizer=none, unknownPathLabel="UNKNOWN", durationHistogramBuckets=[0.001,0.002]. Built-in HTTP metrics require matching HTTP collector configuration before reuse; received pathLabelMode="template", pathLabelNormalizer=none, unknownPathLabel="UNKNOWN", durationHistogramBuckets=[0.002,0.003].',
     );
   });
 
@@ -1191,20 +1935,23 @@ describe('MetricsModule', () => {
     const firstApp = await bootstrapApplication({
       rootModule: FirstAppModule,
     });
-    const readinessGauge = sharedRegistry.getSingleMetric('fluo_component_ready') as Gauge<string> & { labelNames: string[] };
-    readinessGauge.labelNames = ['component_id'];
 
-    await firstApp.close();
+    try {
+      const readinessGauge = sharedRegistry.getSingleMetric('fluo_component_ready') as Gauge<string> & { labelNames: string[] };
+      readinessGauge.labelNames = ['component_id'];
 
-    class SecondAppModule {}
+      class SecondAppModule {}
 
-    defineModule(SecondAppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: '/metrics-b', registry: sharedRegistry })],
-    });
+      defineModule(SecondAppModule, {
+        imports: [MetricsModule.forRoot({ defaultMetrics: false, path: '/metrics-b', registry: sharedRegistry })],
+      });
 
-    await expect(bootstrapApplication({ rootModule: SecondAppModule })).rejects.toThrow(
-      'Metric name "fluo_component_ready" is already registered with labels [component_id]. Built-in platform telemetry requires labels [component_id,component_kind,operation,result,env,instance].',
-    );
+      await expect(bootstrapApplication({ rootModule: SecondAppModule })).rejects.toThrow(
+        'Metric name "fluo_component_ready" is already registered with labels [component_id]. Built-in platform telemetry requires labels [component_id,component_kind,operation,result,env,instance].',
+      );
+    } finally {
+      await firstApp.close();
+    }
   });
 
   it('exports runtime component readiness and health metrics with shared labels', async () => {
@@ -1534,6 +2281,30 @@ describe('MetricsModule', () => {
     }
   });
 
+  it('routes concurrent registry scrapes through SerializedScrapeQueue', async () => {
+    const enqueue = vi.spyOn(SerializedScrapeQueue.prototype, 'enqueue');
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false })],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    try {
+      const registry = (await app.container.resolve(MetricsService)).getRegistry();
+      await Promise.all([registry.metrics(), registry.metrics()]);
+
+      expect(enqueue).toHaveBeenCalledTimes(2);
+    } finally {
+      enqueue.mockRestore();
+      await app.close();
+    }
+  });
+
   it('emits both framework and custom metrics from shared registry', async () => {
     const sharedRegistry = new Registry();
 
@@ -1728,6 +2499,124 @@ describe('MetricsModule', () => {
       expect(await secondRegistry.metrics()).not.toContain('bootstrap_local_counter_total');
     } finally {
       await secondApp.close();
+    }
+  });
+
+  it('records one HTTP observation when module instances use the bootstrap registry', async () => {
+    const sharedRegistry = new Registry();
+
+    @Controller('/orders')
+    class OrdersController {
+      @Get('/:orderId')
+      getOrder(): { id: string } {
+        return { id: '123' };
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [OrdersController],
+      imports: [
+        MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-a' }),
+        MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-b' }),
+      ],
+    });
+
+    const app = await bootstrapApplication({
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+      rootModule: AppModule,
+    });
+
+    try {
+      // Given: two HTTP-enabled metrics modules resolve the same bootstrap registry.
+
+      // When: one application request passes through the runtime pipeline.
+      const response = createResponse();
+      await app.dispatch(createRequest('/orders/123'), response);
+
+      // Then: the shared collector receives one observation rather than one per module instance.
+      expect(response.statusCode).toBe(200);
+      expect(await sharedRegistry.metrics()).toContain(
+        'http_requests_total{method="GET",path="/orders/:orderId",status="200"} 1',
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('ignores a private module registry when bootstrap does not provide one', async () => {
+    const privateRegistry = new Registry();
+
+    class UnrelatedModule {}
+
+    defineModule(UnrelatedModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: privateRegistry }],
+    });
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [UnrelatedModule, MetricsModule.forRoot({ defaultMetrics: false, path: false })],
+    });
+
+    const app = await bootstrapApplication({
+      rootModule: AppModule,
+    });
+
+    try {
+      // Given: an unrelated module privately provides the bootstrap token.
+
+      // When: metrics resolves its registry without a bootstrap-level provider.
+      const metricsService = (await app.container.resolve(MetricsService)) as MetricsService;
+
+      // Then: metrics retains isolated bootstrap ownership instead of reading the private provider.
+      expect(metricsService.getRegistry()).not.toBe(privateRegistry);
+      expect(await metricsService.getRegistry().metrics()).toContain('fluo_metrics_registry_mode{mode="isolated"} 1');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('prefers the bootstrap registry over the legacy registry option', async () => {
+    const bootstrapRegistry = new Registry();
+    const legacyRegistry = new Registry();
+
+    new Counter({
+      help: 'Bootstrap registry marker',
+      name: 'bootstrap_registry_marker_total',
+      registers: [bootstrapRegistry],
+    }).inc();
+    new Counter({
+      help: 'Legacy registry marker',
+      name: 'legacy_registry_marker_total',
+      registers: [legacyRegistry],
+    }).inc();
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: legacyRegistry })],
+    });
+
+    const app = await bootstrapApplication({
+      providers: [{ provide: METRICS_REGISTRY, useValue: bootstrapRegistry }],
+      rootModule: AppModule,
+    });
+
+    try {
+      // Given: bootstrap and legacy configuration specify distinct registries.
+
+      // When: metrics resolves its active registry.
+      const metricsService = (await app.container.resolve(MetricsService)) as MetricsService;
+      const metricsText = await metricsService.getRegistry().metrics();
+
+      // Then: the bootstrap registry has deterministic precedence.
+      expect(metricsService.getRegistry()).toBe(bootstrapRegistry);
+      expect(metricsText).toContain('bootstrap_registry_marker_total 1');
+      expect(metricsText).not.toContain('legacy_registry_marker_total 1');
+    } finally {
+      await app.close();
     }
   });
 });

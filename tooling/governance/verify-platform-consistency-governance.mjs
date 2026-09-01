@@ -9,9 +9,7 @@ import { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecyc
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 import { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 import { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
-
-const contractDiscoverabilityCompanions = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
-
+import { enforceJwtLearningPathModuleWiring } from './jwt-learning-path-module-wiring.mjs';
 import {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
@@ -23,11 +21,38 @@ import { enforceReactRscGraduationGovernance } from './react-rsc-graduation-poli
 import { enforceRequestPipelineImportBoundary } from './request-pipeline-import-boundary.mjs';
 import { enforceRuntimeLifecycleNestjsMigrationDocs } from './runtime-lifecycle-nestjs-migration-docs.mjs';
 
+const contractDiscoverabilityCompanions = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
+const httpLifecycleContractDocs = new Set([
+  'docs/architecture/http-runtime.md',
+  'docs/architecture/http-runtime.ko.md',
+]);
+const httpRuntimeGovernanceImplementation =
+  'tooling/governance/verify-platform-consistency-governance.mjs';
+const httpRuntimeChangedPathRegression =
+  'tooling/governance/verify-platform-consistency-governance.test.ts';
+const httpRuntimeIsolationRegressionTest = 'tooling/governance/http-runtime-isolation.test.ts';
+const manualSseLifecycleRegressionTest =
+  'packages/http/src/dispatch/dispatcher-manual-sse-lifecycle.test.ts';
+const httpConnectionIdentityRegressionTest = 'packages/http/src/connection.test.ts';
+const httpByteRangeRuntimeSourcePaths = new Set([
+  'packages/http/src/byte-range-response.ts',
+  'packages/http/src/dispatch/byte-range-response.ts',
+  'packages/http/src/dispatch/conditional-request-policy.ts',
+  'packages/http/src/dispatch/dispatch-response-policy.ts',
+]);
+const httpByteRangeRegressionEvidence = [
+  'packages/http/src/dispatch/conditional-request-policy.test.ts',
+  'packages/http/src/dispatch/byte-range-response.test.ts',
+  'packages/testing/src/portability/http-adapter-portability.ts',
+  'packages/testing/src/portability/http-adapter-portability.test.ts',
+];
+
 export { enforceAdvancedBookCoreBoundaryCompanions } from './advanced-book-core-boundary.mjs';
 export { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 export { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 export { enforceExpressApplicationOwnershipDocs } from './express-application-ownership-docs.mjs';
 export { enforceJwtAsyncRegistrationContract } from './jwt-async-registration-contract.mjs';
+export { enforceJwtLearningPathModuleWiring } from './jwt-learning-path-module-wiring.mjs';
 export {
   enforceMicroservicesSafetyGuidanceParity,
   enforceMicroservicesSafetyRuntimeEvidence,
@@ -192,6 +217,8 @@ const ssotPairs = [
 ];
 
 const contractGateTriggers = new Set([
+  'docs/architecture/auth-and-jwt.md',
+  'docs/architecture/auth-and-jwt.ko.md',
   'docs/architecture/http-catch-all-route-grammar.md',
   'docs/architecture/http-catch-all-route-grammar.ko.md',
   'docs/architecture/platform-consistency-design.md',
@@ -229,6 +256,9 @@ const contractGateTriggers = new Set([
   'apps/docs/content/docs/guides/realtime.ko.mdx',
   'apps/docs/content/docs/guides/runtime-adapters.mdx',
   'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
+  'apps/docs/content/docs/guides/auth.mdx',
+  'apps/docs/content/docs/guides/auth.ko.mdx',
+  // Includes portable setCookie/clearCookie migration and cross-adapter response semantics.
   'docs/getting-started/migrate-from-nestjs.md',
   'docs/getting-started/migrate-from-nestjs.ko.md',
   'docs/architecture/transactions.md',
@@ -442,6 +472,35 @@ function assert(condition, message) {
 
 function read(relativePath) {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
+}
+
+export function enforceCliMigrationTransformDocs(readText = read) {
+  const transformSource = readText('packages/cli/src/transforms/nestjs-migrate.ts');
+  const transformList = /export const MIGRATION_TRANSFORMS = \[([\s\S]*?)\] as const;/u.exec(transformSource);
+  assert(transformList?.[1], 'unable to read the CLI migration transform declarations.');
+
+  const supportedTransforms = new Set([...transformList[1].matchAll(/'([^']+)'/gu)].map((match) => match[1]));
+  assert(supportedTransforms.size > 0, 'CLI migration transform declarations must not be empty.');
+
+  const migrationDocs = [
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'packages/cli/README.md',
+    'packages/cli/README.ko.md',
+  ];
+
+  for (const relativePath of migrationDocs) {
+    const markdown = readText(relativePath);
+    const selections = [...markdown.matchAll(/--(?:only|skip)\s+([a-z]+(?:,[a-z]+)*)/gu)];
+    for (const selection of selections) {
+      for (const transform of selection[1].split(',')) {
+        assert(
+          supportedTransforms.has(transform),
+          `documented migration transform "${transform}" in ${relativePath} is not supported by the CLI.`,
+        );
+      }
+    }
+  }
 }
 
 function hasOneArgumentGuardContextContract(markdown) {
@@ -785,8 +844,47 @@ function enforceSsotMirrorStructure() {
 
 export function enforceContractCompanionUpdates(changedFiles) {
   const touchedContractGate = changedFiles.some((path) => contractGateTriggers.has(path));
+  const touchedHttpLifecycleContract = changedFiles.some((path) => httpLifecycleContractDocs.has(path));
 
   if (!touchedContractGate) {
+    return;
+  }
+
+  if (touchedHttpLifecycleContract) {
+    assert(
+      [...httpLifecycleContractDocs].every((path) => hasChanged(changedFiles, path)),
+      'HTTP runtime contract updates must include docs/architecture/http-runtime.md and docs/architecture/http-runtime.ko.md.',
+    );
+    assert(
+      contractDiscoverabilityCompanions.every((path) => hasChanged(changedFiles, path)),
+      'HTTP runtime contract updates must include docs/CONTEXT.md and docs/CONTEXT.ko.md discoverability updates.',
+    );
+    assert(
+      hasChanged(changedFiles, httpRuntimeGovernanceImplementation),
+      `HTTP runtime contract updates must include ${httpRuntimeGovernanceImplementation}.`,
+    );
+    assert(
+      hasChanged(changedFiles, httpRuntimeChangedPathRegression),
+      `HTTP runtime contract updates must include ${httpRuntimeChangedPathRegression}.`,
+    );
+    if (includesAny(changedFiles, (path) => httpByteRangeRuntimeSourcePaths.has(path))) {
+      assert(
+        httpByteRangeRegressionEvidence.every((path) => hasChanged(changedFiles, path)),
+        `HTTP byte-range runtime contract changes must include ${httpByteRangeRegressionEvidence.join(', ')}.`,
+      );
+      return;
+    }
+    if (hasChanged(changedFiles, httpConnectionIdentityRegressionTest)) {
+      return;
+    }
+    assert(
+      hasChanged(changedFiles, httpRuntimeIsolationRegressionTest),
+      `HTTP runtime contract updates must include ${httpRuntimeIsolationRegressionTest}.`,
+    );
+    assert(
+      hasChanged(changedFiles, manualSseLifecycleRegressionTest),
+      `HTTP runtime lifecycle contract updates must include ${manualSseLifecycleRegressionTest}.`,
+    );
     return;
   }
 
@@ -842,6 +940,9 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // plus event-bus background handler/transport shutdown drain to live-set
   // quiescence under one deadline, inbound timeout, stable eventKey migration,
   // and CQRS responsibility-boundary docs/tests,
+  // plus HTTP trust-proxy connection identity scope, where forwarding metadata
+  // can replace direct transport identity only behind an explicit trusted peer
+  // boundary and legacy full-chain compatibility remains distinct,
   // plus React Router/Path facade-over-HTTP metadata, ReactModule.forRoot
   // registration contract discoverability, inherited class/method render-policy
   // ordering, nearest Suspense fallback selection, request-scope renderer context,
@@ -876,7 +977,12 @@ export function enforceContractCompanionUpdates(changedFiles) {
   // where ConfigModule never reads external secret Providers itself and
   // ConfigService.get/getOrThrow accept a single key with no NestJS
   // default-value or options overload, plus JWT refresh-token-specific HMAC
-  // algorithm policy separation from narrow access-token algorithm allowlists.
+  // algorithm policy separation from narrow access-token algorithm allowlists,
+  // plus HTTP conditional-request middleware/guard ordering, representation
+  // existence, conditional/HEAD response ownership, single-range 206 and
+  // bodyless 416 partial responses, If-Range reuse of selected validators,
+  // identity-encoded representation-byte metadata, and cross-adapter
+  // conformance.
 
   assert(
     contractDiscoverabilityCompanions.every((path) => hasChanged(changedFiles, path)),
@@ -890,6 +996,10 @@ export function enforceContractCompanionUpdates(changedFiles) {
   assert(
     includesAny(changedFiles, (path) => path.endsWith('.test.ts') || path.endsWith('.spec.ts')),
     'contract-governing doc updates must include regression test updates for the changed contract surface.',
+  );
+  assert(
+    !touchedHttpLifecycleContract || hasChanged(changedFiles, manualSseLifecycleRegressionTest),
+    `HTTP lifecycle contract docs must include ${manualSseLifecycleRegressionTest}.`,
   );
 
   // Microservices transport ownership, root/subpath export exceptions, lazy-load,
@@ -1863,16 +1973,16 @@ function enforceCanonicalRuntimeMatrixReferences() {
     'Drizzle README.ko, package-surface.ko, package-chooser.ko, and docs/CONTEXT.ko.md must keep the Node-only runtime boundary and raw-provider fallback discoverable together.',
   );
   assert(
-    packageSurface.includes('NormalizedCacheModuleOptions') &&
-      docsContext.includes('NormalizedCacheModuleOptions') &&
-      cacheManagerReadme.includes('NormalizedCacheModuleOptions'),
-    'cache-manager package-surface, docs/CONTEXT.md, and README.md must keep the NormalizedCacheModuleOptions compatibility export discoverable together.',
+    packageSurface.includes('NormalizedCacheModuleOptions') && packageSurface.includes('CacheModule.forRootAsync') &&
+      docsContext.includes('NormalizedCacheModuleOptions') && docsContext.includes('CacheModule.forRootAsync') &&
+      cacheManagerReadme.includes('NormalizedCacheModuleOptions') && cacheManagerReadme.includes('CacheModule.forRootAsync'),
+    'cache-manager package-surface, docs/CONTEXT.md, and README.md must keep async registration and the compatibility export discoverable together.',
   );
   assert(
-    packageSurfaceKo.includes('NormalizedCacheModuleOptions') &&
-      docsContextKo.includes('NormalizedCacheModuleOptions') &&
-      cacheManagerReadmeKo.includes('NormalizedCacheModuleOptions'),
-    'cache-manager package-surface.ko.md, docs/CONTEXT.ko.md, and README.ko.md must keep the NormalizedCacheModuleOptions compatibility export discoverable together.',
+    packageSurfaceKo.includes('NormalizedCacheModuleOptions') && packageSurfaceKo.includes('CacheModule.forRootAsync') &&
+      docsContextKo.includes('NormalizedCacheModuleOptions') && docsContextKo.includes('CacheModule.forRootAsync') &&
+      cacheManagerReadmeKo.includes('NormalizedCacheModuleOptions') && cacheManagerReadmeKo.includes('CacheModule.forRootAsync'),
+    'cache-manager package-surface.ko.md, docs/CONTEXT.ko.md, and README.ko.md must keep async registration and the compatibility export discoverable together.',
   );
   assert(
     packageSurface.includes('createPassportJsStrategyBridge(...)') &&
@@ -2370,6 +2480,13 @@ export function enforceHttpRuntimeCancellationAndContextIsolation() {
   const sseBackpressureRegression = read(
     'packages/http/src/dispatch/dispatcher-sse-backpressure-cancellation.test.ts',
   );
+  const byteRangeRegression = read('packages/http/src/dispatch/byte-range-response.test.ts');
+  const httpAdapterPortabilityHarness = read(
+    'packages/testing/src/portability/http-adapter-portability.ts',
+  );
+  const httpAdapterPortabilityRegression = read(
+    'packages/testing/src/portability/http-adapter-portability.test.ts',
+  );
 
   assert(
     abortSource.includes('request.isAborted?.() === true || request.signal?.aborted === true'),
@@ -2437,6 +2554,17 @@ export function enforceHttpRuntimeCancellationAndContextIsolation() {
       sseBackpressureRegression.includes('writeFailure') &&
       sseBackpressureRegression.includes('drainFailure'),
     'Managed SSE regressions must cover blocked-drain cancellation, exactly-once iterator cleanup, request-scope disposal, and original stream errors.',
+  );
+  assert(
+    byteRangeRegression.includes('if-range') &&
+      byteRangeRegression.includes('uses the complete representation when If-Range does not match') &&
+      byteRangeRegression.includes('writes a satisfiable byte range from a byte representation'),
+    'HTTP byte-range regressions must cover satisfiable range selection and If-Range fallback.',
+  );
+  assert(
+    httpAdapterPortabilityHarness.includes('assertSupportsSingleByteRanges') &&
+      httpAdapterPortabilityRegression.includes('await harness.assertSupportsSingleByteRanges()'),
+    'HTTP byte-range regressions must retain canonical listener-harness coverage.',
   );
 
   for (const documentationPath of [
@@ -2645,6 +2773,108 @@ export function enforceHttpCustomMethodContract() {
   );
 }
 
+export function enforceHttpAdapterPortabilityDocumentationContract(readText = read) {
+  const assertionOrder = [
+    'assertSupportsCustomHttpRouteMethods()',
+    'assertSupportsSingleByteRanges()',
+    'assertSupportsHttpErrorRepresentations()',
+    'assertDoesNotCommitAbortedHttpErrorRepresentations()',
+    'assertPreservesMalformedCookieValues()',
+    'assertSupportsPortableResponseCookies()',
+    'assertPreservesRawBodyForJsonAndText()',
+    'assertPreservesExactRawBodyBytesForByteSensitivePayloads()',
+    'assertExcludesRawBodyForMultipart()',
+    'assertDefaultsMultipartTotalLimitToMaxBodySize()',
+    'assertSupportsSseStreaming()',
+    'assertSettlesStreamDrainWaitOnClose()',
+    'assertReportsConfiguredHostInStartupLogs()',
+    'assertReportsHttpsStartupUrl',
+    'assertRemovesShutdownSignalListenersAfterClose()',
+  ];
+  const discoverabilityPaths = [
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'book/advanced/ch14-portability-testing.md',
+    'book/advanced/ch14-portability-testing.ko.md',
+  ];
+
+  for (const documentationPath of discoverabilityPaths) {
+    const documentation = readText(documentationPath);
+    const suiteStartMarker = documentationPath.startsWith('docs/')
+      ? '## HTTP Portability Harness Contract'
+      : "describe('MyCustomAdapter Portability', () => {";
+    const suiteStart = documentation.indexOf(suiteStartMarker);
+    assert(
+      suiteStart >= 0,
+      `${documentationPath} must keep the complete HTTP portability suite section discoverable.`,
+    );
+    const suite = documentation.slice(suiteStart);
+    let previousPosition = -1;
+
+    for (const assertion of assertionOrder) {
+      const position = suite.indexOf(assertion);
+      assert(
+        position >= 0,
+        `${documentationPath} must keep ${assertion} discoverable.`,
+      );
+      assert(
+        position > previousPosition,
+        `${documentationPath} must keep the complete HTTP portability suite in canonical assertion order.`,
+      );
+      previousPosition = position;
+    }
+
+    for (const supportingIdentifier of [
+      'createHttpAdapterPortabilityHarness',
+      'createErrorRepresentationBootstrapOptions',
+      'TEST_TLS_CERTIFICATE',
+      'TEST_TLS_PRIVATE_KEY',
+    ]) {
+      assert(
+        documentation.includes(supportingIdentifier),
+        `${documentationPath} must keep ${supportingIdentifier} discoverable.`,
+      );
+    }
+  }
+
+  for (const contractPath of [
+    'docs/contracts/platform-conformance-authoring-checklist.md',
+    'docs/contracts/platform-conformance-authoring-checklist.ko.md',
+  ]) {
+    const contract = readText(contractPath);
+
+    for (const marker of [
+      '## Adapter Portability Requirements',
+      'createHttpAdapterPortabilityHarness(...)',
+      'assertSupportsPortableResponseCookies()',
+      'assertSupportsCustomHttpRouteMethods()',
+      'assertSupportsSingleByteRanges()',
+      'assertSupportsHttpErrorRepresentations()',
+      'assertDoesNotCommitAbortedHttpErrorRepresentations()',
+      'assertPreservesExactRawBodyBytesForByteSensitivePayloads()',
+      'assertDefaultsMultipartTotalLimitToMaxBodySize()',
+      'assertSettlesStreamDrainWaitOnClose()',
+      'assertReportsConfiguredHostInStartupLogs()',
+      'assertReportsHttpsStartupUrl(...)',
+      'assertRemovesShutdownSignalListenersAfterClose()',
+    ]) {
+      assert(
+        contract.includes(marker),
+        `${contractPath} must keep the HTTP portability companion contract marker ${marker}.`,
+      );
+    }
+  }
+
+  const networkHarness = readText('packages/testing/src/portability/http-adapter-portability.ts');
+  for (const assertion of assertionOrder) {
+    const identifier = assertion.replace(/\([^)]*\)$/, '');
+    assert(
+      networkHarness.includes(identifier),
+      `packages/testing/src/portability/http-adapter-portability.ts must retain ${identifier}.`,
+    );
+  }
+}
+
 export function enforceOpenApiNullableNormalizationContract() {
   const documentationPaths = [
     'apps/docs/content/docs/guides/http-api.mdx',
@@ -2682,6 +2912,46 @@ export function enforceOpenApiNullableNormalizationContract() {
     ['nullable: true', 'nullable: false', "type: 'array'", '$ref:'].every((marker) => regression.includes(marker)),
     'OpenAPI nullable regression coverage must include true, false, array, and $ref inputs.',
   );
+}
+
+const openApiMigrationDocumentRequirements = [
+  {
+    heading: '## OpenAPI Contract Differences',
+    markers: ["defaultErrorResponsesPolicy: 'omit'", 'operationId', 'documentTransform', 'documentPath', 'uiPath', 'useFactory(...)'],
+    path: 'docs/getting-started/migrate-from-nestjs.md',
+  },
+  {
+    heading: '## OpenAPI 계약 차이',
+    markers: ["defaultErrorResponsesPolicy: 'omit'", 'operationId', 'documentTransform', 'documentPath', 'uiPath', 'useFactory(...)'],
+    path: 'docs/getting-started/migrate-from-nestjs.ko.md',
+  },
+  {
+    heading: '### Default Error Contract',
+    markers: [],
+    path: 'book/beginner/ch10-openapi.md',
+  },
+  {
+    heading: '### 기본 오류 계약',
+    markers: [],
+    path: 'book/beginner/ch10-openapi.ko.md',
+  },
+];
+
+export function enforceOpenApiMigrationDocumentStructure(readText = read) {
+  for (const { heading, markers, path } of openApiMigrationDocumentRequirements) {
+    const documentation = readText(path);
+    const headingCount = documentation.split('\n').filter((line) => line.trim() === heading).length;
+    const missingMarkers = markers.filter((marker) => !documentation.includes(marker));
+
+    assert(
+      headingCount === 1,
+      `${path} must contain exactly one ${heading.slice('#'.repeat(heading.match(/^#+/)?.[0].length ?? 0).length + 1)} heading; found ${headingCount}.`,
+    );
+    assert(
+      missingMarkers.length === 0,
+      `${path} must retain migration marker(s): ${missingMarkers.join(', ')}.`,
+    );
+  }
 }
 
 export function enforceGraphqlRuntimeBoundaryDiscoverability() {
@@ -2761,49 +3031,188 @@ export function enforcePersistenceTransactionInterceptorCompatibility() {
   }
 }
 
-export function enforceQueueWorkerOwnershipContract() {
-  const contractPaths = [
-    'packages/queue/README.md',
-    'packages/queue/README.ko.md',
-    'docs/CONTEXT.md',
-    'docs/CONTEXT.ko.md',
-    'docs/getting-started/migrate-from-nestjs.md',
-    'docs/getting-started/migrate-from-nestjs.ko.md',
-    'docs/reference/package-surface.md',
-    'docs/reference/package-surface.ko.md',
-    'book/intermediate/ch11-queue.md',
-    'book/intermediate/ch11-queue.ko.md',
-  ];
+const queueWorkerOwnershipContractPaths = [
+  'packages/queue/README.md',
+  'packages/queue/README.ko.md',
+  'docs/CONTEXT.md',
+  'docs/CONTEXT.ko.md',
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+  'docs/reference/package-surface.md',
+  'docs/reference/package-surface.ko.md',
+  'book/intermediate/ch11-queue.md',
+  'book/intermediate/ch11-queue.ko.md',
+];
+const queueWorkerOwnershipSourcePaths = [
+  ...queueWorkerOwnershipContractPaths,
+  'packages/queue/src/worker-ownership.ts',
+  'packages/queue/src/module.ts',
+  'packages/queue/src/worker-ownership.test.ts',
+];
 
-  for (const contractPath of contractPaths) {
-    const contract = read(contractPath);
+export function enforceQueueWorkerOwnershipContractFromSources(sources) {
+  const readSource = (path) => {
+    const source = sources[path];
+    assert(typeof source === 'string', `Queue ownership contract source "${path}" must be provided.`);
+    return source;
+  };
+
+  for (const contractPath of queueWorkerOwnershipContractPaths) {
+    const contract = readSource(contractPath);
     assert(
       contract.includes('scope') && contract.includes('Redis') && contract.includes('jobName'),
       `${contractPath} must keep cross-scope Redis and jobName ownership discoverable.`,
     );
   }
 
-  const ownershipSource = read('packages/queue/src/worker-ownership.ts');
-  const moduleSource = read('packages/queue/src/module.ts');
-  const regressionSource = read('packages/queue/src/worker-ownership.test.ts');
+  const queuePackageSurfaceBulletRequirements = [
+    [
+      'docs/reference/package-surface.md',
+      [
+        'application-supplied `ownershipNamespace` identities independent of DI `clientName`',
+        'pre-resource `(ownershipNamespace, jobName)` collision validation',
+        '2.x compatibility diagnostics by default',
+        "opt-in `ownershipEnforcement: 'reject'` bootstrap rejection",
+      ],
+    ],
+    [
+      'docs/reference/package-surface.ko.md',
+      [
+        'DI `clientName`과 독립적인 application-supplied `ownershipNamespace` identity',
+        'resource 생성 전 `(ownershipNamespace, jobName)` collision validation',
+        '기본 2.x compatibility diagnostic',
+        "opt-in `ownershipEnforcement: 'reject'` bootstrap rejection",
+      ],
+    ],
+  ];
+
+  for (const [contractPath, requirements] of queuePackageSurfaceBulletRequirements) {
+    const contract = readSource(contractPath);
+    const queueBulletAnchor = '- **`@fluojs/queue`**:';
+    const queueBullets = contract.split('\n').filter((line) => line.startsWith(queueBulletAnchor));
+
+    assert(
+      queueBullets.length === 1,
+      `${contractPath} Queue package-surface bullet anchor must occur exactly once; observed ${queueBullets.length}.`,
+    );
+
+    const [queueBullet] = queueBullets;
+
+    assert(
+      requirements.every((requirement) => queueBullet.includes(requirement)),
+      `${contractPath} Queue package-surface bullet must document application ownershipNamespace identity independent of DI clientName, pre-resource collision validation, default 2.x diagnostics, and opt-in reject failure.`,
+    );
+  }
+
+  const ownershipSource = readSource('packages/queue/src/worker-ownership.ts');
+  const moduleSource = readSource('packages/queue/src/module.ts');
+  const regressionSource = readSource('packages/queue/src/worker-ownership.test.ts');
+  const unconfiguredNamespaceDiagnostic =
+    'Queue ownership namespace is unconfigured for scope "${moduleContext.scope}". Set QueueModule.forRoot({ ownershipNamespace }) to a stable identity shared only by registrations that use the same BullMQ backend.';
+  const unconfiguredNamespaceWarning = [
+    'logger.warn(',
+    `        \`${unconfiguredNamespaceDiagnostic}\`,`,
+    "        'QueueLifecycleService',",
+    '      );',
+  ].join('\n');
+  const descriptorIteration = 'const descriptors = discoverQueueWorkerDescriptors(';
+  const rejectPreferredOwnerSelection = [
+    'const existingOwner =',
+    "        compatibleOwners.find((owner) => owner.ownershipEnforcement === 'reject') ??",
+    '        compatibleOwners[0];',
+  ].join('\n');
 
   assert(
-    ownershipSource.includes('getRedisClientToken(moduleContext.options.clientName)') &&
-      ownershipSource.includes('Cross-scope @fluojs/queue worker ownership collision') &&
-      ownershipSource.includes('createQueueDiscoveryModuleFilter(compiledModules, moduleContext)'),
-    'Queue ownership validation must compare the effective Redis dependency and discovered jobName inside each registration boundary.',
+    ownershipSource.includes('const ownershipNamespace = moduleContext.options.ownershipNamespace;') &&
+      !ownershipSource.includes('moduleContext.options.clientName') &&
+      ownershipSource.includes('function canShareBackend(') &&
+      ownershipSource.includes('ownershipNamespace === undefined ||') &&
+      ownershipSource.includes('existingOwner.ownershipNamespace === undefined ||') &&
+      ownershipSource.includes('ownershipNamespace === existingOwner.ownershipNamespace'),
+    'Queue ownership identity must use application-supplied ownershipNamespace, treating an absent namespace as compatible and only explicitly different namespaces as isolated.',
   );
   assert(
-    moduleSource.includes('assertUniqueQueueWorkerOwnership(typedDeps[3])') &&
-      moduleSource.indexOf('assertUniqueQueueWorkerOwnership(typedDeps[3])') <
+    ownershipSource.includes(unconfiguredNamespaceDiagnostic) &&
+      (ownershipSource.match(/Queue ownership namespace is unconfigured for scope/g) ?? []).length === 1 &&
+      ownershipSource.includes(unconfiguredNamespaceWarning) &&
+      ownershipSource.indexOf(unconfiguredNamespaceWarning) < ownershipSource.indexOf(descriptorIteration),
+    'Queue ownership validation must emit exactly one actionable unconfigured-namespace diagnostic through logger.warn before worker descriptor iteration.',
+  );
+  assert(
+    ownershipSource.includes(
+      'const compatibleOwners = owners.filter((owner) => canShareBackend(ownershipNamespace, owner));',
+    ) &&
+      ownershipSource.includes(rejectPreferredOwnerSelection) &&
+      ownershipSource.includes(
+        "existingOwner.ownershipEnforcement === 'reject' ||\n          moduleContext.options.ownershipEnforcement === 'reject'",
+      ) &&
+      ownershipSource.includes('Cross-scope @fluojs/queue worker ownership collision') &&
+      ownershipSource.includes('createQueueDiscoveryModuleFilter(compiledModules, moduleContext)'),
+    'Queue ownership validation must prefer a compatible owner that enforces rejection before falling back to the first compatible owner.',
+  );
+  assert(
+    moduleSource.includes(
+      'assertUniqueQueueWorkerOwnership(typedDeps[3], typedDeps[4], typedDeps[6].moduleType)',
+    ) &&
+      moduleSource.indexOf(
+        'assertUniqueQueueWorkerOwnership(typedDeps[3], typedDeps[4], typedDeps[6].moduleType)',
+      ) <
         moduleSource.indexOf('new QueueLifecycleService(...typedDeps)'),
     'Queue lifecycle provider creation must reject ownership collisions before BullMQ bootstrap creates worker resources.',
   );
   assert(
-    regressionSource.includes('rejects the same Redis dependency and jobName across distinct queue scopes') &&
-      regressionSource.includes('allows the same jobName across scopes backed by distinct Redis dependencies') &&
-      regressionSource.includes('expect(bullmqState.queueNames).toEqual([])'),
-    'Queue ownership regressions must cover collision rejection before resource creation and the distinct-Redis allowance.',
+    regressionSource.includes(
+      'warns about an unconfigured ownership namespace collision without creating resources first',
+    ) &&
+      regressionSource.includes('warns about a mixed configured and unconfigured ownership namespace collision') &&
+      regressionSource.includes(
+        'rejects a mixed configured and unconfigured ownership namespace collision before creating resources',
+      ) &&
+      regressionSource.includes(
+        'rejects when an unconfigured registration collides with a later reject owner',
+      ) &&
+      regressionSource.includes('warns once for a lone unconfigured ownership namespace') &&
+      regressionSource.includes(
+        'rejects the same jobName for different Redis clients with one ownership namespace',
+      ) &&
+      regressionSource.includes('allows the same jobName across explicitly distinct ownership namespaces'),
+    'Queue ownership regressions must cover unconfigured diagnostics, mixed namespace compatibility, rejection before resource creation, later-owner rejection, DI-independent ownership, and explicitly distinct namespace allowance.',
+  );
+
+  for (const regressionTitle of [
+    'rejects a mixed configured and unconfigured ownership namespace collision before creating resources',
+    'rejects when an unconfigured registration collides with a later reject owner',
+    'rejects the same jobName for different Redis clients with one ownership namespace',
+  ]) {
+    const testDeclaration = `  it('${regressionTitle}',`;
+    const matchingDeclarations = regressionSource
+      .split('\n')
+      .filter((line) => line.startsWith(testDeclaration));
+
+    assert(
+      matchingDeclarations.length === 1,
+      `Queue ownership regression "${regressionTitle}" test declaration must occur exactly once; observed ${matchingDeclarations.length}.`,
+    );
+
+    const testStart = regressionSource.indexOf(testDeclaration);
+    const nextTestStart = regressionSource.indexOf("\n  it('", testStart + 1);
+    const testSource = regressionSource.slice(testStart, nextTestStart === -1 ? undefined : nextTestStart);
+
+    assert(
+      testSource.includes('expect(bullmqState.queueNames).toEqual([])'),
+      `Queue ownership regression "${regressionTitle}" must assert no BullMQ queues are created before rejection.`,
+    );
+  }
+}
+
+export function enforceQueueWorkerOwnershipContract() {
+  return enforceQueueWorkerOwnershipContractFromSources(
+    Object.fromEntries(
+      queueWorkerOwnershipSourcePaths.map((path) => [
+        path,
+        read(path),
+      ]),
+    ),
   );
 }
 
@@ -2836,7 +3245,7 @@ export function enforceFastifyNativeConfigurationDocsSync() {
   }
 }
 
-export function main() {
+export async function main() {
   const changedFiles = changedFilesFromGit();
 
   enforceSsotMirrorStructure();
@@ -2853,7 +3262,9 @@ export function main() {
   enforceCloudflareWorkersLifecycleDocsSync();
   enforcePlatformShellLifecycleContract();
   enforceConfigNestjsMigrationDocs();
+  enforceCliMigrationTransformDocs();
   enforceJwtAsyncRegistrationContract();
+  await enforceJwtLearningPathModuleWiring();
   enforceRuntimeLifecycleNestjsMigrationDocs();
   enforcePassportJsBridgeNestjsMigration();
   enforceExpressApplicationOwnershipDocs();
@@ -2872,8 +3283,10 @@ export function main() {
   enforceReactServerFunctionContract();
   enforceHttpRuntimeCancellationAndContextIsolation();
   enforceHttpCustomMethodContract();
+  enforceHttpAdapterPortabilityDocumentationContract();
   enforceHttpCatchAllRouteGrammarDecision();
   enforceOpenApiNullableNormalizationContract();
+  enforceOpenApiMigrationDocumentStructure();
   enforceGraphqlRuntimeBoundaryDiscoverability();
   enforceRequestPipelineImportBoundary();
   enforcePersistenceTransactionInterceptorCompatibility();
@@ -2889,5 +3302,5 @@ export function main() {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main();
+  await main();
 }

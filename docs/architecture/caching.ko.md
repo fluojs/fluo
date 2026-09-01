@@ -9,6 +9,7 @@
 | 표면 | 현재 계약 | 소스 기준 |
 | --- | --- | --- |
 | 모듈 진입점 | 애플리케이션은 `CacheModule.forRoot(...)`로 캐시 지원을 등록합니다. 공개 옵션에는 `store`, `ttl`, opt-in `ttlJitter`, `httpKeyStrategy`, `principalScopeResolver`, top-level `keyPrefix`, `redis`, `global`이 포함됩니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
+| 비동기 모듈 진입점 | `CacheModule.forRootAsync({ inject, useFactory, global? })`는 동일한 공개 옵션을 injected factory로 해석하고 `forRoot(...)`와 같은 기본값으로 정규화합니다. Inject한 토큰은 모듈을 생성하는 container에서 사용할 수 있는 bootstrap runtime provider 또는 globally visible module export에서 해석되며, parent-local provider와 일반 sibling/parent export는 보이지 않습니다. Factory는 cache provider가 처음 resolve될 때 등록마다 한 번 실행되고, factory가 reject되면 부분 설정된 cache provider를 등록하지 않고 bootstrap이 실패합니다. Module metadata는 factory 실행 전에 확정되므로 모듈 가시성은 등록 호출의 `global`이 결정하고 factory 결과의 `global` 값은 무시됩니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/module.ts` |
 | 캐시 서비스 | `CacheService`는 `get`, `set`, `remember`, `del`, `reset`과 공개 `close()` teardown 경계를 제공하는 직접 애플리케이션 캐시 파사드입니다. | `packages/cache-manager/src/service.ts` |
 | HTTP 통합 | `CacheInterceptor`는 GET read-through 캐싱을 수행하고 non-GET controller handler 이후 `@CacheEvict(...)` metadata를 소비합니다. 이 decorator는 해당 HTTP pipeline 밖의 임의 service method를 intercept하지 않습니다. | `packages/cache-manager/src/decorators.ts`, `packages/cache-manager/src/interceptor.ts` |
 | 메모리 저장소 | `MemoryStore`는 캐시 엔트리를 프로세스 내부에 보관하고, 접근 시점에 만료를 지연 정리하며, 가장 오래된 키부터 제거하면서 라이브 엔트리를 `1,000`개로 제한합니다. | `packages/cache-manager/src/stores/memory-store.ts` |

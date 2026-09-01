@@ -4,6 +4,7 @@ import { getControllerMetadata, getRouteMetadata } from '@fluojs/core/internal';
 import { attachCompiledRouteIdentity } from './compiled-route-identity.js';
 import { getRouteProducesMetadata } from './decorators.js';
 import { RouteConflictError } from './errors.js';
+import { isMiddlewareRouteConfig } from './middleware/middleware.js';
 import { extractRoutePathParams, normalizeRoutePath, parseRoutePath, type RoutePathSegment } from './route-path.js';
 import type {
   FrameworkRequest,
@@ -14,6 +15,8 @@ import type {
   HandlerSource,
   HttpMethod,
   InterceptorLike,
+  MiddlewareLike,
+  MiddlewareSnapshotLike,
   VersioningExtractor,
   VersioningOptions,
 } from './types.js';
@@ -421,6 +424,84 @@ function buildDescriptorList(sources: HandlerSource[], versioning: ResolvedVersi
   return descriptors;
 }
 
+function freezeDescriptorSnapshot(descriptors: readonly HandlerDescriptor[]): HandlerDescriptor[] {
+  const snapshot = descriptors.map((descriptor) => {
+    const { metadata, route } = descriptor;
+
+    return {
+      ...descriptor,
+      metadata: {
+        ...metadata,
+        moduleMiddleware: freezeModuleMiddlewareSnapshot(metadata.moduleMiddleware),
+        pathParams: [...metadata.pathParams],
+      },
+      route: {
+        ...route,
+        ...(route.guards ? { guards: [...route.guards] } : {}),
+        ...(route.headers ? { headers: route.headers.map((header) => ({ ...header })) } : {}),
+        ...(route.interceptors ? { interceptors: [...route.interceptors] } : {}),
+        ...(route.produces ? { produces: [...route.produces] } : {}),
+        ...(route.redirect ? { redirect: { ...route.redirect } } : {}),
+      },
+    };
+  });
+
+  for (const descriptor of snapshot) {
+    const { metadata, route } = descriptor;
+
+    if (route.headers) {
+      for (const header of route.headers) {
+        Object.freeze(header);
+      }
+
+      Object.freeze(route.headers);
+    }
+
+    if (route.redirect) {
+      Object.freeze(route.redirect);
+    }
+
+    if (route.guards) {
+      Object.freeze(route.guards);
+    }
+
+    if (route.interceptors) {
+      Object.freeze(route.interceptors);
+    }
+
+    if (route.produces) {
+      route.produces = [...route.produces];
+      Object.freeze(route.produces);
+    }
+
+    Object.freeze(route);
+    Object.freeze(metadata.moduleMiddleware);
+    Object.freeze(metadata.pathParams);
+    Object.freeze(metadata);
+    Object.freeze(descriptor);
+  }
+
+  Object.freeze(snapshot);
+  return snapshot;
+}
+
+function freezeModuleMiddlewareSnapshot(
+  definitions: readonly (MiddlewareLike | MiddlewareSnapshotLike)[],
+): readonly MiddlewareSnapshotLike[] {
+  const snapshot = definitions.map((definition) => {
+    if (!isMiddlewareRouteConfig(definition)) {
+      return definition;
+    }
+
+    return Object.freeze({
+      middleware: definition.middleware,
+      routes: Object.freeze([...definition.routes]),
+    });
+  });
+
+  return Object.freeze(snapshot);
+}
+
 /**
  * Create handler mapping.
  *
@@ -430,10 +511,10 @@ function buildDescriptorList(sources: HandlerSource[], versioning: ResolvedVersi
  */
 export function createHandlerMapping(sources: HandlerSource[], options?: CreateHandlerMappingOptions): HandlerMapping {
   const versioning = resolveVersioning(options);
-  const descriptors = buildDescriptorList(sources, versioning);
+  const descriptors = freezeDescriptorSnapshot(buildDescriptorList(sources, versioning));
   const descriptorIndex = buildDescriptorIndex(descriptors);
 
-  return {
+  const mapping = {
     descriptors,
     match(request: FrameworkRequest): HandlerMatch | undefined {
       const method = request.method.toUpperCase();
@@ -499,4 +580,11 @@ export function createHandlerMapping(sources: HandlerSource[], options?: CreateH
       return undefined;
     },
   };
+
+  Object.defineProperty(mapping, 'descriptors', {
+    configurable: false,
+    writable: false,
+  });
+
+  return mapping;
 }

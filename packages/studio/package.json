@@ -24,6 +24,9 @@
     "access": "public"
   },
   "type": "module",
+  "bin": {
+    "fluo-studio-viewer": "./dist/viewer-cli.js"
+  },
   "fluo": {
     "declarationBuildDevDependencies": [
       "@fluojs/runtime"
@@ -47,10 +50,11 @@
   ],
   "scripts": {
     "prebuild": "node ../../tooling/scripts/clean-dist.mjs",
-    "build": "pnpm exec vite build && pnpm exec babel src/contracts.ts src/index.ts --extensions .ts --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json",
+    "build": "pnpm exec vite build && pnpm exec babel src/contracts.ts src/index.ts src/viewer-server.ts src/viewer-cli.ts --extensions .ts --out-dir dist --config-file ../../tooling/babel/babel.config.cjs && pnpm exec tsc -p tsconfig.build.json",
     "dev": "pnpm exec vite",
     "preview": "pnpm exec vite preview",
-    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
+    "test:browser": "pnpm build && pnpm exec playwright test -c playwright.config.ts",
+    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit && pnpm exec tsc -p playwright.tsconfig.json --noEmit",
     "test": "pnpm exec vitest run -c vitest.config.ts",
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
@@ -59,6 +63,7 @@
     "react-dom": "^19.2.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@fluojs/runtime": "workspace:^",
     "@fluojs-internal/tooling-vite": "workspace:^",
     "@types/react": "^19.2.14",
